@@ -1,0 +1,10 @@
+{
+  "name": "@nicotind/cli",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "dependencies": {
+    "@nicotind/core": "workspace:*",
+    "commander": "^13.0.0"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "name": "@nicotind/api",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "dependencies": {
+    "@nicotind/core": "workspace:*",
+    "@nicotind/slskd-client": "workspace:*",
+    "@nicotind/navidrome-client": "workspace:*",
+    "@nicotind/service-manager": "workspace:*",
+    "hono": "^4.7.0",
+    "jose": "^6.0.0"
+  }
+}

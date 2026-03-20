@@ -1,0 +1,22 @@
+port: 8484
+dataDir: ~/.nicotind
+musicDir: ~/Music
+mode: embedded
+
+soulseek:
+  username: ""
+  password: ""
+
+# Internal service settings (auto-generated passwords if not set)
+slskd:
+  url: http://localhost:5030
+  port: 5030
+  username: nicotind
+
+navidrome:
+  url: http://localhost:4533
+  port: 4533
+  username: nicotind
+
+jwt:
+  expiresIn: 24h

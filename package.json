@@ -1,0 +1,32 @@
+{
+  "name": "nicotind",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "bun run scripts/dev.ts",
+    "build": "bun run scripts/build.ts",
+    "lint": "eslint packages/*/src/**/*.ts src/**/*.ts",
+    "format": "prettier --write 'packages/*/src/**/*.ts' 'src/**/*.ts'",
+    "typecheck": "tsc --build"
+  },
+  "dependencies": {
+    "@nicotind/core": "workspace:*",
+    "@nicotind/service-manager": "workspace:*",
+    "@nicotind/slskd-client": "workspace:*",
+    "@nicotind/navidrome-client": "workspace:*",
+    "@nicotind/api": "workspace:*",
+    "yaml": "^2.6.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.0",
+    "eslint": "^9.0.0",
+    "prettier": "^3.4.0",
+    "typescript": "^5.7.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0"
+  }
+}

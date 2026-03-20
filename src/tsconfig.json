@@ -1,0 +1,18 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "outDir": "../dist/src",
+    "rootDir": ".",
+    "paths": {
+      "@nicotind/*": ["../packages/*/src"]
+    }
+  },
+  "include": ["."],
+  "references": [
+    { "path": "../packages/core" },
+    { "path": "../packages/service-manager" },
+    { "path": "../packages/slskd-client" },
+    { "path": "../packages/navidrome-client" },
+    { "path": "../packages/api" }
+  ]
+}

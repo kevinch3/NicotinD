@@ -1,0 +1,9 @@
+{
+  "name": "@nicotind/slskd-client",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "dependencies": {
+    "@nicotind/core": "workspace:*"
+  }
+}
