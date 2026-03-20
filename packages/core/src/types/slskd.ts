@@ -56,6 +56,17 @@ export interface SlskdTransfer {
   endedAt?: string;
 }
 
+export interface SlskdTransferDirectory {
+  directory: string;
+  fileCount: number;
+  files: SlskdTransfer[];
+}
+
+export interface SlskdUserTransferGroup {
+  username: string;
+  directories: SlskdTransferDirectory[];
+}
+
 export interface SlskdDownloadRequest {
   username: string;
   files: Array<{

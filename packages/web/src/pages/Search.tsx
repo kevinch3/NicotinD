@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '@/lib/api';
+import { useAuthStore } from '@/stores/auth';
 import { usePlayerStore, type Track } from '@/stores/player';
 
 interface LocalResults {
@@ -25,8 +26,17 @@ export function SearchPage() {
   const [downloading, setDownloading] = useState<Set<string>>(new Set());
   const [errors, setErrors] = useState<string[]>([]);
   const [networkAvailable, setNetworkAvailable] = useState(true);
+  const [networkConnected, setNetworkConnected] = useState<boolean | null>(null);
   const [searchError, setSearchError] = useState<string | null>(null);
+  const token = useAuthStore((s) => s.token);
   const play = usePlayerStore((s) => s.play);
+
+  // Check Soulseek network status on mount
+  useEffect(() => {
+    api.getSoulseekStatus()
+      .then((s) => setNetworkConnected(s.connected))
+      .catch(() => setNetworkConnected(false));
+  }, []);
 
   // Poll network results (only if slskd was reachable)
   useEffect(() => {
@@ -118,7 +128,7 @@ export function SearchPage() {
   return (
     <div className="max-w-4xl mx-auto px-6 py-8">
       {/* Search bar */}
-      <form onSubmit={handleSearch} className="mb-8">
+      <form onSubmit={handleSearch} className="mb-4">
         <div className="relative">
           <input
             type="text"
@@ -137,6 +147,16 @@ export function SearchPage() {
         </div>
       </form>
 
+      {/* Network status indicator */}
+      {networkConnected !== null && (
+        <div className="flex items-center gap-2 mb-6">
+          <span className={`inline-block w-2 h-2 rounded-full ${networkConnected ? 'bg-emerald-500' : 'bg-zinc-600'}`} />
+          <span className="text-xs text-zinc-500">
+            {networkConnected ? 'Soulseek network available' : 'Local library only'}
+          </span>
+        </div>
+      )}
+
       {/* Errors / warnings */}
       {searchError && (
         <div className="mb-6 px-4 py-3 rounded-lg bg-red-950/50 border border-red-900/50">
@@ -151,8 +171,16 @@ export function SearchPage() {
         </div>
       )}
 
+      {/* Loading spinner */}
+      {loading && (
+        <div className="text-center py-12">
+          <span className="inline-block w-5 h-5 border-2 border-zinc-600 border-t-zinc-300 rounded-full animate-spin" />
+          <p className="text-zinc-500 text-sm mt-3">Searching...</p>
+        </div>
+      )}
+
       {/* No results message */}
-      {local && !hasLocal && !hasNetwork && networkState === 'complete' && (
+      {!loading && local && !hasLocal && !hasNetwork && networkState === 'complete' && (
         <div className="text-center py-12">
           <p className="text-zinc-500">No results found for "{query}"</p>
         </div>
@@ -176,7 +204,7 @@ export function SearchPage() {
                 >
                   {song.coverArt ? (
                     <img
-                      src={`/api/cover/${song.coverArt}?size=80`}
+                      src={`/api/cover/${song.coverArt}?size=80&token=${token}`}
                       alt=""
                       className="w-10 h-10 rounded object-cover flex-shrink-0"
                     />
@@ -216,7 +244,7 @@ export function SearchPage() {
                   >
                     {album.coverArt ? (
                       <img
-                        src={`/api/cover/${album.coverArt}?size=200`}
+                        src={`/api/cover/${album.coverArt}?size=200&token=${token}`}
                         alt=""
                         className="w-full aspect-square rounded object-cover mb-2"
                       />
@@ -240,7 +268,12 @@ export function SearchPage() {
           <span className="text-xs font-semibold uppercase tracking-wider text-zinc-600 flex items-center gap-2">
             Soulseek Network
             {networkState === 'searching' && (
-              <span className="inline-block w-3 h-3 border-2 border-zinc-600 border-t-zinc-300 rounded-full animate-spin" />
+              <>
+                <span className="inline-block w-3 h-3 border-2 border-zinc-600 border-t-zinc-300 rounded-full animate-spin" />
+                {network.length > 0 && (
+                  <span className="font-normal normal-case tracking-normal">{network.length} users</span>
+                )}
+              </>
             )}
           </span>
           <div className="flex-1 h-px bg-zinc-800" />

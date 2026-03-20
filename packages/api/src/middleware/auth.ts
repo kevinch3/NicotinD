@@ -13,11 +13,14 @@ export function authMiddleware(jwtSecret: string) {
 
   return createMiddleware<AuthEnv>(async (c, next) => {
     const authHeader = c.req.header('Authorization');
-    if (!authHeader?.startsWith('Bearer ')) {
+    const token = authHeader?.startsWith('Bearer ')
+      ? authHeader.slice(7)
+      : c.req.query('token');
+
+    if (!token) {
       return c.json({ error: 'Missing or invalid Authorization header' }, 401);
     }
 
-    const token = authHeader.slice(7);
     try {
       const { payload } = await jose.jwtVerify(token, secret);
       c.set('user', payload as unknown as JwtPayload);

@@ -71,7 +71,7 @@ export function Player() {
         <div className="flex items-center gap-3 w-60 min-w-0">
           {currentTrack.coverArt && (
             <img
-              src={`/api/cover/${currentTrack.coverArt}?size=80`}
+              src={`/api/cover/${currentTrack.coverArt}?size=80&token=${token}`}
               alt=""
               className="w-10 h-10 rounded object-cover flex-shrink-0"
             />

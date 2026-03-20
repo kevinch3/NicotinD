@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { api } from '@/lib/api';
+import { useAuthStore } from '@/stores/auth';
 import { usePlayerStore, type Track } from '@/stores/player';
 
 interface Album {
@@ -29,6 +30,7 @@ export function LibraryPage() {
   const [loading, setLoading] = useState(true);
   const [selectedAlbum, setSelectedAlbum] = useState<AlbumDetail | null>(null);
   const [loadingAlbum, setLoadingAlbum] = useState(false);
+  const token = useAuthStore((s) => s.token);
   const play = usePlayerStore((s) => s.play);
   const addToQueue = usePlayerStore((s) => s.addToQueue);
 
@@ -99,7 +101,7 @@ export function LibraryPage() {
         <div className="flex gap-6 mb-8">
           {selectedAlbum.coverArt ? (
             <img
-              src={`/api/cover/${selectedAlbum.coverArt}?size=300`}
+              src={`/api/cover/${selectedAlbum.coverArt}?size=300&token=${token}`}
               alt=""
               className="w-48 h-48 rounded-lg object-cover flex-shrink-0"
             />
@@ -178,7 +180,7 @@ export function LibraryPage() {
           >
             {album.coverArt ? (
               <img
-                src={`/api/cover/${album.coverArt}?size=300`}
+                src={`/api/cover/${album.coverArt}?size=300&token=${token}`}
                 alt=""
                 className="w-full aspect-square rounded object-cover mb-2"
               />

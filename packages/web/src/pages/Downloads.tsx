@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { api } from '@/lib/api';
 
 interface Transfer {
@@ -18,6 +18,18 @@ interface Transfer {
 export function DownloadsPage() {
   const [downloads, setDownloads] = useState<Transfer[]>([]);
   const [loading, setLoading] = useState(true);
+  const [scanning, setScanning] = useState(false);
+
+  const handleScan = useCallback(async () => {
+    setScanning(true);
+    try {
+      await api.triggerScan();
+    } catch {
+      // ignore
+    } finally {
+      setTimeout(() => setScanning(false), 2000);
+    }
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -70,7 +82,16 @@ export function DownloadsPage() {
     <div className="max-w-4xl mx-auto px-6 py-8">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-lg font-semibold text-zinc-100">Downloads</h1>
-        <span className="text-sm text-zinc-500">{totalFiles} files</span>
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-zinc-500">{totalFiles} files</span>
+          <button
+            onClick={handleScan}
+            disabled={scanning}
+            className="px-3 py-1.5 rounded-md text-xs font-medium bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition disabled:opacity-50"
+          >
+            {scanning ? 'Scanning...' : 'Scan Library'}
+          </button>
+        </div>
       </div>
 
       {loading && (

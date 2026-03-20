@@ -50,13 +50,15 @@ export class DownloadWatcher {
       const downloads = await this.slskd.transfers.getDownloads();
       let newCompletions = false;
 
-      for (const [username, transfers] of Object.entries(downloads)) {
-        for (const transfer of transfers) {
-          const key = `${username}:${transfer.filename}`;
-          if (transfer.state === 'Completed, Succeeded' && !this.knownCompleted.has(key)) {
-            this.knownCompleted.add(key);
-            newCompletions = true;
-            log.info({ username, filename: transfer.filename }, 'Download completed');
+      for (const group of downloads) {
+        for (const dir of group.directories) {
+          for (const file of dir.files) {
+            const key = `${group.username}:${file.filename}`;
+            if (file.state === 'Completed, Succeeded' && !this.knownCompleted.has(key)) {
+              this.knownCompleted.add(key);
+              newCompletions = true;
+              log.info({ username: group.username, filename: file.filename }, 'Download completed');
+            }
           }
         }
       }

@@ -1,11 +1,11 @@
-import type { SlskdTransfer } from '@nicotind/core';
+import type { SlskdUserTransferGroup } from '@nicotind/core';
 import type { SlskdClient } from '../client.js';
 
 export class TransfersApi {
   constructor(private client: SlskdClient) {}
 
-  async getDownloads(): Promise<Record<string, SlskdTransfer[]>> {
-    return this.client.request<Record<string, SlskdTransfer[]>>('/transfers/downloads');
+  async getDownloads(): Promise<SlskdUserTransferGroup[]> {
+    return this.client.request<SlskdUserTransferGroup[]>('/transfers/downloads');
   }
 
   async enqueue(
