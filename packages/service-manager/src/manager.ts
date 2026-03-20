@@ -74,6 +74,14 @@ export class ServiceManager {
     return this.strategy.getLogs(handle, lines);
   }
 
+  updateConfig(config: NicotinDConfig): void {
+    this.config = config;
+  }
+
+  hasService(name: string): boolean {
+    return this.handles.has(name);
+  }
+
   async restartService(name: string): Promise<void> {
     const handle = this.handles.get(name);
     if (!handle) return;

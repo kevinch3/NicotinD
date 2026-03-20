@@ -1,13 +1,13 @@
 import { Hono } from 'hono';
 import type { Navidrome } from '@nicotind/navidrome-client';
-import type { Slskd } from '@nicotind/slskd-client';
 import type { ServiceManager } from '@nicotind/service-manager';
 import type { AuthEnv } from '../middleware/auth.js';
+import type { SlskdRef } from '../index.js';
 
 const startTime = Date.now();
 
 export function systemRoutes(
-  slskd: Slskd | null,
+  slskdRef: SlskdRef,
   navidrome: Navidrome,
   serviceManager: ServiceManager,
 ) {
@@ -16,9 +16,9 @@ export function systemRoutes(
   app.get('/status', async (c) => {
     let slskdHealthy = false;
     let slskdState = null;
-    if (slskd) {
+    if (slskdRef.current) {
       try {
-        slskdState = await slskd.server.getState();
+        slskdState = await slskdRef.current.server.getState();
         slskdHealthy = true;
       } catch {
         // slskd not reachable
@@ -38,7 +38,7 @@ export function systemRoutes(
         uptime: Math.floor((Date.now() - startTime) / 1000),
       },
       slskd: {
-        configured: slskd !== null,
+        configured: slskdRef.current !== null,
         healthy: slskdHealthy,
         connected: slskdState?.isConnected ?? false,
         username: slskdState?.username,

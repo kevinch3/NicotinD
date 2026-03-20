@@ -29,7 +29,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 export const api = {
   // Auth
   login: (username: string, password: string) =>
-    request<{ token: string }>('/api/auth/login', {
+    request<{ token: string; user: { id: string; username: string; role: string } }>('/api/auth/login', {
       method: 'POST',
       body: JSON.stringify({ username, password }),
     }),
@@ -94,4 +94,15 @@ export const api = {
     request<{ slskd: { healthy: boolean }; navidrome: { healthy: boolean } }>('/api/system/status'),
   triggerScan: () =>
     request<{ ok: boolean }>('/api/system/scan', { method: 'POST' }),
+
+  // Settings
+  getSoulseekSettings: () =>
+    request<{ username: string; configured: boolean; connected: boolean }>('/api/settings/soulseek'),
+  saveSoulseekSettings: (username: string, password: string) =>
+    request<{ ok: boolean; message: string }>('/api/settings/soulseek', {
+      method: 'PUT',
+      body: JSON.stringify({ username, password }),
+    }),
+  getSoulseekStatus: () =>
+    request<{ configured: boolean; connected: boolean; username: string | null }>('/api/settings/soulseek/status'),
 };

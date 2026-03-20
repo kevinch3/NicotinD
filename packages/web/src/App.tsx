@@ -5,6 +5,7 @@ import { LoginPage } from '@/pages/Login';
 import { SearchPage } from '@/pages/Search';
 import { DownloadsPage } from '@/pages/Downloads';
 import { LibraryPage } from '@/pages/Library';
+import { SettingsPage } from '@/pages/Settings';
 
 export function App() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
@@ -20,6 +21,7 @@ export function App() {
           <Route path="/" element={<SearchPage />} />
           <Route path="/downloads" element={<DownloadsPage />} />
           <Route path="/library" element={<LibraryPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
         </Route>
       </Routes>
     </BrowserRouter>

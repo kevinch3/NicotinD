@@ -1,14 +1,14 @@
 import { Hono } from 'hono';
-import type { Slskd } from '@nicotind/slskd-client';
 import type { Navidrome } from '@nicotind/navidrome-client';
 import type { AuthEnv } from '../middleware/auth.js';
+import type { SlskdRef } from '../index.js';
 
 // In-memory map of active network searches: searchId -> slskd search id
 const activeSearches = new Map<string, string>();
 
 const emptyLocal = { artists: [] as unknown[], albums: [] as unknown[], songs: [] as unknown[] };
 
-export function searchRoutes(slskd: Slskd | null, navidrome: Navidrome) {
+export function searchRoutes(slskdRef: SlskdRef, navidrome: Navidrome) {
   const app = new Hono<AuthEnv>();
 
   // Unified search: returns local results immediately + fires network search
@@ -45,6 +45,7 @@ export function searchRoutes(slskd: Slskd | null, navidrome: Navidrome) {
     // 2. Fire slskd search (non-blocking, graceful if unavailable)
     const searchId = crypto.randomUUID();
     let networkAvailable = false;
+    const slskd = slskdRef.current;
     if (!slskd) {
       // Soulseek not configured — skip network search silently
     } else {
@@ -89,12 +90,9 @@ export function searchRoutes(slskd: Slskd | null, navidrome: Navidrome) {
   app.get('/:searchId/network', async (c) => {
     const searchId = c.req.param('searchId');
     const slskdSearchId = activeSearches.get(searchId);
+    const slskd = slskdRef.current;
 
-    if (!slskdSearchId) {
-      return c.json({ state: 'complete', responseCount: 0, results: [] });
-    }
-
-    if (!slskd) {
+    if (!slskdSearchId || !slskd) {
       return c.json({ state: 'complete', responseCount: 0, results: [] });
     }
 
@@ -130,7 +128,7 @@ export function searchRoutes(slskd: Slskd | null, navidrome: Navidrome) {
       return c.json({ error: 'Search not found' }, 404);
     }
 
-    if (slskd) await slskd.searches.cancel(slskdSearchId);
+    if (slskdRef.current) await slskdRef.current.searches.cancel(slskdSearchId);
     return c.json({ ok: true });
   });
 
@@ -138,8 +136,8 @@ export function searchRoutes(slskd: Slskd | null, navidrome: Navidrome) {
   app.delete('/:searchId', async (c) => {
     const searchId = c.req.param('searchId');
     const slskdSearchId = activeSearches.get(searchId);
-    if (slskdSearchId && slskd) {
-      await slskd.searches.delete(slskdSearchId);
+    if (slskdSearchId && slskdRef.current) {
+      await slskdRef.current.searches.delete(slskdSearchId);
       activeSearches.delete(searchId);
     }
     return c.json({ ok: true });

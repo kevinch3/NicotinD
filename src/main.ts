@@ -48,6 +48,7 @@ async function main() {
       await serviceManager.startSlskd();
     } else {
       log.info('No Soulseek credentials configured — skipping slskd (network search disabled)');
+      log.info('Configure credentials in Settings to enable Soulseek network search');
     }
     await serviceManager.startNavidrome();
 
@@ -70,14 +71,16 @@ async function main() {
     }
   }
 
-  // 3. Initialize clients
-  const slskd = hasSoulseekCreds
-    ? new Slskd({
-        baseUrl: config.slskd.url,
-        username: config.slskd.username,
-        password: config.slskd.password,
-      })
-    : null;
+  // 3. Initialize clients (slskd wrapped in mutable ref for hot-swap via settings)
+  const slskdRef: { current: Slskd | null } = {
+    current: hasSoulseekCreds
+      ? new Slskd({
+          baseUrl: config.slskd.url,
+          username: config.slskd.username,
+          password: config.slskd.password,
+        })
+      : null,
+  };
 
   const navidrome = new Navidrome({
     baseUrl: config.navidrome.url,
@@ -87,9 +90,9 @@ async function main() {
 
   // 4. Create and start API server
   const webDistPath = resolve(import.meta.dir, '../packages/web/dist');
-  const { app, watcher } = createApp({ config, slskd, navidrome, serviceManager, webDistPath });
+  const { app, watcherRef } = createApp({ config, slskdRef, navidrome, serviceManager, webDistPath });
 
-  if (watcher) watcher.start();
+  if (watcherRef.current) watcherRef.current.start();
 
   log.info({ port: config.port }, 'NicotinD is ready');
 
@@ -101,26 +104,28 @@ async function main() {
   // Graceful shutdown
   process.on('SIGTERM', async () => {
     log.info('Shutting down...');
-    if (watcher) watcher.stop();
+    if (watcherRef.current) watcherRef.current.stop();
     await serviceManager.stopAll();
     process.exit(0);
   });
 
   process.on('SIGINT', async () => {
     log.info('Shutting down...');
-    if (watcher) watcher.stop();
+    if (watcherRef.current) watcherRef.current.stop();
     await serviceManager.stopAll();
     process.exit(0);
   });
 }
 
-interface PersistedSecrets {
+export interface PersistedSecrets {
   slskdPassword: string;
   navidromePassword: string;
   jwtSecret: string;
+  soulseekUsername?: string;
+  soulseekPassword?: string;
 }
 
-function loadOrCreateSecrets(dataDir: string): PersistedSecrets {
+export function loadOrCreateSecrets(dataDir: string): PersistedSecrets {
   const dir = dataDir.startsWith('~')
     ? join(process.env.HOME ?? '/root', dataDir.slice(1))
     : dataDir;
@@ -141,6 +146,15 @@ function loadOrCreateSecrets(dataDir: string): PersistedSecrets {
   return secrets;
 }
 
+export function saveSecrets(dataDir: string, secrets: PersistedSecrets): void {
+  const dir = dataDir.startsWith('~')
+    ? join(process.env.HOME ?? '/root', dataDir.slice(1))
+    : dataDir;
+  mkdirSync(dir, { recursive: true });
+  const secretsPath = join(dir, 'secrets.json');
+  writeFileSync(secretsPath, JSON.stringify(secrets, null, 2), { mode: 0o600 });
+}
+
 function loadConfig() {
   // Try loading config file
   let fileConfig = {};
@@ -157,7 +171,7 @@ function loadConfig() {
     || '~/.nicotind';
   const secrets = loadOrCreateSecrets(dataDir);
 
-  // Merge env vars over file config
+  // Merge: file config < persisted secrets < env vars
   const merged = {
     ...fileConfig,
     port: Number(process.env.NICOTIND_PORT) || (fileConfig as Record<string, unknown>).port,
@@ -166,6 +180,8 @@ function loadConfig() {
     mode: process.env.NICOTIND_MODE || (fileConfig as Record<string, unknown>).mode,
     soulseek: {
       ...((fileConfig as Record<string, unknown>).soulseek as Record<string, unknown>),
+      ...(secrets.soulseekUsername ? { username: secrets.soulseekUsername } : {}),
+      ...(secrets.soulseekPassword ? { password: secrets.soulseekPassword } : {}),
       ...(process.env.SOULSEEK_USERNAME ? { username: process.env.SOULSEEK_USERNAME } : {}),
       ...(process.env.SOULSEEK_PASSWORD ? { password: process.env.SOULSEEK_PASSWORD } : {}),
     },

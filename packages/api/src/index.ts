@@ -13,19 +13,23 @@ import { downloadRoutes } from './routes/downloads.js';
 import { libraryRoutes } from './routes/library.js';
 import { streamingRoutes } from './routes/streaming.js';
 import { systemRoutes } from './routes/system.js';
+import { settingsRoutes } from './routes/settings.js';
 import { subsonicProxy } from './routes/subsonic.js';
 import { DownloadWatcher } from './services/download-watcher.js';
 import { initDatabase } from './db.js';
 
+export type SlskdRef = { current: Slskd | null };
+export type WatcherRef = { current: DownloadWatcher | null };
+
 export interface CreateAppOptions {
   config: NicotinDConfig;
-  slskd: Slskd | null;
+  slskdRef: SlskdRef;
   navidrome: Navidrome;
   serviceManager: ServiceManager;
   webDistPath?: string;
 }
 
-export function createApp({ config, slskd, navidrome, serviceManager, webDistPath }: CreateAppOptions) {
+export function createApp({ config, slskdRef, navidrome, serviceManager, webDistPath }: CreateAppOptions) {
   const expandedDataDir = config.dataDir.startsWith('~')
     ? config.dataDir.replace('~', process.env.HOME ?? '/root')
     : config.dataDir;
@@ -52,12 +56,19 @@ export function createApp({ config, slskd, navidrome, serviceManager, webDistPat
   app.use('/api/stream/*', auth);
   app.use('/api/cover/*', auth);
   app.use('/api/system/*', auth);
+  app.use('/api/settings/*', auth);
 
-  app.route('/api/search', searchRoutes(slskd, navidrome));
-  app.route('/api/downloads', downloadRoutes(slskd));
+  // Download watcher (mutable ref — settings route can create/replace it)
+  const watcherRef: WatcherRef = {
+    current: slskdRef.current ? new DownloadWatcher(slskdRef.current, navidrome) : null,
+  };
+
+  app.route('/api/search', searchRoutes(slskdRef, navidrome));
+  app.route('/api/downloads', downloadRoutes(slskdRef));
   app.route('/api/library', libraryRoutes(navidrome));
   app.route('/api', streamingRoutes(navidrome));
-  app.route('/api/system', systemRoutes(slskd, navidrome, serviceManager));
+  app.route('/api/system', systemRoutes(slskdRef, navidrome, serviceManager));
+  app.route('/api/settings', settingsRoutes(config, slskdRef, navidrome, serviceManager, watcherRef));
 
   // Serve web UI static files
   if (webDistPath) {
@@ -65,10 +76,7 @@ export function createApp({ config, slskd, navidrome, serviceManager, webDistPat
     app.get('*', serveStatic({ root: webDistPath, path: '/index.html' }));
   }
 
-  // Download watcher (only if slskd is available)
-  const watcher = slskd ? new DownloadWatcher(slskd, navidrome) : null;
-
-  return { app, watcher };
+  return { app, watcherRef };
 }
 
 export { DownloadWatcher } from './services/download-watcher.js';

@@ -18,7 +18,7 @@ export function LoginPage() {
       const result = isRegister
         ? await api.register(username, password)
         : await api.login(username, password);
-      login(result.token, username);
+      login(result.token, username, result.user?.role ?? 'user');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong');
     } finally {
