@@ -21,6 +21,9 @@ async function main() {
   const serviceManager = new ServiceManager(strategy, config);
 
   if (config.mode === 'embedded') {
+    if (!config.soulseek.username || !config.soulseek.password) {
+      throw new Error('Soulseek username and password are required in embedded mode');
+    }
     log.info('Embedded mode — starting slskd and Navidrome...');
     await serviceManager.startAll();
   }
@@ -39,7 +42,8 @@ async function main() {
   });
 
   // 4. Create and start API server
-  const { app, watcher } = createApp({ config, slskd, navidrome, serviceManager });
+  const webDistPath = resolve(import.meta.dir, '../packages/web/dist');
+  const { app, watcher } = createApp({ config, slskd, navidrome, serviceManager, webDistPath });
 
   watcher.start();
 

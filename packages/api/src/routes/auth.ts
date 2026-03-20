@@ -29,14 +29,10 @@ export function authRoutes(jwtSecret: string, jwtExpiresIn: string) {
     const id = crypto.randomUUID();
     const passwordHash = await hashPassword(password);
 
-    db.run('INSERT INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)', [
-      id,
-      username,
-      passwordHash,
-      role,
-    ]);
+    db.query('INSERT INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)')
+      .run(id, username, passwordHash, role);
 
-    db.run('INSERT INTO user_settings (user_id) VALUES (?)', [id]);
+    db.query('INSERT INTO user_settings (user_id) VALUES (?)').run(id);
 
     const token = await signJwt({ sub: id, username, role }, jwtSecret, jwtExpiresIn);
 

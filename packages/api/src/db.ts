@@ -1,9 +1,11 @@
 import { Database } from 'bun:sqlite';
 import { join } from 'node:path';
+import { mkdirSync } from 'node:fs';
 
 let db: Database;
 
 export function initDatabase(dataDir: string): Database {
+  mkdirSync(dataDir, { recursive: true });
   const dbPath = join(dataDir, 'nicotind.db');
   db = new Database(dbPath, { create: true });
 

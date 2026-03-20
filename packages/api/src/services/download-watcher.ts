@@ -65,7 +65,12 @@ export class DownloadWatcher {
         this.debouncedScan();
       }
     } catch (err) {
-      log.error({ err }, 'Error checking downloads');
+      const msg = err instanceof Error ? err.message : '';
+      if (msg.includes('Unable to connect') || msg.includes('ConnectionRefused')) {
+        log.debug('slskd not reachable, skipping download check');
+      } else {
+        log.error({ err }, 'Error checking downloads');
+      }
     }
   }
 

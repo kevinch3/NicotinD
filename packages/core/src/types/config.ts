@@ -10,8 +10,8 @@ export const NicotinDConfigSchema = z.object({
   mode: ServiceModeSchema.default('embedded'),
 
   soulseek: z.object({
-    username: z.string().min(1, 'Soulseek username is required'),
-    password: z.string().min(1, 'Soulseek password is required'),
+    username: z.string().default(''),
+    password: z.string().default(''),
   }),
 
   slskd: z.object({

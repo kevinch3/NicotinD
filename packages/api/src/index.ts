@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
+import { serveStatic } from 'hono/bun';
 import type { NicotinDConfig } from '@nicotind/core';
 import type { Slskd } from '@nicotind/slskd-client';
 import type { Navidrome } from '@nicotind/navidrome-client';
@@ -21,9 +22,10 @@ export interface CreateAppOptions {
   slskd: Slskd;
   navidrome: Navidrome;
   serviceManager: ServiceManager;
+  webDistPath?: string;
 }
 
-export function createApp({ config, slskd, navidrome, serviceManager }: CreateAppOptions) {
+export function createApp({ config, slskd, navidrome, serviceManager, webDistPath }: CreateAppOptions) {
   const expandedDataDir = config.dataDir.startsWith('~')
     ? config.dataDir.replace('~', process.env.HOME ?? '/root')
     : config.dataDir;
@@ -56,6 +58,12 @@ export function createApp({ config, slskd, navidrome, serviceManager }: CreateAp
   app.route('/api/library', libraryRoutes(navidrome));
   app.route('/api', streamingRoutes(navidrome));
   app.route('/api/system', systemRoutes(slskd, navidrome, serviceManager));
+
+  // Serve web UI static files
+  if (webDistPath) {
+    app.use('/assets/*', serveStatic({ root: webDistPath }));
+    app.get('*', serveStatic({ root: webDistPath, path: '/index.html' }));
+  }
 
   // Download watcher
   const watcher = new DownloadWatcher(slskd, navidrome);
