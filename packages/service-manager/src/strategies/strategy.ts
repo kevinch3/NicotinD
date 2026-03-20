@@ -3,6 +3,7 @@ export interface ServiceDefinition {
   command: string;
   args: string[];
   env: Record<string, string>;
+  cwd?: string;
   healthCheckUrl: string;
   healthCheckTimeoutMs: number;
 }

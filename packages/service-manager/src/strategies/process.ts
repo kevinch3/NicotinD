@@ -14,6 +14,7 @@ export class NativeProcessStrategy implements IServiceStrategy {
 
     const proc = spawn(service.command, service.args, {
       env: { ...process.env, ...service.env },
+      cwd: service.cwd,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 

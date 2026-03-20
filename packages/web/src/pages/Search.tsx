@@ -23,11 +23,14 @@ export function SearchPage() {
   const [networkState, setNetworkState] = useState<'idle' | 'searching' | 'complete'>('idle');
   const [searchId, setSearchId] = useState<string | null>(null);
   const [downloading, setDownloading] = useState<Set<string>>(new Set());
+  const [errors, setErrors] = useState<string[]>([]);
+  const [networkAvailable, setNetworkAvailable] = useState(true);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const play = usePlayerStore((s) => s.play);
 
-  // Poll network results
+  // Poll network results (only if slskd was reachable)
   useEffect(() => {
-    if (!searchId || networkState === 'complete') return;
+    if (!searchId || networkState === 'complete' || !networkAvailable) return;
 
     const interval = setInterval(async () => {
       try {
@@ -42,7 +45,7 @@ export function SearchPage() {
     }, 2000);
 
     return () => clearInterval(interval);
-  }, [searchId, networkState]);
+  }, [searchId, networkState, networkAvailable]);
 
   const handleSearch = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,14 +55,19 @@ export function SearchPage() {
     setLocal(null);
     setNetwork([]);
     setNetworkState('idle');
+    setErrors([]);
+    setSearchError(null);
+    setNetworkAvailable(true);
 
     try {
       const res = await api.search(query.trim());
       setLocal(res.local);
       setSearchId(res.searchId);
-      setNetworkState('searching');
-    } catch {
-      // ignore
+      setErrors(res.errors ?? []);
+      setNetworkAvailable(res.networkAvailable ?? false);
+      setNetworkState(res.networkAvailable ? 'searching' : 'complete');
+    } catch (err) {
+      setSearchError(err instanceof Error ? err.message : 'Search failed');
     } finally {
       setLoading(false);
     }
@@ -128,6 +136,27 @@ export function SearchPage() {
           </button>
         </div>
       </form>
+
+      {/* Errors / warnings */}
+      {searchError && (
+        <div className="mb-6 px-4 py-3 rounded-lg bg-red-950/50 border border-red-900/50">
+          <p className="text-sm text-red-400">{searchError}</p>
+        </div>
+      )}
+      {errors.length > 0 && (
+        <div className="mb-6 px-4 py-3 rounded-lg bg-amber-950/50 border border-amber-900/50 space-y-1">
+          {errors.map((err, i) => (
+            <p key={i} className="text-sm text-amber-400">{err}</p>
+          ))}
+        </div>
+      )}
+
+      {/* No results message */}
+      {local && !hasLocal && !hasNetwork && networkState === 'complete' && (
+        <div className="text-center py-12">
+          <p className="text-zinc-500">No results found for "{query}"</p>
+        </div>
+      )}
 
       {/* Local results */}
       {hasLocal && (

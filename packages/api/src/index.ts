@@ -19,7 +19,7 @@ import { initDatabase } from './db.js';
 
 export interface CreateAppOptions {
   config: NicotinDConfig;
-  slskd: Slskd;
+  slskd: Slskd | null;
   navidrome: Navidrome;
   serviceManager: ServiceManager;
   webDistPath?: string;
@@ -65,8 +65,8 @@ export function createApp({ config, slskd, navidrome, serviceManager, webDistPat
     app.get('*', serveStatic({ root: webDistPath, path: '/index.html' }));
   }
 
-  // Download watcher
-  const watcher = new DownloadWatcher(slskd, navidrome);
+  // Download watcher (only if slskd is available)
+  const watcher = slskd ? new DownloadWatcher(slskd, navidrome) : null;
 
   return { app, watcher };
 }

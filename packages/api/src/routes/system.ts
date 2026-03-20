@@ -7,7 +7,7 @@ import type { AuthEnv } from '../middleware/auth.js';
 const startTime = Date.now();
 
 export function systemRoutes(
-  slskd: Slskd,
+  slskd: Slskd | null,
   navidrome: Navidrome,
   serviceManager: ServiceManager,
 ) {
@@ -16,11 +16,13 @@ export function systemRoutes(
   app.get('/status', async (c) => {
     let slskdHealthy = false;
     let slskdState = null;
-    try {
-      slskdState = await slskd.server.getState();
-      slskdHealthy = true;
-    } catch {
-      // slskd not reachable
+    if (slskd) {
+      try {
+        slskdState = await slskd.server.getState();
+        slskdHealthy = true;
+      } catch {
+        // slskd not reachable
+      }
     }
 
     let navidromeHealthy = false;
@@ -36,6 +38,7 @@ export function systemRoutes(
         uptime: Math.floor((Date.now() - startTime) / 1000),
       },
       slskd: {
+        configured: slskd !== null,
         healthy: slskdHealthy,
         connected: slskdState?.isConnected ?? false,
         username: slskdState?.username,

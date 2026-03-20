@@ -7,7 +7,7 @@ export class SearchesApi {
   async create(searchText: string): Promise<SlskdSearch> {
     return this.client.request<SlskdSearch>('/searches', {
       method: 'POST',
-      body: JSON.stringify({ searchText }),
+      body: JSON.stringify({ id: crypto.randomUUID(), searchText }),
     });
   }
 

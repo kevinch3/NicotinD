@@ -11,7 +11,8 @@
     "build": "bun run scripts/build.ts",
     "lint": "eslint packages/*/src/**/*.ts src/**/*.ts",
     "format": "prettier --write 'packages/*/src/**/*.ts' 'src/**/*.ts'",
-    "typecheck": "tsc --build"
+    "typecheck": "tsc --build",
+    "download-deps": "bun run scripts/download-deps.ts"
   },
   "dependencies": {
     "@nicotind/core": "workspace:*",

@@ -49,6 +49,8 @@ export const api = {
         songs: Array<{ id: string; title: string; artist: string; album: string; duration?: number; coverArt?: string; track?: number }>;
       };
       network: null;
+      networkAvailable?: boolean;
+      errors?: string[];
     }>(`/api/search?q=${encodeURIComponent(q)}`),
 
   pollNetwork: (searchId: string) =>

@@ -7,7 +7,10 @@ import type { ServiceDefinition } from '../strategies/strategy.js';
 export function buildSlskdDefinition(config: NicotinDConfig): ServiceDefinition {
   const dataDir = expandPath(config.dataDir);
   const configDir = join(dataDir, 'slskd');
+  const musicDir = expandPath(config.musicDir);
+  const binDir = join(dataDir, 'bin');
   mkdirSync(configDir, { recursive: true });
+  mkdirSync(musicDir, { recursive: true });
 
   const slskdConfig = {
     soulseek: {
@@ -15,7 +18,7 @@ export function buildSlskdDefinition(config: NicotinDConfig): ServiceDefinition 
       password: config.soulseek.password,
     },
     directories: {
-      downloads: expandPath(config.musicDir),
+      downloads: musicDir,
     },
     web: {
       authentication: {
@@ -32,6 +35,7 @@ export function buildSlskdDefinition(config: NicotinDConfig): ServiceDefinition 
     name: 'slskd',
     command: join(dataDir, 'bin', 'slskd'),
     args: ['--config', configPath, '--http-port', String(config.slskd.port)],
+    cwd: binDir,
     env: {
       SLSKD_APP_DIR: configDir,
     },

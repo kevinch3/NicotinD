@@ -31,7 +31,8 @@ export class SlskdClient {
       throw new Error(`slskd auth failed: ${res.status} ${res.statusText}`);
     }
 
-    this.token = await res.text();
+    const data = (await res.json()) as { token: string };
+    this.token = data.token;
     this.log.info('Authenticated with slskd');
   }
 

@@ -1,5 +1,5 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
+import { resolve, join } from 'node:path';
 import { parse } from 'yaml';
 import { NicotinDConfigSchema, createLogger, generateSecret } from '@nicotind/core';
 import { ServiceManager, NativeProcessStrategy } from '@nicotind/service-manager';
@@ -20,20 +20,64 @@ async function main() {
   const strategy = new NativeProcessStrategy();
   const serviceManager = new ServiceManager(strategy, config);
 
+  const hasSoulseekCreds = !!(config.soulseek.username && config.soulseek.password);
+
   if (config.mode === 'embedded') {
-    if (!config.soulseek.username || !config.soulseek.password) {
-      throw new Error('Soulseek username and password are required in embedded mode');
+    // Auto-download binaries if missing
+    const dataDir = config.dataDir.startsWith('~')
+      ? join(process.env.HOME ?? '/root', config.dataDir.slice(1))
+      : config.dataDir;
+    const binDir = join(dataDir, 'bin');
+    const navidromeBin = join(binDir, 'navidrome');
+    const slskdBin = join(binDir, 'slskd');
+
+    // Only require slskd binary if Soulseek credentials are configured
+    const needsSlskd = hasSoulseekCreds && !existsSync(slskdBin);
+    const needsNavidrome = !existsSync(navidromeBin);
+
+    if (needsSlskd || needsNavidrome) {
+      log.info('Downloading dependencies (first run)...');
+      const { execSync } = await import('node:child_process');
+      execSync(`bun run ${resolve(import.meta.dir, '../scripts/download-deps.ts')}`, {
+        stdio: 'inherit',
+      });
     }
-    log.info('Embedded mode — starting slskd and Navidrome...');
-    await serviceManager.startAll();
+
+    log.info('Embedded mode — starting services...');
+    if (hasSoulseekCreds) {
+      await serviceManager.startSlskd();
+    } else {
+      log.info('No Soulseek credentials configured — skipping slskd (network search disabled)');
+    }
+    await serviceManager.startNavidrome();
+
+    // Auto-create Navidrome admin user on first run
+    const ndUrl = config.navidrome.url;
+    try {
+      const createAdminRes = await fetch(`${ndUrl}/auth/createAdmin`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: config.navidrome.username,
+          password: config.navidrome.password,
+        }),
+      });
+      if (createAdminRes.ok) {
+        log.info('Created Navidrome admin user');
+      }
+    } catch {
+      // Already created or Navidrome doesn't support this — fine
+    }
   }
 
   // 3. Initialize clients
-  const slskd = new Slskd({
-    baseUrl: config.slskd.url,
-    username: config.slskd.username,
-    password: config.slskd.password,
-  });
+  const slskd = hasSoulseekCreds
+    ? new Slskd({
+        baseUrl: config.slskd.url,
+        username: config.slskd.username,
+        password: config.slskd.password,
+      })
+    : null;
 
   const navidrome = new Navidrome({
     baseUrl: config.navidrome.url,
@@ -45,7 +89,7 @@ async function main() {
   const webDistPath = resolve(import.meta.dir, '../packages/web/dist');
   const { app, watcher } = createApp({ config, slskd, navidrome, serviceManager, webDistPath });
 
-  watcher.start();
+  if (watcher) watcher.start();
 
   log.info({ port: config.port }, 'NicotinD is ready');
 
@@ -57,17 +101,44 @@ async function main() {
   // Graceful shutdown
   process.on('SIGTERM', async () => {
     log.info('Shutting down...');
-    watcher.stop();
+    if (watcher) watcher.stop();
     await serviceManager.stopAll();
     process.exit(0);
   });
 
   process.on('SIGINT', async () => {
     log.info('Shutting down...');
-    watcher.stop();
+    if (watcher) watcher.stop();
     await serviceManager.stopAll();
     process.exit(0);
   });
+}
+
+interface PersistedSecrets {
+  slskdPassword: string;
+  navidromePassword: string;
+  jwtSecret: string;
+}
+
+function loadOrCreateSecrets(dataDir: string): PersistedSecrets {
+  const dir = dataDir.startsWith('~')
+    ? join(process.env.HOME ?? '/root', dataDir.slice(1))
+    : dataDir;
+  mkdirSync(dir, { recursive: true });
+  const secretsPath = join(dir, 'secrets.json');
+
+  if (existsSync(secretsPath)) {
+    return JSON.parse(readFileSync(secretsPath, 'utf-8'));
+  }
+
+  const secrets: PersistedSecrets = {
+    slskdPassword: generateSecret(16),
+    navidromePassword: generateSecret(16),
+    jwtSecret: generateSecret(32),
+  };
+  writeFileSync(secretsPath, JSON.stringify(secrets, null, 2), { mode: 0o600 });
+  log.info('Generated and saved internal secrets');
+  return secrets;
 }
 
 function loadConfig() {
@@ -81,6 +152,11 @@ function loadConfig() {
     log.info('No config file found, using environment variables and defaults');
   }
 
+  const dataDir = process.env.NICOTIND_DATA_DIR
+    || (fileConfig as Record<string, unknown>).dataDir as string
+    || '~/.nicotind';
+  const secrets = loadOrCreateSecrets(dataDir);
+
   // Merge env vars over file config
   const merged = {
     ...fileConfig,
@@ -89,28 +165,33 @@ function loadConfig() {
     musicDir: process.env.NICOTIND_MUSIC_DIR || (fileConfig as Record<string, unknown>).musicDir,
     mode: process.env.NICOTIND_MODE || (fileConfig as Record<string, unknown>).mode,
     soulseek: {
-      username: process.env.SOULSEEK_USERNAME || '',
-      password: process.env.SOULSEEK_PASSWORD || '',
       ...((fileConfig as Record<string, unknown>).soulseek as Record<string, unknown>),
+      ...(process.env.SOULSEEK_USERNAME ? { username: process.env.SOULSEEK_USERNAME } : {}),
+      ...(process.env.SOULSEEK_PASSWORD ? { password: process.env.SOULSEEK_PASSWORD } : {}),
     },
     slskd: {
-      url: process.env.NICOTIND_SLSKD_URL || 'http://localhost:5030',
+      url: 'http://localhost:5030',
       port: 5030,
       username: 'nicotind',
-      password: process.env.SLSKD_INTERNAL_PASSWORD || generateSecret(16),
+      password: secrets.slskdPassword,
       ...((fileConfig as Record<string, unknown>).slskd as Record<string, unknown>),
+      ...(process.env.NICOTIND_SLSKD_URL ? { url: process.env.NICOTIND_SLSKD_URL } : {}),
+      ...(process.env.SLSKD_INTERNAL_PASSWORD ? { password: process.env.SLSKD_INTERNAL_PASSWORD } : {}),
     },
     navidrome: {
-      url: process.env.NICOTIND_NAVIDROME_URL || 'http://localhost:4533',
+      url: 'http://localhost:4533',
       port: 4533,
       username: 'nicotind',
-      password: process.env.NAVIDROME_INTERNAL_PASSWORD || generateSecret(16),
+      password: secrets.navidromePassword,
       ...((fileConfig as Record<string, unknown>).navidrome as Record<string, unknown>),
+      ...(process.env.NICOTIND_NAVIDROME_URL ? { url: process.env.NICOTIND_NAVIDROME_URL } : {}),
+      ...(process.env.NAVIDROME_INTERNAL_PASSWORD ? { password: process.env.NAVIDROME_INTERNAL_PASSWORD } : {}),
     },
     jwt: {
-      secret: process.env.NICOTIND_JWT_SECRET || generateSecret(32),
+      secret: secrets.jwtSecret,
       expiresIn: '24h',
       ...((fileConfig as Record<string, unknown>).jwt as Record<string, unknown>),
+      ...(process.env.NICOTIND_JWT_SECRET ? { secret: process.env.NICOTIND_JWT_SECRET } : {}),
     },
   };
 
