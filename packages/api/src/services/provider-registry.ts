@@ -1,4 +1,4 @@
-import type { ISearchProvider, ProviderType } from '@nicotind/core';
+import type { IBrowseProvider, ISearchProvider, ProviderType } from '@nicotind/core';
 
 export class ProviderRegistry {
   private providers = new Map<string, ISearchProvider>();
@@ -21,5 +21,17 @@ export class ProviderRegistry {
 
   getAll(): ISearchProvider[] {
     return Array.from(this.providers.values());
+  }
+
+  getBrowseProvider(): IBrowseProvider | null {
+    for (const provider of this.providers.values()) {
+      if (
+        'browseUser' in provider &&
+        typeof (provider as IBrowseProvider).browseUser === 'function'
+      ) {
+        return provider as IBrowseProvider;
+      }
+    }
+    return null;
   }
 }

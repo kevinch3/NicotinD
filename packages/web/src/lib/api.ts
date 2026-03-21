@@ -110,6 +110,7 @@ export const api = {
     request<{
       state: 'searching' | 'complete';
       responseCount: number;
+      canBrowse?: boolean;
       results: Array<{
         username: string;
         freeUploadSlots: boolean;
@@ -133,6 +134,12 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ username, files }),
     }),
+  browseUser: (username: string) =>
+    request<Array<{
+      name: string;
+      fileCount: number;
+      files: Array<{ filename: string; size: number; bitRate?: number; length?: number }>;
+    }>>(`/api/users/${encodeURIComponent(username)}/browse`),
   getDownloads: () => request<unknown[]>('/api/downloads'),
   cancelDownload: (username: string, id: string) =>
     request<{ ok: boolean }>(`/api/downloads/${username}/${id}`, { method: 'DELETE' }),

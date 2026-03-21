@@ -1,8 +1,9 @@
-import type { ISearchProvider, ProviderType, NetworkPollResult } from '@nicotind/core';
+import type { ISearchProvider, IBrowseProvider, ProviderType, NetworkPollResult, BrowseDirectory } from '@nicotind/core';
+import { BrowseUnavailableError } from '@nicotind/core';
 import type { SlskdRef } from '../../index.js';
 import { inferMetadataFromPath } from '../metadata-fixer.js';
 
-export class SlskdSearchProvider implements ISearchProvider {
+export class SlskdSearchProvider implements ISearchProvider, IBrowseProvider {
   readonly name = 'slskd';
   readonly type: ProviderType = 'network';
 
@@ -100,5 +101,10 @@ export class SlskdSearchProvider implements ISearchProvider {
 
   async isAvailable(): Promise<boolean> {
     return this.slskdRef.current !== null;
+  }
+
+  async browseUser(username: string): Promise<BrowseDirectory[]> {
+    if (!this.slskdRef.current) throw new BrowseUnavailableError();
+    return this.slskdRef.current.users.browseUser(username);
   }
 }
