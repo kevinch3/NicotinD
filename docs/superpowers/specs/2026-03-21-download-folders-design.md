@@ -48,16 +48,30 @@ Search results (network tab)
 
 ### What changes
 
-#### 1. `packages/api/src/routes/search.ts` (extend) — add `canBrowse` to network poll response
+#### 1. `packages/core/src/types/provider.ts` — extend `NetworkPollResult`
 
-The `GET /api/search/:searchId/network` response gains a `canBrowse: boolean` field at the top level, set by checking whether the network provider implements `IBrowseProvider`:
+`NetworkPollResult` gains an optional `canBrowse` field:
 
 ```typescript
-const canBrowse = 'browseUser' in provider && typeof (provider as any).browseUser === 'function'
-return c.json({ state, responseCount, results, canBrowse })
+export interface NetworkPollResult {
+  state: 'searching' | 'complete'
+  responseCount: number
+  results: NetworkSearchResult[]
+  canBrowse?: boolean   // true when the provider that produced this result supports folder browsing
+}
 ```
 
-The frontend reads `canBrowse` from the poll response and uses it to conditionally render the "Browse library" button on all result rows. No per-row flag needed — all rows from the same search share the same provider.
+#### 1b. `packages/api/src/routes/search.ts` (extend) — populate `canBrowse` in poll handler
+
+After calling `provider.pollResults(searchId)`, the route appends `canBrowse` before returning:
+
+```typescript
+const pollResult = await provider.pollResults(searchId)
+const canBrowse = 'browseUser' in provider && typeof (provider as any).browseUser === 'function'
+return c.json({ ...pollResult, canBrowse })
+```
+
+The frontend reads `canBrowse` from the poll response and uses it to conditionally render the "Browse library" button. No per-row flag needed — all rows from the same search share the same provider.
 
 #### 2. `packages/core/src/types/provider.ts` (extend)
 
@@ -201,6 +215,18 @@ Confirmed: no existing routes use the `/api/users/*` path — no conflict.
 **`[Download all (N)]`:**
 - N = count of direct files in the currently selected left-tree node (non-recursive)
 - Payload: `POST /api/downloads` with `{ username, files: [{ filename, size }] }` using full-path `filename` values
+
+### Implementation order
+
+Steps must be implemented in this order to avoid TypeScript build failures:
+
+1. §2 — `packages/core/src/types/provider.ts` (defines `BrowseDirectory`, `IBrowseProvider`, `BrowseUnavailableError`, extends `NetworkPollResult`)
+2. §3 — `packages/slskd-client/src/api/users.ts` + `Slskd` facade update (requires `BrowseDirectory` from core)
+3. §4 — `slskd-provider.ts` extend (requires `IBrowseProvider`, `BrowseUnavailableError` from core, and `users` on `Slskd`)
+4. §5 — `provider-registry.ts` extend (requires `IBrowseProvider` from core)
+5. §1 / §1b — `search.ts` extend (requires `NetworkPollResult` update from §2)
+6. §6 — `routes/users.ts` new (requires `getBrowseProvider()` from §5)
+7. §7 — Frontend (requires `canBrowse` in poll response from §1b)
 
 ### What does NOT change
 
