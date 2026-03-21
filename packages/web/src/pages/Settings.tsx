@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { api, type TailscaleStatus } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth';
+import { PasswordField } from '@/components/PasswordField';
 
 export function SettingsPage() {
   const role = useAuthStore((s) => s.role);
@@ -144,12 +145,12 @@ export function SettingsPage() {
             </div>
             <div>
               <label className="block text-sm text-zinc-400 mb-1.5">Password</label>
-              <input
-                type="password"
+              <PasswordField
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder={configured ? '••••••••' : 'Soulseek password'}
-                className="w-full px-4 py-2.5 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-500 transition text-sm"
+                autoComplete="new-password"
+                inputClassName="px-4 py-2.5 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-500 transition text-sm"
               />
             </div>
 
@@ -244,12 +245,12 @@ export function SettingsPage() {
                 </button>
               ) : (
                 <div className="space-y-3">
-                  <input
-                    type="password"
+                  <PasswordField
                     value={tsAuthKey}
                     onChange={(e) => setTsAuthKey(e.target.value)}
                     placeholder="tskey-auth-..."
-                    className="w-full px-4 py-2.5 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-500 transition text-sm font-mono"
+                    autoComplete="off"
+                    inputClassName="w-full px-4 py-2.5 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-500 transition text-sm font-mono"
                   />
                   <button
                     onClick={async () => {

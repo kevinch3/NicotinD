@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useAuthStore } from '@/stores/auth';
 import { api } from '@/lib/api';
+import { PasswordField } from '@/components/PasswordField';
 
 export function LoginPage() {
   const [username, setUsername] = useState('');
@@ -43,13 +44,13 @@ export function LoginPage() {
             required
             className="w-full px-4 py-3 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-600 transition"
           />
-          <input
-            type="password"
+          <PasswordField
             placeholder="Password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
-            className="w-full px-4 py-3 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-600 transition"
+            autoComplete="current-password"
+            inputClassName="px-4 py-3 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-600 transition"
           />
 
           {error && <p className="text-red-400 text-sm">{error}</p>}

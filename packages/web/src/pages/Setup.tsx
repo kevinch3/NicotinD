@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { api, type SetupStatus } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth';
+import { PasswordField } from '@/components/PasswordField';
 
 interface Props {
   setupStatus: SetupStatus;
@@ -138,13 +139,13 @@ export function SetupPage({ setupStatus }: Props) {
                   autoFocus
                   className="w-full px-4 py-3 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-500 transition text-sm"
                 />
-                <input
-                  type="password"
+                <PasswordField
                   placeholder="Password"
                   value={adminPassword}
                   onChange={(e) => setAdminPassword(e.target.value)}
                   required
-                  className="w-full px-4 py-3 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-500 transition text-sm"
+                  autoComplete="new-password"
+                  inputClassName="px-4 py-3 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-500 transition text-sm"
                 />
               </div>
             </div>
@@ -180,12 +181,12 @@ export function SetupPage({ setupStatus }: Props) {
                   autoFocus
                   className="w-full px-4 py-3 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-500 transition text-sm"
                 />
-                <input
-                  type="password"
+                <PasswordField
                   placeholder="Soulseek password"
                   value={slskPassword}
                   onChange={(e) => setSlskPassword(e.target.value)}
-                  className="w-full px-4 py-3 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-500 transition text-sm"
+                  autoComplete="new-password"
+                  inputClassName="px-4 py-3 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-500 transition text-sm"
                 />
               </div>
             </div>
@@ -223,13 +224,13 @@ export function SetupPage({ setupStatus }: Props) {
                 Connect to your Tailscale network for secure remote access from your phone.
                 Get an auth key from your Tailscale admin console. You can skip this and configure it later.
               </p>
-              <input
-                type="password"
+              <PasswordField
                 placeholder="tskey-auth-..."
                 value={tsAuthKey}
                 onChange={(e) => setTsAuthKey(e.target.value)}
                 autoFocus
-                className="w-full px-4 py-3 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-500 transition text-sm font-mono"
+                autoComplete="off"
+                inputClassName="px-4 py-3 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-500 transition text-sm font-mono"
               />
             </div>
 
