@@ -361,7 +361,7 @@ export function DownloadsPage() {
             {inProgressGroups.map((group) => (
               <div
                 key={group.key}
-                className="flex items-center gap-4 px-4 py-3 rounded-lg bg-zinc-900/50 border border-zinc-800/50"
+                className="flex items-center gap-4 px-4 py-3 rounded-lg bg-zinc-900/50 border border-zinc-800/50 group/row"
               >
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-zinc-200 truncate">{group.name}</p>
@@ -384,6 +384,16 @@ export function DownloadsPage() {
                     <p className="text-xs text-right font-medium text-zinc-500">Queued</p>
                   )}
                 </div>
+                <button
+                  onClick={() => clearGroup(group)}
+                  className="text-xs text-zinc-600 hover:text-zinc-300 transition opacity-0 group-hover/row:opacity-100"
+                  title="Cancel"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
               </div>
             ))}
 
