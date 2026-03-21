@@ -177,7 +177,7 @@ export function PlaylistsPage() {
   // Detail view
   if (selected) {
     return (
-      <div className="max-w-4xl mx-auto px-6 py-8">
+      <div className="max-w-4xl mx-auto px-4 md:px-6 py-8">
         <button
           onClick={() => setSelected(null)}
           className="text-sm text-zinc-500 hover:text-zinc-300 transition mb-6"
@@ -185,7 +185,7 @@ export function PlaylistsPage() {
           &larr; Back to playlists
         </button>
 
-        <div className="flex gap-6 mb-8">
+        <div className="flex flex-col sm:flex-row items-center sm:items-end gap-6 mb-8 text-center sm:text-left">
           {selected.coverArt ? (
             <img
               src={`/api/cover/${selected.coverArt}?size=300&token=${token}`}
@@ -223,7 +223,7 @@ export function PlaylistsPage() {
             <p className="text-zinc-400 mt-1">
               {selected.entry?.length ?? selected.songCount} tracks · {formatTotalDuration(selected.duration)}
             </p>
-            <div className="flex gap-3 mt-4">
+            <div className="flex justify-center sm:justify-start gap-3 mt-4">
               <button
                 onClick={() => playAll(selected)}
                 className="px-5 py-2 rounded-lg bg-zinc-100 text-zinc-900 text-sm font-semibold hover:bg-zinc-200 transition"
@@ -286,7 +286,7 @@ export function PlaylistsPage() {
 
   // Grid view
   return (
-    <div className="max-w-6xl mx-auto px-6 py-8">
+    <div className="max-w-6xl mx-auto px-4 md:px-6 py-8">
       <h1 className="text-lg font-semibold text-zinc-100 mb-6">Playlists</h1>
 
       {loading && (

@@ -472,7 +472,7 @@ export function DownloadsPage() {
             {doneGroups.map((group) => (
               <div
                 key={group.key}
-                className="flex items-center gap-3 md:gap-4 px-3 md:px-4 py-3 rounded-lg bg-zinc-900/30 border border-zinc-800/30 opacity-50"
+                className="flex items-center gap-3 md:gap-4 px-3 md:px-4 py-3 rounded-lg bg-zinc-900/40 border border-zinc-800/40 opacity-80"
               >
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-zinc-400 truncate">{group.name}</p>
