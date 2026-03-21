@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, type ReactNode } from 'react';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth';
 import { usePlayerStore, type Track } from '@/stores/player';
@@ -21,6 +21,61 @@ interface FlatFile {
 }
 
 const ALLOWED_EXTENSIONS = ['.mp3', '.ogg'];
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function getHighlightTerms(query: string) {
+  return Array.from(
+    new Set(
+      query
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean),
+    ),
+  ).sort((a, b) => b.length - a.length);
+}
+
+function highlightText(text: string, terms: string[]): ReactNode {
+  if (!terms.length) return text;
+
+  const pattern = new RegExp(`(${terms.map(escapeRegExp).join('|')})`, 'gi');
+  const nodes: ReactNode[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  let key = 0;
+
+  while ((match = pattern.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      nodes.push(
+        <span key={`text-${key++}`}>
+          {text.slice(lastIndex, match.index)}
+        </span>,
+      );
+    }
+
+    nodes.push(
+      <mark
+        key={`match-${key++}`}
+        className="rounded bg-amber-400/20 px-0.5 text-zinc-100"
+      >
+        {match[0]}
+      </mark>,
+    );
+    lastIndex = match.index + match[0].length;
+  }
+
+  if (lastIndex < text.length) {
+    nodes.push(
+      <span key={`text-${key++}`}>
+        {text.slice(lastIndex)}
+      </span>,
+    );
+  }
+
+  return nodes.length > 0 ? nodes : text;
+}
 
 function flattenAndFilter(results: NetworkResult[]): FlatFile[] {
   const flat: FlatFile[] = [];
@@ -157,10 +212,11 @@ export function SearchPage() {
   }
 
   function extractName(filepath: string) {
-    const parts = filepath.split('\\');
+    const parts = filepath.split(/[\\/]/);
     return parts[parts.length - 1];
   }
 
+  const highlightTerms = getHighlightTerms(query);
   const hasLocal = local && (local.songs.length > 0 || local.albums.length > 0 || local.artists.length > 0);
   const flatNetwork = flattenAndFilter(network);
   const hasNetwork = flatNetwork.length > 0;
@@ -252,9 +308,9 @@ export function SearchPage() {
                     <div className="w-10 h-10 rounded bg-zinc-800 flex-shrink-0" />
                   )}
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm text-zinc-100 truncate">{song.title}</p>
+                    <p className="text-sm text-zinc-100 truncate">{highlightText(song.title, highlightTerms)}</p>
                     <p className="text-xs text-zinc-500 truncate">
-                      {song.artist} &middot; {song.album}
+                      {highlightText(song.artist, highlightTerms)} &middot; {highlightText(song.album, highlightTerms)}
                     </p>
                   </div>
                   <span className="text-xs text-zinc-600">{formatDuration(song.duration)}</span>
@@ -291,8 +347,8 @@ export function SearchPage() {
                     ) : (
                       <div className="w-full aspect-square rounded bg-zinc-800 mb-2" />
                     )}
-                    <p className="text-sm text-zinc-200 truncate">{album.name}</p>
-                    <p className="text-xs text-zinc-500 truncate">{album.artist}</p>
+                    <p className="text-sm text-zinc-200 truncate">{highlightText(album.name, highlightTerms)}</p>
+                    <p className="text-xs text-zinc-500 truncate">{highlightText(album.artist, highlightTerms)}</p>
                   </div>
                 ))}
               </div>
@@ -332,7 +388,7 @@ export function SearchPage() {
                 className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-zinc-800/50 transition"
               >
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm text-zinc-300 truncate">{extractName(file.filename)}</p>
+                  <p className="text-sm text-zinc-300 truncate">{highlightText(extractName(file.filename), highlightTerms)}</p>
                   <p className="text-xs text-zinc-600 truncate">
                     {file.bitRate ? `${file.bitRate} kbps` : ''}
                     {file.length ? ` · ${formatDuration(file.length)}` : ''}
