@@ -406,11 +406,11 @@ export function DownloadsPage() {
             {inProgressGroups.map((group) => (
               <div
                 key={group.key}
-                className="flex items-center gap-3 md:gap-4 px-3 md:px-4 py-3 rounded-lg bg-zinc-900/50 border border-zinc-800/50"
+                className="flex items-center gap-3 md:gap-4 px-3 md:px-4 py-3 rounded-lg bg-zinc-900/50 border border-zinc-800/50 min-w-0"
               >
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm text-zinc-200 truncate">{group.name}</p>
-                  <p className="text-xs text-zinc-600 mt-0.5">
+                  <p className="text-sm text-zinc-200 truncate w-full">{group.name}</p>
+                  <p className="text-xs text-zinc-600 mt-0.5 truncate w-full">
                     {group.completedFiles} of {group.totalFiles} tracks
                   </p>
                 </div>
@@ -446,15 +446,15 @@ export function DownloadsPage() {
             {errorGroups.map((group) => (
               <div
                 key={group.key}
-                className="flex items-center gap-3 md:gap-4 px-3 md:px-4 py-3 rounded-lg bg-zinc-900/30 border border-red-900/20"
+                className="flex items-center gap-3 md:gap-4 px-3 md:px-4 py-3 rounded-lg bg-zinc-900/30 border border-red-900/20 min-w-0"
               >
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm text-zinc-400 truncate">{group.name}</p>
-                  <p className="text-xs text-zinc-600 mt-0.5">
+                  <p className="text-sm text-zinc-400 truncate w-full">{group.name}</p>
+                  <p className="text-xs text-zinc-600 mt-0.5 truncate w-full">
                     {group.completedFiles} of {group.totalFiles} tracks
                   </p>
                 </div>
-                <p className="text-xs text-red-400/70 font-medium">Error</p>
+                <p className="text-xs text-red-400/70 font-medium flex-shrink-0">Error</p>
                 <button
                   onClick={() => clearGroup(group)}
                   className="text-xs text-zinc-500 hover:text-zinc-300 transition flex-shrink-0"
@@ -472,13 +472,13 @@ export function DownloadsPage() {
             {doneGroups.map((group) => (
               <div
                 key={group.key}
-                className="flex items-center gap-3 md:gap-4 px-3 md:px-4 py-3 rounded-lg bg-zinc-900/40 border border-zinc-800/40 opacity-80"
+                className="flex items-center gap-3 md:gap-4 px-3 md:px-4 py-3 rounded-lg bg-zinc-900/40 border border-zinc-800/40 opacity-80 min-w-0"
               >
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm text-zinc-400 truncate">{group.name}</p>
-                  <p className="text-xs text-zinc-600 mt-0.5">{group.totalFiles} tracks</p>
+                  <p className="text-sm text-zinc-400 truncate w-full">{group.name}</p>
+                  <p className="text-xs text-zinc-600 mt-0.5 truncate w-full">{group.totalFiles} tracks</p>
                 </div>
-                <p className="text-xs text-emerald-400/70 font-medium">Done</p>
+                <p className="text-xs text-emerald-400/70 font-medium flex-shrink-0">Done</p>
                 <button
                   onClick={() => clearGroup(group)}
                   className="text-xs text-zinc-500 hover:text-zinc-300 transition flex-shrink-0"
