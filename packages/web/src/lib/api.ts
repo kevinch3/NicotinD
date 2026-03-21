@@ -1,4 +1,5 @@
 import { useAuthStore } from '@/stores/auth';
+import type { SlskdUserTransferGroup } from '@nicotind/core';
 
 const BASE = '';
 
@@ -147,7 +148,7 @@ export const api = {
       fileCount: number;
       files: Array<{ filename: string; size: number; bitRate?: number; length?: number }>;
     }>>(`/api/users/${encodeURIComponent(username)}/browse`),
-  getDownloads: () => request<unknown[]>('/api/downloads'),
+  getDownloads: () => request<SlskdUserTransferGroup[]>('/api/downloads'),
   cancelDownload: (username: string, id: string) =>
     request<{ ok: boolean }>(`/api/downloads/${username}/${id}`, { method: 'DELETE' }),
 
