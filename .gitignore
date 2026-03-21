@@ -6,3 +6,5 @@ dist/
 *.log
 packages/web/dist/
 ~/.nicotind/
+.worktrees/
+.superpowers/
