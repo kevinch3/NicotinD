@@ -131,4 +131,21 @@ describe('library routes', () => {
     expect(fsState.has('/home/kevinch3/Music/CD2/14_CALON_LAN.MP3')).toBe(false);
     expect(navidromeMock.system.startScan).toHaveBeenCalledWith(true);
   });
+
+  it('returns 404 when no matching file exists and does not rescan', async () => {
+    navidromeMock.browsing.getSong = mock(() =>
+      Promise.resolve({
+        id: 'song-5',
+        path: '/home/kevinch3/Music/Missing/Nope.mp3',
+        title: 'Nope',
+        artist: 'Missing Artist',
+        album: 'Missing Album',
+      }),
+    );
+
+    const res = await app.request('/songs/song-5', { method: 'DELETE' });
+
+    expect(res.status).toBe(404);
+    expect(navidromeMock.system.startScan).not.toHaveBeenCalled();
+  });
 });

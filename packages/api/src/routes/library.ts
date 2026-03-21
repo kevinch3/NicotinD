@@ -94,6 +94,8 @@ export function libraryRoutes(navidrome: Navidrome, musicDir?: string) {
       return c.json({ error: 'Song path is outside the music directory' }, 400);
     }
 
+    let deleted = false;
+
     if (!existsSync(fullPath)) {
       const fallbackPath = findSongByMetadata(expandedMusicDir, song);
       if (fallbackPath) {
@@ -101,21 +103,28 @@ export function libraryRoutes(navidrome: Navidrome, musicDir?: string) {
         try {
           unlinkSync(fallbackPath);
           log.info({ path: fallbackPath, songId: id }, 'Deleted song file from disk');
+          deleted = true;
         } catch (err) {
           log.error({ err, path: fallbackPath }, 'Failed to delete song file');
           return c.json({ error: 'Failed to delete file' }, 500);
         }
       } else {
-        log.warn({ path: fullPath }, 'File not found on disk, triggering rescan anyway');
+        log.warn({ path: fullPath }, 'File not found on disk');
+        return c.json({ error: 'File not found on disk' }, 404);
       }
     } else {
       try {
         unlinkSync(fullPath);
         log.info({ path: fullPath, songId: id }, 'Deleted song file from disk');
+        deleted = true;
       } catch (err) {
         log.error({ err, path: fullPath }, 'Failed to delete song file');
         return c.json({ error: 'Failed to delete file' }, 500);
       }
+    }
+
+    if (!deleted) {
+      return c.json({ error: 'Failed to delete file' }, 500);
     }
 
     // Trigger Navidrome rescan to update the index
