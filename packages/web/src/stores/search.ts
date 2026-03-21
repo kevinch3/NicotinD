@@ -28,12 +28,14 @@ interface SearchState {
   network: NetworkResult[];
   networkState: 'idle' | 'searching' | 'complete';
   downloading: Set<string>;
+  canBrowse: boolean;
 
   setQuery: (query: string) => void;
   setLocal: (local: LocalResults | null) => void;
   setNetwork: (network: NetworkResult[]) => void;
   setNetworkState: (state: 'idle' | 'searching' | 'complete') => void;
   addDownloading: (key: string) => void;
+  setCanBrowse: (v: boolean) => void;
   reset: () => void;
 }
 
@@ -43,11 +45,13 @@ export const useSearchStore = create<SearchState>((set) => ({
   network: [],
   networkState: 'idle',
   downloading: new Set(),
+  canBrowse: false,
 
   setQuery: (query) => set({ query }),
   setLocal: (local) => set({ local }),
   setNetwork: (network) => set({ network }),
   setNetworkState: (networkState) => set({ networkState }),
   addDownloading: (key) => set((s) => ({ downloading: new Set(s.downloading).add(key) })),
-  reset: () => set({ local: null, network: [], networkState: 'idle' }),
+  setCanBrowse: (canBrowse) => set({ canBrowse }),
+  reset: () => set({ local: null, network: [], networkState: 'idle', canBrowse: false }),
 }));

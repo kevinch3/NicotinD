@@ -3,6 +3,8 @@ import { api } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth';
 import { usePlayerStore, type Track } from '@/stores/player';
 import { useSearchStore } from '@/stores/search';
+import { FolderBrowser } from '@/components/FolderBrowser';
+import { groupByDirectory } from '@/lib/folderUtils';
 
 interface NetworkResult {
   username: string;
@@ -151,6 +153,8 @@ export function SearchPage() {
   const setNetworkState = useSearchStore((s) => s.setNetworkState);
   const downloading = useSearchStore((s) => s.downloading);
   const addDownloading = useSearchStore((s) => s.addDownloading);
+  const canBrowse = useSearchStore((s) => s.canBrowse);
+  const setCanBrowse = useSearchStore((s) => s.setCanBrowse);
 
   // Ephemeral state (resets on remount — that's fine)
   const [loading, setLoading] = useState(false);
@@ -159,6 +163,8 @@ export function SearchPage() {
   const [networkAvailable, setNetworkAvailable] = useState(true);
   const [networkConnected, setNetworkConnected] = useState<boolean | null>(null);
   const [searchError, setSearchError] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'tracks' | 'folders'>('tracks');
+  const [openBrowserKey, setOpenBrowserKey] = useState<string | null>(null);
   const token = useAuthStore((s) => s.token);
   const play = usePlayerStore((s) => s.play);
 
@@ -177,6 +183,7 @@ export function SearchPage() {
       try {
         const res = await api.pollNetwork(searchId);
         setNetwork(res.results);
+        if (res.canBrowse !== undefined) setCanBrowse(res.canBrowse);
         if (res.state === 'complete') {
           setNetworkState('complete');
         }
@@ -411,53 +418,149 @@ export function SearchPage() {
         </div>
       )}
 
-      {/* Network results — flat track list, sorted by speed */}
+      {/* Network results */}
       {hasNetwork && (
         <section>
-          {flatNetwork.map((file) => {
-            const key = `${file.username}:${file.filename}`;
-            const queued = downloading.has(key);
-            const title = getDisplayTitle(file);
-            const subtitle = getDisplaySubtitle(file);
-            return (
-              <div
-                key={key}
-                className="flex items-start gap-3 px-3 py-2 rounded-lg hover:bg-zinc-800/50 transition"
-              >
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-start gap-3">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm text-zinc-300 truncate">{highlightText(title, highlightTerms)}</p>
-                      {subtitle && (
-                        <p className="text-xs text-zinc-500 truncate">
-                          {highlightText(subtitle, highlightTerms)}
+          {/* Track / Folder toggle */}
+          <div className="flex items-center gap-2 mb-3">
+            <button
+              onClick={() => setViewMode('tracks')}
+              className={`px-3 py-1 rounded-md text-xs font-medium transition ${
+                viewMode === 'tracks'
+                  ? 'bg-zinc-700 text-zinc-200'
+                  : 'text-zinc-500 hover:text-zinc-300'
+              }`}
+            >
+              Tracks
+            </button>
+            <button
+              onClick={() => setViewMode('folders')}
+              className={`px-3 py-1 rounded-md text-xs font-medium transition ${
+                viewMode === 'folders'
+                  ? 'bg-zinc-700 text-zinc-200'
+                  : 'text-zinc-500 hover:text-zinc-300'
+              }`}
+            >
+              Folders
+            </button>
+          </div>
+
+          {viewMode === 'tracks' && (
+            <>
+              {flatNetwork.map((file) => {
+                const key = `${file.username}:${file.filename}`;
+                const queued = downloading.has(key);
+                const title = getDisplayTitle(file);
+                const subtitle = getDisplaySubtitle(file);
+                return (
+                  <div
+                    key={key}
+                    className="flex items-start gap-3 px-3 py-2 rounded-lg hover:bg-zinc-800/50 transition"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start gap-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm text-zinc-300 truncate">{highlightText(title, highlightTerms)}</p>
+                          {subtitle && (
+                            <p className="text-xs text-zinc-500 truncate">
+                              {highlightText(subtitle, highlightTerms)}
+                            </p>
+                          )}
+                        </div>
+                        {file.length ? (
+                          <span className="shrink-0 pt-0.5 text-xs text-zinc-600">
+                            {formatDuration(file.length)}
+                          </span>
+                        ) : null}
+                      </div>
+                      <p className="mt-1 text-[11px] text-zinc-600 truncate">
+                        {file.bitRate ? `${file.bitRate} kbps` : 'Unknown bitrate'}
+                        {file.bitRate || file.length ? ' · ' : ''}
+                        {formatSize(file.size)}
+                        {' · '}
+                        <span className="text-emerald-600">{formatSpeed(file.uploadSpeed)}</span>
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => handleDownload(file.username, { filename: file.filename, size: file.size })}
+                      disabled={queued}
+                      className="px-3 py-1 rounded-md text-xs font-medium bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition disabled:opacity-50"
+                    >
+                      {queued ? 'Queued' : 'Download'}
+                    </button>
+                  </div>
+                );
+              })}
+            </>
+          )}
+
+          {viewMode === 'folders' && (
+            <>
+              {groupByDirectory(flatNetwork).map((group) => {
+                const browserKey = `${group.username}::${group.directory}`;
+                const isOpen = openBrowserKey === browserKey;
+                const dirBasename = group.directory.split('\\').at(-1) ?? group.directory;
+                const folderQueued = group.files.every((f) =>
+                  downloading.has(`${group.username}:${f.filename}`),
+                );
+
+                return (
+                  <div key={browserKey} className="mb-1">
+                    <div className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-zinc-800/50 transition">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-zinc-300 truncate">{dirBasename}</p>
+                        <p className="text-[11px] text-zinc-600 truncate">
+                          {group.username}
+                          {group.bitRate ? ` · ${group.bitRate} kbps` : ''}
+                          {` · ${group.files.length} files`}
                         </p>
+                      </div>
+                      <button
+                        onClick={async () => {
+                          for (const f of group.files) addDownloading(`${group.username}:${f.filename}`);
+                          await api.enqueueDownload(
+                            group.username,
+                            group.files.map((f) => ({ filename: f.filename, size: f.size })),
+                          );
+                        }}
+                        disabled={folderQueued || group.files.length === 0}
+                        className="px-2 py-1 rounded text-xs font-medium bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition disabled:opacity-50 shrink-0"
+                      >
+                        {folderQueued ? 'Queued' : 'Download folder'}
+                      </button>
+                      {canBrowse && (
+                        <button
+                          onClick={() => setOpenBrowserKey(isOpen ? null : browserKey)}
+                          className="px-2 py-1 rounded text-xs text-zinc-500 hover:text-zinc-300 transition shrink-0"
+                        >
+                          {isOpen ? 'Close' : 'Browse library'}
+                        </button>
                       )}
                     </div>
-                    {file.length ? (
-                      <span className="shrink-0 pt-0.5 text-xs text-zinc-600">
-                        {formatDuration(file.length)}
-                      </span>
-                    ) : null}
+
+                    {isOpen && (
+                      <div className="mx-3 mb-2">
+                        <FolderBrowser
+                          username={group.username}
+                          matchedPath={group.directory}
+                          fallbackFiles={group.files.map((f) => ({
+                            filename: f.filename,
+                            size: f.size,
+                            bitRate: f.bitRate,
+                            length: f.length,
+                          }))}
+                          onDownload={async (files) => {
+                            for (const f of files) addDownloading(`${group.username}:${f.filename}`);
+                            await api.enqueueDownload(group.username, files);
+                          }}
+                        />
+                      </div>
+                    )}
                   </div>
-                  <p className="mt-1 text-[11px] text-zinc-600 truncate">
-                    {file.bitRate ? `${file.bitRate} kbps` : 'Unknown bitrate'}
-                    {file.bitRate || file.length ? ' · ' : ''}
-                    {formatSize(file.size)}
-                    {' · '}
-                    <span className="text-emerald-600">{formatSpeed(file.uploadSpeed)}</span>
-                  </p>
-                </div>
-                <button
-                  onClick={() => handleDownload(file.username, { filename: file.filename, size: file.size })}
-                  disabled={queued}
-                  className="px-3 py-1 rounded-md text-xs font-medium bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition disabled:opacity-50"
-                >
-                  {queued ? 'Queued' : 'Download'}
-                </button>
-              </div>
-            );
-          })}
+                );
+              })}
+            </>
+          )}
         </section>
       )}
 
