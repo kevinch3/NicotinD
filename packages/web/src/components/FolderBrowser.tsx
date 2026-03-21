@@ -7,12 +7,18 @@ import {
   type BrowseFile,
   type FolderNode,
 } from '@/lib/folderUtils';
+import { getFolderDownloadLabel, BUTTON_CLASSES } from '@/lib/downloadStatus';
+import type { TransferEntry } from '@/lib/transferTypes';
 
 interface FolderBrowserProps {
   username: string;
   matchedPath: string;
   fallbackFiles: BrowseFile[];
   onDownload: (files: Array<{ filename: string; size: number }>) => void;
+  /** Optional: when provided, Download all button reflects live transfer status.
+   *  Note: there is no optimistic "Queued" state for FolderBrowser — the button
+   *  will update on the next poll cycle (~3s) after clicking. */
+  getStatus?: (username: string, filename: string) => TransferEntry | undefined;
 }
 
 function formatSize(bytes: number) {
@@ -75,6 +81,7 @@ export function FolderBrowser({
   matchedPath,
   fallbackFiles,
   onDownload,
+  getStatus,
 }: FolderBrowserProps) {
   const [dirs, setDirs] = useState<BrowseDir[] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -161,14 +168,29 @@ export function FolderBrowser({
                 <span className="text-[11px] text-zinc-600">
                   {directFiles.length} file{directFiles.length !== 1 ? 's' : ''}
                 </span>
-                <button
-                  onClick={() => onDownload(
-                    directFiles.map((f) => ({ filename: f.filename, size: f.size }))
-                  )}
-                  className="px-2 py-0.5 rounded text-[11px] font-medium bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition"
-                >
-                  Download all ({directFiles.length})
-                </button>
+                {(() => {
+                  const validFiles = directFiles.filter((f) => f.size > 0); // skip 0-byte stubs
+                  const folderFiles = validFiles.map((f) => ({ username, filename: f.filename }));
+                  const btn = getStatus
+                    ? getFolderDownloadLabel(folderFiles, false, getStatus)
+                    : { label: `Download all (${validFiles.length})`, variant: 'default' as const, disabled: false };
+
+                  // When getFolderDownloadLabel returns 'Download folder' (default state),
+                  // use the more descriptive "Download all (N)" label instead.
+                  const displayLabel = btn.label === 'Download folder'
+                    ? `Download all (${validFiles.length})`
+                    : btn.label;
+
+                  return (
+                    <button
+                      onClick={() => onDownload(validFiles.map((f) => ({ filename: f.filename, size: f.size })))}
+                      disabled={btn.disabled || validFiles.length === 0}
+                      className={`px-2 py-0.5 rounded text-[11px] font-medium transition ${BUTTON_CLASSES[btn.variant]} ${btn.disabled ? 'cursor-default' : ''}`}
+                    >
+                      {displayLabel}
+                    </button>
+                  );
+                })()}
               </div>
               {directFiles.map((file) => (
                 <div

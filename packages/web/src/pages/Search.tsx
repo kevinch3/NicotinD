@@ -4,7 +4,7 @@ import { useAuthStore } from '@/stores/auth';
 import { usePlayerStore, type Track } from '@/stores/player';
 import { useSearchStore } from '@/stores/search';
 import { useTransferStore } from '@/stores/transfers';
-import { getSingleDownloadLabel, BUTTON_CLASSES } from '@/lib/downloadStatus';
+import { getSingleDownloadLabel, getFolderDownloadLabel, BUTTON_CLASSES } from '@/lib/downloadStatus';
 import { FolderBrowser } from '@/components/FolderBrowser';
 import { groupByDirectory } from '@/lib/folderUtils';
 
@@ -550,10 +550,16 @@ export function SearchPage() {
                 const browserKey = `${group.username}::${group.directory}`;
                 const isOpen = openBrowserKey === browserKey;
                 const dirBasename = group.directory.split(/[\\/]/).at(-1) ?? group.directory;
-                const folderQueued = group.files.every((f) =>
+
+                // Pre-map with username — network file objects don't carry it themselves
+                const folderFiles = group.files.map((f) => ({
+                  username: group.username,
+                  filename: f.filename,
+                }));
+                const allOptimisticallyQueued = group.files.every((f) =>
                   downloading.has(`${group.username}:${f.filename}`),
                 );
-                const hasFreeSlots = group.files.some((f) => (f as any).freeUploadSlots > 0);
+                const folderBtn = getFolderDownloadLabel(folderFiles, allOptimisticallyQueued, getStatus);
 
                 return (
                   <div key={browserKey} className="mb-1">
@@ -568,16 +574,17 @@ export function SearchPage() {
                       </div>
                       <button
                         onClick={async () => {
-                          for (const f of group.files) addDownloading(`${group.username}:${f.filename}`);
+                          const validFiles = group.files.filter((f) => f.size > 0); // skip 0-byte stubs
+                          for (const f of validFiles) addDownloading(`${group.username}:${f.filename}`);
                           await api.enqueueDownload(
                             group.username,
-                            group.files.map((f) => ({ filename: f.filename, size: f.size })),
+                            validFiles.map((f) => ({ filename: f.filename, size: f.size })),
                           );
                         }}
-                        disabled={folderQueued || group.files.length === 0}
-                        className="px-2 py-1 rounded text-xs font-medium bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition disabled:opacity-50 shrink-0"
+                        disabled={folderBtn.disabled || group.files.filter((f) => f.size > 0).length === 0}
+                        className={`px-2 py-1 rounded text-xs font-medium transition shrink-0 ${BUTTON_CLASSES[folderBtn.variant]} ${folderBtn.disabled ? 'cursor-default' : ''}`}
                       >
-                        {folderQueued ? 'Queued' : 'Download folder'}
+                        {folderBtn.label}
                       </button>
                       {canBrowse && (
                         <button
@@ -601,9 +608,11 @@ export function SearchPage() {
                             length: f.length,
                           }))}
                           onDownload={async (files) => {
-                            for (const f of files) addDownloading(`${group.username}:${f.filename}`);
-                            await api.enqueueDownload(group.username, files);
+                            const validFiles = files.filter((f) => f.size > 0); // skip 0-byte stubs
+                            for (const f of validFiles) addDownloading(`${group.username}:${f.filename}`);
+                            await api.enqueueDownload(group.username, validFiles);
                           }}
+                          getStatus={getStatus}
                         />
                       </div>
                     )}
