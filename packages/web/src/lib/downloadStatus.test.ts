@@ -94,6 +94,7 @@ describe('getFolderDownloadLabel', () => {
     const files = [{ username: 'u', filename: 'a.mp3' }];
     const r = getFolderDownloadLabel(files, true, () => undefined);
     expect(r.label).toBe('Queued');
+    expect(r.disabled).toBe(true);
   });
 
   it('shows average progress across in-progress files', () => {
@@ -108,6 +109,7 @@ describe('getFolderDownloadLabel', () => {
     const r = getFolderDownloadLabel(files, false, (u, f) => statuses[`${u}:${f}`]);
     expect(r.label).toBe('↓ 50%');
     expect(r.variant).toBe('progress');
+    expect(r.disabled).toBe(true);
   });
 
   it('error state wins over all others', () => {
@@ -121,6 +123,7 @@ describe('getFolderDownloadLabel', () => {
     };
     const r = getFolderDownloadLabel(files, false, (u, f) => statuses[`${u}:${f}`]);
     expect(r.variant).toBe('error');
+    expect(r.disabled).toBe(true);
   });
 
   it('returns Done only when all files succeeded', () => {
@@ -135,6 +138,7 @@ describe('getFolderDownloadLabel', () => {
     const r = getFolderDownloadLabel(files, false, (u, f) => statuses[`${u}:${f}`]);
     expect(r.label).toBe('✓ Done');
     expect(r.variant).toBe('done');
+    expect(r.disabled).toBe(true);
   });
 
   it('does not return Done if only some files succeeded', () => {
@@ -147,6 +151,12 @@ describe('getFolderDownloadLabel', () => {
     };
     const r = getFolderDownloadLabel(files, false, (u, f) => statuses[`${u}:${f}`]);
     expect(r.variant).not.toBe('done');
+  });
+
+  it('returns default when files array is empty', () => {
+    const r = getFolderDownloadLabel([], false, () => undefined);
+    expect(r.variant).toBe('default');
+    expect(r.disabled).toBe(false);
   });
 });
 

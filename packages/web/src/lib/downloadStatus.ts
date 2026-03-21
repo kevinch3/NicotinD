@@ -78,6 +78,7 @@ export function getFolderDownloadLabel(
 
   // All files completed successfully (every file must have a succeeded status)
   if (
+    entries.length > 0 &&
     entries.length === files.length &&
     entries.every((e) => e.state === 'Completed, Succeeded')
   )
