@@ -101,12 +101,6 @@ async function main() {
     navidrome,
     serviceManager,
     webDistPath,
-    saveSecretsFn: (username: string, password: string) => {
-      const secrets = loadOrCreateSecrets(config.dataDir);
-      secrets.soulseekUsername = username;
-      secrets.soulseekPassword = password;
-      saveSecrets(config.dataDir, secrets);
-    },
   });
 
   if (watcherRef.current) watcherRef.current.start();

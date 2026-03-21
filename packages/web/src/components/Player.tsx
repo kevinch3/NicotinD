@@ -14,11 +14,18 @@ export function Player() {
     if (!audio) return;
 
     if (currentTrack) {
+      const trackDuration = currentTrack.duration ?? 0;
+      setProgress(0);
+      setDuration(
+        Number.isFinite(trackDuration) && trackDuration > 0 ? trackDuration : 0,
+      );
       audio.src = `/api/stream/${currentTrack.id}?token=${token}`;
       audio.play().catch(() => {});
     } else {
       audio.pause();
       audio.src = '';
+      setProgress(0);
+      setDuration(0);
     }
   }, [currentTrack, token]);
 
@@ -33,33 +40,49 @@ export function Player() {
     const audio = audioRef.current;
     if (!audio) return;
 
-    const onTime = () => setProgress(audio.currentTime);
-    const onDuration = () => setDuration(audio.duration || 0);
+    const onTime = () => {
+      const value = audio.currentTime;
+      setProgress(Number.isFinite(value) && value >= 0 ? value : 0);
+    };
+    const onDuration = () => {
+      const value = audio.duration;
+      setDuration(Number.isFinite(value) && value > 0 ? value : 0);
+    };
     const onEnded = () => playNext();
 
     audio.addEventListener('timeupdate', onTime);
     audio.addEventListener('loadedmetadata', onDuration);
+    audio.addEventListener('durationchange', onDuration);
     audio.addEventListener('ended', onEnded);
     return () => {
       audio.removeEventListener('timeupdate', onTime);
       audio.removeEventListener('loadedmetadata', onDuration);
+      audio.removeEventListener('durationchange', onDuration);
       audio.removeEventListener('ended', onEnded);
     };
   }, [playNext]);
 
   function seek(e: React.MouseEvent<HTMLDivElement>) {
     const audio = audioRef.current;
-    if (!audio || !duration) return;
+    const safeDuration = Number.isFinite(duration) && duration > 0 ? duration : 0;
+    if (!audio || !safeDuration) return;
     const rect = e.currentTarget.getBoundingClientRect();
+    if (!rect.width) return;
     const pct = (e.clientX - rect.left) / rect.width;
-    audio.currentTime = pct * duration;
+    audio.currentTime = Math.max(0, Math.min(1, pct)) * safeDuration;
   }
 
   function formatTime(s: number) {
+    if (!Number.isFinite(s) || s < 0) return '0:00';
     const m = Math.floor(s / 60);
     const sec = Math.floor(s % 60);
     return `${m}:${sec.toString().padStart(2, '0')}`;
   }
+
+  const safeDuration = Number.isFinite(duration) && duration > 0 ? duration : 0;
+  const safeProgress =
+    Number.isFinite(progress) && progress >= 0 ? Math.min(progress, safeDuration || progress) : 0;
+  const progressPercent = safeDuration > 0 ? Math.max(0, Math.min(100, (safeProgress / safeDuration) * 100)) : 0;
 
   if (!currentTrack) return <audio ref={audioRef} />;
 
@@ -101,14 +124,14 @@ export function Player() {
           </button>
 
           <div className="flex items-center gap-2 w-full max-w-md">
-            <span className="text-xs text-zinc-500 w-10 text-right">{formatTime(progress)}</span>
+            <span className="text-xs text-zinc-500 w-10 text-right">{formatTime(safeProgress)}</span>
             <div className="flex-1 h-1 bg-zinc-700 rounded-full cursor-pointer" onClick={seek}>
               <div
                 className="h-full bg-zinc-300 rounded-full transition-all"
-                style={{ width: duration ? `${(progress / duration) * 100}%` : '0%' }}
+                style={{ width: `${progressPercent}%` }}
               />
             </div>
-            <span className="text-xs text-zinc-500 w-10">{formatTime(duration)}</span>
+            <span className="text-xs text-zinc-500 w-10">{formatTime(safeDuration)}</span>
           </div>
         </div>
 
