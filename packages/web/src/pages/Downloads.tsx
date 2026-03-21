@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '@/lib/api';
 import { usePlayerStore, type Track } from '@/stores/player';
 import { usePreserveStore } from '@/stores/preserve';
+import { useTransferStore } from '@/stores/transfers';
 
 // --- Types ---
 
@@ -122,7 +123,7 @@ function timeAgo(dateStr: string): string {
 // --- Component ---
 
 export function DownloadsPage() {
-  const [downloads, setDownloads] = useState<Transfer[]>([]);
+  const downloads = useTransferStore((s) => s.downloads) as Transfer[];
   const [recentSongs, setRecentSongs] = useState<RecentSong[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState<Set<string>>(new Set());
@@ -140,15 +141,6 @@ export function DownloadsPage() {
   const removePreserved = usePreserveStore((s) => s.remove);
   const downloadToDevice = usePreserveStore((s) => s.downloadToDevice);
 
-  const fetchDownloads = useCallback(async () => {
-    try {
-      const data = (await api.getDownloads()) as Transfer[];
-      setDownloads(data);
-    } catch {
-      /* ignore */
-    }
-  }, []);
-
   const fetchRecentSongs = useCallback(async () => {
     try {
       const data = await api.getRecentSongs(50);
@@ -157,13 +149,6 @@ export function DownloadsPage() {
       /* ignore */
     }
   }, []);
-
-  // Poll downloads every 3s
-  useEffect(() => {
-    fetchDownloads();
-    const interval = setInterval(fetchDownloads, 3000);
-    return () => clearInterval(interval);
-  }, [fetchDownloads]);
 
   // Fetch recent songs on mount
   useEffect(() => {
@@ -196,7 +181,7 @@ export function DownloadsPage() {
         await api.cancelDownload(group.username, fileId);
       } catch { /* may already be gone */ }
     }
-    fetchDownloads();
+    useTransferStore.getState().poll();
   }
 
   async function clearAllFinished() {
@@ -207,14 +192,14 @@ export function DownloadsPage() {
         } catch { /* ignore */ }
       }
     }
-    fetchDownloads();
+    useTransferStore.getState().poll();
   }
 
   async function cancelAll() {
     try {
       await api.cancelAllDownloads();
     } catch { /* ignore */ }
-    fetchDownloads();
+    useTransferStore.getState().poll();
   }
 
   async function triggerScan() {
