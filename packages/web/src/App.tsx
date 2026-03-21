@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores/auth';
 import { usePreserveStore } from '@/stores/preserve';
+import { useTransferStore } from '@/stores/transfers';
 import { api, type SetupStatus } from '@/lib/api';
 import { Layout } from '@/components/Layout';
 import { LoginPage } from '@/pages/Login';
@@ -35,6 +36,15 @@ export function App() {
   useEffect(() => {
     if (isAuthenticated) {
       usePreserveStore.getState().init();
+    }
+  }, [isAuthenticated]);
+
+  // Start/stop global transfer polling on auth state change
+  useEffect(() => {
+    if (isAuthenticated) {
+      useTransferStore.getState().startPolling();
+    } else {
+      useTransferStore.getState().stopPolling();
     }
   }, [isAuthenticated]);
 
