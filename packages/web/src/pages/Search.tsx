@@ -10,6 +10,7 @@ interface NetworkResult {
   username: string;
   freeUploadSlots: number;
   uploadSpeed: number;
+  queueLength?: number;
   files: Array<{
     filename: string;
     size: number;
@@ -26,6 +27,7 @@ interface FlatFile {
   username: string;
   freeUploadSlots: number;
   uploadSpeed: number;
+  queueLength?: number;
   filename: string;
   size: number;
   bitRate?: number;
@@ -122,6 +124,7 @@ function flattenAndFilter(results: NetworkResult[]): FlatFile[] {
         username: result.username,
         freeUploadSlots: result.freeUploadSlots,
         uploadSpeed: result.uploadSpeed,
+        queueLength: result.queueLength,
         filename: file.filename,
         size: file.size,
         bitRate: file.bitRate,
@@ -133,10 +136,11 @@ function flattenAndFilter(results: NetworkResult[]): FlatFile[] {
       });
     }
   }
-  // Sort by speed descending, then alphabetically by filename as tiebreaker
+  // Sort by speed descending, penalise by queue length, then alphabetically
   flat.sort(
     (a, b) =>
       b.uploadSpeed - a.uploadSpeed ||
+      (a.queueLength ?? 0) - (b.queueLength ?? 0) ||
       getDisplayTitle(a).localeCompare(getDisplayTitle(b)) ||
       a.filename.localeCompare(b.filename),
   );
@@ -177,6 +181,12 @@ export function SearchPage() {
       .catch(() => setNetworkConnected(false));
   }, []);
 
+  // Cancel + delete the active slskd search (fire-and-forget, errors are non-fatal)
+  const cleanupSearch = useCallback((id: string) => {
+    api.cancelSearch(id).catch(() => {});
+    api.deleteSearch(id).catch(() => {});
+  }, []);
+
   // Poll network results (only if slskd was reachable)
   useEffect(() => {
     if (!searchId || networkState === 'complete' || !networkAvailable) return;
@@ -197,9 +207,26 @@ export function SearchPage() {
     return () => clearInterval(interval);
   }, [searchId, networkState, networkAvailable]);
 
+  // Cleanup search on unmount
+  useEffect(() => {
+    return () => {
+      if (searchId) cleanupSearch(searchId);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchId]);
+
+  function handleStopSearch() {
+    if (searchId) cleanupSearch(searchId);
+    setNetworkState('complete');
+  }
+
   const handleSearch = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     if (!query.trim()) return;
+
+    // Cancel any running search before starting a new one
+    const prevId = searchId;
+    if (prevId) cleanupSearch(prevId);
 
     setLoading(true);
     useSearchStore.getState().reset();
@@ -219,7 +246,7 @@ export function SearchPage() {
     } finally {
       setLoading(false);
     }
-  }, [query, setLocal, setNetworkState]);
+  }, [query, searchId, cleanupSearch, setLocal, setNetworkState]);
 
   async function handleDownload(username: string, file: { filename: string; size: number }) {
     const key = `${username}:${file.filename}`;
@@ -413,6 +440,12 @@ export function SearchPage() {
                 {flatNetwork.length > 0 && (
                   <span className="font-normal normal-case tracking-normal">{flatNetwork.length} tracks</span>
                 )}
+                <button
+                  onClick={handleStopSearch}
+                  className="font-normal normal-case tracking-normal text-zinc-500 hover:text-zinc-300 transition"
+                >
+                  Stop
+                </button>
               </>
             )}
           </span>
@@ -481,6 +514,9 @@ export function SearchPage() {
                         {formatSize(file.size)}
                         {' · '}
                         <span className="text-emerald-600">{formatSpeed(file.uploadSpeed)}</span>
+                        {file.queueLength != null && file.queueLength > 0 && (
+                          <span className="text-zinc-600"> · {file.queueLength} queued</span>
+                        )}
                       </p>
                     </div>
                     <button

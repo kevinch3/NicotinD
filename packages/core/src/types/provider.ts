@@ -28,6 +28,7 @@ export interface NetworkPollResult {
     username: string;
     freeUploadSlots: number;
     uploadSpeed: number;
+    queueLength?: number;
     files: NetworkFile[];
   }>;
   canBrowse?: boolean;

@@ -115,6 +115,7 @@ export const api = {
         username: string;
         freeUploadSlots: number;
         uploadSpeed: number;
+        queueLength?: number;
         files: Array<{
           filename: string;
           size: number;
@@ -127,6 +128,10 @@ export const api = {
         }>;
       }>;
     }>(`/api/search/${searchId}/network`),
+  cancelSearch: (searchId: string) =>
+    request<{ ok: boolean }>(`/api/search/${searchId}/cancel`, { method: 'PUT' }),
+  deleteSearch: (searchId: string) =>
+    request<{ ok: boolean }>(`/api/search/${searchId}`, { method: 'DELETE' }),
 
   // Downloads
   enqueueDownload: (username: string, files: Array<{ filename: string; size: number }>) =>
@@ -134,6 +139,8 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ username, files }),
     }),
+  cancelAllDownloads: () =>
+    request<{ ok: boolean }>('/api/downloads', { method: 'DELETE' }),
   browseUser: (username: string) =>
     request<Array<{
       name: string;
@@ -163,6 +170,12 @@ export const api = {
     request<{ slskd: { healthy: boolean }; navidrome: { healthy: boolean } }>('/api/system/status'),
   triggerScan: () =>
     request<{ ok: boolean }>('/api/system/scan', { method: 'POST' }),
+  getScanStatus: () =>
+    request<{ scanning: boolean; count: number }>('/api/system/scan/status'),
+  restartService: (service: 'slskd' | 'navidrome') =>
+    request<{ ok: boolean }>(`/api/system/restart/${service}`, { method: 'POST' }),
+  getServiceLogs: (service: string, lines = 100) =>
+    request<{ logs: string[] }>(`/api/system/logs/${service}?lines=${lines}`),
 
   // Settings
   getSoulseekSettings: () =>

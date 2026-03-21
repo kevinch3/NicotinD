@@ -210,6 +210,13 @@ export function DownloadsPage() {
     fetchDownloads();
   }
 
+  async function cancelAll() {
+    try {
+      await api.cancelAllDownloads();
+    } catch { /* ignore */ }
+    fetchDownloads();
+  }
+
   async function triggerScan() {
     if (scanning) return;
 
@@ -392,14 +399,24 @@ export function DownloadsPage() {
                 </span>
               )}
             </h2>
-            {clearableGroups.length > 0 && (
-              <button
-                onClick={clearAllFinished}
-                className="text-xs text-zinc-500 hover:text-zinc-300 transition"
-              >
-                Clear all finished
-              </button>
-            )}
+            <div className="flex items-center gap-3">
+              {inProgressGroups.length > 0 && (
+                <button
+                  onClick={cancelAll}
+                  className="text-xs text-red-500/70 hover:text-red-400 transition"
+                >
+                  Cancel all
+                </button>
+              )}
+              {clearableGroups.length > 0 && (
+                <button
+                  onClick={clearAllFinished}
+                  className="text-xs text-zinc-500 hover:text-zinc-300 transition"
+                >
+                  Clear all finished
+                </button>
+              )}
+            </div>
           </div>
           <div className="grid gap-2">
             {/* In progress */}

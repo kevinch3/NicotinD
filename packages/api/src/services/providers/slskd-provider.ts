@@ -59,6 +59,7 @@ export class SlskdSearchProvider implements ISearchProvider, IBrowseProvider {
           username: r.username,
           freeUploadSlots: r.freeUploadSlots ?? 0,
           uploadSpeed: r.uploadSpeed,
+          queueLength: r.queueLength,
           files: (r.files ?? [])
             .filter((f) => {
               const ext = f.filename.slice(f.filename.lastIndexOf('.')).toLowerCase();

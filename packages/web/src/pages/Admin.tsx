@@ -36,9 +36,51 @@ export function AdminPage() {
   const [deleteTarget, setDeleteTarget] = useState<UserRow | null>(null);
   const [deleting, setDeleting] = useState(false);
 
+  // System panel
+  const [systemStatus, setSystemStatus] = useState<{ slskd: { healthy: boolean; connected: boolean }; navidrome: { healthy: boolean } } | null>(null);
+  const [scanStatus, setScanStatus] = useState<{ scanning: boolean; count: number } | null>(null);
+  const [restarting, setRestarting] = useState<{ slskd: boolean; navidrome: boolean }>({ slskd: false, navidrome: false });
+  const [logService, setLogService] = useState<'slskd' | 'navidrome'>('slskd');
+  const [logs, setLogs] = useState<string[]>([]);
+  const [logsLoading, setLogsLoading] = useState(false);
+
   useEffect(() => {
     loadUsers();
+    loadSystemStatus();
   }, []);
+
+  async function loadSystemStatus() {
+    try {
+      const [status, scan] = await Promise.all([api.getStatus(), api.getScanStatus()]);
+      setSystemStatus(status);
+      setScanStatus(scan);
+    } catch { /* non-fatal */ }
+  }
+
+  async function handleRestart(service: 'slskd' | 'navidrome') {
+    setRestarting((prev) => ({ ...prev, [service]: true }));
+    try {
+      await api.restartService(service);
+      setTimeout(loadSystemStatus, 3000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : `Failed to restart ${service}`);
+    } finally {
+      setRestarting((prev) => ({ ...prev, [service]: false }));
+    }
+  }
+
+  async function loadLogs(service: 'slskd' | 'navidrome') {
+    setLogService(service);
+    setLogsLoading(true);
+    try {
+      const res = await api.getServiceLogs(service);
+      setLogs(res.logs);
+    } catch {
+      setLogs([`Failed to load ${service} logs`]);
+    } finally {
+      setLogsLoading(false);
+    }
+  }
 
   async function loadUsers() {
     setLoading(true);
@@ -110,7 +152,8 @@ export function AdminPage() {
   }
 
   return (
-    <div className="max-w-3xl mx-auto px-6 py-8">
+    <div className="max-w-3xl mx-auto px-6 py-8 space-y-12">
+      <div>
       <h1 className="text-xl font-bold text-zinc-100 mb-8">User Management</h1>
 
       {error && (
@@ -224,6 +267,104 @@ export function AdminPage() {
           </tbody>
         </table>
       </section>
+
+      </div>
+
+      {/* System Panel */}
+      <div>
+        <h2 className="text-xl font-bold text-zinc-100 mb-8">System</h2>
+
+        {/* Service cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
+          {(['slskd', 'navidrome'] as const).map((svc) => {
+            const health = systemStatus?.[svc];
+            const isHealthy = health?.healthy ?? false;
+            const isRestarting = restarting[svc];
+            return (
+              <div key={svc} className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-sm font-medium text-zinc-200 capitalize">{svc}</p>
+                  <span className={`inline-flex items-center gap-1.5 text-xs mt-1 ${isHealthy ? 'text-emerald-400' : 'text-red-400'}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${isHealthy ? 'bg-emerald-500' : 'bg-red-500'}`} />
+                    {systemStatus ? (isHealthy ? 'Healthy' : 'Unreachable') : '—'}
+                    {svc === 'slskd' && systemStatus && (
+                      <span className="text-zinc-500 ml-1">
+                        {(systemStatus.slskd as any).connected ? '· Connected' : '· Disconnected'}
+                      </span>
+                    )}
+                  </span>
+                </div>
+                <button
+                  onClick={() => handleRestart(svc)}
+                  disabled={isRestarting}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition disabled:opacity-50"
+                >
+                  {isRestarting ? 'Restarting…' : 'Restart'}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Scan status */}
+        {scanStatus && (
+          <div className="flex items-center gap-3 mb-8 text-sm">
+            <span className="text-zinc-500">Library scan:</span>
+            {scanStatus.scanning ? (
+              <span className="flex items-center gap-2 text-blue-400">
+                <span className="inline-block w-3 h-3 border-2 border-blue-800 border-t-blue-400 rounded-full animate-spin" />
+                Scanning — {scanStatus.count.toLocaleString()} songs indexed
+              </span>
+            ) : (
+              <span className="text-zinc-400">Idle — {scanStatus.count.toLocaleString()} songs</span>
+            )}
+          </div>
+        )}
+
+        {/* Log viewer */}
+        <div>
+          <div className="flex items-center gap-3 mb-3">
+            <span className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Logs</span>
+            <div className="flex gap-1">
+              {(['slskd', 'navidrome'] as const).map((svc) => (
+                <button
+                  key={svc}
+                  onClick={() => loadLogs(svc)}
+                  className={`px-3 py-1 rounded-md text-xs font-medium transition ${
+                    logService === svc && logs.length > 0
+                      ? 'bg-zinc-700 text-zinc-200'
+                      : 'text-zinc-500 hover:text-zinc-300'
+                  }`}
+                >
+                  {svc}
+                </button>
+              ))}
+            </div>
+            {logs.length > 0 && (
+              <button
+                onClick={() => loadLogs(logService)}
+                className="ml-auto text-xs text-zinc-500 hover:text-zinc-300 transition"
+              >
+                Refresh
+              </button>
+            )}
+          </div>
+          {logsLoading && (
+            <div className="flex items-center gap-2 py-4 text-xs text-zinc-500">
+              <span className="inline-block w-3 h-3 border-2 border-zinc-700 border-t-zinc-400 rounded-full animate-spin" />
+              Loading logs…
+            </div>
+          )}
+          {!logsLoading && logs.length > 0 && (
+            <pre className="rounded-lg bg-zinc-950 border border-zinc-800 p-4 text-[11px] text-zinc-400 overflow-auto max-h-72 leading-relaxed">
+              {logs.join('\n')}
+            </pre>
+          )}
+          {!logsLoading && logs.length === 0 && (
+            <p className="text-xs text-zinc-600">Select a service above to view logs.</p>
+          )}
+        </div>
+      </div>
 
       {/* Reset Password Modal */}
       {resetTarget && (

@@ -10,6 +10,7 @@ interface NetworkResult {
   username: string;
   freeUploadSlots: number;
   uploadSpeed: number;
+  queueLength?: number;
   files: Array<{
     filename: string;
     size: number;
