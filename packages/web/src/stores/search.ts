@@ -10,7 +10,16 @@ interface NetworkResult {
   username: string;
   freeUploadSlots: boolean;
   uploadSpeed: number;
-  files: Array<{ filename: string; size: number; bitRate?: number; length?: number }>;
+  files: Array<{
+    filename: string;
+    size: number;
+    bitRate?: number;
+    length?: number;
+    title?: string;
+    artist?: string;
+    album?: string;
+    trackNumber?: string;
+  }>;
 }
 
 interface SearchState {

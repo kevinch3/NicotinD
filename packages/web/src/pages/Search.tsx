@@ -8,7 +8,16 @@ interface NetworkResult {
   username: string;
   freeUploadSlots: boolean;
   uploadSpeed: number;
-  files: Array<{ filename: string; size: number; bitRate?: number; length?: number }>;
+  files: Array<{
+    filename: string;
+    size: number;
+    bitRate?: number;
+    length?: number;
+    title?: string;
+    artist?: string;
+    album?: string;
+    trackNumber?: string;
+  }>;
 }
 
 interface FlatFile {
@@ -18,6 +27,10 @@ interface FlatFile {
   size: number;
   bitRate?: number;
   length?: number;
+  title?: string;
+  artist?: string;
+  album?: string;
+  trackNumber?: string;
 }
 
 const ALLOWED_EXTENSIONS = ['.mp3', '.ogg'];
@@ -77,6 +90,24 @@ function highlightText(text: string, terms: string[]): ReactNode {
   return nodes.length > 0 ? nodes : text;
 }
 
+function extractName(filepath: string) {
+  const parts = filepath.split(/[\\/]/);
+  return parts[parts.length - 1];
+}
+
+function getFilenameStem(filepath: string) {
+  return extractName(filepath).replace(/\.[^/.]+$/, '');
+}
+
+function getDisplayTitle(file: Pick<FlatFile, 'filename' | 'title'>) {
+  return file.title ?? getFilenameStem(file.filename);
+}
+
+function getDisplaySubtitle(file: Pick<FlatFile, 'artist' | 'album'>) {
+  const parts = [file.artist, file.album].filter(Boolean);
+  return parts.length > 0 ? parts.join(' · ') : '';
+}
+
 function flattenAndFilter(results: NetworkResult[]): FlatFile[] {
   const flat: FlatFile[] = [];
   for (const result of results) {
@@ -91,11 +122,20 @@ function flattenAndFilter(results: NetworkResult[]): FlatFile[] {
         size: file.size,
         bitRate: file.bitRate,
         length: file.length,
+        title: file.title,
+        artist: file.artist,
+        album: file.album,
+        trackNumber: file.trackNumber,
       });
     }
   }
   // Sort by speed descending, then alphabetically by filename as tiebreaker
-  flat.sort((a, b) => b.uploadSpeed - a.uploadSpeed || a.filename.localeCompare(b.filename));
+  flat.sort(
+    (a, b) =>
+      b.uploadSpeed - a.uploadSpeed ||
+      getDisplayTitle(a).localeCompare(getDisplayTitle(b)) ||
+      a.filename.localeCompare(b.filename),
+  );
   return flat;
 }
 
@@ -209,11 +249,6 @@ export function SearchPage() {
   function formatSpeed(bytesPerSec: number) {
     if (bytesPerSec >= 1_000_000) return `${(bytesPerSec / 1_000_000).toFixed(1)} MB/s`;
     return `${(bytesPerSec / 1_000).toFixed(0)} KB/s`;
-  }
-
-  function extractName(filepath: string) {
-    const parts = filepath.split(/[\\/]/);
-    return parts[parts.length - 1];
   }
 
   const highlightTerms = getHighlightTerms(query);
@@ -382,17 +417,32 @@ export function SearchPage() {
           {flatNetwork.map((file) => {
             const key = `${file.username}:${file.filename}`;
             const queued = downloading.has(key);
+            const title = getDisplayTitle(file);
+            const subtitle = getDisplaySubtitle(file);
             return (
               <div
                 key={key}
-                className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-zinc-800/50 transition"
+                className="flex items-start gap-3 px-3 py-2 rounded-lg hover:bg-zinc-800/50 transition"
               >
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm text-zinc-300 truncate">{highlightText(extractName(file.filename), highlightTerms)}</p>
-                  <p className="text-xs text-zinc-600 truncate">
-                    {file.bitRate ? `${file.bitRate} kbps` : ''}
-                    {file.length ? ` · ${formatDuration(file.length)}` : ''}
-                    {' · '}
+                  <div className="flex items-start gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm text-zinc-300 truncate">{highlightText(title, highlightTerms)}</p>
+                      {subtitle && (
+                        <p className="text-xs text-zinc-500 truncate">
+                          {highlightText(subtitle, highlightTerms)}
+                        </p>
+                      )}
+                    </div>
+                    {file.length ? (
+                      <span className="shrink-0 pt-0.5 text-xs text-zinc-600">
+                        {formatDuration(file.length)}
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="mt-1 text-[11px] text-zinc-600 truncate">
+                    {file.bitRate ? `${file.bitRate} kbps` : 'Unknown bitrate'}
+                    {file.bitRate || file.length ? ' · ' : ''}
                     {formatSize(file.size)}
                     {' · '}
                     <span className="text-emerald-600">{formatSpeed(file.uploadSpeed)}</span>

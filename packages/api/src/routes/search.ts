@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { Navidrome } from '@nicotind/navidrome-client';
 import type { AuthEnv } from '../middleware/auth.js';
 import type { SlskdRef } from '../index.js';
+import { inferMetadataFromPath } from '../services/metadata-fixer.js';
 
 // In-memory map of active network searches: searchId -> slskd search id
 const activeSearches = new Map<string, string>();
@@ -123,6 +124,7 @@ export function searchRoutes(slskdRef: SlskdRef, navidrome: Navidrome) {
             size: f.size,
             bitRate: f.bitRate,
             length: f.length,
+            ...inferMetadataFromPath(f.filename, ''),
           })),
         })),
       });

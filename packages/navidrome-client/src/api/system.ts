@@ -13,8 +13,8 @@ export class SystemApi {
     }
   }
 
-  async startScan(): Promise<void> {
-    await this.client.request('startScan.view');
+  async startScan(fullScan = false): Promise<void> {
+    await this.client.request('startScan.view', fullScan ? { fullScan: 'true' } : {});
   }
 
   async getScanStatus(): Promise<ScanStatus> {

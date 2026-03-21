@@ -49,7 +49,7 @@ let nodeId3MissingLogged = false;
 async function getNodeId3(): Promise<NodeId3Api | null> {
   if (!nodeId3Promise) {
     nodeId3Promise = import('node-id3')
-      .then((mod) => (mod.default ?? mod) as NodeId3Api)
+      .then((mod) => (mod.default ?? mod) as unknown as NodeId3Api)
       .catch((err) => {
         if (!nodeId3MissingLogged) {
           nodeId3MissingLogged = true;

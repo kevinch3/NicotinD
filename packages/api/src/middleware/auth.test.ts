@@ -27,7 +27,7 @@ describe('authMiddleware', () => {
   });
 
   it('returns 200 for a valid token in the Authorization header', async () => {
-    const payload = { id: 'user-123', username: 'testuser', role: 'user' as const };
+    const payload = { sub: 'user-123', username: 'testuser', role: 'user' as const };
     const token = await signJwt(payload, SECRET);
     
     const res = await app.request('/protected', {
@@ -41,7 +41,7 @@ describe('authMiddleware', () => {
   });
 
   it('returns 200 for a valid token in the query parameter', async () => {
-    const payload = { id: 'user-456', username: 'queryuser', role: 'admin' as const };
+    const payload = { sub: 'user-456', username: 'queryuser', role: 'admin' as const };
     const token = await signJwt(payload, SECRET);
     
     const res = await app.request(`/protected?token=${token}`);
@@ -52,7 +52,7 @@ describe('authMiddleware', () => {
   });
 
   it('returns 401 if token is signed with a different secret', async () => {
-    const payload = { id: 'user-123', username: 'testuser', role: 'user' as const };
+    const payload = { sub: 'user-123', username: 'testuser', role: 'user' as const };
     const token = await signJwt(payload, 'wrong-secret');
     
     const res = await app.request('/protected', {
