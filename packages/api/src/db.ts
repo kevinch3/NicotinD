@@ -32,25 +32,6 @@ export function initDatabase(dataDir: string): Database {
   `);
 
   db.run(`
-    CREATE TABLE IF NOT EXISTS playlists (
-      id TEXT PRIMARY KEY,
-      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      name TEXT NOT NULL,
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-    )
-  `);
-
-  db.run(`
-    CREATE TABLE IF NOT EXISTS playlist_songs (
-      playlist_id TEXT NOT NULL REFERENCES playlists(id) ON DELETE CASCADE,
-      song_id TEXT NOT NULL,
-      position INTEGER NOT NULL,
-      PRIMARY KEY (playlist_id, song_id)
-    )
-  `);
-
-  db.run(`
     CREATE TABLE IF NOT EXISTS hidden_transfers (
       id TEXT PRIMARY KEY,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))

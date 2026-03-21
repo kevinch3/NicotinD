@@ -1,0 +1,150 @@
+<h2>New Navigation & Playlists Page</h2>
+<p class="subtitle">Downloads demoted to nav indicator — Playlists gets top billing</p>
+
+<div class="section">
+  <h3>Navigation Bar (Before → After)</h3>
+  <div class="split">
+    <div class="mockup">
+      <div class="mockup-header">Current Nav</div>
+      <div class="mockup-body">
+        <div style="display:flex; align-items:center; justify-content:space-between; background:#18181b; padding:12px 20px; border-radius:8px;">
+          <div style="display:flex; align-items:center; gap:24px;">
+            <span style="font-weight:bold; color:#a1a1aa; font-size:18px;">NicotinD</span>
+            <span style="color:#f4f4f5; border-bottom:2px solid #f4f4f5; padding-bottom:2px;">Search</span>
+            <span style="color:#a1a1aa;">Downloads</span>
+            <span style="color:#a1a1aa;">Library</span>
+            <span style="color:#a1a1aa;">Settings</span>
+          </div>
+          <span style="color:#71717a; font-size:13px;">admin ↗</span>
+        </div>
+      </div>
+    </div>
+    <div class="mockup">
+      <div class="mockup-header">New Nav</div>
+      <div class="mockup-body">
+        <div style="display:flex; align-items:center; justify-content:space-between; background:#18181b; padding:12px 20px; border-radius:8px;">
+          <div style="display:flex; align-items:center; gap:24px;">
+            <span style="font-weight:bold; color:#a1a1aa; font-size:18px;">NicotinD</span>
+            <span style="color:#f4f4f5; border-bottom:2px solid #f4f4f5; padding-bottom:2px;">Search</span>
+            <span style="color:#a1a1aa;">Playlists</span>
+            <span style="color:#a1a1aa;">Library</span>
+            <span style="color:#a1a1aa;">Settings</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:16px;">
+            <!-- Download indicator -->
+            <div style="position:relative; cursor:pointer;" title="2 downloads active">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#a1a1aa" stroke-width="2">
+                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+              </svg>
+              <span style="position:absolute; top:-6px; right:-8px; background:#3b82f6; color:white; font-size:10px; border-radius:50%; width:16px; height:16px; display:flex; align-items:center; justify-content:center;">2</span>
+            </div>
+            <span style="color:#71717a; font-size:13px;">admin ↗</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Download Indicator Dropdown (on click)</h3>
+  <div class="mockup">
+    <div class="mockup-header">Download Dropdown</div>
+    <div class="mockup-body">
+      <div style="background:#27272a; border-radius:8px; padding:16px; max-width:360px; margin:0 auto;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+          <span style="color:#f4f4f5; font-weight:600; font-size:14px;">Downloads</span>
+          <span style="color:#71717a; font-size:12px;">2 active</span>
+        </div>
+        <!-- Active download -->
+        <div style="background:#18181b; border-radius:6px; padding:10px 12px; margin-bottom:8px;">
+          <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
+            <span style="color:#e4e4e7; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:220px;">Radiohead - OK Computer</span>
+            <span style="color:#3b82f6; font-size:12px;">67%</span>
+          </div>
+          <div style="background:#3f3f46; border-radius:4px; height:4px; overflow:hidden;">
+            <div style="background:#3b82f6; width:67%; height:100%; border-radius:4px;"></div>
+          </div>
+          <div style="color:#71717a; font-size:11px; margin-top:4px;">8 of 12 tracks</div>
+        </div>
+        <!-- Queued download -->
+        <div style="background:#18181b; border-radius:6px; padding:10px 12px; margin-bottom:8px;">
+          <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+            <span style="color:#e4e4e7; font-size:13px;">Daft Punk - Discovery</span>
+            <span style="color:#71717a; font-size:12px;">Queued</span>
+          </div>
+          <div style="color:#71717a; font-size:11px;">14 tracks · Waiting</div>
+        </div>
+        <!-- Completed -->
+        <div style="background:#18181b; border-radius:6px; padding:10px 12px; opacity:0.7;">
+          <div style="display:flex; justify-content:space-between;">
+            <span style="color:#e4e4e7; font-size:13px;">Tame Impala - Currents</span>
+            <span style="color:#34d399; font-size:12px;">✓ Done</span>
+          </div>
+          <div style="color:#71717a; font-size:11px; margin-top:2px;">13 tracks · Playlist created</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Playlists Page</h3>
+  <div class="mockup">
+    <div class="mockup-header">Playlists Page</div>
+    <div class="mockup-body" style="background:#09090b; padding:24px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+        <h2 style="color:#f4f4f5; font-size:22px; margin:0;">Playlists</h2>
+      </div>
+      <!-- Playlist grid -->
+      <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:16px;">
+        <!-- Playlist card 1 -->
+        <div style="background:#18181b; border-radius:10px; overflow:hidden; cursor:pointer;">
+          <div style="background:linear-gradient(135deg, #6366f1, #8b5cf6); height:120px; display:flex; align-items:center; justify-content:center;">
+            <span style="font-size:36px; opacity:0.5;">♫</span>
+          </div>
+          <div style="padding:12px;">
+            <div style="color:#f4f4f5; font-weight:600; font-size:14px;">OK Computer</div>
+            <div style="color:#71717a; font-size:12px; margin-top:2px;">Radiohead · 12 tracks</div>
+            <div style="color:#52525b; font-size:11px; margin-top:4px;">Added today</div>
+          </div>
+        </div>
+        <!-- Playlist card 2 -->
+        <div style="background:#18181b; border-radius:10px; overflow:hidden; cursor:pointer;">
+          <div style="background:linear-gradient(135deg, #ec4899, #f43f5e); height:120px; display:flex; align-items:center; justify-content:center;">
+            <span style="font-size:36px; opacity:0.5;">♫</span>
+          </div>
+          <div style="padding:12px;">
+            <div style="color:#f4f4f5; font-weight:600; font-size:14px;">Currents</div>
+            <div style="color:#71717a; font-size:12px; margin-top:2px;">Tame Impala · 13 tracks</div>
+            <div style="color:#52525b; font-size:11px; margin-top:4px;">Added today</div>
+          </div>
+        </div>
+        <!-- Playlist card 3 -->
+        <div style="background:#18181b; border-radius:10px; overflow:hidden; cursor:pointer;">
+          <div style="background:linear-gradient(135deg, #14b8a6, #06b6d4); height:120px; display:flex; align-items:center; justify-content:center;">
+            <span style="font-size:36px; opacity:0.5;">♫</span>
+          </div>
+          <div style="padding:12px;">
+            <div style="color:#f4f4f5; font-weight:600; font-size:14px;">Discovery</div>
+            <div style="color:#71717a; font-size:12px; margin-top:2px;">Daft Punk · 14 tracks</div>
+            <div style="color:#52525b; font-size:11px; margin-top:4px;">Added yesterday</div>
+          </div>
+        </div>
+        <!-- Playlist card 4 -->
+        <div style="background:#18181b; border-radius:10px; overflow:hidden; cursor:pointer;">
+          <div style="background:linear-gradient(135deg, #f59e0b, #ef4444); height:120px; display:flex; align-items:center; justify-content:center;">
+            <span style="font-size:36px; opacity:0.5;">♫</span>
+          </div>
+          <div style="padding:12px;">
+            <div style="color:#f4f4f5; font-weight:600; font-size:14px;">In Rainbows</div>
+            <div style="color:#71717a; font-size:12px; margin-top:2px;">Radiohead · 10 tracks</div>
+            <div style="color:#52525b; font-size:11px; margin-top:4px;">Added 3 days ago</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<p class="subtitle" style="margin-top:24px;">Key changes: Downloads → nav icon with badge & dropdown. Playlists gets a dedicated page with album-like cards. Auto-created playlists from completed downloads show with gradient placeholders (replaced by cover art from Navidrome when available).</p>

@@ -1,11 +1,12 @@
 import { NavLink, Outlet } from 'react-router-dom';
 import { Player } from './Player';
+import { DownloadIndicator } from './DownloadIndicator';
 import { useAuthStore } from '@/stores/auth';
 import { usePlayerStore } from '@/stores/player';
 
 const navItems = [
   { to: '/', label: 'Search' },
-  { to: '/downloads', label: 'Downloads' },
+  { to: '/playlists', label: 'Playlists' },
   { to: '/library', label: 'Library' },
   { to: '/settings', label: 'Settings' },
 ];
@@ -41,6 +42,7 @@ export function Layout() {
           </nav>
         </div>
         <div className="flex items-center gap-3">
+          <DownloadIndicator />
           <span className="text-sm text-zinc-500">{username}</span>
           <button
             onClick={logout}

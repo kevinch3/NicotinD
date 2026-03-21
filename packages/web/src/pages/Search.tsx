@@ -2,12 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth';
 import { usePlayerStore, type Track } from '@/stores/player';
-
-interface LocalResults {
-  artists: Array<{ id: string; name: string; albumCount?: number }>;
-  albums: Array<{ id: string; name: string; artist: string; coverArt?: string; year?: number }>;
-  songs: Array<{ id: string; title: string; artist: string; album: string; duration?: number; coverArt?: string }>;
-}
+import { useSearchStore } from '@/stores/search';
 
 interface NetworkResult {
   username: string;
@@ -50,13 +45,21 @@ function flattenAndFilter(results: NetworkResult[]): FlatFile[] {
 }
 
 export function SearchPage() {
-  const [query, setQuery] = useState('');
+  // Persistent state (survives tab navigation)
+  const query = useSearchStore((s) => s.query);
+  const setQuery = useSearchStore((s) => s.setQuery);
+  const local = useSearchStore((s) => s.local);
+  const setLocal = useSearchStore((s) => s.setLocal);
+  const network = useSearchStore((s) => s.network);
+  const setNetwork = useSearchStore((s) => s.setNetwork);
+  const networkState = useSearchStore((s) => s.networkState);
+  const setNetworkState = useSearchStore((s) => s.setNetworkState);
+  const downloading = useSearchStore((s) => s.downloading);
+  const addDownloading = useSearchStore((s) => s.addDownloading);
+
+  // Ephemeral state (resets on remount — that's fine)
   const [loading, setLoading] = useState(false);
-  const [local, setLocal] = useState<LocalResults | null>(null);
-  const [network, setNetwork] = useState<NetworkResult[]>([]);
-  const [networkState, setNetworkState] = useState<'idle' | 'searching' | 'complete'>('idle');
   const [searchId, setSearchId] = useState<string | null>(null);
-  const [downloading, setDownloading] = useState<Set<string>>(new Set());
   const [errors, setErrors] = useState<string[]>([]);
   const [networkAvailable, setNetworkAvailable] = useState(true);
   const [networkConnected, setNetworkConnected] = useState<boolean | null>(null);
@@ -95,9 +98,7 @@ export function SearchPage() {
     if (!query.trim()) return;
 
     setLoading(true);
-    setLocal(null);
-    setNetwork([]);
-    setNetworkState('idle');
+    useSearchStore.getState().reset();
     setErrors([]);
     setSearchError(null);
     setNetworkAvailable(true);
@@ -114,11 +115,11 @@ export function SearchPage() {
     } finally {
       setLoading(false);
     }
-  }, [query]);
+  }, [query, setLocal, setNetworkState]);
 
   async function handleDownload(username: string, file: { filename: string; size: number }) {
     const key = `${username}:${file.filename}`;
-    setDownloading((prev) => new Set(prev).add(key));
+    addDownloading(key);
     try {
       await api.enqueueDownload(username, [file]);
     } catch {

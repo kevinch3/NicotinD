@@ -14,6 +14,7 @@ import { libraryRoutes } from './routes/library.js';
 import { streamingRoutes } from './routes/streaming.js';
 import { systemRoutes } from './routes/system.js';
 import { settingsRoutes } from './routes/settings.js';
+import { playlistRoutes } from './routes/playlists.js';
 import { subsonicProxy } from './routes/subsonic.js';
 import { DownloadWatcher } from './services/download-watcher.js';
 import { initDatabase } from './db.js';
@@ -57,6 +58,7 @@ export function createApp({ config, slskdRef, navidrome, serviceManager, webDist
   app.use('/api/cover/*', auth);
   app.use('/api/system/*', auth);
   app.use('/api/settings/*', auth);
+  app.use('/api/playlists/*', auth);
 
   // Download watcher (mutable ref — settings route can create/replace it)
   const watcherRef: WatcherRef = {
@@ -69,6 +71,7 @@ export function createApp({ config, slskdRef, navidrome, serviceManager, webDist
   app.route('/api', streamingRoutes(navidrome));
   app.route('/api/system', systemRoutes(slskdRef, navidrome, serviceManager));
   app.route('/api/settings', settingsRoutes(config, slskdRef, navidrome, serviceManager, watcherRef));
+  app.route('/api/playlists', playlistRoutes(navidrome));
 
   // Serve web UI static files
   if (webDistPath) {

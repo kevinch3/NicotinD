@@ -105,4 +105,46 @@ export const api = {
     }),
   getSoulseekStatus: () =>
     request<{ configured: boolean; connected: boolean; username: string | null }>('/api/settings/soulseek/status'),
+
+  // Playlists
+  getPlaylists: () =>
+    request<Array<{
+      id: string;
+      name: string;
+      songCount: number;
+      duration: number;
+      owner: string;
+      public: boolean;
+      created: string;
+      changed: string;
+      coverArt?: string;
+    }>>('/api/playlists'),
+  getPlaylist: (id: string) =>
+    request<{
+      id: string;
+      name: string;
+      songCount: number;
+      duration: number;
+      owner: string;
+      public: boolean;
+      created: string;
+      changed: string;
+      coverArt?: string;
+      entry?: Array<{
+        id: string;
+        title: string;
+        artist: string;
+        album: string;
+        duration?: number;
+        track?: number;
+        coverArt?: string;
+      }>;
+    }>(`/api/playlists/${id}`),
+  createPlaylist: (name: string, songIds?: string[]) =>
+    request<{ id: string; name: string }>('/api/playlists', {
+      method: 'POST',
+      body: JSON.stringify({ name, songIds }),
+    }),
+  deletePlaylist: (id: string) =>
+    request<{ ok: boolean }>(`/api/playlists/${id}`, { method: 'DELETE' }),
 };
