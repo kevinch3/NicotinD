@@ -122,7 +122,7 @@ export function AdminPage() {
         </div>
       )}
 
-      <section className="rounded-xl border border-zinc-800 bg-zinc-900/50 overflow-hidden">
+      <section className="rounded-xl border border-zinc-800 bg-zinc-900/50 overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-zinc-800">
