@@ -14,6 +14,13 @@ export interface SearchProviderResult {
   }>;
 }
 
+export interface NetworkFile {
+  filename: string; // full file path, e.g. "Music\\Babasonicos\\Repuesto de Fe\\01 - Impacto.mp3"
+  size: number;
+  bitRate?: number;
+  length?: number;
+}
+
 export interface NetworkPollResult {
   state: 'searching' | 'complete';
   responseCount: number;
@@ -21,12 +28,7 @@ export interface NetworkPollResult {
     username: string;
     freeUploadSlots: number;
     uploadSpeed: number;
-    files: Array<{
-      filename: string;
-      size: number;
-      bitRate?: number;
-      length?: number;
-    }>;
+    files: NetworkFile[];
   }>;
   canBrowse?: boolean;
 }
@@ -60,12 +62,7 @@ export interface ISearchProvider {
 export interface BrowseDirectory {
   name: string; // full directory path, e.g. "Music\\Babasonicos\\Repuesto de Fe"
   fileCount: number;
-  files: Array<{
-    filename: string; // full file path, e.g. "Music\\Babasonicos\\Repuesto de Fe\\01 - Impacto.mp3"
-    size: number;
-    bitRate?: number;
-    length?: number;
-  }>;
+  files: NetworkFile[];
 }
 
 export interface IBrowseProvider {
