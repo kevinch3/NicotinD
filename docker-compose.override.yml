@@ -1,0 +1,20 @@
+# Bind-mount your existing dev data into Docker containers.
+# This file is auto-merged with docker-compose.yml by `docker compose up`.
+# Remove or rename it to use fresh named volumes instead.
+services:
+  nicotind:
+    volumes:
+      - ~/.nicotind:/data/nicotind
+      - ~/Music:/data/music
+      - tailscale-sock:/var/run/tailscale
+
+  slskd:
+    volumes:
+      - ~/Music:/data/music
+      # Don't bind-mount ~/.nicotind/slskd — its config has host-specific paths
+      # slskd will use fresh config from docker-compose command args instead
+
+  navidrome:
+    volumes:
+      - ~/Music:/data/music:ro
+      - ~/.nicotind/navidrome:/data/nd

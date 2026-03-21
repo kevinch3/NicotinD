@@ -32,7 +32,7 @@ export function LibraryPage() {
   const [loadingAlbum, setLoadingAlbum] = useState(false);
   const token = useAuthStore((s) => s.token);
   const play = usePlayerStore((s) => s.play);
-  const addToQueue = usePlayerStore((s) => s.addToQueue);
+  const playWithContext = usePlayerStore((s) => s.playWithContext);
 
   useEffect(() => {
     api
@@ -76,8 +76,7 @@ export function LibraryPage() {
       coverArt: s.coverArt,
       duration: s.duration,
     }));
-    play(tracks[0]);
-    tracks.slice(1).forEach((t) => addToQueue(t));
+    playWithContext(tracks, 0, { type: 'album', id: album.id, name: album.name });
   }
 
   function formatDuration(seconds?: number) {

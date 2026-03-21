@@ -3,6 +3,7 @@ import { createLogger } from '@nicotind/core';
 import { execSync } from 'node:child_process';
 
 const log = createLogger('tailscale');
+const TAILSCALE_LOCALAPI_HOST = 'local-tailscaled.sock';
 
 export interface TailscaleStatus {
   available: boolean;
@@ -70,7 +71,7 @@ export class TailscaleService {
     if (!this.isAvailable()) return;
 
     try {
-      this.curlApi('POST', 'down', {});
+      await this.curlApi('POST', 'down', {});
       log.info('Tailscale disconnected');
     } catch (err) {
       log.warn({ err }, 'Failed to disconnect Tailscale');
@@ -78,12 +79,17 @@ export class TailscaleService {
   }
 
   private async curlApi(method: string, path: string, body?: Record<string, unknown>): Promise<string> {
-    const url = `http://localhost/localapi/v0/${path}`;
+    const url = `http://${TAILSCALE_LOCALAPI_HOST}/localapi/v0/${path}`;
     const args = [
+      '--silent',
+      '--show-error',
+      '--fail-with-body',
       '--unix-socket',
       this.socketPath,
       '-X',
       method,
+      '-H',
+      `Host: ${TAILSCALE_LOCALAPI_HOST}`,
       '-H',
       'Content-Type: application/json',
     ];

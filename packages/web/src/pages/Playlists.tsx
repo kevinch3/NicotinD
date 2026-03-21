@@ -80,7 +80,7 @@ export function PlaylistsPage() {
   const [removing, setRemoving] = useState<Set<number>>(new Set());
   const token = useAuthStore((s) => s.token);
   const play = usePlayerStore((s) => s.play);
-  const addToQueue = usePlayerStore((s) => s.addToQueue);
+  const playWithContext = usePlayerStore((s) => s.playWithContext);
 
   useEffect(() => {
     api.getPlaylists()
@@ -123,8 +123,7 @@ export function PlaylistsPage() {
       coverArt: s.coverArt,
       duration: s.duration,
     }));
-    play(tracks[0]);
-    tracks.slice(1).forEach(t => addToQueue(t));
+    playWithContext(tracks, 0, { type: 'playlist', id: pl.id, name: pl.name });
   }
 
   async function handleDelete(pl: PlaylistDetail) {
