@@ -4,12 +4,15 @@
   "type": "module",
   "main": "src/index.ts",
   "dependencies": {
+    "@hono/swagger-ui": "^0.6.1",
+    "@hono/zod-openapi": "^1.2.3",
     "@nicotind/core": "workspace:*",
-    "@nicotind/slskd-client": "workspace:*",
     "@nicotind/navidrome-client": "workspace:*",
     "@nicotind/service-manager": "workspace:*",
+    "@nicotind/slskd-client": "workspace:*",
     "hono": "^4.7.0",
     "jose": "^6.0.0",
-    "node-id3": "^0.2.9"
+    "node-id3": "^0.2.9",
+    "zod": "^4.3.6"
   }
 }

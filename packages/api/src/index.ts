@@ -1,4 +1,5 @@
-import { Hono } from 'hono';
+import { OpenAPIHono } from '@hono/zod-openapi';
+import { swaggerUI } from '@hono/swagger-ui';
 import { cors } from 'hono/cors';
 import { serveStatic } from 'hono/bun';
 import type { NicotinDConfig } from '@nicotind/core';
@@ -53,7 +54,19 @@ export function createApp({
 
   initDatabase(expandedDataDir);
 
-  const app = new Hono();
+  const app = new OpenAPIHono();
+
+  // Documentation
+  app.doc('/openapi.json', {
+    openapi: '3.0.0',
+    info: {
+      version: '1.0.0',
+      title: 'NicotinD API',
+      description: 'API for NicotinD Soulseek/Navidrome client',
+    },
+  });
+
+  app.get('/doc', swaggerUI({ url: '/openapi.json' }));
 
   // Global middleware
   app.use('*', cors());
@@ -127,7 +140,18 @@ export function createApp({
   // Serve web UI static files
   if (webDistPath) {
     app.use('/assets/*', serveStatic({ root: webDistPath }));
-    app.get('*', serveStatic({ root: webDistPath, path: '/index.html' }));
+    app.get('*', (c, next) => {
+      const path = c.req.path;
+      if (
+        path === '/doc' ||
+        path === '/openapi.json' ||
+        path.startsWith('/api/') ||
+        path.startsWith('/rest/')
+      ) {
+        return next();
+      }
+      return serveStatic({ root: webDistPath, path: '/index.html' })(c, next);
+    });
   }
 
   return { app, watcherRef };
