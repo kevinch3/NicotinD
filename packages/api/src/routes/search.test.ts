@@ -65,4 +65,36 @@ describe('search routes', () => {
     expect(file.artist).toBe('Luke Evans');
     expect(file.album).toBeUndefined();
   });
+
+  it('poll response includes canBrowse: true when provider supports browsing', async () => {
+    const slskdRef = {
+      current: {
+        searches: {
+          create: async () => ({ id: 'slskd-search-1' }),
+          get: async () => ({ state: 'InProgress', responseCount: 0 }),
+          getResponses: async () => [],
+          list: async () => [],
+          delete: async () => undefined,
+          cancel: async () => undefined,
+        },
+        users: {
+          browseUser: async () => [],
+        },
+      },
+    } as any;
+
+    const registry = new ProviderRegistry();
+    registry.register(new SlskdSearchProvider(slskdRef));
+
+    const app = new Hono();
+    app.route('/', searchRoutes(registry));
+
+    const searchRes = await app.request('/?q=test');
+    const { searchId } = await searchRes.json();
+
+    const pollRes = await app.request(`/${searchId}/network`);
+    const body = await pollRes.json();
+
+    expect(body.canBrowse).toBe(true);
+  });
 });

@@ -84,15 +84,19 @@ export function searchRoutes(registry: ProviderRegistry) {
 
     for (const provider of registry.getByType('network')) {
       if (provider.pollResults) {
+        const canBrowse =
+          'browseUser' in provider &&
+          typeof (provider as any).browseUser === 'function';
         try {
-          return c.json(await provider.pollResults(searchId));
+          const result = await provider.pollResults(searchId);
+          return c.json({ ...result, canBrowse });
         } catch {
-          return c.json({ state: 'complete', responseCount: 0, results: [] });
+          return c.json({ state: 'complete', responseCount: 0, results: [], canBrowse });
         }
       }
     }
 
-    return c.json({ state: 'complete', responseCount: 0, results: [] });
+    return c.json({ state: 'complete', responseCount: 0, results: [], canBrowse: false });
   });
 
   // Cancel a search
