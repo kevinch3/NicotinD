@@ -18,6 +18,8 @@ export const NicotinDConfigSchema = z.object({
   soulseek: z.object({
     username: z.string().default(''),
     password: z.string().default(''),
+    listeningPort: z.number().default(50000),
+    enableUPnP: z.boolean().default(true),
   }),
 
   slskd: z.object({

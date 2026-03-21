@@ -16,7 +16,11 @@ export class SearchesApi {
   }
 
   async getResponses(id: string): Promise<SlskdSearchResponse[]> {
-    return this.client.request<SlskdSearchResponse[]>(`/searches/${id}/responses`);
+    const raw = await this.client.request<any>(`/searches/${id}/responses`);
+    if (!Array.isArray(raw)) {
+      throw new Error(`Unexpected search responses: expected array, got ${typeof raw}`);
+    }
+    return raw as SlskdSearchResponse[];
   }
 
   async list(): Promise<SlskdSearch[]> {

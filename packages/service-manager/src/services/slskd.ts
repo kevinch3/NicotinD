@@ -16,6 +16,8 @@ export function buildSlskdDefinition(config: NicotinDConfig): ServiceDefinition 
     soulseek: {
       username: config.soulseek.username,
       password: config.soulseek.password,
+      listening_port: config.soulseek.listeningPort,
+      upnp: config.soulseek.enableUPnP,
     },
     directories: {
       downloads: musicDir,

@@ -8,7 +8,7 @@ import { groupByDirectory } from '@/lib/folderUtils';
 
 interface NetworkResult {
   username: string;
-  freeUploadSlots: boolean;
+  freeUploadSlots: number;
   uploadSpeed: number;
   files: Array<{
     filename: string;
@@ -24,6 +24,7 @@ interface NetworkResult {
 
 interface FlatFile {
   username: string;
+  freeUploadSlots: number;
   uploadSpeed: number;
   filename: string;
   size: number;
@@ -113,12 +114,13 @@ function getDisplaySubtitle(file: Pick<FlatFile, 'artist' | 'album'>) {
 function flattenAndFilter(results: NetworkResult[]): FlatFile[] {
   const flat: FlatFile[] = [];
   for (const result of results) {
-    if (result.uploadSpeed === 0) continue;
+    // Some users might have 0 speed if unknown or just starting, don't filter them out entirely
     for (const file of result.files) {
       const ext = file.filename.slice(file.filename.lastIndexOf('.')).toLowerCase();
       if (!ALLOWED_EXTENSIONS.includes(ext)) continue;
       flat.push({
         username: result.username,
+        freeUploadSlots: result.freeUploadSlots,
         uploadSpeed: result.uploadSpeed,
         filename: file.filename,
         size: file.size,
@@ -499,10 +501,11 @@ export function SearchPage() {
               {groupByDirectory(flatNetwork).map((group) => {
                 const browserKey = `${group.username}::${group.directory}`;
                 const isOpen = openBrowserKey === browserKey;
-                const dirBasename = group.directory.split('\\').at(-1) ?? group.directory;
+                const dirBasename = group.directory.split(/[\\/]/).at(-1) ?? group.directory;
                 const folderQueued = group.files.every((f) =>
                   downloading.has(`${group.username}:${f.filename}`),
                 );
+                const hasFreeSlots = group.files.some((f) => (f as any).freeUploadSlots > 0);
 
                 return (
                   <div key={browserKey} className="mb-1">

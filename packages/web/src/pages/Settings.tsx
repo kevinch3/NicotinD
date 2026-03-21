@@ -10,6 +10,8 @@ export function SettingsPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [listeningPort, setListeningPort] = useState(50000);
+  const [enableUPnP, setEnableUPnP] = useState(true);
   const [isNewAccount, setIsNewAccount] = useState(false);
   const [configured, setConfigured] = useState(false);
   const [connected, setConnected] = useState(false);
@@ -43,6 +45,8 @@ export function SettingsPage() {
       if (isAdmin) {
         const data = await api.getSoulseekSettings();
         setUsername(data.username);
+        setListeningPort(data.listeningPort ?? 50000);
+        setEnableUPnP(data.enableUPnP ?? true);
         setConfigured(data.configured);
         setConnected(data.connected);
       } else {
@@ -70,7 +74,10 @@ export function SettingsPage() {
     setMessage(null);
 
     try {
-      const result = await api.saveSoulseekSettings(username.trim(), password.trim());
+      const result = await api.saveSoulseekSettings(username.trim(), password.trim(), {
+        listeningPort,
+        enableUPnP,
+      });
       setPassword('');
       setConfirmPassword('');
 
@@ -212,6 +219,33 @@ export function SettingsPage() {
                 )}
               </div>
             )}
+
+            {/* Network Settings */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm text-zinc-400 mb-1.5">Listening Port</label>
+                <input
+                  type="number"
+                  value={listeningPort}
+                  onChange={(e) => setListeningPort(Number(e.target.value))}
+                  placeholder="50000"
+                  className="w-full px-4 py-2.5 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-500 transition text-sm"
+                />
+                <p className="text-[10px] text-zinc-500 mt-1">Port for incoming P2P connections.</p>
+              </div>
+              <div className="flex flex-col justify-center">
+                <label className="flex items-center gap-2 cursor-pointer mt-2">
+                  <input
+                    type="checkbox"
+                    checked={enableUPnP}
+                    onChange={(e) => setEnableUPnP(e.target.checked)}
+                    className="w-4 h-4 rounded border-zinc-700 bg-zinc-800 text-zinc-100 focus:ring-0 focus:ring-offset-0"
+                  />
+                  <span className="text-sm text-zinc-400">Enable UPnP</span>
+                </label>
+                <p className="text-[10px] text-zinc-500 mt-1">Auto-forward port (requires router support).</p>
+              </div>
+            </div>
 
             {message && (
               <div

@@ -8,7 +8,7 @@ interface LocalResults {
 
 interface NetworkResult {
   username: string;
-  freeUploadSlots: boolean;
+  freeUploadSlots: number;
   uploadSpeed: number;
   files: Array<{
     filename: string;

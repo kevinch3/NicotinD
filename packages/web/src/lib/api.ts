@@ -113,7 +113,7 @@ export const api = {
       canBrowse?: boolean;
       results: Array<{
         username: string;
-        freeUploadSlots: boolean;
+        freeUploadSlots: number;
         uploadSpeed: number;
         files: Array<{
           filename: string;
@@ -166,12 +166,25 @@ export const api = {
 
   // Settings
   getSoulseekSettings: () =>
-    request<{ username: string; configured: boolean; connected: boolean }>('/api/settings/soulseek'),
-  saveSoulseekSettings: (username: string, password: string) =>
-    request<{ ok: boolean; message: string; connected?: boolean; username?: string }>('/api/settings/soulseek', {
-      method: 'PUT',
-      body: JSON.stringify({ username, password }),
-    }),
+    request<{
+      username: string;
+      configured: boolean;
+      connected: boolean;
+      listeningPort?: number;
+      enableUPnP?: boolean;
+    }>('/api/settings/soulseek'),
+  saveSoulseekSettings: (
+    username: string,
+    password?: string,
+    network?: { listeningPort: number; enableUPnP: boolean },
+  ) =>
+    request<{ ok: boolean; message: string; connected?: boolean; username?: string }>(
+      '/api/settings/soulseek',
+      {
+        method: 'PUT',
+        body: JSON.stringify({ username, password, ...network }),
+      },
+    ),
   getSoulseekStatus: () =>
     request<{ configured: boolean; connected: boolean; username: string | null }>('/api/settings/soulseek/status'),
 

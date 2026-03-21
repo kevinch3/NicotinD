@@ -138,6 +138,8 @@ export interface PersistedSecrets {
   jwtSecret: string;
   soulseekUsername?: string;
   soulseekPassword?: string;
+  soulseekListeningPort?: number;
+  soulseekEnableUPnP?: boolean;
 }
 
 export function loadOrCreateSecrets(dataDir: string): PersistedSecrets {
@@ -230,8 +232,12 @@ function loadConfig() {
       ...((fileConfig as Record<string, unknown>).soulseek as Record<string, unknown>),
       ...(secrets.soulseekUsername ? { username: secrets.soulseekUsername } : {}),
       ...(secrets.soulseekPassword ? { password: secrets.soulseekPassword } : {}),
+      ...(secrets.soulseekListeningPort ? { listeningPort: secrets.soulseekListeningPort } : {}),
+      ...(secrets.soulseekEnableUPnP !== undefined ? { enableUPnP: secrets.soulseekEnableUPnP } : {}),
       ...(process.env.SOULSEEK_USERNAME ? { username: process.env.SOULSEEK_USERNAME } : {}),
       ...(process.env.SOULSEEK_PASSWORD ? { password: process.env.SOULSEEK_PASSWORD } : {}),
+      ...(process.env.SOULSEEK_LISTENING_PORT ? { listeningPort: Number(process.env.SOULSEEK_LISTENING_PORT) } : {}),
+      ...(process.env.SOULSEEK_ENABLE_UPNP ? { enableUPnP: parseBooleanEnv(process.env.SOULSEEK_ENABLE_UPNP) } : {}),
     },
     slskd: {
       url: 'http://localhost:5030',

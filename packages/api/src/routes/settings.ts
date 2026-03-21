@@ -15,6 +15,8 @@ interface PersistedSecrets {
   jwtSecret: string;
   soulseekUsername?: string;
   soulseekPassword?: string;
+  soulseekListeningPort?: number;
+  soulseekEnableUPnP?: boolean;
 }
 
 function expandDir(dir: string): string {
@@ -66,6 +68,8 @@ export function settingsRoutes(
       const secrets = readSecrets(config.dataDir);
       return c.json({
         username: secrets.soulseekUsername ?? config.soulseek.username ?? '',
+        listeningPort: secrets.soulseekListeningPort ?? config.soulseek.listeningPort ?? 50000,
+        enableUPnP: secrets.soulseekEnableUPnP ?? config.soulseek.enableUPnP ?? true,
         configured,
         connected,
       });
@@ -104,20 +108,42 @@ export function settingsRoutes(
       return c.json({ error: 'Only administrators can change Soulseek settings' }, 403);
     }
 
-    const { username, password } = await c.req.json<{ username: string; password: string }>();
-    if (!username?.trim() || !password?.trim()) {
-      return c.json({ error: 'Username and password are required' }, 400);
+    const { username, password, listeningPort, enableUPnP } = await c.req.json<{
+      username: string;
+      password?: string; // Optional if updating other settings
+      listeningPort?: number;
+      enableUPnP?: boolean;
+    }>();
+
+    if (!username?.trim()) {
+      return c.json({ error: 'Username is required' }, 400);
     }
 
     // 1. Persist to secrets.json
     const secrets = readSecrets(config.dataDir);
     secrets.soulseekUsername = username.trim();
-    secrets.soulseekPassword = password.trim();
+    if (password?.trim()) {
+      secrets.soulseekPassword = password.trim();
+    }
+    if (listeningPort !== undefined) {
+      secrets.soulseekListeningPort = listeningPort;
+    }
+    if (enableUPnP !== undefined) {
+      secrets.soulseekEnableUPnP = enableUPnP;
+    }
     writeSecrets(config.dataDir, secrets);
 
     // 2. Update live config
     config.soulseek.username = username.trim();
-    config.soulseek.password = password.trim();
+    if (password?.trim()) {
+      config.soulseek.password = password.trim();
+    }
+    if (listeningPort !== undefined) {
+      config.soulseek.listeningPort = listeningPort;
+    }
+    if (enableUPnP !== undefined) {
+      config.soulseek.enableUPnP = enableUPnP;
+    }
     serviceManager.updateConfig(config);
 
     // 3. Ensure slskd binary exists (embedded mode)
@@ -148,7 +174,11 @@ export function settingsRoutes(
         if (!slskd) {
           return c.json({ error: 'Soulseek service is not available' }, 503);
         }
-        await updateExternalSoulseekCredentials(slskd, username.trim(), password.trim());
+        const slskdPassword = password?.trim() || config.soulseek.password;
+        if (!slskdPassword) {
+          return c.json({ error: 'Soulseek password is required' }, 400);
+        }
+        await updateExternalSoulseekCredentials(slskd, username.trim(), slskdPassword);
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

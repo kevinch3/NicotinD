@@ -3,7 +3,11 @@ import type { AuthEnv } from '../middleware/auth.js';
 import type { ProviderRegistry } from '../services/provider-registry.js';
 import { BrowseUnavailableError } from '@nicotind/core';
 
-const BROWSE_TIMEOUT_MS = 30_000;
+const parsedBrowseTimeoutMs = Number(process.env.NICOTIND_BROWSE_TIMEOUT_MS ?? 120_000);
+const BROWSE_TIMEOUT_MS =
+  Number.isFinite(parsedBrowseTimeoutMs) && parsedBrowseTimeoutMs > 0
+    ? parsedBrowseTimeoutMs
+    : 120_000;
 
 export function usersRoutes(registry: ProviderRegistry) {
   const app = new Hono<AuthEnv>();
@@ -18,7 +22,9 @@ export function usersRoutes(registry: ProviderRegistry) {
 
     try {
       const dirs = await Promise.race([
-        provider.browseUser(username),
+        provider.browseUser(username).catch((e) => {
+          throw new Error(`Provider error: ${e instanceof Error ? e.message : String(e)}`);
+        }),
         new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error('TIMEOUT')), BROWSE_TIMEOUT_MS),
         ),

@@ -57,10 +57,15 @@ export class SlskdSearchProvider implements ISearchProvider, IBrowseProvider {
         responseCount: search.responseCount,
         results: responses.map((r) => ({
           username: r.username,
-          freeUploadSlots: r.freeUploadSlots,
+          freeUploadSlots: r.freeUploadSlots ?? 0,
           uploadSpeed: r.uploadSpeed,
-          files: r.files.map((f) => ({
-            filename: f.filename,
+          files: (r.files ?? [])
+            .filter((f) => {
+              const ext = f.filename.slice(f.filename.lastIndexOf('.')).toLowerCase();
+              return ext === '.mp3' || ext === '.ogg';
+            })
+            .map((f) => ({
+              filename: f.filename,
             size: f.size,
             bitRate: f.bitRate,
             length: f.length,
@@ -68,8 +73,9 @@ export class SlskdSearchProvider implements ISearchProvider, IBrowseProvider {
           })),
         })),
       };
-    } catch {
-      return { state: 'complete', responseCount: 0, results: [] };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new Error(`Polling failed for search ${searchId}: ${msg}`);
     }
   }
 
@@ -105,6 +111,17 @@ export class SlskdSearchProvider implements ISearchProvider, IBrowseProvider {
 
   async browseUser(username: string): Promise<BrowseDirectory[]> {
     if (!this.slskdRef.current) throw new BrowseUnavailableError();
-    return this.slskdRef.current.users.browseUser(username);
+    const dirs = await this.slskdRef.current.users.browseUser(username);
+    return dirs.map((dir) => {
+      const filteredFiles = dir.files.filter((f) => {
+        const ext = f.filename.slice(f.filename.lastIndexOf('.')).toLowerCase();
+        return ext === '.mp3' || ext === '.ogg';
+      });
+      return {
+        ...dir,
+        files: filteredFiles,
+        fileCount: filteredFiles.length,
+      };
+    });
   }
 }

@@ -79,10 +79,14 @@ export function FolderBrowser({
   const [dirs, setDirs] = useState<BrowseDir[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [selected, setSelected] = useState(matchedPath);
 
   useEffect(() => {
     let cancelled = false;
+    setLoading(true);
+    setError(false);
+    setErrorMsg(null);
     api
       .browseUser(username)
       .then((result) => {
@@ -91,9 +95,11 @@ export function FolderBrowser({
           setLoading(false);
         }
       })
-      .catch(() => {
+      .catch((err: unknown) => {
         if (!cancelled) {
+          const msg = err instanceof Error ? err.message : String(err);
           setError(true);
+          setErrorMsg(msg);
           setLoading(false);
         }
       });
@@ -119,9 +125,14 @@ export function FolderBrowser({
           </span>
         )}
         {error && (
-          <span className="text-[11px] text-amber-600">
-            Couldn't load full library — showing files from search results
-          </span>
+          <div className="flex flex-col items-end">
+            <span className="text-[11px] text-amber-600">
+              Couldn't load full library ({errorMsg}) — showing files from search results
+            </span>
+            <span className="text-[10px] text-zinc-500">
+              Check Soulseek network settings (Port, UPnP) in Settings if this happens often.
+            </span>
+          </div>
         )}
       </div>
 

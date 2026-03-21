@@ -90,8 +90,16 @@ export function searchRoutes(registry: ProviderRegistry) {
         try {
           const result = await provider.pollResults(searchId);
           return c.json({ ...result, canBrowse });
-        } catch {
-          return c.json({ state: 'complete', responseCount: 0, results: [], canBrowse });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          // Log but don't crash the whole search, just return the error for this poll
+          return c.json({ 
+            state: 'complete', 
+            responseCount: 0, 
+            results: [], 
+            canBrowse,
+            errors: [`Polling failed: ${msg}`] 
+          });
         }
       }
     }
