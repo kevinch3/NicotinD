@@ -6,6 +6,7 @@ import { usePlayerStore } from '@/stores/player';
 
 const navItems = [
   { to: '/', label: 'Search' },
+  { to: '/downloads', label: 'Downloads' },
   { to: '/playlists', label: 'Playlists' },
   { to: '/library', label: 'Library' },
   { to: '/settings', label: 'Settings' },

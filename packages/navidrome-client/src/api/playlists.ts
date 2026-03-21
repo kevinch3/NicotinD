@@ -17,9 +17,9 @@ export class PlaylistsApi {
   }
 
   async create(name: string, songIds?: string[]): Promise<Playlist> {
-    const params: Record<string, string> = { name };
+    const params: Record<string, string | string[]> = { name };
     if (songIds?.length) {
-      params.songId = songIds.join(',');
+      params.songId = songIds;
     }
     const res = await this.client.request<{ playlist: Playlist }>(
       'createPlaylist.view',
@@ -29,10 +29,10 @@ export class PlaylistsApi {
   }
 
   async update(id: string, updates: { name?: string; songIdsToAdd?: string[]; songIndexesToRemove?: number[] }): Promise<void> {
-    const params: Record<string, string> = { playlistId: id };
+    const params: Record<string, string | string[]> = { playlistId: id };
     if (updates.name) params.name = updates.name;
-    if (updates.songIdsToAdd?.length) params.songIdToAdd = updates.songIdsToAdd.join(',');
-    if (updates.songIndexesToRemove?.length) params.songIndexToRemove = updates.songIndexesToRemove.join(',');
+    if (updates.songIdsToAdd?.length) params.songIdToAdd = updates.songIdsToAdd;
+    if (updates.songIndexesToRemove?.length) params.songIndexToRemove = updates.songIndexesToRemove.map(String);
     await this.client.request('updatePlaylist.view', params);
   }
 

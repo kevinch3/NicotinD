@@ -67,7 +67,7 @@ export function createApp({ config, slskdRef, navidrome, serviceManager, webDist
 
   app.route('/api/search', searchRoutes(slskdRef, navidrome));
   app.route('/api/downloads', downloadRoutes(slskdRef));
-  app.route('/api/library', libraryRoutes(navidrome));
+  app.route('/api/library', libraryRoutes(navidrome, config.musicDir));
   app.route('/api', streamingRoutes(navidrome));
   app.route('/api/system', systemRoutes(slskdRef, navidrome, serviceManager));
   app.route('/api/settings', settingsRoutes(config, slskdRef, navidrome, serviceManager, watcherRef));

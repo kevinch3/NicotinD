@@ -75,6 +75,9 @@ export function PlaylistsPage() {
   const [selected, setSelected] = useState<PlaylistDetail | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState('');
+  const [removing, setRemoving] = useState<Set<number>>(new Set());
   const token = useAuthStore((s) => s.token);
   const play = usePlayerStore((s) => s.play);
   const addToQueue = usePlayerStore((s) => s.addToQueue);
@@ -137,6 +140,41 @@ export function PlaylistsPage() {
     }
   }
 
+  function startRename(pl: PlaylistDetail) {
+    setNameDraft(pl.name);
+    setEditingName(true);
+  }
+
+  async function saveRename(pl: PlaylistDetail) {
+    const trimmed = nameDraft.trim();
+    if (!trimmed || trimmed === pl.name) {
+      setEditingName(false);
+      return;
+    }
+    try {
+      await api.updatePlaylist(pl.id, { name: trimmed });
+      setSelected({ ...pl, name: trimmed });
+      setPlaylists(prev => prev.map(p => p.id === pl.id ? { ...p, name: trimmed } : p));
+    } catch {
+      // ignore
+    }
+    setEditingName(false);
+  }
+
+  async function removeSong(pl: PlaylistDetail, songIndex: number) {
+    setRemoving(prev => new Set(prev).add(songIndex));
+    try {
+      await api.updatePlaylist(pl.id, { songIndexesToRemove: [songIndex] });
+      const updatedEntry = pl.entry?.filter((_, i) => i !== songIndex) ?? [];
+      const updated = { ...pl, entry: updatedEntry, songCount: updatedEntry.length };
+      setSelected(updated);
+      setPlaylists(prev => prev.map(p => p.id === pl.id ? { ...p, songCount: updatedEntry.length } : p));
+    } catch {
+      // ignore
+    }
+    setRemoving(prev => { const n = new Set(prev); n.delete(songIndex); return n; });
+  }
+
   // Detail view
   if (selected) {
     return (
@@ -165,9 +203,26 @@ export function PlaylistsPage() {
             </div>
           )}
           <div className="flex flex-col justify-end">
-            <h1 className="text-2xl font-bold text-zinc-100">{selected.name}</h1>
+            {editingName ? (
+              <input
+                autoFocus
+                value={nameDraft}
+                onChange={e => setNameDraft(e.target.value)}
+                onBlur={() => saveRename(selected)}
+                onKeyDown={e => { if (e.key === 'Enter') saveRename(selected); if (e.key === 'Escape') setEditingName(false); }}
+                className="text-2xl font-bold text-zinc-100 bg-transparent border-b border-zinc-600 focus:border-zinc-400 outline-none pb-0.5"
+              />
+            ) : (
+              <h1
+                className="text-2xl font-bold text-zinc-100 cursor-pointer hover:text-zinc-300 transition"
+                onClick={() => startRename(selected)}
+                title="Click to rename"
+              >
+                {selected.name}
+              </h1>
+            )}
             <p className="text-zinc-400 mt-1">
-              {selected.songCount} tracks · {formatTotalDuration(selected.duration)}
+              {selected.entry?.length ?? selected.songCount} tracks · {formatTotalDuration(selected.duration)}
             </p>
             <div className="flex gap-3 mt-4">
               <button
@@ -189,29 +244,41 @@ export function PlaylistsPage() {
 
         <div>
           {selected.entry?.map((song, idx) => (
-            <button
-              key={song.id}
-              onClick={() => playSong(song)}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-zinc-800/50 transition text-left group"
+            <div
+              key={`${song.id}-${idx}`}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-zinc-800/50 transition group ${removing.has(idx) ? 'opacity-40 pointer-events-none' : ''}`}
             >
               <span className="text-xs text-zinc-600 w-6 text-right">
                 {song.track ?? idx + 1}
               </span>
-              <div className="flex-1 min-w-0">
+              <button
+                onClick={() => playSong(song)}
+                className="flex-1 min-w-0 text-left"
+              >
                 <p className="text-sm text-zinc-200 truncate">{song.title}</p>
                 <p className="text-xs text-zinc-500 truncate">{song.artist}</p>
-              </div>
+              </button>
               <span className="text-xs text-zinc-600">{formatDuration(song.duration)}</span>
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="currentColor"
-                className="text-zinc-700 group-hover:text-zinc-300 transition flex-shrink-0"
+              <button
+                onClick={() => playSong(song)}
+                className="p-1 text-zinc-700 group-hover:text-zinc-300 transition flex-shrink-0"
+                title="Play"
               >
-                <polygon points="5,3 19,12 5,21" />
-              </svg>
-            </button>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                  <polygon points="5,3 19,12 5,21" />
+                </svg>
+              </button>
+              <button
+                onClick={() => removeSong(selected, idx)}
+                className="p-1 text-zinc-700 hover:text-red-400 transition flex-shrink-0 opacity-0 group-hover:opacity-100"
+                title="Remove from playlist"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
           ))}
         </div>
       </div>

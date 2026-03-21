@@ -3,6 +3,7 @@ import { useAuthStore } from '@/stores/auth';
 import { Layout } from '@/components/Layout';
 import { LoginPage } from '@/pages/Login';
 import { SearchPage } from '@/pages/Search';
+import { DownloadsPage } from '@/pages/Downloads';
 import { PlaylistsPage } from '@/pages/Playlists';
 import { LibraryPage } from '@/pages/Library';
 import { SettingsPage } from '@/pages/Settings';
@@ -19,6 +20,7 @@ export function App() {
       <Routes>
         <Route element={<Layout />}>
           <Route path="/" element={<SearchPage />} />
+          <Route path="/downloads" element={<DownloadsPage />} />
           <Route path="/playlists" element={<PlaylistsPage />} />
           <Route path="/library" element={<LibraryPage />} />
           <Route path="/settings" element={<SettingsPage />} />

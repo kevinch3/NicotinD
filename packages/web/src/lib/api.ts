@@ -106,6 +106,25 @@ export const api = {
   getSoulseekStatus: () =>
     request<{ configured: boolean; connected: boolean; username: string | null }>('/api/settings/soulseek/status'),
 
+  // Library management
+  getRecentSongs: (size = 50) =>
+    request<Array<{
+      id: string;
+      title: string;
+      artist: string;
+      album: string;
+      albumId: string;
+      duration?: number;
+      track?: number;
+      coverArt?: string;
+      path: string;
+      bitRate: number;
+      size: number;
+      created: string;
+    }>>(`/api/library/recent-songs?size=${size}`),
+  deleteSong: (id: string) =>
+    request<{ ok: boolean }>(`/api/library/songs/${id}`, { method: 'DELETE' }),
+
   // Playlists
   getPlaylists: () =>
     request<Array<{
@@ -144,6 +163,11 @@ export const api = {
     request<{ id: string; name: string }>('/api/playlists', {
       method: 'POST',
       body: JSON.stringify({ name, songIds }),
+    }),
+  updatePlaylist: (id: string, updates: { name?: string; songIdsToAdd?: string[]; songIndexesToRemove?: number[] }) =>
+    request<{ ok: boolean }>(`/api/playlists/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(updates),
     }),
   deletePlaylist: (id: string) =>
     request<{ ok: boolean }>(`/api/playlists/${id}`, { method: 'DELETE' }),

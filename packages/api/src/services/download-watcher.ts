@@ -4,17 +4,9 @@ import type { Navidrome } from '@nicotind/navidrome-client';
 
 const log = createLogger('download-watcher');
 
-interface PendingPlaylist {
-  directoryName: string;
-  fileCount: number;
-  completedFiles: Set<string>;
-}
-
 /** Extract a human-readable album name from a Soulseek directory path. */
 export function extractAlbumName(directory: string): string {
-  // Soulseek paths use backslashes: @@user\Music\Artist\Album or @@user\Music\Artist - Album
   const segments = directory.split('\\').filter(Boolean);
-  // Last segment is usually the album folder
   return segments[segments.length - 1] ?? directory;
 }
 
@@ -26,11 +18,6 @@ export class DownloadWatcher {
   private knownCompleted = new Set<string>();
   private scanDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   private scanDebounceMs: number;
-
-  /** Directories where all files are done, waiting for scan + playlist creation. */
-  private pendingPlaylists = new Map<string, PendingPlaylist>();
-  /** Avoid creating duplicate playlists for the same directory. */
-  private createdPlaylists = new Set<string>();
 
   constructor(
     slskd: Slskd,
@@ -71,29 +58,13 @@ export class DownloadWatcher {
 
       for (const group of downloads) {
         for (const dir of group.directories) {
-          const dirKey = `${group.username}:${dir.directory}`;
-
           for (const file of dir.files) {
-            const fileKey = `${group.username}:${file.filename}`;
-            if (file.state === 'Completed, Succeeded' && !this.knownCompleted.has(fileKey)) {
-              this.knownCompleted.add(fileKey);
+            const key = `${group.username}:${file.filename}`;
+            if (file.state === 'Completed, Succeeded' && !this.knownCompleted.has(key)) {
+              this.knownCompleted.add(key);
               newCompletions = true;
               log.info({ username: group.username, filename: file.filename }, 'Download completed');
             }
-          }
-
-          // Check if entire directory is done (all files succeeded)
-          const allSucceeded = dir.files.length > 0 &&
-            dir.files.every(f => f.state === 'Completed, Succeeded');
-
-          if (allSucceeded && !this.createdPlaylists.has(dirKey) && !this.pendingPlaylists.has(dirKey)) {
-            const albumName = extractAlbumName(dir.directory);
-            log.info({ dirKey, albumName, fileCount: dir.files.length }, 'Directory complete, queuing playlist creation');
-            this.pendingPlaylists.set(dirKey, {
-              directoryName: albumName,
-              fileCount: dir.files.length,
-              completedFiles: new Set(dir.files.map(f => f.filename)),
-            });
           }
         }
       }
@@ -120,88 +91,9 @@ export class DownloadWatcher {
       try {
         log.info('Triggering Navidrome library scan');
         await this.navidrome.system.startScan();
-
-        // If there are pending playlists, wait for scan then create them
-        if (this.pendingPlaylists.size > 0) {
-          await this.waitForScanAndCreatePlaylists();
-        }
       } catch (err) {
         log.error({ err }, 'Failed to trigger scan');
       }
     }, this.scanDebounceMs);
-  }
-
-  private async waitForScanAndCreatePlaylists(): Promise<void> {
-    // Poll scan status until complete (max 60s)
-    const maxWait = 60_000;
-    const pollInterval = 3_000;
-    const start = Date.now();
-
-    while (Date.now() - start < maxWait) {
-      try {
-        const status = await this.navidrome.system.getScanStatus();
-        if (!status.scanning) break;
-      } catch {
-        log.debug('Failed to check scan status, retrying...');
-      }
-      await new Promise(r => setTimeout(r, pollInterval));
-    }
-
-    // Process each pending playlist
-    for (const [dirKey, pending] of this.pendingPlaylists) {
-      try {
-        await this.createPlaylistForDirectory(dirKey, pending);
-      } catch (err) {
-        log.error({ err, dirKey, albumName: pending.directoryName }, 'Failed to create playlist');
-      }
-    }
-  }
-
-  private async createPlaylistForDirectory(dirKey: string, pending: PendingPlaylist): Promise<void> {
-    const { directoryName } = pending;
-
-    // Search Navidrome for the album
-    const searchResults = await this.navidrome.search.search3(directoryName, { albumCount: 5 });
-    let songIds: string[] = [];
-
-    if (searchResults.album.length > 0) {
-      // Find best matching album by name
-      const match = searchResults.album.find(
-        a => a.name.toLowerCase() === directoryName.toLowerCase()
-          || directoryName.toLowerCase().includes(a.name.toLowerCase()),
-      ) ?? searchResults.album[0];
-
-      const { songs } = await this.navidrome.browsing.getAlbum(match.id);
-      songIds = songs.map(s => s.id);
-      log.info({ albumName: match.name, songCount: songIds.length }, 'Matched album in Navidrome');
-    }
-
-    // Fallback: check newest albums
-    if (songIds.length === 0) {
-      const newest = await this.navidrome.browsing.getAlbumList('newest', 10);
-      const match = newest.find(
-        a => a.name.toLowerCase() === directoryName.toLowerCase()
-          || directoryName.toLowerCase().includes(a.name.toLowerCase()),
-      );
-
-      if (match) {
-        const { songs } = await this.navidrome.browsing.getAlbum(match.id);
-        songIds = songs.map(s => s.id);
-        log.info({ albumName: match.name, songCount: songIds.length }, 'Matched album via newest list');
-      }
-    }
-
-    if (songIds.length === 0) {
-      log.warn({ directoryName }, 'Could not match downloaded directory to Navidrome album, skipping playlist');
-      this.pendingPlaylists.delete(dirKey);
-      return;
-    }
-
-    // Create the playlist
-    const playlist = await this.navidrome.playlists.create(directoryName, songIds);
-    log.info({ playlistId: playlist.id, name: directoryName, songCount: songIds.length }, 'Auto-created playlist');
-
-    this.createdPlaylists.add(dirKey);
-    this.pendingPlaylists.delete(dirKey);
   }
 }

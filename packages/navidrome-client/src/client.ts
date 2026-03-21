@@ -8,6 +8,24 @@ export interface NavidromeClientOptions {
   password: string;
 }
 
+/**
+ * Builds a query string supporting repeated keys for array values,
+ * as required by the Subsonic API (e.g. &songIdToAdd=1&songIdToAdd=2).
+ */
+function buildQueryString(params: Record<string, string | string[]>): string {
+  const parts: string[] = [];
+  for (const [key, value] of Object.entries(params)) {
+    if (Array.isArray(value)) {
+      for (const v of value) {
+        parts.push(`${encodeURIComponent(key)}=${encodeURIComponent(v)}`);
+      }
+    } else {
+      parts.push(`${encodeURIComponent(key)}=${encodeURIComponent(value)}`);
+    }
+  }
+  return parts.join('&');
+}
+
 export class NavidromeClient {
   private baseUrl: string;
   private username: string;
@@ -21,9 +39,9 @@ export class NavidromeClient {
     this.log = createLogger('navidrome-client');
   }
 
-  async request<T>(endpoint: string, params: Record<string, string> = {}): Promise<T> {
+  async request<T>(endpoint: string, params: Record<string, string | string[]> = {}): Promise<T> {
     const authQs = authQueryString(this.username, this.password);
-    const extraQs = new URLSearchParams(params).toString();
+    const extraQs = buildQueryString(params);
     const separator = extraQs ? `&${extraQs}` : '';
     const url = `${this.baseUrl}/rest/${endpoint}?${authQs}${separator}`;
 
@@ -46,9 +64,9 @@ export class NavidromeClient {
   /**
    * Returns raw Response for binary endpoints (stream, cover art)
    */
-  async requestRaw(endpoint: string, params: Record<string, string> = {}): Promise<Response> {
+  async requestRaw(endpoint: string, params: Record<string, string | string[]> = {}): Promise<Response> {
     const authQs = authQueryString(this.username, this.password);
-    const extraQs = new URLSearchParams(params).toString();
+    const extraQs = buildQueryString(params);
     const separator = extraQs ? `&${extraQs}` : '';
     const url = `${this.baseUrl}/rest/${endpoint}?${authQs}${separator}`;
 

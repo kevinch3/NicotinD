@@ -25,7 +25,15 @@ export function downloadRoutes(slskdRef: SlskdRef) {
       return c.json({ error: 'username and files are required' }, 400);
     }
 
-    await slskdRef.current!.transfers.enqueue(username, files);
+    try {
+      await slskdRef.current!.transfers.enqueue(username, files);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('slskd request failed')) {
+        return c.json({ error: `Download failed for user "${username}" — they may be offline or rejecting transfers` }, 502);
+      }
+      throw err;
+    }
     return c.json({ ok: true, queued: files.length }, 201);
   });
 
@@ -60,8 +68,12 @@ export function downloadRoutes(slskdRef: SlskdRef) {
     const id = c.req.param('id');
     const db = getDatabase();
 
-    // 1. Tell slskd to cancel it (works for in-progress)
-    await slskdRef.current!.transfers.cancel(username, id);
+    // 1. Tell slskd to cancel it (works for in-progress; may fail if already gone)
+    try {
+      await slskdRef.current!.transfers.cancel(username, id);
+    } catch {
+      // Transfer may already be gone — not fatal
+    }
 
     // 2. Mark as hidden in our DB (works for completed/cancelled history)
     db.run('INSERT OR IGNORE INTO hidden_transfers (id) VALUES (?)', [id]);
