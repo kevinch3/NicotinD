@@ -5,6 +5,7 @@ import { createLogger } from '@nicotind/core';
 import type { Song } from '@nicotind/core';
 import type { Navidrome } from '@nicotind/navidrome-client';
 import type { AuthEnv } from '../middleware/auth.js';
+import { getDatabase } from '../db.js';
 
 const log = createLogger('library');
 
@@ -59,17 +60,21 @@ export function libraryRoutes(navidrome: Navidrome, musicDir?: string) {
   // Recently added songs (for the download inbox)
   app.get('/recent-songs', async (c) => {
     const size = Number(c.req.query('size') ?? 50);
+    const albumFetchSize = Math.min(Math.max(size, 20), 80);
+    const candidateTarget = Math.min(Math.max(size * 4, size), 400);
     // Get newest albums, then collect their songs
-    const albums = await navidrome.browsing.getAlbumList('newest', Math.min(size, 20));
-    const songs = [];
+    const albums = await navidrome.browsing.getAlbumList('newest', albumFetchSize);
+    const songs: Array<Song & { albumName: string; albumArtist: string }> = [];
     for (const album of albums) {
       const { songs: albumSongs } = await navidrome.browsing.getAlbum(album.id);
       for (const song of albumSongs) {
         songs.push({ ...song, albumName: album.name, albumArtist: album.artist });
       }
-      if (songs.length >= size) break;
+      if (songs.length >= candidateTarget) break;
     }
-    return c.json(songs.slice(0, size));
+
+    const ordered = orderByCompletionHistory(songs);
+    return c.json(ordered.slice(0, size));
   });
 
   // Delete a song from the filesystem and trigger rescan
@@ -140,6 +145,73 @@ export function libraryRoutes(navidrome: Navidrome, musicDir?: string) {
   });
 
   return app;
+}
+
+interface DownloadHistoryRow {
+  relative_path: string | null;
+  basename: string;
+  completed_at: number;
+}
+
+function orderByCompletionHistory<T extends { path: string; created?: string; title: string }>(
+  songs: T[],
+): T[] {
+  const byPath = new Map<string, number>();
+  const byBasename = new Map<string, number>();
+
+  try {
+    const db = getDatabase();
+    const rows = db
+      .query<DownloadHistoryRow, []>(
+        `SELECT relative_path, basename, completed_at
+         FROM completed_downloads
+         ORDER BY completed_at DESC
+         LIMIT 5000`,
+      )
+      .all();
+
+    for (const row of rows) {
+      if (row.relative_path) {
+        const normalizedPath = normalizePath(row.relative_path);
+        if (!byPath.has(normalizedPath)) {
+          byPath.set(normalizedPath, row.completed_at);
+        }
+      }
+
+      const normalizedBasename = row.basename.toLowerCase();
+      if (!byBasename.has(normalizedBasename)) {
+        byBasename.set(normalizedBasename, row.completed_at);
+      }
+    }
+  } catch {
+    // DB not initialized or table unavailable — fallback ordering still applies.
+  }
+
+  const scored = songs.map((song) => {
+    const normalizedSongPath = normalizePath(song.path);
+    const normalizedSongBase = basename(normalizedSongPath).toLowerCase();
+    const completedAt = byPath.get(normalizedSongPath) ?? byBasename.get(normalizedSongBase) ?? 0;
+    const createdAt = parseCreatedAt(song.created);
+    return { song, completedAt, createdAt };
+  });
+
+  scored.sort((a, b) => {
+    if (a.completedAt !== b.completedAt) return b.completedAt - a.completedAt;
+    if (a.createdAt !== b.createdAt) return b.createdAt - a.createdAt;
+    return a.song.title.localeCompare(b.song.title);
+  });
+
+  return scored.map((entry) => entry.song);
+}
+
+function normalizePath(input: string): string {
+  return input.replace(/\\/g, '/').replace(/^\/+/, '');
+}
+
+function parseCreatedAt(created?: string): number {
+  if (!created) return 0;
+  const parsed = Date.parse(created);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function expandDir(dir: string): string {

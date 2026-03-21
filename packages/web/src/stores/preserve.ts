@@ -11,7 +11,7 @@ interface PreserveState {
   preservedTracks: PreservedTrackMeta[];
 
   init: () => Promise<void>;
-  preserve: (track: Track, token: string) => Promise<void>;
+  preserve: (track: Track, token: string | null) => Promise<void>;
   remove: (id: string) => Promise<void>;
   isPreserved: (id: string) => boolean;
   isPreserving: (id: string) => boolean;
@@ -35,22 +35,31 @@ export const usePreserveStore = create<PreserveState>((set, get) => ({
 
   preserve: async (track, token) => {
     const { preserving, budget } = get();
-    if (preserving.has(track.id) || get().preservedIds.has(track.id)) return;
+    if (!token || preserving.has(track.id) || get().preservedIds.has(track.id)) return;
 
     // Mark as preserving
     set({ preserving: new Set([...preserving, track.id]) });
 
     try {
-      // Fetch audio and cover in parallel
-      const [audioRes, coverRes] = await Promise.all([
-        fetch(`/api/stream/${track.id}?token=${token}`),
-        track.coverArt
-          ? fetch(`/api/cover/${track.coverArt}?size=600&token=${token}`)
-          : Promise.resolve(null),
-      ]);
+      // Fetch audio first; cover fetch is best-effort so it doesn't block preserve.
+      const audioRes = await fetch(`/api/stream/${track.id}?token=${token}`);
+      if (!audioRes.ok) {
+        throw new Error(`Failed to fetch audio: ${audioRes.status}`);
+      }
 
       const audioBlob = await audioRes.blob();
-      const coverBlob = coverRes ? await coverRes.blob() : null;
+      let coverBlob: Blob | null = null;
+
+      if (track.coverArt) {
+        try {
+          const coverRes = await fetch(`/api/cover/${track.coverArt}?size=600&token=${token}`);
+          if (coverRes.ok) {
+            coverBlob = await coverRes.blob();
+          }
+        } catch {
+          // Ignore cover failures so preserve still succeeds with audio only.
+        }
+      }
 
       // Evict if needed
       await db.evictLRU(audioBlob.size, budget);

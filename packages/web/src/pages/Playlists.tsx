@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth';
 import { usePlayerStore, type Track } from '@/stores/player';
+import { TrackRow } from '@/components/TrackRow';
 
 interface Playlist {
   id: string;
@@ -44,13 +45,6 @@ function gradientFor(name: string): string {
   let hash = 0;
   for (let i = 0; i < name.length; i++) hash = ((hash << 5) - hash + name.charCodeAt(i)) | 0;
   return gradients[Math.abs(hash) % gradients.length];
-}
-
-function formatDuration(seconds?: number) {
-  if (!seconds) return '';
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
 function formatTotalDuration(seconds: number) {
@@ -102,7 +96,11 @@ export function PlaylistsPage() {
   }
 
   function playSong(song: PlaylistSong) {
-    const track: Track = {
+    play(toTrack(song));
+  }
+
+  function toTrack(song: PlaylistSong): Track {
+    return {
       id: song.id,
       title: song.title,
       artist: song.artist,
@@ -110,7 +108,6 @@ export function PlaylistsPage() {
       coverArt: song.coverArt,
       duration: song.duration,
     };
-    play(track);
   }
 
   function playAll(pl: PlaylistDetail) {
@@ -243,41 +240,34 @@ export function PlaylistsPage() {
 
         <div>
           {selected.entry?.map((song, idx) => (
-            <div
+            <TrackRow
               key={`${song.id}-${idx}`}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-zinc-800/50 transition group ${removing.has(idx) ? 'opacity-40 pointer-events-none' : ''}`}
-            >
-              <span className="text-xs text-zinc-600 w-6 text-right">
-                {song.track ?? idx + 1}
-              </span>
-              <button
-                onClick={() => playSong(song)}
-                className="flex-1 min-w-0 text-left"
-              >
-                <p className="text-sm text-zinc-200 truncate">{song.title}</p>
-                <p className="text-xs text-zinc-500 truncate">{song.artist}</p>
-              </button>
-              <span className="text-xs text-zinc-600">{formatDuration(song.duration)}</span>
-              <button
-                onClick={() => playSong(song)}
-                className="p-1 text-zinc-700 group-hover:text-zinc-300 transition flex-shrink-0"
-                title="Play"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                  <polygon points="5,3 19,12 5,21" />
-                </svg>
-              </button>
-              <button
-                onClick={() => removeSong(selected, idx)}
-                className="p-1 text-zinc-700 hover:text-red-400 transition flex-shrink-0 opacity-0 group-hover:opacity-100"
-                title="Remove from playlist"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="18" y1="6" x2="6" y2="18" />
-                  <line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
-              </button>
-            </div>
+              track={toTrack(song)}
+              indexLabel={song.track ?? idx + 1}
+              subtitle={song.artist}
+              duration={song.duration}
+              onPlay={() => playSong(song)}
+              disabled={removing.has(idx)}
+              trailingAction={{
+                title: 'Remove from playlist',
+                onClick: () => removeSong(selected, idx),
+                icon: (
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                ),
+              }}
+            />
           ))}
         </div>
       </div>

@@ -18,13 +18,16 @@ export function PreserveButton({ track, className = '', size = 'sm' }: PreserveB
   const iconSize = size === 'sm' ? 14 : 18;
   const btnSize = size === 'sm' ? 'w-7 h-7' : 'w-8 h-8';
 
-  function handleClick(e: React.MouseEvent) {
+  const canPreserve = !!token;
+
+  function handleClick(e: React.SyntheticEvent) {
     e.stopPropagation();
+    e.preventDefault();
     if (preserving) return;
     if (preserved) {
       remove(track.id);
     } else {
-      preserve(track, token!);
+      preserve(track, token);
     }
   }
 
@@ -32,6 +35,7 @@ export function PreserveButton({ track, className = '', size = 'sm' }: PreserveB
   if (preserving) {
     return (
       <button
+        type="button"
         className={`${btnSize} flex items-center justify-center text-zinc-400 ${className}`}
         title="Preserving..."
         disabled
@@ -58,7 +62,9 @@ export function PreserveButton({ track, className = '', size = 'sm' }: PreserveB
   if (preserved) {
     return (
       <button
+        type="button"
         onClick={handleClick}
+        onTouchEnd={handleClick}
         className={`${btnSize} flex items-center justify-center text-emerald-400 hover:text-emerald-300 transition ${className}`}
         title="Remove from preserved"
       >
@@ -83,9 +89,12 @@ export function PreserveButton({ track, className = '', size = 'sm' }: PreserveB
   // Not preserved — outline icon
   return (
     <button
+      type="button"
       onClick={handleClick}
-      className={`${btnSize} flex items-center justify-center text-zinc-500 hover:text-zinc-300 transition ${className}`}
-      title="Preserve for offline"
+      onTouchEnd={handleClick}
+      disabled={!canPreserve}
+      className={`${btnSize} flex items-center justify-center text-zinc-500 hover:text-zinc-300 transition disabled:opacity-40 disabled:cursor-not-allowed ${className}`}
+      title={canPreserve ? 'Preserve for offline' : 'Sign in again to preserve tracks'}
     >
       <svg
         width={iconSize}

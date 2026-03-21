@@ -45,6 +45,33 @@ export function initDatabase(dataDir: string): Database {
     )
   `);
 
+  db.run(`
+    CREATE TABLE IF NOT EXISTS completed_downloads (
+      transfer_key TEXT PRIMARY KEY,
+      username TEXT NOT NULL,
+      directory TEXT NOT NULL,
+      filename TEXT NOT NULL,
+      relative_path TEXT,
+      basename TEXT NOT NULL,
+      completed_at INTEGER NOT NULL
+    )
+  `);
+
+  db.run(`
+    CREATE INDEX IF NOT EXISTS idx_completed_downloads_completed_at
+    ON completed_downloads (completed_at DESC)
+  `);
+
+  db.run(`
+    CREATE INDEX IF NOT EXISTS idx_completed_downloads_relative_path
+    ON completed_downloads (relative_path)
+  `);
+
+  db.run(`
+    CREATE INDEX IF NOT EXISTS idx_completed_downloads_basename_completed_at
+    ON completed_downloads (basename, completed_at DESC)
+  `);
+
   return db;
 }
 

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth';
 import { usePlayerStore, type Track } from '@/stores/player';
+import { TrackRow } from '@/components/TrackRow';
 
 interface Album {
   id: string;
@@ -55,7 +56,11 @@ export function LibraryPage() {
   }
 
   function playSong(song: Song, albumName: string) {
-    const track: Track = {
+    play(toTrack(song, albumName));
+  }
+
+  function toTrack(song: Song, albumName: string): Track {
+    return {
       id: song.id,
       title: song.title,
       artist: song.artist,
@@ -63,7 +68,6 @@ export function LibraryPage() {
       coverArt: song.coverArt,
       duration: song.duration,
     };
-    play(track);
   }
 
   function playAlbum(album: AlbumDetail) {
@@ -77,13 +81,6 @@ export function LibraryPage() {
       duration: s.duration,
     }));
     playWithContext(tracks, 0, { type: 'album', id: album.id, name: album.name });
-  }
-
-  function formatDuration(seconds?: number) {
-    if (!seconds) return '';
-    const m = Math.floor(seconds / 60);
-    const s = Math.floor(seconds % 60);
-    return `${m}:${s.toString().padStart(2, '0')}`;
   }
 
   // Album detail view
@@ -123,30 +120,19 @@ export function LibraryPage() {
         </div>
 
         <div>
-          {selectedAlbum.song?.map((song) => (
-            <button
-              key={song.id}
-              onClick={() => playSong(song, selectedAlbum.name)}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-zinc-800/50 transition text-left group"
-            >
-              <span className="text-xs text-zinc-600 w-6 text-right">
-                {song.track ?? ''}
-              </span>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm text-zinc-200 truncate">{song.title}</p>
-              </div>
-              <span className="text-xs text-zinc-600">{formatDuration(song.duration)}</span>
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="currentColor"
-                className="text-zinc-700 group-hover:text-zinc-300 transition flex-shrink-0"
-              >
-                <polygon points="5,3 19,12 5,21" />
-              </svg>
-            </button>
-          ))}
+          {selectedAlbum.song?.map((song) => {
+            const track = toTrack(song, selectedAlbum.name);
+
+            return (
+              <TrackRow
+                key={song.id}
+                track={track}
+                indexLabel={song.track ?? ''}
+                duration={song.duration}
+                onPlay={() => playSong(song, selectedAlbum.name)}
+              />
+            );
+          })}
         </div>
       </div>
     );

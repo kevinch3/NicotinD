@@ -1,8 +1,11 @@
 import { createLogger } from '@nicotind/core';
 import type { Slskd } from '@nicotind/slskd-client';
 import type { Navidrome } from '@nicotind/navidrome-client';
+import { basename, join, relative } from 'node:path';
+import { existsSync } from 'node:fs';
 import { MetadataFixer } from './metadata-fixer.js';
 import type { CompletedDownloadFile } from './metadata-fixer.js';
+import { getDatabase } from '../db.js';
 
 const log = createLogger('download-watcher');
 
@@ -23,6 +26,7 @@ export class DownloadWatcher {
   private knownCompleted = new Set<string>();
   private scanDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   private scanDebounceMs: number;
+  private musicDir: string | null;
   private metadataFixer: {
     processCompletedDownloads: (files: CompletedDownloadFile[]) => Promise<void>;
   };
@@ -33,6 +37,7 @@ export class DownloadWatcher {
     this.navidrome = navidrome;
     this.intervalMs = options.intervalMs ?? 5_000;
     this.scanDebounceMs = options.scanDebounceMs ?? 10_000;
+    this.musicDir = options.musicDir ? this.expandDir(options.musicDir) : null;
     this.metadataFixer =
       options.metadataFixer ??
       new MetadataFixer({
@@ -75,7 +80,10 @@ export class DownloadWatcher {
       for (const group of downloads) {
         for (const dir of group.directories) {
           for (const file of dir.files) {
-            const key = `${group.username}:${file.filename}`;
+            const transferId = typeof file.id === 'string' && file.id.length > 0
+              ? file.id
+              : `${dir.directory}:${file.filename}`;
+            const key = `${group.username}:${transferId}`;
             if (file.state === 'Completed, Succeeded' && !this.knownCompleted.has(key)) {
               this.knownCompleted.add(key);
               newCompletions = true;
@@ -84,6 +92,13 @@ export class DownloadWatcher {
                 directory: dir.directory,
                 filename: file.filename,
               });
+              this.recordCompletedDownload(
+                key,
+                group.username,
+                dir.directory,
+                file.filename,
+                this.parseCompletedAt(file.endedAt),
+              );
               log.info({ username: group.username, filename: file.filename }, 'Download completed');
             }
           }
@@ -123,5 +138,75 @@ export class DownloadWatcher {
         log.error({ err }, 'Failed to trigger scan');
       }
     }, this.scanDebounceMs);
+  }
+
+  private parseCompletedAt(endedAt?: string): number {
+    if (!endedAt) return Date.now();
+    const parsed = Date.parse(endedAt);
+    return Number.isFinite(parsed) ? parsed : Date.now();
+  }
+
+  private recordCompletedDownload(
+    transferKey: string,
+    username: string,
+    directory: string,
+    filename: string,
+    completedAt: number,
+  ): void {
+    try {
+      const db = getDatabase();
+      const relativePath = this.resolveRelativePath(directory, filename);
+      const fileBasename = basename(filename.replace(/\\/g, '/')).toLowerCase();
+
+      db.run(
+        `INSERT OR IGNORE INTO completed_downloads
+          (transfer_key, username, directory, filename, relative_path, basename, completed_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [transferKey, username, directory, filename, relativePath, fileBasename, completedAt],
+      );
+    } catch {
+      // Database may not be initialized in unit tests or early startup.
+    }
+  }
+
+  private resolveRelativePath(directory: string, filename: string): string | null {
+    if (!this.musicDir) return null;
+
+    const normalizedFilename = filename.replace(/\\/g, '/');
+    const normalizedDirectory = directory.replace(/\\/g, '/');
+    const filenameParts = normalizedFilename.split('/').filter(Boolean);
+    const directoryParts = normalizedDirectory.split('/').filter(Boolean);
+    const baseName = filenameParts[filenameParts.length - 1] ?? basename(normalizedFilename);
+
+    const candidates = [
+      join(this.musicDir, ...filenameParts),
+      join(this.musicDir, ...directoryParts, baseName),
+      join(this.musicDir, baseName),
+    ];
+
+    if (this.isAbsolutePath(normalizedFilename)) {
+      candidates.unshift(normalizedFilename);
+    }
+
+    for (const candidate of candidates) {
+      if (!existsSync(candidate)) continue;
+
+      const relPath = relative(this.musicDir, candidate).replace(/\\/g, '/');
+      if (!relPath || relPath.startsWith('../') || relPath === '..') continue;
+      return relPath;
+    }
+
+    return null;
+  }
+
+  private expandDir(dir: string): string {
+    if (dir.startsWith('~')) {
+      return join(process.env.HOME ?? '/root', dir.slice(1));
+    }
+    return dir;
+  }
+
+  private isAbsolutePath(p: string): boolean {
+    return p.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(p);
   }
 }
