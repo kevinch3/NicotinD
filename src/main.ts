@@ -78,13 +78,11 @@ async function main() {
 
   // 3. Initialize clients (slskd wrapped in mutable ref for hot-swap via settings)
   const slskdRef: { current: Slskd | null } = {
-    current: hasSoulseekCreds
-      ? new Slskd({
-          baseUrl: config.slskd.url,
-          username: config.slskd.username,
-          password: config.slskd.password,
-        })
-      : null,
+    current: new Slskd({
+      baseUrl: config.slskd.url,
+      username: config.slskd.username,
+      password: config.slskd.password,
+    }),
   };
 
   const navidrome = new Navidrome({
@@ -207,6 +205,10 @@ function loadConfig() {
     process.env.NICOTIND_DATA_DIR ||
     ((fileConfig as Record<string, unknown>).dataDir as string) ||
     '~/.nicotind';
+  const mode = (process.env.NICOTIND_MODE ||
+    (fileConfig as Record<string, unknown>).mode ||
+    'embedded') as string;
+  const isExternalMode = mode === 'external';
   const secrets = loadOrCreateSecrets(dataDir);
   const metadataFixEnabled = parseBooleanEnv(process.env.NICOTIND_METADATA_FIX_ENABLED);
 
@@ -234,13 +236,18 @@ function loadConfig() {
     slskd: {
       url: 'http://localhost:5030',
       port: 5030,
-      username: 'nicotind',
-      password: secrets.slskdPassword,
       ...((fileConfig as Record<string, unknown>).slskd as Record<string, unknown>),
+      username: isExternalMode ? 'slskd' : 'nicotind',
+      password: isExternalMode ? 'slskd' : secrets.slskdPassword,
       ...(process.env.NICOTIND_SLSKD_URL ? { url: process.env.NICOTIND_SLSKD_URL } : {}),
+      ...(process.env.SLSKD_USERNAME ? { username: process.env.SLSKD_USERNAME } : {}),
+      ...(process.env.SLSKD_INTERNAL_USERNAME
+        ? { username: process.env.SLSKD_INTERNAL_USERNAME }
+        : {}),
       ...(process.env.SLSKD_INTERNAL_PASSWORD
         ? { password: process.env.SLSKD_INTERNAL_PASSWORD }
         : {}),
+      ...(process.env.SLSKD_PASSWORD ? { password: process.env.SLSKD_PASSWORD } : {}),
     },
     navidrome: {
       url: 'http://localhost:4533',

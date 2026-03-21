@@ -2,11 +2,11 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { Hono } from 'hono';
 import type { NicotinDConfig } from '@nicotind/core';
-import { Slskd } from '@nicotind/slskd-client';
 import type { Navidrome } from '@nicotind/navidrome-client';
 import type { ServiceManager } from '@nicotind/service-manager';
 import type { AuthEnv } from '../middleware/auth.js';
 import { DownloadWatcher } from '../services/download-watcher.js';
+import { updateExternalSoulseekCredentials } from '../services/slskd-config.js';
 import type { SlskdRef, WatcherRef } from '../index.js';
 
 interface PersistedSecrets {
@@ -41,11 +41,12 @@ export function settingsRoutes(
   watcherRef: WatcherRef,
 ) {
   const app = new Hono<AuthEnv>();
+  const soulseekConfigured = () => Boolean(config.soulseek.username && config.soulseek.password);
 
   // GET /api/settings/soulseek — read current Soulseek config + connection status
   app.get('/soulseek', async (c) => {
     const user = c.get('user');
-    const configured = slskdRef.current !== null;
+    const configured = soulseekConfigured();
 
     let connected = false;
     let username: string | null = null;
@@ -79,7 +80,7 @@ export function settingsRoutes(
 
   // GET /api/settings/soulseek/status — lightweight status for any user
   app.get('/soulseek/status', async (c) => {
-    const configured = slskdRef.current !== null;
+    const configured = soulseekConfigured();
     let connected = false;
     let username: string | null = null;
 
@@ -136,37 +137,36 @@ export function settingsRoutes(
       }
     }
 
-    // 4. Start or restart slskd
+    // 4. Update slskd
     try {
+      const slskd = slskdRef.current;
       if (serviceManager.hasService('slskd')) {
+        // Embedded mode: NicotinD manages the local slskd process.
         await serviceManager.restartService('slskd');
-      } else if (config.mode === 'embedded') {
-        await serviceManager.startSlskd();
+      } else {
+        // External mode: push the credentials into the Dockerized slskd instance.
+        if (!slskd) {
+          return c.json({ error: 'Soulseek service is not available' }, 503);
+        }
+        await updateExternalSoulseekCredentials(slskd, username.trim(), password.trim());
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      return c.json({ error: `Failed to start slskd: ${msg}` }, 500);
+      return c.json({ error: `Failed to update slskd: ${msg}` }, 500);
     }
 
-    // 5. Create new Slskd client
-    slskdRef.current = new Slskd({
-      baseUrl: config.slskd.url,
-      username: config.slskd.username,
-      password: config.slskd.password,
-    });
-
-    // 6. (Re)create download watcher
+    // 5. (Re)create download watcher
     if (watcherRef.current) {
       watcherRef.current.stop();
     }
-    watcherRef.current = new DownloadWatcher(slskdRef.current, navidrome, {
+    watcherRef.current = new DownloadWatcher(slskdRef.current!, navidrome, {
       musicDir: config.musicDir,
       metadataFixEnabled: config.metadataFix.enabled,
       metadataFixMinScore: config.metadataFix.minScore,
     });
     watcherRef.current.start();
 
-    return c.json({ ok: true, message: 'Soulseek credentials saved and service started' });
+    return c.json({ ok: true, message: 'Soulseek credentials saved and service updated' });
   });
 
   return app;

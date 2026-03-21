@@ -18,6 +18,8 @@ Open `http://localhost:8484`. The setup wizard walks you through:
 
 No `.env` file or manual config needed.
 
+The Docker Compose stack wires NicotinD and the bundled slskd container to the same web credentials by default (`slskd` / `slskd`). If you change those credentials, set `SLSKD_USERNAME` and `SLSKD_PASSWORD` for both services.
+
 ## How it works
 
 ```
@@ -103,7 +105,7 @@ You can provide your Tailscale auth key in two ways:
 |--------|---------|
 | `music` | Shared music directory (slskd writes, navidrome reads) |
 | `nicotind-data` | NicotinD SQLite database and secrets |
-| `slskd-data` | slskd state and configuration |
+| `slskd-data` | slskd application directory (`/app`, including config and state) |
 | `navidrome-data` | Navidrome database and cache |
 | `tailscale-state` | Tailscale persistent state (survives restarts) |
 | `tailscale-sock` | Shared Unix socket for NicotinD to control Tailscale |
@@ -168,6 +170,8 @@ Configuration is loaded from `config/default.yml` and can be overridden with env
 | `NICOTIND_METADATA_FIX_MIN_SCORE` | `85` | Minimum MusicBrainz match score (0-100) for auto-fill |
 | `SOULSEEK_USERNAME` | — | Your Soulseek account username |
 | `SOULSEEK_PASSWORD` | — | Your Soulseek account password |
+| `SLSKD_USERNAME` | `slskd` | slskd web login username |
+| `SLSKD_PASSWORD` | `slskd` | slskd web login password |
 | `NICOTIND_SLSKD_URL` | `http://localhost:5030` | slskd URL (external mode only) |
 | `NICOTIND_NAVIDROME_URL` | `http://localhost:4533` | Navidrome URL (external mode only) |
 | `TAILSCALE_SOCKET` | `/var/run/tailscale/tailscaled.sock` | Tailscale daemon socket path |

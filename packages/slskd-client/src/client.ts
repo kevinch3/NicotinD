@@ -37,11 +37,34 @@ export class SlskdClient {
   }
 
   async request<T>(path: string, options: RequestInit = {}): Promise<T> {
+    const res = await this.fetchWithAuth(`${this.baseUrl}/api/v0${path}`, options);
+
+    if (!res.ok) {
+      throw new Error(`slskd request failed: ${res.status} ${path}`);
+    }
+
+    const contentType = res.headers.get('content-type');
+    if (contentType?.includes('application/json')) {
+      return res.json() as Promise<T>;
+    }
+    return res.text() as unknown as T;
+  }
+
+  async requestText(path: string, options: RequestInit = {}): Promise<string> {
+    const res = await this.fetchWithAuth(`${this.baseUrl}/api/v0${path}`, options);
+
+    if (!res.ok) {
+      throw new Error(`slskd request failed: ${res.status} ${path}`);
+    }
+
+    return res.text();
+  }
+
+  private async fetchWithAuth(url: string, options: RequestInit = {}): Promise<Response> {
     if (!this.token) {
       await this.authenticate();
     }
 
-    const url = `${this.baseUrl}/api/v0${path}`;
     const res = await fetch(url, {
       ...options,
       headers: {
@@ -65,19 +88,11 @@ export class SlskdClient {
       });
 
       if (!retryRes.ok) {
-        throw new Error(`slskd request failed: ${retryRes.status} ${path}`);
+        return retryRes;
       }
-      return retryRes.json() as Promise<T>;
+      return retryRes;
     }
 
-    if (!res.ok) {
-      throw new Error(`slskd request failed: ${res.status} ${path}`);
-    }
-
-    const contentType = res.headers.get('content-type');
-    if (contentType?.includes('application/json')) {
-      return res.json() as Promise<T>;
-    }
-    return res.text() as unknown as T;
+    return res;
   }
 }

@@ -14,6 +14,8 @@ services:
       NICOTIND_MUSIC_DIR: /data/music
       NICOTIND_SLSKD_URL: http://slskd:5030
       NICOTIND_NAVIDROME_URL: http://navidrome:4533
+      SLSKD_USERNAME: slskd
+      SLSKD_PASSWORD: slskd
       TAILSCALE_SOCKET: /var/run/tailscale/tailscaled.sock
     depends_on:
       - navidrome
@@ -26,12 +28,21 @@ services:
     image: slskd/slskd:latest
     volumes:
       - music:/data/music
-      - slskd-data:/app/data
+      - slskd-data:/app
+    command:
+      - --remote-configuration=true
+      - --http-port=5030
+      - --no-https=true
+      - --slsk-listen-port=50300
+      - --username=slskd
+      - --password=slskd
     environment:
       SLSKD_REMOTE_CONFIGURATION: "true"
       SLSKD_HTTP_PORT: "5030"
       SLSKD_NO_HTTPS: "true"
       SLSKD_SLSK_LISTEN_PORT: "50300"
+      SLSKD_USERNAME: slskd
+      SLSKD_PASSWORD: slskd
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:5030/api/v0/application"]
       interval: 10s

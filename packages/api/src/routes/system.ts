@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import type { NicotinDConfig } from '@nicotind/core';
 import type { Navidrome } from '@nicotind/navidrome-client';
 import type { ServiceManager } from '@nicotind/service-manager';
 import type { AuthEnv } from '../middleware/auth.js';
@@ -10,6 +11,7 @@ export function systemRoutes(
   slskdRef: SlskdRef,
   navidrome: Navidrome,
   serviceManager: ServiceManager,
+  config: NicotinDConfig,
 ) {
   const app = new Hono<AuthEnv>();
 
@@ -38,7 +40,7 @@ export function systemRoutes(
         uptime: Math.floor((Date.now() - startTime) / 1000),
       },
       slskd: {
-        configured: slskdRef.current !== null,
+        configured: Boolean(config.soulseek.username && config.soulseek.password),
         healthy: slskdHealthy,
         connected: slskdState?.isConnected ?? false,
         username: slskdState?.username,

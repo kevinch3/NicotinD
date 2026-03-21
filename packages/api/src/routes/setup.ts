@@ -1,13 +1,13 @@
 import { Hono } from 'hono';
 import { hashPassword } from '@nicotind/core';
 import type { NicotinDConfig } from '@nicotind/core';
-import { Slskd } from '@nicotind/slskd-client';
 import type { Navidrome } from '@nicotind/navidrome-client';
 import type { ServiceManager } from '@nicotind/service-manager';
 import { getDatabase } from '../db.js';
 import { signJwt } from '../middleware/auth.js';
 import { TailscaleService } from '../services/tailscale.js';
 import { DownloadWatcher } from '../services/download-watcher.js';
+import { updateExternalSoulseekCredentials } from '../services/slskd-config.js';
 import type { SlskdRef, WatcherRef } from '../index.js';
 
 interface SetupDeps {
@@ -85,16 +85,22 @@ export function setupRoutes({
       config.soulseek.password = body.soulseek.password.trim();
       serviceManager.updateConfig(config);
 
-      // Create slskd client
-      slskdRef.current = new Slskd({
-        baseUrl: config.slskd.url,
-        username: config.slskd.username,
-        password: config.slskd.password,
-      });
+      if (serviceManager.hasService('slskd')) {
+        // Embedded mode: NicotinD owns the slskd process.
+        await serviceManager.restartService('slskd');
+      } else {
+        // External mode: update the Dockerized slskd instance directly.
+        await updateExternalSoulseekCredentials(
+          slskdRef.current!,
+          body.soulseek.username.trim(),
+          body.soulseek.password.trim(),
+        );
+      }
 
-      // Create download watcher
-      if (watcherRef.current) watcherRef.current.stop();
-      watcherRef.current = new DownloadWatcher(slskdRef.current, navidrome, {
+      if (watcherRef.current) {
+        watcherRef.current.stop();
+      }
+      watcherRef.current = new DownloadWatcher(slskdRef.current!, navidrome, {
         musicDir: config.musicDir,
         metadataFixEnabled: config.metadataFix.enabled,
         metadataFixMinScore: config.metadataFix.minScore,

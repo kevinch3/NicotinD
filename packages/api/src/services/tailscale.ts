@@ -29,7 +29,7 @@ export class TailscaleService {
     }
 
     try {
-      const data = this.curlApi('GET', 'status');
+      const data = await this.curlApi('GET', 'status');
       const status = JSON.parse(data);
 
       const selfNode = status.Self;

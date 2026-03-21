@@ -56,7 +56,7 @@ export function createApp({
 
   // Download watcher (mutable ref — settings route can create/replace it)
   const watcherRef: WatcherRef = {
-    current: slskdRef.current
+    current: slskdRef.current && config.soulseek.username && config.soulseek.password
       ? new DownloadWatcher(slskdRef.current, navidrome, {
           musicDir: config.musicDir,
           metadataFixEnabled: config.metadataFix.enabled,
@@ -102,7 +102,7 @@ export function createApp({
   app.route('/api/downloads', downloadRoutes(slskdRef));
   app.route('/api/library', libraryRoutes(navidrome, config.musicDir));
   app.route('/api', streamingRoutes(navidrome));
-  app.route('/api/system', systemRoutes(slskdRef, navidrome, serviceManager));
+  app.route('/api/system', systemRoutes(slskdRef, navidrome, serviceManager, config));
   app.route(
     '/api/settings',
     settingsRoutes(config, slskdRef, navidrome, serviceManager, watcherRef),
