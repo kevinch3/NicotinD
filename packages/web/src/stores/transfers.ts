@@ -44,10 +44,9 @@ export const useTransferStore = create<TransferStore>((set, get) => ({
   },
 
   startPolling: () => {
-    const { _intervalId, poll } = get();
-    if (_intervalId) return; // guard: don't start twice
-    poll();
-    const id = setInterval(poll, 3000);
+    if (get()._intervalId) return; // guard: don't start twice
+    get().poll();
+    const id = setInterval(() => get().poll(), 3000);
     set({ _intervalId: id });
   },
 
