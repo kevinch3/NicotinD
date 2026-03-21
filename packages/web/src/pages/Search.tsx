@@ -3,6 +3,8 @@ import { api } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth';
 import { usePlayerStore, type Track } from '@/stores/player';
 import { useSearchStore } from '@/stores/search';
+import { useTransferStore } from '@/stores/transfers';
+import { getSingleDownloadLabel, BUTTON_CLASSES } from '@/lib/downloadStatus';
 import { FolderBrowser } from '@/components/FolderBrowser';
 import { groupByDirectory } from '@/lib/folderUtils';
 
@@ -161,6 +163,7 @@ export function SearchPage() {
   const addDownloading = useSearchStore((s) => s.addDownloading);
   const canBrowse = useSearchStore((s) => s.canBrowse);
   const setCanBrowse = useSearchStore((s) => s.setCanBrowse);
+  const getStatus = useTransferStore((s) => s.getStatus);
 
   // Ephemeral state (resets on remount — that's fine)
   const [loading, setLoading] = useState(false);
@@ -249,6 +252,7 @@ export function SearchPage() {
   }, [query, searchId, cleanupSearch, setLocal, setNetworkState]);
 
   async function handleDownload(username: string, file: { filename: string; size: number }) {
+    if (file.size === 0) return; // skip 0-byte directory stubs (Soulseek peer artifact)
     const key = `${username}:${file.filename}`;
     addDownloading(key);
     try {
@@ -484,7 +488,6 @@ export function SearchPage() {
             <>
               {flatNetwork.map((file) => {
                 const key = `${file.username}:${file.filename}`;
-                const queued = downloading.has(key);
                 const title = getDisplayTitle(file);
                 const subtitle = getDisplaySubtitle(file);
                 return (
@@ -519,13 +522,22 @@ export function SearchPage() {
                         )}
                       </p>
                     </div>
-                    <button
-                      onClick={() => handleDownload(file.username, { filename: file.filename, size: file.size })}
-                      disabled={queued}
-                      className="px-3 py-1 rounded-md text-xs font-medium bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition disabled:opacity-50"
-                    >
-                      {queued ? 'Queued' : 'Download'}
-                    </button>
+                    {(() => {
+                      const { label, variant, disabled } = getSingleDownloadLabel(
+                        file.username, file.filename,
+                        downloading.has(`${file.username}:${file.filename}`),
+                        getStatus,
+                      );
+                      return (
+                        <button
+                          onClick={() => handleDownload(file.username, { filename: file.filename, size: file.size })}
+                          disabled={disabled}
+                          className={`px-3 py-1 rounded-md text-xs font-medium transition ${BUTTON_CLASSES[variant]} ${disabled ? 'cursor-default' : ''}`}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })()}
                   </div>
                 );
               })}
