@@ -9,12 +9,27 @@ import { createApp } from '@nicotind/api';
 
 const log = createLogger('nicotind');
 
+function parseBooleanEnv(value: string | undefined): boolean | undefined {
+  if (value === undefined) return undefined;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'true' || normalized === '1' || normalized === 'yes' || normalized === 'on') {
+    return true;
+  }
+  if (normalized === 'false' || normalized === '0' || normalized === 'no' || normalized === 'off') {
+    return false;
+  }
+  return undefined;
+}
+
 async function main() {
   log.info('Starting NicotinD...');
 
   // 1. Load configuration
   const config = loadConfig();
-  log.info({ port: config.port, mode: config.mode, musicDir: config.musicDir }, 'Configuration loaded');
+  log.info(
+    { port: config.port, mode: config.mode, musicDir: config.musicDir },
+    'Configuration loaded',
+  );
 
   // 2. Start sub-services (if embedded mode)
   const strategy = new NativeProcessStrategy();
@@ -53,22 +68,12 @@ async function main() {
     await serviceManager.startNavidrome();
 
     // Auto-create Navidrome admin user on first run
-    const ndUrl = config.navidrome.url;
-    try {
-      const createAdminRes = await fetch(`${ndUrl}/auth/createAdmin`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          username: config.navidrome.username,
-          password: config.navidrome.password,
-        }),
-      });
-      if (createAdminRes.ok) {
-        log.info('Created Navidrome admin user');
-      }
-    } catch {
-      // Already created or Navidrome doesn't support this — fine
-    }
+    await createNavidromeAdmin(config);
+  }
+
+  // Auto-create Navidrome admin user in external mode too
+  if (config.mode === 'external') {
+    await createNavidromeAdmin(config);
   }
 
   // 3. Initialize clients (slskd wrapped in mutable ref for hot-swap via settings)
@@ -90,7 +95,19 @@ async function main() {
 
   // 4. Create and start API server
   const webDistPath = resolve(import.meta.dir, '../packages/web/dist');
-  const { app, watcherRef } = createApp({ config, slskdRef, navidrome, serviceManager, webDistPath });
+  const { app, watcherRef } = createApp({
+    config,
+    slskdRef,
+    navidrome,
+    serviceManager,
+    webDistPath,
+    saveSecretsFn: (username: string, password: string) => {
+      const secrets = loadOrCreateSecrets(config.dataDir);
+      secrets.soulseekUsername = username;
+      secrets.soulseekPassword = password;
+      saveSecrets(config.dataDir, secrets);
+    },
+  });
 
   if (watcherRef.current) watcherRef.current.start();
 
@@ -155,6 +172,26 @@ export function saveSecrets(dataDir: string, secrets: PersistedSecrets): void {
   writeFileSync(secretsPath, JSON.stringify(secrets, null, 2), { mode: 0o600 });
 }
 
+async function createNavidromeAdmin(config: {
+  navidrome: { url: string; username: string; password: string };
+}) {
+  try {
+    const res = await fetch(`${config.navidrome.url}/auth/createAdmin`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: config.navidrome.username,
+        password: config.navidrome.password,
+      }),
+    });
+    if (res.ok) {
+      log.info('Created Navidrome admin user');
+    }
+  } catch {
+    // Already created or Navidrome doesn't support this — fine
+  }
+}
+
 function loadConfig() {
   // Try loading config file
   let fileConfig = {};
@@ -166,10 +203,12 @@ function loadConfig() {
     log.info('No config file found, using environment variables and defaults');
   }
 
-  const dataDir = process.env.NICOTIND_DATA_DIR
-    || (fileConfig as Record<string, unknown>).dataDir as string
-    || '~/.nicotind';
+  const dataDir =
+    process.env.NICOTIND_DATA_DIR ||
+    ((fileConfig as Record<string, unknown>).dataDir as string) ||
+    '~/.nicotind';
   const secrets = loadOrCreateSecrets(dataDir);
+  const metadataFixEnabled = parseBooleanEnv(process.env.NICOTIND_METADATA_FIX_ENABLED);
 
   // Merge: file config < persisted secrets < env vars
   const merged = {
@@ -178,6 +217,13 @@ function loadConfig() {
     dataDir: process.env.NICOTIND_DATA_DIR || (fileConfig as Record<string, unknown>).dataDir,
     musicDir: process.env.NICOTIND_MUSIC_DIR || (fileConfig as Record<string, unknown>).musicDir,
     mode: process.env.NICOTIND_MODE || (fileConfig as Record<string, unknown>).mode,
+    metadataFix: {
+      ...((fileConfig as Record<string, unknown>).metadataFix as Record<string, unknown>),
+      ...(metadataFixEnabled !== undefined ? { enabled: metadataFixEnabled } : {}),
+      ...(process.env.NICOTIND_METADATA_FIX_MIN_SCORE
+        ? { minScore: Number(process.env.NICOTIND_METADATA_FIX_MIN_SCORE) }
+        : {}),
+    },
     soulseek: {
       ...((fileConfig as Record<string, unknown>).soulseek as Record<string, unknown>),
       ...(secrets.soulseekUsername ? { username: secrets.soulseekUsername } : {}),
@@ -192,7 +238,9 @@ function loadConfig() {
       password: secrets.slskdPassword,
       ...((fileConfig as Record<string, unknown>).slskd as Record<string, unknown>),
       ...(process.env.NICOTIND_SLSKD_URL ? { url: process.env.NICOTIND_SLSKD_URL } : {}),
-      ...(process.env.SLSKD_INTERNAL_PASSWORD ? { password: process.env.SLSKD_INTERNAL_PASSWORD } : {}),
+      ...(process.env.SLSKD_INTERNAL_PASSWORD
+        ? { password: process.env.SLSKD_INTERNAL_PASSWORD }
+        : {}),
     },
     navidrome: {
       url: 'http://localhost:4533',
@@ -201,7 +249,9 @@ function loadConfig() {
       password: secrets.navidromePassword,
       ...((fileConfig as Record<string, unknown>).navidrome as Record<string, unknown>),
       ...(process.env.NICOTIND_NAVIDROME_URL ? { url: process.env.NICOTIND_NAVIDROME_URL } : {}),
-      ...(process.env.NAVIDROME_INTERNAL_PASSWORD ? { password: process.env.NAVIDROME_INTERNAL_PASSWORD } : {}),
+      ...(process.env.NAVIDROME_INTERNAL_PASSWORD
+        ? { password: process.env.NAVIDROME_INTERNAL_PASSWORD }
+        : {}),
     },
     jwt: {
       secret: secrets.jwtSecret,

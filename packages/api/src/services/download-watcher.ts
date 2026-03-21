@@ -1,13 +1,18 @@
 import { createLogger } from '@nicotind/core';
 import type { Slskd } from '@nicotind/slskd-client';
 import type { Navidrome } from '@nicotind/navidrome-client';
+import { MetadataFixer } from './metadata-fixer.js';
+import type { CompletedDownloadFile } from './metadata-fixer.js';
 
 const log = createLogger('download-watcher');
 
-/** Extract a human-readable album name from a Soulseek directory path. */
-export function extractAlbumName(directory: string): string {
-  const segments = directory.split('\\').filter(Boolean);
-  return segments[segments.length - 1] ?? directory;
+interface DownloadWatcherOptions {
+  intervalMs?: number;
+  scanDebounceMs?: number;
+  musicDir?: string;
+  metadataFixEnabled?: boolean;
+  metadataFixMinScore?: number;
+  metadataFixer?: { processCompletedDownloads: (files: CompletedDownloadFile[]) => Promise<void> };
 }
 
 export class DownloadWatcher {
@@ -18,16 +23,23 @@ export class DownloadWatcher {
   private knownCompleted = new Set<string>();
   private scanDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   private scanDebounceMs: number;
+  private metadataFixer: {
+    processCompletedDownloads: (files: CompletedDownloadFile[]) => Promise<void>;
+  };
+  private checking = false;
 
-  constructor(
-    slskd: Slskd,
-    navidrome: Navidrome,
-    options: { intervalMs?: number; scanDebounceMs?: number } = {},
-  ) {
+  constructor(slskd: Slskd, navidrome: Navidrome, options: DownloadWatcherOptions = {}) {
     this.slskd = slskd;
     this.navidrome = navidrome;
     this.intervalMs = options.intervalMs ?? 5_000;
     this.scanDebounceMs = options.scanDebounceMs ?? 10_000;
+    this.metadataFixer =
+      options.metadataFixer ??
+      new MetadataFixer({
+        musicDir: options.musicDir ?? '~/Music',
+        enabled: options.metadataFixEnabled ?? true,
+        minScore: options.metadataFixMinScore ?? 85,
+      });
   }
 
   start(): void {
@@ -52,9 +64,13 @@ export class DownloadWatcher {
   }
 
   private async check(): Promise<void> {
+    if (this.checking) return;
+    this.checking = true;
+
     try {
       const downloads = await this.slskd.transfers.getDownloads();
       let newCompletions = false;
+      const completedFiles: CompletedDownloadFile[] = [];
 
       for (const group of downloads) {
         for (const dir of group.directories) {
@@ -63,6 +79,11 @@ export class DownloadWatcher {
             if (file.state === 'Completed, Succeeded' && !this.knownCompleted.has(key)) {
               this.knownCompleted.add(key);
               newCompletions = true;
+              completedFiles.push({
+                username: group.username,
+                directory: dir.directory,
+                filename: file.filename,
+              });
               log.info({ username: group.username, filename: file.filename }, 'Download completed');
             }
           }
@@ -70,6 +91,11 @@ export class DownloadWatcher {
       }
 
       if (newCompletions) {
+        try {
+          await this.metadataFixer.processCompletedDownloads(completedFiles);
+        } catch (err) {
+          log.warn({ err }, 'Metadata fix step failed');
+        }
         this.debouncedScan();
       }
     } catch (err) {
@@ -79,6 +105,8 @@ export class DownloadWatcher {
       } else {
         log.error({ err }, 'Error checking downloads');
       }
+    } finally {
+      this.checking = false;
     }
   }
 

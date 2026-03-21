@@ -18,9 +18,7 @@ interface PersistedSecrets {
 }
 
 function expandDir(dir: string): string {
-  return dir.startsWith('~')
-    ? join(process.env.HOME ?? '/root', dir.slice(1))
-    : dir;
+  return dir.startsWith('~') ? join(process.env.HOME ?? '/root', dir.slice(1)) : dir;
 }
 
 function readSecrets(dataDir: string): PersistedSecrets {
@@ -161,7 +159,11 @@ export function settingsRoutes(
     if (watcherRef.current) {
       watcherRef.current.stop();
     }
-    watcherRef.current = new DownloadWatcher(slskdRef.current, navidrome);
+    watcherRef.current = new DownloadWatcher(slskdRef.current, navidrome, {
+      musicDir: config.musicDir,
+      metadataFixEnabled: config.metadataFix.enabled,
+      metadataFixMinScore: config.metadataFix.minScore,
+    });
     watcherRef.current.start();
 
     return c.json({ ok: true, message: 'Soulseek credentials saved and service started' });

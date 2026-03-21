@@ -9,6 +9,7 @@
     "@nicotind/navidrome-client": "workspace:*",
     "@nicotind/service-manager": "workspace:*",
     "hono": "^4.7.0",
-    "jose": "^6.0.0"
+    "jose": "^6.0.0",
+    "node-id3": "^0.2.9"
   }
 }

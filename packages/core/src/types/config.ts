@@ -8,6 +8,12 @@ export const NicotinDConfigSchema = z.object({
   dataDir: z.string().default('~/.nicotind'),
   musicDir: z.string().default('~/Music'),
   mode: ServiceModeSchema.default('embedded'),
+  metadataFix: z
+    .object({
+      enabled: z.boolean().default(true),
+      minScore: z.number().min(0).max(100).default(85),
+    })
+    .default({}),
 
   soulseek: z.object({
     username: z.string().default(''),

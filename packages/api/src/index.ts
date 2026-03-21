@@ -8,6 +8,8 @@ import type { ServiceManager } from '@nicotind/service-manager';
 import { authMiddleware } from './middleware/auth.js';
 import { errorHandler } from './middleware/error-handler.js';
 import { authRoutes } from './routes/auth.js';
+import { setupRoutes } from './routes/setup.js';
+import { tailscaleRoutes } from './routes/tailscale.js';
 import { searchRoutes } from './routes/search.js';
 import { downloadRoutes } from './routes/downloads.js';
 import { libraryRoutes } from './routes/library.js';
@@ -17,6 +19,7 @@ import { settingsRoutes } from './routes/settings.js';
 import { playlistRoutes } from './routes/playlists.js';
 import { subsonicProxy } from './routes/subsonic.js';
 import { DownloadWatcher } from './services/download-watcher.js';
+import { TailscaleService } from './services/tailscale.js';
 import { initDatabase } from './db.js';
 
 export type SlskdRef = { current: Slskd | null };
@@ -28,9 +31,17 @@ export interface CreateAppOptions {
   navidrome: Navidrome;
   serviceManager: ServiceManager;
   webDistPath?: string;
+  saveSecretsFn?: (username: string, password: string) => void;
 }
 
-export function createApp({ config, slskdRef, navidrome, serviceManager, webDistPath }: CreateAppOptions) {
+export function createApp({
+  config,
+  slskdRef,
+  navidrome,
+  serviceManager,
+  webDistPath,
+  saveSecretsFn,
+}: CreateAppOptions) {
   const expandedDataDir = config.dataDir.startsWith('~')
     ? config.dataDir.replace('~', process.env.HOME ?? '/root')
     : config.dataDir;
@@ -43,8 +54,34 @@ export function createApp({ config, slskdRef, navidrome, serviceManager, webDist
   app.use('*', cors());
   app.onError(errorHandler);
 
+  // Tailscale service
+  const tailscale = new TailscaleService();
+
+  // Download watcher (mutable ref — settings route can create/replace it)
+  const watcherRef: WatcherRef = {
+    current: slskdRef.current
+      ? new DownloadWatcher(slskdRef.current, navidrome, {
+          musicDir: config.musicDir,
+          metadataFixEnabled: config.metadataFix.enabled,
+          metadataFixMinScore: config.metadataFix.minScore,
+        })
+      : null,
+  };
+
   // Public routes
   app.route('/api/auth', authRoutes(config.jwt.secret, config.jwt.expiresIn));
+  app.route(
+    '/api/setup',
+    setupRoutes({
+      config,
+      slskdRef,
+      navidrome,
+      serviceManager,
+      watcherRef,
+      tailscale,
+      saveSecretsFn: saveSecretsFn ?? (() => {}),
+    }),
+  );
 
   // Subsonic API proxy (uses its own auth via query params)
   app.route('/rest', subsonicProxy(config));
@@ -59,19 +96,19 @@ export function createApp({ config, slskdRef, navidrome, serviceManager, webDist
   app.use('/api/system/*', auth);
   app.use('/api/settings/*', auth);
   app.use('/api/playlists/*', auth);
-
-  // Download watcher (mutable ref — settings route can create/replace it)
-  const watcherRef: WatcherRef = {
-    current: slskdRef.current ? new DownloadWatcher(slskdRef.current, navidrome) : null,
-  };
+  app.use('/api/tailscale/*', auth);
 
   app.route('/api/search', searchRoutes(slskdRef, navidrome));
   app.route('/api/downloads', downloadRoutes(slskdRef));
   app.route('/api/library', libraryRoutes(navidrome, config.musicDir));
   app.route('/api', streamingRoutes(navidrome));
   app.route('/api/system', systemRoutes(slskdRef, navidrome, serviceManager));
-  app.route('/api/settings', settingsRoutes(config, slskdRef, navidrome, serviceManager, watcherRef));
+  app.route(
+    '/api/settings',
+    settingsRoutes(config, slskdRef, navidrome, serviceManager, watcherRef),
+  );
   app.route('/api/playlists', playlistRoutes(navidrome));
+  app.route('/api/tailscale', tailscaleRoutes(tailscale));
 
   // Serve web UI static files
   if (webDistPath) {

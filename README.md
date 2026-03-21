@@ -11,7 +11,7 @@ NicotinD (:8484)
                           └── auto-rescan on download completion
 ```
 
-NicotinD manages both services as child processes (embedded mode) or connects to existing instances (external mode). A **DownloadWatcher** polls slskd for completed transfers and triggers Navidrome library rescans automatically.
+NicotinD manages both services as child processes (embedded mode) or connects to existing instances (external mode). A **DownloadWatcher** polls slskd for completed transfers, repairs missing MP3 metadata from filename patterns + MusicBrainz lookup, and then triggers Navidrome library rescans automatically.
 
 ### Unified search
 
@@ -83,6 +83,8 @@ Configuration is loaded from `config/default.yml` and can be overridden with env
 | `NICOTIND_DATA_DIR` | `~/.nicotind` | Data directory (SQLite DB, logs, service configs) |
 | `NICOTIND_MUSIC_DIR` | `~/Music` | Shared music folder (slskd downloads here, Navidrome reads from here) |
 | `NICOTIND_MODE` | `embedded` | `embedded` (manage sub-services) or `external` (connect to existing) |
+| `NICOTIND_METADATA_FIX_ENABLED` | `true` | Auto-repair missing MP3 tags after download |
+| `NICOTIND_METADATA_FIX_MIN_SCORE` | `85` | Minimum MusicBrainz match score (0-100) for auto-fill |
 | `SOULSEEK_USERNAME` | — | Your Soulseek account username |
 | `SOULSEEK_PASSWORD` | — | Your Soulseek account password |
 | `NICOTIND_SLSKD_URL` | `http://localhost:5030` | slskd URL (external mode only) |

@@ -13,77 +13,88 @@ export function searchRoutes(slskdRef: SlskdRef, navidrome: Navidrome) {
 
   // Unified search: returns local results immediately + fires network search
   app.get('/', async (c) => {
-    const query = c.req.query('q');
-    if (!query) {
-      return c.json({ error: 'Query parameter "q" is required' }, 400);
-    }
-
-    const errors: string[] = [];
-
-    // 1. Search local library via Navidrome (graceful if unavailable)
-    let local = emptyLocal;
     try {
-      const localResults = await navidrome.search.search3(query, {
-        artistCount: 10,
-        albumCount: 10,
-        songCount: 20,
-      });
-      local = {
-        artists: localResults.artist ?? [],
-        albums: localResults.album ?? [],
-        songs: localResults.song ?? [],
-      };
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes('Unable to connect') || msg.includes('ConnectionRefused')) {
-        errors.push('Navidrome is not reachable — local library unavailable');
-      } else {
-        errors.push(`Navidrome error: ${msg}`);
+      const query = c.req.query('q');
+      if (!query) {
+        return c.json({ error: 'Query parameter "q" is required' }, 400);
       }
-    }
 
-    // 2. Fire slskd search (non-blocking, graceful if unavailable)
-    const searchId = crypto.randomUUID();
-    let networkAvailable = false;
-    const slskd = slskdRef.current;
-    if (!slskd) {
-      // Soulseek not configured — skip network search silently
-    } else {
+      const errors: string[] = [];
+
+      // 1. Search local library via Navidrome (graceful if unavailable)
+      let local = emptyLocal;
       try {
-        const slskdSearch = await slskd.searches.create(query);
-        activeSearches.set(searchId, slskdSearch.id);
-        networkAvailable = true;
+        const localResults = await navidrome.search.search3(query, {
+          artistCount: 10,
+          albumCount: 10,
+          songCount: 20,
+        });
+        local = {
+          artists: localResults.artist ?? [],
+          albums: localResults.album ?? [],
+          songs: localResults.song ?? [],
+        };
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        // 409 = duplicate search exists — clear old searches and retry
-        if (msg.includes('409')) {
-          try {
-            const existing = await slskd.searches.list();
-            for (const s of existing) {
-              await slskd.searches.delete(s.id);
-            }
-            const retrySearch = await slskd.searches.create(query);
-            activeSearches.set(searchId, retrySearch.id);
-            networkAvailable = true;
-          } catch (retryErr) {
-            const retryMsg = retryErr instanceof Error ? retryErr.message : String(retryErr);
-            errors.push(`Soulseek search failed: ${retryMsg}`);
-          }
-        } else if (msg.includes('Unable to connect') || msg.includes('ConnectionRefused')) {
-          errors.push('slskd is not reachable — Soulseek network unavailable');
+        if (msg.includes('Unable to connect') || msg.includes('ConnectionRefused')) {
+          errors.push('Navidrome is not reachable — local library unavailable');
         } else {
-          errors.push(`Soulseek search failed: ${msg}`);
+          errors.push(`Navidrome error: ${msg}`);
         }
       }
-    }
 
-    return c.json({
-      searchId,
-      local,
-      network: null,
-      networkAvailable,
-      errors: errors.length > 0 ? errors : undefined,
-    });
+      // 2. Fire slskd search (non-blocking, graceful if unavailable)
+      const searchId = crypto.randomUUID();
+      let networkAvailable = false;
+      const slskd = slskdRef.current;
+      if (!slskd) {
+        // Soulseek not configured — skip network search silently
+      } else {
+        try {
+          const slskdSearch = await slskd.searches.create(query);
+          activeSearches.set(searchId, slskdSearch.id);
+          networkAvailable = true;
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          // 409 = duplicate search exists — clear old searches and retry
+          if (msg.includes('409')) {
+            try {
+              const existing = await slskd.searches.list();
+              for (const s of existing) {
+                await slskd.searches.delete(s.id);
+              }
+              const retrySearch = await slskd.searches.create(query);
+              activeSearches.set(searchId, retrySearch.id);
+              networkAvailable = true;
+            } catch (retryErr) {
+              const retryMsg = retryErr instanceof Error ? retryErr.message : String(retryErr);
+              errors.push(`Soulseek search failed: ${retryMsg}`);
+            }
+          } else if (msg.includes('Unable to connect') || msg.includes('ConnectionRefused')) {
+            errors.push('slskd is not reachable — Soulseek network unavailable');
+          } else {
+            errors.push(`Soulseek search failed: ${msg}`);
+          }
+        }
+      }
+
+      return c.json({
+        searchId,
+        local,
+        network: null,
+        networkAvailable,
+        errors: errors.length > 0 ? errors : undefined,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return c.json({
+        searchId: crypto.randomUUID(),
+        local: emptyLocal,
+        network: null,
+        networkAvailable: false,
+        errors: [`Search failed unexpectedly: ${msg}`],
+      });
+    }
   });
 
   // Poll network search results
