@@ -26,6 +26,52 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+// Public request helper (no auth token)
+async function publicRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  });
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as { error?: string }).error ?? `Request failed: ${res.status}`);
+  }
+
+  return res.json() as Promise<T>;
+}
+
+export interface SetupStatus {
+  needsSetup: boolean;
+  tailscale: {
+    available: boolean;
+    connected: boolean;
+    hostname?: string;
+    ip?: string;
+  };
+}
+
+export interface SetupResult {
+  token: string;
+  user: { id: string; username: string; role: string };
+  tailscale: {
+    available: boolean;
+    connected: boolean;
+    hostname?: string;
+    ip?: string;
+  };
+}
+
+export interface TailscaleStatus {
+  available: boolean;
+  connected: boolean;
+  hostname?: string;
+  ip?: string;
+}
+
 export const api = {
   // Auth
   login: (username: string, password: string) =>
@@ -180,4 +226,26 @@ export const api = {
     }),
   deletePlaylist: (id: string) =>
     request<{ ok: boolean }>(`/api/playlists/${id}`, { method: 'DELETE' }),
+
+  // Setup
+  getSetupStatus: () => publicRequest<SetupStatus>('/api/setup/status'),
+  completeSetup: (data: {
+    admin: { username: string; password: string };
+    soulseek?: { username: string; password: string };
+    tailscale?: { authKey: string };
+  }) =>
+    publicRequest<SetupResult>('/api/setup/complete', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  // Tailscale
+  getTailscaleStatus: () => request<TailscaleStatus>('/api/tailscale/status'),
+  connectTailscale: (authKey: string) =>
+    request<TailscaleStatus>('/api/tailscale/connect', {
+      method: 'POST',
+      body: JSON.stringify({ authKey }),
+    }),
+  disconnectTailscale: () =>
+    request<{ ok: boolean }>('/api/tailscale/disconnect', { method: 'POST' }),
 };

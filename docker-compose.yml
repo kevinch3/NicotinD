@@ -1,0 +1,92 @@
+services:
+  nicotind:
+    build: .
+    ports:
+      - "8484:8484"
+    volumes:
+      - nicotind-data:/data/nicotind
+      - music:/data/music
+      - tailscale-sock:/var/run/tailscale
+    environment:
+      NICOTIND_MODE: external
+      NICOTIND_PORT: "8484"
+      NICOTIND_DATA_DIR: /data/nicotind
+      NICOTIND_MUSIC_DIR: /data/music
+      NICOTIND_SLSKD_URL: http://slskd:5030
+      NICOTIND_NAVIDROME_URL: http://navidrome:4533
+      TAILSCALE_SOCKET: /var/run/tailscale/tailscaled.sock
+    depends_on:
+      - navidrome
+      - slskd
+    networks:
+      - internal
+    restart: unless-stopped
+
+  slskd:
+    image: slskd/slskd:latest
+    volumes:
+      - music:/data/music
+      - slskd-data:/app/data
+    environment:
+      SLSKD_REMOTE_CONFIGURATION: "true"
+      SLSKD_HTTP_PORT: "5030"
+      SLSKD_NO_HTTPS: "true"
+      SLSKD_SLSK_LISTEN_PORT: "50300"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:5030/api/v0/application"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - internal
+    restart: unless-stopped
+
+  navidrome:
+    image: deluan/navidrome:latest
+    volumes:
+      - music:/data/music:ro
+      - navidrome-data:/data/nd
+    environment:
+      ND_MUSICFOLDER: /data/music
+      ND_DATAFOLDER: /data/nd
+      ND_PORT: "4533"
+      ND_BASEURL: ""
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4533/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - internal
+    restart: unless-stopped
+
+  tailscale:
+    image: tailscale/tailscale:latest
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    volumes:
+      - tailscale-state:/var/lib/tailscale
+      - tailscale-sock:/var/run/tailscale
+      - /dev/net/tun:/dev/net/tun
+    environment:
+      TS_USERSPACE: "true"
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_SOCKET: /var/run/tailscale/tailscaled.sock
+      TS_HOSTNAME: nicotind
+    network_mode: service:nicotind
+    depends_on:
+      - nicotind
+    restart: unless-stopped
+
+networks:
+  internal:
+    driver: bridge
+
+volumes:
+  nicotind-data:
+  music:
+  slskd-data:
+  navidrome-data:
+  tailscale-state:
+  tailscale-sock:

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { api } from '@/lib/api';
+import { api, type TailscaleStatus } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth';
 
 export function SettingsPage() {
@@ -14,9 +14,25 @@ export function SettingsPage() {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Tailscale state
+  const [tsStatus, setTsStatus] = useState<TailscaleStatus | null>(null);
+  const [tsAuthKey, setTsAuthKey] = useState('');
+  const [tsSaving, setTsSaving] = useState(false);
+  const [tsMessage, setTsMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
   useEffect(() => {
     loadSettings();
+    loadTailscaleStatus();
   }, []);
+
+  async function loadTailscaleStatus() {
+    try {
+      const status = await api.getTailscaleStatus();
+      setTsStatus(status);
+    } catch {
+      // Tailscale endpoint not available
+    }
+  }
 
   async function loadSettings() {
     setLoading(true);
@@ -166,6 +182,120 @@ export function SettingsPage() {
           </div>
         )}
       </section>
+
+      {/* Tailscale Section */}
+      {tsStatus?.available && (
+        <section className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-6 mt-6">
+          <div className="flex items-center gap-3 mb-6">
+            <h2 className="text-sm font-semibold uppercase tracking-wider text-zinc-400">
+              Tailscale Remote Access
+            </h2>
+            <div className="flex items-center gap-2">
+              <span
+                className={`inline-block w-2.5 h-2.5 rounded-full ${
+                  tsStatus.connected ? 'bg-emerald-500' : 'bg-zinc-600'
+                }`}
+                title={tsStatus.connected ? 'Connected' : 'Not connected'}
+              />
+              <span className="text-xs text-zinc-500">
+                {tsStatus.connected ? 'Connected' : 'Not connected'}
+              </span>
+            </div>
+          </div>
+
+          {tsStatus.connected && (
+            <div className="space-y-2 mb-4">
+              {tsStatus.hostname && (
+                <div>
+                  <span className="text-xs text-zinc-500">Hostname: </span>
+                  <span className="text-sm text-zinc-200 font-mono">{tsStatus.hostname}</span>
+                </div>
+              )}
+              {tsStatus.ip && (
+                <div>
+                  <span className="text-xs text-zinc-500">IP: </span>
+                  <span className="text-sm text-zinc-300 font-mono">{tsStatus.ip}</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {isAdmin && (
+            <>
+              {tsStatus.connected ? (
+                <button
+                  onClick={async () => {
+                    setTsSaving(true);
+                    setTsMessage(null);
+                    try {
+                      await api.disconnectTailscale();
+                      setTsStatus({ ...tsStatus, connected: false, hostname: undefined, ip: undefined });
+                      setTsMessage({ type: 'success', text: 'Disconnected from Tailscale' });
+                    } catch (err) {
+                      setTsMessage({ type: 'error', text: err instanceof Error ? err.message : 'Failed to disconnect' });
+                    } finally {
+                      setTsSaving(false);
+                    }
+                  }}
+                  disabled={tsSaving}
+                  className="px-5 py-2.5 rounded-lg border border-zinc-700 text-zinc-300 text-sm font-medium hover:border-zinc-500 transition disabled:opacity-50"
+                >
+                  {tsSaving ? 'Disconnecting...' : 'Disconnect'}
+                </button>
+              ) : (
+                <div className="space-y-3">
+                  <input
+                    type="password"
+                    value={tsAuthKey}
+                    onChange={(e) => setTsAuthKey(e.target.value)}
+                    placeholder="tskey-auth-..."
+                    className="w-full px-4 py-2.5 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-500 transition text-sm font-mono"
+                  />
+                  <button
+                    onClick={async () => {
+                      if (!tsAuthKey.trim()) return;
+                      setTsSaving(true);
+                      setTsMessage(null);
+                      try {
+                        const status = await api.connectTailscale(tsAuthKey.trim());
+                        setTsStatus(status);
+                        setTsAuthKey('');
+                        setTsMessage({ type: 'success', text: `Connected as ${status.hostname ?? 'nicotind'}` });
+                      } catch (err) {
+                        setTsMessage({ type: 'error', text: err instanceof Error ? err.message : 'Failed to connect' });
+                      } finally {
+                        setTsSaving(false);
+                      }
+                    }}
+                    disabled={tsSaving || !tsAuthKey.trim()}
+                    className="px-5 py-2.5 rounded-lg bg-zinc-100 text-zinc-900 text-sm font-semibold hover:bg-zinc-200 transition disabled:opacity-50"
+                  >
+                    {tsSaving ? 'Connecting...' : 'Connect'}
+                  </button>
+                </div>
+              )}
+
+              {tsMessage && (
+                <div
+                  className={`mt-3 px-4 py-2.5 rounded-lg text-sm ${
+                    tsMessage.type === 'success'
+                      ? 'bg-emerald-950/50 border border-emerald-900/50 text-emerald-400'
+                      : 'bg-red-950/50 border border-red-900/50 text-red-400'
+                  }`}
+                >
+                  {tsMessage.text}
+                </div>
+              )}
+            </>
+          )}
+
+          {!isAdmin && !tsStatus.connected && (
+            <p className="text-sm text-zinc-500">
+              Only administrators can manage Tailscale connection.
+            </p>
+          )}
+        </section>
+      )}
     </div>
   );
 }
