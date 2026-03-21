@@ -30,8 +30,8 @@ export function libraryRoutes(navidrome: Navidrome) {
   });
 
   app.get('/albums/:id', async (c) => {
-    const result = await navidrome.browsing.getAlbum(c.req.param('id'));
-    return c.json(result);
+    const { album, songs } = await navidrome.browsing.getAlbum(c.req.param('id'));
+    return c.json({ ...album, song: songs });
   });
 
   app.get('/songs/:id', async (c) => {
