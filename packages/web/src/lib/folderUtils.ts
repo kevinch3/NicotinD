@@ -66,7 +66,7 @@ export function groupByDirectory(
         username: file.username,
         uploadSpeed: file.uploadSpeed,
         directory: dir,
-        bitRate: file.bitRate,
+        bitRate: file.bitRate, // taken from the first file in the group; may not represent the album if bitrates are mixed
         files: [],
       });
     }
