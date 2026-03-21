@@ -18,6 +18,7 @@ import { systemRoutes } from './routes/system.js';
 import { settingsRoutes } from './routes/settings.js';
 import { playlistRoutes } from './routes/playlists.js';
 import { adminRoutes } from './routes/admin.js';
+import { usersRoutes } from './routes/users.js';
 import { subsonicProxy } from './routes/subsonic.js';
 import { DownloadWatcher } from './services/download-watcher.js';
 import { TailscaleService } from './services/tailscale.js';
@@ -107,6 +108,7 @@ export function createApp({
   app.use('/api/playlists/*', auth);
   app.use('/api/tailscale/*', auth);
   app.use('/api/admin/*', auth);
+  app.use('/api/users/*', auth);
 
   app.route('/api/search', searchRoutes(registry));
   app.route('/api/admin', adminRoutes());
@@ -120,6 +122,7 @@ export function createApp({
   );
   app.route('/api/playlists', playlistRoutes(navidrome));
   app.route('/api/tailscale', tailscaleRoutes(tailscale));
+  app.route('/api/users', usersRoutes(registry));
 
   // Serve web UI static files
   if (webDistPath) {
