@@ -4,6 +4,7 @@ import { SearchesApi } from './api/searches.js';
 import { TransfersApi } from './api/transfers.js';
 import { ServerApi } from './api/server.js';
 import { OptionsApi } from './api/options.js';
+import { UsersApi } from './api/users.js';
 
 export class Slskd {
   private client: SlskdClient;
@@ -13,6 +14,7 @@ export class Slskd {
   public transfers: TransfersApi;
   public server: ServerApi;
   public options: OptionsApi;
+  public users: UsersApi;
 
   constructor(options: SlskdClientOptions) {
     this.client = new SlskdClient(options);
@@ -21,6 +23,7 @@ export class Slskd {
     this.transfers = new TransfersApi(this.client);
     this.server = new ServerApi(this.client);
     this.options = new OptionsApi(this.client);
+    this.users = new UsersApi(this.client);
   }
 }
 
