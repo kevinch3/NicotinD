@@ -50,6 +50,13 @@ export function initDatabase(dataDir: string): Database {
     )
   `);
 
+  db.run(`
+    CREATE TABLE IF NOT EXISTS hidden_transfers (
+      id TEXT PRIMARY KEY,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+
   return db;
 }
 

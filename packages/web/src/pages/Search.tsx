@@ -16,6 +16,39 @@ interface NetworkResult {
   files: Array<{ filename: string; size: number; bitRate?: number; length?: number }>;
 }
 
+interface FlatFile {
+  username: string;
+  uploadSpeed: number;
+  filename: string;
+  size: number;
+  bitRate?: number;
+  length?: number;
+}
+
+const ALLOWED_EXTENSIONS = ['.mp3', '.ogg'];
+
+function flattenAndFilter(results: NetworkResult[]): FlatFile[] {
+  const flat: FlatFile[] = [];
+  for (const result of results) {
+    if (result.uploadSpeed === 0) continue;
+    for (const file of result.files) {
+      const ext = file.filename.slice(file.filename.lastIndexOf('.')).toLowerCase();
+      if (!ALLOWED_EXTENSIONS.includes(ext)) continue;
+      flat.push({
+        username: result.username,
+        uploadSpeed: result.uploadSpeed,
+        filename: file.filename,
+        size: file.size,
+        bitRate: file.bitRate,
+        length: file.length,
+      });
+    }
+  }
+  // Sort by speed descending, then alphabetically by filename as tiebreaker
+  flat.sort((a, b) => b.uploadSpeed - a.uploadSpeed || a.filename.localeCompare(b.filename));
+  return flat;
+}
+
 export function SearchPage() {
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
@@ -117,13 +150,19 @@ export function SearchPage() {
     return `${(bytes / 1_000).toFixed(0)} KB`;
   }
 
+  function formatSpeed(bytesPerSec: number) {
+    if (bytesPerSec >= 1_000_000) return `${(bytesPerSec / 1_000_000).toFixed(1)} MB/s`;
+    return `${(bytesPerSec / 1_000).toFixed(0)} KB/s`;
+  }
+
   function extractName(filepath: string) {
     const parts = filepath.split('\\');
     return parts[parts.length - 1];
   }
 
   const hasLocal = local && (local.songs.length > 0 || local.albums.length > 0 || local.artists.length > 0);
-  const hasNetwork = network.length > 0;
+  const flatNetwork = flattenAndFilter(network);
+  const hasNetwork = flatNetwork.length > 0;
 
   return (
     <div className="max-w-4xl mx-auto px-6 py-8">
@@ -270,8 +309,8 @@ export function SearchPage() {
             {networkState === 'searching' && (
               <>
                 <span className="inline-block w-3 h-3 border-2 border-zinc-600 border-t-zinc-300 rounded-full animate-spin" />
-                {network.length > 0 && (
-                  <span className="font-normal normal-case tracking-normal">{network.length} users</span>
+                {flatNetwork.length > 0 && (
+                  <span className="font-normal normal-case tracking-normal">{flatNetwork.length} tracks</span>
                 )}
               </>
             )}
@@ -280,46 +319,38 @@ export function SearchPage() {
         </div>
       )}
 
-      {/* Network results */}
+      {/* Network results — flat track list, sorted by speed */}
       {hasNetwork && (
         <section>
-          {network.map((result) => (
-            <div key={result.username} className="mb-4">
-              <div className="flex items-center gap-2 px-3 mb-1">
-                <span className="text-xs font-medium text-zinc-400">{result.username}</span>
-                <span className="text-xs text-zinc-600">
-                  {result.freeUploadSlots ? 'Free slot' : 'Queued'} &middot;{' '}
-                  {(result.uploadSpeed / 1024).toFixed(0)} KB/s
-                </span>
+          {flatNetwork.map((file) => {
+            const key = `${file.username}:${file.filename}`;
+            const queued = downloading.has(key);
+            return (
+              <div
+                key={key}
+                className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-zinc-800/50 transition"
+              >
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-zinc-300 truncate">{extractName(file.filename)}</p>
+                  <p className="text-xs text-zinc-600 truncate">
+                    {file.bitRate ? `${file.bitRate} kbps` : ''}
+                    {file.length ? ` · ${formatDuration(file.length)}` : ''}
+                    {' · '}
+                    {formatSize(file.size)}
+                    {' · '}
+                    <span className="text-emerald-600">{formatSpeed(file.uploadSpeed)}</span>
+                  </p>
+                </div>
+                <button
+                  onClick={() => handleDownload(file.username, { filename: file.filename, size: file.size })}
+                  disabled={queued}
+                  className="px-3 py-1 rounded-md text-xs font-medium bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition disabled:opacity-50"
+                >
+                  {queued ? 'Queued' : 'Download'}
+                </button>
               </div>
-              {result.files.map((file) => {
-                const key = `${result.username}:${file.filename}`;
-                const queued = downloading.has(key);
-                return (
-                  <div
-                    key={file.filename}
-                    className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-zinc-800/50 transition"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-zinc-300 truncate">{extractName(file.filename)}</p>
-                      <p className="text-xs text-zinc-600 truncate">
-                        {file.bitRate ? `${file.bitRate} kbps` : ''}{' '}
-                        {file.length ? `${formatDuration(file.length)}` : ''}{' '}
-                        {formatSize(file.size)}
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => handleDownload(result.username, file)}
-                      disabled={queued}
-                      className="px-3 py-1 rounded-md text-xs font-medium bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition disabled:opacity-50"
-                    >
-                      {queued ? 'Queued' : 'Download'}
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          ))}
+            );
+          })}
         </section>
       )}
 
