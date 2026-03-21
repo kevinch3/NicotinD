@@ -125,6 +125,7 @@ export function DownloadsPage() {
   const [recentSongs, setRecentSongs] = useState<RecentSong[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState<Set<string>>(new Set());
+  const [scanning, setScanning] = useState(false);
   const [showPlaylistPicker, setShowPlaylistPicker] = useState(false);
   const [playlists, setPlaylists] = useState<PlaylistOption[]>([]);
   const [newPlaylistName, setNewPlaylistName] = useState('');
@@ -201,6 +202,20 @@ export function DownloadsPage() {
       }
     }
     fetchDownloads();
+  }
+
+  async function triggerScan() {
+    if (scanning) return;
+
+    setScanning(true);
+    try {
+      await api.triggerScan();
+      window.setTimeout(fetchRecentSongs, 5000);
+    } catch {
+      /* ignore */
+    } finally {
+      setScanning(false);
+    }
   }
 
   function toggleSelect(id: string) {
@@ -325,14 +340,38 @@ export function DownloadsPage() {
     <div className="max-w-5xl mx-auto px-6 py-8">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-lg font-semibold text-zinc-100">Downloads</h1>
-        {recentSongs.length > 0 && (
+        <div className="flex items-center gap-2">
           <button
-            onClick={handlePlayAll}
-            className="px-4 py-1.5 rounded-lg bg-zinc-800 text-zinc-300 text-sm font-medium hover:bg-zinc-700 transition"
+            onClick={triggerScan}
+            disabled={scanning}
+            className="inline-flex items-center gap-2 rounded-full border border-zinc-800/80 bg-zinc-950/40 px-3 py-1.5 text-xs font-medium text-zinc-500 transition hover:border-zinc-700 hover:text-zinc-300 disabled:cursor-wait disabled:opacity-50"
+            title="Trigger a library rescan"
           >
-            {selected.size > 0 ? `Play ${selected.size} selected` : 'Play all'}
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className={scanning ? 'animate-spin' : ''}
+            >
+              <path d="M21 12a9 9 0 1 1-3-6.7" />
+              <polyline points="21 3 21 9 15 9" />
+            </svg>
+            <span>{scanning ? 'Scanning' : 'Scan library'}</span>
           </button>
-        )}
+          {recentSongs.length > 0 && (
+            <button
+              onClick={handlePlayAll}
+              className="px-4 py-1.5 rounded-lg bg-zinc-800 text-zinc-300 text-sm font-medium hover:bg-zinc-700 transition"
+            >
+              {selected.size > 0 ? `Play ${selected.size} selected` : 'Play all'}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Active Downloads */}
