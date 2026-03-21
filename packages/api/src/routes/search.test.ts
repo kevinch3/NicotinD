@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'bun:test';
 import { Hono } from 'hono';
 import { searchRoutes } from './search.js';
+import { ProviderRegistry } from '../services/provider-registry.js';
+import { NavidromeSearchProvider } from '../services/providers/navidrome-provider.js';
+import { SlskdSearchProvider } from '../services/providers/slskd-provider.js';
 
 describe('search routes', () => {
   it('enriches network results with inferred metadata from filenames', async () => {
@@ -8,9 +11,12 @@ describe('search routes', () => {
       search: {
         search3: async () => ({ artist: [], album: [], song: [] }),
       },
+      system: {
+        ping: async () => true,
+      },
     } as any;
 
-    const slskdMock = {
+    const slskdRef = {
       current: {
         searches: {
           create: async () => ({ id: 'slskd-search-1' }),
@@ -38,8 +44,12 @@ describe('search routes', () => {
       },
     } as any;
 
+    const registry = new ProviderRegistry();
+    registry.register(new NavidromeSearchProvider(navidromeMock));
+    registry.register(new SlskdSearchProvider(slskdRef));
+
     const app = new Hono();
-    app.route('/', searchRoutes(slskdMock, navidromeMock));
+    app.route('/', searchRoutes(registry));
 
     const searchRes = await app.request('/?q=Luke%20Evans');
     expect(searchRes.status).toBe(200);

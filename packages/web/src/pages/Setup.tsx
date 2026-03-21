@@ -23,6 +23,8 @@ export function SetupPage({ setupStatus }: Props) {
   // Soulseek fields
   const [slskUsername, setSlskUsername] = useState('');
   const [slskPassword, setSlskPassword] = useState('');
+  const [slskConfirmPassword, setSlskConfirmPassword] = useState('');
+  const [slskIsNewAccount, setSlskIsNewAccount] = useState(false);
 
   // Tailscale fields
   const [tsAuthKey, setTsAuthKey] = useState('');
@@ -44,6 +46,10 @@ export function SetupPage({ setupStatus }: Props) {
   }
 
   function handleSoulseekNext() {
+    if (slskIsNewAccount && slskPassword !== slskConfirmPassword) {
+      setError('Passwords do not match');
+      return;
+    }
     if (slskUsername.trim() && slskPassword.trim()) {
       setSlskData({ username: slskUsername.trim(), password: slskPassword.trim() });
     }
@@ -172,22 +178,59 @@ export function SetupPage({ setupStatus }: Props) {
               <p className="text-xs text-zinc-600 mb-4">
                 Connect to Soulseek for P2P music search. You can skip this and configure it later in Settings.
               </p>
+
+              {/* Account mode toggle */}
+              <div className="flex gap-1 p-1 rounded-lg bg-zinc-800/50 w-fit mb-4">
+                <button
+                  type="button"
+                  onClick={() => { setSlskIsNewAccount(false); setSlskConfirmPassword(''); setError(''); }}
+                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition ${
+                    !slskIsNewAccount ? 'bg-zinc-700 text-zinc-100' : 'text-zinc-400 hover:text-zinc-200'
+                  }`}
+                >
+                  I have an account
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setSlskIsNewAccount(true); setError(''); }}
+                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition ${
+                    slskIsNewAccount ? 'bg-zinc-700 text-zinc-100' : 'text-zinc-400 hover:text-zinc-200'
+                  }`}
+                >
+                  Create new account
+                </button>
+              </div>
+
               <div className="space-y-3">
                 <input
                   type="text"
-                  placeholder="Soulseek username"
+                  placeholder={slskIsNewAccount ? 'Choose a username' : 'Soulseek username'}
                   value={slskUsername}
                   onChange={(e) => setSlskUsername(e.target.value)}
                   autoFocus
                   className="w-full px-4 py-3 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-500 transition text-sm"
                 />
                 <PasswordField
-                  placeholder="Soulseek password"
+                  placeholder={slskIsNewAccount ? 'Choose a password' : 'Soulseek password'}
                   value={slskPassword}
                   onChange={(e) => setSlskPassword(e.target.value)}
                   autoComplete="new-password"
                   inputClassName="px-4 py-3 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-500 transition text-sm"
                 />
+                {slskIsNewAccount && (
+                  <>
+                    <PasswordField
+                      placeholder="Confirm password"
+                      value={slskConfirmPassword}
+                      onChange={(e) => setSlskConfirmPassword(e.target.value)}
+                      autoComplete="new-password"
+                      inputClassName="px-4 py-3 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-500 transition text-sm"
+                    />
+                    {slskConfirmPassword && slskPassword !== slskConfirmPassword && (
+                      <p className="text-xs text-red-400">Passwords do not match</p>
+                    )}
+                  </>
+                )}
               </div>
             </div>
 

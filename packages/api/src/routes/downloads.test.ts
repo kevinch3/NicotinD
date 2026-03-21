@@ -2,6 +2,8 @@ import { describe, expect, it, beforeEach, mock } from 'bun:test';
 import { Hono } from 'hono';
 import { Database } from 'bun:sqlite';
 import { downloadRoutes } from './downloads.js';
+import { ProviderRegistry } from '../services/provider-registry.js';
+import { SlskdSearchProvider } from '../services/providers/slskd-provider.js';
 import * as dbModule from '../db.js';
 
 // Mock getDatabase to use an in-memory DB
@@ -47,7 +49,9 @@ describe('downloads routes', () => {
 
     const slskdRef = { current: slskdMock };
     app = new Hono();
-    app.route('/', downloadRoutes(slskdRef));
+    const registry = new ProviderRegistry();
+    registry.register(new SlskdSearchProvider(slskdRef));
+    app.route('/', downloadRoutes(registry, slskdRef));
   });
 
   it('GET / returns all downloads when none are hidden', async () => {

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores/auth';
 import { usePreserveStore } from '@/stores/preserve';
 import { api, type SetupStatus } from '@/lib/api';
@@ -11,9 +11,11 @@ import { DownloadsPage } from '@/pages/Downloads';
 import { PlaylistsPage } from '@/pages/Playlists';
 import { LibraryPage } from '@/pages/Library';
 import { SettingsPage } from '@/pages/Settings';
+import { AdminPage } from '@/pages/Admin';
 
 export function App() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const role = useAuthStore((s) => s.role);
   const [setupStatus, setSetupStatus] = useState<SetupStatus | null>(null);
   const [setupChecked, setSetupChecked] = useState(false);
 
@@ -57,6 +59,7 @@ export function App() {
           <Route path="/playlists" element={<PlaylistsPage />} />
           <Route path="/library" element={<LibraryPage />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/admin" element={role === 'admin' ? <AdminPage /> : <Navigate to="/" />} />
         </Route>
       </Routes>
     </BrowserRouter>

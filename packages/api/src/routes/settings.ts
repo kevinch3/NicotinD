@@ -166,7 +166,26 @@ export function settingsRoutes(
     });
     watcherRef.current.start();
 
-    return c.json({ ok: true, message: 'Soulseek credentials saved and service updated' });
+    // 6. Verify connection after a short delay
+    let connected = false;
+    let connectedUsername: string | null = null;
+    try {
+      await new Promise((r) => setTimeout(r, 3000));
+      if (slskdRef.current) {
+        const state = await slskdRef.current.server.getState();
+        connected = state.isConnected ?? false;
+        connectedUsername = state.username ?? null;
+      }
+    } catch {
+      // Connection status unknown — not fatal
+    }
+
+    return c.json({
+      ok: true,
+      message: 'Soulseek credentials saved and service updated',
+      connected,
+      username: connectedUsername,
+    });
   });
 
   return app;

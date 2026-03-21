@@ -6,7 +6,7 @@ import { DownloadIndicator } from './DownloadIndicator';
 import { useAuthStore } from '@/stores/auth';
 import { usePlayerStore } from '@/stores/player';
 
-const navItems = [
+const baseNavItems = [
   { to: '/', label: 'Search' },
   { to: '/downloads', label: 'Downloads' },
   { to: '/playlists', label: 'Playlists' },
@@ -17,6 +17,11 @@ const navItems = [
 export function Layout() {
   const logout = useAuthStore((s) => s.logout);
   const username = useAuthStore((s) => s.username);
+  const role = useAuthStore((s) => s.role);
+
+  const navItems = role === 'admin'
+    ? [...baseNavItems, { to: '/admin', label: 'Admin' }]
+    : baseNavItems;
   const hasTrack = usePlayerStore((s) => !!s.currentTrack);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const location = useLocation();

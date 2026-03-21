@@ -1,15 +1,10 @@
 import { Hono } from 'hono';
-import type { Navidrome } from '@nicotind/navidrome-client';
 import type { AuthEnv } from '../middleware/auth.js';
-import type { SlskdRef } from '../index.js';
-import { inferMetadataFromPath } from '../services/metadata-fixer.js';
-
-// In-memory map of active network searches: searchId -> slskd search id
-const activeSearches = new Map<string, string>();
+import type { ProviderRegistry } from '../services/provider-registry.js';
 
 const emptyLocal = { artists: [] as unknown[], albums: [] as unknown[], songs: [] as unknown[] };
 
-export function searchRoutes(slskdRef: SlskdRef, navidrome: Navidrome) {
+export function searchRoutes(registry: ProviderRegistry) {
   const app = new Hono<AuthEnv>();
 
   // Unified search: returns local results immediately + fires network search
@@ -22,59 +17,44 @@ export function searchRoutes(slskdRef: SlskdRef, navidrome: Navidrome) {
 
       const errors: string[] = [];
 
-      // 1. Search local library via Navidrome (graceful if unavailable)
+      // 1. Query all local providers
       let local = emptyLocal;
-      try {
-        const localResults = await navidrome.search.search3(query, {
-          artistCount: 10,
-          albumCount: 10,
-          songCount: 20,
-        });
-        local = {
-          artists: localResults.artist ?? [],
-          albums: localResults.album ?? [],
-          songs: localResults.song ?? [],
-        };
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        if (msg.includes('Unable to connect') || msg.includes('ConnectionRefused')) {
-          errors.push('Navidrome is not reachable — local library unavailable');
-        } else {
-          errors.push(`Navidrome error: ${msg}`);
+      for (const provider of registry.getByType('local')) {
+        try {
+          const { results } = await provider.search(query);
+          if (results) {
+            local = {
+              artists: results.artists,
+              albums: results.albums,
+              songs: results.songs,
+            };
+          }
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          if (msg.includes('Unable to connect') || msg.includes('ConnectionRefused')) {
+            errors.push(`${provider.name} is not reachable — local library unavailable`);
+          } else {
+            errors.push(`${provider.name} error: ${msg}`);
+          }
         }
       }
 
-      // 2. Fire slskd search (non-blocking, graceful if unavailable)
-      const searchId = crypto.randomUUID();
+      // 2. Fire all network providers
+      let searchId: string = crypto.randomUUID();
       let networkAvailable = false;
-      const slskd = slskdRef.current;
-      if (!slskd) {
-        // Soulseek not configured — skip network search silently
-      } else {
+      for (const provider of registry.getByType('network')) {
         try {
-          const slskdSearch = await slskd.searches.create(query);
-          activeSearches.set(searchId, slskdSearch.id);
-          networkAvailable = true;
+          const { searchId: providerSearchId } = await provider.search(query);
+          if (providerSearchId) {
+            searchId = providerSearchId;
+            networkAvailable = true;
+          }
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
-          // 409 = duplicate search exists — clear old searches and retry
-          if (msg.includes('409')) {
-            try {
-              const existing = await slskd.searches.list();
-              for (const s of existing) {
-                await slskd.searches.delete(s.id);
-              }
-              const retrySearch = await slskd.searches.create(query);
-              activeSearches.set(searchId, retrySearch.id);
-              networkAvailable = true;
-            } catch (retryErr) {
-              const retryMsg = retryErr instanceof Error ? retryErr.message : String(retryErr);
-              errors.push(`Soulseek search failed: ${retryMsg}`);
-            }
-          } else if (msg.includes('Unable to connect') || msg.includes('ConnectionRefused')) {
-            errors.push('slskd is not reachable — Soulseek network unavailable');
+          if (msg.includes('Unable to connect') || msg.includes('ConnectionRefused')) {
+            errors.push(`${provider.name} is not reachable — network unavailable`);
           } else {
-            errors.push(`Soulseek search failed: ${msg}`);
+            errors.push(`${provider.name} search failed: ${msg}`);
           }
         }
       }
@@ -101,58 +81,43 @@ export function searchRoutes(slskdRef: SlskdRef, navidrome: Navidrome) {
   // Poll network search results
   app.get('/:searchId/network', async (c) => {
     const searchId = c.req.param('searchId');
-    const slskdSearchId = activeSearches.get(searchId);
-    const slskd = slskdRef.current;
 
-    if (!slskdSearchId || !slskd) {
-      return c.json({ state: 'complete', responseCount: 0, results: [] });
+    for (const provider of registry.getByType('network')) {
+      if (provider.pollResults) {
+        try {
+          return c.json(await provider.pollResults(searchId));
+        } catch {
+          return c.json({ state: 'complete', responseCount: 0, results: [] });
+        }
+      }
     }
 
-    try {
-      const search = await slskd.searches.get(slskdSearchId);
-      const responses = await slskd.searches.getResponses(slskdSearchId);
-
-      return c.json({
-        state: search.state === 'InProgress' ? 'searching' : 'complete',
-        responseCount: search.responseCount,
-        results: responses.map((r) => ({
-          username: r.username,
-          freeUploadSlots: r.freeUploadSlots,
-          uploadSpeed: r.uploadSpeed,
-          files: r.files.map((f) => ({
-            filename: f.filename,
-            size: f.size,
-            bitRate: f.bitRate,
-            length: f.length,
-            ...inferMetadataFromPath(f.filename, ''),
-          })),
-        })),
-      });
-    } catch {
-      return c.json({ state: 'complete', responseCount: 0, results: [] });
-    }
+    return c.json({ state: 'complete', responseCount: 0, results: [] });
   });
 
   // Cancel a search
   app.put('/:searchId/cancel', async (c) => {
     const searchId = c.req.param('searchId');
-    const slskdSearchId = activeSearches.get(searchId);
-    if (!slskdSearchId) {
-      return c.json({ error: 'Search not found' }, 404);
+
+    for (const provider of registry.getByType('network')) {
+      if (provider.cancelSearch) {
+        await provider.cancelSearch(searchId);
+      }
     }
 
-    if (slskdRef.current) await slskdRef.current.searches.cancel(slskdSearchId);
     return c.json({ ok: true });
   });
 
   // Delete a search
   app.delete('/:searchId', async (c) => {
     const searchId = c.req.param('searchId');
-    const slskdSearchId = activeSearches.get(searchId);
-    if (slskdSearchId && slskdRef.current) {
-      await slskdRef.current.searches.delete(slskdSearchId);
-      activeSearches.delete(searchId);
+
+    for (const provider of registry.getByType('network')) {
+      if (provider.deleteSearch) {
+        await provider.deleteSearch(searchId);
+      }
     }
+
     return c.json({ ok: true });
   });
 

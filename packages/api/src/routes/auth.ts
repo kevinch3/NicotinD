@@ -45,13 +45,17 @@ export function authRoutes(jwtSecret: string, jwtExpiresIn: string) {
     const db = getDatabase();
     const user = db
       .query<
-        { id: string; username: string; password_hash: string; role: string },
+        { id: string; username: string; password_hash: string; role: string; status: string },
         [string]
-      >('SELECT id, username, password_hash, role FROM users WHERE username = ?')
+      >("SELECT id, username, password_hash, role, COALESCE(status, 'active') as status FROM users WHERE username = ?")
       .get(username);
 
     if (!user || !(await verifyPassword(password, user.password_hash))) {
       return c.json({ error: 'Invalid credentials' }, 401);
+    }
+
+    if (user.status === 'disabled') {
+      return c.json({ error: 'Account disabled' }, 403);
     }
 
     const token = await signJwt(

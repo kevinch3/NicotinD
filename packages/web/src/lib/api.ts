@@ -20,7 +20,14 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error((body as { error?: string }).error ?? `Request failed: ${res.status}`);
+    const errorMsg = (body as { error?: string }).error ?? `Request failed: ${res.status}`;
+
+    // Kick out disabled users
+    if (res.status === 403 && errorMsg === 'Account disabled') {
+      useAuthStore.getState().logout();
+    }
+
+    throw new Error(errorMsg);
   }
 
   return res.json() as Promise<T>;
@@ -154,7 +161,7 @@ export const api = {
   getSoulseekSettings: () =>
     request<{ username: string; configured: boolean; connected: boolean }>('/api/settings/soulseek'),
   saveSoulseekSettings: (username: string, password: string) =>
-    request<{ ok: boolean; message: string }>('/api/settings/soulseek', {
+    request<{ ok: boolean; message: string; connected?: boolean; username?: string }>('/api/settings/soulseek', {
       method: 'PUT',
       body: JSON.stringify({ username, password }),
     }),
@@ -238,6 +245,27 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+
+  // Admin
+  getUsers: () =>
+    request<Array<{ id: string; username: string; role: string; status: string; created_at: string }>>('/api/admin/users'),
+  updateUserRole: (id: string, role: 'admin' | 'user') =>
+    request<{ ok: boolean }>(`/api/admin/users/${id}/role`, {
+      method: 'PUT',
+      body: JSON.stringify({ role }),
+    }),
+  updateUserStatus: (id: string, status: 'active' | 'disabled') =>
+    request<{ ok: boolean }>(`/api/admin/users/${id}/status`, {
+      method: 'PUT',
+      body: JSON.stringify({ status }),
+    }),
+  resetUserPassword: (id: string, password: string) =>
+    request<{ ok: boolean }>(`/api/admin/users/${id}/password`, {
+      method: 'PUT',
+      body: JSON.stringify({ password }),
+    }),
+  deleteUser: (id: string) =>
+    request<{ ok: boolean }>(`/api/admin/users/${id}`, { method: 'DELETE' }),
 
   // Tailscale
   getTailscaleStatus: () => request<TailscaleStatus>('/api/tailscale/status'),

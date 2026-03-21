@@ -3,6 +3,7 @@ export * from './types/config.js';
 export * from './types/slskd.js';
 export * from './types/navidrome.js';
 export * from './types/nicotind.js';
+export * from './types/provider.js';
 
 // Utils
 export * from './utils/logger.js';

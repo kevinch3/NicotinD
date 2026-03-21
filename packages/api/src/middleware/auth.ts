@@ -1,6 +1,7 @@
 import { createMiddleware } from 'hono/factory';
 import * as jose from 'jose';
 import type { JwtPayload } from '@nicotind/core';
+import { getDatabase } from '../db.js';
 
 export type AuthEnv = {
   Variables: {
@@ -23,7 +24,21 @@ export function authMiddleware(jwtSecret: string) {
 
     try {
       const { payload } = await jose.jwtVerify(token, secret);
-      c.set('user', payload as unknown as JwtPayload);
+      const jwtPayload = payload as unknown as JwtPayload;
+
+      // Check if user account is disabled
+      const db = getDatabase();
+      const user = db
+        .query<{ status: string }, [string]>(
+          "SELECT COALESCE(status, 'active') as status FROM users WHERE id = ?",
+        )
+        .get(jwtPayload.sub);
+
+      if (!user || user.status === 'disabled') {
+        return c.json({ error: 'Account disabled' }, 403);
+      }
+
+      c.set('user', jwtPayload);
       await next();
     } catch {
       return c.json({ error: 'Invalid or expired token' }, 401);

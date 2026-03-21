@@ -1,12 +1,13 @@
 import { Hono } from 'hono';
 import type { AuthEnv } from '../middleware/auth.js';
 import type { SlskdRef } from '../index.js';
+import type { ProviderRegistry } from '../services/provider-registry.js';
 import { getDatabase } from '../db.js';
 
-export function downloadRoutes(slskdRef: SlskdRef) {
+export function downloadRoutes(registry: ProviderRegistry, slskdRef: SlskdRef) {
   const app = new Hono<AuthEnv>();
 
-  // Guard: if slskd is not configured, all download routes return 503
+  // Guard: if no network provider is available, downloads are unavailable
   app.use('*', async (c, next) => {
     if (!slskdRef.current) {
       return c.json({ error: 'Soulseek is not configured — downloads unavailable' }, 503);
@@ -14,7 +15,7 @@ export function downloadRoutes(slskdRef: SlskdRef) {
     await next();
   });
 
-  // Enqueue downloads
+  // Enqueue downloads — via network provider
   app.post('/', async (c) => {
     const { username, files } = await c.req.json<{
       username: string;
@@ -25,8 +26,15 @@ export function downloadRoutes(slskdRef: SlskdRef) {
       return c.json({ error: 'username and files are required' }, 400);
     }
 
+    const networkProviders = registry.getByType('network');
+    const provider = networkProviders[0];
+
+    if (!provider?.download) {
+      return c.json({ error: 'No download provider available' }, 503);
+    }
+
     try {
-      await slskdRef.current!.transfers.enqueue(username, files);
+      await provider.download(username, files);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes('slskd request failed')) {
@@ -37,11 +45,11 @@ export function downloadRoutes(slskdRef: SlskdRef) {
     return c.json({ ok: true, queued: files.length }, 201);
   });
 
-  // List all downloads
+  // List all downloads (slskd-specific transfer management)
   app.get('/', async (c) => {
     const downloads = await slskdRef.current!.transfers.getDownloads();
     const db = getDatabase();
-    
+
     // Get all hidden IDs
     const hidden = db.query('SELECT id FROM hidden_transfers').all() as Array<{ id: string }>;
     const hiddenIds = new Set(hidden.map(h => h.id));
@@ -84,11 +92,11 @@ export function downloadRoutes(slskdRef: SlskdRef) {
   // Cancel all downloads
   app.delete('/', async (c) => {
     await slskdRef.current!.transfers.cancelAll();
-    
+
     // Also clear our hidden transfers since "Cancel All" usually means "Clean state"
     const db = getDatabase();
     db.run('DELETE FROM hidden_transfers');
-    
+
     return c.json({ ok: true });
   });
 

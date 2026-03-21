@@ -31,6 +31,13 @@ export function initDatabase(dataDir: string): Database {
     )
   `);
 
+  // Add status column to existing users table (safe if column already exists)
+  try {
+    db.run(`ALTER TABLE users ADD COLUMN status TEXT NOT NULL DEFAULT 'active'`);
+  } catch {
+    // Column already exists — ignore
+  }
+
   db.run(`
     CREATE TABLE IF NOT EXISTS hidden_transfers (
       id TEXT PRIMARY KEY,

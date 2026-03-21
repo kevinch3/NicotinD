@@ -17,9 +17,13 @@ import { streamingRoutes } from './routes/streaming.js';
 import { systemRoutes } from './routes/system.js';
 import { settingsRoutes } from './routes/settings.js';
 import { playlistRoutes } from './routes/playlists.js';
+import { adminRoutes } from './routes/admin.js';
 import { subsonicProxy } from './routes/subsonic.js';
 import { DownloadWatcher } from './services/download-watcher.js';
 import { TailscaleService } from './services/tailscale.js';
+import { ProviderRegistry } from './services/provider-registry.js';
+import { NavidromeSearchProvider } from './services/providers/navidrome-provider.js';
+import { SlskdSearchProvider } from './services/providers/slskd-provider.js';
 import { initDatabase } from './db.js';
 
 export type SlskdRef = { current: Slskd | null };
@@ -65,6 +69,11 @@ export function createApp({
       : null,
   };
 
+  // Provider registry
+  const registry = new ProviderRegistry();
+  registry.register(new NavidromeSearchProvider(navidrome));
+  registry.register(new SlskdSearchProvider(slskdRef));
+
   // Tailscale service
   const tailscale = new TailscaleService();
 
@@ -97,9 +106,11 @@ export function createApp({
   app.use('/api/settings/*', auth);
   app.use('/api/playlists/*', auth);
   app.use('/api/tailscale/*', auth);
+  app.use('/api/admin/*', auth);
 
-  app.route('/api/search', searchRoutes(slskdRef, navidrome));
-  app.route('/api/downloads', downloadRoutes(slskdRef));
+  app.route('/api/search', searchRoutes(registry));
+  app.route('/api/admin', adminRoutes());
+  app.route('/api/downloads', downloadRoutes(registry, slskdRef));
   app.route('/api/library', libraryRoutes(navidrome, config.musicDir));
   app.route('/api', streamingRoutes(navidrome));
   app.route('/api/system', systemRoutes(slskdRef, navidrome, serviceManager, config));

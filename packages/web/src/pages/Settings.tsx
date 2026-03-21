@@ -9,6 +9,8 @@ export function SettingsPage() {
 
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [isNewAccount, setIsNewAccount] = useState(false);
   const [configured, setConfigured] = useState(false);
   const [connected, setConnected] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -59,30 +61,49 @@ export function SettingsPage() {
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     if (!username.trim() || !password.trim()) return;
+    if (isNewAccount && password !== confirmPassword) {
+      setMessage({ type: 'error', text: 'Passwords do not match' });
+      return;
+    }
 
     setSaving(true);
     setMessage(null);
 
     try {
-      await api.saveSoulseekSettings(username.trim(), password.trim());
-      setMessage({ type: 'success', text: 'Credentials saved — connecting to Soulseek network...' });
+      const result = await api.saveSoulseekSettings(username.trim(), password.trim());
       setPassword('');
+      setConfirmPassword('');
 
-      // Poll status after a short delay to let slskd connect
-      setTimeout(async () => {
-        try {
-          const status = await api.getSoulseekStatus();
-          setConfigured(status.configured);
-          setConnected(status.connected);
-          if (status.connected) {
-            setMessage({ type: 'success', text: 'Connected to Soulseek network' });
-          } else {
-            setMessage({ type: 'success', text: 'Service started — connection may take a moment' });
+      if (result.connected) {
+        setConfigured(true);
+        setConnected(true);
+        setMessage({
+          type: 'success',
+          text: isNewAccount
+            ? `Account created — connected as ${result.username ?? username.trim()}`
+            : `Connected as ${result.username ?? username.trim()}`,
+        });
+      } else {
+        setConfigured(true);
+        setMessage({
+          type: isNewAccount ? 'error' : 'success',
+          text: isNewAccount
+            ? 'Connection failed — username may already be taken'
+            : 'Service started — connection may take a moment',
+        });
+        // Poll once more after a delay
+        setTimeout(async () => {
+          try {
+            const status = await api.getSoulseekStatus();
+            setConnected(status.connected);
+            if (status.connected) {
+              setMessage({ type: 'success', text: 'Connected to Soulseek network' });
+            }
+          } catch {
+            // ignore
           }
-        } catch {
-          // ignore
-        }
-      }, 3000);
+        }, 5000);
+      }
     } catch (err) {
       setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Failed to save settings' });
     } finally {
@@ -133,6 +154,28 @@ export function SettingsPage() {
 
         {isAdmin ? (
           <form onSubmit={handleSave} className="space-y-4">
+            {/* Account mode toggle */}
+            <div className="flex gap-1 p-1 rounded-lg bg-zinc-800/50 w-fit">
+              <button
+                type="button"
+                onClick={() => { setIsNewAccount(false); setConfirmPassword(''); setMessage(null); }}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition ${
+                  !isNewAccount ? 'bg-zinc-700 text-zinc-100' : 'text-zinc-400 hover:text-zinc-200'
+                }`}
+              >
+                I have an account
+              </button>
+              <button
+                type="button"
+                onClick={() => { setIsNewAccount(true); setMessage(null); }}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition ${
+                  isNewAccount ? 'bg-zinc-700 text-zinc-100' : 'text-zinc-400 hover:text-zinc-200'
+                }`}
+              >
+                Create new account
+              </button>
+            </div>
+
             <div>
               <label className="block text-sm text-zinc-400 mb-1.5">Username</label>
               <input
@@ -148,11 +191,27 @@ export function SettingsPage() {
               <PasswordField
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder={configured ? '••••••••' : 'Soulseek password'}
+                placeholder={configured && !isNewAccount ? '••••••••' : 'Soulseek password'}
                 autoComplete="new-password"
                 inputClassName="px-4 py-2.5 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-500 transition text-sm"
               />
             </div>
+
+            {isNewAccount && (
+              <div>
+                <label className="block text-sm text-zinc-400 mb-1.5">Confirm Password</label>
+                <PasswordField
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Confirm password"
+                  autoComplete="new-password"
+                  inputClassName="px-4 py-2.5 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-500 transition text-sm"
+                />
+                {confirmPassword && password !== confirmPassword && (
+                  <p className="text-xs text-red-400 mt-1">Passwords do not match</p>
+                )}
+              </div>
+            )}
 
             {message && (
               <div
@@ -168,10 +227,16 @@ export function SettingsPage() {
 
             <button
               type="submit"
-              disabled={saving || !username.trim() || !password.trim()}
+              disabled={saving || !username.trim() || !password.trim() || (isNewAccount && password !== confirmPassword)}
               className="px-5 py-2.5 rounded-lg bg-zinc-100 text-zinc-900 text-sm font-semibold hover:bg-zinc-200 transition disabled:opacity-50"
             >
-              {saving ? 'Saving...' : configured ? 'Update & Reconnect' : 'Save & Connect'}
+              {saving
+                ? (isNewAccount ? 'Creating account...' : 'Saving...')
+                : isNewAccount
+                  ? 'Create Account & Connect'
+                  : configured
+                    ? 'Update & Reconnect'
+                    : 'Save & Connect'}
             </button>
           </form>
         ) : (
