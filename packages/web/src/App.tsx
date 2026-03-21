@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { useAuthStore } from '@/stores/auth';
+import { usePreserveStore } from '@/stores/preserve';
 import { api, type SetupStatus } from '@/lib/api';
 import { Layout } from '@/components/Layout';
 import { LoginPage } from '@/pages/Login';
@@ -27,6 +28,13 @@ export function App() {
         setSetupChecked(true);
       });
   }, []);
+
+  // Hydrate preserve store from IndexedDB once authenticated
+  useEffect(() => {
+    if (isAuthenticated) {
+      usePreserveStore.getState().init();
+    }
+  }, [isAuthenticated]);
 
   if (!setupChecked) {
     return null;

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '@/lib/api';
 import { usePlayerStore, type Track } from '@/stores/player';
+import { usePreserveStore } from '@/stores/preserve';
 
 // --- Types ---
 
@@ -133,6 +134,11 @@ export function DownloadsPage() {
   const prevHadActiveRef = useRef(false);
   const play = usePlayerStore((s) => s.play);
   const addToQueue = usePlayerStore((s) => s.addToQueue);
+  const preservedTracks = usePreserveStore((s) => s.preservedTracks);
+  const totalUsage = usePreserveStore((s) => s.totalUsage);
+  const budget = usePreserveStore((s) => s.budget);
+  const removePreserved = usePreserveStore((s) => s.remove);
+  const downloadToDevice = usePreserveStore((s) => s.downloadToDevice);
 
   const fetchDownloads = useCallback(async () => {
     try {
@@ -485,6 +491,124 @@ export function DownloadsPage() {
                 </button>
               </div>
             ))}
+          </div>
+        </section>
+      )}
+
+      {/* Preserved */}
+      {preservedTracks.length > 0 && (
+        <section className="mb-8">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+              Preserved
+              <span className="font-normal normal-case ml-1.5 text-zinc-600">
+                ({preservedTracks.length})
+              </span>
+            </h2>
+            <span className="text-xs text-zinc-600">
+              {formatSize(totalUsage)} / {formatSize(budget)}
+            </span>
+          </div>
+
+          {/* Storage bar */}
+          <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden mb-3">
+            <div
+              className="h-full bg-emerald-500/70 rounded-full transition-all duration-500"
+              style={{ width: `${Math.min(100, (totalUsage / budget) * 100)}%` }}
+            />
+          </div>
+
+          <div className="space-y-0.5">
+            {preservedTracks
+              .sort((a, b) => b.preservedAt - a.preservedAt)
+              .map((pt) => (
+                <div
+                  key={pt.id}
+                  className="flex items-center gap-2 md:gap-3 px-3 md:px-4 py-2.5 rounded-lg hover:bg-zinc-800/30 border border-transparent transition group"
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-zinc-200 truncate">{pt.title}</p>
+                    <p className="text-xs text-zinc-500 truncate">
+                      {pt.artist} &middot; {pt.album}
+                    </p>
+                  </div>
+
+                  <span className="hidden md:inline text-xs text-zinc-600 flex-shrink-0 w-16 text-right">
+                    {formatSize(pt.size)}
+                  </span>
+                  <span className="hidden sm:inline text-xs text-zinc-600 flex-shrink-0 w-12 text-right">
+                    {formatDuration(pt.duration)}
+                  </span>
+
+                  {/* Play */}
+                  <button
+                    onClick={() =>
+                      play({
+                        id: pt.id,
+                        title: pt.title,
+                        artist: pt.artist,
+                        album: pt.album,
+                        coverArt: pt.coverArt,
+                        duration: pt.duration,
+                      })
+                    }
+                    className="p-1.5 text-zinc-500 md:text-zinc-700 hover:text-zinc-300 transition flex-shrink-0 md:opacity-0 md:group-hover:opacity-100"
+                    title="Play"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                      <polygon points="5,3 19,12 5,21" />
+                    </svg>
+                  </button>
+
+                  {/* Download to device */}
+                  <button
+                    onClick={() =>
+                      downloadToDevice(
+                        pt.id,
+                        `${pt.artist} - ${pt.title}.${pt.format.split('/')[1] ?? 'mp3'}`,
+                      )
+                    }
+                    className="p-1.5 text-zinc-500 md:text-zinc-700 hover:text-zinc-300 transition flex-shrink-0 md:opacity-0 md:group-hover:opacity-100"
+                    title="Download to device"
+                  >
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+                      <polyline points="7 10 12 15 17 10" />
+                      <line x1="12" y1="15" x2="12" y2="3" />
+                    </svg>
+                  </button>
+
+                  {/* Remove */}
+                  <button
+                    onClick={() => removePreserved(pt.id)}
+                    className="p-1.5 text-zinc-500 md:text-zinc-700 hover:text-red-400 transition flex-shrink-0 md:opacity-0 md:group-hover:opacity-100"
+                    title="Remove from preserved"
+                  >
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <polyline points="3 6 5 6 21 6" />
+                      <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+                    </svg>
+                  </button>
+                </div>
+              ))}
           </div>
         </section>
       )}

@@ -3,11 +3,15 @@ import type { NavidromeClient } from '../client.js';
 export class MediaApi {
   constructor(private client: NavidromeClient) {}
 
-  async stream(id: string, options: { maxBitRate?: number; format?: string } = {}): Promise<Response> {
+  async stream(
+    id: string,
+    options: { maxBitRate?: number; format?: string } = {},
+    init?: RequestInit,
+  ): Promise<Response> {
     const params: Record<string, string> = { id };
     if (options.maxBitRate) params.maxBitRate = String(options.maxBitRate);
     if (options.format) params.format = options.format;
-    return this.client.requestRaw('stream.view', params);
+    return this.client.requestRaw('stream.view', params, init);
   }
 
   async getCoverArt(id: string, size?: number): Promise<Response> {

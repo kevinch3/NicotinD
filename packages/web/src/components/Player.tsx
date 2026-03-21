@@ -1,6 +1,7 @@
 import { useRef, useEffect, useCallback } from 'react';
 import { usePlayerStore } from '@/stores/player';
 import { useAuthStore } from '@/stores/auth';
+import { PreserveButton } from '@/components/PreserveButton';
 
 export function Player() {
   const {
@@ -151,6 +152,7 @@ export function Player() {
               <p className="text-sm font-medium text-zinc-100 truncate">{currentTrack.title}</p>
               <p className="text-xs text-zinc-400 truncate">{currentTrack.artist}</p>
             </div>
+            <PreserveButton track={currentTrack} size="sm" className="hidden md:flex flex-shrink-0" />
           </div>
 
           {/* Controls */}

@@ -1,5 +1,6 @@
 import { usePlayerStore } from '@/stores/player';
 import { useAuthStore } from '@/stores/auth';
+import { PreserveButton } from '@/components/PreserveButton';
 
 export function NowPlaying() {
   const {
@@ -102,6 +103,9 @@ export function NowPlaying() {
       <div className="text-center px-8 mb-4">
         <h2 className="text-xl font-semibold text-zinc-100 truncate">{currentTrack.title}</h2>
         <p className="text-sm text-zinc-400 truncate mt-1">{currentTrack.artist}</p>
+        <div className="flex justify-center mt-2">
+          <PreserveButton track={currentTrack} size="md" />
+        </div>
       </div>
 
       {/* Seek bar */}

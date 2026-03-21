@@ -9,10 +9,31 @@ export function streamingRoutes(navidrome: Navidrome) {
     const id = c.req.param('id');
     const maxBitRate = c.req.query('maxBitRate') ? Number(c.req.query('maxBitRate')) : undefined;
     const format = c.req.query('format') ?? undefined;
+    const requestHeaders = new Headers();
+    let hasForwardedHeaders = false;
+    const range = c.req.header('range');
+    const ifRange = c.req.header('if-range');
 
-    const response = await navidrome.media.stream(id, { maxBitRate, format });
+    if (range) {
+      requestHeaders.set('range', range);
+      hasForwardedHeaders = true;
+    }
+    if (ifRange) {
+      requestHeaders.set('if-range', ifRange);
+      hasForwardedHeaders = true;
+    }
 
-    return new Response(response.body, response);
+    const response = await navidrome.media.stream(
+      id,
+      { maxBitRate, format },
+      hasForwardedHeaders ? { headers: requestHeaders } : undefined,
+    );
+
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers,
+    });
   });
 
   app.get('/cover/:id', async (c) => {

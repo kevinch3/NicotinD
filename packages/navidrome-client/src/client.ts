@@ -64,13 +64,17 @@ export class NavidromeClient {
   /**
    * Returns raw Response for binary endpoints (stream, cover art)
    */
-  async requestRaw(endpoint: string, params: Record<string, string | string[]> = {}): Promise<Response> {
+  async requestRaw(
+    endpoint: string,
+    params: Record<string, string | string[]> = {},
+    init?: RequestInit,
+  ): Promise<Response> {
     const authQs = authQueryString(this.username, this.password);
     const extraQs = buildQueryString(params);
     const separator = extraQs ? `&${extraQs}` : '';
     const url = `${this.baseUrl}/rest/${endpoint}?${authQs}${separator}`;
 
-    const res = await fetch(url);
+    const res = await fetch(url, init);
 
     if (!res.ok) {
       throw new Error(`Navidrome request failed: ${res.status} ${endpoint}`);
