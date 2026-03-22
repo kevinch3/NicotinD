@@ -15,9 +15,7 @@ interface FolderBrowserProps {
   matchedPath: string;
   fallbackFiles: BrowseFile[];
   onDownload: (files: Array<{ filename: string; size: number }>) => void;
-  /** Optional: when provided, Download all button reflects live transfer status.
-   *  Note: there is no optimistic "Queued" state for FolderBrowser — the button
-   *  will update on the next poll cycle (~3s) after clicking. */
+  /** When provided, Download all button reflects live transfer status. */
   getStatus?: (username: string, filename: string) => TransferEntry | undefined;
 }
 
@@ -88,6 +86,7 @@ export function FolderBrowser({
   const [error, setError] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [selected, setSelected] = useState(matchedPath);
+  const [optimisticQueued, setOptimisticQueued] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -172,8 +171,10 @@ export function FolderBrowser({
                   const validFiles = directFiles.filter((f) => f.size > 0); // skip 0-byte stubs
                   const folderFiles = validFiles.map((f) => ({ username, filename: f.filename }));
                   const btn = getStatus
-                    ? getFolderDownloadLabel(folderFiles, false, getStatus)
-                    : { label: `Download all (${validFiles.length})`, variant: 'default' as const, disabled: false };
+                    ? getFolderDownloadLabel(folderFiles, optimisticQueued, getStatus)
+                    : optimisticQueued
+                      ? { label: 'Queued', variant: 'queued' as const, disabled: true }
+                      : { label: `Download all (${validFiles.length})`, variant: 'default' as const, disabled: false };
 
                   // When getFolderDownloadLabel returns the default label, use the more
                   // descriptive "Download all (N)" label instead.
@@ -183,7 +184,10 @@ export function FolderBrowser({
 
                   return (
                     <button
-                      onClick={() => onDownload(validFiles.map((f) => ({ filename: f.filename, size: f.size })))}
+                      onClick={() => {
+                        setOptimisticQueued(true);
+                        onDownload(validFiles.map((f) => ({ filename: f.filename, size: f.size })));
+                      }}
                       disabled={btn.disabled || validFiles.length === 0}
                       className={`px-2 py-0.5 rounded text-[11px] font-medium transition ${BUTTON_CLASSES[btn.variant]} ${btn.disabled ? 'cursor-default' : ''}`}
                     >
