@@ -29,12 +29,19 @@ export class UsersApi {
     return rawDirs.map((dir: any) => ({
       name: dir.name,
       fileCount: dir.fileCount,
-      files: (dir.files ?? []).map((f: any) => ({
-        filename: f.filename,
-        size: f.size,
-        bitRate: f.bitRate,
-        length: f.length,
-      })),
+      files: (dir.files ?? []).map((f: any) => {
+        // slskd browse returns bare filenames (e.g. "01 - Track.mp3") but downloads
+        // require the full Soulseek path (e.g. "@@share\\Artist\\Album\\01 - Track.mp3").
+        // Prepend the directory name when the filename is a bare name.
+        const fname: string = f.filename;
+        const hasPath = fname.includes('\\') || fname.includes('/');
+        return {
+          filename: hasPath ? fname : `${dir.name}\\${fname}`,
+          size: f.size,
+          bitRate: f.bitRate,
+          length: f.length,
+        };
+      }),
     }));
   }
 }
