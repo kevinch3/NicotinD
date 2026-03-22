@@ -7,7 +7,7 @@ import {
   type BrowseFile,
   type FolderNode,
 } from '@/lib/folderUtils';
-import { getFolderDownloadLabel, BUTTON_CLASSES } from '@/lib/downloadStatus';
+import { getFolderDownloadLabel, BUTTON_CLASSES, DEFAULT_FOLDER_LABEL } from '@/lib/downloadStatus';
 import type { TransferEntry } from '@/lib/transferTypes';
 
 interface FolderBrowserProps {
@@ -175,9 +175,9 @@ export function FolderBrowser({
                     ? getFolderDownloadLabel(folderFiles, false, getStatus)
                     : { label: `Download all (${validFiles.length})`, variant: 'default' as const, disabled: false };
 
-                  // When getFolderDownloadLabel returns 'Download folder' (default state),
-                  // use the more descriptive "Download all (N)" label instead.
-                  const displayLabel = btn.label === 'Download folder'
+                  // When getFolderDownloadLabel returns the default label, use the more
+                  // descriptive "Download all (N)" label instead.
+                  const displayLabel = btn.label === DEFAULT_FOLDER_LABEL
                     ? `Download all (${validFiles.length})`
                     : btn.label;
 

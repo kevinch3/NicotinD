@@ -88,5 +88,7 @@ export function getFolderDownloadLabel(
   if (isQueued || entries.some((e) => e.state.includes('Queued') || e.state === 'Requested'))
     return { label: 'Queued', variant: 'queued', disabled: true };
 
-  return { label: 'Download folder', variant: 'default', disabled: false };
+  return { label: DEFAULT_FOLDER_LABEL, variant: 'default', disabled: false };
 }
+
+export const DEFAULT_FOLDER_LABEL = 'Download folder';

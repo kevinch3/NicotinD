@@ -551,14 +551,15 @@ export function SearchPage() {
                 const isOpen = openBrowserKey === browserKey;
                 const dirBasename = group.directory.split(/[\\/]/).at(-1) ?? group.directory;
 
-                // Pre-map with username — network file objects don't carry it themselves
-                const folderFiles = group.files.map((f) => ({
-                  username: group.username,
-                  filename: f.filename,
-                }));
-                const allOptimisticallyQueued = group.files.every((f) =>
-                  downloading.has(`${group.username}:${f.filename}`),
-                );
+                // Pre-map with username — network file objects don't carry it themselves.
+                // Filter size=0 stubs so the Done check in getFolderDownloadLabel sees only
+                // downloadable files (stubs are never enqueued and never appear in the store).
+                const folderFiles = group.files
+                  .filter((f) => f.size > 0)
+                  .map((f) => ({ username: group.username, filename: f.filename }));
+                const allOptimisticallyQueued =
+                  folderFiles.length > 0 &&
+                  folderFiles.every((f) => downloading.has(`${f.username}:${f.filename}`));
                 const folderBtn = getFolderDownloadLabel(folderFiles, allOptimisticallyQueued, getStatus);
 
                 return (
@@ -581,7 +582,7 @@ export function SearchPage() {
                             validFiles.map((f) => ({ filename: f.filename, size: f.size })),
                           );
                         }}
-                        disabled={folderBtn.disabled || group.files.filter((f) => f.size > 0).length === 0}
+                        disabled={folderBtn.disabled || folderFiles.length === 0}
                         className={`px-2 py-1 rounded text-xs font-medium transition shrink-0 ${BUTTON_CLASSES[folderBtn.variant]} ${folderBtn.disabled ? 'cursor-default' : ''}`}
                       >
                         {folderBtn.label}
