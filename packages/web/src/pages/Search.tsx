@@ -120,6 +120,7 @@ function flattenAndFilter(results: NetworkResult[]): FlatFile[] {
   for (const result of results) {
     // Some users might have 0 speed if unknown or just starting, don't filter them out entirely
     for (const file of result.files) {
+      if (file.size === 0) continue; // skip 0-byte directory stubs
       const ext = file.filename.slice(file.filename.lastIndexOf('.')).toLowerCase();
       if (!ALLOWED_EXTENSIONS.includes(ext)) continue;
       flat.push({

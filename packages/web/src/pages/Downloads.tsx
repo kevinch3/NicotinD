@@ -3,23 +3,7 @@ import { api } from '@/lib/api';
 import { usePlayerStore, type Track } from '@/stores/player';
 import { usePreserveStore } from '@/stores/preserve';
 import { useTransferStore } from '@/stores/transfers';
-
-// --- Types ---
-
-interface Transfer {
-  username: string;
-  directories: Array<{
-    directory: string;
-    files: Array<{
-      id: string;
-      filename: string;
-      state: string;
-      size: number;
-      bytesTransferred: number;
-      percentComplete: number;
-    }>;
-  }>;
-}
+import type { SlskdUserTransferGroup } from '@nicotind/core';
 
 interface AlbumGroup {
   key: string;
@@ -58,7 +42,7 @@ function extractAlbumName(directory: string): string {
   return segments[segments.length - 1] ?? directory;
 }
 
-function groupByAlbum(downloads: Transfer[]): AlbumGroup[] {
+function groupByAlbum(downloads: SlskdUserTransferGroup[]): AlbumGroup[] {
   const groups: AlbumGroup[] = [];
   for (const transfer of downloads) {
     for (const dir of transfer.directories) {
@@ -123,7 +107,7 @@ function timeAgo(dateStr: string): string {
 // --- Component ---
 
 export function DownloadsPage() {
-  const downloads = useTransferStore((s) => s.downloads) as Transfer[];
+  const downloads = useTransferStore((s) => s.downloads);
   const [recentSongs, setRecentSongs] = useState<RecentSong[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState<Set<string>>(new Set());
