@@ -5,7 +5,7 @@ interface TrackContextMenuProps {
   artist: string;
   trackId?: string;
   trackTitle?: string;
-  onFindSimilar?: (id: string) => void;
+  onFindSimilar?: (id: string, title: string, artist: string) => void;
   onClose: () => void;
   position: { x: number; y: number };
 }
@@ -35,7 +35,7 @@ export function TrackContextMenu({
         </button>
         {onFindSimilar && trackId && (
           <button
-            onClick={() => { onFindSimilar(trackId); onClose(); }}
+            onClick={() => { onFindSimilar(trackId, trackTitle ?? '', artist); onClose(); }}
             className="w-full text-left px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 transition"
           >
             Find similar to "{trackTitle ?? 'this track'}"

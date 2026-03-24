@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, type ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth';
 import { usePlayerStore, type Track } from '@/stores/player';
@@ -174,9 +175,16 @@ export function SearchPage() {
   const setAutoSearch = useSearchStore((s) => s.setAutoSearch);
   const history = useSearchStore((s) => s.history);
   const clearHistory = useSearchStore((s) => s.clearHistory);
+  const similarTo = useSearchStore((s) => s.similarTo);
+  const similarResults = useSearchStore((s) => s.similarResults);
+  const clearSimilar = useSearchStore((s) => s.clearSimilar);
+  const setSimilar = useSearchStore((s) => s.setSimilar);
+
+  const navigate = useNavigate();
 
   // Ephemeral state (resets on remount — that's fine)
   const [loading, setLoading] = useState(false);
+  const [loadingSimilar, setLoadingSimilar] = useState(false);
   const [searchId, setSearchId] = useState<string | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [networkAvailable, setNetworkAvailable] = useState(true);
@@ -236,9 +244,23 @@ export function SearchPage() {
     setNetworkState('complete');
   }
 
+  const handleFindSimilar = useCallback(async (id: string, title: string, artist: string) => {
+    setLoadingSimilar(true);
+    try {
+      const results = await api.getSimilarSongs(id, 20);
+      setSimilar({ title, artist }, results);
+      navigate('/');
+    } catch {
+      // Silently fail
+    } finally {
+      setLoadingSimilar(false);
+    }
+  }, [setSimilar, navigate]);
+
   const executeSearch = useCallback(async () => {
     if (!query.trim()) return;
 
+    clearSimilar();
     useSearchStore.getState().addToHistory(query.trim());
 
     // Cancel any running search before starting a new one
@@ -404,6 +426,47 @@ export function SearchPage() {
         <div className="text-center py-12">
           <p className="text-zinc-500">No results found for "{query}"</p>
         </div>
+      )}
+
+      {/* Similar results */}
+      {similarTo && (
+        <section className="mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+              Similar to <span className="text-zinc-300">{similarTo.title}</span> · <span>{similarTo.artist}</span>
+            </h2>
+            <button
+              onClick={clearSimilar}
+              className="text-xs text-zinc-600 hover:text-zinc-400 transition"
+            >
+              Clear
+            </button>
+          </div>
+          {loadingSimilar && (
+            <div className="flex items-center gap-2 py-4 text-sm text-zinc-500">
+              <span className="inline-block w-4 h-4 border-2 border-zinc-600 border-t-zinc-300 rounded-full animate-spin" />
+              Finding similar tracks…
+            </div>
+          )}
+          {similarResults.map((song) => (
+            <button
+              key={song.id}
+              onClick={() => playSong(song)}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-zinc-800/50 transition text-left group"
+            >
+              {song.coverArt ? (
+                <img src={`/api/cover/${song.coverArt}?size=80&token=${token}`} alt="" className="w-10 h-10 rounded object-cover flex-shrink-0" />
+              ) : (
+                <div className="w-10 h-10 rounded bg-zinc-800 flex-shrink-0" />
+              )}
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-zinc-100 truncate">{song.title}</p>
+                <p className="text-xs text-zinc-500 truncate">{song.artist} · {song.album}</p>
+              </div>
+              <span className="text-xs text-zinc-600">{formatDuration(song.duration)}</span>
+            </button>
+          ))}
+        </section>
       )}
 
       {/* Local results */}
@@ -708,6 +771,7 @@ export function SearchPage() {
           artist={contextMenu.artist}
           trackId={contextMenu.trackId}
           trackTitle={contextMenu.trackTitle}
+          onFindSimilar={(id, title, artist) => void handleFindSimilar(id, title, artist)}
           onClose={() => setContextMenu(null)}
           position={contextMenu}
         />

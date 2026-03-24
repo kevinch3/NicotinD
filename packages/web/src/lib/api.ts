@@ -218,6 +218,17 @@ export const api = {
       size: number;
       created: string;
     }>>(`/api/library/recent-songs?size=${size}`),
+  getSimilarSongs: (id: string, size = 20) =>
+    request<Array<{
+      id: string;
+      title: string;
+      artist: string;
+      album: string;
+      duration?: number;
+      coverArt?: string;
+      genre?: string;
+      year?: number;
+    }>>(`/api/library/songs/${id}/similar?size=${size}`),
   deleteSong: (id: string) =>
     request<{ ok: boolean }>(`/api/library/songs/${id}`, { method: 'DELETE' }),
   fixSongMetadata: (id: string) =>
