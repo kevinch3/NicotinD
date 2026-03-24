@@ -298,7 +298,7 @@ export function SearchPage() {
   const hasNetwork = flatNetwork.length > 0;
 
   return (
-    <div className="max-w-4xl mx-auto px-4 md:px-6 py-8">
+    <div className="max-w-4xl mx-auto px-3 py-4 md:px-6 md:py-8">
       {/* Search bar */}
       <form onSubmit={handleSearch} className="mb-4">
         <div className="relative">

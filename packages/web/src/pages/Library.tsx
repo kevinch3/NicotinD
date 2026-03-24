@@ -86,7 +86,7 @@ export function LibraryPage() {
   // Album detail view
   if (selectedAlbum) {
     return (
-      <div className="max-w-4xl mx-auto px-4 md:px-6 py-8">
+      <div className="max-w-4xl mx-auto px-3 py-4 md:px-6 md:py-8">
         <button
           onClick={() => setSelectedAlbum(null)}
           className="text-sm text-zinc-500 hover:text-zinc-300 transition mb-6"
@@ -140,7 +140,7 @@ export function LibraryPage() {
 
   // Album grid
   return (
-    <div className="max-w-6xl mx-auto px-4 md:px-6 py-8">
+    <div className="max-w-6xl mx-auto px-3 py-4 md:px-6 md:py-8">
       <h1 className="text-lg font-semibold text-zinc-100 mb-6">Library</h1>
 
       {loading && (

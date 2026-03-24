@@ -339,7 +339,7 @@ export function DownloadsPage() {
   // --- Render ---
 
   return (
-    <div className="max-w-5xl mx-auto px-4 md:px-6 py-6 md:py-8">
+    <div className="max-w-5xl mx-auto px-3 py-4 md:px-6 md:py-8">
       <div className="flex items-center justify-between gap-3 mb-6 flex-wrap">
         <h1 className="text-lg font-semibold text-zinc-100">Downloads</h1>
         <div className="flex items-center gap-2">

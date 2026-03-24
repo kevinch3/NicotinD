@@ -174,7 +174,7 @@ export function PlaylistsPage() {
   // Detail view
   if (selected) {
     return (
-      <div className="max-w-4xl mx-auto px-4 md:px-6 py-8">
+      <div className="max-w-4xl mx-auto px-3 py-4 md:px-6 md:py-8">
         <button
           onClick={() => setSelected(null)}
           className="text-sm text-zinc-500 hover:text-zinc-300 transition mb-6"
@@ -276,7 +276,7 @@ export function PlaylistsPage() {
 
   // Grid view
   return (
-    <div className="max-w-6xl mx-auto px-4 md:px-6 py-8">
+    <div className="max-w-6xl mx-auto px-3 py-4 md:px-6 md:py-8">
       <h1 className="text-lg font-semibold text-zinc-100 mb-6">Playlists</h1>
 
       {loading && (

@@ -81,7 +81,7 @@ export function NowPlaying() {
       </div>
 
       {/* Cover art */}
-      <div className="flex-shrink-0 flex justify-center px-8 py-4">
+      <div className="flex-shrink-0 flex justify-center px-4 py-4 md:px-8">
         {currentTrack.coverArt ? (
           <img
             src={`/api/cover/${currentTrack.coverArt}?size=600&token=${token}`}
@@ -100,7 +100,7 @@ export function NowPlaying() {
       </div>
 
       {/* Track info */}
-      <div className="text-center px-8 mb-4">
+      <div className="text-center px-4 mb-4 md:px-8">
         <h2 className="text-xl font-semibold text-zinc-100 truncate">{currentTrack.title}</h2>
         <p className="text-sm text-zinc-400 truncate mt-1">{currentTrack.artist}</p>
         <div className="flex justify-center mt-2">
@@ -109,7 +109,7 @@ export function NowPlaying() {
       </div>
 
       {/* Seek bar */}
-      <div className="px-8 mb-4">
+      <div className="px-4 mb-4 md:px-8">
         <div className="h-1.5 bg-zinc-700 rounded-full cursor-pointer" onClick={handleSeek}>
           <div
             className="h-full bg-zinc-200 rounded-full transition-all"

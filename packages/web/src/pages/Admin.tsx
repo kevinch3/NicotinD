@@ -145,14 +145,14 @@ export function AdminPage() {
 
   if (loading) {
     return (
-      <div className="max-w-3xl mx-auto px-6 py-8">
+      <div className="max-w-3xl mx-auto px-3 py-4 md:px-6 md:py-8">
         <p className="text-zinc-500">Loading users...</p>
       </div>
     );
   }
 
   return (
-    <div className="max-w-3xl mx-auto px-6 py-8 space-y-12">
+    <div className="max-w-3xl mx-auto px-3 py-4 md:px-6 md:py-8 space-y-12">
       <div>
       <h1 className="text-xl font-bold text-zinc-100 mb-8">User Management</h1>
 

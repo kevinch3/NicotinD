@@ -137,14 +137,14 @@ export function SettingsPage() {
 
   if (loading) {
     return (
-      <div className="max-w-2xl mx-auto px-6 py-8">
+      <div className="max-w-2xl mx-auto px-3 py-4 md:px-6 md:py-8">
         <p className="text-zinc-500">Loading settings...</p>
       </div>
     );
   }
 
   return (
-    <div className="max-w-2xl mx-auto px-6 py-8">
+    <div className="max-w-2xl mx-auto px-3 py-4 md:px-6 md:py-8">
       <h1 className="text-xl font-bold text-zinc-100 mb-8">Settings</h1>
 
       {/* Soulseek Network Section */}
