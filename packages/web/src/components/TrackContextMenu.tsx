@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom';
 import { useNavigateAndSearch } from '@/hooks/useNavigateAndSearch';
 
 interface TrackContextMenuProps {
@@ -19,7 +20,7 @@ export function TrackContextMenu({
 }: TrackContextMenuProps) {
   const navigateAndSearch = useNavigateAndSearch();
 
-  return (
+  return createPortal(
     <>
       <div className="fixed inset-0 z-[70]" onClick={onClose} />
       <div
@@ -41,6 +42,7 @@ export function TrackContextMenu({
           </button>
         )}
       </div>
-    </>
+    </>,
+    document.body
   );
 }

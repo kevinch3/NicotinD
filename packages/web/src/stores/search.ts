@@ -56,7 +56,7 @@ export const useSearchStore = create<SearchState>((set) => ({
   downloadedFolders: new Set(),
   canBrowse: false,
   autoSearch: false,
-  history: JSON.parse(localStorage.getItem('nicotind:search-history') ?? '[]') as string[],
+  history: (() => { try { return JSON.parse(localStorage.getItem('nicotind:search-history') ?? '[]') as string[]; } catch { return []; } })(),
 
   setQuery: (query) => set({ query }),
   setLocal: (local) => set({ local }),
