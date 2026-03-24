@@ -7,12 +7,12 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "bun run scripts/dev.ts",
-    "build": "bun run scripts/build.ts",
+    "dev": "bun run ./scripts/dev.ts",
+    "build": "bun run ./scripts/build.ts",
     "lint": "eslint packages/*/src/**/*.ts src/**/*.ts",
     "format": "prettier --write 'packages/*/src/**/*.ts' 'src/**/*.ts'",
     "typecheck": "tsc --build",
-    "download-deps": "bun run scripts/download-deps.ts",
+    "download-deps": "bun run ./scripts/download-deps.ts",
     "test": "bun test"
   },
   "dependencies": {
