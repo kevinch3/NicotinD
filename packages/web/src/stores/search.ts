@@ -31,6 +31,8 @@ interface SearchState {
   downloading: Set<string>;
   downloadedFolders: Set<string>;   // keyed as "username:directoryPath"
   canBrowse: boolean;
+  autoSearch: boolean;
+  history: string[];
 
   setQuery: (query: string) => void;
   setLocal: (local: LocalResults | null) => void;
@@ -39,6 +41,9 @@ interface SearchState {
   addDownloading: (key: string) => void;
   addDownloadedFolder: (key: string) => void;
   setCanBrowse: (v: boolean) => void;
+  setAutoSearch: (v: boolean) => void;
+  addToHistory: (query: string) => void;
+  clearHistory: () => void;
   reset: () => void;
 }
 
@@ -50,6 +55,8 @@ export const useSearchStore = create<SearchState>((set) => ({
   downloading: new Set(),
   downloadedFolders: new Set(),
   canBrowse: false,
+  autoSearch: false,
+  history: JSON.parse(localStorage.getItem('nicotind:search-history') ?? '[]') as string[],
 
   setQuery: (query) => set({ query }),
   setLocal: (local) => set({ local }),
@@ -58,5 +65,20 @@ export const useSearchStore = create<SearchState>((set) => ({
   addDownloading: (key) => set((s) => ({ downloading: new Set(s.downloading).add(key) })),
   addDownloadedFolder: (key) => set((s) => ({ downloadedFolders: new Set(s.downloadedFolders).add(key) })),
   setCanBrowse: (canBrowse) => set({ canBrowse }),
+  setAutoSearch: (autoSearch) => set({ autoSearch }),
+
+  addToHistory: (query) => set((s) => {
+    const trimmed = query.trim();
+    if (!trimmed) return s;
+    const updated = [trimmed, ...s.history.filter((h) => h !== trimmed)].slice(0, 10);
+    localStorage.setItem('nicotind:search-history', JSON.stringify(updated));
+    return { history: updated };
+  }),
+
+  clearHistory: () => {
+    localStorage.removeItem('nicotind:search-history');
+    set({ history: [] });
+  },
+
   reset: () => set({ local: null, network: [], networkState: 'idle', canBrowse: false, downloading: new Set(), downloadedFolders: new Set() }),
 }));
