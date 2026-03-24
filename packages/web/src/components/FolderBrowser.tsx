@@ -20,6 +20,23 @@ interface FolderBrowserProps {
   isFolderQueued?: boolean;
 }
 
+function buildBreadcrumb(path: string): Array<{ label: string; path: string }> {
+  const segs = path.split(/[\\/]/).filter(Boolean);
+  return segs.map((seg, i) => ({
+    label: seg,
+    path: segs.slice(0, i + 1).join('\\'),
+  }));
+}
+
+function findNode(nodes: FolderNode[], path: string): FolderNode | null {
+  for (const n of nodes) {
+    if (n.fullPath === path) return n;
+    const found = findNode(n.children, path);
+    if (found) return found;
+  }
+  return null;
+}
+
 function formatSize(bytes: number) {
   if (bytes >= 1_000_000) return `${(bytes / 1_000_000).toFixed(1)} MB`;
   return `${(bytes / 1_000).toFixed(0)} KB`;
@@ -43,15 +60,22 @@ function TreeNode({
     selected.startsWith(node.fullPath),
   );
 
+  const isSelected = selected === node.fullPath;
+
   return (
     <div>
       <button
+        ref={(el) => {
+          if (el && isSelected) {
+            el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+          }
+        }}
         onClick={() => {
           setExpanded((e) => !e);
           onSelect(node.fullPath);
         }}
         className={`w-full text-left flex items-center gap-1 px-2 py-1 rounded text-xs transition ${
-          selected === node.fullPath
+          isSelected
             ? 'bg-zinc-700 text-zinc-100'
             : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200'
         }`}
@@ -143,7 +167,61 @@ export function FolderBrowser({
         )}
       </div>
 
-      <div className="flex min-h-[120px] max-h-64">
+      {/* Mobile layout */}
+      <div className="md:hidden">
+        {/* Breadcrumb bar */}
+        <div className="flex items-center gap-1 px-3 py-2 border-b border-zinc-800 overflow-x-auto">
+          {buildBreadcrumb(selected).map((crumb, i, arr) => (
+            <span key={crumb.path} className="flex items-center gap-1 shrink-0">
+              {i > 0 && <span className="text-zinc-700">›</span>}
+              <button
+                onClick={() => setSelected(crumb.path)}
+                className={`text-xs ${i === arr.length - 1 ? 'text-zinc-200' : 'text-zinc-500 hover:text-zinc-300'}`}
+              >
+                {crumb.label}
+              </button>
+            </span>
+          ))}
+        </div>
+
+        {/* Drill-down list */}
+        <div className="overflow-y-auto max-h-64 p-1">
+          {!loading && !error && (() => {
+            const currentNode = findNode(tree, selected);
+            const children = currentNode?.children ?? [];
+            return (
+              <>
+                {children.map(child => (
+                  <button
+                    key={child.fullPath}
+                    onClick={() => setSelected(child.fullPath)}
+                    className="w-full text-left flex items-center justify-between px-2 py-1.5 rounded text-xs text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+                  >
+                    <span className="flex items-center gap-1.5 truncate">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" className="shrink-0 text-zinc-600">
+                        <path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/>
+                      </svg>
+                      {child.segment}
+                    </span>
+                    <span className="text-zinc-700">›</span>
+                  </button>
+                ))}
+                {directFiles.map((file) => (
+                  <div key={file.filename} className="flex items-center justify-between text-[11px] text-zinc-500 hover:text-zinc-300 px-2 py-1">
+                    <span className="truncate flex-1">{extractBasename(file.filename)}</span>
+                    <span className="shrink-0 ml-2 text-zinc-700">
+                      {file.bitRate ? `${file.bitRate} kbps · ` : ''}{formatSize(file.size)}
+                    </span>
+                  </div>
+                ))}
+              </>
+            );
+          })()}
+        </div>
+      </div>
+
+      {/* Desktop layout */}
+      <div className="hidden md:flex min-h-[120px] max-h-64">
         {/* Tree panel — only shown after successful load */}
         {!loading && !error && dirs && (
           <div className="w-44 shrink-0 overflow-y-auto border-r border-zinc-800 p-1">
