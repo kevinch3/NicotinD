@@ -31,13 +31,15 @@ Fetch the source song via `getSong(id)` to obtain `artist`, `artistId`, `genre`,
 **Query strategy:**
 
 1. Fetch source song metadata
-2. Fetch artist's albums → collect all songs (tier 1: same artist)
+2. Fetch artist's albums (capped at 10 most recent to avoid excessive API calls for prolific artists) → collect all songs (tier 1: same artist)
 3. Fetch source album's songs (tier 1: same album, lower score)
-4. If genre present: `getSongsByGenre(genre, 100)` → filter ±5 years, exclude same artist → sample up to 30 (tier 2)
+4. If genre present: `getSongsByGenre(genre, 200)` → filter ±5 years, exclude same artist → randomly sample up to 30 (tier 2). Higher fetch count ensures variety for popular genres; random sampling avoids bias toward Navidrome's default sort.
 5. Path heuristic: compare source `path` directory components against tier 2 candidates, boost score for matches
 6. Album overlap: from albums fetched in step 2, if any are compilations (multiple artists), pull other artists' songs as tier 1.5
 
-**Result:** Dedupe by song ID, exclude source song, sort by total score descending, cap at `size`. Return as `Song[]`.
+**Performance:** Steps 2-3 are sequential (need artist albums first), but step 4 can run in parallel with steps 2-3 via `Promise.all`. Expected latency: ~1-2s for typical libraries. Frontend shows a loading spinner during the request.
+
+**Result:** Dedupe by song ID, exclude source song, sort by total score descending, cap at `size`. Return as slim song objects `Array<{ id, title, artist, album, duration?, coverArt?, genre?, year? }>` (matching the local search results shape, not the full core `Song` type).
 
 ### Frontend
 
@@ -56,7 +58,7 @@ Fetch the source song via `getSong(id)` to obtain `artist`, `artistId`, `genre`,
 | `packages/web/src/lib/api.ts` | Add `getSimilarSongs(id, size)` |
 | `packages/web/src/stores/search.ts` | Add `similarTo`, `similarResults`, `setSimilar`, `clearSimilar` |
 | `packages/web/src/pages/Search.tsx` | Render similar results section |
-| `packages/web/src/components/TrackContextMenu.tsx` | New shared context menu component (or inline in each surface) |
+| `packages/web/src/components/TrackContextMenu.tsx` | New shared context menu component with "Find similar" and "Search more by artist" items (used by sections 1 and 2) |
 
 ---
 
@@ -68,9 +70,9 @@ Shortcuts to prefill the search bar and auto-fire a search. Multiple trigger poi
 
 ### Mechanism
 
-**New helper:** `navigateAndSearch(query: string)` — sets `useSearchStore.query`, sets `useSearchStore.autoSearch = true`, navigates to `/`.
+**New custom hook:** `useNavigateAndSearch()` — returns a `(query: string) => void` function. Internally uses `useNavigate()` from React Router. Sets `useSearchStore.query` and `useSearchStore.autoSearch = true` via direct store access, then calls `navigate('/')`. Must be a hook (not a standalone function) because `useNavigate()` requires React Router context.
 
-**Search page:** Watches `autoSearch` flag on mount. If true, immediately calls `handleSearch()` and clears the flag.
+**Search page refactor:** Extract the core search logic from `handleSearch` into a standalone `executeSearch()` function that takes no arguments (reads query from the store). The form submit handler calls `e.preventDefault()` then `executeSearch()`. The auto-search `useEffect` watches `autoSearch` on mount, calls `executeSearch()` if true, and clears the flag. This fixes the signature mismatch where `handleSearch(e: React.FormEvent)` cannot be called without an event.
 
 **New search store fields:** `autoSearch: boolean`, `setAutoSearch(v: boolean)`.
 
@@ -95,7 +97,7 @@ Wrap existing artist/album text in track rows with a `<button>` or `<span onClic
 ### Search History
 
 - Store last 10 unique queries in `useSearchStore.history: string[]`
-- Persist to `localStorage` via Zustand `persist` middleware (already used elsewhere)
+- Persist to `localStorage` manually (read on store init, write on update) — the codebase does not currently use Zustand `persist` middleware
 - Render as a dropdown below the search input when focused and empty, or always below with recent label
 - Each entry is clickable → sets query + auto-fires search
 - Clear-all button in the dropdown
@@ -109,7 +111,8 @@ Wrap existing artist/album text in track rows with a `<button>` or `<span onClic
 | `packages/web/src/components/Player.tsx` | Clickable artist name |
 | `packages/web/src/components/NowPlaying.tsx` | Clickable artist + album names |
 | `packages/web/src/pages/Downloads.tsx` | Clickable artist name in recent songs |
-| `packages/web/src/lib/navigateAndSearch.ts` | New shared helper |
+| `packages/web/src/hooks/useNavigateAndSearch.ts` | New custom hook (needs `useNavigate` from React Router context) |
+| `packages/web/src/components/FolderBrowser.tsx` | Clickable directory basename in folder view (calls `navigateAndSearch`) |
 
 ---
 
@@ -118,6 +121,10 @@ Wrap existing artist/album text in track rows with a `<button>` or `<span onClic
 ### Purpose
 
 Replace the cramped two-panel layout on mobile with drill-down navigation. Fix "current folder not visible" on all viewports.
+
+### Responsive detection
+
+Render both layouts and use Tailwind responsive classes (`hidden md:flex` / `md:hidden`) to show/hide. The drill-down and tree are different DOM structures but share the same `selected` state, so toggling visibility is sufficient — no JS media query needed.
 
 ### Mobile (< md breakpoint)
 
@@ -140,7 +147,7 @@ Replace the cramped two-panel layout on mobile with drill-down navigation. Fix "
 
 **No layout changes.** Keeps existing two-panel tree + file list.
 
-**Fix: auto-scroll to current folder.** On mount, the `TreeNode` matching `selected === node.fullPath` calls `scrollIntoView({ block: 'center', behavior: 'smooth' })` via a ref callback. This fixes the issue on both viewports.
+**Fix: auto-scroll to current folder.** The `TreeNode` button element uses a conditional ref callback: when `selected === node.fullPath`, attach a ref that calls `el.scrollIntoView({ block: 'center', behavior: 'smooth' })` on first render. Use a `useEffect` with `[selected]` dependency to trigger scroll only when selection changes, avoiding re-scroll on every render.
 
 ### Files touched
 
@@ -154,7 +161,7 @@ Replace the cramped two-panel layout on mobile with drill-down navigation. Fix "
 
 ### Problem
 
-Downloading a folder in search results marks other folders from the same user as "Queued", blocking new downloads. Root cause: optimistic download keys can collide across folders, and the `allOptimisticallyQueued` check in the folders view doesn't verify which folder was actually downloaded.
+Downloading a folder in search results marks other folders from the same user as "Queued", blocking new downloads. Root cause needs investigation during implementation — two possible mechanisms: (a) filename key collisions across folders if browse API returns bare filenames, or (b) the `allOptimisticallyQueued` check (Search.tsx:561-563) accidentally matching across folders when keys are shared. The fix below addresses both mechanisms regardless of which is active.
 
 ### Three download flows with different key formats
 
@@ -179,6 +186,8 @@ Downloading a folder in search results marks other folders from the same user as
 **4. Keep file-level keys for tracks view:** Individual track downloads still use the file-level `downloading` Set — no change needed there. The two Sets serve different purposes:
 - `downloading: Set<string>` — individual file optimistic state (tracks view)
 - `downloadedFolders: Set<string>` — folder-level optimistic state (folders view + FolderBrowser)
+
+**5. Reset on new search:** The existing `reset()` action in the search store must also clear `downloadedFolders` (and `downloading`), since a new search produces a new result set.
 
 ### Files touched
 
@@ -261,9 +270,11 @@ navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused'
 | `pause` | `pause()` |
 | `previoustrack` | `handlePrev()` (reuses >3s restart logic) |
 | `nexttrack` | `playNext()` |
-| `seekto` | `seek(details.seekTime)` |
-| `seekforward` | `seek(currentTime + 10)` |
-| `seekbackward` | `seek(Math.max(0, currentTime - 10))` |
+| `seekto` | `if (details.seekTime != null) seek(details.seekTime)` |
+| `seekforward` | `seek(usePlayerStore.getState().currentTime + 10)` |
+| `seekbackward` | `seek(Math.max(0, usePlayerStore.getState().currentTime - 10))` |
+
+**Stale closure note:** All handlers must read current state via `usePlayerStore.getState()` at call time, not from the React render closure. This applies to `seekforward`, `seekbackward`, and `handlePrev` (which reads `audioRef.current.currentTime` — already safe since it's a ref). The `playNext`, `playPrev`, `pause`, `resume` store actions are stable functions and don't have this issue.
 
 **Conditional next/previous (useEffect on `queue.length`, `history.length`, `repeat`):**
 - Queue empty + repeat `off` → `setActionHandler('nexttrack', null)`
@@ -305,3 +316,9 @@ Try/catch guards against older WebKit throwing on unsupported calls.
 6. **Search similar tracks** — largest scope (new API endpoint + navidrome-client method + frontend)
 
 Items 1-4 are independent and can be parallelized. Items 5-6 both touch the search store and page, so they should be sequenced.
+
+### Cross-section interactions
+
+- **Sections 1 + 2 share `TrackContextMenu`:** Both "Find similar" and "Search more by artist" appear in the same context menu component. Implement the shared component in section 5 (artist search more), then add the "Find similar" item in section 6.
+- **Similar results vs auto-search:** These are independent code paths. `autoSearch` triggers a normal search (local + network). `similarResults` displays pre-fetched local results. If a user triggers "Find similar" while `autoSearch` is pending, the similar results take precedence (clear `autoSearch`).
+- **Similar results are not added to search history** — they are not user-typed queries.
