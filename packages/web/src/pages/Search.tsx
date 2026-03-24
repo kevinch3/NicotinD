@@ -7,6 +7,8 @@ import { useTransferStore } from '@/stores/transfers';
 import { getSingleDownloadLabel, getFolderDownloadLabel, BUTTON_CLASSES } from '@/lib/downloadStatus';
 import { FolderBrowser } from '@/components/FolderBrowser';
 import { groupByDirectory } from '@/lib/folderUtils';
+import { useNavigateAndSearch } from '@/hooks/useNavigateAndSearch';
+import { TrackContextMenu } from '@/components/TrackContextMenu';
 
 interface NetworkResult {
   username: string;
@@ -168,6 +170,11 @@ export function SearchPage() {
   const setCanBrowse = useSearchStore((s) => s.setCanBrowse);
   const getStatus = useTransferStore((s) => s.getStatus);
 
+  const autoSearch = useSearchStore((s) => s.autoSearch);
+  const setAutoSearch = useSearchStore((s) => s.setAutoSearch);
+  const history = useSearchStore((s) => s.history);
+  const clearHistory = useSearchStore((s) => s.clearHistory);
+
   // Ephemeral state (resets on remount — that's fine)
   const [loading, setLoading] = useState(false);
   const [searchId, setSearchId] = useState<string | null>(null);
@@ -177,8 +184,11 @@ export function SearchPage() {
   const [searchError, setSearchError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'tracks' | 'folders'>('tracks');
   const [openBrowserKey, setOpenBrowserKey] = useState<string | null>(null);
+  const [searchFocused, setSearchFocused] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; artist: string; trackId?: string; trackTitle?: string } | null>(null);
   const token = useAuthStore((s) => s.token);
   const play = usePlayerStore((s) => s.play);
+  const navigateAndSearch = useNavigateAndSearch();
 
   // Check Soulseek network status on mount
   useEffect(() => {
@@ -226,9 +236,10 @@ export function SearchPage() {
     setNetworkState('complete');
   }
 
-  const handleSearch = useCallback(async (e: React.FormEvent) => {
-    e.preventDefault();
+  const executeSearch = useCallback(async () => {
     if (!query.trim()) return;
+
+    useSearchStore.getState().addToHistory(query.trim());
 
     // Cancel any running search before starting a new one
     const prevId = searchId;
@@ -253,6 +264,21 @@ export function SearchPage() {
       setLoading(false);
     }
   }, [query, searchId, cleanupSearch, setLocal, setNetworkState]);
+
+  const handleSearch = useCallback((e: React.FormEvent) => {
+    e.preventDefault();
+    void executeSearch();
+  }, [executeSearch]);
+
+  // Auto-search effect — triggers when autoSearch flag is set (e.g. from navigateAndSearch)
+  useEffect(() => {
+    if (autoSearch && query.trim()) {
+      setAutoSearch(false);
+      void executeSearch();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Intentionally omitting executeSearch from deps: we only want to trigger on autoSearch flag transitions
+  }, [autoSearch]);
 
   async function handleDownload(username: string, file: { filename: string; size: number }) {
     if (file.size === 0) return; // skip 0-byte directory stubs (Soulseek peer artifact)
@@ -308,6 +334,8 @@ export function SearchPage() {
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            onFocus={() => setSearchFocused(true)}
+            onBlur={() => setTimeout(() => setSearchFocused(false), 150)}
             placeholder="Search for music..."
             className="w-full px-5 py-4 text-lg rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-600 transition"
           />
@@ -318,6 +346,24 @@ export function SearchPage() {
           >
             {loading ? 'Searching...' : 'Search'}
           </button>
+
+          {searchFocused && history.length > 0 && !query && (
+            <div className="absolute top-full left-0 right-0 mt-1 bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden z-10">
+              <div className="flex items-center justify-between px-4 py-2 border-b border-zinc-800">
+                <span className="text-xs text-zinc-500 font-medium">Recent searches</span>
+                <button onClick={clearHistory} className="text-xs text-zinc-600 hover:text-zinc-400 transition">Clear all</button>
+              </div>
+              {history.map((h) => (
+                <button
+                  key={h}
+                  onClick={() => navigateAndSearch(h)}
+                  className="w-full text-left px-4 py-2.5 text-sm text-zinc-300 hover:bg-zinc-800 transition"
+                >
+                  {h}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </form>
 
@@ -374,6 +420,10 @@ export function SearchPage() {
                 <button
                   key={song.id}
                   onClick={() => playSong(song)}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    setContextMenu({ x: e.clientX, y: e.clientY, artist: song.artist, trackId: song.id, trackTitle: song.title });
+                  }}
                   className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-zinc-800/50 transition text-left group"
                 >
                   {song.coverArt ? (
@@ -388,7 +438,14 @@ export function SearchPage() {
                   <div className="flex-1 min-w-0">
                     <p className="text-sm text-zinc-100 truncate">{highlightText(song.title, highlightTerms)}</p>
                     <p className="text-xs text-zinc-500 truncate">
-                      {highlightText(song.artist, highlightTerms)} &middot; {highlightText(song.album, highlightTerms)}
+                      <button
+                        onClick={(e) => { e.stopPropagation(); navigateAndSearch(song.artist); }}
+                        className="hover:underline hover:text-zinc-300 transition"
+                      >
+                        {highlightText(song.artist, highlightTerms)}
+                      </button>
+                      {' '}&middot;{' '}
+                      {highlightText(song.album, highlightTerms)}
                     </p>
                   </div>
                   <span className="text-xs text-zinc-600">{formatDuration(song.duration)}</span>
@@ -567,7 +624,14 @@ export function SearchPage() {
                   <div key={browserKey} className="mb-1">
                     <div className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-zinc-800/50 transition">
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm text-zinc-300 truncate">{dirBasename}</p>
+                        <p className="text-sm text-zinc-300 truncate">
+                          <span
+                            className="cursor-pointer hover:underline hover:text-zinc-100 transition"
+                            onClick={() => navigateAndSearch(dirBasename)}
+                          >
+                            {dirBasename}
+                          </span>
+                        </p>
                         <p className="text-[11px] text-zinc-600 truncate">
                           {group.username}
                           {group.bitRate ? ` · ${group.bitRate} kbps` : ''}
@@ -637,6 +701,16 @@ export function SearchPage() {
             Results from your library appear first, followed by the Soulseek network
           </p>
         </div>
+      )}
+
+      {contextMenu && (
+        <TrackContextMenu
+          artist={contextMenu.artist}
+          trackId={contextMenu.trackId}
+          trackTitle={contextMenu.trackTitle}
+          onClose={() => setContextMenu(null)}
+          position={contextMenu}
+        />
       )}
     </div>
   );
