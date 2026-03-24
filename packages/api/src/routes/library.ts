@@ -47,6 +47,97 @@ export function libraryRoutes(navidrome: Navidrome, musicDir?: string, metadataF
     return c.json(song);
   });
 
+  app.get('/songs/:id/similar', async (c) => {
+    const id = c.req.param('id');
+    const size = Math.min(Number(c.req.query('size') ?? 20), 50);
+
+    let source: Song;
+    try {
+      source = await navidrome.browsing.getSong(id);
+    } catch {
+      return c.json({ error: 'Song not found' }, 404);
+    }
+
+    type SimilarSong = {
+      id: string; title: string; artist: string; album: string;
+      duration?: number; coverArt?: string; genre?: string; year?: number;
+    };
+    const scored = new Map<string, { song: SimilarSong; score: number }>();
+
+    function add(song: Song, delta: number) {
+      if (song.id === source.id) return;
+      const entry = scored.get(song.id);
+      const slim: SimilarSong = {
+        id: song.id, title: song.title, artist: song.artist,
+        album: song.album, duration: song.duration,
+        coverArt: song.coverArt, genre: song.genre, year: song.year,
+      };
+      if (entry) {
+        entry.score += delta;
+      } else {
+        scored.set(song.id, { song: slim, score: delta });
+      }
+    }
+
+    // Source path prefix for heuristic (first 2 directory components)
+    const sourceDirParts = source.path.split('/').filter(Boolean).slice(0, -1);
+    const pathPrefix = sourceDirParts.slice(0, 2).join('/');
+
+    // Parallel: artist albums + genre songs
+    const [artistData, genreSongs] = await Promise.all([
+      navidrome.browsing.getArtist(source.artistId).catch(() => null),
+      source.genre
+        ? navidrome.browsing.getSongsByGenre(source.genre, 200).catch(() => [] as Song[])
+        : Promise.resolve([] as Song[]),
+    ]);
+
+    // Process artist albums (cap at 10)
+    if (artistData) {
+      const albums = artistData.albums.slice(0, 10);
+      for (const album of albums) {
+        try {
+          const { songs } = await navidrome.browsing.getAlbum(album.id);
+          for (const song of songs) {
+            const score = song.albumId === source.albumId ? 5 : 10;
+            add(song, score);
+            // Path heuristic boost
+            if (pathPrefix && song.path.includes(pathPrefix)) {
+              add(song, 4);
+            }
+          }
+        } catch {
+          // Skip unreachable album
+        }
+      }
+    }
+
+    // Process genre songs
+    const yearMin = source.year ? source.year - 5 : null;
+    const yearMax = source.year ? source.year + 5 : null;
+    const filteredGenre = genreSongs.filter((s) => {
+      if (s.artistId === source.artistId) return false;
+      if (yearMin && yearMax && s.year && (s.year < yearMin || s.year > yearMax)) return false;
+      return true;
+    });
+    // Random sample up to 30 to avoid ordering bias
+    const genreSample = filteredGenre
+      .sort(() => Math.random() - 0.5)
+      .slice(0, 30);
+    for (const song of genreSample) {
+      add(song, 3);
+      if (pathPrefix && song.path.includes(pathPrefix)) {
+        add(song, 4);
+      }
+    }
+
+    const results = [...scored.values()]
+      .sort((a, b) => b.score - a.score)
+      .slice(0, size)
+      .map((e) => e.song);
+
+    return c.json(results);
+  });
+
   app.get('/genres', async (c) => {
     const genres = await navidrome.browsing.getGenres();
     return c.json(genres);

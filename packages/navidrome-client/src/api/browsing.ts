@@ -59,4 +59,16 @@ export class BrowsingApi {
     );
     return res.randomSongs.song ?? [];
   }
+
+  async getSongsByGenre(
+    genre: string,
+    count = 50,
+    offset = 0,
+  ): Promise<Song[]> {
+    const res = await this.client.request<{ songsByGenre: { song?: Song[] } }>(
+      'getSongsByGenre.view',
+      { genre, count: String(count), offset: String(offset) },
+    );
+    return res.songsByGenre.song ?? [];
+  }
 }
