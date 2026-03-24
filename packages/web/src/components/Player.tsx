@@ -5,6 +5,7 @@ import { PreserveButton } from '@/components/PreserveButton';
 import { DeviceSwitcher } from '@/components/DeviceSwitcher';
 import { useRemotePlaybackStore } from '@/stores/remote-playback';
 import { wsClient } from '@/services/ws-client';
+import { useNavigateAndSearch } from '@/hooks/useNavigateAndSearch';
 
 export function Player() {
   const {
@@ -29,6 +30,7 @@ export function Player() {
     history,
   } = usePlayerStore();
   const token = useAuthStore((s) => s.token);
+  const navigateAndSearch = useNavigateAndSearch();
   const { remoteEnabled, setRemoteEnabled, activeDeviceId } = useRemotePlaybackStore();
   const myId = wsClient.getDeviceId();
   const isActiveDevice = !activeDeviceId || activeDeviceId === myId;
@@ -274,7 +276,12 @@ export function Player() {
             )}
             <div className="min-w-0">
               <p className="text-sm font-medium text-zinc-100 truncate">{currentTrack.title}</p>
-              <p className="text-xs text-zinc-400 truncate">{currentTrack.artist}</p>
+              <p
+                className="text-xs text-zinc-400 truncate cursor-pointer hover:underline hover:text-zinc-200 transition"
+                onClick={(e) => { e.stopPropagation(); navigateAndSearch(currentTrack.artist); }}
+              >
+                {currentTrack.artist}
+              </p>
             </div>
             <PreserveButton track={currentTrack} size="sm" className="hidden md:flex flex-shrink-0" />
           </div>

@@ -1,6 +1,9 @@
+import { useState } from 'react';
 import { usePlayerStore } from '@/stores/player';
 import { useAuthStore } from '@/stores/auth';
 import { PreserveButton } from '@/components/PreserveButton';
+import { useNavigateAndSearch } from '@/hooks/useNavigateAndSearch';
+import { TrackContextMenu } from '@/components/TrackContextMenu';
 
 export function NowPlaying() {
   const {
@@ -23,6 +26,8 @@ export function NowPlaying() {
     play,
   } = usePlayerStore();
   const token = useAuthStore((s) => s.token);
+  const navigateAndSearch = useNavigateAndSearch();
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
 
   function formatTime(s: number) {
     if (!Number.isFinite(s) || s < 0) return '0:00';
@@ -101,8 +106,18 @@ export function NowPlaying() {
 
       {/* Track info */}
       <div className="text-center px-4 mb-4 md:px-8">
-        <h2 className="text-xl font-semibold text-zinc-100 truncate">{currentTrack.title}</h2>
-        <p className="text-sm text-zinc-400 truncate mt-1">{currentTrack.artist}</p>
+        <h2
+          className="text-xl font-semibold text-zinc-100 truncate"
+          onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY }); }}
+        >
+          {currentTrack.title}
+        </h2>
+        <p
+          className="text-sm text-zinc-400 truncate mt-1 cursor-pointer hover:underline hover:text-zinc-200 transition"
+          onClick={() => { setNowPlayingOpen(false); navigateAndSearch(currentTrack.artist); }}
+        >
+          {currentTrack.artist}
+        </p>
         <div className="flex justify-center mt-2">
           <PreserveButton track={currentTrack} size="md" />
         </div>
@@ -197,6 +212,14 @@ export function NowPlaying() {
           )}
         </button>
       </div>
+
+      {contextMenu && (
+        <TrackContextMenu
+          artist={currentTrack.artist}
+          onClose={() => setContextMenu(null)}
+          position={contextMenu}
+        />
+      )}
 
       {/* Queue section */}
       <div className="flex-1 min-h-0 flex flex-col px-4">

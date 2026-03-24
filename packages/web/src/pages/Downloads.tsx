@@ -4,6 +4,7 @@ import { usePlayerStore, type Track } from '@/stores/player';
 import { usePreserveStore } from '@/stores/preserve';
 import { useTransferStore } from '@/stores/transfers';
 import type { SlskdUserTransferGroup } from '@nicotind/core';
+import { useNavigateAndSearch } from '@/hooks/useNavigateAndSearch';
 
 interface AlbumGroup {
   key: string;
@@ -122,6 +123,7 @@ export function DownloadsPage() {
   const prevHadActiveRef = useRef(false);
   const play = usePlayerStore((s) => s.play);
   const addToQueue = usePlayerStore((s) => s.addToQueue);
+  const navigateAndSearch = useNavigateAndSearch();
   const preservedTracks = usePreserveStore((s) => s.preservedTracks);
   const totalUsage = usePreserveStore((s) => s.totalUsage);
   const budget = usePreserveStore((s) => s.budget);
@@ -765,7 +767,13 @@ export function DownloadsPage() {
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-zinc-200 truncate">{song.title}</p>
                   <p className="text-xs text-zinc-500 truncate">
-                    {song.artist} &middot; {song.album}
+                    <span
+                      className="cursor-pointer hover:underline hover:text-zinc-300 transition"
+                      onClick={() => navigateAndSearch(song.artist)}
+                    >
+                      {song.artist}
+                    </span>
+                    {' '}&middot;{' '}{song.album}
                   </p>
                 </div>
 
