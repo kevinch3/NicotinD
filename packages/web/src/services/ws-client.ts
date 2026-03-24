@@ -21,7 +21,17 @@ class PlaybackWSClient {
   private resolveDeviceId(): string {
     const stored = localStorage.getItem('nicotind_device_id');
     if (stored) return stored;
-    const id = crypto.randomUUID();
+    
+    let id: string;
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      id = crypto.randomUUID();
+    } else {
+      // Fallback for non-secure contexts (HTTP with custom hostname)
+      id = Array.from({ length: 16 }, () => 
+        Math.floor(Math.random() * 256).toString(16).padStart(2, '0')
+      ).join('') + '-' + Date.now().toString(36);
+    }
+    
     localStorage.setItem('nicotind_device_id', id);
     return id;
   }
