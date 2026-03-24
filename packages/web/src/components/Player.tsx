@@ -25,6 +25,8 @@ export function Player() {
     seekTo,
     clearSeek,
     setNowPlayingOpen,
+    queue,
+    history,
   } = usePlayerStore();
   const token = useAuthStore((s) => s.token);
   const { remoteEnabled, setRemoteEnabled, activeDeviceId } = useRemotePlaybackStore();
@@ -50,6 +52,73 @@ export function Player() {
     }
   }, [currentTrack, token, setCurrentTime, setDuration]);
 
+  // Media Session: update metadata when track changes
+  useEffect(() => {
+    if (!('mediaSession' in navigator)) return;
+
+    if (!currentTrack) {
+      navigator.mediaSession.metadata = null;
+      navigator.mediaSession.playbackState = 'none';
+      return;
+    }
+
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: currentTrack.title,
+      artist: currentTrack.artist,
+      album: currentTrack.album ?? '',
+      artwork: currentTrack.coverArt
+        ? [
+            { src: `/api/cover/${currentTrack.coverArt}?size=96&token=${token}`, sizes: '96x96', type: 'image/jpeg' },
+            { src: `/api/cover/${currentTrack.coverArt}?size=256&token=${token}`, sizes: '256x256', type: 'image/jpeg' },
+            { src: `/api/cover/${currentTrack.coverArt}?size=512&token=${token}`, sizes: '512x512', type: 'image/jpeg' },
+          ]
+        : [],
+    });
+  }, [currentTrack, token]);
+
+  // Media Session: sync playback state
+  useEffect(() => {
+    if (!('mediaSession' in navigator)) return;
+    navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
+  }, [isPlaying]);
+
+  // Media Session: action handlers + conditional next/prev
+  useEffect(() => {
+    if (!('mediaSession' in navigator)) return;
+
+    const canGoNext = queue.length > 0 || repeat === 'all' || repeat === 'one';
+    const canGoPrev = history.length > 0;
+
+    navigator.mediaSession.setActionHandler('play', () => usePlayerStore.getState().resume());
+    navigator.mediaSession.setActionHandler('pause', () => usePlayerStore.getState().pause());
+    navigator.mediaSession.setActionHandler('nexttrack', canGoNext
+      ? () => usePlayerStore.getState().playNext()
+      : null
+    );
+    navigator.mediaSession.setActionHandler('previoustrack', canGoPrev
+      ? () => {
+          const audio = audioRef.current;
+          if (audio && audio.currentTime > 3) {
+            audio.currentTime = 0;
+          } else {
+            usePlayerStore.getState().playPrev();
+          }
+        }
+      : null
+    );
+    navigator.mediaSession.setActionHandler('seekto', (details) => {
+      if (details.seekTime != null) usePlayerStore.getState().seek(details.seekTime);
+    });
+    navigator.mediaSession.setActionHandler('seekforward', () => {
+      const current = usePlayerStore.getState().currentTime;
+      usePlayerStore.getState().seek(current + 10);
+    });
+    navigator.mediaSession.setActionHandler('seekbackward', () => {
+      const current = usePlayerStore.getState().currentTime;
+      usePlayerStore.getState().seek(Math.max(0, current - 10));
+    });
+  }, [queue, history, repeat]);
+
   // Play/pause sync — only drive <audio> if we are the active device
   useEffect(() => {
     const audio = audioRef.current;
@@ -73,7 +142,21 @@ export function Player() {
 
     const onTime = () => {
       const value = audio.currentTime;
-      if (Number.isFinite(value) && value >= 0) setCurrentTime(value);
+      if (Number.isFinite(value) && value >= 0) {
+        setCurrentTime(value);
+        // After setCurrentTime(value):
+        if ('mediaSession' in navigator && audio.duration > 0 && Number.isFinite(audio.duration)) {
+          try {
+            navigator.mediaSession.setPositionState({
+              duration: audio.duration,
+              playbackRate: 1,
+              position: value,
+            });
+          } catch {
+            // Older WebKit may throw — silently ignore
+          }
+        }
+      }
     };
     const onDuration = () => {
       const value = audio.duration;
