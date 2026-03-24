@@ -162,6 +162,8 @@ export function SearchPage() {
   const setNetworkState = useSearchStore((s) => s.setNetworkState);
   const downloading = useSearchStore((s) => s.downloading);
   const addDownloading = useSearchStore((s) => s.addDownloading);
+  const downloadedFolders = useSearchStore((s) => s.downloadedFolders);
+  const addDownloadedFolder = useSearchStore((s) => s.addDownloadedFolder);
   const canBrowse = useSearchStore((s) => s.canBrowse);
   const setCanBrowse = useSearchStore((s) => s.setCanBrowse);
   const getStatus = useTransferStore((s) => s.getStatus);
@@ -558,10 +560,8 @@ export function SearchPage() {
                 const folderFiles = group.files
                   .filter((f) => f.size > 0)
                   .map((f) => ({ username: group.username, filename: f.filename }));
-                const allOptimisticallyQueued =
-                  folderFiles.length > 0 &&
-                  folderFiles.every((f) => downloading.has(`${f.username}:${f.filename}`));
-                const folderBtn = getFolderDownloadLabel(folderFiles, allOptimisticallyQueued, getStatus);
+                const isFolderQueued = downloadedFolders.has(`${group.username}:${group.directory}`);
+                const folderBtn = getFolderDownloadLabel(folderFiles, isFolderQueued, getStatus);
 
                 return (
                   <div key={browserKey} className="mb-1">
@@ -576,7 +576,8 @@ export function SearchPage() {
                       </div>
                       <button
                         onClick={async () => {
-                          const validFiles = group.files.filter((f) => f.size > 0); // skip 0-byte stubs
+                          const validFiles = group.files.filter((f) => f.size > 0);
+                          addDownloadedFolder(`${group.username}:${group.directory}`);
                           for (const f of validFiles) addDownloading(`${group.username}:${f.filename}`);
                           await api.enqueueDownload(
                             group.username,
@@ -610,11 +611,13 @@ export function SearchPage() {
                             length: f.length,
                           }))}
                           onDownload={async (files) => {
-                            const validFiles = files.filter((f) => f.size > 0); // skip 0-byte stubs
+                            const validFiles = files.filter((f) => f.size > 0);
+                            addDownloadedFolder(`${group.username}:${group.directory}`);
                             for (const f of validFiles) addDownloading(`${group.username}:${f.filename}`);
                             await api.enqueueDownload(group.username, validFiles);
                           }}
                           getStatus={getStatus}
+                          isFolderQueued={downloadedFolders.has(`${group.username}:${group.directory}`)}
                         />
                       </div>
                     )}

@@ -17,6 +17,7 @@ interface FolderBrowserProps {
   onDownload: (files: Array<{ filename: string; size: number }>) => void;
   /** When provided, Download all button reflects live transfer status. */
   getStatus?: (username: string, filename: string) => TransferEntry | undefined;
+  isFolderQueued?: boolean;
 }
 
 function formatSize(bytes: number) {
@@ -80,13 +81,13 @@ export function FolderBrowser({
   fallbackFiles,
   onDownload,
   getStatus,
+  isFolderQueued = false,
 }: FolderBrowserProps) {
   const [dirs, setDirs] = useState<BrowseDir[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [selected, setSelected] = useState(matchedPath);
-  const [optimisticQueued, setOptimisticQueued] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -171,8 +172,8 @@ export function FolderBrowser({
                   const validFiles = directFiles.filter((f) => f.size > 0); // skip 0-byte stubs
                   const folderFiles = validFiles.map((f) => ({ username, filename: f.filename }));
                   const btn = getStatus
-                    ? getFolderDownloadLabel(folderFiles, optimisticQueued, getStatus)
-                    : optimisticQueued
+                    ? getFolderDownloadLabel(folderFiles, isFolderQueued, getStatus)
+                    : isFolderQueued
                       ? { label: 'Queued', variant: 'queued' as const, disabled: true }
                       : { label: `Download all (${validFiles.length})`, variant: 'default' as const, disabled: false };
 
@@ -185,7 +186,6 @@ export function FolderBrowser({
                   return (
                     <button
                       onClick={() => {
-                        setOptimisticQueued(true);
                         onDownload(validFiles.map((f) => ({ filename: f.filename, size: f.size })));
                       }}
                       disabled={btn.disabled || validFiles.length === 0}

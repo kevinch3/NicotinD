@@ -29,6 +29,7 @@ interface SearchState {
   network: NetworkResult[];
   networkState: 'idle' | 'searching' | 'complete';
   downloading: Set<string>;
+  downloadedFolders: Set<string>;   // keyed as "username:directoryPath"
   canBrowse: boolean;
 
   setQuery: (query: string) => void;
@@ -36,6 +37,7 @@ interface SearchState {
   setNetwork: (network: NetworkResult[]) => void;
   setNetworkState: (state: 'idle' | 'searching' | 'complete') => void;
   addDownloading: (key: string) => void;
+  addDownloadedFolder: (key: string) => void;
   setCanBrowse: (v: boolean) => void;
   reset: () => void;
 }
@@ -46,6 +48,7 @@ export const useSearchStore = create<SearchState>((set) => ({
   network: [],
   networkState: 'idle',
   downloading: new Set(),
+  downloadedFolders: new Set(),
   canBrowse: false,
 
   setQuery: (query) => set({ query }),
@@ -53,6 +56,7 @@ export const useSearchStore = create<SearchState>((set) => ({
   setNetwork: (network) => set({ network }),
   setNetworkState: (networkState) => set({ networkState }),
   addDownloading: (key) => set((s) => ({ downloading: new Set(s.downloading).add(key) })),
+  addDownloadedFolder: (key) => set((s) => ({ downloadedFolders: new Set(s.downloadedFolders).add(key) })),
   setCanBrowse: (canBrowse) => set({ canBrowse }),
-  reset: () => set({ local: null, network: [], networkState: 'idle', canBrowse: false }),
+  reset: () => set({ local: null, network: [], networkState: 'idle', canBrowse: false, downloading: new Set(), downloadedFolders: new Set() }),
 }));
