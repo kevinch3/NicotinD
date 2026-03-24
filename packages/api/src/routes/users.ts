@@ -23,6 +23,7 @@ export function usersRoutes(registry: ProviderRegistry) {
     try {
       const dirs = await Promise.race([
         provider.browseUser(username).catch((e) => {
+          if (e instanceof BrowseUnavailableError) throw e;
           throw new Error(`Provider error: ${e instanceof Error ? e.message : String(e)}`);
         }),
         new Promise<never>((_, reject) =>
