@@ -1,7 +1,7 @@
 import { OpenAPIHono } from '@hono/zod-openapi';
 import { swaggerUI } from '@hono/swagger-ui';
 import { cors } from 'hono/cors';
-import { serveStatic } from 'hono/bun';
+import { serveStatic, createBunWebSocket } from 'hono/bun';
 import type { NicotinDConfig } from '@nicotind/core';
 import type { Slskd } from '@nicotind/slskd-client';
 import type { Navidrome } from '@nicotind/navidrome-client';
@@ -22,11 +22,13 @@ import { adminRoutes } from './routes/admin.js';
 import { usersRoutes } from './routes/users.js';
 import { subsonicProxy } from './routes/subsonic.js';
 import { DownloadWatcher } from './services/download-watcher.js';
+import { MetadataFixer } from './services/metadata-fixer.js';
 import { TailscaleService } from './services/tailscale.js';
 import { ProviderRegistry } from './services/provider-registry.js';
 import { NavidromeSearchProvider } from './services/providers/navidrome-provider.js';
 import { SlskdSearchProvider } from './services/providers/slskd-provider.js';
 import { initDatabase } from './db.js';
+import { wsHandlers } from './services/websocket.js';
 
 export type SlskdRef = { current: Slskd | null };
 export type WatcherRef = { current: DownloadWatcher | null };
@@ -55,6 +57,11 @@ export function createApp({
   initDatabase(expandedDataDir);
 
   const app = new OpenAPIHono();
+  const { upgradeWebSocket, websocket } = createBunWebSocket();
+
+  app.get('/api/ws/playback', upgradeWebSocket((c) => {
+    return wsHandlers;
+  }));
 
   // Documentation
   app.doc('/openapi.json', {
@@ -72,13 +79,21 @@ export function createApp({
   app.use('*', cors());
   app.onError(errorHandler);
 
+  // Shared MetadataFixer instance — used by DownloadWatcher and on-demand library route
+  const metadataFixer = config.musicDir
+    ? new MetadataFixer({
+        musicDir: config.musicDir,
+        enabled: config.metadataFix.enabled,
+        minScore: config.metadataFix.minScore,
+      })
+    : undefined;
+
   // Download watcher (mutable ref — settings route can create/replace it)
   const watcherRef: WatcherRef = {
     current: slskdRef.current && config.soulseek.username && config.soulseek.password
       ? new DownloadWatcher(slskdRef.current, navidrome, {
           musicDir: config.musicDir,
-          metadataFixEnabled: config.metadataFix.enabled,
-          metadataFixMinScore: config.metadataFix.minScore,
+          metadataFixer,
         })
       : null,
   };
@@ -126,7 +141,7 @@ export function createApp({
   app.route('/api/search', searchRoutes(registry));
   app.route('/api/admin', adminRoutes());
   app.route('/api/downloads', downloadRoutes(registry, slskdRef));
-  app.route('/api/library', libraryRoutes(navidrome, config.musicDir));
+  app.route('/api/library', libraryRoutes(navidrome, config.musicDir, metadataFixer));
   app.route('/api', streamingRoutes(navidrome));
   app.route('/api/system', systemRoutes(slskdRef, navidrome, serviceManager, config));
   app.route(
@@ -154,7 +169,7 @@ export function createApp({
     });
   }
 
-  return { app, watcherRef };
+  return { app, watcherRef, websocket };
 }
 
 export { DownloadWatcher } from './services/download-watcher.js';

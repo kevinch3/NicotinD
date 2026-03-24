@@ -220,6 +220,11 @@ export const api = {
     }>>(`/api/library/recent-songs?size=${size}`),
   deleteSong: (id: string) =>
     request<{ ok: boolean }>(`/api/library/songs/${id}`, { method: 'DELETE' }),
+  fixSongMetadata: (id: string) =>
+    request<{ fixed: boolean; changes?: { title?: string; artist?: string; album?: string } }>(
+      `/api/library/songs/${id}/fix-metadata`,
+      { method: 'POST' },
+    ),
 
   // Playlists
   getPlaylists: () =>

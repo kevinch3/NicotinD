@@ -6,10 +6,11 @@ import type { Song } from '@nicotind/core';
 import type { Navidrome } from '@nicotind/navidrome-client';
 import type { AuthEnv } from '../middleware/auth.js';
 import { getDatabase } from '../db.js';
+import type { MetadataFixer } from '../services/metadata-fixer.js';
 
 const log = createLogger('library');
 
-export function libraryRoutes(navidrome: Navidrome, musicDir?: string) {
+export function libraryRoutes(navidrome: Navidrome, musicDir?: string, metadataFixer?: MetadataFixer) {
   const app = new Hono<AuthEnv>();
 
   app.get('/artists', async (c) => {
@@ -142,6 +143,44 @@ export function libraryRoutes(navidrome: Navidrome, musicDir?: string) {
     }
 
     return c.json({ ok: true });
+  });
+
+  // On-demand metadata normalization for a single song via MusicBrainz
+  app.post('/songs/:id/fix-metadata', async (c) => {
+    if (!musicDir || !metadataFixer) {
+      return c.json({ error: 'Metadata fixer not configured' }, 500);
+    }
+
+    const id = c.req.param('id');
+    const song = await navidrome.browsing.getSong(id);
+    if (!song.path) {
+      return c.json({ error: 'Song path not available' }, 404);
+    }
+
+    const expandedMusicDir = expandDir(musicDir);
+    const fullPath = resolveSongPath(expandedMusicDir, song.path);
+
+    if (!isUnderMusicDir(expandedMusicDir, fullPath)) {
+      log.warn({ path: fullPath, musicDir: expandedMusicDir }, 'Song path is outside the music directory');
+      return c.json({ error: 'Song path is outside the music directory' }, 400);
+    }
+
+    if (!existsSync(fullPath)) {
+      return c.json({ error: 'File not found on disk' }, 404);
+    }
+
+    const hint = { title: song.title, artist: song.artist, album: song.album };
+    const result = await metadataFixer.fixFileAtAbsolutePath(fullPath, hint);
+
+    if (result.fixed) {
+      try {
+        await (navidrome.system as { startScan: (fullScan?: boolean) => Promise<void> }).startScan(false);
+      } catch {
+        // Non-fatal
+      }
+    }
+
+    return c.json(result);
   });
 
   return app;

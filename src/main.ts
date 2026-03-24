@@ -93,7 +93,7 @@ async function main() {
 
   // 4. Create and start API server
   const webDistPath = resolve(import.meta.dir, '../packages/web/dist');
-  const { app, watcherRef } = createApp({
+  const { app, watcherRef, websocket } = createApp({
     config,
     slskdRef,
     navidrome,
@@ -114,6 +114,7 @@ async function main() {
   Bun.serve({
     port: config.port,
     fetch: app.fetch,
+    websocket,
   });
 
   // Graceful shutdown

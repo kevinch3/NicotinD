@@ -165,6 +165,78 @@ export class MetadataFixer {
     this.fetchFn = options.fetchFn ?? fetch;
   }
 
+  async fixFileAtAbsolutePath(
+    absolutePath: string,
+    hint: ParsedMetadata,
+  ): Promise<{ fixed: boolean; changes: Partial<ParsedMetadata> }> {
+    const empty = { fixed: false, changes: {} };
+    if (!this.enabled) return empty;
+
+    const nodeId3 = await getNodeId3();
+    if (!nodeId3) return empty;
+
+    if (extname(absolutePath).toLowerCase() !== '.mp3') return empty;
+
+    const existingRaw = nodeId3.read(absolutePath);
+    const existingData =
+      existingRaw && typeof existingRaw === 'object'
+        ? (existingRaw as Record<string, unknown>)
+        : {};
+    const existing: ParsedMetadata = {
+      title: asString(existingData.title),
+      artist: asString(existingData.artist),
+      album: asString(existingData.album),
+      trackNumber: asString(existingData.trackNumber),
+    };
+
+    // Force mode: always query MusicBrainz using Navidrome hint as the query seed.
+    // Fall back to existing tags, then filename inference for missing hint fields.
+    const inferred = inferMetadataFromPath(absolutePath, absolutePath);
+    const query: ParsedMetadata = {
+      title: hint.title ?? existing.title ?? inferred.title,
+      artist: hint.artist ?? existing.artist ?? inferred.artist,
+      album: hint.album ?? existing.album ?? inferred.album,
+    };
+
+    if (!hasUsableValue(query.title)) return empty;
+
+    const lookedUp = await this.lookupMusicBrainz(query);
+    if (!lookedUp) return empty;
+
+    const target: ParsedMetadata = {
+      title: chooseValue(lookedUp.title, hint.title, existing.title),
+      artist: chooseValue(lookedUp.artist, hint.artist, existing.artist),
+      album: chooseValue(lookedUp.album, hint.album, existing.album),
+      trackNumber: asString(existing.trackNumber) ?? hint.trackNumber,
+    };
+
+    const changes: Partial<ParsedMetadata> = {};
+    if (target.title && target.title !== existing.title) changes.title = target.title;
+    if (target.artist && target.artist !== existing.artist) changes.artist = target.artist;
+    if (target.album && target.album !== existing.album) changes.album = target.album;
+
+    if (Object.keys(changes).length === 0) return empty;
+
+    const update: Record<string, string> = {};
+    if (changes.title) update.title = changes.title;
+    if (changes.artist) update.artist = changes.artist;
+    if (changes.album) update.album = changes.album;
+    if (target.trackNumber) update.trackNumber = target.trackNumber;
+
+    try {
+      const ok = nodeId3.update(update, absolutePath);
+      if (!ok) {
+        log.warn({ absolutePath }, 'Failed to write ID3 tags (on-demand fix)');
+        return empty;
+      }
+      log.info({ absolutePath, changes }, 'Repaired audio metadata (on-demand)');
+      return { fixed: true, changes };
+    } catch (err) {
+      log.warn({ err, absolutePath }, 'Failed to repair audio metadata (on-demand)');
+      return empty;
+    }
+  }
+
   async processCompletedDownloads(files: CompletedDownloadFile[]): Promise<void> {
     if (!this.enabled || files.length === 0) return;
 
