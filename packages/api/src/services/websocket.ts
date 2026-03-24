@@ -1,13 +1,13 @@
+import type { WSContext } from 'hono/ws';
 import { playbackManager } from './playback-state.js';
 
-// We use any to accommodate varying generic typings of Hono's WS object across environments.
-const connections = new Map<any, string>();
+const connections = new Map<WSContext, string>();
 
 export const wsHandlers = {
-  onOpen: (_event: any, ws: any) => {
+  onOpen: (_event: Event, ws: WSContext) => {
     connections.set(ws, '');
   },
-  onMessage: (event: any, ws: any) => {
+  onMessage: (event: MessageEvent, ws: WSContext) => {
     try {
       const data = JSON.parse(event.data.toString());
       
@@ -44,9 +44,13 @@ export const wsHandlers = {
 
         case 'COMMAND': {
           if (data.payload.action === 'PLAY') playbackManager.updateState({ isPlaying: true });
-          if (data.payload.action === 'PAUSE') playbackManager.updateState({ isPlaying: false });
-          if (data.payload.action === 'SEEK') playbackManager.updateState({ position: data.payload.position });
-          if (data.payload.action === 'VOLUME') playbackManager.updateState({ volume: data.payload.volume });
+          else if (data.payload.action === 'PAUSE') playbackManager.updateState({ isPlaying: false });
+          else if (data.payload.action === 'SEEK') playbackManager.updateState({ position: data.payload.position });
+          else if (data.payload.action === 'VOLUME') playbackManager.updateState({ volume: data.payload.volume });
+          else {
+            // Forward other commands (NEXT, PREV, etc) to all devices
+            playbackManager.emitCommand(data.payload.action, data.payload);
+          }
           if (data.payload.action === 'SET_TRACK') {
             playbackManager.updateState({ 
               trackId: data.payload.trackId,
@@ -66,7 +70,7 @@ export const wsHandlers = {
       console.error('WS parse error', err);
     }
   },
-  onClose: (_event: any, ws: any) => {
+  onClose: (_event: CloseEvent, ws: WSContext) => {
     const id = connections.get(ws);
     if (id) {
       playbackManager.unregisterDevice(id);
@@ -84,6 +88,13 @@ playbackManager.on('state_update', (state) => {
 
 playbackManager.on('devices_update', (devices) => {
   const msg = JSON.stringify({ type: 'DEVICES_SYNC', payload: { devices } });
+  for (const ws of connections.keys()) {
+    ws.send(msg);
+  }
+});
+
+playbackManager.on('command', (command) => {
+  const msg = JSON.stringify({ type: 'COMMAND', payload: command });
   for (const ws of connections.keys()) {
     ws.send(msg);
   }

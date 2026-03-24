@@ -2,6 +2,9 @@ import { useRef, useEffect, useCallback } from 'react';
 import { usePlayerStore } from '@/stores/player';
 import { useAuthStore } from '@/stores/auth';
 import { PreserveButton } from '@/components/PreserveButton';
+import { DeviceSwitcher } from '@/components/DeviceSwitcher';
+import { useRemotePlaybackStore } from '@/stores/remote-playback';
+import { wsClient } from '@/services/ws-client';
 
 export function Player() {
   const {
@@ -24,6 +27,9 @@ export function Player() {
     setNowPlayingOpen,
   } = usePlayerStore();
   const token = useAuthStore((s) => s.token);
+  const { remoteEnabled, setRemoteEnabled, activeDeviceId } = useRemotePlaybackStore();
+  const myId = wsClient.getDeviceId();
+  const isActiveDevice = !activeDeviceId || activeDeviceId === myId;
   const audioRef = useRef<HTMLAudioElement>(null);
 
   // Load track
@@ -44,13 +50,13 @@ export function Player() {
     }
   }, [currentTrack, token, setCurrentTime, setDuration]);
 
-  // Play/pause sync
+  // Play/pause sync — only drive <audio> if we are the active device
   useEffect(() => {
     const audio = audioRef.current;
-    if (!audio) return;
+    if (!audio || !isActiveDevice) return;
     if (isPlaying) audio.play().catch(() => {});
     else audio.pause();
-  }, [isPlaying]);
+  }, [isPlaying, isActiveDevice]);
 
   // Seek from store
   useEffect(() => {
@@ -87,27 +93,62 @@ export function Player() {
     };
   }, [playNext, setCurrentTime, setDuration]);
 
+  const handlePlayPause = useCallback(() => {
+    if (isActiveDevice) {
+      if (isPlaying) pause();
+      else resume();
+    } else {
+      wsClient.sendCommand(isPlaying ? 'PAUSE' : 'PLAY');
+    }
+  }, [isActiveDevice, isPlaying, pause, resume]);
+
+  const handleNext = useCallback(() => {
+    if (isActiveDevice) playNext();
+    else wsClient.sendCommand('COMMAND', { action: 'NEXT' }); // Note: API needs to handle 'NEXT' in COMMAND switch
+  }, [isActiveDevice, playNext]);
+
   const handleSeek = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       const audio = audioRef.current;
       const safeDuration = Number.isFinite(duration) && duration > 0 ? duration : 0;
-      if (!audio || !safeDuration) return;
+      if (!safeDuration) return;
+
       const rect = e.currentTarget.getBoundingClientRect();
       if (!rect.width) return;
       const pct = (e.clientX - rect.left) / rect.width;
-      audio.currentTime = Math.max(0, Math.min(1, pct)) * safeDuration;
+      const newTime = Math.max(0, Math.min(1, pct)) * safeDuration;
+
+      if (isActiveDevice && audio) {
+        audio.currentTime = newTime;
+      } else {
+        wsClient.sendCommand('SEEK', { position: newTime });
+      }
     },
-    [duration],
+    [duration, isActiveDevice],
   );
 
   const handlePrev = useCallback(() => {
     const audio = audioRef.current;
-    if (audio && audio.currentTime > 3) {
-      audio.currentTime = 0;
+    if (isActiveDevice) {
+      if (audio && audio.currentTime > 3) {
+        audio.currentTime = 0;
+      } else {
+        playPrev();
+      }
     } else {
-      playPrev();
+      wsClient.sendCommand('COMMAND', { action: 'PREV' });
     }
-  }, [playPrev]);
+  }, [isActiveDevice, playPrev]);
+
+  const toggleRemote = useCallback(() => {
+    if (!remoteEnabled && audioRef.current) {
+      // User gesture to unlock audio for future remote commands
+      audioRef.current.play().then(() => {
+        if (!isPlaying) audioRef.current?.pause();
+      }).catch(() => {});
+    }
+    setRemoteEnabled(!remoteEnabled);
+  }, [remoteEnabled, setRemoteEnabled, isPlaying]);
 
   function formatTime(s: number) {
     if (!Number.isFinite(s) || s < 0) return '0:00';
@@ -187,7 +228,7 @@ export function Player() {
 
               {/* Play/Pause */}
               <button
-                onClick={() => (isPlaying ? pause() : resume())}
+                onClick={handlePlayPause}
                 className="w-8 h-8 rounded-full bg-zinc-100 text-zinc-900 flex items-center justify-center hover:bg-zinc-200 transition"
               >
                 {isPlaying ? (
@@ -204,7 +245,7 @@ export function Player() {
 
               {/* Next */}
               <button
-                onClick={playNext}
+                onClick={handleNext}
                 className="w-7 h-7 flex items-center justify-center text-zinc-400 hover:text-zinc-100 transition"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
@@ -245,8 +286,25 @@ export function Player() {
             </div>
           </div>
 
-          {/* Right spacer - desktop only */}
-          <div className="hidden md:block w-60" />
+          {/* Right side: device switcher + remote toggle */}
+          <div className="hidden md:flex items-center gap-2 w-60 justify-end flex-shrink-0">
+            <button
+              onClick={toggleRemote}
+              title={remoteEnabled ? 'Opt out of remote playback' : 'Opt in for remote playback'}
+              className={`w-7 h-7 flex items-center justify-center rounded-full transition ${
+                remoteEnabled ? 'text-emerald-400' : 'text-zinc-500 hover:text-zinc-300'
+              }`}
+            >
+              {/* Radio tower / remote icon */}
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M5 12.55a11 11 0 0 1 14.08 0" />
+                <path d="M1.42 9a16 16 0 0 1 21.16 0" />
+                <path d="M8.53 16.11a6 6 0 0 1 6.95 0" />
+                <circle cx="12" cy="20" r="1" fill="currentColor" />
+              </svg>
+            </button>
+            <DeviceSwitcher />
+          </div>
         </div>
 
         {/* Mobile progress bar */}

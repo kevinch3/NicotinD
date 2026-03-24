@@ -13,6 +13,7 @@ import { PlaylistsPage } from '@/pages/Playlists';
 import { LibraryPage } from '@/pages/Library';
 import { SettingsPage } from '@/pages/Settings';
 import { AdminPage } from '@/pages/Admin';
+import { RemotePlaybackProvider } from '@/components/RemotePlaybackProvider';
 
 export function App() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
@@ -61,17 +62,19 @@ export function App() {
   }
 
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route element={<Layout />}>
-          <Route path="/" element={<SearchPage />} />
-          <Route path="/downloads" element={<DownloadsPage />} />
-          <Route path="/playlists" element={<PlaylistsPage />} />
-          <Route path="/library" element={<LibraryPage />} />
-          <Route path="/settings" element={<SettingsPage />} />
-          <Route path="/admin" element={role === 'admin' ? <AdminPage /> : <Navigate to="/" />} />
-        </Route>
-      </Routes>
-    </BrowserRouter>
+    <RemotePlaybackProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route element={<Layout />}>
+            <Route path="/" element={<SearchPage />} />
+            <Route path="/downloads" element={<DownloadsPage />} />
+            <Route path="/playlists" element={<PlaylistsPage />} />
+            <Route path="/library" element={<LibraryPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/admin" element={role === 'admin' ? <AdminPage /> : <Navigate to="/" />} />
+          </Route>
+        </Routes>
+      </BrowserRouter>
+    </RemotePlaybackProvider>
   );
 }

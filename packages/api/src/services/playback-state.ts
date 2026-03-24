@@ -62,6 +62,10 @@ export class PlaybackStateManager extends EventEmitter {
       device.lastSeen = Date.now();
     }
   }
+
+  emitCommand(action: string, payload?: unknown) {
+    this.emit('command', { action, payload });
+  }
 }
 
 export const playbackManager = new PlaybackStateManager();
