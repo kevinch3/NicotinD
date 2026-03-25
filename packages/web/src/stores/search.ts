@@ -45,7 +45,15 @@ export const useSearchStore = create<SearchState>((set) => ({
   network: [],
   networkState: 'idle',
   downloading: new Set(),
-  downloadedFolders: new Set(),
+  downloadedFolders: (() => {
+    try {
+      return new Set<string>(
+        JSON.parse(localStorage.getItem('nicotind:downloaded-folders') ?? '[]') as string[],
+      );
+    } catch {
+      return new Set<string>();
+    }
+  })(),
   canBrowse: false,
   autoSearch: false,
   history: (() => { try { return JSON.parse(localStorage.getItem('nicotind:search-history') ?? '[]') as string[]; } catch { return []; } })(),
@@ -59,7 +67,15 @@ export const useSearchStore = create<SearchState>((set) => ({
     updated.delete(key);
     return { downloading: updated };
   }),
-  addDownloadedFolder: (key) => set((s) => ({ downloadedFolders: new Set(s.downloadedFolders).add(key) })),
+  addDownloadedFolder: (key) => set((s) => {
+    const updated = new Set(s.downloadedFolders).add(key);
+    if (updated.size > 500) {
+      const [first] = updated;
+      updated.delete(first);
+    }
+    localStorage.setItem('nicotind:downloaded-folders', JSON.stringify(Array.from(updated)));
+    return { downloadedFolders: updated };
+  }),
   setCanBrowse: (canBrowse) => set({ canBrowse }),
   setAutoSearch: (autoSearch) => set({ autoSearch }),
 
@@ -76,5 +92,5 @@ export const useSearchStore = create<SearchState>((set) => ({
     set({ history: [] });
   },
 
-  reset: () => set({ network: [], networkState: 'idle', canBrowse: false, downloading: new Set(), downloadedFolders: new Set() }),
+  reset: () => set({ network: [], networkState: 'idle', canBrowse: false, downloading: new Set() }),
 }));
