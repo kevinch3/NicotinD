@@ -1,11 +1,5 @@
 import { create } from 'zustand';
 
-interface LocalResults {
-  artists: Array<{ id: string; name: string; albumCount?: number }>;
-  albums: Array<{ id: string; name: string; artist: string; coverArt?: string; year?: number }>;
-  songs: Array<{ id: string; title: string; artist: string; album: string; duration?: number; coverArt?: string }>;
-}
-
 interface NetworkResult {
   username: string;
   freeUploadSlots: number;
@@ -25,7 +19,6 @@ interface NetworkResult {
 
 interface SearchState {
   query: string;
-  local: LocalResults | null;
   network: NetworkResult[];
   networkState: 'idle' | 'searching' | 'complete';
   downloading: Set<string>;
@@ -33,11 +26,8 @@ interface SearchState {
   canBrowse: boolean;
   autoSearch: boolean;
   history: string[];
-  similarTo: { title: string; artist: string } | null;
-  similarResults: Array<{ id: string; title: string; artist: string; album: string; duration?: number; coverArt?: string }>;
 
   setQuery: (query: string) => void;
-  setLocal: (local: LocalResults | null) => void;
   setNetwork: (network: NetworkResult[]) => void;
   setNetworkState: (state: 'idle' | 'searching' | 'complete') => void;
   addDownloading: (key: string) => void;
@@ -48,13 +38,10 @@ interface SearchState {
   addToHistory: (query: string) => void;
   clearHistory: () => void;
   reset: () => void;
-  setSimilar: (meta: { title: string; artist: string }, results: Array<{ id: string; title: string; artist: string; album: string; duration?: number; coverArt?: string }>) => void;
-  clearSimilar: () => void;
 }
 
 export const useSearchStore = create<SearchState>((set) => ({
   query: '',
-  local: null,
   network: [],
   networkState: 'idle',
   downloading: new Set(),
@@ -62,11 +49,8 @@ export const useSearchStore = create<SearchState>((set) => ({
   canBrowse: false,
   autoSearch: false,
   history: (() => { try { return JSON.parse(localStorage.getItem('nicotind:search-history') ?? '[]') as string[]; } catch { return []; } })(),
-  similarTo: null,
-  similarResults: [],
 
   setQuery: (query) => set({ query }),
-  setLocal: (local) => set({ local }),
   setNetwork: (network) => set({ network }),
   setNetworkState: (networkState) => set({ networkState }),
   addDownloading: (key) => set((s) => ({ downloading: new Set(s.downloading).add(key) })),
@@ -92,8 +76,5 @@ export const useSearchStore = create<SearchState>((set) => ({
     set({ history: [] });
   },
 
-  reset: () => set({ local: null, network: [], networkState: 'idle', canBrowse: false, downloading: new Set(), downloadedFolders: new Set(), similarTo: null, similarResults: [] }),
-
-  setSimilar: (similarTo, similarResults) => set({ similarTo, similarResults }),
-  clearSimilar: () => set({ similarTo: null, similarResults: [] }),
+  reset: () => set({ network: [], networkState: 'idle', canBrowse: false, downloading: new Set(), downloadedFolders: new Set() }),
 }));

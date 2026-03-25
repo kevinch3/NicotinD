@@ -5,6 +5,8 @@ import { usePreserveStore } from '@/stores/preserve';
 import { useTransferStore } from '@/stores/transfers';
 import type { SlskdUserTransferGroup } from '@nicotind/core';
 import { useNavigateAndSearch } from '@/hooks/useNavigateAndSearch';
+import { useListControls } from '@/hooks/useListControls';
+import { ListToolbar } from '@/components/ListToolbar';
 
 interface AlbumGroup {
   key: string;
@@ -169,6 +171,36 @@ export function DownloadsPage() {
   const removePreserved = usePreserveStore((s) => s.remove);
   const downloadToDevice = usePreserveStore((s) => s.downloadToDevice);
 
+  // List controls for Recently Added
+  const recentControls = useListControls({
+    pageKey: 'downloads-recent',
+    items: recentSongs,
+    searchFields: ['title', 'artist', 'album'] as const,
+    sortOptions: [
+      { field: 'created', label: 'Date added' },
+      { field: 'title', label: 'Title' },
+      { field: 'artist', label: 'Artist' },
+    ],
+    defaultSort: 'created',
+    defaultDirection: 'desc',
+  });
+
+  // List controls for Preserved
+  const preservedControls = useListControls({
+    pageKey: 'downloads-preserved',
+    items: preservedTracks,
+    searchFields: ['title', 'artist'] as const,
+    sortOptions: [
+      { field: 'preservedAt', label: 'Date preserved' },
+      { field: 'title', label: 'Title' },
+    ],
+    defaultSort: 'preservedAt',
+    defaultDirection: 'desc',
+  });
+
+  // Whether to show date grouping (only when sorting by date desc with no filter)
+  const showDateGroups = recentControls.sortField === 'created' && recentControls.sortDirection === 'desc' && !recentControls.searchText;
+
   const fetchRecentSongs = useCallback(async () => {
     try {
       const data = await api.getRecentSongs(50);
@@ -254,10 +286,11 @@ export function DownloadsPage() {
   }
 
   function selectAll() {
-    if (selected.size === recentSongs.length) {
+    const visible = recentControls.filtered;
+    if (selected.size === visible.length) {
       setSelected(new Set());
     } else {
-      setSelected(new Set(recentSongs.map((s) => s.id)));
+      setSelected(new Set(visible.map((s) => s.id)));
     }
   }
 
@@ -546,12 +579,17 @@ export function DownloadsPage() {
       {preservedTracks.length > 0 && (
         <section className="mb-8">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
-              Preserved
-              <span className="font-normal normal-case ml-1.5 text-zinc-600">
-                ({preservedTracks.length})
-              </span>
-            </h2>
+            <div className="flex items-center gap-2">
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+                Preserved
+                <span className="font-normal normal-case ml-1.5 text-zinc-600">
+                  ({preservedTracks.length})
+                </span>
+              </h2>
+              <button onClick={preservedControls.showToolbar} className="p-1 text-zinc-600 hover:text-zinc-300 transition" title="Search (Ctrl+F)">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
+              </button>
+            </div>
             <span className="text-xs text-zinc-600">
               {formatSize(totalUsage)} / {formatSize(budget)}
             </span>
@@ -565,10 +603,23 @@ export function DownloadsPage() {
             />
           </div>
 
+          {preservedControls.isToolbarVisible && (
+            <ListToolbar
+              searchText={preservedControls.searchText}
+              onSearchChange={preservedControls.setSearchText}
+              sortField={preservedControls.sortField}
+              onSortFieldChange={preservedControls.setSortField}
+              sortDirection={preservedControls.sortDirection}
+              onToggleSortDirection={preservedControls.toggleSortDirection}
+              sortOptions={preservedControls.sortOptions}
+              onDismiss={preservedControls.hideToolbar}
+              inputRef={preservedControls.inputRef}
+              resultCount={preservedControls.filtered.length}
+            />
+          )}
+
           <div className="space-y-0.5">
-            {preservedTracks
-              .sort((a, b) => b.preservedAt - a.preservedAt)
-              .map((pt) => (
+            {preservedControls.filtered.map((pt) => (
                 <div
                   key={pt.id}
                   className="flex items-center gap-2 md:gap-3 px-3 md:px-4 py-2.5 rounded-lg hover:bg-zinc-800/30 border border-transparent transition group"
@@ -663,23 +714,45 @@ export function DownloadsPage() {
       {/* Recently Added */}
       <section>
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
-            Recently Added
+          <div className="flex items-center gap-2">
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+              Recently Added
+              {recentSongs.length > 0 && (
+                <span className="font-normal normal-case ml-1.5 text-zinc-600">
+                  ({recentSongs.length})
+                </span>
+              )}
+            </h2>
             {recentSongs.length > 0 && (
-              <span className="font-normal normal-case ml-1.5 text-zinc-600">
-                ({recentSongs.length})
-              </span>
+              <button onClick={recentControls.showToolbar} className="p-1 text-zinc-600 hover:text-zinc-300 transition" title="Search (Ctrl+F)">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
+              </button>
             )}
-          </h2>
+          </div>
           {recentSongs.length > 0 && (
             <button
               onClick={selectAll}
               className="text-xs text-zinc-500 hover:text-zinc-300 transition"
             >
-              {selected.size === recentSongs.length ? 'Deselect all' : 'Select all'}
+              {selected.size === recentControls.filtered.length ? 'Deselect all' : 'Select all'}
             </button>
           )}
         </div>
+
+        {recentControls.isToolbarVisible && (
+          <ListToolbar
+            searchText={recentControls.searchText}
+            onSearchChange={recentControls.setSearchText}
+            sortField={recentControls.sortField}
+            onSortFieldChange={recentControls.setSortField}
+            sortDirection={recentControls.sortDirection}
+            onToggleSortDirection={recentControls.toggleSortDirection}
+            sortOptions={recentControls.sortOptions}
+            onDismiss={recentControls.hideToolbar}
+            inputRef={recentControls.inputRef}
+            resultCount={recentControls.filtered.length}
+          />
+        )}
 
         {/* Bulk action bar */}
         {selected.size > 0 && (
@@ -766,148 +839,156 @@ export function DownloadsPage() {
 
         {recentSongs.length > 0 && (
           <div className="space-y-4">
-            {groupRecentSongsByDate(recentSongs).map((group) => (
-              <div key={group.label}>
-                {/* Date divider label */}
-                <div className="px-1.5 md:px-0 mb-1">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
-                    {group.label}
-                  </span>
-                </div>
-                {/* Songs in this group */}
-                <div className="space-y-0.5">
-                  {group.songs.map((song) => {
-            const isSelected = selected.has(song.id);
-            const isDeleting = deleting.has(song.id);
-            return (
-              <div
-                key={song.id}
-                className={`flex items-center gap-1.5 md:gap-3 px-1.5 md:px-4 py-2.5 rounded-lg transition group ${
-                  isSelected
-                    ? 'bg-zinc-800/60 border border-zinc-700/50'
-                    : 'hover:bg-zinc-800/30 border border-transparent'
-                } ${isDeleting ? 'opacity-40 pointer-events-none' : ''}`}
-              >
-                {/* Checkbox */}
-                <button
-                  onClick={() => toggleSelect(song.id)}
-                  className={`w-4.5 h-4.5 rounded border flex-shrink-0 flex items-center justify-center transition ${
-                    isSelected
-                      ? 'bg-blue-500 border-blue-500'
-                      : 'border-zinc-700 hover:border-zinc-500'
-                  }`}
-                >
-                  {isSelected && (
-                    <svg
-                      width="10"
-                      height="10"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="white"
-                      strokeWidth="3"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <polyline points="20 6 9 17 4 12" />
-                    </svg>
-                  )}
-                </button>
-
-                {/* Song info */}
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm text-zinc-200 truncate">{song.title}</p>
-                  <p className="text-xs text-zinc-500 truncate">
-                    <span
-                      className="cursor-pointer hover:underline hover:text-zinc-300 transition"
-                      onClick={() => navigateAndSearch(song.artist)}
-                    >
-                      {song.artist}
+            {showDateGroups ? (
+              // Grouped by date when sorting by date desc with no filter
+              groupRecentSongsByDate(recentControls.filtered).map((group) => (
+                <div key={group.label}>
+                  <div className="px-1.5 md:px-0 mb-1">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+                      {group.label}
                     </span>
-                    {' '}&middot;{' '}{song.album}
-                  </p>
+                  </div>
+                  <div className="space-y-0.5">
+                    {group.songs.map((song) => renderSongRow(song))}
+                  </div>
                 </div>
-
-                {/* Metadata - hidden on mobile */}
-                <span className="hidden md:inline text-xs text-zinc-600 flex-shrink-0 w-12 text-right">
-                  {song.bitRate ? `${song.bitRate}k` : ''}
-                </span>
-                <span className="hidden md:inline text-xs text-zinc-600 flex-shrink-0 w-14 text-right">
-                  {formatSize(song.size)}
-                </span>
-                <span className="text-xs text-zinc-600 flex-shrink-0 w-12 text-right">
-                  {formatDuration(song.duration)}
-                </span>
-                <span className="hidden lg:inline text-xs text-zinc-700 flex-shrink-0 w-20 text-right">
-                  {timeAgo(song.created)}
-                </span>
-
-                {/* Normalization status indicator */}
-                {normStatus.has(song.id) && (
-                  <span className="flex-shrink-0 w-5 flex items-center justify-center">
-                    {normStatus.get(song.id) === 'pending' && (
-                      <span className="w-1.5 h-1.5 rounded-full bg-zinc-600" />
-                    )}
-                    {normStatus.get(song.id) === 'running' && (
-                      <svg className="animate-spin text-zinc-400" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M21 12a9 9 0 1 1-3-6.7" /><polyline points="21 3 21 9 15 9" />
-                      </svg>
-                    )}
-                    {normStatus.get(song.id) === 'fixed' && (
-                      <svg className="text-emerald-400" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="20 6 9 17 4 12" />
-                      </svg>
-                    )}
-                    {normStatus.get(song.id) === 'skipped' && (
-                      <span className="text-zinc-600 text-xs leading-none">—</span>
-                    )}
-                    {normStatus.get(song.id) === 'failed' && (
-                      <svg className="text-red-400/70" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                      </svg>
-                    )}
-                  </span>
-                )}
-
-                {/* Play - always visible on mobile, hover on desktop */}
-                <button
-                  onClick={() => handlePlay(song)}
-                  className="p-1.5 text-zinc-500 md:text-zinc-700 hover:text-zinc-300 transition flex-shrink-0 md:opacity-0 md:group-hover:opacity-100"
-                  title="Play"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                    <polygon points="5,3 19,12 5,21" />
-                  </svg>
-                </button>
-
-                {/* Delete - always visible on mobile, hover on desktop */}
-                <button
-                  onClick={() => handleDelete([song.id])}
-                  className="p-1.5 text-zinc-500 md:text-zinc-700 hover:text-red-400 transition flex-shrink-0 md:opacity-0 md:group-hover:opacity-100"
-                  title="Delete from library"
-                >
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <polyline points="3 6 5 6 21 6" />
-                    <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
-                  </svg>
-                </button>
+              ))
+            ) : (
+              // Flat list when filtering or sorting by non-date field
+              <div className="space-y-0.5">
+                {recentControls.filtered.map((song) => renderSongRow(song))}
               </div>
-            );
-          })}
-                </div>
-              </div>
-            ))}
+            )}
           </div>
         )}
       </section>
     </div>
   );
+
+  function renderSongRow(song: RecentSong) {
+    const isSelected = selected.has(song.id);
+    const isDeleting = deleting.has(song.id);
+    return (
+      <div
+        key={song.id}
+        className={`flex items-center gap-1.5 md:gap-3 px-1.5 md:px-4 py-2.5 rounded-lg transition group ${
+          isSelected
+            ? 'bg-zinc-800/60 border border-zinc-700/50'
+            : 'hover:bg-zinc-800/30 border border-transparent'
+        } ${isDeleting ? 'opacity-40 pointer-events-none' : ''}`}
+      >
+        {/* Checkbox */}
+        <button
+          onClick={() => toggleSelect(song.id)}
+          className={`w-4.5 h-4.5 rounded border flex-shrink-0 flex items-center justify-center transition ${
+            isSelected
+              ? 'bg-blue-500 border-blue-500'
+              : 'border-zinc-700 hover:border-zinc-500'
+          }`}
+        >
+          {isSelected && (
+            <svg
+              width="10"
+              height="10"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="white"
+              strokeWidth="3"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+          )}
+        </button>
+
+        {/* Song info */}
+        <div className="flex-1 min-w-0">
+          <p className="text-sm text-zinc-200 truncate">{song.title}</p>
+          <p className="text-xs text-zinc-500 truncate">
+            <span
+              className="cursor-pointer hover:underline hover:text-zinc-300 transition"
+              onClick={() => navigateAndSearch(song.artist)}
+            >
+              {song.artist}
+            </span>
+            {' '}&middot;{' '}{song.album}
+          </p>
+        </div>
+
+        {/* Metadata - hidden on mobile */}
+        <span className="hidden md:inline text-xs text-zinc-600 flex-shrink-0 w-12 text-right">
+          {song.bitRate ? `${song.bitRate}k` : ''}
+        </span>
+        <span className="hidden md:inline text-xs text-zinc-600 flex-shrink-0 w-14 text-right">
+          {formatSize(song.size)}
+        </span>
+        <span className="text-xs text-zinc-600 flex-shrink-0 w-12 text-right">
+          {formatDuration(song.duration)}
+        </span>
+        <span className="hidden lg:inline text-xs text-zinc-700 flex-shrink-0 w-20 text-right">
+          {timeAgo(song.created)}
+        </span>
+
+        {/* Normalization status indicator */}
+        {normStatus.has(song.id) && (
+          <span className="flex-shrink-0 w-5 flex items-center justify-center">
+            {normStatus.get(song.id) === 'pending' && (
+              <span className="w-1.5 h-1.5 rounded-full bg-zinc-600" />
+            )}
+            {normStatus.get(song.id) === 'running' && (
+              <svg className="animate-spin text-zinc-400" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 12a9 9 0 1 1-3-6.7" /><polyline points="21 3 21 9 15 9" />
+              </svg>
+            )}
+            {normStatus.get(song.id) === 'fixed' && (
+              <svg className="text-emerald-400" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+            )}
+            {normStatus.get(song.id) === 'skipped' && (
+              <span className="text-zinc-600 text-xs leading-none">—</span>
+            )}
+            {normStatus.get(song.id) === 'failed' && (
+              <svg className="text-red-400/70" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            )}
+          </span>
+        )}
+
+        {/* Play - always visible on mobile, hover on desktop */}
+        <button
+          onClick={() => handlePlay(song)}
+          className="p-1.5 text-zinc-500 md:text-zinc-700 hover:text-zinc-300 transition flex-shrink-0 md:opacity-0 md:group-hover:opacity-100"
+          title="Play"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+            <polygon points="5,3 19,12 5,21" />
+          </svg>
+        </button>
+
+        {/* Delete - always visible on mobile, hover on desktop */}
+        <button
+          onClick={() => handleDelete([song.id])}
+          className="p-1.5 text-zinc-500 md:text-zinc-700 hover:text-red-400 transition flex-shrink-0 md:opacity-0 md:group-hover:opacity-100"
+          title="Delete from library"
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <polyline points="3 6 5 6 21 6" />
+            <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+          </svg>
+        </button>
+      </div>
+    );
+  }
 }

@@ -1,15 +1,12 @@
 import { useState, useEffect, useCallback, type ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth';
-import { usePlayerStore, type Track } from '@/stores/player';
 import { useSearchStore } from '@/stores/search';
 import { useTransferStore } from '@/stores/transfers';
 import { getSingleDownloadLabel, getFolderDownloadLabel, BUTTON_CLASSES } from '@/lib/downloadStatus';
 import { FolderBrowser } from '@/components/FolderBrowser';
 import { groupByDirectory } from '@/lib/folderUtils';
 import { useNavigateAndSearch } from '@/hooks/useNavigateAndSearch';
-import { TrackContextMenu } from '@/components/TrackContextMenu';
 
 interface NetworkResult {
   username: string;
@@ -157,8 +154,6 @@ export function SearchPage() {
   // Persistent state (survives tab navigation)
   const query = useSearchStore((s) => s.query);
   const setQuery = useSearchStore((s) => s.setQuery);
-  const local = useSearchStore((s) => s.local);
-  const setLocal = useSearchStore((s) => s.setLocal);
   const network = useSearchStore((s) => s.network);
   const setNetwork = useSearchStore((s) => s.setNetwork);
   const networkState = useSearchStore((s) => s.networkState);
@@ -175,16 +170,9 @@ export function SearchPage() {
   const setAutoSearch = useSearchStore((s) => s.setAutoSearch);
   const history = useSearchStore((s) => s.history);
   const clearHistory = useSearchStore((s) => s.clearHistory);
-  const similarTo = useSearchStore((s) => s.similarTo);
-  const similarResults = useSearchStore((s) => s.similarResults);
-  const clearSimilar = useSearchStore((s) => s.clearSimilar);
-  const setSimilar = useSearchStore((s) => s.setSimilar);
-
-  const navigate = useNavigate();
 
   // Ephemeral state (resets on remount — that's fine)
   const [loading, setLoading] = useState(false);
-  const [loadingSimilar, setLoadingSimilar] = useState(false);
   const [searchId, setSearchId] = useState<string | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [networkAvailable, setNetworkAvailable] = useState(true);
@@ -194,9 +182,7 @@ export function SearchPage() {
   const [viewMode, setViewMode] = useState<'tracks' | 'folders'>('tracks');
   const [openBrowserKey, setOpenBrowserKey] = useState<string | null>(null);
   const [searchFocused, setSearchFocused] = useState(false);
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; artist: string; trackId?: string; trackTitle?: string } | null>(null);
   const token = useAuthStore((s) => s.token);
-  const play = usePlayerStore((s) => s.play);
   const navigateAndSearch = useNavigateAndSearch();
 
   // Check Soulseek network status on mount
@@ -245,23 +231,9 @@ export function SearchPage() {
     setNetworkState('complete');
   }
 
-  const handleFindSimilar = useCallback(async (id: string, title: string, artist: string) => {
-    setLoadingSimilar(true);
-    try {
-      const results = await api.getSimilarSongs(id, 20);
-      setSimilar({ title, artist }, results);
-      navigate('/');
-    } catch {
-      // Silently fail
-    } finally {
-      setLoadingSimilar(false);
-    }
-  }, [setSimilar, navigate]);
-
   const executeSearch = useCallback(async () => {
     if (!query.trim()) return;
 
-    clearSimilar();
     useSearchStore.getState().addToHistory(query.trim());
 
     // Cancel any running search before starting a new one
@@ -277,7 +249,6 @@ export function SearchPage() {
 
     try {
       const res = await api.search(query.trim());
-      setLocal(res.local);
       setSearchId(res.searchId);
       setErrors(res.errors ?? []);
       setNetworkAvailable(res.networkAvailable ?? false);
@@ -287,7 +258,7 @@ export function SearchPage() {
     } finally {
       setLoading(false);
     }
-  }, [query, searchId, cleanupSearch, setLocal, setNetworkState]);
+  }, [query, searchId, cleanupSearch, setNetworkState]);
 
   const handleSearch = useCallback((e: React.FormEvent) => {
     e.preventDefault();
@@ -318,18 +289,6 @@ export function SearchPage() {
     }
   }
 
-  function playSong(song: { id: string; title: string; artist: string; album: string; coverArt?: string; duration?: number }) {
-    const track: Track = {
-      id: song.id,
-      title: song.title,
-      artist: song.artist,
-      album: song.album,
-      coverArt: song.coverArt,
-      duration: song.duration,
-    };
-    play(track);
-  }
-
   function formatDuration(seconds?: number) {
     if (!seconds) return '';
     const m = Math.floor(seconds / 60);
@@ -348,7 +307,6 @@ export function SearchPage() {
   }
 
   const highlightTerms = getHighlightTerms(query);
-  const hasLocal = local && (local.songs.length > 0 || local.albums.length > 0 || local.artists.length > 0);
   const flatNetwork = flattenAndFilter(network);
   const hasNetwork = flatNetwork.length > 0;
 
@@ -399,7 +357,7 @@ export function SearchPage() {
         <div className="flex items-center gap-2 mb-6">
           <span className={`inline-block w-2 h-2 rounded-full ${networkConnected ? 'bg-emerald-500' : 'bg-zinc-600'}`} />
           <span className="text-xs text-zinc-500">
-            {networkConnected ? 'Soulseek network available' : 'Local library only'}
+            {networkConnected ? 'Soulseek network available' : 'Soulseek unavailable'}
           </span>
         </div>
       )}
@@ -438,161 +396,26 @@ export function SearchPage() {
       )}
 
       {/* No results message */}
-      {!loading && local && !hasLocal && !hasNetwork && networkState === 'complete' && (
+      {!loading && !hasNetwork && networkState === 'complete' && query.trim() && (
         <div className="text-center py-12">
           <p className="text-zinc-500">No results found for "{query}"</p>
         </div>
       )}
 
-      {/* Similar results */}
-      {similarTo && (
-        <section className="mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
-              Similar to <span className="text-zinc-300">{similarTo.title}</span> · <span>{similarTo.artist}</span>
-            </h2>
-            <button
-              onClick={clearSimilar}
-              className="text-xs text-zinc-600 hover:text-zinc-400 transition"
-            >
-              Clear
-            </button>
-          </div>
-          {loadingSimilar && (
-            <div className="flex items-center gap-2 py-4 text-sm text-zinc-500">
-              <span className="inline-block w-4 h-4 border-2 border-zinc-600 border-t-zinc-300 rounded-full animate-spin" />
-              Finding similar tracks…
-            </div>
+      {/* Searching indicator */}
+      {networkState === 'searching' && !loading && (
+        <div className="flex items-center gap-2 px-1 py-2 text-xs text-zinc-500">
+          <span className="inline-block w-3 h-3 border-2 border-zinc-600 border-t-zinc-300 rounded-full animate-spin" />
+          Searching Soulseek...
+          {flatNetwork.length > 0 && (
+            <span>{flatNetwork.length} tracks</span>
           )}
-          {similarResults.map((song) => (
-            <button
-              key={song.id}
-              onClick={() => playSong(song)}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-zinc-800/50 transition text-left group"
-            >
-              {song.coverArt ? (
-                <img src={`/api/cover/${song.coverArt}?size=80&token=${token}`} alt="" className="w-10 h-10 rounded object-cover flex-shrink-0" />
-              ) : (
-                <div className="w-10 h-10 rounded bg-zinc-800 flex-shrink-0" />
-              )}
-              <div className="flex-1 min-w-0">
-                <p className="text-sm text-zinc-100 truncate">{song.title}</p>
-                <p className="text-xs text-zinc-500 truncate">{song.artist} · {song.album}</p>
-              </div>
-              <span className="text-xs text-zinc-600">{formatDuration(song.duration)}</span>
-            </button>
-          ))}
-        </section>
-      )}
-
-      {/* Local results */}
-      {hasLocal && (
-        <section className="mb-6">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-4">
-            Local Library
-          </h2>
-
-          {/* Songs */}
-          {local.songs.length > 0 && (
-            <div className="mb-4">
-              {local.songs.map((song) => (
-                <button
-                  key={song.id}
-                  onClick={() => playSong(song)}
-                  onContextMenu={(e) => {
-                    e.preventDefault();
-                    setContextMenu({ x: e.clientX, y: e.clientY, artist: song.artist, trackId: song.id, trackTitle: song.title });
-                  }}
-                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-zinc-800/50 transition text-left group"
-                >
-                  {song.coverArt ? (
-                    <img
-                      src={`/api/cover/${song.coverArt}?size=80&token=${token}`}
-                      alt=""
-                      className="w-10 h-10 rounded object-cover flex-shrink-0"
-                    />
-                  ) : (
-                    <div className="w-10 h-10 rounded bg-zinc-800 flex-shrink-0" />
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm text-zinc-100 truncate">{highlightText(song.title, highlightTerms)}</p>
-                    <p className="text-xs text-zinc-500 truncate">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); navigateAndSearch(song.artist); }}
-                        className="hover:underline hover:text-zinc-300 transition"
-                      >
-                        {highlightText(song.artist, highlightTerms)}
-                      </button>
-                      {' '}&middot;{' '}
-                      {highlightText(song.album, highlightTerms)}
-                    </p>
-                  </div>
-                  <span className="text-xs text-zinc-600">{formatDuration(song.duration)}</span>
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="currentColor"
-                    className="text-zinc-600 group-hover:text-zinc-300 transition flex-shrink-0"
-                  >
-                    <polygon points="5,3 19,12 5,21" />
-                  </svg>
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* Albums */}
-          {local.albums.length > 0 && (
-            <div className="mb-4">
-              <h3 className="text-xs font-medium text-zinc-600 mb-2 px-3">Albums</h3>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                {local.albums.map((album) => (
-                  <div
-                    key={album.id}
-                    className="p-3 rounded-lg bg-zinc-900/50 hover:bg-zinc-800/50 transition cursor-pointer"
-                  >
-                    {album.coverArt ? (
-                      <img
-                        src={`/api/cover/${album.coverArt}?size=200&token=${token}`}
-                        alt=""
-                        className="w-full aspect-square rounded object-cover mb-2"
-                      />
-                    ) : (
-                      <div className="w-full aspect-square rounded bg-zinc-800 mb-2" />
-                    )}
-                    <p className="text-sm text-zinc-200 truncate">{highlightText(album.name, highlightTerms)}</p>
-                    <p className="text-xs text-zinc-500 truncate">{highlightText(album.artist, highlightTerms)}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </section>
-      )}
-
-      {/* Divider */}
-      {(hasLocal || local) && (networkState === 'searching' || hasNetwork) && (
-        <div className="flex items-center gap-3 my-6">
-          <div className="flex-1 h-px bg-zinc-800" />
-          <span className="text-xs font-semibold uppercase tracking-wider text-zinc-600 flex items-center gap-2">
-            Soulseek Network
-            {networkState === 'searching' && (
-              <>
-                <span className="inline-block w-3 h-3 border-2 border-zinc-600 border-t-zinc-300 rounded-full animate-spin" />
-                {flatNetwork.length > 0 && (
-                  <span className="font-normal normal-case tracking-normal">{flatNetwork.length} tracks</span>
-                )}
-                <button
-                  onClick={handleStopSearch}
-                  className="font-normal normal-case tracking-normal text-zinc-500 hover:text-zinc-300 transition"
-                >
-                  Stop
-                </button>
-              </>
-            )}
-          </span>
-          <div className="flex-1 h-px bg-zinc-800" />
+          <button
+            onClick={handleStopSearch}
+            className="text-zinc-500 hover:text-zinc-300 transition"
+          >
+            Stop
+          </button>
         </div>
       )}
 
@@ -787,24 +610,13 @@ export function SearchPage() {
       )}
 
       {/* Empty state */}
-      {!local && !loading && (
+      {networkState === 'idle' && !loading && (
         <div className="text-center py-20">
           <p className="text-zinc-600 text-lg">Search for music to get started</p>
           <p className="text-zinc-700 text-sm mt-1">
-            Results from your library appear first, followed by the Soulseek network
+            Results from the Soulseek network will appear here
           </p>
         </div>
-      )}
-
-      {contextMenu && (
-        <TrackContextMenu
-          artist={contextMenu.artist}
-          trackId={contextMenu.trackId}
-          trackTitle={contextMenu.trackTitle}
-          onFindSimilar={(id, title, artist) => void handleFindSimilar(id, title, artist)}
-          onClose={() => setContextMenu(null)}
-          position={contextMenu}
-        />
       )}
     </div>
   );

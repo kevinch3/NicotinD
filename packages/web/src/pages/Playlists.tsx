@@ -1,8 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth';
 import { usePlayerStore, type Track } from '@/stores/player';
 import { TrackRow } from '@/components/TrackRow';
+import { useListControls } from '@/hooks/useListControls';
+import { ListToolbar } from '@/components/ListToolbar';
 
 interface Playlist {
   id: string;
@@ -75,6 +77,36 @@ export function PlaylistsPage() {
   const token = useAuthStore((s) => s.token);
   const play = usePlayerStore((s) => s.play);
   const playWithContext = usePlayerStore((s) => s.playWithContext);
+
+  // Detail items with original index preserved for removeSong
+  const detailItems = useMemo(() =>
+    (selected?.entry ?? []).map((song, idx) => ({ ...song, _originalIndex: idx })),
+    [selected?.entry]
+  );
+
+  // Grid list controls
+  const gridControls = useListControls({
+    pageKey: 'playlists',
+    items: playlists,
+    searchFields: ['name'] as const,
+    sortOptions: [
+      { field: 'name', label: 'Name' },
+      { field: 'created', label: 'Date created' },
+      { field: 'songCount', label: 'Track count' },
+    ],
+  });
+
+  // Detail list controls
+  const detailControls = useListControls({
+    pageKey: 'playlist-detail',
+    items: detailItems,
+    searchFields: ['title', 'artist', 'album'] as const,
+    sortOptions: [
+      { field: 'title', label: 'Title' },
+      { field: 'artist', label: 'Artist' },
+      { field: 'duration', label: 'Duration' },
+    ],
+  });
 
   useEffect(() => {
     api.getPlaylists()
@@ -238,19 +270,34 @@ export function PlaylistsPage() {
           </div>
         </div>
 
+        {detailControls.isToolbarVisible && (
+          <ListToolbar
+            searchText={detailControls.searchText}
+            onSearchChange={detailControls.setSearchText}
+            sortField={detailControls.sortField}
+            onSortFieldChange={detailControls.setSortField}
+            sortDirection={detailControls.sortDirection}
+            onToggleSortDirection={detailControls.toggleSortDirection}
+            sortOptions={detailControls.sortOptions}
+            onDismiss={detailControls.hideToolbar}
+            inputRef={detailControls.inputRef}
+            resultCount={detailControls.filtered.length}
+          />
+        )}
+
         <div>
-          {selected.entry?.map((song, idx) => (
+          {detailControls.filtered.map((song) => (
             <TrackRow
-              key={`${song.id}-${idx}`}
+              key={`${song.id}-${song._originalIndex}`}
               track={toTrack(song)}
-              indexLabel={song.track ?? idx + 1}
+              indexLabel={song.track ?? song._originalIndex + 1}
               subtitle={song.artist}
               duration={song.duration}
               onPlay={() => playSong(song)}
-              disabled={removing.has(idx)}
+              disabled={removing.has(song._originalIndex)}
               trailingAction={{
                 title: 'Remove from playlist',
-                onClick: () => removeSong(selected, idx),
+                onClick: () => removeSong(selected, song._originalIndex),
                 icon: (
                   <svg
                     width="14"
@@ -277,7 +324,27 @@ export function PlaylistsPage() {
   // Grid view
   return (
     <div className="max-w-6xl mx-auto px-3 py-4 md:px-6 md:py-8">
-      <h1 className="text-lg font-semibold text-zinc-100 mb-6">Playlists</h1>
+      <div className="flex items-center gap-3 mb-6">
+        <h1 className="text-lg font-semibold text-zinc-100">Playlists</h1>
+        <button onClick={gridControls.showToolbar} className="p-1 text-zinc-600 hover:text-zinc-300 transition" title="Search (Ctrl+F)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
+        </button>
+      </div>
+
+      {gridControls.isToolbarVisible && (
+        <ListToolbar
+          searchText={gridControls.searchText}
+          onSearchChange={gridControls.setSearchText}
+          sortField={gridControls.sortField}
+          onSortFieldChange={gridControls.setSortField}
+          sortDirection={gridControls.sortDirection}
+          onToggleSortDirection={gridControls.toggleSortDirection}
+          sortOptions={gridControls.sortOptions}
+          onDismiss={gridControls.hideToolbar}
+          inputRef={gridControls.inputRef}
+          resultCount={gridControls.filtered.length}
+        />
+      )}
 
       {loading && (
         <div className="text-center py-20">
@@ -292,7 +359,7 @@ export function PlaylistsPage() {
       )}
 
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-        {playlists.map((pl) => (
+        {gridControls.filtered.map((pl) => (
           <button
             key={pl.id}
             onClick={() => openPlaylist(pl)}
