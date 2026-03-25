@@ -222,7 +222,7 @@ export function NowPlaying() {
       )}
 
       {/* Queue section */}
-      <div className="flex-1 min-h-0 flex flex-col px-4">
+      <div className="flex-1 min-h-0 flex flex-col px-4 overflow-hidden">
         <div className="flex items-center gap-2 mb-3 px-2">
           <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Next up</span>
           <span className="text-xs text-zinc-600">{queue.length} tracks</span>

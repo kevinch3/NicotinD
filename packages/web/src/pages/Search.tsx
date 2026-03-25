@@ -190,6 +190,7 @@ export function SearchPage() {
   const [networkAvailable, setNetworkAvailable] = useState(true);
   const [networkConnected, setNetworkConnected] = useState<boolean | null>(null);
   const [searchError, setSearchError] = useState<string | null>(null);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'tracks' | 'folders'>('tracks');
   const [openBrowserKey, setOpenBrowserKey] = useState<string | null>(null);
   const [searchFocused, setSearchFocused] = useState(false);
@@ -271,6 +272,7 @@ export function SearchPage() {
     useSearchStore.getState().reset();
     setErrors([]);
     setSearchError(null);
+    setDownloadError(null);
     setNetworkAvailable(true);
 
     try {
@@ -308,8 +310,11 @@ export function SearchPage() {
     addDownloading(key);
     try {
       await api.enqueueDownload(username, [file]);
-    } catch {
-      // ignore
+      setDownloadError(null);
+    } catch (err) {
+      const removeDownloading = useSearchStore.getState().removeDownloading;
+      removeDownloading(key);
+      setDownloadError(err instanceof Error ? err.message : 'Download failed');
     }
   }
 
@@ -403,6 +408,17 @@ export function SearchPage() {
       {searchError && (
         <div className="mb-6 px-4 py-3 rounded-lg bg-red-950/50 border border-red-900/50">
           <p className="text-sm text-red-400">{searchError}</p>
+        </div>
+      )}
+      {downloadError && (
+        <div className="mb-6 px-4 py-3 rounded-lg bg-red-950/50 border border-red-900/50 flex items-center justify-between">
+          <p className="text-sm text-red-400">{downloadError}</p>
+          <button
+            onClick={() => setDownloadError(null)}
+            className="text-red-500 hover:text-red-300 text-lg font-medium"
+          >
+            ×
+          </button>
         </div>
       )}
       {errors.length > 0 && (
@@ -706,10 +722,17 @@ export function SearchPage() {
                           const validFiles = group.files.filter((f) => f.size > 0);
                           addDownloadedFolder(`${group.username}:${group.directory}`);
                           for (const f of validFiles) addDownloading(`${group.username}:${f.filename}`);
-                          await api.enqueueDownload(
-                            group.username,
-                            validFiles.map((f) => ({ filename: f.filename, size: f.size })),
-                          );
+                          try {
+                            await api.enqueueDownload(
+                              group.username,
+                              validFiles.map((f) => ({ filename: f.filename, size: f.size })),
+                            );
+                            setDownloadError(null);
+                          } catch (err) {
+                            const removeDownloading = useSearchStore.getState().removeDownloading;
+                            for (const f of validFiles) removeDownloading(`${group.username}:${f.filename}`);
+                            setDownloadError(err instanceof Error ? err.message : 'Folder download failed');
+                          }
                         }}
                         disabled={folderBtn.disabled || folderFiles.length === 0}
                         className={`px-2 py-1 rounded text-xs font-medium transition shrink-0 ${BUTTON_CLASSES[folderBtn.variant]} ${folderBtn.disabled ? 'cursor-default' : ''}`}
@@ -741,7 +764,14 @@ export function SearchPage() {
                             const validFiles = files.filter((f) => f.size > 0);
                             addDownloadedFolder(`${group.username}:${group.directory}`);
                             for (const f of validFiles) addDownloading(`${group.username}:${f.filename}`);
-                            await api.enqueueDownload(group.username, validFiles);
+                            try {
+                              await api.enqueueDownload(group.username, validFiles);
+                              setDownloadError(null);
+                            } catch (err) {
+                              const removeDownloading = useSearchStore.getState().removeDownloading;
+                              for (const f of validFiles) removeDownloading(`${group.username}:${f.filename}`);
+                              setDownloadError(err instanceof Error ? err.message : 'Download failed');
+                            }
                           }}
                           getStatus={getStatus}
                           isFolderQueued={downloadedFolders.has(`${group.username}:${group.directory}`)}

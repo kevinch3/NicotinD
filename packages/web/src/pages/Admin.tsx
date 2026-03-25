@@ -43,6 +43,7 @@ export function AdminPage() {
   const [logService, setLogService] = useState<'slskd' | 'navidrome'>('slskd');
   const [logs, setLogs] = useState<string[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
+  const [logsLoaded, setLogsLoaded] = useState(false);
 
   useEffect(() => {
     loadUsers();
@@ -79,6 +80,7 @@ export function AdminPage() {
       setLogs([`Failed to load ${service} logs`]);
     } finally {
       setLogsLoading(false);
+      setLogsLoaded(true);
     }
   }
 
@@ -331,7 +333,7 @@ export function AdminPage() {
                   key={svc}
                   onClick={() => loadLogs(svc)}
                   className={`px-3 py-1 rounded-md text-xs font-medium transition ${
-                    logService === svc && logs.length > 0
+                    logService === svc && logsLoaded
                       ? 'bg-zinc-700 text-zinc-200'
                       : 'text-zinc-500 hover:text-zinc-300'
                   }`}
@@ -340,7 +342,7 @@ export function AdminPage() {
                 </button>
               ))}
             </div>
-            {logs.length > 0 && (
+            {logsLoaded && (
               <button
                 onClick={() => loadLogs(logService)}
                 className="ml-auto text-xs text-zinc-500 hover:text-zinc-300 transition"
@@ -360,7 +362,10 @@ export function AdminPage() {
               {logs.join('\n')}
             </pre>
           )}
-          {!logsLoading && logs.length === 0 && (
+          {!logsLoading && logsLoaded && logs.length === 0 && (
+            <p className="text-xs text-zinc-600">No logs available for this service.</p>
+          )}
+          {!logsLoading && !logsLoaded && (
             <p className="text-xs text-zinc-600">Select a service above to view logs.</p>
           )}
         </div>
