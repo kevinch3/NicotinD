@@ -7,17 +7,19 @@ import {
   type BrowseFile,
   type FolderNode,
 } from '@/lib/folderUtils';
-import { getFolderDownloadLabel, BUTTON_CLASSES, DEFAULT_FOLDER_LABEL } from '@/lib/downloadStatus';
+import { getSingleDownloadLabel, getFolderDownloadLabel, BUTTON_CLASSES, DEFAULT_FOLDER_LABEL } from '@/lib/downloadStatus';
 import type { TransferEntry } from '@/lib/transferTypes';
+import { useSearchStore } from '@/stores/search';
+import { useTransferStore } from '@/stores/transfers';
 
 interface FolderBrowserProps {
   username: string;
   matchedPath: string;
   fallbackFiles: BrowseFile[];
-  onDownload: (files: Array<{ filename: string; size: number }>) => void;
+  onDownload: (files: Array<{ filename: string; size: number }>, path?: string) => void;
+  onDownloadTrack: (username: string, file: { filename: string; size: number }) => void;
   /** When provided, Download all button reflects live transfer status. */
   getStatus?: (username: string, filename: string) => TransferEntry | undefined;
-  isFolderQueued?: boolean;
 }
 
 function buildBreadcrumb(path: string): Array<{ label: string; path: string }> {
@@ -104,14 +106,20 @@ export function FolderBrowser({
   matchedPath,
   fallbackFiles,
   onDownload,
+  onDownloadTrack,
   getStatus,
-  isFolderQueued = false,
 }: FolderBrowserProps) {
   const [dirs, setDirs] = useState<BrowseDir[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [selected, setSelected] = useState(matchedPath);
+
+  const downloadedFolders = useSearchStore((s) => s.downloadedFolders);
+  const downloading = useSearchStore((s) => s.downloading);
+  const getTransferStatus = useTransferStore((s) => s.getStatus);
+
+  const isFolderQueued = downloadedFolders.has(`${username}:${selected}`);
 
   useEffect(() => {
     let cancelled = false;
@@ -264,7 +272,7 @@ export function FolderBrowser({
                   return (
                     <button
                       onClick={() => {
-                        onDownload(validFiles.map((f) => ({ filename: f.filename, size: f.size })));
+                        onDownload(validFiles.map((f) => ({ filename: f.filename, size: f.size })), selected);
                       }}
                       disabled={btn.disabled || validFiles.length === 0}
                       className={`px-2 py-0.5 rounded text-[11px] font-medium transition ${BUTTON_CLASSES[btn.variant]} ${btn.disabled ? 'cursor-default' : ''}`}
@@ -274,17 +282,38 @@ export function FolderBrowser({
                   );
                 })()}
               </div>
-              {directFiles.map((file) => (
-                <div
-                  key={file.filename}
-                  className="flex items-center justify-between text-[11px] text-zinc-500 hover:text-zinc-300 px-1"
-                >
-                  <span className="truncate flex-1">{extractBasename(file.filename)}</span>
-                  <span className="shrink-0 ml-2 text-zinc-700">
-                    {file.bitRate ? `${file.bitRate} kbps · ` : ''}{formatSize(file.size)}
-                  </span>
-                </div>
-              ))}
+              {directFiles.map((file) => {
+                const { label, variant, disabled } = getSingleDownloadLabel(
+                  username,
+                  file.filename,
+                  downloading.has(`${username}:${file.filename}`),
+                  getTransferStatus,
+                );
+
+                return (
+                  <div
+                    key={file.filename}
+                    className="flex items-center justify-between text-[11px] text-zinc-500 hover:text-zinc-300 px-1 py-0.5"
+                  >
+                    <span className="truncate flex-1">
+                      {extractBasename(file.filename)}
+                    </span>
+                    <div className="flex items-center gap-3 ml-2 shrink-0">
+                      <span className="text-zinc-700">
+                        {file.bitRate ? `${file.bitRate} kbps · ` : ''}
+                        {formatSize(file.size)}
+                      </span>
+                      <button
+                        onClick={() => onDownloadTrack(username, { filename: file.filename, size: file.size })}
+                        disabled={disabled}
+                        className={`px-1.5 py-0.5 rounded transition ${BUTTON_CLASSES[variant]} ${disabled ? 'cursor-default' : ''}`}
+                      >
+                        {label}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
             </>
           )}
         </div>

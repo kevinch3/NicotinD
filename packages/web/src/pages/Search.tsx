@@ -583,9 +583,10 @@ export function SearchPage() {
                             bitRate: f.bitRate,
                             length: f.length,
                           }))}
-                          onDownload={async (files) => {
+                          onDownload={async (files, path) => {
                             const validFiles = files.filter((f) => f.size > 0);
-                            addDownloadedFolder(`${group.username}:${group.directory}`);
+                            const folderKey = path ? `${group.username}:${path}` : `${group.username}:${group.directory}`;
+                            addDownloadedFolder(folderKey);
                             for (const f of validFiles) addDownloading(`${group.username}:${f.filename}`);
                             try {
                               await api.enqueueDownload(group.username, validFiles);
@@ -596,8 +597,8 @@ export function SearchPage() {
                               setDownloadError(err instanceof Error ? err.message : 'Download failed');
                             }
                           }}
+                          onDownloadTrack={handleDownload}
                           getStatus={getStatus}
-                          isFolderQueued={downloadedFolders.has(`${group.username}:${group.directory}`)}
                         />
                       </div>
                     )}
