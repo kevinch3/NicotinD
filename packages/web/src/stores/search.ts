@@ -47,8 +47,9 @@ export const useSearchStore = create<SearchState>((set) => ({
   downloading: new Set(),
   downloadedFolders: (() => {
     try {
+      const parsed = JSON.parse(localStorage.getItem('nicotind:downloaded-folders') ?? '[]');
       return new Set<string>(
-        JSON.parse(localStorage.getItem('nicotind:downloaded-folders') ?? '[]') as string[],
+        Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : [],
       );
     } catch {
       return new Set<string>();
@@ -92,5 +93,6 @@ export const useSearchStore = create<SearchState>((set) => ({
     set({ history: [] });
   },
 
+  // downloadedFolders intentionally omitted — persisted across searches (localStorage-backed)
   reset: () => set({ network: [], networkState: 'idle', canBrowse: false, downloading: new Set() }),
 }));
