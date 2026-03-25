@@ -36,6 +36,7 @@ services:
       - --slsk-listen-port=50300
       - --username=slskd
       - --password=slskd
+      - --downloads=/data/music
     environment:
       SLSKD_REMOTE_CONFIGURATION: "true"
       SLSKD_HTTP_PORT: "5030"
@@ -43,7 +44,6 @@ services:
       SLSKD_SLSK_LISTEN_PORT: "50300"
       SLSKD_USERNAME: slskd
       SLSKD_PASSWORD: slskd
-      SLSKD_DIRECTORIES__DOWNLOADS: /data/music
       SLSKD_DIRECTORIES__INCOMPLETE: /app/incomplete
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:5030/api/v0/application"]
