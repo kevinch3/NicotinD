@@ -335,7 +335,7 @@ function orderByCompletionHistory<T extends { path: string; created?: string; ti
 }
 
 function normalizePath(input: string): string {
-  return input.replace(/\\/g, '/').replace(/^\/+/, '');
+  return input.replace(/\\/g, '/').replace(/^\/+/, '').toLowerCase();
 }
 
 function parseCreatedAt(created?: string): number {

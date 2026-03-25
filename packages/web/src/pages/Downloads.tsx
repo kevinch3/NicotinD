@@ -105,6 +105,45 @@ function timeAgo(dateStr: string): string {
   return `${days}d ago`;
 }
 
+type DateGroup = 'Today' | 'Yesterday' | 'This week' | 'Older';
+
+interface SongDateGroup {
+  label: DateGroup;
+  songs: RecentSong[];
+}
+
+function groupRecentSongsByDate(songs: RecentSong[]): SongDateGroup[] {
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterdayStart = new Date(todayStart.getTime() - 86_400_000);
+  const weekStart = new Date(todayStart.getTime() - 6 * 86_400_000);
+
+  const buckets: Record<DateGroup, RecentSong[]> = {
+    'Today': [],
+    'Yesterday': [],
+    'This week': [],
+    'Older': [],
+  };
+
+  for (const song of songs) {
+    const d = new Date(song.created).getTime();
+    if (d >= todayStart.getTime()) {
+      buckets['Today'].push(song);
+    } else if (d >= yesterdayStart.getTime()) {
+      buckets['Yesterday'].push(song);
+    } else if (d >= weekStart.getTime()) {
+      buckets['This week'].push(song);
+    } else {
+      buckets['Older'].push(song);
+    }
+  }
+
+  const order: DateGroup[] = ['Today', 'Yesterday', 'This week', 'Older'];
+  return order
+    .filter((label) => buckets[label].length > 0)
+    .map((label) => ({ label, songs: buckets[label] }));
+}
+
 // --- Component ---
 
 export function DownloadsPage() {
@@ -725,14 +764,25 @@ export function DownloadsPage() {
           </p>
         )}
 
-        <div className="space-y-0.5">
-          {recentSongs.map((song) => {
+        {recentSongs.length > 0 && (
+          <div className="space-y-4">
+            {groupRecentSongsByDate(recentSongs).map((group) => (
+              <div key={group.label}>
+                {/* Date divider label */}
+                <div className="px-1.5 md:px-0 mb-1">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+                    {group.label}
+                  </span>
+                </div>
+                {/* Songs in this group */}
+                <div className="space-y-0.5">
+                  {group.songs.map((song) => {
             const isSelected = selected.has(song.id);
             const isDeleting = deleting.has(song.id);
             return (
               <div
                 key={song.id}
-                className={`flex items-center gap-2 md:gap-3 px-3 md:px-4 py-2.5 rounded-lg transition group ${
+                className={`flex items-center gap-1.5 md:gap-3 px-1.5 md:px-4 py-2.5 rounded-lg transition group ${
                   isSelected
                     ? 'bg-zinc-800/60 border border-zinc-700/50'
                     : 'hover:bg-zinc-800/30 border border-transparent'
@@ -778,13 +828,13 @@ export function DownloadsPage() {
                 </div>
 
                 {/* Metadata - hidden on mobile */}
-                <span className="hidden md:inline text-xs text-zinc-600 flex-shrink-0 w-14 text-right">
+                <span className="hidden md:inline text-xs text-zinc-600 flex-shrink-0 w-12 text-right">
                   {song.bitRate ? `${song.bitRate}k` : ''}
                 </span>
-                <span className="hidden md:inline text-xs text-zinc-600 flex-shrink-0 w-16 text-right">
+                <span className="hidden md:inline text-xs text-zinc-600 flex-shrink-0 w-14 text-right">
                   {formatSize(song.size)}
                 </span>
-                <span className="hidden sm:inline text-xs text-zinc-600 flex-shrink-0 w-12 text-right">
+                <span className="text-xs text-zinc-600 flex-shrink-0 w-12 text-right">
                   {formatDuration(song.duration)}
                 </span>
                 <span className="hidden lg:inline text-xs text-zinc-700 flex-shrink-0 w-20 text-right">
@@ -852,7 +902,11 @@ export function DownloadsPage() {
               </div>
             );
           })}
-        </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
     </div>
   );
