@@ -7,7 +7,7 @@ import {
   type BrowseFile,
   type FolderNode,
 } from '@/lib/folderUtils';
-import { getSingleDownloadLabel, getFolderDownloadLabel, BUTTON_CLASSES, DEFAULT_FOLDER_LABEL } from '@/lib/downloadStatus';
+import { getSingleDownloadLabel, getFolderDownloadLabel, isPathEffectivelyQueued, BUTTON_CLASSES, DEFAULT_FOLDER_LABEL } from '@/lib/downloadStatus';
 import type { TransferEntry } from '@/lib/transferTypes';
 import { useSearchStore } from '@/stores/search';
 import { useTransferStore } from '@/stores/transfers';
@@ -119,7 +119,7 @@ export function FolderBrowser({
   const downloading = useSearchStore((s) => s.downloading);
   const getTransferStatus = useTransferStore((s) => s.getStatus);
 
-  const isFolderQueued = downloadedFolders.has(`${username}:${selected}`);
+  const isFolderQueued = isPathEffectivelyQueued(username, selected, downloadedFolders);
 
   useEffect(() => {
     let cancelled = false;

@@ -3,7 +3,7 @@ import { api } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth';
 import { useSearchStore } from '@/stores/search';
 import { useTransferStore } from '@/stores/transfers';
-import { getSingleDownloadLabel, getFolderDownloadLabel, BUTTON_CLASSES } from '@/lib/downloadStatus';
+import { getSingleDownloadLabel, getFolderDownloadLabel, isPathEffectivelyQueued, BUTTON_CLASSES } from '@/lib/downloadStatus';
 import { FolderBrowser } from '@/components/FolderBrowser';
 import { groupByDirectory } from '@/lib/folderUtils';
 import { useNavigateAndSearch } from '@/hooks/useNavigateAndSearch';
@@ -519,7 +519,7 @@ export function SearchPage() {
                 const folderFiles = group.files
                   .filter((f) => f.size > 0)
                   .map((f) => ({ username: group.username, filename: f.filename }));
-                const isFolderQueued = downloadedFolders.has(`${group.username}:${group.directory}`);
+                const isFolderQueued = isPathEffectivelyQueued(group.username, group.directory, downloadedFolders);
                 const folderBtn = getFolderDownloadLabel(folderFiles, isFolderQueued, getStatus);
 
                 return (

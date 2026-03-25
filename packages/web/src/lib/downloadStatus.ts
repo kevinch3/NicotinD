@@ -92,3 +92,25 @@ export function getFolderDownloadLabel(
 }
 
 export const DEFAULT_FOLDER_LABEL = 'Download folder';
+
+/**
+ * Returns true if `path` (for `username`) is covered by any queued entry.
+ * Coverage: exact match OR the stored entry is a parent directory.
+ * Handles both `\` (Windows/Soulseek) and `/` as path separators.
+ */
+export function isPathEffectivelyQueued(
+  username: string,
+  path: string,
+  downloadedFolders: Set<string>,
+): boolean {
+  const prefix = `${username}:`;
+  return Array.from(downloadedFolders).some((k) => {
+    if (!k.startsWith(prefix)) return false;
+    const queued = k.slice(prefix.length);
+    return (
+      path === queued ||
+      path.startsWith(queued + '\\') ||
+      path.startsWith(queued + '/')
+    );
+  });
+}
