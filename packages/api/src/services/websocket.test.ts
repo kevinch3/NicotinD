@@ -355,7 +355,26 @@ describe('wsHandlers', () => {
       const call = (mockManager.updateState.mock.calls[0] as unknown[])[0] as Record<string, unknown>;
       expect(call.position).toBe(45.2);
       expect(call.duration).toBe(180);
+      expect(call.isPlaying).toBe(true);
       expect(call.timestamp).toBeGreaterThan(0);
+    });
+
+    it('sets isPlaying: true implicitly (device is playing if reporting progress)', () => {
+      const ws = createMockWs();
+      wsHandlers.onOpen!({} as Event, ws);
+      registerDevice(ws);
+
+      // Server state has isPlaying: false (e.g. after SET_TRACK)
+      mockManager.getState.mockReturnValue(defaultState({ activeDeviceId: 'dev1', isPlaying: false }));
+      mockManager.updateState.mockClear();
+
+      wsHandlers.onMessage!(
+        createEvent({ type: 'PROGRESS_REPORT', payload: { position: 2.0, duration: 200 } }),
+        ws,
+      );
+
+      const call = (mockManager.updateState.mock.calls[0] as unknown[])[0] as Record<string, unknown>;
+      expect(call.isPlaying).toBe(true);
     });
 
     it('ignores progress from non-active device', () => {

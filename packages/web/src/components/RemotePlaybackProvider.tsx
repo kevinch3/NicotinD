@@ -88,7 +88,7 @@ export function RemotePlaybackProvider({ children }: { children: React.ReactNode
   // PLAY/PAUSE/SEEK/SET_TRACK are all routed through COMMAND (not STATE_SYNC)
   // to avoid the echo loop that STATE_UPDATE caused.
   useEffect(() => {
-    if (!isActiveDevice || !remoteEnabled) return;
+    if (!isActiveDevice) return;
 
     return wsClient.on<{ action: string; track?: Track; position?: number }>('COMMAND', (payload) => {
       const { action } = payload;
@@ -99,7 +99,7 @@ export function RemotePlaybackProvider({ children }: { children: React.ReactNode
       if (action === 'NEXT')  playerPlayNext();
       if (action === 'PREV')  playerPlayPrev();
     });
-  }, [isActiveDevice, remoteEnabled, playerResume, playerPause, playerSeek, playerPlay, playerPlayNext, playerPlayPrev]);
+  }, [isActiveDevice, playerResume, playerPause, playerSeek, playerPlay, playerPlayNext, playerPlayPrev]);
 
   return <>{children}</>;
 }

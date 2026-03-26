@@ -223,7 +223,7 @@ export function Player() {
 
   const handleNext = useCallback(() => {
     if (isActiveDevice) playNext();
-    else wsClient.sendCommand('COMMAND', { action: 'NEXT' }); // Note: API needs to handle 'NEXT' in COMMAND switch
+    else wsClient.sendCommand('NEXT');
   }, [isActiveDevice, playNext]);
 
   const handleSeek = useCallback(
@@ -257,7 +257,7 @@ export function Player() {
         playPrev();
       }
     } else {
-      wsClient.sendCommand('COMMAND', { action: 'PREV' });
+      wsClient.sendCommand('PREV');
     }
   }, [isActiveDevice, playPrev]);
 

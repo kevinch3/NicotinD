@@ -76,6 +76,7 @@ export const wsHandlers = {
             playbackManager.updateState({
               position: data.payload.position,
               duration: data.payload.duration,
+              isPlaying: true,
               timestamp: Date.now(),
             });
           }
