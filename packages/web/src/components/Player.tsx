@@ -31,7 +31,7 @@ export function Player() {
   } = usePlayerStore();
   const token = useAuthStore((s) => s.token);
   const navigateAndSearch = useNavigateAndSearch();
-  const { activeDeviceId } = useRemotePlaybackStore();
+  const { activeDeviceId, remoteIsPlaying } = useRemotePlaybackStore();
   const myId = wsClient.getDeviceId();
   const isActiveDevice = !activeDeviceId || activeDeviceId === myId;
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -121,10 +121,12 @@ export function Player() {
     });
   }, [queue, history, repeat]);
 
-  // Play/pause sync — only drive <audio> if we are the active device
+  // Play/pause sync — only drive <audio> if we are the active device.
+  // Pause immediately when going inactive so host audio stops.
   useEffect(() => {
     const audio = audioRef.current;
-    if (!audio || !isActiveDevice) return;
+    if (!audio) return;
+    if (!isActiveDevice) { audio.pause(); return; }
     if (isPlaying) audio.play().catch(() => {});
     else audio.pause();
   }, [isPlaying, isActiveDevice]);
@@ -183,9 +185,10 @@ export function Player() {
       if (isPlaying) pause();
       else resume();
     } else {
-      wsClient.sendCommand(isPlaying ? 'PAUSE' : 'PLAY');
+      // Use remoteIsPlaying (server state) not local isPlaying to avoid sending wrong command
+      wsClient.sendCommand(remoteIsPlaying ? 'PAUSE' : 'PLAY');
     }
-  }, [isActiveDevice, isPlaying, pause, resume]);
+  }, [isActiveDevice, isPlaying, remoteIsPlaying, pause, resume]);
 
   const handleNext = useCallback(() => {
     if (isActiveDevice) playNext();
@@ -311,7 +314,7 @@ export function Player() {
                 onClick={handlePlayPause}
                 className="w-8 h-8 rounded-full bg-zinc-100 text-zinc-900 flex items-center justify-center hover:bg-zinc-200 transition"
               >
-                {isPlaying ? (
+                {(isActiveDevice ? isPlaying : remoteIsPlaying) ? (
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
                     <rect x="6" y="4" width="4" height="16" />
                     <rect x="14" y="4" width="4" height="16" />

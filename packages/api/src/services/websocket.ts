@@ -10,7 +10,7 @@ export const wsHandlers = {
   onMessage: (event: MessageEvent, ws: WSContext) => {
     try {
       const data = JSON.parse(event.data.toString());
-      
+
       switch (data.type) {
         case 'REGISTER': {
           const id = data.payload.id;
@@ -20,13 +20,13 @@ export const wsHandlers = {
             name: data.payload.name,
             type: data.payload.deviceType || 'web',
           });
-          
+
           ws.send(JSON.stringify({
             type: 'STATE_SYNC',
             payload: {
               state: playbackManager.getState(),
-              devices: playbackManager.getDevices()
-            }
+              devices: playbackManager.getDevices(),
+            },
           }));
           break;
         }
@@ -38,26 +38,34 @@ export const wsHandlers = {
         }
 
         case 'STATE_UPDATE': {
-          playbackManager.updateState(data.payload.state);
+          // Update server state silently — no re-broadcast, avoids echo loop.
+          playbackManager.updateStateQuiet(data.payload.state);
           break;
         }
 
         case 'COMMAND': {
-          if (data.payload.action === 'PLAY') playbackManager.updateState({ isPlaying: true });
-          else if (data.payload.action === 'PAUSE') playbackManager.updateState({ isPlaying: false });
-          else if (data.payload.action === 'SEEK') playbackManager.updateState({ position: data.payload.position });
-          else if (data.payload.action === 'VOLUME') playbackManager.updateState({ volume: data.payload.volume });
-          else {
-            // Forward other commands (NEXT, PREV, etc) to all devices
-            playbackManager.emitCommand(data.payload.action, data.payload);
-          }
-          if (data.payload.action === 'SET_TRACK') {
-            playbackManager.updateState({ 
-              trackId: data.payload.trackId,
-              isPlaying: true,
-              position: 0
+          const { action } = data.payload;
+
+          // Update server-side state tracking and broadcast STATE_SYNC
+          if (action === 'PLAY') {
+            playbackManager.updateState({ isPlaying: true });
+          } else if (action === 'PAUSE') {
+            playbackManager.updateState({ isPlaying: false });
+          } else if (action === 'SEEK') {
+            playbackManager.updateState({ position: data.payload.position, timestamp: Date.now() });
+          } else if (action === 'VOLUME') {
+            playbackManager.updateState({ volume: data.payload.volume });
+          } else if (action === 'SET_TRACK') {
+            playbackManager.updateState({
+              trackId: data.payload.track?.id ?? null,
+              track: data.payload.track ?? null,
+              isPlaying: false,
+              position: 0,
             });
           }
+
+          // Relay ALL commands to clients — active device executes, others ignore
+          playbackManager.emitCommand(action, data.payload);
           break;
         }
 
@@ -76,7 +84,7 @@ export const wsHandlers = {
       playbackManager.unregisterDevice(id);
     }
     connections.delete(ws);
-  }
+  },
 };
 
 playbackManager.on('state_update', (state) => {

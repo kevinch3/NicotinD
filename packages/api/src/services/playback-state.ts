@@ -1,5 +1,14 @@
 import { EventEmitter } from 'node:events';
 
+export type Track = {
+  id: string;
+  title: string;
+  artist: string;
+  album?: string;
+  coverArt?: string;
+  duration?: number;
+};
+
 export type PlaybackState = {
   activeDeviceId: string | null;
   isPlaying: boolean;
@@ -7,6 +16,7 @@ export type PlaybackState = {
   position: number; // in seconds
   timestamp: number; // to calculate drift
   trackId: string | null;
+  track: Track | null;
   queue: string[];
 };
 
@@ -25,6 +35,7 @@ export class PlaybackStateManager extends EventEmitter {
     position: 0,
     timestamp: Date.now(),
     trackId: null,
+    track: null,
     queue: [],
   };
 
@@ -38,9 +49,15 @@ export class PlaybackStateManager extends EventEmitter {
     return Array.from(this.devices.values());
   }
 
+  /** Update state and broadcast to all clients. */
   updateState(partial: Partial<PlaybackState>) {
     this.state = { ...this.state, ...partial, timestamp: Date.now() };
     this.emit('state_update', this.state);
+  }
+
+  /** Update state silently — no broadcast. Used when echoing client STATE_UPDATEs. */
+  updateStateQuiet(partial: Partial<PlaybackState>) {
+    this.state = { ...this.state, ...partial, timestamp: Date.now() };
   }
 
   registerDevice(device: Omit<Device, 'lastSeen'>) {
