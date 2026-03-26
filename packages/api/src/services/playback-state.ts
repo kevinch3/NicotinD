@@ -42,6 +42,12 @@ export class PlaybackStateManager extends EventEmitter {
   };
 
   private devices = new Map<string, Device>();
+  private static STALE_TIMEOUT = 90_000; // 90s — 3 missed heartbeats (30s interval)
+
+  constructor() {
+    super();
+    setInterval(() => this.cleanupStaleDevices(), 30_000);
+  }
 
   getState() {
     return this.state;
@@ -49,6 +55,16 @@ export class PlaybackStateManager extends EventEmitter {
 
   getDevices() {
     return Array.from(this.devices.values());
+  }
+
+  /** Remove devices that haven't sent a heartbeat within the timeout window. */
+  cleanupStaleDevices() {
+    const now = Date.now();
+    for (const [id, device] of this.devices) {
+      if (now - device.lastSeen > PlaybackStateManager.STALE_TIMEOUT) {
+        this.unregisterDevice(id);
+      }
+    }
   }
 
   /** Update state and broadcast to all clients. */

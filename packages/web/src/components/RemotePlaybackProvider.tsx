@@ -18,9 +18,6 @@ export function RemotePlaybackProvider({ children }: { children: React.ReactNode
   const setActiveDeviceId = useRemotePlaybackStore(s => s.setActiveDeviceId);
   const setRemoteIsPlaying = useRemotePlaybackStore(s => s.setRemoteIsPlaying);
   const setRemoteProgress = useRemotePlaybackStore(s => s.setRemoteProgress);
-  const remoteEnabled = useRemotePlaybackStore(s => s.remoteEnabled);
-  const activeDeviceId = useRemotePlaybackStore(s => s.activeDeviceId);
-
   const playerPlay = usePlayerStore(s => s.play);
   const playerPause = usePlayerStore(s => s.pause);
   const playerResume = usePlayerStore(s => s.resume);
@@ -29,7 +26,6 @@ export function RemotePlaybackProvider({ children }: { children: React.ReactNode
   const playerPlayPrev = usePlayerStore(s => s.playPrev);
 
   const myId = wsClient.getDeviceId();
-  const isActiveDevice = activeDeviceId === myId;
   // Tracks whether the initial late-join STATE_SYNC has been applied.
   // Prevents playerPlay from re-triggering on every subsequent STATE_SYNC.
   const lateJoinApplied = useRef(false);
@@ -43,22 +39,11 @@ export function RemotePlaybackProvider({ children }: { children: React.ReactNode
   // Handle full state sync — updates metadata visible to ALL devices (active or not).
   // Also applies initial track/state when this device is the active player on connect.
   useEffect(() => {
-    console.debug('[RPP] STATE_SYNC listener mounted, myId=', myId);
     return wsClient.on<{
       state: { activeDeviceId?: string | null; isPlaying?: boolean; track?: Track | null; position?: number; duration?: number };
       devices?: RemoteDevice[];
     }>('STATE_SYNC', (payload) => {
       const { state, devices } = payload;
-      console.debug('[RPP] STATE_SYNC received', {
-        activeDeviceId: state?.activeDeviceId,
-        isPlaying: state?.isPlaying,
-        position: state?.position?.toFixed(1),
-        duration: state?.duration?.toFixed(1),
-        hasTrack: !!state?.track,
-        myId,
-        isActiveDevice: state?.activeDeviceId === myId,
-        lateJoinApplied: lateJoinApplied.current,
-      });
 
       if (state?.activeDeviceId !== undefined) {
         setActiveDeviceId(state.activeDeviceId ?? null);
@@ -67,7 +52,6 @@ export function RemotePlaybackProvider({ children }: { children: React.ReactNode
 
       // Keep the controller's UI in sync with the remote device's playing state
       if (state?.isPlaying !== undefined) {
-        console.debug('[RPP] setRemoteIsPlaying →', state.isPlaying);
         setRemoteIsPlaying(state.isPlaying);
       }
 
@@ -75,7 +59,6 @@ export function RemotePlaybackProvider({ children }: { children: React.ReactNode
       // Prefer actual audio duration from PROGRESS_REPORT over track metadata.
       if (state?.position !== undefined) {
         const dur = state?.duration ?? state?.track?.duration ?? 0;
-        console.debug('[RPP] setRemoteProgress →', state.position.toFixed(1), '/', dur.toFixed(1));
         setRemoteProgress(state.position, dur);
       }
 
@@ -83,7 +66,6 @@ export function RemotePlaybackProvider({ children }: { children: React.ReactNode
       // and the server has a track stored, load it now. Only runs ONCE.
       const amActive = state?.activeDeviceId === myId;
       if (amActive && state?.track && !lateJoinApplied.current) {
-        console.debug('[RPP] late-join: loading track', state.track.title);
         lateJoinApplied.current = true;
         playerPlay(state.track);
         if (state.isPlaying === false) playerPause();
@@ -102,24 +84,22 @@ export function RemotePlaybackProvider({ children }: { children: React.ReactNode
   // PLAY/PAUSE/SEEK/SET_TRACK are all routed through COMMAND (not STATE_SYNC)
   // to avoid the echo loop that STATE_UPDATE caused.
   useEffect(() => {
-    console.debug('[RPP] COMMAND effect: isActiveDevice=', isActiveDevice, 'myId=', myId, 'activeDeviceId=', activeDeviceId);
-    if (!isActiveDevice) {
-      console.debug('[RPP] COMMAND listener NOT mounted (not active device)');
-      return;
-    }
-
-    console.debug('[RPP] COMMAND listener mounted');
     return wsClient.on<{ action: string; track?: Track; position?: number }>('COMMAND', (payload) => {
+      // Re-check at call time (not closure time) to avoid race where the
+      // old effect closure is still active when a COMMAND arrives during a
+      // device switch.
+      const currentActiveId = useRemotePlaybackStore.getState().activeDeviceId;
+      if (currentActiveId !== myId) return;
+
       const { action } = payload;
-      console.debug('[RPP] COMMAND received:', action, payload);
-      if (action === 'PLAY')  { console.debug('[RPP] → playerResume()'); playerResume(); }
-      if (action === 'PAUSE') { console.debug('[RPP] → playerPause()'); playerPause(); }
-      if (action === 'SEEK' && payload.position !== undefined) { console.debug('[RPP] → playerSeek(', payload.position, ')'); playerSeek(payload.position); }
-      if (action === 'SET_TRACK' && payload.track) { console.debug('[RPP] → playerPlay(track)'); playerPlay(payload.track); }
-      if (action === 'NEXT')  { console.debug('[RPP] → playerPlayNext()'); playerPlayNext(); }
-      if (action === 'PREV')  { console.debug('[RPP] → playerPlayPrev()'); playerPlayPrev(); }
+      if (action === 'PLAY')  playerResume();
+      if (action === 'PAUSE') playerPause();
+      if (action === 'SEEK' && payload.position !== undefined) playerSeek(payload.position);
+      if (action === 'SET_TRACK' && payload.track) playerPlay(payload.track);
+      if (action === 'NEXT')  playerPlayNext();
+      if (action === 'PREV')  playerPlayPrev();
     });
-  }, [isActiveDevice, playerResume, playerPause, playerSeek, playerPlay, playerPlayNext, playerPlayPrev]);
+  }, [myId, playerResume, playerPause, playerSeek, playerPlay, playerPlayNext, playerPlayPrev]);
 
   return <>{children}</>;
 }

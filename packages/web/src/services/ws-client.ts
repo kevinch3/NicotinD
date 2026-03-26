@@ -111,9 +111,7 @@ class PlaybackWSClient {
       try {
         const data = JSON.parse(event.data);
         if (typeof data === 'object' && data !== null && 'type' in data && 'payload' in data) {
-          console.debug(`[WS] recv ${data.type}`, data.payload);
           const handlers = this.handlers.get(String(data.type)) ?? [];
-          console.debug(`[WS] ${data.type} → ${handlers.length} handler(s)`);
           handlers.forEach(h => h(data.payload));
         }
       } catch { /* ignore */ }
@@ -140,10 +138,7 @@ class PlaybackWSClient {
 
   send(msg: object) {
     if (this.ws?.readyState === WebSocket.OPEN) {
-      console.debug('[WS] send', msg);
       this.ws.send(JSON.stringify(msg));
-    } else {
-      console.debug('[WS] send DROPPED (not open)', msg);
     }
   }
 

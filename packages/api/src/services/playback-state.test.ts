@@ -235,6 +235,54 @@ describe('PlaybackStateManager', () => {
     });
   });
 
+  describe('cleanupStaleDevices', () => {
+    it('removes devices that exceeded the stale timeout', () => {
+      manager.registerDevice({ id: 'd1', name: 'Stale', type: 'web' });
+      // Manually backdate lastSeen
+      const device = manager.getDevices().find(d => d.id === 'd1')!;
+      device.lastSeen = Date.now() - 100_000; // 100s ago, exceeds 90s timeout
+
+      manager.cleanupStaleDevices();
+      expect(manager.getDevices()).toHaveLength(0);
+    });
+
+    it('keeps devices within the timeout window', () => {
+      manager.registerDevice({ id: 'd1', name: 'Fresh', type: 'web' });
+      manager.cleanupStaleDevices();
+      expect(manager.getDevices()).toHaveLength(1);
+    });
+
+    it('removes stale devices while keeping fresh ones', () => {
+      manager.registerDevice({ id: 'd1', name: 'Stale', type: 'web' });
+      manager.registerDevice({ id: 'd2', name: 'Fresh', type: 'web' });
+
+      const stale = manager.getDevices().find(d => d.id === 'd1')!;
+      stale.lastSeen = Date.now() - 100_000;
+
+      manager.cleanupStaleDevices();
+      const remaining = manager.getDevices();
+      expect(remaining).toHaveLength(1);
+      expect(remaining[0].id).toBe('d2');
+    });
+
+    it('resets activeDeviceId when stale active device is cleaned up', () => {
+      manager.registerDevice({ id: 'd1', name: 'Active', type: 'web' });
+      manager.updateState({ activeDeviceId: 'd1', isPlaying: true });
+
+      const device = manager.getDevices().find(d => d.id === 'd1')!;
+      device.lastSeen = Date.now() - 100_000;
+
+      manager.cleanupStaleDevices();
+      expect(manager.getState().activeDeviceId).toBeNull();
+      expect(manager.getState().isPlaying).toBe(false);
+    });
+
+    it('is safe when no devices exist', () => {
+      manager.cleanupStaleDevices();
+      expect(manager.getDevices()).toHaveLength(0);
+    });
+  });
+
   describe('edge cases', () => {
     it('rapid state updates all apply in order', () => {
       manager.updateState({ position: 10 });
