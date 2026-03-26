@@ -65,7 +65,7 @@ export const wsHandlers = {
           }
 
           // Relay ALL commands to clients — active device executes, others ignore
-          playbackManager.emitCommand(action, data.payload);
+          playbackManager.emitCommand(data.payload);
           break;
         }
 
@@ -75,6 +75,7 @@ export const wsHandlers = {
           if (id && id === playbackManager.getState().activeDeviceId) {
             playbackManager.updateState({
               position: data.payload.position,
+              duration: data.payload.duration,
               timestamp: Date.now(),
             });
           }

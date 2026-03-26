@@ -311,7 +311,7 @@ export function SearchPage() {
   const hasNetwork = flatNetwork.length > 0;
 
   return (
-    <div className="max-w-4xl mx-auto px-3 py-4 md:px-6 md:py-8">
+    <div className="max-w-6xl mx-auto px-3 py-4 md:px-6 md:py-8">
       {/* Search bar */}
       <form onSubmit={handleSearch} className="mb-4">
         <div className="relative">
@@ -423,27 +423,57 @@ export function SearchPage() {
       {hasNetwork && (
         <section>
           {/* Track / Folder toggle */}
-          <div className="flex items-center gap-2 mb-3">
-            <button
-              onClick={() => setViewMode('tracks')}
-              className={`px-3 py-1 rounded-md text-xs font-medium transition ${
-                viewMode === 'tracks'
-                  ? 'bg-zinc-700 text-zinc-200'
-                  : 'text-zinc-500 hover:text-zinc-300'
-              }`}
-            >
-              Tracks
-            </button>
-            <button
-              onClick={() => setViewMode('folders')}
-              className={`px-3 py-1 rounded-md text-xs font-medium transition ${
-                viewMode === 'folders'
-                  ? 'bg-zinc-700 text-zinc-200'
-                  : 'text-zinc-500 hover:text-zinc-300'
-              }`}
-            >
-              Folders
-            </button>
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setViewMode('tracks')}
+                className={`px-3 py-1 rounded-md text-xs font-medium transition ${
+                  viewMode === 'tracks'
+                    ? 'bg-zinc-700 text-zinc-200'
+                    : 'text-zinc-500 hover:text-zinc-300'
+                }`}
+              >
+                Tracks
+              </button>
+              <button
+                onClick={() => setViewMode('folders')}
+                className={`px-3 py-1 rounded-md text-xs font-medium transition ${
+                  viewMode === 'folders'
+                    ? 'bg-zinc-700 text-zinc-200'
+                    : 'text-zinc-500 hover:text-zinc-300'
+                }`}
+              >
+                Folders
+              </button>
+            </div>
+
+            {viewMode === 'tracks' && hasNetwork && (
+              <button
+                onClick={async () => {
+                  // Group by user to avoid enqueuing thousands of tracks in one call if possible,
+                  // but slskd-api usually handles it fine. Let's just enqueue all in chunks or groups.
+                  const byUser = new Map<string, typeof flatNetwork>();
+                  for (const f of flatNetwork) {
+                    if (!byUser.has(f.username)) byUser.set(f.username, []);
+                    byUser.get(f.username)!.push(f);
+                  }
+
+                  for (const [username, files] of byUser.entries()) {
+                    for (const f of files) addDownloading(`${username}:${f.filename}`);
+                    try {
+                      await api.enqueueDownload(username, files.map(f => ({ filename: f.filename, size: f.size })));
+                    } catch (err) {
+                      const removeDownloading = useSearchStore.getState().removeDownloading;
+                      for (const f of files) removeDownloading(`${username}:${f.filename}`);
+                      setDownloadError(err instanceof Error ? err.message : 'Download failed');
+                    }
+                  }
+                }}
+                className="px-3 py-1 rounded-md text-xs font-medium bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition"
+              >
+                Download all ({flatNetwork.length})
+              </button>
+            )}
           </div>
 
           {viewMode === 'tracks' && (
@@ -455,7 +485,7 @@ export function SearchPage() {
                 return (
                   <div
                     key={key}
-                    className="flex items-start gap-3 px-3 py-2 rounded-lg hover:bg-zinc-800/50 transition"
+                    className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-zinc-800/50 transition"
                   >
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start gap-3">

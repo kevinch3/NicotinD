@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth';
 import { usePlayerStore, type Track } from '@/stores/player';
+import { usePreserveStore } from '@/stores/preserve';
+import { toTrack } from '@/lib/trackUtils';
 import { TrackRow } from '@/components/TrackRow';
 import { useListControls } from '@/hooks/useListControls';
 import { ListToolbar } from '@/components/ListToolbar';
@@ -36,6 +38,7 @@ export function LibraryPage() {
   const token = useAuthStore((s) => s.token);
   const play = usePlayerStore((s) => s.play);
   const playWithContext = usePlayerStore((s) => s.playWithContext);
+  const preserve = usePreserveStore((s) => s.preserve);
 
   // List controls for album grid
   const gridControls = useListControls<Album>({
@@ -86,17 +89,6 @@ export function LibraryPage() {
     play(toTrack(song, albumName));
   }
 
-  function toTrack(song: Song, albumName: string): Track {
-    return {
-      id: song.id,
-      title: song.title,
-      artist: song.artist,
-      album: albumName,
-      coverArt: song.coverArt,
-      duration: song.duration,
-    };
-  }
-
   function playAlbum(album: AlbumDetail) {
     if (!album.song?.length) return;
     const tracks = album.song.map((s): Track => ({
@@ -110,10 +102,15 @@ export function LibraryPage() {
     playWithContext(tracks, 0, { type: 'album', id: album.id, name: album.name });
   }
 
+  function preserveAlbum(album: AlbumDetail) {
+    if (!album.song?.length) return;
+    album.song.forEach((s) => preserve(toTrack(s, album.name), token));
+  }
+
   // Album detail view
   if (selectedAlbum) {
     return (
-      <div className="max-w-4xl mx-auto px-3 py-4 md:px-6 md:py-8">
+      <div className="max-w-6xl mx-auto px-3 py-4 md:px-6 md:py-8">
         <button
           onClick={() => setSelectedAlbum(null)}
           className="text-sm text-zinc-500 hover:text-zinc-300 transition mb-6"
@@ -137,12 +134,21 @@ export function LibraryPage() {
             {selectedAlbum.year && (
               <p className="text-zinc-600 text-sm mt-1">{selectedAlbum.year}</p>
             )}
-            <button
-              onClick={() => playAlbum(selectedAlbum)}
-              className="mt-4 px-5 py-2 rounded-lg bg-zinc-100 text-zinc-900 text-sm font-semibold hover:bg-zinc-200 transition w-fit"
-            >
-              Play Album
-            </button>
+            <div className="flex justify-center sm:justify-start gap-3 mt-4">
+              <button
+                onClick={() => playAlbum(selectedAlbum)}
+                className="px-5 py-2 rounded-lg bg-zinc-100 text-zinc-900 text-sm font-semibold hover:bg-zinc-200 transition"
+              >
+                Play Album
+              </button>
+              <button
+                onClick={() => preserveAlbum(selectedAlbum)}
+                className="px-4 py-2 rounded-lg bg-zinc-800 text-zinc-300 text-sm font-medium hover:bg-zinc-700 transition"
+                title="Save all tracks for offline"
+              >
+                Preserve All
+              </button>
+            </div>
           </div>
         </div>
 

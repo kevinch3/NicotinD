@@ -7,7 +7,7 @@
  * 3. Bridges incoming COMMAND messages → the local player store
  *    ONLY when this device is the active player and has opted in.
  */
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { wsClient } from '@/services/ws-client';
 import { useRemotePlaybackStore, RemoteDevice } from '@/stores/remote-playback';
 import { usePlayerStore } from '@/stores/player';
@@ -30,6 +30,9 @@ export function RemotePlaybackProvider({ children }: { children: React.ReactNode
 
   const myId = wsClient.getDeviceId();
   const isActiveDevice = activeDeviceId === myId;
+  // Tracks whether the initial late-join STATE_SYNC has been applied.
+  // Prevents playerPlay from re-triggering on every subsequent STATE_SYNC.
+  const lateJoinApplied = useRef(false);
 
   // Connect WS on mount, disconnect on unmount
   useEffect(() => {
@@ -41,7 +44,7 @@ export function RemotePlaybackProvider({ children }: { children: React.ReactNode
   // Also applies initial track/state when this device is the active player on connect.
   useEffect(() => {
     return wsClient.on<{
-      state: { activeDeviceId?: string | null; isPlaying?: boolean; track?: Track | null; position?: number };
+      state: { activeDeviceId?: string | null; isPlaying?: boolean; track?: Track | null; position?: number; duration?: number };
       devices?: RemoteDevice[];
     }>('STATE_SYNC', (payload) => {
       const { state, devices } = payload;
@@ -56,16 +59,18 @@ export function RemotePlaybackProvider({ children }: { children: React.ReactNode
         setRemoteIsPlaying(state.isPlaying);
       }
 
-      // Sync remote progress for seek bar interpolation on controller
+      // Sync remote progress for seek bar interpolation on controller.
+      // Prefer actual audio duration from PROGRESS_REPORT over track metadata.
       if (state?.position !== undefined) {
-        const dur = state?.track?.duration ?? 0;
+        const dur = state?.duration ?? state?.track?.duration ?? 0;
         setRemoteProgress(state.position, dur);
       }
 
       // Late-join: if this device is already the active device when it first connects
-      // and the server has a track stored, load it now.
+      // and the server has a track stored, load it now. Only runs ONCE.
       const amActive = state?.activeDeviceId === myId;
-      if (amActive && state?.track) {
+      if (amActive && state?.track && !lateJoinApplied.current) {
+        lateJoinApplied.current = true;
         playerPlay(state.track);
         if (state.isPlaying === false) playerPause();
       }

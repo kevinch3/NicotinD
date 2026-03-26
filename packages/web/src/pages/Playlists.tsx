@@ -2,6 +2,8 @@ import { useState, useEffect, useMemo } from 'react';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth';
 import { usePlayerStore, type Track } from '@/stores/player';
+import { usePreserveStore } from '@/stores/preserve';
+import { toTrack } from '@/lib/trackUtils';
 import { TrackRow } from '@/components/TrackRow';
 import { useListControls } from '@/hooks/useListControls';
 import { ListToolbar } from '@/components/ListToolbar';
@@ -77,6 +79,7 @@ export function PlaylistsPage() {
   const token = useAuthStore((s) => s.token);
   const play = usePlayerStore((s) => s.play);
   const playWithContext = usePlayerStore((s) => s.playWithContext);
+  const preserve = usePreserveStore((s) => s.preserve);
 
   // Detail items with original index preserved for removeSong
   const detailItems = useMemo(() =>
@@ -131,17 +134,6 @@ export function PlaylistsPage() {
     play(toTrack(song));
   }
 
-  function toTrack(song: PlaylistSong): Track {
-    return {
-      id: song.id,
-      title: song.title,
-      artist: song.artist,
-      album: song.album,
-      coverArt: song.coverArt,
-      duration: song.duration,
-    };
-  }
-
   function playAll(pl: PlaylistDetail) {
     if (!pl.entry?.length) return;
     const tracks = pl.entry.map((s): Track => ({
@@ -153,6 +145,11 @@ export function PlaylistsPage() {
       duration: s.duration,
     }));
     playWithContext(tracks, 0, { type: 'playlist', id: pl.id, name: pl.name });
+  }
+
+  function preserveAll(pl: PlaylistDetail) {
+    if (!pl.entry?.length) return;
+    pl.entry.forEach((s) => preserve(toTrack(s), token));
   }
 
   async function handleDelete(pl: PlaylistDetail) {
@@ -206,7 +203,7 @@ export function PlaylistsPage() {
   // Detail view
   if (selected) {
     return (
-      <div className="max-w-4xl mx-auto px-3 py-4 md:px-6 md:py-8">
+      <div className="max-w-6xl mx-auto px-3 py-4 md:px-6 md:py-8">
         <button
           onClick={() => setSelected(null)}
           className="text-sm text-zinc-500 hover:text-zinc-300 transition mb-6"
@@ -258,6 +255,13 @@ export function PlaylistsPage() {
                 className="px-5 py-2 rounded-lg bg-zinc-100 text-zinc-900 text-sm font-semibold hover:bg-zinc-200 transition"
               >
                 Play All
+              </button>
+              <button
+                onClick={() => preserveAll(selected)}
+                className="px-4 py-2 rounded-lg bg-zinc-800 text-zinc-300 text-sm font-medium hover:bg-zinc-700 transition"
+                title="Save all tracks for offline"
+              >
+                Preserve All
               </button>
               <button
                 onClick={() => handleDelete(selected)}

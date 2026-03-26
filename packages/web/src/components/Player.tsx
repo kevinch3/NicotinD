@@ -276,12 +276,12 @@ export function Player() {
   const progressPercent =
     safeDuration > 0 ? Math.max(0, Math.min(100, (safeProgress / safeDuration) * 100)) : 0;
 
-  if (!currentTrack) return <audio ref={audioRef} />;
-
   return (
     <>
       <audio ref={audioRef} />
-      <div className="fixed bottom-0 left-0 right-0 bg-zinc-900 border-t border-zinc-800 z-50 relative">
+      <div className={`fixed bottom-0 left-0 right-0 bg-zinc-900 border-t border-zinc-800 z-50 relative transition-transform duration-300 ease-out ${
+        currentTrack ? 'translate-y-0' : 'translate-y-full'
+      }`}>
         {/* Autoplay blocked banner */}
         {autoplayBlocked && (
           <div
@@ -313,7 +313,7 @@ export function Player() {
         >
           {/* Track info */}
           <div className="flex items-center gap-3 min-w-0 flex-shrink md:w-60 md:flex-shrink-0">
-            {currentTrack.coverArt && (
+            {currentTrack?.coverArt && (
               <img
                 src={`/api/cover/${currentTrack.coverArt}?size=80&token=${token}`}
                 alt=""
@@ -321,15 +321,15 @@ export function Player() {
               />
             )}
             <div className="min-w-0">
-              <p className="text-sm font-medium text-zinc-100 truncate">{currentTrack.title}</p>
+              <p className="text-sm font-medium text-zinc-100 truncate">{currentTrack?.title}</p>
               <p
                 className="text-xs text-zinc-400 truncate cursor-pointer hover:underline hover:text-zinc-200 transition"
-                onClick={(e) => { e.stopPropagation(); navigateAndSearch(currentTrack.artist); }}
+                onClick={(e) => { e.stopPropagation(); if (currentTrack) navigateAndSearch(currentTrack.artist); }}
               >
-                {currentTrack.artist}
+                {currentTrack?.artist}
               </p>
             </div>
-            <PreserveButton track={currentTrack} size="sm" className="hidden md:flex flex-shrink-0" />
+            {currentTrack && <PreserveButton track={currentTrack} size="sm" className="hidden md:flex flex-shrink-0" />}
           </div>
 
           {/* Controls */}

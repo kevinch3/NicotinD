@@ -14,6 +14,7 @@ export type PlaybackState = {
   isPlaying: boolean;
   volume: number;
   position: number; // in seconds
+  duration: number; // actual audio duration reported by active device
   timestamp: number; // to calculate drift
   trackId: string | null;
   track: Track | null;
@@ -33,6 +34,7 @@ export class PlaybackStateManager extends EventEmitter {
     isPlaying: false,
     volume: 1.0,
     position: 0,
+    duration: 0,
     timestamp: Date.now(),
     trackId: null,
     track: null,
@@ -80,8 +82,8 @@ export class PlaybackStateManager extends EventEmitter {
     }
   }
 
-  emitCommand(action: string, payload?: unknown) {
-    this.emit('command', { action, payload });
+  emitCommand(payload: Record<string, unknown>) {
+    this.emit('command', payload);
   }
 }
 
