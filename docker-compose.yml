@@ -17,6 +17,12 @@ services:
       SLSKD_USERNAME: slskd
       SLSKD_PASSWORD: slskd
       TAILSCALE_SOCKET: /var/run/tailscale/tailscaled.sock
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8484/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     depends_on:
       - navidrome
       - slskd

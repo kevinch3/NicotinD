@@ -63,6 +63,8 @@ export function createApp({
     return wsHandlers;
   }));
 
+  app.get('/api/health', (c) => c.json({ ok: true }));
+
   // Documentation
   app.doc('/openapi.json', {
     openapi: '3.0.0',

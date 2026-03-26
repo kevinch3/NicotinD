@@ -8,6 +8,8 @@ type MessageHandler<T = any> = (payload: T) => void;
 class PlaybackWSClient {
   private ws: WebSocket | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  private reconnectDelay = 1000;
   private handlers = new Map<string, MessageHandler<any>[]>();
   private deviceId: string;
   private deviceName: string;
@@ -98,7 +100,11 @@ class PlaybackWSClient {
     this.ws = new WebSocket(this.url);
 
     this.ws.onopen = () => {
+      this.reconnectDelay = 1000;
       this.send({ type: 'REGISTER', payload: { id: this.deviceId, name: this.deviceName, deviceType: 'web' } });
+      this.heartbeatTimer = setInterval(() => {
+        this.send({ type: 'HEARTBEAT', payload: {} });
+      }, 30_000);
     };
 
     this.ws.onmessage = (event) => {
@@ -111,14 +117,21 @@ class PlaybackWSClient {
       } catch { /* ignore */ }
     };
 
+    this.ws.onerror = () => {
+      // Force close so onclose fires and triggers reconnect
+      this.ws?.close();
+    };
+
     this.ws.onclose = () => {
-      // Reconnect after 3s
-      this.reconnectTimer = setTimeout(() => this.connect(), 3000);
+      if (this.heartbeatTimer) { clearInterval(this.heartbeatTimer); this.heartbeatTimer = null; }
+      this.reconnectTimer = setTimeout(() => this.connect(), this.reconnectDelay);
+      this.reconnectDelay = Math.min(this.reconnectDelay * 2, 30_000);
     };
   }
 
   disconnect() {
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    if (this.heartbeatTimer) { clearInterval(this.heartbeatTimer); this.heartbeatTimer = null; }
     this.ws?.close();
     this.ws = null;
   }
