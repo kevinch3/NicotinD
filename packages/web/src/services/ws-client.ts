@@ -38,11 +38,48 @@ class PlaybackWSClient {
 
   private resolveDeviceName(): string {
     const stored = localStorage.getItem('nicotind_device_name');
-    if (stored) return stored;
-    const ua = navigator.userAgent;
-    const name = ua.includes('Mobile') ? '📱 Mobile' : '🖥️ Desktop';
+    if (stored) {
+      // Migrate emoji-prefixed names from the first release
+      const stripped = stored.replace(/^📱\s*/, '').replace(/^🖥️\s*/, '');
+      // Migrate plain "Mobile"/"Desktop" names from the second release — regenerate
+      if (stripped === 'Mobile' || stripped === 'Desktop') {
+        localStorage.removeItem('nicotind_device_name');
+      } else {
+        if (stripped !== stored) localStorage.setItem('nicotind_device_name', stripped);
+        return stripped;
+      }
+    }
+    const name = this.detectDeviceName();
     localStorage.setItem('nicotind_device_name', name);
     return name;
+  }
+
+  private detectDeviceName(): string {
+    const ua = navigator.userAgent;
+
+    // OS / device
+    let device: string;
+    if (/iPhone/.test(ua))                          device = 'iPhone';
+    else if (/iPad/.test(ua))                       device = 'iPad';
+    else if (/Android/.test(ua) && /Mobile/.test(ua)) device = 'Android';
+    else if (/Android/.test(ua))                    device = 'Android Tablet';
+    else if (/Windows/.test(ua))                    device = 'Windows';
+    else if (/Macintosh|Mac OS X/.test(ua))         device = 'Mac';
+    else if (/CrOS/.test(ua))                       device = 'ChromeOS';
+    else if (/Linux/.test(ua))                      device = 'Linux';
+    else                                            device = 'Device';
+
+    // Browser (order matters — Edge/Opera include "Chrome/" in their UA)
+    let browser: string;
+    if (/SamsungBrowser/.test(ua))                  browser = 'Samsung Internet';
+    else if (/Edg\//.test(ua))                      browser = 'Edge';
+    else if (/OPR\//.test(ua))                      browser = 'Opera';
+    else if (/Firefox\//.test(ua))                  browser = 'Firefox';
+    else if (/Chrome\//.test(ua))                   browser = 'Chrome';
+    else if (/Version\/.*Safari/.test(ua))          browser = 'Safari';
+    else                                            browser = 'Browser';
+
+    return `${browser} on ${device}`;
   }
 
   getDeviceId() { return this.deviceId; }

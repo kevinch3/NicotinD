@@ -64,7 +64,7 @@ export function DeviceSwitcher() {
                     }}
                   >
                     <span className="text-base leading-none">
-                      {device.type === 'web' ? (device.name.includes('Mobile') ? '📱' : '🖥️') : '🎵'}
+                      {device.type === 'web' ? (/iPhone|iPad|Android/i.test(device.name) ? '📱' : '🖥️') : '🎵'}
                     </span>
                     <span className="flex-1 text-left truncate">
                       {device.name} {isMe ? <span className="text-zinc-600">(this device)</span> : ''}

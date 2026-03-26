@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { api, type TailscaleStatus } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth';
 import { PasswordField } from '@/components/PasswordField';
+import { useRemotePlaybackStore } from '@/stores/remote-playback';
+import { wsClient } from '@/services/ws-client';
 
 export function SettingsPage() {
   const role = useAuthStore((s) => s.role);
@@ -24,6 +26,12 @@ export function SettingsPage() {
   const [tsAuthKey, setTsAuthKey] = useState('');
   const [tsSaving, setTsSaving] = useState(false);
   const [tsMessage, setTsMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Remote playback state
+  const { remoteEnabled, setRemoteEnabled, devices } = useRemotePlaybackStore();
+  const myDeviceId = wsClient.getDeviceId();
+  const [deviceName, setDeviceName] = useState(wsClient.getDeviceName());
+  const [deviceNameSaved, setDeviceNameSaved] = useState(false);
 
   useEffect(() => {
     loadSettings();
@@ -396,6 +404,103 @@ export function SettingsPage() {
           )}
         </section>
       )}
+
+      {/* Remote Playback Section — available to all users */}
+      <section className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-6 mt-6">
+        <div className="flex items-center gap-3 mb-6">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-zinc-400">
+            Remote Playback
+          </h2>
+        </div>
+
+        <div className="space-y-5">
+          {/* Opt-in toggle */}
+          <div className="flex items-start gap-3">
+            <button
+              role="switch"
+              aria-checked={remoteEnabled}
+              onClick={async () => {
+                const enabled = !remoteEnabled;
+                if (enabled) {
+                  // User-gesture audio unlock required for browser autoplay policy
+                  const audio = document.querySelector('audio');
+                  if (audio && audio.paused) {
+                    try { await audio.play(); audio.pause(); } catch { /* ignore */ }
+                  }
+                }
+                setRemoteEnabled(enabled);
+              }}
+              className={`relative mt-0.5 w-9 h-5 rounded-full transition-colors flex-shrink-0 ${
+                remoteEnabled ? 'bg-emerald-600' : 'bg-zinc-700'
+              }`}
+            >
+              <span
+                className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                  remoteEnabled ? 'translate-x-4' : 'translate-x-0'
+                }`}
+              />
+            </button>
+            <div>
+              <p className="text-sm text-zinc-200">Allow remote control</p>
+              <p className="text-xs text-zinc-500 mt-0.5">
+                Let other devices on your account control playback on this device.
+              </p>
+            </div>
+          </div>
+
+          {/* Device name */}
+          <div>
+            <label className="block text-sm text-zinc-400 mb-1.5">This device's name</label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={deviceName}
+                onChange={(e) => { setDeviceName(e.target.value); setDeviceNameSaved(false); }}
+                placeholder="e.g. Living Room TV"
+                className="flex-1 px-4 py-2.5 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-500 transition text-sm"
+              />
+              <button
+                onClick={() => {
+                  if (!deviceName.trim()) return;
+                  wsClient.setDeviceName(deviceName.trim());
+                  setDeviceNameSaved(true);
+                }}
+                disabled={!deviceName.trim() || deviceNameSaved}
+                className="px-4 py-2.5 rounded-lg bg-zinc-700 text-zinc-100 text-sm font-medium hover:bg-zinc-600 transition disabled:opacity-50"
+              >
+                {deviceNameSaved ? 'Saved' : 'Save'}
+              </button>
+            </div>
+            <p className="text-[10px] text-zinc-500 mt-1">Shown to other users when they switch playback devices.</p>
+          </div>
+
+          {/* Connected devices list */}
+          <div>
+            <p className="text-sm text-zinc-400 mb-2">Connected devices</p>
+            {devices.length === 0 ? (
+              <p className="text-sm text-zinc-600">No devices online</p>
+            ) : (
+              <ul className="space-y-1">
+                {devices.map(device => {
+                  const isMe = device.id === myDeviceId;
+                  const emoji = device.type === 'web'
+                    ? (/iPhone|iPad|Android/i.test(device.name) ? '📱' : '🖥️')
+                    : '🎵';
+                  return (
+                    <li key={device.id} className="flex items-center gap-2 text-sm">
+                      <span>{emoji}</span>
+                      <span className={isMe ? 'text-zinc-200' : 'text-zinc-400'}>
+                        {device.name}
+                      </span>
+                      {isMe && <span className="text-xs text-zinc-600">(this device)</span>}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        </div>
+      </section>
     </div>
   );
 }

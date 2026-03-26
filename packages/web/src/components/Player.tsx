@@ -377,7 +377,7 @@ export function Player() {
           </div>
 
           {/* Right side: device switcher + remote toggle */}
-          <div className="hidden md:flex items-center gap-2 w-60 justify-end flex-shrink-0">
+          <div className="flex items-center gap-2 justify-end flex-shrink-0">
             <button
               onClick={toggleRemote}
               title={remoteEnabled ? 'Opt out of remote playback' : 'Opt in for remote playback'}
