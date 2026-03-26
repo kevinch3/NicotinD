@@ -132,12 +132,15 @@ export function Player() {
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
-    if (!isActiveDevice) { audio.pause(); return; }
+    console.debug('[Player] play/pause sync: isActiveDevice=', isActiveDevice, 'isPlaying=', isPlaying);
+    if (!isActiveDevice) { console.debug('[Player] → audio.pause() (not active)'); audio.pause(); return; }
     if (isPlaying) {
+      console.debug('[Player] → audio.play()');
       audio.play().catch((err) => {
         if (err.name === 'NotAllowedError') setAutoplayBlocked(true);
       });
     } else {
+      console.debug('[Player] → audio.pause()');
       audio.pause();
     }
   }, [isPlaying, isActiveDevice]);
@@ -196,12 +199,14 @@ export function Player() {
 
   // Periodic progress reporting — active device tells server its position
   useEffect(() => {
+    console.debug('[Player] progress report effect: isActiveDevice=', isActiveDevice, 'isPlaying=', isPlaying);
     if (!isActiveDevice || !isPlaying) return;
     const audio = audioRef.current;
     if (!audio) return;
 
     const report = () => {
       if (audio.duration > 0 && Number.isFinite(audio.currentTime)) {
+        console.debug('[Player] PROGRESS_REPORT →', audio.currentTime.toFixed(1), '/', audio.duration.toFixed(1));
         wsClient.sendProgressReport(audio.currentTime, audio.duration);
       }
     };
