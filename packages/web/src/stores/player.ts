@@ -49,6 +49,8 @@ interface PlayerState {
   seekTo: number | null;
   seek: (time: number) => void;
   clearSeek: () => void;
+  autoplayBlocked: boolean;
+  setAutoplayBlocked: (blocked: boolean) => void;
 }
 
 function shuffleArray<T>(arr: T[]): T[] {
@@ -194,4 +196,6 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   setDuration: (d) => set({ duration: d }),
   seek: (time) => set({ seekTo: time }),
   clearSeek: () => set({ seekTo: null }),
+  autoplayBlocked: false,
+  setAutoplayBlocked: (blocked) => set({ autoplayBlocked: blocked }),
 }));

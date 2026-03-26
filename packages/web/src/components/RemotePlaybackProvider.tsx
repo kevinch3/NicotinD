@@ -17,6 +17,7 @@ export function RemotePlaybackProvider({ children }: { children: React.ReactNode
   const setDevices = useRemotePlaybackStore(s => s.setDevices);
   const setActiveDeviceId = useRemotePlaybackStore(s => s.setActiveDeviceId);
   const setRemoteIsPlaying = useRemotePlaybackStore(s => s.setRemoteIsPlaying);
+  const setRemoteProgress = useRemotePlaybackStore(s => s.setRemoteProgress);
   const remoteEnabled = useRemotePlaybackStore(s => s.remoteEnabled);
   const activeDeviceId = useRemotePlaybackStore(s => s.activeDeviceId);
 
@@ -40,7 +41,7 @@ export function RemotePlaybackProvider({ children }: { children: React.ReactNode
   // Also applies initial track/state when this device is the active player on connect.
   useEffect(() => {
     return wsClient.on<{
-      state: { activeDeviceId?: string | null; isPlaying?: boolean; track?: Track | null };
+      state: { activeDeviceId?: string | null; isPlaying?: boolean; track?: Track | null; position?: number };
       devices?: RemoteDevice[];
     }>('STATE_SYNC', (payload) => {
       const { state, devices } = payload;
@@ -55,6 +56,12 @@ export function RemotePlaybackProvider({ children }: { children: React.ReactNode
         setRemoteIsPlaying(state.isPlaying);
       }
 
+      // Sync remote progress for seek bar interpolation on controller
+      if (state?.position !== undefined) {
+        const dur = state?.track?.duration ?? 0;
+        setRemoteProgress(state.position, dur);
+      }
+
       // Late-join: if this device is already the active device when it first connects
       // and the server has a track stored, load it now.
       const amActive = state?.activeDeviceId === myId;
@@ -63,7 +70,7 @@ export function RemotePlaybackProvider({ children }: { children: React.ReactNode
         if (state.isPlaying === false) playerPause();
       }
     });
-  }, [setActiveDeviceId, setDevices, setRemoteIsPlaying, playerPlay, playerPause, myId]);
+  }, [setActiveDeviceId, setDevices, setRemoteIsPlaying, setRemoteProgress, playerPlay, playerPause, myId]);
 
   // Handle device list updates
   useEffect(() => {

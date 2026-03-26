@@ -150,6 +150,10 @@ class PlaybackWSClient {
     };
   }
 
+  sendProgressReport(position: number, duration: number) {
+    this.send({ type: 'PROGRESS_REPORT', payload: { position, duration } });
+  }
+
   sendCommand(action: string, extra?: Record<string, unknown>) {
     this.send({ type: 'COMMAND', payload: { action, ...extra } });
   }

@@ -6,6 +6,7 @@ import { DeviceSwitcher } from '@/components/DeviceSwitcher';
 import { useRemotePlaybackStore } from '@/stores/remote-playback';
 import { wsClient } from '@/services/ws-client';
 import { useNavigateAndSearch } from '@/hooks/useNavigateAndSearch';
+import { usePlaybackProgress } from '@/hooks/usePlaybackProgress';
 
 export function Player() {
   const {
@@ -28,6 +29,8 @@ export function Player() {
     setNowPlayingOpen,
     queue,
     history,
+    autoplayBlocked,
+    setAutoplayBlocked,
   } = usePlayerStore();
   const token = useAuthStore((s) => s.token);
   const navigateAndSearch = useNavigateAndSearch();
@@ -35,6 +38,7 @@ export function Player() {
   const myId = wsClient.getDeviceId();
   const isActiveDevice = !activeDeviceId || activeDeviceId === myId;
   const audioRef = useRef<HTMLAudioElement>(null);
+  const { displayTime, displayDuration } = usePlaybackProgress();
 
   // Load track
   useEffect(() => {
@@ -45,7 +49,9 @@ export function Player() {
       setCurrentTime(0);
       setDuration(currentTrack.duration ?? 0);
       audio.src = `/api/stream/${currentTrack.id}?token=${token}`;
-      audio.play().catch(() => {});
+      audio.play().catch((err) => {
+        if (err.name === 'NotAllowedError') setAutoplayBlocked(true);
+      });
     } else {
       audio.pause();
       audio.src = '';
@@ -127,8 +133,13 @@ export function Player() {
     const audio = audioRef.current;
     if (!audio) return;
     if (!isActiveDevice) { audio.pause(); return; }
-    if (isPlaying) audio.play().catch(() => {});
-    else audio.pause();
+    if (isPlaying) {
+      audio.play().catch((err) => {
+        if (err.name === 'NotAllowedError') setAutoplayBlocked(true);
+      });
+    } else {
+      audio.pause();
+    }
   }, [isPlaying, isActiveDevice]);
 
   // Seek from store
@@ -167,18 +178,38 @@ export function Player() {
       if (Number.isFinite(value) && value > 0) setDuration(value);
     };
     const onEnded = () => playNext();
+    const onPlay = () => setAutoplayBlocked(false);
 
     audio.addEventListener('timeupdate', onTime);
     audio.addEventListener('loadedmetadata', onDuration);
     audio.addEventListener('durationchange', onDuration);
     audio.addEventListener('ended', onEnded);
+    audio.addEventListener('play', onPlay);
     return () => {
       audio.removeEventListener('timeupdate', onTime);
       audio.removeEventListener('loadedmetadata', onDuration);
       audio.removeEventListener('durationchange', onDuration);
       audio.removeEventListener('ended', onEnded);
+      audio.removeEventListener('play', onPlay);
     };
-  }, [playNext, setCurrentTime, setDuration]);
+  }, [playNext, setCurrentTime, setDuration, setAutoplayBlocked]);
+
+  // Periodic progress reporting — active device tells server its position
+  useEffect(() => {
+    if (!isActiveDevice || !isPlaying) return;
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    const report = () => {
+      if (audio.duration > 0 && Number.isFinite(audio.currentTime)) {
+        wsClient.sendProgressReport(audio.currentTime, audio.duration);
+      }
+    };
+
+    report(); // send one immediately
+    const interval = setInterval(report, 2000);
+    return () => clearInterval(interval);
+  }, [isActiveDevice, isPlaying]);
 
   const handlePlayPause = useCallback(() => {
     if (isActiveDevice) {
@@ -198,21 +229,23 @@ export function Player() {
   const handleSeek = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       const audio = audioRef.current;
-      const safeDuration = Number.isFinite(duration) && duration > 0 ? duration : 0;
-      if (!safeDuration) return;
+      const safeDur = Number.isFinite(displayDuration) && displayDuration > 0 ? displayDuration : 0;
+      if (!safeDur) return;
 
       const rect = e.currentTarget.getBoundingClientRect();
       if (!rect.width) return;
       const pct = (e.clientX - rect.left) / rect.width;
-      const newTime = Math.max(0, Math.min(1, pct)) * safeDuration;
+      const newTime = Math.max(0, Math.min(1, pct)) * safeDur;
 
       if (isActiveDevice && audio) {
         audio.currentTime = newTime;
       } else {
         wsClient.sendCommand('SEEK', { position: newTime });
+        // Optimistic update so controller seek bar jumps immediately
+        useRemotePlaybackStore.getState().setRemoteProgress(newTime, safeDur);
       }
     },
-    [duration, isActiveDevice],
+    [displayDuration, isActiveDevice],
   );
 
   const handlePrev = useCallback(() => {
@@ -235,10 +268,10 @@ export function Player() {
     return `${m}:${sec.toString().padStart(2, '0')}`;
   }
 
-  const safeDuration = Number.isFinite(duration) && duration > 0 ? duration : 0;
+  const safeDuration = Number.isFinite(displayDuration) && displayDuration > 0 ? displayDuration : 0;
   const safeProgress =
-    Number.isFinite(currentTime) && currentTime >= 0
-      ? Math.min(currentTime, safeDuration || currentTime)
+    Number.isFinite(displayTime) && displayTime >= 0
+      ? Math.min(displayTime, safeDuration || displayTime)
       : 0;
   const progressPercent =
     safeDuration > 0 ? Math.max(0, Math.min(100, (safeProgress / safeDuration) * 100)) : 0;
@@ -248,7 +281,27 @@ export function Player() {
   return (
     <>
       <audio ref={audioRef} />
-      <div className="fixed bottom-0 left-0 right-0 bg-zinc-900 border-t border-zinc-800 z-50">
+      <div className="fixed bottom-0 left-0 right-0 bg-zinc-900 border-t border-zinc-800 z-50 relative">
+        {/* Autoplay blocked banner */}
+        {autoplayBlocked && (
+          <div
+            className="absolute inset-0 bg-zinc-900/95 flex items-center justify-center z-10 cursor-pointer"
+            onClick={() => {
+              const audio = audioRef.current;
+              if (audio) {
+                audio.play().then(() => setAutoplayBlocked(false)).catch(() => {});
+              }
+            }}
+          >
+            <div className="flex items-center gap-3 px-4">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-amber-400 flex-shrink-0">
+                <circle cx="12" cy="12" r="10" />
+                <polygon points="10,8 16,12 10,16" fill="currentColor" />
+              </svg>
+              <span className="text-sm text-zinc-300">Tap here to start playback</span>
+            </div>
+          </div>
+        )}
         {/* Clickable area to open Now Playing */}
         <div
           className="flex items-center px-3 md:px-4 gap-2 md:gap-4 h-16 md:h-18 cursor-pointer"

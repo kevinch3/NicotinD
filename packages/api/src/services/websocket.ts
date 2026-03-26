@@ -69,6 +69,18 @@ export const wsHandlers = {
           break;
         }
 
+        case 'PROGRESS_REPORT': {
+          const id = connections.get(ws);
+          // Only accept progress from the currently active device
+          if (id && id === playbackManager.getState().activeDeviceId) {
+            playbackManager.updateState({
+              position: data.payload.position,
+              timestamp: Date.now(),
+            });
+          }
+          break;
+        }
+
         case 'SET_ACTIVE_DEVICE': {
           playbackManager.updateState({ activeDeviceId: data.payload.id });
           break;

@@ -4,6 +4,9 @@ import { useAuthStore } from '@/stores/auth';
 import { PreserveButton } from '@/components/PreserveButton';
 import { useNavigateAndSearch } from '@/hooks/useNavigateAndSearch';
 import { TrackContextMenu } from '@/components/TrackContextMenu';
+import { useRemotePlaybackStore } from '@/stores/remote-playback';
+import { wsClient } from '@/services/ws-client';
+import { usePlaybackProgress } from '@/hooks/usePlaybackProgress';
 
 export function NowPlaying() {
   const {
@@ -20,14 +23,16 @@ export function NowPlaying() {
     cycleRepeat,
     nowPlayingOpen,
     setNowPlayingOpen,
-    currentTime,
-    duration,
     seek,
     play,
+    autoplayBlocked,
+    setAutoplayBlocked,
   } = usePlayerStore();
   const token = useAuthStore((s) => s.token);
   const navigateAndSearch = useNavigateAndSearch();
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const { remoteIsPlaying } = useRemotePlaybackStore();
+  const { displayTime, displayDuration, isActiveDevice } = usePlaybackProgress();
 
   function formatTime(s: number) {
     if (!Number.isFinite(s) || s < 0) return '0:00';
@@ -37,18 +42,44 @@ export function NowPlaying() {
   }
 
   function handleSeek(e: React.MouseEvent<HTMLDivElement>) {
-    const safeDuration = Number.isFinite(duration) && duration > 0 ? duration : 0;
-    if (!safeDuration) return;
+    const safeDur = Number.isFinite(displayDuration) && displayDuration > 0 ? displayDuration : 0;
+    if (!safeDur) return;
     const rect = e.currentTarget.getBoundingClientRect();
     if (!rect.width) return;
     const pct = (e.clientX - rect.left) / rect.width;
-    seek(Math.max(0, Math.min(1, pct)) * safeDuration);
+    const newTime = Math.max(0, Math.min(1, pct)) * safeDur;
+
+    if (isActiveDevice) {
+      seek(newTime);
+    } else {
+      wsClient.sendCommand('SEEK', { position: newTime });
+      useRemotePlaybackStore.getState().setRemoteProgress(newTime, safeDur);
+    }
+  }
+
+  function handlePlayPause() {
+    if (isActiveDevice) {
+      if (isPlaying) pause();
+      else resume();
+    } else {
+      wsClient.sendCommand(remoteIsPlaying ? 'PAUSE' : 'PLAY');
+    }
   }
 
   function handlePrev() {
-    // In the panel we always go to previous track (Player component handles the 3s check for the mini bar)
-    // Here we just call playPrev directly since user explicitly tapped the button
-    playPrev();
+    if (isActiveDevice) {
+      playPrev();
+    } else {
+      wsClient.sendCommand('PREV');
+    }
+  }
+
+  function handleNext() {
+    if (isActiveDevice) {
+      playNext();
+    } else {
+      wsClient.sendCommand('NEXT');
+    }
   }
 
   function jumpToTrack(index: number) {
@@ -56,13 +87,15 @@ export function NowPlaying() {
     if (track) play(track);
   }
 
-  const safeDuration = Number.isFinite(duration) && duration > 0 ? duration : 0;
+  const safeDuration = Number.isFinite(displayDuration) && displayDuration > 0 ? displayDuration : 0;
   const safeProgress =
-    Number.isFinite(currentTime) && currentTime >= 0
-      ? Math.min(currentTime, safeDuration || currentTime)
+    Number.isFinite(displayTime) && displayTime >= 0
+      ? Math.min(displayTime, safeDuration || displayTime)
       : 0;
   const progressPercent =
     safeDuration > 0 ? Math.max(0, Math.min(100, (safeProgress / safeDuration) * 100)) : 0;
+
+  const showPlaying = isActiveDevice ? isPlaying : remoteIsPlaying;
 
   if (!currentTrack) return null;
 
@@ -137,6 +170,21 @@ export function NowPlaying() {
         </div>
       </div>
 
+      {/* Autoplay blocked indicator */}
+      {autoplayBlocked && (
+        <div className="flex justify-center mb-4">
+          <button
+            onClick={() => {
+              const audio = document.querySelector('audio');
+              if (audio) audio.play().then(() => setAutoplayBlocked(false)).catch(() => {});
+            }}
+            className="px-4 py-2 bg-amber-500/20 border border-amber-500/40 rounded-lg text-amber-300 text-sm"
+          >
+            Tap to start playback
+          </button>
+        </div>
+      )}
+
       {/* Transport controls */}
       <div className="flex items-center justify-center gap-6 mb-6">
         {/* Shuffle */}
@@ -168,10 +216,10 @@ export function NowPlaying() {
 
         {/* Play/Pause */}
         <button
-          onClick={() => (isPlaying ? pause() : resume())}
+          onClick={handlePlayPause}
           className="w-14 h-14 rounded-full bg-zinc-100 text-zinc-900 flex items-center justify-center hover:bg-zinc-200 transition"
         >
-          {isPlaying ? (
+          {showPlaying ? (
             <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
               <rect x="6" y="4" width="4" height="16" />
               <rect x="14" y="4" width="4" height="16" />
@@ -185,7 +233,7 @@ export function NowPlaying() {
 
         {/* Next */}
         <button
-          onClick={playNext}
+          onClick={handleNext}
           className="w-10 h-10 flex items-center justify-center text-zinc-300 hover:text-zinc-100 transition"
         >
           <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
