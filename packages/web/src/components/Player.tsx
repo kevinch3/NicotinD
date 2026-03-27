@@ -1,4 +1,5 @@
-import { useRef, useEffect, useCallback } from 'react';
+import { useRef, useEffect, useCallback, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { usePlayerStore } from '@/stores/player';
 import { useAuthStore } from '@/stores/auth';
 import { PreserveButton } from '@/components/PreserveButton';
@@ -8,7 +9,37 @@ import { wsClient } from '@/services/ws-client';
 import { useNavigateAndSearch } from '@/hooks/useNavigateAndSearch';
 import { usePlaybackProgress } from '@/hooks/usePlaybackProgress';
 
-export function Player() {
+const PLAYER_PORTAL_ID = 'nicotind-player-portal';
+
+function usePlayerPortalContainer() {
+  const [container, setContainer] = useState<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+
+    let portal = document.getElementById(PLAYER_PORTAL_ID) as HTMLElement | null;
+    let created = false;
+
+    if (!portal) {
+      portal = document.createElement('div');
+      portal.id = PLAYER_PORTAL_ID;
+      document.body.appendChild(portal);
+      created = true;
+    }
+
+    setContainer(portal);
+
+    return () => {
+      if (created && portal && portal.parentElement === document.body) {
+        document.body.removeChild(portal);
+      }
+    };
+  }, []);
+
+  return container;
+}
+
+function PlayerContent() {
   const {
     currentTrack,
     isPlaying,
@@ -445,4 +476,10 @@ export function Player() {
       </div>
     </>
   );
+}
+
+export function Player() {
+  const container = usePlayerPortalContainer();
+  if (!container) return null;
+  return createPortal(<PlayerContent />, container);
 }
