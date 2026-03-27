@@ -38,8 +38,16 @@ export const wsHandlers = {
         }
 
         case 'STATE_UPDATE': {
-          // Update server state silently — no re-broadcast, avoids echo loop.
-          playbackManager.updateStateQuiet(data.payload.state);
+          const incoming = data.payload.state;
+          // Broadcast immediately when the active device reports a new track so controllers
+          // see the metadata update without waiting for the next PROGRESS_REPORT.
+          // All other state updates (position, volume, etc.) remain quiet to avoid echo.
+          const currentTrackId = playbackManager.getState().trackId;
+          if (incoming.track !== undefined && incoming.track?.id !== currentTrackId) {
+            playbackManager.updateState(incoming);
+          } else {
+            playbackManager.updateStateQuiet(incoming);
+          }
           break;
         }
 

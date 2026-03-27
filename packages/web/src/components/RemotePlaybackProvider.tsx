@@ -13,22 +13,31 @@ import { useRemotePlaybackStore, RemoteDevice } from '@/stores/remote-playback';
 import { usePlayerStore } from '@/stores/player';
 import type { Track } from '@/stores/player';
 
+
 export function RemotePlaybackProvider({ children }: { children: React.ReactNode }) {
   const setDevices = useRemotePlaybackStore(s => s.setDevices);
   const setActiveDeviceId = useRemotePlaybackStore(s => s.setActiveDeviceId);
   const setRemoteIsPlaying = useRemotePlaybackStore(s => s.setRemoteIsPlaying);
   const setRemoteProgress = useRemotePlaybackStore(s => s.setRemoteProgress);
+  const activeDeviceId = useRemotePlaybackStore(s => s.activeDeviceId);
   const playerPlay = usePlayerStore(s => s.play);
   const playerPause = usePlayerStore(s => s.pause);
   const playerResume = usePlayerStore(s => s.resume);
   const playerSeek = usePlayerStore(s => s.seek);
   const playerPlayNext = usePlayerStore(s => s.playNext);
   const playerPlayPrev = usePlayerStore(s => s.playPrev);
+  const setCurrentTrackMetadata = usePlayerStore(s => s.setCurrentTrackMetadata);
+  const currentTrack = usePlayerStore(s => s.currentTrack);
 
   const myId = wsClient.getDeviceId();
+  const isActiveDevice = !activeDeviceId || activeDeviceId === myId;
+
   // Tracks whether the initial late-join STATE_SYNC has been applied.
   // Prevents playerPlay from re-triggering on every subsequent STATE_SYNC.
   const lateJoinApplied = useRef(false);
+  // Last track ID applied from an incoming COMMAND — used to suppress echo
+  // when the resulting currentTrack change would otherwise send a redundant SET_TRACK.
+  const lastRemoteTrackIdRef = useRef<string | null>(null);
 
   // Connect WS on mount, disconnect on unmount
   useEffect(() => {
@@ -62,16 +71,27 @@ export function RemotePlaybackProvider({ children }: { children: React.ReactNode
         setRemoteProgress(state.position, dur);
       }
 
+      const amActive = state?.activeDeviceId === myId;
+
       // Late-join: if this device is already the active device when it first connects
       // and the server has a track stored, load it now. Only runs ONCE.
-      const amActive = state?.activeDeviceId === myId;
       if (amActive && state?.track && !lateJoinApplied.current) {
         lateJoinApplied.current = true;
         playerPlay(state.track);
         if (state.isPlaying === false) playerPause();
       }
+
+      // Controller: sync remote track metadata so the player bar shows current info.
+      // Uses setCurrentTrackMetadata to avoid clearing queue/history or loading audio.
+      if (!amActive && state?.track) {
+        const localTrack = usePlayerStore.getState().currentTrack;
+        if (state.track.id !== localTrack?.id) {
+          lastRemoteTrackIdRef.current = state.track.id;
+          setCurrentTrackMetadata(state.track);
+        }
+      }
     });
-  }, [setActiveDeviceId, setDevices, setRemoteIsPlaying, setRemoteProgress, playerPlay, playerPause, myId]);
+  }, [setActiveDeviceId, setDevices, setRemoteIsPlaying, setRemoteProgress, playerPlay, playerPause, setCurrentTrackMetadata, myId]);
 
   // Handle device list updates
   useEffect(() => {
@@ -95,11 +115,29 @@ export function RemotePlaybackProvider({ children }: { children: React.ReactNode
       if (action === 'PLAY')  playerResume();
       if (action === 'PAUSE') playerPause();
       if (action === 'SEEK' && payload.position !== undefined) playerSeek(payload.position);
-      if (action === 'SET_TRACK' && payload.track) playerPlay(payload.track);
+      if (action === 'SET_TRACK' && payload.track) {
+        lastRemoteTrackIdRef.current = payload.track.id;
+        playerPlay(payload.track);
+      }
       if (action === 'NEXT')  playerPlayNext();
       if (action === 'PREV')  playerPlayPrev();
     });
   }, [myId, playerResume, playerPause, playerSeek, playerPlay, playerPlayNext, playerPlayPrev]);
+
+  // Scenario A: Controller picks a new song → send SET_TRACK to the active device.
+  // Echo protection: skip if this track was just applied from an incoming COMMAND/STATE_SYNC.
+  useEffect(() => {
+    if (isActiveDevice || !currentTrack) return;
+    if (currentTrack.id === lastRemoteTrackIdRef.current) return;
+    wsClient.sendCommand('SET_TRACK', { track: currentTrack });
+  }, [currentTrack, isActiveDevice]);
+
+  // Scenario B: Active device changes track locally → push metadata to server so controllers
+  // see the new song info immediately (server will broadcast STATE_SYNC on STATE_UPDATE).
+  useEffect(() => {
+    if (!isActiveDevice || !currentTrack) return;
+    wsClient.sendStateUpdate({ track: currentTrack, trackId: currentTrack.id, isPlaying: true, position: 0 });
+  }, [currentTrack, isActiveDevice]);
 
   return <>{children}</>;
 }

@@ -46,6 +46,7 @@ interface PlayerState {
   setNowPlayingOpen: (open: boolean) => void;
   setCurrentTime: (time: number) => void;
   setDuration: (duration: number) => void;
+  setCurrentTrackMetadata: (track: Track) => void;
   seekTo: number | null;
   seek: (time: number) => void;
   clearSeek: () => void;
@@ -196,6 +197,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   setDuration: (d) => set({ duration: d }),
   seek: (time) => set({ seekTo: time }),
   clearSeek: () => set({ seekTo: null }),
+  setCurrentTrackMetadata: (track) => set({ currentTrack: track }),
   autoplayBlocked: false,
   setAutoplayBlocked: (blocked) => set({ autoplayBlocked: blocked }),
 }));

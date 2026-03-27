@@ -132,7 +132,7 @@ describe('wsHandlers', () => {
   });
 
   describe('STATE_UPDATE', () => {
-    it('calls updateStateQuiet — no broadcast', () => {
+    it('calls updateStateQuiet for position updates — no broadcast', () => {
       const ws = createMockWs();
       wsHandlers.onOpen!({} as Event, ws);
 
@@ -144,6 +144,55 @@ describe('wsHandlers', () => {
 
       expect(mockManager.updateStateQuiet).toHaveBeenCalledWith(statePartial);
       expect(mockManager.updateStateQuiet).toHaveBeenCalledTimes(1);
+      expect(mockManager.updateState).not.toHaveBeenCalled();
+    });
+
+    it('calls updateState (broadcast) when track id changes', () => {
+      const ws = createMockWs();
+      wsHandlers.onOpen!({} as Event, ws);
+
+      mockManager.getState.mockReturnValue(defaultState({ trackId: 'old-track' }));
+
+      const newTrack = { id: 'new-track', title: 'New Song', artist: 'Artist' };
+      wsHandlers.onMessage!(
+        createEvent({ type: 'STATE_UPDATE', payload: { state: { track: newTrack, trackId: 'new-track', isPlaying: true, position: 0 } } }),
+        ws,
+      );
+
+      expect(mockManager.updateState).toHaveBeenCalledTimes(1);
+      expect(mockManager.updateStateQuiet).not.toHaveBeenCalled();
+    });
+
+    it('calls updateStateQuiet when track id is unchanged', () => {
+      const ws = createMockWs();
+      wsHandlers.onOpen!({} as Event, ws);
+
+      const track = { id: 'same-track', title: 'Song', artist: 'Artist' };
+      mockManager.getState.mockReturnValue(defaultState({ trackId: 'same-track', track }));
+
+      wsHandlers.onMessage!(
+        createEvent({ type: 'STATE_UPDATE', payload: { state: { track, position: 10 } } }),
+        ws,
+      );
+
+      expect(mockManager.updateStateQuiet).toHaveBeenCalledTimes(1);
+      expect(mockManager.updateState).not.toHaveBeenCalled();
+    });
+
+    it('calls updateState (broadcast) when track changes from null', () => {
+      const ws = createMockWs();
+      wsHandlers.onOpen!({} as Event, ws);
+
+      mockManager.getState.mockReturnValue(defaultState({ trackId: null, track: null }));
+
+      const newTrack = { id: 'first-track', title: 'First Song', artist: 'Artist' };
+      wsHandlers.onMessage!(
+        createEvent({ type: 'STATE_UPDATE', payload: { state: { track: newTrack } } }),
+        ws,
+      );
+
+      expect(mockManager.updateState).toHaveBeenCalledTimes(1);
+      expect(mockManager.updateStateQuiet).not.toHaveBeenCalled();
     });
   });
 

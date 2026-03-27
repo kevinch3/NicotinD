@@ -40,10 +40,17 @@ export function Player() {
   const audioRef = useRef<HTMLAudioElement>(null);
   const { displayTime, displayDuration } = usePlaybackProgress();
 
-  // Load track
+  // Load track — only drive audio on the active device.
+  // Controllers skip audio loading; play/pause sync and src clearing happen here too.
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
+
+    if (!isActiveDevice) {
+      audio.pause();
+      audio.src = '';
+      return;
+    }
 
     if (currentTrack) {
       setCurrentTime(0);
@@ -58,7 +65,7 @@ export function Player() {
       setCurrentTime(0);
       setDuration(0);
     }
-  }, [currentTrack, token, setCurrentTime, setDuration]);
+  }, [currentTrack, token, setCurrentTime, setDuration, isActiveDevice]);
 
   // Media Session: update metadata when track changes
   useEffect(() => {
