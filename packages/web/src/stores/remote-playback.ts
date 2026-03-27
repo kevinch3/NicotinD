@@ -48,6 +48,7 @@ export const useRemotePlaybackStore = create<RemotePlaybackState>((set) => ({
 
   setRemoteEnabled: (enabled) => {
     localStorage.setItem('nicotind_remote_enabled', String(enabled));
+    wsClient.updateDevice({ remoteEnabled: enabled });
     set({ remoteEnabled: enabled });
   },
   setDevices: (devices) => set({ devices }),

@@ -28,7 +28,7 @@ export function SettingsPage() {
   const [tsMessage, setTsMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Remote playback state
-  const { remoteEnabled, setRemoteEnabled, devices } = useRemotePlaybackStore();
+  const { remoteEnabled, setRemoteEnabled, devices, activeDeviceId } = useRemotePlaybackStore();
   const myDeviceId = wsClient.getDeviceId();
   const [deviceName, setDeviceName] = useState(wsClient.getDeviceName());
   const [deviceNameSaved, setDeviceNameSaved] = useState(false);
@@ -441,10 +441,15 @@ export function SettingsPage() {
               />
             </button>
             <div>
-              <p className="text-sm text-zinc-200">Allow remote control</p>
+              <p className="text-sm text-zinc-200">Make this device available as an audio output</p>
               <p className="text-xs text-zinc-500 mt-0.5">
-                Let other devices on your account control playback on this device.
+                When enabled, other devices on your account can cast audio to this device.
               </p>
+              {!remoteEnabled && (
+                <p className="text-xs text-amber-500/80 mt-1">
+                  This device is hidden from the device selector on other devices.
+                </p>
+              )}
             </div>
           </div>
 
@@ -483,6 +488,7 @@ export function SettingsPage() {
               <ul className="space-y-1">
                 {devices.map(device => {
                   const isMe = device.id === myDeviceId;
+                  const isHost = device.id === activeDeviceId;
                   const emoji = device.type === 'web'
                     ? (/iPhone|iPad|Android/i.test(device.name) ? '📱' : '🖥️')
                     : '🎵';
@@ -493,6 +499,11 @@ export function SettingsPage() {
                         {device.name}
                       </span>
                       {isMe && <span className="text-xs text-zinc-600">(this device)</span>}
+                      {isHost && (
+                        <span className="ml-auto text-[10px] font-semibold tracking-wide px-1.5 py-0.5 rounded bg-emerald-900/60 text-emerald-400">
+                          HOST
+                        </span>
+                      )}
                     </li>
                   );
                 })}

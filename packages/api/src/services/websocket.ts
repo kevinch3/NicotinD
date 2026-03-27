@@ -19,6 +19,7 @@ export const wsHandlers = {
             id,
             name: data.payload.name,
             type: data.payload.deviceType || 'web',
+            remoteEnabled: data.payload.remoteEnabled !== false,
           });
 
           ws.send(JSON.stringify({
@@ -67,7 +68,7 @@ export const wsHandlers = {
             playbackManager.updateState({
               trackId: data.payload.track?.id ?? null,
               track: data.payload.track ?? null,
-              isPlaying: false,
+              isPlaying: true,
               position: 0,
             });
           }
@@ -93,6 +94,17 @@ export const wsHandlers = {
 
         case 'SET_ACTIVE_DEVICE': {
           playbackManager.updateState({ activeDeviceId: data.payload.id });
+          break;
+        }
+
+        case 'UPDATE_DEVICE': {
+          const id = connections.get(ws);
+          if (id) {
+            playbackManager.updateDevice(id, {
+              remoteEnabled: data.payload.remoteEnabled,
+              ...(data.payload.name !== undefined && { name: data.payload.name }),
+            });
+          }
           break;
         }
       }

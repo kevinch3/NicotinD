@@ -110,6 +110,8 @@ export function RemotePlaybackProvider({ children }: { children: React.ReactNode
       // device switch.
       const currentActiveId = useRemotePlaybackStore.getState().activeDeviceId;
       if (currentActiveId !== myId) return;
+      const remoteEnabled = useRemotePlaybackStore.getState().remoteEnabled;
+      if (!remoteEnabled) return;
 
       const { action } = payload;
       if (action === 'PLAY')  playerResume();

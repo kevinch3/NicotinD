@@ -26,6 +26,7 @@ export type Device = {
   name: string;
   type: string;
   lastSeen: number;
+  remoteEnabled: boolean;
 };
 
 export class PlaybackStateManager extends EventEmitter {
@@ -54,7 +55,7 @@ export class PlaybackStateManager extends EventEmitter {
   }
 
   getDevices() {
-    return Array.from(this.devices.values());
+    return Array.from(this.devices.values()).filter(d => d.remoteEnabled);
   }
 
   /** Remove devices that haven't sent a heartbeat within the timeout window. */
@@ -78,9 +79,17 @@ export class PlaybackStateManager extends EventEmitter {
     this.state = { ...this.state, ...partial, timestamp: Date.now() };
   }
 
-  registerDevice(device: Omit<Device, 'lastSeen'>) {
-    this.devices.set(device.id, { ...device, lastSeen: Date.now() });
+  registerDevice(device: Omit<Device, 'lastSeen' | 'remoteEnabled'> & { remoteEnabled?: boolean }) {
+    this.devices.set(device.id, { ...device, remoteEnabled: device.remoteEnabled ?? true, lastSeen: Date.now() });
     this.emit('devices_update', this.getDevices());
+  }
+
+  updateDevice(id: string, fields: Partial<Pick<Device, 'remoteEnabled' | 'name'>>) {
+    const device = this.devices.get(id);
+    if (device) {
+      this.devices.set(id, { ...device, ...fields });
+      this.emit('devices_update', this.getDevices());
+    }
   }
 
   unregisterDevice(id: string) {
