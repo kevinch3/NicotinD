@@ -111,5 +111,3 @@ export class PlaybackStateManager extends EventEmitter {
     this.emit('command', payload);
   }
 }
-
-export const playbackManager = new PlaybackStateManager();

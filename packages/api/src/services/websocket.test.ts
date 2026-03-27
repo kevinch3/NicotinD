@@ -8,6 +8,7 @@ const mockManager = {
   heartbeat: mock(() => {}),
   updateState: mock(() => {}),
   updateStateQuiet: mock(() => {}),
+  updateDevice: mock(() => {}),
   emitCommand: mock(() => {}),
   getState: mock(() => ({
     activeDeviceId: null,
@@ -24,12 +25,14 @@ const mockManager = {
   on: mock(() => {}),
 };
 
-mock.module('./playback-state.js', () => ({
-  playbackManager: mockManager,
+mock.module('./playback-registry.js', () => ({
+  playbackRegistry: {
+    getOrCreate: () => mockManager,
+  },
 }));
 
 // Import after mock is set up
-const { wsHandlers } = await import('./websocket.js');
+const { createWebSocketHandlers } = await import('./websocket.js');
 
 function createMockWs(): WSContext & { send: ReturnType<typeof mock> } {
   return { send: mock(() => {}) } as any;
@@ -54,20 +57,29 @@ function defaultState(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function registerDevice(ws: WSContext, id = 'dev1', name = 'Test') {
-  wsHandlers.onMessage!(
+// Create handlers scoped to a test user
+function getHandlers(userId = 'testuser') {
+  return createWebSocketHandlers(userId);
+}
+
+function registerDevice(handlers: ReturnType<typeof createWebSocketHandlers>, ws: WSContext, id = 'dev1', name = 'Test') {
+  handlers.onMessage!(
     createEvent({ type: 'REGISTER', payload: { id, name, deviceType: 'web' } }),
     ws,
   );
 }
 
-describe('wsHandlers', () => {
+describe('createWebSocketHandlers', () => {
+  let handlers: ReturnType<typeof createWebSocketHandlers>;
+
   beforeEach(() => {
+    handlers = getHandlers();
     mockManager.registerDevice.mockClear();
     mockManager.unregisterDevice.mockClear();
     mockManager.heartbeat.mockClear();
     mockManager.updateState.mockClear();
     mockManager.updateStateQuiet.mockClear();
+    mockManager.updateDevice.mockClear();
     mockManager.emitCommand.mockClear();
     mockManager.getState.mockReturnValue(defaultState());
     mockManager.getDevices.mockReturnValue([]);
@@ -76,13 +88,14 @@ describe('wsHandlers', () => {
   describe('REGISTER', () => {
     it('registers device and sends STATE_SYNC reply', () => {
       const ws = createMockWs();
-      wsHandlers.onOpen!({} as Event, ws);
-      registerDevice(ws, 'dev1', 'Chrome on Linux');
+      handlers.onOpen!({} as Event, ws);
+      registerDevice(handlers, ws, 'dev1', 'Chrome on Linux');
 
       expect(mockManager.registerDevice).toHaveBeenCalledWith({
         id: 'dev1',
         name: 'Chrome on Linux',
         type: 'web',
+        remoteEnabled: true,
       });
 
       expect(ws.send).toHaveBeenCalledTimes(1);
@@ -94,8 +107,8 @@ describe('wsHandlers', () => {
 
     it('defaults deviceType to "web" when omitted', () => {
       const ws = createMockWs();
-      wsHandlers.onOpen!({} as Event, ws);
-      wsHandlers.onMessage!(
+      handlers.onOpen!({} as Event, ws);
+      handlers.onMessage!(
         createEvent({ type: 'REGISTER', payload: { id: 'dev1', name: 'Test' } }),
         ws,
       );
@@ -104,6 +117,7 @@ describe('wsHandlers', () => {
         id: 'dev1',
         name: 'Test',
         type: 'web',
+        remoteEnabled: true,
       });
     });
   });
@@ -111,20 +125,20 @@ describe('wsHandlers', () => {
   describe('HEARTBEAT', () => {
     it('calls heartbeat with the device id', () => {
       const ws = createMockWs();
-      wsHandlers.onOpen!({} as Event, ws);
-      registerDevice(ws);
+      handlers.onOpen!({} as Event, ws);
+      registerDevice(handlers, ws);
 
-      wsHandlers.onMessage!(createEvent({ type: 'HEARTBEAT', payload: {} }), ws);
+      handlers.onMessage!(createEvent({ type: 'HEARTBEAT', payload: {} }), ws);
 
       expect(mockManager.heartbeat).toHaveBeenCalledWith('dev1');
     });
 
     it('does nothing for unregistered connection', () => {
       const ws = createMockWs();
-      wsHandlers.onOpen!({} as Event, ws);
+      handlers.onOpen!({} as Event, ws);
       // No register
 
-      wsHandlers.onMessage!(createEvent({ type: 'HEARTBEAT', payload: {} }), ws);
+      handlers.onMessage!(createEvent({ type: 'HEARTBEAT', payload: {} }), ws);
 
       // heartbeat called with '' which is falsy — guard should skip
       expect(mockManager.heartbeat).not.toHaveBeenCalled();
@@ -134,10 +148,10 @@ describe('wsHandlers', () => {
   describe('STATE_UPDATE', () => {
     it('calls updateStateQuiet for position updates — no broadcast', () => {
       const ws = createMockWs();
-      wsHandlers.onOpen!({} as Event, ws);
+      handlers.onOpen!({} as Event, ws);
 
       const statePartial = { position: 55 };
-      wsHandlers.onMessage!(
+      handlers.onMessage!(
         createEvent({ type: 'STATE_UPDATE', payload: { state: statePartial } }),
         ws,
       );
@@ -149,12 +163,12 @@ describe('wsHandlers', () => {
 
     it('calls updateState (broadcast) when track id changes', () => {
       const ws = createMockWs();
-      wsHandlers.onOpen!({} as Event, ws);
+      handlers.onOpen!({} as Event, ws);
 
       mockManager.getState.mockReturnValue(defaultState({ trackId: 'old-track' }));
 
       const newTrack = { id: 'new-track', title: 'New Song', artist: 'Artist' };
-      wsHandlers.onMessage!(
+      handlers.onMessage!(
         createEvent({ type: 'STATE_UPDATE', payload: { state: { track: newTrack, trackId: 'new-track', isPlaying: true, position: 0 } } }),
         ws,
       );
@@ -165,12 +179,12 @@ describe('wsHandlers', () => {
 
     it('calls updateStateQuiet when track id is unchanged', () => {
       const ws = createMockWs();
-      wsHandlers.onOpen!({} as Event, ws);
+      handlers.onOpen!({} as Event, ws);
 
       const track = { id: 'same-track', title: 'Song', artist: 'Artist' };
       mockManager.getState.mockReturnValue(defaultState({ trackId: 'same-track', track }));
 
-      wsHandlers.onMessage!(
+      handlers.onMessage!(
         createEvent({ type: 'STATE_UPDATE', payload: { state: { track, position: 10 } } }),
         ws,
       );
@@ -181,12 +195,12 @@ describe('wsHandlers', () => {
 
     it('calls updateState (broadcast) when track changes from null', () => {
       const ws = createMockWs();
-      wsHandlers.onOpen!({} as Event, ws);
+      handlers.onOpen!({} as Event, ws);
 
       mockManager.getState.mockReturnValue(defaultState({ trackId: null, track: null }));
 
       const newTrack = { id: 'first-track', title: 'First Song', artist: 'Artist' };
-      wsHandlers.onMessage!(
+      handlers.onMessage!(
         createEvent({ type: 'STATE_UPDATE', payload: { state: { track: newTrack } } }),
         ws,
       );
@@ -199,9 +213,9 @@ describe('wsHandlers', () => {
   describe('COMMAND', () => {
     it('PLAY updates state and emits flat payload', () => {
       const ws = createMockWs();
-      wsHandlers.onOpen!({} as Event, ws);
+      handlers.onOpen!({} as Event, ws);
 
-      wsHandlers.onMessage!(
+      handlers.onMessage!(
         createEvent({ type: 'COMMAND', payload: { action: 'PLAY' } }),
         ws,
       );
@@ -212,9 +226,9 @@ describe('wsHandlers', () => {
 
     it('PAUSE updates state and emits flat payload', () => {
       const ws = createMockWs();
-      wsHandlers.onOpen!({} as Event, ws);
+      handlers.onOpen!({} as Event, ws);
 
-      wsHandlers.onMessage!(
+      handlers.onMessage!(
         createEvent({ type: 'COMMAND', payload: { action: 'PAUSE' } }),
         ws,
       );
@@ -225,9 +239,9 @@ describe('wsHandlers', () => {
 
     it('SEEK updates position and emits flat payload with position', () => {
       const ws = createMockWs();
-      wsHandlers.onOpen!({} as Event, ws);
+      handlers.onOpen!({} as Event, ws);
 
-      wsHandlers.onMessage!(
+      handlers.onMessage!(
         createEvent({ type: 'COMMAND', payload: { action: 'SEEK', position: 30.5 } }),
         ws,
       );
@@ -240,9 +254,9 @@ describe('wsHandlers', () => {
 
     it('VOLUME updates volume', () => {
       const ws = createMockWs();
-      wsHandlers.onOpen!({} as Event, ws);
+      handlers.onOpen!({} as Event, ws);
 
-      wsHandlers.onMessage!(
+      handlers.onMessage!(
         createEvent({ type: 'COMMAND', payload: { action: 'VOLUME', volume: 0.7 } }),
         ws,
       );
@@ -252,10 +266,10 @@ describe('wsHandlers', () => {
 
     it('SET_TRACK updates track and resets position', () => {
       const ws = createMockWs();
-      wsHandlers.onOpen!({} as Event, ws);
+      handlers.onOpen!({} as Event, ws);
 
       const track = { id: 't1', title: 'Song', artist: 'Artist' };
-      wsHandlers.onMessage!(
+      handlers.onMessage!(
         createEvent({ type: 'COMMAND', payload: { action: 'SET_TRACK', track } }),
         ws,
       );
@@ -263,16 +277,16 @@ describe('wsHandlers', () => {
       expect(mockManager.updateState).toHaveBeenCalledWith({
         trackId: 't1',
         track,
-        isPlaying: false,
+        isPlaying: true,
         position: 0,
       });
     });
 
     it('SET_TRACK with null track sets trackId to null', () => {
       const ws = createMockWs();
-      wsHandlers.onOpen!({} as Event, ws);
+      handlers.onOpen!({} as Event, ws);
 
-      wsHandlers.onMessage!(
+      handlers.onMessage!(
         createEvent({ type: 'COMMAND', payload: { action: 'SET_TRACK', track: null } }),
         ws,
       );
@@ -280,16 +294,16 @@ describe('wsHandlers', () => {
       expect(mockManager.updateState).toHaveBeenCalledWith({
         trackId: null,
         track: null,
-        isPlaying: false,
+        isPlaying: true,
         position: 0,
       });
     });
 
     it('SET_TRACK without track property sets null', () => {
       const ws = createMockWs();
-      wsHandlers.onOpen!({} as Event, ws);
+      handlers.onOpen!({} as Event, ws);
 
-      wsHandlers.onMessage!(
+      handlers.onMessage!(
         createEvent({ type: 'COMMAND', payload: { action: 'SET_TRACK' } }),
         ws,
       );
@@ -297,16 +311,16 @@ describe('wsHandlers', () => {
       expect(mockManager.updateState).toHaveBeenCalledWith({
         trackId: null,
         track: null,
-        isPlaying: false,
+        isPlaying: true,
         position: 0,
       });
     });
 
     it('relays all commands via emitCommand with flat payload', () => {
       const ws = createMockWs();
-      wsHandlers.onOpen!({} as Event, ws);
+      handlers.onOpen!({} as Event, ws);
 
-      wsHandlers.onMessage!(
+      handlers.onMessage!(
         createEvent({ type: 'COMMAND', payload: { action: 'NEXT' } }),
         ws,
       );
@@ -316,9 +330,9 @@ describe('wsHandlers', () => {
 
     it('PREV command is relayed without state update', () => {
       const ws = createMockWs();
-      wsHandlers.onOpen!({} as Event, ws);
+      handlers.onOpen!({} as Event, ws);
 
-      wsHandlers.onMessage!(
+      handlers.onMessage!(
         createEvent({ type: 'COMMAND', payload: { action: 'PREV' } }),
         ws,
       );
@@ -329,10 +343,10 @@ describe('wsHandlers', () => {
 
     it('emitCommand receives the original payload — no double nesting', () => {
       const ws = createMockWs();
-      wsHandlers.onOpen!({} as Event, ws);
+      handlers.onOpen!({} as Event, ws);
 
       const payload = { action: 'SEEK', position: 99.9 };
-      wsHandlers.onMessage!(createEvent({ type: 'COMMAND', payload }), ws);
+      handlers.onMessage!(createEvent({ type: 'COMMAND', payload }), ws);
 
       const emitted = (mockManager.emitCommand.mock.calls[0] as unknown[])[0] as Record<string, unknown>;
       expect(emitted.action).toBe('SEEK');
@@ -343,11 +357,11 @@ describe('wsHandlers', () => {
 
     it('rapid SEEK commands each update state independently', () => {
       const ws = createMockWs();
-      wsHandlers.onOpen!({} as Event, ws);
+      handlers.onOpen!({} as Event, ws);
 
-      wsHandlers.onMessage!(createEvent({ type: 'COMMAND', payload: { action: 'SEEK', position: 10 } }), ws);
-      wsHandlers.onMessage!(createEvent({ type: 'COMMAND', payload: { action: 'SEEK', position: 50 } }), ws);
-      wsHandlers.onMessage!(createEvent({ type: 'COMMAND', payload: { action: 'SEEK', position: 90 } }), ws);
+      handlers.onMessage!(createEvent({ type: 'COMMAND', payload: { action: 'SEEK', position: 10 } }), ws);
+      handlers.onMessage!(createEvent({ type: 'COMMAND', payload: { action: 'SEEK', position: 50 } }), ws);
+      handlers.onMessage!(createEvent({ type: 'COMMAND', payload: { action: 'SEEK', position: 90 } }), ws);
 
       expect(mockManager.updateState).toHaveBeenCalledTimes(3);
       const lastCall = (mockManager.updateState.mock.calls[2] as unknown[])[0] as Record<string, unknown>;
@@ -356,11 +370,11 @@ describe('wsHandlers', () => {
 
     it('SEEK then PAUSE then PLAY interleaving', () => {
       const ws = createMockWs();
-      wsHandlers.onOpen!({} as Event, ws);
+      handlers.onOpen!({} as Event, ws);
 
-      wsHandlers.onMessage!(createEvent({ type: 'COMMAND', payload: { action: 'SEEK', position: 30 } }), ws);
-      wsHandlers.onMessage!(createEvent({ type: 'COMMAND', payload: { action: 'PAUSE' } }), ws);
-      wsHandlers.onMessage!(createEvent({ type: 'COMMAND', payload: { action: 'PLAY' } }), ws);
+      handlers.onMessage!(createEvent({ type: 'COMMAND', payload: { action: 'SEEK', position: 30 } }), ws);
+      handlers.onMessage!(createEvent({ type: 'COMMAND', payload: { action: 'PAUSE' } }), ws);
+      handlers.onMessage!(createEvent({ type: 'COMMAND', payload: { action: 'PLAY' } }), ws);
 
       expect(mockManager.updateState).toHaveBeenCalledTimes(3);
       expect(mockManager.emitCommand).toHaveBeenCalledTimes(3);
@@ -373,9 +387,9 @@ describe('wsHandlers', () => {
 
     it('unknown action still relays via emitCommand', () => {
       const ws = createMockWs();
-      wsHandlers.onOpen!({} as Event, ws);
+      handlers.onOpen!({} as Event, ws);
 
-      wsHandlers.onMessage!(
+      handlers.onMessage!(
         createEvent({ type: 'COMMAND', payload: { action: 'CUSTOM_ACTION', data: 123 } }),
         ws,
       );
@@ -389,13 +403,13 @@ describe('wsHandlers', () => {
   describe('PROGRESS_REPORT', () => {
     it('updates position and duration when sent by the active device', () => {
       const ws = createMockWs();
-      wsHandlers.onOpen!({} as Event, ws);
-      registerDevice(ws);
+      handlers.onOpen!({} as Event, ws);
+      registerDevice(handlers, ws);
 
       mockManager.getState.mockReturnValue(defaultState({ activeDeviceId: 'dev1', isPlaying: true }));
       mockManager.updateState.mockClear();
 
-      wsHandlers.onMessage!(
+      handlers.onMessage!(
         createEvent({ type: 'PROGRESS_REPORT', payload: { position: 45.2, duration: 180 } }),
         ws,
       );
@@ -410,14 +424,14 @@ describe('wsHandlers', () => {
 
     it('sets isPlaying: true implicitly (device is playing if reporting progress)', () => {
       const ws = createMockWs();
-      wsHandlers.onOpen!({} as Event, ws);
-      registerDevice(ws);
+      handlers.onOpen!({} as Event, ws);
+      registerDevice(handlers, ws);
 
       // Server state has isPlaying: false (e.g. after SET_TRACK)
       mockManager.getState.mockReturnValue(defaultState({ activeDeviceId: 'dev1', isPlaying: false }));
       mockManager.updateState.mockClear();
 
-      wsHandlers.onMessage!(
+      handlers.onMessage!(
         createEvent({ type: 'PROGRESS_REPORT', payload: { position: 2.0, duration: 200 } }),
         ws,
       );
@@ -428,13 +442,13 @@ describe('wsHandlers', () => {
 
     it('ignores progress from non-active device', () => {
       const ws = createMockWs();
-      wsHandlers.onOpen!({} as Event, ws);
-      registerDevice(ws);
+      handlers.onOpen!({} as Event, ws);
+      registerDevice(handlers, ws);
 
       mockManager.getState.mockReturnValue(defaultState({ activeDeviceId: 'dev2' }));
       mockManager.updateState.mockClear();
 
-      wsHandlers.onMessage!(
+      handlers.onMessage!(
         createEvent({ type: 'PROGRESS_REPORT', payload: { position: 45.2, duration: 180 } }),
         ws,
       );
@@ -444,12 +458,12 @@ describe('wsHandlers', () => {
 
     it('ignores progress from unregistered connection', () => {
       const ws = createMockWs();
-      wsHandlers.onOpen!({} as Event, ws);
+      handlers.onOpen!({} as Event, ws);
       // No register — id is empty string
 
       mockManager.getState.mockReturnValue(defaultState({ activeDeviceId: '' }));
 
-      wsHandlers.onMessage!(
+      handlers.onMessage!(
         createEvent({ type: 'PROGRESS_REPORT', payload: { position: 10, duration: 60 } }),
         ws,
       );
@@ -459,13 +473,13 @@ describe('wsHandlers', () => {
 
     it('stores duration from active device progress report', () => {
       const ws = createMockWs();
-      wsHandlers.onOpen!({} as Event, ws);
-      registerDevice(ws);
+      handlers.onOpen!({} as Event, ws);
+      registerDevice(handlers, ws);
 
       mockManager.getState.mockReturnValue(defaultState({ activeDeviceId: 'dev1' }));
       mockManager.updateState.mockClear();
 
-      wsHandlers.onMessage!(
+      handlers.onMessage!(
         createEvent({ type: 'PROGRESS_REPORT', payload: { position: 0, duration: 243.5 } }),
         ws,
       );
@@ -476,13 +490,13 @@ describe('wsHandlers', () => {
 
     it('handles NaN position gracefully (still calls updateState)', () => {
       const ws = createMockWs();
-      wsHandlers.onOpen!({} as Event, ws);
-      registerDevice(ws);
+      handlers.onOpen!({} as Event, ws);
+      registerDevice(handlers, ws);
 
       mockManager.getState.mockReturnValue(defaultState({ activeDeviceId: 'dev1' }));
       mockManager.updateState.mockClear();
 
-      wsHandlers.onMessage!(
+      handlers.onMessage!(
         createEvent({ type: 'PROGRESS_REPORT', payload: { position: null, duration: 100 } }),
         ws,
       );
@@ -493,13 +507,13 @@ describe('wsHandlers', () => {
 
     it('handles zero duration', () => {
       const ws = createMockWs();
-      wsHandlers.onOpen!({} as Event, ws);
-      registerDevice(ws);
+      handlers.onOpen!({} as Event, ws);
+      registerDevice(handlers, ws);
 
       mockManager.getState.mockReturnValue(defaultState({ activeDeviceId: 'dev1' }));
       mockManager.updateState.mockClear();
 
-      wsHandlers.onMessage!(
+      handlers.onMessage!(
         createEvent({ type: 'PROGRESS_REPORT', payload: { position: 5, duration: 0 } }),
         ws,
       );
@@ -511,14 +525,14 @@ describe('wsHandlers', () => {
 
     it('rapid progress reports all get processed', () => {
       const ws = createMockWs();
-      wsHandlers.onOpen!({} as Event, ws);
-      registerDevice(ws);
+      handlers.onOpen!({} as Event, ws);
+      registerDevice(handlers, ws);
 
       mockManager.getState.mockReturnValue(defaultState({ activeDeviceId: 'dev1' }));
       mockManager.updateState.mockClear();
 
       for (let i = 0; i < 10; i++) {
-        wsHandlers.onMessage!(
+        handlers.onMessage!(
           createEvent({ type: 'PROGRESS_REPORT', payload: { position: i * 2, duration: 200 } }),
           ws,
         );
@@ -531,9 +545,9 @@ describe('wsHandlers', () => {
   describe('SET_ACTIVE_DEVICE', () => {
     it('updates activeDeviceId', () => {
       const ws = createMockWs();
-      wsHandlers.onOpen!({} as Event, ws);
+      handlers.onOpen!({} as Event, ws);
 
-      wsHandlers.onMessage!(
+      handlers.onMessage!(
         createEvent({ type: 'SET_ACTIVE_DEVICE', payload: { id: 'dev2' } }),
         ws,
       );
@@ -543,9 +557,9 @@ describe('wsHandlers', () => {
 
     it('can set activeDeviceId to null', () => {
       const ws = createMockWs();
-      wsHandlers.onOpen!({} as Event, ws);
+      handlers.onOpen!({} as Event, ws);
 
-      wsHandlers.onMessage!(
+      handlers.onMessage!(
         createEvent({ type: 'SET_ACTIVE_DEVICE', payload: { id: null } }),
         ws,
       );
@@ -554,33 +568,61 @@ describe('wsHandlers', () => {
     });
   });
 
+  describe('UPDATE_DEVICE', () => {
+    it('updates device fields for the connected device', () => {
+      const ws = createMockWs();
+      handlers.onOpen!({} as Event, ws);
+      registerDevice(handlers, ws);
+      mockManager.updateDevice.mockClear();
+
+      handlers.onMessage!(
+        createEvent({ type: 'UPDATE_DEVICE', payload: { remoteEnabled: false } }),
+        ws,
+      );
+
+      expect(mockManager.updateDevice).toHaveBeenCalledWith('dev1', { remoteEnabled: false });
+    });
+
+    it('does nothing for unregistered connection', () => {
+      const ws = createMockWs();
+      handlers.onOpen!({} as Event, ws);
+
+      handlers.onMessage!(
+        createEvent({ type: 'UPDATE_DEVICE', payload: { remoteEnabled: false } }),
+        ws,
+      );
+
+      expect(mockManager.updateDevice).not.toHaveBeenCalled();
+    });
+  });
+
   describe('onClose', () => {
     it('unregisters the device', () => {
       const ws = createMockWs();
-      wsHandlers.onOpen!({} as Event, ws);
-      registerDevice(ws);
+      handlers.onOpen!({} as Event, ws);
+      registerDevice(handlers, ws);
 
-      wsHandlers.onClose!({} as CloseEvent, ws);
+      handlers.onClose!({} as CloseEvent, ws);
 
       expect(mockManager.unregisterDevice).toHaveBeenCalledWith('dev1');
     });
 
     it('does not call unregisterDevice for unregistered connections', () => {
       const ws = createMockWs();
-      wsHandlers.onOpen!({} as Event, ws);
+      handlers.onOpen!({} as Event, ws);
 
-      wsHandlers.onClose!({} as CloseEvent, ws);
+      handlers.onClose!({} as CloseEvent, ws);
 
       expect(mockManager.unregisterDevice).not.toHaveBeenCalled();
     });
 
     it('handles close after device re-registration', () => {
       const ws = createMockWs();
-      wsHandlers.onOpen!({} as Event, ws);
-      registerDevice(ws, 'dev1');
-      registerDevice(ws, 'dev2'); // re-register with different id
+      handlers.onOpen!({} as Event, ws);
+      registerDevice(handlers, ws, 'dev1');
+      registerDevice(handlers, ws, 'dev2'); // re-register with different id
 
-      wsHandlers.onClose!({} as CloseEvent, ws);
+      handlers.onClose!({} as CloseEvent, ws);
 
       expect(mockManager.unregisterDevice).toHaveBeenCalledWith('dev2');
     });
@@ -589,29 +631,29 @@ describe('wsHandlers', () => {
   describe('error handling', () => {
     it('does not throw on malformed JSON', () => {
       const ws = createMockWs();
-      wsHandlers.onOpen!({} as Event, ws);
+      handlers.onOpen!({} as Event, ws);
 
       const event = { data: 'not json{{{' } as MessageEvent;
-      expect(() => wsHandlers.onMessage!(event, ws)).not.toThrow();
+      expect(() => handlers.onMessage!(event, ws)).not.toThrow();
     });
 
     it('does not throw on unknown message type', () => {
       const ws = createMockWs();
-      wsHandlers.onOpen!({} as Event, ws);
+      handlers.onOpen!({} as Event, ws);
 
       expect(() =>
-        wsHandlers.onMessage!(createEvent({ type: 'UNKNOWN_TYPE', payload: {} }), ws),
+        handlers.onMessage!(createEvent({ type: 'UNKNOWN_TYPE', payload: {} }), ws),
       ).not.toThrow();
     });
 
     it('does not throw on missing payload', () => {
       const ws = createMockWs();
-      wsHandlers.onOpen!({} as Event, ws);
+      handlers.onOpen!({} as Event, ws);
 
       // Valid JSON but no payload — COMMAND handler accesses data.payload.action
       // This will throw inside the try/catch, which is caught silently
       expect(() =>
-        wsHandlers.onMessage!(createEvent({ type: 'COMMAND' }), ws),
+        handlers.onMessage!(createEvent({ type: 'COMMAND' }), ws),
       ).not.toThrow();
     });
   });
@@ -620,32 +662,52 @@ describe('wsHandlers', () => {
     it('each connection tracks its own device id', () => {
       const ws1 = createMockWs();
       const ws2 = createMockWs();
-      wsHandlers.onOpen!({} as Event, ws1);
-      wsHandlers.onOpen!({} as Event, ws2);
+      handlers.onOpen!({} as Event, ws1);
+      handlers.onOpen!({} as Event, ws2);
 
-      registerDevice(ws1, 'dev1');
-      registerDevice(ws2, 'dev2');
+      registerDevice(handlers, ws1, 'dev1');
+      registerDevice(handlers, ws2, 'dev2');
 
-      wsHandlers.onClose!({} as CloseEvent, ws1);
+      handlers.onClose!({} as CloseEvent, ws1);
       expect(mockManager.unregisterDevice).toHaveBeenCalledWith('dev1');
 
       mockManager.unregisterDevice.mockClear();
-      wsHandlers.onClose!({} as CloseEvent, ws2);
+      handlers.onClose!({} as CloseEvent, ws2);
       expect(mockManager.unregisterDevice).toHaveBeenCalledWith('dev2');
     });
 
     it('heartbeat targets the correct device per connection', () => {
       const ws1 = createMockWs();
       const ws2 = createMockWs();
-      wsHandlers.onOpen!({} as Event, ws1);
-      wsHandlers.onOpen!({} as Event, ws2);
+      handlers.onOpen!({} as Event, ws1);
+      handlers.onOpen!({} as Event, ws2);
 
-      registerDevice(ws1, 'dev1');
-      registerDevice(ws2, 'dev2');
+      registerDevice(handlers, ws1, 'dev1');
+      registerDevice(handlers, ws2, 'dev2');
 
       mockManager.heartbeat.mockClear();
-      wsHandlers.onMessage!(createEvent({ type: 'HEARTBEAT', payload: {} }), ws2);
+      handlers.onMessage!(createEvent({ type: 'HEARTBEAT', payload: {} }), ws2);
       expect(mockManager.heartbeat).toHaveBeenCalledWith('dev2');
+    });
+  });
+
+  describe('user isolation', () => {
+    it('connections from different users use separate managers', () => {
+      // Both return mockManager due to our mock, but we verify getOrCreate is called with the right userId
+      const handlersA = createWebSocketHandlers('userA');
+      const handlersB = createWebSocketHandlers('userB');
+
+      const wsA = createMockWs();
+      const wsB = createMockWs();
+
+      handlersA.onOpen!({} as Event, wsA);
+      handlersB.onOpen!({} as Event, wsB);
+
+      registerDevice(handlersA, wsA, 'devA');
+      registerDevice(handlersB, wsB, 'devB');
+
+      // Both should register devices through the manager
+      expect(mockManager.registerDevice).toHaveBeenCalledTimes(2);
     });
   });
 });

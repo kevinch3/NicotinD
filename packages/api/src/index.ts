@@ -28,7 +28,8 @@ import { ProviderRegistry } from './services/provider-registry.js';
 import { NavidromeSearchProvider } from './services/providers/navidrome-provider.js';
 import { SlskdSearchProvider } from './services/providers/slskd-provider.js';
 import { initDatabase } from './db.js';
-import { wsHandlers } from './services/websocket.js';
+import { createWebSocketHandlers } from './services/websocket.js';
+import type { AuthEnv } from './middleware/auth.js';
 
 export type SlskdRef = { current: Slskd | null };
 export type WatcherRef = { current: DownloadWatcher | null };
@@ -58,10 +59,6 @@ export function createApp({
 
   const app = new OpenAPIHono();
   const { upgradeWebSocket, websocket } = createBunWebSocket();
-
-  app.get('/api/ws/playback', upgradeWebSocket((c) => {
-    return wsHandlers;
-  }));
 
   app.get('/api/health', (c) => c.json({ ok: true }));
 
@@ -139,6 +136,12 @@ export function createApp({
   app.use('/api/tailscale/*', auth);
   app.use('/api/admin/*', auth);
   app.use('/api/users/*', auth);
+  app.use('/api/ws/*', auth);
+
+  app.get('/api/ws/playback', upgradeWebSocket((c) => {
+    const user = (c as unknown as { get(key: 'user'): AuthEnv['Variables']['user'] }).get('user');
+    return createWebSocketHandlers(user.sub);
+  }));
 
   app.route('/api/search', searchRoutes(registry));
   app.route('/api/admin', adminRoutes());

@@ -93,8 +93,11 @@ class PlaybackWSClient {
   }
 
   connect() {
+    const token = localStorage.getItem('nicotind_token');
+    if (!token) return;
+
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-    this.url = `${protocol}://${window.location.host}/api/ws/playback`;
+    this.url = `${protocol}://${window.location.host}/api/ws/playback?token=${encodeURIComponent(token)}`;
 
     if (this.ws && this.ws.readyState === WebSocket.OPEN) return;
     this.ws = new WebSocket(this.url);
@@ -124,8 +127,11 @@ class PlaybackWSClient {
 
     this.ws.onclose = () => {
       if (this.heartbeatTimer) { clearInterval(this.heartbeatTimer); this.heartbeatTimer = null; }
-      this.reconnectTimer = setTimeout(() => this.connect(), this.reconnectDelay);
-      this.reconnectDelay = Math.min(this.reconnectDelay * 2, 30_000);
+      // Only reconnect if we still have a token — prevents infinite loop on auth failure
+      if (localStorage.getItem('nicotind_token')) {
+        this.reconnectTimer = setTimeout(() => this.connect(), this.reconnectDelay);
+        this.reconnectDelay = Math.min(this.reconnectDelay * 2, 30_000);
+      }
     };
   }
 

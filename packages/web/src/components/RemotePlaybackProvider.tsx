@@ -11,6 +11,7 @@ import { useEffect, useRef } from 'react';
 import { wsClient } from '@/services/ws-client';
 import { useRemotePlaybackStore, RemoteDevice } from '@/stores/remote-playback';
 import { usePlayerStore } from '@/stores/player';
+import { useAuthStore } from '@/stores/auth';
 import type { Track } from '@/stores/player';
 
 
@@ -39,11 +40,17 @@ export function RemotePlaybackProvider({ children }: { children: React.ReactNode
   // when the resulting currentTrack change would otherwise send a redundant SET_TRACK.
   const lastRemoteTrackIdRef = useRef<string | null>(null);
 
-  // Connect WS on mount, disconnect on unmount
+  const token = useAuthStore(s => s.token);
+
+  // Connect WS when authenticated, disconnect on logout or unmount
   useEffect(() => {
-    wsClient.connect();
+    if (token) {
+      wsClient.connect();
+    } else {
+      wsClient.disconnect();
+    }
     return () => wsClient.disconnect();
-  }, []);
+  }, [token]);
 
   // Handle full state sync — updates metadata visible to ALL devices (active or not).
   // Also applies initial track/state when this device is the active player on connect.
