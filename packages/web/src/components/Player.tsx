@@ -317,7 +317,7 @@ function PlayerContent() {
   return (
     <>
       <audio ref={audioRef} />
-      <div className={`fixed bottom-0 left-0 right-0 bg-zinc-900 border-t border-zinc-800 z-50 relative transition-transform duration-300 ease-out ${
+      <div className={`fixed bottom-0 left-0 right-0 bg-zinc-900 border-t border-zinc-800 z-50 transition-transform duration-300 ease-out ${
         currentTrack ? 'translate-y-0' : 'translate-y-full'
       }`}>
         {/* Autoplay blocked banner */}
