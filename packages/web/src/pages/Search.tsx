@@ -7,6 +7,7 @@ import { getSingleDownloadLabel, getFolderDownloadLabel, isPathEffectivelyQueued
 import { FolderBrowser } from '@/components/FolderBrowser';
 import { groupByDirectory } from '@/lib/folderUtils';
 import { useNavigateAndSearch } from '@/hooks/useNavigateAndSearch';
+import { useNavigate } from 'react-router-dom';
 
 interface NetworkResult {
   username: string;
@@ -184,6 +185,7 @@ export function SearchPage() {
   const [searchFocused, setSearchFocused] = useState(false);
   const token = useAuthStore((s) => s.token);
   const navigateAndSearch = useNavigateAndSearch();
+  const navigate = useNavigate();
 
   // Check Soulseek network status on mount
   useEffect(() => {
@@ -482,54 +484,107 @@ export function SearchPage() {
                 const key = `${file.username}:${file.filename}`;
                 const title = getDisplayTitle(file);
                 const subtitle = getDisplaySubtitle(file);
+                const { variant, label, disabled } = getSingleDownloadLabel(
+                  file.username,
+                  file.filename,
+                  downloading.has(key),
+                  getStatus,
+                );
+                const isDone = variant === 'done';
+                const isProgress = variant === 'progress';
+                const entry = getStatus(file.username, file.filename);
+                const percent = entry?.percent ?? 0;
+
                 return (
                   <div
                     key={key}
-                    className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-zinc-800/50 transition"
+                    className="relative flex items-center gap-3 px-3 py-2.5 rounded-lg overflow-hidden transition"
+                    style={{ background: 'var(--theme-surface)' }}
                   >
-                    <div className="flex-1 min-w-0">
+                    {/* Progress wash */}
+                    {isProgress && (
+                      <div
+                        className="absolute inset-0 pointer-events-none rounded-lg transition-all duration-500"
+                        style={{
+                          width: `${percent}%`,
+                          background: 'var(--theme-status-progress-bg)',
+                        }}
+                      />
+                    )}
+                    {/* Done wash */}
+                    {isDone && (
+                      <div
+                        className="absolute inset-0 pointer-events-none rounded-lg"
+                        style={{ background: 'var(--theme-status-done-bg)' }}
+                      />
+                    )}
+
+                    {/* Track info */}
+                    <div className="relative flex-1 min-w-0">
                       <div className="flex items-start gap-3">
                         <div className="min-w-0 flex-1">
-                          <p className="text-sm text-zinc-300 truncate">{highlightText(title, highlightTerms)}</p>
+                          <p className="text-sm truncate" style={{ color: 'var(--theme-text-primary)' }}>
+                            {highlightText(title, highlightTerms)}
+                          </p>
                           {subtitle && (
-                            <p className="text-xs text-zinc-500 truncate">
+                            <p className="text-xs truncate" style={{ color: 'var(--theme-text-secondary)' }}>
                               {highlightText(subtitle, highlightTerms)}
                             </p>
                           )}
                         </div>
                         {file.length ? (
-                          <span className="shrink-0 pt-0.5 text-xs text-zinc-600">
+                          <span className="shrink-0 pt-0.5 text-xs" style={{ color: 'var(--theme-text-muted)' }}>
                             {formatDuration(file.length)}
                           </span>
                         ) : null}
                       </div>
-                      <p className="mt-1 text-[11px] text-zinc-600 truncate">
+                      <p className="mt-1 text-xs truncate" style={{ color: 'var(--theme-text-muted)' }}>
                         {file.bitRate ? `${file.bitRate} kbps` : 'Unknown bitrate'}
-                        {file.bitRate || file.length ? ' · ' : ''}
+                        {' · '}
                         {formatSize(file.size)}
                         {' · '}
-                        <span className="text-emerald-600">{formatSpeed(file.uploadSpeed)}</span>
+                        <span style={{ color: 'var(--theme-accent)' }}>{formatSpeed(file.uploadSpeed)}</span>
                         {file.queueLength != null && file.queueLength > 0 && (
-                          <span className="text-zinc-600"> · {file.queueLength} queued</span>
+                          <span> · {file.queueLength} queued</span>
                         )}
                       </p>
                     </div>
-                    {(() => {
-                      const { label, variant, disabled } = getSingleDownloadLabel(
-                        file.username, file.filename,
-                        downloading.has(`${file.username}:${file.filename}`),
-                        getStatus,
-                      );
-                      return (
+
+                    {/* Actions */}
+                    <div className="relative flex items-center gap-1.5 shrink-0">
+                      {isDone ? (
                         <button
-                          onClick={() => handleDownload(file.username, { filename: file.filename, size: file.size })}
-                          disabled={disabled}
-                          className={`px-3 py-1 rounded-md text-xs font-medium transition ${BUTTON_CLASSES[variant]} ${disabled ? 'cursor-default' : ''}`}
+                          onClick={() => navigate('/library')}
+                          className="px-3 py-1 rounded-md text-xs font-semibold transition"
+                          style={{
+                            background: 'var(--theme-status-done-bg)',
+                            color: 'var(--theme-status-done-text)',
+                          }}
                         >
-                          {label}
+                          ▶ Open in Library
                         </button>
-                      );
-                    })()}
+                      ) : (
+                        <button
+                          onClick={() =>
+                            handleDownload(file.username, { filename: file.filename, size: file.size })
+                          }
+                          disabled={disabled}
+                          className={`px-3 py-1 rounded-md text-xs font-medium transition ${
+                            disabled ? 'cursor-default' : ''
+                          }`}
+                          style={
+                            isProgress
+                              ? {
+                                  background: 'var(--theme-status-progress-bg)',
+                                  color: 'var(--theme-status-progress-text)',
+                                }
+                              : {}
+                          }
+                        >
+                          {isProgress ? label : 'Download'}
+                        </button>
+                      )}
+                    </div>
                   </div>
                 );
               })}
