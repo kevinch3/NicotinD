@@ -8,6 +8,7 @@ import { useRemotePlaybackStore } from '@/stores/remote-playback';
 import { wsClient } from '@/services/ws-client';
 import { useNavigateAndSearch } from '@/hooks/useNavigateAndSearch';
 import { usePlaybackProgress } from '@/hooks/usePlaybackProgress';
+import { CoverArt } from '@/components/CoverArt';
 
 const PLAYER_PORTAL_ID = 'nicotind-player-portal';
 
@@ -351,11 +352,13 @@ function PlayerContent() {
         >
           {/* Track info */}
           <div className="flex items-center gap-3 min-w-0 flex-shrink md:w-60 md:flex-shrink-0">
-            {currentTrack?.coverArt && (
-              <img
-                src={`/api/cover/${currentTrack.coverArt}?size=80&token=${token}`}
-                alt=""
-                className="w-10 h-10 rounded object-cover flex-shrink-0"
+            {currentTrack && (
+              <CoverArt
+                src={currentTrack.coverArt ? `/api/cover/${currentTrack.coverArt}?size=80&token=${token}` : undefined}
+                artist={currentTrack.artist}
+                album={currentTrack.album}
+                size={40}
+                rounded="rounded"
               />
             )}
             <div className="min-w-0">
