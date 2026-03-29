@@ -125,7 +125,7 @@ export function LibraryPage() {
   // Album detail view
   if (selectedAlbum) {
     return (
-      <div className="max-w-6xl mx-auto px-3 py-4 md:px-6 md:py-8">
+      <div className="max-w-6xl mx-auto px-4 py-5 md:px-6 md:py-8">
         <button
           onClick={() => setSelectedAlbum(null)}
           className="text-sm text-zinc-500 hover:text-zinc-300 transition mb-6"
@@ -203,7 +203,7 @@ export function LibraryPage() {
 
   // Album grid
   return (
-    <div className="max-w-6xl mx-auto px-3 py-4 md:px-6 md:py-8">
+    <div className="max-w-6xl mx-auto px-4 py-5 md:px-6 md:py-8">
       <div className="flex items-center gap-3 mb-6">
         <h1 className="text-lg font-semibold text-zinc-100">Library</h1>
         <button onClick={gridControls.showToolbar} className="p-1 text-zinc-600 hover:text-zinc-300 transition" title="Search (Ctrl+F)">

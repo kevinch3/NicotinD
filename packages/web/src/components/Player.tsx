@@ -343,7 +343,7 @@ function PlayerContent() {
         )}
         {/* Clickable area to open Now Playing */}
         <div
-          className="flex items-center px-3 md:px-4 gap-2 md:gap-4 h-16 md:h-18 cursor-pointer"
+          className="flex items-center px-3 md:px-4 gap-2 md:gap-4 h-16 cursor-pointer"
           onClick={(e) => {
             // Only open panel if clicking the background, not buttons
             if ((e.target as HTMLElement).closest('button')) return;

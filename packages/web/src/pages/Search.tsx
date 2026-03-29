@@ -619,7 +619,7 @@ export function SearchPage() {
                             {dirBasename}
                           </span>
                         </p>
-                        <p className="text-[11px] text-zinc-600 truncate">
+                        <p className="text-xs text-zinc-600 truncate">
                           {group.username}
                           {group.bitRate ? ` · ${group.bitRate} kbps` : ''}
                           {` · ${group.files.length} files`}
