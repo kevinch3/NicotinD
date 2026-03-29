@@ -16,6 +16,7 @@ function ThemeSwatch({ preset, selected, onSelect }: ThemeSwatchProps) {
   return (
     <button
       onClick={onSelect}
+      data-theme={preset.id}
       className={`rounded-lg overflow-hidden border-2 transition-all text-left ${
         selected ? 'border-indigo-500' : 'border-transparent hover:border-zinc-600'
       }`}
@@ -24,28 +25,23 @@ function ThemeSwatch({ preset, selected, onSelect }: ThemeSwatchProps) {
       <div
         className="h-10 flex flex-col gap-1 p-1.5"
         style={{ background: `var(--theme-bg, #09090b)` }}
-        data-theme={preset.id}
       >
         <div
           className="h-2 rounded-sm w-full"
           style={{ background: `var(--theme-surface, #18181b)` }}
-          data-theme={preset.id}
         />
         <div
           className="h-1.5 rounded-sm w-3/4"
           style={{ background: `var(--theme-surface-2, #27272a)` }}
-          data-theme={preset.id}
         />
       </div>
       <div
         className="px-2 py-1.5 flex items-center justify-between"
         style={{ background: `var(--theme-surface, #18181b)` }}
-        data-theme={preset.id}
       >
         <span
           className="text-[10px] font-semibold"
           style={{ color: `var(--theme-text-primary, #f4f4f5)` }}
-          data-theme={preset.id}
         >
           {preset.name}
         </span>
