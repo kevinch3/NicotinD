@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores/auth';
 import { usePreserveStore } from '@/stores/preserve';
 import { useTransferStore } from '@/stores/transfers';
+import { useThemeStore } from '@/stores/theme';
 import { api, type SetupStatus } from '@/lib/api';
 import { Layout } from '@/components/Layout';
 import { LoginPage } from '@/pages/Login';
@@ -48,6 +49,11 @@ export function App() {
       useTransferStore.getState().stopPolling();
     }
   }, [isAuthenticated]);
+
+  // Apply theme on mount (syncs data-theme with persisted store state)
+  useEffect(() => {
+    useThemeStore.getState().apply();
+  }, []);
 
   if (!setupChecked) {
     return null;
