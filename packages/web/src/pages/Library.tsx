@@ -7,6 +7,7 @@ import { toTrack } from '@/lib/trackUtils';
 import { TrackRow } from '@/components/TrackRow';
 import { useListControls } from '@/hooks/useListControls';
 import { ListToolbar } from '@/components/ListToolbar';
+import { useTransferStore } from '@/stores/transfers';
 
 interface Album {
   id: string;
@@ -40,6 +41,9 @@ export function LibraryPage() {
   const playWithContext = usePlayerStore((s) => s.playWithContext);
   const preserve = usePreserveStore((s) => s.preserve);
 
+  const libraryDirty = useTransferStore((s) => s.libraryDirty);
+  const clearLibraryDirty = useTransferStore((s) => s.clearLibraryDirty);
+
   // List controls for album grid
   const gridControls = useListControls<Album>({
     pageKey: 'library',
@@ -72,6 +76,17 @@ export function LibraryPage() {
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (!libraryDirty) return;
+    clearLibraryDirty();
+    setLoading(true);
+    api
+      .getAlbums('newest', 80)
+      .then(setAlbums)
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [libraryDirty]);
 
   async function openAlbum(album: Album) {
     setLoadingAlbum(true);
