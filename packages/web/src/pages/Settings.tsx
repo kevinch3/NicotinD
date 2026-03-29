@@ -4,10 +4,67 @@ import { useAuthStore } from '@/stores/auth';
 import { PasswordField } from '@/components/PasswordField';
 import { useRemotePlaybackStore } from '@/stores/remote-playback';
 import { wsClient } from '@/services/ws-client';
+import { useThemeStore, THEME_PRESETS, type ThemeId } from '@/stores/theme';
+
+interface ThemeSwatchProps {
+  preset: { id: string; name: string };
+  selected: boolean;
+  onSelect: () => void;
+}
+
+function ThemeSwatch({ preset, selected, onSelect }: ThemeSwatchProps) {
+  return (
+    <button
+      onClick={onSelect}
+      className={`rounded-lg overflow-hidden border-2 transition-all text-left ${
+        selected ? 'border-indigo-500' : 'border-transparent hover:border-zinc-600'
+      }`}
+      aria-label={`Switch to ${preset.name} theme`}
+    >
+      <div
+        className="h-10 flex flex-col gap-1 p-1.5"
+        style={{ background: `var(--theme-bg, #09090b)` }}
+        data-theme={preset.id}
+      >
+        <div
+          className="h-2 rounded-sm w-full"
+          style={{ background: `var(--theme-surface, #18181b)` }}
+          data-theme={preset.id}
+        />
+        <div
+          className="h-1.5 rounded-sm w-3/4"
+          style={{ background: `var(--theme-surface-2, #27272a)` }}
+          data-theme={preset.id}
+        />
+      </div>
+      <div
+        className="px-2 py-1.5 flex items-center justify-between"
+        style={{ background: `var(--theme-surface, #18181b)` }}
+        data-theme={preset.id}
+      >
+        <span
+          className="text-[10px] font-semibold"
+          style={{ color: `var(--theme-text-primary, #f4f4f5)` }}
+          data-theme={preset.id}
+        >
+          {preset.name}
+        </span>
+        {selected && (
+          <span className="text-indigo-400 text-[10px]">✓</span>
+        )}
+      </div>
+    </button>
+  );
+}
 
 export function SettingsPage() {
   const role = useAuthStore((s) => s.role);
   const isAdmin = role === 'admin';
+
+  const theme = useThemeStore((s) => s.theme);
+  const systemTheme = useThemeStore((s) => s.systemTheme);
+  const setTheme = useThemeStore((s) => s.setTheme);
+  const setSystemTheme = useThemeStore((s) => s.setSystemTheme);
 
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -154,6 +211,49 @@ export function SettingsPage() {
   return (
     <div className="max-w-2xl mx-auto px-3 py-4 md:px-6 md:py-8">
       <h1 className="text-xl font-bold text-zinc-100 mb-8">Settings</h1>
+
+      {/* ── Appearance ─────────────────────────────────────────────────── */}
+      <section className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-6 mb-6">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-zinc-400 mb-5">
+          Appearance
+        </h2>
+
+        {/* System preference toggle */}
+        <div className="flex items-start gap-3 mb-5">
+          <button
+            role="switch"
+            aria-checked={systemTheme}
+            onClick={() => setSystemTheme(!systemTheme)}
+            className={`relative mt-0.5 w-9 h-5 rounded-full transition-colors flex-shrink-0 ${
+              systemTheme ? 'bg-emerald-600' : 'bg-zinc-700'
+            }`}
+          >
+            <span
+              className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                systemTheme ? 'translate-x-4' : 'translate-x-0'
+              }`}
+            />
+          </button>
+          <div>
+            <p className="text-sm text-zinc-200">Follow system theme</p>
+            <p className="text-xs text-zinc-500 mt-0.5">
+              Automatically use light or dark based on your OS setting.
+            </p>
+          </div>
+        </div>
+
+        {/* Theme swatch grid */}
+        <div className={`grid grid-cols-3 gap-2 transition-opacity ${systemTheme ? 'opacity-40 pointer-events-none' : ''}`}>
+          {THEME_PRESETS.map((preset) => (
+            <ThemeSwatch
+              key={preset.id}
+              preset={preset}
+              selected={theme === preset.id}
+              onSelect={() => setTheme(preset.id as ThemeId)}
+            />
+          ))}
+        </div>
+      </section>
 
       {/* Soulseek Network Section */}
       <section className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-6">
