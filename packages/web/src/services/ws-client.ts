@@ -104,7 +104,7 @@ class PlaybackWSClient {
 
     this.ws.onopen = () => {
       this.reconnectDelay = 1000;
-      this.send({ type: 'REGISTER', payload: { id: this.deviceId, name: this.deviceName, deviceType: 'web', remoteEnabled: localStorage.getItem('nicotind_remote_enabled') !== 'false' } });
+      this.send({ type: 'REGISTER', payload: { id: this.deviceId, name: this.deviceName, deviceType: 'web', remoteEnabled: localStorage.getItem('nicotind_remote_enabled') === 'true' } });
       this.heartbeatTimer = setInterval(() => {
         this.send({ type: 'HEARTBEAT', payload: {} });
       }, 30_000);
