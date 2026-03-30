@@ -128,7 +128,7 @@ export function LibraryPage() {
       <div className="max-w-6xl mx-auto px-4 py-5 md:px-6 md:py-8">
         <button
           onClick={() => setSelectedAlbum(null)}
-          className="text-sm text-zinc-500 hover:text-zinc-300 transition mb-6"
+          className="text-sm text-theme-muted hover:text-theme-secondary transition mb-6"
         >
           &larr; Back to library
         </button>
@@ -141,13 +141,13 @@ export function LibraryPage() {
               className="w-48 h-48 rounded-lg object-cover flex-shrink-0"
             />
           ) : (
-            <div className="w-48 h-48 rounded-lg bg-zinc-800 flex-shrink-0" />
+            <div className="w-48 h-48 rounded-lg bg-theme-surface-2 flex-shrink-0" />
           )}
           <div className="flex flex-col justify-end">
-            <h1 className="text-2xl font-bold text-zinc-100">{selectedAlbum.name}</h1>
-            <p className="text-zinc-400 mt-1">{selectedAlbum.artist}</p>
+            <h1 className="text-2xl font-bold text-theme-primary">{selectedAlbum.name}</h1>
+            <p className="text-theme-secondary mt-1">{selectedAlbum.artist}</p>
             {selectedAlbum.year && (
-              <p className="text-zinc-600 text-sm mt-1">{selectedAlbum.year}</p>
+              <p className="text-theme-muted text-sm mt-1">{selectedAlbum.year}</p>
             )}
             <div className="flex justify-center sm:justify-start gap-3 mt-4">
               <button
@@ -158,7 +158,7 @@ export function LibraryPage() {
               </button>
               <button
                 onClick={() => preserveAlbum(selectedAlbum)}
-                className="px-4 py-2 rounded-lg bg-zinc-800 text-zinc-300 text-sm font-medium hover:bg-zinc-700 transition"
+                className="px-4 py-2 rounded-lg bg-theme-surface-2 text-theme-secondary text-sm font-medium hover:bg-theme-hover transition"
                 title="Save all tracks for offline"
               >
                 Preserve All
@@ -205,8 +205,8 @@ export function LibraryPage() {
   return (
     <div className="max-w-6xl mx-auto px-4 py-5 md:px-6 md:py-8">
       <div className="flex items-center gap-3 mb-6">
-        <h1 className="text-lg font-semibold text-zinc-100">Library</h1>
-        <button onClick={gridControls.showToolbar} className="p-1 text-zinc-600 hover:text-zinc-300 transition" title="Search (Ctrl+F)">
+        <h1 className="text-lg font-semibold text-theme-primary">Library</h1>
+        <button onClick={gridControls.showToolbar} className="p-1 text-theme-muted hover:text-theme-secondary transition" title="Search (Ctrl+F)">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
         </button>
       </div>
@@ -228,12 +228,12 @@ export function LibraryPage() {
 
       {loading && (
         <div className="text-center py-20">
-          <span className="inline-block w-5 h-5 border-2 border-zinc-600 border-t-zinc-300 rounded-full animate-spin" />
+          <span className="inline-block w-5 h-5 border-2 border-theme border-t-zinc-300 rounded-full animate-spin" />
         </div>
       )}
 
       {!loading && albums.length === 0 && (
-        <p className="text-center text-zinc-600 py-20">
+        <p className="text-center text-theme-muted py-20">
           No albums yet. Download some music to get started!
         </p>
       )}
@@ -244,7 +244,7 @@ export function LibraryPage() {
             key={album.id}
             onClick={() => openAlbum(album)}
             disabled={loadingAlbum}
-            className="p-3 rounded-lg bg-zinc-900/30 hover:bg-zinc-800/50 transition text-left"
+            className="p-3 rounded-lg bg-theme-surface/30 hover:bg-theme-surface-2/50 transition text-left"
           >
             {album.coverArt ? (
               <img
@@ -253,10 +253,10 @@ export function LibraryPage() {
                 className="w-full aspect-square rounded object-cover mb-2"
               />
             ) : (
-              <div className="w-full aspect-square rounded bg-zinc-800 mb-2" />
+              <div className="w-full aspect-square rounded bg-theme-surface-2 mb-2" />
             )}
-            <p className="text-sm text-zinc-200 truncate">{album.name}</p>
-            <p className="text-xs text-zinc-500 truncate">
+            <p className="text-sm text-theme-primary truncate">{album.name}</p>
+            <p className="text-xs text-theme-muted truncate">
               {album.artist} {album.year ? `\u00B7 ${album.year}` : ''}
             </p>
           </button>

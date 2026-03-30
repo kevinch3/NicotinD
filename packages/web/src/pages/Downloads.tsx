@@ -415,12 +415,12 @@ export function DownloadsPage() {
   return (
     <div className="max-w-5xl mx-auto px-4 py-5 md:px-6 md:py-8">
       <div className="flex items-center justify-between gap-3 mb-6 flex-wrap">
-        <h1 className="text-lg font-semibold text-zinc-100">Downloads</h1>
+        <h1 className="text-lg font-semibold text-theme-primary">Downloads</h1>
         <div className="flex items-center gap-2">
           <button
             onClick={triggerScan}
             disabled={scanning}
-            className="inline-flex items-center gap-2 rounded-full border border-zinc-800/80 bg-zinc-950/40 px-3 py-1.5 text-xs font-medium text-zinc-500 transition hover:border-zinc-700 hover:text-zinc-300 disabled:cursor-wait disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-full border border-theme bg-theme-base/40 px-3 py-1.5 text-xs font-medium text-theme-muted transition hover:border-theme hover:text-theme-secondary disabled:cursor-wait disabled:opacity-50"
             title="Trigger a library rescan"
           >
             <svg
@@ -442,7 +442,7 @@ export function DownloadsPage() {
           {recentSongs.length > 0 && (
             <button
               onClick={handlePlayAll}
-              className="px-4 py-1.5 rounded-lg bg-zinc-800 text-zinc-300 text-sm font-medium hover:bg-zinc-700 transition"
+              className="px-4 py-1.5 rounded-lg bg-theme-surface-2 text-theme-secondary text-sm font-medium hover:bg-theme-hover transition"
             >
               {selected.size > 0 ? `Play ${selected.size} selected` : 'Play all'}
             </button>
@@ -454,7 +454,7 @@ export function DownloadsPage() {
       {(inProgressGroups.length > 0 || errorGroups.length > 0 || doneGroups.length > 0) && (
         <section className="mb-8">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-theme-muted">
               Downloads
               {inProgressGroups.length > 0 && (
                 <span className="ml-2 text-blue-400 normal-case font-normal">
@@ -474,7 +474,7 @@ export function DownloadsPage() {
               {clearableGroups.length > 0 && (
                 <button
                   onClick={clearAllFinished}
-                  className="text-xs text-zinc-500 hover:text-zinc-300 transition"
+                  className="text-xs text-theme-muted hover:text-theme-secondary transition"
                 >
                   Clear all finished
                 </button>
@@ -486,18 +486,18 @@ export function DownloadsPage() {
             {inProgressGroups.map((group) => (
               <div
                 key={group.key}
-                className="flex items-center gap-3 md:gap-4 px-3 md:px-4 py-3 rounded-lg bg-zinc-900/50 border border-zinc-800/50 min-w-0"
+                className="flex items-center gap-3 md:gap-4 px-3 md:px-4 py-3 rounded-lg bg-theme-surface/50 border border-theme min-w-0"
               >
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm text-zinc-200 truncate w-full">{group.name}</p>
-                  <p className="text-xs text-zinc-600 mt-0.5 truncate w-full">
+                  <p className="text-sm text-theme-primary truncate w-full">{group.name}</p>
+                  <p className="text-xs text-theme-muted mt-0.5 truncate w-full">
                     {group.completedFiles} of {group.totalFiles} tracks
                   </p>
                 </div>
                 <div className="w-20 md:w-32 flex-shrink-0">
                   {group.state === 'downloading' ? (
                     <div className="space-y-1">
-                      <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                      <div className="h-1.5 bg-theme-surface-2 rounded-full overflow-hidden">
                         <div
                           className="h-full bg-blue-500 rounded-full transition-all duration-500"
                           style={{ width: `${group.overallPercent}%` }}
@@ -506,12 +506,12 @@ export function DownloadsPage() {
                       <p className="text-xs text-blue-400 text-right">{group.overallPercent}%</p>
                     </div>
                   ) : (
-                    <p className="text-xs text-right font-medium text-zinc-500">Queued</p>
+                    <p className="text-xs text-right font-medium text-theme-muted">Queued</p>
                   )}
                 </div>
                 <button
                   onClick={() => clearGroup(group)}
-                  className="text-xs text-zinc-500 hover:text-zinc-300 transition flex-shrink-0"
+                  className="text-xs text-theme-muted hover:text-theme-secondary transition flex-shrink-0"
                   title="Cancel"
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -526,18 +526,18 @@ export function DownloadsPage() {
             {errorGroups.map((group) => (
               <div
                 key={group.key}
-                className="flex items-center gap-3 md:gap-4 px-3 md:px-4 py-3 rounded-lg bg-zinc-900/30 border border-red-900/20 min-w-0"
+                className="flex items-center gap-3 md:gap-4 px-3 md:px-4 py-3 rounded-lg bg-theme-surface/30 border border-red-900/20 min-w-0"
               >
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm text-zinc-400 truncate w-full">{group.name}</p>
-                  <p className="text-xs text-zinc-600 mt-0.5 truncate w-full">
+                  <p className="text-sm text-theme-secondary truncate w-full">{group.name}</p>
+                  <p className="text-xs text-theme-muted mt-0.5 truncate w-full">
                     {group.completedFiles} of {group.totalFiles} tracks
                   </p>
                 </div>
                 <p className="text-xs text-red-400/70 font-medium flex-shrink-0">Error</p>
                 <button
                   onClick={() => clearGroup(group)}
-                  className="text-xs text-zinc-500 hover:text-zinc-300 transition flex-shrink-0"
+                  className="text-xs text-theme-muted hover:text-theme-secondary transition flex-shrink-0"
                   title="Dismiss"
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -552,16 +552,16 @@ export function DownloadsPage() {
             {doneGroups.map((group) => (
               <div
                 key={group.key}
-                className="flex items-center gap-3 md:gap-4 px-3 md:px-4 py-3 rounded-lg bg-zinc-900/40 border border-zinc-800/40 opacity-80 min-w-0"
+                className="flex items-center gap-3 md:gap-4 px-3 md:px-4 py-3 rounded-lg bg-theme-surface/40 border border-theme opacity-80 min-w-0"
               >
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm text-zinc-400 truncate w-full">{group.name}</p>
-                  <p className="text-xs text-zinc-600 mt-0.5 truncate w-full">{group.totalFiles} tracks</p>
+                  <p className="text-sm text-theme-secondary truncate w-full">{group.name}</p>
+                  <p className="text-xs text-theme-muted mt-0.5 truncate w-full">{group.totalFiles} tracks</p>
                 </div>
                 <p className="text-xs text-emerald-400/70 font-medium flex-shrink-0">Done</p>
                 <button
                   onClick={() => clearGroup(group)}
-                  className="text-xs text-zinc-500 hover:text-zinc-300 transition flex-shrink-0"
+                  className="text-xs text-theme-muted hover:text-theme-secondary transition flex-shrink-0"
                   title="Dismiss"
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -580,23 +580,23 @@ export function DownloadsPage() {
         <section className="mb-8">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-theme-muted">
                 Preserved
-                <span className="font-normal normal-case ml-1.5 text-zinc-600">
+                <span className="font-normal normal-case ml-1.5 text-theme-muted">
                   ({preservedTracks.length})
                 </span>
               </h2>
-              <button onClick={preservedControls.showToolbar} className="p-1 text-zinc-600 hover:text-zinc-300 transition" title="Search (Ctrl+F)">
+              <button onClick={preservedControls.showToolbar} className="p-1 text-theme-muted hover:text-theme-secondary transition" title="Search (Ctrl+F)">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
               </button>
             </div>
-            <span className="text-xs text-zinc-600">
+            <span className="text-xs text-theme-muted">
               {formatSize(totalUsage)} / {formatSize(budget)}
             </span>
           </div>
 
           {/* Storage bar */}
-          <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden mb-3">
+          <div className="h-1.5 bg-theme-surface-2 rounded-full overflow-hidden mb-3">
             <div
               className="h-full bg-emerald-500/70 rounded-full transition-all duration-500"
               style={{ width: `${Math.min(100, (totalUsage / budget) * 100)}%` }}
@@ -622,19 +622,19 @@ export function DownloadsPage() {
             {preservedControls.filtered.map((pt) => (
                 <div
                   key={pt.id}
-                  className="flex items-center gap-2 md:gap-3 px-3 md:px-4 py-2.5 rounded-lg hover:bg-zinc-800/30 border border-transparent transition group"
+                  className="flex items-center gap-2 md:gap-3 px-3 md:px-4 py-2.5 rounded-lg hover:bg-theme-surface-2/30 border border-transparent transition group"
                 >
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm text-zinc-200 truncate">{pt.title}</p>
-                    <p className="text-xs text-zinc-500 truncate">
+                    <p className="text-sm text-theme-primary truncate">{pt.title}</p>
+                    <p className="text-xs text-theme-muted truncate">
                       {pt.artist} &middot; {pt.album}
                     </p>
                   </div>
 
-                  <span className="hidden md:inline text-xs text-zinc-600 flex-shrink-0 w-16 text-right">
+                  <span className="hidden md:inline text-xs text-theme-muted flex-shrink-0 w-16 text-right">
                     {formatSize(pt.size)}
                   </span>
-                  <span className="hidden sm:inline text-xs text-zinc-600 flex-shrink-0 w-12 text-right">
+                  <span className="hidden sm:inline text-xs text-theme-muted flex-shrink-0 w-12 text-right">
                     {formatDuration(pt.duration)}
                   </span>
 
@@ -650,7 +650,7 @@ export function DownloadsPage() {
                         duration: pt.duration,
                       })
                     }
-                    className="p-1.5 text-zinc-500 md:text-zinc-700 hover:text-zinc-300 transition flex-shrink-0 md:opacity-0 md:group-hover:opacity-100"
+                    className="p-1.5 text-theme-muted hover:text-theme-secondary transition flex-shrink-0 md:opacity-0 md:group-hover:opacity-100"
                     title="Play"
                   >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
@@ -666,7 +666,7 @@ export function DownloadsPage() {
                         `${pt.artist} - ${pt.title}.${pt.format.split('/')[1] ?? 'mp3'}`,
                       )
                     }
-                    className="p-1.5 text-zinc-500 md:text-zinc-700 hover:text-zinc-300 transition flex-shrink-0 md:opacity-0 md:group-hover:opacity-100"
+                    className="p-1.5 text-theme-muted hover:text-theme-secondary transition flex-shrink-0 md:opacity-0 md:group-hover:opacity-100"
                     title="Download to device"
                   >
                     <svg
@@ -688,7 +688,7 @@ export function DownloadsPage() {
                   {/* Remove */}
                   <button
                     onClick={() => removePreserved(pt.id)}
-                    className="p-1.5 text-zinc-500 md:text-zinc-700 hover:text-red-400 transition flex-shrink-0 md:opacity-0 md:group-hover:opacity-100"
+                    className="p-1.5 text-theme-muted hover:text-red-400 transition flex-shrink-0 md:opacity-0 md:group-hover:opacity-100"
                     title="Remove from preserved"
                   >
                     <svg
@@ -715,16 +715,16 @@ export function DownloadsPage() {
       <section>
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
-            <h2 className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-theme-muted">
               Recently Added
               {recentSongs.length > 0 && (
-                <span className="font-normal normal-case ml-1.5 text-zinc-600">
+                <span className="font-normal normal-case ml-1.5 text-theme-muted">
                   ({recentSongs.length})
                 </span>
               )}
             </h2>
             {recentSongs.length > 0 && (
-              <button onClick={recentControls.showToolbar} className="p-1 text-zinc-600 hover:text-zinc-300 transition" title="Search (Ctrl+F)">
+              <button onClick={recentControls.showToolbar} className="p-1 text-theme-muted hover:text-theme-secondary transition" title="Search (Ctrl+F)">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
               </button>
             )}
@@ -732,7 +732,7 @@ export function DownloadsPage() {
           {recentSongs.length > 0 && (
             <button
               onClick={selectAll}
-              className="text-xs text-zinc-500 hover:text-zinc-300 transition"
+              className="text-xs text-theme-muted hover:text-theme-secondary transition"
             >
               {selected.size === recentControls.filtered.length ? 'Deselect all' : 'Select all'}
             </button>
@@ -756,20 +756,20 @@ export function DownloadsPage() {
 
         {/* Bulk action bar */}
         {selected.size > 0 && (
-          <div className="flex flex-wrap items-center gap-2 md:gap-3 px-3 md:px-4 py-2.5 mb-3 rounded-lg bg-zinc-800/60 border border-zinc-700/50">
-            <span className="text-sm text-zinc-300 font-medium">{selected.size} selected</span>
+          <div className="flex flex-wrap items-center gap-2 md:gap-3 px-3 md:px-4 py-2.5 mb-3 rounded-lg bg-theme-surface-2/60 border border-theme">
+            <span className="text-sm text-theme-secondary font-medium">{selected.size} selected</span>
             <div className="flex-1 min-w-0" />
 
             {showPlaylistPicker ? (
               <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
-                <span className="text-xs text-zinc-400 flex-shrink-0">Add to:</span>
+                <span className="text-xs text-theme-secondary flex-shrink-0">Add to:</span>
                 <div className="flex gap-1.5 flex-wrap">
                   {playlists.map((pl) => (
                     <button
                       key={pl.id}
                       onClick={() => addToPlaylist(pl.id)}
                       disabled={addingToPlaylist}
-                      className="px-2.5 py-1 rounded-md text-xs bg-zinc-700 text-zinc-300 hover:bg-zinc-600 transition disabled:opacity-50"
+                      className="px-2.5 py-1 rounded-md text-xs bg-theme-hover text-theme-secondary hover:bg-theme-hover transition disabled:opacity-50"
                     >
                       {pl.name}
                     </button>
@@ -781,7 +781,7 @@ export function DownloadsPage() {
                     value={newPlaylistName}
                     onChange={(e) => setNewPlaylistName(e.target.value)}
                     placeholder="New playlist..."
-                    className="flex-1 md:w-36 md:flex-none px-2.5 py-1 text-xs rounded-md bg-zinc-900 border border-zinc-700 text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+                    className="flex-1 md:w-36 md:flex-none px-2.5 py-1 text-xs rounded-md bg-theme-surface border border-theme text-theme-primary placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
                     onKeyDown={(e) => e.key === 'Enter' && createAndAdd()}
                   />
                   <button
@@ -794,7 +794,7 @@ export function DownloadsPage() {
                 </div>
                 <button
                   onClick={() => setShowPlaylistPicker(false)}
-                  className="text-xs text-zinc-500 hover:text-zinc-300"
+                  className="text-xs text-theme-muted hover:text-theme-secondary"
                 >
                   Cancel
                 </button>
@@ -803,20 +803,20 @@ export function DownloadsPage() {
               <>
                 <button
                   onClick={openPlaylistPicker}
-                  className="px-3 py-1.5 rounded-md text-xs font-medium bg-zinc-700 text-zinc-200 hover:bg-zinc-600 transition"
+                  className="px-3 py-1.5 rounded-md text-xs font-medium bg-theme-hover text-theme-primary hover:bg-theme-hover transition"
                 >
                   Add to playlist
                 </button>
                 <button
                   onClick={normalizeSelected}
                   disabled={normalizing}
-                  className="px-3 py-1.5 rounded-md text-xs font-medium bg-zinc-700 text-zinc-200 hover:bg-zinc-600 transition disabled:opacity-50 disabled:cursor-wait"
+                  className="px-3 py-1.5 rounded-md text-xs font-medium bg-theme-hover text-theme-primary hover:bg-theme-hover transition disabled:opacity-50 disabled:cursor-wait"
                 >
                   {normalizing ? 'Normalizing…' : 'Normalize metadata'}
                 </button>
                 <button
                   onClick={() => handleDelete(Array.from(selected))}
-                  className="px-3 py-1.5 rounded-md text-xs font-medium bg-zinc-700 text-red-400 hover:bg-red-500/20 transition"
+                  className="px-3 py-1.5 rounded-md text-xs font-medium bg-theme-hover text-red-400 hover:bg-red-500/20 transition"
                 >
                   Delete
                 </button>
@@ -827,12 +827,12 @@ export function DownloadsPage() {
 
         {/* Song list */}
         {recentSongs.length === 0 && groups.length === 0 && (
-          <p className="text-center text-zinc-600 text-sm py-20">
+          <p className="text-center text-theme-muted text-sm py-20">
             No recent downloads. Search for music and start downloading!
           </p>
         )}
         {recentSongs.length === 0 && groups.length > 0 && (
-          <p className="text-center text-zinc-600 text-sm py-12">
+          <p className="text-center text-theme-muted text-sm py-12">
             New songs will appear here after downloads complete and library rescans.
           </p>
         )}
@@ -844,7 +844,7 @@ export function DownloadsPage() {
               groupRecentSongsByDate(recentControls.filtered).map((group) => (
                 <div key={group.label}>
                   <div className="px-1.5 md:px-0 mb-1">
-                    <span className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-theme-muted">
                       {group.label}
                     </span>
                   </div>
@@ -873,8 +873,8 @@ export function DownloadsPage() {
         key={song.id}
         className={`flex items-center gap-1.5 md:gap-3 px-1.5 md:px-4 py-2.5 rounded-lg transition group ${
           isSelected
-            ? 'bg-zinc-800/60 border border-zinc-700/50'
-            : 'hover:bg-zinc-800/30 border border-transparent'
+            ? 'bg-theme-surface-2/60 border border-theme'
+            : 'hover:bg-theme-surface-2/30 border border-transparent'
         } ${isDeleting ? 'opacity-40 pointer-events-none' : ''}`}
       >
         {/* Checkbox */}
@@ -883,7 +883,7 @@ export function DownloadsPage() {
           className={`w-4.5 h-4.5 rounded border flex-shrink-0 flex items-center justify-center transition ${
             isSelected
               ? 'bg-blue-500 border-blue-500'
-              : 'border-zinc-700 hover:border-zinc-500'
+              : 'border-theme hover:border-zinc-500'
           }`}
         >
           {isSelected && (
@@ -904,10 +904,10 @@ export function DownloadsPage() {
 
         {/* Song info */}
         <div className="flex-1 min-w-0">
-          <p className="text-sm text-zinc-200 truncate">{song.title}</p>
-          <p className="text-xs text-zinc-500 truncate">
+          <p className="text-sm text-theme-primary truncate">{song.title}</p>
+          <p className="text-xs text-theme-muted truncate">
             <span
-              className="cursor-pointer hover:underline hover:text-zinc-300 transition"
+              className="cursor-pointer hover:underline hover:text-theme-secondary transition"
               onClick={() => navigateAndSearch(song.artist)}
             >
               {song.artist}
@@ -917,16 +917,16 @@ export function DownloadsPage() {
         </div>
 
         {/* Metadata - hidden on mobile */}
-        <span className="hidden md:inline text-xs text-zinc-600 flex-shrink-0 w-12 text-right">
+        <span className="hidden md:inline text-xs text-theme-muted flex-shrink-0 w-12 text-right">
           {song.bitRate ? `${song.bitRate}k` : ''}
         </span>
-        <span className="hidden md:inline text-xs text-zinc-600 flex-shrink-0 w-14 text-right">
+        <span className="hidden md:inline text-xs text-theme-muted flex-shrink-0 w-14 text-right">
           {formatSize(song.size)}
         </span>
-        <span className="text-xs text-zinc-600 flex-shrink-0 w-12 text-right">
+        <span className="text-xs text-theme-muted flex-shrink-0 w-12 text-right">
           {formatDuration(song.duration)}
         </span>
-        <span className="hidden lg:inline text-xs text-zinc-700 flex-shrink-0 w-20 text-right">
+        <span className="hidden lg:inline text-xs text-theme-muted flex-shrink-0 w-20 text-right">
           {timeAgo(song.created)}
         </span>
 
@@ -934,10 +934,10 @@ export function DownloadsPage() {
         {normStatus.has(song.id) && (
           <span className="flex-shrink-0 w-5 flex items-center justify-center">
             {normStatus.get(song.id) === 'pending' && (
-              <span className="w-1.5 h-1.5 rounded-full bg-zinc-600" />
+              <span className="w-1.5 h-1.5 rounded-full bg-theme-muted" />
             )}
             {normStatus.get(song.id) === 'running' && (
-              <svg className="animate-spin text-zinc-400" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <svg className="animate-spin text-theme-secondary" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M21 12a9 9 0 1 1-3-6.7" /><polyline points="21 3 21 9 15 9" />
               </svg>
             )}
@@ -947,7 +947,7 @@ export function DownloadsPage() {
               </svg>
             )}
             {normStatus.get(song.id) === 'skipped' && (
-              <span className="text-zinc-600 text-xs leading-none">—</span>
+              <span className="text-theme-muted text-xs leading-none">—</span>
             )}
             {normStatus.get(song.id) === 'failed' && (
               <svg className="text-red-400/70" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -960,7 +960,7 @@ export function DownloadsPage() {
         {/* Play - always visible on mobile, hover on desktop */}
         <button
           onClick={() => handlePlay(song)}
-          className="p-1.5 text-zinc-500 md:text-zinc-700 hover:text-zinc-300 transition flex-shrink-0 md:opacity-0 md:group-hover:opacity-100"
+          className="p-1.5 text-theme-muted hover:text-theme-secondary transition flex-shrink-0 md:opacity-0 md:group-hover:opacity-100"
           title="Play"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
@@ -971,7 +971,7 @@ export function DownloadsPage() {
         {/* Delete - always visible on mobile, hover on desktop */}
         <button
           onClick={() => handleDelete([song.id])}
-          className="p-1.5 text-zinc-500 md:text-zinc-700 hover:text-red-400 transition flex-shrink-0 md:opacity-0 md:group-hover:opacity-100"
+          className="p-1.5 text-theme-muted hover:text-red-400 transition flex-shrink-0 md:opacity-0 md:group-hover:opacity-100"
           title="Delete from library"
         >
           <svg

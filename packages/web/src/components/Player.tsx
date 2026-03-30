@@ -318,13 +318,13 @@ function PlayerContent() {
   return (
     <>
       <audio ref={audioRef} />
-      <div className={`fixed bottom-0 left-0 right-0 bg-zinc-900 border-t border-zinc-800 z-50 transition-transform duration-300 ease-out ${
+      <div className={`fixed bottom-0 left-0 right-0 bg-theme-surface border-t border-theme z-50 transition-transform duration-300 ease-out ${
         currentTrack ? 'translate-y-0' : 'translate-y-full'
       }`}>
         {/* Autoplay blocked banner */}
         {autoplayBlocked && (
           <div
-            className="absolute inset-0 bg-zinc-900/95 flex items-center justify-center z-10 cursor-pointer"
+            className="absolute inset-0 bg-theme-surface/95 flex items-center justify-center z-10 cursor-pointer"
             onClick={() => {
               const audio = audioRef.current;
               if (audio) {
@@ -337,7 +337,7 @@ function PlayerContent() {
                 <circle cx="12" cy="12" r="10" />
                 <polygon points="10,8 16,12 10,16" fill="currentColor" />
               </svg>
-              <span className="text-sm text-zinc-300">Tap here to start playback</span>
+              <span className="text-sm text-theme-secondary">Tap here to start playback</span>
             </div>
           </div>
         )}
@@ -362,9 +362,9 @@ function PlayerContent() {
               />
             )}
             <div className="min-w-0">
-              <p className="text-sm font-medium text-zinc-100 truncate">{currentTrack?.title}</p>
+              <p className="text-sm font-medium text-theme-primary truncate">{currentTrack?.title}</p>
               <p
-                className="text-xs text-zinc-400 truncate cursor-pointer hover:underline hover:text-zinc-200 transition"
+                className="text-xs text-theme-secondary truncate cursor-pointer hover:underline hover:text-theme-primary transition"
                 onClick={(e) => { e.stopPropagation(); if (currentTrack) navigateAndSearch(currentTrack.artist); }}
               >
                 {currentTrack?.artist}
@@ -380,7 +380,7 @@ function PlayerContent() {
               <button
                 onClick={toggleShuffle}
                 className={`hidden md:flex w-7 h-7 items-center justify-center rounded-full transition ${
-                  shuffle ? 'text-emerald-400' : 'text-zinc-500 hover:text-zinc-300'
+                  shuffle ? 'text-emerald-400' : 'text-theme-muted hover:text-theme-secondary'
                 }`}
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -395,7 +395,7 @@ function PlayerContent() {
               {/* Previous */}
               <button
                 onClick={handlePrev}
-                className="w-7 h-7 flex items-center justify-center text-zinc-400 hover:text-zinc-100 transition"
+                className="w-7 h-7 flex items-center justify-center text-theme-secondary hover:text-theme-primary transition"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
                   <rect x="3" y="5" width="3" height="14" />
@@ -423,7 +423,7 @@ function PlayerContent() {
               {/* Next */}
               <button
                 onClick={handleNext}
-                className="w-7 h-7 flex items-center justify-center text-zinc-400 hover:text-zinc-100 transition"
+                className="w-7 h-7 flex items-center justify-center text-theme-secondary hover:text-theme-primary transition"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
                   <polygon points="3,5 15,12 3,19" />
@@ -435,7 +435,7 @@ function PlayerContent() {
               <button
                 onClick={cycleRepeat}
                 className={`hidden md:flex w-7 h-7 items-center justify-center rounded-full transition relative ${
-                  repeat !== 'off' ? 'text-emerald-400' : 'text-zinc-500 hover:text-zinc-300'
+                  repeat !== 'off' ? 'text-emerald-400' : 'text-theme-muted hover:text-theme-secondary'
                 }`}
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -452,14 +452,14 @@ function PlayerContent() {
 
             {/* Progress bar */}
             <div className="hidden md:flex items-center gap-2 w-full max-w-md">
-              <span className="text-xs text-zinc-500 w-10 text-right">{formatTime(safeProgress)}</span>
-              <div className="flex-1 h-1 bg-zinc-700 rounded-full cursor-pointer" onClick={handleSeek}>
+              <span className="text-xs text-theme-muted w-10 text-right">{formatTime(safeProgress)}</span>
+              <div className="flex-1 h-1 bg-theme-surface-2 rounded-full cursor-pointer" onClick={handleSeek}>
                 <div
-                  className="h-full bg-zinc-300 rounded-full transition-all"
+                  className="h-full bg-theme-secondary rounded-full transition-all"
                   style={{ width: `${progressPercent}%` }}
                 />
               </div>
-              <span className="text-xs text-zinc-500 w-10">{formatTime(safeDuration)}</span>
+              <span className="text-xs text-theme-muted w-10">{formatTime(safeDuration)}</span>
             </div>
           </div>
 
@@ -470,9 +470,9 @@ function PlayerContent() {
         </div>
 
         {/* Mobile progress bar */}
-        <div className="md:hidden h-0.5 bg-zinc-800">
+        <div className="md:hidden h-0.5 bg-theme-surface-2">
           <div
-            className="h-full bg-zinc-400 transition-all"
+            className="h-full bg-theme-secondary transition-all"
             style={{ width: `${progressPercent}%` }}
           />
         </div>

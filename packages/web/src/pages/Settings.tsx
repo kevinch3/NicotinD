@@ -18,7 +18,7 @@ function ThemeSwatch({ preset, selected, onSelect }: ThemeSwatchProps) {
       onClick={onSelect}
       data-theme={preset.id}
       className={`rounded-lg overflow-hidden border-2 transition-all text-left ${
-        selected ? 'border-indigo-500' : 'border-transparent hover:border-zinc-600'
+        selected ? 'border-indigo-500' : 'border-transparent hover:border-theme'
       }`}
       aria-label={`Switch to ${preset.name} theme`}
     >
@@ -182,7 +182,7 @@ export function SettingsPage() {
   // Status indicator
   function StatusDot() {
     if (!configured) {
-      return <span className="inline-block w-2.5 h-2.5 rounded-full bg-zinc-600" title="Not configured" />;
+      return <span className="inline-block w-2.5 h-2.5 rounded-full bg-theme-muted" title="Not configured" />;
     }
     if (connected) {
       return <span className="inline-block w-2.5 h-2.5 rounded-full bg-emerald-500" title="Connected" />;
@@ -199,18 +199,18 @@ export function SettingsPage() {
   if (loading) {
     return (
       <div className="max-w-2xl mx-auto px-4 py-5 md:px-6 md:py-8">
-        <p className="text-zinc-500">Loading settings...</p>
+        <p className="text-theme-muted">Loading settings...</p>
       </div>
     );
   }
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-5 md:px-6 md:py-8">
-      <h1 className="text-xl font-bold text-zinc-100 mb-8">Settings</h1>
+      <h1 className="text-xl font-bold text-theme-primary mb-8">Settings</h1>
 
       {/* ── Appearance ─────────────────────────────────────────────────── */}
-      <section className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-6 mb-6">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-zinc-400 mb-5">
+      <section className="rounded-xl border border-theme bg-theme-surface/50 p-6 mb-6">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-theme-secondary mb-5">
           Appearance
         </h2>
 
@@ -221,7 +221,7 @@ export function SettingsPage() {
             aria-checked={systemTheme}
             onClick={() => setSystemTheme(!systemTheme)}
             className={`relative mt-0.5 w-9 h-5 rounded-full transition-colors flex-shrink-0 ${
-              systemTheme ? 'bg-emerald-600' : 'bg-zinc-700'
+              systemTheme ? 'bg-emerald-600' : 'bg-theme-hover'
             }`}
           >
             <span
@@ -231,8 +231,8 @@ export function SettingsPage() {
             />
           </button>
           <div>
-            <p className="text-sm text-zinc-200">Follow system theme</p>
-            <p className="text-xs text-zinc-500 mt-0.5">
+            <p className="text-sm text-theme-primary">Follow system theme</p>
+            <p className="text-xs text-theme-muted mt-0.5">
               Automatically use light or dark based on your OS setting.
             </p>
           </div>
@@ -252,26 +252,26 @@ export function SettingsPage() {
       </section>
 
       {/* Soulseek Network Section */}
-      <section className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-6">
+      <section className="rounded-xl border border-theme bg-theme-surface/50 p-6">
         <div className="flex items-center gap-3 mb-6">
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-zinc-400">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-theme-secondary">
             Soulseek Network
           </h2>
           <div className="flex items-center gap-2">
             <StatusDot />
-            <span className="text-xs text-zinc-500">{statusLabel()}</span>
+            <span className="text-xs text-theme-muted">{statusLabel()}</span>
           </div>
         </div>
 
         {isAdmin ? (
           <form onSubmit={handleSave} className="space-y-4">
             {/* Account mode toggle */}
-            <div className="flex gap-1 p-1 rounded-lg bg-zinc-800/50 w-fit">
+            <div className="flex gap-1 p-1 rounded-lg bg-theme-surface-2/50 w-fit">
               <button
                 type="button"
                 onClick={() => { setIsNewAccount(false); setConfirmPassword(''); setMessage(null); }}
                 className={`px-3 py-1.5 rounded-md text-xs font-medium transition ${
-                  !isNewAccount ? 'bg-zinc-700 text-zinc-100' : 'text-zinc-400 hover:text-zinc-200'
+                  !isNewAccount ? 'bg-theme-hover text-theme-primary' : 'text-theme-secondary hover:text-theme-primary'
                 }`}
               >
                 I have an account
@@ -280,7 +280,7 @@ export function SettingsPage() {
                 type="button"
                 onClick={() => { setIsNewAccount(true); setMessage(null); }}
                 className={`px-3 py-1.5 rounded-md text-xs font-medium transition ${
-                  isNewAccount ? 'bg-zinc-700 text-zinc-100' : 'text-zinc-400 hover:text-zinc-200'
+                  isNewAccount ? 'bg-theme-hover text-theme-primary' : 'text-theme-secondary hover:text-theme-primary'
                 }`}
               >
                 Create new account
@@ -288,35 +288,35 @@ export function SettingsPage() {
             </div>
 
             <div>
-              <label className="block text-sm text-zinc-400 mb-1.5">Username</label>
+              <label className="block text-sm text-theme-secondary mb-1.5">Username</label>
               <input
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 placeholder="Soulseek username"
-                className="w-full px-4 py-2.5 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-500 transition text-sm"
+                className="w-full px-4 py-2.5 rounded-lg bg-theme-surface-2 border border-theme text-theme-primary placeholder-zinc-600 focus:outline-none focus:border-zinc-500 transition text-sm"
               />
             </div>
             <div>
-              <label className="block text-sm text-zinc-400 mb-1.5">Password</label>
+              <label className="block text-sm text-theme-secondary mb-1.5">Password</label>
               <PasswordField
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder={configured && !isNewAccount ? '••••••••' : 'Soulseek password'}
                 autoComplete="new-password"
-                inputClassName="px-4 py-2.5 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-500 transition text-sm"
+                inputClassName="px-4 py-2.5 rounded-lg bg-theme-surface-2 border border-theme text-theme-primary placeholder-zinc-600 focus:outline-none focus:border-zinc-500 transition text-sm"
               />
             </div>
 
             {isNewAccount && (
               <div>
-                <label className="block text-sm text-zinc-400 mb-1.5">Confirm Password</label>
+                <label className="block text-sm text-theme-secondary mb-1.5">Confirm Password</label>
                 <PasswordField
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   placeholder="Confirm password"
                   autoComplete="new-password"
-                  inputClassName="px-4 py-2.5 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-500 transition text-sm"
+                  inputClassName="px-4 py-2.5 rounded-lg bg-theme-surface-2 border border-theme text-theme-primary placeholder-zinc-600 focus:outline-none focus:border-zinc-500 transition text-sm"
                 />
                 {confirmPassword && password !== confirmPassword && (
                   <p className="text-xs text-red-400 mt-1">Passwords do not match</p>
@@ -327,15 +327,15 @@ export function SettingsPage() {
             {/* Network Settings */}
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm text-zinc-400 mb-1.5">Listening Port</label>
+                <label className="block text-sm text-theme-secondary mb-1.5">Listening Port</label>
                 <input
                   type="number"
                   value={listeningPort}
                   onChange={(e) => setListeningPort(Number(e.target.value))}
                   placeholder="50000"
-                  className="w-full px-4 py-2.5 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-500 transition text-sm"
+                  className="w-full px-4 py-2.5 rounded-lg bg-theme-surface-2 border border-theme text-theme-primary placeholder-zinc-600 focus:outline-none focus:border-zinc-500 transition text-sm"
                 />
-                <p className="text-xs text-zinc-500 mt-1">Port for incoming P2P connections.</p>
+                <p className="text-xs text-theme-muted mt-1">Port for incoming P2P connections.</p>
               </div>
               <div className="flex flex-col justify-center">
                 <label className="flex items-center gap-2 cursor-pointer mt-2">
@@ -343,11 +343,11 @@ export function SettingsPage() {
                     type="checkbox"
                     checked={enableUPnP}
                     onChange={(e) => setEnableUPnP(e.target.checked)}
-                    className="w-4 h-4 rounded border-zinc-700 bg-zinc-800 text-zinc-100 focus:ring-0 focus:ring-offset-0"
+                    className="w-4 h-4 rounded border-theme bg-theme-surface-2 text-theme-primary focus:ring-0 focus:ring-offset-0"
                   />
-                  <span className="text-sm text-zinc-400">Enable UPnP</span>
+                  <span className="text-sm text-theme-secondary">Enable UPnP</span>
                 </label>
-                <p className="text-xs text-zinc-500 mt-1">Auto-forward port (requires router support).</p>
+                <p className="text-xs text-theme-muted mt-1">Auto-forward port (requires router support).</p>
               </div>
             </div>
 
@@ -378,10 +378,10 @@ export function SettingsPage() {
             </button>
           </form>
         ) : (
-          <div className="text-sm text-zinc-500">
+          <div className="text-sm text-theme-muted">
             <p>Only administrators can change Soulseek settings.</p>
             {configured && username && (
-              <p className="mt-2 text-zinc-400">Connected as: {username}</p>
+              <p className="mt-2 text-theme-secondary">Connected as: {username}</p>
             )}
           </div>
         )}
@@ -389,19 +389,19 @@ export function SettingsPage() {
 
       {/* Tailscale Section */}
       {tsStatus?.available && (
-        <section className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-6 mt-6">
+        <section className="rounded-xl border border-theme bg-theme-surface/50 p-6 mt-6">
           <div className="flex items-center gap-3 mb-6">
-            <h2 className="text-sm font-semibold uppercase tracking-wider text-zinc-400">
+            <h2 className="text-sm font-semibold uppercase tracking-wider text-theme-secondary">
               Tailscale Remote Access
             </h2>
             <div className="flex items-center gap-2">
               <span
                 className={`inline-block w-2.5 h-2.5 rounded-full ${
-                  tsStatus.connected ? 'bg-emerald-500' : 'bg-zinc-600'
+                  tsStatus.connected ? 'bg-emerald-500' : 'bg-theme-muted'
                 }`}
                 title={tsStatus.connected ? 'Connected' : 'Not connected'}
               />
-              <span className="text-xs text-zinc-500">
+              <span className="text-xs text-theme-muted">
                 {tsStatus.connected ? 'Connected' : 'Not connected'}
               </span>
             </div>
@@ -411,14 +411,14 @@ export function SettingsPage() {
             <div className="space-y-2 mb-4">
               {tsStatus.hostname && (
                 <div>
-                  <span className="text-xs text-zinc-500">Hostname: </span>
-                  <span className="text-sm text-zinc-200 font-mono">{tsStatus.hostname}</span>
+                  <span className="text-xs text-theme-muted">Hostname: </span>
+                  <span className="text-sm text-theme-primary font-mono">{tsStatus.hostname}</span>
                 </div>
               )}
               {tsStatus.ip && (
                 <div>
-                  <span className="text-xs text-zinc-500">IP: </span>
-                  <span className="text-sm text-zinc-300 font-mono">{tsStatus.ip}</span>
+                  <span className="text-xs text-theme-muted">IP: </span>
+                  <span className="text-sm text-theme-secondary font-mono">{tsStatus.ip}</span>
                 </div>
               )}
             </div>
@@ -442,7 +442,7 @@ export function SettingsPage() {
                     }
                   }}
                   disabled={tsSaving}
-                  className="px-5 py-2.5 rounded-lg border border-zinc-700 text-zinc-300 text-sm font-medium hover:border-zinc-500 transition disabled:opacity-50"
+                  className="px-5 py-2.5 rounded-lg border border-theme text-theme-secondary text-sm font-medium hover:border-zinc-500 transition disabled:opacity-50"
                 >
                   {tsSaving ? 'Disconnecting...' : 'Disconnect'}
                 </button>
@@ -453,7 +453,7 @@ export function SettingsPage() {
                     onChange={(e) => setTsAuthKey(e.target.value)}
                     placeholder="tskey-auth-..."
                     autoComplete="off"
-                    inputClassName="w-full px-4 py-2.5 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-500 transition text-sm font-mono"
+                    inputClassName="w-full px-4 py-2.5 rounded-lg bg-theme-surface-2 border border-theme text-theme-primary placeholder-zinc-600 focus:outline-none focus:border-zinc-500 transition text-sm font-mono"
                   />
                   <button
                     onClick={async () => {
@@ -494,7 +494,7 @@ export function SettingsPage() {
           )}
 
           {!isAdmin && !tsStatus.connected && (
-            <p className="text-sm text-zinc-500">
+            <p className="text-sm text-theme-muted">
               Only administrators can manage Tailscale connection.
             </p>
           )}
@@ -502,9 +502,9 @@ export function SettingsPage() {
       )}
 
       {/* Remote Playback Section — available to all users */}
-      <section className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-6 mt-6">
+      <section className="rounded-xl border border-theme bg-theme-surface/50 p-6 mt-6">
         <div className="flex items-center gap-3 mb-6">
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-zinc-400">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-theme-secondary">
             Remote Playback
           </h2>
         </div>
@@ -527,7 +527,7 @@ export function SettingsPage() {
                 setRemoteEnabled(enabled);
               }}
               className={`relative mt-0.5 w-9 h-5 rounded-full transition-colors flex-shrink-0 ${
-                remoteEnabled ? 'bg-emerald-600' : 'bg-zinc-700'
+                remoteEnabled ? 'bg-emerald-600' : 'bg-theme-hover'
               }`}
             >
               <span
@@ -537,8 +537,8 @@ export function SettingsPage() {
               />
             </button>
             <div>
-              <p className="text-sm text-zinc-200">Make this device available as an audio output</p>
-              <p className="text-xs text-zinc-500 mt-0.5">
+              <p className="text-sm text-theme-primary">Make this device available as an audio output</p>
+              <p className="text-xs text-theme-muted mt-0.5">
                 When enabled, other devices on your account can cast audio to this device.
               </p>
               {!remoteEnabled && (
@@ -551,14 +551,14 @@ export function SettingsPage() {
 
           {/* Device name */}
           <div>
-            <label className="block text-sm text-zinc-400 mb-1.5">This device's name</label>
+            <label className="block text-sm text-theme-secondary mb-1.5">This device's name</label>
             <div className="flex gap-2">
               <input
                 type="text"
                 value={deviceName}
                 onChange={(e) => { setDeviceName(e.target.value); setDeviceNameSaved(false); }}
                 placeholder="e.g. Living Room TV"
-                className="flex-1 px-4 py-2.5 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-500 transition text-sm"
+                className="flex-1 px-4 py-2.5 rounded-lg bg-theme-surface-2 border border-theme text-theme-primary placeholder-zinc-600 focus:outline-none focus:border-zinc-500 transition text-sm"
               />
               <button
                 onClick={() => {
@@ -567,19 +567,19 @@ export function SettingsPage() {
                   setDeviceNameSaved(true);
                 }}
                 disabled={!deviceName.trim() || deviceNameSaved}
-                className="px-4 py-2.5 rounded-lg bg-zinc-700 text-zinc-100 text-sm font-medium hover:bg-zinc-600 transition disabled:opacity-50"
+                className="px-4 py-2.5 rounded-lg bg-theme-hover text-theme-primary text-sm font-medium hover:bg-theme-hover transition disabled:opacity-50"
               >
                 {deviceNameSaved ? 'Saved' : 'Save'}
               </button>
             </div>
-            <p className="text-xs text-zinc-500 mt-1">Shown to other users when they switch playback devices.</p>
+            <p className="text-xs text-theme-muted mt-1">Shown to other users when they switch playback devices.</p>
           </div>
 
           {/* Connected devices list */}
           <div>
-            <p className="text-sm text-zinc-400 mb-2">Connected devices</p>
+            <p className="text-sm text-theme-secondary mb-2">Connected devices</p>
             {devices.length === 0 ? (
-              <p className="text-sm text-zinc-600">No devices online</p>
+              <p className="text-sm text-theme-muted">No devices online</p>
             ) : (
               <ul className="space-y-1">
                 {devices.map(device => {
@@ -591,10 +591,10 @@ export function SettingsPage() {
                   return (
                     <li key={device.id} className="flex items-center gap-2 text-sm">
                       <span>{emoji}</span>
-                      <span className={isMe ? 'text-zinc-200' : 'text-zinc-400'}>
+                      <span className={isMe ? 'text-theme-primary' : 'text-theme-secondary'}>
                         {device.name}
                       </span>
-                      {isMe && <span className="text-xs text-zinc-600">(this device)</span>}
+                      {isMe && <span className="text-xs text-theme-muted">(this device)</span>}
                       {isHost && (
                         <span className="ml-auto text-xs font-semibold tracking-wide px-1.5 py-0.5 rounded bg-emerald-900/60 text-emerald-400">
                           HOST
