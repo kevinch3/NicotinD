@@ -95,7 +95,7 @@ describe('createWebSocketHandlers', () => {
         id: 'dev1',
         name: 'Chrome on Linux',
         type: 'web',
-        remoteEnabled: true,
+        remoteEnabled: false,
       });
 
       expect(ws.send).toHaveBeenCalledTimes(1);
@@ -117,7 +117,7 @@ describe('createWebSocketHandlers', () => {
         id: 'dev1',
         name: 'Test',
         type: 'web',
-        remoteEnabled: true,
+        remoteEnabled: false,
       });
     });
 

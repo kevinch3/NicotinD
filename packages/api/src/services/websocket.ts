@@ -49,7 +49,7 @@ export function createWebSocketHandlers(userId: string) {
               id,
               name: data.payload.name,
               type: data.payload.deviceType || 'web',
-              remoteEnabled: data.payload.remoteEnabled !== false,
+              remoteEnabled: data.payload.remoteEnabled === true,
             });
 
             ws.send(JSON.stringify({
