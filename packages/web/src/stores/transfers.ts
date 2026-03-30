@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { api } from '@/lib/api';
 import type { SlskdUserTransferGroup } from '@nicotind/core';
 import type { TransferEntry } from '@/lib/transferTypes';
+import { detectNewCompletion } from '@/lib/transferUtils';
 
 // Re-export so consumers can import from one place
 export type { TransferEntry } from '@/lib/transferTypes';
@@ -42,17 +43,7 @@ export const useTransferStore = create<TransferStore>((set, get) => ({
         }
       }
       const prevTransfers = get().transfers;
-      let newCompletion = false;
-      for (const [key, entry] of map) {
-        const prev = prevTransfers.get(key);
-        if (
-          entry.state === 'Completed, Succeeded' &&
-          prev?.state !== 'Completed, Succeeded'
-        ) {
-          newCompletion = true;
-          break;
-        }
-      }
+      const newCompletion = detectNewCompletion(prevTransfers, map);
       set({
         transfers: map,
         downloads: data,

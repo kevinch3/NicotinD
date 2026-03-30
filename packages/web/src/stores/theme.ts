@@ -32,11 +32,13 @@ interface ThemeStore {
   apply: () => void;
 }
 
-function resolveTheme(theme: ThemeId, systemTheme: boolean): ThemeId {
+export function resolveTheme(
+  theme: ThemeId,
+  systemTheme: boolean,
+  isLight = window.matchMedia('(prefers-color-scheme: light)').matches,
+): ThemeId {
   if (!systemTheme) return theme;
-  return window.matchMedia('(prefers-color-scheme: light)').matches
-    ? 'daylight'
-    : 'midnight';
+  return isLight ? 'daylight' : 'midnight';
 }
 
 // Module-level ref so the listener can be removed when system-follow is toggled off
