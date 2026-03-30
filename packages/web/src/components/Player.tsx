@@ -70,6 +70,7 @@ function PlayerContent() {
   const myId = wsClient.getDeviceId();
   const isActiveDevice = !activeDeviceId || activeDeviceId === myId;
   const audioRef = useRef<HTMLAudioElement>(null);
+  const pausingByStoreRef = useRef(false);
   const { displayTime, displayDuration } = usePlaybackProgress();
 
   // Load track — only drive audio on the active device.
@@ -79,7 +80,9 @@ function PlayerContent() {
     if (!audio) return;
 
     if (!isActiveDevice) {
+      pausingByStoreRef.current = true;
       audio.pause();
+      pausingByStoreRef.current = false;
       audio.src = '';
       return;
     }
@@ -92,7 +95,9 @@ function PlayerContent() {
         if (err.name === 'NotAllowedError') setAutoplayBlocked(true);
       });
     } else {
+      pausingByStoreRef.current = true;
       audio.pause();
+      pausingByStoreRef.current = false;
       audio.src = '';
       setCurrentTime(0);
       setDuration(0);
@@ -171,13 +176,20 @@ function PlayerContent() {
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
-    if (!isActiveDevice) { audio.pause(); return; }
+    if (!isActiveDevice) {
+      pausingByStoreRef.current = true;
+      audio.pause();
+      pausingByStoreRef.current = false;
+      return;
+    }
     if (isPlaying) {
       audio.play().catch((err) => {
         if (err.name === 'NotAllowedError') setAutoplayBlocked(true);
       });
     } else {
+      pausingByStoreRef.current = true;
       audio.pause();
+      pausingByStoreRef.current = false;
     }
   }, [isPlaying, isActiveDevice]);
 
@@ -217,6 +229,9 @@ function PlayerContent() {
       if (Number.isFinite(value) && value > 0) setDuration(value);
     };
     const onEnded = () => playNext();
+    // Note: getState() is used (not the closure variable) to read current Zustand state
+    // at event-fire time. Closure variables would be stale since this useEffect has a
+    // static dependency array.
     const onPlay = () => {
       setAutoplayBlocked(false);
       // Defensive: sync store if audio started playing without going through resume()
@@ -226,7 +241,9 @@ function PlayerContent() {
       }
     };
     const onPause = () => {
+      if (pausingByStoreRef.current) return; // store-driven pause, not external
       // Sync store if audio was paused externally (headphones disconnected, phone call, etc.)
+      // Store-driven pauses are excluded via the ref guard above.
       if (usePlayerStore.getState().isPlaying) {
         usePlayerStore.getState().pause();
       }
