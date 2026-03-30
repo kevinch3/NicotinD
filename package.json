@@ -13,7 +13,11 @@
     "format": "prettier --write 'packages/*/src/**/*.ts' 'src/**/*.ts'",
     "typecheck": "tsc --build",
     "download-deps": "bun run ./scripts/download-deps.ts",
-    "test": "bun test"
+    "test": "bun test packages src --path-ignore-patterns='**/dist/**' --path-ignore-patterns='**/.worktrees/**'",
+    "test:tdd": "bun --watch test packages src --bail 1 --path-ignore-patterns='**/dist/**' --path-ignore-patterns='**/.worktrees/**'",
+    "test:coverage": "bun test packages src --coverage --coverage-reporter=text --coverage-reporter=lcov --path-ignore-patterns='**/dist/**' --path-ignore-patterns='**/.worktrees/**'",
+    "test:api": "bun test packages/api/src --path-ignore-patterns='**/dist/**'",
+    "test:web": "bun test packages/web/src --path-ignore-patterns='**/dist/**'"
   },
   "dependencies": {
     "@nicotind/core": "workspace:*",

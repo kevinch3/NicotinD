@@ -152,9 +152,29 @@ bun run src/main.ts
 bun run typecheck    # TypeScript type checking
 bun run lint         # ESLint
 bun run format       # Prettier
-bun run test         # Run tests
+bun run test         # Run all source tests (ignores dist artifacts)
+bun run test:tdd     # Watch mode + bail fast for red/green loop
+bun run test:api     # Run API package tests only
+bun run test:web     # Run web package tests only
+bun run test:coverage # Generate text + lcov coverage report
 bun run dev          # Dev mode (concurrent services)
 ```
+
+### TDD Workflow
+
+Use this loop for all new features and bug fixes:
+
+1. Write a failing test close to the behavior (`*.test.ts` next to source files).
+2. Run `bun run test:tdd` and keep the scope focused (`bun run test:api` or `bun run test:web` when useful).
+3. Implement the smallest change to make the test pass.
+4. Refactor with tests still green.
+5. Before merging, run `bun run test` and `bun run test:coverage`.
+
+Conventions:
+
+- Keep unit tests deterministic: use in-memory fakes/mocks for network/process-heavy dependencies.
+- Add a regression test before fixing any reported bug.
+- Avoid testing build output; test source paths only.
 
 ## Configuration
 
