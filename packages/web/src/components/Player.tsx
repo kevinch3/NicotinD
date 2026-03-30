@@ -217,19 +217,34 @@ function PlayerContent() {
       if (Number.isFinite(value) && value > 0) setDuration(value);
     };
     const onEnded = () => playNext();
-    const onPlay = () => setAutoplayBlocked(false);
+    const onPlay = () => {
+      setAutoplayBlocked(false);
+      // Defensive: sync store if audio started playing without going through resume()
+      // (e.g. tap-to-unblock banner, OS media controls, or autoplay-unblock flow)
+      if (!usePlayerStore.getState().isPlaying) {
+        usePlayerStore.getState().resume();
+      }
+    };
+    const onPause = () => {
+      // Sync store if audio was paused externally (headphones disconnected, phone call, etc.)
+      if (usePlayerStore.getState().isPlaying) {
+        usePlayerStore.getState().pause();
+      }
+    };
 
     audio.addEventListener('timeupdate', onTime);
     audio.addEventListener('loadedmetadata', onDuration);
     audio.addEventListener('durationchange', onDuration);
     audio.addEventListener('ended', onEnded);
     audio.addEventListener('play', onPlay);
+    audio.addEventListener('pause', onPause);
     return () => {
       audio.removeEventListener('timeupdate', onTime);
       audio.removeEventListener('loadedmetadata', onDuration);
       audio.removeEventListener('durationchange', onDuration);
       audio.removeEventListener('ended', onEnded);
       audio.removeEventListener('play', onPlay);
+      audio.removeEventListener('pause', onPause);
     };
   }, [playNext, setCurrentTime, setDuration, setAutoplayBlocked]);
 
