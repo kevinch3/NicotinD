@@ -176,7 +176,7 @@ export const api = {
   restartService: (service: 'slskd' | 'navidrome') =>
     request<{ ok: boolean }>(`/api/system/restart/${service}`, { method: 'POST' }),
   getServiceLogs: (service: string, lines = 100) =>
-    request<{ logs: string[] }>(`/api/system/logs/${service}?lines=${lines}`),
+    request<{ logs: string[]; hint?: string }>(`/api/system/logs/${service}?lines=${lines}`),
 
   // Settings
   getSoulseekSettings: () =>

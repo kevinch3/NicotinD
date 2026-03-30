@@ -42,6 +42,7 @@ export function AdminPage() {
   const [restarting, setRestarting] = useState<{ slskd: boolean; navidrome: boolean }>({ slskd: false, navidrome: false });
   const [logService, setLogService] = useState<'slskd' | 'navidrome'>('slskd');
   const [logs, setLogs] = useState<string[]>([]);
+  const [logHint, setLogHint] = useState<string | null>(null);
   const [logsLoading, setLogsLoading] = useState(false);
   const [logsLoaded, setLogsLoaded] = useState(false);
 
@@ -73,9 +74,11 @@ export function AdminPage() {
   async function loadLogs(service: 'slskd' | 'navidrome') {
     setLogService(service);
     setLogsLoading(true);
+    setLogHint(null);
     try {
       const res = await api.getServiceLogs(service);
       setLogs(res.logs);
+      setLogHint(res.hint ?? null);
     } catch {
       setLogs([`Failed to load ${service} logs`]);
     } finally {
@@ -282,18 +285,28 @@ export function AdminPage() {
             const health = systemStatus?.[svc];
             const isHealthy = health?.healthy ?? false;
             const isRestarting = restarting[svc];
+            const slskdConnected = svc === 'slskd' && isHealthy && (systemStatus?.slskd as any)?.connected;
+            const badgeColor =
+              svc === 'slskd' && systemStatus
+                ? slskdConnected ? 'text-emerald-400' : isHealthy ? 'text-amber-400' : 'text-red-400'
+                : isHealthy ? 'text-emerald-400' : 'text-red-400';
+            const dotColor =
+              svc === 'slskd' && systemStatus
+                ? slskdConnected ? 'bg-emerald-500' : isHealthy ? 'bg-amber-400' : 'bg-red-500'
+                : isHealthy ? 'bg-emerald-500' : 'bg-red-500';
+            const badgeLabel =
+              !systemStatus
+                ? '—'
+                : svc === 'slskd'
+                  ? slskdConnected ? 'Connected' : isHealthy ? 'Disconnected' : 'Unreachable'
+                  : isHealthy ? 'Healthy' : 'Unreachable';
             return (
               <div key={svc} className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 flex items-center justify-between gap-4">
                 <div>
                   <p className="text-sm font-medium text-zinc-200 capitalize">{svc}</p>
-                  <span className={`inline-flex items-center gap-1.5 text-xs mt-1 ${isHealthy ? 'text-emerald-400' : 'text-red-400'}`}>
-                    <span className={`w-1.5 h-1.5 rounded-full ${isHealthy ? 'bg-emerald-500' : 'bg-red-500'}`} />
-                    {systemStatus ? (isHealthy ? 'Healthy' : 'Unreachable') : '—'}
-                    {svc === 'slskd' && systemStatus && (
-                      <span className="text-zinc-500 ml-1">
-                        {(systemStatus.slskd as any).connected ? '· Connected' : '· Disconnected'}
-                      </span>
-                    )}
+                  <span className={`inline-flex items-center gap-1.5 text-xs mt-1 ${badgeColor}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
+                    {badgeLabel}
                   </span>
                 </div>
                 <button
@@ -363,7 +376,9 @@ export function AdminPage() {
             </pre>
           )}
           {!logsLoading && logsLoaded && logs.length === 0 && (
-            <p className="text-xs text-zinc-600">No logs available for this service.</p>
+            <p className="text-xs text-zinc-600">
+              {logHint ?? 'No logs available for this service.'}
+            </p>
           )}
           {!logsLoading && !logsLoaded && (
             <p className="text-xs text-zinc-600">Select a service above to view logs.</p>

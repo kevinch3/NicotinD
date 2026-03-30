@@ -74,6 +74,15 @@ export function systemRoutes(
   app.get('/logs/:service', async (c) => {
     const service = c.req.param('service');
     const lines = Number(c.req.query('lines') ?? 100);
+
+    if (!serviceManager.hasService(service)) {
+      const hint =
+        config.mode === 'external'
+          ? `${service} is managed externally — logs are not available here.`
+          : `${service} is not managed by NicotinD.`;
+      return c.json({ logs: [], hint });
+    }
+
     const logs = await serviceManager.getLogs(service, lines);
     return c.json({ logs });
   });
