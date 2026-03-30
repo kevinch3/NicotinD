@@ -120,6 +120,22 @@ describe('createWebSocketHandlers', () => {
         remoteEnabled: true,
       });
     });
+
+    it('registers device with remoteEnabled=false when explicitly set', () => {
+      const ws = createMockWs();
+      handlers.onOpen!({} as Event, ws);
+      handlers.onMessage!(
+        createEvent({ type: 'REGISTER', payload: { id: 'dev1', name: 'Test', deviceType: 'web', remoteEnabled: false } }),
+        ws,
+      );
+
+      expect(mockManager.registerDevice).toHaveBeenCalledWith({
+        id: 'dev1',
+        name: 'Test',
+        type: 'web',
+        remoteEnabled: false,
+      });
+    });
   });
 
   describe('HEARTBEAT', () => {
