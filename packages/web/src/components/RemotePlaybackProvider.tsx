@@ -79,12 +79,12 @@ export function RemotePlaybackProvider({ children }: { children: React.ReactNode
       }
 
       const amActive = state?.activeDeviceId === myId;
+      const remoteEnabled = useRemotePlaybackStore.getState().remoteEnabled;
 
       // Late-join: if this device is already the active device when it first connects
       // and the server has a track stored, load it now. Only runs ONCE.
       if (amActive && state?.track && !lateJoinApplied.current) {
         lateJoinApplied.current = true;
-        const remoteEnabled = useRemotePlaybackStore.getState().remoteEnabled;
         if (remoteEnabled) {
           playerPlay(state.track);
           if (state.isPlaying === false) playerPause();
@@ -94,8 +94,7 @@ export function RemotePlaybackProvider({ children }: { children: React.ReactNode
       // Controller: sync remote track metadata so the player bar shows current info.
       // Uses setCurrentTrackMetadata to avoid clearing queue/history or loading audio.
       // Only applies when a proper remote session exists and this device has opted in.
-      const remoteEnabled = useRemotePlaybackStore.getState().remoteEnabled;
-      const hasActiveSession = state?.activeDeviceId != null;
+      const hasActiveSession = typeof state?.activeDeviceId === 'string';
       if (!amActive && hasActiveSession && remoteEnabled && state?.track) {
         const localTrack = usePlayerStore.getState().currentTrack;
         if (state.track.id !== localTrack?.id) {
