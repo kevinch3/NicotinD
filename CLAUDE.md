@@ -42,10 +42,20 @@ NicotinD (Hono API :8484)
 ## Key Design Patterns
 
 - **Unified search**: `GET /api/search?q=` queries Navidrome locally first, fires slskd network search in parallel. Client polls `/api/search/:id/network` for Soulseek results. Local results display above a divider, network results below with download actions.
+- **Inline download lifecycle**: Search result cards show a 3-state machine (idle → blue progress wash + % → green "▶ Open in Library"). Driven by `useTransferStore`. When a transfer completes, a `libraryDirty` flag triggers Library auto-refresh.
 - **Multi-user**: Shared music library (all users see all downloads). Per-user settings and playlists stored in bun:sqlite (`packages/api/src/db.ts`). First registered user becomes admin.
 - **Service modes**: `embedded` (NicotinD spawns slskd/navidrome as child processes) or `external` (connects to pre-existing instances via URLs).
 - **Subsonic proxy**: `/rest/*` transparently forwards to Navidrome so existing mobile apps (DSub, Symfonium) work unmodified.
 - **Auth flow**: NicotinD issues its own JWTs. Internally holds auto-generated credentials for slskd (API key) and Navidrome (Subsonic token auth: `md5(password+salt)`).
+
+## Web UI — Theme System
+
+CSS custom properties set via `[data-theme]` on `<html>`. Six built-in presets: **Midnight** (default), **Daylight**, **Warm Paper**, **OLED Black**, **Twilight**, **Forest**. Theme is persisted to localStorage (`nicotind-theme`) and applied before first paint (inline script in `index.html`) to avoid flash.
+
+- Theme store: `packages/web/src/stores/theme.ts` (Zustand + persist middleware)
+- Token definitions: `packages/web/src/index.css` (`@layer base` — `:root` + per-`[data-theme]` overrides)
+- Settings UI: Settings → Appearance — swatch grid + "Follow system theme" toggle
+- Cover art: `packages/web/src/components/CoverArt.tsx` — `<img>` with deterministic gradient fallback based on `hash(artist + album)`
 
 ## Configuration
 
