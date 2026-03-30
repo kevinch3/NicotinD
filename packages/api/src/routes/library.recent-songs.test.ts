@@ -1,18 +1,41 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
 import { Hono } from 'hono';
-import { join } from 'node:path';
-import { tmpdir } from 'node:os';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { Database } from 'bun:sqlite';
 import { libraryRoutes } from './library.js';
-import { getDatabase, initDatabase } from '../db.js';
+
+// Use an isolated in-memory DB so this test file is not affected by other
+// test files that mock or replace the db.js singleton.
+let testDb: Database;
+
+mock.module('../db.js', () => ({
+  getDatabase: () => testDb,
+  initDatabase: () => testDb,
+}));
+
+function createTestDb(): Database {
+  const db = new Database(':memory:');
+  db.run(`
+    CREATE TABLE IF NOT EXISTS completed_downloads (
+      transfer_key TEXT PRIMARY KEY,
+      username TEXT NOT NULL,
+      directory TEXT NOT NULL,
+      filename TEXT NOT NULL,
+      relative_path TEXT,
+      basename TEXT NOT NULL,
+      completed_at INTEGER NOT NULL
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_completed_downloads_completed_at ON completed_downloads (completed_at DESC)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_completed_downloads_relative_path ON completed_downloads (relative_path)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_completed_downloads_basename_completed_at ON completed_downloads (basename, completed_at DESC)`);
+  return db;
+}
 
 describe('library recent-songs ordering', () => {
   let app: Hono<any>;
-  let dataDir: string;
 
   beforeEach(() => {
-    dataDir = mkdtempSync(join(tmpdir(), 'nicotind-library-recent-'));
-    initDatabase(dataDir);
+    testDb = createTestDb();
 
     const navidromeMock = {
       browsing: {
@@ -67,11 +90,11 @@ describe('library recent-songs ordering', () => {
   });
 
   afterEach(() => {
-    rmSync(dataDir, { recursive: true, force: true });
+    testDb.close();
   });
 
   it('orders songs by completion timestamp when history exists', async () => {
-    const db = getDatabase();
+    const db = testDb;
     db.run(
       `INSERT INTO completed_downloads
        (transfer_key, username, directory, filename, relative_path, basename, completed_at)
@@ -123,7 +146,7 @@ describe('library recent-songs ordering', () => {
   });
 
   it('falls back to created-time ordering when history is unavailable', async () => {
-    const db = getDatabase();
+    const db = testDb;
     db.run('DELETE FROM completed_downloads');
 
     const res = await app.request('/recent-songs?size=10');
