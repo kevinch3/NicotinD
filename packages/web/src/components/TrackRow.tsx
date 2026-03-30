@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { useAuthStore } from '@/stores/auth';
 import { PreserveButton } from '@/components/PreserveButton';
 import type { Track } from '@/stores/player';
+import { CoverArt } from '@/components/CoverArt';
 
 interface TrailingAction {
   title: string;
@@ -44,6 +45,13 @@ export function TrackRow({
       }`}
     >
       <span className="text-xs text-zinc-600 w-6 text-right">{indexLabel ?? ''}</span>
+      <CoverArt
+        src={track.coverArt ? `/api/cover/${track.coverArt}?size=40&token=${token}` : undefined}
+        artist={track.artist}
+        album={track.album ?? ''}
+        size={36}
+        rounded="rounded"
+      />
       <button type="button" onClick={onPlay} className="flex-1 min-w-0 text-left">
         <p className="text-sm text-zinc-200 truncate">{track.title}</p>
         {subtitle && <p className="text-xs text-zinc-500 truncate">{subtitle}</p>}

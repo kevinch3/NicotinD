@@ -127,7 +127,7 @@ export function Layout() {
       </div>
 
       {/* Content */}
-      <main className={`flex-1 ${hasTrack ? 'pb-20' : ''}`}>
+      <main className={`flex-1 ${hasTrack ? 'pb-16' : ''}`}>
         <Outlet />
       </main>
 

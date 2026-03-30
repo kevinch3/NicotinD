@@ -16,12 +16,16 @@ interface TransferStore {
   startPolling: () => void;
   stopPolling: () => void;
   getStatus: (username: string, filename: string) => TransferEntry | undefined;
+  libraryDirty: boolean;
+  clearLibraryDirty: () => void;
 }
 
 export const useTransferStore = create<TransferStore>((set, get) => ({
   transfers: new Map(),
   downloads: [],
   _intervalId: null,
+  libraryDirty: false,
+  clearLibraryDirty: () => set({ libraryDirty: false }),
 
   poll: async () => {
     try {
@@ -37,7 +41,23 @@ export const useTransferStore = create<TransferStore>((set, get) => ({
           }
         }
       }
-      set({ transfers: map, downloads: data });
+      const prevTransfers = get().transfers;
+      let newCompletion = false;
+      for (const [key, entry] of map) {
+        const prev = prevTransfers.get(key);
+        if (
+          entry.state === 'Completed, Succeeded' &&
+          prev?.state !== 'Completed, Succeeded'
+        ) {
+          newCompletion = true;
+          break;
+        }
+      }
+      set({
+        transfers: map,
+        downloads: data,
+        ...(newCompletion ? { libraryDirty: true } : {}),
+      });
     } catch {
       // non-fatal: keep stale data on network error
     }

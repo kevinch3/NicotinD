@@ -7,6 +7,7 @@ import { toTrack } from '@/lib/trackUtils';
 import { TrackRow } from '@/components/TrackRow';
 import { useListControls } from '@/hooks/useListControls';
 import { ListToolbar } from '@/components/ListToolbar';
+import { useTransferStore } from '@/stores/transfers';
 
 interface Album {
   id: string;
@@ -40,6 +41,9 @@ export function LibraryPage() {
   const playWithContext = usePlayerStore((s) => s.playWithContext);
   const preserve = usePreserveStore((s) => s.preserve);
 
+  const libraryDirty = useTransferStore((s) => s.libraryDirty);
+  const clearLibraryDirty = useTransferStore((s) => s.clearLibraryDirty);
+
   // List controls for album grid
   const gridControls = useListControls<Album>({
     pageKey: 'library',
@@ -72,6 +76,17 @@ export function LibraryPage() {
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (!libraryDirty) return;
+    clearLibraryDirty();
+    setLoading(true);
+    api
+      .getAlbums('newest', 80)
+      .then(setAlbums)
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [libraryDirty]);
 
   async function openAlbum(album: Album) {
     setLoadingAlbum(true);
@@ -110,7 +125,7 @@ export function LibraryPage() {
   // Album detail view
   if (selectedAlbum) {
     return (
-      <div className="max-w-6xl mx-auto px-3 py-4 md:px-6 md:py-8">
+      <div className="max-w-6xl mx-auto px-4 py-5 md:px-6 md:py-8">
         <button
           onClick={() => setSelectedAlbum(null)}
           className="text-sm text-zinc-500 hover:text-zinc-300 transition mb-6"
@@ -188,7 +203,7 @@ export function LibraryPage() {
 
   // Album grid
   return (
-    <div className="max-w-6xl mx-auto px-3 py-4 md:px-6 md:py-8">
+    <div className="max-w-6xl mx-auto px-4 py-5 md:px-6 md:py-8">
       <div className="flex items-center gap-3 mb-6">
         <h1 className="text-lg font-semibold text-zinc-100">Library</h1>
         <button onClick={gridControls.showToolbar} className="p-1 text-zinc-600 hover:text-zinc-300 transition" title="Search (Ctrl+F)">
