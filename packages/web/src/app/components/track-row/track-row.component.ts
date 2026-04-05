@@ -61,14 +61,14 @@ function formatDuration(seconds?: number): string {
             </svg>
           </button>
           @if (menuOpen()) {
-            <div class="absolute right-0 top-7 z-50 bg-zinc-900 border border-zinc-700 rounded-xl shadow-xl py-1 min-w-40"
+            <div class="absolute right-0 top-7 z-50 bg-theme-surface border border-theme rounded-xl shadow-xl py-1 min-w-40"
                  (click)="$event.stopPropagation()">
               @for (action of actions(); track action.label) {
                 <button
                   type="button"
-                  class="w-full text-left px-4 py-2 text-sm transition-colors hover:bg-zinc-800"
+                  class="w-full text-left px-4 py-2 text-sm transition-colors hover:bg-theme-hover"
                   [class.text-red-400]="action.destructive"
-                  [class.text-zinc-300]="!action.destructive"
+                  [class.text-theme-secondary]="!action.destructive"
                   (click)="runAction(action)">
                   {{ action.label }}
                 </button>
