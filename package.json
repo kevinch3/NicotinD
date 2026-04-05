@@ -17,7 +17,7 @@
     "test:tdd": "bun --watch test packages src --bail 1 --path-ignore-patterns='**/dist/**' --path-ignore-patterns='**/.worktrees/**'",
     "test:coverage": "bun test packages src --coverage --coverage-reporter=text --coverage-reporter=lcov --path-ignore-patterns='**/dist/**' --path-ignore-patterns='**/.worktrees/**'",
     "test:api": "bun test packages/api/src --path-ignore-patterns='**/dist/**'",
-    "test:web": "bun test packages/web/src --path-ignore-patterns='**/dist/**'"
+    "test:web": "bun run --cwd packages/web ng test"
   },
   "dependencies": {
     "@nicotind/core": "workspace:*",

@@ -1,5 +1,4 @@
-import { describe, expect, it } from 'bun:test';
-import { resolveTheme, THEME_PRESETS, type ThemeId } from './theme';
+import { resolveTheme, THEME_PRESETS, type ThemeId } from './theme.service';
 
 describe('THEME_PRESETS', () => {
   const EXPECTED_IDS: ThemeId[] = ['midnight', 'daylight', 'warm-paper', 'oled', 'twilight', 'forest'];

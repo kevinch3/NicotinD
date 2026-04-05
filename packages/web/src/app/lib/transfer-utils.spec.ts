@@ -1,6 +1,5 @@
-import { describe, expect, it } from 'bun:test';
-import { detectNewCompletion } from '../lib/transferUtils';
-import type { TransferEntry } from '../lib/transferTypes';
+import { detectNewCompletion } from './transfer-utils';
+import type { TransferEntry } from './transfer-types';
 
 const entry = (state: TransferEntry['state'], percent = 0): TransferEntry => ({ state, percent });
 

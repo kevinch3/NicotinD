@@ -1,11 +1,9 @@
-import { describe, expect, it } from 'bun:test';
 import {
   extractDirectory,
   groupByDirectory,
   buildFolderTree,
   getDirectFiles,
-  type FolderNode,
-} from './folderUtils';
+} from './folder-utils';
 
 describe('extractDirectory', () => {
   it('extracts the directory from a backslash-separated path', () => {

@@ -1,10 +1,9 @@
-import { describe, expect, it } from 'bun:test';
 import {
   getSingleDownloadLabel,
   getFolderDownloadLabel,
   BUTTON_CLASSES,
-} from './downloadStatus';
-import type { TransferEntry } from './transferTypes';
+} from './download-status';
+import type { TransferEntry } from './transfer-types';
 
 const entry = (state: TransferEntry['state'], percent = 0): TransferEntry => ({ state, percent });
 

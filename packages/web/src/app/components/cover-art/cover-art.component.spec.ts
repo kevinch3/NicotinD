@@ -1,5 +1,4 @@
-import { describe, expect, it } from 'bun:test';
-import { hashCode } from './CoverArt';
+import { hashCode } from './cover-art.component';
 
 describe('hashCode', () => {
   it('returns a non-negative integer', () => {
@@ -17,7 +16,6 @@ describe('hashCode', () => {
   });
 
   it('produces different values for different inputs', () => {
-    // Not a strict guarantee but should hold for any two distinct real keys
     expect(hashCode('Artist A:Album 1')).not.toBe(hashCode('Artist B:Album 2'));
   });
 
@@ -27,9 +25,9 @@ describe('hashCode', () => {
       'Pink Floyd:The Wall',
       'Radiohead:OK Computer',
       'David Bowie:Ziggy Stardust',
-      ':',           // edge: both parts empty
-      'Artist:',     // edge: no album
-      ':Album',      // edge: no artist
+      ':',
+      'Artist:',
+      ':Album',
     ];
     for (const key of keys) {
       const idx = hashCode(key) % GRADIENT_COUNT;

@@ -1,5 +1,4 @@
-import { describe, expect, it } from 'bun:test';
-import { toTrack, type BaseSong } from './trackUtils';
+import { toTrack, type BaseSong } from './track-utils';
 
 describe('trackUtils', () => {
   describe('toTrack', () => {
