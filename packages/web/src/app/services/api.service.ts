@@ -208,6 +208,20 @@ export class ApiService {
     return this.http.get<Array<{ id: string; name: string; albumCount?: number }>>('/api/library/artists');
   }
 
+  getArtist(id: string) {
+    return this.http.get<{ artist: { id: string; name: string; albumCount: number; coverArt?: string }; albums: Album[] }>(
+      `/api/library/artists/${id}`,
+    );
+  }
+
+  getGenres() {
+    return this.http.get<Array<{ value: string; songCount: number; albumCount: number }>>('/api/library/genres');
+  }
+
+  getSongsByGenre(genre: string, count = 100) {
+    return this.http.get<Song[]>('/api/library/genres/songs', { params: { genre, count } });
+  }
+
   getRecentSongs(size = 50) {
     return this.http.get<Song[]>('/api/library/recent-songs', { params: { size } });
   }
