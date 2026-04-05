@@ -143,6 +143,14 @@ export function libraryRoutes(navidrome: Navidrome, musicDir?: string, metadataF
     return c.json(genres);
   });
 
+  app.get('/genres/songs', async (c) => {
+    const genre = c.req.query('genre') ?? '';
+    const count = Number(c.req.query('count') ?? 100);
+    if (!genre) return c.json([], 200);
+    const songs = await navidrome.browsing.getSongsByGenre(genre, count);
+    return c.json(songs);
+  });
+
   app.get('/random', async (c) => {
     const size = Number(c.req.query('size') ?? 10);
     const songs = await navidrome.browsing.getRandomSongs(size);
