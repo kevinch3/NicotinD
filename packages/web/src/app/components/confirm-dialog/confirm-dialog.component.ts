@@ -1,10 +1,9 @@
 import { Component, HostListener, input, output } from '@angular/core';
-import { CommonModule } from '@angular/common';
 
 @Component({
   selector: 'app-confirm-dialog',
   standalone: true,
-  imports: [CommonModule],
+  imports: [],
   template: `
     <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
          (click)="cancel.emit()">
