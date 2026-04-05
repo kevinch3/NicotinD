@@ -298,7 +298,7 @@ function groupRecentSongsByDate(songs: Song[]): SongDateGroup[] {
                 class="px-3 py-1.5 rounded-md text-xs font-medium bg-theme-hover text-theme-primary hover:bg-theme-hover transition disabled:opacity-50 disabled:cursor-wait">
                 {{ normalizing() ? 'Normalizing…' : 'Normalize metadata' }}
               </button>
-              <button (click)="handleDelete(selectedArray())"
+              <button (click)="confirmDeleteSelected()"
                 class="px-3 py-1.5 rounded-md text-xs font-medium bg-theme-hover text-red-400 hover:bg-red-500/20 transition">
                 Delete
               </button>
@@ -420,13 +420,13 @@ function groupRecentSongsByDate(songs: Song[]): SongDateGroup[] {
                 </svg>
               </button>
               @if (songMenuId() === song.id) {
-                <div class="absolute right-0 top-7 z-50 bg-zinc-900 border border-zinc-700 rounded-xl shadow-xl py-1 min-w-40"
+                <div class="absolute right-0 top-7 z-50 bg-theme-surface border border-theme rounded-xl shadow-xl py-1 min-w-40"
                      (click)="$event.stopPropagation()">
                   @for (action of songActions(song); track action.label) {
                     <button type="button"
-                      class="w-full text-left px-4 py-2 text-sm transition-colors hover:bg-zinc-800"
+                      class="w-full text-left px-4 py-2 text-sm transition-colors hover:bg-theme-hover"
                       [class.text-red-400]="action.destructive"
-                      [class.text-zinc-300]="!action.destructive"
+                      [class.text-theme-secondary]="!action.destructive"
                       (click)="action.action(); songMenuId.set(null)">
                       {{ action.label }}
                     </button>
@@ -472,7 +472,7 @@ export class DownloadsComponent implements OnInit, OnDestroy {
 
   // Confirm dialog
   readonly confirmMessage = signal('');
-  readonly confirmCallback = signal<(() => void) | null>(null);
+  readonly confirmCallback = signal<(() => void | Promise<void>) | null>(null);
   readonly showConfirm = computed(() => this.confirmCallback() !== null);
 
   // Song context menu
@@ -486,7 +486,7 @@ export class DownloadsComponent implements OnInit, OnDestroy {
   onConfirm(): void {
     const cb = this.confirmCallback();
     this.confirmCallback.set(null);
-    cb?.();
+    Promise.resolve(cb?.()).catch(() => { /* ignore */ });
   }
 
   onCancelConfirm(): void {
@@ -677,6 +677,14 @@ export class DownloadsComponent implements OnInit, OnDestroy {
         action: () => this.askConfirm(`Remove "${song.title}" from library?`, () => this.handleDelete([song.id])),
       },
     ];
+  }
+
+  confirmDeleteSelected(): void {
+    const count = this.selected().size;
+    this.askConfirm(
+      `Delete ${count} song${count !== 1 ? 's' : ''} from library?`,
+      () => this.handleDelete(this.selectedArray()),
+    );
   }
 
   openPlaylistPicker(): void {
