@@ -1,4 +1,4 @@
-import { Component, inject, signal, computed, effect, OnInit, OnDestroy } from '@angular/core';
+import { Component, inject, signal, computed, effect, OnInit, OnDestroy, HostListener } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -8,6 +8,9 @@ import { PlayerService, type Track } from '../../services/player.service';
 import { TransferService } from '../../services/transfer.service';
 import { ListControlsService, type SortOption } from '../../services/list-controls.service';
 import { ListToolbarComponent } from '../../components/list-toolbar/list-toolbar.component';
+import { ConfirmDialogComponent } from '../../components/confirm-dialog/confirm-dialog.component';
+import { PlaylistAutocompleteComponent } from '../../components/playlist-autocomplete/playlist-autocomplete.component';
+import { TrackAction } from '../../components/track-row/track-row.component';
 import type { SlskdUserTransferGroup } from '@nicotind/core';
 
 // ─── Types ──────────────────────────────────────────────────────────
@@ -21,12 +24,6 @@ interface AlbumGroup {
   completedFiles: number;
   overallPercent: number;
   state: 'downloading' | 'queued' | 'done' | 'error';
-}
-
-interface PlaylistOption {
-  id: string;
-  name: string;
-  songCount: number;
 }
 
 type NormState = 'pending' | 'running' | 'fixed' | 'skipped' | 'failed';
@@ -118,7 +115,7 @@ function groupRecentSongsByDate(songs: Song[]): SongDateGroup[] {
 
 @Component({
   selector: 'app-downloads',
-  imports: [NgTemplateOutlet, FormsModule, ListToolbarComponent],
+  imports: [NgTemplateOutlet, FormsModule, ListToolbarComponent, ConfirmDialogComponent, PlaylistAutocompleteComponent],
   template: `
     <div class="max-w-5xl mx-auto px-4 py-5 md:px-6 md:py-8">
       <!-- Header -->
@@ -184,6 +181,11 @@ function groupRecentSongsByDate(songs: Song[]): SongDateGroup[] {
                     <p class="text-xs text-right font-medium text-theme-muted">Queued</p>
                   }
                 </div>
+                <button (click)="removeGroup(group)" class="p-1 text-theme-muted hover:text-red-400 transition flex-shrink-0" title="Remove album">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+                  </svg>
+                </button>
                 <button (click)="clearGroup(group)" class="text-xs text-theme-muted hover:text-theme-secondary transition flex-shrink-0" title="Cancel">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
@@ -199,6 +201,11 @@ function groupRecentSongsByDate(songs: Song[]): SongDateGroup[] {
                   <p class="text-xs text-theme-muted mt-0.5 truncate w-full">{{ group.completedFiles }} of {{ group.totalFiles }} tracks</p>
                 </div>
                 <p class="text-xs text-red-400/70 font-medium flex-shrink-0">Error</p>
+                <button (click)="removeGroup(group)" class="p-1 text-theme-muted hover:text-red-400 transition flex-shrink-0" title="Remove album">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+                  </svg>
+                </button>
                 <button (click)="clearGroup(group)" class="text-xs text-theme-muted hover:text-theme-secondary transition flex-shrink-0" title="Dismiss">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
@@ -214,6 +221,11 @@ function groupRecentSongsByDate(songs: Song[]): SongDateGroup[] {
                   <p class="text-xs text-theme-muted mt-0.5 truncate w-full">{{ group.totalFiles }} tracks</p>
                 </div>
                 <p class="text-xs text-emerald-400/70 font-medium flex-shrink-0">Done</p>
+                <button (click)="removeGroup(group)" class="p-1 text-theme-muted hover:text-red-400 transition flex-shrink-0" title="Remove album">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+                  </svg>
+                </button>
                 <button (click)="clearGroup(group)" class="text-xs text-theme-muted hover:text-theme-secondary transition flex-shrink-0" title="Dismiss">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
@@ -271,27 +283,11 @@ function groupRecentSongsByDate(songs: Song[]): SongDateGroup[] {
             <div class="flex-1 min-w-0"></div>
 
             @if (showPlaylistPicker()) {
-              <div class="flex flex-wrap items-center gap-2 w-full md:w-auto">
-                <span class="text-xs text-theme-secondary flex-shrink-0">Add to:</span>
-                <div class="flex gap-1.5 flex-wrap">
-                  @for (pl of playlists(); track pl.id) {
-                    <button (click)="addToPlaylist(pl.id)" [disabled]="addingToPlaylist()"
-                      class="px-2.5 py-1 rounded-md text-xs bg-theme-hover text-theme-secondary hover:bg-theme-hover transition disabled:opacity-50">
-                      {{ pl.name }}
-                    </button>
-                  }
-                </div>
-                <div class="flex gap-1.5 w-full md:w-auto">
-                  <input type="text" [ngModel]="newPlaylistName()" (ngModelChange)="newPlaylistName.set($event)"
-                    placeholder="New playlist..."
-                    class="flex-1 md:w-36 md:flex-none px-2.5 py-1 text-xs rounded-md bg-theme-surface border border-theme text-theme-primary placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
-                    (keydown.enter)="createAndAdd()" />
-                  <button (click)="createAndAdd()" [disabled]="!newPlaylistName().trim() || addingToPlaylist()"
-                    class="px-2.5 py-1 rounded-md text-xs font-medium bg-zinc-100 text-zinc-900 hover:bg-zinc-200 transition disabled:opacity-40">
-                    Create
-                  </button>
-                </div>
-                <button (click)="showPlaylistPicker.set(false)" class="text-xs text-theme-muted hover:text-theme-secondary">Cancel</button>
+              <div class="relative">
+                <app-playlist-autocomplete
+                  (selected)="addToPlaylist($event); showPlaylistPicker.set(false)"
+                  (create)="createAndAdd($event)"
+                />
               </div>
             } @else {
               <button (click)="openPlaylistPicker()"
@@ -413,9 +409,43 @@ function groupRecentSongsByDate(songs: Song[]): SongDateGroup[] {
                 <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
               </svg>
             </button>
+
+            <!-- "..." context menu -->
+            <div class="relative flex-shrink-0">
+              <button (click)="songMenuId.set(songMenuId() === song.id ? null : song.id); $event.stopPropagation()"
+                class="p-1.5 text-theme-muted hover:text-theme-secondary transition flex-shrink-0 md:opacity-0 md:group-hover:opacity-100"
+                title="More options">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                  <circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/>
+                </svg>
+              </button>
+              @if (songMenuId() === song.id) {
+                <div class="absolute right-0 top-7 z-50 bg-zinc-900 border border-zinc-700 rounded-xl shadow-xl py-1 min-w-40"
+                     (click)="$event.stopPropagation()">
+                  @for (action of songActions(song); track action.label) {
+                    <button type="button"
+                      class="w-full text-left px-4 py-2 text-sm transition-colors hover:bg-zinc-800"
+                      [class.text-red-400]="action.destructive"
+                      [class.text-zinc-300]="!action.destructive"
+                      (click)="action.action(); songMenuId.set(null)">
+                      {{ action.label }}
+                    </button>
+                  }
+                </div>
+              }
+            </div>
           </div>
         </ng-template>
       </section>
+
+      @if (showConfirm()) {
+        <app-confirm-dialog
+          [message]="confirmMessage()"
+          confirmLabel="Remove"
+          (confirm)="onConfirm()"
+          (cancel)="onCancelConfirm()"
+        />
+      }
     </div>
   `,
 })
@@ -436,11 +466,37 @@ export class DownloadsComponent implements OnInit, OnDestroy {
   readonly deleting = signal(new Set<string>());
   readonly scanning = signal(false);
   readonly showPlaylistPicker = signal(false);
-  readonly playlists = signal<PlaylistOption[]>([]);
-  readonly newPlaylistName = signal('');
   readonly addingToPlaylist = signal(false);
   readonly normStatus = signal(new Map<string, NormState>());
   readonly normalizing = signal(false);
+
+  // Confirm dialog
+  readonly confirmMessage = signal('');
+  readonly confirmCallback = signal<(() => void) | null>(null);
+  readonly showConfirm = computed(() => this.confirmCallback() !== null);
+
+  // Song context menu
+  readonly songMenuId = signal<string | null>(null);
+
+  private askConfirm(message: string, cb: () => void): void {
+    this.confirmMessage.set(message);
+    this.confirmCallback.set(cb);
+  }
+
+  onConfirm(): void {
+    const cb = this.confirmCallback();
+    this.confirmCallback.set(null);
+    cb?.();
+  }
+
+  onCancelConfirm(): void {
+    this.confirmCallback.set(null);
+  }
+
+  @HostListener('document:click')
+  closeSongMenu(): void {
+    this.songMenuId.set(null);
+  }
 
   private prevHadActive = false;
 
@@ -594,12 +650,37 @@ export class DownloadsComponent implements OnInit, OnDestroy {
     finally { this.scanning.set(false); }
   }
 
-  async openPlaylistPicker(): Promise<void> {
+  removeGroup(group: AlbumGroup): void {
+    this.askConfirm(
+      `Remove "${group.name}" and all its ${group.totalFiles} file(s)?`,
+      async () => {
+        for (const fileId of group.fileIds) {
+          try { await firstValueFrom(this.api.cancelDownload(group.username, fileId)); } catch { /* ignore */ }
+        }
+        this.transferService.poll();
+      },
+    );
+  }
+
+  songActions(song: Song): TrackAction[] {
+    return [
+      {
+        label: 'Add to playlist',
+        action: () => {
+          this.selected.update(prev => new Set([...prev, song.id]));
+          this.showPlaylistPicker.set(true);
+        },
+      },
+      {
+        label: 'Remove',
+        destructive: true,
+        action: () => this.askConfirm(`Remove "${song.title}" from library?`, () => this.handleDelete([song.id])),
+      },
+    ];
+  }
+
+  openPlaylistPicker(): void {
     this.showPlaylistPicker.set(true);
-    try {
-      const data = await firstValueFrom(this.api.getPlaylists());
-      this.playlists.set(data);
-    } catch { /* ignore */ }
   }
 
   async addToPlaylist(playlistId: string): Promise<void> {
@@ -613,15 +694,14 @@ export class DownloadsComponent implements OnInit, OnDestroy {
     finally { this.addingToPlaylist.set(false); }
   }
 
-  async createAndAdd(): Promise<void> {
-    if (!this.newPlaylistName().trim()) return;
+  async createAndAdd(name: string): Promise<void> {
+    if (!name.trim()) return;
     const songIds = Array.from(this.selected());
     this.addingToPlaylist.set(true);
     try {
-      await firstValueFrom(this.api.createPlaylist(this.newPlaylistName().trim(), songIds));
+      await firstValueFrom(this.api.createPlaylist(name.trim(), songIds));
       this.selected.set(new Set());
       this.showPlaylistPicker.set(false);
-      this.newPlaylistName.set('');
     } catch { /* ignore */ }
     finally { this.addingToPlaylist.set(false); }
   }
