@@ -159,7 +159,7 @@ export function createApp({
 
   // Serve web UI static files
   if (webDistPath) {
-    app.use('/assets/*', serveStatic({ root: webDistPath }));
+    app.use('*', serveStatic({ root: webDistPath }));
     app.get('*', (c, next) => {
       const path = c.req.path;
       if (
@@ -169,10 +169,6 @@ export function createApp({
         path.startsWith('/rest/')
       ) {
         return next();
-      }
-      // Serve JS/CSS chunks directly, fallback to index.html for routes
-      if (path.match(/\.(js|css|ico|png|svg|webp|woff2?|ttf|eot)$/)) {
-        return serveStatic({ root: webDistPath })(c, next);
       }
       return serveStatic({ root: webDistPath, path: '/index.html' })(c, next);
     });
