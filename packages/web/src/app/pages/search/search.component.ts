@@ -130,6 +130,7 @@ function escapeHtml(text: string): string {
             type="text"
             [ngModel]="search.query()"
             (ngModelChange)="search.setQuery($event)"
+            [ngModelOptions]="{standalone: true}"
             (focus)="searchFocused.set(true)"
             (blur)="onSearchBlur()"
             placeholder="Search for music..."

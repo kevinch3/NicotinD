@@ -80,12 +80,12 @@ import { PasswordFieldComponent } from '../../components/password-field/password
 
               <div>
                 <label class="block text-sm text-theme-secondary mb-1.5">Username</label>
-                <input type="text" [ngModel]="username()" (ngModelChange)="username.set($event)" placeholder="Soulseek username"
+                <input type="text" [ngModel]="username()" (ngModelChange)="username.set($event)" name="slskUser" placeholder="Soulseek username"
                   class="w-full px-4 py-2.5 rounded-lg bg-theme-surface-2 border border-theme text-theme-primary placeholder-zinc-600 focus:outline-none focus:border-zinc-500 transition text-sm" />
               </div>
               <div>
                 <label class="block text-sm text-theme-secondary mb-1.5">Password</label>
-                <app-password-field [ngModel]="password()" (ngModelChange)="password.set($event)"
+                <app-password-field [ngModel]="password()" (ngModelChange)="password.set($event)" name="slskPass"
                   [placeholder]="configured() && !isNewAccount() ? '••••••••' : 'Soulseek password'"
                   autocomplete="new-password"
                   inputClass="px-4 py-2.5 rounded-lg bg-theme-surface-2 border border-theme text-theme-primary placeholder-zinc-600 focus:outline-none focus:border-zinc-500 transition text-sm" />
@@ -94,7 +94,7 @@ import { PasswordFieldComponent } from '../../components/password-field/password
               @if (isNewAccount()) {
                 <div>
                   <label class="block text-sm text-theme-secondary mb-1.5">Confirm Password</label>
-                  <app-password-field [ngModel]="confirmPassword()" (ngModelChange)="confirmPassword.set($event)"
+                  <app-password-field [ngModel]="confirmPassword()" (ngModelChange)="confirmPassword.set($event)" name="slskConfirm"
                     placeholder="Confirm password" autocomplete="new-password"
                     inputClass="px-4 py-2.5 rounded-lg bg-theme-surface-2 border border-theme text-theme-primary placeholder-zinc-600 focus:outline-none focus:border-zinc-500 transition text-sm" />
                   @if (confirmPassword() && password() !== confirmPassword()) {
@@ -106,13 +106,13 @@ import { PasswordFieldComponent } from '../../components/password-field/password
               <div class="grid grid-cols-2 gap-4">
                 <div>
                   <label class="block text-sm text-theme-secondary mb-1.5">Listening Port</label>
-                  <input type="number" [ngModel]="listeningPort()" (ngModelChange)="listeningPort.set($event)" placeholder="50000"
+                  <input type="number" [ngModel]="listeningPort()" (ngModelChange)="listeningPort.set($event)" name="slskPort" placeholder="50000"
                     class="w-full px-4 py-2.5 rounded-lg bg-theme-surface-2 border border-theme text-theme-primary placeholder-zinc-600 focus:outline-none focus:border-zinc-500 transition text-sm" />
                   <p class="text-xs text-theme-muted mt-1">Port for incoming P2P connections.</p>
                 </div>
                 <div class="flex flex-col justify-center">
                   <label class="flex items-center gap-2 cursor-pointer mt-2">
-                    <input type="checkbox" [ngModel]="enableUPnP()" (ngModelChange)="enableUPnP.set($event)"
+                    <input type="checkbox" [ngModel]="enableUPnP()" (ngModelChange)="enableUPnP.set($event)" name="slskUpnp"
                       class="w-4 h-4 rounded border-theme bg-theme-surface-2 text-theme-primary focus:ring-0 focus:ring-offset-0" />
                     <span class="text-sm text-theme-secondary">Enable UPnP</span>
                   </label>

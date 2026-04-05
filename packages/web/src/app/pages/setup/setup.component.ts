@@ -63,12 +63,12 @@ type Step = 'admin' | 'soulseek' | 'tailscale' | 'done';
                 </button>
               </div>
               <div class="space-y-3">
-                <input type="text" [placeholder]="slskIsNewAccount() ? 'Choose a username' : 'Soulseek username'" [(ngModel)]="slskUsername" autofocus
+                <input type="text" [placeholder]="slskIsNewAccount() ? 'Choose a username' : 'Soulseek username'" [(ngModel)]="slskUsername" name="slskUser" autofocus
                   class="w-full px-4 py-3 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-500 transition text-sm" />
-                <app-password-field [(ngModel)]="slskPassword" [placeholder]="slskIsNewAccount() ? 'Choose a password' : 'Soulseek password'" [autocomplete]="'new-password'"
+                <app-password-field [(ngModel)]="slskPassword" name="slskPass" [placeholder]="slskIsNewAccount() ? 'Choose a password' : 'Soulseek password'" [autocomplete]="'new-password'"
                   [inputClass]="'px-4 py-3 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-500 transition text-sm'" />
                 @if (slskIsNewAccount()) {
-                  <app-password-field [(ngModel)]="slskConfirmPassword" [placeholder]="'Confirm password'" [autocomplete]="'new-password'"
+                  <app-password-field [(ngModel)]="slskConfirmPassword" name="slskConfirm" [placeholder]="'Confirm password'" [autocomplete]="'new-password'"
                     [inputClass]="'px-4 py-3 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-500 transition text-sm'" />
                   @if (slskConfirmPassword && slskPassword !== slskConfirmPassword) {
                     <p class="text-xs text-red-400">Passwords do not match</p>
