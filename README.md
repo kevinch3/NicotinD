@@ -45,7 +45,7 @@ docker compose up
 └─────────────────────────────────────────────────────────┘
 ```
 
-- **NicotinD** — Hono API + React web UI (port 8484, the only exposed port)
+- **NicotinD** — Hono API + Angular web UI (port 8484, the only exposed port)
 - **slskd** — Soulseek client (internal only), downloads to shared music volume
 - **Navidrome** — Music streaming server (internal only), reads from shared music volume
 - **Tailscale** — Sidecar container for secure remote access via your tailnet
@@ -164,7 +164,7 @@ bun run dev          # Dev mode (concurrent services)
 
 Use this loop for all new features and bug fixes:
 
-1. Write a failing test close to the behavior (`*.test.ts` next to source files).
+1. Write a failing test close to the behavior (`*.test.ts` for API/core packages, `*.spec.ts` for web package).
 2. Run `bun run test:tdd` and keep the scope focused (`bun run test:api` or `bun run test:web` when useful).
 3. Implement the smallest change to make the test pass.
 4. Refactor with tests still green.
@@ -175,6 +175,7 @@ Conventions:
 - Keep unit tests deterministic: use in-memory fakes/mocks for network/process-heavy dependencies.
 - Add a regression test before fixing any reported bug.
 - Avoid testing build output; test source paths only.
+- Web package tests use vitest (via Angular's `@angular/build:unit-test` builder). API/core tests use `bun:test`.
 
 ## Configuration
 
@@ -230,7 +231,7 @@ packages/
   navidrome-client/     # Typed HTTP client for Navidrome Subsonic API
   service-manager/      # Sub-service lifecycle management (strategy pattern)
   api/                  # Hono API server, routes, JWT auth, SQLite DB
-  web/                  # React + Vite web UI
+  web/                  # Angular v22 web UI (standalone components, signals, Tailwind)
   cli/                  # CLI (planned)
 src/
   main.ts              # Entry point — loads config, starts services, serves API

@@ -34,7 +34,7 @@ NicotinD (Hono API :8484)
 | `@nicotind/navidrome-client` | Typed HTTP client wrapping Navidrome's Subsonic API (`/rest/*`) |
 | `@nicotind/service-manager` | Strategy pattern for managing sub-service lifecycle (child_process or Docker) |
 | `@nicotind/api` | Hono API server — routes, JWT auth, unified search, download watcher, SQLite DB |
-| `@nicotind/web` | React + Vite web UI (Phase 2) |
+| `@nicotind/web` | Angular v22 web UI (standalone components, signals, Tailwind) |
 | `@nicotind/cli` | Commander.js CLI (Phase 3) |
 
 **Entry point**: `src/main.ts` — loads config, starts services, wires clients into the API server.
@@ -42,20 +42,33 @@ NicotinD (Hono API :8484)
 ## Key Design Patterns
 
 - **Unified search**: `GET /api/search?q=` queries Navidrome locally first, fires slskd network search in parallel. Client polls `/api/search/:id/network` for Soulseek results. Local results display above a divider, network results below with download actions.
-- **Inline download lifecycle**: Search result cards show a 3-state machine (idle → blue progress wash + % → green "▶ Open in Library"). Driven by `useTransferStore`. When a transfer completes, a `libraryDirty` flag triggers Library auto-refresh.
+- **Inline download lifecycle**: Search result cards show a 3-state machine (idle → blue progress wash + % → green "▶ Open in Library"). Driven by `TransferService`. When a transfer completes, a `libraryDirty` signal triggers Library auto-refresh.
 - **Multi-user**: Shared music library (all users see all downloads). Per-user settings and playlists stored in bun:sqlite (`packages/api/src/db.ts`). First registered user becomes admin.
 - **Service modes**: `embedded` (NicotinD spawns slskd/navidrome as child processes) or `external` (connects to pre-existing instances via URLs).
 - **Subsonic proxy**: `/rest/*` transparently forwards to Navidrome so existing mobile apps (DSub, Symfonium) work unmodified.
 - **Auth flow**: NicotinD issues its own JWTs. Internally holds auto-generated credentials for slskd (API key) and Navidrome (Subsonic token auth: `md5(password+salt)`).
 
-## Web UI — Theme System
+## Web UI
+
+Angular v22 standalone SPA with signals (`signal()`, `computed()`, `effect()`), `HttpClient` + interceptors, and Angular Router with lazy-loaded routes. Built via `ng build` (uses esbuild under the hood). Tests run via `ng test` (vitest, integrated via `@angular/build:unit-test`).
+
+### Theme System
 
 CSS custom properties set via `[data-theme]` on `<html>`. Six built-in presets: **Midnight** (default), **Daylight**, **Warm Paper**, **OLED Black**, **Twilight**, **Forest**. Theme is persisted to localStorage (`nicotind-theme`) and applied before first paint (inline script in `index.html`) to avoid flash.
 
-- Theme store: `packages/web/src/stores/theme.ts` (Zustand + persist middleware)
-- Token definitions: `packages/web/src/index.css` (`@layer base` — `:root` + per-`[data-theme]` overrides)
+- Theme service: `packages/web/src/app/services/theme.service.ts` (Angular `signal()` + localStorage)
+- Token definitions: `packages/web/src/styles.css` (`@layer base` — `:root` + per-`[data-theme]` overrides)
 - Settings UI: Settings → Appearance — swatch grid + "Follow system theme" toggle
-- Cover art: `packages/web/src/components/CoverArt.tsx` — `<img>` with deterministic gradient fallback based on `hash(artist + album)`
+- Cover art: `packages/web/src/app/components/cover-art/cover-art.component.ts` — `<img>` with deterministic gradient fallback based on `hash(artist + album)`
+
+### Key Angular Patterns
+
+- **Services with signals**: All Zustand stores became `@Injectable` services using `signal()` / `computed()` (no NgRx). 1:1 mapping: `PlayerService`, `TransferService`, `SearchService`, `ThemeService`, `RemotePlaybackService`, `PreserveService`, `AuthService`, `ListControlsService`.
+- **`HttpClient` + `authInterceptor`**: All API calls return `Observable<T>`. The interceptor attaches Bearer tokens and handles 401/403 auto-logout.
+- **Standalone components**: No NgModules. Every component declares its own `imports` array.
+- **`effect()` for side effects**: Replaces React's `useEffect`. Used for audio playback coordination, auto-refresh on download completion, remote device sync.
+- **`viewChild()` signal queries**: Replace React `useRef` for DOM element access (e.g. `<audio>` element).
+- **Offline support**: `PreserveService` + IndexedDB layer (`preserve-store.ts`) for offline track caching with LRU eviction.
 
 ## Configuration
 
