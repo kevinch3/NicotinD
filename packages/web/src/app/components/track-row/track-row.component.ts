@@ -1,7 +1,14 @@
-import { Component, inject, input, output } from '@angular/core';
+import { Component, HostListener, inject, input, output, signal } from '@angular/core';
 import { AuthService } from '../../services/auth.service';
 import { CoverArtComponent } from '../cover-art/cover-art.component';
 import type { Track } from '../../services/player.service';
+
+export interface TrackAction {
+  label: string;
+  icon?: string;
+  action: () => void;
+  destructive?: boolean;
+}
 
 function formatDuration(seconds?: number): string {
   if (!seconds) return '';
@@ -42,6 +49,34 @@ function formatDuration(seconds?: number): string {
           </svg>
         </button>
       }
+      @if (actions().length > 0) {
+        <div class="relative flex-shrink-0">
+          <button
+            type="button"
+            class="p-1 text-zinc-700 group-hover:text-zinc-400 hover:!text-zinc-200 transition"
+            title="More options"
+            (click)="toggleMenu($event)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+              <circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/>
+            </svg>
+          </button>
+          @if (menuOpen()) {
+            <div class="absolute right-0 top-7 z-50 bg-zinc-900 border border-zinc-700 rounded-xl shadow-xl py-1 min-w-40"
+                 (click)="$event.stopPropagation()">
+              @for (action of actions(); track action.label) {
+                <button
+                  type="button"
+                  class="w-full text-left px-4 py-2 text-sm transition-colors hover:bg-zinc-800"
+                  [class.text-red-400]="action.destructive"
+                  [class.text-zinc-300]="!action.destructive"
+                  (click)="runAction(action)">
+                  {{ action.label }}
+                </button>
+              }
+            </div>
+          }
+        </div>
+      }
       <!-- TODO: PreserveButton (Phase 5) -->
     </div>
   `,
@@ -55,8 +90,27 @@ export class TrackRowComponent {
   readonly duration = input<number>();
   readonly disabled = input(false);
   readonly showRemove = input(false);
+  readonly actions = input<TrackAction[]>([]);
   readonly play = output<void>();
   readonly remove = output<void>();
+
+  readonly menuOpen = signal(false);
+
+  @HostListener('document:click')
+  closeMenu() { this.menuOpen.set(false); }
+
+  @HostListener('document:keydown.escape')
+  closeMenuEscape() { this.menuOpen.set(false); }
+
+  toggleMenu(event: MouseEvent) {
+    event.stopPropagation();
+    this.menuOpen.update(v => !v);
+  }
+
+  runAction(action: TrackAction) {
+    this.menuOpen.set(false);
+    action.action();
+  }
 
   formatDuration = formatDuration;
 }
