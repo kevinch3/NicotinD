@@ -20,10 +20,10 @@ export interface PreservedTrackMeta {
   album: string;
   coverArt?: string;
   duration?: number;
-  size: number; // audio blob byte length
-  format: string; // e.g. "audio/mpeg"
-  preservedAt: number; // Date.now()
-  lastAccessedAt: number; // updated on each play
+  size: number;
+  format: string;
+  preservedAt: number;
+  lastAccessedAt: number;
 }
 
 export interface PreservedBlob {
@@ -32,14 +32,9 @@ export interface PreservedBlob {
   cover: Blob | null;
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 function open(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
-
     req.onupgradeneeded = () => {
       const db = req.result;
       if (!db.objectStoreNames.contains(TRACKS_STORE)) {
@@ -49,7 +44,6 @@ function open(): Promise<IDBDatabase> {
         db.createObjectStore(BLOBS_STORE, { keyPath: 'id' });
       }
     };
-
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
@@ -68,10 +62,6 @@ function tx<T>(
     request.onerror = () => reject(request.error);
   });
 }
-
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
 
 export async function preserve(
   meta: PreservedTrackMeta,
@@ -104,9 +94,7 @@ export async function remove(id: string): Promise<void> {
 export async function get(id: string): Promise<PreservedTrackMeta | undefined> {
   const db = await open();
   const result = await tx<PreservedTrackMeta | undefined>(
-    db,
-    TRACKS_STORE,
-    'readonly',
+    db, TRACKS_STORE, 'readonly',
     (t) => t.objectStore(TRACKS_STORE).get(id),
   );
   db.close();
@@ -116,9 +104,7 @@ export async function get(id: string): Promise<PreservedTrackMeta | undefined> {
 export async function getBlob(id: string): Promise<PreservedBlob | undefined> {
   const db = await open();
   const result = await tx<PreservedBlob | undefined>(
-    db,
-    BLOBS_STORE,
-    'readonly',
+    db, BLOBS_STORE, 'readonly',
     (t) => t.objectStore(BLOBS_STORE).get(id),
   );
   db.close();
@@ -128,33 +114,17 @@ export async function getBlob(id: string): Promise<PreservedBlob | undefined> {
 export async function getAll(): Promise<PreservedTrackMeta[]> {
   const db = await open();
   const result = await tx<PreservedTrackMeta[]>(
-    db,
-    TRACKS_STORE,
-    'readonly',
+    db, TRACKS_STORE, 'readonly',
     (t) => t.objectStore(TRACKS_STORE).getAll(),
   );
   db.close();
   return result;
 }
 
-export async function isPreserved(id: string): Promise<boolean> {
-  const db = await open();
-  const result = await tx<IDBValidKey | undefined>(
-    db,
-    TRACKS_STORE,
-    'readonly',
-    (t) => t.objectStore(TRACKS_STORE).getKey(id),
-  );
-  db.close();
-  return result !== undefined;
-}
-
 export async function updateLastAccessed(id: string): Promise<void> {
   const db = await open();
   const meta = await tx<PreservedTrackMeta | undefined>(
-    db,
-    TRACKS_STORE,
-    'readonly',
+    db, TRACKS_STORE, 'readonly',
     (t) => t.objectStore(TRACKS_STORE).get(id),
   );
   if (meta) {
@@ -164,24 +134,12 @@ export async function updateLastAccessed(id: string): Promise<void> {
   db.close();
 }
 
-export async function getUsage(): Promise<number> {
-  const all = await getAll();
-  return all.reduce((sum, t) => sum + t.size, 0);
-}
-
-/**
- * Evict oldest-accessed tracks until `bytesNeeded` can fit within `budget`.
- * Returns the IDs that were evicted.
- */
 export async function evictLRU(bytesNeeded: number, budget: number): Promise<string[]> {
   const all = await getAll();
   const currentUsage = all.reduce((sum, t) => sum + t.size, 0);
-
   if (currentUsage + bytesNeeded <= budget) return [];
 
-  // Sort oldest-accessed first
   const sorted = [...all].sort((a, b) => a.lastAccessedAt - b.lastAccessedAt);
-
   let freed = 0;
   const target = currentUsage + bytesNeeded - budget;
   const evicted: string[] = [];
