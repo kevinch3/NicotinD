@@ -21,7 +21,7 @@ jobs:
 
       - name: Deploy via SSH
         run: |
-          ssh -o StrictHostKeyChecking=no kevinch3@kpc.tail74f5e.ts.net '
+          ssh -o StrictHostKeyChecking=no ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} '
             cd ~/Documents/nicotind &&
             git pull origin master &&
             docker compose up --build -d nicotind
