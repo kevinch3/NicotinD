@@ -1,4 +1,4 @@
-import type { TransferEntry } from './transferTypes';
+import type { TransferEntry } from './transfer-types';
 
 /** Returns true if any entry in `next` just reached Completed, Succeeded for the first time. */
 export function detectNewCompletion(

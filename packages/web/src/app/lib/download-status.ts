@@ -1,4 +1,4 @@
-import type { TransferEntry } from './transferTypes';
+import type { TransferEntry } from './transfer-types';
 
 export type ButtonVariant = 'default' | 'queued' | 'progress' | 'done' | 'error';
 
@@ -40,22 +40,11 @@ export function getSingleDownloadLabel(
   if (state === 'Completed, Succeeded')
     return { label: '✓ Done', variant: 'done', disabled: true };
 
-  // Completed, Cancelled / TimedOut / Errored / Rejected
   return { label: '✗ Error', variant: 'error', disabled: true };
 }
 
-/**
- * Derives folder-level button state by aggregating across all files.
- *
- * `files` must carry username per-item because network result file objects
- * don't include it (username lives on the parent result/group). The caller
- * must pre-map: `group.files.map(f => ({ username: group.username, filename: f.filename }))`.
- *
- * Note: FolderBrowser's "Download all" button has no optimistic-queued signal
- * because `addDownloading` lives in the search store and FolderBrowser doesn't
- * have access to it. The button will remain at its default state for up to one
- * poll cycle (~3s) after clicking. This is a known, acceptable gap.
- */
+export const DEFAULT_FOLDER_LABEL = 'Download folder';
+
 export function getFolderDownloadLabel(
   files: Array<{ username: string; filename: string }>,
   isQueued: boolean,
@@ -65,18 +54,15 @@ export function getFolderDownloadLabel(
     .map((f) => getStatus(f.username, f.filename))
     .filter((e): e is TransferEntry => e !== undefined);
 
-  // Any failure wins
   if (entries.some((e) => e.state.startsWith('Completed,') && e.state !== 'Completed, Succeeded'))
     return { label: '✗ Error', variant: 'error', disabled: true };
 
-  // Average progress across in-flight files
   const inProgress = entries.filter((e) => e.state === 'InProgress' || e.state === 'Initializing');
   if (inProgress.length > 0) {
     const avg = Math.round(inProgress.reduce((s, e) => s + e.percent, 0) / inProgress.length);
     return { label: `↓ ${avg}%`, variant: 'progress', disabled: true };
   }
 
-  // All files completed successfully (every file must have a succeeded status)
   if (
     entries.length > 0 &&
     entries.length === files.length &&
@@ -84,20 +70,12 @@ export function getFolderDownloadLabel(
   )
     return { label: '✓ Done', variant: 'done', disabled: true };
 
-  // Optimistic or slskd-confirmed queued
   if (isQueued || entries.some((e) => e.state.includes('Queued') || e.state === 'Requested'))
     return { label: 'Queued', variant: 'queued', disabled: true };
 
   return { label: DEFAULT_FOLDER_LABEL, variant: 'default', disabled: false };
 }
 
-export const DEFAULT_FOLDER_LABEL = 'Download folder';
-
-/**
- * Returns true if `path` (for `username`) is covered by any queued entry.
- * Coverage: exact match OR the stored entry is a parent directory.
- * Normalises both sides to `\` to handle mixed separator styles from Soulseek peers.
- */
 export function isPathEffectivelyQueued(
   username: string,
   path: string,

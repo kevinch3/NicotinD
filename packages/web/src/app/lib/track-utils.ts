@@ -1,4 +1,4 @@
-import type { Track } from '@/stores/player';
+import type { Track } from '../services/player.service';
 
 export interface BaseSong {
   id: string;
@@ -9,9 +9,6 @@ export interface BaseSong {
   duration?: number;
 }
 
-/**
- * Converts a song object (from search, library, or playlists) to a standard Player Track.
- */
 export function toTrack(song: BaseSong, fallbackAlbum?: string): Track {
   return {
     id: song.id,

@@ -29,19 +29,17 @@ export interface FolderGroup {
 }
 
 export interface FolderNode {
-  segment: string;   // just this level's name, e.g. "Album"
-  fullPath: string;  // e.g. "Music\\Artist\\Album"
+  segment: string;
+  fullPath: string;
   dir: BrowseDir | null;
   children: FolderNode[];
 }
 
-/** Strips the basename to get the directory portion of a backslash-separated path */
 export function extractDirectory(filepath: string): string {
   const lastSep = filepath.lastIndexOf('\\');
   return lastSep === -1 ? '' : filepath.slice(0, lastSep);
 }
 
-/** Groups a flat list of network result files by their directory path */
 export function groupByDirectory(
   files: Array<{
     username: string;
@@ -66,7 +64,7 @@ export function groupByDirectory(
         username: file.username,
         uploadSpeed: file.uploadSpeed,
         directory: dir,
-        bitRate: file.bitRate, // taken from the first file in the group; may not represent the album if bitrates are mixed
+        bitRate: file.bitRate,
         files: [],
       });
     }
@@ -85,7 +83,6 @@ export function groupByDirectory(
   return Array.from(map.values());
 }
 
-/** Builds a nested FolderNode tree from a flat BrowseDir[] list */
 export function buildFolderTree(dirs: BrowseDir[]): FolderNode[] {
   const root: FolderNode[] = [];
 
@@ -100,12 +97,7 @@ export function buildFolderTree(dirs: BrowseDir[]): FolderNode[] {
 
       let node = currentLevel.find((n) => n.segment === segment);
       if (!node) {
-        node = {
-          segment,
-          fullPath: currentPath,
-          dir: null,
-          children: [],
-        };
+        node = { segment, fullPath: currentPath, dir: null, children: [] };
         currentLevel.push(node);
       }
 
@@ -120,7 +112,6 @@ export function buildFolderTree(dirs: BrowseDir[]): FolderNode[] {
   return root;
 }
 
-/** Returns the files directly in the given directory path (non-recursive) */
 export function getDirectFiles(dirs: BrowseDir[], selectedPath: string): BrowseFile[] {
   const dir = dirs.find((d) => d.name === selectedPath);
   return dir?.files ?? [];
