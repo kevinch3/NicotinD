@@ -1,4 +1,4 @@
-import { Component, input, output } from '@angular/core';
+import { Component, HostListener, input, output } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
 @Component({
@@ -7,7 +7,7 @@ import { CommonModule } from '@angular/common';
   imports: [CommonModule],
   template: `
     <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-         (click)="cancel.emit()" (keydown.escape)="cancel.emit()">
+         (click)="cancel.emit()">
       <div class="bg-theme-surface border border-theme rounded-xl p-6 max-w-sm w-full mx-4 shadow-2xl"
            (click)="$event.stopPropagation()">
         <p class="text-theme-primary text-sm mb-6">{{ message() }}</p>
@@ -32,4 +32,9 @@ export class ConfirmDialogComponent {
   confirmLabel = input<string>('Delete');
   confirm = output<void>();
   cancel = output<void>();
+
+  @HostListener('document:keydown.escape')
+  onEscape() {
+    this.cancel.emit();
+  }
 }
