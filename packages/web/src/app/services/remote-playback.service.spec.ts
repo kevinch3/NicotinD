@@ -5,6 +5,26 @@ import { PlayerService } from './player.service';
 import { AuthService } from './auth.service';
 import { EMPTY } from 'rxjs';
 
+// Provide a full localStorage stub so the test works regardless of the
+// vitest environment (jsdom, happy-dom, or bare Node).
+const storageStub = (() => {
+  let store: Record<string, string> = {};
+  return {
+    getItem: (key: string) => store[key] ?? null,
+    setItem: (key: string, value: string) => { store[key] = value; },
+    removeItem: (key: string) => { delete store[key]; },
+    clear: () => { store = {}; },
+    get length() { return Object.keys(store).length; },
+    key: (i: number) => Object.keys(store)[i] ?? null,
+  };
+})();
+
+Object.defineProperty(globalThis, 'localStorage', {
+  value: storageStub,
+  writable: true,
+  configurable: true,
+});
+
 describe('RemotePlaybackService', () => {
   let service: RemotePlaybackService;
   let mockWs: {
@@ -19,7 +39,7 @@ describe('RemotePlaybackService', () => {
   };
 
   beforeEach(() => {
-    localStorage.clear();
+    storageStub.clear();
 
     mockWs = {
       updateDevice: vi.fn(),
