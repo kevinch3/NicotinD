@@ -18,6 +18,6 @@ console.log('Building NicotinD…\n');
 step('TypeScript type check', 'bun', ['run', 'typecheck']);
 
 // 2. Build the web UI (Vite)
-step('Web UI (Vite build)', 'bun', ['run', 'build'], rootDir + '/packages/web');
+step('Web UI (Angular build)', 'bun', ['run', 'build'], rootDir + '/packages/web');
 
 console.log('\n✅ Build complete.');

@@ -136,12 +136,11 @@ press ▶
 
 | File | Role |
 |------|------|
-| `packages/web/src/services/ws-client.ts` | Singleton WS client — connect/reconnect, device ID/name, `sendCommand`, `setActiveDevice` |
-| `packages/web/src/stores/remote-playback.ts` | Zustand store — device list, `activeDeviceId`, `remoteIsPlaying`, `switchToDevice` |
-| `packages/web/src/components/RemotePlaybackProvider.tsx` | Mounts once at app root; wires WS messages to the player store |
-| `packages/web/src/components/DeviceSwitcher.tsx` | Popover UI for selecting the active output device |
-| `packages/web/src/pages/Settings.tsx` | Remote Playback section — opt-in toggle and device rename |
-| `packages/web/src/components/Player.tsx` | Conditionally drives local audio or sends remote commands |
+| `packages/web/src/app/services/playback-ws.service.ts` | Singleton WS service — connect/reconnect, device ID/name, `sendCommand`, `setActiveDevice` |
+| `packages/web/src/app/services/remote-playback.service.ts` | Angular service with signals — device list, `activeDeviceId`, `remoteIsPlaying`, `switchToDevice`, WS subscriptions |
+| `packages/web/src/app/components/device-switcher/device-switcher.component.ts` | Popover UI for selecting the active output device |
+| `packages/web/src/app/pages/settings/settings.component.ts` | Remote Playback section — opt-in toggle and device rename |
+| `packages/web/src/app/components/player/player.component.ts` | Conditionally drives local audio or sends remote commands |
 
 ### Server-side code map
 

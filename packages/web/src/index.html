@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>NicotinD</title>
+    <base href="/" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" type="image/x-icon" href="favicon.ico" />
+    <script>
+      // Apply theme before first paint to avoid flash
+      (function () {
+        var THEMES = ['midnight', 'daylight', 'warm-paper', 'oled', 'twilight', 'forest'];
+        try {
+          var stored = JSON.parse(localStorage.getItem('nicotind-theme') || '{}');
+          var theme = stored.state?.theme || 'midnight';
+          var sys = stored.state?.systemTheme;
+          if (sys) {
+            theme = window.matchMedia('(prefers-color-scheme: light)').matches
+              ? 'daylight'
+              : 'midnight';
+          }
+          if (THEMES.indexOf(theme) === -1) theme = 'midnight';
+          document.documentElement.setAttribute('data-theme', theme);
+        } catch (_) {
+          document.documentElement.setAttribute('data-theme', 'midnight');
+        }
+      })();
+    </script>
+  </head>
+  <body style="background-color: var(--theme-bg, #09090b); color: var(--theme-text-primary, #f4f4f5);" class="antialiased">
+    <app-root></app-root>
+  </body>
+</html>

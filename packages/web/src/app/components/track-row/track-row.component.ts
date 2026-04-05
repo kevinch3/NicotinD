@@ -1,0 +1,62 @@
+import { Component, inject, input, output } from '@angular/core';
+import { AuthService } from '../../services/auth.service';
+import { CoverArtComponent } from '../cover-art/cover-art.component';
+import type { Track } from '../../services/player.service';
+
+function formatDuration(seconds?: number): string {
+  if (!seconds) return '';
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+@Component({
+  selector: 'app-track-row',
+  imports: [CoverArtComponent],
+  template: `
+    <div [class]="'flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-zinc-800/50 transition group' + (disabled() ? ' opacity-40 pointer-events-none' : '')">
+      <span class="text-xs text-zinc-600 w-6 text-right">{{ indexLabel() ?? '' }}</span>
+      <app-cover-art
+        [src]="track().coverArt ? '/api/cover/' + track().coverArt + '?size=40&token=' + auth.token() : undefined"
+        [artist]="track().artist"
+        [album]="track().album ?? ''"
+        [size]="36"
+        rounded="rounded"
+      />
+      <button type="button" (click)="play.emit()" class="flex-1 min-w-0 text-left">
+        <p class="text-sm text-zinc-200 truncate">{{ track().title }}</p>
+        @if (subtitle()) {
+          <p class="text-xs text-zinc-500 truncate">{{ subtitle() }}</p>
+        }
+      </button>
+      <span class="text-xs text-zinc-600">{{ formatDuration(duration() ?? track().duration) }}</span>
+      <button type="button" (click)="play.emit()" class="p-1 text-zinc-700 group-hover:text-zinc-300 transition flex-shrink-0" title="Play">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+          <polygon points="5,3 19,12 5,21" />
+        </svg>
+      </button>
+      @if (showRemove()) {
+        <button type="button" (click)="remove.emit()" class="p-1 text-zinc-700 group-hover:text-zinc-400 hover:!text-red-400 transition flex-shrink-0" title="Remove">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      }
+      <!-- TODO: PreserveButton (Phase 5) -->
+    </div>
+  `,
+})
+export class TrackRowComponent {
+  readonly auth = inject(AuthService);
+
+  readonly track = input.required<Track>();
+  readonly indexLabel = input<string | number>();
+  readonly subtitle = input<string>();
+  readonly duration = input<number>();
+  readonly disabled = input(false);
+  readonly showRemove = input(false);
+  readonly play = output<void>();
+  readonly remove = output<void>();
+
+  formatDuration = formatDuration;
+}

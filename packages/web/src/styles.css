@@ -1,0 +1,127 @@
+@import 'tailwindcss';
+@source "./**/*.ts";
+
+/* ─── Theme tokens ───────────────────────────────────────────────────── */
+@layer base {
+  /* Midnight (default — values match current hardcoded zinc classes) */
+  :root,
+  [data-theme="midnight"] {
+    --theme-bg:           #09090b;
+    --theme-surface:      #18181b;
+    --theme-surface-2:    #27272a;
+    --theme-hover:        rgba(39,39,42,0.5);
+    --theme-border:       #27272a;
+    --theme-text-primary: #f4f4f5;
+    --theme-text-secondary: #a1a1aa;
+    --theme-text-muted:   #71717a;
+    --theme-accent:       #6366f1;
+    --theme-status-progress-bg:   rgba(30,58,138,0.6);
+    --theme-status-progress-text: #93c5fd;
+    --theme-status-done-bg:       rgba(20,83,45,0.6);
+    --theme-status-done-text:     #86efac;
+    --theme-status-error-bg:      rgba(127,29,29,0.6);
+    --theme-status-error-text:    #fca5a5;
+  }
+
+  [data-theme="daylight"] {
+    --theme-bg:           #f4f4f5;
+    --theme-surface:      #ffffff;
+    --theme-surface-2:    #e4e4e7;
+    --theme-hover:        rgba(228,228,231,0.6);
+    --theme-border:       #d4d4d8;
+    --theme-text-primary: #18181b;
+    --theme-text-secondary: #52525b;
+    --theme-text-muted:   #71717a;
+    --theme-accent:       #6366f1;
+    --theme-status-progress-bg:   #dbeafe;
+    --theme-status-progress-text: #1d4ed8;
+    --theme-status-done-bg:       #dcfce7;
+    --theme-status-done-text:     #166534;
+    --theme-status-error-bg:      #fee2e2;
+    --theme-status-error-text:    #991b1b;
+  }
+
+  [data-theme="warm-paper"] {
+    --theme-bg:           #faf6f0;
+    --theme-surface:      #fff9f0;
+    --theme-surface-2:    #e7ddd0;
+    --theme-hover:        rgba(231,221,208,0.5);
+    --theme-border:       #d6c8b8;
+    --theme-text-primary: #292524;
+    --theme-text-secondary: #57534e;
+    --theme-text-muted:   #78716c;
+    --theme-accent:       #d97706;
+    --theme-status-progress-bg:   #fef3c7;
+    --theme-status-progress-text: #92400e;
+    --theme-status-done-bg:       #d1fae5;
+    --theme-status-done-text:     #065f46;
+    --theme-status-error-bg:      #fee2e2;
+    --theme-status-error-text:    #991b1b;
+  }
+
+  [data-theme="oled"] {
+    --theme-bg:           #000000;
+    --theme-surface:      #0a0a0a;
+    --theme-surface-2:    #1a1a1a;
+    --theme-hover:        rgba(26,26,26,0.6);
+    --theme-border:       #1a1a1a;
+    --theme-text-primary: #ffffff;
+    --theme-text-secondary: #a3a3a3;
+    --theme-text-muted:   #737373;
+    --theme-accent:       #818cf8;
+    --theme-status-progress-bg:   #172554;
+    --theme-status-progress-text: #93c5fd;
+    --theme-status-done-bg:       #052e16;
+    --theme-status-done-text:     #86efac;
+    --theme-status-error-bg:      #450a0a;
+    --theme-status-error-text:    #fca5a5;
+  }
+
+  [data-theme="twilight"] {
+    --theme-bg:           #1e1b2e;
+    --theme-surface:      #2d2640;
+    --theme-surface-2:    #3d3557;
+    --theme-hover:        rgba(61,53,87,0.6);
+    --theme-border:       #3d3557;
+    --theme-text-primary: #ede9f6;
+    --theme-text-secondary: #a39fc4;
+    --theme-text-muted:   #7c7a9a;
+    --theme-accent:       #a78bfa;
+    --theme-status-progress-bg:   #312e81;
+    --theme-status-progress-text: #c7d2fe;
+    --theme-status-done-bg:       #14532d;
+    --theme-status-done-text:     #86efac;
+    --theme-status-error-bg:      #450a0a;
+    --theme-status-error-text:    #fca5a5;
+  }
+
+  [data-theme="forest"] {
+    --theme-bg:           #0f1a17;
+    --theme-surface:      #172320;
+    --theme-surface-2:    #243d35;
+    --theme-hover:        rgba(36,61,53,0.6);
+    --theme-border:       #243d35;
+    --theme-text-primary: #e2f5ed;
+    --theme-text-secondary: #7aaa96;
+    --theme-text-muted:   #4d8070;
+    --theme-accent:       #2dd4bf;
+    --theme-status-progress-bg:   #134e4a;
+    --theme-status-progress-text: #99f6e4;
+    --theme-status-done-bg:       #052e16;
+    --theme-status-done-text:     #86efac;
+    --theme-status-error-bg:      #450a0a;
+    --theme-status-error-text:    #fca5a5;
+  }
+}
+
+/* ─── Semantic utility classes ───────────────────────────────────────── */
+@layer utilities {
+  .bg-theme-base    { background-color: var(--theme-bg); }
+  .bg-theme-surface { background-color: var(--theme-surface); }
+  .bg-theme-surface-2 { background-color: var(--theme-surface-2); }
+  .bg-theme-hover   { background-color: var(--theme-hover); }
+  .border-theme     { border-color: var(--theme-border); }
+  .text-theme-primary   { color: var(--theme-text-primary); }
+  .text-theme-secondary { color: var(--theme-text-secondary); }
+  .text-theme-muted     { color: var(--theme-text-muted); }
+}
