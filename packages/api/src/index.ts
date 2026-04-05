@@ -170,6 +170,10 @@ export function createApp({
       ) {
         return next();
       }
+      // Serve JS/CSS chunks directly, fallback to index.html for routes
+      if (path.match(/\.(js|css|ico|png|svg|webp|woff2?|ttf|eot)$/)) {
+        return serveStatic({ root: webDistPath })(c, next);
+      }
       return serveStatic({ root: webDistPath, path: '/index.html' })(c, next);
     });
   }
