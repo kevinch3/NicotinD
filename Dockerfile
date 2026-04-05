@@ -1,5 +1,5 @@
 # Stage 1: Build web UI
-FROM oven/bun:1 AS web-builder
+FROM imbios/bun-node:1-22 AS web-builder
 WORKDIR /app
 
 COPY package.json bun.lock bunfig.toml ./
