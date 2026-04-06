@@ -215,6 +215,12 @@ type LibraryMode = 'albums' | 'artists' | 'genre';
               &larr; Back
             </button>
             <h2 class="text-lg font-semibold text-theme-primary">{{ selectedGenre() }}</h2>
+            @if (genreSongs().length > 0) {
+              <button (click)="playGenre()"
+                class="ml-auto px-4 py-1.5 rounded-lg bg-zinc-100 text-zinc-900 text-sm font-semibold hover:bg-zinc-200 transition">
+                Play All
+              </button>
+            }
           </div>
           @if (loadingGenreSongs()) {
             <div class="text-center py-20">
@@ -478,6 +484,14 @@ export class LibraryComponent implements OnInit {
       this.genres.set(data.sort((a, b) => b.songCount - a.songCount));
     } catch { /* ignore */ }
     finally { this.loadingGenres.set(false); }
+  }
+
+  playGenre(): void {
+    const genre = this.selectedGenre();
+    const songs = this.genreSongs();
+    if (!genre || !songs.length) return;
+    const tracks = songs.map(s => toTrack(s));
+    this.player.playWithContext(tracks, 0, { type: 'adhoc', name: genre });
   }
 
   async openGenre(genre: string): Promise<void> {

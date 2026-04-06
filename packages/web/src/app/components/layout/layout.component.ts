@@ -2,6 +2,7 @@ import { Component, inject, signal, computed, effect } from '@angular/core';
 import { RouterOutlet, RouterLink, RouterLinkActive, Router, NavigationEnd } from '@angular/router';
 import { filter } from 'rxjs';
 import { AuthService } from '../../services/auth.service';
+import { PlayerService } from '../../services/player.service';
 import { DownloadIndicatorComponent } from '../download-indicator/download-indicator.component';
 import { PlayerComponent } from '../player/player.component';
 import { NowPlayingComponent } from '../now-playing/now-playing.component';
@@ -80,8 +81,8 @@ const BASE_NAV: NavItem[] = [
         </div>
       </div>
 
-      <!-- Content -->
-      <main class="flex-1">
+      <!-- Content — pad bottom so fixed player bar never covers last item -->
+      <main [class]="'flex-1 ' + (player.currentTrack() ? 'pb-20' : '')">
         <router-outlet />
       </main>
 
@@ -95,6 +96,7 @@ const BASE_NAV: NavItem[] = [
 })
 export class LayoutComponent {
   readonly auth = inject(AuthService);
+  readonly player = inject(PlayerService);
   private router = inject(Router);
 
   readonly drawerOpen = signal(false);
