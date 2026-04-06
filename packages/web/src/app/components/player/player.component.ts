@@ -18,6 +18,11 @@ import { PlaybackWsService } from '../../services/playback-ws.service';
 import { CoverArtComponent } from '../cover-art/cover-art.component';
 import { DeviceSwitcherComponent } from '../device-switcher/device-switcher.component';
 
+/** Returns the router commands to navigate to an artist page, or to /library as fallback. */
+export function resolveArtistRoute(artistId: string | undefined): string[] {
+  return artistId ? ['/library/artists', artistId] : ['/library'];
+}
+
 function formatTime(s: number): string {
   if (!Number.isFinite(s) || s < 0) return '0:00';
   const m = Math.floor(s / 60);
@@ -539,9 +544,8 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
   navigateToArtist(event: MouseEvent): void {
     event.stopPropagation();
     const track = this.player.currentTrack();
-    if (track) {
-      this.router.navigate(['/'], { queryParams: { q: track.artist } });
-    }
+    if (!track) return;
+    this.router.navigate(resolveArtistRoute(track.artistId));
   }
 
   unblockAutoplay(): void {

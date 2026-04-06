@@ -10,6 +10,8 @@ import { PlayerService } from '../../services/player.service';
 import { AuthService } from '../../services/auth.service';
 import { RemotePlaybackService } from '../../services/remote-playback.service';
 import { PlaybackWsService } from '../../services/playback-ws.service';
+import { DeviceSwitcherComponent } from '../device-switcher/device-switcher.component';
+import { resolveArtistRoute } from '../player/player.component';
 
 function formatTime(s: number): string {
   if (!Number.isFinite(s) || s < 0) return '0:00';
@@ -20,7 +22,7 @@ function formatTime(s: number): string {
 
 @Component({
   selector: 'app-now-playing',
-  imports: [],
+  imports: [DeviceSwitcherComponent],
   template: `
     @if (player.currentTrack(); as track) {
       <div [class]="'fixed inset-0 z-[60] bg-zinc-950 transition-transform duration-300 ease-out flex flex-col ' +
@@ -37,6 +39,9 @@ function formatTime(s: number): string {
             </svg>
           </button>
           <span class="text-xs text-zinc-500 uppercase tracking-wider">Now Playing</span>
+          <div class="absolute right-4">
+            <app-device-switcher />
+          </div>
         </div>
 
         <!-- Cover art -->
@@ -343,10 +348,9 @@ export class NowPlayingComponent {
 
   navigateToArtist(): void {
     const track = this.player.currentTrack();
-    if (track) {
-      this.player.setNowPlayingOpen(false);
-      this.router.navigate(['/'], { queryParams: { q: track.artist } });
-    }
+    if (!track) return;
+    this.player.setNowPlayingOpen(false);
+    this.router.navigate(resolveArtistRoute(track.artistId));
   }
 
   onTitleContextMenu(event: MouseEvent): void {
