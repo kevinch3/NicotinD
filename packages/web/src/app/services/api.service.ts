@@ -75,6 +75,7 @@ export interface Album {
   id: string;
   name: string;
   artist: string;
+  artistId?: string;
   coverArt?: string;
   songCount?: number;
   year?: number;
@@ -84,9 +85,10 @@ export interface AlbumDetail {
   id: string;
   name: string;
   artist: string;
+  artistId?: string;
   coverArt?: string;
   year?: number;
-  song: Array<{ id: string; title: string; artist: string; duration?: number; track?: number; coverArt?: string }>;
+  song: Array<{ id: string; title: string; artist: string; artistId?: string; albumId?: string; duration?: number; track?: number; coverArt?: string }>;
 }
 
 export interface Song {
