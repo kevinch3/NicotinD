@@ -1,5 +1,5 @@
 import { Component, inject, signal, computed, effect, OnInit } from '@angular/core';
-import { Router, RouterLink } from '@angular/router';
+import { Router, RouterLink, ActivatedRoute } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { ApiService, type Album, type AlbumDetail, type Song } from '../../services/api.service';
 import { AuthService } from '../../services/auth.service';
@@ -274,6 +274,7 @@ export class LibraryComponent implements OnInit {
   private transferService = inject(TransferService);
   private listControls = inject(ListControlsService);
   private router = inject(Router);
+  private route = inject(ActivatedRoute);
 
   // ─── Mode ─────────────────────────────────────────────────────────
   readonly modes = [
@@ -380,11 +381,20 @@ export class LibraryComponent implements OnInit {
     }
   });
 
-  ngOnInit(): void {
-    this.fetchAlbums();
+  async ngOnInit(): Promise<void> {
+    await this.fetchAlbums();
     const mode = this.libraryMode();
     if (mode === 'artists') this.fetchArtists();
     if (mode === 'genre') this.fetchGenres();
+    // Auto-open album from query param (e.g. navigated from ArtistDetailComponent)
+    const albumId = this.route.snapshot.queryParamMap.get('album');
+    if (albumId) {
+      this.libraryMode.set('albums');
+      try {
+        const detail = await firstValueFrom(this.api.getAlbum(albumId));
+        this.selectedAlbum.set(detail);
+      } catch { /* ignore */ }
+    }
   }
 
   // ─── Albums methods ───────────────────────────────────────────────
