@@ -139,7 +139,7 @@ interface DetailItem {
         @if (showConfirm()) {
           <app-confirm-dialog
             [message]="confirmMessage()"
-            confirmLabel="Delete"
+            [confirmLabel]="confirmLabel()"
             (confirm)="onConfirm()"
             (cancel)="onCancelConfirm()"
           />
@@ -149,11 +149,11 @@ interface DetailItem {
       @if (showRenameModal()) {
         <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
              (click)="showRenameModal.set(false)">
-          <div class="bg-zinc-900 border border-zinc-700 rounded-xl p-6 max-w-sm w-full mx-4 shadow-2xl"
+          <div class="bg-theme-surface border border-theme rounded-xl p-6 max-w-sm w-full mx-4 shadow-2xl"
                (click)="$event.stopPropagation()">
-            <h3 class="text-zinc-100 font-medium mb-4">Rename playlist</h3>
+            <h3 class="text-theme-primary font-medium mb-4">Rename playlist</h3>
             <input
-              class="w-full bg-zinc-800 text-zinc-100 text-sm px-3 py-2 rounded-lg outline-none border border-zinc-700 focus:border-zinc-500 mb-4"
+              class="w-full bg-theme-surface-2 text-theme-primary text-sm px-3 py-2 rounded-lg outline-none border border-theme focus:border-blue-500/50 mb-4"
               [ngModel]="nameDraft()"
               (ngModelChange)="nameDraft.set($event)"
               (keydown.enter)="saveRename()"
@@ -161,7 +161,7 @@ interface DetailItem {
               autofocus
             />
             <div class="flex gap-3 justify-end">
-              <button class="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200 rounded-lg transition-colors"
+              <button class="px-4 py-2 text-sm text-theme-secondary hover:text-theme-primary rounded-lg transition-colors"
                 (click)="showRenameModal.set(false)">Cancel</button>
               <button class="px-4 py-2 text-sm bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 rounded-lg transition-colors"
                 (click)="saveRename()">Save</button>
@@ -174,24 +174,19 @@ interface DetailItem {
       <div class="max-w-6xl mx-auto px-3 py-4 md:px-6 md:py-8">
         <div class="flex items-center gap-3 mb-6">
           <h1 class="text-lg font-semibold text-zinc-100">Playlists</h1>
-          <button (click)="gridControls.showToolbar()" class="p-1 text-zinc-600 hover:text-zinc-300 transition" title="Search (Ctrl+F)">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
-          </button>
         </div>
 
-        @if (gridControls.isToolbarVisible()) {
-          <app-list-toolbar
-            [searchText]="gridControls.searchText()"
-            [sortField]="gridControls.sortField()"
-            [sortDirection]="gridControls.sortDirection()"
-            [sortOptions]="gridSortOptions"
-            [resultCount]="gridControls.filtered().length"
-            (searchChange)="gridControls.setSearchText($event)"
-            (sortFieldChange)="gridControls.setSortField($event)"
-            (toggleDirection)="gridControls.toggleSortDirection()"
-            (dismiss)="gridControls.hideToolbar()"
-          />
-        }
+        <app-list-toolbar
+          [searchText]="gridControls.searchText()"
+          [sortField]="gridControls.sortField()"
+          [sortDirection]="gridControls.sortDirection()"
+          [sortOptions]="gridSortOptions"
+          [resultCount]="gridControls.filtered().length"
+          (searchChange)="gridControls.setSearchText($event)"
+          (sortFieldChange)="gridControls.setSortField($event)"
+          (toggleDirection)="gridControls.toggleSortDirection()"
+          (dismiss)="gridControls.hideToolbar()"
+        />
 
         @if (loading()) {
           <div class="text-center py-20">
@@ -246,12 +241,12 @@ export class PlaylistsComponent implements OnInit {
   readonly selected = signal<PlaylistDetail | null>(null);
   readonly loadingDetail = signal(false);
   readonly deleting = signal(false);
-  readonly editingName = signal(false);
   readonly nameDraft = signal('');
   readonly removing = signal(new Set<number>());
   readonly showRenameModal = signal(false);
 
   readonly confirmMessage = signal('');
+  readonly confirmLabel = signal('Delete');
   readonly confirmCallback = signal<(() => void | Promise<void>) | null>(null);
   readonly showConfirm = computed(() => this.confirmCallback() !== null);
 
@@ -371,7 +366,7 @@ export class PlaylistsComponent implements OnInit {
   }
 
   confirmRemoveSong(index: number, title: string): void {
-    this.askConfirm(`Remove "${title}" from playlist?`, () => this.removeSong(index));
+    this.askConfirm(`Remove "${title}" from playlist?`, () => this.removeSong(index), 'Remove');
   }
 
   playlistTrackActions(song: DetailItem): TrackAction[] {
@@ -396,8 +391,9 @@ export class PlaylistsComponent implements OnInit {
     return actions;
   }
 
-  private askConfirm(message: string, cb: () => void | Promise<void>): void {
+  private askConfirm(message: string, cb: () => void | Promise<void>, label = 'Delete'): void {
     this.confirmMessage.set(message);
+    this.confirmLabel.set(label);
     this.confirmCallback.set(cb);
   }
 
