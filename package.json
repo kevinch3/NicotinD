@@ -17,7 +17,11 @@
     "test:tdd": "bun --watch test packages src --bail 1 --path-ignore-patterns='**/dist/**' --path-ignore-patterns='**/.worktrees/**'",
     "test:coverage": "bun test packages src --coverage --coverage-reporter=text --coverage-reporter=lcov --path-ignore-patterns='**/dist/**' --path-ignore-patterns='**/.worktrees/**'",
     "test:api": "bun test packages/api/src --path-ignore-patterns='**/dist/**'",
-    "test:web": "bun run --cwd packages/web ng test"
+    "test:web": "bun run --cwd packages/web ng test",
+    "release": "commit-and-tag-version",
+    "release:minor": "commit-and-tag-version --release-as minor",
+    "release:major": "commit-and-tag-version --release-as major",
+    "prepare": "husky"
   },
   "dependencies": {
     "@nicotind/core": "workspace:*",
@@ -28,11 +32,15 @@
     "yaml": "^2.6.0"
   },
   "devDependencies": {
+    "@commitlint/cli": "^20.5.0",
+    "@commitlint/config-conventional": "^20.5.0",
     "@types/bun": "^1.2.0",
-    "eslint": "^9.0.0",
-    "prettier": "^3.4.0",
-    "typescript": "^5.7.0",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
-    "@typescript-eslint/parser": "^8.0.0"
+    "@typescript-eslint/parser": "^8.0.0",
+    "commit-and-tag-version": "^12.7.1",
+    "eslint": "^9.0.0",
+    "husky": "^9.1.7",
+    "prettier": "^3.4.0",
+    "typescript": "^5.7.0"
   }
 }

@@ -14,7 +14,42 @@ bun run typecheck        # TypeScript type checking (tsc --build)
 bun run lint             # ESLint across all packages
 bun run format           # Prettier formatting
 bun run src/main.ts      # Start NicotinD (requires .env or config/default.yml)
+bun run release          # Bump version (auto-detected), generate CHANGELOG, tag
+bun run release:minor    # Force a minor version bump
+bun run release:major    # Force a major version bump
 ```
+
+## Commit Conventions
+
+This repo uses [Conventional Commits](https://www.conventionalcommits.org/). Every commit message must follow this format:
+
+```
+<type>(<optional scope>): <description>
+```
+
+**Types that bump the version** (appear in CHANGELOG):
+| Type | When to use | Version bump |
+|------|-------------|--------------|
+| `feat` | New user-facing feature | minor |
+| `fix` | Bug fix | patch |
+| `perf` | Performance improvement | patch |
+
+**Types that don't bump** (hidden from CHANGELOG):
+| Type | When to use |
+|------|-------------|
+| `chore` | Deps, tooling, config, CI tweaks |
+| `refactor` | Code restructuring (no behavior change) |
+| `style` | Formatting, whitespace |
+| `docs` | Documentation only |
+| `test` | Adding/updating tests |
+| `ci` | CI pipeline changes |
+| `build` | Build system changes |
+
+**Breaking changes**: Add `BREAKING CHANGE:` in the commit body or `!` after the type (e.g. `feat!: remove legacy auth`) to trigger a major bump.
+
+**Enforcement**: A `commit-msg` hook via husky + commitlint rejects non-conforming messages.
+
+**Releasing**: When ready to release, run `bun run release`. It reads the commit history since the last tag, determines the version bump, updates `package.json`, generates/updates `CHANGELOG.md`, commits, and creates a git tag.
 
 ## Architecture
 
