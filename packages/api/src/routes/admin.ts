@@ -15,6 +15,33 @@ export function adminRoutes() {
     await next();
   });
 
+  // Create a new user (admin-only)
+  app.post('/users', async (c) => {
+    const { username, password } = await c.req.json<{ username: string; password: string }>();
+
+    if (!username || !password || password.length < 4) {
+      return c.json({ error: 'Username and password (min 4 chars) are required' }, 400);
+    }
+
+    const db = getDatabase();
+    const existing = db
+      .query<{ id: string }, [string]>('SELECT id FROM users WHERE username = ?')
+      .get(username);
+    if (existing) {
+      return c.json({ error: 'Username already taken' }, 409);
+    }
+
+    const id = crypto.randomUUID();
+    const passwordHash = await hashPassword(password);
+
+    db.query('INSERT INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)').run(
+      id, username, passwordHash, 'user',
+    );
+    db.query('INSERT INTO user_settings (user_id) VALUES (?)').run(id);
+
+    return c.json({ id, username, role: 'user', status: 'active', created_at: new Date().toISOString() }, 201);
+  });
+
   // List all users
   app.get('/users', async (c) => {
     const db = getDatabase();

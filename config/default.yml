@@ -2,6 +2,7 @@ port: 8484
 dataDir: ~/.nicotind
 musicDir: ~/Music
 mode: embedded
+registrationEnabled: false
 metadataFix:
   enabled: true
   minScore: 85

@@ -162,6 +162,10 @@ export class ApiService {
     return this.http.post<AuthResult>('/api/auth/register', { username, password });
   }
 
+  getRegistrationStatus() {
+    return this.http.get<{ enabled: boolean }>('/api/auth/registration-status');
+  }
+
   // Search
   search(q: string) {
     return this.http.get<SearchResult>('/api/search', { params: { q } });
@@ -325,6 +329,10 @@ export class ApiService {
   // Admin
   getUsers() {
     return this.http.get<AdminUser[]>('/api/admin/users');
+  }
+
+  createUser(username: string, password: string) {
+    return this.http.post<AdminUser>('/api/admin/users', { username, password });
   }
 
   updateUserRole(id: string, role: 'admin' | 'user') {

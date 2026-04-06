@@ -8,6 +8,7 @@ export const NicotinDConfigSchema = z.object({
   dataDir: z.string().default('~/.nicotind'),
   musicDir: z.string().default('~/Music'),
   mode: ServiceModeSchema.default('embedded'),
+  registrationEnabled: z.boolean().default(true),
   metadataFix: z
     .object({
       enabled: z.boolean().default(true),

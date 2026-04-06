@@ -37,12 +37,14 @@
           </button>
         </form>
 
-        <button
-          (click)="toggleMode()"
-          class="w-full mt-4 text-sm text-zinc-500 hover:text-zinc-300 transition"
-        >
-          {{ isRegister() ? 'Already have an account? Sign in' : "Don't have an account? Register" }}
-        </button>
+        @if (registrationEnabled()) {
+          <button
+            (click)="toggleMode()"
+            class="w-full mt-4 text-sm text-zinc-500 hover:text-zinc-300 transition"
+          >
+            {{ isRegister() ? 'Already have an account? Sign in' : "Don't have an account? Register" }}
+          </button>
+        }
       </div>
     </div>
   

@@ -7,7 +7,13 @@
       <div class="max-w-3xl mx-auto px-3 py-4 md:px-6 md:py-8 space-y-12">
         <!-- User Management -->
         <div>
-          <h1 class="text-xl font-bold text-zinc-100 mb-8">User Management</h1>
+          <div class="flex items-center justify-between mb-8">
+            <h1 class="text-xl font-bold text-zinc-100">User Management</h1>
+            <button (click)="showCreateUser.set(true)"
+              class="px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-100 text-zinc-900 hover:bg-zinc-200 transition">
+              Create User
+            </button>
+          </div>
 
           @if (error()) {
             <div class="mb-6 px-4 py-2.5 rounded-lg text-sm bg-red-950/50 border border-red-900/50 text-red-400">
@@ -145,6 +151,30 @@
             }
           </div>
         </div>
+
+        <!-- Create User Modal -->
+        @if (showCreateUser()) {
+          <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60" (click)="showCreateUser.set(false)">
+            <div class="bg-zinc-900 border border-zinc-800 rounded-xl p-6 w-full max-w-sm mx-4" (click)="$event.stopPropagation()">
+              <h3 class="text-sm font-semibold text-zinc-200 mb-4">Create new user</h3>
+              <div class="space-y-3">
+                <input type="text" [ngModel]="newUsername()" (ngModelChange)="newUsername.set($event)"
+                  placeholder="Username" autocomplete="off"
+                  class="w-full px-4 py-2.5 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-500 transition text-sm" />
+                <app-password-field [ngModel]="newUserPassword()" (ngModelChange)="newUserPassword.set($event)"
+                  placeholder="Password" autocomplete="new-password"
+                  inputClass="w-full px-4 py-2.5 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-500 transition text-sm" />
+              </div>
+              <div class="flex justify-end gap-2 mt-4">
+                <button (click)="showCreateUser.set(false)" class="px-4 py-2 rounded-lg text-sm text-zinc-400 hover:text-zinc-200 transition">Cancel</button>
+                <button (click)="handleCreateUser()" [disabled]="creating() || !newUsername().trim() || newUserPassword().trim().length < 4"
+                  class="px-4 py-2 rounded-lg bg-zinc-100 text-zinc-900 text-sm font-semibold hover:bg-zinc-200 transition disabled:opacity-50">
+                  {{ creating() ? 'Creating...' : 'Create User' }}
+                </button>
+              </div>
+            </div>
+          </div>
+        }
 
         <!-- Reset Password Modal -->
         @if (resetTarget()) {

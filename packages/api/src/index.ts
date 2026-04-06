@@ -106,7 +106,7 @@ export function createApp({
   const tailscale = new TailscaleService();
 
   // Public routes
-  app.route('/api/auth', authRoutes(config.jwt.secret, config.jwt.expiresIn));
+  app.route('/api/auth', authRoutes(config.jwt.secret, config.jwt.expiresIn, config.registrationEnabled));
   app.route(
     '/api/setup',
     setupRoutes({

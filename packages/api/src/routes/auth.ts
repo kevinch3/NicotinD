@@ -23,8 +23,23 @@ const ErrorSchema = z.object({
   error: z.string(),
 }).openapi('Error');
 
-export function authRoutes(jwtSecret: string, jwtExpiresIn: string) {
+export function authRoutes(jwtSecret: string, jwtExpiresIn: string, registrationEnabled: boolean) {
   const app = new OpenAPIHono();
+
+  // Public endpoint: check if registration is open
+  app.openapi(
+    createRoute({
+      method: 'get',
+      path: '/registration-status',
+      responses: {
+        200: {
+          content: { 'application/json': { schema: z.object({ enabled: z.boolean() }) } },
+          description: 'Registration status',
+        },
+      },
+    }),
+    (c) => c.json({ enabled: registrationEnabled }),
+  );
 
   app.openapi(
     createRoute({
@@ -56,6 +71,14 @@ export function authRoutes(jwtSecret: string, jwtExpiresIn: string) {
           },
           description: 'Bad request',
         },
+        403: {
+          content: {
+            'application/json': {
+              schema: ErrorSchema,
+            },
+          },
+          description: 'Registration disabled',
+        },
         409: {
           content: {
             'application/json': {
@@ -74,6 +97,11 @@ export function authRoutes(jwtSecret: string, jwtExpiresIn: string) {
       // Check if any users exist — first user becomes admin
       const userCount = db.query<{ count: number }, []>('SELECT COUNT(*) as count FROM users').get();
       const role = userCount?.count === 0 ? 'admin' : 'user';
+
+      // Block public registration when disabled (first-user setup always allowed)
+      if (!registrationEnabled && role !== 'admin') {
+        return c.json({ error: 'Registration is disabled' }, 403);
+      }
 
       const existing = db
         .query<{ id: string }, [string]>('SELECT id FROM users WHERE username = ?')

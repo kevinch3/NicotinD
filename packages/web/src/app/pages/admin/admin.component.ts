@@ -27,6 +27,11 @@ export class AdminComponent implements OnInit {
   readonly deleteTarget = signal<AdminUser | null>(null);
   readonly deleting = signal(false);
 
+  readonly showCreateUser = signal(false);
+  readonly newUsername = signal('');
+  readonly newUserPassword = signal('');
+  readonly creating = signal(false);
+
   readonly systemStatus = signal<{ slskd: { healthy: boolean; connected?: boolean }; navidrome: { healthy: boolean } } | null>(null);
   readonly scanStatus = signal<{ scanning: boolean; count: number } | null>(null);
   readonly restarting = signal<{ slskd: boolean; navidrome: boolean }>({ slskd: false, navidrome: false });
@@ -119,6 +124,24 @@ export class AdminComponent implements OnInit {
       this.error.set(err instanceof Error ? err.message : 'Failed to reset password');
     } finally {
       this.resetting.set(false);
+    }
+  }
+
+  async handleCreateUser(): Promise<void> {
+    const username = this.newUsername().trim();
+    const password = this.newUserPassword().trim();
+    if (!username || !password) return;
+    this.creating.set(true);
+    try {
+      const user = await firstValueFrom(this.api.createUser(username, password));
+      this.users.update(prev => [...prev, user]);
+      this.showCreateUser.set(false);
+      this.newUsername.set('');
+      this.newUserPassword.set('');
+    } catch (err: any) {
+      this.error.set(err.error?.error ?? err.message ?? 'Failed to create user');
+    } finally {
+      this.creating.set(false);
     }
   }
 
