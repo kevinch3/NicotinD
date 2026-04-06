@@ -13,6 +13,7 @@ export const routes: Routes = [
       { path: 'downloads', loadComponent: () => import('./pages/downloads/downloads.component').then(m => m.DownloadsComponent) },
       { path: 'playlists', loadComponent: () => import('./pages/playlists/playlists.component').then(m => m.PlaylistsComponent) },
       { path: 'library', loadComponent: () => import('./pages/library/library.component').then(m => m.LibraryComponent) },
+      { path: 'library/artists/:id', loadComponent: () => import('./pages/library/artist-detail.component').then(m => m.ArtistDetailComponent) },
       { path: 'settings', loadComponent: () => import('./pages/settings/settings.component').then(m => m.SettingsComponent) },
       { path: 'admin', loadComponent: () => import('./pages/admin/admin.component').then(m => m.AdminComponent), canActivate: [adminGuard] },
     ],
