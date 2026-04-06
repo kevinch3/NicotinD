@@ -302,13 +302,17 @@ export class DownloadsComponent implements OnInit, OnDestroy {
       songIds.forEach(id => next.add(id));
       return next;
     });
-    for (const id of songIds) {
-      try {
-        await firstValueFrom(this.api.deleteSong(id));
-        this.recentSongs.update(prev => prev.filter(s => s.id !== id));
-        this.selected.update(prev => { const n = new Set(prev); n.delete(id); return n; });
-      } catch { /* ignore */ }
-    }
+
+    try {
+      await firstValueFrom(this.api.deleteSongs(songIds));
+      this.recentSongs.update(prev => prev.filter(s => !songIds.includes(s.id)));
+      this.selected.update(prev => {
+        const next = new Set(prev);
+        songIds.forEach(id => next.delete(id));
+        return next;
+      });
+    } catch { /* ignore */ }
+
     this.deleting.update(prev => {
       const next = new Set(prev);
       songIds.forEach(id => next.delete(id));

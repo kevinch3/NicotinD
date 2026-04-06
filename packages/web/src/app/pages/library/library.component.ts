@@ -182,8 +182,9 @@ export class LibraryComponent implements OnInit {
     const album = this.selectedAlbum();
     if (!album) return;
     this.askConfirm(`Remove all tracks in "${album.name}"?`, async () => {
-      for (const song of album.song ?? []) {
-        try { await firstValueFrom(this.api.deleteSong(song.id)); } catch { /* ignore */ }
+      const ids = (album.song ?? []).map(s => s.id);
+      if (ids.length) {
+        try { await firstValueFrom(this.api.deleteSongs(ids)); } catch { /* ignore */ }
       }
       this.selectedAlbum.set(null);
       this.fetchAlbums();
@@ -202,7 +203,7 @@ export class LibraryComponent implements OnInit {
         label: 'Remove',
         destructive: true,
         action: () => this.askConfirm(`Remove "${song.title}" from library?`, async () => {
-          try { await firstValueFrom(this.api.deleteSong(song.id)); } catch { /* ignore */ }
+          try { await firstValueFrom(this.api.deleteSongs([song.id])); } catch { /* ignore */ }
           this.selectedAlbum.update(a => a ? { ...a, song: a.song.filter(s => s.id !== song.id) } : null);
         }),
       },
@@ -259,7 +260,7 @@ export class LibraryComponent implements OnInit {
         label: 'Remove',
         destructive: true,
         action: () => this.askConfirm(`Remove "${song.title}" from library?`, async () => {
-          try { await firstValueFrom(this.api.deleteSong(song.id)); } catch { /* ignore */ }
+          try { await firstValueFrom(this.api.deleteSongs([song.id])); } catch { /* ignore */ }
           this.genreSongs.update(s => s.filter(x => x.id !== song.id));
         }),
       },

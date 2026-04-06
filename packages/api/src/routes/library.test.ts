@@ -1,6 +1,25 @@
 import { describe, expect, it, beforeEach, mock } from 'bun:test';
 import { Hono } from 'hono';
+import { Database } from 'bun:sqlite';
 import { libraryRoutes } from './library.js';
+
+mock.module('../db.js', () => ({
+  getDatabase: () => {
+    const db = new Database(':memory:');
+    db.run(`
+      CREATE TABLE IF NOT EXISTS completed_downloads (
+        transfer_key TEXT PRIMARY KEY,
+        username TEXT NOT NULL,
+        directory TEXT NOT NULL,
+        filename TEXT NOT NULL,
+        relative_path TEXT,
+        basename TEXT NOT NULL,
+        completed_at INTEGER NOT NULL
+      )
+    `);
+    return db;
+  },
+}));
 
 const fsState = new Map<string, boolean>();
 const dirEntries = new Map<string, Array<{ name: string; isFile: boolean; isDirectory: boolean }>>();
@@ -54,6 +73,31 @@ describe('library routes', () => {
 
     expect(res.status).toBe(200);
     expect(fsState.has('/home/kevinch3/Music/Artist/Album/song.mp3')).toBe(false);
+    expect(navidromeMock.system.startScan).toHaveBeenCalledWith(true);
+  });
+
+  it('bulk deletes multiple songs and triggers a single scan', async () => {
+    navidromeMock.browsing.getSong = mock((id: string) => {
+      const paths: Record<string, string> = {
+        's1': '/home/kevinch3/Music/A/a.mp3',
+        's2': '/home/kevinch3/Music/B/b.mp3'
+      };
+      return Promise.resolve({ id, path: paths[id] });
+    });
+    fsState.set('/home/kevinch3/Music/A/a.mp3', true);
+    fsState.set('/home/kevinch3/Music/B/b.mp3', true);
+
+    const res = await app.request('/songs/bulk-delete', {
+      method: 'POST',
+      body: JSON.stringify({ ids: ['s1', 's2'] })
+    });
+
+    expect(res.status).toBe(200);
+    const data = await res.json() as any;
+    expect(data.deletedCount).toBe(2);
+    expect(fsState.has('/home/kevinch3/Music/A/a.mp3')).toBe(false);
+    expect(fsState.has('/home/kevinch3/Music/B/b.mp3')).toBe(false);
+    expect(navidromeMock.system.startScan).toHaveBeenCalledTimes(1);
     expect(navidromeMock.system.startScan).toHaveBeenCalledWith(true);
   });
 

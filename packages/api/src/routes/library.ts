@@ -177,18 +177,15 @@ export function libraryRoutes(navidrome: Navidrome, musicDir?: string, metadataF
     return c.json(ordered.slice(0, size));
   });
 
-  // Delete a song from the filesystem and trigger rescan
-  app.delete('/songs/:id', async (c) => {
+  async function deleteOne(id: string): Promise<{ ok: boolean; error?: string; status?: number }> {
     if (!musicDir) {
-      return c.json({ error: 'Music directory not configured' }, 500);
+      return { ok: false, error: 'Music directory not configured', status: 500 };
     }
-
-    const id = c.req.param('id');
 
     // Get the song's path from Navidrome
     const song = await navidrome.browsing.getSong(id);
     if (!song.path) {
-      return c.json({ error: 'Song path not available' }, 404);
+      return { ok: false, error: 'Song path not available', status: 404 };
     }
 
     const expandedMusicDir = expandDir(musicDir);
@@ -196,53 +193,98 @@ export function libraryRoutes(navidrome: Navidrome, musicDir?: string, metadataF
 
     if (!isUnderMusicDir(expandedMusicDir, fullPath)) {
       log.warn({ path: fullPath, musicDir: expandedMusicDir }, 'Resolved song path is outside the music directory');
-      return c.json({ error: 'Song path is outside the music directory' }, 400);
+      return { ok: false, error: 'Song path is outside the music directory', status: 400 };
     }
 
-    let deleted = false;
+    let deletedPath: string | null = null;
 
-    if (!existsSync(fullPath)) {
+    if (existsSync(fullPath)) {
+      try {
+        unlinkSync(fullPath);
+        deletedPath = fullPath;
+        log.info({ path: fullPath, songId: id }, 'Deleted song file from disk');
+      } catch (err) {
+        log.error({ err, path: fullPath }, 'Failed to delete song file');
+        return { ok: false, error: 'Failed to delete file', status: 500 };
+      }
+    } else {
       const fallbackPath = findSongByMetadata(expandedMusicDir, song);
       if (fallbackPath) {
-        log.info({ requestedPath: fullPath, resolvedPath: fallbackPath }, 'Resolved song file via filename match');
         try {
           unlinkSync(fallbackPath);
-          log.info({ path: fallbackPath, songId: id }, 'Deleted song file from disk');
-          deleted = true;
+          deletedPath = fallbackPath;
+          log.info({ requestedPath: fullPath, resolvedPath: fallbackPath }, 'Resolved and deleted song file via fallback');
         } catch (err) {
           log.error({ err, path: fallbackPath }, 'Failed to delete song file');
-          return c.json({ error: 'Failed to delete file' }, 500);
+          return { ok: false, error: 'Failed to delete file', status: 500 };
         }
       } else {
         log.warn({ path: fullPath }, 'File not found on disk');
-        return c.json({ error: 'File not found on disk' }, 404);
-      }
-    } else {
-      try {
-        unlinkSync(fullPath);
-        log.info({ path: fullPath, songId: id }, 'Deleted song file from disk');
-        deleted = true;
-      } catch (err) {
-        log.error({ err, path: fullPath }, 'Failed to delete song file');
-        return c.json({ error: 'Failed to delete file' }, 500);
+        return { ok: false, error: 'File not found on disk', status: 404 };
       }
     }
 
-    if (!deleted) {
-      return c.json({ error: 'Failed to delete file' }, 500);
+    if (deletedPath) {
+      const relPath = relative(expandedMusicDir, deletedPath).replace(/\\/g, '/');
+      const fileBase = basename(deletedPath).toLowerCase();
+
+      try {
+        const db = getDatabase();
+        db.run(
+          'DELETE FROM completed_downloads WHERE relative_path = ? OR (basename = ? AND relative_path IS NULL)',
+          [relPath, fileBase],
+        );
+        log.info({ relPath }, 'Removed song from completion history');
+      } catch (err) {
+        log.debug({ err }, 'Failed to remove from completion history');
+      }
+    }
+
+    return { ok: true };
+  }
+
+  // Delete a song from the filesystem and trigger rescan
+  app.delete('/songs/:id', async (c) => {
+    const result = await deleteOne(c.req.param('id'));
+    if (!result.ok) {
+      return c.json({ error: result.error }, (result.status as any) ?? 500);
     }
 
     // Trigger Navidrome rescan to update the index
     try {
-      await (navidrome.system as { startScan: (fullScan?: boolean) => Promise<void> }).startScan(
-        true,
-      );
+      await (navidrome.system as { startScan: (fullScan?: boolean) => Promise<void> }).startScan(true);
     } catch {
-      // Non-fatal — file is already deleted
+      // Non-fatal
     }
 
     return c.json({ ok: true });
   });
+
+  // Bulk delete songs
+  app.post('/songs/bulk-delete', async (c) => {
+    const { ids } = await c.req.json<{ ids: string[] }>();
+    if (!ids || !Array.isArray(ids)) {
+      return c.json({ error: 'IDs array required' }, 400);
+    }
+
+    log.info({ count: ids.length }, 'Bulk deleting songs');
+    const results = await Promise.allSettled(ids.map(id => deleteOne(id)));
+
+    const failed = results.filter(r => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value.ok));
+    if (failed.length === ids.length) {
+      return c.json({ error: 'Failed to delete any songs' }, 500);
+    }
+
+    // Trigger single Navidrome rescan at the end
+    try {
+      await (navidrome.system as { startScan: (fullScan?: boolean) => Promise<void> }).startScan(true);
+    } catch {
+      // Non-fatal
+    }
+
+    return c.json({ ok: true, deletedCount: ids.length - failed.length });
+  });
+
 
   // On-demand metadata normalization for a single song via MusicBrainz
   app.post('/songs/:id/fix-metadata', async (c) => {

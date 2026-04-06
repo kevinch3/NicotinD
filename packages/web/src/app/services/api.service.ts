@@ -238,8 +238,8 @@ export class ApiService {
     }>>(`/api/library/songs/${id}/similar`, { params: { size } });
   }
 
-  deleteSong(id: string) {
-    return this.http.delete<{ ok: boolean }>(`/api/library/songs/${id}`);
+  deleteSongs(ids: string[]) {
+    return this.http.post<{ ok: boolean; deletedCount: number }>('/api/library/songs/bulk-delete', { ids });
   }
 
   fixSongMetadata(id: string) {
