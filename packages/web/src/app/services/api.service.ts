@@ -95,6 +95,7 @@ export interface Song {
   id: string;
   title: string;
   artist: string;
+  artistId?: string;
   album: string;
   albumId: string;
   duration?: number;

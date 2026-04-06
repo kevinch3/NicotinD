@@ -159,7 +159,15 @@ type LibraryMode = 'albums' | 'artists' | 'genre';
 
       <!-- ═══ ARTISTS MODE ═══ -->
       @if (libraryMode() === 'artists') {
-        <div class="mb-4">
+        <div class="flex items-center gap-3 mb-4">
+          <button (click)="artistControls.showToolbar()"
+            class="p-1 text-theme-muted hover:text-theme-secondary transition" title="Search">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+          </button>
+        </div>
+        @if (artistControls.isToolbarVisible()) {
           <app-list-toolbar
             [searchText]="artistControls.searchText()"
             [sortField]="artistControls.sortField()"
@@ -171,7 +179,7 @@ type LibraryMode = 'albums' | 'artists' | 'genre';
             (toggleDirection)="artistControls.toggleSortDirection()"
             (dismiss)="artistControls.hideToolbar()"
           />
-        </div>
+        }
 
         @if (loadingArtists()) {
           <div class="text-center py-20">
@@ -215,11 +223,11 @@ type LibraryMode = 'albums' | 'artists' | 'genre';
           } @else {
             @for (song of genreSongs(); track song.id) {
               <app-track-row
-                [track]="toTrack(song)"
+                [track]="toTrackFn(song)"
                 [subtitle]="song.artist + ' · ' + song.album"
                 [duration]="song.duration"
                 [actions]="genreTrackActions(song)"
-                (play)="player.play(toTrack(song))"
+                (play)="player.play(toTrackFn(song))"
               />
             }
           }
@@ -407,7 +415,7 @@ export class LibraryComponent implements OnInit {
     return toTrack(song, this.selectedAlbum()?.name);
   }
 
-  toTrack = toTrack;
+  protected toTrackFn = toTrack;
 
   removeAlbum(): void {
     const album = this.selectedAlbum();
@@ -432,7 +440,7 @@ export class LibraryComponent implements OnInit {
       {
         label: 'Remove',
         destructive: true,
-        action: () => this.askConfirm(`Remove "${(song as { title: string }).title}" from library?`, async () => {
+        action: () => this.askConfirm(`Remove "${song.title}" from library?`, async () => {
           try { await firstValueFrom(this.api.deleteSong(song.id)); } catch { /* ignore */ }
           this.selectedAlbum.update(a => a ? { ...a, song: a.song.filter(s => s.id !== song.id) } : null);
         }),
@@ -474,6 +482,10 @@ export class LibraryComponent implements OnInit {
 
   genreTrackActions(song: Song): TrackAction[] {
     return [
+      ...(song.artistId ? [{
+        label: 'Go to artist',
+        action: () => { void this.router.navigate(['/library', 'artists', song.artistId]); },
+      }] : []),
       {
         label: 'Remove',
         destructive: true,
