@@ -4,8 +4,6 @@ import { Database } from 'bun:sqlite';
 import { downloadRoutes } from './downloads.js';
 import { ProviderRegistry } from '../services/provider-registry.js';
 import { SlskdSearchProvider } from '../services/providers/slskd-provider.js';
-import * as dbModule from '../db.js';
-
 // Mock getDatabase to use an in-memory DB
 const testDb = new Database(':memory:');
 testDb.run(`
