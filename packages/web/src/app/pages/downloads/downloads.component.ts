@@ -348,7 +348,7 @@ function groupRecentSongsByDate(songs: Song[]): SongDateGroup[] {
             + (isSelected(song.id) ? 'bg-theme-surface-2/60 border border-theme' : 'hover:bg-theme-surface-2/30 border border-transparent')
             + (deleting().has(song.id) ? ' opacity-40 pointer-events-none' : '')">
             <!-- Checkbox -->
-            <button (click)="toggleSelect(song.id)"
+            <button (click)="toggleSelect(song.id, $event)"
               [class]="'w-4.5 h-4.5 rounded border flex-shrink-0 flex items-center justify-center transition '
                 + (isSelected(song.id) ? 'bg-blue-500 border-blue-500' : 'border-theme hover:border-zinc-500')">
               @if (isSelected(song.id)) {
@@ -463,6 +463,7 @@ export class DownloadsComponent implements OnInit, OnDestroy {
   // State
   readonly recentSongs = signal<Song[]>([]);
   readonly selected = signal(new Set<string>());
+  readonly lastSelectedId = signal<string | null>(null);
   readonly deleting = signal(new Set<string>());
   readonly scanning = signal(false);
   readonly showPlaylistPicker = signal(false);
@@ -552,13 +553,40 @@ export class DownloadsComponent implements OnInit, OnDestroy {
     return this.selected().has(id);
   }
 
-  toggleSelect(id: string): void {
+  toggleSelect(id: string, event: MouseEvent): void {
+    const isShift = event.shiftKey;
+    const lastId = this.lastSelectedId();
+
+    if (isShift && lastId && lastId !== id) {
+      const visible = this.recentControls.filtered();
+      const lastIndex = visible.findIndex(s => s.id === lastId);
+      const currIndex = visible.findIndex(s => s.id === id);
+
+      if (lastIndex !== -1 && currIndex !== -1) {
+        const [start, end] = [Math.min(lastIndex, currIndex), Math.max(lastIndex, currIndex)];
+        const rangeIds = visible.slice(start, end + 1).map(s => s.id);
+
+        this.selected.update(prev => {
+          const next = new Set(prev);
+          const shouldSelect = !prev.has(id);
+          for (const rid of rangeIds) {
+            if (shouldSelect) next.add(rid);
+            else next.delete(rid);
+          }
+          return next;
+        });
+        this.lastSelectedId.set(id);
+        return;
+      }
+    }
+
     this.selected.update(prev => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
+    this.lastSelectedId.set(id);
   }
 
   selectAll(): void {
