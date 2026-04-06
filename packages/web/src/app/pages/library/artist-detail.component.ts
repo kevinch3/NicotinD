@@ -1,5 +1,5 @@
 import { Component, inject, signal, OnInit } from '@angular/core';
-import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { ApiService, type Album } from '../../services/api.service';
 import { AuthService } from '../../services/auth.service';
@@ -7,7 +7,7 @@ import { AuthService } from '../../services/auth.service';
 @Component({
   selector: 'app-artist-detail',
   standalone: true,
-  imports: [RouterLink],
+  imports: [],
   template: `
     <div class="max-w-6xl mx-auto px-4 py-5 md:px-6 md:py-8">
 
