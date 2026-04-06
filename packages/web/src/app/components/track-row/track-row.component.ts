@@ -20,67 +20,8 @@ function formatDuration(seconds?: number): string {
 @Component({
   selector: 'app-track-row',
   imports: [CoverArtComponent],
-  template: `
-    <div [class]="'flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-zinc-800/50 transition group' + (disabled() ? ' opacity-40 pointer-events-none' : '')">
-      <span class="text-xs text-zinc-600 w-6 text-right">{{ indexLabel() ?? '' }}</span>
-      <app-cover-art
-        [src]="track().coverArt ? '/api/cover/' + track().coverArt + '?size=40&token=' + auth.token() : undefined"
-        [artist]="track().artist"
-        [album]="track().album ?? ''"
-        [size]="36"
-        rounded="rounded"
-      />
-      <button type="button" (click)="play.emit()" class="flex-1 min-w-0 text-left">
-        <p class="text-sm text-zinc-200 truncate">{{ track().title }}</p>
-        @if (subtitle()) {
-          <p class="text-xs text-zinc-500 truncate">{{ subtitle() }}</p>
-        }
-      </button>
-      <span class="text-xs text-zinc-600">{{ formatDuration(duration() ?? track().duration) }}</span>
-      <button type="button" (click)="play.emit()" class="p-1 text-zinc-700 group-hover:text-zinc-300 transition flex-shrink-0" title="Play">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-          <polygon points="5,3 19,12 5,21" />
-        </svg>
-      </button>
-      @if (showRemove()) {
-        <button type="button" (click)="remove.emit()" class="p-1 text-zinc-700 group-hover:text-zinc-400 hover:!text-red-400 transition flex-shrink-0" title="Remove">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
-        </button>
-      }
-      @if (actions().length > 0) {
-        <div class="relative flex-shrink-0">
-          <button
-            type="button"
-            class="p-1 text-zinc-700 group-hover:text-zinc-400 hover:!text-zinc-200 transition"
-            title="More options"
-            (click)="toggleMenu($event)">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-              <circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/>
-            </svg>
-          </button>
-          @if (menuOpen()) {
-            <div class="absolute right-0 top-7 z-50 bg-theme-surface border border-theme rounded-xl shadow-xl py-1 min-w-40"
-                 (click)="$event.stopPropagation()">
-              @for (action of actions(); track action.label) {
-                <button
-                  type="button"
-                  class="w-full text-left px-4 py-2 text-sm transition-colors hover:bg-theme-hover"
-                  [class.text-red-400]="action.destructive"
-                  [class.text-theme-secondary]="!action.destructive"
-                  (click)="runAction(action)">
-                  {{ action.label }}
-                </button>
-              }
-            </div>
-          }
-        </div>
-      }
-      <!-- TODO: PreserveButton (Phase 5) -->
-    </div>
-  `,
-})
+  templateUrl: './track-row.component.html',
+  })
 export class TrackRowComponent {
   readonly auth = inject(AuthService);
 

@@ -1,0 +1,332 @@
+
+    <div class="max-w-5xl mx-auto px-4 py-5 md:px-6 md:py-8">
+      <!-- Header -->
+      <div class="flex items-center justify-between gap-3 mb-6 flex-wrap">
+        <h1 class="text-lg font-semibold text-theme-primary">Downloads</h1>
+        <div class="flex items-center gap-2">
+          <button (click)="triggerScan()" [disabled]="scanning()"
+            class="inline-flex items-center gap-2 rounded-full border border-theme bg-theme-base/40 px-3 py-1.5 text-xs font-medium text-theme-muted transition hover:border-theme hover:text-theme-secondary disabled:cursor-wait disabled:opacity-50"
+            title="Trigger a library rescan">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+              [class]="scanning() ? 'animate-spin' : ''">
+              <path d="M21 12a9 9 0 1 1-3-6.7" /><polyline points="21 3 21 9 15 9" />
+            </svg>
+            <span>{{ scanning() ? 'Scanning' : 'Scan library' }}</span>
+          </button>
+          @if (recentSongs().length > 0) {
+            <button (click)="handlePlayAll()"
+              class="px-4 py-1.5 rounded-lg bg-theme-surface-2 text-theme-secondary text-sm font-medium hover:bg-theme-hover transition">
+              {{ selected().size > 0 ? 'Play ' + selected().size + ' selected' : 'Play all' }}
+            </button>
+          }
+        </div>
+      </div>
+
+      <!-- Active Downloads -->
+      @if (inProgressGroups().length > 0 || errorGroups().length > 0 || doneGroups().length > 0) {
+        <section class="mb-8">
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="text-xs font-semibold uppercase tracking-wider text-theme-muted">
+              Downloads
+              @if (inProgressGroups().length > 0) {
+                <span class="ml-2 text-blue-400 normal-case font-normal">
+                  {{ inProgressGroups().length }} in progress
+                </span>
+              }
+            </h2>
+            <div class="flex items-center gap-3">
+              @if (inProgressGroups().length > 0) {
+                <button (click)="cancelAll()" class="text-xs text-red-500/70 hover:text-red-400 transition">Cancel all</button>
+              }
+              @if (clearableGroups().length > 0) {
+                <button (click)="clearAllFinished()" class="text-xs text-theme-muted hover:text-theme-secondary transition">Clear all finished</button>
+              }
+            </div>
+          </div>
+          <div class="grid gap-2">
+            <!-- In progress -->
+            @for (group of inProgressGroups(); track group.key) {
+              <div class="flex items-center gap-3 md:gap-4 px-3 md:px-4 py-3 rounded-lg bg-theme-surface/50 border border-theme min-w-0">
+                <div class="flex-1 min-w-0">
+                  <p class="text-sm text-theme-primary truncate w-full">{{ group.name }}</p>
+                  <p class="text-xs text-theme-muted mt-0.5 truncate w-full">{{ group.completedFiles }} of {{ group.totalFiles }} tracks</p>
+                </div>
+                <div class="w-20 md:w-32 flex-shrink-0">
+                  @if (group.state === 'downloading') {
+                    <div class="space-y-1">
+                      <div class="h-1.5 bg-theme-surface-2 rounded-full overflow-hidden">
+                        <div class="h-full bg-blue-500 rounded-full transition-all duration-500" [style.width.%]="group.overallPercent"></div>
+                      </div>
+                      <p class="text-xs text-blue-400 text-right">{{ group.overallPercent }}%</p>
+                    </div>
+                  } @else {
+                    <p class="text-xs text-right font-medium text-theme-muted">Queued</p>
+                  }
+                </div>
+                <button (click)="removeGroup(group)" class="p-1 text-theme-muted hover:text-red-400 transition flex-shrink-0" title="Remove album">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+                  </svg>
+                </button>
+                <button (click)="clearGroup(group)" class="text-xs text-theme-muted hover:text-theme-secondary transition flex-shrink-0" title="Cancel">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
+              </div>
+            }
+            <!-- Errored -->
+            @for (group of errorGroups(); track group.key) {
+              <div class="flex items-center gap-3 md:gap-4 px-3 md:px-4 py-3 rounded-lg bg-theme-surface/30 border border-red-900/20 min-w-0">
+                <div class="flex-1 min-w-0">
+                  <p class="text-sm text-theme-secondary truncate w-full">{{ group.name }}</p>
+                  <p class="text-xs text-theme-muted mt-0.5 truncate w-full">{{ group.completedFiles }} of {{ group.totalFiles }} tracks</p>
+                </div>
+                <p class="text-xs text-red-400/70 font-medium flex-shrink-0">Error</p>
+                <button (click)="removeGroup(group)" class="p-1 text-theme-muted hover:text-red-400 transition flex-shrink-0" title="Remove album">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+                  </svg>
+                </button>
+                <button (click)="clearGroup(group)" class="text-xs text-theme-muted hover:text-theme-secondary transition flex-shrink-0" title="Dismiss">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
+              </div>
+            }
+            <!-- Done -->
+            @for (group of doneGroups(); track group.key) {
+              <div class="flex items-center gap-3 md:gap-4 px-3 md:px-4 py-3 rounded-lg bg-theme-surface/40 border border-theme opacity-80 min-w-0">
+                <div class="flex-1 min-w-0">
+                  <p class="text-sm text-theme-secondary truncate w-full">{{ group.name }}</p>
+                  <p class="text-xs text-theme-muted mt-0.5 truncate w-full">{{ group.totalFiles }} tracks</p>
+                </div>
+                <p class="text-xs text-emerald-400/70 font-medium flex-shrink-0">Done</p>
+                <button (click)="removeGroup(group)" class="p-1 text-theme-muted hover:text-red-400 transition flex-shrink-0" title="Remove album">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+                  </svg>
+                </button>
+                <button (click)="clearGroup(group)" class="text-xs text-theme-muted hover:text-theme-secondary transition flex-shrink-0" title="Dismiss">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
+              </div>
+            }
+          </div>
+        </section>
+      }
+
+      <!-- TODO: Preserved section (Phase 5 — PreserveService) -->
+
+      <!-- Recently Added -->
+      <section>
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center gap-2">
+            <h2 class="text-xs font-semibold uppercase tracking-wider text-theme-muted">
+              Recently Added
+              @if (recentSongs().length > 0) {
+                <span class="font-normal normal-case ml-1.5 text-theme-muted">({{ recentSongs().length }})</span>
+              }
+            </h2>
+            @if (recentSongs().length > 0) {
+              <button (click)="recentControls.showToolbar()" class="p-1 text-theme-muted hover:text-theme-secondary transition" title="Search (Ctrl+F)">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
+              </button>
+            }
+          </div>
+          @if (recentSongs().length > 0) {
+            <button (click)="selectAll()" class="text-xs text-theme-muted hover:text-theme-secondary transition">
+              {{ selected().size === recentControls.filtered().length ? 'Deselect all' : 'Select all' }}
+            </button>
+          }
+        </div>
+
+        @if (recentControls.isToolbarVisible()) {
+          <app-list-toolbar
+            [searchText]="recentControls.searchText()"
+            [sortField]="recentControls.sortField()"
+            [sortDirection]="recentControls.sortDirection()"
+            [sortOptions]="recentSortOptions"
+            [resultCount]="recentControls.filtered().length"
+            (searchChange)="recentControls.setSearchText($event)"
+            (sortFieldChange)="recentControls.setSortField($event)"
+            (toggleDirection)="recentControls.toggleSortDirection()"
+            (dismiss)="recentControls.hideToolbar()"
+          />
+        }
+
+        <!-- Bulk action bar -->
+        @if (selected().size > 0) {
+          <div class="flex flex-wrap items-center gap-2 md:gap-3 px-3 md:px-4 py-2.5 mb-3 rounded-lg bg-theme-surface-2/60 border border-theme">
+            <span class="text-sm text-theme-secondary font-medium">{{ selected().size }} selected</span>
+            <div class="flex-1 min-w-0"></div>
+
+            @if (showPlaylistPicker()) {
+              <div class="relative">
+                <app-playlist-autocomplete
+                  (selected)="addToPlaylist($event); showPlaylistPicker.set(false)"
+                  (create)="createAndAdd($event)"
+                />
+              </div>
+            } @else {
+              <button (click)="openPlaylistPicker()"
+                class="px-3 py-1.5 rounded-md text-xs font-medium bg-theme-hover text-theme-primary hover:bg-theme-hover transition">
+                Add to playlist
+              </button>
+              <button (click)="normalizeSelected()" [disabled]="normalizing()"
+                class="px-3 py-1.5 rounded-md text-xs font-medium bg-theme-hover text-theme-primary hover:bg-theme-hover transition disabled:opacity-50 disabled:cursor-wait">
+                {{ normalizing() ? 'Normalizing…' : 'Normalize metadata' }}
+              </button>
+              <button (click)="confirmDeleteSelected()"
+                class="px-3 py-1.5 rounded-md text-xs font-medium bg-theme-hover text-red-400 hover:bg-red-500/20 transition">
+                Delete
+              </button>
+            }
+          </div>
+        }
+
+        <!-- Song list -->
+        @if (recentSongs().length === 0 && groups().length === 0) {
+          <p class="text-center text-theme-muted text-sm py-20">
+            No recent downloads. Search for music and start downloading!
+          </p>
+        }
+        @if (recentSongs().length === 0 && groups().length > 0) {
+          <p class="text-center text-theme-muted text-sm py-12">
+            New songs will appear here after downloads complete and library rescans.
+          </p>
+        }
+        @if (recentSongs().length > 0) {
+          <div class="space-y-4">
+            @if (showDateGroups()) {
+              @for (group of dateGroups(); track group.label) {
+                <div>
+                  <div class="px-1.5 md:px-0 mb-1">
+                    <span class="text-xs font-semibold uppercase tracking-wider text-theme-muted">{{ group.label }}</span>
+                  </div>
+                  <div class="space-y-0.5">
+                    @for (song of group.songs; track song.id) {
+                      <ng-container *ngTemplateOutlet="songRow; context: { $implicit: song }"></ng-container>
+                    }
+                  </div>
+                </div>
+              }
+            } @else {
+              <div class="space-y-0.5">
+                @for (song of recentControls.filtered(); track song.id) {
+                  <ng-container *ngTemplateOutlet="songRow; context: { $implicit: song }"></ng-container>
+                }
+              </div>
+            }
+          </div>
+        }
+
+        <!-- Song row template -->
+        <ng-template #songRow let-song>
+          <div [class]="'flex items-center gap-1.5 md:gap-3 px-1.5 md:px-4 py-2.5 rounded-lg transition group '
+            + (isSelected(song.id) ? 'bg-theme-surface-2/60 border border-theme' : 'hover:bg-theme-surface-2/30 border border-transparent')
+            + (deleting().has(song.id) ? ' opacity-40 pointer-events-none' : '')">
+            <!-- Checkbox -->
+            <button (click)="toggleSelect(song.id, $event)"
+              [class]="'w-4.5 h-4.5 rounded border flex-shrink-0 flex items-center justify-center transition '
+                + (isSelected(song.id) ? 'bg-blue-500 border-blue-500' : 'border-theme hover:border-zinc-500')">
+              @if (isSelected(song.id)) {
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              }
+            </button>
+
+            <!-- Song info -->
+            <div class="flex-1 min-w-0">
+              <p class="text-sm text-theme-primary truncate">{{ song.title }}</p>
+              <p class="text-xs text-theme-muted truncate">
+                <span class="cursor-pointer hover:underline hover:text-theme-secondary transition" (click)="navigateAndSearch(song.artist)">{{ song.artist }}</span>
+                &middot; {{ song.album }}
+              </p>
+            </div>
+
+            <!-- Metadata -->
+            <span class="hidden md:inline text-xs text-theme-muted flex-shrink-0 w-12 text-right">{{ song.bitRate ? song.bitRate + 'k' : '' }}</span>
+            <span class="hidden md:inline text-xs text-theme-muted flex-shrink-0 w-14 text-right">{{ formatSize(song.size) }}</span>
+            <span class="text-xs text-theme-muted flex-shrink-0 w-12 text-right">{{ formatDuration(song.duration) }}</span>
+            <span class="hidden lg:inline text-xs text-theme-muted flex-shrink-0 w-20 text-right">{{ timeAgo(song.created) }}</span>
+
+            <!-- Normalization status -->
+            @if (normStatus().has(song.id)) {
+              <span class="flex-shrink-0 w-5 flex items-center justify-center">
+                @switch (normStatus().get(song.id)) {
+                  @case ('pending') { <span class="w-1.5 h-1.5 rounded-full bg-theme-muted"></span> }
+                  @case ('running') {
+                    <svg class="animate-spin text-theme-secondary" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M21 12a9 9 0 1 1-3-6.7" /><polyline points="21 3 21 9 15 9" />
+                    </svg>
+                  }
+                  @case ('fixed') {
+                    <svg class="text-emerald-400" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                  }
+                  @case ('skipped') { <span class="text-theme-muted text-xs leading-none">—</span> }
+                  @case ('failed') {
+                    <svg class="text-red-400/70" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                      <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                  }
+                }
+              </span>
+            }
+
+            <!-- Play -->
+            <button (click)="handlePlay(song)" class="p-1.5 text-theme-muted hover:text-theme-secondary transition flex-shrink-0 md:opacity-0 md:group-hover:opacity-100" title="Play">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21" /></svg>
+            </button>
+
+            <!-- Delete -->
+            <button (click)="handleDelete([song.id])" class="p-1.5 text-theme-muted hover:text-red-400 transition flex-shrink-0 md:opacity-0 md:group-hover:opacity-100" title="Delete from library">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+              </svg>
+            </button>
+
+            <!-- "..." context menu -->
+            <div class="relative flex-shrink-0">
+              <button (click)="songMenuId.set(songMenuId() === song.id ? null : song.id); $event.stopPropagation()"
+                class="p-1.5 text-theme-muted hover:text-theme-secondary transition flex-shrink-0 md:opacity-0 md:group-hover:opacity-100"
+                title="More options">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                  <circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/>
+                </svg>
+              </button>
+              @if (songMenuId() === song.id) {
+                <div class="absolute right-0 top-7 z-50 bg-theme-surface border border-theme rounded-xl shadow-xl py-1 min-w-40"
+                     (click)="$event.stopPropagation()">
+                  @for (action of songActions(song); track action.label) {
+                    <button type="button"
+                      class="w-full text-left px-4 py-2 text-sm transition-colors hover:bg-theme-hover"
+                      [class.text-red-400]="action.destructive"
+                      [class.text-theme-secondary]="!action.destructive"
+                      (click)="action.action(); songMenuId.set(null)">
+                      {{ action.label }}
+                    </button>
+                  }
+                </div>
+              }
+            </div>
+          </div>
+        </ng-template>
+      </section>
+
+      @if (showConfirm()) {
+        <app-confirm-dialog
+          [message]="confirmMessage()"
+          confirmLabel="Remove"
+          (confirm)="onConfirm()"
+          (cancel)="onCancelConfirm()"
+        />
+      }
+    </div>
+  

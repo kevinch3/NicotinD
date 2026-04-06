@@ -4,16 +4,8 @@ import { inject } from '@angular/core';
 
 @Component({
   selector: 'app-track-context-menu',
-  template: `
-    <div class="fixed inset-0 z-[70]" (click)="close.emit()"></div>
-    <div class="fixed z-[80] bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl py-1 min-w-[180px]"
-      [style.top.px]="position().y" [style.left.px]="position().x">
-      <button (click)="searchArtist()" class="w-full text-left px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 transition">
-        Search more by artist
-      </button>
-    </div>
-  `,
-})
+  templateUrl: './track-context-menu.component.html',
+  })
 export class TrackContextMenuComponent {
   private router = inject(Router);
 

@@ -1,0 +1,250 @@
+
+    <div class="max-w-2xl mx-auto px-4 py-5 md:px-6 md:py-8">
+      <h1 class="text-xl font-bold text-theme-primary mb-8">Settings</h1>
+
+      @if (loading()) {
+        <p class="text-theme-muted">Loading settings...</p>
+      } @else {
+        <!-- Appearance -->
+        <section class="rounded-xl border border-theme bg-theme-surface/50 p-6 mb-6">
+          <h2 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary mb-5">Appearance</h2>
+
+          <div class="flex items-start gap-3 mb-5">
+            <button role="switch" [attr.aria-checked]="themeService.systemTheme()"
+              (click)="themeService.setSystemTheme(!themeService.systemTheme())"
+              [class]="'relative mt-0.5 w-9 h-5 rounded-full transition-colors flex-shrink-0 ' + (themeService.systemTheme() ? 'bg-emerald-600' : 'bg-theme-hover')">
+              <span [class]="'absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ' + (themeService.systemTheme() ? 'translate-x-4' : 'translate-x-0')"></span>
+            </button>
+            <div>
+              <p class="text-sm text-theme-primary">Follow system theme</p>
+              <p class="text-xs text-theme-muted mt-0.5">Automatically use light or dark based on your OS setting.</p>
+            </div>
+          </div>
+
+          <div [class]="'grid grid-cols-3 gap-2 transition-opacity ' + (themeService.systemTheme() ? 'opacity-40 pointer-events-none' : '')">
+            @for (preset of themePresets; track preset.id) {
+              <button (click)="themeService.setTheme(preset.id)"
+                [attr.data-theme]="preset.id"
+                [class]="'rounded-lg overflow-hidden border-2 transition-all text-left ' + (themeService.theme() === preset.id ? 'border-indigo-500' : 'border-transparent hover:border-theme')"
+                [attr.aria-label]="'Switch to ' + preset.name + ' theme'">
+                <div class="h-10 flex flex-col gap-1 p-1.5" style="background: var(--theme-bg, #09090b)">
+                  <div class="h-2 rounded-sm w-full" style="background: var(--theme-surface, #18181b)"></div>
+                  <div class="h-1.5 rounded-sm w-3/4" style="background: var(--theme-surface-2, #27272a)"></div>
+                </div>
+                <div class="px-2 py-1.5 flex items-center justify-between" style="background: var(--theme-surface, #18181b)">
+                  <span class="text-xs font-semibold" style="color: var(--theme-text-primary, #f4f4f5)">{{ preset.name }}</span>
+                  @if (themeService.theme() === preset.id) {
+                    <span class="text-indigo-400 text-xs">✓</span>
+                  }
+                </div>
+              </button>
+            }
+          </div>
+        </section>
+
+        <!-- Soulseek Network -->
+        <section class="rounded-xl border border-theme bg-theme-surface/50 p-6">
+          <div class="flex items-center gap-3 mb-6">
+            <h2 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary">Soulseek Network</h2>
+            <div class="flex items-center gap-2">
+              <span [class]="'inline-block w-2.5 h-2.5 rounded-full ' + statusDotClass()"></span>
+              <span class="text-xs text-theme-muted">{{ statusLabel() }}</span>
+            </div>
+          </div>
+
+          @if (isAdmin()) {
+            <form (submit)="handleSave($event)" class="space-y-4">
+              <div class="flex gap-1 p-1 rounded-lg bg-theme-surface-2/50 w-fit">
+                <button type="button" (click)="isNewAccount.set(false); confirmPassword.set(''); message.set(null)"
+                  [class]="'px-3 py-1.5 rounded-md text-xs font-medium transition ' + (!isNewAccount() ? 'bg-theme-hover text-theme-primary' : 'text-theme-secondary hover:text-theme-primary')">
+                  I have an account
+                </button>
+                <button type="button" (click)="isNewAccount.set(true); message.set(null)"
+                  [class]="'px-3 py-1.5 rounded-md text-xs font-medium transition ' + (isNewAccount() ? 'bg-theme-hover text-theme-primary' : 'text-theme-secondary hover:text-theme-primary')">
+                  Create new account
+                </button>
+              </div>
+
+              <div>
+                <label class="block text-sm text-theme-secondary mb-1.5">Username</label>
+                <input type="text" [ngModel]="username()" (ngModelChange)="username.set($event)" name="slskUser" placeholder="Soulseek username"
+                  class="w-full px-4 py-2.5 rounded-lg bg-theme-surface-2 border border-theme text-theme-primary placeholder-zinc-600 focus:outline-none focus:border-zinc-500 transition text-sm" />
+              </div>
+              <div>
+                <label class="block text-sm text-theme-secondary mb-1.5">Password</label>
+                <app-password-field [ngModel]="password()" (ngModelChange)="password.set($event)" name="slskPass"
+                  [placeholder]="configured() && !isNewAccount() ? '••••••••' : 'Soulseek password'"
+                  autocomplete="new-password"
+                  inputClass="px-4 py-2.5 rounded-lg bg-theme-surface-2 border border-theme text-theme-primary placeholder-zinc-600 focus:outline-none focus:border-zinc-500 transition text-sm" />
+              </div>
+
+              @if (isNewAccount()) {
+                <div>
+                  <label class="block text-sm text-theme-secondary mb-1.5">Confirm Password</label>
+                  <app-password-field [ngModel]="confirmPassword()" (ngModelChange)="confirmPassword.set($event)" name="slskConfirm"
+                    placeholder="Confirm password" autocomplete="new-password"
+                    inputClass="px-4 py-2.5 rounded-lg bg-theme-surface-2 border border-theme text-theme-primary placeholder-zinc-600 focus:outline-none focus:border-zinc-500 transition text-sm" />
+                  @if (confirmPassword() && password() !== confirmPassword()) {
+                    <p class="text-xs text-red-400 mt-1">Passwords do not match</p>
+                  }
+                </div>
+              }
+
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-sm text-theme-secondary mb-1.5">Listening Port</label>
+                  <input type="number" [ngModel]="listeningPort()" (ngModelChange)="listeningPort.set($event)" name="slskPort" placeholder="50000"
+                    class="w-full px-4 py-2.5 rounded-lg bg-theme-surface-2 border border-theme text-theme-primary placeholder-zinc-600 focus:outline-none focus:border-zinc-500 transition text-sm" />
+                  <p class="text-xs text-theme-muted mt-1">Port for incoming P2P connections.</p>
+                </div>
+                <div class="flex flex-col justify-center">
+                  <label class="flex items-center gap-2 cursor-pointer mt-2">
+                    <input type="checkbox" [ngModel]="enableUPnP()" (ngModelChange)="enableUPnP.set($event)" name="slskUpnp"
+                      class="w-4 h-4 rounded border-theme bg-theme-surface-2 text-theme-primary focus:ring-0 focus:ring-offset-0" />
+                    <span class="text-sm text-theme-secondary">Enable UPnP</span>
+                  </label>
+                  <p class="text-xs text-theme-muted mt-1">Auto-forward port (requires router support).</p>
+                </div>
+              </div>
+
+              @if (message()) {
+                <div [class]="'px-4 py-2.5 rounded-lg text-sm ' + (message()!.type === 'success' ? 'bg-emerald-950/50 border border-emerald-900/50 text-emerald-400' : 'bg-red-950/50 border border-red-900/50 text-red-400')">
+                  {{ message()!.text }}
+                </div>
+              }
+
+              <button type="submit"
+                [disabled]="saving() || !username().trim() || !password().trim() || (isNewAccount() && password() !== confirmPassword())"
+                class="px-5 py-2.5 rounded-lg bg-zinc-100 text-zinc-900 text-sm font-semibold hover:bg-zinc-200 transition disabled:opacity-50">
+                {{ saving() ? (isNewAccount() ? 'Creating account...' : 'Saving...') : isNewAccount() ? 'Create Account & Connect' : configured() ? 'Update & Reconnect' : 'Save & Connect' }}
+              </button>
+            </form>
+          } @else {
+            <div class="text-sm text-theme-muted">
+              <p>Only administrators can change Soulseek settings.</p>
+              @if (configured() && username()) {
+                <p class="mt-2 text-theme-secondary">Connected as: {{ username() }}</p>
+              }
+            </div>
+          }
+        </section>
+
+        <!-- Tailscale -->
+        @if (tsStatus()?.available) {
+          <section class="rounded-xl border border-theme bg-theme-surface/50 p-6 mt-6">
+            <div class="flex items-center gap-3 mb-6">
+              <h2 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary">Tailscale Remote Access</h2>
+              <div class="flex items-center gap-2">
+                <span [class]="'inline-block w-2.5 h-2.5 rounded-full ' + (tsStatus()!.connected ? 'bg-emerald-500' : 'bg-theme-muted')"></span>
+                <span class="text-xs text-theme-muted">{{ tsStatus()!.connected ? 'Connected' : 'Not connected' }}</span>
+              </div>
+            </div>
+
+            @if (tsStatus()!.connected) {
+              <div class="space-y-2 mb-4">
+                @if (tsStatus()!.hostname) {
+                  <div>
+                    <span class="text-xs text-theme-muted">Hostname: </span>
+                    <span class="text-sm text-theme-primary font-mono">{{ tsStatus()!.hostname }}</span>
+                  </div>
+                }
+                @if (tsStatus()!.ip) {
+                  <div>
+                    <span class="text-xs text-theme-muted">IP: </span>
+                    <span class="text-sm text-theme-secondary font-mono">{{ tsStatus()!.ip }}</span>
+                  </div>
+                }
+              </div>
+            }
+
+            @if (isAdmin()) {
+              @if (tsStatus()!.connected) {
+                <button (click)="disconnectTailscale()" [disabled]="tsSaving()"
+                  class="px-5 py-2.5 rounded-lg border border-theme text-theme-secondary text-sm font-medium hover:border-zinc-500 transition disabled:opacity-50">
+                  {{ tsSaving() ? 'Disconnecting...' : 'Disconnect' }}
+                </button>
+              } @else {
+                <div class="space-y-3">
+                  <app-password-field [ngModel]="tsAuthKey()" (ngModelChange)="tsAuthKey.set($event)"
+                    placeholder="tskey-auth-..." autocomplete="off"
+                    inputClass="w-full px-4 py-2.5 rounded-lg bg-theme-surface-2 border border-theme text-theme-primary placeholder-zinc-600 focus:outline-none focus:border-zinc-500 transition text-sm font-mono" />
+                  <button (click)="connectTailscale()" [disabled]="tsSaving() || !tsAuthKey().trim()"
+                    class="px-5 py-2.5 rounded-lg bg-zinc-100 text-zinc-900 text-sm font-semibold hover:bg-zinc-200 transition disabled:opacity-50">
+                    {{ tsSaving() ? 'Connecting...' : 'Connect' }}
+                  </button>
+                </div>
+              }
+
+              @if (tsMessage()) {
+                <div [class]="'mt-3 px-4 py-2.5 rounded-lg text-sm ' + (tsMessage()!.type === 'success' ? 'bg-emerald-950/50 border border-emerald-900/50 text-emerald-400' : 'bg-red-950/50 border border-red-900/50 text-red-400')">
+                  {{ tsMessage()!.text }}
+                </div>
+              }
+            } @else if (!tsStatus()!.connected) {
+              <p class="text-sm text-theme-muted">Only administrators can manage Tailscale connection.</p>
+            }
+          </section>
+        }
+
+        <!-- Remote Playback -->
+        <section class="rounded-xl border border-theme bg-theme-surface/50 p-6 mt-6">
+          <div class="flex items-center gap-3 mb-6">
+            <h2 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary">Remote Playback</h2>
+          </div>
+
+          <div class="space-y-5">
+            <div class="flex items-start gap-3">
+              <button role="switch" [attr.aria-checked]="remote.remoteEnabled()"
+                (click)="toggleRemote()"
+                [class]="'relative mt-0.5 w-9 h-5 rounded-full transition-colors flex-shrink-0 ' + (remote.remoteEnabled() ? 'bg-emerald-600' : 'bg-theme-hover')">
+                <span [class]="'absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ' + (remote.remoteEnabled() ? 'translate-x-4' : 'translate-x-0')"></span>
+              </button>
+              <div>
+                <p class="text-sm text-theme-primary">Make this device available as an audio output</p>
+                <p class="text-xs text-theme-muted mt-0.5">When enabled, other devices on your account can cast audio to this device.</p>
+                @if (!remote.remoteEnabled()) {
+                  <p class="text-xs text-amber-500/80 mt-1">This device is hidden from the device selector on other devices.</p>
+                }
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-sm text-theme-secondary mb-1.5">This device's name</label>
+              <div class="flex gap-2">
+                <input type="text" [ngModel]="deviceName()" (ngModelChange)="deviceName.set($event); deviceNameSaved.set(false)"
+                  placeholder="e.g. Living Room TV"
+                  class="flex-1 px-4 py-2.5 rounded-lg bg-theme-surface-2 border border-theme text-theme-primary placeholder-zinc-600 focus:outline-none focus:border-zinc-500 transition text-sm" />
+                <button (click)="saveDeviceName()" [disabled]="!deviceName().trim() || deviceNameSaved()"
+                  class="px-4 py-2.5 rounded-lg bg-theme-hover text-theme-primary text-sm font-medium hover:bg-theme-hover transition disabled:opacity-50">
+                  {{ deviceNameSaved() ? 'Saved' : 'Save' }}
+                </button>
+              </div>
+              <p class="text-xs text-theme-muted mt-1">Shown to other users when they switch playback devices.</p>
+            </div>
+
+            <div>
+              <p class="text-sm text-theme-secondary mb-2">Connected devices</p>
+              @if (remote.devices().length === 0) {
+                <p class="text-sm text-theme-muted">No devices online</p>
+              } @else {
+                <ul class="space-y-1">
+                  @for (device of remote.devices(); track device.id) {
+                    <li class="flex items-center gap-2 text-sm">
+                      <span>{{ getDeviceEmoji(device) }}</span>
+                      <span [class]="device.id === myDeviceId ? 'text-theme-primary' : 'text-theme-secondary'">{{ device.name }}</span>
+                      @if (device.id === myDeviceId) {
+                        <span class="text-xs text-theme-muted">(this device)</span>
+                      }
+                      @if (device.id === remote.activeDeviceId()) {
+                        <span class="ml-auto text-xs font-semibold tracking-wide px-1.5 py-0.5 rounded bg-emerald-900/60 text-emerald-400">HOST</span>
+                      }
+                    </li>
+                  }
+                </ul>
+              }
+            </div>
+          </div>
+        </section>
+      }
+    </div>
+  

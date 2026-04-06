@@ -10,29 +10,8 @@ import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
       multi: true,
     },
   ],
-  template: `
-    <div class="relative" [class]="containerClass()">
-      <input
-        [type]="visible() ? 'text' : 'password'"
-        [placeholder]="placeholder()"
-        [autocomplete]="autocomplete()"
-        [required]="required()"
-        [value]="value()"
-        (input)="onInputChange($event)"
-        (blur)="onTouched()"
-        [class]="'w-full pr-16 ' + inputClass()"
-      />
-      <button
-        type="button"
-        (click)="visible.set(!visible())"
-        [attr.aria-label]="visible() ? 'Hide password' : 'Show password'"
-        class="absolute right-2 top-1/2 -translate-y-1/2 rounded-md px-2 py-1 text-xs font-medium text-zinc-400 transition hover:text-zinc-100 hover:bg-zinc-700/60 focus:outline-none focus:ring-1 focus:ring-zinc-500"
-      >
-        {{ visible() ? 'Hide' : 'Show' }}
-      </button>
-    </div>
-  `,
-})
+  templateUrl: './password-field.component.html',
+  })
 export class PasswordFieldComponent implements ControlValueAccessor {
   readonly placeholder = input('');
   readonly autocomplete = input('current-password');

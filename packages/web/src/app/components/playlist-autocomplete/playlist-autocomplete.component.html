@@ -1,0 +1,57 @@
+
+    <div class="bg-zinc-900 border border-zinc-700 rounded-xl shadow-xl w-72 overflow-hidden"
+         (click)="$event.stopPropagation()">
+      <!-- Search input -->
+      <div class="p-2 border-b border-zinc-700">
+        <input
+          class="w-full bg-zinc-800 text-zinc-200 text-sm px-3 py-1.5 rounded-lg outline-none placeholder:text-zinc-500"
+          placeholder="Search playlists…"
+          [ngModel]="query()"
+          (ngModelChange)="query.set($event)"
+          autofocus
+        />
+      </div>
+
+      <!-- Results -->
+      <div class="max-h-56 overflow-y-auto">
+        @if (loading()) {
+          <div class="px-4 py-3 text-sm text-zinc-500">Loading…</div>
+        } @else {
+          @for (pl of filtered(); track pl.id) {
+            <button
+              type="button"
+              class="w-full flex items-center gap-3 px-3 py-2 hover:bg-zinc-800 transition-colors text-left"
+              (click)="select(pl)">
+              <app-cover-art
+                [src]="pl.coverArt ? '/api/cover/' + pl.coverArt + '?size=32' : undefined"
+                [artist]="pl.name"
+                [album]="pl.name"
+                [size]="32"
+                rounded="rounded"
+              />
+              <span class="text-sm text-zinc-200 truncate">{{ pl.name }}</span>
+            </button>
+          }
+
+          <!-- Create new -->
+          @if (query().trim() && !exactMatch()) {
+            <button
+              type="button"
+              class="w-full flex items-center gap-3 px-3 py-2 hover:bg-zinc-800 transition-colors text-left border-t border-zinc-700"
+              (click)="createNew()">
+              <div class="w-8 h-8 rounded flex items-center justify-center bg-zinc-800 shrink-0">
+                <svg class="w-4 h-4 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                </svg>
+              </div>
+              <span class="text-sm text-zinc-300">Create "{{ query().trim() }}"</span>
+            </button>
+          }
+
+          @if (!loading() && filtered().length === 0 && !query().trim()) {
+            <div class="px-4 py-3 text-sm text-zinc-500">No playlists yet</div>
+          }
+        }
+      </div>
+    </div>
+  

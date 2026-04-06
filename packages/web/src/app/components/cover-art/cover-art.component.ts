@@ -21,36 +21,8 @@ export function hashCode(str: string): number {
 
 @Component({
   selector: 'app-cover-art',
-  template: `
-    @if (src() && !imgError()) {
-      <img
-        [src]="src()"
-        [alt]="album() || artist() || 'cover'"
-        [width]="size()"
-        [height]="size()"
-        [class]="'object-cover ' + rounded() + ' ' + className()"
-        [style.flex-shrink]="0"
-        (error)="imgError.set(true)"
-      />
-    } @else {
-      <div
-        [class]="rounded() + ' flex items-center justify-center select-none ' + className()"
-        [style.width.px]="size()"
-        [style.height.px]="size()"
-        [style.flex-shrink]="0"
-        [style.background]="gradient"
-      >
-        <span
-          [style.font-size.px]="size() * 0.35"
-          [style.color]="'rgba(255,255,255,0.85)'"
-          [style.font-weight]="700"
-        >
-          {{ initial }}
-        </span>
-      </div>
-    }
-  `,
-})
+  templateUrl: './cover-art.component.html',
+  })
 export class CoverArtComponent {
   readonly src = input<string | undefined>(undefined);
   readonly artist = input('');
