@@ -6,7 +6,7 @@
     "ng": "ng",
     "dev": "ng serve --proxy-config proxy.conf.json",
     "build": "ng build",
-    "test": "ng test"
+    "test": "vitest run"
   },
   "private": true,
   "dependencies": {
