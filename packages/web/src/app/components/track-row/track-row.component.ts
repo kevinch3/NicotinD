@@ -31,6 +31,7 @@ export class TrackRowComponent {
   readonly duration = input<number>();
   readonly disabled = input(false);
   readonly showRemove = input(false);
+  readonly offline = input(false);
   readonly actions = input<TrackAction[]>([]);
   readonly play = output<void>();
   readonly remove = output<void>();
