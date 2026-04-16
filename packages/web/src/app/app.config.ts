@@ -5,6 +5,7 @@ import { routes } from './app.routes';
 import { authInterceptor } from './interceptors/auth.interceptor';
 import { SetupService } from './services/setup.service';
 import { ThemeService } from './services/theme.service';
+import { PreserveService } from './services/preserve.service';
 
 export const appConfig: ApplicationConfig = {
   providers: [
@@ -14,7 +15,9 @@ export const appConfig: ApplicationConfig = {
     provideAppInitializer(() => {
       const setup = inject(SetupService);
       const theme = inject(ThemeService);
+      const preserve = inject(PreserveService);
       theme.apply();
+      preserve.init();
       return setup.check();
     }),
   ],
