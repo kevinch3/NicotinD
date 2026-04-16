@@ -17,6 +17,8 @@ import { RemotePlaybackService } from '../../services/remote-playback.service';
 import { PlaybackWsService } from '../../services/playback-ws.service';
 import { CoverArtComponent } from '../cover-art/cover-art.component';
 import { DeviceSwitcherComponent } from '../device-switcher/device-switcher.component';
+import { PreserveService } from '../../services/preserve.service';
+import * as db from '../../lib/preserve-store';
 
 /** Returns the router commands to navigate to an artist page, or to /library as fallback. */
 export function resolveArtistRoute(artistId: string | undefined): string[] {
@@ -42,6 +44,7 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
   private ws = inject(PlaybackWsService);
   private router = inject(Router);
   private zone = inject(NgZone);
+  private preserve = inject(PreserveService);
 
   private audioEl = viewChild<ElementRef<HTMLAudioElement>>('audioEl');
 
@@ -88,13 +91,18 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
   private audioListenerCleanups: (() => void)[] = [];
 
   constructor() {
-    // Effect 1: Load track
-    effect(() => {
+    // Effect 1: Load track (checks IndexedDB first for offline-preserved tracks)
+    effect((onCleanup) => {
       const track = this.player.currentTrack();
       const token = this.auth.token();
       const isActive = this.isActiveDevice();
       const audio = this.audioEl()?.nativeElement;
       if (!audio) return;
+
+      let objectUrl: string | null = null;
+      onCleanup(() => {
+        if (objectUrl) URL.revokeObjectURL(objectUrl);
+      });
 
       if (!isActive) {
         this.pausingByStore = true;
@@ -107,10 +115,29 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
       if (track) {
         this.player.setCurrentTime(0);
         this.player.setDuration(track.duration ?? 0);
-        audio.src = `/api/stream/${track.id}?token=${token}`;
-        audio.play().catch((err) => {
-          if (err.name === 'NotAllowedError') this.player.setAutoplayBlocked(true);
-        });
+
+        if (this.preserve.isPreserved(track.id)) {
+          // Load from IndexedDB — no network request
+          (async () => {
+            const blob = await db.getBlob(track.id);
+            if (blob) {
+              objectUrl = URL.createObjectURL(blob.audio);
+              audio.src = objectUrl;
+              db.updateLastAccessed(track.id);
+            } else {
+              // Metadata exists but blob missing — fall back to stream
+              audio.src = `/api/stream/${track.id}?token=${token}`;
+            }
+            audio.play().catch((err) => {
+              if (err.name === 'NotAllowedError') this.player.setAutoplayBlocked(true);
+            });
+          })();
+        } else {
+          audio.src = `/api/stream/${track.id}?token=${token}`;
+          audio.play().catch((err) => {
+            if (err.name === 'NotAllowedError') this.player.setAutoplayBlocked(true);
+          });
+        }
       } else {
         this.pausingByStore = true;
         audio.pause();

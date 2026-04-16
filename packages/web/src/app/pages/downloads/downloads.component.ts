@@ -11,6 +11,7 @@ import { ListToolbarComponent } from '../../components/list-toolbar/list-toolbar
 import { ConfirmDialogComponent } from '../../components/confirm-dialog/confirm-dialog.component';
 import { PlaylistAutocompleteComponent } from '../../components/playlist-autocomplete/playlist-autocomplete.component';
 import { TrackAction } from '../../components/track-row/track-row.component';
+import { PreserveService } from '../../services/preserve.service';
 import type { SlskdUserTransferGroup } from '@nicotind/core';
 
 // ─── Types ──────────────────────────────────────────────────────────
@@ -124,10 +125,17 @@ export class DownloadsComponent implements OnInit, OnDestroy {
   private transferService = inject(TransferService);
   private listControls = inject(ListControlsService);
   private router = inject(Router);
+  readonly preserve = inject(PreserveService);
 
   readonly formatDuration = formatDuration;
   readonly formatSize = formatSize;
   readonly timeAgo = timeAgo;
+
+  readonly storagePercent = computed(() => {
+    const used = this.preserve.totalUsage();
+    const budget = this.preserve.budget();
+    return budget > 0 ? Math.min(100, Math.round((used / budget) * 100)) : 0;
+  });
 
   // State
   readonly recentSongs = signal<Song[]>([]);
@@ -430,6 +438,17 @@ export class DownloadsComponent implements OnInit, OnDestroy {
     }
     this.normalizing.set(false);
     this.fetchRecentSongs();
+  }
+
+  async removePreserved(id: string): Promise<void> {
+    await this.preserve.remove(id);
+  }
+
+  async clearAllPreserved(): Promise<void> {
+    const tracks = this.preserve.preservedTracks();
+    for (const t of tracks) {
+      await this.preserve.remove(t.id);
+    }
   }
 
   navigateAndSearch(query: string): void {

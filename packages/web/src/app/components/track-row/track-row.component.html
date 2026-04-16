@@ -1,6 +1,9 @@
 
     <div [class]="'flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-zinc-800/50 transition group' + (disabled() ? ' opacity-40 pointer-events-none' : '')">
       <span class="text-xs text-zinc-600 w-6 text-right">{{ indexLabel() ?? '' }}</span>
+      @if (offline()) {
+        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" title="Saved offline"></span>
+      }
       <app-cover-art
         [src]="track().coverArt ? '/api/cover/' + track().coverArt + '?size=40&token=' + auth.token() : undefined"
         [artist]="track().artist"
@@ -55,6 +58,5 @@
           }
         </div>
       }
-      <!-- TODO: PreserveButton (Phase 5) -->
     </div>
   
