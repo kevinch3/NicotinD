@@ -6,6 +6,7 @@ import { ApiService, type Playlist, type PlaylistDetail } from '../../services/a
 import { AuthService } from '../../services/auth.service';
 import { PlayerService, type Track } from '../../services/player.service';
 import { ListControlsService, type SortOption } from '../../services/list-controls.service';
+import { PreserveService } from '../../services/preserve.service';
 import { ListToolbarComponent } from '../../components/list-toolbar/list-toolbar.component';
 import { TrackRowComponent, type TrackAction } from '../../components/track-row/track-row.component';
 import { ConfirmDialogComponent } from '../../components/confirm-dialog/confirm-dialog.component';
@@ -83,6 +84,27 @@ export class PlaylistsComponent implements OnInit {
   readonly removing = signal(new Set<number>());
   readonly showRenameModal = signal(false);
 
+  readonly preserve = inject(PreserveService);
+
+  readonly playlistPreserveProgress = computed(() => {
+    const pl = this.selected();
+    if (!pl?.entry?.length) return { done: 0, total: 0 };
+    const total = pl.entry.length;
+    const done = pl.entry.filter(s => this.preserve.isPreserved(s.id)).length;
+    return { done, total };
+  });
+
+  readonly playlistOfflineState = computed<'idle' | 'downloading' | 'done'>(() => {
+    const pl = this.selected();
+    if (!pl?.entry?.length) return 'idle';
+    const preserving = this.preserve.preserving();
+    const isDownloading = pl.entry.some(s => preserving.has(s.id));
+    if (isDownloading) return 'downloading';
+    const { done, total } = this.playlistPreserveProgress();
+    if (done === total) return 'done';
+    return 'idle';
+  });
+
   readonly confirmMessage = signal('');
   readonly confirmLabel = signal('Delete');
   readonly confirmCallback = signal<(() => void | Promise<void>) | null>(null);
@@ -150,6 +172,32 @@ export class PlaylistsComponent implements OnInit {
       duration: s.duration,
     }));
     this.player.playWithContext(tracks, 0, { type: 'playlist', id: pl.id, name: pl.name });
+  }
+
+  async togglePlaylistOffline(): Promise<void> {
+    const pl = this.selected();
+    if (!pl?.entry?.length) return;
+
+    if (this.playlistOfflineState() === 'done') {
+      for (const song of pl.entry) {
+        if (this.preserve.isPreserved(song.id)) {
+          await this.preserve.remove(song.id);
+        }
+      }
+    } else {
+      for (const song of pl.entry) {
+        if (!this.preserve.isPreserved(song.id)) {
+          await this.preserve.preserve({
+            id: song.id,
+            title: song.title,
+            artist: song.artist,
+            album: song.album ?? '',
+            coverArt: song.coverArt,
+            duration: song.duration,
+          });
+        }
+      }
+    }
   }
 
   async handleDelete(): Promise<void> {
