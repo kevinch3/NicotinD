@@ -119,7 +119,57 @@
         </section>
       }
 
-      <!-- TODO: Preserved section (Phase 5 — PreserveService) -->
+      <!-- Preserved (offline) section -->
+      @if (preserve.preservedTracks().length > 0) {
+        <section class="mb-8">
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="text-xs font-semibold uppercase tracking-wider text-theme-muted">
+              Saved Offline
+              <span class="font-normal normal-case ml-1.5 text-theme-muted">
+                ({{ preserve.preservedTracks().length }})
+              </span>
+            </h2>
+            <button (click)="clearAllPreserved()"
+              class="text-xs text-theme-muted hover:text-red-400 transition">
+              Clear all
+            </button>
+          </div>
+
+          <!-- Storage bar -->
+          <div class="mb-4 flex items-center gap-3">
+            <div class="flex-1 h-1.5 bg-theme-surface-2 rounded-full overflow-hidden">
+              <div class="h-full bg-emerald-500 rounded-full transition-all duration-500"
+                [style.width.%]="storagePercent()"></div>
+            </div>
+            <span class="text-xs text-theme-muted flex-shrink-0">
+              {{ formatSize(preserve.totalUsage()) }} / {{ formatSize(preserve.budget()) }}
+            </span>
+          </div>
+
+          <!-- Track list -->
+          <div class="space-y-0.5">
+            @for (track of preserve.preservedTracks(); track track.id) {
+              <div class="flex items-center gap-3 px-1.5 md:px-4 py-2.5 rounded-lg hover:bg-theme-surface-2/30 transition group">
+                <div class="flex-1 min-w-0">
+                  <p class="text-sm text-theme-primary truncate">{{ track.title }}</p>
+                  <p class="text-xs text-theme-muted truncate">{{ track.artist }} · {{ track.album }}</p>
+                </div>
+                <span class="hidden md:inline text-xs text-theme-muted flex-shrink-0 w-14 text-right">
+                  {{ formatSize(track.size) }}
+                </span>
+                <button (click)="removePreserved(track.id)"
+                  class="p-1.5 text-theme-muted hover:text-red-400 transition flex-shrink-0 md:opacity-0 md:group-hover:opacity-100"
+                  title="Remove from offline">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="3 6 5 6 21 6" />
+                    <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+                  </svg>
+                </button>
+              </div>
+            }
+          </div>
+        </section>
+      }
 
       <!-- Recently Added -->
       <section>
