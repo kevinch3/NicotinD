@@ -149,59 +149,149 @@
       }
       } <!-- end activeTab === 'active' -->
 
-      <!-- Preserved (offline) section -->
+      <!-- Saved Offline tab -->
       @if (activeTab() === 'offline') {
-      @if (preserve.preservedTracks().length > 0) {
-        <section class="mb-8">
-          <div class="flex items-center justify-between mb-3">
-            <h2 class="text-xs font-semibold uppercase tracking-wider text-theme-muted">
-              Saved Offline
-              <span class="font-normal normal-case ml-1.5 text-theme-muted">
-                ({{ preserve.preservedTracks().length }})
-              </span>
-            </h2>
-            <button (click)="clearAllPreserved()"
-              class="text-xs text-theme-muted hover:text-red-400 transition">
-              Clear all
-            </button>
-          </div>
-
-          <!-- Storage bar -->
-          <div class="mb-4 flex items-center gap-3">
-            <div class="flex-1 h-1.5 bg-theme-surface-2 rounded-full overflow-hidden">
-              <div class="h-full bg-emerald-500 rounded-full transition-all duration-500"
-                [style.width.%]="storagePercent()"></div>
-            </div>
-            <span class="text-xs text-theme-muted flex-shrink-0">
-              {{ formatSize(preserve.totalUsage()) }} / {{ formatSize(preserve.budget()) }}
-            </span>
-          </div>
-
-          <!-- Track list -->
-          <div class="space-y-0.5">
-            @for (track of preserve.preservedTracks(); track track.id) {
-              <div class="flex items-center gap-3 px-1.5 md:px-4 py-2.5 rounded-lg hover:bg-theme-surface-2/30 transition group">
-                <div class="flex-1 min-w-0">
-                  <p class="text-sm text-theme-primary truncate">{{ track.title }}</p>
-                  <p class="text-xs text-theme-muted truncate">{{ track.artist }} · {{ track.album }}</p>
-                </div>
-                <span class="hidden md:inline text-xs text-theme-muted flex-shrink-0 w-14 text-right">
-                  {{ formatSize(track.size) }}
+        @if (preserve.preservedTracks().length > 0) {
+          <section class="mb-8">
+            <!-- Header -->
+            <div class="flex items-center justify-between mb-3">
+              <h2 class="text-xs font-semibold uppercase tracking-wider text-theme-muted">
+                Saved Offline
+                <span class="font-normal normal-case ml-1.5 text-theme-muted">
+                  ({{ offlineControls.filtered().length }})
                 </span>
-                <button (click)="removePreserved(track.id)"
-                  class="p-1.5 text-theme-muted hover:text-red-400 transition flex-shrink-0 md:opacity-0 md:group-hover:opacity-100"
-                  title="Remove from offline">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="3 6 5 6 21 6" />
-                    <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
-                  </svg>
+              </h2>
+              <button (click)="selectAllOffline()" class="text-xs text-theme-muted hover:text-theme-secondary transition">
+                {{ offlineSelected().size === offlineControls.filtered().length ? 'Deselect all' : 'Select all' }}
+              </button>
+            </div>
+
+            <!-- Storage bar -->
+            <div class="mb-4 flex items-center gap-3">
+              <div class="flex-1 h-1.5 bg-theme-surface-2 rounded-full overflow-hidden">
+                <div class="h-full bg-emerald-500 rounded-full transition-all duration-500"
+                  [style.width.%]="storagePercent()"></div>
+              </div>
+              <span class="text-xs text-theme-muted flex-shrink-0">
+                {{ formatSize(preserve.totalUsage()) }} / {{ formatSize(preserve.budget()) }}
+              </span>
+            </div>
+
+            <!-- Filter/sort toolbar -->
+            <app-list-toolbar
+              [searchText]="offlineControls.searchText()"
+              [sortField]="offlineControls.sortField()"
+              [sortDirection]="offlineControls.sortDirection()"
+              [sortOptions]="offlineSortOptions"
+              [resultCount]="offlineControls.filtered().length"
+              (searchChange)="offlineControls.setSearchText($event)"
+              (sortFieldChange)="offlineControls.setSortField($event)"
+              (toggleDirection)="offlineControls.toggleSortDirection()"
+            />
+
+            <!-- Bulk action bar -->
+            @if (offlineSelected().size > 0) {
+              <div class="flex flex-wrap items-center gap-2 md:gap-3 px-3 md:px-4 py-2.5 mb-3 rounded-lg bg-theme-surface-2/60 border border-theme">
+                <span class="text-sm text-theme-secondary font-medium">{{ offlineSelected().size }} selected</span>
+                <div class="flex-1 min-w-0"></div>
+
+                @if (offlineShowPlaylistPicker()) {
+                  <div class="relative">
+                    <app-playlist-autocomplete
+                      (selected)="addOfflineToPlaylist($event); offlineShowPlaylistPicker.set(false)"
+                      (create)="createOfflinePlaylistAndAdd($event)"
+                    />
+                  </div>
+                }
+
+                <button (click)="offlineShowPlaylistPicker.set(true)"
+                  [disabled]="addingOfflineToPlaylist()"
+                  class="text-xs px-3 py-1.5 rounded-lg bg-theme-surface hover:bg-theme-hover transition text-theme-secondary border border-theme disabled:opacity-50">
+                  Add to playlist
+                </button>
+                <button (click)="removeOfflineTracks(offlineSelectedArray())"
+                  class="text-xs px-3 py-1.5 rounded-lg text-red-400 hover:bg-red-500/10 transition border border-red-500/20">
+                  Remove from device
                 </button>
               </div>
             }
-          </div>
-        </section>
+
+            <!-- Track list -->
+            <div class="space-y-0.5">
+              @for (track of offlineControls.filtered(); track track.id) {
+                <div class="flex items-center gap-3 px-1.5 md:px-4 py-2.5 rounded-lg hover:bg-theme-surface-2/30 transition group">
+                  <!-- Checkbox -->
+                  <input type="checkbox"
+                    [checked]="offlineSelected().has(track.id)"
+                    (change)="toggleOfflineSelect(track.id)"
+                    class="w-4 h-4 rounded flex-shrink-0 cursor-pointer accent-emerald-500" />
+                  <!-- Track info -->
+                  <div class="flex-1 min-w-0">
+                    <p class="text-sm text-theme-primary truncate">{{ track.title }}</p>
+                    <p class="text-xs text-theme-muted truncate">{{ track.artist }} · {{ track.album }}</p>
+                  </div>
+                  <!-- Bitrate -->
+                  <span class="hidden md:inline text-xs text-theme-muted flex-shrink-0 w-12 text-right">
+                    {{ track.bitRate ? track.bitRate + 'k' : '' }}
+                  </span>
+                  <!-- Duration -->
+                  <span class="text-xs text-theme-muted flex-shrink-0 w-10 text-right">
+                    {{ formatDuration(track.duration) }}
+                  </span>
+                  <!-- Saved date -->
+                  <span class="hidden lg:inline text-xs text-theme-muted flex-shrink-0 w-20 text-right">
+                    {{ timeAgo(track.preservedAt) }}
+                  </span>
+                  <!-- Remove button (hover) -->
+                  <button (click)="removeOfflineTracks([track.id])"
+                    class="p-1.5 text-theme-muted hover:text-red-400 transition flex-shrink-0 md:opacity-0 md:group-hover:opacity-100"
+                    title="Remove from device">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <polyline points="3 6 5 6 21 6" />
+                      <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+                    </svg>
+                  </button>
+                  <!-- Context menu -->
+                  <div class="relative flex-shrink-0">
+                    <button
+                      class="p-1.5 text-theme-muted hover:text-theme-secondary transition md:opacity-0 md:group-hover:opacity-100"
+                      title="More options"
+                      (click)="$event.stopPropagation(); offlineMenuId.set(offlineMenuId() === track.id ? null : track.id)">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                        <circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/>
+                      </svg>
+                    </button>
+                    @if (offlineMenuId() === track.id) {
+                      <div class="absolute right-0 top-7 z-50 bg-theme-surface border border-theme rounded-xl shadow-xl py-1 min-w-40"
+                           (click)="$event.stopPropagation()">
+                        <button class="w-full text-left px-4 py-2 text-sm text-theme-secondary hover:bg-theme-hover transition-colors"
+                          (click)="addOfflineToPlaylistPicker(track.id)">
+                          Add to playlist
+                        </button>
+                        <button class="w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-theme-hover transition-colors"
+                          (click)="offlineMenuId.set(null); removeOfflineTracks([track.id])">
+                          Remove from device
+                        </button>
+                      </div>
+                    }
+                  </div>
+                </div>
+              }
+            </div>
+
+            <!-- Clear all -->
+            <div class="mt-3 flex justify-end">
+              <button (click)="clearAllPreserved()"
+                class="text-xs text-theme-muted hover:text-red-400 transition">
+                Clear all
+              </button>
+            </div>
+          </section>
+        }
+        @if (preserve.preservedTracks().length === 0) {
+          <p class="text-center text-theme-muted py-20">No tracks saved offline yet.</p>
+        }
       }
-      } <!-- end activeTab === 'offline' -->
 
       <!-- Recently Added -->
       @if (activeTab() === 'recent') {

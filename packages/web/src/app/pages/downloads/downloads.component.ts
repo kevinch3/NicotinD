@@ -82,8 +82,8 @@ function formatSize(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function timeAgo(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime();
+function timeAgo(date: string | number): string {
+  const diff = Date.now() - (typeof date === 'number' ? date : new Date(date).getTime());
   const mins = Math.floor(diff / 60_000);
   if (mins < 1) return 'Just now';
   if (mins < 60) return `${mins}m ago`;
@@ -177,6 +177,7 @@ export class DownloadsComponent implements OnInit, OnDestroy {
   @HostListener('document:click')
   closeSongMenu(): void {
     this.songMenuId.set(null);
+    this.offlineMenuId.set(null);
   }
 
   private prevHadActive = false;
@@ -194,6 +195,28 @@ export class DownloadsComponent implements OnInit, OnDestroy {
     searchFields: ['title', 'artist', 'album'] as const,
     sortOptions: this.recentSortOptions,
     defaultSort: 'created',
+    defaultDirection: 'desc',
+  });
+
+  // ─── Offline tab state ────────────────────────────────────────────
+  readonly offlineSelected = signal(new Set<string>());
+  readonly offlineSelectedArray = computed(() => Array.from(this.offlineSelected()));
+  readonly offlineShowPlaylistPicker = signal(false);
+  readonly addingOfflineToPlaylist = signal(false);
+  readonly offlineMenuId = signal<string | null>(null);
+
+  readonly offlineSortOptions: SortOption[] = [
+    { field: 'preservedAt', label: 'Saved date' },
+    { field: 'title', label: 'Title' },
+    { field: 'artist', label: 'Artist' },
+  ];
+
+  readonly offlineControls = this.listControls.connect({
+    pageKey: 'downloads-offline',
+    items: this.preserve.preservedTracks,
+    searchFields: ['title', 'artist', 'album'] as const,
+    sortOptions: this.offlineSortOptions,
+    defaultSort: 'preservedAt',
     defaultDirection: 'desc',
   });
 
@@ -463,6 +486,63 @@ export class DownloadsComponent implements OnInit, OnDestroy {
     for (const t of tracks) {
       await this.preserve.remove(t.id);
     }
+  }
+
+  selectAllOffline(): void {
+    const all = this.offlineControls.filtered().map(t => t.id);
+    if (this.offlineSelected().size === all.length) {
+      this.offlineSelected.set(new Set());
+    } else {
+      this.offlineSelected.set(new Set(all));
+    }
+  }
+
+  toggleOfflineSelect(id: string): void {
+    this.offlineSelected.update(s => {
+      const n = new Set(s);
+      if (n.has(id)) n.delete(id); else n.add(id);
+      return n;
+    });
+  }
+
+  addOfflineToPlaylistPicker(id: string): void {
+    this.offlineSelected.update(s => new Set([...s, id]));
+    this.offlineShowPlaylistPicker.set(true);
+    this.offlineMenuId.set(null);
+  }
+
+  async removeOfflineTracks(ids: string[]): Promise<void> {
+    for (const id of ids) {
+      await this.preserve.remove(id);
+    }
+    this.offlineSelected.update(s => {
+      const n = new Set(s);
+      ids.forEach(id => n.delete(id));
+      return n;
+    });
+  }
+
+  async addOfflineToPlaylist(playlistId: string): Promise<void> {
+    const songIds = Array.from(this.offlineSelected());
+    this.addingOfflineToPlaylist.set(true);
+    try {
+      await firstValueFrom(this.api.updatePlaylist(playlistId, { songIdsToAdd: songIds }));
+      this.offlineSelected.set(new Set());
+      this.offlineShowPlaylistPicker.set(false);
+    } catch { /* ignore */ }
+    finally { this.addingOfflineToPlaylist.set(false); }
+  }
+
+  async createOfflinePlaylistAndAdd(name: string): Promise<void> {
+    if (!name.trim()) return;
+    const songIds = Array.from(this.offlineSelected());
+    this.addingOfflineToPlaylist.set(true);
+    try {
+      await firstValueFrom(this.api.createPlaylist(name.trim(), songIds));
+      this.offlineSelected.set(new Set());
+      this.offlineShowPlaylistPicker.set(false);
+    } catch { /* ignore */ }
+    finally { this.addingOfflineToPlaylist.set(false); }
   }
 
   navigateAndSearch(query: string): void {
