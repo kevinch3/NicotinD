@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { ApiService, type Song, type Playlist } from '../../services/api.service';
+import { AuthService } from '../../services/auth.service';
 import { PlayerService, type Track } from '../../services/player.service';
 import { TransferService } from '../../services/transfer.service';
 import { ListControlsService, type SortOption } from '../../services/list-controls.service';
@@ -126,6 +127,7 @@ export class DownloadsComponent implements OnInit, OnDestroy {
   private listControls = inject(ListControlsService);
   private router = inject(Router);
   readonly preserve = inject(PreserveService);
+  readonly auth = inject(AuthService);
 
   readonly formatDuration = formatDuration;
   readonly formatSize = formatSize;
@@ -138,6 +140,7 @@ export class DownloadsComponent implements OnInit, OnDestroy {
   });
 
   // State
+  readonly activeTab = signal<'active' | 'offline' | 'recent'>('active');
   readonly recentSongs = signal<Song[]>([]);
   readonly selected = signal(new Set<string>());
   readonly lastSelectedId = signal<string | null>(null);
@@ -211,11 +214,14 @@ export class DownloadsComponent implements OnInit, OnDestroy {
 
   readonly selectedArray = computed(() => Array.from(this.selected()));
 
-  // Auto-refresh when active downloads complete
+  // Auto-refresh when active downloads complete; auto-switch to active tab when downloads start
   private completionEffect = effect(() => {
     const hasActive = this.inProgressGroups().length > 0;
+    if (hasActive && !this.prevHadActive) {
+      this.activeTab.set('active');
+    }
     if (this.prevHadActive && !hasActive) {
-      setTimeout(() => this.fetchRecentSongs(), 5000);
+      this.pollRecentSongs();
     }
     this.prevHadActive = hasActive;
   });
@@ -354,9 +360,17 @@ export class DownloadsComponent implements OnInit, OnDestroy {
     this.scanning.set(true);
     try {
       await firstValueFrom(this.api.triggerScan());
-      setTimeout(() => this.fetchRecentSongs(), 5000);
+      this.pollRecentSongs();
     } catch { /* ignore */ }
     finally { this.scanning.set(false); }
+  }
+
+  private pollRecentSongs(delays = [5000, 10000, 20000]): void {
+    let totalDelay = 0;
+    for (const delay of delays) {
+      totalDelay += delay;
+      setTimeout(() => this.fetchRecentSongs(), totalDelay);
+    }
   }
 
   removeGroup(group: AlbumGroup): void {
@@ -453,6 +467,14 @@ export class DownloadsComponent implements OnInit, OnDestroy {
 
   navigateAndSearch(query: string): void {
     this.router.navigate(['/'], { queryParams: { q: query } });
+  }
+
+  navigateToArtist(song: Song): void {
+    if (song.artistId) {
+      this.router.navigate(['/library/artists', song.artistId]);
+    } else {
+      this.navigateAndSearch(song.artist);
+    }
   }
 
   private async fetchRecentSongs(): Promise<void> {

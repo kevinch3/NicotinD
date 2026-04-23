@@ -1,7 +1,7 @@
 
     <div class="max-w-5xl mx-auto px-4 py-5 md:px-6 md:py-8">
       <!-- Header -->
-      <div class="flex items-center justify-between gap-3 mb-6 flex-wrap">
+      <div class="flex items-center justify-between gap-3 mb-4 flex-wrap">
         <h1 class="text-lg font-semibold text-theme-primary">Downloads</h1>
         <div class="flex items-center gap-2">
           <button (click)="triggerScan()" [disabled]="scanning()"
@@ -13,7 +13,7 @@
             </svg>
             <span>{{ scanning() ? 'Scanning' : 'Scan library' }}</span>
           </button>
-          @if (recentSongs().length > 0) {
+          @if (activeTab() === 'recent' && recentSongs().length > 0) {
             <button (click)="handlePlayAll()"
               class="px-4 py-1.5 rounded-lg bg-theme-surface-2 text-theme-secondary text-sm font-medium hover:bg-theme-hover transition">
               {{ selected().size > 0 ? 'Play ' + selected().size + ' selected' : 'Play all' }}
@@ -22,7 +22,36 @@
         </div>
       </div>
 
+      <!-- Tab bar -->
+      <div class="flex gap-1 mb-6 border-b border-theme">
+        <button (click)="activeTab.set('active')"
+          class="px-4 py-2 text-sm font-medium transition border-b-2 -mb-px"
+          [class]="activeTab() === 'active' ? 'border-theme-accent text-theme-primary' : 'border-transparent text-theme-muted hover:text-theme-secondary'">
+          Active
+          @if (inProgressGroups().length > 0) {
+            <span class="ml-1.5 text-xs text-blue-400">{{ inProgressGroups().length }}</span>
+          }
+        </button>
+        <button (click)="activeTab.set('offline')"
+          class="px-4 py-2 text-sm font-medium transition border-b-2 -mb-px"
+          [class]="activeTab() === 'offline' ? 'border-theme-accent text-theme-primary' : 'border-transparent text-theme-muted hover:text-theme-secondary'">
+          Saved Offline
+          @if (preserve.preservedTracks().length > 0) {
+            <span class="ml-1.5 text-xs text-theme-muted">{{ preserve.preservedTracks().length }}</span>
+          }
+        </button>
+        <button (click)="activeTab.set('recent')"
+          class="px-4 py-2 text-sm font-medium transition border-b-2 -mb-px"
+          [class]="activeTab() === 'recent' ? 'border-theme-accent text-theme-primary' : 'border-transparent text-theme-muted hover:text-theme-secondary'">
+          Recently Added
+          @if (recentSongs().length > 0) {
+            <span class="ml-1.5 text-xs text-theme-muted">{{ recentSongs().length }}</span>
+          }
+        </button>
+      </div>
+
       <!-- Active Downloads -->
+      @if (activeTab() === 'active') {
       @if (inProgressGroups().length > 0 || errorGroups().length > 0 || doneGroups().length > 0) {
         <section class="mb-8">
           <div class="flex items-center justify-between mb-3">
@@ -118,8 +147,10 @@
           </div>
         </section>
       }
+      } <!-- end activeTab === 'active' -->
 
       <!-- Preserved (offline) section -->
+      @if (activeTab() === 'offline') {
       @if (preserve.preservedTracks().length > 0) {
         <section class="mb-8">
           <div class="flex items-center justify-between mb-3">
@@ -170,8 +201,10 @@
           </div>
         </section>
       }
+      } <!-- end activeTab === 'offline' -->
 
       <!-- Recently Added -->
+      @if (activeTab() === 'recent') {
       <section>
         <div class="flex items-center justify-between mb-3">
           <div class="flex items-center gap-2">
@@ -230,10 +263,12 @@
                 class="px-3 py-1.5 rounded-md text-xs font-medium bg-theme-hover text-theme-primary hover:bg-theme-hover transition disabled:opacity-50 disabled:cursor-wait">
                 {{ normalizing() ? 'Normalizing…' : 'Normalize metadata' }}
               </button>
-              <button (click)="confirmDeleteSelected()"
-                class="px-3 py-1.5 rounded-md text-xs font-medium bg-theme-hover text-red-400 hover:bg-red-500/20 transition">
-                Delete
-              </button>
+              @if (auth.role() === 'admin') {
+                <button (click)="confirmDeleteSelected()"
+                  class="px-3 py-1.5 rounded-md text-xs font-medium bg-theme-hover text-red-400 hover:bg-red-500/20 transition">
+                  Delete
+                </button>
+              }
             }
           </div>
         }
@@ -294,7 +329,7 @@
             <div class="flex-1 min-w-0">
               <p class="text-sm text-theme-primary truncate">{{ song.title }}</p>
               <p class="text-xs text-theme-muted truncate">
-                <span class="cursor-pointer hover:underline hover:text-theme-secondary transition" (click)="navigateAndSearch(song.artist)">{{ song.artist }}</span>
+                <span class="cursor-pointer hover:underline hover:text-theme-secondary transition" (click)="navigateToArtist(song)">{{ song.artist }}</span>
                 &middot; {{ song.album }}
               </p>
             </div>
@@ -335,12 +370,14 @@
               <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21" /></svg>
             </button>
 
-            <!-- Delete -->
-            <button (click)="handleDelete([song.id])" class="p-1.5 text-theme-muted hover:text-red-400 transition flex-shrink-0 md:opacity-0 md:group-hover:opacity-100" title="Delete from library">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
-              </svg>
-            </button>
+            <!-- Delete (admin only) -->
+            @if (auth.role() === 'admin') {
+              <button (click)="handleDelete([song.id])" class="p-1.5 text-theme-muted hover:text-red-400 transition flex-shrink-0 md:opacity-0 md:group-hover:opacity-100" title="Delete from library">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+                </svg>
+              </button>
+            }
 
             <!-- "..." context menu -->
             <div class="relative flex-shrink-0">
@@ -369,6 +406,7 @@
           </div>
         </ng-template>
       </section>
+      } <!-- end activeTab === 'recent' -->
 
       @if (showConfirm()) {
         <app-confirm-dialog
