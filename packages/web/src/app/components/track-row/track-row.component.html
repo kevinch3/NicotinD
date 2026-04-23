@@ -1,6 +1,6 @@
 
-    <div [class]="'flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-zinc-800/50 transition group' + (disabled() ? ' opacity-40 pointer-events-none' : '')">
-      <span class="text-xs text-zinc-600 w-6 text-right">{{ indexLabel() ?? '' }}</span>
+    <div [class]="'flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-theme-hover transition group' + (disabled() ? ' opacity-40 pointer-events-none' : '')">
+      <span class="text-xs text-theme-muted w-6 text-right">{{ indexLabel() ?? '' }}</span>
       @if (offline()) {
         <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" title="Saved offline"></span>
       }
@@ -12,19 +12,19 @@
         rounded="rounded"
       />
       <button type="button" (click)="play.emit()" class="flex-1 min-w-0 text-left">
-        <p class="text-sm text-zinc-200 truncate">{{ track().title }}</p>
+        <p class="text-sm text-theme-primary truncate">{{ track().title }}</p>
         @if (subtitle()) {
-          <p class="text-xs text-zinc-500 truncate">{{ subtitle() }}</p>
+          <p class="text-xs text-theme-muted truncate">{{ subtitle() }}</p>
         }
       </button>
-      <span class="text-xs text-zinc-600">{{ formatDuration(duration() ?? track().duration) }}</span>
-      <button type="button" (click)="play.emit()" class="p-1 text-zinc-700 group-hover:text-zinc-300 transition flex-shrink-0" title="Play">
+      <span class="text-xs text-theme-muted">{{ formatDuration(duration() ?? track().duration) }}</span>
+      <button type="button" (click)="play.emit()" class="p-1 text-theme-muted group-hover:text-theme-secondary transition flex-shrink-0" title="Play">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
           <polygon points="5,3 19,12 5,21" />
         </svg>
       </button>
       @if (showRemove()) {
-        <button type="button" (click)="remove.emit()" class="p-1 text-zinc-700 group-hover:text-zinc-400 hover:!text-red-400 transition flex-shrink-0" title="Remove">
+        <button type="button" (click)="remove.emit()" class="p-1 text-theme-muted group-hover:text-theme-secondary hover:!text-red-400 transition flex-shrink-0" title="Remove">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
           </svg>
@@ -34,7 +34,7 @@
         <div class="relative flex-shrink-0">
           <button
             type="button"
-            class="p-1 text-zinc-700 group-hover:text-zinc-400 hover:!text-zinc-200 transition"
+            class="p-1 text-theme-muted group-hover:text-theme-secondary hover:!text-theme-primary transition"
             title="More options"
             (click)="toggleMenu($event)">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
@@ -59,4 +59,3 @@
         </div>
       }
     </div>
-  

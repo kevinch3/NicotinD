@@ -20,7 +20,7 @@
           }
           <div class="flex flex-col justify-end">
             <div class="flex items-center gap-2 flex-wrap">
-              <h1 class="text-2xl font-bold text-zinc-100">{{ selected()!.name }}</h1>
+              <h1 class="text-2xl font-bold text-theme-primary">{{ selected()!.name }}</h1>
               <button (click)="openRenameModal()"
                 class="p-1 text-zinc-500 hover:text-zinc-300 transition" title="Rename">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -144,7 +144,7 @@
       <!-- Grid view -->
       <div class="max-w-6xl mx-auto px-3 py-4 md:px-6 md:py-8">
         <div class="flex items-center gap-3 mb-6">
-          <h1 class="text-lg font-semibold text-zinc-100">Playlists</h1>
+          <h1 class="text-lg font-semibold text-theme-primary">Playlists</h1>
         </div>
 
         <app-list-toolbar
@@ -184,7 +184,7 @@
                   </svg>
                 </div>
               }
-              <p class="text-sm text-zinc-200 truncate">{{ pl.name }}</p>
+              <p class="text-sm text-theme-primary truncate">{{ pl.name }}</p>
               <p class="text-xs text-zinc-500 truncate">
                 {{ pl.songCount }} tracks · {{ timeAgo(pl.created) }}
               </p>
