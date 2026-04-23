@@ -138,6 +138,10 @@ export class AlbumDetailComponent implements OnInit {
     });
   }
 
+  getArtistLink(id: string | undefined): string[] {
+    return resolveArtistRoute(id);
+  }
+
   albumTrackActions(song: { id: string; title: string; artistId?: string }): TrackAction[] {
     return [
       { label: 'Add to playlist', action: () => this.playlistPickerSong.set(song) },

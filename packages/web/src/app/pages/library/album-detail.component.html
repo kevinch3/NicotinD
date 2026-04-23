@@ -20,10 +20,7 @@
       <div class="flex flex-col justify-end">
         <h1 class="text-2xl font-bold text-theme-primary">{{ selectedAlbum()!.name }}</h1>
         @if (selectedAlbum()!.artistId) {
-          <!-- We previously used routerLink, but the component code handles artistId dynamically via route-utils, 
-               though routerLink is easier in template if we import a function or pre-resolve. 
-               Let's just use routerLink with a basic /library/artists/:id since this is an Angular template. -->
-          <a [routerLink]="['/library', 'artists', selectedAlbum()!.artistId]"
+          <a [routerLink]="getArtistLink(selectedAlbum()!.artistId)"
              class="text-theme-secondary hover:text-theme-primary transition mt-1 cursor-pointer">
             {{ selectedAlbum()!.artist }}
           </a>
