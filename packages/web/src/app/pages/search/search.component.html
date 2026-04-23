@@ -97,133 +97,121 @@
 
       <!-- Network results -->
       @if (hasNetwork()) {
-        <section>
-          <div class="flex items-center justify-between mb-3">
-            <div class="flex items-center gap-2">
-              <button (click)="viewMode.set('tracks')"
-                [class]="'px-3 py-1 rounded-md text-xs font-medium transition ' + (viewMode() === 'tracks' ? 'bg-zinc-700 text-zinc-200' : 'text-zinc-500 hover:text-zinc-300')">
-                Tracks
-              </button>
-              <button (click)="viewMode.set('folders')"
-                [class]="'px-3 py-1 rounded-md text-xs font-medium transition ' + (viewMode() === 'folders' ? 'bg-zinc-700 text-zinc-200' : 'text-zinc-500 hover:text-zinc-300')">
-                Folders
-              </button>
-            </div>
-            @if (viewMode() === 'tracks' && hasNetwork()) {
-              <button (click)="downloadAll()"
-                class="px-3 py-1 rounded-md text-xs font-medium bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition">
-                Download all ({{ flatNetwork().length }})
-              </button>
-            }
+        <section class="space-y-2">
+          <div class="flex items-center justify-between mb-2">
+            <p class="text-xs text-zinc-500">
+              {{ folderGroups().length }} folders · {{ flatNetwork().length }} tracks
+            </p>
+            <button
+              (click)="downloadAll()"
+              class="px-3 py-1 rounded-md text-xs font-medium bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition">
+              Download all ({{ flatNetwork().length }})
+            </button>
           </div>
 
-          <!-- Tracks view -->
-          @if (viewMode() === 'tracks') {
-            @for (file of flatNetwork(); track file.username + ':' + file.filename) {
-              <div class="relative flex items-center gap-3 px-3 py-2.5 rounded-lg overflow-hidden transition"
-                style="background: var(--theme-surface)">
-                @if (getFileVariant(file) === 'progress') {
-                  <div class="absolute inset-0 pointer-events-none rounded-lg transition-all duration-500"
-                    [style.width.%]="getFilePercent(file)"
-                    style="background: var(--theme-status-progress-bg)"></div>
-                }
-                @if (getFileVariant(file) === 'done') {
-                  <div class="absolute inset-0 pointer-events-none rounded-lg"
-                    style="background: var(--theme-status-done-bg)"></div>
-                }
-
-                <div class="relative flex-1 min-w-0">
-                  <div class="flex items-start gap-3">
-                    <div class="min-w-0 flex-1">
-                      <p class="text-sm truncate" style="color: var(--theme-text-primary)"
-                        [innerHTML]="highlightTitle(file)"></p>
-                      @if (getSubtitle(file)) {
-                        <p class="text-xs truncate" style="color: var(--theme-text-secondary)"
-                          [innerHTML]="highlightSubtitle(file)"></p>
-                      }
-                    </div>
-                    @if (file.length) {
-                      <span class="shrink-0 pt-0.5 text-xs" style="color: var(--theme-text-muted)">
-                        {{ formatDuration(file.length) }}
-                      </span>
-                    }
-                  </div>
-                  <p class="mt-1 text-xs truncate" style="color: var(--theme-text-muted)">
-                    {{ file.bitRate ? file.bitRate + ' kbps' : 'Unknown bitrate' }}
-                    · {{ formatSize(file.size) }}
-                    · <span style="color: var(--theme-accent)">{{ formatSpeed(file.uploadSpeed) }}</span>
-                    @if (file.queueLength != null && file.queueLength > 0) {
-                      <span> · {{ file.queueLength }} queued</span>
-                    }
+          @for (group of folderGroups(); track getFolderKey(group)) {
+            <div class="rounded-lg border border-zinc-800/80 overflow-hidden"
+              style="background: var(--theme-surface)">
+              <div class="flex items-center gap-2 px-3 py-2 border-b border-zinc-800/80">
+                <div class="flex-1 min-w-0">
+                  <p class="text-sm truncate" style="color: var(--theme-text-primary)">
+                    <span class="cursor-pointer hover:underline transition"
+                      style="color: var(--theme-text-primary)"
+                      (click)="navigateAndSearch(getDirBasename(group))">
+                      {{ getDirBasename(group) }}
+                    </span>
+                  </p>
+                  <p class="text-xs truncate" style="color: var(--theme-text-muted)">
+                    {{ group.username }}
+                    {{ group.bitRate ? ' · ' + group.bitRate + ' kbps' : '' }}
+                    · <span style="color: var(--theme-accent)">{{ formatSpeed(group.uploadSpeed) }}</span>
+                    · {{ group.files.length }} files
                   </p>
                 </div>
-
-                <div class="relative flex items-center gap-1.5 shrink-0">
-                  @if (getFileVariant(file) === 'done') {
-                    <button (click)="router.navigate(['/library'])"
-                      class="px-3 py-1 rounded-md text-xs font-semibold transition"
-                      style="background: var(--theme-status-done-bg); color: var(--theme-status-done-text)">
-                      ▶ Open in Library
-                    </button>
-                  } @else {
-                    <button
-                      (click)="handleDownload(file.username, { filename: file.filename, size: file.size })"
-                      [disabled]="getFileBtn(file).disabled"
-                      [class]="'px-3 py-1 rounded-md text-xs font-medium transition ' + (getFileBtn(file).disabled ? 'cursor-default' : '')"
-                      [style]="getFileVariant(file) === 'progress' ? 'background: var(--theme-status-progress-bg); color: var(--theme-status-progress-text)' : ''">
-                      {{ getFileVariant(file) === 'progress' ? getFileBtn(file).label : 'Download' }}
-                    </button>
-                  }
-                </div>
-              </div>
-            }
-          }
-
-          <!-- Folders view -->
-          @if (viewMode() === 'folders') {
-            @for (group of folderGroups(); track group.username + '::' + group.directory) {
-              <div class="mb-1">
-                <div class="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-zinc-800/50 transition">
-                  <div class="flex-1 min-w-0">
-                    <p class="text-sm text-zinc-300 truncate">
-                      <span class="cursor-pointer hover:underline hover:text-zinc-100 transition"
-                        (click)="navigateAndSearch(getDirBasename(group))">
-                        {{ getDirBasename(group) }}
-                      </span>
-                    </p>
-                    <p class="text-xs text-zinc-600 truncate">
-                      {{ group.username }}
-                      {{ group.bitRate ? ' · ' + group.bitRate + ' kbps' : '' }}
-                      · {{ group.files.length }} files
-                    </p>
-                  </div>
+                <button
+                  (click)="downloadFolder(group)"
+                  [disabled]="getFolderBtn(group).disabled || getFolderValidFiles(group).length === 0"
+                  [class]="'px-2 py-1 rounded text-xs font-medium transition shrink-0 ' + btnClasses[getFolderBtn(group).variant] + (getFolderBtn(group).disabled ? ' cursor-default' : '')">
+                  {{ getFolderBtn(group).label }}
+                </button>
+                @if (search.canBrowse()) {
                   <button
-                    (click)="downloadFolder(group)"
-                    [disabled]="getFolderBtn(group).disabled || getFolderValidFiles(group).length === 0"
-                    [class]="'px-2 py-1 rounded text-xs font-medium transition shrink-0 ' + btnClasses[getFolderBtn(group).variant] + (getFolderBtn(group).disabled ? ' cursor-default' : '')">
-                    {{ getFolderBtn(group).label }}
+                    (click)="toggleBrowser(getFolderKey(group))"
+                    class="px-2 py-1 rounded text-xs text-zinc-500 hover:text-zinc-300 transition shrink-0">
+                    {{ openBrowserKey() === getFolderKey(group) ? 'Hide full tree' : 'Load full tree' }}
                   </button>
-                  @if (search.canBrowse()) {
-                    <button
-                      (click)="toggleBrowser(group.username + '::' + group.directory)"
-                      class="px-2 py-1 rounded text-xs text-zinc-500 hover:text-zinc-300 transition shrink-0">
-                      {{ openBrowserKey() === group.username + '::' + group.directory ? 'Close' : 'Browse library' }}
-                    </button>
-                  }
-                </div>
-                @if (openBrowserKey() === group.username + '::' + group.directory) {
-                  <div class="mx-3 mb-2">
-                    <app-folder-browser
-                      [username]="group.username"
-                      [matchedPath]="group.directory"
-                      [fallbackFiles]="getFolderBrowseFiles(group)"
-                      (download)="handleBrowserDownload(group.username, group.directory, $event)"
-                      (downloadTrack)="handleDownload($event.username, $event.file)"
-                    />
+                }
+              </div>
+
+              <div class="px-2 py-2 space-y-1">
+                @for (file of group.files; track group.username + ':' + file.filename) {
+                  <div class="relative flex items-center gap-2 px-2 py-1.5 rounded-md overflow-hidden transition"
+                    style="background: var(--theme-hover)">
+                    @if (getGroupFileVariant(group, file) === 'progress') {
+                      <div class="absolute inset-0 pointer-events-none rounded-md transition-all duration-500"
+                        [style.width.%]="getGroupFilePercent(group, file)"
+                        style="background: var(--theme-status-progress-bg)"></div>
+                    }
+                    @if (getGroupFileVariant(group, file) === 'done') {
+                      <div class="absolute inset-0 pointer-events-none rounded-md"
+                        style="background: var(--theme-status-done-bg)"></div>
+                    }
+
+                    <div class="relative flex-1 min-w-0">
+                      <div class="flex items-start gap-2">
+                        <div class="min-w-0 flex-1">
+                          <p class="text-sm truncate" style="color: var(--theme-text-primary)"
+                            [innerHTML]="highlightGroupFileTitle(file)"></p>
+                          @if (getGroupFileSubtitle(file)) {
+                            <p class="text-xs truncate" style="color: var(--theme-text-secondary)"
+                              [innerHTML]="highlightGroupFileSubtitle(file)"></p>
+                          }
+                        </div>
+                        @if (file.length) {
+                          <span class="shrink-0 pt-0.5 text-xs" style="color: var(--theme-text-muted)">
+                            {{ formatDuration(file.length) }}
+                          </span>
+                        }
+                      </div>
+                      <p class="mt-0.5 text-xs truncate" style="color: var(--theme-text-muted)">
+                        {{ file.bitRate ? file.bitRate + ' kbps' : 'Unknown bitrate' }}
+                        · {{ formatSize(file.size) }}
+                      </p>
+                    </div>
+
+                    <div class="relative shrink-0">
+                      @if (getGroupFileVariant(group, file) === 'done') {
+                        <button (click)="router.navigate(['/library'])"
+                          class="px-2 py-1 rounded text-xs font-semibold transition"
+                          style="background: var(--theme-status-done-bg); color: var(--theme-status-done-text)">
+                          Open
+                        </button>
+                      } @else {
+                        <button
+                          (click)="handleDownload(group.username, { filename: file.filename, size: file.size })"
+                          [disabled]="getGroupFileBtn(group, file).disabled"
+                          [class]="'px-2 py-1 rounded text-xs font-medium transition ' + (getGroupFileBtn(group, file).disabled ? 'cursor-default' : '')"
+                          [style]="getGroupFileVariant(group, file) === 'progress' ? 'background: var(--theme-status-progress-bg); color: var(--theme-status-progress-text)' : ''">
+                          {{ getGroupFileVariant(group, file) === 'progress' ? getGroupFileBtn(group, file).label : 'Download' }}
+                        </button>
+                      }
+                    </div>
                   </div>
                 }
               </div>
-            }
+
+              @if (openBrowserKey() === getFolderKey(group)) {
+                <div class="px-2 pb-2">
+                  <app-folder-browser
+                    [username]="group.username"
+                    [matchedPath]="group.directory"
+                    [fallbackFiles]="getFolderBrowseFiles(group)"
+                    (download)="handleBrowserDownload(group.username, group.directory, $event)"
+                    (downloadTrack)="handleDownload($event.username, $event.file)"
+                  />
+                </div>
+              }
+            </div>
           }
         </section>
       }

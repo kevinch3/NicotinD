@@ -142,7 +142,6 @@ export class SearchComponent implements OnInit, OnDestroy {
   readonly networkConnected = signal<boolean | null>(null);
   readonly searchError = signal<string | null>(null);
   readonly downloadError = signal<string | null>(null);
-  readonly viewMode = signal<'tracks' | 'folders'>('tracks');
   readonly openBrowserKey = signal<string | null>(null);
   readonly searchFocused = signal(false);
 
@@ -262,39 +261,12 @@ export class SearchComponent implements OnInit, OnDestroy {
 
   // ─── Template helpers ───────────────────────────────────────────
 
-  getFileBtn(file: FlatFile) {
-    const key = `${file.username}:${file.filename}`;
-    return getSingleDownloadLabel(
-      file.username,
-      file.filename,
-      this.search.downloading().has(key),
-      (u, f) => this.transfers.getStatus(u, f),
-    );
-  }
-
-  getFileVariant(file: FlatFile) {
-    return this.getFileBtn(file).variant;
-  }
-
-  getFilePercent(file: FlatFile) {
-    const entry = this.transfers.getStatus(file.username, file.filename);
-    return entry?.percent ?? 0;
-  }
-
-  getSubtitle(file: FlatFile) {
-    return getDisplaySubtitle(file);
-  }
-
-  highlightTitle(file: FlatFile): string {
-    return highlightHtml(getDisplayTitle(file), this.highlightTerms());
-  }
-
-  highlightSubtitle(file: FlatFile): string {
-    return highlightHtml(getDisplaySubtitle(file), this.highlightTerms());
-  }
-
   getDirBasename(group: FolderGroup): string {
     return group.directory.split(/[\\/]/).at(-1) ?? group.directory;
+  }
+
+  getFolderKey(group: FolderGroup): string {
+    return `${group.username}::${group.directory}`;
   }
 
   getFolderBtn(group: FolderGroup) {
@@ -318,6 +290,46 @@ export class SearchComponent implements OnInit, OnDestroy {
     }));
   }
 
+  getGroupFileBtn(
+    group: FolderGroup,
+    file: FolderGroup['files'][number],
+  ) {
+    const key = `${group.username}:${file.filename}`;
+    return getSingleDownloadLabel(
+      group.username,
+      file.filename,
+      this.search.downloading().has(key),
+      (u, f) => this.transfers.getStatus(u, f),
+    );
+  }
+
+  getGroupFileVariant(
+    group: FolderGroup,
+    file: FolderGroup['files'][number],
+  ) {
+    return this.getGroupFileBtn(group, file).variant;
+  }
+
+  getGroupFilePercent(
+    group: FolderGroup,
+    file: FolderGroup['files'][number],
+  ) {
+    const entry = this.transfers.getStatus(group.username, file.filename);
+    return entry?.percent ?? 0;
+  }
+
+  getGroupFileSubtitle(file: FolderGroup['files'][number]) {
+    return getDisplaySubtitle(file);
+  }
+
+  highlightGroupFileTitle(file: FolderGroup['files'][number]): string {
+    return highlightHtml(getDisplayTitle(file), this.highlightTerms());
+  }
+
+  highlightGroupFileSubtitle(file: FolderGroup['files'][number]): string {
+    return highlightHtml(getDisplaySubtitle(file), this.highlightTerms());
+  }
+
   // ─── Private ────────────────────────────────────────────────────
 
   private async executeSearch(): Promise<void> {
@@ -332,6 +344,7 @@ export class SearchComponent implements OnInit, OnDestroy {
 
     this.loading.set(true);
     this.search.reset();
+    this.openBrowserKey.set(null);
     this.errors.set([]);
     this.searchError.set(null);
     this.downloadError.set(null);
