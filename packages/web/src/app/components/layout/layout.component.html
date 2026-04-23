@@ -3,18 +3,38 @@
       <!-- Top nav -->
       <header class="flex items-center justify-between px-4 md:px-6 py-3 border-b border-theme bg-theme-base/80 backdrop-blur-sm sticky top-0 z-40">
         <div class="flex items-center gap-4 md:gap-6">
-          <span class="text-lg font-bold text-theme-primary">NicotinD</span>
+          <a routerLink="/downloads" class="text-lg font-bold text-theme-primary hover:opacity-80 transition">NicotinD</a>
           <!-- Desktop nav -->
           <nav class="hidden md:flex gap-1">
             @for (item of navItems(); track item.to) {
-              <a [routerLink]="item.to" routerLinkActive="bg-theme-surface-2 text-theme-primary"
-                [routerLinkActiveOptions]="{ exact: item.to === '/' }"
-                class="px-3 py-1.5 rounded-md text-sm font-medium transition text-theme-secondary hover:text-theme-primary hover:bg-theme-surface-2/50">
-                {{ item.label }}
-              </a>
+              @if (isNavDisabled(item.to)) {
+                <span class="px-3 py-1.5 rounded-md text-sm font-medium text-theme-muted opacity-40 cursor-not-allowed select-none">
+                  {{ item.label }}
+                </span>
+              } @else {
+                <a [routerLink]="item.to" routerLinkActive="bg-theme-surface-2 text-theme-primary"
+                  [routerLinkActiveOptions]="{ exact: item.to === '/' }"
+                  class="px-3 py-1.5 rounded-md text-sm font-medium transition text-theme-secondary hover:text-theme-primary hover:bg-theme-surface-2/50">
+                  {{ item.label }}
+                </a>
+              }
             }
           </nav>
         </div>
+        <!-- Global search bar (desktop) -->
+        @if (!setup.isOffline()) {
+          <form (submit)="submitSearch($event)" class="hidden md:flex items-center">
+            <input
+              type="text"
+              [ngModel]="search.query()"
+              (ngModelChange)="search.setQuery($event)"
+              name="globalSearch"
+              placeholder="Search…"
+              class="w-52 lg:w-72 px-3 py-1.5 text-sm rounded-lg bg-theme-surface border border-theme text-theme-primary placeholder:text-theme-muted focus:outline-none focus:border-theme-accent transition"
+            />
+          </form>
+        }
+
         <div class="flex items-center gap-3">
           <app-download-indicator />
           <span class="hidden md:inline text-sm text-theme-muted">{{ auth.username() }}</span>
@@ -30,6 +50,16 @@
         </div>
       </header>
 
+      <!-- Offline banner -->
+      @if (setup.isOffline()) {
+        <div class="flex items-center justify-center gap-2 px-4 py-2 text-xs font-medium bg-amber-500/10 text-amber-400 border-b border-amber-500/20">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M1 1l22 22M16.72 11.06A10.94 10.94 0 0 1 19 12.55M5 12.55a10.94 10.94 0 0 1 5.17-2.39M10.71 5.05A16 16 0 0 1 22.56 9M1.42 9a15.91 15.91 0 0 1 4.7-2.88M8.53 16.11a6 6 0 0 1 6.95 0M12 20h.01" />
+          </svg>
+          Offline mode — showing cached content only
+        </div>
+      }
+
       <!-- Mobile drawer backdrop -->
       @if (drawerOpen()) {
         <div class="fixed inset-0 z-[45] bg-black/50 md:hidden" (click)="drawerOpen.set(false)"></div>
@@ -39,7 +69,20 @@
       <div class="fixed top-0 left-0 h-full w-64 bg-theme-surface z-50 transform transition-transform duration-200 ease-out md:hidden flex flex-col"
         [class]="drawerOpen() ? 'translate-x-0' : '-translate-x-full'">
         <div class="px-4 py-4 border-b border-theme">
-          <span class="text-lg font-bold text-theme-primary">NicotinD</span>
+          <a routerLink="/downloads" class="text-lg font-bold text-theme-primary hover:opacity-80 transition">NicotinD</a>
+        </div>
+        <!-- Global search (mobile drawer) -->
+        <div class="px-4 py-3 border-b border-theme">
+          <form (submit)="submitSearch($event)">
+            <input
+              type="text"
+              [ngModel]="search.query()"
+              (ngModelChange)="search.setQuery($event)"
+              name="globalSearchMobile"
+              placeholder="Search…"
+              class="w-full px-3 py-2 text-sm rounded-lg bg-theme-surface-2 border border-theme text-theme-primary placeholder:text-theme-muted focus:outline-none focus:border-theme-accent transition"
+            />
+          </form>
         </div>
         <nav class="flex-1 py-2">
           @for (item of navItems(); track item.to) {
