@@ -232,4 +232,20 @@
         />
       }
     </div>
+
+    <!-- Playlist picker overlay -->
+    @if (playlistPickerSong()) {
+      <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+           (click)="playlistPickerSong.set(null)">
+        <div (click)="$event.stopPropagation()" class="bg-theme-surface rounded-xl shadow-xl p-4 w-80">
+          <p class="text-sm text-theme-secondary mb-3 truncate">
+            Add "{{ playlistPickerSong()!.title }}" to playlist
+          </p>
+          <app-playlist-autocomplete
+            (selected)="addSongToPlaylist($event)"
+            (create)="createLibraryPlaylistAndAdd($event)"
+          />
+        </div>
+      </div>
+    }
   

@@ -9,13 +9,14 @@ import { ListControlsService, type SortOption } from '../../services/list-contro
 import { ListToolbarComponent } from '../../components/list-toolbar/list-toolbar.component';
 import { TrackRowComponent, type TrackAction } from '../../components/track-row/track-row.component';
 import { ConfirmDialogComponent } from '../../components/confirm-dialog/confirm-dialog.component';
+import { PlaylistAutocompleteComponent } from '../../components/playlist-autocomplete/playlist-autocomplete.component';
 import { toTrack } from '../../lib/track-utils';
 
 type LibraryMode = 'albums' | 'artists' | 'genre';
 
 @Component({
   selector: 'app-library',
-  imports: [ListToolbarComponent, TrackRowComponent, ConfirmDialogComponent, RouterLink],
+  imports: [ListToolbarComponent, TrackRowComponent, ConfirmDialogComponent, PlaylistAutocompleteComponent, RouterLink],
   templateUrl: './library.component.html',
   })
 export class LibraryComponent implements OnInit {
@@ -103,6 +104,36 @@ export class LibraryComponent implements OnInit {
   readonly selectedGenre = signal<string | null>(null);
   readonly genreSongs = signal<Song[]>([]);
   readonly loadingGenreSongs = signal(false);
+
+  // ─── Playlist picker ──────────────────────────────────────────────
+  readonly playlistPickerSong = signal<{ id: string; title: string } | null>(null);
+  readonly addingToPlaylistLib = signal(false);
+
+  async addSongToPlaylist(playlistId: string): Promise<void> {
+    const song = this.playlistPickerSong();
+    if (!song) return;
+    this.addingToPlaylistLib.set(true);
+    try {
+      await firstValueFrom(this.api.updatePlaylist(playlistId, { songIdsToAdd: [song.id] }));
+    } catch { /* ignore */ }
+    finally {
+      this.addingToPlaylistLib.set(false);
+      this.playlistPickerSong.set(null);
+    }
+  }
+
+  async createLibraryPlaylistAndAdd(name: string): Promise<void> {
+    const song = this.playlistPickerSong();
+    if (!song) return;
+    this.addingToPlaylistLib.set(true);
+    try {
+      await firstValueFrom(this.api.createPlaylist(name, [song.id]));
+    } catch { /* ignore */ }
+    finally {
+      this.addingToPlaylistLib.set(false);
+      this.playlistPickerSong.set(null);
+    }
+  }
 
   // ─── Confirm dialog ───────────────────────────────────────────────
   readonly confirmMessage = signal('');
@@ -193,6 +224,7 @@ export class LibraryComponent implements OnInit {
 
   albumTrackActions(song: { id: string; title: string; artistId?: string }): TrackAction[] {
     return [
+      { label: 'Add to playlist', action: () => this.playlistPickerSong.set(song) },
       ...(song.artistId ? [{
         label: 'Go to artist',
         action: () => {
@@ -252,6 +284,7 @@ export class LibraryComponent implements OnInit {
 
   genreTrackActions(song: Song): TrackAction[] {
     return [
+      { label: 'Add to playlist', action: () => this.playlistPickerSong.set(song) },
       ...(song.artistId ? [{
         label: 'Go to artist',
         action: () => { void this.router.navigate(['/library', 'artists', song.artistId]); },
