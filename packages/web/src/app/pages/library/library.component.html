@@ -53,10 +53,12 @@
                   class="px-5 py-2 rounded-lg bg-zinc-100 text-zinc-900 text-sm font-semibold hover:bg-zinc-200 transition">
                   Play Album
                 </button>
-                <button (click)="removeAlbum()"
-                  class="px-4 py-2 rounded-lg text-sm text-red-400 hover:bg-red-500/10 transition">
-                  Remove album
-                </button>
+                @if (auth.role() === 'admin') {
+                  <button (click)="removeAlbum()"
+                    class="px-4 py-2 rounded-lg text-sm text-red-400 hover:bg-red-500/10 transition">
+                    Remove album
+                  </button>
+                }
                 <!-- TODO: Preserve All (Phase 5) -->
               </div>
             </div>

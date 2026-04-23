@@ -199,14 +199,14 @@ export class LibraryComponent implements OnInit {
           void this.router.navigate(['/library', 'artists', song.artistId]);
         },
       }] : []),
-      {
+      ...(this.auth.role() === 'admin' ? [{
         label: 'Remove',
         destructive: true,
         action: () => this.askConfirm(`Remove "${song.title}" from library?`, async () => {
           try { await firstValueFrom(this.api.deleteSongs([song.id])); } catch { /* ignore */ }
           this.selectedAlbum.update(a => a ? { ...a, song: a.song.filter(s => s.id !== song.id) } : null);
         }),
-      },
+      }] : []),
     ];
   }
 
@@ -256,14 +256,14 @@ export class LibraryComponent implements OnInit {
         label: 'Go to artist',
         action: () => { void this.router.navigate(['/library', 'artists', song.artistId]); },
       }] : []),
-      {
+      ...(this.auth.role() === 'admin' ? [{
         label: 'Remove',
         destructive: true,
         action: () => this.askConfirm(`Remove "${song.title}" from library?`, async () => {
           try { await firstValueFrom(this.api.deleteSongs([song.id])); } catch { /* ignore */ }
           this.genreSongs.update(s => s.filter(x => x.id !== song.id));
         }),
-      },
+      }] : []),
     ];
   }
 

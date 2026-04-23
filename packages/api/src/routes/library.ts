@@ -245,6 +245,9 @@ export function libraryRoutes(navidrome: Navidrome, musicDir?: string, metadataF
 
   // Delete a song from the filesystem and trigger rescan
   app.delete('/songs/:id', async (c) => {
+    const user = c.get('user');
+    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+
     const result = await deleteOne(c.req.param('id'));
     if (!result.ok) {
       return c.json({ error: result.error }, (result.status as any) ?? 500);
@@ -262,6 +265,9 @@ export function libraryRoutes(navidrome: Navidrome, musicDir?: string, metadataF
 
   // Bulk delete songs
   app.post('/songs/bulk-delete', async (c) => {
+    const user = c.get('user');
+    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+
     const { ids } = await c.req.json<{ ids: string[] }>();
     if (!ids || !Array.isArray(ids)) {
       return c.json({ error: 'IDs array required' }, 400);
