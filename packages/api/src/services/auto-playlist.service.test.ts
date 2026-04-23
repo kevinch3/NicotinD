@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'bun:test';
-import { cleanFolderName, groupByDirectory, ALL_SINGLES } from './auto-playlist.service.js';
+import { describe, expect, it, mock, beforeEach } from 'bun:test';
+import { cleanFolderName, groupByDirectory, ALL_SINGLES, AutoPlaylistService } from './auto-playlist.service.js';
 import type { CompletedDownloadFile } from './metadata-fixer.js';
 
 describe('constants', () => {
@@ -70,5 +70,185 @@ describe('groupByDirectory', () => {
     expect(groups.size).toBe(2);
     expect(groups.get('dir1')).toHaveLength(1);
     expect(groups.get('dir2')).toHaveLength(2);
+  });
+});
+
+// Helper: build a minimal Song-shaped object for mocks
+function makeSong(id: string, path: string) {
+  return {
+    id,
+    path,
+    title: id,
+    artist: '',
+    album: '',
+    albumId: '',
+    artistId: '',
+    size: 0,
+    contentType: '',
+    suffix: '',
+    duration: 0,
+    bitRate: 0,
+    created: '',
+  };
+}
+
+describe('AutoPlaylistService.processBatch', () => {
+  let navidromeMock: any;
+  let service: AutoPlaylistService;
+
+  beforeEach(() => {
+    navidromeMock = {
+      system: {
+        getScanStatus: mock(() => Promise.resolve({ scanning: false, count: 0 })),
+      },
+      playlists: {
+        list: mock(() => Promise.resolve([])),
+        create: mock((name: string) =>
+          Promise.resolve({ id: `id-${name}`, name, songCount: 0, entry: [] }),
+        ),
+        get: mock((id: string) => Promise.resolve({ id, name: '', entry: [] })),
+        update: mock(() => Promise.resolve()),
+      },
+      search: {
+        search3: mock(() => Promise.resolve({ song: [], artist: [], album: [] })),
+      },
+    };
+    // Pass scanTimeoutMs=0 so waitForScan returns immediately in tests
+    service = new AutoPlaylistService(navidromeMock, 0);
+  });
+
+  it('does nothing for an empty batch', async () => {
+    await service.processBatch([]);
+    expect(navidromeMock.playlists.list).not.toHaveBeenCalled();
+  });
+
+  it('adds a single-file download to "All Singles"', async () => {
+    navidromeMock.search.search3.mockReturnValue(
+      Promise.resolve({ song: [makeSong('song-1', 'dir1/song.mp3')], artist: [], album: [] }),
+    );
+
+    await service.processBatch([{ username: 'u', directory: 'dir1', filename: 'song.mp3' }]);
+
+    expect(navidromeMock.playlists.create).toHaveBeenCalledWith(ALL_SINGLES);
+    expect(navidromeMock.playlists.update).toHaveBeenCalledWith(`id-${ALL_SINGLES}`, {
+      songIdsToAdd: ['song-1'],
+    });
+  });
+
+  it('creates a named playlist (with cleaned name) for a multi-file directory', async () => {
+    navidromeMock.search.search3
+      .mockReturnValueOnce(
+        Promise.resolve({ song: [makeSong('s1', 'dir/a.mp3')], artist: [], album: [] }),
+      )
+      .mockReturnValueOnce(
+        Promise.resolve({ song: [makeSong('s2', 'dir/b.mp3')], artist: [], album: [] }),
+      );
+
+    await service.processBatch([
+      { username: 'u', directory: 'Music\\Artist - Album [FLAC]', filename: 'a.mp3' },
+      { username: 'u', directory: 'Music\\Artist - Album [FLAC]', filename: 'b.mp3' },
+    ]);
+
+    expect(navidromeMock.playlists.create).toHaveBeenCalledWith('Artist - Album');
+    expect(navidromeMock.playlists.update).toHaveBeenCalledWith('id-Artist - Album', {
+      songIdsToAdd: ['s1', 's2'],
+    });
+  });
+
+  it('appends to an existing playlist without re-adding duplicates', async () => {
+    navidromeMock.playlists.list.mockReturnValue(
+      Promise.resolve([{ id: 'existing-id', name: ALL_SINGLES, songCount: 1 }]),
+    );
+    // Playlist already contains 'old-song'
+    navidromeMock.playlists.get.mockReturnValue(
+      Promise.resolve({ id: 'existing-id', name: ALL_SINGLES, entry: [makeSong('old-song', 'x.mp3')] }),
+    );
+    // New file resolves to a different song ID
+    navidromeMock.search.search3.mockReturnValue(
+      Promise.resolve({ song: [makeSong('new-song', 'dir/new.mp3')], artist: [], album: [] }),
+    );
+
+    await service.processBatch([{ username: 'u', directory: 'dir', filename: 'new.mp3' }]);
+
+    expect(navidromeMock.playlists.create).not.toHaveBeenCalled();
+    expect(navidromeMock.playlists.update).toHaveBeenCalledWith('existing-id', {
+      songIdsToAdd: ['new-song'],
+    });
+  });
+
+  it('does not call update when resolved song is already in the playlist', async () => {
+    navidromeMock.playlists.list.mockReturnValue(
+      Promise.resolve([{ id: 'pl-id', name: ALL_SINGLES, songCount: 1 }]),
+    );
+    navidromeMock.playlists.get.mockReturnValue(
+      Promise.resolve({ id: 'pl-id', name: ALL_SINGLES, entry: [makeSong('already-here', 'dir/song.mp3')] }),
+    );
+    navidromeMock.search.search3.mockReturnValue(
+      Promise.resolve({ song: [makeSong('already-here', 'dir/song.mp3')], artist: [], album: [] }),
+    );
+
+    await service.processBatch([{ username: 'u', directory: 'dir', filename: 'song.mp3' }]);
+
+    expect(navidromeMock.playlists.update).not.toHaveBeenCalled();
+  });
+
+  it('skips unresolvable tracks but continues processing the rest', async () => {
+    navidromeMock.search.search3
+      .mockReturnValueOnce(Promise.resolve({ song: [], artist: [], album: [] })) // a.mp3 not found
+      .mockReturnValueOnce(
+        Promise.resolve({ song: [makeSong('s2', 'dir/b.mp3')], artist: [], album: [] }),
+      );
+
+    await service.processBatch([
+      { username: 'u', directory: 'dir', filename: 'a.mp3' },
+      { username: 'u', directory: 'dir', filename: 'b.mp3' },
+    ]);
+
+    // Only b.mp3 found — should still be added
+    expect(navidromeMock.playlists.update).toHaveBeenCalledWith(expect.any(String), {
+      songIdsToAdd: ['s2'],
+    });
+  });
+
+  it('aborts the batch if listing playlists fails', async () => {
+    navidromeMock.playlists.list.mockReturnValue(Promise.reject(new Error('API down')));
+
+    await expect(
+      service.processBatch([{ username: 'u', directory: 'dir', filename: 'song.mp3' }]),
+    ).resolves.toBeUndefined(); // must not throw
+
+    expect(navidromeMock.playlists.create).not.toHaveBeenCalled();
+  });
+
+  it('skips a group when playlist creation fails but continues other groups', async () => {
+    // All Singles create fails; Good Album create succeeds
+    navidromeMock.playlists.create
+      .mockReturnValueOnce(Promise.reject(new Error('quota exceeded')))
+      .mockReturnValueOnce(
+        Promise.resolve({ id: 'folder-id', name: 'Good Album', songCount: 0, entry: [] }),
+      );
+    // The single-dir group fails at create() before any search3 call, so only
+    // the two folder-group files trigger search3.
+    navidromeMock.search.search3
+      .mockReturnValueOnce(
+        Promise.resolve({ song: [makeSong('s1', 'folder/a.mp3')], artist: [], album: [] }),
+      )
+      .mockReturnValueOnce(
+        Promise.resolve({ song: [makeSong('s2', 'folder/b.mp3')], artist: [], album: [] }),
+      );
+
+    await expect(
+      service.processBatch([
+        { username: 'u', directory: 'single-dir', filename: 'single.mp3' },
+        { username: 'u', directory: 'Good Album', filename: 'a.mp3' },
+        { username: 'u', directory: 'Good Album', filename: 'b.mp3' },
+      ]),
+    ).resolves.toBeUndefined();
+
+    // The folder group should still be processed despite All Singles failing
+    expect(navidromeMock.playlists.create).toHaveBeenCalledWith('Good Album');
+    expect(navidromeMock.playlists.update).toHaveBeenCalledWith('folder-id', {
+      songIdsToAdd: ['s1', 's2'],
+    });
   });
 });

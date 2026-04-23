@@ -1,5 +1,10 @@
+import { basename } from 'node:path';
 import type { Navidrome } from '@nicotind/navidrome-client';
+import { createLogger } from '@nicotind/core';
+import type { Playlist } from '@nicotind/core';
 import type { CompletedDownloadFile } from './metadata-fixer.js';
+
+const log = createLogger('auto-playlist');
 
 export const ALL_SINGLES = 'All Singles';
 
@@ -48,7 +53,111 @@ export class AutoPlaylistService {
     private scanTimeoutMs = 30_000,
   ) {}
 
-  async processBatch(_files: CompletedDownloadFile[]): Promise<void> {
-    // Implemented in Task 2
+  /**
+   * Groups `files` by directory, determines playlist names, and creates or
+   * appends to Navidrome playlists. Best-effort — errors are logged, not thrown.
+   */
+  async processBatch(files: CompletedDownloadFile[]): Promise<void> {
+    if (files.length === 0) return;
+
+    await this.waitForScan();
+
+    let allPlaylists: Playlist[];
+    try {
+      allPlaylists = await this.navidrome.playlists.list();
+    } catch (err) {
+      log.error({ err }, 'Failed to list playlists, aborting auto-playlist batch');
+      return;
+    }
+
+    const groups = groupByDirectory(files);
+    for (const [directory, groupFiles] of groups) {
+      const name = groupFiles.length === 1 ? ALL_SINGLES : cleanFolderName(directory);
+      await this.processGroup(name, groupFiles, allPlaylists);
+    }
+  }
+
+  /** Polls getScanStatus until the scan finishes or the timeout is reached. */
+  private async waitForScan(): Promise<void> {
+    const deadline = Date.now() + this.scanTimeoutMs;
+    while (Date.now() < deadline) {
+      try {
+        const status = await this.navidrome.system.getScanStatus();
+        if (!status.scanning) return;
+      } catch {
+        return; // If we can't query status, proceed anyway
+      }
+      await new Promise((r) => setTimeout(r, 500));
+    }
+  }
+
+  /** Finds or creates a playlist by name, then appends new song IDs. */
+  private async processGroup(
+    name: string,
+    files: CompletedDownloadFile[],
+    allPlaylists: Playlist[],
+  ): Promise<void> {
+    let playlist = allPlaylists.find((p) => p.name === name);
+    if (!playlist) {
+      try {
+        playlist = await this.navidrome.playlists.create(name);
+        allPlaylists.push(playlist); // keep local cache in sync for subsequent groups
+      } catch (err) {
+        log.error({ err, name }, 'Failed to create playlist');
+        return;
+      }
+    }
+
+    let existingSongIds = new Set<string>();
+    try {
+      const full = await this.navidrome.playlists.get(playlist.id);
+      existingSongIds = new Set(full.entry?.map((s) => s.id) ?? []);
+    } catch (err) {
+      log.warn({ err, name }, 'Failed to fetch existing playlist tracks, proceeding without dedup');
+    }
+
+    const songIdsToAdd: string[] = [];
+    for (const file of files) {
+      const id = await this.resolveSongId(file);
+      if (!id) {
+        log.warn({ filename: file.filename }, 'Could not resolve Navidrome song ID, skipping');
+        continue;
+      }
+      if (!existingSongIds.has(id)) {
+        songIdsToAdd.push(id);
+      }
+    }
+
+    if (songIdsToAdd.length === 0) return;
+
+    try {
+      await this.navidrome.playlists.update(playlist.id, { songIdsToAdd });
+      log.info({ name, added: songIdsToAdd.length }, 'Auto-playlist updated');
+    } catch (err) {
+      log.error({ err, name }, 'Failed to update playlist');
+    }
+  }
+
+  /**
+   * Searches Navidrome for a song matching the file's basename.
+   * Returns the song ID or null if not found.
+   */
+  private async resolveSongId(file: CompletedDownloadFile): Promise<string | null> {
+    const fileBasename = basename(file.filename.replace(/\\/g, '/')).toLowerCase();
+    const nameWithoutExt = fileBasename.replace(/\.[^.]+$/, '');
+
+    try {
+      const results = await this.navidrome.search.search3(nameWithoutExt, {
+        songCount: 10,
+        artistCount: 0,
+        albumCount: 0,
+      });
+      const match = results.song.find(
+        (s) => basename(s.path).toLowerCase() === fileBasename,
+      );
+      return match?.id ?? null;
+    } catch {
+      return null;
+    }
   }
 }
