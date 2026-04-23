@@ -23,7 +23,6 @@ export class ListToolbarComponent {
   readonly searchChange = output<string>();
   readonly sortFieldChange = output<string>();
   readonly toggleDirection = output<void>();
-  readonly dismiss = output<void>();
 
   focus(): void {
     this.inputEl()?.nativeElement.focus();

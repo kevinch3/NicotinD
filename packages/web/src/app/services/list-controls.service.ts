@@ -9,14 +9,12 @@ interface PageState {
   searchText: string;
   sortField: string;
   sortDirection: 'asc' | 'desc';
-  isToolbarVisible: boolean;
 }
 
 const DEFAULT_STATE: PageState = {
   searchText: '',
   sortField: '',
   sortDirection: 'asc',
-  isToolbarVisible: false,
 };
 
 export interface ListControls<T> {
@@ -24,12 +22,9 @@ export interface ListControls<T> {
   searchText: Signal<string>;
   sortField: Signal<string>;
   sortDirection: Signal<'asc' | 'desc'>;
-  isToolbarVisible: Signal<boolean>;
   setSearchText(text: string): void;
   setSortField(field: string): void;
   toggleSortDirection(): void;
-  showToolbar(): void;
-  hideToolbar(): void;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -57,7 +52,6 @@ export class ListControlsService {
   }): ListControls<T> {
     const { pageKey, items, searchFields, sortOptions, defaultSort, defaultDirection } = config;
 
-    // Initialize defaults if not already set (capture isNewPage before any updatePage call)
     const current = this.getPage(pageKey);
     const isNewPage = !this.pages()[pageKey];
     if (!current.sortField && (defaultSort || sortOptions.length > 0)) {
@@ -72,7 +66,6 @@ export class ListControlsService {
     const searchText = computed(() => this.getPage(pageKey).searchText);
     const sortField = computed(() => this.getPage(pageKey).sortField);
     const sortDirection = computed(() => this.getPage(pageKey).sortDirection);
-    const isToolbarVisible = computed(() => this.getPage(pageKey).isToolbarVisible);
 
     const filtered = computed(() => {
       let result = [...items()];
@@ -112,15 +105,12 @@ export class ListControlsService {
       searchText,
       sortField,
       sortDirection,
-      isToolbarVisible,
       setSearchText: (text: string) => this.updatePage(pageKey, { searchText: text }),
       setSortField: (field: string) => this.updatePage(pageKey, { sortField: field }),
       toggleSortDirection: () => {
         const cur = this.getPage(pageKey);
         this.updatePage(pageKey, { sortDirection: cur.sortDirection === 'asc' ? 'desc' : 'asc' });
       },
-      showToolbar: () => this.updatePage(pageKey, { isToolbarVisible: true }),
-      hideToolbar: () => this.updatePage(pageKey, { isToolbarVisible: false }),
     };
   }
 }
