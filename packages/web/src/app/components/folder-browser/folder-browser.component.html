@@ -1,17 +1,17 @@
-    <div class="mt-2 border border-zinc-800 rounded-lg overflow-hidden">
-      <div class="flex items-center justify-between px-3 py-2 bg-zinc-900 border-b border-zinc-800">
-        <span class="text-xs text-zinc-400 truncate">{{ username() }}'s library</span>
+    <div class="mt-2 border border-theme rounded-lg overflow-hidden bg-theme-surface">
+      <div class="flex items-center justify-between px-3 py-2 bg-theme-surface-2 border-b border-theme">
+        <span class="text-xs text-theme-secondary truncate">{{ username() }}'s library</span>
         <div class="flex items-center gap-2">
           @if (!dirs() && !loading()) {
             <button
               (click)="loadBrowse()"
-              class="px-2 py-0.5 rounded text-[11px] text-zinc-400 hover:text-zinc-200 border border-zinc-700 hover:border-zinc-600 transition">
+              class="px-2 py-0.5 rounded text-[11px] text-theme-secondary hover:text-theme-primary border border-theme transition">
               Load full tree
             </button>
           }
           @if (loading()) {
-            <span class="text-[11px] text-zinc-600 flex items-center gap-1">
-              <span class="inline-block w-3 h-3 border border-zinc-600 border-t-zinc-400 rounded-full animate-spin"></span>
+            <span class="text-[11px] text-theme-muted flex items-center gap-1">
+              <span class="inline-block w-3 h-3 border border-theme border-t-transparent rounded-full animate-spin"></span>
               Loading…
             </span>
           }
@@ -19,7 +19,7 @@
       </div>
 
       @if (error()) {
-        <div class="px-3 py-2 border-b border-zinc-800 bg-amber-950/20">
+        <div class="px-3 py-2 border-b border-theme" style="background: var(--theme-status-error-bg)">
           <span class="text-[11px] text-amber-500">
             Couldn't load full library ({{ errorMsg() }}) — showing files from search results.
           </span>
@@ -28,19 +28,19 @@
 
       <div class="md:hidden">
         @if (dirs()) {
-          <div class="flex items-center gap-1 px-3 py-2 border-b border-zinc-800 overflow-x-auto">
+          <div class="flex items-center gap-1 px-3 py-2 border-b border-theme overflow-x-auto">
             @for (crumb of breadcrumbs(); track crumb.path; let i = $index; let last = $last) {
               <span class="flex items-center gap-1 shrink-0">
-                @if (i > 0) { <span class="text-zinc-700">›</span> }
+                @if (i > 0) { <span class="text-theme-muted">›</span> }
                 <button (click)="selected.set(crumb.path)"
-                  [class]="'text-xs ' + (last ? 'text-zinc-200' : 'text-zinc-500 hover:text-zinc-300')">
+                  [class]="'text-xs ' + (last ? 'text-theme-primary' : 'text-theme-secondary hover:text-theme-primary')">
                   {{ crumb.label }}
                 </button>
               </span>
             }
           </div>
         } @else {
-          <div class="px-3 py-2 border-b border-zinc-800 text-[11px] text-zinc-500 truncate">
+          <div class="px-3 py-2 border-b border-theme text-[11px] text-theme-muted truncate">
             {{ matchedPath() }}
           </div>
         }
@@ -49,25 +49,25 @@
           @if (dirs()) {
             @for (child of mobileChildren(); track child.fullPath) {
               <button (click)="selected.set(child.fullPath)"
-                class="w-full text-left flex items-center justify-between px-2 py-1.5 rounded text-xs text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200">
+                class="w-full text-left flex items-center justify-between px-2 py-1.5 rounded text-xs text-theme-secondary hover:bg-theme-hover hover:text-theme-primary">
                 <span class="flex items-center gap-1.5 truncate">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" class="shrink-0 text-zinc-600">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" class="shrink-0 text-theme-muted">
                     <path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/>
                   </svg>
                   {{ child.segment }}
                 </span>
-                <span class="text-zinc-700">›</span>
+                <span class="text-theme-muted">›</span>
               </button>
             }
           }
           @if (directFiles().length === 0) {
-            <p class="text-xs text-zinc-600 p-2">No files</p>
+            <p class="text-xs text-theme-muted p-2">No files</p>
           } @else {
             @for (file of directFiles(); track file.filename) {
-              <div class="flex items-center justify-between text-[11px] text-zinc-500 hover:text-zinc-300 px-2 py-1">
+              <div class="flex items-center justify-between text-[11px] text-theme-secondary hover:text-theme-primary px-2 py-1">
                 <span class="truncate flex-1">{{ extractBasename(file.filename) }}</span>
                 <div class="shrink-0 ml-2 flex items-center gap-2">
-                  <span class="text-zinc-700">
+                  <span class="text-theme-muted">
                     {{ file.bitRate ? file.bitRate + ' kbps · ' : '' }}{{ formatSize(file.size) }}
                   </span>
                   <button
@@ -85,7 +85,7 @@
 
       <div class="hidden md:block">
         <div class="flex min-h-[120px]" [style.height.px]="browserHeight()">
-          <div class="shrink-0 overflow-y-auto border-r border-zinc-800 p-1 bg-zinc-950/30" [style.width.px]="treeWidth()">
+          <div class="shrink-0 overflow-y-auto border-r border-theme p-1 bg-theme-surface-2" [style.width.px]="treeWidth()">
             @if (dirs()) {
               @for (node of tree(); track node.fullPath) {
                 <app-folder-tree-node
@@ -96,11 +96,11 @@
               }
             } @else {
               <div class="p-2 space-y-2">
-                <p class="text-[11px] text-zinc-600">Tree not loaded</p>
+                <p class="text-[11px] text-theme-muted">Tree not loaded</p>
                 <button
                   (click)="loadBrowse()"
                   [disabled]="loading()"
-                  class="w-full px-2 py-1 rounded text-[11px] border border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:border-zinc-600 transition disabled:opacity-50">
+                  class="w-full px-2 py-1 rounded text-[11px] border border-theme text-theme-secondary hover:text-theme-primary transition disabled:opacity-50">
                   {{ loading() ? 'Loading…' : 'Load full tree' }}
                 </button>
               </div>
@@ -110,13 +110,13 @@
           <button
             type="button"
             (pointerdown)="startTreeResize($event)"
-            class="w-1.5 shrink-0 cursor-col-resize bg-zinc-900 hover:bg-zinc-700 transition"
+            class="w-1.5 shrink-0 cursor-col-resize bg-theme-surface-2 hover:bg-theme-hover transition"
             aria-label="Resize folder tree panel">
           </button>
 
           <div class="flex-1 overflow-y-auto p-2 flex flex-col gap-1">
             <div class="flex items-center justify-between mb-1">
-              <span class="text-[11px] text-zinc-600">
+              <span class="text-[11px] text-theme-muted">
                 {{ directFiles().length }} file{{ directFiles().length !== 1 ? 's' : '' }}
               </span>
               <button
@@ -128,13 +128,13 @@
             </div>
 
             @if (directFiles().length === 0) {
-              <p class="text-xs text-zinc-600 p-2">No files</p>
+              <p class="text-xs text-theme-muted p-2">No files</p>
             } @else {
               @for (file of directFiles(); track file.filename) {
-                <div class="flex items-center justify-between text-[11px] text-zinc-500 hover:text-zinc-300 px-1 py-0.5">
+                <div class="flex items-center justify-between text-[11px] text-theme-secondary hover:text-theme-primary px-1 py-0.5">
                   <span class="truncate flex-1">{{ extractBasename(file.filename) }}</span>
                   <div class="flex items-center gap-3 ml-2 shrink-0">
-                    <span class="text-zinc-700">
+                    <span class="text-theme-muted">
                       {{ file.bitRate ? file.bitRate + ' kbps · ' : '' }}{{ formatSize(file.size) }}
                     </span>
                     <button
@@ -153,9 +153,9 @@
         <button
           type="button"
           (pointerdown)="startHeightResize($event)"
-          class="h-2 w-full border-t border-zinc-800 bg-zinc-900 hover:bg-zinc-800 cursor-row-resize flex items-center justify-center transition"
+          class="h-2 w-full border-t border-theme bg-theme-surface-2 hover:bg-theme-hover cursor-row-resize flex items-center justify-center transition"
           aria-label="Resize folder browser height">
-          <span class="h-px w-8 bg-zinc-600"></span>
+          <span class="h-px w-8 bg-theme-hover"></span>
         </button>
       </div>
     </div>

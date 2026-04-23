@@ -109,7 +109,7 @@ function formatSpeed(bytesPerSec: number) {
 function highlightHtml(text: string, terms: string[]): string {
   if (!terms.length) return escapeHtml(text);
   const pattern = new RegExp(`(${terms.map(escapeRegExp).join('|')})`, 'gi');
-  return escapeHtml(text).replace(pattern, '<mark class="rounded bg-amber-400/20 px-0.5 text-zinc-100">$1</mark>');
+  return escapeHtml(text).replace(pattern, '<mark class="search-highlight">$1</mark>');
 }
 
 function escapeHtml(text: string): string {

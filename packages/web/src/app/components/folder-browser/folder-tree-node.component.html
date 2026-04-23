@@ -4,8 +4,8 @@
         (click)="toggle()"
         [class]="'w-full text-left flex items-center gap-1 px-2 py-1 rounded text-xs transition ' +
           (selected() === node().fullPath
-            ? 'bg-zinc-700 text-zinc-100'
-            : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200')">
+            ? 'bg-theme-surface-2 text-theme-primary'
+            : 'text-theme-secondary hover:bg-theme-hover hover:text-theme-primary')">
         <span>{{ expanded() ? '▾' : '▸' }}</span>
         <span class="truncate">{{ node().segment }}</span>
       </button>
