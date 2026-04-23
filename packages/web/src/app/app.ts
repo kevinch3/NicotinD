@@ -19,9 +19,12 @@ export class App {
     // Initialize remote playback WebSocket subscriptions
     this.remotePlayback.initialize();
 
-    // Redirect to setup if needed (runs after APP_INITIALIZER completes)
+    // Redirect to setup if needed, or to downloads if offline (runs after APP_INITIALIZER completes)
     effect(() => {
-      if (this.setup.checked() && this.setup.status()?.needsSetup) {
+      if (!this.setup.checked()) return;
+      if (this.setup.isOffline() && this.auth.token()) {
+        this.router.navigate(['/downloads']);
+      } else if (this.setup.status()?.needsSetup) {
         this.router.navigate(['/setup']);
       }
     });

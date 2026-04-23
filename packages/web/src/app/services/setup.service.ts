@@ -1,6 +1,6 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { ApiService, type SetupStatus } from './api.service';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, timeout } from 'rxjs';
 
 @Injectable({ providedIn: 'root' })
 export class SetupService {
@@ -8,13 +8,15 @@ export class SetupService {
 
   readonly status = signal<SetupStatus | null>(null);
   readonly checked = signal(false);
+  readonly isOffline = signal(false);
 
   async check(): Promise<void> {
     try {
-      const status = await firstValueFrom(this.api.getSetupStatus());
+      const status = await firstValueFrom(this.api.getSetupStatus().pipe(timeout(3000)));
       this.status.set(status);
     } catch {
-      // API not available — skip setup
+      // API unreachable or timed out — enter offline mode
+      this.isOffline.set(true);
     }
     this.checked.set(true);
   }
