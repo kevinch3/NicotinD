@@ -1,6 +1,7 @@
-import { Component, inject, signal, computed, effect, OnInit, OnDestroy } from '@angular/core';
+import { Component, inject, signal, computed, effect, OnInit, OnDestroy, DestroyRef } from '@angular/core';
 import { RouterOutlet, RouterLink, RouterLinkActive, Router, NavigationEnd } from '@angular/router';
 import { filter } from 'rxjs';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { AuthService } from '../../services/auth.service';
 import { PlayerService } from '../../services/player.service';
@@ -52,9 +53,13 @@ export class LayoutComponent implements OnInit, OnDestroy {
   }
 
   constructor() {
+    const destroyRef = inject(DestroyRef);
     // Close drawer on navigation
     this.router.events
-      .pipe(filter((e): e is NavigationEnd => e instanceof NavigationEnd))
+      .pipe(
+        filter((e): e is NavigationEnd => e instanceof NavigationEnd),
+        takeUntilDestroyed(destroyRef),
+      )
       .subscribe(() => this.drawerOpen.set(false));
   }
 
