@@ -52,6 +52,7 @@ export class ListControlsService {
   }): ListControls<T> {
     const { pageKey, items, searchFields, sortOptions, defaultSort, defaultDirection } = config;
 
+    // Initialize defaults if not already set (capture isNewPage before any updatePage call)
     const current = this.getPage(pageKey);
     const isNewPage = !this.pages()[pageKey];
     if (!current.sortField && (defaultSort || sortOptions.length > 0)) {
