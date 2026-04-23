@@ -512,14 +512,20 @@ export class DownloadsComponent implements OnInit, OnDestroy {
   }
 
   async removeOfflineTracks(ids: string[]): Promise<void> {
-    for (const id of ids) {
-      await this.preserve.remove(id);
+    const removed: string[] = [];
+    try {
+      for (const id of ids) {
+        await this.preserve.remove(id);
+        removed.push(id);
+      }
+    } catch { /* ignore individual failure */ }
+    finally {
+      this.offlineSelected.update(s => {
+        const n = new Set(s);
+        removed.forEach(id => n.delete(id));
+        return n;
+      });
     }
-    this.offlineSelected.update(s => {
-      const n = new Set(s);
-      ids.forEach(id => n.delete(id));
-      return n;
-    });
   }
 
   async addOfflineToPlaylist(playlistId: string): Promise<void> {

@@ -204,11 +204,18 @@
                   </div>
                 }
 
-                <button (click)="offlineShowPlaylistPicker.set(true)"
-                  [disabled]="addingOfflineToPlaylist()"
-                  class="text-xs px-3 py-1.5 rounded-lg bg-theme-surface hover:bg-theme-hover transition text-theme-secondary border border-theme disabled:opacity-50">
-                  Add to playlist
-                </button>
+                @if (!offlineShowPlaylistPicker()) {
+                  <button (click)="offlineShowPlaylistPicker.set(true)"
+                    [disabled]="addingOfflineToPlaylist()"
+                    class="text-xs px-3 py-1.5 rounded-lg bg-theme-surface hover:bg-theme-hover transition text-theme-secondary border border-theme disabled:opacity-50">
+                    Add to playlist
+                  </button>
+                } @else {
+                  <button (click)="offlineShowPlaylistPicker.set(false)"
+                    class="text-xs px-3 py-1.5 rounded-lg text-theme-muted hover:text-theme-secondary transition">
+                    Cancel
+                  </button>
+                }
                 <button (click)="removeOfflineTracks(offlineSelectedArray())"
                   class="text-xs px-3 py-1.5 rounded-lg text-red-400 hover:bg-red-500/10 transition border border-red-500/20">
                   Remove from device
