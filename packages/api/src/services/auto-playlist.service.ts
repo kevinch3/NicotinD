@@ -1,4 +1,3 @@
-import { basename } from 'node:path';
 import { createLogger } from '@nicotind/core';
 import type { Navidrome } from '@nicotind/navidrome-client';
 import type { Playlist } from '@nicotind/core';
