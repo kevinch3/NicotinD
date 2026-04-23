@@ -2,10 +2,8 @@ import { Component, inject, signal, computed, effect, OnInit, OnDestroy, Destroy
 import { RouterOutlet, RouterLink, RouterLinkActive, Router, NavigationEnd } from '@angular/router';
 import { filter } from 'rxjs';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { FormsModule } from '@angular/forms';
 import { AuthService } from '../../services/auth.service';
 import { PlayerService } from '../../services/player.service';
-import { SearchService } from '../../services/search.service';
 import { SetupService } from '../../services/setup.service';
 import { TransferService } from '../../services/transfer.service';
 import { DownloadIndicatorComponent } from '../download-indicator/download-indicator.component';
@@ -29,14 +27,13 @@ const ONLINE_ONLY_ROUTES = new Set(['/', '/library', '/playlists']);
 
 @Component({
   selector: 'app-layout',
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, FormsModule, DownloadIndicatorComponent, PlayerComponent, NowPlayingComponent],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, DownloadIndicatorComponent, PlayerComponent, NowPlayingComponent],
   templateUrl: './layout.component.html',
 })
 
 export class LayoutComponent implements OnInit, OnDestroy {
   readonly auth = inject(AuthService);
   readonly player = inject(PlayerService);
-  readonly search = inject(SearchService);
   readonly setup = inject(SetupService);
   private router = inject(Router);
   private transfers = inject(TransferService);
@@ -69,14 +66,6 @@ export class LayoutComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.transfers.stopPolling();
-  }
-
-  submitSearch(event: Event): void {
-    event.preventDefault();
-    const q = this.search.query().trim();
-    if (!q) return;
-    this.search.setAutoSearch(true);
-    this.router.navigate(['/']);
   }
 
   logout(): void {
