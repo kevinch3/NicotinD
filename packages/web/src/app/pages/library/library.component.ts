@@ -172,7 +172,7 @@ export class LibraryComponent implements OnInit {
     this.player.playWithContext(tracks, 0, { type: 'album', id: album.id, name: album.name });
   }
 
-  toTrackFromSong(song: { id: string; title: string; artist: string; duration?: number; coverArt?: string }): Track {
+  toTrackFromSong(song: { id: string; title: string; artist: string; duration?: number; coverArt?: string; bitRate?: number }): Track {
     return toTrack(song, this.selectedAlbum()?.name);
   }
 

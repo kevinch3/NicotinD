@@ -53,6 +53,7 @@ export class PreserveService {
         album: track.album ?? '',
         coverArt: track.coverArt,
         duration: track.duration,
+        bitRate: track.bitRate,
         size: audioBlob.size,
         format: audioRes.headers.get('content-type') ?? 'audio/mpeg',
         preservedAt: now,

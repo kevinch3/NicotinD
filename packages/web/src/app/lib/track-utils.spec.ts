@@ -66,5 +66,15 @@ describe('trackUtils', () => {
       expect(track.coverArt).toBeUndefined();
       expect(track.duration).toBeUndefined();
     });
+
+    it('propagates bitRate to the track', () => {
+      const song: BaseSong = { id: '7', title: 'T', artist: 'A', bitRate: 320 };
+      expect(toTrack(song).bitRate).toBe(320);
+    });
+
+    it('leaves bitRate undefined when not provided', () => {
+      const song: BaseSong = { id: '8', title: 'T', artist: 'A' };
+      expect(toTrack(song).bitRate).toBeUndefined();
+    });
   });
 });

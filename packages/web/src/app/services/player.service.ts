@@ -8,6 +8,7 @@ export interface Track {
   album?: string;
   coverArt?: string;
   duration?: number;
+  bitRate?: number;
 }
 
 export interface PlayContext {

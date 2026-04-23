@@ -7,7 +7,7 @@
  */
 
 const DB_NAME = 'nicotind-preserve';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const TRACKS_STORE = 'tracks';
 const BLOBS_STORE = 'blobs';
 
@@ -20,6 +20,7 @@ export interface PreservedTrackMeta {
   album: string;
   coverArt?: string;
   duration?: number;
+  bitRate?: number;
   size: number;
   format: string;
   preservedAt: number;
