@@ -144,7 +144,7 @@
               </div>
 
               <div class="px-2 py-2 space-y-1">
-                @for (file of group.files; track group.username + ':' + file.filename) {
+                @for (file of group.files; track file.filename) {
                   <div class="relative flex items-center gap-2 px-2 py-1.5 rounded-md overflow-hidden transition"
                     style="background: var(--theme-hover)">
                     @if (getGroupFileVariant(group, file) === 'progress') {
