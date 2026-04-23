@@ -115,11 +115,9 @@ export class LibraryComponent implements OnInit {
     this.addingToPlaylistLib.set(true);
     try {
       await firstValueFrom(this.api.updatePlaylist(playlistId, { songIdsToAdd: [song.id] }));
-    } catch { /* ignore */ }
-    finally {
-      this.addingToPlaylistLib.set(false);
       this.playlistPickerSong.set(null);
-    }
+    } catch { /* ignore */ }
+    finally { this.addingToPlaylistLib.set(false); }
   }
 
   async createLibraryPlaylistAndAdd(name: string): Promise<void> {
@@ -128,11 +126,9 @@ export class LibraryComponent implements OnInit {
     this.addingToPlaylistLib.set(true);
     try {
       await firstValueFrom(this.api.createPlaylist(name, [song.id]));
-    } catch { /* ignore */ }
-    finally {
-      this.addingToPlaylistLib.set(false);
       this.playlistPickerSong.set(null);
-    }
+    } catch { /* ignore */ }
+    finally { this.addingToPlaylistLib.set(false); }
   }
 
   // ─── Confirm dialog ───────────────────────────────────────────────
