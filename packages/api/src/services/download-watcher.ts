@@ -71,7 +71,9 @@ export class DownloadWatcher {
       this.scanDebounceTimer = null;
       if (this.pendingPlaylistFiles.length > 0) {
         const files = this.pendingPlaylistFiles.splice(0);
-        void this.autoPlaylist.processBatch(files).catch(() => {});
+        void this.autoPlaylist.processBatch(files).catch((err) => {
+          log.warn({ err }, 'Auto-playlist flush on stop failed');
+        });
       }
     }
     log.info('Download watcher stopped');

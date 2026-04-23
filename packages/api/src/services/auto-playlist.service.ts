@@ -80,15 +80,16 @@ export class AutoPlaylistService {
   /** Polls getScanStatus until the scan finishes or the timeout is reached. */
   private async waitForScan(): Promise<void> {
     const deadline = Date.now() + this.scanTimeoutMs;
-    while (Date.now() < deadline) {
+    do {
       try {
         const status = await this.navidrome.system.getScanStatus();
         if (!status.scanning) return;
       } catch {
         return; // If we can't query status, proceed anyway
       }
+      if (Date.now() >= deadline) return;
       await new Promise((r) => setTimeout(r, 500));
-    }
+    } while (true);
   }
 
   /** Finds or creates a playlist by name, then appends new song IDs. */
@@ -142,13 +143,17 @@ export class AutoPlaylistService {
    * Searches Navidrome for a song matching the file's basename.
    * Returns the song ID or null if not found.
    */
+  // V1: match by basename only. A more precise approach would compare Song.path
+  // against the file's relativePath (computed at download time), but that field
+  // is not available on CompletedDownloadFile. Basename matching is sufficient for
+  // most cases but may pick the wrong song if two tracks share the same filename.
   private async resolveSongId(file: CompletedDownloadFile): Promise<string | null> {
     const fileBasename = basename(file.filename.replace(/\\/g, '/')).toLowerCase();
     const nameWithoutExt = fileBasename.replace(/\.[^.]+$/, '');
 
     try {
       const results = await this.navidrome.search.search3(nameWithoutExt, {
-        songCount: 25,
+        songCount: 25, // 25 to handle common track names (e.g. "01 Track") in large libraries
         artistCount: 0,
         albumCount: 0,
       });
