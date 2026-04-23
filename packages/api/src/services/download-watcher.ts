@@ -5,6 +5,7 @@ import { basename, join, relative } from 'node:path';
 import { existsSync } from 'node:fs';
 import { MetadataFixer } from './metadata-fixer.js';
 import type { CompletedDownloadFile } from './metadata-fixer.js';
+import { AutoPlaylistService } from './auto-playlist.service.js';
 import { getDatabase } from '../db.js';
 
 const log = createLogger('download-watcher');
@@ -16,6 +17,7 @@ interface DownloadWatcherOptions {
   metadataFixEnabled?: boolean;
   metadataFixMinScore?: number;
   metadataFixer?: { processCompletedDownloads: (files: CompletedDownloadFile[]) => Promise<void> };
+  autoPlaylist?: { processBatch: (files: CompletedDownloadFile[]) => Promise<void> };
 }
 
 export class DownloadWatcher {
@@ -31,6 +33,8 @@ export class DownloadWatcher {
     processCompletedDownloads: (files: CompletedDownloadFile[]) => Promise<void>;
   };
   private checking = false;
+  private pendingPlaylistFiles: CompletedDownloadFile[] = [];
+  private autoPlaylist: { processBatch: (files: CompletedDownloadFile[]) => Promise<void> };
 
   constructor(slskd: Slskd, navidrome: Navidrome, options: DownloadWatcherOptions = {}) {
     this.slskd = slskd;
@@ -45,6 +49,7 @@ export class DownloadWatcher {
         enabled: options.metadataFixEnabled ?? true,
         minScore: options.metadataFixMinScore ?? 85,
       });
+    this.autoPlaylist = options.autoPlaylist ?? new AutoPlaylistService(navidrome);
   }
 
   start(): void {
@@ -87,11 +92,13 @@ export class DownloadWatcher {
             if (file.state === 'Completed, Succeeded' && !this.knownCompleted.has(key)) {
               this.knownCompleted.add(key);
               newCompletions = true;
-              completedFiles.push({
+              const fileData: CompletedDownloadFile = {
                 username: group.username,
                 directory: dir.directory,
                 filename: file.filename,
-              });
+              };
+              completedFiles.push(fileData);
+              this.pendingPlaylistFiles.push(fileData);
               this.recordCompletedDownload(
                 key,
                 group.username,
@@ -131,11 +138,17 @@ export class DownloadWatcher {
     }
 
     this.scanDebounceTimer = setTimeout(async () => {
+      const filesToProcess = this.pendingPlaylistFiles.splice(0);
       try {
         log.info('Triggering Navidrome library scan');
         await this.navidrome.system.startScan();
       } catch (err) {
         log.error({ err }, 'Failed to trigger scan');
+      }
+      try {
+        await this.autoPlaylist.processBatch(filesToProcess);
+      } catch (err) {
+        log.error({ err }, 'Auto-playlist processing failed');
       }
     }, this.scanDebounceMs);
   }
