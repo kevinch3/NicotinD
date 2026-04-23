@@ -4,6 +4,7 @@ import {
   signal,
   computed,
   effect,
+  untracked,
   viewChild,
   ElementRef,
   OnDestroy,
@@ -116,7 +117,7 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
         this.player.setCurrentTime(0);
         this.player.setDuration(track.duration ?? 0);
 
-        if (this.preserve.isPreserved(track.id)) {
+        if (untracked(() => this.preserve.isPreserved(track.id))) {
           // Load from IndexedDB — no network request
           (async () => {
             const blob = await db.getBlob(track.id);
