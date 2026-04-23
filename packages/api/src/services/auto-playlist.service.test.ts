@@ -135,6 +135,26 @@ describe('AutoPlaylistService.processBatch', () => {
     });
   });
 
+  it('uses folder playlist naming when one completed file comes from a multi-file directory', async () => {
+    navidromeMock.search.search3.mockReturnValue(
+      Promise.resolve({ song: [makeSong('song-1', 'Artist - Album/song.mp3')], artist: [], album: [] }),
+    );
+
+    await service.processBatch([
+      {
+        username: 'u',
+        directory: 'Music\\Artist - Album [FLAC]',
+        filename: 'song.mp3',
+        directoryFileCount: 12,
+      },
+    ]);
+
+    expect(navidromeMock.playlists.create).toHaveBeenCalledWith('Artist - Album');
+    expect(navidromeMock.playlists.update).toHaveBeenCalledWith('id-Artist - Album', {
+      songIdsToAdd: ['song-1'],
+    });
+  });
+
   it('creates a named playlist (with cleaned name) for a multi-file directory', async () => {
     navidromeMock.search.search3
       .mockReturnValueOnce(
@@ -176,6 +196,32 @@ describe('AutoPlaylistService.processBatch', () => {
     });
   });
 
+  it('prefers relative-path matches over basename collisions', async () => {
+    navidromeMock.search.search3.mockReturnValue(
+      Promise.resolve({
+        song: [
+          makeSong('wrong-id', 'Other Artist/Other Album/song.mp3'),
+          makeSong('right-id', 'Artist/Album/song.mp3'),
+        ],
+        artist: [],
+        album: [],
+      }),
+    );
+
+    await service.processBatch([
+      {
+        username: 'u',
+        directory: 'Artist\\Album',
+        filename: 'song.mp3',
+        relativePath: 'Artist/Album/song.mp3',
+      },
+    ]);
+
+    expect(navidromeMock.playlists.update).toHaveBeenCalledWith(`id-${ALL_SINGLES}`, {
+      songIdsToAdd: ['right-id'],
+    });
+  });
+
   it('does not call update when resolved song is already in the playlist', async () => {
     navidromeMock.playlists.list.mockReturnValue(
       Promise.resolve([{ id: 'pl-id', name: ALL_SINGLES, songCount: 1 }]),
@@ -210,6 +256,17 @@ describe('AutoPlaylistService.processBatch', () => {
     });
   });
 
+  it('does not create a playlist when no song IDs resolve', async () => {
+    navidromeMock.search.search3.mockReturnValue(
+      Promise.resolve({ song: [], artist: [], album: [] }),
+    );
+
+    await service.processBatch([{ username: 'u', directory: 'dir', filename: 'missing.mp3' }]);
+
+    expect(navidromeMock.playlists.create).not.toHaveBeenCalled();
+    expect(navidromeMock.playlists.update).not.toHaveBeenCalled();
+  });
+
   it('aborts the batch if listing playlists fails', async () => {
     navidromeMock.playlists.list.mockReturnValue(Promise.reject(new Error('API down')));
 
@@ -227,9 +284,11 @@ describe('AutoPlaylistService.processBatch', () => {
       .mockReturnValueOnce(
         Promise.resolve({ id: 'folder-id', name: 'Good Album', songCount: 0, entry: [] }),
       );
-    // The single-dir group fails at create() before any search3 call, so only
-    // the two folder-group files trigger search3.
+    // One search call for single-dir + two for the folder group.
     navidromeMock.search.search3
+      .mockReturnValueOnce(
+        Promise.resolve({ song: [makeSong('single', 'single-dir/single.mp3')], artist: [], album: [] }),
+      )
       .mockReturnValueOnce(
         Promise.resolve({ song: [makeSong('s1', 'folder/a.mp3')], artist: [], album: [] }),
       )

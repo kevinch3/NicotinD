@@ -2,11 +2,16 @@ import { basename } from 'node:path';
 import type { Navidrome } from '@nicotind/navidrome-client';
 import { createLogger } from '@nicotind/core';
 import type { Playlist } from '@nicotind/core';
+import { getDatabase } from '../db.js';
 import type { CompletedDownloadFile } from './metadata-fixer.js';
 
 const log = createLogger('auto-playlist');
 
 export const ALL_SINGLES = 'All Singles';
+
+function normalizePath(input: string): string {
+  return input.replace(/\\/g, '/').replace(/^\/+/, '').toLowerCase();
+}
 
 /** Extracts the leaf folder name and strips audio quality/format tags. */
 export function cleanFolderName(raw: string): string {
@@ -72,7 +77,9 @@ export class AutoPlaylistService {
 
     const groups = groupByDirectory(files);
     for (const [directory, groupFiles] of groups) {
-      const name = groupFiles.length === 1 ? ALL_SINGLES : cleanFolderName(directory);
+      const isFolderDownload = groupFiles.length > 1 ||
+        groupFiles.some((file) => (file.directoryFileCount ?? 1) > 1);
+      const name = isFolderDownload ? cleanFolderName(directory) : ALL_SINGLES;
       await this.processGroup(name, groupFiles, allPlaylists);
     }
   }
@@ -80,10 +87,19 @@ export class AutoPlaylistService {
   /** Polls getScanStatus until the scan finishes or the timeout is reached. */
   private async waitForScan(): Promise<void> {
     const deadline = Date.now() + this.scanTimeoutMs;
+    let sawScanning = false;
+    let idlePolls = 0;
     do {
       try {
         const status = await this.navidrome.system.getScanStatus();
-        if (!status.scanning) return;
+        if (status.scanning) {
+          sawScanning = true;
+          idlePolls = 0;
+        } else {
+          idlePolls += 1;
+          // Require two idle polls unless we've already observed an active scan.
+          if (sawScanning || idlePolls >= 2) return;
+        }
       } catch {
         return; // If we can't query status, proceed anyway
       }
@@ -98,6 +114,25 @@ export class AutoPlaylistService {
     files: CompletedDownloadFile[],
     allPlaylists: Playlist[],
   ): Promise<void> {
+    const resolvedSongIds: string[] = [];
+    const seenResolved = new Set<string>();
+    for (const file of files) {
+      const id = await this.resolveSongId(file);
+      if (!id) {
+        log.warn({ filename: file.filename }, 'Could not resolve Navidrome song ID, skipping');
+        continue;
+      }
+      if (!seenResolved.has(id)) {
+        seenResolved.add(id);
+        resolvedSongIds.push(id);
+      }
+    }
+
+    if (resolvedSongIds.length === 0) {
+      log.warn({ name, count: files.length }, 'No tracks resolved for playlist group, skipping');
+      return;
+    }
+
     let playlist = allPlaylists.find((p) => p.name === name);
     if (!playlist) {
       try {
@@ -117,17 +152,7 @@ export class AutoPlaylistService {
       log.warn({ err, name }, 'Failed to fetch existing playlist tracks, proceeding without dedup');
     }
 
-    const songIdsToAdd: string[] = [];
-    for (const file of files) {
-      const id = await this.resolveSongId(file);
-      if (!id) {
-        log.warn({ filename: file.filename }, 'Could not resolve Navidrome song ID, skipping');
-        continue;
-      }
-      if (!existingSongIds.has(id)) {
-        songIdsToAdd.push(id);
-      }
-    }
+    const songIdsToAdd = resolvedSongIds.filter((id) => !existingSongIds.has(id));
 
     if (songIdsToAdd.length === 0) return;
 
@@ -140,29 +165,71 @@ export class AutoPlaylistService {
   }
 
   /**
-   * Searches Navidrome for a song matching the file's basename.
+   * Searches Navidrome for a song matching a completed download.
+   * Prefers relative-path matches, then falls back to basename.
    * Returns the song ID or null if not found.
    */
-  // V1: match by basename only. A more precise approach would compare Song.path
-  // against the file's relativePath (computed at download time), but that field
-  // is not available on CompletedDownloadFile. Basename matching is sufficient for
-  // most cases but may pick the wrong song if two tracks share the same filename.
   private async resolveSongId(file: CompletedDownloadFile): Promise<string | null> {
+    const relativePath = this.resolveRelativePathHint(file);
     const fileBasename = basename(file.filename.replace(/\\/g, '/')).toLowerCase();
     const nameWithoutExt = fileBasename.replace(/\.[^.]+$/, '');
+    const maxAttempts = this.scanTimeoutMs === 0 ? 1 : 5;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      try {
+        const results = await this.navidrome.search.search3(nameWithoutExt, {
+          songCount: 25, // 25 to handle common track names (e.g. "01 Track") in large libraries
+          artistCount: 0,
+          albumCount: 0,
+        });
+
+        if (relativePath) {
+          const pathMatch = results.song.find(
+            (song) => normalizePath(song.path) === relativePath,
+          );
+          if (pathMatch) return pathMatch.id;
+        }
+
+        const basenameMatch = results.song.find(
+          (song) => basename(normalizePath(song.path)) === fileBasename,
+        );
+        if (basenameMatch) return basenameMatch.id;
+      } catch {
+        return null;
+      }
+
+      if (attempt < maxAttempts - 1) {
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    }
+
+    return null;
+  }
+
+  private resolveRelativePathHint(file: CompletedDownloadFile): string | null {
+    if (file.relativePath && file.relativePath.trim().length > 0) {
+      return normalizePath(file.relativePath);
+    }
 
     try {
-      const results = await this.navidrome.search.search3(nameWithoutExt, {
-        songCount: 25, // 25 to handle common track names (e.g. "01 Track") in large libraries
-        artistCount: 0,
-        albumCount: 0,
-      });
-      const match = results.song.find(
-        (s) => basename(s.path).toLowerCase() === fileBasename,
-      );
-      return match?.id ?? null;
+      const db = getDatabase();
+      const row = db
+        .query<{ relative_path: string | null }, [string, string, string]>(
+          `SELECT relative_path
+           FROM completed_downloads
+           WHERE username = ? AND directory = ? AND filename = ? AND relative_path IS NOT NULL
+           ORDER BY completed_at DESC
+           LIMIT 1`,
+        )
+        .get(file.username, file.directory, file.filename);
+
+      if (row?.relative_path && row.relative_path.trim().length > 0) {
+        return normalizePath(row.relative_path);
+      }
     } catch {
-      return null;
+      // DB not available in tests/early startup: continue without path hint.
     }
+
+    return null;
   }
 }

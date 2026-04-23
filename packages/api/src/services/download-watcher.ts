@@ -98,10 +98,13 @@ export class DownloadWatcher {
             if (file.state === 'Completed, Succeeded' && !this.knownCompleted.has(key)) {
               this.knownCompleted.add(key);
               newCompletions = true;
+              const relativePath = this.resolveRelativePath(dir.directory, file.filename);
               const fileData: CompletedDownloadFile = {
                 username: group.username,
                 directory: dir.directory,
                 filename: file.filename,
+                relativePath,
+                directoryFileCount: dir.fileCount,
               };
               completedFiles.push(fileData);
               this.pendingPlaylistFiles.push(fileData);
@@ -111,6 +114,7 @@ export class DownloadWatcher {
                 dir.directory,
                 file.filename,
                 this.parseCompletedAt(file.endedAt),
+                relativePath,
               );
               log.info({ username: group.username, filename: file.filename }, 'Download completed');
             }
@@ -171,10 +175,10 @@ export class DownloadWatcher {
     directory: string,
     filename: string,
     completedAt: number,
+    relativePath: string | null,
   ): void {
     try {
       const db = getDatabase();
-      const relativePath = this.resolveRelativePath(directory, filename);
       const fileBasename = basename(filename.replace(/\\/g, '/')).toLowerCase();
 
       db.run(

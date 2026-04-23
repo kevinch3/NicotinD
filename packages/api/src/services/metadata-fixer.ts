@@ -8,6 +8,8 @@ export interface CompletedDownloadFile {
   username: string;
   directory: string;
   filename: string;
+  relativePath?: string | null;
+  directoryFileCount?: number;
 }
 
 export interface ParsedMetadata {

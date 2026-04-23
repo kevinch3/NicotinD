@@ -50,6 +50,7 @@ describe('DownloadWatcher', () => {
           directories: [
             {
               directory: 'dir1',
+              fileCount: 1,
               files: [{ filename: 'song1.mp3', state: 'Completed, Succeeded' }],
             },
           ],
@@ -72,6 +73,8 @@ describe('DownloadWatcher', () => {
         username: 'user1',
         directory: 'dir1',
         filename: 'song1.mp3',
+        relativePath: null,
+        directoryFileCount: 1,
       },
     ]);
     expect(navidromeMock.system.startScan).toHaveBeenCalledTimes(1);
@@ -85,6 +88,7 @@ describe('DownloadWatcher', () => {
           directories: [
             {
               directory: 'dir1',
+              fileCount: 1,
               files: [{ filename: 'song1.mp3', state: 'Completed, Succeeded' }],
             },
           ],
@@ -107,6 +111,7 @@ describe('DownloadWatcher', () => {
           directories: [
             {
               directory: 'dir1',
+              fileCount: 2,
               files: [
                 { filename: 'song1.mp3', state: 'Completed, Succeeded' },
                 { filename: 'song2.mp3', state: 'Completed, Succeeded' },
@@ -136,6 +141,7 @@ describe('DownloadWatcher', () => {
           directories: [
             {
               directory: 'Artist - Album',
+              fileCount: 2,
               files: [
                 { filename: 'a.mp3', state: 'Completed, Succeeded' },
                 { filename: 'b.mp3', state: 'Completed, Succeeded' },
@@ -151,8 +157,20 @@ describe('DownloadWatcher', () => {
 
     expect(autoPlaylistMock.processBatch).toHaveBeenCalledTimes(1);
     expect(autoPlaylistMock.processBatch).toHaveBeenCalledWith([
-      { username: 'user1', directory: 'Artist - Album', filename: 'a.mp3' },
-      { username: 'user1', directory: 'Artist - Album', filename: 'b.mp3' },
+      {
+        username: 'user1',
+        directory: 'Artist - Album',
+        filename: 'a.mp3',
+        relativePath: null,
+        directoryFileCount: 2,
+      },
+      {
+        username: 'user1',
+        directory: 'Artist - Album',
+        filename: 'b.mp3',
+        relativePath: null,
+        directoryFileCount: 2,
+      },
     ]);
   });
 });
