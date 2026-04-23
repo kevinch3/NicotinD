@@ -3,7 +3,7 @@
  * Handles connection, reconnection with exponential backoff, device registration,
  * heartbeat, and message routing via RxJS Observables.
  */
-import { Injectable } from '@angular/core';
+import { Injectable, signal } from '@angular/core';
 import { Subject, Observable } from 'rxjs';
 import { filter, map } from 'rxjs/operators';
 
@@ -18,6 +18,9 @@ export class PlaybackWsService {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private reconnectDelay = 1000;
+  private didOpenSuccessfully = false;
+  private consecutiveFailures = 0;
+  readonly persistentFailure = signal<string | null>(null);
 
   private readonly messageSubject = new Subject<WsMessage>();
 
@@ -137,9 +140,13 @@ export class PlaybackWsService {
     const url = `${protocol}://${window.location.host}/api/ws/playback?token=${encodeURIComponent(token)}`;
 
     if (this.ws && this.ws.readyState === WebSocket.OPEN) return;
+    this.didOpenSuccessfully = false;
     this.ws = new WebSocket(url);
 
     this.ws.onopen = () => {
+      this.didOpenSuccessfully = true;
+      this.consecutiveFailures = 0;
+      this.persistentFailure.set(null);
       this.reconnectDelay = 1000;
       this.send({
         type: 'REGISTER',
@@ -176,7 +183,15 @@ export class PlaybackWsService {
         clearInterval(this.heartbeatTimer);
         this.heartbeatTimer = null;
       }
-      // Only reconnect if we still have a token
+      if (!this.didOpenSuccessfully) {
+        this.consecutiveFailures++;
+        if (this.consecutiveFailures >= 5) {
+          this.persistentFailure.set(
+            'Connection failed — remote playback may be unavailable in this environment',
+          );
+          return; // stop reconnecting
+        }
+      }
       if (localStorage.getItem('nicotind_token')) {
         this.reconnectTimer = setTimeout(() => this.connect(), this.reconnectDelay);
         this.reconnectDelay = Math.min(this.reconnectDelay * 2, 30_000);
@@ -222,5 +237,10 @@ export class PlaybackWsService {
 
   updateDevice(fields: { remoteEnabled?: boolean; name?: string }): void {
     this.send({ type: 'UPDATE_DEVICE', payload: fields });
+  }
+
+  clearPersistentFailure(): void {
+    this.persistentFailure.set(null);
+    this.consecutiveFailures = 0;
   }
 }
