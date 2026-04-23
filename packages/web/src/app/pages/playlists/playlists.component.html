@@ -33,7 +33,7 @@
             </p>
             <div class="flex justify-center sm:justify-start gap-3 mt-4">
               <button (click)="playAll()"
-                class="px-5 py-2 rounded-lg bg-zinc-100 text-zinc-900 text-sm font-semibold hover:bg-zinc-200 transition">
+                class="px-5 py-2 rounded-lg bg-theme-surface-2 text-theme-primary text-sm font-semibold hover:bg-theme-hover transition">
                 Play All
               </button>
               <!-- Offline download toggle -->
@@ -43,7 +43,7 @@
                 [class]="'px-4 py-2 rounded-lg text-sm font-medium transition disabled:opacity-50 '
                   + (playlistOfflineState() === 'done'
                     ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30'
-                    : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700')">
+                    : 'bg-theme-surface-2 text-theme-muted hover:bg-theme-hover')">
                 @switch (playlistOfflineState()) {
                   @case ('downloading') {
                     <span class="flex items-center gap-2">
@@ -72,7 +72,7 @@
                 }
               </button>
               <button (click)="confirmDelete()" [disabled]="deleting()"
-                class="px-4 py-2 rounded-lg bg-zinc-800 text-zinc-400 text-sm font-medium hover:bg-zinc-700 hover:text-red-400 transition disabled:opacity-50">
+                class="px-4 py-2 rounded-lg bg-theme-surface-2 text-theme-muted text-sm font-medium hover:bg-theme-hover hover:text-red-400 transition disabled:opacity-50">
                 {{ deleting() ? 'Deleting...' : 'Delete' }}
               </button>
             </div>
@@ -160,7 +160,7 @@
 
         @if (loading()) {
           <div class="text-center py-20">
-            <span class="inline-block w-5 h-5 border-2 border-zinc-600 border-t-zinc-300 rounded-full animate-spin"></span>
+            <span class="inline-block w-5 h-5 border-2 border-theme border-t-theme-secondary rounded-full animate-spin"></span>
           </div>
         }
 
@@ -173,7 +173,7 @@
         <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
           @for (pl of gridControls.filtered(); track pl.id) {
             <button (click)="openPlaylist(pl)" [disabled]="loadingDetail()"
-              class="p-3 rounded-lg bg-zinc-900/30 hover:bg-zinc-800/50 transition text-left">
+              class="p-3 rounded-lg bg-theme-surface/30 hover:bg-theme-surface-2/50 transition text-left">
               @if (pl.coverArt) {
                 <img [src]="'/api/cover/' + pl.coverArt + '?size=300&token=' + auth.token()"
                   alt="" class="w-full aspect-square rounded object-cover mb-2" />

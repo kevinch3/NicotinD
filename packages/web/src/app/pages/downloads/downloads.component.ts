@@ -490,7 +490,8 @@ export class DownloadsComponent implements OnInit, OnDestroy {
 
   selectAllOffline(): void {
     const all = this.offlineControls.filtered().map(t => t.id);
-    if (this.offlineSelected().size === all.length) {
+    const selected = this.offlineSelected();
+    if (all.every(id => selected.has(id))) {
       this.offlineSelected.set(new Set());
     } else {
       this.offlineSelected.set(new Set(all));
