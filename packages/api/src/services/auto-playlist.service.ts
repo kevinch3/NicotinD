@@ -1,9 +1,5 @@
-import { createLogger } from '@nicotind/core';
 import type { Navidrome } from '@nicotind/navidrome-client';
-import type { Playlist } from '@nicotind/core';
 import type { CompletedDownloadFile } from './metadata-fixer.js';
-
-const log = createLogger('auto-playlist');
 
 export const ALL_SINGLES = 'All Singles';
 

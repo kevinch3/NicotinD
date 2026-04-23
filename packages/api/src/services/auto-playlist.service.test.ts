@@ -2,6 +2,12 @@ import { describe, expect, it } from 'bun:test';
 import { cleanFolderName, groupByDirectory, ALL_SINGLES } from './auto-playlist.service.js';
 import type { CompletedDownloadFile } from './metadata-fixer.js';
 
+describe('constants', () => {
+  it('exports ALL_SINGLES as "All Singles"', () => {
+    expect(ALL_SINGLES).toBe('All Singles');
+  });
+});
+
 describe('cleanFolderName', () => {
   it('strips bracketed quality tags', () => {
     expect(cleanFolderName('Dua Lipa - Future Nostalgia (2020) [FLAC 320kbps]')).toBe(
