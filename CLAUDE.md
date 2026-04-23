@@ -82,6 +82,7 @@ NicotinD (Hono API :8484)
 - **Service modes**: `embedded` (NicotinD spawns slskd/navidrome as child processes) or `external` (connects to pre-existing instances via URLs).
 - **Subsonic proxy**: `/rest/*` transparently forwards to Navidrome so existing mobile apps (DSub, Symfonium) work unmodified.
 - **Auth flow**: NicotinD issues its own JWTs. Internally holds auto-generated credentials for slskd (API key) and Navidrome (Subsonic token auth: `md5(password+salt)`).
+- **Auto-playlists**: `AutoPlaylistService` (`packages/api/src/services/auto-playlist.service.ts`) runs after each Navidrome scan — single-file downloads → "All Singles", multi-file folder downloads → playlist named after the cleaned folder. Owned by the admin Navidrome user.
 
 ## Web UI
 

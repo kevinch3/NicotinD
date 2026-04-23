@@ -5,6 +5,7 @@ describe('DownloadWatcher', () => {
   let slskdMock: any;
   let navidromeMock: any;
   let metadataFixerMock: any;
+  let autoPlaylistMock: any;
   let watcher: DownloadWatcher;
 
   beforeEach(() => {
@@ -24,11 +25,16 @@ describe('DownloadWatcher', () => {
       processCompletedDownloads: mock(() => Promise.resolve()),
     };
 
+    autoPlaylistMock = {
+      processBatch: mock(() => Promise.resolve()),
+    };
+
     // Use very small intervals for testing
     watcher = new DownloadWatcher(slskdMock, navidromeMock, {
       intervalMs: 10,
       scanDebounceMs: 10,
       metadataFixer: metadataFixerMock,
+      autoPlaylist: autoPlaylistMock,
     });
   });
 
@@ -120,5 +126,33 @@ describe('DownloadWatcher', () => {
     // Wait for the new debounce to expire
     await new Promise((r) => setTimeout(r, 10));
     expect(navidromeMock.system.startScan).toHaveBeenCalledTimes(1);
+  });
+
+  it('calls autoPlaylist.processBatch with completed files after scan debounce', async () => {
+    slskdMock.transfers.getDownloads.mockReturnValue(
+      Promise.resolve([
+        {
+          username: 'user1',
+          directories: [
+            {
+              directory: 'Artist - Album',
+              files: [
+                { filename: 'a.mp3', state: 'Completed, Succeeded' },
+                { filename: 'b.mp3', state: 'Completed, Succeeded' },
+              ],
+            },
+          ],
+        },
+      ]),
+    );
+
+    await (watcher as any).check();
+    await new Promise((r) => setTimeout(r, 50)); // wait for debounce
+
+    expect(autoPlaylistMock.processBatch).toHaveBeenCalledTimes(1);
+    expect(autoPlaylistMock.processBatch).toHaveBeenCalledWith([
+      { username: 'user1', directory: 'Artist - Album', filename: 'a.mp3' },
+      { username: 'user1', directory: 'Artist - Album', filename: 'b.mp3' },
+    ]);
   });
 });
