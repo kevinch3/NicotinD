@@ -214,11 +214,6 @@
                 <span class="font-normal normal-case ml-1.5 text-theme-muted">({{ recentSongs().length }})</span>
               }
             </h2>
-            @if (recentSongs().length > 0) {
-              <button (click)="recentControls.showToolbar()" class="p-1 text-theme-muted hover:text-theme-secondary transition" title="Search (Ctrl+F)">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
-              </button>
-            }
           </div>
           @if (recentSongs().length > 0) {
             <button (click)="selectAll()" class="text-xs text-theme-muted hover:text-theme-secondary transition">
@@ -227,19 +222,16 @@
           }
         </div>
 
-        @if (recentControls.isToolbarVisible()) {
-          <app-list-toolbar
-            [searchText]="recentControls.searchText()"
-            [sortField]="recentControls.sortField()"
-            [sortDirection]="recentControls.sortDirection()"
-            [sortOptions]="recentSortOptions"
-            [resultCount]="recentControls.filtered().length"
-            (searchChange)="recentControls.setSearchText($event)"
-            (sortFieldChange)="recentControls.setSortField($event)"
-            (toggleDirection)="recentControls.toggleSortDirection()"
-            (dismiss)="recentControls.hideToolbar()"
-          />
-        }
+        <app-list-toolbar
+          [searchText]="recentControls.searchText()"
+          [sortField]="recentControls.sortField()"
+          [sortDirection]="recentControls.sortDirection()"
+          [sortOptions]="recentSortOptions"
+          [resultCount]="recentControls.filtered().length"
+          (searchChange)="recentControls.setSearchText($event)"
+          (sortFieldChange)="recentControls.setSortField($event)"
+          (toggleDirection)="recentControls.toggleSortDirection()"
+        />
 
         <!-- Bulk action bar -->
         @if (selected().size > 0) {

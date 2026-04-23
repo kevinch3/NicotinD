@@ -64,19 +64,16 @@
             </div>
           </div>
 
-          @if (detailControls.isToolbarVisible()) {
-            <app-list-toolbar
-              [searchText]="detailControls.searchText()"
-              [sortField]="detailControls.sortField()"
-              [sortDirection]="detailControls.sortDirection()"
-              [sortOptions]="detailSortOptions"
-              [resultCount]="detailControls.filtered().length"
-              (searchChange)="detailControls.setSearchText($event)"
-              (sortFieldChange)="detailControls.setSortField($event)"
-              (toggleDirection)="detailControls.toggleSortDirection()"
-              (dismiss)="detailControls.hideToolbar()"
-            />
-          }
+          <app-list-toolbar
+            [searchText]="detailControls.searchText()"
+            [sortField]="detailControls.sortField()"
+            [sortDirection]="detailControls.sortDirection()"
+            [sortOptions]="detailSortOptions"
+            [resultCount]="detailControls.filtered().length"
+            (searchChange)="detailControls.setSearchText($event)"
+            (sortFieldChange)="detailControls.setSortField($event)"
+            (toggleDirection)="detailControls.toggleSortDirection()"
+          />
 
           <div>
             @for (song of detailControls.filtered(); track song.id) {
@@ -91,25 +88,16 @@
           </div>
         } @else {
           <!-- Album grid -->
-          <div class="flex items-center gap-3 mb-4">
-            <button (click)="gridControls.showToolbar()" class="p-1 text-theme-muted hover:text-theme-secondary transition" title="Search">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
-            </button>
-          </div>
-
-          @if (gridControls.isToolbarVisible()) {
-            <app-list-toolbar
-              [searchText]="gridControls.searchText()"
-              [sortField]="gridControls.sortField()"
-              [sortDirection]="gridControls.sortDirection()"
-              [sortOptions]="gridSortOptions"
-              [resultCount]="gridControls.filtered().length"
-              (searchChange)="gridControls.setSearchText($event)"
-              (sortFieldChange)="gridControls.setSortField($event)"
-              (toggleDirection)="gridControls.toggleSortDirection()"
-              (dismiss)="gridControls.hideToolbar()"
-            />
-          }
+          <app-list-toolbar
+            [searchText]="gridControls.searchText()"
+            [sortField]="gridControls.sortField()"
+            [sortDirection]="gridControls.sortDirection()"
+            [sortOptions]="gridSortOptions"
+            [resultCount]="gridControls.filtered().length"
+            (searchChange)="gridControls.setSearchText($event)"
+            (sortFieldChange)="gridControls.setSortField($event)"
+            (toggleDirection)="gridControls.toggleSortDirection()"
+          />
 
           @if (loading()) {
             <div class="text-center py-20">
@@ -143,27 +131,16 @@
 
       <!-- ═══ ARTISTS MODE ═══ -->
       @if (libraryMode() === 'artists') {
-        <div class="flex items-center gap-3 mb-4">
-          <button (click)="artistControls.showToolbar()"
-            class="p-1 text-theme-muted hover:text-theme-secondary transition" title="Search">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-            </svg>
-          </button>
-        </div>
-        @if (artistControls.isToolbarVisible()) {
-          <app-list-toolbar
-            [searchText]="artistControls.searchText()"
-            [sortField]="artistControls.sortField()"
-            [sortDirection]="artistControls.sortDirection()"
-            [sortOptions]="artistSortOptions"
-            [resultCount]="artistControls.filtered().length"
-            (searchChange)="artistControls.setSearchText($event)"
-            (sortFieldChange)="artistControls.setSortField($event)"
-            (toggleDirection)="artistControls.toggleSortDirection()"
-            (dismiss)="artistControls.hideToolbar()"
-          />
-        }
+        <app-list-toolbar
+          [searchText]="artistControls.searchText()"
+          [sortField]="artistControls.sortField()"
+          [sortDirection]="artistControls.sortDirection()"
+          [sortOptions]="artistSortOptions"
+          [resultCount]="artistControls.filtered().length"
+          (searchChange)="artistControls.setSearchText($event)"
+          (sortFieldChange)="artistControls.setSortField($event)"
+          (toggleDirection)="artistControls.toggleSortDirection()"
+        />
 
         @if (loadingArtists()) {
           <div class="text-center py-20">

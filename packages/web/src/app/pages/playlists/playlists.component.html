@@ -88,7 +88,6 @@
           (searchChange)="detailControls.setSearchText($event)"
           (sortFieldChange)="detailControls.setSortField($event)"
           (toggleDirection)="detailControls.toggleSortDirection()"
-          (dismiss)="detailControls.hideToolbar()"
         />
 
         <div>
@@ -157,7 +156,6 @@
           (searchChange)="gridControls.setSearchText($event)"
           (sortFieldChange)="gridControls.setSortField($event)"
           (toggleDirection)="gridControls.toggleSortDirection()"
-          (dismiss)="gridControls.hideToolbar()"
         />
 
         @if (loading()) {
