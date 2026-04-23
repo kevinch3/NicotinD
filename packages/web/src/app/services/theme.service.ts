@@ -6,7 +6,8 @@ export type ThemeId =
   | 'warm-paper'
   | 'oled'
   | 'twilight'
-  | 'forest';
+  | 'forest'
+  | 'eink';
 
 export interface ThemePreset {
   id: ThemeId;
@@ -20,6 +21,7 @@ export const THEME_PRESETS: ThemePreset[] = [
   { id: 'oled',       name: 'OLED Black' },
   { id: 'twilight',   name: 'Twilight' },
   { id: 'forest',     name: 'Forest' },
+  { id: 'eink',       name: 'E-Ink' },
 ];
 
 const STORAGE_KEY = 'nicotind-theme';

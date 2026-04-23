@@ -112,6 +112,26 @@
     --theme-status-error-bg:      #450a0a;
     --theme-status-error-text:    #fca5a5;
   }
+
+  /* E-Ink: maximum contrast, larger base font, no transparency */
+  [data-theme="eink"] {
+    --theme-bg:           #ffffff;
+    --theme-surface:      #f5f5f5;
+    --theme-surface-2:    #e0e0e0;
+    --theme-hover:        #cccccc;
+    --theme-border:       #999999;
+    --theme-text-primary: #000000;
+    --theme-text-secondary: #222222;
+    --theme-text-muted:   #555555;
+    --theme-accent:       #000000;
+    --theme-status-progress-bg:   #d0e4ff;
+    --theme-status-progress-text: #00008b;
+    --theme-status-done-bg:       #d0ffd0;
+    --theme-status-done-text:     #005000;
+    --theme-status-error-bg:      #ffd0d0;
+    --theme-status-error-text:    #8b0000;
+    font-size: 1.125rem;
+  }
 }
 
 /* ─── Semantic utility classes ───────────────────────────────────────── */
