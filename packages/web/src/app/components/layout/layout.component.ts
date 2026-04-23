@@ -1,4 +1,4 @@
-import { Component, inject, signal, computed, effect } from '@angular/core';
+import { Component, inject, signal, computed, effect, OnInit, OnDestroy } from '@angular/core';
 import { RouterOutlet, RouterLink, RouterLinkActive, Router, NavigationEnd } from '@angular/router';
 import { filter } from 'rxjs';
 import { FormsModule } from '@angular/forms';
@@ -6,6 +6,7 @@ import { AuthService } from '../../services/auth.service';
 import { PlayerService } from '../../services/player.service';
 import { SearchService } from '../../services/search.service';
 import { SetupService } from '../../services/setup.service';
+import { TransferService } from '../../services/transfer.service';
 import { DownloadIndicatorComponent } from '../download-indicator/download-indicator.component';
 import { PlayerComponent } from '../player/player.component';
 import { NowPlayingComponent } from '../now-playing/now-playing.component';
@@ -31,12 +32,13 @@ const ONLINE_ONLY_ROUTES = new Set(['/', '/library', '/playlists']);
   templateUrl: './layout.component.html',
 })
 
-export class LayoutComponent {
+export class LayoutComponent implements OnInit, OnDestroy {
   readonly auth = inject(AuthService);
   readonly player = inject(PlayerService);
   readonly search = inject(SearchService);
   readonly setup = inject(SetupService);
   private router = inject(Router);
+  private transfers = inject(TransferService);
 
   readonly drawerOpen = signal(false);
   readonly navItems = computed<NavItem[]>(() =>
@@ -54,6 +56,14 @@ export class LayoutComponent {
     this.router.events
       .pipe(filter((e): e is NavigationEnd => e instanceof NavigationEnd))
       .subscribe(() => this.drawerOpen.set(false));
+  }
+
+  ngOnInit(): void {
+    this.transfers.startPolling();
+  }
+
+  ngOnDestroy(): void {
+    this.transfers.stopPolling();
   }
 
   submitSearch(event: Event): void {
