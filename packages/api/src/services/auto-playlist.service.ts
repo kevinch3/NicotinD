@@ -148,7 +148,7 @@ export class AutoPlaylistService {
 
     try {
       const results = await this.navidrome.search.search3(nameWithoutExt, {
-        songCount: 10,
+        songCount: 25,
         artistCount: 0,
         albumCount: 0,
       });

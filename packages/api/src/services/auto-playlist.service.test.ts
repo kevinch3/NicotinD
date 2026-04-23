@@ -205,7 +205,7 @@ describe('AutoPlaylistService.processBatch', () => {
     ]);
 
     // Only b.mp3 found — should still be added
-    expect(navidromeMock.playlists.update).toHaveBeenCalledWith(expect.any(String), {
+    expect(navidromeMock.playlists.update).toHaveBeenCalledWith('id-dir', {
       songIdsToAdd: ['s2'],
     });
   });
@@ -250,5 +250,22 @@ describe('AutoPlaylistService.processBatch', () => {
     expect(navidromeMock.playlists.update).toHaveBeenCalledWith('folder-id', {
       songIdsToAdd: ['s1', 's2'],
     });
+  });
+
+  it('polls getScanStatus until scanning is false', async () => {
+    navidromeMock.system.getScanStatus
+      .mockReturnValueOnce(Promise.resolve({ scanning: true, count: 5 }))
+      .mockReturnValueOnce(Promise.resolve({ scanning: false, count: 10 }));
+
+    navidromeMock.search.search3.mockReturnValue(
+      Promise.resolve({ song: [makeSong('s', 'dir/s.mp3')], artist: [], album: [] }),
+    );
+
+    // Use a positive timeout (2000ms) so the loop actually runs
+    const pollService = new AutoPlaylistService(navidromeMock, 2000);
+    await pollService.processBatch([{ username: 'u', directory: 'dir', filename: 's.mp3' }]);
+
+    expect(navidromeMock.system.getScanStatus).toHaveBeenCalledTimes(2);
+    expect(navidromeMock.playlists.create).toHaveBeenCalled();
   });
 });
