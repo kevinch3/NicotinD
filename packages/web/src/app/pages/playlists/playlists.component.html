@@ -3,7 +3,7 @@
     @if (selected()) {
       <div class="max-w-6xl mx-auto px-3 py-4 md:px-6 md:py-8">
         <button (click)="selected.set(null)"
-          class="text-sm text-zinc-500 hover:text-zinc-300 transition mb-6">
+          class="text-sm text-theme-muted hover:text-theme-primary transition mb-6">
           &larr; Back to playlists
         </button>
 
@@ -22,13 +22,13 @@
             <div class="flex items-center gap-2 flex-wrap">
               <h1 class="text-2xl font-bold text-theme-primary">{{ selected()!.name }}</h1>
               <button (click)="openRenameModal()"
-                class="p-1 text-zinc-500 hover:text-zinc-300 transition" title="Rename">
+                class="p-1 text-theme-muted hover:text-theme-primary transition" title="Rename">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
                 </svg>
               </button>
             </div>
-            <p class="text-zinc-400 mt-1">
+            <p class="text-theme-muted mt-1">
               {{ selected()!.entry?.length ?? selected()!.songCount }} tracks · {{ formatTotalDuration(selected()!.duration) }}
             </p>
             <div class="flex justify-center sm:justify-start gap-3 mt-4">
@@ -165,7 +165,7 @@
         }
 
         @if (!loading() && playlists().length === 0) {
-          <p class="text-center text-zinc-600 py-20">
+          <p class="text-center text-theme-muted py-20">
             No playlists yet. Download an album and one will be created automatically!
           </p>
         }
@@ -185,7 +185,7 @@
                 </div>
               }
               <p class="text-sm text-theme-primary truncate">{{ pl.name }}</p>
-              <p class="text-xs text-zinc-500 truncate">
+              <p class="text-xs text-theme-muted truncate">
                 {{ pl.songCount }} tracks · {{ timeAgo(pl.created) }}
               </p>
             </button>
