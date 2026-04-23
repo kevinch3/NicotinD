@@ -12,6 +12,7 @@ import { ListToolbarComponent } from '../../components/list-toolbar/list-toolbar
 import { ConfirmDialogComponent } from '../../components/confirm-dialog/confirm-dialog.component';
 import { PlaylistAutocompleteComponent } from '../../components/playlist-autocomplete/playlist-autocomplete.component';
 import { TrackAction } from '../../components/track-row/track-row.component';
+import { resolveArtistRoute } from '../../lib/route-utils';
 import { PreserveService } from '../../services/preserve.service';
 import type { SlskdUserTransferGroup } from '@nicotind/core';
 
@@ -558,7 +559,7 @@ export class DownloadsComponent implements OnInit, OnDestroy {
 
   navigateToArtist(song: Song): void {
     if (song.artistId) {
-      this.router.navigate(['/library/artists', song.artistId]);
+      this.router.navigate(resolveArtistRoute(song.artistId));
     } else {
       this.navigateAndSearch(song.artist);
     }

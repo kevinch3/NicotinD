@@ -20,11 +20,7 @@ import { CoverArtComponent } from '../cover-art/cover-art.component';
 import { DeviceSwitcherComponent } from '../device-switcher/device-switcher.component';
 import { PreserveService } from '../../services/preserve.service';
 import * as db from '../../lib/preserve-store';
-
-/** Returns the router commands to navigate to an artist page, or to /library as fallback. */
-export function resolveArtistRoute(artistId: string | undefined): string[] {
-  return artistId ? ['/library/artists', artistId] : ['/library'];
-}
+import { resolveArtistRoute } from '../../lib/route-utils';
 
 function formatTime(s: number): string {
   if (!Number.isFinite(s) || s < 0) return '0:00';

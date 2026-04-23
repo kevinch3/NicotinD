@@ -11,7 +11,7 @@ import { AuthService } from '../../services/auth.service';
 import { RemotePlaybackService } from '../../services/remote-playback.service';
 import { PlaybackWsService } from '../../services/playback-ws.service';
 import { DeviceSwitcherComponent } from '../device-switcher/device-switcher.component';
-import { resolveArtistRoute } from '../player/player.component';
+import { resolveArtistRoute } from '../../lib/route-utils';
 
 function formatTime(s: number): string {
   if (!Number.isFinite(s) || s < 0) return '0:00';

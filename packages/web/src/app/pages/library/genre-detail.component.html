@@ -1,0 +1,62 @@
+<div class="max-w-6xl mx-auto px-4 py-5 md:px-6 md:py-8">
+  <div class="flex items-center gap-3 mb-6">
+    <a routerLink="/library"
+       class="text-sm text-theme-muted hover:text-theme-secondary transition">
+      &larr; Back to library
+    </a>
+    <h2 class="text-lg font-semibold text-theme-primary">{{ genreSlug() }}</h2>
+    @if (genreSongs().length > 0) {
+      <button (click)="playGenre()"
+        class="ml-auto px-4 py-1.5 rounded-lg bg-theme-surface-2 text-theme-primary text-sm font-semibold hover:bg-theme-hover transition">
+        Play All
+      </button>
+    }
+  </div>
+  
+  @if (loadingGenreSongs()) {
+    <div class="text-center py-20">
+      <span class="inline-block w-5 h-5 border-2 border-theme border-t-zinc-300 rounded-full animate-spin"></span>
+    </div>
+  } @else {
+    @for (song of genreSongs(); track song.id) {
+      <app-track-row
+        [track]="toTrackFn(song)"
+        [subtitle]="song.artist + ' · ' + song.album"
+        [duration]="song.duration"
+        [actions]="genreTrackActions(song)"
+        (play)="player.play(toTrackFn(song))"
+      />
+    }
+    @if (genreSongs().length === 0) {
+      <div class="text-center py-20 text-theme-muted">
+        No songs found for this genre.
+      </div>
+    }
+  }
+
+  <!-- Confirm dialog -->
+  @if (showConfirm()) {
+    <app-confirm-dialog
+      [message]="confirmMessage()"
+      confirmLabel="Remove"
+      (confirm)="onConfirm()"
+      (cancel)="onCancelConfirm()"
+    />
+  }
+</div>
+
+<!-- Playlist picker overlay -->
+@if (playlistPickerSong()) {
+  <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+       (click)="playlistPickerSong.set(null)">
+    <div (click)="$event.stopPropagation()" class="bg-theme-surface rounded-xl shadow-xl p-4 w-80">
+      <p class="text-sm text-theme-secondary mb-3 truncate">
+        Add "{{ playlistPickerSong()!.title }}" to playlist
+      </p>
+      <app-playlist-autocomplete
+        (selected)="addSongToPlaylist($event)"
+        (create)="createLibraryPlaylistAndAdd($event)"
+      />
+    </div>
+  </div>
+}

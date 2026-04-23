@@ -142,7 +142,6 @@ export class SearchComponent implements OnInit, OnDestroy {
   readonly networkConnected = signal<boolean | null>(null);
   readonly searchError = signal<string | null>(null);
   readonly downloadError = signal<string | null>(null);
-  readonly openBrowserKey = signal<string | null>(null);
   readonly searchFocused = signal(false);
 
   readonly flatNetwork = computed(() => flattenAndFilter(this.search.network()));
@@ -256,7 +255,7 @@ export class SearchComponent implements OnInit, OnDestroy {
   }
 
   toggleBrowser(key: string): void {
-    this.openBrowserKey.update(k => k === key ? null : key);
+    this.search.openBrowserKey.update(k => k === key ? null : key);
   }
 
   // ─── Template helpers ───────────────────────────────────────────
@@ -344,7 +343,6 @@ export class SearchComponent implements OnInit, OnDestroy {
 
     this.loading.set(true);
     this.search.reset();
-    this.openBrowserKey.set(null);
     this.errors.set([]);
     this.searchError.set(null);
     this.downloadError.set(null);

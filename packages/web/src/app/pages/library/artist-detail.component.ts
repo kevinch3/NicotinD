@@ -5,6 +5,7 @@ import { ApiService, type Album } from '../../services/api.service';
 import { AuthService } from '../../services/auth.service';
 import { PlayerService } from '../../services/player.service';
 import { toTrack } from '../../lib/track-utils';
+import { resolveAlbumRoute } from '../../lib/route-utils';
 
 @Component({
   selector: 'app-artist-detail',
@@ -53,6 +54,6 @@ export class ArtistDetailComponent implements OnInit {
   }
 
   openAlbum(album: Album): void {
-    this.router.navigate(['/library'], { queryParams: { album: album.id } });
+    this.router.navigate(resolveAlbumRoute(album.id));
   }
 }

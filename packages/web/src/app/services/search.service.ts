@@ -49,6 +49,7 @@ export class SearchService {
   readonly canBrowse = signal(false);
   readonly autoSearch = signal(false);
   readonly history = signal(loadHistory());
+  readonly openBrowserKey = signal<string | null>(null);
 
   setQuery(query: string): void {
     this.query.set(query);
@@ -114,5 +115,6 @@ export class SearchService {
     this.networkState.set('idle');
     this.canBrowse.set(false);
     this.downloading.set(new Set());
+    this.openBrowserKey.set(null);
   }
 }

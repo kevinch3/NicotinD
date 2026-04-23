@@ -11,7 +11,7 @@ import { ListToolbarComponent } from '../../components/list-toolbar/list-toolbar
 import { TrackRowComponent, type TrackAction } from '../../components/track-row/track-row.component';
 import { ConfirmDialogComponent } from '../../components/confirm-dialog/confirm-dialog.component';
 import { toTrack } from '../../lib/track-utils';
-
+import { resolveAlbumRoute, resolveArtistRoute } from '../../lib/route-utils';
 // Deterministic gradient from playlist name
 const GRADIENTS = [
   'from-indigo-500 to-purple-600',
@@ -260,13 +260,13 @@ export class PlaylistsComponent implements OnInit {
     if (song.artistId) {
       actions.push({
         label: 'Go to artist',
-        action: () => this.router.navigate(['/library', 'artists', song.artistId]),
+        action: () => this.router.navigate(resolveArtistRoute(song.artistId)),
       });
     }
     if (song.albumId) {
       actions.push({
         label: 'Go to album',
-        action: () => this.router.navigate(['/library'], { queryParams: { album: song.albumId } }),
+        action: () => this.router.navigate(resolveAlbumRoute(song.albumId)),
       });
     }
     actions.push({
