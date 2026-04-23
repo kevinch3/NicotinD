@@ -22,14 +22,14 @@ const BASE_NAV: NavItem[] = [
   { to: '/library', label: 'Library' },
   { to: '/settings', label: 'Settings' },
 ];
+// Nav items that require the backend to be available
+const ONLINE_ONLY_ROUTES = new Set(['/', '/library', '/playlists']);
 
 @Component({
   selector: 'app-layout',
   imports: [RouterOutlet, RouterLink, RouterLinkActive, FormsModule, DownloadIndicatorComponent, PlayerComponent, NowPlayingComponent],
   templateUrl: './layout.component.html',
-  })
-// Nav items that require the backend to be available
-const ONLINE_ONLY_ROUTES = new Set(['/', '/library', '/playlists']);
+})
 
 export class LayoutComponent {
   readonly auth = inject(AuthService);
