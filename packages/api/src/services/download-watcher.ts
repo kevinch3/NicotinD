@@ -69,6 +69,10 @@ export class DownloadWatcher {
     if (this.scanDebounceTimer) {
       clearTimeout(this.scanDebounceTimer);
       this.scanDebounceTimer = null;
+      if (this.pendingPlaylistFiles.length > 0) {
+        const files = this.pendingPlaylistFiles.splice(0);
+        void this.autoPlaylist.processBatch(files).catch(() => {});
+      }
     }
     log.info('Download watcher stopped');
   }
