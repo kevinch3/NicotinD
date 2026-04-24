@@ -112,6 +112,9 @@ describe('AutoPlaylistService.processBatch', () => {
       search: {
         search3: mock(() => Promise.resolve({ song: [], artist: [], album: [] })),
       },
+      browsing: {
+        getAlbum: mock(() => Promise.resolve({ album: {} as any, songs: [] })),
+      },
     };
     // Pass scanTimeoutMs=0 so waitForScan returns immediately in tests
     service = new AutoPlaylistService(navidromeMock, 0);
@@ -196,18 +199,22 @@ describe('AutoPlaylistService.processBatch', () => {
     });
   });
 
-  it('prefers relative-path matches over basename collisions', async () => {
-    navidromeMock.search.search3.mockReturnValue(
+  it('prefers relative-path matches over basename collisions via path index', async () => {
+    // buildPathIndex: search3("Album") returns one album
+    navidromeMock.search.search3.mockReturnValueOnce(
+      Promise.resolve({ song: [], artist: [], album: [{ id: 'album-id', name: 'Album' }] }),
+    );
+    // buildPathIndex: getAlbum returns the target song at the correct path
+    navidromeMock.browsing.getAlbum.mockReturnValueOnce(
       Promise.resolve({
-        song: [
+        album: { id: 'album-id', name: 'Album' },
+        songs: [
           makeSong('wrong-id', 'Other Artist/Other Album/song.mp3'),
           makeSong('right-id', 'Artist/Album/song.mp3'),
         ],
-        artist: [],
-        album: [],
       }),
     );
-
+    // resolveSongId hits the index fast path — search3 should NOT be called again
     await service.processBatch([
       {
         username: 'u',
@@ -220,6 +227,51 @@ describe('AutoPlaylistService.processBatch', () => {
     expect(navidromeMock.playlists.update).toHaveBeenCalledWith(`id-${ALL_SINGLES}`, {
       songIdsToAdd: ['right-id'],
     });
+    // Verify fast path: only one search3 call (the album lookup), no per-song text search
+    expect(navidromeMock.search.search3).toHaveBeenCalledTimes(1);
+  });
+
+  it('buildPathIndex calls getAlbum once per unique album and resolves both songs', async () => {
+    // Two tracks from the same album — getAlbum should be called exactly once
+    navidromeMock.search.search3.mockReturnValueOnce(
+      Promise.resolve({ song: [], artist: [], album: [{ id: 'album-id', name: 'The Album' }] }),
+    );
+    navidromeMock.browsing.getAlbum.mockReturnValueOnce(
+      Promise.resolve({
+        album: { id: 'album-id', name: 'The Album' },
+        songs: [
+          makeSong('s1', 'Artist/The Album/track1.mp3'),
+          makeSong('s2', 'Artist/The Album/track2.mp3'),
+        ],
+      }),
+    );
+
+    await service.processBatch([
+      {
+        username: 'u',
+        directory: 'Artist\\The Album',
+        filename: 'track1.mp3',
+        relativePath: 'Artist/The Album/track1.mp3',
+        directoryFileCount: 2,
+      },
+      {
+        username: 'u',
+        directory: 'Artist\\The Album',
+        filename: 'track2.mp3',
+        relativePath: 'Artist/The Album/track2.mp3',
+        directoryFileCount: 2,
+      },
+    ]);
+
+    // getAlbum called once for the two files sharing the same album directory
+    expect(navidromeMock.browsing.getAlbum).toHaveBeenCalledTimes(1);
+    // Both songs should be added to the folder playlist
+    expect(navidromeMock.playlists.create).toHaveBeenCalledWith('The Album');
+    expect(navidromeMock.playlists.update).toHaveBeenCalledWith('id-The Album', {
+      songIdsToAdd: ['s1', 's2'],
+    });
+    // No per-song text search needed — index covered everything
+    expect(navidromeMock.search.search3).toHaveBeenCalledTimes(1);
   });
 
   it('does not call update when resolved song is already in the playlist', async () => {

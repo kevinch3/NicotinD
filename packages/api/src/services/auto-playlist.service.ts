@@ -75,12 +75,14 @@ export class AutoPlaylistService {
       return;
     }
 
+    const pathIndex = await this.buildPathIndex(files);
+
     const groups = groupByDirectory(files);
     for (const [directory, groupFiles] of groups) {
       const isFolderDownload = groupFiles.length > 1 ||
         groupFiles.some((file) => (file.directoryFileCount ?? 1) > 1);
       const name = isFolderDownload ? cleanFolderName(directory) : ALL_SINGLES;
-      await this.processGroup(name, groupFiles, allPlaylists);
+      await this.processGroup(name, groupFiles, allPlaylists, pathIndex);
     }
   }
 
@@ -98,7 +100,7 @@ export class AutoPlaylistService {
         } else {
           idlePolls += 1;
           // Require two idle polls unless we've already observed an active scan.
-          if (sawScanning || idlePolls >= 2) return;
+          if (sawScanning || idlePolls >= 3) return;
         }
       } catch {
         return; // If we can't query status, proceed anyway
@@ -113,11 +115,12 @@ export class AutoPlaylistService {
     name: string,
     files: CompletedDownloadFile[],
     allPlaylists: Playlist[],
+    pathIndex: Map<string, string>,
   ): Promise<void> {
     const resolvedSongIds: string[] = [];
     const seenResolved = new Set<string>();
     for (const file of files) {
-      const id = await this.resolveSongId(file);
+      const id = await this.resolveSongId(file, pathIndex);
       if (!id) {
         log.warn({ filename: file.filename }, 'Could not resolve Navidrome song ID, skipping');
         continue;
@@ -166,11 +169,22 @@ export class AutoPlaylistService {
 
   /**
    * Searches Navidrome for a song matching a completed download.
-   * Prefers relative-path matches, then falls back to basename.
+   * Fast path: exact path lookup in the pre-built album index.
+   * Fallback: text search by filename + path/basename comparison (for files
+   * without a known relative path or not found in the index).
    * Returns the song ID or null if not found.
    */
-  private async resolveSongId(file: CompletedDownloadFile): Promise<string | null> {
+  private async resolveSongId(
+    file: CompletedDownloadFile,
+    pathIndex: Map<string, string>,
+  ): Promise<string | null> {
     const relativePath = this.resolveRelativePathHint(file);
+
+    if (relativePath) {
+      const indexedId = pathIndex.get(relativePath);
+      if (indexedId) return indexedId;
+    }
+
     const fileBasename = basename(file.filename.replace(/\\/g, '/')).toLowerCase();
     const nameWithoutExt = fileBasename.replace(/\.[^.]+$/, '');
     const maxAttempts = this.scanTimeoutMs === 0 ? 1 : 5;
@@ -204,6 +218,51 @@ export class AutoPlaylistService {
     }
 
     return null;
+  }
+
+  /**
+   * Pre-builds a path→songId index by browsing Navidrome albums that match
+   * the download directories. This is more reliable than text-searching by
+   * filename because Navidrome's search3 queries song titles, not filenames.
+   * Returns an empty map when no relative paths are available (graceful degradation).
+   */
+  private async buildPathIndex(files: CompletedDownloadFile[]): Promise<Map<string, string>> {
+    const pathIndex = new Map<string, string>();
+
+    const albumNames = new Set<string>();
+    for (const file of files) {
+      const rp = this.resolveRelativePathHint(file);
+      if (!rp) continue;
+      const parts = rp.split('/').filter(Boolean);
+      if (parts.length < 2) continue;
+      const albumDir = parts[parts.length - 2];
+      const cleaned = cleanFolderName(albumDir);
+      if (cleaned) albumNames.add(cleaned);
+    }
+
+    for (const albumName of albumNames) {
+      try {
+        const results = await this.navidrome.search.search3(albumName, {
+          albumCount: 5,
+          songCount: 0,
+          artistCount: 0,
+        });
+        for (const album of results.album) {
+          try {
+            const { songs } = await this.navidrome.browsing.getAlbum(album.id);
+            for (const song of songs) {
+              pathIndex.set(normalizePath(song.path), song.id);
+            }
+          } catch {
+            // continue with next album
+          }
+        }
+      } catch {
+        // continue with next album name
+      }
+    }
+
+    return pathIndex;
   }
 
   private resolveRelativePathHint(file: CompletedDownloadFile): string | null {
