@@ -2,12 +2,10 @@ import { TestBed } from '@angular/core/testing';
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { provideRouter, ActivatedRoute } from '@angular/router';
 import { of } from 'rxjs';
-import { LibraryComponent } from './library.component';
+import { GenreDetailComponent } from './genre-detail.component';
 import { ApiService, type Song } from '../../services/api.service';
 import { AuthService } from '../../services/auth.service';
 import { PlayerService } from '../../services/player.service';
-import { TransferService } from '../../services/transfer.service';
-import { ListControlsService } from '../../services/list-controls.service';
 
 const MOCK_SONGS: Song[] = [
   { id: 's1', title: 'Natiruts Reggae Power', artist: 'Natiruts', album: 'Natiruts', albumId: 'a1', path: '', bitRate: 320, size: 1000, created: '2024-01-01' },
@@ -23,37 +21,32 @@ function setup() {
   };
 
   TestBed.configureTestingModule({
-    imports: [LibraryComponent],
+    imports: [GenreDetailComponent],
     providers: [
       provideRouter([]),
-      { provide: ActivatedRoute, useValue: { snapshot: { queryParamMap: { get: () => null } } } },
+      { provide: ActivatedRoute, useValue: { snapshot: { paramMap: { get: () => 'Reggae' } } } },
       {
         provide: ApiService,
         useValue: {
-          getAlbums: () => of([]),
-          getArtists: () => of([]),
-          getGenres: () => of([]),
           getSongsByGenre: () => of(MOCK_SONGS),
         },
       },
       { provide: AuthService, useValue: { token: signal('tok') } },
       { provide: PlayerService, useValue: playerStub },
-      { provide: TransferService, useValue: { libraryDirty: signal(false), clearLibraryDirty: () => {} } },
-      ListControlsService,
     ],
     schemas: [NO_ERRORS_SCHEMA],
   });
 
-  const fixture = TestBed.createComponent(LibraryComponent);
+  const fixture = TestBed.createComponent(GenreDetailComponent);
   fixture.detectChanges();
   return { component: fixture.componentInstance, playWithContextCalls };
 }
 
-describe('LibraryComponent — Genre Play All', () => {
+describe('GenreDetailComponent — Play All', () => {
   it('calls playWithContext with all genre songs mapped to tracks', async () => {
     const { component, playWithContextCalls } = setup();
 
-    component.selectedGenre.set('Reggae');
+    component.genreSlug.set('Reggae');
     component.genreSongs.set(MOCK_SONGS);
 
     component.playGenre();
@@ -71,7 +64,7 @@ describe('LibraryComponent — Genre Play All', () => {
   it('does nothing when no genre is selected', () => {
     const { component, playWithContextCalls } = setup();
 
-    component.selectedGenre.set(null);
+    component.genreSlug.set(null);
     component.genreSongs.set(MOCK_SONGS);
 
     component.playGenre();
@@ -82,7 +75,7 @@ describe('LibraryComponent — Genre Play All', () => {
   it('does nothing when genre songs list is empty', () => {
     const { component, playWithContextCalls } = setup();
 
-    component.selectedGenre.set('Reggae');
+    component.genreSlug.set('Reggae');
     component.genreSongs.set([]);
 
     component.playGenre();
@@ -93,7 +86,7 @@ describe('LibraryComponent — Genre Play All', () => {
   it('preserves artist metadata in mapped tracks', () => {
     const { component, playWithContextCalls } = setup();
 
-    component.selectedGenre.set('Reggae');
+    component.genreSlug.set('Reggae');
     component.genreSongs.set(MOCK_SONGS);
 
     component.playGenre();

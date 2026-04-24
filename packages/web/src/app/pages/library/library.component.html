@@ -79,7 +79,7 @@
     } @else {
       <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
         @for (artist of artistControls.filtered(); track artist.id) {
-          <a [routerLink]="['/library', 'artists', artist.id]"
+          <a [routerLink]="getArtistLink(artist.id)"
             class="flex flex-col items-center gap-2 p-3 rounded-xl hover:bg-theme-hover transition-colors text-center cursor-pointer">
             <div class="w-20 h-20 rounded-full bg-theme-surface-2 flex items-center justify-center">
               <span class="text-2xl text-theme-muted font-medium">{{ artist.name.charAt(0).toUpperCase() }}</span>

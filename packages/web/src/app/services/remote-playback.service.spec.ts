@@ -36,6 +36,7 @@ describe('RemotePlaybackService', () => {
     sendCommand: ReturnType<typeof vi.fn>;
     messages: ReturnType<typeof vi.fn>;
     sendStateUpdate: ReturnType<typeof vi.fn>;
+    clearPersistentFailure: ReturnType<typeof vi.fn>;
   };
 
   beforeEach(() => {
@@ -50,6 +51,7 @@ describe('RemotePlaybackService', () => {
       sendCommand: vi.fn(),
       messages: vi.fn(() => EMPTY),
       sendStateUpdate: vi.fn(),
+      clearPersistentFailure: vi.fn(),
     };
 
     TestBed.configureTestingModule({

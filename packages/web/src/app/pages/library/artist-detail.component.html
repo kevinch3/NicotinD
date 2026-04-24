@@ -32,7 +32,7 @@
         <!-- Albums grid -->
         <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
           @for (album of albums(); track album.id) {
-            <a [routerLink]="['/library', 'albums', album.id]"
+            <a [routerLink]="getAlbumLink(album.id)"
               class="p-3 rounded-lg bg-theme-surface/30 hover:bg-theme-surface-2/50 transition text-left cursor-pointer block">
               @if (album.coverArt) {
                 <img [src]="'/api/cover/' + album.coverArt + '?size=300&token=' + auth.token()"

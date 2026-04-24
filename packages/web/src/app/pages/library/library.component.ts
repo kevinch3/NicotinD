@@ -6,7 +6,7 @@ import { AuthService } from '../../services/auth.service';
 import { TransferService } from '../../services/transfer.service';
 import { ListControlsService, type SortOption } from '../../services/list-controls.service';
 import { ListToolbarComponent } from '../../components/list-toolbar/list-toolbar.component';
-import { resolveAlbumRoute, resolveGenreRoute } from '../../lib/route-utils';
+import { resolveAlbumRoute, resolveGenreRoute, resolveArtistRoute } from '../../lib/route-utils';
 
 type LibraryMode = 'albums' | 'artists' | 'genre';
 
@@ -128,5 +128,9 @@ export class LibraryComponent implements OnInit {
 
   getGenreLink(slug: string) {
     return resolveGenreRoute(slug);
+  }
+
+  getArtistLink(id: string) {
+    return resolveArtistRoute(id);
   }
 }
