@@ -4,6 +4,7 @@ import { authGuard, adminGuard } from './guards/auth.guard';
 export const routes: Routes = [
   { path: 'login', loadComponent: () => import('./pages/login/login.component').then(m => m.LoginComponent) },
   { path: 'setup', loadComponent: () => import('./pages/setup/setup.component').then(m => m.SetupComponent) },
+  { path: 'share/:token', loadComponent: () => import('./pages/share/share-view.component').then(m => m.ShareViewComponent) },
   {
     path: '',
     loadComponent: () => import('./components/layout/layout.component').then(m => m.LayoutComponent),
