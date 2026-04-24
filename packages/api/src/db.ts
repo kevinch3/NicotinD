@@ -77,7 +77,7 @@ export function initDatabase(dataDir: string): Database {
       token             TEXT    PRIMARY KEY,
       resource_type     TEXT    NOT NULL CHECK (resource_type IN ('playlist', 'album')),
       resource_id       TEXT    NOT NULL,
-      created_by        TEXT    NOT NULL REFERENCES users(id),
+      created_by        TEXT    NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       created_at        INTEGER NOT NULL,
       first_accessed_at INTEGER,
       expires_at        INTEGER
