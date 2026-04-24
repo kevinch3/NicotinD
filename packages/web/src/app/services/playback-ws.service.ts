@@ -207,6 +207,9 @@ export class PlaybackWsService {
     }
     this.ws?.close();
     this.ws = null;
+    this.didOpenSuccessfully = false;
+    this.consecutiveFailures = 0;
+    this.persistentFailure.set(null);
   }
 
   // ---------------------------------------------------------------------------
@@ -242,5 +245,6 @@ export class PlaybackWsService {
   clearPersistentFailure(): void {
     this.persistentFailure.set(null);
     this.consecutiveFailures = 0;
+    this.didOpenSuccessfully = false;
   }
 }
