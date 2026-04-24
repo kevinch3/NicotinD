@@ -7,7 +7,7 @@
  *
  * Call `initialize()` once at app bootstrap (e.g. in AppComponent constructor).
  */
-import { Injectable, inject, signal, computed, effect } from '@angular/core';
+import { Injectable, inject, signal, computed, effect, untracked } from '@angular/core';
 import { Subscription } from 'rxjs';
 import { PlaybackWsService } from './playback-ws.service';
 import { PlayerService, Track } from './player.service';
@@ -34,6 +34,8 @@ export class RemotePlaybackService {
   readonly remoteEnabled = signal(
     localStorage.getItem('nicotind_remote_enabled') === 'true',
   );
+  /** Set when remote playback was automatically disabled due to connection failure */
+  readonly disabledReason = signal<string | null>(null);
   /** The device that is currently the active audio output */
   readonly activeDeviceId = signal<string | null>(null);
   /** All known connected devices */
@@ -70,6 +72,10 @@ export class RemotePlaybackService {
   // ---------------------------------------------------------------------------
 
   setRemoteEnabled(enabled: boolean): void {
+    if (enabled) {
+      this.disabledReason.set(null);
+      this.ws.clearPersistentFailure();
+    }
     localStorage.setItem('nicotind_remote_enabled', String(enabled));
     this.ws.updateDevice({ remoteEnabled: enabled });
     this.remoteEnabled.set(enabled);
@@ -120,10 +126,23 @@ export class RemotePlaybackService {
     // --- Auth token effect: connect WS when token exists, disconnect when null ---
     effect(() => {
       const token = this.auth.token();
-      if (token) {
+      const enabled = this.remoteEnabled();
+      if (token && enabled) {
         this.ws.connect();
       } else {
         this.ws.disconnect();
+      }
+    });
+
+    // --- Auto-disable when WS fails persistently ---
+    effect(() => {
+      const reason = this.ws.persistentFailure();
+      const enabled = this.remoteEnabled();
+      if (reason && enabled) {
+        untracked(() => {
+          this.setRemoteEnabled(false);
+          this.disabledReason.set(reason);
+        });
       }
     });
 
