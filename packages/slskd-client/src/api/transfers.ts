@@ -26,6 +26,17 @@ export class TransfersApi {
   }
 
   async cancelAll(): Promise<void> {
-    await this.client.request('/transfers/downloads', { method: 'DELETE' });
+    const downloads = await this.getDownloads();
+
+    const cancels: Promise<void>[] = [];
+    for (const group of downloads) {
+      for (const dir of group.directories) {
+        for (const file of dir.files) {
+          cancels.push(this.cancel(group.username, file.id).catch(() => {}));
+        }
+      }
+    }
+
+    await Promise.all(cancels);
   }
 }
