@@ -6,7 +6,8 @@
     "ng": "ng",
     "dev": "ng serve --proxy-config proxy.conf.json",
     "build": "ng build",
-    "test": "vitest run"
+    "test": "vitest run",
+    "generate-icons": "bun run scripts/generate-icons.ts"
   },
   "private": true,
   "dependencies": {
@@ -16,11 +17,13 @@
     "@angular/forms": "^22.0.0-next.0",
     "@angular/platform-browser": "^22.0.0-next.0",
     "@angular/router": "^22.0.0-next.0",
+    "@angular/service-worker": "^22.0.0-next.0",
     "rxjs": "~7.8.0",
     "tslib": "^2.3.0"
   },
   "devDependencies": {
     "@angular/build": "^22.0.0-next.4",
+    "sharp": "^0.33.0",
     "@angular/cli": "^22.0.0-next.4",
     "@angular/compiler-cli": "^22.0.0-next.0",
     "jsdom": "^28.0.0",

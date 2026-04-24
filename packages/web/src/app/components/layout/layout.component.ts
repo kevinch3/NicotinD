@@ -9,6 +9,7 @@ import { TransferService } from '../../services/transfer.service';
 import { DownloadIndicatorComponent } from '../download-indicator/download-indicator.component';
 import { PlayerComponent } from '../player/player.component';
 import { NowPlayingComponent } from '../now-playing/now-playing.component';
+import { UpdateBannerComponent } from '../update-banner/update-banner.component';
 
 interface NavItem {
   to: string;
@@ -27,7 +28,7 @@ const ONLINE_ONLY_ROUTES = new Set(['/', '/library', '/playlists']);
 
 @Component({
   selector: 'app-layout',
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, DownloadIndicatorComponent, PlayerComponent, NowPlayingComponent],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, DownloadIndicatorComponent, PlayerComponent, NowPlayingComponent, UpdateBannerComponent],
   templateUrl: './layout.component.html',
 })
 

@@ -48,6 +48,8 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
   private pausingByStore = false;
   private progressReportInterval: ReturnType<typeof setInterval> | null = null;
   private rafId: number | null = null;
+  private wakeLock: WakeLockSentinel | null = null;
+  private visibilityChangeHandler: (() => void) | null = null;
 
   // Playback progress interpolation
   private interpolatedTime = signal(0);
@@ -229,16 +231,19 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
         this.pausingByStore = true;
         audio.pause();
         this.pausingByStore = false;
+        this.releaseWakeLock();
         return;
       }
       if (playing) {
         audio.play().catch((err) => {
           if (err.name === 'NotAllowedError') this.player.setAutoplayBlocked(true);
         });
+        void this.acquireWakeLock();
       } else {
         this.pausingByStore = true;
         audio.pause();
         this.pausingByStore = false;
+        this.releaseWakeLock();
       }
     });
 
@@ -302,6 +307,22 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
     });
   }
 
+  private async acquireWakeLock(): Promise<void> {
+    if (!('wakeLock' in navigator)) return;
+    if (this.wakeLock && !this.wakeLock.released) return;
+    try {
+      this.wakeLock = await navigator.wakeLock.request('screen');
+    } catch (err) {
+      if (err instanceof DOMException && (err.name === 'NotSupportedError' || err.name === 'NotAllowedError')) return;
+      throw err;
+    }
+  }
+
+  private releaseWakeLock(): void {
+    this.wakeLock?.release();
+    this.wakeLock = null;
+  }
+
   ngAfterViewInit(): void {
     const audio = this.audioEl()?.nativeElement;
     if (!audio) return;
@@ -356,12 +377,23 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
       () => audio.removeEventListener('play', onPlay),
       () => audio.removeEventListener('pause', onPause),
     ];
+
+    this.visibilityChangeHandler = () => {
+      if (document.visibilityState === 'visible' && this.player.isPlaying() && this.isActiveDevice()) {
+        void this.acquireWakeLock();
+      }
+    };
+    document.addEventListener('visibilitychange', this.visibilityChangeHandler);
   }
 
   ngOnDestroy(): void {
     this.audioListenerCleanups.forEach((fn) => fn());
     if (this.progressReportInterval) clearInterval(this.progressReportInterval);
     if (this.rafId) cancelAnimationFrame(this.rafId);
+    this.releaseWakeLock();
+    if (this.visibilityChangeHandler) {
+      document.removeEventListener('visibilitychange', this.visibilityChangeHandler);
+    }
   }
 
   handlePlayPause(): void {

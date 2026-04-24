@@ -26,6 +26,16 @@ export const THEME_PRESETS: ThemePreset[] = [
 
 const STORAGE_KEY = 'nicotind-theme';
 
+const ACCENT_COLORS: Record<ThemeId, string> = {
+  midnight:    '#6366f1',
+  daylight:    '#6366f1',
+  'warm-paper':'#d97706',
+  oled:        '#818cf8',
+  twilight:    '#a78bfa',
+  forest:      '#2dd4bf',
+  eink:        '#000000',
+};
+
 export function resolveTheme(
   theme: ThemeId,
   systemTheme: boolean,
@@ -73,10 +83,10 @@ export class ThemeService {
   }
 
   private applyToDOM(): void {
-    document.documentElement.setAttribute(
-      'data-theme',
-      resolveTheme(this.theme(), this.systemTheme()),
-    );
+    const resolved = resolveTheme(this.theme(), this.systemTheme());
+    document.documentElement.setAttribute('data-theme', resolved);
+    const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+    if (meta) meta.content = ACCENT_COLORS[resolved];
   }
 
   private persist(): void {
