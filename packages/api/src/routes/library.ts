@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { basename, dirname, extname, join, normalize, relative } from 'node:path';
-import { unlinkSync, existsSync, readdirSync } from 'node:fs';
+import { unlinkSync, rmdirSync, existsSync, readdirSync } from 'node:fs';
 import { createLogger } from '@nicotind/core';
 import type { Song } from '@nicotind/core';
 import type { Navidrome } from '@nicotind/navidrome-client';
@@ -225,6 +225,7 @@ export function libraryRoutes(navidrome: Navidrome, musicDir?: string, metadataF
     }
 
     if (deletedPath) {
+      cleanupEmptyDirs(deletedPath, expandedMusicDir);
       const relPath = relative(expandedMusicDir, deletedPath).replace(/\\/g, '/');
       const fileBase = basename(deletedPath).toLowerCase();
 
@@ -596,6 +597,26 @@ function isUnderMusicDir(musicDir: string, candidatePath: string): boolean {
 
 function isAbsolutePath(path: string): boolean {
   return path.startsWith('/') || /^[a-zA-Z]:\//.test(path);
+}
+
+function cleanupEmptyDirs(filePath: string, musicDir: string): void {
+  const normalizedMusicDir = normalize(musicDir);
+  let dir = dirname(filePath);
+  while (true) {
+    const normalizedDir = normalize(dir);
+    if (normalizedDir === normalizedMusicDir || !normalizedDir.startsWith(normalizedMusicDir)) break;
+    try {
+      if (readdirSync(normalizedDir).length === 0) {
+        rmdirSync(normalizedDir);
+        log.info({ dir: normalizedDir }, 'Removed empty directory after song deletion');
+        dir = dirname(normalizedDir);
+      } else {
+        break;
+      }
+    } catch {
+      break;
+    }
+  }
 }
 
 function allTokens(input?: string): string[] {
