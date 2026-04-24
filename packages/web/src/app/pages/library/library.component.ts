@@ -1,5 +1,5 @@
 import { Component, inject, signal, effect, OnInit } from '@angular/core';
-import { Router, RouterLink } from '@angular/router';
+import { RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { ApiService, type Album } from '../../services/api.service';
 import { AuthService } from '../../services/auth.service';
