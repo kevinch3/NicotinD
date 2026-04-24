@@ -37,10 +37,9 @@
                 Play All
               </button>
               <button (click)="sharePlaylist()"
-                class="px-4 py-2 rounded-lg text-sm transition"
-                [class]="shareCopied()
+                [class]="'px-4 py-2 rounded-lg text-sm transition ' + (shareCopied()
                   ? 'bg-emerald-500/20 text-emerald-400'
-                  : 'bg-theme-surface-2 text-theme-muted hover:bg-theme-hover'">
+                  : 'bg-theme-surface-2 text-theme-muted hover:bg-theme-hover')">
                 @if (shareCopied()) { Link copied! } @else { Share }
               </button>
               <!-- Offline download toggle -->
