@@ -20,6 +20,7 @@ import { settingsRoutes } from './routes/settings.js';
 import { playlistRoutes } from './routes/playlists.js';
 import { adminRoutes } from './routes/admin.js';
 import { usersRoutes } from './routes/users.js';
+import { shareRoutes } from './routes/share.js';
 import { subsonicProxy } from './routes/subsonic.js';
 import { DownloadWatcher } from './services/download-watcher.js';
 import { MetadataFixer } from './services/metadata-fixer.js';
@@ -154,6 +155,7 @@ export function createApp({
     settingsRoutes(config, slskdRef, navidrome, serviceManager, watcherRef),
   );
   app.route('/api/playlists', playlistRoutes(navidrome));
+  app.route('/api/share', shareRoutes(config.jwt.secret, auth));
   app.route('/api/tailscale', tailscaleRoutes(tailscale));
   app.route('/api/users', usersRoutes(registry));
 
