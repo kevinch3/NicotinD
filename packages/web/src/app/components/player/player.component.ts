@@ -50,6 +50,8 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
   private rafId: number | null = null;
   private wakeLock: WakeLockSentinel | null = null;
   private visibilityChangeHandler: (() => void) | null = null;
+  private wasPlayingBeforeHidden = false;
+  private resumePendingAfterVisible = false;
 
   // Playback progress interpolation
   private interpolatedTime = signal(0);
@@ -128,13 +130,13 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
               audio.src = `/api/stream/${track.id}?token=${token}`;
             }
             audio.play().catch((err) => {
-              if (err.name === 'NotAllowedError') this.player.setAutoplayBlocked(true);
+              if (err.name === 'NotAllowedError') this.handlePlayRejection();
             });
           })();
         } else {
           audio.src = `/api/stream/${track.id}?token=${token}`;
           audio.play().catch((err) => {
-            if (err.name === 'NotAllowedError') this.player.setAutoplayBlocked(true);
+            if (err.name === 'NotAllowedError') this.handlePlayRejection();
           });
         }
       } else {
@@ -236,7 +238,7 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
       }
       if (playing) {
         audio.play().catch((err) => {
-          if (err.name === 'NotAllowedError') this.player.setAutoplayBlocked(true);
+          if (err.name === 'NotAllowedError') this.handlePlayRejection();
         });
         void this.acquireWakeLock();
       } else {
@@ -307,6 +309,15 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
     });
   }
 
+  private handlePlayRejection(): void {
+    if (document.visibilityState === 'hidden') {
+      // Browser revoked autoplay while screen is locked — resume when app returns.
+      this.resumePendingAfterVisible = true;
+    } else {
+      this.player.setAutoplayBlocked(true);
+    }
+  }
+
   private async acquireWakeLock(): Promise<void> {
     if (!('wakeLock' in navigator)) return;
     if (this.wakeLock && !this.wakeLock.released) return;
@@ -357,6 +368,12 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
     };
     const onPause = () => {
       if (this.pausingByStore) return;
+      // Screen locked → OS suspends audio. Don't treat this as a user pause;
+      // instead queue a resume for when the app comes back to the foreground.
+      if (document.visibilityState === 'hidden') {
+        this.resumePendingAfterVisible = this.player.isPlaying();
+        return;
+      }
       if (this.player.isPlaying()) {
         this.player.pause();
       }
@@ -379,8 +396,21 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
     ];
 
     this.visibilityChangeHandler = () => {
-      if (document.visibilityState === 'visible' && this.player.isPlaying() && this.isActiveDevice()) {
+      if (document.visibilityState === 'hidden') {
+        this.wasPlayingBeforeHidden = this.player.isPlaying() && this.isActiveDevice();
+      } else if (document.visibilityState === 'visible') {
         void this.acquireWakeLock();
+        if ((this.wasPlayingBeforeHidden || this.resumePendingAfterVisible) && this.isActiveDevice()) {
+          this.wasPlayingBeforeHidden = false;
+          this.resumePendingAfterVisible = false;
+          const audioEl = this.audioEl()?.nativeElement;
+          if (audioEl) {
+            if (!this.player.isPlaying()) this.player.resume();
+            if (audioEl.paused) {
+              audioEl.play().catch(() => this.player.setAutoplayBlocked(true));
+            }
+          }
+        }
       }
     };
     document.addEventListener('visibilitychange', this.visibilityChangeHandler);
