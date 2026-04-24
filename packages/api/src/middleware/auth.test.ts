@@ -96,3 +96,37 @@ describe('authMiddleware', () => {
     expect(await res.json()).toEqual({ error: 'Account disabled' });
   });
 });
+
+describe('authMiddleware — share JWT read-only guard', () => {
+  it('allows GET requests with share JWTs', async () => {
+    const app = new Hono<any>();
+    app.use('/protected', authMiddleware('test-secret'));
+    app.get('/protected', (c) => c.json({ ok: true }));
+
+    const shareToken = await signJwt(
+      { sub: 'user-123', username: 'testuser', role: 'user', share: true, scope: 'read' } as any,
+      'test-secret',
+    );
+    const res = await app.request('/protected', {
+      headers: { Authorization: `Bearer ${shareToken}` },
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it('blocks non-GET requests with share JWTs', async () => {
+    const app = new Hono<any>();
+    app.use('/protected', authMiddleware('test-secret'));
+    app.post('/protected', (c) => c.json({ ok: true }));
+
+    const shareToken = await signJwt(
+      { sub: 'user-123', username: 'testuser', role: 'user', share: true, scope: 'read' } as any,
+      'test-secret',
+    );
+    const res = await app.request('/protected', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${shareToken}` },
+    });
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: 'Share sessions are read-only' });
+  });
+});

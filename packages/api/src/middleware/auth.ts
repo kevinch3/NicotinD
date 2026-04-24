@@ -39,6 +39,9 @@ export function authMiddleware(jwtSecret: string) {
       }
 
       c.set('user', jwtPayload);
+      if (jwtPayload.share === true && c.req.method !== 'GET') {
+        return c.json({ error: 'Share sessions are read-only' }, 403);
+      }
       await next();
     } catch {
       return c.json({ error: 'Invalid or expired token' }, 401);
