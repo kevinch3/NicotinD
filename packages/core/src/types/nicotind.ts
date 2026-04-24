@@ -63,8 +63,10 @@ export interface SystemStatus {
 
 export interface JwtPayload {
   sub: string;
-  username: string;
-  role: 'admin' | 'user';
+  username?: string;
+  role?: 'admin' | 'user';
+  share?: boolean;
+  scope?: string;
   iat: number;
   exp: number;
 }

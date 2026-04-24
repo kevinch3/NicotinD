@@ -72,6 +72,18 @@ export function initDatabase(dataDir: string): Database {
     ON completed_downloads (basename, completed_at DESC)
   `);
 
+  db.run(`
+    CREATE TABLE IF NOT EXISTS share_tokens (
+      token             TEXT    PRIMARY KEY,
+      resource_type     TEXT    NOT NULL CHECK (resource_type IN ('playlist', 'album')),
+      resource_id       TEXT    NOT NULL,
+      created_by        TEXT    NOT NULL REFERENCES users(id),
+      created_at        INTEGER NOT NULL,
+      first_accessed_at INTEGER,
+      expires_at        INTEGER
+    )
+  `);
+
   return db;
 }
 
