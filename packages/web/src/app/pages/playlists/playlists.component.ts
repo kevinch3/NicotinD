@@ -1,5 +1,6 @@
 import { Component, inject, signal, computed, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { Router } from '@angular/router';
 import { ApiService, type Playlist, type PlaylistDetail } from '../../services/api.service';
@@ -70,6 +71,8 @@ export class PlaylistsComponent implements OnInit {
   private player = inject(PlayerService);
   private listControls = inject(ListControlsService);
   private router = inject(Router);
+  private http = inject(HttpClient);
+  readonly shareCopied = signal(false);
 
   readonly gradientFor = gradientFor;
   readonly formatTotalDuration = formatTotalDuration;
@@ -303,5 +306,17 @@ export class PlaylistsComponent implements OnInit {
       this.playlists.set(data);
     } catch { /* ignore */ }
     finally { this.loading.set(false); }
+  }
+
+  sharePlaylist(): void {
+    const pl = this.selected();
+    if (!pl) return;
+    this.http.post<{ url: string }>('/api/share', { resourceType: 'playlist', resourceId: pl.id }).subscribe({
+      next: ({ url }) => {
+        navigator.clipboard.writeText(url).catch(() => {});
+        this.shareCopied.set(true);
+        setTimeout(() => this.shareCopied.set(false), 3000);
+      },
+    });
   }
 }

@@ -1,5 +1,6 @@
 import { Component, inject, signal, computed, OnInit } from '@angular/core';
 import { Router, ActivatedRoute, RouterLink } from '@angular/router';
+import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { ApiService, type AlbumDetail, type Song } from '../../services/api.service';
 import { AuthService } from '../../services/auth.service';
@@ -24,6 +25,8 @@ export class AlbumDetailComponent implements OnInit {
   private listControls = inject(ListControlsService);
   private router = inject(Router);
   private route = inject(ActivatedRoute);
+  private http = inject(HttpClient);
+  readonly shareCopied = signal(false);
 
   readonly loadingAlbum = signal(true);
   readonly selectedAlbum = signal<AlbumDetail | null>(null);
@@ -160,5 +163,17 @@ export class AlbumDetailComponent implements OnInit {
         }),
       }] : []),
     ];
+  }
+
+  shareAlbum(): void {
+    const album = this.selectedAlbum();
+    if (!album) return;
+    this.http.post<{ url: string }>('/api/share', { resourceType: 'album', resourceId: album.id }).subscribe({
+      next: ({ url }) => {
+        navigator.clipboard.writeText(url).catch(() => {});
+        this.shareCopied.set(true);
+        setTimeout(() => this.shareCopied.set(false), 3000);
+      },
+    });
   }
 }
