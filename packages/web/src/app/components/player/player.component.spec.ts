@@ -29,25 +29,27 @@ describe('PlayerComponent', () => {
   let fixture: ComponentFixture<PlayerComponent>;
   let component: PlayerComponent;
   let playerService: PlayerService;
-  let audioEl: HTMLAudioElement;
+  // Controlled audio element injected in place of the unresolvable viewChild signal.
+  let fakeAudio: HTMLAudioElement;
   let mockPlay: ReturnType<typeof vi.fn>;
   let mockPause: ReturnType<typeof vi.fn>;
 
   // Shared signal — lets tests control isActiveDevice without re-providing
   const isActiveDevice = signal(true);
 
-  // Save originals so we can restore after the suite
+  // Save originals so we can restore prototype methods after each test
   const origPlay = HTMLMediaElement.prototype.play;
   const origPause = HTMLMediaElement.prototype.pause;
 
   beforeEach(async () => {
     mockPlay = vi.fn().mockResolvedValue(undefined);
     mockPause = vi.fn();
-    // Override at prototype level — applies to the <audio> element Angular creates
-    HTMLMediaElement.prototype.play = mockPlay;
-    HTMLMediaElement.prototype.pause = mockPause;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    HTMLMediaElement.prototype.play = mockPlay as any;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    HTMLMediaElement.prototype.pause = mockPause as any;
 
-    // Stub MediaSession (missing in jsdom)
+    // Stub MediaSession (absent from jsdom)
     if (!('mediaSession' in navigator)) {
       Object.defineProperty(navigator, 'mediaSession', {
         value: {
@@ -60,7 +62,7 @@ describe('PlayerComponent', () => {
       });
     }
 
-    // Stub WakeLock (missing in jsdom)
+    // Stub WakeLock (absent from jsdom)
     if (!('wakeLock' in navigator)) {
       Object.defineProperty(navigator, 'wakeLock', {
         value: { request: vi.fn().mockResolvedValue({ released: false, release: vi.fn() }) },
@@ -69,6 +71,7 @@ describe('PlayerComponent', () => {
     }
 
     setVisibility('visible');
+    isActiveDevice.set(true);
 
     await TestBed.configureTestingModule({
       imports: [PlayerComponent],
@@ -99,18 +102,35 @@ describe('PlayerComponent', () => {
     fixture = TestBed.createComponent(PlayerComponent);
     component = fixture.componentInstance;
     playerService = TestBed.inject(PlayerService);
-    fixture.detectChanges(); // triggers ngAfterViewInit → wires audio listeners + visibilitychange
 
-    audioEl = fixture.nativeElement.querySelector('audio') as HTMLAudioElement;
+    // Angular's signal-based viewChild('audioEl') does not resolve in jsdom.
+    // Inject a real audio element before detectChanges() so ngAfterViewInit
+    // finds it and registers all audio event listeners on our controlled element.
+    fakeAudio = document.createElement('audio');
+    Object.defineProperty(component, 'audioEl', {
+      value: () => ({ nativeElement: fakeAudio }),
+      configurable: true,
+      writable: true,
+    });
+
+    fixture.detectChanges(); // ngAfterViewInit runs, wires listeners to fakeAudio
   });
 
   afterEach(() => {
     setVisibility('visible');
-    HTMLMediaElement.prototype.play = origPlay;
-    HTMLMediaElement.prototype.pause = origPause;
-    isActiveDevice.set(true);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    HTMLMediaElement.prototype.play = origPlay as any;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    HTMLMediaElement.prototype.pause = origPause as any;
     vi.clearAllMocks();
   });
+
+  // Helper — call the visibilitychange handler registered in ngAfterViewInit
+  function fireVisibilityChange(): void {
+    const handler = component['visibilityChangeHandler'];
+    if (!handler) throw new Error('visibilityChangeHandler not set — did ngAfterViewInit run?');
+    handler();
+  }
 
   // ─── PWA screen-lock: pause event handling ─────────────────────────────────
 
@@ -119,7 +139,7 @@ describe('PlayerComponent', () => {
       playerService.isPlaying.set(true);
       setVisibility('hidden');
 
-      audioEl.dispatchEvent(new Event('pause'));
+      fakeAudio.dispatchEvent(new Event('pause'));
 
       expect(playerService.isPlaying()).toBe(true);
     });
@@ -127,12 +147,11 @@ describe('PlayerComponent', () => {
     it('queues a resume so playback restores when the screen unlocks after an OS suspension', () => {
       playerService.isPlaying.set(true);
       setVisibility('hidden');
-      audioEl.dispatchEvent(new Event('pause')); // OS suspends audio
+      fakeAudio.dispatchEvent(new Event('pause')); // OS suspends audio
 
-      // Screen unlocks
       setVisibility('visible');
       mockPlay.mockClear();
-      document.dispatchEvent(new Event('visibilitychange'));
+      fireVisibilityChange();
 
       expect(mockPlay).toHaveBeenCalled();
     });
@@ -141,20 +160,20 @@ describe('PlayerComponent', () => {
       playerService.isPlaying.set(true);
       setVisibility('visible');
 
-      audioEl.dispatchEvent(new Event('pause'));
+      fakeAudio.dispatchEvent(new Event('pause'));
 
       expect(playerService.isPlaying()).toBe(false);
     });
 
-    it('does not queue a resume when the audio was already paused by the user before screen lock', () => {
+    it('does not queue a resume when audio was already paused by the user before screen lock', () => {
       playerService.isPlaying.set(false); // user already paused
 
       setVisibility('hidden');
-      audioEl.dispatchEvent(new Event('pause'));
+      fakeAudio.dispatchEvent(new Event('pause'));
 
       setVisibility('visible');
       mockPlay.mockClear();
-      document.dispatchEvent(new Event('visibilitychange'));
+      fireVisibilityChange();
 
       expect(mockPlay).not.toHaveBeenCalled();
     });
@@ -179,7 +198,7 @@ describe('PlayerComponent', () => {
 
       setVisibility('visible');
       mockPlay.mockClear();
-      document.dispatchEvent(new Event('visibilitychange'));
+      fireVisibilityChange();
 
       expect(mockPlay).toHaveBeenCalled();
     });
@@ -193,14 +212,14 @@ describe('PlayerComponent', () => {
       expect(playerService.autoplayBlocked()).toBe(true);
     });
 
-    it('does not set resumePendingAfterVisible when play is rejected while visible', () => {
+    it('does not queue a resume when play is rejected while screen is visible', () => {
       setVisibility('visible');
       component['handlePlayRejection']();
 
-      // Verify by confirming no spurious resume fires on next visibilitychange
+      // A subsequent unlock must NOT trigger play (no pending resume)
       setVisibility('visible');
       mockPlay.mockClear();
-      document.dispatchEvent(new Event('visibilitychange'));
+      fireVisibilityChange();
 
       expect(mockPlay).not.toHaveBeenCalled();
     });
@@ -213,11 +232,11 @@ describe('PlayerComponent', () => {
       playerService.isPlaying.set(true);
 
       setVisibility('hidden');
-      document.dispatchEvent(new Event('visibilitychange'));
+      fireVisibilityChange();
 
       setVisibility('visible');
       mockPlay.mockClear();
-      document.dispatchEvent(new Event('visibilitychange'));
+      fireVisibilityChange();
 
       expect(mockPlay).toHaveBeenCalled();
     });
@@ -226,43 +245,43 @@ describe('PlayerComponent', () => {
       playerService.isPlaying.set(false);
 
       setVisibility('hidden');
-      document.dispatchEvent(new Event('visibilitychange'));
+      fireVisibilityChange();
 
       setVisibility('visible');
       mockPlay.mockClear();
-      document.dispatchEvent(new Event('visibilitychange'));
+      fireVisibilityChange();
 
       expect(mockPlay).not.toHaveBeenCalled();
     });
 
-    it('calls player.resume() when isPlaying has been cleared by the time the screen unlocks', () => {
+    it('calls player.resume() when isPlaying was cleared by the time the screen unlocks', () => {
       playerService.isPlaying.set(true);
 
       setVisibility('hidden');
-      document.dispatchEvent(new Event('visibilitychange'));
+      fireVisibilityChange();
 
-      // Simulate OS having cleared the signal (e.g. via the pause path)
+      // Simulate OS clearing the signal (e.g. via the onPause path above)
       playerService.isPlaying.set(false);
 
       setVisibility('visible');
-      document.dispatchEvent(new Event('visibilitychange'));
+      fireVisibilityChange();
 
       expect(playerService.isPlaying()).toBe(true);
     });
 
-    it('clears the resume flags so a second visibilitychange to visible does not replay', () => {
+    it('clears resume flags so a second visibilitychange to visible does not replay', () => {
       playerService.isPlaying.set(true);
 
       setVisibility('hidden');
-      document.dispatchEvent(new Event('visibilitychange'));
+      fireVisibilityChange();
 
       // First unlock — consumes the flag
       setVisibility('visible');
-      document.dispatchEvent(new Event('visibilitychange'));
+      fireVisibilityChange();
 
-      // Second unlock (e.g. user locked/unlocked again but was not playing) — no replay
+      // Second unlock (flags cleared) — no replay
       mockPlay.mockClear();
-      document.dispatchEvent(new Event('visibilitychange'));
+      fireVisibilityChange();
 
       expect(mockPlay).not.toHaveBeenCalled();
     });
@@ -272,11 +291,11 @@ describe('PlayerComponent', () => {
       playerService.isPlaying.set(true);
 
       setVisibility('hidden');
-      document.dispatchEvent(new Event('visibilitychange'));
+      fireVisibilityChange();
 
       setVisibility('visible');
       mockPlay.mockClear();
-      document.dispatchEvent(new Event('visibilitychange'));
+      fireVisibilityChange();
 
       expect(mockPlay).not.toHaveBeenCalled();
     });
@@ -288,7 +307,7 @@ describe('PlayerComponent', () => {
     it('play event on audio element sets isPlaying = true in the store', () => {
       playerService.isPlaying.set(false);
 
-      audioEl.dispatchEvent(new Event('play'));
+      fakeAudio.dispatchEvent(new Event('play'));
 
       expect(playerService.isPlaying()).toBe(true);
     });
@@ -297,7 +316,7 @@ describe('PlayerComponent', () => {
       playerService.currentTrack.set(TRACK);
       playerService.queue.set([TRACK_2]);
 
-      audioEl.dispatchEvent(new Event('ended'));
+      fakeAudio.dispatchEvent(new Event('ended'));
 
       expect(playerService.currentTrack()).toEqual(TRACK_2);
     });
@@ -306,7 +325,7 @@ describe('PlayerComponent', () => {
       playerService.isPlaying.set(true);
       setVisibility('visible');
 
-      audioEl.dispatchEvent(new Event('pause'));
+      fakeAudio.dispatchEvent(new Event('pause'));
 
       expect(playerService.isPlaying()).toBe(false);
     });
@@ -321,9 +340,9 @@ describe('PlayerComponent', () => {
     });
 
     it('loadedmetadata event updates the duration signal', () => {
-      Object.defineProperty(audioEl, 'duration', { value: 240, configurable: true });
+      Object.defineProperty(fakeAudio, 'duration', { value: 240, configurable: true });
 
-      audioEl.dispatchEvent(new Event('loadedmetadata'));
+      fakeAudio.dispatchEvent(new Event('loadedmetadata'));
 
       expect(playerService.duration()).toBe(240);
     });
