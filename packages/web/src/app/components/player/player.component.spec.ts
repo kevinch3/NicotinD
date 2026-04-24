@@ -10,13 +10,9 @@ import { PlaybackWsService } from '../../services/playback-ws.service';
 import { PreserveService } from '../../services/preserve.service';
 import type { Track } from '../../services/player.service';
 
-// Prevent IndexedDB usage — preserve-store is only reached when isPreserved() is true,
-// which we mock to false. This vi.mock is still required because the module is imported
-// at the top level of player.component.ts.
-vi.mock('../../lib/preserve-store', () => ({
-  getBlob: vi.fn(),
-  updateLastAccessed: vi.fn(),
-}));
+// Note: preserve-store (IndexedDB) is never reached in these tests because
+// the PreserveService mock returns isPreserved() = false, so the component
+// always takes the streaming path and never calls db.getBlob / db.updateLastAccessed.
 
 const TRACK: Track = { id: 't1', title: 'Test Track', artist: 'Test Artist' };
 const TRACK_2: Track = { id: 't2', title: 'Next Track', artist: 'Test Artist' };
