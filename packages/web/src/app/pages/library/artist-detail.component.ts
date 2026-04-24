@@ -1,24 +1,21 @@
 import { Component, inject, signal, OnInit } from '@angular/core';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { ApiService, type Album } from '../../services/api.service';
 import { AuthService } from '../../services/auth.service';
 import { PlayerService } from '../../services/player.service';
 import { toTrack } from '../../lib/track-utils';
-import { resolveAlbumRoute } from '../../lib/route-utils';
 
 @Component({
   selector: 'app-artist-detail',
   standalone: true,
-  imports: [],
+  imports: [RouterLink],
   templateUrl: './artist-detail.component.html',
   })
 export class ArtistDetailComponent implements OnInit {
   private route = inject(ActivatedRoute);
-  readonly router = inject(Router);
   private api = inject(ApiService);
   readonly auth = inject(AuthService);
-
   private player = inject(PlayerService);
 
   readonly loading = signal(true);
@@ -53,7 +50,4 @@ export class ArtistDetailComponent implements OnInit {
     finally { this.playingAll.set(false); }
   }
 
-  openAlbum(album: Album): void {
-    this.router.navigate(resolveAlbumRoute(album.id));
-  }
 }

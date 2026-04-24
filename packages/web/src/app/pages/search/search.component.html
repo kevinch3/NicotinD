@@ -181,11 +181,11 @@
 
                     <div class="relative shrink-0">
                       @if (getGroupFileVariant(group, file) === 'done') {
-                        <button (click)="router.navigate(['/library'])"
+                        <a routerLink="/library"
                           class="px-2 py-1 rounded text-xs font-semibold transition"
                           style="background: var(--theme-status-done-bg); color: var(--theme-status-done-text)">
                           Open
-                        </button>
+                        </a>
                       } @else {
                         <button
                           (click)="handleDownload(group.username, { filename: file.filename, size: file.size })"

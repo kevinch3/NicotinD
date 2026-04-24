@@ -2,11 +2,10 @@
     <div class="max-w-6xl mx-auto px-4 py-5 md:px-6 md:py-8">
 
       <!-- Back -->
-      <button
-        class="text-sm text-theme-muted hover:text-theme-secondary transition mb-6"
-        (click)="router.navigate(['/library'])">
+      <a routerLink="/library"
+        class="inline-block text-sm text-theme-muted hover:text-theme-secondary transition mb-6">
         &larr; Library
-      </button>
+      </a>
 
       @if (loading()) {
         <div class="text-center py-20">
@@ -33,9 +32,8 @@
         <!-- Albums grid -->
         <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
           @for (album of albums(); track album.id) {
-            <button
-              class="p-3 rounded-lg bg-theme-surface/30 hover:bg-theme-surface-2/50 transition text-left"
-              (click)="openAlbum(album)">
+            <a [routerLink]="['/library', 'albums', album.id]"
+              class="p-3 rounded-lg bg-theme-surface/30 hover:bg-theme-surface-2/50 transition text-left cursor-pointer block">
               @if (album.coverArt) {
                 <img [src]="'/api/cover/' + album.coverArt + '?size=300&token=' + auth.token()"
                   alt="" class="w-full aspect-square rounded object-cover mb-2" />
@@ -44,7 +42,7 @@
               }
               <p class="text-sm text-theme-primary truncate">{{ album.name }}</p>
               <p class="text-xs text-theme-muted">{{ album.year ?? '' }}</p>
-            </button>
+            </a>
           }
         </div>
 

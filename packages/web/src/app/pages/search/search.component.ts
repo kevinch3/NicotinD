@@ -1,6 +1,6 @@
 import { Component, inject, signal, computed, effect, OnInit, OnDestroy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { ApiService } from '../../services/api.service';
 import { SearchService, type NetworkResult } from '../../services/search.service';
@@ -120,7 +120,7 @@ function escapeHtml(text: string): string {
 
 @Component({
   selector: 'app-search',
-  imports: [FormsModule, FolderBrowserComponent],
+  imports: [FormsModule, FolderBrowserComponent, RouterLink],
   templateUrl: './search.component.html',
   })
 export class SearchComponent implements OnInit, OnDestroy {
