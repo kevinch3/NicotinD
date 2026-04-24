@@ -37,7 +37,7 @@ function formatTime(s: number): string {
 export class PlayerComponent implements AfterViewInit, OnDestroy {
   readonly player = inject(PlayerService);
   readonly auth = inject(AuthService);
-  private remote = inject(RemotePlaybackService);
+  readonly remote = inject(RemotePlaybackService);
   private ws = inject(PlaybackWsService);
   private router = inject(Router);
   private zone = inject(NgZone);

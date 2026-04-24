@@ -208,6 +208,15 @@
               </div>
             </div>
 
+            @if (remote.disabledReason()) {
+              <div class="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs text-amber-400">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="flex-shrink-0 mt-0.5">
+                  <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+                <span>Remote playback was automatically disabled: {{ remote.disabledReason() }}</span>
+              </div>
+            }
+
             <div>
               <label class="block text-sm text-theme-secondary mb-1.5">This device's name</label>
               <div class="flex gap-2">
