@@ -77,7 +77,7 @@ export function shareRoutes(jwtSecret: string, auth: MiddlewareHandler) {
         row.token,
       ]);
     } else {
-      expiresAtMs = row.expires_at!;
+      expiresAtMs = row.expires_at ?? row.first_accessed_at + 300_000;
     }
 
     const jwt = await mintShareJwt(row.created_by, expiresAtMs, jwtSecret);

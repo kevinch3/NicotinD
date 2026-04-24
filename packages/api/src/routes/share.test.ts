@@ -32,6 +32,10 @@ mock.module('../db.js', () => ({ getDatabase: () => testDb }));
 
 const SECRET = 'test-secret';
 
+beforeEach(() => {
+  testDb.run('DELETE FROM share_tokens');
+});
+
 function buildApp() {
   const app = new Hono<any>();
   const auth = authMiddleware(SECRET);
