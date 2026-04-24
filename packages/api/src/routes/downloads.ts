@@ -198,6 +198,50 @@ export function downloadRoutes(registry: ProviderRegistry, slskdRef: SlskdRef) {
     },
   );
 
+  // Clear finished (completed/errored) downloads
+  app.openapi(
+    createRoute({
+      method: 'delete',
+      path: '/finished',
+      responses: {
+        200: {
+          content: {
+            'application/json': {
+              schema: SimpleSuccessSchema,
+            },
+          },
+          description: 'Finished downloads cleared',
+        },
+      },
+    }),
+    async (c) => {
+      const downloads = await slskdRef.current!.transfers.getDownloads();
+      const db = getDatabase();
+
+      const toCancel: Array<{ username: string; id: string }> = [];
+      for (const group of downloads) {
+        for (const dir of group.directories) {
+          for (const file of dir.files) {
+            if (file.state.startsWith('Completed,')) {
+              toCancel.push({ username: group.username, id: file.id });
+            }
+          }
+        }
+      }
+
+      await Promise.all(
+        toCancel.map(({ username, id }) =>
+          slskdRef.current!.transfers.cancel(username, id).catch(() => {}),
+        ),
+      );
+
+      const stmt = db.prepare('INSERT OR IGNORE INTO hidden_transfers (id) VALUES (?)');
+      for (const { id } of toCancel) stmt.run(id);
+
+      return c.json({ ok: true }, 200);
+    },
+  );
+
   // Cancel all downloads
   app.openapi(
     createRoute({

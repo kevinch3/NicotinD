@@ -192,6 +192,10 @@ export class ApiService {
     return this.http.delete<{ ok: boolean }>('/api/downloads');
   }
 
+  cancelAllFinished() {
+    return this.http.delete<{ ok: boolean }>('/api/downloads/finished');
+  }
+
   browseUser(username: string) {
     return this.http.get<UserDir[]>(`/api/users/${encodeURIComponent(username)}/browse`);
   }

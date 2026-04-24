@@ -359,18 +359,16 @@ export class DownloadsComponent implements OnInit, OnDestroy {
   }
 
   async clearGroup(group: AlbumGroup): Promise<void> {
-    for (const fileId of group.fileIds) {
-      try { await firstValueFrom(this.api.cancelDownload(group.username, fileId)); } catch { /* may already be gone */ }
-    }
+    await Promise.all(
+      group.fileIds.map(id =>
+        firstValueFrom(this.api.cancelDownload(group.username, id)).catch(() => {}),
+      ),
+    );
     this.transferService.poll();
   }
 
   async clearAllFinished(): Promise<void> {
-    for (const group of this.clearableGroups()) {
-      for (const fileId of group.fileIds) {
-        try { await firstValueFrom(this.api.cancelDownload(group.username, fileId)); } catch { /* ignore */ }
-      }
-    }
+    try { await firstValueFrom(this.api.cancelAllFinished()); } catch { /* ignore */ }
     this.transferService.poll();
   }
 
