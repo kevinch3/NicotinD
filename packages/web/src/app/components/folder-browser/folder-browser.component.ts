@@ -140,8 +140,8 @@ export class FolderBrowserComponent implements OnDestroy {
     this.error.set(false);
     this.errorMsg.set(null);
     try {
-      const result = await firstValueFrom(this.api.browseUser(this.username()));
-      this.dirs.set(result);
+      const { jobId } = await firstValueFrom(this.api.startBrowse(this.username()));
+      await this.pollBrowseJob(this.username(), jobId);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       this.error.set(true);
@@ -149,6 +149,36 @@ export class FolderBrowserComponent implements OnDestroy {
     } finally {
       this.loading.set(false);
     }
+  }
+
+  private async pollBrowseJob(username: string, jobId: string): Promise<void> {
+    const POLL_INTERVAL_MS = 2500;
+    const MAX_POLLS = 60; // 2.5s × 60 = 2.5 minutes max
+
+    for (let i = 0; i < MAX_POLLS; i++) {
+      await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+      try {
+        const result = await firstValueFrom(this.api.pollBrowse(username, jobId));
+        if (result.state === 'pending') continue;
+        if (result.state === 'error') {
+          this.error.set(true);
+          this.errorMsg.set(result.error);
+          return;
+        }
+        if (result.state === 'complete') {
+          this.dirs.set(result.dirs);
+          return;
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        this.error.set(true);
+        this.errorMsg.set(msg);
+        return;
+      }
+    }
+
+    this.error.set(true);
+    this.errorMsg.set('Browse timed out. The peer may be offline or slow to respond.');
   }
 
   startHeightResize(event: PointerEvent): void {

@@ -139,6 +139,11 @@ export interface UserDir {
   files: Array<{ filename: string; size: number; bitRate?: number; length?: number }>;
 }
 
+export type BrowseJobResult =
+  | { state: 'pending' }
+  | { state: 'complete'; dirs: UserDir[] }
+  | { state: 'error'; error: string };
+
 export interface AdminUser {
   id: string;
   username: string;
@@ -196,8 +201,12 @@ export class ApiService {
     return this.http.delete<{ ok: boolean }>('/api/downloads/finished');
   }
 
-  browseUser(username: string) {
-    return this.http.get<UserDir[]>(`/api/users/${encodeURIComponent(username)}/browse`);
+  startBrowse(username: string) {
+    return this.http.get<{ jobId: string; state: string }>(`/api/users/${encodeURIComponent(username)}/browse`);
+  }
+
+  pollBrowse(username: string, jobId: string) {
+    return this.http.get<BrowseJobResult>(`/api/users/${encodeURIComponent(username)}/browse/${encodeURIComponent(jobId)}`);
   }
 
   getDownloads() {
