@@ -62,7 +62,11 @@ describe('library routes', () => {
       },
     };
 
-    app = new Hono();
+    app = new Hono<any>();
+    app.use('*', (c, next) => {
+      c.set('user', { sub: 'test-user', role: 'admin', iat: 0, exp: 9999999999 });
+      return next();
+    });
     app.route('/', libraryRoutes(navidromeMock, '/home/kevinch3/Music'));
   });
 

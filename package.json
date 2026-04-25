@@ -13,9 +13,9 @@
     "format": "prettier --write 'packages/*/src/**/*.ts' 'src/**/*.ts'",
     "typecheck": "tsc --build",
     "download-deps": "bun run ./scripts/download-deps.ts",
-    "test": "bun test packages src --path-ignore-patterns='**/dist/**' --path-ignore-patterns='**/.worktrees/**'",
-    "test:tdd": "bun --watch test packages src --bail 1 --path-ignore-patterns='**/dist/**' --path-ignore-patterns='**/.worktrees/**'",
-    "test:coverage": "bun test packages src --coverage --coverage-reporter=text --coverage-reporter=lcov --path-ignore-patterns='**/dist/**' --path-ignore-patterns='**/.worktrees/**'",
+    "test": "bun test packages src --path-ignore-patterns='**/dist/**' --path-ignore-patterns='**/.worktrees/**' --path-ignore-patterns='**/web/src/**'",
+    "test:tdd": "bun --watch test packages src --bail 1 --path-ignore-patterns='**/dist/**' --path-ignore-patterns='**/.worktrees/**' --path-ignore-patterns='**/web/src/**'",
+    "test:coverage": "bun test packages src --coverage --coverage-reporter=text --coverage-reporter=lcov --path-ignore-patterns='**/dist/**' --path-ignore-patterns='**/.worktrees/**' --path-ignore-patterns='**/web/src/**'",
     "test:api": "bun test packages/api/src --path-ignore-patterns='**/dist/**'",
     "test:web": "bun run --cwd packages/web ng test",
     "release": "commit-and-tag-version",
@@ -41,6 +41,6 @@
     "eslint": "^9.0.0",
     "husky": "^9.1.7",
     "prettier": "^3.8.3",
-    "typescript": "^5.9.0"
+    "typescript": "^6.0.0"
   }
 }
