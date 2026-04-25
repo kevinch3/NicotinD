@@ -11,6 +11,10 @@ COPY packages/service-manager/package.json packages/service-manager/
 COPY packages/slskd-client/package.json packages/slskd-client/
 COPY packages/web/package.json packages/web/
 RUN bun install --frozen-lockfile
+# packages/web is not reachable from the root dependency graph, so bun skips
+# its devDependencies in the root install. Run a workspace-scoped install to
+# ensure tailwindcss and other build tools are present for ng build.
+RUN bun install --cwd packages/web --frozen-lockfile
 
 COPY packages/core/ packages/core/
 COPY packages/web/ packages/web/
