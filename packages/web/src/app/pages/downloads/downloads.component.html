@@ -163,9 +163,17 @@
                   ({{ offlineControls.filtered().length }})
                 </span>
               </h2>
-              <button (click)="selectAllOffline()" class="text-xs text-theme-muted hover:text-theme-secondary transition">
-                {{ offlineControls.filtered().every(t => offlineSelected().has(t.id)) ? 'Deselect all' : 'Select all' }}
-              </button>
+              <div class="flex items-center gap-2">
+                @if (offlineControls.filtered().length > 0) {
+                  <button (click)="handleOfflinePlayAll()"
+                    class="px-3 py-1 rounded-lg bg-theme-surface-2 text-theme-secondary text-xs font-medium hover:bg-theme-hover transition">
+                    Play all
+                  </button>
+                }
+                <button (click)="selectAllOffline()" class="text-xs text-theme-muted hover:text-theme-secondary transition">
+                  {{ offlineControls.filtered().every(t => offlineSelected().has(t.id)) ? 'Deselect all' : 'Select all' }}
+                </button>
+              </div>
             </div>
 
             <!-- Storage bar -->
@@ -251,6 +259,14 @@
                   <span class="hidden lg:inline text-xs text-theme-muted flex-shrink-0 w-20 text-right">
                     {{ timeAgo(track.preservedAt) }}
                   </span>
+                  <!-- Play button (hover) -->
+                  <button (click)="handleOfflinePlay($index)"
+                    class="p-1.5 text-theme-muted hover:text-theme-secondary transition flex-shrink-0 md:opacity-0 md:group-hover:opacity-100"
+                    title="Play">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                      <polygon points="5 3 19 12 5 21 5 3"/>
+                    </svg>
+                  </button>
                   <!-- Remove button (hover) -->
                   <button (click)="removeOfflineTracks([track.id])"
                     class="p-1.5 text-theme-muted hover:text-red-400 transition flex-shrink-0 md:opacity-0 md:group-hover:opacity-100"

@@ -5,7 +5,7 @@ import { Router } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { ApiService, type Song, type Playlist } from '../../services/api.service';
 import { AuthService } from '../../services/auth.service';
-import { PlayerService, type Track } from '../../services/player.service';
+import { PlayerService, type Track, shuffleArray } from '../../services/player.service';
 import { TransferService } from '../../services/transfer.service';
 import { ListControlsService, type SortOption } from '../../services/list-controls.service';
 import { ListToolbarComponent } from '../../components/list-toolbar/list-toolbar.component';
@@ -322,16 +322,42 @@ export class DownloadsComponent implements OnInit, OnDestroy {
       ? this.recentSongs().filter(s => this.selected().has(s.id))
       : this.recentSongs();
     if (!songs.length) return;
-    const tracks = songs.map((s): Track => ({
+    const tracks = shuffleArray(songs.map((s): Track => ({
       id: s.id,
       title: s.title,
       artist: s.artist,
       album: s.album,
       coverArt: s.coverArt,
       duration: s.duration,
+    })));
+    this.player.playWithContext(tracks, 0, { type: 'adhoc' });
+  }
+
+  handleOfflinePlay(index: number): void {
+    const tracks = this.offlineControls.filtered().map((t): Track => ({
+      id: t.id,
+      title: t.title,
+      artist: t.artist,
+      album: t.album,
+      coverArt: t.coverArt,
+      duration: t.duration,
     }));
-    this.player.play(tracks[0]);
-    tracks.slice(1).forEach(t => this.player.addToQueue(t));
+    this.player.playWithContext(tracks, index, { type: 'saved-offline', name: 'Saved Offline' });
+  }
+
+  handleOfflinePlayAll(): void {
+    const tracks = shuffleArray(
+      this.offlineControls.filtered().map((t): Track => ({
+        id: t.id,
+        title: t.title,
+        artist: t.artist,
+        album: t.album,
+        coverArt: t.coverArt,
+        duration: t.duration,
+      }))
+    );
+    if (!tracks.length) return;
+    this.player.playWithContext(tracks, 0, { type: 'saved-offline', name: 'Saved Offline' });
   }
 
   async handleDelete(songIds: string[]): Promise<void> {

@@ -5,7 +5,7 @@ import { firstValueFrom } from 'rxjs';
 import { Router } from '@angular/router';
 import { ApiService, type Playlist, type PlaylistDetail } from '../../services/api.service';
 import { AuthService } from '../../services/auth.service';
-import { PlayerService, type Track } from '../../services/player.service';
+import { PlayerService, type Track, shuffleArray } from '../../services/player.service';
 import { ListControlsService, type SortOption } from '../../services/list-controls.service';
 import { PreserveService } from '../../services/preserve.service';
 import { ListToolbarComponent } from '../../components/list-toolbar/list-toolbar.component';
@@ -166,14 +166,14 @@ export class PlaylistsComponent implements OnInit {
   playAll(): void {
     const pl = this.selected();
     if (!pl?.entry?.length) return;
-    const tracks = pl.entry.map((s): Track => ({
+    const tracks = shuffleArray(pl.entry.map((s): Track => ({
       id: s.id,
       title: s.title,
       artist: s.artist,
       album: s.album,
       coverArt: s.coverArt,
       duration: s.duration,
-    }));
+    })));
     this.player.playWithContext(tracks, 0, { type: 'playlist', id: pl.id, name: pl.name });
   }
 

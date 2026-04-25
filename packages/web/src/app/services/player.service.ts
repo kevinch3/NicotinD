@@ -12,13 +12,13 @@ export interface Track {
 }
 
 export interface PlayContext {
-  type: 'album' | 'playlist' | 'adhoc';
+  type: 'album' | 'playlist' | 'adhoc' | 'saved-offline';
   id?: string;
   name?: string;
   originalOrder: Track[];
 }
 
-function shuffleArray<T>(arr: T[]): T[] {
+export function shuffleArray<T>(arr: T[]): T[] {
   const result = [...arr];
   for (let i = result.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -178,7 +178,7 @@ export class PlayerService {
     tracks: Track[],
     startIndex: number,
     contextInfo?: {
-      type: 'album' | 'playlist' | 'adhoc';
+      type: PlayContext['type'];
       id?: string;
       name?: string;
     },
