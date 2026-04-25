@@ -24,23 +24,23 @@
     "prepare": "husky"
   },
   "dependencies": {
+    "@nicotind/api": "workspace:*",
     "@nicotind/core": "workspace:*",
+    "@nicotind/navidrome-client": "workspace:*",
     "@nicotind/service-manager": "workspace:*",
     "@nicotind/slskd-client": "workspace:*",
-    "@nicotind/navidrome-client": "workspace:*",
-    "@nicotind/api": "workspace:*",
-    "yaml": "^2.6.0"
+    "yaml": "^2.8.3"
   },
   "devDependencies": {
-    "@commitlint/cli": "^20.5.0",
+    "@commitlint/cli": "^20.5.2",
     "@commitlint/config-conventional": "^20.5.0",
-    "@types/bun": "^1.2.0",
-    "@typescript-eslint/eslint-plugin": "^8.0.0",
-    "@typescript-eslint/parser": "^8.0.0",
+    "@types/bun": "^1.3.13",
+    "@typescript-eslint/eslint-plugin": "^8.59.0",
+    "@typescript-eslint/parser": "^8.59.0",
     "commit-and-tag-version": "^12.7.1",
     "eslint": "^9.0.0",
     "husky": "^9.1.7",
-    "prettier": "^3.4.0",
-    "typescript": "^5.7.0"
+    "prettier": "^3.8.3",
+    "typescript": "^5.9.0"
   }
 }

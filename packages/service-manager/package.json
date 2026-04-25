@@ -5,6 +5,6 @@
   "main": "src/index.ts",
   "dependencies": {
     "@nicotind/core": "workspace:*",
-    "yaml": "^2.6.0"
+    "yaml": "^2.8.3"
   }
 }

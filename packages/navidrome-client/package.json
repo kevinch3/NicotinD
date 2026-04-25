@@ -5,6 +5,6 @@
   "main": "src/index.ts",
   "dependencies": {
     "@nicotind/core": "workspace:*",
-    "fast-xml-parser": "^5.0.0"
+    "fast-xml-parser": "^5.7.2"
   }
 }

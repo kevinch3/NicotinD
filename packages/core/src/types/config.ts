@@ -14,7 +14,7 @@ export const NicotinDConfigSchema = z.object({
       enabled: z.boolean().default(true),
       minScore: z.number().min(0).max(100).default(85),
     })
-    .default({}),
+    .default({ enabled: true, minScore: 85 }),
 
   soulseek: z.object({
     username: z.string().default(''),

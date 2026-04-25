@@ -23,15 +23,15 @@
   },
   "devDependencies": {
     "@angular/build": "^22.0.0-next.4",
-    "sharp": "^0.33.0",
+    "sharp": "^0.34.0",
     "@angular/cli": "^22.0.0-next.4",
     "@angular/compiler-cli": "^22.0.0-next.0",
-    "jsdom": "^28.0.0",
-    "prettier": "^3.8.1",
-    "tailwindcss": "^4.0.0",
-    "@tailwindcss/postcss": "^4.0.0",
-    "postcss": "^8.4.0",
-    "typescript": "~6.0.2",
-    "vitest": "^4.0.8"
+    "jsdom": "^29.0.0",
+    "prettier": "^3.8.3",
+    "tailwindcss": "^4.2.4",
+    "@tailwindcss/postcss": "^4.2.4",
+    "postcss": "^8.5.10",
+    "typescript": "~6.0.3",
+    "vitest": "^4.1.5"
   }
 }
