@@ -16,6 +16,7 @@ function makePlayerStub() {
     repeat: signal('off'),
     queue: signal([]),
     history: signal([]),
+    context: signal(null),
     currentTime: signal(0),
     duration: signal(0),
     autoplayBlocked: signal(false),
