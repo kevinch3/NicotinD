@@ -35,6 +35,8 @@ services:
     volumes:
       - music:/data/music
       - slskd-data:/app
+      - ./scripts/slskd-entrypoint.sh:/slskd-entrypoint.sh:ro
+    entrypoint: ["/slskd-entrypoint.sh"]
     command:
       - --remote-configuration=true
       - --http-port=5030
