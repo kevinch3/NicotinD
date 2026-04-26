@@ -18,4 +18,4 @@ else
 fi
 
 # Pass execution to the original slskd entrypoint/command
-exec /usr/bin/tini -- ./start.sh "$@"
+exec /usr/bin/tini -- /entrypoint.sh /slskd/slskd "$@"
