@@ -31,7 +31,7 @@ services:
     restart: unless-stopped
 
   slskd:
-    image: slskd/slskd:latest
+    image: slskd/slskd:0.25.1
     volumes:
       - music:/data/music
       - slskd-data:/app
