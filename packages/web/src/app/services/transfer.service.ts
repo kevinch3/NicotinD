@@ -15,11 +15,53 @@ export class TransferService {
   readonly downloads = signal<SlskdUserTransferGroup[]>([]);
   readonly uploads = signal<SlskdUserTransferGroup[]>([]);
   readonly libraryDirty = signal(false);
+  readonly deletedSongIds = signal<ReadonlySet<string>>(new Set());
 
   private intervalId: ReturnType<typeof setInterval> | null = null;
+  private scanPollTimer: ReturnType<typeof setTimeout> | null = null;
 
   clearLibraryDirty(): void {
     this.libraryDirty.set(false);
+  }
+
+  addDeletedIds(ids: string[]): void {
+    this.deletedSongIds.update(s => {
+      const next = new Set(s);
+      for (const id of ids) next.add(id);
+      return next;
+    });
+    this.startScanPoll();
+  }
+
+  clearDeletedIds(): void {
+    this.deletedSongIds.set(new Set());
+  }
+
+  private startScanPoll(): void {
+    if (this.scanPollTimer !== null) return;
+    this.scanPollTimer = setTimeout(() => this.doPollScan(0, false), 1000);
+  }
+
+  private async doPollScan(attempts: number, seenScanning: boolean): Promise<void> {
+    this.scanPollTimer = null;
+    if (attempts >= 20) {
+      this.clearDeletedIds();
+      this.libraryDirty.set(true);
+      return;
+    }
+    try {
+      const { scanning } = await firstValueFrom(this.api.getScanStatus());
+      if (scanning) {
+        this.scanPollTimer = setTimeout(() => this.doPollScan(attempts + 1, true), 1500);
+      } else if (!seenScanning && attempts < 5) {
+        this.scanPollTimer = setTimeout(() => this.doPollScan(attempts + 1, false), 1000);
+      } else {
+        this.clearDeletedIds();
+        this.libraryDirty.set(true);
+      }
+    } catch {
+      this.clearDeletedIds();
+    }
   }
 
   async poll(): Promise<void> {

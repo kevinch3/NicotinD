@@ -5,6 +5,7 @@ import { firstValueFrom } from 'rxjs';
 import { ApiService, type AlbumDetail, type Song } from '../../services/api.service';
 import { AuthService } from '../../services/auth.service';
 import { PlayerService, type Track } from '../../services/player.service';
+import { TransferService } from '../../services/transfer.service';
 import { ListControlsService, type SortOption } from '../../services/list-controls.service';
 import { ListToolbarComponent } from '../../components/list-toolbar/list-toolbar.component';
 import { TrackRowComponent, type TrackAction } from '../../components/track-row/track-row.component';
@@ -22,6 +23,7 @@ export class AlbumDetailComponent implements OnInit {
   private api = inject(ApiService);
   readonly auth = inject(AuthService);
   readonly player = inject(PlayerService);
+  private transferService = inject(TransferService);
   private listControls = inject(ListControlsService);
   private router = inject(Router);
   private route = inject(ActivatedRoute);
@@ -31,7 +33,10 @@ export class AlbumDetailComponent implements OnInit {
   readonly loadingAlbum = signal(true);
   readonly selectedAlbum = signal<AlbumDetail | null>(null);
 
-  readonly detailSongs = computed(() => this.selectedAlbum()?.song ?? []);
+  readonly detailSongs = computed(() => {
+    const deleted = this.transferService.deletedSongIds();
+    return (this.selectedAlbum()?.song ?? []).filter(s => !deleted.has(s.id));
+  });
 
   readonly detailSortOptions: SortOption[] = [
     { field: 'track', label: 'Track #' },
@@ -135,6 +140,7 @@ export class AlbumDetailComponent implements OnInit {
       const ids = (album.song ?? []).map(s => s.id);
       if (ids.length) {
         try { await firstValueFrom(this.api.deleteSongs(ids)); } catch { /* ignore */ }
+        this.transferService.addDeletedIds(ids);
       }
       this.selectedAlbum.set(null);
       void this.router.navigate(['/library']);
@@ -159,6 +165,7 @@ export class AlbumDetailComponent implements OnInit {
         destructive: true,
         action: () => this.askConfirm(`Remove "${song.title}" from library?`, async () => {
           try { await firstValueFrom(this.api.deleteSongs([song.id])); } catch { /* ignore */ }
+          this.transferService.addDeletedIds([song.id]);
           this.selectedAlbum.update(a => a ? { ...a, song: a.song.filter(s => s.id !== song.id) } : null);
         }),
       }] : []),

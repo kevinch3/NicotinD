@@ -5,7 +5,7 @@
       &larr; Back to library
     </a>
     <h2 class="text-lg font-semibold text-theme-primary">{{ genreSlug() }}</h2>
-    @if (genreSongs().length > 0) {
+    @if (filteredGenreSongs().length > 0) {
       <button (click)="playGenre()"
         class="ml-auto px-4 py-1.5 rounded-lg bg-theme-surface-2 text-theme-primary text-sm font-semibold hover:bg-theme-hover transition">
         Play All
@@ -18,7 +18,7 @@
       <span class="inline-block w-5 h-5 border-2 border-theme border-t-zinc-300 rounded-full animate-spin"></span>
     </div>
   } @else {
-    @for (song of genreSongs(); track song.id) {
+    @for (song of filteredGenreSongs(); track song.id) {
       <app-track-row
         [track]="toTrackFn(song)"
         [subtitle]="song.artist + ' · ' + song.album"
@@ -27,7 +27,7 @@
         (play)="player.play(toTrackFn(song))"
       />
     }
-    @if (genreSongs().length === 0) {
+    @if (filteredGenreSongs().length === 0) {
       <div class="text-center py-20 text-theme-muted">
         No songs found for this genre.
       </div>

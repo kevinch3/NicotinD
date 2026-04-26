@@ -4,6 +4,7 @@ import { firstValueFrom } from 'rxjs';
 import { ApiService, type Song } from '../../services/api.service';
 import { AuthService } from '../../services/auth.service';
 import { PlayerService, type Track } from '../../services/player.service';
+import { TransferService } from '../../services/transfer.service';
 import { TrackRowComponent, type TrackAction } from '../../components/track-row/track-row.component';
 import { ConfirmDialogComponent } from '../../components/confirm-dialog/confirm-dialog.component';
 import { PlaylistAutocompleteComponent } from '../../components/playlist-autocomplete/playlist-autocomplete.component';
@@ -19,12 +20,18 @@ export class GenreDetailComponent implements OnInit {
   private api = inject(ApiService);
   readonly auth = inject(AuthService);
   readonly player = inject(PlayerService);
+  private transferService = inject(TransferService);
   private router = inject(Router);
   private route = inject(ActivatedRoute);
 
   readonly loadingGenreSongs = signal(true);
   readonly genreSlug = signal<string | null>(null);
   readonly genreSongs = signal<Song[]>([]);
+
+  readonly filteredGenreSongs = computed(() => {
+    const deleted = this.transferService.deletedSongIds();
+    return this.genreSongs().filter(s => !deleted.has(s.id));
+  });
 
   // ─── Playlist picker ──────────────────────────────────────────────
   readonly playlistPickerSong = signal<{ id: string; title: string } | null>(null);
@@ -112,6 +119,7 @@ export class GenreDetailComponent implements OnInit {
         destructive: true,
         action: () => this.askConfirm(`Remove "${song.title}" from library?`, async () => {
           try { await firstValueFrom(this.api.deleteSongs([song.id])); } catch { /* ignore */ }
+          this.transferService.addDeletedIds([song.id]);
           this.genreSongs.update(s => s.filter(x => x.id !== song.id));
         }),
       }] : []),
