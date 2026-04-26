@@ -80,3 +80,13 @@ export interface SlskdServerState {
   username: string;
   isConnected: boolean;
 }
+
+export interface SlskdApplicationInfo {
+  version: string;
+  uptime: number;
+}
+
+export interface SlskdShareDirectory {
+  path: string;
+  fileCount?: number;
+}

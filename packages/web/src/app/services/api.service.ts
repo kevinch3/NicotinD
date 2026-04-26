@@ -217,6 +217,10 @@ export class ApiService {
     return this.http.delete<{ ok: boolean }>(`/api/downloads/${username}/${id}`);
   }
 
+  getUploads() {
+    return this.http.get<SlskdUserTransferGroup[]>('/api/uploads');
+  }
+
   // Library
   getAlbums(type = 'newest', size = 40, offset = 0) {
     return this.http.get<Album[]>('/api/library/albums', { params: { type, size, offset } });
@@ -303,6 +307,26 @@ export class ApiService {
 
   getSoulseekStatus() {
     return this.http.get<{ configured: boolean; connected: boolean; username: string | null }>('/api/settings/soulseek/status');
+  }
+
+  toggleSoulseekConnection() {
+    return this.http.post<{ connected: boolean }>('/api/settings/soulseek/toggle', {});
+  }
+
+  getShares() {
+    return this.http.get<{ directories: string[] }>('/api/settings/shares');
+  }
+
+  addShare(path: string) {
+    return this.http.post<{ ok: boolean }>('/api/settings/shares', { path });
+  }
+
+  removeShare(path: string) {
+    return this.http.delete<{ ok: boolean }>(`/api/settings/shares/${encodeURIComponent(path)}`);
+  }
+
+  rescanShares() {
+    return this.http.post<{ ok: boolean }>('/api/settings/shares/rescan', {});
   }
 
   // Playlists

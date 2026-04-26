@@ -124,7 +124,7 @@
                   <p class="text-xs truncate" style="color: var(--theme-text-muted)">
                     {{ group.username }}
                     {{ group.bitRate ? ' · ' + group.bitRate + ' kbps' : '' }}
-                    · <span style="color: var(--theme-accent)">{{ formatSpeed(group.uploadSpeed) }}</span>
+                    · <span style="color: var(--theme-accent)">{{ formatPeerInfo(group) }}</span>
                     · {{ group.files.length }} files
                   </p>
                 </div>

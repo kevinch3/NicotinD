@@ -44,13 +44,25 @@
 
         <!-- Soulseek Network -->
         <section class="rounded-xl border border-theme bg-theme-surface/50 p-6">
-          <div class="flex items-center gap-3 mb-6">
+          <div class="flex items-center gap-3 mb-6 flex-wrap">
             <h2 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary">Soulseek Network</h2>
-            <div class="flex items-center gap-2">
+            <div class="flex items-center gap-2 flex-1">
               <span [class]="'inline-block w-2.5 h-2.5 rounded-full ' + statusDotClass()"></span>
               <span class="text-xs text-theme-muted">{{ statusLabel() }}</span>
             </div>
+            @if (isAdmin() && configured()) {
+              <button type="button" (click)="toggleConnection()" [disabled]="toggling()"
+                class="px-3 py-1 rounded-lg border border-theme text-xs font-medium transition disabled:opacity-50"
+                [class]="connected() ? 'text-amber-400 hover:bg-amber-900/20' : 'text-emerald-400 hover:bg-emerald-900/20'">
+                {{ toggling() ? '...' : (connected() ? 'Disconnect' : 'Connect') }}
+              </button>
+            }
           </div>
+          @if (toggleMessage()) {
+            <p [class]="'text-xs mb-4 ' + (toggleMessage()!.type === 'success' ? 'text-emerald-400' : 'text-red-400')">
+              {{ toggleMessage()!.text }}
+            </p>
+          }
 
           @if (isAdmin()) {
             <form (submit)="handleSave($event)" class="space-y-4">
@@ -254,6 +266,51 @@
             </div>
           </div>
         </section>
+
+        <!-- Shared Folders — admin only -->
+        @if (isAdmin()) {
+          <section class="rounded-xl border border-theme bg-theme-surface/50 p-6 mt-6">
+            <h2 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary mb-5">Shared Folders</h2>
+
+            @if (shares().length > 0) {
+              <ul class="space-y-1.5 mb-4">
+                @for (path of shares(); track path) {
+                  <li class="flex items-center gap-2 px-3 py-2 rounded-lg bg-theme-surface-2/50 border border-theme">
+                    <span class="flex-1 text-sm text-theme-secondary truncate font-mono">{{ path }}</span>
+                    <button type="button" (click)="removeShare(path)" [disabled]="sharesLoading()"
+                      class="text-theme-muted hover:text-red-400 transition disabled:opacity-40 flex-shrink-0" title="Remove">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                      </svg>
+                    </button>
+                  </li>
+                }
+              </ul>
+            } @else {
+              <p class="text-xs text-theme-muted mb-4">No shared folders configured.</p>
+            }
+
+            <div class="flex gap-2 mb-3">
+              <input type="text" [ngModel]="newSharePath()" (ngModelChange)="newSharePath.set($event)"
+                name="newSharePath" placeholder="/path/to/music"
+                class="flex-1 px-3 py-2 rounded-lg bg-theme-surface-2 border border-theme text-theme-primary placeholder-zinc-600 focus:outline-none focus:border-zinc-500 transition text-sm font-mono" />
+              <button type="button" (click)="addShare()" [disabled]="sharesLoading() || !newSharePath().trim()"
+                class="px-4 py-2 rounded-lg bg-theme-surface-2 border border-theme text-sm text-theme-secondary hover:text-theme-primary transition disabled:opacity-40">
+                Add
+              </button>
+              <button type="button" (click)="rescanShares()" [disabled]="sharesLoading()"
+                class="px-4 py-2 rounded-lg bg-theme-surface-2 border border-theme text-sm text-theme-secondary hover:text-theme-primary transition disabled:opacity-40"
+                title="Trigger slskd share rescan">
+                Rescan
+              </button>
+            </div>
+
+            @if (sharesMessage()) {
+              <p [class]="'text-xs ' + (sharesMessage()!.type === 'success' ? 'text-emerald-400' : 'text-red-400')">
+                {{ sharesMessage()!.text }}
+              </p>
+            }
+          </section>
+        }
       }
     </div>
-  

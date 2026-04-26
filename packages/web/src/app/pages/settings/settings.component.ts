@@ -40,6 +40,14 @@ export class SettingsComponent implements OnInit {
   readonly tsSaving = signal(false);
   readonly tsMessage = signal<{ type: 'success' | 'error'; text: string } | null>(null);
 
+  readonly toggling = signal(false);
+  readonly toggleMessage = signal<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  readonly shares = signal<string[]>([]);
+  readonly newSharePath = signal('');
+  readonly sharesLoading = signal(false);
+  readonly sharesMessage = signal<{ type: 'success' | 'error'; text: string } | null>(null);
+
   readonly deviceName = signal(this.ws.getDeviceName());
   readonly deviceNameSaved = signal(false);
 
@@ -50,6 +58,7 @@ export class SettingsComponent implements OnInit {
   ngOnInit(): void {
     this.loadSettings();
     this.loadTailscaleStatus();
+    if (this.isAdmin()) this.loadShares();
   }
 
   statusDotClass(): string {
@@ -193,5 +202,72 @@ export class SettingsComponent implements OnInit {
       const status = await firstValueFrom(this.api.getTailscaleStatus());
       this.tsStatus.set(status);
     } catch { /* ignore */ }
+  }
+
+  async toggleConnection(): Promise<void> {
+    this.toggling.set(true);
+    this.toggleMessage.set(null);
+    try {
+      const result = await firstValueFrom(this.api.toggleSoulseekConnection());
+      this.connected.set(result.connected);
+      this.toggleMessage.set({
+        type: 'success',
+        text: result.connected ? 'Connected to Soulseek network' : 'Disconnected from Soulseek network',
+      });
+    } catch (err) {
+      this.toggleMessage.set({ type: 'error', text: err instanceof Error ? err.message : 'Toggle failed' });
+    } finally {
+      this.toggling.set(false);
+    }
+  }
+
+  private async loadShares(): Promise<void> {
+    try {
+      const data = await firstValueFrom(this.api.getShares());
+      this.shares.set(data.directories);
+    } catch { /* ignore */ }
+  }
+
+  async addShare(): Promise<void> {
+    const path = this.newSharePath().trim();
+    if (!path) return;
+    this.sharesLoading.set(true);
+    this.sharesMessage.set(null);
+    try {
+      await firstValueFrom(this.api.addShare(path));
+      this.newSharePath.set('');
+      await this.loadShares();
+      this.sharesMessage.set({ type: 'success', text: `Added: ${path}` });
+    } catch (err) {
+      this.sharesMessage.set({ type: 'error', text: err instanceof Error ? err.message : 'Failed to add directory' });
+    } finally {
+      this.sharesLoading.set(false);
+    }
+  }
+
+  async removeShare(path: string): Promise<void> {
+    this.sharesLoading.set(true);
+    this.sharesMessage.set(null);
+    try {
+      await firstValueFrom(this.api.removeShare(path));
+      await this.loadShares();
+    } catch (err) {
+      this.sharesMessage.set({ type: 'error', text: err instanceof Error ? err.message : 'Failed to remove directory' });
+    } finally {
+      this.sharesLoading.set(false);
+    }
+  }
+
+  async rescanShares(): Promise<void> {
+    this.sharesLoading.set(true);
+    this.sharesMessage.set(null);
+    try {
+      await firstValueFrom(this.api.rescanShares());
+      this.sharesMessage.set({ type: 'success', text: 'Rescan triggered' });
+    } catch (err) {
+      this.sharesMessage.set({ type: 'error', text: err instanceof Error ? err.message : 'Rescan failed' });
+    } finally {
+      this.sharesLoading.set(false);
+    }
   }
 }

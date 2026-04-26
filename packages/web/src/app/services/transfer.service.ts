@@ -13,6 +13,7 @@ export class TransferService {
 
   readonly transfers = signal(new Map<string, TransferEntry>());
   readonly downloads = signal<SlskdUserTransferGroup[]>([]);
+  readonly uploads = signal<SlskdUserTransferGroup[]>([]);
   readonly libraryDirty = signal(false);
 
   private intervalId: ReturnType<typeof setInterval> | null = null;
@@ -42,6 +43,12 @@ export class TransferService {
       if (newCompletion) this.libraryDirty.set(true);
     } catch {
       // non-fatal: keep stale data on network error
+    }
+    try {
+      const uploadData = await firstValueFrom(this.api.getUploads());
+      this.uploads.set(uploadData);
+    } catch {
+      // non-fatal
     }
   }
 

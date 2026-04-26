@@ -14,6 +14,8 @@ export interface BrowseDir {
 export interface FolderGroup {
   username: string;
   uploadSpeed: number;
+  queueLength?: number;
+  freeUploadSlots?: number;
   directory: string;
   bitRate?: number;
   files: Array<{
@@ -44,6 +46,8 @@ export function groupByDirectory(
   files: Array<{
     username: string;
     uploadSpeed: number;
+    queueLength?: number;
+    freeUploadSlots?: number;
     filename: string;
     size: number;
     bitRate?: number;
@@ -63,6 +67,8 @@ export function groupByDirectory(
       map.set(key, {
         username: file.username,
         uploadSpeed: file.uploadSpeed,
+        queueLength: file.queueLength,
+        freeUploadSlots: file.freeUploadSlots,
         directory: dir,
         bitRate: file.bitRate,
         files: [],
@@ -81,6 +87,23 @@ export function groupByDirectory(
   }
 
   return Array.from(map.values());
+}
+
+export function formatPeerInfo(group: Pick<FolderGroup, 'uploadSpeed' | 'queueLength' | 'freeUploadSlots'>): string {
+  const parts: string[] = [];
+  const speed = group.uploadSpeed;
+  if (speed >= 1_000_000) {
+    parts.push(`↑ ${(speed / 1_000_000).toFixed(1)} MB/s`);
+  } else {
+    parts.push(`↑ ${(speed / 1_000).toFixed(0)} KB/s`);
+  }
+  if (group.queueLength && group.queueLength > 0) {
+    parts.push(`${group.queueLength} queued`);
+  }
+  if (group.freeUploadSlots !== undefined) {
+    parts.push(`${group.freeUploadSlots} slot${group.freeUploadSlots === 1 ? '' : 's'}`);
+  }
+  return parts.join(' · ');
 }
 
 export function buildFolderTree(dirs: BrowseDir[]): FolderNode[] {

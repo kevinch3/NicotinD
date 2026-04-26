@@ -13,6 +13,7 @@ import { setupRoutes } from './routes/setup.js';
 import { tailscaleRoutes } from './routes/tailscale.js';
 import { searchRoutes } from './routes/search.js';
 import { downloadRoutes } from './routes/downloads.js';
+import { uploadRoutes } from './routes/uploads.js';
 import { libraryRoutes } from './routes/library.js';
 import { streamingRoutes } from './routes/streaming.js';
 import { systemRoutes } from './routes/system.js';
@@ -128,6 +129,7 @@ export function createApp({
   const auth = authMiddleware(config.jwt.secret);
   app.use('/api/search/*', auth);
   app.use('/api/downloads/*', auth);
+  app.use('/api/uploads/*', auth);
   app.use('/api/library/*', auth);
   app.use('/api/stream/*', auth);
   app.use('/api/cover/*', auth);
@@ -147,6 +149,7 @@ export function createApp({
   app.route('/api/search', searchRoutes(registry));
   app.route('/api/admin', adminRoutes());
   app.route('/api/downloads', downloadRoutes(registry, slskdRef));
+  app.route('/api/uploads', uploadRoutes(slskdRef));
   app.route('/api/library', libraryRoutes(navidrome, config.musicDir, metadataFixer));
   app.route('/api', streamingRoutes(navidrome));
   app.route('/api/system', systemRoutes(slskdRef, navidrome, serviceManager, config));

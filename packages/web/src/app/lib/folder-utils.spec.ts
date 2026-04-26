@@ -3,6 +3,7 @@ import {
   groupByDirectory,
   buildFolderTree,
   getDirectFiles,
+  formatPeerInfo,
 } from './folder-utils';
 
 describe('extractDirectory', () => {
@@ -45,6 +46,33 @@ describe('buildFolderTree', () => {
     expect(tree[0].segment).toBe('Music');
     expect(tree[0].children).toHaveLength(1);
     expect(tree[0].children[0].segment).toBe('Artist');
+  });
+});
+
+describe('formatPeerInfo', () => {
+  it('formats speed, queue, and slots', () => {
+    expect(formatPeerInfo({ uploadSpeed: 2_100_000, queueLength: 3, freeUploadSlots: 1 }))
+      .toBe('↑ 2.1 MB/s · 3 queued · 1 slot');
+  });
+
+  it('omits queued segment when queueLength is 0', () => {
+    expect(formatPeerInfo({ uploadSpeed: 500_000, queueLength: 0, freeUploadSlots: 2 }))
+      .toBe('↑ 500 KB/s · 2 slots');
+  });
+
+  it('omits slots segment when freeUploadSlots is undefined', () => {
+    expect(formatPeerInfo({ uploadSpeed: 1_000_000, queueLength: 1 }))
+      .toBe('↑ 1.0 MB/s · 1 queued');
+  });
+
+  it('uses singular slot when freeUploadSlots is 1', () => {
+    expect(formatPeerInfo({ uploadSpeed: 300_000, freeUploadSlots: 1 }))
+      .toBe('↑ 300 KB/s · 1 slot');
+  });
+
+  it('uses plural slots when freeUploadSlots is 0', () => {
+    expect(formatPeerInfo({ uploadSpeed: 300_000, freeUploadSlots: 0 }))
+      .toBe('↑ 300 KB/s · 0 slots');
   });
 });
 

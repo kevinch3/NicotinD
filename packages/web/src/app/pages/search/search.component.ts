@@ -6,7 +6,7 @@ import { ApiService } from '../../services/api.service';
 import { SearchService, type NetworkResult } from '../../services/search.service';
 import { TransferService } from '../../services/transfer.service';
 import { getSingleDownloadLabel, getFolderDownloadLabel, isPathEffectivelyQueued, BUTTON_CLASSES } from '../../lib/download-status';
-import { groupByDirectory, type FolderGroup } from '../../lib/folder-utils';
+import { groupByDirectory, formatPeerInfo, type FolderGroup } from '../../lib/folder-utils';
 import { FolderBrowserComponent } from '../../components/folder-browser/folder-browser.component';
 
 // ─── Helpers ────────────────────────────────────────────────────────
@@ -133,6 +133,7 @@ export class SearchComponent implements OnInit, OnDestroy {
   readonly formatDuration = formatDuration;
   readonly formatSize = formatSize;
   readonly formatSpeed = formatSpeed;
+  readonly formatPeerInfo = formatPeerInfo;
 
   // Ephemeral state
   readonly loading = signal(false);

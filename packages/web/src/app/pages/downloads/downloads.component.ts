@@ -141,7 +141,7 @@ export class DownloadsComponent implements OnInit, OnDestroy {
   });
 
   // State
-  readonly activeTab = signal<'active' | 'offline' | 'recent'>('active');
+  readonly activeTab = signal<'active' | 'offline' | 'recent' | 'uploads'>('active');
   readonly recentSongs = signal<Song[]>([]);
   readonly selected = signal(new Set<string>());
   readonly lastSelectedId = signal<string | null>(null);
@@ -227,6 +227,7 @@ export class DownloadsComponent implements OnInit, OnDestroy {
   readonly errorGroups = computed(() => this.groups().filter(g => g.state === 'error'));
   readonly doneGroups = computed(() => this.groups().filter(g => g.state === 'done'));
   readonly clearableGroups = computed(() => [...this.errorGroups(), ...this.doneGroups()]);
+  readonly uploadGroups = computed(() => groupByAlbum(this.transferService.uploads()));
 
   readonly showDateGroups = computed(() =>
     this.recentControls.sortField() === 'created' &&

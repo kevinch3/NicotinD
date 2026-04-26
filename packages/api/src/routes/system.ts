@@ -18,12 +18,23 @@ export function systemRoutes(
   app.get('/status', async (c) => {
     let slskdHealthy = false;
     let slskdState = null;
+    let slskdVersion: string | undefined;
+    let slskdUptime: number | undefined;
     if (slskdRef.current) {
       try {
         slskdState = await slskdRef.current.server.getState();
         slskdHealthy = true;
       } catch {
         // slskd not reachable
+      }
+      if (slskdHealthy) {
+        try {
+          const info = await slskdRef.current.application.getInfo();
+          slskdVersion = info.version;
+          slskdUptime = info.uptime;
+        } catch {
+          // /application endpoint unavailable — non-fatal
+        }
       }
     }
 
@@ -44,6 +55,8 @@ export function systemRoutes(
         healthy: slskdHealthy,
         connected: slskdState?.isConnected ?? false,
         username: slskdState?.username,
+        version: slskdVersion,
+        uptime: slskdUptime,
       },
       navidrome: {
         healthy: navidromeHealthy,

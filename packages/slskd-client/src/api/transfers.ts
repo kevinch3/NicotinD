@@ -8,6 +8,10 @@ export class TransfersApi {
     return this.client.request<SlskdUserTransferGroup[]>('/transfers/downloads');
   }
 
+  async getUploads(): Promise<SlskdUserTransferGroup[]> {
+    return this.client.request<SlskdUserTransferGroup[]>('/transfers/uploads');
+  }
+
   async enqueue(
     username: string,
     files: Array<{ filename: string; size: number }>,

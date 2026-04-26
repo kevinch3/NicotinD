@@ -218,5 +218,98 @@ export function settingsRoutes(
     });
   });
 
+  // POST /api/settings/soulseek/toggle — connect or disconnect from Soulseek network
+  app.post('/soulseek/toggle', async (c) => {
+    const user = c.get('user');
+    if (user.role !== 'admin') {
+      return c.json({ error: 'Only administrators can toggle the Soulseek connection' }, 403);
+    }
+
+    if (!slskdRef.current) {
+      return c.json({ error: 'Soulseek is not configured' }, 503);
+    }
+
+    let state;
+    try {
+      state = await slskdRef.current.server.getState();
+    } catch {
+      return c.json({ error: 'Could not reach Soulseek service' }, 503);
+    }
+
+    if (state.isConnected) {
+      await slskdRef.current.server.disconnect();
+      return c.json({ connected: false });
+    } else {
+      await slskdRef.current.server.connect();
+      return c.json({ connected: true });
+    }
+  });
+
+  // GET /api/settings/shares — list configured share directories
+  app.get('/shares', async (c) => {
+    const user = c.get('user');
+    if (user.role !== 'admin') {
+      return c.json({ error: 'Only administrators can manage shares' }, 403);
+    }
+
+    if (!slskdRef.current) {
+      return c.json({ error: 'Soulseek is not configured' }, 503);
+    }
+
+    const dirs = await slskdRef.current.shares.list();
+    return c.json({ directories: dirs.map((d) => d.path) });
+  });
+
+  // POST /api/settings/shares — add a share directory
+  app.post('/shares', async (c) => {
+    const user = c.get('user');
+    if (user.role !== 'admin') {
+      return c.json({ error: 'Only administrators can manage shares' }, 403);
+    }
+
+    if (!slskdRef.current) {
+      return c.json({ error: 'Soulseek is not configured' }, 503);
+    }
+
+    const { path } = await c.req.json<{ path: string }>();
+    if (!path?.trim()) {
+      return c.json({ error: 'path is required' }, 400);
+    }
+
+    await slskdRef.current.shares.add(path.trim());
+    return c.json({ ok: true });
+  });
+
+  // DELETE /api/settings/shares/:path — remove a share directory
+  app.delete('/shares/:path{.+}', async (c) => {
+    const user = c.get('user');
+    if (user.role !== 'admin') {
+      return c.json({ error: 'Only administrators can manage shares' }, 403);
+    }
+
+    if (!slskdRef.current) {
+      return c.json({ error: 'Soulseek is not configured' }, 503);
+    }
+
+    const path = decodeURIComponent(c.req.param('path'));
+    await slskdRef.current.shares.remove(path);
+    return c.json({ ok: true });
+  });
+
+  // POST /api/settings/shares/rescan — trigger slskd share rescan
+  app.post('/shares/rescan', async (c) => {
+    const user = c.get('user');
+    if (user.role !== 'admin') {
+      return c.json({ error: 'Only administrators can manage shares' }, 403);
+    }
+
+    if (!slskdRef.current) {
+      return c.json({ error: 'Soulseek is not configured' }, 503);
+    }
+
+    await slskdRef.current.shares.rescan();
+    return c.json({ ok: true });
+  });
+
   return app;
 }
