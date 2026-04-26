@@ -13,6 +13,8 @@ services:
       - ~/Music:/data/music
       # Don't bind-mount ~/.nicotind/slskd — its config has host-specific paths
       # slskd will use fresh config from docker-compose command args instead
+    ports:
+      - "5030:5030"
 
   navidrome:
     volumes:
