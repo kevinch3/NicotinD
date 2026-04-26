@@ -45,6 +45,7 @@ services:
       - --username=slskd
       - --password=slskd
       - --downloads=/data/music
+      - --force-share-scan
     environment:
       SLSKD_REMOTE_CONFIGURATION: "true"
       SLSKD_HTTP_PORT: "5030"
