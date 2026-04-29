@@ -23,7 +23,7 @@ WORKDIR /app
 
 # Install curl (healthchecks) — tailscale CLI communication via local API socket
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends curl ca-certificates && \
+    apt-get install -y --no-install-recommends curl ca-certificates ffmpeg && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy all packages (web needs package.json for workspace resolution)

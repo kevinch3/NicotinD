@@ -12,6 +12,7 @@
     "@nicotind/slskd-client": "workspace:*",
     "hono": "^4.12.15",
     "jose": "^6.0.0",
+    "music-metadata": "^10.1.0",
     "node-id3": "^0.2.9",
     "zod": "^4.3.6"
   }

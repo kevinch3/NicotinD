@@ -267,6 +267,99 @@
           </div>
         </section>
 
+        <!-- Library Maintenance — admin only -->
+        @if (isAdmin()) {
+          <section class="rounded-xl border border-theme bg-theme-surface/50 p-6 mt-6">
+            <h2 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary mb-5">Library Maintenance</h2>
+
+            <!-- Fix All Metadata -->
+            <div class="mb-6">
+              <p class="text-sm text-theme-primary mb-1">Fix All Metadata</p>
+              <p class="text-xs text-theme-muted mb-3">
+                Scans every file in your music folder and looks up correct title, artist, and album on MusicBrainz.
+                Fixes MP3 (ID3) and FLAC/OPUS (Vorbis) tags. Triggers a full library rescan when done.
+              </p>
+
+              @if (reprocessStats(); as stats) {
+                <div class="mb-3 px-3 py-2 rounded-lg bg-theme-surface-2/50 border border-theme text-xs font-mono text-theme-secondary">
+                  @if (reprocessRunning()) {
+                    <span class="text-indigo-400">Running...</span>
+                    {{ stats.processed }} / {{ stats.total }} files — {{ stats.fixed }} updated
+                  } @else {
+                    {{ stats.processed }} files scanned — {{ stats.fixed }} updated@if (stats.errors > 0) {<span class="text-amber-400">, {{ stats.errors }} errors</span>}
+                  }
+                </div>
+              }
+
+              @if (reprocessMessage()) {
+                <p [class]="'text-xs mb-3 ' + (reprocessMessage()!.type === 'success' ? 'text-emerald-400' : 'text-red-400')">
+                  {{ reprocessMessage()!.text }}
+                </p>
+              }
+
+              <button type="button" (click)="startReprocess()" [disabled]="reprocessRunning()"
+                class="px-4 py-2 rounded-lg bg-theme-surface-2 border border-theme text-sm text-theme-secondary hover:text-theme-primary transition disabled:opacity-40">
+                {{ reprocessRunning() ? 'Running...' : 'Fix All Metadata' }}
+              </button>
+            </div>
+
+            <div class="border-t border-theme mb-6"></div>
+
+            <!-- Find Duplicates -->
+            <div>
+              <p class="text-sm text-theme-primary mb-1">Find Duplicates</p>
+              <p class="text-xs text-theme-muted mb-3">
+                Finds songs with the same title and artist in your library. Lower-quality copies are pre-selected for deletion (sorted FLAC > MP3 > lower bitrate).
+              </p>
+
+              @if (duplicatesMessage()) {
+                <p [class]="'text-xs mb-3 ' + (duplicatesMessage()!.type === 'success' ? 'text-emerald-400' : 'text-red-400')">
+                  {{ duplicatesMessage()!.text }}
+                </p>
+              }
+
+              <button type="button" (click)="loadDuplicates()" [disabled]="duplicatesLoading()"
+                class="px-4 py-2 rounded-lg bg-theme-surface-2 border border-theme text-sm text-theme-secondary hover:text-theme-primary transition disabled:opacity-40 mb-4">
+                {{ duplicatesLoading() ? 'Scanning...' : 'Find Duplicates' }}
+              </button>
+
+              @if (duplicates().length > 0) {
+                <div class="space-y-3 mb-4 max-h-96 overflow-y-auto pr-1">
+                  @for (group of duplicates(); track group[0].id) {
+                    <div class="rounded-lg border border-theme bg-theme-surface-2/30 divide-y divide-theme">
+                      @for (song of group; track song.id) {
+                        <label class="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-theme-hover/30 transition">
+                          <input type="checkbox" [checked]="isDuplicateMarked(song.id)" (change)="toggleDuplicateDelete(song.id)"
+                            class="w-4 h-4 rounded border-theme bg-theme-surface-2 text-red-500 focus:ring-0 focus:ring-offset-0 flex-shrink-0" />
+                          <div class="flex-1 min-w-0">
+                            <p class="text-sm text-theme-primary truncate">{{ song.title }}</p>
+                            <p class="text-xs text-theme-muted truncate">{{ song.artist }} — {{ song.album }}</p>
+                          </div>
+                          <div class="text-right flex-shrink-0 space-y-0.5">
+                            <p class="text-xs font-medium" [class]="(song.suffix ?? '') === 'flac' ? 'text-emerald-400' : 'text-theme-muted'">
+                              {{ (song.suffix ?? '').toUpperCase() }}@if (song.bitRate) { {{ song.bitRate }}k}
+                            </p>
+                            <p class="text-xs text-theme-muted">{{ formatDuration(song.duration) }}</p>
+                          </div>
+                        </label>
+                      }
+                    </div>
+                  }
+                </div>
+
+                <div class="flex items-center gap-3">
+                  <button type="button" (click)="deleteMarkedDuplicates()"
+                    [disabled]="deletingDuplicates() || duplicatesDeleteSet().size === 0"
+                    class="px-4 py-2 rounded-lg bg-red-900/30 border border-red-800/50 text-sm text-red-400 hover:bg-red-900/50 transition disabled:opacity-40">
+                    {{ deletingDuplicates() ? 'Deleting...' : 'Delete ' + duplicatesDeleteSet().size + ' selected' }}
+                  </button>
+                  <p class="text-xs text-theme-muted">Checked = will be deleted. Uncheck to keep.</p>
+                </div>
+              }
+            </div>
+          </section>
+        }
+
         <!-- Shared Folders — admin only -->
         @if (isAdmin()) {
           <section class="rounded-xl border border-theme bg-theme-surface/50 p-6 mt-6">

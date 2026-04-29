@@ -1,5 +1,6 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync, renameSync, unlinkSync } from 'node:fs';
 import { basename, extname, join } from 'node:path';
+import { spawn } from 'node:child_process';
 import { createLogger } from '@nicotind/core';
 
 const log = createLogger('metadata-fixer');
@@ -17,6 +18,14 @@ export interface ParsedMetadata {
   artist?: string;
   album?: string;
   trackNumber?: string;
+}
+
+export interface ReprocessStats {
+  processed: number;
+  total: number;
+  fixed: number;
+  skipped: number;
+  errors: number;
 }
 
 interface MetadataFixerOptions {
@@ -45,6 +54,20 @@ type NodeId3Api = {
   update: (tags: Record<string, string>, filepath: string) => boolean;
 };
 
+type MusicMetadataCommon = {
+  title?: string;
+  artist?: string;
+  album?: string;
+  track?: { no?: number | null };
+};
+
+type MusicMetadataApi = {
+  parseFile: (
+    path: string,
+    opts?: { duration?: boolean },
+  ) => Promise<{ common: MusicMetadataCommon }>;
+};
+
 let nodeId3Promise: Promise<NodeId3Api | null> | null = null;
 let nodeId3MissingLogged = false;
 
@@ -58,13 +81,51 @@ async function getNodeId3(): Promise<NodeId3Api | null> {
           const msg = err instanceof Error ? err.message : String(err);
           log.warn(
             { err: msg },
-            'node-id3 is not installed, metadata repair is disabled until dependencies are installed',
+            'node-id3 is not installed, MP3 metadata repair is disabled',
           );
         }
         return null;
       });
   }
   return nodeId3Promise;
+}
+
+let mmPromise: Promise<MusicMetadataApi | null> | null = null;
+let mmMissingLogged = false;
+
+async function getMusicMetadata(): Promise<MusicMetadataApi | null> {
+  if (!mmPromise) {
+    mmPromise = import('music-metadata')
+      .then((mod) => mod as unknown as MusicMetadataApi)
+      .catch((err) => {
+        if (!mmMissingLogged) {
+          mmMissingLogged = true;
+          const msg = err instanceof Error ? err.message : String(err);
+          log.warn({ err: msg }, 'music-metadata is not installed, FLAC/OPUS metadata repair is disabled');
+        }
+        return null;
+      });
+  }
+  return mmPromise;
+}
+
+const AUDIO_EXTENSIONS = new Set(['.mp3', '.flac', '.ogg', '.opus', '.m4a']);
+
+function* walkAudioFiles(dir: string): Generator<string> {
+  let entries;
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      yield* walkAudioFiles(full);
+    } else if (entry.isFile() && AUDIO_EXTENSIONS.has(extname(entry.name).toLowerCase())) {
+      yield full;
+    }
+  }
 }
 
 function splitPathSegments(input: string): string[] {
@@ -174,10 +235,94 @@ export class MetadataFixer {
     const empty = { fixed: false, changes: {} };
     if (!this.enabled) return empty;
 
+    const ext = extname(absolutePath).toLowerCase();
+    if (ext === '.mp3') return this.fixMp3AtPath(absolutePath, hint);
+    if (ext === '.flac' || ext === '.ogg' || ext === '.opus') return this.fixVorbisAtPath(absolutePath, hint);
+    return empty;
+  }
+
+  async processCompletedDownloads(files: CompletedDownloadFile[]): Promise<void> {
+    if (!this.enabled || files.length === 0) return;
+
+    for (const file of files) {
+      await this.fixSingleFile(file);
+    }
+  }
+
+  async reprocessLibrary(
+    onProgress?: (stats: ReprocessStats) => void,
+  ): Promise<ReprocessStats> {
+    const stats: ReprocessStats = { processed: 0, total: 0, fixed: 0, skipped: 0, errors: 0 };
+    if (!this.enabled) return stats;
+
+    const files = [...walkAudioFiles(this.musicDir)];
+    stats.total = files.length;
+    onProgress?.(stats);
+
+    for (const filePath of files) {
+      try {
+        const result = await this.fixByReadingExistingTags(filePath);
+        if (result.fixed) stats.fixed++;
+        else stats.skipped++;
+      } catch (err) {
+        log.debug({ err, filePath }, 'Error reprocessing file');
+        stats.errors++;
+      }
+      stats.processed++;
+      onProgress?.(stats);
+    }
+
+    return stats;
+  }
+
+  private async fixByReadingExistingTags(absolutePath: string): Promise<{ fixed: boolean }> {
+    const ext = extname(absolutePath).toLowerCase();
+    const empty = { fixed: false };
+
+    if (ext === '.mp3') {
+      const nodeId3 = await getNodeId3();
+      if (!nodeId3) return empty;
+      const raw = nodeId3.read(absolutePath);
+      const data = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+      const hint: ParsedMetadata = {
+        title: asString(data.title),
+        artist: asString(data.artist),
+        album: asString(data.album),
+        trackNumber: asString(data.trackNumber),
+      };
+      const result = await this.fixMp3AtPath(absolutePath, hint);
+      return { fixed: result.fixed };
+    }
+
+    if (ext === '.flac' || ext === '.ogg' || ext === '.opus') {
+      const mm = await getMusicMetadata();
+      if (!mm) return empty;
+      let hint: ParsedMetadata = {};
+      try {
+        const parsed = await mm.parseFile(absolutePath, { duration: false });
+        hint = {
+          title: parsed.common.title,
+          artist: parsed.common.artist,
+          album: parsed.common.album,
+          trackNumber: parsed.common.track?.no ? String(parsed.common.track.no) : undefined,
+        };
+      } catch {
+        hint = inferMetadataFromPath(absolutePath, absolutePath);
+      }
+      const result = await this.fixVorbisAtPath(absolutePath, hint);
+      return { fixed: result.fixed };
+    }
+
+    return empty;
+  }
+
+  private async fixMp3AtPath(
+    absolutePath: string,
+    hint: ParsedMetadata,
+  ): Promise<{ fixed: boolean; changes: Partial<ParsedMetadata> }> {
+    const empty = { fixed: false, changes: {} };
     const nodeId3 = await getNodeId3();
     if (!nodeId3) return empty;
-
-    if (extname(absolutePath).toLowerCase() !== '.mp3') return empty;
 
     const existingRaw = nodeId3.read(absolutePath);
     const existingData =
@@ -191,8 +336,6 @@ export class MetadataFixer {
       trackNumber: asString(existingData.trackNumber),
     };
 
-    // Force mode: always query MusicBrainz using Navidrome hint as the query seed.
-    // Fall back to existing tags, then filename inference for missing hint fields.
     const inferred = inferMetadataFromPath(absolutePath, absolutePath);
     const query: ParsedMetadata = {
       title: hint.title ?? existing.title ?? inferred.title,
@@ -228,31 +371,106 @@ export class MetadataFixer {
     try {
       const ok = nodeId3.update(update, absolutePath);
       if (!ok) {
-        log.warn({ absolutePath }, 'Failed to write ID3 tags (on-demand fix)');
+        log.warn({ absolutePath }, 'Failed to write ID3 tags');
         return empty;
       }
-      log.info({ absolutePath, changes }, 'Repaired audio metadata (on-demand)');
+      log.info({ absolutePath, changes }, 'Repaired MP3 metadata');
       return { fixed: true, changes };
     } catch (err) {
-      log.warn({ err, absolutePath }, 'Failed to repair audio metadata (on-demand)');
+      log.warn({ err, absolutePath }, 'Failed to repair MP3 metadata');
       return empty;
     }
   }
 
-  async processCompletedDownloads(files: CompletedDownloadFile[]): Promise<void> {
-    if (!this.enabled || files.length === 0) return;
+  private async fixVorbisAtPath(
+    absolutePath: string,
+    hint: ParsedMetadata,
+  ): Promise<{ fixed: boolean; changes: Partial<ParsedMetadata> }> {
+    const empty = { fixed: false, changes: {} };
+    const mm = await getMusicMetadata();
+    if (!mm) return empty;
 
-    for (const file of files) {
-      await this.fixSingleFile(file);
+    let existing: ParsedMetadata = {};
+    try {
+      const parsed = await mm.parseFile(absolutePath, { duration: false });
+      existing = {
+        title: parsed.common.title,
+        artist: parsed.common.artist,
+        album: parsed.common.album,
+        trackNumber: parsed.common.track?.no ? String(parsed.common.track.no) : undefined,
+      };
+    } catch {
+      existing = inferMetadataFromPath(absolutePath, absolutePath);
     }
+
+    const inferred = inferMetadataFromPath(absolutePath, absolutePath);
+    const query: ParsedMetadata = {
+      title: hint.title ?? existing.title ?? inferred.title,
+      artist: hint.artist ?? existing.artist ?? inferred.artist,
+      album: hint.album ?? existing.album ?? inferred.album,
+    };
+
+    if (!hasUsableValue(query.title)) return empty;
+
+    const lookedUp = await this.lookupMusicBrainz(query);
+    if (!lookedUp) return empty;
+
+    const target: ParsedMetadata = {
+      title: chooseValue(lookedUp.title, hint.title, existing.title),
+      artist: chooseValue(lookedUp.artist, hint.artist, existing.artist),
+      album: chooseValue(lookedUp.album, hint.album, existing.album),
+      trackNumber: existing.trackNumber ?? hint.trackNumber,
+    };
+
+    const changes: Partial<ParsedMetadata> = {};
+    if (target.title && target.title !== existing.title) changes.title = target.title;
+    if (target.artist && target.artist !== existing.artist) changes.artist = target.artist;
+    if (target.album && target.album !== existing.album) changes.album = target.album;
+
+    if (Object.keys(changes).length === 0) return empty;
+
+    const success = await this.writeFfmpegTags(absolutePath, { ...existing, ...changes });
+    if (!success) return empty;
+
+    log.info({ absolutePath, changes }, 'Repaired FLAC/Vorbis metadata');
+    return { fixed: true, changes };
+  }
+
+  private async writeFfmpegTags(filePath: string, tags: ParsedMetadata): Promise<boolean> {
+    const tmpPath = filePath + '.nicotind.tmp';
+
+    const metaArgs: string[] = [];
+    if (tags.title) metaArgs.push('-metadata', `TITLE=${tags.title}`);
+    if (tags.artist) metaArgs.push('-metadata', `ARTIST=${tags.artist}`);
+    if (tags.album) metaArgs.push('-metadata', `ALBUM=${tags.album}`);
+    if (tags.trackNumber) metaArgs.push('-metadata', `TRACKNUMBER=${tags.trackNumber}`);
+
+    const args = ['-y', '-i', filePath, '-map_metadata', '0', ...metaArgs, '-c', 'copy', tmpPath];
+
+    return new Promise<boolean>((resolve) => {
+      const proc = spawn('ffmpeg', args, { stdio: 'ignore' });
+      proc.on('error', () => {
+        try { unlinkSync(tmpPath); } catch {}
+        resolve(false);
+      });
+      proc.on('close', (code) => {
+        if (code === 0) {
+          try {
+            renameSync(tmpPath, filePath);
+            resolve(true);
+          } catch {
+            try { unlinkSync(tmpPath); } catch {}
+            resolve(false);
+          }
+        } else {
+          try { unlinkSync(tmpPath); } catch {}
+          resolve(false);
+        }
+      });
+    });
   }
 
   private async fixSingleFile(file: CompletedDownloadFile): Promise<void> {
-    const nodeId3 = await getNodeId3();
-    if (!nodeId3) {
-      return;
-    }
-
     const fullPath = this.resolveLocalPath(file.directory, file.filename);
     if (!fullPath) {
       log.debug(
@@ -262,9 +480,18 @@ export class MetadataFixer {
       return;
     }
 
-    if (extname(fullPath).toLowerCase() !== '.mp3') {
-      return;
+    const ext = extname(fullPath).toLowerCase();
+
+    if (ext === '.mp3') {
+      await this.fixNewMp3File(fullPath, file);
+    } else if (ext === '.flac' || ext === '.ogg' || ext === '.opus') {
+      await this.fixNewVorbisFile(fullPath, file);
     }
+  }
+
+  private async fixNewMp3File(fullPath: string, file: CompletedDownloadFile): Promise<void> {
+    const nodeId3 = await getNodeId3();
+    if (!nodeId3) return;
 
     const existingRaw = nodeId3.read(fullPath);
     const existingData =
@@ -278,53 +505,88 @@ export class MetadataFixer {
       trackNumber: asString(existingData.trackNumber),
     };
 
-    const needsTitle = !hasUsableValue(existing.title);
-    const needsArtist = !hasUsableValue(existing.artist);
-    const needsAlbum = !hasUsableValue(existing.album);
+    if (!hasUsableValue(existing.title) || !hasUsableValue(existing.artist) || !hasUsableValue(existing.album)) {
+      const inferred = inferMetadataFromPath(file.filename, file.directory);
+      const lookedUp = await this.lookupMusicBrainz(inferred);
 
-    if (!needsTitle && !needsArtist && !needsAlbum) {
-      return;
-    }
+      const target: ParsedMetadata = {
+        title: chooseValue(existing.title, lookedUp?.title, inferred.title),
+        artist: chooseValue(existing.artist, lookedUp?.artist, inferred.artist),
+        album: chooseValue(existing.album, lookedUp?.album, inferred.album),
+        trackNumber: asString(existing.trackNumber) ?? inferred.trackNumber,
+      };
 
-    const inferred = inferMetadataFromPath(file.filename, file.directory);
-    const lookedUp = await this.lookupMusicBrainz(inferred);
+      const shouldUpdate =
+        target.title !== existing.title ||
+        target.artist !== existing.artist ||
+        target.album !== existing.album ||
+        target.trackNumber !== existing.trackNumber;
 
-    const target: ParsedMetadata = {
-      title: chooseValue(existing.title, lookedUp?.title, inferred.title),
-      artist: chooseValue(existing.artist, lookedUp?.artist, inferred.artist),
-      album: chooseValue(existing.album, lookedUp?.album, inferred.album),
-      trackNumber: asString(existing.trackNumber) ?? inferred.trackNumber,
-    };
+      if (!shouldUpdate) return;
 
-    const shouldUpdate =
-      target.title !== existing.title ||
-      target.artist !== existing.artist ||
-      target.album !== existing.album ||
-      target.trackNumber !== existing.trackNumber;
+      const update: Record<string, string> = {};
+      if (target.title) update.title = target.title;
+      if (target.artist) update.artist = target.artist;
+      if (target.album) update.album = target.album;
+      if (target.trackNumber) update.trackNumber = target.trackNumber;
 
-    if (!shouldUpdate) {
-      return;
-    }
+      if (Object.keys(update).length === 0) return;
 
-    const update: Record<string, string> = {};
-    if (target.title) update.title = target.title;
-    if (target.artist) update.artist = target.artist;
-    if (target.album) update.album = target.album;
-    if (target.trackNumber) update.trackNumber = target.trackNumber;
-
-    if (Object.keys(update).length === 0) {
-      return;
-    }
-
-    try {
-      const ok = nodeId3.update(update, fullPath);
-      if (!ok) {
-        log.warn({ fullPath }, 'Failed to write ID3 tags');
-        return;
+      try {
+        const ok = nodeId3.update(update, fullPath);
+        if (ok) log.info({ fullPath, update }, 'Repaired MP3 metadata on download');
+        else log.warn({ fullPath }, 'Failed to write ID3 tags');
+      } catch (err) {
+        log.warn({ err, fullPath }, 'Failed to repair MP3 metadata');
       }
-      log.info({ fullPath, update }, 'Repaired audio metadata');
-    } catch (err) {
-      log.warn({ err, fullPath }, 'Failed to repair audio metadata');
+    }
+  }
+
+  private async fixNewVorbisFile(fullPath: string, file: CompletedDownloadFile): Promise<void> {
+    const mm = await getMusicMetadata();
+    if (!mm) return;
+
+    let existing: ParsedMetadata = {};
+    try {
+      const parsed = await mm.parseFile(fullPath, { duration: false });
+      existing = {
+        title: parsed.common.title,
+        artist: parsed.common.artist,
+        album: parsed.common.album,
+        trackNumber: parsed.common.track?.no ? String(parsed.common.track.no) : undefined,
+      };
+    } catch {
+      return;
+    }
+
+    if (!hasUsableValue(existing.title) || !hasUsableValue(existing.artist) || !hasUsableValue(existing.album)) {
+      const inferred = inferMetadataFromPath(file.filename, file.directory);
+      const lookedUp = await this.lookupMusicBrainz(inferred);
+
+      const target: ParsedMetadata = {
+        title: chooseValue(existing.title, lookedUp?.title, inferred.title),
+        artist: chooseValue(existing.artist, lookedUp?.artist, inferred.artist),
+        album: chooseValue(existing.album, lookedUp?.album, inferred.album),
+        trackNumber: existing.trackNumber ?? inferred.trackNumber,
+      };
+
+      const shouldUpdate =
+        target.title !== existing.title ||
+        target.artist !== existing.artist ||
+        target.album !== existing.album;
+
+      if (!shouldUpdate) return;
+
+      const changes: Partial<ParsedMetadata> = {};
+      if (target.title && target.title !== existing.title) changes.title = target.title;
+      if (target.artist && target.artist !== existing.artist) changes.artist = target.artist;
+      if (target.album && target.album !== existing.album) changes.album = target.album;
+
+      if (Object.keys(changes).length === 0) return;
+
+      const ok = await this.writeFfmpegTags(fullPath, { ...existing, ...changes });
+      if (ok) log.info({ fullPath, changes }, 'Repaired FLAC/Vorbis metadata on download');
+      else log.warn({ fullPath }, 'Failed to write FLAC/Vorbis tags');
     }
   }
 

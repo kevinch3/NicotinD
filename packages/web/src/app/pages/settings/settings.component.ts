@@ -1,6 +1,7 @@
-import { Component, inject, signal, OnInit } from '@angular/core';
+import { Component, inject, signal, OnInit, OnDestroy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, interval, Subscription } from 'rxjs';
+import { switchMap, takeWhile } from 'rxjs/operators';
 import { ApiService, type TailscaleStatus } from '../../services/api.service';
 import { AuthService } from '../../services/auth.service';
 import { ThemeService, THEME_PRESETS, type ThemeId } from '../../services/theme.service';
@@ -8,12 +9,17 @@ import { RemotePlaybackService } from '../../services/remote-playback.service';
 import { PlaybackWsService } from '../../services/playback-ws.service';
 import { PasswordFieldComponent } from '../../components/password-field/password-field.component';
 
+type DuplicateSong = {
+  id: string; title: string; artist: string; album: string;
+  duration?: number; bitRate?: number; suffix?: string; path: string; coverArt?: string;
+};
+
 @Component({
   selector: 'app-settings',
   imports: [FormsModule, PasswordFieldComponent],
   templateUrl: './settings.component.html',
   })
-export class SettingsComponent implements OnInit {
+export class SettingsComponent implements OnInit, OnDestroy {
   private api = inject(ApiService);
   private auth = inject(AuthService);
   readonly themeService = inject(ThemeService);
@@ -50,6 +56,18 @@ export class SettingsComponent implements OnInit {
 
   readonly deviceName = signal(this.ws.getDeviceName());
   readonly deviceNameSaved = signal(false);
+
+  // Maintenance
+  readonly reprocessRunning = signal(false);
+  readonly reprocessStats = signal<{ processed: number; total: number; fixed: number; errors: number } | null>(null);
+  readonly reprocessMessage = signal<{ type: 'success' | 'error'; text: string } | null>(null);
+  readonly duplicatesLoading = signal(false);
+  readonly duplicates = signal<DuplicateSong[][]>([]);
+  readonly duplicatesDeleteSet = signal<Set<string>>(new Set());
+  readonly duplicatesMessage = signal<{ type: 'success' | 'error'; text: string } | null>(null);
+  readonly deletingDuplicates = signal(false);
+
+  private reprocessPollSub: Subscription | null = null;
 
   isAdmin(): boolean {
     return this.auth.role() === 'admin';
@@ -269,5 +287,112 @@ export class SettingsComponent implements OnInit {
     } finally {
       this.sharesLoading.set(false);
     }
+  }
+
+  ngOnDestroy(): void {
+    this.reprocessPollSub?.unsubscribe();
+  }
+
+  async startReprocess(): Promise<void> {
+    this.reprocessMessage.set(null);
+    this.reprocessStats.set(null);
+    try {
+      await firstValueFrom(this.api.startReprocess());
+      this.reprocessRunning.set(true);
+      this.pollReprocess();
+    } catch (err) {
+      this.reprocessMessage.set({ type: 'error', text: err instanceof Error ? err.message : 'Failed to start' });
+    }
+  }
+
+  private pollReprocess(): void {
+    this.reprocessPollSub?.unsubscribe();
+    this.reprocessPollSub = interval(2000)
+      .pipe(
+        switchMap(() => this.api.getReprocessStatus()),
+        takeWhile((s) => s.running, true),
+      )
+      .subscribe({
+        next: (status) => {
+          this.reprocessRunning.set(status.running);
+          this.reprocessStats.set({
+            processed: status.processed,
+            total: status.total,
+            fixed: status.fixed,
+            errors: status.errors,
+          });
+          if (!status.running && status.startedAt !== null) {
+            this.reprocessMessage.set({
+              type: 'success',
+              text: `Done — ${status.fixed} file${status.fixed !== 1 ? 's' : ''} updated out of ${status.processed} scanned`,
+            });
+          }
+        },
+        error: () => {
+          this.reprocessRunning.set(false);
+          this.reprocessMessage.set({ type: 'error', text: 'Lost connection to reprocess job' });
+        },
+      });
+  }
+
+  async loadDuplicates(): Promise<void> {
+    this.duplicatesLoading.set(true);
+    this.duplicatesMessage.set(null);
+    this.duplicates.set([]);
+    this.duplicatesDeleteSet.set(new Set());
+    try {
+      const groups = await firstValueFrom(this.api.getDuplicates());
+      this.duplicates.set(groups);
+      if (groups.length === 0) {
+        this.duplicatesMessage.set({ type: 'success', text: 'No duplicates found' });
+      } else {
+        // Auto-select lower-quality copies for deletion (all but the first in each group, which is sorted best-first)
+        const toDelete = new Set<string>();
+        for (const group of groups) {
+          for (const song of group.slice(1)) {
+            toDelete.add(song.id);
+          }
+        }
+        this.duplicatesDeleteSet.set(toDelete);
+      }
+    } catch (err) {
+      this.duplicatesMessage.set({ type: 'error', text: err instanceof Error ? err.message : 'Failed to load duplicates' });
+    } finally {
+      this.duplicatesLoading.set(false);
+    }
+  }
+
+  toggleDuplicateDelete(id: string): void {
+    const current = new Set(this.duplicatesDeleteSet());
+    if (current.has(id)) current.delete(id);
+    else current.add(id);
+    this.duplicatesDeleteSet.set(current);
+  }
+
+  isDuplicateMarked(id: string): boolean {
+    return this.duplicatesDeleteSet().has(id);
+  }
+
+  async deleteMarkedDuplicates(): Promise<void> {
+    const ids = [...this.duplicatesDeleteSet()];
+    if (ids.length === 0) return;
+    this.deletingDuplicates.set(true);
+    this.duplicatesMessage.set(null);
+    try {
+      const result = await firstValueFrom(this.api.deleteSongs(ids));
+      this.duplicatesMessage.set({ type: 'success', text: `Deleted ${result.deletedCount} file${result.deletedCount !== 1 ? 's' : ''}` });
+      await this.loadDuplicates();
+    } catch (err) {
+      this.duplicatesMessage.set({ type: 'error', text: err instanceof Error ? err.message : 'Failed to delete' });
+    } finally {
+      this.deletingDuplicates.set(false);
+    }
+  }
+
+  formatDuration(seconds?: number): string {
+    if (!seconds) return '';
+    const m = Math.floor(seconds / 60);
+    const s = Math.floor(seconds % 60);
+    return `${m}:${s.toString().padStart(2, '0')}`;
   }
 }

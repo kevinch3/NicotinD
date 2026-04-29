@@ -6,9 +6,24 @@ import type { Song } from '@nicotind/core';
 import type { Navidrome } from '@nicotind/navidrome-client';
 import type { AuthEnv } from '../middleware/auth.js';
 import { getDatabase } from '../db.js';
-import type { MetadataFixer } from '../services/metadata-fixer.js';
+import type { MetadataFixer, ReprocessStats } from '../services/metadata-fixer.js';
 
 const log = createLogger('library');
+
+interface ReprocessJob extends ReprocessStats {
+  running: boolean;
+  startedAt: number | null;
+}
+
+let reprocessJob: ReprocessJob = {
+  running: false,
+  processed: 0,
+  total: 0,
+  fixed: 0,
+  skipped: 0,
+  errors: 0,
+  startedAt: null,
+};
 
 export function libraryRoutes(navidrome: Navidrome, musicDir?: string, metadataFixer?: MetadataFixer) {
   const app = new Hono<AuthEnv>();
@@ -293,6 +308,128 @@ export function libraryRoutes(navidrome: Navidrome, musicDir?: string, metadataF
   });
 
 
+  // Start library-wide metadata reprocess job (admin only)
+  app.post('/reprocess', async (c) => {
+    const user = c.get('user');
+    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+
+    if (reprocessJob.running) {
+      return c.json({ error: 'Reprocess already running' }, 409);
+    }
+
+    if (!musicDir || !metadataFixer) {
+      return c.json({ error: 'Music directory or metadata fixer not configured' }, 500);
+    }
+
+    reprocessJob = { running: true, processed: 0, total: 0, fixed: 0, skipped: 0, errors: 0, startedAt: Date.now() };
+    log.info('Starting library-wide metadata reprocess');
+
+    metadataFixer
+      .reprocessLibrary((stats) => {
+        Object.assign(reprocessJob, stats);
+      })
+      .then(async (stats) => {
+        Object.assign(reprocessJob, stats, { running: false });
+        log.info(stats, 'Library reprocess complete');
+        try {
+          await (navidrome.system as { startScan: (full?: boolean) => Promise<void> }).startScan(true);
+        } catch {
+          // Non-fatal
+        }
+      })
+      .catch((err) => {
+        log.error({ err }, 'Library reprocess failed');
+        reprocessJob.running = false;
+      });
+
+    return c.json({ ok: true });
+  });
+
+  // Poll reprocess job status
+  app.get('/reprocess/status', (c) => {
+    return c.json(reprocessJob);
+  });
+
+  // Duplicate detection (admin only)
+  app.get('/duplicates', async (c) => {
+    const user = c.get('user');
+    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+
+    const allSongs: Song[] = [];
+    let offset = 0;
+    while (true) {
+      const albums = await navidrome.browsing.getAlbumList('alphabeticalByName', 500, offset);
+      if (albums.length === 0) break;
+      await Promise.all(
+        albums.map(async (album) => {
+          try {
+            const { songs } = await navidrome.browsing.getAlbum(album.id);
+            allSongs.push(...songs);
+          } catch {
+            // Skip unreachable album
+          }
+        }),
+      );
+      offset += albums.length;
+      if (albums.length < 500) break;
+    }
+
+    // Group songs by normalized title + artist
+    const groups = new Map<string, Song[]>();
+    for (const song of allSongs) {
+      const key = normalizeDupKey(song.title, song.artist);
+      const group = groups.get(key) ?? [];
+      group.push(song);
+      groups.set(key, group);
+    }
+
+    // Within each group, sub-cluster by duration (±2s tolerance) and keep clusters of 2+
+    const duplicates: Array<Array<{
+      id: string; title: string; artist: string; album: string;
+      duration?: number; bitRate?: number; suffix?: string;
+      path: string; coverArt?: string;
+    }>> = [];
+
+    for (const [, group] of groups) {
+      if (group.length < 2) continue;
+
+      const clusters: Song[][] = [];
+      for (const song of group) {
+        let placed = false;
+        for (const cluster of clusters) {
+          const refDur = cluster[0]?.duration ?? 0;
+          if (Math.abs((song.duration ?? 0) - refDur) <= 2) {
+            cluster.push(song);
+            placed = true;
+            break;
+          }
+        }
+        if (!placed) clusters.push([song]);
+      }
+
+      for (const cluster of clusters) {
+        if (cluster.length < 2) continue;
+        duplicates.push(
+          cluster
+            .sort((a, b) => qualityScore(b) - qualityScore(a))
+            .map((s) => ({
+              id: s.id,
+              title: s.title,
+              artist: s.artist,
+              album: s.album,
+              duration: s.duration,
+              bitRate: s.bitRate,
+              suffix: s.suffix,
+              path: s.path,
+              coverArt: s.coverArt,
+            })),
+        );
+      }
+    }
+
+    return c.json(duplicates);
+  });
+
   // On-demand metadata normalization for a single song via MusicBrainz
   app.post('/songs/:id/fix-metadata', async (c) => {
     if (!musicDir || !metadataFixer) {
@@ -393,6 +530,22 @@ function orderByCompletionHistory<T extends { path: string; created?: string; ti
 
 function normalizePath(input: string): string {
   return input.replace(/\\/g, '/').replace(/^\/+/, '').toLowerCase();
+}
+
+function normalizeDupKey(title: string, artist: string): string {
+  return `${title}|||${artist}`
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9|]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function qualityScore(song: Song): number {
+  const ext = (song.suffix ?? '').toLowerCase();
+  const formatScore = ext === 'flac' || ext === 'wav' ? 200 : ext === 'opus' || ext === 'ogg' ? 100 : 0;
+  return formatScore + (song.bitRate ?? 0);
 }
 
 function parseCreatedAt(created?: string): number {

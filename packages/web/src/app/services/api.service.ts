@@ -269,6 +269,24 @@ export class ApiService {
     );
   }
 
+  startReprocess() {
+    return this.http.post<{ ok: boolean }>('/api/library/reprocess', {});
+  }
+
+  getReprocessStatus() {
+    return this.http.get<{
+      running: boolean; processed: number; total: number;
+      fixed: number; skipped: number; errors: number; startedAt: number | null;
+    }>('/api/library/reprocess/status');
+  }
+
+  getDuplicates() {
+    return this.http.get<Array<Array<{
+      id: string; title: string; artist: string; album: string;
+      duration?: number; bitRate?: number; suffix?: string; path: string; coverArt?: string;
+    }>>>('/api/library/duplicates');
+  }
+
   // System
   getStatus() {
     return this.http.get<{ slskd: { healthy: boolean }; navidrome: { healthy: boolean } }>('/api/system/status');
