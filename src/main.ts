@@ -34,6 +34,7 @@ async function main() {
   // 2. Start sub-services (if embedded mode)
   const strategy = new NativeProcessStrategy();
   const serviceManager = new ServiceManager(strategy, config);
+  const startupSecrets = loadOrCreateSecrets(config.dataDir);
 
   const hasSoulseekCreds = !!(config.soulseek.username && config.soulseek.password);
 
@@ -68,12 +69,12 @@ async function main() {
     await serviceManager.startNavidrome();
 
     // Auto-create Navidrome admin user on first run
-    await createNavidromeAdmin(config);
+    await createNavidromeAdmin(config, config.dataDir, startupSecrets);
   }
 
   // Auto-create Navidrome admin user in external mode too
   if (config.mode === 'external') {
-    await createNavidromeAdmin(config);
+    await createNavidromeAdmin(config, config.dataDir, startupSecrets);
   }
 
   // 3. Initialize clients (slskd wrapped in mutable ref for hot-swap via settings)
@@ -94,8 +95,8 @@ async function main() {
   // 4. Create and start API server
   const webDistPath = resolve(import.meta.dir, '../packages/web/dist');
 
-  // Load secrets for Tailscale auto-reconnect and persisting new auth keys
-  const secrets = loadOrCreateSecrets(config.dataDir);
+  // Reuse startup secrets (already loaded above) for Tailscale auto-reconnect
+  const secrets = startupSecrets;
 
   // Auto-reconnect Tailscale on startup if an auth key was previously saved
   const tailscale = new TailscaleService();
@@ -167,6 +168,7 @@ export interface PersistedSecrets {
   soulseekListeningPort?: number;
   soulseekEnableUPnP?: boolean;
   tailscale?: { authKey: string };
+  navidromeAdminCreated?: boolean;
 }
 
 export function loadOrCreateSecrets(dataDir: string): PersistedSecrets {
@@ -199,9 +201,12 @@ export function saveSecrets(dataDir: string, secrets: PersistedSecrets): void {
   writeFileSync(secretsPath, JSON.stringify(secrets, null, 2), { mode: 0o600 });
 }
 
-async function createNavidromeAdmin(config: {
-  navidrome: { url: string; username: string; password: string };
-}) {
+async function createNavidromeAdmin(
+  config: { navidrome: { url: string; username: string; password: string } },
+  dataDir: string,
+  secrets: PersistedSecrets,
+) {
+  if (secrets.navidromeAdminCreated) return;
   try {
     const res = await fetch(`${config.navidrome.url}/auth/createAdmin`, {
       method: 'POST',
@@ -213,9 +218,15 @@ async function createNavidromeAdmin(config: {
     });
     if (res.ok) {
       log.info('Created Navidrome admin user');
+      secrets.navidromeAdminCreated = true;
+      saveSecrets(dataDir, secrets);
+    } else if (res.status === 403) {
+      // Admin already exists — mark as done so we skip on future restarts
+      secrets.navidromeAdminCreated = true;
+      saveSecrets(dataDir, secrets);
     }
   } catch {
-    // Already created or Navidrome doesn't support this — fine
+    // Navidrome not reachable yet — will retry next restart if flag not set
   }
 }
 
