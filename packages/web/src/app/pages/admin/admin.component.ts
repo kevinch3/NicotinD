@@ -42,6 +42,10 @@ export class AdminComponent implements OnInit, OnDestroy {
 
   private logEventSource: EventSource | null = null;
   private logReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private readonly serviceSelectEffect = effect(() => {
+    this.selectedService(); // track signal — reconnect stream on service change
+    this.connectLogStream();
+  });
 
   currentUserId(): string | null {
     const token = this.auth.token();
@@ -55,11 +59,6 @@ export class AdminComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     this.loadUsers();
     this.loadSystemStatus();
-
-    effect(() => {
-      this.selectedService(); // track signal
-      this.connectLogStream();
-    });
   }
 
   ngOnDestroy(): void {
@@ -191,9 +190,10 @@ export class AdminComponent implements OnInit, OnDestroy {
   }
 
   public connectLogStream(): void {
+    const token = this.auth.token();
+    if (!token) return;
     this.disconnectLogStream();
     const service = this.selectedService();
-    const token = this.auth.token();
     const src = new EventSource(`/api/system/logs/${service}/stream?token=${encodeURIComponent(token ?? '')}`);
     this.logEventSource = src;
     this.logStreamStatus.set('connecting');
