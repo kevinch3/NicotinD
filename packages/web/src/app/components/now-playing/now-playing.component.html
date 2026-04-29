@@ -15,7 +15,9 @@
           </button>
           <span class="text-xs text-zinc-500 uppercase tracking-wider">Now Playing</span>
           <div class="absolute right-4">
-            <app-device-switcher />
+            @if (remote.remoteEnabled()) {
+              <app-device-switcher placement="down" />
+            }
           </div>
         </div>
 

@@ -1,4 +1,4 @@
-import { Component, inject, signal, ElementRef, HostListener, computed } from '@angular/core';
+import { Component, inject, signal, ElementRef, HostListener, computed, input } from '@angular/core';
 import { RemotePlaybackService } from '../../services/remote-playback.service';
 import { PlaybackWsService } from '../../services/playback-ws.service';
 
@@ -12,6 +12,8 @@ function deviceEmoji(name: string, type: string): string {
   templateUrl: './device-switcher.component.html',
   })
 export class DeviceSwitcherComponent {
+  readonly placement = input<'up' | 'down'>('up');
+
   readonly remote = inject(RemotePlaybackService);
   private ws = inject(PlaybackWsService);
   private elRef = inject(ElementRef);
@@ -41,7 +43,8 @@ export class DeviceSwitcherComponent {
   @HostListener('document:mousedown', ['$event'])
   onDocumentClick(event: MouseEvent): void {
     if (!this.remote.switcherOpen()) return;
-    if (!this.elRef.nativeElement.contains(event.target as Node)) {
+    const target = event.target as HTMLElement;
+    if (!target.closest('app-device-switcher')) {
       this.remote.setSwitcherOpen(false);
     }
   }
