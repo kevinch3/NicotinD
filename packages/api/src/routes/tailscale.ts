@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import type { AuthEnv } from '../middleware/auth.js';
 import { TailscaleService } from '../services/tailscale.js';
 
-export function tailscaleRoutes(tailscale: TailscaleService) {
+export function tailscaleRoutes(tailscale: TailscaleService, saveAuthKeyFn?: (key: string) => void) {
   const app = new Hono<AuthEnv>();
 
   // GET /api/tailscale/status
@@ -25,6 +25,7 @@ export function tailscaleRoutes(tailscale: TailscaleService) {
 
     try {
       const status = await tailscale.connect(authKey.trim());
+      saveAuthKeyFn?.(authKey.trim());
       return c.json(status);
     } catch (err) {
       return c.json({ error: err instanceof Error ? err.message : 'Failed to connect' }, 500);

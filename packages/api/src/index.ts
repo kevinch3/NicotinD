@@ -43,6 +43,8 @@ export interface CreateAppOptions {
   serviceManager: ServiceManager;
   webDistPath?: string;
   saveSecretsFn?: (username: string, password: string) => void;
+  tailscaleAuthKey?: string;
+  saveTailscaleAuthKeyFn?: (key: string) => void;
 }
 
 export function createApp({
@@ -52,6 +54,8 @@ export function createApp({
   serviceManager,
   webDistPath,
   saveSecretsFn,
+  tailscaleAuthKey: _tailscaleAuthKey,
+  saveTailscaleAuthKeyFn,
 }: CreateAppOptions) {
   const expandedDataDir = config.dataDir.startsWith('~')
     ? config.dataDir.replace('~', process.env.HOME ?? '/root')
@@ -159,7 +163,7 @@ export function createApp({
   );
   app.route('/api/playlists', playlistRoutes(navidrome));
   app.route('/api/share', shareRoutes(config.jwt.secret, auth));
-  app.route('/api/tailscale', tailscaleRoutes(tailscale));
+  app.route('/api/tailscale', tailscaleRoutes(tailscale, saveTailscaleAuthKeyFn));
   app.route('/api/users', usersRoutes(registry));
 
   // Serve web UI static files
@@ -184,3 +188,4 @@ export function createApp({
 
 export { DownloadWatcher } from './services/download-watcher.js';
 export { initDatabase, getDatabase } from './db.js';
+export { TailscaleService } from './services/tailscale.js';

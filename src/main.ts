@@ -5,7 +5,7 @@ import { NicotinDConfigSchema, createLogger, generateSecret } from '@nicotind/co
 import { ServiceManager, NativeProcessStrategy } from '@nicotind/service-manager';
 import { Slskd } from '@nicotind/slskd-client';
 import { Navidrome } from '@nicotind/navidrome-client';
-import { createApp } from '@nicotind/api';
+import { createApp, TailscaleService } from '@nicotind/api';
 
 const log = createLogger('nicotind');
 
@@ -93,6 +93,20 @@ async function main() {
 
   // 4. Create and start API server
   const webDistPath = resolve(import.meta.dir, '../packages/web/dist');
+
+  // Load secrets for Tailscale auto-reconnect and persisting new auth keys
+  const secrets = loadOrCreateSecrets(config.dataDir);
+
+  // Auto-reconnect Tailscale on startup if an auth key was previously saved
+  const tailscale = new TailscaleService();
+  const tsStatus = await tailscale.getStatus();
+  if (tsStatus.available && !tsStatus.connected && secrets.tailscale?.authKey) {
+    log.info('Tailscale not connected — attempting auto-reconnect with stored key');
+    await tailscale.connect(secrets.tailscale.authKey).catch((err) => {
+      log.warn({ err }, 'Tailscale auto-reconnect failed');
+    });
+  }
+
   const { app, watcherRef, websocket } = createApp({
     config,
     slskdRef,
@@ -100,9 +114,14 @@ async function main() {
     serviceManager,
     webDistPath,
     saveSecretsFn: (username: string, password: string) => {
-      const secrets = loadOrCreateSecrets(config.dataDir);
-      secrets.soulseekUsername = username;
-      secrets.soulseekPassword = password;
+      const currentSecrets = loadOrCreateSecrets(config.dataDir);
+      currentSecrets.soulseekUsername = username;
+      currentSecrets.soulseekPassword = password;
+      saveSecrets(config.dataDir, currentSecrets);
+    },
+    tailscaleAuthKey: secrets.tailscale?.authKey,
+    saveTailscaleAuthKeyFn: (key: string) => {
+      secrets.tailscale = { authKey: key };
       saveSecrets(config.dataDir, secrets);
     },
   });
@@ -141,6 +160,7 @@ export interface PersistedSecrets {
   soulseekPassword?: string;
   soulseekListeningPort?: number;
   soulseekEnableUPnP?: boolean;
+  tailscale?: { authKey: string };
 }
 
 export function loadOrCreateSecrets(dataDir: string): PersistedSecrets {
