@@ -1,4 +1,7 @@
 import { Hono } from 'hono';
+import { streamSSE } from 'hono/streaming';
+import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import type { NicotinDConfig } from '@nicotind/core';
 import type { Navidrome } from '@nicotind/navidrome-client';
 import type { ServiceManager } from '@nicotind/service-manager';
@@ -98,6 +101,69 @@ export function systemRoutes(
 
     const logs = await serviceManager.getLogs(service, lines);
     return c.json({ logs });
+  });
+
+  // GET /api/system/logs/:service/stream  — SSE, admin only
+  // Streams Docker container logs when the Docker socket is available.
+  app.get('/logs/:service/stream', async (c) => {
+    const user = c.get('user');
+    if (user.role !== 'admin') {
+      return c.json({ error: 'Admin only' }, 403);
+    }
+
+    const service = c.req.param('service');
+    const DOCKER_SOCK = '/var/run/docker.sock';
+
+    if (!existsSync(DOCKER_SOCK)) {
+      return c.json({ error: 'Docker socket not available' }, 503);
+    }
+
+    // Find container name by compose service label.
+    const findProc = spawn('docker', [
+      'ps',
+      '--filter', `label=com.docker.compose.service=${service}`,
+      '--format', '{{.Names}}',
+    ]);
+
+    const containerName = await new Promise<string>((resolve, reject) => {
+      let out = '';
+      findProc.stdout.on('data', (d: Buffer) => { out += d.toString(); });
+      findProc.on('close', (code) => {
+        const name = out.trim().split('\n')[0]?.trim();
+        if (code !== 0 || !name) reject(new Error(`No container for service: ${service}`));
+        else resolve(name);
+      });
+    }).catch(() => null);
+
+    if (!containerName) {
+      return c.json({ error: `No running container for service: ${service}` }, 404);
+    }
+
+    return streamSSE(c, async (stream) => {
+      const logProc = spawn('docker', ['logs', '--follow', '--tail=200', containerName], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+
+      const sendLine = async (line: string) => {
+        if (line.trim()) {
+          await stream.writeSSE({ data: line });
+        }
+      };
+
+      const handleData = async (chunk: Buffer) => {
+        for (const line of chunk.toString().split('\n')) {
+          await sendLine(line);
+        }
+      };
+
+      logProc.stdout.on('data', handleData);
+      logProc.stderr.on('data', handleData);
+
+      await new Promise<void>((resolve) => {
+        logProc.on('close', resolve);
+        stream.onAbort(() => { logProc.kill(); resolve(); });
+      });
+    });
   });
 
   return app;
