@@ -189,8 +189,9 @@ export class SettingsComponent implements OnInit, OnDestroy {
     this.tsMessage.set(null);
     try {
       await firstValueFrom(this.api.disconnectTailscale());
-      this.tsStatus.update(s => s ? { ...s, connected: false, hostname: undefined, ip: undefined } : s);
+      this.tsStatus.update(s => s ? { ...s, connected: false, hostname: undefined, ip: undefined, loginUrl: undefined } : s);
       this.tsMessage.set({ type: 'success', text: 'Disconnected from Tailscale' });
+      this.startTsPoll();
     } catch (err) {
       this.tsMessage.set({ type: 'error', text: err instanceof Error ? err.message : 'Failed to disconnect' });
     } finally {

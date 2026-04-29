@@ -41,7 +41,9 @@ export class TailscaleService {
         connected,
         hostname: selfNode?.DNSName?.replace(/\.$/, ''),
         ip: selfNode?.TailscaleIPs?.[0],
-        loginUrl: !connected ? ((status as Record<string, unknown>).AuthURL as string | undefined || undefined) : undefined,
+        loginUrl: !connected && typeof (status as Record<string, unknown>).AuthURL === 'string'
+          ? ((status as Record<string, unknown>).AuthURL as string) || undefined
+          : undefined,
       };
     } catch (err) {
       log.warn({ err }, 'Failed to get Tailscale status');
