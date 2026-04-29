@@ -419,9 +419,8 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
             playNext();
           }
         }
+        this.player.playNext();
       }
-
-      this.player.playNext();
     };
     const onPlay = () => {
       this.player.setAutoplayBlocked(false);
