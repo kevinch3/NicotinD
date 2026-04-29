@@ -10,6 +10,13 @@ export class SharesApi {
 
   async list(): Promise<SlskdShareDirectory[]> {
     const raw = await this.client.request<any>('/shares');
+    // slskd 0.25+ returns { local: [{localPath, files, isExcluded, ...}] }
+    if (Array.isArray(raw?.local)) {
+      return raw.local
+        .filter((s: any) => !s.isExcluded)
+        .map((s: any) => ({ path: s.localPath ?? s.raw, fileCount: s.files }));
+    }
+    // older versions return a bare array
     if (Array.isArray(raw)) {
       return raw.map((s: any) => ({ path: s.id ?? s.path, fileCount: s.fileCount }));
     }
@@ -23,7 +30,7 @@ export class SharesApi {
         body: JSON.stringify({ id: path }),
       });
     } catch (err: any) {
-      if (err?.status === 404 || err?.status === 405) {
+      if (this.isNotSupported(err)) {
         await this.addViaYaml(path);
       } else {
         throw err;
@@ -35,12 +42,18 @@ export class SharesApi {
     try {
       await this.client.request(`/shares/${encodeURIComponent(path)}`, { method: 'DELETE' });
     } catch (err: any) {
-      if (err?.status === 404 || err?.status === 405) {
+      if (this.isNotSupported(err)) {
         await this.removeViaYaml(path);
       } else {
         throw err;
       }
     }
+  }
+
+  private isNotSupported(err: any): boolean {
+    const status = err?.status ?? 0;
+    const msg: string = err?.message ?? '';
+    return status === 404 || status === 405 || /40[45]/.test(msg);
   }
 
   async rescan(): Promise<void> {
