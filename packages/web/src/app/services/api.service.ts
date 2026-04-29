@@ -30,6 +30,7 @@ export interface TailscaleStatus {
   connected: boolean;
   hostname?: string;
   ip?: string;
+  loginUrl?: string;
 }
 
 export interface AuthResult {

@@ -152,19 +152,15 @@
               </div>
             </div>
 
-            @if (tsStatus()!.connected) {
-              <div class="space-y-2 mb-4">
-                @if (tsStatus()!.hostname) {
-                  <div>
-                    <span class="text-xs text-theme-muted">Hostname: </span>
-                    <span class="text-sm text-theme-primary font-mono">{{ tsStatus()!.hostname }}</span>
-                  </div>
+            @if (tsStatus()?.connected) {
+              <div class="mt-3 space-y-1 text-sm text-theme-muted mb-4">
+                @if (tsStatus()?.hostname) {
+                  <div>Hostname: <span class="text-theme-text font-mono">{{ tsStatus()!.hostname }}</span></div>
                 }
-                @if (tsStatus()!.ip) {
-                  <div>
-                    <span class="text-xs text-theme-muted">IP: </span>
-                    <span class="text-sm text-theme-secondary font-mono">{{ tsStatus()!.ip }}</span>
-                  </div>
+                @if (tsStatus()?.ip) {
+                  <div>IP: <span class="text-theme-text font-mono">{{ tsStatus()!.ip }}</span></div>
+                  <div>NicotinD URL: <a [href]="'http://' + tsStatus()!.ip + ':8484'" target="_blank" rel="noopener noreferrer"
+                       class="text-theme-accent font-mono underline">http://{{ tsStatus()!.ip }}:8484</a></div>
                 }
               </div>
             }
@@ -177,6 +173,13 @@
                 </button>
               } @else {
                 <div class="space-y-3">
+                  @if (tsStatus()?.loginUrl) {
+                    <div class="mb-3 p-3 rounded bg-amber-500/10 border border-amber-500/30 text-sm">
+                      <p class="text-amber-400 font-medium mb-1">Tailscale needs authentication</p>
+                      <a [href]="tsStatus()!.loginUrl" target="_blank" rel="noopener noreferrer"
+                         class="text-theme-accent underline break-all">Open authentication URL</a>
+                    </div>
+                  }
                   <app-password-field [ngModel]="tsAuthKey()" (ngModelChange)="tsAuthKey.set($event)"
                     placeholder="tskey-auth-..." autocomplete="off"
                     inputClass="w-full px-4 py-2.5 rounded-lg bg-theme-surface-2 border border-theme text-theme-primary placeholder-zinc-600 focus:outline-none focus:border-zinc-500 transition text-sm font-mono" />

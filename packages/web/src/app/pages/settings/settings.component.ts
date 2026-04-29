@@ -68,6 +68,7 @@ export class SettingsComponent implements OnInit, OnDestroy {
   readonly deletingDuplicates = signal(false);
 
   private reprocessPollSub: Subscription | null = null;
+  private tsPollSub: Subscription | null = null;
 
   isAdmin(): boolean {
     return this.auth.role() === 'admin';
@@ -172,6 +173,8 @@ export class SettingsComponent implements OnInit, OnDestroy {
     try {
       const status = await firstValueFrom(this.api.connectTailscale(this.tsAuthKey().trim()));
       this.tsStatus.set(status);
+      this.tsPollSub?.unsubscribe();
+      this.tsPollSub = null;
       this.tsAuthKey.set('');
       this.tsMessage.set({ type: 'success', text: `Connected as ${status.hostname ?? 'nicotind'}` });
     } catch (err) {
@@ -219,7 +222,24 @@ export class SettingsComponent implements OnInit, OnDestroy {
     try {
       const status = await firstValueFrom(this.api.getTailscaleStatus());
       this.tsStatus.set(status);
+      if (status.available && !status.connected) this.startTsPoll();
     } catch { /* ignore */ }
+  }
+
+  private startTsPoll(): void {
+    this.tsPollSub?.unsubscribe();
+    this.tsPollSub = interval(5000)
+      .pipe(
+        switchMap(() => this.api.getTailscaleStatus()),
+        takeWhile((s) => !s.connected, true),
+      )
+      .subscribe({
+        next: (status) => {
+          this.tsStatus.set(status);
+          if (status.connected) this.tsPollSub = null;
+        },
+        error: () => { this.tsPollSub = null; },
+      });
   }
 
   async toggleConnection(): Promise<void> {
@@ -291,6 +311,7 @@ export class SettingsComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.reprocessPollSub?.unsubscribe();
+    this.tsPollSub?.unsubscribe();
   }
 
   async startReprocess(): Promise<void> {
