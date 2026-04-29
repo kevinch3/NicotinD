@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import type { AuthEnv } from '../middleware/auth.js';
 import { TailscaleService } from '../services/tailscale.js';
 
-export function tailscaleRoutes(tailscale: TailscaleService, saveAuthKeyFn?: (key: string) => void) {
+export function tailscaleRoutes(tailscale: TailscaleService, saveAuthKeyFn?: (key: string) => void, clearAuthKeyFn?: () => void) {
   const app = new Hono<AuthEnv>();
 
   // GET /api/tailscale/status
@@ -40,6 +40,7 @@ export function tailscaleRoutes(tailscale: TailscaleService, saveAuthKeyFn?: (ke
     }
 
     await tailscale.disconnect();
+    clearAuthKeyFn?.();
     return c.json({ ok: true });
   });
 

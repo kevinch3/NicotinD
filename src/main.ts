@@ -119,10 +119,16 @@ async function main() {
       currentSecrets.soulseekPassword = password;
       saveSecrets(config.dataDir, currentSecrets);
     },
-    tailscaleAuthKey: secrets.tailscale?.authKey,
+    tailscale,
     saveTailscaleAuthKeyFn: (key: string) => {
-      secrets.tailscale = { authKey: key };
-      saveSecrets(config.dataDir, secrets);
+      const current = loadOrCreateSecrets(config.dataDir);
+      current.tailscale = { authKey: key };
+      saveSecrets(config.dataDir, current);
+    },
+    clearTailscaleAuthKeyFn: () => {
+      const current = loadOrCreateSecrets(config.dataDir);
+      delete current.tailscale;
+      saveSecrets(config.dataDir, current);
     },
   });
 

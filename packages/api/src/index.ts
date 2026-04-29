@@ -43,8 +43,9 @@ export interface CreateAppOptions {
   serviceManager: ServiceManager;
   webDistPath?: string;
   saveSecretsFn?: (username: string, password: string) => void;
-  tailscaleAuthKey?: string;
+  tailscale?: TailscaleService;
   saveTailscaleAuthKeyFn?: (key: string) => void;
+  clearTailscaleAuthKeyFn?: () => void;
 }
 
 export function createApp({
@@ -54,8 +55,9 @@ export function createApp({
   serviceManager,
   webDistPath,
   saveSecretsFn,
-  tailscaleAuthKey: _tailscaleAuthKey,
+  tailscale: tailscaleOption,
   saveTailscaleAuthKeyFn,
+  clearTailscaleAuthKeyFn,
 }: CreateAppOptions) {
   const expandedDataDir = config.dataDir.startsWith('~')
     ? config.dataDir.replace('~', process.env.HOME ?? '/root')
@@ -108,8 +110,8 @@ export function createApp({
   registry.register(new NavidromeSearchProvider(navidrome));
   registry.register(new SlskdSearchProvider(slskdRef));
 
-  // Tailscale service
-  const tailscale = new TailscaleService();
+  // Tailscale service — reuse the instance from main.ts if provided (avoids duplicate state)
+  const tailscale = tailscaleOption ?? new TailscaleService();
 
   // Public routes
   app.route('/api/auth', authRoutes(config.jwt.secret, config.jwt.expiresIn, config.registrationEnabled));
@@ -163,7 +165,7 @@ export function createApp({
   );
   app.route('/api/playlists', playlistRoutes(navidrome));
   app.route('/api/share', shareRoutes(config.jwt.secret, auth));
-  app.route('/api/tailscale', tailscaleRoutes(tailscale, saveTailscaleAuthKeyFn));
+  app.route('/api/tailscale', tailscaleRoutes(tailscale, saveTailscaleAuthKeyFn, clearTailscaleAuthKeyFn));
   app.route('/api/users', usersRoutes(registry));
 
   // Serve web UI static files
