@@ -41,6 +41,7 @@ export class AdminComponent implements OnInit, OnDestroy {
   readonly logStreamStatus = signal<'idle' | 'connecting' | 'connected' | 'disconnected'>('idle');
 
   private logEventSource: EventSource | null = null;
+  private logReconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
   currentUserId(): string | null {
     const token = this.auth.token();
@@ -210,13 +211,18 @@ export class AdminComponent implements OnInit, OnDestroy {
     };
 
     src.onerror = () => {
-      this.logStreamStatus.set('disconnected');
       src.close();
       this.logEventSource = null;
+      this.logStreamStatus.set('connecting');
+      this.logReconnectTimer = setTimeout(() => this.connectLogStream(), 5000);
     };
   }
 
   private disconnectLogStream(): void {
+    if (this.logReconnectTimer !== null) {
+      clearTimeout(this.logReconnectTimer);
+      this.logReconnectTimer = null;
+    }
     this.logEventSource?.close();
     this.logEventSource = null;
   }

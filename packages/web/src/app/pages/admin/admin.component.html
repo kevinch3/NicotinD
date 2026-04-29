@@ -137,7 +137,7 @@
             <!-- Status indicator -->
             <div class="text-xs mb-2">
               @if (logStreamStatus() === 'connecting') {
-                <span class="text-amber-400">Connecting…</span>
+                <span class="text-amber-400">Reconnecting…</span>
               } @else if (logStreamStatus() === 'connected') {
                 <span class="text-emerald-400">Live</span>
               } @else if (logStreamStatus() === 'disconnected') {
