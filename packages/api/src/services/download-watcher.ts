@@ -51,7 +51,7 @@ export class DownloadWatcher {
       });
     this.autoPlaylist =
       options.autoPlaylist ??
-      new AutoPlaylistService(navidrome, options.musicDir ?? '');
+      new AutoPlaylistService(navidrome, this.musicDir ?? '');
   }
 
   start(): void {
