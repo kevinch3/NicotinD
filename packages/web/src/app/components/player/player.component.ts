@@ -52,6 +52,10 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
   private visibilityChangeHandler: (() => void) | null = null;
   private wasPlayingBeforeHidden = false;
   private resumePendingAfterVisible = false;
+  // Set by onEnded when it pre-loads the next track synchronously; tells Effect 1 to skip.
+  private lastManualSrc: string | null = null;
+  // Object URL created by onEnded for a preserved track; needs manual revocation.
+  private lastManualObjectUrl: string | null = null;
 
   // Playback progress interpolation
   private interpolatedTime = signal(0);
@@ -94,11 +98,22 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
   constructor() {
     // Effect 1: Load track (checks IndexedDB first for offline-preserved tracks)
     effect((onCleanup) => {
+      // Revoke any object URL we created in onEnded for a preserved track.
+      const pendingObjectUrl = this.lastManualObjectUrl;
+      this.lastManualObjectUrl = null;
+      onCleanup(() => { if (pendingObjectUrl) URL.revokeObjectURL(pendingObjectUrl); });
+
       const track = this.player.currentTrack();
       const token = this.auth.token();
       const isActive = this.isActiveDevice();
       const audio = this.audioEl()?.nativeElement;
       if (!audio) return;
+
+      // onEnded pre-loaded this track synchronously to keep the Android audio session alive.
+      if (track && this.lastManualSrc === track.id) {
+        this.lastManualSrc = null;
+        return;
+      }
 
       let objectUrl: string | null = null;
       onCleanup(() => {
@@ -183,43 +198,45 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
     });
 
     // Effect 4: Media Session action handlers
+    // Handlers are always registered (never nulled) so OS controls work throughout the last
+    // track and across lock-screen sessions. All callbacks run inside zone.run() because
+    // lock-screen/notification-shade dispatches fire outside Angular's zone.
     effect(() => {
-      const queue = this.player.queue();
-      const history = this.player.history();
-      const repeat = this.player.repeat();
       if (!('mediaSession' in navigator)) return;
 
-      const canGoNext = queue.length > 0 || repeat === 'all' || repeat === 'one';
-      const canGoPrev = history.length > 0;
+      // Read signals so effect re-runs when these change (keeps handlers fresh).
+      this.player.queue();
+      this.player.history();
+      this.player.repeat();
 
-      navigator.mediaSession.setActionHandler('play', () => this.player.resume());
-      navigator.mediaSession.setActionHandler('pause', () => this.player.pause());
-      navigator.mediaSession.setActionHandler(
-        'nexttrack',
-        canGoNext ? () => this.player.playNext() : null,
+      navigator.mediaSession.setActionHandler('play', () =>
+        this.zone.run(() => this.player.resume()),
       );
-      navigator.mediaSession.setActionHandler(
-        'previoustrack',
-        canGoPrev
-          ? () => {
-              const audio = this.audioEl()?.nativeElement;
-              if (audio && audio.currentTime > 3) {
-                audio.currentTime = 0;
-              } else {
-                this.player.playPrev();
-              }
-            }
-          : null,
+      navigator.mediaSession.setActionHandler('pause', () =>
+        this.zone.run(() => this.player.pause()),
+      );
+      navigator.mediaSession.setActionHandler('nexttrack', () =>
+        this.zone.run(() => this.player.playNext()),
+      );
+      navigator.mediaSession.setActionHandler('previoustrack', () =>
+        this.zone.run(() => {
+          const audio = this.audioEl()?.nativeElement;
+          if (audio && audio.currentTime > 3) {
+            audio.currentTime = 0;
+          } else {
+            this.player.playPrev();
+          }
+        }),
       );
       navigator.mediaSession.setActionHandler('seekto', (details) => {
-        if (details.seekTime != null) this.player.seek(details.seekTime);
+        if (details.seekTime != null) this.zone.run(() => this.player.seek(details.seekTime!));
       });
-      navigator.mediaSession.setActionHandler('seekforward', () => {
-        this.player.seek(this.player.currentTime() + 10);
-      });
-      navigator.mediaSession.setActionHandler('seekbackward', () => {
-        this.player.seek(Math.max(0, this.player.currentTime() - 10));
-      });
+      navigator.mediaSession.setActionHandler('seekforward', () =>
+        this.zone.run(() => this.player.seek(this.player.currentTime() + 10)),
+      );
+      navigator.mediaSession.setActionHandler('seekbackward', () =>
+        this.zone.run(() => this.player.seek(Math.max(0, this.player.currentTime() - 10))),
+      );
     });
 
     // Effect 5: Play/pause sync
@@ -359,7 +376,53 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
       const value = audio.duration;
       if (Number.isFinite(value) && value > 0) this.player.setDuration(value);
     };
-    const onEnded = () => this.player.playNext();
+    const onEnded = () => {
+      const repeat = this.player.repeat();
+      const token = this.auth.token();
+
+      if (repeat === 'one') {
+        audio.currentTime = 0;
+        audio.play().catch((err) => {
+          if (err.name === 'NotAllowedError') this.handlePlayRejection();
+        });
+      } else {
+        const nextTrack = this.player.queue()[0];
+        if (nextTrack) {
+          this.lastManualSrc = nextTrack.id;
+          const isPreserved = untracked(() => this.preserve.isPreserved(nextTrack.id));
+
+          const playNext = () => {
+            audio.play().catch((err) => {
+              if (document.visibilityState === 'hidden') {
+                // Screen is locked — can't show a banner; request resume on unlock instead.
+                this.resumePendingAfterVisible = true;
+              } else if (err.name === 'NotAllowedError') {
+                this.handlePlayRejection();
+              }
+            });
+          };
+
+          if (isPreserved) {
+            db.getBlob(nextTrack.id).then((blob) => {
+              if (blob) {
+                const url = URL.createObjectURL(blob.audio);
+                this.lastManualObjectUrl = url;
+                audio.src = url;
+              } else {
+                // Blob missing despite metadata — fall back to stream.
+                audio.src = `/api/stream/${nextTrack.id}?token=${token}`;
+              }
+              playNext();
+            });
+          } else {
+            audio.src = `/api/stream/${nextTrack.id}?token=${token}`;
+            playNext();
+          }
+        }
+      }
+
+      this.player.playNext();
+    };
     const onPlay = () => {
       this.player.setAutoplayBlocked(false);
       if (!this.player.isPlaying()) {
