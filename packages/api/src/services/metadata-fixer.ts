@@ -257,6 +257,7 @@ export class MetadataFixer {
 
     const files = [...walkAudioFiles(this.musicDir)];
     stats.total = files.length;
+    log.info({ total: files.length }, 'Starting library metadata reprocess');
     onProgress?.(stats);
 
     for (const filePath of files) {
@@ -265,7 +266,7 @@ export class MetadataFixer {
         if (result.fixed) stats.fixed++;
         else stats.skipped++;
       } catch (err) {
-        log.debug({ err, filePath }, 'Error reprocessing file');
+        log.warn({ err, filePath }, 'Error reprocessing file');
         stats.errors++;
       }
       stats.processed++;
