@@ -133,6 +133,7 @@ export function systemRoutes(
     const containerName = await new Promise<string>((resolve, reject) => {
       let out = '';
       findProc.stdout.on('data', (d: Buffer) => { out += d.toString(); });
+      findProc.stderr.resume(); // drain stderr to avoid pipe buffer deadlock
       findProc.on('close', (code) => {
         const name = out.trim().split('\n')[0]?.trim();
         if (code !== 0 || !name) reject(new Error(`No container for service: ${service}`));
@@ -149,15 +150,11 @@ export function systemRoutes(
         stdio: ['ignore', 'pipe', 'pipe'],
       });
 
-      const sendLine = async (line: string) => {
-        if (line.trim()) {
-          await stream.writeSSE({ data: line });
-        }
-      };
-
-      const handleData = async (chunk: Buffer) => {
+      const handleData = (chunk: Buffer) => {
         for (const line of chunk.toString().split('\n')) {
-          await sendLine(line);
+          if (line.trim()) {
+            stream.writeSSE({ data: line }).catch(() => {});
+          }
         }
       };
 
