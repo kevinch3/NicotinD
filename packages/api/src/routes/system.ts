@@ -112,6 +112,11 @@ export function systemRoutes(
     }
 
     const service = c.req.param('service');
+    const VALID_SERVICES = ['slskd', 'navidrome', 'tailscale', 'nicotind'] as const;
+    if (!(VALID_SERVICES as readonly string[]).includes(service)) {
+      return c.json({ error: `Unknown service. Valid services: ${VALID_SERVICES.join(', ')}` }, 400);
+    }
+
     const DOCKER_SOCK = '/var/run/docker.sock';
 
     if (!existsSync(DOCKER_SOCK)) {
