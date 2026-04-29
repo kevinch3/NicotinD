@@ -1,4 +1,4 @@
-import { Component, inject, signal, OnInit } from '@angular/core';
+import { Component, inject, signal, effect, OnInit, OnDestroy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { ApiService, type AdminUser } from '../../services/api.service';
@@ -10,7 +10,7 @@ import { PasswordFieldComponent } from '../../components/password-field/password
   imports: [FormsModule, PasswordFieldComponent],
   templateUrl: './admin.component.html',
   })
-export class AdminComponent implements OnInit {
+export class AdminComponent implements OnInit, OnDestroy {
   private api = inject(ApiService);
   private auth = inject(AuthService);
 
@@ -35,11 +35,12 @@ export class AdminComponent implements OnInit {
   readonly systemStatus = signal<{ slskd: { healthy: boolean; connected?: boolean }; navidrome: { healthy: boolean } } | null>(null);
   readonly scanStatus = signal<{ scanning: boolean; count: number } | null>(null);
   readonly restarting = signal<{ slskd: boolean; navidrome: boolean }>({ slskd: false, navidrome: false });
-  readonly logService = signal<'slskd' | 'navidrome'>('slskd');
-  readonly logs = signal<string[]>([]);
-  readonly logHint = signal<string | null>(null);
-  readonly logsLoading = signal(false);
-  readonly logsLoaded = signal(false);
+
+  readonly selectedService = signal<'slskd' | 'navidrome' | 'tailscale' | 'nicotind'>('nicotind');
+  readonly logLines = signal<string[]>([]);
+  readonly logStreamStatus = signal<'idle' | 'connecting' | 'connected' | 'disconnected'>('idle');
+
+  private logEventSource: EventSource | null = null;
 
   currentUserId(): string | null {
     const token = this.auth.token();
@@ -53,6 +54,15 @@ export class AdminComponent implements OnInit {
   ngOnInit(): void {
     this.loadUsers();
     this.loadSystemStatus();
+
+    effect(() => {
+      this.selectedService(); // track signal
+      this.connectLogStream();
+    });
+  }
+
+  ngOnDestroy(): void {
+    this.disconnectLogStream();
   }
 
   formatDate(dateStr: string): string {
@@ -172,20 +182,51 @@ export class AdminComponent implements OnInit {
     }
   }
 
-  async loadLogs(service: 'slskd' | 'navidrome'): Promise<void> {
-    this.logService.set(service);
-    this.logsLoading.set(true);
-    this.logHint.set(null);
-    try {
-      const res = await firstValueFrom(this.api.getServiceLogs(service));
-      this.logs.set(res.logs);
-      this.logHint.set(res.hint ?? null);
-    } catch {
-      this.logs.set([`Failed to load ${service} logs`]);
-    } finally {
-      this.logsLoading.set(false);
-      this.logsLoaded.set(true);
-    }
+  readonly logServiceOptions: ('slskd' | 'navidrome' | 'tailscale' | 'nicotind')[] = ['slskd', 'navidrome', 'tailscale', 'nicotind'];
+
+  selectLogService(svc: 'slskd' | 'navidrome' | 'tailscale' | 'nicotind'): void {
+    this.selectedService.set(svc);
+    this.logLines.set([]);
+  }
+
+  public connectLogStream(): void {
+    this.disconnectLogStream();
+    const service = this.selectedService();
+    const token = this.auth.token();
+    const src = new EventSource(`/api/system/logs/${service}/stream?token=${encodeURIComponent(token ?? '')}`);
+    this.logEventSource = src;
+    this.logStreamStatus.set('connecting');
+
+    src.onopen = () => {
+      this.logStreamStatus.set('connected');
+    };
+
+    src.onmessage = (e) => {
+      this.logLines.update(lines => {
+        const next = [...lines, e.data];
+        return next.length > 500 ? next.slice(next.length - 500) : next;
+      });
+      this.scrollLogsToBottom();
+    };
+
+    src.onerror = () => {
+      this.logStreamStatus.set('disconnected');
+      src.close();
+      this.logEventSource = null;
+    };
+  }
+
+  private disconnectLogStream(): void {
+    this.logEventSource?.close();
+    this.logEventSource = null;
+  }
+
+  private scrollLogsToBottom(): void {
+    // Use setTimeout to allow Angular to render new lines first
+    setTimeout(() => {
+      const el = document.querySelector('.log-scroll-container');
+      if (el) el.scrollTop = el.scrollHeight;
+    }, 0);
   }
 
   private async loadUsers(): Promise<void> {

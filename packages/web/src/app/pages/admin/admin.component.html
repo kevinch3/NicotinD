@@ -120,35 +120,40 @@
 
           <!-- Log viewer -->
           <div>
-            <div class="flex items-center gap-3 mb-3">
-              <span class="text-xs font-semibold uppercase tracking-wider text-zinc-500">Logs</span>
-              <div class="flex gap-1">
-                @for (svc of services; track svc) {
-                  <button (click)="loadLogs(svc)"
-                    [class]="'px-3 py-1 rounded-md text-xs font-medium transition ' + (logService() === svc && logsLoaded() ? 'bg-zinc-700 text-zinc-200' : 'text-zinc-500 hover:text-zinc-300')">
-                    {{ svc }}
-                  </button>
-                }
-              </div>
-              @if (logsLoaded()) {
-                <button (click)="loadLogs(logService())" class="ml-auto text-xs text-zinc-500 hover:text-zinc-300 transition">Refresh</button>
+            <span class="text-xs font-semibold uppercase tracking-wider text-zinc-500">Logs</span>
+
+            <!-- Service selector -->
+            <div class="flex gap-2 mb-3 flex-wrap mt-3">
+              @for (svc of logServiceOptions; track svc) {
+                <button
+                  (click)="selectLogService(svc)"
+                  [class]="selectedService() === svc
+                    ? 'px-3 py-1 rounded text-sm font-medium bg-theme-accent text-white'
+                    : 'px-3 py-1 rounded text-sm font-medium bg-theme-surface text-theme-muted hover:text-theme-text'"
+                >{{ svc }}</button>
               }
             </div>
-            @if (logsLoading()) {
-              <div class="flex items-center gap-2 py-4 text-xs text-zinc-500">
-                <span class="inline-block w-3 h-3 border-2 border-zinc-700 border-t-zinc-400 rounded-full animate-spin"></span>
-                Loading logs…
-              </div>
-            }
-            @if (!logsLoading() && logs().length > 0) {
-              <pre class="rounded-lg bg-zinc-950 border border-zinc-800 p-4 text-[11px] text-zinc-400 overflow-auto max-h-72 leading-relaxed">{{ logs().join('\n') }}</pre>
-            }
-            @if (!logsLoading() && logsLoaded() && logs().length === 0) {
-              <p class="text-xs text-zinc-600">{{ logHint() ?? 'No logs available for this service.' }}</p>
-            }
-            @if (!logsLoading() && !logsLoaded()) {
-              <p class="text-xs text-zinc-600">Select a service above to view logs.</p>
-            }
+
+            <!-- Status indicator -->
+            <div class="text-xs mb-2">
+              @if (logStreamStatus() === 'connecting') {
+                <span class="text-amber-400">Connecting…</span>
+              } @else if (logStreamStatus() === 'connected') {
+                <span class="text-emerald-400">Live</span>
+              } @else if (logStreamStatus() === 'disconnected') {
+                <span class="text-red-400">Disconnected — <button class="underline" (click)="connectLogStream()">reconnect</button></span>
+              }
+            </div>
+
+            <!-- Log output -->
+            <div class="log-scroll-container bg-theme-surface rounded p-3 h-80 overflow-y-auto font-mono text-xs text-theme-muted">
+              @if (logLines().length === 0) {
+                <div class="text-theme-muted/50">Waiting for log output…</div>
+              }
+              @for (line of logLines(); track $index) {
+                <div class="whitespace-pre-wrap break-all leading-relaxed">{{ line }}</div>
+              }
+            </div>
           </div>
         </div>
 
