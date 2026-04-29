@@ -198,8 +198,13 @@ export function libraryRoutes(navidrome: Navidrome, musicDir?: string, metadataF
     }
 
     // Get the song's path from Navidrome
-    const song = await navidrome.browsing.getSong(id);
-    if (!song.path) {
+    let song: Awaited<ReturnType<typeof navidrome.browsing.getSong>>;
+    try {
+      song = await navidrome.browsing.getSong(id);
+    } catch {
+      return { ok: false, error: 'Song not found in library', status: 404 };
+    }
+    if (!song?.path) {
       return { ok: false, error: 'Song path not available', status: 404 };
     }
 
@@ -294,7 +299,9 @@ export function libraryRoutes(navidrome: Navidrome, musicDir?: string, metadataF
 
     const failed = results.filter(r => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value.ok));
     if (failed.length === ids.length) {
-      return c.json({ error: 'Failed to delete any songs' }, 500);
+      const firstError = results.find(r => r.status === 'fulfilled' && !r.value.ok) as PromiseFulfilledResult<{ ok: false; error: string; status: number }> | undefined;
+      const status = firstError?.value.status ?? 500;
+      return c.json({ error: firstError?.value.error ?? 'Failed to delete any songs' }, status as any);
     }
 
     // Trigger single Navidrome rescan at the end
