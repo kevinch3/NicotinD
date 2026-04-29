@@ -49,7 +49,9 @@ export class DownloadWatcher {
         enabled: options.metadataFixEnabled ?? true,
         minScore: options.metadataFixMinScore ?? 85,
       });
-    this.autoPlaylist = options.autoPlaylist ?? new AutoPlaylistService(navidrome);
+    this.autoPlaylist =
+      options.autoPlaylist ??
+      new AutoPlaylistService(navidrome, options.musicDir ?? '');
   }
 
   start(): void {

@@ -13,6 +13,13 @@ function normalizePath(input: string): string {
   return input.replace(/\\/g, '/').replace(/^\/+/, '').toLowerCase();
 }
 
+/** Strips the music directory prefix from an absolute Navidrome song path. */
+export function normalizeSongPath(musicDir: string, absolutePath: string): string {
+  const prefix = normalizePath(musicDir).replace(/\/+$/, '') + '/';
+  const normalized = normalizePath(absolutePath);
+  return normalized.startsWith(prefix) ? normalized.slice(prefix.length) : normalized;
+}
+
 /** Extracts the leaf folder name and strips audio quality/format tags. */
 export function cleanFolderName(raw: string): string {
   // Extract leaf segment (handles both \ and / separators)
@@ -55,6 +62,7 @@ export function groupByDirectory(
 export class AutoPlaylistService {
   constructor(
     private navidrome: Navidrome,
+    private musicDir = '',
     private scanTimeoutMs = 30_000,
   ) {}
 
@@ -199,7 +207,7 @@ export class AutoPlaylistService {
 
         if (relativePath) {
           const pathMatch = results.song.find(
-            (song) => normalizePath(song.path) === relativePath,
+            (song) => normalizeSongPath(this.musicDir, song.path) === relativePath,
           );
           if (pathMatch) return pathMatch.id;
         }
@@ -251,7 +259,7 @@ export class AutoPlaylistService {
           try {
             const { songs } = await this.navidrome.browsing.getAlbum(album.id);
             for (const song of songs) {
-              pathIndex.set(normalizePath(song.path), song.id);
+              pathIndex.set(normalizeSongPath(this.musicDir, song.path), song.id);
             }
           } catch {
             // continue with next album

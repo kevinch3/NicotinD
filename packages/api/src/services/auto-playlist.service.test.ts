@@ -1,5 +1,5 @@
 import { describe, expect, it, mock, beforeEach } from 'bun:test';
-import { cleanFolderName, groupByDirectory, ALL_SINGLES, AutoPlaylistService } from './auto-playlist.service.js';
+import { cleanFolderName, groupByDirectory, ALL_SINGLES, AutoPlaylistService, normalizeSongPath } from './auto-playlist.service.js';
 import type { CompletedDownloadFile } from './metadata-fixer.js';
 
 describe('constants', () => {
@@ -73,6 +73,28 @@ describe('groupByDirectory', () => {
   });
 });
 
+describe('normalizeSongPath', () => {
+  it('strips the music dir prefix from an absolute Navidrome path', () => {
+    expect(normalizeSongPath('/data/music', '/data/music/Music/Artist/Track.mp3'))
+      .toBe('music/artist/track.mp3');
+  });
+
+  it('handles a trailing slash on musicDir', () => {
+    expect(normalizeSongPath('/data/music/', '/data/music/Music/Track.mp3'))
+      .toBe('music/track.mp3');
+  });
+
+  it('returns the normalized path unchanged when prefix is absent', () => {
+    expect(normalizeSongPath('/data/music', 'relative/path/Track.mp3'))
+      .toBe('relative/path/track.mp3');
+  });
+
+  it('normalizes backslashes', () => {
+    expect(normalizeSongPath('/data/music', '/data/music/Music\\Artist\\Track.mp3'))
+      .toBe('music/artist/track.mp3');
+  });
+});
+
 // Helper: build a minimal Song-shaped object for mocks
 function makeSong(id: string, path: string) {
   return {
@@ -117,7 +139,7 @@ describe('AutoPlaylistService.processBatch', () => {
       },
     };
     // Pass scanTimeoutMs=0 so waitForScan returns immediately in tests
-    service = new AutoPlaylistService(navidromeMock, 0);
+    service = new AutoPlaylistService(navidromeMock, '', 0);
   });
 
   it('does nothing for an empty batch', async () => {
@@ -373,7 +395,7 @@ describe('AutoPlaylistService.processBatch', () => {
     );
 
     // Use a positive timeout (2000ms) so the loop actually runs
-    const pollService = new AutoPlaylistService(navidromeMock, 2000);
+    const pollService = new AutoPlaylistService(navidromeMock, '', 2000);
     await pollService.processBatch([{ username: 'u', directory: 'dir', filename: 's.mp3' }]);
 
     expect(navidromeMock.system.getScanStatus).toHaveBeenCalledTimes(2);
