@@ -21,10 +21,11 @@ RUN cd packages/web && bun run build
 FROM oven/bun:1 AS production
 WORKDIR /app
 
-# Install curl (healthchecks) — tailscale CLI communication via local API socket
+# Install curl (healthchecks), ffmpeg, and docker CLI (log streaming via mounted socket)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends curl ca-certificates ffmpeg && \
     rm -rf /var/lib/apt/lists/*
+COPY --from=docker:cli /usr/local/bin/docker /usr/local/bin/docker
 
 # Copy all packages (web needs package.json for workspace resolution)
 COPY package.json bun.lock bunfig.toml tsconfig.json ./

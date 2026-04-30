@@ -198,7 +198,10 @@ export class AdminComponent implements OnInit, OnDestroy {
     this.logEventSource = src;
     this.logStreamStatus.set('connecting');
 
+    let everConnected = false;
+
     src.onopen = () => {
+      everConnected = true;
       this.logStreamStatus.set('connected');
     };
 
@@ -213,8 +216,14 @@ export class AdminComponent implements OnInit, OnDestroy {
     src.onerror = () => {
       src.close();
       this.logEventSource = null;
-      this.logStreamStatus.set('connecting');
-      this.logReconnectTimer = setTimeout(() => this.connectLogStream(), 5000);
+      if (everConnected) {
+        // Transient disconnect — reconnect
+        this.logStreamStatus.set('connecting');
+        this.logReconnectTimer = setTimeout(() => this.connectLogStream(), 5000);
+      } else {
+        // Never established (e.g. 503) — don't retry
+        this.logStreamStatus.set('disconnected');
+      }
     };
   }
 
