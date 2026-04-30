@@ -134,12 +134,22 @@ export function systemRoutes(
       let out = '';
       findProc.stdout.on('data', (d: Buffer) => { out += d.toString(); });
       findProc.stderr.resume(); // drain stderr to avoid pipe buffer deadlock
+      findProc.on('error', reject);
       findProc.on('close', (code) => {
         const name = out.trim().split('\n')[0]?.trim();
         if (code !== 0 || !name) reject(new Error(`No container for service: ${service}`));
         else resolve(name);
       });
-    }).catch(() => null);
+    }).catch((err: Error) => {
+      if (err.message.includes('not found') || (err as NodeJS.ErrnoException).code === 'ENOENT') {
+        return 'DOCKER_NOT_FOUND' as const;
+      }
+      return null;
+    });
+
+    if (containerName === 'DOCKER_NOT_FOUND') {
+      return c.json({ error: 'Docker CLI not available in this container' }, 503);
+    }
 
     if (!containerName) {
       return c.json({ error: `No running container for service: ${service}` }, 404);
@@ -162,6 +172,7 @@ export function systemRoutes(
       logProc.stderr.on('data', handleData);
 
       await new Promise<void>((resolve) => {
+        logProc.on('error', resolve);
         logProc.on('close', resolve);
         stream.onAbort(() => { logProc.kill(); resolve(); });
       });
