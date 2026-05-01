@@ -374,7 +374,13 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
     };
     const onDuration = () => {
       const value = audio.duration;
-      if (Number.isFinite(value) && value > 0) this.player.setDuration(value);
+      if (Number.isFinite(value) && value > 0) {
+        this.player.setDuration(value);
+        if (this.player.restoredTime !== null) {
+          audio.currentTime = this.player.restoredTime;
+          this.player.restoredTime = null;
+        }
+      }
     };
     const onEnded = () => {
       const repeat = this.player.repeat();

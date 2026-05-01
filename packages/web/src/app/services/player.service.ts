@@ -1,4 +1,4 @@
-import { Injectable, signal, computed } from '@angular/core';
+import { Injectable, signal, computed, effect, untracked } from '@angular/core';
 
 export interface Track {
   id: string;
@@ -29,6 +29,8 @@ export function shuffleArray<T>(arr: T[]): T[] {
 
 @Injectable({ providedIn: 'root' })
 export class PlayerService {
+  private static readonly STORAGE_KEY = 'nicotind_player_state';
+
   readonly currentTrack = signal<Track | null>(null);
   readonly isPlaying = signal(false);
   readonly queue = signal<Track[]>([]);
@@ -41,6 +43,65 @@ export class PlayerService {
   readonly duration = signal(0);
   readonly seekTo = signal<number | null>(null);
   readonly autoplayBlocked = signal(false);
+
+  // Set by restoreState(); consumed by PlayerComponent.onDuration after audio is ready.
+  restoredTime: number | null = null;
+
+  constructor() {
+    effect(() => {
+      const currentTrack = this.currentTrack();
+      if (currentTrack === null) {
+        localStorage.removeItem(PlayerService.STORAGE_KEY);
+        return;
+      }
+      const snapshot = {
+        currentTrack,
+        queue: this.queue(),
+        history: this.history().slice(-50),
+        shuffle: this.shuffle(),
+        repeat: this.repeat(),
+        context: this.context(),
+        currentTime: untracked(() => this.currentTime()),
+      };
+      try {
+        localStorage.setItem(PlayerService.STORAGE_KEY, JSON.stringify(snapshot));
+      } catch { /* quota exceeded */ }
+    });
+
+    const capturePosition = () => {
+      try {
+        const raw = localStorage.getItem(PlayerService.STORAGE_KEY);
+        if (!raw) return;
+        const parsed = JSON.parse(raw) as Record<string, unknown>;
+        parsed['currentTime'] = this.currentTime();
+        localStorage.setItem(PlayerService.STORAGE_KEY, JSON.stringify(parsed));
+      } catch { /* ignore */ }
+    };
+    window.addEventListener('pagehide', capturePosition, { passive: true });
+    window.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') capturePosition();
+    }, { passive: true });
+  }
+
+  restoreState(): void {
+    try {
+      const raw = localStorage.getItem(PlayerService.STORAGE_KEY);
+      if (!raw) return;
+      const state = JSON.parse(raw) as Record<string, unknown>;
+      if (state['currentTrack']) this.currentTrack.set(state['currentTrack'] as Track);
+      // isPlaying stays false — autoplay requires a user gesture
+      if (Array.isArray(state['queue'])) this.queue.set(state['queue'] as Track[]);
+      if (Array.isArray(state['history'])) this.history.set(state['history'] as Track[]);
+      if (state['shuffle'] != null) this.shuffle.set(Boolean(state['shuffle']));
+      if (state['repeat'] != null) this.repeat.set(state['repeat'] as 'off' | 'all' | 'one');
+      if (state['context']) this.context.set(state['context'] as PlayContext);
+      if (typeof state['currentTime'] === 'number' && state['currentTime'] > 1) {
+        this.restoredTime = state['currentTime'];
+      }
+    } catch {
+      localStorage.removeItem(PlayerService.STORAGE_KEY);
+    }
+  }
 
   play(track: Track): void {
     this.currentTrack.set(track);
@@ -125,6 +186,7 @@ export class PlayerService {
     this.context.set(null);
     this.currentTime.set(0);
     this.duration.set(0);
+    localStorage.removeItem(PlayerService.STORAGE_KEY);
   }
 
   toggleShuffle(): void {

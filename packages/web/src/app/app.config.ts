@@ -7,6 +7,7 @@ import { authInterceptor } from './interceptors/auth.interceptor';
 import { SetupService } from './services/setup.service';
 import { ThemeService } from './services/theme.service';
 import { PreserveService } from './services/preserve.service';
+import { PlayerService } from './services/player.service';
 
 export const appConfig: ApplicationConfig = {
   providers: [
@@ -17,8 +18,10 @@ export const appConfig: ApplicationConfig = {
       const setup = inject(SetupService);
       const theme = inject(ThemeService);
       const preserve = inject(PreserveService);
+      const player = inject(PlayerService);
       theme.apply();
       preserve.init();
+      player.restoreState();
       return setup.check();
     }),
     provideServiceWorker('ngsw-worker.js', {

@@ -124,4 +124,133 @@ describe('PlayerService', () => {
       expect(service.history()).toEqual([]);
     });
   });
+
+  describe('state persistence', () => {
+    const STORAGE_KEY = 'nicotind_player_state';
+
+    beforeEach(() => localStorage.clear());
+    afterEach(() => localStorage.clear());
+
+    it('writes currentTrack to localStorage when play() is called', () => {
+      service.play(track1);
+      TestBed.flushEffects();
+      const state = JSON.parse(localStorage.getItem(STORAGE_KEY)!);
+      expect(state.currentTrack).toEqual(track1);
+    });
+
+    it('writes queue to localStorage when queue changes', () => {
+      service.play(track1);
+      service.queue.set([track2, track3]);
+      TestBed.flushEffects();
+      const state = JSON.parse(localStorage.getItem(STORAGE_KEY)!);
+      expect(state.queue).toEqual([track2, track3]);
+    });
+
+    it('writes shuffle and repeat to localStorage', () => {
+      service.play(track1);
+      service.shuffle.set(true);
+      service.repeat.set('all');
+      TestBed.flushEffects();
+      const state = JSON.parse(localStorage.getItem(STORAGE_KEY)!);
+      expect(state.shuffle).toBe(true);
+      expect(state.repeat).toBe('all');
+    });
+
+    it('removes localStorage entry when currentTrack is null', () => {
+      service.play(track1);
+      TestBed.flushEffects();
+      expect(localStorage.getItem(STORAGE_KEY)).not.toBeNull();
+      service.currentTrack.set(null);
+      TestBed.flushEffects();
+      expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+    });
+
+    it('restoreState() restores currentTrack, queue, history, shuffle, repeat, context', () => {
+      const ctx: PlayContext = {
+        type: 'album',
+        id: 'album-1',
+        name: 'Test Album',
+        originalOrder: [track1, track2],
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        currentTrack: track1,
+        queue: [track2],
+        history: [track3],
+        shuffle: true,
+        repeat: 'all',
+        context: ctx,
+        currentTime: 30,
+      }));
+      service.restoreState();
+      expect(service.currentTrack()).toEqual(track1);
+      expect(service.queue()).toEqual([track2]);
+      expect(service.history()).toEqual([track3]);
+      expect(service.shuffle()).toBe(true);
+      expect(service.repeat()).toBe('all');
+      expect(service.context()).toEqual(ctx);
+    });
+
+    it('restoreState() always leaves isPlaying = false', () => {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        currentTrack: track1,
+        queue: [],
+        history: [],
+        shuffle: false,
+        repeat: 'off',
+        context: null,
+        currentTime: 5,
+      }));
+      service.restoreState();
+      expect(service.isPlaying()).toBe(false);
+    });
+
+    it('restoreState() sets restoredTime when currentTime > 1', () => {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        currentTrack: track1,
+        queue: [],
+        history: [],
+        shuffle: false,
+        repeat: 'off',
+        context: null,
+        currentTime: 45.5,
+      }));
+      service.restoreState();
+      expect(service.restoredTime).toBe(45.5);
+    });
+
+    it('restoreState() leaves restoredTime null when currentTime <= 1', () => {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        currentTrack: track1,
+        queue: [],
+        history: [],
+        shuffle: false,
+        repeat: 'off',
+        context: null,
+        currentTime: 0.5,
+      }));
+      service.restoreState();
+      expect(service.restoredTime).toBeNull();
+    });
+
+    it('restoreState() is a no-op when localStorage is empty', () => {
+      service.restoreState();
+      expect(service.currentTrack()).toBeNull();
+      expect(service.queue()).toEqual([]);
+      expect(service.isPlaying()).toBe(false);
+    });
+
+    it('restoreState() clears corrupt localStorage without throwing', () => {
+      localStorage.setItem(STORAGE_KEY, 'not-valid-json{{{');
+      expect(() => service.restoreState()).not.toThrow();
+      expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+    });
+
+    it('clear() removes the localStorage entry synchronously', () => {
+      service.play(track1);
+      TestBed.flushEffects();
+      expect(localStorage.getItem(STORAGE_KEY)).not.toBeNull();
+      service.clear();
+      expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+    });
+  });
 });
