@@ -34,6 +34,12 @@
     }
   }
 
+  @if (deleteError()) {
+    <div class="mt-4 px-4 py-2 rounded-lg bg-red-500/10 text-red-400 text-sm">
+      {{ deleteError() }}
+    </div>
+  }
+
   <!-- Confirm dialog -->
   @if (showConfirm()) {
     <app-confirm-dialog

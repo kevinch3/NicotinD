@@ -146,6 +146,7 @@ export class DownloadsComponent implements OnInit, OnDestroy {
   readonly selected = signal(new Set<string>());
   readonly lastSelectedId = signal<string | null>(null);
   readonly deleting = signal(new Set<string>());
+  readonly deleteError = signal<string | null>(null);
   readonly scanning = signal(false);
   readonly showPlaylistPicker = signal(false);
   readonly addingToPlaylist = signal(false);
@@ -362,6 +363,7 @@ export class DownloadsComponent implements OnInit, OnDestroy {
   }
 
   async handleDelete(songIds: string[]): Promise<void> {
+    this.deleteError.set(null);
     this.deleting.update(prev => {
       const next = new Set(prev);
       songIds.forEach(id => next.add(id));
@@ -369,14 +371,20 @@ export class DownloadsComponent implements OnInit, OnDestroy {
     });
 
     try {
-      await firstValueFrom(this.api.deleteSongs(songIds));
+      const result = await firstValueFrom(this.api.deleteSongs(songIds));
       this.recentSongs.update(prev => prev.filter(s => !songIds.includes(s.id)));
       this.selected.update(prev => {
         const next = new Set(prev);
         songIds.forEach(id => next.delete(id));
         return next;
       });
-    } catch { /* ignore */ }
+      if (result.deletedCount < songIds.length) {
+        const failedCount = songIds.length - result.deletedCount;
+        this.deleteError.set(`Deleted ${result.deletedCount} of ${songIds.length} songs. ${failedCount} could not be removed.`);
+      }
+    } catch {
+      this.deleteError.set('Failed to delete songs. Please try again.');
+    }
 
     this.deleting.update(prev => {
       const next = new Set(prev);

@@ -27,6 +27,7 @@ export class GenreDetailComponent implements OnInit {
   readonly loadingGenreSongs = signal(true);
   readonly genreSlug = signal<string | null>(null);
   readonly genreSongs = signal<Song[]>([]);
+  readonly deleteError = signal<string | null>(null);
 
   readonly filteredGenreSongs = computed(() => {
     const deleted = this.transferService.deletedSongIds();
@@ -118,9 +119,14 @@ export class GenreDetailComponent implements OnInit {
         label: 'Remove',
         destructive: true,
         action: () => this.askConfirm(`Remove "${song.title}" from library?`, async () => {
-          try { await firstValueFrom(this.api.deleteSongs([song.id])); } catch { /* ignore */ }
-          this.transferService.addDeletedIds([song.id]);
-          this.genreSongs.update(s => s.filter(x => x.id !== song.id));
+          this.deleteError.set(null);
+          try {
+            await firstValueFrom(this.api.deleteSongs([song.id]));
+            this.transferService.addDeletedIds([song.id]);
+            this.genreSongs.update(s => s.filter(x => x.id !== song.id));
+          } catch {
+            this.deleteError.set(`Failed to remove "${song.title}".`);
+          }
         }),
       }] : []),
     ];

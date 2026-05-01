@@ -561,6 +561,12 @@
         }
       } <!-- end activeTab === 'uploads' -->
 
+      @if (deleteError()) {
+        <div class="mx-4 mb-2 px-4 py-2 rounded-lg bg-red-500/10 text-red-400 text-sm">
+          {{ deleteError() }}
+        </div>
+      }
+
       @if (showConfirm()) {
         <app-confirm-dialog
           [message]="confirmMessage()"

@@ -264,6 +264,12 @@ export class ApiService {
     return this.http.post<{ ok: boolean; deletedCount: number }>('/api/library/songs/bulk-delete', { ids });
   }
 
+  deleteAlbum(id: string) {
+    return this.http.delete<{ ok: boolean; deletedCount: number; failedCount: number; failed: Array<{ id: string; error: string }> }>(
+      `/api/library/albums/${id}`,
+    );
+  }
+
   fixSongMetadata(id: string) {
     return this.http.post<{ fixed: boolean; changes?: { title?: string; artist?: string; album?: string } }>(
       `/api/library/songs/${id}/fix-metadata`, {},

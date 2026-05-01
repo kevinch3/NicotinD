@@ -72,6 +72,17 @@ export function initDatabase(dataDir: string): Database {
     ON completed_downloads (basename, completed_at DESC)
   `);
 
+  try {
+    db.run(`ALTER TABLE completed_downloads ADD COLUMN navidrome_id TEXT`);
+  } catch {
+    // Column already exists — ignore
+  }
+
+  db.run(`
+    CREATE INDEX IF NOT EXISTS idx_completed_downloads_navidrome_id
+    ON completed_downloads (navidrome_id)
+  `);
+
   db.run(`
     CREATE TABLE IF NOT EXISTS share_tokens (
       token             TEXT    PRIMARY KEY,

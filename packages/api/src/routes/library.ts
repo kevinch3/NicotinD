@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { basename, dirname, extname, join, normalize, relative } from 'node:path';
+import { basename, dirname, join, normalize, relative } from 'node:path';
 import { unlinkSync, rmdirSync, existsSync, readdirSync } from 'node:fs';
 import { createLogger } from '@nicotind/core';
 import type { Song } from '@nicotind/core';
@@ -55,6 +55,44 @@ export function libraryRoutes(navidrome: Navidrome, musicDir?: string, metadataF
   app.get('/albums/:id', async (c) => {
     const { album, songs } = await navidrome.browsing.getAlbum(c.req.param('id'));
     return c.json({ ...album, song: songs });
+  });
+
+  app.delete('/albums/:id', async (c) => {
+    const user = c.get('user');
+    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+
+    const albumId = c.req.param('id');
+    let songs: Awaited<ReturnType<typeof navidrome.browsing.getAlbum>>['songs'];
+    try {
+      const result = await navidrome.browsing.getAlbum(albumId);
+      songs = result.songs;
+    } catch {
+      return c.json({ error: 'Album not found' }, 404);
+    }
+
+    const ids = songs.map((s) => s.id);
+    const results = await Promise.allSettled(ids.map((songId) => deleteOne(songId)));
+
+    const failed: Array<{ id: string; error: string }> = [];
+    let deletedCount = 0;
+    for (let i = 0; i < results.length; i++) {
+      const r = results[i];
+      if (r.status === 'fulfilled' && r.value.ok) {
+        deletedCount++;
+      } else {
+        const err = r.status === 'fulfilled' ? r.value.error : 'Unexpected error';
+        failed.push({ id: ids[i]!, error: err ?? 'Unknown error' });
+      }
+    }
+
+    try {
+      await (navidrome.system as { startScan: (fullScan?: boolean) => Promise<void> }).startScan(true);
+    } catch {
+      // Non-fatal
+    }
+
+    log.info({ albumId, deletedCount, failedCount: failed.length }, 'Album deletion complete');
+    return c.json({ ok: true, deletedCount, failedCount: failed.length, failed });
   });
 
   app.get('/songs/:id', async (c) => {
@@ -228,12 +266,13 @@ export function libraryRoutes(navidrome: Navidrome, musicDir?: string, metadataF
         return { ok: false, error: 'Failed to delete file', status: 500 };
       }
     } else {
-      const fallbackPath = findSongByMetadata(expandedMusicDir, song);
-      if (fallbackPath) {
+      const registeredRelPath = lookupDownloadPath(id);
+      const fallbackPath = registeredRelPath ? join(expandedMusicDir, registeredRelPath) : null;
+      if (fallbackPath && existsSync(fallbackPath)) {
         try {
           unlinkSync(fallbackPath);
           deletedPath = fallbackPath;
-          log.info({ requestedPath: fullPath, resolvedPath: fallbackPath }, 'Resolved and deleted song file via fallback');
+          log.info({ requestedPath: fullPath, resolvedPath: fallbackPath }, 'Deleted song file via registry fallback');
         } catch (err) {
           log.error({ err, path: fallbackPath }, 'Failed to delete song file');
           return { ok: false, error: 'Failed to delete file', status: 500 };
@@ -247,13 +286,12 @@ export function libraryRoutes(navidrome: Navidrome, musicDir?: string, metadataF
     if (deletedPath) {
       cleanupEmptyDirs(deletedPath, expandedMusicDir);
       const relPath = relative(expandedMusicDir, deletedPath).replace(/\\/g, '/');
-      const fileBase = basename(deletedPath).toLowerCase();
 
       try {
         const db = getDatabase();
         db.run(
-          'DELETE FROM completed_downloads WHERE relative_path = ? OR (basename = ? AND relative_path IS NULL)',
-          [relPath, fileBase],
+          'DELETE FROM completed_downloads WHERE navidrome_id = ? OR relative_path = ?',
+          [id, relPath],
         );
         log.info({ relPath }, 'Removed song from completion history');
       } catch (err) {
@@ -578,176 +616,18 @@ function resolveSongPath(musicDir: string, songPath: string): string {
   return normalize(join(musicDir, normalizedSongPath));
 }
 
-function findSongByMetadata(musicDir: string, song: Song): string | null {
-  const preferredPath = resolveSongPath(musicDir, song.path);
-  const targetDir = dirname(preferredPath);
-  const targetExt = extname(preferredPath);
-  const exactPath = normalize(song.path.replace(/\\/g, '/'));
-  const requestedStem = basename(preferredPath, targetExt);
-  const requestedProfile = buildSearchProfile(song, requestedStem);
-
-  const localMatch = findBestMatchInDirectory(
-    targetDir,
-    exactPath,
-    requestedProfile,
-    targetExt,
-  );
-  if (localMatch) {
-    return localMatch;
-  }
-
-  return findBestMatchRecursively(musicDir, exactPath, requestedProfile, targetExt);
-}
-
-function findBestMatchInDirectory(
-  dir: string,
-  exactPath: string,
-  profile: SongMatchProfile,
-  ext: string,
-): string | null {
-  if (!existsSync(dir)) return null;
-
-  let best: { path: string; score: number } | null = null;
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    if (!entry.isFile()) continue;
-    const candidate = join(dir, entry.name);
-    const score = scoreSongCandidate(candidate, entry.name, exactPath, profile, ext);
-    if (score === null) continue;
-    if (!best || score < best.score) {
-      best = { path: candidate, score };
-    }
-    if (score === 0) return candidate;
-  }
-
-  return best?.path ?? null;
-}
-
-function findBestMatchRecursively(
-  rootDir: string,
-  exactPath: string,
-  profile: SongMatchProfile,
-  ext: string,
-): string | null {
-  if (!existsSync(rootDir)) return null;
-
-  let best: { path: string; score: number } | null = null;
-  const stack = [rootDir];
-
-  while (stack.length > 0) {
-    const dir = stack.pop();
-    if (!dir || !existsSync(dir)) continue;
-
-    let entries;
-    try {
-      entries = readdirSync(dir, { withFileTypes: true });
-    } catch {
-      continue;
-    }
-
-    for (const entry of entries) {
-      const candidate = join(dir, entry.name);
-      if (entry.isDirectory()) {
-        stack.push(candidate);
-        continue;
-      }
-
-      const score = scoreSongCandidate(candidate, entry.name, exactPath, profile, ext);
-      if (score === null) continue;
-      if (!best || score < best.score) {
-        best = { path: candidate, score };
-      }
-      if (score === 0) return candidate;
-    }
-  }
-
-  return best?.path ?? null;
-}
-
-interface SongMatchProfile {
-  requiredAlphaTokens: string[];
-  titleTokens: string[];
-  artistTokens: string[];
-  albumTokens: string[];
-  preferredStemTokens: string[];
-  bonusNumericTokens: string[];
-}
-
-function buildSearchProfile(song: Song, requestedStem: string): SongMatchProfile {
-  const titleTokens = alphaTokens(song.title);
-  const artistTokens = alphaTokens(song.artist);
-  const albumTokens = alphaTokens(song.album);
-  const preferredStemTokens = alphaTokens(requestedStem);
-  const bonusNumericTokens = uniqueTokens([
-    ...numericTokens(song.title),
-    ...numericTokens(song.artist),
-    ...numericTokens(song.album),
-    ...numericTokens(requestedStem),
-    ...(song.track ? numericTokens(String(song.track)) : []),
-  ]);
-
-  const requiredAlphaTokens =
-    titleTokens.length > 0
-      ? titleTokens
-      : preferredStemTokens.length > 0
-        ? preferredStemTokens
-        : uniqueTokens([...artistTokens, ...albumTokens]);
-
-  return {
-    requiredAlphaTokens,
-    titleTokens,
-    artistTokens,
-    albumTokens,
-    preferredStemTokens,
-    bonusNumericTokens,
-  };
-}
-
-function scoreSongCandidate(
-  candidatePath: string,
-  fileName: string,
-  exactPath: string,
-  profile: SongMatchProfile,
-  ext: string,
-): number | null {
-  const candidateExt = extname(fileName);
-  if (candidateExt.toLowerCase() !== ext.toLowerCase()) {
+function lookupDownloadPath(navidromeId: string): string | null {
+  try {
+    const row = getDatabase()
+      .query<{ relative_path: string }, [string]>(
+        `SELECT relative_path FROM completed_downloads
+         WHERE navidrome_id = ? AND relative_path IS NOT NULL LIMIT 1`,
+      )
+      .get(navidromeId);
+    return row?.relative_path ?? null;
+  } catch {
     return null;
   }
-
-  const candidateStem = basename(fileName, candidateExt);
-  const candidateNormalizedPath = normalizeSearchToken(candidatePath);
-  const candidateTokens = uniqueTokens([
-    ...allTokens(candidatePath),
-    ...allTokens(candidateStem),
-  ]);
-  const candidateTokenSet = new Set(candidateTokens);
-  const candidateAlphaTokens = candidateTokens.filter((token) => !isNumericToken(token));
-  const candidateStemTokens = alphaTokens(candidateStem);
-
-  if (candidateNormalizedPath === exactPath) return 0;
-  if (candidateStemTokens.join(' ') === profile.preferredStemTokens.join(' ')) return 1;
-  if (
-    profile.preferredStemTokens.length > 0 &&
-    profile.preferredStemTokens.every((token) => candidateTokenSet.has(token))
-  ) {
-    return 2;
-  }
-
-  if (
-    profile.requiredAlphaTokens.length > 0 &&
-    !profile.requiredAlphaTokens.every((token) => candidateTokenSet.has(token))
-  ) {
-    return null;
-  }
-
-  let score = 100;
-  score -= overlapCount(candidateTokenSet, profile.requiredAlphaTokens) * 20;
-  score -= overlapCount(candidateTokenSet, profile.titleTokens) * 12;
-  score -= overlapCount(candidateTokenSet, profile.artistTokens) * 8;
-  score -= overlapCount(candidateTokenSet, profile.albumTokens) * 6;
-  score -= overlapCount(candidateTokenSet, profile.bonusNumericTokens) * 3;
-  score -= candidateAlphaTokens.length;
-  return score;
 }
 
 function isUnderMusicDir(musicDir: string, candidatePath: string): boolean {
@@ -779,50 +659,3 @@ function cleanupEmptyDirs(filePath: string, musicDir: string): void {
   }
 }
 
-function allTokens(input?: string): string[] {
-  return tokenize(input).filter((token) => !isLongNumericToken(token));
-}
-
-function alphaTokens(input?: string): string[] {
-  return uniqueTokens(tokenize(input).filter((token) => !isNumericToken(token)));
-}
-
-function numericTokens(input?: string): string[] {
-  return uniqueTokens(tokenize(input).filter((token) => isNumericToken(token) && !isLongNumericToken(token)));
-}
-
-function tokenize(input?: string): string[] {
-  const normalized = normalizeSearchToken(input);
-  return normalized ? normalized.split(' ') : [];
-}
-
-function uniqueTokens(tokens: string[]): string[] {
-  return [...new Set(tokens.filter(Boolean))];
-}
-
-function isNumericToken(token: string): boolean {
-  return /^\d+$/.test(token);
-}
-
-function isLongNumericToken(token: string): boolean {
-  return isNumericToken(token) && token.length > 4;
-}
-
-function overlapCount(set: Set<string>, tokens: string[]): number {
-  let count = 0;
-  for (const token of tokens) {
-    if (set.has(token)) count += 1;
-  }
-  return count;
-}
-
-function normalizeSearchToken(input?: string): string {
-  if (!input) return '';
-  return input
-    .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}

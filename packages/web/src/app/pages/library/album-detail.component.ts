@@ -32,6 +32,8 @@ export class AlbumDetailComponent implements OnInit {
 
   readonly loadingAlbum = signal(true);
   readonly selectedAlbum = signal<AlbumDetail | null>(null);
+  readonly deleting = signal(false);
+  readonly deleteError = signal<string | null>(null);
 
   readonly detailSongs = computed(() => {
     const deleted = this.transferService.deletedSongIds();
@@ -137,13 +139,23 @@ export class AlbumDetailComponent implements OnInit {
     const album = this.selectedAlbum();
     if (!album) return;
     this.askConfirm(`Remove all tracks in "${album.name}"?`, async () => {
-      const ids = (album.song ?? []).map(s => s.id);
-      if (ids.length) {
-        try { await firstValueFrom(this.api.deleteSongs(ids)); } catch { /* ignore */ }
-        this.transferService.addDeletedIds(ids);
+      this.deleteError.set(null);
+      this.deleting.set(true);
+      try {
+        const result = await firstValueFrom(this.api.deleteAlbum(album.id));
+        this.deleting.set(false);
+        if (result.failedCount === 0) {
+          void this.router.navigate(['/library']);
+        } else {
+          const allIds = (album.song ?? []).map(s => s.id);
+          const failedSet = new Set(result.failed.map(f => f.id));
+          this.transferService.addDeletedIds(allIds.filter(id => !failedSet.has(id)));
+          this.deleteError.set(`Deleted ${result.deletedCount} of ${result.deletedCount + result.failedCount} tracks. ${result.failedCount} could not be removed.`);
+        }
+      } catch {
+        this.deleting.set(false);
+        this.deleteError.set('Failed to remove album. Please try again.');
       }
-      this.selectedAlbum.set(null);
-      void this.router.navigate(['/library']);
     });
   }
 
@@ -164,9 +176,14 @@ export class AlbumDetailComponent implements OnInit {
         label: 'Remove',
         destructive: true,
         action: () => this.askConfirm(`Remove "${song.title}" from library?`, async () => {
-          try { await firstValueFrom(this.api.deleteSongs([song.id])); } catch { /* ignore */ }
-          this.transferService.addDeletedIds([song.id]);
-          this.selectedAlbum.update(a => a ? { ...a, song: a.song.filter(s => s.id !== song.id) } : null);
+          this.deleteError.set(null);
+          try {
+            await firstValueFrom(this.api.deleteSongs([song.id]));
+            this.transferService.addDeletedIds([song.id]);
+            this.selectedAlbum.update(a => a ? { ...a, song: a.song.filter(s => s.id !== song.id) } : null);
+          } catch {
+            this.deleteError.set(`Failed to remove "${song.title}".`);
+          }
         }),
       }] : []),
     ];

@@ -133,6 +133,7 @@ export class AutoPlaylistService {
         log.warn({ filename: file.filename }, 'Could not resolve Navidrome song ID, skipping');
         continue;
       }
+      this.persistNavidromeId(file, id);
       if (!seenResolved.has(id)) {
         seenResolved.add(id);
         resolvedSongIds.push(id);
@@ -271,6 +272,18 @@ export class AutoPlaylistService {
     }
 
     return pathIndex;
+  }
+
+  private persistNavidromeId(file: CompletedDownloadFile, navidromeId: string): void {
+    try {
+      getDatabase().run(
+        `UPDATE completed_downloads SET navidrome_id = ?
+         WHERE username = ? AND directory = ? AND filename = ?`,
+        [navidromeId, file.username, file.directory, file.filename],
+      );
+    } catch {
+      // Non-fatal: DB may not be available in tests or early startup
+    }
   }
 
   private resolveRelativePathHint(file: CompletedDownloadFile): string | null {
