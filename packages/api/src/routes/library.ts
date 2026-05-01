@@ -266,13 +266,17 @@ export function libraryRoutes(navidrome: Navidrome, musicDir?: string, metadataF
         return { ok: false, error: 'Failed to delete file', status: 500 };
       }
     } else {
+      // Primary: registry lookup by navidrome_id (populated for downloads after upgrade)
       const registeredRelPath = lookupDownloadPath(id);
-      const fallbackPath = registeredRelPath ? join(expandedMusicDir, registeredRelPath) : null;
+      // Secondary: basename lookup in completed_downloads (covers pre-upgrade downloads)
+      const fileBasename = basename(fullPath).toLowerCase();
+      const relPath = registeredRelPath ?? lookupDownloadPathByBasename(fileBasename);
+      const fallbackPath = relPath ? join(expandedMusicDir, relPath) : null;
       if (fallbackPath && existsSync(fallbackPath)) {
         try {
           unlinkSync(fallbackPath);
           deletedPath = fallbackPath;
-          log.info({ requestedPath: fullPath, resolvedPath: fallbackPath }, 'Deleted song file via registry fallback');
+          log.info({ requestedPath: fullPath, resolvedPath: fallbackPath }, 'Deleted song file via fallback path');
         } catch (err) {
           log.error({ err, path: fallbackPath }, 'Failed to delete song file');
           return { ok: false, error: 'Failed to delete file', status: 500 };
@@ -624,6 +628,21 @@ function lookupDownloadPath(navidromeId: string): string | null {
          WHERE navidrome_id = ? AND relative_path IS NOT NULL LIMIT 1`,
       )
       .get(navidromeId);
+    return row?.relative_path ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function lookupDownloadPathByBasename(fileBasename: string): string | null {
+  try {
+    const row = getDatabase()
+      .query<{ relative_path: string }, [string]>(
+        `SELECT relative_path FROM completed_downloads
+         WHERE basename = ? AND relative_path IS NOT NULL
+         ORDER BY completed_at DESC LIMIT 1`,
+      )
+      .get(fileBasename);
     return row?.relative_path ?? null;
   } catch {
     return null;
