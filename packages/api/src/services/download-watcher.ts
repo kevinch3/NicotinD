@@ -34,7 +34,10 @@ export class DownloadWatcher {
   };
   private checking = false;
   private pendingPlaylistFiles: CompletedDownloadFile[] = [];
-  private autoPlaylist: { processBatch: (files: CompletedDownloadFile[]) => Promise<void> };
+  private autoPlaylist: {
+    processBatch: (files: CompletedDownloadFile[]) => Promise<void>;
+    migrateNavidromeIds?: () => Promise<void>;
+  };
 
   constructor(slskd: Slskd, navidrome: Navidrome, options: DownloadWatcherOptions = {}) {
     this.slskd = slskd;
@@ -61,6 +64,10 @@ export class DownloadWatcher {
     this.timer = setInterval(() => this.check(), this.intervalMs);
     // Run immediately on start
     this.check();
+    // One-time background migration: back-fill navidrome_id for existing downloads
+    void this.autoPlaylist.migrateNavidromeIds?.().catch((err) => {
+      log.warn({ err }, 'navidrome_id migration failed');
+    });
   }
 
   stop(): void {

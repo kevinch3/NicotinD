@@ -67,6 +67,80 @@ export class AutoPlaylistService {
   ) {}
 
   /**
+   * One-time startup migration: finds completed_downloads records without a
+   * navidrome_id, builds a full path index from all Navidrome albums, and
+   * back-fills the navidrome_id column. Best-effort — errors are logged, not thrown.
+   */
+  async migrateNavidromeIds(): Promise<void> {
+    let unmapped: Array<{ transfer_key: string; relative_path: string }>;
+    try {
+      unmapped = getDatabase()
+        .query<{ transfer_key: string; relative_path: string }, []>(
+          `SELECT transfer_key, relative_path FROM completed_downloads
+           WHERE navidrome_id IS NULL AND relative_path IS NOT NULL`,
+        )
+        .all();
+    } catch {
+      return; // DB not ready
+    }
+
+    if (unmapped.length === 0) return;
+    log.info({ count: unmapped.length }, 'Migrating navidrome_id for existing downloads');
+
+    const pathIndex = await this.buildFullPathIndex();
+    if (pathIndex.size === 0) return;
+
+    const db = getDatabase();
+    let updated = 0;
+    for (const row of unmapped) {
+      const navidromeId = pathIndex.get(normalizePath(row.relative_path));
+      if (navidromeId) {
+        db.run(
+          `UPDATE completed_downloads SET navidrome_id = ? WHERE transfer_key = ?`,
+          [navidromeId, row.transfer_key],
+        );
+        updated++;
+      }
+    }
+
+    log.info({ total: unmapped.length, updated }, 'navidrome_id migration complete');
+  }
+
+  /** Builds a relativePath→songId index by paging through all Navidrome albums. */
+  private async buildFullPathIndex(): Promise<Map<string, string>> {
+    const pathIndex = new Map<string, string>();
+    let offset = 0;
+
+    while (true) {
+      let albums: Awaited<ReturnType<typeof this.navidrome.browsing.getAlbumList>>;
+      try {
+        albums = await this.navidrome.browsing.getAlbumList('alphabeticalByName', 500, offset);
+      } catch {
+        break;
+      }
+      if (albums.length === 0) break;
+
+      await Promise.all(
+        albums.map(async (album) => {
+          try {
+            const { songs } = await this.navidrome.browsing.getAlbum(album.id);
+            for (const song of songs) {
+              pathIndex.set(normalizeSongPath(this.musicDir, song.path), song.id);
+            }
+          } catch {
+            // Skip unreachable album
+          }
+        }),
+      );
+
+      offset += albums.length;
+      if (albums.length < 500) break;
+    }
+
+    return pathIndex;
+  }
+
+  /**
    * Groups `files` by directory, determines playlist names, and creates or
    * appends to Navidrome playlists. Best-effort — errors are logged, not thrown.
    */
