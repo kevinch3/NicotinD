@@ -1,4 +1,5 @@
 import { Component, inject, signal, computed, effect, OnInit, OnDestroy, DestroyRef } from '@angular/core';
+import { APP_VERSION } from '../../app.config';
 import { RouterOutlet, RouterLink, RouterLinkActive, Router, NavigationEnd } from '@angular/router';
 import { filter } from 'rxjs';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -36,6 +37,7 @@ export class LayoutComponent implements OnInit, OnDestroy {
   readonly auth = inject(AuthService);
   readonly player = inject(PlayerService);
   readonly setup = inject(SetupService);
+  readonly version = inject(APP_VERSION);
   private router = inject(Router);
   private transfers = inject(TransferService);
 

@@ -24,6 +24,7 @@
 
         <div class="flex items-center gap-3">
           <app-download-indicator />
+          <span class="hidden md:inline text-xs text-theme-muted/50">v{{ version }}</span>
           <span class="hidden md:inline text-sm text-theme-muted">{{ auth.username() }}</span>
           <button (click)="logout()" class="hidden md:inline text-sm text-theme-muted hover:text-theme-secondary transition">Sign out</button>
           <!-- Hamburger -->
@@ -70,6 +71,7 @@
         <div class="px-4 py-4 border-t border-theme">
           <p class="text-sm text-theme-muted mb-2">{{ auth.username() }}</p>
           <button (click)="logout()" class="text-sm text-theme-muted hover:text-theme-secondary transition">Sign out</button>
+          <p class="text-xs text-theme-muted/50 mt-3">v{{ version }}</p>
         </div>
       </div>
 

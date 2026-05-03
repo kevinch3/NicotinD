@@ -69,12 +69,19 @@ export class PlayerService {
     });
 
     const capturePosition = () => {
+      const currentTrack = this.currentTrack();
+      if (currentTrack === null) return;
       try {
-        const raw = localStorage.getItem(PlayerService.STORAGE_KEY);
-        if (!raw) return;
-        const parsed = JSON.parse(raw) as Record<string, unknown>;
-        parsed['currentTime'] = this.currentTime();
-        localStorage.setItem(PlayerService.STORAGE_KEY, JSON.stringify(parsed));
+        const snapshot = {
+          currentTrack,
+          queue: this.queue(),
+          history: this.history().slice(-50),
+          shuffle: this.shuffle(),
+          repeat: this.repeat(),
+          context: this.context(),
+          currentTime: this.currentTime(),
+        };
+        localStorage.setItem(PlayerService.STORAGE_KEY, JSON.stringify(snapshot));
       } catch { /* ignore */ }
     };
     window.addEventListener('pagehide', capturePosition, { passive: true });

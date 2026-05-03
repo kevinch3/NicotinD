@@ -1,4 +1,4 @@
-import { ApplicationConfig, provideBrowserGlobalErrorListeners, inject, provideAppInitializer, isDevMode } from '@angular/core';
+import { ApplicationConfig, provideBrowserGlobalErrorListeners, inject, provideAppInitializer, isDevMode, InjectionToken } from '@angular/core';
 import { provideRouter } from '@angular/router';
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { provideServiceWorker } from '@angular/service-worker';
@@ -8,9 +8,13 @@ import { SetupService } from './services/setup.service';
 import { ThemeService } from './services/theme.service';
 import { PreserveService } from './services/preserve.service';
 import { PlayerService } from './services/player.service';
+import pkg from '../../package.json';
+
+export const APP_VERSION = new InjectionToken<string>('APP_VERSION');
 
 export const appConfig: ApplicationConfig = {
   providers: [
+    { provide: APP_VERSION, useValue: pkg.version },
     provideBrowserGlobalErrorListeners(),
     provideRouter(routes),
     provideHttpClient(withInterceptors([authInterceptor])),
