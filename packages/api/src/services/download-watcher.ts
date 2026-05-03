@@ -164,7 +164,7 @@ export class DownloadWatcher {
       const filesToProcess = this.pendingPlaylistFiles.splice(0);
       try {
         log.info('Triggering Navidrome library scan');
-        await this.navidrome.system.startScan();
+        await this.navidrome.system.startScan(true);
       } catch (err) {
         log.error({ err }, 'Failed to trigger scan');
       }
@@ -214,9 +214,13 @@ export class DownloadWatcher {
     const directoryParts = normalizedDirectory.split('/').filter(Boolean);
     const baseName = filenameParts[filenameParts.length - 1] ?? basename(normalizedFilename);
 
+    // slskd uses only the leaf segment of the remote path as the local folder name
+    const leafDirectory = directoryParts[directoryParts.length - 1];
+
     const candidates = [
       join(this.musicDir, ...filenameParts),
       join(this.musicDir, ...directoryParts, baseName),
+      ...(leafDirectory ? [join(this.musicDir, leafDirectory, baseName)] : []),
       join(this.musicDir, baseName),
     ];
 
