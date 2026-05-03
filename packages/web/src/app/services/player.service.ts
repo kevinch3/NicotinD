@@ -85,6 +85,7 @@ export class PlayerService {
       } catch { /* ignore */ }
     };
     window.addEventListener('pagehide', capturePosition, { passive: true });
+    window.addEventListener('freeze', capturePosition, { passive: true });
     window.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'hidden') capturePosition();
     }, { passive: true });

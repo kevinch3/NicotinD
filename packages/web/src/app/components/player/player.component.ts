@@ -43,7 +43,14 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
   private zone = inject(NgZone);
   private preserve = inject(PreserveService);
 
-  private audioEl = viewChild<ElementRef<HTMLAudioElement>>('audioEl');
+  private audioElA = viewChild<ElementRef<HTMLAudioElement>>('audioElA');
+  private audioElB = viewChild<ElementRef<HTMLAudioElement>>('audioElB');
+  // Which element is currently active; flipping this makes all Effects switch to the other element.
+  private primaryIsA = signal(true);
+  private readonly audioEl = computed(() => this.primaryIsA() ? this.audioElA() : this.audioElB());
+  private get standbyNativeEl(): HTMLAudioElement | null {
+    return (this.primaryIsA() ? this.audioElB() : this.audioElA())?.nativeElement ?? null;
+  }
 
   private pausingByStore = false;
   private progressReportInterval: ReturnType<typeof setInterval> | null = null;
@@ -56,6 +63,8 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
   private lastManualSrc: string | null = null;
   // Object URL created by onEnded for a preserved track; needs manual revocation.
   private lastManualObjectUrl: string | null = null;
+  // Track id that has been pre-buffered into the standby element.
+  private preloadedTrackId: string | null = null;
 
   // Playback progress interpolation
   private interpolatedTime = signal(0);
@@ -354,6 +363,32 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
   ngAfterViewInit(): void {
     const audio = this.audioEl()?.nativeElement;
     if (!audio) return;
+    this.bindAudioListeners(audio);
+
+    this.visibilityChangeHandler = () => {
+      if (document.visibilityState === 'hidden') {
+        this.wasPlayingBeforeHidden = this.player.isPlaying() && this.isActiveDevice();
+      } else if (document.visibilityState === 'visible') {
+        void this.acquireWakeLock();
+        if ((this.wasPlayingBeforeHidden || this.resumePendingAfterVisible) && this.isActiveDevice()) {
+          this.wasPlayingBeforeHidden = false;
+          this.resumePendingAfterVisible = false;
+          const audioEl = this.audioEl()?.nativeElement;
+          if (audioEl) {
+            if (!this.player.isPlaying()) this.player.resume();
+            if (audioEl.paused) {
+              audioEl.play().catch(() => this.player.setAutoplayBlocked(true));
+            }
+          }
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', this.visibilityChangeHandler);
+  }
+
+  private bindAudioListeners(audio: HTMLAudioElement): void {
+    // Remove previous listeners before re-binding (called again on every element swap).
+    this.audioListenerCleanups.forEach((fn) => fn());
 
     const onTime = () => {
       const value = audio.currentTime;
@@ -371,7 +406,28 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
           }
         }
       }
+      // Pre-buffer next track when 30 s remain so the element swap at onEnded is instant.
+      if (Number.isFinite(audio.duration) && audio.duration > 0) {
+        const remaining = audio.duration - value;
+        if (remaining > 0 && remaining < 30) {
+          const nextTrack = untracked(() => this.player.queue()[0]);
+          if (nextTrack && nextTrack.id !== this.preloadedTrackId) {
+            const isPreserved = untracked(() => this.preserve.isPreserved(nextTrack.id));
+            if (!isPreserved) {
+              const standby = this.standbyNativeEl;
+              if (standby) {
+                this.preloadedTrackId = nextTrack.id;
+                standby.src = `/api/stream/${nextTrack.id}?token=${this.auth.token()}`;
+                standby.preload = 'auto';
+                // load() without play() — just buffer the initial bytes
+                standby.load();
+              }
+            }
+          }
+        }
+      }
     };
+
     const onDuration = () => {
       const value = audio.duration;
       if (Number.isFinite(value) && value > 0) {
@@ -382,6 +438,7 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
         }
       }
     };
+
     const onEnded = () => {
       const repeat = this.player.repeat();
       const token = this.auth.token();
@@ -395,39 +452,68 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
         const nextTrack = this.player.queue()[0];
         if (nextTrack) {
           this.lastManualSrc = nextTrack.id;
-          const isPreserved = untracked(() => this.preserve.isPreserved(nextTrack.id));
+          const standby = this.standbyNativeEl;
+          const isPreloaded = standby !== null && this.preloadedTrackId === nextTrack.id;
 
-          const playNext = () => {
-            audio.play().catch((err) => {
+          if (isPreloaded && standby) {
+            // Standby element has the next track already buffered — swap instantly.
+            // Clean up the element that just finished.
+            const pendingUrl = this.lastManualObjectUrl;
+            this.lastManualObjectUrl = null;
+            audio.pause();
+            audio.src = '';
+            if (pendingUrl) URL.revokeObjectURL(pendingUrl);
+
+            // Flip which element Effects reference.
+            this.primaryIsA.update((v) => !v);
+            this.preloadedTrackId = null;
+
+            // Re-bind all audio listeners to the now-active element.
+            this.bindAudioListeners(standby);
+
+            // Start playback — the element is already buffered so this is near-instant.
+            standby.play().catch((err) => {
               if (document.visibilityState === 'hidden') {
-                // Screen is locked — can't show a banner; request resume on unlock instead.
                 this.resumePendingAfterVisible = true;
               } else if (err.name === 'NotAllowedError') {
                 this.handlePlayRejection();
               }
             });
-          };
-
-          if (isPreserved) {
-            db.getBlob(nextTrack.id).then((blob) => {
-              if (blob) {
-                const url = URL.createObjectURL(blob.audio);
-                this.lastManualObjectUrl = url;
-                audio.src = url;
-              } else {
-                // Blob missing despite metadata — fall back to stream.
-                audio.src = `/api/stream/${nextTrack.id}?token=${token}`;
-              }
-              playNext();
-            });
           } else {
-            audio.src = `/api/stream/${nextTrack.id}?token=${token}`;
-            playNext();
+            // No preload available (preserved track, first track, or preload missed) — existing path.
+            const isPreserved = untracked(() => this.preserve.isPreserved(nextTrack.id));
+
+            const playNext = () => {
+              audio.play().catch((err) => {
+                if (document.visibilityState === 'hidden') {
+                  this.resumePendingAfterVisible = true;
+                } else if (err.name === 'NotAllowedError') {
+                  this.handlePlayRejection();
+                }
+              });
+            };
+
+            if (isPreserved) {
+              db.getBlob(nextTrack.id).then((blob) => {
+                if (blob) {
+                  const url = URL.createObjectURL(blob.audio);
+                  this.lastManualObjectUrl = url;
+                  audio.src = url;
+                } else {
+                  audio.src = `/api/stream/${nextTrack.id}?token=${token}`;
+                }
+                playNext();
+              });
+            } else {
+              audio.src = `/api/stream/${nextTrack.id}?token=${token}`;
+              playNext();
+            }
           }
         }
         this.player.playNext();
       }
     };
+
     const onPlay = () => {
       this.player.setAutoplayBlocked(false);
       if (!this.player.isPlaying()) {
@@ -462,26 +548,6 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
       () => audio.removeEventListener('play', onPlay),
       () => audio.removeEventListener('pause', onPause),
     ];
-
-    this.visibilityChangeHandler = () => {
-      if (document.visibilityState === 'hidden') {
-        this.wasPlayingBeforeHidden = this.player.isPlaying() && this.isActiveDevice();
-      } else if (document.visibilityState === 'visible') {
-        void this.acquireWakeLock();
-        if ((this.wasPlayingBeforeHidden || this.resumePendingAfterVisible) && this.isActiveDevice()) {
-          this.wasPlayingBeforeHidden = false;
-          this.resumePendingAfterVisible = false;
-          const audioEl = this.audioEl()?.nativeElement;
-          if (audioEl) {
-            if (!this.player.isPlaying()) this.player.resume();
-            if (audioEl.paused) {
-              audioEl.play().catch(() => this.player.setAutoplayBlocked(true));
-            }
-          }
-        }
-      }
-    };
-    document.addEventListener('visibilitychange', this.visibilityChangeHandler);
   }
 
   ngOnDestroy(): void {
