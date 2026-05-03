@@ -101,6 +101,22 @@ export class DownloadWatcher {
       let newCompletions = false;
       const completedFiles: CompletedDownloadFile[] = [];
 
+      // Prune keys that slskd no longer tracks so the Set stays bounded
+      const currentKeys = new Set<string>();
+      for (const group of downloads) {
+        for (const dir of group.directories) {
+          for (const file of dir.files) {
+            const transferId = typeof file.id === 'string' && file.id.length > 0
+              ? file.id
+              : `${dir.directory}:${file.filename}`;
+            currentKeys.add(`${group.username}:${transferId}`);
+          }
+        }
+      }
+      for (const key of this.knownCompleted) {
+        if (!currentKeys.has(key)) this.knownCompleted.delete(key);
+      }
+
       for (const group of downloads) {
         for (const dir of group.directories) {
           for (const file of dir.files) {
@@ -201,7 +217,7 @@ export class DownloadWatcher {
         [transferKey, username, directory, filename, relativePath, fileBasename, completedAt],
       );
     } catch {
-      // Database may not be initialized in unit tests or early startup.
+      log.warn('recordCompletedDownload: DB not ready or write failed');
     }
   }
 

@@ -18,6 +18,14 @@ export interface PlayContext {
   originalOrder: Track[];
 }
 
+function isTrack(v: unknown): v is Track {
+  return typeof v === 'object' && v !== null && typeof (v as Track).id === 'string';
+}
+
+function isPlayContext(v: unknown): v is PlayContext {
+  return typeof v === 'object' && v !== null && Array.isArray((v as PlayContext).originalOrder);
+}
+
 export function shuffleArray<T>(arr: T[]): T[] {
   const result = [...arr];
   for (let i = result.length - 1; i > 0; i--) {
@@ -96,13 +104,13 @@ export class PlayerService {
       const raw = localStorage.getItem(PlayerService.STORAGE_KEY);
       if (!raw) return;
       const state = JSON.parse(raw) as Record<string, unknown>;
-      if (state['currentTrack']) this.currentTrack.set(state['currentTrack'] as Track);
+      if (isTrack(state['currentTrack'])) this.currentTrack.set(state['currentTrack']);
       // isPlaying stays false — autoplay requires a user gesture
       if (Array.isArray(state['queue'])) this.queue.set(state['queue'] as Track[]);
       if (Array.isArray(state['history'])) this.history.set(state['history'] as Track[]);
       if (state['shuffle'] != null) this.shuffle.set(Boolean(state['shuffle']));
       if (state['repeat'] != null) this.repeat.set(state['repeat'] as 'off' | 'all' | 'one');
-      if (state['context']) this.context.set(state['context'] as PlayContext);
+      if (isPlayContext(state['context'])) this.context.set(state['context']);
       if (typeof state['currentTime'] === 'number' && state['currentTime'] > 1) {
         this.restoredTime = state['currentTime'];
       }

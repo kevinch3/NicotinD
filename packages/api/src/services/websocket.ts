@@ -34,9 +34,7 @@ export function createWebSocketHandlers(userId: string) {
   const manager = playbackRegistry.getOrCreate(userId);
 
   return {
-    onOpen: (_event: Event, ws: WSContext) => {
-      connections.set(ws, { deviceId: '', userId });
-    },
+    onOpen: (_event: Event, _ws: WSContext) => {},
     onMessage: (event: MessageEvent, ws: WSContext) => {
       try {
         const data = JSON.parse(event.data.toString());

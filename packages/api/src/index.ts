@@ -1,6 +1,5 @@
 import { OpenAPIHono } from '@hono/zod-openapi';
 import { swaggerUI } from '@hono/swagger-ui';
-import { cors } from 'hono/cors';
 import { serveStatic, createBunWebSocket } from 'hono/bun';
 import type { NicotinDConfig } from '@nicotind/core';
 import type { Slskd } from '@nicotind/slskd-client';
@@ -83,7 +82,6 @@ export function createApp({
   app.get('/doc', swaggerUI({ url: '/openapi.json' }));
 
   // Global middleware
-  app.use('*', cors());
   app.onError(errorHandler);
 
   // Shared MetadataFixer instance — used by DownloadWatcher and on-demand library route

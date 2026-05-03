@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { createLogger } from '@nicotind/core';
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 
 const log = createLogger('tailscale');
 const TAILSCALE_LOCALAPI_HOST = 'local-tailscaled.sock';
@@ -104,7 +104,7 @@ export class TailscaleService {
     args.push(url);
 
     try {
-      return execSync(`curl ${args.map((a) => `'${a}'`).join(' ')}`, {
+      return execFileSync('curl', args, {
         encoding: 'utf-8',
         stdio: ['pipe', 'pipe', 'pipe'],
       });

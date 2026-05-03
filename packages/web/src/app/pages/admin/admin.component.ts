@@ -74,7 +74,7 @@ export class AdminComponent implements OnInit, OnDestroy {
     if (!status) return 'text-zinc-500';
     const health = status[svc];
     if (svc === 'slskd') {
-      const connected = (health as any)?.connected;
+      const connected = (health as { healthy: boolean; connected?: boolean }).connected;
       return connected ? 'text-emerald-400' : health.healthy ? 'text-amber-400' : 'text-red-400';
     }
     return health.healthy ? 'text-emerald-400' : 'text-red-400';
@@ -85,7 +85,7 @@ export class AdminComponent implements OnInit, OnDestroy {
     if (!status) return 'bg-zinc-500';
     const health = status[svc];
     if (svc === 'slskd') {
-      const connected = (health as any)?.connected;
+      const connected = (health as { healthy: boolean; connected?: boolean }).connected;
       return connected ? 'bg-emerald-500' : health.healthy ? 'bg-amber-400' : 'bg-red-500';
     }
     return health.healthy ? 'bg-emerald-500' : 'bg-red-500';
@@ -96,7 +96,7 @@ export class AdminComponent implements OnInit, OnDestroy {
     if (!status) return '—';
     const health = status[svc];
     if (svc === 'slskd') {
-      const connected = (health as any)?.connected;
+      const connected = (health as { healthy: boolean; connected?: boolean }).connected;
       return connected ? 'Connected' : health.healthy ? 'Disconnected' : 'Unreachable';
     }
     return health.healthy ? 'Healthy' : 'Unreachable';
