@@ -434,9 +434,11 @@ export class DownloadsComponent implements OnInit, OnDestroy {
     this.askConfirm(
       `Remove "${group.name}" and all its ${group.totalFiles} file(s)?`,
       async () => {
-        for (const fileId of group.fileIds) {
-          try { await firstValueFrom(this.api.cancelDownload(group.username, fileId)); } catch { /* ignore */ }
-        }
+        await Promise.all(
+          group.fileIds.map((id) =>
+            firstValueFrom(this.api.cancelDownload(group.username, id)).catch(() => {}),
+          ),
+        );
         this.transferService.poll();
       },
     );

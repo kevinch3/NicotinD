@@ -259,11 +259,28 @@ export function downloadRoutes(registry: ProviderRegistry, slskdRef: SlskdRef) {
       },
     }),
     async (c) => {
-      await slskdRef.current!.transfers.cancelAll();
+      const downloads = await slskdRef.current!.transfers.getDownloads();
 
-      // Also clear our hidden transfers since "Cancel All" usually means "Clean state"
+      await Promise.all(
+        downloads.flatMap((group) =>
+          group.directories.flatMap((dir) =>
+            dir.files.map((file) =>
+              slskdRef.current!.transfers.cancel(group.username, file.id).catch(() => {}),
+            ),
+          ),
+        ),
+      );
+
+      // Hide every transfer so they disappear from the UI — don't clear existing hidden IDs
       const db = getDatabase();
-      db.run('DELETE FROM hidden_transfers');
+      const stmt = db.prepare('INSERT OR IGNORE INTO hidden_transfers (id) VALUES (?)');
+      for (const group of downloads) {
+        for (const dir of group.directories) {
+          for (const file of dir.files) {
+            stmt.run(file.id);
+          }
+        }
+      }
 
       return c.json({ ok: true }, 200);
     },

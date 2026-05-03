@@ -78,14 +78,30 @@ describe('downloads routes', () => {
     expect(slskdMock.transfers.cancel).toHaveBeenCalledWith('user1', 'guid1');
   });
 
-  it('DELETE / clears all hidden transfers and calls slskd cancelAll', async () => {
-    testDb.run('INSERT INTO hidden_transfers (id) VALUES (?)', ['guid1']);
-    
+  it('DELETE / cancels all transfers and hides them', async () => {
     const res = await app.request('/', { method: 'DELETE' });
     expect(res.status).toBe(200);
-    
-    const hiddenCount = testDb.query('SELECT COUNT(*) as count FROM hidden_transfers').get() as { count: number };
-    expect(hiddenCount.count).toBe(0);
-    expect(slskdMock.transfers.cancelAll).toHaveBeenCalled();
+
+    // Both files should now be in hidden_transfers
+    const hidden = testDb.query('SELECT id FROM hidden_transfers').all() as Array<{ id: string }>;
+    const hiddenIds = hidden.map((h) => h.id);
+    expect(hiddenIds).toContain('guid1');
+    expect(hiddenIds).toContain('guid2');
+
+    // cancel called once per file
+    expect(slskdMock.transfers.cancel).toHaveBeenCalledWith('user1', 'guid1');
+    expect(slskdMock.transfers.cancel).toHaveBeenCalledWith('user1', 'guid2');
+  });
+
+  it('DELETE / preserves previously hidden IDs', async () => {
+    // "guid3" was hidden before Cancel All (e.g. from a prior cancelled transfer)
+    testDb.run('INSERT INTO hidden_transfers (id) VALUES (?)', ['guid3']);
+
+    const res = await app.request('/', { method: 'DELETE' });
+    expect(res.status).toBe(200);
+
+    const hidden = testDb.query('SELECT id FROM hidden_transfers').all() as Array<{ id: string }>;
+    const hiddenIds = hidden.map((h) => h.id);
+    expect(hiddenIds).toContain('guid3');
   });
 });
