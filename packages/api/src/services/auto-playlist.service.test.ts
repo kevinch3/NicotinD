@@ -136,6 +136,7 @@ describe('AutoPlaylistService.processBatch', () => {
       },
       browsing: {
         getAlbum: mock(() => Promise.resolve({ album: {} as any, songs: [] })),
+        getAlbumList: mock(() => Promise.resolve([])),
       },
     };
     // Pass scanTimeoutMs=0 so waitForScan returns immediately in tests
@@ -294,6 +295,31 @@ describe('AutoPlaylistService.processBatch', () => {
     });
     // No per-song text search needed — index covered everything
     expect(navidromeMock.search.search3).toHaveBeenCalledTimes(1);
+  });
+
+  it('resolves songs via recent-album basename index when relativePath is absent', async () => {
+    // No relativePath → buildPathIndex returns empty.
+    // buildRecentSongIndex finds the song by basename in the newest album.
+    navidromeMock.browsing.getAlbumList.mockReturnValueOnce(
+      Promise.resolve([{ id: 'recent-album', name: 'Recent Album' }]),
+    );
+    navidromeMock.browsing.getAlbum.mockReturnValueOnce(
+      Promise.resolve({
+        album: { id: 'recent-album', name: 'Recent Album' },
+        songs: [makeSong('found-id', '/data/music/Artist/Album/track.flac')],
+      }),
+    );
+
+    await service.processBatch([
+      { username: 'u', directory: 'Artist\\Album', filename: 'track.flac' },
+    ]);
+
+    expect(navidromeMock.playlists.create).toHaveBeenCalledWith(ALL_SINGLES);
+    expect(navidromeMock.playlists.update).toHaveBeenCalledWith(`id-${ALL_SINGLES}`, {
+      songIdsToAdd: ['found-id'],
+    });
+    // search3 should NOT be called — recent index resolved the song
+    expect(navidromeMock.search.search3).not.toHaveBeenCalled();
   });
 
   it('does not call update when resolved song is already in the playlist', async () => {

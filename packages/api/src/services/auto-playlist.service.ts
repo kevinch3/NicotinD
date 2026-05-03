@@ -157,35 +157,38 @@ export class AutoPlaylistService {
       return;
     }
 
-    const pathIndex = await this.buildPathIndex(files);
+    const [pathIndex, recentIndex] = await Promise.all([
+      this.buildPathIndex(files),
+      this.buildRecentSongIndex(),
+    ]);
 
     const groups = groupByDirectory(files);
     for (const [directory, groupFiles] of groups) {
       const isFolderDownload = groupFiles.length > 1 ||
         groupFiles.some((file) => (file.directoryFileCount ?? 1) > 1);
       const name = isFolderDownload ? cleanFolderName(directory) : ALL_SINGLES;
-      await this.processGroup(name, groupFiles, allPlaylists, pathIndex);
+      await this.processGroup(name, groupFiles, allPlaylists, pathIndex, recentIndex);
     }
   }
 
   /** Polls getScanStatus until the scan finishes or the timeout is reached. */
   private async waitForScan(): Promise<void> {
     const deadline = Date.now() + this.scanTimeoutMs;
+    // Allow up to 5 s for Navidrome to start the scan after startScan() returns.
+    const startDeadline = Date.now() + Math.min(this.scanTimeoutMs, 5_000);
     let sawScanning = false;
-    let idlePolls = 0;
     do {
       try {
         const status = await this.navidrome.system.getScanStatus();
         if (status.scanning) {
           sawScanning = true;
-          idlePolls = 0;
-        } else {
-          idlePolls += 1;
-          // Require two idle polls unless we've already observed an active scan.
-          if (sawScanning || idlePolls >= 3) return;
+        } else if (sawScanning) {
+          return; // Scan started and finished — proceed.
+        } else if (Date.now() >= startDeadline) {
+          return; // Never saw scan start (may have finished before first poll).
         }
       } catch {
-        return; // If we can't query status, proceed anyway
+        return;
       }
       if (Date.now() >= deadline) return;
       await new Promise((r) => setTimeout(r, 500));
@@ -198,11 +201,12 @@ export class AutoPlaylistService {
     files: CompletedDownloadFile[],
     allPlaylists: Playlist[],
     pathIndex: Map<string, string>,
+    recentIndex: Map<string, string>,
   ): Promise<void> {
     const resolvedSongIds: string[] = [];
     const seenResolved = new Set<string>();
     for (const file of files) {
-      const id = await this.resolveSongId(file, pathIndex);
+      const id = await this.resolveSongId(file, pathIndex, recentIndex);
       if (!id) {
         log.warn({ filename: file.filename }, 'Could not resolve Navidrome song ID, skipping');
         continue;
@@ -252,14 +256,15 @@ export class AutoPlaylistService {
 
   /**
    * Searches Navidrome for a song matching a completed download.
-   * Fast path: exact path lookup in the pre-built album index.
-   * Fallback: text search by filename + path/basename comparison (for files
-   * without a known relative path or not found in the index).
+   * Priority: 1) exact relative-path lookup in pathIndex, 2) basename lookup
+   * in recentIndex (recently added albums — reliable when scan just ran),
+   * 3) text search by filename stem as last resort.
    * Returns the song ID or null if not found.
    */
   private async resolveSongId(
     file: CompletedDownloadFile,
     pathIndex: Map<string, string>,
+    recentIndex: Map<string, string>,
   ): Promise<string | null> {
     const relativePath = this.resolveRelativePathHint(file);
 
@@ -269,6 +274,13 @@ export class AutoPlaylistService {
     }
 
     const fileBasename = basename(file.filename.replace(/\\/g, '/')).toLowerCase();
+
+    // Fast path: look up by filename basename in recently-added albums index.
+    // This is reliable because slskd preserves filenames and Navidrome stores
+    // the actual on-disk path, so basenames always agree.
+    const recentId = recentIndex.get(fileBasename);
+    if (recentId) return recentId;
+
     const nameWithoutExt = fileBasename.replace(/\.[^.]+$/, '');
     const maxAttempts = this.scanTimeoutMs === 0 ? 1 : 5;
 
@@ -346,6 +358,31 @@ export class AutoPlaylistService {
     }
 
     return pathIndex;
+  }
+
+  /**
+   * Builds a filename-basename → songId index from the most recently added albums.
+   * Called after waitForScan so the index reflects the just-completed scan.
+   * slskd preserves remote filenames on disk, and Navidrome stores the on-disk
+   * path, so basenames always agree — making this a reliable fast path.
+   */
+  private async buildRecentSongIndex(): Promise<Map<string, string>> {
+    const index = new Map<string, string>();
+    try {
+      const albums = await this.navidrome.browsing.getAlbumList('newest', 200, 0);
+      await Promise.all(
+        albums.map(async (album) => {
+          try {
+            const { songs } = await this.navidrome.browsing.getAlbum(album.id);
+            for (const song of songs) {
+              const base = basename(normalizePath(song.path));
+              if (!index.has(base)) index.set(base, song.id);
+            }
+          } catch { /* skip unreachable album */ }
+        }),
+      );
+    } catch { /* proceed with empty index */ }
+    return index;
   }
 
   private persistNavidromeId(file: CompletedDownloadFile, navidromeId: string): void {
