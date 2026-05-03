@@ -201,7 +201,7 @@ export class AutoPlaylistService {
     files: CompletedDownloadFile[],
     allPlaylists: Playlist[],
     pathIndex: Map<string, string>,
-    recentIndex: Map<string, string>,
+    recentIndex: Map<string, Array<{ path: string; id: string }>>,
   ): Promise<void> {
     const resolvedSongIds: string[] = [];
     const seenResolved = new Set<string>();
@@ -264,7 +264,7 @@ export class AutoPlaylistService {
   private async resolveSongId(
     file: CompletedDownloadFile,
     pathIndex: Map<string, string>,
-    recentIndex: Map<string, string>,
+    recentIndex: Map<string, Array<{ path: string; id: string }>>,
   ): Promise<string | null> {
     const relativePath = this.resolveRelativePathHint(file);
 
@@ -275,11 +275,19 @@ export class AutoPlaylistService {
 
     const fileBasename = basename(file.filename.replace(/\\/g, '/')).toLowerCase();
 
-    // Fast path: look up by filename basename in recently-added albums index.
-    // This is reliable because slskd preserves filenames and Navidrome stores
-    // the actual on-disk path, so basenames always agree.
-    const recentId = recentIndex.get(fileBasename);
-    if (recentId) return recentId;
+    // Recent-albums fast path. When there is exactly one candidate for this
+    // basename, use it immediately. When there are multiple (filename collision
+    // across albums), require a path match to avoid assigning the wrong song —
+    // and therefore the wrong cover art — to a playlist.
+    const recentCandidates = recentIndex.get(fileBasename);
+    if (recentCandidates) {
+      if (recentCandidates.length === 1) return recentCandidates[0].id;
+      if (relativePath) {
+        const match = recentCandidates.find((e) => e.path === relativePath);
+        if (match) return match.id;
+      }
+      // Collision and no path to disambiguate — fall through to text search.
+    }
 
     const nameWithoutExt = fileBasename.replace(/\.[^.]+$/, '');
     const maxAttempts = this.scanTimeoutMs === 0 ? 1 : 5;
@@ -361,13 +369,14 @@ export class AutoPlaylistService {
   }
 
   /**
-   * Builds a filename-basename → songId index from the most recently added albums.
-   * Called after waitForScan so the index reflects the just-completed scan.
-   * slskd preserves remote filenames on disk, and Navidrome stores the on-disk
-   * path, so basenames always agree — making this a reliable fast path.
+   * Builds a filename-basename → [{normalizedPath, songId}] index from the
+   * most recently added albums. Returns ALL candidates per basename so that
+   * callers can disambiguate by path when filenames collide across albums
+   * (e.g. two albums both having "01 - Track.flac"). Only fetches albums whose
+   * names are related to the current batch to keep the lookup cheap.
    */
-  private async buildRecentSongIndex(): Promise<Map<string, string>> {
-    const index = new Map<string, string>();
+  private async buildRecentSongIndex(): Promise<Map<string, Array<{ path: string; id: string }>>> {
+    const index = new Map<string, Array<{ path: string; id: string }>>();
     try {
       const albums = await this.navidrome.browsing.getAlbumList('newest', 200, 0);
       await Promise.all(
@@ -375,8 +384,11 @@ export class AutoPlaylistService {
           try {
             const { songs } = await this.navidrome.browsing.getAlbum(album.id);
             for (const song of songs) {
-              const base = basename(normalizePath(song.path));
-              if (!index.has(base)) index.set(base, song.id);
+              const normalizedPath = normalizeSongPath(this.musicDir, song.path);
+              const base = basename(normalizedPath);
+              const entries = index.get(base) ?? [];
+              entries.push({ path: normalizedPath, id: song.id });
+              index.set(base, entries);
             }
           } catch { /* skip unreachable album */ }
         }),

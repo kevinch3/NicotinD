@@ -322,6 +322,58 @@ describe('AutoPlaylistService.processBatch', () => {
     expect(navidromeMock.search.search3).not.toHaveBeenCalled();
   });
 
+  it('disambiguates basename collisions in recent index using relativePath', async () => {
+    // Two different albums both have a file named "01-track.flac".
+    // Without disambiguation the wrong song could end up in the wrong playlist,
+    // causing both playlists to show the same cover art.
+    navidromeMock.browsing.getAlbumList.mockReturnValueOnce(
+      Promise.resolve([
+        { id: 'album-a', name: 'Album A' },
+        { id: 'album-b', name: 'Album B' },
+      ]),
+    );
+    navidromeMock.browsing.getAlbum
+      .mockReturnValueOnce(
+        Promise.resolve({
+          album: { id: 'album-a' },
+          songs: [makeSong('song-a', 'Artist/Album A/01-track.flac')],
+        }),
+      )
+      .mockReturnValueOnce(
+        Promise.resolve({
+          album: { id: 'album-b' },
+          songs: [makeSong('song-b', 'Artist/Album B/01-track.flac')],
+        }),
+      );
+
+    // Two playlists: one for Album A, one for Album B — both files share the same basename.
+    await service.processBatch([
+      {
+        username: 'u',
+        directory: 'Artist\\Album A',
+        filename: '01-track.flac',
+        relativePath: 'Artist/Album A/01-track.flac',
+        directoryFileCount: 1,
+      },
+      {
+        username: 'u',
+        directory: 'Artist\\Album B',
+        filename: '01-track.flac',
+        relativePath: 'Artist/Album B/01-track.flac',
+        directoryFileCount: 1,
+      },
+    ]);
+
+    // Each playlist must get its own (correct) song, not both getting the same one.
+    const updateCalls = (navidromeMock.playlists.update as ReturnType<typeof mock>).mock.calls as Array<[string, { songIdsToAdd: string[] }]>;
+    const addedIds = updateCalls.flatMap((c) => c[1].songIdsToAdd);
+    expect(addedIds).toContain('song-a');
+    expect(addedIds).toContain('song-b');
+    // search3 is called by buildPathIndex (album name lookup) but NOT for per-song text search.
+    // With 2 unique album dirs the path index makes exactly 2 search3 calls.
+    expect(navidromeMock.search.search3).toHaveBeenCalledTimes(2);
+  });
+
   it('does not call update when resolved song is already in the playlist', async () => {
     navidromeMock.playlists.list.mockReturnValue(
       Promise.resolve([{ id: 'pl-id', name: ALL_SINGLES, songCount: 1 }]),
