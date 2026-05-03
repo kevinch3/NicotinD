@@ -64,6 +64,10 @@ export class DownloadWatcher {
     this.timer = setInterval(() => this.check(), this.intervalMs);
     // Run immediately on start
     this.check();
+    // Startup scan: removes ghost records left by deleted/moved files
+    void this.navidrome.system.startScan().catch((err) => {
+      log.warn({ err }, 'Startup library scan failed');
+    });
     // One-time background migration: back-fill navidrome_id for existing downloads
     void this.autoPlaylist.migrateNavidromeIds?.().catch((err) => {
       log.warn({ err }, 'navidrome_id migration failed');
