@@ -282,8 +282,10 @@ export function libraryRoutes(navidrome: Navidrome, musicDir?: string, metadataF
           return { ok: false, error: 'Failed to delete file', status: 500 };
         }
       } else {
-        log.warn({ path: fullPath }, 'File not found on disk');
-        return { ok: false, error: 'File not found on disk', status: 404 };
+        // File not on disk and not in download registry — ghost record in Navidrome.
+        // The scan triggered by the caller will remove it from Navidrome's index.
+        log.info({ path: fullPath, songId: id }, 'Song file absent from disk; scan will clear ghost record');
+        return { ok: true };
       }
     }
 
