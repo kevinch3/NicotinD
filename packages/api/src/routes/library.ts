@@ -248,6 +248,58 @@ export function libraryRoutes(navidrome: Navidrome, musicDir?: string, metadataF
     return c.json(ordered.slice(0, size));
   });
 
+  function tokenizeFilename(name: string): string[] {
+    return name
+      .toLowerCase()
+      .replace(/\.[^.]+$/, '')
+      .split(/[\s\-_.]+/)
+      .filter(t => t.length >= 2);
+  }
+
+  function findFileByTokens(dir: string, tokens: string[]): string | null {
+    let entries: import('node:fs').Dirent[];
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return null;
+    }
+    const tokenSet = new Set(tokens);
+    for (const entry of entries) {
+      if (!entry.isFile()) continue;
+      if (tokenizeFilename(entry.name).some(t => tokenSet.has(t))) {
+        return join(dir, entry.name);
+      }
+    }
+    return null;
+  }
+
+  function fuzzyFindFile(musicRootDir: string, fullPath: string): string | null {
+    const tokens = tokenizeFilename(basename(fullPath));
+    if (tokens.length === 0) return null;
+
+    // Try the directory the song was expected to be in
+    const knownDir = dirname(fullPath);
+    if (existsSync(knownDir)) {
+      const found = findFileByTokens(knownDir, tokens);
+      if (found) return found;
+    }
+
+    // Walk one level into the music root directory
+    let rootEntries: import('node:fs').Dirent[];
+    try {
+      rootEntries = readdirSync(musicRootDir, { withFileTypes: true });
+    } catch {
+      return null;
+    }
+    for (const entry of rootEntries) {
+      if (!entry.isDirectory()) continue;
+      const found = findFileByTokens(join(musicRootDir, entry.name), tokens);
+      if (found) return found;
+    }
+
+    return null;
+  }
+
   async function deleteOne(id: string): Promise<{ ok: boolean; error?: string; status?: number }> {
     if (!musicDir) {
       return { ok: false, error: 'Music directory not configured', status: 500 };
@@ -300,10 +352,20 @@ export function libraryRoutes(navidrome: Navidrome, musicDir?: string, metadataF
           return { ok: false, error: 'Failed to delete file', status: 500 };
         }
       } else {
-        // File not on disk and not in download registry — ghost record in Navidrome.
-        // The scan triggered by the caller will remove it from Navidrome's index.
-        log.info({ path: fullPath, songId: id }, 'Song file absent from disk; scan will clear ghost record');
-        return { ok: true };
+        // Last resort: fuzzy filesystem scan (handles renames and stale paths)
+        const fuzzyPath = fuzzyFindFile(expandedMusicDir, fullPath);
+        if (fuzzyPath) {
+          try {
+            unlinkSync(fuzzyPath);
+            deletedPath = fuzzyPath;
+            log.info({ requestedPath: fullPath, resolvedPath: fuzzyPath }, 'Deleted song file via fuzzy path match');
+          } catch (err) {
+            log.error({ err, path: fuzzyPath }, 'Failed to delete song file');
+            return { ok: false, error: 'Failed to delete file', status: 500 };
+          }
+        } else {
+          return { ok: false, error: 'Song file not found on disk', status: 404 };
+        }
       }
     }
 
