@@ -3,7 +3,6 @@ import { Hono } from 'hono';
 import { usersRoutes } from './users.js';
 import { ProviderRegistry } from '../services/provider-registry.js';
 import { SlskdSearchProvider } from '../services/providers/slskd-provider.js';
-import { BrowseUnavailableError } from '@nicotind/core';
 
 function makeRegistry(browseDirs: any[] = [], shouldThrow?: Error) {
   const slskdRef = {
