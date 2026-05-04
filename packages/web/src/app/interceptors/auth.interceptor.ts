@@ -15,11 +15,13 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
     catchError((err: HttpErrorResponse) => {
       if (err.status === 401) {
         auth.logout();
+        window.location.assign('/login');
       }
       if (err.status === 403) {
         const errorMsg = err.error?.error;
         if (errorMsg === 'Account disabled') {
           auth.logout();
+          window.location.assign('/login');
         }
       }
       return throwError(() => err);

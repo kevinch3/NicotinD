@@ -17,9 +17,15 @@ export class AuthService {
   }
 
   logout(): void {
+    // Clear auth tokens
     localStorage.removeItem('nicotind_token');
     localStorage.removeItem('nicotind_username');
     localStorage.removeItem('nicotind_role');
+    // Clear all user-scoped persisted state so the next user starts fresh.
+    // Device-scoped prefs (theme, device id/name, remote-enabled, library-mode,
+    // downloaded-folders cache) are intentionally left intact.
+    localStorage.removeItem('nicotind_player_state');
+    localStorage.removeItem('nicotind:search-history');
     this.token.set(null);
     this.username.set(null);
     this.role.set(null);

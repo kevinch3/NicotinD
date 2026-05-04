@@ -73,6 +73,6 @@ export class LayoutComponent implements OnInit, OnDestroy {
 
   logout(): void {
     this.auth.logout();
-    this.router.navigate(['/login']);
+    window.location.assign('/login');
   }
 }
