@@ -62,7 +62,7 @@ export function createApp({
     ? config.dataDir.replace('~', process.env.HOME ?? '/root')
     : config.dataDir;
 
-  initDatabase(expandedDataDir);
+  const db = initDatabase(expandedDataDir);
 
   const app = new OpenAPIHono();
   const { upgradeWebSocket, websocket } = createBunWebSocket();
@@ -161,7 +161,7 @@ export function createApp({
     '/api/settings',
     settingsRoutes(config, slskdRef, navidrome, serviceManager, watcherRef),
   );
-  app.route('/api/playlists', playlistRoutes(navidrome));
+  app.route('/api/playlists', playlistRoutes(navidrome, db));
   app.route('/api/share', shareRoutes(config.jwt.secret, auth));
   app.route('/api/tailscale', tailscaleRoutes(tailscale, saveTailscaleAuthKeyFn, clearTailscaleAuthKeyFn));
   app.route('/api/users', usersRoutes(registry));

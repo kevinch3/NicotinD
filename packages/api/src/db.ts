@@ -84,6 +84,15 @@ export function initDatabase(dataDir: string): Database {
   `);
 
   db.run(`
+    CREATE TABLE IF NOT EXISTS playlist_visibility (
+      playlist_id TEXT PRIMARY KEY,
+      owner_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      visibility  TEXT NOT NULL DEFAULT 'personal'
+                       CHECK (visibility IN ('personal', 'global'))
+    )
+  `);
+
+  db.run(`
     CREATE TABLE IF NOT EXISTS share_tokens (
       token             TEXT    PRIMARY KEY,
       resource_type     TEXT    NOT NULL CHECK (resource_type IN ('playlist', 'album')),

@@ -1,4 +1,5 @@
 import { basename } from 'node:path';
+import type { Database } from 'bun:sqlite';
 import type { Navidrome } from '@nicotind/navidrome-client';
 import { createLogger } from '@nicotind/core';
 import type { Playlist } from '@nicotind/core';
@@ -64,6 +65,8 @@ export class AutoPlaylistService {
     private navidrome: Navidrome,
     private musicDir = '',
     private scanTimeoutMs = 30_000,
+    private db?: Database | null,
+    private adminUserId?: string,
   ) {}
 
   /**
@@ -228,6 +231,7 @@ export class AutoPlaylistService {
       try {
         playlist = await this.navidrome.playlists.create(name);
         allPlaylists.push(playlist); // keep local cache in sync for subsequent groups
+        this.persistPlaylistVisibility(playlist.id);
       } catch (err) {
         log.error({ err, name }, 'Failed to create playlist');
         return;
@@ -395,6 +399,22 @@ export class AutoPlaylistService {
       );
     } catch { /* proceed with empty index */ }
     return index;
+  }
+
+  private persistPlaylistVisibility(playlistId: string): void {
+    try {
+      const db = this.db ?? getDatabase();
+      const adminId = this.adminUserId ?? db
+        .query<{ id: string }, []>("SELECT id FROM users WHERE role = 'admin' LIMIT 1")
+        .get()?.id;
+      if (!adminId) return;
+      db.run(
+        'INSERT OR IGNORE INTO playlist_visibility (playlist_id, owner_id, visibility) VALUES (?, ?, ?)',
+        [playlistId, adminId, 'global'],
+      );
+    } catch {
+      // Non-fatal: DB may not be available in tests or early startup
+    }
   }
 
   private persistNavidromeId(file: CompletedDownloadFile, navidromeId: string): void {

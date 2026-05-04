@@ -480,3 +480,91 @@ describe('AutoPlaylistService.processBatch', () => {
     expect(navidromeMock.playlists.create).toHaveBeenCalled();
   });
 });
+
+// ── visibility rows ───────────────────────────────────────────────────────────
+
+import { Database } from 'bun:sqlite';
+
+describe('AutoPlaylistService.processBatch — playlist_visibility', () => {
+  let navidromeMock: any;
+  let visDb: Database;
+
+  beforeEach(() => {
+    visDb = new Database(':memory:');
+    visDb.run(`
+      CREATE TABLE users (
+        id TEXT PRIMARY KEY, username TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'user',
+        status TEXT NOT NULL DEFAULT 'active',
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `);
+    visDb.run(`
+      CREATE TABLE playlist_visibility (
+        playlist_id TEXT PRIMARY KEY,
+        owner_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        visibility  TEXT NOT NULL DEFAULT 'personal'
+                         CHECK (visibility IN ('personal', 'global'))
+      )
+    `);
+    visDb.run("INSERT INTO users VALUES ('a1', 'admin', 'hash', 'admin', 'active', datetime('now'))");
+
+    navidromeMock = {
+      system: { getScanStatus: mock(() => Promise.resolve({ scanning: false, count: 0 })) },
+      playlists: {
+        list:   mock(() => Promise.resolve([])),
+        create: mock((name: string) => Promise.resolve({ id: `id-${name}`, name, songCount: 0, entry: [] })),
+        get:    mock((id: string) => Promise.resolve({ id, name: '', entry: [] })),
+        update: mock(() => Promise.resolve()),
+      },
+      search:   { search3: mock(() => Promise.resolve({ song: [], artist: [], album: [] })) },
+      browsing: {
+        getAlbum:    mock(() => Promise.resolve({ album: {} as any, songs: [] })),
+        getAlbumList: mock(() => Promise.resolve([])),
+      },
+    };
+  });
+
+  it('inserts a global visibility row when a new playlist is created', async () => {
+    navidromeMock.search.search3.mockReturnValue(
+      Promise.resolve({ song: [makeSong('song-1', 'dir1/song.mp3')], artist: [], album: [] }),
+    );
+
+    const svc = new AutoPlaylistService(navidromeMock, '', 0, visDb, 'a1');
+    await svc.processBatch([{ username: 'u', directory: 'dir1', filename: 'song.mp3' }]);
+
+    const row = visDb
+      .query<any, [string]>('SELECT * FROM playlist_visibility WHERE playlist_id = ?')
+      .get(`id-${ALL_SINGLES}`);
+    expect(row).not.toBeNull();
+    expect(row.visibility).toBe('global');
+    expect(row.owner_id).toBe('a1');
+  });
+
+  it('does not duplicate a visibility row for an already-existing playlist', async () => {
+    // Playlist already exists in navidrome AND has a visibility row
+    const playlistId = `id-${ALL_SINGLES}`;
+    navidromeMock.playlists.list.mockReturnValue(
+      Promise.resolve([{ id: playlistId, name: ALL_SINGLES, songCount: 0, entry: [] }]),
+    );
+    navidromeMock.playlists.get.mockReturnValue(
+      Promise.resolve({ id: playlistId, name: ALL_SINGLES, entry: [] }),
+    );
+    visDb.run(
+      "INSERT INTO playlist_visibility VALUES (?, 'a1', 'global')",
+      [playlistId],
+    );
+
+    navidromeMock.search.search3.mockReturnValue(
+      Promise.resolve({ song: [makeSong('song-1', 'dir1/song.mp3')], artist: [], album: [] }),
+    );
+
+    const svc = new AutoPlaylistService(navidromeMock, '', 0, visDb, 'a1');
+    await svc.processBatch([{ username: 'u', directory: 'dir1', filename: 'song.mp3' }]);
+
+    const rows = visDb
+      .query<any, [string]>('SELECT * FROM playlist_visibility WHERE playlist_id = ?')
+      .all(playlistId);
+    expect(rows).toHaveLength(1); // still just one row
+  });
+});
