@@ -1,41 +1,56 @@
 import { describe, expect, it, beforeEach, mock, afterEach } from 'bun:test';
 import { DownloadWatcher } from './download-watcher.js';
+import type { CompletedDownloadFile } from './metadata-fixer.js';
+
+function makeSlskdMock() {
+  return {
+    transfers: {
+      getDownloads: mock(() => Promise.resolve([])),
+    },
+  };
+}
+function makeNavidromeMock() {
+  return {
+    system: {
+      startScan: mock(() => Promise.resolve()),
+    },
+  };
+}
+function makeMetadataFixerMock() {
+  return {
+    processCompletedDownloads: mock((_files: CompletedDownloadFile[]) => Promise.resolve()),
+  };
+}
+function makeAutoPlaylistMock() {
+  return {
+    processBatch: mock((_files: CompletedDownloadFile[]) => Promise.resolve()),
+  };
+}
 
 describe('DownloadWatcher', () => {
-  let slskdMock: any;
-  let navidromeMock: any;
-  let metadataFixerMock: any;
-  let autoPlaylistMock: any;
+  let slskdMock: ReturnType<typeof makeSlskdMock>;
+  let navidromeMock: ReturnType<typeof makeNavidromeMock>;
+  let metadataFixerMock: ReturnType<typeof makeMetadataFixerMock>;
+  let autoPlaylistMock: ReturnType<typeof makeAutoPlaylistMock>;
   let watcher: DownloadWatcher;
 
   beforeEach(() => {
-    slskdMock = {
-      transfers: {
-        getDownloads: mock(() => Promise.resolve([])),
-      },
-    };
-
-    navidromeMock = {
-      system: {
-        startScan: mock(() => Promise.resolve()),
-      },
-    };
-
-    metadataFixerMock = {
-      processCompletedDownloads: mock(() => Promise.resolve()),
-    };
-
-    autoPlaylistMock = {
-      processBatch: mock(() => Promise.resolve()),
-    };
+    slskdMock = makeSlskdMock();
+    navidromeMock = makeNavidromeMock();
+    metadataFixerMock = makeMetadataFixerMock();
+    autoPlaylistMock = makeAutoPlaylistMock();
 
     // Use very small intervals for testing
-    watcher = new DownloadWatcher(slskdMock, navidromeMock, {
-      intervalMs: 10,
-      scanDebounceMs: 10,
-      metadataFixer: metadataFixerMock,
-      autoPlaylist: autoPlaylistMock,
-    });
+    watcher = new DownloadWatcher(
+      slskdMock as unknown as Parameters<typeof DownloadWatcher>[0],
+      navidromeMock as unknown as Parameters<typeof DownloadWatcher>[1],
+      {
+        intervalMs: 10,
+        scanDebounceMs: 10,
+        metadataFixer: metadataFixerMock,
+        autoPlaylist: autoPlaylistMock,
+      },
+    );
   });
 
   afterEach(() => {
@@ -59,7 +74,7 @@ describe('DownloadWatcher', () => {
     );
 
     // Manually trigger check instead of waiting for setInterval
-    await (watcher as any).check();
+    await (watcher as unknown as { check(): Promise<void> }).check();
 
     // Scan should be debounced. Should NOT have been called yet.
     expect(navidromeMock.system.startScan).not.toHaveBeenCalled();
@@ -97,7 +112,7 @@ describe('DownloadWatcher', () => {
     );
 
     // First completion
-    await (watcher as any).check();
+    await (watcher as unknown as { check(): Promise<void> }).check();
 
     // Wait a bit but less than debounce
     await new Promise((r) => setTimeout(r, 5));
@@ -121,7 +136,7 @@ describe('DownloadWatcher', () => {
         },
       ]),
     );
-    await (watcher as any).check();
+    await (watcher as unknown as { check(): Promise<void> }).check();
 
     // Wait 8ms (total 13ms since first, 8ms since second).
     // Debounce is 10ms, but it should have been reset by the second check.
@@ -152,7 +167,7 @@ describe('DownloadWatcher', () => {
       ]),
     );
 
-    await (watcher as any).check();
+    await (watcher as unknown as { check(): Promise<void> }).check();
     await new Promise((r) => setTimeout(r, 50)); // wait for debounce
 
     expect(autoPlaylistMock.processBatch).toHaveBeenCalledTimes(1);

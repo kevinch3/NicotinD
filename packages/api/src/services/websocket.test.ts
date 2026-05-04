@@ -35,7 +35,7 @@ mock.module('./playback-registry.js', () => ({
 const { createWebSocketHandlers } = await import('./websocket.js');
 
 function createMockWs(): WSContext & { send: ReturnType<typeof mock> } {
-  return { send: mock(() => {}) } as any;
+  return { send: mock(() => {}) } as unknown as WSContext & { send: ReturnType<typeof mock> };
 }
 
 function createEvent(data: object): MessageEvent {

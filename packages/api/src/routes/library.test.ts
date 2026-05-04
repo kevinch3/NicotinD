@@ -2,6 +2,7 @@ import { describe, expect, it, beforeEach, mock } from 'bun:test';
 import { Hono } from 'hono';
 import { Database } from 'bun:sqlite';
 import { libraryRoutes } from './library.js';
+import type { AuthEnv } from '../middleware/auth.js';
 
 mock.module('../db.js', () => ({
   getDatabase: () => {
@@ -40,34 +41,38 @@ mock.module('node:fs', () => ({
   }),
 }));
 
+function makeNavidromeMock() {
+  return {
+    browsing: {
+      getSong: mock(() =>
+        Promise.resolve({
+          id: 'song-1',
+          path: '/home/kevinch3/Music/Artist/Album/song.mp3',
+        }),
+      ),
+    },
+    system: {
+      startScan: mock(() => Promise.resolve()),
+    },
+  };
+}
+
 describe('library routes', () => {
-  let navidromeMock: any;
-  let app: Hono<any>;
+  let navidromeMock: ReturnType<typeof makeNavidromeMock>;
+  let app: Hono<AuthEnv>;
 
   beforeEach(() => {
     fsState.clear();
     dirEntries.clear();
 
-    navidromeMock = {
-      browsing: {
-        getSong: mock(() =>
-          Promise.resolve({
-            id: 'song-1',
-            path: '/home/kevinch3/Music/Artist/Album/song.mp3',
-          }),
-        ),
-      },
-      system: {
-        startScan: mock(() => Promise.resolve()),
-      },
-    };
+    navidromeMock = makeNavidromeMock();
 
-    app = new Hono<any>();
+    app = new Hono<AuthEnv>();
     app.use('*', (c, next) => {
       c.set('user', { sub: 'test-user', role: 'admin', iat: 0, exp: 9999999999 });
       return next();
     });
-    app.route('/', libraryRoutes(navidromeMock, '/home/kevinch3/Music'));
+    app.route('/', libraryRoutes(navidromeMock as unknown as Parameters<typeof libraryRoutes>[0], '/home/kevinch3/Music'));
   });
 
   it('deletes a song using an absolute path from Navidrome', async () => {
@@ -97,7 +102,7 @@ describe('library routes', () => {
     });
 
     expect(res.status).toBe(200);
-    const data = await res.json() as any;
+    const data = await res.json() as { deletedCount: number };
     expect(data.deletedCount).toBe(2);
     expect(fsState.has('/home/kevinch3/Music/A/a.mp3')).toBe(false);
     expect(fsState.has('/home/kevinch3/Music/B/b.mp3')).toBe(false);

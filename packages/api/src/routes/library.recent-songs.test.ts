@@ -32,7 +32,7 @@ function createTestDb(): Database {
 }
 
 describe('library recent-songs ordering', () => {
-  let app: Hono<any>;
+  let app: Hono;
 
   beforeEach(() => {
     testDb = createTestDb();
@@ -86,7 +86,7 @@ describe('library recent-songs ordering', () => {
     };
 
     app = new Hono();
-    app.route('/', libraryRoutes(navidromeMock as any, '/music'));
+    app.route('/', libraryRoutes(navidromeMock as unknown as Parameters<typeof libraryRoutes>[0], '/music'));
   });
 
   afterEach(() => {

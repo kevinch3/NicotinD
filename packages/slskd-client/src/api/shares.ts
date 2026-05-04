@@ -2,6 +2,10 @@ import type { SlskdShareDirectory } from '@nicotind/core';
 import type { SlskdClient } from '../client.js';
 import type { OptionsApi } from './options.js';
 
+interface RawShareEntry { localPath?: string; raw?: string; files?: number; isExcluded?: boolean; id?: string; path?: string; fileCount?: number }
+interface RawSharesResponse { local?: RawShareEntry[] }
+interface SlskdError { status?: number; message?: string }
+
 export class SharesApi {
   constructor(
     private readonly client: SlskdClient,
@@ -9,16 +13,16 @@ export class SharesApi {
   ) {}
 
   async list(): Promise<SlskdShareDirectory[]> {
-    const raw = await this.client.request<any>('/shares');
+    const raw = await this.client.request<RawSharesResponse | RawShareEntry[]>('/shares');
     // slskd 0.25+ returns { local: [{localPath, files, isExcluded, ...}] }
-    if (Array.isArray(raw?.local)) {
+    if (!Array.isArray(raw) && Array.isArray(raw?.local)) {
       return raw.local
-        .filter((s: any) => !s.isExcluded)
-        .map((s: any) => ({ path: s.localPath ?? s.raw, fileCount: s.files }));
+        .filter((s) => !s.isExcluded)
+        .map((s) => ({ path: s.localPath ?? s.raw ?? '', fileCount: s.files ?? 0 }));
     }
     // older versions return a bare array
     if (Array.isArray(raw)) {
-      return raw.map((s: any) => ({ path: s.id ?? s.path, fileCount: s.fileCount }));
+      return raw.map((s) => ({ path: s.id ?? s.path ?? '', fileCount: s.fileCount ?? 0 }));
     }
     return [];
   }
@@ -29,8 +33,8 @@ export class SharesApi {
         method: 'POST',
         body: JSON.stringify({ id: path }),
       });
-    } catch (err: any) {
-      if (this.isNotSupported(err)) {
+    } catch (err) {
+      if (this.isNotSupported(err as SlskdError)) {
         await this.addViaYaml(path);
       } else {
         throw err;
@@ -41,8 +45,8 @@ export class SharesApi {
   async remove(path: string): Promise<void> {
     try {
       await this.client.request(`/shares/${encodeURIComponent(path)}`, { method: 'DELETE' });
-    } catch (err: any) {
-      if (this.isNotSupported(err)) {
+    } catch (err) {
+      if (this.isNotSupported(err as SlskdError)) {
         await this.removeViaYaml(path);
       } else {
         throw err;
@@ -50,7 +54,7 @@ export class SharesApi {
     }
   }
 
-  private isNotSupported(err: any): boolean {
+  private isNotSupported(err: SlskdError): boolean {
     const status = err?.status ?? 0;
     const msg: string = err?.message ?? '';
     return status === 404 || status === 405 || /40[45]/.test(msg);

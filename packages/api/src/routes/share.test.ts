@@ -3,6 +3,7 @@ import { Database } from 'bun:sqlite';
 import { Hono } from 'hono';
 import { shareRoutes } from './share.js';
 import { authMiddleware, signJwt } from '../middleware/auth.js';
+import type { AuthEnv } from '../middleware/auth.js';
 
 const testDb = new Database(':memory:');
 testDb.run(`
@@ -37,7 +38,7 @@ beforeEach(() => {
 });
 
 function buildApp() {
-  const app = new Hono<any>();
+  const app = new Hono<AuthEnv>();
   const auth = authMiddleware(SECRET);
   app.route('/api/share', shareRoutes(SECRET, auth));
   return app;
@@ -97,7 +98,7 @@ describe('POST /api/share/activate/:token — activate', () => {
     expect(body.resourceId).toBe('al42');
     expect(typeof body.jwt).toBe('string');
     // first_accessed_at is now set
-    const row = testDb.query<any, [string]>('SELECT * FROM share_tokens WHERE token = ?').get('tok1');
+    const row = testDb.query<{ first_accessed_at: number | null }, [string]>('SELECT * FROM share_tokens WHERE token = ?').get('tok1');
     expect(row.first_accessed_at).not.toBeNull();
   });
 

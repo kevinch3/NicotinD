@@ -4,7 +4,9 @@ import { usersRoutes } from './users.js';
 import { ProviderRegistry } from '../services/provider-registry.js';
 import { SlskdSearchProvider } from '../services/providers/slskd-provider.js';
 
-function makeRegistry(browseDirs: any[] = [], shouldThrow?: Error) {
+type BrowseDir = { name: string; fileCount: number; files: { filename: string; size: number }[] };
+
+function makeRegistry(browseDirs: BrowseDir[] = [], shouldThrow?: Error) {
   const slskdRef = {
     current: {
       searches: {
@@ -21,7 +23,7 @@ function makeRegistry(browseDirs: any[] = [], shouldThrow?: Error) {
           : async () => browseDirs,
       },
     },
-  } as any;
+  } as unknown as Parameters<typeof SlskdSearchProvider>[0];
   const registry = new ProviderRegistry();
   registry.register(new SlskdSearchProvider(slskdRef));
   return registry;
@@ -32,7 +34,7 @@ async function pollUntilDone(app: Hono, username: string, jobId: string, maxAtte
   for (let i = 0; i < maxAttempts; i++) {
     await new Promise((r) => setTimeout(r, 10));
     const res = await app.request(`/${username}/browse/${jobId}`);
-    const body = await res.json() as any;
+    const body = await res.json() as { state: string; dirs?: unknown[]; error?: string };
     if (body.state !== 'pending') return { res, body };
   }
   throw new Error('Browse job never completed within test timeout');
@@ -47,7 +49,7 @@ describe('users routes', () => {
 
     const startRes = await app.request('/testuser/browse');
     expect(startRes.status).toBe(202);
-    const { jobId, state } = await startRes.json() as any;
+    const { jobId, state } = await startRes.json() as { jobId: string; state: string };
     expect(state).toBe('pending');
     expect(typeof jobId).toBe('string');
 
@@ -68,7 +70,7 @@ describe('users routes', () => {
   });
 
   it('returns error state when slskdRef.current is null (BrowseUnavailableError)', async () => {
-    const slskdRef = { current: null } as any;
+    const slskdRef = { current: null } as unknown as Parameters<typeof SlskdSearchProvider>[0];
     const registry = new ProviderRegistry();
     registry.register(new SlskdSearchProvider(slskdRef));
     const app = new Hono();
@@ -76,7 +78,7 @@ describe('users routes', () => {
 
     const startRes = await app.request('/testuser/browse');
     expect(startRes.status).toBe(202);
-    const { jobId } = await startRes.json() as any;
+    const { jobId } = await startRes.json() as { jobId: string };
 
     const { res, body } = await pollUntilDone(app, 'testuser', jobId);
     expect(res.status).toBe(200);
@@ -91,7 +93,7 @@ describe('users routes', () => {
 
     const startRes = await app.request('/testuser/browse');
     expect(startRes.status).toBe(202);
-    const { jobId } = await startRes.json() as any;
+    const { jobId } = await startRes.json() as { jobId: string };
 
     const { res, body } = await pollUntilDone(app, 'testuser', jobId);
     expect(res.status).toBe(200);

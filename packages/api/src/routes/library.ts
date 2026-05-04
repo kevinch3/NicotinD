@@ -333,7 +333,7 @@ export function libraryRoutes(navidrome: Navidrome, musicDir?: string, metadataF
 
     const result = await deleteOne(c.req.param('id'));
     if (!result.ok) {
-      return c.json({ error: result.error }, (result.status as any) ?? 500);
+      return c.json({ error: result.error }, (result.status ?? 500) as 400 | 404 | 500);
     }
 
     // Trigger Navidrome rescan to update the index
@@ -363,7 +363,7 @@ export function libraryRoutes(navidrome: Navidrome, musicDir?: string, metadataF
     if (failed.length === ids.length) {
       const firstError = results.find(r => r.status === 'fulfilled' && !r.value.ok) as PromiseFulfilledResult<{ ok: false; error: string; status: number }> | undefined;
       const status = firstError?.value.status ?? 500;
-      return c.json({ error: firstError?.value.error ?? 'Failed to delete any songs' }, status as any);
+      return c.json({ error: firstError?.value.error ?? 'Failed to delete any songs' }, status as 400 | 404 | 500);
     }
 
     // Trigger single Navidrome rescan at the end

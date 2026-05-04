@@ -25,7 +25,7 @@ describe('streaming routes', () => {
         stream,
         getCoverArt: mock(() => Promise.resolve(new Response('ok'))),
       },
-    } as any;
+    } as unknown as Parameters<typeof streamingRoutes>[0];
 
     const app = new Hono();
     app.route('/', streamingRoutes(navidromeMock));

@@ -2,9 +2,22 @@ import { describe, expect, it, beforeEach, mock } from 'bun:test';
 import { Hono } from 'hono';
 import { systemRoutes } from './system.js';
 
+function makeSlskdMock() {
+  return {
+    server: {
+      getState: mock(() =>
+        Promise.resolve({ isConnected: true, username: 'testuser', state: 'Connected' }),
+      ),
+    },
+    application: {
+      getInfo: mock(() => Promise.resolve({ version: '0.25.1', uptime: 3600 })),
+    },
+  };
+}
+
 describe('system routes', () => {
-  let slskdMock: any;
-  let app: Hono<any>;
+  let slskdMock: ReturnType<typeof makeSlskdMock>;
+  let app: Hono;
 
   const navidromeMock = {
     system: { ping: mock(() => Promise.resolve(true)) },
@@ -17,24 +30,20 @@ describe('system routes', () => {
   const configMock = {
     soulseek: { username: 'testuser', password: 'testpass' },
     mode: 'external',
-  } as any;
+  };
 
   beforeEach(() => {
-    slskdMock = {
-      server: {
-        getState: mock(() =>
-          Promise.resolve({ isConnected: true, username: 'testuser', state: 'Connected' }),
-        ),
-      },
-      application: {
-        getInfo: mock(() => Promise.resolve({ version: '0.25.1', uptime: 3600 })),
-      },
-    };
+    slskdMock = makeSlskdMock();
 
     app = new Hono();
     app.route(
       '/',
-      systemRoutes({ current: slskdMock }, navidromeMock as any, serviceManagerMock as any, configMock),
+      systemRoutes(
+        { current: slskdMock } as unknown as Parameters<typeof systemRoutes>[0],
+        navidromeMock as unknown as Parameters<typeof systemRoutes>[1],
+        serviceManagerMock as unknown as Parameters<typeof systemRoutes>[2],
+        configMock as unknown as Parameters<typeof systemRoutes>[3],
+      ),
     );
   });
 
@@ -76,7 +85,12 @@ describe('system routes', () => {
     app = new Hono();
     app.route(
       '/',
-      systemRoutes({ current: null }, navidromeMock as any, serviceManagerMock as any, configMock),
+      systemRoutes(
+        { current: null } as unknown as Parameters<typeof systemRoutes>[0],
+        navidromeMock as unknown as Parameters<typeof systemRoutes>[1],
+        serviceManagerMock as unknown as Parameters<typeof systemRoutes>[2],
+        configMock as unknown as Parameters<typeof systemRoutes>[3],
+      ),
     );
 
     const res = await app.request('/status');

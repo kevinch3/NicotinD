@@ -109,8 +109,8 @@ export class TailscaleService {
         stdio: ['pipe', 'pipe', 'pipe'],
       });
     } catch (err) {
-      const stderr = err instanceof Error && 'stderr' in err ? (err as any).stderr : '';
-      const stdout = err instanceof Error && 'stdout' in err ? (err as any).stdout : '';
+      const stderr = err instanceof Error && 'stderr' in err ? (err as Error & { stderr: string }).stderr : '';
+      const stdout = err instanceof Error && 'stdout' in err ? (err as Error & { stdout: string }).stdout : '';
       throw new Error(stdout || stderr || String(err));
     }
   }

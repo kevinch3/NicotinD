@@ -1,23 +1,27 @@
 import type { BrowseDirectory } from '@nicotind/core';
 import type { SlskdClient } from '../client.js';
 
+interface RawBrowseFile { filename: string; size: number; bitRate?: number; length?: number }
+interface RawBrowseDir { name: string; fileCount?: number; files?: RawBrowseFile[]; directories?: RawBrowseDir[] }
+
 export class UsersApi {
   constructor(private readonly client: SlskdClient) {}
 
   async browseUser(username: string): Promise<BrowseDirectory[]> {
-    const raw = await this.client.request<any>(
+    const raw = await this.client.request<unknown>(
       `/users/${encodeURIComponent(username)}/browse`,
     );
 
-    let rawDirs: any[] = [];
+    let rawDirs: RawBrowseDir[] = [];
     if (Array.isArray(raw)) {
-      rawDirs = raw;
+      rawDirs = raw as RawBrowseDir[];
     } else if (raw && typeof raw === 'object') {
-      if (Array.isArray(raw.directories)) {
-        rawDirs = raw.directories;
-      } else if (raw.name || (raw.files && Array.isArray(raw.files))) {
+      const rawObj = raw as RawBrowseDir;
+      if (Array.isArray(rawObj.directories)) {
+        rawDirs = rawObj.directories;
+      } else if (rawObj.name || (rawObj.files && Array.isArray(rawObj.files))) {
         // It's a single directory object
-        rawDirs = [raw];
+        rawDirs = [rawObj];
       }
     }
 
@@ -26,10 +30,10 @@ export class UsersApi {
        throw new Error(`Unexpected browse response: expected array or directory object, got ${typeof raw}`);
     }
 
-    return rawDirs.map((dir: any) => ({
+    return rawDirs.map((dir) => ({
       name: dir.name,
       fileCount: dir.fileCount,
-      files: (dir.files ?? []).map((f: any) => {
+      files: (dir.files ?? []).map((f) => {
         // slskd browse returns bare filenames (e.g. "01 - Track.mp3") but downloads
         // require the full Soulseek path (e.g. "@@share\\Artist\\Album\\01 - Track.mp3").
         // Prepend the directory name when the filename is a bare name.

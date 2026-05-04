@@ -3,6 +3,7 @@ import { Database } from 'bun:sqlite';
 import { Hono } from 'hono';
 import { settingsRoutes } from './settings.js';
 import { authMiddleware, signJwt } from '../middleware/auth.js';
+import type { AuthEnv } from '../middleware/auth.js';
 
 const testDb = new Database(':memory:');
 testDb.run(`
@@ -29,16 +30,32 @@ async function userToken() {
   return signJwt({ sub: 'user1', username: 'alice', role: 'user' }, SECRET);
 }
 
-function buildApp(slskd: any) {
-  const app = new Hono<any>();
+function makeSlskdMock() {
+  return {
+    server: {
+      getState: mock(() => Promise.resolve({ isConnected: true, username: 'u', state: 'Connected' })),
+      disconnect: mock(() => Promise.resolve()),
+      connect: mock(() => Promise.resolve()),
+    },
+    shares: {
+      list: mock(() => Promise.resolve([{ path: '/data/music' }])),
+      add: mock(() => Promise.resolve()),
+      remove: mock(() => Promise.resolve()),
+      rescan: mock(() => Promise.resolve()),
+    },
+  };
+}
+
+function buildApp(slskd: ReturnType<typeof makeSlskdMock> | null) {
+  const app = new Hono<AuthEnv>();
   const auth = authMiddleware(SECRET);
-  const config = { soulseek: { username: 'u', password: 'p' }, dataDir: '/tmp/nicotind-test', mode: 'external' } as any;
+  const config = { soulseek: { username: 'u', password: 'p' }, dataDir: '/tmp/nicotind-test', mode: 'external' } as unknown as Parameters<typeof settingsRoutes>[0];
   const routes = settingsRoutes(
     config,
-    { current: slskd },
-    {} as any,
-    { hasService: () => false, updateConfig: () => {}, restartService: async () => {} } as any,
-    { current: null } as any,
+    { current: slskd } as unknown as Parameters<typeof settingsRoutes>[1],
+    {} as unknown as Parameters<typeof settingsRoutes>[2],
+    { hasService: () => false, updateConfig: () => {}, restartService: async () => {} } as unknown as Parameters<typeof settingsRoutes>[3],
+    { current: null } as unknown as Parameters<typeof settingsRoutes>[4],
   );
   app.use('*', auth);
   app.route('/', routes);
@@ -46,22 +63,10 @@ function buildApp(slskd: any) {
 }
 
 describe('POST /soulseek/toggle', () => {
-  let slskdMock: any;
+  let slskdMock: ReturnType<typeof makeSlskdMock>;
 
   beforeEach(() => {
-    slskdMock = {
-      server: {
-        getState: mock(() => Promise.resolve({ isConnected: true, username: 'u', state: 'Connected' })),
-        disconnect: mock(() => Promise.resolve()),
-        connect: mock(() => Promise.resolve()),
-      },
-      shares: {
-        list: mock(() => Promise.resolve([{ path: '/data/music' }])),
-        add: mock(() => Promise.resolve()),
-        remove: mock(() => Promise.resolve()),
-        rescan: mock(() => Promise.resolve()),
-      },
-    };
+    slskdMock = makeSlskdMock();
   });
 
   it('disconnects when currently connected', async () => {
@@ -115,22 +120,11 @@ describe('POST /soulseek/toggle', () => {
 });
 
 describe('GET /shares', () => {
-  let slskdMock: any;
+  let slskdMock: ReturnType<typeof makeSlskdMock>;
 
   beforeEach(() => {
-    slskdMock = {
-      server: {
-        getState: mock(() => Promise.resolve({ isConnected: true, username: 'u', state: 'Connected' })),
-        disconnect: mock(() => Promise.resolve()),
-        connect: mock(() => Promise.resolve()),
-      },
-      shares: {
-        list: mock(() => Promise.resolve([{ path: '/data/music' }, { path: '/data/other' }])),
-        add: mock(() => Promise.resolve()),
-        remove: mock(() => Promise.resolve()),
-        rescan: mock(() => Promise.resolve()),
-      },
-    };
+    slskdMock = makeSlskdMock();
+    slskdMock.shares.list = mock(() => Promise.resolve([{ path: '/data/music' }, { path: '/data/other' }]));
   });
 
   it('returns list of share directories for admin', async () => {
@@ -164,22 +158,11 @@ describe('GET /shares', () => {
 });
 
 describe('POST /shares', () => {
-  let slskdMock: any;
+  let slskdMock: ReturnType<typeof makeSlskdMock>;
 
   beforeEach(() => {
-    slskdMock = {
-      server: {
-        getState: mock(() => Promise.resolve({ isConnected: true, username: 'u', state: 'Connected' })),
-        disconnect: mock(() => Promise.resolve()),
-        connect: mock(() => Promise.resolve()),
-      },
-      shares: {
-        list: mock(() => Promise.resolve([])),
-        add: mock(() => Promise.resolve()),
-        remove: mock(() => Promise.resolve()),
-        rescan: mock(() => Promise.resolve()),
-      },
-    };
+    slskdMock = makeSlskdMock();
+    slskdMock.shares.list = mock(() => Promise.resolve([]));
   });
 
   it('calls shares.add with the given path', async () => {
@@ -207,22 +190,11 @@ describe('POST /shares', () => {
 });
 
 describe('DELETE /shares/:path', () => {
-  let slskdMock: any;
+  let slskdMock: ReturnType<typeof makeSlskdMock>;
 
   beforeEach(() => {
-    slskdMock = {
-      server: {
-        getState: mock(() => Promise.resolve({ isConnected: true, username: 'u', state: 'Connected' })),
-        disconnect: mock(() => Promise.resolve()),
-        connect: mock(() => Promise.resolve()),
-      },
-      shares: {
-        list: mock(() => Promise.resolve([])),
-        add: mock(() => Promise.resolve()),
-        remove: mock(() => Promise.resolve()),
-        rescan: mock(() => Promise.resolve()),
-      },
-    };
+    slskdMock = makeSlskdMock();
+    slskdMock.shares.list = mock(() => Promise.resolve([]));
   });
 
   it('calls shares.remove with decoded path', async () => {
@@ -239,22 +211,11 @@ describe('DELETE /shares/:path', () => {
 });
 
 describe('POST /shares/rescan', () => {
-  let slskdMock: any;
+  let slskdMock: ReturnType<typeof makeSlskdMock>;
 
   beforeEach(() => {
-    slskdMock = {
-      server: {
-        getState: mock(() => Promise.resolve({ isConnected: true, username: 'u', state: 'Connected' })),
-        disconnect: mock(() => Promise.resolve()),
-        connect: mock(() => Promise.resolve()),
-      },
-      shares: {
-        list: mock(() => Promise.resolve([])),
-        add: mock(() => Promise.resolve()),
-        remove: mock(() => Promise.resolve()),
-        rescan: mock(() => Promise.resolve()),
-      },
-    };
+    slskdMock = makeSlskdMock();
+    slskdMock.shares.list = mock(() => Promise.resolve([]));
   });
 
   it('calls shares.rescan', async () => {

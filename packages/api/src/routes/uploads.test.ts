@@ -2,33 +2,36 @@ import { describe, expect, it, beforeEach, mock } from 'bun:test';
 import { Hono } from 'hono';
 import { uploadRoutes } from './uploads.js';
 
+function makeSlskdMock() {
+  return {
+    transfers: {
+      getUploads: mock(() =>
+        Promise.resolve([
+          {
+            username: 'peer1',
+            directories: [
+              {
+                directory: 'Music\\Album',
+                fileCount: 2,
+                files: [
+                  { id: 'u1', filename: 'Music\\Album\\01.mp3', state: 'InProgress', bytesTransferred: 500, percentComplete: 50 },
+                  { id: 'u2', filename: 'Music\\Album\\02.mp3', state: 'Queued, Remotely', bytesTransferred: 0, percentComplete: 0 },
+                ],
+              },
+            ],
+          },
+        ]),
+      ),
+    },
+  };
+}
+
 describe('uploads routes', () => {
-  let slskdMock: any;
-  let app: Hono<any>;
+  let slskdMock: ReturnType<typeof makeSlskdMock>;
+  let app: Hono;
 
   beforeEach(() => {
-    slskdMock = {
-      transfers: {
-        getUploads: mock(() =>
-          Promise.resolve([
-            {
-              username: 'peer1',
-              directories: [
-                {
-                  directory: 'Music\\Album',
-                  fileCount: 2,
-                  files: [
-                    { id: 'u1', filename: 'Music\\Album\\01.mp3', state: 'InProgress', bytesTransferred: 500, percentComplete: 50 },
-                    { id: 'u2', filename: 'Music\\Album\\02.mp3', state: 'Queued, Remotely', bytesTransferred: 0, percentComplete: 0 },
-                  ],
-                },
-              ],
-            },
-          ]),
-        ),
-      },
-    };
-
+    slskdMock = makeSlskdMock();
     app = new Hono();
     app.route('/', uploadRoutes({ current: slskdMock }));
   });

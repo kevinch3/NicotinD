@@ -164,7 +164,7 @@ export function searchRoutes(registry: ProviderRegistry) {
       for (const provider of registry.getByType('network')) {
         if (provider.pollResults) {
           const canBrowse =
-            'browseUser' in provider && typeof (provider as any).browseUser === 'function';
+            'browseUser' in provider && typeof (provider as { browseUser: unknown }).browseUser === 'function';
           try {
             const result = await provider.pollResults(searchId);
             return c.json({ ...result, canBrowse });

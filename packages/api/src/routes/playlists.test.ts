@@ -3,6 +3,7 @@ import { Database } from 'bun:sqlite';
 import { Hono } from 'hono';
 import { playlistRoutes } from './playlists.js';
 import { authMiddleware, signJwt } from '../middleware/auth.js';
+import type { AuthEnv } from '../middleware/auth.js';
 
 // ── in-memory DB ──────────────────────────────────────────────────────────────
 
@@ -39,11 +40,13 @@ function token(sub: string, role: 'user' | 'admin' = 'user') {
   return signJwt({ sub, username: sub, role }, SECRET);
 }
 
+type PlaylistRecord = { id: string; name: string; songCount: number; duration: number; owner: string; public: boolean; created: string; changed: string };
+
 function makeNavidrome(overrides: Partial<{
-  list: () => Promise<any[]>;
-  get: (id: string) => Promise<any>;
-  create: (name: string, songIds?: string[]) => Promise<any>;
-  update: (id: string, updates: any) => Promise<void>;
+  list: () => Promise<PlaylistRecord[]>;
+  get: (id: string) => Promise<PlaylistRecord>;
+  create: (name: string, songIds?: string[]) => Promise<PlaylistRecord>;
+  update: (id: string, updates: { songIdsToAdd?: string[] }) => Promise<void>;
   delete: (id: string) => Promise<void>;
 }> = {}) {
   return {
@@ -54,11 +57,11 @@ function makeNavidrome(overrides: Partial<{
       update: mock(overrides.update ?? (async () => {})),
       delete: mock(overrides.delete ?? (async () => {})),
     },
-  } as any;
+  } as unknown as Parameters<typeof playlistRoutes>[0];
 }
 
-function buildApp(navidrome: any) {
-  const app = new Hono<any>();
+function buildApp(navidrome: Parameters<typeof playlistRoutes>[0]) {
+  const app = new Hono<AuthEnv>();
   const auth = authMiddleware(SECRET);
   app.use('*', auth);
   app.route('/', playlistRoutes(navidrome, testDb));
@@ -91,8 +94,8 @@ describe('GET /', () => {
     const tok = await token('u2'); // bob
     const res = await app.request('/', { headers: { Authorization: `Bearer ${tok}` } });
     expect(res.status).toBe(200);
-    const body = await res.json() as any[];
-    const ids = body.map((p: any) => p.id);
+    const body = await res.json() as Array<{ id: string }>;
+    const ids = body.map((p) => p.id);
     expect(ids).toContain('pl-global');
   });
 
@@ -101,8 +104,8 @@ describe('GET /', () => {
     const app = buildApp(nd);
     const tok = await token('u1'); // alice
     const res = await app.request('/', { headers: { Authorization: `Bearer ${tok}` } });
-    const body = await res.json() as any[];
-    const ids = body.map((p: any) => p.id);
+    const body = await res.json() as Array<{ id: string }>;
+    const ids = body.map((p) => p.id);
     expect(ids).toContain('pl-alice');
   });
 
@@ -111,8 +114,8 @@ describe('GET /', () => {
     const app = buildApp(nd);
     const tok = await token('u2'); // bob should not see alice's personal
     const res = await app.request('/', { headers: { Authorization: `Bearer ${tok}` } });
-    const body = await res.json() as any[];
-    const ids = body.map((p: any) => p.id);
+    const body = await res.json() as Array<{ id: string }>;
+    const ids = body.map((p) => p.id);
     expect(ids).not.toContain('pl-alice');
   });
 
@@ -121,8 +124,8 @@ describe('GET /', () => {
     const app = buildApp(nd);
     const tok = await token('u1'); // alice: sees global + own personal
     const res = await app.request('/', { headers: { Authorization: `Bearer ${tok}` } });
-    const body = await res.json() as any[];
-    const ids = body.map((p: any) => p.id);
+    const body = await res.json() as Array<{ id: string }>;
+    const ids = body.map((p) => p.id);
     expect(ids).toContain('pl-global');
     expect(ids).toContain('pl-alice');
     expect(ids).not.toContain('pl-bob');
@@ -133,8 +136,8 @@ describe('GET /', () => {
     const app = buildApp(nd);
     const tok = await token('u2'); // bob has no connection to legacy playlist
     const res = await app.request('/', { headers: { Authorization: `Bearer ${tok}` } });
-    const body = await res.json() as any[];
-    expect(body.map((p: any) => p.id)).toContain('pl-legacy');
+    const body = await res.json() as Array<{ id: string }>;
+    expect(body.map((p) => p.id)).toContain('pl-legacy');
   });
 });
 
@@ -147,7 +150,7 @@ describe('GET /:id', () => {
     const tok = await token('u2');
     const res = await app.request('/pl-global', { headers: { Authorization: `Bearer ${tok}` } });
     expect(res.status).toBe(200);
-    const body = await res.json() as any;
+    const body = await res.json() as { id: string };
     expect(body.id).toBe('pl-global');
   });
 
@@ -209,7 +212,7 @@ describe('POST /', () => {
       body: JSON.stringify({ name: 'My New Playlist' }),
     });
     expect(res.status).toBe(201);
-    const row = testDb.query<any, [string]>('SELECT * FROM playlist_visibility WHERE playlist_id = ?').get('pl-new');
+    const row = testDb.query<{ playlist_id: string; owner_id: string; visibility: string }, [string]>('SELECT * FROM playlist_visibility WHERE playlist_id = ?').get('pl-new');
     expect(row).not.toBeNull();
     expect(row.owner_id).toBe('u1');
     expect(row.visibility).toBe('personal');
@@ -225,7 +228,7 @@ describe('POST /', () => {
       body: JSON.stringify({ name: 'Shared Playlist', visibility: 'global' }),
     });
     expect(res.status).toBe(201);
-    const row = testDb.query<any, [string]>('SELECT * FROM playlist_visibility WHERE playlist_id = ?').get('pl-new');
+    const row = testDb.query<{ playlist_id: string; owner_id: string; visibility: string }, [string]>('SELECT * FROM playlist_visibility WHERE playlist_id = ?').get('pl-new');
     expect(row.visibility).toBe('global');
   });
 });
@@ -243,7 +246,7 @@ describe('PATCH /:id/visibility', () => {
       body: JSON.stringify({ visibility: 'global' }),
     });
     expect(res.status).toBe(200);
-    const row = testDb.query<any, [string]>('SELECT visibility FROM playlist_visibility WHERE playlist_id = ?').get('pl-alice');
+    const row = testDb.query<{ visibility: string }, [string]>('SELECT visibility FROM playlist_visibility WHERE playlist_id = ?').get('pl-alice');
     expect(row.visibility).toBe('global');
   });
 
@@ -257,7 +260,7 @@ describe('PATCH /:id/visibility', () => {
       body: JSON.stringify({ visibility: 'personal' }),
     });
     expect(res.status).toBe(200);
-    const row = testDb.query<any, [string]>('SELECT visibility FROM playlist_visibility WHERE playlist_id = ?').get('pl-global');
+    const row = testDb.query<{ visibility: string }, [string]>('SELECT visibility FROM playlist_visibility WHERE playlist_id = ?').get('pl-global');
     expect(row.visibility).toBe('personal');
   });
 
@@ -345,7 +348,7 @@ describe('DELETE /:id', () => {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${tok}` },
     });
-    const row = testDb.query<any, [string]>('SELECT * FROM playlist_visibility WHERE playlist_id = ?').get('pl-alice');
+    const row = testDb.query<{ playlist_id: string; owner_id: string; visibility: string }, [string]>('SELECT * FROM playlist_visibility WHERE playlist_id = ?').get('pl-alice');
     expect(row).toBeNull();
   });
 
