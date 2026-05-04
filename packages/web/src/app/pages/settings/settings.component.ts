@@ -67,7 +67,18 @@ export class SettingsComponent implements OnInit, OnDestroy {
   readonly duplicatesMessage = signal<{ type: 'success' | 'error'; text: string } | null>(null);
   readonly deletingDuplicates = signal(false);
 
+  // Organize
+  readonly organizeRunning = signal(false);
+  readonly organizeDryRun = signal(true);
+  readonly organizeFixFirst = signal(false);
+  readonly organizeStats = signal<{
+    processed: number; total: number; renamed: number; errors: number;
+    dryRun: boolean; changes: Array<{ from: string; to: string }>;
+  } | null>(null);
+  readonly organizeMessage = signal<{ type: 'success' | 'error'; text: string } | null>(null);
+
   private reprocessPollSub: Subscription | null = null;
+  private organizePollSub: Subscription | null = null;
   private tsPollSub: Subscription | null = null;
 
   isAdmin(): boolean {
@@ -312,6 +323,7 @@ export class SettingsComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.reprocessPollSub?.unsubscribe();
+    this.organizePollSub?.unsubscribe();
     this.tsPollSub?.unsubscribe();
   }
 
@@ -353,6 +365,54 @@ export class SettingsComponent implements OnInit, OnDestroy {
         error: () => {
           this.reprocessRunning.set(false);
           this.reprocessMessage.set({ type: 'error', text: 'Lost connection to reprocess job' });
+        },
+      });
+  }
+
+  async startOrganize(): Promise<void> {
+    this.organizeMessage.set(null);
+    this.organizeStats.set(null);
+    try {
+      await firstValueFrom(this.api.startOrganize({
+        dryRun: this.organizeDryRun(),
+        fixMetadataFirst: this.organizeFixFirst(),
+      }));
+      this.organizeRunning.set(true);
+      this.pollOrganize();
+    } catch (err) {
+      this.organizeMessage.set({ type: 'error', text: err instanceof Error ? err.message : 'Failed to start' });
+    }
+  }
+
+  private pollOrganize(): void {
+    this.organizePollSub?.unsubscribe();
+    this.organizePollSub = interval(2000)
+      .pipe(
+        switchMap(() => this.api.getOrganizeStatus()),
+        takeWhile((s) => s.running, true),
+      )
+      .subscribe({
+        next: (status) => {
+          this.organizeRunning.set(status.running);
+          this.organizeStats.set({
+            processed: status.processed,
+            total: status.total,
+            renamed: status.renamed,
+            errors: status.errors,
+            dryRun: status.dryRun,
+            changes: status.changes,
+          });
+          if (!status.running && status.startedAt !== null) {
+            const label = status.dryRun ? 'preview' : 'renamed';
+            this.organizeMessage.set({
+              type: 'success',
+              text: `Done — ${status.renamed} file${status.renamed !== 1 ? 's' : ''} ${label} out of ${status.processed} scanned`,
+            });
+          }
+        },
+        error: () => {
+          this.organizeRunning.set(false);
+          this.organizeMessage.set({ type: 'error', text: 'Lost connection to organize job' });
         },
       });
   }

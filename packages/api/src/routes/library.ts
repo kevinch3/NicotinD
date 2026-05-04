@@ -6,7 +6,7 @@ import type { Song } from '@nicotind/core';
 import type { Navidrome } from '@nicotind/navidrome-client';
 import type { AuthEnv } from '../middleware/auth.js';
 import { getDatabase } from '../db.js';
-import type { MetadataFixer, ReprocessStats } from '../services/metadata-fixer.js';
+import type { MetadataFixer, ReprocessStats, OrganizeStats } from '../services/metadata-fixer.js';
 
 const log = createLogger('library');
 
@@ -23,6 +23,24 @@ let reprocessJob: ReprocessJob = {
   skipped: 0,
   errors: 0,
   startedAt: null,
+};
+
+interface OrganizeJob extends OrganizeStats {
+  running: boolean;
+  startedAt: number | null;
+}
+
+let organizeJob: OrganizeJob = {
+  running: false,
+  processed: 0,
+  total: 0,
+  fixed: 0,
+  skipped: 0,
+  errors: 0,
+  renamed: 0,
+  dryRun: true,
+  startedAt: null,
+  changes: [],
 };
 
 export function libraryRoutes(navidrome: Navidrome, musicDir?: string, metadataFixer?: MetadataFixer) {
@@ -399,6 +417,75 @@ export function libraryRoutes(navidrome: Navidrome, musicDir?: string, metadataF
   // Poll reprocess job status
   app.get('/reprocess/status', (c) => {
     return c.json(reprocessJob);
+  });
+
+  // Start library-wide organize job (rename files to canonical paths, admin only)
+  app.post('/organize', async (c) => {
+    const user = c.get('user');
+    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+
+    if (organizeJob.running) {
+      return c.json({ error: 'Organize already running' }, 409);
+    }
+
+    if (!musicDir || !metadataFixer) {
+      return c.json({ error: 'Music directory or metadata fixer not configured' }, 500);
+    }
+
+    const body = await c.req.json<{ dryRun?: boolean; fixMetadataFirst?: boolean }>()
+      .catch((): { dryRun?: boolean; fixMetadataFirst?: boolean } => ({}));
+    const dryRun = body.dryRun ?? true;
+    const fixMetadataFirst = body.fixMetadataFirst ?? false;
+
+    organizeJob = {
+      running: true, processed: 0, total: 0,
+      fixed: 0, skipped: 0, errors: 0,
+      renamed: 0, dryRun, startedAt: Date.now(), changes: [],
+    };
+    log.info({ dryRun, fixMetadataFirst }, 'Starting library organize');
+
+    metadataFixer
+      .organizeLibrary({ dryRun, fixMetadataFirst }, (stats) => {
+        Object.assign(organizeJob, stats);
+      })
+      .then(async (stats) => {
+        if (!dryRun && stats.changes.length > 0) {
+          try {
+            const db = getDatabase();
+            for (const change of stats.changes) {
+              const newBasename = basename(change.to).toLowerCase();
+              db.run(
+                `UPDATE completed_downloads SET relative_path = ?, basename = ? WHERE relative_path = ?`,
+                [change.to, newBasename, change.from],
+              );
+            }
+          } catch (err) {
+            log.debug({ err }, 'Failed to update download paths after organize');
+          }
+        }
+
+        Object.assign(organizeJob, stats, { running: false });
+        log.info(stats, 'Library organize complete');
+
+        if (!dryRun) {
+          try {
+            await (navidrome.system as { startScan: (full?: boolean) => Promise<void> }).startScan(true);
+          } catch {
+            // Non-fatal
+          }
+        }
+      })
+      .catch((err) => {
+        log.error({ err }, 'Library organize failed');
+        organizeJob.running = false;
+      });
+
+    return c.json({ ok: true });
+  });
+
+  // Poll organize job status
+  app.get('/organize/status', (c) => {
+    return c.json(organizeJob);
   });
 
   // Duplicate detection (admin only)

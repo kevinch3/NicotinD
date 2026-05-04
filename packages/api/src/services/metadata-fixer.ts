@@ -1,5 +1,5 @@
-import { existsSync, readdirSync, renameSync, unlinkSync } from 'node:fs';
-import { basename, extname, join } from 'node:path';
+import { existsSync, mkdirSync, readdirSync, renameSync, unlinkSync } from 'node:fs';
+import { basename, dirname, extname, join, relative } from 'node:path';
 import { spawn } from 'node:child_process';
 import { createLogger } from '@nicotind/core';
 
@@ -26,6 +26,40 @@ export interface ReprocessStats {
   fixed: number;
   skipped: number;
   errors: number;
+}
+
+export interface OrganizeChange {
+  from: string;
+  to: string;
+  reason: string;
+}
+
+export interface OrganizeStats extends ReprocessStats {
+  renamed: number;
+  dryRun: boolean;
+  changes: OrganizeChange[];
+}
+
+export function sanitizePathComponent(s: string): string {
+  const cleaned = s
+    .replace(/[<>:"/\\|?*\x00-\x1f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^\.+/, '')
+    .replace(/\.+$/, '');
+  return (cleaned.slice(0, 200) || '_');
+}
+
+export function buildCanonicalPath(musicDir: string, meta: ParsedMetadata, ext: string): string {
+  const artist = sanitizePathComponent(meta.artist || 'Unknown Artist');
+  const title = sanitizePathComponent(meta.title || 'Unknown');
+  const track = meta.trackNumber ? String(Number(meta.trackNumber)).padStart(2, '0') : null;
+  const filename = (track ? `${track} - ${title}` : title) + ext;
+  if (hasUsableValue(meta.album)) {
+    const album = sanitizePathComponent(meta.album!);
+    return join(musicDir, artist, album, filename);
+  }
+  return join(musicDir, artist, filename);
 }
 
 interface MetadataFixerOptions {
@@ -274,6 +308,122 @@ export class MetadataFixer {
     }
 
     return stats;
+  }
+
+  async organizeLibrary(
+    options: { dryRun?: boolean; fixMetadataFirst?: boolean },
+    onProgress?: (stats: OrganizeStats) => void,
+  ): Promise<OrganizeStats> {
+    const dryRun = options.dryRun ?? true;
+    const stats: OrganizeStats = {
+      processed: 0, total: 0, fixed: 0, skipped: 0, errors: 0,
+      renamed: 0, dryRun, changes: [],
+    };
+
+    const files = [...walkAudioFiles(this.musicDir)];
+    stats.total = files.length;
+    log.info({ total: files.length, dryRun }, 'Starting library organize');
+    onProgress?.(stats);
+
+    for (const filePath of files) {
+      try {
+        if (options.fixMetadataFirst && this.enabled) {
+          await this.fixByReadingExistingTags(filePath);
+        }
+
+        const meta = await this.readCurrentMetadata(filePath);
+        if (!hasUsableValue(meta.title)) {
+          stats.skipped++;
+          stats.processed++;
+          onProgress?.(stats);
+          continue;
+        }
+
+        const ext = extname(filePath).toLowerCase();
+        const targetPath = buildCanonicalPath(this.musicDir, meta, ext);
+
+        if (filePath === targetPath) {
+          stats.skipped++;
+          stats.processed++;
+          onProgress?.(stats);
+          continue;
+        }
+
+        const resolvedTarget = this.resolveCollision(targetPath, filePath);
+        const change: OrganizeChange = {
+          from: relative(this.musicDir, filePath).replace(/\\/g, '/'),
+          to: relative(this.musicDir, resolvedTarget).replace(/\\/g, '/'),
+          reason: 'renamed',
+        };
+
+        if (!dryRun) {
+          mkdirSync(dirname(resolvedTarget), { recursive: true });
+          renameSync(filePath, resolvedTarget);
+          log.info({ from: filePath, to: resolvedTarget }, 'Organized file');
+        }
+        stats.renamed++;
+        stats.fixed++;
+        stats.changes.push(change);
+      } catch (err) {
+        log.warn({ err, filePath }, 'Error organizing file');
+        stats.errors++;
+      }
+      stats.processed++;
+      onProgress?.(stats);
+    }
+
+    return stats;
+  }
+
+  private async readCurrentMetadata(absolutePath: string): Promise<ParsedMetadata> {
+    const ext = extname(absolutePath).toLowerCase();
+    let meta: ParsedMetadata = {};
+
+    if (ext === '.mp3') {
+      const nodeId3 = await getNodeId3();
+      if (nodeId3) {
+        const raw = nodeId3.read(absolutePath);
+        const data = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+        meta = {
+          title: asString(data.title),
+          artist: asString(data.artist),
+          album: asString(data.album),
+          trackNumber: asString(data.trackNumber),
+        };
+      }
+    } else if (ext === '.flac' || ext === '.ogg' || ext === '.opus') {
+      const mm = await getMusicMetadata();
+      if (mm) {
+        try {
+          const parsed = await mm.parseFile(absolutePath, { duration: false });
+          meta = {
+            title: parsed.common.title,
+            artist: parsed.common.artist,
+            album: parsed.common.album,
+            trackNumber: parsed.common.track?.no ? String(parsed.common.track.no) : undefined,
+          };
+        } catch { /* fall through to inference */ }
+      }
+    }
+
+    const inferred = inferMetadataFromPath(absolutePath, absolutePath);
+    return {
+      title: hasUsableValue(meta.title) ? meta.title : inferred.title,
+      artist: hasUsableValue(meta.artist) ? meta.artist : inferred.artist,
+      album: hasUsableValue(meta.album) ? meta.album : inferred.album,
+      trackNumber: meta.trackNumber ?? inferred.trackNumber,
+    };
+  }
+
+  private resolveCollision(targetPath: string, sourcePath: string): string {
+    if (!existsSync(targetPath) || targetPath === sourcePath) return targetPath;
+    const ext = extname(targetPath);
+    const base = targetPath.slice(0, -ext.length);
+    for (let i = 2; i <= 99; i++) {
+      const candidate = `${base} (${i})${ext}`;
+      if (!existsSync(candidate)) return candidate;
+    }
+    return targetPath;
   }
 
   private async fixByReadingExistingTags(absolutePath: string): Promise<{ fixed: boolean }> {

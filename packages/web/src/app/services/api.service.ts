@@ -287,6 +287,19 @@ export class ApiService {
     }>('/api/library/reprocess/status');
   }
 
+  startOrganize(opts: { dryRun?: boolean; fixMetadataFirst?: boolean } = {}) {
+    return this.http.post<{ ok: boolean }>('/api/library/organize', opts);
+  }
+
+  getOrganizeStatus() {
+    return this.http.get<{
+      running: boolean; processed: number; total: number;
+      fixed: number; skipped: number; errors: number;
+      renamed: number; dryRun: boolean; startedAt: number | null;
+      changes: Array<{ from: string; to: string; reason: string }>;
+    }>('/api/library/organize/status');
+  }
+
   getDuplicates() {
     return this.http.get<Array<Array<{
       id: string; title: string; artist: string; album: string;
