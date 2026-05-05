@@ -70,6 +70,7 @@ export class PlayerService {
         repeat: this.repeat(),
         context: this.context(),
         currentTime: untracked(() => this.currentTime()),
+        wasPlaying: this.isPlaying(),
       };
       try {
         localStorage.setItem(PlayerService.STORAGE_KEY, JSON.stringify(snapshot));
@@ -88,6 +89,7 @@ export class PlayerService {
           repeat: this.repeat(),
           context: this.context(),
           currentTime: this.currentTime(),
+          wasPlaying: this.isPlaying(),
         };
         localStorage.setItem(PlayerService.STORAGE_KEY, JSON.stringify(snapshot));
       } catch { /* ignore */ }
@@ -105,7 +107,9 @@ export class PlayerService {
       if (!raw) return;
       const state = JSON.parse(raw) as Record<string, unknown>;
       if (isTrack(state['currentTrack'])) this.currentTrack.set(state['currentTrack']);
-      // isPlaying stays false — autoplay requires a user gesture
+      // Attempt to resume if the user was playing — browser autoplay policy applies;
+      // Effect 1 will call audio.play() and show the "Tap to resume" banner on rejection.
+      if (state['wasPlaying']) this.isPlaying.set(true);
       if (Array.isArray(state['queue'])) this.queue.set(state['queue'] as Track[]);
       if (Array.isArray(state['history'])) this.history.set(state['history'] as Track[]);
       if (state['shuffle'] != null) this.shuffle.set(Boolean(state['shuffle']));

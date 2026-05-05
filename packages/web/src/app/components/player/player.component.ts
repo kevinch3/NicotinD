@@ -53,6 +53,7 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
   }
 
   private pausingByStore = false;
+  private backgroundPauseTimer: ReturnType<typeof setTimeout> | null = null;
   private progressReportInterval: ReturnType<typeof setInterval> | null = null;
   private rafId: number | null = null;
   private wakeLock: WakeLockSentinel | null = null;
@@ -389,6 +390,10 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
   private bindAudioListeners(audio: HTMLAudioElement): void {
     // Remove previous listeners before re-binding (called again on every element swap).
     this.audioListenerCleanups.forEach((fn) => fn());
+    if (this.backgroundPauseTimer !== null) {
+      clearTimeout(this.backgroundPauseTimer);
+      this.backgroundPauseTimer = null;
+    }
 
     const onTime = () => {
       const value = audio.currentTime;
@@ -515,6 +520,11 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
     };
 
     const onPlay = () => {
+      // Cancel any deferred pause — audio resumed before the timer fired.
+      if (this.backgroundPauseTimer !== null) {
+        clearTimeout(this.backgroundPauseTimer);
+        this.backgroundPauseTimer = null;
+      }
       this.player.setAutoplayBlocked(false);
       if (!this.player.isPlaying()) {
         this.player.resume();
@@ -522,15 +532,20 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
     };
     const onPause = () => {
       if (this.pausingByStore) return;
-      // Screen locked → OS suspends audio. Don't treat this as a user pause;
-      // instead queue a resume for when the app comes back to the foreground.
       if (document.visibilityState === 'hidden') {
         this.resumePendingAfterVisible = this.player.isPlaying();
         return;
       }
-      if (this.player.isPlaying()) {
-        this.player.pause();
-      }
+      // Android race: audio.pause can fire before visibilitychange(hidden) when the
+      // OS yanks audio focus. Defer committing the pause so visibilitychange arrives first.
+      this.backgroundPauseTimer = setTimeout(() => {
+        this.backgroundPauseTimer = null;
+        if (document.visibilityState === 'hidden') {
+          this.resumePendingAfterVisible = this.player.isPlaying();
+        } else if (this.player.isPlaying()) {
+          this.player.pause();
+        }
+      }, 250);
     };
 
     audio.addEventListener('timeupdate', onTime);
@@ -552,6 +567,7 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.audioListenerCleanups.forEach((fn) => fn());
+    if (this.backgroundPauseTimer !== null) clearTimeout(this.backgroundPauseTimer);
     if (this.progressReportInterval) clearInterval(this.progressReportInterval);
     if (this.rafId) cancelAnimationFrame(this.rafId);
     this.releaseWakeLock();
