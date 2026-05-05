@@ -99,7 +99,7 @@ describe('POST /api/share/activate/:token — activate', () => {
     expect(typeof body.jwt).toBe('string');
     // first_accessed_at is now set
     const row = testDb.query<{ first_accessed_at: number | null }, [string]>('SELECT * FROM share_tokens WHERE token = ?').get('tok1');
-    expect(row.first_accessed_at).not.toBeNull();
+    expect(row!.first_accessed_at).not.toBeNull();
   });
 
   it('re-issues jwt with same exp on repeat call within window', async () => {

@@ -2,10 +2,12 @@ import { describe, expect, it, beforeEach, mock, afterEach } from 'bun:test';
 import { DownloadWatcher } from './download-watcher.js';
 import type { CompletedDownloadFile } from './metadata-fixer.js';
 
+type DownloadUser = { username: string; directories: { directory: string; fileCount: number; files: { filename: string; state: string }[] }[] };
+
 function makeSlskdMock() {
   return {
     transfers: {
-      getDownloads: mock(() => Promise.resolve([])),
+      getDownloads: mock((): Promise<DownloadUser[]> => Promise.resolve([])),
     },
   };
 }
@@ -42,8 +44,8 @@ describe('DownloadWatcher', () => {
 
     // Use very small intervals for testing
     watcher = new DownloadWatcher(
-      slskdMock as unknown as Parameters<typeof DownloadWatcher>[0],
-      navidromeMock as unknown as Parameters<typeof DownloadWatcher>[1],
+      slskdMock as unknown as ConstructorParameters<typeof DownloadWatcher>[0],
+      navidromeMock as unknown as ConstructorParameters<typeof DownloadWatcher>[1],
       {
         intervalMs: 10,
         scanDebounceMs: 10,

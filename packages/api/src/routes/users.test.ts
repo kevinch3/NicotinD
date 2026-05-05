@@ -23,7 +23,7 @@ function makeRegistry(browseDirs: BrowseDir[] = [], shouldThrow?: Error) {
           : async () => browseDirs,
       },
     },
-  } as unknown as Parameters<typeof SlskdSearchProvider>[0];
+  } as unknown as ConstructorParameters<typeof SlskdSearchProvider>[0];
   const registry = new ProviderRegistry();
   registry.register(new SlskdSearchProvider(slskdRef));
   return registry;
@@ -70,7 +70,7 @@ describe('users routes', () => {
   });
 
   it('returns error state when slskdRef.current is null (BrowseUnavailableError)', async () => {
-    const slskdRef = { current: null } as unknown as Parameters<typeof SlskdSearchProvider>[0];
+    const slskdRef = { current: null } as unknown as ConstructorParameters<typeof SlskdSearchProvider>[0];
     const registry = new ProviderRegistry();
     registry.register(new SlskdSearchProvider(slskdRef));
     const app = new Hono();

@@ -114,25 +114,35 @@ function makeSong(id: string, path: string) {
   };
 }
 
+type Song = ReturnType<typeof makeSong>;
+type PlaylistShort = { id: string; name: string; songCount: number; entry?: Song[] };
+type AlbumShort = { id: string; name: string };
+
 function makeNavidromeMock() {
   return {
     system: {
       getScanStatus: mock(() => Promise.resolve({ scanning: false, count: 0 })),
     },
     playlists: {
-      list: mock(() => Promise.resolve([])),
-      create: mock((name: string) =>
+      list: mock((): Promise<PlaylistShort[]> => Promise.resolve([])),
+      create: mock((name: string): Promise<PlaylistShort> =>
         Promise.resolve({ id: `id-${name}`, name, songCount: 0, entry: [] }),
       ),
-      get: mock((id: string) => Promise.resolve({ id, name: '', entry: [] })),
+      get: mock((id: string): Promise<{ id: string; name: string; entry: Song[] }> =>
+        Promise.resolve({ id, name: '', entry: [] }),
+      ),
       update: mock(() => Promise.resolve()),
     },
     search: {
-      search3: mock(() => Promise.resolve({ song: [], artist: [], album: [] })),
+      search3: mock((): Promise<{ song: Song[]; artist: unknown[]; album: unknown[] }> =>
+        Promise.resolve({ song: [], artist: [], album: [] }),
+      ),
     },
     browsing: {
-      getAlbum: mock(() => Promise.resolve({ album: {} as Record<string, unknown>, songs: [] })),
-      getAlbumList: mock(() => Promise.resolve([])),
+      getAlbum: mock((): Promise<{ album: Record<string, unknown>; songs: Song[] }> =>
+        Promise.resolve({ album: {} as Record<string, unknown>, songs: [] }),
+      ),
+      getAlbumList: mock((): Promise<AlbumShort[]> => Promise.resolve([])),
     },
   };
 }
@@ -144,7 +154,7 @@ describe('AutoPlaylistService.processBatch', () => {
   beforeEach(() => {
     navidromeMock = makeNavidromeMock();
     // Pass scanTimeoutMs=0 so waitForScan returns immediately in tests
-    service = new AutoPlaylistService(navidromeMock as unknown as Parameters<typeof AutoPlaylistService>[0], '', 0);
+    service = new AutoPlaylistService(navidromeMock as unknown as ConstructorParameters<typeof AutoPlaylistService>[0], '', 0);
   });
 
   it('does nothing for an empty batch', async () => {
@@ -477,7 +487,7 @@ describe('AutoPlaylistService.processBatch', () => {
     );
 
     // Use a positive timeout (2000ms) so the loop actually runs
-    const pollService = new AutoPlaylistService(navidromeMock as unknown as Parameters<typeof AutoPlaylistService>[0], '', 2000);
+    const pollService = new AutoPlaylistService(navidromeMock as unknown as ConstructorParameters<typeof AutoPlaylistService>[0], '', 2000);
     await pollService.processBatch([{ username: 'u', directory: 'dir', filename: 's.mp3' }]);
 
     expect(navidromeMock.system.getScanStatus).toHaveBeenCalledTimes(2);
@@ -521,15 +531,15 @@ describe('AutoPlaylistService.processBatch — playlist_visibility', () => {
       Promise.resolve({ song: [makeSong('song-1', 'dir1/song.mp3')], artist: [], album: [] }),
     );
 
-    const svc = new AutoPlaylistService(navidromeMock as unknown as Parameters<typeof AutoPlaylistService>[0], '', 0, visDb, 'a1');
+    const svc = new AutoPlaylistService(navidromeMock as unknown as ConstructorParameters<typeof AutoPlaylistService>[0], '', 0, visDb, 'a1');
     await svc.processBatch([{ username: 'u', directory: 'dir1', filename: 'song.mp3' }]);
 
     const row = visDb
       .query<{ playlist_id: string; owner_id: string; visibility: string }, [string]>('SELECT * FROM playlist_visibility WHERE playlist_id = ?')
       .get(`id-${ALL_SINGLES}`);
     expect(row).not.toBeNull();
-    expect(row.visibility).toBe('global');
-    expect(row.owner_id).toBe('a1');
+    expect(row!.visibility).toBe('global');
+    expect(row!.owner_id).toBe('a1');
   });
 
   it('does not duplicate a visibility row for an already-existing playlist', async () => {
@@ -550,7 +560,7 @@ describe('AutoPlaylistService.processBatch — playlist_visibility', () => {
       Promise.resolve({ song: [makeSong('song-1', 'dir1/song.mp3')], artist: [], album: [] }),
     );
 
-    const svc = new AutoPlaylistService(navidromeMock as unknown as Parameters<typeof AutoPlaylistService>[0], '', 0, visDb, 'a1');
+    const svc = new AutoPlaylistService(navidromeMock as unknown as ConstructorParameters<typeof AutoPlaylistService>[0], '', 0, visDb, 'a1');
     await svc.processBatch([{ username: 'u', directory: 'dir1', filename: 'song.mp3' }]);
 
     const rows = visDb

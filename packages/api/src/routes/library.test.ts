@@ -44,7 +44,7 @@ mock.module('node:fs', () => ({
 function makeNavidromeMock() {
   return {
     browsing: {
-      getSong: mock(() =>
+      getSong: mock((_id: string) =>
         Promise.resolve({
           id: 'song-1',
           path: '/home/kevinch3/Music/Artist/Album/song.mp3',

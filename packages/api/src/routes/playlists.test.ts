@@ -214,8 +214,8 @@ describe('POST /', () => {
     expect(res.status).toBe(201);
     const row = testDb.query<{ playlist_id: string; owner_id: string; visibility: string }, [string]>('SELECT * FROM playlist_visibility WHERE playlist_id = ?').get('pl-new');
     expect(row).not.toBeNull();
-    expect(row.owner_id).toBe('u1');
-    expect(row.visibility).toBe('personal');
+    expect(row!.owner_id).toBe('u1');
+    expect(row!.visibility).toBe('personal');
   });
 
   it('stores global visibility when explicitly requested', async () => {
@@ -229,7 +229,7 @@ describe('POST /', () => {
     });
     expect(res.status).toBe(201);
     const row = testDb.query<{ playlist_id: string; owner_id: string; visibility: string }, [string]>('SELECT * FROM playlist_visibility WHERE playlist_id = ?').get('pl-new');
-    expect(row.visibility).toBe('global');
+    expect(row!.visibility).toBe('global');
   });
 });
 
@@ -247,7 +247,7 @@ describe('PATCH /:id/visibility', () => {
     });
     expect(res.status).toBe(200);
     const row = testDb.query<{ visibility: string }, [string]>('SELECT visibility FROM playlist_visibility WHERE playlist_id = ?').get('pl-alice');
-    expect(row.visibility).toBe('global');
+    expect(row!.visibility).toBe('global');
   });
 
   it('owner can change visibility from global to personal', async () => {
@@ -261,7 +261,7 @@ describe('PATCH /:id/visibility', () => {
     });
     expect(res.status).toBe(200);
     const row = testDb.query<{ visibility: string }, [string]>('SELECT visibility FROM playlist_visibility WHERE playlist_id = ?').get('pl-global');
-    expect(row.visibility).toBe('personal');
+    expect(row!.visibility).toBe('personal');
   });
 
   it('non-owner gets 403', async () => {

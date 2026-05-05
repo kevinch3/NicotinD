@@ -1,6 +1,7 @@
 import { describe, expect, it, beforeEach, mock } from 'bun:test';
 import { Hono } from 'hono';
 import { uploadRoutes } from './uploads.js';
+import type { SlskdRef } from '../index.js';
 
 function makeSlskdMock() {
   return {
@@ -33,7 +34,7 @@ describe('uploads routes', () => {
   beforeEach(() => {
     slskdMock = makeSlskdMock();
     app = new Hono();
-    app.route('/', uploadRoutes({ current: slskdMock }));
+    app.route('/', uploadRoutes({ current: slskdMock } as unknown as SlskdRef));
   });
 
   it('GET / returns upload groups from slskd', async () => {

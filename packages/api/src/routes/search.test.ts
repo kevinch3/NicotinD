@@ -14,7 +14,7 @@ describe('search routes', () => {
       system: {
         ping: async () => true,
       },
-    } as unknown as Parameters<typeof NavidromeSearchProvider>[0];
+    } as unknown as ConstructorParameters<typeof NavidromeSearchProvider>[0];
 
     const slskdRef = {
       current: {
@@ -42,7 +42,7 @@ describe('search routes', () => {
           cancel: async () => undefined,
         },
       },
-    } as unknown as Parameters<typeof SlskdSearchProvider>[0];
+    } as unknown as ConstructorParameters<typeof SlskdSearchProvider>[0];
 
     const registry = new ProviderRegistry();
     registry.register(new NavidromeSearchProvider(navidromeMock));
@@ -81,7 +81,7 @@ describe('search routes', () => {
           browseUser: async () => [],
         },
       },
-    } as unknown as Parameters<typeof SlskdSearchProvider>[0];
+    } as unknown as ConstructorParameters<typeof SlskdSearchProvider>[0];
 
     const registry = new ProviderRegistry();
     registry.register(new SlskdSearchProvider(slskdRef));

@@ -4,6 +4,7 @@ import { Database } from 'bun:sqlite';
 import { downloadRoutes } from './downloads.js';
 import { ProviderRegistry } from '../services/provider-registry.js';
 import { SlskdSearchProvider } from '../services/providers/slskd-provider.js';
+import type { SlskdRef } from '../index.js';
 // Mock getDatabase to use an in-memory DB
 const testDb = new Database(':memory:');
 testDb.run(`
@@ -49,7 +50,7 @@ describe('downloads routes', () => {
 
     slskdMock = makeSlskdMock();
 
-    const slskdRef = { current: slskdMock };
+    const slskdRef = { current: slskdMock } as unknown as SlskdRef;
     app = new Hono();
     const registry = new ProviderRegistry();
     registry.register(new SlskdSearchProvider(slskdRef));
