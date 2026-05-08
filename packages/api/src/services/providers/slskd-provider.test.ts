@@ -73,24 +73,25 @@ describe('SlskdSearchProvider.browseUser retry', () => {
     expect(calls).toBe(1);
   });
 
-  it('filters files to mp3/ogg only', async () => {
+  it('filters files to supported audio formats only', async () => {
     const dirs: BrowseRawDir[] = [
       {
         name: 'Music\\Mixed',
-        fileCount: 4,
+        fileCount: 5,
         files: [
           { filename: 'a.mp3', size: 100 },
           { filename: 'b.flac', size: 200 },
           { filename: 'c.ogg', size: 300 },
           { filename: 'd.wav', size: 400 },
+          { filename: 'e.exe', size: 500 },
         ],
       },
     ];
     const provider = makeProvider(async () => dirs);
 
     const result = await provider.browseUser('alice');
-    expect(result[0].files.map((f) => f.filename)).toEqual(['a.mp3', 'c.ogg']);
-    expect(result[0].fileCount).toBe(2);
+    expect(result[0].files.map((f) => f.filename)).toEqual(['a.mp3', 'b.flac', 'c.ogg', 'd.wav']);
+    expect(result[0].fileCount).toBe(4);
   });
 
   it('throws BrowseUnavailableError when slskd is not configured', async () => {
