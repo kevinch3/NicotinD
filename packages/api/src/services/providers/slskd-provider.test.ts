@@ -3,13 +3,18 @@ import { SlskdSearchProvider } from './slskd-provider.js';
 
 type BrowseRawDir = { name: string; fileCount: number; files: { filename: string; size: number }[] };
 
-function makeProvider(browseImpl: () => Promise<BrowseRawDir[]>, retryDelaysMs: number[] = [1, 1, 1]) {
+function makeProvider(
+  browseImpl: () => Promise<BrowseRawDir[]>,
+  enqueueImpl: () => Promise<void> = async () => {},
+  retryDelaysMs: number[] = [1, 1, 1],
+) {
   const slskdRef = {
     current: {
       users: { browseUser: browseImpl },
+      transfers: { enqueue: enqueueImpl },
     },
   } as unknown as ConstructorParameters<typeof SlskdSearchProvider>[0];
-  return new SlskdSearchProvider(slskdRef, { browseRetryDelaysMs: retryDelaysMs });
+  return new SlskdSearchProvider(slskdRef, { retryDelaysMs });
 }
 
 describe('SlskdSearchProvider.browseUser retry', () => {
@@ -92,5 +97,52 @@ describe('SlskdSearchProvider.browseUser retry', () => {
     const slskdRef = { current: null } as unknown as ConstructorParameters<typeof SlskdSearchProvider>[0];
     const provider = new SlskdSearchProvider(slskdRef);
     await expect(provider.browseUser('alice')).rejects.toThrow('browse provider not available');
+  });
+});
+
+describe('SlskdSearchProvider.download retry', () => {
+  const files = [{ filename: 'a.mp3', size: 1000 }];
+
+  it('enqueues immediately when the first call succeeds', async () => {
+    let calls = 0;
+    const provider = makeProvider(async () => [], async () => { calls++; });
+    await provider.download('alice', files);
+    expect(calls).toBe(1);
+  });
+
+  it('retries on 5xx and succeeds on subsequent attempt', async () => {
+    let calls = 0;
+    const provider = makeProvider(async () => [], async () => {
+      calls++;
+      if (calls < 2) throw new Error('slskd request failed: 500 /transfers/downloads/alice');
+    });
+    await provider.download('alice', files);
+    expect(calls).toBe(2);
+  });
+
+  it('throws after exhausting retries when all enqueue attempts return 5xx', async () => {
+    let calls = 0;
+    const provider = makeProvider(async () => [], async () => {
+      calls++;
+      throw new Error('slskd request failed: 500 /transfers/downloads/alice');
+    });
+    await expect(provider.download('alice', files)).rejects.toThrow('500');
+    expect(calls).toBe(4);
+  });
+
+  it('does not retry on 4xx errors', async () => {
+    let calls = 0;
+    const provider = makeProvider(async () => [], async () => {
+      calls++;
+      throw new Error('slskd request failed: 400 /transfers/downloads/alice');
+    });
+    await expect(provider.download('alice', files)).rejects.toThrow('400');
+    expect(calls).toBe(1);
+  });
+
+  it('throws when slskd is not configured', async () => {
+    const slskdRef = { current: null } as unknown as ConstructorParameters<typeof SlskdSearchProvider>[0];
+    const provider = new SlskdSearchProvider(slskdRef);
+    await expect(provider.download('alice', files)).rejects.toThrow('Soulseek is not configured');
   });
 });

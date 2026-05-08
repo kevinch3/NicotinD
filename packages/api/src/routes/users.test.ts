@@ -22,6 +22,7 @@ function makeRegistry(browseDirs: BrowseDir[] = [], shouldThrow?: Error) {
           ? async () => { throw shouldThrow; }
           : async () => browseDirs,
       },
+      transfers: { enqueue: async () => {} },
     },
   } as unknown as ConstructorParameters<typeof SlskdSearchProvider>[0];
   const registry = new ProviderRegistry();

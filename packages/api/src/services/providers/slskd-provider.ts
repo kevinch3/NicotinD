@@ -4,11 +4,34 @@ import type { SlskdRef } from '../../index.js';
 import { inferMetadataFromPath } from '../metadata-fixer.js';
 
 const log = createLogger('slskd-provider');
-const DEFAULT_BROWSE_RETRY_DELAYS_MS = [3000, 6000, 10000];
+const DEFAULT_RETRY_DELAYS_MS = [3000, 6000, 10000];
 
 export interface SlskdSearchProviderOptions {
-  /** Delays between browse retries on 5xx errors (ms). Length determines retry count. */
-  browseRetryDelaysMs?: number[];
+  /** Delays between retries on 5xx errors (ms). Length determines retry count. */
+  retryDelaysMs?: number[];
+}
+
+async function withRetry<T>(
+  op: string,
+  delaysMs: number[],
+  fn: () => Promise<T>,
+): Promise<T> {
+  let lastErr: Error | undefined;
+  for (let attempt = 0; attempt <= delaysMs.length; attempt++) {
+    if (attempt > 0) {
+      const delay = delaysMs[attempt - 1];
+      log.warn({ op, attempt }, `${op} attempt ${attempt} failed, retrying in ${delay}ms`);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+    try {
+      return await fn();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!msg.includes(' 5')) throw err;
+      lastErr = err instanceof Error ? err : new Error(msg);
+    }
+  }
+  throw lastErr!;
 }
 
 export class SlskdSearchProvider implements ISearchProvider, IBrowseProvider {
@@ -17,10 +40,10 @@ export class SlskdSearchProvider implements ISearchProvider, IBrowseProvider {
 
   // Maps NicotinD searchId → slskd internal search id
   private activeSearches = new Map<string, string>();
-  private browseRetryDelaysMs: number[];
+  private retryDelaysMs: number[];
 
   constructor(private slskdRef: SlskdRef, options: SlskdSearchProviderOptions = {}) {
-    this.browseRetryDelaysMs = options.browseRetryDelaysMs ?? DEFAULT_BROWSE_RETRY_DELAYS_MS;
+    this.retryDelaysMs = options.retryDelaysMs ?? DEFAULT_RETRY_DELAYS_MS;
   }
 
   async search(query: string): Promise<{ results: null; searchId?: string }> {
@@ -114,7 +137,9 @@ export class SlskdSearchProvider implements ISearchProvider, IBrowseProvider {
   ): Promise<void> {
     const slskd = this.slskdRef.current;
     if (!slskd) throw new Error('Soulseek is not configured');
-    await slskd.transfers.enqueue(username, files);
+    await withRetry(`enqueue:${username}`, this.retryDelaysMs, () =>
+      slskd.transfers.enqueue(username, files),
+    );
   }
 
   async isAvailable(): Promise<boolean> {
@@ -123,31 +148,16 @@ export class SlskdSearchProvider implements ISearchProvider, IBrowseProvider {
 
   async browseUser(username: string): Promise<BrowseDirectory[]> {
     if (!this.slskdRef.current) throw new BrowseUnavailableError();
-
-    let lastErr: Error | undefined;
-    for (let attempt = 0; attempt <= this.browseRetryDelaysMs.length; attempt++) {
-      if (attempt > 0) {
-        const delay = this.browseRetryDelaysMs[attempt - 1];
-        log.warn({ username, attempt }, `browse attempt ${attempt} failed, retrying in ${delay}ms`);
-        await new Promise((resolve) => setTimeout(resolve, delay));
-      }
-      try {
-        const dirs = await this.slskdRef.current.users.browseUser(username);
-        return dirs.map((dir) => {
-          const filteredFiles = dir.files.filter((f) => {
-            const ext = f.filename.slice(f.filename.lastIndexOf('.')).toLowerCase();
-            return ext === '.mp3' || ext === '.ogg';
-          });
-          return { ...dir, files: filteredFiles, fileCount: filteredFiles.length };
+    const slskd = this.slskdRef.current;
+    return withRetry(`browse:${username}`, this.retryDelaysMs, async () => {
+      const dirs = await slskd.users.browseUser(username);
+      return dirs.map((dir) => {
+        const filteredFiles = dir.files.filter((f) => {
+          const ext = f.filename.slice(f.filename.lastIndexOf('.')).toLowerCase();
+          return ext === '.mp3' || ext === '.ogg';
         });
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        // Only retry on 5xx — 4xx means the resource simply doesn't exist
-        if (!msg.includes(' 5')) throw err;
-        lastErr = err instanceof Error ? err : new Error(msg);
-      }
-    }
-
-    throw lastErr!;
+        return { ...dir, files: filteredFiles, fileCount: filteredFiles.length };
+      });
+    });
   }
 }
