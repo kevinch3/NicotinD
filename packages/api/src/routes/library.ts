@@ -744,7 +744,10 @@ function normalizeDupKey(title: string, artist: string): string {
 
 function qualityScore(song: Song): number {
   const ext = (song.suffix ?? '').toLowerCase();
-  const formatScore = ext === 'flac' || ext === 'wav' ? 200 : ext === 'opus' || ext === 'ogg' ? 100 : 0;
+  const formatScore =
+    ext === 'flac' || ext === 'wav' || ext === 'aiff' || ext === 'ape' || ext === 'wv' ? 200 :
+    ext === 'opus' || ext === 'ogg' || ext === 'm4a' || ext === 'aac' ? 100 :
+    0;
   return formatScore + (song.bitRate ?? 0);
 }
 

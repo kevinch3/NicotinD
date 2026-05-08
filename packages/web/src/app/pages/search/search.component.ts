@@ -26,7 +26,10 @@ interface FlatFile {
   trackNumber?: string;
 }
 
-const ALLOWED_EXTENSIONS = ['.mp3', '.ogg'];
+const ALLOWED_EXTENSIONS = new Set([
+  '.mp3', '.flac', '.ogg', '.opus',
+  '.m4a', '.aac', '.wav', '.aiff', '.wma', '.ape', '.wv',
+]);
 
 function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -62,7 +65,7 @@ function flattenAndFilter(results: NetworkResult[]): FlatFile[] {
     for (const file of result.files) {
       if (file.size === 0) continue;
       const ext = file.filename.slice(file.filename.lastIndexOf('.')).toLowerCase();
-      if (!ALLOWED_EXTENSIONS.includes(ext)) continue;
+      if (!ALLOWED_EXTENSIONS.has(ext)) continue;
       flat.push({
         username: result.username,
         freeUploadSlots: result.freeUploadSlots,

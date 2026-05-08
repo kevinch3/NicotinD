@@ -143,7 +143,10 @@ async function getMusicMetadata(): Promise<MusicMetadataApi | null> {
   return mmPromise;
 }
 
-const AUDIO_EXTENSIONS = new Set(['.mp3', '.flac', '.ogg', '.opus', '.m4a']);
+const AUDIO_EXTENSIONS = new Set([
+  '.mp3', '.flac', '.ogg', '.opus',
+  '.m4a', '.aac', '.wav', '.aiff', '.wma', '.ape', '.wv',
+]);
 
 function* walkAudioFiles(dir: string): Generator<string> {
   let entries;

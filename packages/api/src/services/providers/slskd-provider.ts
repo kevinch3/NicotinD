@@ -6,6 +6,11 @@ import { inferMetadataFromPath } from '../metadata-fixer.js';
 const log = createLogger('slskd-provider');
 const DEFAULT_RETRY_DELAYS_MS = [3000, 6000, 10000];
 
+const AUDIO_EXTENSIONS = new Set([
+  '.mp3', '.flac', '.ogg', '.opus',
+  '.m4a', '.aac', '.wav', '.aiff', '.wma', '.ape', '.wv',
+]);
+
 export interface SlskdSearchProviderOptions {
   /** Delays between retries on 5xx errors (ms). Length determines retry count. */
   retryDelaysMs?: number[];
@@ -97,7 +102,7 @@ export class SlskdSearchProvider implements ISearchProvider, IBrowseProvider {
           files: (r.files ?? [])
             .filter((f) => {
               const ext = f.filename.slice(f.filename.lastIndexOf('.')).toLowerCase();
-              return ext === '.mp3' || ext === '.ogg';
+              return AUDIO_EXTENSIONS.has(ext);
             })
             .map((f) => ({
               filename: f.filename,
@@ -154,7 +159,7 @@ export class SlskdSearchProvider implements ISearchProvider, IBrowseProvider {
       return dirs.map((dir) => {
         const filteredFiles = dir.files.filter((f) => {
           const ext = f.filename.slice(f.filename.lastIndexOf('.')).toLowerCase();
-          return ext === '.mp3' || ext === '.ogg';
+          return AUDIO_EXTENSIONS.has(ext);
         });
         return { ...dir, files: filteredFiles, fileCount: filteredFiles.length };
       });
