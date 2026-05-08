@@ -1,7 +1,15 @@
 import type { ISearchProvider, IBrowseProvider, ProviderType, NetworkPollResult, BrowseDirectory } from '@nicotind/core';
-import { BrowseUnavailableError } from '@nicotind/core';
+import { BrowseUnavailableError, createLogger } from '@nicotind/core';
 import type { SlskdRef } from '../../index.js';
 import { inferMetadataFromPath } from '../metadata-fixer.js';
+
+const log = createLogger('slskd-provider');
+const DEFAULT_BROWSE_RETRY_DELAYS_MS = [3000, 6000, 10000];
+
+export interface SlskdSearchProviderOptions {
+  /** Delays between browse retries on 5xx errors (ms). Length determines retry count. */
+  browseRetryDelaysMs?: number[];
+}
 
 export class SlskdSearchProvider implements ISearchProvider, IBrowseProvider {
   readonly name = 'slskd';
@@ -9,8 +17,11 @@ export class SlskdSearchProvider implements ISearchProvider, IBrowseProvider {
 
   // Maps NicotinD searchId → slskd internal search id
   private activeSearches = new Map<string, string>();
+  private browseRetryDelaysMs: number[];
 
-  constructor(private slskdRef: SlskdRef) {}
+  constructor(private slskdRef: SlskdRef, options: SlskdSearchProviderOptions = {}) {
+    this.browseRetryDelaysMs = options.browseRetryDelaysMs ?? DEFAULT_BROWSE_RETRY_DELAYS_MS;
+  }
 
   async search(query: string): Promise<{ results: null; searchId?: string }> {
     const slskd = this.slskdRef.current;
@@ -112,17 +123,31 @@ export class SlskdSearchProvider implements ISearchProvider, IBrowseProvider {
 
   async browseUser(username: string): Promise<BrowseDirectory[]> {
     if (!this.slskdRef.current) throw new BrowseUnavailableError();
-    const dirs = await this.slskdRef.current.users.browseUser(username);
-    return dirs.map((dir) => {
-      const filteredFiles = dir.files.filter((f) => {
-        const ext = f.filename.slice(f.filename.lastIndexOf('.')).toLowerCase();
-        return ext === '.mp3' || ext === '.ogg';
-      });
-      return {
-        ...dir,
-        files: filteredFiles,
-        fileCount: filteredFiles.length,
-      };
-    });
+
+    let lastErr: Error | undefined;
+    for (let attempt = 0; attempt <= this.browseRetryDelaysMs.length; attempt++) {
+      if (attempt > 0) {
+        const delay = this.browseRetryDelaysMs[attempt - 1];
+        log.warn({ username, attempt }, `browse attempt ${attempt} failed, retrying in ${delay}ms`);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+      try {
+        const dirs = await this.slskdRef.current.users.browseUser(username);
+        return dirs.map((dir) => {
+          const filteredFiles = dir.files.filter((f) => {
+            const ext = f.filename.slice(f.filename.lastIndexOf('.')).toLowerCase();
+            return ext === '.mp3' || ext === '.ogg';
+          });
+          return { ...dir, files: filteredFiles, fileCount: filteredFiles.length };
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        // Only retry on 5xx — 4xx means the resource simply doesn't exist
+        if (!msg.includes(' 5')) throw err;
+        lastErr = err instanceof Error ? err : new Error(msg);
+      }
+    }
+
+    throw lastErr!;
   }
 }

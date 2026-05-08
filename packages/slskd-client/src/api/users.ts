@@ -32,7 +32,7 @@ export class UsersApi {
 
     return rawDirs.map((dir) => ({
       name: dir.name,
-      fileCount: dir.fileCount,
+      fileCount: dir.fileCount ?? dir.files?.length ?? 0,
       files: (dir.files ?? []).map((f) => {
         // slskd browse returns bare filenames (e.g. "01 - Track.mp3") but downloads
         // require the full Soulseek path (e.g. "@@share\\Artist\\Album\\01 - Track.mp3").
