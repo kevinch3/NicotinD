@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.2](https://github.com/kevinch3/NicotinD/compare/v0.1.1...v0.1.2) (2026-05-11)
+
+
+### Bug Fixes
+
+* **api:** return 503 when slskd is unreachable instead of 500 ([308716a](https://github.com/kevinch3/NicotinD/commit/308716a75add196f75bd781c4b2f850efb20df52))
+
 ## 0.1.1 (2026-05-11)
 
 
