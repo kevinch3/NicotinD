@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.4](https://github.com/kevinch3/NicotinD/compare/v0.1.3...v0.1.4) (2026-05-11)
+
+
+### Bug Fixes
+
+* **web:** read app version from root package.json instead of stale workspace one ([128a0d8](https://github.com/kevinch3/NicotinD/commit/128a0d88bd6cd9897820069d95efbc33093a0441))
+
 ## [0.1.3](https://github.com/kevinch3/NicotinD/compare/v0.1.2...v0.1.3) (2026-05-11)
 
 ## [0.1.2](https://github.com/kevinch3/NicotinD/compare/v0.1.1...v0.1.2) (2026-05-11)
