@@ -8,7 +8,7 @@ import { SetupService } from './services/setup.service';
 import { ThemeService } from './services/theme.service';
 import { PreserveService } from './services/preserve.service';
 import { PlayerService } from './services/player.service';
-import pkg from '../../package.json';
+import pkg from '../../../../package.json';
 
 export const APP_VERSION = new InjectionToken<string>('APP_VERSION');
 
