@@ -72,7 +72,12 @@ jobs:
       - name: Deploy via SSH
         run: |
           ssh -o StrictHostKeyChecking=no ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} '
+            set -e
+            if systemctl --user is-active --quiet nicotind; then
+              echo "ERROR: systemd nicotind is active on the host — Docker deploy would collide on :5030/:8484. Run: systemctl --user disable --now nicotind" >&2
+              exit 1
+            fi
             cd ~/Documents/nicotind &&
-            git pull origin master &&
-            docker compose up --build -d nicotind
+            git pull --ff-only origin master &&
+            docker compose up --build -d
           '
