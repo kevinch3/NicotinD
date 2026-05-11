@@ -98,6 +98,15 @@ describe('downloads routes', () => {
     expect(slskdMock.transfers.cancel).toHaveBeenCalledWith('user1', 'guid2');
   });
 
+  it('GET / returns 503 when slskd throws (transient unreachable)', async () => {
+    slskdMock.transfers.getDownloads = mock(() =>
+      Promise.reject(new Error('FailedToOpenSocket')),
+    );
+
+    const res = await app.request('/');
+    expect(res.status).toBe(503);
+  });
+
   it('DELETE / preserves previously hidden IDs', async () => {
     // "guid3" was hidden before Cancel All (e.g. from a prior cancelled transfer)
     testDb.run('INSERT INTO hidden_transfers (id) VALUES (?)', ['guid3']);

@@ -55,6 +55,15 @@ describe('uploads routes', () => {
     expect(res.status).toBe(503);
   });
 
+  it('GET / returns 503 when slskd throws (transient unreachable)', async () => {
+    slskdMock.transfers.getUploads = mock(() =>
+      Promise.reject(new Error('FailedToOpenSocket')),
+    );
+
+    const res = await app.request('/');
+    expect(res.status).toBe(503);
+  });
+
   it('GET / returns empty array when peer has no uploads', async () => {
     slskdMock.transfers.getUploads = mock(() => Promise.resolve([]));
 

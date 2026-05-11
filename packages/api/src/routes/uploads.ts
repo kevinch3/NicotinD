@@ -13,8 +13,12 @@ export function uploadRoutes(slskdRef: SlskdRef) {
   });
 
   app.get('/', async (c) => {
-    const uploads = await slskdRef.current!.transfers.getUploads();
-    return c.json(uploads);
+    try {
+      const uploads = await slskdRef.current!.transfers.getUploads();
+      return c.json(uploads);
+    } catch {
+      return c.json({ error: 'Soulseek is temporarily unreachable' }, 503);
+    }
   });
 
   return app;

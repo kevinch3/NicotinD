@@ -107,7 +107,7 @@ export function downloadRoutes(registry: ProviderRegistry, slskdRef: SlskdRef) {
             502,
           );
         }
-        throw err;
+        return c.json({ error: 'Soulseek is temporarily unreachable' }, 503);
       }
       return c.json({ ok: true, queued: files.length }, 201);
     },
@@ -127,10 +127,23 @@ export function downloadRoutes(registry: ProviderRegistry, slskdRef: SlskdRef) {
           },
           description: 'List of active and history downloads',
         },
+        503: {
+          content: {
+            'application/json': {
+              schema: ErrorSchema,
+            },
+          },
+          description: 'Service Unavailable (Soulseek unreachable)',
+        },
       },
     }),
     async (c) => {
-      const downloads = await slskdRef.current!.transfers.getDownloads();
+      let downloads;
+      try {
+        downloads = await slskdRef.current!.transfers.getDownloads();
+      } catch {
+        return c.json({ error: 'Soulseek is temporarily unreachable' }, 503);
+      }
       const db = getDatabase();
 
       // Get all hidden IDs
@@ -212,10 +225,23 @@ export function downloadRoutes(registry: ProviderRegistry, slskdRef: SlskdRef) {
           },
           description: 'Finished downloads cleared',
         },
+        503: {
+          content: {
+            'application/json': {
+              schema: ErrorSchema,
+            },
+          },
+          description: 'Service Unavailable (Soulseek unreachable)',
+        },
       },
     }),
     async (c) => {
-      const downloads = await slskdRef.current!.transfers.getDownloads();
+      let downloads;
+      try {
+        downloads = await slskdRef.current!.transfers.getDownloads();
+      } catch {
+        return c.json({ error: 'Soulseek is temporarily unreachable' }, 503);
+      }
       const db = getDatabase();
 
       const toCancel: Array<{ username: string; id: string }> = [];
@@ -256,10 +282,23 @@ export function downloadRoutes(registry: ProviderRegistry, slskdRef: SlskdRef) {
           },
           description: 'All downloads cancelled',
         },
+        503: {
+          content: {
+            'application/json': {
+              schema: ErrorSchema,
+            },
+          },
+          description: 'Service Unavailable (Soulseek unreachable)',
+        },
       },
     }),
     async (c) => {
-      const downloads = await slskdRef.current!.transfers.getDownloads();
+      let downloads;
+      try {
+        downloads = await slskdRef.current!.transfers.getDownloads();
+      } catch {
+        return c.json({ error: 'Soulseek is temporarily unreachable' }, 503);
+      }
 
       await Promise.all(
         downloads.flatMap((group) =>
