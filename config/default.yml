@@ -1,6 +1,6 @@
 port: 8484
 dataDir: ~/.nicotind
-musicDir: ~/Music
+musicDir: /mnt/data1tb_new/music
 mode: embedded
 registrationEnabled: false
 metadataFix:

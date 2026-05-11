@@ -5,12 +5,12 @@ services:
   nicotind:
     volumes:
       - ~/.nicotind:/data/nicotind
-      - ~/Music:/data/music
+      - /mnt/data1tb_new/music:/data/music
       - tailscale-sock:/var/run/tailscale
 
   slskd:
     volumes:
-      - ~/Music:/data/music
+      - /mnt/data1tb_new/music:/data/music
       # Don't bind-mount ~/.nicotind/slskd — its config has host-specific paths
       # slskd will use fresh config from docker-compose command args instead
     ports:
@@ -18,5 +18,5 @@ services:
 
   navidrome:
     volumes:
-      - ~/Music:/data/music:ro
+      - /mnt/data1tb_new/music:/data/music:ro
       - ~/.nicotind/navidrome:/data/nd
