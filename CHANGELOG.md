@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.5](https://github.com/kevinch3/NicotinD/compare/v0.1.4...v0.1.5) (2026-05-13)
+
+
+### Features
+
+* **metadata:** replace MetadataFixer with lean compilation tagger ([c18f96a](https://github.com/kevinch3/NicotinD/commit/c18f96a5207490dead7c607673ee256ca9ccffb8))
+
 ## [0.1.4](https://github.com/kevinch3/NicotinD/compare/v0.1.3...v0.1.4) (2026-05-11)
 
 
