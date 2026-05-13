@@ -9,3 +9,4 @@ export * from './types/provider.js';
 export * from './utils/logger.js';
 export * from './utils/crypto.js';
 export * from './utils/errors.js';
+export * from './utils/folder-name.js';

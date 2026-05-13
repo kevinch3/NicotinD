@@ -29,8 +29,6 @@ interface AlbumGroup {
   state: 'downloading' | 'queued' | 'done' | 'error';
 }
 
-type NormState = 'pending' | 'running' | 'fixed' | 'skipped' | 'failed';
-
 type DateGroup = 'Today' | 'Yesterday' | 'This week' | 'Older';
 
 interface SongDateGroup {
@@ -150,8 +148,6 @@ export class DownloadsComponent implements OnInit, OnDestroy {
   readonly scanning = signal(false);
   readonly showPlaylistPicker = signal(false);
   readonly addingToPlaylist = signal(false);
-  readonly normStatus = signal(new Map<string, NormState>());
-  readonly normalizing = signal(false);
 
   // Confirm dialog
   readonly confirmMessage = signal('');
@@ -494,23 +490,6 @@ export class DownloadsComponent implements OnInit, OnDestroy {
       this.showPlaylistPicker.set(false);
     } catch { /* ignore */ }
     finally { this.addingToPlaylist.set(false); }
-  }
-
-  async normalizeSelected(): Promise<void> {
-    const ids = Array.from(this.selected());
-    this.normalizing.set(true);
-    this.normStatus.set(new Map(ids.map(id => [id, 'pending' as NormState])));
-    for (const id of ids) {
-      this.normStatus.update(prev => new Map(prev).set(id, 'running'));
-      try {
-        const result = await firstValueFrom(this.api.fixSongMetadata(id));
-        this.normStatus.update(prev => new Map(prev).set(id, result.fixed ? 'fixed' : 'skipped'));
-      } catch {
-        this.normStatus.update(prev => new Map(prev).set(id, 'failed'));
-      }
-    }
-    this.normalizing.set(false);
-    this.fetchRecentSongs();
   }
 
   async removePreserved(id: string): Promise<void> {

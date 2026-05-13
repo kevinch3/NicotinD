@@ -6,44 +6,9 @@ import type { Song } from '@nicotind/core';
 import type { Navidrome } from '@nicotind/navidrome-client';
 import type { AuthEnv } from '../middleware/auth.js';
 import { getDatabase } from '../db.js';
-import type { MetadataFixer, ReprocessStats, OrganizeStats } from '../services/metadata-fixer.js';
-
 const log = createLogger('library');
 
-interface ReprocessJob extends ReprocessStats {
-  running: boolean;
-  startedAt: number | null;
-}
-
-let reprocessJob: ReprocessJob = {
-  running: false,
-  processed: 0,
-  total: 0,
-  fixed: 0,
-  skipped: 0,
-  errors: 0,
-  startedAt: null,
-};
-
-interface OrganizeJob extends OrganizeStats {
-  running: boolean;
-  startedAt: number | null;
-}
-
-let organizeJob: OrganizeJob = {
-  running: false,
-  processed: 0,
-  total: 0,
-  fixed: 0,
-  skipped: 0,
-  errors: 0,
-  renamed: 0,
-  dryRun: true,
-  startedAt: null,
-  changes: [],
-};
-
-export function libraryRoutes(navidrome: Navidrome, musicDir?: string, metadataFixer?: MetadataFixer) {
+export function libraryRoutes(navidrome: Navidrome, musicDir?: string) {
   const app = new Hono<AuthEnv>();
 
   app.get('/artists', async (c) => {
@@ -439,117 +404,6 @@ export function libraryRoutes(navidrome: Navidrome, musicDir?: string, metadataF
   });
 
 
-  // Start library-wide metadata reprocess job (admin only)
-  app.post('/reprocess', async (c) => {
-    const user = c.get('user');
-    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
-
-    if (reprocessJob.running) {
-      return c.json({ error: 'Reprocess already running' }, 409);
-    }
-
-    if (!musicDir || !metadataFixer) {
-      return c.json({ error: 'Music directory or metadata fixer not configured' }, 500);
-    }
-
-    reprocessJob = { running: true, processed: 0, total: 0, fixed: 0, skipped: 0, errors: 0, startedAt: Date.now() };
-    log.info('Starting library-wide metadata reprocess');
-
-    metadataFixer
-      .reprocessLibrary((stats) => {
-        Object.assign(reprocessJob, stats);
-      })
-      .then(async (stats) => {
-        Object.assign(reprocessJob, stats, { running: false });
-        log.info(stats, 'Library reprocess complete');
-        try {
-          await (navidrome.system as { startScan: (full?: boolean) => Promise<void> }).startScan(true);
-        } catch {
-          // Non-fatal
-        }
-      })
-      .catch((err) => {
-        log.error({ err }, 'Library reprocess failed');
-        reprocessJob.running = false;
-      });
-
-    return c.json({ ok: true });
-  });
-
-  // Poll reprocess job status
-  app.get('/reprocess/status', (c) => {
-    return c.json(reprocessJob);
-  });
-
-  // Start library-wide organize job (rename files to canonical paths, admin only)
-  app.post('/organize', async (c) => {
-    const user = c.get('user');
-    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
-
-    if (organizeJob.running) {
-      return c.json({ error: 'Organize already running' }, 409);
-    }
-
-    if (!musicDir || !metadataFixer) {
-      return c.json({ error: 'Music directory or metadata fixer not configured' }, 500);
-    }
-
-    const body = await c.req.json<{ dryRun?: boolean; fixMetadataFirst?: boolean }>()
-      .catch((): { dryRun?: boolean; fixMetadataFirst?: boolean } => ({}));
-    const dryRun = body.dryRun ?? true;
-    const fixMetadataFirst = body.fixMetadataFirst ?? false;
-
-    organizeJob = {
-      running: true, processed: 0, total: 0,
-      fixed: 0, skipped: 0, errors: 0,
-      renamed: 0, dryRun, startedAt: Date.now(), changes: [],
-    };
-    log.info({ dryRun, fixMetadataFirst }, 'Starting library organize');
-
-    metadataFixer
-      .organizeLibrary({ dryRun, fixMetadataFirst }, (stats) => {
-        Object.assign(organizeJob, stats);
-      })
-      .then(async (stats) => {
-        if (!dryRun && stats.changes.length > 0) {
-          try {
-            const db = getDatabase();
-            for (const change of stats.changes) {
-              const newBasename = basename(change.to).toLowerCase();
-              db.run(
-                `UPDATE completed_downloads SET relative_path = ?, basename = ? WHERE relative_path = ?`,
-                [change.to, newBasename, change.from],
-              );
-            }
-          } catch (err) {
-            log.debug({ err }, 'Failed to update download paths after organize');
-          }
-        }
-
-        Object.assign(organizeJob, stats, { running: false });
-        log.info(stats, 'Library organize complete');
-
-        if (!dryRun) {
-          try {
-            await (navidrome.system as { startScan: (full?: boolean) => Promise<void> }).startScan(true);
-          } catch {
-            // Non-fatal
-          }
-        }
-      })
-      .catch((err) => {
-        log.error({ err }, 'Library organize failed');
-        organizeJob.running = false;
-      });
-
-    return c.json({ ok: true });
-  });
-
-  // Poll organize job status
-  app.get('/organize/status', (c) => {
-    return c.json(organizeJob);
-  });
-
   // Duplicate detection (admin only)
   app.get('/duplicates', async (c) => {
     const user = c.get('user');
@@ -628,44 +482,6 @@ export function libraryRoutes(navidrome: Navidrome, musicDir?: string, metadataF
     }
 
     return c.json(duplicates);
-  });
-
-  // On-demand metadata normalization for a single song via MusicBrainz
-  app.post('/songs/:id/fix-metadata', async (c) => {
-    if (!musicDir || !metadataFixer) {
-      return c.json({ error: 'Metadata fixer not configured' }, 500);
-    }
-
-    const id = c.req.param('id');
-    const song = await navidrome.browsing.getSong(id);
-    if (!song.path) {
-      return c.json({ error: 'Song path not available' }, 404);
-    }
-
-    const expandedMusicDir = expandDir(musicDir);
-    const fullPath = resolveSongPath(expandedMusicDir, song.path);
-
-    if (!isUnderMusicDir(expandedMusicDir, fullPath)) {
-      log.warn({ path: fullPath, musicDir: expandedMusicDir }, 'Song path is outside the music directory');
-      return c.json({ error: 'Song path is outside the music directory' }, 400);
-    }
-
-    if (!existsSync(fullPath)) {
-      return c.json({ error: 'File not found on disk' }, 404);
-    }
-
-    const hint = { title: song.title, artist: song.artist, album: song.album };
-    const result = await metadataFixer.fixFileAtAbsolutePath(fullPath, hint);
-
-    if (result.fixed) {
-      try {
-        await (navidrome.system as { startScan: (fullScan?: boolean) => Promise<void> }).startScan(false);
-      } catch {
-        // Non-fatal
-      }
-    }
-
-    return c.json(result);
   });
 
   return app;

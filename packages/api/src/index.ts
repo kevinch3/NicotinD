@@ -23,7 +23,7 @@ import { usersRoutes } from './routes/users.js';
 import { shareRoutes } from './routes/share.js';
 import { subsonicProxy } from './routes/subsonic.js';
 import { DownloadWatcher } from './services/download-watcher.js';
-import { MetadataFixer } from './services/metadata-fixer.js';
+import { CompilationTagger } from './services/compilation-tagger.js';
 import { TailscaleService } from './services/tailscale.js';
 import { ProviderRegistry } from './services/provider-registry.js';
 import { NavidromeSearchProvider } from './services/providers/navidrome-provider.js';
@@ -84,12 +84,11 @@ export function createApp({
   // Global middleware
   app.onError(errorHandler);
 
-  // Shared MetadataFixer instance — used by DownloadWatcher and on-demand library route
-  const metadataFixer = config.musicDir
-    ? new MetadataFixer({
+  // Folder-aware compilation tagger — runs after each completed download batch
+  const compilationTagger = config.musicDir
+    ? new CompilationTagger({
         musicDir: config.musicDir,
         enabled: config.metadataFix.enabled,
-        minScore: config.metadataFix.minScore,
       })
     : undefined;
 
@@ -98,7 +97,7 @@ export function createApp({
     current: slskdRef.current && config.soulseek.username && config.soulseek.password
       ? new DownloadWatcher(slskdRef.current, navidrome, {
           musicDir: config.musicDir,
-          metadataFixer,
+          compilationTagger,
         })
       : null,
   };
@@ -154,7 +153,7 @@ export function createApp({
   app.route('/api/admin', adminRoutes());
   app.route('/api/downloads', downloadRoutes(registry, slskdRef));
   app.route('/api/uploads', uploadRoutes(slskdRef));
-  app.route('/api/library', libraryRoutes(navidrome, config.musicDir, metadataFixer));
+  app.route('/api/library', libraryRoutes(navidrome, config.musicDir));
   app.route('/api', streamingRoutes(navidrome));
   app.route('/api/system', systemRoutes(slskdRef, navidrome, serviceManager, config));
   app.route(

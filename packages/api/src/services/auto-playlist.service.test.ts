@@ -1,6 +1,6 @@
 import { describe, expect, it, mock, beforeEach } from 'bun:test';
 import { cleanFolderName, groupByDirectory, ALL_SINGLES, AutoPlaylistService, normalizeSongPath } from './auto-playlist.service.js';
-import type { CompletedDownloadFile } from './metadata-fixer.js';
+import type { CompletedDownloadFile } from './path-inference.js';
 
 describe('constants', () => {
   it('exports ALL_SINGLES as "All Singles"', () => {

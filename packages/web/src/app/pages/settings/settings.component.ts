@@ -57,28 +57,13 @@ export class SettingsComponent implements OnInit, OnDestroy {
   readonly deviceName = signal(this.ws.getDeviceName());
   readonly deviceNameSaved = signal(false);
 
-  // Maintenance
-  readonly reprocessRunning = signal(false);
-  readonly reprocessStats = signal<{ processed: number; total: number; fixed: number; errors: number } | null>(null);
-  readonly reprocessMessage = signal<{ type: 'success' | 'error'; text: string } | null>(null);
+  // Maintenance — find duplicates
   readonly duplicatesLoading = signal(false);
   readonly duplicates = signal<DuplicateSong[][]>([]);
   readonly duplicatesDeleteSet = signal<Set<string>>(new Set());
   readonly duplicatesMessage = signal<{ type: 'success' | 'error'; text: string } | null>(null);
   readonly deletingDuplicates = signal(false);
 
-  // Organize
-  readonly organizeRunning = signal(false);
-  readonly organizeDryRun = signal(true);
-  readonly organizeFixFirst = signal(false);
-  readonly organizeStats = signal<{
-    processed: number; total: number; renamed: number; errors: number;
-    dryRun: boolean; changes: Array<{ from: string; to: string }>;
-  } | null>(null);
-  readonly organizeMessage = signal<{ type: 'success' | 'error'; text: string } | null>(null);
-
-  private reprocessPollSub: Subscription | null = null;
-  private organizePollSub: Subscription | null = null;
   private tsPollSub: Subscription | null = null;
 
   isAdmin(): boolean {
@@ -322,99 +307,7 @@ export class SettingsComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
-    this.reprocessPollSub?.unsubscribe();
-    this.organizePollSub?.unsubscribe();
     this.tsPollSub?.unsubscribe();
-  }
-
-  async startReprocess(): Promise<void> {
-    this.reprocessMessage.set(null);
-    this.reprocessStats.set(null);
-    try {
-      await firstValueFrom(this.api.startReprocess());
-      this.reprocessRunning.set(true);
-      this.pollReprocess();
-    } catch (err) {
-      this.reprocessMessage.set({ type: 'error', text: err instanceof Error ? err.message : 'Failed to start' });
-    }
-  }
-
-  private pollReprocess(): void {
-    this.reprocessPollSub?.unsubscribe();
-    this.reprocessPollSub = interval(2000)
-      .pipe(
-        switchMap(() => this.api.getReprocessStatus()),
-        takeWhile((s) => s.running, true),
-      )
-      .subscribe({
-        next: (status) => {
-          this.reprocessRunning.set(status.running);
-          this.reprocessStats.set({
-            processed: status.processed,
-            total: status.total,
-            fixed: status.fixed,
-            errors: status.errors,
-          });
-          if (!status.running && status.startedAt !== null) {
-            this.reprocessMessage.set({
-              type: 'success',
-              text: `Done — ${status.fixed} file${status.fixed !== 1 ? 's' : ''} updated out of ${status.processed} scanned`,
-            });
-          }
-        },
-        error: () => {
-          this.reprocessRunning.set(false);
-          this.reprocessMessage.set({ type: 'error', text: 'Lost connection to reprocess job' });
-        },
-      });
-  }
-
-  async startOrganize(): Promise<void> {
-    this.organizeMessage.set(null);
-    this.organizeStats.set(null);
-    try {
-      await firstValueFrom(this.api.startOrganize({
-        dryRun: this.organizeDryRun(),
-        fixMetadataFirst: this.organizeFixFirst(),
-      }));
-      this.organizeRunning.set(true);
-      this.pollOrganize();
-    } catch (err) {
-      this.organizeMessage.set({ type: 'error', text: err instanceof Error ? err.message : 'Failed to start' });
-    }
-  }
-
-  private pollOrganize(): void {
-    this.organizePollSub?.unsubscribe();
-    this.organizePollSub = interval(2000)
-      .pipe(
-        switchMap(() => this.api.getOrganizeStatus()),
-        takeWhile((s) => s.running, true),
-      )
-      .subscribe({
-        next: (status) => {
-          this.organizeRunning.set(status.running);
-          this.organizeStats.set({
-            processed: status.processed,
-            total: status.total,
-            renamed: status.renamed,
-            errors: status.errors,
-            dryRun: status.dryRun,
-            changes: status.changes,
-          });
-          if (!status.running && status.startedAt !== null) {
-            const label = status.dryRun ? 'preview' : 'renamed';
-            this.organizeMessage.set({
-              type: 'success',
-              text: `Done — ${status.renamed} file${status.renamed !== 1 ? 's' : ''} ${label} out of ${status.processed} scanned`,
-            });
-          }
-        },
-        error: () => {
-          this.organizeRunning.set(false);
-          this.organizeMessage.set({ type: 'error', text: 'Lost connection to organize job' });
-        },
-      });
   }
 
   async loadDuplicates(): Promise<void> {

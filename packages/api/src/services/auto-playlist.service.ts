@@ -1,10 +1,12 @@
 import { basename } from 'node:path';
 import type { Database } from 'bun:sqlite';
 import type { Navidrome } from '@nicotind/navidrome-client';
-import { createLogger } from '@nicotind/core';
+import { cleanFolderName, createLogger } from '@nicotind/core';
 import type { Playlist } from '@nicotind/core';
 import { getDatabase } from '../db.js';
-import type { CompletedDownloadFile } from './metadata-fixer.js';
+import type { CompletedDownloadFile } from './path-inference.js';
+
+export { cleanFolderName };
 
 const log = createLogger('auto-playlist');
 
@@ -19,26 +21,6 @@ export function normalizeSongPath(musicDir: string, absolutePath: string): strin
   const prefix = normalizePath(musicDir).replace(/\/+$/, '') + '/';
   const normalized = normalizePath(absolutePath);
   return normalized.startsWith(prefix) ? normalized.slice(prefix.length) : normalized;
-}
-
-/** Extracts the leaf folder name and strips audio quality/format tags. */
-export function cleanFolderName(raw: string): string {
-  // Extract leaf segment (handles both \ and / separators)
-  const leaf = raw.replace(/\\/g, '/').split('/').filter(Boolean).pop() ?? raw;
-
-  // Strip bracketed tags: [FLAC 320kbps], [MP3 V0], [WEB], [CDRip], etc.
-  let cleaned = leaf.replace(/\s*\[[^\]]*\]/g, '');
-
-  // Strip parenthesized audio format names — but NOT years like (2020)
-  cleaned = cleaned.replace(
-    /\s*\((FLAC|MP3|WAV|AAC|OGG|OPUS|AIFF|ALAC|WMA|APE|LOSSLESS)\)/gi,
-    '',
-  );
-
-  // Trim trailing whitespace and stray punctuation
-  cleaned = cleaned.trim().replace(/[\s\-_]+$/, '').trim();
-
-  return cleaned || leaf;
 }
 
 /** Groups completed files by their slskd directory field. */

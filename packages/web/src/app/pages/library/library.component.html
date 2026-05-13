@@ -18,6 +18,24 @@
 
   <!-- ═══ ALBUMS MODE ═══ -->
   @if (libraryMode() === 'albums') {
+    <!-- Album list-type chips -->
+    <div class="flex flex-wrap gap-2 mb-4">
+      @for (opt of albumTypeOptions; track opt.value) {
+        <button
+          type="button"
+          class="px-3 py-1 text-xs rounded-full transition-colors border"
+          [class.bg-theme-surface]="albumListType() === opt.value"
+          [class.border-theme]="albumListType() === opt.value"
+          [class.text-theme-primary]="albumListType() === opt.value"
+          [class.border-transparent]="albumListType() !== opt.value"
+          [class.text-theme-muted]="albumListType() !== opt.value"
+          [class.hover:text-theme-secondary]="albumListType() !== opt.value"
+          (click)="setAlbumListType(opt.value)">
+          {{ opt.label }}
+        </button>
+      }
+    </div>
+
     <!-- Album grid -->
     <app-list-toolbar
       [searchText]="gridControls.searchText()"
@@ -57,6 +75,18 @@
         </a>
       }
     </div>
+
+    @if (loadingMore()) {
+      <div class="text-center py-6">
+        <span class="inline-block w-4 h-4 border-2 border-theme border-t-zinc-300 rounded-full animate-spin"></span>
+      </div>
+    }
+
+    @if (done() && albums().length >= 40) {
+      <p class="text-center text-theme-muted text-xs py-4">— end of library —</p>
+    }
+
+    <div #scrollSentinel class="h-px" aria-hidden="true"></div>
   }
 
   <!-- ═══ ARTISTS MODE ═══ -->

@@ -3,8 +3,8 @@ import type { Slskd } from '@nicotind/slskd-client';
 import type { Navidrome } from '@nicotind/navidrome-client';
 import { basename, join, relative } from 'node:path';
 import { existsSync } from 'node:fs';
-import { MetadataFixer } from './metadata-fixer.js';
-import type { CompletedDownloadFile } from './metadata-fixer.js';
+import { CompilationTagger } from './compilation-tagger.js';
+import type { CompletedDownloadFile } from './path-inference.js';
 import { AutoPlaylistService } from './auto-playlist.service.js';
 import { getDatabase } from '../db.js';
 
@@ -14,9 +14,8 @@ interface DownloadWatcherOptions {
   intervalMs?: number;
   scanDebounceMs?: number;
   musicDir?: string;
-  metadataFixEnabled?: boolean;
-  metadataFixMinScore?: number;
-  metadataFixer?: { processCompletedDownloads: (files: CompletedDownloadFile[]) => Promise<void> };
+  compilationTaggingEnabled?: boolean;
+  compilationTagger?: { tagCompletedFolders: (files: CompletedDownloadFile[]) => Promise<void> };
   autoPlaylist?: { processBatch: (files: CompletedDownloadFile[]) => Promise<void> };
 }
 
@@ -29,8 +28,8 @@ export class DownloadWatcher {
   private scanDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   private scanDebounceMs: number;
   private musicDir: string | null;
-  private metadataFixer: {
-    processCompletedDownloads: (files: CompletedDownloadFile[]) => Promise<void>;
+  private compilationTagger: {
+    tagCompletedFolders: (files: CompletedDownloadFile[]) => Promise<void>;
   };
   private checking = false;
   private pendingPlaylistFiles: CompletedDownloadFile[] = [];
@@ -45,12 +44,11 @@ export class DownloadWatcher {
     this.intervalMs = options.intervalMs ?? 5_000;
     this.scanDebounceMs = options.scanDebounceMs ?? 10_000;
     this.musicDir = options.musicDir ? this.expandDir(options.musicDir) : null;
-    this.metadataFixer =
-      options.metadataFixer ??
-      new MetadataFixer({
+    this.compilationTagger =
+      options.compilationTagger ??
+      new CompilationTagger({
         musicDir: options.musicDir ?? '~/Music',
-        enabled: options.metadataFixEnabled ?? true,
-        minScore: options.metadataFixMinScore ?? 85,
+        enabled: options.compilationTaggingEnabled ?? true,
       });
     this.autoPlaylist =
       options.autoPlaylist ??
@@ -153,9 +151,9 @@ export class DownloadWatcher {
 
       if (newCompletions) {
         try {
-          await this.metadataFixer.processCompletedDownloads(completedFiles);
+          await this.compilationTagger.tagCompletedFolders(completedFiles);
         } catch (err) {
-          log.warn({ err }, 'Metadata fix step failed');
+          log.warn({ err }, 'Compilation tagging step failed');
         }
         this.debouncedScan();
       }

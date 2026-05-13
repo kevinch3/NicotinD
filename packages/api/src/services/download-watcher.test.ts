@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeEach, mock, afterEach } from 'bun:test';
 import { DownloadWatcher } from './download-watcher.js';
-import type { CompletedDownloadFile } from './metadata-fixer.js';
+import type { CompletedDownloadFile } from './path-inference.js';
 
 type DownloadUser = { username: string; directories: { directory: string; fileCount: number; files: { filename: string; state: string }[] }[] };
 
@@ -18,9 +18,9 @@ function makeNavidromeMock() {
     },
   };
 }
-function makeMetadataFixerMock() {
+function makeCompilationTaggerMock() {
   return {
-    processCompletedDownloads: mock((_files: CompletedDownloadFile[]) => Promise.resolve()),
+    tagCompletedFolders: mock((_files: CompletedDownloadFile[]) => Promise.resolve()),
   };
 }
 function makeAutoPlaylistMock() {
@@ -32,14 +32,14 @@ function makeAutoPlaylistMock() {
 describe('DownloadWatcher', () => {
   let slskdMock: ReturnType<typeof makeSlskdMock>;
   let navidromeMock: ReturnType<typeof makeNavidromeMock>;
-  let metadataFixerMock: ReturnType<typeof makeMetadataFixerMock>;
+  let compilationTaggerMock: ReturnType<typeof makeCompilationTaggerMock>;
   let autoPlaylistMock: ReturnType<typeof makeAutoPlaylistMock>;
   let watcher: DownloadWatcher;
 
   beforeEach(() => {
     slskdMock = makeSlskdMock();
     navidromeMock = makeNavidromeMock();
-    metadataFixerMock = makeMetadataFixerMock();
+    compilationTaggerMock = makeCompilationTaggerMock();
     autoPlaylistMock = makeAutoPlaylistMock();
 
     // Use very small intervals for testing
@@ -49,7 +49,7 @@ describe('DownloadWatcher', () => {
       {
         intervalMs: 10,
         scanDebounceMs: 10,
-        metadataFixer: metadataFixerMock,
+        compilationTagger: compilationTaggerMock,
         autoPlaylist: autoPlaylistMock,
       },
     );
@@ -84,8 +84,8 @@ describe('DownloadWatcher', () => {
     // Wait for debounce (10ms + buffer)
     await new Promise((r) => setTimeout(r, 50));
 
-    expect(metadataFixerMock.processCompletedDownloads).toHaveBeenCalledTimes(1);
-    expect(metadataFixerMock.processCompletedDownloads).toHaveBeenCalledWith([
+    expect(compilationTaggerMock.tagCompletedFolders).toHaveBeenCalledTimes(1);
+    expect(compilationTaggerMock.tagCompletedFolders).toHaveBeenCalledWith([
       {
         username: 'user1',
         directory: 'dir1',

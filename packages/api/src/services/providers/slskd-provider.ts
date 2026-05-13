@@ -1,7 +1,7 @@
 import type { ISearchProvider, IBrowseProvider, ProviderType, NetworkPollResult, BrowseDirectory } from '@nicotind/core';
 import { BrowseUnavailableError, createLogger } from '@nicotind/core';
 import type { SlskdRef } from '../../index.js';
-import { inferMetadataFromPath } from '../metadata-fixer.js';
+import { inferMetadataFromPath } from '../path-inference.js';
 
 const log = createLogger('slskd-provider');
 const DEFAULT_RETRY_DELAYS_MS = [3000, 6000, 10000];

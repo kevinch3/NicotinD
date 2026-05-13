@@ -1,5 +1,14 @@
-import { Component, inject, signal, effect, OnInit } from '@angular/core';
-import { RouterLink } from '@angular/router';
+import {
+  Component,
+  inject,
+  signal,
+  effect,
+  viewChild,
+  ElementRef,
+  OnInit,
+  OnDestroy,
+} from '@angular/core';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { ApiService, type Album } from '../../services/api.service';
 import { AuthService } from '../../services/auth.service';
@@ -10,16 +19,86 @@ import { resolveAlbumRoute, resolveGenreRoute, resolveArtistRoute } from '../../
 
 type LibraryMode = 'albums' | 'artists' | 'genre';
 
+export type AlbumListType =
+  | 'newest'
+  | 'frequent'
+  | 'recent'
+  | 'starred'
+  | 'alphabeticalByName'
+  | 'random';
+
+const ALBUM_LIST_TYPES: AlbumListType[] = [
+  'newest',
+  'frequent',
+  'recent',
+  'starred',
+  'alphabeticalByName',
+  'random',
+];
+
+interface AlbumTypeOption {
+  value: AlbumListType;
+  label: string;
+}
+
+const ALBUM_TYPE_OPTIONS: AlbumTypeOption[] = [
+  { value: 'newest', label: 'Newest' },
+  { value: 'frequent', label: 'Most Played' },
+  { value: 'recent', label: 'Recently Played' },
+  { value: 'alphabeticalByName', label: 'A–Z' },
+  { value: 'starred', label: 'Starred' },
+  { value: 'random', label: 'Random' },
+];
+
+const PAGE_SIZE = 40;
+const RESTORE_CAP = 200;
+const STATE_KEY = 'nicotind-library-state';
+
+interface PersistedLibraryState {
+  type: AlbumListType;
+  loaded: number;
+  scrollY: number;
+}
+
+function readPersistedState(): PersistedLibraryState | null {
+  try {
+    const raw = localStorage.getItem(STATE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<PersistedLibraryState>;
+    if (
+      typeof parsed.type !== 'string' ||
+      !ALBUM_LIST_TYPES.includes(parsed.type as AlbumListType) ||
+      typeof parsed.loaded !== 'number' ||
+      typeof parsed.scrollY !== 'number'
+    ) {
+      return null;
+    }
+    return parsed as PersistedLibraryState;
+  } catch {
+    return null;
+  }
+}
+
+function writePersistedState(state: PersistedLibraryState): void {
+  try {
+    localStorage.setItem(STATE_KEY, JSON.stringify(state));
+  } catch {
+    /* ignore */
+  }
+}
+
 @Component({
   selector: 'app-library',
   imports: [ListToolbarComponent, RouterLink],
   templateUrl: './library.component.html',
 })
-export class LibraryComponent implements OnInit {
+export class LibraryComponent implements OnInit, OnDestroy {
   private api = inject(ApiService);
   readonly auth = inject(AuthService);
   private transferService = inject(TransferService);
   private listControls = inject(ListControlsService);
+  private route = inject(ActivatedRoute);
+  private router = inject(Router);
 
   // ─── Mode ─────────────────────────────────────────────────────────
   readonly modes = [
@@ -39,9 +118,19 @@ export class LibraryComponent implements OnInit {
     if (mode === 'genre' && !this.genres().length) this.fetchGenres();
   }
 
-  // ─── Albums ───────────────────────────────────────────────────────
+  // ─── Albums (lazy-loaded) ─────────────────────────────────────────
+  readonly albumTypeOptions = ALBUM_TYPE_OPTIONS;
+
+  readonly albumListType = signal<AlbumListType>('newest');
   readonly albums = signal<Album[]>([]);
   readonly loading = signal(true);
+  readonly loadingMore = signal(false);
+  readonly done = signal(false);
+
+  private offset = 0;
+  private observer: IntersectionObserver | null = null;
+  private restoring = false;
+  private scrollSentinel = viewChild<ElementRef<HTMLElement>>('scrollSentinel');
 
   readonly gridSortOptions: SortOption[] = [
     { field: 'name', label: 'Name' },
@@ -81,27 +170,145 @@ export class LibraryComponent implements OnInit {
   private dirtyEffect = effect(() => {
     if (this.transferService.libraryDirty()) {
       this.transferService.clearLibraryDirty();
-      this.fetchAlbums();
+      this.resetAndLoad();
     }
   });
 
+  private observerEffect = effect(() => {
+    const sentinel = this.scrollSentinel();
+    this.observer?.disconnect();
+    this.observer = null;
+    if (!sentinel) return;
+
+    this.observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          void this.loadMore();
+        }
+      },
+      { rootMargin: '400px 0px' },
+    );
+    this.observer.observe(sentinel.nativeElement);
+  });
+
   async ngOnInit(): Promise<void> {
-    await this.fetchAlbums();
+    const initialType = this.resolveInitialType();
+    this.albumListType.set(initialType);
+
+    const persisted = readPersistedState();
+    if (persisted && persisted.type === initialType && persisted.loaded > PAGE_SIZE) {
+      await this.restoreAndLoad(persisted);
+    } else {
+      await this.resetAndLoad();
+    }
+
     const mode = this.libraryMode();
     if (mode === 'artists') this.fetchArtists();
     if (mode === 'genre') this.fetchGenres();
   }
 
-  // ─── Data fetchers ───────────────────────────────────────────────
-  private async fetchAlbums(): Promise<void> {
-    this.loading.set(true);
-    try {
-      const data = await firstValueFrom(this.api.getAlbums('newest', 80));
-      this.albums.set(data);
-    } catch { /* ignore */ }
-    finally { this.loading.set(false); }
+  ngOnDestroy(): void {
+    this.observer?.disconnect();
+    this.persistState();
   }
 
+  // ─── Albums fetcher ──────────────────────────────────────────────
+  async setAlbumListType(type: AlbumListType): Promise<void> {
+    if (this.albumListType() === type) return;
+    this.albumListType.set(type);
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { type },
+      queryParamsHandling: 'merge',
+    });
+    await this.resetAndLoad();
+  }
+
+  async loadMore(): Promise<void> {
+    if (this.loadingMore() || this.done() || this.restoring) return;
+    this.loadingMore.set(true);
+    try {
+      const page = await firstValueFrom(
+        this.api.getAlbums(this.albumListType(), PAGE_SIZE, this.offset),
+      );
+      if (page.length === 0) {
+        this.done.set(true);
+      } else {
+        this.albums.update((existing) => [...existing, ...page]);
+        this.offset += page.length;
+        if (page.length < PAGE_SIZE) this.done.set(true);
+      }
+      this.persistState();
+    } catch {
+      /* ignore */
+    } finally {
+      this.loadingMore.set(false);
+    }
+  }
+
+  private async resetAndLoad(): Promise<void> {
+    this.albums.set([]);
+    this.offset = 0;
+    this.done.set(false);
+    this.loading.set(true);
+    try {
+      await this.loadMore();
+    } finally {
+      this.loading.set(false);
+    }
+  }
+
+  private async restoreAndLoad(persisted: PersistedLibraryState): Promise<void> {
+    this.restoring = true;
+    this.albums.set([]);
+    this.offset = 0;
+    this.done.set(false);
+    this.loading.set(true);
+    const target = Math.min(persisted.loaded, RESTORE_CAP);
+    try {
+      while (this.offset < target && !this.done()) {
+        const remaining = target - this.offset;
+        const fetchSize = Math.min(PAGE_SIZE, remaining);
+        const page = await firstValueFrom(
+          this.api.getAlbums(this.albumListType(), fetchSize, this.offset),
+        );
+        if (page.length === 0) {
+          this.done.set(true);
+          break;
+        }
+        this.albums.update((existing) => [...existing, ...page]);
+        this.offset += page.length;
+        if (page.length < fetchSize) this.done.set(true);
+      }
+      if (persisted.scrollY > 0) {
+        requestAnimationFrame(() => window.scrollTo({ top: persisted.scrollY }));
+      }
+    } catch {
+      /* ignore */
+    } finally {
+      this.restoring = false;
+      this.loading.set(false);
+    }
+  }
+
+  private resolveInitialType(): AlbumListType {
+    const urlType = this.route.snapshot.queryParamMap.get('type');
+    if (urlType && ALBUM_LIST_TYPES.includes(urlType as AlbumListType)) {
+      return urlType as AlbumListType;
+    }
+    const persisted = readPersistedState();
+    return persisted?.type ?? 'newest';
+  }
+
+  private persistState(): void {
+    writePersistedState({
+      type: this.albumListType(),
+      loaded: this.albums().length,
+      scrollY: typeof window !== 'undefined' ? window.scrollY : 0,
+    });
+  }
+
+  // ─── Artists / Genre fetchers ────────────────────────────────────
   async fetchArtists(): Promise<void> {
     if (this.loadingArtists()) return;
     this.loadingArtists.set(true);
