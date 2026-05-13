@@ -10,7 +10,7 @@
  *   NICOTIND_DATA_DIR, NICOTIND_MUSIC_DIR, NICOTIND_CONFIG
  */
 
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { parse } from 'yaml';
 import { initDatabase } from '../db.js';
