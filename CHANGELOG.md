@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.6](https://github.com/kevinch3/NicotinD/compare/v0.1.5...v0.1.6) (2026-05-13)
+
+
+### Features
+
+* add backfil compilation tags ([0de6391](https://github.com/kevinch3/NicotinD/commit/0de639131888b31dbd1911574f159b30a8a56354))
+* **metadata:** add backfill script for existing downloads ([ab5eab9](https://github.com/kevinch3/NicotinD/commit/ab5eab96a3c85b08ac928beb02cb964c4256dace))
+
 ## [0.1.5](https://github.com/kevinch3/NicotinD/compare/v0.1.4...v0.1.5) (2026-05-13)
 
 
