@@ -3,24 +3,17 @@ import { Database } from 'bun:sqlite';
 import { Hono } from 'hono';
 import { authMiddleware, signJwt } from './auth.js';
 import type { AuthEnv } from './auth.js';
+import { applySchema } from '../db.js';
 
 // Mock getDatabase to use an in-memory DB with a test user
 const testDb = new Database(':memory:');
-testDb.run(`
-  CREATE TABLE users (
-    id TEXT PRIMARY KEY,
-    username TEXT UNIQUE NOT NULL,
-    password_hash TEXT NOT NULL,
-    role TEXT NOT NULL DEFAULT 'user',
-    status TEXT NOT NULL DEFAULT 'active',
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-  )
-`);
+applySchema(testDb);
 testDb.run("INSERT INTO users (id, username, password_hash, role) VALUES ('user-123', 'testuser', 'hash', 'user')");
 testDb.run("INSERT INTO users (id, username, password_hash, role) VALUES ('user-456', 'queryuser', 'hash', 'admin')");
 
 mock.module('../db.js', () => ({
   getDatabase: () => testDb,
+  applySchema,
 }));
 
 describe('authMiddleware', () => {

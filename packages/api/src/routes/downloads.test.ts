@@ -5,17 +5,15 @@ import { downloadRoutes } from './downloads.js';
 import { ProviderRegistry } from '../services/provider-registry.js';
 import { SlskdSearchProvider } from '../services/providers/slskd-provider.js';
 import type { SlskdRef } from '../index.js';
+import { applySchema } from '../db.js';
+
 // Mock getDatabase to use an in-memory DB
 const testDb = new Database(':memory:');
-testDb.run(`
-  CREATE TABLE IF NOT EXISTS hidden_transfers (
-    id TEXT PRIMARY KEY,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-  )
-`);
+applySchema(testDb);
 
 mock.module('../db.js', () => ({
   getDatabase: () => testDb,
+  applySchema,
 }));
 
 function makeSlskdMock() {

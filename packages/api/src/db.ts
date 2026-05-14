@@ -11,7 +11,15 @@ export function initDatabase(dataDir: string): Database {
 
   db.run('PRAGMA journal_mode=WAL');
   db.run('PRAGMA foreign_keys=ON');
+  applySchema(db);
+  return db;
+}
 
+/**
+ * Applies the canonical schema to a database. Extracted so tests can build
+ * in-memory databases without the disk-side `initDatabase` setup.
+ */
+export function applySchema(db: Database): void {
   db.run(`
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
@@ -104,7 +112,96 @@ export function initDatabase(dataDir: string): Database {
     )
   `);
 
-  return db;
+  // Canonical library tables — populated by NavidromeSyncer after each scan.
+  // The UI reads exclusively from these (not from Navidrome directly), so we
+  // can hide, classify, and group independently of what Navidrome thinks.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS library_albums (
+      id              TEXT PRIMARY KEY,
+      name            TEXT NOT NULL,
+      artist          TEXT NOT NULL,
+      artist_id       TEXT NOT NULL,
+      cover_art       TEXT,
+      song_count      INTEGER NOT NULL DEFAULT 0,
+      duration        INTEGER NOT NULL DEFAULT 0,
+      year            INTEGER,
+      genre           TEXT,
+      created         TEXT,
+      starred         TEXT,
+      classification  TEXT NOT NULL DEFAULT 'unknown'
+                          CHECK (classification IN ('album','single','compilation','unknown')),
+      hidden          INTEGER NOT NULL DEFAULT 0,
+      manual_override INTEGER NOT NULL DEFAULT 0,
+      synced_at       INTEGER NOT NULL
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_library_albums_hidden ON library_albums(hidden)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_library_albums_classification ON library_albums(classification)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_library_albums_artist_id ON library_albums(artist_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_library_albums_created ON library_albums(created DESC)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_library_albums_name ON library_albums(name COLLATE NOCASE)`);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS library_songs (
+      id            TEXT PRIMARY KEY,
+      album_id      TEXT NOT NULL,
+      title         TEXT NOT NULL,
+      artist        TEXT NOT NULL,
+      artist_id     TEXT NOT NULL,
+      track         INTEGER,
+      disc          INTEGER,
+      duration      INTEGER NOT NULL DEFAULT 0,
+      year          INTEGER,
+      genre         TEXT,
+      cover_art     TEXT,
+      path          TEXT NOT NULL,
+      size          INTEGER,
+      bit_rate      INTEGER,
+      suffix        TEXT,
+      content_type  TEXT,
+      created       TEXT,
+      starred       TEXT,
+      hidden        INTEGER NOT NULL DEFAULT 0,
+      synced_at     INTEGER NOT NULL
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_library_songs_album_id ON library_songs(album_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_library_songs_artist_id ON library_songs(artist_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_library_songs_path ON library_songs(path)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_library_songs_genre ON library_songs(genre)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_library_songs_hidden ON library_songs(hidden)`);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS library_artists (
+      id              TEXT PRIMARY KEY,
+      name            TEXT NOT NULL,
+      album_count     INTEGER NOT NULL DEFAULT 0,
+      cover_art       TEXT,
+      starred         TEXT,
+      hidden          INTEGER NOT NULL DEFAULT 0,
+      manual_override INTEGER NOT NULL DEFAULT 0,
+      synced_at       INTEGER NOT NULL
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_library_artists_name ON library_artists(name COLLATE NOCASE)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_library_artists_hidden ON library_artists(hidden)`);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS library_genres (
+      name        TEXT PRIMARY KEY,
+      song_count  INTEGER NOT NULL DEFAULT 0,
+      album_count INTEGER NOT NULL DEFAULT 0,
+      synced_at   INTEGER NOT NULL
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS library_sync_state (
+      key        TEXT PRIMARY KEY,
+      value      TEXT NOT NULL,
+      updated_at INTEGER NOT NULL
+    )
+  `);
 }
 
 export function getDatabase(): Database {

@@ -19,7 +19,7 @@
   <!-- ═══ ALBUMS MODE ═══ -->
   @if (libraryMode() === 'albums') {
     <!-- Album list-type chips -->
-    <div class="flex flex-wrap gap-2 mb-4">
+    <div class="flex flex-wrap items-center gap-2 mb-4">
       @for (opt of albumTypeOptions; track opt.value) {
         <button
           type="button"
@@ -32,6 +32,20 @@
           [class.hover:text-theme-secondary]="albumListType() !== opt.value"
           (click)="setAlbumListType(opt.value)">
           {{ opt.label }}
+        </button>
+      }
+      @if (auth.role() === 'admin') {
+        <button
+          type="button"
+          class="ml-auto px-3 py-1 text-xs rounded-full transition-colors border"
+          [class.bg-theme-surface]="showHidden()"
+          [class.border-theme]="showHidden()"
+          [class.text-theme-primary]="showHidden()"
+          [class.border-transparent]="!showHidden()"
+          [class.text-theme-muted]="!showHidden()"
+          (click)="toggleShowHidden()"
+          title="Toggle hidden albums (admin)">
+          {{ showHidden() ? 'Hiding off' : 'Show hidden' }}
         </button>
       }
     </div>
@@ -61,7 +75,7 @@
     <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
       @for (album of gridControls.filtered(); track album.id) {
         <a [routerLink]="getAlbumLink(album.id)"
-          class="p-3 rounded-lg bg-theme-surface/30 hover:bg-theme-surface-2/50 transition text-left cursor-pointer break-inside-avoid">
+          class="group relative p-3 rounded-lg bg-theme-surface/30 hover:bg-theme-surface-2/50 transition text-left cursor-pointer break-inside-avoid">
           @if (album.coverArt) {
             <img [src]="'/api/cover/' + album.coverArt + '?size=300&token=' + auth.token()"
               alt="" class="w-full aspect-square rounded object-cover mb-2" />
@@ -72,6 +86,25 @@
           <p class="text-xs text-theme-muted truncate">
             {{ album.artist }}{{ album.year ? ' · ' + album.year : '' }}
           </p>
+          @if (auth.role() === 'admin') {
+            @if (album.hidden) {
+              <button
+                type="button"
+                class="absolute top-2 right-2 px-2 py-0.5 text-[10px] rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 transition"
+                (click)="unhideAlbum(album, $event)"
+                title="Unhide album">
+                Unhide
+              </button>
+            } @else {
+              <button
+                type="button"
+                class="absolute top-2 right-2 px-2 py-0.5 text-[10px] rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 transition"
+                (click)="hideAlbum(album, $event)"
+                title="Hide album">
+                Hide
+              </button>
+            }
+          }
         </a>
       }
     </div>

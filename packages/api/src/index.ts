@@ -23,11 +23,13 @@ import { usersRoutes } from './routes/users.js';
 import { shareRoutes } from './routes/share.js';
 import { subsonicProxy } from './routes/subsonic.js';
 import { DownloadWatcher } from './services/download-watcher.js';
-import { CompilationTagger } from './services/compilation-tagger.js';
 import { TailscaleService } from './services/tailscale.js';
 import { ProviderRegistry } from './services/provider-registry.js';
 import { NavidromeSearchProvider } from './services/providers/navidrome-provider.js';
 import { SlskdSearchProvider } from './services/providers/slskd-provider.js';
+import { NavidromeSyncer } from './services/navidrome-syncer.js';
+import { LibraryCurator } from './services/library-curator.js';
+import { createLogger } from '@nicotind/core';
 import { initDatabase } from './db.js';
 import { createWebSocketHandlers } from './services/websocket.js';
 import type { AuthEnv } from './middleware/auth.js';
@@ -45,6 +47,8 @@ export interface CreateAppOptions {
   tailscale?: TailscaleService;
   saveTailscaleAuthKeyFn?: (key: string) => void;
   clearTailscaleAuthKeyFn?: () => void;
+  stagingDir?: string;
+  acoustidApiKey?: string;
 }
 
 export function createApp({
@@ -57,12 +61,31 @@ export function createApp({
   tailscale: tailscaleOption,
   saveTailscaleAuthKeyFn,
   clearTailscaleAuthKeyFn,
+  stagingDir,
+  acoustidApiKey,
 }: CreateAppOptions) {
   const expandedDataDir = config.dataDir.startsWith('~')
     ? config.dataDir.replace('~', process.env.HOME ?? '/root')
     : config.dataDir;
 
   const db = initDatabase(expandedDataDir);
+
+  // Canonical-library pipeline: NavidromeSyncer pulls the scanner's view into
+  // our sqlite, LibraryCurator hides/classifies. The UI reads only from here.
+  const syncer = new NavidromeSyncer(navidrome, db);
+  const curator = new LibraryCurator(db);
+  const syncLog = createLogger('library-sync');
+  const runSyncAndCurate = async (): Promise<void> => {
+    try {
+      await syncer.syncFull();
+      curator.reclassifyAll();
+    } catch (err) {
+      syncLog.error({ err }, 'Library sync/curate cycle failed');
+    }
+  };
+  // First sync runs in the background — the UI gracefully shows an empty
+  // library until it lands rather than blocking startup.
+  void runSyncAndCurate();
 
   const app = new OpenAPIHono();
   const { upgradeWebSocket, websocket } = createBunWebSocket();
@@ -84,20 +107,19 @@ export function createApp({
   // Global middleware
   app.onError(errorHandler);
 
-  // Folder-aware compilation tagger — runs after each completed download batch
-  const compilationTagger = config.musicDir
-    ? new CompilationTagger({
-        musicDir: config.musicDir,
-        enabled: config.metadataFix.enabled,
-      })
-    : undefined;
-
-  // Download watcher (mutable ref — settings route can create/replace it)
+  // Download watcher (mutable ref — settings route can create/replace it).
+  // The watcher owns a LibraryOrganizer that moves files from slskd's staging
+  // dir into <musicDir>/<Artist>/<Album>/<NN - Title>.<ext>.
   const watcherRef: WatcherRef = {
     current: slskdRef.current && config.soulseek.username && config.soulseek.password
       ? new DownloadWatcher(slskdRef.current, navidrome, {
           musicDir: config.musicDir,
-          compilationTagger,
+          stagingDir,
+          acoustidApiKey: config.metadataFix.enabled ? acoustidApiKey : undefined,
+          // Park unsortable files outside musicDir so Navidrome doesn't scan them.
+          unsortedRoot: `${expandedDataDir}/unsorted`,
+          // Refresh canonical library after each post-download scan.
+          onScanComplete: runSyncAndCurate,
         })
       : null,
   };
@@ -153,7 +175,7 @@ export function createApp({
   app.route('/api/admin', adminRoutes());
   app.route('/api/downloads', downloadRoutes(registry, slskdRef));
   app.route('/api/uploads', uploadRoutes(slskdRef));
-  app.route('/api/library', libraryRoutes(navidrome, config.musicDir));
+  app.route('/api/library', libraryRoutes(navidrome, config.musicDir, { curator, runSync: runSyncAndCurate }));
   app.route('/api', streamingRoutes(navidrome));
   app.route('/api/system', systemRoutes(slskdRef, navidrome, serviceManager, config));
   app.route(

@@ -2,42 +2,250 @@ import { Hono } from 'hono';
 import { basename, dirname, join, normalize, relative } from 'node:path';
 import { unlinkSync, rmdirSync, existsSync, readdirSync } from 'node:fs';
 import { createLogger } from '@nicotind/core';
-import type { Song } from '@nicotind/core';
+import type { Song, Album, Artist } from '@nicotind/core';
 import type { Navidrome } from '@nicotind/navidrome-client';
 import type { AuthEnv } from '../middleware/auth.js';
 import { getDatabase } from '../db.js';
+import type { LibraryCurator } from '../services/library-curator.js';
+
 const log = createLogger('library');
 
-export function libraryRoutes(navidrome: Navidrome, musicDir?: string) {
-  const app = new Hono<AuthEnv>();
+const VALID_CLASSIFICATIONS = new Set(['album', 'single', 'compilation', 'unknown']);
 
-  app.get('/artists', async (c) => {
-    const artists = await navidrome.browsing.getArtists();
-    return c.json(artists);
+interface LibraryRoutesOptions {
+  curator?: LibraryCurator;
+  runSync?: () => Promise<void>;
+}
+
+interface AlbumRow {
+  id: string;
+  name: string;
+  artist: string;
+  artist_id: string;
+  cover_art: string | null;
+  song_count: number;
+  duration: number;
+  year: number | null;
+  genre: string | null;
+  created: string | null;
+  starred: string | null;
+  classification: string;
+  hidden: number;
+  manual_override: number;
+}
+
+interface SongRow {
+  id: string;
+  album_id: string;
+  album_name: string;
+  album_cover_art: string | null;
+  title: string;
+  artist: string;
+  artist_id: string;
+  track: number | null;
+  duration: number;
+  year: number | null;
+  genre: string | null;
+  cover_art: string | null;
+  path: string;
+  size: number | null;
+  bit_rate: number | null;
+  suffix: string | null;
+  content_type: string | null;
+  created: string | null;
+  starred: string | null;
+}
+
+interface ArtistRow {
+  id: string;
+  name: string;
+  album_count: number;
+  cover_art: string | null;
+  starred: string | null;
+}
+
+const ALBUM_SELECT = `
+  SELECT id, name, artist, artist_id, cover_art, song_count, duration,
+         year, genre, created, starred, classification, hidden, manual_override
+  FROM library_albums
+`;
+
+const SONG_SELECT = `
+  SELECT s.id, s.album_id, a.name AS album_name, a.cover_art AS album_cover_art,
+         s.title, s.artist, s.artist_id, s.track, s.duration, s.year, s.genre,
+         s.cover_art, s.path, s.size, s.bit_rate, s.suffix, s.content_type,
+         s.created, s.starred
+  FROM library_songs s
+  LEFT JOIN library_albums a ON a.id = s.album_id
+`;
+
+function rowToAlbum(r: AlbumRow): Album & { classification: string; hidden: boolean } {
+  return {
+    id: r.id,
+    name: r.name,
+    artist: r.artist,
+    artistId: r.artist_id,
+    coverArt: r.cover_art ?? undefined,
+    songCount: r.song_count,
+    duration: r.duration,
+    year: r.year ?? undefined,
+    genre: r.genre ?? undefined,
+    created: r.created ?? '',
+    starred: r.starred ?? undefined,
+    classification: r.classification,
+    hidden: r.hidden === 1,
+  };
+}
+
+function rowToSong(r: SongRow): Song {
+  return {
+    id: r.id,
+    title: r.title,
+    album: r.album_name ?? '',
+    albumId: r.album_id,
+    artist: r.artist,
+    artistId: r.artist_id,
+    track: r.track ?? undefined,
+    year: r.year ?? undefined,
+    genre: r.genre ?? undefined,
+    coverArt: r.cover_art ?? r.album_cover_art ?? undefined,
+    size: r.size ?? 0,
+    contentType: r.content_type ?? '',
+    suffix: r.suffix ?? '',
+    duration: r.duration,
+    bitRate: r.bit_rate ?? 0,
+    path: r.path,
+    created: r.created ?? '',
+    starred: r.starred ?? undefined,
+  };
+}
+
+function rowToArtist(r: ArtistRow): Artist {
+  return {
+    id: r.id,
+    name: r.name,
+    albumCount: r.album_count,
+    coverArt: r.cover_art ?? undefined,
+    starred: r.starred ?? undefined,
+  };
+}
+
+function albumOrderBy(type: string): string {
+  switch (type) {
+    case 'newest':
+      return 'created DESC, name COLLATE NOCASE ASC';
+    case 'random':
+      return 'RANDOM()';
+    case 'recent':
+      return 'created DESC';
+    case 'frequent':
+      // Navidrome's "frequent" requires play-count data we don't sync yet.
+      return 'created DESC';
+    case 'starred':
+      return 'starred DESC, name COLLATE NOCASE ASC';
+    case 'alphabeticalByName':
+    default:
+      return 'name COLLATE NOCASE ASC';
+  }
+}
+
+export function libraryRoutes(
+  navidrome: Navidrome,
+  musicDir?: string,
+  options: LibraryRoutesOptions = {},
+) {
+  const app = new Hono<AuthEnv>();
+  const { curator, runSync } = options;
+
+  app.get('/artists', (c) => {
+    const db = getDatabase();
+    const rows = db
+      .query<ArtistRow, []>(
+        `SELECT id, name, album_count, cover_art, starred
+         FROM library_artists
+         WHERE hidden = 0
+         ORDER BY name COLLATE NOCASE ASC`,
+      )
+      .all();
+    return c.json(rows.map(rowToArtist));
   });
 
   app.get('/artists/:id', async (c) => {
-    const result = await navidrome.browsing.getArtist(c.req.param('id'));
-    return c.json(result);
+    const id = c.req.param('id');
+    const db = getDatabase();
+    const artistRow = db
+      .query<ArtistRow, [string]>(
+        `SELECT id, name, album_count, cover_art, starred
+         FROM library_artists WHERE id = ?`,
+      )
+      .get(id);
+    if (!artistRow) {
+      // Fall back to Navidrome — possible the canonical DB is still warming up.
+      try {
+        const result = await navidrome.browsing.getArtist(id);
+        return c.json(result);
+      } catch {
+        return c.json({ error: 'Artist not found' }, 404);
+      }
+    }
+    const albumRows = db
+      .query<AlbumRow, [string]>(
+        `${ALBUM_SELECT} WHERE artist_id = ? AND hidden = 0
+         ORDER BY year DESC NULLS LAST, name COLLATE NOCASE ASC`,
+      )
+      .all(id);
+    return c.json({ artist: rowToArtist(artistRow), albums: albumRows.map(rowToAlbum) });
   });
 
-  app.get('/albums', async (c) => {
-    const type = (c.req.query('type') ?? 'newest') as
-      | 'newest'
-      | 'random'
-      | 'frequent'
-      | 'recent'
-      | 'starred'
-      | 'alphabeticalByName';
-    const size = Number(c.req.query('size') ?? 20);
-    const offset = Number(c.req.query('offset') ?? 0);
-    const albums = await navidrome.browsing.getAlbumList(type, size, offset);
-    return c.json(albums);
+  app.get('/albums', (c) => {
+    const type = c.req.query('type') ?? 'newest';
+    const size = Math.min(Number(c.req.query('size') ?? 20), 500);
+    const offset = Math.max(Number(c.req.query('offset') ?? 0), 0);
+    const includeHidden = c.req.query('includeHidden') === 'true';
+    const classification = c.req.query('classification');
+
+    const wheres: string[] = [];
+    const params: Array<string | number> = [];
+    if (!includeHidden) wheres.push('hidden = 0');
+    if (classification && VALID_CLASSIFICATIONS.has(classification)) {
+      wheres.push('classification = ?');
+      params.push(classification);
+    }
+
+    const whereClause = wheres.length > 0 ? `WHERE ${wheres.join(' AND ')}` : '';
+    const order = albumOrderBy(type);
+
+    const db = getDatabase();
+    const rows = db
+      .query<AlbumRow, (string | number)[]>(
+        `${ALBUM_SELECT} ${whereClause} ORDER BY ${order} LIMIT ? OFFSET ?`,
+      )
+      .all(...params, size, offset);
+    return c.json(rows.map(rowToAlbum));
   });
 
   app.get('/albums/:id', async (c) => {
-    const { album, songs } = await navidrome.browsing.getAlbum(c.req.param('id'));
-    return c.json({ ...album, song: songs });
+    const id = c.req.param('id');
+    const db = getDatabase();
+    const albumRow = db
+      .query<AlbumRow, [string]>(`${ALBUM_SELECT} WHERE id = ?`)
+      .get(id);
+    if (!albumRow) {
+      // Possible the sync hasn't run yet — fall back to Navidrome to keep things working.
+      try {
+        const { album, songs } = await navidrome.browsing.getAlbum(id);
+        return c.json({ ...album, song: songs });
+      } catch {
+        return c.json({ error: 'Album not found' }, 404);
+      }
+    }
+    const songRows = db
+      .query<SongRow, [string]>(
+        `${SONG_SELECT} WHERE s.album_id = ? AND s.hidden = 0
+         ORDER BY s.track ASC NULLS LAST, s.title COLLATE NOCASE ASC`,
+      )
+      .all(id);
+    return c.json({ ...rowToAlbum(albumRow), song: songRows.map(rowToSong) });
   });
 
   app.delete('/albums/:id', async (c) => {
@@ -73,96 +281,121 @@ export function libraryRoutes(navidrome: Navidrome, musicDir?: string) {
     } catch {
       // Non-fatal
     }
+    if (runSync) void runSync();
 
     log.info({ albumId, deletedCount, failedCount: failed.length }, 'Album deletion complete');
     return c.json({ ok: true, deletedCount, failedCount: failed.length, failed });
   });
 
+  // --- Curation admin endpoints -------------------------------------------------
+  app.post('/albums/:id/hide', (c) => {
+    const user = c.get('user');
+    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+    if (!curator) return c.json({ error: 'Curator not available' }, 503);
+    const ok = curator.setManualOverride(c.req.param('id'), { hidden: true });
+    return c.json({ ok });
+  });
+
+  app.post('/albums/:id/unhide', (c) => {
+    const user = c.get('user');
+    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+    if (!curator) return c.json({ error: 'Curator not available' }, 503);
+    const ok = curator.setManualOverride(c.req.param('id'), { hidden: false });
+    return c.json({ ok });
+  });
+
+  app.post('/albums/:id/reclassify', async (c) => {
+    const user = c.get('user');
+    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+    if (!curator) return c.json({ error: 'Curator not available' }, 503);
+    const body = await c.req.json<{ classification?: string }>();
+    const cls = body.classification;
+    if (!cls || !VALID_CLASSIFICATIONS.has(cls)) {
+      return c.json({ error: 'Invalid classification' }, 400);
+    }
+    const ok = curator.setManualOverride(c.req.param('id'), {
+      classification: cls as 'album' | 'single' | 'compilation' | 'unknown',
+    });
+    return c.json({ ok });
+  });
+
+  app.post('/albums/:id/clear-override', (c) => {
+    const user = c.get('user');
+    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+    if (!curator) return c.json({ error: 'Curator not available' }, 503);
+    const ok = curator.clearManualOverride(c.req.param('id'));
+    return c.json({ ok });
+  });
+
+  app.post('/sync', async (c) => {
+    const user = c.get('user');
+    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+    if (!runSync) return c.json({ error: 'Sync not available' }, 503);
+    await runSync();
+    return c.json({ ok: true });
+  });
+
+  // --- Songs --------------------------------------------------------------------
   app.get('/songs/:id', async (c) => {
-    const song = await navidrome.browsing.getSong(c.req.param('id'));
-    return c.json(song);
+    const id = c.req.param('id');
+    const db = getDatabase();
+    const row = db.query<SongRow, [string]>(`${SONG_SELECT} WHERE s.id = ?`).get(id);
+    if (row) return c.json(rowToSong(row));
+    try {
+      const song = await navidrome.browsing.getSong(id);
+      return c.json(song);
+    } catch {
+      return c.json({ error: 'Song not found' }, 404);
+    }
   });
 
   app.get('/songs/:id/similar', async (c) => {
     const id = c.req.param('id');
     const size = Math.min(Number(c.req.query('size') ?? 20), 50);
+    const db = getDatabase();
 
-    let source: Song;
-    try {
-      source = await navidrome.browsing.getSong(id);
-    } catch {
-      return c.json({ error: 'Song not found' }, 404);
-    }
+    const source = db.query<SongRow, [string]>(`${SONG_SELECT} WHERE s.id = ?`).get(id);
+    if (!source) return c.json({ error: 'Song not found' }, 404);
 
-    type SimilarSong = {
-      id: string; title: string; artist: string; album: string;
-      duration?: number; coverArt?: string; genre?: string; year?: number;
-    };
-    const scored = new Map<string, { song: SimilarSong; score: number }>();
-
-    function add(song: Song, delta: number) {
-      if (song.id === source.id) return;
-      const entry = scored.get(song.id);
-      const slim: SimilarSong = {
-        id: song.id, title: song.title, artist: song.artist,
-        album: song.album, duration: song.duration,
-        coverArt: song.coverArt, genre: song.genre, year: song.year,
-      };
-      if (entry) {
-        entry.score += delta;
-      } else {
-        scored.set(song.id, { song: slim, score: delta });
-      }
-    }
-
-    // Source path prefix for heuristic (first 2 directory components)
     const sourceDirParts = source.path.split('/').filter(Boolean).slice(0, -1);
     const pathPrefix = sourceDirParts.slice(0, 2).join('/');
 
-    // Parallel: artist albums + genre songs
-    const [artistData, genreSongs] = await Promise.all([
-      navidrome.browsing.getArtist(source.artistId).catch(() => null),
-      source.genre
-        ? navidrome.browsing.getSongsByGenre(source.genre, 200).catch(() => [] as Song[])
-        : Promise.resolve([] as Song[]),
-    ]);
+    const scored = new Map<string, { song: Song; score: number }>();
+    const add = (s: Song, delta: number) => {
+      if (s.id === source.id) return;
+      const entry = scored.get(s.id);
+      if (entry) entry.score += delta;
+      else scored.set(s.id, { song: s, score: delta });
+    };
 
-    // Process artist albums (cap at 10)
-    if (artistData) {
-      const albums = artistData.albums.slice(0, 10);
-      for (const album of albums) {
-        try {
-          const { songs } = await navidrome.browsing.getAlbum(album.id);
-          for (const song of songs) {
-            const score = song.albumId === source.albumId ? 5 : 10;
-            add(song, score);
-            // Path heuristic boost
-            if (pathPrefix && song.path.includes(pathPrefix)) {
-              add(song, 4);
-            }
-          }
-        } catch {
-          // Skip unreachable album
-        }
-      }
+    // Same-artist songs (boost same-album less to surface other albums first)
+    const artistSongs = db
+      .query<SongRow, [string]>(
+        `${SONG_SELECT} WHERE s.artist_id = ? AND s.hidden = 0`,
+      )
+      .all(source.artist_id);
+    for (const row of artistSongs) {
+      const s = rowToSong(row);
+      const score = row.album_id === source.album_id ? 5 : 10;
+      add(s, score);
+      if (pathPrefix && row.path.includes(pathPrefix)) add(s, 4);
     }
 
-    // Process genre songs
-    const yearMin = source.year ? source.year - 5 : null;
-    const yearMax = source.year ? source.year + 5 : null;
-    const filteredGenre = genreSongs.filter((s) => {
-      if (s.artistId === source.artistId) return false;
-      if (yearMin && yearMax && s.year && (s.year < yearMin || s.year > yearMax)) return false;
-      return true;
-    });
-    // Random sample up to 30 to avoid ordering bias
-    const genreSample = filteredGenre
-      .sort(() => Math.random() - 0.5)
-      .slice(0, 30);
-    for (const song of genreSample) {
-      add(song, 3);
-      if (pathPrefix && song.path.includes(pathPrefix)) {
-        add(song, 4);
+    // Same-genre songs within ±5 years
+    if (source.genre) {
+      const genreRows = db
+        .query<SongRow, [string, string]>(
+          `${SONG_SELECT} WHERE s.genre = ? AND s.artist_id != ? AND s.hidden = 0
+           ORDER BY RANDOM() LIMIT 200`,
+        )
+        .all(source.genre, source.artist_id);
+      const yearMin = source.year ? source.year - 5 : null;
+      const yearMax = source.year ? source.year + 5 : null;
+      for (const row of genreRows) {
+        if (yearMin && yearMax && row.year && (row.year < yearMin || row.year > yearMax)) continue;
+        const s = rowToSong(row);
+        add(s, 3);
+        if (pathPrefix && row.path.includes(pathPrefix)) add(s, 4);
       }
     }
 
@@ -174,41 +407,62 @@ export function libraryRoutes(navidrome: Navidrome, musicDir?: string) {
     return c.json(results);
   });
 
-  app.get('/genres', async (c) => {
-    const genres = await navidrome.browsing.getGenres();
-    return c.json(genres);
+  app.get('/genres', (c) => {
+    const db = getDatabase();
+    const rows = db
+      .query<{ name: string; song_count: number; album_count: number }, []>(
+        `SELECT name, song_count, album_count FROM library_genres ORDER BY song_count DESC`,
+      )
+      .all();
+    return c.json(
+      rows.map((r) => ({ value: r.name, songCount: r.song_count, albumCount: r.album_count })),
+    );
   });
 
-  app.get('/genres/songs', async (c) => {
+  app.get('/genres/songs', (c) => {
     const genre = c.req.query('genre') ?? '';
-    const count = Number(c.req.query('count') ?? 100);
-    if (!genre) return c.json([], 200);
-    const songs = await navidrome.browsing.getSongsByGenre(genre, count);
-    return c.json(songs);
+    const count = Math.min(Number(c.req.query('count') ?? 100), 500);
+    if (!genre) return c.json([]);
+    const db = getDatabase();
+    const rows = db
+      .query<SongRow, [string, number]>(
+        `${SONG_SELECT} WHERE s.genre = ? AND s.hidden = 0
+         ORDER BY s.created DESC NULLS LAST LIMIT ?`,
+      )
+      .all(genre, count);
+    return c.json(rows.map(rowToSong));
   });
 
-  app.get('/random', async (c) => {
-    const size = Number(c.req.query('size') ?? 10);
-    const songs = await navidrome.browsing.getRandomSongs(size);
-    return c.json(songs);
+  app.get('/random', (c) => {
+    const size = Math.min(Number(c.req.query('size') ?? 10), 200);
+    const db = getDatabase();
+    const rows = db
+      .query<SongRow, [number]>(
+        `${SONG_SELECT}
+         LEFT JOIN library_albums alb ON alb.id = s.album_id
+         WHERE s.hidden = 0 AND (alb.hidden IS NULL OR alb.hidden = 0)
+         ORDER BY RANDOM() LIMIT ?`,
+      )
+      .all(size);
+    return c.json(rows.map(rowToSong));
   });
 
-  // Recently added songs (for the download inbox)
-  app.get('/recent-songs', async (c) => {
-    const size = Number(c.req.query('size') ?? 50);
-    const albumFetchSize = Math.min(Math.max(size, 20), 80);
-    const candidateTarget = Math.min(Math.max(size * 4, size), 400);
-    // Get newest albums, then collect their songs
-    const albums = await navidrome.browsing.getAlbumList('newest', albumFetchSize);
-    const songs: Array<Song & { albumName: string; albumArtist: string }> = [];
-    for (const album of albums) {
-      const { songs: albumSongs } = await navidrome.browsing.getAlbum(album.id);
-      for (const song of albumSongs) {
-        songs.push({ ...song, albumName: album.name, albumArtist: album.artist });
-      }
-      if (songs.length >= candidateTarget) break;
-    }
-
+  // Recently added — uses completed_downloads history to surface user's most-recent imports.
+  app.get('/recent-songs', (c) => {
+    const size = Math.min(Number(c.req.query('size') ?? 50), 200);
+    const db = getDatabase();
+    const rows = db
+      .query<SongRow, [number]>(
+        `${SONG_SELECT}
+         WHERE s.hidden = 0 AND (a.hidden IS NULL OR a.hidden = 0)
+         ORDER BY s.created DESC NULLS LAST LIMIT ?`,
+      )
+      .all(size * 4);
+    const songs = rows.map((r) => ({
+      ...rowToSong(r),
+      albumName: r.album_name ?? '',
+      albumArtist: r.artist,
+    }));
     const ordered = orderByCompletionHistory(songs);
     return c.json(ordered.slice(0, size));
   });
@@ -242,14 +496,12 @@ export function libraryRoutes(navidrome: Navidrome, musicDir?: string) {
     const tokens = tokenizeFilename(basename(fullPath));
     if (tokens.length === 0) return null;
 
-    // Try the directory the song was expected to be in
     const knownDir = dirname(fullPath);
     if (existsSync(knownDir)) {
       const found = findFileByTokens(knownDir, tokens);
       if (found) return found;
     }
 
-    // Walk one level into the music root directory
     let rootEntries: import('node:fs').Dirent[];
     try {
       rootEntries = readdirSync(musicRootDir, { withFileTypes: true });
@@ -270,19 +522,27 @@ export function libraryRoutes(navidrome: Navidrome, musicDir?: string) {
       return { ok: false, error: 'Music directory not configured', status: 500 };
     }
 
-    // Get the song's path from Navidrome
-    let song: Awaited<ReturnType<typeof navidrome.browsing.getSong>>;
-    try {
-      song = await navidrome.browsing.getSong(id);
-    } catch {
-      return { ok: false, error: 'Song not found in library', status: 404 };
+    // Prefer the canonical row; fall back to Navidrome for songs that haven't been synced yet.
+    let songPath: string | null = null;
+    const db = getDatabase();
+    const canonical = db
+      .query<{ path: string }, [string]>(`SELECT path FROM library_songs WHERE id = ?`)
+      .get(id);
+    if (canonical?.path) songPath = canonical.path;
+    if (!songPath) {
+      try {
+        const song = await navidrome.browsing.getSong(id);
+        songPath = song?.path ?? null;
+      } catch {
+        return { ok: false, error: 'Song not found in library', status: 404 };
+      }
     }
-    if (!song?.path) {
+    if (!songPath) {
       return { ok: false, error: 'Song path not available', status: 404 };
     }
 
     const expandedMusicDir = expandDir(musicDir);
-    const fullPath = resolveSongPath(expandedMusicDir, song.path);
+    const fullPath = resolveSongPath(expandedMusicDir, songPath);
 
     if (!isUnderMusicDir(expandedMusicDir, fullPath)) {
       log.warn({ path: fullPath, musicDir: expandedMusicDir }, 'Resolved song path is outside the music directory');
@@ -301,9 +561,7 @@ export function libraryRoutes(navidrome: Navidrome, musicDir?: string) {
         return { ok: false, error: 'Failed to delete file', status: 500 };
       }
     } else {
-      // Primary: registry lookup by navidrome_id (populated for downloads after upgrade)
       const registeredRelPath = lookupDownloadPath(id);
-      // Secondary: basename lookup in completed_downloads (covers pre-upgrade downloads)
       const fileBasename = basename(fullPath).toLowerCase();
       const relPath = registeredRelPath ?? lookupDownloadPathByBasename(fileBasename);
       const fallbackPath = relPath ? join(expandedMusicDir, relPath) : null;
@@ -317,7 +575,6 @@ export function libraryRoutes(navidrome: Navidrome, musicDir?: string) {
           return { ok: false, error: 'Failed to delete file', status: 500 };
         }
       } else {
-        // Last resort: fuzzy filesystem scan (handles renames and stale paths)
         const fuzzyPath = fuzzyFindFile(expandedMusicDir, fullPath);
         if (fuzzyPath) {
           try {
@@ -339,12 +596,12 @@ export function libraryRoutes(navidrome: Navidrome, musicDir?: string) {
       const relPath = relative(expandedMusicDir, deletedPath).replace(/\\/g, '/');
 
       try {
-        const db = getDatabase();
         db.run(
           'DELETE FROM completed_downloads WHERE navidrome_id = ? OR relative_path = ?',
           [id, relPath],
         );
-        log.info({ relPath }, 'Removed song from completion history');
+        db.run('DELETE FROM library_songs WHERE id = ?', [id]);
+        log.info({ relPath }, 'Removed song from completion history + canonical DB');
       } catch (err) {
         log.debug({ err }, 'Failed to remove from completion history');
       }
@@ -353,7 +610,6 @@ export function libraryRoutes(navidrome: Navidrome, musicDir?: string) {
     return { ok: true };
   }
 
-  // Delete a song from the filesystem and trigger rescan
   app.delete('/songs/:id', async (c) => {
     const user = c.get('user');
     if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
@@ -363,17 +619,16 @@ export function libraryRoutes(navidrome: Navidrome, musicDir?: string) {
       return c.json({ error: result.error }, (result.status ?? 500) as 400 | 404 | 500);
     }
 
-    // Trigger Navidrome rescan to update the index
     try {
       await (navidrome.system as { startScan: (fullScan?: boolean) => Promise<void> }).startScan(true);
     } catch {
       // Non-fatal
     }
+    if (runSync) void runSync();
 
     return c.json({ ok: true });
   });
 
-  // Bulk delete songs
   app.post('/songs/bulk-delete', async (c) => {
     const user = c.get('user');
     if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
@@ -393,42 +648,29 @@ export function libraryRoutes(navidrome: Navidrome, musicDir?: string) {
       return c.json({ error: firstError?.value.error ?? 'Failed to delete any songs' }, status as 400 | 404 | 500);
     }
 
-    // Trigger single Navidrome rescan at the end
     try {
       await (navidrome.system as { startScan: (fullScan?: boolean) => Promise<void> }).startScan(true);
     } catch {
       // Non-fatal
     }
+    if (runSync) void runSync();
 
     return c.json({ ok: true, deletedCount: ids.length - failed.length });
   });
 
-
-  // Duplicate detection (admin only)
-  app.get('/duplicates', async (c) => {
+  // Duplicate detection — now reads entirely from canonical DB.
+  app.get('/duplicates', (c) => {
     const user = c.get('user');
     if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
 
-    const allSongs: Song[] = [];
-    let offset = 0;
-    while (true) {
-      const albums = await navidrome.browsing.getAlbumList('alphabeticalByName', 500, offset);
-      if (albums.length === 0) break;
-      await Promise.all(
-        albums.map(async (album) => {
-          try {
-            const { songs } = await navidrome.browsing.getAlbum(album.id);
-            allSongs.push(...songs);
-          } catch {
-            // Skip unreachable album
-          }
-        }),
-      );
-      offset += albums.length;
-      if (albums.length < 500) break;
-    }
+    const db = getDatabase();
+    const rows = db
+      .query<SongRow, []>(
+        `${SONG_SELECT} WHERE s.hidden = 0 AND (a.hidden IS NULL OR a.hidden = 0)`,
+      )
+      .all();
+    const allSongs = rows.map(rowToSong);
 
-    // Group songs by normalized title + artist
     const groups = new Map<string, Song[]>();
     for (const song of allSongs) {
       const key = normalizeDupKey(song.title, song.artist);
@@ -437,7 +679,6 @@ export function libraryRoutes(navidrome: Navidrome, musicDir?: string) {
       groups.set(key, group);
     }
 
-    // Within each group, sub-cluster by duration (±2s tolerance) and keep clusters of 2+
     const duplicates: Array<Array<{
       id: string; title: string; artist: string; album: string;
       duration?: number; bitRate?: number; suffix?: string;
@@ -517,14 +758,13 @@ function orderByCompletionHistory<T extends { path: string; created?: string; ti
           byPath.set(normalizedPath, row.completed_at);
         }
       }
-
       const normalizedBasename = row.basename.toLowerCase();
       if (!byBasename.has(normalizedBasename)) {
         byBasename.set(normalizedBasename, row.completed_at);
       }
     }
   } catch {
-    // DB not initialized or table unavailable — fallback ordering still applies.
+    // DB not initialized — fallback ordering still applies.
   }
 
   const scored = songs.map((song) => {
@@ -647,4 +887,3 @@ function cleanupEmptyDirs(filePath: string, musicDir: string): void {
     }
   }
 }
-

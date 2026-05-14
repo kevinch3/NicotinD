@@ -80,6 +80,8 @@ export interface Album {
   coverArt?: string;
   songCount?: number;
   year?: number;
+  classification?: 'album' | 'single' | 'compilation' | 'unknown';
+  hidden?: boolean;
 }
 
 export interface AlbumDetail {
@@ -223,8 +225,27 @@ export class ApiService {
   }
 
   // Library
-  getAlbums(type = 'newest', size = 40, offset = 0) {
-    return this.http.get<Album[]>('/api/library/albums', { params: { type, size, offset } });
+  getAlbums(type = 'newest', size = 40, offset = 0, opts: { includeHidden?: boolean; classification?: string } = {}) {
+    const params: Record<string, string | number | boolean> = { type, size, offset };
+    if (opts.includeHidden) params['includeHidden'] = true;
+    if (opts.classification) params['classification'] = opts.classification;
+    return this.http.get<Album[]>('/api/library/albums', { params });
+  }
+
+  hideAlbum(id: string) {
+    return this.http.post<{ ok: boolean }>(`/api/library/albums/${id}/hide`, {});
+  }
+  unhideAlbum(id: string) {
+    return this.http.post<{ ok: boolean }>(`/api/library/albums/${id}/unhide`, {});
+  }
+  reclassifyAlbum(id: string, classification: 'album' | 'single' | 'compilation' | 'unknown') {
+    return this.http.post<{ ok: boolean }>(`/api/library/albums/${id}/reclassify`, { classification });
+  }
+  clearAlbumOverride(id: string) {
+    return this.http.post<{ ok: boolean }>(`/api/library/albums/${id}/clear-override`, {});
+  }
+  resyncLibrary() {
+    return this.http.post<{ ok: boolean }>(`/api/library/sync`, {});
   }
 
   getAlbum(id: string) {

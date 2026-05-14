@@ -4,32 +4,13 @@ import { Hono } from 'hono';
 import { shareRoutes } from './share.js';
 import { authMiddleware, signJwt } from '../middleware/auth.js';
 import type { AuthEnv } from '../middleware/auth.js';
+import { applySchema } from '../db.js';
 
 const testDb = new Database(':memory:');
-testDb.run(`
-  CREATE TABLE users (
-    id TEXT PRIMARY KEY,
-    username TEXT UNIQUE NOT NULL,
-    password_hash TEXT NOT NULL,
-    role TEXT NOT NULL DEFAULT 'user',
-    status TEXT NOT NULL DEFAULT 'active',
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-  )
-`);
-testDb.run(`
-  CREATE TABLE share_tokens (
-    token             TEXT    PRIMARY KEY,
-    resource_type     TEXT    NOT NULL,
-    resource_id       TEXT    NOT NULL,
-    created_by        TEXT    NOT NULL,
-    created_at        INTEGER NOT NULL,
-    first_accessed_at INTEGER,
-    expires_at        INTEGER
-  )
-`);
-testDb.run("INSERT INTO users VALUES ('u1', 'alice', 'hash', 'user', 'active', datetime('now'))");
+applySchema(testDb);
+testDb.run("INSERT INTO users (id, username, password_hash, role) VALUES ('u1', 'alice', 'hash', 'user')");
 
-mock.module('../db.js', () => ({ getDatabase: () => testDb }));
+mock.module('../db.js', () => ({ getDatabase: () => testDb, applySchema }));
 
 const SECRET = 'test-secret';
 

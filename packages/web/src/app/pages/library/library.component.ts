@@ -126,6 +126,7 @@ export class LibraryComponent implements OnInit, OnDestroy {
   readonly loading = signal(true);
   readonly loadingMore = signal(false);
   readonly done = signal(false);
+  readonly showHidden = signal<boolean>(localStorage.getItem('nicotind-library-show-hidden') === '1');
 
   private offset = 0;
   private observer: IntersectionObserver | null = null;
@@ -224,12 +225,43 @@ export class LibraryComponent implements OnInit, OnDestroy {
     await this.resetAndLoad();
   }
 
+  toggleShowHidden(): void {
+    const next = !this.showHidden();
+    this.showHidden.set(next);
+    localStorage.setItem('nicotind-library-show-hidden', next ? '1' : '0');
+    void this.resetAndLoad();
+  }
+
+  async hideAlbum(album: Album, event: Event): Promise<void> {
+    event.preventDefault();
+    event.stopPropagation();
+    try {
+      await firstValueFrom(this.api.hideAlbum(album.id));
+      this.albums.update((existing) => existing.filter((a) => a.id !== album.id));
+    } catch {
+      /* ignore */
+    }
+  }
+
+  async unhideAlbum(album: Album, event: Event): Promise<void> {
+    event.preventDefault();
+    event.stopPropagation();
+    try {
+      await firstValueFrom(this.api.unhideAlbum(album.id));
+      void this.resetAndLoad();
+    } catch {
+      /* ignore */
+    }
+  }
+
   async loadMore(): Promise<void> {
     if (this.loadingMore() || this.done() || this.restoring) return;
     this.loadingMore.set(true);
     try {
       const page = await firstValueFrom(
-        this.api.getAlbums(this.albumListType(), PAGE_SIZE, this.offset),
+        this.api.getAlbums(this.albumListType(), PAGE_SIZE, this.offset, {
+          includeHidden: this.showHidden(),
+        }),
       );
       if (page.length === 0) {
         this.done.set(true);
@@ -270,7 +302,9 @@ export class LibraryComponent implements OnInit, OnDestroy {
         const remaining = target - this.offset;
         const fetchSize = Math.min(PAGE_SIZE, remaining);
         const page = await firstValueFrom(
-          this.api.getAlbums(this.albumListType(), fetchSize, this.offset),
+          this.api.getAlbums(this.albumListType(), fetchSize, this.offset, {
+            includeHidden: this.showHidden(),
+          }),
         );
         if (page.length === 0) {
           this.done.set(true);

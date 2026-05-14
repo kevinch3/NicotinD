@@ -4,22 +4,14 @@ import { Hono } from 'hono';
 import { settingsRoutes } from './settings.js';
 import { authMiddleware, signJwt } from '../middleware/auth.js';
 import type { AuthEnv } from '../middleware/auth.js';
+import { applySchema } from '../db.js';
 
 const testDb = new Database(':memory:');
-testDb.run(`
-  CREATE TABLE users (
-    id TEXT PRIMARY KEY,
-    username TEXT UNIQUE NOT NULL,
-    password_hash TEXT NOT NULL,
-    role TEXT NOT NULL DEFAULT 'user',
-    status TEXT NOT NULL DEFAULT 'active',
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-  )
-`);
-testDb.run("INSERT INTO users VALUES ('admin1', 'admin', 'hash', 'admin', 'active', datetime('now'))");
-testDb.run("INSERT INTO users VALUES ('user1', 'alice', 'hash', 'user', 'active', datetime('now'))");
+applySchema(testDb);
+testDb.run("INSERT INTO users (id, username, password_hash, role) VALUES ('admin1', 'admin', 'hash', 'admin')");
+testDb.run("INSERT INTO users (id, username, password_hash, role) VALUES ('user1', 'alice', 'hash', 'user')");
 
-mock.module('../db.js', () => ({ getDatabase: () => testDb }));
+mock.module('../db.js', () => ({ getDatabase: () => testDb, applySchema }));
 
 const SECRET = 'test-secret';
 

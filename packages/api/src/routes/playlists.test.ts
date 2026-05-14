@@ -4,33 +4,17 @@ import { Hono } from 'hono';
 import { playlistRoutes } from './playlists.js';
 import { authMiddleware, signJwt } from '../middleware/auth.js';
 import type { AuthEnv } from '../middleware/auth.js';
+import { applySchema } from '../db.js';
 
 // ── in-memory DB ──────────────────────────────────────────────────────────────
 
 const testDb = new Database(':memory:');
-testDb.run(`
-  CREATE TABLE users (
-    id TEXT PRIMARY KEY,
-    username TEXT UNIQUE NOT NULL,
-    password_hash TEXT NOT NULL,
-    role TEXT NOT NULL DEFAULT 'user',
-    status TEXT NOT NULL DEFAULT 'active',
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-  )
-`);
-testDb.run(`
-  CREATE TABLE playlist_visibility (
-    playlist_id TEXT PRIMARY KEY,
-    owner_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    visibility  TEXT NOT NULL DEFAULT 'personal'
-                     CHECK (visibility IN ('personal', 'global'))
-  )
-`);
-testDb.run("INSERT INTO users VALUES ('u1', 'alice', 'hash', 'user', 'active', datetime('now'))");
-testDb.run("INSERT INTO users VALUES ('u2', 'bob',   'hash', 'user', 'active', datetime('now'))");
-testDb.run("INSERT INTO users VALUES ('a1', 'admin', 'hash', 'admin','active', datetime('now'))");
+applySchema(testDb);
+testDb.run("INSERT INTO users (id, username, password_hash, role) VALUES ('u1', 'alice', 'hash', 'user')");
+testDb.run("INSERT INTO users (id, username, password_hash, role) VALUES ('u2', 'bob',   'hash', 'user')");
+testDb.run("INSERT INTO users (id, username, password_hash, role) VALUES ('a1', 'admin', 'hash', 'admin')");
 
-mock.module('../db.js', () => ({ getDatabase: () => testDb }));
+mock.module('../db.js', () => ({ getDatabase: () => testDb, applySchema }));
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 

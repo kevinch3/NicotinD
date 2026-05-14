@@ -4,22 +4,14 @@ import { Database } from 'bun:sqlite';
 import { libraryRoutes } from './library.js';
 import type { AuthEnv } from '../middleware/auth.js';
 
+import { applySchema } from '../db.js';
+
+const sharedDb = new Database(':memory:');
+applySchema(sharedDb);
+
 mock.module('../db.js', () => ({
-  getDatabase: () => {
-    const db = new Database(':memory:');
-    db.run(`
-      CREATE TABLE IF NOT EXISTS completed_downloads (
-        transfer_key TEXT PRIMARY KEY,
-        username TEXT NOT NULL,
-        directory TEXT NOT NULL,
-        filename TEXT NOT NULL,
-        relative_path TEXT,
-        basename TEXT NOT NULL,
-        completed_at INTEGER NOT NULL
-      )
-    `);
-    return db;
-  },
+  getDatabase: () => sharedDb,
+  applySchema,
 }));
 
 const fsState = new Map<string, boolean>();

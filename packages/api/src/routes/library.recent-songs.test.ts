@@ -1,34 +1,45 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
 import { Hono } from 'hono';
 import { Database } from 'bun:sqlite';
+import { applySchema } from '../db.js';
 import { libraryRoutes } from './library.js';
 
 // Use an isolated in-memory DB so this test file is not affected by other
-// test files that mock or replace the db.js singleton.
-let testDb: Database;
+// test files that mock or replace the db.js singleton. Initialized at module
+// load so the mock can be called before any beforeEach runs (Bun's mock.module
+// is process-global; the last call for a module path wins).
+let testDb: Database = (() => {
+  const d = new Database(':memory:');
+  applySchema(d);
+  return d;
+})();
 
 mock.module('../db.js', () => ({
   getDatabase: () => testDb,
   initDatabase: () => testDb,
+  applySchema,
 }));
 
 function createTestDb(): Database {
   const db = new Database(':memory:');
-  db.run(`
-    CREATE TABLE IF NOT EXISTS completed_downloads (
-      transfer_key TEXT PRIMARY KEY,
-      username TEXT NOT NULL,
-      directory TEXT NOT NULL,
-      filename TEXT NOT NULL,
-      relative_path TEXT,
-      basename TEXT NOT NULL,
-      completed_at INTEGER NOT NULL
-    )
-  `);
-  db.run(`CREATE INDEX IF NOT EXISTS idx_completed_downloads_completed_at ON completed_downloads (completed_at DESC)`);
-  db.run(`CREATE INDEX IF NOT EXISTS idx_completed_downloads_relative_path ON completed_downloads (relative_path)`);
-  db.run(`CREATE INDEX IF NOT EXISTS idx_completed_downloads_basename_completed_at ON completed_downloads (basename, completed_at DESC)`);
+  applySchema(db);
   return db;
+}
+
+function seedSong(
+  db: Database,
+  s: { id: string; title: string; artist: string; album: string; albumId: string; path: string; created: string },
+): void {
+  db.run(
+    `INSERT OR IGNORE INTO library_albums (id, name, artist, artist_id, song_count, duration, created, synced_at)
+     VALUES (?, ?, ?, ?, 1, 0, ?, 0)`,
+    [s.albumId, s.album, s.artist, s.artist, s.created],
+  );
+  db.run(
+    `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, size, bit_rate, suffix, content_type, created, synced_at)
+     VALUES (?, ?, ?, ?, ?, 0, ?, 0, 0, 'mp3', 'audio/mpeg', ?, 0)`,
+    [s.id, s.albumId, s.title, s.artist, s.artist, s.path, s.created],
+  );
 }
 
 describe('library recent-songs ordering', () => {
@@ -36,6 +47,9 @@ describe('library recent-songs ordering', () => {
 
   beforeEach(() => {
     testDb = createTestDb();
+    seedSong(testDb, { id: 'song-1', title: 'First', artist: 'Artist A', album: 'Alpha', albumId: 'album-1', path: 'Artist A/Alpha/01 - First.mp3', created: '2026-03-20T10:00:00.000Z' });
+    seedSong(testDb, { id: 'song-2', title: 'Second', artist: 'Artist A', album: 'Alpha', albumId: 'album-1', path: 'Artist A/Alpha/02 - Second.mp3', created: '2026-03-20T09:00:00.000Z' });
+    seedSong(testDb, { id: 'song-3', title: 'Third', artist: 'Artist B', album: 'Beta', albumId: 'album-2', path: 'Artist B/Beta/01 - Third.mp3', created: '2026-03-20T08:00:00.000Z' });
 
     const navidromeMock = {
       browsing: {
