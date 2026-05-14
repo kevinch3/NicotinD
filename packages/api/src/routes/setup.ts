@@ -102,7 +102,6 @@ export function setupRoutes({
       }
       watcherRef.current = new DownloadWatcher(slskdRef.current!, navidrome, {
         musicDir: config.musicDir,
-        compilationTaggingEnabled: config.metadataFix.enabled,
       });
       watcherRef.current.start();
     }

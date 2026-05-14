@@ -8,9 +8,11 @@ export function buildSlskdDefinition(config: NicotinDConfig): ServiceDefinition 
   const dataDir = expandPath(config.dataDir);
   const configDir = join(dataDir, 'slskd');
   const musicDir = expandPath(config.musicDir);
+  const stagingDir = join(configDir, 'downloads');
   const binDir = join(dataDir, 'bin');
   mkdirSync(configDir, { recursive: true });
   mkdirSync(musicDir, { recursive: true });
+  mkdirSync(stagingDir, { recursive: true });
 
   const slskdConfig = {
     soulseek: {
@@ -20,7 +22,9 @@ export function buildSlskdDefinition(config: NicotinDConfig): ServiceDefinition 
       upnp: config.soulseek.enableUPnP,
     },
     directories: {
-      downloads: musicDir,
+      // slskd writes here; LibraryOrganizer moves files into musicDir with
+      // a clean <Artist>/<Album>/<NN - Title>.<ext> layout.
+      downloads: stagingDir,
     },
     web: {
       authentication: {

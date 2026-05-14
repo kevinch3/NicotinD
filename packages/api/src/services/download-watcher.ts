@@ -3,9 +3,10 @@ import type { Slskd } from '@nicotind/slskd-client';
 import type { Navidrome } from '@nicotind/navidrome-client';
 import { basename, join, relative } from 'node:path';
 import { existsSync } from 'node:fs';
-import { CompilationTagger } from './compilation-tagger.js';
 import type { CompletedDownloadFile } from './path-inference.js';
 import { AutoPlaylistService } from './auto-playlist.service.js';
+import { LibraryOrganizer } from './library-organizer.js';
+import { AcoustIdLookup } from './acoustid-lookup.js';
 import { getDatabase } from '../db.js';
 
 const log = createLogger('download-watcher');
@@ -14,9 +15,15 @@ interface DownloadWatcherOptions {
   intervalMs?: number;
   scanDebounceMs?: number;
   musicDir?: string;
-  compilationTaggingEnabled?: boolean;
-  compilationTagger?: { tagCompletedFolders: (files: CompletedDownloadFile[]) => Promise<void> };
+  stagingDir?: string;
+  acoustidApiKey?: string;
+  /** Absolute path for the unsortable-files bucket. Defaults to <musicDir>/Unsorted (visible to Navidrome). */
+  unsortedRoot?: string;
+  /** Pre-built organizer (testing). */
+  libraryOrganizer?: { organizeBatch: (files: CompletedDownloadFile[]) => Promise<unknown> };
   autoPlaylist?: { processBatch: (files: CompletedDownloadFile[]) => Promise<void> };
+  /** Fired after each post-download Navidrome scan; used to drive the canonical-DB sync. */
+  onScanComplete?: () => Promise<void> | void;
 }
 
 export class DownloadWatcher {
@@ -28,8 +35,8 @@ export class DownloadWatcher {
   private scanDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   private scanDebounceMs: number;
   private musicDir: string | null;
-  private compilationTagger: {
-    tagCompletedFolders: (files: CompletedDownloadFile[]) => Promise<void>;
+  private libraryOrganizer: {
+    organizeBatch: (files: CompletedDownloadFile[]) => Promise<unknown>;
   };
   private checking = false;
   private pendingPlaylistFiles: CompletedDownloadFile[] = [];
@@ -37,6 +44,7 @@ export class DownloadWatcher {
     processBatch: (files: CompletedDownloadFile[]) => Promise<void>;
     migrateNavidromeIds?: () => Promise<void>;
   };
+  private onScanComplete?: () => Promise<void> | void;
 
   constructor(slskd: Slskd, navidrome: Navidrome, options: DownloadWatcherOptions = {}) {
     this.slskd = slskd;
@@ -44,15 +52,18 @@ export class DownloadWatcher {
     this.intervalMs = options.intervalMs ?? 5_000;
     this.scanDebounceMs = options.scanDebounceMs ?? 10_000;
     this.musicDir = options.musicDir ? this.expandDir(options.musicDir) : null;
-    this.compilationTagger =
-      options.compilationTagger ??
-      new CompilationTagger({
+    this.libraryOrganizer =
+      options.libraryOrganizer ??
+      new LibraryOrganizer({
         musicDir: options.musicDir ?? '~/Music',
-        enabled: options.compilationTaggingEnabled ?? true,
+        stagingDir: options.stagingDir,
+        acoustid: options.acoustidApiKey ? new AcoustIdLookup(options.acoustidApiKey) : undefined,
+        unsortedRoot: options.unsortedRoot,
       });
     this.autoPlaylist =
       options.autoPlaylist ??
       new AutoPlaylistService(navidrome, this.musicDir ?? '', undefined, getDatabase());
+    this.onScanComplete = options.onScanComplete;
   }
 
   start(): void {
@@ -151,9 +162,9 @@ export class DownloadWatcher {
 
       if (newCompletions) {
         try {
-          await this.compilationTagger.tagCompletedFolders(completedFiles);
+          await this.libraryOrganizer.organizeBatch(completedFiles);
         } catch (err) {
-          log.warn({ err }, 'Compilation tagging step failed');
+          log.warn({ err }, 'Library organization step failed');
         }
         this.debouncedScan();
       }
@@ -186,6 +197,13 @@ export class DownloadWatcher {
         await this.autoPlaylist.processBatch(filesToProcess);
       } catch (err) {
         log.error({ err }, 'Auto-playlist processing failed');
+      }
+      if (this.onScanComplete) {
+        try {
+          await this.onScanComplete();
+        } catch (err) {
+          log.error({ err }, 'onScanComplete handler failed');
+        }
       }
     }, this.scanDebounceMs);
   }

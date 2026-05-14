@@ -18,9 +18,9 @@ function makeNavidromeMock() {
     },
   };
 }
-function makeCompilationTaggerMock() {
+function makeLibraryOrganizerMock() {
   return {
-    tagCompletedFolders: mock((_files: CompletedDownloadFile[]) => Promise.resolve()),
+    organizeBatch: mock((_files: CompletedDownloadFile[]) => Promise.resolve({ moved: 0, skipped: 0, unsorted: 0, failed: 0 })),
   };
 }
 function makeAutoPlaylistMock() {
@@ -32,14 +32,14 @@ function makeAutoPlaylistMock() {
 describe('DownloadWatcher', () => {
   let slskdMock: ReturnType<typeof makeSlskdMock>;
   let navidromeMock: ReturnType<typeof makeNavidromeMock>;
-  let compilationTaggerMock: ReturnType<typeof makeCompilationTaggerMock>;
+  let libraryOrganizerMock: ReturnType<typeof makeLibraryOrganizerMock>;
   let autoPlaylistMock: ReturnType<typeof makeAutoPlaylistMock>;
   let watcher: DownloadWatcher;
 
   beforeEach(() => {
     slskdMock = makeSlskdMock();
     navidromeMock = makeNavidromeMock();
-    compilationTaggerMock = makeCompilationTaggerMock();
+    libraryOrganizerMock = makeLibraryOrganizerMock();
     autoPlaylistMock = makeAutoPlaylistMock();
 
     // Use very small intervals for testing
@@ -49,7 +49,7 @@ describe('DownloadWatcher', () => {
       {
         intervalMs: 10,
         scanDebounceMs: 10,
-        compilationTagger: compilationTaggerMock,
+        libraryOrganizer: libraryOrganizerMock,
         autoPlaylist: autoPlaylistMock,
       },
     );
@@ -84,8 +84,8 @@ describe('DownloadWatcher', () => {
     // Wait for debounce (10ms + buffer)
     await new Promise((r) => setTimeout(r, 50));
 
-    expect(compilationTaggerMock.tagCompletedFolders).toHaveBeenCalledTimes(1);
-    expect(compilationTaggerMock.tagCompletedFolders).toHaveBeenCalledWith([
+    expect(libraryOrganizerMock.organizeBatch).toHaveBeenCalledTimes(1);
+    expect(libraryOrganizerMock.organizeBatch).toHaveBeenCalledWith([
       {
         username: 'user1',
         directory: 'dir1',

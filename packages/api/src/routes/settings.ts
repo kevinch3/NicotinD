@@ -191,7 +191,6 @@ export function settingsRoutes(
     }
     watcherRef.current = new DownloadWatcher(slskdRef.current!, navidrome, {
       musicDir: config.musicDir,
-      compilationTaggingEnabled: config.metadataFix.enabled,
     });
     watcherRef.current.start();
 

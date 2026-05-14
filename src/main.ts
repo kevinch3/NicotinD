@@ -131,6 +131,12 @@ async function main() {
       delete current.tailscale;
       saveSecrets(config.dataDir, current);
     },
+    stagingDir: join(
+      config.dataDir.startsWith('~') ? join(process.env.HOME ?? '/root', config.dataDir.slice(1)) : config.dataDir,
+      'slskd',
+      'downloads',
+    ),
+    acoustidApiKey: secrets.acoustidApiKey,
   });
 
   if (watcherRef.current) watcherRef.current.start();
@@ -169,6 +175,7 @@ export interface PersistedSecrets {
   soulseekEnableUPnP?: boolean;
   tailscale?: { authKey: string };
   navidromeAdminCreated?: boolean;
+  acoustidApiKey?: string;
 }
 
 export function loadOrCreateSecrets(dataDir: string): PersistedSecrets {
