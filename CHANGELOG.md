@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.7](https://github.com/kevinch3/NicotinD/compare/v0.1.6...v0.1.7) (2026-05-14)
+
+
+### Features
+
+* **library:** canonical NicotinD library DB with hide/classify curation ([1cb27a6](https://github.com/kevinch3/NicotinD/commit/1cb27a60c2628347b7e17c5ded890e12c3fe2b56))
+* **library:** organize new downloads into <Artist>/<Album>/<Track> with AcoustID enrichment ([3fa8287](https://github.com/kevinch3/NicotinD/commit/3fa8287c77a5fa75ec4417fc9c39cd9c7ead8353))
+
 ## [0.1.6](https://github.com/kevinch3/NicotinD/compare/v0.1.5...v0.1.6) (2026-05-13)
 
 
