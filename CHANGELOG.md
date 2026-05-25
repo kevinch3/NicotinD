@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.9](https://github.com/kevinch3/NicotinD/compare/v0.1.8...v0.1.9) (2026-05-25)
+
+
+### Features
+
+* **library:** hide synthetic Singles albums from album grid ([743d4ee](https://github.com/kevinch3/NicotinD/commit/743d4ee40f86b8a71ec85f2d1f0ab38f99c49549))
+
 ## [0.1.8](https://github.com/kevinch3/NicotinD/compare/v0.1.7...v0.1.8) (2026-05-25)
 
 
