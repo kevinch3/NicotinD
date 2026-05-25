@@ -11,7 +11,7 @@ import {
   AUDIO_EXTS,
   type AudioTags,
 } from './audio-tags.js';
-import { sanitizeSegment, trackNumberPrefix, stripAudioExt, stripTrackPrefix, isTrackNumberFragment, looksLikeFilenameTag, stripArtistLeadJunk } from './path-sanitize.js';
+import { sanitizeSegment, trackNumberPrefix, stripAudioExt, stripTrackPrefix, isTrackNumberFragment, looksLikeFilenameTag, stripArtistLeadJunk, stripFeaturingSuffix } from './path-sanitize.js';
 import { isAbsolute } from 'node:path';
 import type { AcoustIdLookup } from './acoustid-lookup.js';
 
@@ -478,6 +478,7 @@ function sanitizeArtistTag(raw: string | undefined): string | undefined {
   let v = stripTrackPrefix(raw);
   if (!v) return undefined;
   v = stripArtistLeadJunk(v);
+  v = stripFeaturingSuffix(v);
   if (!v || isTrackNumberFragment(v)) return undefined;
   return v;
 }

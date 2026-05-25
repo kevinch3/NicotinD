@@ -77,3 +77,21 @@ export function stripArtistLeadJunk(s: string): string {
   } while (cur !== prev && cur.length > 0);
   return cur;
 }
+
+const TRAILING_FEAT_BRACKET = /\s*[([]\s*(feat\.?|ft\.?|featuring|with|w\/)\b[^)\]]*[)\]]\s*$/i;
+const TRAILING_FEAT_BARE = /\s+(feat\.?|ft\.?|featuring|with|w\/)\s+\S.*$/i;
+const TRAILING_PUNCT = /[\s,;\-&+|/]+$/;
+
+/**
+ * Strip a trailing featuring credit so `"Daft Punk feat. Pharrell"` → `"Daft Punk"`.
+ * Handles bare suffixes (`feat`, `ft`, `featuring`, `with`, `w/`) and parenthesized
+ * or bracketed variants. Leaves `&` / `,` joiners inside the artist value intact
+ * (band names like `"Earth, Wind & Fire"` are preserved).
+ */
+export function stripFeaturingSuffix(s: string): string {
+  if (!s) return s;
+  let cur = s.replace(TRAILING_FEAT_BRACKET, '');
+  cur = cur.replace(TRAILING_FEAT_BARE, '');
+  cur = cur.replace(TRAILING_PUNCT, '').trim();
+  return cur;
+}
