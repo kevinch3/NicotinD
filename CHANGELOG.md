@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.8](https://github.com/kevinch3/NicotinD/compare/v0.1.7...v0.1.8) (2026-05-25)
+
+
+### Features
+
+* **library:** infer + persist titles for filename-shaped tracks ([0668fea](https://github.com/kevinch3/NicotinD/commit/0668fea20d33ccc55aa90a2d430d97394fc43c23))
+* **library:** strip featured-artist suffixes from artist folder names ([9335067](https://github.com/kevinch3/NicotinD/commit/93350672ddffab4815df4b64404950cdd8b91f26))
+* **playlists:** one shared list with creator/modifier tracking ([a5beaf1](https://github.com/kevinch3/NicotinD/commit/a5beaf12d810121ca3b760e9ab004b28bd34feec))
+
+
+### Bug Fixes
+
+* **library:** clean filename-shaped titles on tagged files; reject phantom-dir albums ([455bab2](https://github.com/kevinch3/NicotinD/commit/455bab2bb8b8c9168d231c7d6685bb4c2c535fe1))
+
 ## [0.1.7](https://github.com/kevinch3/NicotinD/compare/v0.1.6...v0.1.7) (2026-05-14)
 
 
