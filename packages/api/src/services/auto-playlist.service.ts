@@ -234,6 +234,7 @@ export class AutoPlaylistService {
 
     try {
       await this.navidrome.playlists.update(playlist.id, { songIdsToAdd });
+      this.persistPlaylistVisibility(playlist.id);
       log.info({ name, added: songIdsToAdd.length }, 'Auto-playlist updated');
     } catch (err) {
       log.error({ err, name }, 'Failed to update playlist');
@@ -391,8 +392,13 @@ export class AutoPlaylistService {
         .get()?.id;
       if (!adminId) return;
       db.run(
-        'INSERT OR IGNORE INTO playlist_visibility (playlist_id, owner_id, visibility) VALUES (?, ?, ?)',
-        [playlistId, adminId, 'global'],
+        `INSERT INTO playlist_visibility
+           (playlist_id, owner_id, visibility, created_by, created_at, modified_by, modified_at)
+         VALUES (?, ?, 'global', ?, datetime('now'), ?, datetime('now'))
+         ON CONFLICT(playlist_id) DO UPDATE SET
+           modified_by = excluded.modified_by,
+           modified_at = excluded.modified_at`,
+        [playlistId, adminId, adminId, adminId],
       );
     } catch {
       // Non-fatal: DB may not be available in tests or early startup

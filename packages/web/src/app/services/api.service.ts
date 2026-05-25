@@ -120,6 +120,10 @@ export interface Playlist {
   created: string;
   changed: string;
   coverArt?: string;
+  createdBy?: string | null;
+  createdAt?: string | null;
+  modifiedBy?: string | null;
+  modifiedAt?: string | null;
 }
 
 export interface PlaylistDetail extends Playlist {

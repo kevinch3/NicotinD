@@ -518,7 +518,11 @@ describe('AutoPlaylistService.processBatch — playlist_visibility', () => {
         playlist_id TEXT PRIMARY KEY,
         owner_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         visibility  TEXT NOT NULL DEFAULT 'personal'
-                         CHECK (visibility IN ('personal', 'global'))
+                         CHECK (visibility IN ('personal', 'global')),
+        created_by  TEXT REFERENCES users(id),
+        created_at  TEXT,
+        modified_by TEXT REFERENCES users(id),
+        modified_at TEXT
       )
     `);
     visDb.run("INSERT INTO users VALUES ('a1', 'admin', 'hash', 'admin', 'active', datetime('now'))");
@@ -526,7 +530,17 @@ describe('AutoPlaylistService.processBatch — playlist_visibility', () => {
     navidromeMock = makeNavidromeMock();
   });
 
-  it('inserts a global visibility row when a new playlist is created', async () => {
+  type VisRow = {
+    playlist_id: string;
+    owner_id: string;
+    visibility: string;
+    created_by: string | null;
+    created_at: string | null;
+    modified_by: string | null;
+    modified_at: string | null;
+  };
+
+  it('inserts a global visibility row with author tracking when a new playlist is created', async () => {
     navidromeMock.search.search3.mockReturnValue(
       Promise.resolve({ song: [makeSong('song-1', 'dir1/song.mp3')], artist: [], album: [] }),
     );
@@ -535,15 +549,18 @@ describe('AutoPlaylistService.processBatch — playlist_visibility', () => {
     await svc.processBatch([{ username: 'u', directory: 'dir1', filename: 'song.mp3' }]);
 
     const row = visDb
-      .query<{ playlist_id: string; owner_id: string; visibility: string }, [string]>('SELECT * FROM playlist_visibility WHERE playlist_id = ?')
+      .query<VisRow, [string]>('SELECT * FROM playlist_visibility WHERE playlist_id = ?')
       .get(`id-${ALL_SINGLES}`);
     expect(row).not.toBeNull();
     expect(row!.visibility).toBe('global');
     expect(row!.owner_id).toBe('a1');
+    expect(row!.created_by).toBe('a1');
+    expect(row!.created_at).not.toBeNull();
+    expect(row!.modified_by).toBe('a1');
+    expect(row!.modified_at).not.toBeNull();
   });
 
-  it('does not duplicate a visibility row for an already-existing playlist', async () => {
-    // Playlist already exists in navidrome AND has a visibility row
+  it('upserts the visibility row for an existing playlist, bumping modified_* without duplicating', async () => {
     const playlistId = `id-${ALL_SINGLES}`;
     navidromeMock.playlists.list.mockReturnValue(
       Promise.resolve([{ id: playlistId, name: ALL_SINGLES, songCount: 0, entry: [] }]),
@@ -552,7 +569,9 @@ describe('AutoPlaylistService.processBatch — playlist_visibility', () => {
       Promise.resolve({ id: playlistId, name: ALL_SINGLES, entry: [] }),
     );
     visDb.run(
-      "INSERT INTO playlist_visibility VALUES (?, 'a1', 'global')",
+      `INSERT INTO playlist_visibility
+         (playlist_id, owner_id, visibility, created_by, created_at, modified_by, modified_at)
+       VALUES (?, 'a1', 'global', 'a1', '2020-01-01 00:00:00', 'a1', '2020-01-01 00:00:00')`,
       [playlistId],
     );
 
@@ -564,8 +583,10 @@ describe('AutoPlaylistService.processBatch — playlist_visibility', () => {
     await svc.processBatch([{ username: 'u', directory: 'dir1', filename: 'song.mp3' }]);
 
     const rows = visDb
-      .query<{ playlist_id: string; owner_id: string; visibility: string }, [string]>('SELECT * FROM playlist_visibility WHERE playlist_id = ?')
+      .query<VisRow, [string]>('SELECT * FROM playlist_visibility WHERE playlist_id = ?')
       .all(playlistId);
-    expect(rows).toHaveLength(1); // still just one row
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.created_at).toBe('2020-01-01 00:00:00'); // unchanged
+    expect(rows[0]!.modified_at).not.toBe('2020-01-01 00:00:00'); // bumped
   });
 });

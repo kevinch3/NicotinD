@@ -100,6 +100,26 @@ export function applySchema(db: Database): void {
     )
   `);
 
+  // visibility column is retained but unused; all playlists are shared.
+  try { db.run(`ALTER TABLE playlist_visibility ADD COLUMN created_by TEXT REFERENCES users(id)`); } catch { /* column exists */ }
+  try { db.run(`ALTER TABLE playlist_visibility ADD COLUMN created_at TEXT`); } catch { /* column exists */ }
+  try { db.run(`ALTER TABLE playlist_visibility ADD COLUMN modified_by TEXT REFERENCES users(id)`); } catch { /* column exists */ }
+  try { db.run(`ALTER TABLE playlist_visibility ADD COLUMN modified_at TEXT`); } catch { /* column exists */ }
+
+  try {
+    db.run(`
+      UPDATE playlist_visibility
+      SET created_by   = owner_id,
+          created_at   = datetime('now'),
+          modified_by  = owner_id,
+          modified_at  = datetime('now'),
+          visibility   = 'global'
+      WHERE created_at IS NULL
+    `);
+  } catch { /* columns not present on first boot; UPDATE runs harmlessly next time */ }
+
+  db.run(`CREATE INDEX IF NOT EXISTS idx_playlist_visibility_created_by ON playlist_visibility(created_by)`);
+
   db.run(`
     CREATE TABLE IF NOT EXISTS share_tokens (
       token             TEXT    PRIMARY KEY,

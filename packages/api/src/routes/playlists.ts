@@ -3,51 +3,107 @@ import type { Database } from 'bun:sqlite';
 import type { Navidrome } from '@nicotind/navidrome-client';
 import type { AuthEnv } from '../middleware/auth.js';
 
-type VisibilityRow = { playlist_id: string; owner_id: string; visibility: string };
+type MetadataJoinRow = {
+  playlist_id: string;
+  created_by: string | null;
+  created_at: string | null;
+  modified_by: string | null;
+  modified_at: string | null;
+};
 
-function getRow(db: Database, playlistId: string): VisibilityRow | null {
-  return db
-    .query<VisibilityRow, [string]>('SELECT * FROM playlist_visibility WHERE playlist_id = ?')
-    .get(playlistId);
+type GateRow = {
+  owner_id: string;
+  created_by: string | null;
+};
+
+type PlaylistAuthorFields = {
+  createdBy: string | null;
+  createdAt: string | null;
+  modifiedBy: string | null;
+  modifiedAt: string | null;
+};
+
+const JOIN_SQL = `SELECT pv.playlist_id,
+                         cu.username AS created_by,
+                         pv.created_at,
+                         mu.username AS modified_by,
+                         pv.modified_at
+                  FROM playlist_visibility pv
+                  LEFT JOIN users cu ON cu.id = pv.created_by
+                  LEFT JOIN users mu ON mu.id = pv.modified_by`;
+
+function joinMetadata<T extends { id: string }>(db: Database, playlists: T[]): Array<T & PlaylistAuthorFields> {
+  if (playlists.length === 0) return [];
+  const placeholders = playlists.map(() => '?').join(',');
+  const rows = db
+    .query<MetadataJoinRow, string[]>(`${JOIN_SQL} WHERE pv.playlist_id IN (${placeholders})`)
+    .all(...playlists.map((p) => p.id));
+  const byId = new Map(rows.map((r) => [r.playlist_id, r]));
+  return playlists.map((p) => {
+    const row = byId.get(p.id);
+    return {
+      ...p,
+      createdBy: row?.created_by ?? null,
+      createdAt: row?.created_at ?? null,
+      modifiedBy: row?.modified_by ?? null,
+      modifiedAt: row?.modified_at ?? null,
+    };
+  });
 }
 
-function canAccess(row: VisibilityRow | null, userId: string, role?: string): boolean {
-  if (!row) return true; // legacy — treat as global
-  if (row.visibility === 'global') return true;
-  return row.owner_id === userId || role === 'admin';
+function attachMetadata<T extends { id: string }>(db: Database, playlist: T): T & PlaylistAuthorFields {
+  const row = db
+    .query<MetadataJoinRow, [string]>(`${JOIN_SQL} WHERE pv.playlist_id = ?`)
+    .get(playlist.id);
+  return {
+    ...playlist,
+    createdBy: row?.created_by ?? null,
+    createdAt: row?.created_at ?? null,
+    modifiedBy: row?.modified_by ?? null,
+    modifiedAt: row?.modified_at ?? null,
+  };
 }
 
-function isOwnerOrAdmin(row: VisibilityRow | null, userId: string, role?: string): boolean {
-  if (!row) return role === 'admin'; // legacy — only admin can manage
-  return row.owner_id === userId || role === 'admin';
+function upsertMetadata(db: Database, playlistId: string, userId: string, isCreate: boolean): void {
+  if (isCreate) {
+    db.run(
+      `INSERT INTO playlist_visibility
+         (playlist_id, owner_id, visibility, created_by, created_at, modified_by, modified_at)
+       VALUES (?, ?, 'global', ?, datetime('now'), ?, datetime('now'))`,
+      [playlistId, userId, userId, userId],
+    );
+    return;
+  }
+  db.run(
+    `INSERT INTO playlist_visibility
+       (playlist_id, owner_id, visibility, created_by, created_at, modified_by, modified_at)
+     VALUES (?, ?, 'global', ?, datetime('now'), ?, datetime('now'))
+     ON CONFLICT(playlist_id) DO UPDATE SET
+       modified_by = excluded.modified_by,
+       modified_at = excluded.modified_at`,
+    [playlistId, userId, userId, userId],
+  );
 }
 
 export function playlistRoutes(navidrome: Navidrome, db: Database) {
   const app = new Hono<AuthEnv>();
 
   app.get('/', async (c) => {
-    const user = c.var.user;
     const playlists = await navidrome.playlists.list();
-    const visible = playlists.filter((p) => canAccess(getRow(db, p.id), user.sub, user.role));
-    return c.json(visible);
+    return c.json(joinMetadata(db, playlists));
   });
 
   app.get('/:id', async (c) => {
-    const user = c.var.user;
     const id = c.req.param('id');
     const playlist = await navidrome.playlists.get(id);
-    if (!canAccess(getRow(db, id), user.sub, user.role)) {
-      return c.json({ error: 'Forbidden' }, 403);
-    }
-    return c.json(playlist);
+    return c.json(attachMetadata(db, playlist));
   });
 
   app.post('/', async (c) => {
     const user = c.var.user;
-    const { name, songIds, visibility } = await c.req.json<{
+    const { name, songIds } = await c.req.json<{
       name: string;
       songIds?: string[];
-      visibility?: 'personal' | 'global';
     }>();
 
     if (!name) {
@@ -55,14 +111,12 @@ export function playlistRoutes(navidrome: Navidrome, db: Database) {
     }
 
     const playlist = await navidrome.playlists.create(name, songIds);
-    db.run(
-      'INSERT INTO playlist_visibility (playlist_id, owner_id, visibility) VALUES (?, ?, ?)',
-      [playlist.id, user.sub, visibility === 'global' ? 'global' : 'personal'],
-    );
-    return c.json(playlist, 201);
+    upsertMetadata(db, playlist.id, user.sub, true);
+    return c.json(attachMetadata(db, playlist), 201);
   });
 
   app.put('/:id', async (c) => {
+    const user = c.var.user;
     const id = c.req.param('id');
     const updates = await c.req.json<{
       name?: string;
@@ -70,36 +124,23 @@ export function playlistRoutes(navidrome: Navidrome, db: Database) {
       songIndexesToRemove?: number[];
     }>();
     await navidrome.playlists.update(id, updates);
-    return c.json({ ok: true });
-  });
-
-  app.patch('/:id/visibility', async (c) => {
-    const user = c.var.user;
-    const id = c.req.param('id');
-    const { visibility } = await c.req.json<{ visibility: string }>();
-
-    if (visibility !== 'personal' && visibility !== 'global') {
-      return c.json({ error: 'visibility must be "personal" or "global"' }, 400);
-    }
-
-    const row = getRow(db, id);
-    if (!isOwnerOrAdmin(row, user.sub, user.role)) {
-      return c.json({ error: 'Forbidden' }, 403);
-    }
-
-    db.run(
-      'INSERT OR REPLACE INTO playlist_visibility (playlist_id, owner_id, visibility) VALUES (?, ?, ?)',
-      [id, row?.owner_id ?? user.sub, visibility],
-    );
+    upsertMetadata(db, id, user.sub, false);
     return c.json({ ok: true });
   });
 
   app.delete('/:id', async (c) => {
     const user = c.var.user;
     const id = c.req.param('id');
-    const row = getRow(db, id);
+    const row = db
+      .query<GateRow, [string]>(
+        'SELECT owner_id, created_by FROM playlist_visibility WHERE playlist_id = ?',
+      )
+      .get(id);
 
-    if (!isOwnerOrAdmin(row, user.sub, user.role)) {
+    const creator = row?.created_by ?? row?.owner_id ?? null;
+    const isAdmin = user.role === 'admin';
+    const isCreator = creator !== null && creator === user.sub;
+    if (!isAdmin && !isCreator) {
       return c.json({ error: 'Forbidden' }, 403);
     }
 
