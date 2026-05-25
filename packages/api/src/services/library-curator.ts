@@ -7,6 +7,11 @@ const log = createLogger('library-curator');
 const COMPILATION_NAME_HINTS = /\b(various artists|va|compilation|greatest hits|best of|hits|mixtape)\b/i;
 const COMPILATION_ARTIST_HINTS = /\b(various|various artists|va|compilation)\b/i;
 
+// Hide synthetic "<Artist> · Singles" buckets from the album grid. A real
+// album titled "Singles" with >=4 tracks (e.g. Future's *Singles*) stays
+// visible. Users can override either way via setManualOverride.
+const SINGLES_HIDE_MAX_TRACKS = 3;
+
 interface CuratorResult {
   hiddenAlbums: number;
   singles: number;
@@ -113,6 +118,12 @@ function classify(row: AlbumRow): { classification: Classification; hidden: bool
     COMPILATION_ARTIST_HINTS.test(row.artist)
   ) {
     return { classification: 'compilation', hidden: false };
+  }
+
+  // Synthetic "Singles" bucket: organizer Singles-fallback creates
+  // <Artist>/Singles/ for tracks without an album tag. Hide when small.
+  if (row.name.trim().toLowerCase() === 'singles' && row.song_count <= SINGLES_HIDE_MAX_TRACKS) {
+    return { classification: 'single', hidden: true };
   }
 
   // Single-track album that *also* has unknown identity → noise, hide it.
