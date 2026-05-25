@@ -187,6 +187,24 @@ describe('LibraryOrganizer (real fs)', () => {
     expect(existsSync(join(root, 'Dupe', 'Album', 'Same (2).mp3'))).toBe(true);
   });
 
+  it('cleans a filename-shaped title even when the title tag is already set', async () => {
+    const root = tmpRoot();
+    const staging = join(root, '_staging');
+    // Title tag is filename leak; artist + album already set.
+    seed(staging, 'Babasonicos/01-Demasiado.mp3', {
+      artist: 'Babasónicos',
+      title: '01-Demasiado',
+    });
+    await makeOrg(root, staging).organizeBatch([
+      { username: 'u', directory: 'Babasonicos', filename: '01-Demasiado.mp3', directoryFileCount: 1 },
+    ]);
+    const dest = join(root, 'Babasónicos', 'Singles', '01 - Demasiado.mp3');
+    expect(existsSync(dest)).toBe(true);
+    const tags = nodeId3.read(dest) as { title?: string; trackNumber?: string } | false;
+    expect(tags && typeof tags === 'object' ? tags.title : undefined).toBe('Demasiado');
+    expect(tags && typeof tags === 'object' ? tags.trackNumber : undefined).toBe('1');
+  });
+
   it('writes an inferred title back to a file whose title tag is missing', async () => {
     const root = tmpRoot();
     const staging = join(root, '_staging');

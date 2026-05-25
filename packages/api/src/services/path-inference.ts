@@ -1,5 +1,6 @@
 import { basename } from 'node:path';
 import { cleanFolderName } from '@nicotind/core';
+import { looksLikeFilenameTag } from './path-sanitize.js';
 
 export interface CompletedDownloadFile {
   username: string;
@@ -106,7 +107,7 @@ export function inferMetadataFromPath(filename: string, directory: string): Pars
   }
 
   const folderAlbum = leafFolderName(directory);
-  if (!parsed.album && hasUsableValue(folderAlbum)) {
+  if (!parsed.album && hasUsableValue(folderAlbum) && !looksLikeFilenameTag(folderAlbum)) {
     parsed.album = folderAlbum;
   }
 

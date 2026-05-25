@@ -157,6 +157,15 @@ export class LibraryOrganizer {
     let artist = sanitizeArtistTag(normalizeTagValue(tags.artist));
     let title = normalizeTagValue(tags.title);
     let album = sanitizeAlbumTag(normalizeTagValue(tags.album));
+    // Existing title that's just a filename leak ("01-Demasiado", "05. LA SED VERDADERA").
+    // Strict pattern (requires .)\-_ separator) avoids stripping legit titles like "99 Red Balloons".
+    if (title) {
+      const m = title.match(/^\s*(\d{1,3})\s*[.)\-_]\s*(\S.*)$/);
+      if (m) {
+        if (tags.trackNumber === undefined) tags.trackNumber = Number(m[1]);
+        title = m[2].trim();
+      }
+    }
     const albumArtistClean = sanitizeArtistTag(normalizeTagValue(tags.albumArtist));
     if (albumArtistClean !== normalizeTagValue(tags.albumArtist)) {
       tags.albumArtist = albumArtistClean;
@@ -313,6 +322,9 @@ export class LibraryOrganizer {
     // Also clean up artist if it had leading junk we stripped
     if (tags.artist && currentRaw.artist !== tags.artist) toWrite.artist = tags.artist;
     if (tags.title && currentRaw.title !== tags.title) toWrite.title = tags.title;
+    if (tags.trackNumber !== undefined && currentRaw.trackNumber !== tags.trackNumber) {
+      toWrite.trackNumber = tags.trackNumber;
+    }
     if (Object.keys(toWrite).length > 0) {
       try { await writeAudioTags(destPath, toWrite); } catch { /* non-fatal */ }
     }

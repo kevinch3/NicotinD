@@ -71,6 +71,16 @@ describe('inferMetadataFromPath', () => {
     expect(parsed.title).toBe('Real Song Name');
     expect(parsed.trackNumber).toBeUndefined();
   });
+
+  it('does not use a phantom-dir folder (filename-shaped) as the album', () => {
+    const parsed = inferMetadataFromPath(
+      'Los Nota Lokos - Poputona.mp3',
+      '100 - Los Nota Lokos - Poputona.mp3',
+    );
+    expect(parsed.artist).toBe('Los Nota Lokos');
+    expect(parsed.title).toBe('Poputona');
+    expect(parsed.album).toBeUndefined();
+  });
 });
 
 describe('extractAlbumName', () => {
