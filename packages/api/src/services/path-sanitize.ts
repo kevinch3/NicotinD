@@ -32,7 +32,7 @@ export function stripAudioExt(s: string): string {
   return s.replace(AUDIO_EXT_SUFFIX, '');
 }
 
-const TRACK_NUM_PREFIX = /^\s*\d{1,3}\s*[.)\-_]\s+/;
+const TRACK_NUM_PREFIX = /^\s*\d{1,3}\s*[.)\-_]\s*/;
 /**
  * Strip a leading track-number prefix (`"01. "`, `"3) "`, `"04 - "`). Returns
  * the bare value or empty string if nothing remains. Used to detect/clean

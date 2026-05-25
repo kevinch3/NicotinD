@@ -94,6 +94,17 @@ export function inferMetadataFromPath(filename: string, directory: string): Pars
     parsed.title = fileNoExt;
   }
 
+  // Permissive track-prefix strip on the inferred title: handles "01-Demasiado",
+  // "5 Track" (cleanToken turns underscores into spaces), "06 its always you".
+  // \d{1,3} keeps 4-digit years like "1989" safe.
+  if (parsed.title) {
+    const m = parsed.title.match(/^\s*(\d{1,3})\s*(?:[.)\-_]\s*|\s+)(\S.*)$/);
+    if (m) {
+      if (!parsed.trackNumber) parsed.trackNumber = String(Number(m[1]));
+      parsed.title = m[2];
+    }
+  }
+
   const folderAlbum = leafFolderName(directory);
   if (!parsed.album && hasUsableValue(folderAlbum)) {
     parsed.album = folderAlbum;

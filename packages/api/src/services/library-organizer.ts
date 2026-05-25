@@ -175,6 +175,13 @@ export class LibraryOrganizer {
       }
     }
 
+    // Folder-derived album that just echoes the artist (e.g. file lives in
+    // <Artist>/file.mp3 with no real album tag) isn't a real album. Drop it
+    // so the Singles fallback in placeFile kicks in.
+    if (album && artist && stripAccents(album).toLowerCase().trim() === stripAccents(artist).toLowerCase().trim()) {
+      album = undefined;
+    }
+
     // Skip the AcoustID round-trip if we've already fingerprinted this file
     // in a prior run — the ACOUSTID_ID tag is our negative cache marker.
     const alreadyFingerprinted = !!tags.acoustIdId;
@@ -305,6 +312,7 @@ export class LibraryOrganizer {
     }
     // Also clean up artist if it had leading junk we stripped
     if (tags.artist && currentRaw.artist !== tags.artist) toWrite.artist = tags.artist;
+    if (tags.title && currentRaw.title !== tags.title) toWrite.title = tags.title;
     if (Object.keys(toWrite).length > 0) {
       try { await writeAudioTags(destPath, toWrite); } catch { /* non-fatal */ }
     }
@@ -452,6 +460,10 @@ function pruneEmptyAncestors(dir: string, stopAt: string): void {
 
 function expandHome(p: string): string {
   return p.startsWith('~') ? join(process.env.HOME ?? '/root', p.slice(1)) : p;
+}
+
+function stripAccents(s: string): string {
+  return s.normalize('NFD').replace(/[̀-ͯ]/g, '');
 }
 
 /** rename, falling back to copy+unlink when src/dst are on different filesystems (EXDEV). */

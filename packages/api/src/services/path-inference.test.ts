@@ -40,6 +40,37 @@ describe('inferMetadataFromPath', () => {
     expect(parsed.artist).toBe('Nomads');
     expect(parsed.title).toContain('Be Nice');
   });
+
+  it('extracts trackNumber + title from "01-Demasiado.mp3" (no whitespace around dash)', () => {
+    const parsed = inferMetadataFromPath('01-Demasiado.mp3', 'Babasónicos');
+    expect(parsed.title).toBe('Demasiado');
+    expect(parsed.trackNumber).toBe('1');
+    expect(parsed.album).toBe('Babasónicos');
+  });
+
+  it('extracts trackNumber + title from "5_Track.mp3"', () => {
+    const parsed = inferMetadataFromPath('5_Track.mp3', 'Some Album');
+    expect(parsed.title).toBe('Track');
+    expect(parsed.trackNumber).toBe('5');
+  });
+
+  it('extracts trackNumber + title from "06 its always you.mp3" (space-only separator)', () => {
+    const parsed = inferMetadataFromPath('06 its always you.mp3', 'Chet Baker');
+    expect(parsed.title).toBe('its always you');
+    expect(parsed.trackNumber).toBe('6');
+  });
+
+  it('extracts trackNumber + title from "07. BAJAN .MP3" (preserves uppercase title)', () => {
+    const parsed = inferMetadataFromPath('07. BAJAN .MP3', 'Pescado Rabioso');
+    expect(parsed.title).toBe('BAJAN');
+    expect(parsed.trackNumber).toBe('7');
+  });
+
+  it('leaves the title untouched when no prefix is present', () => {
+    const parsed = inferMetadataFromPath('Real Song Name.mp3', 'Some Folder');
+    expect(parsed.title).toBe('Real Song Name');
+    expect(parsed.trackNumber).toBeUndefined();
+  });
 });
 
 describe('extractAlbumName', () => {

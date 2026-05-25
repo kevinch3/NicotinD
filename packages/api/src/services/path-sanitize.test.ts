@@ -79,15 +79,17 @@ describe('stripAudioExt', () => {
 });
 
 describe('stripTrackPrefix', () => {
-  it('strips the leading track number with various separators (separator must be followed by whitespace)', () => {
+  it('strips the leading track number with whitespace after the separator', () => {
     expect(stripTrackPrefix('01. Hello')).toBe('Hello');
     expect(stripTrackPrefix('3) World')).toBe('World');
     expect(stripTrackPrefix('04 - Track')).toBe('Track');
     expect(stripTrackPrefix('05 _ Track')).toBe('Track');
   });
 
-  it('leaves "NN_Title" without whitespace alone (filename convention, not user-facing prefix)', () => {
-    expect(stripTrackPrefix('5_Track')).toBe('5_Track');
+  it('strips "NN-Title" / "NN_Title" without whitespace around the separator', () => {
+    expect(stripTrackPrefix('5_Track')).toBe('Track');
+    expect(stripTrackPrefix('01-Demasiado')).toBe('Demasiado');
+    expect(stripTrackPrefix('07.Title')).toBe('Title');
   });
 
   it('leaves plain values alone', () => {
