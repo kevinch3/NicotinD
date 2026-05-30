@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.18](https://github.com/kevinch3/NicotinD/compare/v0.1.17...v0.1.18) (2026-05-30)
+
+
+### Bug Fixes
+
+* **deploy:** bind real music dir into Lidarr container ([7effe76](https://github.com/kevinch3/NicotinD/commit/7effe76f2352e54f70d9dd8a071572890eb5926a))
+
 ## [0.1.17](https://github.com/kevinch3/NicotinD/compare/v0.1.16...v0.1.17) (2026-05-30)
 
 
