@@ -166,6 +166,13 @@ export class DownloadWatcher {
         } catch (err) {
           log.warn({ err }, 'Library organization step failed');
         }
+        // organizeBatch mutates file.relativePath to the post-move path; persist
+        // so auto-playlist resolution and back-fill see the location Navidrome indexes.
+        for (const file of completedFiles) {
+          if (file.relativePath) {
+            this.updateRelativePath(file.username, file.directory, file.filename, file.relativePath);
+          }
+        }
         this.debouncedScan();
       }
     } catch (err) {
@@ -234,6 +241,23 @@ export class DownloadWatcher {
       );
     } catch {
       log.warn('recordCompletedDownload: DB not ready or write failed');
+    }
+  }
+
+  private updateRelativePath(
+    username: string,
+    directory: string,
+    filename: string,
+    relativePath: string,
+  ): void {
+    try {
+      getDatabase().run(
+        `UPDATE completed_downloads SET relative_path = ?
+         WHERE username = ? AND directory = ? AND filename = ?`,
+        [relativePath, username, directory, filename],
+      );
+    } catch {
+      // Non-fatal: DB may not be available
     }
   }
 

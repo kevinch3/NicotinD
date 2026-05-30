@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readdirSync, renameSync, rmdirSync, statSync, appendFileSync, copyFileSync, unlinkSync } from 'node:fs';
-import { basename, dirname, extname, join } from 'node:path';
+import { basename, dirname, extname, join, relative } from 'node:path';
 import { cleanFolderName, createLogger, parseYearFromFolder } from '@nicotind/core';
 import { classifyFolder, type Classification } from './compilation-tagger.js';
 import { extractAlbumName, inferMetadataFromPath } from './path-inference.js';
@@ -45,6 +45,8 @@ interface ResolvedFile {
   /** Filename as reported by slskd / inferred from disk. */
   filename: string;
   tags: AudioTags;
+  /** Original completion record — we mutate its relativePath after placing. */
+  source?: CompletedDownloadFile;
 }
 
 export class LibraryOrganizer {
@@ -131,7 +133,7 @@ export class LibraryOrganizer {
       const flat = this.flattenPhantomDir(src);
       const finalSrc = flat ?? src;
       const tags = await this.readWithFallback(finalSrc, directory);
-      resolved.push({ srcPath: finalSrc, peerDirectory: directory, filename: file.filename, tags });
+      resolved.push({ srcPath: finalSrc, peerDirectory: directory, filename: file.filename, tags, source: file });
     }
 
     if (resolved.length === 0) return;
@@ -327,6 +329,15 @@ export class LibraryOrganizer {
     }
     if (Object.keys(toWrite).length > 0) {
       try { await writeAudioTags(destPath, toWrite); } catch { /* non-fatal */ }
+    }
+
+    // Record where the file ended up so callers (download-watcher → auto-playlist)
+    // can map slskd completion records to Navidrome song paths after the move.
+    if (file.source) {
+      const rel = relative(this.musicDir, destPath).replace(/\\/g, '/');
+      if (rel && !rel.startsWith('../') && rel !== '..') {
+        file.source.relativePath = rel;
+      }
     }
 
     if (samePath) {
