@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.17](https://github.com/kevinch3/NicotinD/compare/v0.1.16...v0.1.17) (2026-05-30)
+
+
+### Bug Fixes
+
+* **auto-playlist:** track post-organize path so resolution doesn't miss ([9c461b0](https://github.com/kevinch3/NicotinD/commit/9c461b089ce67c2193597e0c55a26057a8796474))
+* **lidarr:** make root folder auto-provision actually work ([af4dd4d](https://github.com/kevinch3/NicotinD/commit/af4dd4dda1b7b8e56a99673b4cbeff908de17391))
+
 ## [0.1.16](https://github.com/kevinch3/NicotinD/compare/v0.1.15...v0.1.16) (2026-05-30)
 
 
