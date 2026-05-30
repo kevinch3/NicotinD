@@ -1,0 +1,126 @@
+<!-- Backdrop -->
+<div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+     (click)="close()">
+  <div class="relative w-full max-w-2xl max-h-[90vh] flex flex-col rounded-2xl bg-theme-surface border border-theme-surface-2 shadow-2xl overflow-hidden"
+       role="dialog" aria-modal="true" aria-label="Find complete album"
+       (click)="$event.stopPropagation()">
+
+    <!-- Header -->
+    <div class="flex items-start justify-between p-5 border-b border-theme-surface-2 flex-shrink-0">
+      <div>
+        <h2 class="text-base font-semibold text-theme-primary">Find Complete Album</h2>
+        <p class="text-sm text-theme-muted mt-0.5 truncate max-w-sm">{{ album().title }}</p>
+      </div>
+      <button (click)="close()" class="text-theme-muted hover:text-theme-primary transition ml-4 flex-shrink-0">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Filters -->
+    <div class="flex items-center gap-5 px-5 py-3 border-b border-theme-surface-2 flex-shrink-0 text-sm">
+      <label class="flex items-center gap-2 cursor-pointer select-none text-theme-secondary">
+        <input type="checkbox" [checked]="flacOnly()" (change)="flacOnly.set($any($event.target).checked)" class="accent-theme rounded" />
+        FLAC only
+      </label>
+      <label class="flex items-center gap-2 cursor-pointer select-none text-theme-secondary">
+        <input type="checkbox" [checked]="includeLive()" (change)="includeLive.set($any($event.target).checked)" class="accent-theme rounded" />
+        Include live
+      </label>
+      <label class="flex items-center gap-2 cursor-pointer select-none text-theme-secondary">
+        <span class="text-theme-muted">Min match</span>
+        <input type="number" [value]="minMatchPct()" (input)="setMinMatch($any($event.target).value)" min="0" max="100" step="10"
+          class="w-14 rounded bg-theme-surface-2 border border-theme-surface-2 px-2 py-0.5 text-theme-primary text-center focus:outline-none" />
+        <span class="text-theme-muted">%</span>
+      </label>
+      @if (state() === 'results' || state() === 'error') {
+        <button (click)="startHunt()"
+          class="ml-auto text-xs text-theme-muted hover:text-theme-secondary transition">
+          Re-search
+        </button>
+      }
+    </div>
+
+    <!-- Body -->
+    <div class="flex-1 overflow-y-auto">
+
+      @if (state() === 'searching') {
+        <div class="flex flex-col items-center justify-center py-16 gap-3 text-theme-muted">
+          <span class="inline-block w-6 h-6 border-2 border-theme border-t-zinc-300 rounded-full animate-spin"></span>
+          <span class="text-sm">Searching Soulseek for "{{ artistName() }} — {{ album().title }}"…</span>
+          <span class="text-xs opacity-60">This may take up to 30 seconds</span>
+        </div>
+      }
+
+      @if (state() === 'error') {
+        <div class="p-6 text-center">
+          <p class="text-red-400 text-sm">{{ errorMsg() }}</p>
+        </div>
+      }
+
+      @if (state() === 'results') {
+        @if (filteredCandidates().length === 0) {
+          <div class="p-8 text-center text-theme-muted text-sm">
+            No candidates match your filters. Try lowering the minimum match % or enabling live recordings.
+          </div>
+        } @else {
+          <ul class="divide-y divide-theme-surface-2">
+            @for (candidate of filteredCandidates(); track candidate.directory + candidate.username) {
+              <li (click)="select(candidate)"
+                  class="flex flex-col gap-1 px-5 py-4 cursor-pointer transition"
+                  [class.bg-theme-surface-2]="isSelected(candidate)"
+                  [class.hover:bg-theme-surface-2]="!isSelected(candidate)">
+
+                <div class="flex items-center justify-between gap-3">
+                  <!-- Folder info -->
+                  <div class="min-w-0 flex-1">
+                    <p class="text-sm font-medium text-theme-primary truncate">{{ displayDir(candidate.directory) }}</p>
+                    <p class="text-xs text-theme-muted mt-0.5">{{ candidate.username }}</p>
+                  </div>
+
+                  <!-- Badges -->
+                  <div class="flex items-center gap-2 flex-shrink-0 text-xs">
+                    <span class="px-2 py-0.5 rounded-full bg-theme-surface-2 font-mono"
+                          [class]="matchClass(candidate.matchPct)">
+                      {{ candidate.matchedTracks }}/{{ candidate.totalTracks }} ({{ candidate.matchPct }}%)
+                    </span>
+                    <span class="px-2 py-0.5 rounded-full bg-theme-surface-2 text-theme-secondary font-medium">
+                      {{ candidate.format }}
+                    </span>
+                    <span class="text-theme-muted">{{ candidate.estimatedSizeMb }}MB</span>
+                  </div>
+                </div>
+
+                <!-- Selection indicator -->
+                @if (isSelected(candidate)) {
+                  <p class="text-xs text-green-400 mt-1">✓ Selected — {{ candidate.files.length }} files will be queued</p>
+                }
+              </li>
+            }
+          </ul>
+        }
+      }
+
+      @if (state() === 'downloading') {
+        <div class="flex items-center justify-center py-16 gap-3 text-theme-muted">
+          <span class="inline-block w-5 h-5 border-2 border-theme border-t-zinc-300 rounded-full animate-spin"></span>
+          <span class="text-sm">Queuing downloads…</span>
+        </div>
+      }
+    </div>
+
+    <!-- Footer -->
+    @if (state() === 'results' && selectedCandidate()) {
+      <div class="flex items-center justify-between gap-3 px-5 py-4 border-t border-theme-surface-2 flex-shrink-0">
+        <p class="text-xs text-theme-muted">
+          {{ selectedCandidate()!.files.length }} files · {{ selectedCandidate()!.estimatedSizeMb }}MB
+        </p>
+        <button (click)="downloadSelected()"
+          class="px-5 py-2 rounded-lg bg-zinc-100 text-zinc-900 text-sm font-semibold hover:bg-zinc-200 transition">
+          Download Album
+        </button>
+      </div>
+    }
+  </div>
+</div>

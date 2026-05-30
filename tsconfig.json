@@ -20,6 +20,7 @@
     { "path": "packages/core" },
     { "path": "packages/service-manager" },
     { "path": "packages/slskd-client" },
+    { "path": "packages/lidarr-client" },
     { "path": "packages/navidrome-client" },
     { "path": "packages/api" },
     { "path": "packages/cli" },

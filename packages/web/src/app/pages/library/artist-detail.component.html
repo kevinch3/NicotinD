@@ -49,6 +49,87 @@
         @if (albums().length === 0) {
           <p class="text-center text-theme-muted py-20">No albums found for this artist.</p>
         }
+
+        <!-- Discography section (requires Lidarr) -->
+        @if (discographyLoading()) {
+          <div class="mt-10 flex items-center gap-2 text-theme-muted text-sm">
+            <span class="inline-block w-4 h-4 border-2 border-theme border-t-zinc-300 rounded-full animate-spin"></span>
+            Loading full discography…
+          </div>
+        }
+
+        @if (discography(); as disc) {
+          <div class="mt-10">
+            <div class="flex items-center gap-3 mb-4">
+              <h2 class="text-base font-semibold text-theme-primary">Full Discography</h2>
+              <span class="text-xs text-theme-muted">via MusicBrainz</span>
+              <span class="ml-auto text-xs text-theme-muted">
+                {{ disc.albums.length }} releases ·
+                {{ countByStatus(disc.albums, 'present') }} complete ·
+                {{ countByStatus(disc.albums, 'partial') }} partial ·
+                {{ countByStatus(disc.albums, 'missing') }} missing
+              </span>
+            </div>
+
+            @for (group of discographyGroups(); track group.label) {
+              <div class="mb-6">
+                <h3 class="text-xs font-semibold uppercase tracking-wide text-theme-muted mb-3">
+                  {{ group.label }} <span class="text-theme-muted/60">({{ group.albums.length }})</span>
+                </h3>
+                <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                  @for (album of group.albums; track album.lidarrId) {
+                    <div class="relative flex flex-col p-3 rounded-lg bg-theme-surface/30 border border-transparent"
+                         [class.border-theme-surface-2]="album.status !== 'present'">
+
+                      <!-- Status badge -->
+                      <div class="absolute top-2 right-2 text-xs font-bold leading-none drop-shadow"
+                           [class]="statusClass(album.status)">
+                        {{ statusIcon(album.status) }}
+                      </div>
+
+                      <!-- Cover art (Lidarr/MusicBrainz) with placeholder fallback -->
+                      @if (album.coverArtUrl) {
+                        <img [src]="album.coverArtUrl" alt="" loading="lazy"
+                          class="w-full aspect-square rounded object-cover mb-2" />
+                      } @else {
+                        <div class="w-full aspect-square rounded bg-theme-surface-2 mb-2 flex items-center justify-center">
+                          <span class="text-xs text-theme-muted text-center px-1 leading-tight">{{ album.albumType }}</span>
+                        </div>
+                      }
+
+                      <p class="text-sm text-theme-primary truncate font-medium">{{ album.title }}</p>
+                      <p class="text-xs text-theme-muted mt-0.5">{{ album.releaseDate?.slice(0, 4) ?? '' }}</p>
+
+                      @if (album.status !== 'missing') {
+                        <p class="text-xs text-theme-muted mt-1">
+                          {{ album.localTrackCount }}/{{ album.totalTracks }} tracks
+                        </p>
+                      }
+
+                      <!-- Hunt button for missing / partial -->
+                      @if (album.status !== 'present') {
+                        <button (click)="openHunt(album)"
+                          class="mt-2 w-full px-2 py-1.5 rounded-md text-xs font-semibold
+                                 bg-theme-surface-2 text-theme-secondary hover:bg-theme-surface-2/80 transition">
+                          {{ album.status === 'partial' ? 'Complete Album' : 'Find Album' }}
+                        </button>
+                      }
+                    </div>
+                  }
+                </div>
+              </div>
+            }
+          </div>
+        }
       }
     </div>
+
+    <!-- AlbumHunt Modal -->
+    @if (huntingAlbum() && artist()) {
+      <app-album-hunt-modal
+        [album]="huntingAlbum()!"
+        [artistName]="artist()!.name"
+        (closed)="closeHunt()"
+        (downloaded)="closeHunt()" />
+    }
   

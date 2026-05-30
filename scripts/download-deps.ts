@@ -4,7 +4,6 @@
  */
 import { existsSync, mkdirSync, chmodSync, createWriteStream } from 'node:fs';
 import { join } from 'node:path';
-import { pipeline } from 'node:stream/promises';
 import { execSync } from 'node:child_process';
 
 const DATA_DIR = join(process.env.HOME ?? '/root', '.nicotind');
@@ -17,7 +16,15 @@ interface DepConfig {
   binaryName: string;
   getAssetName: (version: string, platform: string, arch: string) => string;
   extractCmd: (archive: string, dest: string, binaryName: string) => string;
+  /** Optional deps log a warning on failure instead of aborting the install. */
+  optional?: boolean;
 }
+
+const LIDARR_PLATFORM_MAP: Record<string, string> = {
+  linux: 'linux-core',
+  darwin: 'osx-core',
+  win32: 'windows-core',
+};
 
 const PLATFORM_MAP: Record<string, string> = {
   linux: 'linux',
@@ -69,6 +76,27 @@ const deps: DepConfig[] = [
     },
     extractCmd: (archive, dest, binaryName) =>
       `tar -xzf "${archive}" -C "${dest}" "${binaryName}"`,
+  },
+  {
+    name: 'lidarr',
+    repo: 'Lidarr/Lidarr',
+    // Lidarr's archive extracts to a top-level `Lidarr/` folder; the executable
+    // lives inside it. Powers discography features; optional so a download
+    // failure never blocks slskd/navidrome.
+    binaryName: join('Lidarr', 'Lidarr'),
+    optional: true,
+    getAssetName: (version, platform, arch) => {
+      const p = LIDARR_PLATFORM_MAP[platform];
+      const a = ARCH_MAP[arch];
+      if (!p || !a) throw new Error(`Unsupported platform: ${platform}/${arch}`);
+      const v = version.replace(/^v/, '');
+      const ext = platform === 'win32' ? 'zip' : 'tar.gz';
+      return `Lidarr.master.${v}.${p}-${a}.${ext}`;
+    },
+    extractCmd: (archive, dest) =>
+      archive.endsWith('.zip')
+        ? `unzip -o "${archive}" -d "${dest}"`
+        : `tar -xzf "${archive}" -C "${dest}"`,
   },
 ];
 
@@ -157,7 +185,12 @@ async function main() {
     try {
       await downloadDep(dep);
     } catch (err) {
-      console.error(`  ${dep.name}: FAILED — ${err instanceof Error ? err.message : err}`);
+      const msg = err instanceof Error ? err.message : String(err);
+      if (dep.optional) {
+        console.warn(`  ${dep.name}: skipped (optional) — ${msg}`);
+        continue;
+      }
+      console.error(`  ${dep.name}: FAILED — ${msg}`);
       process.exit(1);
     }
   }

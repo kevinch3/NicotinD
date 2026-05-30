@@ -4,6 +4,7 @@ import type { IServiceStrategy, ServiceHandle } from './strategies/strategy.js';
 import { waitForHealthy } from './health.js';
 import { buildSlskdDefinition } from './services/slskd.js';
 import { buildNavidromeDefinition } from './services/navidrome.js';
+import { buildLidarrDefinition } from './services/lidarr.js';
 
 const log = createLogger('service-manager');
 
@@ -54,6 +55,26 @@ export class ServiceManager {
     }
   }
 
+  async startLidarr(apiKey: string): Promise<void> {
+    if (this.config.mode === 'external') {
+      log.info('External mode — skipping Lidarr startup');
+      return;
+    }
+    if (!this.config.lidarr) {
+      log.info('Lidarr not configured — skipping startup');
+      return;
+    }
+
+    const definition = buildLidarrDefinition(this.config, apiKey);
+    const handle = await this.strategy.start(definition);
+    this.handles.set('lidarr', handle);
+
+    const healthy = await waitForHealthy(definition.healthCheckUrl, definition.healthCheckTimeoutMs);
+    if (!healthy) {
+      log.warn('Lidarr failed to start within timeout — discography features unavailable');
+    }
+  }
+
   async stopAll(): Promise<void> {
     for (const [name, handle] of this.handles) {
       log.info({ name }, 'Stopping service');
@@ -89,7 +110,9 @@ export class ServiceManager {
     const definition =
       name === 'slskd'
         ? buildSlskdDefinition(this.config)
-        : buildNavidromeDefinition(this.config);
+        : name === 'lidarr' && this.config.lidarr
+          ? buildLidarrDefinition(this.config, this.config.lidarr.apiKey)
+          : buildNavidromeDefinition(this.config);
 
     const newHandle = await this.strategy.restart(handle, definition);
     this.handles.set(name, newHandle);

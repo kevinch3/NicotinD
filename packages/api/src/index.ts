@@ -4,6 +4,7 @@ import { serveStatic, createBunWebSocket } from 'hono/bun';
 import type { NicotinDConfig } from '@nicotind/core';
 import type { Slskd } from '@nicotind/slskd-client';
 import type { Navidrome } from '@nicotind/navidrome-client';
+import type { Lidarr } from '@nicotind/lidarr-client';
 import type { ServiceManager } from '@nicotind/service-manager';
 import { authMiddleware } from './middleware/auth.js';
 import { errorHandler } from './middleware/error-handler.js';
@@ -22,6 +23,9 @@ import { adminRoutes } from './routes/admin.js';
 import { usersRoutes } from './routes/users.js';
 import { shareRoutes } from './routes/share.js';
 import { subsonicProxy } from './routes/subsonic.js';
+import { discographyRoutes } from './routes/discography.js';
+import { DiscographyService } from './services/discography.service.js';
+import { AlbumHunterService } from './services/album-hunter.service.js';
 import { DownloadWatcher } from './services/download-watcher.js';
 import { TailscaleService } from './services/tailscale.js';
 import { ProviderRegistry } from './services/provider-registry.js';
@@ -41,6 +45,7 @@ export interface CreateAppOptions {
   config: NicotinDConfig;
   slskdRef: SlskdRef;
   navidrome: Navidrome;
+  lidarr: Lidarr | null;
   serviceManager: ServiceManager;
   webDistPath?: string;
   saveSecretsFn?: (username: string, password: string) => void;
@@ -55,6 +60,7 @@ export function createApp({
   config,
   slskdRef,
   navidrome,
+  lidarr,
   serviceManager,
   webDistPath,
   saveSecretsFn,
@@ -165,6 +171,7 @@ export function createApp({
   app.use('/api/admin/*', auth);
   app.use('/api/users/*', auth);
   app.use('/api/ws/*', auth);
+  app.use('/api/discography/*', auth);
 
   app.get('/api/ws/playback', upgradeWebSocket((c) => {
     const user = (c as unknown as { get(key: 'user'): AuthEnv['Variables']['user'] }).get('user');
@@ -186,6 +193,15 @@ export function createApp({
   app.route('/api/share', shareRoutes(config.jwt.secret, auth));
   app.route('/api/tailscale', tailscaleRoutes(tailscale, saveTailscaleAuthKeyFn, clearTailscaleAuthKeyFn));
   app.route('/api/users', usersRoutes(registry));
+
+  if (lidarr && slskdRef.current) {
+    const discographySvc = new DiscographyService(lidarr, db);
+    const hunterSvc = new AlbumHunterService(slskdRef.current);
+    app.route(
+      '/api/discography',
+      discographyRoutes({ discography: discographySvc, hunter: hunterSvc, lidarr }),
+    );
+  }
 
   // Serve web UI static files
   if (webDistPath) {

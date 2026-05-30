@@ -5,6 +5,7 @@ import { NicotinDConfigSchema, createLogger, generateSecret } from '@nicotind/co
 import { ServiceManager, NativeProcessStrategy } from '@nicotind/service-manager';
 import { Slskd } from '@nicotind/slskd-client';
 import { Navidrome } from '@nicotind/navidrome-client';
+import { Lidarr } from '@nicotind/lidarr-client';
 import { createApp, TailscaleService } from '@nicotind/api';
 
 const log = createLogger('nicotind');
@@ -46,12 +47,15 @@ async function main() {
     const binDir = join(dataDir, 'bin');
     const navidromeBin = join(binDir, 'navidrome');
     const slskdBin = join(binDir, 'slskd');
+    const lidarrBin = join(binDir, 'Lidarr', 'Lidarr');
 
     // Only require slskd binary if Soulseek credentials are configured
     const needsSlskd = hasSoulseekCreds && !existsSync(slskdBin);
     const needsNavidrome = !existsSync(navidromeBin);
+    // Lidarr is optional; its download is best-effort inside download-deps.
+    const needsLidarr = !!config.lidarr && !existsSync(lidarrBin);
 
-    if (needsSlskd || needsNavidrome) {
+    if (needsSlskd || needsNavidrome || needsLidarr) {
       log.info('Downloading dependencies (first run)...');
       const { execSync } = await import('node:child_process');
       execSync(`bun run ${resolve(import.meta.dir, '../scripts/download-deps.ts')}`, {
@@ -67,6 +71,13 @@ async function main() {
       log.info('Configure credentials in Settings to enable Soulseek network search');
     }
     await serviceManager.startNavidrome();
+    // Only start Lidarr if its binary is actually present — avoids a slow,
+    // doomed health-check wait when the (best-effort) download didn't land.
+    if (config.lidarr && existsSync(lidarrBin)) {
+      await serviceManager.startLidarr(startupSecrets.lidarrApiKey);
+    } else if (config.lidarr) {
+      log.info('Lidarr binary not present — discography features disabled (embedded)');
+    }
 
     // Auto-create Navidrome admin user on first run
     await createNavidromeAdmin(config, config.dataDir, startupSecrets);
@@ -92,6 +103,10 @@ async function main() {
     password: config.navidrome.password,
   });
 
+  const lidarr = config.lidarr
+    ? new Lidarr({ baseUrl: config.lidarr.url, apiKey: config.lidarr.apiKey })
+    : null;
+
   // 4. Create and start API server
   const webDistPath = resolve(import.meta.dir, '../packages/web/dist');
 
@@ -112,6 +127,7 @@ async function main() {
     config,
     slskdRef,
     navidrome,
+    lidarr,
     serviceManager,
     webDistPath,
     saveSecretsFn: (username: string, password: string) => {
@@ -168,6 +184,7 @@ async function main() {
 export interface PersistedSecrets {
   slskdPassword: string;
   navidromePassword: string;
+  lidarrApiKey: string;
   jwtSecret: string;
   soulseekUsername?: string;
   soulseekPassword?: string;
@@ -192,6 +209,7 @@ export function loadOrCreateSecrets(dataDir: string): PersistedSecrets {
   const secrets: PersistedSecrets = {
     slskdPassword: generateSecret(16),
     navidromePassword: generateSecret(16),
+    lidarrApiKey: generateSecret(24),
     jwtSecret: generateSecret(32),
   };
   writeFileSync(secretsPath, JSON.stringify(secrets, null, 2), { mode: 0o600 });
@@ -310,6 +328,14 @@ function loadConfig() {
       ...(process.env.NAVIDROME_INTERNAL_PASSWORD
         ? { password: process.env.NAVIDROME_INTERNAL_PASSWORD }
         : {}),
+    },
+    lidarr: {
+      url: 'http://localhost:8686',
+      port: 8686,
+      apiKey: secrets.lidarrApiKey,
+      ...((fileConfig as Record<string, unknown>).lidarr as Record<string, unknown>),
+      ...(process.env.NICOTIND_LIDARR_URL ? { url: process.env.NICOTIND_LIDARR_URL } : {}),
+      ...(process.env.LIDARR_API_KEY ? { apiKey: process.env.LIDARR_API_KEY } : {}),
     },
     jwt: {
       secret: secrets.jwtSecret,

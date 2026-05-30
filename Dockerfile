@@ -9,6 +9,7 @@ COPY packages/core/package.json packages/core/
 COPY packages/navidrome-client/package.json packages/navidrome-client/
 COPY packages/service-manager/package.json packages/service-manager/
 COPY packages/slskd-client/package.json packages/slskd-client/
+COPY packages/lidarr-client/package.json packages/lidarr-client/
 COPY packages/web/package.json packages/web/
 RUN bun install --frozen-lockfile
 
@@ -32,6 +33,7 @@ COPY package.json bun.lock bunfig.toml tsconfig.json ./
 COPY packages/core/ packages/core/
 COPY packages/slskd-client/ packages/slskd-client/
 COPY packages/navidrome-client/ packages/navidrome-client/
+COPY packages/lidarr-client/ packages/lidarr-client/
 COPY packages/service-manager/ packages/service-manager/
 COPY packages/api/ packages/api/
 COPY packages/cli/ packages/cli/
