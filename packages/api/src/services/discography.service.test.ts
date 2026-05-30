@@ -74,6 +74,7 @@ function makeLidarrStub(opts: {
       lookup,
       add,
       getQualityProfiles: mock(async () => [{ id: 1, name: 'Any' }]),
+      getMetadataProfiles: mock(async () => [{ id: 1, name: 'Standard' }]),
       getRootFolders: mock(async () => [{ id: 1, path: '/music', freeSpace: 0 }]),
     },
     album: {

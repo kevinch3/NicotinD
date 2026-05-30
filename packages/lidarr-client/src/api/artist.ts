@@ -33,12 +33,14 @@ export class ArtistApi {
     artist: LidarrArtist,
     qualityProfileId: number,
     rootFolderPath: string,
+    metadataProfileId: number,
   ): Promise<LidarrArtist> {
     return this.client.request<LidarrArtist>('/api/v1/artist', {
       method: 'POST',
       body: JSON.stringify({
         ...artist,
         qualityProfileId,
+        metadataProfileId,
         rootFolderPath,
         monitored: true,
         addOptions: { monitor: 'all', searchForMissingAlbums: false },

@@ -119,13 +119,15 @@ export class DiscographyService {
     const best = candidates[0];
     if (!best) throw new Error(`Lidarr found no artist matching "${artistName}"`);
 
-    // Get quality profile and root folder for add
-    const [profiles, initialRootFolders] = await Promise.all([
+    // Get quality + metadata profile and root folder for add
+    const [profiles, metadataProfiles, initialRootFolders] = await Promise.all([
       this.lidarr.artist.getQualityProfiles(),
+      this.lidarr.artist.getMetadataProfiles(),
       this.lidarr.artist.getRootFolders(),
     ]);
 
     if (!profiles.length) throw new Error('Lidarr has no quality profiles configured');
+    if (!metadataProfiles.length) throw new Error('Lidarr has no metadata profiles configured');
 
     let rootFolders = initialRootFolders;
     if (!rootFolders.length) {
@@ -139,6 +141,7 @@ export class DiscographyService {
       best,
       profiles[0].id,
       rootFolders[0].path,
+      metadataProfiles[0].id,
     );
 
     this.upsertLink(artistId, added.id, added.foreignArtistId);
