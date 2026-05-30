@@ -20,3 +20,7 @@ services:
     volumes:
       - /mnt/data1tb_new/music:/data/music:ro
       - ~/.nicotind/navidrome:/data/nd
+
+  lidarr:
+    volumes:
+      - /mnt/data1tb_new/music:/data/music
