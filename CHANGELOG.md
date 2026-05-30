@@ -2,6 +2,8 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.11](https://github.com/kevinch3/NicotinD/compare/v0.1.10...v0.1.11) (2026-05-30)
+
 ## [0.1.10](https://github.com/kevinch3/NicotinD/compare/v0.1.9...v0.1.10) (2026-05-30)
 
 
