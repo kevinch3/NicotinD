@@ -107,6 +107,18 @@ async function main() {
     ? new Lidarr({ baseUrl: config.lidarr.url, apiKey: config.lidarr.apiKey })
     : null;
 
+  if (lidarr) {
+    try {
+      const rootFolders = await lidarr.artist.getRootFolders();
+      if (rootFolders.length === 0) {
+        await lidarr.artist.addRootFolder(config.musicDir);
+        log.info({ path: config.musicDir }, 'Registered music dir as Lidarr root folder');
+      }
+    } catch (err) {
+      log.warn({ err }, 'Lidarr root folder provisioning failed — discography may not work until Lidarr is reachable');
+    }
+  }
+
   // 4. Create and start API server
   const webDistPath = resolve(import.meta.dir, '../packages/web/dist');
 
