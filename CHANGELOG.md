@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.10](https://github.com/kevinch3/NicotinD/compare/v0.1.9...v0.1.10) (2026-05-30)
+
+
+### Features
+
+* implement the feature itself and their CI and tests ([89f8fb6](https://github.com/kevinch3/NicotinD/commit/89f8fb64403304e332a74b9291a677674dc33cfb))
+
+
+### Bug Fixes
+
+* test of library-organizer ([c418bab](https://github.com/kevinch3/NicotinD/commit/c418bab0eaa5e49809a9e5404aca29dae57737d9))
+* **test:** restore node:fs after library.test to stop global mock leak ([08ac5d5](https://github.com/kevinch3/NicotinD/commit/08ac5d5db5a0c92f9ec03de7844ae8c84e55a307))
+
 ## [0.1.9](https://github.com/kevinch3/NicotinD/compare/v0.1.8...v0.1.9) (2026-05-25)
 
 
