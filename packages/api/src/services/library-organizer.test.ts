@@ -49,6 +49,8 @@ afterEach(() => {
 });
 
 function tmpRoot() {
+  // Some sandboxes export a TMPDIR that doesn't exist yet; mkdtempSync would ENOENT.
+  mkdirSync(tmpdir(), { recursive: true });
   const root = mkdtempSync(join(tmpdir(), 'nicotind-org-'));
   cleanups.push(() => rmSync(root, { recursive: true, force: true }));
   return root;
