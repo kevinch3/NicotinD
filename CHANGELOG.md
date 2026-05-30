@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.19](https://github.com/kevinch3/NicotinD/compare/v0.1.18...v0.1.19) (2026-05-30)
+
+
+### Bug Fixes
+
+* **lidarr:** pass metadataProfileId when adding an artist ([4bf9144](https://github.com/kevinch3/NicotinD/commit/4bf9144b90309930ab0bdd8614a82d3967a4ebc6))
+
 ## [0.1.18](https://github.com/kevinch3/NicotinD/compare/v0.1.17...v0.1.18) (2026-05-30)
 
 
