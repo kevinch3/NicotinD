@@ -100,10 +100,25 @@ volumes:
 - Discography routes are already conditional on `lidarr != null` — no code changes.
 - Existing `lidarr-client` package is unchanged.
 
+## Lidarr Root Folder Auto-Provisioning
+
+`discography.service.ts` line 128 throws `'Lidarr has no root folders configured'` when adding a new artist. Lidarr starts with no root folders, so the first discography lookup would always fail.
+
+NicotinD must register `config.musicDir` as a Lidarr root folder on startup if none exists. This is a one-time operation (idempotent — skipped if a root folder already exists).
+
+**New method needed:** `ArtistApi` (or a new `RootFolderApi`) needs `addRootFolder(path: string)` calling `POST /api/v1/rootfolder`. Lidarr's quality profiles are pre-seeded by default, so no profile provisioning is needed.
+
+**Startup sequence in `main.ts`:**
+```
+lidarr client created
+  → lidarr.artist.getRootFolders()
+    → if empty: lidarr.artist.addRootFolder(config.musicDir)
+```
+This runs in the existing Lidarr client init block, wrapped in a try/catch so a Lidarr connectivity failure is logged but doesn't crash NicotinD.
+
 ## What Is Not in Scope
 
 - Lidarr UI access from outside the stack (no port publish, by design).
-- Auto-configuring Lidarr root folders or quality profiles — Lidarr starts empty; its metadata lookup works without a root folder configured (read-only MusicBrainz queries via the discography API).
 - Embedded mode (`NICOTIND_MODE=embedded`) — this only affects the Docker Compose external-mode stack.
 
 ## Files to Change
@@ -111,5 +126,5 @@ volumes:
 | File | Change |
 |------|--------|
 | `docker-compose.yml` | Add `lidarr` service, `lidarr-config` volume, env vars + depends_on update for `nicotind` |
-
-That's the only file.
+| `packages/lidarr-client/src/api/artist.ts` | Add `addRootFolder(path: string)` method |
+| `src/main.ts` | Auto-provision root folder after Lidarr client init |
