@@ -18,6 +18,8 @@ services:
       SLSKD_USERNAME: slskd
       SLSKD_PASSWORD: slskd
       TAILSCALE_SOCKET: /var/run/tailscale/tailscaled.sock
+      NICOTIND_LIDARR_URL: http://lidarr:8686
+      LIDARR_API_KEY: nicotind-lidarr-internal
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8484/api/health"]
       interval: 15s
@@ -25,8 +27,12 @@ services:
       retries: 3
       start_period: 10s
     depends_on:
-      - navidrome
-      - slskd
+      navidrome:
+        condition: service_started
+      slskd:
+        condition: service_started
+      lidarr:
+        condition: service_healthy
     networks:
       - internal
     restart: unless-stopped
@@ -82,6 +88,32 @@ services:
       - internal
     restart: unless-stopped
 
+  lidarr:
+    image: linuxserver/lidarr:latest
+    environment:
+      PUID: 1000
+      PGID: 1000
+      TZ: Etc/UTC
+      LIDARR__AUTH__APIKEY: nicotind-lidarr-internal
+    volumes:
+      - lidarr-config:/config
+      - music:/data/music:ro
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -sf
+        - http://localhost:8686/api/v1/system/status
+        - -H
+        - "X-Api-Key: nicotind-lidarr-internal"
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - internal
+    restart: unless-stopped
+
   tailscale:
     image: tailscale/tailscale:latest
     cap_add:
@@ -112,3 +144,4 @@ volumes:
   navidrome-data:
   tailscale-state:
   tailscale-sock:
+  lidarr-config:
