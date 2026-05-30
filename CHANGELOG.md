@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.16](https://github.com/kevinch3/NicotinD/compare/v0.1.15...v0.1.16) (2026-05-30)
+
+
+### Features
+
+* auto-provision Lidarr root folder on startup ([dce844f](https://github.com/kevinch3/NicotinD/commit/dce844f422ec048efa71588dac7a77e2784b5b95))
+* **deploy:** add Lidarr to compose stack with auto-wired API key ([84a43dd](https://github.com/kevinch3/NicotinD/commit/84a43ddf51f5316252f554e3e318fbfbd86a75a4))
+* **lidarr-client:** add addRootFolder method ([b39c666](https://github.com/kevinch3/NicotinD/commit/b39c66698a2d79c0c9815d685f7ee010d09444b5))
+
 ## [0.1.15](https://github.com/kevinch3/NicotinD/compare/v0.1.14...v0.1.15) (2026-05-30)
 
 ## [0.1.14](https://github.com/kevinch3/NicotinD/compare/v0.1.13...v0.1.14) (2026-05-30)
