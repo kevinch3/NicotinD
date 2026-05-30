@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.13](https://github.com/kevinch3/NicotinD/compare/v0.1.12...v0.1.13) (2026-05-30)
+
+
+### Bug Fixes
+
+* **sync:** coerce null duration to 0 on album/song upsert ([dfac43c](https://github.com/kevinch3/NicotinD/commit/dfac43ce53bd5fff0addeb1b8edfe4cbe3c748ac))
+
 ## [0.1.12](https://github.com/kevinch3/NicotinD/compare/v0.1.11...v0.1.12) (2026-05-30)
 
 
