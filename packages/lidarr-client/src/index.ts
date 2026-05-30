@@ -31,5 +31,6 @@ export type {
   LidarrTrack,
   LidarrImage,
   LidarrQualityProfile,
+  LidarrMetadataProfile,
   LidarrRootFolder,
 } from './types.js';

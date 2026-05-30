@@ -72,6 +72,11 @@ export interface LidarrQualityProfile {
   name: string;
 }
 
+export interface LidarrMetadataProfile {
+  id: number;
+  name: string;
+}
+
 export interface LidarrRootFolder {
   id: number;
   path: string;

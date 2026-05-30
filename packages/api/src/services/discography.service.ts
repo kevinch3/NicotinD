@@ -43,6 +43,7 @@ export class DiscographyService {
   constructor(
     private lidarr: Lidarr,
     private db: Database,
+    private musicDir?: string,
   ) {}
 
   async getArtistDiscography(artistId: string): Promise<ArtistDiscography> {
@@ -119,13 +120,20 @@ export class DiscographyService {
     if (!best) throw new Error(`Lidarr found no artist matching "${artistName}"`);
 
     // Get quality profile and root folder for add
-    const [profiles, rootFolders] = await Promise.all([
+    const [profiles, initialRootFolders] = await Promise.all([
       this.lidarr.artist.getQualityProfiles(),
       this.lidarr.artist.getRootFolders(),
     ]);
 
     if (!profiles.length) throw new Error('Lidarr has no quality profiles configured');
-    if (!rootFolders.length) throw new Error('Lidarr has no root folders configured');
+
+    let rootFolders = initialRootFolders;
+    if (!rootFolders.length) {
+      if (!this.musicDir) throw new Error('Lidarr has no root folders configured');
+      log.info({ path: this.musicDir }, 'No Lidarr root folder — provisioning music dir');
+      const added = await this.lidarr.artist.addRootFolder(this.musicDir);
+      rootFolders = [added];
+    }
 
     const added = await this.lidarr.artist.add(
       best,

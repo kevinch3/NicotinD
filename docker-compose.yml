@@ -97,7 +97,7 @@ services:
       LIDARR__AUTH__APIKEY: nicotind-lidarr-internal
     volumes:
       - lidarr-config:/config
-      - music:/data/music:ro
+      - music:/data/music
     healthcheck:
       test:
         - CMD

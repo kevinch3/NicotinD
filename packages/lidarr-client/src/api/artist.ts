@@ -1,4 +1,9 @@
-import type { LidarrArtist, LidarrQualityProfile, LidarrRootFolder } from '../types.js';
+import type {
+  LidarrArtist,
+  LidarrMetadataProfile,
+  LidarrQualityProfile,
+  LidarrRootFolder,
+} from '../types.js';
 import type { LidarrClient } from '../client.js';
 
 export class ArtistApi {
@@ -45,14 +50,38 @@ export class ArtistApi {
     return this.client.request<LidarrQualityProfile[]>('/api/v1/qualityprofile');
   }
 
+  async getMetadataProfiles(): Promise<LidarrMetadataProfile[]> {
+    return this.client.request<LidarrMetadataProfile[]>('/api/v1/metadataprofile');
+  }
+
   async getRootFolders(): Promise<LidarrRootFolder[]> {
     return this.client.request<LidarrRootFolder[]>('/api/v1/rootfolder');
   }
 
-  async addRootFolder(path: string): Promise<LidarrRootFolder> {
+  /**
+   * Lidarr's POST /api/v1/rootfolder requires a complete payload with default
+   * profile IDs and monitor options, not just `path`. We fetch the default
+   * profiles here and submit them so the call succeeds on a fresh Lidarr.
+   */
+  async addRootFolder(path: string, name = 'Music'): Promise<LidarrRootFolder> {
+    const [qualityProfiles, metadataProfiles] = await Promise.all([
+      this.getQualityProfiles(),
+      this.getMetadataProfiles(),
+    ]);
+    if (!qualityProfiles.length) throw new Error('Lidarr has no quality profiles available');
+    if (!metadataProfiles.length) throw new Error('Lidarr has no metadata profiles available');
+
     return this.client.request<LidarrRootFolder>('/api/v1/rootfolder', {
       method: 'POST',
-      body: JSON.stringify({ path }),
+      body: JSON.stringify({
+        name,
+        path,
+        defaultQualityProfileId: qualityProfiles[0].id,
+        defaultMetadataProfileId: metadataProfiles[0].id,
+        defaultMonitorOption: 'all',
+        defaultNewItemMonitorOption: 'all',
+        defaultTags: [],
+      }),
     });
   }
 }

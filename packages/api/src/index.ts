@@ -195,7 +195,7 @@ export function createApp({
   app.route('/api/users', usersRoutes(registry));
 
   if (lidarr && slskdRef.current) {
-    const discographySvc = new DiscographyService(lidarr, db);
+    const discographySvc = new DiscographyService(lidarr, db, config.musicDir);
     const hunterSvc = new AlbumHunterService(slskdRef.current);
     app.route(
       '/api/discography',
