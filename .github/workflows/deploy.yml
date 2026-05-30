@@ -3,9 +3,13 @@ name: Deploy to server
 on:
   push:
     branches: [master]
+  workflow_dispatch: {}
 
+# Group per-commit so a release-bump push never cancels the original commit's
+# still-running pipeline (which previously starved the deploy job). Re-pushing
+# the same SHA still supersedes an older in-flight run.
 concurrency:
-  group: deploy
+  group: deploy-${{ github.sha }}
   cancel-in-progress: true
 
 jobs:
@@ -33,8 +37,9 @@ jobs:
   release:
     runs-on: ubuntu-latest
     needs: ci
-    # Skip when the triggering commit is already a release bump to avoid loops
-    if: "!startsWith(github.event.head_commit.message, 'chore(release):')"
+    # Only bump on real pushes, and skip when the triggering commit is already a
+    # release bump (avoids an infinite bump loop). Manual deploys never bump.
+    if: "github.event_name == 'push' && !startsWith(github.event.head_commit.message, 'chore(release):')"
     permissions:
       contents: write
     steps:
@@ -63,7 +68,11 @@ jobs:
 
   deploy:
     runs-on: ubuntu-latest
-    needs: release
+    # Deploy the release-bump commit (whose git state == the tagged version), or
+    # any manual run. Depends on `ci` only — `release` is skipped on the bump
+    # commit, and a skipped dependency would otherwise skip deploy too.
+    needs: ci
+    if: "github.event_name == 'workflow_dispatch' || startsWith(github.event.head_commit.message, 'chore(release):')"
     steps:
       - name: Connect to Tailscale
         uses: tailscale/github-action@v4
