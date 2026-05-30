@@ -48,4 +48,11 @@ export class ArtistApi {
   async getRootFolders(): Promise<LidarrRootFolder[]> {
     return this.client.request<LidarrRootFolder[]>('/api/v1/rootfolder');
   }
+
+  async addRootFolder(path: string): Promise<LidarrRootFolder> {
+    return this.client.request<LidarrRootFolder>('/api/v1/rootfolder', {
+      method: 'POST',
+      body: JSON.stringify({ path }),
+    });
+  }
 }
