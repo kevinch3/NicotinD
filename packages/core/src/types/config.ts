@@ -37,6 +37,14 @@ export const NicotinDConfigSchema = z.object({
     password: z.string().default(''),
   }),
 
+  lidarr: z
+    .object({
+      url: z.string().url().default('http://localhost:8686'),
+      port: z.number().default(8686),
+      apiKey: z.string().default(''),
+    })
+    .optional(),
+
   jwt: z.object({
     secret: z.string().min(32, 'JWT secret must be at least 32 characters'),
     expiresIn: z.string().default('24h'),

@@ -36,6 +36,7 @@ function setup() {
         useValue: {
           getArtist: () => of({ artist: ARTIST, albums: ALBUMS }),
           getAlbum: (id: string) => { getAlbumCalls.push(id); return of(ALBUM_DETAILS[id]); },
+          getArtistDiscography: () => of({ artistId: 'ar1', lidarrId: 0, mbid: '', albums: [] }),
         },
       },
       { provide: AuthService, useValue: { token: signal('tok') } },

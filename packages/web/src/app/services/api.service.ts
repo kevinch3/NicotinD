@@ -433,4 +433,65 @@ export class ApiService {
   disconnectTailscale() {
     return this.http.post<{ ok: boolean }>('/api/tailscale/disconnect', {});
   }
+
+  // Discography
+  getArtistDiscography(artistId: string) {
+    return this.http.get<DiscographyResult>(`/api/discography/artists/${artistId}`);
+  }
+
+  huntAlbum(lidarrAlbumId: number, overrides: { artistName?: string; albumTitle?: string } = {}) {
+    return this.http.post<HuntResult>(`/api/discography/albums/${lidarrAlbumId}/hunt`, overrides);
+  }
+}
+
+export interface DiscographyTrack {
+  lidarrId: number;
+  title: string;
+  trackNumber: string;
+  duration: number;
+  hasFile: boolean;
+}
+
+export interface DiscographyAlbum {
+  lidarrId: number;
+  foreignAlbumId: string;
+  title: string;
+  releaseDate?: string;
+  albumType: string;
+  secondaryTypes: string[];
+  totalTracks: number;
+  localTrackCount: number;
+  status: 'present' | 'partial' | 'missing';
+  localAlbumId?: string;
+  tracks: DiscographyTrack[];
+}
+
+export interface DiscographyResult {
+  artistId: string;
+  lidarrId: number;
+  mbid: string;
+  albums: DiscographyAlbum[];
+}
+
+export interface HuntFile {
+  filename: string;
+  size: number;
+  bitRate?: number;
+}
+
+export interface FolderCandidate {
+  directory: string;
+  username: string;
+  files: HuntFile[];
+  matchedTracks: number;
+  totalTracks: number;
+  matchPct: number;
+  format: string;
+  estimatedSizeMb: number;
+  isLive: boolean;
+}
+
+export interface HuntResult {
+  candidates: FolderCandidate[];
+  totalTracks: number;
 }

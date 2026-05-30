@@ -1,16 +1,17 @@
-import { Component, inject, signal, OnInit } from '@angular/core';
+import { Component, inject, signal, computed, OnInit } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
-import { ApiService, type Album } from '../../services/api.service';
+import { ApiService, type Album, type DiscographyAlbum, type DiscographyResult } from '../../services/api.service';
 import { AuthService } from '../../services/auth.service';
 import { PlayerService } from '../../services/player.service';
+import { AlbumHuntModalComponent } from '../../components/album-hunt-modal/album-hunt-modal.component';
 import { toTrack } from '../../lib/track-utils';
 import { resolveAlbumRoute } from '../../lib/route-utils';
 
 @Component({
   selector: 'app-artist-detail',
   standalone: true,
-  imports: [RouterLink],
+  imports: [RouterLink, AlbumHuntModalComponent],
   templateUrl: './artist-detail.component.html',
   })
 export class ArtistDetailComponent implements OnInit {
@@ -24,6 +25,10 @@ export class ArtistDetailComponent implements OnInit {
   readonly artist = signal<{ id: string; name: string; albumCount: number; coverArt?: string } | null>(null);
   readonly albums = signal<Album[]>([]);
 
+  readonly discography = signal<DiscographyResult | null>(null);
+  readonly discographyLoading = signal(false);
+  readonly huntingAlbum = signal<DiscographyAlbum | null>(null);
+
   async ngOnInit(): Promise<void> {
     const id = this.route.snapshot.paramMap.get('id') ?? '';
     try {
@@ -32,6 +37,45 @@ export class ArtistDetailComponent implements OnInit {
       this.albums.set(data.albums);
     } catch { /* ignore */ }
     finally { this.loading.set(false); }
+
+    // Load discography in background — gracefully absent if Lidarr not configured
+    this.loadDiscography(id);
+  }
+
+  private async loadDiscography(artistId: string): Promise<void> {
+    this.discographyLoading.set(true);
+    try {
+      const result = await firstValueFrom(this.api.getArtistDiscography(artistId));
+      this.discography.set(result);
+    } catch {
+      // Lidarr not configured or artist not found — no discography shown
+    } finally {
+      this.discographyLoading.set(false);
+    }
+  }
+
+  openHunt(album: DiscographyAlbum): void {
+    this.huntingAlbum.set(album);
+  }
+
+  closeHunt(): void {
+    this.huntingAlbum.set(null);
+  }
+
+  statusIcon(status: 'present' | 'partial' | 'missing'): string {
+    if (status === 'present') return '✓';
+    if (status === 'partial') return '◑';
+    return '○';
+  }
+
+  statusClass(status: 'present' | 'partial' | 'missing'): string {
+    if (status === 'present') return 'text-green-400';
+    if (status === 'partial') return 'text-yellow-400';
+    return 'text-zinc-500';
+  }
+
+  countByStatus(albums: DiscographyAlbum[], status: 'present' | 'partial' | 'missing'): number {
+    return albums.filter((a) => a.status === status).length;
   }
 
   async playAll(): Promise<void> {

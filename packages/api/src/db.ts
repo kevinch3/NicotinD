@@ -222,6 +222,16 @@ export function applySchema(db: Database): void {
       updated_at INTEGER NOT NULL
     )
   `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS artist_discography_links (
+      artist_id  TEXT NOT NULL,
+      lidarr_id  INTEGER,
+      mbid       TEXT,
+      checked_at INTEGER NOT NULL,
+      PRIMARY KEY (artist_id)
+    )
+  `);
 }
 
 export function getDatabase(): Database {
