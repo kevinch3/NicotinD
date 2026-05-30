@@ -1,6 +1,13 @@
-import { describe, expect, it, beforeEach, mock } from 'bun:test';
+import { describe, expect, it, beforeEach, afterAll, mock } from 'bun:test';
 import { Hono } from 'hono';
 import { Database } from 'bun:sqlite';
+import * as realFsNamespace from 'node:fs';
+
+// Snapshot the real node:fs BEFORE we mock it, so we can restore it afterward.
+// Bun's mock.module is process-global and not auto-restored, so without this the
+// partial stub below leaks into later test files (e.g. library-organizer.test.ts),
+// leaving their mkdirSync/copyFileSync/etc. undefined and silently breaking them.
+const realFs = { ...realFsNamespace };
 import { libraryRoutes } from './library.js';
 import type { AuthEnv } from '../middleware/auth.js';
 
@@ -32,6 +39,12 @@ mock.module('node:fs', () => ({
     fsState.delete(path);
   }),
 }));
+
+// Restore the real node:fs once this file's tests finish, so the global mock
+// doesn't bleed into other test files that rely on real filesystem behavior.
+afterAll(() => {
+  mock.module('node:fs', () => realFs);
+});
 
 function makeNavidromeMock() {
   return {
