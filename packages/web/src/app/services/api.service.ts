@@ -463,6 +463,7 @@ export interface DiscographyAlbum {
   localTrackCount: number;
   status: 'present' | 'partial' | 'missing';
   localAlbumId?: string;
+  coverArtUrl?: string;
   tracks: DiscographyTrack[];
 }
 

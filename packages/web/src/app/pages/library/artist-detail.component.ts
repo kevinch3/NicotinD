@@ -29,6 +29,30 @@ export class ArtistDetailComponent implements OnInit {
   readonly discographyLoading = signal(false);
   readonly huntingAlbum = signal<DiscographyAlbum | null>(null);
 
+  // Group the flat discography by release type for the template's sectioned grid.
+  // Order: Albums → EPs → Singles → everything else; chronological within a group.
+  private readonly typeOrder = ['Album', 'EP', 'Single'];
+  readonly discographyGroups = computed<{ label: string; albums: DiscographyAlbum[] }[]>(() => {
+    const disc = this.discography();
+    if (!disc) return [];
+    const buckets = new Map<string, DiscographyAlbum[]>();
+    for (const album of disc.albums) {
+      const key = album.albumType || 'Other';
+      const bucket = buckets.get(key) ?? buckets.set(key, []).get(key)!;
+      bucket.push(album);
+    }
+    const rank = (type: string): number => {
+      const i = this.typeOrder.indexOf(type);
+      return i === -1 ? this.typeOrder.length : i;
+    };
+    return [...buckets.entries()]
+      .sort(([a], [b]) => rank(a) - rank(b) || a.localeCompare(b))
+      .map(([label, albums]) => ({
+        label,
+        albums: [...albums].sort((x, y) => (x.releaseDate ?? '').localeCompare(y.releaseDate ?? '')),
+      }));
+  });
+
   async ngOnInit(): Promise<void> {
     const id = this.route.snapshot.paramMap.get('id') ?? '';
     try {
