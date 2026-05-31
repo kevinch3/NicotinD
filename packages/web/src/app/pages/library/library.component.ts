@@ -146,6 +146,32 @@ export class LibraryComponent implements OnInit, OnDestroy {
     sortOptions: this.gridSortOptions,
   });
 
+  readonly trackCountOptions: Array<{ label: string; value: number | null }> = [
+    { label: 'All', value: null },
+    { label: '1', value: 1 },
+    { label: '2', value: 2 },
+    { label: '3', value: 3 },
+    { label: '4', value: 4 },
+    { label: '5', value: 5 },
+    { label: '6', value: 6 },
+    { label: '7', value: 7 },
+    { label: '8', value: 8 },
+    { label: '9', value: 9 },
+    { label: '10+', value: 10 },
+  ];
+
+  readonly minSongCount = signal<number | null>(null);
+
+  readonly filteredAlbums = computed(() => {
+    const min = this.minSongCount();
+    if (min === null) return this.gridControls.filtered();
+    return this.gridControls.filtered().filter(a => (a.songCount ?? 0) >= min);
+  });
+
+  setMinSongCount(n: number | null): void {
+    this.minSongCount.set(n);
+  }
+
   // ─── Artists ──────────────────────────────────────────────────────
   readonly artists = signal<Array<{ id: string; name: string; albumCount: number; coverArt?: string }>>([]);
   readonly loadingArtists = signal(false);

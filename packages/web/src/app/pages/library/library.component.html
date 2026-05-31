@@ -56,11 +56,26 @@
       [sortField]="gridControls.sortField()"
       [sortDirection]="gridControls.sortDirection()"
       [sortOptions]="gridSortOptions"
-      [resultCount]="gridControls.filtered().length"
+      [resultCount]="filteredAlbums().length"
       (searchChange)="gridControls.setSearchText($event)"
       (sortFieldChange)="gridControls.setSortField($event)"
       (toggleDirection)="gridControls.toggleSortDirection()"
     />
+
+    <div class="flex flex-wrap items-center gap-2 mb-4">
+      @for (opt of trackCountOptions; track opt.label) {
+        <button type="button"
+          class="px-3 py-1 text-xs rounded-full transition-colors border"
+          [class.bg-theme-surface]="minSongCount() === opt.value"
+          [class.border-theme]="minSongCount() === opt.value"
+          [class.text-theme-primary]="minSongCount() === opt.value"
+          [class.border-transparent]="minSongCount() !== opt.value"
+          [class.text-theme-muted]="minSongCount() !== opt.value"
+          (click)="setMinSongCount(opt.value)">
+          {{ opt.label }}
+        </button>
+      }
+    </div>
 
     @if (loading()) {
       <div class="text-center py-20">
@@ -73,7 +88,7 @@
     }
 
     <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-      @for (album of gridControls.filtered(); track album.id) {
+      @for (album of filteredAlbums(); track album.id) {
         <a [routerLink]="getAlbumLink(album.id)"
           class="group relative p-3 rounded-lg bg-theme-surface/30 hover:bg-theme-surface-2/50 transition text-left cursor-pointer break-inside-avoid">
           @if (album.coverArt) {
