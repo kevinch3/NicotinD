@@ -31,8 +31,11 @@ jobs:
       - name: Lint
         run: bun run lint
 
-      - name: Test
+      - name: Test (API + slskd-client)
         run: bun test packages/api/src packages/slskd-client/src
+
+      - name: Test (web)
+        run: bun run --filter @nicotind/web test
 
   release:
     runs-on: ubuntu-latest
