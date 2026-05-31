@@ -87,21 +87,23 @@ describe('NowPlayingComponent', () => {
   });
 
   describe('drag-to-dismiss (live-follow)', () => {
-    const pointer = (clientY: number, button = 0) =>
-      ({ clientY, button }) as PointerEvent;
+    // jsdom has no PointerEvent constructor; MouseEvent carries clientY + button
+    // and dispatches under any type string, driving the real document listeners.
+    const pointer = (type: string, clientY: number, button = 0) =>
+      new MouseEvent(type, { clientY, button }) as unknown as PointerEvent;
 
     it('follows the finger downward and closes the sheet past the threshold', () => {
       const { fixture, playerStub } = setup();
       const component = fixture.componentInstance;
       const setOpen = vi.spyOn(playerStub, 'setNowPlayingOpen');
 
-      component.onSheetDragStart(pointer(100));
+      component.onSheetDragStart(pointer('pointerdown', 100));
       expect(component.dragging()).toBe(true);
 
-      component['onSheetDragMove'](pointer(280)); // delta 180 > 120 threshold
+      document.dispatchEvent(pointer('pointermove', 280)); // delta 180 > 120 threshold
       expect(component.dragOffsetPx()).toBe(180);
 
-      component['onSheetDragEnd']();
+      document.dispatchEvent(pointer('pointerup', 280));
       expect(setOpen).toHaveBeenCalledWith(false);
       expect(component.dragOffsetPx()).toBe(0);
       expect(component.dragging()).toBe(false);
@@ -112,9 +114,9 @@ describe('NowPlayingComponent', () => {
       const component = fixture.componentInstance;
       const setOpen = vi.spyOn(playerStub, 'setNowPlayingOpen');
 
-      component.onSheetDragStart(pointer(100));
-      component['onSheetDragMove'](pointer(150)); // delta 50 < 120 threshold
-      component['onSheetDragEnd']();
+      component.onSheetDragStart(pointer('pointerdown', 100));
+      document.dispatchEvent(pointer('pointermove', 150)); // delta 50 < 120 threshold
+      document.dispatchEvent(pointer('pointerup', 150));
 
       expect(setOpen).not.toHaveBeenCalled();
       expect(component.dragOffsetPx()).toBe(0);
@@ -125,23 +127,24 @@ describe('NowPlayingComponent', () => {
       const { fixture } = setup();
       const component = fixture.componentInstance;
 
-      component.onSheetDragStart(pointer(200));
-      component['onSheetDragMove'](pointer(50)); // delta -150
+      component.onSheetDragStart(pointer('pointerdown', 200));
+      document.dispatchEvent(pointer('pointermove', 50)); // delta -150
       expect(component.dragOffsetPx()).toBe(0);
     });
 
-    it('ignores non-primary buttons and removes listeners on release', () => {
+    it('ignores non-primary buttons and stops tracking after release', () => {
       const { fixture } = setup();
       const component = fixture.componentInstance;
-      const removeSpy = vi.spyOn(document, 'removeEventListener');
 
-      component.onSheetDragStart(pointer(100, 2)); // right-click
+      component.onSheetDragStart(pointer('pointerdown', 100, 2)); // right-click
       expect(component.dragging()).toBe(false);
 
-      component.onSheetDragStart(pointer(100));
-      component['onSheetDragEnd']();
-      expect(removeSpy).toHaveBeenCalledWith('pointermove', expect.any(Function));
-      expect(removeSpy).toHaveBeenCalledWith('pointerup', expect.any(Function));
+      component.onSheetDragStart(pointer('pointerdown', 100));
+      document.dispatchEvent(pointer('pointerup', 100));
+      // Listeners detached: a post-release move must not move the sheet.
+      document.dispatchEvent(pointer('pointermove', 300));
+      expect(component.dragOffsetPx()).toBe(0);
+      expect(component.dragging()).toBe(false);
     });
   });
 });

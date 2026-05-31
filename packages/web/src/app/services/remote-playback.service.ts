@@ -7,8 +7,8 @@
  *
  * Call `initialize()` once at app bootstrap (e.g. in AppComponent constructor).
  */
-import { Injectable, inject, signal, computed, effect, untracked } from '@angular/core';
-import { Subscription } from 'rxjs';
+import { Injectable, inject, signal, computed, effect, untracked, DestroyRef } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { PlaybackWsService } from './playback-ws.service';
 import { PlayerService, Track } from './player.service';
 import { AuthService } from './auth.service';
@@ -25,6 +25,7 @@ export class RemotePlaybackService {
   private readonly ws = inject(PlaybackWsService);
   private readonly player = inject(PlayerService);
   private readonly auth = inject(AuthService);
+  private readonly destroyRef = inject(DestroyRef);
 
   // ---------------------------------------------------------------------------
   // State signals
@@ -64,7 +65,6 @@ export class RemotePlaybackService {
 
   private lateJoinApplied = false;
   private lastRemoteTrackId: string | null = null;
-  private subscriptions: Subscription[] = [];
   private previousTrackId: string | null = null;
 
   // ---------------------------------------------------------------------------
@@ -119,8 +119,6 @@ export class RemotePlaybackService {
   // ---------------------------------------------------------------------------
 
   initialize(): void {
-    this.teardown();
-
     const myId = this.ws.getDeviceId();
 
     // --- Auth token effect: connect WS when token exists, disconnect when null ---
@@ -180,105 +178,97 @@ export class RemotePlaybackService {
     });
 
     // --- Subscribe to STATE_SYNC ---
-    this.subscriptions.push(
-      this.ws
-        .messages<{
-          state: {
-            activeDeviceId?: string | null;
-            isPlaying?: boolean;
-            track?: Track | null;
-            position?: number;
-            duration?: number;
-          };
-          devices?: RemoteDevice[];
-        }>('STATE_SYNC')
-        .subscribe((payload) => {
-          const { state, devices } = payload;
+    this.ws
+      .messages<{
+        state: {
+          activeDeviceId?: string | null;
+          isPlaying?: boolean;
+          track?: Track | null;
+          position?: number;
+          duration?: number;
+        };
+        devices?: RemoteDevice[];
+      }>('STATE_SYNC')
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((payload) => {
+        const { state, devices } = payload;
 
-          if (state?.activeDeviceId !== undefined) {
-            this.activeDeviceId.set(state.activeDeviceId ?? null);
+        if (state?.activeDeviceId !== undefined) {
+          this.activeDeviceId.set(state.activeDeviceId ?? null);
+        }
+        if (devices) this.devices.set(devices);
+
+        // Keep the controller's UI in sync with the remote device's playing state
+        if (state?.isPlaying !== undefined) {
+          this.remoteIsPlaying.set(state.isPlaying);
+        }
+
+        // Sync remote progress for seek bar interpolation on controller.
+        // Prefer actual audio duration from PROGRESS_REPORT over track metadata.
+        if (state?.position !== undefined) {
+          const dur = state?.duration ?? state?.track?.duration ?? 0;
+          this.setRemoteProgress(state.position, dur);
+        }
+
+        const amActive = state?.activeDeviceId === myId;
+        const remoteEnabled = this.remoteEnabled();
+
+        // Late-join: if this device is already the active device when it first connects
+        // and the server has a track stored, load it now. Only runs ONCE.
+        if (amActive && state?.track && !this.lateJoinApplied) {
+          this.lateJoinApplied = true;
+          if (remoteEnabled) {
+            this.player.play(state.track);
+            if (state.isPlaying === false) this.player.pause();
           }
-          if (devices) this.devices.set(devices);
+        }
 
-          // Keep the controller's UI in sync with the remote device's playing state
-          if (state?.isPlaying !== undefined) {
-            this.remoteIsPlaying.set(state.isPlaying);
+        // Controller: sync remote track metadata so the player bar shows current info.
+        // Uses setCurrentTrackMetadata to avoid clearing queue/history or loading audio.
+        // Only applies when a proper remote session exists and this device has opted in.
+        const hasActiveSession = typeof state?.activeDeviceId === 'string';
+        if (!amActive && hasActiveSession && remoteEnabled && state?.track) {
+          const localTrack = this.player.currentTrack();
+          if (state.track.id !== localTrack?.id) {
+            this.lastRemoteTrackId = state.track.id;
+            this.player.setCurrentTrackMetadata(state.track);
           }
-
-          // Sync remote progress for seek bar interpolation on controller.
-          // Prefer actual audio duration from PROGRESS_REPORT over track metadata.
-          if (state?.position !== undefined) {
-            const dur = state?.duration ?? state?.track?.duration ?? 0;
-            this.setRemoteProgress(state.position, dur);
-          }
-
-          const amActive = state?.activeDeviceId === myId;
-          const remoteEnabled = this.remoteEnabled();
-
-          // Late-join: if this device is already the active device when it first connects
-          // and the server has a track stored, load it now. Only runs ONCE.
-          if (amActive && state?.track && !this.lateJoinApplied) {
-            this.lateJoinApplied = true;
-            if (remoteEnabled) {
-              this.player.play(state.track);
-              if (state.isPlaying === false) this.player.pause();
-            }
-          }
-
-          // Controller: sync remote track metadata so the player bar shows current info.
-          // Uses setCurrentTrackMetadata to avoid clearing queue/history or loading audio.
-          // Only applies when a proper remote session exists and this device has opted in.
-          const hasActiveSession = typeof state?.activeDeviceId === 'string';
-          if (!amActive && hasActiveSession && remoteEnabled && state?.track) {
-            const localTrack = this.player.currentTrack();
-            if (state.track.id !== localTrack?.id) {
-              this.lastRemoteTrackId = state.track.id;
-              this.player.setCurrentTrackMetadata(state.track);
-            }
-          }
-        }),
-    );
+        }
+      });
 
     // --- Subscribe to DEVICES_SYNC ---
-    this.subscriptions.push(
-      this.ws
-        .messages<{ devices: RemoteDevice[] }>('DEVICES_SYNC')
-        .subscribe((payload) => {
-          this.devices.set(payload.devices);
-        }),
-    );
+    this.ws
+      .messages<{ devices: RemoteDevice[] }>('DEVICES_SYNC')
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((payload) => {
+        this.devices.set(payload.devices);
+      });
 
     // --- Subscribe to COMMAND ---
     // Only executed on the active, opted-in device. PLAY/PAUSE/SEEK/SET_TRACK
     // are all routed through COMMAND (not STATE_SYNC) to avoid echo loops.
-    this.subscriptions.push(
-      this.ws
-        .messages<{ action: string; track?: Track; position?: number }>('COMMAND')
-        .subscribe((payload) => {
-          // Re-check at call time to avoid race during device switch
-          const currentActiveId = this.activeDeviceId();
-          if (currentActiveId !== myId) return;
-          const remoteEnabled = this.remoteEnabled();
-          if (!remoteEnabled) return;
+    this.ws
+      .messages<{ action: string; track?: Track; position?: number }>('COMMAND')
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((payload) => {
+        // Re-check at call time to avoid race during device switch
+        const currentActiveId = this.activeDeviceId();
+        if (currentActiveId !== myId) return;
+        const remoteEnabled = this.remoteEnabled();
+        if (!remoteEnabled) return;
 
-          const { action } = payload;
-          if (action === 'PLAY') this.player.resume();
-          if (action === 'PAUSE') this.player.pause();
-          if (action === 'SEEK' && payload.position !== undefined) {
-            this.player.seek(payload.position);
-          }
-          if (action === 'SET_TRACK' && payload.track) {
-            this.lastRemoteTrackId = payload.track.id;
-            this.player.play(payload.track);
-          }
-          if (action === 'NEXT') this.player.playNext();
-          if (action === 'PREV') this.player.playPrev();
-        }),
-    );
-  }
-
-  private teardown(): void {
-    this.subscriptions.forEach((s) => s.unsubscribe());
-    this.subscriptions = [];
+        const { action } = payload;
+        if (action === 'PLAY') this.player.resume();
+        if (action === 'PAUSE') this.player.pause();
+        if (action === 'SEEK' && payload.position !== undefined) {
+          this.player.seek(payload.position);
+        }
+        if (action === 'SET_TRACK' && payload.track) {
+          this.lastRemoteTrackId = payload.track.id;
+          this.player.play(payload.track);
+        }
+        if (action === 'NEXT') this.player.playNext();
+        if (action === 'PREV') this.player.playPrev();
+      });
   }
 }

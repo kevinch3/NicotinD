@@ -1,4 +1,4 @@
-import { Component, inject, input, output, signal, computed, OnDestroy } from '@angular/core';
+import { Component, inject, input, output, signal, computed } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { ApiService } from '../../services/api.service';
 import { SearchService } from '../../services/search.service';
@@ -18,6 +18,7 @@ import {
   DEFAULT_FOLDER_LABEL,
 } from '../../lib/download-status';
 import { FolderTreeNodeComponent } from './folder-tree-node.component';
+import { createPointerDrag } from '../../lib/pointer-drag';
 
 function buildBreadcrumb(path: string): Array<{ label: string; path: string }> {
   const segs = path.split(/[\\/]/).filter(Boolean);
@@ -47,7 +48,7 @@ const MAX_TREE_WIDTH = 420;
   imports: [FolderTreeNodeComponent],
   templateUrl: './folder-browser.component.html',
   })
-export class FolderBrowserComponent implements OnDestroy {
+export class FolderBrowserComponent {
   private api = inject(ApiService);
   private search = inject(SearchService);
   private transfers = inject(TransferService);
@@ -110,10 +111,6 @@ export class FolderBrowserComponent implements OnDestroy {
 
   ngOnInit(): void {
     this.selected.set(this.matchedPath());
-  }
-
-  ngOnDestroy(): void {
-    this.stopResize();
   }
 
   fileBtnState(file: BrowseFile) {
@@ -190,46 +187,33 @@ export class FolderBrowserComponent implements OnDestroy {
   }
 
   private resizeMode: 'height' | 'tree' | null = null;
-  private resizeStartX = 0;
-  private resizeStartY = 0;
   private resizeStartHeight = MIN_BROWSER_HEIGHT;
   private resizeStartTreeWidth = MIN_TREE_WIDTH;
 
-  private readonly onPointerMove = (event: PointerEvent): void => {
-    if (this.resizeMode === 'height') {
-      const deltaY = event.clientY - this.resizeStartY;
-      this.browserHeight.set(this.clamp(this.resizeStartHeight + deltaY, MIN_BROWSER_HEIGHT, MAX_BROWSER_HEIGHT));
-      return;
-    }
-
-    if (this.resizeMode === 'tree') {
-      const deltaX = event.clientX - this.resizeStartX;
-      this.treeWidth.set(this.clamp(this.resizeStartTreeWidth + deltaX, MIN_TREE_WIDTH, MAX_TREE_WIDTH));
-    }
-  };
-
-  private readonly onPointerUp = (): void => {
-    this.stopResize();
-  };
+  private readonly resizeDrag = createPointerDrag({
+    onMove: (event, start) => {
+      if (this.resizeMode === 'height') {
+        const deltaY = event.clientY - start.clientY;
+        this.browserHeight.set(this.clamp(this.resizeStartHeight + deltaY, MIN_BROWSER_HEIGHT, MAX_BROWSER_HEIGHT));
+      } else if (this.resizeMode === 'tree') {
+        const deltaX = event.clientX - start.clientX;
+        this.treeWidth.set(this.clamp(this.resizeStartTreeWidth + deltaX, MIN_TREE_WIDTH, MAX_TREE_WIDTH));
+      }
+    },
+    onEnd: () => {
+      this.resizeMode = null;
+    },
+  });
 
   private startResize(mode: 'height' | 'tree', event: PointerEvent): void {
     if (event.button !== 0) return;
     event.preventDefault();
 
     this.resizeMode = mode;
-    this.resizeStartX = event.clientX;
-    this.resizeStartY = event.clientY;
     this.resizeStartHeight = this.browserHeight();
     this.resizeStartTreeWidth = this.treeWidth();
 
-    document.addEventListener('pointermove', this.onPointerMove);
-    document.addEventListener('pointerup', this.onPointerUp, { once: true });
-  }
-
-  private stopResize(): void {
-    this.resizeMode = null;
-    document.removeEventListener('pointermove', this.onPointerMove);
-    document.removeEventListener('pointerup', this.onPointerUp);
+    this.resizeDrag.start(event);
   }
 
   private clamp(value: number, min: number, max: number): number {
