@@ -1,6 +1,7 @@
 import type { Database } from 'bun:sqlite';
 import type { Lidarr, LidarrAlbum, LidarrTrack } from '@nicotind/lidarr-client';
 import { createLogger } from '@nicotind/core';
+import { addArtistFromLookup } from './lidarr-provision.js';
 
 const log = createLogger('discography');
 
@@ -119,33 +120,9 @@ export class DiscographyService {
     const best = candidates[0];
     if (!best) throw new Error(`Lidarr found no artist matching "${artistName}"`);
 
-    // Get quality + metadata profile and root folder for add
-    const [profiles, metadataProfiles, initialRootFolders] = await Promise.all([
-      this.lidarr.artist.getQualityProfiles(),
-      this.lidarr.artist.getMetadataProfiles(),
-      this.lidarr.artist.getRootFolders(),
-    ]);
-
-    if (!profiles.length) throw new Error('Lidarr has no quality profiles configured');
-    if (!metadataProfiles.length) throw new Error('Lidarr has no metadata profiles configured');
-
-    let rootFolders = initialRootFolders;
-    if (!rootFolders.length) {
-      if (!this.musicDir) throw new Error('Lidarr has no root folders configured');
-      log.info({ path: this.musicDir }, 'No Lidarr root folder — provisioning music dir');
-      const added = await this.lidarr.artist.addRootFolder(this.musicDir);
-      rootFolders = [added];
-    }
-
-    const added = await this.lidarr.artist.add(
-      best,
-      profiles[0].id,
-      rootFolders[0].path,
-      metadataProfiles[0].id,
-    );
+    const added = await addArtistFromLookup(this.lidarr, best, this.musicDir);
 
     this.upsertLink(artistId, added.id, added.foreignArtistId);
-    log.info({ artistName, lidarrId: added.id }, 'Artist added to Lidarr');
     return added.id;
   }
 

@@ -195,6 +195,22 @@ export class ApiService {
     return this.http.delete<{ ok: boolean }>(`/api/search/${searchId}`);
   }
 
+  // Catalog (metadata-driven) search — Lidarr/MusicBrainz lookup.
+  catalogSearch(q: string) {
+    return this.http.get<CatalogSearchResult>('/api/catalog/search', { params: { q } });
+  }
+
+  // Resolves a searched album into a real Lidarr album id (adding the artist on
+  // demand) so the album-hunt flow can run against its canonical tracklist.
+  catalogResolve(payload: {
+    foreignAlbumId: string;
+    artistMbid: string;
+    artistName: string;
+    albumTitle: string;
+  }) {
+    return this.http.post<CatalogResolveResult>('/api/catalog/resolve', payload);
+  }
+
   // Downloads
   enqueueDownload(username: string, files: Array<{ filename: string; size: number }>) {
     return this.http.post<{ ok: boolean }>('/api/downloads', { username, files });
@@ -517,4 +533,35 @@ export interface FolderCandidate {
 export interface HuntResult {
   candidates: FolderCandidate[];
   totalTracks: number;
+}
+
+export interface CatalogArtist {
+  mbid: string;
+  name: string;
+  imageUrl?: string;
+  type?: string;
+}
+
+export interface CatalogAlbum {
+  foreignAlbumId: string;
+  title: string;
+  artistName: string;
+  artistMbid: string;
+  year?: string;
+  albumType: string;
+  secondaryTypes: string[];
+  coverUrl?: string;
+  trackCount: number;
+}
+
+export interface CatalogSearchResult {
+  artists: CatalogArtist[];
+  albums: CatalogAlbum[];
+}
+
+export interface CatalogResolveResult {
+  lidarrAlbumId: number;
+  totalTracks: number;
+  title: string;
+  artistName: string;
 }

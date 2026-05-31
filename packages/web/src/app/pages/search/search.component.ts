@@ -2,12 +2,13 @@ import { Component, inject, signal, computed, effect, OnInit, OnDestroy } from '
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
-import { ApiService } from '../../services/api.service';
+import { ApiService, type CatalogAlbum, type CatalogSearchResult, type DiscographyAlbum } from '../../services/api.service';
 import { SearchService, type NetworkResult } from '../../services/search.service';
 import { TransferService } from '../../services/transfer.service';
 import { getSingleDownloadLabel, getFolderDownloadLabel, isPathEffectivelyQueued, BUTTON_CLASSES } from '../../lib/download-status';
 import { groupByDirectory, formatPeerInfo, type FolderGroup } from '../../lib/folder-utils';
 import { FolderBrowserComponent } from '../../components/folder-browser/folder-browser.component';
+import { AlbumHuntModalComponent } from '../../components/album-hunt-modal/album-hunt-modal.component';
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -123,7 +124,7 @@ function escapeHtml(text: string): string {
 
 @Component({
   selector: 'app-search',
-  imports: [FormsModule, FolderBrowserComponent, RouterLink],
+  imports: [FormsModule, FolderBrowserComponent, RouterLink, AlbumHuntModalComponent],
   templateUrl: './search.component.html',
   })
 export class SearchComponent implements OnInit, OnDestroy {
@@ -147,6 +148,21 @@ export class SearchComponent implements OnInit, OnDestroy {
   readonly searchError = signal<string | null>(null);
   readonly downloadError = signal<string | null>(null);
   readonly searchFocused = signal(false);
+
+  // Metadata-driven (catalog) search state. The catalog lookup is the primary
+  // result; the raw Soulseek search below is the always-available fallback.
+  readonly catalog = signal<CatalogSearchResult | null>(null);
+  readonly catalogUnavailable = signal(false); // Lidarr not configured / lookup failed
+  readonly resolvingAlbum = signal<string | null>(null); // foreignAlbumId being resolved
+  readonly resolveError = signal<string | null>(null);
+  readonly directSearchOpen = signal(false);
+  readonly huntingAlbum = signal<DiscographyAlbum | null>(null);
+  readonly huntingArtistName = signal('');
+
+  readonly hasCatalog = computed(() => {
+    const c = this.catalog();
+    return !!c && (c.artists.length > 0 || c.albums.length > 0);
+  });
 
   readonly flatNetwork = computed(() => flattenAndFilter(this.search.network()));
   readonly hasNetwork = computed(() => this.flatNetwork().length > 0);
@@ -258,6 +274,59 @@ export class SearchComponent implements OnInit, OnDestroy {
     this.router.navigate(['/']);
   }
 
+  // ─── Catalog (metadata) results ─────────────────────────────────
+
+  // Re-run the search scoped to an artist so album.lookup surfaces their
+  // releases (there is no discography page for non-library artists).
+  searchArtist(name: string): void {
+    this.search.setQuery(name);
+    this.executeSearch();
+  }
+
+  // Resolve a searched album into a real Lidarr album, then open the same
+  // album-hunt modal used by the discography flow.
+  async huntCatalogAlbum(album: CatalogAlbum): Promise<void> {
+    if (this.resolvingAlbum()) return;
+    this.resolveError.set(null);
+    this.resolvingAlbum.set(album.foreignAlbumId);
+    try {
+      const resolved = await firstValueFrom(
+        this.api.catalogResolve({
+          foreignAlbumId: album.foreignAlbumId,
+          artistMbid: album.artistMbid,
+          artistName: album.artistName,
+          albumTitle: album.title,
+        }),
+      );
+      this.huntingArtistName.set(resolved.artistName || album.artistName);
+      this.huntingAlbum.set({
+        lidarrId: resolved.lidarrAlbumId,
+        foreignAlbumId: album.foreignAlbumId,
+        title: resolved.title || album.title,
+        releaseDate: album.year,
+        albumType: album.albumType,
+        secondaryTypes: album.secondaryTypes,
+        totalTracks: resolved.totalTracks || album.trackCount,
+        localTrackCount: 0,
+        status: 'missing',
+        coverArtUrl: album.coverUrl,
+        tracks: [],
+      });
+    } catch (err) {
+      this.resolveError.set(err instanceof Error ? err.message : 'Failed to prepare album');
+    } finally {
+      this.resolvingAlbum.set(null);
+    }
+  }
+
+  closeHunt(): void {
+    this.huntingAlbum.set(null);
+  }
+
+  toggleDirectSearch(): void {
+    this.directSearchOpen.update((v) => !v);
+  }
+
   toggleBrowser(key: string): void {
     this.search.openBrowserKey.update(k => k === key ? null : key);
   }
@@ -350,7 +419,16 @@ export class SearchComponent implements OnInit, OnDestroy {
     this.errors.set([]);
     this.searchError.set(null);
     this.downloadError.set(null);
+    this.resolveError.set(null);
+    this.catalog.set(null);
+    this.catalogUnavailable.set(false);
     this.networkAvailable.set(true);
+
+    // Fire metadata (catalog) + raw Soulseek search in parallel. Catalog is the
+    // primary result; the raw search backs the always-available fallback section.
+    const catalogPromise = firstValueFrom(this.api.catalogSearch(query))
+      .then((res) => this.catalog.set(res))
+      .catch(() => this.catalogUnavailable.set(true));
 
     try {
       const res = await firstValueFrom(this.api.search(query));
@@ -362,6 +440,10 @@ export class SearchComponent implements OnInit, OnDestroy {
     } catch (err) {
       this.searchError.set(err instanceof Error ? err.message : 'Search failed');
     } finally {
+      await catalogPromise;
+      // Collapse the raw-search fallback when we have metadata hits; otherwise
+      // (no hits, or Lidarr unavailable) open it so the user always has a path.
+      this.directSearchOpen.set(!this.hasCatalog());
       this.loading.set(false);
     }
   }

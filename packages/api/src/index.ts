@@ -24,7 +24,9 @@ import { usersRoutes } from './routes/users.js';
 import { shareRoutes } from './routes/share.js';
 import { subsonicProxy } from './routes/subsonic.js';
 import { discographyRoutes } from './routes/discography.js';
+import { catalogRoutes } from './routes/catalog.js';
 import { DiscographyService } from './services/discography.service.js';
+import { CatalogService } from './services/catalog-search.service.js';
 import { AlbumHunterService } from './services/album-hunter.service.js';
 import { DownloadWatcher } from './services/download-watcher.js';
 import { DownloadRetryService } from './services/download-retry.service.js';
@@ -224,6 +226,7 @@ export function createApp({
       '/api/discography',
       discographyRoutes({ discography: discographySvc, hunter: hunterSvc, lidarr, db, slskdRef }),
     );
+    app.route('/api/catalog', catalogRoutes({ catalog: new CatalogService(lidarr, config.musicDir) }));
   }
 
   // Serve web UI static files
