@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.28](https://github.com/kevinch3/NicotinD/compare/v0.1.27...v0.1.28) (2026-05-31)
+
+
+### Features
+
+* **library:** add Phase A0 — merge empty and 'Artist - Album' top-level folders ([ecaee01](https://github.com/kevinch3/NicotinD/commit/ecaee01ccf21f5dba180f4442a3069bce3c69f46))
+
 ## [0.1.27](https://github.com/kevinch3/NicotinD/compare/v0.1.25...v0.1.27) (2026-05-31)
 
 
