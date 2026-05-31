@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.26](https://github.com/kevinch3/NicotinD/compare/v0.1.25...v0.1.26) (2026-05-31)
+
+
+### Bug Fixes
+
+* download indicator update ([7a5f9d4](https://github.com/kevinch3/NicotinD/commit/7a5f9d433f8c69eec4e7c33ec884deb36191076a))
+
 ## [0.1.25](https://github.com/kevinch3/NicotinD/compare/v0.1.24...v0.1.25) (2026-05-31)
 
 ## [0.1.24](https://github.com/kevinch3/NicotinD/compare/v0.1.23...v0.1.24) (2026-05-31)
