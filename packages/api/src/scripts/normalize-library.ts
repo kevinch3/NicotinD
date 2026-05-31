@@ -298,6 +298,142 @@ function phaseA1_removeDups(musicDir: string): void {
   log(`  → ${stats.dupsRemoved} duplicates removed`);
 }
 
+// ─── Phase A0: Merge "Artist - Album" top-level folders ──────────────────────
+
+/**
+ * For "Artist - Album" folder names: extract the part before the first " - "
+ * and look for an exact normalized match against a known artist folder.
+ * Returns the matched artist name or null.
+ *
+ * Only the dash-separator pattern is used — prefix-only matching (e.g. "Fire"
+ * matching "Fire Escape") produces too many false positives with short names.
+ */
+function findDashPatternArtist(dirName: string, normToArtist: Map<string, string>): string | null {
+  const dashIdx = dirName.indexOf(' - ');
+  if (dashIdx === -1) return null;
+  const prefix = dirName.slice(0, dashIdx).trim();
+  return normToArtist.get(normalizeName(prefix)) ?? null;
+}
+
+/**
+ * Extracts a clean album name from everything after "Artist - " in the folder name.
+ * Strips trailing year tags like " (2013)", " - 2013", " [FLAC]".
+ *
+ *   "Rawayana - Licencia Para Ser Libre (2011)"  → "Licencia Para Ser Libre"
+ *   "Soda Stereo - Canción Animal (Remastered)"  → "Canción Animal (Remastered)"
+ *   "Soda Stereo 1990 - Canción Animal [CBS]"    → "Canción Animal"
+ */
+function extractAlbumAfterDash(dirName: string, artistName: string): string {
+  const suffix = dirName.slice(dirName.indexOf(' - ') + 3).trim();
+  // Strip trailing bare-year or format brackets: " - 2013", " [FLAC 320]"
+  const cleaned = suffix
+    .replace(/\s*-\s*\d{4}$/, '')
+    .replace(/\s*\[[^\]]*\]\s*$/, '')
+    .trim();
+  return cleaned || sanitizeSegment(artistName);
+}
+
+function phaseA0_mergeArtistAlbumFolders(musicDir: string): void {
+  log('\nPhase A0: Merging "Artist - Album" top-level folders...');
+
+  // Build normalized→canonical map from existing artist folders
+  const allDirs = listDir(musicDir).filter((name) => isDir(join(musicDir, name)));
+  const normToArtist = new Map<string, string>();
+  for (const name of allDirs) {
+    normToArtist.set(normalizeName(name), name);
+  }
+
+  let resolved = 0;
+
+  for (const dirName of allDirs) {
+    const dirPath = join(musicDir, dirName);
+
+    // ── Case 1: completely empty folder → just delete ───────────────────────
+    const hasAnyContent = (d: string): boolean => {
+      for (const e of listDir(d)) {
+        const full = join(d, e);
+        if (isFile(full)) return true;
+        if (isDir(full) && hasAnyContent(full)) return true;
+      }
+      return false;
+    };
+
+    // Skip the folder itself if it IS a known artist entry for something else
+    // (i.e., don't accidentally delete real artist folders that happen to be empty)
+    if (!hasAnyContent(dirPath)) {
+      // Only delete if the name contains a year/format tag or " - " (clearly not a real artist)
+      const looksLikeRelease = / - /.test(dirName) || /[\[(]\d{4}[\])]/.test(dirName);
+      if (looksLikeRelease) {
+        log(`  RMDIR (empty) ${dirName}/`);
+        if (!DRY_RUN) {
+          try { rmdirSync(dirPath); } catch { /* not empty or already gone */ }
+        }
+        resolved++;
+      }
+      continue;
+    }
+
+    // ── Case 2: "Artist - Album" dash pattern ───────────────────────────────
+    const owner = findDashPatternArtist(dirName, normToArtist);
+    if (!owner || owner === dirName) continue; // no match or self
+
+    const ownerDir = join(musicDir, owner);
+    const entries = listDir(dirPath);
+    const subDirs = entries.filter((e) => isDir(join(dirPath, e)));
+    const files = entries.filter((e) => isFile(join(dirPath, e)) && isAudioFile(join(dirPath, e)));
+
+    if (subDirs.length > 0) {
+      // Folder already has Album/tracks structure inside
+      for (const albumName of subDirs) {
+        const srcAlbum = join(dirPath, albumName);
+        const dstAlbum = join(ownerDir, albumName);
+        log(`  MERGE ${dirName}/${albumName} → ${owner}/${albumName}`);
+        if (!DRY_RUN) {
+          mkdirSync(dstAlbum, { recursive: true });
+          for (const f of listDir(srcAlbum)) {
+            const src = join(srcAlbum, f);
+            if (!isFile(src)) continue;
+            const dst = uniqueDst(join(dstAlbum, f));
+            try { moveFile(src, dst); logMove(src, dst); }
+            catch { log(`    SKIP (permission denied): ${f}`); stats.errors++; }
+          }
+          rmIfEmpty(srcAlbum);
+        }
+      }
+      if (!DRY_RUN) rmIfEmpty(dirPath);
+    } else if (files.length > 0) {
+      // Files directly in the folder — album name comes from the dash suffix
+      const albumName = sanitizeSegment(extractAlbumAfterDash(dirName, owner));
+      const dstAlbum = join(ownerDir, albumName);
+      log(`  MERGE ${dirName}/ → ${owner}/${albumName}/`);
+      if (!DRY_RUN) {
+        mkdirSync(dstAlbum, { recursive: true });
+        for (const f of files) {
+          const src = join(dirPath, f);
+          const dst = uniqueDst(join(dstAlbum, f));
+          try { moveFile(src, dst); logMove(src, dst); }
+          catch { log(`    SKIP (permission denied): ${f}`); stats.errors++; }
+        }
+        for (const f of listDir(dstAlbum)) {
+          const fp = join(dstAlbum, f);
+          if (!isFile(fp) || !isAudioFile(fp)) continue;
+          writeAudioTags(fp, { artist: owner, albumArtist: owner, album: albumName }).catch(() => { /* non-fatal */ });
+          writeProvenance(relative(musicDir, fp), 'artist_folder_merged', { from: dirName, to: `${owner}/${albumName}` });
+        }
+        rmIfEmpty(dirPath);
+      }
+    } else {
+      // No audio content (non-audio files only) — just clean up
+      log(`  RMDIR (no audio) ${dirName}/`);
+      if (!DRY_RUN) rmIfEmpty(dirPath);
+    }
+    resolved++;
+  }
+
+  log(`  → ${resolved} misrouted folders resolved`);
+  stats.artistFoldersMerged += resolved;
+}
+
 // ─── Phase A2 + B1: Merge artist folders ─────────────────────────────────────
 
 interface ArtistGroup {
@@ -620,6 +756,9 @@ async function main(): Promise<void> {
   }
 
   if (RUN_A) {
+    // A0: Merge "Artist - Album" misnamed top-level folders
+    phaseA0_mergeArtistAlbumFolders(musicDir);
+
     // A1: Remove (2) duplicates
     phaseA1_removeDups(musicDir);
 
@@ -681,7 +820,7 @@ async function main(): Promise<void> {
   }
 
   log('\n═══════════════════════════════════════════');
-  log(`Phase A: ${stats.dupsRemoved} (2)-dups removed, ${stats.artistFoldersMerged} artist folders merged, ${stats.albumFoldersMerged} album folders merged`);
+  log(`Phase A: ${stats.dupsRemoved} (2)-dups removed, ${stats.artistFoldersMerged} artist/album folders merged, ${stats.albumFoldersMerged} case-variant album folders merged`);
   log(`Phase B: ${stats.singlesResolved} Singles resolved, ${stats.albumsRenamed} albums renamed`);
   if (stats.errors > 0) log(`Errors  : ${stats.errors}`);
   if (DRY_RUN) {
