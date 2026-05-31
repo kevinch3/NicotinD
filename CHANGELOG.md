@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.20](https://github.com/kevinch3/NicotinD/compare/v0.1.19...v0.1.20) (2026-05-31)
+
+
+### Features
+
+* **downloads:** add auto-retry and cross-peer fallback for failed transfers ([b36710d](https://github.com/kevinch3/NicotinD/commit/b36710d323b9802269c88d59120e44542b9b6fcd))
+
 ## [0.1.19](https://github.com/kevinch3/NicotinD/compare/v0.1.18...v0.1.19) (2026-05-30)
 
 
