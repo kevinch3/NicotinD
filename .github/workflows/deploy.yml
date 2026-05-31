@@ -37,6 +37,12 @@ jobs:
       - name: Test (web)
         run: bun run --filter @nicotind/web test
 
+      # Production AOT build — catches template/import errors (missing imports,
+      # unused-component warnings) that `tsc --build` and the vitest run miss but
+      # that fail the deploy's Docker `ng build`. Gate them here, before deploy.
+      - name: Build (web)
+        run: bun run --filter @nicotind/web build
+
   release:
     runs-on: ubuntu-latest
     needs: ci
