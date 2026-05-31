@@ -1,23 +1,33 @@
 
     @if (player.currentTrack(); as track) {
-      <div [class]="'fixed inset-0 z-[60] bg-zinc-950 transition-transform duration-300 ease-out flex flex-col ' +
-        (player.nowPlayingOpen() ? 'translate-y-0' : 'translate-y-full')">
+      <div
+        [class]="'fixed inset-0 z-[60] bg-zinc-950 ease-out flex flex-col ' +
+          (dragging() ? 'transition-none ' : 'transition-transform duration-300 ') +
+          (player.nowPlayingOpen() ? 'translate-y-0' : 'translate-y-full')"
+        [style.transform]="dragOffsetPx() > 0 ? 'translateY(' + dragOffsetPx() + 'px)' : null"
+      >
 
-        <!-- Header -->
-        <div class="flex items-center justify-center px-4 py-3 relative">
-          <button
-            (click)="player.setNowPlayingOpen(false)"
-            class="absolute left-4 w-8 h-8 flex items-center justify-center text-zinc-400 hover:text-zinc-100 transition"
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M6 9l6 6 6-6" />
-            </svg>
-          </button>
-          <span class="text-xs text-zinc-500 uppercase tracking-wider">Now Playing</span>
-          <div class="absolute right-4">
-            @if (remote.remoteEnabled()) {
-              <app-device-switcher placement="down" />
-            }
+        <!-- Header — drag handle to dismiss (live-follow) -->
+        <div
+          class="flex flex-col items-center px-4 pt-2 pb-3 relative touch-none select-none"
+          (pointerdown)="onSheetDragStart($event)"
+        >
+          <div class="w-10 h-1 rounded-full bg-zinc-600 mb-2"></div>
+          <div class="flex items-center justify-center w-full relative">
+            <button
+              (click)="player.setNowPlayingOpen(false)"
+              class="absolute left-0 w-8 h-8 flex items-center justify-center text-zinc-400 hover:text-zinc-100 transition"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M6 9l6 6 6-6" />
+              </svg>
+            </button>
+            <span class="text-xs text-zinc-500 uppercase tracking-wider">Now Playing</span>
+            <div class="absolute right-0">
+              @if (remote.remoteEnabled()) {
+                <app-device-switcher placement="down" />
+              }
+            </div>
           </div>
         </div>
 
@@ -41,15 +51,15 @@
         </div>
 
         <!-- Track info -->
-        <div class="text-center px-4 mb-4 md:px-8">
+        <div class="text-center px-4 mb-4 md:px-8 no-callout" translate="no">
           <h2
-            class="text-xl font-semibold text-zinc-100 truncate"
+            class="text-xl font-semibold text-zinc-100 truncate select-none"
             (contextmenu)="onTitleContextMenu($event)"
           >
             {{ track.title }}
           </h2>
           <p
-            class="text-sm text-zinc-400 truncate mt-1 cursor-pointer hover:underline hover:text-zinc-200 transition"
+            class="text-sm text-zinc-400 truncate mt-1 cursor-pointer select-none hover:underline hover:text-zinc-200 transition"
             (click)="navigateToArtist()"
           >
             {{ track.artist }}

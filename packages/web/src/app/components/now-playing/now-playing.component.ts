@@ -70,6 +70,13 @@ export class NowPlayingComponent {
     return this.isActiveDevice() ? this.player.isPlaying() : this.remote.remoteIsPlaying();
   });
 
+  // Live-follow dismiss gesture: the sheet tracks the finger downward and
+  // snaps closed past DISMISS_THRESHOLD_PX, otherwise springs back open.
+  readonly dragOffsetPx = signal(0);
+  readonly dragging = signal(false);
+  private dragStartY = 0;
+  private static readonly DISMISS_THRESHOLD_PX = 120;
+
   constructor() {
     // Remote playback interpolation (rAF loop)
     effect((onCleanup) => {
@@ -145,6 +152,29 @@ export class NowPlayingComponent {
     const track = queue[index];
     if (track) this.player.play(track);
   }
+
+  onSheetDragStart(event: PointerEvent): void {
+    if (event.button !== 0) return;
+    this.dragStartY = event.clientY;
+    this.dragging.set(true);
+    document.addEventListener('pointermove', this.onSheetDragMove);
+    document.addEventListener('pointerup', this.onSheetDragEnd, { once: true });
+  }
+
+  private readonly onSheetDragMove = (event: PointerEvent): void => {
+    // Downward only — dragging up past the open position is a no-op.
+    this.dragOffsetPx.set(Math.max(0, event.clientY - this.dragStartY));
+  };
+
+  private readonly onSheetDragEnd = (): void => {
+    if (this.dragOffsetPx() > NowPlayingComponent.DISMISS_THRESHOLD_PX) {
+      this.player.setNowPlayingOpen(false);
+    }
+    this.dragOffsetPx.set(0);
+    this.dragging.set(false);
+    document.removeEventListener('pointermove', this.onSheetDragMove);
+    document.removeEventListener('pointerup', this.onSheetDragEnd);
+  };
 
   navigateToArtist(): void {
     const track = this.player.currentTrack();

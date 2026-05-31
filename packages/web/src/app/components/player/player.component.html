@@ -20,10 +20,15 @@
         </div>
       }
 
-      <!-- Clickable area to open Now Playing -->
+      <!-- Grab handle — pull up / tap to open Now Playing -->
+      <div class="flex justify-center pt-1.5 pb-0.5 touch-none select-none cursor-pointer">
+        <div class="w-10 h-1 rounded-full bg-theme-muted/60"></div>
+      </div>
+
+      <!-- Tap / swipe-up to open Now Playing -->
       <div
-        class="flex items-center px-3 md:px-4 gap-2 md:gap-4 h-16 cursor-pointer"
-        (click)="openNowPlaying($event)"
+        class="flex items-center px-3 md:px-4 gap-2 md:gap-4 h-14 cursor-pointer touch-pan-y"
+        (pointerdown)="onBarPointerDown($event)"
       >
         <!-- Track info -->
         <div class="flex items-center gap-3 min-w-0 flex-shrink md:w-60 md:flex-shrink-0">
@@ -36,12 +41,9 @@
               rounded="rounded"
             />
           }
-          <div class="min-w-0">
+          <div class="min-w-0 no-callout" translate="no">
             <p class="text-sm font-medium text-theme-primary truncate">{{ player.currentTrack()?.title }}</p>
-            <p
-              class="text-xs text-theme-secondary truncate cursor-pointer hover:underline hover:text-theme-primary transition"
-              (click)="navigateToArtist($event)"
-            >
+            <p class="text-xs text-theme-secondary truncate">
               {{ player.currentTrack()?.artist }}
             </p>
           </div>
@@ -126,7 +128,7 @@
           <!-- Progress bar (desktop) -->
           <div class="hidden md:flex items-center gap-2 w-full max-w-md">
             <span class="text-xs text-theme-muted w-10 text-right">{{ formatTime(safeProgress()) }}</span>
-            <div class="flex-1 h-1 bg-theme-surface-2 rounded-full cursor-pointer" (click)="handleSeek($event)">
+            <div data-seek class="flex-1 h-1 bg-theme-surface-2 rounded-full cursor-pointer" (click)="handleSeek($event)">
               <div
                 class="h-full bg-theme-secondary rounded-full transition-all"
                 [style.width.%]="progressPercent()"

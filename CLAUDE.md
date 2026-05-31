@@ -2,6 +2,16 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Quality Gates
+
+Every task on this project must satisfy all three gates before being considered done:
+
+1. **Every change must be tested.** New features get new tests. Bug fixes get regression tests. Refactors must not reduce coverage. If a change can't reasonably be unit-tested, add an integration or e2e test instead — untested code is not shippable.
+
+2. **Every test must run in CI.** Adding a test locally is not enough. Verify the relevant GitHub Actions workflow actually executes the new test on push. If a new test file or package is added, confirm it's picked up by `.github/workflows/`. Don't close out a task until CI covers the new test.
+
+3. **Every business or architecture decision must be documented.** Significant decisions — new patterns, new services, why an approach was chosen over alternatives, trade-offs accepted — belong in `CLAUDE.md` (architectural context), as a concise `// why` comment in code, or in a `docs/` file if scope warrants.
+
 ## What is NicotinD?
 
 NicotinD is a unified music acquisition + streaming platform that orchestrates **slskd** (Soulseek P2P client) and **Navidrome** (music streaming server) behind a single API, web UI, and CLI. Downloads from Soulseek land in a shared folder that Navidrome streams from — the DownloadWatcher triggers library rescans automatically.
@@ -105,6 +115,7 @@ CSS custom properties set via `[data-theme]` on `<html>`. Six built-in presets: 
 - **`effect()` for side effects**: Replaces React's `useEffect`. Used for audio playback coordination, auto-refresh on download completion, remote device sync.
 - **`viewChild()` signal queries**: Replace React `useRef` for DOM element access (e.g. `<audio>` element).
 - **Offline support**: `PreserveService` + IndexedDB layer (`preserve-store.ts`) for offline track caching with LRU eviction.
+- **Player expand/collapse gesture**: The mini bar (`player.component`) shows a grab-handle pill and opens Now Playing on tap or swipe-up (`pointerdown` → distance/threshold; controls and the `[data-seek]` bar are excluded). The Now Playing sheet (`now-playing.component`) dismisses with a **live-follow** drag: `dragOffsetPx`/`dragging` signals bind `[style.transform]` (downward-only) and toggle `transition-none` so it tracks the finger and snaps closed past a threshold. Pointer wiring reuses the `folder-browser` resize pattern (document `pointermove`/once `pointerup` + explicit teardown). Player text uses `translate="no"` + `.no-callout` to suppress the mobile translate/selection popup. Artist/album navigation lives only in Now Playing — the mini bar never navigates.
 
 ## Configuration
 

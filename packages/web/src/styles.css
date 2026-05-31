@@ -165,4 +165,10 @@
     background-color: var(--theme-highlight-bg);
     color: var(--theme-highlight-text);
   }
+  /* Suppress the iOS/Android long-press callout & translate bubble on player text */
+  .no-callout {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
 }

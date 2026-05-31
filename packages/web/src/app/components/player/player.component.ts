@@ -11,7 +11,6 @@ import {
   AfterViewInit,
   NgZone,
 } from '@angular/core';
-import { Router } from '@angular/router';
 import { PlayerService } from '../../services/player.service';
 import { AuthService } from '../../services/auth.service';
 import { RemotePlaybackService } from '../../services/remote-playback.service';
@@ -20,7 +19,6 @@ import { CoverArtComponent } from '../cover-art/cover-art.component';
 import { DeviceSwitcherComponent } from '../device-switcher/device-switcher.component';
 import { PreserveService } from '../../services/preserve.service';
 import * as db from '../../lib/preserve-store';
-import { resolveArtistRoute } from '../../lib/route-utils';
 
 function formatTime(s: number): string {
   if (!Number.isFinite(s) || s < 0) return '0:00';
@@ -39,7 +37,6 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
   readonly auth = inject(AuthService);
   readonly remote = inject(RemotePlaybackService);
   private ws = inject(PlaybackWsService);
-  private router = inject(Router);
   private zone = inject(NgZone);
   private preserve = inject(PreserveService);
 
@@ -574,6 +571,8 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
     if (this.visibilityChangeHandler) {
       document.removeEventListener('visibilitychange', this.visibilityChangeHandler);
     }
+    document.removeEventListener('pointermove', this.onBarPointerMove);
+    document.removeEventListener('pointerup', this.onBarPointerUp);
   }
 
   handlePlayPause(): void {
@@ -621,17 +620,42 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
     }
   }
 
-  openNowPlaying(event: MouseEvent): void {
-    if ((event.target as HTMLElement).closest('button')) return;
-    this.player.setNowPlayingOpen(true);
+  // Open is tap/swipe-up driven, not live-follow: the 64px mini bar is too short
+  // to meaningfully follow a finger, and the Now Playing sheet lives in a separate
+  // component. Live-follow is reserved for the dismiss drag (now-playing.component).
+  private barDragStartY = 0;
+  private barPointerActive = false;
+  private static readonly OPEN_THRESHOLD_PX = 40;
+  private static readonly TAP_TOLERANCE_PX = 10;
+
+  onBarPointerDown(event: PointerEvent): void {
+    if (event.button !== 0) return;
+    // Don't hijack control buttons or the desktop seek bar.
+    const target = event.target as HTMLElement;
+    if (target.closest('button') || target.closest('[data-seek]')) return;
+    this.barDragStartY = event.clientY;
+    this.barPointerActive = true;
+    document.addEventListener('pointermove', this.onBarPointerMove);
+    document.addEventListener('pointerup', this.onBarPointerUp, { once: true });
   }
 
-  navigateToArtist(event: MouseEvent): void {
-    event.stopPropagation();
-    const track = this.player.currentTrack();
-    if (!track) return;
-    this.router.navigate(resolveArtistRoute(track.artistId));
-  }
+  // Tracking exists only to distinguish a tap/swipe-up from other movement;
+  // the bar itself does not move during the gesture.
+  private readonly onBarPointerMove = (): void => {};
+
+  private readonly onBarPointerUp = (event: PointerEvent): void => {
+    document.removeEventListener('pointermove', this.onBarPointerMove);
+    document.removeEventListener('pointerup', this.onBarPointerUp);
+    if (!this.barPointerActive) return;
+    this.barPointerActive = false;
+
+    const deltaY = event.clientY - this.barDragStartY;
+    const isTap = Math.abs(deltaY) <= PlayerComponent.TAP_TOLERANCE_PX;
+    const isSwipeUp = deltaY < -PlayerComponent.OPEN_THRESHOLD_PX;
+    if (isTap || isSwipeUp) {
+      this.player.setNowPlayingOpen(true);
+    }
+  };
 
   unblockAutoplay(): void {
     const audio = this.audioEl()?.nativeElement;

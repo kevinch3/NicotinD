@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
+import { vi } from 'vitest';
 import { provideRouter } from '@angular/router';
 import { NowPlayingComponent } from './now-playing.component';
 import { PlayerService } from '../../services/player.service';
@@ -82,6 +83,65 @@ describe('NowPlayingComponent', () => {
 
       const el: HTMLElement = fixture.nativeElement;
       expect(el.querySelector('app-device-switcher')).toBeNull();
+    });
+  });
+
+  describe('drag-to-dismiss (live-follow)', () => {
+    const pointer = (clientY: number, button = 0) =>
+      ({ clientY, button }) as PointerEvent;
+
+    it('follows the finger downward and closes the sheet past the threshold', () => {
+      const { fixture, playerStub } = setup();
+      const component = fixture.componentInstance;
+      const setOpen = vi.spyOn(playerStub, 'setNowPlayingOpen');
+
+      component.onSheetDragStart(pointer(100));
+      expect(component.dragging()).toBe(true);
+
+      component['onSheetDragMove'](pointer(280)); // delta 180 > 120 threshold
+      expect(component.dragOffsetPx()).toBe(180);
+
+      component['onSheetDragEnd']();
+      expect(setOpen).toHaveBeenCalledWith(false);
+      expect(component.dragOffsetPx()).toBe(0);
+      expect(component.dragging()).toBe(false);
+    });
+
+    it('snaps back without closing for a short drag', () => {
+      const { fixture, playerStub } = setup();
+      const component = fixture.componentInstance;
+      const setOpen = vi.spyOn(playerStub, 'setNowPlayingOpen');
+
+      component.onSheetDragStart(pointer(100));
+      component['onSheetDragMove'](pointer(150)); // delta 50 < 120 threshold
+      component['onSheetDragEnd']();
+
+      expect(setOpen).not.toHaveBeenCalled();
+      expect(component.dragOffsetPx()).toBe(0);
+      expect(component.dragging()).toBe(false);
+    });
+
+    it('clamps an upward drag to zero (downward-only)', () => {
+      const { fixture } = setup();
+      const component = fixture.componentInstance;
+
+      component.onSheetDragStart(pointer(200));
+      component['onSheetDragMove'](pointer(50)); // delta -150
+      expect(component.dragOffsetPx()).toBe(0);
+    });
+
+    it('ignores non-primary buttons and removes listeners on release', () => {
+      const { fixture } = setup();
+      const component = fixture.componentInstance;
+      const removeSpy = vi.spyOn(document, 'removeEventListener');
+
+      component.onSheetDragStart(pointer(100, 2)); // right-click
+      expect(component.dragging()).toBe(false);
+
+      component.onSheetDragStart(pointer(100));
+      component['onSheetDragEnd']();
+      expect(removeSpy).toHaveBeenCalledWith('pointermove', expect.any(Function));
+      expect(removeSpy).toHaveBeenCalledWith('pointerup', expect.any(Function));
     });
   });
 });

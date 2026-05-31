@@ -349,4 +349,63 @@ describe('PlayerComponent', () => {
       expect(playerService.duration()).toBe(240);
     });
   });
+
+  // ─── Expand gesture — tap / swipe-up to open Now Playing ───────────────────
+
+  describe('expand gesture', () => {
+    const down = (clientY: number, target: HTMLElement, button = 0) =>
+      ({ clientY, button, target }) as unknown as PointerEvent;
+    const up = (clientY: number) => ({ clientY }) as PointerEvent;
+
+    it('opens Now Playing on a tap (negligible movement)', () => {
+      playerService.setNowPlayingOpen(false);
+      component.onBarPointerDown(down(100, document.createElement('div')));
+      component['onBarPointerUp'](up(104)); // delta 4 <= tap tolerance
+
+      expect(playerService.nowPlayingOpen()).toBe(true);
+    });
+
+    it('opens Now Playing on a swipe up past the threshold', () => {
+      playerService.setNowPlayingOpen(false);
+      component.onBarPointerDown(down(200, document.createElement('div')));
+      component['onBarPointerUp'](up(140)); // delta -60 < -40 threshold
+
+      expect(playerService.nowPlayingOpen()).toBe(true);
+    });
+
+    it('does not open on a small downward drag', () => {
+      playerService.setNowPlayingOpen(false);
+      component.onBarPointerDown(down(100, document.createElement('div')));
+      component['onBarPointerUp'](up(130)); // delta +30: neither tap nor swipe-up
+
+      expect(playerService.nowPlayingOpen()).toBe(false);
+    });
+
+    it('ignores pointer down originating on a control button', () => {
+      playerService.setNowPlayingOpen(false);
+      component.onBarPointerDown(down(100, document.createElement('button')));
+      component['onBarPointerUp'](up(104));
+
+      expect(playerService.nowPlayingOpen()).toBe(false);
+    });
+
+    it('ignores pointer down originating on the seek bar', () => {
+      playerService.setNowPlayingOpen(false);
+      const seek = document.createElement('div');
+      seek.setAttribute('data-seek', '');
+      component.onBarPointerDown(down(100, seek));
+      component['onBarPointerUp'](up(104));
+
+      expect(playerService.nowPlayingOpen()).toBe(false);
+    });
+
+    it('regression: interacting with the bar never triggers router navigation', () => {
+      const router = TestBed.inject(Router) as unknown as { navigate: ReturnType<typeof vi.fn> };
+      playerService.setNowPlayingOpen(false);
+      component.onBarPointerDown(down(100, document.createElement('div')));
+      component['onBarPointerUp'](up(104));
+
+      expect(router.navigate).not.toHaveBeenCalled();
+    });
+  });
 });
