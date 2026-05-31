@@ -12,6 +12,7 @@ import { RemotePlaybackService } from '../../services/remote-playback.service';
 import { PlaybackWsService } from '../../services/playback-ws.service';
 import { DeviceSwitcherComponent } from '../device-switcher/device-switcher.component';
 import { resolveArtistRoute } from '../../lib/route-utils';
+import { createPointerDrag } from '../../lib/pointer-drag';
 
 function formatTime(s: number): string {
   if (!Number.isFinite(s) || s < 0) return '0:00';
@@ -73,9 +74,18 @@ export class NowPlayingComponent {
   // Live-follow dismiss gesture: the sheet tracks the finger downward and
   // snaps closed past DISMISS_THRESHOLD_PX, otherwise springs back open.
   readonly dragOffsetPx = signal(0);
-  readonly dragging = signal(false);
-  private dragStartY = 0;
   private static readonly DISMISS_THRESHOLD_PX = 120;
+  private readonly sheetDrag = createPointerDrag({
+    // Downward only — dragging up past the open position is a no-op.
+    onMove: (event, start) => this.dragOffsetPx.set(Math.max(0, event.clientY - start.clientY)),
+    onEnd: () => {
+      if (this.dragOffsetPx() > NowPlayingComponent.DISMISS_THRESHOLD_PX) {
+        this.player.setNowPlayingOpen(false);
+      }
+      this.dragOffsetPx.set(0);
+    },
+  });
+  readonly dragging = this.sheetDrag.dragging;
 
   constructor() {
     // Remote playback interpolation (rAF loop)
@@ -154,27 +164,8 @@ export class NowPlayingComponent {
   }
 
   onSheetDragStart(event: PointerEvent): void {
-    if (event.button !== 0) return;
-    this.dragStartY = event.clientY;
-    this.dragging.set(true);
-    document.addEventListener('pointermove', this.onSheetDragMove);
-    document.addEventListener('pointerup', this.onSheetDragEnd, { once: true });
+    this.sheetDrag.start(event);
   }
-
-  private readonly onSheetDragMove = (event: PointerEvent): void => {
-    // Downward only — dragging up past the open position is a no-op.
-    this.dragOffsetPx.set(Math.max(0, event.clientY - this.dragStartY));
-  };
-
-  private readonly onSheetDragEnd = (): void => {
-    if (this.dragOffsetPx() > NowPlayingComponent.DISMISS_THRESHOLD_PX) {
-      this.player.setNowPlayingOpen(false);
-    }
-    this.dragOffsetPx.set(0);
-    this.dragging.set(false);
-    document.removeEventListener('pointermove', this.onSheetDragMove);
-    document.removeEventListener('pointerup', this.onSheetDragEnd);
-  };
 
   navigateToArtist(): void {
     const track = this.player.currentTrack();

@@ -19,6 +19,7 @@ import { CoverArtComponent } from '../cover-art/cover-art.component';
 import { DeviceSwitcherComponent } from '../device-switcher/device-switcher.component';
 import { PreserveService } from '../../services/preserve.service';
 import * as db from '../../lib/preserve-store';
+import { createPointerDrag } from '../../lib/pointer-drag';
 
 function formatTime(s: number): string {
   if (!Number.isFinite(s) || s < 0) return '0:00';
@@ -571,8 +572,6 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
     if (this.visibilityChangeHandler) {
       document.removeEventListener('visibilitychange', this.visibilityChangeHandler);
     }
-    document.removeEventListener('pointermove', this.onBarPointerMove);
-    document.removeEventListener('pointerup', this.onBarPointerUp);
   }
 
   handlePlayPause(): void {
@@ -623,39 +622,28 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
   // Open is tap/swipe-up driven, not live-follow: the 64px mini bar is too short
   // to meaningfully follow a finger, and the Now Playing sheet lives in a separate
   // component. Live-follow is reserved for the dismiss drag (now-playing.component).
-  private barDragStartY = 0;
-  private barPointerActive = false;
   private static readonly OPEN_THRESHOLD_PX = 40;
   private static readonly TAP_TOLERANCE_PX = 10;
 
+  // The bar itself does not move during the gesture; we only track start→end
+  // displacement to distinguish a tap / swipe-up (open Now Playing) from a scroll.
+  private readonly barDrag = createPointerDrag({
+    onEnd: (event, start) => {
+      const deltaY = event.clientY - start.clientY;
+      const isTap = Math.abs(deltaY) <= PlayerComponent.TAP_TOLERANCE_PX;
+      const isSwipeUp = deltaY < -PlayerComponent.OPEN_THRESHOLD_PX;
+      if (isTap || isSwipeUp) {
+        this.player.setNowPlayingOpen(true);
+      }
+    },
+  });
+
   onBarPointerDown(event: PointerEvent): void {
-    if (event.button !== 0) return;
     // Don't hijack control buttons or the desktop seek bar.
     const target = event.target as HTMLElement;
     if (target.closest('button') || target.closest('[data-seek]')) return;
-    this.barDragStartY = event.clientY;
-    this.barPointerActive = true;
-    document.addEventListener('pointermove', this.onBarPointerMove);
-    document.addEventListener('pointerup', this.onBarPointerUp, { once: true });
+    this.barDrag.start(event);
   }
-
-  // Tracking exists only to distinguish a tap/swipe-up from other movement;
-  // the bar itself does not move during the gesture.
-  private readonly onBarPointerMove = (): void => {};
-
-  private readonly onBarPointerUp = (event: PointerEvent): void => {
-    document.removeEventListener('pointermove', this.onBarPointerMove);
-    document.removeEventListener('pointerup', this.onBarPointerUp);
-    if (!this.barPointerActive) return;
-    this.barPointerActive = false;
-
-    const deltaY = event.clientY - this.barDragStartY;
-    const isTap = Math.abs(deltaY) <= PlayerComponent.TAP_TOLERANCE_PX;
-    const isSwipeUp = deltaY < -PlayerComponent.OPEN_THRESHOLD_PX;
-    if (isTap || isSwipeUp) {
-      this.player.setNowPlayingOpen(true);
-    }
-  };
 
   unblockAutoplay(): void {
     const audio = this.audioEl()?.nativeElement;
