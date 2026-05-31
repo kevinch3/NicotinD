@@ -40,9 +40,26 @@ export function streamingRoutes(navidrome: Navidrome) {
     const id = c.req.param('id');
     const size = c.req.query('size') ? Number(c.req.query('size')) : undefined;
 
-    const response = await navidrome.media.getCoverArt(id, size);
+    let response: Response;
+    try {
+      response = await navidrome.media.getCoverArt(id, size);
+    } catch {
+      return c.body(null, 404);
+    }
 
-    return new Response(response.body, response);
+    // Subsonic returns HTTP 200 with XML body on errors (e.g. art not found).
+    // Forwarding XML where the browser expects an image causes NS_ERROR_INVALID_CONTENT.
+    const contentType = response.headers.get('content-type') ?? '';
+    if (!contentType.startsWith('image/')) {
+      await response.body?.cancel();
+      return c.body(null, 404);
+    }
+
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers,
+    });
   });
 
   return app;
