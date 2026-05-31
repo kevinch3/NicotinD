@@ -20,7 +20,7 @@
  */
 
 import { readFileSync, readdirSync, statSync, existsSync, mkdirSync, appendFileSync, copyFileSync, unlinkSync, renameSync } from 'node:fs';
-import { resolve, join, extname, dirname, basename, relative } from 'node:path';
+import { resolve, join, extname, basename, relative } from 'node:path';
 import { parse } from 'yaml';
 import { Database } from 'bun:sqlite';
 import { inferFolderAlbum } from '../services/path-inference.js';

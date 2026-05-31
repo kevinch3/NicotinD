@@ -374,7 +374,7 @@ function mergeArtistFolders(
             if (isFile(src)) {
         try {
           moveFile(src, dst); logMove(src, dst);
-        } catch (err) {
+        } catch {
           log(`    SKIP (permission denied): ${basename(src)}`);
           stats.errors++;
         }
