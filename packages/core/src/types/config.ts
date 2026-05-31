@@ -16,6 +16,22 @@ export const NicotinDConfigSchema = z.object({
     })
     .default({ enabled: true, minScore: 85 }),
 
+  downloads: z
+    .object({
+      // Auto-retry/recovery for failed slskd transfers (resume truncated
+      // downloads, cross-peer fallback for tracks that keep failing).
+      autoRetryEnabled: z.boolean().default(true),
+      retryMaxAttempts: z.number().int().min(0).default(3),
+      retryIntervalMs: z.number().int().min(1000).default(15_000),
+      retryCooldownMs: z.number().int().min(0).default(60_000),
+    })
+    .default({
+      autoRetryEnabled: true,
+      retryMaxAttempts: 3,
+      retryIntervalMs: 15_000,
+      retryCooldownMs: 60_000,
+    }),
+
   soulseek: z.object({
     username: z.string().default(''),
     password: z.string().default(''),

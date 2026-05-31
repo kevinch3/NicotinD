@@ -153,12 +153,15 @@ describe('PlayerComponent', () => {
     });
 
     it('propagates pause to the store when the user pauses while the screen is visible', () => {
+      vi.useFakeTimers();
       playerService.isPlaying.set(true);
       setVisibility('visible');
 
       fakeAudio.dispatchEvent(new Event('pause'));
+      vi.advanceTimersByTime(300);
 
       expect(playerService.isPlaying()).toBe(false);
+      vi.useRealTimers();
     });
 
     it('does not queue a resume when audio was already paused by the user before screen lock', () => {
@@ -318,12 +321,15 @@ describe('PlayerComponent', () => {
     });
 
     it('pause event while visible and playing sets isPlaying = false', () => {
+      vi.useFakeTimers();
       playerService.isPlaying.set(true);
       setVisibility('visible');
 
       fakeAudio.dispatchEvent(new Event('pause'));
+      vi.advanceTimersByTime(300);
 
       expect(playerService.isPlaying()).toBe(false);
+      vi.useRealTimers();
     });
 
     it('autoplayBlocked is set to true when play is rejected on a visible screen', () => {

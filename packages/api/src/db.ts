@@ -53,6 +53,40 @@ export function applySchema(db: Database): void {
     )
   `);
 
+  // Tracks auto-retry attempts for failed slskd transfers. Keyed the same way as
+  // the download watcher's completion set: `${username}::${filename}`. When
+  // attempts exhaust, gave_up=1 freezes it (UI shows Error; cross-peer fallback
+  // and manual retry can still act on it).
+  db.run(`
+    CREATE TABLE IF NOT EXISTS transfer_retries (
+      transfer_key TEXT PRIMARY KEY,
+      username TEXT NOT NULL,
+      filename TEXT NOT NULL,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      last_attempt INTEGER,
+      gave_up INTEGER NOT NULL DEFAULT 0
+    )
+  `);
+
+  // Album download jobs from the Lidarr hunt. Persists the canonical tracklist
+  // and the ranked alternate folder candidates so the cross-peer fallback layer
+  // can pull tracks the primary peer failed to deliver from a different peer.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS album_jobs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      lidarr_album_id INTEGER,
+      username TEXT NOT NULL,
+      directory TEXT NOT NULL,
+      canonical_tracks_json TEXT NOT NULL,
+      alternates_json TEXT NOT NULL,
+      fallback_attempts INTEGER NOT NULL DEFAULT 0,
+      state TEXT NOT NULL DEFAULT 'active',
+      created_at INTEGER NOT NULL
+    )
+  `);
+
+  db.run(`CREATE INDEX IF NOT EXISTS idx_album_jobs_state ON album_jobs (state)`);
+
   db.run(`
     CREATE TABLE IF NOT EXISTS completed_downloads (
       transfer_key TEXT PRIMARY KEY,

@@ -25,8 +25,16 @@ interface StubFile {
   bitRate?: number;
 }
 
+interface StubResponse {
+  username: string;
+  files: StubFile[];
+  freeUploadSlots?: number;
+  queueLength?: number;
+  uploadSpeed?: number;
+}
+
 /** slskd stub that returns a fixed set of responses, already "complete". */
-function makeSlskdStub(responses: Array<{ username: string; files: StubFile[] }>) {
+function makeSlskdStub(responses: StubResponse[]) {
   return {
     searches: {
       create: mock(async (q: string) => ({ id: `s-${q}`, state: 'Completed' })),
@@ -117,6 +125,42 @@ describe('AlbumHunterService', () => {
     const hunter = new AlbumHunterService(slskd);
     const candidates = await hunter.hunt('Artist', 'Album', TRACKS);
     expect(candidates).toHaveLength(0);
+  });
+
+  it('prefers a healthy 90%-match peer over a dead 100%-match peer', async () => {
+    // 10-track album so 90% and 100% land in the same match bucket. `dead` has
+    // the complete album but no free slots and a long queue — it would truncate.
+    // `healthy` is one track short but free and fast, so it should sort first.
+    const tenTracks = Array.from({ length: 10 }, (_, i) => track(i + 1, `Song ${i + 1}`));
+    const allFiles = (user: string, count: number): StubFile[] =>
+      Array.from({ length: count }, (_, i) => ({
+        filename: `${user}/Album/${String(i + 1).padStart(2, '0')} Song ${i + 1}.flac`,
+        size: 1,
+      }));
+
+    const slskd = makeSlskdStub([
+      {
+        username: 'dead',
+        freeUploadSlots: 0,
+        queueLength: 50,
+        uploadSpeed: 1000,
+        files: allFiles('dead', 10), // 100%
+      },
+      {
+        username: 'healthy',
+        freeUploadSlots: 2,
+        queueLength: 0,
+        uploadSpeed: 500_000,
+        files: allFiles('healthy', 9), // 90%
+      },
+    ]);
+
+    const hunter = new AlbumHunterService(slskd);
+    const candidates = await hunter.hunt('Artist', 'Album', tenTracks);
+
+    expect(candidates[0].username).toBe('healthy');
+    expect(candidates[0].freeUploadSlots).toBe(2);
+    expect(candidates[1].username).toBe('dead');
   });
 
   it('ignores non-audio files when grouping', async () => {

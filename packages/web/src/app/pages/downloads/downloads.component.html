@@ -120,6 +120,11 @@
                   <p class="text-xs text-theme-muted mt-0.5 truncate w-full">{{ group.completedFiles }} of {{ group.totalFiles }} tracks</p>
                 </div>
                 <p class="text-xs text-red-400/70 font-medium flex-shrink-0">Error</p>
+                <button (click)="retryGroup(group)" [disabled]="retrying().has(group.key)"
+                        class="text-xs px-2 py-1 rounded-md bg-theme-surface-2 text-theme-secondary hover:text-theme-primary transition flex-shrink-0 disabled:opacity-50"
+                        title="Retry failed tracks">
+                  {{ retrying().has(group.key) ? 'Retrying…' : 'Retry' }}
+                </button>
                 <button (click)="removeGroup(group)" class="p-1 text-theme-muted hover:text-red-400 transition flex-shrink-0" title="Remove album">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />

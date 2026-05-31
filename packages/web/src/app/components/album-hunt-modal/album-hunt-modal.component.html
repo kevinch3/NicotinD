@@ -76,7 +76,18 @@
                   <!-- Folder info -->
                   <div class="min-w-0 flex-1">
                     <p class="text-sm font-medium text-theme-primary truncate">{{ displayDir(candidate.directory) }}</p>
-                    <p class="text-xs text-theme-muted mt-0.5">{{ candidate.username }}</p>
+                    <p class="text-xs text-theme-muted mt-0.5 flex items-center gap-2">
+                      <span class="truncate">{{ candidate.username }}</span>
+                      <span class="flex-shrink-0"
+                            [class.text-green-400]="candidate.freeUploadSlots > 0"
+                            [class.text-theme-muted]="candidate.freeUploadSlots <= 0"
+                            [title]="candidate.freeUploadSlots > 0 ? 'Free upload slot available' : 'No free upload slot — queued'">
+                        {{ candidate.freeUploadSlots > 0 ? '● free' : '○ queued' }}
+                      </span>
+                      @if (candidate.queueLength > 0) {
+                        <span class="flex-shrink-0">· queue {{ candidate.queueLength }}</span>
+                      }
+                    </p>
                   </div>
 
                   <!-- Badges -->

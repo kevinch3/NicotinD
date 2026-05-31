@@ -113,6 +113,88 @@ export function downloadRoutes(registry: ProviderRegistry, slskdRef: SlskdRef) {
     },
   );
 
+  // Manually retry failed transfers. Accepts a list so the UI can retry a whole
+  // album group or a single file. Looks each transfer up to recover its
+  // filename+size, cancels the dead record, re-enqueues (slskd resumes the
+  // partial), and clears its auto-retry bookkeeping so it isn't immediately
+  // re-frozen.
+  app.openapi(
+    createRoute({
+      method: 'post',
+      path: '/retry',
+      request: {
+        body: {
+          content: {
+            'application/json': {
+              schema: z.object({
+                items: z
+                  .array(z.object({ username: z.string().min(1), id: z.string().min(1) }))
+                  .min(1),
+              }),
+            },
+          },
+        },
+      },
+      responses: {
+        200: {
+          content: { 'application/json': { schema: z.object({ ok: z.boolean(), retried: z.number() }) } },
+          description: 'Transfers re-enqueued',
+        },
+        503: {
+          content: { 'application/json': { schema: ErrorSchema } },
+          description: 'Service Unavailable (Soulseek unreachable)',
+        },
+      },
+    }),
+    async (c) => {
+      const { items } = c.req.valid('json');
+
+      let downloads;
+      try {
+        downloads = await slskdRef.current!.transfers.getDownloads();
+      } catch {
+        return c.json({ error: 'Soulseek is temporarily unreachable' }, 503);
+      }
+      const db = getDatabase();
+
+      // Index every transfer by `${username}:${id}` for O(1) lookup of size/filename.
+      const byKey = new Map<string, { filename: string; size: number }>();
+      for (const group of downloads) {
+        for (const dir of group.directories) {
+          for (const file of dir.files) {
+            byKey.set(`${group.username}:${file.id}`, { filename: file.filename, size: file.size });
+          }
+        }
+      }
+
+      const clearRetry = db.prepare(
+        'DELETE FROM transfer_retries WHERE transfer_key = ?',
+      );
+      const unhide = db.prepare('DELETE FROM hidden_transfers WHERE id = ?');
+
+      let retried = 0;
+      for (const { username, id } of items) {
+        const file = byKey.get(`${username}:${id}`);
+        if (!file) continue;
+
+        await slskdRef.current!.transfers.cancel(username, id).catch(() => {});
+        try {
+          await slskdRef.current!.transfers.enqueue(username, [
+            { filename: file.filename, size: file.size },
+          ]);
+        } catch {
+          continue;
+        }
+        // Reset auto-retry bookkeeping so a manual retry gets a fresh budget.
+        clearRetry.run(`${username}::${file.filename}`);
+        unhide.run(id);
+        retried++;
+      }
+
+      return c.json({ ok: true, retried }, 200);
+    },
+  );
+
   // List all downloads (slskd-specific transfer management)
   app.openapi(
     createRoute({

@@ -28,6 +28,7 @@ function makePlayerStub() {
 function makeRemoteStub() {
   return {
     isActiveDevice: signal(true),
+    remoteEnabled: signal(false),
     remoteIsPlaying: signal(false),
     remoteDuration: signal(0),
     remotePosition: signal(0),
@@ -43,6 +44,7 @@ function makeRemoteStub() {
 
 function setup() {
   const playerStub = makePlayerStub();
+  const remoteStub = makeRemoteStub();
 
   TestBed.configureTestingModule({
     imports: [NowPlayingComponent],
@@ -50,7 +52,7 @@ function setup() {
       provideRouter([]),
       { provide: PlayerService, useValue: playerStub },
       { provide: AuthService, useValue: { token: signal('tok') } },
-      { provide: RemotePlaybackService, useValue: makeRemoteStub() },
+      { provide: RemotePlaybackService, useValue: remoteStub },
       { provide: PlaybackWsService, useValue: { getDeviceId: () => 'dev-1', getDeviceName: () => 'Test', sendCommand: () => {} } },
     ],
     schemas: [NO_ERRORS_SCHEMA],
@@ -58,14 +60,15 @@ function setup() {
 
   const fixture = TestBed.createComponent(NowPlayingComponent);
   fixture.detectChanges();
-  return { fixture, playerStub };
+  return { fixture, playerStub, remoteStub };
 }
 
 describe('NowPlayingComponent', () => {
   describe('device switcher', () => {
-    it('renders app-device-switcher when a track is loaded', () => {
-      const { fixture, playerStub } = setup();
+    it('renders app-device-switcher when a track is loaded and remote is enabled', () => {
+      const { fixture, playerStub, remoteStub } = setup();
 
+      remoteStub.remoteEnabled.set(true);
       playerStub.currentTrack.set({ id: '1', title: 'Song', artist: 'Artist' });
       fixture.detectChanges();
 

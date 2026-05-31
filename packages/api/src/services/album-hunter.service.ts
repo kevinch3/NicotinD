@@ -23,6 +23,39 @@ export interface HuntFile {
   bitRate?: number;
 }
 
+interface PeerHealth {
+  freeUploadSlots: number;
+  queueLength: number;
+  uploadSpeed: number;
+}
+
+// Match% is bucketed (rounded to the nearest 20) before comparison so a
+// marginally-higher match doesn't force us onto a dead peer — e.g. a healthy
+// 90%-match peer with free slots out-ranks a dead 100%-match peer (both land in
+// the same bucket). Auto-retry + cross-peer fallback backstop the missing
+// tracks. Within a bucket we prefer a peer with free upload slots, then a
+// shorter queue, then FLAC, then faster upload speed, then a larger total size.
+const MATCH_BUCKET = 20;
+
+function compareCandidates(a: FolderCandidate, b: FolderCandidate): number {
+  const aBucket = Math.round(a.matchPct / MATCH_BUCKET);
+  const bBucket = Math.round(b.matchPct / MATCH_BUCKET);
+  if (aBucket !== bBucket) return bBucket - aBucket;
+
+  const aHasSlot = a.freeUploadSlots > 0 ? 1 : 0;
+  const bHasSlot = b.freeUploadSlots > 0 ? 1 : 0;
+  if (aHasSlot !== bHasSlot) return bHasSlot - aHasSlot;
+
+  if (a.queueLength !== b.queueLength) return a.queueLength - b.queueLength;
+
+  if (a.format === 'FLAC' && b.format !== 'FLAC') return -1;
+  if (b.format === 'FLAC' && a.format !== 'FLAC') return 1;
+
+  if (a.uploadSpeed !== b.uploadSpeed) return b.uploadSpeed - a.uploadSpeed;
+
+  return b.estimatedSizeMb - a.estimatedSizeMb;
+}
+
 export interface FolderCandidate {
   directory: string;
   username: string;
@@ -33,6 +66,11 @@ export interface FolderCandidate {
   format: string; // dominant format: "FLAC", "MP3", "Mixed", etc.
   estimatedSizeMb: number;
   isLive: boolean;
+  // Peer health (from the slskd search response). Used to rank candidates so
+  // we don't commit a whole album to an overloaded/slow peer that truncates.
+  freeUploadSlots: number;
+  queueLength: number;
+  uploadSpeed: number;
 }
 
 export class AlbumHunterService {
@@ -70,7 +108,20 @@ export class AlbumHunterService {
       // Group files by directory+username (a unique "folder")
       const folderMap = new Map<string, { username: string; files: HuntFile[] }>();
 
+      // Per-peer health, merged across the two parallel searches. A peer's
+      // free-slot count fluctuates between responses; keep the best-seen so a
+      // momentarily-busy snapshot doesn't permanently sink an otherwise-good peer.
+      const peerHealth = new Map<string, PeerHealth>();
+
       for (const response of allResponses) {
+        const prev = peerHealth.get(response.username);
+        peerHealth.set(response.username, {
+          freeUploadSlots: Math.max(prev?.freeUploadSlots ?? 0, response.freeUploadSlots ?? 0),
+          // Queue length: keep the smallest (most favorable) seen.
+          queueLength: Math.min(prev?.queueLength ?? Infinity, response.queueLength ?? 0),
+          uploadSpeed: Math.max(prev?.uploadSpeed ?? 0, response.uploadSpeed ?? 0),
+        });
+
         for (const file of response.files) {
           const ext = file.filename.slice(file.filename.lastIndexOf('.')).toLowerCase();
           if (!AUDIO_EXTENSIONS.has(ext)) continue;
@@ -124,6 +175,7 @@ export class AlbumHunterService {
 
         const format = detectFormat(files);
         const estimatedSizeMb = files.reduce((acc, f) => acc + f.size, 0) / (1024 * 1024);
+        const health = peerHealth.get(username);
 
         candidates.push({
           directory: dir,
@@ -135,16 +187,13 @@ export class AlbumHunterService {
           format,
           estimatedSizeMb: Math.round(estimatedSizeMb * 10) / 10,
           isLive: isLiveFolder(dir),
+          freeUploadSlots: health?.freeUploadSlots ?? 0,
+          queueLength: Number.isFinite(health?.queueLength) ? health!.queueLength : 0,
+          uploadSpeed: health?.uploadSpeed ?? 0,
         });
       }
 
-      // Sort: match % desc, then FLAC before others, then size desc
-      candidates.sort((a, b) => {
-        if (b.matchPct !== a.matchPct) return b.matchPct - a.matchPct;
-        if (a.format === 'FLAC' && b.format !== 'FLAC') return -1;
-        if (b.format === 'FLAC' && a.format !== 'FLAC') return 1;
-        return b.estimatedSizeMb - a.estimatedSizeMb;
-      });
+      candidates.sort(compareCandidates);
 
       return candidates.slice(0, 20);
     } finally {
@@ -157,7 +206,15 @@ export class AlbumHunterService {
 
   private async pollUntilDone(
     searchIds: string[],
-  ): Promise<Array<{ username: string; files: Array<{ filename: string; size: number; bitRate?: number }> }>> {
+  ): Promise<
+    Array<{
+      username: string;
+      freeUploadSlots: number;
+      queueLength: number;
+      uploadSpeed: number;
+      files: Array<{ filename: string; size: number; bitRate?: number }>;
+    }>
+  > {
     const deadline = Date.now() + HUNT_TIMEOUT_MS;
 
     while (Date.now() < deadline) {
@@ -187,7 +244,7 @@ function extractDirectory(filename: string): string {
   return lastSlash >= 0 ? normalized.slice(0, lastSlash) : '';
 }
 
-function normalizeTitle(title: string): string {
+export function normalizeTitle(title: string): string {
   return title
     .toLowerCase()
     .replace(/^\d+[\s.\-]+/, '') // strip leading track numbers
@@ -196,7 +253,7 @@ function normalizeTitle(title: string): string {
     .trim();
 }
 
-function titlesOverlap(canonical: string, filename: string): boolean {
+export function titlesOverlap(canonical: string, filename: string): boolean {
   if (canonical === filename) return true;
   // Check if the canonical words are mostly in the filename
   const cWords = canonical.split(' ').filter(Boolean);

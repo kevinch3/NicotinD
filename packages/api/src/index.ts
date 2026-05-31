@@ -27,6 +27,8 @@ import { discographyRoutes } from './routes/discography.js';
 import { DiscographyService } from './services/discography.service.js';
 import { AlbumHunterService } from './services/album-hunter.service.js';
 import { DownloadWatcher } from './services/download-watcher.js';
+import { DownloadRetryService } from './services/download-retry.service.js';
+import { AlbumFallbackService } from './services/album-fallback.service.js';
 import { TailscaleService } from './services/tailscale.js';
 import { ProviderRegistry } from './services/provider-registry.js';
 import { NavidromeSearchProvider } from './services/providers/navidrome-provider.js';
@@ -40,6 +42,7 @@ import type { AuthEnv } from './middleware/auth.js';
 
 export type SlskdRef = { current: Slskd | null };
 export type WatcherRef = { current: DownloadWatcher | null };
+export type RetryRef = { current: DownloadRetryService | null };
 
 export interface CreateAppOptions {
   config: NicotinDConfig;
@@ -130,6 +133,26 @@ export function createApp({
       : null,
   };
 
+  // Self-healing retry reconciler — re-enqueues failed slskd transfers (slskd
+  // resumes the partial file) and, once attempts exhaust, hands off to the
+  // cross-peer fallback layer that pulls the missing tracks from another peer.
+  const fallback = slskdRef.current
+    ? new AlbumFallbackService(slskdRef.current, { db })
+    : null;
+  const retryRef: RetryRef = {
+    current:
+      slskdRef.current && config.downloads.autoRetryEnabled
+        ? new DownloadRetryService(slskdRef.current, {
+            db,
+            intervalMs: config.downloads.retryIntervalMs,
+            maxAttempts: config.downloads.retryMaxAttempts,
+            cooldownMs: config.downloads.retryCooldownMs,
+            // After each retry pass, let the fallback recover given-up tracks.
+            onSweep: fallback ? () => fallback.sweep() : undefined,
+          })
+        : null,
+  };
+
   // Provider registry
   const registry = new ProviderRegistry();
   registry.register(new NavidromeSearchProvider(navidrome));
@@ -199,7 +222,7 @@ export function createApp({
     const hunterSvc = new AlbumHunterService(slskdRef.current);
     app.route(
       '/api/discography',
-      discographyRoutes({ discography: discographySvc, hunter: hunterSvc, lidarr }),
+      discographyRoutes({ discography: discographySvc, hunter: hunterSvc, lidarr, db, slskdRef }),
     );
   }
 
@@ -220,9 +243,10 @@ export function createApp({
     });
   }
 
-  return { app, watcherRef, websocket };
+  return { app, watcherRef, retryRef, websocket };
 }
 
 export { DownloadWatcher } from './services/download-watcher.js';
+export { DownloadRetryService } from './services/download-retry.service.js';
 export { initDatabase, getDatabase } from './db.js';
 export { TailscaleService } from './services/tailscale.js';

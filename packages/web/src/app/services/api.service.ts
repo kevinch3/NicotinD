@@ -224,6 +224,10 @@ export class ApiService {
     return this.http.delete<{ ok: boolean }>(`/api/downloads/${username}/${id}`);
   }
 
+  retryDownloads(items: Array<{ username: string; id: string }>) {
+    return this.http.post<{ ok: boolean; retried: number }>('/api/downloads/retry', { items });
+  }
+
   getUploads() {
     return this.http.get<SlskdUserTransferGroup[]>('/api/uploads');
   }
@@ -442,6 +446,21 @@ export class ApiService {
   huntAlbum(lidarrAlbumId: number, overrides: { artistName?: string; albumTitle?: string } = {}) {
     return this.http.post<HuntResult>(`/api/discography/albums/${lidarrAlbumId}/hunt`, overrides);
   }
+
+  // Enqueues the chosen folder candidate and records an album job so failed
+  // tracks can be recovered from the supplied alternate candidates.
+  huntDownload(
+    lidarrAlbumId: number,
+    payload: {
+      selected: { username: string; directory: string; files: Array<{ filename: string; size: number }> };
+      alternates: Array<{ username: string; directory: string; files: Array<{ filename: string; size: number }> }>;
+    },
+  ) {
+    return this.http.post<{ ok: boolean; queued: number }>(
+      `/api/discography/albums/${lidarrAlbumId}/hunt-download`,
+      payload,
+    );
+  }
 }
 
 export interface DiscographyTrack {
@@ -490,6 +509,9 @@ export interface FolderCandidate {
   format: string;
   estimatedSizeMb: number;
   isLive: boolean;
+  freeUploadSlots: number;
+  queueLength: number;
+  uploadSpeed: number;
 }
 
 export interface HuntResult {

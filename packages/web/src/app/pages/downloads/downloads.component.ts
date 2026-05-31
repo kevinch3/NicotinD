@@ -23,6 +23,7 @@ interface AlbumGroup {
   name: string;
   username: string;
   fileIds: string[];
+  erroredFileIds: string[];
   totalFiles: number;
   completedFiles: number;
   overallPercent: number;
@@ -52,7 +53,8 @@ function groupByAlbum(downloads: SlskdUserTransferGroup[]): AlbumGroup[] {
       const files = dir.files;
       const completed = files.filter(f => f.state.includes('Succeeded')).length;
       const active = files.filter(f => f.state === 'InProgress').length;
-      const errored = files.filter(f => f.state.includes('Errored') || f.state.includes('Cancelled')).length;
+      const erroredFiles = files.filter(f => f.state.includes('Errored') || f.state.includes('Cancelled') || f.state.includes('TimedOut') || f.state.includes('Rejected'));
+      const errored = erroredFiles.length;
       const totalBytes = files.reduce((s, f) => s + f.size, 0);
       const transferredBytes = files.reduce((s, f) => s + f.bytesTransferred, 0);
       const overallPercent = totalBytes > 0 ? Math.round((transferredBytes / totalBytes) * 100) : 0;
@@ -62,7 +64,7 @@ function groupByAlbum(downloads: SlskdUserTransferGroup[]): AlbumGroup[] {
       else if (active > 0) state = 'downloading';
       else if (errored > 0 && completed + errored === files.length) state = 'error';
 
-      groups.push({ key, name, username: transfer.username, fileIds: files.map(f => f.id), totalFiles: files.length, completedFiles: completed, overallPercent, state });
+      groups.push({ key, name, username: transfer.username, fileIds: files.map(f => f.id), erroredFileIds: erroredFiles.map(f => f.id), totalFiles: files.length, completedFiles: completed, overallPercent, state });
     }
   }
   const order: Record<string, number> = { downloading: 0, queued: 1, error: 2, done: 3 };
@@ -144,6 +146,7 @@ export class DownloadsComponent implements OnInit, OnDestroy {
   readonly selected = signal(new Set<string>());
   readonly lastSelectedId = signal<string | null>(null);
   readonly deleting = signal(new Set<string>());
+  readonly retrying = signal(new Set<string>());
   readonly deleteError = signal<string | null>(null);
   readonly scanning = signal(false);
   readonly showPlaylistPicker = signal(false);
@@ -387,6 +390,27 @@ export class DownloadsComponent implements OnInit, OnDestroy {
       songIds.forEach(id => next.delete(id));
       return next;
     });
+  }
+
+  // Re-enqueue the failed tracks of a group. slskd resumes the partial files,
+  // and the retried transfers get a fresh auto-retry budget on the server.
+  async retryGroup(group: AlbumGroup): Promise<void> {
+    const ids = group.erroredFileIds;
+    if (!ids.length) return;
+    this.retrying.update(prev => new Set(prev).add(group.key));
+    try {
+      await firstValueFrom(
+        this.api.retryDownloads(ids.map(id => ({ username: group.username, id }))),
+      );
+    } catch { /* ignore */ }
+    finally {
+      this.retrying.update(prev => {
+        const next = new Set(prev);
+        next.delete(group.key);
+        return next;
+      });
+      this.transferService.poll();
+    }
   }
 
   async clearGroup(group: AlbumGroup): Promise<void> {

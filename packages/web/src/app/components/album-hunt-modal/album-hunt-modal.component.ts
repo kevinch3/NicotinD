@@ -88,13 +88,25 @@ export class AlbumHuntModalComponent implements OnInit {
     const candidate = this.selectedCandidate();
     if (!candidate) return;
 
+    // Pass the other candidates as ranked alternates so the server can recover
+    // any tracks this peer fails to deliver from a different peer.
+    const toFiles = (c: FolderCandidate) =>
+      c.files.map((f) => ({ filename: f.filename, size: f.size }));
+    const alternates = this.candidates()
+      .filter((c) => c !== candidate)
+      .map((c) => ({ username: c.username, directory: c.directory, files: toFiles(c) }));
+
     this.state.set('downloading');
     try {
       await firstValueFrom(
-        this.api.enqueueDownload(
-          candidate.username,
-          candidate.files.map((f) => ({ filename: f.filename, size: f.size })),
-        ),
+        this.api.huntDownload(this.album().lidarrId, {
+          selected: {
+            username: candidate.username,
+            directory: candidate.directory,
+            files: toFiles(candidate),
+          },
+          alternates,
+        }),
       );
       // Surface the new transfers immediately in the global download UI.
       void this.transfer.poll();

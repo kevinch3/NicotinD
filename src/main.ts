@@ -135,7 +135,7 @@ async function main() {
     });
   }
 
-  const { app, watcherRef, websocket } = createApp({
+  const { app, watcherRef, retryRef, websocket } = createApp({
     config,
     slskdRef,
     navidrome,
@@ -168,6 +168,7 @@ async function main() {
   });
 
   if (watcherRef.current) watcherRef.current.start();
+  if (retryRef.current) retryRef.current.start();
 
   log.info({ port: config.port }, 'NicotinD is ready');
 
@@ -181,6 +182,7 @@ async function main() {
   process.on('SIGTERM', async () => {
     log.info('Shutting down...');
     if (watcherRef.current) watcherRef.current.stop();
+    if (retryRef.current) retryRef.current.stop();
     await serviceManager.stopAll();
     process.exit(0);
   });
@@ -188,6 +190,7 @@ async function main() {
   process.on('SIGINT', async () => {
     log.info('Shutting down...');
     if (watcherRef.current) watcherRef.current.stop();
+    if (retryRef.current) retryRef.current.stop();
     await serviceManager.stopAll();
     process.exit(0);
   });
@@ -301,6 +304,21 @@ function loadConfig() {
       ...(metadataFixEnabled !== undefined ? { enabled: metadataFixEnabled } : {}),
       ...(process.env.NICOTIND_METADATA_FIX_MIN_SCORE
         ? { minScore: Number(process.env.NICOTIND_METADATA_FIX_MIN_SCORE) }
+        : {}),
+    },
+    downloads: {
+      ...((fileConfig as Record<string, unknown>).downloads as Record<string, unknown>),
+      ...(process.env.NICOTIND_AUTO_RETRY_ENABLED
+        ? { autoRetryEnabled: parseBooleanEnv(process.env.NICOTIND_AUTO_RETRY_ENABLED) }
+        : {}),
+      ...(process.env.NICOTIND_RETRY_MAX_ATTEMPTS
+        ? { retryMaxAttempts: Number(process.env.NICOTIND_RETRY_MAX_ATTEMPTS) }
+        : {}),
+      ...(process.env.NICOTIND_RETRY_INTERVAL_MS
+        ? { retryIntervalMs: Number(process.env.NICOTIND_RETRY_INTERVAL_MS) }
+        : {}),
+      ...(process.env.NICOTIND_RETRY_COOLDOWN_MS
+        ? { retryCooldownMs: Number(process.env.NICOTIND_RETRY_COOLDOWN_MS) }
         : {}),
     },
     soulseek: {

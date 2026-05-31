@@ -4,6 +4,7 @@ import { provideRouter } from '@angular/router';
 import { LayoutComponent } from './layout.component';
 import { AuthService } from '../../services/auth.service';
 import { PlayerService } from '../../services/player.service';
+import { APP_VERSION } from '../../app.config';
 
 function setup() {
   const playerStub = { currentTrack: signal<{ id: string } | null>(null) };
@@ -15,6 +16,7 @@ function setup() {
       provideRouter([]),
       { provide: PlayerService, useValue: playerStub },
       { provide: AuthService, useValue: authStub },
+      { provide: APP_VERSION, useValue: '0.0.0-test' },
     ],
     schemas: [NO_ERRORS_SCHEMA],
   });
