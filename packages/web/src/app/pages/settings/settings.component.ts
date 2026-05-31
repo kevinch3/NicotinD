@@ -1,4 +1,5 @@
-import { Component, inject, signal, OnInit, OnDestroy } from '@angular/core';
+import { Component, inject, signal, OnInit, DestroyRef } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom, interval, Subscription } from 'rxjs';
 import { switchMap, takeWhile } from 'rxjs/operators';
@@ -19,7 +20,7 @@ type DuplicateSong = {
   imports: [FormsModule, PasswordFieldComponent],
   templateUrl: './settings.component.html',
   })
-export class SettingsComponent implements OnInit, OnDestroy {
+export class SettingsComponent implements OnInit {
   private api = inject(ApiService);
   private auth = inject(AuthService);
   readonly themeService = inject(ThemeService);
@@ -64,6 +65,9 @@ export class SettingsComponent implements OnInit, OnDestroy {
   readonly duplicatesMessage = signal<{ type: 'success' | 'error'; text: string } | null>(null);
   readonly deletingDuplicates = signal(false);
 
+  private readonly destroyRef = inject(DestroyRef);
+  // Held only to cancel an in-flight poll on restart / manual connect; component
+  // teardown is handled by takeUntilDestroyed in startTsPoll().
   private tsPollSub: Subscription | null = null;
 
   isAdmin(): boolean {
@@ -229,6 +233,7 @@ export class SettingsComponent implements OnInit, OnDestroy {
       .pipe(
         switchMap(() => this.api.getTailscaleStatus()),
         takeWhile((s) => !s.connected, true),
+        takeUntilDestroyed(this.destroyRef),
       )
       .subscribe({
         next: (status) => {
@@ -306,9 +311,6 @@ export class SettingsComponent implements OnInit, OnDestroy {
     }
   }
 
-  ngOnDestroy(): void {
-    this.tsPollSub?.unsubscribe();
-  }
 
   async loadDuplicates(): Promise<void> {
     this.duplicatesLoading.set(true);
