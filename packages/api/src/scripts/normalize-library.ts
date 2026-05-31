@@ -298,6 +298,100 @@ function phaseA1_removeDups(musicDir: string): void {
   log(`  → ${stats.dupsRemoved} duplicates removed`);
 }
 
+// ─── Phase A1b: Remove format/case duplicates per track number ────────────────
+
+/**
+ * Within each album folder, group audio files by their leading track-number
+ * prefix (e.g. "01", "02").  For each group:
+ *   - If both .flac and .mp3(s) exist → delete all MP3s.
+ *   - If only MP3s with different title casing → keep the largest, delete rest.
+ */
+function phaseA1b_removeDupsByTrackNumber(musicDir: string): void {
+  log('\nPhase A1b: Removing format/case duplicates per track number...');
+  let removed = 0;
+
+  const TRACK_NUM_RE = /^(\d+)/;
+
+  for (const artistName of listDir(musicDir)) {
+    const artistDir = join(musicDir, artistName);
+    if (!isDir(artistDir)) continue;
+
+    for (const albumName of listDir(artistDir)) {
+      const albumDir = join(artistDir, albumName);
+      if (!isDir(albumDir)) continue;
+
+      const files = listDir(albumDir).filter((f) => isFile(join(albumDir, f)) && isAudioFile(join(albumDir, f)));
+
+      // Group by track number prefix
+      const byTrack = new Map<string, string[]>();
+      for (const f of files) {
+        const m = TRACK_NUM_RE.exec(f);
+        if (!m) continue;
+        const num = m[1];
+        if (!byTrack.has(num)) byTrack.set(num, []);
+        byTrack.get(num)!.push(f);
+      }
+
+      for (const [, group] of byTrack) {
+        if (group.length < 2) continue;
+
+        const flacs = group.filter((f) => extname(f).toLowerCase() === '.flac');
+        const mp3s = group.filter((f) => extname(f).toLowerCase() === '.mp3');
+
+        if (flacs.length > 0 && mp3s.length > 0) {
+          // FLAC wins: delete all MP3s
+          for (const mp3 of mp3s) {
+            const full = join(albumDir, mp3);
+            log(`  DEL  ${relative(musicDir, full)}  (FLAC exists)`);
+            if (!DRY_RUN) {
+              try { unlinkSync(full); } catch { stats.errors++; continue; }
+              writeProvenance(
+                relative(musicDir, flacs[0] ? join(albumDir, flacs[0]) : full),
+                'duplicate_removed',
+                { from: relative(musicDir, full), kept: relative(musicDir, join(albumDir, flacs[0]!)), reason: 'flac beats mp3' },
+              );
+            }
+            removed++;
+            stats.dupsRemoved++;
+          }
+        } else if (flacs.length < 2 && mp3s.length > 1) {
+          // Multiple MP3s — only treat as duplicates if their titles normalize to the same string.
+          // Same track number with completely different titles means different songs (bad tagging),
+          // not duplicates.
+          const titleOf = (f: string) => normalizeName(f.replace(/^\d+\s*[-–]\s*/, '').replace(/\.[^.]+$/, ''));
+          // Sub-group by normalized title
+          const byTitle = new Map<string, string[]>();
+          for (const f of mp3s) {
+            const t = titleOf(f);
+            if (!byTitle.has(t)) byTitle.set(t, []);
+            byTitle.get(t)!.push(f);
+          }
+          for (const [, titleGroup] of byTitle) {
+            if (titleGroup.length < 2) continue;
+            const sorted = [...titleGroup].sort((a, b) => getFileSize(join(albumDir, b)) - getFileSize(join(albumDir, a)));
+            const keeper = sorted[0]!;
+            for (const loser of sorted.slice(1)) {
+              const full = join(albumDir, loser);
+              log(`  DEL  ${relative(musicDir, full)}  (case variant; keeping ${keeper})`);
+              if (!DRY_RUN) {
+                try { unlinkSync(full); } catch { stats.errors++; continue; }
+                writeProvenance(
+                  relative(musicDir, join(albumDir, keeper)),
+                  'duplicate_removed',
+                  { from: relative(musicDir, full), kept: relative(musicDir, join(albumDir, keeper)), reason: 'case variant mp3' },
+                );
+              }
+              removed++;
+              stats.dupsRemoved++;
+            }
+          }
+        }
+      }
+    }
+  }
+  log(`  → ${removed} duplicates removed`);
+}
+
 // ─── Phase A0: Merge "Artist - Album" top-level folders ──────────────────────
 
 /**
@@ -761,6 +855,9 @@ async function main(): Promise<void> {
 
     // A1: Remove (2) duplicates
     phaseA1_removeDups(musicDir);
+
+    // A1b: Remove format/case duplicates per track number (FLAC beats MP3, largest MP3 wins)
+    phaseA1b_removeDupsByTrackNumber(musicDir);
 
     // A2: Group and merge artist folders (offline pass)
     log('\nPhase A2: Merging artist folder case/accent variants...');
