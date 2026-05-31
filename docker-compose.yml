@@ -1,6 +1,7 @@
 services:
   nicotind:
     build: .
+    user: "1000:1000"
     ports:
       - "8484:8484"
     volumes:
@@ -39,6 +40,7 @@ services:
 
   slskd:
     image: slskd/slskd:0.25.1
+    user: "1000:1000"
     volumes:
       - music:/data/music
       - slskd-data:/app
@@ -71,6 +73,7 @@ services:
 
   navidrome:
     image: deluan/navidrome:latest
+    user: "1000:1000"
     volumes:
       - music:/data/music:ro
       - navidrome-data:/data/nd
