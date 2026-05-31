@@ -206,4 +206,66 @@ describe('library routes', () => {
     expect(res.status).toBe(404);
     expect(navidromeMock.system.startScan).not.toHaveBeenCalled();
   });
+
+  it('finds a file nested two levels deep (Artist/Album/track) via fuzzy search', async () => {
+    navidromeMock.browsing.getSong = mock(() =>
+      Promise.resolve({
+        id: 'song-6',
+        path: '/home/kevinch3/Music/Original Artist/Original Album/track.mp3',
+      }),
+    );
+
+    fsState.set('/home/kevinch3/Music', true);
+    fsState.set('/home/kevinch3/Music/Renamed Artist', true);
+    fsState.set('/home/kevinch3/Music/Renamed Artist/Renamed Album', true);
+    fsState.set('/home/kevinch3/Music/Renamed Artist/Renamed Album/track.mp3', true);
+    dirEntries.set('/home/kevinch3/Music', [
+      { name: 'Renamed Artist', isFile: false, isDirectory: true },
+    ]);
+    dirEntries.set('/home/kevinch3/Music/Renamed Artist', [
+      { name: 'Renamed Album', isFile: false, isDirectory: true },
+    ]);
+    dirEntries.set('/home/kevinch3/Music/Renamed Artist/Renamed Album', [
+      { name: 'track.mp3', isFile: true, isDirectory: false },
+    ]);
+
+    const res = await app.request('/songs/song-6', { method: 'DELETE' });
+
+    expect(res.status).toBe(200);
+    expect(fsState.has('/home/kevinch3/Music/Renamed Artist/Renamed Album/track.mp3')).toBe(false);
+    expect(navidromeMock.system.startScan).toHaveBeenCalledWith(true);
+  });
+
+  it('orphan delete: returns 200 and cleans DB when file is gone but library_songs row exists', async () => {
+    navidromeMock.browsing.getSong = mock(() =>
+      Promise.resolve({
+        id: 'song-7',
+        path: '/home/kevinch3/Music/Gone/track.mp3',
+      }),
+    );
+    sharedDb.run(
+      `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, size, bit_rate, suffix, content_type, created, synced_at)
+       VALUES ('song-7', 'alb-1', 'Gone Track', 'Artist', 'art-1', 300, '/home/kevinch3/Music/Gone/track.mp3', 1000, 320, 'mp3', 'audio/mpeg', '2024-01-01', 1)`,
+    );
+
+    const res = await app.request('/songs/song-7', { method: 'DELETE' });
+
+    expect(res.status).toBe(200);
+    const row = sharedDb.query(`SELECT id FROM library_songs WHERE id = 'song-7'`).get();
+    expect(row).toBeNull();
+  });
+
+  it('returns 404 when file is gone and no library_songs record exists', async () => {
+    navidromeMock.browsing.getSong = mock(() =>
+      Promise.resolve({
+        id: 'song-8',
+        path: '/home/kevinch3/Music/NeverExisted/track.mp3',
+      }),
+    );
+
+    const res = await app.request('/songs/song-8', { method: 'DELETE' });
+
+    expect(res.status).toBe(404);
+    expect(navidromeMock.system.startScan).not.toHaveBeenCalled();
+  });
 });

@@ -533,10 +533,23 @@ export function libraryRoutes(
     } catch {
       return null;
     }
-    for (const entry of rootEntries) {
-      if (!entry.isDirectory()) continue;
-      const found = findFileByTokens(join(musicRootDir, entry.name), tokens);
+    for (const topEntry of rootEntries) {
+      if (!topEntry.isDirectory()) continue;
+      const topDir = join(musicRootDir, topEntry.name);
+      const found = findFileByTokens(topDir, tokens);
       if (found) return found;
+      // search one level deeper to cover the standard Artist/Album/track layout
+      let subEntries: import('node:fs').Dirent[];
+      try {
+        subEntries = readdirSync(topDir, { withFileTypes: true });
+      } catch {
+        continue;
+      }
+      for (const subEntry of subEntries) {
+        if (!subEntry.isDirectory()) continue;
+        const subFound = findFileByTokens(join(topDir, subEntry.name), tokens);
+        if (subFound) return subFound;
+      }
     }
 
     return null;
@@ -611,6 +624,18 @@ export function libraryRoutes(
             return { ok: false, error: 'Failed to delete file', status: 500 };
           }
         } else {
+          log.warn({ songId: id, expectedPath: fullPath }, 'Song file not found on disk; no fallback path resolved');
+          // File is already gone — clean up the orphaned DB record so it stops appearing in Navidrome.
+          const orphan = db.query<{ id: string }, [string]>(`SELECT id FROM library_songs WHERE id = ?`).get(id);
+          if (orphan) {
+            try {
+              db.run('DELETE FROM completed_downloads WHERE navidrome_id = ?', [id]);
+              db.run('DELETE FROM library_songs WHERE id = ?', [id]);
+            } catch (err) {
+              log.debug({ err }, 'Failed to remove orphaned record');
+            }
+            return { ok: true };
+          }
           return { ok: false, error: 'Song file not found on disk', status: 404 };
         }
       }
