@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.29](https://github.com/kevinch3/NicotinD/compare/v0.1.28...v0.1.29) (2026-05-31)
+
+
+### Features
+
+* **library:** phase A1b — remove FLAC/MP3 and case-variant duplicates per track ([2d0370b](https://github.com/kevinch3/NicotinD/commit/2d0370b0818569139a0a133bbb20283ef86a7386))
+
+
+### Bug Fixes
+
+* **library:** fix album deletion failing with 'could not be removed' ([ce9c335](https://github.com/kevinch3/NicotinD/commit/ce9c33595da96d832d4a8102671739cddafc8e8a))
+
 ## [0.1.28](https://github.com/kevinch3/NicotinD/compare/v0.1.27...v0.1.28) (2026-05-31)
 
 
