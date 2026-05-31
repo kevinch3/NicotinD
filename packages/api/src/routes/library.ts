@@ -349,6 +349,31 @@ export function libraryRoutes(
     }
   });
 
+  app.get('/songs/:id/provenance', async (c) => {
+    const id = c.req.param('id');
+    const db = getDatabase();
+    interface ProvenanceRow {
+      action: string;
+      detail: string;
+      applied_at: number;
+    }
+    const rows = db
+      .query<ProvenanceRow, [string]>(
+        `SELECT action, detail, applied_at
+         FROM library_song_provenance
+         WHERE navidrome_id = ?
+         ORDER BY applied_at ASC`,
+      )
+      .all(id);
+    return c.json(
+      rows.map((r) => ({
+        action: r.action,
+        detail: JSON.parse(r.detail) as Record<string, unknown>,
+        appliedAt: r.applied_at,
+      })),
+    );
+  });
+
   app.get('/songs/:id/similar', async (c) => {
     const id = c.req.param('id');
     const size = Math.min(Number(c.req.query('size') ?? 20), 50);

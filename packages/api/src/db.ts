@@ -266,6 +266,21 @@ export function applySchema(db: Database): void {
       PRIMARY KEY (artist_id)
     )
   `);
+
+  // Audit trail written by normalize-library.ts and future automation.
+  // navidrome_id is null until NavidromeSyncer backfills it via path join.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS library_song_provenance (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      song_path    TEXT NOT NULL,
+      navidrome_id TEXT,
+      action       TEXT NOT NULL,
+      detail       TEXT NOT NULL,
+      applied_at   INTEGER NOT NULL
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_provenance_path ON library_song_provenance(song_path)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_provenance_navidrome_id ON library_song_provenance(navidrome_id)`);
 }
 
 export function getDatabase(): Database {

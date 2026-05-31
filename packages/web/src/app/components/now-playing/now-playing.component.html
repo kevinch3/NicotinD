@@ -169,7 +169,22 @@
           </button>
         </div>
 
-        <!-- TODO: TrackContextMenu goes here (Phase 5) -->
+        @if (contextMenu(); as pos) {
+          <app-track-context-menu
+            [artist]="track.artist"
+            [position]="pos"
+            [trackId]="track.id"
+            (close)="contextMenu.set(null)"
+            (openInfo)="onOpenTrackInfo($event)"
+          />
+        }
+
+        @if (trackInfoSongId(); as infoId) {
+          <app-track-info-sheet
+            [songId]="infoId"
+            (close)="trackInfoSongId.set(null)"
+          />
+        }
 
         <!-- Queue section -->
         <div class="flex-1 min-h-0 flex flex-col px-4 overflow-hidden">

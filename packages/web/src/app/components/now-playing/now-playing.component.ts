@@ -11,6 +11,8 @@ import { AuthService } from '../../services/auth.service';
 import { RemotePlaybackService } from '../../services/remote-playback.service';
 import { PlaybackWsService } from '../../services/playback-ws.service';
 import { DeviceSwitcherComponent } from '../device-switcher/device-switcher.component';
+import { TrackContextMenuComponent } from '../track-context-menu/track-context-menu.component';
+import { TrackInfoSheetComponent } from '../track-info-sheet/track-info-sheet.component';
 import { resolveArtistRoute } from '../../lib/route-utils';
 import { createPointerDrag } from '../../lib/pointer-drag';
 
@@ -23,7 +25,7 @@ function formatTime(s: number): string {
 
 @Component({
   selector: 'app-now-playing',
-  imports: [DeviceSwitcherComponent],
+  imports: [DeviceSwitcherComponent, TrackContextMenuComponent, TrackInfoSheetComponent],
   templateUrl: './now-playing.component.html',
   })
 export class NowPlayingComponent {
@@ -33,8 +35,11 @@ export class NowPlayingComponent {
   private ws = inject(PlaybackWsService);
   private router = inject(Router);
 
-  // Context menu state stub
-  private contextMenu = signal<{ x: number; y: number } | null>(null);
+  // Context menu state
+  readonly contextMenu = signal<{ x: number; y: number } | null>(null);
+
+  // Track info sheet state
+  readonly trackInfoSongId = signal<string | null>(null);
 
   // Playback progress interpolation
   private interpolatedTime = signal(0);
@@ -176,8 +181,12 @@ export class NowPlayingComponent {
 
   onTitleContextMenu(event: MouseEvent): void {
     event.preventDefault();
-    // TODO: Wire up TrackContextMenu (Phase 5)
     this.contextMenu.set({ x: event.clientX, y: event.clientY });
+  }
+
+  onOpenTrackInfo(songId: string): void {
+    this.contextMenu.set(null);
+    this.trackInfoSongId.set(songId);
   }
 
   unblockAutoplay(): void {

@@ -75,6 +75,18 @@ export class NavidromeSyncer {
       this.upsertGenres(genres, syncedAt);
     })();
 
+    // Backfill provenance records that were written by the normalize script
+    // before Navidrome had assigned IDs to the affected songs.
+    this.db.run(`
+      UPDATE library_song_provenance
+      SET navidrome_id = (
+        SELECT id FROM library_songs
+        WHERE library_songs.path = library_song_provenance.song_path
+        LIMIT 1
+      )
+      WHERE navidrome_id IS NULL
+    `);
+
     const removedAlbums = this.db
       .run('DELETE FROM library_albums WHERE synced_at < ?', [syncedAt])
       .changes;

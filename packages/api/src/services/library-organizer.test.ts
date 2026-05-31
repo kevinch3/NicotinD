@@ -140,7 +140,7 @@ describe('LibraryOrganizer (real fs)', () => {
     expect(existsSync(join(root, 'Unsorted', 'Mystery Folder', 'Orphan Track.mp3'))).toBe(true);
   });
 
-  it('routes artist+title without album into <Artist>/Singles/', async () => {
+  it('routes artist+title without album into <Artist>/Singles/ when folder is generic', async () => {
     const root = tmpRoot();
     const staging = join(root, '_staging');
     seed(staging, 'src/single.mp3', { artist: 'Solo', title: 'Standalone' });
@@ -149,6 +149,28 @@ describe('LibraryOrganizer (real fs)', () => {
       { username: 'u', directory: 'src', filename: 'single.mp3', directoryFileCount: 1 },
     ]);
     expect(existsSync(join(root, 'Solo', 'Singles', 'Standalone.mp3'))).toBe(true);
+  });
+
+  it('uses the peer folder as album when artist+title are tagged but album tag is missing', async () => {
+    const root = tmpRoot();
+    const staging = join(root, '_staging');
+    // Peer has the file in a well-named album subfolder but forgot to write the album tag.
+    seed(staging, 'Pink Floyd - The Dark Side of the Moon/02 - Breathe.mp3', {
+      artist: 'Pink Floyd',
+      title: 'Breathe',
+      trackNumber: 2,
+    });
+    const org = makeOrg(root, staging);
+    await org.organizeBatch([
+      {
+        username: 'u',
+        directory: 'Pink Floyd - The Dark Side of the Moon',
+        filename: '02 - Breathe.mp3',
+        directoryFileCount: 1,
+      },
+    ]);
+    expect(existsSync(join(root, 'Pink Floyd', 'The Dark Side of the Moon', '02 - Breathe.mp3'))).toBe(true);
+    expect(existsSync(join(root, 'Pink Floyd', 'Singles'))).toBe(false);
   });
 
   it('routes a compilation (folder name + distinct artists, no album tags) to Various Artists/', async () => {

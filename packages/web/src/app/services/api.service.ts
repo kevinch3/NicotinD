@@ -94,6 +94,21 @@ export interface AlbumDetail {
   song: Array<{ id: string; title: string; artist: string; artistId?: string; albumId?: string; duration?: number; track?: number; coverArt?: string }>;
 }
 
+export interface ProvenanceRecord {
+  action: string;
+  detail: {
+    from?: string;
+    to?: string;
+    kept?: string;
+    mb_recording_id?: string;
+    mb_release_id?: string;
+    mb_album_title?: string;
+    mb_artist_name?: string;
+    reason?: string;
+  };
+  appliedAt: number;
+}
+
 export interface Song {
   id: string;
   title: string;
@@ -296,6 +311,10 @@ export class ApiService {
 
   getRecentSongs(size = 50) {
     return this.http.get<Song[]>('/api/library/recent-songs', { params: { size } });
+  }
+
+  getSongProvenance(id: string) {
+    return this.http.get<ProvenanceRecord[]>(`/api/library/songs/${id}/provenance`);
   }
 
   getSimilarSongs(id: string, size = 20) {

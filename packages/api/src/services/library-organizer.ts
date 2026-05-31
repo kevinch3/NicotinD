@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readdirSync, renameSync, rmdirSync, statSync, ap
 import { basename, dirname, extname, join, relative } from 'node:path';
 import { cleanFolderName, createLogger, parseYearFromFolder } from '@nicotind/core';
 import { classifyFolder, type Classification } from './compilation-tagger.js';
-import { extractAlbumName, inferMetadataFromPath } from './path-inference.js';
+import { extractAlbumName, inferFolderAlbum, inferMetadataFromPath } from './path-inference.js';
 import type { CompletedDownloadFile } from './path-inference.js';
 import {
   readAudioTags,
@@ -237,9 +237,15 @@ export class LibraryOrganizer {
   private deriveFolderTags(files: ResolvedFile[]): AlbumTags {
     if (files.length === 1) {
       const t = files[0]!.tags;
+      const albumArtist = normalizeTagValue(t.albumArtist) ?? normalizeTagValue(t.artist);
+      // When the file has no album tag, try to derive one from the peer-side
+      // directory name (e.g. peer path "Artist\Dark Side of the Moon\track.flac"
+      // → album "Dark Side of the Moon"). Generic and artist-echo folders are
+      // filtered out so "src/", "downloads/", or "<Artist>/" don't become albums.
+      const album = normalizeTagValue(t.album) ?? inferFolderAlbum(files[0]!.peerDirectory, albumArtist);
       return {
-        album: normalizeTagValue(t.album),
-        albumArtist: normalizeTagValue(t.albumArtist) ?? normalizeTagValue(t.artist),
+        album,
+        albumArtist,
         compilation: t.compilation === true,
         year: t.year ?? parseYearFromFolder(files[0]!.peerDirectory),
       };
