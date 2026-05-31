@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.30](https://github.com/kevinch3/NicotinD/compare/v0.1.29...v0.1.30) (2026-05-31)
+
+
+### Bug Fixes
+
+* **docker:** add docker group (gid 981) to nicotind so logs socket is accessible as uid 1000 ([b09e790](https://github.com/kevinch3/NicotinD/commit/b09e790d35e982e71335e0c8df66b7f8d1aba0d1))
+
 ## [0.1.29](https://github.com/kevinch3/NicotinD/compare/v0.1.28...v0.1.29) (2026-05-31)
 
 
