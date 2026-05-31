@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.23](https://github.com/kevinch3/NicotinD/compare/v0.1.22...v0.1.23) (2026-05-31)
+
+
+### Features
+
+* **player:** drag-to-expand/collapse with mobile UX hardening ([fafa3ac](https://github.com/kevinch3/NicotinD/commit/fafa3acca05b0670ea3b2ea63f1714081bddd15e))
+
 ## [0.1.22](https://github.com/kevinch3/NicotinD/compare/v0.1.21...v0.1.22) (2026-05-31)
 
 
