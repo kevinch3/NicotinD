@@ -298,5 +298,14 @@
           </p>
         </div>
       }
+
+      <!-- Album-hunt modal — same flow as the discography page -->
+      @if (huntingAlbum()) {
+        <app-album-hunt-modal
+          [album]="huntingAlbum()!"
+          [artistName]="huntingArtistName()"
+          (closed)="closeHunt()"
+          (downloaded)="closeHunt()" />
+      }
     </div>
-  
+

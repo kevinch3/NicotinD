@@ -2,6 +2,7 @@ import {
   Component,
   inject,
   signal,
+  computed,
   effect,
   viewChild,
   ElementRef,
