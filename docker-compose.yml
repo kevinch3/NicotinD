@@ -2,6 +2,8 @@ services:
   nicotind:
     build: .
     user: "1000:1000"
+    group_add:
+      - "981"
     ports:
       - "8484:8484"
     volumes:
