@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.24](https://github.com/kevinch3/NicotinD/compare/v0.1.23...v0.1.24) (2026-05-31)
+
+
+### Features
+
+* **search:** metadata-driven search via Lidarr/MusicBrainz with album-hunt flow ([8c79a03](https://github.com/kevinch3/NicotinD/commit/8c79a03121719a8cd8b811bcf17ab99d5579d892))
+
+
+### Bug Fixes
+
+* **web:** unbreak production build — missing computed import + render hunt modal ([8dd8895](https://github.com/kevinch3/NicotinD/commit/8dd8895a7fd2eb616754f0785af1a23b916f0172))
+
 ## [0.1.23](https://github.com/kevinch3/NicotinD/compare/v0.1.22...v0.1.23) (2026-05-31)
 
 
