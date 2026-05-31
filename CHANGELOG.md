@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.27](https://github.com/kevinch3/NicotinD/compare/v0.1.25...v0.1.27) (2026-05-31)
+
+
+### Features
+
+* **library:** normalize-library script, Singles fix, track provenance UI ([bdc7e6d](https://github.com/kevinch3/NicotinD/commit/bdc7e6d4a19e0ed2884ca633877c764308921fc0))
+
+
+### Bug Fixes
+
+* deployment skip bump ([38db49e](https://github.com/kevinch3/NicotinD/commit/38db49e1bd7d174a7df7bfabf4ca9709679889ed))
+* **docker:** run nicotind, slskd, navidrome as uid 1000 to avoid root-owned music files ([7c4ddb4](https://github.com/kevinch3/NicotinD/commit/7c4ddb4d67ca690345d50190370dc5e391f8052c))
+* download indicator update ([7a5f9d4](https://github.com/kevinch3/NicotinD/commit/7a5f9d433f8c69eec4e7c33ec884deb36191076a))
+* **lint:** remove unused catch bindings and import in normalize scripts ([de6a8b6](https://github.com/kevinch3/NicotinD/commit/de6a8b6c291a59ca869f4947fd7854e8f7aeab30))
+* **streaming:** return 404 instead of forwarding Subsonic XML errors as images ([02657ec](https://github.com/kevinch3/NicotinD/commit/02657ec71caddc4f65e3826a1ba76184c4dbc652))
+
 ## [0.1.26](https://github.com/kevinch3/NicotinD/compare/v0.1.23...v0.1.26) (2026-05-31)
 
 
