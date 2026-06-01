@@ -33,11 +33,15 @@
  * Env: NICOTIND_DATA_DIR, NICOTIND_MUSIC_DIR, NICOTIND_CONFIG.
  */
 
-import { readFileSync, readdirSync, statSync, existsSync, appendFileSync, unlinkSync } from 'node:fs';
-import { resolve, join, extname, basename } from 'node:path';
+import { readFileSync, readdirSync, statSync, existsSync, appendFileSync } from 'node:fs';
+import { resolve, join, basename } from 'node:path';
 import { parse } from 'yaml';
 import { Database } from 'bun:sqlite';
-import { AUDIO_EXTS } from '../services/audio-tags.js';
+import { dedupeFolder, dupKey, pickKeeper, type DupFile } from '../services/album-dedupe.js';
+
+// Re-exported so existing importers/tests keep working after the core moved to
+// the shared album-dedupe module.
+export { dupKey, pickKeeper, type DupFile };
 
 function expandHome(p: string): string {
   return p.startsWith('~') ? join(process.env.HOME ?? '/root', p.slice(1)) : p;
@@ -65,48 +69,6 @@ function loadConfig(): Config {
   const musicDir = expandHome(musicDirRaw);
 
   return { dataDir, musicDir };
-}
-
-export interface DupFile {
-  name: string;
-  size: number;
-}
-
-/**
- * Normalized identity of a track, collapsing only TRUE duplicate copies:
- * leading track number, a trailing " (N)" integer collision suffix, the
- * extension, and case/punctuation are all stripped. Meaningful qualifiers
- * ("live", "acoustic version", …) survive, so distinct tracks stay distinct.
- */
-export function dupKey(filename: string): string {
-  const stem = filename.slice(0, filename.length - extname(filename).length);
-  return stem
-    .replace(/^\d+[\s.\-_]+/, '') // leading track number
-    .replace(/\s*\(\d+\)\s*$/, '') // trailing " (2)" collision suffix
-    .toLowerCase()
-    .replace(/[^\w\s]/g, '') // apostrophe / punctuation variants
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-const hasSuffix = (name: string): boolean => /\s*\(\d+\)\s*$/.test(name.slice(0, name.length - extname(name).length));
-
-/**
- * Orders duplicate copies best-first: FLAC over lossy, then larger file (better
- * bitrate / not truncated), then the un-suffixed original, then name. The first
- * element is the keeper; the rest are safe to delete.
- */
-export function pickKeeper(files: DupFile[]): DupFile[] {
-  return [...files].sort((a, b) => {
-    const aFlac = extname(a.name).toLowerCase() === '.flac' ? 0 : 1;
-    const bFlac = extname(b.name).toLowerCase() === '.flac' ? 0 : 1;
-    if (aFlac !== bFlac) return aFlac - bFlac;
-    if (a.size !== b.size) return b.size - a.size;
-    const aSuf = hasSuffix(a.name) ? 1 : 0;
-    const bSuf = hasSuffix(b.name) ? 1 : 0;
-    if (aSuf !== bSuf) return aSuf - bSuf;
-    return a.name.localeCompare(b.name);
-  });
 }
 
 /** Yields every <musicDir>/<Artist>/<Album>/ directory, excluding Singles. */
@@ -175,57 +137,24 @@ async function main(): Promise<void> {
   let bytesFreed = 0;
 
   for (const { artist, album, dir } of walkAlbumDirs(musicDir)) {
-    let entries: string[];
-    try {
-      entries = readdirSync(dir);
-    } catch {
-      continue;
-    }
-
-    const audio: DupFile[] = [];
-    for (const name of entries) {
-      if (!AUDIO_EXTS.has(extname(name).toLowerCase())) continue;
-      let fst;
-      try {
-        fst = statSync(join(dir, name));
-      } catch {
-        continue;
-      }
-      if (!fst.isFile()) continue;
-      audio.push({ name, size: fst.size });
-    }
-
-    const groups = new Map<string, DupFile[]>();
-    for (const f of audio) {
-      const key = dupKey(f.name);
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key)!.push(f);
-    }
-
-    let folderHadDupes = false;
-    for (const [, files] of groups) {
-      if (files.length < 2) continue;
-      folderHadDupes = true;
-      const [keeper, ...toDelete] = pickKeeper(files);
-      console.log(`  ${artist}/${album}/  keep "${keeper.name}", drop ${toDelete.length}:`);
-      for (const d of toDelete) {
-        console.log(`      - ${d.name}`);
-        bytesFreed += d.size;
-        filesDeleted++;
+    const { deleted } = dedupeFolder(dir, {
+      apply,
+      onDelete: (filePath, file, keeper) => {
         if (apply) {
-          const filePath = join(dir, d.name);
-          try {
-            unlinkSync(filePath);
-            appendFileSync(logPath, `${filePath}\t(${d.size} bytes, kept ${keeper.name})\n`, 'utf-8');
-          } catch (err) {
-            console.warn(`        FAILED delete: ${err}`);
-            continue;
-          }
-          db.run('DELETE FROM completed_downloads WHERE basename = ?', [basename(d.name).toLowerCase()]);
+          appendFileSync(logPath, `${filePath}\t(${file.size} bytes, kept ${keeper.name})\n`, 'utf-8');
+          db.run('DELETE FROM completed_downloads WHERE basename = ?', [basename(file.name).toLowerCase()]);
         }
-      }
+      },
+    });
+    if (!deleted.length) continue;
+
+    foldersAffected++;
+    console.log(`  ${artist}/${album}/  dropping ${deleted.length}:`);
+    for (const d of deleted) {
+      console.log(`      - ${d.name}  (keep "${d.keptName}")`);
+      bytesFreed += d.size;
+      filesDeleted++;
     }
-    if (folderHadDupes) foldersAffected++;
   }
 
   const mb = (bytesFreed / (1024 * 1024)).toFixed(1);

@@ -10,7 +10,7 @@
  *     -t 0.1 -b:a 32k -id3v2_version 3 packages/api/test-fixtures/silence.mp3
  */
 import { describe, expect, it, afterEach } from 'bun:test';
-import { mkdtempSync, mkdirSync, copyFileSync, rmSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, copyFileSync, rmSync, existsSync, writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -202,7 +202,9 @@ describe('LibraryOrganizer (real fs)', () => {
     const staging = join(root, '_staging');
     seed(staging, 'src/a.mp3', { artist: 'Dupe', album: 'Album', title: 'Same' });
     seed(staging, 'src/b.mp3', { artist: 'Dupe', album: 'Album', title: 'Same' });
-    const org = makeOrg(root, staging);
+    // autoDedupe off so we observe the raw uniquePath collision suffix; with it on
+    // (the default) the "(2)" copy is intentionally reaped (see auto-dedupe tests).
+    const org = new LibraryOrganizer({ musicDir: root, stagingDir: staging, autoDedupe: false });
     await org.organizeBatch([
       { username: 'u', directory: 'src', filename: 'a.mp3', directoryFileCount: 2 },
       { username: 'u', directory: 'src', filename: 'b.mp3', directoryFileCount: 2 },
@@ -254,5 +256,82 @@ describe('LibraryOrganizer (real fs)', () => {
     ]);
     expect(existsSync(src)).toBe(false);
     expect(existsSync(join(root, 'A', 'B', '01 - C.mp3'))).toBe(true);
+  });
+
+  describe('format-preference dedup (preferFlacSkipMp3)', () => {
+    it('skips an incoming MP3 when a FLAC of the same track is already present', async () => {
+      const root = tmpRoot();
+      const staging = join(root, '_staging');
+      // Existing FLAC (diacritics differ from the incoming MP3's accented title).
+      mkdirSync(join(root, 'Soda Stereo', 'Canción Animal'), { recursive: true });
+      writeFileSync(join(root, 'Soda Stereo', 'Canción Animal', '01 - Cancion Animal.flac'), 'x');
+
+      const src = seed(staging, 'Soda Stereo - Cancion Animal/01 - Canción Animal.mp3', {
+        artist: 'Soda Stereo',
+        album: 'Canción Animal',
+        title: 'Canción Animal',
+        trackNumber: 1,
+      });
+
+      const org = new LibraryOrganizer({ musicDir: root, stagingDir: staging, preferFlacSkipMp3: true });
+      const result = await org.organizeBatch([
+        { username: 'u', directory: 'Soda Stereo - Cancion Animal', filename: '01 - Canción Animal.mp3', directoryFileCount: 1 },
+      ]);
+
+      expect(result.skipped).toBe(1);
+      expect(result.moved).toBe(0);
+      // Source MP3 removed; no MP3 landed next to the FLAC.
+      expect(existsSync(src)).toBe(false);
+      expect(existsSync(join(root, 'Soda Stereo', 'Canción Animal', '01 - Canción Animal.mp3'))).toBe(false);
+    });
+
+    it('auto-dedupe drops a freshly-placed MP3 that collides with an existing FLAC', async () => {
+      const root = tmpRoot();
+      const staging = join(root, '_staging');
+      // Existing FLAC of the track already in the album folder.
+      mkdirSync(join(root, 'Lenny Kravitz', 'Circus'), { recursive: true });
+      writeFileSync(join(root, 'Lenny Kravitz', 'Circus', '01 - Believe.flac'), 'x'.repeat(100));
+
+      seed(staging, 'Lenny Kravitz - Circus/01 - Believe.mp3', {
+        artist: 'Lenny Kravitz',
+        album: 'Circus',
+        title: 'Believe',
+        trackNumber: 1,
+      });
+
+      // preferFlacSkipMp3 off, but autoDedupe (default on) cleans up the collision
+      // after placement.
+      const org = new LibraryOrganizer({ musicDir: root, stagingDir: staging });
+      const result = await org.organizeBatch([
+        { username: 'u', directory: 'Lenny Kravitz - Circus', filename: '01 - Believe.mp3', directoryFileCount: 1 },
+      ]);
+
+      expect(result.dedupedBasenames).toContain('01 - believe.mp3');
+      expect(existsSync(join(root, 'Lenny Kravitz', 'Circus', '01 - Believe.flac'))).toBe(true);
+      expect(existsSync(join(root, 'Lenny Kravitz', 'Circus', '01 - Believe.mp3'))).toBe(false);
+    });
+
+    it('keeps the MP3 when the preference is off (default)', async () => {
+      const root = tmpRoot();
+      const staging = join(root, '_staging');
+      mkdirSync(join(root, 'Soda Stereo', 'Canción Animal'), { recursive: true });
+      writeFileSync(join(root, 'Soda Stereo', 'Canción Animal', '01 - Cancion Animal.flac'), 'x');
+
+      seed(staging, 'Soda Stereo - Cancion Animal/01 - Cancion Animal.mp3', {
+        artist: 'Soda Stereo',
+        album: 'Canción Animal',
+        title: 'Canción Animal',
+        trackNumber: 1,
+      });
+
+      // Both dedupe paths off → the MP3 is placed and kept alongside the FLAC.
+      const org = new LibraryOrganizer({ musicDir: root, stagingDir: staging, autoDedupe: false });
+      const result = await org.organizeBatch([
+        { username: 'u', directory: 'Soda Stereo - Cancion Animal', filename: '01 - Cancion Animal.mp3', directoryFileCount: 1 },
+      ]);
+
+      expect(result.moved).toBe(1);
+      expect(existsSync(join(root, 'Soda Stereo', 'Canción Animal', '01 - Canción Animal.mp3'))).toBe(true);
+    });
   });
 });

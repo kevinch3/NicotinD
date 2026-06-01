@@ -14,6 +14,8 @@ import {
 import { sanitizeSegment, trackNumberPrefix, stripAudioExt, stripTrackPrefix, isTrackNumberFragment, looksLikeFilenameTag, stripArtistLeadJunk, stripFeaturingSuffix } from './path-sanitize.js';
 import { isAbsolute } from 'node:path';
 import type { AcoustIdLookup } from './acoustid-lookup.js';
+import { normalizeTitle } from './album-hunter.service.js';
+import { dedupeFolder } from './album-dedupe.js';
 
 const log = createLogger('library-organizer');
 
@@ -27,6 +29,18 @@ export interface LibraryOrganizerOptions {
   moveLogPath?: string;
   /** Subfolder under musicDir where unsortable tracks land. Defaults to "Unsorted". */
   unsortedRoot?: string;
+  /**
+   * When true, an incoming MP3 is dropped (and its source removed) if a FLAC of
+   * the same track already exists in the destination album folder. Prevents the
+   * mixed MP3+FLAC duplicate albums the analysis flagged. Opt-in.
+   */
+  preferFlacSkipMp3?: boolean;
+  /**
+   * After placing a batch, remove redundant duplicate copies (`02 - Song (2)`,
+   * mixed FLAC/MP3 of the same track) from each album folder it touched. On by
+   * default — these are always-unwanted collisions that split Navidrome albums.
+   */
+  autoDedupe?: boolean;
 }
 
 export interface OrganizeResult {
@@ -34,6 +48,8 @@ export interface OrganizeResult {
   skipped: number;
   unsorted: number;
   failed: number;
+  /** Basenames (lowercased) of duplicate files auto-dedupe removed this batch. */
+  dedupedBasenames: string[];
 }
 
 /** A file already located on disk, plus its read tags. */
@@ -55,12 +71,18 @@ export class LibraryOrganizer {
   private moveLogPath: string | undefined;
   private unsortedRoot: string;
   private acoustid: AcoustIdLookup | undefined;
+  private preferFlacSkipMp3: boolean;
+  private autoDedupe: boolean;
+  /** Real <Artist>/<Album> dirs written during the current batch (for dedupe). */
+  private touchedAlbumDirs = new Set<string>();
 
   constructor(opts: LibraryOrganizerOptions) {
     this.musicDir = expandHome(opts.musicDir);
     this.stagingDir = opts.stagingDir ? expandHome(opts.stagingDir) : undefined;
     this.acoustid = opts.acoustid;
     this.moveLogPath = opts.moveLogPath;
+    this.preferFlacSkipMp3 = opts.preferFlacSkipMp3 ?? false;
+    this.autoDedupe = opts.autoDedupe ?? true;
     // unsortedRoot may be relative (resolved under musicDir) or absolute (e.g.
     // <dataDir>/unsorted so Navidrome doesn't index the bucket).
     const rawUnsorted = opts.unsortedRoot ?? 'Unsorted';
@@ -74,8 +96,10 @@ export class LibraryOrganizer {
    * classify → move into `<musicDir>/<Artist>/<Album>/<NN - Title>.<ext>`.
    */
   async organizeBatch(files: CompletedDownloadFile[]): Promise<OrganizeResult> {
-    const result: OrganizeResult = { moved: 0, skipped: 0, unsorted: 0, failed: 0 };
+    const result: OrganizeResult = { moved: 0, skipped: 0, unsorted: 0, failed: 0, dedupedBasenames: [] };
     if (files.length === 0) return result;
+
+    this.touchedAlbumDirs.clear();
 
     const groups = new Map<string, CompletedDownloadFile[]>();
     for (const file of files) {
@@ -86,6 +110,16 @@ export class LibraryOrganizer {
 
     for (const [directory, groupFiles] of groups) {
       await this.organizeGroup(directory, groupFiles, result);
+    }
+
+    if (this.autoDedupe) {
+      for (const dir of this.touchedAlbumDirs) {
+        const { deleted } = dedupeFolder(dir, { apply: true });
+        for (const d of deleted) {
+          result.dedupedBasenames.push(basename(d.name).toLowerCase());
+          log.info({ dir, dropped: d.name, kept: d.keptName }, 'Auto-dedupe removed a duplicate copy');
+        }
+      }
     }
 
     return result;
@@ -281,6 +315,9 @@ export class LibraryOrganizer {
     let placedInSingles = false;
     if (folderArtist && folderAlbum && trackTitle) {
       destDir = join(this.musicDir, folderArtist, folderAlbum);
+      // Only real <Artist>/<Album> dirs are dedupe targets — never Singles (many
+      // distinct tracks) or the unsorted bucket.
+      this.touchedAlbumDirs.add(destDir);
     } else if (folderArtist && trackTitle) {
       // Single artist, no album info → "Singles" album. We also force-write
       // album="Singles" to the file below so Navidrome groups it instead of
@@ -298,6 +335,17 @@ export class LibraryOrganizer {
     }
 
     const trackName = `${trackNumberPrefix(tags.trackNumber)}${trackTitle || basename(file.srcPath)}${ext}`.replace(/(\.[^.]+)\1$/, '$1');
+
+    // Format-preference dedup: drop an incoming MP3 when the same track already
+    // exists as FLAC in the destination album folder, so we don't accumulate the
+    // mixed-format duplicate albums the usage analysis flagged.
+    if (this.preferFlacSkipMp3 && ext === '.mp3' && flacTwinExists(destDir, trackTitle || title)) {
+      log.info({ src: file.srcPath, destDir }, 'Skipping MP3 — FLAC of this track already present');
+      if (file.source) file.source.relativePath = undefined;
+      try { unlinkSync(file.srcPath); } catch { /* source already gone — fine */ }
+      return 'skipped';
+    }
+
     const destPath = uniquePath(join(destDir, trackName), file.srcPath);
 
     const samePath = destPath === file.srcPath;
@@ -496,6 +544,27 @@ function stripAccents(s: string): string {
 }
 
 /** rename, falling back to copy+unlink when src/dst are on different filesystems (EXDEV). */
+/**
+ * True if an existing FLAC in `destDir` has the same (normalized) track title as
+ * the incoming file — used to skip a redundant MP3 download. Compares with the
+ * shared diacritic-folding normalizer so "01 - Canción.flac" matches "cancion".
+ */
+function flacTwinExists(destDir: string, trackTitle: string | undefined): boolean {
+  if (!trackTitle || !existsSync(destDir)) return false;
+  const target = normalizeTitle(trackTitle);
+  if (!target) return false;
+  try {
+    for (const entry of readdirSync(destDir)) {
+      if (extname(entry).toLowerCase() !== '.flac') continue;
+      const base = entry.slice(0, entry.lastIndexOf('.'));
+      if (normalizeTitle(base) === target) return true;
+    }
+  } catch {
+    // Unreadable destination dir — treat as no twin and let the normal path run.
+  }
+  return false;
+}
+
 function moveFileAcrossDevices(src: string, dst: string): void {
   try {
     renameSync(src, dst);

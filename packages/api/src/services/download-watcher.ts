@@ -19,6 +19,8 @@ interface DownloadWatcherOptions {
   acoustidApiKey?: string;
   /** Absolute path for the unsortable-files bucket. Defaults to <musicDir>/Unsorted (visible to Navidrome). */
   unsortedRoot?: string;
+  /** Drop an incoming MP3 when a FLAC of the same track is already in the album folder. */
+  preferFlacSkipMp3?: boolean;
   /** Pre-built organizer (testing). */
   libraryOrganizer?: { organizeBatch: (files: CompletedDownloadFile[]) => Promise<unknown> };
   autoPlaylist?: { processBatch: (files: CompletedDownloadFile[]) => Promise<void> };
@@ -59,6 +61,7 @@ export class DownloadWatcher {
         stagingDir: options.stagingDir,
         acoustid: options.acoustidApiKey ? new AcoustIdLookup(options.acoustidApiKey) : undefined,
         unsortedRoot: options.unsortedRoot,
+        preferFlacSkipMp3: options.preferFlacSkipMp3,
       });
     this.autoPlaylist =
       options.autoPlaylist ??
@@ -162,7 +165,14 @@ export class DownloadWatcher {
 
       if (newCompletions) {
         try {
-          await this.libraryOrganizer.organizeBatch(completedFiles);
+          const orgResult = (await this.libraryOrganizer.organizeBatch(completedFiles)) as
+            | { dedupedBasenames?: string[] }
+            | undefined;
+          // Drop completed_downloads rows for files auto-dedupe removed from disk,
+          // so the canonical tables don't reference vanished duplicates.
+          for (const basename of orgResult?.dedupedBasenames ?? []) {
+            getDatabase().run('DELETE FROM completed_downloads WHERE basename = ?', [basename]);
+          }
         } catch (err) {
           log.warn({ err }, 'Library organization step failed');
         }
