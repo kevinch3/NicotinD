@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.33](https://github.com/kevinch3/NicotinD/compare/v0.1.32...v0.1.33) (2026-06-01)
+
+
+### Bug Fixes
+
+* **hunt:** target chosen folder manifest in album fallback to stop duplicate rips ([8e8cc3d](https://github.com/kevinch3/NicotinD/commit/8e8cc3ddf77d6a02299209357c3dfbce5c0ff148))
+
 ## [0.1.32](https://github.com/kevinch3/NicotinD/compare/v0.1.31...v0.1.32) (2026-06-01)
 
 
