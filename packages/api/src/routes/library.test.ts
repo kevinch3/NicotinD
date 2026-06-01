@@ -38,6 +38,14 @@ mock.module('node:fs', () => ({
     }
     fsState.delete(path);
   }),
+  rmSync: mock((path: string) => {
+    // Recursive removal: drop the dir, its listing, and everything beneath it.
+    fsState.delete(path);
+    dirEntries.delete(path);
+    const prefix = path.endsWith('/') ? path : `${path}/`;
+    for (const key of [...fsState.keys()]) if (key.startsWith(prefix)) fsState.delete(key);
+    for (const key of [...dirEntries.keys()]) if (key.startsWith(prefix)) dirEntries.delete(key);
+  }),
 }));
 
 // Restore the real node:fs once this file's tests finish, so the global mock
@@ -55,9 +63,13 @@ function makeNavidromeMock() {
           path: '/home/kevinch3/Music/Artist/Album/song.mp3',
         }),
       ),
+      getAlbum: mock((_id: string) =>
+        Promise.resolve({ songs: [] as Array<{ id: string; path?: string }> }),
+      ),
     },
     system: {
       startScan: mock(() => Promise.resolve()),
+      getScanStatus: mock(() => Promise.resolve({ scanning: false, count: 0 })),
     },
   };
 }
@@ -267,5 +279,178 @@ describe('library routes', () => {
 
     expect(res.status).toBe(404);
     expect(navidromeMock.system.startScan).not.toHaveBeenCalled();
+  });
+});
+
+describe('album deletion', () => {
+  let navidromeMock: ReturnType<typeof makeNavidromeMock>;
+  let app: Hono<AuthEnv>;
+
+  function seedAlbum(albumId: string, songs: Array<{ id: string; path: string }>): void {
+    sharedDb.run('DELETE FROM library_albums WHERE id = ?', [albumId]);
+    sharedDb.run('DELETE FROM library_songs WHERE album_id = ?', [albumId]);
+    sharedDb.run('DELETE FROM library_album_tombstones WHERE album_id = ?', [albumId]);
+    sharedDb.run(
+      `INSERT INTO library_albums (id, name, artist, artist_id, song_count, duration, synced_at)
+       VALUES (?, ?, 'Artist', 'art-1', ?, 0, 1)`,
+      [albumId, `Album ${albumId}`, songs.length],
+    );
+    for (const s of songs) {
+      sharedDb.run(
+        `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, size, bit_rate, suffix, content_type, created, synced_at)
+         VALUES (?, ?, ?, 'Artist', 'art-1', 0, ?, 1000, 320, 'mp3', 'audio/mpeg', '2024-01-01', 1)`,
+        [s.id, albumId, s.id, s.path],
+      );
+    }
+  }
+
+  const albumRowExists = (id: string) =>
+    sharedDb.query(`SELECT id FROM library_albums WHERE id = ?`).get(id) !== null;
+  const tombstoneExists = (id: string) =>
+    sharedDb.query(`SELECT album_id FROM library_album_tombstones WHERE album_id = ?`).get(id) !== null;
+
+  beforeEach(() => {
+    fsState.clear();
+    dirEntries.clear();
+    navidromeMock = makeNavidromeMock();
+    app = new Hono<AuthEnv>();
+    app.use('*', (c, next) => {
+      c.set('user', { sub: 'test-user', role: 'admin', iat: 0, exp: 9999999999 });
+      return next();
+    });
+    app.route('/', libraryRoutes(navidromeMock as unknown as Parameters<typeof libraryRoutes>[0], '/home/kevinch3/Music'));
+  });
+
+  it('removes the whole album folder (cover art + sidecars), clears canonical rows, and tombstones it', async () => {
+    const dir = '/home/kevinch3/Music/Folder Artist/Folder Album';
+    seedAlbum('del-folder', [
+      { id: 'fld-1', path: `${dir}/01.mp3` },
+      { id: 'fld-2', path: `${dir}/02.mp3` },
+    ]);
+    sharedDb.run(
+      `INSERT INTO completed_downloads (transfer_key, username, directory, filename, relative_path, basename, completed_at, navidrome_id)
+       VALUES ('tk-fld', 'u', 'd', '01.mp3', 'Folder Artist/Folder Album/01.mp3', '01.mp3', 1, 'fld-1')`,
+    );
+    fsState.set(`${dir}/01.mp3`, true);
+    fsState.set(`${dir}/02.mp3`, true);
+    fsState.set(`${dir}/cover.jpg`, true);
+    fsState.set(`${dir}/album.nfo`, true);
+    dirEntries.set(dir, [
+      { name: '01.mp3', isFile: true, isDirectory: false },
+      { name: '02.mp3', isFile: true, isDirectory: false },
+      { name: 'cover.jpg', isFile: true, isDirectory: false },
+      { name: 'album.nfo', isFile: true, isDirectory: false },
+    ]);
+
+    const res = await app.request('/albums/del-folder', { method: 'DELETE' });
+
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as { ok: boolean; deletedCount: number; failedCount: number };
+    expect(data.ok).toBe(true);
+    expect(data.deletedCount).toBe(2);
+    expect(data.failedCount).toBe(0);
+    // The folder and everything in it (incl. cover art / .nfo) is gone.
+    expect(fsState.has(`${dir}/cover.jpg`)).toBe(false);
+    expect(fsState.has(`${dir}/01.mp3`)).toBe(false);
+    // Canonical rows + completion history removed; tombstone written.
+    expect(albumRowExists('del-folder')).toBe(false);
+    expect(sharedDb.query(`SELECT id FROM library_songs WHERE album_id = 'del-folder'`).get()).toBeNull();
+    expect(sharedDb.query(`SELECT transfer_key FROM completed_downloads WHERE navidrome_id = 'fld-1'`).get()).toBeNull();
+    expect(tombstoneExists('del-folder')).toBe(true);
+    expect(navidromeMock.system.startScan).toHaveBeenCalledWith(true);
+  });
+
+  it('does not recursively delete a shared Singles folder — only the album track is removed', async () => {
+    const dir = '/home/kevinch3/Music/Sing Artist/Singles';
+    seedAlbum('del-singles', [{ id: 'sg-1', path: `${dir}/mine.mp3` }]);
+    fsState.set(`${dir}/mine.mp3`, true);
+    fsState.set(`${dir}/other-single.mp3`, true); // belongs to a different single
+    dirEntries.set(dir, [
+      { name: 'mine.mp3', isFile: true, isDirectory: false },
+      { name: 'other-single.mp3', isFile: true, isDirectory: false },
+    ]);
+
+    const res = await app.request('/albums/del-singles', { method: 'DELETE' });
+
+    expect(res.status).toBe(200);
+    expect(fsState.has(`${dir}/mine.mp3`)).toBe(false);
+    // The sibling single survived — the Singles folder was not nuked.
+    expect(fsState.has(`${dir}/other-single.mp3`)).toBe(true);
+    expect(tombstoneExists('del-singles')).toBe(true);
+  });
+
+  it('falls back to per-file delete when the folder holds a foreign audio file', async () => {
+    const dir = '/home/kevinch3/Music/Foreign Artist/Shared Album';
+    seedAlbum('del-foreign', [{ id: 'frn-1', path: `${dir}/mine.mp3` }]);
+    fsState.set(`${dir}/mine.mp3`, true);
+    fsState.set(`${dir}/stranger.mp3`, true); // not part of this album
+    dirEntries.set(dir, [
+      { name: 'mine.mp3', isFile: true, isDirectory: false },
+      { name: 'stranger.mp3', isFile: true, isDirectory: false },
+    ]);
+
+    const res = await app.request('/albums/del-foreign', { method: 'DELETE' });
+
+    expect(res.status).toBe(200);
+    expect(fsState.has(`${dir}/mine.mp3`)).toBe(false);
+    expect(fsState.has(`${dir}/stranger.mp3`)).toBe(true);
+  });
+
+  it('is idempotent: clears rows + tombstones with ok:true even when files are already gone', async () => {
+    // depth-1 dir so the folder path is skipped and per-file orphan cleanup runs.
+    seedAlbum('del-orphan', [{ id: 'orp-1', path: '/home/kevinch3/Music/Orphan/track.mp3' }]);
+
+    const res = await app.request('/albums/del-orphan', { method: 'DELETE' });
+
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as { ok: boolean; deletedCount: number };
+    expect(data.ok).toBe(true);
+    expect(albumRowExists('del-orphan')).toBe(false);
+    expect(sharedDb.query(`SELECT id FROM library_songs WHERE album_id = 'del-orphan'`).get()).toBeNull();
+    expect(tombstoneExists('del-orphan')).toBe(true);
+  });
+
+  it('reports genuinely undeletable tracks in failed[] but still tombstones the album', async () => {
+    // No canonical rows — sourced from Navidrome; file is missing and unrecoverable.
+    sharedDb.run('DELETE FROM library_album_tombstones WHERE album_id = ?', ['del-fail']);
+    navidromeMock.browsing.getAlbum = mock(() =>
+      Promise.resolve({ songs: [{ id: 'fail-song', path: '/home/kevinch3/Music/Lonely/x.mp3' }] }),
+    );
+    navidromeMock.browsing.getSong = mock(() =>
+      Promise.resolve({ id: 'fail-song', path: '/home/kevinch3/Music/Lonely/x.mp3' }),
+    );
+
+    const res = await app.request('/albums/del-fail', { method: 'DELETE' });
+
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as { ok: boolean; failedCount: number; failed: Array<{ id: string }> };
+    expect(data.ok).toBe(false);
+    expect(data.failedCount).toBe(1);
+    expect(data.failed[0]?.id).toBe('fail-song');
+    expect(tombstoneExists('del-fail')).toBe(true);
+  });
+
+  it('does not run the canonical sync inline (tombstone + scan handle reconciliation)', async () => {
+    const dir = '/home/kevinch3/Music/Sync Artist/Sync Album';
+    seedAlbum('del-nosync', [{ id: 'ns-1', path: `${dir}/01.mp3` }]);
+    fsState.set(`${dir}/01.mp3`, true);
+    dirEntries.set(dir, [{ name: '01.mp3', isFile: true, isDirectory: false }]);
+
+    const runSync = mock(() => Promise.resolve());
+    const localApp = new Hono<AuthEnv>();
+    localApp.use('*', (c, next) => {
+      c.set('user', { sub: 'test-user', role: 'admin', iat: 0, exp: 9999999999 });
+      return next();
+    });
+    localApp.route(
+      '/',
+      libraryRoutes(navidromeMock as unknown as Parameters<typeof libraryRoutes>[0], '/home/kevinch3/Music', { runSync }),
+    );
+
+    const res = await localApp.request('/albums/del-nosync', { method: 'DELETE' });
+
+    expect(res.status).toBe(200);
+    expect(runSync).not.toHaveBeenCalled();
+    expect(navidromeMock.system.startScan).toHaveBeenCalledWith(true);
   });
 });

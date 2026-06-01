@@ -147,10 +147,13 @@ export class AlbumDetailComponent implements OnInit {
         if (result.failedCount === 0) {
           void this.router.navigate(['/library']);
         } else {
+          // The backend always removes the album from the library (and tombstones
+          // it so a sync can't resurrect it); a non-zero failedCount means some
+          // files couldn't be deleted from disk and may need manual cleanup.
           const allIds = (album.song ?? []).map(s => s.id);
           const failedSet = new Set(result.failed.map(f => f.id));
           this.transferService.addDeletedIds(allIds.filter(id => !failedSet.has(id)));
-          this.deleteError.set(`Deleted ${result.deletedCount} of ${result.deletedCount + result.failedCount} tracks. ${result.failedCount} could not be removed.`);
+          this.deleteError.set(`Album removed, but ${result.failedCount} file(s) couldn't be deleted from disk and may need manual cleanup.`);
         }
       } catch {
         this.deleting.set(false);

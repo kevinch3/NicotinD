@@ -35,7 +35,7 @@ export class NavidromeSyncer {
     const startedAt = Date.now();
     const syncedAt = startedAt;
 
-    const [albums, artists, genres] = await Promise.all([
+    const [allFetchedAlbums, artists, genres] = await Promise.all([
       this.fetchAllAlbums(),
       this.navidrome.browsing.getArtists().catch((err) => {
         log.warn({ err }, 'getArtists failed');
@@ -46,6 +46,19 @@ export class NavidromeSyncer {
         return [] as Array<{ value: string; songCount: number; albumCount: number }>;
       }),
     ]);
+
+    // Albums the user just deleted. Suppress them until Navidrome's (async) scan
+    // catches up and stops reporting them — otherwise a sync that runs before the
+    // scan finishes would resurrect a just-deleted album.
+    const tombstoned = new Set(
+      this.db
+        .query<{ album_id: string }, []>('SELECT album_id FROM library_album_tombstones')
+        .all()
+        .map((r) => r.album_id),
+    );
+    const albums = tombstoned.size
+      ? allFetchedAlbums.filter((a) => !tombstoned.has(a.id))
+      : allFetchedAlbums;
 
     log.info({ albumCount: albums.length, artistCount: artists.length, genreCount: genres.length }, 'Sync: fetched top-level');
 
@@ -96,6 +109,20 @@ export class NavidromeSyncer {
     this.db.run('DELETE FROM library_artists WHERE synced_at < ?', [syncedAt]);
     this.db.run('DELETE FROM library_genres WHERE synced_at < ?', [syncedAt]);
 
+    // Clear tombstones for albums the scan no longer reports — the files are gone
+    // and the suppression has done its job. Tombstones whose album Navidrome still
+    // returns (scan not finished) survive so the next cycle keeps suppressing them.
+    let removedTombstones = 0;
+    if (tombstoned.size) {
+      const stillReported = new Set(allFetchedAlbums.map((a) => a.id));
+      for (const id of tombstoned) {
+        if (!stillReported.has(id)) {
+          this.db.run('DELETE FROM library_album_tombstones WHERE album_id = ?', [id]);
+          removedTombstones++;
+        }
+      }
+    }
+
     this.db.run(
       `INSERT INTO library_sync_state (key, value, updated_at)
        VALUES ('last_full_sync_at', ?, ?)
@@ -112,7 +139,7 @@ export class NavidromeSyncer {
       removedAlbums: Number(removedAlbums ?? 0),
       removedSongs: Number(removedSongs ?? 0),
     };
-    log.info(result, 'Sync complete');
+    log.info({ ...result, removedTombstones }, 'Sync complete');
     return result;
   }
 

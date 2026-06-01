@@ -257,6 +257,17 @@ export function applySchema(db: Database): void {
     )
   `);
 
+  // Albums the user has just deleted. The NavidromeSyncer skips re-adding these
+  // until a Navidrome scan catches up and stops reporting them — without this,
+  // a sync that runs before the (async) scan finishes resurrects the album.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS library_album_tombstones (
+      album_id   TEXT PRIMARY KEY,
+      name       TEXT,
+      created_at INTEGER NOT NULL
+    )
+  `);
+
   db.run(`
     CREATE TABLE IF NOT EXISTS artist_discography_links (
       artist_id  TEXT NOT NULL,

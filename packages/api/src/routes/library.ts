@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { basename, dirname, join, normalize, relative } from 'node:path';
-import { unlinkSync, rmdirSync, existsSync, readdirSync } from 'node:fs';
+import { unlinkSync, rmdirSync, rmSync, existsSync, readdirSync } from 'node:fs';
 import { createLogger } from '@nicotind/core';
 import type { Song, Album, Artist } from '@nicotind/core';
 import type { Navidrome } from '@nicotind/navidrome-client';
@@ -11,6 +11,10 @@ import type { LibraryCurator } from '../services/library-curator.js';
 const log = createLogger('library');
 
 const VALID_CLASSIFICATIONS = new Set(['album', 'single', 'compilation', 'unknown']);
+
+const AUDIO_EXTENSIONS = new Set([
+  '.mp3', '.flac', '.m4a', '.aac', '.ogg', '.opus', '.wav', '.wma', '.alac', '.aiff', '.aif', '.ape',
+]);
 
 interface LibraryRoutesOptions {
   curator?: LibraryCurator;
@@ -253,38 +257,98 @@ export function libraryRoutes(
     if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
 
     const albumId = c.req.param('id');
-    let songs: Awaited<ReturnType<typeof navidrome.browsing.getAlbum>>['songs'];
-    try {
-      const result = await navidrome.browsing.getAlbum(albumId);
-      songs = result.songs;
-    } catch {
-      return c.json({ error: 'Album not found' }, 404);
-    }
+    const db = getDatabase();
 
-    const ids = songs.map((s) => s.id);
-    const results = await Promise.allSettled(ids.map((songId) => deleteOne(songId)));
-
-    const failed: Array<{ id: string; error: string }> = [];
-    let deletedCount = 0;
-    for (let i = 0; i < results.length; i++) {
-      const r = results[i];
-      if (r.status === 'fulfilled' && r.value.ok) {
-        deletedCount++;
-      } else {
-        const err = r.status === 'fulfilled' ? r.value.error : 'Unexpected error';
-        failed.push({ id: ids[i]!, error: err ?? 'Unknown error' });
+    // Source the tracklist from the canonical DB (the UI's source of truth);
+    // fall back to Navidrome only when the album hasn't been synced yet.
+    const albumRow = db
+      .query<{ name: string }, [string]>('SELECT name FROM library_albums WHERE id = ?')
+      .get(albumId);
+    let songIds: string[] = [];
+    let songPaths: string[] = [];
+    const canonicalSongs = db
+      .query<{ id: string; path: string }, [string]>(
+        'SELECT id, path FROM library_songs WHERE album_id = ?',
+      )
+      .all(albumId);
+    if (canonicalSongs.length > 0) {
+      songIds = canonicalSongs.map((s) => s.id);
+      songPaths = canonicalSongs.map((s) => s.path);
+    } else {
+      try {
+        const result = await navidrome.browsing.getAlbum(albumId);
+        songIds = result.songs.map((s) => s.id);
+        songPaths = result.songs.map((s) => s.path).filter((p): p is string => Boolean(p));
+      } catch {
+        // Nothing known here — fall through; if there's no album row either it's a 404.
       }
     }
 
+    if (songIds.length === 0 && !albumRow) {
+      return c.json({ error: 'Album not found' }, 404);
+    }
+
+    const failed: Array<{ id: string; error: string }> = [];
+    let deletedCount = 0;
+
+    // Reliable path: drop the whole album folder in one shot. Falls back to
+    // per-file deletion for scattered/multi-disc tracks and shared "Singles".
+    let folderDeleted = false;
+    if (musicDir && songPaths.length > 0 && songPaths.length === songIds.length) {
+      const expandedMusicDir = expandDir(musicDir);
+      const fullPaths = songPaths
+        .map((p) => resolveSongPath(expandedMusicDir, p))
+        .filter((p) => isUnderMusicDir(expandedMusicDir, p));
+      if (fullPaths.length === songPaths.length) {
+        folderDeleted = tryDeleteAlbumFolder(fullPaths, expandedMusicDir);
+      }
+    }
+
+    if (folderDeleted) {
+      deletedCount = songIds.length;
+    } else {
+      const results = await Promise.allSettled(songIds.map((id) => deleteOne(id)));
+      for (let i = 0; i < results.length; i++) {
+        const r = results[i];
+        if (r.status === 'fulfilled' && r.value.ok) {
+          deletedCount++;
+        } else {
+          const err = r.status === 'fulfilled' ? r.value.error : 'Unexpected error';
+          failed.push({ id: songIds[i]!, error: err ?? 'Unknown error' });
+        }
+      }
+    }
+
+    // Remove the album from the canonical tables synchronously and tombstone it,
+    // so the UI persists the deletion regardless of when Navidrome's scan lands.
+    // The tombstone stops the next sync from resurrecting the album before the
+    // (async) scan catches up — the syncer clears it once the scan confirms it's gone.
+    db.transaction(() => {
+      if (songIds.length > 0) {
+        const placeholders = songIds.map(() => '?').join(',');
+        db.run(`DELETE FROM completed_downloads WHERE navidrome_id IN (${placeholders})`, songIds);
+      }
+      db.run('DELETE FROM library_songs WHERE album_id = ?', [albumId]);
+      db.run('DELETE FROM library_albums WHERE id = ?', [albumId]);
+      db.run(
+        `INSERT INTO library_album_tombstones (album_id, name, created_at)
+         VALUES (?, ?, ?)
+         ON CONFLICT(album_id) DO UPDATE SET created_at = excluded.created_at`,
+        [albumId, albumRow?.name ?? null, Date.now()],
+      );
+    })();
+
+    // Trigger a rescan so Navidrome's own index drops the album. We deliberately
+    // do NOT run the canonical sync inline: the tombstone guard already keeps the
+    // album gone, and onScanComplete (or the next cycle) reconciles + clears it.
     try {
       await (navidrome.system as { startScan: (fullScan?: boolean) => Promise<void> }).startScan(true);
     } catch {
       // Non-fatal
     }
-    if (runSync) void runSync();
 
-    log.info({ albumId, deletedCount, failedCount: failed.length }, 'Album deletion complete');
-    return c.json({ ok: true, deletedCount, failedCount: failed.length, failed });
+    log.info({ albumId, deletedCount, failedCount: failed.length, folderDeleted }, 'Album deletion complete');
+    return c.json({ ok: failed.length === 0, deletedCount, failedCount: failed.length, failed });
   });
 
   // --- Curation admin endpoints -------------------------------------------------
@@ -916,6 +980,57 @@ function isUnderMusicDir(musicDir: string, candidatePath: string): boolean {
 
 function isAbsolutePath(path: string): boolean {
   return path.startsWith('/') || /^[a-zA-Z]:\//.test(path);
+}
+
+/**
+ * Recursively delete an album's folder when it's safe to do so — the reliable
+ * path for "Remove album" since it takes cover art and sidecar files (.nfo,
+ * cover.jpg) with it, which per-file deletion leaves behind for Navidrome to
+ * re-index. Returns false (caller falls back to per-file deletion) unless the
+ * songs all share one album-specific directory that contains nothing foreign.
+ */
+function tryDeleteAlbumFolder(songFullPaths: string[], expandedMusicDir: string): boolean {
+  if (songFullPaths.length === 0) return false;
+
+  const normalizedMusicDir = normalize(expandedMusicDir);
+  const dirs = new Set(songFullPaths.map((p) => dirname(p)));
+  if (dirs.size !== 1) return false; // multi-disc / scattered — let per-file handle it
+  const dir = normalize([...dirs][0]!);
+
+  // Must be album-specific: at least <Artist>/<Album> below the music root, and
+  // never a shared "Singles" bucket.
+  const rel = relative(normalizedMusicDir, dir);
+  if (rel === '' || rel.startsWith('..')) return false;
+  if (rel.split(/[\\/]/).filter(Boolean).length < 2) return false;
+  if (basename(dir).toLowerCase() === 'singles') return false;
+
+  // Refuse if the folder holds anything we didn't expect — a foreign audio file
+  // (another album sharing the dir) or a subdirectory.
+  let entries: import('node:fs').Dirent[];
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return false;
+  }
+  const albumFiles = new Set(songFullPaths.map((p) => normalize(p)));
+  for (const entry of entries) {
+    if (entry.isDirectory()) return false;
+    if (!entry.isFile()) continue;
+    const ext = entry.name.slice(entry.name.lastIndexOf('.')).toLowerCase();
+    if (AUDIO_EXTENSIONS.has(ext) && !albumFiles.has(normalize(join(dir, entry.name)))) {
+      return false; // foreign audio — don't take it down with this album
+    }
+  }
+
+  try {
+    rmSync(dir, { recursive: true, force: true });
+    log.info({ dir }, 'Removed album folder');
+    cleanupEmptyDirs(dir, normalizedMusicDir); // climb to drop an now-empty <Artist>
+    return true;
+  } catch (err) {
+    log.error({ err, dir }, 'Failed to remove album folder');
+    return false;
+  }
 }
 
 function cleanupEmptyDirs(filePath: string, musicDir: string): void {
