@@ -49,15 +49,18 @@ describe('AlbumHuntModalComponent', () => {
     }).compileComponents();
   });
 
+  // We instantiate without detectChanges so ngOnInit (which reads the required
+  // inputs) never runs — the filter logic and startHunt() are exercised
+  // directly. The required `album`/`artistName` signal inputs are stubbed on
+  // the instance for the one test that needs them, because input binding is
+  // unreliable under the optimized test build CI runs.
   function create() {
     const fixture = TestBed.createComponent(AlbumHuntModalComponent);
-    fixture.componentRef.setInput('album', ALBUM);
-    fixture.componentRef.setInput('artistName', 'Test Artist');
-    return fixture;
+    return fixture.componentInstance;
   }
 
   it('uses the new filter defaults', () => {
-    const c = create().componentInstance;
+    const c = create();
     expect(c.includeFlac()).toBe(true);
     expect(c.includeLive()).toBe(false);
     expect(c.minMatchPct()).toBe(10);
@@ -65,7 +68,7 @@ describe('AlbumHuntModalComponent', () => {
   });
 
   it('hides FLAC candidates when "Include flac" is unchecked', () => {
-    const c = create().componentInstance;
+    const c = create();
     c.candidates.set([
       candidate({ username: 'flac', format: 'FLAC' }),
       candidate({ username: 'mp3', format: 'MP3 320kbps' }),
@@ -78,7 +81,7 @@ describe('AlbumHuntModalComponent', () => {
   });
 
   it('hides live candidates unless "Include live" is checked', () => {
-    const c = create().componentInstance;
+    const c = create();
     c.candidates.set([
       candidate({ username: 'studio', isLive: false }),
       candidate({ username: 'live', isLive: true }),
@@ -92,7 +95,7 @@ describe('AlbumHuntModalComponent', () => {
   });
 
   it('hides candidates below the minimum match %', () => {
-    const c = create().componentInstance;
+    const c = create();
     c.candidates.set([
       candidate({ username: 'high', matchPct: 80 }),
       candidate({ username: 'low', matchPct: 5 }),
@@ -103,7 +106,12 @@ describe('AlbumHuntModalComponent', () => {
   });
 
   it('passes the current skewSearch flag to huntAlbum', async () => {
-    const c = create().componentInstance;
+    const c = create();
+    // Stub the required signal inputs directly (binding is unreliable in the
+    // optimized CI test build).
+    (c as unknown as { album: () => DiscographyAlbum }).album = () => ALBUM;
+    (c as unknown as { artistName: () => string }).artistName = () => 'Test Artist';
+
     c.skewSearch.set(true);
     await c.startHunt();
 
