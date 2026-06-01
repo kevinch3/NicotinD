@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.31](https://github.com/kevinch3/NicotinD/compare/v0.1.30...v0.1.31) (2026-06-01)
+
+
+### Features
+
+* **hunt:** add opt-in search-term skew and rework album-hunt filters ([1be31de](https://github.com/kevinch3/NicotinD/commit/1be31de7752e82087786dd00bde3dba835f12250))
+
+
+### Bug Fixes
+
+* **library:** make album deletion reliable with folder-delete + tombstone guard ([75fcadd](https://github.com/kevinch3/NicotinD/commit/75fcadd905a3eead39db0df1c8105605f71dffb8))
+
 ## [0.1.30](https://github.com/kevinch3/NicotinD/compare/v0.1.29...v0.1.30) (2026-05-31)
 
 
