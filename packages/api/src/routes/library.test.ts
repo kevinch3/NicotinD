@@ -102,6 +102,33 @@ describe('library routes', () => {
     expect(navidromeMock.system.startScan).toHaveBeenCalledWith(true);
   });
 
+  it('GET /untracked lists completed downloads with no relative_path', async () => {
+    sharedDb.run(
+      `INSERT INTO completed_downloads (transfer_key, username, directory, filename, relative_path, basename, completed_at)
+       VALUES ('utk1', 'u', 'd', 'old.mp3', NULL, 'old.mp3', 1),
+              ('trk1', 'u', 'd', 'new.mp3', 'A/B/new.mp3', 'new.mp3', 2)`,
+    );
+
+    const res = await app.request('/untracked');
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { total: number; rows: Array<{ transferKey: string }> };
+    expect(body.rows.some((r) => r.transferKey === 'utk1')).toBe(true);
+    expect(body.rows.some((r) => r.transferKey === 'trk1')).toBe(false);
+
+    sharedDb.run(`DELETE FROM completed_downloads WHERE transfer_key IN ('utk1','trk1')`);
+  });
+
+  it('GET /untracked is admin-only', async () => {
+    const userApp = new Hono<AuthEnv>();
+    userApp.use('*', (c, next) => {
+      c.set('user', { sub: 'u', role: 'user', iat: 0, exp: 9999999999 });
+      return next();
+    });
+    userApp.route('/', libraryRoutes(navidromeMock as unknown as Parameters<typeof libraryRoutes>[0], '/home/kevinch3/Music'));
+    const res = await userApp.request('/untracked');
+    expect(res.status).toBe(403);
+  });
+
   it('bulk deletes multiple songs and triggers a single scan', async () => {
     navidromeMock.browsing.getSong = mock((id: string) => {
       const paths: Record<string, string> = {

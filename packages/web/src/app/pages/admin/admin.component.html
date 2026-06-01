@@ -157,6 +157,115 @@
           </div>
         </div>
 
+        <!-- Incomplete Albums (3A) -->
+        <div>
+          <div class="flex items-center justify-between mb-8">
+            <h2 class="text-xl font-bold text-zinc-100">Incomplete Albums</h2>
+            <button (click)="loadIncompleteJobs()"
+              class="px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition">
+              Refresh
+            </button>
+          </div>
+
+          @if (jobsLoading()) {
+            <p class="text-zinc-500 text-sm">Loading album jobs…</p>
+          } @else if (incompleteJobs().length === 0) {
+            <p class="text-zinc-500 text-sm">No incomplete album hunts. 🎉</p>
+          } @else {
+            <section class="rounded-xl border border-zinc-800 bg-zinc-900/50 overflow-x-auto">
+              <table class="w-full text-sm">
+                <thead>
+                  <tr class="border-b border-zinc-800">
+                    <th class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-zinc-500">Album</th>
+                    <th class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-zinc-500">State</th>
+                    <th class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-zinc-500 hidden sm:table-cell">Attempts</th>
+                    <th class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-zinc-500 hidden sm:table-cell">Created</th>
+                    <th class="text-right px-4 py-3 text-xs font-semibold uppercase tracking-wider text-zinc-500">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (job of incompleteJobs(); track job.id) {
+                    <tr class="border-b border-zinc-800/50 last:border-0">
+                      <td class="px-4 py-3 text-zinc-200">
+                        <div class="font-medium">{{ job.albumTitle ?? job.directory }}</div>
+                        @if (job.artistName) { <div class="text-xs text-zinc-500">{{ job.artistName }}</div> }
+                      </td>
+                      <td class="px-4 py-3">
+                        <span [class]="'text-xs font-medium ' + jobStateClass(job.state)">{{ job.state }}</span>
+                      </td>
+                      <td class="px-4 py-3 text-zinc-500 text-xs hidden sm:table-cell">{{ job.fallbackAttempts }}</td>
+                      <td class="px-4 py-3 text-zinc-500 text-xs hidden sm:table-cell">{{ formatTimestamp(job.createdAt) }}</td>
+                      <td class="px-4 py-3 text-right">
+                        <button (click)="retryHunt(job)" [disabled]="job.lidarrAlbumId == null"
+                          [title]="job.lidarrAlbumId == null ? 'No Lidarr album id recorded' : 'Re-hunt this album'"
+                          class="px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-100 text-zinc-900 hover:bg-zinc-200 transition disabled:opacity-40 disabled:cursor-not-allowed">
+                          Retry hunt
+                        </button>
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </section>
+          }
+        </div>
+
+        <!-- Untracked Downloads (3E) -->
+        <div>
+          <div class="flex items-center justify-between mb-8">
+            <h2 class="text-xl font-bold text-zinc-100">
+              Untracked Downloads
+              @if (untrackedTotal() > 0) { <span class="ml-2 text-sm font-normal text-zinc-500">{{ untrackedTotal() }} total</span> }
+            </h2>
+            <button (click)="loadUntracked()"
+              class="px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition">
+              Refresh
+            </button>
+          </div>
+
+          <p class="text-xs text-zinc-500 mb-4">
+            Completed downloads with no recorded library path (predate the organizer). Run
+            <code class="px-1 py-0.5 rounded bg-zinc-800 text-zinc-300">bun run packages/api/src/scripts/backfill-untracked.ts --apply</code>
+            to resolve the ones still on disk.
+          </p>
+
+          @if (untrackedLoading()) {
+            <p class="text-zinc-500 text-sm">Loading…</p>
+          } @else if (untracked().length === 0) {
+            <p class="text-zinc-500 text-sm">No untracked downloads. 🎉</p>
+          } @else {
+            <section class="rounded-xl border border-zinc-800 bg-zinc-900/50 overflow-x-auto">
+              <table class="w-full text-sm">
+                <thead>
+                  <tr class="border-b border-zinc-800">
+                    <th class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-zinc-500">File</th>
+                    <th class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-zinc-500 hidden sm:table-cell">Peer folder</th>
+                    <th class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-zinc-500 hidden sm:table-cell">Completed</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (row of untracked(); track row.transferKey) {
+                    <tr class="border-b border-zinc-800/50 last:border-0">
+                      <td class="px-4 py-3 text-zinc-300 break-all">{{ row.filename }}</td>
+                      <td class="px-4 py-3 text-zinc-500 text-xs hidden sm:table-cell break-all">{{ row.directory }}</td>
+                      <td class="px-4 py-3 text-zinc-500 text-xs hidden sm:table-cell">{{ formatTimestamp(row.completedAt) }}</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </section>
+          }
+        </div>
+
+        <!-- Retry-hunt modal (reuses the album-hunt flow) -->
+        @if (retryAlbum(); as album) {
+          <app-album-hunt-modal
+            [album]="album"
+            [artistName]="retryArtist()"
+            (closed)="onRetryClosed()"
+            (downloaded)="onRetryDownloaded()" />
+        }
+
         <!-- Create User Modal -->
         @if (showCreateUser()) {
           <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60" (click)="showCreateUser.set(false)">

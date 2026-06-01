@@ -351,6 +351,33 @@ export function libraryRoutes(
     return c.json({ ok: failed.length === 0, deletedCount, failedCount: failed.length, failed });
   });
 
+  // GET /api/library/untracked  (admin)
+  // Completed downloads with no relative_path — files that predate the library
+  // organizer and are otherwise invisible to playlist/deletion logic. Run the
+  // backfill-untracked script to resolve the ones still on disk.
+  app.get('/untracked', (c) => {
+    const user = c.get('user');
+    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+    const db = getDatabase();
+    const limit = Math.min(Number(c.req.query('limit') ?? 200) || 200, 1000);
+    const total = (
+      db.query('SELECT COUNT(*) AS c FROM completed_downloads WHERE relative_path IS NULL').get() as {
+        c: number;
+      }
+    ).c;
+    const rows = db
+      .query(
+        `SELECT transfer_key AS transferKey, username, directory, filename, basename,
+                completed_at AS completedAt
+         FROM completed_downloads
+         WHERE relative_path IS NULL
+         ORDER BY completed_at DESC
+         LIMIT ?`,
+      )
+      .all(limit);
+    return c.json({ total, rows });
+  });
+
   // --- Curation admin endpoints -------------------------------------------------
   app.post('/albums/:id/hide', (c) => {
     const user = c.get('user');

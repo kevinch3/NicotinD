@@ -1,13 +1,20 @@
 import { Component, inject, signal, effect, OnInit, OnDestroy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
-import { ApiService, type AdminUser } from '../../services/api.service';
+import {
+  ApiService,
+  type AdminUser,
+  type AlbumJob,
+  type UntrackedDownload,
+  type DiscographyAlbum,
+} from '../../services/api.service';
 import { AuthService } from '../../services/auth.service';
 import { PasswordFieldComponent } from '../../components/password-field/password-field.component';
+import { AlbumHuntModalComponent } from '../../components/album-hunt-modal/album-hunt-modal.component';
 
 @Component({
   selector: 'app-admin',
-  imports: [FormsModule, PasswordFieldComponent],
+  imports: [FormsModule, PasswordFieldComponent, AlbumHuntModalComponent],
   templateUrl: './admin.component.html',
   })
 export class AdminComponent implements OnInit, OnDestroy {
@@ -36,6 +43,18 @@ export class AdminComponent implements OnInit, OnDestroy {
   readonly scanStatus = signal<{ scanning: boolean; count: number } | null>(null);
   readonly restarting = signal<{ slskd: boolean; navidrome: boolean }>({ slskd: false, navidrome: false });
 
+  // Incomplete album hunts (3A) — exhausted/active jobs with a re-hunt action.
+  readonly incompleteJobs = signal<AlbumJob[]>([]);
+  readonly jobsLoading = signal(true);
+  // The job whose hunt the user is retrying (drives the embedded hunt modal).
+  readonly retryAlbum = signal<DiscographyAlbum | null>(null);
+  readonly retryArtist = signal('');
+
+  // Untracked downloads (3E) — completed_downloads with no relative_path.
+  readonly untracked = signal<UntrackedDownload[]>([]);
+  readonly untrackedTotal = signal(0);
+  readonly untrackedLoading = signal(true);
+
   readonly selectedService = signal<'slskd' | 'navidrome' | 'tailscale' | 'nicotind'>('nicotind');
   readonly logLines = signal<string[]>([]);
   readonly logStreamStatus = signal<'idle' | 'connecting' | 'connected' | 'disconnected'>('idle');
@@ -59,6 +78,72 @@ export class AdminComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     this.loadUsers();
     this.loadSystemStatus();
+    this.loadIncompleteJobs();
+    this.loadUntracked();
+  }
+
+  async loadIncompleteJobs(): Promise<void> {
+    this.jobsLoading.set(true);
+    try {
+      const { jobs } = await firstValueFrom(this.api.listAlbumJobs('incomplete'));
+      this.incompleteJobs.set(jobs);
+    } catch {
+      this.incompleteJobs.set([]);
+    } finally {
+      this.jobsLoading.set(false);
+    }
+  }
+
+  async loadUntracked(): Promise<void> {
+    this.untrackedLoading.set(true);
+    try {
+      const { total, rows } = await firstValueFrom(this.api.getUntrackedDownloads(200));
+      this.untracked.set(rows);
+      this.untrackedTotal.set(total);
+    } catch {
+      this.untracked.set([]);
+      this.untrackedTotal.set(0);
+    } finally {
+      this.untrackedLoading.set(false);
+    }
+  }
+
+  // Open the album-hunt modal for a recorded job. Only jobs that still carry a
+  // Lidarr album id can be re-hunted (the hunt flow keys off it).
+  retryHunt(job: AlbumJob): void {
+    if (job.lidarrAlbumId == null) return;
+    this.retryArtist.set(job.artistName ?? '');
+    this.retryAlbum.set({
+      lidarrId: job.lidarrAlbumId,
+      title: job.albumTitle ?? job.directory,
+      foreignAlbumId: '',
+      albumType: 'Album',
+      secondaryTypes: [],
+      totalTracks: 0,
+      localTrackCount: 0,
+      status: 'partial',
+      tracks: [],
+    });
+  }
+
+  onRetryClosed(): void {
+    this.retryAlbum.set(null);
+  }
+
+  onRetryDownloaded(): void {
+    this.retryAlbum.set(null);
+    // The job will move back to 'active'; refresh shortly so the list reflects it.
+    setTimeout(() => this.loadIncompleteJobs(), 1500);
+  }
+
+  jobStateClass(state: string): string {
+    if (state === 'exhausted') return 'text-red-400';
+    if (state === 'active') return 'text-amber-400';
+    return 'text-zinc-400';
+  }
+
+  formatTimestamp(ms: number): string {
+    return new Date(ms).toLocaleDateString();
   }
 
   ngOnDestroy(): void {

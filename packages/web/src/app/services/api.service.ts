@@ -499,6 +499,40 @@ export class ApiService {
       payload,
     );
   }
+
+  // Album hunt jobs — for the "incomplete albums" surface. Defaults to the
+  // incomplete ones (exhausted + still-active).
+  listAlbumJobs(state: 'incomplete' | 'exhausted' | 'active' | 'done' | 'all' = 'incomplete') {
+    return this.http.get<{ jobs: AlbumJob[] }>('/api/discography/jobs', { params: { state } });
+  }
+
+  // Completed downloads with no relative_path (predate the library organizer).
+  getUntrackedDownloads(limit = 200) {
+    return this.http.get<{ total: number; rows: UntrackedDownload[] }>('/api/library/untracked', {
+      params: { limit: String(limit) },
+    });
+  }
+}
+
+export interface AlbumJob {
+  id: number;
+  lidarrAlbumId: number | null;
+  artistName: string | null;
+  albumTitle: string | null;
+  username: string;
+  directory: string;
+  state: string;
+  fallbackAttempts: number;
+  createdAt: number;
+}
+
+export interface UntrackedDownload {
+  transferKey: string;
+  username: string;
+  directory: string;
+  filename: string;
+  basename: string;
+  completedAt: number;
 }
 
 export interface DiscographyTrack {
