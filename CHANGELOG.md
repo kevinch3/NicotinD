@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.32](https://github.com/kevinch3/NicotinD/compare/v0.1.31...v0.1.32) (2026-06-01)
+
+
+### Features
+
+* **hunt:** enable skew search by default ([fda1ec8](https://github.com/kevinch3/NicotinD/commit/fda1ec89035776bae6239b83d95ad2f8a2a4b73e))
+
 ## [0.1.31](https://github.com/kevinch3/NicotinD/compare/v0.1.30...v0.1.31) (2026-06-01)
 
 
