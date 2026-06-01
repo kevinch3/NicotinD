@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.34](https://github.com/kevinch3/NicotinD/compare/v0.1.33...v0.1.34) (2026-06-01)
+
+
+### Features
+
+* **hunt:** diacritic-insensitive matching, weak-base skew merge, fresh per-track fallback ([3adc628](https://github.com/kevinch3/NicotinD/commit/3adc628eb19b5a5287e7eaecc1f78e01a77d78bb))
+* **library:** format-preference and automatic post-download deduplication ([5e6fa2d](https://github.com/kevinch3/NicotinD/commit/5e6fa2d1035187381c329b0dea009765b3dca27d))
+* **service-manager:** retry Navidrome early-exit on startup ([f00480c](https://github.com/kevinch3/NicotinD/commit/f00480c94118f34c4af59077995578339ce67246))
+* **web:** untracked-downloads backfill + admin surfaces for incomplete albums ([a1f00d9](https://github.com/kevinch3/NicotinD/commit/a1f00d91cb1ab147e07bb39c602fdb651274f00f))
+
 ## [0.1.33](https://github.com/kevinch3/NicotinD/compare/v0.1.32...v0.1.33) (2026-06-01)
 
 
