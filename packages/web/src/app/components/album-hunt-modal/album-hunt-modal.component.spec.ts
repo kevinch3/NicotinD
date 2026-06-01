@@ -64,7 +64,7 @@ describe('AlbumHuntModalComponent', () => {
     expect(c.includeFlac()).toBe(true);
     expect(c.includeLive()).toBe(false);
     expect(c.minMatchPct()).toBe(10);
-    expect(c.skewSearch()).toBe(false);
+    expect(c.skewSearch()).toBe(true);
   });
 
   it('hides FLAC candidates when "Include flac" is unchecked', () => {

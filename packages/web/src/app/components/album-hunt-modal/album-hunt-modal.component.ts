@@ -45,10 +45,11 @@ export class AlbumHuntModalComponent implements OnInit {
   readonly includeLive = signal(false);
   readonly minMatchPct = signal(10);
 
-  // Opt-in: retries the hunt with textually-skewed query variants to bypass
-  // slskd's soft phrase ban. Changes the server-side queries (not a client
-  // filter), so toggling it re-runs the hunt.
-  readonly skewSearch = signal(false);
+  // On by default: retries the hunt with textually-skewed query variants to
+  // bypass slskd's soft phrase ban. Changes the server-side queries (not a
+  // client filter), so toggling it re-runs the hunt. Can be unchecked to force
+  // the unmodified queries only.
+  readonly skewSearch = signal(true);
 
   readonly filteredCandidates = computed(() => {
     const flac = this.includeFlac();
