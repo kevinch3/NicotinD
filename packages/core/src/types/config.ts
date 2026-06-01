@@ -24,12 +24,20 @@ export const NicotinDConfigSchema = z.object({
       retryMaxAttempts: z.number().int().min(0).default(3),
       retryIntervalMs: z.number().int().min(1000).default(15_000),
       retryCooldownMs: z.number().int().min(0).default(60_000),
+      // Max cross-peer fallback waves per album (recorded alternates + fresh
+      // per-track searches) before a job is marked exhausted.
+      fallbackMaxAttempts: z.number().int().min(0).default(5),
+      // Drop an incoming MP3 when a FLAC of the same track is already in the
+      // album folder (avoids mixed MP3+FLAC duplicate albums). Opt-in.
+      preferFlacSkipMp3: z.boolean().default(false),
     })
     .default({
       autoRetryEnabled: true,
       retryMaxAttempts: 3,
       retryIntervalMs: 15_000,
       retryCooldownMs: 60_000,
+      fallbackMaxAttempts: 5,
+      preferFlacSkipMp3: false,
     }),
 
   soulseek: z.object({

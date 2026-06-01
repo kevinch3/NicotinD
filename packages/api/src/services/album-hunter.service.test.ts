@@ -1,7 +1,7 @@
 import { describe, it, expect, mock } from 'bun:test';
 import type { Slskd } from '@nicotind/slskd-client';
 import type { LidarrTrack } from '@nicotind/lidarr-client';
-import { AlbumHunterService, buildSkewedQueries } from './album-hunter.service';
+import { AlbumHunterService, buildSkewedQueries, normalizeTitle } from './album-hunter.service';
 
 function track(id: number, title: string): LidarrTrack {
   return {
@@ -198,6 +198,23 @@ describe('AlbumHunterService', () => {
     expect(candidate.files).toHaveLength(2);
   });
 
+  describe('normalizeTitle', () => {
+    it('folds diacritics so accented and unaccented spellings match', () => {
+      // The crux for this Latin-American library: peers routinely drop accents.
+      expect(normalizeTitle('Canción Animal')).toBe(normalizeTitle('cancion animal'));
+      expect(normalizeTitle('Corazón Espinado')).toBe('corazon espinado');
+      expect(normalizeTitle('Niño')).toBe('nino');
+      expect(normalizeTitle('Música Ligera')).toBe('musica ligera');
+      expect(normalizeTitle('Está')).toBe(normalizeTitle('Esta'));
+    });
+
+    it('still strips leading track numbers and punctuation', () => {
+      expect(normalizeTitle('01 - Canción')).toBe('cancion');
+      expect(normalizeTitle('07. Déjà Vu!')).toBe('deja vu');
+      expect(normalizeTitle('  Mixed   Spaces  ')).toBe('mixed spaces');
+    });
+  });
+
   describe('buildSkewedQueries', () => {
     it('produces reorder / album-only variants and excludes the base queries', () => {
       const base = ['Artist Album', 'Artist - Album'];
@@ -254,6 +271,65 @@ describe('AlbumHunterService', () => {
       const candidates = await hunter.hunt('Artist', 'Album', TRACKS);
 
       expect(candidates).toHaveLength(0);
+      const created = (slskd.searches.create as ReturnType<typeof mock>).mock.calls.map(
+        (c) => c[0],
+      );
+      expect(created).toEqual(['Artist Album', 'Artist - Album']);
+    });
+
+    it('fires skewed queries on a weak (non-empty) base and merges results', async () => {
+      // Base surfaces only a thin 33% partial; the complete album hides behind a
+      // soft-banned phrase and is reachable via the album-only skew variant.
+      const partial: StubResponse = {
+        username: 'pete',
+        files: [{ filename: 'Music/Artist/Album/01 Song One.flac', size: 1 }],
+      };
+      const slskd = makeQueryAwareSlskdStub({
+        'Artist Album': [partial],
+        Album: [fullAlbum],
+      });
+
+      const hunter = new AlbumHunterService(slskd);
+      const candidates = await hunter.hunt('Artist', 'Album', TRACKS, { skewSearch: true });
+
+      // Both the weak base folder and the complete skew folder are present.
+      expect(candidates).toHaveLength(2);
+      expect(candidates[0].username).toBe('zoe');
+      expect(candidates[0].matchPct).toBe(100);
+
+      const created = (slskd.searches.create as ReturnType<typeof mock>).mock.calls.map(
+        (c) => c[0],
+      );
+      expect(created).toContain('Album');
+    });
+
+    it('de-dupes a folder seen in both base and skew, keeping the higher score', async () => {
+      // Same peer/folder appears in the base (only 1 file → 33%) and in the skew
+      // (all 3 files → 100%); the merged result keeps a single 100% candidate.
+      const samePartial: StubResponse = {
+        username: 'zoe',
+        files: [{ filename: 'Music/Artist/Album/01 Song One.flac', size: 1 }],
+      };
+      const slskd = makeQueryAwareSlskdStub({
+        'Artist Album': [samePartial],
+        Album: [fullAlbum],
+      });
+
+      const hunter = new AlbumHunterService(slskd);
+      const candidates = await hunter.hunt('Artist', 'Album', TRACKS, { skewSearch: true });
+
+      expect(candidates).toHaveLength(1);
+      expect(candidates[0].matchPct).toBe(100);
+    });
+
+    it('does not fire skewed queries when the base is already strong', async () => {
+      const slskd = makeQueryAwareSlskdStub({ 'Artist Album': [fullAlbum] });
+
+      const hunter = new AlbumHunterService(slskd);
+      const candidates = await hunter.hunt('Artist', 'Album', TRACKS, { skewSearch: true });
+
+      expect(candidates).toHaveLength(1);
+      expect(candidates[0].matchPct).toBe(100);
       const created = (slskd.searches.create as ReturnType<typeof mock>).mock.calls.map(
         (c) => c[0],
       );

@@ -320,6 +320,12 @@ function loadConfig() {
       ...(process.env.NICOTIND_RETRY_COOLDOWN_MS
         ? { retryCooldownMs: Number(process.env.NICOTIND_RETRY_COOLDOWN_MS) }
         : {}),
+      ...(process.env.NICOTIND_FALLBACK_MAX_ATTEMPTS
+        ? { fallbackMaxAttempts: Number(process.env.NICOTIND_FALLBACK_MAX_ATTEMPTS) }
+        : {}),
+      ...(process.env.NICOTIND_PREFER_FLAC_SKIP_MP3
+        ? { preferFlacSkipMp3: parseBooleanEnv(process.env.NICOTIND_PREFER_FLAC_SKIP_MP3) }
+        : {}),
     },
     soulseek: {
       ...((fileConfig as Record<string, unknown>).soulseek as Record<string, unknown>),

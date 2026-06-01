@@ -76,6 +76,29 @@ export function discographyRoutes({
     }
   });
 
+  // GET /api/discography/jobs
+  // Lists album hunt jobs (default: incomplete ones — exhausted or still active)
+  // so the UI can surface albums that never completed and offer a re-hunt. Pass
+  // ?state=exhausted|active|done|all to filter.
+  app.get('/jobs', (c) => {
+    const state = c.req.query('state') ?? 'incomplete';
+    const select = `SELECT id, lidarr_album_id AS lidarrAlbumId, artist_name AS artistName,
+                album_title AS albumTitle, username, directory, state,
+                fallback_attempts AS fallbackAttempts, created_at AS createdAt
+         FROM album_jobs`;
+    let jobs;
+    if (state === 'all') {
+      jobs = db.query(`${select} ORDER BY created_at DESC`).all();
+    } else if (state === 'incomplete') {
+      jobs = db
+        .query(`${select} WHERE state IN ('exhausted', 'active') ORDER BY created_at DESC`)
+        .all();
+    } else {
+      jobs = db.query(`${select} WHERE state = ? ORDER BY created_at DESC`).all(state);
+    }
+    return c.json({ jobs });
+  });
+
   // POST /api/discography/albums/:lidarrAlbumId/hunt-download
   // Enqueues the chosen folder candidate AND records an album job (canonical
   // tracklist + ranked alternates) so the cross-peer fallback can recover any
@@ -109,11 +132,18 @@ export function discographyRoutes({
     // Record the album job for fallback. Best-effort: a failure here must not
     // fail the download that already succeeded.
     try {
-      const tracks = await lidarr.track.listByAlbum(albumId);
+      const [album, tracks] = await Promise.all([
+        lidarr.album.get(albumId).catch(() => null),
+        lidarr.track.listByAlbum(albumId),
+      ]);
       AlbumFallbackService.recordJob(db, {
         lidarrAlbumId: albumId,
         username: body.selected.username,
         directory: body.selected.directory,
+        // Artist name lets the fallback fire a fresh per-track slskd search when
+        // the recorded alternates can't cover a missing track.
+        artistName: album?.artist?.artistName ?? null,
+        albumTitle: album?.title ?? null,
         canonicalTracks: tracks.map((t) => t.title),
         // Recovery target: the files the user actually chose, so a folder that
         // downloads in full never triggers a duplicate-dumping fallback wave.

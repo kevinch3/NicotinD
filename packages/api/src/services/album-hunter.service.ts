@@ -10,12 +10,24 @@ const AUDIO_EXTENSIONS = new Set([
 ]);
 
 const POLL_INTERVAL_MS = 2_000;
-const HUNT_TIMEOUT_MS = 30_000;
+// 45s (was 30s): Soulseek peers — especially the slow/queued ones common for
+// Latin-American material — often only respond late in the window; cutting off
+// at 30s dropped otherwise-complete folders before they could be scored.
+const HUNT_TIMEOUT_MS = 45_000;
 
 // Low server-side floor so we don't return hundreds of junk folders. All
 // finer filtering (FLAC-only, live, higher match %) happens reactively on the
 // client so the user can adjust without re-hitting the network.
 const MIN_FLOOR_PCT = 10;
+
+// When the best base-query candidate scores below this, fire the skew-search
+// variants too (and merge the results). why: skew only used to run on a *totally
+// empty* base, but MIN_FLOOR_PCT is so low that one junk partial folder keeps the
+// base non-empty and suppressed skew entirely — exactly the "partial match" case
+// (common for accented Latin titles) where the soft-banned exact phrase hides a
+// complete folder that a skewed variant surfaces. A confidently-complete base
+// (>= this) adds zero extra searches.
+const SKEW_TRIGGER_PCT = 67;
 
 export interface HuntFile {
   filename: string;
@@ -91,11 +103,18 @@ export class AlbumHunterService {
 
     // Soft-ban bypass: slskd/Soulseek silently returns zero responses for some
     // exact phrases (e.g. "The Artist - The Track") even when the files exist.
-    // When the user opts in, retry with textually-skewed variants of the query
-    // — only on an empty base result, so we don't add noise to a normal hunt.
-    if (base.length === 0 && opts.skewSearch) {
+    // When the user opts in, also run textually-skewed variants of the query and
+    // merge the results — not only when the base is empty, but whenever no base
+    // candidate is confidently complete (best match < SKEW_TRIGGER_PCT). A junk
+    // partial folder would otherwise keep the base non-empty and hide a complete
+    // folder reachable only via a skewed phrase. A strong base adds no searches.
+    const bestBasePct = base.length ? base[0].matchPct : 0;
+    if (opts.skewSearch && bestBasePct < SKEW_TRIGGER_PCT) {
       const skewed = buildSkewedQueries(artistName, albumTitle, baseQueries);
-      if (skewed.length) return this.searchAndScore(skewed, canonicalTracks);
+      if (skewed.length) {
+        const extra = await this.searchAndScore(skewed, canonicalTracks);
+        return mergeCandidates(base, extra);
+      }
     }
 
     return base;
@@ -288,6 +307,23 @@ export function buildSkewedQueries(
   return out;
 }
 
+// Merge two candidate lists (base + skewed), de-duplicating by the unique
+// folder key (username::directory) and keeping the higher-scoring instance, then
+// re-rank with the shared comparator. why: the same peer folder can surface from
+// both the base and a skewed query; without de-duping it would appear twice.
+function mergeCandidates(
+  base: FolderCandidate[],
+  extra: FolderCandidate[],
+): FolderCandidate[] {
+  const byKey = new Map<string, FolderCandidate>();
+  for (const c of [...base, ...extra]) {
+    const key = `${c.username}::${c.directory}`;
+    const prev = byKey.get(key);
+    if (!prev || c.matchPct > prev.matchPct) byKey.set(key, c);
+  }
+  return [...byKey.values()].sort(compareCandidates).slice(0, 20);
+}
+
 function extractDirectory(filename: string): string {
   // slskd filenames use backslashes on Windows peers
   const normalized = filename.replace(/\\/g, '/');
@@ -298,6 +334,15 @@ function extractDirectory(filename: string): string {
 export function normalizeTitle(title: string): string {
   return title
     .toLowerCase()
+    // why: fold diacritics to their base letter *before* the punctuation strip.
+    // JS `\w` is ASCII-only, so `[^\w\s]` would otherwise *delete* accented
+    // letters ("canción" → "cancin") while a peer who typed the unaccented
+    // "cancion" normalizes to "cancion" — the two would never match. NFD
+    // decomposes "ó" → "o" + combining mark, which we then drop, so both
+    // accented and unaccented spellings fold to the same string. Critical for
+    // this Latin-American-heavy library.
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '') // strip combining diacritical marks
     .replace(/^\d+[\s.\-]+/, '') // strip leading track numbers
     .replace(/[^\w\s]/g, '')
     .replace(/\s+/g, ' ')

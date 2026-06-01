@@ -99,6 +99,25 @@ export function applySchema(db: Database): void {
     // Column already exists — ignore
   }
 
+  // Artist name, captured at hunt-download time. Lets the cross-peer fallback
+  // fire a *fresh* slskd search ("<artist> <track>") for tracks no recorded
+  // alternate can supply, instead of giving up the moment the stale alternates
+  // are exhausted. Nullable for pre-existing rows (those skip the fresh-search
+  // step and behave exactly as before).
+  try {
+    db.run(`ALTER TABLE album_jobs ADD COLUMN artist_name TEXT`);
+  } catch {
+    // Column already exists — ignore
+  }
+
+  // Album title, for the "incomplete albums" UI surface (so a user can see which
+  // hunts ended exhausted and re-trigger them). Nullable for pre-existing rows.
+  try {
+    db.run(`ALTER TABLE album_jobs ADD COLUMN album_title TEXT`);
+  } catch {
+    // Column already exists — ignore
+  }
+
   db.run(`
     CREATE TABLE IF NOT EXISTS completed_downloads (
       transfer_key TEXT PRIMARY KEY,

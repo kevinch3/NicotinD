@@ -31,8 +31,8 @@ jobs:
       - name: Lint
         run: bun run lint
 
-      - name: Test (API + slskd-client)
-        run: bun test packages/api/src packages/slskd-client/src
+      - name: Test (API + slskd-client + core + service-manager)
+        run: bun test packages/api/src packages/slskd-client/src packages/core/src packages/service-manager/src
 
       - name: Test (web)
         run: bun run --filter @nicotind/web test

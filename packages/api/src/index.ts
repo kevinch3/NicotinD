@@ -129,6 +129,7 @@ export function createApp({
           acoustidApiKey: config.metadataFix.enabled ? acoustidApiKey : undefined,
           // Park unsortable files outside musicDir so Navidrome doesn't scan them.
           unsortedRoot: `${expandedDataDir}/unsorted`,
+          preferFlacSkipMp3: config.downloads.preferFlacSkipMp3,
           // Refresh canonical library after each post-download scan.
           onScanComplete: runSyncAndCurate,
         })
@@ -139,7 +140,10 @@ export function createApp({
   // resumes the partial file) and, once attempts exhaust, hands off to the
   // cross-peer fallback layer that pulls the missing tracks from another peer.
   const fallback = slskdRef.current
-    ? new AlbumFallbackService(slskdRef.current, { db })
+    ? new AlbumFallbackService(slskdRef.current, {
+        db,
+        maxFallbackAttempts: config.downloads.fallbackMaxAttempts,
+      })
     : null;
   const retryRef: RetryRef = {
     current:

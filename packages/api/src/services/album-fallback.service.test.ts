@@ -23,10 +23,43 @@ function makeSlskd(groups: Array<{ username: string; directory: string; files: M
   return { slskd, enqueue };
 }
 
+interface SearchResponse {
+  username: string;
+  freeUploadSlots?: number;
+  queueLength?: number;
+  uploadSpeed?: number;
+  files: Array<{ filename: string; size: number; bitRate?: number }>;
+}
+
+/** Extends the transfers mock with a slskd search stub for fresh-search tests. */
+function makeSlskdWithSearch(
+  groups: Array<{ username: string; directory: string; files: MockFile[] }>,
+  searchResponses: SearchResponse[],
+) {
+  const { slskd, enqueue } = makeSlskd(groups);
+  const create = mock(async (_q: string) => ({ id: 's1', state: 'Completed' }));
+  const get = mock(async () => ({ state: 'Completed' }));
+  const getResponses = mock(async () => searchResponses);
+  const del = mock(async () => undefined);
+  (slskd as unknown as { searches: unknown }).searches = {
+    create,
+    get,
+    getResponses,
+    delete: del,
+  };
+  return { slskd, enqueue, create };
+}
+
 function makeDb(): Database {
   const db = new Database(':memory:');
   applySchema(db);
   return db;
+}
+
+function attempts(db: Database): number {
+  return (
+    db.query('SELECT fallback_attempts AS a FROM album_jobs WHERE id = 1').get() as { a: number }
+  ).a;
 }
 
 function recordJob(db: Database, alternates: AlternateCandidate[]) {
@@ -238,5 +271,142 @@ describe('AlbumFallbackService', () => {
 
     expect(enqueue).not.toHaveBeenCalled();
     expect(jobState(db)).toBe('exhausted');
+  });
+
+  it('recovers a missing track via a fresh per-track search when no alternate covers it', async () => {
+    const { slskd, enqueue, create } = makeSlskdWithSearch(
+      [
+        {
+          username: 'primary',
+          directory: 'Album',
+          files: [
+            { id: 'p1', filename: 'Album/01 Song One.flac', size: 1, state: 'Completed, Succeeded' },
+            { id: 'p2', filename: 'Album/02 Song Two.flac', size: 1, state: 'Completed, Errored' },
+          ],
+        },
+      ],
+      // A fresh search turns up a peer that has the failed track.
+      [
+        {
+          username: 'freshpeer',
+          freeUploadSlots: 1,
+          queueLength: 0,
+          uploadSpeed: 1000,
+          files: [{ filename: 'Random/02 Song Two.flac', size: 1 }],
+        },
+      ],
+    );
+    db.run(
+      `INSERT INTO transfer_retries (transfer_key, username, filename, attempts, gave_up)
+       VALUES ('primary::Album/02 Song Two.flac', 'primary', 'x', 3, 1)`,
+    );
+    AlbumFallbackService.recordJob(db, {
+      lidarrAlbumId: 1,
+      username: 'primary',
+      directory: 'Album',
+      artistName: 'Artist',
+      canonicalTracks: ['Song One', 'Song Two'],
+      targetFiles: [{ filename: 'Album/01 Song One.flac' }, { filename: 'Album/02 Song Two.flac' }],
+      // No recorded alternate can supply the gap — forces the fresh search.
+      alternates: [],
+    });
+
+    const svc = new AlbumFallbackService(slskd, { db });
+    await svc.sweep();
+
+    // Query uses the normalized (folded/lowercased) track title.
+    expect(create).toHaveBeenCalledWith('Artist song two');
+    expect(enqueue).toHaveBeenCalledTimes(1);
+    const [user, files] = enqueue.mock.calls[0];
+    expect(user).toBe('freshpeer');
+    expect((files as Array<{ filename: string }>).map((f) => f.filename)).toEqual([
+      'Random/02 Song Two.flac',
+    ]);
+    // Wave counted; job stays active until the download lands.
+    expect(attempts(db)).toBe(1);
+    expect(jobState(db)).toBe('active');
+  });
+
+  it('exhausts once fresh searches keep finding nothing and the attempt cap is hit', async () => {
+    const { slskd, enqueue, create } = makeSlskdWithSearch(
+      [
+        {
+          username: 'primary',
+          directory: 'Album',
+          files: [
+            { id: 'p1', filename: 'Album/01 Song One.flac', size: 1, state: 'Completed, Succeeded' },
+            { id: 'p2', filename: 'Album/02 Song Two.flac', size: 1, state: 'Completed, Errored' },
+          ],
+        },
+      ],
+      [], // fresh search finds nothing
+    );
+    db.run(
+      `INSERT INTO transfer_retries (transfer_key, username, filename, attempts, gave_up)
+       VALUES ('primary::Album/02 Song Two.flac', 'primary', 'x', 3, 1)`,
+    );
+    AlbumFallbackService.recordJob(db, {
+      lidarrAlbumId: 1,
+      username: 'primary',
+      directory: 'Album',
+      artistName: 'Artist',
+      canonicalTracks: ['Song One', 'Song Two'],
+      targetFiles: [{ filename: 'Album/01 Song One.flac' }, { filename: 'Album/02 Song Two.flac' }],
+      alternates: [],
+    });
+
+    const svc = new AlbumFallbackService(slskd, { db, maxFallbackAttempts: 1 });
+    await svc.sweep(); // wave 1: searches, finds nothing, attempts -> 1
+    expect(create).toHaveBeenCalled();
+    expect(enqueue).not.toHaveBeenCalled();
+    expect(jobState(db)).toBe('active');
+
+    await svc.sweep(); // attempts (1) >= cap (1) -> exhausted
+    expect(jobState(db)).toBe('exhausted');
+  });
+
+  it('waits instead of re-searching when the missing track is already in flight', async () => {
+    const { slskd, enqueue, create } = makeSlskdWithSearch(
+      [
+        {
+          username: 'primary',
+          directory: 'Album',
+          files: [
+            { id: 'p1', filename: 'Album/01 Song One.flac', size: 1, state: 'Completed, Succeeded' },
+            { id: 'p2', filename: 'Album/02 Song Two.flac', size: 1, state: 'Completed, Errored' },
+          ],
+        },
+        {
+          // A prior fresh-search wave's download is still running on another peer.
+          username: 'freshpeer',
+          directory: 'Random',
+          files: [
+            { id: 'f2', filename: 'Random/02 Song Two.flac', size: 1, state: 'InProgress' },
+          ],
+        },
+      ],
+      [],
+    );
+    db.run(
+      `INSERT INTO transfer_retries (transfer_key, username, filename, attempts, gave_up)
+       VALUES ('primary::Album/02 Song Two.flac', 'primary', 'x', 3, 1)`,
+    );
+    AlbumFallbackService.recordJob(db, {
+      lidarrAlbumId: 1,
+      username: 'primary',
+      directory: 'Album',
+      artistName: 'Artist',
+      canonicalTracks: ['Song One', 'Song Two'],
+      targetFiles: [{ filename: 'Album/01 Song One.flac' }, { filename: 'Album/02 Song Two.flac' }],
+      alternates: [],
+    });
+
+    const svc = new AlbumFallbackService(slskd, { db });
+    await svc.sweep();
+
+    expect(create).not.toHaveBeenCalled();
+    expect(enqueue).not.toHaveBeenCalled();
+    expect(attempts(db)).toBe(0);
+    expect(jobState(db)).toBe('active');
   });
 });
