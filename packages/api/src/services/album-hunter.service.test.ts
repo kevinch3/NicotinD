@@ -1,7 +1,7 @@
 import { describe, it, expect, mock } from 'bun:test';
 import type { Slskd } from '@nicotind/slskd-client';
 import type { LidarrTrack } from '@nicotind/lidarr-client';
-import { AlbumHunterService } from './album-hunter.service';
+import { AlbumHunterService, buildSkewedQueries } from './album-hunter.service';
 
 function track(id: number, title: string): LidarrTrack {
   return {
@@ -40,6 +40,23 @@ function makeSlskdStub(responses: StubResponse[]) {
       create: mock(async (q: string) => ({ id: `s-${q}`, state: 'Completed' })),
       get: mock(async () => ({ state: 'Completed' })),
       getResponses: mock(async () => responses),
+      delete: mock(async () => undefined),
+    },
+  } as unknown as Slskd;
+}
+
+/**
+ * slskd stub that maps each search query to its own response set. The `create`
+ * mock encodes the query into the search id (`s-<query>`) so `getResponses`
+ * can return per-query results — used to simulate a soft-banned phrase that
+ * yields nothing while a skewed variant does.
+ */
+function makeQueryAwareSlskdStub(byQuery: Record<string, StubResponse[]>) {
+  return {
+    searches: {
+      create: mock(async (q: string) => ({ id: `s-${q}`, state: 'Completed' })),
+      get: mock(async () => ({ state: 'Completed' })),
+      getResponses: mock(async (id: string) => byQuery[id.slice(2)] ?? []),
       delete: mock(async () => undefined),
     },
   } as unknown as Slskd;
@@ -179,5 +196,68 @@ describe('AlbumHunterService', () => {
     const hunter = new AlbumHunterService(slskd);
     const [candidate] = await hunter.hunt('Artist', 'Album', TRACKS);
     expect(candidate.files).toHaveLength(2);
+  });
+
+  describe('buildSkewedQueries', () => {
+    it('produces reorder / album-only variants and excludes the base queries', () => {
+      const base = ['Artist Album', 'Artist - Album'];
+      const skewed = buildSkewedQueries('Artist', 'Album', base);
+      // "drop the" and "artist + first word" both collapse to "Artist Album"
+      // which is a base query, so only the genuinely-distinct variants survive.
+      expect(skewed).toEqual(['Album Artist', 'Album']);
+      for (const q of skewed) expect(base).not.toContain(q);
+    });
+
+    it('drops the leading "the" from artist and album', () => {
+      const base = ['The Beatles The White Album', 'The Beatles - The White Album'];
+      const skewed = buildSkewedQueries('The Beatles', 'The White Album', base);
+      expect(skewed).toContain('Beatles White Album');
+      // de-duped, no empties, none equal to a base query
+      expect(new Set(skewed).size).toBe(skewed.length);
+      expect(skewed.every((q) => q.trim().length > 0)).toBe(true);
+    });
+  });
+
+  describe('skew search (soft-ban bypass)', () => {
+    const fullAlbum: StubResponse = {
+      username: 'zoe',
+      files: [
+        { filename: 'Music/Artist/Album/01 Song One.flac', size: 1 },
+        { filename: 'Music/Artist/Album/02 Song Two.flac', size: 1 },
+        { filename: 'Music/Artist/Album/03 Song Three.flac', size: 1 },
+      ],
+    };
+
+    it('retries with skewed queries when the base queries return empty', async () => {
+      // Base queries are "soft-banned" (empty); the album-only skew variant hits.
+      const slskd = makeQueryAwareSlskdStub({ Album: [fullAlbum] });
+
+      const hunter = new AlbumHunterService(slskd);
+      const candidates = await hunter.hunt('Artist', 'Album', TRACKS, { skewSearch: true });
+
+      expect(candidates).toHaveLength(1);
+      expect(candidates[0].username).toBe('zoe');
+      expect(candidates[0].matchPct).toBe(100);
+
+      // Both base queries AND the skewed variants were created.
+      const created = (slskd.searches.create as ReturnType<typeof mock>).mock.calls.map(
+        (c) => c[0],
+      );
+      expect(created).toContain('Artist Album');
+      expect(created).toContain('Album');
+    });
+
+    it('does not fire skewed queries when skewSearch is off', async () => {
+      const slskd = makeQueryAwareSlskdStub({ Album: [fullAlbum] });
+
+      const hunter = new AlbumHunterService(slskd);
+      const candidates = await hunter.hunt('Artist', 'Album', TRACKS);
+
+      expect(candidates).toHaveLength(0);
+      const created = (slskd.searches.create as ReturnType<typeof mock>).mock.calls.map(
+        (c) => c[0],
+      );
+      expect(created).toEqual(['Artist Album', 'Artist - Album']);
+    });
   });
 });

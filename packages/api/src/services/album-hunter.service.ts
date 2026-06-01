@@ -80,13 +80,32 @@ export class AlbumHunterService {
     artistName: string,
     albumTitle: string,
     canonicalTracks: LidarrTrack[],
+    opts: { skewSearch?: boolean } = {},
   ): Promise<FolderCandidate[]> {
-    const queries = [
+    const baseQueries = [
       `${artistName} ${albumTitle}`,
       `${artistName} - ${albumTitle}`,
     ];
 
-    // Fire both searches in parallel
+    const base = await this.searchAndScore(baseQueries, canonicalTracks);
+
+    // Soft-ban bypass: slskd/Soulseek silently returns zero responses for some
+    // exact phrases (e.g. "The Artist - The Track") even when the files exist.
+    // When the user opts in, retry with textually-skewed variants of the query
+    // — only on an empty base result, so we don't add noise to a normal hunt.
+    if (base.length === 0 && opts.skewSearch) {
+      const skewed = buildSkewedQueries(artistName, albumTitle, baseQueries);
+      if (skewed.length) return this.searchAndScore(skewed, canonicalTracks);
+    }
+
+    return base;
+  }
+
+  private async searchAndScore(
+    queries: string[],
+    canonicalTracks: LidarrTrack[],
+  ): Promise<FolderCandidate[]> {
+    // Fire all searches in parallel
     const searches = await Promise.all(
       queries.map((q) =>
         this.slskd.searches
@@ -235,6 +254,38 @@ export class AlbumHunterService {
 
     return responseSets.flat();
   }
+}
+
+// Build textually-skewed query variants to bypass slskd's soft phrase ban.
+// why: the ban keys on the *exact* normalized phrase, so variants that reorder
+// tokens, drop a leading "the", or trim to a subset still surface the same
+// files while no longer matching the blocked string. Variants equal to a base
+// query (or to each other) are dropped so we never re-run an already-banned one.
+export function buildSkewedQueries(
+  artistName: string,
+  albumTitle: string,
+  baseQueries: string[],
+): string[] {
+  const stripThe = (s: string) => s.replace(/^the\s+/i, '').trim();
+  const firstWord = (s: string) => s.trim().split(/\s+/)[0] ?? '';
+
+  const variants = [
+    `${albumTitle} ${artistName}`, // reorder
+    albumTitle, // album only
+    `${stripThe(artistName)} ${stripThe(albumTitle)}`, // drop leading "the"
+    `${artistName} ${firstWord(albumTitle)}`, // artist + first album word
+  ];
+
+  const seen = new Set(baseQueries.map((q) => q.toLowerCase().trim()));
+  const out: string[] = [];
+  for (const raw of variants) {
+    const v = raw.trim();
+    const key = v.toLowerCase();
+    if (!v || seen.has(key)) continue;
+    seen.add(key);
+    out.push(v);
+  }
+  return out;
 }
 
 function extractDirectory(filename: string): string {

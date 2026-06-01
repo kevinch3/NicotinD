@@ -45,15 +45,15 @@ export function discographyRoutes({
   // Searches Soulseek for folder candidates matching the album tracklist.
   // Returns ALL candidates above a low floor (each tagged isLive); the client
   // applies FLAC/live/min-match filtering reactively. Optional body overrides:
-  // { artistName?, albumTitle? }
+  // { artistName?, albumTitle? }. Pass skewSearch=true to retry with modified
+  // query variants (soft-ban bypass) when the normal queries return empty.
   app.post('/albums/:lidarrAlbumId/hunt', async (c) => {
     const { lidarrAlbumId } = c.req.param();
     const albumId = Number(lidarrAlbumId);
     if (Number.isNaN(albumId)) return c.json({ error: 'Invalid album ID' }, 400);
 
-    const body = await c.req
-      .json<{ artistName?: string; albumTitle?: string }>()
-      .catch(() => ({}) as { artistName?: string; albumTitle?: string });
+    type HuntBody = { artistName?: string; albumTitle?: string; skewSearch?: boolean };
+    const body = await c.req.json<HuntBody>().catch(() => ({}) as HuntBody);
 
     try {
       const [album, tracks] = await Promise.all([
@@ -64,7 +64,9 @@ export function discographyRoutes({
       const artistName = body.artistName ?? album.artist?.artistName ?? '';
       const albumTitle = body.albumTitle ?? album.title;
 
-      const candidates = await hunter.hunt(artistName, albumTitle, tracks);
+      const candidates = await hunter.hunt(artistName, albumTitle, tracks, {
+        skewSearch: body.skewSearch,
+      });
 
       return c.json({ candidates, totalTracks: tracks.length });
     } catch (err) {

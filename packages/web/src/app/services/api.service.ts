@@ -478,7 +478,10 @@ export class ApiService {
     return this.http.get<DiscographyResult>(`/api/discography/artists/${artistId}`);
   }
 
-  huntAlbum(lidarrAlbumId: number, overrides: { artistName?: string; albumTitle?: string } = {}) {
+  huntAlbum(
+    lidarrAlbumId: number,
+    overrides: { artistName?: string; albumTitle?: string; skewSearch?: boolean } = {},
+  ) {
     return this.http.post<HuntResult>(`/api/discography/albums/${lidarrAlbumId}/hunt`, overrides);
   }
 

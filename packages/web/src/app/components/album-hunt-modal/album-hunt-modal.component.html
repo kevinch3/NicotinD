@@ -21,12 +21,17 @@
     <!-- Filters -->
     <div class="flex items-center gap-5 px-5 py-3 border-b border-theme-surface-2 flex-shrink-0 text-sm">
       <label class="flex items-center gap-2 cursor-pointer select-none text-theme-secondary">
-        <input type="checkbox" [checked]="flacOnly()" (change)="flacOnly.set($any($event.target).checked)" class="accent-theme rounded" />
-        FLAC only
+        <input type="checkbox" [checked]="includeFlac()" (change)="includeFlac.set($any($event.target).checked)" class="accent-theme rounded" />
+        Include flac
       </label>
       <label class="flex items-center gap-2 cursor-pointer select-none text-theme-secondary">
         <input type="checkbox" [checked]="includeLive()" (change)="includeLive.set($any($event.target).checked)" class="accent-theme rounded" />
         Include live
+      </label>
+      <label class="flex items-center gap-2 cursor-pointer select-none text-theme-secondary"
+             title="Retry with modified search terms to bypass blocked searches when no results are found">
+        <input type="checkbox" [checked]="skewSearch()" (change)="skewSearch.set($any($event.target).checked); startHunt()" class="accent-theme rounded" />
+        Skew search
       </label>
       <label class="flex items-center gap-2 cursor-pointer select-none text-theme-secondary">
         <span class="text-theme-muted">Min match</span>

@@ -41,16 +41,21 @@ export class AlbumHuntModalComponent implements OnInit {
   // Filter state — signals so the filtered list recomputes instantly. The server
   // returns ALL candidates (above a low floor); filtering is purely client-side,
   // so toggling a filter never requires another network round-trip.
-  readonly flacOnly = signal(false);
-  readonly includeLive = signal(true);
-  readonly minMatchPct = signal(40);
+  readonly includeFlac = signal(true);
+  readonly includeLive = signal(false);
+  readonly minMatchPct = signal(10);
+
+  // Opt-in: retries the hunt with textually-skewed query variants to bypass
+  // slskd's soft phrase ban. Changes the server-side queries (not a client
+  // filter), so toggling it re-runs the hunt.
+  readonly skewSearch = signal(false);
 
   readonly filteredCandidates = computed(() => {
-    const flac = this.flacOnly();
+    const flac = this.includeFlac();
     const live = this.includeLive();
     const minPct = this.minMatchPct();
     return this.candidates().filter((c) => {
-      if (flac && c.format !== 'FLAC') return false;
+      if (!flac && c.format === 'FLAC') return false;
       if (!live && c.isLive) return false;
       if (c.matchPct < minPct) return false;
       return true;
@@ -72,6 +77,7 @@ export class AlbumHuntModalComponent implements OnInit {
         this.api.huntAlbum(this.album().lidarrId, {
           artistName: this.artistName(),
           albumTitle: this.album().title,
+          skewSearch: this.skewSearch(),
         }),
       );
 
