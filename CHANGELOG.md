@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.35](https://github.com/kevinch3/NicotinD/compare/v0.1.34...v0.1.35) (2026-06-01)
+
+
+### Bug Fixes
+
+* **navidrome:** group albums by artist+name to stop duplicate cards from mixed peer MBIDs ([f167a31](https://github.com/kevinch3/NicotinD/commit/f167a31c6833f5bbed79aba344f7c33a8dca403b))
+
 ## [0.1.34](https://github.com/kevinch3/NicotinD/compare/v0.1.33...v0.1.34) (2026-06-01)
 
 
