@@ -138,6 +138,81 @@ describe('AlbumFallbackService', () => {
     expect(jobState(db)).toBe('done');
   });
 
+  it('does not chase deluxe canonical tracks once the chosen folder downloaded in full', async () => {
+    // Regression: the chosen folder delivered all of its own files, but the
+    // canonical Lidarr tracklist is a bloated deluxe edition with extra cuts no
+    // single folder has. Targeting the manifest (not the canonical list) must
+    // mark the job done so the fallback never dumps duplicate rips into it.
+    const { slskd, enqueue } = makeSlskd([
+      {
+        username: 'primary',
+        directory: 'Album',
+        files: [
+          { id: 'p1', filename: 'Album/01 Song One.flac', size: 1, state: 'Completed, Succeeded' },
+          { id: 'p2', filename: 'Album/02 Song Two.flac', size: 1, state: 'Completed, Succeeded' },
+        ],
+      },
+    ]);
+    AlbumFallbackService.recordJob(db, {
+      lidarrAlbumId: 1,
+      username: 'primary',
+      directory: 'Album',
+      // Deluxe canonical list — far larger than the chosen folder.
+      canonicalTracks: ['Song One', 'Song Two', 'Bonus Live One', 'Bonus Acoustic Two', 'Demo Three'],
+      targetFiles: [
+        { filename: 'Album/01 Song One.flac' },
+        { filename: 'Album/02 Song Two.flac' },
+      ],
+      alternates: [ALT],
+    });
+
+    const svc = new AlbumFallbackService(slskd, { db });
+    await svc.sweep();
+
+    expect(enqueue).not.toHaveBeenCalled();
+    expect(jobState(db)).toBe('done');
+  });
+
+  it('recovers a manifest track the primary failed, from an alternate', async () => {
+    const { slskd, enqueue } = makeSlskd([
+      {
+        username: 'primary',
+        directory: 'Album',
+        files: [
+          { id: 'p1', filename: 'Album/01 Song One.flac', size: 1, state: 'Completed, Succeeded' },
+          { id: 'p2', filename: 'Album/02 Song Two.flac', size: 1, state: 'Completed, Errored' },
+        ],
+      },
+    ]);
+    db.run(
+      `INSERT INTO transfer_retries (transfer_key, username, filename, attempts, gave_up)
+       VALUES ('primary::Album/02 Song Two.flac', 'primary', 'x', 3, 1)`,
+    );
+    AlbumFallbackService.recordJob(db, {
+      lidarrAlbumId: 1,
+      username: 'primary',
+      directory: 'Album',
+      canonicalTracks: ['Song One', 'Song Two', 'Song Three'],
+      targetFiles: [
+        { filename: 'Album/01 Song One.flac' },
+        { filename: 'Album/02 Song Two.flac' },
+      ],
+      alternates: [ALT],
+    });
+
+    const svc = new AlbumFallbackService(slskd, { db });
+    await svc.sweep();
+
+    expect(enqueue).toHaveBeenCalledTimes(1);
+    const [user, files] = enqueue.mock.calls[0];
+    expect(user).toBe('alt');
+    // Only the failed manifest track is pulled — not Song Three (not in the
+    // chosen folder) nor Song One (already delivered).
+    expect((files as Array<{ filename: string }>).map((f) => f.filename)).toEqual([
+      'AltAlbum/02 Song Two.flac',
+    ]);
+  });
+
   it('marks the job exhausted when no alternate covers the missing tracks', async () => {
     const { slskd, enqueue } = makeSlskd([
       {

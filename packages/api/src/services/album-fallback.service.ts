@@ -32,8 +32,14 @@ export interface RecordJobInput {
   lidarrAlbumId: number | null;
   username: string;
   directory: string;
-  /** Raw canonical track titles from Lidarr. */
+  /** Raw canonical track titles from Lidarr (kept for diagnostics/back-compat). */
   canonicalTracks: string[];
+  /**
+   * The files the user actually selected to download (the primary folder's
+   * manifest). This — not the canonical tracklist — is the fallback's recovery
+   * target: a folder that downloads completely must never trigger a fallback.
+   */
+  targetFiles?: Array<{ filename: string }>;
   /** Ranked alternate folder candidates (excluding the primary). */
   alternates: AlternateCandidate[];
 }
@@ -43,6 +49,7 @@ interface AlbumJobRow {
   username: string;
   directory: string;
   canonical_tracks_json: string;
+  target_files_json: string | null;
   alternates_json: string;
   fallback_attempts: number;
 }
@@ -73,13 +80,14 @@ export class AlbumFallbackService {
   static recordJob(db: Database, input: RecordJobInput): void {
     db.run(
       `INSERT INTO album_jobs
-         (lidarr_album_id, username, directory, canonical_tracks_json, alternates_json, created_at)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+         (lidarr_album_id, username, directory, canonical_tracks_json, target_files_json, alternates_json, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [
         input.lidarrAlbumId,
         input.username,
         input.directory,
         JSON.stringify(input.canonicalTracks),
+        input.targetFiles ? JSON.stringify(input.targetFiles.map((f) => f.filename)) : null,
         JSON.stringify(input.alternates),
         Date.now(),
       ],
@@ -90,7 +98,7 @@ export class AlbumFallbackService {
   async sweep(): Promise<void> {
     const jobs = this.db
       .query(
-        `SELECT id, username, directory, canonical_tracks_json, alternates_json, fallback_attempts
+        `SELECT id, username, directory, canonical_tracks_json, target_files_json, alternates_json, fallback_attempts
          FROM album_jobs WHERE state = 'active'`,
       )
       .all() as AlbumJobRow[];
@@ -119,9 +127,15 @@ export class AlbumFallbackService {
     }
 
     for (const job of jobs) {
-      const canonical = JSON.parse(job.canonical_tracks_json) as string[];
-      const missing = canonical.filter(
-        (title) => !succeeded.some((s) => titlesOverlap(normalizeTitle(title), s)),
+      // Recovery target = the chosen folder's own manifest (normalized track
+      // titles), falling back to the canonical Lidarr tracklist only for legacy
+      // jobs recorded before the manifest was persisted. Targeting the manifest
+      // is what keeps a fully-delivered folder from triggering a fallback wave:
+      // the canonical list can be a deluxe edition whose extra cuts no single
+      // folder contains, so chasing it dumps duplicate rips into the album.
+      const targets = parseTargets(job);
+      const missing = targets.filter(
+        (title) => !succeeded.some((s) => titlesOverlap(title, s)),
       );
 
       if (!missing.length) {
@@ -196,6 +210,19 @@ export class AlbumFallbackService {
   private setState(id: number, state: string): void {
     this.db.run('UPDATE album_jobs SET state = ? WHERE id = ?', [state, id]);
   }
+}
+
+/**
+ * The set of track titles (normalized) the fallback must see satisfied before a
+ * job is done. Prefers the primary folder's manifest (`target_files_json`); for
+ * legacy jobs recorded without it, falls back to the canonical Lidarr titles.
+ */
+function parseTargets(job: AlbumJobRow): string[] {
+  if (job.target_files_json) {
+    const files = JSON.parse(job.target_files_json) as string[];
+    if (files.length) return files.map(normalizeBasename);
+  }
+  return (JSON.parse(job.canonical_tracks_json) as string[]).map(normalizeTitle);
 }
 
 function normalizeBasename(filename: string): string {

@@ -115,6 +115,9 @@ export function discographyRoutes({
         username: body.selected.username,
         directory: body.selected.directory,
         canonicalTracks: tracks.map((t) => t.title),
+        // Recovery target: the files the user actually chose, so a folder that
+        // downloads in full never triggers a duplicate-dumping fallback wave.
+        targetFiles: body.selected.files,
         alternates: body.alternates ?? [],
       });
     } catch (err) {

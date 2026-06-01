@@ -87,6 +87,18 @@ export function applySchema(db: Database): void {
 
   db.run(`CREATE INDEX IF NOT EXISTS idx_album_jobs_state ON album_jobs (state)`);
 
+  // The cross-peer fallback recovers tracks the *chosen folder* promised but the
+  // peer failed to deliver. Its recovery target is this manifest (the files the
+  // user actually selected) — NOT the canonical Lidarr tracklist, which can be a
+  // bloated deluxe/special edition whose bonus/live cuts no single Soulseek
+  // folder contains, leaving the fallback permanently "incomplete" and dumping
+  // duplicate rips into the album folder. Nullable for pre-existing rows.
+  try {
+    db.run(`ALTER TABLE album_jobs ADD COLUMN target_files_json TEXT`);
+  } catch {
+    // Column already exists — ignore
+  }
+
   db.run(`
     CREATE TABLE IF NOT EXISTS completed_downloads (
       transfer_key TEXT PRIMARY KEY,
