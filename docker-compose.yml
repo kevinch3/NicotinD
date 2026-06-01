@@ -84,6 +84,12 @@ services:
       ND_DATAFOLDER: /data/nd
       ND_PORT: "4533"
       ND_BASEURL: ""
+      # Group albums by artist+name, NOT by musicbrainz_albumid/releasedate (the
+      # default). Hunt/fallback can drop foreign-edition files (deluxe, bonus,
+      # acoustic) carrying their own MBID into a single <Artist>/<Album> folder;
+      # the default PID then splits that one folder into a card per MBID. Keying
+      # on albumartistid+album makes one folder = one album card. See CLAUDE.md.
+      ND_PID_ALBUM: albumartistid,album
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:4533/ping"]
       interval: 10s
