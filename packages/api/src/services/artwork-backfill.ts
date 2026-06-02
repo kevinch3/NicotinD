@@ -34,14 +34,19 @@ function normalizeName(name: string): string {
 /**
  * Populate `library_artwork` for albums/artists already in the library by
  * matching them to Lidarr. Artists resolve via `artist_discography_links` or by
- * name (monitored list, then a read-only lookup); albums resolve by edition-
- * stripped group key against `listByArtist`. Idempotent and safe to re-run; with
- * `apply: false` it reports counts without writing.
+ * name against the monitored list; albums resolve by edition-stripped group key
+ * against `listByArtist`. Idempotent and safe to re-run; with `apply: false` it
+ * reports counts without writing.
+ *
+ * `lookupMissing` (default off) additionally fires a per-artist `artist.lookup`
+ * for artists not monitored in Lidarr. That's a slow MusicBrainz-backed call per
+ * artist — fine for small gaps but pathological (and rate-limit-risky) on a large
+ * library where most artists aren't monitored, so it's opt-in.
  */
 export async function backfillArtwork(
   db: Database,
   lidarr: BackfillLidarr,
-  opts: { apply: boolean; coverCacheDir?: string },
+  opts: { apply: boolean; coverCacheDir?: string; lookupMissing?: boolean },
 ): Promise<BackfillArtworkResult> {
   const result: BackfillArtworkResult = {
     artistsMatched: 0,
@@ -78,7 +83,7 @@ export async function backfillArtwork(
       (link?.lidarr_id != null ? monitored.find((a) => a.id === link.lidarr_id) : undefined) ??
       monitoredByName.get(normalizeName(artist.name));
 
-    if (!lidarrArtist) {
+    if (!lidarrArtist && opts.lookupMissing) {
       const hits = await lidarr.artist.lookup(artist.name).catch(() => []);
       lidarrArtist =
         hits.find((a) => normalizeName(a.artistName) === normalizeName(artist.name)) ?? hits[0];

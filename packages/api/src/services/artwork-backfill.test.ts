@@ -110,13 +110,33 @@ describe('backfillArtwork', () => {
     expect(r.artistsMatched).toBe(0);
   });
 
-  it('falls back to a read-only lookup for non-monitored artists', async () => {
+  it('does not look up non-monitored artists by default', async () => {
+    seedArtist('art-1', 'Aphex Twin');
+    let lookupCalls = 0;
+    const lidarr = {
+      artist: {
+        list: async () => [],
+        lookup: async () => {
+          lookupCalls += 1;
+          return [{ id: 0, artistName: 'Aphex Twin', images: artistImg('https://x/aphex.jpg') }];
+        },
+      },
+      album: { listByArtist: async () => [] },
+    } as unknown as BackfillLidarr;
+
+    const r = await backfillArtwork(db, lidarr, { apply: true });
+    expect(lookupCalls).toBe(0);
+    expect(r.artistsUnresolved).toBe(1);
+    expect(resolveArtwork(db, 'art-1')).toBeNull();
+  });
+
+  it('falls back to a read-only lookup when lookupMissing is enabled', async () => {
     seedArtist('art-1', 'Aphex Twin');
     const lidarr = makeLidarrMock({
       list: [],
       lookup: [{ id: 0, artistName: 'Aphex Twin', images: artistImg('https://x/aphex.jpg') } as LidarrArtist],
     });
-    const r = await backfillArtwork(db, lidarr, { apply: true });
+    const r = await backfillArtwork(db, lidarr, { apply: true, lookupMissing: true });
     expect(r.artistsMatched).toBe(1);
     expect(resolveArtwork(db, 'art-1')?.url).toBe('https://x/aphex.jpg');
   });

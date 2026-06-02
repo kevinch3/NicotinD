@@ -3,11 +3,15 @@
  * already in the library, so the app shows the same images the hunt tool does
  * and artists get real poster thumbnails.
  *
- *   bun run packages/api/src/scripts/backfill-artwork.ts            # dry run
- *   bun run packages/api/src/scripts/backfill-artwork.ts --apply    # write
+ *   bun run packages/api/src/scripts/backfill-artwork.ts                   # dry run
+ *   bun run packages/api/src/scripts/backfill-artwork.ts --apply           # write
+ *   bun run packages/api/src/scripts/backfill-artwork.ts --apply --lookup-missing
  *
- * Matches artists via artist_discography_links / name, albums via edition-stripped
- * group key. Idempotent. Env: NICOTIND_DATA_DIR, NICOTIND_CONFIG, LIDARR_URL or
+ * Matches artists monitored in Lidarr (via artist_discography_links / name) and
+ * their albums (edition-stripped group key). `--lookup-missing` also does a slow
+ * per-artist MusicBrainz lookup for non-monitored artists (off by default — it's
+ * pathological on a large library where most artists aren't monitored).
+ * Idempotent. Env: NICOTIND_DATA_DIR, NICOTIND_CONFIG, LIDARR_URL or
  * NICOTIND_LIDARR_URL, LIDARR_API_KEY (falls back to config.lidarr.url and
  * dataDir/secrets.json). With the stack's own env set, runs in-container as:
  *   docker compose exec nicotind bun run packages/api/src/scripts/backfill-artwork.ts --apply
@@ -59,6 +63,7 @@ function loadConfig(): { dataDir: string; lidarrUrl: string; lidarrApiKey: strin
 
 async function main(): Promise<void> {
   const apply = process.argv.includes('--apply');
+  const lookupMissing = process.argv.includes('--lookup-missing');
   const { dataDir, lidarrUrl, lidarrApiKey } = loadConfig();
   const dbPath = join(dataDir, 'nicotind.db');
 
@@ -77,10 +82,12 @@ async function main(): Promise<void> {
 
   console.log(`Mode      : ${apply ? 'APPLY (writing)' : 'DRY RUN (no changes)'}`);
   console.log(`Lidarr    : ${lidarrUrl}`);
-  console.log(`Database  : ${dbPath}\n`);
+  console.log(`Database  : ${dbPath}`);
+  console.log(`Lookup    : ${lookupMissing ? 'monitored + MusicBrainz lookup' : 'monitored only'}\n`);
 
   const r = await backfillArtwork(db, lidarr, {
     apply,
+    lookupMissing,
     coverCacheDir: join(dataDir, 'cover-cache'),
   });
 
