@@ -5,13 +5,14 @@ import { ApiService, type Album, type DiscographyAlbum, type DiscographyResult }
 import { AuthService } from '../../services/auth.service';
 import { PlayerService } from '../../services/player.service';
 import { AlbumHuntModalComponent } from '../../components/album-hunt-modal/album-hunt-modal.component';
+import { CoverArtComponent } from '../../components/cover-art/cover-art.component';
 import { toTrack } from '../../lib/track-utils';
 import { resolveAlbumRoute } from '../../lib/route-utils';
 
 @Component({
   selector: 'app-artist-detail',
   standalone: true,
-  imports: [RouterLink, AlbumHuntModalComponent],
+  imports: [RouterLink, AlbumHuntModalComponent, CoverArtComponent],
   templateUrl: './artist-detail.component.html',
   })
 export class ArtistDetailComponent implements OnInit {

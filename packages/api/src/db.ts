@@ -297,6 +297,22 @@ export function applySchema(db: Database): void {
     )
   `);
 
+  // Canonical artwork (Lidarr/MusicBrainz cover/poster URLs), keyed on the same
+  // deterministic ids the scanner mints (albumId / artistId). Kept in its own
+  // table — NOT on library_albums/library_artists — so it (a) survives full
+  // rescans and prunes untouched, and (b) can be written at hunt time before the
+  // album has even been scanned onto disk. The cover route prefers this over the
+  // file's embedded/folder art so the app matches the hunt tool, and serves real
+  // artist posters (which on-disk audio files never carry).
+  db.run(`
+    CREATE TABLE IF NOT EXISTS library_artwork (
+      id         TEXT PRIMARY KEY,
+      kind       TEXT NOT NULL CHECK (kind IN ('album','artist')),
+      cover_url  TEXT NOT NULL,
+      updated_at INTEGER NOT NULL
+    )
+  `);
+
   // Legacy table from the Navidrome era (album-deletion tombstones). The native
   // scanner reads disk directly and synchronously, so deletions can't be
   // resurrected and this is no longer used. Kept for backward-compatible

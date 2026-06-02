@@ -88,7 +88,12 @@ function rowToAlbum(r: AlbumRow): Album & { classification: string; hidden: bool
     name: r.name,
     artist: r.artist,
     artistId: r.artist_id,
-    coverArt: r.cover_art ?? undefined,
+    // Cover is keyed on the album id: the cover route checks canonical artwork
+    // (library_artwork) by this id, falling back to a representative song's
+    // on-disk art. Using the id directly (not the stored cover_art, which is a
+    // legacy song id on rows scanned before this change) makes canonical art
+    // resolve without waiting for a rescan.
+    coverArt: r.id,
     songCount: r.song_count,
     duration: r.duration,
     year: r.year ?? undefined,
@@ -128,7 +133,9 @@ function rowToArtist(r: ArtistRow): Artist {
     id: r.id,
     name: r.name,
     albumCount: r.album_count,
-    coverArt: r.cover_art ?? undefined,
+    // Keyed on the artist id so the cover route serves the canonical Lidarr
+    // poster (audio files carry none); disk fallback finds a representative song.
+    coverArt: r.id,
     starred: r.starred ?? undefined,
   };
 }

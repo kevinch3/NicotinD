@@ -7,6 +7,9 @@ import type { DiscographyService } from '../services/discography.service.js';
 import type { AlbumHunterService } from '../services/album-hunter.service.js';
 import { AlbumFallbackService, type AlternateCandidate } from '../services/album-fallback.service.js';
 import { normalizeForGrouping } from '../services/album-grouping.js';
+import { albumIdFor, artistIdFor } from '../services/library-scanner.js';
+import { setArtwork, pickAlbumCover, pickArtistImage } from '../services/artwork-store.js';
+import { join } from 'node:path';
 import type { Lidarr } from '@nicotind/lidarr-client';
 
 const log = createLogger('discography');
@@ -17,6 +20,8 @@ export interface DiscographyRoutesOptions {
   lidarr: Lidarr;
   db: Database;
   slskdRef: SlskdRef;
+  /** App data dir — used to purge stale canonical-cover cache when artwork changes. */
+  dataDir?: string;
 }
 
 export function discographyRoutes({
@@ -25,8 +30,10 @@ export function discographyRoutes({
   lidarr,
   db,
   slskdRef,
+  dataDir,
 }: DiscographyRoutesOptions) {
   const app = new Hono<AuthEnv>();
+  const coverCacheDir = dataDir ? join(dataDir, 'cover-cache') : undefined;
 
   // GET /api/discography/artists/:id
   // Returns complete discography for a local library artist, diffed against Lidarr
@@ -152,6 +159,24 @@ export function discographyRoutes({
     ]);
     const artistName = album?.artist?.artistName ?? null;
     const albumTitle = album?.title ?? null;
+
+    // Persist canonical artwork keyed on the same ids the scanner will mint, so
+    // the album/artist render the exact image the hunt tool showed (rather than
+    // the rip's embedded art) the moment the download lands. Best-effort.
+    if (album && artistName && albumTitle) {
+      try {
+        const albumCover = pickAlbumCover(album.images);
+        if (albumCover) {
+          setArtwork(db, albumIdFor(artistName, albumTitle), 'album', albumCover, coverCacheDir);
+        }
+        const artistImage = pickArtistImage(album.artist?.images);
+        if (artistImage) {
+          setArtwork(db, artistIdFor(artistName), 'artist', artistImage, coverCacheDir);
+        }
+      } catch (err) {
+        log.warn({ albumId, err }, 'Failed to persist canonical artwork');
+      }
+    }
 
     // Guard 2: the album is already complete in the library — don't acquire a
     // duplicate edition. Skipped on explicit replace.

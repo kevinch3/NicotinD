@@ -234,8 +234,10 @@ export function buildLibrary(tracks: ScannedTrack[]): BuiltLibrary {
         years: t.year != null ? [t.year] : [],
         genres: t.genre ? [t.genre] : [],
         createdMs: t.mtimeMs,
-        // album cover resolves through any of its songs' files (folder/embedded art)
-        coverArt: id,
+        // Album cover id = the album id itself: the cover route checks
+        // library_artwork (canonical Lidarr art) by this id first, then falls
+        // back to a representative song's folder/embedded art via resolvePath.
+        coverArt: albId,
       });
     }
   }
@@ -262,13 +264,15 @@ export function buildLibrary(tracks: ScannedTrack[]): BuiltLibrary {
     const ar = artistAcc.get(a.artistId);
     if (ar) {
       ar.albums.add(a.id);
-      if (!ar.coverArt) ar.coverArt = a.coverArt;
     } else {
       artistAcc.set(a.artistId, {
         id: a.artistId,
         name: a.artist,
         albums: new Set([a.id]),
-        coverArt: a.coverArt,
+        // Artist cover id = the artist id itself, so the cover route serves the
+        // canonical Lidarr poster (audio files carry none); disk fallback finds
+        // a representative song by artist_id.
+        coverArt: a.artistId,
       });
     }
   }

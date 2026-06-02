@@ -16,6 +16,7 @@ import { AuthService } from '../../services/auth.service';
 import { TransferService } from '../../services/transfer.service';
 import { ListControlsService, type SortOption } from '../../services/list-controls.service';
 import { ListToolbarComponent } from '../../components/list-toolbar/list-toolbar.component';
+import { CoverArtComponent } from '../../components/cover-art/cover-art.component';
 import { resolveAlbumRoute, resolveGenreRoute, resolveArtistRoute } from '../../lib/route-utils';
 
 type LibraryMode = 'albums' | 'artists' | 'genre';
@@ -90,7 +91,7 @@ function writePersistedState(state: PersistedLibraryState): void {
 
 @Component({
   selector: 'app-library',
-  imports: [ListToolbarComponent, RouterLink],
+  imports: [ListToolbarComponent, RouterLink, CoverArtComponent],
   templateUrl: './library.component.html',
 })
 export class LibraryComponent implements OnInit, OnDestroy {

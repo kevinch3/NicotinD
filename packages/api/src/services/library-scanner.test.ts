@@ -39,6 +39,17 @@ describe('buildLibrary (pure aggregation)', () => {
     expect(built.artists[0]!.albumCount).toBe(1);
   });
 
+  it('keys album/artist cover ids on the group id so canonical artwork resolves', () => {
+    const built = buildLibrary([
+      track({ relPath: 'A/Alb/01.mp3', artist: 'A', album: 'Alb', title: 'T', track: 1 }),
+    ]);
+    // Album cover id == album id; artist cover id == artist id (so the cover
+    // route can look canonical artwork up by these ids); songs keep their own id.
+    expect(built.albums[0]!.coverArt).toBe(built.albums[0]!.id);
+    expect(built.artists[0]!.coverArt).toBe(built.artists[0]!.id);
+    expect(built.songs[0]!.coverArt).toBe(built.songs[0]!.id);
+  });
+
   it('collapses edition variants into one album via the group key', () => {
     const built = buildLibrary([
       track({ relPath: 'A/Album/01.mp3', artist: 'A', album: 'Circus', title: 'T1' }),

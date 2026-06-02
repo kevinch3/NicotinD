@@ -8,6 +8,7 @@ import type { AuthEnv } from '../middleware/auth.js';
 import { getStreamingSettings } from '../services/streaming-settings.js';
 import { ffmpegAvailable, transcodeFile } from '../services/transcode.js';
 import { getMusicMetadata } from '../services/music-metadata-loader.js';
+import { resolveArtwork, canonicalCacheKey } from '../services/artwork-store.js';
 
 const log = createLogger('streaming');
 
@@ -117,6 +118,32 @@ export function streamingRoutes(musicDir: string, db: Database, dataDir: string)
 
   app.get('/cover/:id', async (c) => {
     const id = c.req.param('id');
+
+    // 1. Canonical (Lidarr/MusicBrainz) artwork takes precedence so the app
+    //    matches the hunt tool, and so artists get real poster images. Cached
+    //    under a `c_<key>` namespace, shared across an album's songs.
+    const canonical = resolveArtwork(db, id);
+    if (canonical) {
+      const cacheKey = canonicalCacheKey(canonical.key);
+      const cached = await readCachedCover(coverCacheDir, cacheKey);
+      if (cached) {
+        return new Response(toBody(cached.data), {
+          headers: { 'content-type': cached.contentType },
+        });
+      }
+      const remote = await fetchRemoteCover(canonical.url);
+      if (remote) {
+        void cacheCover(coverCacheDir, cacheKey, remote).catch((err) =>
+          log.debug({ err, id }, 'canonical cover cache write failed'),
+        );
+        return new Response(toBody(remote.data), {
+          headers: { 'content-type': remote.contentType },
+        });
+      }
+      // Remote fetch failed (offline / dead URL) — fall through to on-disk art.
+    }
+
+    // 2. On-disk art (folder image, then embedded tag).
     const cached = await readCachedCover(coverCacheDir, id);
     if (cached) {
       return new Response(toBody(cached.data), { headers: { 'content-type': cached.contentType } });
@@ -152,6 +179,21 @@ function extFromContentType(ct: string): string {
   if (ct.includes('png')) return '.png';
   if (ct.includes('webp')) return '.webp';
   return '.jpg';
+}
+
+/** Fetch a remote canonical cover URL into memory. Null on any failure/non-image. */
+async function fetchRemoteCover(url: string): Promise<CoverArt | null> {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const contentType = res.headers.get('content-type') ?? 'image/jpeg';
+    if (!contentType.startsWith('image/')) return null;
+    const data = new Uint8Array(await res.arrayBuffer());
+    if (data.length === 0) return null;
+    return { data, contentType };
+  } catch {
+    return null;
+  }
 }
 
 async function readCachedCover(dir: string, id: string): Promise<CoverArt | null> {

@@ -92,3 +92,72 @@ describe('streaming routes', () => {
     expect(res.status).toBe(404);
   });
 });
+
+describe('streaming routes — canonical artwork', () => {
+  const PNG_BYTES = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+  const realFetch = globalThis.fetch;
+  let fetchCalls: string[];
+  let fetchOk = true;
+
+  beforeAll(() => {
+    // 'canon-alb' has a canonical URL but its file has no on-disk art.
+    mkdirSync(join(musicDir, 'CanonArtist', 'CanonAlbum'), { recursive: true });
+    writeFileSync(join(musicDir, 'CanonArtist', 'CanonAlbum', 't.mp3'), AUDIO_BYTES);
+    db.run(
+      `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, size, bit_rate, suffix, content_type, created, synced_at)
+       VALUES ('song-canon', 'canon-alb', 'T', 'A', 'canon-art', 0, 'CanonArtist/CanonAlbum/t.mp3', 10, 320, 'mp3', 'audio/mpeg', '2024-01-01', 1)`,
+    );
+    db.run(
+      `INSERT INTO library_artwork (id, kind, cover_url, updated_at)
+       VALUES ('canon-alb', 'album', 'https://art.example/cover.png', 1),
+              ('art', 'artist', 'https://art.example/poster.png', 1)`,
+    );
+
+    fetchCalls = [];
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      fetchCalls.push(String(input));
+      if (!fetchOk) return new Response(null, { status: 404 });
+      return new Response(PNG_BYTES, { status: 200, headers: { 'content-type': 'image/png' } });
+    }) as typeof fetch;
+  });
+
+  afterAll(() => {
+    globalThis.fetch = realFetch;
+  });
+
+  it('prefers canonical artwork over on-disk art for an album id', async () => {
+    fetchOk = true;
+    fetchCalls = [];
+    const res = await app.request('/cover/canon-alb');
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('image/png');
+    expect(fetchCalls).toContain('https://art.example/cover.png');
+  });
+
+  it('resolves a song id to its album canonical artwork', async () => {
+    fetchOk = true;
+    const res = await app.request('/cover/song-canon');
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('image/png');
+  });
+
+  it('serves an artist poster for an artist id', async () => {
+    fetchOk = true;
+    fetchCalls = [];
+    const res = await app.request('/cover/art');
+    expect(res.status).toBe(200);
+    expect(fetchCalls).toContain('https://art.example/poster.png');
+  });
+
+  it('falls back to on-disk folder art when the canonical fetch fails', async () => {
+    // 'alb' (song-1) has a folder cover.jpg; give it a dead canonical URL.
+    db.run(
+      `INSERT INTO library_artwork (id, kind, cover_url, updated_at) VALUES ('alb', 'album', 'https://dead.example/x.png', 1)`,
+    );
+    fetchOk = false;
+    const res = await app.request('/cover/song-1');
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('image/jpeg');
+    db.run(`DELETE FROM library_artwork WHERE id = 'alb'`);
+  });
+});

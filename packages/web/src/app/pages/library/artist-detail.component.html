@@ -14,9 +14,13 @@
       } @else if (artist()) {
         <!-- Artist header -->
         <div class="flex items-center gap-5 mb-8">
-          <div class="w-20 h-20 rounded-full bg-theme-surface-2 flex items-center justify-center flex-shrink-0">
-            <span class="text-3xl text-theme-muted font-medium">{{ artist()!.name.charAt(0).toUpperCase() }}</span>
-          </div>
+          <app-cover-art
+            [src]="artist()!.coverArt ? '/api/cover/' + artist()!.coverArt + '?size=200&token=' + auth.token() : undefined"
+            [artist]="artist()!.name"
+            [size]="80"
+            rounded="rounded-full"
+            className="flex-shrink-0"
+          />
           <div>
             <h1 class="text-2xl font-bold text-theme-primary">{{ artist()!.name }}</h1>
             <p class="text-theme-muted text-sm mt-0.5">{{ albums().length }} album{{ albums().length !== 1 ? 's' : '' }}</p>

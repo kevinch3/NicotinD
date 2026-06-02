@@ -8,6 +8,8 @@ import type { DiscographyService } from '../services/discography.service.js';
 import type { AlbumHunterService } from '../services/album-hunter.service.js';
 import type { Lidarr } from '@nicotind/lidarr-client';
 import type { SlskdRef } from '../index.js';
+import { albumIdFor, artistIdFor } from '../services/library-scanner.js';
+import { resolveArtwork } from '../services/artwork-store.js';
 
 const ALBUM_ID = 42;
 const TRACKS = [{ title: 'One' }, { title: 'Two' }, { title: 'Three' }];
@@ -113,6 +115,46 @@ describe('POST /albums/:id/hunt-download idempotency guard', () => {
     expect(res.status).toBe(409);
     expect(((await res.json()) as { error: string }).error).toBe('already-complete');
     expect(enqueue).not.toHaveBeenCalled();
+  });
+
+  it('persists canonical album + artist artwork from the Lidarr payload', async () => {
+    const enqueue = mock(async () => undefined);
+    const lidarr = {
+      album: {
+        get: mock(async () => ({
+          title: 'Dynamo',
+          images: [{ coverType: 'cover', remoteUrl: 'https://art/dynamo.jpg' }],
+          artist: {
+            artistName: 'Soda Stereo',
+            images: [{ coverType: 'poster', remoteUrl: 'https://art/soda.jpg' }],
+          },
+        })),
+      },
+      track: { listByAlbum: mock(async () => TRACKS) },
+    } as unknown as Lidarr;
+
+    const app = new Hono<AuthEnv>();
+    app.use('*', (c, next) => {
+      c.set('user', { sub: 'u', role: 'admin', iat: 0, exp: 9999999999 });
+      return next();
+    });
+    app.route(
+      '/',
+      discographyRoutes({
+        discography: {} as DiscographyService,
+        hunter: {} as AlbumHunterService,
+        lidarr,
+        db,
+        slskdRef: { current: { transfers: { enqueue } } } as unknown as SlskdRef,
+      }),
+    );
+
+    const res = await post(app);
+    expect(res.status).toBe(201);
+    expect(resolveArtwork(db, albumIdFor('Soda Stereo', 'Dynamo'))?.url).toBe(
+      'https://art/dynamo.jpg',
+    );
+    expect(resolveArtwork(db, artistIdFor('Soda Stereo'))?.url).toBe('https://art/soda.jpg');
   });
 
   it('treats an edition variant in the library as already complete', async () => {

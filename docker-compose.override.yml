@@ -16,11 +16,6 @@ services:
     ports:
       - "5030:5030"
 
-  navidrome:
-    volumes:
-      - /mnt/data1tb_new/music:/data/music:ro
-      - ~/.nicotind/navidrome:/data/nd
-
   lidarr:
     volumes:
       - /mnt/data1tb_new/music:/data/music

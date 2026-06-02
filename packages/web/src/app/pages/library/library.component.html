@@ -159,9 +159,12 @@
         @for (artist of artistControls.filtered(); track artist.id) {
           <a [routerLink]="getArtistLink(artist.id)"
             class="flex flex-col items-center gap-2 p-3 rounded-xl hover:bg-theme-hover transition-colors text-center cursor-pointer">
-            <div class="w-20 h-20 rounded-full bg-theme-surface-2 flex items-center justify-center">
-              <span class="text-2xl text-theme-muted font-medium">{{ artist.name.charAt(0).toUpperCase() }}</span>
-            </div>
+            <app-cover-art
+              [src]="artist.coverArt ? '/api/cover/' + artist.coverArt + '?size=160&token=' + auth.token() : undefined"
+              [artist]="artist.name"
+              [size]="80"
+              rounded="rounded-full"
+            />
             <div class="min-w-0 w-full">
               <div class="text-sm text-theme-primary truncate">{{ artist.name }}</div>
               <div class="text-xs text-theme-muted">{{ artist.albumCount }} album{{ artist.albumCount !== 1 ? 's' : '' }}</div>

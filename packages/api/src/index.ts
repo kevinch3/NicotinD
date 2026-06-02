@@ -236,7 +236,14 @@ export function createApp({
     const hunterSvc = new AlbumHunterService(slskdRef.current);
     app.route(
       '/api/discography',
-      discographyRoutes({ discography: discographySvc, hunter: hunterSvc, lidarr, db, slskdRef }),
+      discographyRoutes({
+        discography: discographySvc,
+        hunter: hunterSvc,
+        lidarr,
+        db,
+        slskdRef,
+        dataDir: expandedDataDir,
+      }),
     );
     app.route('/api/catalog', catalogRoutes({ catalog: new CatalogService(lidarr, config.musicDir) }));
   }
