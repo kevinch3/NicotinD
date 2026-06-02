@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.45](https://github.com/kevinch3/NicotinD/compare/v0.1.44...v0.1.45) (2026-06-02)
+
+
+### Features
+
+* targeted per-album artwork lookup for substantial albums ([c01ea9e](https://github.com/kevinch3/NicotinD/commit/c01ea9e72d99fe936323ed7cbc3ac3642f4260d6))
+
 ## [0.1.44](https://github.com/kevinch3/NicotinD/compare/v0.1.43...v0.1.44) (2026-06-02)
 
 
