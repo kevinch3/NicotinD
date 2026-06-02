@@ -92,24 +92,28 @@ export function planTrackKeepers<T extends DupFile>(
   canonicalTitles?: string[],
 ): { keep: T[]; drop: T[] } {
   if (canonicalTitles && canonicalTitles.length > 0) {
-    const claimed = new Set<T>();
-    const keep: T[] = [];
+    const claimed = new Set<T>(); // chosen keeper for some canonical track
+    const matched = new Set<T>(); // overlaps *some* canonical track (so a known version)
     for (const rawTitle of canonicalTitles) {
       const title = normalizeTitle(rawTitle);
-      const cands = files.filter(
-        (f) => !claimed.has(f) && titlesOverlap(title, normalizeTitle(stripExt(f.name))),
-      );
-      if (!cands.length) continue;
-      const best = [...cands].sort((a, b) => {
+      const cands = files.filter((f) => titlesOverlap(title, normalizeTitle(stripExt(f.name))));
+      for (const c of cands) matched.add(c);
+      const unclaimed = cands.filter((f) => !claimed.has(f));
+      if (!unclaimed.length) continue;
+      const best = [...unclaimed].sort((a, b) => {
         const ea = extraTokens(title, a.name);
         const eb = extraTokens(title, b.name);
         if (ea !== eb) return ea - eb; // cleanest match first
         return pickKeeper([a, b])[0] === a ? -1 : 1; // then FLAC/size/suffix
       })[0]!;
-      keep.push(best);
       claimed.add(best);
     }
-    return { keep, drop: files.filter((f) => !claimed.has(f)) };
+    // Keep the chosen per-track files AND every file that matched NO canonical
+    // track — an unmatched file is an unknown/bonus track, never a redundant
+    // version, so we must not silently delete it. Only drop files that matched a
+    // canonical track but lost to a cleaner copy (the (5.1 mix)/(New Mix) dupes).
+    const keep = files.filter((f) => claimed.has(f) || !matched.has(f));
+    return { keep, drop: files.filter((f) => matched.has(f) && !claimed.has(f)) };
   }
 
   // No canonical list — collapse true-duplicate copies only.

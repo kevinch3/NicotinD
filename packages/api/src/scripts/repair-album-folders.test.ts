@@ -29,7 +29,7 @@ describe('groupFoldersByAlbum', () => {
 describe('planTrackKeepers', () => {
   const file = (name: string, size = 1, dir = 'd'): SourcedFile => ({ name, size, dir });
 
-  it('with a canonical tracklist: keeps one clean file per track, drops mixes/bonus', () => {
+  it('with a canonical tracklist: keeps one clean file per track + unmatched bonus, drops alt-mix versions', () => {
     const files = [
       file('01 - Song One.flac'),
       file('02 - Song Two.flac'),
@@ -38,11 +38,17 @@ describe('planTrackKeepers', () => {
       file('99 - Bonus Cut.flac'),
     ];
     const { keep, drop } = planTrackKeepers(files, ['Song One', 'Song Two']);
-    expect(keep.map((k) => k.name).sort()).toEqual(['01 - Song One.flac', '02 - Song Two.flac']);
+    // The clean per-track files survive; the unmatched "Bonus Cut" is NOT silently
+    // deleted (it maps to no canonical track); only the (5.1 mix)/(New Mix)
+    // versions of a matched track are dropped.
+    expect(keep.map((k) => k.name).sort()).toEqual([
+      '01 - Song One.flac',
+      '02 - Song Two.flac',
+      '99 - Bonus Cut.flac',
+    ]);
     expect(drop.map((d) => d.name).sort()).toEqual([
       '02 - Song Two (5.1 mix).flac',
       '02 - Song Two (New Mix).flac',
-      '99 - Bonus Cut.flac',
     ]);
   });
 
