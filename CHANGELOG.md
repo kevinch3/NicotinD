@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.42](https://github.com/kevinch3/NicotinD/compare/v0.1.41...v0.1.42) (2026-06-02)
+
+
+### Features
+
+* canonical album artwork + artist thumbnails ([7cb2dbc](https://github.com/kevinch3/NicotinD/commit/7cb2dbc1b66389efac0502da37cae97805035547))
+
 ## [0.1.41](https://github.com/kevinch3/NicotinD/compare/v0.1.40...v0.1.41) (2026-06-02)
 
 
