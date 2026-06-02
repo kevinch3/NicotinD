@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.38](https://github.com/kevinch3/NicotinD/compare/v0.1.37...v0.1.38) (2026-06-02)
+
+
+### Bug Fixes
+
+* **hunt:** make album acquisition idempotent so one album = one folder = one card ([fb97f3c](https://github.com/kevinch3/NicotinD/commit/fb97f3c6f6b33af38edce2887cd18ce42a908be3))
+
 ## [0.1.37](https://github.com/kevinch3/NicotinD/compare/v0.1.36...v0.1.37) (2026-06-02)
 
 ## [0.1.36](https://github.com/kevinch3/NicotinD/compare/v0.1.35...v0.1.36) (2026-06-02)
