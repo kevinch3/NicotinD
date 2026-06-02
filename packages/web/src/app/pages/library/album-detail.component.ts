@@ -10,12 +10,13 @@ import { ListControlsService, type SortOption } from '../../services/list-contro
 import { ListToolbarComponent } from '../../components/list-toolbar/list-toolbar.component';
 import { TrackRowComponent, type TrackAction } from '../../components/track-row/track-row.component';
 import { ConfirmDialogComponent } from '../../components/confirm-dialog/confirm-dialog.component';
+import { CoverArtComponent } from '../../components/cover-art/cover-art.component';
 import { toTrack } from '../../lib/track-utils';
 import { resolveArtistRoute } from '../../lib/route-utils';
 
 @Component({
   selector: 'app-album-detail',
-  imports: [ListToolbarComponent, TrackRowComponent, ConfirmDialogComponent, RouterLink],
+  imports: [ListToolbarComponent, TrackRowComponent, ConfirmDialogComponent, RouterLink, CoverArtComponent],
   templateUrl: './album-detail.component.html',
 })
 export class AlbumDetailComponent implements OnInit {

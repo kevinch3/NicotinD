@@ -1,22 +1,33 @@
 import { Component, input, signal } from '@angular/core';
 
-const GRADIENTS: [string, string][] = [
-  ['#6366f1', '#8b5cf6'],
-  ['#ec4899', '#f43f5e'],
-  ['#14b8a6', '#06b6d4'],
-  ['#f59e0b', '#ef4444'],
-  ['#10b981', '#14b8a6'],
-  ['#3b82f6', '#6366f1'],
-  ['#8b5cf6', '#d946ef'],
-  ['#f97316', '#f59e0b'],
-];
-
 export function hashCode(str: string): number {
   let h = 0;
   for (let i = 0; i < str.length; i++) {
     h = (Math.imul(31, h) + str.charCodeAt(i)) | 0;
   }
   return Math.abs(h);
+}
+
+/**
+ * Coverless placeholder gradient, built from the active theme's tokens
+ * (`--theme-accent` / `--theme-surface-2`, resolved live from [data-theme] on
+ * <html>) so it reads as generic-but-on-theme and restyles instantly when the
+ * user changes themes. The angle varies deterministically per item so a grid of
+ * placeholders isn't a flat wall of identical tiles.
+ */
+export function placeholderGradient(artist: string, album: string): string {
+  const angle = hashCode(`${artist}:${album}`) % 360;
+  return `linear-gradient(${angle}deg, var(--theme-accent), var(--theme-surface-2))`;
+}
+
+/** The single letter shown over the placeholder gradient. */
+export function placeholderInitial(album: string, artist: string): string {
+  return (album || artist || '?')[0].toUpperCase();
+}
+
+/** Fallback-initial font size: scales with px size, or a default when filling. */
+export function placeholderFontSize(size: number | undefined, fill: boolean): string {
+  return fill || size == null ? '2rem' : `${size * 0.35}px`;
 }
 
 @Component({
@@ -27,19 +38,24 @@ export class CoverArtComponent {
   readonly src = input<string | undefined>(undefined);
   readonly artist = input('');
   readonly album = input('');
-  readonly size = input.required<number>();
+  /** Fixed square size in px. Ignored (and optional) when `fill` is set. */
+  readonly size = input<number | undefined>(undefined);
+  /** Fill the parent (w-full aspect-square) instead of a fixed px size — for responsive grid tiles. */
+  readonly fill = input(false);
   readonly className = input('');
   readonly rounded = input('rounded');
 
   readonly imgError = signal(false);
 
+  get initialFontSize(): string {
+    return placeholderFontSize(this.size(), this.fill());
+  }
+
   get gradient(): string {
-    const [from, to] =
-      GRADIENTS[hashCode(`${this.artist()}:${this.album()}`) % GRADIENTS.length];
-    return `linear-gradient(135deg, ${from}, ${to})`;
+    return placeholderGradient(this.artist(), this.album());
   }
 
   get initial(): string {
-    return (this.album() || this.artist() || '?')[0].toUpperCase();
+    return placeholderInitial(this.album(), this.artist());
   }
 }

@@ -125,7 +125,7 @@ CSS custom properties set via `[data-theme]` on `<html>`. Six built-in presets: 
 - Theme service: `packages/web/src/app/services/theme.service.ts` (Angular `signal()` + localStorage)
 - Token definitions: `packages/web/src/styles.css` (`@layer base` — `:root` + per-`[data-theme]` overrides)
 - Settings UI: Settings → Appearance — swatch grid + "Follow system theme" toggle
-- Cover art: `packages/web/src/app/components/cover-art/cover-art.component.ts` — `<img>` with deterministic gradient fallback based on `hash(artist + album)`
+- Cover art: `packages/web/src/app/components/cover-art/cover-art.component.ts` — `<img>` that falls back (on missing/404 art) to a **theme-derived** placeholder: a gradient built from the live theme tokens (`var(--theme-accent)`/`var(--theme-surface-2)`) with a per-item angle from `hash(artist + album)`, plus the initial letter. Pure helpers (`placeholderGradient`/`placeholderInitial`/`placeholderFontSize`) are exported for unit testing. A `fill` input switches it from a fixed px size to a responsive `w-full aspect-square` tile so album-grid cards reuse the same fallback.
 
 ### Key Angular Patterns
 

@@ -11,12 +11,14 @@
     </a>
 
     <div class="flex flex-col sm:flex-row items-center sm:items-end gap-6 mb-8 text-center sm:text-left">
-      @if (selectedAlbum()!.coverArt) {
-        <img [src]="'/api/cover/' + selectedAlbum()!.coverArt + '?size=300&token=' + auth.token()"
-          alt="" class="w-48 h-48 rounded-lg object-cover flex-shrink-0" />
-      } @else {
-        <div class="w-48 h-48 rounded-lg bg-theme-surface-2 flex-shrink-0"></div>
-      }
+      <app-cover-art
+        [src]="selectedAlbum()!.coverArt ? '/api/cover/' + selectedAlbum()!.coverArt + '?size=300&token=' + auth.token() : undefined"
+        [artist]="selectedAlbum()!.artist"
+        [album]="selectedAlbum()!.name"
+        [size]="192"
+        rounded="rounded-lg"
+        className="flex-shrink-0"
+      />
       <div class="flex flex-col justify-end">
         <h1 class="text-2xl font-bold text-theme-primary">{{ selectedAlbum()!.name }}</h1>
         @if (selectedAlbum()!.artistId) {
