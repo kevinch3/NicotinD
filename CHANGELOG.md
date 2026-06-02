@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.39](https://github.com/kevinch3/NicotinD/compare/v0.1.38...v0.1.39) (2026-06-02)
+
+
+### Bug Fixes
+
+* **repair:** keep unmatched tracks in canonical trim instead of deleting them ([8b81346](https://github.com/kevinch3/NicotinD/commit/8b813464ea4d47e8a16394983f804b59453e118c))
+
 ## [0.1.38](https://github.com/kevinch3/NicotinD/compare/v0.1.37...v0.1.38) (2026-06-02)
 
 
