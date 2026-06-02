@@ -6,6 +6,7 @@ import type { SlskdRef } from '../index.js';
 import type { DiscographyService } from '../services/discography.service.js';
 import type { AlbumHunterService } from '../services/album-hunter.service.js';
 import { AlbumFallbackService, type AlternateCandidate } from '../services/album-fallback.service.js';
+import { normalizeForGrouping } from '../services/album-grouping.js';
 import type { Lidarr } from '@nicotind/lidarr-client';
 
 const log = createLogger('discography');
@@ -99,15 +100,24 @@ export function discographyRoutes({
     return c.json({ jobs });
   });
 
-  // POST /api/discography/albums/:lidarrAlbumId/hunt-download
+  // POST /api/discography/albums/:lidarrAlbumId/hunt-download[?replace=true]
   // Enqueues the chosen folder candidate AND records an album job (canonical
   // tracklist + ranked alternates) so the cross-peer fallback can recover any
   // tracks the chosen peer fails to deliver.
+  //
+  // Idempotent per lidarr_album_id — the root-cause fix for duplicate albums:
+  // a second download of an album that's already in flight (active job) or
+  // already complete in the library would land in a *second* folder → a second
+  // card. We refuse those with 409 so one album = one download = one folder.
+  // `?replace=true` (admin re-hunt) supersedes the prior active job first so we
+  // never run two active jobs for the same album.
   app.post('/albums/:lidarrAlbumId/hunt-download', async (c) => {
     const { lidarrAlbumId } = c.req.param();
     const albumId = Number(lidarrAlbumId);
     if (Number.isNaN(albumId)) return c.json({ error: 'Invalid album ID' }, 400);
     if (!slskdRef.current) return c.json({ error: 'Soulseek is not configured' }, 503);
+
+    const replace = c.req.query('replace') === 'true';
 
     const body = await c.req
       .json<{
@@ -118,6 +128,37 @@ export function discographyRoutes({
 
     if (!body?.selected?.username || !body.selected.files?.length) {
       return c.json({ error: 'Missing selected candidate' }, 400);
+    }
+
+    // Guard 1: an active job means a download for this album is already in flight.
+    const activeJob = db
+      .query<{ id: number }, [number]>(
+        `SELECT id FROM album_jobs WHERE lidarr_album_id = ? AND state = 'active' LIMIT 1`,
+      )
+      .get(albumId);
+    if (activeJob && !replace) {
+      return c.json({ error: 'already-downloading', jobId: activeJob.id }, 409);
+    }
+    if (replace && activeJob) {
+      // Supersede every active job for this album so at most one stays active.
+      db.run(`UPDATE album_jobs SET state = 'superseded' WHERE lidarr_album_id = ? AND state = 'active'`, [albumId]);
+    }
+
+    // Fetch canonical metadata up front — needed for the completeness guard and
+    // the recorded job. Best-effort: a Lidarr hiccup must not block the download.
+    const [album, tracks] = await Promise.all([
+      lidarr.album.get(albumId).catch(() => null),
+      lidarr.track.listByAlbum(albumId).catch(() => []),
+    ]);
+    const artistName = album?.artist?.artistName ?? null;
+    const albumTitle = album?.title ?? null;
+
+    // Guard 2: the album is already complete in the library — don't acquire a
+    // duplicate edition. Skipped on explicit replace.
+    if (!replace && artistName && albumTitle && tracks.length > 0) {
+      if (albumAlreadyComplete(db, artistName, albumTitle, tracks.length)) {
+        return c.json({ error: 'already-complete' }, 409);
+      }
     }
 
     try {
@@ -132,18 +173,14 @@ export function discographyRoutes({
     // Record the album job for fallback. Best-effort: a failure here must not
     // fail the download that already succeeded.
     try {
-      const [album, tracks] = await Promise.all([
-        lidarr.album.get(albumId).catch(() => null),
-        lidarr.track.listByAlbum(albumId),
-      ]);
       AlbumFallbackService.recordJob(db, {
         lidarrAlbumId: albumId,
         username: body.selected.username,
         directory: body.selected.directory,
         // Artist name lets the fallback fire a fresh per-track slskd search when
         // the recorded alternates can't cover a missing track.
-        artistName: album?.artist?.artistName ?? null,
-        albumTitle: album?.title ?? null,
+        artistName,
+        albumTitle,
         canonicalTracks: tracks.map((t) => t.title),
         // Recovery target: the files the user actually chose, so a folder that
         // downloads in full never triggers a duplicate-dumping fallback wave.
@@ -158,4 +195,25 @@ export function discographyRoutes({
   });
 
   return app;
+}
+
+/**
+ * True when the library already holds this album (same artist, same
+ * edition-stripped title) with at least as many songs as its canonical
+ * tracklist. Uses `normalizeForGrouping` so deluxe/remaster editions of an album
+ * we already have are treated as "complete" and don't get re-acquired.
+ */
+function albumAlreadyComplete(
+  db: Database,
+  artist: string,
+  title: string,
+  trackCount: number,
+): boolean {
+  const targetName = normalizeForGrouping(title);
+  const rows = db
+    .query<{ name: string; song_count: number }, [string]>(
+      `SELECT name, song_count FROM library_albums WHERE artist = ? COLLATE NOCASE`,
+    )
+    .all(artist);
+  return rows.some((r) => normalizeForGrouping(r.name) === targetName && r.song_count >= trackCount);
 }

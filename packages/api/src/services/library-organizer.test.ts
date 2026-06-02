@@ -79,6 +79,30 @@ describe('LibraryOrganizer (real fs)', () => {
     expect(existsSync(join(root, 'Daft Punk feat. Pharrell'))).toBe(false);
   });
 
+  it('names a hunted album folder after the job canonical title, not the peer edition tag', async () => {
+    const root = tmpRoot();
+    const staging = join(root, '_staging');
+    // Peer tagged this as a deluxe edition; the job knows the canonical album.
+    seed(staging, 'Queen - Hot Space (Deluxe)/01 - Staying Power.mp3', {
+      artist: 'Queen',
+      album: 'Hot Space (Deluxe Remastered Version)',
+      title: 'Staying Power',
+      trackNumber: 1,
+    });
+    const org = new LibraryOrganizer({
+      musicDir: root,
+      stagingDir: staging,
+      jobLookup: (dir) =>
+        dir === 'Queen - Hot Space (Deluxe)' ? { artist: 'Queen', album: 'Hot Space' } : null,
+    });
+    const result = await org.organizeBatch([
+      { username: 'u', directory: 'Queen - Hot Space (Deluxe)', filename: '01 - Staying Power.mp3', directoryFileCount: 1 },
+    ]);
+    expect(result.moved).toBe(1);
+    expect(existsSync(join(root, 'Queen', 'Hot Space', '01 - Staying Power.mp3'))).toBe(true);
+    expect(existsSync(join(root, 'Queen', 'Hot Space (Deluxe Remastered Version)'))).toBe(false);
+  });
+
   it('preserves unicode characters in artist and album folders', async () => {
     const root = tmpRoot();
     const staging = join(root, '_staging');

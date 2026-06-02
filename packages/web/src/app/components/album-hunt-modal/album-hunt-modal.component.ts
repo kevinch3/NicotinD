@@ -29,6 +29,9 @@ export class AlbumHuntModalComponent implements OnInit {
 
   readonly album = input.required<DiscographyAlbum>();
   readonly artistName = input.required<string>();
+  // Set by the admin re-hunt so the server supersedes the album's prior active
+  // job instead of rejecting the download as a duplicate.
+  readonly replace = input(false);
   readonly closed = output<void>();
   readonly downloaded = output<void>();
 
@@ -106,23 +109,36 @@ export class AlbumHuntModalComponent implements OnInit {
     this.state.set('downloading');
     try {
       await firstValueFrom(
-        this.api.huntDownload(this.album().lidarrId, {
-          selected: {
-            username: candidate.username,
-            directory: candidate.directory,
-            files: toFiles(candidate),
+        this.api.huntDownload(
+          this.album().lidarrId,
+          {
+            selected: {
+              username: candidate.username,
+              directory: candidate.directory,
+              files: toFiles(candidate),
+            },
+            alternates,
           },
-          alternates,
-        }),
+          this.replace(),
+        ),
       );
       // Surface the new transfers immediately in the global download UI.
       void this.transfer.poll();
       this.downloaded.emit();
       this.close();
     } catch (err) {
-      this.errorMsg.set(err instanceof Error ? err.message : 'Download failed');
+      this.errorMsg.set(this.downloadErrorMessage(err));
       this.state.set('error');
     }
+  }
+
+  // The server rejects a duplicate acquisition with 409 + a machine code; turn
+  // those into a clear message instead of a generic HTTP failure string.
+  private downloadErrorMessage(err: unknown): string {
+    const code = (err as { error?: { error?: string } })?.error?.error;
+    if (code === 'already-downloading') return 'This album is already downloading.';
+    if (code === 'already-complete') return 'This album is already in your library.';
+    return err instanceof Error ? err.message : 'Download failed';
   }
 
   setMinMatch(value: string): void {

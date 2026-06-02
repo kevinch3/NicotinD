@@ -327,6 +327,61 @@ describe('AlbumFallbackService', () => {
     expect(jobState(db)).toBe('active');
   });
 
+  it('fresh search prefers the clean studio track over a (5.1 mix) from a healthier peer', async () => {
+    const { slskd, enqueue } = makeSlskdWithSearch(
+      [
+        {
+          username: 'primary',
+          directory: 'Album',
+          files: [
+            { id: 'p1', filename: 'Album/01 Song One.flac', size: 1, state: 'Completed, Succeeded' },
+            { id: 'p2', filename: 'Album/02 Song Two.flac', size: 1, state: 'Completed, Errored' },
+          ],
+        },
+      ],
+      [
+        // Healthiest peer only has the 5.1 mix — must NOT win.
+        {
+          username: 'mixpeer',
+          freeUploadSlots: 1,
+          queueLength: 0,
+          uploadSpeed: 9_000_000,
+          files: [{ filename: 'Deluxe/02 Song Two (5.1 mix).flac', size: 5 }],
+        },
+        // Less healthy peer has the clean studio track — should win on cleanliness.
+        {
+          username: 'cleanpeer',
+          freeUploadSlots: 0,
+          queueLength: 50,
+          uploadSpeed: 1000,
+          files: [{ filename: 'Studio/02 Song Two.flac', size: 1 }],
+        },
+      ],
+    );
+    db.run(
+      `INSERT INTO transfer_retries (transfer_key, username, filename, attempts, gave_up)
+       VALUES ('primary::Album/02 Song Two.flac', 'primary', 'x', 3, 1)`,
+    );
+    AlbumFallbackService.recordJob(db, {
+      lidarrAlbumId: 1,
+      username: 'primary',
+      directory: 'Album',
+      artistName: 'Artist',
+      canonicalTracks: ['Song One', 'Song Two'],
+      targetFiles: [{ filename: 'Album/01 Song One.flac' }, { filename: 'Album/02 Song Two.flac' }],
+      alternates: [],
+    });
+
+    await new AlbumFallbackService(slskd, { db }).sweep();
+
+    expect(enqueue).toHaveBeenCalledTimes(1);
+    const [user, files] = enqueue.mock.calls[0];
+    expect(user).toBe('cleanpeer');
+    expect((files as Array<{ filename: string }>).map((f) => f.filename)).toEqual([
+      'Studio/02 Song Two.flac',
+    ]);
+  });
+
   it('exhausts once fresh searches keep finding nothing and the attempt cap is hit', async () => {
     const { slskd, enqueue, create } = makeSlskdWithSearch(
       [

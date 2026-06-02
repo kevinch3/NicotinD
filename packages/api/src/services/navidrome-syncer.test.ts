@@ -132,14 +132,16 @@ describe('NavidromeSyncer album canonicalization', () => {
     expect(albums[0]!.id).toBe('bang-1'); // fullest fragment
   });
 
-  it('leaves genuinely distinct albums (and deluxe editions) untouched', async () => {
+  it('merges edition variants (deluxe/remaster) into the base album', async () => {
     const albums = [
-      makeAlbum('a', { name: 'Are You Gonna Go My Way', artist: 'Lenny Kravitz' }),
-      makeAlbum('b', { name: 'Are You Gonna Go My Way (20th Anniversary Deluxe Edition)', artist: 'Lenny Kravitz' }),
+      makeAlbum('a', { name: 'Are You Gonna Go My Way', artist: 'Lenny Kravitz', songCount: 11 }),
+      makeAlbum('b', { name: 'Are You Gonna Go My Way (20th Anniversary Deluxe Edition)', artist: 'Lenny Kravitz', songCount: 16 }),
       makeAlbum('c', { name: 'Mama Said', artist: 'Lenny Kravitz' }),
     ];
     await new NavidromeSyncer(makeNavidrome(albums), db).syncFull();
-    expect(db.query('SELECT id FROM library_albums').all()).toHaveLength(3);
+    const names = db.query<{ name: string }, []>('SELECT name FROM library_albums ORDER BY name').all().map((r) => r.name);
+    // deluxe edition folds into the base; Mama Said stays its own card.
+    expect(names).toEqual(['Are You Gonna Go My Way', 'Mama Said']);
   });
 
   it('does not resurrect a deleted merged album via a surviving sibling fragment', async () => {

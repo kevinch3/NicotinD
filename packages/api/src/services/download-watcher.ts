@@ -62,6 +62,18 @@ export class DownloadWatcher {
         acoustid: options.acoustidApiKey ? new AcoustIdLookup(options.acoustidApiKey) : undefined,
         unsortedRoot: options.unsortedRoot,
         preferFlacSkipMp3: options.preferFlacSkipMp3,
+        // Name a hunted album's folder after its Lidarr canonical title so every
+        // edition/re-hunt consolidates into one <Artist>/<album> dir.
+        jobLookup: (directory) => {
+          const row = getDatabase()
+            .query<{ artist_name: string | null; album_title: string | null }, [string]>(
+              `SELECT artist_name, album_title FROM album_jobs
+               WHERE directory = ? AND album_title IS NOT NULL
+               ORDER BY created_at DESC LIMIT 1`,
+            )
+            .get(directory);
+          return row ? { artist: row.artist_name, album: row.album_title } : null;
+        },
       });
     this.autoPlaylist =
       options.autoPlaylist ??

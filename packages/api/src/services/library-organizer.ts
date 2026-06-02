@@ -41,6 +41,14 @@ export interface LibraryOrganizerOptions {
    * default — these are always-unwanted collisions that split Navidrome albums.
    */
   autoDedupe?: boolean;
+  /**
+   * Resolve a peer-side download directory to the canonical album it was hunted
+   * as. When a group's directory matches a recorded album job, the destination
+   * folder is named after the Lidarr canonical album (not the peer's edition
+   * tag), so every edition/re-hunt of an album consolidates into one
+   * `<Artist>/<canonical-album>` dir instead of spawning edition-variant siblings.
+   */
+  jobLookup?: (peerDirectory: string) => { artist?: string | null; album?: string | null } | null;
 }
 
 export interface OrganizeResult {
@@ -73,6 +81,7 @@ export class LibraryOrganizer {
   private acoustid: AcoustIdLookup | undefined;
   private preferFlacSkipMp3: boolean;
   private autoDedupe: boolean;
+  private jobLookup?: (peerDirectory: string) => { artist?: string | null; album?: string | null } | null;
   /** Real <Artist>/<Album> dirs written during the current batch (for dedupe). */
   private touchedAlbumDirs = new Set<string>();
 
@@ -83,6 +92,7 @@ export class LibraryOrganizer {
     this.moveLogPath = opts.moveLogPath;
     this.preferFlacSkipMp3 = opts.preferFlacSkipMp3 ?? false;
     this.autoDedupe = opts.autoDedupe ?? true;
+    this.jobLookup = opts.jobLookup;
     // unsortedRoot may be relative (resolved under musicDir) or absolute (e.g.
     // <dataDir>/unsorted so Navidrome doesn't index the bucket).
     const rawUnsorted = opts.unsortedRoot ?? 'Unsorted';
@@ -172,7 +182,7 @@ export class LibraryOrganizer {
 
     if (resolved.length === 0) return;
 
-    const folderTags = this.deriveFolderTags(resolved);
+    const folderTags = this.applyJobCanonicalName(directory, this.deriveFolderTags(resolved));
 
     for (const r of resolved) {
       const outcome = await this.placeFile(r, folderTags);
@@ -188,6 +198,22 @@ export class LibraryOrganizer {
    * if still missing and AcoustID is configured, fingerprint and write
    * tags back to the file.
    */
+  /**
+   * If this peer directory was recorded as an album hunt, name the destination
+   * folder after the Lidarr canonical album (overriding the peer's edition tag)
+   * so every edition/re-hunt of the album lands in one `<Artist>/<album>` dir.
+   * No match → tags pass through unchanged.
+   */
+  private applyJobCanonicalName(directory: string, tags: AlbumTags): AlbumTags {
+    const job = this.jobLookup?.(directory);
+    if (!job?.album) return tags;
+    const canonicalAlbum = sanitizeAlbumTag(normalizeTagValue(job.album));
+    if (!canonicalAlbum) return tags;
+    const albumArtist =
+      tags.albumArtist ?? (job.artist ? sanitizeArtistTag(normalizeTagValue(job.artist)) : undefined);
+    return { ...tags, album: canonicalAlbum, albumArtist };
+  }
+
   private async readWithFallback(path: string, peerDirectory: string): Promise<AudioTags> {
     const tags = await readAudioTags(path);
     let artist = sanitizeArtistTag(normalizeTagValue(tags.artist));

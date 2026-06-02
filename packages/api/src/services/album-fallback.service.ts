@@ -293,6 +293,7 @@ export class AlbumFallbackService {
       let best: {
         username: string;
         file: { filename: string; size: number };
+        extras: number;
         score: number;
       } | null = null;
 
@@ -301,14 +302,20 @@ export class AlbumFallbackService {
         for (const file of response.files) {
           const ext = file.filename.slice(file.filename.lastIndexOf('.')).toLowerCase();
           if (!AUDIO_EXTENSIONS.has(ext)) continue;
-          if (!titlesOverlap(normTitle, normalizeBasename(file.filename))) continue;
+          const normFile = normalizeBasename(file.filename);
+          if (!titlesOverlap(normTitle, normFile)) continue;
 
-          // Prefer healthy peers; break ties toward FLAC.
+          // Cleanliness dominates: the file with the fewest extra words beyond the
+          // canonical title wins, so we recover "Bohemian Rhapsody" — never the
+          // "(5.1 mix)"/"(New Mix)" variant that a healthy FLAC peer would
+          // otherwise win on. Health/FLAC only break ties among equally-clean files.
+          const extras = extraTokenCount(normTitle, normFile);
           const score = peerScore + (ext === '.flac' ? 1 : 0);
-          if (!best || score > best.score) {
+          if (!best || extras < best.extras || (extras === best.extras && score > best.score)) {
             best = {
               username: response.username,
               file: { filename: file.filename, size: file.size },
+              extras,
               score,
             };
           }
@@ -386,6 +393,17 @@ function normalizeBasename(filename: string): string {
   const base = filename.replace(/\\/g, '/').split('/').pop() ?? filename;
   const noExt = base.slice(0, base.lastIndexOf('.') || base.length);
   return normalizeTitle(noExt);
+}
+
+/**
+ * How many words a candidate filename has beyond the canonical track title — a
+ * proxy for version/edition noise ("(5.1 mix)", "(New Mix)", "(remastered)").
+ * 0 means the candidate is exactly the track; higher means more cruft.
+ */
+function extraTokenCount(canonicalNorm: string, fileNorm: string): number {
+  const canon = new Set(canonicalNorm.split(' ').filter(Boolean));
+  const fileWords = fileNorm.split(' ').filter(Boolean);
+  return fileWords.reduce((n, w) => (canon.has(w) ? n : n + 1), 0);
 }
 
 /**

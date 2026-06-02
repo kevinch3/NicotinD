@@ -17,10 +17,27 @@ describe('normalizeForGrouping', () => {
     expect(c).toBe(a);
   });
 
-  it('keeps genuinely distinct editions separate (words differ)', () => {
-    expect(normalizeForGrouping('Are You Gonna Go My Way')).not.toBe(
-      normalizeForGrouping('Are You Gonna Go My Way (20th Anniversary Deluxe Edition)'),
+  it('folds edition qualifiers so all editions of an album share a key', () => {
+    const base = normalizeForGrouping('Hot Space');
+    expect(normalizeForGrouping('Hot Space (2011 Deluxe Remaster) 1')).toBe(base);
+    expect(normalizeForGrouping('Hot Space (2011 Deluxe Remaster) 2')).toBe(base);
+    expect(normalizeForGrouping('Hot Space - Remastered Deluxe Edition (2 CD)')).toBe(base);
+    expect(normalizeForGrouping('Hot Space (Deluxe Remastered Version)')).toBe(base);
+    expect(normalizeForGrouping('Are You Gonna Go My Way (20th Anniversary Deluxe Edition)')).toBe(
+      normalizeForGrouping('Are You Gonna Go My Way'),
     );
+    expect(normalizeForGrouping('Canción Animal (Remastered)')).toBe(
+      normalizeForGrouping('Canción Animal'),
+    );
+    expect(normalizeForGrouping('La Pachanga (Remasterización 2022) [Explicit]')).toBe(
+      normalizeForGrouping('La Pachanga'),
+    );
+  });
+
+  it('does NOT fold genuinely distinct titles or real numbers', () => {
+    expect(normalizeForGrouping('Greatest Hits')).not.toBe(normalizeForGrouping('Greatest Hits II'));
+    // No edition keyword → trailing number is part of the title, kept.
+    expect(normalizeForGrouping('Version 2.0')).toBe('version 2 0');
   });
 });
 

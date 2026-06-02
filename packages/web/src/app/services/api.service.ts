@@ -487,16 +487,20 @@ export class ApiService {
 
   // Enqueues the chosen folder candidate and records an album job so failed
   // tracks can be recovered from the supplied alternate candidates.
+  // `replace` (admin re-hunt) supersedes the album's prior active job so the
+  // server's one-download-per-album guard allows a deliberate re-acquisition.
   huntDownload(
     lidarrAlbumId: number,
     payload: {
       selected: { username: string; directory: string; files: Array<{ filename: string; size: number }> };
       alternates: Array<{ username: string; directory: string; files: Array<{ filename: string; size: number }> }>;
     },
+    replace = false,
   ) {
     return this.http.post<{ ok: boolean; queued: number }>(
       `/api/discography/albums/${lidarrAlbumId}/hunt-download`,
       payload,
+      { params: replace ? { replace: 'true' } : {} },
     );
   }
 

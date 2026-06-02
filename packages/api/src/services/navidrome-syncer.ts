@@ -52,16 +52,19 @@ export function mergeAlbums(albums: Album[]): {
     );
     const rep = members.find((m) => m.id === canonicalId)!;
     for (const m of members) idMap.set(m.id, canonicalId);
-    // Representative identity from the fullest rip; earliest release year; most
-    // recent `created` so a freshly-hunted merge still surfaces under "newest";
-    // first available cover art across the fragments.
+    // Stable id = fullest rip (rep); display name = the *shortest* member title
+    // so the base edition ("Are You Gonna Go My Way") wins over a longer
+    // "(Deluxe Edition)" sibling. Earliest release year; most recent `created` so
+    // a freshly-hunted merge still surfaces under "newest"; first available cover.
     const years = members.map((m) => m.year).filter((y): y is number => y != null);
     const createds = members
       .map((m) => m.created)
       .filter((c): c is string => c != null)
       .sort();
+    const displayName = members.reduce((a, b) => (b.name.length < a.name.length ? b : a)).name;
     canonical.push({
       ...rep,
+      name: displayName,
       year: years.length ? Math.min(...years) : rep.year,
       created: createds[createds.length - 1] ?? rep.created,
       coverArt: members.find((m) => m.coverArt)?.coverArt ?? rep.coverArt,
