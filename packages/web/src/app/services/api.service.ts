@@ -125,34 +125,12 @@ export interface Song {
   created: string;
 }
 
-export interface Playlist {
-  id: string;
-  name: string;
-  songCount: number;
-  duration: number;
-  owner: string;
-  public: boolean;
-  created: string;
-  changed: string;
-  coverArt?: string;
-  createdBy?: string | null;
-  createdAt?: string | null;
-  modifiedBy?: string | null;
-  modifiedAt?: string | null;
-}
-
-export interface PlaylistDetail extends Playlist {
-  entry?: Array<{
-    id: string;
-    title: string;
-    artist: string;
-    artistId?: string;
-    album: string;
-    albumId?: string;
-    duration?: number;
-    track?: number;
-    coverArt?: string;
-  }>;
+export interface StreamingSettings {
+  transcodeEnabled: boolean;
+  format: 'mp3' | 'opus' | 'aac';
+  maxBitRate: number;
+  forceTranscode: boolean;
+  ffmpegAvailable?: boolean;
 }
 
 export interface UserDir {
@@ -343,7 +321,7 @@ export class ApiService {
 
   // System
   getStatus() {
-    return this.http.get<{ slskd: { healthy: boolean }; navidrome: { healthy: boolean } }>('/api/system/status');
+    return this.http.get<{ slskd: { healthy: boolean } }>('/api/system/status');
   }
 
   triggerScan() {
@@ -354,7 +332,7 @@ export class ApiService {
     return this.http.get<{ scanning: boolean; count: number }>('/api/system/scan/status');
   }
 
-  restartService(service: 'slskd' | 'navidrome') {
+  restartService(service: 'slskd') {
     return this.http.post<{ ok: boolean }>(`/api/system/restart/${service}`, {});
   }
 
@@ -401,25 +379,13 @@ export class ApiService {
     return this.http.post<{ ok: boolean }>('/api/settings/shares/rescan', {});
   }
 
-  // Playlists
-  getPlaylists() {
-    return this.http.get<Playlist[]>('/api/playlists');
+  // Streaming / transcoding
+  getStreamingSettings() {
+    return this.http.get<StreamingSettings>('/api/settings/streaming');
   }
 
-  getPlaylist(id: string) {
-    return this.http.get<PlaylistDetail>(`/api/playlists/${id}`);
-  }
-
-  createPlaylist(name: string, songIds?: string[]) {
-    return this.http.post<{ id: string; name: string }>('/api/playlists', { name, songIds });
-  }
-
-  updatePlaylist(id: string, updates: { name?: string; songIdsToAdd?: string[]; songIndexesToRemove?: number[] }) {
-    return this.http.put<{ ok: boolean }>(`/api/playlists/${id}`, updates);
-  }
-
-  deletePlaylist(id: string) {
-    return this.http.delete<{ ok: boolean }>(`/api/playlists/${id}`);
+  saveStreamingSettings(patch: Partial<StreamingSettings>) {
+    return this.http.put<StreamingSettings>('/api/settings/streaming', patch);
   }
 
   // Setup (public — no auth token)

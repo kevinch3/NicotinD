@@ -17,10 +17,5 @@ slskd:
   port: 5030
   username: nicotind
 
-navidrome:
-  url: http://localhost:4533
-  port: 4533
-  username: nicotind
-
 jwt:
   expiresIn: 24h

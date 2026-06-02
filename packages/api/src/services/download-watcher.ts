@@ -1,10 +1,8 @@
 import { createLogger } from '@nicotind/core';
 import type { Slskd } from '@nicotind/slskd-client';
-import type { Navidrome } from '@nicotind/navidrome-client';
 import { basename, join, relative } from 'node:path';
 import { existsSync } from 'node:fs';
 import type { CompletedDownloadFile } from './path-inference.js';
-import { AutoPlaylistService } from './auto-playlist.service.js';
 import { LibraryOrganizer } from './library-organizer.js';
 import { AcoustIdLookup } from './acoustid-lookup.js';
 import { getDatabase } from '../db.js';
@@ -17,20 +15,22 @@ interface DownloadWatcherOptions {
   musicDir?: string;
   stagingDir?: string;
   acoustidApiKey?: string;
-  /** Absolute path for the unsortable-files bucket. Defaults to <musicDir>/Unsorted (visible to Navidrome). */
+  /** Absolute path for the unsortable-files bucket. Defaults to <musicDir>/Unsorted. */
   unsortedRoot?: string;
   /** Drop an incoming MP3 when a FLAC of the same track is already in the album folder. */
   preferFlacSkipMp3?: boolean;
   /** Pre-built organizer (testing). */
   libraryOrganizer?: { organizeBatch: (files: CompletedDownloadFile[]) => Promise<unknown> };
-  autoPlaylist?: { processBatch: (files: CompletedDownloadFile[]) => Promise<void> };
-  /** Fired after each post-download Navidrome scan; used to drive the canonical-DB sync. */
-  onScanComplete?: () => Promise<void> | void;
+  /**
+   * Native scan hook: called after a batch is organized, with the post-move
+   * relative paths. Runs the LibraryScanner incrementally (and curation), so the
+   * canonical tables reflect the new files synchronously — no external scanner.
+   */
+  scan?: (relPaths: string[]) => Promise<void> | void;
 }
 
 export class DownloadWatcher {
   private slskd: Slskd;
-  private navidrome: Navidrome;
   private intervalMs: number;
   private timer: ReturnType<typeof setInterval> | null = null;
   private knownCompleted = new Set<string>();
@@ -41,16 +41,11 @@ export class DownloadWatcher {
     organizeBatch: (files: CompletedDownloadFile[]) => Promise<unknown>;
   };
   private checking = false;
-  private pendingPlaylistFiles: CompletedDownloadFile[] = [];
-  private autoPlaylist: {
-    processBatch: (files: CompletedDownloadFile[]) => Promise<void>;
-    migrateNavidromeIds?: () => Promise<void>;
-  };
-  private onScanComplete?: () => Promise<void> | void;
+  private pendingScanFiles: CompletedDownloadFile[] = [];
+  private scan?: (relPaths: string[]) => Promise<void> | void;
 
-  constructor(slskd: Slskd, navidrome: Navidrome, options: DownloadWatcherOptions = {}) {
+  constructor(slskd: Slskd, options: DownloadWatcherOptions = {}) {
     this.slskd = slskd;
-    this.navidrome = navidrome;
     this.intervalMs = options.intervalMs ?? 5_000;
     this.scanDebounceMs = options.scanDebounceMs ?? 10_000;
     this.musicDir = options.musicDir ? this.expandDir(options.musicDir) : null;
@@ -75,10 +70,7 @@ export class DownloadWatcher {
           return row ? { artist: row.artist_name, album: row.album_title } : null;
         },
       });
-    this.autoPlaylist =
-      options.autoPlaylist ??
-      new AutoPlaylistService(navidrome, this.musicDir ?? '', undefined, getDatabase());
-    this.onScanComplete = options.onScanComplete;
+    this.scan = options.scan;
   }
 
   start(): void {
@@ -88,14 +80,6 @@ export class DownloadWatcher {
     this.timer = setInterval(() => this.check(), this.intervalMs);
     // Run immediately on start
     this.check();
-    // Startup scan: removes ghost records left by deleted/moved files
-    void this.navidrome.system.startScan().catch((err) => {
-      log.warn({ err }, 'Startup library scan failed');
-    });
-    // One-time background migration: back-fill navidrome_id for existing downloads
-    void this.autoPlaylist.migrateNavidromeIds?.().catch((err) => {
-      log.warn({ err }, 'navidrome_id migration failed');
-    });
   }
 
   stop(): void {
@@ -106,11 +90,9 @@ export class DownloadWatcher {
     if (this.scanDebounceTimer) {
       clearTimeout(this.scanDebounceTimer);
       this.scanDebounceTimer = null;
-      if (this.pendingPlaylistFiles.length > 0) {
-        const files = this.pendingPlaylistFiles.splice(0);
-        void this.autoPlaylist.processBatch(files).catch((err) => {
-          log.warn({ err }, 'Auto-playlist flush on stop failed');
-        });
+      if (this.pendingScanFiles.length > 0) {
+        const files = this.pendingScanFiles.splice(0);
+        void this.runScan(files);
       }
     }
     log.info('Download watcher stopped');
@@ -160,7 +142,7 @@ export class DownloadWatcher {
                 directoryFileCount: dir.fileCount,
               };
               completedFiles.push(fileData);
-              this.pendingPlaylistFiles.push(fileData);
+              this.pendingScanFiles.push(fileData);
               this.recordCompletedDownload(
                 key,
                 group.username,
@@ -189,7 +171,7 @@ export class DownloadWatcher {
           log.warn({ err }, 'Library organization step failed');
         }
         // organizeBatch mutates file.relativePath to the post-move path; persist
-        // so auto-playlist resolution and back-fill see the location Navidrome indexes.
+        // so the scan and back-fill see the final on-disk location.
         for (const file of completedFiles) {
           if (file.relativePath) {
             this.updateRelativePath(file.username, file.directory, file.filename, file.relativePath);
@@ -215,26 +197,24 @@ export class DownloadWatcher {
     }
 
     this.scanDebounceTimer = setTimeout(async () => {
-      const filesToProcess = this.pendingPlaylistFiles.splice(0);
-      try {
-        log.info('Triggering Navidrome library scan');
-        await this.navidrome.system.startScan(true);
-      } catch (err) {
-        log.error({ err }, 'Failed to trigger scan');
-      }
-      try {
-        await this.autoPlaylist.processBatch(filesToProcess);
-      } catch (err) {
-        log.error({ err }, 'Auto-playlist processing failed');
-      }
-      if (this.onScanComplete) {
-        try {
-          await this.onScanComplete();
-        } catch (err) {
-          log.error({ err }, 'onScanComplete handler failed');
-        }
-      }
+      const filesToProcess = this.pendingScanFiles.splice(0);
+      await this.runScan(filesToProcess);
     }, this.scanDebounceMs);
+  }
+
+  /** Index a freshly-organized batch into the canonical library tables. */
+  private async runScan(files: CompletedDownloadFile[]): Promise<void> {
+    if (!this.scan) return;
+    const relPaths = files
+      .map((f) => f.relativePath)
+      .filter((p): p is string => Boolean(p));
+    if (relPaths.length === 0) return;
+    try {
+      log.info({ count: relPaths.length }, 'Scanning newly organized files into library');
+      await this.scan(relPaths);
+    } catch (err) {
+      log.error({ err }, 'Library scan after download failed');
+    }
   }
 
   private parseCompletedAt(endedAt?: string): number {

@@ -20,12 +20,11 @@ interface NavItem {
 const BASE_NAV: NavItem[] = [
   { to: '/', label: 'Search' },
   { to: '/downloads', label: 'Downloads' },
-  { to: '/playlists', label: 'Playlists' },
   { to: '/library', label: 'Library' },
   { to: '/settings', label: 'Settings' },
 ];
 // Nav items that require the backend to be available
-const ONLINE_ONLY_ROUTES = new Set(['/', '/library', '/playlists']);
+const ONLINE_ONLY_ROUTES = new Set(['/', '/library']);
 
 @Component({
   selector: 'app-layout',

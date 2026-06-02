@@ -3,7 +3,6 @@ import { basename, dirname, join, normalize, relative } from 'node:path';
 import { unlinkSync, rmdirSync, rmSync, existsSync, readdirSync } from 'node:fs';
 import { createLogger } from '@nicotind/core';
 import type { Song, Album, Artist } from '@nicotind/core';
-import type { Navidrome } from '@nicotind/navidrome-client';
 import type { AuthEnv } from '../middleware/auth.js';
 import { getDatabase } from '../db.js';
 import type { LibraryCurator } from '../services/library-curator.js';
@@ -154,7 +153,6 @@ function albumOrderBy(type: string): string {
 }
 
 export function libraryRoutes(
-  navidrome: Navidrome,
   musicDir?: string,
   options: LibraryRoutesOptions = {},
 ) {
@@ -174,7 +172,7 @@ export function libraryRoutes(
     return c.json(rows.map(rowToArtist));
   });
 
-  app.get('/artists/:id', async (c) => {
+  app.get('/artists/:id', (c) => {
     const id = c.req.param('id');
     const db = getDatabase();
     const artistRow = db
@@ -184,13 +182,7 @@ export function libraryRoutes(
       )
       .get(id);
     if (!artistRow) {
-      // Fall back to Navidrome — possible the canonical DB is still warming up.
-      try {
-        const result = await navidrome.browsing.getArtist(id);
-        return c.json(result);
-      } catch {
-        return c.json({ error: 'Artist not found' }, 404);
-      }
+      return c.json({ error: 'Artist not found' }, 404);
     }
     const albumRows = db
       .query<AlbumRow, [string]>(
@@ -228,20 +220,14 @@ export function libraryRoutes(
     return c.json(rows.map(rowToAlbum));
   });
 
-  app.get('/albums/:id', async (c) => {
+  app.get('/albums/:id', (c) => {
     const id = c.req.param('id');
     const db = getDatabase();
     const albumRow = db
       .query<AlbumRow, [string]>(`${ALBUM_SELECT} WHERE id = ?`)
       .get(id);
     if (!albumRow) {
-      // Possible the sync hasn't run yet — fall back to Navidrome to keep things working.
-      try {
-        const { album, songs } = await navidrome.browsing.getAlbum(id);
-        return c.json({ ...album, song: songs });
-      } catch {
-        return c.json({ error: 'Album not found' }, 404);
-      }
+      return c.json({ error: 'Album not found' }, 404);
     }
     const songRows = db
       .query<SongRow, [string]>(
@@ -259,32 +245,19 @@ export function libraryRoutes(
     const albumId = c.req.param('id');
     const db = getDatabase();
 
-    // Source the tracklist from the canonical DB (the UI's source of truth);
-    // fall back to Navidrome only when the album hasn't been synced yet.
+    // The canonical DB is the single source of truth for the tracklist.
     const albumRow = db
       .query<{ name: string; artist: string }, [string]>(
         'SELECT name, artist FROM library_albums WHERE id = ?',
       )
       .get(albumId);
-    let songIds: string[] = [];
-    let songPaths: string[] = [];
     const canonicalSongs = db
       .query<{ id: string; path: string }, [string]>(
         'SELECT id, path FROM library_songs WHERE album_id = ?',
       )
       .all(albumId);
-    if (canonicalSongs.length > 0) {
-      songIds = canonicalSongs.map((s) => s.id);
-      songPaths = canonicalSongs.map((s) => s.path);
-    } else {
-      try {
-        const result = await navidrome.browsing.getAlbum(albumId);
-        songIds = result.songs.map((s) => s.id);
-        songPaths = result.songs.map((s) => s.path).filter((p): p is string => Boolean(p));
-      } catch {
-        // Nothing known here — fall through; if there's no album row either it's a 404.
-      }
-    }
+    const songIds: string[] = canonicalSongs.map((s) => s.id);
+    const songPaths: string[] = canonicalSongs.map((s) => s.path);
 
     if (songIds.length === 0 && !albumRow) {
       return c.json({ error: 'Album not found' }, 404);
@@ -321,10 +294,9 @@ export function libraryRoutes(
       }
     }
 
-    // Remove the album from the canonical tables synchronously and tombstone it,
-    // so the UI persists the deletion regardless of when Navidrome's scan lands.
-    // The tombstone stops the next sync from resurrecting the album before the
-    // (async) scan catches up — the syncer clears it once the scan confirms it's gone.
+    // Remove the album from the canonical tables synchronously. The scanner reads
+    // straight from disk (and the files are now gone), so a later rescan won't
+    // resurrect it — no tombstone/async-scan reconciliation needed.
     db.transaction(() => {
       if (songIds.length > 0) {
         const placeholders = songIds.map(() => '?').join(',');
@@ -332,22 +304,7 @@ export function libraryRoutes(
       }
       db.run('DELETE FROM library_songs WHERE album_id = ?', [albumId]);
       db.run('DELETE FROM library_albums WHERE id = ?', [albumId]);
-      db.run(
-        `INSERT INTO library_album_tombstones (album_id, name, artist, created_at)
-         VALUES (?, ?, ?, ?)
-         ON CONFLICT(album_id) DO UPDATE SET created_at = excluded.created_at`,
-        [albumId, albumRow?.name ?? null, albumRow?.artist ?? null, Date.now()],
-      );
     })();
-
-    // Trigger a rescan so Navidrome's own index drops the album. We deliberately
-    // do NOT run the canonical sync inline: the tombstone guard already keeps the
-    // album gone, and onScanComplete (or the next cycle) reconciles + clears it.
-    try {
-      await (navidrome.system as { startScan: (fullScan?: boolean) => Promise<void> }).startScan(true);
-    } catch {
-      // Non-fatal
-    }
 
     log.info({ albumId, deletedCount, failedCount: failed.length, folderDeleted }, 'Album deletion complete');
     return c.json({ ok: failed.length === 0, deletedCount, failedCount: failed.length, failed });
@@ -429,17 +386,12 @@ export function libraryRoutes(
   });
 
   // --- Songs --------------------------------------------------------------------
-  app.get('/songs/:id', async (c) => {
+  app.get('/songs/:id', (c) => {
     const id = c.req.param('id');
     const db = getDatabase();
     const row = db.query<SongRow, [string]>(`${SONG_SELECT} WHERE s.id = ?`).get(id);
     if (row) return c.json(rowToSong(row));
-    try {
-      const song = await navidrome.browsing.getSong(id);
-      return c.json(song);
-    } catch {
-      return c.json({ error: 'Song not found' }, 404);
-    }
+    return c.json({ error: 'Song not found' }, 404);
   });
 
   app.get('/songs/:id/provenance', async (c) => {
@@ -653,23 +605,13 @@ export function libraryRoutes(
       return { ok: false, error: 'Music directory not configured', status: 500 };
     }
 
-    // Prefer the canonical row; fall back to Navidrome for songs that haven't been synced yet.
-    let songPath: string | null = null;
     const db = getDatabase();
     const canonical = db
       .query<{ path: string }, [string]>(`SELECT path FROM library_songs WHERE id = ?`)
       .get(id);
-    if (canonical?.path) songPath = canonical.path;
+    const songPath: string | null = canonical?.path ?? null;
     if (!songPath) {
-      try {
-        const song = await navidrome.browsing.getSong(id);
-        songPath = song?.path ?? null;
-      } catch {
-        return { ok: false, error: 'Song not found in library', status: 404 };
-      }
-    }
-    if (!songPath) {
-      return { ok: false, error: 'Song path not available', status: 404 };
+      return { ok: false, error: 'Song not found in library', status: 404 };
     }
 
     const expandedMusicDir = expandDir(musicDir);
@@ -762,11 +704,6 @@ export function libraryRoutes(
       return c.json({ error: result.error }, (result.status ?? 500) as 400 | 404 | 500);
     }
 
-    try {
-      await (navidrome.system as { startScan: (fullScan?: boolean) => Promise<void> }).startScan(true);
-    } catch {
-      // Non-fatal
-    }
     if (runSync) void runSync();
 
     return c.json({ ok: true });
@@ -791,11 +728,6 @@ export function libraryRoutes(
       return c.json({ error: firstError?.value.error ?? 'Failed to delete any songs' }, status as 400 | 404 | 500);
     }
 
-    try {
-      await (navidrome.system as { startScan: (fullScan?: boolean) => Promise<void> }).startScan(true);
-    } catch {
-      // Non-fatal
-    }
     if (runSync) void runSync();
 
     return c.json({ ok: true, deletedCount: ids.length - failed.length });

@@ -2,16 +2,21 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { Hono } from 'hono';
 import type { NicotinDConfig } from '@nicotind/core';
-import type { Navidrome } from '@nicotind/navidrome-client';
 import type { ServiceManager } from '@nicotind/service-manager';
 import type { AuthEnv } from '../middleware/auth.js';
-import { DownloadWatcher } from '../services/download-watcher.js';
+import type { DownloadWatcher } from '../services/download-watcher.js';
 import { updateExternalSoulseekCredentials } from '../services/slskd-config.js';
+import { getDatabase } from '../db.js';
+import {
+  getStreamingSettings,
+  setStreamingSettings,
+  type StreamingSettings,
+} from '../services/streaming-settings.js';
+import { ffmpegAvailable } from '../services/transcode.js';
 import type { SlskdRef, WatcherRef } from '../index.js';
 
 interface PersistedSecrets {
   slskdPassword: string;
-  navidromePassword: string;
   jwtSecret: string;
   soulseekUsername?: string;
   soulseekPassword?: string;
@@ -38,12 +43,38 @@ function writeSecrets(dataDir: string, secrets: PersistedSecrets): void {
 export function settingsRoutes(
   config: NicotinDConfig,
   slskdRef: SlskdRef,
-  navidrome: Navidrome,
+  makeWatcher: () => DownloadWatcher | null,
   serviceManager: ServiceManager,
   watcherRef: WatcherRef,
 ) {
   const app = new Hono<AuthEnv>();
   const soulseekConfigured = () => Boolean(config.soulseek.username && config.soulseek.password);
+
+  // GET /api/settings/streaming — current transcoding preferences + ffmpeg status
+  app.get('/streaming', (c) => {
+    const settings = getStreamingSettings(getDatabase());
+    return c.json({ ...settings, ffmpegAvailable: ffmpegAvailable() });
+  });
+
+  // PUT /api/settings/streaming — update transcoding preferences (admin)
+  app.put('/streaming', async (c) => {
+    const user = c.get('user');
+    if (user.role !== 'admin') {
+      return c.json({ error: 'Only administrators can change streaming settings' }, 403);
+    }
+    const body = await c.req.json<Partial<StreamingSettings>>();
+    const patch: Partial<StreamingSettings> = {};
+    if (typeof body.transcodeEnabled === 'boolean') patch.transcodeEnabled = body.transcodeEnabled;
+    if (typeof body.forceTranscode === 'boolean') patch.forceTranscode = body.forceTranscode;
+    if (body.format === 'mp3' || body.format === 'opus' || body.format === 'aac') {
+      patch.format = body.format;
+    }
+    if (typeof body.maxBitRate === 'number' && body.maxBitRate > 0 && body.maxBitRate <= 512) {
+      patch.maxBitRate = Math.round(body.maxBitRate);
+    }
+    const next = setStreamingSettings(getDatabase(), patch);
+    return c.json({ ...next, ffmpegAvailable: ffmpegAvailable() });
+  });
 
   // GET /api/settings/soulseek — read current Soulseek config + connection status
   app.get('/soulseek', async (c) => {
@@ -189,10 +220,8 @@ export function settingsRoutes(
     if (watcherRef.current) {
       watcherRef.current.stop();
     }
-    watcherRef.current = new DownloadWatcher(slskdRef.current!, navidrome, {
-      musicDir: config.musicDir,
-    });
-    watcherRef.current.start();
+    watcherRef.current = makeWatcher();
+    watcherRef.current?.start();
 
     // 6. Verify connection after a short delay
     let connected = false;

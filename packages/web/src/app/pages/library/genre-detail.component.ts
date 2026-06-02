@@ -7,13 +7,12 @@ import { PlayerService, type Track } from '../../services/player.service';
 import { TransferService } from '../../services/transfer.service';
 import { TrackRowComponent, type TrackAction } from '../../components/track-row/track-row.component';
 import { ConfirmDialogComponent } from '../../components/confirm-dialog/confirm-dialog.component';
-import { PlaylistAutocompleteComponent } from '../../components/playlist-autocomplete/playlist-autocomplete.component';
 import { toTrack } from '../../lib/track-utils';
 import { resolveArtistRoute } from '../../lib/route-utils';
 
 @Component({
   selector: 'app-genre-detail',
-  imports: [TrackRowComponent, ConfirmDialogComponent, PlaylistAutocompleteComponent, RouterLink],
+  imports: [TrackRowComponent, ConfirmDialogComponent, RouterLink],
   templateUrl: './genre-detail.component.html',
 })
 export class GenreDetailComponent implements OnInit {
@@ -33,32 +32,6 @@ export class GenreDetailComponent implements OnInit {
     const deleted = this.transferService.deletedSongIds();
     return this.genreSongs().filter(s => !deleted.has(s.id));
   });
-
-  // ─── Playlist picker ──────────────────────────────────────────────
-  readonly playlistPickerSong = signal<{ id: string; title: string } | null>(null);
-  readonly addingToPlaylistLib = signal(false);
-
-  async addSongToPlaylist(playlistId: string): Promise<void> {
-    const song = this.playlistPickerSong();
-    if (!song) return;
-    this.addingToPlaylistLib.set(true);
-    try {
-      await firstValueFrom(this.api.updatePlaylist(playlistId, { songIdsToAdd: [song.id] }));
-      this.playlistPickerSong.set(null);
-    } catch { /* ignore */ }
-    finally { this.addingToPlaylistLib.set(false); }
-  }
-
-  async createLibraryPlaylistAndAdd(name: string): Promise<void> {
-    const song = this.playlistPickerSong();
-    if (!song) return;
-    this.addingToPlaylistLib.set(true);
-    try {
-      await firstValueFrom(this.api.createPlaylist(name, [song.id]));
-      this.playlistPickerSong.set(null);
-    } catch { /* ignore */ }
-    finally { this.addingToPlaylistLib.set(false); }
-  }
 
   // ─── Confirm dialog ───────────────────────────────────────────────
   readonly confirmMessage = signal('');
@@ -110,7 +83,6 @@ export class GenreDetailComponent implements OnInit {
 
   genreTrackActions(song: Song): TrackAction[] {
     return [
-      { label: 'Add to playlist', action: () => this.playlistPickerSong.set(song) },
       ...(song.artistId ? [{
         label: 'Go to artist',
         action: () => { void this.router.navigate(resolveArtistRoute(song.artistId)); },

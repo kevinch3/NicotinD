@@ -51,56 +51,8 @@ describe('library recent-songs ordering', () => {
     seedSong(testDb, { id: 'song-2', title: 'Second', artist: 'Artist A', album: 'Alpha', albumId: 'album-1', path: 'Artist A/Alpha/02 - Second.mp3', created: '2026-03-20T09:00:00.000Z' });
     seedSong(testDb, { id: 'song-3', title: 'Third', artist: 'Artist B', album: 'Beta', albumId: 'album-2', path: 'Artist B/Beta/01 - Third.mp3', created: '2026-03-20T08:00:00.000Z' });
 
-    const navidromeMock = {
-      browsing: {
-        getAlbumList: mock(() =>
-          Promise.resolve([
-            { id: 'album-1', name: 'Alpha', artist: 'Artist A' },
-            { id: 'album-2', name: 'Beta', artist: 'Artist B' },
-          ]),
-        ),
-        getAlbum: mock((albumId: string) => {
-          if (albumId === 'album-1') {
-            return Promise.resolve({
-              songs: [
-                {
-                  id: 'song-1',
-                  title: 'First',
-                  artist: 'Artist A',
-                  album: 'Alpha',
-                  path: 'Artist A/Alpha/01 - First.mp3',
-                  created: '2026-03-20T10:00:00.000Z',
-                },
-                {
-                  id: 'song-2',
-                  title: 'Second',
-                  artist: 'Artist A',
-                  album: 'Alpha',
-                  path: 'Artist A/Alpha/02 - Second.mp3',
-                  created: '2026-03-20T09:00:00.000Z',
-                },
-              ],
-            });
-          }
-
-          return Promise.resolve({
-            songs: [
-              {
-                id: 'song-3',
-                title: 'Third',
-                artist: 'Artist B',
-                album: 'Beta',
-                path: 'Artist B/Beta/01 - Third.mp3',
-                created: '2026-03-20T08:00:00.000Z',
-              },
-            ],
-          });
-        }),
-      },
-    };
-
     app = new Hono();
-    app.route('/', libraryRoutes(navidromeMock as unknown as Parameters<typeof libraryRoutes>[0], '/music'));
+    app.route('/', libraryRoutes('/music'));
   });
 
   afterEach(() => {

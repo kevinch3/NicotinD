@@ -19,9 +19,6 @@ describe('system routes', () => {
   let slskdMock: ReturnType<typeof makeSlskdMock>;
   let app: Hono;
 
-  const navidromeMock = {
-    system: { ping: mock(() => Promise.resolve(true)) },
-  };
   const serviceManagerMock = {
     hasService: mock(() => false),
     getLogs: mock(() => Promise.resolve([])),
@@ -40,9 +37,8 @@ describe('system routes', () => {
       '/',
       systemRoutes(
         { current: slskdMock } as unknown as Parameters<typeof systemRoutes>[0],
-        navidromeMock as unknown as Parameters<typeof systemRoutes>[1],
-        serviceManagerMock as unknown as Parameters<typeof systemRoutes>[2],
-        configMock as unknown as Parameters<typeof systemRoutes>[3],
+        serviceManagerMock as unknown as Parameters<typeof systemRoutes>[1],
+        configMock as unknown as Parameters<typeof systemRoutes>[2],
       ),
     );
   });
@@ -87,9 +83,8 @@ describe('system routes', () => {
       '/',
       systemRoutes(
         { current: null } as unknown as Parameters<typeof systemRoutes>[0],
-        navidromeMock as unknown as Parameters<typeof systemRoutes>[1],
-        serviceManagerMock as unknown as Parameters<typeof systemRoutes>[2],
-        configMock as unknown as Parameters<typeof systemRoutes>[3],
+        serviceManagerMock as unknown as Parameters<typeof systemRoutes>[1],
+        configMock as unknown as Parameters<typeof systemRoutes>[2],
       ),
     );
 

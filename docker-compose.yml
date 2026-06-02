@@ -17,7 +17,6 @@ services:
       NICOTIND_DATA_DIR: /data/nicotind
       NICOTIND_MUSIC_DIR: /data/music
       NICOTIND_SLSKD_URL: http://slskd:5030
-      NICOTIND_NAVIDROME_URL: http://navidrome:4533
       SLSKD_USERNAME: slskd
       SLSKD_PASSWORD: slskd
       TAILSCALE_SOCKET: /var/run/tailscale/tailscaled.sock
@@ -30,8 +29,6 @@ services:
       retries: 3
       start_period: 10s
     depends_on:
-      navidrome:
-        condition: service_started
       slskd:
         condition: service_started
       lidarr:
@@ -66,32 +63,6 @@ services:
       SLSKD_DIRECTORIES__INCOMPLETE: /app/incomplete
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:5030/api/v0/application"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - internal
-    restart: unless-stopped
-
-  navidrome:
-    image: deluan/navidrome:latest
-    user: "1000:1000"
-    volumes:
-      - music:/data/music:ro
-      - navidrome-data:/data/nd
-    environment:
-      ND_MUSICFOLDER: /data/music
-      ND_DATAFOLDER: /data/nd
-      ND_PORT: "4533"
-      ND_BASEURL: ""
-      # Group albums by artist+name, NOT by musicbrainz_albumid/releasedate (the
-      # default). Hunt/fallback can drop foreign-edition files (deluxe, bonus,
-      # acoustic) carrying their own MBID into a single <Artist>/<Album> folder;
-      # the default PID then splits that one folder into a card per MBID. Keying
-      # on albumartistid+album makes one folder = one album card. See CLAUDE.md.
-      ND_PID_ALBUM: albumartistid,album
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4533/ping"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -152,7 +123,6 @@ volumes:
   nicotind-data:
   music:
   slskd-data:
-  navidrome-data:
   tailscale-state:
   tailscale-sock:
   lidarr-config:

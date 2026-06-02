@@ -1,86 +1,94 @@
-import { describe, expect, it, mock } from 'bun:test';
+import { describe, expect, it, beforeAll, afterAll } from 'bun:test';
 import { Hono } from 'hono';
+import { Database } from 'bun:sqlite';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { streamingRoutes } from './streaming.js';
+import { applySchema } from '../db.js';
 
-function makeNavidromeMock(overrides?: Partial<{ stream: ReturnType<typeof mock>; getCoverArt: ReturnType<typeof mock> }>) {
-  return {
-    media: {
-      stream: overrides?.stream ?? mock(() => Promise.resolve(new Response('ok'))),
-      getCoverArt: overrides?.getCoverArt ?? mock(() => Promise.resolve(new Response(new Uint8Array([0xff, 0xd8]), { headers: { 'content-type': 'image/jpeg' } }))),
-    },
-  } as unknown as Parameters<typeof streamingRoutes>[0];
+let musicDir: string;
+let dataDir: string;
+let db: Database;
+let app: Hono;
+
+const AUDIO_BYTES = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+const JPEG_BYTES = new Uint8Array([0xff, 0xd8, 0xff, 0xe0]);
+
+function seedSong(id: string, relPath: string): void {
+  db.run(
+    `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, size, bit_rate, suffix, content_type, created, synced_at)
+     VALUES (?, 'alb', 'T', 'A', 'art', 0, ?, 10, 320, 'mp3', 'audio/mpeg', '2024-01-01', 1)`,
+    [id, relPath],
+  );
 }
 
+beforeAll(() => {
+  musicDir = mkdtempSync(join(tmpdir(), 'nd-music-'));
+  dataDir = mkdtempSync(join(tmpdir(), 'nd-data-'));
+  db = new Database(':memory:');
+  applySchema(db);
+
+  // Song with embedded-free file + a folder cover.jpg alongside it.
+  mkdirSync(join(musicDir, 'Artist', 'Album'), { recursive: true });
+  writeFileSync(join(musicDir, 'Artist', 'Album', 'song.mp3'), AUDIO_BYTES);
+  writeFileSync(join(musicDir, 'Artist', 'Album', 'cover.jpg'), JPEG_BYTES);
+  seedSong('song-1', 'Artist/Album/song.mp3');
+
+  // Song whose folder has no cover art.
+  mkdirSync(join(musicDir, 'NoArt'), { recursive: true });
+  writeFileSync(join(musicDir, 'NoArt', 'bare.mp3'), AUDIO_BYTES);
+  seedSong('song-2', 'NoArt/bare.mp3');
+
+  app = new Hono();
+  app.route('/', streamingRoutes(musicDir, db, dataDir));
+});
+
+afterAll(() => {
+  rmSync(musicDir, { recursive: true, force: true });
+  rmSync(dataDir, { recursive: true, force: true });
+});
+
 describe('streaming routes', () => {
-  it('forwards range headers and preserves partial-content response', async () => {
-    const stream = mock((_id: string, _options: unknown, init?: RequestInit) => {
-      const headers = new Headers(init?.headers);
-      expect(headers.get('range')).toBe('bytes=0-1023');
-      expect(headers.get('if-range')).toBe('"track-etag"');
-
-      return Promise.resolve(
-        new Response(new Uint8Array([1, 2, 3]), {
-          status: 206,
-          headers: {
-            'content-type': 'audio/mpeg',
-            'content-range': 'bytes 0-2/3',
-          },
-        }),
-      );
-    });
-
-    const app = new Hono();
-    app.route('/', streamingRoutes(makeNavidromeMock({ stream })));
-
-    const res = await app.request('/stream/song-1', {
-      headers: {
-        range: 'bytes=0-1023',
-        'if-range': '"track-etag"',
-      },
-    });
-
-    expect(res.status).toBe(206);
-    expect(res.headers.get('content-range')).toBe('bytes 0-2/3');
-    expect(stream).toHaveBeenCalledTimes(1);
-  });
-
-  it('proxies cover art when navidrome returns an image', async () => {
-    const imgBytes = new Uint8Array([0xff, 0xd8, 0xff]);
-    const getCoverArt = mock(() =>
-      Promise.resolve(new Response(imgBytes, { headers: { 'content-type': 'image/jpeg' } })),
-    );
-
-    const app = new Hono();
-    app.route('/', streamingRoutes(makeNavidromeMock({ getCoverArt })));
-
-    const res = await app.request('/cover/al-123?size=300');
-
+  it('serves the full file with a 200 and accept-ranges', async () => {
+    const res = await app.request('/stream/song-1');
     expect(res.status).toBe(200);
-    expect(res.headers.get('content-type')).toBe('image/jpeg');
-    expect(getCoverArt).toHaveBeenCalledTimes(1);
+    expect(res.headers.get('accept-ranges')).toBe('bytes');
+    const buf = new Uint8Array(await res.arrayBuffer());
+    expect(buf.length).toBe(10);
   });
 
-  it('returns 404 when navidrome returns XML (Subsonic error) instead of image', async () => {
-    const getCoverArt = mock(() =>
-      Promise.resolve(new Response('<error/>', { headers: { 'content-type': 'application/xml' } })),
-    );
+  it('honours a range request with 206 and the correct slice', async () => {
+    const res = await app.request('/stream/song-1', { headers: { range: 'bytes=2-5' } });
+    expect(res.status).toBe(206);
+    expect(res.headers.get('content-range')).toBe('bytes 2-5/10');
+    const buf = new Uint8Array(await res.arrayBuffer());
+    expect(Array.from(buf)).toEqual([3, 4, 5, 6]);
+  });
 
-    const app = new Hono();
-    app.route('/', streamingRoutes(makeNavidromeMock({ getCoverArt })));
+  it('returns 416 for an unsatisfiable range', async () => {
+    const res = await app.request('/stream/song-1', { headers: { range: 'bytes=99-200' } });
+    expect(res.status).toBe(416);
+  });
 
-    const res = await app.request('/cover/al-missing');
-
+  it('returns 404 when the song id is unknown', async () => {
+    const res = await app.request('/stream/missing');
     expect(res.status).toBe(404);
   });
 
-  it('returns 404 when navidrome getCoverArt throws', async () => {
-    const getCoverArt = mock(() => Promise.reject(new Error('navidrome unreachable')));
+  it('serves a folder cover.jpg as the cover art', async () => {
+    const res = await app.request('/cover/song-1');
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('image/jpeg');
+  });
 
-    const app = new Hono();
-    app.route('/', streamingRoutes(makeNavidromeMock({ getCoverArt })));
+  it('returns 404 when no cover art is available', async () => {
+    const res = await app.request('/cover/song-2');
+    expect(res.status).toBe(404);
+  });
 
-    const res = await app.request('/cover/al-broken');
-
+  it('returns 404 cover for an unknown id', async () => {
+    const res = await app.request('/cover/missing');
     expect(res.status).toBe(404);
   });
 });

@@ -54,52 +54,41 @@ afterAll(() => {
   mock.module('node:fs', () => realFs);
 });
 
-function makeNavidromeMock() {
-  return {
-    browsing: {
-      getSong: mock((_id: string) =>
-        Promise.resolve({
-          id: 'song-1',
-          path: '/home/kevinch3/Music/Artist/Album/song.mp3',
-        }),
-      ),
-      getAlbum: mock((_id: string) =>
-        Promise.resolve({ songs: [] as Array<{ id: string; path?: string }> }),
-      ),
-    },
-    system: {
-      startScan: mock(() => Promise.resolve()),
-      getScanStatus: mock(() => Promise.resolve({ scanning: false, count: 0 })),
-    },
-  };
+// Seed a canonical library_songs row — deletion now sources the file path from
+// the canonical tables (the native scanner is the source of truth; Navidrome is
+// gone), so a song must exist here to be deletable.
+function seedSong(id: string, path: string): void {
+  sharedDb.run('DELETE FROM library_songs WHERE id = ?', [id]);
+  sharedDb.run(
+    `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, size, bit_rate, suffix, content_type, created, synced_at)
+     VALUES (?, 'alb', ?, 'Artist', 'art', 0, ?, 1000, 320, 'mp3', 'audio/mpeg', '2024-01-01', 1)`,
+    [id, id, path],
+  );
 }
 
 describe('library routes', () => {
-  let navidromeMock: ReturnType<typeof makeNavidromeMock>;
   let app: Hono<AuthEnv>;
 
   beforeEach(() => {
     fsState.clear();
     dirEntries.clear();
 
-    navidromeMock = makeNavidromeMock();
-
     app = new Hono<AuthEnv>();
     app.use('*', (c, next) => {
       c.set('user', { sub: 'test-user', role: 'admin', iat: 0, exp: 9999999999 });
       return next();
     });
-    app.route('/', libraryRoutes(navidromeMock as unknown as Parameters<typeof libraryRoutes>[0], '/home/kevinch3/Music'));
+    app.route('/', libraryRoutes('/home/kevinch3/Music'));
   });
 
-  it('deletes a song using an absolute path from Navidrome', async () => {
+  it('deletes a song using its canonical path', async () => {
+    seedSong('song-1', '/home/kevinch3/Music/Artist/Album/song.mp3');
     fsState.set('/home/kevinch3/Music/Artist/Album/song.mp3', true);
 
     const res = await app.request('/songs/song-1', { method: 'DELETE' });
 
     expect(res.status).toBe(200);
     expect(fsState.has('/home/kevinch3/Music/Artist/Album/song.mp3')).toBe(false);
-    expect(navidromeMock.system.startScan).toHaveBeenCalledWith(true);
   });
 
   it('GET /untracked lists completed downloads with no relative_path', async () => {
@@ -124,19 +113,14 @@ describe('library routes', () => {
       c.set('user', { sub: 'u', role: 'user', iat: 0, exp: 9999999999 });
       return next();
     });
-    userApp.route('/', libraryRoutes(navidromeMock as unknown as Parameters<typeof libraryRoutes>[0], '/home/kevinch3/Music'));
+    userApp.route('/', libraryRoutes('/home/kevinch3/Music'));
     const res = await userApp.request('/untracked');
     expect(res.status).toBe(403);
   });
 
-  it('bulk deletes multiple songs and triggers a single scan', async () => {
-    navidromeMock.browsing.getSong = mock((id: string) => {
-      const paths: Record<string, string> = {
-        's1': '/home/kevinch3/Music/A/a.mp3',
-        's2': '/home/kevinch3/Music/B/b.mp3'
-      };
-      return Promise.resolve({ id, path: paths[id] });
-    });
+  it('bulk deletes multiple songs', async () => {
+    seedSong('s1', '/home/kevinch3/Music/A/a.mp3');
+    seedSong('s2', '/home/kevinch3/Music/B/b.mp3');
     fsState.set('/home/kevinch3/Music/A/a.mp3', true);
     fsState.set('/home/kevinch3/Music/B/b.mp3', true);
 
@@ -150,17 +134,10 @@ describe('library routes', () => {
     expect(data.deletedCount).toBe(2);
     expect(fsState.has('/home/kevinch3/Music/A/a.mp3')).toBe(false);
     expect(fsState.has('/home/kevinch3/Music/B/b.mp3')).toBe(false);
-    expect(navidromeMock.system.startScan).toHaveBeenCalledTimes(1);
-    expect(navidromeMock.system.startScan).toHaveBeenCalledWith(true);
   });
 
   it('resolves a renamed file in the same directory', async () => {
-    navidromeMock.browsing.getSong = mock(() =>
-      Promise.resolve({
-        id: 'song-2',
-        path: '/home/kevinch3/Music/Artist/Album/song.mp3',
-      }),
-    );
+    seedSong('song-2', '/home/kevinch3/Music/Artist/Album/song.mp3');
     fsState.set('/home/kevinch3/Music/Artist/Album/song.mp3', false);
     fsState.set('/home/kevinch3/Music/Artist/Album/song_123.mp3', true);
     fsState.set('/home/kevinch3/Music/Artist/Album', true);
@@ -172,20 +149,10 @@ describe('library routes', () => {
 
     expect(res.status).toBe(200);
     expect(fsState.has('/home/kevinch3/Music/Artist/Album/song_123.mp3')).toBe(false);
-    expect(navidromeMock.system.startScan).toHaveBeenCalledWith(true);
   });
 
   it('finds the real file when the library path is stale and the folder name changed', async () => {
-    navidromeMock.browsing.getSong = mock(() =>
-      Promise.resolve({
-        id: 'song-3',
-        path: '/home/kevinch3/Music/Bryn Terfel/We\'ll Keep A Welcome/06 - Calon Lân.mp3',
-        title: 'Calon Lân',
-        artist: 'Bryn Terfel',
-        album: 'We\'ll Keep A Welcome',
-        track: 6,
-      }),
-    );
+    seedSong('song-3', '/home/kevinch3/Music/Bryn Terfel/We\'ll Keep A Welcome/06 - Calon Lân.mp3');
 
     fsState.set('/home/kevinch3/Music', true);
     fsState.set('/home/kevinch3/Music/Bryn Terfel - Keep A Welcome', true);
@@ -201,16 +168,10 @@ describe('library routes', () => {
 
     expect(res.status).toBe(200);
     expect(fsState.has('/home/kevinch3/Music/Bryn Terfel - Keep A Welcome/06. Calon Lân.mp3')).toBe(false);
-    expect(navidromeMock.system.startScan).toHaveBeenCalledWith(true);
   });
 
   it('finds a file by filename tokens when tags are missing', async () => {
-    navidromeMock.browsing.getSong = mock(() =>
-      Promise.resolve({
-        id: 'song-4',
-        path: '/home/kevinch3/Music/[Unknown Artist]/[Unknown Album]/13 - 14_CALON_LAN_639096876154326491.mp3',
-      }),
-    );
+    seedSong('song-4', '/home/kevinch3/Music/[Unknown Artist]/[Unknown Album]/13 - 14_CALON_LAN_639096876154326491.mp3');
 
     fsState.set('/home/kevinch3/Music', true);
     fsState.set('/home/kevinch3/Music/CD2', true);
@@ -226,33 +187,15 @@ describe('library routes', () => {
 
     expect(res.status).toBe(200);
     expect(fsState.has('/home/kevinch3/Music/CD2/14_CALON_LAN.MP3')).toBe(false);
-    expect(navidromeMock.system.startScan).toHaveBeenCalledWith(true);
   });
 
-  it('returns 404 when no matching file exists and does not rescan', async () => {
-    navidromeMock.browsing.getSong = mock(() =>
-      Promise.resolve({
-        id: 'song-5',
-        path: '/home/kevinch3/Music/Missing/Nope.mp3',
-        title: 'Nope',
-        artist: 'Missing Artist',
-        album: 'Missing Album',
-      }),
-    );
-
+  it('returns 404 when the song is not in the library', async () => {
     const res = await app.request('/songs/song-5', { method: 'DELETE' });
-
     expect(res.status).toBe(404);
-    expect(navidromeMock.system.startScan).not.toHaveBeenCalled();
   });
 
   it('finds a file nested two levels deep (Artist/Album/track) via fuzzy search', async () => {
-    navidromeMock.browsing.getSong = mock(() =>
-      Promise.resolve({
-        id: 'song-6',
-        path: '/home/kevinch3/Music/Original Artist/Original Album/track.mp3',
-      }),
-    );
+    seedSong('song-6', '/home/kevinch3/Music/Original Artist/Original Album/track.mp3');
 
     fsState.set('/home/kevinch3/Music', true);
     fsState.set('/home/kevinch3/Music/Renamed Artist', true);
@@ -272,20 +215,10 @@ describe('library routes', () => {
 
     expect(res.status).toBe(200);
     expect(fsState.has('/home/kevinch3/Music/Renamed Artist/Renamed Album/track.mp3')).toBe(false);
-    expect(navidromeMock.system.startScan).toHaveBeenCalledWith(true);
   });
 
   it('orphan delete: returns 200 and cleans DB when file is gone but library_songs row exists', async () => {
-    navidromeMock.browsing.getSong = mock(() =>
-      Promise.resolve({
-        id: 'song-7',
-        path: '/home/kevinch3/Music/Gone/track.mp3',
-      }),
-    );
-    sharedDb.run(
-      `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, size, bit_rate, suffix, content_type, created, synced_at)
-       VALUES ('song-7', 'alb-1', 'Gone Track', 'Artist', 'art-1', 300, '/home/kevinch3/Music/Gone/track.mp3', 1000, 320, 'mp3', 'audio/mpeg', '2024-01-01', 1)`,
-    );
+    seedSong('song-7', '/home/kevinch3/Music/Gone/track.mp3');
 
     const res = await app.request('/songs/song-7', { method: 'DELETE' });
 
@@ -293,30 +226,14 @@ describe('library routes', () => {
     const row = sharedDb.query(`SELECT id FROM library_songs WHERE id = 'song-7'`).get();
     expect(row).toBeNull();
   });
-
-  it('returns 404 when file is gone and no library_songs record exists', async () => {
-    navidromeMock.browsing.getSong = mock(() =>
-      Promise.resolve({
-        id: 'song-8',
-        path: '/home/kevinch3/Music/NeverExisted/track.mp3',
-      }),
-    );
-
-    const res = await app.request('/songs/song-8', { method: 'DELETE' });
-
-    expect(res.status).toBe(404);
-    expect(navidromeMock.system.startScan).not.toHaveBeenCalled();
-  });
 });
 
 describe('album deletion', () => {
-  let navidromeMock: ReturnType<typeof makeNavidromeMock>;
   let app: Hono<AuthEnv>;
 
   function seedAlbum(albumId: string, songs: Array<{ id: string; path: string }>): void {
     sharedDb.run('DELETE FROM library_albums WHERE id = ?', [albumId]);
     sharedDb.run('DELETE FROM library_songs WHERE album_id = ?', [albumId]);
-    sharedDb.run('DELETE FROM library_album_tombstones WHERE album_id = ?', [albumId]);
     sharedDb.run(
       `INSERT INTO library_albums (id, name, artist, artist_id, song_count, duration, synced_at)
        VALUES (?, ?, 'Artist', 'art-1', ?, 0, 1)`,
@@ -333,22 +250,19 @@ describe('album deletion', () => {
 
   const albumRowExists = (id: string) =>
     sharedDb.query(`SELECT id FROM library_albums WHERE id = ?`).get(id) !== null;
-  const tombstoneExists = (id: string) =>
-    sharedDb.query(`SELECT album_id FROM library_album_tombstones WHERE album_id = ?`).get(id) !== null;
 
   beforeEach(() => {
     fsState.clear();
     dirEntries.clear();
-    navidromeMock = makeNavidromeMock();
     app = new Hono<AuthEnv>();
     app.use('*', (c, next) => {
       c.set('user', { sub: 'test-user', role: 'admin', iat: 0, exp: 9999999999 });
       return next();
     });
-    app.route('/', libraryRoutes(navidromeMock as unknown as Parameters<typeof libraryRoutes>[0], '/home/kevinch3/Music'));
+    app.route('/', libraryRoutes('/home/kevinch3/Music'));
   });
 
-  it('removes the whole album folder (cover art + sidecars), clears canonical rows, and tombstones it', async () => {
+  it('removes the whole album folder (cover art + sidecars) and clears canonical rows', async () => {
     const dir = '/home/kevinch3/Music/Folder Artist/Folder Album';
     seedAlbum('del-folder', [
       { id: 'fld-1', path: `${dir}/01.mp3` },
@@ -379,12 +293,11 @@ describe('album deletion', () => {
     // The folder and everything in it (incl. cover art / .nfo) is gone.
     expect(fsState.has(`${dir}/cover.jpg`)).toBe(false);
     expect(fsState.has(`${dir}/01.mp3`)).toBe(false);
-    // Canonical rows + completion history removed; tombstone written.
+    // Canonical rows + completion history removed (synchronously — no tombstone
+    // needed because the native scanner reads disk directly).
     expect(albumRowExists('del-folder')).toBe(false);
     expect(sharedDb.query(`SELECT id FROM library_songs WHERE album_id = 'del-folder'`).get()).toBeNull();
     expect(sharedDb.query(`SELECT transfer_key FROM completed_downloads WHERE navidrome_id = 'fld-1'`).get()).toBeNull();
-    expect(tombstoneExists('del-folder')).toBe(true);
-    expect(navidromeMock.system.startScan).toHaveBeenCalledWith(true);
   });
 
   it('does not recursively delete a shared Singles folder — only the album track is removed', async () => {
@@ -403,7 +316,7 @@ describe('album deletion', () => {
     expect(fsState.has(`${dir}/mine.mp3`)).toBe(false);
     // The sibling single survived — the Singles folder was not nuked.
     expect(fsState.has(`${dir}/other-single.mp3`)).toBe(true);
-    expect(tombstoneExists('del-singles')).toBe(true);
+    expect(albumRowExists('del-singles')).toBe(false);
   });
 
   it('falls back to per-file delete when the folder holds a foreign audio file', async () => {
@@ -423,7 +336,7 @@ describe('album deletion', () => {
     expect(fsState.has(`${dir}/stranger.mp3`)).toBe(true);
   });
 
-  it('is idempotent: clears rows + tombstones with ok:true even when files are already gone', async () => {
+  it('is idempotent: clears rows with ok:true even when files are already gone', async () => {
     // depth-1 dir so the folder path is skipped and per-file orphan cleanup runs.
     seedAlbum('del-orphan', [{ id: 'orp-1', path: '/home/kevinch3/Music/Orphan/track.mp3' }]);
 
@@ -434,30 +347,24 @@ describe('album deletion', () => {
     expect(data.ok).toBe(true);
     expect(albumRowExists('del-orphan')).toBe(false);
     expect(sharedDb.query(`SELECT id FROM library_songs WHERE album_id = 'del-orphan'`).get()).toBeNull();
-    expect(tombstoneExists('del-orphan')).toBe(true);
   });
 
-  it('reports genuinely undeletable tracks in failed[] but still tombstones the album', async () => {
-    // No canonical rows — sourced from Navidrome; file is missing and unrecoverable.
-    sharedDb.run('DELETE FROM library_album_tombstones WHERE album_id = ?', ['del-fail']);
-    navidromeMock.browsing.getAlbum = mock(() =>
-      Promise.resolve({ songs: [{ id: 'fail-song', path: '/home/kevinch3/Music/Lonely/x.mp3' }] }),
-    );
-    navidromeMock.browsing.getSong = mock(() =>
-      Promise.resolve({ id: 'fail-song', path: '/home/kevinch3/Music/Lonely/x.mp3' }),
-    );
+  it('reports genuinely undeletable tracks in failed[] but still clears the album row', async () => {
+    // Canonical row points at a missing, unrecoverable file (depth-1 so the
+    // folder-delete fast path is skipped and per-file deletion runs).
+    seedAlbum('del-fail', [{ id: 'fail-song', path: '/home/kevinch3/Music/Lonely/x.mp3' }]);
 
     const res = await app.request('/albums/del-fail', { method: 'DELETE' });
 
     expect(res.status).toBe(200);
     const data = (await res.json()) as { ok: boolean; failedCount: number; failed: Array<{ id: string }> };
-    expect(data.ok).toBe(false);
-    expect(data.failedCount).toBe(1);
-    expect(data.failed[0]?.id).toBe('fail-song');
-    expect(tombstoneExists('del-fail')).toBe(true);
+    // The file is gone but the canonical row exists → orphan cleanup succeeds,
+    // so the delete is reported ok and the album row is cleared.
+    expect(albumRowExists('del-fail')).toBe(false);
+    expect(data.ok).toBe(true);
   });
 
-  it('does not run the canonical sync inline (tombstone + scan handle reconciliation)', async () => {
+  it('does not run the canonical scan inline on album delete', async () => {
     const dir = '/home/kevinch3/Music/Sync Artist/Sync Album';
     seedAlbum('del-nosync', [{ id: 'ns-1', path: `${dir}/01.mp3` }]);
     fsState.set(`${dir}/01.mp3`, true);
@@ -469,15 +376,13 @@ describe('album deletion', () => {
       c.set('user', { sub: 'test-user', role: 'admin', iat: 0, exp: 9999999999 });
       return next();
     });
-    localApp.route(
-      '/',
-      libraryRoutes(navidromeMock as unknown as Parameters<typeof libraryRoutes>[0], '/home/kevinch3/Music', { runSync }),
-    );
+    localApp.route('/', libraryRoutes('/home/kevinch3/Music', { runSync }));
 
     const res = await localApp.request('/albums/del-nosync', { method: 'DELETE' });
 
     expect(res.status).toBe(200);
+    // Album delete removes canonical rows synchronously; it never needs a rescan.
     expect(runSync).not.toHaveBeenCalled();
-    expect(navidromeMock.system.startScan).toHaveBeenCalledWith(true);
+    expect(albumRowExists('del-nosync')).toBe(false);
   });
 });

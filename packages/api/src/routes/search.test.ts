@@ -1,20 +1,16 @@
 import { describe, expect, it } from 'bun:test';
+import { Database } from 'bun:sqlite';
 import { Hono } from 'hono';
 import { searchRoutes } from './search.js';
 import { ProviderRegistry } from '../services/provider-registry.js';
-import { NavidromeSearchProvider } from '../services/providers/navidrome-provider.js';
+import { LibrarySearchProvider } from '../services/providers/library-provider.js';
 import { SlskdSearchProvider } from '../services/providers/slskd-provider.js';
+import { applySchema } from '../db.js';
 
 describe('search routes', () => {
   it('enriches network results with inferred metadata from filenames', async () => {
-    const navidromeMock = {
-      search: {
-        search3: async () => ({ artist: [], album: [], song: [] }),
-      },
-      system: {
-        ping: async () => true,
-      },
-    } as unknown as ConstructorParameters<typeof NavidromeSearchProvider>[0];
+    const libraryDb = new Database(':memory:');
+    applySchema(libraryDb);
 
     const slskdRef = {
       current: {
@@ -45,7 +41,7 @@ describe('search routes', () => {
     } as unknown as ConstructorParameters<typeof SlskdSearchProvider>[0];
 
     const registry = new ProviderRegistry();
-    registry.register(new NavidromeSearchProvider(navidromeMock));
+    registry.register(new LibrarySearchProvider(libraryDb));
     registry.register(new SlskdSearchProvider(slskdRef));
 
     const app = new Hono();

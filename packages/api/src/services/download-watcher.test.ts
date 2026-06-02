@@ -11,46 +11,37 @@ function makeSlskdMock() {
     },
   };
 }
-function makeNavidromeMock() {
-  return {
-    system: {
-      startScan: mock(() => Promise.resolve()),
-    },
-  };
-}
+
+// The real organizer moves files and mutates each file's relativePath to its
+// post-move location; the watcher then feeds those paths to the native scanner.
 function makeLibraryOrganizerMock() {
   return {
-    organizeBatch: mock((_files: CompletedDownloadFile[]) => Promise.resolve({ moved: 0, skipped: 0, unsorted: 0, failed: 0 })),
-  };
-}
-function makeAutoPlaylistMock() {
-  return {
-    processBatch: mock((_files: CompletedDownloadFile[]) => Promise.resolve()),
+    organizeBatch: mock((files: CompletedDownloadFile[]) => {
+      for (const f of files) f.relativePath = `Artist/Album/${f.filename}`;
+      return Promise.resolve({ moved: files.length, skipped: 0, unsorted: 0, failed: 0 });
+    }),
   };
 }
 
 describe('DownloadWatcher', () => {
   let slskdMock: ReturnType<typeof makeSlskdMock>;
-  let navidromeMock: ReturnType<typeof makeNavidromeMock>;
   let libraryOrganizerMock: ReturnType<typeof makeLibraryOrganizerMock>;
-  let autoPlaylistMock: ReturnType<typeof makeAutoPlaylistMock>;
+  let scanMock: ReturnType<typeof mock>;
   let watcher: DownloadWatcher;
 
   beforeEach(() => {
     slskdMock = makeSlskdMock();
-    navidromeMock = makeNavidromeMock();
     libraryOrganizerMock = makeLibraryOrganizerMock();
-    autoPlaylistMock = makeAutoPlaylistMock();
+    scanMock = mock((_relPaths: string[]) => Promise.resolve());
 
     // Use very small intervals for testing
     watcher = new DownloadWatcher(
       slskdMock as unknown as ConstructorParameters<typeof DownloadWatcher>[0],
-      navidromeMock as unknown as ConstructorParameters<typeof DownloadWatcher>[1],
       {
         intervalMs: 10,
         scanDebounceMs: 10,
         libraryOrganizer: libraryOrganizerMock,
-        autoPlaylist: autoPlaylistMock,
+        scan: scanMock,
       },
     );
   });
@@ -59,7 +50,7 @@ describe('DownloadWatcher', () => {
     watcher.stop();
   });
 
-  it('detects a new completed download and triggers a scan', async () => {
+  it('detects a new completed download, organizes it, and scans after the debounce', async () => {
     slskdMock.transfers.getDownloads.mockReturnValue(
       Promise.resolve([
         {
@@ -78,26 +69,18 @@ describe('DownloadWatcher', () => {
     // Manually trigger check instead of waiting for setInterval
     await (watcher as unknown as { check(): Promise<void> }).check();
 
-    // Scan should be debounced. Should NOT have been called yet.
-    expect(navidromeMock.system.startScan).not.toHaveBeenCalled();
+    // Scan is debounced — not called yet.
+    expect(scanMock).not.toHaveBeenCalled();
 
     // Wait for debounce (10ms + buffer)
     await new Promise((r) => setTimeout(r, 50));
 
     expect(libraryOrganizerMock.organizeBatch).toHaveBeenCalledTimes(1);
-    expect(libraryOrganizerMock.organizeBatch).toHaveBeenCalledWith([
-      {
-        username: 'user1',
-        directory: 'dir1',
-        filename: 'song1.mp3',
-        relativePath: null,
-        directoryFileCount: 1,
-      },
-    ]);
-    expect(navidromeMock.system.startScan).toHaveBeenCalledTimes(1);
+    expect(scanMock).toHaveBeenCalledTimes(1);
+    expect(scanMock).toHaveBeenCalledWith(['Artist/Album/song1.mp3']);
   });
 
-  it('debounces multiple completions', async () => {
+  it('debounces multiple completions into a single scan', async () => {
     slskdMock.transfers.getDownloads.mockReturnValue(
       Promise.resolve([
         {
@@ -113,14 +96,10 @@ describe('DownloadWatcher', () => {
       ]),
     );
 
-    // First completion
     await (watcher as unknown as { check(): Promise<void> }).check();
-
-    // Wait a bit but less than debounce
     await new Promise((r) => setTimeout(r, 5));
-    expect(navidromeMock.system.startScan).not.toHaveBeenCalled();
+    expect(scanMock).not.toHaveBeenCalled();
 
-    // Second completion (different file)
     slskdMock.transfers.getDownloads.mockReturnValue(
       Promise.resolve([
         {
@@ -140,17 +119,14 @@ describe('DownloadWatcher', () => {
     );
     await (watcher as unknown as { check(): Promise<void> }).check();
 
-    // Wait 8ms (total 13ms since first, 8ms since second).
-    // Debounce is 10ms, but it should have been reset by the second check.
     await new Promise((r) => setTimeout(r, 8));
-    expect(navidromeMock.system.startScan).not.toHaveBeenCalled();
+    expect(scanMock).not.toHaveBeenCalled();
 
-    // Wait for the new debounce to expire
-    await new Promise((r) => setTimeout(r, 10));
-    expect(navidromeMock.system.startScan).toHaveBeenCalledTimes(1);
+    await new Promise((r) => setTimeout(r, 12));
+    expect(scanMock).toHaveBeenCalledTimes(1);
   });
 
-  it('calls autoPlaylist.processBatch with completed files after scan debounce', async () => {
+  it('passes all newly organized relative paths to the scan hook', async () => {
     slskdMock.transfers.getDownloads.mockReturnValue(
       Promise.resolve([
         {
@@ -170,24 +146,9 @@ describe('DownloadWatcher', () => {
     );
 
     await (watcher as unknown as { check(): Promise<void> }).check();
-    await new Promise((r) => setTimeout(r, 50)); // wait for debounce
+    await new Promise((r) => setTimeout(r, 50));
 
-    expect(autoPlaylistMock.processBatch).toHaveBeenCalledTimes(1);
-    expect(autoPlaylistMock.processBatch).toHaveBeenCalledWith([
-      {
-        username: 'user1',
-        directory: 'Artist - Album',
-        filename: 'a.mp3',
-        relativePath: null,
-        directoryFileCount: 2,
-      },
-      {
-        username: 'user1',
-        directory: 'Artist - Album',
-        filename: 'b.mp3',
-        relativePath: null,
-        directoryFileCount: 2,
-      },
-    ]);
+    expect(scanMock).toHaveBeenCalledTimes(1);
+    expect(scanMock).toHaveBeenCalledWith(['Artist/Album/a.mp3', 'Artist/Album/b.mp3']);
   });
 });

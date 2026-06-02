@@ -3,7 +3,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom, interval, Subscription } from 'rxjs';
 import { switchMap, takeWhile } from 'rxjs/operators';
-import { ApiService, type TailscaleStatus } from '../../services/api.service';
+import { ApiService, type TailscaleStatus, type StreamingSettings } from '../../services/api.service';
 import { AuthService } from '../../services/auth.service';
 import { ThemeService, THEME_PRESETS, type ThemeId } from '../../services/theme.service';
 import { RemotePlaybackService } from '../../services/remote-playback.service';
@@ -70,6 +70,10 @@ export class SettingsComponent implements OnInit {
   // teardown is handled by takeUntilDestroyed in startTsPoll().
   private tsPollSub: Subscription | null = null;
 
+  readonly streaming = signal<StreamingSettings | null>(null);
+  readonly streamingSaving = signal(false);
+  readonly streamingMessage = signal<{ type: 'success' | 'error'; text: string } | null>(null);
+
   isAdmin(): boolean {
     return this.auth.role() === 'admin';
   }
@@ -77,7 +81,29 @@ export class SettingsComponent implements OnInit {
   ngOnInit(): void {
     this.loadSettings();
     this.loadTailscaleStatus();
-    if (this.isAdmin()) this.loadShares();
+    if (this.isAdmin()) {
+      this.loadShares();
+      this.loadStreaming();
+    }
+  }
+
+  private async loadStreaming(): Promise<void> {
+    try {
+      this.streaming.set(await firstValueFrom(this.api.getStreamingSettings()));
+    } catch { /* ignore */ }
+  }
+
+  async saveStreaming(patch: Partial<StreamingSettings>): Promise<void> {
+    this.streamingSaving.set(true);
+    this.streamingMessage.set(null);
+    try {
+      this.streaming.set(await firstValueFrom(this.api.saveStreamingSettings(patch)));
+      this.streamingMessage.set({ type: 'success', text: 'Streaming settings saved' });
+    } catch {
+      this.streamingMessage.set({ type: 'error', text: 'Failed to save streaming settings' });
+    } finally {
+      this.streamingSaving.set(false);
+    }
   }
 
   statusDotClass(): string {

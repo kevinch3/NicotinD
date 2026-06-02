@@ -3,7 +3,6 @@ import { streamSSE } from 'hono/streaming';
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import type { NicotinDConfig } from '@nicotind/core';
-import type { Navidrome } from '@nicotind/navidrome-client';
 import type { ServiceManager } from '@nicotind/service-manager';
 import type { AuthEnv } from '../middleware/auth.js';
 import type { SlskdRef } from '../index.js';
@@ -12,11 +11,12 @@ const startTime = Date.now();
 
 export function systemRoutes(
   slskdRef: SlskdRef,
-  navidrome: Navidrome,
   serviceManager: ServiceManager,
   config: NicotinDConfig,
+  opts: { triggerScan?: () => Promise<void> | void } = {},
 ) {
   const app = new Hono<AuthEnv>();
+  let scanning = false;
 
   app.get('/status', async (c) => {
     let slskdHealthy = false;
@@ -41,13 +41,6 @@ export function systemRoutes(
       }
     }
 
-    let navidromeHealthy = false;
-    try {
-      navidromeHealthy = await navidrome.system.ping();
-    } catch {
-      // navidrome not reachable
-    }
-
     return c.json({
       nicotind: {
         version: '0.1.0',
@@ -61,26 +54,31 @@ export function systemRoutes(
         version: slskdVersion,
         uptime: slskdUptime,
       },
-      navidrome: {
-        healthy: navidromeHealthy,
-      },
     });
   });
 
   app.post('/scan', async (c) => {
-    await navidrome.system.startScan();
+    if (!opts.triggerScan) return c.json({ error: 'Scanner not available' }, 503);
+    if (scanning) return c.json({ ok: true, message: 'Library scan already running' });
+    scanning = true;
+    // Fire-and-forget: the native scan walks the music dir and reconciles the
+    // canonical tables; the client can poll /scan/status.
+    void Promise.resolve(opts.triggerScan())
+      .catch(() => {})
+      .finally(() => {
+        scanning = false;
+      });
     return c.json({ ok: true, message: 'Library scan started' });
   });
 
-  app.get('/scan/status', async (c) => {
-    const status = await navidrome.system.getScanStatus();
-    return c.json(status);
+  app.get('/scan/status', (c) => {
+    return c.json({ scanning, count: 0 });
   });
 
   app.post('/restart/:service', async (c) => {
     const service = c.req.param('service');
-    if (service !== 'slskd' && service !== 'navidrome') {
-      return c.json({ error: 'Unknown service. Use "slskd" or "navidrome"' }, 400);
+    if (service !== 'slskd') {
+      return c.json({ error: 'Unknown service. Use "slskd"' }, 400);
     }
 
     await serviceManager.restartService(service);
@@ -112,7 +110,7 @@ export function systemRoutes(
     }
 
     const service = c.req.param('service');
-    const VALID_SERVICES = ['slskd', 'navidrome', 'tailscale', 'nicotind'] as const;
+    const VALID_SERVICES = ['slskd', 'tailscale', 'nicotind'] as const;
     if (!(VALID_SERVICES as readonly string[]).includes(service)) {
       return c.json({ error: `Unknown service. Valid services: ${VALID_SERVICES.join(', ')}` }, 400);
     }

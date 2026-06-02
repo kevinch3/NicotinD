@@ -21,7 +21,7 @@ export class AdminComponent implements OnInit, OnDestroy {
   private api = inject(ApiService);
   private auth = inject(AuthService);
 
-  readonly services: ('slskd' | 'navidrome')[] = ['slskd', 'navidrome'];
+  readonly services: 'slskd'[] = ['slskd'];
 
   readonly users = signal<AdminUser[]>([]);
   readonly loading = signal(true);
@@ -39,9 +39,9 @@ export class AdminComponent implements OnInit, OnDestroy {
   readonly newUserPassword = signal('');
   readonly creating = signal(false);
 
-  readonly systemStatus = signal<{ slskd: { healthy: boolean; connected?: boolean }; navidrome: { healthy: boolean } } | null>(null);
+  readonly systemStatus = signal<{ slskd: { healthy: boolean; connected?: boolean } } | null>(null);
   readonly scanStatus = signal<{ scanning: boolean; count: number } | null>(null);
-  readonly restarting = signal<{ slskd: boolean; navidrome: boolean }>({ slskd: false, navidrome: false });
+  readonly restarting = signal<{ slskd: boolean }>({ slskd: false });
 
   // Incomplete album hunts (3A) — exhausted/active jobs with a re-hunt action.
   readonly incompleteJobs = signal<AlbumJob[]>([]);
@@ -55,7 +55,7 @@ export class AdminComponent implements OnInit, OnDestroy {
   readonly untrackedTotal = signal(0);
   readonly untrackedLoading = signal(true);
 
-  readonly selectedService = signal<'slskd' | 'navidrome' | 'tailscale' | 'nicotind'>('nicotind');
+  readonly selectedService = signal<'slskd' | 'tailscale' | 'nicotind'>('nicotind');
   readonly logLines = signal<string[]>([]);
   readonly logStreamStatus = signal<'idle' | 'connecting' | 'connected' | 'disconnected'>('idle');
 
@@ -154,37 +154,28 @@ export class AdminComponent implements OnInit, OnDestroy {
     return new Date(dateStr + 'Z').toLocaleDateString();
   }
 
-  getBadgeColor(svc: 'slskd' | 'navidrome'): string {
+  getBadgeColor(svc: 'slskd'): string {
     const status = this.systemStatus();
     if (!status) return 'text-zinc-500';
     const health = status[svc];
-    if (svc === 'slskd') {
-      const connected = (health as { healthy: boolean; connected?: boolean }).connected;
-      return connected ? 'text-emerald-400' : health.healthy ? 'text-amber-400' : 'text-red-400';
-    }
-    return health.healthy ? 'text-emerald-400' : 'text-red-400';
+    const connected = health.connected;
+    return connected ? 'text-emerald-400' : health.healthy ? 'text-amber-400' : 'text-red-400';
   }
 
-  getDotColor(svc: 'slskd' | 'navidrome'): string {
+  getDotColor(svc: 'slskd'): string {
     const status = this.systemStatus();
     if (!status) return 'bg-zinc-500';
     const health = status[svc];
-    if (svc === 'slskd') {
-      const connected = (health as { healthy: boolean; connected?: boolean }).connected;
-      return connected ? 'bg-emerald-500' : health.healthy ? 'bg-amber-400' : 'bg-red-500';
-    }
-    return health.healthy ? 'bg-emerald-500' : 'bg-red-500';
+    const connected = health.connected;
+    return connected ? 'bg-emerald-500' : health.healthy ? 'bg-amber-400' : 'bg-red-500';
   }
 
-  getBadgeLabel(svc: 'slskd' | 'navidrome'): string {
+  getBadgeLabel(svc: 'slskd'): string {
     const status = this.systemStatus();
     if (!status) return '—';
     const health = status[svc];
-    if (svc === 'slskd') {
-      const connected = (health as { healthy: boolean; connected?: boolean }).connected;
-      return connected ? 'Connected' : health.healthy ? 'Disconnected' : 'Unreachable';
-    }
-    return health.healthy ? 'Healthy' : 'Unreachable';
+    const connected = health.connected;
+    return connected ? 'Connected' : health.healthy ? 'Disconnected' : 'Unreachable';
   }
 
   async toggleRole(user: AdminUser): Promise<void> {
@@ -255,7 +246,7 @@ export class AdminComponent implements OnInit, OnDestroy {
     }
   }
 
-  async handleRestart(service: 'slskd' | 'navidrome'): Promise<void> {
+  async handleRestart(service: 'slskd'): Promise<void> {
     this.restarting.update(prev => ({ ...prev, [service]: true }));
     try {
       await firstValueFrom(this.api.restartService(service));
@@ -267,9 +258,9 @@ export class AdminComponent implements OnInit, OnDestroy {
     }
   }
 
-  readonly logServiceOptions: ('slskd' | 'navidrome' | 'tailscale' | 'nicotind')[] = ['slskd', 'navidrome', 'tailscale', 'nicotind'];
+  readonly logServiceOptions: ('slskd' | 'tailscale' | 'nicotind')[] = ['slskd', 'tailscale', 'nicotind'];
 
-  selectLogService(svc: 'slskd' | 'navidrome' | 'tailscale' | 'nicotind'): void {
+  selectLogService(svc: 'slskd' | 'tailscale' | 'nicotind'): void {
     this.selectedService.set(svc);
     this.logLines.set([]);
   }

@@ -1,5 +1,5 @@
 /**
- * Downloads slskd and Navidrome binaries for embedded mode.
+ * Downloads slskd (and optionally Lidarr) binaries for embedded mode.
  * Usage: bun run scripts/download-deps.ts [--force]
  */
 import { existsSync, mkdirSync, chmodSync, createWriteStream } from 'node:fs';
@@ -37,17 +37,6 @@ const ARCH_MAP: Record<string, string> = {
   arm64: 'arm64',
 };
 
-const NAVIDROME_ARCH_MAP: Record<string, string> = {
-  x64: 'amd64',
-  arm64: 'arm64',
-};
-
-const NAVIDROME_PLATFORM_MAP: Record<string, string> = {
-  linux: 'linux',
-  darwin: 'darwin',
-  win32: 'windows',
-};
-
 const deps: DepConfig[] = [
   {
     name: 'slskd',
@@ -63,26 +52,11 @@ const deps: DepConfig[] = [
       `unzip -o "${archive}" "slskd" "wwwroot/*" -d "${dest}"`,
   },
   {
-    name: 'navidrome',
-    repo: 'navidrome/navidrome',
-    binaryName: 'navidrome',
-    getAssetName: (version, platform, arch) => {
-      const p = NAVIDROME_PLATFORM_MAP[platform];
-      const a = NAVIDROME_ARCH_MAP[arch];
-      if (!p || !a) throw new Error(`Unsupported platform: ${platform}/${arch}`);
-      // Navidrome tags have 'v' prefix, asset names don't
-      const v = version.replace(/^v/, '');
-      return `navidrome_${v}_${p}_${a}.tar.gz`;
-    },
-    extractCmd: (archive, dest, binaryName) =>
-      `tar -xzf "${archive}" -C "${dest}" "${binaryName}"`,
-  },
-  {
     name: 'lidarr',
     repo: 'Lidarr/Lidarr',
     // Lidarr's archive extracts to a top-level `Lidarr/` folder; the executable
     // lives inside it. Powers discography features; optional so a download
-    // failure never blocks slskd/navidrome.
+    // failure never blocks slskd.
     binaryName: join('Lidarr', 'Lidarr'),
     optional: true,
     getAssetName: (version, platform, arch) => {

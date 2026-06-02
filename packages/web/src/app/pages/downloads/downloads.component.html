@@ -218,27 +218,6 @@
                 <span class="text-sm text-theme-secondary font-medium">{{ offlineSelected().size }} selected</span>
                 <div class="flex-1 min-w-0"></div>
 
-                @if (offlineShowPlaylistPicker()) {
-                  <div class="relative">
-                    <app-playlist-autocomplete
-                      (selected)="addOfflineToPlaylist($event); offlineShowPlaylistPicker.set(false)"
-                      (create)="createOfflinePlaylistAndAdd($event)"
-                    />
-                  </div>
-                }
-
-                @if (!offlineShowPlaylistPicker()) {
-                  <button (click)="offlineShowPlaylistPicker.set(true)"
-                    [disabled]="addingOfflineToPlaylist()"
-                    class="text-xs px-3 py-1.5 rounded-lg bg-theme-surface hover:bg-theme-hover transition text-theme-secondary border border-theme disabled:opacity-50">
-                    Add to playlist
-                  </button>
-                } @else {
-                  <button (click)="offlineShowPlaylistPicker.set(false)"
-                    class="text-xs px-3 py-1.5 rounded-lg text-theme-muted hover:text-theme-secondary transition">
-                    Cancel
-                  </button>
-                }
                 <button (click)="removeOfflineTracks(offlineSelectedArray())"
                   class="text-xs px-3 py-1.5 rounded-lg text-red-400 hover:bg-red-500/10 transition border border-red-500/20">
                   Remove from device
@@ -302,10 +281,6 @@
                     @if (offlineMenuId() === track.id) {
                       <div class="absolute right-0 top-7 z-50 bg-theme-surface border border-theme rounded-xl shadow-xl py-1 min-w-40"
                            (click)="$event.stopPropagation()">
-                        <button class="w-full text-left px-4 py-2 text-sm text-theme-secondary hover:bg-theme-hover transition-colors"
-                          (click)="addOfflineToPlaylistPicker(track.id)">
-                          Add to playlist
-                        </button>
                         <button class="w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-theme-hover transition-colors"
                           (click)="offlineMenuId.set(null); removeOfflineTracks([track.id])">
                           Remove from device
@@ -367,24 +342,11 @@
             <span class="text-sm text-theme-secondary font-medium">{{ selected().size }} selected</span>
             <div class="flex-1 min-w-0"></div>
 
-            @if (showPlaylistPicker()) {
-              <div class="relative">
-                <app-playlist-autocomplete
-                  (selected)="addToPlaylist($event); showPlaylistPicker.set(false)"
-                  (create)="createAndAdd($event)"
-                />
-              </div>
-            } @else {
-              <button (click)="openPlaylistPicker()"
-                class="px-3 py-1.5 rounded-md text-xs font-medium bg-theme-hover text-theme-primary hover:bg-theme-hover transition">
-                Add to playlist
+            @if (auth.role() === 'admin') {
+              <button (click)="confirmDeleteSelected()"
+                class="px-3 py-1.5 rounded-md text-xs font-medium bg-theme-hover text-red-400 hover:bg-red-500/20 transition">
+                Delete
               </button>
-              @if (auth.role() === 'admin') {
-                <button (click)="confirmDeleteSelected()"
-                  class="px-3 py-1.5 rounded-md text-xs font-medium bg-theme-hover text-red-400 hover:bg-red-500/20 transition">
-                  Delete
-                </button>
-              }
             }
           </div>
         }

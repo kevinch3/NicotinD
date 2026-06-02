@@ -3,14 +3,13 @@ import { NgTemplateOutlet } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
-import { ApiService, type Song, type Playlist } from '../../services/api.service';
+import { ApiService, type Song } from '../../services/api.service';
 import { AuthService } from '../../services/auth.service';
 import { PlayerService, type Track, shuffleArray } from '../../services/player.service';
 import { TransferService } from '../../services/transfer.service';
 import { ListControlsService, type SortOption } from '../../services/list-controls.service';
 import { ListToolbarComponent } from '../../components/list-toolbar/list-toolbar.component';
 import { ConfirmDialogComponent } from '../../components/confirm-dialog/confirm-dialog.component';
-import { PlaylistAutocompleteComponent } from '../../components/playlist-autocomplete/playlist-autocomplete.component';
 import { TrackAction } from '../../components/track-row/track-row.component';
 import { resolveArtistRoute } from '../../lib/route-utils';
 import { PreserveService } from '../../services/preserve.service';
@@ -118,7 +117,7 @@ function groupRecentSongsByDate(songs: Song[]): SongDateGroup[] {
 
 @Component({
   selector: 'app-downloads',
-  imports: [NgTemplateOutlet, FormsModule, ListToolbarComponent, ConfirmDialogComponent, PlaylistAutocompleteComponent],
+  imports: [NgTemplateOutlet, FormsModule, ListToolbarComponent, ConfirmDialogComponent],
   templateUrl: './downloads.component.html',
   })
 export class DownloadsComponent implements OnInit, OnDestroy {
@@ -149,8 +148,6 @@ export class DownloadsComponent implements OnInit, OnDestroy {
   readonly retrying = signal(new Set<string>());
   readonly deleteError = signal<string | null>(null);
   readonly scanning = signal(false);
-  readonly showPlaylistPicker = signal(false);
-  readonly addingToPlaylist = signal(false);
 
   // Confirm dialog
   readonly confirmMessage = signal('');
@@ -202,8 +199,6 @@ export class DownloadsComponent implements OnInit, OnDestroy {
   // ─── Offline tab state ────────────────────────────────────────────
   readonly offlineSelected = signal(new Set<string>());
   readonly offlineSelectedArray = computed(() => Array.from(this.offlineSelected()));
-  readonly offlineShowPlaylistPicker = signal(false);
-  readonly addingOfflineToPlaylist = signal(false);
   readonly offlineMenuId = signal<string | null>(null);
 
   readonly offlineSortOptions: SortOption[] = [
@@ -467,13 +462,6 @@ export class DownloadsComponent implements OnInit, OnDestroy {
   songActions(song: Song): TrackAction[] {
     return [
       {
-        label: 'Add to playlist',
-        action: () => {
-          this.selected.update(prev => new Set([...prev, song.id]));
-          this.showPlaylistPicker.set(true);
-        },
-      },
-      {
         label: 'Remove',
         destructive: true,
         action: () => this.askConfirm(`Remove "${song.title}" from library?`, () => this.handleDelete([song.id])),
@@ -487,33 +475,6 @@ export class DownloadsComponent implements OnInit, OnDestroy {
       `Delete ${count} song${count !== 1 ? 's' : ''} from library?`,
       () => this.handleDelete(this.selectedArray()),
     );
-  }
-
-  openPlaylistPicker(): void {
-    this.showPlaylistPicker.set(true);
-  }
-
-  async addToPlaylist(playlistId: string): Promise<void> {
-    const songIds = Array.from(this.selected());
-    this.addingToPlaylist.set(true);
-    try {
-      await firstValueFrom(this.api.updatePlaylist(playlistId, { songIdsToAdd: songIds }));
-      this.selected.set(new Set());
-      this.showPlaylistPicker.set(false);
-    } catch { /* ignore */ }
-    finally { this.addingToPlaylist.set(false); }
-  }
-
-  async createAndAdd(name: string): Promise<void> {
-    if (!name.trim()) return;
-    const songIds = Array.from(this.selected());
-    this.addingToPlaylist.set(true);
-    try {
-      await firstValueFrom(this.api.createPlaylist(name.trim(), songIds));
-      this.selected.set(new Set());
-      this.showPlaylistPicker.set(false);
-    } catch { /* ignore */ }
-    finally { this.addingToPlaylist.set(false); }
   }
 
   async removePreserved(id: string): Promise<void> {
@@ -545,12 +506,6 @@ export class DownloadsComponent implements OnInit, OnDestroy {
     });
   }
 
-  addOfflineToPlaylistPicker(id: string): void {
-    this.offlineSelected.update(s => new Set([...s, id]));
-    this.offlineShowPlaylistPicker.set(true);
-    this.offlineMenuId.set(null);
-  }
-
   async removeOfflineTracks(ids: string[]): Promise<void> {
     const removed: string[] = [];
     try {
@@ -566,29 +521,6 @@ export class DownloadsComponent implements OnInit, OnDestroy {
         return n;
       });
     }
-  }
-
-  async addOfflineToPlaylist(playlistId: string): Promise<void> {
-    const songIds = Array.from(this.offlineSelected());
-    this.addingOfflineToPlaylist.set(true);
-    try {
-      await firstValueFrom(this.api.updatePlaylist(playlistId, { songIdsToAdd: songIds }));
-      this.offlineSelected.set(new Set());
-      this.offlineShowPlaylistPicker.set(false);
-    } catch { /* ignore */ }
-    finally { this.addingOfflineToPlaylist.set(false); }
-  }
-
-  async createOfflinePlaylistAndAdd(name: string): Promise<void> {
-    if (!name.trim()) return;
-    const songIds = Array.from(this.offlineSelected());
-    this.addingOfflineToPlaylist.set(true);
-    try {
-      await firstValueFrom(this.api.createPlaylist(name.trim(), songIds));
-      this.offlineSelected.set(new Set());
-      this.offlineShowPlaylistPicker.set(false);
-    } catch { /* ignore */ }
-    finally { this.addingOfflineToPlaylist.set(false); }
   }
 
   navigateAndSearch(query: string): void {

@@ -60,9 +60,8 @@ describe('GET /songs/:id/similar', () => {
     seedSong(testDb, { id: 'song-b1', title: 'B Track 1', artist: 'Artist A', artistId: 'artist-1', albumId: 'album-2', genre: 'Jazz', year: 2010, path: '/music/Jazz/Artist A/Album Y/btrack1.flac' });
     seedSong(testDb, { id: 'song-g1', title: 'Genre Track', artist: 'Artist B', artistId: 'artist-2', albumId: 'album-3', genre: 'Jazz', year: 2012, path: '/music/Jazz/Artist B/Album Z/genre.flac' });
 
-    const navidromeMock = { browsing: { getSong: mock(() => Promise.reject(new Error('not used'))) } };
     app = new Hono();
-    app.route('/', libraryRoutes(navidromeMock as unknown as Parameters<typeof libraryRoutes>[0], '/music'));
+    app.route('/', libraryRoutes('/music'));
   });
 
   afterEach(() => {

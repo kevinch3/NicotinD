@@ -12,7 +12,6 @@ export const routes: Routes = [
     children: [
       { path: '', loadComponent: () => import('./pages/search/search.component').then(m => m.SearchComponent) },
       { path: 'downloads', loadComponent: () => import('./pages/downloads/downloads.component').then(m => m.DownloadsComponent) },
-      { path: 'playlists', loadComponent: () => import('./pages/playlists/playlists.component').then(m => m.PlaylistsComponent) },
       { path: 'library', loadComponent: () => import('./pages/library/library.component').then(m => m.LibraryComponent) },
       { path: 'library/albums/:id', loadComponent: () => import('./pages/library/album-detail.component').then(m => m.AlbumDetailComponent) },
       { path: 'library/artists/:id', loadComponent: () => import('./pages/library/artist-detail.component').then(m => m.ArtistDetailComponent) },

@@ -14,7 +14,6 @@
     { "path": "../packages/service-manager" },
     { "path": "../packages/slskd-client" },
     { "path": "../packages/lidarr-client" },
-    { "path": "../packages/navidrome-client" },
     { "path": "../packages/api" }
   ]
 }

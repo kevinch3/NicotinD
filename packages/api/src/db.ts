@@ -46,6 +46,15 @@ export function applySchema(db: Database): void {
     // Column already exists — ignore
   }
 
+  // Generic key/value app settings (JSON values). Used for streaming/transcode
+  // preferences; not user-scoped.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key   TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    )
+  `);
+
   db.run(`
     CREATE TABLE IF NOT EXISTS hidden_transfers (
       id TEXT PRIMARY KEY,
@@ -197,9 +206,9 @@ export function applySchema(db: Database): void {
     )
   `);
 
-  // Canonical library tables — populated by NavidromeSyncer after each scan.
-  // The UI reads exclusively from these (not from Navidrome directly), so we
-  // can hide, classify, and group independently of what Navidrome thinks.
+  // Canonical library tables — populated by the native LibraryScanner. The UI
+  // reads exclusively from these; the scanner mints stable ids and groups
+  // editions at scan time, so hide/classify/group all happen here.
   db.run(`
     CREATE TABLE IF NOT EXISTS library_albums (
       id              TEXT PRIMARY KEY,
@@ -288,9 +297,10 @@ export function applySchema(db: Database): void {
     )
   `);
 
-  // Albums the user has just deleted. The NavidromeSyncer skips re-adding these
-  // until a Navidrome scan catches up and stops reporting them — without this,
-  // a sync that runs before the (async) scan finishes resurrects the album.
+  // Legacy table from the Navidrome era (album-deletion tombstones). The native
+  // scanner reads disk directly and synchronously, so deletions can't be
+  // resurrected and this is no longer used. Kept for backward-compatible
+  // migrations; safe to drop in a future cleanup.
   db.run(`
     CREATE TABLE IF NOT EXISTS library_album_tombstones (
       album_id   TEXT PRIMARY KEY,

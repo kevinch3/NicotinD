@@ -27,7 +27,6 @@
     "@nicotind/api": "workspace:*",
     "@nicotind/core": "workspace:*",
     "@nicotind/lidarr-client": "workspace:*",
-    "@nicotind/navidrome-client": "workspace:*",
     "@nicotind/service-manager": "workspace:*",
     "@nicotind/slskd-client": "workspace:*",
     "yaml": "^2.8.3"

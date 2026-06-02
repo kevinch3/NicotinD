@@ -1,21 +1,21 @@
 import { Hono } from 'hono';
 import { hashPassword } from '@nicotind/core';
 import type { NicotinDConfig } from '@nicotind/core';
-import type { Navidrome } from '@nicotind/navidrome-client';
 import type { ServiceManager } from '@nicotind/service-manager';
 import { getDatabase } from '../db.js';
 import { signJwt } from '../middleware/auth.js';
 import { TailscaleService } from '../services/tailscale.js';
-import { DownloadWatcher } from '../services/download-watcher.js';
+import type { DownloadWatcher } from '../services/download-watcher.js';
 import { updateExternalSoulseekCredentials } from '../services/slskd-config.js';
 import type { SlskdRef, WatcherRef } from '../index.js';
 
 interface SetupDeps {
   config: NicotinDConfig;
   slskdRef: SlskdRef;
-  navidrome: Navidrome;
   serviceManager: ServiceManager;
   watcherRef: WatcherRef;
+  /** Builds a fully-wired download watcher (organizer + native scan hook). */
+  makeWatcher: () => DownloadWatcher | null;
   tailscale: TailscaleService;
   saveSecretsFn: (username: string, password: string) => void;
 }
@@ -23,9 +23,9 @@ interface SetupDeps {
 export function setupRoutes({
   config,
   slskdRef,
-  navidrome,
   serviceManager,
   watcherRef,
+  makeWatcher,
   tailscale,
   saveSecretsFn,
 }: SetupDeps) {
@@ -100,10 +100,8 @@ export function setupRoutes({
       if (watcherRef.current) {
         watcherRef.current.stop();
       }
-      watcherRef.current = new DownloadWatcher(slskdRef.current!, navidrome, {
-        musicDir: config.musicDir,
-      });
-      watcherRef.current.start();
+      watcherRef.current = makeWatcher();
+      watcherRef.current?.start();
     }
 
     // 3. Connect Tailscale (optional)

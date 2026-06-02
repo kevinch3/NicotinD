@@ -54,13 +54,6 @@ export const NicotinDConfigSchema = z.object({
     password: z.string().default(''),
   }),
 
-  navidrome: z.object({
-    url: z.string().url().default('http://localhost:4533'),
-    port: z.number().default(4533),
-    username: z.string().default('nicotind'),
-    password: z.string().default(''),
-  }),
-
   lidarr: z
     .object({
       url: z.string().url().default('http://localhost:8686'),

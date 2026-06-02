@@ -3,7 +3,6 @@ import { swaggerUI } from '@hono/swagger-ui';
 import { serveStatic, createBunWebSocket } from 'hono/bun';
 import type { NicotinDConfig } from '@nicotind/core';
 import type { Slskd } from '@nicotind/slskd-client';
-import type { Navidrome } from '@nicotind/navidrome-client';
 import type { Lidarr } from '@nicotind/lidarr-client';
 import type { ServiceManager } from '@nicotind/service-manager';
 import { authMiddleware } from './middleware/auth.js';
@@ -18,11 +17,9 @@ import { libraryRoutes } from './routes/library.js';
 import { streamingRoutes } from './routes/streaming.js';
 import { systemRoutes } from './routes/system.js';
 import { settingsRoutes } from './routes/settings.js';
-import { playlistRoutes } from './routes/playlists.js';
 import { adminRoutes } from './routes/admin.js';
 import { usersRoutes } from './routes/users.js';
 import { shareRoutes } from './routes/share.js';
-import { subsonicProxy } from './routes/subsonic.js';
 import { discographyRoutes } from './routes/discography.js';
 import { catalogRoutes } from './routes/catalog.js';
 import { DiscographyService } from './services/discography.service.js';
@@ -33,9 +30,9 @@ import { DownloadRetryService } from './services/download-retry.service.js';
 import { AlbumFallbackService } from './services/album-fallback.service.js';
 import { TailscaleService } from './services/tailscale.js';
 import { ProviderRegistry } from './services/provider-registry.js';
-import { NavidromeSearchProvider } from './services/providers/navidrome-provider.js';
+import { LibrarySearchProvider } from './services/providers/library-provider.js';
 import { SlskdSearchProvider } from './services/providers/slskd-provider.js';
-import { NavidromeSyncer } from './services/navidrome-syncer.js';
+import { LibraryScanner } from './services/library-scanner.js';
 import { LibraryCurator } from './services/library-curator.js';
 import { createLogger } from '@nicotind/core';
 import { initDatabase } from './db.js';
@@ -49,7 +46,6 @@ export type RetryRef = { current: DownloadRetryService | null };
 export interface CreateAppOptions {
   config: NicotinDConfig;
   slskdRef: SlskdRef;
-  navidrome: Navidrome;
   lidarr: Lidarr | null;
   serviceManager: ServiceManager;
   webDistPath?: string;
@@ -64,7 +60,6 @@ export interface CreateAppOptions {
 export function createApp({
   config,
   slskdRef,
-  navidrome,
   lidarr,
   serviceManager,
   webDistPath,
@@ -81,20 +76,35 @@ export function createApp({
 
   const db = initDatabase(expandedDataDir);
 
-  // Canonical-library pipeline: NavidromeSyncer pulls the scanner's view into
-  // our sqlite, LibraryCurator hides/classifies. The UI reads only from here.
-  const syncer = new NavidromeSyncer(navidrome, db);
+  const expandedMusicDir = config.musicDir.startsWith('~')
+    ? config.musicDir.replace('~', process.env.HOME ?? '/root')
+    : config.musicDir;
+
+  // Canonical-library pipeline: the native LibraryScanner reads tags off disk
+  // straight into our sqlite (replacing Navidrome's async scan), LibraryCurator
+  // hides/classifies. The UI reads only from these tables.
+  const scanner = new LibraryScanner(expandedMusicDir, db);
   const curator = new LibraryCurator(db);
   const syncLog = createLogger('library-sync');
   const runSyncAndCurate = async (): Promise<void> => {
     try {
-      await syncer.syncFull();
+      await scanner.scanFull();
       curator.reclassifyAll();
     } catch (err) {
-      syncLog.error({ err }, 'Library sync/curate cycle failed');
+      syncLog.error({ err }, 'Library scan/curate cycle failed');
     }
   };
-  // First sync runs in the background — the UI gracefully shows an empty
+  // Incremental scan of a just-organized batch (post-download). Synchronous from
+  // the caller's view — no async external scanner, so no scan-timing races.
+  const scanIncremental = async (relPaths: string[]): Promise<void> => {
+    try {
+      await scanner.scanPaths(relPaths);
+      curator.reclassifyAll();
+    } catch (err) {
+      syncLog.error({ err }, 'Incremental scan/curate failed');
+    }
+  };
+  // First full scan runs in the background — the UI gracefully shows an empty
   // library until it lands rather than blocking startup.
   void runSyncAndCurate();
 
@@ -118,23 +128,26 @@ export function createApp({
   // Global middleware
   app.onError(errorHandler);
 
-  // Download watcher (mutable ref — settings route can create/replace it).
+  // Download watcher (mutable ref — settings/setup routes can create/replace it).
   // The watcher owns a LibraryOrganizer that moves files from slskd's staging
-  // dir into <musicDir>/<Artist>/<Album>/<NN - Title>.<ext>.
-  const watcherRef: WatcherRef = {
-    current: slskdRef.current && config.soulseek.username && config.soulseek.password
-      ? new DownloadWatcher(slskdRef.current, navidrome, {
-          musicDir: config.musicDir,
-          stagingDir,
-          acoustidApiKey: config.metadataFix.enabled ? acoustidApiKey : undefined,
-          // Park unsortable files outside musicDir so Navidrome doesn't scan them.
-          unsortedRoot: `${expandedDataDir}/unsorted`,
-          preferFlacSkipMp3: config.downloads.preferFlacSkipMp3,
-          // Refresh canonical library after each post-download scan.
-          onScanComplete: runSyncAndCurate,
-        })
-      : null,
+  // dir into <musicDir>/<Artist>/<Album>/<NN - Title>.<ext>, then drives the
+  // native scanner over the organized files.
+  const makeWatcher = (): DownloadWatcher | null => {
+    if (!(slskdRef.current && config.soulseek.username && config.soulseek.password)) {
+      return null;
+    }
+    return new DownloadWatcher(slskdRef.current, {
+      musicDir: config.musicDir,
+      stagingDir,
+      acoustidApiKey: config.metadataFix.enabled ? acoustidApiKey : undefined,
+      // Park unsortable files outside musicDir so they aren't indexed.
+      unsortedRoot: `${expandedDataDir}/unsorted`,
+      preferFlacSkipMp3: config.downloads.preferFlacSkipMp3,
+      // Index the freshly organized files into the canonical library.
+      scan: scanIncremental,
+    });
   };
+  const watcherRef: WatcherRef = { current: makeWatcher() };
 
   // Self-healing retry reconciler — re-enqueues failed slskd transfers (slskd
   // resumes the partial file) and, once attempts exhaust, hands off to the
@@ -161,7 +174,7 @@ export function createApp({
 
   // Provider registry
   const registry = new ProviderRegistry();
-  registry.register(new NavidromeSearchProvider(navidrome));
+  registry.register(new LibrarySearchProvider(db));
   registry.register(new SlskdSearchProvider(slskdRef));
 
   // Tailscale service — reuse the instance from main.ts if provided (avoids duplicate state)
@@ -174,16 +187,13 @@ export function createApp({
     setupRoutes({
       config,
       slskdRef,
-      navidrome,
       serviceManager,
       watcherRef,
+      makeWatcher,
       tailscale,
       saveSecretsFn: saveSecretsFn ?? (() => {}),
     }),
   );
-
-  // Subsonic API proxy (uses its own auth via query params)
-  app.route('/rest', subsonicProxy(config));
 
   // Protected routes
   const auth = authMiddleware(config.jwt.secret);
@@ -195,7 +205,6 @@ export function createApp({
   app.use('/api/cover/*', auth);
   app.use('/api/system/*', auth);
   app.use('/api/settings/*', auth);
-  app.use('/api/playlists/*', auth);
   app.use('/api/tailscale/*', auth);
   app.use('/api/admin/*', auth);
   app.use('/api/users/*', auth);
@@ -211,14 +220,13 @@ export function createApp({
   app.route('/api/admin', adminRoutes());
   app.route('/api/downloads', downloadRoutes(registry, slskdRef));
   app.route('/api/uploads', uploadRoutes(slskdRef));
-  app.route('/api/library', libraryRoutes(navidrome, config.musicDir, { curator, runSync: runSyncAndCurate }));
-  app.route('/api', streamingRoutes(navidrome));
-  app.route('/api/system', systemRoutes(slskdRef, navidrome, serviceManager, config));
+  app.route('/api/library', libraryRoutes(config.musicDir, { curator, runSync: runSyncAndCurate }));
+  app.route('/api', streamingRoutes(expandedMusicDir, db, expandedDataDir));
+  app.route('/api/system', systemRoutes(slskdRef, serviceManager, config, { triggerScan: runSyncAndCurate }));
   app.route(
     '/api/settings',
-    settingsRoutes(config, slskdRef, navidrome, serviceManager, watcherRef),
+    settingsRoutes(config, slskdRef, makeWatcher, serviceManager, watcherRef),
   );
-  app.route('/api/playlists', playlistRoutes(navidrome, db));
   app.route('/api/share', shareRoutes(config.jwt.secret, auth));
   app.route('/api/tailscale', tailscaleRoutes(tailscale, saveTailscaleAuthKeyFn, clearTailscaleAuthKeyFn));
   app.route('/api/users', usersRoutes(registry));
@@ -241,8 +249,7 @@ export function createApp({
       if (
         path === '/doc' ||
         path === '/openapi.json' ||
-        path.startsWith('/api/') ||
-        path.startsWith('/rest/')
+        path.startsWith('/api/')
       ) {
         return next();
       }

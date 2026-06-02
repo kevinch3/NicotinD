@@ -42,6 +42,72 @@
           </div>
         </section>
 
+        <!-- Streaming / Transcoding (admin) -->
+        @if (isAdmin()) {
+          <section class="rounded-xl border border-theme bg-theme-surface/50 p-6 mb-6">
+            <h2 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary mb-5">Streaming</h2>
+            @if (streaming(); as s) {
+              <div class="space-y-4">
+                <label class="flex items-center justify-between gap-4">
+                  <span class="text-sm text-theme-primary">Transcode on the fly
+                    @if (s.ffmpegAvailable === false) {
+                      <span class="block text-xs text-amber-500">ffmpeg not found on the server — transcoding unavailable</span>
+                    } @else {
+                      <span class="block text-xs text-theme-muted">Re-encode streams to a smaller format/bitrate</span>
+                    }
+                  </span>
+                  <input type="checkbox" [checked]="s.transcodeEnabled"
+                    [disabled]="streamingSaving() || s.ffmpegAvailable === false"
+                    (change)="saveStreaming({ transcodeEnabled: $any($event.target).checked })"
+                    class="w-4 h-4 rounded accent-emerald-500" />
+                </label>
+
+                @if (s.transcodeEnabled) {
+                  <label class="flex items-center justify-between gap-4">
+                    <span class="text-sm text-theme-primary">Format</span>
+                    <select [value]="s.format"
+                      [disabled]="streamingSaving()"
+                      (change)="saveStreaming({ format: $any($event.target).value })"
+                      class="text-sm rounded-lg bg-theme-surface border border-theme px-2 py-1 text-theme-primary">
+                      <option value="mp3">MP3</option>
+                      <option value="opus">Opus</option>
+                      <option value="aac">AAC</option>
+                    </select>
+                  </label>
+
+                  <label class="flex items-center justify-between gap-4">
+                    <span class="text-sm text-theme-primary">Max bitrate (kbps)</span>
+                    <select [value]="s.maxBitRate"
+                      [disabled]="streamingSaving()"
+                      (change)="saveStreaming({ maxBitRate: +$any($event.target).value })"
+                      class="text-sm rounded-lg bg-theme-surface border border-theme px-2 py-1 text-theme-primary">
+                      <option [value]="96">96</option>
+                      <option [value]="128">128</option>
+                      <option [value]="192">192</option>
+                      <option [value]="256">256</option>
+                      <option [value]="320">320</option>
+                    </select>
+                  </label>
+
+                  <label class="flex items-center justify-between gap-4">
+                    <span class="text-sm text-theme-primary">Always transcode
+                      <span class="block text-xs text-theme-muted">Even when the player doesn't request it</span>
+                    </span>
+                    <input type="checkbox" [checked]="s.forceTranscode"
+                      [disabled]="streamingSaving()"
+                      (change)="saveStreaming({ forceTranscode: $any($event.target).checked })"
+                      class="w-4 h-4 rounded accent-emerald-500" />
+                  </label>
+                }
+
+                @if (streamingMessage(); as m) {
+                  <p class="text-xs" [class.text-emerald-500]="m.type === 'success'" [class.text-red-500]="m.type === 'error'">{{ m.text }}</p>
+                }
+              </div>
+            }
+          </section>
+        }
+
         <!-- Soulseek Network -->
         <section class="rounded-xl border border-theme bg-theme-surface/50 p-6">
           <div class="flex items-center gap-3 mb-6 flex-wrap">

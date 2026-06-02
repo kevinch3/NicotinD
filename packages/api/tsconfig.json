@@ -10,7 +10,6 @@
     { "path": "../core" },
     { "path": "../slskd-client" },
     { "path": "../lidarr-client" },
-    { "path": "../navidrome-client" },
     { "path": "../service-manager" }
   ]
 }

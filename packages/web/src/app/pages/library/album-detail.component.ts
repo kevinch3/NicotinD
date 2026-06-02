@@ -10,13 +10,12 @@ import { ListControlsService, type SortOption } from '../../services/list-contro
 import { ListToolbarComponent } from '../../components/list-toolbar/list-toolbar.component';
 import { TrackRowComponent, type TrackAction } from '../../components/track-row/track-row.component';
 import { ConfirmDialogComponent } from '../../components/confirm-dialog/confirm-dialog.component';
-import { PlaylistAutocompleteComponent } from '../../components/playlist-autocomplete/playlist-autocomplete.component';
 import { toTrack } from '../../lib/track-utils';
 import { resolveArtistRoute } from '../../lib/route-utils';
 
 @Component({
   selector: 'app-album-detail',
-  imports: [ListToolbarComponent, TrackRowComponent, ConfirmDialogComponent, PlaylistAutocompleteComponent, RouterLink],
+  imports: [ListToolbarComponent, TrackRowComponent, ConfirmDialogComponent, RouterLink],
   templateUrl: './album-detail.component.html',
 })
 export class AlbumDetailComponent implements OnInit {
@@ -53,32 +52,6 @@ export class AlbumDetailComponent implements OnInit {
     sortOptions: this.detailSortOptions,
     defaultSort: 'track',
   });
-
-  // ─── Playlist picker ──────────────────────────────────────────────
-  readonly playlistPickerSong = signal<{ id: string; title: string } | null>(null);
-  readonly addingToPlaylistLib = signal(false);
-
-  async addSongToPlaylist(playlistId: string): Promise<void> {
-    const song = this.playlistPickerSong();
-    if (!song) return;
-    this.addingToPlaylistLib.set(true);
-    try {
-      await firstValueFrom(this.api.updatePlaylist(playlistId, { songIdsToAdd: [song.id] }));
-      this.playlistPickerSong.set(null);
-    } catch { /* ignore */ }
-    finally { this.addingToPlaylistLib.set(false); }
-  }
-
-  async createLibraryPlaylistAndAdd(name: string): Promise<void> {
-    const song = this.playlistPickerSong();
-    if (!song) return;
-    this.addingToPlaylistLib.set(true);
-    try {
-      await firstValueFrom(this.api.createPlaylist(name, [song.id]));
-      this.playlistPickerSong.set(null);
-    } catch { /* ignore */ }
-    finally { this.addingToPlaylistLib.set(false); }
-  }
 
   // ─── Confirm dialog ───────────────────────────────────────────────
   readonly confirmMessage = signal('');
@@ -147,9 +120,9 @@ export class AlbumDetailComponent implements OnInit {
         if (result.failedCount === 0) {
           void this.router.navigate(['/library']);
         } else {
-          // The backend always removes the album from the library (and tombstones
-          // it so a sync can't resurrect it); a non-zero failedCount means some
-          // files couldn't be deleted from disk and may need manual cleanup.
+          // The backend always removes the album from the canonical library
+          // tables; a non-zero failedCount means some files couldn't be deleted
+          // from disk and may need manual cleanup.
           const allIds = (album.song ?? []).map(s => s.id);
           const failedSet = new Set(result.failed.map(f => f.id));
           this.transferService.addDeletedIds(allIds.filter(id => !failedSet.has(id)));
@@ -168,7 +141,6 @@ export class AlbumDetailComponent implements OnInit {
 
   albumTrackActions(song: { id: string; title: string; artistId?: string }): TrackAction[] {
     return [
-      { label: 'Add to playlist', action: () => this.playlistPickerSong.set(song) },
       ...(song.artistId ? [{
         label: 'Go to artist',
         action: () => {

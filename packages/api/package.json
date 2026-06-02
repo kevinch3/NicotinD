@@ -8,7 +8,6 @@
     "@hono/zod-openapi": "^1.3.0",
     "@nicotind/core": "workspace:*",
     "@nicotind/lidarr-client": "workspace:*",
-    "@nicotind/navidrome-client": "workspace:*",
     "@nicotind/service-manager": "workspace:*",
     "@nicotind/slskd-client": "workspace:*",
     "hono": "^4.12.15",

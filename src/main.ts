@@ -4,7 +4,6 @@ import { parse } from 'yaml';
 import { NicotinDConfigSchema, createLogger, generateSecret } from '@nicotind/core';
 import { ServiceManager, NativeProcessStrategy } from '@nicotind/service-manager';
 import { Slskd } from '@nicotind/slskd-client';
-import { Navidrome } from '@nicotind/navidrome-client';
 import { Lidarr } from '@nicotind/lidarr-client';
 import { createApp, TailscaleService } from '@nicotind/api';
 
@@ -45,17 +44,15 @@ async function main() {
       ? join(process.env.HOME ?? '/root', config.dataDir.slice(1))
       : config.dataDir;
     const binDir = join(dataDir, 'bin');
-    const navidromeBin = join(binDir, 'navidrome');
     const slskdBin = join(binDir, 'slskd');
     const lidarrBin = join(binDir, 'Lidarr', 'Lidarr');
 
     // Only require slskd binary if Soulseek credentials are configured
     const needsSlskd = hasSoulseekCreds && !existsSync(slskdBin);
-    const needsNavidrome = !existsSync(navidromeBin);
     // Lidarr is optional; its download is best-effort inside download-deps.
     const needsLidarr = !!config.lidarr && !existsSync(lidarrBin);
 
-    if (needsSlskd || needsNavidrome || needsLidarr) {
+    if (needsSlskd || needsLidarr) {
       log.info('Downloading dependencies (first run)...');
       const { execSync } = await import('node:child_process');
       execSync(`bun run ${resolve(import.meta.dir, '../scripts/download-deps.ts')}`, {
@@ -70,7 +67,6 @@ async function main() {
       log.info('No Soulseek credentials configured — skipping slskd (network search disabled)');
       log.info('Configure credentials in Settings to enable Soulseek network search');
     }
-    await serviceManager.startNavidrome();
     // Only start Lidarr if its binary is actually present — avoids a slow,
     // doomed health-check wait when the (best-effort) download didn't land.
     if (config.lidarr && existsSync(lidarrBin)) {
@@ -78,14 +74,6 @@ async function main() {
     } else if (config.lidarr) {
       log.info('Lidarr binary not present — discography features disabled (embedded)');
     }
-
-    // Auto-create Navidrome admin user on first run
-    await createNavidromeAdmin(config, config.dataDir, startupSecrets);
-  }
-
-  // Auto-create Navidrome admin user in external mode too
-  if (config.mode === 'external') {
-    await createNavidromeAdmin(config, config.dataDir, startupSecrets);
   }
 
   // 3. Initialize clients (slskd wrapped in mutable ref for hot-swap via settings)
@@ -96,12 +84,6 @@ async function main() {
       password: config.slskd.password,
     }),
   };
-
-  const navidrome = new Navidrome({
-    baseUrl: config.navidrome.url,
-    username: config.navidrome.username,
-    password: config.navidrome.password,
-  });
 
   const lidarr = config.lidarr
     ? new Lidarr({ baseUrl: config.lidarr.url, apiKey: config.lidarr.apiKey })
@@ -138,7 +120,6 @@ async function main() {
   const { app, watcherRef, retryRef, websocket } = createApp({
     config,
     slskdRef,
-    navidrome,
     lidarr,
     serviceManager,
     webDistPath,
@@ -198,7 +179,6 @@ async function main() {
 
 export interface PersistedSecrets {
   slskdPassword: string;
-  navidromePassword: string;
   lidarrApiKey: string;
   jwtSecret: string;
   soulseekUsername?: string;
@@ -206,7 +186,6 @@ export interface PersistedSecrets {
   soulseekListeningPort?: number;
   soulseekEnableUPnP?: boolean;
   tailscale?: { authKey: string };
-  navidromeAdminCreated?: boolean;
   acoustidApiKey?: string;
 }
 
@@ -223,7 +202,6 @@ export function loadOrCreateSecrets(dataDir: string): PersistedSecrets {
 
   const secrets: PersistedSecrets = {
     slskdPassword: generateSecret(16),
-    navidromePassword: generateSecret(16),
     lidarrApiKey: generateSecret(24),
     jwtSecret: generateSecret(32),
   };
@@ -239,35 +217,6 @@ export function saveSecrets(dataDir: string, secrets: PersistedSecrets): void {
   mkdirSync(dir, { recursive: true });
   const secretsPath = join(dir, 'secrets.json');
   writeFileSync(secretsPath, JSON.stringify(secrets, null, 2), { mode: 0o600 });
-}
-
-async function createNavidromeAdmin(
-  config: { navidrome: { url: string; username: string; password: string } },
-  dataDir: string,
-  secrets: PersistedSecrets,
-) {
-  if (secrets.navidromeAdminCreated) return;
-  try {
-    const res = await fetch(`${config.navidrome.url}/auth/createAdmin`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        username: config.navidrome.username,
-        password: config.navidrome.password,
-      }),
-    });
-    if (res.ok) {
-      log.info('Created Navidrome admin user');
-      secrets.navidromeAdminCreated = true;
-      saveSecrets(dataDir, secrets);
-    } else if (res.status === 403) {
-      // Admin already exists — mark as done so we skip on future restarts
-      secrets.navidromeAdminCreated = true;
-      saveSecrets(dataDir, secrets);
-    }
-  } catch {
-    // Navidrome not reachable yet — will retry next restart if flag not set
-  }
 }
 
 function loadConfig() {
@@ -353,17 +302,6 @@ function loadConfig() {
         ? { password: process.env.SLSKD_INTERNAL_PASSWORD }
         : {}),
       ...(process.env.SLSKD_PASSWORD ? { password: process.env.SLSKD_PASSWORD } : {}),
-    },
-    navidrome: {
-      url: 'http://localhost:4533',
-      port: 4533,
-      username: 'nicotind',
-      password: secrets.navidromePassword,
-      ...((fileConfig as Record<string, unknown>).navidrome as Record<string, unknown>),
-      ...(process.env.NICOTIND_NAVIDROME_URL ? { url: process.env.NICOTIND_NAVIDROME_URL } : {}),
-      ...(process.env.NAVIDROME_INTERNAL_PASSWORD
-        ? { password: process.env.NAVIDROME_INTERNAL_PASSWORD }
-        : {}),
     },
     lidarr: {
       url: 'http://localhost:8686',
