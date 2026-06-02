@@ -4,12 +4,31 @@ import { unlinkSync, rmdirSync, rmSync, existsSync, readdirSync } from 'node:fs'
 import { createLogger } from '@nicotind/core';
 import type { Song, Album, Artist } from '@nicotind/core';
 import type { AuthEnv } from '../middleware/auth.js';
+import type { Database } from 'bun:sqlite';
 import { getDatabase } from '../db.js';
 import type { LibraryCurator } from '../services/library-curator.js';
+import { normalizeForGrouping } from '../services/album-grouping.js';
 
 const log = createLogger('library');
 
 const VALID_CLASSIFICATIONS = new Set(['album', 'single', 'compilation', 'unknown']);
+
+/**
+ * Returns a Set of "artist album" group keys (using normalizeForGrouping) for
+ * every album that has an active download job. Used to suppress partially-downloaded
+ * albums from library listing endpoints so the user never sees an incomplete album.
+ */
+function getDownloadingGroupKeys(db: Database): Set<string> {
+  const jobs = db
+    .query<{ artist_name: string; album_title: string }, []>(
+      `SELECT artist_name, album_title FROM album_jobs
+       WHERE state = 'active' AND artist_name IS NOT NULL AND album_title IS NOT NULL`,
+    )
+    .all();
+  return new Set(
+    jobs.map((j) => `${normalizeForGrouping(j.artist_name)} ${normalizeForGrouping(j.album_title)}`),
+  );
+}
 
 const AUDIO_EXTENSIONS = new Set([
   '.mp3', '.flac', '.m4a', '.aac', '.ogg', '.opus', '.wav', '.wma', '.alac', '.aiff', '.aif', '.ape',
@@ -197,7 +216,11 @@ export function libraryRoutes(
          ORDER BY year DESC NULLS LAST, name COLLATE NOCASE ASC`,
       )
       .all(id);
-    return c.json({ artist: rowToArtist(artistRow), albums: albumRows.map(rowToAlbum) });
+    const downloadingKeys = getDownloadingGroupKeys(db);
+    const visibleAlbums = albumRows
+      .filter((r) => !downloadingKeys.has(`${normalizeForGrouping(r.artist)} ${normalizeForGrouping(r.name)}`))
+      .map(rowToAlbum);
+    return c.json({ artist: rowToArtist(artistRow), albums: visibleAlbums });
   });
 
   app.get('/albums', (c) => {
@@ -224,7 +247,11 @@ export function libraryRoutes(
         `${ALBUM_SELECT} ${whereClause} ORDER BY ${order} LIMIT ? OFFSET ?`,
       )
       .all(...params, size, offset);
-    return c.json(rows.map(rowToAlbum));
+    const downloadingKeys = getDownloadingGroupKeys(db);
+    const albums = rows
+      .filter((r) => !downloadingKeys.has(`${normalizeForGrouping(r.artist)} ${normalizeForGrouping(r.name)}`))
+      .map(rowToAlbum);
+    return c.json(albums);
   });
 
   app.get('/albums/:id', (c) => {

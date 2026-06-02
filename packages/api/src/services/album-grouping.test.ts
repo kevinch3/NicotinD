@@ -34,6 +34,17 @@ describe('normalizeForGrouping', () => {
     );
   });
 
+  it('strips standalone 4-digit year parentheticals added by peers to folder names', () => {
+    // Peers often append release year: "Kiss Me Once (2014)" → same as "Kiss Me Once"
+    expect(normalizeForGrouping('Kiss Me Once (2014)')).toBe(normalizeForGrouping('Kiss Me Once'));
+    expect(normalizeForGrouping('The Abbey Road Sessions (2012)')).toBe(
+      normalizeForGrouping('The Abbey Road Sessions'),
+    );
+    expect(normalizeForGrouping('(2014.03.14) Kylie Minogue - Kiss Me Once')).toBe(
+      normalizeForGrouping('Kylie Minogue - Kiss Me Once'),
+    );
+  });
+
   it('does NOT fold genuinely distinct titles or real numbers', () => {
     expect(normalizeForGrouping('Greatest Hits')).not.toBe(normalizeForGrouping('Greatest Hits II'));
     // No edition keyword → trailing number is part of the title, kept.

@@ -6,6 +6,7 @@ import type { CompletedDownloadFile } from './path-inference.js';
 import { LibraryOrganizer } from './library-organizer.js';
 import { AcoustIdLookup } from './acoustid-lookup.js';
 import { getDatabase } from '../db.js';
+import { normalizeForGrouping } from './album-grouping.js';
 
 const log = createLogger('download-watcher');
 
@@ -60,14 +61,49 @@ export class DownloadWatcher {
         // Name a hunted album's folder after its Lidarr canonical title so every
         // edition/re-hunt consolidates into one <Artist>/<album> dir.
         jobLookup: (directory) => {
-          const row = getDatabase()
+          const db = getDatabase();
+
+          // 1. Exact match on the primary peer directory recorded at hunt time.
+          const exact = db
             .query<{ artist_name: string | null; album_title: string | null }, [string]>(
               `SELECT artist_name, album_title FROM album_jobs
                WHERE directory = ? AND album_title IS NOT NULL
                ORDER BY created_at DESC LIMIT 1`,
             )
             .get(directory);
-          return row ? { artist: row.artist_name, album: row.album_title } : null;
+          if (exact) return { artist: exact.artist_name, album: exact.album_title };
+
+          // 2. Fuzzy match for fallback/alternate peer directories. Soulseek peers
+          // use their own folder names (e.g. "Kiss Me Once (2014)") which won't
+          // match the primary job's directory exactly but should map to the same
+          // canonical album so their tracks land in one folder, not a duplicate.
+          // Extract probable artist/album from the last two path segments and
+          // compare against active jobs after normalizing both sides.
+          const segments = directory.replace(/\\/g, '/').split('/').filter(Boolean);
+          if (segments.length < 2) return null;
+          const candidateAlbum = segments[segments.length - 1]!;
+          const candidateArtist = segments[segments.length - 2]!;
+          const normAlbum = normalizeForGrouping(candidateAlbum);
+          const normArtist = normalizeForGrouping(candidateArtist);
+
+          const activeJobs = db
+            .query<{ artist_name: string; album_title: string }, []>(
+              `SELECT artist_name, album_title FROM album_jobs
+               WHERE state = 'active' AND artist_name IS NOT NULL AND album_title IS NOT NULL
+               ORDER BY created_at DESC LIMIT 50`,
+            )
+            .all();
+
+          for (const job of activeJobs) {
+            if (
+              normalizeForGrouping(job.album_title) === normAlbum &&
+              normalizeForGrouping(job.artist_name) === normArtist
+            ) {
+              return { artist: job.artist_name, album: job.album_title };
+            }
+          }
+
+          return null;
         },
       });
     this.scan = options.scan;
@@ -76,6 +112,12 @@ export class DownloadWatcher {
   start(): void {
     if (this.timer) return;
     log.info({ intervalMs: this.intervalMs }, 'Starting download watcher');
+
+    // Pre-populate knownCompleted from the DB so a container restart doesn't
+    // replay every historical "Completed, Succeeded" transfer through organizeBatch,
+    // which would produce hundreds of "Could not locate file on disk" warnings
+    // and risk placing fallback files under incorrect album folder names.
+    this.seedKnownCompleted();
 
     this.timer = setInterval(() => this.check(), this.intervalMs);
     // Run immediately on start
@@ -96,6 +138,23 @@ export class DownloadWatcher {
       }
     }
     log.info('Download watcher stopped');
+  }
+
+  private seedKnownCompleted(): void {
+    try {
+      const rows = getDatabase()
+        .query<{ transfer_key: string }, []>('SELECT transfer_key FROM completed_downloads')
+        .all();
+      for (const row of rows) {
+        this.knownCompleted.add(row.transfer_key);
+      }
+      if (rows.length) {
+        log.info({ count: rows.length }, 'Seeded known completions from DB');
+      }
+    } catch {
+      // DB may not be ready yet; the watcher will still work correctly, it just
+      // won't skip historical transfers on this boot.
+    }
   }
 
   private async check(): Promise<void> {

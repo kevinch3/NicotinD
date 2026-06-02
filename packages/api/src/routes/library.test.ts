@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach, afterAll, mock } from 'bun:test';
+import { describe, expect, it, beforeEach, afterEach, afterAll, mock } from 'bun:test';
 import { Hono } from 'hono';
 import { Database } from 'bun:sqlite';
 import * as realFsNamespace from 'node:fs';
@@ -225,6 +225,99 @@ describe('library routes', () => {
     expect(res.status).toBe(200);
     const row = sharedDb.query(`SELECT id FROM library_songs WHERE id = 'song-7'`).get();
     expect(row).toBeNull();
+  });
+});
+
+describe('downloading album suppression', () => {
+  const testDb = new Database(':memory:');
+  applySchema(testDb);
+
+  // Override the module-level mock so this describe's getDatabase returns our testDb.
+  beforeEach(() => {
+    mock.module('../db.js', () => ({ getDatabase: () => testDb, applySchema }));
+    // Clean up between tests
+    testDb.run('DELETE FROM library_albums');
+    testDb.run('DELETE FROM library_songs');
+    testDb.run('DELETE FROM album_jobs');
+  });
+
+  function seedAlbumRecord(id: string, name: string, artist: string): void {
+    testDb.run('DELETE FROM library_albums WHERE id = ?', [id]);
+    testDb.run(
+      `INSERT INTO library_albums (id, name, artist, artist_id, song_count, duration, synced_at)
+       VALUES (?, ?, ?, 'art', 3, 120, 1)`,
+      [id, name, artist],
+    );
+  }
+
+  function seedActiveJob(artist: string, album: string): void {
+    testDb.run(
+      `INSERT INTO album_jobs (lidarr_album_id, username, directory, artist_name, album_title, canonical_tracks_json, alternates_json, state, created_at)
+       VALUES (1, 'peer', 'dir', ?, ?, '[]', '[]', 'active', 1)`,
+      [artist, album],
+    );
+  }
+
+  afterEach(() => {
+    // Restore the shared DB mock for other describe blocks.
+    mock.module('../db.js', () => ({ getDatabase: () => sharedDb, applySchema }));
+  });
+
+  it('hides albums from GET /albums while their job is active', async () => {
+    seedAlbumRecord('album-1', 'Kiss Me Once', 'Kylie Minogue');
+    seedAlbumRecord('album-2', 'Fever', 'Kylie Minogue');
+    seedActiveJob('Kylie Minogue', 'Kiss Me Once');
+
+    const testApp = new Hono<AuthEnv>();
+    testApp.use('*', (c, next) => {
+      c.set('user', { sub: 'u', role: 'user', iat: 0, exp: 9999999999 });
+      return next();
+    });
+    testApp.route('/', libraryRoutes());
+
+    const res = await testApp.request('/albums');
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Array<{ id: string }>;
+    expect(body.some((a) => a.id === 'album-2')).toBe(true);
+    expect(body.some((a) => a.id === 'album-1')).toBe(false);
+  });
+
+  it('suppresses albums with year-suffixed peer folder names matching an active job', async () => {
+    // Peer saved folder as "Kiss Me Once (2014)" but job is for "Kiss Me Once"
+    seedAlbumRecord('album-3', 'Kiss Me Once (2014)', 'Kylie Minogue');
+    seedActiveJob('Kylie Minogue', 'Kiss Me Once');
+
+    const testApp = new Hono<AuthEnv>();
+    testApp.use('*', (c, next) => {
+      c.set('user', { sub: 'u', role: 'user', iat: 0, exp: 9999999999 });
+      return next();
+    });
+    testApp.route('/', libraryRoutes());
+
+    const res = await testApp.request('/albums');
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Array<{ id: string }>;
+    expect(body.some((a) => a.id === 'album-3')).toBe(false);
+  });
+
+  it('shows albums whose job is done', async () => {
+    seedAlbumRecord('album-4', 'Kiss Me Once', 'Kylie Minogue');
+    testDb.run(
+      `INSERT INTO album_jobs (lidarr_album_id, username, directory, artist_name, album_title, canonical_tracks_json, alternates_json, state, created_at)
+       VALUES (1, 'peer', 'dir', 'Kylie Minogue', 'Kiss Me Once', '[]', '[]', 'done', 1)`,
+    );
+
+    const testApp = new Hono<AuthEnv>();
+    testApp.use('*', (c, next) => {
+      c.set('user', { sub: 'u', role: 'user', iat: 0, exp: 9999999999 });
+      return next();
+    });
+    testApp.route('/', libraryRoutes());
+
+    const res = await testApp.request('/albums');
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Array<{ id: string }>;
+    expect(body.some((a) => a.id === 'album-4')).toBe(true);
   });
 });
 
