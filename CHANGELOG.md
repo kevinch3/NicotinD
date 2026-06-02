@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.43](https://github.com/kevinch3/NicotinD/compare/v0.1.42...v0.1.43) (2026-06-02)
+
+
+### Performance
+
+* backfill-artwork resolves monitored artists only by default ([c1ba818](https://github.com/kevinch3/NicotinD/commit/c1ba8182a142aaebc8c05cd9a13ab03179bf414f))
+
 ## [0.1.42](https://github.com/kevinch3/NicotinD/compare/v0.1.41...v0.1.42) (2026-06-02)
 
 
