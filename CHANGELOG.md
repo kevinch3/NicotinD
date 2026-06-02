@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.44](https://github.com/kevinch3/NicotinD/compare/v0.1.43...v0.1.44) (2026-06-02)
+
+
+### Bug Fixes
+
+* **hunt:** prevent duplicate albums from fallback-peer folders and restart replay ([85b1a46](https://github.com/kevinch3/NicotinD/commit/85b1a465a30a47b2065922e89e5e86963f712873))
+
 ## [0.1.43](https://github.com/kevinch3/NicotinD/compare/v0.1.42...v0.1.43) (2026-06-02)
 
 
