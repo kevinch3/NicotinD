@@ -2,6 +2,7 @@ import { createLogger } from '@nicotind/core';
 import type { Navidrome } from '@nicotind/navidrome-client';
 import type { Album, Song, Artist } from '@nicotind/core';
 import type { Database } from 'bun:sqlite';
+import { albumGroupKey, pickCanonicalId } from './album-grouping.js';
 
 const log = createLogger('navidrome-syncer');
 
@@ -16,6 +17,57 @@ interface SyncResult {
   genres: number;
   removedAlbums: number;
   removedSongs: number;
+}
+
+/**
+ * Collapse Navidrome's fragmented album rows into one canonical row per real
+ * album (see album-grouping.ts). Returns the canonical albums to persist and a
+ * map from every original Navidrome album id to its canonical id, so songs can
+ * be remapped onto the surviving row. Albums that don't share a key with any
+ * other (the common case) pass through unchanged as their own canonical row.
+ */
+export function mergeAlbums(albums: Album[]): {
+  canonical: Album[];
+  idMap: Map<string, string>;
+} {
+  const groups = new Map<string, Album[]>();
+  for (const a of albums) {
+    const key = albumGroupKey(a.artist, a.name);
+    const bucket = groups.get(key);
+    if (bucket) bucket.push(a);
+    else groups.set(key, [a]);
+  }
+
+  const canonical: Album[] = [];
+  const idMap = new Map<string, string>();
+  for (const members of groups.values()) {
+    if (members.length === 1) {
+      const only = members[0]!;
+      idMap.set(only.id, only.id);
+      canonical.push(only);
+      continue;
+    }
+    const canonicalId = pickCanonicalId(
+      members.map((m) => ({ id: m.id, songCount: m.songCount ?? 0 })),
+    );
+    const rep = members.find((m) => m.id === canonicalId)!;
+    for (const m of members) idMap.set(m.id, canonicalId);
+    // Representative identity from the fullest rip; earliest release year; most
+    // recent `created` so a freshly-hunted merge still surfaces under "newest";
+    // first available cover art across the fragments.
+    const years = members.map((m) => m.year).filter((y): y is number => y != null);
+    const createds = members
+      .map((m) => m.created)
+      .filter((c): c is string => c != null)
+      .sort();
+    canonical.push({
+      ...rep,
+      year: years.length ? Math.min(...years) : rep.year,
+      created: createds[createds.length - 1] ?? rep.created,
+      coverArt: members.find((m) => m.coverArt)?.coverArt ?? rep.coverArt,
+    });
+  }
+  return { canonical, idMap };
 }
 
 /**
@@ -49,16 +101,28 @@ export class NavidromeSyncer {
 
     // Albums the user just deleted. Suppress them until Navidrome's (async) scan
     // catches up and stops reporting them — otherwise a sync that runs before the
-    // scan finishes would resurrect a just-deleted album.
-    const tombstoned = new Set(
-      this.db
-        .query<{ album_id: string }, []>('SELECT album_id FROM library_album_tombstones')
-        .all()
-        .map((r) => r.album_id),
+    // scan finishes would resurrect a just-deleted album. Suppress by *group key*
+    // (artist+title), not just id: a deleted album that we canonicalized from
+    // several Navidrome fragments must not reappear via a surviving sibling
+    // fragment whose id was never the canonical one. Legacy tombstones (no
+    // artist) still match by id.
+    const tombRows = this.db
+      .query<{ album_id: string; name: string | null; artist: string | null }, []>(
+        'SELECT album_id, name, artist FROM library_album_tombstones',
+      )
+      .all();
+    const tombstonedIds = new Set(tombRows.map((r) => r.album_id));
+    const tombstonedKeys = new Set(
+      tombRows
+        .filter((r) => r.artist != null && r.name != null)
+        .map((r) => albumGroupKey(r.artist as string, r.name as string)),
     );
-    const albums = tombstoned.size
-      ? allFetchedAlbums.filter((a) => !tombstoned.has(a.id))
-      : allFetchedAlbums;
+    const albums =
+      tombstonedIds.size || tombstonedKeys.size
+        ? allFetchedAlbums.filter(
+            (a) => !tombstonedIds.has(a.id) && !tombstonedKeys.has(albumGroupKey(a.artist, a.name)),
+          )
+        : allFetchedAlbums;
 
     log.info({ albumCount: albums.length, artistCount: artists.length, genreCount: genres.length }, 'Sync: fetched top-level');
 
@@ -81,8 +145,26 @@ export class NavidromeSyncer {
 
     log.info({ songCount: allSongs.length }, 'Sync: fetched songs');
 
+    // Canonicalize the hunt flow's fragmented albums: collapse every Navidrome
+    // album sharing a group key (artist + normalized title) into one row and
+    // remap its songs onto the canonical id. See album-grouping.ts for why.
+    const { canonical, idMap } = mergeAlbums(albums);
+    for (const s of allSongs) {
+      const mapped = idMap.get(s.albumId);
+      if (mapped) s.albumId = mapped;
+    }
+    // Recompute each merged album's song_count/duration from the remapped songs
+    // (summing the fragments' own counts would double-count overlapping rips).
+    const aggregates = new Map<string, { songCount: number; duration: number }>();
+    for (const s of allSongs) {
+      const agg = aggregates.get(s.albumId) ?? { songCount: 0, duration: 0 };
+      agg.songCount += 1;
+      agg.duration += s.duration ?? 0;
+      aggregates.set(s.albumId, agg);
+    }
+
     this.db.transaction(() => {
-      this.upsertAlbums(albums, syncedAt);
+      this.upsertAlbums(canonical, aggregates, syncedAt);
       this.upsertArtists(artists, syncedAt);
       this.upsertSongs(allSongs, syncedAt);
       this.upsertGenres(genres, syncedAt);
@@ -113,11 +195,18 @@ export class NavidromeSyncer {
     // and the suppression has done its job. Tombstones whose album Navidrome still
     // returns (scan not finished) survive so the next cycle keeps suppressing them.
     let removedTombstones = 0;
-    if (tombstoned.size) {
-      const stillReported = new Set(allFetchedAlbums.map((a) => a.id));
-      for (const id of tombstoned) {
-        if (!stillReported.has(id)) {
-          this.db.run('DELETE FROM library_album_tombstones WHERE album_id = ?', [id]);
+    if (tombstonedIds.size) {
+      const stillReportedIds = new Set(allFetchedAlbums.map((a) => a.id));
+      const stillReportedKeys = new Set(allFetchedAlbums.map((a) => albumGroupKey(a.artist, a.name)));
+      for (const t of tombRows) {
+        // A group-aware tombstone clears only when no fragment of its album group
+        // is reported anymore; legacy (no-artist) tombstones clear on id alone.
+        const groupGone =
+          t.artist != null && t.name != null
+            ? !stillReportedKeys.has(albumGroupKey(t.artist, t.name))
+            : !stillReportedIds.has(t.album_id);
+        if (groupGone) {
+          this.db.run('DELETE FROM library_album_tombstones WHERE album_id = ?', [t.album_id]);
           removedTombstones++;
         }
       }
@@ -132,7 +221,7 @@ export class NavidromeSyncer {
 
     const result: SyncResult = {
       durationMs: Date.now() - startedAt,
-      albums: albums.length,
+      albums: canonical.length,
       songs: allSongs.length,
       artists: artists.length,
       genres: genres.length,
@@ -166,7 +255,11 @@ export class NavidromeSyncer {
     return out;
   }
 
-  private upsertAlbums(albums: Album[], syncedAt: number): void {
+  private upsertAlbums(
+    albums: Album[],
+    aggregates: Map<string, { songCount: number; duration: number }>,
+    syncedAt: number,
+  ): void {
     const stmt = this.db.prepare(`
       INSERT INTO library_albums (
         id, name, artist, artist_id, cover_art, song_count, duration,
@@ -186,14 +279,17 @@ export class NavidromeSyncer {
         synced_at = excluded.synced_at
     `);
     for (const a of albums) {
+      // Prefer the count of remapped songs we actually synced; fall back to the
+      // album's own count for albums with no fetched songs.
+      const agg = aggregates.get(a.id);
       stmt.run(
         a.id,
         a.name,
         a.artist,
         a.artistId,
         a.coverArt ?? null,
-        a.songCount ?? 0,
-        a.duration ?? 0,
+        agg?.songCount ?? a.songCount ?? 0,
+        agg?.duration ?? a.duration ?? 0,
         a.year ?? null,
         a.genre ?? null,
         a.created ?? null,

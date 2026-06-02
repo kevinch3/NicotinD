@@ -262,7 +262,9 @@ export function libraryRoutes(
     // Source the tracklist from the canonical DB (the UI's source of truth);
     // fall back to Navidrome only when the album hasn't been synced yet.
     const albumRow = db
-      .query<{ name: string }, [string]>('SELECT name FROM library_albums WHERE id = ?')
+      .query<{ name: string; artist: string }, [string]>(
+        'SELECT name, artist FROM library_albums WHERE id = ?',
+      )
       .get(albumId);
     let songIds: string[] = [];
     let songPaths: string[] = [];
@@ -331,10 +333,10 @@ export function libraryRoutes(
       db.run('DELETE FROM library_songs WHERE album_id = ?', [albumId]);
       db.run('DELETE FROM library_albums WHERE id = ?', [albumId]);
       db.run(
-        `INSERT INTO library_album_tombstones (album_id, name, created_at)
-         VALUES (?, ?, ?)
+        `INSERT INTO library_album_tombstones (album_id, name, artist, created_at)
+         VALUES (?, ?, ?, ?)
          ON CONFLICT(album_id) DO UPDATE SET created_at = excluded.created_at`,
-        [albumId, albumRow?.name ?? null, Date.now()],
+        [albumId, albumRow?.name ?? null, albumRow?.artist ?? null, Date.now()],
       );
     })();
 

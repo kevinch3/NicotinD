@@ -295,9 +295,17 @@ export function applySchema(db: Database): void {
     CREATE TABLE IF NOT EXISTS library_album_tombstones (
       album_id   TEXT PRIMARY KEY,
       name       TEXT,
+      artist     TEXT,
       created_at INTEGER NOT NULL
     )
   `);
+  // artist lets the syncer suppress a deleted album by group key (artist+title),
+  // so a merged album can't resurrect via a surviving sibling fragment.
+  try {
+    db.run(`ALTER TABLE library_album_tombstones ADD COLUMN artist TEXT`);
+  } catch {
+    // Column already exists — ignore
+  }
 
   db.run(`
     CREATE TABLE IF NOT EXISTS artist_discography_links (
