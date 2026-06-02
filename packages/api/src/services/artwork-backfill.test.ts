@@ -15,10 +15,16 @@ beforeEach(() => {
 function seedArtist(id: string, name: string): void {
   db.run('INSERT INTO library_artists (id, name, synced_at) VALUES (?, ?, 1)', [id, name]);
 }
-function seedAlbum(id: string, name: string, artistId: string, artist: string): void {
+function seedAlbum(
+  id: string,
+  name: string,
+  artistId: string,
+  artist: string,
+  songCount = 0,
+): void {
   db.run(
-    'INSERT INTO library_albums (id, name, artist, artist_id, synced_at) VALUES (?, ?, ?, ?, 1)',
-    [id, name, artist, artistId],
+    'INSERT INTO library_albums (id, name, artist, artist_id, song_count, synced_at) VALUES (?, ?, ?, ?, ?, 1)',
+    [id, name, artist, artistId, songCount],
   );
 }
 
@@ -26,6 +32,7 @@ interface MockData {
   list?: LidarrArtist[];
   lookup?: LidarrArtist[];
   albumsByArtist?: Record<number, LidarrAlbum[]>;
+  albumLookup?: LidarrAlbum[];
 }
 
 function makeLidarrMock(data: MockData): BackfillLidarr {
@@ -36,6 +43,7 @@ function makeLidarrMock(data: MockData): BackfillLidarr {
     },
     album: {
       listByArtist: async (id: number) => data.albumsByArtist?.[id] ?? [],
+      lookup: async () => data.albumLookup ?? [],
     },
   } as unknown as BackfillLidarr;
 }
@@ -139,5 +147,85 @@ describe('backfillArtwork', () => {
     const r = await backfillArtwork(db, lidarr, { apply: true, lookupMissing: true });
     expect(r.artistsMatched).toBe(1);
     expect(resolveArtwork(db, 'art-1')?.url).toBe('https://x/aphex.jpg');
+  });
+});
+
+describe('backfillArtwork — targeted album lookup (--album-lookup)', () => {
+  it('covers a substantial album via album.lookup and grabs the artist poster', async () => {
+    // Artist not monitored; only the per-album lookup can reach it.
+    seedArtist('art-1', 'Maná');
+    seedAlbum('alb-1', 'Amar es combatir', 'art-1', 'Maná', 12);
+    const lidarr = makeLidarrMock({
+      list: [],
+      albumLookup: [
+        {
+          title: 'Amar Es Combatir',
+          images: albumImg('https://x/amar.jpg'),
+          artist: { artistName: 'Maná', images: artistImg('https://x/mana.jpg') },
+        } as unknown as LidarrAlbum,
+      ],
+    });
+
+    const r = await backfillArtwork(db, lidarr, { apply: true, albumLookupMinTracks: 4 });
+    expect(r.albumsLookedUp).toBe(1);
+    expect(r.albumLookupMatched).toBe(1);
+    expect(resolveArtwork(db, 'alb-1')?.url).toBe('https://x/amar.jpg');
+    expect(resolveArtwork(db, 'art-1')?.url).toBe('https://x/mana.jpg');
+  });
+
+  it('skips singles-folder and Various-Artists junk', async () => {
+    seedArtist('art-1', 'ftpdjemilio.com');
+    seedAlbum('alb-junk1', 'Singles', 'art-1', 'ftpdjemilio.com', 237);
+    seedArtist('art-2', 'Various Artists');
+    seedAlbum('alb-junk2', 'Melodic Techno April 2022', 'art-2', 'Various Artists', 100);
+    let lookups = 0;
+    const lidarr = {
+      artist: { list: async () => [], lookup: async () => [] },
+      album: {
+        listByArtist: async () => [],
+        lookup: async () => {
+          lookups += 1;
+          return [];
+        },
+      },
+    } as unknown as BackfillLidarr;
+
+    const r = await backfillArtwork(db, lidarr, { apply: true, albumLookupMinTracks: 4 });
+    expect(lookups).toBe(0);
+    expect(r.albumsLookedUp).toBe(0);
+  });
+
+  it('ignores albums at or below the track threshold', async () => {
+    seedArtist('art-1', 'Some Artist');
+    seedAlbum('alb-ep', 'Tiny EP', 'art-1', 'Some Artist', 3);
+    const lidarr = makeLidarrMock({ albumLookup: [{ title: 'Tiny EP', images: albumImg('https://x/ep.jpg') } as LidarrAlbum] });
+    const r = await backfillArtwork(db, lidarr, { apply: true, albumLookupMinTracks: 4 });
+    expect(r.albumsLookedUp).toBe(0);
+    expect(resolveArtwork(db, 'alb-ep')).toBeNull();
+  });
+
+  it('does not re-look-up an album that already has artwork', async () => {
+    seedArtist('art-1', 'Some Artist');
+    seedAlbum('alb-1', 'Real Album', 'art-1', 'Some Artist', 10);
+    let lookups = 0;
+    const lidarr = {
+      artist: { list: async () => [], lookup: async () => [] },
+      album: {
+        listByArtist: async () => [],
+        lookup: async () => {
+          lookups += 1;
+          return [];
+        },
+      },
+    } as unknown as BackfillLidarr;
+    // Pre-seed artwork for the album.
+    await backfillArtwork(db, makeLidarrMock({}), { apply: true });
+    db.run(
+      `INSERT INTO library_artwork (id, kind, cover_url, updated_at) VALUES ('alb-1', 'album', 'https://x/have.jpg', 1)`,
+    );
+
+    const r = await backfillArtwork(db, lidarr, { apply: true, albumLookupMinTracks: 4 });
+    expect(lookups).toBe(0);
+    expect(r.albumsLookedUp).toBe(0);
   });
 });

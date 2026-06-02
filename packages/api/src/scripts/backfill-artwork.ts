@@ -5,13 +5,16 @@
  *
  *   bun run packages/api/src/scripts/backfill-artwork.ts                   # dry run
  *   bun run packages/api/src/scripts/backfill-artwork.ts --apply           # write
+ *   bun run packages/api/src/scripts/backfill-artwork.ts --apply --album-lookup
  *   bun run packages/api/src/scripts/backfill-artwork.ts --apply --lookup-missing
  *
  * Matches artists monitored in Lidarr (via artist_discography_links / name) and
- * their albums (edition-stripped group key). `--lookup-missing` also does a slow
- * per-artist MusicBrainz lookup for non-monitored artists (off by default — it's
- * pathological on a large library where most artists aren't monitored).
- * Idempotent. Env: NICOTIND_DATA_DIR, NICOTIND_CONFIG, LIDARR_URL or
+ * their albums (edition-stripped group key). `--album-lookup` adds a targeted
+ * per-album MusicBrainz lookup for substantial albums (default >3 tracks, override
+ * with `--min-tracks N`) still missing art — independent of monitored status, and
+ * skips Singles/Various-Artists junk. `--lookup-missing` instead does a slow
+ * per-artist lookup for every non-monitored artist (off by default — pathological
+ * on a large library). Idempotent. Env: NICOTIND_DATA_DIR, NICOTIND_CONFIG, LIDARR_URL or
  * NICOTIND_LIDARR_URL, LIDARR_API_KEY (falls back to config.lidarr.url and
  * dataDir/secrets.json). With the stack's own env set, runs in-container as:
  *   docker compose exec nicotind bun run packages/api/src/scripts/backfill-artwork.ts --apply
@@ -64,6 +67,11 @@ function loadConfig(): { dataDir: string; lidarrUrl: string; lidarrApiKey: strin
 async function main(): Promise<void> {
   const apply = process.argv.includes('--apply');
   const lookupMissing = process.argv.includes('--lookup-missing');
+  const albumLookup = process.argv.includes('--album-lookup');
+  const minTracksArg = process.argv.indexOf('--min-tracks');
+  const minTracks = minTracksArg !== -1 ? Number(process.argv[minTracksArg + 1]) : 4;
+  // >3 tracks ⇒ minimum of 4. Only used when --album-lookup is set.
+  const albumLookupMinTracks = albumLookup ? (Number.isFinite(minTracks) ? minTracks : 4) : undefined;
   const { dataDir, lidarrUrl, lidarrApiKey } = loadConfig();
   const dbPath = join(dataDir, 'nicotind.db');
 
@@ -83,18 +91,27 @@ async function main(): Promise<void> {
   console.log(`Mode      : ${apply ? 'APPLY (writing)' : 'DRY RUN (no changes)'}`);
   console.log(`Lidarr    : ${lidarrUrl}`);
   console.log(`Database  : ${dbPath}`);
-  console.log(`Lookup    : ${lookupMissing ? 'monitored + MusicBrainz lookup' : 'monitored only'}\n`);
+  const mode = lookupMissing
+    ? 'monitored + per-artist MusicBrainz lookup'
+    : albumLookupMinTracks != null
+      ? `monitored + per-album lookup (>=${albumLookupMinTracks} tracks)`
+      : 'monitored only';
+  console.log(`Lookup    : ${mode}\n`);
 
   const r = await backfillArtwork(db, lidarr, {
     apply,
     lookupMissing,
+    albumLookupMinTracks,
     coverCacheDir: join(dataDir, 'cover-cache'),
   });
 
   console.log(
     `\nDone (${apply ? 'applied' : 'dry run'}). ` +
       `artists matched=${r.artistsMatched} unresolved=${r.artistsUnresolved}; ` +
-      `albums matched=${r.albumsMatched} unresolved=${r.albumsUnresolved}`,
+      `albums matched=${r.albumsMatched} unresolved=${r.albumsUnresolved}` +
+      (albumLookupMinTracks != null
+        ? `; album-lookup attempted=${r.albumsLookedUp} matched=${r.albumLookupMatched}`
+        : ''),
   );
   if (!apply && (r.artistsMatched > 0 || r.albumsMatched > 0)) {
     console.log('\nRe-run with --apply to write this artwork.');
