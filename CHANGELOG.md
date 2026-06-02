@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.36](https://github.com/kevinch3/NicotinD/compare/v0.1.35...v0.1.36) (2026-06-02)
+
+
+### Bug Fixes
+
+* **library:** canonicalize fragmented albums in syncer so one album = one card ([675ef32](https://github.com/kevinch3/NicotinD/commit/675ef323a45be8499496e971e59d58a5f1e1a7b8))
+
 ## [0.1.35](https://github.com/kevinch3/NicotinD/compare/v0.1.34...v0.1.35) (2026-06-01)
 
 
