@@ -118,7 +118,7 @@ export function createApp({
     info: {
       version: '1.0.0',
       title: 'NicotinD API',
-      description: 'API for NicotinD Soulseek/Navidrome client',
+      description: 'API for NicotinD — Soulseek acquisition + native music library/streaming',
     },
   });
 
