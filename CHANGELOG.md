@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.50](https://github.com/kevinch3/NicotinD/compare/v0.1.49...v0.1.50) (2026-06-03)
+
+
+### Features
+
+* singles & EPs, library song search, and native playlists ([9bb3b5c](https://github.com/kevinch3/NicotinD/commit/9bb3b5c56abdb77beaa6c08bbf1678598965cbef))
+
 ## [0.1.49](https://github.com/kevinch3/NicotinD/compare/v0.1.48...v0.1.49) (2026-06-03)
 
 
