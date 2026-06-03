@@ -19,12 +19,16 @@ export interface AcquireJobProgress {
 export type AcquireBackend = 'ytdlp' | 'spotdl';
 
 export interface YtdlpConfig {
+  /** When false the feature is off even if the binary is installed. */
+  enabled: boolean;
   binaryPath: string;
   format: 'mp3' | 'opus' | 'bestaudio';
   extraArgs: string[];
 }
 
 export interface SpotdlConfig {
+  /** When false the feature is off even if the binary is installed. */
+  enabled: boolean;
   binaryPath: string;
 }
 

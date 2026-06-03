@@ -21,11 +21,17 @@ RUN cd packages/web && bun run build
 FROM oven/bun:1 AS production
 WORKDIR /app
 
-# Install curl (healthchecks), ffmpeg, and docker CLI (log streaming via mounted socket)
+# Install curl (healthchecks), ffmpeg, docker CLI (log streaming via mounted
+# socket), and python3/pip (for yt-dlp + spotdl URL acquisition).
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends curl ca-certificates ffmpeg && \
+    apt-get install -y --no-install-recommends curl ca-certificates ffmpeg python3 python3-pip && \
     rm -rf /var/lib/apt/lists/*
 COPY --from=docker:cli /usr/local/bin/docker /usr/local/bin/docker
+
+# yt-dlp + spotdl power the /api/acquire URL downloader. Installed system-wide
+# via pip (Debian externally-managed env needs --break-system-packages). They
+# land on PATH as `yt-dlp` / `spotdl`, matching the default acquire.binaryPath.
+RUN pip3 install --no-cache-dir --break-system-packages yt-dlp spotdl
 
 # Copy all packages (web needs package.json for workspace resolution)
 COPY package.json bun.lock bunfig.toml tsconfig.json ./

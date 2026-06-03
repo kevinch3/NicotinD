@@ -90,22 +90,24 @@ export const NicotinDConfigSchema = z.object({
     .object({
       ytdlp: z
         .object({
-          enabled: z.boolean().default(false),
+          // On by default — the production image ships the binary. Availability
+          // is still gated on the binary actually being present at runtime.
+          enabled: z.boolean().default(true),
           binaryPath: z.string().default('yt-dlp'),
           format: z.enum(['mp3', 'opus', 'bestaudio']).default('bestaudio'),
           extraArgs: z.array(z.string()).default([]),
         })
-        .default({ enabled: false, binaryPath: 'yt-dlp', format: 'bestaudio', extraArgs: [] }),
+        .default({ enabled: true, binaryPath: 'yt-dlp', format: 'bestaudio', extraArgs: [] }),
       spotdl: z
         .object({
-          enabled: z.boolean().default(false),
+          enabled: z.boolean().default(true),
           binaryPath: z.string().default('spotdl'),
         })
-        .default({ enabled: false, binaryPath: 'spotdl' }),
+        .default({ enabled: true, binaryPath: 'spotdl' }),
     })
     .default({
-      ytdlp: { enabled: false, binaryPath: 'yt-dlp', format: 'bestaudio', extraArgs: [] },
-      spotdl: { enabled: false, binaryPath: 'spotdl' },
+      ytdlp: { enabled: true, binaryPath: 'yt-dlp', format: 'bestaudio', extraArgs: [] },
+      spotdl: { enabled: true, binaryPath: 'spotdl' },
     }),
 
   jwt: z.object({

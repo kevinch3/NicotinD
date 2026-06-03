@@ -329,11 +329,13 @@ export function createApp({
     db,
     dataDir: expandedDataDir,
     ytdlp: {
+      enabled: config.acquire.ytdlp.enabled,
       binaryPath: config.acquire.ytdlp.binaryPath,
       format: config.acquire.ytdlp.format,
       extraArgs: config.acquire.ytdlp.extraArgs,
     },
     spotdl: {
+      enabled: config.acquire.spotdl.enabled,
       binaryPath: config.acquire.spotdl.binaryPath,
     },
     organizeBatch: (files) => sharedOrganizer.organizeBatch(files),

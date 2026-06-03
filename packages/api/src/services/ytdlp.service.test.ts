@@ -57,8 +57,8 @@ function makeService(
   return new YtdlpService({
     stagingBase,
     db,
-    ytdlp: { binaryPath: 'yt-dlp', format: 'bestaudio', extraArgs: [] },
-    spotdl: { binaryPath: 'spotdl' },
+    ytdlp: { enabled: true, binaryPath: 'yt-dlp', format: 'bestaudio', extraArgs: [] },
+    spotdl: { enabled: true, binaryPath: 'spotdl' },
     onComplete,
     onFailed,
     spawn: spawnMock as unknown as YtdlpServiceOptions['spawn'],

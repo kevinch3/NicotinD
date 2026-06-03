@@ -19,12 +19,12 @@ slskd:
 
 acquire:
   ytdlp:
-    enabled: false
+    enabled: true
     binaryPath: yt-dlp
     format: bestaudio
     extraArgs: []
   spotdl:
-    enabled: false
+    enabled: true
     binaryPath: spotdl
 
 jwt:

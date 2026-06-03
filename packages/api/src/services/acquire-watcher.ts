@@ -64,12 +64,12 @@ export class AcquireWatcher {
    * Rejects if the requested backend binary is not available.
    */
   async submit(url: string, backend: AcquireBackend, label?: string): Promise<string> {
-    const binaryPath = backend === 'ytdlp'
-      ? this.options.ytdlp.binaryPath
-      : this.options.spotdl.binaryPath;
-
-    if (!isBinaryAvailable(binaryPath)) {
-      throw new Error(`${backend} binary not found at '${binaryPath}'`);
+    const available = backend === 'ytdlp' ? this.isYtdlpAvailable() : this.isSpotdlAvailable();
+    if (!available) {
+      const binaryPath = backend === 'ytdlp'
+        ? this.options.ytdlp.binaryPath
+        : this.options.spotdl.binaryPath;
+      throw new Error(`${backend} is not enabled or its binary was not found at '${binaryPath}'`);
     }
 
     const id = crypto.randomUUID();
@@ -103,14 +103,14 @@ export class AcquireWatcher {
     return rows.map((r) => this.mapRow(r));
   }
 
-  /** Returns whether yt-dlp is available on the system. */
+  /** Returns whether yt-dlp is both enabled in config and installed on the system. */
   isYtdlpAvailable(): boolean {
-    return isBinaryAvailable(this.options.ytdlp.binaryPath);
+    return this.options.ytdlp.enabled && isBinaryAvailable(this.options.ytdlp.binaryPath);
   }
 
-  /** Returns whether spotdl is available on the system. */
+  /** Returns whether spotdl is both enabled in config and installed on the system. */
   isSpotdlAvailable(): boolean {
-    return isBinaryAvailable(this.options.spotdl.binaryPath);
+    return this.options.spotdl.enabled && isBinaryAvailable(this.options.spotdl.binaryPath);
   }
 
   private async handleComplete(jobId: string, files: CompletedDownloadFile[]): Promise<void> {
