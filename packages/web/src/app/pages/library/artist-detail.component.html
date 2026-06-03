@@ -2,10 +2,10 @@
     <div class="max-w-6xl mx-auto px-4 py-5 md:px-6 md:py-8">
 
       <!-- Back -->
-      <a routerLink="/library"
+      <button type="button" (click)="goBack()"
         class="inline-block text-sm text-theme-muted hover:text-theme-secondary transition mb-6">
-        &larr; Library
-      </a>
+        &larr; Back
+      </button>
 
       @if (loading()) {
         <div class="text-center py-20">

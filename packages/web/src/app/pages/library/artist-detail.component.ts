@@ -8,6 +8,7 @@ import { AlbumHuntModalComponent } from '../../components/album-hunt-modal/album
 import { CoverArtComponent } from '../../components/cover-art/cover-art.component';
 import { toTrack } from '../../lib/track-utils';
 import { resolveAlbumRoute } from '../../lib/route-utils';
+import { NavigationService } from '../../services/navigation.service';
 
 @Component({
   selector: 'app-artist-detail',
@@ -20,6 +21,12 @@ export class ArtistDetailComponent implements OnInit {
   private api = inject(ApiService);
   readonly auth = inject(AuthService);
   private player = inject(PlayerService);
+  private nav = inject(NavigationService);
+
+  // Return to the previous in-app view, falling back to the library grid.
+  goBack(): void {
+    this.nav.back(['/library']);
+  }
 
   readonly loading = signal(true);
   readonly playingAll = signal(false);

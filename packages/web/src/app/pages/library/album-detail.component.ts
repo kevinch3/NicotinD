@@ -13,6 +13,7 @@ import { ConfirmDialogComponent } from '../../components/confirm-dialog/confirm-
 import { CoverArtComponent } from '../../components/cover-art/cover-art.component';
 import { toTrack } from '../../lib/track-utils';
 import { resolveArtistRoute } from '../../lib/route-utils';
+import { NavigationService } from '../../services/navigation.service';
 
 @Component({
   selector: 'app-album-detail',
@@ -28,7 +29,15 @@ export class AlbumDetailComponent implements OnInit {
   private router = inject(Router);
   private route = inject(ActivatedRoute);
   private http = inject(HttpClient);
+  private nav = inject(NavigationService);
   readonly shareCopied = signal(false);
+
+  // Return to the previous in-app view (e.g. the artist page we came from),
+  // falling back to this album's artist or the library on a fresh deep-link.
+  goBack(): void {
+    const artistId = this.selectedAlbum()?.artistId;
+    this.nav.back(artistId ? resolveArtistRoute(artistId) : ['/library']);
+  }
 
   readonly loadingAlbum = signal(true);
   readonly selectedAlbum = signal<AlbumDetail | null>(null);

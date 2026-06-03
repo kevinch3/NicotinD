@@ -5,10 +5,10 @@
       <span class="inline-block w-5 h-5 border-2 border-theme border-t-zinc-300 rounded-full animate-spin"></span>
     </div>
   } @else if (selectedAlbum()) {
-    <a routerLink="/library"
+    <button type="button" (click)="goBack()"
       class="inline-block text-sm text-theme-muted hover:text-theme-secondary transition mb-6">
-      &larr; Back to library
-    </a>
+      &larr; Back
+    </button>
 
     <div class="flex flex-col sm:flex-row items-center sm:items-end gap-6 mb-8 text-center sm:text-left">
       <app-cover-art
