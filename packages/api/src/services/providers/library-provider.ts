@@ -61,7 +61,7 @@ export class LibrarySearchProvider implements ISearchProvider {
          FROM library_songs s
          LEFT JOIN library_albums a ON a.id = s.album_id
          WHERE s.hidden = 0 AND (s.title LIKE ? ESCAPE '\\' OR s.artist LIKE ? ESCAPE '\\') COLLATE NOCASE
-         ORDER BY s.title COLLATE NOCASE LIMIT 20`,
+         ORDER BY s.title COLLATE NOCASE LIMIT 40`,
       )
       .all(like, like)
       .map((r) => ({

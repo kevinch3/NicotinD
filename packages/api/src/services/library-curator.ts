@@ -2,20 +2,21 @@ import { createLogger } from '@nicotind/core';
 import type { Database } from 'bun:sqlite';
 import { isUnknownLike } from './audio-tags.js';
 import { normalizeArtistForGrouping, normalizeForGrouping } from './album-grouping.js';
+import { loadReleaseTypes, type ReleaseType } from './release-meta-store.js';
 
 const log = createLogger('library-curator');
 
 const COMPILATION_NAME_HINTS = /\b(various artists|va|compilation|greatest hits|best of|hits|mixtape)\b/i;
 const COMPILATION_ARTIST_HINTS = /\b(various|various artists|va|compilation)\b/i;
 
-// Hide synthetic "<Artist> · Singles" buckets from the album grid. A real
-// album titled "Singles" with >=4 tracks (e.g. Future's *Singles*) stays
-// visible. Users can override either way via setManualOverride.
-const SINGLES_HIDE_MAX_TRACKS = 3;
+// Heuristic release-type bands (used only when no authoritative metadata type
+// exists in library_release_meta): 1 track → single, 2–6 → EP, 7+ → album.
+const EP_MAX_TRACKS = 6;
 
 interface CuratorResult {
   hiddenAlbums: number;
   singles: number;
+  eps: number;
   compilations: number;
   albums: number;
   unknown: number;
@@ -49,6 +50,8 @@ export class LibraryCurator {
     // that landed in a thin folder). Keyed on the same normalized artist+title the
     // scanner mints album ids from, so an edition variant still matches.
     const protectedKeys = this.loadProtectedKeys();
+    // Authoritative release types (Lidarr/MusicBrainz) override the heuristic.
+    const metaTypes = loadReleaseTypes(this.db);
 
     const updateStmt = this.db.prepare(
       `UPDATE library_albums SET classification = ?, hidden = ? WHERE id = ? AND manual_override = 0`,
@@ -57,6 +60,7 @@ export class LibraryCurator {
     const result: CuratorResult = {
       hiddenAlbums: 0,
       singles: 0,
+      eps: 0,
       compilations: 0,
       albums: 0,
       unknown: 0,
@@ -65,7 +69,7 @@ export class LibraryCurator {
     this.db.transaction(() => {
       for (const row of rows) {
         if (row.manual_override === 1) continue;
-        const classified = classify(row);
+        const classified = classify(row, metaTypes.get(row.id));
         const classification = classified.classification;
         // Deliberately-hunted release → keep visible regardless of classification.
         const hidden =
@@ -75,6 +79,7 @@ export class LibraryCurator {
         updateStmt.run(classification, hidden ? 1 : 0, row.id);
         if (hidden) result.hiddenAlbums++;
         if (classification === 'single') result.singles++;
+        else if (classification === 'ep') result.eps++;
         else if (classification === 'compilation') result.compilations++;
         else if (classification === 'album') result.albums++;
         else result.unknown++;
@@ -138,15 +143,30 @@ function albumKey(artist: string, title: string): string {
   return `${normalizeArtistForGrouping(artist)}::${normalizeForGrouping(title)}`;
 }
 
-type Classification = 'album' | 'single' | 'compilation' | 'unknown';
+type Classification = 'album' | 'ep' | 'single' | 'compilation' | 'unknown';
 
-function classify(row: AlbumRow): { classification: Classification; hidden: boolean } {
+/**
+ * Classify one album. `metaType` (from library_release_meta) is authoritative
+ * when present — the Lidarr/MusicBrainz release type — and the function falls
+ * back to a track-count heuristic otherwise. Pure: the metadata lookup happens
+ * in the caller so this stays unit-testable.
+ */
+function classify(
+  row: AlbumRow,
+  metaType?: ReleaseType,
+): { classification: Classification; hidden: boolean } {
   const nameUnknown = isUnknownLike(row.name);
   const artistUnknown = isUnknownLike(row.artist);
 
-  // The `[Unknown Album] / [Unknown Artist]` mega-bucket: hide outright.
+  // The `[Unknown Album] / [Unknown Artist]` mega-bucket: hide outright,
+  // regardless of any stray metadata.
   if (nameUnknown && artistUnknown) {
     return { classification: 'unknown', hidden: true };
+  }
+
+  // Authoritative metadata type wins: a known catalog release is never hidden.
+  if (metaType) {
+    return { classification: metaType, hidden: false };
   }
 
   // Compilation hints come from album name + artist name.
@@ -157,20 +177,17 @@ function classify(row: AlbumRow): { classification: Classification; hidden: bool
     return { classification: 'compilation', hidden: false };
   }
 
-  // Synthetic "Singles" bucket: organizer Singles-fallback creates
-  // <Artist>/Singles/ for tracks without an album tag. Hide when small.
-  if (row.name.trim().toLowerCase() === 'singles' && row.song_count <= SINGLES_HIDE_MAX_TRACKS) {
-    return { classification: 'single', hidden: true };
-  }
-
   // Single-track album that *also* has unknown identity → noise, hide it.
   if (row.song_count <= 1 && (nameUnknown || artistUnknown)) {
     return { classification: 'unknown', hidden: true };
   }
 
+  // Heuristic release-type bands by track count.
   if (row.song_count <= 1) {
     return { classification: 'single', hidden: false };
   }
-
+  if (row.song_count <= EP_MAX_TRACKS) {
+    return { classification: 'ep', hidden: false };
+  }
   return { classification: 'album', hidden: false };
 }

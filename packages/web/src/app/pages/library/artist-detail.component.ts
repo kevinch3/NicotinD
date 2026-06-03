@@ -32,6 +32,7 @@ export class ArtistDetailComponent implements OnInit {
   readonly playingAll = signal(false);
   readonly artist = signal<{ id: string; name: string; albumCount: number; coverArt?: string } | null>(null);
   readonly albums = signal<Album[]>([]);
+  readonly singlesAndEps = signal<Album[]>([]);
 
   readonly discography = signal<DiscographyResult | null>(null);
   readonly discographyLoading = signal(false);
@@ -67,6 +68,7 @@ export class ArtistDetailComponent implements OnInit {
       const data = await firstValueFrom(this.api.getArtist(id));
       this.artist.set(data.artist);
       this.albums.set(data.albums);
+      this.singlesAndEps.set(data.singlesAndEps ?? []);
     } catch { /* ignore */ }
     finally { this.loading.set(false); }
 

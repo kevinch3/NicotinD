@@ -263,12 +263,14 @@ describe('LibraryOrganizer (real fs)', () => {
     await makeOrg(root, staging).organizeBatch([
       { username: 'u', directory: 'Babasonicos', filename: '01-Demasiado.mp3', directoryFileCount: 1 },
     ]);
-    // Singles fallback: no album tag → <Artist>/Singles/
+    // Singles fallback: no album tag → file lands in <Artist>/Singles/, but the
+    // album tag is left empty (no longer force-written to "Singles") so the
+    // scanner turns it into its own single release named after the title.
     const dest = join(root, 'Babasónicos', 'Singles', '01 - Demasiado.mp3');
     expect(existsSync(dest)).toBe(true);
     const tags = nodeId3.read(dest) as { title?: string; album?: string } | false;
     expect(tags && typeof tags === 'object' ? tags.title : undefined).toBe('Demasiado');
-    expect(tags && typeof tags === 'object' ? tags.album : undefined).toBe('Singles');
+    expect(tags && typeof tags === 'object' ? tags.album : undefined).toBeFalsy();
   });
 
   it('removes the source file from staging after a successful move', async () => {

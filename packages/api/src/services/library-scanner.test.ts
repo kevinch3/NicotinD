@@ -5,6 +5,7 @@ import {
   buildLibrary,
   songId,
   albumIdFor,
+  isLooseSinglesBucket,
   LibraryScanner,
   type ScannedTrack,
 } from './library-scanner.js';
@@ -72,6 +73,58 @@ describe('buildLibrary (pure aggregation)', () => {
     const built = buildLibrary([track({ relPath: 'loose-file.mp3' })]);
     expect(built.songs[0]!.artist).toBe('Unknown Artist');
     expect(built.songs[0]!.title).toBe('loose-file');
+  });
+});
+
+describe('loose singles (un-bucketing)', () => {
+  it('flags the synthetic Singles bucket and album-less tracks', () => {
+    expect(isLooseSinglesBucket('Alfredo Casero/Singles', 'Singles')).toBe(true);
+    expect(isLooseSinglesBucket('Alfredo Casero/Singles', 'Mi Canción')).toBe(true); // leaf == Singles
+    expect(isLooseSinglesBucket('A/B', 'Unknown Album')).toBe(true);
+    expect(isLooseSinglesBucket('Daft Punk/Discovery', 'Discovery')).toBe(false);
+  });
+
+  it('turns a force-tagged <Artist>/Singles/ track into its own single named after the title', () => {
+    // Mirrors a legacy file the organizer wrote with album="Singles".
+    const built = buildLibrary([
+      track({ relPath: 'Alfredo Casero/Singles/Mi Cancion.mp3', artist: 'Alfredo Casero', album: 'Singles', title: 'Mi Cancion' }),
+    ]);
+    expect(built.albums).toHaveLength(1);
+    expect(built.albums[0]!.name).toBe('Mi Cancion');
+    expect(built.albums[0]!.id).toBe(albumIdFor('Alfredo Casero', 'Mi Cancion'));
+  });
+
+  it('gives each loose single its own album card', () => {
+    const built = buildLibrary([
+      track({ relPath: 'Alfredo Casero/Singles/Song A.mp3', artist: 'Alfredo Casero', album: 'Singles', title: 'Song A' }),
+      track({ relPath: 'Alfredo Casero/Singles/Song B.mp3', artist: 'Alfredo Casero', album: 'Singles', title: 'Song B' }),
+    ]);
+    expect(built.albums).toHaveLength(2);
+    expect(built.albums.map((a) => a.name).sort()).toEqual(['Song A', 'Song B']);
+    // One artist, two single "releases".
+    expect(built.artists).toHaveLength(1);
+    expect(built.artists[0]!.albumCount).toBe(2);
+  });
+
+  it('collapses format-duplicates of the same single into one card', () => {
+    const built = buildLibrary([
+      track({ relPath: 'Alfredo Casero/Singles/Hit.mp3', artist: 'Alfredo Casero', album: 'Singles', title: 'Hit', suffix: 'mp3' }),
+      track({ relPath: 'Alfredo Casero/Singles/Hit.flac', artist: 'Alfredo Casero', album: 'Singles', title: 'Hit', suffix: 'flac' }),
+    ]);
+    expect(built.songs).toHaveLength(1);
+    expect(built.albums).toHaveLength(1);
+    expect(built.songs[0]!.suffix).toBe('flac'); // lossless wins
+  });
+
+  it('keeps a coherent multi-track loose download as one album (not split)', () => {
+    const built = buildLibrary([
+      track({ relPath: 'A/Some EP/01.mp3', artist: 'A', album: 'Some EP', title: 'T1' }),
+      track({ relPath: 'A/Some EP/02.mp3', artist: 'A', album: 'Some EP', title: 'T2' }),
+      track({ relPath: 'A/Some EP/03.mp3', artist: 'A', album: 'Some EP', title: 'T3' }),
+    ]);
+    expect(built.albums).toHaveLength(1);
+    expect(built.albums[0]!.name).toBe('Some EP');
+    expect(built.albums[0]!.songCount).toBe(3);
   });
 });
 

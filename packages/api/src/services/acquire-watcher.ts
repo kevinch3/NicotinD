@@ -15,6 +15,12 @@ export interface AcquireWatcherOptions {
   /** organizeBatch mutates file.relativePath in-place to the post-move path. */
   organizeBatch: (files: CompletedDownloadFile[]) => Promise<unknown>;
   scanIncremental: (relPaths: string[]) => Promise<void>;
+  /**
+   * Optional best-effort enrichment of loose singles/EPs (Lidarr/MusicBrainz
+   * release type + artwork) run after the incremental scan, then a reclassify.
+   * Absent when Lidarr is unconfigured — acquisition still works (heuristic).
+   */
+  enrichSingles?: (relPaths: string[]) => Promise<void>;
 }
 
 export interface AcquireJob {
@@ -127,6 +133,11 @@ export class AcquireWatcher {
         .filter((p): p is string => Boolean(p));
       if (relPaths.length > 0) {
         await this.options.scanIncremental(relPaths);
+        // Best-effort: attach canonical release type + artwork for loose
+        // singles/EPs, then the enrich callback reclassifies. Never blocks.
+        if (this.options.enrichSingles) {
+          await this.options.enrichSingles(relPaths);
+        }
       }
     } catch (err) {
       log.error({ jobId, err }, 'Organize/scan after acquire failed');

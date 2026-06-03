@@ -1,0 +1,45 @@
+@if (playlists.pendingSongIds(); as ids) {
+  <div class="fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-black/60 p-0 md:p-4"
+       (click)="close()">
+    <div class="w-full md:max-w-sm bg-theme-surface border border-theme rounded-t-2xl md:rounded-2xl shadow-xl p-4"
+         (click)="$event.stopPropagation()">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-base font-semibold text-theme-primary">Add to playlist</h2>
+        <button type="button" class="text-theme-muted hover:text-theme-primary" (click)="close()">✕</button>
+      </div>
+
+      <div class="max-h-72 overflow-y-auto space-y-1">
+        @for (pl of playlists.playlists(); track pl.id) {
+          <button type="button"
+            class="w-full flex items-center justify-between px-3 py-2 rounded-lg text-left hover:bg-theme-hover transition disabled:opacity-50"
+            [disabled]="busy()"
+            (click)="addTo(pl.id)">
+            <span class="text-sm text-theme-primary truncate">{{ pl.name }}</span>
+            <span class="text-xs text-theme-muted">{{ pl.songCount }}</span>
+          </button>
+        }
+        @if (playlists.loaded() && playlists.playlists().length === 0 && !creating()) {
+          <p class="text-sm text-theme-muted px-3 py-2">No playlists yet.</p>
+        }
+      </div>
+
+      @if (creating()) {
+        <form class="mt-3 flex gap-2" (submit)="$event.preventDefault(); createAndAdd()">
+          <input
+            class="flex-1 px-3 py-2 rounded-lg bg-theme-surface-2 text-theme-primary text-sm outline-none"
+            placeholder="Playlist name"
+            [ngModel]="newName()" (ngModelChange)="newName.set($event)" name="name" autofocus />
+          <button type="submit" [disabled]="busy() || !newName().trim()"
+            class="px-4 py-2 rounded-lg bg-zinc-100 text-zinc-900 text-sm font-semibold disabled:opacity-50">
+            Create
+          </button>
+        </form>
+      } @else {
+        <button type="button" (click)="creating.set(true)"
+          class="mt-3 w-full px-3 py-2 rounded-lg border border-theme text-sm text-theme-secondary hover:bg-theme-hover transition">
+          + New playlist
+        </button>
+      }
+    </div>
+  </div>
+}

@@ -137,6 +137,20 @@ function contentTypeFor(suffix: string): string {
 }
 
 /**
+ * True when a track is a loose single rather than part of a real album: it has
+ * no usable album identity (`UNKNOWN_ALBUM`) or it sits in the organizer's
+ * synthetic `<Artist>/Singles/` bucket. Such a track becomes its **own** single
+ * release named after its title — so each loose track is one card (out of the
+ * album grid) instead of all of an artist's loose tracks collapsing into one
+ * hidden "Singles" bucket. Pure/exported for unit testing.
+ */
+export function isLooseSinglesBucket(dir: string, album: string): boolean {
+  if (album === UNKNOWN_ALBUM) return true;
+  const leaf = dir.split(/[\\/]+/).pop() ?? '';
+  return leaf.trim().toLowerCase() === 'singles' || album.trim().toLowerCase() === 'singles';
+}
+
+/**
  * Resolve final artist/album/title for a track, falling back to path inference
  * when ID3 tags are missing (common with Soulseek peers). Mirrors the
  * organizer's tag-derivation precedence so the scanner and organizer agree.
@@ -151,17 +165,25 @@ function resolveTags(t: ScannedTrack): { artist: string; album: string; title: s
     (hasUsableValue(inferred.artist) ? inferred.artist : undefined) ||
     UNKNOWN_ARTIST;
 
-  const album =
-    (hasUsableValue(t.album) && t.album) ||
-    inferFolderAlbum(dir, artist) ||
-    (hasUsableValue(inferred.album) ? inferred.album : undefined) ||
-    UNKNOWN_ALBUM;
-
   const title =
     (hasUsableValue(t.title) && t.title) ||
     (hasUsableValue(inferred.title) ? inferred.title : undefined) ||
     t.relPath.split(/[\\/]+/).pop()?.replace(/\.[^/.]+$/, '') ||
     'Unknown';
+
+  let album =
+    (hasUsableValue(t.album) && t.album) ||
+    inferFolderAlbum(dir, artist) ||
+    (hasUsableValue(inferred.album) ? inferred.album : undefined) ||
+    UNKNOWN_ALBUM;
+
+  // A loose single (no real album, or the synthetic Singles bucket) becomes its
+  // own single release named after the track title. `albumIdFor(artist, title)`
+  // gives each loose track a distinct album id, while format-dupes of the same
+  // title still collapse via the shared normalized-title group key.
+  if (isLooseSinglesBucket(dir, album)) {
+    album = title;
+  }
 
   return { artist, album, title };
 }

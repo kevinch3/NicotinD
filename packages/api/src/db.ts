@@ -280,12 +280,53 @@ export function applySchema(db: Database): void {
       created         TEXT,
       starred         TEXT,
       classification  TEXT NOT NULL DEFAULT 'unknown'
-                          CHECK (classification IN ('album','single','compilation','unknown')),
+                          CHECK (classification IN ('album','ep','single','compilation','unknown')),
       hidden          INTEGER NOT NULL DEFAULT 0,
       manual_override INTEGER NOT NULL DEFAULT 0,
       synced_at       INTEGER NOT NULL
     )
   `);
+
+  // Migration: widen `classification` to allow 'ep' (the release-type model).
+  // SQLite can't ALTER a CHECK constraint, so when an old DB's table still has
+  // the pre-'ep' constraint we rebuild it, preserving every column (incl. the
+  // curation columns hidden/classification/manual_override/starred). Idempotent:
+  // skipped once the constraint already permits 'ep'. Runs before the index
+  // statements below so they re-create indexes on the rebuilt table.
+  const albumsSql =
+    db
+      .query<{ sql: string }, []>(
+        `SELECT sql FROM sqlite_master WHERE type='table' AND name='library_albums'`,
+      )
+      .get()?.sql ?? '';
+  if (albumsSql && !albumsSql.includes("'ep'")) {
+    db.transaction(() => {
+      db.run(`ALTER TABLE library_albums RENAME TO library_albums_old`);
+      db.run(`
+        CREATE TABLE library_albums (
+          id              TEXT PRIMARY KEY,
+          name            TEXT NOT NULL,
+          artist          TEXT NOT NULL,
+          artist_id       TEXT NOT NULL,
+          cover_art       TEXT,
+          song_count      INTEGER NOT NULL DEFAULT 0,
+          duration        INTEGER NOT NULL DEFAULT 0,
+          year            INTEGER,
+          genre           TEXT,
+          created         TEXT,
+          starred         TEXT,
+          classification  TEXT NOT NULL DEFAULT 'unknown'
+                              CHECK (classification IN ('album','ep','single','compilation','unknown')),
+          hidden          INTEGER NOT NULL DEFAULT 0,
+          manual_override INTEGER NOT NULL DEFAULT 0,
+          synced_at       INTEGER NOT NULL
+        )
+      `);
+      db.run(`INSERT INTO library_albums SELECT * FROM library_albums_old`);
+      db.run(`DROP TABLE library_albums_old`);
+    })();
+  }
+
   db.run(`CREATE INDEX IF NOT EXISTS idx_library_albums_hidden ON library_albums(hidden)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_library_albums_classification ON library_albums(classification)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_library_albums_artist_id ON library_albums(artist_id)`);
@@ -369,6 +410,47 @@ export function applySchema(db: Database): void {
       updated_at INTEGER NOT NULL
     )
   `);
+
+  // Authoritative release type (album / ep / single / compilation) from
+  // Lidarr/MusicBrainz, keyed on the scanner's deterministic albumId — same
+  // side-table pattern as library_artwork: survives full rescans/prunes and can
+  // be written at ingest time before the album exists on disk. The curator
+  // prefers this over its track-count heuristic when classifying.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS library_release_meta (
+      album_id        TEXT PRIMARY KEY,
+      album_type      TEXT NOT NULL CHECK (album_type IN ('album','ep','single','compilation')),
+      canonical_title TEXT,
+      source          TEXT,
+      updated_at      INTEGER NOT NULL
+    )
+  `);
+
+  // Native per-user playlists (re-added after the Navidrome removal). Playlists
+  // reference songs by the scanner's stable songId; reads JOIN library_songs and
+  // drop rows whose song no longer exists (file moved → id changed), so a
+  // playlist degrades gracefully rather than showing dead entries.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS playlists (
+      id          TEXT PRIMARY KEY,
+      user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      name        TEXT NOT NULL,
+      description TEXT,
+      created_at  INTEGER NOT NULL,
+      modified_at INTEGER NOT NULL
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_playlists_user_id ON playlists(user_id)`);
+  db.run(`
+    CREATE TABLE IF NOT EXISTS playlist_songs (
+      playlist_id TEXT NOT NULL REFERENCES playlists(id) ON DELETE CASCADE,
+      song_id     TEXT NOT NULL,
+      position    INTEGER NOT NULL,
+      added_at    INTEGER NOT NULL,
+      PRIMARY KEY (playlist_id, song_id)
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_playlist_songs_pl ON playlist_songs(playlist_id)`);
 
   // Legacy table from the Navidrome era (album-deletion tombstones). The native
   // scanner reads disk directly and synchronously, so deletions can't be

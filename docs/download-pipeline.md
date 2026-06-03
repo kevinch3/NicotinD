@@ -1,13 +1,42 @@
 # Download Pipeline
 
-## Singles vs album classification
+## Release-type model — albums, EPs & singles (Spotify-style)
 
-`LibraryOrganizer` places tracks at `<Artist>/<Album>/<Track>` when an album is known, or `<Artist>/Singles/` as fallback.
+NicotinD is album-centric, but loose tracks (a YouTube single, a Soulseek peer with no album tag) are **first-class** rather than hidden. Every `library_albums` row carries a `classification`: `album` | `ep` | `single` | `compilation` | `unknown`.
+
+### Where a file lands on disk
+
+`LibraryOrganizer` places tracks at `<Artist>/<Album>/<Track>` when an album is known, or `<Artist>/Singles/` as the fallback bucket.
 
 - **Multi-file downloads**: `classifyFolder` in `compilation-tagger.ts` derives the album from the peer folder name (single-artist consolidation path).
-- **Single-file downloads**: `deriveFolderTags` in `library-organizer.ts` calls `inferFolderAlbum` (`path-inference.ts`) to derive the album from the peer directory's leaf segment when the ID3 album tag is missing — a common situation with Soulseek peers. Generic folder names ("downloads", "src", "music", etc.) and folders that just echo the artist name are blocked by `looksLikeGenericFolder` so they don't become fake albums.
+- **Single-file downloads**: `deriveFolderTags` in `library-organizer.ts` calls `inferFolderAlbum` (`path-inference.ts`) to derive the album from the peer directory's leaf segment when the ID3 album tag is missing. Generic folder names ("downloads", "src", "music", …) and folders that just echo the artist name are blocked by `looksLikeGenericFolder` so they don't become fake albums.
 
-Files mislabeled as Singles before this fix can be repaired with `bun run packages/api/src/scripts/repair-singles.ts`.
+The organizer **no longer force-writes `album="Singles"`** for the bucket fallback — it leaves the album tag empty so the scanner can derive a per-track single (below). The file still physically lives under `<Artist>/Singles/`; only its canonical identity changes.
+
+### Un-bucketing at scan time (each loose track = its own single)
+
+`library-scanner.ts` `resolveTags` calls the exported pure `isLooseSinglesBucket(dir, album)`: when a track has no usable album (`Unknown Album`) **or** sits in the synthetic `<Artist>/Singles/` bucket, its album becomes the **track title**. So `albumIdFor(artist, title)` mints a distinct album per loose track — each surfaces as its own single card instead of all collapsing into one hidden `Singles` bucket. Format-duplicates of the same single still collapse via the shared normalized-title group key (`selectAlbumTracks`). Legacy files the old organizer force-tagged `"Singles"` migrate automatically on the next full rescan (the folder-name check overrides the stale tag). *Trade-off:* a real compilation literally titled "Singles" in `<Artist>/Singles/` now splits into per-track cards — rare and arguably correct.
+
+### Metadata-first classification (`LibraryCurator`)
+
+`reclassifyAll()` runs after every scan and classifies each album:
+
+1. `manual_override` wins (user choice sticks across rescans).
+2. **Authoritative metadata** — the Lidarr/MusicBrainz `albumType` from the `library_release_meta` side table (`release-meta-store.ts`, keyed on `albumId`, off the scanner-managed rows so it survives prunes). A known catalog release is never hidden.
+3. **Heuristic fallback** — `1 → single`, `2–6 → ep`, `7+ → album`; the `[Unknown Album]/[Unknown Artist]` mega-bucket and unknown-identity single rows are hidden.
+
+### Grid exclusion (centralized) & where singles surface
+
+The main Albums grid stays album-only via a **single** definition, `GRID_CLASSIFICATION_SQL = classification IN ('album','compilation')` in `routes/library.ts`, applied by `GET /api/library/albums` (so no listing endpoint can re-pollute the grid by forgetting the filter). Singles & EPs surface elsewhere:
+
+- `GET /api/library/artists/:id` returns `{ artist, albums, singlesAndEps }` (the web renders a **Singles & EPs** section).
+- `GET /api/library/singles?type=&size=&offset=` is the dedicated singles/EPs listing (the web's Library → **Singles** tab).
+
+### Ingest-time enrichment (best-effort)
+
+`SingleEnrichmentService` (`services/single-enrichment.service.ts`), wired into `AcquireWatcher` for URL acquisitions, runs **after** the incremental scan: for each just-scanned loose single/EP it does a best-effort `CatalogService.search("<artist> <title>")` Lidarr/MusicBrainz lookup and writes the canonical **release type** (`release-meta-store`) + **album/artist artwork** (`artwork-store`) keyed on the scanner's ids, then the caller reclassifies. It **degrades gracefully**: Lidarr unconfigured / lookup failure / no match → the heuristic classification + on-disk art stand. Only wired when Lidarr is configured (the callback is `undefined` otherwise).
+
+Files mislabeled as Singles before the original organizer fix can still be repaired with `bun run packages/api/src/scripts/repair-singles.ts`.
 
 ---
 

@@ -151,6 +151,24 @@
         </section>
       }
 
+      <!-- Songs — library-only track results (the track finder) -->
+      @if (!loading() && librarySongs().length > 0) {
+        <section class="mt-2">
+          <h2 class="text-xs font-semibold uppercase tracking-wide text-zinc-500 mb-2">Songs</h2>
+          <div class="space-y-0.5">
+            @for (song of librarySongs(); track song.id; let i = $index) {
+              <app-track-row
+                [track]="toTrack(song)"
+                [subtitle]="song.artist + (song.album ? ' · ' + song.album : '')"
+                [duration]="song.duration"
+                [actions]="songActions(song.id)"
+                (play)="playLibrarySong(i)"
+              />
+            }
+          </div>
+        </section>
+      }
+
       <!-- Direct Soulseek search — always-available fallback below the metadata results -->
       @if (!loading() && search.query().trim() && search.networkState() !== 'idle') {
         <section class="mt-2">
