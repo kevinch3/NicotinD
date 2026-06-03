@@ -20,6 +20,7 @@ import { DeviceSwitcherComponent } from '../device-switcher/device-switcher.comp
 import { PreserveService } from '../../services/preserve.service';
 import * as db from '../../lib/preserve-store';
 import { createPointerDrag } from '../../lib/pointer-drag';
+import { seekFraction, seekTime } from '../../lib/seek-utils';
 
 function formatTime(s: number): string {
   if (!Number.isFinite(s) || s < 0) return '0:00';
@@ -601,16 +602,30 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
     }
   }
 
-  handleSeek(event: MouseEvent): void {
-    const audio = this.audioEl()?.nativeElement;
+  // Tap-to-seek + drag-scrub. Pointer events fire immediately and survive the
+  // micro-movement that cancels a `click` on a thin bar (the old failure mode:
+  // taps on the slim seek bar did nothing on touch). `touch-none` on the bar
+  // stops the browser claiming the gesture as a scroll.
+  private seekBarEl: HTMLElement | null = null;
+  readonly seekDrag = createPointerDrag({
+    onStart: (e) => {
+      this.seekBarEl = e.currentTarget as HTMLElement;
+      this.applySeekFromPointer(e);
+    },
+    onMove: (e) => this.applySeekFromPointer(e),
+    onEnd: () => {
+      this.seekBarEl = null;
+    },
+  });
+
+  private applySeekFromPointer(event: PointerEvent): void {
+    const bar = this.seekBarEl;
     const safeDur = this.safeDuration();
-    if (!safeDur) return;
+    if (!bar || !safeDur) return;
+    const rect = bar.getBoundingClientRect();
+    const newTime = seekTime(seekFraction(event.clientX, rect.left, rect.width), safeDur);
 
-    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-    if (!rect.width) return;
-    const pct = (event.clientX - rect.left) / rect.width;
-    const newTime = Math.max(0, Math.min(1, pct)) * safeDur;
-
+    const audio = this.audioEl()?.nativeElement;
     if (this.isActiveDevice() && audio) {
       audio.currentTime = newTime;
     } else {

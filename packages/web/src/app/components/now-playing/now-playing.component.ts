@@ -15,6 +15,7 @@ import { TrackContextMenuComponent } from '../track-context-menu/track-context-m
 import { TrackInfoSheetComponent } from '../track-info-sheet/track-info-sheet.component';
 import { resolveArtistRoute } from '../../lib/route-utils';
 import { createPointerDrag } from '../../lib/pointer-drag';
+import { seekFraction, seekTime } from '../../lib/seek-utils';
 
 function formatTime(s: number): string {
   if (!Number.isFinite(s) || s < 0) return '0:00';
@@ -146,13 +147,27 @@ export class NowPlayingComponent {
     }
   }
 
-  handleSeek(event: MouseEvent): void {
+  // Tap-to-seek + drag-scrub via pointer events (a `click` on the thin bar was
+  // routinely swallowed on touch when the tap moved a pixel). `touch-none` on the
+  // bar keeps the browser from treating the gesture as a vertical scroll.
+  private seekBarEl: HTMLElement | null = null;
+  readonly seekDrag = createPointerDrag({
+    onStart: (e) => {
+      this.seekBarEl = e.currentTarget as HTMLElement;
+      this.applySeekFromPointer(e);
+    },
+    onMove: (e) => this.applySeekFromPointer(e),
+    onEnd: () => {
+      this.seekBarEl = null;
+    },
+  });
+
+  private applySeekFromPointer(event: PointerEvent): void {
+    const bar = this.seekBarEl;
     const safeDur = this.safeDuration();
-    if (!safeDur) return;
-    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-    if (!rect.width) return;
-    const pct = (event.clientX - rect.left) / rect.width;
-    const newTime = Math.max(0, Math.min(1, pct)) * safeDur;
+    if (!bar || !safeDur) return;
+    const rect = bar.getBoundingClientRect();
+    const newTime = seekTime(seekFraction(event.clientX, rect.left, rect.width), safeDur);
 
     if (this.isActiveDevice()) {
       this.player.seek(newTime);

@@ -129,11 +129,13 @@
           <!-- Progress bar (desktop) -->
           <div class="hidden md:flex items-center gap-2 w-full max-w-md">
             <span class="text-xs text-theme-muted w-10 text-right">{{ formatTime(safeProgress()) }}</span>
-            <div data-seek class="flex-1 h-1 bg-theme-surface-2 rounded-full cursor-pointer" (click)="handleSeek($event)">
-              <div
-                class="h-full bg-theme-secondary rounded-full transition-all"
-                [style.width.%]="progressPercent()"
-              ></div>
+            <div data-seek class="flex-1 py-2 -my-2 cursor-pointer touch-none" (pointerdown)="seekDrag.start($event)">
+              <div class="h-1 bg-theme-surface-2 rounded-full">
+                <div
+                  class="h-full bg-theme-secondary rounded-full transition-all"
+                  [style.width.%]="progressPercent()"
+                ></div>
+              </div>
             </div>
             <span class="text-xs text-theme-muted w-10">{{ formatTime(safeDuration()) }}</span>
           </div>
