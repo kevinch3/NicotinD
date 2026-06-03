@@ -45,6 +45,7 @@ describe('downloads routes', () => {
 
   beforeEach(() => {
     testDb.run('DELETE FROM hidden_transfers');
+    testDb.run('DELETE FROM album_jobs');
 
     slskdMock = makeSlskdMock();
 
@@ -60,6 +61,45 @@ describe('downloads routes', () => {
     const data = await res.json();
     expect(res.status).toBe(200);
     expect(data[0].directories[0].files).toHaveLength(2);
+  });
+
+  it('GET / enriches a folder that matches an active album job with canonical metadata', async () => {
+    testDb.run(
+      `INSERT INTO album_jobs
+        (lidarr_album_id, username, directory, canonical_tracks_json, alternates_json,
+         artist_name, album_title, state, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?)`,
+      [1, 'user1', 'dir1', JSON.stringify(['a', 'b', 'c', 'd']), '[]', 'Patricio Rey', 'Oktubre', Date.now()],
+    );
+
+    const res = await app.request('/');
+    const data = await res.json() as Array<{ directories: Array<{ albumJob?: { artistName: string; albumTitle: string; canonicalTrackCount: number } }> }>;
+
+    expect(data[0].directories[0].albumJob).toEqual({
+      artistName: 'Patricio Rey',
+      albumTitle: 'Oktubre',
+      canonicalTrackCount: 4,
+    });
+  });
+
+  it('GET / leaves direct (non-hunt) folders without albumJob metadata', async () => {
+    const res = await app.request('/');
+    const data = await res.json() as Array<{ directories: Array<{ albumJob?: unknown }> }>;
+    expect(data[0].directories[0].albumJob).toBeUndefined();
+  });
+
+  it('GET / does not enrich folders whose job is no longer active', async () => {
+    testDb.run(
+      `INSERT INTO album_jobs
+        (lidarr_album_id, username, directory, canonical_tracks_json, alternates_json,
+         artist_name, album_title, state, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'done', ?)`,
+      [1, 'user1', 'dir1', JSON.stringify(['a', 'b']), '[]', 'Patricio Rey', 'Oktubre', Date.now()],
+    );
+
+    const res = await app.request('/');
+    const data = await res.json() as Array<{ directories: Array<{ albumJob?: unknown }> }>;
+    expect(data[0].directories[0].albumJob).toBeUndefined();
   });
 
   it('GET / filters out hidden transfers', async () => {

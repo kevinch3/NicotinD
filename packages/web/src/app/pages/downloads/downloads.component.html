@@ -85,8 +85,11 @@
             @for (group of inProgressGroups(); track group.key) {
               <div class="flex items-center gap-3 md:gap-4 px-3 md:px-4 py-3 rounded-lg bg-theme-surface/50 border border-theme min-w-0">
                 <div class="flex-1 min-w-0">
-                  <p class="text-sm text-theme-primary truncate w-full">{{ group.name }}</p>
-                  <p class="text-xs text-theme-muted mt-0.5 truncate w-full">{{ group.completedFiles }} of {{ group.totalFiles }} tracks</p>
+                  <p class="text-sm text-theme-primary truncate w-full">{{ albumGroupTitle(group) }}</p>
+                  @if (group.artistName) {
+                    <p class="text-xs text-theme-secondary truncate w-full">{{ group.artistName }}</p>
+                  }
+                  <p class="text-xs text-theme-muted mt-0.5 truncate w-full">{{ group.completedFiles }} of {{ albumGroupTotal(group) }} tracks</p>
                 </div>
                 <div class="w-20 md:w-32 flex-shrink-0">
                   @if (group.state === 'downloading') {
@@ -116,8 +119,11 @@
             @for (group of errorGroups(); track group.key) {
               <div class="flex items-center gap-3 md:gap-4 px-3 md:px-4 py-3 rounded-lg bg-theme-surface/30 border border-red-900/20 min-w-0">
                 <div class="flex-1 min-w-0">
-                  <p class="text-sm text-theme-secondary truncate w-full">{{ group.name }}</p>
-                  <p class="text-xs text-theme-muted mt-0.5 truncate w-full">{{ group.completedFiles }} of {{ group.totalFiles }} tracks</p>
+                  <p class="text-sm text-theme-secondary truncate w-full">{{ albumGroupTitle(group) }}</p>
+                  @if (group.artistName) {
+                    <p class="text-xs text-theme-muted truncate w-full">{{ group.artistName }}</p>
+                  }
+                  <p class="text-xs text-theme-muted mt-0.5 truncate w-full">{{ group.completedFiles }} of {{ albumGroupTotal(group) }} tracks</p>
                 </div>
                 <p class="text-xs text-red-400/70 font-medium flex-shrink-0">Error</p>
                 <button (click)="retryGroup(group)" [disabled]="retrying().has(group.key)"
@@ -141,7 +147,10 @@
             @for (group of doneGroups(); track group.key) {
               <div class="flex items-center gap-3 md:gap-4 px-3 md:px-4 py-3 rounded-lg bg-theme-surface/40 border border-theme opacity-80 min-w-0">
                 <div class="flex-1 min-w-0">
-                  <p class="text-sm text-theme-secondary truncate w-full">{{ group.name }}</p>
+                  <p class="text-sm text-theme-secondary truncate w-full">{{ albumGroupTitle(group) }}</p>
+                  @if (group.artistName) {
+                    <p class="text-xs text-theme-muted truncate w-full">{{ group.artistName }}</p>
+                  }
                   <p class="text-xs text-theme-muted mt-0.5 truncate w-full">{{ group.totalFiles }} tracks</p>
                 </div>
                 <p class="text-xs text-emerald-400/70 font-medium flex-shrink-0">Done</p>

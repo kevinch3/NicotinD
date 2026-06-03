@@ -56,10 +56,25 @@ export interface SlskdTransfer {
   endedAt?: string;
 }
 
+/**
+ * Canonical hunt metadata for a download folder, attached server-side when the
+ * folder's peer directory matches an active album-hunt job. Lets the Downloads
+ * UI label a transfer with the real artist/album (and expected track count)
+ * instead of the noisy peer folder name (e.g. "(1995) Toque" → "Babasónicos —
+ * Trance Zomba"). Absent for direct (non-hunt) Soulseek downloads.
+ */
+export interface AlbumJobMeta {
+  artistName: string;
+  albumTitle: string;
+  /** Canonical Lidarr tracklist length — the "of N" the album should contain. */
+  canonicalTrackCount: number;
+}
+
 export interface SlskdTransferDirectory {
   directory: string;
   fileCount: number;
   files: SlskdTransfer[];
+  albumJob?: AlbumJobMeta;
 }
 
 export interface SlskdUserTransferGroup {

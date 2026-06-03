@@ -2,7 +2,62 @@ import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
 import type { AuthEnv } from '../middleware/auth.js';
 import type { SlskdRef } from '../index.js';
 import type { ProviderRegistry } from '../services/provider-registry.js';
+import type { Database } from 'bun:sqlite';
+import type { SlskdUserTransferGroup } from '@nicotind/core';
 import { getDatabase } from '../db.js';
+
+interface ActiveJobRow {
+  username: string;
+  directory: string;
+  artist_name: string | null;
+  album_title: string | null;
+  canonical_tracks_json: string;
+}
+
+/**
+ * Attach `albumJob` (canonical artist/album/track-count) to every download
+ * directory whose (username, peer directory) matches an active album-hunt job.
+ * Pure given the rows — only reads the DB once up front. Direct (non-hunt)
+ * downloads are returned unchanged so the UI falls back to folder-name parsing.
+ */
+function enrichWithAlbumJobs(
+  db: Database,
+  groups: SlskdUserTransferGroup[],
+): SlskdUserTransferGroup[] {
+  const rows = db
+    .query<ActiveJobRow, []>(
+      `SELECT username, directory, artist_name, album_title, canonical_tracks_json
+       FROM album_jobs WHERE state = 'active'`,
+    )
+    .all();
+
+  const byKey = new Map<string, { artistName: string; albumTitle: string; canonicalTrackCount: number }>();
+  for (const r of rows) {
+    if (!r.artist_name || !r.album_title) continue;
+    let trackCount = 0;
+    try {
+      const tracks = JSON.parse(r.canonical_tracks_json) as unknown[];
+      trackCount = Array.isArray(tracks) ? tracks.length : 0;
+    } catch {
+      trackCount = 0;
+    }
+    byKey.set(`${r.username}::${r.directory}`, {
+      artistName: r.artist_name,
+      albumTitle: r.album_title,
+      canonicalTrackCount: trackCount,
+    });
+  }
+
+  if (byKey.size === 0) return groups;
+
+  return groups.map((group) => ({
+    ...group,
+    directories: group.directories.map((dir) => {
+      const meta = byKey.get(`${group.username}::${dir.directory}`);
+      return meta ? { ...dir, albumJob: meta } : dir;
+    }),
+  }));
+}
 
 const DownloadFileSchema = z.object({
   filename: z.string(),
@@ -232,24 +287,25 @@ export function downloadRoutes(registry: ProviderRegistry, slskdRef: SlskdRef) {
       const hidden = db.query('SELECT id FROM hidden_transfers').all() as Array<{ id: string }>;
       const hiddenIds = new Set(hidden.map((h) => h.id));
 
-      if (hiddenIds.size === 0) {
-        return c.json(downloads, 200);
-      }
-
-      // Filter out hidden transfers
-      const filtered = downloads
-        .map((group) => ({
-          ...group,
-          directories: group.directories
-            .map((dir) => ({
-              ...dir,
-              files: dir.files.filter((file) => !hiddenIds.has(file.id)),
+      // Filter out hidden transfers (skip the map entirely when nothing is hidden).
+      const visible = hiddenIds.size === 0
+        ? downloads
+        : downloads
+            .map((group) => ({
+              ...group,
+              directories: group.directories
+                .map((dir) => ({
+                  ...dir,
+                  files: dir.files.filter((file) => !hiddenIds.has(file.id)),
+                }))
+                .filter((dir) => dir.files.length > 0),
             }))
-            .filter((dir) => dir.files.length > 0),
-        }))
-        .filter((group) => group.directories.length > 0);
+            .filter((group) => group.directories.length > 0);
 
-      return c.json(filtered, 200);
+      // Annotate folders that came from the album-hunt flow with their canonical
+      // artist/album/track-count so the UI can show real metadata instead of the
+      // peer's noisy folder name. Matched by (username, peer directory).
+      return c.json(enrichWithAlbumJobs(db, visible), 200);
     },
   );
 

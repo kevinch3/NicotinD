@@ -13,21 +13,14 @@ import { ConfirmDialogComponent } from '../../components/confirm-dialog/confirm-
 import { TrackAction } from '../../components/track-row/track-row.component';
 import { resolveArtistRoute } from '../../lib/route-utils';
 import { PreserveService } from '../../services/preserve.service';
-import type { SlskdUserTransferGroup } from '@nicotind/core';
+import {
+  type AlbumGroup,
+  groupByAlbum,
+  albumGroupTitle,
+  albumGroupTotal,
+} from '../../lib/download-groups';
 
 // ─── Types ──────────────────────────────────────────────────────────
-
-interface AlbumGroup {
-  key: string;
-  name: string;
-  username: string;
-  fileIds: string[];
-  erroredFileIds: string[];
-  totalFiles: number;
-  completedFiles: number;
-  overallPercent: number;
-  state: 'downloading' | 'queued' | 'done' | 'error';
-}
 
 type DateGroup = 'Today' | 'Yesterday' | 'This week' | 'Older';
 
@@ -37,38 +30,6 @@ interface SongDateGroup {
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────
-
-function extractAlbumName(directory: string): string {
-  const segments = directory.split('\\').filter(Boolean);
-  return segments[segments.length - 1] ?? directory;
-}
-
-function groupByAlbum(downloads: SlskdUserTransferGroup[]): AlbumGroup[] {
-  const groups: AlbumGroup[] = [];
-  for (const transfer of downloads) {
-    for (const dir of transfer.directories) {
-      const name = extractAlbumName(dir.directory);
-      const key = `${transfer.username}:${dir.directory}`;
-      const files = dir.files;
-      const completed = files.filter(f => f.state.includes('Succeeded')).length;
-      const active = files.filter(f => f.state === 'InProgress').length;
-      const erroredFiles = files.filter(f => f.state.includes('Errored') || f.state.includes('Cancelled') || f.state.includes('TimedOut') || f.state.includes('Rejected'));
-      const errored = erroredFiles.length;
-      const totalBytes = files.reduce((s, f) => s + f.size, 0);
-      const transferredBytes = files.reduce((s, f) => s + f.bytesTransferred, 0);
-      const overallPercent = totalBytes > 0 ? Math.round((transferredBytes / totalBytes) * 100) : 0;
-
-      let state: AlbumGroup['state'] = 'queued';
-      if (completed === files.length) state = 'done';
-      else if (active > 0) state = 'downloading';
-      else if (errored > 0 && completed + errored === files.length) state = 'error';
-
-      groups.push({ key, name, username: transfer.username, fileIds: files.map(f => f.id), erroredFileIds: erroredFiles.map(f => f.id), totalFiles: files.length, completedFiles: completed, overallPercent, state });
-    }
-  }
-  const order: Record<string, number> = { downloading: 0, queued: 1, error: 2, done: 3 };
-  return groups.sort((a, b) => order[a.state] - order[b.state]);
-}
 
 function formatDuration(seconds?: number) {
   if (!seconds) return '';
@@ -132,6 +93,8 @@ export class DownloadsComponent implements OnInit, OnDestroy {
   readonly formatDuration = formatDuration;
   readonly formatSize = formatSize;
   readonly timeAgo = timeAgo;
+  readonly albumGroupTitle = albumGroupTitle;
+  readonly albumGroupTotal = albumGroupTotal;
 
   readonly storagePercent = computed(() => {
     const used = this.preserve.totalUsage();
