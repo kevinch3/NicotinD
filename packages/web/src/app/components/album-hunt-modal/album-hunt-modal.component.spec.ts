@@ -34,19 +34,24 @@ function candidate(overrides: Partial<FolderCandidate>): FolderCandidate {
 }
 
 describe('AlbumHuntModalComponent', () => {
-  const huntAlbum = vi.fn(() => of({ candidates: [], totalTracks: 0 }));
+  // Two-phase hunt: startHunt() fires huntAlbumBase first, then huntAlbumSkew only
+  // when the base phase reports skewNeeded.
+  const huntAlbumBase = vi.fn(() => of({ candidates: [], totalTracks: 0, skewNeeded: false }));
+  const huntAlbumSkew = vi.fn(() => of({ candidates: [] }));
   const huntDownload = vi.fn(() => of({}));
 
   beforeEach(async () => {
-    huntAlbum.mockClear();
-    huntAlbum.mockReturnValue(of({ candidates: [], totalTracks: 0 }));
+    huntAlbumBase.mockClear();
+    huntAlbumBase.mockReturnValue(of({ candidates: [], totalTracks: 0, skewNeeded: false }));
+    huntAlbumSkew.mockClear();
+    huntAlbumSkew.mockReturnValue(of({ candidates: [] }));
     huntDownload.mockClear();
     huntDownload.mockReturnValue(of({}));
 
     await TestBed.configureTestingModule({
       imports: [AlbumHuntModalComponent],
       providers: [
-        { provide: ApiService, useValue: { huntAlbum, huntDownload } },
+        { provide: ApiService, useValue: { huntAlbumBase, huntAlbumSkew, huntDownload } },
         { provide: TransferService, useValue: { poll: vi.fn() } },
       ],
     }).compileComponents();
@@ -154,7 +159,7 @@ describe('AlbumHuntModalComponent', () => {
     );
   });
 
-  it('passes the current skewSearch flag to huntAlbum', async () => {
+  it('passes the current skewSearch flag to the base hunt phase', async () => {
     const c = create();
     // Stub the required signal inputs directly (binding is unreliable in the
     // optimized CI test build).
@@ -164,7 +169,7 @@ describe('AlbumHuntModalComponent', () => {
     c.skewSearch.set(true);
     await c.startHunt();
 
-    expect(huntAlbum).toHaveBeenCalledWith(
+    expect(huntAlbumBase).toHaveBeenCalledWith(
       ALBUM.lidarrId,
       expect.objectContaining({ skewSearch: true }),
     );
