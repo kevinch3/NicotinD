@@ -16,6 +16,7 @@ export const routes: Routes = [
       { path: 'library/albums/:id', loadComponent: () => import('./pages/library/album-detail.component').then(m => m.AlbumDetailComponent) },
       { path: 'library/artists/:id', loadComponent: () => import('./pages/library/artist-detail.component').then(m => m.ArtistDetailComponent) },
       { path: 'library/genres/:slug', loadComponent: () => import('./pages/library/genre-detail.component').then(m => m.GenreDetailComponent) },
+      { path: 'library/playlists/:id', loadComponent: () => import('./pages/library/playlist-detail.component').then(m => m.PlaylistDetailComponent) },
       { path: 'settings', loadComponent: () => import('./pages/settings/settings.component').then(m => m.SettingsComponent) },
       { path: 'admin', loadComponent: () => import('./pages/admin/admin.component').then(m => m.AdminComponent), canActivate: [adminGuard] },
     ],

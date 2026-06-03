@@ -60,7 +60,7 @@ export interface Album {
   coverArt?: string;
   songCount?: number;
   year?: number;
-  classification?: 'album' | 'single' | 'compilation' | 'unknown';
+  classification?: 'album' | 'ep' | 'single' | 'compilation' | 'unknown';
   hidden?: boolean;
 }
 
@@ -235,7 +235,7 @@ export class ApiService {
   unhideAlbum(id: string) {
     return this.http.post<{ ok: boolean }>(`/api/library/albums/${id}/unhide`, {});
   }
-  reclassifyAlbum(id: string, classification: 'album' | 'single' | 'compilation' | 'unknown') {
+  reclassifyAlbum(id: string, classification: 'album' | 'ep' | 'single' | 'compilation' | 'unknown') {
     return this.http.post<{ ok: boolean }>(`/api/library/albums/${id}/reclassify`, { classification });
   }
   clearAlbumOverride(id: string) {
@@ -254,9 +254,16 @@ export class ApiService {
   }
 
   getArtist(id: string) {
-    return this.http.get<{ artist: { id: string; name: string; albumCount: number; coverArt?: string }; albums: Album[] }>(
-      `/api/library/artists/${id}`,
-    );
+    return this.http.get<{
+      artist: { id: string; name: string; albumCount: number; coverArt?: string };
+      albums: Album[];
+      singlesAndEps: Album[];
+    }>(`/api/library/artists/${id}`);
+  }
+
+  // Dedicated singles & EPs listing (kept out of the main Albums grid).
+  getSingles(type = 'newest', size = 60, offset = 0) {
+    return this.http.get<Album[]>('/api/library/singles', { params: { type, size, offset } });
   }
 
   getGenres() {
@@ -472,6 +479,43 @@ export class ApiService {
       params: { limit: String(limit) },
     });
   }
+
+  // Playlists (per-user)
+  getPlaylists() {
+    return this.http.get<{ playlists: PlaylistSummary[] }>('/api/playlists');
+  }
+
+  getPlaylist(id: string) {
+    return this.http.get<PlaylistDetail>(`/api/playlists/${id}`);
+  }
+
+  createPlaylist(name: string, songIds?: string[], description?: string) {
+    return this.http.post<{ playlist: PlaylistSummary }>('/api/playlists', { name, songIds, description });
+  }
+
+  updatePlaylist(
+    id: string,
+    patch: { name?: string; description?: string; add?: string[]; remove?: string[]; reorder?: string[] },
+  ) {
+    return this.http.put<{ ok: boolean }>(`/api/playlists/${id}`, patch);
+  }
+
+  deletePlaylist(id: string) {
+    return this.http.delete<{ ok: boolean }>(`/api/playlists/${id}`);
+  }
+}
+
+export interface PlaylistSummary {
+  id: string;
+  name: string;
+  description: string | null;
+  songCount: number;
+  createdAt: number;
+  modifiedAt: number;
+}
+
+export interface PlaylistDetail extends PlaylistSummary {
+  songs: Song[];
 }
 
 export interface AlbumJob {

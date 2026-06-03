@@ -10,16 +10,18 @@ import {
   OnDestroy,
 } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { ApiService, type Album } from '../../services/api.service';
 import { AuthService } from '../../services/auth.service';
+import { PlaylistService } from '../../services/playlist.service';
 import { TransferService } from '../../services/transfer.service';
 import { ListControlsService, type SortOption } from '../../services/list-controls.service';
 import { ListToolbarComponent } from '../../components/list-toolbar/list-toolbar.component';
 import { CoverArtComponent } from '../../components/cover-art/cover-art.component';
 import { resolveAlbumRoute, resolveGenreRoute, resolveArtistRoute } from '../../lib/route-utils';
 
-type LibraryMode = 'albums' | 'artists' | 'genre';
+type LibraryMode = 'albums' | 'singles' | 'artists' | 'genre' | 'playlists';
 
 export type AlbumListType =
   | 'newest'
@@ -91,12 +93,13 @@ function writePersistedState(state: PersistedLibraryState): void {
 
 @Component({
   selector: 'app-library',
-  imports: [ListToolbarComponent, RouterLink, CoverArtComponent],
+  imports: [ListToolbarComponent, RouterLink, CoverArtComponent, FormsModule],
   templateUrl: './library.component.html',
 })
 export class LibraryComponent implements OnInit, OnDestroy {
   private api = inject(ApiService);
   readonly auth = inject(AuthService);
+  readonly playlistService = inject(PlaylistService);
   private transferService = inject(TransferService);
   private listControls = inject(ListControlsService);
   private route = inject(ActivatedRoute);
@@ -105,8 +108,10 @@ export class LibraryComponent implements OnInit, OnDestroy {
   // ─── Mode ─────────────────────────────────────────────────────────
   readonly modes = [
     { value: 'albums' as LibraryMode, label: 'Albums' },
+    { value: 'singles' as LibraryMode, label: 'Singles' },
     { value: 'artists' as LibraryMode, label: 'Artists' },
     { value: 'genre' as LibraryMode, label: 'Genre' },
+    { value: 'playlists' as LibraryMode, label: 'Playlists' },
   ];
 
   readonly libraryMode = signal<LibraryMode>(
@@ -116,8 +121,10 @@ export class LibraryComponent implements OnInit, OnDestroy {
   setMode(mode: LibraryMode): void {
     this.libraryMode.set(mode);
     localStorage.setItem('nicotind-library-mode', mode);
+    if (mode === 'singles' && !this.singles().length) this.fetchSingles();
     if (mode === 'artists' && !this.artists().length) this.fetchArtists();
     if (mode === 'genre' && !this.genres().length) this.fetchGenres();
+    if (mode === 'playlists') void this.playlistService.refresh();
   }
 
   // ─── Albums (lazy-loaded) ─────────────────────────────────────────
@@ -173,6 +180,18 @@ export class LibraryComponent implements OnInit, OnDestroy {
   setMinSongCount(n: number | null): void {
     this.minSongCount.set(n);
   }
+
+  // ─── Singles & EPs ────────────────────────────────────────────────
+  // Dedicated view for the release types kept out of the Albums grid.
+  readonly singles = signal<Album[]>([]);
+  readonly loadingSingles = signal(false);
+
+  readonly singlesControls = this.listControls.connect({
+    pageKey: 'library-singles',
+    items: this.singles,
+    searchFields: ['name', 'artist'] as const,
+    sortOptions: this.gridSortOptions,
+  });
 
   // ─── Artists ──────────────────────────────────────────────────────
   readonly artists = signal<Array<{ id: string; name: string; albumCount: number; coverArt?: string }>>([]);
@@ -232,8 +251,26 @@ export class LibraryComponent implements OnInit, OnDestroy {
     }
 
     const mode = this.libraryMode();
+    if (mode === 'singles') this.fetchSingles();
     if (mode === 'artists') this.fetchArtists();
     if (mode === 'genre') this.fetchGenres();
+    if (mode === 'playlists') void this.playlistService.refresh();
+  }
+
+  // ─── Playlists ────────────────────────────────────────────────────
+  readonly newPlaylistName = signal('');
+  readonly creatingPlaylist = signal(false);
+
+  async createPlaylist(): Promise<void> {
+    const name = this.newPlaylistName().trim();
+    if (!name || this.creatingPlaylist()) return;
+    this.creatingPlaylist.set(true);
+    try {
+      await this.playlistService.create(name);
+      this.newPlaylistName.set('');
+    } finally {
+      this.creatingPlaylist.set(false);
+    }
   }
 
   ngOnDestroy(): void {
@@ -379,6 +416,16 @@ export class LibraryComponent implements OnInit, OnDestroy {
       this.artists.set(data.map(a => ({ ...a, albumCount: a.albumCount ?? 0 })));
     } catch { /* ignore */ }
     finally { this.loadingArtists.set(false); }
+  }
+
+  async fetchSingles(): Promise<void> {
+    if (this.loadingSingles()) return;
+    this.loadingSingles.set(true);
+    try {
+      const data = await firstValueFrom(this.api.getSingles('newest', 500));
+      this.singles.set(data);
+    } catch { /* ignore */ }
+    finally { this.loadingSingles.set(false); }
   }
 
   async fetchGenres(): Promise<void> {

@@ -338,18 +338,18 @@ export class LibraryOrganizer {
 
     const unsortedDir = isAbsolute(this.unsortedRoot) ? this.unsortedRoot : join(this.musicDir, this.unsortedRoot);
     let destDir: string;
-    let placedInSingles = false;
     if (folderArtist && folderAlbum && trackTitle) {
       destDir = join(this.musicDir, folderArtist, folderAlbum);
       // Only real <Artist>/<Album> dirs are dedupe targets — never Singles (many
       // distinct tracks) or the unsorted bucket.
       this.touchedAlbumDirs.add(destDir);
     } else if (folderArtist && trackTitle) {
-      // Single artist, no album info → "Singles" album. We also force-write
-      // album="Singles" to the file below so Navidrome groups it instead of
-      // surfacing each track as its own [Unknown Album] entry.
+      // Single artist, no album info → place under <Artist>/Singles/ on disk,
+      // but leave the album tag empty (no longer force "Singles"): the scanner
+      // turns each album-less track into its own single release named after the
+      // title, so loose tracks become individual cards instead of one hidden
+      // "Singles" bucket. (See isLooseSinglesBucket in library-scanner.ts.)
       destDir = join(this.musicDir, folderArtist, 'Singles');
-      placedInSingles = true;
     } else if (trackTitle) {
       // No artist info at all
       const cleanedPeer = stripAudioExt(file.peerDirectory);
@@ -387,10 +387,9 @@ export class LibraryOrganizer {
     }
 
     // Tag rewrite step — run even when the file didn't move, so junk
-    // album/artist tags from a prior run get cleaned up idempotently.
-    // If we landed in <Artist>/Singles/, force album="Singles" so Navidrome
-    // groups them under one album per artist instead of [Unknown Album].
-    const effectiveAlbum = placedInSingles ? 'Singles' : folderTags.album;
+    // album/artist tags from a prior run get cleaned up idempotently. Loose
+    // singles get no forced album tag (the scanner derives album = title).
+    const effectiveAlbum = folderTags.album;
     const currentRaw = await readAudioTags(destPath);
     const toWrite: AudioTags = {};
     if (effectiveAlbum && currentRaw.album !== effectiveAlbum) toWrite.album = effectiveAlbum;

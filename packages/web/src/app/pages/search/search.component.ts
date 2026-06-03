@@ -7,11 +7,27 @@ import { SearchService, type NetworkResult } from '../../services/search.service
 import { TransferService } from '../../services/transfer.service';
 import { AcquireService } from '../../services/acquire.service';
 import { WatchlistService } from '../../services/watchlist.service';
+import { PlayerService } from '../../services/player.service';
+import { PlaylistService } from '../../services/playlist.service';
+import type { TrackAction } from '../../components/track-row/track-row.component';
 import { getSingleDownloadLabel, getFolderDownloadLabel, isPathEffectivelyQueued, BUTTON_CLASSES } from '../../lib/download-status';
 import { groupByDirectory, formatPeerInfo, type FolderGroup } from '../../lib/folder-utils';
 import { FolderBrowserComponent } from '../../components/folder-browser/folder-browser.component';
 import { AlbumHuntModalComponent } from '../../components/album-hunt-modal/album-hunt-modal.component';
+import { TrackRowComponent } from '../../components/track-row/track-row.component';
+import { toTrack } from '../../lib/track-utils';
 import { extractSharedUrl } from '../../lib/share-url';
+
+/** Lighter song shape returned by the unified search's local results. */
+interface LibrarySong {
+  id: string;
+  title: string;
+  artist: string;
+  album: string;
+  duration?: number;
+  coverArt?: string;
+  track?: number;
+}
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -127,7 +143,7 @@ function escapeHtml(text: string): string {
 
 @Component({
   selector: 'app-search',
-  imports: [FormsModule, FolderBrowserComponent, RouterLink, AlbumHuntModalComponent],
+  imports: [FormsModule, FolderBrowserComponent, RouterLink, AlbumHuntModalComponent, TrackRowComponent],
   templateUrl: './search.component.html',
   })
 export class SearchComponent implements OnInit, OnDestroy {
@@ -138,6 +154,8 @@ export class SearchComponent implements OnInit, OnDestroy {
   private transfers = inject(TransferService);
   readonly acquire = inject(AcquireService);
   readonly watchlist = inject(WatchlistService);
+  private player = inject(PlayerService);
+  private playlists = inject(PlaylistService);
 
   readonly btnClasses = BUTTON_CLASSES;
   readonly formatDuration = formatDuration;
@@ -159,6 +177,8 @@ export class SearchComponent implements OnInit, OnDestroy {
   // result; the raw Soulseek search below is the always-available fallback.
   readonly catalog = signal<CatalogSearchResult | null>(null);
   readonly catalogUnavailable = signal(false); // Lidarr not configured / lookup failed
+  // Local library songs (the "Songs" section) from the unified search.
+  readonly librarySongs = signal<LibrarySong[]>([]);
   readonly resolvingAlbum = signal<string | null>(null); // foreignAlbumId being resolved
   readonly resolveError = signal<string | null>(null);
   readonly directSearchOpen = signal(false);
@@ -363,6 +383,19 @@ export class SearchComponent implements OnInit, OnDestroy {
     this.huntingAlbum.set(null);
   }
 
+  // Play a library song from the Songs section, queuing the rest of the results.
+  playLibrarySong(index: number): void {
+    const tracks = this.librarySongs().map((s) => toTrack(s));
+    if (!tracks.length) return;
+    this.player.playWithContext(tracks, index, { type: 'adhoc', name: 'Search' });
+  }
+
+  songActions(songId: string): TrackAction[] {
+    return [{ label: 'Add to playlist', action: () => this.playlists.openPicker([songId]) }];
+  }
+
+  toTrack = toTrack;
+
   async submitAcquireUrl(e: Event): Promise<void> {
     e.preventDefault();
     await this.startAcquire(this.acquireUrl.trim());
@@ -486,6 +519,7 @@ export class SearchComponent implements OnInit, OnDestroy {
     this.resolveError.set(null);
     this.catalog.set(null);
     this.catalogUnavailable.set(false);
+    this.librarySongs.set([]);
     this.networkAvailable.set(true);
 
     // Fire metadata (catalog) + raw Soulseek search in parallel. Catalog is the
@@ -497,6 +531,7 @@ export class SearchComponent implements OnInit, OnDestroy {
     try {
       const res = await firstValueFrom(this.api.search(query));
       this.searchId.set(res.searchId);
+      this.librarySongs.set(res.local?.songs ?? []);
       this.errors.set(res.errors ?? []);
       this.networkAvailable.set(res.networkAvailable ?? false);
       this.search.setNetworkState(res.networkAvailable ? 'searching' : 'complete');

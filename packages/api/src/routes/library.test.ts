@@ -244,8 +244,8 @@ describe('downloading album suppression', () => {
   function seedAlbumRecord(id: string, name: string, artist: string): void {
     testDb.run('DELETE FROM library_albums WHERE id = ?', [id]);
     testDb.run(
-      `INSERT INTO library_albums (id, name, artist, artist_id, song_count, duration, synced_at)
-       VALUES (?, ?, ?, 'art', 3, 120, 1)`,
+      `INSERT INTO library_albums (id, name, artist, artist_id, song_count, duration, classification, synced_at)
+       VALUES (?, ?, ?, 'art', 3, 120, 'album', 1)`,
       [id, name, artist],
     );
   }
@@ -477,5 +477,78 @@ describe('album deletion', () => {
     // Album delete removes canonical rows synchronously; it never needs a rescan.
     expect(runSync).not.toHaveBeenCalled();
     expect(albumRowExists('del-nosync')).toBe(false);
+  });
+});
+
+describe('singles & EPs presentation', () => {
+  const testDb = new Database(':memory:');
+  applySchema(testDb);
+
+  beforeEach(() => {
+    testDb.run('DELETE FROM library_albums');
+    testDb.run('DELETE FROM library_artists');
+    mock.module('../db.js', () => ({ getDatabase: () => testDb, applySchema }));
+  });
+
+  afterEach(() => {
+    mock.module('../db.js', () => ({ getDatabase: () => sharedDb, applySchema }));
+  });
+
+  function seedAlbum(id: string, name: string, artistId: string, classification: string): void {
+    testDb.run(
+      `INSERT INTO library_albums (id, name, artist, artist_id, song_count, duration, classification, hidden, synced_at)
+       VALUES (?, ?, 'Alfredo Casero', ?, 1, 60, ?, 0, 1)`,
+      [id, name, artistId, classification],
+    );
+  }
+
+  function makeApp(): Hono<AuthEnv> {
+    const testApp = new Hono<AuthEnv>();
+    testApp.use('*', (c, next) => {
+      c.set('user', { sub: 'u', role: 'user', iat: 0, exp: 9999999999 });
+      return next();
+    });
+    testApp.route('/', libraryRoutes());
+    return testApp;
+  }
+
+  it('GET /albums excludes singles and EPs', async () => {
+    seedAlbum('full', 'Real Album', 'art', 'album');
+    seedAlbum('comp', 'Greatest Hits', 'art', 'compilation');
+    seedAlbum('sng', 'Loose Single', 'art', 'single');
+    seedAlbum('ep', 'Some EP', 'art', 'ep');
+
+    const body = (await (await makeApp().request('/albums')).json()) as Array<{ id: string }>;
+    const ids = body.map((a) => a.id);
+    expect(ids).toContain('full');
+    expect(ids).toContain('comp');
+    expect(ids).not.toContain('sng');
+    expect(ids).not.toContain('ep');
+  });
+
+  it('GET /singles returns only singles and EPs', async () => {
+    seedAlbum('full', 'Real Album', 'art', 'album');
+    seedAlbum('sng', 'Loose Single', 'art', 'single');
+    seedAlbum('ep', 'Some EP', 'art', 'ep');
+
+    const body = (await (await makeApp().request('/singles')).json()) as Array<{ id: string }>;
+    const ids = body.map((a) => a.id);
+    expect(ids.sort()).toEqual(['ep', 'sng']);
+  });
+
+  it('GET /artists/:id splits albums from singlesAndEps', async () => {
+    testDb.run(
+      `INSERT INTO library_artists (id, name, album_count, synced_at) VALUES ('art', 'Alfredo Casero', 3, 1)`,
+    );
+    seedAlbum('full', 'Real Album', 'art', 'album');
+    seedAlbum('sng', 'Loose Single', 'art', 'single');
+    seedAlbum('ep', 'Some EP', 'art', 'ep');
+
+    const body = (await (await makeApp().request('/artists/art')).json()) as {
+      albums: Array<{ id: string }>;
+      singlesAndEps: Array<{ id: string }>;
+    };
+    expect(body.albums.map((a) => a.id)).toEqual(['full']);
+    expect(body.singlesAndEps.map((a) => a.id).sort()).toEqual(['ep', 'sng']);
   });
 });

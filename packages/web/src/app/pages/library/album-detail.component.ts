@@ -5,6 +5,7 @@ import { firstValueFrom } from 'rxjs';
 import { ApiService, type AlbumDetail, type Song } from '../../services/api.service';
 import { AuthService } from '../../services/auth.service';
 import { PlayerService, type Track } from '../../services/player.service';
+import { PlaylistService } from '../../services/playlist.service';
 import { TransferService } from '../../services/transfer.service';
 import { ListControlsService, type SortOption } from '../../services/list-controls.service';
 import { ListToolbarComponent } from '../../components/list-toolbar/list-toolbar.component';
@@ -24,6 +25,7 @@ export class AlbumDetailComponent implements OnInit {
   private api = inject(ApiService);
   readonly auth = inject(AuthService);
   readonly player = inject(PlayerService);
+  private playlists = inject(PlaylistService);
   private transferService = inject(TransferService);
   private listControls = inject(ListControlsService);
   private router = inject(Router);
@@ -151,6 +153,10 @@ export class AlbumDetailComponent implements OnInit {
 
   albumTrackActions(song: { id: string; title: string; artistId?: string }): TrackAction[] {
     return [
+      {
+        label: 'Add to playlist',
+        action: () => this.playlists.openPicker([song.id]),
+      },
       ...(song.artistId ? [{
         label: 'Go to artist',
         action: () => {

@@ -22,10 +22,12 @@ import { shareRoutes } from './routes/share.js';
 import { discographyRoutes } from './routes/discography.js';
 import { catalogRoutes } from './routes/catalog.js';
 import { watchlistRoutes } from './routes/watchlist.js';
+import { playlistRoutes } from './routes/playlists.js';
 import { acquireRoutes } from './routes/acquire.js';
 import { AcquireWatcher } from './services/acquire-watcher.js';
 import { DiscographyService } from './services/discography.service.js';
 import { CatalogService } from './services/catalog-search.service.js';
+import { SingleEnrichmentService } from './services/single-enrichment.service.js';
 import { AlbumHunterService } from './services/album-hunter.service.js';
 import { WatchlistService } from './services/watchlist.service.js';
 import { DownloadWatcher } from './services/download-watcher.js';
@@ -254,6 +256,7 @@ export function createApp({
   app.use('/api/ws/*', auth);
   app.use('/api/discography/*', auth);
   app.use('/api/watchlist/*', auth);
+  app.use('/api/playlists/*', auth);
   app.use('/api/acquire/*', auth);
 
   app.get('/api/ws/playback', upgradeWebSocket((c) => {
@@ -274,11 +277,27 @@ export function createApp({
   );
   app.route('/api/share', shareRoutes(config.jwt.secret, auth));
   app.route('/api/users', usersRoutes(registry));
+  app.route('/api/playlists', playlistRoutes());
+
+  // Ingest-time enrichment of loose singles/EPs (release type + artwork). Only
+  // wired when Lidarr is configured; absent → acquisition degrades to heuristic.
+  let enrichSingles: ((relPaths: string[]) => Promise<void>) | undefined;
 
   if (lidarr && slskdRef.current) {
     const discographySvc = new DiscographyService(lidarr, db, config.musicDir);
     const hunterSvc = new AlbumHunterService(slskdRef.current);
     const catalogSvc = new CatalogService(lidarr, config.musicDir);
+    const enrichmentSvc = new SingleEnrichmentService({
+      db,
+      catalog: catalogSvc,
+      coverCacheDir: `${expandedDataDir}/cover-cache`,
+    });
+    enrichSingles = async (relPaths) => {
+      await enrichmentSvc.enrich(relPaths);
+      // Reclassify so the freshly-written release-meta takes effect immediately
+      // (the incremental scan already ran with the heuristic).
+      curator.reclassifyAll();
+    };
     app.route(
       '/api/discography',
       discographyRoutes({
@@ -326,6 +345,7 @@ export function createApp({
     },
     organizeBatch: (files) => sharedOrganizer.organizeBatch(files),
     scanIncremental,
+    enrichSingles,
   });
   app.route('/api/acquire', acquireRoutes(acquireWatcher));
 

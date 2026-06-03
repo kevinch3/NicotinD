@@ -11,7 +11,14 @@ import { normalizeArtistForGrouping, normalizeForGrouping } from '../services/al
 
 const log = createLogger('library');
 
-const VALID_CLASSIFICATIONS = new Set(['album', 'single', 'compilation', 'unknown']);
+const VALID_CLASSIFICATIONS = new Set(['album', 'ep', 'single', 'compilation', 'unknown']);
+
+// The only release types shown in the main Albums grid. Singles & EPs are
+// surfaced on the artist page and the dedicated /singles view instead, so the
+// grid stays album-only. Defined once here so no album-listing endpoint can
+// re-pollute the grid by forgetting the filter.
+const GRID_CLASSIFICATION_SQL = `classification IN ('album','compilation')`;
+const SINGLE_EP_CLASSIFICATION_SQL = `classification IN ('single','ep')`;
 
 /**
  * Returns a Set of "artist album" group keys for
@@ -210,17 +217,41 @@ export function libraryRoutes(
     if (!artistRow) {
       return c.json({ error: 'Artist not found' }, 404);
     }
-    const albumRows = db
+    const allRows = db
       .query<AlbumRow, [string]>(
         `${ALBUM_SELECT} WHERE artist_id = ? AND hidden = 0
          ORDER BY year DESC NULLS LAST, name COLLATE NOCASE ASC`,
       )
       .all(id);
     const downloadingKeys = getDownloadingGroupKeys(db);
-    const visibleAlbums = albumRows
+    const visible = allRows.filter(
+      (r) => !downloadingKeys.has(`${normalizeArtistForGrouping(r.artist)} ${normalizeForGrouping(r.name)}`),
+    );
+    // Split full-lengths (the grid) from singles & EPs (their own section).
+    const albums = visible.filter((r) => r.classification !== 'single' && r.classification !== 'ep').map(rowToAlbum);
+    const singlesAndEps = visible.filter((r) => r.classification === 'single' || r.classification === 'ep').map(rowToAlbum);
+    return c.json({ artist: rowToArtist(artistRow), albums, singlesAndEps });
+  });
+
+  // Dedicated singles & EPs listing (the /library/singles view). Mirrors /albums
+  // but inverts the grid filter: only single + ep releases.
+  app.get('/singles', (c) => {
+    const type = c.req.query('type') ?? 'newest';
+    const size = Math.min(Number(c.req.query('size') ?? 60), 500);
+    const offset = Math.max(Number(c.req.query('offset') ?? 0), 0);
+    const order = albumOrderBy(type);
+    const db = getDatabase();
+    const rows = db
+      .query<AlbumRow, [number, number]>(
+        `${ALBUM_SELECT} WHERE hidden = 0 AND ${SINGLE_EP_CLASSIFICATION_SQL}
+         ORDER BY ${order} LIMIT ? OFFSET ?`,
+      )
+      .all(size, offset);
+    const downloadingKeys = getDownloadingGroupKeys(db);
+    const singles = rows
       .filter((r) => !downloadingKeys.has(`${normalizeArtistForGrouping(r.artist)} ${normalizeForGrouping(r.name)}`))
       .map(rowToAlbum);
-    return c.json({ artist: rowToArtist(artistRow), albums: visibleAlbums });
+    return c.json(singles);
   });
 
   app.get('/albums', (c) => {
@@ -234,8 +265,13 @@ export function libraryRoutes(
     const params: Array<string | number> = [];
     if (!includeHidden) wheres.push('hidden = 0');
     if (classification && VALID_CLASSIFICATIONS.has(classification)) {
+      // Explicit classification filter (power users / internal callers).
       wheres.push('classification = ?');
       params.push(classification);
+    } else {
+      // Default grid: album-only (singles & EPs live on the artist page / the
+      // /singles view).
+      wheres.push(GRID_CLASSIFICATION_SQL);
     }
 
     const whereClause = wheres.length > 0 ? `WHERE ${wheres.join(' AND ')}` : '';
