@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.47](https://github.com/kevinch3/NicotinD/compare/v0.1.46...v0.1.47) (2026-06-03)
+
+
+### Features
+
+* improve acquisition ([54a3c55](https://github.com/kevinch3/NicotinD/commit/54a3c553565898aa671915f100886e18a47564e1))
+
 ## [0.1.46](https://github.com/kevinch3/NicotinD/compare/v0.1.45...v0.1.46) (2026-06-02)
 
 
