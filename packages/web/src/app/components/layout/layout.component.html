@@ -75,13 +75,16 @@
         </div>
       </div>
 
-      <!-- Content — pad bottom so fixed player bar never covers last item -->
-      <main [class]="'flex-1 ' + (player.currentTrack() ? 'pb-20' : '')">
+      <!-- Content — pad bottom so the fixed player + mobile tab bar never cover the last item -->
+      <main [class]="'flex-1 ' + mainPadClass()">
         <router-outlet />
       </main>
 
       <!-- Bottom player -->
       <app-player />
+
+      <!-- Mobile bottom tab bar (md:hidden) — sits below the player -->
+      <app-bottom-nav />
 
       <!-- Now Playing overlay -->
       <app-now-playing />

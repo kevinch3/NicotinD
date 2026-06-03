@@ -1,4 +1,4 @@
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, inject, signal, computed } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { ApiService } from './api.service';
 import type { SlskdUserTransferGroup } from '@nicotind/core';
@@ -6,6 +6,9 @@ import type { TransferEntry } from '../lib/transfer-types';
 import { detectNewCompletion } from '../lib/transfer-utils';
 
 export type { TransferEntry } from '../lib/transfer-types';
+
+// Transfer file states that count as "in flight" for the active-download badge.
+const ACTIVE_STATES = new Set(['InProgress', 'Queued', 'Initializing']);
 
 @Injectable({ providedIn: 'root' })
 export class TransferService {
@@ -16,6 +19,18 @@ export class TransferService {
   readonly uploads = signal<SlskdUserTransferGroup[]>([]);
   readonly libraryDirty = signal(false);
   readonly deletedSongIds = signal<ReadonlySet<string>>(new Set());
+
+  // Count of download folders with at least one in-flight file. Shared by the
+  // header indicator and the mobile bottom-nav badge so they never drift.
+  readonly activeDownloadCount = computed(() =>
+    this.downloads().reduce(
+      (count, group) =>
+        count +
+        group.directories.filter((dir) => dir.files.some((f) => ACTIVE_STATES.has(f.state)))
+          .length,
+      0,
+    ),
+  );
 
   private intervalId: ReturnType<typeof setInterval> | null = null;
   private scanPollTimer: ReturnType<typeof setTimeout> | null = null;

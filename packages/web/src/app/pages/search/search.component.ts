@@ -1,14 +1,17 @@
 import { Component, inject, signal, computed, effect, OnInit, OnDestroy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { Router, RouterLink } from '@angular/router';
+import { Router, RouterLink, ActivatedRoute } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { ApiService, type CatalogAlbum, type CatalogSearchResult, type DiscographyAlbum } from '../../services/api.service';
 import { SearchService, type NetworkResult } from '../../services/search.service';
 import { TransferService } from '../../services/transfer.service';
+import { AcquireService } from '../../services/acquire.service';
+import { WatchlistService } from '../../services/watchlist.service';
 import { getSingleDownloadLabel, getFolderDownloadLabel, isPathEffectivelyQueued, BUTTON_CLASSES } from '../../lib/download-status';
 import { groupByDirectory, formatPeerInfo, type FolderGroup } from '../../lib/folder-utils';
 import { FolderBrowserComponent } from '../../components/folder-browser/folder-browser.component';
 import { AlbumHuntModalComponent } from '../../components/album-hunt-modal/album-hunt-modal.component';
+import { extractSharedUrl } from '../../lib/share-url';
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -129,9 +132,12 @@ function escapeHtml(text: string): string {
   })
 export class SearchComponent implements OnInit, OnDestroy {
   readonly router = inject(Router);
+  private route = inject(ActivatedRoute);
   private api = inject(ApiService);
   readonly search = inject(SearchService);
   private transfers = inject(TransferService);
+  readonly acquire = inject(AcquireService);
+  readonly watchlist = inject(WatchlistService);
 
   readonly btnClasses = BUTTON_CLASSES;
   readonly formatDuration = formatDuration;
@@ -159,6 +165,11 @@ export class SearchComponent implements OnInit, OnDestroy {
   readonly huntingAlbum = signal<DiscographyAlbum | null>(null);
   readonly huntingArtistName = signal('');
 
+  // URL acquisition (yt-dlp / spotdl)
+  acquireUrl = '';
+  readonly acquireSubmitting = signal(false);
+  readonly acquireError = signal<string | null>(null);
+
   readonly hasCatalog = computed(() => {
     const c = this.catalog();
     return !!c && (c.artists.length > 0 || c.albums.length > 0);
@@ -182,6 +193,35 @@ export class SearchComponent implements OnInit, OnDestroy {
     firstValueFrom(this.api.getSoulseekStatus())
       .then(s => this.networkConnected.set(s.connected))
       .catch(() => this.networkConnected.set(false));
+    void this.acquire.refresh();
+    void this.watchlist.refresh();
+
+    // PWA share-target: a link shared from another app lands here as ?url=/?text=.
+    // Auto-start an acquisition job for it so "Share → NicotinD" just works.
+    const qp = this.route.snapshot.queryParamMap;
+    const shared = extractSharedUrl(qp.get('url'), qp.get('text'), qp.get('title'));
+    if (shared) {
+      void this.startAcquire(shared);
+      // Drop the share params so a refresh doesn't re-submit.
+      void this.router.navigate([], { queryParams: {}, replaceUrl: true });
+    }
+  }
+
+  // Star/unstar a catalog album so the watchlist poller auto-acquires it when a
+  // complete folder appears. Stops propagation so it doesn't trigger the card's
+  // hunt-now action.
+  async toggleWatch(album: CatalogAlbum, e: Event): Promise<void> {
+    e.stopPropagation();
+    try {
+      await this.watchlist.toggle({
+        foreignAlbumId: album.foreignAlbumId,
+        artistMbid: album.artistMbid,
+        artistName: album.artistName,
+        title: album.title,
+      });
+    } catch {
+      // Non-fatal (e.g. watchlist route unavailable); ignore.
+    }
   }
 
   ngOnDestroy(): void {
@@ -321,6 +361,30 @@ export class SearchComponent implements OnInit, OnDestroy {
 
   closeHunt(): void {
     this.huntingAlbum.set(null);
+  }
+
+  async submitAcquireUrl(e: Event): Promise<void> {
+    e.preventDefault();
+    await this.startAcquire(this.acquireUrl.trim());
+  }
+
+  private async startAcquire(url: string): Promise<void> {
+    if (!url) return;
+    this.acquireError.set(null);
+    this.acquireSubmitting.set(true);
+    try {
+      await this.acquire.submit(url);
+      this.acquireUrl = '';
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to start download';
+      this.acquireError.set(msg);
+    } finally {
+      this.acquireSubmitting.set(false);
+    }
+  }
+
+  async cancelAcquireJob(jobId: string): Promise<void> {
+    await this.acquire.cancel(jobId).catch(() => {});
   }
 
   toggleDirectSearch(): void {

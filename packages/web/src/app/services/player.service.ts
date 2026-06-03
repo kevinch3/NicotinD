@@ -35,6 +35,16 @@ export function shuffleArray<T>(arr: T[]): T[] {
   return result;
 }
 
+// Fetches more tracks to keep the queue alive when Radio is on. Registered by a
+// component with library access (PlayerService stays dependency-free).
+export type RadioProvider = (seed: {
+  currentTrack: Track | null;
+  context: PlayContext | null;
+}) => Promise<Track[]>;
+
+// Replenish the queue once it drops to this many remaining tracks.
+const RADIO_MIN_QUEUE = 2;
+
 @Injectable({ providedIn: 'root' })
 export class PlayerService {
   private static readonly STORAGE_KEY = 'nicotind_player_state';
@@ -45,6 +55,9 @@ export class PlayerService {
   readonly history = signal<Track[]>([]);
   readonly shuffle = signal(false);
   readonly repeat = signal<'off' | 'all' | 'one'>('off');
+  // Radio: when the queue runs low (and repeat is off), auto-append more tracks
+  // from the library so playback never stops. Persisted across sessions.
+  readonly radio = signal(false);
   readonly context = signal<PlayContext | null>(null);
   readonly nowPlayingOpen = signal(false);
   readonly currentTime = signal(0);
@@ -68,6 +81,7 @@ export class PlayerService {
         history: this.history().slice(-50),
         shuffle: this.shuffle(),
         repeat: this.repeat(),
+        radio: this.radio(),
         context: this.context(),
         currentTime: untracked(() => this.currentTime()),
         wasPlaying: this.isPlaying(),
@@ -75,6 +89,19 @@ export class PlayerService {
       try {
         localStorage.setItem(PlayerService.STORAGE_KEY, JSON.stringify(snapshot));
       } catch { /* quota exceeded */ }
+    });
+
+    // Radio: when the queue drains to RADIO_MIN_QUEUE (and we're not repeating),
+    // pull more tracks from the library so playback continues. Reads queue()/radio()
+    // so it re-runs on any drain (next track, manual removal); the actual fetch +
+    // queue append happens async (untracked) so it never loops on its own write.
+    effect(() => {
+      const queueLen = this.queue().length;
+      const radioOn = this.radio();
+      if (!radioOn || queueLen > RADIO_MIN_QUEUE) return;
+      const hasCurrent = untracked(() => this.currentTrack()) !== null;
+      const repeating = untracked(() => this.repeat()) !== 'off';
+      if (hasCurrent && !repeating) untracked(() => void this.replenishRadio());
     });
 
     const capturePosition = () => {
@@ -114,6 +141,7 @@ export class PlayerService {
       if (Array.isArray(state['history'])) this.history.set(state['history'] as Track[]);
       if (state['shuffle'] != null) this.shuffle.set(Boolean(state['shuffle']));
       if (state['repeat'] != null) this.repeat.set(state['repeat'] as 'off' | 'all' | 'one');
+      if (state['radio'] != null) this.radio.set(Boolean(state['radio']));
       if (isPlayContext(state['context'])) this.context.set(state['context']);
       if (typeof state['currentTime'] === 'number' && state['currentTime'] > 1) {
         this.restoredTime = state['currentTime'];
@@ -254,6 +282,44 @@ export class PlayerService {
     const next =
       current === 'off' ? 'all' : current === 'all' ? 'one' : 'off';
     this.repeat.set(next);
+  }
+
+  private radioProvider: RadioProvider | null = null;
+  private replenishing = false;
+
+  /** Register the source of "more tracks" for Radio (library access lives in a component). */
+  setRadioProvider(provider: RadioProvider): void {
+    this.radioProvider = provider;
+  }
+
+  toggleRadio(): void {
+    this.radio.update((r) => !r);
+    // Turning it on with a low queue should fill immediately, not wait for a drain.
+    if (this.radio()) untracked(() => void this.replenishRadio());
+  }
+
+  /** Append fresh library tracks to the queue, skipping anything already lined up. */
+  private async replenishRadio(): Promise<void> {
+    if (!this.radioProvider || this.replenishing) return;
+    if (this.queue().length > RADIO_MIN_QUEUE) return;
+    this.replenishing = true;
+    try {
+      const more = await this.radioProvider({
+        currentTrack: this.currentTrack(),
+        context: this.context(),
+      });
+      const seen = new Set<string>([
+        this.currentTrack()?.id ?? '',
+        ...this.queue().map((t) => t.id),
+        ...this.history().slice(-20).map((t) => t.id),
+      ]);
+      const fresh = more.filter((t) => t.id && !seen.has(t.id));
+      if (fresh.length) this.queue.update((q) => [...q, ...fresh]);
+    } catch {
+      // Non-fatal — radio simply doesn't extend this time.
+    } finally {
+      this.replenishing = false;
+    }
   }
 
   playWithContext(

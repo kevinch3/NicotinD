@@ -35,15 +35,18 @@ function candidate(overrides: Partial<FolderCandidate>): FolderCandidate {
 
 describe('AlbumHuntModalComponent', () => {
   const huntAlbum = vi.fn(() => of({ candidates: [], totalTracks: 0 }));
+  const huntDownload = vi.fn(() => of({}));
 
   beforeEach(async () => {
     huntAlbum.mockClear();
     huntAlbum.mockReturnValue(of({ candidates: [], totalTracks: 0 }));
+    huntDownload.mockClear();
+    huntDownload.mockReturnValue(of({}));
 
     await TestBed.configureTestingModule({
       imports: [AlbumHuntModalComponent],
       providers: [
-        { provide: ApiService, useValue: { huntAlbum } },
+        { provide: ApiService, useValue: { huntAlbum, huntDownload } },
         { provide: TransferService, useValue: { poll: vi.fn() } },
       ],
     }).compileComponents();
@@ -103,6 +106,52 @@ describe('AlbumHuntModalComponent', () => {
 
     // default min match is 10%
     expect(c.filteredCandidates().map((x) => x.username)).toEqual(['high']);
+  });
+
+  it('defaults the effective candidate to the best (first ranked) with no manual pick', () => {
+    const c = create();
+    c.candidates.set([
+      candidate({ username: 'best', matchPct: 100 }),
+      candidate({ username: 'second', matchPct: 80 }),
+    ]);
+    expect(c.selectedCandidate()).toBeNull();
+    expect(c.effectiveCandidate()?.username).toBe('best');
+    expect(c.isAutoBest(c.filteredCandidates()[0])).toBe(true);
+    expect(c.isSelected(c.filteredCandidates()[0])).toBe(true);
+  });
+
+  it('lets an explicit row selection override the auto-best', () => {
+    const c = create();
+    const best = candidate({ username: 'best', matchPct: 100 });
+    const second = candidate({ username: 'second', matchPct: 80 });
+    c.candidates.set([best, second]);
+
+    c.select(second);
+    expect(c.effectiveCandidate()?.username).toBe('second');
+    expect(c.isAutoBest(best)).toBe(false);
+
+    // toggling the same row off falls back to the auto-best
+    c.select(second);
+    expect(c.effectiveCandidate()?.username).toBe('best');
+  });
+
+  it('downloads the best candidate (rest as alternates) with a single tap, no manual pick', async () => {
+    const c = create();
+    (c as unknown as { album: () => DiscographyAlbum }).album = () => ALBUM;
+    const best = candidate({ username: 'best', directory: 'A/Best' });
+    const alt = candidate({ username: 'alt', directory: 'A/Alt', matchPct: 80 });
+    c.candidates.set([best, alt]);
+
+    await c.downloadSelected();
+
+    expect(huntDownload).toHaveBeenCalledWith(
+      ALBUM.lidarrId,
+      expect.objectContaining({
+        selected: expect.objectContaining({ username: 'best', directory: 'A/Best' }),
+        alternates: expect.arrayContaining([expect.objectContaining({ username: 'alt' })]),
+      }),
+      false,
+    );
   });
 
   it('passes the current skewSearch flag to huntAlbum', async () => {

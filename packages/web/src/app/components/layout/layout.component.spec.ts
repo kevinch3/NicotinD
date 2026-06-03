@@ -7,7 +7,10 @@ import { PlayerService } from '../../services/player.service';
 import { APP_VERSION } from '../../app.config';
 
 function setup() {
-  const playerStub = { currentTrack: signal<{ id: string } | null>(null) };
+  const playerStub = {
+    currentTrack: signal<{ id: string } | null>(null),
+    setRadioProvider: () => {},
+  };
   const authStub = { username: signal('user'), role: signal('user'), logout: () => {} };
 
   TestBed.configureTestingModule({
@@ -24,7 +27,7 @@ function setup() {
   // Override template to only what we're testing — avoids instantiating heavy child components
   TestBed.overrideComponent(LayoutComponent, {
     set: {
-      template: `<main [class]="'flex-1 ' + (player.currentTrack() ? 'pb-20' : '')"></main>`,
+      template: `<main [class]="'flex-1 ' + mainPadClass()"></main>`,
       imports: [],
     },
   });
@@ -34,26 +37,30 @@ function setup() {
   return { fixture, playerStub };
 }
 
-describe('LayoutComponent — player safe margin', () => {
-  it('adds pb-20 to <main> when a track is loaded', () => {
+describe('LayoutComponent — player + tab-bar safe margin', () => {
+  it('stacks tab-bar + player padding when a track is loaded', () => {
     const { fixture, playerStub } = setup();
 
     playerStub.currentTrack.set({ id: '1' });
     fixture.detectChanges();
 
     const main: HTMLElement = fixture.nativeElement.querySelector('main');
-    expect(main.classList).toContain('pb-20');
+    // mobile: tab bar + player; desktop: just the player
+    expect(main.classList).toContain('pb-32');
+    expect(main.classList).toContain('md:pb-20');
   });
 
-  it('does not add pb-20 to <main> when no track is loaded', () => {
+  it('reserves only the tab-bar height on mobile when no track is loaded', () => {
     const { fixture } = setup();
     // currentTrack is null by default
 
     const main: HTMLElement = fixture.nativeElement.querySelector('main');
-    expect(main.classList).not.toContain('pb-20');
+    expect(main.classList).toContain('pb-14');
+    expect(main.classList).toContain('md:pb-0');
+    expect(main.classList).not.toContain('pb-32');
   });
 
-  it('removes pb-20 when track is cleared after being set', () => {
+  it('drops the player padding when a track is cleared after being set', () => {
     const { fixture, playerStub } = setup();
 
     playerStub.currentTrack.set({ id: '1' });
@@ -63,6 +70,7 @@ describe('LayoutComponent — player safe margin', () => {
     fixture.detectChanges();
 
     const main: HTMLElement = fixture.nativeElement.querySelector('main');
-    expect(main.classList).not.toContain('pb-20');
+    expect(main.classList).not.toContain('pb-32');
+    expect(main.classList).toContain('pb-14');
   });
 });

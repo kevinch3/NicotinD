@@ -127,6 +127,21 @@ export function applySchema(db: Database): void {
     // Column already exists — ignore
   }
 
+  // Auto-retry of exhausted jobs: how many times a job has been revived for
+  // another fallback wave, and when it was last revived (cooldown gate). Lets
+  // the fallback periodically re-attempt albums whose peers were offline at
+  // hunt time without churning — bounded by exhaustedMaxRevives + cooldown.
+  try {
+    db.run(`ALTER TABLE album_jobs ADD COLUMN revive_count INTEGER NOT NULL DEFAULT 0`);
+  } catch {
+    // Column already exists — ignore
+  }
+  try {
+    db.run(`ALTER TABLE album_jobs ADD COLUMN last_revived_at INTEGER`);
+  } catch {
+    // Column already exists — ignore
+  }
+
   db.run(`
     CREATE TABLE IF NOT EXISTS completed_downloads (
       transfer_key TEXT PRIMARY KEY,
@@ -193,6 +208,48 @@ export function applySchema(db: Database): void {
   } catch { /* columns not present on first boot; UPDATE runs harmlessly next time */ }
 
   db.run(`CREATE INDEX IF NOT EXISTS idx_playlist_visibility_created_by ON playlist_visibility(created_by)`);
+
+  // URL-based acquisition jobs (yt-dlp / spotdl). Separate from album_jobs which
+  // is tightly coupled to Lidarr album IDs. Each row represents one submitted URL
+  // (a single track, playlist, or album page) and tracks spawned-process state.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS acquire_jobs (
+      id          TEXT PRIMARY KEY,
+      backend     TEXT NOT NULL CHECK (backend IN ('ytdlp', 'spotdl')),
+      url         TEXT NOT NULL,
+      label       TEXT,
+      state       TEXT NOT NULL DEFAULT 'queued'
+                      CHECK (state IN ('queued', 'running', 'done', 'failed')),
+      progress    TEXT,
+      error       TEXT,
+      created_at  INTEGER NOT NULL DEFAULT (unixepoch())
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_acquire_jobs_state ON acquire_jobs (state)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_acquire_jobs_created_at ON acquire_jobs (created_at DESC)`);
+
+  // Watchlist: albums the user asked to auto-acquire. A background poller
+  // (WatchlistService) periodically hunts each `watching` row and, when a
+  // confidently-complete folder is found, fires the normal album-hunt download
+  // flow (reusing its idempotency guards) and flips the row to `acquired`.
+  // foreign_album_id (MusicBrainz release-group) is the natural unique key; it
+  // can be null for rows added without catalog metadata, so NULLs may repeat.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS watchlist (
+      id               INTEGER PRIMARY KEY AUTOINCREMENT,
+      foreign_album_id TEXT UNIQUE,
+      artist_mbid      TEXT,
+      artist_name      TEXT NOT NULL,
+      album_title      TEXT NOT NULL,
+      lidarr_album_id  INTEGER,
+      state            TEXT NOT NULL DEFAULT 'watching'
+                           CHECK (state IN ('watching', 'acquired', 'failed')),
+      last_checked_at  INTEGER,
+      last_error       TEXT,
+      created_at       INTEGER NOT NULL DEFAULT (unixepoch())
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_watchlist_state ON watchlist (state)`);
 
   db.run(`
     CREATE TABLE IF NOT EXISTS share_tokens (

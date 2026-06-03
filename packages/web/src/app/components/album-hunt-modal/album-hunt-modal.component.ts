@@ -66,6 +66,16 @@ export class AlbumHuntModalComponent implements OnInit {
     });
   });
 
+  // Server already ranks candidates (match %, then peer health, then FLAC), so the
+  // top of the filtered list is the smart default. The user need not pick a folder:
+  // a single tap on Download grabs this. Tapping a row overrides it.
+  readonly bestCandidate = computed(() => this.filteredCandidates()[0] ?? null);
+
+  // What Download actually queues: the user's explicit pick if any, else the best.
+  readonly effectiveCandidate = computed(
+    () => this.selectedCandidate() ?? this.bestCandidate(),
+  );
+
   async ngOnInit(): Promise<void> {
     await this.startHunt();
   }
@@ -95,7 +105,7 @@ export class AlbumHuntModalComponent implements OnInit {
   }
 
   async downloadSelected(): Promise<void> {
-    const candidate = this.selectedCandidate();
+    const candidate = this.effectiveCandidate();
     if (!candidate) return;
 
     // Pass the other candidates as ranked alternates so the server can recover
@@ -153,7 +163,13 @@ export class AlbumHuntModalComponent implements OnInit {
   }
 
   isSelected(candidate: FolderCandidate): boolean {
-    return this.selectedCandidate() === candidate;
+    return this.effectiveCandidate() === candidate;
+  }
+
+  // True when this row is the smart default (best) and the user hasn't picked
+  // another — drives the "Best match" hint so the auto-selection is visible.
+  isAutoBest(candidate: FolderCandidate): boolean {
+    return this.selectedCandidate() === null && this.bestCandidate() === candidate;
   }
 
   matchClass(pct: number): string {

@@ -17,5 +17,15 @@ slskd:
   port: 5030
   username: nicotind
 
+acquire:
+  ytdlp:
+    enabled: false
+    binaryPath: yt-dlp
+    format: bestaudio
+    extraArgs: []
+  spotdl:
+    enabled: false
+    binaryPath: spotdl
+
 jwt:
   expiresIn: 24h

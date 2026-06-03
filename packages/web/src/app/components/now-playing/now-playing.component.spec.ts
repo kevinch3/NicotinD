@@ -15,6 +15,8 @@ function makePlayerStub() {
     isPlaying: signal(false),
     shuffle: signal(false),
     repeat: signal('off'),
+    radio: signal(false),
+    toggleRadio: () => {},
     queue: signal([]),
     history: signal([]),
     context: signal(null),

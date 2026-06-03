@@ -22,9 +22,13 @@ import { usersRoutes } from './routes/users.js';
 import { shareRoutes } from './routes/share.js';
 import { discographyRoutes } from './routes/discography.js';
 import { catalogRoutes } from './routes/catalog.js';
+import { watchlistRoutes } from './routes/watchlist.js';
+import { acquireRoutes } from './routes/acquire.js';
+import { AcquireWatcher } from './services/acquire-watcher.js';
 import { DiscographyService } from './services/discography.service.js';
 import { CatalogService } from './services/catalog-search.service.js';
 import { AlbumHunterService } from './services/album-hunter.service.js';
+import { WatchlistService } from './services/watchlist.service.js';
 import { DownloadWatcher } from './services/download-watcher.js';
 import { DownloadRetryService } from './services/download-retry.service.js';
 import { AlbumFallbackService } from './services/album-fallback.service.js';
@@ -34,6 +38,9 @@ import { LibrarySearchProvider } from './services/providers/library-provider.js'
 import { SlskdSearchProvider } from './services/providers/slskd-provider.js';
 import { LibraryScanner } from './services/library-scanner.js';
 import { LibraryCurator } from './services/library-curator.js';
+import { LibraryOrganizer } from './services/library-organizer.js';
+import { AcoustIdLookup } from './services/acoustid-lookup.js';
+import { normalizeForGrouping } from './services/album-grouping.js';
 import { createLogger } from '@nicotind/core';
 import { initDatabase } from './db.js';
 import { createWebSocketHandlers } from './services/websocket.js';
@@ -128,18 +135,64 @@ export function createApp({
   // Global middleware
   app.onError(errorHandler);
 
+  // Shared LibraryOrganizer: moves files from any staging dir into
+  // <musicDir>/<Artist>/<Album>/<NN - Title>.<ext>. Reused by both
+  // DownloadWatcher (slskd) and AcquireWatcher (yt-dlp/spotdl).
+  const sharedOrganizer = new LibraryOrganizer({
+    musicDir: config.musicDir,
+    stagingDir,
+    acoustid: config.metadataFix.enabled && acoustidApiKey
+      ? new AcoustIdLookup(acoustidApiKey)
+      : undefined,
+    unsortedRoot: `${expandedDataDir}/unsorted`,
+    preferFlacSkipMp3: config.downloads.preferFlacSkipMp3,
+    jobLookup: (directory) => {
+      const exact = db
+        .query<{ artist_name: string | null; album_title: string | null }, [string]>(
+          `SELECT artist_name, album_title FROM album_jobs
+           WHERE directory = ? AND album_title IS NOT NULL
+           ORDER BY created_at DESC LIMIT 1`,
+        )
+        .get(directory);
+      if (exact) return { artist: exact.artist_name, album: exact.album_title };
+
+      const segments = directory.replace(/\\/g, '/').split('/').filter(Boolean);
+      if (segments.length < 2) return null;
+      const candidateAlbum = segments[segments.length - 1]!;
+      const candidateArtist = segments[segments.length - 2]!;
+      const normAlbum = normalizeForGrouping(candidateAlbum);
+      const normArtist = normalizeForGrouping(candidateArtist);
+
+      const activeJobs = db
+        .query<{ artist_name: string; album_title: string }, []>(
+          `SELECT artist_name, album_title FROM album_jobs
+           WHERE state = 'active' AND artist_name IS NOT NULL AND album_title IS NOT NULL
+           ORDER BY created_at DESC LIMIT 50`,
+        )
+        .all();
+
+      for (const job of activeJobs) {
+        if (
+          normalizeForGrouping(job.album_title) === normAlbum &&
+          normalizeForGrouping(job.artist_name) === normArtist
+        ) {
+          return { artist: job.artist_name, album: job.album_title };
+        }
+      }
+      return null;
+    },
+  });
+
   // Download watcher (mutable ref — settings/setup routes can create/replace it).
-  // The watcher owns a LibraryOrganizer that moves files from slskd's staging
-  // dir into <musicDir>/<Artist>/<Album>/<NN - Title>.<ext>, then drives the
-  // native scanner over the organized files.
+  // Uses the shared LibraryOrganizer so slskd and yt-dlp downloads end up in the
+  // same place with the same organization logic.
   const makeWatcher = (): DownloadWatcher | null => {
     if (!(slskdRef.current && config.soulseek.username && config.soulseek.password)) {
       return null;
     }
     return new DownloadWatcher(slskdRef.current, {
       musicDir: config.musicDir,
-      stagingDir,
-      acoustidApiKey: config.metadataFix.enabled ? acoustidApiKey : undefined,
+      libraryOrganizer: sharedOrganizer,
       // Park unsortable files outside musicDir so they aren't indexed.
       unsortedRoot: `${expandedDataDir}/unsorted`,
       preferFlacSkipMp3: config.downloads.preferFlacSkipMp3,
@@ -156,6 +209,9 @@ export function createApp({
     ? new AlbumFallbackService(slskdRef.current, {
         db,
         maxFallbackAttempts: config.downloads.fallbackMaxAttempts,
+        autoRetryExhausted: config.downloads.autoRetryExhausted,
+        exhaustedRetryCooldownMs: config.downloads.exhaustedRetryCooldownMs,
+        exhaustedMaxRevives: config.downloads.exhaustedMaxRevives,
       })
     : null;
   const retryRef: RetryRef = {
@@ -210,6 +266,8 @@ export function createApp({
   app.use('/api/users/*', auth);
   app.use('/api/ws/*', auth);
   app.use('/api/discography/*', auth);
+  app.use('/api/watchlist/*', auth);
+  app.use('/api/acquire/*', auth);
 
   app.get('/api/ws/playback', upgradeWebSocket((c) => {
     const user = (c as unknown as { get(key: 'user'): AuthEnv['Variables']['user'] }).get('user');
@@ -234,6 +292,7 @@ export function createApp({
   if (lidarr && slskdRef.current) {
     const discographySvc = new DiscographyService(lidarr, db, config.musicDir);
     const hunterSvc = new AlbumHunterService(slskdRef.current);
+    const catalogSvc = new CatalogService(lidarr, config.musicDir);
     app.route(
       '/api/discography',
       discographyRoutes({
@@ -245,8 +304,42 @@ export function createApp({
         dataDir: expandedDataDir,
       }),
     );
-    app.route('/api/catalog', catalogRoutes({ catalog: new CatalogService(lidarr, config.musicDir) }));
+    app.route('/api/catalog', catalogRoutes({ catalog: catalogSvc }));
+
+    // Watchlist auto-hunt poller — reuses the same hunter + catalog as the
+    // interactive flow, so an auto-acquired album is indistinguishable from a
+    // manually hunted one (same job record, same fallback recovery).
+    const watchlistSvc = new WatchlistService({
+      db,
+      catalog: catalogSvc,
+      hunter: hunterSvc,
+      lidarr,
+      slskdRef,
+      intervalMs: config.watchlist.intervalMs,
+      minMatchPct: config.watchlist.minMatchPct,
+      enabled: config.watchlist.enabled,
+    });
+    app.route('/api/watchlist', watchlistRoutes(watchlistSvc));
+    watchlistSvc.start();
   }
+
+  // URL-based acquisition (yt-dlp / spotdl). Always mounted — the routes return
+  // 503 if the requested binary isn't installed, so no config guard is needed here.
+  const acquireWatcher = new AcquireWatcher({
+    db,
+    dataDir: expandedDataDir,
+    ytdlp: {
+      binaryPath: config.acquire.ytdlp.binaryPath,
+      format: config.acquire.ytdlp.format,
+      extraArgs: config.acquire.ytdlp.extraArgs,
+    },
+    spotdl: {
+      binaryPath: config.acquire.spotdl.binaryPath,
+    },
+    organizeBatch: (files) => sharedOrganizer.organizeBatch(files),
+    scanIncremental,
+  });
+  app.route('/api/acquire', acquireRoutes(acquireWatcher));
 
   // Serve web UI static files
   if (webDistPath) {

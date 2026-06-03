@@ -6,8 +6,8 @@ import type { SlskdRef } from '../index.js';
 import type { DiscographyService } from '../services/discography.service.js';
 import type { AlbumHunterService } from '../services/album-hunter.service.js';
 import { AlbumFallbackService, type AlternateCandidate } from '../services/album-fallback.service.js';
-import { normalizeForGrouping } from '../services/album-grouping.js';
 import { albumIdFor, artistIdFor } from '../services/library-scanner.js';
+import { albumAlreadyComplete } from '../services/library-completeness.js';
 import { setArtwork, pickAlbumCover, pickArtistImage } from '../services/artwork-store.js';
 import { join } from 'node:path';
 import type { Lidarr } from '@nicotind/lidarr-client';
@@ -220,25 +220,4 @@ export function discographyRoutes({
   });
 
   return app;
-}
-
-/**
- * True when the library already holds this album (same artist, same
- * edition-stripped title) with at least as many songs as its canonical
- * tracklist. Uses `normalizeForGrouping` so deluxe/remaster editions of an album
- * we already have are treated as "complete" and don't get re-acquired.
- */
-function albumAlreadyComplete(
-  db: Database,
-  artist: string,
-  title: string,
-  trackCount: number,
-): boolean {
-  const targetName = normalizeForGrouping(title);
-  const rows = db
-    .query<{ name: string; song_count: number }, [string]>(
-      `SELECT name, song_count FROM library_albums WHERE artist = ? COLLATE NOCASE`,
-    )
-    .all(artist);
-  return rows.some((r) => normalizeForGrouping(r.name) === targetName && r.song_count >= trackCount);
 }

@@ -169,6 +169,24 @@
           </button>
         </div>
 
+        <!-- Radio: keep playing similar library tracks once the queue empties -->
+        <div class="flex justify-center mb-6 -mt-2">
+          <button
+            (click)="player.toggleRadio()"
+            [attr.aria-pressed]="player.radio()"
+            [class]="'flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium transition border ' +
+              (player.radio()
+                ? 'text-emerald-400 border-emerald-400/40 bg-emerald-400/10'
+                : 'text-zinc-500 border-zinc-700 hover:text-zinc-300')"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="2" />
+              <path d="M4.93 19.07a10 10 0 010-14.14M7.76 16.24a6 6 0 010-8.48M16.24 7.76a6 6 0 010 8.48M19.07 4.93a10 10 0 010 14.14" />
+            </svg>
+            Radio{{ player.radio() ? ' on' : '' }}
+          </button>
+        </div>
+
         @if (contextMenu(); as pos) {
           <app-track-context-menu
             [artist]="track.artist"

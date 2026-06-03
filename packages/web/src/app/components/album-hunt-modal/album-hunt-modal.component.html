@@ -110,7 +110,13 @@
 
                 <!-- Selection indicator -->
                 @if (isSelected(candidate)) {
-                  <p class="text-xs text-green-400 mt-1">✓ Selected — {{ candidate.files.length }} files will be queued</p>
+                  <p class="text-xs text-green-400 mt-1">
+                    @if (isAutoBest(candidate)) {
+                      ★ Best match (auto) — {{ candidate.files.length }} files will be queued
+                    } @else {
+                      ✓ Selected — {{ candidate.files.length }} files will be queued
+                    }
+                  </p>
                 }
               </li>
             }
@@ -126,15 +132,21 @@
       }
     </div>
 
-    <!-- Footer -->
-    @if (state() === 'results' && selectedCandidate()) {
+    <!-- Footer — defaults to the best match so it's a single tap; no manual pick needed -->
+    @if (state() === 'results' && effectiveCandidate(); as pick) {
       <div class="flex items-center justify-between gap-3 px-5 py-4 border-t border-theme-surface-2 flex-shrink-0">
-        <p class="text-xs text-theme-muted">
-          {{ selectedCandidate()!.files.length }} files · {{ selectedCandidate()!.estimatedSizeMb }}MB
-        </p>
+        <div class="min-w-0 text-xs text-theme-muted flex items-center gap-2 flex-wrap">
+          <span class="font-mono" [class]="matchClass(pick.matchPct)">
+            {{ pick.matchedTracks }}/{{ pick.totalTracks }} ({{ pick.matchPct }}%)
+          </span>
+          <span [class.text-green-400]="pick.freeUploadSlots > 0">
+            {{ pick.freeUploadSlots > 0 ? '● free' : '○ queued' }}
+          </span>
+          <span>· {{ pick.files.length }} files · {{ pick.estimatedSizeMb }}MB</span>
+        </div>
         <button (click)="downloadSelected()"
-          class="px-5 py-2 rounded-lg bg-zinc-100 text-zinc-900 text-sm font-semibold hover:bg-zinc-200 transition">
-          Download Album
+          class="px-5 py-2 rounded-lg bg-zinc-100 text-zinc-900 text-sm font-semibold hover:bg-zinc-200 transition flex-shrink-0">
+          {{ selectedCandidate() ? 'Download' : 'Download best' }}
         </button>
       </div>
     }

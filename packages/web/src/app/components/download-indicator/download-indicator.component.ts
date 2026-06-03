@@ -1,6 +1,7 @@
 import { Component, inject, computed } from '@angular/core';
 import { Router } from '@angular/router';
 import { TransferService } from '../../services/transfer.service';
+import { AcquireService } from '../../services/acquire.service';
 
 @Component({
   selector: 'app-download-indicator',
@@ -8,16 +9,14 @@ import { TransferService } from '../../services/transfer.service';
 })
 export class DownloadIndicatorComponent {
   private transfers = inject(TransferService);
+  private acquire = inject(AcquireService);
   private router = inject(Router);
 
-  readonly activeCount = computed(() => {
-    const ACTIVE = new Set(['InProgress', 'Queued', 'Initializing']);
-    return this.transfers.downloads().reduce(
-      (count, group) =>
-        count + group.directories.filter(dir => dir.files.some(f => ACTIVE.has(f.state))).length,
-      0,
-    );
-  });
+  // slskd transfers + in-flight URL acquisitions (yt-dlp/spotdl), so the badge
+  // reflects all download activity app-wide, not just Soulseek.
+  readonly activeCount = computed(
+    () => this.transfers.activeDownloadCount() + this.acquire.activeJobs().length,
+  );
 
   navigate(): void {
     this.router.navigate(['/downloads']);

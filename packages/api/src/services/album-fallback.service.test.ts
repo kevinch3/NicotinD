@@ -2,6 +2,7 @@ import { describe, expect, it, beforeEach, mock } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { applySchema } from '../db.js';
 import { AlbumFallbackService, type AlternateCandidate } from './album-fallback.service.js';
+import { albumIdFor } from './library-scanner.js';
 import type { Slskd } from '@nicotind/slskd-client';
 
 interface MockFile {
@@ -417,6 +418,123 @@ describe('AlbumFallbackService', () => {
     expect(jobState(db)).toBe('active');
 
     await svc.sweep(); // attempts (1) >= cap (1) -> exhausted
+    expect(jobState(db)).toBe('exhausted');
+  });
+
+  // ── Auto-retry of exhausted jobs (revive + disk-aware sweep) ──────────────
+
+  interface ExhaustedOpts {
+    artist?: string | null;
+    album?: string;
+    targets?: string[];
+    reviveCount?: number;
+    lastRevivedAt?: number | null;
+  }
+
+  function insertExhausted(database: Database, opts: ExhaustedOpts = {}): void {
+    database.run(
+      `INSERT INTO album_jobs
+        (id, lidarr_album_id, username, directory, artist_name, album_title,
+         canonical_tracks_json, target_files_json, alternates_json,
+         fallback_attempts, state, created_at, revive_count, last_revived_at)
+       VALUES (1, 1, 'primary', 'Album', ?, ?, ?, ?, '[]', 0, 'exhausted', 0, ?, ?)`,
+      [
+        opts.artist === undefined ? 'Artist' : opts.artist,
+        opts.album ?? 'Album',
+        JSON.stringify(opts.targets ?? ['Album/01 Song One.flac', 'Album/02 Song Two.flac']),
+        JSON.stringify(opts.targets ?? ['Album/01 Song One.flac', 'Album/02 Song Two.flac']),
+        opts.reviveCount ?? 0,
+        opts.lastRevivedAt ?? null,
+      ],
+    );
+  }
+
+  function seedSong(database: Database, artist: string, album: string, title: string): void {
+    const albumId = albumIdFor(artist, album);
+    database.run(
+      `INSERT INTO library_songs (id, album_id, title, artist, artist_id, path, synced_at)
+       VALUES (?, ?, ?, ?, ?, ?, 0)`,
+      [`${albumId}-${title}`, albumId, title, artist, 'aid', `/m/${title}.flac`],
+    );
+  }
+
+  it('revives an eligible exhausted job and marks it done when the album is fully on disk', async () => {
+    // Original transfers are long gone from slskd (getDownloads empty); the
+    // disk-aware sweep must see both tracks already in the library → done, with
+    // no re-download.
+    const { slskd, enqueue } = makeSlskd([]);
+    insertExhausted(db);
+    seedSong(db, 'Artist', 'Album', 'Song One');
+    seedSong(db, 'Artist', 'Album', 'Song Two');
+
+    const svc = new AlbumFallbackService(slskd, { db, autoRetryExhausted: true });
+    await svc.sweep();
+
+    expect(enqueue).not.toHaveBeenCalled();
+    expect(jobState(db)).toBe('done');
+    const row = db.query('SELECT revive_count AS r FROM album_jobs WHERE id = 1').get() as { r: number };
+    expect(row.r).toBe(1);
+  });
+
+  it('revives an exhausted job and fresh-searches only the track still missing from disk', async () => {
+    const { slskd, enqueue, create } = makeSlskdWithSearch(
+      [],
+      [
+        {
+          username: 'freshpeer',
+          freeUploadSlots: 1,
+          queueLength: 0,
+          uploadSpeed: 1000,
+          files: [{ filename: 'Random/02 Song Two.flac', size: 1 }],
+        },
+      ],
+    );
+    insertExhausted(db);
+    seedSong(db, 'Artist', 'Album', 'Song One'); // only track one is on disk
+
+    const svc = new AlbumFallbackService(slskd, { db, autoRetryExhausted: true });
+    await svc.sweep();
+
+    expect(create).toHaveBeenCalledWith('Artist song two');
+    expect(enqueue).toHaveBeenCalledTimes(1);
+    const [user] = enqueue.mock.calls[0];
+    expect(user).toBe('freshpeer');
+    expect(jobState(db)).toBe('active');
+  });
+
+  it('does not revive past the max-revives cap', () => {
+    const { slskd } = makeSlskd([]);
+    insertExhausted(db, { reviveCount: 2 });
+    new AlbumFallbackService(slskd, {
+      db,
+      autoRetryExhausted: true,
+      exhaustedMaxRevives: 2,
+    }).reviveExhausted();
+    expect(jobState(db)).toBe('exhausted');
+  });
+
+  it('does not revive within the cooldown window', () => {
+    const { slskd } = makeSlskd([]);
+    insertExhausted(db, { lastRevivedAt: Date.now() });
+    new AlbumFallbackService(slskd, {
+      db,
+      autoRetryExhausted: true,
+      exhaustedRetryCooldownMs: 3_600_000,
+    }).reviveExhausted();
+    expect(jobState(db)).toBe('exhausted');
+  });
+
+  it('does not revive a legacy job with no artist', () => {
+    const { slskd } = makeSlskd([]);
+    insertExhausted(db, { artist: null });
+    new AlbumFallbackService(slskd, { db, autoRetryExhausted: true }).reviveExhausted();
+    expect(jobState(db)).toBe('exhausted');
+  });
+
+  it('leaves exhausted jobs alone when autoRetryExhausted is off', async () => {
+    const { slskd } = makeSlskd([]);
+    insertExhausted(db);
+    await new AlbumFallbackService(slskd, { db }).sweep();
     expect(jobState(db)).toBe('exhausted');
   });
 

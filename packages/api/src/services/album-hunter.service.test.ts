@@ -1,7 +1,13 @@
 import { describe, it, expect, mock } from 'bun:test';
 import type { Slskd } from '@nicotind/slskd-client';
 import type { LidarrTrack } from '@nicotind/lidarr-client';
-import { AlbumHunterService, buildSkewedQueries, normalizeTitle } from './album-hunter.service';
+import {
+  AlbumHunterService,
+  buildSkewedQueries,
+  normalizeTitle,
+  singleMatchStrength,
+  stripTitleQualifiers,
+} from './album-hunter.service';
 
 function track(id: number, title: string): LidarrTrack {
   return {
@@ -198,6 +204,75 @@ describe('AlbumHunterService', () => {
     expect(candidate.files).toHaveLength(2);
   });
 
+  describe('singles and EPs', () => {
+    it('matches a single exactly (1 track → 100%)', async () => {
+      const slskd = makeSlskdStub([
+        { username: 'sia', files: [{ filename: 'Sia/Chandelier/Chandelier.flac', size: 1 }] },
+      ]);
+      const hunter = new AlbumHunterService(slskd);
+      const candidates = await hunter.hunt('Sia', 'Chandelier', [track(1, 'Chandelier')]);
+      expect(candidates).toHaveLength(1);
+      expect(candidates[0].matchPct).toBe(100);
+      expect(candidates[0].matchedTracks).toBe(1);
+    });
+
+    it('surfaces a single whose Lidarr "(feat …)" suffix the peer dropped (partial)', async () => {
+      // Full titles do not overlap ("stay feat justin bieber" vs "stay"), but the
+      // qualifier-stripped cores do — the near hit must still appear, ranked low.
+      const slskd = makeSlskdStub([
+        { username: 'kygo', files: [{ filename: 'Kygo/Stay/01 Stay.mp3', size: 1, bitRate: 320 }] },
+      ]);
+      const hunter = new AlbumHunterService(slskd);
+      const candidates = await hunter.hunt('Kygo', 'Stay (feat. Justin Bieber)', [
+        track(1, 'Stay (feat. Justin Bieber)'),
+      ]);
+      expect(candidates).toHaveLength(1);
+      expect(candidates[0].matchPct).toBe(50);
+    });
+
+    it('ranks an exact single match above a core-only (qualifier-stripped) one', async () => {
+      const slskd = makeSlskdStub([
+        // Core-only: omits the featured artist.
+        { username: 'core', files: [{ filename: 'A/Stay/Stay.flac', size: 1 }] },
+        // Exact: carries the full "(feat …)" title.
+        { username: 'exact', files: [{ filename: 'A/Stay/Stay (feat. Justin Bieber).flac', size: 1 }] },
+      ]);
+      const hunter = new AlbumHunterService(slskd);
+      const candidates = await hunter.hunt('Kygo', 'Stay (feat. Justin Bieber)', [
+        track(1, 'Stay (feat. Justin Bieber)'),
+      ]);
+      expect(candidates[0].username).toBe('exact');
+      expect(candidates[0].matchPct).toBe(100);
+      expect(candidates[1].matchPct).toBe(50);
+    });
+
+    it('drops a single with no title overlap at all', async () => {
+      const slskd = makeSlskdStub([
+        { username: 'nope', files: [{ filename: 'X/Y/something else entirely.mp3', size: 1 }] },
+      ]);
+      const hunter = new AlbumHunterService(slskd);
+      const candidates = await hunter.hunt('Sia', 'Chandelier', [track(1, 'Chandelier')]);
+      expect(candidates).toHaveLength(0);
+    });
+
+    it('scores an EP proportionally (2 of 3 → 67%)', async () => {
+      const ep = [track(1, 'Intro'), track(2, 'Middle'), track(3, 'Outro')];
+      const slskd = makeSlskdStub([
+        {
+          username: 'ep',
+          files: [
+            { filename: 'A/EP/01 Intro.flac', size: 1 },
+            { filename: 'A/EP/02 Middle.flac', size: 1 },
+          ],
+        },
+      ]);
+      const hunter = new AlbumHunterService(slskd);
+      const [candidate] = await hunter.hunt('Artist', 'EP', ep);
+      expect(candidate.matchedTracks).toBe(2);
+      expect(candidate.matchPct).toBe(67);
+    });
+  });
+
   describe('normalizeTitle', () => {
     it('folds diacritics so accented and unaccented spellings match', () => {
       // The crux for this Latin-American library: peers routinely drop accents.
@@ -215,7 +290,36 @@ describe('AlbumHunterService', () => {
     });
   });
 
+  describe('stripTitleQualifiers', () => {
+    it('strips parenthetical and feat/ft/with clauses', () => {
+      expect(stripTitleQualifiers('Stay (feat. Justin Bieber)')).toBe('Stay');
+      expect(stripTitleQualifiers('Chandelier (Piano Version)')).toBe('Chandelier');
+      expect(stripTitleQualifiers('Time (2014 Remaster)')).toBe('Time');
+      expect(stripTitleQualifiers('Crazy feat. Cee-Lo')).toBe('Crazy');
+      expect(stripTitleQualifiers('Under Pressure with David Bowie')).toBe('Under Pressure');
+      expect(stripTitleQualifiers('Plain Title')).toBe('Plain Title');
+    });
+  });
+
+  describe('singleMatchStrength', () => {
+    it('returns 100 on full overlap, 50 on core-only, 0 otherwise', () => {
+      // full overlap
+      expect(singleMatchStrength('stay', 'stay', 'stay', 'stay')).toBe(100);
+      // core-only: full titles differ, cores match
+      expect(singleMatchStrength('stay feat justin bieber', 'stay', 'stay', 'stay')).toBe(50);
+      // no overlap
+      expect(singleMatchStrength('chandelier', 'chandelier', 'elastic heart', 'elastic heart')).toBe(0);
+    });
+  });
+
   describe('buildSkewedQueries', () => {
+    it('adds a qualifier-stripped title variant for parenthetical titles', () => {
+      const base = ['Kygo Stay (feat. Justin Bieber)', 'Kygo - Stay (feat. Justin Bieber)'];
+      const skewed = buildSkewedQueries('Kygo', 'Stay (feat. Justin Bieber)', base);
+      expect(skewed).toContain('Kygo Stay');
+      expect(skewed).toContain('Stay');
+    });
+
     it('produces reorder / album-only variants and excludes the base queries', () => {
       const base = ['Artist Album', 'Artist - Album'];
       const skewed = buildSkewedQueries('Artist', 'Album', base);

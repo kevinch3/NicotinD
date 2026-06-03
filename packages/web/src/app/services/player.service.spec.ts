@@ -252,5 +252,82 @@ describe('PlayerService', () => {
       service.clear();
       expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
     });
+
+    it('persists the radio flag to localStorage', () => {
+      service.play(track1);
+      service.radio.set(true);
+      TestBed.flushEffects();
+      expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).radio).toBe(true);
+    });
+
+    it('restoreState() restores the radio flag', () => {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ currentTrack: track1, radio: true }));
+      service.restoreState();
+      expect(service.radio()).toBe(true);
+    });
+  });
+
+  describe('radio', () => {
+    const flush = () => new Promise((r) => setTimeout(r, 0));
+
+    it('toggleRadio flips the flag', () => {
+      expect(service.radio()).toBe(false);
+      service.toggleRadio();
+      expect(service.radio()).toBe(true);
+      service.toggleRadio();
+      expect(service.radio()).toBe(false);
+    });
+
+    it('fills the queue immediately when toggled on with a low queue', async () => {
+      service.setRadioProvider(async () => [track2, track3, track1]); // t1 = current, filtered
+      service.play(track1);
+      service.queue.set([]);
+
+      service.toggleRadio();
+      await flush();
+
+      expect(service.queue().map((t) => t.id)).toEqual(['t2', 't3']);
+    });
+
+    it('auto-replenishes when the queue drains while radio is on', async () => {
+      service.setRadioProvider(async () => [track2, track3]);
+      service.play(track1);
+      service.radio.set(true);
+      service.queue.set([]); // drained → effect fires
+      TestBed.flushEffects();
+      await flush();
+
+      expect(service.queue().length).toBeGreaterThan(0);
+    });
+
+    it('does not replenish when radio is off', async () => {
+      let calls = 0;
+      service.setRadioProvider(async () => {
+        calls++;
+        return [track2];
+      });
+      service.play(track1);
+      service.queue.set([]);
+      TestBed.flushEffects();
+      await flush();
+
+      expect(calls).toBe(0);
+    });
+
+    it('does not replenish while repeating', async () => {
+      let calls = 0;
+      service.setRadioProvider(async () => {
+        calls++;
+        return [track2];
+      });
+      service.play(track1);
+      service.radio.set(true);
+      service.repeat.set('all');
+      service.queue.set([]);
+      TestBed.flushEffects();
+      await flush();
+
+      expect(calls).toBe(0);
+    });
   });
 });

@@ -3,6 +3,7 @@ import type { Slskd } from '@nicotind/slskd-client';
 import type { Database } from 'bun:sqlite';
 import { getDatabase } from '../db.js';
 import { normalizeTitle, titlesOverlap } from './album-hunter.service.js';
+import { albumIdFor } from './library-scanner.js';
 
 const log = createLogger('album-fallback');
 
@@ -64,16 +65,30 @@ interface AlbumJobRow {
   username: string;
   directory: string;
   artist_name: string | null;
+  album_title: string | null;
   canonical_tracks_json: string;
   target_files_json: string | null;
   alternates_json: string;
   fallback_attempts: number;
 }
 
+interface ExhaustedJobRow {
+  id: number;
+  artist_name: string | null;
+  revive_count: number;
+  last_revived_at: number | null;
+}
+
 export interface AlbumFallbackOptions {
   db?: Database;
   /** Max alternate peers to try per album before giving up. */
   maxFallbackAttempts?: number;
+  /** Periodically revive `exhausted` jobs for another fallback wave. */
+  autoRetryExhausted?: boolean;
+  /** Minimum delay before re-trying the same exhausted job. */
+  exhaustedRetryCooldownMs?: number;
+  /** Cap on revivals per job before it stays exhausted. */
+  exhaustedMaxRevives?: number;
 }
 
 /**
@@ -85,11 +100,17 @@ export class AlbumFallbackService {
   private slskd: Slskd;
   private db: Database;
   private maxFallbackAttempts: number;
+  private autoRetryExhausted: boolean;
+  private exhaustedRetryCooldownMs: number;
+  private exhaustedMaxRevives: number;
 
   constructor(slskd: Slskd, options: AlbumFallbackOptions = {}) {
     this.slskd = slskd;
     this.db = options.db ?? getDatabase();
     this.maxFallbackAttempts = options.maxFallbackAttempts ?? 3;
+    this.autoRetryExhausted = options.autoRetryExhausted ?? false;
+    this.exhaustedRetryCooldownMs = options.exhaustedRetryCooldownMs ?? 3_600_000;
+    this.exhaustedMaxRevives = options.exhaustedMaxRevives ?? 5;
   }
 
   /** Persist an album job so its missing tracks can later be recovered. */
@@ -114,9 +135,13 @@ export class AlbumFallbackService {
 
   /** One reconciliation pass. Public so tests can drive it deterministically. */
   async sweep(): Promise<void> {
+    // First give long-exhausted jobs (peers may now be back online) another shot
+    // by flipping eligible ones back to 'active' — they're then swept this pass.
+    if (this.autoRetryExhausted) this.reviveExhausted();
+
     const jobs = this.db
       .query(
-        `SELECT id, username, directory, artist_name, canonical_tracks_json, target_files_json, alternates_json, fallback_attempts
+        `SELECT id, username, directory, artist_name, album_title, canonical_tracks_json, target_files_json, alternates_json, fallback_attempts
          FROM album_jobs WHERE state = 'active'`,
       )
       .all() as AlbumJobRow[];
@@ -158,8 +183,15 @@ export class AlbumFallbackService {
       // the canonical list can be a deluxe edition whose extra cuts no single
       // folder contains, so chasing it dumps duplicate rips into the album.
       const targets = parseTargets(job);
+      // A track is satisfied if a peer just delivered it (`succeeded`) OR it is
+      // already in the library on disk. The on-disk check is essential for
+      // *revived* jobs: their original slskd transfers are long gone from
+      // getDownloads, so without it the sweep would re-download the whole album.
+      const onDisk = this.libraryTitlesForJob(job);
       const missing = targets.filter(
-        (title) => !succeeded.some((s) => titlesOverlap(title, s)),
+        (title) =>
+          !succeeded.some((s) => titlesOverlap(title, s)) &&
+          !onDisk.some((s) => titlesOverlap(title, s)),
       );
 
       if (!missing.length) {
@@ -358,6 +390,57 @@ export class AlbumFallbackService {
 
   private setState(id: number, state: string): void {
     this.db.run('UPDATE album_jobs SET state = ? WHERE id = ?', [state, id]);
+  }
+
+  /**
+   * Flip eligible `exhausted` jobs back to `active` (fresh attempt budget) so the
+   * same sweep pass re-attempts them. Eligibility: the job has an artist (the
+   * fresh-search needs it), hasn't been revived more than `exhaustedMaxRevives`
+   * times, and its last revival is older than the cooldown. Public for tests.
+   */
+  reviveExhausted(): void {
+    const now = Date.now();
+    const rows = this.db
+      .query(
+        `SELECT id, artist_name, revive_count, last_revived_at
+         FROM album_jobs WHERE state = 'exhausted'`,
+      )
+      .all() as ExhaustedJobRow[];
+
+    for (const row of rows) {
+      // Legacy jobs without an artist can't fresh-search, so reviving them would
+      // just re-exhaust with no new behavior — skip.
+      if (!row.artist_name) continue;
+      if (row.revive_count >= this.exhaustedMaxRevives) continue;
+      if (row.last_revived_at && now - row.last_revived_at < this.exhaustedRetryCooldownMs) {
+        continue;
+      }
+      this.db.run(
+        `UPDATE album_jobs
+         SET state = 'active', fallback_attempts = 0, revive_count = revive_count + 1, last_revived_at = ?
+         WHERE id = ?`,
+        [now, row.id],
+      );
+      log.info(
+        { jobId: row.id, revive: row.revive_count + 1 },
+        'Reviving exhausted album job for another fallback wave',
+      );
+    }
+  }
+
+  /**
+   * Normalized titles of the job's album that already exist in the library on
+   * disk. Keyed via the same deterministic album id the scanner mints, so a
+   * revived job doesn't re-fetch tracks it already has. Empty when the job has
+   * no artist/title (legacy) or the album hasn't been scanned yet.
+   */
+  private libraryTitlesForJob(job: AlbumJobRow): string[] {
+    if (!job.artist_name || !job.album_title) return [];
+    const albumId = albumIdFor(job.artist_name, job.album_title);
+    const rows = this.db
+      .query('SELECT title FROM library_songs WHERE album_id = ?')
+      .all(albumId) as Array<{ title: string }>;
+    return rows.map((r) => normalizeTitle(r.title));
   }
 }
 

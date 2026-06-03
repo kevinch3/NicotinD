@@ -32,6 +32,16 @@ function seedAlbum(db: Database, a: AlbumSeed): void {
   );
 }
 
+function seedJob(db: Database, artistName: string, albumTitle: string): void {
+  db.run(
+    `INSERT INTO album_jobs
+      (lidarr_album_id, username, directory, canonical_tracks_json, alternates_json,
+       state, created_at, artist_name, album_title)
+     VALUES (?, ?, ?, ?, ?, 'done', 0, ?, ?)`,
+    [1, 'peer', 'dir', '[]', '[]', artistName, albumTitle],
+  );
+}
+
 function readRow(db: Database, id: string): { hidden: number; classification: string } {
   return db
     .query<{ hidden: number; classification: string }, [string]>(
@@ -102,5 +112,31 @@ describe('LibraryCurator', () => {
     const row = readRow(db, 'a1');
     expect(row.hidden).toBe(0);
     expect(row.classification).toBe('album');
+  });
+
+  it('keeps a deliberately-hunted thin release visible (protected by album_jobs)', () => {
+    // A 2-track Singles-named bucket would normally be hidden, but a matching
+    // hunt job marks it as deliberately acquired → it must stay visible.
+    seedAlbum(db, { id: 'a1', name: 'Singles', artist: 'Babasónicos', songCount: 2 });
+    seedJob(db, 'Babasónicos', 'Singles');
+    new LibraryCurator(db).reclassifyAll();
+    const row = readRow(db, 'a1');
+    expect(row.hidden).toBe(0);
+  });
+
+  it('matches the protecting job by normalized artist+title (edition/diacritics insensitive)', () => {
+    seedAlbum(db, { id: 'a1', name: 'Singles', artist: 'Babasonicos', songCount: 1 });
+    seedJob(db, 'BABASÓNICOS', 'singles');
+    new LibraryCurator(db).reclassifyAll();
+    const row = readRow(db, 'a1');
+    expect(row.hidden).toBe(0);
+  });
+
+  it('still hides a thin Singles bucket when no job matches', () => {
+    seedAlbum(db, { id: 'a1', name: 'Singles', artist: 'Babasónicos', songCount: 2 });
+    seedJob(db, 'Soda Stereo', 'Canción Animal');
+    new LibraryCurator(db).reclassifyAll();
+    const row = readRow(db, 'a1');
+    expect(row.hidden).toBe(1);
   });
 });

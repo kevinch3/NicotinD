@@ -1,0 +1,63 @@
+<nav
+  class="md:hidden fixed bottom-0 left-0 right-0 z-40 grid grid-cols-4 h-14 bg-theme-surface border-t border-theme pb-[env(safe-area-inset-bottom)]"
+>
+  @for (tab of tabs; track tab.to) {
+    @if (isDisabled(tab)) {
+      <span
+        class="flex flex-col items-center justify-center gap-0.5 text-[10px] font-medium text-theme-muted opacity-40 select-none"
+      >
+        <ng-container [ngTemplateOutlet]="icon" [ngTemplateOutletContext]="{ $implicit: tab.to }" />
+        {{ tab.label }}
+      </span>
+    } @else {
+      <a
+        [routerLink]="tab.to"
+        routerLinkActive="text-theme-primary"
+        [routerLinkActiveOptions]="{ exact: tab.to === '/' }"
+        class="relative flex flex-col items-center justify-center gap-0.5 text-[10px] font-medium text-theme-muted transition active:scale-95"
+      >
+        <ng-container [ngTemplateOutlet]="icon" [ngTemplateOutletContext]="{ $implicit: tab.to }" />
+        {{ tab.label }}
+        @if (tab.to === '/downloads' && activeDownloads() > 0) {
+          <span
+            class="absolute top-1 right-[calc(50%-1.25rem)] min-w-4 h-4 px-1 flex items-center justify-center rounded-full bg-theme-accent text-[9px] font-bold text-theme-base"
+          >
+            {{ activeDownloads() }}
+          </span>
+        }
+      </a>
+    }
+  }
+</nav>
+
+<!-- Per-tab icons (stroke style matches the rest of the app) -->
+<ng-template #icon let-to>
+  @switch (to) {
+    @case ('/') {
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="11" cy="11" r="7" />
+        <line x1="21" y1="21" x2="16.5" y2="16.5" />
+      </svg>
+    }
+    @case ('/library') {
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M9 18V5l11-2v13" />
+        <circle cx="6" cy="18" r="3" />
+        <circle cx="17" cy="16" r="3" />
+      </svg>
+    }
+    @case ('/downloads') {
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+        <polyline points="7 10 12 15 17 10" />
+        <line x1="12" y1="15" x2="12" y2="3" />
+      </svg>
+    }
+    @case ('/settings') {
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3" />
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+      </svg>
+    }
+  }
+</ng-template>

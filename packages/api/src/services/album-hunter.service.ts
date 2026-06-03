@@ -29,6 +29,14 @@ const MIN_FLOOR_PCT = 10;
 // (>= this) adds zero extra searches.
 const SKEW_TRIGGER_PCT = 67;
 
+// Match strength for a single (1-track hunt) whose Lidarr title carries a
+// qualifier — "(feat …)"/"(Remix)" — that the peer omitted from the filename, so
+// the full titles don't overlap but their qualifier-stripped cores do. We still
+// surface it (above MIN_FLOOR_PCT) but rank it below an exact hit. why: a single
+// is otherwise all-or-nothing (matched/1 → 0% or 100%), so any near miss is
+// silently dropped — common for remixes/typos/featured-artist spellings.
+const SINGLE_PARTIAL_PCT = 50;
+
 export interface HuntFile {
   filename: string;
   size: number;
@@ -186,31 +194,61 @@ export class AlbumHunterService {
 
       // Score each folder against canonical tracklist
       const normalizedCanonical = canonicalTracks.map((t) => normalizeTitle(t.title));
+      // A single (exactly 1 canonical track) is scored with the qualifier-aware
+      // strength (see SINGLE_PARTIAL_PCT) instead of the all-or-nothing matched/1
+      // formula, keeping both the full and the qualifier-stripped "core" form.
+      const single =
+        canonicalTracks.length === 1
+          ? {
+              full: normalizeTitle(canonicalTracks[0].title),
+              core: normalizeTitle(stripTitleQualifiers(canonicalTracks[0].title)),
+            }
+          : null;
 
       const candidates: FolderCandidate[] = [];
 
       for (const [key, { username, files }] of folderMap) {
         const dir = key.slice(username.length + 2); // strip "username::"
-        const normalizedFiles = files.map((f) => {
+        const baseNames = files.map((f) => {
           const basename = f.filename
             .replace(/\\/g, '/')
             .split('/')
             .pop() ?? f.filename;
-          const noExt = basename.slice(0, basename.lastIndexOf('.') || basename.length);
-          return normalizeTitle(noExt);
+          return basename.slice(0, basename.lastIndexOf('.') || basename.length);
         });
 
-        let matched = 0;
-        for (const canonicalTrack of normalizedCanonical) {
-          if (normalizedFiles.some((fn) => titlesOverlap(canonicalTrack, fn))) {
-            matched++;
+        let matched: number;
+        let matchPct: number;
+        if (single) {
+          const strength = baseNames.reduce(
+            (best, n) =>
+              Math.max(
+                best,
+                singleMatchStrength(
+                  single.full,
+                  single.core,
+                  normalizeTitle(n),
+                  normalizeTitle(stripTitleQualifiers(n)),
+                ),
+              ),
+            0,
+          );
+          matched = strength > 0 ? 1 : 0;
+          matchPct = strength;
+        } else {
+          const normalizedFiles = baseNames.map(normalizeTitle);
+          let m = 0;
+          for (const canonicalTrack of normalizedCanonical) {
+            if (normalizedFiles.some((fn) => titlesOverlap(canonicalTrack, fn))) {
+              m++;
+            }
           }
+          matched = m;
+          matchPct = Math.round((m / (canonicalTracks.length || 1)) * 100);
         }
-
-        const totalTracks = canonicalTracks.length || 1;
-        const matchPct = Math.round((matched / totalTracks) * 100);
         if (matchPct < MIN_FLOOR_PCT) continue;
 
+        const totalTracks = canonicalTracks.length || 1;
         const format = detectFormat(files);
         const estimatedSizeMb = files.reduce((acc, f) => acc + f.size, 0) / (1024 * 1024);
         const health = peerHealth.get(username);
@@ -287,12 +325,17 @@ export function buildSkewedQueries(
 ): string[] {
   const stripThe = (s: string) => s.replace(/^the\s+/i, '').trim();
   const firstWord = (s: string) => s.trim().split(/\s+/)[0] ?? '';
+  // Title without "(feat …)"/"(Remix)"/bracketed qualifiers — critical for
+  // singles, whose Lidarr title often carries a suffix the peer's file omits.
+  const core = stripTitleQualifiers(albumTitle);
 
   const variants = [
     `${albumTitle} ${artistName}`, // reorder
     albumTitle, // album only
     `${stripThe(artistName)} ${stripThe(albumTitle)}`, // drop leading "the"
     `${artistName} ${firstWord(albumTitle)}`, // artist + first album word
+    `${artistName} ${core}`, // artist + qualifier-stripped title
+    core, // qualifier-stripped title only
   ];
 
   const seen = new Set(baseQueries.map((q) => q.toLowerCase().trim()));
@@ -356,6 +399,35 @@ export function titlesOverlap(canonical: string, filename: string): boolean {
   const fWords = new Set(filename.split(' ').filter(Boolean));
   const overlap = cWords.filter((w) => fWords.has(w)).length;
   return cWords.length > 0 && overlap / cWords.length >= 0.7;
+}
+
+// Strip trailing parenthetical/bracketed qualifiers and "feat./ft./with" clauses
+// from a raw track title, leaving its "core". why: Soulseek peers routinely name a
+// single's file without the "(feat …)"/"(Remix)"/"(2024 Remaster)" suffix that the
+// Lidarr title carries, so the full titles never overlap; matching on the cores
+// rescues those near hits. Used only for single (1-track) hunts.
+export function stripTitleQualifiers(title: string): string {
+  return title
+    .replace(/[([{][^)\]}]*[)\]}]/g, ' ')
+    .replace(/\b(feat\.?|ft\.?|featuring|with)\b.*$/i, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Strength of a single (1-track) hunt match: 100 when the full normalized titles
+// overlap, SINGLE_PARTIAL_PCT when only their qualifier-stripped cores overlap
+// (ranked below an exact hit, still above MIN_FLOOR_PCT), 0 otherwise.
+export function singleMatchStrength(
+  canonicalFull: string,
+  canonicalCore: string,
+  fileFull: string,
+  fileCore: string,
+): number {
+  if (titlesOverlap(canonicalFull, fileFull)) return 100;
+  if (canonicalCore && fileCore && titlesOverlap(canonicalCore, fileCore)) {
+    return SINGLE_PARTIAL_PCT;
+  }
+  return 0;
 }
 
 function isLiveFolder(dir: string): boolean {

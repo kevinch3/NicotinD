@@ -27,6 +27,14 @@ export const NicotinDConfigSchema = z.object({
       // Max cross-peer fallback waves per album (recorded alternates + fresh
       // per-track searches) before a job is marked exhausted.
       fallbackMaxAttempts: z.number().int().min(0).default(5),
+      // Periodically revive `exhausted` album jobs for another fallback wave —
+      // peers that were offline at hunt time often reappear. Disk-aware, so it
+      // only re-searches tracks still genuinely missing from the library.
+      autoRetryExhausted: z.boolean().default(true),
+      // Minimum delay before re-trying the same exhausted job (default 1h).
+      exhaustedRetryCooldownMs: z.number().int().min(0).default(3_600_000),
+      // Cap on how many times one job is revived before it stays exhausted.
+      exhaustedMaxRevives: z.number().int().min(0).default(5),
       // Drop an incoming MP3 when a FLAC of the same track is already in the
       // album folder (avoids mixed MP3+FLAC duplicate albums). Opt-in.
       preferFlacSkipMp3: z.boolean().default(false),
@@ -37,8 +45,24 @@ export const NicotinDConfigSchema = z.object({
       retryIntervalMs: 15_000,
       retryCooldownMs: 60_000,
       fallbackMaxAttempts: 5,
+      autoRetryExhausted: true,
+      exhaustedRetryCooldownMs: 3_600_000,
+      exhaustedMaxRevives: 5,
       preferFlacSkipMp3: false,
     }),
+
+  // Watchlist auto-hunt: a background poller re-hunts watched albums and
+  // auto-downloads them once a confidently-complete folder appears.
+  watchlist: z
+    .object({
+      enabled: z.boolean().default(true),
+      // How often the poller runs (default 30 min).
+      intervalMs: z.number().int().min(10_000).default(1_800_000),
+      // Minimum folder match % to auto-acquire a watched album unattended. Higher
+      // than the interactive floor — unattended downloads should be confident.
+      minMatchPct: z.number().int().min(0).max(100).default(80),
+    })
+    .default({ enabled: true, intervalMs: 1_800_000, minMatchPct: 80 }),
 
   soulseek: z.object({
     username: z.string().default(''),
@@ -61,6 +85,28 @@ export const NicotinDConfigSchema = z.object({
       apiKey: z.string().default(''),
     })
     .optional(),
+
+  acquire: z
+    .object({
+      ytdlp: z
+        .object({
+          enabled: z.boolean().default(false),
+          binaryPath: z.string().default('yt-dlp'),
+          format: z.enum(['mp3', 'opus', 'bestaudio']).default('bestaudio'),
+          extraArgs: z.array(z.string()).default([]),
+        })
+        .default({ enabled: false, binaryPath: 'yt-dlp', format: 'bestaudio', extraArgs: [] }),
+      spotdl: z
+        .object({
+          enabled: z.boolean().default(false),
+          binaryPath: z.string().default('spotdl'),
+        })
+        .default({ enabled: false, binaryPath: 'spotdl' }),
+    })
+    .default({
+      ytdlp: { enabled: false, binaryPath: 'yt-dlp', format: 'bestaudio', extraArgs: [] },
+      spotdl: { enabled: false, binaryPath: 'spotdl' },
+    }),
 
   jwt: z.object({
     secret: z.string().min(32, 'JWT secret must be at least 32 characters'),

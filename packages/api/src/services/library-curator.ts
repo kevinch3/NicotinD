@@ -1,6 +1,7 @@
 import { createLogger } from '@nicotind/core';
 import type { Database } from 'bun:sqlite';
 import { isUnknownLike } from './audio-tags.js';
+import { normalizeForGrouping } from './album-grouping.js';
 
 const log = createLogger('library-curator');
 
@@ -43,6 +44,12 @@ export class LibraryCurator {
       )
       .all();
 
+    // Releases the user deliberately hunted must never be auto-hidden, even if a
+    // small/edge-case row would otherwise trip a hide rule (e.g. a 1–3 track EP
+    // that landed in a thin folder). Keyed on the same normalized artist+title the
+    // scanner mints album ids from, so an edition variant still matches.
+    const protectedKeys = this.loadProtectedKeys();
+
     const updateStmt = this.db.prepare(
       `UPDATE library_albums SET classification = ?, hidden = ? WHERE id = ? AND manual_override = 0`,
     );
@@ -58,7 +65,13 @@ export class LibraryCurator {
     this.db.transaction(() => {
       for (const row of rows) {
         if (row.manual_override === 1) continue;
-        const { classification, hidden } = classify(row);
+        const classified = classify(row);
+        const classification = classified.classification;
+        // Deliberately-hunted release → keep visible regardless of classification.
+        const hidden =
+          classified.hidden && protectedKeys.has(albumKey(row.artist, row.name))
+            ? false
+            : classified.hidden;
         updateStmt.run(classification, hidden ? 1 : 0, row.id);
         if (hidden) result.hiddenAlbums++;
         if (classification === 'single') result.singles++;
@@ -99,6 +112,30 @@ export class LibraryCurator {
     );
     return Number(res.changes ?? 0) > 0;
   }
+
+  // Normalized artist+title keys of every album the user hunted (any job state).
+  private loadProtectedKeys(): Set<string> {
+    const keys = new Set<string>();
+    try {
+      const jobs = this.db
+        .query<{ artist_name: string | null; album_title: string | null }, []>(
+          `SELECT artist_name, album_title FROM album_jobs
+           WHERE artist_name IS NOT NULL AND album_title IS NOT NULL`,
+        )
+        .all();
+      for (const j of jobs) {
+        if (j.artist_name && j.album_title) keys.add(albumKey(j.artist_name, j.album_title));
+      }
+    } catch (err) {
+      // album_jobs may not exist in minimal test DBs; degrade to "nothing protected".
+      log.debug({ err }, 'loadProtectedKeys: album_jobs unavailable');
+    }
+    return keys;
+  }
+}
+
+function albumKey(artist: string, title: string): string {
+  return `${normalizeForGrouping(artist)}::${normalizeForGrouping(title)}`;
 }
 
 type Classification = 'album' | 'single' | 'compilation' | 'unknown';
