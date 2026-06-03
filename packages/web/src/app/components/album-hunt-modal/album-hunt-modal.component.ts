@@ -14,6 +14,7 @@ import {
   type FolderCandidate,
 } from '../../services/api.service';
 import { TransferService } from '../../services/transfer.service';
+import { baseQueries, skewedQueries } from '../../lib/hunt-queries';
 
 type HuntState = 'idle' | 'searching' | 'results' | 'error' | 'downloading';
 
@@ -53,6 +54,16 @@ export class AlbumHuntModalComponent implements OnInit {
   // client filter), so toggling it re-runs the hunt. Can be unchecked to force
   // the unmodified queries only.
   readonly skewSearch = signal(true);
+
+  // The exact Soulseek search strings this hunt fires — shown in the loading
+  // message so the user can see what's being searched (and which skew variants
+  // are tried). Mirrors the server's query builder.
+  readonly baseSearchQueries = computed(() =>
+    baseQueries(this.artistName(), this.album().title),
+  );
+  readonly skewSearchQueries = computed(() =>
+    this.skewSearch() ? skewedQueries(this.artistName(), this.album().title) : [],
+  );
 
   readonly filteredCandidates = computed(() => {
     const flac = this.includeFlac();

@@ -51,9 +51,29 @@
     <div class="flex-1 overflow-y-auto">
 
       @if (state() === 'searching') {
-        <div class="flex flex-col items-center justify-center py-16 gap-3 text-theme-muted">
+        <div class="flex flex-col items-center justify-center py-12 gap-3 text-theme-muted">
           <span class="inline-block w-6 h-6 border-2 border-theme border-t-zinc-300 rounded-full animate-spin"></span>
           <span class="text-sm">Searching Soulseek for "{{ artistName() }} — {{ album().title }}"…</span>
+
+          <!-- Show the exact search strings being tried so the user knows what -->
+          <!-- queries (and skew variants) are running. -->
+          <div class="w-full max-w-sm text-left mt-2 space-y-2">
+            <div>
+              <p class="text-[11px] uppercase tracking-wider opacity-50 mb-1">Queries</p>
+              @for (q of baseSearchQueries(); track q) {
+                <code class="block text-xs bg-theme-surface-2 rounded px-2 py-1 mb-1 break-all">{{ q }}</code>
+              }
+            </div>
+            @if (skewSearchQueries().length > 0) {
+              <div>
+                <p class="text-[11px] uppercase tracking-wider opacity-50 mb-1">Skew variants (tried if needed)</p>
+                @for (q of skewSearchQueries(); track q) {
+                  <code class="block text-xs bg-theme-surface-2 rounded px-2 py-1 mb-1 break-all opacity-80">{{ q }}</code>
+                }
+              </div>
+            }
+          </div>
+
           <span class="text-xs opacity-60">This may take up to 30 seconds</span>
         </div>
       }
