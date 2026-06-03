@@ -5,7 +5,7 @@ import { ApiService, type SetupStatus } from '../../services/api.service';
 import { SetupService } from '../../services/setup.service';
 import { PasswordFieldComponent } from '../../components/password-field/password-field.component';
 
-type Step = 'admin' | 'soulseek' | 'tailscale' | 'done';
+type Step = 'admin' | 'soulseek' | 'done';
 
 @Component({
   selector: 'app-setup',
@@ -21,15 +21,12 @@ export class SetupComponent {
   readonly loading = signal(false);
   readonly error = signal('');
   readonly slskIsNewAccount = signal(false);
-  readonly tsHostname = signal('');
-  readonly tsIp = signal('');
 
   adminUsername = '';
   adminPassword = '';
   slskUsername = '';
   slskPassword = '';
   slskConfirmPassword = '';
-  tsAuthKey = '';
 
   private adminData: { username: string; password: string } | null = null;
   private slskData: { username: string; password: string } | null = null;
@@ -42,20 +39,16 @@ export class SetupComponent {
     const s = this.step();
     if (s === 'admin') return 1;
     if (s === 'soulseek') return 2;
-    if (s === 'tailscale') return 3;
-    return 4;
+    return 3;
   }
 
   stepDots(): number[] {
-    const total = this.setupStatus?.tailscale.available ? 3 : 2;
-    return Array.from({ length: total }, (_, i) => i + 1);
+    return Array.from({ length: 2 }, (_, i) => i + 1);
   }
 
   soulseekButtonLabel(): string {
     const hasSlsk = this.slskUsername.trim() && this.slskPassword.trim();
-    const hasTailscale = this.setupStatus?.tailscale.available;
-    if (hasSlsk) return hasTailscale ? 'Next' : 'Complete Setup';
-    return hasTailscale ? 'Skip' : 'Skip & Complete';
+    return hasSlsk ? 'Complete Setup' : 'Skip & Complete';
   }
 
   handleAdminNext(): void {
@@ -74,21 +67,10 @@ export class SetupComponent {
       this.slskData = { username: this.slskUsername.trim(), password: this.slskPassword.trim() };
     }
     this.error.set('');
-    if (this.setupStatus?.tailscale.available) {
-      this.step.set('tailscale');
-    } else {
-      this.submitSetup(this.slskData, null);
-    }
+    this.submitSetup(this.slskData);
   }
 
-  handleTailscaleNext(): void {
-    this.submitSetup(this.slskData, this.tsAuthKey.trim() || null);
-  }
-
-  private submitSetup(
-    soulseek: { username: string; password: string } | null,
-    tailscaleKey: string | null,
-  ): void {
+  private submitSetup(soulseek: { username: string; password: string } | null): void {
     if (!this.adminData) return;
     this.loading.set(true);
     this.error.set('');
@@ -96,13 +78,8 @@ export class SetupComponent {
     this.api.completeSetup({
       admin: this.adminData,
       ...(soulseek ? { soulseek } : {}),
-      ...(tailscaleKey ? { tailscale: { authKey: tailscaleKey } } : {}),
     }).subscribe({
       next: (result) => {
-        if (result.tailscale.connected && result.tailscale.hostname) {
-          this.tsHostname.set(result.tailscale.hostname);
-          this.tsIp.set(result.tailscale.ip ?? '');
-        }
         this.auth.login(result.token, result.user.username, result.user.role);
         this.step.set('done');
         this.loading.set(false);

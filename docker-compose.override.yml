@@ -6,7 +6,6 @@ services:
     volumes:
       - ~/.nicotind:/data/nicotind
       - /mnt/data1tb_new/music:/data/music
-      - tailscale-sock:/var/run/tailscale
 
   slskd:
     volumes:

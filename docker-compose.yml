@@ -9,7 +9,6 @@ services:
     volumes:
       - nicotind-data:/data/nicotind
       - music:/data/music
-      - tailscale-sock:/var/run/tailscale
       - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
       NICOTIND_MODE: external
@@ -19,7 +18,6 @@ services:
       NICOTIND_SLSKD_URL: http://slskd:5030
       SLSKD_USERNAME: slskd
       SLSKD_PASSWORD: slskd
-      TAILSCALE_SOCKET: /var/run/tailscale/tailscaled.sock
       NICOTIND_LIDARR_URL: http://lidarr:8686
       LIDARR_API_KEY: nicotind-lidarr-internal
     healthcheck:
@@ -96,25 +94,6 @@ services:
       - internal
     restart: unless-stopped
 
-  tailscale:
-    image: tailscale/tailscale:latest
-    cap_add:
-      - NET_ADMIN
-      - SYS_MODULE
-    volumes:
-      - tailscale-state:/var/lib/tailscale
-      - tailscale-sock:/var/run/tailscale
-      - /dev/net/tun:/dev/net/tun
-    environment:
-      TS_USERSPACE: "true"
-      TS_STATE_DIR: /var/lib/tailscale
-      TS_SOCKET: /var/run/tailscale/tailscaled.sock
-      TS_HOSTNAME: nicotind
-    network_mode: service:nicotind
-    depends_on:
-      - nicotind
-    restart: unless-stopped
-
 networks:
   internal:
     driver: bridge
@@ -123,6 +102,4 @@ volumes:
   nicotind-data:
   music:
   slskd-data:
-  tailscale-state:
-  tailscale-sock:
   lidarr-config:

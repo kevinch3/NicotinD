@@ -207,66 +207,6 @@
           }
         </section>
 
-        <!-- Tailscale -->
-        @if (tsStatus()?.available) {
-          <section class="rounded-xl border border-theme bg-theme-surface/50 p-6 mt-6">
-            <div class="flex items-center gap-3 mb-6">
-              <h2 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary">Tailscale Remote Access</h2>
-              <div class="flex items-center gap-2">
-                <span [class]="'inline-block w-2.5 h-2.5 rounded-full ' + (tsStatus()!.connected ? 'bg-emerald-500' : 'bg-theme-muted')"></span>
-                <span class="text-xs text-theme-muted">{{ tsStatus()!.connected ? 'Connected' : 'Not connected' }}</span>
-              </div>
-            </div>
-
-            @if (tsStatus()?.connected) {
-              <div class="mt-3 space-y-1 text-sm text-theme-muted mb-4">
-                @if (tsStatus()?.hostname) {
-                  <div>Hostname: <span class="text-theme-text font-mono">{{ tsStatus()!.hostname }}</span></div>
-                }
-                @if (tsStatus()?.ip) {
-                  <div>IP: <span class="text-theme-text font-mono">{{ tsStatus()!.ip }}</span></div>
-                  <div>NicotinD URL: <a [href]="'http://' + tsStatus()!.ip + ':8484'" target="_blank" rel="noopener noreferrer"
-                       class="text-theme-accent font-mono underline">http://{{ tsStatus()!.ip }}:8484</a></div>
-                }
-              </div>
-            }
-
-            @if (isAdmin()) {
-              @if (tsStatus()!.connected) {
-                <button (click)="disconnectTailscale()" [disabled]="tsSaving()"
-                  class="px-5 py-2.5 rounded-lg border border-theme text-theme-secondary text-sm font-medium hover:border-zinc-500 transition disabled:opacity-50">
-                  {{ tsSaving() ? 'Disconnecting...' : 'Disconnect' }}
-                </button>
-              } @else {
-                <div class="space-y-3">
-                  @if (tsStatus()?.loginUrl) {
-                    <div class="mb-3 p-3 rounded bg-amber-500/10 border border-amber-500/30 text-sm">
-                      <p class="text-amber-400 font-medium mb-1">Tailscale needs authentication</p>
-                      <a [href]="tsStatus()!.loginUrl" target="_blank" rel="noopener noreferrer"
-                         class="text-theme-accent underline break-all">Open authentication URL</a>
-                    </div>
-                  }
-                  <app-password-field [ngModel]="tsAuthKey()" (ngModelChange)="tsAuthKey.set($event)"
-                    placeholder="tskey-auth-..." autocomplete="off"
-                    inputClass="w-full px-4 py-2.5 rounded-lg bg-theme-surface-2 border border-theme text-theme-primary placeholder-zinc-600 focus:outline-none focus:border-zinc-500 transition text-sm font-mono" />
-                  <button (click)="connectTailscale()" [disabled]="tsSaving() || !tsAuthKey().trim()"
-                    class="px-5 py-2.5 rounded-lg bg-zinc-100 text-zinc-900 text-sm font-semibold hover:bg-zinc-200 transition disabled:opacity-50">
-                    {{ tsSaving() ? 'Connecting...' : 'Connect' }}
-                  </button>
-                </div>
-              }
-
-              @if (tsMessage()) {
-                <div [class]="'mt-3 px-4 py-2.5 rounded-lg text-sm ' + (tsMessage()!.type === 'success' ? 'bg-emerald-950/50 border border-emerald-900/50 text-emerald-400' : 'bg-red-950/50 border border-red-900/50 text-red-400')">
-                  {{ tsMessage()!.text }}
-                </div>
-              }
-            } @else if (!tsStatus()!.connected) {
-              <p class="text-sm text-theme-muted">Only administrators can manage Tailscale connection.</p>
-            }
-          </section>
-        }
-
         <!-- Remote Playback -->
         <section class="rounded-xl border border-theme bg-theme-surface/50 p-6 mt-6">
           <div class="flex items-center gap-3 mb-6">

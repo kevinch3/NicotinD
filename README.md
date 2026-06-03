@@ -1,6 +1,6 @@
 # NicotinD
 
-Unified music acquisition + streaming platform. NicotinD orchestrates [slskd](https://github.com/slskd/slskd) (Soulseek P2P client) and [Navidrome](https://www.navidrome.org/) (music streaming server) behind a single API — files downloaded via Soulseek instantly become streamable.
+Unified music acquisition + streaming platform. NicotinD orchestrates [slskd](https://github.com/slskd/slskd) (Soulseek P2P client) behind a single API and web UI — files downloaded via Soulseek are scanned into a native library and streamed directly by NicotinD.
 
 ## Quick Start (Docker)
 
@@ -14,7 +14,6 @@ Open `http://localhost:8484`. The setup wizard walks you through:
 
 1. **Create admin account**
 2. **Soulseek credentials** (optional, skip and configure later)
-3. **Tailscale auth key** (optional, for remote access from your phone)
 
 No `.env` file or manual config needed.
 
@@ -24,78 +23,43 @@ The Docker Compose stack wires NicotinD and the bundled slskd container to the s
 
 ```
 docker compose up
-┌─────────────────────────────────────────────────────────┐
-│                                                         │
-│  ┌──────────────┐  shares network   ┌──────────────┐   │
-│  │  tailscale   │◄────────────────► │  nicotind    │   │
-│  │  (sidecar)   │                   │  :8484       │   │
-│  └──────────────┘                   └──────┬───────┘   │
-│                                       │         │       │
-│            ┌──────────────────────────┘         │       │
-│            ▼                                    ▼       │
-│  ┌──────────────┐                    ┌──────────────┐  │
-│  │  slskd       │                    │  navidrome   │  │
-│  │  :5030       │                    │  :4533       │  │
-│  │  (internal)  │                    │  (internal)  │  │
-│  └──────┬───────┘                    └──────┬───────┘  │
-│         │          shared volume            │          │
-│         └──────────► /data/music ◄──────────┘          │
-│                                                         │
-│  Exposed to host: only port 8484                       │
-└─────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────┐
+│                                                      │
+│  ┌──────────────────────────────────────────────┐   │
+│  │  nicotind  :8484                             │   │
+│  │  (API + web UI + native library + streaming) │   │
+│  └─────────────────────┬────────────────────────┘   │
+│                         │                            │
+│            ┌────────────┘                            │
+│            ▼                                         │
+│  ┌──────────────┐                                    │
+│  │  slskd       │                                    │
+│  │  :5030       │                                    │
+│  │  (internal)  │                                    │
+│  └──────┬───────┘                                    │
+│         │          shared volume                     │
+│         └──────────► /data/music ◄── LibraryScanner  │
+│                                                      │
+│  Exposed to host: only port 8484                    │
+└──────────────────────────────────────────────────────┘
 ```
 
-- **NicotinD** — Hono API + Angular web UI (port 8484, the only exposed port)
-- **slskd** — Soulseek client (internal only), downloads to shared music volume
-- **Navidrome** — Music streaming server (internal only), reads from shared music volume
-- **Tailscale** — Sidecar container for secure remote access via your tailnet
-
-NicotinD manages both services as child processes (embedded mode) or connects to existing instances (external mode). A **DownloadWatcher** polls slskd for completed transfers, repairs missing MP3 metadata from filename patterns + MusicBrainz lookup, and then triggers Navidrome library rescans automatically.
+- **NicotinD** — Hono API + Angular web UI (port 8484, the only exposed port). Includes the native `LibraryScanner` (reads tags via `music-metadata`, stores in SQLite), HTTP range-served audio streaming, and cover art resolution.
+- **slskd** — Soulseek client (internal only), downloads to shared music volume. NicotinD's `DownloadWatcher` picks up completed transfers, organizes them, and scans them into the library.
 
 ### Unified search
 
 A single search query hits both your local library and the Soulseek network:
 
-1. **Local results** appear instantly (from Navidrome)
+1. **Local results** appear instantly (from the SQLite library)
 2. **Network results** stream in below a divider (from Soulseek)
 3. Downloading a network result adds it to your local library
 
 ### Multi-user
 
 - Shared music library — everyone sees all downloads
-- Per-user settings and playlists (stored in SQLite)
+- Per-user settings (stored in SQLite)
 - First registered user becomes admin
-
-### Subsonic compatibility
-
-The `/rest/*` proxy passes requests through to Navidrome, so existing Subsonic clients (DSub, Symfonium, play:Sub) work out of the box.
-
-## Remote Access with Tailscale
-
-NicotinD includes built-in Tailscale integration for secure remote access — no port forwarding, no dynamic DNS, no VPN config.
-
-### How it works
-
-The Tailscale container runs as a sidecar sharing NicotinD's network stack (`network_mode: service:nicotind`). When connected to your tailnet, NicotinD becomes accessible at a stable hostname like `nicotind.your-tailnet.ts.net:8484`.
-
-### Setup
-
-You can provide your Tailscale auth key in two ways:
-
-- **Setup wizard** (recommended) — paste it in step 3 during first-run setup
-- **Settings page** — configure it later from Settings > Tailscale Remote Access
-
-### Getting a Tailscale auth key
-
-1. Go to the [Tailscale admin console](https://login.tailscale.com/admin/settings/keys)
-2. Generate an auth key (reusable recommended)
-3. Paste it into NicotinD
-
-### Accessing from mobile
-
-1. Install [Tailscale](https://tailscale.com/download) on your phone
-2. Sign in with the same Tailscale account
-3. Open `http://nicotind:8484` in your mobile browser
 
 ## Docker Compose Details
 
@@ -103,16 +67,14 @@ You can provide your Tailscale auth key in two ways:
 
 | Volume | Purpose |
 |--------|---------|
-| `music` | Shared music directory (slskd writes, navidrome reads) |
+| `music` | Shared music directory (slskd writes, NicotinD scans and streams) |
 | `nicotind-data` | NicotinD SQLite database and secrets |
 | `slskd-data` | slskd application directory (`/app`, including config and state) |
-| `navidrome-data` | Navidrome database and cache |
-| `tailscale-state` | Tailscale persistent state (survives restarts) |
-| `tailscale-sock` | Shared Unix socket for NicotinD to control Tailscale |
+| `lidarr-config` | Lidarr database and config |
 
 ### Using a host directory for music
 
-Replace the `music` volume with a bind mount in `docker-compose.yml`:
+Replace the `music` volume with a bind mount in `docker-compose.override.yml`:
 
 ```yaml
 services:
@@ -122,9 +84,6 @@ services:
   slskd:
     volumes:
       - /path/to/your/music:/data/music
-  navidrome:
-    volumes:
-      - /path/to/your/music:/data/music:ro
 ```
 
 ## Local Development (without Docker)
@@ -142,7 +101,7 @@ bun install
 cp .env.example .env
 # Set SOULSEEK_USERNAME and SOULSEEK_PASSWORD
 
-# Run (embedded mode — auto-downloads slskd + navidrome binaries)
+# Run (embedded mode — auto-downloads slskd binary on first run)
 bun run src/main.ts
 ```
 
@@ -194,8 +153,6 @@ Configuration is loaded from `config/default.yml` and can be overridden with env
 | `SLSKD_USERNAME` | `slskd` | slskd web login username |
 | `SLSKD_PASSWORD` | `slskd` | slskd web login password |
 | `NICOTIND_SLSKD_URL` | `http://localhost:5030` | slskd URL (external mode only) |
-| `NICOTIND_NAVIDROME_URL` | `http://localhost:4533` | Navidrome URL (external mode only) |
-| `TAILSCALE_SOCKET` | `/var/run/tailscale/tailscaled.sock` | Tailscale daemon socket path |
 
 ## API Routes
 
@@ -213,14 +170,11 @@ Configuration is loaded from `config/default.yml` and can be overridden with env
 | `GET` | `/api/library/albums` | Browse albums |
 | `GET` | `/api/library/recent-songs` | Recently added songs |
 | `GET` | `/api/stream/:id` | Stream audio |
+| `GET` | `/api/cover/:id` | Album/artist cover art |
 | `GET` | `/api/system/status` | Service health status |
 | `POST` | `/api/system/scan` | Trigger library rescan |
-| `GET` | `/api/tailscale/status` | Tailscale connection status |
-| `POST` | `/api/tailscale/connect` | Connect to Tailscale (admin) |
-| `POST` | `/api/tailscale/disconnect` | Disconnect from Tailscale (admin) |
-| `*` | `/rest/*` | Subsonic API proxy to Navidrome |
 
-Routes under `/api/setup/*` are public (locked after first user is created). Routes under `/api/auth/*` and `/rest/*` use their own auth. All other `/api/*` routes require a `Bearer` JWT token.
+Routes under `/api/setup/*` are public (locked after first user is created). Routes under `/api/auth/*` use their own auth. All other `/api/*` routes require a `Bearer` JWT token.
 
 ## Project Structure
 
@@ -228,11 +182,10 @@ Routes under `/api/setup/*` are public (locked after first user is created). Rou
 packages/
   core/                # Shared types, Zod schemas, logger, crypto utils
   slskd-client/        # Typed HTTP client for slskd REST API
-  navidrome-client/     # Typed HTTP client for Navidrome Subsonic API
-  service-manager/      # Sub-service lifecycle management (strategy pattern)
-  api/                  # Hono API server, routes, JWT auth, SQLite DB
-  web/                  # Angular v22 web UI (standalone components, signals, Tailwind)
-  cli/                  # CLI (planned)
+  service-manager/     # Sub-service lifecycle management (strategy pattern)
+  api/                 # Hono API server, routes, JWT auth, native library scanner + streaming, SQLite DB
+  web/                 # Angular v22 web UI (standalone components, signals, Tailwind)
+  cli/                 # CLI (planned)
 src/
   main.ts              # Entry point — loads config, starts services, serves API
 config/

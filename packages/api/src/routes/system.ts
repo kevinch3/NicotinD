@@ -110,7 +110,7 @@ export function systemRoutes(
     }
 
     const service = c.req.param('service');
-    const VALID_SERVICES = ['slskd', 'tailscale', 'nicotind'] as const;
+    const VALID_SERVICES = ['slskd', 'nicotind'] as const;
     if (!(VALID_SERVICES as readonly string[]).includes(service)) {
       return c.json({ error: `Unknown service. Valid services: ${VALID_SERVICES.join(', ')}` }, 400);
     }

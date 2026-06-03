@@ -4,7 +4,6 @@ import type { NicotinDConfig } from '@nicotind/core';
 import type { ServiceManager } from '@nicotind/service-manager';
 import { getDatabase } from '../db.js';
 import { signJwt } from '../middleware/auth.js';
-import { TailscaleService } from '../services/tailscale.js';
 import type { DownloadWatcher } from '../services/download-watcher.js';
 import { updateExternalSoulseekCredentials } from '../services/slskd-config.js';
 import type { SlskdRef, WatcherRef } from '../index.js';
@@ -16,7 +15,6 @@ interface SetupDeps {
   watcherRef: WatcherRef;
   /** Builds a fully-wired download watcher (organizer + native scan hook). */
   makeWatcher: () => DownloadWatcher | null;
-  tailscale: TailscaleService;
   saveSecretsFn: (username: string, password: string) => void;
 }
 
@@ -26,23 +24,17 @@ export function setupRoutes({
   serviceManager,
   watcherRef,
   makeWatcher,
-  tailscale,
   saveSecretsFn,
 }: SetupDeps) {
   const app = new Hono();
 
   // GET /api/setup/status — check if setup is needed
-  app.get('/status', async (c) => {
+  app.get('/status', (c) => {
     const db = getDatabase();
     const userCount = db.query<{ count: number }, []>('SELECT COUNT(*) as count FROM users').get();
     const needsSetup = (userCount?.count ?? 0) === 0;
 
-    const tsStatus = await tailscale.getStatus();
-
-    return c.json({
-      needsSetup,
-      tailscale: tsStatus,
-    });
+    return c.json({ needsSetup });
   });
 
   // POST /api/setup/complete — create admin + configure services
@@ -58,7 +50,6 @@ export function setupRoutes({
     const body = await c.req.json<{
       admin: { username: string; password: string };
       soulseek?: { username: string; password: string };
-      tailscale?: { authKey: string };
     }>();
 
     // Validate admin credentials
@@ -104,17 +95,7 @@ export function setupRoutes({
       watcherRef.current?.start();
     }
 
-    // 3. Connect Tailscale (optional)
-    let tsStatus = await tailscale.getStatus();
-    if (body.tailscale?.authKey?.trim()) {
-      try {
-        tsStatus = await tailscale.connect(body.tailscale.authKey.trim());
-      } catch {
-        // Non-fatal — setup still succeeds, user can retry from Settings
-      }
-    }
-
-    // 4. Sign JWT for immediate login
+    // 3. Sign JWT for immediate login
     const token = await signJwt(
       { sub: id, username: body.admin.username.trim(), role: 'admin' },
       config.jwt.secret,
@@ -125,7 +106,6 @@ export function setupRoutes({
       {
         token,
         user: { id, username: body.admin.username.trim(), role: 'admin' },
-        tailscale: tsStatus,
       },
       201,
     );

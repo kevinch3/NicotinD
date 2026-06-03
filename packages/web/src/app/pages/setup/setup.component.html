@@ -75,26 +75,6 @@
           </div>
         }
 
-        <!-- Step 3: Tailscale -->
-        @if (step() === 'tailscale') {
-          <div class="space-y-4">
-            <div class="rounded-xl border border-zinc-800 bg-zinc-900/50 p-6">
-              <h2 class="text-sm font-semibold uppercase tracking-wider text-zinc-400 mb-1">Tailscale Remote Access</h2>
-              <p class="text-xs text-zinc-600 mb-4">Connect to your Tailscale network for secure remote access. You can skip this and configure it later.</p>
-              <app-password-field [(ngModel)]="tsAuthKey" [placeholder]="'tskey-auth-...'" [autocomplete]="'off'" autofocus
-                [inputClass]="'px-4 py-3 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-500 transition text-sm font-mono'" />
-            </div>
-            @if (error()) { <p class="text-red-400 text-sm">{{ error() }}</p> }
-            <div class="flex gap-3">
-              <button (click)="step.set('soulseek')" class="px-5 py-3 rounded-lg border border-zinc-800 text-zinc-400 text-sm font-medium hover:border-zinc-600 transition">Back</button>
-              <button (click)="handleTailscaleNext()" [disabled]="loading()"
-                class="flex-1 py-3 rounded-lg bg-zinc-100 text-zinc-900 font-semibold hover:bg-zinc-200 transition disabled:opacity-50">
-                {{ loading() ? 'Setting up...' : tsAuthKey.trim() ? 'Connect & Complete' : 'Skip & Complete' }}
-              </button>
-            </div>
-          </div>
-        }
-
         <!-- Done -->
         @if (step() === 'done') {
           <div class="space-y-4">
@@ -106,13 +86,6 @@
               </div>
               <h2 class="text-lg font-semibold text-zinc-100 mb-1">Setup Complete</h2>
               <p class="text-sm text-zinc-500">Your NicotinD instance is ready.</p>
-              @if (tsHostname()) {
-                <div class="mt-4 p-3 rounded-lg bg-zinc-800/50 border border-zinc-700/50">
-                  <p class="text-xs text-zinc-500 mb-1">Tailscale Address</p>
-                  <p class="text-sm text-zinc-200 font-mono">{{ tsHostname() }}</p>
-                  @if (tsIp()) { <p class="text-xs text-zinc-500 mt-0.5">{{ tsIp() }}</p> }
-                </div>
-              }
             </div>
             <button (click)="reload()" class="w-full py-3 rounded-lg bg-zinc-100 text-zinc-900 font-semibold hover:bg-zinc-200 transition">Get Started</button>
           </div>

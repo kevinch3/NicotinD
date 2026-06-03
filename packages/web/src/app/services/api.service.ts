@@ -6,31 +6,11 @@ import type { SlskdUserTransferGroup } from '@nicotind/core';
 
 export interface SetupStatus {
   needsSetup: boolean;
-  tailscale: {
-    available: boolean;
-    connected: boolean;
-    hostname?: string;
-    ip?: string;
-  };
 }
 
 export interface SetupResult {
   token: string;
   user: { id: string; username: string; role: string };
-  tailscale: {
-    available: boolean;
-    connected: boolean;
-    hostname?: string;
-    ip?: string;
-  };
-}
-
-export interface TailscaleStatus {
-  available: boolean;
-  connected: boolean;
-  hostname?: string;
-  ip?: string;
-  loginUrl?: string;
 }
 
 export interface AuthResult {
@@ -396,7 +376,6 @@ export class ApiService {
   completeSetup(data: {
     admin: { username: string; password: string };
     soulseek?: { username: string; password: string };
-    tailscale?: { authKey: string };
   }) {
     return this.http.post<SetupResult>('/api/setup/complete', data);
   }
@@ -424,19 +403,6 @@ export class ApiService {
 
   deleteUser(id: string) {
     return this.http.delete<{ ok: boolean }>(`/api/admin/users/${id}`);
-  }
-
-  // Tailscale
-  getTailscaleStatus() {
-    return this.http.get<TailscaleStatus>('/api/tailscale/status');
-  }
-
-  connectTailscale(authKey: string) {
-    return this.http.post<TailscaleStatus>('/api/tailscale/connect', { authKey });
-  }
-
-  disconnectTailscale() {
-    return this.http.post<{ ok: boolean }>('/api/tailscale/disconnect', {});
   }
 
   // Discography

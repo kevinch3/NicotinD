@@ -1,9 +1,7 @@
-import { Component, inject, signal, OnInit, DestroyRef } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { Component, inject, signal, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { firstValueFrom, interval, Subscription } from 'rxjs';
-import { switchMap, takeWhile } from 'rxjs/operators';
-import { ApiService, type TailscaleStatus, type StreamingSettings } from '../../services/api.service';
+import { firstValueFrom } from 'rxjs';
+import { ApiService, type StreamingSettings } from '../../services/api.service';
 import { AuthService } from '../../services/auth.service';
 import { ThemeService, THEME_PRESETS, type ThemeId } from '../../services/theme.service';
 import { RemotePlaybackService } from '../../services/remote-playback.service';
@@ -42,11 +40,6 @@ export class SettingsComponent implements OnInit {
   readonly saving = signal(false);
   readonly message = signal<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  readonly tsStatus = signal<TailscaleStatus | null>(null);
-  readonly tsAuthKey = signal('');
-  readonly tsSaving = signal(false);
-  readonly tsMessage = signal<{ type: 'success' | 'error'; text: string } | null>(null);
-
   readonly toggling = signal(false);
   readonly toggleMessage = signal<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -65,11 +58,6 @@ export class SettingsComponent implements OnInit {
   readonly duplicatesMessage = signal<{ type: 'success' | 'error'; text: string } | null>(null);
   readonly deletingDuplicates = signal(false);
 
-  private readonly destroyRef = inject(DestroyRef);
-  // Held only to cancel an in-flight poll on restart / manual connect; component
-  // teardown is handled by takeUntilDestroyed in startTsPoll().
-  private tsPollSub: Subscription | null = null;
-
   readonly streaming = signal<StreamingSettings | null>(null);
   readonly streamingSaving = signal(false);
   readonly streamingMessage = signal<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -80,7 +68,6 @@ export class SettingsComponent implements OnInit {
 
   ngOnInit(): void {
     this.loadSettings();
-    this.loadTailscaleStatus();
     if (this.isAdmin()) {
       this.loadShares();
       this.loadStreaming();
@@ -192,39 +179,6 @@ export class SettingsComponent implements OnInit {
     return /iPhone|iPad|Android/i.test(device.name) ? '📱' : '🖥️';
   }
 
-  async connectTailscale(): Promise<void> {
-    if (!this.tsAuthKey().trim()) return;
-    this.tsSaving.set(true);
-    this.tsMessage.set(null);
-    try {
-      const status = await firstValueFrom(this.api.connectTailscale(this.tsAuthKey().trim()));
-      this.tsStatus.set(status);
-      this.tsPollSub?.unsubscribe();
-      this.tsPollSub = null;
-      this.tsAuthKey.set('');
-      this.tsMessage.set({ type: 'success', text: `Connected as ${status.hostname ?? 'nicotind'}` });
-    } catch (err) {
-      this.tsMessage.set({ type: 'error', text: err instanceof Error ? err.message : 'Failed to connect' });
-    } finally {
-      this.tsSaving.set(false);
-    }
-  }
-
-  async disconnectTailscale(): Promise<void> {
-    this.tsSaving.set(true);
-    this.tsMessage.set(null);
-    try {
-      await firstValueFrom(this.api.disconnectTailscale());
-      this.tsStatus.update(s => s ? { ...s, connected: false, hostname: undefined, ip: undefined, loginUrl: undefined } : s);
-      this.tsMessage.set({ type: 'success', text: 'Disconnected from Tailscale' });
-      this.startTsPoll();
-    } catch (err) {
-      this.tsMessage.set({ type: 'error', text: err instanceof Error ? err.message : 'Failed to disconnect' });
-    } finally {
-      this.tsSaving.set(false);
-    }
-  }
-
   private async loadSettings(): Promise<void> {
     this.loading.set(true);
     try {
@@ -243,31 +197,6 @@ export class SettingsComponent implements OnInit {
       }
     } catch { /* ignore */ }
     finally { this.loading.set(false); }
-  }
-
-  private async loadTailscaleStatus(): Promise<void> {
-    try {
-      const status = await firstValueFrom(this.api.getTailscaleStatus());
-      this.tsStatus.set(status);
-      if (status.available && !status.connected) this.startTsPoll();
-    } catch { /* ignore */ }
-  }
-
-  private startTsPoll(): void {
-    this.tsPollSub?.unsubscribe();
-    this.tsPollSub = interval(5000)
-      .pipe(
-        switchMap(() => this.api.getTailscaleStatus()),
-        takeWhile((s) => !s.connected, true),
-        takeUntilDestroyed(this.destroyRef),
-      )
-      .subscribe({
-        next: (status) => {
-          this.tsStatus.set(status);
-          if (status.connected) this.tsPollSub = null;
-        },
-        error: () => { this.tsPollSub = null; },
-      });
   }
 
   async toggleConnection(): Promise<void> {

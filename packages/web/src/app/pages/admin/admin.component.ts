@@ -55,7 +55,7 @@ export class AdminComponent implements OnInit, OnDestroy {
   readonly untrackedTotal = signal(0);
   readonly untrackedLoading = signal(true);
 
-  readonly selectedService = signal<'slskd' | 'tailscale' | 'nicotind'>('nicotind');
+  readonly selectedService = signal<'slskd' | 'nicotind'>('nicotind');
   readonly logLines = signal<string[]>([]);
   readonly logStreamStatus = signal<'idle' | 'connecting' | 'connected' | 'disconnected'>('idle');
 
@@ -258,9 +258,9 @@ export class AdminComponent implements OnInit, OnDestroy {
     }
   }
 
-  readonly logServiceOptions: ('slskd' | 'tailscale' | 'nicotind')[] = ['slskd', 'tailscale', 'nicotind'];
+  readonly logServiceOptions: ('slskd' | 'nicotind')[] = ['slskd', 'nicotind'];
 
-  selectLogService(svc: 'slskd' | 'tailscale' | 'nicotind'): void {
+  selectLogService(svc: 'slskd' | 'nicotind'): void {
     this.selectedService.set(svc);
     this.logLines.set([]);
   }

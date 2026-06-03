@@ -9,7 +9,6 @@ import { authMiddleware } from './middleware/auth.js';
 import { errorHandler } from './middleware/error-handler.js';
 import { authRoutes } from './routes/auth.js';
 import { setupRoutes } from './routes/setup.js';
-import { tailscaleRoutes } from './routes/tailscale.js';
 import { searchRoutes } from './routes/search.js';
 import { downloadRoutes } from './routes/downloads.js';
 import { uploadRoutes } from './routes/uploads.js';
@@ -32,7 +31,6 @@ import { WatchlistService } from './services/watchlist.service.js';
 import { DownloadWatcher } from './services/download-watcher.js';
 import { DownloadRetryService } from './services/download-retry.service.js';
 import { AlbumFallbackService } from './services/album-fallback.service.js';
-import { TailscaleService } from './services/tailscale.js';
 import { ProviderRegistry } from './services/provider-registry.js';
 import { LibrarySearchProvider } from './services/providers/library-provider.js';
 import { SlskdSearchProvider } from './services/providers/slskd-provider.js';
@@ -57,9 +55,6 @@ export interface CreateAppOptions {
   serviceManager: ServiceManager;
   webDistPath?: string;
   saveSecretsFn?: (username: string, password: string) => void;
-  tailscale?: TailscaleService;
-  saveTailscaleAuthKeyFn?: (key: string) => void;
-  clearTailscaleAuthKeyFn?: () => void;
   stagingDir?: string;
   acoustidApiKey?: string;
 }
@@ -71,9 +66,6 @@ export function createApp({
   serviceManager,
   webDistPath,
   saveSecretsFn,
-  tailscale: tailscaleOption,
-  saveTailscaleAuthKeyFn,
-  clearTailscaleAuthKeyFn,
   stagingDir,
   acoustidApiKey,
 }: CreateAppOptions) {
@@ -233,9 +225,6 @@ export function createApp({
   registry.register(new LibrarySearchProvider(db));
   registry.register(new SlskdSearchProvider(slskdRef));
 
-  // Tailscale service — reuse the instance from main.ts if provided (avoids duplicate state)
-  const tailscale = tailscaleOption ?? new TailscaleService();
-
   // Public routes
   app.route('/api/auth', authRoutes(config.jwt.secret, config.jwt.expiresIn, config.registrationEnabled));
   app.route(
@@ -246,7 +235,6 @@ export function createApp({
       serviceManager,
       watcherRef,
       makeWatcher,
-      tailscale,
       saveSecretsFn: saveSecretsFn ?? (() => {}),
     }),
   );
@@ -261,7 +249,6 @@ export function createApp({
   app.use('/api/cover/*', auth);
   app.use('/api/system/*', auth);
   app.use('/api/settings/*', auth);
-  app.use('/api/tailscale/*', auth);
   app.use('/api/admin/*', auth);
   app.use('/api/users/*', auth);
   app.use('/api/ws/*', auth);
@@ -286,7 +273,6 @@ export function createApp({
     settingsRoutes(config, slskdRef, makeWatcher, serviceManager, watcherRef),
   );
   app.route('/api/share', shareRoutes(config.jwt.secret, auth));
-  app.route('/api/tailscale', tailscaleRoutes(tailscale, saveTailscaleAuthKeyFn, clearTailscaleAuthKeyFn));
   app.route('/api/users', usersRoutes(registry));
 
   if (lidarr && slskdRef.current) {
@@ -365,4 +351,3 @@ export function createApp({
 export { DownloadWatcher } from './services/download-watcher.js';
 export { DownloadRetryService } from './services/download-retry.service.js';
 export { initDatabase, getDatabase } from './db.js';
-export { TailscaleService } from './services/tailscale.js';

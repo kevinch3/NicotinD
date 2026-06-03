@@ -5,7 +5,7 @@ import { NicotinDConfigSchema, createLogger, generateSecret } from '@nicotind/co
 import { ServiceManager, NativeProcessStrategy } from '@nicotind/service-manager';
 import { Slskd } from '@nicotind/slskd-client';
 import { Lidarr } from '@nicotind/lidarr-client';
-import { createApp, TailscaleService } from '@nicotind/api';
+import { createApp } from '@nicotind/api';
 
 const log = createLogger('nicotind');
 
@@ -104,19 +104,6 @@ async function main() {
   // 4. Create and start API server
   const webDistPath = resolve(import.meta.dir, '../packages/web/dist');
 
-  // Reuse startup secrets (already loaded above) for Tailscale auto-reconnect
-  const secrets = startupSecrets;
-
-  // Auto-reconnect Tailscale on startup if an auth key was previously saved
-  const tailscale = new TailscaleService();
-  const tsStatus = await tailscale.getStatus();
-  if (tsStatus.available && !tsStatus.connected && secrets.tailscale?.authKey) {
-    log.info('Tailscale not connected — attempting auto-reconnect with stored key');
-    await tailscale.connect(secrets.tailscale.authKey).catch((err) => {
-      log.warn({ err }, 'Tailscale auto-reconnect failed');
-    });
-  }
-
   const { app, watcherRef, retryRef, websocket } = createApp({
     config,
     slskdRef,
@@ -129,23 +116,12 @@ async function main() {
       currentSecrets.soulseekPassword = password;
       saveSecrets(config.dataDir, currentSecrets);
     },
-    tailscale,
-    saveTailscaleAuthKeyFn: (key: string) => {
-      const current = loadOrCreateSecrets(config.dataDir);
-      current.tailscale = { authKey: key };
-      saveSecrets(config.dataDir, current);
-    },
-    clearTailscaleAuthKeyFn: () => {
-      const current = loadOrCreateSecrets(config.dataDir);
-      delete current.tailscale;
-      saveSecrets(config.dataDir, current);
-    },
     stagingDir: join(
       config.dataDir.startsWith('~') ? join(process.env.HOME ?? '/root', config.dataDir.slice(1)) : config.dataDir,
       'slskd',
       'downloads',
     ),
-    acoustidApiKey: secrets.acoustidApiKey,
+    acoustidApiKey: startupSecrets.acoustidApiKey,
   });
 
   if (watcherRef.current) watcherRef.current.start();
@@ -185,7 +161,6 @@ export interface PersistedSecrets {
   soulseekPassword?: string;
   soulseekListeningPort?: number;
   soulseekEnableUPnP?: boolean;
-  tailscale?: { authKey: string };
   acoustidApiKey?: string;
 }
 
