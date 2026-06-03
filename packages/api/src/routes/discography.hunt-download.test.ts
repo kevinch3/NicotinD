@@ -157,6 +157,75 @@ describe('POST /albums/:id/hunt-download idempotency guard', () => {
     expect(resolveArtwork(db, artistIdFor('Soda Stereo'))?.url).toBe('https://art/soda.jpg');
   });
 
+  it('enqueues only the missing tracks when the album is partially on disk', async () => {
+    const { app, enqueue } = makeApp(db);
+    // 'One' is already on disk for this album (same grouping id).
+    db.run(
+      `INSERT INTO library_songs (id, album_id, title, artist, artist_id, path, synced_at)
+       VALUES ('s1', ?, 'One', 'Soda Stereo', 'art', '/m/s1.flac', 1)`,
+      [albumIdFor('Soda Stereo', 'Dynamo')],
+    );
+
+    const res = await app.request(`/albums/${ALBUM_ID}/hunt-download`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        selected: {
+          username: 'peer',
+          directory: 'Soda Stereo - Dynamo',
+          files: [
+            { filename: '01 One.flac', size: 1 },
+            { filename: '02 Two.flac', size: 1 },
+            { filename: '03 Three.flac', size: 1 },
+          ],
+        },
+        alternates: [],
+      }),
+    });
+
+    expect(res.status).toBe(201);
+    // Only the two missing tracks are enqueued — not 'One', which is on disk.
+    const [, files] = enqueue.mock.calls[0] as unknown as [string, Array<{ filename: string }>];
+    expect(files.map((f) => f.filename)).toEqual(['02 Two.flac', '03 Three.flac']);
+    // The recorded job's recovery target is the missing set, not the full folder.
+    const job = db
+      .query(`SELECT target_files_json FROM album_jobs WHERE lidarr_album_id = ?`)
+      .get(ALBUM_ID) as { target_files_json: string };
+    expect(JSON.parse(job.target_files_json)).toEqual(['02 Two.flac', '03 Three.flac']);
+  });
+
+  it('downloads nothing (queued 0) when every chosen file is already on disk', async () => {
+    const { app, enqueue } = makeApp(db);
+    for (const [id, title] of [['s1', 'One'], ['s2', 'Two'], ['s3', 'Three']]) {
+      db.run(
+        `INSERT INTO library_songs (id, album_id, title, artist, artist_id, path, synced_at)
+         VALUES (?, ?, ?, 'Soda Stereo', 'art', ?, 1)`,
+        [id, albumIdFor('Soda Stereo', 'Dynamo'), title, `/m/${id}.flac`],
+      );
+    }
+
+    const res = await app.request(`/albums/${ALBUM_ID}/hunt-download?replace=true`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        selected: {
+          username: 'peer',
+          directory: 'Soda Stereo - Dynamo',
+          files: [
+            { filename: '01 One.flac', size: 1 },
+            { filename: '02 Two.flac', size: 1 },
+            { filename: '03 Three.flac', size: 1 },
+          ],
+        },
+        alternates: [],
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { alreadyComplete: boolean }).alreadyComplete).toBe(true);
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+
   it('treats an edition variant in the library as already complete', async () => {
     const { app, enqueue } = makeApp(db);
     db.run(

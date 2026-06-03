@@ -7,7 +7,7 @@ import type { DiscographyService } from '../services/discography.service.js';
 import type { AlbumHunterService } from '../services/album-hunter.service.js';
 import { AlbumFallbackService, type AlternateCandidate } from '../services/album-fallback.service.js';
 import { albumIdFor, artistIdFor } from '../services/library-scanner.js';
-import { albumAlreadyComplete } from '../services/library-completeness.js';
+import { albumAlreadyComplete, filesMissingOnDisk } from '../services/library-completeness.js';
 import { setArtwork, pickAlbumCover, pickArtistImage } from '../services/artwork-store.js';
 import { join } from 'node:path';
 import type { Lidarr } from '@nicotind/lidarr-client';
@@ -186,8 +186,25 @@ export function discographyRoutes({
       }
     }
 
+    // Complete-only: never re-download tracks already on disk. When the album is
+    // partially present, enqueue ONLY the missing tracks — otherwise the existing
+    // tracks come down a second time and any rip whose filename differs slightly
+    // (an edition/"(Remix)" suffix, a different track-number style) survives the
+    // dedupe and lands as a duplicate version. This is the root-cause fix for
+    // duplicate album versions on (re-)hunts. Falls back to the full folder when
+    // the album isn't on disk yet (a fresh hunt downloads everything).
+    const filesToDownload =
+      artistName && albumTitle
+        ? filesMissingOnDisk(db, artistName, albumTitle, body.selected.files)
+        : body.selected.files;
+
+    if (filesToDownload.length === 0) {
+      // Every file in the chosen folder is already on disk — nothing to fetch.
+      return c.json({ ok: true, queued: 0, alreadyComplete: true }, 200);
+    }
+
     try {
-      await slskdRef.current.transfers.enqueue(body.selected.username, body.selected.files);
+      await slskdRef.current.transfers.enqueue(body.selected.username, filesToDownload);
     } catch {
       return c.json(
         { error: `Download failed for user "${body.selected.username}" — they may be offline` },
@@ -207,9 +224,10 @@ export function discographyRoutes({
         artistName,
         albumTitle,
         canonicalTracks: tracks.map((t) => t.title),
-        // Recovery target: the files the user actually chose, so a folder that
-        // downloads in full never triggers a duplicate-dumping fallback wave.
-        targetFiles: body.selected.files,
+        // Recovery target: the files we actually enqueued (missing tracks only),
+        // so a folder that downloads in full never triggers a duplicate-dumping
+        // fallback wave and we don't chase tracks already on disk.
+        targetFiles: filesToDownload,
         alternates: body.alternates ?? [],
       });
     } catch (err) {

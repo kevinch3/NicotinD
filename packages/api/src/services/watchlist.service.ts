@@ -5,7 +5,7 @@ import type { SlskdRef } from '../index.js';
 import type { CatalogService } from './catalog-search.service.js';
 import type { AlbumHunterService, FolderCandidate } from './album-hunter.service.js';
 import { AlbumFallbackService } from './album-fallback.service.js';
-import { albumAlreadyComplete } from './library-completeness.js';
+import { albumAlreadyComplete, filesMissingOnDisk } from './library-completeness.js';
 
 const log = createLogger('watchlist');
 
@@ -200,8 +200,23 @@ export class WatchlistService {
         return;
       }
 
+      // Complete-only: enqueue only tracks not already on disk (see
+      // filesMissingOnDisk) so a partially-present watched album fills in cleanly
+      // instead of re-downloading duplicate versions of tracks we already have.
+      const filesToDownload = filesMissingOnDisk(
+        this.db,
+        row.artist_name,
+        row.album_title,
+        best.files,
+      );
+      if (filesToDownload.length === 0) {
+        // The chosen folder's tracks are all on disk already — treat as acquired.
+        this.markAcquired(row.id);
+        return;
+      }
+
       try {
-        await slskd.transfers.enqueue(best.username, best.files);
+        await slskd.transfers.enqueue(best.username, filesToDownload);
       } catch (err) {
         this.fail(row.id, `Enqueue failed: ${err instanceof Error ? err.message : String(err)}`);
         return;
@@ -219,7 +234,7 @@ export class WatchlistService {
           artistName: row.artist_name,
           albumTitle: row.album_title,
           canonicalTracks: tracks.map((t) => t.title),
-          targetFiles: best.files,
+          targetFiles: filesToDownload,
           alternates,
         });
       } catch (err) {
