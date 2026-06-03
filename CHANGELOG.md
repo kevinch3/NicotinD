@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.48](https://github.com/kevinch3/NicotinD/compare/v0.1.47...v0.1.48) (2026-06-03)
+
+
+### Features
+
+* label downloads with canonical hunt metadata ([0b9d53c](https://github.com/kevinch3/NicotinD/commit/0b9d53c3bf6267aeb7c85df6dcec3e2b7bb356b7))
+* **web:** show the actual hunt search strings while searching ([597c0c0](https://github.com/kevinch3/NicotinD/commit/597c0c077604d2110030a99d9608a1ad8e50cf0a))
+
+
+### Bug Fixes
+
+* install yt-dlp/spotdl in image and honor acquire enabled flag ([26146b5](https://github.com/kevinch3/NicotinD/commit/26146b51d59089ac658ee91cc03fe3d704648ff5))
+* stop re-downloading on-disk tracks when completing an album ([908c125](https://github.com/kevinch3/NicotinD/commit/908c125c26e2df7856a685b4ab38ff4d41ff05e2))
+* **web:** back button returns to the previous view ([2f3029b](https://github.com/kevinch3/NicotinD/commit/2f3029b580e94eb031470a8e75c3867c14ce3be7))
+* **web:** make the seek bar respond to taps and drags ([9883a61](https://github.com/kevinch3/NicotinD/commit/9883a6143276ef485ccf4b1436baf8cfefe29e96))
+
 ## [0.1.47](https://github.com/kevinch3/NicotinD/compare/v0.1.46...v0.1.47) (2026-06-03)
 
 
