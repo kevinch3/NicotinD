@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.49](https://github.com/kevinch3/NicotinD/compare/v0.1.48...v0.1.49) (2026-06-03)
+
+
+### Bug Fixes
+
+* hunter fixes ([0c6b1c3](https://github.com/kevinch3/NicotinD/commit/0c6b1c3b61049c56ed040914c7f6bd20b32bbaba))
+
 ## [0.1.48](https://github.com/kevinch3/NicotinD/compare/v0.1.47...v0.1.48) (2026-06-03)
 
 
