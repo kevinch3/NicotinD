@@ -102,12 +102,12 @@ export class AlbumHunterService {
     canonicalTracks: LidarrTrack[],
     opts: { skewSearch?: boolean } = {},
   ): Promise<FolderCandidate[]> {
-    const baseQueries = [
+    const baseQs = [
       `${artistName} ${albumTitle}`,
       `${artistName} - ${albumTitle}`,
     ];
 
-    const base = await this.searchAndScore(baseQueries, canonicalTracks);
+    const base = await this.searchAndScore(baseQs, canonicalTracks);
 
     // Soft-ban bypass: slskd/Soulseek silently returns zero responses for some
     // exact phrases (e.g. "The Artist - The Track") even when the files exist.
@@ -118,7 +118,7 @@ export class AlbumHunterService {
     // folder reachable only via a skewed phrase. A strong base adds no searches.
     const bestBasePct = base.length ? base[0].matchPct : 0;
     if (opts.skewSearch && bestBasePct < SKEW_TRIGGER_PCT) {
-      const skewed = buildSkewedQueries(artistName, albumTitle, baseQueries);
+      const skewed = buildSkewedQueries(artistName, albumTitle, baseQs);
       if (skewed.length) {
         const extra = await this.searchAndScore(skewed, canonicalTracks);
         return mergeCandidates(base, extra);
@@ -126,6 +126,40 @@ export class AlbumHunterService {
     }
 
     return base;
+  }
+
+  // Phase-1 of a two-phase hunt: run base queries only and report whether skew
+  // is needed (so the frontend can highlight the query list in real time).
+  async huntBase(
+    artistName: string,
+    albumTitle: string,
+    canonicalTracks: LidarrTrack[],
+    opts: { skewSearch?: boolean } = {},
+  ): Promise<{ candidates: FolderCandidate[]; skewNeeded: boolean }> {
+    const baseQs = [
+      `${artistName} ${albumTitle}`,
+      `${artistName} - ${albumTitle}`,
+    ];
+    const candidates = await this.searchAndScore(baseQs, canonicalTracks);
+    const bestBasePct = candidates.length ? candidates[0].matchPct : 0;
+    const skewNeeded = (opts.skewSearch !== false) && bestBasePct < SKEW_TRIGGER_PCT;
+    return { candidates, skewNeeded };
+  }
+
+  // Phase-2 of a two-phase hunt: run skew-variant queries and return their
+  // candidates independently. The caller (frontend) merges with base results.
+  async huntSkew(
+    artistName: string,
+    albumTitle: string,
+    canonicalTracks: LidarrTrack[],
+  ): Promise<FolderCandidate[]> {
+    const baseQs = [
+      `${artistName} ${albumTitle}`,
+      `${artistName} - ${albumTitle}`,
+    ];
+    const skewed = buildSkewedQueries(artistName, albumTitle, baseQs);
+    if (!skewed.length) return [];
+    return this.searchAndScore(skewed, canonicalTracks);
   }
 
   private async searchAndScore(
@@ -329,6 +363,11 @@ export function buildSkewedQueries(
   // singles, whose Lidarr title often carries a suffix the peer's file omits.
   const core = stripTitleQualifiers(albumTitle);
 
+  // Artist-name truncation: drop the trailing character so Soulseek's phrase
+  // matcher sees a partial token rather than the exact banned name. Effective
+  // for Spanish/Portuguese names ending in -o/-a/-e (e.g. "Bahiano" → "Bahian").
+  const truncArtist = artistName.slice(0, -1);
+
   const variants = [
     `${albumTitle} ${artistName}`, // reorder
     albumTitle, // album only
@@ -336,6 +375,9 @@ export function buildSkewedQueries(
     `${artistName} ${firstWord(albumTitle)}`, // artist + first album word
     `${artistName} ${core}`, // artist + qualifier-stripped title
     core, // qualifier-stripped title only
+    ...(truncArtist.length >= 3
+      ? [`${truncArtist} ${albumTitle}`, `${truncArtist} - ${albumTitle}`]
+      : []),
   ];
 
   const seen = new Set(baseQueries.map((q) => q.toLowerCase().trim()));

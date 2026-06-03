@@ -1,7 +1,7 @@
 import { createLogger } from '@nicotind/core';
 import type { Database } from 'bun:sqlite';
 import { isUnknownLike } from './audio-tags.js';
-import { normalizeForGrouping } from './album-grouping.js';
+import { normalizeArtistForGrouping, normalizeForGrouping } from './album-grouping.js';
 
 const log = createLogger('library-curator');
 
@@ -135,7 +135,7 @@ export class LibraryCurator {
 }
 
 function albumKey(artist: string, title: string): string {
-  return `${normalizeForGrouping(artist)}::${normalizeForGrouping(title)}`;
+  return `${normalizeArtistForGrouping(artist)}::${normalizeForGrouping(title)}`;
 }
 
 type Classification = 'album' | 'single' | 'compilation' | 'unknown';

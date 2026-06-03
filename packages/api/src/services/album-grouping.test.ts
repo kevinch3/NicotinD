@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'bun:test';
-import { albumGroupKey, normalizeForGrouping, pickCanonicalId } from './album-grouping.js';
+import {
+  albumGroupKey,
+  normalizeArtistForGrouping,
+  normalizeForGrouping,
+  pickCanonicalId,
+} from './album-grouping.js';
 
 describe('normalizeForGrouping', () => {
   it('strips diacritics and lowercases', () => {
@@ -49,6 +54,25 @@ describe('normalizeForGrouping', () => {
     expect(normalizeForGrouping('Greatest Hits')).not.toBe(normalizeForGrouping('Greatest Hits II'));
     // No edition keyword → trailing number is part of the title, kept.
     expect(normalizeForGrouping('Version 2.0')).toBe('version 2 0');
+  });
+});
+
+describe('normalizeArtistForGrouping', () => {
+  it('treats artists differing only by punctuation as distinct', () => {
+    // "Miranda!" and "Miranda" are different artists.
+    expect(normalizeArtistForGrouping('Miranda!')).not.toBe(normalizeArtistForGrouping('Miranda'));
+    expect(normalizeArtistForGrouping('Panic! at the Disco')).not.toBe(
+      normalizeArtistForGrouping('Panic at the Disco'),
+    );
+  });
+
+  it('strips diacritics and lowercases', () => {
+    expect(normalizeArtistForGrouping('Björk')).toBe('bjork');
+    expect(normalizeArtistForGrouping('MIRANDA!')).toBe('miranda!');
+  });
+
+  it('collapses extra whitespace', () => {
+    expect(normalizeArtistForGrouping('  The   Beatles  ')).toBe('the beatles');
   });
 });
 

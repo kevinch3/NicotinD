@@ -3,9 +3,10 @@ import { join, relative, sep, extname } from 'node:path';
 import { readdir, stat } from 'node:fs/promises';
 import { createLogger } from '@nicotind/core';
 import type { Database } from 'bun:sqlite';
-import { albumGroupKey, normalizeForGrouping } from './album-grouping.js';
+import { albumGroupKey, normalizeArtistForGrouping } from './album-grouping.js';
 import { inferFolderAlbum, inferMetadataFromPath, hasUsableValue } from './path-inference.js';
 import { getMusicMetadata } from './music-metadata-loader.js';
+import { selectAlbumTracks } from './library-track-select.js';
 
 const log = createLogger('library-scanner');
 
@@ -118,7 +119,7 @@ export function songId(relPath: string): string {
 
 /** Stable artist id — same normalized artist always maps to one id. */
 export function artistIdFor(artist: string): string {
-  return sha1(`artist:${normalizeForGrouping(artist)}`);
+  return sha1(`artist:${normalizeArtistForGrouping(artist)}`);
 }
 
 /**
@@ -166,10 +167,44 @@ function resolveTags(t: ScannedTrack): { artist: string; album: string; title: s
 }
 
 /**
- * Pure aggregation: turn a flat list of scanned tracks into canonical album /
- * song / artist / genre rows. No IO — directly unit-testable.
+ * Reduce a flat track list to a clean, consumable set: one best-quality file per
+ * track per album. Groups by the same album id the scanner mints (so cross-folder
+ * editions dedupe together), then defers to `selectAlbumTracks` — which keys to
+ * the canonical Lidarr tracklist when `canonicalByAlbum` has one (dropping foreign
+ * rips) and otherwise collapses format-duplicates by title. Pure.
  */
-export function buildLibrary(tracks: ScannedTrack[]): BuiltLibrary {
+export function selectLibraryTracks(
+  tracks: ScannedTrack[],
+  canonicalByAlbum?: Map<string, string[]>,
+): ScannedTrack[] {
+  const byAlbum = new Map<string, Array<{ track: ScannedTrack; relPath: string; title: string; suffix: string; bitRate: number }>>();
+  for (const t of tracks) {
+    const { artist, album, title } = resolveTags(t);
+    const albId = albumIdFor(artist, album);
+    const arr = byAlbum.get(albId) ?? [];
+    arr.push({ track: t, relPath: t.relPath, title, suffix: t.suffix, bitRate: t.bitRate });
+    byAlbum.set(albId, arr);
+  }
+  const kept: ScannedTrack[] = [];
+  for (const [albId, group] of byAlbum) {
+    for (const sel of selectAlbumTracks(group, canonicalByAlbum?.get(albId))) {
+      kept.push(sel.track);
+    }
+  }
+  return kept;
+}
+
+/**
+ * Pure aggregation: turn a flat list of scanned tracks into canonical album /
+ * song / artist / genre rows. No IO — directly unit-testable. Tracks are first
+ * passed through `selectLibraryTracks` so the built library is always a clean
+ * one-best-file-per-track view (see that helper + `selectAlbumTracks`).
+ */
+export function buildLibrary(
+  tracks: ScannedTrack[],
+  canonicalByAlbum?: Map<string, string[]>,
+): BuiltLibrary {
+  tracks = selectLibraryTracks(tracks, canonicalByAlbum);
   const songs: SongRow[] = [];
   // album id -> accumulating state
   const albumAcc = new Map<
@@ -332,10 +367,44 @@ export class LibraryScanner {
     const startedAt = Date.now();
     const files = await this.walk(this.musicDir);
     const tracks = await this.readTracks(files);
-    const built = buildLibrary(tracks);
+    const built = buildLibrary(tracks, this.canonicalByAlbum());
     const result = this.persist(built, startedAt, true);
     log.info({ ...result }, 'Full scan complete');
     return result;
+  }
+
+  /**
+   * Map album id → canonical Lidarr track titles, drawn from recorded album jobs.
+   * Lets the scanner present exactly the album Lidarr proposes: one best file per
+   * canonical track, foreign/mislabeled rips excluded. Prefers the fullest list
+   * when an album has multiple jobs.
+   */
+  private canonicalByAlbum(): Map<string, string[]> {
+    const map = new Map<string, string[]>();
+    let rows: Array<{ artist_name: string; album_title: string; canonical_tracks_json: string }>;
+    try {
+      rows = this.db
+        .query<{ artist_name: string; album_title: string; canonical_tracks_json: string }, []>(
+          `SELECT artist_name, album_title, canonical_tracks_json FROM album_jobs
+           WHERE artist_name IS NOT NULL AND album_title IS NOT NULL AND canonical_tracks_json IS NOT NULL`,
+        )
+        .all();
+    } catch {
+      return map; // album_jobs absent (e.g. slskd unconfigured) — no canonical data
+    }
+    for (const r of rows) {
+      let titles: unknown;
+      try {
+        titles = JSON.parse(r.canonical_tracks_json);
+      } catch {
+        continue;
+      }
+      if (!Array.isArray(titles) || titles.length === 0) continue;
+      const id = albumIdFor(r.artist_name, r.album_title);
+      const prev = map.get(id);
+      if (!prev || titles.length > prev.length) map.set(id, titles as string[]);
+    }
+    return map;
   }
 
   /**
@@ -347,7 +416,7 @@ export class LibraryScanner {
     const abs = relPaths.map((p) => join(this.musicDir, p));
     const tracks = await this.readTracks(abs);
     if (tracks.length === 0) return;
-    const built = buildLibrary(tracks);
+    const built = buildLibrary(tracks, this.canonicalByAlbum());
     this.persist(built, Date.now(), false);
     log.info({ files: tracks.length, albums: built.albums.length }, 'Incremental scan complete');
   }

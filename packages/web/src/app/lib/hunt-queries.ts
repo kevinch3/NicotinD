@@ -33,6 +33,11 @@ export function skewedQueries(artist: string, album: string): string[] {
   const firstWord = (s: string) => s.trim().split(/\s+/)[0] ?? '';
   const core = stripTitleQualifiers(album);
 
+  // Artist-name truncation: drop the trailing character so Soulseek's phrase
+  // matcher sees a partial token rather than the exact banned name. Effective
+  // for Spanish/Portuguese names ending in -o/-a/-e (e.g. "Bahiano" → "Bahian").
+  const truncArtist = artist.slice(0, -1);
+
   const variants = [
     `${album} ${artist}`,
     album,
@@ -40,6 +45,7 @@ export function skewedQueries(artist: string, album: string): string[] {
     `${artist} ${firstWord(album)}`,
     `${artist} ${core}`,
     core,
+    ...(truncArtist.length >= 3 ? [`${truncArtist} ${album}`, `${truncArtist} - ${album}`] : []),
   ];
 
   const seen = new Set(baseQueries(artist, album).map((q) => q.toLowerCase().trim()));

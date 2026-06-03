@@ -7,14 +7,14 @@ import type { AuthEnv } from '../middleware/auth.js';
 import type { Database } from 'bun:sqlite';
 import { getDatabase } from '../db.js';
 import type { LibraryCurator } from '../services/library-curator.js';
-import { normalizeForGrouping } from '../services/album-grouping.js';
+import { normalizeArtistForGrouping, normalizeForGrouping } from '../services/album-grouping.js';
 
 const log = createLogger('library');
 
 const VALID_CLASSIFICATIONS = new Set(['album', 'single', 'compilation', 'unknown']);
 
 /**
- * Returns a Set of "artist album" group keys (using normalizeForGrouping) for
+ * Returns a Set of "artist album" group keys for
  * every album that has an active download job. Used to suppress partially-downloaded
  * albums from library listing endpoints so the user never sees an incomplete album.
  */
@@ -26,7 +26,7 @@ function getDownloadingGroupKeys(db: Database): Set<string> {
     )
     .all();
   return new Set(
-    jobs.map((j) => `${normalizeForGrouping(j.artist_name)} ${normalizeForGrouping(j.album_title)}`),
+    jobs.map((j) => `${normalizeArtistForGrouping(j.artist_name)} ${normalizeForGrouping(j.album_title)}`),
   );
 }
 
@@ -218,7 +218,7 @@ export function libraryRoutes(
       .all(id);
     const downloadingKeys = getDownloadingGroupKeys(db);
     const visibleAlbums = albumRows
-      .filter((r) => !downloadingKeys.has(`${normalizeForGrouping(r.artist)} ${normalizeForGrouping(r.name)}`))
+      .filter((r) => !downloadingKeys.has(`${normalizeArtistForGrouping(r.artist)} ${normalizeForGrouping(r.name)}`))
       .map(rowToAlbum);
     return c.json({ artist: rowToArtist(artistRow), albums: visibleAlbums });
   });
@@ -249,7 +249,7 @@ export function libraryRoutes(
       .all(...params, size, offset);
     const downloadingKeys = getDownloadingGroupKeys(db);
     const albums = rows
-      .filter((r) => !downloadingKeys.has(`${normalizeForGrouping(r.artist)} ${normalizeForGrouping(r.name)}`))
+      .filter((r) => !downloadingKeys.has(`${normalizeArtistForGrouping(r.artist)} ${normalizeForGrouping(r.name)}`))
       .map(rowToAlbum);
     return c.json(albums);
   });

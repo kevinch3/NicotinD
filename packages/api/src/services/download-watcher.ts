@@ -6,7 +6,7 @@ import type { CompletedDownloadFile } from './path-inference.js';
 import { LibraryOrganizer } from './library-organizer.js';
 import { AcoustIdLookup } from './acoustid-lookup.js';
 import { getDatabase } from '../db.js';
-import { normalizeForGrouping } from './album-grouping.js';
+import { normalizeArtistForGrouping, normalizeForGrouping } from './album-grouping.js';
 
 const log = createLogger('download-watcher');
 
@@ -84,7 +84,7 @@ export class DownloadWatcher {
           const candidateAlbum = segments[segments.length - 1]!;
           const candidateArtist = segments[segments.length - 2]!;
           const normAlbum = normalizeForGrouping(candidateAlbum);
-          const normArtist = normalizeForGrouping(candidateArtist);
+          const normArtist = normalizeArtistForGrouping(candidateArtist);
 
           const activeJobs = db
             .query<{ artist_name: string; album_title: string }, []>(
@@ -97,7 +97,7 @@ export class DownloadWatcher {
           for (const job of activeJobs) {
             if (
               normalizeForGrouping(job.album_title) === normAlbum &&
-              normalizeForGrouping(job.artist_name) === normArtist
+              normalizeArtistForGrouping(job.artist_name) === normArtist
             ) {
               return { artist: job.artist_name, album: job.album_title };
             }

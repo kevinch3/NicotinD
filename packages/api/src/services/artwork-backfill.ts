@@ -204,7 +204,7 @@ export async function backfillArtwork(
       result.albumLookupMatched += 1;
 
       // Opportunistically fill the artist poster from the same payload (the
-      // library artist_id is sha1(normalizeForGrouping(artist)), matching the
+      // library artist_id is sha1(normalizeArtistForGrouping(artist)), matching the
       // album row's artist_id) when we don't already have one.
       const poster = pickArtistImage(match.artist?.images);
       if (

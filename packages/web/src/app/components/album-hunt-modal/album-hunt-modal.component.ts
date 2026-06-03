@@ -7,6 +7,7 @@ import {
   computed,
   OnInit,
 } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
 import { firstValueFrom } from 'rxjs';
 import {
   ApiService,
@@ -17,10 +18,12 @@ import { TransferService } from '../../services/transfer.service';
 import { baseQueries, skewedQueries } from '../../lib/hunt-queries';
 
 type HuntState = 'idle' | 'searching' | 'results' | 'error' | 'downloading';
+export type QueryPhaseState = 'idle' | 'searching' | 'done' | 'skipped';
 
 @Component({
   selector: 'app-album-hunt-modal',
   standalone: true,
+  imports: [NgTemplateOutlet],
   templateUrl: './album-hunt-modal.component.html',
   host: { '(document:keydown.escape)': 'close()' },
 })
@@ -54,6 +57,10 @@ export class AlbumHuntModalComponent implements OnInit {
   // client filter), so toggling it re-runs the hunt. Can be unchecked to force
   // the unmodified queries only.
   readonly skewSearch = signal(true);
+
+  // Per-query progress state — updated in real time as each phase completes.
+  // Keys are the exact query strings; value is one of the QueryPhaseState literals.
+  readonly queryStates = signal<Record<string, QueryPhaseState>>({});
 
   // The exact Soulseek search strings this hunt fires — shown in the loading
   // message so the user can see what's being searched (and which skew variants
@@ -97,22 +104,70 @@ export class AlbumHuntModalComponent implements OnInit {
     this.selectedCandidate.set(null);
     this.errorMsg.set('');
 
+    const artist = this.artistName();
+    const album = this.album().title;
+
+    // Initialise all query rows to 'idle' before either phase fires.
+    const initialStates: Record<string, QueryPhaseState> = {};
+    for (const q of baseQueries(artist, album)) initialStates[q] = 'idle';
+    if (this.skewSearch()) {
+      for (const q of skewedQueries(artist, album)) initialStates[q] = 'idle';
+    }
+    this.queryStates.set(initialStates);
+
     try {
-      const result = await firstValueFrom(
-        this.api.huntAlbum(this.album().lidarrId, {
-          artistName: this.artistName(),
-          albumTitle: this.album().title,
+      // Phase 1 — base queries.
+      this._setPhaseState(baseQueries(artist, album), 'searching');
+
+      const baseResult = await firstValueFrom(
+        this.api.huntAlbumBase(this.album().lidarrId, {
+          artistName: artist,
+          albumTitle: album,
           skewSearch: this.skewSearch(),
         }),
       );
 
-      this.candidates.set(result.candidates);
-      this.totalTracks.set(result.totalTracks);
+      this._setPhaseState(baseQueries(artist, album), 'done');
+      this.candidates.set(baseResult.candidates);
+      this.totalTracks.set(baseResult.totalTracks);
+
+      // Phase 2 — skew queries (only when the base didn't find a confident match).
+      if (this.skewSearch() && baseResult.skewNeeded) {
+        const skewQs = skewedQueries(artist, album);
+        if (skewQs.length) {
+          this._setPhaseState(skewQs, 'searching');
+
+          const skewResult = await firstValueFrom(
+            this.api.huntAlbumSkew(this.album().lidarrId, {
+              artistName: artist,
+              albumTitle: album,
+            }),
+          );
+
+          this._setPhaseState(skewQs, 'done');
+
+          // Merge skew candidates with base on the frontend: de-dupe by
+          // username::directory, keep the higher-scoring instance, then re-rank.
+          this.candidates.set(mergeCandidates(baseResult.candidates, skewResult.candidates));
+        }
+      } else if (this.skewSearch()) {
+        // Base was confident — skew not needed; mark rows as skipped.
+        this._setPhaseState(skewedQueries(artist, album), 'skipped');
+      }
+
       this.state.set('results');
     } catch (err) {
       this.errorMsg.set(err instanceof Error ? err.message : 'Hunt failed');
       this.state.set('error');
     }
+  }
+
+  private _setPhaseState(queries: string[], st: QueryPhaseState): void {
+    this.queryStates.update((prev) => {
+      const next = { ...prev };
+      for (const q of queries) next[q] = st;
+      return next;
+    });
   }
 
   async downloadSelected(): Promise<void> {
@@ -194,7 +249,30 @@ export class AlbumHuntModalComponent implements OnInit {
     return parts.slice(-2).join(' / ');
   }
 
+  queryState(q: string): QueryPhaseState {
+    return this.queryStates()[q] ?? 'idle';
+  }
+
+  queryRowClass(st: QueryPhaseState): string {
+    if (st === 'searching') return 'bg-blue-500/20 text-blue-300';
+    if (st === 'done') return 'bg-green-500/15 text-green-300';
+    if (st === 'skipped') return 'bg-theme-surface-2 opacity-40';
+    return 'bg-theme-surface-2'; // idle
+  }
+
   close(): void {
     this.closed.emit();
   }
+}
+
+// Client-side candidate merge: de-dupe by username::directory, keep the
+// higher-scoring instance per key, then sort by matchPct descending.
+function mergeCandidates(base: FolderCandidate[], extra: FolderCandidate[]): FolderCandidate[] {
+  const byKey = new Map<string, FolderCandidate>();
+  for (const c of [...base, ...extra]) {
+    const key = `${c.username}::${c.directory}`;
+    const prev = byKey.get(key);
+    if (!prev || c.matchPct > prev.matchPct) byKey.set(key, c);
+  }
+  return [...byKey.values()].sort((a, b) => b.matchPct - a.matchPct);
 }

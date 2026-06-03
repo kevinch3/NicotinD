@@ -320,12 +320,13 @@ describe('AlbumHunterService', () => {
       expect(skewed).toContain('Stay');
     });
 
-    it('produces reorder / album-only variants and excludes the base queries', () => {
+    it('produces reorder / album-only / truncation variants and excludes the base queries', () => {
       const base = ['Artist Album', 'Artist - Album'];
       const skewed = buildSkewedQueries('Artist', 'Album', base);
       // "drop the" and "artist + first word" both collapse to "Artist Album"
       // which is a base query, so only the genuinely-distinct variants survive.
-      expect(skewed).toEqual(['Album Artist', 'Album']);
+      // Truncation adds "Artis Album" and "Artis - Album" (drop last char of artist).
+      expect(skewed).toEqual(['Album Artist', 'Album', 'Artis Album', 'Artis - Album']);
       for (const q of skewed) expect(base).not.toContain(q);
     });
 

@@ -38,7 +38,7 @@ import { LibraryScanner } from './services/library-scanner.js';
 import { LibraryCurator } from './services/library-curator.js';
 import { LibraryOrganizer } from './services/library-organizer.js';
 import { AcoustIdLookup } from './services/acoustid-lookup.js';
-import { normalizeForGrouping } from './services/album-grouping.js';
+import { normalizeArtistForGrouping, normalizeForGrouping } from './services/album-grouping.js';
 import { createLogger } from '@nicotind/core';
 import { initDatabase } from './db.js';
 import { createWebSocketHandlers } from './services/websocket.js';
@@ -153,7 +153,7 @@ export function createApp({
       const candidateAlbum = segments[segments.length - 1]!;
       const candidateArtist = segments[segments.length - 2]!;
       const normAlbum = normalizeForGrouping(candidateAlbum);
-      const normArtist = normalizeForGrouping(candidateArtist);
+      const normArtist = normalizeArtistForGrouping(candidateArtist);
 
       const activeJobs = db
         .query<{ artist_name: string; album_title: string }, []>(
@@ -166,7 +166,7 @@ export function createApp({
       for (const job of activeJobs) {
         if (
           normalizeForGrouping(job.album_title) === normAlbum &&
-          normalizeForGrouping(job.artist_name) === normArtist
+          normalizeArtistForGrouping(job.artist_name) === normArtist
         ) {
           return { artist: job.artist_name, album: job.album_title };
         }

@@ -417,6 +417,30 @@ export class ApiService {
     return this.http.post<HuntResult>(`/api/discography/albums/${lidarrAlbumId}/hunt`, overrides);
   }
 
+  // Phase-1 of the two-phase hunt: fires base queries only and returns whether
+  // skew variants are needed (bestBasePct < threshold).
+  huntAlbumBase(
+    lidarrAlbumId: number,
+    overrides: { artistName?: string; albumTitle?: string; skewSearch?: boolean } = {},
+  ) {
+    return this.http.post<HuntResult & { skewNeeded: boolean }>(
+      `/api/discography/albums/${lidarrAlbumId}/hunt/base`,
+      overrides,
+    );
+  }
+
+  // Phase-2 of the two-phase hunt: fires skew-variant queries and returns
+  // their candidates independently (frontend merges with base results).
+  huntAlbumSkew(
+    lidarrAlbumId: number,
+    overrides: { artistName?: string; albumTitle?: string } = {},
+  ) {
+    return this.http.post<{ candidates: FolderCandidate[] }>(
+      `/api/discography/albums/${lidarrAlbumId}/hunt/skew`,
+      overrides,
+    );
+  }
+
   // Enqueues the chosen folder candidate and records an album job so failed
   // tracks can be recovered from the supplied alternate candidates.
   // `replace` (admin re-hunt) supersedes the album's prior active job so the
@@ -525,6 +549,7 @@ export interface FolderCandidate {
 export interface HuntResult {
   candidates: FolderCandidate[];
   totalTracks: number;
+  skewNeeded?: boolean;
 }
 
 export interface CatalogArtist {

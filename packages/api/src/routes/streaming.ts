@@ -32,13 +32,26 @@ export function streamingRoutes(musicDir: string, db: Database, dataDir: string)
       .query<{ path: string }, [string]>('SELECT path FROM library_songs WHERE id = ?')
       .get(id);
     if (!row) {
-      // Album/artist cover ids point at a representative song's id; but fall back
-      // to "first song of this album/artist id" in case the cover id is the group id.
-      row = db
-        .query<{ path: string }, [string, string]>(
-          'SELECT path FROM library_songs WHERE album_id = ? OR artist_id = ? LIMIT 1',
-        )
-        .get(id, id);
+      // Album/artist cover ids point at a representative song. Pick the album's
+      // FIRST track (lowest disc/track) deterministically rather than an arbitrary
+      // row: track 1 lives in the canonical album folder, so its folder image is
+      // the album's real cover. why: an unordered `LIMIT 1` could land on a
+      // mislabeled/wrong-source file in the same folder, giving the album the
+      // wrong thumbnail even while individual tracks show correct embedded art.
+      // (Foreign rips are already excluded from library_songs by the scanner's
+      // track selection, which further narrows this to real album tracks.)
+      row =
+        db
+          .query<{ path: string }, [string]>(
+            `SELECT path FROM library_songs WHERE album_id = ?
+             ORDER BY COALESCE(disc, 1), COALESCE(track, 999999), path LIMIT 1`,
+          )
+          .get(id) ??
+        db
+          .query<{ path: string }, [string]>(
+            'SELECT path FROM library_songs WHERE artist_id = ? ORDER BY path LIMIT 1',
+          )
+          .get(id);
     }
     if (!row) return null;
     const abs = resolve(join(musicRoot, row.path));

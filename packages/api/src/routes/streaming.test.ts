@@ -91,6 +91,27 @@ describe('streaming routes', () => {
     const res = await app.request('/cover/missing');
     expect(res.status).toBe(404);
   });
+
+  it('resolves an album cover from track 1 deterministically (not an arbitrary row)', async () => {
+    // Track 2 sits in a folder that sorts FIRST alphabetically and has no art;
+    // track 1 sits in a later-sorting folder that holds the real cover. Ordering
+    // by track (not path/insertion) must pick track 1 so the album shows the
+    // right thumbnail even though other tracks/folders differ.
+    mkdirSync(join(musicDir, 'Aaa wrong'), { recursive: true });
+    writeFileSync(join(musicDir, 'Aaa wrong', '02.mp3'), AUDIO_BYTES);
+    mkdirSync(join(musicDir, 'Zzz right'), { recursive: true });
+    writeFileSync(join(musicDir, 'Zzz right', '01.mp3'), AUDIO_BYTES);
+    writeFileSync(join(musicDir, 'Zzz right', 'cover.jpg'), JPEG_BYTES);
+    db.run(
+      `INSERT INTO library_songs (id, album_id, title, artist, artist_id, track, duration, path, size, bit_rate, suffix, content_type, created, synced_at)
+       VALUES ('multi-2', 'multi', 'Two', 'A', 'art', 2, 0, 'Aaa wrong/02.mp3', 10, 320, 'mp3', 'audio/mpeg', '2024-01-01', 1),
+              ('multi-1', 'multi', 'One', 'A', 'art', 1, 0, 'Zzz right/01.mp3', 10, 320, 'mp3', 'audio/mpeg', '2024-01-01', 1)`,
+    );
+
+    const res = await app.request('/cover/multi');
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('image/jpeg');
+  });
 });
 
 describe('streaming routes — canonical artwork', () => {

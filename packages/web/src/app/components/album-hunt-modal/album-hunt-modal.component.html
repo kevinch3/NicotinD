@@ -55,28 +55,54 @@
           <span class="inline-block w-6 h-6 border-2 border-theme border-t-zinc-300 rounded-full animate-spin"></span>
           <span class="text-sm">Searching Soulseek for "{{ artistName() }} — {{ album().title }}"…</span>
 
-          <!-- Show the exact search strings being tried so the user knows what -->
-          <!-- queries (and skew variants) are running. -->
+          <!-- Per-query progress list. Each row highlights as its phase fires. -->
           <div class="w-full max-w-sm text-left mt-2 space-y-2">
             <div>
               <p class="text-[11px] uppercase tracking-wider opacity-50 mb-1">Queries</p>
               @for (q of baseSearchQueries(); track q) {
-                <code class="block text-xs bg-theme-surface-2 rounded px-2 py-1 mb-1 break-all">{{ q }}</code>
+                <div class="flex items-center gap-2 mb-1">
+                  <ng-container [ngTemplateOutlet]="queryStateIcon" [ngTemplateOutletContext]="{ $implicit: queryState(q) }"></ng-container>
+                  <code class="flex-1 text-xs rounded px-2 py-1 break-all transition-colors"
+                        [class]="queryRowClass(queryState(q))">{{ q }}</code>
+                </div>
               }
             </div>
             @if (skewSearchQueries().length > 0) {
               <div>
                 <p class="text-[11px] uppercase tracking-wider opacity-50 mb-1">Skew variants (tried if needed)</p>
                 @for (q of skewSearchQueries(); track q) {
-                  <code class="block text-xs bg-theme-surface-2 rounded px-2 py-1 mb-1 break-all opacity-80">{{ q }}</code>
+                  <div class="flex items-center gap-2 mb-1">
+                    <ng-container [ngTemplateOutlet]="queryStateIcon" [ngTemplateOutletContext]="{ $implicit: queryState(q) }"></ng-container>
+                    <code class="flex-1 text-xs rounded px-2 py-1 break-all transition-colors"
+                          [class]="queryRowClass(queryState(q))">{{ q }}</code>
+                  </div>
                 }
               </div>
             }
           </div>
 
-          <span class="text-xs opacity-60">This may take up to 30 seconds</span>
+          <span class="text-xs opacity-60">This may take up to 45 seconds</span>
         </div>
       }
+
+      <!-- State icon template: spinner → done check → skip dash → idle dot -->
+      <ng-template #queryStateIcon let-st>
+        @if (st === 'searching') {
+          <span class="flex-shrink-0 inline-block w-3 h-3 border border-blue-400 border-t-transparent rounded-full animate-spin"></span>
+        } @else if (st === 'done') {
+          <svg class="flex-shrink-0 w-3 h-3 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/>
+          </svg>
+        } @else if (st === 'skipped') {
+          <span class="flex-shrink-0 w-3 h-3 flex items-center justify-center">
+            <span class="block w-2 h-px bg-current opacity-40"></span>
+          </span>
+        } @else {
+          <span class="flex-shrink-0 w-3 h-3 flex items-center justify-center">
+            <span class="block w-1 h-1 rounded-full bg-current opacity-30"></span>
+          </span>
+        }
+      </ng-template>
 
       @if (state() === 'error') {
         <div class="p-6 text-center">

@@ -84,6 +84,69 @@ export function discographyRoutes({
     }
   });
 
+  // POST /api/discography/albums/:lidarrAlbumId/hunt/base
+  // Phase-1 of the two-phase hunt: fires only the base queries and returns
+  // whether skew variants are needed. Used by the hunt modal to animate
+  // per-query progress (base rows → searching → done, then skew rows if needed).
+  app.post('/albums/:lidarrAlbumId/hunt/base', async (c) => {
+    const { lidarrAlbumId } = c.req.param();
+    const albumId = Number(lidarrAlbumId);
+    if (Number.isNaN(albumId)) return c.json({ error: 'Invalid album ID' }, 400);
+
+    type HuntBody = { artistName?: string; albumTitle?: string; skewSearch?: boolean };
+    const body = await c.req.json<HuntBody>().catch(() => ({}) as HuntBody);
+
+    try {
+      const [album, tracks] = await Promise.all([
+        lidarr.album.get(albumId),
+        lidarr.track.listByAlbum(albumId),
+      ]);
+
+      const artistName = body.artistName ?? album.artist?.artistName ?? '';
+      const albumTitle = body.albumTitle ?? album.title;
+
+      const { candidates, skewNeeded } = await hunter.huntBase(artistName, albumTitle, tracks, {
+        skewSearch: body.skewSearch,
+      });
+
+      return c.json({ candidates, totalTracks: tracks.length, skewNeeded });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      log.warn({ albumId, err: msg }, 'Album hunt (base phase) failed');
+      return c.json({ error: msg }, 500);
+    }
+  });
+
+  // POST /api/discography/albums/:lidarrAlbumId/hunt/skew
+  // Phase-2 of the two-phase hunt: fires skew-variant queries and returns their
+  // candidates. The frontend merges these with the base-phase candidates.
+  app.post('/albums/:lidarrAlbumId/hunt/skew', async (c) => {
+    const { lidarrAlbumId } = c.req.param();
+    const albumId = Number(lidarrAlbumId);
+    if (Number.isNaN(albumId)) return c.json({ error: 'Invalid album ID' }, 400);
+
+    type HuntBody = { artistName?: string; albumTitle?: string };
+    const body = await c.req.json<HuntBody>().catch(() => ({}) as HuntBody);
+
+    try {
+      const [album, tracks] = await Promise.all([
+        lidarr.album.get(albumId),
+        lidarr.track.listByAlbum(albumId),
+      ]);
+
+      const artistName = body.artistName ?? album.artist?.artistName ?? '';
+      const albumTitle = body.albumTitle ?? album.title;
+
+      const candidates = await hunter.huntSkew(artistName, albumTitle, tracks);
+
+      return c.json({ candidates });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      log.warn({ albumId, err: msg }, 'Album hunt (skew phase) failed');
+      return c.json({ error: msg }, 500);
+    }
+  });
+
   // GET /api/discography/jobs
   // Lists album hunt jobs (default: incomplete ones — exhausted or still active)
   // so the UI can surface albums that never completed and offer a re-hunt. Pass
