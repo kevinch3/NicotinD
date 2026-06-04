@@ -1,4 +1,6 @@
 import type { Track } from '../services/player.service';
+import type { PreserveService } from '../services/preserve.service';
+import type { TrackAction } from '../components/track-row/track-row.component';
 
 export interface BaseSong {
   id: string;
@@ -21,5 +23,23 @@ export function toTrack(song: BaseSong, fallbackAlbum?: string): Track {
     coverArt: song.coverArt,
     duration: song.duration,
     bitRate: song.bitRate,
+  };
+}
+
+/**
+ * Build the "Save offline" / "Remove download" toggle action for a track-row menu.
+ * The label reflects the live preserve state (saved / in-progress / not saved).
+ */
+export function offlineTrackAction(preserve: PreserveService, track: Track): TrackAction {
+  const preserved = preserve.isPreserved(track.id);
+  const inProgress = preserve.isPreserving(track.id);
+  return {
+    label: inProgress ? 'Saving…' : preserved ? 'Remove download' : 'Save offline',
+    destructive: preserved,
+    action: () => {
+      if (inProgress) return;
+      if (preserved) void preserve.remove(track.id);
+      else void preserve.preserve(track);
+    },
   };
 }

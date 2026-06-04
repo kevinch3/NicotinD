@@ -1,4 +1,24 @@
-import { toTrack, type BaseSong } from './track-utils';
+import { vi } from 'vitest';
+import { toTrack, offlineTrackAction, type BaseSong } from './track-utils';
+import type { PreserveService } from '../services/preserve.service';
+import type { Track } from '../services/player.service';
+
+function fakePreserve(state: {
+  preserved?: boolean;
+  inProgress?: boolean;
+}): PreserveService & { preserve: ReturnType<typeof vi.fn>; remove: ReturnType<typeof vi.fn> } {
+  return {
+    isPreserved: () => state.preserved ?? false,
+    isPreserving: () => state.inProgress ?? false,
+    preserve: vi.fn(),
+    remove: vi.fn(),
+  } as unknown as PreserveService & {
+    preserve: ReturnType<typeof vi.fn>;
+    remove: ReturnType<typeof vi.fn>;
+  };
+}
+
+const TRACK: Track = { id: 't1', title: 'T', artist: 'A' };
 
 describe('trackUtils', () => {
   describe('toTrack', () => {
@@ -75,6 +95,37 @@ describe('trackUtils', () => {
     it('leaves bitRate undefined when not provided', () => {
       const song: BaseSong = { id: '8', title: 'T', artist: 'A' };
       expect(toTrack(song).bitRate).toBeUndefined();
+    });
+  });
+
+  describe('offlineTrackAction', () => {
+    it('offers "Save offline" and preserves when not yet saved', () => {
+      const preserve = fakePreserve({ preserved: false });
+      const action = offlineTrackAction(preserve, TRACK);
+      expect(action.label).toBe('Save offline');
+      expect(action.destructive).toBe(false);
+      action.action();
+      expect(preserve.preserve).toHaveBeenCalledWith(TRACK);
+      expect(preserve.remove).not.toHaveBeenCalled();
+    });
+
+    it('offers "Remove download" and removes when already saved', () => {
+      const preserve = fakePreserve({ preserved: true });
+      const action = offlineTrackAction(preserve, TRACK);
+      expect(action.label).toBe('Remove download');
+      expect(action.destructive).toBe(true);
+      action.action();
+      expect(preserve.remove).toHaveBeenCalledWith('t1');
+      expect(preserve.preserve).not.toHaveBeenCalled();
+    });
+
+    it('is a no-op while a save is in progress', () => {
+      const preserve = fakePreserve({ inProgress: true });
+      const action = offlineTrackAction(preserve, TRACK);
+      expect(action.label).toBe('Saving…');
+      action.action();
+      expect(preserve.preserve).not.toHaveBeenCalled();
+      expect(preserve.remove).not.toHaveBeenCalled();
     });
   });
 });

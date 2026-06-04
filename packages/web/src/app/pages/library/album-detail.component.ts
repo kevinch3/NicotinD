@@ -2,7 +2,7 @@ import { Component, inject, signal, computed, OnInit } from '@angular/core';
 import { Router, ActivatedRoute, RouterLink } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
-import { ApiService, type AlbumDetail, type Song } from '../../services/api.service';
+import { ApiService, type AlbumDetail } from '../../services/api.service';
 import { AuthService } from '../../services/auth.service';
 import { PlayerService, type Track } from '../../services/player.service';
 import { PlaylistService } from '../../services/playlist.service';
@@ -15,9 +15,10 @@ import {
 } from '../../components/track-row/track-row.component';
 import { ConfirmDialogComponent } from '../../components/confirm-dialog/confirm-dialog.component';
 import { CoverArtComponent } from '../../components/cover-art/cover-art.component';
-import { toTrack } from '../../lib/track-utils';
+import { toTrack, offlineTrackAction } from '../../lib/track-utils';
 import { resolveArtistRoute } from '../../lib/route-utils';
 import { NavigationService } from '../../services/navigation.service';
+import { PreserveService } from '../../services/preserve.service';
 
 @Component({
   selector: 'app-album-detail',
@@ -41,6 +42,7 @@ export class AlbumDetailComponent implements OnInit {
   private route = inject(ActivatedRoute);
   private http = inject(HttpClient);
   private nav = inject(NavigationService);
+  readonly preserve = inject(PreserveService);
   readonly shareCopied = signal(false);
 
   // Return to the previous in-app view (e.g. the artist page we came from),
@@ -125,10 +127,10 @@ export class AlbumDetailComponent implements OnInit {
     this.player.play(toTrack(song, this.selectedAlbum()?.name));
   }
 
-  playAlbum(): void {
+  private albumTracks(): Track[] {
     const album = this.selectedAlbum();
-    if (!album?.song?.length) return;
-    const tracks = album.song.map(
+    if (!album?.song?.length) return [];
+    return album.song.map(
       (s): Track => ({
         id: s.id,
         title: s.title,
@@ -138,7 +140,29 @@ export class AlbumDetailComponent implements OnInit {
         duration: s.duration,
       }),
     );
+  }
+
+  playAlbum(): void {
+    const album = this.selectedAlbum();
+    const tracks = this.albumTracks();
+    if (!album || !tracks.length) return;
     this.player.playWithContext(tracks, 0, { type: 'album', id: album.id, name: album.name });
+  }
+
+  // ─── Offline download ─────────────────────────────────────────────
+  readonly albumTrackIds = computed(() => this.detailSongs().map((s) => s.id));
+  readonly albumDownloaded = computed(() =>
+    this.preserve.isCollectionPreserved(this.albumTrackIds()),
+  );
+
+  toggleDownloadAlbum(): void {
+    const album = this.selectedAlbum();
+    if (!album) return;
+    if (this.albumDownloaded()) {
+      void this.preserve.removeMany(this.albumTrackIds());
+    } else {
+      void this.preserve.preserveCollection(album.name, this.albumTracks());
+    }
   }
 
   toTrackFromSong(song: {
@@ -185,8 +209,17 @@ export class AlbumDetailComponent implements OnInit {
     return resolveArtistRoute(id);
   }
 
-  albumTrackActions(song: { id: string; title: string; artistId?: string }): TrackAction[] {
+  albumTrackActions(song: {
+    id: string;
+    title: string;
+    artist: string;
+    artistId?: string;
+    duration?: number;
+    coverArt?: string;
+    bitRate?: number;
+  }): TrackAction[] {
     return [
+      offlineTrackAction(this.preserve, this.toTrackFromSong(song)),
       {
         label: 'Add to playlist',
         action: () => this.playlists.openPicker([song.id]),

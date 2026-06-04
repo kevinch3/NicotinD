@@ -10,8 +10,27 @@
         class="ml-auto px-4 py-1.5 rounded-lg bg-theme-surface-2 text-theme-primary text-sm font-semibold hover:bg-theme-hover transition">
         Play All
       </button>
+      @if (preserve.batch(); as b) {
+        <span class="px-3 py-1.5 text-sm text-theme-muted">Saving {{ b.done }}/{{ b.total }}…</span>
+      } @else {
+        <button (click)="toggleDownloadGenre()"
+          [class]="'px-4 py-1.5 rounded-lg text-sm transition ' + (genreDownloaded()
+            ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30'
+            : 'bg-theme-surface-2 text-theme-muted hover:bg-theme-hover')">
+          @if (genreDownloaded()) { ✓ Downloaded } @else { Download }
+        </button>
+      }
     }
   </div>
+
+  @if (preserve.batch(); as b) {
+    @if (b.stoppedAtCap && b.name === genreSlug()) {
+      <div class="mb-4 px-4 py-2 rounded-lg bg-amber-500/10 text-amber-400 text-sm flex items-center justify-between gap-3">
+        <span>Saved {{ b.done }} of {{ b.total }} — offline storage limit reached.</span>
+        <button (click)="preserve.dismissBatch()" class="text-theme-muted hover:text-theme-secondary">Dismiss</button>
+      </div>
+    }
+  }
   
   @if (loadingGenreSongs()) {
     <div class="text-center py-20">
@@ -23,6 +42,7 @@
         [track]="toTrackFn(song)"
         [subtitle]="song.artist + ' · ' + song.album"
         [duration]="song.duration"
+        [offline]="preserve.isPreserved(song.id)"
         [actions]="genreTrackActions(song)"
         (play)="player.play(toTrackFn(song))"
       />

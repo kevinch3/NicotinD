@@ -3,9 +3,11 @@ import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { provideRouter, ActivatedRoute } from '@angular/router';
 import { of } from 'rxjs';
 import { GenreDetailComponent } from './genre-detail.component';
+import { vi } from 'vitest';
 import { ApiService, type Song } from '../../services/api.service';
 import { AuthService } from '../../services/auth.service';
 import { PlayerService } from '../../services/player.service';
+import { PreserveService } from '../../services/preserve.service';
 
 const MOCK_SONGS: Song[] = [
   {
@@ -71,7 +73,8 @@ function setup() {
 
   const fixture = TestBed.createComponent(GenreDetailComponent);
   fixture.detectChanges();
-  return { component: fixture.componentInstance, playWithContextCalls };
+  const preserve = TestBed.inject(PreserveService);
+  return { component: fixture.componentInstance, playWithContextCalls, preserve };
 }
 
 describe('GenreDetailComponent — Play All', () => {
@@ -134,5 +137,36 @@ describe('GenreDetailComponent — Play All', () => {
     expect(tracks[0].title).toBe('Natiruts Reggae Power');
     expect(tracks[0].artist).toBe('Natiruts');
     expect(tracks[0].album).toBe('Natiruts');
+  });
+});
+
+describe('GenreDetailComponent — Download', () => {
+  it('preserves the whole genre as a collection', () => {
+    const { component, preserve } = setup();
+    const spy = vi.spyOn(preserve, 'preserveCollection').mockResolvedValue();
+
+    component.genreSlug.set('Reggae');
+    component.genreSongs.set(MOCK_SONGS);
+
+    component.toggleDownloadGenre();
+
+    expect(spy).toHaveBeenCalledTimes(1);
+    const [name, tracks] = spy.mock.calls[0];
+    expect(name).toBe('Reggae');
+    expect(tracks).toHaveLength(3);
+    expect(tracks[0].id).toBe('s1');
+  });
+
+  it('removes the collection when already downloaded', () => {
+    const { component, preserve } = setup();
+    vi.spyOn(preserve, 'isCollectionPreserved').mockReturnValue(true);
+    const removeSpy = vi.spyOn(preserve, 'removeMany').mockResolvedValue();
+
+    component.genreSlug.set('Reggae');
+    component.genreSongs.set(MOCK_SONGS);
+
+    component.toggleDownloadGenre();
+
+    expect(removeSpy).toHaveBeenCalledWith(['s1', 's2', 's3']);
   });
 });

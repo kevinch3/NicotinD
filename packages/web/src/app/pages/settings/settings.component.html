@@ -42,6 +42,33 @@
           </div>
         </section>
 
+        <!-- Offline storage -->
+        <section class="rounded-xl border border-theme bg-theme-surface/50 p-6 mb-6">
+          <h2 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary mb-5">Offline storage</h2>
+
+          <p class="text-xs text-theme-muted mb-3">
+            Maximum space used to keep downloaded tracks for offline playback. Downloading a
+            collection fills up to this limit, then stops.
+          </p>
+
+          <div class="grid grid-cols-5 gap-2 mb-4">
+            @for (opt of budgetOptions; track opt.bytes) {
+              <button (click)="preserve.setBudget(opt.bytes)"
+                [class]="'rounded-lg border-2 py-2 text-sm transition-all ' + (preserve.budget() === opt.bytes ? 'border-indigo-500 text-theme-primary' : 'border-transparent bg-theme-surface-2 text-theme-muted hover:border-theme')">
+                {{ opt.label }}
+              </button>
+            }
+          </div>
+
+          <div class="h-2 rounded-full bg-theme-hover overflow-hidden mb-1.5">
+            <div class="h-full bg-emerald-500 transition-all" [style.width.%]="usagePercent()"></div>
+          </div>
+          <p class="text-xs text-theme-muted">
+            {{ formatStorage(preserve.totalUsage()) }} of {{ formatStorage(preserve.budget()) }} used
+            · {{ preserve.preservedTracks().length }} track{{ preserve.preservedTracks().length === 1 ? '' : 's' }} saved
+          </p>
+        </section>
+
         <!-- Plugins (admin) -->
         @if (isAdmin()) {
           <section class="rounded-xl border border-theme bg-theme-surface/50 p-6 mb-6">
