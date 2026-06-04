@@ -10,8 +10,9 @@ import {
   type TrackAction,
 } from '../../components/track-row/track-row.component';
 import { ConfirmDialogComponent } from '../../components/confirm-dialog/confirm-dialog.component';
-import { toTrack } from '../../lib/track-utils';
+import { toTrack, offlineTrackAction } from '../../lib/track-utils';
 import { resolveArtistRoute } from '../../lib/route-utils';
+import { PreserveService } from '../../services/preserve.service';
 
 @Component({
   selector: 'app-genre-detail',
@@ -23,6 +24,7 @@ export class GenreDetailComponent implements OnInit {
   readonly auth = inject(AuthService);
   readonly player = inject(PlayerService);
   private transferService = inject(TransferService);
+  readonly preserve = inject(PreserveService);
   private router = inject(Router);
   private route = inject(ActivatedRoute);
 
@@ -64,7 +66,9 @@ export class GenreDetailComponent implements OnInit {
     if (slug) {
       this.genreSlug.set(slug);
       try {
-        const songs = await firstValueFrom(this.api.getSongsByGenre(slug));
+        // Fetch the full genre (not just the default page) so "Download" can
+        // preserve the whole list up to the storage cap.
+        const songs = await firstValueFrom(this.api.getSongsByGenre(slug, 5000));
         this.genreSongs.set(songs);
       } catch {
         /* ignore */
@@ -87,8 +91,28 @@ export class GenreDetailComponent implements OnInit {
 
   protected toTrackFn = toTrack;
 
+  // ─── Offline download ─────────────────────────────────────────────
+  readonly genreTrackIds = computed(() => this.filteredGenreSongs().map((s) => s.id));
+  readonly genreDownloaded = computed(() =>
+    this.preserve.isCollectionPreserved(this.genreTrackIds()),
+  );
+
+  toggleDownloadGenre(): void {
+    const genre = this.genreSlug();
+    if (!genre) return;
+    if (this.genreDownloaded()) {
+      void this.preserve.removeMany(this.genreTrackIds());
+    } else {
+      void this.preserve.preserveCollection(
+        genre,
+        this.filteredGenreSongs().map((s) => toTrack(s)),
+      );
+    }
+  }
+
   genreTrackActions(song: Song): TrackAction[] {
     return [
+      offlineTrackAction(this.preserve, toTrack(song)),
       ...(song.artistId
         ? [
             {

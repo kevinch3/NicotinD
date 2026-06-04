@@ -7,8 +7,20 @@ import { AuthService } from '../../services/auth.service';
 import { ThemeService, THEME_PRESETS, type ThemeId } from '../../services/theme.service';
 import { RemotePlaybackService } from '../../services/remote-playback.service';
 import { PlaybackWsService } from '../../services/playback-ws.service';
+import { PreserveService, UNLIMITED_BUDGET } from '../../services/preserve.service';
 import { PasswordFieldComponent } from '../../components/password-field/password-field.component';
 import { APP_VERSION } from '../../app.config';
+
+const GB = 1024 * 1024 * 1024;
+
+/** Selectable offline storage budgets (bytes). */
+export const BUDGET_OPTIONS: { label: string; bytes: number }[] = [
+  { label: '1 GB', bytes: 1 * GB },
+  { label: '2 GB', bytes: 2 * GB },
+  { label: '5 GB', bytes: 5 * GB },
+  { label: '10 GB', bytes: 10 * GB },
+  { label: 'Unlimited', bytes: UNLIMITED_BUDGET },
+];
 
 type DuplicateSong = {
   id: string;
@@ -32,11 +44,25 @@ export class SettingsComponent implements OnInit {
   readonly auth = inject(AuthService);
   readonly themeService = inject(ThemeService);
   readonly remote = inject(RemotePlaybackService);
+  readonly preserve = inject(PreserveService);
   private ws = inject(PlaybackWsService);
 
+  readonly budgetOptions = BUDGET_OPTIONS;
   readonly themePresets = THEME_PRESETS;
   readonly myDeviceId = this.ws.getDeviceId();
   readonly version = inject(APP_VERSION);
+
+  formatStorage(bytes: number): string {
+    if (bytes >= UNLIMITED_BUDGET) return '∞';
+    if (bytes < GB) return `${(bytes / (1024 * 1024)).toFixed(0)} MB`;
+    return `${(bytes / GB).toFixed(bytes % GB === 0 ? 0 : 1)} GB`;
+  }
+
+  usagePercent(): number {
+    const budget = this.preserve.budget();
+    if (budget <= 0) return 0;
+    return Math.min(100, (this.preserve.totalUsage() / budget) * 100);
+  }
 
   readonly loading = signal(true);
   readonly username = signal('');

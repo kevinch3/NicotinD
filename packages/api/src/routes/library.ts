@@ -593,7 +593,9 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
 
   app.get('/genres/songs', (c) => {
     const genre = c.req.query('genre') ?? '';
-    const count = Math.min(Number(c.req.query('count') ?? 100), 500);
+    // Cap is high enough to enumerate a full genre for the offline "Download"
+    // flow; the client-side storage budget is the real limiter.
+    const count = Math.min(Number(c.req.query('count') ?? 100), 10000);
     if (!genre) return c.json([]);
     const db = getDatabase();
     const rows = db

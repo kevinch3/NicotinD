@@ -1,12 +1,16 @@
-import { Component, inject, signal, OnInit } from '@angular/core';
+import { Component, inject, signal, computed, OnInit } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { PlayerService } from '../../services/player.service';
 import { PlaylistService } from '../../services/playlist.service';
 import { AuthService } from '../../services/auth.service';
-import { TrackRowComponent } from '../../components/track-row/track-row.component';
+import {
+  TrackRowComponent,
+  type TrackAction,
+} from '../../components/track-row/track-row.component';
 import { ConfirmDialogComponent } from '../../components/confirm-dialog/confirm-dialog.component';
-import { toTrack } from '../../lib/track-utils';
+import { toTrack, offlineTrackAction } from '../../lib/track-utils';
 import { NavigationService } from '../../services/navigation.service';
+import { PreserveService } from '../../services/preserve.service';
 import type { PlaylistDetail } from '../../services/api.service';
 
 @Component({
@@ -22,6 +26,7 @@ export class PlaylistDetailComponent implements OnInit {
   readonly player = inject(PlayerService);
   private playlists = inject(PlaylistService);
   private nav = inject(NavigationService);
+  readonly preserve = inject(PreserveService);
 
   readonly loading = signal(true);
   readonly playlist = signal<PlaylistDetail | null>(null);
@@ -69,6 +74,31 @@ export class PlaylistDetailComponent implements OnInit {
     this.playlist.update((p) =>
       p ? { ...p, songs: p.songs.filter((s) => s.id !== songId), songCount: p.songCount - 1 } : p,
     );
+  }
+
+  // ─── Offline download ─────────────────────────────────────────────
+  readonly playlistTrackIds = computed(() => (this.playlist()?.songs ?? []).map((s) => s.id));
+  readonly playlistDownloaded = computed(() =>
+    this.preserve.isCollectionPreserved(this.playlistTrackIds()),
+  );
+
+  toggleDownload(): void {
+    const pl = this.playlist();
+    if (!pl?.songs?.length) return;
+    if (this.playlistDownloaded()) {
+      void this.preserve.removeMany(this.playlistTrackIds());
+    } else {
+      void this.preserve.preserveCollection(
+        pl.name,
+        pl.songs.map((s) => toTrack(s)),
+      );
+    }
+  }
+
+  songActions(songId: string): TrackAction[] {
+    const songs = this.playlist()?.songs ?? [];
+    const song = songs.find((s) => s.id === songId);
+    return song ? [offlineTrackAction(this.preserve, toTrack(song))] : [];
   }
 
   async deletePlaylist(): Promise<void> {
