@@ -71,6 +71,16 @@ Availability is gated by **both** the `acquire.{ytdlp,spotdl}.enabled` config fl
 
 Historical gotcha: the `enabled` flag used to be dead config — only binary presence was checked — and the image shipped neither binary, so acquisition always 503'd; both are fixed.
 
+### Downloads UI integration
+
+Completed (and in-progress/failed) acquire jobs appear in the **Downloads → Active** tab as a "URL Downloads" section alongside Soulseek transfers — same page, no separate UI. The lifecycle each row shows:
+
+- **Queued / running**: progress bar (files done/total) or indeterminate pulse; cancel (×) button.
+- **Done** (`"In Library"`): the files are already in the library. Dismiss (×) removes the job record; the library entry remains.
+- **Failed**: truncated error text, **Retry** button (re-submits the same URL as a new job, deletes the old row), Dismiss.
+
+`AcquireJob` shape is exported from `@nicotind/core` so the web package can type-check against it without a cross-package dep on `@nicotind/api`. Done/failed jobs older than 7 days are pruned at startup (`AcquireWatcher` constructor) so the list stays bounded. The Downloads Active tab badge counts both slskd in-progress folders and active acquire jobs.
+
 ---
 
 ## Download list metadata (`AlbumJobMeta`)

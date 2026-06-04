@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import type { SlskdUserTransferGroup } from '@nicotind/core';
+import type { SlskdUserTransferGroup, AcquireJob } from '@nicotind/core';
 
 // ─── Response types ─────────────────────────────────────────────────
 
@@ -219,6 +219,19 @@ export class ApiService {
 
   getUploads() {
     return this.http.get<SlskdUserTransferGroup[]>('/api/uploads');
+  }
+
+  // URL acquisition jobs (yt-dlp / spotdl)
+  getAcquireJobs() {
+    return this.http.get<AcquireJob[]>('/api/acquire/jobs');
+  }
+
+  deleteAcquireJob(id: string) {
+    return this.http.delete<{ ok: boolean }>(`/api/acquire/jobs/${id}`);
+  }
+
+  retryAcquireJob(id: string) {
+    return this.http.post<{ jobId: string }>(`/api/acquire/jobs/${id}/retry`, {});
   }
 
   // Library

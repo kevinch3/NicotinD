@@ -1,7 +1,7 @@
 import { Injectable, inject, signal, computed } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { ApiService } from './api.service';
-import type { SlskdUserTransferGroup } from '@nicotind/core';
+import type { SlskdUserTransferGroup, AcquireJob } from '@nicotind/core';
 import type { TransferEntry } from '../lib/transfer-types';
 import { detectNewCompletion } from '../lib/transfer-utils';
 
@@ -17,6 +17,7 @@ export class TransferService {
   readonly transfers = signal(new Map<string, TransferEntry>());
   readonly downloads = signal<SlskdUserTransferGroup[]>([]);
   readonly uploads = signal<SlskdUserTransferGroup[]>([]);
+  readonly acquireJobs = signal<AcquireJob[]>([]);
   readonly libraryDirty = signal(false);
   readonly deletedSongIds = signal<ReadonlySet<string>>(new Set());
 
@@ -34,6 +35,7 @@ export class TransferService {
 
   private intervalId: ReturnType<typeof setInterval> | null = null;
   private scanPollTimer: ReturnType<typeof setTimeout> | null = null;
+  private prevAcquireStates = new Map<string, AcquireJob['state']>();
 
   clearLibraryDirty(): void {
     this.libraryDirty.set(false);
@@ -102,8 +104,18 @@ export class TransferService {
       // non-fatal: keep stale data on network error
     }
     try {
-      const uploadData = await firstValueFrom(this.api.getUploads());
-      this.uploads.set(uploadData);
+      const jobs = await firstValueFrom(this.api.getAcquireJobs());
+      // Detect running → done transitions to trigger a library refresh.
+      let acquireCompletion = false;
+      for (const job of jobs) {
+        const prev = this.prevAcquireStates.get(job.id);
+        if (prev === 'running' && job.state === 'done') {
+          acquireCompletion = true;
+        }
+      }
+      this.prevAcquireStates = new Map(jobs.map(j => [j.id, j.state]));
+      this.acquireJobs.set(jobs);
+      if (acquireCompletion) this.libraryDirty.set(true);
     } catch {
       // non-fatal
     }

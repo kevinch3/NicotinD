@@ -64,9 +64,16 @@ export function acquireRoutes(watcher: AcquireWatcher) {
   });
 
   app.delete('/jobs/:id', (c) => {
-    const cancelled = watcher.cancel(c.req.param('id'));
-    if (!cancelled) return c.json({ error: 'Job not found or already finished' }, 404);
-    return c.json({ ok: true });
+    const id = c.req.param('id');
+    if (watcher.cancel(id)) return c.json({ ok: true });
+    if (watcher.deleteJob(id)) return c.json({ ok: true });
+    return c.json({ error: 'Job not found' }, 404);
+  });
+
+  app.post('/jobs/:id/retry', async (c) => {
+    const newJobId = await watcher.retryJob(c.req.param('id'));
+    if (!newJobId) return c.json({ error: 'Job not found' }, 404);
+    return c.json({ jobId: newJobId }, 201);
   });
 
   return app;

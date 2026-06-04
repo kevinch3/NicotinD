@@ -8,10 +8,10 @@ interface MockJob {
   id: string;
   backend: string;
   url: string;
-  label: null;
+  label: string | null;
   state: string;
-  progress: null;
-  error: null;
+  progress: { done: number; total: number } | null;
+  error: string | null;
   created_at: number;
 }
 
@@ -25,8 +25,23 @@ function makeMockWatcher() {
       return id;
     }),
     cancelMock: mock((jobId: string): boolean => {
-      const idx = jobs.findIndex(j => j.id === jobId);
-      return idx !== -1;
+      // Only succeeds for queued/running (not done/failed)
+      const job = jobs.find(j => j.id === jobId);
+      return job !== undefined && (job.state === 'queued' || job.state === 'running');
+    }),
+    deleteJobMock: mock((jobId: string): boolean => {
+      const idx = jobs.findIndex(j => j.id === jobId && (j.state === 'done' || j.state === 'failed'));
+      if (idx === -1) return false;
+      jobs.splice(idx, 1);
+      return true;
+    }),
+    retryJobMock: mock(async (jobId: string): Promise<string | null> => {
+      const job = jobs.find(j => j.id === jobId);
+      if (!job) return null;
+      const newId = `job-${jobs.length + 1}-retry`;
+      jobs.push({ ...job, id: newId, state: 'queued' });
+      jobs.splice(jobs.indexOf(job), 1);
+      return newId;
     }),
     ytdlpAvailable: true,
     spotdlAvailable: false,
@@ -34,6 +49,8 @@ function makeMockWatcher() {
     isSpotdlAvailable() { return this.spotdlAvailable; },
     submit(url: string, backend: string) { return this.submitMock(url, backend); },
     cancel(id: string) { return this.cancelMock(id); },
+    deleteJob(id: string) { return this.deleteJobMock(id); },
+    retryJob(id: string) { return this.retryJobMock(id); },
     getJob(id: string) { return jobs.find(j => j.id === id) ?? null; },
     listJobs() { return [...jobs]; },
   };
@@ -198,7 +215,7 @@ describe('acquire routes', () => {
       expect(res.status).toBe(404);
     });
 
-    it('cancels a known job', async () => {
+    it('cancels a queued job via cancel()', async () => {
       await app.request('/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -210,6 +227,38 @@ describe('acquire routes', () => {
       const json = await res.json() as { ok: boolean };
       expect(json.ok).toBe(true);
       expect(watcher.cancelMock).toHaveBeenCalledWith(jobId);
+    });
+
+    it('deletes a done job via deleteJob() when cancel() returns false', async () => {
+      // Manually push a done job
+      watcher.jobs.push({ id: 'done-job', backend: 'ytdlp', url: 'https://example.com', label: null, state: 'done', progress: null, error: null, created_at: Date.now() });
+      const res = await app.request('/jobs/done-job', { method: 'DELETE' });
+      expect(res.status).toBe(200);
+      expect(watcher.deleteJobMock).toHaveBeenCalledWith('done-job');
+    });
+
+    it('deletes a failed job via deleteJob()', async () => {
+      watcher.jobs.push({ id: 'failed-job', backend: 'ytdlp', url: 'https://example.com', label: null, state: 'failed', progress: null, error: 'oops', created_at: Date.now() });
+      const res = await app.request('/jobs/failed-job', { method: 'DELETE' });
+      expect(res.status).toBe(200);
+      expect(watcher.deleteJobMock).toHaveBeenCalledWith('failed-job');
+    });
+  });
+
+  describe('POST /jobs/:id/retry', () => {
+    it('returns 404 for unknown job', async () => {
+      const res = await app.request('/jobs/nonexistent/retry', { method: 'POST' });
+      expect(res.status).toBe(404);
+    });
+
+    it('retries a failed job and returns new jobId', async () => {
+      watcher.jobs.push({ id: 'failed-job', backend: 'ytdlp', url: 'https://www.youtube.com/watch?v=abc', label: null, state: 'failed', progress: null, error: 'oops', created_at: Date.now() });
+      const res = await app.request('/jobs/failed-job/retry', { method: 'POST' });
+      expect(res.status).toBe(201);
+      const json = await res.json() as { jobId: string };
+      expect(typeof json.jobId).toBe('string');
+      expect(json.jobId).not.toBe('failed-job');
+      expect(watcher.retryJobMock).toHaveBeenCalledWith('failed-job');
     });
   });
 });

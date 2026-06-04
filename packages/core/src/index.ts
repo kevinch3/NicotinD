@@ -1,4 +1,5 @@
 // Types
+export * from './types/acquire.js';
 export * from './types/config.js';
 export * from './types/slskd.js';
 export * from './types/navidrome.js';

@@ -1,4 +1,5 @@
 import { createLogger } from '@nicotind/core';
+import type { AcquireJob } from '@nicotind/core';
 import { join } from 'node:path';
 import type { Database } from 'bun:sqlite';
 import { YtdlpService, isBinaryAvailable } from './ytdlp.service.js';
@@ -23,16 +24,7 @@ export interface AcquireWatcherOptions {
   enrichSingles?: (relPaths: string[]) => Promise<void>;
 }
 
-export interface AcquireJob {
-  id: string;
-  backend: AcquireBackend;
-  url: string;
-  label: string | null;
-  state: 'queued' | 'running' | 'done' | 'failed';
-  progress: { done: number; total: number } | null;
-  error: string | null;
-  created_at: number;
-}
+export type { AcquireJob } from '@nicotind/core';
 
 interface AcquireJobRow {
   id: string;
@@ -51,6 +43,10 @@ export class AcquireWatcher {
 
   constructor(private options: AcquireWatcherOptions) {
     this.db = options.db;
+    // Prune done/failed jobs older than 7 days so the list stays bounded.
+    this.db.run(
+      `DELETE FROM acquire_jobs WHERE state IN ('done', 'failed') AND created_at < unixepoch() - 604800`,
+    );
     this.ytdlpService = new YtdlpService({
       stagingBase: join(options.dataDir, 'staging', 'acquire'),
       db: options.db,
@@ -91,6 +87,30 @@ export class AcquireWatcher {
 
   cancel(jobId: string): boolean {
     return this.ytdlpService.cancel(jobId);
+  }
+
+  /** Remove a done or failed job from the DB. Returns true if a row was deleted. */
+  deleteJob(jobId: string): boolean {
+    const result = this.db.run(
+      `DELETE FROM acquire_jobs WHERE id = ? AND state IN ('done', 'failed')`,
+      [jobId],
+    );
+    return result.changes > 0;
+  }
+
+  /**
+   * Re-submit a failed (or done) job using the same URL and backend.
+   * The old row is removed after the new job is successfully created.
+   * Returns the new job ID, or null if the original job was not found.
+   */
+  async retryJob(jobId: string): Promise<string | null> {
+    const row = this.db
+      .query<AcquireJobRow, [string]>(`SELECT * FROM acquire_jobs WHERE id = ?`)
+      .get(jobId);
+    if (!row) return null;
+    const newId = await this.submit(row.url, row.backend as AcquireBackend, row.label ?? undefined);
+    this.db.run(`DELETE FROM acquire_jobs WHERE id = ?`, [jobId]);
+    return newId;
   }
 
   getJob(jobId: string): AcquireJob | null {

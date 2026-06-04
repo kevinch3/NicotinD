@@ -13,6 +13,7 @@ import { ConfirmDialogComponent } from '../../components/confirm-dialog/confirm-
 import { TrackAction } from '../../components/track-row/track-row.component';
 import { resolveArtistRoute } from '../../lib/route-utils';
 import { PreserveService } from '../../services/preserve.service';
+import type { AcquireJob } from '@nicotind/core';
 import {
   type AlbumGroup,
   groupByAlbum,
@@ -74,6 +75,35 @@ function groupRecentSongsByDate(songs: Song[]): SongDateGroup[] {
   return order.filter(label => buckets[label].length > 0).map(label => ({ label, songs: buckets[label] }));
 }
 
+/** Shorten a raw URL into a human-readable label (used when job.label is absent). */
+function shortenUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    const path = u.pathname.length > 1
+      ? u.pathname.substring(0, 40) + (u.pathname.length > 40 ? '…' : '')
+      : '';
+    return u.hostname + path;
+  } catch {
+    return url.substring(0, 50);
+  }
+}
+
+/** Display label for an acquire job. */
+function acquireLabel(job: AcquireJob): string {
+  return job.label ?? shortenUrl(job.url);
+}
+
+const ACQUIRE_STATE_ORDER: Record<AcquireJob['state'], number> = {
+  running: 0,
+  queued: 1,
+  failed: 2,
+  done: 3,
+};
+
+function sortAcquireJobs(jobs: AcquireJob[]): AcquireJob[] {
+  return [...jobs].sort((a, b) => ACQUIRE_STATE_ORDER[a.state] - ACQUIRE_STATE_ORDER[b.state]);
+}
+
 // ─── Component ──────────────────────────────────────────────────────
 
 @Component({
@@ -90,11 +120,13 @@ export class DownloadsComponent implements OnInit, OnDestroy {
   readonly preserve = inject(PreserveService);
   readonly auth = inject(AuthService);
 
+  readonly Math = Math;
   readonly formatDuration = formatDuration;
   readonly formatSize = formatSize;
   readonly timeAgo = timeAgo;
   readonly albumGroupTitle = albumGroupTitle;
   readonly albumGroupTotal = albumGroupTotal;
+  readonly acquireLabel = acquireLabel;
 
   readonly storagePercent = computed(() => {
     const used = this.preserve.totalUsage();
@@ -103,7 +135,7 @@ export class DownloadsComponent implements OnInit, OnDestroy {
   });
 
   // State
-  readonly activeTab = signal<'active' | 'offline' | 'recent' | 'uploads'>('active');
+  readonly activeTab = signal<'active' | 'offline' | 'recent'>('active');
   readonly recentSongs = signal<Song[]>([]);
   readonly selected = signal(new Set<string>());
   readonly lastSelectedId = signal<string | null>(null);
@@ -179,13 +211,18 @@ export class DownloadsComponent implements OnInit, OnDestroy {
     defaultDirection: 'desc',
   });
 
-  // Computed
+  // Computed — slskd transfers
   readonly groups = computed(() => groupByAlbum(this.transferService.downloads()));
   readonly inProgressGroups = computed(() => this.groups().filter(g => g.state === 'downloading' || g.state === 'queued'));
   readonly errorGroups = computed(() => this.groups().filter(g => g.state === 'error'));
   readonly doneGroups = computed(() => this.groups().filter(g => g.state === 'done'));
   readonly clearableGroups = computed(() => [...this.errorGroups(), ...this.doneGroups()]);
-  readonly uploadGroups = computed(() => groupByAlbum(this.transferService.uploads()));
+
+  // Computed — acquire jobs
+  readonly sortedAcquireJobs = computed(() => sortAcquireJobs(this.transferService.acquireJobs()));
+  readonly activeAcquireJobs = computed(() => this.sortedAcquireJobs().filter(j => j.state === 'running' || j.state === 'queued'));
+  readonly failedAcquireJobs = computed(() => this.sortedAcquireJobs().filter(j => j.state === 'failed'));
+  readonly doneAcquireJobs = computed(() => this.sortedAcquireJobs().filter(j => j.state === 'done'));
 
   readonly showDateGroups = computed(() =>
     this.recentControls.sortField() === 'created' &&
@@ -382,6 +419,11 @@ export class DownloadsComponent implements OnInit, OnDestroy {
 
   async clearAllFinished(): Promise<void> {
     try { await firstValueFrom(this.api.cancelAllFinished()); } catch { /* ignore */ }
+    // Also clear all done/failed acquire jobs
+    const toClear = [...this.failedAcquireJobs(), ...this.doneAcquireJobs()];
+    await Promise.all(
+      toClear.map(j => firstValueFrom(this.api.deleteAcquireJob(j.id)).catch(() => {})),
+    );
     this.transferService.poll();
   }
 
@@ -420,6 +462,30 @@ export class DownloadsComponent implements OnInit, OnDestroy {
         this.transferService.poll();
       },
     );
+  }
+
+  // ─── Acquire job actions ─────────────────────────────────────────
+
+  async dismissAcquireJob(job: AcquireJob): Promise<void> {
+    try {
+      await firstValueFrom(this.api.deleteAcquireJob(job.id));
+    } catch { /* ignore */ }
+    this.transferService.poll();
+  }
+
+  async retryAcquireJob(job: AcquireJob): Promise<void> {
+    this.retrying.update(prev => new Set(prev).add(job.id));
+    try {
+      await firstValueFrom(this.api.retryAcquireJob(job.id));
+    } catch { /* ignore */ }
+    finally {
+      this.retrying.update(prev => {
+        const next = new Set(prev);
+        next.delete(job.id);
+        return next;
+      });
+      this.transferService.poll();
+    }
   }
 
   songActions(song: Song): TrackAction[] {
