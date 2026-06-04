@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.53](https://github.com/kevinch3/NicotinD/compare/v0.1.52...v0.1.53) (2026-06-04)
+
+
+### Bug Fixes
+
+* parse artist/title from YouTube video title in yt-dlp ([14cd589](https://github.com/kevinch3/NicotinD/commit/14cd589ecfa35e9ab60e416cc3acb0382fcd5d61))
+
 ## [0.1.52](https://github.com/kevinch3/NicotinD/compare/v0.1.51...v0.1.52) (2026-06-04)
 
 
