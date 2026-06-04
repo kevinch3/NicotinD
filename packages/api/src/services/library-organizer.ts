@@ -467,6 +467,12 @@ export class LibraryOrganizer {
 
   /** Find the file on disk given slskd's reported directory/filename pair. */
   private locateOnDisk(file: CompletedDownloadFile): string | null {
+    // yt-dlp sets filename to an absolute path; check it first before trying
+    // the slskd peer-relative path logic below.
+    if (isAbsolute(file.filename) && existsSync(file.filename) && statSync(file.filename).isFile()) {
+      return file.filename;
+    }
+
     const filenameParts = file.filename.replace(/\\/g, '/').split('/').filter(Boolean);
     const directoryParts = file.directory.replace(/\\/g, '/').split('/').filter(Boolean);
     const baseName = filenameParts[filenameParts.length - 1] ?? file.filename;
