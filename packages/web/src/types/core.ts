@@ -8,3 +8,9 @@ export type {
   SlskdFile,
   SlskdSearchResponse,
 } from '../../../core/src/types/slskd';
+
+export type {
+  AcquireBackend,
+  AcquireJobState,
+  AcquireJob,
+} from '../../../core/src/types/acquire';
