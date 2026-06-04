@@ -103,6 +103,13 @@ describe('YtdlpService', () => {
     expect(args).toContain('https://example.com/video');
     expect(args).toContain('--extract-audio');
     expect(args).toContain('--newline');
+    // Title parsing: extracts "Artist - Title" from YouTube video titles so the
+    // channel/uploader name isn't used as the artist.
+    expect(args).toContain('--parse-metadata');
+    const pmIdx = args.indexOf('--parse-metadata');
+    expect(args[pmIdx + 1]).toBe('title:%(artist)s - %(title)s');
+    // Title cleanup: strips "(Official Video)", "[HD]" etc.
+    expect(args).toContain('--replace-in-metadata');
   });
 
   it('transitions state to running then done on exit 0', async () => {

@@ -228,6 +228,16 @@ export class YtdlpService {
       url,
       '--extract-audio',
       '--audio-quality', '0',
+      // Parse "Artist - Title" pattern from the video title. For most music
+      // videos the title is the canonical "Artist - Track" string while
+      // %(artist)s defaults to the channel/uploader name. When the title
+      // contains no " - " this flag is a no-op, so it's always safe to pass.
+      '--parse-metadata', 'title:%(artist)s - %(title)s',
+      // Strip trailing "(Official Video)", "[HD]", etc. that yt-dlp carries
+      // through from the video title into the track title after parsing.
+      '--replace-in-metadata', 'title',
+      '\\s*[\\(\\[](?:Official|Music|Lyric|HD|HQ|Video|Audio|Live|MV|PV|Clip|Full|Visualizer|ft\\.?|feat\\.?).*?[\\)\\]]\\s*$',
+      '',
       '--embed-metadata',
       '--embed-thumbnail',
       '--output', outputTemplate,
