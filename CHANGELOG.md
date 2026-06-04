@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.52](https://github.com/kevinch3/NicotinD/compare/v0.1.51...v0.1.52) (2026-06-04)
+
+
+### Bug Fixes
+
+* locateOnDisk handles absolute paths from yt-dlp ([ac34684](https://github.com/kevinch3/NicotinD/commit/ac346844e6b7bc13156089136da53da9c9bfe579))
+
 ## [0.1.51](https://github.com/kevinch3/NicotinD/compare/v0.1.50...v0.1.51) (2026-06-04)
 
 
