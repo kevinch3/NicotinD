@@ -382,4 +382,15 @@
           </section>
         }
       }
+
+      <!-- Account -->
+      <section class="rounded-xl border border-theme bg-theme-surface/50 p-6 mb-6">
+        <h2 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary mb-5">Account</h2>
+        <p class="text-sm text-theme-muted mb-4">Signed in as <span class="text-theme-primary font-medium">{{ auth.username() }}</span></p>
+        @if (isAdmin()) {
+          <a routerLink="/admin" class="block text-sm text-theme-secondary hover:text-theme-primary transition mb-4">Admin panel →</a>
+        }
+        <button (click)="logout()" class="text-sm text-red-400 hover:text-red-300 transition">Sign out</button>
+        <p class="text-xs text-theme-muted/50 mt-4">v{{ version }}</p>
+      </section>
     </div>

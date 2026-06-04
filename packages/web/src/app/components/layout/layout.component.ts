@@ -1,8 +1,7 @@
-import { Component, inject, signal, computed, effect, OnInit, OnDestroy, DestroyRef } from '@angular/core';
+import { Component, inject, computed, OnInit, OnDestroy } from '@angular/core';
 import { APP_VERSION } from '../../app.config';
-import { RouterOutlet, RouterLink, RouterLinkActive, Router, NavigationEnd } from '@angular/router';
-import { filter, firstValueFrom } from 'rxjs';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
+import { firstValueFrom } from 'rxjs';
 import { AuthService } from '../../services/auth.service';
 import { PlayerService, shuffleArray } from '../../services/player.service';
 import { ApiService } from '../../services/api.service';
@@ -42,12 +41,10 @@ export class LayoutComponent implements OnInit, OnDestroy {
   readonly player = inject(PlayerService);
   readonly setup = inject(SetupService);
   readonly version = inject(APP_VERSION);
-  private router = inject(Router);
   private transfers = inject(TransferService);
   private acquire = inject(AcquireService);
   private api = inject(ApiService);
 
-  readonly drawerOpen = signal(false);
   readonly navItems = computed<NavItem[]>(() =>
     this.auth.role() === 'admin'
       ? [...BASE_NAV, { to: '/admin', label: 'Admin' }]
@@ -64,17 +61,6 @@ export class LayoutComponent implements OnInit, OnDestroy {
   readonly mainPadClass = computed(() =>
     this.player.currentTrack() ? 'pb-32 md:pb-20' : 'pb-14 md:pb-0',
   );
-
-  constructor() {
-    const destroyRef = inject(DestroyRef);
-    // Close drawer on navigation
-    this.router.events
-      .pipe(
-        filter((e): e is NavigationEnd => e instanceof NavigationEnd),
-        takeUntilDestroyed(destroyRef),
-      )
-      .subscribe(() => this.drawerOpen.set(false));
-  }
 
   ngOnInit(): void {
     this.transfers.startPolling();

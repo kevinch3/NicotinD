@@ -27,14 +27,6 @@
           <span class="hidden md:inline text-xs text-theme-muted/50">v{{ version }}</span>
           <span class="hidden md:inline text-sm text-theme-muted">{{ auth.username() }}</span>
           <button (click)="logout()" class="hidden md:inline text-sm text-theme-muted hover:text-theme-secondary transition">Sign out</button>
-          <!-- Hamburger -->
-          <button (click)="drawerOpen.set(true)" class="md:hidden w-8 h-8 flex items-center justify-center text-theme-secondary hover:text-theme-primary transition">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-              <line x1="3" y1="6" x2="21" y2="6" />
-              <line x1="3" y1="12" x2="21" y2="12" />
-              <line x1="3" y1="18" x2="21" y2="18" />
-            </svg>
-          </button>
         </div>
       </header>
 
@@ -47,33 +39,6 @@
           Offline mode — showing cached content only
         </div>
       }
-
-      <!-- Mobile drawer backdrop -->
-      @if (drawerOpen()) {
-        <div class="fixed inset-0 z-[45] bg-black/50 md:hidden" (click)="drawerOpen.set(false)"></div>
-      }
-
-      <!-- Mobile drawer -->
-      <div class="fixed top-0 left-0 h-full w-64 bg-theme-surface z-50 transform transition-transform duration-200 ease-out md:hidden flex flex-col"
-        [class]="drawerOpen() ? 'translate-x-0' : '-translate-x-full'">
-        <div class="px-4 py-4 border-b border-theme">
-          <a routerLink="/downloads" class="text-lg font-bold text-theme-primary hover:opacity-80 transition">NicotinD</a>
-        </div>
-        <nav class="flex-1 py-2">
-          @for (item of navItems(); track item.to) {
-            <a [routerLink]="item.to" routerLinkActive="bg-theme-surface-2 text-theme-primary"
-              [routerLinkActiveOptions]="{ exact: item.to === '/' }"
-              class="block px-4 py-3 text-sm font-medium transition text-theme-secondary hover:text-theme-primary hover:bg-theme-surface-2/50">
-              {{ item.label }}
-            </a>
-          }
-        </nav>
-        <div class="px-4 py-4 border-t border-theme">
-          <p class="text-sm text-theme-muted mb-2">{{ auth.username() }}</p>
-          <button (click)="logout()" class="text-sm text-theme-muted hover:text-theme-secondary transition">Sign out</button>
-          <p class="text-xs text-theme-muted/50 mt-3">v{{ version }}</p>
-        </div>
-      </div>
 
       <!-- Content — pad bottom so the fixed player + mobile tab bar never cover the last item -->
       <main [class]="'flex-1 ' + mainPadClass()">

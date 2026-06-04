@@ -15,6 +15,17 @@ const log = createLogger('streaming');
 const COVER_FILE_NAMES = ['cover', 'folder', 'front', 'album', 'albumart'];
 const COVER_EXTS = ['.jpg', '.jpeg', '.png', '.webp'];
 
+// id → expiry epoch ms. Short-circuits extractCover() disk IO for artless albums.
+// Keyed by album/artist/song id; cleared automatically when TTL expires.
+const noArtCache = new Map<string, number>();
+const NO_ART_TTL_MS = 10 * 60 * 1_000;
+
+/** Evict the negative-art cache for a given id (e.g. after artwork is backfilled). */
+export function clearCoverNegativeCache(id?: string): void {
+  if (id) noArtCache.delete(id);
+  else noArtCache.clear();
+}
+
 /**
  * Native streaming + cover art. Replaces the Navidrome media proxy: serves file
  * bytes straight from disk (with HTTP range support) and resolves cover art from
@@ -132,6 +143,14 @@ export function streamingRoutes(musicDir: string, db: Database, dataDir: string)
   app.get('/cover/:id', async (c) => {
     const id = c.req.param('id');
 
+    // Fast-path: id was already checked and found artless within the TTL.
+    if ((noArtCache.get(id) ?? 0) > Date.now()) {
+      return new Response(null, {
+        status: 404,
+        headers: { 'cache-control': 'public, max-age=300' },
+      });
+    }
+
     // 1. Canonical (Lidarr/MusicBrainz) artwork takes precedence so the app
     //    matches the hunt tool, and so artists get real poster images. Cached
     //    under a `c_<key>` namespace, shared across an album's songs.
@@ -163,10 +182,16 @@ export function streamingRoutes(musicDir: string, db: Database, dataDir: string)
     }
 
     const abs = resolvePath(id);
-    if (!abs) return c.body(null, 404);
+    if (!abs) {
+      noArtCache.set(id, Date.now() + NO_ART_TTL_MS);
+      return new Response(null, { status: 404, headers: { 'cache-control': 'public, max-age=300' } });
+    }
 
     const art = await extractCover(abs);
-    if (!art) return c.body(null, 404);
+    if (!art) {
+      noArtCache.set(id, Date.now() + NO_ART_TTL_MS);
+      return new Response(null, { status: 404, headers: { 'cache-control': 'public, max-age=300' } });
+    }
 
     void cacheCover(coverCacheDir, id, art).catch((err) =>
       log.debug({ err, id }, 'cover cache write failed'),

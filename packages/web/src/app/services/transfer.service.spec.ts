@@ -1,7 +1,9 @@
 import { TestBed } from '@angular/core/testing';
+import { vi } from 'vitest';
+import { of } from 'rxjs';
 import { TransferService } from './transfer.service';
 import { ApiService } from './api.service';
-import type { SlskdUserTransferGroup } from '@nicotind/core';
+import type { SlskdUserTransferGroup, AcquireJob } from '@nicotind/core';
 
 function makeGroup(states: string[][]): SlskdUserTransferGroup {
   return {
@@ -23,12 +25,24 @@ function makeGroup(states: string[][]): SlskdUserTransferGroup {
   };
 }
 
+function makeApiMock(overrides: Partial<ApiService> = {}): ApiService {
+  return {
+    getDownloads: () => of([]),
+    getAcquireJobs: () => of([]),
+    ...overrides,
+  } as unknown as ApiService;
+}
+
+function makeAcquireJob(state: AcquireJob['state']): AcquireJob {
+  return { id: 'j1', state, url: 'http://x', backend: 'yt-dlp', createdAt: 0 };
+}
+
 describe('TransferService.activeDownloadCount', () => {
   let service: TransferService;
 
   beforeEach(() => {
     TestBed.configureTestingModule({
-      providers: [TransferService, { provide: ApiService, useValue: {} }],
+      providers: [TransferService, { provide: ApiService, useValue: makeApiMock() }],
     });
     service = TestBed.inject(TransferService);
   });
@@ -66,5 +80,94 @@ describe('TransferService.activeDownloadCount', () => {
     expect(service.activeDownloadCount()).toBe(1);
     service.downloads.set([]);
     expect(service.activeDownloadCount()).toBe(0);
+  });
+});
+
+describe('TransferService adaptive polling', () => {
+  let service: TransferService;
+  let pollCount: number;
+
+  function setup(apiOverrides: Partial<ApiService> = {}): void {
+    vi.useFakeTimers();
+    pollCount = 0;
+    const api = makeApiMock({
+      getDownloads: () => { pollCount++; return of([]); },
+      getAcquireJobs: () => of([]),
+      ...apiOverrides,
+    });
+    TestBed.configureTestingModule({
+      providers: [TransferService, { provide: ApiService, useValue: api }],
+    });
+    service = TestBed.inject(TransferService);
+  }
+
+  afterEach(() => {
+    service.stopPolling();
+    vi.useRealTimers();
+  });
+
+  it('polls once immediately on startPolling', async () => {
+    setup();
+    service.startPolling();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(pollCount).toBe(1);
+  });
+
+  it('does not start a second loop if already running', async () => {
+    setup();
+    service.startPolling();
+    service.startPolling();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(pollCount).toBe(1);
+  });
+
+  it('uses 30 s interval when idle', async () => {
+    setup();
+    service.startPolling();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(pollCount).toBe(1);
+    await vi.advanceTimersByTimeAsync(29_999);
+    expect(pollCount).toBe(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(pollCount).toBe(2);
+  });
+
+  it('uses 3 s interval when a transfer is active', async () => {
+    // Mock keeps returning an active group so the signal stays active after each poll.
+    setup({ getDownloads: () => { pollCount++; return of([makeGroup([['InProgress']])]); } });
+    service.startPolling();
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(pollCount).toBe(2);
+  });
+
+  it('uses 3 s interval when an acquire job is running', async () => {
+    // Mock keeps returning running job so acquireJobs signal stays active after each poll.
+    setup({ getAcquireJobs: () => of([makeAcquireJob('running')]) });
+    service.startPolling();
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(pollCount).toBe(2);
+  });
+
+  it('stopPolling prevents further ticks', async () => {
+    setup();
+    service.startPolling();
+    await vi.advanceTimersByTimeAsync(0);
+    service.stopPolling();
+    const countAfterStop = pollCount;
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(pollCount).toBe(countAfterStop);
+  });
+
+  it('kickPoll fires immediately and resets the timer', async () => {
+    setup();
+    service.startPolling();
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(5_000);
+    const before = pollCount;
+    service.kickPoll();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(pollCount).toBe(before + 1);
   });
 });

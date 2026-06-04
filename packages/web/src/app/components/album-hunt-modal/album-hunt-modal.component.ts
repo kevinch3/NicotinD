@@ -199,7 +199,7 @@ export class AlbumHuntModalComponent implements OnInit {
         ),
       );
       // Surface the new transfers immediately in the global download UI.
-      void this.transfer.poll();
+      this.transfer.kickPoll();
       this.downloaded.emit();
       this.close();
     } catch (err) {
