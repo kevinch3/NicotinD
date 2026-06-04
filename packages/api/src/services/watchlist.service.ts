@@ -38,6 +38,12 @@ export interface WatchlistDeps {
   intervalMs?: number;
   minMatchPct?: number;
   enabled?: boolean;
+  /**
+   * Gate auto-acquisition on an enabled acquisition plugin. When it returns
+   * false the poller skips the whole sweep (no new downloads initiated) even
+   * though slskd may still be configured — respects the plugin toggle.
+   */
+  isAcquisitionEnabled?: () => boolean;
 }
 
 /**
@@ -60,6 +66,7 @@ export class WatchlistService {
   private intervalMs: number;
   private minMatchPct: number;
   private enabled: boolean;
+  private isAcquisitionEnabled: () => boolean;
   private timer: ReturnType<typeof setInterval> | null = null;
   private sweeping = false;
 
@@ -72,6 +79,7 @@ export class WatchlistService {
     this.intervalMs = deps.intervalMs ?? 1_800_000;
     this.minMatchPct = deps.minMatchPct ?? 80;
     this.enabled = deps.enabled ?? true;
+    this.isAcquisitionEnabled = deps.isAcquisitionEnabled ?? (() => true);
   }
 
   start(): void {
@@ -142,6 +150,8 @@ export class WatchlistService {
   /** One poll pass over every `watching` row. Public so tests can drive it. */
   async sweep(): Promise<void> {
     if (this.sweeping) return;
+    // Respect the acquisition-plugin toggle — no auto-downloads when disabled.
+    if (!this.isAcquisitionEnabled()) return;
     this.sweeping = true;
     try {
       const rows = this.db

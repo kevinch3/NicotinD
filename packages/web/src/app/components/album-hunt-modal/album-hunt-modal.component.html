@@ -1,7 +1,9 @@
-<!-- Backdrop -->
-<div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+<!-- Backdrop — on mobile anchor to top (below the sticky header) to keep the footer
+     download button above the fixed player + tab bar. Desktop stays centered. -->
+<div class="fixed inset-0 z-50 flex items-start justify-center pt-14 px-3 pb-2 md:items-center md:p-4 bg-black/60 backdrop-blur-sm"
      (click)="close()">
-  <div class="relative w-full max-w-2xl max-h-[90vh] flex flex-col rounded-2xl bg-theme-surface border border-theme-surface-2 shadow-2xl overflow-hidden"
+  <!-- max-h on mobile reserves space for player (~4.5rem) + tab bar (3.5rem) + header (3.5rem) -->
+  <div class="relative w-full max-w-2xl max-h-[calc(100dvh-11.5rem)] md:max-h-[90vh] flex flex-col rounded-2xl bg-theme-surface border border-theme-surface-2 shadow-2xl overflow-hidden"
        role="dialog" aria-modal="true" aria-label="Find complete album"
        (click)="$event.stopPropagation()">
 

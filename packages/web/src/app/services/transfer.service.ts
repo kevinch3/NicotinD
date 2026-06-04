@@ -33,7 +33,8 @@ export class TransferService {
     ),
   );
 
-  private intervalId: ReturnType<typeof setInterval> | null = null;
+  private timerId: ReturnType<typeof setTimeout> | null = null;
+  private running = false;
   private scanPollTimer: ReturnType<typeof setTimeout> | null = null;
   private prevAcquireStates = new Map<string, AcquireJob['state']>();
 
@@ -121,17 +122,42 @@ export class TransferService {
     }
   }
 
+  private get hasActive(): boolean {
+    if (this.activeDownloadCount() > 0) return true;
+    return this.acquireJobs().some(j => j.state === 'queued' || j.state === 'running');
+  }
+
+  private scheduleNext(): void {
+    this.timerId = setTimeout(() => this.tick(), this.hasActive ? 3_000 : 30_000);
+  }
+
+  private async tick(): Promise<void> {
+    this.timerId = null;
+    await this.poll();
+    if (this.running) this.scheduleNext();
+  }
+
   startPolling(): void {
-    if (this.intervalId) return;
-    this.poll();
-    this.intervalId = setInterval(() => this.poll(), 3000);
+    if (this.running) return;
+    this.running = true;
+    void this.tick();
   }
 
   stopPolling(): void {
-    if (this.intervalId) {
-      clearInterval(this.intervalId);
-      this.intervalId = null;
+    this.running = false;
+    if (this.timerId) {
+      clearTimeout(this.timerId);
+      this.timerId = null;
     }
+  }
+
+  /** Immediately fires a poll and resets the adaptive timer. Call after initiating a download. */
+  kickPoll(): void {
+    if (this.timerId) {
+      clearTimeout(this.timerId);
+      this.timerId = null;
+    }
+    void this.tick();
   }
 
   getStatus(username: string, filename: string): TransferEntry | undefined {

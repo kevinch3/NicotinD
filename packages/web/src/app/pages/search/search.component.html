@@ -105,7 +105,9 @@
                           <span class="text-xs text-zinc-300">Preparing…</span>
                         </div>
                       }
-                      <!-- Watchlist star — auto-acquire when a complete folder appears -->
+                      <!-- Watchlist star — auto-acquire when a complete folder appears
+                           (only when a download-capable plugin is enabled) -->
+                      @if (plugins.hasDownload()) {
                       <span role="button" tabindex="0"
                         (click)="toggleWatch(album, $event)"
                         (keydown.enter)="toggleWatch(album, $event)"
@@ -121,6 +123,7 @@
                           <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
                         </svg>
                       </span>
+                      }
                     </div>
                     <div class="p-2">
                       <p class="text-sm truncate" style="color: var(--theme-text-primary)">{{ album.title }}</p>
@@ -342,7 +345,8 @@
           (downloaded)="closeHunt()" />
       }
 
-      <!-- URL acquisition (yt-dlp / spotdl) -->
+      <!-- URL acquisition (yt-dlp / spotdl) — only when a resolve-capable plugin is enabled -->
+      @if (plugins.hasResolve()) {
       <div class="mt-10 border-t border-zinc-800 pt-8">
         <h2 class="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-3">Download from URL</h2>
         <form (submit)="submitAcquireUrl($event)" class="flex gap-2">
@@ -393,5 +397,6 @@
           </ul>
         }
       </div>
+      }
     </div>
 

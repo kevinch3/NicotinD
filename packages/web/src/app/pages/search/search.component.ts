@@ -7,6 +7,7 @@ import { SearchService, type NetworkResult } from '../../services/search.service
 import { TransferService } from '../../services/transfer.service';
 import { AcquireService } from '../../services/acquire.service';
 import { WatchlistService } from '../../services/watchlist.service';
+import { PluginService } from '../../services/plugin.service';
 import { PlayerService } from '../../services/player.service';
 import { PlaylistService } from '../../services/playlist.service';
 import type { TrackAction } from '../../components/track-row/track-row.component';
@@ -154,6 +155,7 @@ export class SearchComponent implements OnInit, OnDestroy {
   private transfers = inject(TransferService);
   readonly acquire = inject(AcquireService);
   readonly watchlist = inject(WatchlistService);
+  readonly plugins = inject(PluginService);
   private player = inject(PlayerService);
   private playlists = inject(PlaylistService);
 
@@ -215,6 +217,7 @@ export class SearchComponent implements OnInit, OnDestroy {
       .catch(() => this.networkConnected.set(false));
     void this.acquire.refresh();
     void this.watchlist.refresh();
+    void this.plugins.refresh();
 
     // PWA share-target: a link shared from another app lands here as ?url=/?text=.
     // Auto-start an acquisition job for it so "Share → NicotinD" just works.

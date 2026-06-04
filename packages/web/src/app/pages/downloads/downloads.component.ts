@@ -404,7 +404,7 @@ export class DownloadsComponent implements OnInit, OnDestroy {
         next.delete(group.key);
         return next;
       });
-      this.transferService.poll();
+      this.transferService.kickPoll();
     }
   }
 
@@ -414,7 +414,7 @@ export class DownloadsComponent implements OnInit, OnDestroy {
         firstValueFrom(this.api.cancelDownload(group.username, id)).catch(() => {}),
       ),
     );
-    this.transferService.poll();
+    this.transferService.kickPoll();
   }
 
   async clearAllFinished(): Promise<void> {
@@ -424,12 +424,12 @@ export class DownloadsComponent implements OnInit, OnDestroy {
     await Promise.all(
       toClear.map(j => firstValueFrom(this.api.deleteAcquireJob(j.id)).catch(() => {})),
     );
-    this.transferService.poll();
+    this.transferService.kickPoll();
   }
 
   async cancelAll(): Promise<void> {
     try { await firstValueFrom(this.api.cancelAllDownloads()); } catch { /* ignore */ }
-    this.transferService.poll();
+    this.transferService.kickPoll();
   }
 
   async triggerScan(): Promise<void> {
@@ -459,7 +459,7 @@ export class DownloadsComponent implements OnInit, OnDestroy {
             firstValueFrom(this.api.cancelDownload(group.username, id)).catch(() => {}),
           ),
         );
-        this.transferService.poll();
+        this.transferService.kickPoll();
       },
     );
   }
@@ -470,7 +470,7 @@ export class DownloadsComponent implements OnInit, OnDestroy {
     try {
       await firstValueFrom(this.api.deleteAcquireJob(job.id));
     } catch { /* ignore */ }
-    this.transferService.poll();
+    this.transferService.kickPoll();
   }
 
   async retryAcquireJob(job: AcquireJob): Promise<void> {
@@ -484,7 +484,7 @@ export class DownloadsComponent implements OnInit, OnDestroy {
         next.delete(job.id);
         return next;
       });
-      this.transferService.poll();
+      this.transferService.kickPoll();
     }
   }
 

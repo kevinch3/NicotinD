@@ -1,5 +1,6 @@
 import { Component, inject, signal, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { ApiService, type StreamingSettings } from '../../services/api.service';
 import { AuthService } from '../../services/auth.service';
@@ -7,6 +8,7 @@ import { ThemeService, THEME_PRESETS, type ThemeId } from '../../services/theme.
 import { RemotePlaybackService } from '../../services/remote-playback.service';
 import { PlaybackWsService } from '../../services/playback-ws.service';
 import { PasswordFieldComponent } from '../../components/password-field/password-field.component';
+import { APP_VERSION } from '../../app.config';
 
 type DuplicateSong = {
   id: string; title: string; artist: string; album: string;
@@ -15,18 +17,19 @@ type DuplicateSong = {
 
 @Component({
   selector: 'app-settings',
-  imports: [FormsModule, PasswordFieldComponent],
+  imports: [FormsModule, RouterLink, PasswordFieldComponent],
   templateUrl: './settings.component.html',
   })
 export class SettingsComponent implements OnInit {
   private api = inject(ApiService);
-  private auth = inject(AuthService);
+  readonly auth = inject(AuthService);
   readonly themeService = inject(ThemeService);
   readonly remote = inject(RemotePlaybackService);
   private ws = inject(PlaybackWsService);
 
   readonly themePresets = THEME_PRESETS;
   readonly myDeviceId = this.ws.getDeviceId();
+  readonly version = inject(APP_VERSION);
 
   readonly loading = signal(true);
   readonly username = signal('');
@@ -64,6 +67,11 @@ export class SettingsComponent implements OnInit {
 
   isAdmin(): boolean {
     return this.auth.role() === 'admin';
+  }
+
+  logout(): void {
+    this.auth.logout();
+    window.location.assign('/login');
   }
 
   ngOnInit(): void {

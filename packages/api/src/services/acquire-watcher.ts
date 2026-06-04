@@ -1,25 +1,40 @@
+import { rmSync } from 'node:fs';
+import { dirname, relative } from 'node:path';
 import { createLogger } from '@nicotind/core';
-import type { AcquireJob } from '@nicotind/core';
-import { join } from 'node:path';
+import type { AcquireJob, Plugin } from '@nicotind/core';
 import type { Database } from 'bun:sqlite';
-import { YtdlpService, isBinaryAvailable } from './ytdlp.service.js';
-import type { YtdlpConfig, SpotdlConfig, AcquireBackend } from './ytdlp.service.js';
+import type { PluginRegistry } from './plugins/registry.js';
+import { pluginStagingDir } from './plugins/host-context.js';
 import type { CompletedDownloadFile } from './path-inference.js';
 
 const log = createLogger('acquire-watcher');
 
+export class NoAcquisitionPluginError extends Error {
+  constructor(url: string) {
+    super(`No enabled acquisition plugin can handle "${url}"`);
+    this.name = 'NoAcquisitionPluginError';
+  }
+}
+
+export class PluginUnavailableError extends Error {
+  constructor(pluginId: string) {
+    super(`Acquisition plugin "${pluginId}" is enabled but not available (binary missing?)`);
+    this.name = 'PluginUnavailableError';
+  }
+}
+
 export interface AcquireWatcherOptions {
   db: Database;
+  /** Expanded (no `~`) data dir — staging lives under it. */
   dataDir: string;
-  ytdlp: YtdlpConfig;
-  spotdl: SpotdlConfig;
+  /** Resolves which enabled plugin handles a URL + drives its resolve capability. */
+  registry: PluginRegistry;
   /** organizeBatch mutates file.relativePath in-place to the post-move path. */
   organizeBatch: (files: CompletedDownloadFile[]) => Promise<unknown>;
   scanIncremental: (relPaths: string[]) => Promise<void>;
   /**
    * Optional best-effort enrichment of loose singles/EPs (Lidarr/MusicBrainz
    * release type + artwork) run after the incremental scan, then a reclassify.
-   * Absent when Lidarr is unconfigured — acquisition still works (heuristic).
    */
   enrichSingles?: (relPaths: string[]) => Promise<void>;
 }
@@ -37,9 +52,17 @@ interface AcquireJobRow {
   created_at: number;
 }
 
+/**
+ * Host-side driver for URL-based acquisition. It owns the `acquire_jobs` records
+ * and the post-download ingest (organize → scan → enrich); the actual download
+ * is delegated to whichever enabled `resolve`-capable plugin handles the URL
+ * (`registry.getEnabledForUrl`). The plugin stages files + emits progress; this
+ * class never knows about yt-dlp/spotdl specifics.
+ */
 export class AcquireWatcher {
-  private ytdlpService: YtdlpService;
   private db: Database;
+  /** jobId → the plugin running it, for cancel. */
+  private active = new Map<string, Plugin>();
 
   constructor(private options: AcquireWatcherOptions) {
     this.db = options.db;
@@ -47,46 +70,89 @@ export class AcquireWatcher {
     this.db.run(
       `DELETE FROM acquire_jobs WHERE state IN ('done', 'failed') AND created_at < unixepoch() - 604800`,
     );
-    this.ytdlpService = new YtdlpService({
-      stagingBase: join(options.dataDir, 'staging', 'acquire'),
-      db: options.db,
-      ytdlp: options.ytdlp,
-      spotdl: options.spotdl,
-      onComplete: async (jobId, files) => {
-        await this.handleComplete(jobId, files);
-      },
-      onFailed: (jobId, error) => {
-        log.warn({ jobId, error }, 'Acquire job failed');
-      },
-    });
+  }
+
+  /** Plugin that would handle this URL right now (enabled + canHandle), if any. */
+  pluginForUrl(url: string): Plugin | undefined {
+    return this.options.registry.getEnabledForUrl(url);
   }
 
   /**
-   * Create and immediately start an acquire job. Returns the new job ID.
-   * Rejects if the requested backend binary is not available.
+   * Create + start an acquire job. Throws `NoAcquisitionPluginError` when no
+   * enabled plugin handles the URL, or `PluginUnavailableError` when the chosen
+   * plugin's binary is missing.
    */
-  async submit(url: string, backend: AcquireBackend, label?: string): Promise<string> {
-    const available = backend === 'ytdlp' ? this.isYtdlpAvailable() : this.isSpotdlAvailable();
-    if (!available) {
-      const binaryPath = backend === 'ytdlp'
-        ? this.options.ytdlp.binaryPath
-        : this.options.spotdl.binaryPath;
-      throw new Error(`${backend} is not enabled or its binary was not found at '${binaryPath}'`);
-    }
+  async submit(url: string, label?: string): Promise<string> {
+    const plugin = this.pluginForUrl(url);
+    if (!plugin?.resolve) throw new NoAcquisitionPluginError(url);
+    if (!(await plugin.isAvailable())) throw new PluginUnavailableError(plugin.manifest.id);
 
     const id = crypto.randomUUID();
     this.db.run(
       `INSERT INTO acquire_jobs (id, backend, url, label, state) VALUES (?, ?, ?, ?, 'queued')`,
-      [id, backend, url, label ?? null],
+      [id, plugin.manifest.id, url, label ?? null],
     );
 
-    // Fire and forget — the YtdlpService drives state transitions.
-    void this.ytdlpService.run(id, backend, url);
+    void this.run(plugin, id, url);
     return id;
   }
 
+  private async run(plugin: Plugin, id: string, url: string): Promise<void> {
+    this.active.set(id, plugin);
+    this.updateState(id, 'running');
+    log.info({ id, plugin: plugin.manifest.id, url }, 'Starting acquire job');
+    try {
+      const paths = await plugin.resolve!.resolve(url, id);
+      this.updateState(id, 'done');
+      await this.ingest(id, plugin.manifest.id, paths);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      log.warn({ id, err: msg }, 'Acquire job failed');
+      this.updateState(id, 'failed', msg);
+    } finally {
+      this.active.delete(id);
+      try {
+        rmSync(pluginStagingDir(this.options.dataDir, plugin.manifest.id, id), {
+          recursive: true,
+          force: true,
+        });
+      } catch {
+        // Non-fatal; files have already been moved by organizeBatch.
+      }
+    }
+  }
+
+  private async ingest(id: string, pluginId: string, paths: string[]): Promise<void> {
+    if (paths.length === 0) {
+      log.warn({ id }, 'Acquire job produced no audio files');
+      return;
+    }
+    const stagingDir = pluginStagingDir(this.options.dataDir, pluginId, id);
+    // Map staged absolute paths to the organizer's contract: `directory` is the
+    // path relative to the job staging dir so LibraryOrganizer can infer
+    // artist/album from the downloader's output template.
+    const files: CompletedDownloadFile[] = paths.map((p) => ({
+      username: `acquire:${id}`,
+      directory: relative(stagingDir, dirname(p)) || '.',
+      filename: p,
+    }));
+    try {
+      await this.options.organizeBatch(files);
+      const relPaths = files
+        .map((f) => f.relativePath)
+        .filter((p): p is string => Boolean(p));
+      if (relPaths.length > 0) {
+        await this.options.scanIncremental(relPaths);
+        if (this.options.enrichSingles) await this.options.enrichSingles(relPaths);
+      }
+    } catch (err) {
+      log.error({ id, err }, 'Organize/scan after acquire failed');
+    }
+  }
+
   cancel(jobId: string): boolean {
-    return this.ytdlpService.cancel(jobId);
+    const plugin = this.active.get(jobId);
+    return plugin?.resolve?.cancel?.(jobId) ?? false;
   }
 
   /** Remove a done or failed job from the DB. Returns true if a row was deleted. */
@@ -98,17 +164,13 @@ export class AcquireWatcher {
     return result.changes > 0;
   }
 
-  /**
-   * Re-submit a failed (or done) job using the same URL and backend.
-   * The old row is removed after the new job is successfully created.
-   * Returns the new job ID, or null if the original job was not found.
-   */
+  /** Re-submit a failed (or done) job using the same URL. */
   async retryJob(jobId: string): Promise<string | null> {
     const row = this.db
       .query<AcquireJobRow, [string]>(`SELECT * FROM acquire_jobs WHERE id = ?`)
       .get(jobId);
     if (!row) return null;
-    const newId = await this.submit(row.url, row.backend as AcquireBackend, row.label ?? undefined);
+    const newId = await this.submit(row.url, row.label ?? undefined);
     this.db.run(`DELETE FROM acquire_jobs WHERE id = ?`, [jobId]);
     return newId;
   }
@@ -129,49 +191,30 @@ export class AcquireWatcher {
     return rows.map((r) => this.mapRow(r));
   }
 
-  /** Returns whether yt-dlp is both enabled in config and installed on the system. */
-  isYtdlpAvailable(): boolean {
-    return this.options.ytdlp.enabled && isBinaryAvailable(this.options.ytdlp.binaryPath);
-  }
-
-  /** Returns whether spotdl is both enabled in config and installed on the system. */
-  isSpotdlAvailable(): boolean {
-    return this.options.spotdl.enabled && isBinaryAvailable(this.options.spotdl.binaryPath);
-  }
-
-  private async handleComplete(jobId: string, files: CompletedDownloadFile[]): Promise<void> {
-    if (files.length === 0) {
-      log.warn({ jobId }, 'Acquire job produced no audio files');
-      return;
-    }
-
+  private updateState(jobId: string, state: string, error?: string): void {
     try {
-      await this.options.organizeBatch(files);
-      // organizeBatch mutates file.relativePath to the post-move path.
-      const relPaths = files
-        .map((f) => f.relativePath)
-        .filter((p): p is string => Boolean(p));
-      if (relPaths.length > 0) {
-        await this.options.scanIncremental(relPaths);
-        // Best-effort: attach canonical release type + artwork for loose
-        // singles/EPs, then the enrich callback reclassifies. Never blocks.
-        if (this.options.enrichSingles) {
-          await this.options.enrichSingles(relPaths);
-        }
-      }
+      this.db.run(`UPDATE acquire_jobs SET state = ?, error = ? WHERE id = ?`, [
+        state,
+        error ?? null,
+        jobId,
+      ]);
     } catch (err) {
-      log.error({ jobId, err }, 'Organize/scan after acquire failed');
+      log.warn({ jobId, err }, 'Failed to update acquire_jobs state');
     }
   }
 
   private mapRow(row: AcquireJobRow): AcquireJob {
     let progress: { done: number; total: number } | null = null;
     if (row.progress) {
-      try { progress = JSON.parse(row.progress); } catch { /* ignore */ }
+      try {
+        progress = JSON.parse(row.progress);
+      } catch {
+        /* ignore */
+      }
     }
     return {
       id: row.id,
-      backend: row.backend as AcquireBackend,
+      backend: row.backend as AcquireJob['backend'],
       url: row.url,
       label: row.label,
       state: row.state as AcquireJob['state'],
