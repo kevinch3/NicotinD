@@ -20,6 +20,7 @@ export const AUDIO_EXTENSIONS = new Set([
   '.opus',
   '.wav',
   '.wma',
+  '.webm', // yt-dlp bestaudio output; contains opus audio
 ]);
 
 const CONTENT_TYPES: Record<string, string> = {
@@ -31,6 +32,7 @@ const CONTENT_TYPES: Record<string, string> = {
   opus: 'audio/opus',
   wav: 'audio/wav',
   wma: 'audio/x-ms-wma',
+  webm: 'audio/webm',
 };
 
 /** Raw, IO-derived view of one audio file — the pure aggregation input. */

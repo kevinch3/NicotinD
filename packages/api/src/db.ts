@@ -430,6 +430,24 @@ export function applySchema(db: Database): void {
   // reference songs by the scanner's stable songId; reads JOIN library_songs and
   // drop rows whose song no longer exists (file moved → id changed), so a
   // playlist degrades gracefully rather than showing dead entries.
+  //
+  // Migration: an older schema exists on some DBs (pre-native-playlists era,
+  // before Navidrome was removed) with different columns (no description,
+  // updated_at instead of modified_at, TEXT timestamps). Those tables are empty
+  // — the feature was disabled — so it's safe to drop and recreate them.
+  const playlistsOldSql =
+    db
+      .query<{ sql: string }, []>(
+        `SELECT sql FROM sqlite_master WHERE type='table' AND name='playlists'`,
+      )
+      .get()?.sql ?? '';
+  if (playlistsOldSql && !playlistsOldSql.includes('description')) {
+    db.transaction(() => {
+      db.run(`DROP TABLE IF EXISTS playlist_songs`);
+      db.run(`DROP TABLE IF EXISTS playlists`);
+    })();
+  }
+
   db.run(`
     CREATE TABLE IF NOT EXISTS playlists (
       id          TEXT PRIMARY KEY,

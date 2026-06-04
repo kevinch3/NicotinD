@@ -64,3 +64,61 @@ describe('applySchema — classification ep migration', () => {
     expect(() => applySchema(db)).not.toThrow();
   });
 });
+
+describe('applySchema — playlists schema migration', () => {
+  it('rebuilds old playlists table (no description column) and allows inserts', () => {
+    const db = new Database(':memory:');
+    db.run('PRAGMA foreign_keys=ON');
+    // Seed old schema (as it existed in production DBs from pre-native-playlists era).
+    db.run(`CREATE TABLE users (id TEXT PRIMARY KEY, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL)`);
+    db.run(`INSERT INTO users (id, username, password_hash) VALUES ('u1', 'alice', 'h')`);
+    db.run(`
+      CREATE TABLE playlists (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `);
+    db.run(`
+      CREATE TABLE playlist_songs (
+        playlist_id TEXT NOT NULL REFERENCES playlists(id) ON DELETE CASCADE,
+        song_id TEXT NOT NULL,
+        position INTEGER NOT NULL,
+        PRIMARY KEY (playlist_id, song_id)
+      )
+    `);
+
+    applySchema(db);
+
+    // New schema should allow description, modified_at, INTEGER timestamps.
+    expect(() =>
+      db.run(
+        `INSERT INTO playlists (id, user_id, name, description, created_at, modified_at) VALUES ('p1', 'u1', 'Test', 'desc', 1, 2)`,
+      ),
+    ).not.toThrow();
+
+    // playlist_songs must accept added_at column.
+    expect(() =>
+      db.run(
+        `INSERT INTO playlist_songs (playlist_id, song_id, position, added_at) VALUES ('p1', 's1', 0, 3)`,
+      ),
+    ).not.toThrow();
+
+    // Migration is idempotent.
+    expect(() => applySchema(db)).not.toThrow();
+  });
+
+  it('leaves an already-correct playlists table untouched', () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    db.run(`INSERT INTO users (id, username, password_hash) VALUES ('u1', 'alice', 'h')`);
+    db.run(
+      `INSERT INTO playlists (id, user_id, name, description, created_at, modified_at) VALUES ('p1', 'u1', 'T', null, 1, 2)`,
+    );
+    // Second applySchema should not drop the row.
+    applySchema(db);
+    expect(db.query('SELECT COUNT(*) AS c FROM playlists').get()).toEqual({ c: 1 });
+  });
+});

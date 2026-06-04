@@ -9,6 +9,7 @@ const log = createLogger('ytdlp');
 
 const AUDIO_EXTENSIONS = new Set([
   '.mp3', '.flac', '.m4a', '.aac', '.ogg', '.opus', '.wav', '.wma', '.alac', '.aiff', '.aif', '.ape',
+  '.webm', // yt-dlp with bestaudio produces webm (opus in a WebM container)
 ]);
 
 export interface AcquireJobProgress {
