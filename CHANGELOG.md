@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.51](https://github.com/kevinch3/NicotinD/compare/v0.1.50...v0.1.51) (2026-06-04)
+
+
+### Bug Fixes
+
+* playlist schema migration and webm audio support ([7bc8a6d](https://github.com/kevinch3/NicotinD/commit/7bc8a6db7f8d62f2e18223bcfd5755225b8c16d7))
+
 ## [0.1.50](https://github.com/kevinch3/NicotinD/compare/v0.1.49...v0.1.50) (2026-06-03)
 
 
