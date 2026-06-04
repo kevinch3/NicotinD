@@ -11,25 +11,25 @@ interface Item {
 
 const ITEMS: Item[] = [
   { id: '1', name: 'Alpha', created: '2024-01-01' },
-  { id: '2', name: 'Beta',  created: '2024-03-01' },
+  { id: '2', name: 'Beta', created: '2024-03-01' },
   { id: '3', name: 'Gamma', created: '2024-02-01' },
 ];
 
 // Mirrors the playlist grid config: defaultSort='created', defaultDirection='desc'
 const PLAYLISTS: Item[] = [
-  { id: 'p1', name: 'Chill',    created: '2024-01-10', songCount: 5 },
-  { id: 'p2', name: 'Workout',  created: '2024-06-01', songCount: 12 },
-  { id: 'p3', name: 'Road trip',created: '2024-03-15', songCount: 8 },
+  { id: 'p1', name: 'Chill', created: '2024-01-10', songCount: 5 },
+  { id: 'p2', name: 'Workout', created: '2024-06-01', songCount: 12 },
+  { id: 'p3', name: 'Road trip', created: '2024-03-15', songCount: 8 },
 ];
 
 const PLAYLIST_SORT_OPTIONS = [
-  { field: 'name',      label: 'Name' },
-  { field: 'created',   label: 'Date created' },
+  { field: 'name', label: 'Name' },
+  { field: 'created', label: 'Date created' },
   { field: 'songCount', label: 'Track count' },
 ];
 
 const SORT_OPTIONS = [
-  { field: 'name',    label: 'Name' },
+  { field: 'name', label: 'Name' },
   { field: 'created', label: 'Date' },
 ];
 

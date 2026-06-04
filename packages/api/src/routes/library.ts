@@ -33,12 +33,25 @@ function getDownloadingGroupKeys(db: Database): Set<string> {
     )
     .all();
   return new Set(
-    jobs.map((j) => `${normalizeArtistForGrouping(j.artist_name)} ${normalizeForGrouping(j.album_title)}`),
+    jobs.map(
+      (j) => `${normalizeArtistForGrouping(j.artist_name)} ${normalizeForGrouping(j.album_title)}`,
+    ),
   );
 }
 
 const AUDIO_EXTENSIONS = new Set([
-  '.mp3', '.flac', '.m4a', '.aac', '.ogg', '.opus', '.wav', '.wma', '.alac', '.aiff', '.aif', '.ape',
+  '.mp3',
+  '.flac',
+  '.m4a',
+  '.aac',
+  '.ogg',
+  '.opus',
+  '.wav',
+  '.wma',
+  '.alac',
+  '.aiff',
+  '.aif',
+  '.ape',
 ]);
 
 interface LibraryRoutesOptions {
@@ -185,10 +198,7 @@ function albumOrderBy(type: string): string {
   }
 }
 
-export function libraryRoutes(
-  musicDir?: string,
-  options: LibraryRoutesOptions = {},
-) {
+export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions = {}) {
   const app = new Hono<AuthEnv>();
   const { curator, runSync } = options;
 
@@ -225,11 +235,18 @@ export function libraryRoutes(
       .all(id);
     const downloadingKeys = getDownloadingGroupKeys(db);
     const visible = allRows.filter(
-      (r) => !downloadingKeys.has(`${normalizeArtistForGrouping(r.artist)} ${normalizeForGrouping(r.name)}`),
+      (r) =>
+        !downloadingKeys.has(
+          `${normalizeArtistForGrouping(r.artist)} ${normalizeForGrouping(r.name)}`,
+        ),
     );
     // Split full-lengths (the grid) from singles & EPs (their own section).
-    const albums = visible.filter((r) => r.classification !== 'single' && r.classification !== 'ep').map(rowToAlbum);
-    const singlesAndEps = visible.filter((r) => r.classification === 'single' || r.classification === 'ep').map(rowToAlbum);
+    const albums = visible
+      .filter((r) => r.classification !== 'single' && r.classification !== 'ep')
+      .map(rowToAlbum);
+    const singlesAndEps = visible
+      .filter((r) => r.classification === 'single' || r.classification === 'ep')
+      .map(rowToAlbum);
     return c.json({ artist: rowToArtist(artistRow), albums, singlesAndEps });
   });
 
@@ -249,7 +266,12 @@ export function libraryRoutes(
       .all(size, offset);
     const downloadingKeys = getDownloadingGroupKeys(db);
     const singles = rows
-      .filter((r) => !downloadingKeys.has(`${normalizeArtistForGrouping(r.artist)} ${normalizeForGrouping(r.name)}`))
+      .filter(
+        (r) =>
+          !downloadingKeys.has(
+            `${normalizeArtistForGrouping(r.artist)} ${normalizeForGrouping(r.name)}`,
+          ),
+      )
       .map(rowToAlbum);
     return c.json(singles);
   });
@@ -279,13 +301,19 @@ export function libraryRoutes(
 
     const db = getDatabase();
     const rows = db
-      .query<AlbumRow, (string | number)[]>(
-        `${ALBUM_SELECT} ${whereClause} ORDER BY ${order} LIMIT ? OFFSET ?`,
-      )
+      .query<
+        AlbumRow,
+        (string | number)[]
+      >(`${ALBUM_SELECT} ${whereClause} ORDER BY ${order} LIMIT ? OFFSET ?`)
       .all(...params, size, offset);
     const downloadingKeys = getDownloadingGroupKeys(db);
     const albums = rows
-      .filter((r) => !downloadingKeys.has(`${normalizeArtistForGrouping(r.artist)} ${normalizeForGrouping(r.name)}`))
+      .filter(
+        (r) =>
+          !downloadingKeys.has(
+            `${normalizeArtistForGrouping(r.artist)} ${normalizeForGrouping(r.name)}`,
+          ),
+      )
       .map(rowToAlbum);
     return c.json(albums);
   });
@@ -293,9 +321,7 @@ export function libraryRoutes(
   app.get('/albums/:id', (c) => {
     const id = c.req.param('id');
     const db = getDatabase();
-    const albumRow = db
-      .query<AlbumRow, [string]>(`${ALBUM_SELECT} WHERE id = ?`)
-      .get(id);
+    const albumRow = db.query<AlbumRow, [string]>(`${ALBUM_SELECT} WHERE id = ?`).get(id);
     if (!albumRow) {
       return c.json({ error: 'Album not found' }, 404);
     }
@@ -317,14 +343,16 @@ export function libraryRoutes(
 
     // The canonical DB is the single source of truth for the tracklist.
     const albumRow = db
-      .query<{ name: string; artist: string }, [string]>(
-        'SELECT name, artist FROM library_albums WHERE id = ?',
-      )
+      .query<
+        { name: string; artist: string },
+        [string]
+      >('SELECT name, artist FROM library_albums WHERE id = ?')
       .get(albumId);
     const canonicalSongs = db
-      .query<{ id: string; path: string }, [string]>(
-        'SELECT id, path FROM library_songs WHERE album_id = ?',
-      )
+      .query<
+        { id: string; path: string },
+        [string]
+      >('SELECT id, path FROM library_songs WHERE album_id = ?')
       .all(albumId);
     const songIds: string[] = canonicalSongs.map((s) => s.id);
     const songPaths: string[] = canonicalSongs.map((s) => s.path);
@@ -376,7 +404,10 @@ export function libraryRoutes(
       db.run('DELETE FROM library_albums WHERE id = ?', [albumId]);
     })();
 
-    log.info({ albumId, deletedCount, failedCount: failed.length, folderDeleted }, 'Album deletion complete');
+    log.info(
+      { albumId, deletedCount, failedCount: failed.length, folderDeleted },
+      'Album deletion complete',
+    );
     return c.json({ ok: failed.length === 0, deletedCount, failedCount: failed.length, failed });
   });
 
@@ -390,7 +421,9 @@ export function libraryRoutes(
     const db = getDatabase();
     const limit = Math.min(Number(c.req.query('limit') ?? 200) || 200, 1000);
     const total = (
-      db.query('SELECT COUNT(*) AS c FROM completed_downloads WHERE relative_path IS NULL').get() as {
+      db
+        .query('SELECT COUNT(*) AS c FROM completed_downloads WHERE relative_path IS NULL')
+        .get() as {
         c: number;
       }
     ).c;
@@ -510,9 +543,7 @@ export function libraryRoutes(
 
     // Same-artist songs (boost same-album less to surface other albums first)
     const artistSongs = db
-      .query<SongRow, [string]>(
-        `${SONG_SELECT} WHERE s.artist_id = ? AND s.hidden = 0`,
-      )
+      .query<SongRow, [string]>(`${SONG_SELECT} WHERE s.artist_id = ? AND s.hidden = 0`)
       .all(source.artist_id);
     for (const row of artistSongs) {
       const s = rowToSong(row);
@@ -550,9 +581,10 @@ export function libraryRoutes(
   app.get('/genres', (c) => {
     const db = getDatabase();
     const rows = db
-      .query<{ name: string; song_count: number; album_count: number }, []>(
-        `SELECT name, song_count, album_count FROM library_genres ORDER BY song_count DESC`,
-      )
+      .query<
+        { name: string; song_count: number; album_count: number },
+        []
+      >(`SELECT name, song_count, album_count FROM library_genres ORDER BY song_count DESC`)
       .all();
     return c.json(
       rows.map((r) => ({ value: r.name, songCount: r.song_count, albumCount: r.album_count })),
@@ -612,7 +644,7 @@ export function libraryRoutes(
       .toLowerCase()
       .replace(/\.[^.]+$/, '')
       .split(/[\s\-_.]+/)
-      .filter(t => t.length >= 2);
+      .filter((t) => t.length >= 2);
   }
 
   function findFileByTokens(dir: string, tokens: string[]): string | null {
@@ -625,7 +657,7 @@ export function libraryRoutes(
     const tokenSet = new Set(tokens);
     for (const entry of entries) {
       if (!entry.isFile()) continue;
-      if (tokenizeFilename(entry.name).some(t => tokenSet.has(t))) {
+      if (tokenizeFilename(entry.name).some((t) => tokenSet.has(t))) {
         return join(dir, entry.name);
       }
     }
@@ -688,7 +720,10 @@ export function libraryRoutes(
     const fullPath = resolveSongPath(expandedMusicDir, songPath);
 
     if (!isUnderMusicDir(expandedMusicDir, fullPath)) {
-      log.warn({ path: fullPath, musicDir: expandedMusicDir }, 'Resolved song path is outside the music directory');
+      log.warn(
+        { path: fullPath, musicDir: expandedMusicDir },
+        'Resolved song path is outside the music directory',
+      );
       return { ok: false, error: 'Song path is outside the music directory', status: 400 };
     }
 
@@ -712,7 +747,10 @@ export function libraryRoutes(
         try {
           unlinkSync(fallbackPath);
           deletedPath = fallbackPath;
-          log.info({ requestedPath: fullPath, resolvedPath: fallbackPath }, 'Deleted song file via fallback path');
+          log.info(
+            { requestedPath: fullPath, resolvedPath: fallbackPath },
+            'Deleted song file via fallback path',
+          );
         } catch (err) {
           log.error({ err, path: fallbackPath }, 'Failed to delete song file');
           return { ok: false, error: 'Failed to delete file', status: 500 };
@@ -723,15 +761,23 @@ export function libraryRoutes(
           try {
             unlinkSync(fuzzyPath);
             deletedPath = fuzzyPath;
-            log.info({ requestedPath: fullPath, resolvedPath: fuzzyPath }, 'Deleted song file via fuzzy path match');
+            log.info(
+              { requestedPath: fullPath, resolvedPath: fuzzyPath },
+              'Deleted song file via fuzzy path match',
+            );
           } catch (err) {
             log.error({ err, path: fuzzyPath }, 'Failed to delete song file');
             return { ok: false, error: 'Failed to delete file', status: 500 };
           }
         } else {
-          log.warn({ songId: id, expectedPath: fullPath }, 'Song file not found on disk; no fallback path resolved');
+          log.warn(
+            { songId: id, expectedPath: fullPath },
+            'Song file not found on disk; no fallback path resolved',
+          );
           // File is already gone — clean up the orphaned DB record so it stops appearing in Navidrome.
-          const orphan = db.query<{ id: string }, [string]>(`SELECT id FROM library_songs WHERE id = ?`).get(id);
+          const orphan = db
+            .query<{ id: string }, [string]>(`SELECT id FROM library_songs WHERE id = ?`)
+            .get(id);
           if (orphan) {
             try {
               db.run('DELETE FROM completed_downloads WHERE navidrome_id = ?', [id]);
@@ -751,10 +797,10 @@ export function libraryRoutes(
       const relPath = relative(expandedMusicDir, deletedPath).replace(/\\/g, '/');
 
       try {
-        db.run(
-          'DELETE FROM completed_downloads WHERE navidrome_id = ? OR relative_path = ?',
-          [id, relPath],
-        );
+        db.run('DELETE FROM completed_downloads WHERE navidrome_id = ? OR relative_path = ?', [
+          id,
+          relPath,
+        ]);
         db.run('DELETE FROM library_songs WHERE id = ?', [id]);
         log.info({ relPath }, 'Removed song from completion history + canonical DB');
       } catch (err) {
@@ -789,13 +835,20 @@ export function libraryRoutes(
     }
 
     log.info({ count: ids.length }, 'Bulk deleting songs');
-    const results = await Promise.allSettled(ids.map(id => deleteOne(id)));
+    const results = await Promise.allSettled(ids.map((id) => deleteOne(id)));
 
-    const failed = results.filter(r => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value.ok));
+    const failed = results.filter(
+      (r) => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value.ok),
+    );
     if (failed.length === ids.length) {
-      const firstError = results.find(r => r.status === 'fulfilled' && !r.value.ok) as PromiseFulfilledResult<{ ok: false; error: string; status: number }> | undefined;
+      const firstError = results.find((r) => r.status === 'fulfilled' && !r.value.ok) as
+        | PromiseFulfilledResult<{ ok: false; error: string; status: number }>
+        | undefined;
       const status = firstError?.value.status ?? 500;
-      return c.json({ error: firstError?.value.error ?? 'Failed to delete any songs' }, status as 400 | 404 | 500);
+      return c.json(
+        { error: firstError?.value.error ?? 'Failed to delete any songs' },
+        status as 400 | 404 | 500,
+      );
     }
 
     if (runSync) void runSync();
@@ -810,9 +863,10 @@ export function libraryRoutes(
 
     const db = getDatabase();
     const rows = db
-      .query<SongRow, []>(
-        `${SONG_SELECT} WHERE s.hidden = 0 AND (a.hidden IS NULL OR a.hidden = 0)`,
-      )
+      .query<
+        SongRow,
+        []
+      >(`${SONG_SELECT} WHERE s.hidden = 0 AND (a.hidden IS NULL OR a.hidden = 0)`)
       .all();
     const allSongs = rows.map(rowToSong);
 
@@ -824,11 +878,19 @@ export function libraryRoutes(
       groups.set(key, group);
     }
 
-    const duplicates: Array<Array<{
-      id: string; title: string; artist: string; album: string;
-      duration?: number; bitRate?: number; suffix?: string;
-      path: string; coverArt?: string;
-    }>> = [];
+    const duplicates: Array<
+      Array<{
+        id: string;
+        title: string;
+        artist: string;
+        album: string;
+        duration?: number;
+        bitRate?: number;
+        suffix?: string;
+        path: string;
+        coverArt?: string;
+      }>
+    > = [];
 
     for (const [, group] of groups) {
       if (group.length < 2) continue;
@@ -946,9 +1008,11 @@ function normalizeDupKey(title: string, artist: string): string {
 function qualityScore(song: Song): number {
   const ext = (song.suffix ?? '').toLowerCase();
   const formatScore =
-    ext === 'flac' || ext === 'wav' || ext === 'aiff' || ext === 'ape' || ext === 'wv' ? 200 :
-    ext === 'opus' || ext === 'ogg' || ext === 'm4a' || ext === 'aac' ? 100 :
-    0;
+    ext === 'flac' || ext === 'wav' || ext === 'aiff' || ext === 'ape' || ext === 'wv'
+      ? 200
+      : ext === 'opus' || ext === 'ogg' || ext === 'm4a' || ext === 'aac'
+        ? 100
+        : 0;
   return formatScore + (song.bitRate ?? 0);
 }
 
@@ -1069,7 +1133,8 @@ function cleanupEmptyDirs(filePath: string, musicDir: string): void {
   let dir = dirname(filePath);
   while (true) {
     const normalizedDir = normalize(dir);
-    if (normalizedDir === normalizedMusicDir || !normalizedDir.startsWith(normalizedMusicDir)) break;
+    if (normalizedDir === normalizedMusicDir || !normalizedDir.startsWith(normalizedMusicDir))
+      break;
     try {
       if (readdirSync(normalizedDir).length === 0) {
         rmdirSync(normalizedDir);

@@ -5,8 +5,17 @@ import { createLogger } from '@nicotind/core';
 const log = createLogger('album-hunter');
 
 const AUDIO_EXTENSIONS = new Set([
-  '.mp3', '.flac', '.ogg', '.opus',
-  '.m4a', '.aac', '.wav', '.aiff', '.wma', '.ape', '.wv',
+  '.mp3',
+  '.flac',
+  '.ogg',
+  '.opus',
+  '.m4a',
+  '.aac',
+  '.wav',
+  '.aiff',
+  '.wma',
+  '.ape',
+  '.wv',
 ]);
 
 const POLL_INTERVAL_MS = 2_000;
@@ -102,10 +111,7 @@ export class AlbumHunterService {
     canonicalTracks: LidarrTrack[],
     opts: { skewSearch?: boolean } = {},
   ): Promise<FolderCandidate[]> {
-    const baseQs = [
-      `${artistName} ${albumTitle}`,
-      `${artistName} - ${albumTitle}`,
-    ];
+    const baseQs = [`${artistName} ${albumTitle}`, `${artistName} - ${albumTitle}`];
 
     const base = await this.searchAndScore(baseQs, canonicalTracks);
 
@@ -136,13 +142,10 @@ export class AlbumHunterService {
     canonicalTracks: LidarrTrack[],
     opts: { skewSearch?: boolean } = {},
   ): Promise<{ candidates: FolderCandidate[]; skewNeeded: boolean }> {
-    const baseQs = [
-      `${artistName} ${albumTitle}`,
-      `${artistName} - ${albumTitle}`,
-    ];
+    const baseQs = [`${artistName} ${albumTitle}`, `${artistName} - ${albumTitle}`];
     const candidates = await this.searchAndScore(baseQs, canonicalTracks);
     const bestBasePct = candidates.length ? candidates[0].matchPct : 0;
-    const skewNeeded = (opts.skewSearch !== false) && bestBasePct < SKEW_TRIGGER_PCT;
+    const skewNeeded = opts.skewSearch !== false && bestBasePct < SKEW_TRIGGER_PCT;
     return { candidates, skewNeeded };
   }
 
@@ -153,10 +156,7 @@ export class AlbumHunterService {
     albumTitle: string,
     canonicalTracks: LidarrTrack[],
   ): Promise<FolderCandidate[]> {
-    const baseQs = [
-      `${artistName} ${albumTitle}`,
-      `${artistName} - ${albumTitle}`,
-    ];
+    const baseQs = [`${artistName} ${albumTitle}`, `${artistName} - ${albumTitle}`];
     const skewed = buildSkewedQueries(artistName, albumTitle, baseQs);
     if (!skewed.length) return [];
     return this.searchAndScore(skewed, canonicalTracks);
@@ -169,12 +169,10 @@ export class AlbumHunterService {
     // Fire all searches in parallel
     const searches = await Promise.all(
       queries.map((q) =>
-        this.slskd.searches
-          .create(q)
-          .catch((err) => {
-            log.warn({ q, err }, 'Search create failed');
-            return null;
-          }),
+        this.slskd.searches.create(q).catch((err) => {
+          log.warn({ q, err }, 'Search create failed');
+          return null;
+        }),
       ),
     );
 
@@ -244,10 +242,7 @@ export class AlbumHunterService {
       for (const [key, { username, files }] of folderMap) {
         const dir = key.slice(username.length + 2); // strip "username::"
         const baseNames = files.map((f) => {
-          const basename = f.filename
-            .replace(/\\/g, '/')
-            .split('/')
-            .pop() ?? f.filename;
+          const basename = f.filename.replace(/\\/g, '/').split('/').pop() ?? f.filename;
           return basename.slice(0, basename.lastIndexOf('.') || basename.length);
         });
 
@@ -308,15 +303,11 @@ export class AlbumHunterService {
       return candidates.slice(0, 20);
     } finally {
       // Clean up searches
-      await Promise.all(
-        searchIds.map((id) => this.slskd.searches.delete(id).catch(() => {})),
-      );
+      await Promise.all(searchIds.map((id) => this.slskd.searches.delete(id).catch(() => {})));
     }
   }
 
-  private async pollUntilDone(
-    searchIds: string[],
-  ): Promise<
+  private async pollUntilDone(searchIds: string[]): Promise<
     Array<{
       username: string;
       freeUploadSlots: number;
@@ -396,10 +387,7 @@ export function buildSkewedQueries(
 // folder key (username::directory) and keeping the higher-scoring instance, then
 // re-rank with the shared comparator. why: the same peer folder can surface from
 // both the base and a skewed query; without de-duping it would appear twice.
-function mergeCandidates(
-  base: FolderCandidate[],
-  extra: FolderCandidate[],
-): FolderCandidate[] {
+function mergeCandidates(base: FolderCandidate[], extra: FolderCandidate[]): FolderCandidate[] {
   const byKey = new Map<string, FolderCandidate>();
   for (const c of [...base, ...extra]) {
     const key = `${c.username}::${c.directory}`;
@@ -417,21 +405,23 @@ function extractDirectory(filename: string): string {
 }
 
 export function normalizeTitle(title: string): string {
-  return title
-    .toLowerCase()
-    // why: fold diacritics to their base letter *before* the punctuation strip.
-    // JS `\w` is ASCII-only, so `[^\w\s]` would otherwise *delete* accented
-    // letters ("canción" → "cancin") while a peer who typed the unaccented
-    // "cancion" normalizes to "cancion" — the two would never match. NFD
-    // decomposes "ó" → "o" + combining mark, which we then drop, so both
-    // accented and unaccented spellings fold to the same string. Critical for
-    // this Latin-American-heavy library.
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '') // strip combining diacritical marks
-    .replace(/^\d+[\s.\-]+/, '') // strip leading track numbers
-    .replace(/[^\w\s]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
+  return (
+    title
+      .toLowerCase()
+      // why: fold diacritics to their base letter *before* the punctuation strip.
+      // JS `\w` is ASCII-only, so `[^\w\s]` would otherwise *delete* accented
+      // letters ("canción" → "cancin") while a peer who typed the unaccented
+      // "cancion" normalizes to "cancion" — the two would never match. NFD
+      // decomposes "ó" → "o" + combining mark, which we then drop, so both
+      // accented and unaccented spellings fold to the same string. Critical for
+      // this Latin-American-heavy library.
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '') // strip combining diacritical marks
+      .replace(/^\d+[\s.\-]+/, '') // strip leading track numbers
+      .replace(/[^\w\s]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+  );
 }
 
 export function titlesOverlap(canonical: string, filename: string): boolean {

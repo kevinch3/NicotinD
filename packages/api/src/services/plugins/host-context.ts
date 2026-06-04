@@ -28,9 +28,10 @@ function createPluginStorage(db: Database, pluginId: string): PluginStorage {
   return {
     get(key) {
       const row = db
-        .query<{ value: string }, [string, string]>(
-          `SELECT value FROM plugin_kv WHERE plugin_id = ? AND key = ?`,
-        )
+        .query<
+          { value: string },
+          [string, string]
+        >(`SELECT value FROM plugin_kv WHERE plugin_id = ? AND key = ?`)
         .get(pluginId, key);
       return row?.value ?? null;
     },

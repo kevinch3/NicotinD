@@ -45,9 +45,10 @@ function seedJob(db: Database, artistName: string, albumTitle: string): void {
 
 function readRow(db: Database, id: string): { hidden: number; classification: string } {
   return db
-    .query<{ hidden: number; classification: string }, [string]>(
-      'SELECT hidden, classification FROM library_albums WHERE id = ?',
-    )
+    .query<
+      { hidden: number; classification: string },
+      [string]
+    >('SELECT hidden, classification FROM library_albums WHERE id = ?')
     .get(id)!;
 }
 
@@ -79,7 +80,12 @@ describe('LibraryCurator', () => {
     });
 
     it('hides the [Unknown Album]/[Unknown Artist] mega-bucket', () => {
-      seedAlbum(db, { id: 'a1', name: '[Unknown Album]', artist: '[Unknown Artist]', songCount: 30 });
+      seedAlbum(db, {
+        id: 'a1',
+        name: '[Unknown Album]',
+        artist: '[Unknown Artist]',
+        songCount: 30,
+      });
       new LibraryCurator(db).reclassifyAll();
       expect(readRow(db, 'a1')).toEqual({ hidden: 1, classification: 'unknown' });
     });
@@ -115,7 +121,12 @@ describe('LibraryCurator', () => {
     });
 
     it('does not let metadata resurrect the unknown/unknown mega-bucket', () => {
-      seedAlbum(db, { id: 'a1', name: '[Unknown Album]', artist: '[Unknown Artist]', songCount: 5 });
+      seedAlbum(db, {
+        id: 'a1',
+        name: '[Unknown Album]',
+        artist: '[Unknown Artist]',
+        songCount: 5,
+      });
       setReleaseType(db, 'a1', 'album', { source: 'lidarr' });
       new LibraryCurator(db).reclassifyAll();
       expect(readRow(db, 'a1').hidden).toBe(1);

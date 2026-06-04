@@ -14,14 +14,18 @@ const UserResponseSchema = z.object({
   role: z.string(),
 });
 
-const AuthSuccessSchema = z.object({
-  token: z.string(),
-  user: UserResponseSchema,
-}).openapi('AuthSuccess');
+const AuthSuccessSchema = z
+  .object({
+    token: z.string(),
+    user: UserResponseSchema,
+  })
+  .openapi('AuthSuccess');
 
-const ErrorSchema = z.object({
-  error: z.string(),
-}).openapi('Error');
+const ErrorSchema = z
+  .object({
+    error: z.string(),
+  })
+  .openapi('Error');
 
 export function authRoutes(jwtSecret: string, jwtExpiresIn: string, registrationEnabled: boolean) {
   const app = new OpenAPIHono();
@@ -95,7 +99,9 @@ export function authRoutes(jwtSecret: string, jwtExpiresIn: string, registration
       const db = getDatabase();
 
       // Check if any users exist — first user becomes admin
-      const userCount = db.query<{ count: number }, []>('SELECT COUNT(*) as count FROM users').get();
+      const userCount = db
+        .query<{ count: number }, []>('SELECT COUNT(*) as count FROM users')
+        .get();
       const role = userCount?.count === 0 ? 'admin' : 'user';
 
       // Block public registration when disabled (first-user setup always allowed)
@@ -113,8 +119,12 @@ export function authRoutes(jwtSecret: string, jwtExpiresIn: string, registration
       const id = crypto.randomUUID();
       const passwordHash = await hashPassword(password);
 
-      db.query('INSERT INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)')
-        .run(id, username, passwordHash, role);
+      db.query('INSERT INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)').run(
+        id,
+        username,
+        passwordHash,
+        role,
+      );
 
       db.query('INSERT INTO user_settings (user_id) VALUES (?)').run(id);
 
@@ -189,7 +199,10 @@ export function authRoutes(jwtSecret: string, jwtExpiresIn: string, registration
         jwtExpiresIn,
       );
 
-      return c.json({ token, user: { id: user.id, username: user.username, role: user.role } }, 200);
+      return c.json(
+        { token, user: { id: user.id, username: user.username, role: user.role } },
+        200,
+      );
     },
   );
 

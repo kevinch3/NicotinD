@@ -8,7 +8,11 @@ export const errorHandler: ErrorHandler = (err, c) => {
 
   // Service connectivity and upstream errors
   const msg = err instanceof Error ? err.message : String(err);
-  if (msg.includes('Unable to connect') || msg.includes('ConnectionRefused') || msg.includes('ECONNREFUSED')) {
+  if (
+    msg.includes('Unable to connect') ||
+    msg.includes('ConnectionRefused') ||
+    msg.includes('ECONNREFUSED')
+  ) {
     return c.json({ error: 'Service unavailable', detail: msg }, 503);
   }
   if (msg.includes('slskd request failed')) {

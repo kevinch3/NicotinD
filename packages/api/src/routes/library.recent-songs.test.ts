@@ -28,7 +28,15 @@ function createTestDb(): Database {
 
 function seedSong(
   db: Database,
-  s: { id: string; title: string; artist: string; album: string; albumId: string; path: string; created: string },
+  s: {
+    id: string;
+    title: string;
+    artist: string;
+    album: string;
+    albumId: string;
+    path: string;
+    created: string;
+  },
 ): void {
   db.run(
     `INSERT OR IGNORE INTO library_albums (id, name, artist, artist_id, song_count, duration, created, synced_at)
@@ -47,9 +55,33 @@ describe('library recent-songs ordering', () => {
 
   beforeEach(() => {
     testDb = createTestDb();
-    seedSong(testDb, { id: 'song-1', title: 'First', artist: 'Artist A', album: 'Alpha', albumId: 'album-1', path: 'Artist A/Alpha/01 - First.mp3', created: '2026-03-20T10:00:00.000Z' });
-    seedSong(testDb, { id: 'song-2', title: 'Second', artist: 'Artist A', album: 'Alpha', albumId: 'album-1', path: 'Artist A/Alpha/02 - Second.mp3', created: '2026-03-20T09:00:00.000Z' });
-    seedSong(testDb, { id: 'song-3', title: 'Third', artist: 'Artist B', album: 'Beta', albumId: 'album-2', path: 'Artist B/Beta/01 - Third.mp3', created: '2026-03-20T08:00:00.000Z' });
+    seedSong(testDb, {
+      id: 'song-1',
+      title: 'First',
+      artist: 'Artist A',
+      album: 'Alpha',
+      albumId: 'album-1',
+      path: 'Artist A/Alpha/01 - First.mp3',
+      created: '2026-03-20T10:00:00.000Z',
+    });
+    seedSong(testDb, {
+      id: 'song-2',
+      title: 'Second',
+      artist: 'Artist A',
+      album: 'Alpha',
+      albumId: 'album-1',
+      path: 'Artist A/Alpha/02 - Second.mp3',
+      created: '2026-03-20T09:00:00.000Z',
+    });
+    seedSong(testDb, {
+      id: 'song-3',
+      title: 'Third',
+      artist: 'Artist B',
+      album: 'Beta',
+      albumId: 'album-2',
+      path: 'Artist B/Beta/01 - Third.mp3',
+      created: '2026-03-20T08:00:00.000Z',
+    });
 
     app = new Hono();
     app.route('/', libraryRoutes('/music'));
@@ -107,7 +139,7 @@ describe('library recent-songs ordering', () => {
     const res = await app.request('/recent-songs?size=10');
     expect(res.status).toBe(200);
 
-    const data = await res.json() as Array<{ id: string }>;
+    const data = (await res.json()) as Array<{ id: string }>;
     expect(data.map((s) => s.id)).toEqual(['song-2', 'song-3', 'song-1']);
   });
 
@@ -118,7 +150,7 @@ describe('library recent-songs ordering', () => {
     const res = await app.request('/recent-songs?size=10');
     expect(res.status).toBe(200);
 
-    const data = await res.json() as Array<{ id: string }>;
+    const data = (await res.json()) as Array<{ id: string }>;
     expect(data.map((s) => s.id)).toEqual(['song-1', 'song-2', 'song-3']);
   });
 });

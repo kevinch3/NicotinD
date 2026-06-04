@@ -4,10 +4,7 @@ import { applySchema } from '../db.js';
 import { SingleEnrichmentService } from './single-enrichment.service.js';
 import { getReleaseType } from './release-meta-store.js';
 import { resolveArtwork } from './artwork-store.js';
-import type {
-  CatalogService,
-  CatalogSearchResult,
-} from './catalog-search.service.js';
+import type { CatalogService, CatalogSearchResult } from './catalog-search.service.js';
 
 let db: Database;
 
@@ -29,7 +26,14 @@ function throwingCatalog(): CatalogService {
   } as unknown as CatalogService;
 }
 
-function seedSingle(opts: { albumId: string; artistId: string; name: string; artist: string; path: string; classification?: string }): void {
+function seedSingle(opts: {
+  albumId: string;
+  artistId: string;
+  name: string;
+  artist: string;
+  path: string;
+  classification?: string;
+}): void {
   db.run(
     `INSERT INTO library_albums (id, name, artist, artist_id, song_count, duration, classification, synced_at)
      VALUES (?, ?, ?, ?, 1, 0, ?, 1)`,
@@ -46,7 +50,13 @@ const PATH = 'Alfredo Casero/Singles/Mi Cancion.mp3';
 
 describe('SingleEnrichmentService', () => {
   it('writes release type + album & artist artwork on a lookup hit', async () => {
-    seedSingle({ albumId: 'alb-1', artistId: 'art-1', name: 'Mi Cancion', artist: 'Alfredo Casero', path: PATH });
+    seedSingle({
+      albumId: 'alb-1',
+      artistId: 'art-1',
+      name: 'Mi Cancion',
+      artist: 'Alfredo Casero',
+      path: PATH,
+    });
     const catalog = makeCatalog({
       artists: [{ mbid: 'm1', name: 'Alfredo Casero', imageUrl: 'https://x/artist.jpg' }],
       albums: [
@@ -75,7 +85,15 @@ describe('SingleEnrichmentService', () => {
     const catalog = makeCatalog({
       artists: [],
       albums: [
-        { foreignAlbumId: 'fa', title: 'My EP', artistName: 'A', artistMbid: 'm', albumType: 'EP', secondaryTypes: [], trackCount: 4 },
+        {
+          foreignAlbumId: 'fa',
+          title: 'My EP',
+          artistName: 'A',
+          artistMbid: 'm',
+          albumType: 'EP',
+          secondaryTypes: [],
+          trackCount: 4,
+        },
       ],
     });
     await new SingleEnrichmentService({ db, catalog }).enrich([PATH]);
@@ -83,17 +101,37 @@ describe('SingleEnrichmentService', () => {
   });
 
   it('degrades gracefully when the lookup throws (Lidarr down)', async () => {
-    seedSingle({ albumId: 'alb-1', artistId: 'art-1', name: 'Mi Cancion', artist: 'Alfredo Casero', path: PATH });
+    seedSingle({
+      albumId: 'alb-1',
+      artistId: 'art-1',
+      name: 'Mi Cancion',
+      artist: 'Alfredo Casero',
+      path: PATH,
+    });
     await new SingleEnrichmentService({ db, catalog: throwingCatalog() }).enrich([PATH]);
     expect(getReleaseType(db, 'alb-1')).toBeNull(); // nothing written, no throw
   });
 
   it('writes nothing when there is no matching album', async () => {
-    seedSingle({ albumId: 'alb-1', artistId: 'art-1', name: 'Mi Cancion', artist: 'Alfredo Casero', path: PATH });
+    seedSingle({
+      albumId: 'alb-1',
+      artistId: 'art-1',
+      name: 'Mi Cancion',
+      artist: 'Alfredo Casero',
+      path: PATH,
+    });
     const catalog = makeCatalog({
       artists: [],
       albums: [
-        { foreignAlbumId: 'fa', title: 'Totally Different', artistName: 'Someone Else', artistMbid: 'm', albumType: 'Single', secondaryTypes: [], trackCount: 1 },
+        {
+          foreignAlbumId: 'fa',
+          title: 'Totally Different',
+          artistName: 'Someone Else',
+          artistMbid: 'm',
+          albumType: 'Single',
+          secondaryTypes: [],
+          trackCount: 1,
+        },
       ],
     });
     await new SingleEnrichmentService({ db, catalog }).enrich([PATH]);
@@ -101,11 +139,26 @@ describe('SingleEnrichmentService', () => {
   });
 
   it('skips full-length albums (only loose single/ep/unknown rows are enriched)', async () => {
-    seedSingle({ albumId: 'alb-1', artistId: 'art-1', name: 'Real Album', artist: 'A', path: PATH, classification: 'album' });
+    seedSingle({
+      albumId: 'alb-1',
+      artistId: 'art-1',
+      name: 'Real Album',
+      artist: 'A',
+      path: PATH,
+      classification: 'album',
+    });
     const catalog = makeCatalog({
       artists: [],
       albums: [
-        { foreignAlbumId: 'fa', title: 'Real Album', artistName: 'A', artistMbid: 'm', albumType: 'Single', secondaryTypes: [], trackCount: 1 },
+        {
+          foreignAlbumId: 'fa',
+          title: 'Real Album',
+          artistName: 'A',
+          artistMbid: 'm',
+          albumType: 'Single',
+          secondaryTypes: [],
+          trackCount: 1,
+        },
       ],
     });
     await new SingleEnrichmentService({ db, catalog }).enrich([PATH]);

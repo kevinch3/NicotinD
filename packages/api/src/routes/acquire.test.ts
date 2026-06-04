@@ -1,9 +1,7 @@
 import { describe, expect, it, beforeEach, mock } from 'bun:test';
 import { Hono } from 'hono';
 import type { AuthEnv } from '../middleware/auth.js';
-import {
-  acquireRoutes,
-} from './acquire.js';
+import { acquireRoutes } from './acquire.js';
 import {
   NoAcquisitionPluginError,
   PluginUnavailableError,
@@ -30,7 +28,16 @@ function makeMockWatcher() {
       if (url.includes('unhandled')) throw new NoAcquisitionPluginError(url);
       if (url.includes('unavailable')) throw new PluginUnavailableError('ytdlp');
       const id = `job-${jobs.length + 1}`;
-      jobs.push({ id, backend: 'ytdlp', url, label: null, state: 'queued', progress: null, error: null, created_at: Date.now() });
+      jobs.push({
+        id,
+        backend: 'ytdlp',
+        url,
+        label: null,
+        state: 'queued',
+        progress: null,
+        error: null,
+        created_at: Date.now(),
+      });
       return id;
     }),
     cancelMock: mock((jobId: string): boolean => {
@@ -38,7 +45,9 @@ function makeMockWatcher() {
       return job !== undefined && (job.state === 'queued' || job.state === 'running');
     }),
     deleteJobMock: mock((jobId: string): boolean => {
-      const idx = jobs.findIndex((j) => j.id === jobId && (j.state === 'done' || j.state === 'failed'));
+      const idx = jobs.findIndex(
+        (j) => j.id === jobId && (j.state === 'done' || j.state === 'failed'),
+      );
       if (idx === -1) return false;
       jobs.splice(idx, 1);
       return true;
@@ -178,7 +187,16 @@ describe('acquire routes', () => {
     });
 
     it('deletes a done job via deleteJob() when cancel() returns false', async () => {
-      watcher.jobs.push({ id: 'done-job', backend: 'ytdlp', url: 'https://example.com', label: null, state: 'done', progress: null, error: null, created_at: Date.now() });
+      watcher.jobs.push({
+        id: 'done-job',
+        backend: 'ytdlp',
+        url: 'https://example.com',
+        label: null,
+        state: 'done',
+        progress: null,
+        error: null,
+        created_at: Date.now(),
+      });
       const res = await app.request('/jobs/done-job', { method: 'DELETE' });
       expect(res.status).toBe(200);
       expect(watcher.deleteJobMock).toHaveBeenCalledWith('done-job');
@@ -192,7 +210,16 @@ describe('acquire routes', () => {
     });
 
     it('retries a failed job and returns new jobId', async () => {
-      watcher.jobs.push({ id: 'failed-job', backend: 'ytdlp', url: 'https://www.youtube.com/watch?v=abc', label: null, state: 'failed', progress: null, error: 'oops', created_at: Date.now() });
+      watcher.jobs.push({
+        id: 'failed-job',
+        backend: 'ytdlp',
+        url: 'https://www.youtube.com/watch?v=abc',
+        label: null,
+        state: 'failed',
+        progress: null,
+        error: 'oops',
+        created_at: Date.now(),
+      });
       const res = await app.request('/jobs/failed-job/retry', { method: 'POST' });
       expect(res.status).toBe(201);
       const json = (await res.json()) as { jobId: string };

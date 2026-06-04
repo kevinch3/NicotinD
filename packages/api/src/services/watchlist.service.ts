@@ -84,7 +84,10 @@ export class WatchlistService {
 
   start(): void {
     if (!this.enabled || this.timer) return;
-    log.info({ intervalMs: this.intervalMs, minMatchPct: this.minMatchPct }, 'Starting watchlist poller');
+    log.info(
+      { intervalMs: this.intervalMs, minMatchPct: this.minMatchPct },
+      'Starting watchlist poller',
+    );
     this.timer = setInterval(() => void this.sweep(), this.intervalMs);
     void this.sweep();
   }
@@ -112,10 +115,9 @@ export class WatchlistService {
     if (existing) {
       // Re-arm a previously acquired/failed entry so it's hunted again.
       if (existing.state !== 'watching') {
-        this.db.run(
-          `UPDATE watchlist SET state = 'watching', last_error = NULL WHERE id = ?`,
-          [existing.id],
-        );
+        this.db.run(`UPDATE watchlist SET state = 'watching', last_error = NULL WHERE id = ?`, [
+          existing.id,
+        ]);
       }
       return this.get(existing.id)!;
     }
@@ -184,9 +186,10 @@ export class WatchlistService {
       // A download for this album is already in flight (e.g. user hunted it
       // manually) → consider it handled; don't enqueue a duplicate.
       const active = this.db
-        .query<{ id: number }, [number]>(
-          `SELECT id FROM album_jobs WHERE lidarr_album_id = ? AND state = 'active' LIMIT 1`,
-        )
+        .query<
+          { id: number },
+          [number]
+        >(`SELECT id FROM album_jobs WHERE lidarr_album_id = ? AND state = 'active' LIMIT 1`)
         .get(albumId);
       if (active) {
         this.markAcquired(row.id);
@@ -232,7 +235,8 @@ export class WatchlistService {
         return;
       }
 
-      const toFiles = (c: FolderCandidate) => c.files.map((f) => ({ filename: f.filename, size: f.size }));
+      const toFiles = (c: FolderCandidate) =>
+        c.files.map((f) => ({ filename: f.filename, size: f.size }));
       const alternates = candidates
         .filter((c) => c !== best)
         .map((c) => ({ username: c.username, directory: c.directory, files: toFiles(c) }));

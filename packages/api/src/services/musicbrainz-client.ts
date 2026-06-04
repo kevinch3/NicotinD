@@ -67,9 +67,13 @@ export class MusicBrainzClient {
     if (cached?.type === 'artist') return cached.result;
 
     const url = `${MB_BASE}/artist?query=artist:${encodeURIComponent(name)}&fmt=json&limit=1`;
-    const data = await this.fetch<{ artists?: Array<{ id: string; name: string; score?: number }> }>(url);
+    const data = await this.fetch<{
+      artists?: Array<{ id: string; name: string; score?: number }>;
+    }>(url);
     const first = data?.artists?.[0];
-    const result: MBArtist | null = first ? { id: first.id, name: first.name, score: first.score ?? 0 } : null;
+    const result: MBArtist | null = first
+      ? { id: first.id, name: first.name, score: first.score ?? 0 }
+      : null;
     this.setCached(key, { type: 'artist', result });
     return result;
   }

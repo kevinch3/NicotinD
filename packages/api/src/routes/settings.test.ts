@@ -8,8 +8,12 @@ import { applySchema } from '../db.js';
 
 const testDb = new Database(':memory:');
 applySchema(testDb);
-testDb.run("INSERT INTO users (id, username, password_hash, role) VALUES ('admin1', 'admin', 'hash', 'admin')");
-testDb.run("INSERT INTO users (id, username, password_hash, role) VALUES ('user1', 'alice', 'hash', 'user')");
+testDb.run(
+  "INSERT INTO users (id, username, password_hash, role) VALUES ('admin1', 'admin', 'hash', 'admin')",
+);
+testDb.run(
+  "INSERT INTO users (id, username, password_hash, role) VALUES ('user1', 'alice', 'hash', 'user')",
+);
 
 mock.module('../db.js', () => ({ getDatabase: () => testDb, applySchema }));
 
@@ -25,7 +29,9 @@ async function userToken() {
 function makeSlskdMock() {
   return {
     server: {
-      getState: mock(() => Promise.resolve({ isConnected: true, username: 'u', state: 'Connected' })),
+      getState: mock(() =>
+        Promise.resolve({ isConnected: true, username: 'u', state: 'Connected' }),
+      ),
       disconnect: mock(() => Promise.resolve()),
       connect: mock(() => Promise.resolve()),
     },
@@ -41,12 +47,20 @@ function makeSlskdMock() {
 function buildApp(slskd: ReturnType<typeof makeSlskdMock> | null) {
   const app = new Hono<AuthEnv>();
   const auth = authMiddleware(SECRET);
-  const config = { soulseek: { username: 'u', password: 'p' }, dataDir: '/tmp/nicotind-test', mode: 'external' } as unknown as Parameters<typeof settingsRoutes>[0];
+  const config = {
+    soulseek: { username: 'u', password: 'p' },
+    dataDir: '/tmp/nicotind-test',
+    mode: 'external',
+  } as unknown as Parameters<typeof settingsRoutes>[0];
   const routes = settingsRoutes(
     config,
     { current: slskd } as unknown as Parameters<typeof settingsRoutes>[1],
     {} as unknown as Parameters<typeof settingsRoutes>[2],
-    { hasService: () => false, updateConfig: () => {}, restartService: async () => {} } as unknown as Parameters<typeof settingsRoutes>[3],
+    {
+      hasService: () => false,
+      updateConfig: () => {},
+      restartService: async () => {},
+    } as unknown as Parameters<typeof settingsRoutes>[3],
     { current: null } as unknown as Parameters<typeof settingsRoutes>[4],
   );
   app.use('*', auth);
@@ -116,7 +130,9 @@ describe('GET /shares', () => {
 
   beforeEach(() => {
     slskdMock = makeSlskdMock();
-    slskdMock.shares.list = mock(() => Promise.resolve([{ path: '/data/music' }, { path: '/data/other' }]));
+    slskdMock.shares.list = mock(() =>
+      Promise.resolve([{ path: '/data/music' }, { path: '/data/other' }]),
+    );
   });
 
   it('returns list of share directories for admin', async () => {

@@ -1,11 +1,6 @@
 import type { spawn as nodeSpawn } from 'node:child_process';
 import { join } from 'node:path';
-import type {
-  Plugin,
-  PluginManifest,
-  PluginHostContext,
-  ResolveCapability,
-} from '@nicotind/core';
+import type { Plugin, PluginManifest, PluginHostContext, ResolveCapability } from '@nicotind/core';
 import { isBinaryAvailable, runAcquireProcess, type RunningAcquire } from '../acquire/process.js';
 
 export interface SpotdlPluginConfig {

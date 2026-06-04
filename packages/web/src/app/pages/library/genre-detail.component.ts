@@ -5,7 +5,10 @@ import { ApiService, type Song } from '../../services/api.service';
 import { AuthService } from '../../services/auth.service';
 import { PlayerService, type Track } from '../../services/player.service';
 import { TransferService } from '../../services/transfer.service';
-import { TrackRowComponent, type TrackAction } from '../../components/track-row/track-row.component';
+import {
+  TrackRowComponent,
+  type TrackAction,
+} from '../../components/track-row/track-row.component';
 import { ConfirmDialogComponent } from '../../components/confirm-dialog/confirm-dialog.component';
 import { toTrack } from '../../lib/track-utils';
 import { resolveArtistRoute } from '../../lib/route-utils';
@@ -30,7 +33,7 @@ export class GenreDetailComponent implements OnInit {
 
   readonly filteredGenreSongs = computed(() => {
     const deleted = this.transferService.deletedSongIds();
-    return this.genreSongs().filter(s => !deleted.has(s.id));
+    return this.genreSongs().filter((s) => !deleted.has(s.id));
   });
 
   // ─── Confirm dialog ───────────────────────────────────────────────
@@ -46,7 +49,9 @@ export class GenreDetailComponent implements OnInit {
   onConfirm(): void {
     const cb = this.confirmCallback();
     this.confirmCallback.set(null);
-    Promise.resolve(cb?.()).catch(() => { /* ignore */ });
+    Promise.resolve(cb?.()).catch(() => {
+      /* ignore */
+    });
   }
 
   onCancelConfirm(): void {
@@ -61,12 +66,13 @@ export class GenreDetailComponent implements OnInit {
       try {
         const songs = await firstValueFrom(this.api.getSongsByGenre(slug));
         this.genreSongs.set(songs);
-      } catch { /* ignore */ }
-      finally {
+      } catch {
+        /* ignore */
+      } finally {
         this.loadingGenreSongs.set(false);
       }
     } else {
-       this.loadingGenreSongs.set(false);
+      this.loadingGenreSongs.set(false);
     }
   }
 
@@ -75,7 +81,7 @@ export class GenreDetailComponent implements OnInit {
     const genre = this.genreSlug();
     const songs = this.genreSongs();
     if (!genre || !songs.length) return;
-    const tracks = songs.map(s => toTrack(s));
+    const tracks = songs.map((s) => toTrack(s));
     this.player.playWithContext(tracks, 0, { type: 'adhoc', name: genre });
   }
 
@@ -83,24 +89,35 @@ export class GenreDetailComponent implements OnInit {
 
   genreTrackActions(song: Song): TrackAction[] {
     return [
-      ...(song.artistId ? [{
-        label: 'Go to artist',
-        action: () => { void this.router.navigate(resolveArtistRoute(song.artistId)); },
-      }] : []),
-      ...(this.auth.role() === 'admin' ? [{
-        label: 'Remove',
-        destructive: true,
-        action: () => this.askConfirm(`Remove "${song.title}" from library?`, async () => {
-          this.deleteError.set(null);
-          try {
-            await firstValueFrom(this.api.deleteSongs([song.id]));
-            this.transferService.addDeletedIds([song.id]);
-            this.genreSongs.update(s => s.filter(x => x.id !== song.id));
-          } catch {
-            this.deleteError.set(`Failed to remove "${song.title}".`);
-          }
-        }),
-      }] : []),
+      ...(song.artistId
+        ? [
+            {
+              label: 'Go to artist',
+              action: () => {
+                void this.router.navigate(resolveArtistRoute(song.artistId));
+              },
+            },
+          ]
+        : []),
+      ...(this.auth.role() === 'admin'
+        ? [
+            {
+              label: 'Remove',
+              destructive: true,
+              action: () =>
+                this.askConfirm(`Remove "${song.title}" from library?`, async () => {
+                  this.deleteError.set(null);
+                  try {
+                    await firstValueFrom(this.api.deleteSongs([song.id]));
+                    this.transferService.addDeletedIds([song.id]);
+                    this.genreSongs.update((s) => s.filter((x) => x.id !== song.id));
+                  } catch {
+                    this.deleteError.set(`Failed to remove "${song.title}".`);
+                  }
+                }),
+            },
+          ]
+        : []),
     ];
   }
 }

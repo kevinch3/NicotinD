@@ -78,9 +78,10 @@ export class DiscographyService {
     });
 
     const link = this.db
-      .query<{ mbid: string }, [string]>(
-        'SELECT mbid FROM artist_discography_links WHERE artist_id = ?',
-      )
+      .query<
+        { mbid: string },
+        [string]
+      >('SELECT mbid FROM artist_discography_links WHERE artist_id = ?')
       .get(artistId);
 
     return {
@@ -93,9 +94,10 @@ export class DiscographyService {
 
   private async resolveOrAddArtist(artistId: string, artistName: string): Promise<number> {
     const cached = this.db
-      .query<{ lidarr_id: number; checked_at: number }, [string]>(
-        'SELECT lidarr_id, checked_at FROM artist_discography_links WHERE artist_id = ?',
-      )
+      .query<
+        { lidarr_id: number; checked_at: number },
+        [string]
+      >('SELECT lidarr_id, checked_at FROM artist_discography_links WHERE artist_id = ?')
       .get(artistId);
 
     if (cached && Date.now() - cached.checked_at < CACHE_TTL_MS && cached.lidarr_id) {
@@ -139,9 +141,7 @@ export class DiscographyService {
       .run(artistId, lidarrId, mbid, Date.now());
   }
 
-  private async fetchAllTracks(
-    albums: LidarrAlbum[],
-  ): Promise<Map<number, LidarrTrack[]>> {
+  private async fetchAllTracks(albums: LidarrAlbum[]): Promise<Map<number, LidarrTrack[]>> {
     const result = new Map<number, LidarrTrack[]>();
     const concurrency = 5;
 
@@ -158,9 +158,10 @@ export class DiscographyService {
 
   private fetchLocalAlbums(artistId: string): Array<{ id: string; name: string }> {
     return this.db
-      .query<{ id: string; name: string }, [string]>(
-        'SELECT id, name FROM library_albums WHERE artist_id = ? AND hidden = 0',
-      )
+      .query<
+        { id: string; name: string },
+        [string]
+      >('SELECT id, name FROM library_albums WHERE artist_id = ? AND hidden = 0')
       .all(artistId);
   }
 
@@ -182,9 +183,7 @@ export class DiscographyService {
     localSongs: Array<{ album_id: string; title: string }>,
   ): DiscographyAlbum {
     const normalizedTitle = normalizeTitle(lidarrAlbum.title);
-    const matchedLocal = localAlbums.find(
-      (a) => normalizeTitle(a.name) === normalizedTitle,
-    );
+    const matchedLocal = localAlbums.find((a) => normalizeTitle(a.name) === normalizedTitle);
 
     const localAlbumSongs = matchedLocal
       ? localSongs.filter((s) => s.album_id === matchedLocal.id)
@@ -236,15 +235,17 @@ export class DiscographyService {
 }
 
 function normalizeTitle(title: string): string {
-  return title
-    .toLowerCase()
-    // Strip leading track numbers: "01 - ", "1. ", "01."
-    .replace(/^\d+[\s.\-]+/, '')
-    // Strip common suffixes like "(Remastered)", "[Live]", "(Deluxe Edition)"
-    .replace(/[\[(][^\])]*(remaster|deluxe|edition|version|live|bonus)[^\])]*[\])]/gi, '')
-    .replace(/[^\w\s]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
+  return (
+    title
+      .toLowerCase()
+      // Strip leading track numbers: "01 - ", "1. ", "01."
+      .replace(/^\d+[\s.\-]+/, '')
+      // Strip common suffixes like "(Remastered)", "[Live]", "(Deluxe Edition)"
+      .replace(/[\[(][^\])]*(remaster|deluxe|edition|version|live|bonus)[^\])]*[\])]/gi, '')
+      .replace(/[^\w\s]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+  );
 }
 
 function pickCoverArt(album: LidarrAlbum): string | undefined {

@@ -33,7 +33,7 @@ export function placeholderFontSize(size: number | undefined, fill: boolean): st
 @Component({
   selector: 'app-cover-art',
   templateUrl: './cover-art.component.html',
-  })
+})
 export class CoverArtComponent {
   readonly src = input<string | undefined>(undefined);
   readonly artist = input('');

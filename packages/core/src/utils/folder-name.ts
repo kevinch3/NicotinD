@@ -4,12 +4,12 @@ export function cleanFolderName(raw: string): string {
 
   let cleaned = leaf.replace(/\s*\[[^\]]*\]/g, '');
 
-  cleaned = cleaned.replace(
-    /\s*\((FLAC|MP3|WAV|AAC|OGG|OPUS|AIFF|ALAC|WMA|APE|LOSSLESS)\)/gi,
-    '',
-  );
+  cleaned = cleaned.replace(/\s*\((FLAC|MP3|WAV|AAC|OGG|OPUS|AIFF|ALAC|WMA|APE|LOSSLESS)\)/gi, '');
 
-  cleaned = cleaned.trim().replace(/[\s\-_]+$/, '').trim();
+  cleaned = cleaned
+    .trim()
+    .replace(/[\s\-_]+$/, '')
+    .trim();
 
   return cleaned || leaf;
 }

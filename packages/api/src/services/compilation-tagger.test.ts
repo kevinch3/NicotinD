@@ -115,10 +115,7 @@ describe('classifyFolder — test matrix', () => {
   });
 
   it('row 12: pair of unrelated tracks → leave-alone (no rule fires)', () => {
-    const files: FileSignal[] = [
-      file('Artist A', 'Album A'),
-      file('Artist B', 'Album B'),
-    ];
+    const files: FileSignal[] = [file('Artist A', 'Album A'), file('Artist B', 'Album B')];
     const result = classifyFolder(files, 'Two Tracks');
     expect(result.type).toBe('leave-alone');
   });
@@ -154,10 +151,7 @@ describe('classifyFolder — test matrix', () => {
 
 describe('classifyFolder — folder-name signal variants', () => {
   it('recognizes "VA - " prefix (folder name rule)', () => {
-    const files: FileSignal[] = [
-      file('A', 'X'),
-      file('B', 'Y'),
-    ];
+    const files: FileSignal[] = [file('A', 'X'), file('B', 'Y')];
     const result = classifyFolder(files, 'VA - Disco Hits');
     expect(result.type).toBe('compilation');
   });

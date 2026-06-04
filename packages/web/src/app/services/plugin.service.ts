@@ -35,7 +35,12 @@ export class PluginService {
 
   /** Capabilities provided by currently-enabled plugins. */
   private readonly enabledCaps = computed(
-    () => new Set(this.plugins().filter((p) => p.enabled).flatMap((p) => p.capabilities)),
+    () =>
+      new Set(
+        this.plugins()
+          .filter((p) => p.enabled)
+          .flatMap((p) => p.capabilities),
+      ),
   );
 
   readonly hasSearch = computed(() => this.enabledCaps().has('search'));

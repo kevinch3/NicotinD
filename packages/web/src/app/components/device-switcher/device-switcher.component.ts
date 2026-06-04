@@ -1,4 +1,12 @@
-import { Component, inject, signal, ElementRef, HostListener, computed, input } from '@angular/core';
+import {
+  Component,
+  inject,
+  signal,
+  ElementRef,
+  HostListener,
+  computed,
+  input,
+} from '@angular/core';
 import { RemotePlaybackService } from '../../services/remote-playback.service';
 import { PlaybackWsService } from '../../services/playback-ws.service';
 
@@ -10,7 +18,7 @@ function deviceEmoji(name: string, type: string): string {
 @Component({
   selector: 'app-device-switcher',
   templateUrl: './device-switcher.component.html',
-  })
+})
 export class DeviceSwitcherComponent {
   readonly placement = input<'up' | 'down'>('up');
 
@@ -20,13 +28,15 @@ export class DeviceSwitcherComponent {
 
   private myId = this.ws.getDeviceId();
 
-  readonly myDevice = computed(() => this.remote.devices().find(d => d.id === this.myId));
-  readonly otherDevices = computed(() => this.remote.devices().filter(d => d.id !== this.myId));
+  readonly myDevice = computed(() => this.remote.devices().find((d) => d.id === this.myId));
+  readonly otherDevices = computed(() => this.remote.devices().filter((d) => d.id !== this.myId));
   readonly isRemoteActive = computed(() => {
     const active = this.remote.activeDeviceId();
     return active !== null && active !== this.myId;
   });
-  readonly activeDevice = computed(() => this.remote.devices().find(d => d.id === this.remote.activeDeviceId()));
+  readonly activeDevice = computed(() =>
+    this.remote.devices().find((d) => d.id === this.remote.activeDeviceId()),
+  );
   readonly isThisDeviceActive = computed(() => {
     const active = this.remote.activeDeviceId();
     return active === null || active === this.myId;

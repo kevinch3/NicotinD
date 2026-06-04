@@ -171,9 +171,10 @@ export class DownloadWatcher {
       for (const group of downloads) {
         for (const dir of group.directories) {
           for (const file of dir.files) {
-            const transferId = typeof file.id === 'string' && file.id.length > 0
-              ? file.id
-              : `${dir.directory}:${file.filename}`;
+            const transferId =
+              typeof file.id === 'string' && file.id.length > 0
+                ? file.id
+                : `${dir.directory}:${file.filename}`;
             currentKeys.add(`${group.username}:${transferId}`);
           }
         }
@@ -185,9 +186,10 @@ export class DownloadWatcher {
       for (const group of downloads) {
         for (const dir of group.directories) {
           for (const file of dir.files) {
-            const transferId = typeof file.id === 'string' && file.id.length > 0
-              ? file.id
-              : `${dir.directory}:${file.filename}`;
+            const transferId =
+              typeof file.id === 'string' && file.id.length > 0
+                ? file.id
+                : `${dir.directory}:${file.filename}`;
             const key = `${group.username}:${transferId}`;
             if (file.state === 'Completed, Succeeded' && !this.knownCompleted.has(key)) {
               this.knownCompleted.add(key);
@@ -233,7 +235,12 @@ export class DownloadWatcher {
         // so the scan and back-fill see the final on-disk location.
         for (const file of completedFiles) {
           if (file.relativePath) {
-            this.updateRelativePath(file.username, file.directory, file.filename, file.relativePath);
+            this.updateRelativePath(
+              file.username,
+              file.directory,
+              file.filename,
+              file.relativePath,
+            );
           }
         }
         this.debouncedScan();
@@ -264,9 +271,7 @@ export class DownloadWatcher {
   /** Index a freshly-organized batch into the canonical library tables. */
   private async runScan(files: CompletedDownloadFile[]): Promise<void> {
     if (!this.scan) return;
-    const relPaths = files
-      .map((f) => f.relativePath)
-      .filter((p): p is string => Boolean(p));
+    const relPaths = files.map((f) => f.relativePath).filter((p): p is string => Boolean(p));
     if (relPaths.length === 0) return;
     try {
       log.info({ count: relPaths.length }, 'Scanning newly organized files into library');

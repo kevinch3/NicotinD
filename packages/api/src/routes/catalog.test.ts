@@ -7,7 +7,12 @@ import type { CatalogService } from '../services/catalog-search.service.js';
 function makeCatalogMock(over: Partial<Record<keyof CatalogService, unknown>> = {}) {
   return {
     search: mock(async () => ({ artists: [], albums: [] })),
-    resolveAlbum: mock(async () => ({ lidarrAlbumId: 1, totalTracks: 1, title: 'A', artistName: 'B' })),
+    resolveAlbum: mock(async () => ({
+      lidarrAlbumId: 1,
+      totalTracks: 1,
+      title: 'A',
+      artistName: 'B',
+    })),
     ...over,
   } as unknown as CatalogService;
 }
@@ -52,7 +57,12 @@ describe('catalog routes', () => {
     const res = await app.request('/resolve', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ foreignAlbumId: 'rg', artistMbid: 'm', artistName: 'Floyd', albumTitle: 'Animals' }),
+      body: JSON.stringify({
+        foreignAlbumId: 'rg',
+        artistMbid: 'm',
+        artistName: 'Floyd',
+        albumTitle: 'Animals',
+      }),
     });
     expect(res.status).toBe(200);
     const body = (await res.json()) as { lidarrAlbumId: number };
@@ -70,7 +80,9 @@ describe('catalog routes', () => {
 
   it('POST /resolve surfaces service errors as 500', async () => {
     catalog = makeCatalogMock({
-      resolveAlbum: mock(async () => { throw new Error('not yet available'); }),
+      resolveAlbum: mock(async () => {
+        throw new Error('not yet available');
+      }),
     });
     app = makeApp(catalog);
 

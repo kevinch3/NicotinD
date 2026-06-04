@@ -59,7 +59,11 @@ export type BackfillLidarr = Pick<Lidarr, 'artist' | 'album'>;
 
 /** Loose name match (lowercase, strip punctuation) for artist resolution. */
 function normalizeName(name: string): string {
-  return name.toLowerCase().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim();
+  return name
+    .toLowerCase()
+    .replace(/[^\w\s]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 /**
@@ -102,9 +106,7 @@ export async function backfillArtwork(
   };
 
   const artists = db.query<ArtistRow, []>('SELECT id, name FROM library_artists').all();
-  const albums = db
-    .query<AlbumRow, []>('SELECT id, name, artist_id FROM library_albums')
-    .all();
+  const albums = db.query<AlbumRow, []>('SELECT id, name, artist_id FROM library_albums').all();
   const albumsByArtist = new Map<string, AlbumRow[]>();
   for (const a of albums) {
     const list = albumsByArtist.get(a.artist_id) ?? [];
@@ -121,9 +123,10 @@ export async function backfillArtwork(
   for (const artist of artists) {
     // Resolve the Lidarr artist: discography link → monitored by name → lookup.
     const link = db
-      .query<{ lidarr_id: number | null }, [string]>(
-        'SELECT lidarr_id FROM artist_discography_links WHERE artist_id = ?',
-      )
+      .query<
+        { lidarr_id: number | null },
+        [string]
+      >('SELECT lidarr_id FROM artist_discography_links WHERE artist_id = ?')
       .get(artist.id);
     let lidarrArtist =
       (link?.lidarr_id != null ? monitored.find((a) => a.id === link.lidarr_id) : undefined) ??
@@ -186,9 +189,7 @@ export async function backfillArtwork(
       if (looksLikeNonAlbum(album.name, album.artist)) continue;
       result.albumsLookedUp += 1;
 
-      const hits = await lidarr.album
-        .lookup(`${album.artist} ${album.name}`)
-        .catch(() => []);
+      const hits = await lidarr.album.lookup(`${album.artist} ${album.name}`).catch(() => []);
       const wantTitle = normalizeForGrouping(album.name);
       const wantArtist = normalizeName(album.artist);
       const match = hits.find(
@@ -210,9 +211,10 @@ export async function backfillArtwork(
       if (
         poster &&
         !db
-          .query<{ id: string }, [string]>(
-            `SELECT id FROM library_artwork WHERE id = ? AND kind = 'artist'`,
-          )
+          .query<
+            { id: string },
+            [string]
+          >(`SELECT id FROM library_artwork WHERE id = ? AND kind = 'artist'`)
           .get(album.artist_id)
       ) {
         if (opts.apply) setArtwork(db, album.artist_id, 'artist', poster, opts.coverCacheDir);

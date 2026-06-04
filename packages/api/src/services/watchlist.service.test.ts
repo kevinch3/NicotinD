@@ -100,8 +100,18 @@ describe('WatchlistService', () => {
     });
 
     it('inserts a new watch and is idempotent on foreignAlbumId', () => {
-      const a = svc.add({ foreignAlbumId: 'fa1', artistMbid: 'mb', artistName: 'A', albumTitle: 'B' });
-      const b = svc.add({ foreignAlbumId: 'fa1', artistMbid: 'mb', artistName: 'A', albumTitle: 'B' });
+      const a = svc.add({
+        foreignAlbumId: 'fa1',
+        artistMbid: 'mb',
+        artistName: 'A',
+        albumTitle: 'B',
+      });
+      const b = svc.add({
+        foreignAlbumId: 'fa1',
+        artistMbid: 'mb',
+        artistName: 'A',
+        albumTitle: 'B',
+      });
       expect(a.id).toBe(b.id);
       expect(svc.list()).toHaveLength(1);
     });
@@ -149,7 +159,9 @@ describe('WatchlistService', () => {
       expect(enqueue).not.toHaveBeenCalled();
       expect(state(db)).toBe('watching');
       // last_checked_at recorded so the UI can show progress.
-      const r = db.query('SELECT last_checked_at AS t FROM watchlist WHERE id = 1').get() as { t: number };
+      const r = db.query('SELECT last_checked_at AS t FROM watchlist WHERE id = 1').get() as {
+        t: number;
+      };
       expect(r.t).toBeGreaterThan(0);
     });
 
@@ -196,7 +208,9 @@ describe('WatchlistService', () => {
       await svc.sweep();
 
       expect(resolveAlbum).toHaveBeenCalled();
-      const r = db.query('SELECT lidarr_album_id AS a FROM watchlist WHERE id = 1').get() as { a: number };
+      const r = db.query('SELECT lidarr_album_id AS a FROM watchlist WHERE id = 1').get() as {
+        a: number;
+      };
       expect(r.a).toBe(123);
     });
   });

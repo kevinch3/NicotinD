@@ -37,7 +37,9 @@ function loadConfig(): LoadedConfig {
   const configPath = resolve(process.env.NICOTIND_CONFIG ?? 'config/default.yml');
   try {
     fileConfig = (parse(readFileSync(configPath, 'utf-8')) ?? {}) as Record<string, unknown>;
-  } catch { /* no config file */ }
+  } catch {
+    /* no config file */
+  }
 
   const dataDir = expandHome(
     process.env.NICOTIND_DATA_DIR ?? (fileConfig.dataDir as string | undefined) ?? '~/.nicotind',
@@ -48,9 +50,15 @@ function loadConfig(): LoadedConfig {
 
   let acoustidApiKey: string | undefined;
   try {
-    const secrets = JSON.parse(readFileSync(join(dataDir, 'secrets.json'), 'utf-8')) as Record<string, unknown>;
-    acoustidApiKey = typeof secrets.acoustidApiKey === 'string' ? secrets.acoustidApiKey : undefined;
-  } catch { /* no secrets file */ }
+    const secrets = JSON.parse(readFileSync(join(dataDir, 'secrets.json'), 'utf-8')) as Record<
+      string,
+      unknown
+    >;
+    acoustidApiKey =
+      typeof secrets.acoustidApiKey === 'string' ? secrets.acoustidApiKey : undefined;
+  } catch {
+    /* no secrets file */
+  }
 
   return { dataDir, musicDir, acoustidApiKey };
 }
@@ -62,11 +70,19 @@ function* walkAudioFiles(root: string, excludeDirs: Set<string>): Generator<stri
     const dir = stack.pop()!;
     if (excludeDirs.has(dir)) continue;
     let entries: string[];
-    try { entries = readdirSync(dir); } catch { continue; }
+    try {
+      entries = readdirSync(dir);
+    } catch {
+      continue;
+    }
     for (const name of entries) {
       const full = join(dir, name);
       let st;
-      try { st = statSync(full); } catch { continue; }
+      try {
+        st = statSync(full);
+      } catch {
+        continue;
+      }
       if (st.isDirectory()) {
         if (excludeDirs.has(full)) continue;
         stack.push(full);
@@ -81,17 +97,35 @@ function pruneEmptyDirs(root: string): number {
   let removed = 0;
   const walk = (dir: string): boolean => {
     let entries: string[];
-    try { entries = readdirSync(dir); } catch { return false; }
+    try {
+      entries = readdirSync(dir);
+    } catch {
+      return false;
+    }
     for (const name of entries) {
       const full = join(dir, name);
       let st;
-      try { st = statSync(full); } catch { continue; }
+      try {
+        st = statSync(full);
+      } catch {
+        continue;
+      }
       if (st.isDirectory()) walk(full);
     }
     let remaining: string[];
-    try { remaining = readdirSync(dir); } catch { return false; }
+    try {
+      remaining = readdirSync(dir);
+    } catch {
+      return false;
+    }
     if (remaining.length === 0 && dir !== root) {
-      try { rmdirSync(dir); removed++; return true; } catch { return false; }
+      try {
+        rmdirSync(dir);
+        removed++;
+        return true;
+      } catch {
+        return false;
+      }
     }
     return false;
   };
@@ -110,14 +144,27 @@ function cleanJunk(root: string): number {
   while (stack.length > 0) {
     const dir = stack.pop()!;
     let entries: string[];
-    try { entries = readdirSync(dir); } catch { continue; }
+    try {
+      entries = readdirSync(dir);
+    } catch {
+      continue;
+    }
     for (const name of entries) {
       const full = join(dir, name);
       let st;
-      try { st = statSync(full); } catch { continue; }
+      try {
+        st = statSync(full);
+      } catch {
+        continue;
+      }
       if (st.isDirectory()) stack.push(full);
       else if (JUNK.has(name)) {
-        try { unlinkSync(full); removed++; } catch { /* ignore */ }
+        try {
+          unlinkSync(full);
+          removed++;
+        } catch {
+          /* ignore */
+        }
       }
     }
   }
@@ -182,7 +229,9 @@ async function main(): Promise<void> {
 
     if (processed % 100 === 0) {
       const elapsed = ((Date.now() - startedAt) / 1000).toFixed(0);
-      console.log(`  [${processed}/${files.length}] moved=${moved} unsorted=${unsorted} skipped=${skipped} failed=${failed} (${elapsed}s)`);
+      console.log(
+        `  [${processed}/${files.length}] moved=${moved} unsorted=${unsorted} skipped=${skipped} failed=${failed} (${elapsed}s)`,
+      );
     }
   }
 

@@ -22,7 +22,10 @@ mock.module('../db.js', () => ({
 }));
 
 const fsState = new Map<string, boolean>();
-const dirEntries = new Map<string, Array<{ name: string; isFile: boolean; isDirectory: boolean }>>();
+const dirEntries = new Map<
+  string,
+  Array<{ name: string; isFile: boolean; isDirectory: boolean }>
+>();
 
 mock.module('node:fs', () => ({
   existsSync: (path: string) => fsState.get(path) ?? false,
@@ -126,11 +129,11 @@ describe('library routes', () => {
 
     const res = await app.request('/songs/bulk-delete', {
       method: 'POST',
-      body: JSON.stringify({ ids: ['s1', 's2'] })
+      body: JSON.stringify({ ids: ['s1', 's2'] }),
     });
 
     expect(res.status).toBe(200);
-    const data = await res.json() as { deletedCount: number };
+    const data = (await res.json()) as { deletedCount: number };
     expect(data.deletedCount).toBe(2);
     expect(fsState.has('/home/kevinch3/Music/A/a.mp3')).toBe(false);
     expect(fsState.has('/home/kevinch3/Music/B/b.mp3')).toBe(false);
@@ -152,7 +155,7 @@ describe('library routes', () => {
   });
 
   it('finds the real file when the library path is stale and the folder name changed', async () => {
-    seedSong('song-3', '/home/kevinch3/Music/Bryn Terfel/We\'ll Keep A Welcome/06 - Calon Lân.mp3');
+    seedSong('song-3', "/home/kevinch3/Music/Bryn Terfel/We'll Keep A Welcome/06 - Calon Lân.mp3");
 
     fsState.set('/home/kevinch3/Music', true);
     fsState.set('/home/kevinch3/Music/Bryn Terfel - Keep A Welcome', true);
@@ -167,18 +170,21 @@ describe('library routes', () => {
     const res = await app.request('/songs/song-3', { method: 'DELETE' });
 
     expect(res.status).toBe(200);
-    expect(fsState.has('/home/kevinch3/Music/Bryn Terfel - Keep A Welcome/06. Calon Lân.mp3')).toBe(false);
+    expect(fsState.has('/home/kevinch3/Music/Bryn Terfel - Keep A Welcome/06. Calon Lân.mp3')).toBe(
+      false,
+    );
   });
 
   it('finds a file by filename tokens when tags are missing', async () => {
-    seedSong('song-4', '/home/kevinch3/Music/[Unknown Artist]/[Unknown Album]/13 - 14_CALON_LAN_639096876154326491.mp3');
+    seedSong(
+      'song-4',
+      '/home/kevinch3/Music/[Unknown Artist]/[Unknown Album]/13 - 14_CALON_LAN_639096876154326491.mp3',
+    );
 
     fsState.set('/home/kevinch3/Music', true);
     fsState.set('/home/kevinch3/Music/CD2', true);
     fsState.set('/home/kevinch3/Music/CD2/14_CALON_LAN.MP3', true);
-    dirEntries.set('/home/kevinch3/Music', [
-      { name: 'CD2', isFile: false, isDirectory: true },
-    ]);
+    dirEntries.set('/home/kevinch3/Music', [{ name: 'CD2', isFile: false, isDirectory: true }]);
     dirEntries.set('/home/kevinch3/Music/CD2', [
       { name: '14_CALON_LAN.MP3', isFile: true, isDirectory: false },
     ]);
@@ -389,8 +395,14 @@ describe('album deletion', () => {
     // Canonical rows + completion history removed (synchronously — no tombstone
     // needed because the native scanner reads disk directly).
     expect(albumRowExists('del-folder')).toBe(false);
-    expect(sharedDb.query(`SELECT id FROM library_songs WHERE album_id = 'del-folder'`).get()).toBeNull();
-    expect(sharedDb.query(`SELECT transfer_key FROM completed_downloads WHERE navidrome_id = 'fld-1'`).get()).toBeNull();
+    expect(
+      sharedDb.query(`SELECT id FROM library_songs WHERE album_id = 'del-folder'`).get(),
+    ).toBeNull();
+    expect(
+      sharedDb
+        .query(`SELECT transfer_key FROM completed_downloads WHERE navidrome_id = 'fld-1'`)
+        .get(),
+    ).toBeNull();
   });
 
   it('does not recursively delete a shared Singles folder — only the album track is removed', async () => {
@@ -439,7 +451,9 @@ describe('album deletion', () => {
     const data = (await res.json()) as { ok: boolean; deletedCount: number };
     expect(data.ok).toBe(true);
     expect(albumRowExists('del-orphan')).toBe(false);
-    expect(sharedDb.query(`SELECT id FROM library_songs WHERE album_id = 'del-orphan'`).get()).toBeNull();
+    expect(
+      sharedDb.query(`SELECT id FROM library_songs WHERE album_id = 'del-orphan'`).get(),
+    ).toBeNull();
   });
 
   it('reports genuinely undeletable tracks in failed[] but still clears the album row', async () => {
@@ -450,7 +464,11 @@ describe('album deletion', () => {
     const res = await app.request('/albums/del-fail', { method: 'DELETE' });
 
     expect(res.status).toBe(200);
-    const data = (await res.json()) as { ok: boolean; failedCount: number; failed: Array<{ id: string }> };
+    const data = (await res.json()) as {
+      ok: boolean;
+      failedCount: number;
+      failed: Array<{ id: string }>;
+    };
     // The file is gone but the canonical row exists → orphan cleanup succeeds,
     // so the delete is reported ok and the album row is cleared.
     expect(albumRowExists('del-fail')).toBe(false);

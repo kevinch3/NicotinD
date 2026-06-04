@@ -21,7 +21,7 @@ function formatDuration(seconds?: number): string {
   selector: 'app-track-row',
   imports: [CoverArtComponent],
   templateUrl: './track-row.component.html',
-  })
+})
 export class TrackRowComponent {
   readonly auth = inject(AuthService);
 
@@ -39,14 +39,18 @@ export class TrackRowComponent {
   readonly menuOpen = signal(false);
 
   @HostListener('document:click')
-  closeMenu() { this.menuOpen.set(false); }
+  closeMenu() {
+    this.menuOpen.set(false);
+  }
 
   @HostListener('document:keydown.escape')
-  closeMenuEscape() { this.menuOpen.set(false); }
+  closeMenuEscape() {
+    this.menuOpen.set(false);
+  }
 
   toggleMenu(event: MouseEvent) {
     event.stopPropagation();
-    this.menuOpen.update(v => !v);
+    this.menuOpen.update((v) => !v);
   }
 
   runAction(action: TrackAction) {

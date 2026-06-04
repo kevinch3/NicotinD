@@ -22,8 +22,12 @@ function makeService(db: Database, isAcquisitionEnabled: () => boolean) {
 
 function lastChecked(db: Database): number | null {
   return (
-    db.query<{ last_checked_at: number | null }, []>('SELECT last_checked_at FROM watchlist LIMIT 1').get()
-      ?.last_checked_at ?? null
+    db
+      .query<
+        { last_checked_at: number | null },
+        []
+      >('SELECT last_checked_at FROM watchlist LIMIT 1')
+      .get()?.last_checked_at ?? null
   );
 }
 

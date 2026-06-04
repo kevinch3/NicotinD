@@ -71,7 +71,11 @@ async function main(): Promise<void> {
   const minTracksArg = process.argv.indexOf('--min-tracks');
   const minTracks = minTracksArg !== -1 ? Number(process.argv[minTracksArg + 1]) : 4;
   // >3 tracks ⇒ minimum of 4. Only used when --album-lookup is set.
-  const albumLookupMinTracks = albumLookup ? (Number.isFinite(minTracks) ? minTracks : 4) : undefined;
+  const albumLookupMinTracks = albumLookup
+    ? Number.isFinite(minTracks)
+      ? minTracks
+      : 4
+    : undefined;
   const { dataDir, lidarrUrl, lidarrApiKey } = loadConfig();
   const dbPath = join(dataDir, 'nicotind.db');
 

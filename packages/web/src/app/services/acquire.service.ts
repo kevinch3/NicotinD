@@ -20,7 +20,9 @@ export class AcquireService {
   private http = inject(HttpClient);
 
   readonly jobs = signal<AcquireJob[]>([]);
-  readonly activeJobs = computed(() => this.jobs().filter((j) => j.state === 'queued' || j.state === 'running'));
+  readonly activeJobs = computed(() =>
+    this.jobs().filter((j) => j.state === 'queued' || j.state === 'running'),
+  );
   readonly hasActive = computed(() => this.activeJobs().length > 0);
 
   private pollTimer: ReturnType<typeof setInterval> | null = null;

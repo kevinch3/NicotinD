@@ -1,12 +1,4 @@
-import {
-  Component,
-  inject,
-  input,
-  output,
-  signal,
-  computed,
-  OnInit,
-} from '@angular/core';
+import { Component, inject, input, output, signal, computed, OnInit } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
 import { firstValueFrom } from 'rxjs';
 import {
@@ -65,9 +57,7 @@ export class AlbumHuntModalComponent implements OnInit {
   // The exact Soulseek search strings this hunt fires — shown in the loading
   // message so the user can see what's being searched (and which skew variants
   // are tried). Mirrors the server's query builder.
-  readonly baseSearchQueries = computed(() =>
-    baseQueries(this.artistName(), this.album().title),
-  );
+  readonly baseSearchQueries = computed(() => baseQueries(this.artistName(), this.album().title));
   readonly skewSearchQueries = computed(() =>
     this.skewSearch() ? skewedQueries(this.artistName(), this.album().title) : [],
   );
@@ -90,9 +80,7 @@ export class AlbumHuntModalComponent implements OnInit {
   readonly bestCandidate = computed(() => this.filteredCandidates()[0] ?? null);
 
   // What Download actually queues: the user's explicit pick if any, else the best.
-  readonly effectiveCandidate = computed(
-    () => this.selectedCandidate() ?? this.bestCandidate(),
-  );
+  readonly effectiveCandidate = computed(() => this.selectedCandidate() ?? this.bestCandidate());
 
   async ngOnInit(): Promise<void> {
     await this.startHunt();
@@ -223,9 +211,7 @@ export class AlbumHuntModalComponent implements OnInit {
   }
 
   select(candidate: FolderCandidate): void {
-    this.selectedCandidate.set(
-      this.selectedCandidate() === candidate ? null : candidate,
-    );
+    this.selectedCandidate.set(this.selectedCandidate() === candidate ? null : candidate);
   }
 
   isSelected(candidate: FolderCandidate): boolean {

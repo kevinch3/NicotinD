@@ -8,16 +8,48 @@ import { AuthService } from '../../services/auth.service';
 import { PlayerService } from '../../services/player.service';
 
 const MOCK_SONGS: Song[] = [
-  { id: 's1', title: 'Natiruts Reggae Power', artist: 'Natiruts', album: 'Natiruts', albumId: 'a1', path: '', bitRate: 320, size: 1000, created: '2024-01-01' },
-  { id: 's2', title: 'Sorri, Sou Rei',        artist: 'Natiruts', album: 'Natiruts', albumId: 'a1', path: '', bitRate: 320, size: 1000, created: '2024-01-01' },
-  { id: 's3', title: 'Quatro Vezes Você',     artist: 'Natiruts', album: 'Natiruts', albumId: 'a1', path: '', bitRate: 320, size: 1000, created: '2024-01-01' },
+  {
+    id: 's1',
+    title: 'Natiruts Reggae Power',
+    artist: 'Natiruts',
+    album: 'Natiruts',
+    albumId: 'a1',
+    path: '',
+    bitRate: 320,
+    size: 1000,
+    created: '2024-01-01',
+  },
+  {
+    id: 's2',
+    title: 'Sorri, Sou Rei',
+    artist: 'Natiruts',
+    album: 'Natiruts',
+    albumId: 'a1',
+    path: '',
+    bitRate: 320,
+    size: 1000,
+    created: '2024-01-01',
+  },
+  {
+    id: 's3',
+    title: 'Quatro Vezes Você',
+    artist: 'Natiruts',
+    album: 'Natiruts',
+    albumId: 'a1',
+    path: '',
+    bitRate: 320,
+    size: 1000,
+    created: '2024-01-01',
+  },
 ];
 
 function setup() {
   const playWithContextCalls: unknown[][] = [];
   const playerStub = {
     play: () => {},
-    playWithContext: (...args: unknown[]) => { playWithContextCalls.push(args); },
+    playWithContext: (...args: unknown[]) => {
+      playWithContextCalls.push(args);
+    },
   };
 
   TestBed.configureTestingModule({
@@ -52,7 +84,11 @@ describe('GenreDetailComponent — Play All', () => {
     component.playGenre();
 
     expect(playWithContextCalls).toHaveLength(1);
-    const [tracks, startIndex, context] = playWithContextCalls[0] as [unknown[], number, { type: string; name: string }];
+    const [tracks, startIndex, context] = playWithContextCalls[0] as [
+      unknown[],
+      number,
+      { type: string; name: string },
+    ];
     expect(tracks).toHaveLength(3);
     expect((tracks[0] as { id: string }).id).toBe('s1');
     expect((tracks[2] as { id: string }).id).toBe('s3');
@@ -91,7 +127,10 @@ describe('GenreDetailComponent — Play All', () => {
 
     component.playGenre();
 
-    const [tracks] = playWithContextCalls[0] as [Array<{ id: string; title: string; artist: string; album: string }>, ...unknown[]];
+    const [tracks] = playWithContextCalls[0] as [
+      Array<{ id: string; title: string; artist: string; album: string }>,
+      ...unknown[],
+    ];
     expect(tracks[0].title).toBe('Natiruts Reggae Power');
     expect(tracks[0].artist).toBe('Natiruts');
     expect(tracks[0].album).toBe('Natiruts');

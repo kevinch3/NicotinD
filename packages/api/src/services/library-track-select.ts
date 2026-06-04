@@ -7,7 +7,10 @@ import { normalizeTitle, titlesOverlap } from './album-hunter.service.js';
 const LOSSLESS = new Set(['flac', 'wav', 'wave', 'aiff', 'aif', 'alac', 'ape', 'wv']);
 
 /** Quality score for picking the best file among copies of one track. */
-export function formatQuality(suffix: string | null | undefined, bitRate: number | null | undefined): number {
+export function formatQuality(
+  suffix: string | null | undefined,
+  bitRate: number | null | undefined,
+): number {
   const losslessBonus = LOSSLESS.has((suffix ?? '').toLowerCase()) ? 10_000_000 : 0;
   return losslessBonus + (bitRate ?? 0);
 }
@@ -41,9 +44,7 @@ export function selectAlbumTracks<T extends SelectableTrack>(
   tracks: T[],
   canonicalTitles?: readonly string[] | null,
 ): T[] {
-  const canon = (canonicalTitles ?? [])
-    .map((c) => normalizeTitle(c))
-    .filter((c) => c.length > 0);
+  const canon = (canonicalTitles ?? []).map((c) => normalizeTitle(c)).filter((c) => c.length > 0);
   const useCanonical = canon.length > 0;
 
   const best = new Map<string, T>();

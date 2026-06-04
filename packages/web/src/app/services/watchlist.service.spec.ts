@@ -35,10 +35,7 @@ describe('WatchlistService', () => {
     del.mockReturnValue(of({ ok: true }));
 
     TestBed.configureTestingModule({
-      providers: [
-        WatchlistService,
-        { provide: HttpClient, useValue: { get, post, delete: del } },
-      ],
+      providers: [WatchlistService, { provide: HttpClient, useValue: { get, post, delete: del } }],
     });
     svc = TestBed.inject(WatchlistService);
   });
@@ -54,7 +51,10 @@ describe('WatchlistService', () => {
 
   it('add optimistically inserts the returned item', async () => {
     await svc.add({ foreignAlbumId: 'fa7', artistName: 'A', albumTitle: 'B' });
-    expect(post).toHaveBeenCalledWith('/api/watchlist', expect.objectContaining({ foreignAlbumId: 'fa7' }));
+    expect(post).toHaveBeenCalledWith(
+      '/api/watchlist',
+      expect.objectContaining({ foreignAlbumId: 'fa7' }),
+    );
     expect(svc.items().some((i) => i.id === 7)).toBe(true);
   });
 
@@ -68,7 +68,12 @@ describe('WatchlistService', () => {
     get.mockReturnValue(of({ items: [item({ id: 5, foreign_album_id: 'fa5' })] }));
     await svc.refresh();
 
-    await svc.toggle({ foreignAlbumId: 'fa5', artistMbid: 'm', artistName: 'Soda Stereo', title: 'Canción Animal' });
+    await svc.toggle({
+      foreignAlbumId: 'fa5',
+      artistMbid: 'm',
+      artistName: 'Soda Stereo',
+      title: 'Canción Animal',
+    });
     expect(del).toHaveBeenCalledWith('/api/watchlist/5');
     expect(post).not.toHaveBeenCalled();
     expect(svc.isWatched('fa5')).toBe(false);

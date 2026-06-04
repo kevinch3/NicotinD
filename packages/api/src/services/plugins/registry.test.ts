@@ -8,7 +8,10 @@ import { PluginRegistry } from './registry.js';
 // A configurable fixture plugin that records lifecycle calls. Capabilities are
 // stub objects — the registry only cares that the accessor is present and that
 // the manifest declares the capability.
-function makePlugin(manifest: PluginManifest, opts: { available?: boolean } = {}): Plugin & {
+function makePlugin(
+  manifest: PluginManifest,
+  opts: { available?: boolean } = {},
+): Plugin & {
   initCalls: PluginHostContext[];
   disposeCalls: number;
 } {
@@ -26,7 +29,9 @@ function makePlugin(manifest: PluginManifest, opts: { available?: boolean } = {}
     async dispose() {
       this.disposeCalls++;
     },
-    ...(manifest.capabilities.includes('search') ? { search: { search: async () => ({ results: null }) } } : {}),
+    ...(manifest.capabilities.includes('search')
+      ? { search: { search: async () => ({ results: null }) } }
+      : {}),
     ...(manifest.capabilities.includes('download')
       ? { download: { enqueue: async () => {} } }
       : {}),
@@ -48,7 +53,10 @@ const acquisitionManifest = (over: Partial<PluginManifest> = {}): PluginManifest
   kind: 'acquisition',
   capabilities: ['search', 'download'],
   defaultEnabled: false,
-  compliance: { disclaimer: 'P2P networks carry legal risk in some countries.', requiresConsent: true },
+  compliance: {
+    disclaimer: 'P2P networks carry legal risk in some countries.',
+    requiresConsent: true,
+  },
   ...over,
 });
 
@@ -63,14 +71,16 @@ describe('PluginRegistry', () => {
   });
 
   it('rejects an invalid manifest at registration', () => {
-    expect(() =>
-      registry.register(makePlugin(acquisitionManifest({ id: 'Bad Id' }))),
-    ).toThrow(/invalid plugin manifest/);
+    expect(() => registry.register(makePlugin(acquisitionManifest({ id: 'Bad Id' })))).toThrow(
+      /invalid plugin manifest/,
+    );
   });
 
   it('rejects a duplicate id', () => {
     registry.register(makePlugin(acquisitionManifest()));
-    expect(() => registry.register(makePlugin(acquisitionManifest()))).toThrow(/already registered/);
+    expect(() => registry.register(makePlugin(acquisitionManifest()))).toThrow(
+      /already registered/,
+    );
   });
 
   it('is disabled by default and exposes no capability', () => {
@@ -91,9 +101,10 @@ describe('PluginRegistry', () => {
     expect(registry.getEnabledWithCapability('search')).toHaveLength(1);
 
     const row = db
-      .query<{ consent_user: string; consent_at: number }, [string]>(
-        `SELECT consent_user, consent_at FROM plugins WHERE id = ?`,
-      )
+      .query<
+        { consent_user: string; consent_at: number },
+        [string]
+      >(`SELECT consent_user, consent_at FROM plugins WHERE id = ?`)
       .get('slskd');
     expect(row?.consent_user).toBe('admin-user-id');
     expect(row?.consent_at).toBeGreaterThan(0);
@@ -105,11 +116,20 @@ describe('PluginRegistry', () => {
 
   it('does not record consent for a plugin that does not require it', async () => {
     registry.register(
-      makePlugin(acquisitionManifest({ id: 'ytdlp', capabilities: ['resolve', 'download'], compliance: { disclaimer: 'x', requiresConsent: false } })),
+      makePlugin(
+        acquisitionManifest({
+          id: 'ytdlp',
+          capabilities: ['resolve', 'download'],
+          compliance: { disclaimer: 'x', requiresConsent: false },
+        }),
+      ),
     );
     await registry.enable('ytdlp', 'admin');
     const row = db
-      .query<{ consent_user: string | null }, [string]>(`SELECT consent_user FROM plugins WHERE id = ?`)
+      .query<
+        { consent_user: string | null },
+        [string]
+      >(`SELECT consent_user FROM plugins WHERE id = ?`)
       .get('ytdlp');
     expect(row?.consent_user).toBeNull();
   });
@@ -143,7 +163,13 @@ describe('PluginRegistry', () => {
 
   it('routes a URL to the first enabled resolve-capable plugin that handles it', async () => {
     registry.register(
-      makePlugin(acquisitionManifest({ id: 'ytdlp', capabilities: ['resolve', 'download'], compliance: { disclaimer: 'x', requiresConsent: false } })),
+      makePlugin(
+        acquisitionManifest({
+          id: 'ytdlp',
+          capabilities: ['resolve', 'download'],
+          compliance: { disclaimer: 'x', requiresConsent: false },
+        }),
+      ),
     );
     expect(registry.getEnabledForUrl('https://example.com/v')).toBeUndefined(); // disabled
     await registry.enable('ytdlp', 'admin');
@@ -182,7 +208,12 @@ describe('PluginRegistry', () => {
     );
     const before = await registry.list();
     expect(before).toHaveLength(1);
-    expect(before[0]).toMatchObject({ id: 'ytdlp', enabled: false, available: false, needsConfig: true });
+    expect(before[0]).toMatchObject({
+      id: 'ytdlp',
+      enabled: false,
+      available: false,
+      needsConfig: true,
+    });
 
     registry.setConfig('ytdlp', { format: 'mp3' });
     await registry.enable('ytdlp', 'admin');

@@ -1,7 +1,15 @@
 import { resolveTheme, THEME_PRESETS, type ThemeId } from './theme.service';
 
 describe('THEME_PRESETS', () => {
-  const EXPECTED_IDS: ThemeId[] = ['midnight', 'daylight', 'warm-paper', 'oled', 'twilight', 'forest', 'eink'];
+  const EXPECTED_IDS: ThemeId[] = [
+    'midnight',
+    'daylight',
+    'warm-paper',
+    'oled',
+    'twilight',
+    'forest',
+    'eink',
+  ];
 
   it('contains exactly 7 presets', () => {
     expect(THEME_PRESETS).toHaveLength(7);

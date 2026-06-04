@@ -40,9 +40,7 @@ describe('validatePluginManifest', () => {
   });
 
   it('rejects a capability that does not belong to the kind', () => {
-    const errs = validatePluginManifest(
-      base({ kind: 'connectivity', capabilities: ['search'] }),
-    );
+    const errs = validatePluginManifest(base({ kind: 'connectivity', capabilities: ['search'] }));
     expect(errs.some((e) => e.includes('invalid for kind'))).toBe(true);
   });
 

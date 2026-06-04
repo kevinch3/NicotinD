@@ -78,7 +78,8 @@ export function validatePluginManifest(m: PluginManifest): string[] {
         m.kind === 'acquisition'
           ? (ACQUISITION_CAPS as string[]).includes(cap)
           : cap === 'connectivity';
-      if (!ok) errors.push(`plugin "${m.id}" declares capability "${cap}" invalid for kind "${m.kind}"`);
+      if (!ok)
+        errors.push(`plugin "${m.id}" declares capability "${cap}" invalid for kind "${m.kind}"`);
     }
   }
   if (m.kind === 'acquisition' && m.defaultEnabled) {

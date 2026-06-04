@@ -42,9 +42,7 @@ export function watchlistRoutes(watchlist: WatchlistService) {
   app.delete('/:id', (c) => {
     const id = Number(c.req.param('id'));
     if (Number.isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
-    return watchlist.remove(id)
-      ? c.json({ ok: true })
-      : c.json({ error: 'Not found' }, 404);
+    return watchlist.remove(id) ? c.json({ ok: true }) : c.json({ error: 'Not found' }, 404);
   });
 
   return app;

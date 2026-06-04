@@ -32,9 +32,7 @@ export class RemotePlaybackService {
   // ---------------------------------------------------------------------------
 
   /** Whether this client has opted in to receive remote play commands */
-  readonly remoteEnabled = signal(
-    localStorage.getItem('nicotind_remote_enabled') === 'true',
-  );
+  readonly remoteEnabled = signal(localStorage.getItem('nicotind_remote_enabled') === 'true');
   /** Set when remote playback was automatically disabled due to connection failure */
   readonly disabledReason = signal<string | null>(null);
   /** The device that is currently the active audio output */

@@ -31,7 +31,10 @@ export class ServiceManager {
     const handle = await this.strategy.start(definition);
     this.handles.set('slskd', handle);
 
-    const healthy = await waitForHealthy(definition.healthCheckUrl, definition.healthCheckTimeoutMs);
+    const healthy = await waitForHealthy(
+      definition.healthCheckUrl,
+      definition.healthCheckTimeoutMs,
+    );
     if (!healthy) {
       throw new Error('slskd failed to start within timeout');
     }
@@ -51,7 +54,10 @@ export class ServiceManager {
     const handle = await this.strategy.start(definition);
     this.handles.set('lidarr', handle);
 
-    const healthy = await waitForHealthy(definition.healthCheckUrl, definition.healthCheckTimeoutMs);
+    const healthy = await waitForHealthy(
+      definition.healthCheckUrl,
+      definition.healthCheckTimeoutMs,
+    );
     if (!healthy) {
       log.warn('Lidarr failed to start within timeout — discography features unavailable');
     }

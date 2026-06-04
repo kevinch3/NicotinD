@@ -35,8 +35,7 @@ function loadMinimalConfig(): { dataDir: string; musicDir: string | undefined } 
   const dataDir = expandHome(
     process.env.NICOTIND_DATA_DIR ?? (fileConfig.dataDir as string | undefined) ?? '~/.nicotind',
   );
-  const musicDir =
-    process.env.NICOTIND_MUSIC_DIR ?? (fileConfig.musicDir as string | undefined);
+  const musicDir = process.env.NICOTIND_MUSIC_DIR ?? (fileConfig.musicDir as string | undefined);
 
   return { dataDir, musicDir: musicDir ? expandHome(musicDir) : undefined };
 }
@@ -47,7 +46,9 @@ async function main(): Promise<void> {
   const { dataDir, musicDir } = loadMinimalConfig();
 
   if (!musicDir) {
-    console.error('Error: musicDir is not configured. Set NICOTIND_MUSIC_DIR or musicDir in config/default.yml.');
+    console.error(
+      'Error: musicDir is not configured. Set NICOTIND_MUSIC_DIR or musicDir in config/default.yml.',
+    );
     process.exit(1);
   }
 
@@ -57,10 +58,12 @@ async function main(): Promise<void> {
   const db = initDatabase(dataDir);
 
   // Read all completed downloads and group by directory
-  const rows = db.query<
-    { username: string; directory: string; filename: string; relative_path: string | null },
-    []
-  >('SELECT username, directory, filename, relative_path FROM completed_downloads ORDER BY directory').all();
+  const rows = db
+    .query<
+      { username: string; directory: string; filename: string; relative_path: string | null },
+      []
+    >('SELECT username, directory, filename, relative_path FROM completed_downloads ORDER BY directory')
+    .all();
 
   if (rows.length === 0) {
     console.log('No completed downloads found in database. Nothing to do.');

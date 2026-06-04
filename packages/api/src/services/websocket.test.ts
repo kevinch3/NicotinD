@@ -62,7 +62,12 @@ function getHandlers(userId = 'testuser') {
   return createWebSocketHandlers(userId);
 }
 
-function registerDevice(handlers: ReturnType<typeof createWebSocketHandlers>, ws: WSContext, id = 'dev1', name = 'Test') {
+function registerDevice(
+  handlers: ReturnType<typeof createWebSocketHandlers>,
+  ws: WSContext,
+  id = 'dev1',
+  name = 'Test',
+) {
   handlers.onMessage!(
     createEvent({ type: 'REGISTER', payload: { id, name, deviceType: 'web' } }),
     ws,
@@ -125,7 +130,10 @@ describe('createWebSocketHandlers', () => {
       const ws = createMockWs();
       handlers.onOpen!({} as Event, ws);
       handlers.onMessage!(
-        createEvent({ type: 'REGISTER', payload: { id: 'dev1', name: 'Test', deviceType: 'web', remoteEnabled: false } }),
+        createEvent({
+          type: 'REGISTER',
+          payload: { id: 'dev1', name: 'Test', deviceType: 'web', remoteEnabled: false },
+        }),
         ws,
       );
 
@@ -185,7 +193,12 @@ describe('createWebSocketHandlers', () => {
 
       const newTrack = { id: 'new-track', title: 'New Song', artist: 'Artist' };
       handlers.onMessage!(
-        createEvent({ type: 'STATE_UPDATE', payload: { state: { track: newTrack, trackId: 'new-track', isPlaying: true, position: 0 } } }),
+        createEvent({
+          type: 'STATE_UPDATE',
+          payload: {
+            state: { track: newTrack, trackId: 'new-track', isPlaying: true, position: 0 },
+          },
+        }),
         ws,
       );
 
@@ -231,10 +244,7 @@ describe('createWebSocketHandlers', () => {
       const ws = createMockWs();
       handlers.onOpen!({} as Event, ws);
 
-      handlers.onMessage!(
-        createEvent({ type: 'COMMAND', payload: { action: 'PLAY' } }),
-        ws,
-      );
+      handlers.onMessage!(createEvent({ type: 'COMMAND', payload: { action: 'PLAY' } }), ws);
 
       expect(mockManager.updateState).toHaveBeenCalledWith({ isPlaying: true });
       expect(mockManager.emitCommand).toHaveBeenCalledWith({ action: 'PLAY' });
@@ -244,10 +254,7 @@ describe('createWebSocketHandlers', () => {
       const ws = createMockWs();
       handlers.onOpen!({} as Event, ws);
 
-      handlers.onMessage!(
-        createEvent({ type: 'COMMAND', payload: { action: 'PAUSE' } }),
-        ws,
-      );
+      handlers.onMessage!(createEvent({ type: 'COMMAND', payload: { action: 'PAUSE' } }), ws);
 
       expect(mockManager.updateState).toHaveBeenCalledWith({ isPlaying: false });
       expect(mockManager.emitCommand).toHaveBeenCalledWith({ action: 'PAUSE' });
@@ -262,7 +269,10 @@ describe('createWebSocketHandlers', () => {
         ws,
       );
 
-      const call = (mockManager.updateState.mock.calls[0] as unknown[])[0] as Record<string, unknown>;
+      const call = (mockManager.updateState.mock.calls[0] as unknown[])[0] as Record<
+        string,
+        unknown
+      >;
       expect(call.position).toBe(30.5);
       expect(call.timestamp).toBeGreaterThan(0);
       expect(mockManager.emitCommand).toHaveBeenCalledWith({ action: 'SEEK', position: 30.5 });
@@ -319,10 +329,7 @@ describe('createWebSocketHandlers', () => {
       const ws = createMockWs();
       handlers.onOpen!({} as Event, ws);
 
-      handlers.onMessage!(
-        createEvent({ type: 'COMMAND', payload: { action: 'SET_TRACK' } }),
-        ws,
-      );
+      handlers.onMessage!(createEvent({ type: 'COMMAND', payload: { action: 'SET_TRACK' } }), ws);
 
       expect(mockManager.updateState).toHaveBeenCalledWith({
         trackId: null,
@@ -336,10 +343,7 @@ describe('createWebSocketHandlers', () => {
       const ws = createMockWs();
       handlers.onOpen!({} as Event, ws);
 
-      handlers.onMessage!(
-        createEvent({ type: 'COMMAND', payload: { action: 'NEXT' } }),
-        ws,
-      );
+      handlers.onMessage!(createEvent({ type: 'COMMAND', payload: { action: 'NEXT' } }), ws);
 
       expect(mockManager.emitCommand).toHaveBeenCalledWith({ action: 'NEXT' });
     });
@@ -348,10 +352,7 @@ describe('createWebSocketHandlers', () => {
       const ws = createMockWs();
       handlers.onOpen!({} as Event, ws);
 
-      handlers.onMessage!(
-        createEvent({ type: 'COMMAND', payload: { action: 'PREV' } }),
-        ws,
-      );
+      handlers.onMessage!(createEvent({ type: 'COMMAND', payload: { action: 'PREV' } }), ws);
 
       // PREV has no specific state update — only emitCommand
       expect(mockManager.emitCommand).toHaveBeenCalledWith({ action: 'PREV' });
@@ -364,7 +365,10 @@ describe('createWebSocketHandlers', () => {
       const payload = { action: 'SEEK', position: 99.9 };
       handlers.onMessage!(createEvent({ type: 'COMMAND', payload }), ws);
 
-      const emitted = (mockManager.emitCommand.mock.calls[0] as unknown[])[0] as Record<string, unknown>;
+      const emitted = (mockManager.emitCommand.mock.calls[0] as unknown[])[0] as Record<
+        string,
+        unknown
+      >;
       expect(emitted.action).toBe('SEEK');
       expect(emitted.position).toBe(99.9);
       // Must NOT have a nested payload property
@@ -375,12 +379,24 @@ describe('createWebSocketHandlers', () => {
       const ws = createMockWs();
       handlers.onOpen!({} as Event, ws);
 
-      handlers.onMessage!(createEvent({ type: 'COMMAND', payload: { action: 'SEEK', position: 10 } }), ws);
-      handlers.onMessage!(createEvent({ type: 'COMMAND', payload: { action: 'SEEK', position: 50 } }), ws);
-      handlers.onMessage!(createEvent({ type: 'COMMAND', payload: { action: 'SEEK', position: 90 } }), ws);
+      handlers.onMessage!(
+        createEvent({ type: 'COMMAND', payload: { action: 'SEEK', position: 10 } }),
+        ws,
+      );
+      handlers.onMessage!(
+        createEvent({ type: 'COMMAND', payload: { action: 'SEEK', position: 50 } }),
+        ws,
+      );
+      handlers.onMessage!(
+        createEvent({ type: 'COMMAND', payload: { action: 'SEEK', position: 90 } }),
+        ws,
+      );
 
       expect(mockManager.updateState).toHaveBeenCalledTimes(3);
-      const lastCall = (mockManager.updateState.mock.calls[2] as unknown[])[0] as Record<string, unknown>;
+      const lastCall = (mockManager.updateState.mock.calls[2] as unknown[])[0] as Record<
+        string,
+        unknown
+      >;
       expect(lastCall.position).toBe(90);
     });
 
@@ -388,7 +404,10 @@ describe('createWebSocketHandlers', () => {
       const ws = createMockWs();
       handlers.onOpen!({} as Event, ws);
 
-      handlers.onMessage!(createEvent({ type: 'COMMAND', payload: { action: 'SEEK', position: 30 } }), ws);
+      handlers.onMessage!(
+        createEvent({ type: 'COMMAND', payload: { action: 'SEEK', position: 30 } }),
+        ws,
+      );
       handlers.onMessage!(createEvent({ type: 'COMMAND', payload: { action: 'PAUSE' } }), ws);
       handlers.onMessage!(createEvent({ type: 'COMMAND', payload: { action: 'PLAY' } }), ws);
 
@@ -422,7 +441,9 @@ describe('createWebSocketHandlers', () => {
       handlers.onOpen!({} as Event, ws);
       registerDevice(handlers, ws);
 
-      mockManager.getState.mockReturnValue(defaultState({ activeDeviceId: 'dev1', isPlaying: true }));
+      mockManager.getState.mockReturnValue(
+        defaultState({ activeDeviceId: 'dev1', isPlaying: true }),
+      );
       mockManager.updateState.mockClear();
 
       handlers.onMessage!(
@@ -431,7 +452,10 @@ describe('createWebSocketHandlers', () => {
       );
 
       expect(mockManager.updateState).toHaveBeenCalledTimes(1);
-      const call = (mockManager.updateState.mock.calls[0] as unknown[])[0] as Record<string, unknown>;
+      const call = (mockManager.updateState.mock.calls[0] as unknown[])[0] as Record<
+        string,
+        unknown
+      >;
       expect(call.position).toBe(45.2);
       expect(call.duration).toBe(180);
       expect(call.isPlaying).toBe(true);
@@ -444,7 +468,9 @@ describe('createWebSocketHandlers', () => {
       registerDevice(handlers, ws);
 
       // Server state has isPlaying: false (e.g. after SET_TRACK)
-      mockManager.getState.mockReturnValue(defaultState({ activeDeviceId: 'dev1', isPlaying: false }));
+      mockManager.getState.mockReturnValue(
+        defaultState({ activeDeviceId: 'dev1', isPlaying: false }),
+      );
       mockManager.updateState.mockClear();
 
       handlers.onMessage!(
@@ -452,7 +478,10 @@ describe('createWebSocketHandlers', () => {
         ws,
       );
 
-      const call = (mockManager.updateState.mock.calls[0] as unknown[])[0] as Record<string, unknown>;
+      const call = (mockManager.updateState.mock.calls[0] as unknown[])[0] as Record<
+        string,
+        unknown
+      >;
       expect(call.isPlaying).toBe(true);
     });
 
@@ -500,7 +529,10 @@ describe('createWebSocketHandlers', () => {
         ws,
       );
 
-      const call = (mockManager.updateState.mock.calls[0] as unknown[])[0] as Record<string, unknown>;
+      const call = (mockManager.updateState.mock.calls[0] as unknown[])[0] as Record<
+        string,
+        unknown
+      >;
       expect(call.duration).toBe(243.5);
     });
 
@@ -534,7 +566,10 @@ describe('createWebSocketHandlers', () => {
         ws,
       );
 
-      const call = (mockManager.updateState.mock.calls[0] as unknown[])[0] as Record<string, unknown>;
+      const call = (mockManager.updateState.mock.calls[0] as unknown[])[0] as Record<
+        string,
+        unknown
+      >;
       expect(call.duration).toBe(0);
       expect(call.position).toBe(5);
     });
@@ -563,10 +598,7 @@ describe('createWebSocketHandlers', () => {
       const ws = createMockWs();
       handlers.onOpen!({} as Event, ws);
 
-      handlers.onMessage!(
-        createEvent({ type: 'SET_ACTIVE_DEVICE', payload: { id: 'dev2' } }),
-        ws,
-      );
+      handlers.onMessage!(createEvent({ type: 'SET_ACTIVE_DEVICE', payload: { id: 'dev2' } }), ws);
 
       expect(mockManager.updateState).toHaveBeenCalledWith({ activeDeviceId: 'dev2' });
     });
@@ -575,10 +607,7 @@ describe('createWebSocketHandlers', () => {
       const ws = createMockWs();
       handlers.onOpen!({} as Event, ws);
 
-      handlers.onMessage!(
-        createEvent({ type: 'SET_ACTIVE_DEVICE', payload: { id: null } }),
-        ws,
-      );
+      handlers.onMessage!(createEvent({ type: 'SET_ACTIVE_DEVICE', payload: { id: null } }), ws);
 
       expect(mockManager.updateState).toHaveBeenCalledWith({ activeDeviceId: null });
     });
@@ -668,9 +697,7 @@ describe('createWebSocketHandlers', () => {
 
       // Valid JSON but no payload — COMMAND handler accesses data.payload.action
       // This will throw inside the try/catch, which is caught silently
-      expect(() =>
-        handlers.onMessage!(createEvent({ type: 'COMMAND' }), ws),
-      ).not.toThrow();
+      expect(() => handlers.onMessage!(createEvent({ type: 'COMMAND' }), ws)).not.toThrow();
     });
   });
 

@@ -59,9 +59,10 @@ export function streamingRoutes(musicDir: string, db: Database, dataDir: string)
           )
           .get(id) ??
         db
-          .query<{ path: string }, [string]>(
-            'SELECT path FROM library_songs WHERE artist_id = ? ORDER BY path LIMIT 1',
-          )
+          .query<
+            { path: string },
+            [string]
+          >('SELECT path FROM library_songs WHERE artist_id = ? ORDER BY path LIMIT 1')
           .get(id);
     }
     if (!row) return null;
@@ -184,13 +185,19 @@ export function streamingRoutes(musicDir: string, db: Database, dataDir: string)
     const abs = resolvePath(id);
     if (!abs) {
       noArtCache.set(id, Date.now() + NO_ART_TTL_MS);
-      return new Response(null, { status: 404, headers: { 'cache-control': 'public, max-age=300' } });
+      return new Response(null, {
+        status: 404,
+        headers: { 'cache-control': 'public, max-age=300' },
+      });
     }
 
     const art = await extractCover(abs);
     if (!art) {
       noArtCache.set(id, Date.now() + NO_ART_TTL_MS);
-      return new Response(null, { status: 404, headers: { 'cache-control': 'public, max-age=300' } });
+      return new Response(null, {
+        status: 404,
+        headers: { 'cache-control': 'public, max-age=300' },
+      });
     }
 
     void cacheCover(coverCacheDir, id, art).catch((err) =>

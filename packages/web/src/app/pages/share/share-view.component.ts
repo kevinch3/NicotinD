@@ -106,7 +106,13 @@ export class ShareViewComponent implements OnInit, OnDestroy {
             track: s.track,
           })),
         );
-        this.setOgTags(pl.name, `${pl.entry?.length ?? pl.songCount} tracks`, jwt, pl.coverArt, 'music.playlist');
+        this.setOgTags(
+          pl.name,
+          `${pl.entry?.length ?? pl.songCount} tracks`,
+          jwt,
+          pl.coverArt,
+          'music.playlist',
+        );
       }
       this.state.set('active');
     } catch (err: any) {
@@ -126,7 +132,10 @@ export class ShareViewComponent implements OnInit, OnDestroy {
       if (!audio) return;
       audio.src = this.streamUrl() ?? '';
       audio.load();
-      void audio.play().then(() => this.isPlaying.set(true)).catch(() => {});
+      void audio
+        .play()
+        .then(() => this.isPlaying.set(true))
+        .catch(() => {});
     }, 0);
   }
 
@@ -138,7 +147,10 @@ export class ShareViewComponent implements OnInit, OnDestroy {
       this.isPlaying.set(false);
     } else {
       if (!audio.src) audio.src = this.streamUrl() ?? '';
-      void audio.play().then(() => this.isPlaying.set(true)).catch(() => {});
+      void audio
+        .play()
+        .then(() => this.isPlaying.set(true))
+        .catch(() => {});
     }
   }
 
@@ -178,13 +190,22 @@ export class ShareViewComponent implements OnInit, OnDestroy {
     return `${m}:${s.toString().padStart(2, '0')}`;
   }
 
-  private setOgTags(title: string, description: string, jwt: string, coverArtId: string | undefined, type: string): void {
+  private setOgTags(
+    title: string,
+    description: string,
+    jwt: string,
+    coverArtId: string | undefined,
+    type: string,
+  ): void {
     this.titleService.setTitle(`${title} — NicotinD`);
     this.meta.updateTag({ property: 'og:title', content: title });
     this.meta.updateTag({ property: 'og:description', content: description });
     this.meta.updateTag({ property: 'og:type', content: type });
     if (coverArtId) {
-      this.meta.updateTag({ property: 'og:image', content: `/api/cover/${coverArtId}?token=${jwt}` });
+      this.meta.updateTag({
+        property: 'og:image',
+        content: `/api/cover/${coverArtId}?token=${jwt}`,
+      });
     }
   }
 }

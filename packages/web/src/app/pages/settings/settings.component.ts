@@ -11,15 +11,22 @@ import { PasswordFieldComponent } from '../../components/password-field/password
 import { APP_VERSION } from '../../app.config';
 
 type DuplicateSong = {
-  id: string; title: string; artist: string; album: string;
-  duration?: number; bitRate?: number; suffix?: string; path: string; coverArt?: string;
+  id: string;
+  title: string;
+  artist: string;
+  album: string;
+  duration?: number;
+  bitRate?: number;
+  suffix?: string;
+  path: string;
+  coverArt?: string;
 };
 
 @Component({
   selector: 'app-settings',
   imports: [FormsModule, RouterLink, PasswordFieldComponent],
   templateUrl: './settings.component.html',
-  })
+})
 export class SettingsComponent implements OnInit {
   private api = inject(ApiService);
   readonly auth = inject(AuthService);
@@ -85,7 +92,9 @@ export class SettingsComponent implements OnInit {
   private async loadStreaming(): Promise<void> {
     try {
       this.streaming.set(await firstValueFrom(this.api.getStreamingSettings()));
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
 
   async saveStreaming(patch: Partial<StreamingSettings>): Promise<void> {
@@ -125,11 +134,12 @@ export class SettingsComponent implements OnInit {
     this.message.set(null);
 
     try {
-      const result = await firstValueFrom(this.api.saveSoulseekSettings(
-        this.username().trim(),
-        this.password().trim(),
-        { listeningPort: this.listeningPort(), enableUPnP: this.enableUPnP() },
-      ));
+      const result = await firstValueFrom(
+        this.api.saveSoulseekSettings(this.username().trim(), this.password().trim(), {
+          listeningPort: this.listeningPort(),
+          enableUPnP: this.enableUPnP(),
+        }),
+      );
       this.password.set('');
       this.confirmPassword.set('');
 
@@ -154,12 +164,18 @@ export class SettingsComponent implements OnInit {
           try {
             const status = await firstValueFrom(this.api.getSoulseekStatus());
             this.connected.set(status.connected);
-            if (status.connected) this.message.set({ type: 'success', text: 'Connected to Soulseek network' });
-          } catch { /* ignore */ }
+            if (status.connected)
+              this.message.set({ type: 'success', text: 'Connected to Soulseek network' });
+          } catch {
+            /* ignore */
+          }
         }, 5000);
       }
     } catch (err) {
-      this.message.set({ type: 'error', text: err instanceof Error ? err.message : 'Failed to save settings' });
+      this.message.set({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'Failed to save settings',
+      });
     } finally {
       this.saving.set(false);
     }
@@ -170,7 +186,12 @@ export class SettingsComponent implements OnInit {
     if (enabled) {
       const audio = document.querySelector('audio');
       if (audio && audio.paused) {
-        try { await audio.play(); audio.pause(); } catch { /* ignore */ }
+        try {
+          await audio.play();
+          audio.pause();
+        } catch {
+          /* ignore */
+        }
       }
     }
     this.remote.setRemoteEnabled(enabled);
@@ -203,8 +224,11 @@ export class SettingsComponent implements OnInit {
         this.connected.set(data.connected);
         this.username.set(data.username ?? '');
       }
-    } catch { /* ignore */ }
-    finally { this.loading.set(false); }
+    } catch {
+      /* ignore */
+    } finally {
+      this.loading.set(false);
+    }
   }
 
   async toggleConnection(): Promise<void> {
@@ -215,10 +239,15 @@ export class SettingsComponent implements OnInit {
       this.connected.set(result.connected);
       this.toggleMessage.set({
         type: 'success',
-        text: result.connected ? 'Connected to Soulseek network' : 'Disconnected from Soulseek network',
+        text: result.connected
+          ? 'Connected to Soulseek network'
+          : 'Disconnected from Soulseek network',
       });
     } catch (err) {
-      this.toggleMessage.set({ type: 'error', text: err instanceof Error ? err.message : 'Toggle failed' });
+      this.toggleMessage.set({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'Toggle failed',
+      });
     } finally {
       this.toggling.set(false);
     }
@@ -228,7 +257,9 @@ export class SettingsComponent implements OnInit {
     try {
       const data = await firstValueFrom(this.api.getShares());
       this.shares.set(data.directories);
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
 
   async addShare(): Promise<void> {
@@ -242,7 +273,10 @@ export class SettingsComponent implements OnInit {
       await this.loadShares();
       this.sharesMessage.set({ type: 'success', text: `Added: ${path}` });
     } catch (err) {
-      this.sharesMessage.set({ type: 'error', text: err instanceof Error ? err.message : 'Failed to add directory' });
+      this.sharesMessage.set({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'Failed to add directory',
+      });
     } finally {
       this.sharesLoading.set(false);
     }
@@ -255,7 +289,10 @@ export class SettingsComponent implements OnInit {
       await firstValueFrom(this.api.removeShare(path));
       await this.loadShares();
     } catch (err) {
-      this.sharesMessage.set({ type: 'error', text: err instanceof Error ? err.message : 'Failed to remove directory' });
+      this.sharesMessage.set({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'Failed to remove directory',
+      });
     } finally {
       this.sharesLoading.set(false);
     }
@@ -268,12 +305,14 @@ export class SettingsComponent implements OnInit {
       await firstValueFrom(this.api.rescanShares());
       this.sharesMessage.set({ type: 'success', text: 'Rescan triggered' });
     } catch (err) {
-      this.sharesMessage.set({ type: 'error', text: err instanceof Error ? err.message : 'Rescan failed' });
+      this.sharesMessage.set({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'Rescan failed',
+      });
     } finally {
       this.sharesLoading.set(false);
     }
   }
-
 
   async loadDuplicates(): Promise<void> {
     this.duplicatesLoading.set(true);
@@ -296,7 +335,10 @@ export class SettingsComponent implements OnInit {
         this.duplicatesDeleteSet.set(toDelete);
       }
     } catch (err) {
-      this.duplicatesMessage.set({ type: 'error', text: err instanceof Error ? err.message : 'Failed to load duplicates' });
+      this.duplicatesMessage.set({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'Failed to load duplicates',
+      });
     } finally {
       this.duplicatesLoading.set(false);
     }
@@ -320,10 +362,16 @@ export class SettingsComponent implements OnInit {
     this.duplicatesMessage.set(null);
     try {
       const result = await firstValueFrom(this.api.deleteSongs(ids));
-      this.duplicatesMessage.set({ type: 'success', text: `Deleted ${result.deletedCount} file${result.deletedCount !== 1 ? 's' : ''}` });
+      this.duplicatesMessage.set({
+        type: 'success',
+        text: `Deleted ${result.deletedCount} file${result.deletedCount !== 1 ? 's' : ''}`,
+      });
       await this.loadDuplicates();
     } catch (err) {
-      this.duplicatesMessage.set({ type: 'error', text: err instanceof Error ? err.message : 'Failed to delete' });
+      this.duplicatesMessage.set({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'Failed to delete',
+      });
     } finally {
       this.deletingDuplicates.set(false);
     }

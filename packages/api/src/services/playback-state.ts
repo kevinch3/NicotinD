@@ -55,7 +55,7 @@ export class PlaybackStateManager extends EventEmitter {
   }
 
   getDevices() {
-    return Array.from(this.devices.values()).filter(d => d.remoteEnabled);
+    return Array.from(this.devices.values()).filter((d) => d.remoteEnabled);
   }
 
   /** Remove devices that haven't sent a heartbeat within the timeout window. */
@@ -80,7 +80,11 @@ export class PlaybackStateManager extends EventEmitter {
   }
 
   registerDevice(device: Omit<Device, 'lastSeen' | 'remoteEnabled'> & { remoteEnabled?: boolean }) {
-    this.devices.set(device.id, { ...device, remoteEnabled: device.remoteEnabled ?? true, lastSeen: Date.now() });
+    this.devices.set(device.id, {
+      ...device,
+      remoteEnabled: device.remoteEnabled ?? true,
+      lastSeen: Date.now(),
+    });
     this.emit('devices_update', this.getDevices());
   }
 

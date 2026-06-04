@@ -31,7 +31,10 @@ function enrichWithAlbumJobs(
     )
     .all();
 
-  const byKey = new Map<string, { artistName: string; albumTitle: string; canonicalTrackCount: number }>();
+  const byKey = new Map<
+    string,
+    { artistName: string; albumTitle: string; canonicalTrackCount: number }
+  >();
   for (const r of rows) {
     if (!r.artist_name || !r.album_title) continue;
     let trackCount = 0;
@@ -69,18 +72,24 @@ const EnqueueDownloadRequestSchema = z.object({
   files: z.array(DownloadFileSchema).min(1),
 });
 
-const DownloadResponseSchema = z.object({
-  ok: z.boolean(),
-  queued: z.number(),
-}).openapi('DownloadResponse');
+const DownloadResponseSchema = z
+  .object({
+    ok: z.boolean(),
+    queued: z.number(),
+  })
+  .openapi('DownloadResponse');
 
-const ErrorSchema = z.object({
-  error: z.string(),
-}).openapi('Error');
+const ErrorSchema = z
+  .object({
+    error: z.string(),
+  })
+  .openapi('Error');
 
-const SimpleSuccessSchema = z.object({
-  ok: z.boolean(),
-}).openapi('SimpleSuccess');
+const SimpleSuccessSchema = z
+  .object({
+    ok: z.boolean(),
+  })
+  .openapi('SimpleSuccess');
 
 export function downloadRoutes(registry: ProviderRegistry, slskdRef: SlskdRef) {
   const app = new OpenAPIHono<AuthEnv>();
@@ -158,7 +167,9 @@ export function downloadRoutes(registry: ProviderRegistry, slskdRef: SlskdRef) {
         const msg = err instanceof Error ? err.message : String(err);
         if (msg.includes('slskd request failed')) {
           return c.json(
-            { error: `Download failed for user "${username}" — they may be offline or rejecting transfers` },
+            {
+              error: `Download failed for user "${username}" — they may be offline or rejecting transfers`,
+            },
             502,
           );
         }
@@ -192,7 +203,9 @@ export function downloadRoutes(registry: ProviderRegistry, slskdRef: SlskdRef) {
       },
       responses: {
         200: {
-          content: { 'application/json': { schema: z.object({ ok: z.boolean(), retried: z.number() }) } },
+          content: {
+            'application/json': { schema: z.object({ ok: z.boolean(), retried: z.number() }) },
+          },
           description: 'Transfers re-enqueued',
         },
         503: {
@@ -222,9 +235,7 @@ export function downloadRoutes(registry: ProviderRegistry, slskdRef: SlskdRef) {
         }
       }
 
-      const clearRetry = db.prepare(
-        'DELETE FROM transfer_retries WHERE transfer_key = ?',
-      );
+      const clearRetry = db.prepare('DELETE FROM transfer_retries WHERE transfer_key = ?');
       const unhide = db.prepare('DELETE FROM hidden_transfers WHERE id = ?');
 
       let retried = 0;
@@ -288,19 +299,20 @@ export function downloadRoutes(registry: ProviderRegistry, slskdRef: SlskdRef) {
       const hiddenIds = new Set(hidden.map((h) => h.id));
 
       // Filter out hidden transfers (skip the map entirely when nothing is hidden).
-      const visible = hiddenIds.size === 0
-        ? downloads
-        : downloads
-            .map((group) => ({
-              ...group,
-              directories: group.directories
-                .map((dir) => ({
-                  ...dir,
-                  files: dir.files.filter((file) => !hiddenIds.has(file.id)),
-                }))
-                .filter((dir) => dir.files.length > 0),
-            }))
-            .filter((group) => group.directories.length > 0);
+      const visible =
+        hiddenIds.size === 0
+          ? downloads
+          : downloads
+              .map((group) => ({
+                ...group,
+                directories: group.directories
+                  .map((dir) => ({
+                    ...dir,
+                    files: dir.files.filter((file) => !hiddenIds.has(file.id)),
+                  }))
+                  .filter((dir) => dir.files.length > 0),
+              }))
+              .filter((group) => group.directories.length > 0);
 
       // Annotate folders that came from the album-hunt flow with their canonical
       // artist/album/track-count so the UI can show real metadata instead of the

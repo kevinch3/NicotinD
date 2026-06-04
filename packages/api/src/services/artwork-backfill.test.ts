@@ -58,7 +58,11 @@ describe('backfillArtwork', () => {
     seedAlbum('alb-1', 'OK Computer', 'art-1', 'Radiohead');
     const lidarr = makeLidarrMock({
       list: [
-        { id: 7, artistName: 'Radiohead', images: artistImg('https://x/poster.jpg') } as LidarrArtist,
+        {
+          id: 7,
+          artistName: 'Radiohead',
+          images: artistImg('https://x/poster.jpg'),
+        } as LidarrArtist,
       ],
       albumsByArtist: {
         7: [{ title: 'OK Computer', images: albumImg('https://x/ok.jpg') } as LidarrAlbum],
@@ -75,7 +79,9 @@ describe('backfillArtwork', () => {
   it('does not write anything on a dry run', async () => {
     seedArtist('art-1', 'Radiohead');
     const lidarr = makeLidarrMock({
-      list: [{ id: 7, artistName: 'Radiohead', images: artistImg('https://x/p.jpg') } as LidarrArtist],
+      list: [
+        { id: 7, artistName: 'Radiohead', images: artistImg('https://x/p.jpg') } as LidarrArtist,
+      ],
     });
     const r = await backfillArtwork(db, lidarr, { apply: false });
     expect(r.artistsMatched).toBe(1);
@@ -89,7 +95,9 @@ describe('backfillArtwork', () => {
       ['art-1', 7, 'mbid'],
     );
     const lidarr = makeLidarrMock({
-      list: [{ id: 7, artistName: 'Real Name', images: artistImg('https://x/p.jpg') } as LidarrArtist],
+      list: [
+        { id: 7, artistName: 'Real Name', images: artistImg('https://x/p.jpg') } as LidarrArtist,
+      ],
     });
     const r = await backfillArtwork(db, lidarr, { apply: true });
     expect(r.artistsMatched).toBe(1);
@@ -100,9 +108,20 @@ describe('backfillArtwork', () => {
     seedArtist('art-1', 'Britney Spears');
     seedAlbum('alb-1', 'Circus', 'art-1', 'Britney Spears');
     const lidarr = makeLidarrMock({
-      list: [{ id: 7, artistName: 'Britney Spears', images: artistImg('https://x/p.jpg') } as LidarrArtist],
+      list: [
+        {
+          id: 7,
+          artistName: 'Britney Spears',
+          images: artistImg('https://x/p.jpg'),
+        } as LidarrArtist,
+      ],
       albumsByArtist: {
-        7: [{ title: 'Circus (Deluxe Edition)', images: albumImg('https://x/circus.jpg') } as LidarrAlbum],
+        7: [
+          {
+            title: 'Circus (Deluxe Edition)',
+            images: albumImg('https://x/circus.jpg'),
+          } as LidarrAlbum,
+        ],
       },
     });
     const r = await backfillArtwork(db, lidarr, { apply: true });
@@ -142,7 +161,13 @@ describe('backfillArtwork', () => {
     seedArtist('art-1', 'Aphex Twin');
     const lidarr = makeLidarrMock({
       list: [],
-      lookup: [{ id: 0, artistName: 'Aphex Twin', images: artistImg('https://x/aphex.jpg') } as LidarrArtist],
+      lookup: [
+        {
+          id: 0,
+          artistName: 'Aphex Twin',
+          images: artistImg('https://x/aphex.jpg'),
+        } as LidarrArtist,
+      ],
     });
     const r = await backfillArtwork(db, lidarr, { apply: true, lookupMissing: true });
     expect(r.artistsMatched).toBe(1);
@@ -198,7 +223,9 @@ describe('backfillArtwork — targeted album lookup (--album-lookup)', () => {
   it('ignores albums at or below the track threshold', async () => {
     seedArtist('art-1', 'Some Artist');
     seedAlbum('alb-ep', 'Tiny EP', 'art-1', 'Some Artist', 3);
-    const lidarr = makeLidarrMock({ albumLookup: [{ title: 'Tiny EP', images: albumImg('https://x/ep.jpg') } as LidarrAlbum] });
+    const lidarr = makeLidarrMock({
+      albumLookup: [{ title: 'Tiny EP', images: albumImg('https://x/ep.jpg') } as LidarrAlbum],
+    });
     const r = await backfillArtwork(db, lidarr, { apply: true, albumLookupMinTracks: 4 });
     expect(r.albumsLookedUp).toBe(0);
     expect(resolveArtwork(db, 'alb-ep')).toBeNull();

@@ -1,4 +1,8 @@
-import type { SearchProviderResult, NetworkPollResult, BrowseDirectory } from '../types/provider.js';
+import type {
+  SearchProviderResult,
+  NetworkPollResult,
+  BrowseDirectory,
+} from '../types/provider.js';
 
 /**
  * Capability interfaces a plugin implements à la carte (it exposes exactly the

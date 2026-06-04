@@ -15,7 +15,11 @@ interface ShareTokenRow {
   expires_at: number | null;
 }
 
-async function mintShareJwt(creatorId: string, expiresAtMs: number, jwtSecret: string): Promise<string> {
+async function mintShareJwt(
+  creatorId: string,
+  expiresAtMs: number,
+  jwtSecret: string,
+): Promise<string> {
   const secretKey = new TextEncoder().encode(jwtSecret);
   return new jose.SignJWT({ share: true, scope: 'read' })
     .setProtectedHeader({ alg: 'HS256' })

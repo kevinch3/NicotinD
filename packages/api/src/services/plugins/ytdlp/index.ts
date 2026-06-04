@@ -1,12 +1,7 @@
 import type { spawn as nodeSpawn } from 'node:child_process';
 import { join } from 'node:path';
 import { z } from 'zod';
-import type {
-  Plugin,
-  PluginManifest,
-  PluginHostContext,
-  ResolveCapability,
-} from '@nicotind/core';
+import type { Plugin, PluginManifest, PluginHostContext, ResolveCapability } from '@nicotind/core';
 import { isBinaryAvailable, runAcquireProcess, type RunningAcquire } from '../acquire/process.js';
 
 export interface YtdlpPluginConfig {
@@ -91,17 +86,21 @@ export class YtdlpPlugin implements Plugin {
     const args = [
       url,
       '--extract-audio',
-      '--audio-quality', '0',
+      '--audio-quality',
+      '0',
       // Parse "Artist - Title" from the video title; %(artist)s otherwise defaults
       // to the channel/uploader name. No-op when the title has no " - ".
-      '--parse-metadata', 'title:%(artist)s - %(title)s',
+      '--parse-metadata',
+      'title:%(artist)s - %(title)s',
       // Strip trailing "(Official Video)", "[HD]", etc. carried into the title.
-      '--replace-in-metadata', 'title',
+      '--replace-in-metadata',
+      'title',
       '\\s*[\\(\\[](?:Official|Music|Lyric|HD|HQ|Video|Audio|Live|MV|PV|Clip|Full|Visualizer|ft\\.?|feat\\.?).*?[\\)\\]]\\s*$',
       '',
       '--embed-metadata',
       '--embed-thumbnail',
-      '--output', outputTemplate,
+      '--output',
+      outputTemplate,
       '--newline',
       '--no-warnings',
     ];

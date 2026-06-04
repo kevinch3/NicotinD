@@ -36,7 +36,12 @@ export function catalogRoutes({ catalog }: CatalogRoutesOptions) {
   // canonical tracklist. Body: { foreignAlbumId, artistMbid, artistName, albumTitle }
   app.post('/resolve', async (c) => {
     const body = await c.req
-      .json<{ foreignAlbumId?: string; artistMbid?: string; artistName?: string; albumTitle?: string }>()
+      .json<{
+        foreignAlbumId?: string;
+        artistMbid?: string;
+        artistName?: string;
+        albumTitle?: string;
+      }>()
       .catch(() => null);
 
     if (!body?.foreignAlbumId || !body.artistName) {

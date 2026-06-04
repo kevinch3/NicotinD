@@ -11,7 +11,9 @@ beforeEach(() => {
   db.run('PRAGMA foreign_keys=ON');
   applySchema(db);
   svc = new PlaylistService(db);
-  db.run(`INSERT INTO users (id, username, password_hash) VALUES ('u1', 'a', 'x'), ('u2', 'b', 'y')`);
+  db.run(
+    `INSERT INTO users (id, username, password_hash) VALUES ('u1', 'a', 'x'), ('u2', 'b', 'y')`,
+  );
   for (const id of ['s1', 's2', 's3']) {
     db.run(
       `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, synced_at)

@@ -64,11 +64,11 @@ export class SearchService {
   }
 
   addDownloading(key: string): void {
-    this.downloading.update(s => new Set(s).add(key));
+    this.downloading.update((s) => new Set(s).add(key));
   }
 
   removeDownloading(key: string): void {
-    this.downloading.update(s => {
+    this.downloading.update((s) => {
       const updated = new Set(s);
       updated.delete(key);
       return updated;
@@ -76,7 +76,7 @@ export class SearchService {
   }
 
   addDownloadedFolder(key: string): void {
-    this.downloadedFolders.update(s => {
+    this.downloadedFolders.update((s) => {
       const updated = new Set(s).add(key);
       if (updated.size > 500) {
         const [first] = updated;
@@ -98,8 +98,8 @@ export class SearchService {
   addToHistory(query: string): void {
     const trimmed = query.trim();
     if (!trimmed) return;
-    this.history.update(h => {
-      const updated = [trimmed, ...h.filter(item => item !== trimmed)].slice(0, 10);
+    this.history.update((h) => {
+      const updated = [trimmed, ...h.filter((item) => item !== trimmed)].slice(0, 10);
       localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(updated));
       return updated;
     });

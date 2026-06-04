@@ -172,15 +172,18 @@ describe('PlayerService', () => {
         name: 'Test Album',
         originalOrder: [track1, track2],
       };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({
-        currentTrack: track1,
-        queue: [track2],
-        history: [track3],
-        shuffle: true,
-        repeat: 'all',
-        context: ctx,
-        currentTime: 30,
-      }));
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({
+          currentTrack: track1,
+          queue: [track2],
+          history: [track3],
+          shuffle: true,
+          repeat: 'all',
+          context: ctx,
+          currentTime: 30,
+        }),
+      );
       service.restoreState();
       expect(service.currentTrack()).toEqual(track1);
       expect(service.queue()).toEqual([track2]);
@@ -191,43 +194,52 @@ describe('PlayerService', () => {
     });
 
     it('restoreState() always leaves isPlaying = false', () => {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({
-        currentTrack: track1,
-        queue: [],
-        history: [],
-        shuffle: false,
-        repeat: 'off',
-        context: null,
-        currentTime: 5,
-      }));
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({
+          currentTrack: track1,
+          queue: [],
+          history: [],
+          shuffle: false,
+          repeat: 'off',
+          context: null,
+          currentTime: 5,
+        }),
+      );
       service.restoreState();
       expect(service.isPlaying()).toBe(false);
     });
 
     it('restoreState() sets restoredTime when currentTime > 1', () => {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({
-        currentTrack: track1,
-        queue: [],
-        history: [],
-        shuffle: false,
-        repeat: 'off',
-        context: null,
-        currentTime: 45.5,
-      }));
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({
+          currentTrack: track1,
+          queue: [],
+          history: [],
+          shuffle: false,
+          repeat: 'off',
+          context: null,
+          currentTime: 45.5,
+        }),
+      );
       service.restoreState();
       expect(service.restoredTime).toBe(45.5);
     });
 
     it('restoreState() leaves restoredTime null when currentTime <= 1', () => {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({
-        currentTrack: track1,
-        queue: [],
-        history: [],
-        shuffle: false,
-        repeat: 'off',
-        context: null,
-        currentTime: 0.5,
-      }));
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({
+          currentTrack: track1,
+          queue: [],
+          history: [],
+          shuffle: false,
+          repeat: 'off',
+          context: null,
+          currentTime: 0.5,
+        }),
+      );
       service.restoreState();
       expect(service.restoredTime).toBeNull();
     });

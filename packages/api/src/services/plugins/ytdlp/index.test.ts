@@ -23,7 +23,12 @@ const spawnMock = mock((..._args: unknown[]) => {
 let staging: string;
 function fakeCtx(): PluginHostContext {
   return {
-    logger: { info() {}, warn() {}, error() {}, debug() {} } as unknown as PluginHostContext['logger'],
+    logger: {
+      info() {},
+      warn() {},
+      error() {},
+      debug() {},
+    } as unknown as PluginHostContext['logger'],
     config: {},
     allocStagingDir(jobId) {
       const dir = join(staging, jobId);
@@ -67,10 +72,16 @@ describe('YtdlpPlugin', () => {
   });
 
   it('reports availability from enabled flag + binary presence', async () => {
-    expect(await new YtdlpPlugin(cfg({ enabled: false, binaryPath: 'bun' })).isAvailable()).toBe(false);
-    expect(await new YtdlpPlugin(cfg({ enabled: true, binaryPath: 'bun' })).isAvailable()).toBe(true);
+    expect(await new YtdlpPlugin(cfg({ enabled: false, binaryPath: 'bun' })).isAvailable()).toBe(
+      false,
+    );
+    expect(await new YtdlpPlugin(cfg({ enabled: true, binaryPath: 'bun' })).isAvailable()).toBe(
+      true,
+    );
     expect(
-      await new YtdlpPlugin(cfg({ enabled: true, binaryPath: '/no/such/binary-xyz' })).isAvailable(),
+      await new YtdlpPlugin(
+        cfg({ enabled: true, binaryPath: '/no/such/binary-xyz' }),
+      ).isAvailable(),
     ).toBe(false);
   });
 

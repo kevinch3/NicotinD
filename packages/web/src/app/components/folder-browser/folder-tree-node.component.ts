@@ -4,7 +4,7 @@ import type { FolderNode } from '../../lib/folder-utils';
 @Component({
   selector: 'app-folder-tree-node',
   templateUrl: './folder-tree-node.component.html',
-  })
+})
 export class FolderTreeNodeComponent {
   readonly node = input.required<FolderNode>();
   readonly selected = input.required<string>();
@@ -17,7 +17,7 @@ export class FolderTreeNodeComponent {
   }
 
   toggle(): void {
-    this.expanded.update(v => !v);
+    this.expanded.update((v) => !v);
     this.selectNode.emit(this.node().fullPath);
   }
 }

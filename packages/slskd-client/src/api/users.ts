@@ -1,16 +1,24 @@
 import type { BrowseDirectory } from '@nicotind/core';
 import type { SlskdClient } from '../client.js';
 
-interface RawBrowseFile { filename: string; size: number; bitRate?: number; length?: number }
-interface RawBrowseDir { name: string; fileCount?: number; files?: RawBrowseFile[]; directories?: RawBrowseDir[] }
+interface RawBrowseFile {
+  filename: string;
+  size: number;
+  bitRate?: number;
+  length?: number;
+}
+interface RawBrowseDir {
+  name: string;
+  fileCount?: number;
+  files?: RawBrowseFile[];
+  directories?: RawBrowseDir[];
+}
 
 export class UsersApi {
   constructor(private readonly client: SlskdClient) {}
 
   async browseUser(username: string): Promise<BrowseDirectory[]> {
-    const raw = await this.client.request<unknown>(
-      `/users/${encodeURIComponent(username)}/browse`,
-    );
+    const raw = await this.client.request<unknown>(`/users/${encodeURIComponent(username)}/browse`);
 
     let rawDirs: RawBrowseDir[] = [];
     if (Array.isArray(raw)) {
@@ -26,8 +34,10 @@ export class UsersApi {
     }
 
     if (rawDirs.length === 0 && !Array.isArray(raw)) {
-       // If we still found nothing and it wasn't an (empty) array, then it's an unexpected format
-       throw new Error(`Unexpected browse response: expected array or directory object, got ${typeof raw}`);
+      // If we still found nothing and it wasn't an (empty) array, then it's an unexpected format
+      throw new Error(
+        `Unexpected browse response: expected array or directory object, got ${typeof raw}`,
+      );
     }
 
     return rawDirs.map((dir) => ({

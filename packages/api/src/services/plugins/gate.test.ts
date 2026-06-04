@@ -29,7 +29,12 @@ function downloadPlugin(): Plugin {
 function makeApp(plugins: PluginRegistry) {
   const app = new Hono<AuthEnv>();
   app.use('*', (c, next) => {
-    c.set('user', { sub: 'u', role: 'user', iat: 0, exp: 9999999999 } as AuthEnv['Variables']['user']);
+    c.set('user', {
+      sub: 'u',
+      role: 'user',
+      iat: 0,
+      exp: 9999999999,
+    } as AuthEnv['Variables']['user']);
     return next();
   });
   app.use('/hunt/*', requireAcquisitionMiddleware(plugins));

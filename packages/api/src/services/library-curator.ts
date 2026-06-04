@@ -6,7 +6,8 @@ import { loadReleaseTypes, type ReleaseType } from './release-meta-store.js';
 
 const log = createLogger('library-curator');
 
-const COMPILATION_NAME_HINTS = /\b(various artists|va|compilation|greatest hits|best of|hits|mixtape)\b/i;
+const COMPILATION_NAME_HINTS =
+  /\b(various artists|va|compilation|greatest hits|best of|hits|mixtape)\b/i;
 const COMPILATION_ARTIST_HINTS = /\b(various|various artists|va|compilation)\b/i;
 
 // Heuristic release-type bands (used only when no authoritative metadata type
@@ -40,9 +41,10 @@ export class LibraryCurator {
   reclassifyAll(): CuratorResult {
     const startedAt = Date.now();
     const rows = this.db
-      .query<AlbumRow, []>(
-        `SELECT id, name, artist, song_count, manual_override FROM library_albums`,
-      )
+      .query<
+        AlbumRow,
+        []
+      >(`SELECT id, name, artist, song_count, manual_override FROM library_albums`)
       .all();
 
     // Releases the user deliberately hunted must never be auto-hidden, even if a
@@ -111,10 +113,9 @@ export class LibraryCurator {
   }
 
   clearManualOverride(albumId: string): boolean {
-    const res = this.db.run(
-      `UPDATE library_albums SET manual_override = 0 WHERE id = ?`,
-      [albumId],
-    );
+    const res = this.db.run(`UPDATE library_albums SET manual_override = 0 WHERE id = ?`, [
+      albumId,
+    ]);
     return Number(res.changes ?? 0) > 0;
   }
 
@@ -170,10 +171,7 @@ function classify(
   }
 
   // Compilation hints come from album name + artist name.
-  if (
-    COMPILATION_NAME_HINTS.test(row.name) ||
-    COMPILATION_ARTIST_HINTS.test(row.artist)
-  ) {
+  if (COMPILATION_NAME_HINTS.test(row.name) || COMPILATION_ARTIST_HINTS.test(row.artist)) {
     return { classification: 'compilation', hidden: false };
   }
 

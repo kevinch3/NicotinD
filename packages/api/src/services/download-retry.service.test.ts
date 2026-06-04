@@ -13,7 +13,9 @@ interface MockFile {
 
 function makeSlskdMock(files: MockFile[], username = 'peer') {
   const cancel = mock(async (_u: string, _id: string) => undefined);
-  const enqueue = mock(async (_u: string, _files: Array<{ filename: string; size: number }>) => undefined);
+  const enqueue = mock(
+    async (_u: string, _files: Array<{ filename: string; size: number }>) => undefined,
+  );
   const getDownloads = mock(async () => [
     {
       username,

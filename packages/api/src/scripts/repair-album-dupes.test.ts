@@ -6,7 +6,9 @@ describe('dupKey', () => {
     const k = dupKey('02 - Circus.mp3');
     expect(dupKey('02 - Circus (2).mp3')).toBe(k);
     expect(dupKey('03 - Beyond The 7th Sky.mp3')).toBe(dupKey('03 - Beyond the 7th Sky.mp3'));
-    expect(dupKey("05 - Can't Get You Off My Mind.mp3")).toBe(dupKey('05 - Can’t Get You Off My Mind.mp3'));
+    expect(dupKey("05 - Can't Get You Off My Mind.mp3")).toBe(
+      dupKey('05 - Can’t Get You Off My Mind.mp3'),
+    );
     // FLAC/MP3 of the same track share a key.
     expect(dupKey('07 - Black Girl.flac')).toBe(dupKey('07 - Black Girl.mp3'));
   });

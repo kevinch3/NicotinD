@@ -5,7 +5,15 @@ import { PlaylistService } from './playlist.service';
 import { ApiService, type PlaylistSummary } from './api.service';
 
 function summary(over: Partial<PlaylistSummary> = {}): PlaylistSummary {
-  return { id: 'p1', name: 'Mine', description: null, songCount: 0, createdAt: 0, modifiedAt: 0, ...over };
+  return {
+    id: 'p1',
+    name: 'Mine',
+    description: null,
+    songCount: 0,
+    createdAt: 0,
+    modifiedAt: 0,
+    ...over,
+  };
 }
 
 describe('PlaylistService (web)', () => {
@@ -24,7 +32,10 @@ describe('PlaylistService (web)', () => {
     TestBed.configureTestingModule({
       providers: [
         PlaylistService,
-        { provide: ApiService, useValue: { getPlaylists, createPlaylist, updatePlaylist, deletePlaylist } },
+        {
+          provide: ApiService,
+          useValue: { getPlaylists, createPlaylist, updatePlaylist, deletePlaylist },
+        },
       ],
     });
     svc = TestBed.inject(PlaylistService);

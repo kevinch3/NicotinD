@@ -46,9 +46,7 @@ function titlesMatch(a: string, b: string): boolean {
  * caller reclassifies afterwards so the written metadata takes effect.
  */
 export class SingleEnrichmentService {
-  constructor(
-    private opts: { db: Database; catalog: CatalogService; coverCacheDir?: string },
-  ) {}
+  constructor(private opts: { db: Database; catalog: CatalogService; coverCacheDir?: string }) {}
 
   /** Best-effort enrichment of the loose single/EP albums touched by `relPaths`. */
   async enrich(relPaths: string[]): Promise<void> {
@@ -97,7 +95,10 @@ export class SingleEnrichmentService {
       setArtwork(db, row.artist_id, 'artist', artist.imageUrl, coverCacheDir);
     }
 
-    log.info({ album: row.name, artist: row.artist, type: type ?? 'unmapped' }, 'Enriched loose single/EP');
+    log.info(
+      { album: row.name, artist: row.artist, type: type ?? 'unmapped' },
+      'Enriched loose single/EP',
+    );
   }
 }
 

@@ -26,14 +26,22 @@ import { PluginService, type PluginInfo } from '../../services/plugin.service';
       </p>
 
       @if (message()) {
-        <div class="mb-4 px-4 py-2.5 rounded-xl text-sm"
-             [class]="message()!.type === 'error' ? 'bg-red-950 text-red-300' : 'bg-emerald-950 text-emerald-300'">
+        <div
+          class="mb-4 px-4 py-2.5 rounded-xl text-sm"
+          [class]="
+            message()!.type === 'error'
+              ? 'bg-red-950 text-red-300'
+              : 'bg-emerald-950 text-emerald-300'
+          "
+        >
           {{ message()!.text }}
         </div>
       }
 
       <section class="mb-10">
-        <h2 class="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-3">Acquisition</h2>
+        <h2 class="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-3">
+          Acquisition
+        </h2>
         @for (p of plugins.acquisition(); track p.id) {
           <ng-container [ngTemplateOutlet]="card" [ngTemplateOutletContext]="{ $implicit: p }" />
         }
@@ -43,7 +51,9 @@ import { PluginService, type PluginInfo } from '../../services/plugin.service';
       </section>
 
       <section>
-        <h2 class="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-3">Connectivity</h2>
+        <h2 class="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-3">
+          Connectivity
+        </h2>
         @for (p of plugins.connectivity(); track p.id) {
           <ng-container [ngTemplateOutlet]="card" [ngTemplateOutletContext]="{ $implicit: p }" />
         }
@@ -61,18 +71,29 @@ import { PluginService, type PluginInfo } from '../../services/plugin.service';
               <div class="flex items-center gap-2 flex-wrap">
                 <span class="font-medium text-zinc-100">{{ p.name }}</span>
                 @if (p.enabled) {
-                  <span class="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-400">Enabled</span>
+                  <span
+                    class="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-400"
+                    >Enabled</span
+                  >
                 } @else {
-                  <span class="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-500">Disabled</span>
+                  <span
+                    class="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-500"
+                    >Disabled</span
+                  >
                 }
                 @if (p.enabled && !p.available) {
-                  <span class="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-amber-950 text-amber-400">Unavailable</span>
+                  <span
+                    class="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-amber-950 text-amber-400"
+                    >Unavailable</span
+                  >
                 }
               </div>
               <p class="text-sm text-zinc-400 mt-1">{{ p.description }}</p>
               <div class="flex gap-1.5 mt-2 flex-wrap">
                 @for (cap of p.capabilities; track cap) {
-                  <span class="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">{{ cap }}</span>
+                  <span class="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">{{
+                    cap
+                  }}</span>
                 }
               </div>
               @if (p.enabled && !p.available && p.requirements?.binaries?.length) {
@@ -85,9 +106,12 @@ import { PluginService, type PluginInfo } from '../../services/plugin.service';
               (click)="toggle(p)"
               [disabled]="busy()"
               class="shrink-0 px-3 py-1.5 rounded-lg text-sm font-medium transition disabled:opacity-50"
-              [class]="p.enabled
-                ? 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
-                : 'bg-emerald-600 text-white hover:bg-emerald-500'">
+              [class]="
+                p.enabled
+                  ? 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
+                  : 'bg-emerald-600 text-white hover:bg-emerald-500'
+              "
+            >
               {{ p.enabled ? 'Disable' : 'Enable' }}
             </button>
           </div>
@@ -100,7 +124,8 @@ import { PluginService, type PluginInfo } from '../../services/plugin.service';
         [message]="p.compliance?.disclaimer ?? 'Enable this plugin?'"
         confirmLabel="I understand — enable"
         (confirm)="confirmConsent()"
-        (cancel)="consentTarget.set(null)" />
+        (cancel)="consentTarget.set(null)"
+      />
     }
   `,
 })

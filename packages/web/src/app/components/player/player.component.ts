@@ -33,7 +33,7 @@ function formatTime(s: number): string {
   selector: 'app-player',
   imports: [CoverArtComponent, DeviceSwitcherComponent],
   templateUrl: './player.component.html',
-  })
+})
 export class PlayerComponent implements AfterViewInit, OnDestroy {
   readonly player = inject(PlayerService);
   readonly auth = inject(AuthService);
@@ -46,7 +46,9 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
   private audioElB = viewChild<ElementRef<HTMLAudioElement>>('audioElB');
   // Which element is currently active; flipping this makes all Effects switch to the other element.
   private primaryIsA = signal(true);
-  private readonly audioEl = computed(() => this.primaryIsA() ? this.audioElA() : this.audioElB());
+  private readonly audioEl = computed(() =>
+    this.primaryIsA() ? this.audioElA() : this.audioElB(),
+  );
   private get standbyNativeEl(): HTMLAudioElement | null {
     return (this.primaryIsA() ? this.audioElB() : this.audioElA())?.nativeElement ?? null;
   }
@@ -110,7 +112,9 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
       // Revoke any object URL we created in onEnded for a preserved track.
       const pendingObjectUrl = this.lastManualObjectUrl;
       this.lastManualObjectUrl = null;
-      onCleanup(() => { if (pendingObjectUrl) URL.revokeObjectURL(pendingObjectUrl); });
+      onCleanup(() => {
+        if (pendingObjectUrl) URL.revokeObjectURL(pendingObjectUrl);
+      });
 
       const track = this.player.currentTrack();
       const token = this.auth.token();
@@ -191,9 +195,21 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
         album: track.album ?? '',
         artwork: track.coverArt
           ? [
-              { src: `/api/cover/${track.coverArt}?size=96&token=${token}`, sizes: '96x96', type: 'image/jpeg' },
-              { src: `/api/cover/${track.coverArt}?size=256&token=${token}`, sizes: '256x256', type: 'image/jpeg' },
-              { src: `/api/cover/${track.coverArt}?size=512&token=${token}`, sizes: '512x512', type: 'image/jpeg' },
+              {
+                src: `/api/cover/${track.coverArt}?size=96&token=${token}`,
+                sizes: '96x96',
+                type: 'image/jpeg',
+              },
+              {
+                src: `/api/cover/${track.coverArt}?size=256&token=${token}`,
+                sizes: '256x256',
+                type: 'image/jpeg',
+              },
+              {
+                src: `/api/cover/${track.coverArt}?size=512&token=${token}`,
+                sizes: '512x512',
+                type: 'image/jpeg',
+              },
             ]
           : [],
       });
@@ -350,7 +366,11 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
     try {
       this.wakeLock = await navigator.wakeLock.request('screen');
     } catch (err) {
-      if (err instanceof DOMException && (err.name === 'NotSupportedError' || err.name === 'NotAllowedError')) return;
+      if (
+        err instanceof DOMException &&
+        (err.name === 'NotSupportedError' || err.name === 'NotAllowedError')
+      )
+        return;
       throw err;
     }
   }
@@ -370,7 +390,10 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
         this.wasPlayingBeforeHidden = this.player.isPlaying() && this.isActiveDevice();
       } else if (document.visibilityState === 'visible') {
         void this.acquireWakeLock();
-        if ((this.wasPlayingBeforeHidden || this.resumePendingAfterVisible) && this.isActiveDevice()) {
+        if (
+          (this.wasPlayingBeforeHidden || this.resumePendingAfterVisible) &&
+          this.isActiveDevice()
+        ) {
           this.wasPlayingBeforeHidden = false;
           this.resumePendingAfterVisible = false;
           const audioEl = this.audioEl()?.nativeElement;

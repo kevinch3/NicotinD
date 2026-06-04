@@ -8,7 +8,9 @@ import { applySchema } from '../db.js';
 
 const testDb = new Database(':memory:');
 applySchema(testDb);
-testDb.run("INSERT INTO users (id, username, password_hash, role) VALUES ('u1', 'alice', 'hash', 'user')");
+testDb.run(
+  "INSERT INTO users (id, username, password_hash, role) VALUES ('u1', 'alice', 'hash', 'user')",
+);
 
 mock.module('../db.js', () => ({ getDatabase: () => testDb, applySchema }));
 
@@ -28,7 +30,8 @@ function buildApp() {
 describe('POST /api/share — generate', () => {
   it('returns 401 without auth', async () => {
     const app = buildApp();
-    const res = await app.request('/api/share', { method: 'POST',
+    const res = await app.request('/api/share', {
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ resourceType: 'album', resourceId: 'al1' }),
     });
@@ -38,7 +41,8 @@ describe('POST /api/share — generate', () => {
   it('returns 400 for invalid resourceType', async () => {
     const app = buildApp();
     const token = await signJwt({ sub: 'u1', username: 'alice', role: 'user' }, SECRET);
-    const res = await app.request('/api/share', { method: 'POST',
+    const res = await app.request('/api/share', {
+      method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ resourceType: 'song', resourceId: 'x1' }),
     });
@@ -48,12 +52,13 @@ describe('POST /api/share — generate', () => {
   it('returns a share URL for a valid album', async () => {
     const app = buildApp();
     const token = await signJwt({ sub: 'u1', username: 'alice', role: 'user' }, SECRET);
-    const res = await app.request('/api/share', { method: 'POST',
+    const res = await app.request('/api/share', {
+      method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ resourceType: 'album', resourceId: 'al1' }),
     });
     expect(res.status).toBe(200);
-    const body = await res.json() as { url: string };
+    const body = (await res.json()) as { url: string };
     expect(body.url).toMatch(/\/share\/[A-Za-z0-9_-]{22}$/);
   });
 });
@@ -68,18 +73,22 @@ describe('POST /api/share/activate/:token — activate', () => {
   it('activates on first call and returns jwt + resource info', async () => {
     const app = buildApp();
     // Insert a fresh token
-    testDb.run(
-      "INSERT INTO share_tokens VALUES ('tok1', 'album', 'al42', 'u1', ?, NULL, NULL)",
-      [Date.now()]
-    );
+    testDb.run("INSERT INTO share_tokens VALUES ('tok1', 'album', 'al42', 'u1', ?, NULL, NULL)", [
+      Date.now(),
+    ]);
     const res = await app.request('/api/share/activate/tok1', { method: 'POST' });
     expect(res.status).toBe(200);
-    const body = await res.json() as { jwt: string; resourceType: string; resourceId: string };
+    const body = (await res.json()) as { jwt: string; resourceType: string; resourceId: string };
     expect(body.resourceType).toBe('album');
     expect(body.resourceId).toBe('al42');
     expect(typeof body.jwt).toBe('string');
     // first_accessed_at is now set
-    const row = testDb.query<{ first_accessed_at: number | null }, [string]>('SELECT * FROM share_tokens WHERE token = ?').get('tok1');
+    const row = testDb
+      .query<
+        { first_accessed_at: number | null },
+        [string]
+      >('SELECT * FROM share_tokens WHERE token = ?')
+      .get('tok1');
     expect(row!.first_accessed_at).not.toBeNull();
   });
 
@@ -88,11 +97,11 @@ describe('POST /api/share/activate/:token — activate', () => {
     const expiresAt = Date.now() + 300_000;
     testDb.run(
       "INSERT OR REPLACE INTO share_tokens VALUES ('tok2', 'playlist', 'pl1', 'u1', ?, ?, ?)",
-      [Date.now() - 10_000, Date.now() - 5_000, expiresAt]
+      [Date.now() - 10_000, Date.now() - 5_000, expiresAt],
     );
     const res = await app.request('/api/share/activate/tok2', { method: 'POST' });
     expect(res.status).toBe(200);
-    const body = await res.json() as { jwt: string };
+    const body = (await res.json()) as { jwt: string };
     // Decode JWT and check exp
     const [, payloadB64] = body.jwt.split('.');
     const payload = JSON.parse(Buffer.from(payloadB64, 'base64url').toString());
@@ -104,7 +113,7 @@ describe('POST /api/share/activate/:token — activate', () => {
     const past = Date.now() - 1000;
     testDb.run(
       "INSERT OR REPLACE INTO share_tokens VALUES ('tok3', 'album', 'al1', 'u1', ?, ?, ?)",
-      [Date.now() - 400_000, Date.now() - 400_000, past]
+      [Date.now() - 400_000, Date.now() - 400_000, past],
     );
     const res = await app.request('/api/share/activate/tok3', { method: 'POST' });
     expect(res.status).toBe(410);

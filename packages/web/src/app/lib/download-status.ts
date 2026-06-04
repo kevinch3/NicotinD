@@ -10,10 +10,10 @@ export interface ButtonState {
 
 export const BUTTON_CLASSES: Record<ButtonVariant, string> = {
   default: 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700',
-  queued:  'bg-zinc-700 text-zinc-400 opacity-75',
-  progress:'bg-blue-900/60 text-blue-300',
-  done:    'bg-green-900/60 text-green-300',
-  error:   'bg-red-900/60 text-red-300',
+  queued: 'bg-zinc-700 text-zinc-400 opacity-75',
+  progress: 'bg-blue-900/60 text-blue-300',
+  done: 'bg-green-900/60 text-green-300',
+  error: 'bg-red-900/60 text-red-300',
 };
 
 export function getSingleDownloadLabel(
@@ -37,8 +37,7 @@ export function getSingleDownloadLabel(
   if (state === 'Queued, Locally' || state === 'Queued, Remotely' || state === 'Requested')
     return { label: 'Queued', variant: 'queued', disabled: true };
 
-  if (state === 'Completed, Succeeded')
-    return { label: '✓ Done', variant: 'done', disabled: true };
+  if (state === 'Completed, Succeeded') return { label: '✓ Done', variant: 'done', disabled: true };
 
   return { label: '✗ Error', variant: 'error', disabled: true };
 }

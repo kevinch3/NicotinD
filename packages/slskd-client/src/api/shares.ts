@@ -2,9 +2,22 @@ import type { SlskdShareDirectory } from '@nicotind/core';
 import type { SlskdClient } from '../client.js';
 import type { OptionsApi } from './options.js';
 
-interface RawShareEntry { localPath?: string; raw?: string; files?: number; isExcluded?: boolean; id?: string; path?: string; fileCount?: number }
-interface RawSharesResponse { local?: RawShareEntry[] }
-interface SlskdError { status?: number; message?: string }
+interface RawShareEntry {
+  localPath?: string;
+  raw?: string;
+  files?: number;
+  isExcluded?: boolean;
+  id?: string;
+  path?: string;
+  fileCount?: number;
+}
+interface RawSharesResponse {
+  local?: RawShareEntry[];
+}
+interface SlskdError {
+  status?: number;
+  message?: string;
+}
 
 export class SharesApi {
   constructor(

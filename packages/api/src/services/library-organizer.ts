@@ -1,4 +1,14 @@
-import { existsSync, mkdirSync, readdirSync, renameSync, rmdirSync, statSync, appendFileSync, copyFileSync, unlinkSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  renameSync,
+  rmdirSync,
+  statSync,
+  appendFileSync,
+  copyFileSync,
+  unlinkSync,
+} from 'node:fs';
 import { basename, dirname, extname, join, relative } from 'node:path';
 import { cleanFolderName, createLogger, parseYearFromFolder } from '@nicotind/core';
 import { classifyFolder, type Classification } from './compilation-tagger.js';
@@ -11,7 +21,16 @@ import {
   AUDIO_EXTS,
   type AudioTags,
 } from './audio-tags.js';
-import { sanitizeSegment, trackNumberPrefix, stripAudioExt, stripTrackPrefix, isTrackNumberFragment, looksLikeFilenameTag, stripArtistLeadJunk, stripFeaturingSuffix } from './path-sanitize.js';
+import {
+  sanitizeSegment,
+  trackNumberPrefix,
+  stripAudioExt,
+  stripTrackPrefix,
+  isTrackNumberFragment,
+  looksLikeFilenameTag,
+  stripArtistLeadJunk,
+  stripFeaturingSuffix,
+} from './path-sanitize.js';
 import { isAbsolute } from 'node:path';
 import type { AcoustIdLookup } from './acoustid-lookup.js';
 import { normalizeTitle } from './album-hunter.service.js';
@@ -81,7 +100,9 @@ export class LibraryOrganizer {
   private acoustid: AcoustIdLookup | undefined;
   private preferFlacSkipMp3: boolean;
   private autoDedupe: boolean;
-  private jobLookup?: (peerDirectory: string) => { artist?: string | null; album?: string | null } | null;
+  private jobLookup?: (
+    peerDirectory: string,
+  ) => { artist?: string | null; album?: string | null } | null;
   /** Real <Artist>/<Album> dirs written during the current batch (for dedupe). */
   private touchedAlbumDirs = new Set<string>();
 
@@ -106,7 +127,13 @@ export class LibraryOrganizer {
    * classify → move into `<musicDir>/<Artist>/<Album>/<NN - Title>.<ext>`.
    */
   async organizeBatch(files: CompletedDownloadFile[]): Promise<OrganizeResult> {
-    const result: OrganizeResult = { moved: 0, skipped: 0, unsorted: 0, failed: 0, dedupedBasenames: [] };
+    const result: OrganizeResult = {
+      moved: 0,
+      skipped: 0,
+      unsorted: 0,
+      failed: 0,
+      dedupedBasenames: [],
+    };
     if (files.length === 0) return result;
 
     this.touchedAlbumDirs.clear();
@@ -127,7 +154,10 @@ export class LibraryOrganizer {
         const { deleted } = dedupeFolder(dir, { apply: true });
         for (const d of deleted) {
           result.dedupedBasenames.push(basename(d.name).toLowerCase());
-          log.info({ dir, dropped: d.name, kept: d.keptName }, 'Auto-dedupe removed a duplicate copy');
+          log.info(
+            { dir, dropped: d.name, kept: d.keptName },
+            'Auto-dedupe removed a duplicate copy',
+          );
         }
       }
     }
@@ -139,12 +169,18 @@ export class LibraryOrganizer {
    * Organize a single on-disk audio file (used by the backfill script when
    * iterating the filesystem rather than the completed_downloads table).
    */
-  async organizeFile(absPath: string, peerDirectory?: string): Promise<'moved' | 'skipped' | 'unsorted' | 'failed'> {
+  async organizeFile(
+    absPath: string,
+    peerDirectory?: string,
+  ): Promise<'moved' | 'skipped' | 'unsorted' | 'failed'> {
     const flat = this.flattenPhantomDir(absPath);
     const finalSrc = flat ?? absPath;
     if (!existsSync(finalSrc)) return 'failed';
 
-    const tags = await this.readWithFallback(finalSrc, peerDirectory ?? basename(dirname(finalSrc)));
+    const tags = await this.readWithFallback(
+      finalSrc,
+      peerDirectory ?? basename(dirname(finalSrc)),
+    );
     const resolved: ResolvedFile = {
       srcPath: finalSrc,
       peerDirectory: peerDirectory ?? basename(dirname(finalSrc)),
@@ -177,7 +213,13 @@ export class LibraryOrganizer {
       const flat = this.flattenPhantomDir(src);
       const finalSrc = flat ?? src;
       const tags = await this.readWithFallback(finalSrc, directory);
-      resolved.push({ srcPath: finalSrc, peerDirectory: directory, filename: file.filename, tags, source: file });
+      resolved.push({
+        srcPath: finalSrc,
+        peerDirectory: directory,
+        filename: file.filename,
+        tags,
+        source: file,
+      });
     }
 
     if (resolved.length === 0) return;
@@ -210,7 +252,8 @@ export class LibraryOrganizer {
     const canonicalAlbum = sanitizeAlbumTag(normalizeTagValue(job.album));
     if (!canonicalAlbum) return tags;
     const albumArtist =
-      tags.albumArtist ?? (job.artist ? sanitizeArtistTag(normalizeTagValue(job.artist)) : undefined);
+      tags.albumArtist ??
+      (job.artist ? sanitizeArtistTag(normalizeTagValue(job.artist)) : undefined);
     return { ...tags, album: canonicalAlbum, albumArtist };
   }
 
@@ -249,7 +292,11 @@ export class LibraryOrganizer {
     // Folder-derived album that just echoes the artist (e.g. file lives in
     // <Artist>/file.mp3 with no real album tag) isn't a real album. Drop it
     // so the Singles fallback in placeFile kicks in.
-    if (album && artist && stripAccents(album).toLowerCase().trim() === stripAccents(artist).toLowerCase().trim()) {
+    if (
+      album &&
+      artist &&
+      stripAccents(album).toLowerCase().trim() === stripAccents(artist).toLowerCase().trim()
+    ) {
       album = undefined;
     }
 
@@ -274,7 +321,10 @@ export class LibraryOrganizer {
           if (tags.trackNumber === undefined) tags.trackNumber = hit.trackNumber;
           log.info({ path, score: hit.score, recordingId: hit.recordingId }, 'AcoustID matched');
         } else {
-          log.debug({ path, score: hit.score, acoustId: hit.acoustId }, 'AcoustID fingerprint matched, no MB metadata');
+          log.debug(
+            { path, score: hit.score, acoustId: hit.acoustId },
+            'AcoustID fingerprint matched, no MB metadata',
+          );
         }
         await writeAudioTags(path, {
           artist,
@@ -302,7 +352,8 @@ export class LibraryOrganizer {
       // directory name (e.g. peer path "Artist\Dark Side of the Moon\track.flac"
       // → album "Dark Side of the Moon"). Generic and artist-echo folders are
       // filtered out so "src/", "downloads/", or "<Artist>/" don't become albums.
-      const album = normalizeTagValue(t.album) ?? inferFolderAlbum(files[0]!.peerDirectory, albumArtist);
+      const album =
+        normalizeTagValue(t.album) ?? inferFolderAlbum(files[0]!.peerDirectory, albumArtist);
       return {
         album,
         albumArtist,
@@ -320,7 +371,10 @@ export class LibraryOrganizer {
     return classificationToAlbumTags(classification, files);
   }
 
-  private async placeFile(file: ResolvedFile, folderTags: AlbumTags): Promise<'moved' | 'skipped' | 'unsorted' | 'failed'> {
+  private async placeFile(
+    file: ResolvedFile,
+    folderTags: AlbumTags,
+  ): Promise<'moved' | 'skipped' | 'unsorted' | 'failed'> {
     const ext = extname(file.srcPath).toLowerCase();
     const tags = file.tags;
 
@@ -336,7 +390,9 @@ export class LibraryOrganizer {
     const folderAlbum = sanitizeSegment(album ?? '');
     const trackTitle = sanitizeSegment(title ?? basename(file.filename).replace(/\.[^/.]+$/, ''));
 
-    const unsortedDir = isAbsolute(this.unsortedRoot) ? this.unsortedRoot : join(this.musicDir, this.unsortedRoot);
+    const unsortedDir = isAbsolute(this.unsortedRoot)
+      ? this.unsortedRoot
+      : join(this.musicDir, this.unsortedRoot);
     let destDir: string;
     if (folderArtist && folderAlbum && trackTitle) {
       destDir = join(this.musicDir, folderArtist, folderAlbum);
@@ -360,7 +416,11 @@ export class LibraryOrganizer {
       destDir = join(unsortedDir, '_no_title');
     }
 
-    const trackName = `${trackNumberPrefix(tags.trackNumber)}${trackTitle || basename(file.srcPath)}${ext}`.replace(/(\.[^.]+)\1$/, '$1');
+    const trackName =
+      `${trackNumberPrefix(tags.trackNumber)}${trackTitle || basename(file.srcPath)}${ext}`.replace(
+        /(\.[^.]+)\1$/,
+        '$1',
+      );
 
     // Format-preference dedup: drop an incoming MP3 when the same track already
     // exists as FLAC in the destination album folder, so we don't accumulate the
@@ -368,7 +428,11 @@ export class LibraryOrganizer {
     if (this.preferFlacSkipMp3 && ext === '.mp3' && flacTwinExists(destDir, trackTitle || title)) {
       log.info({ src: file.srcPath, destDir }, 'Skipping MP3 — FLAC of this track already present');
       if (file.source) file.source.relativePath = undefined;
-      try { unlinkSync(file.srcPath); } catch { /* source already gone — fine */ }
+      try {
+        unlinkSync(file.srcPath);
+      } catch {
+        /* source already gone — fine */
+      }
       return 'skipped';
     }
 
@@ -407,7 +471,11 @@ export class LibraryOrganizer {
       toWrite.trackNumber = tags.trackNumber;
     }
     if (Object.keys(toWrite).length > 0) {
-      try { await writeAudioTags(destPath, toWrite); } catch { /* non-fatal */ }
+      try {
+        await writeAudioTags(destPath, toWrite);
+      } catch {
+        /* non-fatal */
+      }
     }
 
     // Record where the file ended up so callers (download-watcher → auto-playlist)
@@ -446,7 +514,11 @@ export class LibraryOrganizer {
 
     // The parent must contain only this one audio file
     let siblings: string[];
-    try { siblings = readdirSync(parent); } catch { return null; }
+    try {
+      siblings = readdirSync(parent);
+    } catch {
+      return null;
+    }
     if (siblings.length !== 1) return null;
 
     const grandparent = dirname(parent);
@@ -457,7 +529,11 @@ export class LibraryOrganizer {
 
     try {
       renameSync(path, newPath);
-      try { rmdirSync(parent); } catch { /* ignore */ }
+      try {
+        rmdirSync(parent);
+      } catch {
+        /* ignore */
+      }
       this.logMove(path, newPath);
       return newPath;
     } catch {
@@ -469,7 +545,11 @@ export class LibraryOrganizer {
   private locateOnDisk(file: CompletedDownloadFile): string | null {
     // yt-dlp sets filename to an absolute path; check it first before trying
     // the slskd peer-relative path logic below.
-    if (isAbsolute(file.filename) && existsSync(file.filename) && statSync(file.filename).isFile()) {
+    if (
+      isAbsolute(file.filename) &&
+      existsSync(file.filename) &&
+      statSync(file.filename).isFile()
+    ) {
       return file.filename;
     }
 
@@ -503,7 +583,9 @@ export class LibraryOrganizer {
     if (!this.moveLogPath) return;
     try {
       appendFileSync(this.moveLogPath, `${src}\t${dst}\n`, 'utf-8');
-    } catch { /* non-fatal */ }
+    } catch {
+      /* non-fatal */
+    }
   }
 }
 
@@ -522,14 +604,19 @@ function classificationToAlbumTags(c: Classification, files: ResolvedFile[]): Al
     return { album: c.album, albumArtist: 'Various Artists', compilation: true, year: c.year };
   }
   // leave-alone: take consensus from tags
-  const albums = new Set(files.map((f) => normalizeTagValue(f.tags.album)).filter((v): v is string => !!v));
+  const albums = new Set(
+    files.map((f) => normalizeTagValue(f.tags.album)).filter((v): v is string => !!v),
+  );
   const albumArtists = new Set(
-    files.map((f) => normalizeTagValue(f.tags.albumArtist) ?? normalizeTagValue(f.tags.artist)).filter((v): v is string => !!v),
+    files
+      .map((f) => normalizeTagValue(f.tags.albumArtist) ?? normalizeTagValue(f.tags.artist))
+      .filter((v): v is string => !!v),
   );
   const folderName = files[0]?.peerDirectory ?? '';
-  const fallbackAlbum = files[0] && normalizeTagValue(files[0].tags.album)
-    ? normalizeTagValue(files[0].tags.album)
-    : extractAlbumName(folderName, [...albumArtists][0]);
+  const fallbackAlbum =
+    files[0] && normalizeTagValue(files[0].tags.album)
+      ? normalizeTagValue(files[0].tags.album)
+      : extractAlbumName(folderName, [...albumArtists][0]);
   return {
     album: albums.size === 1 ? [...albums][0] : fallbackAlbum,
     albumArtist: albumArtists.size === 1 ? [...albumArtists][0] : undefined,

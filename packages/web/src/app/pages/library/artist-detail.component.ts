@@ -1,7 +1,12 @@
 import { Component, inject, signal, computed, OnInit } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
-import { ApiService, type Album, type DiscographyAlbum, type DiscographyResult } from '../../services/api.service';
+import {
+  ApiService,
+  type Album,
+  type DiscographyAlbum,
+  type DiscographyResult,
+} from '../../services/api.service';
 import { AuthService } from '../../services/auth.service';
 import { PlayerService } from '../../services/player.service';
 import { AlbumHuntModalComponent } from '../../components/album-hunt-modal/album-hunt-modal.component';
@@ -15,7 +20,7 @@ import { NavigationService } from '../../services/navigation.service';
   standalone: true,
   imports: [RouterLink, AlbumHuntModalComponent, CoverArtComponent],
   templateUrl: './artist-detail.component.html',
-  })
+})
 export class ArtistDetailComponent implements OnInit {
   private route = inject(ActivatedRoute);
   private api = inject(ApiService);
@@ -30,7 +35,12 @@ export class ArtistDetailComponent implements OnInit {
 
   readonly loading = signal(true);
   readonly playingAll = signal(false);
-  readonly artist = signal<{ id: string; name: string; albumCount: number; coverArt?: string } | null>(null);
+  readonly artist = signal<{
+    id: string;
+    name: string;
+    albumCount: number;
+    coverArt?: string;
+  } | null>(null);
   readonly albums = signal<Album[]>([]);
   readonly singlesAndEps = signal<Album[]>([]);
 
@@ -58,7 +68,9 @@ export class ArtistDetailComponent implements OnInit {
       .sort(([a], [b]) => rank(a) - rank(b) || a.localeCompare(b))
       .map(([label, albums]) => ({
         label,
-        albums: [...albums].sort((x, y) => (x.releaseDate ?? '').localeCompare(y.releaseDate ?? '')),
+        albums: [...albums].sort((x, y) =>
+          (x.releaseDate ?? '').localeCompare(y.releaseDate ?? ''),
+        ),
       }));
   });
 
@@ -69,8 +81,11 @@ export class ArtistDetailComponent implements OnInit {
       this.artist.set(data.artist);
       this.albums.set(data.albums);
       this.singlesAndEps.set(data.singlesAndEps ?? []);
-    } catch { /* ignore */ }
-    finally { this.loading.set(false); }
+    } catch {
+      /* ignore */
+    } finally {
+      this.loading.set(false);
+    }
 
     // Load discography in background — gracefully absent if Lidarr not configured
     this.loadDiscography(id);
@@ -118,15 +133,16 @@ export class ArtistDetailComponent implements OnInit {
     if (!albums.length) return;
     this.playingAll.set(true);
     try {
-      const details = await Promise.all(albums.map(a => firstValueFrom(this.api.getAlbum(a.id))));
-      const tracks = details.flatMap(detail =>
-        detail.song.map(s => toTrack(s, detail.name)),
-      );
+      const details = await Promise.all(albums.map((a) => firstValueFrom(this.api.getAlbum(a.id))));
+      const tracks = details.flatMap((detail) => detail.song.map((s) => toTrack(s, detail.name)));
       if (tracks.length) {
         this.player.playWithContext(tracks, 0, { type: 'adhoc', name: artistName });
       }
-    } catch { /* ignore */ }
-    finally { this.playingAll.set(false); }
+    } catch {
+      /* ignore */
+    } finally {
+      this.playingAll.set(false);
+    }
   }
 
   getAlbumLink(id: string) {

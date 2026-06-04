@@ -6,10 +6,7 @@ export function detectNewCompletion(
   next: Map<string, TransferEntry>,
 ): boolean {
   for (const [key, entry] of next) {
-    if (
-      entry.state === 'Completed, Succeeded' &&
-      prev.get(key)?.state !== 'Completed, Succeeded'
-    ) {
+    if (entry.state === 'Completed, Succeeded' && prev.get(key)?.state !== 'Completed, Succeeded') {
       return true;
     }
   }

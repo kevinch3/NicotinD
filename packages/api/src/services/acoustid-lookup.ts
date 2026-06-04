@@ -43,11 +43,16 @@ function runFpcalc(filepath: string): Promise<FpcalcOutput | null> {
   return new Promise<FpcalcOutput | null>((resolve) => {
     const proc = spawn('fpcalc', ['-json', filepath], { stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = '';
-    proc.stdout.on('data', (d) => { stdout += d.toString(); });
+    proc.stdout.on('data', (d) => {
+      stdout += d.toString();
+    });
     proc.on('error', (err) => {
       if (!fpcalcMissingLogged) {
         fpcalcMissingLogged = true;
-        log.warn({ err: err.message }, 'fpcalc not available — install libchromaprint-tools to enable AcoustID lookup');
+        log.warn(
+          { err: err.message },
+          'fpcalc not available — install libchromaprint-tools to enable AcoustID lookup',
+        );
       }
       resolve(null);
     });
@@ -79,7 +84,10 @@ interface AcoustIdRaw {
         date?: { year?: number };
         artists?: Array<{ name: string }>;
         track_count?: number;
-        mediums?: Array<{ track_count?: number; tracks?: Array<{ position?: number; title?: string }> }>;
+        mediums?: Array<{
+          track_count?: number;
+          tracks?: Array<{ position?: number; title?: string }>;
+        }>;
       }>;
     }>;
   }>;
@@ -142,7 +150,9 @@ export class AcoustIdLookup {
     let trackNumber: number | undefined;
     const medium = release?.mediums?.[0];
     if (medium?.tracks) {
-      const idx = medium.tracks.findIndex((t) => t.title && title && t.title.toLowerCase() === title.toLowerCase());
+      const idx = medium.tracks.findIndex(
+        (t) => t.title && title && t.title.toLowerCase() === title.toLowerCase(),
+      );
       if (idx >= 0) trackNumber = medium.tracks[idx]!.position ?? idx + 1;
     }
 

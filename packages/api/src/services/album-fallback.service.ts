@@ -24,8 +24,17 @@ const RETRYABLE_STATES = new Set([
 ]);
 
 const AUDIO_EXTENSIONS = new Set([
-  '.mp3', '.flac', '.ogg', '.opus',
-  '.m4a', '.aac', '.wav', '.aiff', '.wma', '.ape', '.wv',
+  '.mp3',
+  '.flac',
+  '.ogg',
+  '.opus',
+  '.m4a',
+  '.aac',
+  '.wav',
+  '.aiff',
+  '.wma',
+  '.ape',
+  '.wv',
 ]);
 
 const FRESH_SEARCH_POLL_MS = 2_000;
@@ -243,18 +252,15 @@ export class AlbumFallbackService {
 
       // Fresh per-track search across all peers, skipping tracks a previous wave
       // is already downloading. If everything missing is already in flight, wait.
-      const freshTargets = missing.filter(
-        (m) => !inFlight.some((s) => titlesOverlap(m, s)),
-      );
+      const freshTargets = missing.filter((m) => !inFlight.some((s) => titlesOverlap(m, s)));
       if (!freshTargets.length) continue;
 
       const enqueued = await this.recoverViaFreshSearch(job.artist_name, freshTargets);
       // Count the wave as an attempt either way so a hopeless gap eventually
       // exhausts instead of re-searching forever.
-      this.db.run(
-        'UPDATE album_jobs SET fallback_attempts = fallback_attempts + 1 WHERE id = ?',
-        [job.id],
-      );
+      this.db.run('UPDATE album_jobs SET fallback_attempts = fallback_attempts + 1 WHERE id = ?', [
+        job.id,
+      ]);
       if (enqueued) {
         log.info(
           { jobId: job.id, tracks: enqueued },
@@ -372,7 +378,10 @@ export class AlbumFallbackService {
         for (const file of dir.files) {
           if (ACTIVE_STATES.has(file.state)) return true;
           // An errored file the retry layer hasn't given up on yet is still in play.
-          if (RETRYABLE_STATES.has(file.state) && !gaveUp.has(`${job.username}::${file.filename}`)) {
+          if (
+            RETRYABLE_STATES.has(file.state) &&
+            !gaveUp.has(`${job.username}::${file.filename}`)
+          ) {
             return true;
           }
         }

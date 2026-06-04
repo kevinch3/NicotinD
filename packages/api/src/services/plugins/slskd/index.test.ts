@@ -41,7 +41,9 @@ describe('SlskdPlugin', () => {
   });
 
   it('reports availability from the slskd ref', async () => {
-    expect(await new SlskdPlugin({ current: null }, new ProviderRegistry()).isAvailable()).toBe(false);
+    expect(await new SlskdPlugin({ current: null }, new ProviderRegistry()).isAvailable()).toBe(
+      false,
+    );
     const { ref } = makeSlskdRef();
     expect(await new SlskdPlugin(ref, new ProviderRegistry()).isAvailable()).toBe(true);
   });

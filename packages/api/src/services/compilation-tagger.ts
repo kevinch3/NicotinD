@@ -46,7 +46,12 @@ function normalizeTag(value: string | undefined): string | undefined {
   const trimmed = value.trim();
   if (trimmed === '') return undefined;
   const lower = trimmed.toLowerCase();
-  if (lower === 'unknown' || lower === 'unknown artist' || lower === 'unknown album' || lower === 'unknown title') {
+  if (
+    lower === 'unknown' ||
+    lower === 'unknown artist' ||
+    lower === 'unknown album' ||
+    lower === 'unknown title'
+  ) {
     return undefined;
   }
   return trimmed;
@@ -147,7 +152,10 @@ type NodeId3Api = {
 
 type MusicMetadataCommon = { album?: string; artist?: string };
 type MusicMetadataApi = {
-  parseFile: (path: string, opts?: { duration?: boolean }) => Promise<{ common: MusicMetadataCommon }>;
+  parseFile: (
+    path: string,
+    opts?: { duration?: boolean },
+  ) => Promise<{ common: MusicMetadataCommon }>;
 };
 
 let nodeId3Promise: Promise<NodeId3Api | null> | null = null;
@@ -160,7 +168,10 @@ async function getNodeId3(): Promise<NodeId3Api | null> {
       .catch((err) => {
         if (!nodeId3MissingLogged) {
           nodeId3MissingLogged = true;
-          log.warn({ err: err instanceof Error ? err.message : String(err) }, 'node-id3 not installed, MP3 tagging disabled');
+          log.warn(
+            { err: err instanceof Error ? err.message : String(err) },
+            'node-id3 not installed, MP3 tagging disabled',
+          );
         }
         return null;
       });
@@ -178,7 +189,10 @@ async function getMusicMetadata(): Promise<MusicMetadataApi | null> {
       .catch((err) => {
         if (!mmMissingLogged) {
           mmMissingLogged = true;
-          log.warn({ err: err instanceof Error ? err.message : String(err) }, 'music-metadata not installed, FLAC/OGG/OPUS tagging disabled');
+          log.warn(
+            { err: err instanceof Error ? err.message : String(err) },
+            'music-metadata not installed, FLAC/OGG/OPUS tagging disabled',
+          );
         }
         return null;
       });
@@ -216,16 +230,16 @@ export class CompilationTagger {
     }
 
     for (const [directory, groupFiles] of groups) {
-      const folderSize = Math.max(
-        groupFiles.length,
-        groupFiles[0]?.directoryFileCount ?? 0,
-      );
+      const folderSize = Math.max(groupFiles.length, groupFiles[0]?.directoryFileCount ?? 0);
       if (folderSize < 2) continue;
       await this.processFolder(directory, groupFiles);
     }
   }
 
-  private async processFolder(directory: string, groupFiles: CompletedDownloadFile[]): Promise<void> {
+  private async processFolder(
+    directory: string,
+    groupFiles: CompletedDownloadFile[],
+  ): Promise<void> {
     const resolved: Array<{ path: string; signal: FileSignal }> = [];
     for (const file of groupFiles) {
       const path = this.resolveLocalPath(file.directory, file.filename);
@@ -248,26 +262,30 @@ export class CompilationTagger {
 
     if (resolved.length < 2) return;
 
-    const result = classifyFolder(resolved.map((r) => r.signal), directory);
+    const result = classifyFolder(
+      resolved.map((r) => r.signal),
+      directory,
+    );
 
     if (result.type === 'leave-alone') {
       log.debug({ directory, files: resolved.length }, 'Folder is coherent, skipping tag rewrite');
       return;
     }
 
-    const albumTags: AlbumTags = result.type === 'single-artist'
-      ? {
-          album: result.album,
-          albumArtist: result.artist,
-          compilation: false,
-          year: result.year,
-        }
-      : {
-          album: result.album,
-          albumArtist: 'Various Artists',
-          compilation: true,
-          year: result.year,
-        };
+    const albumTags: AlbumTags =
+      result.type === 'single-artist'
+        ? {
+            album: result.album,
+            albumArtist: result.artist,
+            compilation: false,
+            year: result.year,
+          }
+        : {
+            album: result.album,
+            albumArtist: 'Various Artists',
+            compilation: true,
+            year: result.year,
+          };
 
     let written = 0;
     for (const { path } of resolved) {
@@ -281,7 +299,10 @@ export class CompilationTagger {
     );
   }
 
-  private async readArtistAndAlbum(filepath: string, ext: string): Promise<{ artist?: string; album?: string }> {
+  private async readArtistAndAlbum(
+    filepath: string,
+    ext: string,
+  ): Promise<{ artist?: string; album?: string }> {
     if (ID3_EXTS.has(ext)) {
       const nodeId3 = await getNodeId3();
       if (!nodeId3) return {};
@@ -340,8 +361,10 @@ export class CompilationTagger {
   private async writeFfmpegAlbumTags(filepath: string, tags: AlbumTags): Promise<boolean> {
     const tmpPath = filepath + '.nicotind.tmp';
     const metaArgs: string[] = [
-      '-metadata', `ALBUM=${tags.album}`,
-      '-metadata', `ALBUMARTIST=${tags.albumArtist}`,
+      '-metadata',
+      `ALBUM=${tags.album}`,
+      '-metadata',
+      `ALBUMARTIST=${tags.albumArtist}`,
     ];
     if (tags.compilation) metaArgs.push('-metadata', 'COMPILATION=1');
     if (tags.year !== undefined) metaArgs.push('-metadata', `DATE=${tags.year}`);
@@ -351,7 +374,11 @@ export class CompilationTagger {
     return new Promise<boolean>((resolve) => {
       const proc = spawn('ffmpeg', args, { stdio: 'ignore' });
       proc.on('error', () => {
-        try { unlinkSync(tmpPath); } catch { /* ignore */ }
+        try {
+          unlinkSync(tmpPath);
+        } catch {
+          /* ignore */
+        }
         resolve(false);
       });
       proc.on('close', (code) => {
@@ -360,11 +387,19 @@ export class CompilationTagger {
             renameSync(tmpPath, filepath);
             resolve(true);
           } catch {
-            try { unlinkSync(tmpPath); } catch { /* ignore */ }
+            try {
+              unlinkSync(tmpPath);
+            } catch {
+              /* ignore */
+            }
             resolve(false);
           }
         } else {
-          try { unlinkSync(tmpPath); } catch { /* ignore */ }
+          try {
+            unlinkSync(tmpPath);
+          } catch {
+            /* ignore */
+          }
           resolve(false);
         }
       });

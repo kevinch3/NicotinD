@@ -3,7 +3,11 @@ import { join } from 'node:path';
 import { Database } from 'bun:sqlite';
 import type { Plugin } from '@nicotind/core';
 import { applySchema } from '../db.js';
-import { AcquireWatcher, NoAcquisitionPluginError, PluginUnavailableError } from './acquire-watcher.js';
+import {
+  AcquireWatcher,
+  NoAcquisitionPluginError,
+  PluginUnavailableError,
+} from './acquire-watcher.js';
 import { PluginRegistry } from './plugins/registry.js';
 import { pluginStagingDir } from './plugins/host-context.js';
 import type { CompletedDownloadFile } from './path-inference.js';
@@ -120,8 +124,12 @@ describe('AcquireWatcher (registry-driven)', () => {
   });
 
   it('deleteJob removes done/failed jobs but not running ones', () => {
-    h.db.run(`INSERT INTO acquire_jobs (id, backend, url, state) VALUES ('d', 'fake', 'u', 'done')`);
-    h.db.run(`INSERT INTO acquire_jobs (id, backend, url, state) VALUES ('r', 'fake', 'u', 'running')`);
+    h.db.run(
+      `INSERT INTO acquire_jobs (id, backend, url, state) VALUES ('d', 'fake', 'u', 'done')`,
+    );
+    h.db.run(
+      `INSERT INTO acquire_jobs (id, backend, url, state) VALUES ('r', 'fake', 'u', 'running')`,
+    );
     expect(h.watcher.deleteJob('d')).toBe(true);
     expect(h.watcher.deleteJob('r')).toBe(false);
     expect(h.watcher.deleteJob('nope')).toBe(false);

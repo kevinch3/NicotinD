@@ -72,7 +72,9 @@ function loadConfig(): Config {
 }
 
 /** Yields every <musicDir>/<Artist>/<Album>/ directory, excluding Singles. */
-function* walkAlbumDirs(musicDir: string): Generator<{ artist: string; album: string; dir: string }> {
+function* walkAlbumDirs(
+  musicDir: string,
+): Generator<{ artist: string; album: string; dir: string }> {
   let artistEntries: string[];
   try {
     artistEntries = readdirSync(musicDir);
@@ -141,8 +143,14 @@ async function main(): Promise<void> {
       apply,
       onDelete: (filePath, file, keeper) => {
         if (apply) {
-          appendFileSync(logPath, `${filePath}\t(${file.size} bytes, kept ${keeper.name})\n`, 'utf-8');
-          db.run('DELETE FROM completed_downloads WHERE basename = ?', [basename(file.name).toLowerCase()]);
+          appendFileSync(
+            logPath,
+            `${filePath}\t(${file.size} bytes, kept ${keeper.name})\n`,
+            'utf-8',
+          );
+          db.run('DELETE FROM completed_downloads WHERE basename = ?', [
+            basename(file.name).toLowerCase(),
+          ]);
         }
       },
     });

@@ -72,7 +72,19 @@ describe('AdminComponent (incomplete albums + untracked)', () => {
 
   it('loadUntracked stores rows and total', async () => {
     getUntrackedDownloads.mockReturnValue(
-      of({ total: 5, rows: [{ transferKey: 'k', username: 'u', directory: 'd', filename: 'f.mp3', basename: 'f.mp3', completedAt: 1 }] }),
+      of({
+        total: 5,
+        rows: [
+          {
+            transferKey: 'k',
+            username: 'u',
+            directory: 'd',
+            filename: 'f.mp3',
+            basename: 'f.mp3',
+            completedAt: 1,
+          },
+        ],
+      }),
     );
     const c = create();
     await c.loadUntracked();

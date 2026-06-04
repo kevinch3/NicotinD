@@ -49,10 +49,15 @@ function seedAudio(relPath: string): void {
 
 describe('parseYtdlpProgress', () => {
   it('parses a percentage line', () => {
-    expect(parseYtdlpProgress('[download]  67.3% of 5MiB', { done: 0, total: 100 })).toEqual({ done: 67, total: 100 });
+    expect(parseYtdlpProgress('[download]  67.3% of 5MiB', { done: 0, total: 100 })).toEqual({
+      done: 67,
+      total: 100,
+    });
   });
   it('parses a playlist item counter', () => {
-    expect(parseYtdlpProgress('[download] Downloading item 3 of 12', { done: 0, total: 100 })).toEqual({ done: 3, total: 12 });
+    expect(
+      parseYtdlpProgress('[download] Downloading item 3 of 12', { done: 0, total: 100 }),
+    ).toEqual({ done: 3, total: 12 });
   });
   it('keeps current on an unrecognized line', () => {
     expect(parseYtdlpProgress('blah', { done: 5, total: 9 })).toEqual({ done: 5, total: 9 });

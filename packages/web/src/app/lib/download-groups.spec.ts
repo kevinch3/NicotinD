@@ -1,6 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import type { SlskdUserTransferGroup } from '@nicotind/core';
-import { groupByAlbum, albumGroupTitle, albumGroupTotal, extractAlbumName } from './download-groups';
+import {
+  groupByAlbum,
+  albumGroupTitle,
+  albumGroupTotal,
+  extractAlbumName,
+} from './download-groups';
 
 function file(over: Partial<SlskdUserTransferGroup['directories'][0]['files'][0]> = {}) {
   return {
@@ -31,7 +36,11 @@ describe('groupByAlbum with album-hunt metadata', () => {
           directory: 'Music\\(1995) Toque',
           fileCount: 2,
           files: [file({ id: 'a', state: 'Completed, Succeeded' }), file({ id: 'b' })],
-          albumJob: { artistName: 'Babasónicos', albumTitle: 'Trance Zomba', canonicalTrackCount: 12 },
+          albumJob: {
+            artistName: 'Babasónicos',
+            albumTitle: 'Trance Zomba',
+            canonicalTrackCount: 12,
+          },
         },
       ],
     },
@@ -60,9 +69,7 @@ describe('groupByAlbum for direct (non-hunt) downloads', () => {
   const downloads: SlskdUserTransferGroup[] = [
     {
       username: 'peer',
-      directories: [
-        { directory: 'shared\\My Mixtape', fileCount: 1, files: [file({ id: 'c' })] },
-      ],
+      directories: [{ directory: 'shared\\My Mixtape', fileCount: 1, files: [file({ id: 'c' })] }],
     },
   ];
 

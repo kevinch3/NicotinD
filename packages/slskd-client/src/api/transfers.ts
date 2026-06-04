@@ -12,10 +12,7 @@ export class TransfersApi {
     return this.client.request<SlskdUserTransferGroup[]>('/transfers/uploads');
   }
 
-  async enqueue(
-    username: string,
-    files: Array<{ filename: string; size: number }>,
-  ): Promise<void> {
+  async enqueue(username: string, files: Array<{ filename: string; size: number }>): Promise<void> {
     await this.client.request(`/transfers/downloads/${encodeURIComponent(username)}`, {
       method: 'POST',
       body: JSON.stringify(files),

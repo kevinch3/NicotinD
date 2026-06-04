@@ -5,7 +5,10 @@ import type { AuthEnv } from '../middleware/auth.js';
 import type { SlskdRef } from '../index.js';
 import type { DiscographyService } from '../services/discography.service.js';
 import type { AlbumHunterService } from '../services/album-hunter.service.js';
-import { AlbumFallbackService, type AlternateCandidate } from '../services/album-fallback.service.js';
+import {
+  AlbumFallbackService,
+  type AlternateCandidate,
+} from '../services/album-fallback.service.js';
 import { albumIdFor, artistIdFor } from '../services/library-scanner.js';
 import { albumAlreadyComplete, filesMissingOnDisk } from '../services/library-completeness.js';
 import { setArtwork, pickAlbumCover, pickArtistImage } from '../services/artwork-store.js';
@@ -191,7 +194,11 @@ export function discographyRoutes({
 
     const body = await c.req
       .json<{
-        selected: { username: string; directory: string; files: Array<{ filename: string; size: number }> };
+        selected: {
+          username: string;
+          directory: string;
+          files: Array<{ filename: string; size: number }>;
+        };
         alternates?: AlternateCandidate[];
       }>()
       .catch(() => null);
@@ -202,16 +209,20 @@ export function discographyRoutes({
 
     // Guard 1: an active job means a download for this album is already in flight.
     const activeJob = db
-      .query<{ id: number }, [number]>(
-        `SELECT id FROM album_jobs WHERE lidarr_album_id = ? AND state = 'active' LIMIT 1`,
-      )
+      .query<
+        { id: number },
+        [number]
+      >(`SELECT id FROM album_jobs WHERE lidarr_album_id = ? AND state = 'active' LIMIT 1`)
       .get(albumId);
     if (activeJob && !replace) {
       return c.json({ error: 'already-downloading', jobId: activeJob.id }, 409);
     }
     if (replace && activeJob) {
       // Supersede every active job for this album so at most one stays active.
-      db.run(`UPDATE album_jobs SET state = 'superseded' WHERE lidarr_album_id = ? AND state = 'active'`, [albumId]);
+      db.run(
+        `UPDATE album_jobs SET state = 'superseded' WHERE lidarr_album_id = ? AND state = 'active'`,
+        [albumId],
+      );
     }
 
     // Fetch canonical metadata up front — needed for the completeness guard and

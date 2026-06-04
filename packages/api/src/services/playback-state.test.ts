@@ -239,7 +239,7 @@ describe('PlaybackStateManager', () => {
     it('removes devices that exceeded the stale timeout', () => {
       manager.registerDevice({ id: 'd1', name: 'Stale', type: 'web' });
       // Manually backdate lastSeen
-      const device = manager.getDevices().find(d => d.id === 'd1')!;
+      const device = manager.getDevices().find((d) => d.id === 'd1')!;
       device.lastSeen = Date.now() - 100_000; // 100s ago, exceeds 90s timeout
 
       manager.cleanupStaleDevices();
@@ -256,7 +256,7 @@ describe('PlaybackStateManager', () => {
       manager.registerDevice({ id: 'd1', name: 'Stale', type: 'web' });
       manager.registerDevice({ id: 'd2', name: 'Fresh', type: 'web' });
 
-      const stale = manager.getDevices().find(d => d.id === 'd1')!;
+      const stale = manager.getDevices().find((d) => d.id === 'd1')!;
       stale.lastSeen = Date.now() - 100_000;
 
       manager.cleanupStaleDevices();
@@ -269,7 +269,7 @@ describe('PlaybackStateManager', () => {
       manager.registerDevice({ id: 'd1', name: 'Active', type: 'web' });
       manager.updateState({ activeDeviceId: 'd1', isPlaying: true });
 
-      const device = manager.getDevices().find(d => d.id === 'd1')!;
+      const device = manager.getDevices().find((d) => d.id === 'd1')!;
       device.lastSeen = Date.now() - 100_000;
 
       manager.cleanupStaleDevices();
@@ -296,7 +296,7 @@ describe('PlaybackStateManager', () => {
       manager.registerDevice({ id: 'd2', name: 'B', type: 'web' });
       manager.registerDevice({ id: 'd3', name: 'C', type: 'web' });
       manager.unregisterDevice('d2');
-      const ids = manager.getDevices().map(d => d.id);
+      const ids = manager.getDevices().map((d) => d.id);
       expect(ids).toEqual(['d1', 'd3']);
     });
 

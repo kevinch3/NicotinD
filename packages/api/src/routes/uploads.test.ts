@@ -15,8 +15,20 @@ function makeSlskdMock() {
                 directory: 'Music\\Album',
                 fileCount: 2,
                 files: [
-                  { id: 'u1', filename: 'Music\\Album\\01.mp3', state: 'InProgress', bytesTransferred: 500, percentComplete: 50 },
-                  { id: 'u2', filename: 'Music\\Album\\02.mp3', state: 'Queued, Remotely', bytesTransferred: 0, percentComplete: 0 },
+                  {
+                    id: 'u1',
+                    filename: 'Music\\Album\\01.mp3',
+                    state: 'InProgress',
+                    bytesTransferred: 500,
+                    percentComplete: 50,
+                  },
+                  {
+                    id: 'u2',
+                    filename: 'Music\\Album\\02.mp3',
+                    state: 'Queued, Remotely',
+                    bytesTransferred: 0,
+                    percentComplete: 0,
+                  },
                 ],
               },
             ],
@@ -56,9 +68,7 @@ describe('uploads routes', () => {
   });
 
   it('GET / returns 503 when slskd throws (transient unreachable)', async () => {
-    slskdMock.transfers.getUploads = mock(() =>
-      Promise.reject(new Error('FailedToOpenSocket')),
-    );
+    slskdMock.transfers.getUploads = mock(() => Promise.reject(new Error('FailedToOpenSocket')));
 
     const res = await app.request('/');
     expect(res.status).toBe(503);

@@ -47,7 +47,7 @@ const MAX_TREE_WIDTH = 420;
   selector: 'app-folder-browser',
   imports: [FolderTreeNodeComponent],
   templateUrl: './folder-browser.component.html',
-  })
+})
 export class FolderBrowserComponent {
   private api = inject(ApiService);
   private search = inject(SearchService);
@@ -71,7 +71,7 @@ export class FolderBrowserComponent {
   readonly extractBasename = extractBasename;
   readonly formatSize = formatSize;
 
-  readonly tree = computed(() => this.dirs() ? buildFolderTree(this.dirs()!) : []);
+  readonly tree = computed(() => (this.dirs() ? buildFolderTree(this.dirs()!) : []));
 
   readonly breadcrumbs = computed(() => buildBreadcrumb(this.selected()));
 
@@ -87,18 +87,21 @@ export class FolderBrowserComponent {
     return d ? getDirectFiles(d, this.selected()) : this.fallbackFiles();
   });
 
-  readonly validDirectFiles = computed(() =>
-    this.directFiles().filter(f => f.size > 0),
-  );
+  readonly validDirectFiles = computed(() => this.directFiles().filter((f) => f.size > 0));
 
   readonly folderBtnState = computed(() => {
     const validFiles = this.validDirectFiles();
-    const folderFiles = validFiles.map(f => ({ username: this.username(), filename: f.filename }));
-    const isFolderQueued = isPathEffectivelyQueued(this.username(), this.selected(), this.search.downloadedFolders());
-    return getFolderDownloadLabel(
-      folderFiles,
-      isFolderQueued,
-      (u, f) => this.transfers.getStatus(u, f),
+    const folderFiles = validFiles.map((f) => ({
+      username: this.username(),
+      filename: f.filename,
+    }));
+    const isFolderQueued = isPathEffectivelyQueued(
+      this.username(),
+      this.selected(),
+      this.search.downloadedFolders(),
+    );
+    return getFolderDownloadLabel(folderFiles, isFolderQueued, (u, f) =>
+      this.transfers.getStatus(u, f),
     );
   });
 
@@ -126,7 +129,7 @@ export class FolderBrowserComponent {
   handleDownloadAll(): void {
     const validFiles = this.validDirectFiles();
     this.download.emit({
-      files: validFiles.map(f => ({ filename: f.filename, size: f.size })),
+      files: validFiles.map((f) => ({ filename: f.filename, size: f.size })),
       path: this.selected(),
     });
   }
@@ -194,10 +197,14 @@ export class FolderBrowserComponent {
     onMove: (event, start) => {
       if (this.resizeMode === 'height') {
         const deltaY = event.clientY - start.clientY;
-        this.browserHeight.set(this.clamp(this.resizeStartHeight + deltaY, MIN_BROWSER_HEIGHT, MAX_BROWSER_HEIGHT));
+        this.browserHeight.set(
+          this.clamp(this.resizeStartHeight + deltaY, MIN_BROWSER_HEIGHT, MAX_BROWSER_HEIGHT),
+        );
       } else if (this.resizeMode === 'tree') {
         const deltaX = event.clientX - start.clientX;
-        this.treeWidth.set(this.clamp(this.resizeStartTreeWidth + deltaX, MIN_TREE_WIDTH, MAX_TREE_WIDTH));
+        this.treeWidth.set(
+          this.clamp(this.resizeStartTreeWidth + deltaX, MIN_TREE_WIDTH, MAX_TREE_WIDTH),
+        );
       }
     },
     onEnd: () => {

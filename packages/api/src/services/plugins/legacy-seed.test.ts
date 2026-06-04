@@ -64,7 +64,11 @@ describe('seedLegacyAcquisitionPlugins', () => {
 
   it('only seeds the plugins that were actually configured', () => {
     addUser();
-    seedLegacyAcquisitionPlugins(registry, db, { slskdConfigured: false, ytdlpEnabled: true, spotdlEnabled: false });
+    seedLegacyAcquisitionPlugins(registry, db, {
+      slskdConfigured: false,
+      ytdlpEnabled: true,
+      spotdlEnabled: false,
+    });
     expect(registry.isEnabled('slskd')).toBe(false);
     expect(registry.isEnabled('ytdlp')).toBe(true);
     expect(registry.isEnabled('spotdl')).toBe(false);

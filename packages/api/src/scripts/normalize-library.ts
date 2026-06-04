@@ -56,7 +56,10 @@ import { MusicBrainzClient } from '../services/musicbrainz-client.js';
 
 const args = process.argv.slice(2);
 const DRY_RUN = args.includes('--dry-run');
-const PHASE_ARG = (args.find((a) => a.startsWith('--phase='))?.split('=')[1] ?? 'all') as 'A' | 'B' | 'all';
+const PHASE_ARG = (args.find((a) => a.startsWith('--phase='))?.split('=')[1] ?? 'all') as
+  | 'A'
+  | 'B'
+  | 'all';
 const CACHE_ARG = args.find((a) => a.startsWith('--cache='))?.split('=')[1];
 const RUN_A = PHASE_ARG === 'A' || PHASE_ARG === 'all';
 const RUN_B = PHASE_ARG === 'B' || PHASE_ARG === 'all';
@@ -72,7 +75,9 @@ function loadConfig() {
   const configPath = resolve(process.env.NICOTIND_CONFIG ?? 'config/default.yml');
   try {
     fileConfig = (parse(readFileSync(configPath, 'utf-8')) ?? {}) as Record<string, unknown>;
-  } catch { /* no config file */ }
+  } catch {
+    /* no config file */
+  }
 
   const dataDir = expandHome(
     process.env.NICOTIND_DATA_DIR ?? (fileConfig.dataDir as string | undefined) ?? '~/.nicotind',
@@ -92,13 +97,13 @@ function loadConfig() {
  * Add more as you discover them in your library.
  */
 const CANONICAL_OVERRIDES: Record<string, string> = {
-  'abba': 'ABBA',
+  abba: 'ABBA',
   'la oreja de van gogh': 'La Oreja de Van Gogh',
   'the beatles': 'The Beatles',
-  'beatles': 'The Beatles',
+  beatles: 'The Beatles',
   'ac dc': 'AC/DC',
   'ac-dc': 'AC/DC',
-  'rxpmusic': 'RXPMusic',
+  rxpmusic: 'RXPMusic',
 };
 
 function stripAccents(s: string): string {
@@ -107,13 +112,21 @@ function stripAccents(s: string): string {
 
 /** Collapse a name to a form suitable for dedup grouping. */
 function normalizeName(s: string): string {
-  return stripAccents(s).toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim();
+  return stripAccents(s)
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 // ─── File utilities ───────────────────────────────────────────────────────────
 
 function getFileSize(p: string): number {
-  try { return statSync(p).size; } catch { return 0; }
+  try {
+    return statSync(p).size;
+  } catch {
+    return 0;
+  }
 }
 
 function isAudioFile(p: string): boolean {
@@ -121,15 +134,27 @@ function isAudioFile(p: string): boolean {
 }
 
 function listDir(d: string): string[] {
-  try { return readdirSync(d); } catch { return []; }
+  try {
+    return readdirSync(d);
+  } catch {
+    return [];
+  }
 }
 
 function isDir(p: string): boolean {
-  try { return statSync(p).isDirectory(); } catch { return false; }
+  try {
+    return statSync(p).isDirectory();
+  } catch {
+    return false;
+  }
 }
 
 function isFile(p: string): boolean {
-  try { return statSync(p).isFile(); } catch { return false; }
+  try {
+    return statSync(p).isFile();
+  } catch {
+    return false;
+  }
 }
 
 function moveFile(src: string, dst: string): void {
@@ -143,14 +168,23 @@ function moveFile(src: string, dst: string): void {
     } else if (code === 'EACCES' || code === 'EPERM') {
       // Files are root-owned (written by Docker). Fix with:
       //   sudo chown -R $USER /path/to/music
-      throw Object.assign(new Error(`Permission denied: ${src}\nRun: sudo chown -R $USER ${src.split('/').slice(0, 4).join('/')}`), { code });
+      throw Object.assign(
+        new Error(
+          `Permission denied: ${src}\nRun: sudo chown -R $USER ${src.split('/').slice(0, 4).join('/')}`,
+        ),
+        { code },
+      );
     } else throw err;
   }
 }
 
 function rmIfEmpty(d: string): void {
   if (!existsSync(d)) return;
-  try { rmdirSync(d); } catch { /* not empty */ }
+  try {
+    rmdirSync(d);
+  } catch {
+    /* not empty */
+  }
 }
 
 function uniqueDst(dst: string): string {
@@ -201,9 +235,15 @@ interface ProvenanceDetail {
 
 let _db: Database | null = null;
 
-function getDb(): Database | null { return _db; }
+function getDb(): Database | null {
+  return _db;
+}
 
-function writeProvenance(songPath: string, action: ProvenanceAction, detail: ProvenanceDetail): void {
+function writeProvenance(
+  songPath: string,
+  action: ProvenanceAction,
+  detail: ProvenanceDetail,
+): void {
   const db = getDb();
   if (!db) return;
   try {
@@ -212,7 +252,9 @@ function writeProvenance(songPath: string, action: ProvenanceAction, detail: Pro
        VALUES (?, ?, ?, ?)`,
       [songPath, action, JSON.stringify(detail), Date.now()],
     );
-  } catch { /* non-fatal */ }
+  } catch {
+    /* non-fatal */
+  }
 }
 
 // ─── Move log ─────────────────────────────────────────────────────────────────
@@ -221,7 +263,11 @@ let moveLogPath: string | null = null;
 
 function logMove(src: string, dst: string): void {
   if (!moveLogPath) return;
-  try { appendFileSync(moveLogPath, `${src}\t${dst}\n`, 'utf-8'); } catch { /* non-fatal */ }
+  try {
+    appendFileSync(moveLogPath, `${src}\t${dst}\n`, 'utf-8');
+  } catch {
+    /* non-fatal */
+  }
 }
 
 // ─── Phase A1: Remove (2) duplicates ─────────────────────────────────────────
@@ -234,7 +280,10 @@ function phaseA1_removeDups(musicDir: string): void {
     const dir = stack.pop()!;
     for (const name of listDir(dir)) {
       const full = join(dir, name);
-      if (isDir(full)) { stack.push(full); continue; }
+      if (isDir(full)) {
+        stack.push(full);
+        continue;
+      }
       if (!isFile(full) || !isAudioFile(full)) continue;
 
       if (!name.includes(' (2)')) continue;
@@ -263,33 +312,45 @@ function phaseA1_removeDups(musicDir: string): void {
 
       if (origExt === '.flac' && dupExt !== '.flac') {
         // Original is FLAC, dup is lower quality
-        loser = full; winner = original;
+        loser = full;
+        winner = original;
       } else if (dupExt === '.flac' && origExt !== '.flac') {
         // Dup is FLAC, original is lower quality → keep dup, rename over original
-        loser = original; winner = full;
+        loser = original;
+        winner = full;
       } else if (getFileSize(original) >= getFileSize(full)) {
-        loser = full; winner = original;
+        loser = full;
+        winner = original;
       } else {
-        loser = original; winner = full;
+        loser = original;
+        winner = full;
       }
 
       log(`  DEL  ${relative(musicDir, loser)}  (keeping ${basename(winner)})`);
       if (!DRY_RUN) {
         if (winner === full) {
           // Dup wins: rename over original
-          try { unlinkSync(original); renameSync(full, original); } catch { stats.errors++; }
-          writeProvenance(
-            relative(musicDir, original),
-            'duplicate_removed',
-            { from: relative(musicDir, original), kept: relative(musicDir, original), reason: 'dup was higher quality' },
-          );
+          try {
+            unlinkSync(original);
+            renameSync(full, original);
+          } catch {
+            stats.errors++;
+          }
+          writeProvenance(relative(musicDir, original), 'duplicate_removed', {
+            from: relative(musicDir, original),
+            kept: relative(musicDir, original),
+            reason: 'dup was higher quality',
+          });
         } else {
-          try { unlinkSync(full); } catch { stats.errors++; }
-          writeProvenance(
-            relative(musicDir, original),
-            'duplicate_removed',
-            { from: relative(musicDir, full), kept: relative(musicDir, original) },
-          );
+          try {
+            unlinkSync(full);
+          } catch {
+            stats.errors++;
+          }
+          writeProvenance(relative(musicDir, original), 'duplicate_removed', {
+            from: relative(musicDir, full),
+            kept: relative(musicDir, original),
+          });
         }
       }
       stats.dupsRemoved++;
@@ -320,7 +381,9 @@ function phaseA1b_removeDupsByTrackNumber(musicDir: string): void {
       const albumDir = join(artistDir, albumName);
       if (!isDir(albumDir)) continue;
 
-      const files = listDir(albumDir).filter((f) => isFile(join(albumDir, f)) && isAudioFile(join(albumDir, f)));
+      const files = listDir(albumDir).filter(
+        (f) => isFile(join(albumDir, f)) && isAudioFile(join(albumDir, f)),
+      );
 
       // Group by track number prefix
       const byTrack = new Map<string, string[]>();
@@ -344,11 +407,20 @@ function phaseA1b_removeDupsByTrackNumber(musicDir: string): void {
             const full = join(albumDir, mp3);
             log(`  DEL  ${relative(musicDir, full)}  (FLAC exists)`);
             if (!DRY_RUN) {
-              try { unlinkSync(full); } catch { stats.errors++; continue; }
+              try {
+                unlinkSync(full);
+              } catch {
+                stats.errors++;
+                continue;
+              }
               writeProvenance(
                 relative(musicDir, flacs[0] ? join(albumDir, flacs[0]) : full),
                 'duplicate_removed',
-                { from: relative(musicDir, full), kept: relative(musicDir, join(albumDir, flacs[0]!)), reason: 'flac beats mp3' },
+                {
+                  from: relative(musicDir, full),
+                  kept: relative(musicDir, join(albumDir, flacs[0]!)),
+                  reason: 'flac beats mp3',
+                },
               );
             }
             removed++;
@@ -358,7 +430,8 @@ function phaseA1b_removeDupsByTrackNumber(musicDir: string): void {
           // Multiple MP3s — only treat as duplicates if their titles normalize to the same string.
           // Same track number with completely different titles means different songs (bad tagging),
           // not duplicates.
-          const titleOf = (f: string) => normalizeName(f.replace(/^\d+\s*[-–]\s*/, '').replace(/\.[^.]+$/, ''));
+          const titleOf = (f: string) =>
+            normalizeName(f.replace(/^\d+\s*[-–]\s*/, '').replace(/\.[^.]+$/, ''));
           // Sub-group by normalized title
           const byTitle = new Map<string, string[]>();
           for (const f of mp3s) {
@@ -368,18 +441,25 @@ function phaseA1b_removeDupsByTrackNumber(musicDir: string): void {
           }
           for (const [, titleGroup] of byTitle) {
             if (titleGroup.length < 2) continue;
-            const sorted = [...titleGroup].sort((a, b) => getFileSize(join(albumDir, b)) - getFileSize(join(albumDir, a)));
+            const sorted = [...titleGroup].sort(
+              (a, b) => getFileSize(join(albumDir, b)) - getFileSize(join(albumDir, a)),
+            );
             const keeper = sorted[0]!;
             for (const loser of sorted.slice(1)) {
               const full = join(albumDir, loser);
               log(`  DEL  ${relative(musicDir, full)}  (case variant; keeping ${keeper})`);
               if (!DRY_RUN) {
-                try { unlinkSync(full); } catch { stats.errors++; continue; }
-                writeProvenance(
-                  relative(musicDir, join(albumDir, keeper)),
-                  'duplicate_removed',
-                  { from: relative(musicDir, full), kept: relative(musicDir, join(albumDir, keeper)), reason: 'case variant mp3' },
-                );
+                try {
+                  unlinkSync(full);
+                } catch {
+                  stats.errors++;
+                  continue;
+                }
+                writeProvenance(relative(musicDir, join(albumDir, keeper)), 'duplicate_removed', {
+                  from: relative(musicDir, full),
+                  kept: relative(musicDir, join(albumDir, keeper)),
+                  reason: 'case variant mp3',
+                });
               }
               removed++;
               stats.dupsRemoved++;
@@ -460,7 +540,11 @@ function phaseA0_mergeArtistAlbumFolders(musicDir: string): void {
       if (looksLikeRelease) {
         log(`  RMDIR (empty) ${dirName}/`);
         if (!DRY_RUN) {
-          try { rmdirSync(dirPath); } catch { /* not empty or already gone */ }
+          try {
+            rmdirSync(dirPath);
+          } catch {
+            /* not empty or already gone */
+          }
         }
         resolved++;
       }
@@ -488,8 +572,13 @@ function phaseA0_mergeArtistAlbumFolders(musicDir: string): void {
             const src = join(srcAlbum, f);
             if (!isFile(src)) continue;
             const dst = uniqueDst(join(dstAlbum, f));
-            try { moveFile(src, dst); logMove(src, dst); }
-            catch { log(`    SKIP (permission denied): ${f}`); stats.errors++; }
+            try {
+              moveFile(src, dst);
+              logMove(src, dst);
+            } catch {
+              log(`    SKIP (permission denied): ${f}`);
+              stats.errors++;
+            }
           }
           rmIfEmpty(srcAlbum);
         }
@@ -505,14 +594,24 @@ function phaseA0_mergeArtistAlbumFolders(musicDir: string): void {
         for (const f of files) {
           const src = join(dirPath, f);
           const dst = uniqueDst(join(dstAlbum, f));
-          try { moveFile(src, dst); logMove(src, dst); }
-          catch { log(`    SKIP (permission denied): ${f}`); stats.errors++; }
+          try {
+            moveFile(src, dst);
+            logMove(src, dst);
+          } catch {
+            log(`    SKIP (permission denied): ${f}`);
+            stats.errors++;
+          }
         }
         for (const f of listDir(dstAlbum)) {
           const fp = join(dstAlbum, f);
           if (!isFile(fp) || !isAudioFile(fp)) continue;
-          writeAudioTags(fp, { artist: owner, albumArtist: owner, album: albumName }).catch(() => { /* non-fatal */ });
-          writeProvenance(relative(musicDir, fp), 'artist_folder_merged', { from: dirName, to: `${owner}/${albumName}` });
+          writeAudioTags(fp, { artist: owner, albumArtist: owner, album: albumName }).catch(() => {
+            /* non-fatal */
+          });
+          writeProvenance(relative(musicDir, fp), 'artist_folder_merged', {
+            from: dirName,
+            to: `${owner}/${albumName}`,
+          });
         }
         rmIfEmpty(dirPath);
       }
@@ -532,7 +631,7 @@ function phaseA0_mergeArtistAlbumFolders(musicDir: string): void {
 
 interface ArtistGroup {
   normalized: string;
-  folders: string[];   // absolute paths
+  folders: string[]; // absolute paths
 }
 
 function groupArtistFolders(musicDir: string): ArtistGroup[] {
@@ -550,7 +649,10 @@ function groupArtistFolders(musicDir: string): ArtistGroup[] {
     .map(([normalized, folders]) => ({ normalized, folders }));
 }
 
-function pickCanonical(group: ArtistGroup, mbName: string | null): { canonical: string; others: string[] } | null {
+function pickCanonical(
+  group: ArtistGroup,
+  mbName: string | null,
+): { canonical: string; others: string[] } | null {
   // Check hard-coded overrides first
   const override = CANONICAL_OVERRIDES[group.normalized];
   if (override) {
@@ -602,13 +704,14 @@ function mergeArtistFolders(
             const src = join(srcAlbum, f);
             const dst = uniqueDst(join(dstAlbum, f));
             if (isFile(src)) {
-        try {
-          moveFile(src, dst); logMove(src, dst);
-        } catch {
-          log(`    SKIP (permission denied): ${basename(src)}`);
-          stats.errors++;
-        }
-      }
+              try {
+                moveFile(src, dst);
+                logMove(src, dst);
+              } catch {
+                log(`    SKIP (permission denied): ${basename(src)}`);
+                stats.errors++;
+              }
+            }
           }
           rmIfEmpty(srcAlbum);
         }
@@ -620,8 +723,13 @@ function mergeArtistFolders(
           const dst = uniqueDst(join(dstAlbum, f));
           log(`    FILE ${f} → ${canonicalName}/${album}/${basename(dst)}`);
           if (!DRY_RUN) {
-            try { moveFile(src, dst); logMove(src, dst); }
-            catch { log(`    SKIP (permission denied): ${f}`); stats.errors++; }
+            try {
+              moveFile(src, dst);
+              logMove(src, dst);
+            } catch {
+              log(`    SKIP (permission denied): ${f}`);
+              stats.errors++;
+            }
           }
         }
         if (!DRY_RUN) rmIfEmpty(srcAlbum);
@@ -639,12 +747,14 @@ function mergeArtistFolders(
       for (const f of listDir(albumDir)) {
         const fp = join(albumDir, f);
         if (!isFile(fp) || !isAudioFile(fp)) continue;
-        writeAudioTags(fp, { artist: artistTagName, albumArtist: artistTagName }).catch(() => { /* non-fatal */ });
-        writeProvenance(
-          relative(musicDir, fp),
-          'artist_folder_merged',
-          { from: others.map((o) => basename(o)).join(', '), to: canonicalName, mb_artist_name: mbArtistName ?? undefined },
-        );
+        writeAudioTags(fp, { artist: artistTagName, albumArtist: artistTagName }).catch(() => {
+          /* non-fatal */
+        });
+        writeProvenance(relative(musicDir, fp), 'artist_folder_merged', {
+          from: others.map((o) => basename(o)).join(', '),
+          to: canonicalName,
+          mb_artist_name: mbArtistName ?? undefined,
+        });
       }
     }
   }
@@ -692,16 +802,23 @@ function phaseA3_mergeAlbumFolders(musicDir: string): void {
             const src = join(other, f);
             if (!isFile(src)) continue;
             const dst = uniqueDst(join(canonical, f));
-            try { moveFile(src, dst); logMove(src, dst); }
-            catch { log(`    SKIP (permission denied): ${f}`); stats.errors++; continue; }
+            try {
+              moveFile(src, dst);
+              logMove(src, dst);
+            } catch {
+              log(`    SKIP (permission denied): ${f}`);
+              stats.errors++;
+              continue;
+            }
             // Fix album tag
             const albumName = basename(canonical);
-            writeAudioTags(dst, { album: albumName }).catch(() => { /* non-fatal */ });
-            writeProvenance(
-              relative(musicDir, dst),
-              'album_folder_merged',
-              { from: `${artistName}/${basename(other)}`, to: `${artistName}/${albumName}` },
-            );
+            writeAudioTags(dst, { album: albumName }).catch(() => {
+              /* non-fatal */
+            });
+            writeProvenance(relative(musicDir, dst), 'album_folder_merged', {
+              from: `${artistName}/${basename(other)}`,
+              to: `${artistName}/${albumName}`,
+            });
           }
           rmIfEmpty(other);
         }
@@ -726,7 +843,8 @@ async function phaseB2_resolveSingles(musicDir: string, mb: MusicBrainzClient): 
       if (!isFile(fpath) || !isAudioFile(fpath)) continue;
 
       const tags = await readAudioTags(fpath);
-      const artist = normalizeTagValue(tags.albumArtist) ?? normalizeTagValue(tags.artist) ?? artistName;
+      const artist =
+        normalizeTagValue(tags.albumArtist) ?? normalizeTagValue(tags.artist) ?? artistName;
       const title = normalizeTagValue(tags.title) ?? basename(fname, extname(fname));
 
       log(`  LOOKUP "${title}" by "${artist}"`);
@@ -746,25 +864,27 @@ async function phaseB2_resolveSingles(musicDir: string, mb: MusicBrainzClient): 
 
       if (!DRY_RUN) {
         mkdirSync(albumDir, { recursive: true });
-        try { moveFile(fpath, dst); logMove(fpath, dst); }
-        catch { log(`    SKIP (permission denied): ${fname}`); stats.errors++; continue; }
+        try {
+          moveFile(fpath, dst);
+          logMove(fpath, dst);
+        } catch {
+          log(`    SKIP (permission denied): ${fname}`);
+          stats.errors++;
+          continue;
+        }
         await writeAudioTags(dst, {
           album: albumTitle,
           albumArtist: artist,
           mbRecordingId: hit.id,
           mbReleaseId: hit.release.id,
         });
-        writeProvenance(
-          relative(musicDir, dst),
-          'moved_from_singles',
-          {
-            from: relative(musicDir, fpath),
-            to: relative(musicDir, dst),
-            mb_recording_id: hit.id,
-            mb_release_id: hit.release.id,
-            mb_album_title: albumTitle,
-          },
-        );
+        writeProvenance(relative(musicDir, dst), 'moved_from_singles', {
+          from: relative(musicDir, fpath),
+          to: relative(musicDir, dst),
+          mb_recording_id: hit.id,
+          mb_release_id: hit.release.id,
+          mb_album_title: albumTitle,
+        });
       }
       stats.singlesResolved++;
     }
@@ -793,7 +913,10 @@ async function phaseB3_normalizeAlbumNames(musicDir: string, mb: MusicBrainzClie
         const fp = join(albumDir, f);
         if (!isFile(fp) || !isAudioFile(fp)) continue;
         const tags = await readAudioTags(fp);
-        if (tags.mbReleaseId) { releaseGroupId = tags.mbReleaseId; break; }
+        if (tags.mbReleaseId) {
+          releaseGroupId = tags.mbReleaseId;
+          break;
+        }
       }
 
       if (!releaseGroupId) continue;
@@ -814,14 +937,20 @@ async function phaseB3_normalizeAlbumNames(musicDir: string, mb: MusicBrainzClie
           const src = join(albumDir, f);
           if (!isFile(src)) continue;
           const dst = join(newDir, f);
-          try { moveFile(src, dst); logMove(src, dst); }
-          catch { log(`    SKIP (permission denied): ${f}`); stats.errors++; continue; }
+          try {
+            moveFile(src, dst);
+            logMove(src, dst);
+          } catch {
+            log(`    SKIP (permission denied): ${f}`);
+            stats.errors++;
+            continue;
+          }
           await writeAudioTags(dst, { album: rg.title });
-          writeProvenance(
-            relative(musicDir, dst),
-            'album_renamed',
-            { from: `${artistName}/${albumName}`, to: `${artistName}/${canonical}`, mb_release_id: releaseGroupId },
-          );
+          writeProvenance(relative(musicDir, dst), 'album_renamed', {
+            from: `${artistName}/${albumName}`,
+            to: `${artistName}/${canonical}`,
+            mb_release_id: releaseGroupId,
+          });
         }
         rmIfEmpty(albumDir);
       }
@@ -866,9 +995,14 @@ async function main(): Promise<void> {
 
     for (const group of groups) {
       const picked = pickCanonical(group, null);
-      if (!picked) { deferred.push(group); continue; }
+      if (!picked) {
+        deferred.push(group);
+        continue;
+      }
 
-      log(`  MERGE ${group.folders.map((f) => basename(f)).join(', ')} → ${basename(picked.canonical)}`);
+      log(
+        `  MERGE ${group.folders.map((f) => basename(f)).join(', ')} → ${basename(picked.canonical)}`,
+      );
       if (!DRY_RUN) {
         mergeArtistFolders(musicDir, picked.canonical, picked.others, null);
       } else {
@@ -898,7 +1032,9 @@ async function main(): Promise<void> {
         const hit = await mb.searchArtist(group.normalized);
         const picked = pickCanonical(group, hit?.name ?? null);
         if (!picked) continue;
-        log(`  MERGE ${group.folders.map((f) => basename(f)).join(', ')} → ${basename(picked.canonical)}`);
+        log(
+          `  MERGE ${group.folders.map((f) => basename(f)).join(', ')} → ${basename(picked.canonical)}`,
+        );
         if (!DRY_RUN) {
           mergeArtistFolders(musicDir, picked.canonical, picked.others, hit?.name ?? null);
         } else {
@@ -917,7 +1053,9 @@ async function main(): Promise<void> {
   }
 
   log('\n═══════════════════════════════════════════');
-  log(`Phase A: ${stats.dupsRemoved} (2)-dups removed, ${stats.artistFoldersMerged} artist/album folders merged, ${stats.albumFoldersMerged} case-variant album folders merged`);
+  log(
+    `Phase A: ${stats.dupsRemoved} (2)-dups removed, ${stats.artistFoldersMerged} artist/album folders merged, ${stats.albumFoldersMerged} case-variant album folders merged`,
+  );
   log(`Phase B: ${stats.singlesResolved} Singles resolved, ${stats.albumsRenamed} albums renamed`);
   if (stats.errors > 0) log(`Errors  : ${stats.errors}`);
   if (DRY_RUN) {

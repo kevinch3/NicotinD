@@ -35,11 +35,17 @@ export function adminRoutes() {
     const passwordHash = await hashPassword(password);
 
     db.query('INSERT INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)').run(
-      id, username, passwordHash, 'user',
+      id,
+      username,
+      passwordHash,
+      'user',
     );
     db.query('INSERT INTO user_settings (user_id) VALUES (?)').run(id);
 
-    return c.json({ id, username, role: 'user', status: 'active', created_at: new Date().toISOString() }, 201);
+    return c.json(
+      { id, username, role: 'user', status: 'active', created_at: new Date().toISOString() },
+      201,
+    );
   });
 
   // List all users

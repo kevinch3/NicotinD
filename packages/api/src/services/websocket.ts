@@ -50,13 +50,15 @@ export function createWebSocketHandlers(userId: string) {
               remoteEnabled: data.payload.remoteEnabled === true,
             });
 
-            ws.send(JSON.stringify({
-              type: 'STATE_SYNC',
-              payload: {
-                state: manager.getState(),
-                devices: manager.getDevices(),
-              },
-            }));
+            ws.send(
+              JSON.stringify({
+                type: 'STATE_SYNC',
+                payload: {
+                  state: manager.getState(),
+                  devices: manager.getDevices(),
+                },
+              }),
+            );
             break;
           }
 

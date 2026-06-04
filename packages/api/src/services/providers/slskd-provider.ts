@@ -1,4 +1,10 @@
-import type { ISearchProvider, IBrowseProvider, ProviderType, NetworkPollResult, BrowseDirectory } from '@nicotind/core';
+import type {
+  ISearchProvider,
+  IBrowseProvider,
+  ProviderType,
+  NetworkPollResult,
+  BrowseDirectory,
+} from '@nicotind/core';
 import { BrowseUnavailableError, createLogger } from '@nicotind/core';
 import type { SlskdRef } from '../../index.js';
 import { inferMetadataFromPath } from '../path-inference.js';
@@ -7,8 +13,17 @@ const log = createLogger('slskd-provider');
 const DEFAULT_RETRY_DELAYS_MS = [3000, 6000, 10000];
 
 const AUDIO_EXTENSIONS = new Set([
-  '.mp3', '.flac', '.ogg', '.opus',
-  '.m4a', '.aac', '.wav', '.aiff', '.wma', '.ape', '.wv',
+  '.mp3',
+  '.flac',
+  '.ogg',
+  '.opus',
+  '.m4a',
+  '.aac',
+  '.wav',
+  '.aiff',
+  '.wma',
+  '.ape',
+  '.wv',
 ]);
 
 export interface SlskdSearchProviderOptions {
@@ -16,11 +31,7 @@ export interface SlskdSearchProviderOptions {
   retryDelaysMs?: number[];
 }
 
-async function withRetry<T>(
-  op: string,
-  delaysMs: number[],
-  fn: () => Promise<T>,
-): Promise<T> {
+async function withRetry<T>(op: string, delaysMs: number[], fn: () => Promise<T>): Promise<T> {
   let lastErr: Error | undefined;
   for (let attempt = 0; attempt <= delaysMs.length; attempt++) {
     if (attempt > 0) {
@@ -47,7 +58,10 @@ export class SlskdSearchProvider implements ISearchProvider, IBrowseProvider {
   private activeSearches = new Map<string, string>();
   private retryDelaysMs: number[];
 
-  constructor(private slskdRef: SlskdRef, options: SlskdSearchProviderOptions = {}) {
+  constructor(
+    private slskdRef: SlskdRef,
+    options: SlskdSearchProviderOptions = {},
+  ) {
     this.retryDelaysMs = options.retryDelaysMs ?? DEFAULT_RETRY_DELAYS_MS;
   }
 
@@ -106,11 +120,11 @@ export class SlskdSearchProvider implements ISearchProvider, IBrowseProvider {
             })
             .map((f) => ({
               filename: f.filename,
-            size: f.size,
-            bitRate: f.bitRate,
-            length: f.length,
-            ...inferMetadataFromPath(f.filename, ''),
-          })),
+              size: f.size,
+              bitRate: f.bitRate,
+              length: f.length,
+              ...inferMetadataFromPath(f.filename, ''),
+            })),
         })),
       };
     } catch (err) {

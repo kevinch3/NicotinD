@@ -1,13 +1,4 @@
-import {
-  Component,
-  input,
-  output,
-  signal,
-  computed,
-  effect,
-  inject,
-  OnInit,
-} from '@angular/core';
+import { Component, input, output, signal, computed, effect, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ApiService, type ProvenanceRecord, type Song } from '../../services/api.service';
 
@@ -42,11 +33,15 @@ const ACTION_LABELS: Record<string, string> = {
 
       <div class="px-5 pb-2 flex items-center justify-between">
         <h2 class="text-base font-semibold text-zinc-100">Track info</h2>
-        <button class="text-zinc-500 hover:text-zinc-300 text-2xl leading-none" (click)="close.emit()">×</button>
+        <button
+          class="text-zinc-500 hover:text-zinc-300 text-2xl leading-none"
+          (click)="close.emit()"
+        >
+          ×
+        </button>
       </div>
 
       <div class="overflow-y-auto flex-1 px-5 pb-6">
-
         <!-- Basic file info -->
         @if (song(); as s) {
           <section class="mb-5">
@@ -84,7 +79,9 @@ const ACTION_LABELS: Record<string, string> = {
             <ol class="relative border-l border-zinc-700 space-y-4 ml-2">
               @for (record of provenance(); track record.appliedAt) {
                 <li class="ml-4">
-                  <div class="absolute -left-1.5 mt-1 w-3 h-3 rounded-full bg-zinc-600 border-2 border-zinc-900"></div>
+                  <div
+                    class="absolute -left-1.5 mt-1 w-3 h-3 rounded-full bg-zinc-600 border-2 border-zinc-900"
+                  ></div>
                   <p class="text-xs text-zinc-500 mb-0.5">{{ formatDate(record.appliedAt) }}</p>
                   <p class="text-sm font-medium text-zinc-200">{{ labelFor(record.action) }}</p>
                   @if (record.detail.from) {
@@ -108,7 +105,8 @@ const ACTION_LABELS: Record<string, string> = {
                       target="_blank"
                       rel="noopener"
                       class="text-xs text-blue-400 hover:underline"
-                    >MusicBrainz ↗</a>
+                      >MusicBrainz ↗</a
+                    >
                   }
                 </li>
               }
@@ -138,8 +136,13 @@ export class TrackInfoSheetComponent implements OnInit {
 
   ngOnInit(): void {
     this.api.getSongProvenance(this.songId()).subscribe({
-      next: (records) => { this.provenance.set(records); this.loading.set(false); },
-      error: () => { this.loading.set(false); },
+      next: (records) => {
+        this.provenance.set(records);
+        this.loading.set(false);
+      },
+      error: () => {
+        this.loading.set(false);
+      },
     });
   }
 

@@ -2,21 +2,25 @@ import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
 import type { AuthEnv } from '../middleware/auth.js';
 import type { ProviderRegistry } from '../services/provider-registry.js';
 
-const UnifiedSearchResponseSchema = z.object({
-  searchId: z.string().uuid(),
-  local: z.any(),
-  network: z.any().nullable(),
-  networkAvailable: z.boolean(),
-  errors: z.array(z.string()).optional(),
-}).openapi('UnifiedSearchResponse');
+const UnifiedSearchResponseSchema = z
+  .object({
+    searchId: z.string().uuid(),
+    local: z.any(),
+    network: z.any().nullable(),
+    networkAvailable: z.boolean(),
+    errors: z.array(z.string()).optional(),
+  })
+  .openapi('UnifiedSearchResponse');
 
-const NetworkSearchResponseSchema = z.object({
-  state: z.string(),
-  responseCount: z.number(),
-  results: z.array(z.any()),
-  canBrowse: z.boolean(),
-  errors: z.array(z.string()).optional(),
-}).openapi('NetworkSearchResponse');
+const NetworkSearchResponseSchema = z
+  .object({
+    state: z.string(),
+    responseCount: z.number(),
+    results: z.array(z.any()),
+    canBrowse: z.boolean(),
+    errors: z.array(z.string()).optional(),
+  })
+  .openapi('NetworkSearchResponse');
 
 const emptyLocal = { artists: [] as unknown[], albums: [] as unknown[], songs: [] as unknown[] };
 
@@ -164,7 +168,8 @@ export function searchRoutes(registry: ProviderRegistry) {
       for (const provider of registry.getByType('network')) {
         if (provider.pollResults) {
           const canBrowse =
-            'browseUser' in provider && typeof (provider as { browseUser: unknown }).browseUser === 'function';
+            'browseUser' in provider &&
+            typeof (provider as { browseUser: unknown }).browseUser === 'function';
           try {
             const result = await provider.pollResults(searchId);
             return c.json({ ...result, canBrowse });

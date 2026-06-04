@@ -21,7 +21,13 @@ function insertAlbum(db: Database, id: string, name: string, artistId: string): 
   );
 }
 
-function insertSong(db: Database, id: string, albumId: string, title: string, artistId: string): void {
+function insertSong(
+  db: Database,
+  id: string,
+  albumId: string,
+  title: string,
+  artistId: string,
+): void {
   db.run(
     `INSERT INTO library_songs
        (id, album_id, title, artist, artist_id, path, hidden, synced_at)
@@ -155,8 +161,13 @@ describe('DiscographyService', () => {
       albums,
       tracksByAlbum,
       monitoredArtist: {
-        id: 1, foreignArtistId: 'm', artistName: 'Artist', sortName: 'Artist',
-        status: 'ended', images: [], monitored: true,
+        id: 1,
+        foreignArtistId: 'm',
+        artistName: 'Artist',
+        sortName: 'Artist',
+        status: 'ended',
+        images: [],
+        monitored: true,
       },
     });
 
@@ -171,8 +182,13 @@ describe('DiscographyService', () => {
       albums: [],
       tracksByAlbum: {},
       monitoredArtist: {
-        id: 7, foreignArtistId: 'm', artistName: 'Artist', sortName: 'Artist',
-        status: 'ended', images: [], monitored: true,
+        id: 7,
+        foreignArtistId: 'm',
+        artistName: 'Artist',
+        sortName: 'Artist',
+        status: 'ended',
+        images: [],
+        monitored: true,
       },
     });
 
@@ -200,8 +216,13 @@ describe('DiscographyService', () => {
       albums,
       tracksByAlbum,
       monitoredArtist: {
-        id: 1, foreignArtistId: 'm', artistName: 'Artist', sortName: 'Artist',
-        status: 'ended', images: [], monitored: true,
+        id: 1,
+        foreignArtistId: 'm',
+        artistName: 'Artist',
+        sortName: 'Artist',
+        status: 'ended',
+        images: [],
+        monitored: true,
       },
     });
 

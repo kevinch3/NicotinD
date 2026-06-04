@@ -67,9 +67,7 @@ export class PluginRegistry {
 
   private row(id: string): PluginRow | null {
     return (
-      this.opts.db
-        .query<PluginRow, [string]>(`SELECT * FROM plugins WHERE id = ?`)
-        .get(id) ?? null
+      this.opts.db.query<PluginRow, [string]>(`SELECT * FROM plugins WHERE id = ?`).get(id) ?? null
     );
   }
 

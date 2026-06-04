@@ -21,7 +21,12 @@ function makeLidarr(opts: {
   rootFolders?: Array<{ id: number; path: string; freeSpace: number }>;
 }) {
   const add = mock(
-    async (artist: LidarrArtist, _qualityProfileId: number, _rootFolderPath: string, _metadataProfileId: number) => ({
+    async (
+      artist: LidarrArtist,
+      _qualityProfileId: number,
+      _rootFolderPath: string,
+      _metadataProfileId: number,
+    ) => ({
       ...artist,
       id: 42,
     }),
@@ -68,7 +73,10 @@ describe('addArtistFromLookup', () => {
   });
 
   it('throws when no quality profile is configured', async () => {
-    const { lidarr } = makeLidarr({ qualityProfiles: [], rootFolders: [{ id: 1, path: '/m', freeSpace: 0 }] });
+    const { lidarr } = makeLidarr({
+      qualityProfiles: [],
+      rootFolders: [{ id: 1, path: '/m', freeSpace: 0 }],
+    });
     await expect(addArtistFromLookup(lidarr, makeArtist())).rejects.toThrow(/quality profiles/i);
   });
 });

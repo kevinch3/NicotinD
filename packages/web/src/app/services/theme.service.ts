@@ -15,25 +15,25 @@ export interface ThemePreset {
 }
 
 export const THEME_PRESETS: ThemePreset[] = [
-  { id: 'midnight',   name: 'Midnight' },
-  { id: 'daylight',   name: 'Daylight' },
+  { id: 'midnight', name: 'Midnight' },
+  { id: 'daylight', name: 'Daylight' },
   { id: 'warm-paper', name: 'Warm Paper' },
-  { id: 'oled',       name: 'OLED Black' },
-  { id: 'twilight',   name: 'Twilight' },
-  { id: 'forest',     name: 'Forest' },
-  { id: 'eink',       name: 'E-Ink' },
+  { id: 'oled', name: 'OLED Black' },
+  { id: 'twilight', name: 'Twilight' },
+  { id: 'forest', name: 'Forest' },
+  { id: 'eink', name: 'E-Ink' },
 ];
 
 const STORAGE_KEY = 'nicotind-theme';
 
 const ACCENT_COLORS: Record<ThemeId, string> = {
-  midnight:    '#6366f1',
-  daylight:    '#6366f1',
-  'warm-paper':'#d97706',
-  oled:        '#818cf8',
-  twilight:    '#a78bfa',
-  forest:      '#2dd4bf',
-  eink:        '#000000',
+  midnight: '#6366f1',
+  daylight: '#6366f1',
+  'warm-paper': '#d97706',
+  oled: '#818cf8',
+  twilight: '#a78bfa',
+  forest: '#2dd4bf',
+  eink: '#000000',
 };
 
 export function resolveTheme(

@@ -30,7 +30,12 @@ export class WatchlistService {
 
   // Release-group ids currently watched — lets album cards render a filled star.
   private readonly watchedIds = computed(
-    () => new Set(this.items().map((i) => i.foreign_album_id).filter((x): x is string => !!x)),
+    () =>
+      new Set(
+        this.items()
+          .map((i) => i.foreign_album_id)
+          .filter((x): x is string => !!x),
+      ),
   );
 
   isWatched(foreignAlbumId: string | undefined | null): boolean {

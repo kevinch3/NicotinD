@@ -28,7 +28,10 @@ export function getStreamingSettings(db: Database): StreamingSettings {
     .get(KEY);
   if (!row) return { ...DEFAULT_STREAMING_SETTINGS };
   try {
-    return { ...DEFAULT_STREAMING_SETTINGS, ...(JSON.parse(row.value) as Partial<StreamingSettings>) };
+    return {
+      ...DEFAULT_STREAMING_SETTINGS,
+      ...(JSON.parse(row.value) as Partial<StreamingSettings>),
+    };
   } catch {
     return { ...DEFAULT_STREAMING_SETTINGS };
   }

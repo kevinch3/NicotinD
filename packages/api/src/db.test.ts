@@ -47,9 +47,12 @@ describe('applySchema — classification ep migration', () => {
 
     // Row preserved (incl. curation columns) and 'ep' now accepted.
     expect(
-      db.query<{ classification: string; hidden: number; manual_override: number }, [string]>(
-        'SELECT classification, hidden, manual_override FROM library_albums WHERE id = ?',
-      ).get('keep'),
+      db
+        .query<
+          { classification: string; hidden: number; manual_override: number },
+          [string]
+        >('SELECT classification, hidden, manual_override FROM library_albums WHERE id = ?')
+        .get('keep'),
     ).toEqual({ classification: 'album', hidden: 1, manual_override: 1 });
 
     db.run(
@@ -70,7 +73,9 @@ describe('applySchema — playlists schema migration', () => {
     const db = new Database(':memory:');
     db.run('PRAGMA foreign_keys=ON');
     // Seed old schema (as it existed in production DBs from pre-native-playlists era).
-    db.run(`CREATE TABLE users (id TEXT PRIMARY KEY, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL)`);
+    db.run(
+      `CREATE TABLE users (id TEXT PRIMARY KEY, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL)`,
+    );
     db.run(`INSERT INTO users (id, username, password_hash) VALUES ('u1', 'alice', 'h')`);
     db.run(`
       CREATE TABLE playlists (
@@ -152,7 +157,9 @@ describe('applySchema — acquire_jobs backend CHECK relaxation', () => {
     ).not.toThrow();
     // The state CHECK is still enforced.
     expect(() =>
-      db.run(`INSERT INTO acquire_jobs (id, backend, url, state) VALUES ('bad', 'ytdlp', 'u', 'bogus')`),
+      db.run(
+        `INSERT INTO acquire_jobs (id, backend, url, state) VALUES ('bad', 'ytdlp', 'u', 'bogus')`,
+      ),
     ).toThrow();
   });
 

@@ -13,7 +13,9 @@ interface MockFile {
 }
 
 function makeSlskd(groups: Array<{ username: string; directory: string; files: MockFile[] }>) {
-  const enqueue = mock(async (_u: string, _files: Array<{ filename: string; size: number }>) => undefined);
+  const enqueue = mock(
+    async (_u: string, _files: Array<{ filename: string; size: number }>) => undefined,
+  );
   const getDownloads = mock(async () =>
     groups.map((g) => ({
       username: g.username,
@@ -158,8 +160,18 @@ describe('AlbumFallbackService', () => {
         username: 'alt',
         directory: 'AltAlbum',
         files: [
-          { id: 'a2', filename: 'AltAlbum/02 Song Two.flac', size: 1, state: 'Completed, Succeeded' },
-          { id: 'a3', filename: 'AltAlbum/03 Song Three.flac', size: 1, state: 'Completed, Succeeded' },
+          {
+            id: 'a2',
+            filename: 'AltAlbum/02 Song Two.flac',
+            size: 1,
+            state: 'Completed, Succeeded',
+          },
+          {
+            id: 'a3',
+            filename: 'AltAlbum/03 Song Three.flac',
+            size: 1,
+            state: 'Completed, Succeeded',
+          },
         ],
       },
     ]);
@@ -192,11 +204,14 @@ describe('AlbumFallbackService', () => {
       username: 'primary',
       directory: 'Album',
       // Deluxe canonical list — far larger than the chosen folder.
-      canonicalTracks: ['Song One', 'Song Two', 'Bonus Live One', 'Bonus Acoustic Two', 'Demo Three'],
-      targetFiles: [
-        { filename: 'Album/01 Song One.flac' },
-        { filename: 'Album/02 Song Two.flac' },
+      canonicalTracks: [
+        'Song One',
+        'Song Two',
+        'Bonus Live One',
+        'Bonus Acoustic Two',
+        'Demo Three',
       ],
+      targetFiles: [{ filename: 'Album/01 Song One.flac' }, { filename: 'Album/02 Song Two.flac' }],
       alternates: [ALT],
     });
 
@@ -227,10 +242,7 @@ describe('AlbumFallbackService', () => {
       username: 'primary',
       directory: 'Album',
       canonicalTracks: ['Song One', 'Song Two', 'Song Three'],
-      targetFiles: [
-        { filename: 'Album/01 Song One.flac' },
-        { filename: 'Album/02 Song Two.flac' },
-      ],
+      targetFiles: [{ filename: 'Album/01 Song One.flac' }, { filename: 'Album/02 Song Two.flac' }],
       alternates: [ALT],
     });
 
@@ -281,7 +293,12 @@ describe('AlbumFallbackService', () => {
           username: 'primary',
           directory: 'Album',
           files: [
-            { id: 'p1', filename: 'Album/01 Song One.flac', size: 1, state: 'Completed, Succeeded' },
+            {
+              id: 'p1',
+              filename: 'Album/01 Song One.flac',
+              size: 1,
+              state: 'Completed, Succeeded',
+            },
             { id: 'p2', filename: 'Album/02 Song Two.flac', size: 1, state: 'Completed, Errored' },
           ],
         },
@@ -335,7 +352,12 @@ describe('AlbumFallbackService', () => {
           username: 'primary',
           directory: 'Album',
           files: [
-            { id: 'p1', filename: 'Album/01 Song One.flac', size: 1, state: 'Completed, Succeeded' },
+            {
+              id: 'p1',
+              filename: 'Album/01 Song One.flac',
+              size: 1,
+              state: 'Completed, Succeeded',
+            },
             { id: 'p2', filename: 'Album/02 Song Two.flac', size: 1, state: 'Completed, Errored' },
           ],
         },
@@ -390,7 +412,12 @@ describe('AlbumFallbackService', () => {
           username: 'primary',
           directory: 'Album',
           files: [
-            { id: 'p1', filename: 'Album/01 Song One.flac', size: 1, state: 'Completed, Succeeded' },
+            {
+              id: 'p1',
+              filename: 'Album/01 Song One.flac',
+              size: 1,
+              state: 'Completed, Succeeded',
+            },
             { id: 'p2', filename: 'Album/02 Song Two.flac', size: 1, state: 'Completed, Errored' },
           ],
         },
@@ -472,7 +499,9 @@ describe('AlbumFallbackService', () => {
 
     expect(enqueue).not.toHaveBeenCalled();
     expect(jobState(db)).toBe('done');
-    const row = db.query('SELECT revive_count AS r FROM album_jobs WHERE id = 1').get() as { r: number };
+    const row = db.query('SELECT revive_count AS r FROM album_jobs WHERE id = 1').get() as {
+      r: number;
+    };
     expect(row.r).toBe(1);
   });
 
@@ -545,7 +574,12 @@ describe('AlbumFallbackService', () => {
           username: 'primary',
           directory: 'Album',
           files: [
-            { id: 'p1', filename: 'Album/01 Song One.flac', size: 1, state: 'Completed, Succeeded' },
+            {
+              id: 'p1',
+              filename: 'Album/01 Song One.flac',
+              size: 1,
+              state: 'Completed, Succeeded',
+            },
             { id: 'p2', filename: 'Album/02 Song Two.flac', size: 1, state: 'Completed, Errored' },
           ],
         },
@@ -553,9 +587,7 @@ describe('AlbumFallbackService', () => {
           // A prior fresh-search wave's download is still running on another peer.
           username: 'freshpeer',
           directory: 'Random',
-          files: [
-            { id: 'f2', filename: 'Random/02 Song Two.flac', size: 1, state: 'InProgress' },
-          ],
+          files: [{ id: 'f2', filename: 'Random/02 Song Two.flac', size: 1, state: 'InProgress' }],
         },
       ],
       [],

@@ -1,4 +1,13 @@
-import { Component, inject, signal, computed, effect, OnInit, OnDestroy, HostListener } from '@angular/core';
+import {
+  Component,
+  inject,
+  signal,
+  computed,
+  effect,
+  OnInit,
+  OnDestroy,
+  HostListener,
+} from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -62,7 +71,12 @@ function groupRecentSongsByDate(songs: Song[]): SongDateGroup[] {
   const yesterdayStart = new Date(todayStart.getTime() - 86_400_000);
   const weekStart = new Date(todayStart.getTime() - 6 * 86_400_000);
 
-  const buckets: Record<DateGroup, Song[]> = { 'Today': [], 'Yesterday': [], 'This week': [], 'Older': [] };
+  const buckets: Record<DateGroup, Song[]> = {
+    Today: [],
+    Yesterday: [],
+    'This week': [],
+    Older: [],
+  };
   for (const song of songs) {
     const d = new Date(song.created).getTime();
     if (d >= todayStart.getTime()) buckets['Today'].push(song);
@@ -72,16 +86,19 @@ function groupRecentSongsByDate(songs: Song[]): SongDateGroup[] {
   }
 
   const order: DateGroup[] = ['Today', 'Yesterday', 'This week', 'Older'];
-  return order.filter(label => buckets[label].length > 0).map(label => ({ label, songs: buckets[label] }));
+  return order
+    .filter((label) => buckets[label].length > 0)
+    .map((label) => ({ label, songs: buckets[label] }));
 }
 
 /** Shorten a raw URL into a human-readable label (used when job.label is absent). */
 function shortenUrl(url: string): string {
   try {
     const u = new URL(url);
-    const path = u.pathname.length > 1
-      ? u.pathname.substring(0, 40) + (u.pathname.length > 40 ? '…' : '')
-      : '';
+    const path =
+      u.pathname.length > 1
+        ? u.pathname.substring(0, 40) + (u.pathname.length > 40 ? '…' : '')
+        : '';
     return u.hostname + path;
   } catch {
     return url.substring(0, 50);
@@ -110,7 +127,7 @@ function sortAcquireJobs(jobs: AcquireJob[]): AcquireJob[] {
   selector: 'app-downloads',
   imports: [NgTemplateOutlet, FormsModule, ListToolbarComponent, ConfirmDialogComponent],
   templateUrl: './downloads.component.html',
-  })
+})
 export class DownloadsComponent implements OnInit, OnDestroy {
   private api = inject(ApiService);
   private player = inject(PlayerService);
@@ -160,7 +177,9 @@ export class DownloadsComponent implements OnInit, OnDestroy {
   onConfirm(): void {
     const cb = this.confirmCallback();
     this.confirmCallback.set(null);
-    Promise.resolve(cb?.()).catch(() => { /* ignore */ });
+    Promise.resolve(cb?.()).catch(() => {
+      /* ignore */
+    });
   }
 
   onCancelConfirm(): void {
@@ -213,21 +232,30 @@ export class DownloadsComponent implements OnInit, OnDestroy {
 
   // Computed — slskd transfers
   readonly groups = computed(() => groupByAlbum(this.transferService.downloads()));
-  readonly inProgressGroups = computed(() => this.groups().filter(g => g.state === 'downloading' || g.state === 'queued'));
-  readonly errorGroups = computed(() => this.groups().filter(g => g.state === 'error'));
-  readonly doneGroups = computed(() => this.groups().filter(g => g.state === 'done'));
+  readonly inProgressGroups = computed(() =>
+    this.groups().filter((g) => g.state === 'downloading' || g.state === 'queued'),
+  );
+  readonly errorGroups = computed(() => this.groups().filter((g) => g.state === 'error'));
+  readonly doneGroups = computed(() => this.groups().filter((g) => g.state === 'done'));
   readonly clearableGroups = computed(() => [...this.errorGroups(), ...this.doneGroups()]);
 
   // Computed — acquire jobs
   readonly sortedAcquireJobs = computed(() => sortAcquireJobs(this.transferService.acquireJobs()));
-  readonly activeAcquireJobs = computed(() => this.sortedAcquireJobs().filter(j => j.state === 'running' || j.state === 'queued'));
-  readonly failedAcquireJobs = computed(() => this.sortedAcquireJobs().filter(j => j.state === 'failed'));
-  readonly doneAcquireJobs = computed(() => this.sortedAcquireJobs().filter(j => j.state === 'done'));
+  readonly activeAcquireJobs = computed(() =>
+    this.sortedAcquireJobs().filter((j) => j.state === 'running' || j.state === 'queued'),
+  );
+  readonly failedAcquireJobs = computed(() =>
+    this.sortedAcquireJobs().filter((j) => j.state === 'failed'),
+  );
+  readonly doneAcquireJobs = computed(() =>
+    this.sortedAcquireJobs().filter((j) => j.state === 'done'),
+  );
 
-  readonly showDateGroups = computed(() =>
-    this.recentControls.sortField() === 'created' &&
-    this.recentControls.sortDirection() === 'desc' &&
-    !this.recentControls.searchText(),
+  readonly showDateGroups = computed(
+    () =>
+      this.recentControls.sortField() === 'created' &&
+      this.recentControls.sortDirection() === 'desc' &&
+      !this.recentControls.searchText(),
   );
 
   readonly dateGroups = computed(() => groupRecentSongsByDate(this.recentControls.filtered()));
@@ -262,14 +290,14 @@ export class DownloadsComponent implements OnInit, OnDestroy {
 
     if (isShift && lastId && lastId !== id) {
       const visible = this.recentControls.filtered();
-      const lastIndex = visible.findIndex(s => s.id === lastId);
-      const currIndex = visible.findIndex(s => s.id === id);
+      const lastIndex = visible.findIndex((s) => s.id === lastId);
+      const currIndex = visible.findIndex((s) => s.id === id);
 
       if (lastIndex !== -1 && currIndex !== -1) {
         const [start, end] = [Math.min(lastIndex, currIndex), Math.max(lastIndex, currIndex)];
-        const rangeIds = visible.slice(start, end + 1).map(s => s.id);
+        const rangeIds = visible.slice(start, end + 1).map((s) => s.id);
 
-        this.selected.update(prev => {
+        this.selected.update((prev) => {
           const next = new Set(prev);
           const shouldSelect = !prev.has(id);
           for (const rid of rangeIds) {
@@ -283,7 +311,7 @@ export class DownloadsComponent implements OnInit, OnDestroy {
       }
     }
 
-    this.selected.update(prev => {
+    this.selected.update((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -297,7 +325,7 @@ export class DownloadsComponent implements OnInit, OnDestroy {
     if (this.selected().size === visible.length) {
       this.selected.set(new Set());
     } else {
-      this.selected.set(new Set(visible.map(s => s.id)));
+      this.selected.set(new Set(visible.map((s) => s.id)));
     }
   }
 
@@ -314,43 +342,52 @@ export class DownloadsComponent implements OnInit, OnDestroy {
   }
 
   handlePlayAll(): void {
-    const songs = this.selected().size > 0
-      ? this.recentSongs().filter(s => this.selected().has(s.id))
-      : this.recentSongs();
+    const songs =
+      this.selected().size > 0
+        ? this.recentSongs().filter((s) => this.selected().has(s.id))
+        : this.recentSongs();
     if (!songs.length) return;
-    const tracks = shuffleArray(songs.map((s): Track => ({
-      id: s.id,
-      title: s.title,
-      artist: s.artist,
-      album: s.album,
-      coverArt: s.coverArt,
-      duration: s.duration,
-    })));
+    const tracks = shuffleArray(
+      songs.map(
+        (s): Track => ({
+          id: s.id,
+          title: s.title,
+          artist: s.artist,
+          album: s.album,
+          coverArt: s.coverArt,
+          duration: s.duration,
+        }),
+      ),
+    );
     this.player.playWithContext(tracks, 0, { type: 'adhoc' });
   }
 
   handleOfflinePlay(index: number): void {
-    const tracks = this.offlineControls.filtered().map((t): Track => ({
-      id: t.id,
-      title: t.title,
-      artist: t.artist,
-      album: t.album,
-      coverArt: t.coverArt,
-      duration: t.duration,
-    }));
-    this.player.playWithContext(tracks, index, { type: 'saved-offline', name: 'Saved Offline' });
-  }
-
-  handleOfflinePlayAll(): void {
-    const tracks = shuffleArray(
-      this.offlineControls.filtered().map((t): Track => ({
+    const tracks = this.offlineControls.filtered().map(
+      (t): Track => ({
         id: t.id,
         title: t.title,
         artist: t.artist,
         album: t.album,
         coverArt: t.coverArt,
         duration: t.duration,
-      }))
+      }),
+    );
+    this.player.playWithContext(tracks, index, { type: 'saved-offline', name: 'Saved Offline' });
+  }
+
+  handleOfflinePlayAll(): void {
+    const tracks = shuffleArray(
+      this.offlineControls.filtered().map(
+        (t): Track => ({
+          id: t.id,
+          title: t.title,
+          artist: t.artist,
+          album: t.album,
+          coverArt: t.coverArt,
+          duration: t.duration,
+        }),
+      ),
     );
     if (!tracks.length) return;
     this.player.playWithContext(tracks, 0, { type: 'saved-offline', name: 'Saved Offline' });
@@ -358,31 +395,33 @@ export class DownloadsComponent implements OnInit, OnDestroy {
 
   async handleDelete(songIds: string[]): Promise<void> {
     this.deleteError.set(null);
-    this.deleting.update(prev => {
+    this.deleting.update((prev) => {
       const next = new Set(prev);
-      songIds.forEach(id => next.add(id));
+      songIds.forEach((id) => next.add(id));
       return next;
     });
 
     try {
       const result = await firstValueFrom(this.api.deleteSongs(songIds));
-      this.recentSongs.update(prev => prev.filter(s => !songIds.includes(s.id)));
-      this.selected.update(prev => {
+      this.recentSongs.update((prev) => prev.filter((s) => !songIds.includes(s.id)));
+      this.selected.update((prev) => {
         const next = new Set(prev);
-        songIds.forEach(id => next.delete(id));
+        songIds.forEach((id) => next.delete(id));
         return next;
       });
       if (result.deletedCount < songIds.length) {
         const failedCount = songIds.length - result.deletedCount;
-        this.deleteError.set(`Deleted ${result.deletedCount} of ${songIds.length} songs. ${failedCount} could not be removed.`);
+        this.deleteError.set(
+          `Deleted ${result.deletedCount} of ${songIds.length} songs. ${failedCount} could not be removed.`,
+        );
       }
     } catch {
       this.deleteError.set('Failed to delete songs. Please try again.');
     }
 
-    this.deleting.update(prev => {
+    this.deleting.update((prev) => {
       const next = new Set(prev);
-      songIds.forEach(id => next.delete(id));
+      songIds.forEach((id) => next.delete(id));
       return next;
     });
   }
@@ -392,14 +431,15 @@ export class DownloadsComponent implements OnInit, OnDestroy {
   async retryGroup(group: AlbumGroup): Promise<void> {
     const ids = group.erroredFileIds;
     if (!ids.length) return;
-    this.retrying.update(prev => new Set(prev).add(group.key));
+    this.retrying.update((prev) => new Set(prev).add(group.key));
     try {
       await firstValueFrom(
-        this.api.retryDownloads(ids.map(id => ({ username: group.username, id }))),
+        this.api.retryDownloads(ids.map((id) => ({ username: group.username, id }))),
       );
-    } catch { /* ignore */ }
-    finally {
-      this.retrying.update(prev => {
+    } catch {
+      /* ignore */
+    } finally {
+      this.retrying.update((prev) => {
         const next = new Set(prev);
         next.delete(group.key);
         return next;
@@ -410,7 +450,7 @@ export class DownloadsComponent implements OnInit, OnDestroy {
 
   async clearGroup(group: AlbumGroup): Promise<void> {
     await Promise.all(
-      group.fileIds.map(id =>
+      group.fileIds.map((id) =>
         firstValueFrom(this.api.cancelDownload(group.username, id)).catch(() => {}),
       ),
     );
@@ -418,17 +458,25 @@ export class DownloadsComponent implements OnInit, OnDestroy {
   }
 
   async clearAllFinished(): Promise<void> {
-    try { await firstValueFrom(this.api.cancelAllFinished()); } catch { /* ignore */ }
+    try {
+      await firstValueFrom(this.api.cancelAllFinished());
+    } catch {
+      /* ignore */
+    }
     // Also clear all done/failed acquire jobs
     const toClear = [...this.failedAcquireJobs(), ...this.doneAcquireJobs()];
     await Promise.all(
-      toClear.map(j => firstValueFrom(this.api.deleteAcquireJob(j.id)).catch(() => {})),
+      toClear.map((j) => firstValueFrom(this.api.deleteAcquireJob(j.id)).catch(() => {})),
     );
     this.transferService.kickPoll();
   }
 
   async cancelAll(): Promise<void> {
-    try { await firstValueFrom(this.api.cancelAllDownloads()); } catch { /* ignore */ }
+    try {
+      await firstValueFrom(this.api.cancelAllDownloads());
+    } catch {
+      /* ignore */
+    }
     this.transferService.kickPoll();
   }
 
@@ -438,8 +486,11 @@ export class DownloadsComponent implements OnInit, OnDestroy {
     try {
       await firstValueFrom(this.api.triggerScan());
       this.pollRecentSongs();
-    } catch { /* ignore */ }
-    finally { this.scanning.set(false); }
+    } catch {
+      /* ignore */
+    } finally {
+      this.scanning.set(false);
+    }
   }
 
   private pollRecentSongs(delays = [5000, 10000, 20000]): void {
@@ -451,17 +502,14 @@ export class DownloadsComponent implements OnInit, OnDestroy {
   }
 
   removeGroup(group: AlbumGroup): void {
-    this.askConfirm(
-      `Remove "${group.name}" and all its ${group.totalFiles} file(s)?`,
-      async () => {
-        await Promise.all(
-          group.fileIds.map((id) =>
-            firstValueFrom(this.api.cancelDownload(group.username, id)).catch(() => {}),
-          ),
-        );
-        this.transferService.kickPoll();
-      },
-    );
+    this.askConfirm(`Remove "${group.name}" and all its ${group.totalFiles} file(s)?`, async () => {
+      await Promise.all(
+        group.fileIds.map((id) =>
+          firstValueFrom(this.api.cancelDownload(group.username, id)).catch(() => {}),
+        ),
+      );
+      this.transferService.kickPoll();
+    });
   }
 
   // ─── Acquire job actions ─────────────────────────────────────────
@@ -469,17 +517,20 @@ export class DownloadsComponent implements OnInit, OnDestroy {
   async dismissAcquireJob(job: AcquireJob): Promise<void> {
     try {
       await firstValueFrom(this.api.deleteAcquireJob(job.id));
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     this.transferService.kickPoll();
   }
 
   async retryAcquireJob(job: AcquireJob): Promise<void> {
-    this.retrying.update(prev => new Set(prev).add(job.id));
+    this.retrying.update((prev) => new Set(prev).add(job.id));
     try {
       await firstValueFrom(this.api.retryAcquireJob(job.id));
-    } catch { /* ignore */ }
-    finally {
-      this.retrying.update(prev => {
+    } catch {
+      /* ignore */
+    } finally {
+      this.retrying.update((prev) => {
         const next = new Set(prev);
         next.delete(job.id);
         return next;
@@ -493,16 +544,18 @@ export class DownloadsComponent implements OnInit, OnDestroy {
       {
         label: 'Remove',
         destructive: true,
-        action: () => this.askConfirm(`Remove "${song.title}" from library?`, () => this.handleDelete([song.id])),
+        action: () =>
+          this.askConfirm(`Remove "${song.title}" from library?`, () =>
+            this.handleDelete([song.id]),
+          ),
       },
     ];
   }
 
   confirmDeleteSelected(): void {
     const count = this.selected().size;
-    this.askConfirm(
-      `Delete ${count} song${count !== 1 ? 's' : ''} from library?`,
-      () => this.handleDelete(this.selectedArray()),
+    this.askConfirm(`Delete ${count} song${count !== 1 ? 's' : ''} from library?`, () =>
+      this.handleDelete(this.selectedArray()),
     );
   }
 
@@ -518,9 +571,9 @@ export class DownloadsComponent implements OnInit, OnDestroy {
   }
 
   selectAllOffline(): void {
-    const all = this.offlineControls.filtered().map(t => t.id);
+    const all = this.offlineControls.filtered().map((t) => t.id);
     const selected = this.offlineSelected();
-    if (all.every(id => selected.has(id))) {
+    if (all.every((id) => selected.has(id))) {
       this.offlineSelected.set(new Set());
     } else {
       this.offlineSelected.set(new Set(all));
@@ -528,9 +581,10 @@ export class DownloadsComponent implements OnInit, OnDestroy {
   }
 
   toggleOfflineSelect(id: string): void {
-    this.offlineSelected.update(s => {
+    this.offlineSelected.update((s) => {
       const n = new Set(s);
-      if (n.has(id)) n.delete(id); else n.add(id);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
       return n;
     });
   }
@@ -542,11 +596,12 @@ export class DownloadsComponent implements OnInit, OnDestroy {
         await this.preserve.remove(id);
         removed.push(id);
       }
-    } catch { /* ignore individual failure */ }
-    finally {
-      this.offlineSelected.update(s => {
+    } catch {
+      /* ignore individual failure */
+    } finally {
+      this.offlineSelected.update((s) => {
         const n = new Set(s);
-        removed.forEach(id => n.delete(id));
+        removed.forEach((id) => n.delete(id));
         return n;
       });
     }
@@ -568,6 +623,8 @@ export class DownloadsComponent implements OnInit, OnDestroy {
     try {
       const data = await firstValueFrom(this.api.getRecentSongs(50));
       this.recentSongs.set(data);
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
 }

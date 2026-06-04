@@ -16,7 +16,7 @@ export class PreserveService {
 
   async init(): Promise<void> {
     const all = await db.getAll();
-    const ids = new Set(all.map(t => t.id));
+    const ids = new Set(all.map((t) => t.id));
     const usage = all.reduce((sum, t) => sum + t.size, 0);
     this.preservedIds.set(ids);
     this.totalUsage.set(usage);
@@ -27,7 +27,7 @@ export class PreserveService {
     const token = this.auth.token();
     if (!token || this.preserving().has(track.id) || this.preservedIds().has(track.id)) return;
 
-    this.preserving.update(s => new Set(s).add(track.id));
+    this.preserving.update((s) => new Set(s).add(track.id));
 
     try {
       const audioRes = await fetch(`/api/stream/${track.id}?token=${token}`);
@@ -40,7 +40,9 @@ export class PreserveService {
         try {
           const coverRes = await fetch(`/api/cover/${track.coverArt}?size=600&token=${token}`);
           if (coverRes.ok) coverBlob = await coverRes.blob();
-        } catch { /* ignore cover failures */ }
+        } catch {
+          /* ignore cover failures */
+        }
       }
 
       await db.evictLRU(audioBlob.size, this.budget());
@@ -62,17 +64,29 @@ export class PreserveService {
 
       await db.preserve(meta, audioBlob, coverBlob);
 
-      this.preservedIds.update(s => new Set(s).add(track.id));
-      this.preserving.update(s => { const n = new Set(s); n.delete(track.id); return n; });
+      this.preservedIds.update((s) => new Set(s).add(track.id));
+      this.preserving.update((s) => {
+        const n = new Set(s);
+        n.delete(track.id);
+        return n;
+      });
       await this.refreshList();
     } catch {
-      this.preserving.update(s => { const n = new Set(s); n.delete(track.id); return n; });
+      this.preserving.update((s) => {
+        const n = new Set(s);
+        n.delete(track.id);
+        return n;
+      });
     }
   }
 
   async remove(id: string): Promise<void> {
     await db.remove(id);
-    this.preservedIds.update(s => { const n = new Set(s); n.delete(id); return n; });
+    this.preservedIds.update((s) => {
+      const n = new Set(s);
+      n.delete(id);
+      return n;
+    });
     await this.refreshList();
   }
 
@@ -100,7 +114,7 @@ export class PreserveService {
 
   async refreshList(): Promise<void> {
     const all = await db.getAll();
-    const ids = new Set(all.map(t => t.id));
+    const ids = new Set(all.map((t) => t.id));
     const usage = all.reduce((sum, t) => sum + t.size, 0);
     this.preservedIds.set(ids);
     this.totalUsage.set(usage);

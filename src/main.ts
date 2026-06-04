@@ -97,7 +97,10 @@ async function main() {
         log.info({ path: config.musicDir }, 'Registered music dir as Lidarr root folder');
       }
     } catch (err) {
-      log.warn({ err }, 'Lidarr root folder provisioning failed — discography may not work until Lidarr is reachable');
+      log.warn(
+        { err },
+        'Lidarr root folder provisioning failed — discography may not work until Lidarr is reachable',
+      );
     }
   }
 
@@ -117,7 +120,9 @@ async function main() {
       saveSecrets(config.dataDir, currentSecrets);
     },
     stagingDir: join(
-      config.dataDir.startsWith('~') ? join(process.env.HOME ?? '/root', config.dataDir.slice(1)) : config.dataDir,
+      config.dataDir.startsWith('~')
+        ? join(process.env.HOME ?? '/root', config.dataDir.slice(1))
+        : config.dataDir,
       'slskd',
       'downloads',
     ),
@@ -256,11 +261,17 @@ function loadConfig() {
       ...(secrets.soulseekUsername ? { username: secrets.soulseekUsername } : {}),
       ...(secrets.soulseekPassword ? { password: secrets.soulseekPassword } : {}),
       ...(secrets.soulseekListeningPort ? { listeningPort: secrets.soulseekListeningPort } : {}),
-      ...(secrets.soulseekEnableUPnP !== undefined ? { enableUPnP: secrets.soulseekEnableUPnP } : {}),
+      ...(secrets.soulseekEnableUPnP !== undefined
+        ? { enableUPnP: secrets.soulseekEnableUPnP }
+        : {}),
       ...(process.env.SOULSEEK_USERNAME ? { username: process.env.SOULSEEK_USERNAME } : {}),
       ...(process.env.SOULSEEK_PASSWORD ? { password: process.env.SOULSEEK_PASSWORD } : {}),
-      ...(process.env.SOULSEEK_LISTENING_PORT ? { listeningPort: Number(process.env.SOULSEEK_LISTENING_PORT) } : {}),
-      ...(process.env.SOULSEEK_ENABLE_UPNP ? { enableUPnP: parseBooleanEnv(process.env.SOULSEEK_ENABLE_UPNP) } : {}),
+      ...(process.env.SOULSEEK_LISTENING_PORT
+        ? { listeningPort: Number(process.env.SOULSEEK_LISTENING_PORT) }
+        : {}),
+      ...(process.env.SOULSEEK_ENABLE_UPNP
+        ? { enableUPnP: parseBooleanEnv(process.env.SOULSEEK_ENABLE_UPNP) }
+        : {}),
     },
     slskd: {
       url: 'http://localhost:5030',

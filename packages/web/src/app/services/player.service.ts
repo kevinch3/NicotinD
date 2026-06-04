@@ -88,7 +88,9 @@ export class PlayerService {
       };
       try {
         localStorage.setItem(PlayerService.STORAGE_KEY, JSON.stringify(snapshot));
-      } catch { /* quota exceeded */ }
+      } catch {
+        /* quota exceeded */
+      }
     });
 
     // Radio: when the queue drains to RADIO_MIN_QUEUE (and we're not repeating),
@@ -119,13 +121,19 @@ export class PlayerService {
           wasPlaying: this.isPlaying(),
         };
         localStorage.setItem(PlayerService.STORAGE_KEY, JSON.stringify(snapshot));
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     };
     window.addEventListener('pagehide', capturePosition, { passive: true });
     window.addEventListener('freeze', capturePosition, { passive: true });
-    window.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'hidden') capturePosition();
-    }, { passive: true });
+    window.addEventListener(
+      'visibilitychange',
+      () => {
+        if (document.visibilityState === 'hidden') capturePosition();
+      },
+      { passive: true },
+    );
   }
 
   restoreState(): void {
@@ -179,9 +187,7 @@ export class PlayerService {
       return;
     }
 
-    const newHistory = currentTrack
-      ? [...this.history(), currentTrack]
-      : this.history();
+    const newHistory = currentTrack ? [...this.history(), currentTrack] : this.history();
     const queue = this.queue();
     const context = this.context();
     const shuffle = this.shuffle();
@@ -194,9 +200,7 @@ export class PlayerService {
       this.history.set(newHistory);
     } else if (repeat === 'all' && context) {
       // Reload from context
-      const reloaded = shuffle
-        ? shuffleArray(context.originalOrder)
-        : [...context.originalOrder];
+      const reloaded = shuffle ? shuffleArray(context.originalOrder) : [...context.originalOrder];
       const [first, ...rest] = reloaded;
       this.currentTrack.set(first);
       this.isPlaying.set(true);
@@ -245,9 +249,7 @@ export class PlayerService {
 
     if (!shuffle) {
       // Turning ON: save original order, then shuffle queue
-      const allTracks = currentTrack
-        ? [currentTrack, ...queue]
-        : [...queue];
+      const allTracks = currentTrack ? [currentTrack, ...queue] : [...queue];
       const ctx = context ?? {
         type: 'adhoc' as const,
         originalOrder: allTracks,
@@ -267,8 +269,7 @@ export class PlayerService {
         const currentId = currentTrack?.id;
         const original = context.originalOrder;
         const currentIdx = original.findIndex((t) => t.id === currentId);
-        const restored =
-          currentIdx >= 0 ? original.slice(currentIdx + 1) : [...original];
+        const restored = currentIdx >= 0 ? original.slice(currentIdx + 1) : [...original];
         this.shuffle.set(false);
         this.queue.set(restored);
       } else {
@@ -279,8 +280,7 @@ export class PlayerService {
 
   cycleRepeat(): void {
     const current = this.repeat();
-    const next =
-      current === 'off' ? 'all' : current === 'all' ? 'one' : 'off';
+    const next = current === 'off' ? 'all' : current === 'all' ? 'one' : 'off';
     this.repeat.set(next);
   }
 
@@ -311,7 +311,9 @@ export class PlayerService {
       const seen = new Set<string>([
         this.currentTrack()?.id ?? '',
         ...this.queue().map((t) => t.id),
-        ...this.history().slice(-20).map((t) => t.id),
+        ...this.history()
+          .slice(-20)
+          .map((t) => t.id),
       ]);
       const fresh = more.filter((t) => t.id && !seen.has(t.id));
       if (fresh.length) this.queue.update((q) => [...q, ...fresh]);
@@ -333,13 +335,8 @@ export class PlayerService {
   ): void {
     const shuffle = this.shuffle();
     const current = tracks[startIndex];
-    const remaining = [
-      ...tracks.slice(0, startIndex),
-      ...tracks.slice(startIndex + 1),
-    ];
-    const queue = shuffle
-      ? shuffleArray(remaining)
-      : tracks.slice(startIndex + 1);
+    const remaining = [...tracks.slice(0, startIndex), ...tracks.slice(startIndex + 1)];
+    const queue = shuffle ? shuffleArray(remaining) : tracks.slice(startIndex + 1);
 
     this.currentTrack.set(current);
     this.isPlaying.set(true);

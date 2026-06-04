@@ -36,7 +36,7 @@ export class ListControlsService {
   }
 
   private updatePage(pageKey: string, patch: Partial<PageState>): void {
-    this.pages.update(pages => ({
+    this.pages.update((pages) => ({
       ...pages,
       [pageKey]: { ...(pages[pageKey] ?? DEFAULT_STATE), ...patch },
     }));
@@ -73,8 +73,8 @@ export class ListControlsService {
 
       const query = searchText().toLowerCase().trim();
       if (query) {
-        result = result.filter(item =>
-          searchFields.some(field => {
+        result = result.filter((item) =>
+          searchFields.some((field) => {
             const value = item[field];
             if (value == null) return false;
             return String(value).toLowerCase().includes(query);

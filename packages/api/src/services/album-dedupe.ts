@@ -70,7 +70,10 @@ export interface DedupeFolderResult {
  */
 export function dedupeFolder(
   dir: string,
-  opts: { apply?: boolean; onDelete?: (filePath: string, file: DupFile, keeper: DupFile) => void } = {},
+  opts: {
+    apply?: boolean;
+    onDelete?: (filePath: string, file: DupFile, keeper: DupFile) => void;
+  } = {},
 ): DedupeFolderResult {
   const apply = opts.apply ?? false;
   const result: DedupeFolderResult = { deleted: [], bytesFreed: 0 };

@@ -94,9 +94,8 @@ export async function remove(id: string): Promise<void> {
 
 export async function get(id: string): Promise<PreservedTrackMeta | undefined> {
   const db = await open();
-  const result = await tx<PreservedTrackMeta | undefined>(
-    db, TRACKS_STORE, 'readonly',
-    (t) => t.objectStore(TRACKS_STORE).get(id),
+  const result = await tx<PreservedTrackMeta | undefined>(db, TRACKS_STORE, 'readonly', (t) =>
+    t.objectStore(TRACKS_STORE).get(id),
   );
   db.close();
   return result;
@@ -104,9 +103,8 @@ export async function get(id: string): Promise<PreservedTrackMeta | undefined> {
 
 export async function getBlob(id: string): Promise<PreservedBlob | undefined> {
   const db = await open();
-  const result = await tx<PreservedBlob | undefined>(
-    db, BLOBS_STORE, 'readonly',
-    (t) => t.objectStore(BLOBS_STORE).get(id),
+  const result = await tx<PreservedBlob | undefined>(db, BLOBS_STORE, 'readonly', (t) =>
+    t.objectStore(BLOBS_STORE).get(id),
   );
   db.close();
   return result;
@@ -114,9 +112,8 @@ export async function getBlob(id: string): Promise<PreservedBlob | undefined> {
 
 export async function getAll(): Promise<PreservedTrackMeta[]> {
   const db = await open();
-  const result = await tx<PreservedTrackMeta[]>(
-    db, TRACKS_STORE, 'readonly',
-    (t) => t.objectStore(TRACKS_STORE).getAll(),
+  const result = await tx<PreservedTrackMeta[]>(db, TRACKS_STORE, 'readonly', (t) =>
+    t.objectStore(TRACKS_STORE).getAll(),
   );
   db.close();
   return result;
@@ -124,9 +121,8 @@ export async function getAll(): Promise<PreservedTrackMeta[]> {
 
 export async function updateLastAccessed(id: string): Promise<void> {
   const db = await open();
-  const meta = await tx<PreservedTrackMeta | undefined>(
-    db, TRACKS_STORE, 'readonly',
-    (t) => t.objectStore(TRACKS_STORE).get(id),
+  const meta = await tx<PreservedTrackMeta | undefined>(db, TRACKS_STORE, 'readonly', (t) =>
+    t.objectStore(TRACKS_STORE).get(id),
   );
   if (meta) {
     meta.lastAccessedAt = Date.now();

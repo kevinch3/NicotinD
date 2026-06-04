@@ -7,7 +7,15 @@ const log = createLogger('audio-tags');
 
 export const ID3_EXTS = new Set(['.mp3']);
 export const VORBIS_EXTS = new Set(['.flac', '.ogg', '.opus']);
-export const AUDIO_EXTS = new Set([...ID3_EXTS, ...VORBIS_EXTS, '.m4a', '.wav', '.aac', '.aiff', '.alac']);
+export const AUDIO_EXTS = new Set([
+  ...ID3_EXTS,
+  ...VORBIS_EXTS,
+  '.m4a',
+  '.wav',
+  '.aac',
+  '.aiff',
+  '.alac',
+]);
 
 export interface AudioTags {
   artist?: string;
@@ -31,7 +39,10 @@ type NodeId3Api = {
   update: (tags: Record<string, unknown>, filepath: string) => boolean;
 };
 type MusicMetadataApi = {
-  parseFile: (path: string, opts?: { duration?: boolean }) => Promise<{
+  parseFile: (
+    path: string,
+    opts?: { duration?: boolean },
+  ) => Promise<{
     common: {
       artist?: string;
       albumartist?: string;
@@ -174,7 +185,8 @@ async function writeId3Tags(filepath: string, tags: AudioTags): Promise<boolean>
 
   const userText: NodeId3UserText[] = [];
   if (tags.acoustIdId) userText.push({ description: TXXX_ACOUSTID, value: tags.acoustIdId });
-  if (tags.mbRecordingId) userText.push({ description: TXXX_MB_RECORDING, value: tags.mbRecordingId });
+  if (tags.mbRecordingId)
+    userText.push({ description: TXXX_MB_RECORDING, value: tags.mbRecordingId });
   if (tags.mbReleaseId) userText.push({ description: TXXX_MB_RELEASE, value: tags.mbReleaseId });
   if (userText.length > 0) update.userDefinedText = userText;
 
@@ -206,15 +218,32 @@ function writeFfmpegTags(filepath: string, tags: AudioTags): Promise<boolean> {
   return new Promise<boolean>((resolve) => {
     const proc = spawn('ffmpeg', args, { stdio: 'ignore' });
     proc.on('error', () => {
-      try { unlinkSync(tmpPath); } catch { /* ignore */ }
+      try {
+        unlinkSync(tmpPath);
+      } catch {
+        /* ignore */
+      }
       resolve(false);
     });
     proc.on('close', (code) => {
       if (code === 0) {
-        try { renameSync(tmpPath, filepath); resolve(true); }
-        catch { try { unlinkSync(tmpPath); } catch { /* ignore */ } resolve(false); }
+        try {
+          renameSync(tmpPath, filepath);
+          resolve(true);
+        } catch {
+          try {
+            unlinkSync(tmpPath);
+          } catch {
+            /* ignore */
+          }
+          resolve(false);
+        }
       } else {
-        try { unlinkSync(tmpPath); } catch { /* ignore */ }
+        try {
+          unlinkSync(tmpPath);
+        } catch {
+          /* ignore */
+        }
         resolve(false);
       }
     });
@@ -223,8 +252,20 @@ function writeFfmpegTags(filepath: string, tags: AudioTags): Promise<boolean> {
 
 export function isUnknownLike(value: string | undefined): boolean {
   if (!value) return true;
-  const n = value.toLowerCase().replace(/[\[\](){}]/g, '').replace(/\s+/g, ' ').trim();
-  return n === '' || n === 'unknown' || n === 'unknown artist' || n === 'unknown album' || n === 'unknown title' || n === 'various' || n === 'various artists';
+  const n = value
+    .toLowerCase()
+    .replace(/[\[\](){}]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return (
+    n === '' ||
+    n === 'unknown' ||
+    n === 'unknown artist' ||
+    n === 'unknown album' ||
+    n === 'unknown title' ||
+    n === 'various' ||
+    n === 'various artists'
+  );
 }
 
 export function normalizeTagValue(value: string | undefined): string | undefined {
@@ -232,6 +273,12 @@ export function normalizeTagValue(value: string | undefined): string | undefined
   const trimmed = value.trim();
   if (trimmed === '') return undefined;
   const lower = trimmed.toLowerCase();
-  if (lower === 'unknown' || lower === 'unknown artist' || lower === 'unknown album' || lower === 'unknown title') return undefined;
+  if (
+    lower === 'unknown' ||
+    lower === 'unknown artist' ||
+    lower === 'unknown album' ||
+    lower === 'unknown title'
+  )
+    return undefined;
   return trimmed;
 }

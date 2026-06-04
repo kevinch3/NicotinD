@@ -51,7 +51,9 @@ describe('normalizeForGrouping', () => {
   });
 
   it('does NOT fold genuinely distinct titles or real numbers', () => {
-    expect(normalizeForGrouping('Greatest Hits')).not.toBe(normalizeForGrouping('Greatest Hits II'));
+    expect(normalizeForGrouping('Greatest Hits')).not.toBe(
+      normalizeForGrouping('Greatest Hits II'),
+    );
     // No edition keyword → trailing number is part of the title, kept.
     expect(normalizeForGrouping('Version 2.0')).toBe('version 2 0');
   });

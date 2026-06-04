@@ -32,10 +32,19 @@ const ONLINE_ONLY_ROUTES = new Set(['/', '/library']);
 
 @Component({
   selector: 'app-layout',
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, DownloadIndicatorComponent, PlayerComponent, NowPlayingComponent, UpdateBannerComponent, BottomNavComponent, AddToPlaylistComponent],
+  imports: [
+    RouterOutlet,
+    RouterLink,
+    RouterLinkActive,
+    DownloadIndicatorComponent,
+    PlayerComponent,
+    NowPlayingComponent,
+    UpdateBannerComponent,
+    BottomNavComponent,
+    AddToPlaylistComponent,
+  ],
   templateUrl: './layout.component.html',
 })
-
 export class LayoutComponent implements OnInit, OnDestroy {
   readonly auth = inject(AuthService);
   readonly player = inject(PlayerService);
@@ -46,9 +55,7 @@ export class LayoutComponent implements OnInit, OnDestroy {
   private api = inject(ApiService);
 
   readonly navItems = computed<NavItem[]>(() =>
-    this.auth.role() === 'admin'
-      ? [...BASE_NAV, { to: '/admin', label: 'Admin' }]
-      : BASE_NAV,
+    this.auth.role() === 'admin' ? [...BASE_NAV, { to: '/admin', label: 'Admin' }] : BASE_NAV,
   );
 
   isNavDisabled(route: string): boolean {

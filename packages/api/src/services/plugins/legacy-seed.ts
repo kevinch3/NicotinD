@@ -33,8 +33,7 @@ export function seedLegacyAcquisitionPlugins(
     .get(MARKER_KEY);
   if (already) return;
 
-  const userCount =
-    db.query<{ c: number }, []>('SELECT COUNT(*) AS c FROM users').get()?.c ?? 0;
+  const userCount = db.query<{ c: number }, []>('SELECT COUNT(*) AS c FROM users').get()?.c ?? 0;
   const existingInstall = userCount > 0;
 
   if (existingInstall) {

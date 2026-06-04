@@ -9,7 +9,10 @@ import { PlaylistService } from '../../services/playlist.service';
 import { TransferService } from '../../services/transfer.service';
 import { ListControlsService, type SortOption } from '../../services/list-controls.service';
 import { ListToolbarComponent } from '../../components/list-toolbar/list-toolbar.component';
-import { TrackRowComponent, type TrackAction } from '../../components/track-row/track-row.component';
+import {
+  TrackRowComponent,
+  type TrackAction,
+} from '../../components/track-row/track-row.component';
 import { ConfirmDialogComponent } from '../../components/confirm-dialog/confirm-dialog.component';
 import { CoverArtComponent } from '../../components/cover-art/cover-art.component';
 import { toTrack } from '../../lib/track-utils';
@@ -18,7 +21,13 @@ import { NavigationService } from '../../services/navigation.service';
 
 @Component({
   selector: 'app-album-detail',
-  imports: [ListToolbarComponent, TrackRowComponent, ConfirmDialogComponent, RouterLink, CoverArtComponent],
+  imports: [
+    ListToolbarComponent,
+    TrackRowComponent,
+    ConfirmDialogComponent,
+    RouterLink,
+    CoverArtComponent,
+  ],
   templateUrl: './album-detail.component.html',
 })
 export class AlbumDetailComponent implements OnInit {
@@ -48,7 +57,7 @@ export class AlbumDetailComponent implements OnInit {
 
   readonly detailSongs = computed(() => {
     const deleted = this.transferService.deletedSongIds();
-    return (this.selectedAlbum()?.song ?? []).filter(s => !deleted.has(s.id));
+    return (this.selectedAlbum()?.song ?? []).filter((s) => !deleted.has(s.id));
   });
 
   readonly detailSortOptions: SortOption[] = [
@@ -78,7 +87,9 @@ export class AlbumDetailComponent implements OnInit {
   onConfirm(): void {
     const cb = this.confirmCallback();
     this.confirmCallback.set(null);
-    Promise.resolve(cb?.()).catch(() => { /* ignore */ });
+    Promise.resolve(cb?.()).catch(() => {
+      /* ignore */
+    });
   }
 
   onCancelConfirm(): void {
@@ -92,8 +103,9 @@ export class AlbumDetailComponent implements OnInit {
       try {
         const detail = await firstValueFrom(this.api.getAlbum(albumId));
         this.selectedAlbum.set(detail);
-      } catch { /* ignore */ }
-      finally {
+      } catch {
+        /* ignore */
+      } finally {
         this.loadingAlbum.set(false);
       }
     } else {
@@ -102,21 +114,41 @@ export class AlbumDetailComponent implements OnInit {
   }
 
   // ─── Albums methods ───────────────────────────────────────────────
-  playSong(song: { id: string; title: string; artist: string; duration?: number; track?: number; coverArt?: string }): void {
+  playSong(song: {
+    id: string;
+    title: string;
+    artist: string;
+    duration?: number;
+    track?: number;
+    coverArt?: string;
+  }): void {
     this.player.play(toTrack(song, this.selectedAlbum()?.name));
   }
 
   playAlbum(): void {
     const album = this.selectedAlbum();
     if (!album?.song?.length) return;
-    const tracks = album.song.map((s): Track => ({
-      id: s.id, title: s.title, artist: s.artist,
-      album: album.name, coverArt: s.coverArt, duration: s.duration,
-    }));
+    const tracks = album.song.map(
+      (s): Track => ({
+        id: s.id,
+        title: s.title,
+        artist: s.artist,
+        album: album.name,
+        coverArt: s.coverArt,
+        duration: s.duration,
+      }),
+    );
     this.player.playWithContext(tracks, 0, { type: 'album', id: album.id, name: album.name });
   }
 
-  toTrackFromSong(song: { id: string; title: string; artist: string; duration?: number; coverArt?: string; bitRate?: number }): Track {
+  toTrackFromSong(song: {
+    id: string;
+    title: string;
+    artist: string;
+    duration?: number;
+    coverArt?: string;
+    bitRate?: number;
+  }): Track {
     return toTrack(song, this.selectedAlbum()?.name);
   }
 
@@ -135,10 +167,12 @@ export class AlbumDetailComponent implements OnInit {
           // The backend always removes the album from the canonical library
           // tables; a non-zero failedCount means some files couldn't be deleted
           // from disk and may need manual cleanup.
-          const allIds = (album.song ?? []).map(s => s.id);
-          const failedSet = new Set(result.failed.map(f => f.id));
-          this.transferService.addDeletedIds(allIds.filter(id => !failedSet.has(id)));
-          this.deleteError.set(`Album removed, but ${result.failedCount} file(s) couldn't be deleted from disk and may need manual cleanup.`);
+          const allIds = (album.song ?? []).map((s) => s.id);
+          const failedSet = new Set(result.failed.map((f) => f.id));
+          this.transferService.addDeletedIds(allIds.filter((id) => !failedSet.has(id)));
+          this.deleteError.set(
+            `Album removed, but ${result.failedCount} file(s) couldn't be deleted from disk and may need manual cleanup.`,
+          );
         }
       } catch {
         this.deleting.set(false);
@@ -157,38 +191,51 @@ export class AlbumDetailComponent implements OnInit {
         label: 'Add to playlist',
         action: () => this.playlists.openPicker([song.id]),
       },
-      ...(song.artistId ? [{
-        label: 'Go to artist',
-        action: () => {
-          void this.router.navigate(resolveArtistRoute(song.artistId));
-        },
-      }] : []),
-      ...(this.auth.role() === 'admin' ? [{
-        label: 'Remove',
-        destructive: true,
-        action: () => this.askConfirm(`Remove "${song.title}" from library?`, async () => {
-          this.deleteError.set(null);
-          try {
-            await firstValueFrom(this.api.deleteSongs([song.id]));
-            this.transferService.addDeletedIds([song.id]);
-            this.selectedAlbum.update(a => a ? { ...a, song: a.song.filter(s => s.id !== song.id) } : null);
-          } catch {
-            this.deleteError.set(`Failed to remove "${song.title}".`);
-          }
-        }),
-      }] : []),
+      ...(song.artistId
+        ? [
+            {
+              label: 'Go to artist',
+              action: () => {
+                void this.router.navigate(resolveArtistRoute(song.artistId));
+              },
+            },
+          ]
+        : []),
+      ...(this.auth.role() === 'admin'
+        ? [
+            {
+              label: 'Remove',
+              destructive: true,
+              action: () =>
+                this.askConfirm(`Remove "${song.title}" from library?`, async () => {
+                  this.deleteError.set(null);
+                  try {
+                    await firstValueFrom(this.api.deleteSongs([song.id]));
+                    this.transferService.addDeletedIds([song.id]);
+                    this.selectedAlbum.update((a) =>
+                      a ? { ...a, song: a.song.filter((s) => s.id !== song.id) } : null,
+                    );
+                  } catch {
+                    this.deleteError.set(`Failed to remove "${song.title}".`);
+                  }
+                }),
+            },
+          ]
+        : []),
     ];
   }
 
   shareAlbum(): void {
     const album = this.selectedAlbum();
     if (!album) return;
-    this.http.post<{ url: string }>('/api/share', { resourceType: 'album', resourceId: album.id }).subscribe({
-      next: ({ url }) => {
-        navigator.clipboard.writeText(url).catch(() => {});
-        this.shareCopied.set(true);
-        setTimeout(() => this.shareCopied.set(false), 3000);
-      },
-    });
+    this.http
+      .post<{ url: string }>('/api/share', { resourceType: 'album', resourceId: album.id })
+      .subscribe({
+        next: ({ url }) => {
+          navigator.clipboard.writeText(url).catch(() => {});
+          this.shareCopied.set(true);
+          setTimeout(() => this.shareCopied.set(false), 3000);
+        },
+      });
   }
 }

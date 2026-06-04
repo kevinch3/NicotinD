@@ -22,8 +22,23 @@ export interface SearchResult {
   searchId: string;
   local: {
     artists: Array<{ id: string; name: string; albumCount?: number }>;
-    albums: Array<{ id: string; name: string; artist: string; coverArt?: string; songCount?: number; year?: number }>;
-    songs: Array<{ id: string; title: string; artist: string; album: string; duration?: number; coverArt?: string; track?: number }>;
+    albums: Array<{
+      id: string;
+      name: string;
+      artist: string;
+      coverArt?: string;
+      songCount?: number;
+      year?: number;
+    }>;
+    songs: Array<{
+      id: string;
+      title: string;
+      artist: string;
+      album: string;
+      duration?: number;
+      coverArt?: string;
+      track?: number;
+    }>;
   };
   network: null;
   networkAvailable?: boolean;
@@ -71,7 +86,16 @@ export interface AlbumDetail {
   artistId?: string;
   coverArt?: string;
   year?: number;
-  song: Array<{ id: string; title: string; artist: string; artistId?: string; albumId?: string; duration?: number; track?: number; coverArt?: string }>;
+  song: Array<{
+    id: string;
+    title: string;
+    artist: string;
+    artistId?: string;
+    albumId?: string;
+    duration?: number;
+    track?: number;
+    coverArt?: string;
+  }>;
 }
 
 export interface ProvenanceRecord {
@@ -198,11 +222,15 @@ export class ApiService {
   }
 
   startBrowse(username: string) {
-    return this.http.get<{ jobId: string; state: string }>(`/api/users/${encodeURIComponent(username)}/browse`);
+    return this.http.get<{ jobId: string; state: string }>(
+      `/api/users/${encodeURIComponent(username)}/browse`,
+    );
   }
 
   pollBrowse(username: string, jobId: string) {
-    return this.http.get<BrowseJobResult>(`/api/users/${encodeURIComponent(username)}/browse/${encodeURIComponent(jobId)}`);
+    return this.http.get<BrowseJobResult>(
+      `/api/users/${encodeURIComponent(username)}/browse/${encodeURIComponent(jobId)}`,
+    );
   }
 
   getDownloads() {
@@ -235,7 +263,12 @@ export class ApiService {
   }
 
   // Library
-  getAlbums(type = 'newest', size = 40, offset = 0, opts: { includeHidden?: boolean; classification?: string } = {}) {
+  getAlbums(
+    type = 'newest',
+    size = 40,
+    offset = 0,
+    opts: { includeHidden?: boolean; classification?: string } = {},
+  ) {
     const params: Record<string, string | number | boolean> = { type, size, offset };
     if (opts.includeHidden) params['includeHidden'] = true;
     if (opts.classification) params['classification'] = opts.classification;
@@ -248,8 +281,13 @@ export class ApiService {
   unhideAlbum(id: string) {
     return this.http.post<{ ok: boolean }>(`/api/library/albums/${id}/unhide`, {});
   }
-  reclassifyAlbum(id: string, classification: 'album' | 'ep' | 'single' | 'compilation' | 'unknown') {
-    return this.http.post<{ ok: boolean }>(`/api/library/albums/${id}/reclassify`, { classification });
+  reclassifyAlbum(
+    id: string,
+    classification: 'album' | 'ep' | 'single' | 'compilation' | 'unknown',
+  ) {
+    return this.http.post<{ ok: boolean }>(`/api/library/albums/${id}/reclassify`, {
+      classification,
+    });
   }
   clearAlbumOverride(id: string) {
     return this.http.post<{ ok: boolean }>(`/api/library/albums/${id}/clear-override`, {});
@@ -263,7 +301,9 @@ export class ApiService {
   }
 
   getArtists() {
-    return this.http.get<Array<{ id: string; name: string; albumCount?: number }>>('/api/library/artists');
+    return this.http.get<Array<{ id: string; name: string; albumCount?: number }>>(
+      '/api/library/artists',
+    );
   }
 
   getArtist(id: string) {
@@ -280,7 +320,9 @@ export class ApiService {
   }
 
   getGenres() {
-    return this.http.get<Array<{ value: string; songCount: number; albumCount: number }>>('/api/library/genres');
+    return this.http.get<Array<{ value: string; songCount: number; albumCount: number }>>(
+      '/api/library/genres',
+    );
   }
 
   getSongsByGenre(genre: string, count = 100) {
@@ -296,27 +338,51 @@ export class ApiService {
   }
 
   getSimilarSongs(id: string, size = 20) {
-    return this.http.get<Array<{
-      id: string; title: string; artist: string; album: string;
-      duration?: number; coverArt?: string; genre?: string; year?: number;
-    }>>(`/api/library/songs/${id}/similar`, { params: { size } });
+    return this.http.get<
+      Array<{
+        id: string;
+        title: string;
+        artist: string;
+        album: string;
+        duration?: number;
+        coverArt?: string;
+        genre?: string;
+        year?: number;
+      }>
+    >(`/api/library/songs/${id}/similar`, { params: { size } });
   }
 
   deleteSongs(ids: string[]) {
-    return this.http.post<{ ok: boolean; deletedCount: number }>('/api/library/songs/bulk-delete', { ids });
+    return this.http.post<{ ok: boolean; deletedCount: number }>('/api/library/songs/bulk-delete', {
+      ids,
+    });
   }
 
   deleteAlbum(id: string) {
-    return this.http.delete<{ ok: boolean; deletedCount: number; failedCount: number; failed: Array<{ id: string; error: string }> }>(
-      `/api/library/albums/${id}`,
-    );
+    return this.http.delete<{
+      ok: boolean;
+      deletedCount: number;
+      failedCount: number;
+      failed: Array<{ id: string; error: string }>;
+    }>(`/api/library/albums/${id}`);
   }
 
   getDuplicates() {
-    return this.http.get<Array<Array<{
-      id: string; title: string; artist: string; album: string;
-      duration?: number; bitRate?: number; suffix?: string; path: string; coverArt?: string;
-    }>>>('/api/library/duplicates');
+    return this.http.get<
+      Array<
+        Array<{
+          id: string;
+          title: string;
+          artist: string;
+          album: string;
+          duration?: number;
+          bitRate?: number;
+          suffix?: string;
+          path: string;
+          coverArt?: string;
+        }>
+      >
+    >('/api/library/duplicates');
   }
 
   // System
@@ -337,18 +403,27 @@ export class ApiService {
   }
 
   getServiceLogs(service: string, lines = 100) {
-    return this.http.get<{ logs: string[]; hint?: string }>(`/api/system/logs/${service}`, { params: { lines } });
+    return this.http.get<{ logs: string[]; hint?: string }>(`/api/system/logs/${service}`, {
+      params: { lines },
+    });
   }
 
   // Settings
   getSoulseekSettings() {
     return this.http.get<{
-      username: string; configured: boolean; connected: boolean;
-      listeningPort?: number; enableUPnP?: boolean;
+      username: string;
+      configured: boolean;
+      connected: boolean;
+      listeningPort?: number;
+      enableUPnP?: boolean;
     }>('/api/settings/soulseek');
   }
 
-  saveSoulseekSettings(username: string, password?: string, network?: { listeningPort: number; enableUPnP: boolean }) {
+  saveSoulseekSettings(
+    username: string,
+    password?: string,
+    network?: { listeningPort: number; enableUPnP: boolean },
+  ) {
     return this.http.put<{ ok: boolean; message: string; connected?: boolean; username?: string }>(
       '/api/settings/soulseek',
       { username, password, ...network },
@@ -356,7 +431,9 @@ export class ApiService {
   }
 
   getSoulseekStatus() {
-    return this.http.get<{ configured: boolean; connected: boolean; username: string | null }>('/api/settings/soulseek/status');
+    return this.http.get<{ configured: boolean; connected: boolean; username: string | null }>(
+      '/api/settings/soulseek/status',
+    );
   }
 
   toggleSoulseekConnection() {
@@ -468,8 +545,16 @@ export class ApiService {
   huntDownload(
     lidarrAlbumId: number,
     payload: {
-      selected: { username: string; directory: string; files: Array<{ filename: string; size: number }> };
-      alternates: Array<{ username: string; directory: string; files: Array<{ filename: string; size: number }> }>;
+      selected: {
+        username: string;
+        directory: string;
+        files: Array<{ filename: string; size: number }>;
+      };
+      alternates: Array<{
+        username: string;
+        directory: string;
+        files: Array<{ filename: string; size: number }>;
+      }>;
     },
     replace = false,
   ) {
@@ -503,12 +588,22 @@ export class ApiService {
   }
 
   createPlaylist(name: string, songIds?: string[], description?: string) {
-    return this.http.post<{ playlist: PlaylistSummary }>('/api/playlists', { name, songIds, description });
+    return this.http.post<{ playlist: PlaylistSummary }>('/api/playlists', {
+      name,
+      songIds,
+      description,
+    });
   }
 
   updatePlaylist(
     id: string,
-    patch: { name?: string; description?: string; add?: string[]; remove?: string[]; reorder?: string[] },
+    patch: {
+      name?: string;
+      description?: string;
+      add?: string[];
+      remove?: string[];
+      reorder?: string[];
+    },
   ) {
     return this.http.put<{ ok: boolean }>(`/api/playlists/${id}`, patch);
   }

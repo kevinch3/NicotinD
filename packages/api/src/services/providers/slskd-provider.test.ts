@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'bun:test';
 import { SlskdSearchProvider } from './slskd-provider.js';
 
-type BrowseRawDir = { name: string; fileCount: number; files: { filename: string; size: number }[] };
+type BrowseRawDir = {
+  name: string;
+  fileCount: number;
+  files: { filename: string; size: number }[];
+};
 
 function makeProvider(
   browseImpl: () => Promise<BrowseRawDir[]>,
@@ -21,7 +25,11 @@ describe('SlskdSearchProvider.browseUser retry', () => {
   it('returns dirs immediately when the first call succeeds', async () => {
     let calls = 0;
     const dirs: BrowseRawDir[] = [
-      { name: 'Music\\Artist', fileCount: 1, files: [{ filename: 'Music\\Artist\\01.mp3', size: 1000 }] },
+      {
+        name: 'Music\\Artist',
+        fileCount: 1,
+        files: [{ filename: 'Music\\Artist\\01.mp3', size: 1000 }],
+      },
     ];
     const provider = makeProvider(async () => {
       calls++;
@@ -95,7 +103,9 @@ describe('SlskdSearchProvider.browseUser retry', () => {
   });
 
   it('throws BrowseUnavailableError when slskd is not configured', async () => {
-    const slskdRef = { current: null } as unknown as ConstructorParameters<typeof SlskdSearchProvider>[0];
+    const slskdRef = { current: null } as unknown as ConstructorParameters<
+      typeof SlskdSearchProvider
+    >[0];
     const provider = new SlskdSearchProvider(slskdRef);
     await expect(provider.browseUser('alice')).rejects.toThrow('browse provider not available');
   });
@@ -106,43 +116,59 @@ describe('SlskdSearchProvider.download retry', () => {
 
   it('enqueues immediately when the first call succeeds', async () => {
     let calls = 0;
-    const provider = makeProvider(async () => [], async () => { calls++; });
+    const provider = makeProvider(
+      async () => [],
+      async () => {
+        calls++;
+      },
+    );
     await provider.download('alice', files);
     expect(calls).toBe(1);
   });
 
   it('retries on 5xx and succeeds on subsequent attempt', async () => {
     let calls = 0;
-    const provider = makeProvider(async () => [], async () => {
-      calls++;
-      if (calls < 2) throw new Error('slskd request failed: 500 /transfers/downloads/alice');
-    });
+    const provider = makeProvider(
+      async () => [],
+      async () => {
+        calls++;
+        if (calls < 2) throw new Error('slskd request failed: 500 /transfers/downloads/alice');
+      },
+    );
     await provider.download('alice', files);
     expect(calls).toBe(2);
   });
 
   it('throws after exhausting retries when all enqueue attempts return 5xx', async () => {
     let calls = 0;
-    const provider = makeProvider(async () => [], async () => {
-      calls++;
-      throw new Error('slskd request failed: 500 /transfers/downloads/alice');
-    });
+    const provider = makeProvider(
+      async () => [],
+      async () => {
+        calls++;
+        throw new Error('slskd request failed: 500 /transfers/downloads/alice');
+      },
+    );
     await expect(provider.download('alice', files)).rejects.toThrow('500');
     expect(calls).toBe(4);
   });
 
   it('does not retry on 4xx errors', async () => {
     let calls = 0;
-    const provider = makeProvider(async () => [], async () => {
-      calls++;
-      throw new Error('slskd request failed: 400 /transfers/downloads/alice');
-    });
+    const provider = makeProvider(
+      async () => [],
+      async () => {
+        calls++;
+        throw new Error('slskd request failed: 400 /transfers/downloads/alice');
+      },
+    );
     await expect(provider.download('alice', files)).rejects.toThrow('400');
     expect(calls).toBe(1);
   });
 
   it('throws when slskd is not configured', async () => {
-    const slskdRef = { current: null } as unknown as ConstructorParameters<typeof SlskdSearchProvider>[0];
+    const slskdRef = { current: null } as unknown as ConstructorParameters<
+      typeof SlskdSearchProvider
+    >[0];
     const provider = new SlskdSearchProvider(slskdRef);
     await expect(provider.download('alice', files)).rejects.toThrow('Soulseek is not configured');
   });

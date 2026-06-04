@@ -57,13 +57,21 @@ describe('watchlist routes', () => {
     const res = await app.request('/', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ artistName: 'Soda Stereo', albumTitle: 'Canción Animal', foreignAlbumId: 'fa9' }),
+      body: JSON.stringify({
+        artistName: 'Soda Stereo',
+        albumTitle: 'Canción Animal',
+        foreignAlbumId: 'fa9',
+      }),
     });
     expect(res.status).toBe(201);
     const body = (await res.json()) as { item: { album_title: string } };
     expect(body.item.album_title).toBe('Canción Animal');
     expect(svc.addMock).toHaveBeenCalledWith(
-      expect.objectContaining({ artistName: 'Soda Stereo', albumTitle: 'Canción Animal', foreignAlbumId: 'fa9' }),
+      expect.objectContaining({
+        artistName: 'Soda Stereo',
+        albumTitle: 'Canción Animal',
+        foreignAlbumId: 'fa9',
+      }),
     );
   });
 

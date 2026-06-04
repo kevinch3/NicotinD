@@ -235,7 +235,10 @@ describe('AlbumHunterService', () => {
         // Core-only: omits the featured artist.
         { username: 'core', files: [{ filename: 'A/Stay/Stay.flac', size: 1 }] },
         // Exact: carries the full "(feat …)" title.
-        { username: 'exact', files: [{ filename: 'A/Stay/Stay (feat. Justin Bieber).flac', size: 1 }] },
+        {
+          username: 'exact',
+          files: [{ filename: 'A/Stay/Stay (feat. Justin Bieber).flac', size: 1 }],
+        },
       ]);
       const hunter = new AlbumHunterService(slskd);
       const candidates = await hunter.hunt('Kygo', 'Stay (feat. Justin Bieber)', [
@@ -308,7 +311,9 @@ describe('AlbumHunterService', () => {
       // core-only: full titles differ, cores match
       expect(singleMatchStrength('stay feat justin bieber', 'stay', 'stay', 'stay')).toBe(50);
       // no overlap
-      expect(singleMatchStrength('chandelier', 'chandelier', 'elastic heart', 'elastic heart')).toBe(0);
+      expect(
+        singleMatchStrength('chandelier', 'chandelier', 'elastic heart', 'elastic heart'),
+      ).toBe(0);
     });
   });
 

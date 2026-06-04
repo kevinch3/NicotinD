@@ -72,7 +72,12 @@ describe('LibraryOrganizer (real fs)', () => {
     });
     const org = makeOrg(root, staging);
     const result = await org.organizeBatch([
-      { username: 'u', directory: 'Daft Punk - Discovery', filename: '01 - Get Lucky.mp3', directoryFileCount: 1 },
+      {
+        username: 'u',
+        directory: 'Daft Punk - Discovery',
+        filename: '01 - Get Lucky.mp3',
+        directoryFileCount: 1,
+      },
     ]);
     expect(result.moved).toBe(1);
     expect(existsSync(join(root, 'Daft Punk', 'Discovery', '01 - Get Lucky.mp3'))).toBe(true);
@@ -96,7 +101,12 @@ describe('LibraryOrganizer (real fs)', () => {
         dir === 'Queen - Hot Space (Deluxe)' ? { artist: 'Queen', album: 'Hot Space' } : null,
     });
     const result = await org.organizeBatch([
-      { username: 'u', directory: 'Queen - Hot Space (Deluxe)', filename: '01 - Staying Power.mp3', directoryFileCount: 1 },
+      {
+        username: 'u',
+        directory: 'Queen - Hot Space (Deluxe)',
+        filename: '01 - Staying Power.mp3',
+        directoryFileCount: 1,
+      },
     ]);
     expect(result.moved).toBe(1);
     expect(existsSync(join(root, 'Queen', 'Hot Space', '01 - Staying Power.mp3'))).toBe(true);
@@ -193,7 +203,9 @@ describe('LibraryOrganizer (real fs)', () => {
         directoryFileCount: 1,
       },
     ]);
-    expect(existsSync(join(root, 'Pink Floyd', 'The Dark Side of the Moon', '02 - Breathe.mp3'))).toBe(true);
+    expect(
+      existsSync(join(root, 'Pink Floyd', 'The Dark Side of the Moon', '02 - Breathe.mp3')),
+    ).toBe(true);
     expect(existsSync(join(root, 'Pink Floyd', 'Singles'))).toBe(false);
   });
 
@@ -214,7 +226,9 @@ describe('LibraryOrganizer (real fs)', () => {
     });
     await makeOrg(root, staging).organizeBatch(files);
     for (let i = 0; i < artists.length; i++) {
-      expect(existsSync(join(root, 'Various Artists', peer, `0${i + 1} - ${artists[i]}.mp3`))).toBe(true);
+      expect(existsSync(join(root, 'Various Artists', peer, `0${i + 1} - ${artists[i]}.mp3`))).toBe(
+        true,
+      );
     }
     for (const a of artists) {
       expect(existsSync(join(root, a))).toBe(false);
@@ -246,7 +260,12 @@ describe('LibraryOrganizer (real fs)', () => {
       title: '01-Demasiado',
     });
     await makeOrg(root, staging).organizeBatch([
-      { username: 'u', directory: 'Babasonicos', filename: '01-Demasiado.mp3', directoryFileCount: 1 },
+      {
+        username: 'u',
+        directory: 'Babasonicos',
+        filename: '01-Demasiado.mp3',
+        directoryFileCount: 1,
+      },
     ]);
     const dest = join(root, 'Babasónicos', 'Singles', '01 - Demasiado.mp3');
     expect(existsSync(dest)).toBe(true);
@@ -261,7 +280,12 @@ describe('LibraryOrganizer (real fs)', () => {
     // No title tag in the seed; filename carries a track-prefix pattern (no space around dash).
     seed(staging, 'Babasonicos/01-Demasiado.mp3', { artist: 'Babasónicos' });
     await makeOrg(root, staging).organizeBatch([
-      { username: 'u', directory: 'Babasonicos', filename: '01-Demasiado.mp3', directoryFileCount: 1 },
+      {
+        username: 'u',
+        directory: 'Babasonicos',
+        filename: '01-Demasiado.mp3',
+        directoryFileCount: 1,
+      },
     ]);
     // Singles fallback: no album tag → file lands in <Artist>/Singles/, but the
     // album tag is left empty (no longer force-written to "Singles") so the
@@ -276,7 +300,12 @@ describe('LibraryOrganizer (real fs)', () => {
   it('removes the source file from staging after a successful move', async () => {
     const root = tmpRoot();
     const staging = join(root, '_staging');
-    const src = seed(staging, 'src/song.mp3', { artist: 'A', album: 'B', title: 'C', trackNumber: 1 });
+    const src = seed(staging, 'src/song.mp3', {
+      artist: 'A',
+      album: 'B',
+      title: 'C',
+      trackNumber: 1,
+    });
     await makeOrg(root, staging).organizeBatch([
       { username: 'u', directory: 'src', filename: 'song.mp3', directoryFileCount: 1 },
     ]);
@@ -299,16 +328,27 @@ describe('LibraryOrganizer (real fs)', () => {
         trackNumber: 1,
       });
 
-      const org = new LibraryOrganizer({ musicDir: root, stagingDir: staging, preferFlacSkipMp3: true });
+      const org = new LibraryOrganizer({
+        musicDir: root,
+        stagingDir: staging,
+        preferFlacSkipMp3: true,
+      });
       const result = await org.organizeBatch([
-        { username: 'u', directory: 'Soda Stereo - Cancion Animal', filename: '01 - Canción Animal.mp3', directoryFileCount: 1 },
+        {
+          username: 'u',
+          directory: 'Soda Stereo - Cancion Animal',
+          filename: '01 - Canción Animal.mp3',
+          directoryFileCount: 1,
+        },
       ]);
 
       expect(result.skipped).toBe(1);
       expect(result.moved).toBe(0);
       // Source MP3 removed; no MP3 landed next to the FLAC.
       expect(existsSync(src)).toBe(false);
-      expect(existsSync(join(root, 'Soda Stereo', 'Canción Animal', '01 - Canción Animal.mp3'))).toBe(false);
+      expect(
+        existsSync(join(root, 'Soda Stereo', 'Canción Animal', '01 - Canción Animal.mp3')),
+      ).toBe(false);
     });
 
     it('auto-dedupe drops a freshly-placed MP3 that collides with an existing FLAC', async () => {
@@ -329,7 +369,12 @@ describe('LibraryOrganizer (real fs)', () => {
       // after placement.
       const org = new LibraryOrganizer({ musicDir: root, stagingDir: staging });
       const result = await org.organizeBatch([
-        { username: 'u', directory: 'Lenny Kravitz - Circus', filename: '01 - Believe.mp3', directoryFileCount: 1 },
+        {
+          username: 'u',
+          directory: 'Lenny Kravitz - Circus',
+          filename: '01 - Believe.mp3',
+          directoryFileCount: 1,
+        },
       ]);
 
       expect(result.dedupedBasenames).toContain('01 - believe.mp3');
@@ -353,11 +398,18 @@ describe('LibraryOrganizer (real fs)', () => {
       // Both dedupe paths off → the MP3 is placed and kept alongside the FLAC.
       const org = new LibraryOrganizer({ musicDir: root, stagingDir: staging, autoDedupe: false });
       const result = await org.organizeBatch([
-        { username: 'u', directory: 'Soda Stereo - Cancion Animal', filename: '01 - Cancion Animal.mp3', directoryFileCount: 1 },
+        {
+          username: 'u',
+          directory: 'Soda Stereo - Cancion Animal',
+          filename: '01 - Cancion Animal.mp3',
+          directoryFileCount: 1,
+        },
       ]);
 
       expect(result.moved).toBe(1);
-      expect(existsSync(join(root, 'Soda Stereo', 'Canción Animal', '01 - Canción Animal.mp3'))).toBe(true);
+      expect(
+        existsSync(join(root, 'Soda Stereo', 'Canción Animal', '01 - Canción Animal.mp3')),
+      ).toBe(true);
     });
   });
 });

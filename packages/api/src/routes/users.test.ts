@@ -19,7 +19,9 @@ function makeRegistry(browseDirs: BrowseDir[] = [], shouldThrow?: Error) {
       },
       users: {
         browseUser: shouldThrow
-          ? async () => { throw shouldThrow; }
+          ? async () => {
+              throw shouldThrow;
+            }
           : async () => browseDirs,
       },
       transfers: { enqueue: async () => {} },
@@ -35,7 +37,7 @@ async function pollUntilDone(app: Hono, username: string, jobId: string, maxAtte
   for (let i = 0; i < maxAttempts; i++) {
     await new Promise((r) => setTimeout(r, 10));
     const res = await app.request(`/${username}/browse/${jobId}`);
-    const body = await res.json() as { state: string; dirs?: unknown[]; error?: string };
+    const body = (await res.json()) as { state: string; dirs?: unknown[]; error?: string };
     if (body.state !== 'pending') return { res, body };
   }
   throw new Error('Browse job never completed within test timeout');
@@ -43,14 +45,20 @@ async function pollUntilDone(app: Hono, username: string, jobId: string, maxAtte
 
 describe('users routes', () => {
   it('starts a browse job and returns dirs on poll', async () => {
-    const dirs = [{ name: 'Music\\Artist', fileCount: 1, files: [{ filename: 'Music\\Artist\\01.mp3', size: 5000 }] }];
+    const dirs = [
+      {
+        name: 'Music\\Artist',
+        fileCount: 1,
+        files: [{ filename: 'Music\\Artist\\01.mp3', size: 5000 }],
+      },
+    ];
     const registry = makeRegistry(dirs);
     const app = new Hono();
     app.route('/', usersRoutes(registry));
 
     const startRes = await app.request('/testuser/browse');
     expect(startRes.status).toBe(202);
-    const { jobId, state } = await startRes.json() as { jobId: string; state: string };
+    const { jobId, state } = (await startRes.json()) as { jobId: string; state: string };
     expect(state).toBe('pending');
     expect(typeof jobId).toBe('string');
 
@@ -71,7 +79,9 @@ describe('users routes', () => {
   });
 
   it('returns error state when slskdRef.current is null (BrowseUnavailableError)', async () => {
-    const slskdRef = { current: null } as unknown as ConstructorParameters<typeof SlskdSearchProvider>[0];
+    const slskdRef = { current: null } as unknown as ConstructorParameters<
+      typeof SlskdSearchProvider
+    >[0];
     const registry = new ProviderRegistry();
     registry.register(new SlskdSearchProvider(slskdRef));
     const app = new Hono();
@@ -79,7 +89,7 @@ describe('users routes', () => {
 
     const startRes = await app.request('/testuser/browse');
     expect(startRes.status).toBe(202);
-    const { jobId } = await startRes.json() as { jobId: string };
+    const { jobId } = (await startRes.json()) as { jobId: string };
 
     const { res, body } = await pollUntilDone(app, 'testuser', jobId);
     expect(res.status).toBe(200);
@@ -94,7 +104,7 @@ describe('users routes', () => {
 
     const startRes = await app.request('/testuser/browse');
     expect(startRes.status).toBe(202);
-    const { jobId } = await startRes.json() as { jobId: string };
+    const { jobId } = (await startRes.json()) as { jobId: string };
 
     const { res, body } = await pollUntilDone(app, 'testuser', jobId);
     expect(res.status).toBe(200);

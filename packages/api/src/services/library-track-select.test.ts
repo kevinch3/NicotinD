@@ -31,7 +31,10 @@ describe('selectAlbumTracks — without a canonical list', () => {
   });
 
   it('is deterministic: equal-quality duplicates keep the lexicographically smallest path', () => {
-    const kept = selectAlbumTracks([t('z - Song.mp3', 'Song', 'mp3'), t('a - Song.mp3', 'Song', 'mp3')]);
+    const kept = selectAlbumTracks([
+      t('z - Song.mp3', 'Song', 'mp3'),
+      t('a - Song.mp3', 'Song', 'mp3'),
+    ]);
     expect(kept).toHaveLength(1);
     expect(kept[0]!.relPath).toBe('a - Song.mp3');
   });
@@ -41,8 +44,16 @@ describe('selectAlbumTracks — with a canonical Lidarr tracklist', () => {
   // The real "A propósito" case: a folder mixing flac + mp3 + m4a, with foreign
   // tracks (Pulpito / Parte 1 El Sultán / Parte 2 Jaula) that aren't in the album.
   const canonical = [
-    'Flora y Fauno', 'Fiesta popular', 'Tormento', 'Deshoras', 'Ideas',
-    'En privado', 'Muñeco de Haiti', 'El pupilo', 'Barranca abajo', 'Chisme de zorro',
+    'Flora y Fauno',
+    'Fiesta popular',
+    'Tormento',
+    'Deshoras',
+    'Ideas',
+    'En privado',
+    'Muñeco de Haiti',
+    'El pupilo',
+    'Barranca abajo',
+    'Chisme de zorro',
   ];
 
   const files = [
@@ -51,22 +62,26 @@ describe('selectAlbumTracks — with a canonical Lidarr tracklist', () => {
     t('03 - Tormento.m4a', 'Tormento', 'm4a'),
     t('04 - Deshoras.mp3', 'Deshoras', 'mp3'),
     t('05 - Ideas.mp3', 'Ideas', 'mp3'),
-    t('05 - Pulpito.m4a', 'Pulpito', 'm4a'),                 // foreign
+    t('05 - Pulpito.m4a', 'Pulpito', 'm4a'), // foreign
     t('07 - Muñeco de Haiti.flac', 'Muñeco de Haiti', 'flac'),
-    t('08 - Muñeco de Haití.m4a', 'Muñeco de Haití', 'm4a'),  // dup of t7 (accent) → collapses
+    t('08 - Muñeco de Haití.m4a', 'Muñeco de Haití', 'm4a'), // dup of t7 (accent) → collapses
     t('09 - Parte 1 El Sultán.m4a', 'Parte 1: El Sultán', 'm4a'), // foreign
-    t('10 - Parte 2 Jaula.m4a', 'Parte 2: Jaula', 'm4a'),         // foreign
+    t('10 - Parte 2 Jaula.m4a', 'Parte 2: Jaula', 'm4a'), // foreign
   ];
 
   it('drops foreign tracks and keeps one best copy per canonical track', () => {
-    const kept = selectAlbumTracks(files, canonical).map((k) => k.relPath).sort();
-    expect(kept).toEqual([
-      '01 - Flora y Fauno.flac', // flac beats mp3
-      '03 - Tormento.m4a',
-      '04 - Deshoras.mp3',
-      '05 - Ideas.mp3',
-      '07 - Muñeco de Haiti.flac', // flac beats the accented m4a dup
-    ].sort());
+    const kept = selectAlbumTracks(files, canonical)
+      .map((k) => k.relPath)
+      .sort();
+    expect(kept).toEqual(
+      [
+        '01 - Flora y Fauno.flac', // flac beats mp3
+        '03 - Tormento.m4a',
+        '04 - Deshoras.mp3',
+        '05 - Ideas.mp3',
+        '07 - Muñeco de Haiti.flac', // flac beats the accented m4a dup
+      ].sort(),
+    );
   });
 
   it('excludes every foreign file (Pulpito / El Sultán / Jaula)', () => {

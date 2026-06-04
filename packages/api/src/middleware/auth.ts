@@ -14,9 +14,7 @@ export function authMiddleware(jwtSecret: string) {
 
   return createMiddleware<AuthEnv>(async (c, next) => {
     const authHeader = c.req.header('Authorization');
-    const token = authHeader?.startsWith('Bearer ')
-      ? authHeader.slice(7)
-      : c.req.query('token');
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : c.req.query('token');
 
     if (!token) {
       return c.json({ error: 'Missing or invalid Authorization header' }, 401);
@@ -29,9 +27,10 @@ export function authMiddleware(jwtSecret: string) {
       // Check if user account is disabled
       const db = getDatabase();
       const user = db
-        .query<{ status: string }, [string]>(
-          "SELECT COALESCE(status, 'active') as status FROM users WHERE id = ?",
-        )
+        .query<
+          { status: string },
+          [string]
+        >("SELECT COALESCE(status, 'active') as status FROM users WHERE id = ?")
         .get(jwtPayload.sub);
 
       if (!user || user.status === 'disabled') {

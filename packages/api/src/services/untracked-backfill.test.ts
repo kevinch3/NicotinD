@@ -52,7 +52,9 @@ describe('untracked backfill', () => {
     const res = backfillRelativePaths(db, root, { apply: true });
     expect(res).toEqual({ matched: 1, ambiguous: 0, unresolved: 0 });
 
-    const row = db.query('SELECT relative_path AS r FROM completed_downloads WHERE transfer_key = ?').get('k1') as { r: string };
+    const row = db
+      .query('SELECT relative_path AS r FROM completed_downloads WHERE transfer_key = ?')
+      .get('k1') as { r: string };
     expect(row.r).toBe('Artist/Album/song.mp3');
   });
 

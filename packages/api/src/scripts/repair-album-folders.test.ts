@@ -6,7 +6,11 @@ import {
   type SourcedFile,
 } from './repair-album-folders.js';
 
-const f = (artist: string, album: string): FolderEntry => ({ artist, album, dir: `${artist}/${album}` });
+const f = (artist: string, album: string): FolderEntry => ({
+  artist,
+  album,
+  dir: `${artist}/${album}`,
+});
 
 describe('groupFoldersByAlbum', () => {
   it('groups edition variants of one album together, keeps distinct albums apart', () => {
@@ -53,10 +57,7 @@ describe('planTrackKeepers', () => {
   });
 
   it('prefers FLAC/larger when several clean copies match a canonical track', () => {
-    const files = [
-      file('01 - Song One.mp3', 5),
-      file('01 - Song One.flac', 2),
-    ];
+    const files = [file('01 - Song One.mp3', 5), file('01 - Song One.flac', 2)];
     const { keep } = planTrackKeepers(files, ['Song One']);
     expect(keep.map((k) => k.name)).toEqual(['01 - Song One.flac']);
   });
@@ -69,7 +70,10 @@ describe('planTrackKeepers', () => {
     ];
     const { keep, drop } = planTrackKeepers(files);
     // FLAC copy kept over the mp3; the distinct "(live)" track survives.
-    expect(keep.map((k) => k.name).sort()).toEqual(['02 - Song (2).flac', '03 - Other (live).flac']);
+    expect(keep.map((k) => k.name).sort()).toEqual([
+      '02 - Song (2).flac',
+      '03 - Other (live).flac',
+    ]);
     expect(drop.map((d) => d.name)).toEqual(['02 - Song.mp3']);
   });
 });

@@ -39,9 +39,10 @@ export function mapLidarrAlbumType(albumType: string | undefined): ReleaseType |
 /** Resolve the authoritative release type for an album id, or null if unknown. */
 export function getReleaseType(db: Database, albumId: string): ReleaseType | null {
   const row = db
-    .query<{ album_type: string }, [string]>(
-      'SELECT album_type FROM library_release_meta WHERE album_id = ?',
-    )
+    .query<
+      { album_type: string },
+      [string]
+    >('SELECT album_type FROM library_release_meta WHERE album_id = ?')
     .get(albumId);
   return row && VALID.has(row.album_type) ? (row.album_type as ReleaseType) : null;
 }
@@ -49,9 +50,10 @@ export function getReleaseType(db: Database, albumId: string): ReleaseType | nul
 /** Read every (albumId → type) mapping; used by the curator's batch reclassify. */
 export function loadReleaseTypes(db: Database): Map<string, ReleaseType> {
   const rows = db
-    .query<{ album_id: string; album_type: string }, []>(
-      'SELECT album_id, album_type FROM library_release_meta',
-    )
+    .query<
+      { album_id: string; album_type: string },
+      []
+    >('SELECT album_id, album_type FROM library_release_meta')
     .all();
   const map = new Map<string, ReleaseType>();
   for (const r of rows) {

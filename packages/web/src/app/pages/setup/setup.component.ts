@@ -11,7 +11,7 @@ type Step = 'admin' | 'soulseek' | 'done';
   selector: 'app-setup',
   imports: [FormsModule, PasswordFieldComponent],
   templateUrl: './setup.component.html',
-  })
+})
 export class SetupComponent {
   private auth = inject(AuthService);
   private api = inject(ApiService);
@@ -75,20 +75,22 @@ export class SetupComponent {
     this.loading.set(true);
     this.error.set('');
 
-    this.api.completeSetup({
-      admin: this.adminData,
-      ...(soulseek ? { soulseek } : {}),
-    }).subscribe({
-      next: (result) => {
-        this.auth.login(result.token, result.user.username, result.user.role);
-        this.step.set('done');
-        this.loading.set(false);
-      },
-      error: (err) => {
-        this.error.set(err.error?.error ?? err.message ?? 'Setup failed');
-        this.loading.set(false);
-      },
-    });
+    this.api
+      .completeSetup({
+        admin: this.adminData,
+        ...(soulseek ? { soulseek } : {}),
+      })
+      .subscribe({
+        next: (result) => {
+          this.auth.login(result.token, result.user.username, result.user.role);
+          this.step.set('done');
+          this.loading.set(false);
+        },
+        error: (err) => {
+          this.error.set(err.error?.error ?? err.message ?? 'Setup failed');
+          this.loading.set(false);
+        },
+      });
   }
 
   reload(): void {

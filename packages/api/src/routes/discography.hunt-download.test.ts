@@ -40,7 +40,11 @@ function makeApp(db: Database) {
 }
 
 const BODY = {
-  selected: { username: 'peer', directory: 'Soda Stereo - Dynamo', files: [{ filename: '01 One.flac', size: 1 }] },
+  selected: {
+    username: 'peer',
+    directory: 'Soda Stereo - Dynamo',
+    files: [{ filename: '01 One.flac', size: 1 }],
+  },
   alternates: [],
 };
 
@@ -54,7 +58,9 @@ function post(app: Hono<AuthEnv>, query = '') {
 
 function activeJobCount(db: Database): number {
   return (
-    db.query(`SELECT count(*) c FROM album_jobs WHERE lidarr_album_id = ? AND state = 'active'`).get(ALBUM_ID) as {
+    db
+      .query(`SELECT count(*) c FROM album_jobs WHERE lidarr_album_id = ? AND state = 'active'`)
+      .get(ALBUM_ID) as {
       c: number;
     }
   ).c;
@@ -196,7 +202,11 @@ describe('POST /albums/:id/hunt-download idempotency guard', () => {
 
   it('downloads nothing (queued 0) when every chosen file is already on disk', async () => {
     const { app, enqueue } = makeApp(db);
-    for (const [id, title] of [['s1', 'One'], ['s2', 'Two'], ['s3', 'Three']]) {
+    for (const [id, title] of [
+      ['s1', 'One'],
+      ['s2', 'Two'],
+      ['s3', 'Three'],
+    ]) {
       db.run(
         `INSERT INTO library_songs (id, album_id, title, artist, artist_id, path, synced_at)
          VALUES (?, ?, ?, 'Soda Stereo', 'art', ?, 1)`,

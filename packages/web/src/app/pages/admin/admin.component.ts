@@ -16,7 +16,7 @@ import { AlbumHuntModalComponent } from '../../components/album-hunt-modal/album
   selector: 'app-admin',
   imports: [FormsModule, PasswordFieldComponent, AlbumHuntModalComponent],
   templateUrl: './admin.component.html',
-  })
+})
 export class AdminComponent implements OnInit, OnDestroy {
   private api = inject(ApiService);
   private auth = inject(AuthService);
@@ -72,7 +72,9 @@ export class AdminComponent implements OnInit, OnDestroy {
     try {
       const payload = JSON.parse(atob(token.split('.')[1]));
       return payload.sub as string;
-    } catch { return null; }
+    } catch {
+      return null;
+    }
   }
 
   ngOnInit(): void {
@@ -182,7 +184,9 @@ export class AdminComponent implements OnInit, OnDestroy {
     const newRole = user.role === 'admin' ? 'user' : 'admin';
     try {
       await firstValueFrom(this.api.updateUserRole(user.id, newRole as 'admin' | 'user'));
-      this.users.update(prev => prev.map(u => u.id === user.id ? { ...u, role: newRole } : u));
+      this.users.update((prev) =>
+        prev.map((u) => (u.id === user.id ? { ...u, role: newRole } : u)),
+      );
     } catch (err) {
       this.error.set(err instanceof Error ? err.message : 'Failed to update role');
     }
@@ -192,7 +196,9 @@ export class AdminComponent implements OnInit, OnDestroy {
     const newStatus = user.status === 'active' ? 'disabled' : 'active';
     try {
       await firstValueFrom(this.api.updateUserStatus(user.id, newStatus as 'active' | 'disabled'));
-      this.users.update(prev => prev.map(u => u.id === user.id ? { ...u, status: newStatus } : u));
+      this.users.update((prev) =>
+        prev.map((u) => (u.id === user.id ? { ...u, status: newStatus } : u)),
+      );
     } catch (err) {
       this.error.set(err instanceof Error ? err.message : 'Failed to update status');
     }
@@ -220,7 +226,7 @@ export class AdminComponent implements OnInit, OnDestroy {
     this.creating.set(true);
     try {
       const user = await firstValueFrom(this.api.createUser(username, password));
-      this.users.update(prev => [...prev, user]);
+      this.users.update((prev) => [...prev, user]);
       this.showCreateUser.set(false);
       this.newUsername.set('');
       this.newUserPassword.set('');
@@ -237,7 +243,7 @@ export class AdminComponent implements OnInit, OnDestroy {
     this.deleting.set(true);
     try {
       await firstValueFrom(this.api.deleteUser(target.id));
-      this.users.update(prev => prev.filter(u => u.id !== target.id));
+      this.users.update((prev) => prev.filter((u) => u.id !== target.id));
       this.deleteTarget.set(null);
     } catch (err) {
       this.error.set(err instanceof Error ? err.message : 'Failed to delete user');
@@ -247,14 +253,14 @@ export class AdminComponent implements OnInit, OnDestroy {
   }
 
   async handleRestart(service: 'slskd'): Promise<void> {
-    this.restarting.update(prev => ({ ...prev, [service]: true }));
+    this.restarting.update((prev) => ({ ...prev, [service]: true }));
     try {
       await firstValueFrom(this.api.restartService(service));
       setTimeout(() => this.loadSystemStatus(), 3000);
     } catch (err) {
       this.error.set(err instanceof Error ? err.message : `Failed to restart ${service}`);
     } finally {
-      this.restarting.update(prev => ({ ...prev, [service]: false }));
+      this.restarting.update((prev) => ({ ...prev, [service]: false }));
     }
   }
 
@@ -270,7 +276,9 @@ export class AdminComponent implements OnInit, OnDestroy {
     if (!token) return;
     this.disconnectLogStream();
     const service = this.selectedService();
-    const src = new EventSource(`/api/system/logs/${service}/stream?token=${encodeURIComponent(token ?? '')}`);
+    const src = new EventSource(
+      `/api/system/logs/${service}/stream?token=${encodeURIComponent(token ?? '')}`,
+    );
     this.logEventSource = src;
     this.logStreamStatus.set('connecting');
 
@@ -282,7 +290,7 @@ export class AdminComponent implements OnInit, OnDestroy {
     };
 
     src.onmessage = (e) => {
-      this.logLines.update(lines => {
+      this.logLines.update((lines) => {
         const next = [...lines, e.data];
         return next.length > 500 ? next.slice(next.length - 500) : next;
       });
@@ -341,6 +349,8 @@ export class AdminComponent implements OnInit, OnDestroy {
       ]);
       this.systemStatus.set(status as any);
       this.scanStatus.set(scan);
-    } catch { /* non-fatal */ }
+    } catch {
+      /* non-fatal */
+    }
   }
 }

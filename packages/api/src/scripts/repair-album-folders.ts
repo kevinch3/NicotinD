@@ -213,7 +213,10 @@ function audioFilesIn(dir: string): SourcedFile[] {
 /** Canonical tracklist for an album from a recorded hunt job, if one matches. */
 function lookupCanonicalTitles(db: Database, artist: string, album: string): string[] | undefined {
   const rows = db
-    .query<{ album_title: string | null; artist_name: string | null; canonical_tracks_json: string }, []>(
+    .query<
+      { album_title: string | null; artist_name: string | null; canonical_tracks_json: string },
+      []
+    >(
       `SELECT album_title, artist_name, canonical_tracks_json FROM album_jobs
        WHERE album_title IS NOT NULL`,
     )
@@ -287,7 +290,8 @@ async function main(): Promise<void> {
       console.log(`      move ${k.dir === canonical.f.dir ? '' : basename(k.dir) + '/'}${k.name}`);
       if (apply) {
         try {
-          if (existsSync(dest)) unlinkSync(src); // collision — canonical wins
+          if (existsSync(dest))
+            unlinkSync(src); // collision — canonical wins
           else renameSync(src, dest);
           appendFileSync(logPath, `MOVE\t${src}\t${dest}\n`, 'utf-8');
         } catch (err) {

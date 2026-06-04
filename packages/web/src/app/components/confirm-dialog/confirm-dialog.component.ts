@@ -5,7 +5,7 @@ import { Component, HostListener, input, output } from '@angular/core';
   standalone: true,
   imports: [],
   templateUrl: './confirm-dialog.component.html',
-  })
+})
 export class ConfirmDialogComponent {
   message = input.required<string>();
   confirmLabel = input<string>('Delete');

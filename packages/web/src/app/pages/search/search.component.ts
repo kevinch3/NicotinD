@@ -2,7 +2,12 @@ import { Component, inject, signal, computed, effect, OnInit, OnDestroy } from '
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink, ActivatedRoute } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
-import { ApiService, type CatalogAlbum, type CatalogSearchResult, type DiscographyAlbum } from '../../services/api.service';
+import {
+  ApiService,
+  type CatalogAlbum,
+  type CatalogSearchResult,
+  type DiscographyAlbum,
+} from '../../services/api.service';
 import { SearchService, type NetworkResult } from '../../services/search.service';
 import { TransferService } from '../../services/transfer.service';
 import { AcquireService } from '../../services/acquire.service';
@@ -11,7 +16,12 @@ import { PluginService } from '../../services/plugin.service';
 import { PlayerService } from '../../services/player.service';
 import { PlaylistService } from '../../services/playlist.service';
 import type { TrackAction } from '../../components/track-row/track-row.component';
-import { getSingleDownloadLabel, getFolderDownloadLabel, isPathEffectivelyQueued, BUTTON_CLASSES } from '../../lib/download-status';
+import {
+  getSingleDownloadLabel,
+  getFolderDownloadLabel,
+  isPathEffectivelyQueued,
+  BUTTON_CLASSES,
+} from '../../lib/download-status';
 import { groupByDirectory, formatPeerInfo, type FolderGroup } from '../../lib/folder-utils';
 import { FolderBrowserComponent } from '../../components/folder-browser/folder-browser.component';
 import { AlbumHuntModalComponent } from '../../components/album-hunt-modal/album-hunt-modal.component';
@@ -48,8 +58,17 @@ interface FlatFile {
 }
 
 const ALLOWED_EXTENSIONS = new Set([
-  '.mp3', '.flac', '.ogg', '.opus',
-  '.m4a', '.aac', '.wav', '.aiff', '.wma', '.ape', '.wv',
+  '.mp3',
+  '.flac',
+  '.ogg',
+  '.opus',
+  '.m4a',
+  '.aac',
+  '.wav',
+  '.aiff',
+  '.wma',
+  '.ape',
+  '.wv',
 ]);
 
 function escapeRegExp(value: string) {
@@ -57,9 +76,9 @@ function escapeRegExp(value: string) {
 }
 
 function getHighlightTerms(query: string): string[] {
-  return Array.from(
-    new Set(query.trim().split(/\s+/).filter(Boolean)),
-  ).sort((a, b) => b.length - a.length);
+  return Array.from(new Set(query.trim().split(/\s+/).filter(Boolean))).sort(
+    (a, b) => b.length - a.length,
+  );
 }
 
 function extractName(filepath: string) {
@@ -137,16 +156,26 @@ function highlightHtml(text: string, terms: string[]): string {
 }
 
 function escapeHtml(text: string): string {
-  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 // ─── Component ──────────────────────────────────────────────────────
 
 @Component({
   selector: 'app-search',
-  imports: [FormsModule, FolderBrowserComponent, RouterLink, AlbumHuntModalComponent, TrackRowComponent],
+  imports: [
+    FormsModule,
+    FolderBrowserComponent,
+    RouterLink,
+    AlbumHuntModalComponent,
+    TrackRowComponent,
+  ],
   templateUrl: './search.component.html',
-  })
+})
 export class SearchComponent implements OnInit, OnDestroy {
   readonly router = inject(Router);
   private route = inject(ActivatedRoute);
@@ -213,7 +242,7 @@ export class SearchComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     firstValueFrom(this.api.getSoulseekStatus())
-      .then(s => this.networkConnected.set(s.connected))
+      .then((s) => this.networkConnected.set(s.connected))
       .catch(() => this.networkConnected.set(false));
     void this.acquire.refresh();
     void this.watchlist.refresh();
@@ -292,7 +321,12 @@ export class SearchComponent implements OnInit, OnDestroy {
     for (const [username, files] of byUser.entries()) {
       for (const f of files) this.search.addDownloading(`${username}:${f.filename}`);
       try {
-        await firstValueFrom(this.api.enqueueDownload(username, files.map(f => ({ filename: f.filename, size: f.size }))));
+        await firstValueFrom(
+          this.api.enqueueDownload(
+            username,
+            files.map((f) => ({ filename: f.filename, size: f.size })),
+          ),
+        );
       } catch (err) {
         for (const f of files) this.search.removeDownloading(`${username}:${f.filename}`);
         this.downloadError.set(err instanceof Error ? err.message : 'Download failed');
@@ -301,11 +335,16 @@ export class SearchComponent implements OnInit, OnDestroy {
   }
 
   async downloadFolder(group: FolderGroup): Promise<void> {
-    const validFiles = group.files.filter(f => f.size > 0);
+    const validFiles = group.files.filter((f) => f.size > 0);
     this.search.addDownloadedFolder(`${group.username}:${group.directory}`);
     for (const f of validFiles) this.search.addDownloading(`${group.username}:${f.filename}`);
     try {
-      await firstValueFrom(this.api.enqueueDownload(group.username, validFiles.map(f => ({ filename: f.filename, size: f.size }))));
+      await firstValueFrom(
+        this.api.enqueueDownload(
+          group.username,
+          validFiles.map((f) => ({ filename: f.filename, size: f.size })),
+        ),
+      );
       this.downloadError.set(null);
     } catch (err) {
       for (const f of validFiles) this.search.removeDownloading(`${group.username}:${f.filename}`);
@@ -318,7 +357,7 @@ export class SearchComponent implements OnInit, OnDestroy {
     directory: string,
     event: { files: Array<{ filename: string; size: number }>; path?: string },
   ): Promise<void> {
-    const validFiles = event.files.filter(f => f.size > 0);
+    const validFiles = event.files.filter((f) => f.size > 0);
     const folderKey = event.path ? `${username}:${event.path}` : `${username}:${directory}`;
     this.search.addDownloadedFolder(folderKey);
     for (const f of validFiles) this.search.addDownloading(`${username}:${f.filename}`);
@@ -428,7 +467,7 @@ export class SearchComponent implements OnInit, OnDestroy {
   }
 
   toggleBrowser(key: string): void {
-    this.search.openBrowserKey.update(k => k === key ? null : key);
+    this.search.openBrowserKey.update((k) => (k === key ? null : key));
   }
 
   // ─── Template helpers ───────────────────────────────────────────
@@ -443,18 +482,24 @@ export class SearchComponent implements OnInit, OnDestroy {
 
   getFolderBtn(group: FolderGroup) {
     const folderFiles = group.files
-      .filter(f => f.size > 0)
-      .map(f => ({ username: group.username, filename: f.filename }));
-    const isFolderQueued = isPathEffectivelyQueued(group.username, group.directory, this.search.downloadedFolders());
-    return getFolderDownloadLabel(folderFiles, isFolderQueued, (u, f) => this.transfers.getStatus(u, f));
+      .filter((f) => f.size > 0)
+      .map((f) => ({ username: group.username, filename: f.filename }));
+    const isFolderQueued = isPathEffectivelyQueued(
+      group.username,
+      group.directory,
+      this.search.downloadedFolders(),
+    );
+    return getFolderDownloadLabel(folderFiles, isFolderQueued, (u, f) =>
+      this.transfers.getStatus(u, f),
+    );
   }
 
   getFolderValidFiles(group: FolderGroup) {
-    return group.files.filter(f => f.size > 0);
+    return group.files.filter((f) => f.size > 0);
   }
 
   getFolderBrowseFiles(group: FolderGroup) {
-    return group.files.map(f => ({
+    return group.files.map((f) => ({
       filename: f.filename,
       size: f.size,
       bitRate: f.bitRate,
@@ -462,10 +507,7 @@ export class SearchComponent implements OnInit, OnDestroy {
     }));
   }
 
-  getGroupFileBtn(
-    group: FolderGroup,
-    file: FolderGroup['files'][number],
-  ) {
+  getGroupFileBtn(group: FolderGroup, file: FolderGroup['files'][number]) {
     const key = `${group.username}:${file.filename}`;
     return getSingleDownloadLabel(
       group.username,
@@ -475,17 +517,11 @@ export class SearchComponent implements OnInit, OnDestroy {
     );
   }
 
-  getGroupFileVariant(
-    group: FolderGroup,
-    file: FolderGroup['files'][number],
-  ) {
+  getGroupFileVariant(group: FolderGroup, file: FolderGroup['files'][number]) {
     return this.getGroupFileBtn(group, file).variant;
   }
 
-  getGroupFilePercent(
-    group: FolderGroup,
-    file: FolderGroup['files'][number],
-  ) {
+  getGroupFilePercent(group: FolderGroup, file: FolderGroup['files'][number]) {
     const entry = this.transfers.getStatus(group.username, file.filename);
     return entry?.percent ?? 0;
   }

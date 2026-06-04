@@ -5,7 +5,9 @@ export class AlbumApi {
   constructor(private client: LidarrClient) {}
 
   async listByArtist(artistId: number): Promise<LidarrAlbum[]> {
-    return this.client.request<LidarrAlbum[]>(`/api/v1/album?artistId=${artistId}&includeAllArtistAlbums=false`);
+    return this.client.request<LidarrAlbum[]>(
+      `/api/v1/album?artistId=${artistId}&includeAllArtistAlbums=false`,
+    );
   }
 
   async get(id: number): Promise<LidarrAlbum> {

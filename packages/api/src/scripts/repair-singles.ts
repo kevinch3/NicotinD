@@ -19,7 +19,17 @@
  * Env: NICOTIND_DATA_DIR, NICOTIND_MUSIC_DIR, NICOTIND_CONFIG.
  */
 
-import { readFileSync, readdirSync, statSync, existsSync, mkdirSync, appendFileSync, copyFileSync, unlinkSync, renameSync } from 'node:fs';
+import {
+  readFileSync,
+  readdirSync,
+  statSync,
+  existsSync,
+  mkdirSync,
+  appendFileSync,
+  copyFileSync,
+  unlinkSync,
+  renameSync,
+} from 'node:fs';
 import { resolve, join, extname, basename, relative } from 'node:path';
 import { parse } from 'yaml';
 import { Database } from 'bun:sqlite';
@@ -42,7 +52,9 @@ function loadConfig(): Config {
   const configPath = resolve(process.env.NICOTIND_CONFIG ?? 'config/default.yml');
   try {
     fileConfig = (parse(readFileSync(configPath, 'utf-8')) ?? {}) as Record<string, unknown>;
-  } catch { /* no config file */ }
+  } catch {
+    /* no config file */
+  }
 
   const dataDir = expandHome(
     process.env.NICOTIND_DATA_DIR ?? (fileConfig.dataDir as string | undefined) ?? '~/.nicotind',
@@ -55,26 +67,44 @@ function loadConfig(): Config {
 }
 
 /** Yields every audio file under every <musicDir>/<Artist>/Singles/ directory. */
-function* walkSinglesFiles(musicDir: string): Generator<{ artistDir: string; artist: string; filePath: string }> {
+function* walkSinglesFiles(
+  musicDir: string,
+): Generator<{ artistDir: string; artist: string; filePath: string }> {
   let artistEntries: string[];
-  try { artistEntries = readdirSync(musicDir); } catch { return; }
+  try {
+    artistEntries = readdirSync(musicDir);
+  } catch {
+    return;
+  }
 
   for (const artistName of artistEntries) {
     const artistDir = join(musicDir, artistName);
     let st;
-    try { st = statSync(artistDir); } catch { continue; }
+    try {
+      st = statSync(artistDir);
+    } catch {
+      continue;
+    }
     if (!st.isDirectory()) continue;
 
     const singlesDir = join(artistDir, 'Singles');
     if (!existsSync(singlesDir)) continue;
 
     let singlesEntries: string[];
-    try { singlesEntries = readdirSync(singlesDir); } catch { continue; }
+    try {
+      singlesEntries = readdirSync(singlesDir);
+    } catch {
+      continue;
+    }
 
     for (const fname of singlesEntries) {
       const filePath = join(singlesDir, fname);
       let fst;
-      try { fst = statSync(filePath); } catch { continue; }
+      try {
+        fst = statSync(filePath);
+      } catch {
+        continue;
+      }
       if (!fst.isFile()) continue;
       if (!AUDIO_EXTS.has(extname(fname).toLowerCase())) continue;
       yield { artistDir, artist: artistName, filePath };
@@ -107,7 +137,9 @@ function uniquePath(desired: string, sourcePath: string): string {
 function logMove(logPath: string, src: string, dst: string): void {
   try {
     appendFileSync(logPath, `${src}\t${dst}\n`, 'utf-8');
-  } catch { /* non-fatal */ }
+  } catch {
+    /* non-fatal */
+  }
 }
 
 async function main(): Promise<void> {
@@ -137,9 +169,11 @@ async function main(): Promise<void> {
     const fileBasename = basename(filePath).toLowerCase();
 
     // Look up the original peer directory from completed_downloads
-    const row = db.query(
-      `SELECT directory FROM completed_downloads WHERE basename = ? ORDER BY completed_at DESC LIMIT 1`,
-    ).get(fileBasename) as { directory: string } | null;
+    const row = db
+      .query(
+        `SELECT directory FROM completed_downloads WHERE basename = ? ORDER BY completed_at DESC LIMIT 1`,
+      )
+      .get(fileBasename) as { directory: string } | null;
 
     if (!row) {
       // File predates the download tracker or was downloaded externally
@@ -148,7 +182,8 @@ async function main(): Promise<void> {
     }
 
     const tags = await readAudioTags(filePath);
-    const artistFromTag = normalizeTagValue(tags.albumArtist) ?? normalizeTagValue(tags.artist) ?? artist;
+    const artistFromTag =
+      normalizeTagValue(tags.albumArtist) ?? normalizeTagValue(tags.artist) ?? artist;
 
     const album = inferFolderAlbum(row.directory, artistFromTag);
     if (!album) {
@@ -177,7 +212,9 @@ async function main(): Promise<void> {
     // Write the correct album tag so Navidrome groups it properly
     try {
       await writeAudioTags(destPath, { album, albumArtist: artistFromTag });
-    } catch { /* non-fatal — file is already moved */ }
+    } catch {
+      /* non-fatal — file is already moved */
+    }
 
     // Update the DB so relative_path reflects the new location
     const newRel = relative(musicDir, destPath).replace(/\\/g, '/');
@@ -186,11 +223,15 @@ async function main(): Promise<void> {
       [newRel, fileBasename, row.directory],
     );
 
-    console.log(`  [REPAIRED] ${artist}/Singles/${basename(filePath)} → ${artistFromTag}/${album}/`);
+    console.log(
+      `  [REPAIRED] ${artist}/Singles/${basename(filePath)} → ${artistFromTag}/${album}/`,
+    );
     repaired++;
   }
 
-  console.log(`\nDone. examined=${examined} repaired=${repaired} no-db-record=${noDbRecord} no-album-found=${noAlbumFound} failed=${failed}`);
+  console.log(
+    `\nDone. examined=${examined} repaired=${repaired} no-db-record=${noDbRecord} no-album-found=${noAlbumFound} failed=${failed}`,
+  );
   console.log('\nRestart nicotind (or trigger a full Navidrome rescan) to update the library.');
 }
 

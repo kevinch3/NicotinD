@@ -89,7 +89,9 @@ export function groupByDirectory(
   return Array.from(map.values());
 }
 
-export function formatPeerInfo(group: Pick<FolderGroup, 'uploadSpeed' | 'queueLength' | 'freeUploadSlots'>): string {
+export function formatPeerInfo(
+  group: Pick<FolderGroup, 'uploadSpeed' | 'queueLength' | 'freeUploadSlots'>,
+): string {
   const parts: string[] = [];
   const speed = group.uploadSpeed;
   if (speed >= 1_000_000) {

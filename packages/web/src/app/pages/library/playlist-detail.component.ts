@@ -53,7 +53,11 @@ export class PlaylistDetailComponent implements OnInit {
     const songs = this.playlist()?.songs ?? [];
     if (!songs.length) return;
     const tracks = songs.map((s) => toTrack(s));
-    this.player.playWithContext(tracks, index, { type: 'playlist', id: this.id, name: this.playlist()?.name });
+    this.player.playWithContext(tracks, index, {
+      type: 'playlist',
+      id: this.id,
+      name: this.playlist()?.name,
+    });
   }
 
   playAll(): void {
@@ -62,7 +66,9 @@ export class PlaylistDetailComponent implements OnInit {
 
   async removeSong(songId: string): Promise<void> {
     await this.playlists.removeSong(this.id, songId);
-    this.playlist.update((p) => (p ? { ...p, songs: p.songs.filter((s) => s.id !== songId), songCount: p.songCount - 1 } : p));
+    this.playlist.update((p) =>
+      p ? { ...p, songs: p.songs.filter((s) => s.id !== songId), songCount: p.songCount - 1 } : p,
+    );
   }
 
   async deletePlaylist(): Promise<void> {

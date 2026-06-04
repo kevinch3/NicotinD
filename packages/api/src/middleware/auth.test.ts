@@ -8,8 +8,12 @@ import { applySchema } from '../db.js';
 // Mock getDatabase to use an in-memory DB with a test user
 const testDb = new Database(':memory:');
 applySchema(testDb);
-testDb.run("INSERT INTO users (id, username, password_hash, role) VALUES ('user-123', 'testuser', 'hash', 'user')");
-testDb.run("INSERT INTO users (id, username, password_hash, role) VALUES ('user-456', 'queryuser', 'hash', 'admin')");
+testDb.run(
+  "INSERT INTO users (id, username, password_hash, role) VALUES ('user-123', 'testuser', 'hash', 'user')",
+);
+testDb.run(
+  "INSERT INTO users (id, username, password_hash, role) VALUES ('user-456', 'queryuser', 'hash', 'admin')",
+);
 
 mock.module('../db.js', () => ({
   getDatabase: () => testDb,
@@ -34,7 +38,7 @@ describe('authMiddleware', () => {
 
   it('returns 401 for an invalid token', async () => {
     const res = await app.request('/protected', {
-      headers: { 'Authorization': 'Bearer invalid-token' }
+      headers: { Authorization: 'Bearer invalid-token' },
     });
     expect(res.status).toBe(401);
     expect(await res.json()).toEqual({ error: 'Invalid or expired token' });
@@ -45,11 +49,11 @@ describe('authMiddleware', () => {
     const token = await signJwt(payload, SECRET);
 
     const res = await app.request('/protected', {
-      headers: { 'Authorization': `Bearer ${token}` }
+      headers: { Authorization: `Bearer ${token}` },
     });
 
     expect(res.status).toBe(200);
-    const data = await res.json() as { ok: boolean; user: { username: string } };
+    const data = (await res.json()) as { ok: boolean; user: { username: string } };
     expect(data.ok).toBe(true);
     expect(data.user.username).toBe('testuser');
   });
@@ -61,7 +65,7 @@ describe('authMiddleware', () => {
     const res = await app.request(`/protected?token=${token}`);
 
     expect(res.status).toBe(200);
-    const data = await res.json() as { user: { username: string } };
+    const data = (await res.json()) as { user: { username: string } };
     expect(data.user.username).toBe('queryuser');
   });
 
@@ -70,20 +74,22 @@ describe('authMiddleware', () => {
     const token = await signJwt(payload, 'wrong-secret');
 
     const res = await app.request('/protected', {
-      headers: { 'Authorization': `Bearer ${token}` }
+      headers: { Authorization: `Bearer ${token}` },
     });
 
     expect(res.status).toBe(401);
   });
 
   it('returns 403 for a disabled user', async () => {
-    testDb.run("INSERT OR REPLACE INTO users (id, username, password_hash, role, status) VALUES ('user-disabled', 'disabled', 'hash', 'user', 'disabled')");
+    testDb.run(
+      "INSERT OR REPLACE INTO users (id, username, password_hash, role, status) VALUES ('user-disabled', 'disabled', 'hash', 'user', 'disabled')",
+    );
 
     const payload = { sub: 'user-disabled', username: 'disabled', role: 'user' as const };
     const token = await signJwt(payload, SECRET);
 
     const res = await app.request('/protected', {
-      headers: { 'Authorization': `Bearer ${token}` }
+      headers: { Authorization: `Bearer ${token}` },
     });
 
     expect(res.status).toBe(403);

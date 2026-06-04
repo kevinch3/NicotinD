@@ -25,8 +25,20 @@ function track(p: Partial<ScannedTrack> & { relPath: string }): ScannedTrack {
 describe('buildLibrary (pure aggregation)', () => {
   it('groups tracks into albums + artists and mints stable ids', () => {
     const built = buildLibrary([
-      track({ relPath: 'Daft Punk/Discovery/01.mp3', artist: 'Daft Punk', album: 'Discovery', title: 'One More Time', track: 1 }),
-      track({ relPath: 'Daft Punk/Discovery/02.mp3', artist: 'Daft Punk', album: 'Discovery', title: 'Aerodynamic', track: 2 }),
+      track({
+        relPath: 'Daft Punk/Discovery/01.mp3',
+        artist: 'Daft Punk',
+        album: 'Discovery',
+        title: 'One More Time',
+        track: 1,
+      }),
+      track({
+        relPath: 'Daft Punk/Discovery/02.mp3',
+        artist: 'Daft Punk',
+        album: 'Discovery',
+        title: 'Aerodynamic',
+        track: 2,
+      }),
     ]);
 
     expect(built.songs).toHaveLength(2);
@@ -54,7 +66,12 @@ describe('buildLibrary (pure aggregation)', () => {
   it('collapses edition variants into one album via the group key', () => {
     const built = buildLibrary([
       track({ relPath: 'A/Album/01.mp3', artist: 'A', album: 'Circus', title: 'T1' }),
-      track({ relPath: 'A/Album (Deluxe Edition)/01.mp3', artist: 'A', album: 'Circus (Deluxe Edition)', title: 'T2' }),
+      track({
+        relPath: 'A/Album (Deluxe Edition)/01.mp3',
+        artist: 'A',
+        album: 'Circus (Deluxe Edition)',
+        title: 'T2',
+      }),
     ]);
     // Both editions share a group key → one album id; display name is the shortest.
     expect(built.albums).toHaveLength(1);
@@ -64,7 +81,12 @@ describe('buildLibrary (pure aggregation)', () => {
 
   it('infers album from the folder leaf when the album tag is missing', () => {
     const built = buildLibrary([
-      track({ relPath: 'Some Artist/Greatest Hits/01.mp3', artist: 'Some Artist', title: 'Hit', album: undefined }),
+      track({
+        relPath: 'Some Artist/Greatest Hits/01.mp3',
+        artist: 'Some Artist',
+        title: 'Hit',
+        album: undefined,
+      }),
     ]);
     expect(built.albums[0]!.name).toBe('Greatest Hits');
   });
@@ -87,7 +109,12 @@ describe('loose singles (un-bucketing)', () => {
   it('turns a force-tagged <Artist>/Singles/ track into its own single named after the title', () => {
     // Mirrors a legacy file the organizer wrote with album="Singles".
     const built = buildLibrary([
-      track({ relPath: 'Alfredo Casero/Singles/Mi Cancion.mp3', artist: 'Alfredo Casero', album: 'Singles', title: 'Mi Cancion' }),
+      track({
+        relPath: 'Alfredo Casero/Singles/Mi Cancion.mp3',
+        artist: 'Alfredo Casero',
+        album: 'Singles',
+        title: 'Mi Cancion',
+      }),
     ]);
     expect(built.albums).toHaveLength(1);
     expect(built.albums[0]!.name).toBe('Mi Cancion');
@@ -96,8 +123,18 @@ describe('loose singles (un-bucketing)', () => {
 
   it('gives each loose single its own album card', () => {
     const built = buildLibrary([
-      track({ relPath: 'Alfredo Casero/Singles/Song A.mp3', artist: 'Alfredo Casero', album: 'Singles', title: 'Song A' }),
-      track({ relPath: 'Alfredo Casero/Singles/Song B.mp3', artist: 'Alfredo Casero', album: 'Singles', title: 'Song B' }),
+      track({
+        relPath: 'Alfredo Casero/Singles/Song A.mp3',
+        artist: 'Alfredo Casero',
+        album: 'Singles',
+        title: 'Song A',
+      }),
+      track({
+        relPath: 'Alfredo Casero/Singles/Song B.mp3',
+        artist: 'Alfredo Casero',
+        album: 'Singles',
+        title: 'Song B',
+      }),
     ]);
     expect(built.albums).toHaveLength(2);
     expect(built.albums.map((a) => a.name).sort()).toEqual(['Song A', 'Song B']);
@@ -108,8 +145,20 @@ describe('loose singles (un-bucketing)', () => {
 
   it('collapses format-duplicates of the same single into one card', () => {
     const built = buildLibrary([
-      track({ relPath: 'Alfredo Casero/Singles/Hit.mp3', artist: 'Alfredo Casero', album: 'Singles', title: 'Hit', suffix: 'mp3' }),
-      track({ relPath: 'Alfredo Casero/Singles/Hit.flac', artist: 'Alfredo Casero', album: 'Singles', title: 'Hit', suffix: 'flac' }),
+      track({
+        relPath: 'Alfredo Casero/Singles/Hit.mp3',
+        artist: 'Alfredo Casero',
+        album: 'Singles',
+        title: 'Hit',
+        suffix: 'mp3',
+      }),
+      track({
+        relPath: 'Alfredo Casero/Singles/Hit.flac',
+        artist: 'Alfredo Casero',
+        album: 'Singles',
+        title: 'Hit',
+        suffix: 'flac',
+      }),
     ]);
     expect(built.songs).toHaveLength(1);
     expect(built.albums).toHaveLength(1);
@@ -158,26 +207,36 @@ describe('LibraryScanner.persist', () => {
     ]);
     scanner.persist(built, Date.now(), true);
     const albumId = built.albums[0]!.id;
-    db.run('UPDATE library_albums SET hidden = 1, classification = ?, manual_override = 1 WHERE id = ?', ['single', albumId]);
+    db.run(
+      'UPDATE library_albums SET hidden = 1, classification = ?, manual_override = 1 WHERE id = ?',
+      ['single', albumId],
+    );
 
     // Rescan the same file — curation must stick.
     scanner.persist(built, Date.now() + 1, true);
-    const row = db.query<{ hidden: number; classification: string }, [string]>(
-      'SELECT hidden, classification FROM library_albums WHERE id = ?',
-    ).get(albumId);
+    const row = db
+      .query<
+        { hidden: number; classification: string },
+        [string]
+      >('SELECT hidden, classification FROM library_albums WHERE id = ?')
+      .get(albumId);
     expect(row?.hidden).toBe(1);
     expect(row?.classification).toBe('single');
   });
 
   it('incremental persist does not prune untouched rows', () => {
     scanner.persist(
-      buildLibrary([track({ relPath: 'A/Album/01.mp3', artist: 'A', album: 'Album', title: 'T1' })]),
+      buildLibrary([
+        track({ relPath: 'A/Album/01.mp3', artist: 'A', album: 'Album', title: 'T1' }),
+      ]),
       Date.now(),
       true,
     );
     // A separate incremental batch for a different album must not drop the first.
     scanner.persist(
-      buildLibrary([track({ relPath: 'B/Other/01.mp3', artist: 'B', album: 'Other', title: 'T2' })]),
+      buildLibrary([
+        track({ relPath: 'B/Other/01.mp3', artist: 'B', album: 'Other', title: 'T2' }),
+      ]),
       Date.now() + 1,
       false,
     );

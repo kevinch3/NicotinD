@@ -9,7 +9,7 @@ import { PasswordFieldComponent } from '../../components/password-field/password
   selector: 'app-login',
   imports: [FormsModule, PasswordFieldComponent],
   templateUrl: './login.component.html',
-  })
+})
 export class LoginComponent implements OnInit {
   private auth = inject(AuthService);
   private api = inject(ApiService);

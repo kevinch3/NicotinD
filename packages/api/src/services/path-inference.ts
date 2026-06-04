@@ -72,10 +72,30 @@ export function extractAlbumName(folderName: string, artist: string | undefined)
  * Soulseek peers frequently organize under "music/", "downloads/", etc.
  */
 const GENERIC_FOLDER_NAMES = new Set([
-  'src', 'source', 'downloads', 'download', 'music', 'audio',
-  'mp3', 'flac', 'wav', 'm4a', 'ogg', 'aac', 'misc', 'mixed',
-  'files', 'shared', 'uploads', 'media', 'new', 'old',
-  'temp', 'tmp', 'data', 'unsorted',
+  'src',
+  'source',
+  'downloads',
+  'download',
+  'music',
+  'audio',
+  'mp3',
+  'flac',
+  'wav',
+  'm4a',
+  'ogg',
+  'aac',
+  'misc',
+  'mixed',
+  'files',
+  'shared',
+  'uploads',
+  'media',
+  'new',
+  'old',
+  'temp',
+  'tmp',
+  'data',
+  'unsorted',
 ]);
 
 function looksLikeGenericFolder(folderName: string): boolean {
@@ -92,16 +112,27 @@ function looksLikeGenericFolder(folderName: string): boolean {
  * Returns undefined when the folder is generic, looks like a filename,
  * or would just echo the artist name.
  */
-export function inferFolderAlbum(directory: string, artist: string | undefined): string | undefined {
+export function inferFolderAlbum(
+  directory: string,
+  artist: string | undefined,
+): string | undefined {
   const leaf = leafFolderName(directory);
-  if (!leaf || !hasUsableValue(leaf) || looksLikeFilenameTag(leaf) || looksLikeGenericFolder(leaf)) {
+  if (
+    !leaf ||
+    !hasUsableValue(leaf) ||
+    looksLikeFilenameTag(leaf) ||
+    looksLikeGenericFolder(leaf)
+  ) {
     return undefined;
   }
   const album = extractAlbumName(leaf, artist);
   if (!album) return undefined;
   // Don't use the folder name as album if it's the same as the artist (artist-named folder).
-  if (artist && album.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '') ===
-      artist.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')) {
+  if (
+    artist &&
+    album.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '') ===
+      artist.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+  ) {
     return undefined;
   }
   return album;

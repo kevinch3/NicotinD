@@ -19,23 +19,25 @@ mock.module('../db.js', () => ({
 function makeSlskdMock() {
   return {
     transfers: {
-      getDownloads: mock(() => Promise.resolve([
-        {
-          username: 'user1',
-          directories: [
-            {
-              directory: 'dir1',
-              files: [
-                { id: 'guid1', filename: 'file1.mp3', state: 'Completed, Succeeded' },
-                { id: 'guid2', filename: 'file2.mp3', state: 'InProgress' }
-              ]
-            }
-          ]
-        }
-      ])),
+      getDownloads: mock(() =>
+        Promise.resolve([
+          {
+            username: 'user1',
+            directories: [
+              {
+                directory: 'dir1',
+                files: [
+                  { id: 'guid1', filename: 'file1.mp3', state: 'Completed, Succeeded' },
+                  { id: 'guid2', filename: 'file2.mp3', state: 'InProgress' },
+                ],
+              },
+            ],
+          },
+        ]),
+      ),
       cancel: mock(() => Promise.resolve()),
       cancelAll: mock(() => Promise.resolve()),
-    }
+    },
   };
 }
 
@@ -69,11 +71,24 @@ describe('downloads routes', () => {
         (lidarr_album_id, username, directory, canonical_tracks_json, alternates_json,
          artist_name, album_title, state, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?)`,
-      [1, 'user1', 'dir1', JSON.stringify(['a', 'b', 'c', 'd']), '[]', 'Patricio Rey', 'Oktubre', Date.now()],
+      [
+        1,
+        'user1',
+        'dir1',
+        JSON.stringify(['a', 'b', 'c', 'd']),
+        '[]',
+        'Patricio Rey',
+        'Oktubre',
+        Date.now(),
+      ],
     );
 
     const res = await app.request('/');
-    const data = await res.json() as Array<{ directories: Array<{ albumJob?: { artistName: string; albumTitle: string; canonicalTrackCount: number } }> }>;
+    const data = (await res.json()) as Array<{
+      directories: Array<{
+        albumJob?: { artistName: string; albumTitle: string; canonicalTrackCount: number };
+      }>;
+    }>;
 
     expect(data[0].directories[0].albumJob).toEqual({
       artistName: 'Patricio Rey',
@@ -84,7 +99,7 @@ describe('downloads routes', () => {
 
   it('GET / leaves direct (non-hunt) folders without albumJob metadata', async () => {
     const res = await app.request('/');
-    const data = await res.json() as Array<{ directories: Array<{ albumJob?: unknown }> }>;
+    const data = (await res.json()) as Array<{ directories: Array<{ albumJob?: unknown }> }>;
     expect(data[0].directories[0].albumJob).toBeUndefined();
   });
 
@@ -98,7 +113,7 @@ describe('downloads routes', () => {
     );
 
     const res = await app.request('/');
-    const data = await res.json() as Array<{ directories: Array<{ albumJob?: unknown }> }>;
+    const data = (await res.json()) as Array<{ directories: Array<{ albumJob?: unknown }> }>;
     expect(data[0].directories[0].albumJob).toBeUndefined();
   });
 
@@ -106,7 +121,9 @@ describe('downloads routes', () => {
     testDb.run('INSERT INTO hidden_transfers (id) VALUES (?)', ['guid1']);
 
     const res = await app.request('/');
-    const data = await res.json() as Array<{ directories: Array<{ files: Array<{ id: string }> }> }>;
+    const data = (await res.json()) as Array<{
+      directories: Array<{ files: Array<{ id: string }> }>;
+    }>;
 
     expect(data[0].directories[0].files).toHaveLength(1);
     expect(data[0].directories[0].files[0].id).toBe('guid2');
@@ -137,9 +154,7 @@ describe('downloads routes', () => {
   });
 
   it('GET / returns 503 when slskd throws (transient unreachable)', async () => {
-    slskdMock.transfers.getDownloads = mock(() =>
-      Promise.reject(new Error('FailedToOpenSocket')),
-    );
+    slskdMock.transfers.getDownloads = mock(() => Promise.reject(new Error('FailedToOpenSocket')));
 
     const res = await app.request('/');
     expect(res.status).toBe(503);

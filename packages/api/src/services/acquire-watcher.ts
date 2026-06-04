@@ -138,9 +138,7 @@ export class AcquireWatcher {
     }));
     try {
       await this.options.organizeBatch(files);
-      const relPaths = files
-        .map((f) => f.relativePath)
-        .filter((p): p is string => Boolean(p));
+      const relPaths = files.map((f) => f.relativePath).filter((p): p is string => Boolean(p));
       if (relPaths.length > 0) {
         await this.options.scanIncremental(relPaths);
         if (this.options.enrichSingles) await this.options.enrichSingles(relPaths);
@@ -184,9 +182,7 @@ export class AcquireWatcher {
 
   listJobs(limit = 50): AcquireJob[] {
     const rows = this.db
-      .query<AcquireJobRow, [number]>(
-        `SELECT * FROM acquire_jobs ORDER BY created_at DESC LIMIT ?`,
-      )
+      .query<AcquireJobRow, [number]>(`SELECT * FROM acquire_jobs ORDER BY created_at DESC LIMIT ?`)
       .all(limit);
     return rows.map((r) => this.mapRow(r));
   }

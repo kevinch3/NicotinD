@@ -190,10 +190,26 @@ export function applySchema(db: Database): void {
   `);
 
   // visibility column is retained but unused; all playlists are shared.
-  try { db.run(`ALTER TABLE playlist_visibility ADD COLUMN created_by TEXT REFERENCES users(id)`); } catch { /* column exists */ }
-  try { db.run(`ALTER TABLE playlist_visibility ADD COLUMN created_at TEXT`); } catch { /* column exists */ }
-  try { db.run(`ALTER TABLE playlist_visibility ADD COLUMN modified_by TEXT REFERENCES users(id)`); } catch { /* column exists */ }
-  try { db.run(`ALTER TABLE playlist_visibility ADD COLUMN modified_at TEXT`); } catch { /* column exists */ }
+  try {
+    db.run(`ALTER TABLE playlist_visibility ADD COLUMN created_by TEXT REFERENCES users(id)`);
+  } catch {
+    /* column exists */
+  }
+  try {
+    db.run(`ALTER TABLE playlist_visibility ADD COLUMN created_at TEXT`);
+  } catch {
+    /* column exists */
+  }
+  try {
+    db.run(`ALTER TABLE playlist_visibility ADD COLUMN modified_by TEXT REFERENCES users(id)`);
+  } catch {
+    /* column exists */
+  }
+  try {
+    db.run(`ALTER TABLE playlist_visibility ADD COLUMN modified_at TEXT`);
+  } catch {
+    /* column exists */
+  }
 
   try {
     db.run(`
@@ -205,9 +221,13 @@ export function applySchema(db: Database): void {
           visibility   = 'global'
       WHERE created_at IS NULL
     `);
-  } catch { /* columns not present on first boot; UPDATE runs harmlessly next time */ }
+  } catch {
+    /* columns not present on first boot; UPDATE runs harmlessly next time */
+  }
 
-  db.run(`CREATE INDEX IF NOT EXISTS idx_playlist_visibility_created_by ON playlist_visibility(created_by)`);
+  db.run(
+    `CREATE INDEX IF NOT EXISTS idx_playlist_visibility_created_by ON playlist_visibility(created_by)`,
+  );
 
   // URL-based acquisition jobs (yt-dlp / spotdl). Separate from album_jobs which
   // is tightly coupled to Lidarr album IDs. Each row represents one submitted URL
@@ -229,9 +249,10 @@ export function applySchema(db: Database): void {
   // `backend` was once CHECK (backend IN ('ytdlp','spotdl')); it's now an open
   // acquisition-plugin id. Rebuild legacy tables to drop that constraint.
   const acquireSql = db
-    .query<{ sql: string }, []>(
-      `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'acquire_jobs'`,
-    )
+    .query<
+      { sql: string },
+      []
+    >(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'acquire_jobs'`)
     .get();
   if (acquireSql?.sql.includes('backend IN')) {
     db.run('ALTER TABLE acquire_jobs RENAME TO acquire_jobs_old');
@@ -255,7 +276,9 @@ export function applySchema(db: Database): void {
     db.run('DROP TABLE acquire_jobs_old');
   }
   db.run(`CREATE INDEX IF NOT EXISTS idx_acquire_jobs_state ON acquire_jobs (state)`);
-  db.run(`CREATE INDEX IF NOT EXISTS idx_acquire_jobs_created_at ON acquire_jobs (created_at DESC)`);
+  db.run(
+    `CREATE INDEX IF NOT EXISTS idx_acquire_jobs_created_at ON acquire_jobs (created_at DESC)`,
+  );
 
   // Watchlist: albums the user asked to auto-acquire. A background poller
   // (WatchlistService) periodically hunts each `watching` row and, when a
@@ -324,9 +347,10 @@ export function applySchema(db: Database): void {
   // statements below so they re-create indexes on the rebuilt table.
   const albumsSql =
     db
-      .query<{ sql: string }, []>(
-        `SELECT sql FROM sqlite_master WHERE type='table' AND name='library_albums'`,
-      )
+      .query<
+        { sql: string },
+        []
+      >(`SELECT sql FROM sqlite_master WHERE type='table' AND name='library_albums'`)
       .get()?.sql ?? '';
   if (albumsSql && !albumsSql.includes("'ep'")) {
     db.transaction(() => {
@@ -357,10 +381,14 @@ export function applySchema(db: Database): void {
   }
 
   db.run(`CREATE INDEX IF NOT EXISTS idx_library_albums_hidden ON library_albums(hidden)`);
-  db.run(`CREATE INDEX IF NOT EXISTS idx_library_albums_classification ON library_albums(classification)`);
+  db.run(
+    `CREATE INDEX IF NOT EXISTS idx_library_albums_classification ON library_albums(classification)`,
+  );
   db.run(`CREATE INDEX IF NOT EXISTS idx_library_albums_artist_id ON library_albums(artist_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_library_albums_created ON library_albums(created DESC)`);
-  db.run(`CREATE INDEX IF NOT EXISTS idx_library_albums_name ON library_albums(name COLLATE NOCASE)`);
+  db.run(
+    `CREATE INDEX IF NOT EXISTS idx_library_albums_name ON library_albums(name COLLATE NOCASE)`,
+  );
 
   db.run(`
     CREATE TABLE IF NOT EXISTS library_songs (
@@ -404,7 +432,9 @@ export function applySchema(db: Database): void {
       synced_at       INTEGER NOT NULL
     )
   `);
-  db.run(`CREATE INDEX IF NOT EXISTS idx_library_artists_name ON library_artists(name COLLATE NOCASE)`);
+  db.run(
+    `CREATE INDEX IF NOT EXISTS idx_library_artists_name ON library_artists(name COLLATE NOCASE)`,
+  );
   db.run(`CREATE INDEX IF NOT EXISTS idx_library_artists_hidden ON library_artists(hidden)`);
 
   db.run(`
@@ -466,9 +496,10 @@ export function applySchema(db: Database): void {
   // — the feature was disabled — so it's safe to drop and recreate them.
   const playlistsOldSql =
     db
-      .query<{ sql: string }, []>(
-        `SELECT sql FROM sqlite_master WHERE type='table' AND name='playlists'`,
-      )
+      .query<
+        { sql: string },
+        []
+      >(`SELECT sql FROM sqlite_master WHERE type='table' AND name='playlists'`)
       .get()?.sql ?? '';
   if (playlistsOldSql && !playlistsOldSql.includes('description')) {
     db.transaction(() => {
@@ -542,7 +573,9 @@ export function applySchema(db: Database): void {
     )
   `);
   db.run(`CREATE INDEX IF NOT EXISTS idx_provenance_path ON library_song_provenance(song_path)`);
-  db.run(`CREATE INDEX IF NOT EXISTS idx_provenance_navidrome_id ON library_song_provenance(navidrome_id)`);
+  db.run(
+    `CREATE INDEX IF NOT EXISTS idx_provenance_navidrome_id ON library_song_provenance(navidrome_id)`,
+  );
 
   // Plugin enablement + consent state. One row per known plugin; absent row ⇒
   // never enabled (default-off compliance posture). config_json is the admin-set

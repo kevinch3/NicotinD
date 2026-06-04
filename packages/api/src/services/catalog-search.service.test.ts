@@ -28,7 +28,12 @@ describe('CatalogService.search', () => {
     const lidarr = {
       artist: {
         lookup: mock(async () => [
-          makeArtist({ id: 1, artistName: 'Pink Floyd', foreignArtistId: 'pf-mbid', images: [{ url: '/local.jpg', coverType: 'poster', remoteUrl: 'http://x/pf.jpg' }] }),
+          makeArtist({
+            id: 1,
+            artistName: 'Pink Floyd',
+            foreignArtistId: 'pf-mbid',
+            images: [{ url: '/local.jpg', coverType: 'poster', remoteUrl: 'http://x/pf.jpg' }],
+          }),
         ]),
       },
       album: {
@@ -40,8 +45,34 @@ describe('CatalogService.search', () => {
             releaseDate: '1973-03-01',
             artist: makeArtist({ id: 1, artistName: 'Pink Floyd', foreignArtistId: 'pf-mbid' }),
             releases: [
-              { id: 1, foreignReleaseId: 'r1', title: 't', status: 'official', duration: 0, trackCount: 9, media: [], country: [], label: [], disambiguation: '', format: 'CD', monitored: false },
-              { id: 2, foreignReleaseId: 'r2', title: 't', status: 'official', duration: 0, trackCount: 10, media: [], country: [], label: [], disambiguation: '', format: 'CD', monitored: false },
+              {
+                id: 1,
+                foreignReleaseId: 'r1',
+                title: 't',
+                status: 'official',
+                duration: 0,
+                trackCount: 9,
+                media: [],
+                country: [],
+                label: [],
+                disambiguation: '',
+                format: 'CD',
+                monitored: false,
+              },
+              {
+                id: 2,
+                foreignReleaseId: 'r2',
+                title: 't',
+                status: 'official',
+                duration: 0,
+                trackCount: 10,
+                media: [],
+                country: [],
+                label: [],
+                disambiguation: '',
+                format: 'CD',
+                monitored: false,
+              },
             ],
             images: [{ url: '/c.jpg', coverType: 'cover', remoteUrl: 'http://x/c.jpg' }],
           }),
@@ -52,7 +83,11 @@ describe('CatalogService.search', () => {
     const svc = new CatalogService(lidarr);
     const result = await svc.search('pink floyd');
 
-    expect(result.artists[0]).toMatchObject({ mbid: 'pf-mbid', name: 'Pink Floyd', imageUrl: 'http://x/pf.jpg' });
+    expect(result.artists[0]).toMatchObject({
+      mbid: 'pf-mbid',
+      name: 'Pink Floyd',
+      imageUrl: 'http://x/pf.jpg',
+    });
     expect(result.albums[0]).toMatchObject({
       foreignAlbumId: 'dsotm-rg',
       title: 'The Dark Side of the Moon',
@@ -66,7 +101,11 @@ describe('CatalogService.search', () => {
 
   it('returns partial results when one lookup fails', async () => {
     const lidarr = {
-      artist: { lookup: mock(async () => { throw new Error('boom'); }) },
+      artist: {
+        lookup: mock(async () => {
+          throw new Error('boom');
+        }),
+      },
       album: { lookup: mock(async () => [makeAlbum({ id: 1, title: 'X' })]) },
     } as unknown as Lidarr;
 
@@ -90,7 +129,12 @@ describe('CatalogService.resolveAlbum', () => {
       artist: { list: mock(async () => [makeArtist({ id: 5, foreignArtistId: 'pf-mbid' })]), add },
       album: {
         listByArtist: mock(async () => [
-          makeAlbum({ id: 10, title: 'Animals', foreignAlbumId: 'rg-10', statistics: { trackCount: 0, totalTrackCount: 5, sizeOnDisk: 0, percentOfTracks: 0 } }),
+          makeAlbum({
+            id: 10,
+            title: 'Animals',
+            foreignAlbumId: 'rg-10',
+            statistics: { trackCount: 0, totalTrackCount: 5, sizeOnDisk: 0, percentOfTracks: 0 },
+          }),
         ]),
       },
     } as unknown as Lidarr;
@@ -106,14 +150,18 @@ describe('CatalogService.resolveAlbum', () => {
     const lidarr = {
       artist: {
         list: mock(async () => []),
-        lookup: mock(async () => [makeArtist({ id: 0, foreignArtistId: 'pf-mbid', artistName: 'Pink Floyd' })]),
+        lookup: mock(async () => [
+          makeArtist({ id: 0, foreignArtistId: 'pf-mbid', artistName: 'Pink Floyd' }),
+        ]),
         getQualityProfiles: mock(async () => [{ id: 1, name: 'Any' }]),
         getMetadataProfiles: mock(async () => [{ id: 1, name: 'Std' }]),
         getRootFolders: mock(async () => [{ id: 1, path: '/music', freeSpace: 0 }]),
         add,
       },
       album: {
-        listByArtist: mock(async () => [makeAlbum({ id: 10, title: 'Animals', foreignAlbumId: 'rg-10' })]),
+        listByArtist: mock(async () => [
+          makeAlbum({ id: 10, title: 'Animals', foreignAlbumId: 'rg-10' }),
+        ]),
       },
     } as unknown as Lidarr;
 
@@ -126,9 +174,15 @@ describe('CatalogService.resolveAlbum', () => {
   it('throws when the resolved artist has no matching album', async () => {
     const lidarr = {
       artist: { list: mock(async () => [makeArtist({ id: 5, foreignArtistId: 'pf-mbid' })]) },
-      album: { listByArtist: mock(async () => [makeAlbum({ id: 1, title: 'Other', foreignAlbumId: 'rg-other' })]) },
+      album: {
+        listByArtist: mock(async () => [
+          makeAlbum({ id: 1, title: 'Other', foreignAlbumId: 'rg-other' }),
+        ]),
+      },
     } as unknown as Lidarr;
 
-    await expect(new CatalogService(lidarr).resolveAlbum(input)).rejects.toThrow(/not yet available/i);
+    await expect(new CatalogService(lidarr).resolveAlbum(input)).rejects.toThrow(
+      /not yet available/i,
+    );
   });
 });

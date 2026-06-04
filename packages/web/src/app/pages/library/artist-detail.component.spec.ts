@@ -10,16 +10,32 @@ import { PlayerService } from '../../services/player.service';
 const ARTIST = { id: 'ar1', name: 'Natiruts', albumCount: 2 };
 const ALBUMS = [
   { id: 'a1', name: 'Natiruts', artist: 'Natiruts' },
-  { id: 'a2', name: 'Acústico',  artist: 'Natiruts' },
+  { id: 'a2', name: 'Acústico', artist: 'Natiruts' },
 ];
-const ALBUM_DETAILS: Record<string, { id: string; name: string; artist: string; song: Array<{ id: string; title: string; artist: string }> }> = {
-  a1: { id: 'a1', name: 'Natiruts', artist: 'Natiruts', song: [
-    { id: 's1', title: 'Natiruts Reggae Power', artist: 'Natiruts' },
-    { id: 's2', title: 'Sorri, Sou Rei',        artist: 'Natiruts' },
-  ]},
-  a2: { id: 'a2', name: 'Acústico', artist: 'Natiruts', song: [
-    { id: 's3', title: 'Quatro Vezes Você', artist: 'Natiruts' },
-  ]},
+const ALBUM_DETAILS: Record<
+  string,
+  {
+    id: string;
+    name: string;
+    artist: string;
+    song: Array<{ id: string; title: string; artist: string }>;
+  }
+> = {
+  a1: {
+    id: 'a1',
+    name: 'Natiruts',
+    artist: 'Natiruts',
+    song: [
+      { id: 's1', title: 'Natiruts Reggae Power', artist: 'Natiruts' },
+      { id: 's2', title: 'Sorri, Sou Rei', artist: 'Natiruts' },
+    ],
+  },
+  a2: {
+    id: 'a2',
+    name: 'Acústico',
+    artist: 'Natiruts',
+    song: [{ id: 's3', title: 'Quatro Vezes Você', artist: 'Natiruts' }],
+  },
 };
 
 function setup() {
@@ -35,12 +51,22 @@ function setup() {
         provide: ApiService,
         useValue: {
           getArtist: () => of({ artist: ARTIST, albums: ALBUMS }),
-          getAlbum: (id: string) => { getAlbumCalls.push(id); return of(ALBUM_DETAILS[id]); },
+          getAlbum: (id: string) => {
+            getAlbumCalls.push(id);
+            return of(ALBUM_DETAILS[id]);
+          },
           getArtistDiscography: () => of({ artistId: 'ar1', lidarrId: 0, mbid: '', albums: [] }),
         },
       },
       { provide: AuthService, useValue: { token: signal('tok') } },
-      { provide: PlayerService, useValue: { playWithContext: (...args: unknown[]) => { playWithContextCalls.push(args); } } },
+      {
+        provide: PlayerService,
+        useValue: {
+          playWithContext: (...args: unknown[]) => {
+            playWithContextCalls.push(args);
+          },
+        },
+      },
     ],
     schemas: [NO_ERRORS_SCHEMA],
   });
@@ -61,9 +87,13 @@ describe('ArtistDetailComponent — Play All', () => {
     expect(getAlbumCalls).toContain('a2');
 
     expect(playWithContextCalls).toHaveLength(1);
-    const [tracks, startIndex, context] = playWithContextCalls[0] as [Array<{ id: string }>, number, { type: string; name: string }];
+    const [tracks, startIndex, context] = playWithContextCalls[0] as [
+      Array<{ id: string }>,
+      number,
+      { type: string; name: string },
+    ];
     expect(tracks).toHaveLength(3); // s1+s2 from a1, s3 from a2
-    expect(tracks.map(t => t.id)).toEqual(['s1', 's2', 's3']);
+    expect(tracks.map((t) => t.id)).toEqual(['s1', 's2', 's3']);
     expect(startIndex).toBe(0);
     expect(context.type).toBe('adhoc');
     expect(context.name).toBe('Natiruts');
@@ -94,9 +124,12 @@ describe('ArtistDetailComponent — Play All', () => {
 
     await component.playAll();
 
-    const [tracks] = playWithContextCalls[0] as [Array<{ id: string; album: string }>, ...unknown[]];
-    const s1 = tracks.find(t => t.id === 's1');
-    const s3 = tracks.find(t => t.id === 's3');
+    const [tracks] = playWithContextCalls[0] as [
+      Array<{ id: string; album: string }>,
+      ...unknown[],
+    ];
+    const s1 = tracks.find((t) => t.id === 's1');
+    const s3 = tracks.find((t) => t.id === 's3');
     expect(s1?.album).toBe('Natiruts');
     expect(s3?.album).toBe('Acústico');
   });

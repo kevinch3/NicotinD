@@ -1,10 +1,4 @@
-import {
-  Component,
-  inject,
-  signal,
-  computed,
-  effect,
-} from '@angular/core';
+import { Component, inject, signal, computed, effect } from '@angular/core';
 import { Router } from '@angular/router';
 import { PlayerService } from '../../services/player.service';
 import { AuthService } from '../../services/auth.service';
@@ -28,7 +22,7 @@ function formatTime(s: number): string {
   selector: 'app-now-playing',
   imports: [DeviceSwitcherComponent, TrackContextMenuComponent, TrackInfoSheetComponent],
   templateUrl: './now-playing.component.html',
-  })
+})
 export class NowPlayingComponent {
   readonly player = inject(PlayerService);
   readonly auth = inject(AuthService);

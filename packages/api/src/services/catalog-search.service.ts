@@ -106,8 +106,7 @@ export class CatalogService {
     log.info({ artistMbid, artistName }, 'Adding artist to Lidarr for catalog hunt');
 
     const candidates = await this.lidarr.artist.lookup(artistName);
-    const best =
-      candidates.find((a) => a.foreignArtistId === artistMbid) ?? candidates[0];
+    const best = candidates.find((a) => a.foreignArtistId === artistMbid) ?? candidates[0];
     if (!best) throw new Error(`Lidarr found no artist matching "${artistName}"`);
 
     const added = await addArtistFromLookup(this.lidarr, best, this.musicDir);
@@ -147,5 +146,9 @@ function mapAlbum(a: LidarrAlbum): CatalogAlbum {
 }
 
 function normalizeName(name: string): string {
-  return name.toLowerCase().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim();
+  return name
+    .toLowerCase()
+    .replace(/[^\w\s]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 }

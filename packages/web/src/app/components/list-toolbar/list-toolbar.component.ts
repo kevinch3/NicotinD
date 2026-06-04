@@ -10,7 +10,7 @@ export interface SortOption {
   selector: 'app-list-toolbar',
   imports: [FormsModule],
   templateUrl: './list-toolbar.component.html',
-  })
+})
 export class ListToolbarComponent {
   readonly inputEl = viewChild<ElementRef<HTMLInputElement>>('inputEl');
 

@@ -20,11 +20,14 @@ export function albumAlreadyComplete(
 ): boolean {
   const targetName = normalizeForGrouping(title);
   const rows = db
-    .query<{ name: string; song_count: number }, [string]>(
-      `SELECT name, song_count FROM library_albums WHERE artist = ? COLLATE NOCASE`,
-    )
+    .query<
+      { name: string; song_count: number },
+      [string]
+    >(`SELECT name, song_count FROM library_albums WHERE artist = ? COLLATE NOCASE`)
     .all(artist);
-  return rows.some((r) => normalizeForGrouping(r.name) === targetName && r.song_count >= trackCount);
+  return rows.some(
+    (r) => normalizeForGrouping(r.name) === targetName && r.song_count >= trackCount,
+  );
 }
 
 /** Normalize a peer filename to its bare track title (drops dir, ext, track #). */

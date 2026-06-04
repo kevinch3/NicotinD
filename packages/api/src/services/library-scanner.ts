@@ -158,7 +158,10 @@ export function isLooseSinglesBucket(dir: string, album: string): boolean {
  * organizer's tag-derivation precedence so the scanner and organizer agree.
  */
 function resolveTags(t: ScannedTrack): { artist: string; album: string; title: string } {
-  const dir = t.relPath.split(/[\\/]+/).slice(0, -1).join('/');
+  const dir = t.relPath
+    .split(/[\\/]+/)
+    .slice(0, -1)
+    .join('/');
   const inferred = inferMetadataFromPath(t.relPath, dir);
 
   const artist =
@@ -170,7 +173,10 @@ function resolveTags(t: ScannedTrack): { artist: string; album: string; title: s
   const title =
     (hasUsableValue(t.title) && t.title) ||
     (hasUsableValue(inferred.title) ? inferred.title : undefined) ||
-    t.relPath.split(/[\\/]+/).pop()?.replace(/\.[^/.]+$/, '') ||
+    t.relPath
+      .split(/[\\/]+/)
+      .pop()
+      ?.replace(/\.[^/.]+$/, '') ||
     'Unknown';
 
   let album =
@@ -201,7 +207,10 @@ export function selectLibraryTracks(
   tracks: ScannedTrack[],
   canonicalByAlbum?: Map<string, string[]>,
 ): ScannedTrack[] {
-  const byAlbum = new Map<string, Array<{ track: ScannedTrack; relPath: string; title: string; suffix: string; bitRate: number }>>();
+  const byAlbum = new Map<
+    string,
+    Array<{ track: ScannedTrack; relPath: string; title: string; suffix: string; bitRate: number }>
+  >();
   for (const t of tracks) {
     const { artist, album, title } = resolveTags(t);
     const albId = albumIdFor(artist, album);
@@ -302,7 +311,10 @@ export function buildLibrary(
   }
 
   const albums: AlbumRow[] = [];
-  const artistAcc = new Map<string, { id: string; name: string; albums: Set<string>; coverArt: string | null }>();
+  const artistAcc = new Map<
+    string,
+    { id: string; name: string; albums: Set<string>; coverArt: string | null }
+  >();
   for (const a of albumAcc.values()) {
     // Display name = shortest member title so the base edition wins over a
     // longer "(Deluxe Edition)" sibling that shares the group key.

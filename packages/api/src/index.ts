@@ -141,9 +141,8 @@ export function createApp({
   const sharedOrganizer = new LibraryOrganizer({
     musicDir: config.musicDir,
     stagingDir,
-    acoustid: config.metadataFix.enabled && acoustidApiKey
-      ? new AcoustIdLookup(acoustidApiKey)
-      : undefined,
+    acoustid:
+      config.metadataFix.enabled && acoustidApiKey ? new AcoustIdLookup(acoustidApiKey) : undefined,
     unsortedRoot: `${expandedDataDir}/unsorted`,
     preferFlacSkipMp3: config.downloads.preferFlacSkipMp3,
     jobLookup: (directory) => {
@@ -245,7 +244,10 @@ export function createApp({
     // acquire_jobs row (best-effort; rows without progress simply no-op).
     emitProgress: (jobId, progress) => {
       try {
-        db.run(`UPDATE acquire_jobs SET progress = ? WHERE id = ?`, [JSON.stringify(progress), jobId]);
+        db.run(`UPDATE acquire_jobs SET progress = ? WHERE id = ?`, [
+          JSON.stringify(progress),
+          jobId,
+        ]);
       } catch {
         // Non-fatal — progress is best-effort.
       }
@@ -281,7 +283,10 @@ export function createApp({
   const requireAcquisition = requireAcquisitionMiddleware(plugins);
 
   // Public routes
-  app.route('/api/auth', authRoutes(config.jwt.secret, config.jwt.expiresIn, config.registrationEnabled));
+  app.route(
+    '/api/auth',
+    authRoutes(config.jwt.secret, config.jwt.expiresIn, config.registrationEnabled),
+  );
   app.route(
     '/api/setup',
     setupRoutes({
@@ -317,10 +322,13 @@ export function createApp({
   app.use('/api/acquire/*', auth);
   app.use('/api/plugins/*', auth);
 
-  app.get('/api/ws/playback', upgradeWebSocket((c) => {
-    const user = (c as unknown as { get(key: 'user'): AuthEnv['Variables']['user'] }).get('user');
-    return createWebSocketHandlers(user.sub);
-  }));
+  app.get(
+    '/api/ws/playback',
+    upgradeWebSocket((c) => {
+      const user = (c as unknown as { get(key: 'user'): AuthEnv['Variables']['user'] }).get('user');
+      return createWebSocketHandlers(user.sub);
+    }),
+  );
 
   app.route('/api/search', searchRoutes(registry));
   app.route('/api/admin', adminRoutes());
@@ -328,7 +336,10 @@ export function createApp({
   app.route('/api/uploads', uploadRoutes(slskdRef));
   app.route('/api/library', libraryRoutes(config.musicDir, { curator, runSync: runSyncAndCurate }));
   app.route('/api', streamingRoutes(expandedMusicDir, db, expandedDataDir));
-  app.route('/api/system', systemRoutes(slskdRef, serviceManager, config, { triggerScan: runSyncAndCurate }));
+  app.route(
+    '/api/system',
+    systemRoutes(slskdRef, serviceManager, config, { triggerScan: runSyncAndCurate }),
+  );
   app.route(
     '/api/settings',
     settingsRoutes(config, slskdRef, makeWatcher, serviceManager, watcherRef),
@@ -406,11 +417,7 @@ export function createApp({
     app.use('*', serveStatic({ root: webDistPath }));
     app.get('*', (c, next) => {
       const path = c.req.path;
-      if (
-        path === '/doc' ||
-        path === '/openapi.json' ||
-        path.startsWith('/api/')
-      ) {
+      if (path === '/doc' || path === '/openapi.json' || path.startsWith('/api/')) {
         return next();
       }
       return serveStatic({ root: webDistPath, path: '/index.html' })(c, next);

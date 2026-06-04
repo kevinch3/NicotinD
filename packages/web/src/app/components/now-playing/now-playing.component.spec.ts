@@ -10,7 +10,9 @@ import { PlaybackWsService } from '../../services/playback-ws.service';
 
 function makePlayerStub() {
   return {
-    currentTrack: signal<{ id: string; title: string; artist: string; artistId?: string } | null>(null),
+    currentTrack: signal<{ id: string; title: string; artist: string; artistId?: string } | null>(
+      null,
+    ),
     nowPlayingOpen: signal(true),
     isPlaying: signal(false),
     shuffle: signal(false),
@@ -56,7 +58,14 @@ function setup() {
       { provide: PlayerService, useValue: playerStub },
       { provide: AuthService, useValue: { token: signal('tok') } },
       { provide: RemotePlaybackService, useValue: remoteStub },
-      { provide: PlaybackWsService, useValue: { getDeviceId: () => 'dev-1', getDeviceName: () => 'Test', sendCommand: () => {} } },
+      {
+        provide: PlaybackWsService,
+        useValue: {
+          getDeviceId: () => 'dev-1',
+          getDeviceName: () => 'Test',
+          sendCommand: () => {},
+        },
+      },
     ],
     schemas: [NO_ERRORS_SCHEMA],
   });

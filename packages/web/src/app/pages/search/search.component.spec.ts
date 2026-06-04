@@ -22,10 +22,17 @@ const CATALOG_ALBUM: CatalogAlbum = {
 function setup(apiOverrides: Partial<Record<keyof ApiService, unknown>> = {}) {
   const api = {
     getSoulseekStatus: () => of({ connected: true }),
-    catalogSearch: () => of({ artists: [{ mbid: 'pf-mbid', name: 'Pink Floyd' }], albums: [CATALOG_ALBUM] }),
-    search: () => of({ searchId: '11111111-1111-1111-1111-111111111111', errors: [], networkAvailable: false }),
+    catalogSearch: () =>
+      of({ artists: [{ mbid: 'pf-mbid', name: 'Pink Floyd' }], albums: [CATALOG_ALBUM] }),
+    search: () =>
+      of({ searchId: '11111111-1111-1111-1111-111111111111', errors: [], networkAvailable: false }),
     catalogResolve: () =>
-      of({ lidarrAlbumId: 55, totalTracks: 10, title: 'The Dark Side of the Moon', artistName: 'Pink Floyd' }),
+      of({
+        lidarrAlbumId: 55,
+        totalTracks: 10,
+        title: 'The Dark Side of the Moon',
+        artistName: 'Pink Floyd',
+      }),
     cancelSearch: () => of({ ok: true }),
     deleteSearch: () => of({ ok: true }),
     ...apiOverrides,
@@ -78,7 +85,9 @@ describe('SearchComponent — metadata-driven search', () => {
   });
 
   it('opens the direct-search fallback and flags unavailability when catalog lookup fails (no Lidarr)', async () => {
-    const { component, search } = setup({ catalogSearch: () => throwError(() => new Error('404')) });
+    const { component, search } = setup({
+      catalogSearch: () => throwError(() => new Error('404')),
+    });
     search.setQuery('anything');
 
     component.handleSearch(new Event('submit'));
@@ -101,7 +110,9 @@ describe('SearchComponent — metadata-driven search', () => {
   });
 
   it('surfaces a resolve failure without opening the modal', async () => {
-    const { component } = setup({ catalogResolve: () => throwError(() => new Error('not yet available')) });
+    const { component } = setup({
+      catalogResolve: () => throwError(() => new Error('not yet available')),
+    });
 
     await component.huntCatalogAlbum(CATALOG_ALBUM);
 

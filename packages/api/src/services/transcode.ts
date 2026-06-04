@@ -28,9 +28,18 @@ export function _resetFfmpegProbe(): void {
   ffmpegPresent = false;
 }
 
-const FORMAT_ARGS: Record<Exclude<TranscodeFormat, 'original'>, { args: (kbps: number) => string[]; contentType: string }> = {
-  mp3: { args: (k) => ['-c:a', 'libmp3lame', '-b:a', `${k}k`, '-f', 'mp3'], contentType: 'audio/mpeg' },
-  opus: { args: (k) => ['-c:a', 'libopus', '-b:a', `${k}k`, '-f', 'ogg'], contentType: 'audio/ogg' },
+const FORMAT_ARGS: Record<
+  Exclude<TranscodeFormat, 'original'>,
+  { args: (kbps: number) => string[]; contentType: string }
+> = {
+  mp3: {
+    args: (k) => ['-c:a', 'libmp3lame', '-b:a', `${k}k`, '-f', 'mp3'],
+    contentType: 'audio/mpeg',
+  },
+  opus: {
+    args: (k) => ['-c:a', 'libopus', '-b:a', `${k}k`, '-f', 'ogg'],
+    contentType: 'audio/ogg',
+  },
   aac: { args: (k) => ['-c:a', 'aac', '-b:a', `${k}k`, '-f', 'adts'], contentType: 'audio/aac' },
 };
 
@@ -50,7 +59,16 @@ export function transcodeFile(
   kbps: number,
 ): TranscodeStream {
   const spec = FORMAT_ARGS[format];
-  const args = ['-hide_banner', '-loglevel', 'error', '-i', absPath, '-vn', ...spec.args(kbps), 'pipe:1'];
+  const args = [
+    '-hide_banner',
+    '-loglevel',
+    'error',
+    '-i',
+    absPath,
+    '-vn',
+    ...spec.args(kbps),
+    'pipe:1',
+  ];
   const proc = spawn('ffmpeg', args);
   proc.on('error', (err) => log.error({ err, absPath }, 'ffmpeg spawn failed'));
   proc.stderr.on('data', (d: Buffer) => log.debug({ msg: d.toString() }, 'ffmpeg'));

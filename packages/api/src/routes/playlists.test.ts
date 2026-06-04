@@ -45,7 +45,7 @@ describe('playlist routes', () => {
     expect(others.playlists).toHaveLength(0);
   });
 
-  it('returns 404 fetching another user\'s playlist', async () => {
+  it("returns 404 fetching another user's playlist", async () => {
     const create = await appAs('u1').request('/', {
       method: 'POST',
       body: JSON.stringify({ name: 'Mine' }),

@@ -63,7 +63,12 @@ describe('placeholderGradient (themed coverless fallback)', () => {
   });
 
   it('always produces a valid CSS angle (0–359deg)', () => {
-    for (const key of [['', ''], ['Artist', ''], ['', 'Album'], ['Sigur Rós', 'Ágætis byrjun']]) {
+    for (const key of [
+      ['', ''],
+      ['Artist', ''],
+      ['', 'Album'],
+      ['Sigur Rós', 'Ágætis byrjun'],
+    ]) {
       const m = /linear-gradient\((\d+)deg/.exec(placeholderGradient(key[0], key[1]));
       expect(m).toBeTruthy();
       const angle = Number(m![1]);

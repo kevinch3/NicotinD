@@ -145,7 +145,13 @@ export class PlaylistService {
     );
     if (input.songIds?.length) this.appendSongs(id, input.songIds);
     return this.summary(
-      { id, name: input.name, description: input.description ?? null, created_at: now, modified_at: now },
+      {
+        id,
+        name: input.name,
+        description: input.description ?? null,
+        created_at: now,
+        modified_at: now,
+      },
       input.songIds?.length ?? 0,
     );
   }
@@ -190,9 +196,10 @@ export class PlaylistService {
   private owns(userId: string, id: string): boolean {
     return Boolean(
       this.db
-        .query<{ id: string }, [string, string]>(
-          `SELECT id FROM playlists WHERE id = ? AND user_id = ?`,
-        )
+        .query<
+          { id: string },
+          [string, string]
+        >(`SELECT id FROM playlists WHERE id = ? AND user_id = ?`)
         .get(id, userId),
     );
   }
@@ -201,9 +208,10 @@ export class PlaylistService {
   private appendSongs(playlistId: string, songIds: string[]): void {
     const start =
       (this.db
-        .query<{ m: number | null }, [string]>(
-          `SELECT MAX(position) AS m FROM playlist_songs WHERE playlist_id = ?`,
-        )
+        .query<
+          { m: number | null },
+          [string]
+        >(`SELECT MAX(position) AS m FROM playlist_songs WHERE playlist_id = ?`)
         .get(playlistId)?.m ?? -1) + 1;
     const now = Date.now();
     let pos = start;

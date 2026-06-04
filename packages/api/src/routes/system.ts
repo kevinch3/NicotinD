@@ -112,7 +112,10 @@ export function systemRoutes(
     const service = c.req.param('service');
     const VALID_SERVICES = ['slskd', 'nicotind'] as const;
     if (!(VALID_SERVICES as readonly string[]).includes(service)) {
-      return c.json({ error: `Unknown service. Valid services: ${VALID_SERVICES.join(', ')}` }, 400);
+      return c.json(
+        { error: `Unknown service. Valid services: ${VALID_SERVICES.join(', ')}` },
+        400,
+      );
     }
 
     const DOCKER_SOCK = '/var/run/docker.sock';
@@ -124,13 +127,17 @@ export function systemRoutes(
     // Find container name by compose service label.
     const findProc = spawn('docker', [
       'ps',
-      '--filter', `label=com.docker.compose.service=${service}`,
-      '--format', '{{.Names}}',
+      '--filter',
+      `label=com.docker.compose.service=${service}`,
+      '--format',
+      '{{.Names}}',
     ]);
 
     const containerName = await new Promise<string>((resolve, reject) => {
       let out = '';
-      findProc.stdout.on('data', (d: Buffer) => { out += d.toString(); });
+      findProc.stdout.on('data', (d: Buffer) => {
+        out += d.toString();
+      });
       findProc.stderr.resume(); // drain stderr to avoid pipe buffer deadlock
       findProc.on('error', reject);
       findProc.on('close', (code) => {
@@ -172,7 +179,10 @@ export function systemRoutes(
       await new Promise<void>((resolve) => {
         logProc.on('error', resolve);
         logProc.on('close', resolve);
-        stream.onAbort(() => { logProc.kill(); resolve(); });
+        stream.onAbort(() => {
+          logProc.kill();
+          resolve();
+        });
       });
     });
   });

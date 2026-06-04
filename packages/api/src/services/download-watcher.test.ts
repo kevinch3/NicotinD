@@ -2,7 +2,14 @@ import { describe, expect, it, beforeEach, mock, afterEach } from 'bun:test';
 import { DownloadWatcher } from './download-watcher.js';
 import type { CompletedDownloadFile } from './path-inference.js';
 
-type DownloadUser = { username: string; directories: { directory: string; fileCount: number; files: { filename: string; state: string }[] }[] };
+type DownloadUser = {
+  username: string;
+  directories: {
+    directory: string;
+    fileCount: number;
+    files: { filename: string; state: string }[];
+  }[];
+};
 
 function makeSlskdMock() {
   return {
