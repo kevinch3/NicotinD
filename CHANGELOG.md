@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.55](https://github.com/kevinch3/NicotinD/compare/v0.1.54...v0.1.55) (2026-06-04)
+
+
+### Features
+
+* **plugins:** capability-based acquisition plugin architecture ([8367e4b](https://github.com/kevinch3/NicotinD/commit/8367e4be20d44edf439dd5cc038ea9fe77318985))
+
+
+### Bug Fixes
+
+* mobile layout, adaptive transfer polling, cover art negative cache ([bfe2110](https://github.com/kevinch3/NicotinD/commit/bfe2110990e2fe056f1791b42f141ccdd70e3f93))
+
 ## [0.1.54](https://github.com/kevinch3/NicotinD/compare/v0.1.53...v0.1.54) (2026-06-04)
 
 
