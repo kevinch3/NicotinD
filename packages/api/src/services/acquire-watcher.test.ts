@@ -1,143 +1,145 @@
-import { describe, expect, it, beforeEach } from 'bun:test';
+import { describe, expect, it, beforeEach, mock } from 'bun:test';
+import { join } from 'node:path';
 import { Database } from 'bun:sqlite';
+import type { Plugin } from '@nicotind/core';
 import { applySchema } from '../db.js';
-import { AcquireWatcher } from './acquire-watcher.js';
-import type { AcquireJob } from './acquire-watcher.js';
-import { _resetBinaryCache } from './ytdlp.service.js';
+import { AcquireWatcher, NoAcquisitionPluginError, PluginUnavailableError } from './acquire-watcher.js';
+import { PluginRegistry } from './plugins/registry.js';
+import { pluginStagingDir } from './plugins/host-context.js';
+import type { CompletedDownloadFile } from './path-inference.js';
 
-// `enabled` gates the feature independently of whether the binary is installed,
-// and a missing binary always reports unavailable even when enabled. We use the
-// `bun` binary as a known-present executable and a bogus path as known-absent so
-// the test doesn't depend on yt-dlp/spotdl being installed in CI.
+const DATA_DIR = '/tmp/nicotind-acquire-test';
 
-interface WatcherAndDb { watcher: AcquireWatcher; db: Database }
-
-function makeWatcher(opts: {
-  ytdlpEnabled: boolean;
-  ytdlpBinary: string;
-  spotdlEnabled: boolean;
-  spotdlBinary: string;
-}): AcquireWatcher {
-  const db = new Database(':memory:');
-  applySchema(db);
-  return new AcquireWatcher({
-    db,
-    dataDir: '/tmp/nicotind-acquire-test',
-    ytdlp: { enabled: opts.ytdlpEnabled, binaryPath: opts.ytdlpBinary, format: 'bestaudio', extraArgs: [] },
-    spotdl: { enabled: opts.spotdlEnabled, binaryPath: opts.spotdlBinary },
-    organizeBatch: async () => {},
-    scanIncremental: async () => {},
-  });
+// Fake resolve-capable plugin: handles example.com URLs and "stages" one file
+// (path computed from the host staging scheme so the watcher maps it correctly).
+function fakePlugin(opts: { available?: boolean } = {}): Plugin {
+  return {
+    manifest: {
+      id: 'fake',
+      name: 'fake',
+      description: 'test',
+      kind: 'acquisition',
+      capabilities: ['resolve'],
+      defaultEnabled: false,
+    },
+    async init() {},
+    async isAvailable() {
+      return opts.available ?? true;
+    },
+    resolve: {
+      canHandle: (url: string) => url.includes('example.com'),
+      resolve: async (_url: string, jobId: string) => [
+        join(pluginStagingDir(DATA_DIR, 'fake', jobId), 'Artist', 'Album', 'track.mp3'),
+      ],
+    },
+  };
 }
 
-function makeWatcherWithDb(opts: {
-  ytdlpEnabled: boolean;
-  ytdlpBinary: string;
-  spotdlEnabled: boolean;
-  spotdlBinary: string;
-}): WatcherAndDb {
+async function waitForState(watcher: AcquireWatcher, id: string, state: string, ms = 1000) {
+  const start = Date.now();
+  while (Date.now() - start < ms) {
+    if (watcher.getJob(id)?.state === state) return;
+    await new Promise((r) => setTimeout(r, 5));
+  }
+  throw new Error(`job ${id} did not reach state "${state}"`);
+}
+
+interface Harness {
+  watcher: AcquireWatcher;
+  db: Database;
+  registry: PluginRegistry;
+  organize: ReturnType<typeof mock>;
+  scan: ReturnType<typeof mock>;
+}
+
+function makeHarness(plugin: Plugin = fakePlugin()): Harness {
   const db = new Database(':memory:');
   applySchema(db);
+  const registry = new PluginRegistry({ db, dataDir: DATA_DIR });
+  registry.register(plugin);
+  const organize = mock(async (files: CompletedDownloadFile[]) => {
+    for (const f of files) f.relativePath = 'Artist/Album/track.mp3';
+  });
+  const scan = mock(async () => {});
   const watcher = new AcquireWatcher({
     db,
-    dataDir: '/tmp/nicotind-acquire-test',
-    ytdlp: { enabled: opts.ytdlpEnabled, binaryPath: opts.ytdlpBinary, format: 'bestaudio', extraArgs: [] },
-    spotdl: { enabled: opts.spotdlEnabled, binaryPath: opts.spotdlBinary },
-    organizeBatch: async () => {},
-    scanIncremental: async () => {},
+    dataDir: DATA_DIR,
+    registry,
+    organizeBatch: organize,
+    scanIncremental: scan,
   });
-  return { watcher, db };
+  return { watcher, db, registry, organize, scan };
 }
 
-function insertJob(db: Database, id: string, state: AcquireJob['state'], url = 'https://example.com') {
-  db.run(
-    `INSERT INTO acquire_jobs (id, backend, url, label, state) VALUES (?, 'ytdlp', ?, NULL, ?)`,
-    [id, url, state],
-  );
-}
+describe('AcquireWatcher (registry-driven)', () => {
+  let h: Harness;
 
-const PRESENT = 'bun';
-const ABSENT = '/nonexistent/definitely-not-a-real-binary-xyz';
-
-describe('AcquireWatcher availability gating', () => {
-  beforeEach(() => _resetBinaryCache());
-
-  it('reports yt-dlp unavailable when disabled, even if the binary exists', () => {
-    const w = makeWatcher({ ytdlpEnabled: false, ytdlpBinary: PRESENT, spotdlEnabled: true, spotdlBinary: PRESENT });
-    expect(w.isYtdlpAvailable()).toBe(false);
+  beforeEach(() => {
+    h = makeHarness();
   });
 
-  it('reports yt-dlp unavailable when enabled but the binary is missing', () => {
-    const w = makeWatcher({ ytdlpEnabled: true, ytdlpBinary: ABSENT, spotdlEnabled: true, spotdlBinary: PRESENT });
-    expect(w.isYtdlpAvailable()).toBe(false);
+  it('throws when no enabled plugin handles the URL', async () => {
+    // plugin registered but not enabled → no routing
+    await expect(h.watcher.submit('https://example.com/x')).rejects.toBeInstanceOf(
+      NoAcquisitionPluginError,
+    );
   });
 
-  it('reports yt-dlp available when enabled and the binary exists', () => {
-    const w = makeWatcher({ ytdlpEnabled: true, ytdlpBinary: PRESENT, spotdlEnabled: true, spotdlBinary: PRESENT });
-    expect(w.isYtdlpAvailable()).toBe(true);
+  it('throws when the chosen plugin is unavailable', async () => {
+    h = makeHarness(fakePlugin({ available: false }));
+    await h.registry.enable('fake', 'admin');
+    await expect(h.watcher.submit('https://example.com/x')).rejects.toBeInstanceOf(
+      PluginUnavailableError,
+    );
   });
 
-  it('reports spotdl unavailable when disabled, even if the binary exists', () => {
-    const w = makeWatcher({ ytdlpEnabled: true, ytdlpBinary: PRESENT, spotdlEnabled: false, spotdlBinary: PRESENT });
-    expect(w.isSpotdlAvailable()).toBe(false);
+  it('runs an enabled plugin and ingests the staged files', async () => {
+    await h.registry.enable('fake', 'admin');
+    const id = await h.watcher.submit('https://example.com/x');
+    expect(h.watcher.getJob(id)?.backend).toBe('fake');
+
+    await waitForState(h.watcher, id, 'done');
+    expect(h.organize).toHaveBeenCalledTimes(1);
+    const files = h.organize.mock.calls[0]![0] as CompletedDownloadFile[];
+    expect(files[0]!.directory).toBe(join('Artist', 'Album'));
+    expect(files[0]!.username).toBe(`acquire:${id}`);
+    expect(h.scan).toHaveBeenCalledTimes(1);
   });
 
-  it('rejects submit when the backend is unavailable', async () => {
-    const w = makeWatcher({ ytdlpEnabled: false, ytdlpBinary: PRESENT, spotdlEnabled: false, spotdlBinary: PRESENT });
-    await expect(w.submit('https://example.com', 'ytdlp')).rejects.toThrow(/not enabled/);
-  });
-});
-
-describe('AcquireWatcher.deleteJob', () => {
-  beforeEach(() => _resetBinaryCache());
-
-  it('deletes a done job and returns true', () => {
-    const { watcher, db } = makeWatcherWithDb({ ytdlpEnabled: true, ytdlpBinary: PRESENT, spotdlEnabled: false, spotdlBinary: ABSENT });
-    insertJob(db, 'job-done', 'done');
-    expect(watcher.deleteJob('job-done')).toBe(true);
-    expect(watcher.getJob('job-done')).toBeNull();
+  it('marks the job failed when resolve rejects', async () => {
+    const plugin = fakePlugin();
+    plugin.resolve!.resolve = async () => {
+      throw new Error('download exploded');
+    };
+    h = makeHarness(plugin);
+    await h.registry.enable('fake', 'admin');
+    const id = await h.watcher.submit('https://example.com/x');
+    await waitForState(h.watcher, id, 'failed');
+    expect(h.watcher.getJob(id)?.error).toContain('exploded');
+    expect(h.organize).not.toHaveBeenCalled();
   });
 
-  it('deletes a failed job and returns true', () => {
-    const { watcher, db } = makeWatcherWithDb({ ytdlpEnabled: true, ytdlpBinary: PRESENT, spotdlEnabled: false, spotdlBinary: ABSENT });
-    insertJob(db, 'job-failed', 'failed');
-    expect(watcher.deleteJob('job-failed')).toBe(true);
-    expect(watcher.getJob('job-failed')).toBeNull();
+  it('deleteJob removes done/failed jobs but not running ones', () => {
+    h.db.run(`INSERT INTO acquire_jobs (id, backend, url, state) VALUES ('d', 'fake', 'u', 'done')`);
+    h.db.run(`INSERT INTO acquire_jobs (id, backend, url, state) VALUES ('r', 'fake', 'u', 'running')`);
+    expect(h.watcher.deleteJob('d')).toBe(true);
+    expect(h.watcher.deleteJob('r')).toBe(false);
+    expect(h.watcher.deleteJob('nope')).toBe(false);
   });
 
-  it('does not delete a running job (returns false)', () => {
-    const { watcher, db } = makeWatcherWithDb({ ytdlpEnabled: true, ytdlpBinary: PRESENT, spotdlEnabled: false, spotdlBinary: ABSENT });
-    insertJob(db, 'job-running', 'running');
-    expect(watcher.deleteJob('job-running')).toBe(false);
-    expect(watcher.getJob('job-running')).not.toBeNull();
-  });
-
-  it('returns false for unknown id', () => {
-    const { watcher } = makeWatcherWithDb({ ytdlpEnabled: true, ytdlpBinary: PRESENT, spotdlEnabled: false, spotdlBinary: ABSENT });
-    expect(watcher.deleteJob('nonexistent')).toBe(false);
-  });
-});
-
-describe('AcquireWatcher.retryJob', () => {
-  beforeEach(() => _resetBinaryCache());
-
-  it('returns null for an unknown job id', async () => {
-    const { watcher } = makeWatcherWithDb({ ytdlpEnabled: true, ytdlpBinary: PRESENT, spotdlEnabled: false, spotdlBinary: ABSENT });
-    const newId = await watcher.retryJob('nonexistent');
-    expect(newId).toBeNull();
-  });
-
-  it('creates a new job and removes the old one', async () => {
-    const { watcher, db } = makeWatcherWithDb({ ytdlpEnabled: true, ytdlpBinary: PRESENT, spotdlEnabled: false, spotdlBinary: ABSENT });
-    insertJob(db, 'old-job', 'failed', 'https://www.youtube.com/watch?v=test');
-    const newId = await watcher.retryJob('old-job');
+  it('retryJob re-submits the same URL and removes the old row', async () => {
+    await h.registry.enable('fake', 'admin');
+    h.db.run(
+      `INSERT INTO acquire_jobs (id, backend, url, state) VALUES ('old', 'fake', 'https://example.com/x', 'failed')`,
+    );
+    const newId = await h.watcher.retryJob('old');
     expect(typeof newId).toBe('string');
-    expect(newId).not.toBe('old-job');
-    // Old job should be gone
-    expect(watcher.getJob('old-job')).toBeNull();
-    // New job should exist
-    const newJob = watcher.getJob(newId!);
-    expect(newJob).not.toBeNull();
-    expect(newJob?.url).toBe('https://www.youtube.com/watch?v=test');
+    expect(newId).not.toBe('old');
+    expect(h.watcher.getJob('old')).toBeNull();
+    expect(h.watcher.getJob(newId!)?.url).toBe('https://example.com/x');
+  });
+
+  it('retryJob returns null for an unknown job', async () => {
+    expect(await h.watcher.retryJob('nope')).toBeNull();
   });
 });

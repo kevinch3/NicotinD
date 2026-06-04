@@ -122,3 +122,45 @@ describe('applySchema — playlists schema migration', () => {
     expect(db.query('SELECT COUNT(*) AS c FROM playlists').get()).toEqual({ c: 1 });
   });
 });
+
+describe('applySchema — acquire_jobs backend CHECK relaxation', () => {
+  it('rebuilds a legacy acquire_jobs table to allow open plugin-id backends', () => {
+    const db = new Database(':memory:');
+    // Simulate the legacy schema with the restrictive backend CHECK.
+    db.run(`
+      CREATE TABLE acquire_jobs (
+        id          TEXT PRIMARY KEY,
+        backend     TEXT NOT NULL CHECK (backend IN ('ytdlp', 'spotdl')),
+        url         TEXT NOT NULL,
+        label       TEXT,
+        state       TEXT NOT NULL DEFAULT 'queued'
+                        CHECK (state IN ('queued', 'running', 'done', 'failed')),
+        progress    TEXT,
+        error       TEXT,
+        created_at  INTEGER NOT NULL DEFAULT (unixepoch())
+      )
+    `);
+    db.run(`INSERT INTO acquire_jobs (id, backend, url) VALUES ('legacy', 'ytdlp', 'u')`);
+
+    applySchema(db);
+
+    // Legacy row preserved.
+    expect(db.query('SELECT COUNT(*) AS c FROM acquire_jobs').get()).toEqual({ c: 1 });
+    // A new plugin id (not in the old CHECK set) is now accepted.
+    expect(() =>
+      db.run(`INSERT INTO acquire_jobs (id, backend, url) VALUES ('new', 'bandcamp', 'u')`),
+    ).not.toThrow();
+    // The state CHECK is still enforced.
+    expect(() =>
+      db.run(`INSERT INTO acquire_jobs (id, backend, url, state) VALUES ('bad', 'ytdlp', 'u', 'bogus')`),
+    ).toThrow();
+  });
+
+  it('allows open backends on a fresh database', () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    expect(() =>
+      db.run(`INSERT INTO acquire_jobs (id, backend, url) VALUES ('x', 'bandcamp', 'u')`),
+    ).not.toThrow();
+  });
+});

@@ -24,6 +24,13 @@ import { catalogRoutes } from './routes/catalog.js';
 import { watchlistRoutes } from './routes/watchlist.js';
 import { playlistRoutes } from './routes/playlists.js';
 import { acquireRoutes } from './routes/acquire.js';
+import { pluginRoutes } from './routes/plugins.js';
+import { PluginRegistry } from './services/plugins/registry.js';
+import { SlskdPlugin } from './services/plugins/slskd/index.js';
+import { YtdlpPlugin } from './services/plugins/ytdlp/index.js';
+import { SpotdlPlugin } from './services/plugins/spotdl/index.js';
+import { requireAcquisitionMiddleware } from './services/plugins/gate.js';
+import { seedLegacyAcquisitionPlugins } from './services/plugins/legacy-seed.js';
 import { AcquireWatcher } from './services/acquire-watcher.js';
 import { DiscographyService } from './services/discography.service.js';
 import { CatalogService } from './services/catalog-search.service.js';
@@ -35,7 +42,6 @@ import { DownloadRetryService } from './services/download-retry.service.js';
 import { AlbumFallbackService } from './services/album-fallback.service.js';
 import { ProviderRegistry } from './services/provider-registry.js';
 import { LibrarySearchProvider } from './services/providers/library-provider.js';
-import { SlskdSearchProvider } from './services/providers/slskd-provider.js';
 import { LibraryScanner } from './services/library-scanner.js';
 import { LibraryCurator } from './services/library-curator.js';
 import { LibraryOrganizer } from './services/library-organizer.js';
@@ -222,10 +228,57 @@ export function createApp({
         : null,
   };
 
-  // Provider registry
+  // Provider registry holds the always-on local library provider. The slskd
+  // (network/browse/download) provider is registered/unregistered by the slskd
+  // *plugin* on enable/disable — so the search network lane, downloads enqueue,
+  // and user-browse gate on the plugin with no route changes.
   const registry = new ProviderRegistry();
   registry.register(new LibrarySearchProvider(db));
-  registry.register(new SlskdSearchProvider(slskdRef));
+
+  // Plugin kernel — kind-agnostic enable/disable/consent/config + capability
+  // resolution (default-off compliance posture: zero acquisition capability
+  // until a plugin is enabled).
+  const plugins = new PluginRegistry({
+    db,
+    dataDir: expandedDataDir,
+    // Plugins report job progress through the host context; route it to the
+    // acquire_jobs row (best-effort; rows without progress simply no-op).
+    emitProgress: (jobId, progress) => {
+      try {
+        db.run(`UPDATE acquire_jobs SET progress = ? WHERE id = ?`, [JSON.stringify(progress), jobId]);
+      } catch {
+        // Non-fatal — progress is best-effort.
+      }
+    },
+  });
+  plugins.register(new SlskdPlugin(slskdRef, registry));
+  plugins.register(
+    new YtdlpPlugin({
+      enabled: config.acquire.ytdlp.enabled,
+      binaryPath: config.acquire.ytdlp.binaryPath,
+      format: config.acquire.ytdlp.format,
+      extraArgs: config.acquire.ytdlp.extraArgs,
+    }),
+  );
+  plugins.register(
+    new SpotdlPlugin({
+      enabled: config.acquire.spotdl.enabled,
+      binaryPath: config.acquire.spotdl.binaryPath,
+    }),
+  );
+  // One-time migration: seed the previously-implicit acquisition plugins enabled
+  // ONLY on an existing (pre-plugin) install, so upgrades stay seamless. Fresh
+  // installs are default-off — an admin opts into acquisition in Settings →
+  // Plugins (the compliance posture). Runs exactly once (persistent marker).
+  seedLegacyAcquisitionPlugins(plugins, db, {
+    slskdConfigured: !!(config.soulseek.username && config.soulseek.password),
+    ytdlpEnabled: config.acquire.ytdlp.enabled,
+    spotdlEnabled: config.acquire.spotdl.enabled,
+  });
+  void plugins.initEnabled();
+
+  // Reusable gate for acquisition-only features (hunt, watchlist).
+  const requireAcquisition = requireAcquisitionMiddleware(plugins);
 
   // Public routes
   app.route('/api/auth', authRoutes(config.jwt.secret, config.jwt.expiresIn, config.registrationEnabled));
@@ -256,8 +309,13 @@ export function createApp({
   app.use('/api/ws/*', auth);
   app.use('/api/discography/*', auth);
   app.use('/api/watchlist/*', auth);
+  // Hunt + watchlist are acquisition features — gated on an enabled download
+  // plugin (applied after auth so an unauthenticated caller still gets 401).
+  app.use('/api/discography/*', requireAcquisition);
+  app.use('/api/watchlist/*', requireAcquisition);
   app.use('/api/playlists/*', auth);
   app.use('/api/acquire/*', auth);
+  app.use('/api/plugins/*', auth);
 
   app.get('/api/ws/playback', upgradeWebSocket((c) => {
     const user = (c as unknown as { get(key: 'user'): AuthEnv['Variables']['user'] }).get('user');
@@ -278,6 +336,7 @@ export function createApp({
   app.route('/api/share', shareRoutes(config.jwt.secret, auth));
   app.route('/api/users', usersRoutes(registry));
   app.route('/api/playlists', playlistRoutes());
+  app.route('/api/plugins', pluginRoutes(plugins));
 
   // Ingest-time enrichment of loose singles/EPs (release type + artwork). Only
   // wired when Lidarr is configured; absent → acquisition degrades to heuristic.
@@ -323,26 +382,19 @@ export function createApp({
       intervalMs: config.watchlist.intervalMs,
       minMatchPct: config.watchlist.minMatchPct,
       enabled: config.watchlist.enabled,
+      isAcquisitionEnabled: () => plugins.hasCapability('download'),
     });
     app.route('/api/watchlist', watchlistRoutes(watchlistSvc));
     watchlistSvc.start();
   }
 
-  // URL-based acquisition (yt-dlp / spotdl). Always mounted — the routes return
-  // 503 if the requested binary isn't installed, so no config guard is needed here.
+  // URL-based acquisition (yt-dlp / spotdl). The watcher routes each URL to an
+  // enabled resolve-capable plugin via the registry; submit 503s when none is
+  // enabled/available, so no config guard is needed here.
   const acquireWatcher = new AcquireWatcher({
     db,
     dataDir: expandedDataDir,
-    ytdlp: {
-      enabled: config.acquire.ytdlp.enabled,
-      binaryPath: config.acquire.ytdlp.binaryPath,
-      format: config.acquire.ytdlp.format,
-      extraArgs: config.acquire.ytdlp.extraArgs,
-    },
-    spotdl: {
-      enabled: config.acquire.spotdl.enabled,
-      binaryPath: config.acquire.spotdl.binaryPath,
-    },
+    registry: plugins,
     organizeBatch: (files) => sharedOrganizer.organizeBatch(files),
     scanIncremental,
     enrichSingles,

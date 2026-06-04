@@ -42,6 +42,23 @@
           </div>
         </section>
 
+        <!-- Plugins (admin) -->
+        @if (isAdmin()) {
+          <section class="rounded-xl border border-theme bg-theme-surface/50 p-6 mb-6">
+            <h2 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary mb-5">Plugins</h2>
+            <div class="flex items-center justify-between gap-4">
+              <p class="text-sm text-theme-secondary">
+                Enable acquisition sources (Soulseek, yt-dlp, spotDL) and manage their settings.
+                Acquisition is off until you opt in.
+              </p>
+              <a routerLink="/settings/plugins"
+                 class="shrink-0 px-3 py-1.5 rounded-lg bg-theme-hover text-theme-primary text-sm font-medium hover:opacity-90 transition">
+                Manage
+              </a>
+            </div>
+          </section>
+        }
+
         <!-- Streaming / Transcoding (admin) -->
         @if (isAdmin()) {
           <section class="rounded-xl border border-theme bg-theme-surface/50 p-6 mb-6">

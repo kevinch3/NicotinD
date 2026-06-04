@@ -215,7 +215,7 @@ export function applySchema(db: Database): void {
   db.run(`
     CREATE TABLE IF NOT EXISTS acquire_jobs (
       id          TEXT PRIMARY KEY,
-      backend     TEXT NOT NULL CHECK (backend IN ('ytdlp', 'spotdl')),
+      backend     TEXT NOT NULL,
       url         TEXT NOT NULL,
       label       TEXT,
       state       TEXT NOT NULL DEFAULT 'queued'
@@ -225,6 +225,35 @@ export function applySchema(db: Database): void {
       created_at  INTEGER NOT NULL DEFAULT (unixepoch())
     )
   `);
+
+  // `backend` was once CHECK (backend IN ('ytdlp','spotdl')); it's now an open
+  // acquisition-plugin id. Rebuild legacy tables to drop that constraint.
+  const acquireSql = db
+    .query<{ sql: string }, []>(
+      `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'acquire_jobs'`,
+    )
+    .get();
+  if (acquireSql?.sql.includes('backend IN')) {
+    db.run('ALTER TABLE acquire_jobs RENAME TO acquire_jobs_old');
+    db.run(`
+      CREATE TABLE acquire_jobs (
+        id          TEXT PRIMARY KEY,
+        backend     TEXT NOT NULL,
+        url         TEXT NOT NULL,
+        label       TEXT,
+        state       TEXT NOT NULL DEFAULT 'queued'
+                        CHECK (state IN ('queued', 'running', 'done', 'failed')),
+        progress    TEXT,
+        error       TEXT,
+        created_at  INTEGER NOT NULL DEFAULT (unixepoch())
+      )
+    `);
+    db.run(
+      `INSERT INTO acquire_jobs (id, backend, url, label, state, progress, error, created_at)
+       SELECT id, backend, url, label, state, progress, error, created_at FROM acquire_jobs_old`,
+    );
+    db.run('DROP TABLE acquire_jobs_old');
+  }
   db.run(`CREATE INDEX IF NOT EXISTS idx_acquire_jobs_state ON acquire_jobs (state)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_acquire_jobs_created_at ON acquire_jobs (created_at DESC)`);
 
@@ -514,6 +543,31 @@ export function applySchema(db: Database): void {
   `);
   db.run(`CREATE INDEX IF NOT EXISTS idx_provenance_path ON library_song_provenance(song_path)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_provenance_navidrome_id ON library_song_provenance(navidrome_id)`);
+
+  // Plugin enablement + consent state. One row per known plugin; absent row ⇒
+  // never enabled (default-off compliance posture). config_json is the admin-set
+  // config validated against the plugin's manifest schema. consent_* records the
+  // admin's acknowledgement of an acquisition plugin's legal disclaimer.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS plugins (
+      id           TEXT PRIMARY KEY,
+      enabled      INTEGER NOT NULL DEFAULT 0,
+      config_json  TEXT,
+      consent_at   INTEGER,
+      consent_user TEXT
+    )
+  `);
+
+  // Plugin-scoped persistent key/value store (the PluginHostContext.storage
+  // surface). Namespaced by plugin id so plugins can't read each other's data.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS plugin_kv (
+      plugin_id TEXT NOT NULL,
+      key       TEXT NOT NULL,
+      value     TEXT NOT NULL,
+      PRIMARY KEY (plugin_id, key)
+    )
+  `);
 }
 
 export function getDatabase(): Database {

@@ -1,17 +1,21 @@
 import { Hono } from 'hono';
 import type { AuthEnv } from '../middleware/auth.js';
-import type { AcquireWatcher } from '../services/acquire-watcher.js';
-import type { AcquireBackend } from '../services/ytdlp.service.js';
-
-function detectBackend(url: string): AcquireBackend {
-  return url.includes('spotify.com') ? 'spotdl' : 'ytdlp';
-}
+import {
+  AcquireWatcher,
+  NoAcquisitionPluginError,
+  PluginUnavailableError,
+} from '../services/acquire-watcher.js';
 
 interface SubmitBody {
   url: string;
-  backend?: AcquireBackend;
 }
 
+/**
+ * URL acquisition routes. Backend selection is no longer hardcoded — the watcher
+ * routes the URL to whichever enabled `resolve`-capable plugin handles it
+ * (`registry.getEnabledForUrl`). When none is enabled/available the submit
+ * returns 503 so the UI can hide the acquire box.
+ */
 export function acquireRoutes(watcher: AcquireWatcher) {
   const app = new Hono<AuthEnv>();
 
@@ -34,19 +38,13 @@ export function acquireRoutes(watcher: AcquireWatcher) {
       return c.json({ error: 'url must be a valid URL' }, 400);
     }
 
-    const resolvedBackend = body.backend ?? detectBackend(url.href);
-
-    if (resolvedBackend === 'spotdl' && !watcher.isSpotdlAvailable()) {
-      return c.json({ error: 'spotdl is not installed or not enabled' }, 503);
-    }
-    if (resolvedBackend === 'ytdlp' && !watcher.isYtdlpAvailable()) {
-      return c.json({ error: 'yt-dlp is not installed or not enabled' }, 503);
-    }
-
     try {
-      const jobId = await watcher.submit(url.href, resolvedBackend);
+      const jobId = await watcher.submit(url.href);
       return c.json({ jobId }, 201);
     } catch (err) {
+      if (err instanceof NoAcquisitionPluginError || err instanceof PluginUnavailableError) {
+        return c.json({ error: err.message }, 503);
+      }
       const message = err instanceof Error ? err.message : 'Failed to start acquire job';
       return c.json({ error: message }, 500);
     }
@@ -71,9 +69,16 @@ export function acquireRoutes(watcher: AcquireWatcher) {
   });
 
   app.post('/jobs/:id/retry', async (c) => {
-    const newJobId = await watcher.retryJob(c.req.param('id'));
-    if (!newJobId) return c.json({ error: 'Job not found' }, 404);
-    return c.json({ jobId: newJobId }, 201);
+    try {
+      const newJobId = await watcher.retryJob(c.req.param('id'));
+      if (!newJobId) return c.json({ error: 'Job not found' }, 404);
+      return c.json({ jobId: newJobId }, 201);
+    } catch (err) {
+      if (err instanceof NoAcquisitionPluginError || err instanceof PluginUnavailableError) {
+        return c.json({ error: err.message }, 503);
+      }
+      throw err;
+    }
   });
 
   return app;
