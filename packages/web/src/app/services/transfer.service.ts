@@ -27,8 +27,7 @@ export class TransferService {
     this.downloads().reduce(
       (count, group) =>
         count +
-        group.directories.filter((dir) => dir.files.some((f) => ACTIVE_STATES.has(f.state)))
-          .length,
+        group.directories.filter((dir) => dir.files.some((f) => ACTIVE_STATES.has(f.state))).length,
       0,
     ),
   );
@@ -37,13 +36,14 @@ export class TransferService {
   private running = false;
   private scanPollTimer: ReturnType<typeof setTimeout> | null = null;
   private prevAcquireStates = new Map<string, AcquireJob['state']>();
+  private hasPolled = false;
 
   clearLibraryDirty(): void {
     this.libraryDirty.set(false);
   }
 
   addDeletedIds(ids: string[]): void {
-    this.deletedSongIds.update(s => {
+    this.deletedSongIds.update((s) => {
       const next = new Set(s);
       for (const id of ids) next.add(id);
       return next;
@@ -97,9 +97,10 @@ export class TransferService {
         }
       }
       const prevTransfers = this.transfers();
-      const newCompletion = detectNewCompletion(prevTransfers, map);
+      const newCompletion = this.hasPolled && detectNewCompletion(prevTransfers, map);
       this.transfers.set(map);
       this.downloads.set(data);
+      this.hasPolled = true;
       if (newCompletion) this.libraryDirty.set(true);
     } catch {
       // non-fatal: keep stale data on network error
@@ -114,7 +115,7 @@ export class TransferService {
           acquireCompletion = true;
         }
       }
-      this.prevAcquireStates = new Map(jobs.map(j => [j.id, j.state]));
+      this.prevAcquireStates = new Map(jobs.map((j) => [j.id, j.state]));
       this.acquireJobs.set(jobs);
       if (acquireCompletion) this.libraryDirty.set(true);
     } catch {
@@ -124,7 +125,7 @@ export class TransferService {
 
   private get hasActive(): boolean {
     if (this.activeDownloadCount() > 0) return true;
-    return this.acquireJobs().some(j => j.state === 'queued' || j.state === 'running');
+    return this.acquireJobs().some((j) => j.state === 'queued' || j.state === 'running');
   }
 
   private scheduleNext(): void {

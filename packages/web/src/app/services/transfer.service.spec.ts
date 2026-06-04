@@ -91,7 +91,10 @@ describe('TransferService adaptive polling', () => {
     vi.useFakeTimers();
     pollCount = 0;
     const api = makeApiMock({
-      getDownloads: () => { pollCount++; return of([]); },
+      getDownloads: () => {
+        pollCount++;
+        return of([]);
+      },
       getAcquireJobs: () => of([]),
       ...apiOverrides,
     });
@@ -134,7 +137,12 @@ describe('TransferService adaptive polling', () => {
 
   it('uses 3 s interval when a transfer is active', async () => {
     // Mock keeps returning an active group so the signal stays active after each poll.
-    setup({ getDownloads: () => { pollCount++; return of([makeGroup([['InProgress']])]); } });
+    setup({
+      getDownloads: () => {
+        pollCount++;
+        return of([makeGroup([['InProgress']])]);
+      },
+    });
     service.startPolling();
     await vi.advanceTimersByTimeAsync(0);
     await vi.advanceTimersByTimeAsync(3_000);
@@ -169,5 +177,39 @@ describe('TransferService adaptive polling', () => {
     service.kickPoll();
     await vi.advanceTimersByTimeAsync(0);
     expect(pollCount).toBe(before + 1);
+  });
+});
+
+describe('TransferService libraryDirty flagging', () => {
+  let service: TransferService;
+  let getDownloadsMock: any;
+
+  beforeEach(() => {
+    getDownloadsMock = vi.fn().mockReturnValue(of([]));
+    const api = makeApiMock({
+      getDownloads: getDownloadsMock,
+      getAcquireJobs: () => of([]),
+    });
+    TestBed.configureTestingModule({
+      providers: [TransferService, { provide: ApiService, useValue: api }],
+    });
+    service = TestBed.inject(TransferService);
+  });
+
+  it('does not flag libraryDirty on the first poll even if downloads are completed', async () => {
+    getDownloadsMock.mockReturnValue(of([makeGroup([['Completed, Succeeded']])]));
+    expect(service.libraryDirty()).toBe(false);
+    await service.poll();
+    expect(service.libraryDirty()).toBe(false);
+  });
+
+  it('flags libraryDirty on subsequent polls when a new completed download appears', async () => {
+    getDownloadsMock.mockReturnValue(of([makeGroup([['InProgress']])]));
+    await service.poll();
+    expect(service.libraryDirty()).toBe(false);
+
+    getDownloadsMock.mockReturnValue(of([makeGroup([['Completed, Succeeded']])]));
+    await service.poll();
+    expect(service.libraryDirty()).toBe(true);
   });
 });

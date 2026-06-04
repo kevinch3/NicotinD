@@ -127,8 +127,10 @@
     </div>
 
     @if (loadingMore()) {
-      <div class="text-center py-6">
-        <span class="inline-block w-4 h-4 border-2 border-theme border-t-zinc-300 rounded-full animate-spin"></span>
+      <div class="w-full max-w-xs mx-auto py-6">
+        <div class="h-1 w-full bg-theme-surface-2 rounded-full overflow-hidden relative">
+          <div class="h-full bg-[var(--theme-accent)] rounded-full animate-loading-bar"></div>
+        </div>
       </div>
     }
 

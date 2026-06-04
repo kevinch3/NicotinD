@@ -172,3 +172,27 @@
     user-select: none;
   }
 }
+
+/* ─── Custom animations ──────────────────────────────────────────────── */
+@keyframes loading-bar {
+  0% {
+    left: -40%;
+    width: 40%;
+  }
+  50% {
+    left: 20%;
+    width: 60%;
+  }
+  100% {
+    left: 100%;
+    width: 40%;
+  }
+}
+
+.animate-loading-bar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  animation: loading-bar 1.5s infinite linear;
+}
+

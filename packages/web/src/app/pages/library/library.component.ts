@@ -135,7 +135,9 @@ export class LibraryComponent implements OnInit, OnDestroy {
   readonly loading = signal(true);
   readonly loadingMore = signal(false);
   readonly done = signal(false);
-  readonly showHidden = signal<boolean>(localStorage.getItem('nicotind-library-show-hidden') === '1');
+  readonly showHidden = signal<boolean>(
+    localStorage.getItem('nicotind-library-show-hidden') === '1',
+  );
 
   private offset = 0;
   private observer: IntersectionObserver | null = null;
@@ -174,7 +176,7 @@ export class LibraryComponent implements OnInit, OnDestroy {
   readonly filteredAlbums = computed(() => {
     const min = this.minSongCount();
     if (min === null) return this.gridControls.filtered();
-    return this.gridControls.filtered().filter(a => (a.songCount ?? 0) >= min);
+    return this.gridControls.filtered().filter((a) => (a.songCount ?? 0) >= min);
   });
 
   setMinSongCount(n: number | null): void {
@@ -194,7 +196,9 @@ export class LibraryComponent implements OnInit, OnDestroy {
   });
 
   // ─── Artists ──────────────────────────────────────────────────────
-  readonly artists = signal<Array<{ id: string; name: string; albumCount: number; coverArt?: string }>>([]);
+  readonly artists = signal<
+    Array<{ id: string; name: string; albumCount: number; coverArt?: string }>
+  >([]);
   readonly loadingArtists = signal(false);
 
   readonly artistSortOptions: SortOption[] = [
@@ -215,13 +219,6 @@ export class LibraryComponent implements OnInit, OnDestroy {
   readonly loadingGenres = signal(false);
 
   // ─── Lifecycle ────────────────────────────────────────────────────
-  private dirtyEffect = effect(() => {
-    if (this.transferService.libraryDirty()) {
-      this.transferService.clearLibraryDirty();
-      this.resetAndLoad();
-    }
-  });
-
   private observerEffect = effect(() => {
     const sentinel = this.scrollSentinel();
     this.observer?.disconnect();
@@ -242,6 +239,9 @@ export class LibraryComponent implements OnInit, OnDestroy {
   async ngOnInit(): Promise<void> {
     const initialType = this.resolveInitialType();
     this.albumListType.set(initialType);
+
+    // Clear any pending dirty state on load to avoid unnecessary fetches
+    this.transferService.clearLibraryDirty();
 
     const persisted = readPersistedState();
     if (persisted && persisted.type === initialType && persisted.loaded > PAGE_SIZE) {
@@ -413,9 +413,12 @@ export class LibraryComponent implements OnInit, OnDestroy {
     this.loadingArtists.set(true);
     try {
       const data = await firstValueFrom(this.api.getArtists());
-      this.artists.set(data.map(a => ({ ...a, albumCount: a.albumCount ?? 0 })));
-    } catch { /* ignore */ }
-    finally { this.loadingArtists.set(false); }
+      this.artists.set(data.map((a) => ({ ...a, albumCount: a.albumCount ?? 0 })));
+    } catch {
+      /* ignore */
+    } finally {
+      this.loadingArtists.set(false);
+    }
   }
 
   async fetchSingles(): Promise<void> {
@@ -424,8 +427,11 @@ export class LibraryComponent implements OnInit, OnDestroy {
     try {
       const data = await firstValueFrom(this.api.getSingles('newest', 500));
       this.singles.set(data);
-    } catch { /* ignore */ }
-    finally { this.loadingSingles.set(false); }
+    } catch {
+      /* ignore */
+    } finally {
+      this.loadingSingles.set(false);
+    }
   }
 
   async fetchGenres(): Promise<void> {
@@ -434,8 +440,11 @@ export class LibraryComponent implements OnInit, OnDestroy {
     try {
       const data = await firstValueFrom(this.api.getGenres());
       this.genres.set(data.sort((a, b) => b.songCount - a.songCount));
-    } catch { /* ignore */ }
-    finally { this.loadingGenres.set(false); }
+    } catch {
+      /* ignore */
+    } finally {
+      this.loadingGenres.set(false);
+    }
   }
 
   getAlbumLink(id: string) {
