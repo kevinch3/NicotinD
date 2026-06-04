@@ -1,5 +1,5 @@
 # Stage 1: Build web UI
-FROM imbios/bun-node:1-22.22.2-debian AS web-builder
+FROM imbios/bun-node:1.3.14-22.22.3-debian AS web-builder
 WORKDIR /app
 
 COPY package.json bun.lock bunfig.toml ./
@@ -18,7 +18,7 @@ COPY tsconfig.json ./
 RUN cd packages/web && bun run build
 
 # Stage 2: Production server
-FROM oven/bun:1 AS production
+FROM oven/bun:1.3.14 AS production
 WORKDIR /app
 
 # Install curl (healthchecks), ffmpeg, docker CLI (log streaming via mounted
