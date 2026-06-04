@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.54](https://github.com/kevinch3/NicotinD/compare/v0.1.53...v0.1.54) (2026-06-04)
+
+
+### Features
+
+* show acquire jobs in Downloads and remove Uploads tab ([3da3876](https://github.com/kevinch3/NicotinD/commit/3da38762e04a823e907439ca8285d65f46d8ea59))
+
+
+### Bug Fixes
+
+* add AcquireJob to web core type shim ([4c7d695](https://github.com/kevinch3/NicotinD/commit/4c7d695b65f6cf5c751a4bf7b68d1cbbc7e9486e))
+
 ## [0.1.53](https://github.com/kevinch3/NicotinD/compare/v0.1.52...v0.1.53) (2026-06-04)
 
 
