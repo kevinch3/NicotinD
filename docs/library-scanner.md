@@ -27,6 +27,8 @@ Non-destructive: unselected files stay on disk but get no `library_songs` row, s
 
 `GET /api/cover/:id` resolves **canonical artwork first** (see below), then folder art (`cover.jpg`/`folder.jpg`/…), then embedded art, caching extracted/fetched images under `dataDir/cover-cache`. For an **album** id with no canonical art, the disk fallback picks the album's **first track** (`ORDER BY disc, track`) as the representative — *not* an arbitrary `LIMIT 1` row — so the album shows track 1's folder cover (the real album art) rather than a wrong thumbnail from a mislabeled sibling file.
 
+Successful cover responses carry `Cache-Control: public, max-age=86400` so the browser caches them and navigation stops re-requesting every tile — the connection-pool pressure that otherwise stalled album pages. The remote canonical fetch (`fetchRemoteCover`) is bounded by `AbortSignal.timeout` (6 s) so a slow/dead Lidarr URL can't hang a request (and a browser connection slot); on timeout it falls through to on-disk art. Negative (artless) results are still short-circuited by the module-level `noArtCache` (10 min TTL).
+
 ---
 
 ## Canonical artwork

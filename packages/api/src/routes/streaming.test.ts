@@ -76,10 +76,13 @@ describe('streaming routes', () => {
     expect(res.status).toBe(404);
   });
 
-  it('serves a folder cover.jpg as the cover art', async () => {
+  it('serves a folder cover.jpg as the cover art with a browser cache header', async () => {
     const res = await app.request('/cover/song-1');
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toBe('image/jpeg');
+    // Successful covers must be browser-cacheable so navigation stops re-fetching
+    // every tile (the connection-pool pressure behind slow album pages).
+    expect(res.headers.get('cache-control')).toContain('max-age');
   });
 
   it('returns 404 when no cover art is available', async () => {
@@ -152,6 +155,7 @@ describe('streaming routes — canonical artwork', () => {
     const res = await app.request('/cover/canon-alb');
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toBe('image/png');
+    expect(res.headers.get('cache-control')).toContain('max-age');
     expect(fetchCalls).toContain('https://art.example/cover.png');
   });
 

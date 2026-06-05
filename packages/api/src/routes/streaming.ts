@@ -20,6 +20,12 @@ const COVER_EXTS = ['.jpg', '.jpeg', '.png', '.webp'];
 const noArtCache = new Map<string, number>();
 const NO_ART_TTL_MS = 10 * 60 * 1_000;
 
+// Cap on remote canonical-cover fetches so a slow/dead host can't hang a connection.
+const REMOTE_COVER_TIMEOUT_MS = 6_000;
+// Successful covers are immutable per id within a session — let the browser cache
+// them so navigating between pages stops re-requesting every tile from the server.
+const COVER_CACHE_CONTROL = 'public, max-age=86400';
+
 /** Evict the negative-art cache for a given id (e.g. after artwork is backfilled). */
 export function clearCoverNegativeCache(id?: string): void {
   if (id) noArtCache.delete(id);
@@ -161,7 +167,7 @@ export function streamingRoutes(musicDir: string, db: Database, dataDir: string)
       const cached = await readCachedCover(coverCacheDir, cacheKey);
       if (cached) {
         return new Response(toBody(cached.data), {
-          headers: { 'content-type': cached.contentType },
+          headers: { 'content-type': cached.contentType, 'cache-control': COVER_CACHE_CONTROL },
         });
       }
       const remote = await fetchRemoteCover(canonical.url);
@@ -170,7 +176,7 @@ export function streamingRoutes(musicDir: string, db: Database, dataDir: string)
           log.debug({ err, id }, 'canonical cover cache write failed'),
         );
         return new Response(toBody(remote.data), {
-          headers: { 'content-type': remote.contentType },
+          headers: { 'content-type': remote.contentType, 'cache-control': COVER_CACHE_CONTROL },
         });
       }
       // Remote fetch failed (offline / dead URL) — fall through to on-disk art.
@@ -179,7 +185,9 @@ export function streamingRoutes(musicDir: string, db: Database, dataDir: string)
     // 2. On-disk art (folder image, then embedded tag).
     const cached = await readCachedCover(coverCacheDir, id);
     if (cached) {
-      return new Response(toBody(cached.data), { headers: { 'content-type': cached.contentType } });
+      return new Response(toBody(cached.data), {
+        headers: { 'content-type': cached.contentType, 'cache-control': COVER_CACHE_CONTROL },
+      });
     }
 
     const abs = resolvePath(id);
@@ -203,7 +211,9 @@ export function streamingRoutes(musicDir: string, db: Database, dataDir: string)
     void cacheCover(coverCacheDir, id, art).catch((err) =>
       log.debug({ err, id }, 'cover cache write failed'),
     );
-    return new Response(toBody(art.data), { headers: { 'content-type': art.contentType } });
+    return new Response(toBody(art.data), {
+      headers: { 'content-type': art.contentType, 'cache-control': COVER_CACHE_CONTROL },
+    });
   });
 
   return app;
@@ -229,7 +239,10 @@ function extFromContentType(ct: string): string {
 /** Fetch a remote canonical cover URL into memory. Null on any failure/non-image. */
 async function fetchRemoteCover(url: string): Promise<CoverArt | null> {
   try {
-    const res = await fetch(url);
+    // why: a slow/dead canonical (Lidarr) URL must not hang the request — an
+    // unbounded fetch ties up a browser connection slot and stalls sibling cover
+    // and page-data requests behind it. On timeout we fall through to on-disk art.
+    const res = await fetch(url, { signal: AbortSignal.timeout(REMOTE_COVER_TIMEOUT_MS) });
     if (!res.ok) return null;
     const contentType = res.headers.get('content-type') ?? 'image/jpeg';
     if (!contentType.startsWith('image/')) return null;
