@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.59](https://github.com/kevinch3/NicotinD/compare/v0.1.58...v0.1.59) (2026-06-05)
+
+
+### Features
+
+* **web:** fillable playlists from any track list + per-collection offline downloads ([56a31e1](https://github.com/kevinch3/NicotinD/commit/56a31e1fffa4e7b62a7426900a8886ba46c822d4))
+
+
+### Bug Fixes
+
+* **streaming:** bound remote cover fetch and cache cover responses ([e4f78e0](https://github.com/kevinch3/NicotinD/commit/e4f78e0acbfe4ef93f097b99a4dbfaa7b800d0ea))
+
 ## [0.1.58](https://github.com/kevinch3/NicotinD/compare/v0.1.57...v0.1.58) (2026-06-04)
 
 
