@@ -8,6 +8,7 @@ import { ApiService, type Song } from '../../services/api.service';
 import { AuthService } from '../../services/auth.service';
 import { PlayerService } from '../../services/player.service';
 import { PreserveService } from '../../services/preserve.service';
+import { PlaylistService } from '../../services/playlist.service';
 
 const MOCK_SONGS: Song[] = [
   {
@@ -53,6 +54,7 @@ function setup() {
       playWithContextCalls.push(args);
     },
   };
+  const openPicker = vi.fn();
 
   TestBed.configureTestingModule({
     imports: [GenreDetailComponent],
@@ -65,8 +67,9 @@ function setup() {
           getSongsByGenre: () => of(MOCK_SONGS),
         },
       },
-      { provide: AuthService, useValue: { token: signal('tok') } },
+      { provide: AuthService, useValue: { token: signal('tok'), role: () => 'user' } },
       { provide: PlayerService, useValue: playerStub },
+      { provide: PlaylistService, useValue: { openPicker } },
     ],
     schemas: [NO_ERRORS_SCHEMA],
   });
@@ -74,7 +77,7 @@ function setup() {
   const fixture = TestBed.createComponent(GenreDetailComponent);
   fixture.detectChanges();
   const preserve = TestBed.inject(PreserveService);
-  return { component: fixture.componentInstance, playWithContextCalls, preserve };
+  return { component: fixture.componentInstance, playWithContextCalls, preserve, openPicker };
 }
 
 describe('GenreDetailComponent — Play All', () => {
@@ -151,7 +154,9 @@ describe('GenreDetailComponent — Download', () => {
     component.toggleDownloadGenre();
 
     expect(spy).toHaveBeenCalledTimes(1);
-    const [name, tracks] = spy.mock.calls[0];
+    // preserveCollection(key, name, tracks) — key === name === slug for a genre.
+    const [key, name, tracks] = spy.mock.calls[0];
+    expect(key).toBe('Reggae');
     expect(name).toBe('Reggae');
     expect(tracks).toHaveLength(3);
     expect(tracks[0].id).toBe('s1');
@@ -168,5 +173,39 @@ describe('GenreDetailComponent — Download', () => {
     component.toggleDownloadGenre();
 
     expect(removeSpy).toHaveBeenCalledWith(['s1', 's2', 's3']);
+  });
+});
+
+describe('GenreDetailComponent — Add to playlist', () => {
+  it('exposes an "Add to playlist" track action that opens the picker', () => {
+    const { component, openPicker } = setup();
+    const action = component.genreTrackActions(MOCK_SONGS[0]).find((a) => a.label === 'Add to playlist');
+    expect(action).toBeDefined();
+    action!.action();
+    expect(openPicker).toHaveBeenCalledWith(['s1']);
+  });
+
+  it('bulk-adds the ticked songs and exits select mode', () => {
+    const { component, openPicker } = setup();
+    component.genreSongs.set(MOCK_SONGS);
+
+    component.selection.enter();
+    component.selection.toggle('s1');
+    component.selection.toggle('s3');
+    component.addSelectedToPlaylist();
+
+    expect(openPicker).toHaveBeenCalledTimes(1);
+    expect(openPicker.mock.calls[0][0]).toEqual(['s1', 's3']);
+    expect(component.selection.active()).toBe(false);
+    expect(component.selection.count()).toBe(0);
+  });
+
+  it('selectAllSongs ticks every filtered song', () => {
+    const { component } = setup();
+    component.genreSongs.set(MOCK_SONGS);
+    component.selection.enter();
+    component.selectAllSongs();
+    expect(component.selection.count()).toBe(3);
+    expect(component.selection.isSelected('s2')).toBe(true);
   });
 });

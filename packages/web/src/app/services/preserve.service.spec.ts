@@ -60,26 +60,26 @@ describe('PreserveService', () => {
 
   describe('preserveCollection', () => {
     it('stores every track when under budget', async () => {
-      await svc.preserveCollection('Album', [track('a'), track('b'), track('c')]);
+      await svc.preserveCollection('album1', 'Album', [track('a'), track('b'), track('c')]);
 
       expect(svc.preservedIds().size).toBe(3);
       expect(svc.isCollectionPreserved(['a', 'b', 'c'])).toBe(true);
-      // Fully completed → no lingering batch.
-      expect(svc.batch()).toBeNull();
+      // Fully completed → no lingering batch for that key.
+      expect(svc.batchFor('album1')).toBeNull();
     });
 
     it('stops at the cap and keeps what fit (no eviction of the same batch)', async () => {
       // Budget fits exactly two 100-byte tracks (third would overflow).
       svc.setBudget(250);
 
-      await svc.preserveCollection('Big', [track('a'), track('b'), track('c'), track('d')]);
+      await svc.preserveCollection('big', 'Big', [track('a'), track('b'), track('c'), track('d')]);
 
       expect(svc.preservedIds().size).toBe(2);
       expect(svc.totalUsage()).toBe(2 * BLOB_SIZE);
       // evictLRU is the single-track path only — bulk must never call it.
       expect(store.evictLRU).not.toHaveBeenCalled();
 
-      const batch = svc.batch();
+      const batch = svc.batchFor('big');
       expect(batch?.stoppedAtCap).toBe(true);
       expect(batch?.done).toBe(2);
       expect(batch?.total).toBe(4);
@@ -89,27 +89,55 @@ describe('PreserveService', () => {
       await svc.preserve(track('a'));
       expect(svc.preservedIds().has('a')).toBe(true);
 
-      await svc.preserveCollection('Mix', [track('a'), track('b')]);
+      await svc.preserveCollection('mix', 'Mix', [track('a'), track('b')]);
 
       // Only the new track counts toward the batch total.
       expect(svc.preservedIds().size).toBe(2);
     });
 
-    it('ignores a concurrent collection while one is running', async () => {
-      const first = svc.preserveCollection('One', [track('a'), track('b')]);
-      // Second call returns immediately because a batch is active.
-      await svc.preserveCollection('Two', [track('c')]);
+    it('runs different collections in parallel with scoped progress', async () => {
+      const a = svc.preserveCollection('a', 'A', [track('a1'), track('a2')]);
+      const b = svc.preserveCollection('b', 'B', [track('b1')]);
+
+      // Both batches active and scoped to their own key — neither blocks the other,
+      // and an unrelated page sees no batch (template-scoping regression).
+      expect(svc.batchFor('a')?.name).toBe('A');
+      expect(svc.batchFor('b')?.name).toBe('B');
+      expect(svc.batchFor('unrelated')).toBeNull();
+
+      await Promise.all([a, b]);
+
+      expect(svc.preservedIds().has('a1')).toBe(true);
+      expect(svc.preservedIds().has('a2')).toBe(true);
+      expect(svc.preservedIds().has('b1')).toBe(true);
+    });
+
+    it('ignores a re-entrant call for an already-active collection', async () => {
+      const first = svc.preserveCollection('same', 'Same', [track('a'), track('b')]);
+      // Same key while active → no-op (does not start a second pass).
+      await svc.preserveCollection('same', 'Same', [track('c')]);
       await first;
 
       expect(svc.preservedIds().has('c')).toBe(false);
     });
 
-    it('dismissBatch clears the lingering cap notice', async () => {
+    it('parallel batches share the live budget and do not collectively overshoot', async () => {
+      svc.setBudget(250); // fits exactly two 100-byte tracks across both batches
+
+      const a = svc.preserveCollection('a', 'A', [track('a1'), track('a2')]);
+      const b = svc.preserveCollection('b', 'B', [track('b1'), track('b2')]);
+      await Promise.all([a, b]);
+
+      expect(svc.preservedIds().size).toBe(2);
+      expect(svc.totalUsage()).toBe(2 * BLOB_SIZE);
+    });
+
+    it('dismissBatch clears the lingering cap notice for its key', async () => {
       svc.setBudget(150);
-      await svc.preserveCollection('Big', [track('a'), track('b')]);
-      expect(svc.batch()?.stoppedAtCap).toBe(true);
-      svc.dismissBatch();
-      expect(svc.batch()).toBeNull();
+      await svc.preserveCollection('big', 'Big', [track('a'), track('b')]);
+      expect(svc.batchFor('big')?.stoppedAtCap).toBe(true);
+      svc.dismissBatch('big');
+      expect(svc.batchFor('big')).toBeNull();
     });
   });
 

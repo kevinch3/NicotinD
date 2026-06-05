@@ -10,13 +10,16 @@ import {
   type TrackAction,
 } from '../../components/track-row/track-row.component';
 import { ConfirmDialogComponent } from '../../components/confirm-dialog/confirm-dialog.component';
-import { toTrack, offlineTrackAction } from '../../lib/track-utils';
+import { toTrack, offlineTrackAction, addToPlaylistAction } from '../../lib/track-utils';
 import { resolveArtistRoute } from '../../lib/route-utils';
+import { createSelection } from '../../lib/selection';
+import { SelectionBarComponent } from '../../components/selection-bar/selection-bar.component';
 import { PreserveService } from '../../services/preserve.service';
+import { PlaylistService } from '../../services/playlist.service';
 
 @Component({
   selector: 'app-genre-detail',
-  imports: [TrackRowComponent, ConfirmDialogComponent, RouterLink],
+  imports: [TrackRowComponent, ConfirmDialogComponent, RouterLink, SelectionBarComponent],
   templateUrl: './genre-detail.component.html',
 })
 export class GenreDetailComponent implements OnInit {
@@ -25,6 +28,7 @@ export class GenreDetailComponent implements OnInit {
   readonly player = inject(PlayerService);
   private transferService = inject(TransferService);
   readonly preserve = inject(PreserveService);
+  private playlists = inject(PlaylistService);
   private router = inject(Router);
   private route = inject(ActivatedRoute);
 
@@ -91,6 +95,20 @@ export class GenreDetailComponent implements OnInit {
 
   protected toTrackFn = toTrack;
 
+  // ─── Multi-select ─────────────────────────────────────────────────
+  readonly selection = createSelection();
+
+  selectAllSongs(): void {
+    this.selection.selectAll(this.filteredGenreSongs().map((s) => s.id));
+  }
+
+  addSelectedToPlaylist(): void {
+    const ids = [...this.selection.ids()];
+    if (ids.length === 0) return;
+    this.playlists.openPicker(ids);
+    this.selection.exit();
+  }
+
   // ─── Offline download ─────────────────────────────────────────────
   readonly genreTrackIds = computed(() => this.filteredGenreSongs().map((s) => s.id));
   readonly genreDownloaded = computed(() =>
@@ -105,6 +123,7 @@ export class GenreDetailComponent implements OnInit {
     } else {
       void this.preserve.preserveCollection(
         genre,
+        genre,
         this.filteredGenreSongs().map((s) => toTrack(s)),
       );
     }
@@ -113,6 +132,7 @@ export class GenreDetailComponent implements OnInit {
   genreTrackActions(song: Song): TrackAction[] {
     return [
       offlineTrackAction(this.preserve, toTrack(song)),
+      addToPlaylistAction(this.playlists, song.id),
       ...(song.artistId
         ? [
             {

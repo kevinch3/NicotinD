@@ -1,6 +1,7 @@
 import { vi } from 'vitest';
-import { toTrack, offlineTrackAction, type BaseSong } from './track-utils';
+import { toTrack, offlineTrackAction, addToPlaylistAction, type BaseSong } from './track-utils';
 import type { PreserveService } from '../services/preserve.service';
+import type { PlaylistService } from '../services/playlist.service';
 import type { Track } from '../services/player.service';
 
 function fakePreserve(state: {
@@ -126,6 +127,17 @@ describe('trackUtils', () => {
       action.action();
       expect(preserve.preserve).not.toHaveBeenCalled();
       expect(preserve.remove).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('addToPlaylistAction', () => {
+    it('opens the picker for the single song id', () => {
+      const openPicker = vi.fn();
+      const playlists = { openPicker } as unknown as PlaylistService;
+      const action = addToPlaylistAction(playlists, 'song-42');
+      expect(action.label).toBe('Add to playlist');
+      action.action();
+      expect(openPicker).toHaveBeenCalledWith(['song-42']);
     });
   });
 });

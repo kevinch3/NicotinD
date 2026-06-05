@@ -8,7 +8,9 @@ import {
   type TrackAction,
 } from '../../components/track-row/track-row.component';
 import { ConfirmDialogComponent } from '../../components/confirm-dialog/confirm-dialog.component';
-import { toTrack, offlineTrackAction } from '../../lib/track-utils';
+import { toTrack, offlineTrackAction, addToPlaylistAction } from '../../lib/track-utils';
+import { createSelection } from '../../lib/selection';
+import { SelectionBarComponent } from '../../components/selection-bar/selection-bar.component';
 import { NavigationService } from '../../services/navigation.service';
 import { PreserveService } from '../../services/preserve.service';
 import type { PlaylistDetail } from '../../services/api.service';
@@ -16,7 +18,7 @@ import type { PlaylistDetail } from '../../services/api.service';
 @Component({
   selector: 'app-playlist-detail',
   standalone: true,
-  imports: [TrackRowComponent, ConfirmDialogComponent],
+  imports: [TrackRowComponent, ConfirmDialogComponent, SelectionBarComponent],
   templateUrl: './playlist-detail.component.html',
 })
 export class PlaylistDetailComponent implements OnInit {
@@ -76,6 +78,20 @@ export class PlaylistDetailComponent implements OnInit {
     );
   }
 
+  // ─── Multi-select ─────────────────────────────────────────────────
+  readonly selection = createSelection();
+
+  selectAllSongs(): void {
+    this.selection.selectAll((this.playlist()?.songs ?? []).map((s) => s.id));
+  }
+
+  addSelectedToPlaylist(): void {
+    const ids = [...this.selection.ids()];
+    if (ids.length === 0) return;
+    this.playlists.openPicker(ids);
+    this.selection.exit();
+  }
+
   // ─── Offline download ─────────────────────────────────────────────
   readonly playlistTrackIds = computed(() => (this.playlist()?.songs ?? []).map((s) => s.id));
   readonly playlistDownloaded = computed(() =>
@@ -89,6 +105,7 @@ export class PlaylistDetailComponent implements OnInit {
       void this.preserve.removeMany(this.playlistTrackIds());
     } else {
       void this.preserve.preserveCollection(
+        pl.id,
         pl.name,
         pl.songs.map((s) => toTrack(s)),
       );
@@ -98,7 +115,12 @@ export class PlaylistDetailComponent implements OnInit {
   songActions(songId: string): TrackAction[] {
     const songs = this.playlist()?.songs ?? [];
     const song = songs.find((s) => s.id === songId);
-    return song ? [offlineTrackAction(this.preserve, toTrack(song))] : [];
+    return song
+      ? [
+          offlineTrackAction(this.preserve, toTrack(song)),
+          addToPlaylistAction(this.playlists, song.id),
+        ]
+      : [];
   }
 
   async deletePlaylist(): Promise<void> {

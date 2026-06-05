@@ -1,5 +1,6 @@
 import type { Track } from '../services/player.service';
 import type { PreserveService } from '../services/preserve.service';
+import type { PlaylistService } from '../services/playlist.service';
 import type { TrackAction } from '../components/track-row/track-row.component';
 
 export interface BaseSong {
@@ -41,5 +42,17 @@ export function offlineTrackAction(preserve: PreserveService, track: Track): Tra
       if (preserved) void preserve.remove(track.id);
       else void preserve.preserve(track);
     },
+  };
+}
+
+/**
+ * Build the "Add to playlist" action for a track-row menu — opens the global
+ * picker (mounted in the layout) for a single song. Shared so every track list
+ * (album, search, genre, playlist) surfaces the same affordance.
+ */
+export function addToPlaylistAction(playlists: PlaylistService, songId: string): TrackAction {
+  return {
+    label: 'Add to playlist',
+    action: () => playlists.openPicker([songId]),
   };
 }

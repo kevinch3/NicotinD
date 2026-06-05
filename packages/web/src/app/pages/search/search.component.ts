@@ -26,7 +26,7 @@ import { groupByDirectory, formatPeerInfo, type FolderGroup } from '../../lib/fo
 import { FolderBrowserComponent } from '../../components/folder-browser/folder-browser.component';
 import { AlbumHuntModalComponent } from '../../components/album-hunt-modal/album-hunt-modal.component';
 import { TrackRowComponent } from '../../components/track-row/track-row.component';
-import { toTrack } from '../../lib/track-utils';
+import { toTrack, addToPlaylistAction } from '../../lib/track-utils';
 import { extractSharedUrl } from '../../lib/share-url';
 
 /** Lighter song shape returned by the unified search's local results. */
@@ -433,7 +433,7 @@ export class SearchComponent implements OnInit, OnDestroy {
   }
 
   songActions(songId: string): TrackAction[] {
-    return [{ label: 'Add to playlist', action: () => this.playlists.openPicker([songId]) }];
+    return [addToPlaylistAction(this.playlists, songId)];
   }
 
   toTrack = toTrack;

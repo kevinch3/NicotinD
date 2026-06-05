@@ -32,9 +32,13 @@ export class TrackRowComponent {
   readonly disabled = input(false);
   readonly showRemove = input(false);
   readonly offline = input(false);
+  /** When true, the row shows a checkbox (multi-select mode) reflecting `selected`. */
+  readonly selectable = input(false);
+  readonly selected = input(false);
   readonly actions = input<TrackAction[]>([]);
   readonly play = output<void>();
   readonly remove = output<void>();
+  readonly selectedChange = output<boolean>();
 
   readonly menuOpen = signal(false);
 

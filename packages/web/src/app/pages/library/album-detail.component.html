@@ -37,7 +37,13 @@
             class="px-5 py-2 rounded-lg bg-theme-surface-2 text-theme-primary text-sm font-semibold hover:bg-theme-hover transition">
             Play Album
           </button>
-          @if (preserve.batch(); as b) {
+          @if (!selection.active()) {
+            <button (click)="selection.enter()"
+              class="px-4 py-2 rounded-lg text-sm bg-theme-surface-2 text-theme-muted hover:bg-theme-hover transition">
+              Select
+            </button>
+          }
+          @if (preserve.batchFor(selectedAlbum()!.id); as b) {
             <span class="px-4 py-2 text-sm text-theme-muted">Saving {{ b.done }}/{{ b.total }}…</span>
           } @else {
             <button (click)="toggleDownloadAlbum()"
@@ -69,11 +75,11 @@
       </div>
     }
 
-    @if (preserve.batch(); as b) {
-      @if (b.stoppedAtCap && b.name === selectedAlbum()!.name) {
+    @if (preserve.batchFor(selectedAlbum()!.id); as b) {
+      @if (b.stoppedAtCap) {
         <div class="mx-4 mb-4 px-4 py-2 rounded-lg bg-amber-500/10 text-amber-400 text-sm flex items-center justify-between gap-3">
           <span>Saved {{ b.done }} of {{ b.total }} — offline storage limit reached.</span>
-          <button (click)="preserve.dismissBatch()" class="text-theme-muted hover:text-theme-secondary">Dismiss</button>
+          <button (click)="preserve.dismissBatch(selectedAlbum()!.id)" class="text-theme-muted hover:text-theme-secondary">Dismiss</button>
         </div>
       }
     }
@@ -89,6 +95,16 @@
       (toggleDirection)="detailControls.toggleSortDirection()"
     />
 
+    @if (selection.active()) {
+      <app-selection-bar
+        [count]="selection.count()"
+        [total]="detailControls.filtered().length"
+        (selectAll)="selectAllSongs()"
+        (add)="addSelectedToPlaylist()"
+        (cancel)="selection.exit()"
+      />
+    }
+
     <div>
       @for (song of detailControls.filtered(); track song.id) {
         <app-track-row
@@ -96,8 +112,11 @@
           [indexLabel]="song.track ?? ''"
           [duration]="song.duration"
           [offline]="preserve.isPreserved(song.id)"
+          [selectable]="selection.active()"
+          [selected]="selection.isSelected(song.id)"
           [actions]="albumTrackActions(song)"
           (play)="playSong(song)"
+          (selectedChange)="selection.toggle(song.id)"
         />
       }
     </div>

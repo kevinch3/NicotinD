@@ -15,8 +15,10 @@ import {
 } from '../../components/track-row/track-row.component';
 import { ConfirmDialogComponent } from '../../components/confirm-dialog/confirm-dialog.component';
 import { CoverArtComponent } from '../../components/cover-art/cover-art.component';
-import { toTrack, offlineTrackAction } from '../../lib/track-utils';
+import { toTrack, offlineTrackAction, addToPlaylistAction } from '../../lib/track-utils';
 import { resolveArtistRoute } from '../../lib/route-utils';
+import { createSelection } from '../../lib/selection';
+import { SelectionBarComponent } from '../../components/selection-bar/selection-bar.component';
 import { NavigationService } from '../../services/navigation.service';
 import { PreserveService } from '../../services/preserve.service';
 
@@ -28,6 +30,7 @@ import { PreserveService } from '../../services/preserve.service';
     ConfirmDialogComponent,
     RouterLink,
     CoverArtComponent,
+    SelectionBarComponent,
   ],
   templateUrl: './album-detail.component.html',
 })
@@ -149,6 +152,20 @@ export class AlbumDetailComponent implements OnInit {
     this.player.playWithContext(tracks, 0, { type: 'album', id: album.id, name: album.name });
   }
 
+  // ─── Multi-select ─────────────────────────────────────────────────
+  readonly selection = createSelection();
+
+  selectAllSongs(): void {
+    this.selection.selectAll(this.detailControls.filtered().map((s) => s.id));
+  }
+
+  addSelectedToPlaylist(): void {
+    const ids = [...this.selection.ids()];
+    if (ids.length === 0) return;
+    this.playlists.openPicker(ids);
+    this.selection.exit();
+  }
+
   // ─── Offline download ─────────────────────────────────────────────
   readonly albumTrackIds = computed(() => this.detailSongs().map((s) => s.id));
   readonly albumDownloaded = computed(() =>
@@ -161,7 +178,7 @@ export class AlbumDetailComponent implements OnInit {
     if (this.albumDownloaded()) {
       void this.preserve.removeMany(this.albumTrackIds());
     } else {
-      void this.preserve.preserveCollection(album.name, this.albumTracks());
+      void this.preserve.preserveCollection(album.id, album.name, this.albumTracks());
     }
   }
 
@@ -220,10 +237,7 @@ export class AlbumDetailComponent implements OnInit {
   }): TrackAction[] {
     return [
       offlineTrackAction(this.preserve, this.toTrackFromSong(song)),
-      {
-        label: 'Add to playlist',
-        action: () => this.playlists.openPicker([song.id]),
-      },
+      addToPlaylistAction(this.playlists, song.id),
       ...(song.artistId
         ? [
             {
