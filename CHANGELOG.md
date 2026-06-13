@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.65](https://github.com/kevinch3/NicotinD/compare/v0.1.64...v0.1.65) (2026-06-13)
+
+
+### Features
+
+* **web:** bulk delete + shift-click range selection in multiselect ([a4030cc](https://github.com/kevinch3/NicotinD/commit/a4030cc44f4ed473b4953717776012f54194b3c0))
+
 ## [0.1.64](https://github.com/kevinch3/NicotinD/compare/v0.1.63...v0.1.64) (2026-06-13)
 
 
