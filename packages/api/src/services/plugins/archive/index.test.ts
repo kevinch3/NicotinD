@@ -35,6 +35,7 @@ function fakeCtx(): PluginHostContext {
     emitProgress(_jobId, p) {
       progress.push(p);
     },
+    emitLabel() {},
     storage: { get: () => null, set() {}, delete() {} },
   };
 }

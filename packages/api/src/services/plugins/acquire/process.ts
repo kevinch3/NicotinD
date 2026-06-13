@@ -61,6 +61,15 @@ export function parseYtdlpProgress(line: string, current: AcquireProgress): Acqu
   return current;
 }
 
+/**
+ * Extract a playlist title from a yt-dlp output line, if present.
+ * yt-dlp emits: `[download] Downloading playlist: My Playlist Title`
+ */
+export function parseYtdlpPlaylistTitle(line: string): string | null {
+  const m = /\[download\] Downloading playlist:\s+(.+)/.exec(line);
+  return m ? m[1]!.trim() : null;
+}
+
 /** Walk a directory tree and collect absolute paths of audio files. */
 export function collectAudioPaths(stagingDir: string): string[] {
   const paths: string[] = [];
@@ -94,6 +103,8 @@ export interface RunAcquireOptions {
   /** Translate a line of process output into progress (defaults to yt-dlp parser). */
   parseProgress?: (line: string, current: AcquireProgress) => AcquireProgress;
   onProgress?: (progress: AcquireProgress) => void;
+  /** Called at most once when a playlist title is detected in output. */
+  onLabel?: (label: string) => void;
   /** Injectable spawner (tests pass a fake to avoid process-global module mocks). */
   spawn?: typeof spawn;
 }
@@ -118,10 +129,20 @@ export function runAcquireProcess(opts: RunAcquireOptions): RunningAcquire {
 
   let progress: AcquireProgress = { done: 0, total: 100 };
   let stderrBuf = '';
+  let labelEmitted = false;
 
   const onData = (data: Buffer) => {
     const text = data.toString();
-    for (const line of text.split('\n')) progress = parseProgress(line, progress);
+    for (const line of text.split('\n')) {
+      progress = parseProgress(line, progress);
+      if (!labelEmitted && opts.onLabel) {
+        const title = parseYtdlpPlaylistTitle(line);
+        if (title) {
+          labelEmitted = true;
+          opts.onLabel(title);
+        }
+      }
+    }
     opts.onProgress?.(progress);
     stderrBuf += text;
   };

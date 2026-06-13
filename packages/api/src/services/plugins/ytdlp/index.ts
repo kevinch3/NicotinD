@@ -71,6 +71,7 @@ export class YtdlpPlugin implements Plugin {
       args: this.buildArgs(url, stagingDir),
       stagingDir,
       onProgress: (p) => this.ctx!.emitProgress(jobId, p),
+      onLabel: (label) => this.ctx!.emitLabel(jobId, label),
       spawn: this.spawn,
     });
     this.activeRuns.set(jobId, run);

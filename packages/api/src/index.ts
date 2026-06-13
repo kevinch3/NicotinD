@@ -255,6 +255,13 @@ export function createApp({
         // Non-fatal — progress is best-effort.
       }
     },
+    emitLabel: (jobId, label) => {
+      try {
+        db.run(`UPDATE acquire_jobs SET label = ? WHERE id = ?`, [label, jobId]);
+      } catch {
+        // Non-fatal — label is best-effort.
+      }
+    },
   });
   plugins.register(new SlskdPlugin(slskdRef, registry));
   // Register specific-URL plugins before the catch-all yt-dlp so that

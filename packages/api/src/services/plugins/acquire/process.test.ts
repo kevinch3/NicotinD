@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import {
   runAcquireProcess,
   parseYtdlpProgress,
+  parseYtdlpPlaylistTitle,
   collectAudioPaths,
   type RunAcquireOptions,
 } from './process.js';
@@ -64,6 +65,19 @@ describe('parseYtdlpProgress', () => {
   });
 });
 
+describe('parseYtdlpPlaylistTitle', () => {
+  it('extracts the playlist title', () => {
+    expect(parseYtdlpPlaylistTitle('[download] Downloading playlist: My Playlist Title')).toBe(
+      'My Playlist Title',
+    );
+  });
+  it('returns null for non-playlist lines', () => {
+    expect(parseYtdlpPlaylistTitle('[download]  45.2% of 5MiB')).toBeNull();
+    expect(parseYtdlpPlaylistTitle('[download] Downloading item 1 of 10')).toBeNull();
+    expect(parseYtdlpPlaylistTitle('')).toBeNull();
+  });
+});
+
 describe('runAcquireProcess', () => {
   beforeEach(() => {
     spawnMock.mockClear();
@@ -97,6 +111,16 @@ describe('runAcquireProcess', () => {
     fakeProc.finish(0);
     await r.done;
     expect(seen).toContain(42);
+  });
+
+  it('calls onLabel once when a playlist title line appears', async () => {
+    const labels: string[] = [];
+    const r = run({ onLabel: (l) => labels.push(l) });
+    fakeProc.emitData('[download] Downloading playlist: My Mix\n');
+    fakeProc.emitData('[download] Downloading playlist: Should be ignored\n');
+    fakeProc.finish(0);
+    await r.done;
+    expect(labels).toEqual(['My Mix']);
   });
 
   it('rejects with stderr tail on a non-zero exit', async () => {

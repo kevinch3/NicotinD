@@ -27,6 +27,8 @@ export interface PluginHostContext {
   allocStagingDir(jobId: string): string;
   /** Report progress for an in-flight job to the host's job tables. */
   emitProgress(jobId: string, progress: PluginProgress): void;
+  /** Update the human-readable label for an in-flight job (e.g. playlist title). */
+  emitLabel(jobId: string, label: string): void;
   /** Plugin-scoped persistent storage. */
   storage: PluginStorage;
 }

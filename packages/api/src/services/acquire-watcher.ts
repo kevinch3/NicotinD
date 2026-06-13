@@ -187,6 +187,14 @@ export class AcquireWatcher {
     return rows.map((r) => this.mapRow(r));
   }
 
+  updateLabel(jobId: string, label: string): void {
+    try {
+      this.db.run(`UPDATE acquire_jobs SET label = ? WHERE id = ?`, [label, jobId]);
+    } catch (err) {
+      log.warn({ jobId, err }, 'Failed to update acquire_jobs label');
+    }
+  }
+
   private updateState(jobId: string, state: string, error?: string): void {
     try {
       this.db.run(`UPDATE acquire_jobs SET state = ?, error = ? WHERE id = ?`, [

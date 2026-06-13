@@ -12,6 +12,8 @@ export interface HostContextDeps {
    * no-op; the host wires this to acquire_jobs/album_jobs updates in later phases.
    */
   emitProgress?: (jobId: string, progress: { done: number; total: number }) => void;
+  /** Update the label column for an in-flight job (e.g. playlist title). */
+  emitLabel?: (jobId: string, label: string) => void;
 }
 
 /**
@@ -68,6 +70,9 @@ export function createPluginHostContext(
     },
     emitProgress(jobId, progress) {
       deps.emitProgress?.(jobId, progress);
+    },
+    emitLabel(jobId, label) {
+      deps.emitLabel?.(jobId, label);
     },
     storage: createPluginStorage(deps.db, pluginId),
   };
