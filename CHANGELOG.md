@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.67](https://github.com/kevinch3/NicotinD/compare/v0.1.66...v0.1.67) (2026-06-13)
+
+
+### Bug Fixes
+
+* **plugins:** register specific-URL plugins before yt-dlp catch-all ([4a997ba](https://github.com/kevinch3/NicotinD/commit/4a997ba6d8c64f2a35bc31f0f6c2559b99af6601))
+
 ## [0.1.66](https://github.com/kevinch3/NicotinD/compare/v0.1.65...v0.1.66) (2026-06-13)
 
 ## [0.1.65](https://github.com/kevinch3/NicotinD/compare/v0.1.64...v0.1.65) (2026-06-13)
