@@ -1,4 +1,5 @@
 import { describe, it, expect, mock } from 'bun:test';
+import { NicotinDError } from '@nicotind/core';
 import type { Lidarr, LidarrAlbum, LidarrArtist } from '@nicotind/lidarr-client';
 import { CatalogService } from './catalog-search.service';
 
@@ -113,6 +114,20 @@ describe('CatalogService.search', () => {
     expect(result.artists).toEqual([]);
     expect(result.albums).toHaveLength(1);
   });
+
+  it('drops implausible placeholder release years (e.g. 0001)', async () => {
+    const lidarr = {
+      artist: { lookup: mock(async () => []) },
+      album: {
+        lookup: mock(async () => [
+          makeAlbum({ id: 1, title: 'No Date', releaseDate: '0001-01-01' }),
+        ]),
+      },
+    } as unknown as Lidarr;
+
+    const result = await new CatalogService(lidarr).search('x');
+    expect(result.albums[0]?.year).toBeUndefined();
+  });
 });
 
 describe('CatalogService.resolveAlbum', () => {
@@ -171,7 +186,23 @@ describe('CatalogService.resolveAlbum', () => {
     expect(result.lidarrAlbumId).toBe(10);
   });
 
-  it('throws when the resolved artist has no matching album', async () => {
+  it('falls back to a normalized-title match when the foreignAlbumId is absent', async () => {
+    // The artist's Lidarr discography carries the album under a *different*
+    // release-group id (with a diacritic difference) than the search card's id.
+    const lidarr = {
+      artist: { list: mock(async () => [makeArtist({ id: 5, foreignArtistId: 'pf-mbid' })]) },
+      album: {
+        listByArtist: mock(async () => [
+          makeAlbum({ id: 42, title: 'Ánimals', foreignAlbumId: 'rg-different' }),
+        ]),
+      },
+    } as unknown as Lidarr;
+
+    const result = await new CatalogService(lidarr).resolveAlbum(input);
+    expect(result.lidarrAlbumId).toBe(42);
+  });
+
+  it('throws a 404 NicotinDError when no album matches by id or title', async () => {
     const lidarr = {
       artist: { list: mock(async () => [makeArtist({ id: 5, foreignArtistId: 'pf-mbid' })]) },
       album: {
@@ -181,8 +212,11 @@ describe('CatalogService.resolveAlbum', () => {
       },
     } as unknown as Lidarr;
 
-    await expect(new CatalogService(lidarr).resolveAlbum(input)).rejects.toThrow(
-      /not yet available/i,
-    );
+    const err = await new CatalogService(lidarr)
+      .resolveAlbum(input)
+      .then(() => null)
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(NicotinDError);
+    expect((err as NicotinDError).statusCode).toBe(404);
   });
 });

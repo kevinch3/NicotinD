@@ -1,6 +1,7 @@
 import type { Lidarr, LidarrAlbum, LidarrArtist } from '@nicotind/lidarr-client';
-import { createLogger } from '@nicotind/core';
+import { createLogger, NicotinDError } from '@nicotind/core';
 import { addArtistFromLookup } from './lidarr-provision.js';
+import { normalizeTitle } from './album-hunter.service.js';
 
 const log = createLogger('catalog');
 
@@ -79,10 +80,22 @@ export class CatalogService {
     const lidarrArtistId = await this.resolveOrAddArtist(input.artistMbid, input.artistName);
 
     const albums = await this.lidarr.album.listByArtist(lidarrArtistId);
-    const album = albums.find((a) => a.foreignAlbumId === input.foreignAlbumId);
+    // The album cards come from the *global* `album.lookup`, whose MusicBrainz
+    // release-group IDs aren't guaranteed to appear in this artist's Lidarr
+    // discography (compilations / "best of" / vol.N collections especially), so
+    // an id-only match 500s on perfectly valid cards. Fall back to a
+    // normalized-title match (diacritic-insensitive — Latin-American-heavy
+    // library) before giving up. See docs/e2e-playground-findings-2026-06.md §A2.
+    const album =
+      albums.find((a) => a.foreignAlbumId === input.foreignAlbumId) ??
+      (input.albumTitle
+        ? albums.find((a) => normalizeTitle(a.title) === normalizeTitle(input.albumTitle))
+        : undefined);
     if (!album) {
-      throw new Error(
-        `"${input.albumTitle}" is not yet available in Lidarr for ${input.artistName}`,
+      throw new NicotinDError(
+        `"${input.albumTitle}" isn't in ${input.artistName}'s Lidarr discography yet`,
+        'ALBUM_NOT_IN_LIDARR',
+        404,
       );
     }
 
@@ -137,12 +150,24 @@ function mapAlbum(a: LidarrAlbum): CatalogAlbum {
     title: a.title,
     artistName: a.artist?.artistName ?? '',
     artistMbid: a.artist?.foreignArtistId ?? '',
-    year: a.releaseDate ? a.releaseDate.slice(0, 4) : undefined,
+    year: plausibleYear(a.releaseDate),
     albumType: a.albumType,
     secondaryTypes: a.secondaryTypes ?? [],
     coverUrl: cover?.remoteUrl ?? cover?.url,
     trackCount,
   };
+}
+
+/**
+ * Extract a display year, dropping implausible placeholder dates. Lidarr/
+ * MusicBrainz returns `0001-01-01` (and other pre-recording-era dates) for
+ * release groups with no real date, which would otherwise render as "0001" on
+ * the album card. See docs/e2e-playground-findings-2026-06.md §A3.
+ */
+function plausibleYear(releaseDate?: string): string | undefined {
+  if (!releaseDate) return undefined;
+  const year = Number(releaseDate.slice(0, 4));
+  return Number.isFinite(year) && year >= 1900 ? String(year) : undefined;
 }
 
 function normalizeName(name: string): string {

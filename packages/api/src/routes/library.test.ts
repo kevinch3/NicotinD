@@ -496,6 +496,77 @@ describe('album deletion', () => {
     expect(runSync).not.toHaveBeenCalled();
     expect(albumRowExists('del-nosync')).toBe(false);
   });
+
+  it('removes the now-orphaned artist + artwork when its only release is deleted', async () => {
+    const dir = '/home/kevinch3/Music/Orphan Artist/Only Album';
+    seedAlbum('del-orphan', [{ id: 'orph-1', path: `${dir}/01.mp3` }]);
+    // Point the seeded album/song at a dedicated artist id + a genre + artwork.
+    sharedDb.run(
+      `UPDATE library_albums SET artist_id = 'art-orphan', genre = 'Orphancore' WHERE id = 'del-orphan'`,
+    );
+    sharedDb.run(
+      `UPDATE library_songs SET artist_id = 'art-orphan', genre = 'Orphancore' WHERE album_id = 'del-orphan'`,
+    );
+    sharedDb.run(
+      `INSERT INTO library_artists (id, name, album_count, synced_at) VALUES ('art-orphan', 'Orphan Artist', 1, 1)`,
+    );
+    sharedDb.run(
+      `INSERT INTO library_genres (name, song_count, album_count, synced_at) VALUES ('Orphancore', 1, 1, 1)`,
+    );
+    sharedDb.run(
+      `INSERT INTO library_artwork (id, kind, cover_url, updated_at) VALUES ('del-orphan', 'album', 'http://x/a.jpg', 1), ('art-orphan', 'artist', 'http://x/b.jpg', 1)`,
+    );
+    fsState.set(`${dir}/01.mp3`, true);
+    dirEntries.set(dir, [{ name: '01.mp3', isFile: true, isDirectory: false }]);
+
+    const res = await app.request('/albums/del-orphan', { method: 'DELETE' });
+    expect(res.status).toBe(200);
+
+    // The orphaned artist no longer surfaces in search / on its own page,
+    // and its empty genre + both artwork rows are gone.
+    expect(
+      sharedDb.query(`SELECT id FROM library_artists WHERE id = 'art-orphan'`).get(),
+    ).toBeNull();
+    expect(
+      sharedDb.query(`SELECT name FROM library_genres WHERE name = 'Orphancore'`).get(),
+    ).toBeNull();
+    expect(
+      sharedDb.query(`SELECT id FROM library_artwork WHERE id = 'del-orphan'`).get(),
+    ).toBeNull();
+    expect(
+      sharedDb.query(`SELECT id FROM library_artwork WHERE id = 'art-orphan'`).get(),
+    ).toBeNull();
+  });
+
+  it('keeps an artist (with a corrected album_count) when other releases remain', async () => {
+    const dirA = '/home/kevinch3/Music/Multi Artist/Album A';
+    const dirB = '/home/kevinch3/Music/Multi Artist/Album B';
+    seedAlbum('del-multi-a', [{ id: 'ma-1', path: `${dirA}/01.mp3` }]);
+    seedAlbum('del-multi-b', [{ id: 'mb-1', path: `${dirB}/01.mp3` }]);
+    sharedDb.run(
+      `UPDATE library_albums SET artist_id = 'art-multi' WHERE id IN ('del-multi-a', 'del-multi-b')`,
+    );
+    sharedDb.run(
+      `UPDATE library_songs SET artist_id = 'art-multi' WHERE album_id IN ('del-multi-a', 'del-multi-b')`,
+    );
+    sharedDb.run(
+      `INSERT INTO library_artists (id, name, album_count, synced_at) VALUES ('art-multi', 'Multi Artist', 2, 1)`,
+    );
+    fsState.set(`${dirA}/01.mp3`, true);
+    dirEntries.set(dirA, [{ name: '01.mp3', isFile: true, isDirectory: false }]);
+
+    const res = await app.request('/albums/del-multi-a', { method: 'DELETE' });
+    expect(res.status).toBe(200);
+
+    const artist = sharedDb
+      .query<
+        { album_count: number },
+        []
+      >(`SELECT album_count FROM library_artists WHERE id = 'art-multi'`)
+      .get();
+    expect(artist).not.toBeNull();
+    expect(artist?.album_count).toBe(1);
+  });
 });
 
 describe('singles & EPs presentation', () => {
