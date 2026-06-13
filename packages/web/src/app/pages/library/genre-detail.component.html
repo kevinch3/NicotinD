@@ -47,8 +47,10 @@
       <app-selection-bar
         [count]="selection.count()"
         [total]="filteredGenreSongs().length"
+        [canDelete]="auth.role() === 'admin'"
         (selectAll)="selectAllSongs()"
         (add)="addSelectedToPlaylist()"
+        (deleteSelected)="deleteSelectedSongs()"
         (cancel)="selection.exit()"
       />
     }
@@ -62,7 +64,7 @@
         [selected]="selection.isSelected(song.id)"
         [actions]="genreTrackActions(song)"
         (play)="player.play(toTrackFn(song))"
-        (selectedChange)="selection.toggle(song.id)"
+        (selectedChange)="selection.toggleRange(song.id, genreTrackIds(), $event.shiftKey)"
       />
     }
     @if (filteredGenreSongs().length === 0) {

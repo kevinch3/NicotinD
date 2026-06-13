@@ -38,7 +38,8 @@ export class TrackRowComponent {
   readonly actions = input<TrackAction[]>([]);
   readonly play = output<void>();
   readonly remove = output<void>();
-  readonly selectedChange = output<boolean>();
+  /** Emits the originating click so hosts can detect shift-click range selection. */
+  readonly selectedChange = output<MouseEvent>();
 
   readonly menuOpen = signal(false);
 

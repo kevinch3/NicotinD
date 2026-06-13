@@ -100,8 +100,10 @@
       <app-selection-bar
         [count]="selection.count()"
         [total]="detailControls.filtered().length"
+        [canDelete]="auth.role() === 'admin'"
         (selectAll)="selectAllSongs()"
         (add)="addSelectedToPlaylist()"
+        (deleteSelected)="deleteSelectedSongs()"
         (cancel)="selection.exit()"
       />
     }
@@ -117,7 +119,7 @@
           [selected]="selection.isSelected(song.id)"
           [actions]="albumTrackActions(song)"
           (play)="playSong(song)"
-          (selectedChange)="selection.toggle(song.id)"
+          (selectedChange)="selection.toggleRange(song.id, albumOrderedIds(), $event.shiftKey)"
         />
       }
     </div>

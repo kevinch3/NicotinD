@@ -60,8 +60,11 @@
         <app-selection-bar
           [count]="selection.count()"
           [total]="pl.songs.length"
+          [canDelete]="true"
+          deleteLabel="Remove from playlist"
           (selectAll)="selectAllSongs()"
           (add)="addSelectedToPlaylist()"
+          (deleteSelected)="removeSelectedFromPlaylist()"
           (cancel)="selection.exit()"
         />
       }
@@ -79,7 +82,7 @@
             [actions]="songActions(song.id)"
             (play)="playFrom(i)"
             (remove)="removeSong(song.id)"
-            (selectedChange)="selection.toggle(song.id)"
+            (selectedChange)="selection.toggleRange(song.id, playlistOrderedIds(), $event.shiftKey)"
           />
         }
       </div>
