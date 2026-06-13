@@ -21,13 +21,16 @@
               <h2 class="text-sm font-semibold uppercase tracking-wider text-zinc-400 mb-4">Create Admin Account</h2>
               <div class="space-y-3">
                 <input type="text" placeholder="Username" [(ngModel)]="adminUsername" name="adminUser" required autofocus
+                  data-testid="setup-username"
                   class="w-full px-4 py-3 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-500 transition text-sm" />
                 <app-password-field [(ngModel)]="adminPassword" name="adminPass" [placeholder]="'Password'" [required]="true" [autocomplete]="'new-password'"
+                  [testId]="'setup-password'"
                   [inputClass]="'px-4 py-3 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-500 transition text-sm'" />
               </div>
             </div>
             @if (error()) { <p class="text-red-400 text-sm">{{ error() }}</p> }
             <button type="submit" [disabled]="!adminUsername.trim() || !adminPassword.trim()"
+              data-testid="setup-submit"
               class="w-full py-3 rounded-lg bg-zinc-100 text-zinc-900 font-semibold hover:bg-zinc-200 transition disabled:opacity-50">
               Next
             </button>
@@ -68,6 +71,7 @@
             <div class="flex gap-3">
               <button (click)="step.set('admin')" class="px-5 py-3 rounded-lg border border-zinc-800 text-zinc-400 text-sm font-medium hover:border-zinc-600 transition">Back</button>
               <button (click)="handleSoulseekNext()" [disabled]="loading()"
+                data-testid="setup-soulseek-next"
                 class="flex-1 py-3 rounded-lg bg-zinc-100 text-zinc-900 font-semibold hover:bg-zinc-200 transition disabled:opacity-50">
                 {{ soulseekButtonLabel() }}
               </button>
@@ -87,7 +91,7 @@
               <h2 class="text-lg font-semibold text-zinc-100 mb-1">Setup Complete</h2>
               <p class="text-sm text-zinc-500">Your NicotinD instance is ready.</p>
             </div>
-            <button (click)="reload()" class="w-full py-3 rounded-lg bg-zinc-100 text-zinc-900 font-semibold hover:bg-zinc-200 transition">Get Started</button>
+            <button (click)="reload()" data-testid="setup-done" class="w-full py-3 rounded-lg bg-zinc-100 text-zinc-900 font-semibold hover:bg-zinc-200 transition">Get Started</button>
           </div>
         }
       </div>

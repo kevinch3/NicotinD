@@ -26,7 +26,7 @@
           <app-download-indicator />
           <span class="hidden md:inline text-xs text-theme-muted/50">v{{ version }}</span>
           <span class="hidden md:inline text-sm text-theme-muted">{{ auth.username() }}</span>
-          <button (click)="logout()" class="hidden md:inline text-sm text-theme-muted hover:text-theme-secondary transition">Sign out</button>
+          <button (click)="logout()" data-testid="logout" class="hidden md:inline text-sm text-theme-muted hover:text-theme-secondary transition">Sign out</button>
         </div>
       </header>
 

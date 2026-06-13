@@ -11,11 +11,13 @@
             (focus)="searchFocused.set(true)"
             (blur)="onSearchBlur()"
             placeholder="Search for music..."
+            data-testid="search-input"
             class="w-full px-5 py-4 text-lg rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-600 transition"
           />
           <button
             type="submit"
             [disabled]="loading()"
+            data-testid="search-submit"
             class="absolute right-3 top-1/2 -translate-y-1/2 px-4 py-2 rounded-lg bg-zinc-700 text-zinc-200 text-sm font-medium hover:bg-zinc-600 transition disabled:opacity-50">
             {{ loading() ? 'Searching...' : 'Search' }}
           </button>
@@ -109,6 +111,7 @@
                            (only when a download-capable plugin is enabled) -->
                       @if (plugins.hasDownload()) {
                       <span role="button" tabindex="0"
+                        data-testid="watchlist-star"
                         (click)="toggleWatch(album, $event)"
                         (keydown.enter)="toggleWatch(album, $event)"
                         [attr.aria-label]="watchlist.isWatched(album.foreignAlbumId) ? 'Stop watching' : 'Watch for this album'"
@@ -355,11 +358,13 @@
             [(ngModel)]="acquireUrl"
             name="acquireUrl"
             placeholder="YouTube, SoundCloud, Bandcamp, Spotify…"
+            data-testid="acquire-url-input"
             class="flex-1 px-4 py-2.5 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-600 transition text-sm"
           />
           <button
             type="submit"
             [disabled]="acquireSubmitting()"
+            data-testid="acquire-submit"
             class="px-4 py-2.5 rounded-xl bg-zinc-700 text-zinc-200 text-sm font-medium hover:bg-zinc-600 transition disabled:opacity-50 whitespace-nowrap">
             {{ acquireSubmitting() ? 'Starting…' : 'Download' }}
           </button>
