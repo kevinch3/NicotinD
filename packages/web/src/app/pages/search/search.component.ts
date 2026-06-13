@@ -2,6 +2,7 @@ import { Component, inject, signal, computed, effect, OnInit, OnDestroy } from '
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink, ActivatedRoute } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
+import type { ArchiveCandidate } from '@nicotind/core';
 import {
   ApiService,
   type CatalogAlbum,
@@ -220,6 +221,9 @@ export class SearchComponent implements OnInit, OnDestroy {
   acquireUrl = '';
   readonly acquireSubmitting = signal(false);
   readonly acquireError = signal<string | null>(null);
+
+  // archive.org item identifiers whose download has been kicked off.
+  readonly archiveAcquired = signal<Set<string>>(new Set());
 
   readonly hasCatalog = computed(() => {
     const c = this.catalog();
@@ -462,6 +466,40 @@ export class SearchComponent implements OnInit, OnDestroy {
     await this.acquire.cancel(jobId).catch(() => {});
   }
 
+  // archive.org search lane — fired in parallel with the network search. Gated on
+  // the archive plugin; failures degrade silently to an empty section.
+  private async searchArchive(query: string): Promise<void> {
+    if (!this.plugins.hasArchive()) return;
+    this.search.setArchiveState('searching');
+    try {
+      const res = await firstValueFrom(this.api.archiveSearch(query));
+      this.search.setArchive(res.candidates);
+    } catch {
+      // Non-fatal — leave the section empty.
+    } finally {
+      this.search.setArchiveState('complete');
+    }
+  }
+
+  // Download an archive.org item via the acquire pipeline (the `archive` resolve
+  // plugin stages it). The job surfaces in Downloads → Active.
+  async getFromArchive(item: ArchiveCandidate): Promise<void> {
+    this.archiveAcquired.update((s) => new Set(s).add(item.identifier));
+    try {
+      await this.acquire.submit(item.detailsUrl);
+    } catch {
+      this.archiveAcquired.update((s) => {
+        const next = new Set(s);
+        next.delete(item.identifier);
+        return next;
+      });
+    }
+  }
+
+  isArchiveAcquired(item: ArchiveCandidate): boolean {
+    return this.archiveAcquired().has(item.identifier);
+  }
+
   toggleDirectSearch(): void {
     this.directSearchOpen.update((v) => !v);
   }
@@ -566,6 +604,9 @@ export class SearchComponent implements OnInit, OnDestroy {
     const catalogPromise = firstValueFrom(this.api.catalogSearch(query))
       .then((res) => this.catalog.set(res))
       .catch(() => this.catalogUnavailable.set(true));
+
+    // archive.org runs in parallel as a third lane (only when the plugin is on).
+    void this.searchArchive(query);
 
     try {
       const res = await firstValueFrom(this.api.search(query));

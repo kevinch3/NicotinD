@@ -8,6 +8,8 @@ import {
   type FolderCandidate,
 } from '../../services/api.service';
 import { TransferService } from '../../services/transfer.service';
+import { AcquireService } from '../../services/acquire.service';
+import { PluginService } from '../../services/plugin.service';
 
 const ALBUM: DiscographyAlbum = {
   lidarrId: 42,
@@ -39,6 +41,9 @@ describe('AlbumHuntModalComponent', () => {
   const huntAlbumBase = vi.fn(() => of({ candidates: [], totalTracks: 0, skewNeeded: false }));
   const huntAlbumSkew = vi.fn(() => of({ candidates: [] }));
   const huntDownload = vi.fn(() => of({}));
+  const archiveSearchAlbum = vi.fn(() => of({ candidates: [] }));
+  const acquireSubmit = vi.fn(() => Promise.resolve('job1'));
+  let archiveEnabled = false;
 
   beforeEach(async () => {
     huntAlbumBase.mockClear();
@@ -47,12 +52,21 @@ describe('AlbumHuntModalComponent', () => {
     huntAlbumSkew.mockReturnValue(of({ candidates: [] }));
     huntDownload.mockClear();
     huntDownload.mockReturnValue(of({}));
+    archiveSearchAlbum.mockClear();
+    archiveSearchAlbum.mockReturnValue(of({ candidates: [] }));
+    acquireSubmit.mockClear();
+    archiveEnabled = false;
 
     await TestBed.configureTestingModule({
       imports: [AlbumHuntModalComponent],
       providers: [
-        { provide: ApiService, useValue: { huntAlbumBase, huntAlbumSkew, huntDownload } },
-        { provide: TransferService, useValue: { poll: vi.fn() } },
+        {
+          provide: ApiService,
+          useValue: { huntAlbumBase, huntAlbumSkew, huntDownload, archiveSearchAlbum },
+        },
+        { provide: TransferService, useValue: { poll: vi.fn(), kickPoll: vi.fn() } },
+        { provide: AcquireService, useValue: { submit: acquireSubmit } },
+        { provide: PluginService, useValue: { hasArchive: () => archiveEnabled } },
       ],
     }).compileComponents();
   });
@@ -157,6 +171,54 @@ describe('AlbumHuntModalComponent', () => {
       }),
       false,
     );
+  });
+
+  it('searchArchive populates candidates when the archive plugin is enabled', async () => {
+    archiveEnabled = true;
+    archiveSearchAlbum.mockReturnValue(
+      of({
+        candidates: [
+          { identifier: 'a1', title: 'Album', creator: 'Artist', year: '2016', detailsUrl: 'u1' },
+        ],
+      }),
+    );
+    const c = create();
+    (c as unknown as { album: () => DiscographyAlbum }).album = () => ALBUM;
+    (c as unknown as { artistName: () => string }).artistName = () => 'Test Artist';
+
+    await c.searchArchive();
+
+    expect(archiveSearchAlbum).toHaveBeenCalledWith('Test Artist', ALBUM.title);
+    expect(c.archiveState()).toBe('done');
+    expect(c.archiveCandidates().map((x) => x.identifier)).toEqual(['a1']);
+  });
+
+  it('searchArchive no-ops when the archive plugin is disabled', async () => {
+    archiveEnabled = false;
+    const c = create();
+    (c as unknown as { album: () => DiscographyAlbum }).album = () => ALBUM;
+    (c as unknown as { artistName: () => string }).artistName = () => 'Test Artist';
+
+    await c.searchArchive();
+
+    expect(archiveSearchAlbum).not.toHaveBeenCalled();
+    expect(c.archiveState()).toBe('idle');
+  });
+
+  it('getFromArchive submits the detailsUrl and marks the item started', async () => {
+    const c = create();
+    const item = {
+      identifier: 'a1',
+      title: 'Album',
+      creator: 'Artist',
+      year: null,
+      detailsUrl: 'https://archive.org/details/a1',
+    };
+
+    await c.getFromArchive(item);
+
+    expect(acquireSubmit).toHaveBeenCalledWith('https://archive.org/details/a1');
+    expect(c.isAcquired(item)).toBe(true);
   });
 
   it('passes the current skewSearch flag to the base hunt phase', async () => {

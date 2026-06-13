@@ -46,6 +46,8 @@ export class PluginService {
   readonly hasSearch = computed(() => this.enabledCaps().has('search'));
   readonly hasResolve = computed(() => this.enabledCaps().has('resolve'));
   readonly hasDownload = computed(() => this.enabledCaps().has('download'));
+  /** The archive.org plugin specifically is enabled (gates the archive.org search lane). */
+  readonly hasArchive = computed(() => this.plugins().some((p) => p.id === 'archive' && p.enabled));
 
   async refresh(): Promise<void> {
     try {

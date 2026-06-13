@@ -1,16 +1,20 @@
 import { Component, inject, input, output, signal, computed, OnInit } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
 import { firstValueFrom } from 'rxjs';
+import type { ArchiveCandidate } from '@nicotind/core';
 import {
   ApiService,
   type DiscographyAlbum,
   type FolderCandidate,
 } from '../../services/api.service';
 import { TransferService } from '../../services/transfer.service';
+import { AcquireService } from '../../services/acquire.service';
+import { PluginService } from '../../services/plugin.service';
 import { baseQueries, skewedQueries } from '../../lib/hunt-queries';
 
 type HuntState = 'idle' | 'searching' | 'results' | 'error' | 'downloading';
 export type QueryPhaseState = 'idle' | 'searching' | 'done' | 'skipped';
+type ArchiveState = 'idle' | 'searching' | 'done' | 'error';
 
 @Component({
   selector: 'app-album-hunt-modal',
@@ -22,6 +26,8 @@ export type QueryPhaseState = 'idle' | 'searching' | 'done' | 'skipped';
 export class AlbumHuntModalComponent implements OnInit {
   private api = inject(ApiService);
   private transfer = inject(TransferService);
+  private acquire = inject(AcquireService);
+  private plugins = inject(PluginService);
 
   readonly album = input.required<DiscographyAlbum>();
   readonly artistName = input.required<string>();
@@ -82,8 +88,56 @@ export class AlbumHuntModalComponent implements OnInit {
   // What Download actually queues: the user's explicit pick if any, else the best.
   readonly effectiveCandidate = computed(() => this.selectedCandidate() ?? this.bestCandidate());
 
+  // archive.org lane — a second source surfaced alongside the Soulseek candidates
+  // (the user can pull a missing album from the Internet Archive in one click).
+  // Gated on the `archive` plugin being enabled.
+  readonly hasArchive = this.plugins.hasArchive;
+  readonly archiveState = signal<ArchiveState>('idle');
+  readonly archiveCandidates = signal<ArchiveCandidate[]>([]);
+  // Item identifiers whose download has been kicked off (button → "Started").
+  readonly archiveAcquired = signal<Set<string>>(new Set());
+
   async ngOnInit(): Promise<void> {
+    // Fire the archive.org search in parallel; it must not block the Soulseek hunt.
+    void this.searchArchive();
     await this.startHunt();
+  }
+
+  async searchArchive(): Promise<void> {
+    if (!this.hasArchive()) {
+      this.archiveState.set('idle');
+      return;
+    }
+    this.archiveState.set('searching');
+    this.archiveCandidates.set([]);
+    try {
+      const res = await firstValueFrom(
+        this.api.archiveSearchAlbum(this.artistName(), this.album().title),
+      );
+      this.archiveCandidates.set(res.candidates);
+      this.archiveState.set('done');
+    } catch {
+      this.archiveState.set('error');
+    }
+  }
+
+  // Download an archive.org item: hand its detailsUrl to the acquire pipeline (the
+  // `archive` resolve plugin stages the audio; the job tracks in Downloads → Active).
+  async getFromArchive(item: ArchiveCandidate): Promise<void> {
+    this.archiveAcquired.update((s) => new Set(s).add(item.identifier));
+    try {
+      await this.acquire.submit(item.detailsUrl);
+    } catch {
+      this.archiveAcquired.update((s) => {
+        const next = new Set(s);
+        next.delete(item.identifier);
+        return next;
+      });
+    }
+  }
+
+  isAcquired(item: ArchiveCandidate): boolean {
+    return this.archiveAcquired().has(item.identifier);
   }
 
   async startHunt(): Promise<void> {

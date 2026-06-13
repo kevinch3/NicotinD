@@ -15,6 +15,7 @@ Trade-off accepted: every hunted album becomes a monitored Lidarr artist — con
 `AlbumHunterService.hunt` (`packages/api/src/services/album-hunter.service.ts`) normally fires `Artist Album` / `Artist - Album` against slskd. slskd/Soulseek silently returns **zero** responses for some exact phrases (a server-side soft ban) even when the files exist.
 
 When `skewSearch` is set on the `POST .../hunt` body (the album-hunt modal's "Skew search" checkbox, **on by default**) **and** no base candidate is confidently complete (best `matchPct < SKEW_TRIGGER_PCT`, ~67%), `hunt` also runs textually-skewed variants from the exported pure `buildSkewedQueries`:
+
 - Reorder artist/album
 - Album-only
 - Drop leading "the"
@@ -36,13 +37,24 @@ The `LibraryCurator` won't auto-hide a deliberately-hunted release (its normaliz
 
 ---
 
+## archive.org — a second source in the hunt + search
+
+Albums missing from Soulseek are often freely available on archive.org, so the `archive` plugin (see [docs/plugins.md](plugins.md)) doubles as a **second searchable source** without touching the slskd-coupled hunt engine. A read-only metadata lane — `ArchiveSearchService` over `advancedsearch.php`, exposed at `GET /api/archive/search` (`?q=` free text, or `?artist=&album=`) — returns `ArchiveCandidate[]` (`{ identifier, title, creator, year, detailsUrl }`). The route is **mounted unconditionally** (no Lidarr/slskd dependency) and gated specifically on `plugins.isEnabled('archive')` (`503` when off), so archive.org works as a fallback even with Soulseek disabled.
+
+The web surfaces it in **two places**, both gated on `PluginService.hasArchive` and both downloading by handing the candidate's `detailsUrl` to `POST /api/acquire` (the `archive` resolve plugin then stages + ingests it — the job tracks in Downloads → Active, _not_ through `album_jobs`/cross-peer fallback):
+
+- **Album-hunt modal** — an "Also on archive.org" section searched in parallel with the Soulseek hunt (`searchArchive` fires from `ngOnInit`, never blocking the slskd lane); each item has a one-click "Get from archive.org".
+- **Unified search page** — a "From archive.org" section below the network divider, populated by `executeSearch` firing `searchArchive(query)` alongside the catalog + network lanes.
+
+---
+
 ## Album hunt — cross-peer fallback (duplication fix)
 
-`AlbumFallbackService` (`packages/api/src/services/album-fallback.service.ts`) recovers tracks the chosen folder *promised but the peer failed to deliver*. Recovery target is the **primary folder's own file manifest** (`target_files_json`, the files the user selected at `hunt-download` time) — **not** the canonical Lidarr tracklist.
+`AlbumFallbackService` (`packages/api/src/services/album-fallback.service.ts`) recovers tracks the chosen folder _promised but the peer failed to deliver_. Recovery target is the **primary folder's own file manifest** (`target_files_json`, the files the user selected at `hunt-download` time) — **not** the canonical Lidarr tracklist.
 
-Why: Lidarr often returns a bloated deluxe/special-edition tracklist (e.g. "Circus" = 24 tracks incl. live/acoustic/bonus cuts) that no single Soulseek folder contains, so a canonical-targeted `missing` set is *permanently* non-empty — the fallback then exhausts all attempts dumping near-complete duplicate rips into one `<Artist>/<Album>` folder. Targeting the manifest means a folder that downloads in full is `done` immediately; genuinely-failed primary tracks are still recovered from alternates. Legacy jobs without a stored manifest fall back to canonical titles (`parseTargets`).
+Why: Lidarr often returns a bloated deluxe/special-edition tracklist (e.g. "Circus" = 24 tracks incl. live/acoustic/bonus cuts) that no single Soulseek folder contains, so a canonical-targeted `missing` set is _permanently_ non-empty — the fallback then exhausts all attempts dumping near-complete duplicate rips into one `<Artist>/<Album>` folder. Targeting the manifest means a folder that downloads in full is `done` immediately; genuinely-failed primary tracks are still recovered from alternates. Legacy jobs without a stored manifest fall back to canonical titles (`parseTargets`).
 
-**Fresh per-track recovery**: when recorded alternates (a hunt-time snapshot — often offline by the time the primary fails) can't cover a missing track, `sweep` fires a *live* slskd search per still-missing track (`"<artist> <track>"`, using the `artist_name` column captured at `hunt-download`) and enqueues the healthiest matching file from any peer. Tracks already in flight from a prior wave are skipped. Each wave counts against `fallbackMaxAttempts` (config `downloads.fallbackMaxAttempts`, default 5).
+**Fresh per-track recovery**: when recorded alternates (a hunt-time snapshot — often offline by the time the primary fails) can't cover a missing track, `sweep` fires a _live_ slskd search per still-missing track (`"<artist> <track>"`, using the `artist_name` column captured at `hunt-download`) and enqueues the healthiest matching file from any peer. Tracks already in flight from a prior wave are skipped. Each wave counts against `fallbackMaxAttempts` (config `downloads.fallbackMaxAttempts`, default 5).
 
 The incomplete-album surface lists these jobs via `GET /api/discography/jobs?state=exhausted|active|incomplete|all` (joined to `album_title`/`artist_name`).
 

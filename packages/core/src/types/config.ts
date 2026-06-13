@@ -104,10 +104,21 @@ export const NicotinDConfigSchema = z.object({
           binaryPath: z.string().default('spotdl'),
         })
         .default({ enabled: true, binaryPath: 'spotdl' }),
+      archive: z
+        .object({
+          // Pure-JS plugin (no binary). `enabled` only feeds isAvailable(); the
+          // real gate is the admin enabling the `archive` plugin in Settings.
+          enabled: z.boolean().default(true),
+          // Audio format preference, matched as a substring of archive.org's
+          // `format` field. MP3 first (smaller), FLAC fallback.
+          preferredFormats: z.array(z.string()).default(['MP3', 'FLAC']),
+        })
+        .default({ enabled: true, preferredFormats: ['MP3', 'FLAC'] }),
     })
     .default({
       ytdlp: { enabled: true, binaryPath: 'yt-dlp', format: 'bestaudio', extraArgs: [] },
       spotdl: { enabled: true, binaryPath: 'spotdl' },
+      archive: { enabled: true, preferredFormats: ['MP3', 'FLAC'] },
     }),
 
   jwt: z.object({
