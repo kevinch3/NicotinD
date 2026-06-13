@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.63](https://github.com/kevinch3/NicotinD/compare/v0.1.62...v0.1.63) (2026-06-13)
+
+
+### Features
+
+* **plugins:** add archive.org acquisition plugin + hunt/search surfaces ([7ae0170](https://github.com/kevinch3/NicotinD/commit/7ae0170df55c005def5a77d19c9437f0929b81c4))
+
 ## [0.1.62](https://github.com/kevinch3/NicotinD/compare/v0.1.61...v0.1.62) (2026-06-13)
 
 
