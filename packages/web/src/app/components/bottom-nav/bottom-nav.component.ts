@@ -11,8 +11,8 @@ interface BottomNavItem {
   onlineOnly: boolean;
 }
 
-// Curated mobile tab order (Admin intentionally stays in the hamburger drawer to
-// keep the bar to four thumb-reachable targets).
+// Curated mobile tab order (Admin intentionally stays desktop-only to keep the
+// bar to four thumb-reachable targets).
 const TABS: BottomNavItem[] = [
   { to: '/', label: 'Search', onlineOnly: true },
   { to: '/library', label: 'Library', onlineOnly: true },

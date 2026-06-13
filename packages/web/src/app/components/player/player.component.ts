@@ -20,7 +20,8 @@ import { DeviceSwitcherComponent } from '../device-switcher/device-switcher.comp
 import { PreserveService } from '../../services/preserve.service';
 import * as db from '../../lib/preserve-store';
 import { createPointerDrag } from '../../lib/pointer-drag';
-import { seekFraction, seekTime } from '../../lib/seek-utils';
+import { miniPlayerSlideClass } from '../../lib/player-chrome';
+import { pointerSeekTime } from '../../lib/seek-utils';
 
 function formatTime(s: number): string {
   if (!Number.isFinite(s) || s < 0) return '0:00';
@@ -72,6 +73,8 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
   private interpolatedTime = signal(0);
 
   readonly isActiveDevice = this.remote.isActiveDevice;
+
+  readonly slideClass = computed(() => miniPlayerSlideClass(this.player.currentTrack() !== null));
 
   readonly displayTime = computed(() => {
     if (this.isActiveDevice()) return this.player.currentTime();
@@ -645,8 +648,7 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
     const bar = this.seekBarEl;
     const safeDur = this.safeDuration();
     if (!bar || !safeDur) return;
-    const rect = bar.getBoundingClientRect();
-    const newTime = seekTime(seekFraction(event.clientX, rect.left, rect.width), safeDur);
+    const newTime = pointerSeekTime(event.clientX, bar.getBoundingClientRect(), safeDur);
 
     const audio = this.audioEl()?.nativeElement;
     if (this.isActiveDevice() && audio) {
