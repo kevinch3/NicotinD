@@ -150,4 +150,77 @@ describe('AcquireWatcher (registry-driven)', () => {
   it('retryJob returns null for an unknown job', async () => {
     expect(await h.watcher.retryJob('nope')).toBeNull();
   });
+
+  it('specific plugin wins over catch-all when both are enabled', async () => {
+    // Simulates archive (specific) vs yt-dlp (catch-all: !spotify).
+    // The specific plugin must be registered first so find() returns it.
+    const db = new Database(':memory:');
+    applySchema(db);
+    const registry = new PluginRegistry({ db, dataDir: DATA_DIR });
+
+    const specificPlugin: Plugin = {
+      manifest: {
+        id: 'specific',
+        name: 'specific',
+        description: 'handles archive.example.com only',
+        kind: 'acquisition',
+        capabilities: ['resolve'],
+        defaultEnabled: false,
+      },
+      async init() {},
+      async isAvailable() {
+        return true;
+      },
+      resolve: {
+        canHandle: (url: string) => url.includes('archive.example.com'),
+        resolve: async (_url: string, jobId: string) => [
+          join(pluginStagingDir(DATA_DIR, 'specific', jobId), 'track.mp3'),
+        ],
+      },
+    };
+    const catchAllPlugin: Plugin = {
+      manifest: {
+        id: 'catchall',
+        name: 'catchall',
+        description: 'handles anything except spotify',
+        kind: 'acquisition',
+        capabilities: ['resolve'],
+        defaultEnabled: false,
+      },
+      async init() {},
+      async isAvailable() {
+        return true;
+      },
+      resolve: {
+        canHandle: (url: string) => !url.includes('spotify.com'),
+        resolve: async (_url: string, jobId: string) => [
+          join(pluginStagingDir(DATA_DIR, 'catchall', jobId), 'track.mp3'),
+        ],
+      },
+    };
+
+    // Specific first, then catch-all — mirrors the archive → ytdlp registration order.
+    registry.register(specificPlugin);
+    registry.register(catchAllPlugin);
+
+    const organize = mock(async (files: CompletedDownloadFile[]) => {
+      for (const f of files) f.relativePath = 'track.mp3';
+    });
+    const scan = mock(async () => {});
+    const watcher = new AcquireWatcher({
+      db,
+      dataDir: DATA_DIR,
+      registry,
+      organizeBatch: organize,
+      scanIncremental: scan,
+    });
+
+    await registry.enable('specific', 'admin');
+    await registry.enable('catchall', 'admin');
+
+    const id = await watcher.submit('https://archive.example.com/item');
+    expect(watcher.getJob(id)?.backend).toBe('specific');
+
+    await waitForState(watcher, id, 'done');
+  });
 });

@@ -257,14 +257,9 @@ export function createApp({
     },
   });
   plugins.register(new SlskdPlugin(slskdRef, registry));
-  plugins.register(
-    new YtdlpPlugin({
-      enabled: config.acquire.ytdlp.enabled,
-      binaryPath: config.acquire.ytdlp.binaryPath,
-      format: config.acquire.ytdlp.format,
-      extraArgs: config.acquire.ytdlp.extraArgs,
-    }),
-  );
+  // Register specific-URL plugins before the catch-all yt-dlp so that
+  // getEnabledForUrl's find() returns the right handler.
+  // (spotdl: spotify.com only; archive: archive.org only; ytdlp: everything else)
   plugins.register(
     new SpotdlPlugin({
       enabled: config.acquire.spotdl.enabled,
@@ -275,6 +270,14 @@ export function createApp({
     new ArchivePlugin({
       enabled: config.acquire.archive.enabled,
       preferredFormats: config.acquire.archive.preferredFormats,
+    }),
+  );
+  plugins.register(
+    new YtdlpPlugin({
+      enabled: config.acquire.ytdlp.enabled,
+      binaryPath: config.acquire.ytdlp.binaryPath,
+      format: config.acquire.ytdlp.format,
+      extraArgs: config.acquire.ytdlp.extraArgs,
     }),
   );
   // One-time migration: seed the previously-implicit acquisition plugins enabled
