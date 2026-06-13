@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.60](https://github.com/kevinch3/NicotinD/compare/v0.1.59...v0.1.60) (2026-06-13)
+
+
+### Bug Fixes
+
+* **web:** keep last track loaded at end of queue ([a200235](https://github.com/kevinch3/NicotinD/commit/a200235ab03bb429af40554b023aa95fd4aa9006))
+* **web:** mobile bottom chrome layering, safe-area insets, seekable edge bar ([3fc5b94](https://github.com/kevinch3/NicotinD/commit/3fc5b94bcf43286937cabbd8753c31f9279e0bae))
+
 ## [0.1.59](https://github.com/kevinch3/NicotinD/compare/v0.1.58...v0.1.59) (2026-06-05)
 
 
