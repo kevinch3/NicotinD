@@ -128,6 +128,67 @@ describe('CatalogService.search', () => {
     const result = await new CatalogService(lidarr).search('x');
     expect(result.albums[0]?.year).toBeUndefined();
   });
+
+  it('scopes album cards to the matched artist, dropping unrelated title matches', async () => {
+    const lidarr = {
+      artist: {
+        lookup: mock(async () => [makeArtist({ id: 1, artistName: 'Zara Larsson' })]),
+      },
+      album: {
+        lookup: mock(async () => [
+          makeAlbum({
+            id: 1,
+            title: 'Venus',
+            artist: makeArtist({ id: 1, artistName: 'Zara Larsson' }),
+          }),
+          // A bootleg/mashup that merely mentions the artist in its title.
+          makeAlbum({
+            id: 2,
+            title: 'Zara Larsson Megamix',
+            artist: makeArtist({ id: 9, artistName: 'oneboredjeu' }),
+          }),
+        ]),
+      },
+    } as unknown as Lidarr;
+
+    const result = await new CatalogService(lidarr).search('Zara Larsson');
+    expect(result.albums.map((a) => a.title)).toEqual(['Venus']);
+  });
+
+  it('keeps all albums when none belong to a matched artist (album-title search)', async () => {
+    const lidarr = {
+      artist: { lookup: mock(async () => []) },
+      album: {
+        lookup: mock(async () => [
+          makeAlbum({
+            id: 1,
+            title: 'Discovery',
+            artist: makeArtist({ id: 1, artistName: 'Daft Punk' }),
+          }),
+        ]),
+      },
+    } as unknown as Lidarr;
+
+    const result = await new CatalogService(lidarr).search('Discovery');
+    expect(result.albums).toHaveLength(1);
+  });
+
+  it('dedupes artist pills with the same normalized name', async () => {
+    const lidarr = {
+      artist: {
+        lookup: mock(async () => [
+          makeArtist({ id: 1, artistName: 'Zara' }),
+          makeArtist({ id: 2, artistName: 'ZarA' }),
+          makeArtist({ id: 3, artistName: 'Zara' }),
+          makeArtist({ id: 4, artistName: 'Zara Larsson' }),
+        ]),
+      },
+      album: { lookup: mock(async () => []) },
+    } as unknown as Lidarr;
+
+    const result = await new CatalogService(lidarr).search('zara');
+    expect(result.artists.map((a) => a.name)).toEqual(['Zara', 'Zara Larsson']);
+  });
 });
 
 describe('CatalogService.resolveAlbum', () => {

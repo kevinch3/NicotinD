@@ -17,9 +17,10 @@ Chalchaleros** (Argentine folklore, distinctive name), **Falsa Cubana** (short/c
 
 ## Status (2026-06-13)
 
-A first PR (`fix/playground-findings-2026-06`) implements **D1, A2, A3, B1, B2** with tests. The
-remaining items (**A1, C1, C2, C3, A4, D2, E1**) are deferred — they change search semantics or are
-larger/design-sensitive and warrant their own review. ✅ = fixed in that PR; ◻️ = open follow-up.
+Branch `fix/playground-findings-2026-06` implements **D1, A2, A3, B1, B2** (batch 1) and then
+**A1, A4, E1** (batch 2), all with tests. The remaining items (**C1, C2, C3, D2**) are deferred —
+they need live-backend testing, a streaming/perf rework of the hunt, or a risky scanner/schema
+change, and warrant their own review. ✅ = fixed on this branch; ◻️ = open follow-up.
 
 ## TL;DR — prioritized follow-ups
 
@@ -27,14 +28,14 @@ larger/design-sensitive and warrant their own review. ✅ = fixed in that PR; �
 |---|--------|----------|------|-------|
 | D1 | ✅ | **High (bug)** | Library | Album delete orphans the `library_artists` row → deleted artist still shows in search & opens an empty artist page until the next *full* scan |
 | A2 | ✅ | **High (bug)** | Catalog | `catalog/resolve` 500s ("not yet available in Lidarr") for a subset of returned album cards — clicking a valid-looking result errors |
-| A1 | ◻️ | High (UX) | Catalog | Album cards are a global title search disjoint from the matched artist → for non-distinctive names (Falsa Cubana, Zara Larsson) the cards are entirely wrong/irrelevant |
+| A1 | ✅* | High (UX) | Catalog | Album cards are a global title search disjoint from the matched artist → for non-distinctive names (Falsa Cubana, Zara Larsson) the cards are entirely wrong/irrelevant |
 | C1 | ◻️ | Medium (UX) | Hunt | 42 s wait → "No candidates" with **no fallback** to the loose tracks that demonstrably exist on Soulseek |
 | B1 | ✅ | Medium | archive.org | Low precision (radio shows / mixtapes) — query lacks phrase quoting + `creator:`/`title:` targeting |
 | B2 | ✅ | Medium | archive.org | Erratic recall + silent failure: same query returned 0 then 20 results within a minute; non-OK responses collapse to `[]` |
 | C2 | ◻️ | Low/Med (UX) | Search | Network results only surface at *completion* (~25 s for niche queries) though peers respond in ~5 s |
 | A3 | ✅ | Low | Catalog | Bogus `year` (`0001`) rendered verbatim on album cards |
-| A4 | ◻️ | Low | Catalog | Artist pills are noisy/duplicated ("Zara/ZarA/Zara…", "Los/King Los…") |
-| E1 | ◻️ | Low (infra) | e2e | Hunt modal lacks `data-testid`s on its core controls — violates the project's e2e selector standard |
+| A4 | ✅ | Low | Catalog | Artist pills are noisy/duplicated ("Zara/ZarA/Zara…", "Los/King Los…") |
+| E1 | ✅ | Low (infra) | e2e | Hunt modal lacks `data-testid`s on its core controls — violates the project's e2e selector standard |
 | D2 | ◻️ | Low | Library | Duplicate artist rows from "The"-prefix handling ("The Jinx" + "Jinx"); `library_album_tombstones` is populated historically but no longer written by the delete path |
 
 **Fix notes:** D1 — delete handler now prunes orphaned `library_artists`/`library_genres`/
@@ -42,6 +43,15 @@ larger/design-sensitive and warrant their own review. ✅ = fixed in that PR; �
 title match and throws a typed `404` (`ALBUM_NOT_IN_LIDARR`) instead of `500`. A3 — placeholder years
 (`< 1900`) dropped at mapping. B1 — archive queries are field-targeted + phrase-quoted. B2 — archive
 service retries once and throws `ServiceUnavailableError` (route `503`) so upstream failure ≠ empty.
+A4 — artist pills deduped by normalized name. E1 — `data-testid`s added to the hunt modal's download
+button, candidate rows, searching/empty states, skew + min-match filters.
+
+**A1 (✅\*, partial):** `search()` now **scopes album cards to the matched artist** when the artist's
+own releases appear in the lookup (drops the bootleg/tribute/compilation noise), and never empties a
+pure album-title search. This fixes the common case (e.g. Zara Larsson's real albums surface above
+mashups *when Lidarr returns them*). The deeper fix — fetching the top artist's full discography for
+names whose own releases don't appear in the global `album.lookup` at all (e.g. Falsa Cubana) —
+needs an artist-scoped Lidarr lookup and remains a follow-up.
 
 ---
 
