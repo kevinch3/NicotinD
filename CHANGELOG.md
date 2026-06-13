@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.70](https://github.com/kevinch3/NicotinD/compare/v0.1.69...v0.1.70) (2026-06-13)
+
+
+### Bug Fixes
+
+* **acquire:** ingest downloaded tracks on non-zero yt-dlp exit ([1dc8a02](https://github.com/kevinch3/NicotinD/commit/1dc8a02b336f6a8bf36ee320b60154dc94ceac39))
+
 ## [0.1.69](https://github.com/kevinch3/NicotinD/compare/v0.1.68...v0.1.69) (2026-06-13)
 
 
