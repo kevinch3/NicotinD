@@ -110,6 +110,17 @@ describe('AcquireWatcher (registry-driven)', () => {
     expect(h.scan).toHaveBeenCalledTimes(1);
   });
 
+  it('marks the job failed (no ingest) when resolve produces zero files', async () => {
+    const plugin = fakePlugin();
+    plugin.resolve!.resolve = async () => [];
+    h = makeHarness(plugin);
+    await h.registry.enable('fake', 'admin');
+    const id = await h.watcher.submit('https://example.com/x');
+    await waitForState(h.watcher, id, 'failed');
+    expect(h.watcher.getJob(id)?.error).toContain('no audio files');
+    expect(h.organize).not.toHaveBeenCalled();
+  });
+
   it('marks the job failed when resolve rejects', async () => {
     const plugin = fakePlugin();
     plugin.resolve!.resolve = async () => {

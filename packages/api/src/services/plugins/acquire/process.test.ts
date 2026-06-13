@@ -130,6 +130,15 @@ describe('runAcquireProcess', () => {
     await expect(r.done).rejects.toThrow(/boom/);
   });
 
+  it('prefers ERROR: lines over progress spam in the rejection', async () => {
+    const r = run();
+    fakeProc.emitData('ERROR: [youtube] xyz: Video unavailable\n');
+    // Reams of progress output that would otherwise crowd out the real cause.
+    for (let i = 0; i < 50; i++) fakeProc.emitData(`[download]  ${i}.0% of 2MiB\n`);
+    fakeProc.finish(1);
+    await expect(r.done).rejects.toThrow(/Video unavailable/);
+  });
+
   it('cancel sends SIGTERM', async () => {
     const r = run();
     const kill = mock(() => true);

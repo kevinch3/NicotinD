@@ -130,11 +130,16 @@ export function runAcquireProcess(opts: RunAcquireOptions): RunningAcquire {
   let progress: AcquireProgress = { done: 0, total: 100 };
   let stderrBuf = '';
   let labelEmitted = false;
+  // yt-dlp's actual failure reasons are `ERROR:` lines that get buried under
+  // pages of download-progress output; keep them so the stored error is the
+  // real cause, not a truncated progress tail.
+  const errorLines: string[] = [];
 
   const onData = (data: Buffer) => {
     const text = data.toString();
     for (const line of text.split('\n')) {
       progress = parseProgress(line, progress);
+      if (line.startsWith('ERROR:')) errorLines.push(line.trim());
       if (!labelEmitted && opts.onLabel) {
         const title = parseYtdlpPlaylistTitle(line);
         if (title) {
@@ -156,7 +161,10 @@ export function runAcquireProcess(opts: RunAcquireOptions): RunningAcquire {
     });
     proc.on('close', (code) => {
       if (code !== 0) {
-        reject(new Error(stderrBuf.slice(-2000) || `process exited with code ${code}`));
+        const detail = errorLines.length
+          ? errorLines.slice(-5).join('\n')
+          : stderrBuf.slice(-2000) || `process exited with code ${code}`;
+        reject(new Error(detail));
         return;
       }
       resolve(collectAudioPaths(opts.stagingDir));

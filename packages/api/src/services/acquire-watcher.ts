@@ -103,6 +103,12 @@ export class AcquireWatcher {
     log.info({ id, plugin: plugin.manifest.id, url }, 'Starting acquire job');
     try {
       const paths = await plugin.resolve!.resolve(url, id);
+      // With --ignore-errors a partly-unavailable playlist still resolves; only
+      // a download that produced nothing at all is a real failure.
+      if (paths.length === 0) {
+        this.updateState(id, 'failed', 'Download produced no audio files');
+        return;
+      }
       this.updateState(id, 'done');
       await this.ingest(id, plugin.manifest.id, paths);
     } catch (err) {

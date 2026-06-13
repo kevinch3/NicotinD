@@ -86,6 +86,11 @@ export class YtdlpPlugin implements Plugin {
     const outputTemplate = join(stagingDir, '%(artist)s', '%(album)s', '%(title)s.%(ext)s');
     const args = [
       url,
+      // Playlists routinely contain unavailable/private/deleted videos. Without
+      // this, one bad item makes yt-dlp exit non-zero and the whole job is
+      // discarded — losing every track that downloaded fine. Skip the duds and
+      // keep what's available instead.
+      '--ignore-errors',
       '--extract-audio',
       '--audio-quality',
       '0',

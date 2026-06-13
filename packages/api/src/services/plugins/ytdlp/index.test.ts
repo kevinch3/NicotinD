@@ -101,5 +101,7 @@ describe('YtdlpPlugin', () => {
     expect(args).toContain('--audio-format');
     expect(args).toContain('mp3');
     expect(args).toContain('--sleep-requests');
+    // Partly-unavailable playlists must not fail the whole job.
+    expect(args).toContain('--ignore-errors');
   });
 });

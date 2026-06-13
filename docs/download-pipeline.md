@@ -71,6 +71,14 @@ Availability is gated by **both** the `acquire.{ytdlp,spotdl}.enabled` config fl
 
 Historical gotcha: the `enabled` flag used to be dead config — only binary presence was checked — and the image shipped neither binary, so acquisition always 503'd; both are fixed.
 
+### Playlists (yt-dlp)
+
+A `watch?v=…&list=…` or `playlist?list=…` URL downloads the whole playlist. Two behaviors make this robust:
+
+- **Partial failures don't sink the job.** yt-dlp runs with `--ignore-errors`, so unavailable/private/deleted videos are skipped instead of aborting the run. The shared process runner (`acquire/process.ts`) treats a non-zero exit as failure **only when zero audio files were produced** (`AcquireWatcher.run`); a playlist where 40/41 items succeeded ingests those 40 rather than discarding everything. Without this, one bad item made the entire playlist fail and its staged files were cleaned up unused.
+- **The job label shows the playlist name.** yt-dlp emits `[download] Downloading playlist: <name>` at the start; `parseYtdlpPlaylistTitle` captures it and the plugin calls `ctx.emitLabel(jobId, name)` → `acquire_jobs.label`, so the Downloads row shows the playlist title instead of the raw URL (the web falls back to a shortened URL when `label` is null). `emitLabel` is part of `PluginHostContext`.
+- **Actionable errors.** When a run does fail, the runner stores the captured `ERROR:` lines (the real cause) rather than the last 2 KB of download-progress spam.
+
 ### Downloads UI integration
 
 Completed (and in-progress/failed) acquire jobs appear in the **Downloads → Active** tab as a "URL Downloads" section alongside Soulseek transfers — same page, no separate UI. The lifecycle each row shows:
