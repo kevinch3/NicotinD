@@ -207,9 +207,12 @@ export class PlayerService {
       this.queue.set(rest);
       this.history.set([]);
     } else {
-      this.currentTrack.set(null);
+      // End of queue (no repeat/radio): keep the last track loaded but paused.
+      // Clearing it would hide the mini-player and wipe the persisted session —
+      // on mobile the user would have to start playback again just to get the
+      // player chrome back. The track stays current, so it does NOT move into
+      // history. (play() on the ended <audio> element restarts it from 0.)
       this.isPlaying.set(false);
-      this.history.set(newHistory);
     }
   }
 
