@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "bun run ./scripts/dev.ts",
     "build": "bun run ./scripts/build.ts",
-    "lint": "eslint packages/*/src/**/*.ts src/**/*.ts",
+    "lint": "eslint --no-warn-ignored packages/*/src/**/*.ts src/**/*.ts",
     "format": "prettier --write 'packages/*/src/**/*.ts' 'src/**/*.ts'",
     "typecheck": "tsc --build",
     "download-deps": "bun run ./scripts/download-deps.ts",
@@ -30,18 +30,18 @@
     "@nicotind/lidarr-client": "workspace:*",
     "@nicotind/service-manager": "workspace:*",
     "@nicotind/slskd-client": "workspace:*",
-    "yaml": "^2.8.3"
+    "yaml": "^2.9.0"
   },
   "devDependencies": {
-    "@commitlint/cli": "^20.5.2",
-    "@commitlint/config-conventional": "^20.5.0",
-    "@types/bun": "^1.3.13",
-    "@typescript-eslint/eslint-plugin": "^8.59.0",
-    "@typescript-eslint/parser": "^8.59.0",
-    "commit-and-tag-version": "^12.7.1",
-    "eslint": "^9.0.0",
+    "@commitlint/cli": "^21.0.2",
+    "@commitlint/config-conventional": "^21.0.2",
+    "@types/bun": "^1.3.14",
+    "@typescript-eslint/eslint-plugin": "^8.61.0",
+    "@typescript-eslint/parser": "^8.61.0",
+    "commit-and-tag-version": "^12.7.3",
+    "eslint": "^10.5.0",
     "husky": "^9.1.7",
-    "prettier": "^3.8.3",
-    "typescript": "^6.0.0"
+    "prettier": "^3.8.4",
+    "typescript": "^6.0.3"
   }
 }
