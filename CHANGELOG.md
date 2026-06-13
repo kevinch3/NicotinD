@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.64](https://github.com/kevinch3/NicotinD/compare/v0.1.63...v0.1.64) (2026-06-13)
+
+
+### Bug Fixes
+
+* address E2E playground findings (deletion residue, catalog resolve, archive search) ([953cb08](https://github.com/kevinch3/NicotinD/commit/953cb08e4b4b558b458f73d2f7ef85fe826af0e8))
+* **catalog:** scope album cards to matched artist, dedupe artist pills ([d0bc469](https://github.com/kevinch3/NicotinD/commit/d0bc469febec1e1ce504d0ef909c1efc8b91a120))
+
 ## [0.1.63](https://github.com/kevinch3/NicotinD/compare/v0.1.62...v0.1.63) (2026-06-13)
 
 
