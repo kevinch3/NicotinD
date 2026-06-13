@@ -9,7 +9,7 @@ import { TrackContextMenuComponent } from '../track-context-menu/track-context-m
 import { TrackInfoSheetComponent } from '../track-info-sheet/track-info-sheet.component';
 import { resolveArtistRoute } from '../../lib/route-utils';
 import { createPointerDrag } from '../../lib/pointer-drag';
-import { seekFraction, seekTime } from '../../lib/seek-utils';
+import { pointerSeekTime } from '../../lib/seek-utils';
 
 function formatTime(s: number): string {
   if (!Number.isFinite(s) || s < 0) return '0:00';
@@ -160,8 +160,7 @@ export class NowPlayingComponent {
     const bar = this.seekBarEl;
     const safeDur = this.safeDuration();
     if (!bar || !safeDur) return;
-    const rect = bar.getBoundingClientRect();
-    const newTime = seekTime(seekFraction(event.clientX, rect.left, rect.width), safeDur);
+    const newTime = pointerSeekTime(event.clientX, bar.getBoundingClientRect(), safeDur);
 
     if (this.isActiveDevice()) {
       this.player.seek(newTime);

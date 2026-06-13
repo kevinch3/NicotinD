@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { seekFraction, seekTime } from './seek-utils';
+import { seekFraction, seekTime, pointerSeekTime } from './seek-utils';
 
 describe('seekFraction', () => {
   it('maps a click at the start of the bar to 0', () => {
@@ -41,5 +41,21 @@ describe('seekTime', () => {
   it('clamps out-of-range fractions', () => {
     expect(seekTime(-1, 200)).toBe(0);
     expect(seekTime(2, 200)).toBe(200);
+  });
+});
+
+describe('pointerSeekTime', () => {
+  it('maps a pointer over the bar straight to an absolute time', () => {
+    expect(pointerSeekTime(200, { left: 100, width: 200 }, 300)).toBe(150);
+  });
+
+  it('clamps pointers outside the bar to the track bounds', () => {
+    expect(pointerSeekTime(0, { left: 100, width: 200 }, 300)).toBe(0);
+    expect(pointerSeekTime(999, { left: 100, width: 200 }, 300)).toBe(300);
+  });
+
+  it('returns 0 when the bar has no width or the duration is unknown', () => {
+    expect(pointerSeekTime(150, { left: 100, width: 0 }, 300)).toBe(0);
+    expect(pointerSeekTime(150, { left: 100, width: 200 }, 0)).toBe(0);
   });
 });
