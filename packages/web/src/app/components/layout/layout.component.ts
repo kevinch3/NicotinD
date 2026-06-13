@@ -6,6 +6,7 @@ import { AuthService } from '../../services/auth.service';
 import { PlayerService, shuffleArray } from '../../services/player.service';
 import { ApiService } from '../../services/api.service';
 import { toTrack } from '../../lib/track-utils';
+import { mainBottomPadClass } from '../../lib/player-chrome';
 import { SetupService } from '../../services/setup.service';
 import { TransferService } from '../../services/transfer.service';
 import { AcquireService } from '../../services/acquire.service';
@@ -62,12 +63,9 @@ export class LayoutComponent implements OnInit, OnDestroy {
     return this.setup.isOffline() && ONLINE_ONLY_ROUTES.has(route);
   }
 
-  // Bottom padding so fixed chrome never covers the last list item. On mobile the
-  // bottom tab bar (~3.5rem) is always present; the mini-player stacks above it
-  // when a track is loaded. On desktop there's no tab bar, only the player.
-  readonly mainPadClass = computed(() =>
-    this.player.currentTrack() ? 'pb-32 md:pb-20' : 'pb-14 md:pb-0',
-  );
+  // Bottom padding so fixed chrome never covers the last list item — geometry
+  // shared with the mini-player/tab-bar stack in lib/player-chrome.ts.
+  readonly mainPadClass = computed(() => mainBottomPadClass(this.player.currentTrack() !== null));
 
   ngOnInit(): void {
     this.transfers.startPolling();

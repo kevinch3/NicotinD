@@ -63,13 +63,18 @@ describe('PlayerService', () => {
   });
 
   describe('playNext()', () => {
-    it('with empty queue and repeat = "off" clears currentTrack and sets isPlaying = false', () => {
+    it('with empty queue and repeat = "off" keeps the last track loaded but paused', () => {
+      // Clearing the track would hide the mini-player (and, on mobile, the user
+      // would have to start playback again just to get the player chrome back)
+      // and wipe the persisted session.
       service.play(track1);
       service.queue.set([]);
       service.repeat.set('off');
       service.playNext();
-      expect(service.currentTrack()).toBeNull();
+      expect(service.currentTrack()).toEqual(track1);
       expect(service.isPlaying()).toBe(false);
+      // The track is still current, so it must not also move into history.
+      expect(service.history()).toEqual([]);
     });
 
     it('with repeat = "all" and a context reloads from context.originalOrder', () => {

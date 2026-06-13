@@ -13,3 +13,15 @@ export function seekTime(fraction: number, duration: number): number {
   if (!Number.isFinite(duration) || duration <= 0) return 0;
   return Math.max(0, Math.min(1, fraction)) * duration;
 }
+
+/**
+ * Pointer position over a seek bar → absolute seek time. The composition every
+ * seek bar uses (desktop mini-player, mobile mini-player edge bar, Now Playing).
+ */
+export function pointerSeekTime(
+  clientX: number,
+  rect: { left: number; width: number },
+  duration: number,
+): number {
+  return seekTime(seekFraction(clientX, rect.left, rect.width), duration);
+}

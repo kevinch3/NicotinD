@@ -45,8 +45,8 @@ describe('LayoutComponent — player + tab-bar safe margin', () => {
     fixture.detectChanges();
 
     const main: HTMLElement = fixture.nativeElement.querySelector('main');
-    // mobile: tab bar + player; desktop: just the player
-    expect(main.classList).toContain('pb-32');
+    // mobile: tab bar + player (+ safe-area inset); desktop: just the player
+    expect(main.classList).toContain('pb-[calc(8rem+env(safe-area-inset-bottom))]');
     expect(main.classList).toContain('md:pb-20');
   });
 
@@ -55,9 +55,9 @@ describe('LayoutComponent — player + tab-bar safe margin', () => {
     // currentTrack is null by default
 
     const main: HTMLElement = fixture.nativeElement.querySelector('main');
-    expect(main.classList).toContain('pb-14');
+    expect(main.classList).toContain('pb-[calc(3.5rem+env(safe-area-inset-bottom))]');
     expect(main.classList).toContain('md:pb-0');
-    expect(main.classList).not.toContain('pb-32');
+    expect(main.classList).not.toContain('pb-[calc(8rem+env(safe-area-inset-bottom))]');
   });
 
   it('drops the player padding when a track is cleared after being set', () => {
@@ -70,7 +70,7 @@ describe('LayoutComponent — player + tab-bar safe margin', () => {
     fixture.detectChanges();
 
     const main: HTMLElement = fixture.nativeElement.querySelector('main');
-    expect(main.classList).not.toContain('pb-32');
-    expect(main.classList).toContain('pb-14');
+    expect(main.classList).not.toContain('pb-[calc(8rem+env(safe-area-inset-bottom))]');
+    expect(main.classList).toContain('pb-[calc(3.5rem+env(safe-area-inset-bottom))]');
   });
 });

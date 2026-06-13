@@ -1,5 +1,5 @@
 <nav
-  class="md:hidden fixed bottom-0 left-0 right-0 z-40 grid grid-cols-4 h-14 bg-theme-surface border-t border-theme pb-[env(safe-area-inset-bottom)]"
+  class="md:hidden fixed bottom-0 left-0 right-0 z-40 grid grid-cols-4 h-[calc(3.5rem+env(safe-area-inset-bottom))] bg-theme-surface border-t border-theme pb-[env(safe-area-inset-bottom)]"
 >
   @for (tab of tabs; track tab.to) {
     @if (isDisabled(tab)) {
