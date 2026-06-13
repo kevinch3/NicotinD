@@ -65,7 +65,11 @@ import { PluginService, type PluginInfo } from '../../services/plugin.service';
       </section>
 
       <ng-template #card let-p>
-        <div class="mb-3 p-4 rounded-xl bg-zinc-900 border border-zinc-800">
+        <div
+          class="mb-3 p-4 rounded-xl bg-zinc-900 border border-zinc-800"
+          data-testid="plugin-card"
+          [attr.data-plugin-id]="p.id"
+        >
           <div class="flex items-start justify-between gap-4">
             <div class="min-w-0">
               <div class="flex items-center gap-2 flex-wrap">
@@ -105,6 +109,7 @@ import { PluginService, type PluginInfo } from '../../services/plugin.service';
             <button
               (click)="toggle(p)"
               [disabled]="busy()"
+              data-testid="plugin-toggle"
               class="shrink-0 px-3 py-1.5 rounded-lg text-sm font-medium transition disabled:opacity-50"
               [class]="
                 p.enabled

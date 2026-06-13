@@ -18,6 +18,8 @@ export class PasswordFieldComponent implements ControlValueAccessor {
   readonly required = input(false);
   readonly inputClass = input('');
   readonly containerClass = input('');
+  /** Optional data-testid forwarded to the inner <input> (for e2e selectors). */
+  readonly testId = input('');
 
   readonly visible = signal(false);
   readonly value = signal('');

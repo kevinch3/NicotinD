@@ -1,0 +1,5 @@
+.auth/
+.tmp-data/
+test-results/
+playwright-report/
+node_modules/

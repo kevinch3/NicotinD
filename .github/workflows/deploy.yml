@@ -43,9 +43,52 @@ jobs:
       - name: Build (web)
         run: bun run --filter @nicotind/web build
 
+  # Playwright end-to-end: boots `bun run src/main.ts` against a temp data dir +
+  # committed music fixtures (no slskd/Lidarr — acquisition is default-off) and
+  # exercises auth, library, playback, and plugin capability-gating in a real
+  # browser. See packages/e2e and docs/e2e.md.
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      # ng build (run below) requires Node >= 22.22.3; pin it explicitly.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Install Playwright browser
+        run: bunx playwright install --with-deps chromium
+        working-directory: packages/e2e
+
+      # The Hono server serves the SPA from packages/web/dist, so it must exist
+      # before the e2e webServer boots.
+      - name: Build (web)
+        run: bun run --filter @nicotind/web build
+
+      - name: Run e2e
+        run: bun run --filter @nicotind/e2e test
+        env:
+          CI: '1'
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: packages/e2e/playwright-report/
+          retention-days: 7
+
   release:
     runs-on: ubuntu-latest
-    needs: ci
+    needs: [ci, e2e]
     # Only bump on real pushes, and skip when the triggering commit is already a
     # release bump (avoids an infinite bump loop). Manual deploys never bump.
     if: "github.event_name == 'push' && !startsWith(github.event.head_commit.message, 'chore(release):')"
@@ -92,9 +135,9 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     # Deploy the release-bump commit (whose git state == the tagged version), or
-    # any manual run. Depends on `ci` only — `release` is skipped on the bump
-    # commit, and a skipped dependency would otherwise skip deploy too.
-    needs: ci
+    # any manual run. Depends on `ci` + `e2e` only — `release` is skipped on the
+    # bump commit, and a skipped dependency would otherwise skip deploy too.
+    needs: [ci, e2e]
     if: "github.event_name == 'workflow_dispatch' || startsWith(github.event.head_commit.message, 'chore(release):')"
     steps:
       - name: Connect to Tailscale

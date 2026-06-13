@@ -122,6 +122,10 @@ NicotinD (Hono API :8484)  — native library scanner + streaming, all in-proces
 
 Angular v22 standalone SPA with signals, `HttpClient` + interceptors, and lazy-loaded routes. Built via `ng build` (esbuild); tests via `ng test` (vitest). → See [docs/web-ui.md](docs/web-ui.md) for theme system, Angular patterns, and component conventions.
 
+## End-to-end tests
+
+`packages/e2e` is a Playwright suite that boots the real server (`bun run src/main.ts`) against a throwaway DB + committed silent-FLAC fixtures and drives the SPA in Chromium: auth, library, playback, **player controls (pause/next/seek/shuffle)**, and the compliance-critical plugin capability gating. No slskd/Lidarr needed — acquisition is default-off, so the test server runs `NICOTIND_MODE=external` with dead slskd/Lidarr URLs and a fresh `.tmp-data` dir per run (deterministic first-user admin). Selectors are `data-testid` attributes — **adding a `data-testid` is the standard for new e2e-targeted elements** (`app-password-field` forwards a `testId` input). Runs on port 8585 (override `E2E_PORT`); `E2E_BASE_URL` points it at a running instance (prod smoke) and skips the managed server. CI: the `e2e` job in `.github/workflows/deploy.yml` builds web + runs the suite, and `release`/`deploy` gate on it. → See [docs/e2e.md](docs/e2e.md).
+
 ## Configuration
 
 Config is loaded from `config/default.yml`, overridden by environment variables. See `.env.example` for all options. Key vars: `SOULSEEK_USERNAME`, `SOULSEEK_PASSWORD`, `NICOTIND_MODE`, `NICOTIND_MUSIC_DIR`.
