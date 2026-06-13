@@ -63,6 +63,7 @@
           type="checkbox"
           [checked]="skewSearch()"
           (change)="skewSearch.set($any($event.target).checked); startHunt()"
+          data-testid="hunt-skew"
           class="accent-theme rounded"
         />
         Skew search
@@ -76,6 +77,7 @@
           min="0"
           max="100"
           step="10"
+          data-testid="hunt-min-match"
           class="w-14 rounded bg-theme-surface-2 border border-theme-surface-2 px-2 py-0.5 text-theme-primary text-center focus:outline-none"
         />
         <span class="text-theme-muted">%</span>
@@ -93,7 +95,10 @@
     <!-- Body -->
     <div class="flex-1 overflow-y-auto">
       @if (state() === 'searching') {
-        <div class="flex flex-col items-center justify-center py-12 gap-3 text-theme-muted">
+        <div
+          data-testid="hunt-searching"
+          class="flex flex-col items-center justify-center py-12 gap-3 text-theme-muted"
+        >
           <span
             class="inline-block w-6 h-6 border-2 border-theme border-t-zinc-300 rounded-full animate-spin"
           ></span>
@@ -184,7 +189,7 @@
 
       @if (state() === 'results') {
         @if (filteredCandidates().length === 0) {
-          <div class="p-8 text-center text-theme-muted text-sm">
+          <div data-testid="hunt-no-results" class="p-8 text-center text-theme-muted text-sm">
             No candidates match your filters. Try lowering the minimum match % or enabling live
             recordings.
           </div>
@@ -196,6 +201,7 @@
             ) {
               <li
                 (click)="select(candidate)"
+                data-testid="hunt-candidate"
                 class="flex flex-col gap-1 px-5 py-4 cursor-pointer transition"
                 [class.bg-theme-surface-2]="isSelected(candidate)"
                 [class.hover:bg-theme-surface-2]="!isSelected(candidate)"
@@ -338,6 +344,7 @@
         </div>
         <button
           (click)="downloadSelected()"
+          data-testid="hunt-download"
           class="px-5 py-2 rounded-lg bg-zinc-100 text-zinc-900 text-sm font-semibold hover:bg-zinc-200 transition flex-shrink-0"
         >
           {{ selectedCandidate() ? 'Download' : 'Download best' }}

@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
-import { createLogger } from '@nicotind/core';
+import type { ContentfulStatusCode } from 'hono/utils/http-status';
+import { createLogger, NicotinDError } from '@nicotind/core';
 import type { AuthEnv } from '../middleware/auth.js';
 import type { CatalogService } from '../services/catalog-search.service.js';
 
@@ -58,8 +59,11 @@ export function catalogRoutes({ catalog }: CatalogRoutesOptions) {
       return c.json(result);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      log.warn({ album: body.albumTitle, err: msg }, 'Catalog resolve failed');
-      return c.json({ error: msg }, 500);
+      // A resolvable-but-absent album (id not in the artist's Lidarr discography)
+      // is a 404, not a server error — don't dump it at 500 with a scary log.
+      const status = (err instanceof NicotinDError ? err.statusCode : 500) as ContentfulStatusCode;
+      if (status >= 500) log.warn({ album: body.albumTitle, err: msg }, 'Catalog resolve failed');
+      return c.json({ error: msg }, status);
     }
   });
 

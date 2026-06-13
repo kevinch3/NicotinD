@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
-import { createLogger } from '@nicotind/core';
+import type { ContentfulStatusCode } from 'hono/utils/http-status';
+import { createLogger, NicotinDError } from '@nicotind/core';
 import type { AuthEnv } from '../middleware/auth.js';
 import type { ArchiveSearchService } from '../services/archive-search.service.js';
 import type { PluginRegistry } from '../services/plugins/registry.js';
@@ -48,8 +49,11 @@ export function archiveRoutes({ search, plugins }: ArchiveRoutesOptions) {
       return c.json({ candidates });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      // Upstream archive.org failure → 503 so the UI shows "unavailable" rather
+      // than the misleading "no results" an empty 200 would imply.
+      const status = (err instanceof NicotinDError ? err.statusCode : 500) as ContentfulStatusCode;
       log.warn({ q, artist, album, err: msg }, 'archive.org search failed');
-      return c.json({ error: msg }, 500);
+      return c.json({ error: msg }, status);
     }
   });
 

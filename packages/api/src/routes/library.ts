@@ -344,15 +344,15 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     // The canonical DB is the single source of truth for the tracklist.
     const albumRow = db
       .query<
-        { name: string; artist: string },
+        { name: string; artist: string; artist_id: string | null; genre: string | null },
         [string]
-      >('SELECT name, artist FROM library_albums WHERE id = ?')
+      >('SELECT name, artist, artist_id, genre FROM library_albums WHERE id = ?')
       .get(albumId);
     const canonicalSongs = db
       .query<
-        { id: string; path: string },
+        { id: string; path: string; artist_id: string | null },
         [string]
-      >('SELECT id, path FROM library_songs WHERE album_id = ?')
+      >('SELECT id, path, artist_id FROM library_songs WHERE album_id = ?')
       .all(albumId);
     const songIds: string[] = canonicalSongs.map((s) => s.id);
     const songPaths: string[] = canonicalSongs.map((s) => s.path);
@@ -402,6 +402,56 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       }
       db.run('DELETE FROM library_songs WHERE album_id = ?', [albumId]);
       db.run('DELETE FROM library_albums WHERE id = ?', [albumId]);
+
+      // Clean up the aggregate rows the canonical-row delete would otherwise
+      // leave stale until the next *full* scan. Without this, deleting an
+      // artist's only release orphans its `library_artists` row: the artist
+      // keeps showing in search (the local provider reads `library_artists`)
+      // and its page renders empty (`/artists/:id` returns the shell from
+      // `library_artists` with no albums). See
+      // docs/e2e-playground-findings-2026-06.md §D.
+      const artistId = albumRow?.artist_id ?? canonicalSongs.find((s) => s.artist_id)?.artist_id;
+      if (artistId) {
+        const remainingAlbums =
+          db
+            .query<
+              { c: number },
+              [string]
+            >('SELECT COUNT(*) AS c FROM library_albums WHERE artist_id = ?')
+            .get(artistId)?.c ?? 0;
+        const remainingSongs =
+          db
+            .query<
+              { c: number },
+              [string]
+            >('SELECT COUNT(*) AS c FROM library_songs WHERE artist_id = ?')
+            .get(artistId)?.c ?? 0;
+        if (remainingAlbums === 0 && remainingSongs === 0) {
+          db.run('DELETE FROM library_artists WHERE id = ?', [artistId]);
+          db.run('DELETE FROM library_artwork WHERE id = ?', [artistId]);
+        } else {
+          // Keep the artist's album_count honest so cards aren't off-by-one.
+          db.run('UPDATE library_artists SET album_count = ? WHERE id = ?', [
+            remainingAlbums,
+            artistId,
+          ]);
+        }
+      }
+
+      // Drop a genre row only once nothing references it — recomputing exact
+      // counts for a large shared genre on every delete isn't worth it (a full
+      // scan refreshes them), but a genre that's now empty should disappear.
+      const genre = albumRow?.genre;
+      if (genre) {
+        const stillUsed =
+          db.query('SELECT 1 FROM library_albums WHERE genre = ? LIMIT 1').get(genre) !== null ||
+          db.query('SELECT 1 FROM library_songs WHERE genre = ? LIMIT 1').get(genre) !== null;
+        if (!stillUsed) db.run('DELETE FROM library_genres WHERE name = ?', [genre]);
+      }
+
+      // The album's own canonical artwork row survives rescans by design, but a
+      // deleted album should not keep one.
+      db.run('DELETE FROM library_artwork WHERE id = ?', [albumId]);
     })();
 
     log.info(

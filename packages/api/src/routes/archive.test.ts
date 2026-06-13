@@ -70,16 +70,51 @@ describe('ArchiveSearchService', () => {
     expect(calls[0]).toContain('output=json');
   });
 
-  it('searchAlbum combines artist + album into the query', async () => {
+  it('free-text search targets the title/creator fields with a quoted phrase', async () => {
+    const { fn, calls } = fetchReturning(SEARCH_BODY);
+    await new ArchiveSearchService(fn).search('Zara Larsson');
+    const decoded = decodeURIComponent(calls[0]!).replace(/\+/g, ' ');
+    expect(decoded).toContain(
+      '(title:("Zara Larsson") OR creator:("Zara Larsson")) AND mediatype:audio',
+    );
+  });
+
+  it('searchAlbum targets creator (artist) and title (album)', async () => {
     const { fn, calls } = fetchReturning(SEARCH_BODY);
     await new ArchiveSearchService(fn).searchAlbum('Ráfaga', 'Una Cerveza');
     const decoded = decodeURIComponent(calls[0]!).replace(/\+/g, ' ');
-    expect(decoded).toContain('(Ráfaga Una Cerveza) AND mediatype:audio');
+    expect(decoded).toContain('creator:("Ráfaga") AND title:("Una Cerveza") AND mediatype:audio');
   });
 
-  it('returns [] on a non-OK response instead of throwing', async () => {
-    const { fn } = fetchReturning({}, false);
+  it('escapes embedded quotes in a term', async () => {
+    const { fn, calls } = fetchReturning(SEARCH_BODY);
+    await new ArchiveSearchService(fn).searchAlbum('AC"DC', '');
+    const decoded = decodeURIComponent(calls[0]!).replace(/\+/g, ' ');
+    expect(decoded).toContain('creator:("AC\\"DC")');
+  });
+
+  it('returns [] (not an error) for an empty docs array', async () => {
+    const { fn } = fetchReturning({ response: { docs: [] } });
     expect(await new ArchiveSearchService(fn).search('foo')).toEqual([]);
+  });
+
+  it('retries once then throws when archive.org keeps failing', async () => {
+    const { fn, calls } = fetchReturning({}, false);
+    await expect(new ArchiveSearchService(fn).search('foo')).rejects.toThrow();
+    expect(calls).toHaveLength(2); // initial attempt + one retry
+  });
+
+  it('recovers when the retry succeeds', async () => {
+    let n = 0;
+    const fn = mock(async () => {
+      n++;
+      return n === 1
+        ? { ok: false, status: 503, json: async () => ({}) }
+        : { ok: true, status: 200, json: async () => SEARCH_BODY };
+    }) as unknown as typeof fetch;
+    const out = await new ArchiveSearchService(fn).search('foo');
+    expect(out).toHaveLength(2);
+    expect(n).toBe(2);
   });
 });
 
@@ -105,5 +140,14 @@ describe('archive routes', () => {
     const app = makeApp({ enabled: true, fetchFn: fn });
     const res = await app.request('/api/archive/search');
     expect(res.status).toBe(400);
+  });
+
+  it('503s with an archive.org message when the upstream keeps failing', async () => {
+    const { fn } = fetchReturning({}, false);
+    const app = makeApp({ enabled: true, fetchFn: fn });
+    const res = await app.request('/api/archive/search?q=foo');
+    expect(res.status).toBe(503);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toMatch(/archive\.org/i);
   });
 });
