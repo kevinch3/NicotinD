@@ -87,9 +87,10 @@ export class YtdlpPlugin implements Plugin {
     const args = [
       url,
       // Playlists routinely contain unavailable/private/deleted videos. Without
-      // this, one bad item makes yt-dlp exit non-zero and the whole job is
-      // discarded — losing every track that downloaded fine. Skip the duds and
-      // keep what's available instead.
+      // this, yt-dlp aborts at the first bad item and downloads nothing after
+      // it; with it, the duds are skipped and the rest still download. (yt-dlp
+      // still exits non-zero either way — the runner decides success by whether
+      // files landed, not the exit code.)
       '--ignore-errors',
       '--extract-audio',
       '--audio-quality',

@@ -139,6 +139,18 @@ describe('runAcquireProcess', () => {
     await expect(r.done).rejects.toThrow(/Video unavailable/);
   });
 
+  it('resolves with files on a non-zero exit when some downloaded (partial playlist)', async () => {
+    // yt-dlp exits 1 because a playlist item was unavailable, but the rest
+    // downloaded — we must keep them, not discard the whole job.
+    const r = run();
+    seedAudio('Artist/Album/track.mp3');
+    fakeProc.emitData('ERROR: [youtube] dead: Video unavailable\n');
+    fakeProc.finish(1);
+    const paths = await r.done;
+    expect(paths).toHaveLength(1);
+    expect(paths[0]).toContain('track.mp3');
+  });
+
   it('cancel sends SIGTERM', async () => {
     const r = run();
     const kill = mock(() => true);

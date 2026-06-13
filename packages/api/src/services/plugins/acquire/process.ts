@@ -160,14 +160,20 @@ export function runAcquireProcess(opts: RunAcquireOptions): RunningAcquire {
       reject(err instanceof Error ? err : new Error(String(err)));
     });
     proc.on('close', (code) => {
-      if (code !== 0) {
+      // yt-dlp exits non-zero when ANY playlist item failed — even with
+      // --ignore-errors, and even after successfully downloading every other
+      // item. So the exit code alone can't decide success: if audio files
+      // landed, it's a (partial) success worth ingesting. Only a run that
+      // produced nothing AND exited non-zero is a real failure.
+      const paths = collectAudioPaths(opts.stagingDir);
+      if (paths.length === 0 && code !== 0) {
         const detail = errorLines.length
           ? errorLines.slice(-5).join('\n')
           : stderrBuf.slice(-2000) || `process exited with code ${code}`;
         reject(new Error(detail));
         return;
       }
-      resolve(collectAudioPaths(opts.stagingDir));
+      resolve(paths);
     });
   });
 
