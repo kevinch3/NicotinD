@@ -2,10 +2,13 @@ import { TestBed } from '@angular/core/testing';
 import { NO_ERRORS_SCHEMA } from '@angular/core';
 import { provideRouter } from '@angular/router';
 import { of, throwError } from 'rxjs';
+import { vi } from 'vitest';
 import { SearchComponent } from './search.component';
 import { ApiService, type CatalogAlbum } from '../../services/api.service';
 import { SearchService } from '../../services/search.service';
 import { TransferService } from '../../services/transfer.service';
+import { AcquireService } from '../../services/acquire.service';
+import { PluginService, type PluginInfo } from '../../services/plugin.service';
 
 const CATALOG_ALBUM: CatalogAlbum = {
   foreignAlbumId: 'dsotm-rg',
@@ -20,6 +23,7 @@ const CATALOG_ALBUM: CatalogAlbum = {
 };
 
 function setup(apiOverrides: Partial<Record<keyof ApiService, unknown>> = {}) {
+  const acquireSubmit = vi.fn(() => Promise.resolve('job1'));
   const api = {
     getSoulseekStatus: () => of({ connected: true }),
     catalogSearch: () =>
@@ -33,6 +37,7 @@ function setup(apiOverrides: Partial<Record<keyof ApiService, unknown>> = {}) {
         title: 'The Dark Side of the Moon',
         artistName: 'Pink Floyd',
       }),
+    archiveSearch: () => of({ candidates: [] }),
     cancelSearch: () => of({ ok: true }),
     deleteSearch: () => of({ ok: true }),
     ...apiOverrides,
@@ -44,13 +49,27 @@ function setup(apiOverrides: Partial<Record<keyof ApiService, unknown>> = {}) {
       provideRouter([]),
       { provide: ApiService, useValue: api },
       { provide: TransferService, useValue: { poll: () => {}, getStatus: () => undefined } },
+      { provide: AcquireService, useValue: { submit: acquireSubmit } },
       SearchService,
+      PluginService,
     ],
     schemas: [NO_ERRORS_SCHEMA],
   });
 
   const fixture = TestBed.createComponent(SearchComponent);
-  return { component: fixture.componentInstance, search: TestBed.inject(SearchService) };
+  return {
+    component: fixture.componentInstance,
+    search: TestBed.inject(SearchService),
+    plugins: TestBed.inject(PluginService),
+    acquireSubmit,
+  };
+}
+
+/** Flip the archive plugin on in the (real) PluginService so hasArchive() is true. */
+function enableArchive(plugins: PluginService): void {
+  plugins.plugins.set([
+    { id: 'archive', enabled: true, capabilities: ['resolve'] } as unknown as PluginInfo,
+  ]);
 }
 
 // of() resolves on the microtask queue; flush twice for the chained catalog promise.
@@ -118,5 +137,52 @@ describe('SearchComponent — metadata-driven search', () => {
 
     expect(component.huntingAlbum()).toBeNull();
     expect(component.resolveError()).toMatch(/not yet available/);
+  });
+
+  it('populates the archive.org lane in parallel when the plugin is enabled', async () => {
+    const { component, search, plugins } = setup({
+      archiveSearch: () =>
+        of({
+          candidates: [
+            { identifier: 'a1', title: 'Album', creator: 'Artist', year: '2016', detailsUrl: 'u1' },
+          ],
+        }),
+    });
+    enableArchive(plugins);
+    search.setQuery('pink floyd');
+
+    component.handleSearch(new Event('submit'));
+    await flush();
+
+    expect(search.archiveState()).toBe('complete');
+    expect(search.archive().map((x) => x.identifier)).toEqual(['a1']);
+  });
+
+  it('skips the archive.org lane when the plugin is disabled', async () => {
+    const archiveSearch = vi.fn(() => of({ candidates: [] }));
+    const { component, search } = setup({ archiveSearch });
+    search.setQuery('pink floyd');
+
+    component.handleSearch(new Event('submit'));
+    await flush();
+
+    expect(archiveSearch).not.toHaveBeenCalled();
+    expect(search.archiveState()).toBe('idle');
+  });
+
+  it('getFromArchive submits the item detailsUrl and marks it started', async () => {
+    const { component, acquireSubmit } = setup();
+    const item = {
+      identifier: 'a1',
+      title: 'Album',
+      creator: 'Artist',
+      year: null,
+      detailsUrl: 'https://archive.org/details/a1',
+    };
+
+    await component.getFromArchive(item);
+
+    expect(acquireSubmit).toHaveBeenCalledWith('https://archive.org/details/a1');
+    expect(component.isArchiveAcquired(item)).toBe(true);
   });
 });

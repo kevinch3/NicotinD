@@ -21,6 +21,8 @@ import { usersRoutes } from './routes/users.js';
 import { shareRoutes } from './routes/share.js';
 import { discographyRoutes } from './routes/discography.js';
 import { catalogRoutes } from './routes/catalog.js';
+import { archiveRoutes } from './routes/archive.js';
+import { ArchiveSearchService } from './services/archive-search.service.js';
 import { watchlistRoutes } from './routes/watchlist.js';
 import { playlistRoutes } from './routes/playlists.js';
 import { acquireRoutes } from './routes/acquire.js';
@@ -29,6 +31,7 @@ import { PluginRegistry } from './services/plugins/registry.js';
 import { SlskdPlugin } from './services/plugins/slskd/index.js';
 import { YtdlpPlugin } from './services/plugins/ytdlp/index.js';
 import { SpotdlPlugin } from './services/plugins/spotdl/index.js';
+import { ArchivePlugin } from './services/plugins/archive/index.js';
 import { requireAcquisitionMiddleware } from './services/plugins/gate.js';
 import { seedLegacyAcquisitionPlugins } from './services/plugins/legacy-seed.js';
 import { AcquireWatcher } from './services/acquire-watcher.js';
@@ -268,6 +271,12 @@ export function createApp({
       binaryPath: config.acquire.spotdl.binaryPath,
     }),
   );
+  plugins.register(
+    new ArchivePlugin({
+      enabled: config.acquire.archive.enabled,
+      preferredFormats: config.acquire.archive.preferredFormats,
+    }),
+  );
   // One-time migration: seed the previously-implicit acquisition plugins enabled
   // ONLY on an existing (pre-plugin) install, so upgrades stay seamless. Fresh
   // installs are default-off — an admin opts into acquisition in Settings →
@@ -321,6 +330,7 @@ export function createApp({
   app.use('/api/playlists/*', auth);
   app.use('/api/acquire/*', auth);
   app.use('/api/plugins/*', auth);
+  app.use('/api/archive/*', auth);
 
   app.get(
     '/api/ws/playback',
@@ -348,6 +358,9 @@ export function createApp({
   app.route('/api/users', usersRoutes(registry));
   app.route('/api/playlists', playlistRoutes());
   app.route('/api/plugins', pluginRoutes(plugins));
+  // archive.org metadata search lane — always mounted (no Lidarr/slskd dep); the
+  // route itself 503s unless the `archive` plugin is enabled.
+  app.route('/api/archive', archiveRoutes({ search: new ArchiveSearchService(), plugins }));
 
   // Ingest-time enrichment of loose singles/EPs (release type + artwork). Only
   // wired when Lidarr is configured; absent → acquisition degrades to heuristic.

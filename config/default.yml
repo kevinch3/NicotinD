@@ -8,8 +8,8 @@ metadataFix:
   minScore: 85
 
 soulseek:
-  username: ""
-  password: ""
+  username: ''
+  password: ''
 
 # Internal service settings (auto-generated passwords if not set)
 slskd:
@@ -26,6 +26,11 @@ acquire:
   spotdl:
     enabled: true
     binaryPath: spotdl
+  archive:
+    enabled: true
+    preferredFormats:
+      - MP3
+      - FLAC
 
 jwt:
   expiresIn: 24h

@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import type { SlskdUserTransferGroup, AcquireJob } from '@nicotind/core';
+import type { SlskdUserTransferGroup, AcquireJob, ArchiveCandidate } from '@nicotind/core';
 
 // ─── Response types ─────────────────────────────────────────────────
 
@@ -206,6 +206,20 @@ export class ApiService {
     albumTitle: string;
   }) {
     return this.http.post<CatalogResolveResult>('/api/catalog/resolve', payload);
+  }
+
+  // archive.org search lane — returns item candidates; download via AcquireService
+  // with the candidate's detailsUrl. 503s when the archive plugin is disabled.
+  archiveSearch(q: string) {
+    return this.http.get<{ candidates: ArchiveCandidate[] }>('/api/archive/search', {
+      params: { q },
+    });
+  }
+
+  archiveSearchAlbum(artist: string, album: string) {
+    return this.http.get<{ candidates: ArchiveCandidate[] }>('/api/archive/search', {
+      params: { artist, album },
+    });
   }
 
   // Downloads

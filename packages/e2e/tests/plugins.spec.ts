@@ -43,4 +43,12 @@ test.describe('plugin capability gating', () => {
     await page.goto('/');
     await expect(page.getByTestId('acquire-url-input')).toHaveCount(0);
   });
+
+  test('the archive.org plugin ships registered and default-off', async ({ page }) => {
+    await page.goto('/settings/plugins');
+    const card = page.locator('[data-testid="plugin-card"][data-plugin-id="archive"]');
+    await expect(card).toBeVisible();
+    // Compliance posture: a fresh install enables nothing.
+    await expect(card.getByTestId('plugin-toggle')).toHaveText('Enable');
+  });
 });

@@ -1,407 +1,602 @@
+<div class="max-w-6xl mx-auto px-3 py-4 md:px-6 md:py-8">
+  <!-- Search bar -->
+  <form (submit)="handleSearch($event)" class="mb-4">
+    <div class="relative">
+      <input
+        type="text"
+        [ngModel]="search.query()"
+        (ngModelChange)="search.setQuery($event)"
+        [ngModelOptions]="{ standalone: true }"
+        (focus)="searchFocused.set(true)"
+        (blur)="onSearchBlur()"
+        placeholder="Search for music..."
+        data-testid="search-input"
+        class="w-full px-5 py-4 text-lg rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-600 transition"
+      />
+      <button
+        type="submit"
+        [disabled]="loading()"
+        data-testid="search-submit"
+        class="absolute right-3 top-1/2 -translate-y-1/2 px-4 py-2 rounded-lg bg-zinc-700 text-zinc-200 text-sm font-medium hover:bg-zinc-600 transition disabled:opacity-50"
+      >
+        {{ loading() ? 'Searching...' : 'Search' }}
+      </button>
 
-    <div class="max-w-6xl mx-auto px-3 py-4 md:px-6 md:py-8">
-      <!-- Search bar -->
-      <form (submit)="handleSearch($event)" class="mb-4">
-        <div class="relative">
-          <input
-            type="text"
-            [ngModel]="search.query()"
-            (ngModelChange)="search.setQuery($event)"
-            [ngModelOptions]="{standalone: true}"
-            (focus)="searchFocused.set(true)"
-            (blur)="onSearchBlur()"
-            placeholder="Search for music..."
-            data-testid="search-input"
-            class="w-full px-5 py-4 text-lg rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-600 transition"
-          />
-          <button
-            type="submit"
-            [disabled]="loading()"
-            data-testid="search-submit"
-            class="absolute right-3 top-1/2 -translate-y-1/2 px-4 py-2 rounded-lg bg-zinc-700 text-zinc-200 text-sm font-medium hover:bg-zinc-600 transition disabled:opacity-50">
-            {{ loading() ? 'Searching...' : 'Search' }}
-          </button>
-
-          @if (searchFocused() && search.history().length > 0 && !search.query()) {
-            <div class="absolute top-full left-0 right-0 mt-1 bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden z-10">
-              <div class="flex items-center justify-between px-4 py-2 border-b border-zinc-800">
-                <span class="text-xs text-zinc-500 font-medium">Recent searches</span>
-                <button (click)="search.clearHistory()" class="text-xs text-zinc-600 hover:text-zinc-400 transition">Clear all</button>
-              </div>
-              @for (h of search.history(); track h) {
-                <button
-                  (click)="navigateAndSearch(h)"
-                  class="w-full text-left px-4 py-2.5 text-sm text-zinc-300 hover:bg-zinc-800 transition">
-                  {{ h }}
-                </button>
-              }
-            </div>
-          }
-        </div>
-      </form>
-
-      <!-- Network status indicator -->
-      @if (networkConnected() !== null) {
-        <div class="flex items-center gap-2 mb-6">
-          <span [class]="'inline-block w-2 h-2 rounded-full ' + (networkConnected() ? 'bg-emerald-500' : 'bg-zinc-600')"></span>
-          <span class="text-xs text-zinc-500">
-            {{ networkConnected() ? 'Soulseek network available' : 'Soulseek unavailable' }}
-          </span>
-        </div>
-      }
-
-      <!-- Errors -->
-      @if (searchError()) {
-        <div class="mb-6 px-4 py-3 rounded-lg bg-red-950/50 border border-red-900/50">
-          <p class="text-sm text-red-400">{{ searchError() }}</p>
-        </div>
-      }
-      @if (downloadError()) {
-        <div class="mb-6 px-4 py-3 rounded-lg bg-red-950/50 border border-red-900/50 flex items-center justify-between">
-          <p class="text-sm text-red-400">{{ downloadError() }}</p>
-          <button (click)="downloadError.set(null)" class="text-red-500 hover:text-red-300 text-lg font-medium">×</button>
-        </div>
-      }
-      @if (resolveError()) {
-        <div class="mb-6 px-4 py-3 rounded-lg bg-red-950/50 border border-red-900/50 flex items-center justify-between">
-          <p class="text-sm text-red-400">{{ resolveError() }}</p>
-          <button (click)="resolveError.set(null)" class="text-red-500 hover:text-red-300 text-lg font-medium">×</button>
-        </div>
-      }
-      @if (errors().length > 0) {
-        <div class="mb-6 px-4 py-3 rounded-lg bg-amber-950/50 border border-amber-900/50 space-y-1">
-          @for (err of errors(); track $index) {
-            <p class="text-sm text-amber-400">{{ err }}</p>
-          }
-        </div>
-      }
-
-      <!-- Loading spinner -->
-      @if (loading()) {
-        <div class="text-center py-12">
-          <span class="inline-block w-5 h-5 border-2 border-zinc-600 border-t-zinc-300 rounded-full animate-spin"></span>
-          <p class="text-zinc-500 text-sm mt-3">Searching...</p>
-        </div>
-      }
-
-      <!-- Metadata (catalog) results — the primary, MusicBrainz/Lidarr-backed path -->
-      @if (hasCatalog() && !loading()) {
-        <section class="space-y-6 mb-8">
-          @if (catalog()!.albums.length > 0) {
-            <div>
-              <h2 class="text-xs font-semibold uppercase tracking-wide text-zinc-500 mb-3">Albums</h2>
-              <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-                @for (album of catalog()!.albums; track album.foreignAlbumId) {
-                  <button
-                    (click)="huntCatalogAlbum(album)"
-                    [disabled]="resolvingAlbum() !== null"
-                    class="group text-left rounded-lg overflow-hidden border border-zinc-800/80 transition hover:border-zinc-600 disabled:opacity-60"
-                    style="background: var(--theme-surface)">
-                    <div class="aspect-square bg-zinc-800 relative">
-                      @if (album.coverUrl) {
-                        <img [src]="album.coverUrl" alt="" class="w-full h-full object-cover" loading="lazy" />
-                      }
-                      @if (resolvingAlbum() === album.foreignAlbumId) {
-                        <div class="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/60">
-                          <span class="inline-block w-5 h-5 border-2 border-zinc-500 border-t-zinc-200 rounded-full animate-spin"></span>
-                          <span class="text-xs text-zinc-300">Preparing…</span>
-                        </div>
-                      }
-                      <!-- Watchlist star — auto-acquire when a complete folder appears
-                           (only when a download-capable plugin is enabled) -->
-                      @if (plugins.hasDownload()) {
-                      <span role="button" tabindex="0"
-                        data-testid="watchlist-star"
-                        (click)="toggleWatch(album, $event)"
-                        (keydown.enter)="toggleWatch(album, $event)"
-                        [attr.aria-label]="watchlist.isWatched(album.foreignAlbumId) ? 'Stop watching' : 'Watch for this album'"
-                        [attr.title]="watchlist.isWatched(album.foreignAlbumId) ? 'Watching — auto-downloads when found' : 'Watch — auto-download when found'"
-                        class="absolute top-1.5 right-1.5 w-7 h-7 flex items-center justify-center rounded-full bg-black/55 hover:bg-black/75 transition cursor-pointer opacity-0 group-hover:opacity-100 focus:opacity-100"
-                        [class.!opacity-100]="watchlist.isWatched(album.foreignAlbumId)">
-                        <svg width="15" height="15" viewBox="0 0 24 24"
-                          [attr.fill]="watchlist.isWatched(album.foreignAlbumId) ? 'currentColor' : 'none'"
-                          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-                          [class.text-amber-400]="watchlist.isWatched(album.foreignAlbumId)"
-                          [class.text-white]="!watchlist.isWatched(album.foreignAlbumId)">
-                          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-                        </svg>
-                      </span>
-                      }
-                    </div>
-                    <div class="p-2">
-                      <p class="text-sm truncate" style="color: var(--theme-text-primary)">{{ album.title }}</p>
-                      <p class="text-xs truncate" style="color: var(--theme-text-secondary)">{{ album.artistName }}</p>
-                      <p class="text-xs truncate" style="color: var(--theme-text-muted)">
-                        {{ album.year }}{{ album.year && album.albumType ? ' · ' : '' }}{{ album.albumType }}{{ album.trackCount ? ' · ' + album.trackCount + ' tracks' : '' }}
-                      </p>
-                    </div>
-                  </button>
-                }
-              </div>
-            </div>
-          }
-          @if (catalog()!.artists.length > 0) {
-            <div>
-              <h2 class="text-xs font-semibold uppercase tracking-wide text-zinc-500 mb-3">Artists</h2>
-              <div class="flex flex-wrap gap-2">
-                @for (artist of catalog()!.artists; track artist.mbid) {
-                  <button
-                    (click)="searchArtist(artist.name)"
-                    class="px-3 py-1.5 rounded-full text-sm border border-zinc-800 text-zinc-300 hover:border-zinc-600 hover:text-zinc-100 transition">
-                    {{ artist.name }}
-                  </button>
-                }
-              </div>
-            </div>
-          }
-        </section>
-      }
-
-      <!-- Songs — library-only track results (the track finder) -->
-      @if (!loading() && librarySongs().length > 0) {
-        <section class="mt-2">
-          <h2 class="text-xs font-semibold uppercase tracking-wide text-zinc-500 mb-2">Songs</h2>
-          <div class="space-y-0.5">
-            @for (song of librarySongs(); track song.id; let i = $index) {
-              <app-track-row
-                [track]="toTrack(song)"
-                [subtitle]="song.artist + (song.album ? ' · ' + song.album : '')"
-                [duration]="song.duration"
-                [actions]="songActions(song.id)"
-                (play)="playLibrarySong(i)"
-              />
-            }
+      @if (searchFocused() && search.history().length > 0 && !search.query()) {
+        <div
+          class="absolute top-full left-0 right-0 mt-1 bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden z-10"
+        >
+          <div class="flex items-center justify-between px-4 py-2 border-b border-zinc-800">
+            <span class="text-xs text-zinc-500 font-medium">Recent searches</span>
+            <button
+              (click)="search.clearHistory()"
+              class="text-xs text-zinc-600 hover:text-zinc-400 transition"
+            >
+              Clear all
+            </button>
           </div>
-        </section>
+          @for (h of search.history(); track h) {
+            <button
+              (click)="navigateAndSearch(h)"
+              class="w-full text-left px-4 py-2.5 text-sm text-zinc-300 hover:bg-zinc-800 transition"
+            >
+              {{ h }}
+            </button>
+          }
+        </div>
       }
+    </div>
+  </form>
 
-      <!-- Direct Soulseek search — always-available fallback below the metadata results -->
-      @if (!loading() && search.query().trim() && search.networkState() !== 'idle') {
-        <section class="mt-2">
-          <button
-            (click)="toggleDirectSearch()"
-            class="w-full flex items-center justify-between px-1 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-500 hover:text-zinc-300 transition">
-            <span>Search Soulseek directly</span>
-            <span class="flex items-center gap-2 normal-case font-normal">
-              @if (hasNetwork()) {
-                <span>{{ folderGroups().length }} folders · {{ flatNetwork().length }} tracks</span>
-              }
-              <span>{{ directSearchOpen() ? '▾' : '▸' }}</span>
-            </span>
-          </button>
+  <!-- Network status indicator -->
+  @if (networkConnected() !== null) {
+    <div class="flex items-center gap-2 mb-6">
+      <span
+        [class]="
+          'inline-block w-2 h-2 rounded-full ' +
+          (networkConnected() ? 'bg-emerald-500' : 'bg-zinc-600')
+        "
+      ></span>
+      <span class="text-xs text-zinc-500">
+        {{ networkConnected() ? 'Soulseek network available' : 'Soulseek unavailable' }}
+      </span>
+    </div>
+  }
 
-          @if (directSearchOpen()) {
-            <!-- Searching indicator -->
-            @if (search.networkState() === 'searching') {
-              <div class="flex items-center gap-2 px-1 py-2 text-xs text-zinc-500">
-                <span class="inline-block w-3 h-3 border-2 border-zinc-600 border-t-zinc-300 rounded-full animate-spin"></span>
-                Searching Soulseek...
-                @if (flatNetwork().length > 0) {
-                  <span>{{ flatNetwork().length }} tracks</span>
-                }
-                <button (click)="handleStopSearch()" class="text-zinc-500 hover:text-zinc-300 transition">Stop</button>
-              </div>
-            }
+  <!-- Errors -->
+  @if (searchError()) {
+    <div class="mb-6 px-4 py-3 rounded-lg bg-red-950/50 border border-red-900/50">
+      <p class="text-sm text-red-400">{{ searchError() }}</p>
+    </div>
+  }
+  @if (downloadError()) {
+    <div
+      class="mb-6 px-4 py-3 rounded-lg bg-red-950/50 border border-red-900/50 flex items-center justify-between"
+    >
+      <p class="text-sm text-red-400">{{ downloadError() }}</p>
+      <button
+        (click)="downloadError.set(null)"
+        class="text-red-500 hover:text-red-300 text-lg font-medium"
+      >
+        ×
+      </button>
+    </div>
+  }
+  @if (resolveError()) {
+    <div
+      class="mb-6 px-4 py-3 rounded-lg bg-red-950/50 border border-red-900/50 flex items-center justify-between"
+    >
+      <p class="text-sm text-red-400">{{ resolveError() }}</p>
+      <button
+        (click)="resolveError.set(null)"
+        class="text-red-500 hover:text-red-300 text-lg font-medium"
+      >
+        ×
+      </button>
+    </div>
+  }
+  @if (errors().length > 0) {
+    <div class="mb-6 px-4 py-3 rounded-lg bg-amber-950/50 border border-amber-900/50 space-y-1">
+      @for (err of errors(); track $index) {
+        <p class="text-sm text-amber-400">{{ err }}</p>
+      }
+    </div>
+  }
 
-            <!-- No direct results -->
-            @if (!hasNetwork() && search.networkState() === 'complete') {
-              <div class="text-center py-8">
-                <p class="text-zinc-500">No Soulseek results for "{{ search.query() }}"</p>
-              </div>
-            }
+  <!-- Loading spinner -->
+  @if (loading()) {
+    <div class="text-center py-12">
+      <span
+        class="inline-block w-5 h-5 border-2 border-zinc-600 border-t-zinc-300 rounded-full animate-spin"
+      ></span>
+      <p class="text-zinc-500 text-sm mt-3">Searching...</p>
+    </div>
+  }
 
-            @if (hasNetwork()) {
-              <div class="flex items-center justify-end mb-2">
-                <button
-                  (click)="downloadAll()"
-                  class="px-3 py-1 rounded-md text-xs font-medium bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition">
-                  Download all ({{ flatNetwork().length }})
-                </button>
-              </div>
-              <div class="space-y-2">
-          @for (group of folderGroups(); track getFolderKey(group)) {
-            <div class="rounded-lg border border-zinc-800/80 overflow-hidden"
-              style="background: var(--theme-surface)">
-              <div class="flex items-center gap-2 px-3 py-2 border-b border-zinc-800/80">
-                <div class="flex-1 min-w-0">
-                  <p class="text-sm truncate" style="color: var(--theme-text-primary)">
-                    <span class="cursor-pointer hover:underline transition"
-                      style="color: var(--theme-text-primary)"
-                      (click)="navigateAndSearch(getDirBasename(group))">
-                      {{ getDirBasename(group) }}
+  <!-- Metadata (catalog) results — the primary, MusicBrainz/Lidarr-backed path -->
+  @if (hasCatalog() && !loading()) {
+    <section class="space-y-6 mb-8">
+      @if (catalog()!.albums.length > 0) {
+        <div>
+          <h2 class="text-xs font-semibold uppercase tracking-wide text-zinc-500 mb-3">Albums</h2>
+          <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            @for (album of catalog()!.albums; track album.foreignAlbumId) {
+              <button
+                (click)="huntCatalogAlbum(album)"
+                [disabled]="resolvingAlbum() !== null"
+                class="group text-left rounded-lg overflow-hidden border border-zinc-800/80 transition hover:border-zinc-600 disabled:opacity-60"
+                style="background: var(--theme-surface)"
+              >
+                <div class="aspect-square bg-zinc-800 relative">
+                  @if (album.coverUrl) {
+                    <img
+                      [src]="album.coverUrl"
+                      alt=""
+                      class="w-full h-full object-cover"
+                      loading="lazy"
+                    />
+                  }
+                  @if (resolvingAlbum() === album.foreignAlbumId) {
+                    <div
+                      class="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/60"
+                    >
+                      <span
+                        class="inline-block w-5 h-5 border-2 border-zinc-500 border-t-zinc-200 rounded-full animate-spin"
+                      ></span>
+                      <span class="text-xs text-zinc-300">Preparing…</span>
+                    </div>
+                  }
+                  <!-- Watchlist star — auto-acquire when a complete folder appears
+                           (only when a download-capable plugin is enabled) -->
+                  @if (plugins.hasDownload()) {
+                    <span
+                      role="button"
+                      tabindex="0"
+                      data-testid="watchlist-star"
+                      (click)="toggleWatch(album, $event)"
+                      (keydown.enter)="toggleWatch(album, $event)"
+                      [attr.aria-label]="
+                        watchlist.isWatched(album.foreignAlbumId)
+                          ? 'Stop watching'
+                          : 'Watch for this album'
+                      "
+                      [attr.title]="
+                        watchlist.isWatched(album.foreignAlbumId)
+                          ? 'Watching — auto-downloads when found'
+                          : 'Watch — auto-download when found'
+                      "
+                      class="absolute top-1.5 right-1.5 w-7 h-7 flex items-center justify-center rounded-full bg-black/55 hover:bg-black/75 transition cursor-pointer opacity-0 group-hover:opacity-100 focus:opacity-100"
+                      [class.!opacity-100]="watchlist.isWatched(album.foreignAlbumId)"
+                    >
+                      <svg
+                        width="15"
+                        height="15"
+                        viewBox="0 0 24 24"
+                        [attr.fill]="
+                          watchlist.isWatched(album.foreignAlbumId) ? 'currentColor' : 'none'
+                        "
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        [class.text-amber-400]="watchlist.isWatched(album.foreignAlbumId)"
+                        [class.text-white]="!watchlist.isWatched(album.foreignAlbumId)"
+                      >
+                        <polygon
+                          points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"
+                        />
+                      </svg>
                     </span>
+                  }
+                </div>
+                <div class="p-2">
+                  <p class="text-sm truncate" style="color: var(--theme-text-primary)">
+                    {{ album.title }}
+                  </p>
+                  <p class="text-xs truncate" style="color: var(--theme-text-secondary)">
+                    {{ album.artistName }}
                   </p>
                   <p class="text-xs truncate" style="color: var(--theme-text-muted)">
-                    {{ group.username }}
-                    {{ group.bitRate ? ' · ' + group.bitRate + ' kbps' : '' }}
-                    · <span style="color: var(--theme-accent)">{{ formatPeerInfo(group) }}</span>
-                    · {{ group.files.length }} files
+                    {{ album.year }}{{ album.year && album.albumType ? ' · ' : ''
+                    }}{{ album.albumType
+                    }}{{ album.trackCount ? ' · ' + album.trackCount + ' tracks' : '' }}
                   </p>
                 </div>
-                <button
-                  (click)="downloadFolder(group)"
-                  [disabled]="getFolderBtn(group).disabled || getFolderValidFiles(group).length === 0"
-                  [class]="'px-2 py-1 rounded text-xs font-medium transition shrink-0 ' + btnClasses[getFolderBtn(group).variant] + (getFolderBtn(group).disabled ? ' cursor-default' : '')">
-                  {{ getFolderBtn(group).label }}
-                </button>
-                @if (search.canBrowse()) {
+              </button>
+            }
+          </div>
+        </div>
+      }
+      @if (catalog()!.artists.length > 0) {
+        <div>
+          <h2 class="text-xs font-semibold uppercase tracking-wide text-zinc-500 mb-3">Artists</h2>
+          <div class="flex flex-wrap gap-2">
+            @for (artist of catalog()!.artists; track artist.mbid) {
+              <button
+                (click)="searchArtist(artist.name)"
+                class="px-3 py-1.5 rounded-full text-sm border border-zinc-800 text-zinc-300 hover:border-zinc-600 hover:text-zinc-100 transition"
+              >
+                {{ artist.name }}
+              </button>
+            }
+          </div>
+        </div>
+      }
+    </section>
+  }
+
+  <!-- Songs — library-only track results (the track finder) -->
+  @if (!loading() && librarySongs().length > 0) {
+    <section class="mt-2">
+      <h2 class="text-xs font-semibold uppercase tracking-wide text-zinc-500 mb-2">Songs</h2>
+      <div class="space-y-0.5">
+        @for (song of librarySongs(); track song.id; let i = $index) {
+          <app-track-row
+            [track]="toTrack(song)"
+            [subtitle]="song.artist + (song.album ? ' · ' + song.album : '')"
+            [duration]="song.duration"
+            [actions]="songActions(song.id)"
+            (play)="playLibrarySong(i)"
+          />
+        }
+      </div>
+    </section>
+  }
+
+  <!-- Direct Soulseek search — always-available fallback below the metadata results -->
+  @if (!loading() && search.query().trim() && search.networkState() !== 'idle') {
+    <section class="mt-2">
+      <button
+        (click)="toggleDirectSearch()"
+        class="w-full flex items-center justify-between px-1 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-500 hover:text-zinc-300 transition"
+      >
+        <span>Search Soulseek directly</span>
+        <span class="flex items-center gap-2 normal-case font-normal">
+          @if (hasNetwork()) {
+            <span>{{ folderGroups().length }} folders · {{ flatNetwork().length }} tracks</span>
+          }
+          <span>{{ directSearchOpen() ? '▾' : '▸' }}</span>
+        </span>
+      </button>
+
+      @if (directSearchOpen()) {
+        <!-- Searching indicator -->
+        @if (search.networkState() === 'searching') {
+          <div class="flex items-center gap-2 px-1 py-2 text-xs text-zinc-500">
+            <span
+              class="inline-block w-3 h-3 border-2 border-zinc-600 border-t-zinc-300 rounded-full animate-spin"
+            ></span>
+            Searching Soulseek...
+            @if (flatNetwork().length > 0) {
+              <span>{{ flatNetwork().length }} tracks</span>
+            }
+            <button
+              (click)="handleStopSearch()"
+              class="text-zinc-500 hover:text-zinc-300 transition"
+            >
+              Stop
+            </button>
+          </div>
+        }
+
+        <!-- No direct results -->
+        @if (!hasNetwork() && search.networkState() === 'complete') {
+          <div class="text-center py-8">
+            <p class="text-zinc-500">No Soulseek results for "{{ search.query() }}"</p>
+          </div>
+        }
+
+        @if (hasNetwork()) {
+          <div class="flex items-center justify-end mb-2">
+            <button
+              (click)="downloadAll()"
+              class="px-3 py-1 rounded-md text-xs font-medium bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition"
+            >
+              Download all ({{ flatNetwork().length }})
+            </button>
+          </div>
+          <div class="space-y-2">
+            @for (group of folderGroups(); track getFolderKey(group)) {
+              <div
+                class="rounded-lg border border-zinc-800/80 overflow-hidden"
+                style="background: var(--theme-surface)"
+              >
+                <div class="flex items-center gap-2 px-3 py-2 border-b border-zinc-800/80">
+                  <div class="flex-1 min-w-0">
+                    <p class="text-sm truncate" style="color: var(--theme-text-primary)">
+                      <span
+                        class="cursor-pointer hover:underline transition"
+                        style="color: var(--theme-text-primary)"
+                        (click)="navigateAndSearch(getDirBasename(group))"
+                      >
+                        {{ getDirBasename(group) }}
+                      </span>
+                    </p>
+                    <p class="text-xs truncate" style="color: var(--theme-text-muted)">
+                      {{ group.username }}
+                      {{ group.bitRate ? ' · ' + group.bitRate + ' kbps' : '' }}
+                      ·
+                      <span style="color: var(--theme-accent)">{{ formatPeerInfo(group) }}</span> ·
+                      {{ group.files.length }} files
+                    </p>
+                  </div>
                   <button
-                    (click)="toggleBrowser(getFolderKey(group))"
-                    class="px-2 py-1 rounded text-xs text-zinc-500 hover:text-zinc-300 transition shrink-0">
-                    {{ search.openBrowserKey() === getFolderKey(group) ? 'Hide full tree' : 'Load full tree' }}
+                    (click)="downloadFolder(group)"
+                    [disabled]="
+                      getFolderBtn(group).disabled || getFolderValidFiles(group).length === 0
+                    "
+                    [class]="
+                      'px-2 py-1 rounded text-xs font-medium transition shrink-0 ' +
+                      btnClasses[getFolderBtn(group).variant] +
+                      (getFolderBtn(group).disabled ? ' cursor-default' : '')
+                    "
+                  >
+                    {{ getFolderBtn(group).label }}
                   </button>
-                }
-              </div>
+                  @if (search.canBrowse()) {
+                    <button
+                      (click)="toggleBrowser(getFolderKey(group))"
+                      class="px-2 py-1 rounded text-xs text-zinc-500 hover:text-zinc-300 transition shrink-0"
+                    >
+                      {{
+                        search.openBrowserKey() === getFolderKey(group)
+                          ? 'Hide full tree'
+                          : 'Load full tree'
+                      }}
+                    </button>
+                  }
+                </div>
 
-              <div class="px-2 py-2 space-y-1">
-                @for (file of group.files; track file.filename) {
-                  <div class="relative flex items-center gap-2 px-2 py-1.5 rounded-md overflow-hidden transition"
-                    style="background: var(--theme-hover)">
-                    @if (getGroupFileVariant(group, file) === 'progress') {
-                      <div class="absolute inset-0 pointer-events-none rounded-md transition-all duration-500"
-                        [style.width.%]="getGroupFilePercent(group, file)"
-                        style="background: var(--theme-status-progress-bg)"></div>
-                    }
-                    @if (getGroupFileVariant(group, file) === 'done') {
-                      <div class="absolute inset-0 pointer-events-none rounded-md"
-                        style="background: var(--theme-status-done-bg)"></div>
-                    }
+                <div class="px-2 py-2 space-y-1">
+                  @for (file of group.files; track file.filename) {
+                    <div
+                      class="relative flex items-center gap-2 px-2 py-1.5 rounded-md overflow-hidden transition"
+                      style="background: var(--theme-hover)"
+                    >
+                      @if (getGroupFileVariant(group, file) === 'progress') {
+                        <div
+                          class="absolute inset-0 pointer-events-none rounded-md transition-all duration-500"
+                          [style.width.%]="getGroupFilePercent(group, file)"
+                          style="background: var(--theme-status-progress-bg)"
+                        ></div>
+                      }
+                      @if (getGroupFileVariant(group, file) === 'done') {
+                        <div
+                          class="absolute inset-0 pointer-events-none rounded-md"
+                          style="background: var(--theme-status-done-bg)"
+                        ></div>
+                      }
 
-                    <div class="relative flex-1 min-w-0">
-                      <div class="flex items-start gap-2">
-                        <div class="min-w-0 flex-1">
-                          <p class="text-sm truncate" style="color: var(--theme-text-primary)"
-                            [innerHTML]="highlightGroupFileTitle(file)"></p>
-                          @if (getGroupFileSubtitle(file)) {
-                            <p class="text-xs truncate" style="color: var(--theme-text-secondary)"
-                              [innerHTML]="highlightGroupFileSubtitle(file)"></p>
+                      <div class="relative flex-1 min-w-0">
+                        <div class="flex items-start gap-2">
+                          <div class="min-w-0 flex-1">
+                            <p
+                              class="text-sm truncate"
+                              style="color: var(--theme-text-primary)"
+                              [innerHTML]="highlightGroupFileTitle(file)"
+                            ></p>
+                            @if (getGroupFileSubtitle(file)) {
+                              <p
+                                class="text-xs truncate"
+                                style="color: var(--theme-text-secondary)"
+                                [innerHTML]="highlightGroupFileSubtitle(file)"
+                              ></p>
+                            }
+                          </div>
+                          @if (file.length) {
+                            <span
+                              class="shrink-0 pt-0.5 text-xs"
+                              style="color: var(--theme-text-muted)"
+                            >
+                              {{ formatDuration(file.length) }}
+                            </span>
                           }
                         </div>
-                        @if (file.length) {
-                          <span class="shrink-0 pt-0.5 text-xs" style="color: var(--theme-text-muted)">
-                            {{ formatDuration(file.length) }}
-                          </span>
+                        <p class="mt-0.5 text-xs truncate" style="color: var(--theme-text-muted)">
+                          {{ file.bitRate ? file.bitRate + ' kbps' : 'Unknown bitrate' }}
+                          · {{ formatSize(file.size) }}
+                        </p>
+                      </div>
+
+                      <div class="relative shrink-0">
+                        @if (getGroupFileVariant(group, file) === 'done') {
+                          <a
+                            routerLink="/library"
+                            class="px-2 py-1 rounded text-xs font-semibold transition"
+                            style="
+                              background: var(--theme-status-done-bg);
+                              color: var(--theme-status-done-text);
+                            "
+                          >
+                            Open
+                          </a>
+                        } @else {
+                          <button
+                            (click)="
+                              handleDownload(group.username, {
+                                filename: file.filename,
+                                size: file.size,
+                              })
+                            "
+                            [disabled]="getGroupFileBtn(group, file).disabled"
+                            [class]="
+                              'px-2 py-1 rounded text-xs font-medium transition ' +
+                              (getGroupFileBtn(group, file).disabled ? 'cursor-default' : '')
+                            "
+                            [style]="
+                              getGroupFileVariant(group, file) === 'progress'
+                                ? 'background: var(--theme-status-progress-bg); color: var(--theme-status-progress-text)'
+                                : ''
+                            "
+                          >
+                            {{
+                              getGroupFileVariant(group, file) === 'progress'
+                                ? getGroupFileBtn(group, file).label
+                                : 'Download'
+                            }}
+                          </button>
                         }
                       </div>
-                      <p class="mt-0.5 text-xs truncate" style="color: var(--theme-text-muted)">
-                        {{ file.bitRate ? file.bitRate + ' kbps' : 'Unknown bitrate' }}
-                        · {{ formatSize(file.size) }}
-                      </p>
                     </div>
+                  }
+                </div>
 
-                    <div class="relative shrink-0">
-                      @if (getGroupFileVariant(group, file) === 'done') {
-                        <a routerLink="/library"
-                          class="px-2 py-1 rounded text-xs font-semibold transition"
-                          style="background: var(--theme-status-done-bg); color: var(--theme-status-done-text)">
-                          Open
-                        </a>
-                      } @else {
-                        <button
-                          (click)="handleDownload(group.username, { filename: file.filename, size: file.size })"
-                          [disabled]="getGroupFileBtn(group, file).disabled"
-                          [class]="'px-2 py-1 rounded text-xs font-medium transition ' + (getGroupFileBtn(group, file).disabled ? 'cursor-default' : '')"
-                          [style]="getGroupFileVariant(group, file) === 'progress' ? 'background: var(--theme-status-progress-bg); color: var(--theme-status-progress-text)' : ''">
-                          {{ getGroupFileVariant(group, file) === 'progress' ? getGroupFileBtn(group, file).label : 'Download' }}
-                        </button>
-                      }
-                    </div>
+                @if (search.openBrowserKey() === getFolderKey(group)) {
+                  <div class="px-2 pb-2">
+                    <app-folder-browser
+                      [username]="group.username"
+                      [matchedPath]="group.directory"
+                      [fallbackFiles]="getFolderBrowseFiles(group)"
+                      (download)="handleBrowserDownload(group.username, group.directory, $event)"
+                      (downloadTrack)="handleDownload($event.username, $event.file)"
+                    />
                   </div>
                 }
               </div>
-
-              @if (search.openBrowserKey() === getFolderKey(group)) {
-                <div class="px-2 pb-2">
-                  <app-folder-browser
-                    [username]="group.username"
-                    [matchedPath]="group.directory"
-                    [fallbackFiles]="getFolderBrowseFiles(group)"
-                    (download)="handleBrowserDownload(group.username, group.directory, $event)"
-                    (downloadTrack)="handleDownload($event.username, $event.file)"
-                  />
-                </div>
-              }
-            </div>
-          }
-              </div>
             }
-          }
-        </section>
-      }
-
-      <!-- Empty state -->
-      @if (search.networkState() === 'idle' && !loading()) {
-        <div class="text-center py-20">
-          <p class="text-zinc-600 text-lg">Search for music to get started</p>
-          <p class="text-zinc-700 text-sm mt-1">
-            Results from the Soulseek network will appear here
-          </p>
-        </div>
-      }
-
-      <!-- Album-hunt modal — same flow as the discography page -->
-      @if (huntingAlbum()) {
-        <app-album-hunt-modal
-          [album]="huntingAlbum()!"
-          [artistName]="huntingArtistName()"
-          (closed)="closeHunt()"
-          (downloaded)="closeHunt()" />
-      }
-
-      <!-- URL acquisition (yt-dlp / spotdl) — only when a resolve-capable plugin is enabled -->
-      @if (plugins.hasResolve()) {
-      <div class="mt-10 border-t border-zinc-800 pt-8">
-        <h2 class="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-3">Download from URL</h2>
-        <form (submit)="submitAcquireUrl($event)" class="flex gap-2">
-          <input
-            type="url"
-            [(ngModel)]="acquireUrl"
-            name="acquireUrl"
-            placeholder="YouTube, SoundCloud, Bandcamp, Spotify…"
-            data-testid="acquire-url-input"
-            class="flex-1 px-4 py-2.5 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-600 transition text-sm"
-          />
-          <button
-            type="submit"
-            [disabled]="acquireSubmitting()"
-            data-testid="acquire-submit"
-            class="px-4 py-2.5 rounded-xl bg-zinc-700 text-zinc-200 text-sm font-medium hover:bg-zinc-600 transition disabled:opacity-50 whitespace-nowrap">
-            {{ acquireSubmitting() ? 'Starting…' : 'Download' }}
-          </button>
-        </form>
-        @if (acquireError()) {
-          <p class="mt-2 text-xs text-red-400">{{ acquireError() }}</p>
+          </div>
         }
+      }
+    </section>
+  }
 
-        @if (acquire.jobs().length > 0) {
-          <ul class="mt-4 space-y-2">
-            @for (job of acquire.jobs(); track job.id) {
-              <li class="flex items-center gap-3 px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-sm">
-                <span class="shrink-0 w-16 text-xs text-zinc-500 uppercase font-medium">{{ job.backend }}</span>
-                <span class="flex-1 truncate text-zinc-300" [title]="job.url">{{ job.label ?? job.url }}</span>
-
-                @if (job.state === 'running' && job.progress) {
-                  <span class="shrink-0 text-xs text-blue-400">{{ job.progress.done }}/{{ job.progress.total }}</span>
-                }
-                @if (job.state === 'queued' || job.state === 'running') {
-                  <span class="shrink-0 w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
-                } @else if (job.state === 'done') {
-                  <span class="shrink-0 text-xs text-emerald-400">Done</span>
-                } @else if (job.state === 'failed') {
-                  <span class="shrink-0 text-xs text-red-400" [title]="job.error ?? ''">Failed</span>
-                }
-
-                @if (job.state === 'queued' || job.state === 'running') {
-                  <button
-                    (click)="cancelAcquireJob(job.id)"
-                    class="shrink-0 text-zinc-600 hover:text-zinc-300 transition text-base leading-none"
-                    title="Cancel">×</button>
-                }
-              </li>
-            }
-          </ul>
+  <!-- archive.org results — a second source, shown when the plugin is enabled -->
+  @if (plugins.hasArchive() && search.query().trim() && search.archiveState() !== 'idle') {
+    <section class="mt-6" data-testid="archive-section">
+      <div class="flex items-center gap-2 mb-3">
+        <h2 class="text-sm font-semibold text-zinc-400 uppercase tracking-wider">
+          From archive.org
+        </h2>
+        @if (search.archiveState() === 'searching') {
+          <span
+            class="inline-block w-3 h-3 border border-zinc-600 border-t-transparent rounded-full animate-spin"
+          ></span>
+        } @else {
+          <span class="text-xs text-zinc-600">{{ search.archive().length }} items</span>
         }
       </div>
+      @if (search.archiveState() === 'complete' && search.archive().length === 0) {
+        <p class="text-sm text-zinc-600">No archive.org results for "{{ search.query() }}"</p>
+      } @else {
+        <ul class="divide-y divide-zinc-800 rounded-lg border border-zinc-800 overflow-hidden">
+          @for (item of search.archive(); track item.identifier) {
+            <li
+              class="flex items-center justify-between gap-3 px-4 py-3 bg-zinc-900/40"
+              data-testid="archive-item"
+            >
+              <div class="min-w-0 flex-1">
+                <p class="text-sm font-medium text-zinc-200 truncate">{{ item.title }}</p>
+                <p class="text-xs text-zinc-500 mt-0.5 truncate">
+                  {{ item.creator || 'Unknown' }}
+                  @if (item.year) {
+                    · {{ item.year }}
+                  }
+                </p>
+              </div>
+              <button
+                (click)="getFromArchive(item)"
+                [disabled]="isArchiveAcquired(item)"
+                data-testid="archive-get"
+                class="px-3 py-1.5 rounded-lg text-xs font-semibold flex-shrink-0 transition disabled:opacity-60"
+                [class.bg-zinc-100]="!isArchiveAcquired(item)"
+                [class.text-zinc-900]="!isArchiveAcquired(item)"
+                [class.bg-zinc-800]="isArchiveAcquired(item)"
+                [class.text-zinc-400]="isArchiveAcquired(item)"
+              >
+                {{ isArchiveAcquired(item) ? 'Started ✓' : 'Get' }}
+              </button>
+            </li>
+          }
+        </ul>
+      }
+    </section>
+  }
+
+  <!-- Empty state -->
+  @if (search.networkState() === 'idle' && !loading()) {
+    <div class="text-center py-20">
+      <p class="text-zinc-600 text-lg">Search for music to get started</p>
+      <p class="text-zinc-700 text-sm mt-1">Results from the Soulseek network will appear here</p>
+    </div>
+  }
+
+  <!-- Album-hunt modal — same flow as the discography page -->
+  @if (huntingAlbum()) {
+    <app-album-hunt-modal
+      [album]="huntingAlbum()!"
+      [artistName]="huntingArtistName()"
+      (closed)="closeHunt()"
+      (downloaded)="closeHunt()"
+    />
+  }
+
+  <!-- URL acquisition (yt-dlp / spotdl) — only when a resolve-capable plugin is enabled -->
+  @if (plugins.hasResolve()) {
+    <div class="mt-10 border-t border-zinc-800 pt-8">
+      <h2 class="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-3">
+        Download from URL
+      </h2>
+      <form (submit)="submitAcquireUrl($event)" class="flex gap-2">
+        <input
+          type="url"
+          [(ngModel)]="acquireUrl"
+          name="acquireUrl"
+          placeholder="YouTube, SoundCloud, Bandcamp, Spotify…"
+          data-testid="acquire-url-input"
+          class="flex-1 px-4 py-2.5 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-600 transition text-sm"
+        />
+        <button
+          type="submit"
+          [disabled]="acquireSubmitting()"
+          data-testid="acquire-submit"
+          class="px-4 py-2.5 rounded-xl bg-zinc-700 text-zinc-200 text-sm font-medium hover:bg-zinc-600 transition disabled:opacity-50 whitespace-nowrap"
+        >
+          {{ acquireSubmitting() ? 'Starting…' : 'Download' }}
+        </button>
+      </form>
+      @if (acquireError()) {
+        <p class="mt-2 text-xs text-red-400">{{ acquireError() }}</p>
+      }
+
+      @if (acquire.jobs().length > 0) {
+        <ul class="mt-4 space-y-2">
+          @for (job of acquire.jobs(); track job.id) {
+            <li
+              class="flex items-center gap-3 px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-sm"
+            >
+              <span class="shrink-0 w-16 text-xs text-zinc-500 uppercase font-medium">{{
+                job.backend
+              }}</span>
+              <span class="flex-1 truncate text-zinc-300" [title]="job.url">{{
+                job.label ?? job.url
+              }}</span>
+
+              @if (job.state === 'running' && job.progress) {
+                <span class="shrink-0 text-xs text-blue-400"
+                  >{{ job.progress.done }}/{{ job.progress.total }}</span
+                >
+              }
+              @if (job.state === 'queued' || job.state === 'running') {
+                <span class="shrink-0 w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
+              } @else if (job.state === 'done') {
+                <span class="shrink-0 text-xs text-emerald-400">Done</span>
+              } @else if (job.state === 'failed') {
+                <span class="shrink-0 text-xs text-red-400" [title]="job.error ?? ''">Failed</span>
+              }
+
+              @if (job.state === 'queued' || job.state === 'running') {
+                <button
+                  (click)="cancelAcquireJob(job.id)"
+                  class="shrink-0 text-zinc-600 hover:text-zinc-300 transition text-base leading-none"
+                  title="Cancel"
+                >
+                  ×
+                </button>
+              }
+            </li>
+          }
+        </ul>
       }
     </div>
-
+  }
+</div>

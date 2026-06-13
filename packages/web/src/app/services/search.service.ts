@@ -1,4 +1,5 @@
 import { Injectable, signal } from '@angular/core';
+import type { ArchiveCandidate } from '@nicotind/core';
 
 export interface NetworkResult {
   username: string;
@@ -44,6 +45,10 @@ export class SearchService {
   readonly query = signal('');
   readonly network = signal<NetworkResult[]>([]);
   readonly networkState = signal<'idle' | 'searching' | 'complete'>('idle');
+  // archive.org lane — populated in parallel with the network search when the
+  // archive plugin is enabled. Mirrors the network signals.
+  readonly archive = signal<ArchiveCandidate[]>([]);
+  readonly archiveState = signal<'idle' | 'searching' | 'complete'>('idle');
   readonly downloading = signal(new Set<string>());
   readonly downloadedFolders = signal(loadDownloadedFolders());
   readonly canBrowse = signal(false);
@@ -110,9 +115,19 @@ export class SearchService {
     this.history.set([]);
   }
 
+  setArchive(items: ArchiveCandidate[]): void {
+    this.archive.set(items);
+  }
+
+  setArchiveState(state: 'idle' | 'searching' | 'complete'): void {
+    this.archiveState.set(state);
+  }
+
   reset(): void {
     this.network.set([]);
     this.networkState.set('idle');
+    this.archive.set([]);
+    this.archiveState.set('idle');
     this.canBrowse.set(false);
     this.downloading.set(new Set());
     this.openBrowserKey.set(null);

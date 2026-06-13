@@ -9,8 +9,9 @@ acquisition is an affirmative, admin-gated, consent-recorded opt-in (legality va
 > B = the **slskd acquisition plugin** + gating of network search / downloads / browse / hunt /
 > watchlist. C = the **yt-dlp + spotdl URL-acquisition plugins** (`resolve`) + registry URL
 > routing. D = **default-off for fresh installs** + the **web management UI** (Settings → Plugins)
-> + capability-gating of the web surfaces. Connectivity (Phase E) is **scaffolded but not shipped**
-> — the kernel + UI handle the kind generically; no connectivity plugin is registered yet.
+>
+> - capability-gating of the web surfaces. Connectivity (Phase E) is **scaffolded but not shipped**
+>   — the kernel + UI handle the kind generically; no connectivity plugin is registered yet.
 
 ## Layering
 
@@ -91,12 +92,26 @@ capability contracts. New kinds add contracts without touching the kernel.
   — URL-acquisition plugins (`resolve`, consent-gated). Each declares `canHandle(url)` (spotdl =
   `*.spotify.com`, yt-dlp = everything else), `requirements.binaries`, and a config schema. Their
   `resolve(url, jobId)` stages files via the **shared process runner** (`services/plugins/acquire/
-  process.ts` — `runAcquireProcess` + progress parsing + audio collection; the injectable `spawn`
+process.ts` — `runAcquireProcess` + progress parsing + audio collection; the injectable `spawn`
   keeps it testable without process-global mocks) and **returns the staged absolute paths**. The
   host (`AcquireWatcher`) owns the `acquire_jobs` records + ingest (organize → scan → enrich) and
   routes each URL via `registry.getEnabledForUrl(url)` — there is no more `detectBackend` enum
   switch. `acquire_jobs.backend` is now an open plugin id (the legacy `CHECK IN ('ytdlp','spotdl')`
   is rebuilt away by a `db.ts` migration).
+- **archive.org** (`services/plugins/archive/index.ts`) — a third URL-acquisition plugin
+  (`resolve`, consent-gated) but **pure JS**: `requirements.binaries: []`, no shared process runner.
+  `canHandle(url)` matches any `archive.org` item URL (`/details`, `/download`, `/compress`,
+  `/metadata`, …); `resolve(url, jobId)` reads the item's `https://archive.org/metadata/<id>` file
+  list, picks one audio format via `selectArchiveFiles` (config `preferredFormats`, default
+  `['MP3','FLAC']` — MP3 first to save space, FLAC fallback; never mixes a FLAC original with its
+  derived MP3s), and **streams** each chosen file (`https://archive.org/download/<id>/<name>`) into
+  `<creator>/<title>/` under the staging dir, emitting per-file progress. `fetch` + the streaming
+  `downloadFile` are constructor-injected so tests run without network or node-builtin mocks. It is
+  **not** seeded by `seedLegacyAcquisitionPlugins`, so it is default-off for every install.
+  Its read-only search lane (`ArchiveSearchService` + `routes/archive.ts`,
+  `GET /api/archive/search`) is gated specifically on `plugins.isEnabled('archive')` (so it works as
+  an independent fallback even when slskd is off) and surfaces in the album-hunt modal + unified
+  search → see [docs/album-hunt.md](album-hunt.md).
 - **Back-compat seeding**: before plugins existed, slskd was active whenever credentials were set,
   and yt-dlp/spotdl whenever enabled in config. `PluginRegistry.seedEnabled(id, …)` (called from
   `index.ts`, `ON CONFLICT DO NOTHING`) keeps existing installs working; an admin's later toggle
@@ -140,16 +155,16 @@ capability contracts. New kinds add contracts without touching the kernel.
 
 ## Roadmap (subsequent phases)
 
-- **B** *(done)* — slskd acquisition plugin (`search·browse·download`); network search / downloads
+- **B** _(done)_ — slskd acquisition plugin (`search·browse·download`); network search / downloads
   / browse gate via the plugin's `ProviderRegistry` (de)registration; hunt + watchlist gate via
   `requireAcquisitionMiddleware` + the poller's `isAcquisitionEnabled`. (Full engine generalization
   onto capability interfaces deferred — see slskd note above.)
-- **C** *(done)* — yt-dlp + spotdl `resolve` plugins on a shared process runner; `AcquireWatcher`
+- **C** _(done)_ — yt-dlp + spotdl `resolve` plugins on a shared process runner; `AcquireWatcher`
   routes URLs via `registry.getEnabledForUrl()` (no `detectBackend`); submit 503s when none is
   enabled/available; `acquire_jobs.backend` relaxed to an open plugin id.
-- **D** *(done)* — default-off for fresh installs (one-time migration for existing installs) +
+- **D** _(done)_ — default-off for fresh installs (one-time migration for existing installs) +
   Settings → Plugins management UI + capability-gating of the web surfaces.
-- **E** *(scaffolded, not shipped)* — connectivity kind (tailscale/wireguard). The contracts,
+- **E** _(scaffolded, not shipped)_ — connectivity kind (tailscale/wireguard). The contracts,
   registry, and UI handle the kind generically; a real connectivity plugin can be registered in
   `index.ts` with no further wiring. Per current direction, none is integrated yet.
 - **Later** — extract contracts to a standalone `@nicotind/plugin-sdk` and add a dynamic/3rd-party
