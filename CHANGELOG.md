@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.69](https://github.com/kevinch3/NicotinD/compare/v0.1.68...v0.1.69) (2026-06-13)
+
+
+### Bug Fixes
+
+* **acquire:** keep partly-unavailable playlists instead of failing whole job ([5e0fcfa](https://github.com/kevinch3/NicotinD/commit/5e0fcfa7dedbf9524fcdd32c98f457e319eb2b78))
+
 ## [0.1.68](https://github.com/kevinch3/NicotinD/compare/v0.1.67...v0.1.68) (2026-06-13)
 
 
