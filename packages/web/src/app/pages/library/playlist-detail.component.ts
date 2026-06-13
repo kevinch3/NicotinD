@@ -92,6 +92,25 @@ export class PlaylistDetailComponent implements OnInit {
     this.selection.exit();
   }
 
+  readonly playlistOrderedIds = computed(() => (this.playlist()?.songs ?? []).map((s) => s.id));
+
+  async removeSelectedFromPlaylist(): Promise<void> {
+    const ids = [...this.selection.ids()];
+    if (ids.length === 0) return;
+    const idSet = new Set(ids);
+    await Promise.all(ids.map((id) => this.playlists.removeSong(this.id, id)));
+    this.playlist.update((p) =>
+      p
+        ? {
+            ...p,
+            songs: p.songs.filter((s) => !idSet.has(s.id)),
+            songCount: p.songCount - ids.length,
+          }
+        : p,
+    );
+    this.selection.exit();
+  }
+
   // ─── Offline download ─────────────────────────────────────────────
   readonly playlistTrackIds = computed(() => (this.playlist()?.songs ?? []).map((s) => s.id));
   readonly playlistDownloaded = computed(() =>

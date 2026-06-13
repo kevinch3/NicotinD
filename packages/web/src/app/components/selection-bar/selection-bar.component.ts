@@ -13,8 +13,12 @@ import { Component, input, output } from '@angular/core';
 export class SelectionBarComponent {
   readonly count = input(0);
   readonly total = input(0);
+  /** Show a destructive Delete button (host decides the semantics + gating). */
+  readonly canDelete = input(false);
+  readonly deleteLabel = input('Delete');
 
   readonly selectAll = output<void>();
   readonly add = output<void>();
+  readonly deleteSelected = output<void>();
   readonly cancel = output<void>();
 }

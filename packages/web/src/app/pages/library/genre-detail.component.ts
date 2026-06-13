@@ -109,6 +109,27 @@ export class GenreDetailComponent implements OnInit {
     this.selection.exit();
   }
 
+  deleteSelectedSongs(): void {
+    const ids = [...this.selection.ids()];
+    if (ids.length === 0) return;
+    this.askConfirm(`Remove ${ids.length} song${ids.length !== 1 ? 's' : ''} from library?`, async () => {
+      this.deleteError.set(null);
+      try {
+        const result = await firstValueFrom(this.api.deleteSongs(ids));
+        this.transferService.addDeletedIds(ids);
+        this.genreSongs.update((s) => s.filter((x) => !ids.includes(x.id)));
+        this.selection.exit();
+        if (result.deletedCount < ids.length) {
+          this.deleteError.set(
+            `Removed ${result.deletedCount} of ${ids.length} songs. ${ids.length - result.deletedCount} could not be removed.`,
+          );
+        }
+      } catch {
+        this.deleteError.set('Failed to remove the selected songs.');
+      }
+    });
+  }
+
   // ─── Offline download ─────────────────────────────────────────────
   readonly genreTrackIds = computed(() => this.filteredGenreSongs().map((s) => s.id));
   readonly genreDownloaded = computed(() =>

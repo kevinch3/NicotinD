@@ -46,7 +46,7 @@ const MOCK_SONGS: Song[] = [
   },
 ];
 
-function setup() {
+function setup(opts: { role?: 'admin' | 'user'; deleteSongs?: ReturnType<typeof vi.fn> } = {}) {
   const playWithContextCalls: unknown[][] = [];
   const playerStub = {
     play: () => {},
@@ -55,6 +55,7 @@ function setup() {
     },
   };
   const openPicker = vi.fn();
+  const deleteSongs = opts.deleteSongs ?? vi.fn(() => of({ ok: true, deletedCount: 0 }));
 
   TestBed.configureTestingModule({
     imports: [GenreDetailComponent],
@@ -65,9 +66,10 @@ function setup() {
         provide: ApiService,
         useValue: {
           getSongsByGenre: () => of(MOCK_SONGS),
+          deleteSongs,
         },
       },
-      { provide: AuthService, useValue: { token: signal('tok'), role: () => 'user' } },
+      { provide: AuthService, useValue: { token: signal('tok'), role: () => opts.role ?? 'user' } },
       { provide: PlayerService, useValue: playerStub },
       { provide: PlaylistService, useValue: { openPicker } },
     ],
@@ -77,7 +79,7 @@ function setup() {
   const fixture = TestBed.createComponent(GenreDetailComponent);
   fixture.detectChanges();
   const preserve = TestBed.inject(PreserveService);
-  return { component: fixture.componentInstance, playWithContextCalls, preserve, openPicker };
+  return { component: fixture.componentInstance, playWithContextCalls, preserve, openPicker, deleteSongs };
 }
 
 describe('GenreDetailComponent — Play All', () => {
@@ -207,5 +209,52 @@ describe('GenreDetailComponent — Add to playlist', () => {
     component.selectAllSongs();
     expect(component.selection.count()).toBe(3);
     expect(component.selection.isSelected('s2')).toBe(true);
+  });
+});
+
+describe('GenreDetailComponent — Bulk delete', () => {
+  it('deletes the selected songs, prunes them, and exits select mode', async () => {
+    const deleteSongs = vi.fn(() => of({ ok: true, deletedCount: 2 }));
+    const { component } = setup({ role: 'admin', deleteSongs });
+    component.genreSongs.set(MOCK_SONGS);
+
+    component.selection.enter();
+    component.selection.toggle('s1');
+    component.selection.toggle('s3');
+    component.deleteSelectedSongs();
+
+    // deleteSelectedSongs defers to the confirm dialog; run the queued callback.
+    const cb = component.confirmCallback();
+    expect(cb).toBeTruthy();
+    await cb!();
+
+    expect(deleteSongs).toHaveBeenCalledWith(['s1', 's3']);
+    expect(component.genreSongs().map((s) => s.id)).toEqual(['s2']);
+    expect(component.selection.active()).toBe(false);
+    expect(component.selection.count()).toBe(0);
+    expect(component.deleteError()).toBeNull();
+  });
+
+  it('surfaces a partial-failure message when not all songs were removed', async () => {
+    const deleteSongs = vi.fn(() => of({ ok: true, deletedCount: 1 }));
+    const { component } = setup({ role: 'admin', deleteSongs });
+    component.genreSongs.set(MOCK_SONGS);
+
+    component.selection.enter();
+    component.selection.toggle('s1');
+    component.selection.toggle('s2');
+    component.deleteSelectedSongs();
+    await component.confirmCallback()!();
+
+    expect(component.deleteError()).toContain('1 of 2');
+  });
+
+  it('does nothing when no songs are selected', () => {
+    const deleteSongs = vi.fn(() => of({ ok: true, deletedCount: 0 }));
+    const { component } = setup({ role: 'admin', deleteSongs });
+    component.selection.enter();
+    component.deleteSelectedSongs();
+    expect(component.confirmCallback()).toBeNull();
+    expect(deleteSongs).not.toHaveBeenCalled();
   });
 });

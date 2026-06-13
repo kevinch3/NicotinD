@@ -8,6 +8,12 @@
     class="ml-auto px-3 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 transition disabled:opacity-40 disabled:pointer-events-none">
     Add to playlist
   </button>
+  @if (canDelete()) {
+    <button type="button" (click)="deleteSelected.emit()" [disabled]="count() === 0"
+      class="px-3 py-1.5 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 transition disabled:opacity-40 disabled:pointer-events-none">
+      {{ deleteLabel() }}
+    </button>
+  }
   <button type="button" (click)="cancel.emit()"
     class="text-theme-muted hover:text-theme-secondary transition">
     Cancel
