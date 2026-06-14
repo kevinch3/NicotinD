@@ -243,14 +243,17 @@
     </section>
   }
 
-  <!-- Direct Soulseek search — always-available fallback below the metadata results -->
+  <!-- Advanced: raw network search — a power-user escape hatch, demoted below the
+       guided catalog/song results. Peer stats + the folder-tree browser live only
+       inside this collapsed disclosure so normal users never see them. -->
   @if (!loading() && search.query().trim() && search.networkState() !== 'idle') {
-    <section class="mt-2">
+    <section class="mt-2" data-testid="advanced-network-search">
       <button
         (click)="toggleDirectSearch()"
+        data-testid="advanced-toggle"
         class="w-full flex items-center justify-between px-1 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-500 hover:text-zinc-300 transition"
       >
-        <span>Search Soulseek directly</span>
+        <span>Advanced: search the network directly</span>
         <span class="flex items-center gap-2 normal-case font-normal">
           @if (hasNetwork()) {
             <span>{{ folderGroups().length }} folders · {{ flatNetwork().length }} tracks</span>
@@ -639,15 +642,18 @@
   <!-- URL acquisition (yt-dlp / spotdl) — only when a resolve-capable plugin is enabled -->
   @if (plugins.hasResolve()) {
     <div class="mt-10 border-t border-zinc-800 pt-8">
-      <h2 class="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-3">
-        Download from URL
+      <h2 class="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-1">
+        Get from a link
       </h2>
+      <p class="text-xs text-zinc-500 mb-3">
+        Paste a YouTube, SoundCloud, Bandcamp, Spotify or archive.org link — we pick the right source.
+      </p>
       <form (submit)="submitAcquireUrl($event)" class="flex gap-2">
         <input
           type="url"
           [(ngModel)]="acquireUrl"
           name="acquireUrl"
-          placeholder="YouTube, SoundCloud, Bandcamp, Spotify…"
+          placeholder="Paste a link…"
           data-testid="acquire-url-input"
           class="flex-1 px-4 py-2.5 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-600 transition text-sm"
         />

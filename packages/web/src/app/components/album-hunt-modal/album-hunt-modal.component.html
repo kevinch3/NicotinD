@@ -33,10 +33,15 @@
       </button>
     </div>
 
-    <!-- Filters -->
-    <div
-      class="flex items-center gap-5 px-5 py-3 border-b border-theme-surface-2 flex-shrink-0 text-sm"
-    >
+    <!-- Filters — tucked behind a disclosure so the modal leads with the ranked
+         result + one Download action; power-user refinement is opt-in. -->
+    <details class="border-b border-theme-surface-2 flex-shrink-0" data-testid="hunt-options">
+      <summary
+        class="px-5 py-2.5 text-xs text-theme-muted hover:text-theme-secondary transition cursor-pointer select-none list-none"
+      >
+        Explore more options
+      </summary>
+      <div class="flex items-center flex-wrap gap-x-5 gap-y-2 px-5 pb-3 text-sm">
       <label class="flex items-center gap-2 cursor-pointer select-none text-theme-secondary">
         <input
           type="checkbox"
@@ -90,7 +95,8 @@
           Re-search
         </button>
       }
-    </div>
+      </div>
+    </details>
 
     <!-- Body -->
     <div class="flex-1 overflow-y-auto">
