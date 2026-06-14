@@ -48,6 +48,15 @@ async function waitForState(watcher: AcquireWatcher, id: string, state: string, 
   throw new Error(`job ${id} did not reach state "${state}"`);
 }
 
+async function waitForStage(watcher: AcquireWatcher, id: string, stage: string, ms = 1000) {
+  const start = Date.now();
+  while (Date.now() - start < ms) {
+    if (watcher.getJob(id)?.stage === stage) return;
+    await new Promise((r) => setTimeout(r, 5));
+  }
+  throw new Error(`job ${id} did not reach stage "${stage}"`);
+}
+
 interface Harness {
   watcher: AcquireWatcher;
   db: Database;
@@ -108,6 +117,59 @@ describe('AcquireWatcher (registry-driven)', () => {
     expect(files[0]!.directory).toBe(join('Artist', 'Album'));
     expect(files[0]!.username).toBe(`acquire:${id}`);
     expect(h.scan).toHaveBeenCalledTimes(1);
+  });
+
+  it('reaches stage "done", records storage_path, and writes an acquisitions row', async () => {
+    await h.registry.enable('fake', 'admin');
+    const id = await h.watcher.submit('https://example.com/x');
+    await waitForStage(h.watcher, id, 'done');
+
+    const job = h.watcher.getJob(id)!;
+    expect(job.stage).toBe('done');
+    expect(job.storage_path).toBe('Artist/Album');
+
+    const acq = h.db
+      .query<
+        { method: string; source_ref: string; stage: string },
+        [string]
+      >('SELECT method, source_ref, stage FROM acquisitions WHERE relative_path = ?')
+      .get('Artist/Album/track.mp3');
+    // 'fake' is not a known method id, so it maps to 'unknown'.
+    expect(acq).toEqual({
+      method: 'unknown',
+      source_ref: 'https://example.com/x',
+      stage: 'done',
+    });
+  });
+
+  it('maps known backend ids to their acquisition method', async () => {
+    const ytPlugin = fakePlugin();
+    ytPlugin.manifest.id = 'ytdlp';
+    ytPlugin.resolve!.resolve = async (_url, jobId) => [
+      join(pluginStagingDir(DATA_DIR, 'ytdlp', jobId), 'Artist', 'Album', 'track.mp3'),
+    ];
+    h = makeHarness(ytPlugin);
+    await h.registry.enable('ytdlp', 'admin');
+    const id = await h.watcher.submit('https://example.com/x');
+    await waitForStage(h.watcher, id, 'done');
+
+    const method = h.db
+      .query<
+        { method: string },
+        [string]
+      >('SELECT method FROM acquisitions WHERE relative_path = ?')
+      .get('Artist/Album/track.mp3')?.method;
+    expect(method).toBe('ytdlp');
+  });
+
+  it('sets stage "error" when resolve produces zero files', async () => {
+    const plugin = fakePlugin();
+    plugin.resolve!.resolve = async () => [];
+    h = makeHarness(plugin);
+    await h.registry.enable('fake', 'admin');
+    const id = await h.watcher.submit('https://example.com/x');
+    await waitForState(h.watcher, id, 'failed');
+    expect(h.watcher.getJob(id)?.stage).toBe('error');
   });
 
   it('marks the job failed (no ingest) when resolve produces zero files', async () => {

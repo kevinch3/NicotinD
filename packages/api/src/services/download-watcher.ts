@@ -7,6 +7,7 @@ import { LibraryOrganizer } from './library-organizer.js';
 import { AcoustIdLookup } from './acoustid-lookup.js';
 import { getDatabase } from '../db.js';
 import { normalizeArtistForGrouping, normalizeForGrouping } from './album-grouping.js';
+import { recordAcquisition } from './acquisition-store.js';
 
 const log = createLogger('download-watcher');
 
@@ -28,10 +29,17 @@ interface DownloadWatcherOptions {
    * canonical tables reflect the new files synchronously — no external scanner.
    */
   scan?: (relPaths: string[]) => Promise<void> | void;
+  /**
+   * Explicit DB handle (testing). Defaults to the module-level `getDatabase()`.
+   * Injecting one keeps watcher DB access isolated from the global singleton,
+   * which bun's concurrent test files otherwise clobber (see project memory).
+   */
+  db?: import('bun:sqlite').Database;
 }
 
 export class DownloadWatcher {
   private slskd: Slskd;
+  private injectedDb?: import('bun:sqlite').Database;
   private intervalMs: number;
   private timer: ReturnType<typeof setInterval> | null = null;
   private knownCompleted = new Set<string>();
@@ -47,6 +55,7 @@ export class DownloadWatcher {
 
   constructor(slskd: Slskd, options: DownloadWatcherOptions = {}) {
     this.slskd = slskd;
+    this.injectedDb = options.db;
     this.intervalMs = options.intervalMs ?? 5_000;
     this.scanDebounceMs = options.scanDebounceMs ?? 10_000;
     this.musicDir = options.musicDir ? this.expandDir(options.musicDir) : null;
@@ -142,7 +151,7 @@ export class DownloadWatcher {
 
   private seedKnownCompleted(): void {
     try {
-      const rows = getDatabase()
+      const rows = this.getDb()
         .query<{ transfer_key: string }, []>('SELECT transfer_key FROM completed_downloads')
         .all();
       for (const row of rows) {
@@ -226,13 +235,14 @@ export class DownloadWatcher {
           // Drop completed_downloads rows for files auto-dedupe removed from disk,
           // so the canonical tables don't reference vanished duplicates.
           for (const basename of orgResult?.dedupedBasenames ?? []) {
-            getDatabase().run('DELETE FROM completed_downloads WHERE basename = ?', [basename]);
+            this.getDb().run('DELETE FROM completed_downloads WHERE basename = ?', [basename]);
           }
         } catch (err) {
           log.warn({ err }, 'Library organization step failed');
         }
         // organizeBatch mutates file.relativePath to the post-move path; persist
         // so the scan and back-fill see the final on-disk location.
+        const acquiredAt = Date.now();
         for (const file of completedFiles) {
           if (file.relativePath) {
             this.updateRelativePath(
@@ -241,6 +251,8 @@ export class DownloadWatcher {
               file.filename,
               file.relativePath,
             );
+            // Record acquisition provenance keyed on the final path (== library_songs.path).
+            this.recordSlskdAcquisition(file.relativePath, file.username, acquiredAt);
           }
         }
         this.debouncedScan();
@@ -296,7 +308,7 @@ export class DownloadWatcher {
     relativePath: string | null,
   ): void {
     try {
-      const db = getDatabase();
+      const db = this.getDb();
       const fileBasename = basename(filename.replace(/\\/g, '/')).toLowerCase();
 
       db.run(
@@ -310,6 +322,27 @@ export class DownloadWatcher {
     }
   }
 
+  /** Injected DB handle if provided (tests), else the module-level singleton. */
+  private getDb(): import('bun:sqlite').Database {
+    return this.injectedDb ?? getDatabase();
+  }
+
+  /** Best-effort acquisition provenance for a completed Soulseek file. */
+  private recordSlskdAcquisition(relativePath: string, username: string, acquiredAt: number): void {
+    try {
+      recordAcquisition(this.getDb(), {
+        relativePath,
+        method: 'slskd',
+        sourceRef: username,
+        stage: 'done',
+        startedAt: acquiredAt,
+        completedAt: acquiredAt,
+      });
+    } catch {
+      // Non-fatal: DB may not be available (recordAcquisition also swallows).
+    }
+  }
+
   private updateRelativePath(
     username: string,
     directory: string,
@@ -317,7 +350,7 @@ export class DownloadWatcher {
     relativePath: string,
   ): void {
     try {
-      getDatabase().run(
+      this.getDb().run(
         `UPDATE completed_downloads SET relative_path = ?
          WHERE username = ? AND directory = ? AND filename = ?`,
         [relativePath, username, directory, filename],

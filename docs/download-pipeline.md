@@ -96,3 +96,26 @@ Completed (and in-progress/failed) acquire jobs appear in the **Downloads → Ac
 `GET /api/downloads` annotates each in-flight folder whose `(username, peer directory)` matches an **active `album_jobs`** row with `albumJob: { artistName, albumTitle, canonicalTrackCount }` (`enrichWithAlbumJobs` in `routes/downloads.ts`; type in `@nicotind/core`). This lets the Downloads UI show "Artist — Album · N of M tracks" instead of the noisy peer folder name (e.g. "(1995) Toque").
 
 The web groups transfers via the pure `lib/download-groups.ts` (`groupByAlbum`/`albumGroupTitle`/`albumGroupTotal`), which prefers the hunt metadata and falls back to the peer folder name + file count for **direct (non-hunt)** downloads that have no job.
+
+---
+
+## Acquisition provenance (`acquisitions` table)
+
+Every acquired file records **how / where-from / when** it arrived, so a library track can answer "where did this come from?" without fragile after-the-fact guessing. The `acquisitions` table (`db.ts`) is keyed on the file's final on-disk `relative_path` — the **same join `library_songs.path` already uses** — with `method` (`AcquisitionMethod`: `slskd`/`ytdlp`/`spotdl`/`archive`/`unknown`), `source_ref` (slskd peer username or the acquire URL), `stage`, `started_at`, `completed_at`. It follows the `library_artwork` / `library_release_meta` side-table pattern (survives full rescans/prunes; not owned by the scanner).
+
+Writes happen **at download time** in the two places that already produce the final path — no fuzzy timing reconstruction:
+
+- **slskd** — `download-watcher.ts` `recordSlskdAcquisition()`, called in the post-organize loop right beside `updateRelativePath` (method `slskd`, `source_ref` = peer username).
+- **URL** — `acquire-watcher.ts` `ingest()`, one row per organized file (method = `methodForBackend(pluginId)`, `source_ref` = URL).
+
+Both go through `acquisition-store.ts` (`recordAcquisition` upsert / `recordAcquisitionIfMissing` for backfill / `getAcquisitionByPath` read), which swallows DB errors so provenance is never able to break the pipeline. **Caveat:** a file moved by a later rescan changes its path and orphans its acquisition row — the same fragility `library_songs.id` already carries.
+
+### Pipeline stage on acquire jobs
+
+`acquire_jobs` gains `stage` (`PipelineStage`: `queued → downloading → organizing → scanning → done`, or `error`) and `storage_path` (the canonical album dir the files landed in). `AcquireWatcher` sets `stage` at each transition (`setStage`) and records `storage_path` once organize completes (`setStoragePath`); both surface via `mapRow` on `GET /api/acquire/jobs`. Note `state` (`done`) is set when the *download* succeeds — **before** the organize/scan ingest — so `stage` is the finer-grained signal (it reaches `done` only after the full pipeline finishes). slskd transfers organize/scan as a debounced **batch**, so their live stage is derived job-level at read time rather than stored per file.
+
+### Surfacing provenance on a track + backfill
+
+`GET /api/library/songs/:id/acquisition` (`routes/library.ts`) joins the song's `path` against `acquisitions` and returns `SongAcquisition` (`{ method, sourceRef, acquiredAt, storagePath }`) — `404` for an unknown song, `null` for a song with no recorded provenance (legacy imports). The web surfaces it as an **"Acquisition" section** in the existing `track-info-sheet` bottom drawer (between File and Processing history), with a method badge from the pure `lib/acquisition-method.ts` (`methodBadge`) and `ApiService.getSongAcquisition`; an unrecorded song reads "Source not recorded".
+
+Songs that predate the table are filled in once at boot by `acquisition-backfill.ts` (`backfillAcquisitions`), wired into the post-scan path in `index.ts` and guarded by an `acquisitions_backfilled` `library_sync_state` marker (idempotent; `{ force: true }` for tests). It joins `library_songs.path → completed_downloads.relative_path` and derives the method from the recorded `username` (`acquire:<jobId>` → the job's `backend`, else `slskd`). Songs with no `completed_downloads` link are left unrecorded (shown as "Unknown source") rather than guessed.

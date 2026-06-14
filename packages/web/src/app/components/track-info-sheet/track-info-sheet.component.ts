@@ -1,6 +1,8 @@
 import { Component, input, output, signal, computed, effect, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import type { AcquisitionMethod, SongAcquisition } from '@nicotind/core';
 import { ApiService, type ProvenanceRecord, type Song } from '../../services/api.service';
+import { methodBadge } from '../../lib/acquisition-method';
 
 const ACTION_LABELS: Record<string, string> = {
   duplicate_removed: 'Duplicate removed',
@@ -67,6 +69,39 @@ const ACTION_LABELS: Record<string, string> = {
           </section>
         }
 
+        <!-- Acquisition provenance (how/where-from/when) -->
+        <section class="mb-5" data-testid="acquisition-section">
+          <p class="text-xs text-zinc-500 uppercase tracking-wider mb-2">Acquisition</p>
+          @if (acquisition(); as a) {
+            <div class="space-y-1 text-sm text-zinc-300">
+              <div class="flex gap-2 items-center">
+                <span class="text-zinc-500 w-16 flex-shrink-0">Method</span>
+                <span
+                  class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-zinc-800 text-xs"
+                  data-testid="acquisition-method"
+                >
+                  <span translate="no">{{ methodGlyph(a.method) }}</span>
+                  {{ methodLabel(a.method) }}
+                </span>
+              </div>
+              @if (a.acquiredAt) {
+                <div class="flex gap-2">
+                  <span class="text-zinc-500 w-16 flex-shrink-0">Acquired</span>
+                  <span>{{ formatDate(a.acquiredAt) }}</span>
+                </div>
+              }
+              @if (a.sourceRef) {
+                <div class="flex gap-2">
+                  <span class="text-zinc-500 w-16 flex-shrink-0">Source</span>
+                  <span class="break-all text-zinc-400 text-xs">{{ a.sourceRef }}</span>
+                </div>
+              }
+            </div>
+          } @else {
+            <p class="text-sm text-zinc-600">Source not recorded for this track.</p>
+          }
+        </section>
+
         <!-- Provenance history -->
         <section>
           <p class="text-xs text-zinc-500 uppercase tracking-wider mb-2">Processing history</p>
@@ -125,6 +160,7 @@ export class TrackInfoSheetComponent implements OnInit {
   readonly close = output<void>();
 
   readonly provenance = signal<ProvenanceRecord[]>([]);
+  readonly acquisition = signal<SongAcquisition | null>(null);
   readonly loading = signal(true);
 
   // Swipe-down-to-dismiss — mirrors now-playing.component pattern
@@ -144,6 +180,18 @@ export class TrackInfoSheetComponent implements OnInit {
         this.loading.set(false);
       },
     });
+    this.api.getSongAcquisition(this.songId()).subscribe({
+      next: (acq) => this.acquisition.set(acq),
+      error: () => this.acquisition.set(null),
+    });
+  }
+
+  methodLabel(method: AcquisitionMethod): string {
+    return methodBadge(method).label;
+  }
+
+  methodGlyph(method: AcquisitionMethod): string {
+    return methodBadge(method).glyph;
   }
 
   onDragStart(e: PointerEvent): void {

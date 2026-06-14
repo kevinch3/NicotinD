@@ -1,5 +1,7 @@
 import { describe, expect, it, beforeEach, mock, afterEach } from 'bun:test';
+import { Database } from 'bun:sqlite';
 import { DownloadWatcher } from './download-watcher.js';
+import { applySchema } from '../db.js';
 import type { CompletedDownloadFile } from './path-inference.js';
 
 type DownloadUser = {
@@ -157,5 +159,52 @@ describe('DownloadWatcher', () => {
 
     expect(scanMock).toHaveBeenCalledTimes(1);
     expect(scanMock).toHaveBeenCalledWith(['Artist/Album/a.mp3', 'Artist/Album/b.mp3']);
+  });
+
+  it('records slskd acquisition provenance for each organized file', async () => {
+    // Inject an isolated in-memory DB so this test doesn't race bun's concurrent
+    // test files for the module-level getDatabase() singleton (project memory).
+    const db = new Database(':memory:');
+    applySchema(db);
+    const dwWatcher = new DownloadWatcher(
+      slskdMock as unknown as ConstructorParameters<typeof DownloadWatcher>[0],
+      {
+        intervalMs: 10,
+        scanDebounceMs: 10,
+        libraryOrganizer: libraryOrganizerMock,
+        scan: scanMock,
+        db,
+      },
+    );
+    try {
+      slskdMock.transfers.getDownloads.mockReturnValue(
+        Promise.resolve([
+          {
+            username: 'peer42',
+            directories: [
+              {
+                directory: 'Artist - Album',
+                fileCount: 1,
+                files: [{ filename: 'song1.mp3', state: 'Completed, Succeeded' }],
+              },
+            ],
+          },
+        ]),
+      );
+
+      await (dwWatcher as unknown as { check(): Promise<void> }).check();
+      await new Promise((r) => setTimeout(r, 50));
+
+      const row = db
+        .query<
+          { method: string; source_ref: string; stage: string },
+          [string]
+        >('SELECT method, source_ref, stage FROM acquisitions WHERE relative_path = ?')
+        .get('Artist/Album/song1.mp3');
+      expect(row).toEqual({ method: 'slskd', source_ref: 'peer42', stage: 'done' });
+    } finally {
+      dwWatcher.stop();
+      db.close();
+    }
   });
 });
