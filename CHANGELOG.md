@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.74](https://github.com/kevinch3/NicotinD/compare/v0.1.73...v0.1.74) (2026-06-14)
+
+
+### Features
+
+* **downloads:** unified Active feed with method, stage, timing and storage path ([d3111b5](https://github.com/kevinch3/NicotinD/commit/d3111b5565be7d89890e3de6c4d2be9060c6c3d2))
+* **search:** demote raw network search behind Advanced, simplify acquire UX ([ef6287d](https://github.com/kevinch3/NicotinD/commit/ef6287db877d52c34be541b07f1544ab8315a6c2))
+
 ## [0.1.73](https://github.com/kevinch3/NicotinD/compare/v0.1.72...v0.1.73) (2026-06-14)
 
 
