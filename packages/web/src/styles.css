@@ -125,16 +125,19 @@
     --theme-status-error-text:    #fca5a5;
   }
 
-  /* E-Ink: maximum contrast, larger base font, no transparency */
+  /* E-Ink: maximum contrast, larger base font, no transparency. On low-contrast
+     e-paper the muted grays "blend" into the page and thin icon strokes vanish,
+     so secondary/muted/border tokens are pushed much darker, body text gains
+     weight, and icon strokes are thickened below (see [data-theme=eink] svg). */
   [data-theme="eink"] {
     --theme-bg:           #ffffff;
     --theme-surface:      #f5f5f5;
     --theme-surface-2:    #e0e0e0;
     --theme-hover:        #cccccc;
-    --theme-border:       #999999;
+    --theme-border:       #555555;
     --theme-text-primary: #000000;
-    --theme-text-secondary: #222222;
-    --theme-text-muted:   #555555;
+    --theme-text-secondary: #000000;
+    --theme-text-muted:   #333333;
     --theme-accent:       #000000;
     --theme-highlight-bg: #000000;
     --theme-highlight-text: #ffffff;
@@ -145,6 +148,16 @@
     --theme-status-error-bg:      #ffd0d0;
     --theme-status-error-text:    #8b0000;
     font-size: 1.125rem;
+    font-weight: 500;
+  }
+
+  /* Thicken every (stroke-based) icon on e-ink. Unitless = SVG user units, so it
+     scales with each icon's size; the app's icons draw at stroke-width="2", and
+     2 user units flatten to a faint ~1px line on e-paper that the reported
+     devices couldn't distinguish from the background. Filled icons are
+     unaffected (no visible stroke). */
+  [data-theme="eink"] svg {
+    stroke-width: 3;
   }
 }
 
@@ -171,6 +184,76 @@
     -webkit-user-select: none;
     user-select: none;
   }
+}
+
+/* ─── Seek bar (app-seek-bar) ────────────────────────────────────────────
+   A native <input type=range> styled to read as a slim progress bar with a
+   draggable thumb. Lives in global CSS (not the component) so the vendor
+   pseudo-elements aren't rewritten by Angular's view encapsulation. The 20px
+   element height is a deliberate touch/click target; only the 4px track is
+   visible. WebKit/Blink paint the fill via the --seek-percent gradient;
+   Firefox paints it natively with ::-moz-range-progress. */
+.seek-range {
+  -webkit-appearance: none;
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 1.25rem;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+  touch-action: none;
+}
+.seek-range:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+.seek-range::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 9999px;
+  background: linear-gradient(
+    to right,
+    var(--theme-accent) var(--seek-percent, 0%),
+    var(--theme-surface-2) var(--seek-percent, 0%)
+  );
+}
+.seek-range::-moz-range-track {
+  height: 4px;
+  border-radius: 9999px;
+  background: var(--theme-surface-2);
+}
+.seek-range::-moz-range-progress {
+  height: 4px;
+  border-radius: 9999px;
+  background: var(--theme-accent);
+}
+.seek-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  margin-top: -4px;
+  border: none;
+  border-radius: 9999px;
+  background: var(--theme-accent);
+  box-shadow: 0 0 0 1px var(--theme-bg);
+}
+.seek-range::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: none;
+  border-radius: 9999px;
+  background: var(--theme-accent);
+  box-shadow: 0 0 0 1px var(--theme-bg);
+}
+.seek-range:focus-visible {
+  outline: none;
+}
+.seek-range:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--theme-accent) 45%, transparent);
+}
+.seek-range:focus-visible::-moz-range-thumb {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--theme-accent) 45%, transparent);
 }
 
 /* ─── Custom animations ──────────────────────────────────────────────── */

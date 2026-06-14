@@ -136,13 +136,12 @@
           <!-- Progress bar (desktop) -->
           <div class="hidden md:flex items-center gap-2 w-full max-w-md">
             <span class="text-xs text-theme-muted w-10 text-right">{{ formatTime(safeProgress()) }}</span>
-            <div data-seek data-testid="player-seek" class="flex-1 py-2 -my-2 cursor-pointer touch-none" (pointerdown)="seekDrag.start($event)">
-              <div class="h-1 bg-theme-surface-2 rounded-full">
-                <div
-                  class="h-full bg-theme-secondary rounded-full transition-all"
-                  [style.width.%]="progressPercent()"
-                ></div>
-              </div>
+            <div class="flex-1" data-seek data-testid="player-seek">
+              <app-seek-bar
+                [position]="safeProgress()"
+                [duration]="safeDuration()"
+                (seek)="onSeek($event)"
+              />
             </div>
             <span class="text-xs text-theme-muted w-10">{{ formatTime(safeDuration()) }}</span>
           </div>
@@ -156,20 +155,15 @@
         </div>
       </div>
 
-      <!-- Mobile progress bar — tap/drag to seek. The hit area extends upward only
-           (pt-3 -mt-3, net-zero layout): the tab bar sits flush below the player's
-           bottom edge, so growing downward would steal its taps. -->
-      <div
-        data-seek
-        class="md:hidden pt-3 -mt-3 cursor-pointer touch-none"
-        (pointerdown)="seekDrag.start($event)"
-      >
-        <div class="h-0.5 bg-theme-surface-2">
-          <div
-            class="h-full bg-theme-secondary transition-all"
-            [style.width.%]="progressPercent()"
-          ></div>
-        </div>
+      <!-- Mobile progress bar — native range seek (app-seek-bar). Sits inside the
+           player, above the tab bar; its data-seek attr keeps the swipe-to-open
+           gesture (onBarPointerDown) from hijacking a scrub. -->
+      <div class="md:hidden px-3 pb-1 -mt-1">
+        <app-seek-bar
+          [position]="safeProgress()"
+          [duration]="safeDuration()"
+          (seek)="onSeek($event)"
+        />
       </div>
     </div>
   

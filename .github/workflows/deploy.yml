@@ -65,10 +65,11 @@ jobs:
         with:
           bun-version: latest
 
-      # ng build (run below) requires Node >= 22.22.3; pin it explicitly.
+      # ng build (run below) requires Node >= 22.22.3; pin from .nvmrc so CI,
+      # the Dockerfile, and local dev all resolve the exact same version.
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version-file: '.nvmrc'
 
       - name: Install dependencies
         run: bun install

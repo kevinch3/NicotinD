@@ -11,6 +11,7 @@ import { AuthService } from '../../services/auth.service';
 import { PlayerService } from '../../services/player.service';
 import { AlbumHuntModalComponent } from '../../components/album-hunt-modal/album-hunt-modal.component';
 import { CoverArtComponent } from '../../components/cover-art/cover-art.component';
+import { IconComponent } from '../../components/icon/icon.component';
 import { toTrack } from '../../lib/track-utils';
 import { resolveAlbumRoute } from '../../lib/route-utils';
 import { NavigationService } from '../../services/navigation.service';
@@ -18,7 +19,7 @@ import { NavigationService } from '../../services/navigation.service';
 @Component({
   selector: 'app-artist-detail',
   standalone: true,
-  imports: [RouterLink, AlbumHuntModalComponent, CoverArtComponent],
+  imports: [RouterLink, AlbumHuntModalComponent, CoverArtComponent, IconComponent],
   templateUrl: './artist-detail.component.html',
 })
 export class ArtistDetailComponent implements OnInit {

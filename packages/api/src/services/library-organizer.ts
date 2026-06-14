@@ -35,6 +35,8 @@ import { isAbsolute } from 'node:path';
 import type { AcoustIdLookup } from './acoustid-lookup.js';
 import { normalizeTitle } from './album-hunter.service.js';
 import { dedupeFolder } from './album-dedupe.js';
+import { isLossless, transcodeToOpus } from './post-download-transcode.js';
+import { ffmpegAvailable } from './transcode.js';
 
 const log = createLogger('library-organizer');
 
@@ -54,6 +56,13 @@ export interface LibraryOrganizerOptions {
    * mixed MP3+FLAC duplicate albums the analysis flagged. Opt-in.
    */
   preferFlacSkipMp3?: boolean;
+  /**
+   * When set, lossless files (FLAC/WAV/…) are transcoded to Opus in place right
+   * after being moved into the library and **before** the scan sees them — so the
+   * library standardizes on a small browser-native codec and the song's stable id
+   * (derived from its final path) is computed once. Lossy files are left as-is.
+   */
+  transcodeLossless?: { enabled: boolean; bitRate: number };
   /**
    * After placing a batch, remove redundant duplicate copies (`02 - Song (2)`,
    * mixed FLAC/MP3 of the same track) from each album folder it touched. On by
@@ -99,6 +108,7 @@ export class LibraryOrganizer {
   private unsortedRoot: string;
   private acoustid: AcoustIdLookup | undefined;
   private preferFlacSkipMp3: boolean;
+  private transcodeLossless: { enabled: boolean; bitRate: number };
   private autoDedupe: boolean;
   private jobLookup?: (
     peerDirectory: string,
@@ -112,6 +122,7 @@ export class LibraryOrganizer {
     this.acoustid = opts.acoustid;
     this.moveLogPath = opts.moveLogPath;
     this.preferFlacSkipMp3 = opts.preferFlacSkipMp3 ?? false;
+    this.transcodeLossless = opts.transcodeLossless ?? { enabled: false, bitRate: 128 };
     this.autoDedupe = opts.autoDedupe ?? true;
     this.jobLookup = opts.jobLookup;
     // unsortedRoot may be relative (resolved under musicDir) or absolute (e.g.
@@ -436,7 +447,7 @@ export class LibraryOrganizer {
       return 'skipped';
     }
 
-    const destPath = uniquePath(join(destDir, trackName), file.srcPath);
+    let destPath = uniquePath(join(destDir, trackName), file.srcPath);
 
     const samePath = destPath === file.srcPath;
     if (!samePath) {
@@ -448,6 +459,17 @@ export class LibraryOrganizer {
         return 'failed';
       }
       this.logMove(file.srcPath, destPath);
+
+      // Standardize lossless on Opus before the scan sees the file, so the song's
+      // stable id (derived from its final path) is computed once and storage is
+      // reclaimed. Best-effort: a transcode failure leaves the original in place.
+      if (this.transcodeLossless.enabled && isLossless(ext) && ffmpegAvailable()) {
+        try {
+          destPath = await transcodeToOpus(destPath, this.transcodeLossless.bitRate);
+        } catch (err) {
+          log.warn({ err, destPath }, 'lossless→opus transcode failed — keeping original');
+        }
+      }
     }
 
     // Tag rewrite step — run even when the file didn't move, so junk

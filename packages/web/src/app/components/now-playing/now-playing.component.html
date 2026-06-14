@@ -71,14 +71,11 @@
 
         <!-- Seek bar -->
         <div class="px-4 mb-4 md:px-8">
-          <div class="py-2 -my-2 cursor-pointer touch-none" (pointerdown)="seekDrag.start($event)">
-            <div class="h-1.5 bg-zinc-700 rounded-full">
-              <div
-                class="h-full bg-zinc-200 rounded-full transition-all"
-                [style.width.%]="progressPercent()"
-              ></div>
-            </div>
-          </div>
+          <app-seek-bar
+            [position]="safeProgress()"
+            [duration]="safeDuration()"
+            (seek)="onSeek($event)"
+          />
           <div class="flex justify-between mt-1.5">
             <span class="text-xs text-zinc-500">{{ formatTime(safeProgress()) }}</span>
             <span class="text-xs text-zinc-500">{{ formatTime(safeDuration()) }}</span>

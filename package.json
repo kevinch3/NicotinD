@@ -6,6 +6,9 @@
   "workspaces": [
     "packages/*"
   ],
+  "engines": {
+    "node": ">=22.22.3"
+  },
   "scripts": {
     "dev": "bun run ./scripts/dev.ts",
     "build": "bun run ./scripts/build.ts",

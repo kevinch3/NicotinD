@@ -10,12 +10,45 @@
  *     -t 0.1 -b:a 32k -id3v2_version 3 packages/api/test-fixtures/silence.mp3
  */
 import { describe, expect, it, afterEach } from 'bun:test';
+import { execFileSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, copyFileSync, rmSync, existsSync, writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import nodeId3 from 'node-id3';
 import { LibraryOrganizer } from './library-organizer.js';
+import { ffmpegAvailable } from './transcode.js';
+
+/** Generate a tagged FLAC via ffmpeg (lossless source for the transcode hook). */
+function seedFlac(dir: string, relPath: string, tags: SeedTags): string {
+  const dest = join(dir, relPath);
+  mkdirSync(dirname(dest), { recursive: true });
+  const meta: string[] = [];
+  if (tags.artist) meta.push('-metadata', `ARTIST=${tags.artist}`);
+  if (tags.album) meta.push('-metadata', `ALBUM=${tags.album}`);
+  if (tags.title) meta.push('-metadata', `TITLE=${tags.title}`);
+  if (tags.trackNumber !== undefined) meta.push('-metadata', `track=${tags.trackNumber}`);
+  execFileSync(
+    'ffmpeg',
+    [
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-f',
+      'lavfi',
+      '-i',
+      'anullsrc=channel_layout=mono:sample_rate=22050',
+      '-t',
+      '0.3',
+      '-c:a',
+      'flac',
+      ...meta,
+      dest,
+    ],
+    { stdio: 'ignore' },
+  );
+  return dest;
+}
 
 const FIXTURE = fileURLToPath(new URL('../../test-fixtures/silence.mp3', import.meta.url));
 
@@ -410,6 +443,71 @@ describe('LibraryOrganizer (real fs)', () => {
       expect(
         existsSync(join(root, 'Soda Stereo', 'Canción Animal', '01 - Canción Animal.mp3')),
       ).toBe(true);
+    });
+  });
+
+  describe('lossless → opus transcode hook', () => {
+    it.skipIf(!ffmpegAvailable())(
+      'transcodes a lossless download to opus in place when enabled',
+      async () => {
+        const root = tmpRoot();
+        const staging = join(root, '_staging');
+        seedFlac(staging, 'Boards of Canada - Geogaddi/01 - Music Is Math.flac', {
+          artist: 'Boards of Canada',
+          album: 'Geogaddi',
+          title: 'Music Is Math',
+          trackNumber: 1,
+        });
+        const org = new LibraryOrganizer({
+          musicDir: root,
+          stagingDir: staging,
+          transcodeLossless: { enabled: true, bitRate: 96 },
+        });
+        const result = await org.organizeBatch([
+          {
+            username: 'u',
+            directory: 'Boards of Canada - Geogaddi',
+            filename: '01 - Music Is Math.flac',
+            directoryFileCount: 1,
+          },
+        ]);
+
+        expect(result.moved).toBe(1);
+        const opus = join(root, 'Boards of Canada', 'Geogaddi', '01 - Music Is Math.opus');
+        expect(existsSync(opus)).toBe(true);
+        // The lossless original is gone (replaced in place).
+        expect(
+          existsSync(join(root, 'Boards of Canada', 'Geogaddi', '01 - Music Is Math.flac')),
+        ).toBe(false);
+      },
+    );
+
+    it.skipIf(!ffmpegAvailable())('leaves lossless untouched when the hook is disabled', async () => {
+      const root = tmpRoot();
+      const staging = join(root, '_staging');
+      seedFlac(staging, 'Boards of Canada - Geogaddi/01 - Music Is Math.flac', {
+        artist: 'Boards of Canada',
+        album: 'Geogaddi',
+        title: 'Music Is Math',
+        trackNumber: 1,
+      });
+      const org = new LibraryOrganizer({ musicDir: root, stagingDir: staging });
+      const result = await org.organizeBatch([
+        {
+          username: 'u',
+          directory: 'Boards of Canada - Geogaddi',
+          filename: '01 - Music Is Math.flac',
+          directoryFileCount: 1,
+        },
+      ]);
+
+      expect(result.moved).toBe(1);
+      expect(
+        existsSync(join(root, 'Boards of Canada', 'Geogaddi', '01 - Music Is Math.flac')),
+      ).toBe(true);
+      expect(
+        existsSync(join(root, 'Boards of Canada', 'Geogaddi', '01 - Music Is Math.opus')),
+      ).toBe(false);
     });
   });
 });

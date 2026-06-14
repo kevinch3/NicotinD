@@ -1,0 +1,14 @@
+<input
+  type="range"
+  class="seek-range"
+  data-seek
+  min="0"
+  step="any"
+  [attr.aria-label]="ariaLabel()"
+  [max]="duration() || 0"
+  [value]="value()"
+  [disabled]="disabled()"
+  [style.--seek-percent]="percent() + '%'"
+  (input)="onInput($event)"
+  (change)="onChange($event)"
+/>

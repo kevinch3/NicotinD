@@ -52,6 +52,7 @@ export interface ScannedTrack {
   disc?: number;
   year?: number;
   genre?: string;
+  bpm?: number;
 }
 
 export interface SongRow {
@@ -65,6 +66,7 @@ export interface SongRow {
   duration: number;
   year: number | null;
   genre: string | null;
+  bpm: number | null;
   coverArt: string;
   path: string;
   size: number;
@@ -274,6 +276,7 @@ export function buildLibrary(
       duration: t.duration,
       year: t.year ?? null,
       genre: t.genre ?? null,
+      bpm: t.bpm ?? null,
       coverArt: id,
       path: t.relPath,
       size: t.size,
@@ -523,6 +526,7 @@ export class LibraryScanner {
       disc: common?.disk?.no ?? undefined,
       year: common?.year ?? undefined,
       genre: common?.genre?.[0],
+      bpm: typeof common?.bpm === 'number' && common.bpm > 0 ? Math.round(common.bpm) : undefined,
     };
   }
 
@@ -552,9 +556,9 @@ export class LibraryScanner {
     const songStmt = this.db.prepare(`
       INSERT INTO library_songs (
         id, album_id, title, artist, artist_id, track, disc, duration,
-        year, genre, cover_art, path, size, bit_rate, suffix, content_type,
+        year, genre, bpm, cover_art, path, size, bit_rate, suffix, content_type,
         created, synced_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         album_id = excluded.album_id,
         title = excluded.title,
@@ -565,6 +569,8 @@ export class LibraryScanner {
         duration = excluded.duration,
         year = excluded.year,
         genre = excluded.genre,
+        -- Keep an existing (e.g. analyzed) bpm when a rescan reads no tag value.
+        bpm = COALESCE(excluded.bpm, library_songs.bpm),
         cover_art = excluded.cover_art,
         path = excluded.path,
         size = excluded.size,
@@ -620,6 +626,7 @@ export class LibraryScanner {
           s.duration,
           s.year,
           s.genre,
+          s.bpm,
           s.coverArt,
           s.path,
           s.size,

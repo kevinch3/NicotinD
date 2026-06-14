@@ -14,6 +14,8 @@ export interface MMCommon {
   disk?: { no?: number | null };
   year?: number;
   genre?: string[];
+  /** Beats per minute from tags (TBPM / `BPM`), when present. */
+  bpm?: number;
   picture?: Array<{ format?: string; data: Uint8Array }>;
 }
 

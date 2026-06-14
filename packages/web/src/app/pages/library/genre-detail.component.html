@@ -1,14 +1,14 @@
 <div class="max-w-6xl mx-auto px-4 py-5 md:px-6 md:py-8">
   <div class="flex items-center gap-3 mb-6">
-    <a routerLink="/library"
-       class="text-sm text-theme-muted hover:text-theme-secondary transition">
-      &larr; Back to library
+    <a routerLink="/library" aria-label="Back to library" title="Back to library"
+       class="inline-flex items-center justify-center w-9 h-9 rounded-lg text-theme-muted hover:text-theme-secondary hover:bg-theme-surface-2 transition">
+      <app-icon name="back" />
     </a>
     <h2 class="text-lg font-semibold text-theme-primary">{{ genreSlug() }}</h2>
     @if (filteredGenreSongs().length > 0) {
-      <button (click)="playGenre()"
-        class="ml-auto px-4 py-1.5 rounded-lg bg-theme-surface-2 text-theme-primary text-sm font-semibold hover:bg-theme-hover transition">
-        Play All
+      <button (click)="playGenre()" aria-label="Play all" title="Play all"
+        class="ml-auto w-9 h-9 flex items-center justify-center rounded-lg bg-theme-surface-2 text-theme-primary hover:bg-theme-hover transition">
+        <app-icon name="play" />
       </button>
       @if (!selection.active()) {
         <button (click)="selection.enter()"
@@ -20,10 +20,12 @@
         <span class="px-3 py-1.5 text-sm text-theme-muted">Saving {{ b.done }}/{{ b.total }}…</span>
       } @else {
         <button (click)="toggleDownloadGenre()"
-          [class]="'px-4 py-1.5 rounded-lg text-sm transition ' + (genreDownloaded()
+          [attr.aria-label]="genreDownloaded() ? 'Downloaded — remove offline' : 'Download genre'"
+          [attr.title]="genreDownloaded() ? 'Downloaded' : 'Download'"
+          [class]="'w-9 h-9 flex items-center justify-center rounded-lg transition ' + (genreDownloaded()
             ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30'
             : 'bg-theme-surface-2 text-theme-muted hover:bg-theme-hover')">
-          @if (genreDownloaded()) { ✓ Downloaded } @else { Download }
+          <app-icon name="download" />
         </button>
       }
     }

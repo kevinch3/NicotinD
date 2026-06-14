@@ -14,12 +14,19 @@ import { toTrack, offlineTrackAction, addToPlaylistAction } from '../../lib/trac
 import { resolveArtistRoute } from '../../lib/route-utils';
 import { createSelection } from '../../lib/selection';
 import { SelectionBarComponent } from '../../components/selection-bar/selection-bar.component';
+import { IconComponent } from '../../components/icon/icon.component';
 import { PreserveService } from '../../services/preserve.service';
 import { PlaylistService } from '../../services/playlist.service';
 
 @Component({
   selector: 'app-genre-detail',
-  imports: [TrackRowComponent, ConfirmDialogComponent, RouterLink, SelectionBarComponent],
+  imports: [
+    TrackRowComponent,
+    ConfirmDialogComponent,
+    RouterLink,
+    SelectionBarComponent,
+    IconComponent,
+  ],
   templateUrl: './genre-detail.component.html',
 })
 export class GenreDetailComponent implements OnInit {

@@ -43,6 +43,26 @@ export class AdminComponent implements OnInit, OnDestroy {
   readonly scanStatus = signal<{ scanning: boolean; count: number } | null>(null);
   readonly restarting = signal<{ slskd: boolean }>({ slskd: false });
 
+  // Library-wide metadata optimization (cover/year/release-type from Lidarr).
+  readonly optimizingMetadata = signal(false);
+  readonly optimizeMetadataMsg = signal<string | null>(null);
+
+  async optimizeAllMetadata(): Promise<void> {
+    if (this.optimizingMetadata()) return;
+    this.optimizingMetadata.set(true);
+    this.optimizeMetadataMsg.set(null);
+    try {
+      const r = await firstValueFrom(this.api.optimizeAllMetadata());
+      this.optimizeMetadataMsg.set(
+        `Checked ${r.albums} album(s): ${r.coversUpdated} cover(s), ${r.yearsUpdated} year(s) updated.`,
+      );
+    } catch {
+      this.optimizeMetadataMsg.set('Failed — Lidarr unavailable or not configured.');
+    } finally {
+      this.optimizingMetadata.set(false);
+    }
+  }
+
   // Incomplete album hunts (3A) — exhausted/active jobs with a re-hunt action.
   readonly incompleteJobs = signal<AlbumJob[]>([]);
   readonly jobsLoading = signal(true);

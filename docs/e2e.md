@@ -49,8 +49,12 @@ bun run --filter @nicotind/e2e test         # or: bun run e2e (from repo root)
 bun run --filter @nicotind/e2e test:ui      # interactive UI mode
 ```
 
-> The web build requires Node ≥ 22.22.3 (Angular engine check). CI pins it with
-> `actions/setup-node@v4`.
+> The web build requires Node ≥ 22.22.3 (`@angular/build` engine check). The
+> version is pinned **once** in `.nvmrc` (`22.22.3`); local dev (`nvm use`), CI
+> (`actions/setup-node@v4` with `node-version-file: .nvmrc`), and the Dockerfile
+> (`imbios/bun-node:…-22.22.3`) all resolve from it, and root + web `package.json`
+> declare `engines.node >= 22.22.3`. If `ng build`/`ng test` fail an engine check,
+> run `nvm use` (the host default nvm Node — `22.22.0` — is below the floor).
 
 ## Prod smoke
 

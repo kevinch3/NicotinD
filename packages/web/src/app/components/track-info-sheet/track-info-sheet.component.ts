@@ -1,7 +1,8 @@
-import { Component, input, output, signal, computed, effect, inject, OnInit } from '@angular/core';
+import { Component, input, output, signal, computed, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import type { AcquisitionMethod, SongAcquisition } from '@nicotind/core';
+import type { AcquisitionMethod, GenreSuggestion, SongAcquisition } from '@nicotind/core';
 import { ApiService, type ProvenanceRecord, type Song } from '../../services/api.service';
+import { AuthService } from '../../services/auth.service';
 import { methodBadge } from '../../lib/acquisition-method';
 
 const ACTION_LABELS: Record<string, string> = {
@@ -102,6 +103,72 @@ const ACTION_LABELS: Record<string, string> = {
           }
         </section>
 
+        <!-- Track analysis (BPM + genre) -->
+        <section class="mb-5" data-testid="analysis-section">
+          <p class="text-xs text-zinc-500 uppercase tracking-wider mb-2">Analysis</p>
+          <div class="space-y-2 text-sm text-zinc-300">
+            <!-- BPM -->
+            <div class="flex gap-2 items-center">
+              <span class="text-zinc-500 w-16 flex-shrink-0">BPM</span>
+              @if (bpm() !== null) {
+                <span data-testid="bpm-value">{{ bpm() }}</span>
+                @if (bpmSource() === 'analyzed') {
+                  <span class="text-xs text-zinc-600">(analyzed)</span>
+                }
+              } @else {
+                <span class="text-zinc-600">Unknown</span>
+              }
+              <button
+                class="ml-auto px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-xs
+                       disabled:opacity-50"
+                [disabled]="analyzing()"
+                (click)="analyze()"
+                data-testid="analyze-bpm-button"
+              >
+                {{ analyzing() ? 'Analyzing…' : bpm() !== null ? 'Re-analyze' : 'Analyze' }}
+              </button>
+            </div>
+
+            <!-- Genre -->
+            <div class="flex gap-2 items-center">
+              <span class="text-zinc-500 w-16 flex-shrink-0">Genre</span>
+              <span data-testid="genre-value">{{ currentGenre() || 'Unknown' }}</span>
+              <button
+                class="ml-auto px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-xs
+                       disabled:opacity-50"
+                [disabled]="verifyingGenre()"
+                (click)="verifyGenreNow()"
+                data-testid="verify-genre-button"
+              >
+                {{ verifyingGenre() ? 'Checking…' : 'Check genre' }}
+              </button>
+            </div>
+            @if (genreSuggestion(); as g) {
+              @if (g.source === null) {
+                <p class="text-xs text-zinc-600">No genre source available.</p>
+              } @else if (g.suggested && g.suggested !== currentGenre()) {
+                <div class="flex gap-2 items-center pl-16" data-testid="genre-suggestion">
+                  <span class="text-zinc-500 text-xs">Suggested</span>
+                  <span class="text-zinc-300">{{ g.suggested }}</span>
+                  @if (isAdmin()) {
+                    <button
+                      class="ml-auto px-2 py-0.5 rounded bg-blue-600 hover:bg-blue-500 text-xs
+                             disabled:opacity-50"
+                      [disabled]="applyingGenre()"
+                      (click)="applySuggestedGenre(g.suggested!)"
+                      data-testid="apply-genre-button"
+                    >
+                      {{ applyingGenre() ? 'Applying…' : 'Apply' }}
+                    </button>
+                  }
+                </div>
+              } @else {
+                <p class="text-xs text-zinc-600 pl-16">Genre matches the source.</p>
+              }
+            }
+          </div>
+        </section>
+
         <!-- Provenance history -->
         <section>
           <p class="text-xs text-zinc-500 uppercase tracking-wider mb-2">Processing history</p>
@@ -154,6 +221,7 @@ const ACTION_LABELS: Record<string, string> = {
 })
 export class TrackInfoSheetComponent implements OnInit {
   private api = inject(ApiService);
+  private auth = inject(AuthService);
 
   readonly songId = input.required<string>();
   readonly song = input<Song | null>(null);
@@ -163,6 +231,18 @@ export class TrackInfoSheetComponent implements OnInit {
   readonly acquisition = signal<SongAcquisition | null>(null);
   readonly loading = signal(true);
 
+  // Track analysis state
+  readonly bpm = signal<number | null>(null);
+  readonly bpmSource = signal<'tag' | 'analyzed' | null>(null);
+  readonly analyzing = signal(false);
+  readonly genreOverride = signal<string | null>(null);
+  readonly genreSuggestion = signal<GenreSuggestion | null>(null);
+  readonly verifyingGenre = signal(false);
+  readonly applyingGenre = signal(false);
+  readonly isAdmin = computed(() => this.auth.role() === 'admin');
+  /** Current genre: an applied override wins over the song's own tag. */
+  readonly currentGenre = computed(() => this.genreOverride() ?? this.song()?.genre ?? '');
+
   // Swipe-down-to-dismiss — mirrors now-playing.component pattern
   readonly dragging = signal(false);
   readonly dragOffsetPx = signal(0);
@@ -171,6 +251,11 @@ export class TrackInfoSheetComponent implements OnInit {
   private onDocUp: ((e: PointerEvent) => void) | null = null;
 
   ngOnInit(): void {
+    const known = this.song()?.bpm;
+    if (known) {
+      this.bpm.set(known);
+      this.bpmSource.set('tag');
+    }
     this.api.getSongProvenance(this.songId()).subscribe({
       next: (records) => {
         this.provenance.set(records);
@@ -183,6 +268,43 @@ export class TrackInfoSheetComponent implements OnInit {
     this.api.getSongAcquisition(this.songId()).subscribe({
       next: (acq) => this.acquisition.set(acq),
       error: () => this.acquisition.set(null),
+    });
+  }
+
+  analyze(): void {
+    if (this.analyzing()) return;
+    this.analyzing.set(true);
+    this.api.analyzeSong(this.songId()).subscribe({
+      next: (r) => {
+        this.bpm.set(r.bpm);
+        this.bpmSource.set(r.source);
+        this.analyzing.set(false);
+      },
+      error: () => this.analyzing.set(false),
+    });
+  }
+
+  verifyGenreNow(): void {
+    if (this.verifyingGenre()) return;
+    this.verifyingGenre.set(true);
+    this.api.getGenreSuggestion(this.songId()).subscribe({
+      next: (g) => {
+        this.genreSuggestion.set(g);
+        this.verifyingGenre.set(false);
+      },
+      error: () => this.verifyingGenre.set(false),
+    });
+  }
+
+  applySuggestedGenre(genre: string): void {
+    if (this.applyingGenre()) return;
+    this.applyingGenre.set(true);
+    this.api.applyGenre(this.songId(), genre).subscribe({
+      next: () => {
+        this.genreOverride.set(genre);
+        this.applyingGenre.set(false);
+      },
+      error: () => this.applyingGenre.set(false),
     });
   }
 

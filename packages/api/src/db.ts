@@ -446,9 +446,17 @@ export function applySchema(db: Database): void {
       created       TEXT,
       starred       TEXT,
       hidden        INTEGER NOT NULL DEFAULT 0,
+      bpm           INTEGER,
       synced_at     INTEGER NOT NULL
     )
   `);
+  // Add bpm to existing library_songs tables (safe if it already exists). Set by
+  // tag reads at scan time and by on-demand track analysis.
+  try {
+    db.run(`ALTER TABLE library_songs ADD COLUMN bpm INTEGER`);
+  } catch {
+    // Column already exists — ignore
+  }
   db.run(`CREATE INDEX IF NOT EXISTS idx_library_songs_album_id ON library_songs(album_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_library_songs_artist_id ON library_songs(artist_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_library_songs_path ON library_songs(path)`);

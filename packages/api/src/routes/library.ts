@@ -3,12 +3,16 @@ import { basename, dirname, join, normalize, relative } from 'node:path';
 import { unlinkSync, rmdirSync, rmSync, existsSync, readdirSync } from 'node:fs';
 import { createLogger } from '@nicotind/core';
 import type { Song, Album, Artist } from '@nicotind/core';
+import type { Lidarr } from '@nicotind/lidarr-client';
 import type { AuthEnv } from '../middleware/auth.js';
 import type { Database } from 'bun:sqlite';
 import { getDatabase } from '../db.js';
 import type { LibraryCurator } from '../services/library-curator.js';
 import { normalizeArtistForGrouping, normalizeForGrouping } from '../services/album-grouping.js';
 import { getAcquisitionByPath } from '../services/acquisition-store.js';
+import { analyzeBpm, verifyGenre } from '../services/track-analysis.js';
+import { readAudioTags, writeAudioTags } from '../services/audio-tags.js';
+import { optimizeAlbum } from '../services/metadata-optimize.js';
 
 const log = createLogger('library');
 
@@ -84,6 +88,10 @@ const AUDIO_EXTENSIONS = new Set([
 interface LibraryRoutesOptions {
   curator?: LibraryCurator;
   runSync?: () => Promise<void>;
+  /** Lidarr client for genre verification + metadata optimization; null when unconfigured. */
+  lidarr?: Lidarr | null;
+  /** Cover-cache dir, purged when an optimized album's canonical URL changes. */
+  coverCacheDir?: string;
 }
 
 interface AlbumRow {
@@ -123,6 +131,7 @@ interface SongRow {
   content_type: string | null;
   created: string | null;
   starred: string | null;
+  bpm: number | null;
 }
 
 interface ArtistRow {
@@ -143,7 +152,7 @@ const SONG_SELECT = `
   SELECT s.id, s.album_id, a.name AS album_name, a.cover_art AS album_cover_art,
          s.title, s.artist, s.artist_id, s.track, s.duration, s.year, s.genre,
          s.cover_art, s.path, s.size, s.bit_rate, s.suffix, s.content_type,
-         s.created, s.starred
+         s.created, s.starred, s.bpm
   FROM library_songs s
   LEFT JOIN library_albums a ON a.id = s.album_id
 `;
@@ -191,6 +200,7 @@ function rowToSong(r: SongRow): Song {
     path: r.path,
     created: r.created ?? '',
     starred: r.starred ?? undefined,
+    bpm: r.bpm ?? undefined,
   };
 }
 
@@ -227,7 +237,7 @@ function albumOrderBy(type: string): string {
 
 export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions = {}) {
   const app = new Hono<AuthEnv>();
-  const { curator, runSync } = options;
+  const { curator, runSync, lidarr, coverCacheDir } = options;
 
   app.get('/artists', (c) => {
     const db = getDatabase();
@@ -552,6 +562,23 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     return c.json({ ok });
   });
 
+  // Re-fetch better cover/year/release-type for one album from Lidarr and
+  // overwrite what's stored (the "fix a wrong/poor thumbnail" action). Admin
+  // only; 503 when Lidarr is unconfigured, 404 when the album/match is absent.
+  app.post('/albums/:id/optimize-metadata', async (c) => {
+    const user = c.get('user');
+    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+    if (!lidarr) return c.json({ error: 'Lidarr not configured' }, 503);
+    const result = await optimizeAlbum(getDatabase(), lidarr, c.req.param('id'), {
+      apply: true,
+      coverCacheDir,
+    });
+    if (!result.matched) {
+      return c.json({ ...result, error: 'No confident Lidarr match for this album' }, 404);
+    }
+    return c.json(result);
+  });
+
   app.post('/sync', async (c) => {
     const user = c.get('user');
     if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
@@ -606,6 +633,93 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       .get(id);
     if (!song) return c.json({ error: 'Song not found' }, 404);
     return c.json(getAcquisitionByPath(db, song.path));
+  });
+
+  // On-demand BPM analysis. Returns an existing tag value immediately, otherwise
+  // decodes + analyzes the audio, persists the result to library_songs.bpm AND
+  // writes the tag back to the file so it survives rescans. 404 unknown song,
+  // 503 when ffmpeg/analysis is unavailable.
+  app.post('/songs/:id/analyze', async (c) => {
+    const id = c.req.param('id');
+    const db = getDatabase();
+    const song = db
+      .query<{ path: string; bpm: number | null }, [string]>(
+        `SELECT path, bpm FROM library_songs WHERE id = ?`,
+      )
+      .get(id);
+    if (!song) return c.json({ error: 'Song not found' }, 404);
+
+    if (song.bpm) return c.json({ bpm: song.bpm, source: 'tag' as const });
+    if (!musicDir) return c.json({ error: 'Music directory not configured' }, 503);
+
+    const abs = resolveSongPath(expandDir(musicDir), song.path);
+    if (!isUnderMusicDir(expandDir(musicDir), abs) || !existsSync(abs)) {
+      return c.json({ error: 'Song file not found' }, 404);
+    }
+
+    // The file's own BPM tag wins over re-analysis when present.
+    const tags = await readAudioTags(abs);
+    let bpm = tags.bpm ?? null;
+    let source: 'tag' | 'analyzed' = 'tag';
+    if (!bpm) {
+      bpm = await analyzeBpm(abs);
+      source = 'analyzed';
+      if (bpm) {
+        // Persist into the file so a future rescan reads it back.
+        await writeAudioTags(abs, { bpm }).catch(() => false);
+      }
+    }
+    if (!bpm) return c.json({ error: 'Could not determine BPM' }, 503);
+
+    db.run('UPDATE library_songs SET bpm = ? WHERE id = ?', [bpm, id]);
+    return c.json({ bpm, source });
+  });
+
+  // Genre verification against Lidarr/MusicBrainz. Read-only: returns the current
+  // tag value, a suggested genre, and all candidates. `suggested` is null when
+  // Lidarr is unconfigured or has nothing.
+  app.get('/songs/:id/genre-suggestion', async (c) => {
+    const id = c.req.param('id');
+    const db = getDatabase();
+    const song = db
+      .query<{ artist: string; genre: string | null }, [string]>(
+        `SELECT artist, genre FROM library_songs WHERE id = ?`,
+      )
+      .get(id);
+    if (!song) return c.json({ error: 'Song not found' }, 404);
+    const result = await verifyGenre(lidarr, {
+      artist: song.artist,
+      currentGenre: song.genre,
+    });
+    return c.json(result);
+  });
+
+  // Apply a genre to a song (admin): writes the tag and updates library_songs +
+  // library_genres counts so search/grouping reflect it immediately.
+  app.post('/songs/:id/genre', async (c) => {
+    const user = c.get('user');
+    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+    const id = c.req.param('id');
+    const body = await c.req.json<{ genre?: string }>().catch(() => ({}) as { genre?: string });
+    const genre = (body.genre ?? '').trim();
+    if (!genre) return c.json({ error: 'genre is required' }, 400);
+
+    const db = getDatabase();
+    const song = db
+      .query<{ path: string; genre: string | null }, [string]>(
+        `SELECT path, genre FROM library_songs WHERE id = ?`,
+      )
+      .get(id);
+    if (!song) return c.json({ error: 'Song not found' }, 404);
+
+    if (musicDir) {
+      const abs = resolveSongPath(expandDir(musicDir), song.path);
+      if (isUnderMusicDir(expandDir(musicDir), abs) && existsSync(abs)) {
+        await writeAudioTags(abs, { genre }).catch(() => false);
+      }
+    }
+    db.run('UPDATE library_songs SET genre = ? WHERE id = ?', [genre, id]);
+    return c.json({ ok: true, genre });
   });
 
   app.get('/songs/:id/similar', async (c) => {
