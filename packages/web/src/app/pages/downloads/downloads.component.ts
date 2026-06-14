@@ -25,10 +25,11 @@ import { PreserveService } from '../../services/preserve.service';
 import type { AcquireJob } from '@nicotind/core';
 import {
   type AlbumGroup,
+  type DownloadItem,
   groupByAlbum,
-  albumGroupTitle,
-  albumGroupTotal,
+  buildDownloadFeed,
 } from '../../lib/download-groups';
+import { DownloadItemComponent } from '../../components/download-item/download-item.component';
 
 // ─── Types ──────────────────────────────────────────────────────────
 
@@ -91,25 +92,6 @@ function groupRecentSongsByDate(songs: Song[]): SongDateGroup[] {
     .map((label) => ({ label, songs: buckets[label] }));
 }
 
-/** Shorten a raw URL into a human-readable label (used when job.label is absent). */
-function shortenUrl(url: string): string {
-  try {
-    const u = new URL(url);
-    const path =
-      u.pathname.length > 1
-        ? u.pathname.substring(0, 40) + (u.pathname.length > 40 ? '…' : '')
-        : '';
-    return u.hostname + path;
-  } catch {
-    return url.substring(0, 50);
-  }
-}
-
-/** Display label for an acquire job. */
-function acquireLabel(job: AcquireJob): string {
-  return job.label ?? shortenUrl(job.url);
-}
-
 const ACQUIRE_STATE_ORDER: Record<AcquireJob['state'], number> = {
   running: 0,
   queued: 1,
@@ -125,7 +107,13 @@ function sortAcquireJobs(jobs: AcquireJob[]): AcquireJob[] {
 
 @Component({
   selector: 'app-downloads',
-  imports: [NgTemplateOutlet, FormsModule, ListToolbarComponent, ConfirmDialogComponent],
+  imports: [
+    NgTemplateOutlet,
+    FormsModule,
+    ListToolbarComponent,
+    ConfirmDialogComponent,
+    DownloadItemComponent,
+  ],
   templateUrl: './downloads.component.html',
 })
 export class DownloadsComponent implements OnInit, OnDestroy {
@@ -141,9 +129,6 @@ export class DownloadsComponent implements OnInit, OnDestroy {
   readonly formatDuration = formatDuration;
   readonly formatSize = formatSize;
   readonly timeAgo = timeAgo;
-  readonly albumGroupTitle = albumGroupTitle;
-  readonly albumGroupTotal = albumGroupTotal;
-  readonly acquireLabel = acquireLabel;
 
   readonly storagePercent = computed(() => {
     const used = this.preserve.totalUsage();
@@ -232,23 +217,29 @@ export class DownloadsComponent implements OnInit, OnDestroy {
 
   // Computed — slskd transfers
   readonly groups = computed(() => groupByAlbum(this.transferService.downloads()));
+  // Used by the completion effect to auto-switch tabs / refresh on completion.
   readonly inProgressGroups = computed(() =>
     this.groups().filter((g) => g.state === 'downloading' || g.state === 'queued'),
   );
-  readonly errorGroups = computed(() => this.groups().filter((g) => g.state === 'error'));
-  readonly doneGroups = computed(() => this.groups().filter((g) => g.state === 'done'));
-  readonly clearableGroups = computed(() => [...this.errorGroups(), ...this.doneGroups()]);
 
-  // Computed — acquire jobs
+  // Computed — acquire jobs (the finished buckets drive "Clear finished").
   readonly sortedAcquireJobs = computed(() => sortAcquireJobs(this.transferService.acquireJobs()));
-  readonly activeAcquireJobs = computed(() =>
-    this.sortedAcquireJobs().filter((j) => j.state === 'running' || j.state === 'queued'),
-  );
   readonly failedAcquireJobs = computed(() =>
     this.sortedAcquireJobs().filter((j) => j.state === 'failed'),
   );
   readonly doneAcquireJobs = computed(() =>
     this.sortedAcquireJobs().filter((j) => j.state === 'done'),
+  );
+
+  // Unified Active-tab feed: slskd groups + acquire jobs as one sorted list.
+  readonly downloadFeed = computed(() =>
+    buildDownloadFeed(this.groups(), this.transferService.acquireJobs()),
+  );
+  readonly activeFeedCount = computed(
+    () => this.downloadFeed().filter((i) => i.stage !== 'done' && i.stage !== 'error').length,
+  );
+  readonly clearableFeedCount = computed(
+    () => this.downloadFeed().filter((i) => i.stage === 'done' || i.stage === 'error').length,
   );
 
   readonly showDateGroups = computed(
@@ -510,6 +501,38 @@ export class DownloadsComponent implements OnInit, OnDestroy {
       );
       this.transferService.kickPoll();
     });
+  }
+
+  // ─── Unified feed dispatch (routes a DownloadItem action to its source) ───
+
+  onItemRetry(item: DownloadItem): void {
+    if (item.kind === 'slskd') {
+      const g = this.groups().find((x) => x.key === item.key);
+      if (g) void this.retryGroup(g);
+    } else {
+      const j = this.transferService.acquireJobs().find((x) => x.id === item.key);
+      if (j) void this.retryAcquireJob(j);
+    }
+  }
+
+  onItemCancel(item: DownloadItem): void {
+    if (item.kind === 'slskd') {
+      const g = this.groups().find((x) => x.key === item.key);
+      if (g) void this.clearGroup(g);
+    } else {
+      const j = this.transferService.acquireJobs().find((x) => x.id === item.key);
+      if (j) void this.dismissAcquireJob(j);
+    }
+  }
+
+  onItemRemove(item: DownloadItem): void {
+    if (item.kind === 'slskd') {
+      const g = this.groups().find((x) => x.key === item.key);
+      if (g) this.removeGroup(g);
+    } else {
+      const j = this.transferService.acquireJobs().find((x) => x.id === item.key);
+      if (j) void this.dismissAcquireJob(j);
+    }
   }
 
   // ─── Acquire job actions ─────────────────────────────────────────

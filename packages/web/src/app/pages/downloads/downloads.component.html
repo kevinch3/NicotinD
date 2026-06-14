@@ -28,8 +28,8 @@
           class="px-4 py-2 text-sm font-medium transition border-b-2 -mb-px"
           [class]="activeTab() === 'active' ? 'border-theme-accent text-theme-primary' : 'border-transparent text-theme-muted hover:text-theme-secondary'">
           Active
-          @if (inProgressGroups().length > 0 || activeAcquireJobs().length > 0) {
-            <span class="ml-1.5 text-xs text-blue-400">{{ inProgressGroups().length + activeAcquireJobs().length }}</span>
+          @if (activeFeedCount() > 0) {
+            <span class="ml-1.5 text-xs text-blue-400">{{ activeFeedCount() }}</span>
           }
         </button>
         <button (click)="activeTab.set('offline')"
@@ -50,211 +50,41 @@
         </button>
       </div>
 
-      <!-- Active Downloads -->
+      <!-- Active Downloads — unified feed (slskd + URL acquisitions) -->
       @if (activeTab() === 'active') {
-      @if (inProgressGroups().length > 0 || errorGroups().length > 0 || doneGroups().length > 0 || sortedAcquireJobs().length > 0) {
-        <!-- Acquire jobs section -->
-        @if (sortedAcquireJobs().length > 0) {
-          <section class="mb-6">
-            <div class="flex items-center justify-between mb-3">
-              <h2 class="text-xs font-semibold uppercase tracking-wider text-theme-muted">
-                URL Downloads
-                @if (activeAcquireJobs().length > 0) {
-                  <span class="ml-2 text-blue-400 normal-case font-normal">{{ activeAcquireJobs().length }} in progress</span>
-                }
-              </h2>
-              @if (failedAcquireJobs().length > 0 || doneAcquireJobs().length > 0) {
-                <button (click)="clearAllFinished()" class="text-xs text-theme-muted hover:text-theme-secondary transition">Clear finished</button>
-              }
-            </div>
-            <div class="grid gap-2">
-              <!-- Running / queued -->
-              @for (job of activeAcquireJobs(); track job.id) {
-                <div class="flex items-center gap-3 md:gap-4 px-3 md:px-4 py-3 rounded-lg bg-theme-surface/50 border border-theme min-w-0">
-                  <div class="flex-1 min-w-0">
-                    <p class="text-sm text-theme-primary truncate w-full">{{ acquireLabel(job) }}</p>
-                    <p class="text-xs text-theme-muted mt-0.5">{{ job.backend === 'spotdl' ? 'Spotify' : 'YouTube' }}</p>
-                  </div>
-                  <div class="w-20 md:w-32 flex-shrink-0">
-                    @if (job.state === 'running') {
-                      @if (job.progress && job.progress.total > 0) {
-                        <div class="space-y-1">
-                          <div class="h-1.5 bg-theme-surface-2 rounded-full overflow-hidden">
-                            <div class="h-full bg-blue-500 rounded-full transition-all duration-500"
-                              [style.width.%]="Math.round(job.progress.done / job.progress.total * 100)"></div>
-                          </div>
-                          <p class="text-xs text-blue-400 text-right">{{ job.progress.done }}/{{ job.progress.total }}</p>
-                        </div>
-                      } @else {
-                        <div class="h-1.5 bg-theme-surface-2 rounded-full overflow-hidden">
-                          <div class="h-full w-1/3 bg-blue-500 rounded-full animate-pulse"></div>
-                        </div>
-                      }
-                    } @else {
-                      <p class="text-xs text-right font-medium text-theme-muted">Queued</p>
-                    }
-                  </div>
-                  <button (click)="dismissAcquireJob(job)" class="p-1 text-theme-muted hover:text-red-400 transition flex-shrink-0" title="Cancel">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                    </svg>
-                  </button>
-                </div>
-              }
-              <!-- Failed -->
-              @for (job of failedAcquireJobs(); track job.id) {
-                <div class="flex items-center gap-3 md:gap-4 px-3 md:px-4 py-3 rounded-lg bg-theme-surface/30 border border-red-900/20 min-w-0">
-                  <div class="flex-1 min-w-0">
-                    <p class="text-sm text-theme-secondary truncate w-full">{{ acquireLabel(job) }}</p>
-                    @if (job.error) {
-                      <p class="text-xs text-red-400/70 mt-0.5 truncate w-full" [title]="job.error">{{ job.error.substring(0, 120) }}</p>
-                    }
-                  </div>
-                  <p class="text-xs text-red-400/70 font-medium flex-shrink-0">Error</p>
-                  <button (click)="retryAcquireJob(job)" [disabled]="retrying().has(job.id)"
-                    class="text-xs px-2 py-1 rounded-md bg-theme-surface-2 text-theme-secondary hover:text-theme-primary transition flex-shrink-0 disabled:opacity-50"
-                    title="Retry">
-                    {{ retrying().has(job.id) ? 'Retrying…' : 'Retry' }}
-                  </button>
-                  <button (click)="dismissAcquireJob(job)" class="p-1 text-theme-muted hover:text-red-400 transition flex-shrink-0" title="Dismiss">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                    </svg>
-                  </button>
-                </div>
-              }
-              <!-- Done -->
-              @for (job of doneAcquireJobs(); track job.id) {
-                <div class="flex items-center gap-3 md:gap-4 px-3 md:px-4 py-3 rounded-lg bg-theme-surface/40 border border-theme opacity-80 min-w-0">
-                  <div class="flex-1 min-w-0">
-                    <p class="text-sm text-theme-secondary truncate w-full">{{ acquireLabel(job) }}</p>
-                    <p class="text-xs text-theme-muted mt-0.5">{{ job.backend === 'spotdl' ? 'Spotify' : 'YouTube' }} · {{ timeAgo(job.created_at * 1000) }}</p>
-                  </div>
-                  <p class="text-xs text-emerald-400/70 font-medium flex-shrink-0">In Library</p>
-                  <button (click)="dismissAcquireJob(job)" class="p-1 text-theme-muted hover:text-red-400 transition flex-shrink-0" title="Dismiss">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                    </svg>
-                  </button>
-                </div>
-              }
-            </div>
-          </section>
-        }
-
-        <!-- Soulseek transfers section -->
-        @if (inProgressGroups().length > 0 || errorGroups().length > 0 || doneGroups().length > 0) {
+        @if (downloadFeed().length > 0) {
           <section class="mb-8">
             <div class="flex items-center justify-between mb-3">
               <h2 class="text-xs font-semibold uppercase tracking-wider text-theme-muted">
-                Soulseek
-                @if (inProgressGroups().length > 0) {
-                  <span class="ml-2 text-blue-400 normal-case font-normal">
-                    {{ inProgressGroups().length }} in progress
-                  </span>
+                Downloads
+                @if (activeFeedCount() > 0) {
+                  <span class="ml-2 text-blue-400 normal-case font-normal">{{ activeFeedCount() }} in progress</span>
                 }
               </h2>
               <div class="flex items-center gap-3">
-                @if (inProgressGroups().length > 0) {
+                @if (activeFeedCount() > 0) {
                   <button (click)="cancelAll()" class="text-xs text-red-500/70 hover:text-red-400 transition">Cancel all</button>
                 }
-                @if (clearableGroups().length > 0) {
-                  <button (click)="clearAllFinished()" class="text-xs text-theme-muted hover:text-theme-secondary transition">Clear all finished</button>
+                @if (clearableFeedCount() > 0) {
+                  <button (click)="clearAllFinished()" class="text-xs text-theme-muted hover:text-theme-secondary transition">Clear finished</button>
                 }
               </div>
             </div>
             <div class="grid gap-2">
-              <!-- In progress -->
-              @for (group of inProgressGroups(); track group.key) {
-                <div class="flex items-center gap-3 md:gap-4 px-3 md:px-4 py-3 rounded-lg bg-theme-surface/50 border border-theme min-w-0">
-                  <div class="flex-1 min-w-0">
-                    <p class="text-sm text-theme-primary truncate w-full">{{ albumGroupTitle(group) }}</p>
-                    @if (group.artistName) {
-                      <p class="text-xs text-theme-secondary truncate w-full">{{ group.artistName }}</p>
-                    }
-                    <p class="text-xs text-theme-muted mt-0.5 truncate w-full">{{ group.completedFiles }} of {{ albumGroupTotal(group) }} tracks</p>
-                  </div>
-                  <div class="w-20 md:w-32 flex-shrink-0">
-                    @if (group.state === 'downloading') {
-                      <div class="space-y-1">
-                        <div class="h-1.5 bg-theme-surface-2 rounded-full overflow-hidden">
-                          <div class="h-full bg-blue-500 rounded-full transition-all duration-500" [style.width.%]="group.overallPercent"></div>
-                        </div>
-                        <p class="text-xs text-blue-400 text-right">{{ group.overallPercent }}%</p>
-                      </div>
-                    } @else {
-                      <p class="text-xs text-right font-medium text-theme-muted">Queued</p>
-                    }
-                  </div>
-                  <button (click)="removeGroup(group)" class="p-1 text-theme-muted hover:text-red-400 transition flex-shrink-0" title="Remove album">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
-                    </svg>
-                  </button>
-                  <button (click)="clearGroup(group)" class="text-xs text-theme-muted hover:text-theme-secondary transition flex-shrink-0" title="Cancel">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                    </svg>
-                  </button>
-                </div>
-              }
-              <!-- Errored -->
-              @for (group of errorGroups(); track group.key) {
-                <div class="flex items-center gap-3 md:gap-4 px-3 md:px-4 py-3 rounded-lg bg-theme-surface/30 border border-red-900/20 min-w-0">
-                  <div class="flex-1 min-w-0">
-                    <p class="text-sm text-theme-secondary truncate w-full">{{ albumGroupTitle(group) }}</p>
-                    @if (group.artistName) {
-                      <p class="text-xs text-theme-muted truncate w-full">{{ group.artistName }}</p>
-                    }
-                    <p class="text-xs text-theme-muted mt-0.5 truncate w-full">{{ group.completedFiles }} of {{ albumGroupTotal(group) }} tracks</p>
-                  </div>
-                  <p class="text-xs text-red-400/70 font-medium flex-shrink-0">Error</p>
-                  <button (click)="retryGroup(group)" [disabled]="retrying().has(group.key)"
-                          class="text-xs px-2 py-1 rounded-md bg-theme-surface-2 text-theme-secondary hover:text-theme-primary transition flex-shrink-0 disabled:opacity-50"
-                          title="Retry failed tracks">
-                    {{ retrying().has(group.key) ? 'Retrying…' : 'Retry' }}
-                  </button>
-                  <button (click)="removeGroup(group)" class="p-1 text-theme-muted hover:text-red-400 transition flex-shrink-0" title="Remove album">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
-                    </svg>
-                  </button>
-                  <button (click)="clearGroup(group)" class="text-xs text-theme-muted hover:text-theme-secondary transition flex-shrink-0" title="Dismiss">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                    </svg>
-                  </button>
-                </div>
-              }
-              <!-- Done -->
-              @for (group of doneGroups(); track group.key) {
-                <div class="flex items-center gap-3 md:gap-4 px-3 md:px-4 py-3 rounded-lg bg-theme-surface/40 border border-theme opacity-80 min-w-0">
-                  <div class="flex-1 min-w-0">
-                    <p class="text-sm text-theme-secondary truncate w-full">{{ albumGroupTitle(group) }}</p>
-                    @if (group.artistName) {
-                      <p class="text-xs text-theme-muted truncate w-full">{{ group.artistName }}</p>
-                    }
-                    <p class="text-xs text-theme-muted mt-0.5 truncate w-full">{{ group.totalFiles }} tracks</p>
-                  </div>
-                  <p class="text-xs text-emerald-400/70 font-medium flex-shrink-0">Done</p>
-                  <button (click)="removeGroup(group)" class="p-1 text-theme-muted hover:text-red-400 transition flex-shrink-0" title="Remove album">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
-                    </svg>
-                  </button>
-                  <button (click)="clearGroup(group)" class="text-xs text-theme-muted hover:text-theme-secondary transition flex-shrink-0" title="Dismiss">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                    </svg>
-                  </button>
-                </div>
+              @for (item of downloadFeed(); track item.key) {
+                <app-download-item
+                  [item]="item"
+                  [retrying]="retrying().has(item.key)"
+                  (retry)="onItemRetry(item)"
+                  (cancel)="onItemCancel(item)"
+                  (remove)="onItemRemove(item)"
+                />
               }
             </div>
           </section>
+        } @else {
+          <p class="text-center text-theme-muted text-sm py-20">No active downloads.</p>
         }
-      } @else {
-        <p class="text-center text-theme-muted text-sm py-20">No active downloads.</p>
-      }
       } <!-- end activeTab === 'active' -->
 
       <!-- Saved Offline tab -->
