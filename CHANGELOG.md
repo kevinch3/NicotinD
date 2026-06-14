@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.73](https://github.com/kevinch3/NicotinD/compare/v0.1.72...v0.1.73) (2026-06-14)
+
+
+### Features
+
+* **acquisition:** track per-file provenance + pipeline stages, surface on tracks ([62a313c](https://github.com/kevinch3/NicotinD/commit/62a313c93cf5c71948d3813cf134d5917c4a62ed))
+
 ## [0.1.72](https://github.com/kevinch3/NicotinD/compare/v0.1.71...v0.1.72) (2026-06-14)
 
 
