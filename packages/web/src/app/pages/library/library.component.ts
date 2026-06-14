@@ -20,6 +20,7 @@ import { ListControlsService, type SortOption } from '../../services/list-contro
 import { ListToolbarComponent } from '../../components/list-toolbar/list-toolbar.component';
 import { CoverArtComponent } from '../../components/cover-art/cover-art.component';
 import { resolveAlbumRoute, resolveGenreRoute, resolveArtistRoute } from '../../lib/route-utils';
+import { appendUnique } from '../../lib/append-unique';
 
 type LibraryMode = 'albums' | 'singles' | 'artists' | 'genre' | 'playlists';
 
@@ -331,7 +332,7 @@ export class LibraryComponent implements OnInit, OnDestroy {
       if (page.length === 0) {
         this.done.set(true);
       } else {
-        this.albums.update((existing) => [...existing, ...page]);
+        this.albums.update((existing) => appendUnique(existing, page));
         this.offset += page.length;
         if (page.length < PAGE_SIZE) this.done.set(true);
       }
@@ -375,7 +376,7 @@ export class LibraryComponent implements OnInit, OnDestroy {
           this.done.set(true);
           break;
         }
-        this.albums.update((existing) => [...existing, ...page]);
+        this.albums.update((existing) => appendUnique(existing, page));
         this.offset += page.length;
         if (page.length < fetchSize) this.done.set(true);
       }

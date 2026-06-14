@@ -351,6 +351,52 @@ describe('downloading album suppression', () => {
     const body = (await res.json()) as Array<{ id: string }>;
     expect(body.some((a) => a.id === 'album-4')).toBe(true);
   });
+
+  // Regression: the exclusion used to run *after* SQL LIMIT/OFFSET, shrinking a
+  // page below its requested size. A paginating client advancing its offset by
+  // the (short) returned length then re-fetched already-shown rows, rendering
+  // the same album 2-3x. Excluding in SQL keeps each page full-size so paging
+  // never overlaps. Here a downloading album sits mid-list while we page by 2.
+  it('paginates without duplicates or premature truncation while a job is active', async () => {
+    // 6 album-classified releases, alphabetical ids album-a..album-f.
+    for (const [id, name] of [
+      ['album-a', 'Aaa'],
+      ['album-b', 'Bbb'],
+      ['album-c', 'Ccc'],
+      ['album-d', 'Ddd'],
+      ['album-e', 'Eee'],
+      ['album-f', 'Fff'],
+    ] as const) {
+      seedAlbumRecord(id, name, 'Artist');
+    }
+    // 'Ccc' is mid-list and actively downloading -> excluded everywhere.
+    seedActiveJob('Artist', 'Ccc');
+
+    const testApp = new Hono<AuthEnv>();
+    testApp.use('*', (c, next) => {
+      c.set('user', { sub: 'u', role: 'user', iat: 0, exp: 9999999999 });
+      return next();
+    });
+    testApp.route('/', libraryRoutes());
+
+    // Page through with size=2 (mirrors the client's offset accumulation).
+    const seen: string[] = [];
+    let offset = 0;
+    for (let guard = 0; guard < 20; guard++) {
+      const res = await testApp.request(`/albums?type=alphabeticalByName&size=2&offset=${offset}`);
+      expect(res.status).toBe(200);
+      const page = (await res.json()) as Array<{ id: string }>;
+      if (page.length === 0) break;
+      seen.push(...page.map((a) => a.id));
+      offset += page.length;
+      if (page.length < 2) break;
+    }
+
+    // No duplicates across pages.
+    expect(new Set(seen).size).toBe(seen.length);
+    // The downloading album is absent; every other album shows exactly once.
+    expect(seen.sort()).toEqual(['album-a', 'album-b', 'album-d', 'album-e', 'album-f']);
+  });
 });
 
 describe('album deletion', () => {

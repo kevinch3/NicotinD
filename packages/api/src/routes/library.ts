@@ -40,6 +40,32 @@ function getDownloadingGroupKeys(db: Database): Set<string> {
   );
 }
 
+/**
+ * Returns a SQL WHERE fragment (+ params) excluding actively-downloading albums
+ * by id. This must be applied *inside* the query — pushing the exclusion down to
+ * SQL keeps LIMIT/OFFSET pagination honest. Filtering post-LIMIT (the old way)
+ * shrank each page below its requested size, so paginating callers re-fetched
+ * already-shown rows and rendered duplicates.
+ *
+ * Fast path: no active downloads → empty fragment, no extra query, no change.
+ */
+function downloadingExclusion(db: Database): { sql: string; params: string[] } {
+  const keys = getDownloadingGroupKeys(db);
+  if (keys.size === 0) return { sql: '', params: [] };
+  const all = db
+    .query<{ id: string; artist: string; name: string }, []>(
+      `SELECT id, artist, name FROM library_albums`,
+    )
+    .all();
+  const excluded = all
+    .filter((r) =>
+      keys.has(`${normalizeArtistForGrouping(r.artist)} ${normalizeForGrouping(r.name)}`),
+    )
+    .map((r) => r.id);
+  if (excluded.length === 0) return { sql: '', params: [] };
+  return { sql: `id NOT IN (${excluded.map(() => '?').join(',')})`, params: excluded };
+}
+
 const AUDIO_EXTENSIONS = new Set([
   '.mp3',
   '.flac',
@@ -259,21 +285,17 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     const offset = Math.max(Number(c.req.query('offset') ?? 0), 0);
     const order = albumOrderBy(type);
     const db = getDatabase();
+    // Exclude actively-downloading albums in SQL (pre-LIMIT) to keep pagination
+    // correct — see downloadingExclusion().
+    const excl = downloadingExclusion(db);
+    const exclClause = excl.sql ? `AND ${excl.sql}` : '';
     const rows = db
-      .query<AlbumRow, [number, number]>(
-        `${ALBUM_SELECT} WHERE hidden = 0 AND ${SINGLE_EP_CLASSIFICATION_SQL}
+      .query<AlbumRow, (string | number)[]>(
+        `${ALBUM_SELECT} WHERE hidden = 0 AND ${SINGLE_EP_CLASSIFICATION_SQL} ${exclClause}
          ORDER BY ${order} LIMIT ? OFFSET ?`,
       )
-      .all(size, offset);
-    const downloadingKeys = getDownloadingGroupKeys(db);
-    const singles = rows
-      .filter(
-        (r) =>
-          !downloadingKeys.has(
-            `${normalizeArtistForGrouping(r.artist)} ${normalizeForGrouping(r.name)}`,
-          ),
-      )
-      .map(rowToAlbum);
+      .all(...excl.params, size, offset);
+    const singles = rows.map(rowToAlbum);
     return c.json(singles);
   });
 
@@ -284,6 +306,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     const includeHidden = c.req.query('includeHidden') === 'true';
     const classification = c.req.query('classification');
 
+    const db = getDatabase();
     const wheres: string[] = [];
     const params: Array<string | number> = [];
     if (!includeHidden) wheres.push('hidden = 0');
@@ -296,26 +319,24 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       // /singles view).
       wheres.push(GRID_CLASSIFICATION_SQL);
     }
+    // Exclude actively-downloading albums in SQL (not post-LIMIT) so pagination
+    // stays correct — see downloadingExclusion().
+    const excl = downloadingExclusion(db);
+    if (excl.sql) {
+      wheres.push(excl.sql);
+      params.push(...excl.params);
+    }
 
     const whereClause = wheres.length > 0 ? `WHERE ${wheres.join(' AND ')}` : '';
     const order = albumOrderBy(type);
 
-    const db = getDatabase();
     const rows = db
       .query<
         AlbumRow,
         (string | number)[]
       >(`${ALBUM_SELECT} ${whereClause} ORDER BY ${order} LIMIT ? OFFSET ?`)
       .all(...params, size, offset);
-    const downloadingKeys = getDownloadingGroupKeys(db);
-    const albums = rows
-      .filter(
-        (r) =>
-          !downloadingKeys.has(
-            `${normalizeArtistForGrouping(r.artist)} ${normalizeForGrouping(r.name)}`,
-          ),
-      )
-      .map(rowToAlbum);
+    const albums = rows.map(rowToAlbum);
     return c.json(albums);
   });
 
