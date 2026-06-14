@@ -18,63 +18,76 @@
 
   <!-- ═══ ALBUMS MODE ═══ -->
   @if (libraryMode() === 'albums') {
-    <!-- Album list-type chips -->
+    <!-- Consolidated controls: search · sort · filters (one row).
+         Sort is the *server* ordering (drives the fetch + pagination); the old
+         client-side toolbar sort was dropped because it silently re-sorted each
+         loaded page and fought the chosen ordering. Starred / Min-tracks /
+         Hidden moved into a single Filters disclosure with an active count. -->
     <div class="flex flex-wrap items-center gap-2 mb-4">
-      @for (opt of albumTypeOptions; track opt.value) {
-        <button
-          type="button"
-          class="px-3 py-1 text-xs rounded-full transition-colors border"
-          [class.bg-theme-surface]="albumListType() === opt.value"
-          [class.border-theme]="albumListType() === opt.value"
-          [class.text-theme-primary]="albumListType() === opt.value"
-          [class.border-transparent]="albumListType() !== opt.value"
-          [class.text-theme-muted]="albumListType() !== opt.value"
-          [class.hover:text-theme-secondary]="albumListType() !== opt.value"
-          (click)="setAlbumListType(opt.value)">
-          {{ opt.label }}
-        </button>
-      }
-      @if (auth.role() === 'admin') {
-        <button
-          type="button"
-          class="ml-auto px-3 py-1 text-xs rounded-full transition-colors border"
-          [class.bg-theme-surface]="showHidden()"
-          [class.border-theme]="showHidden()"
-          [class.text-theme-primary]="showHidden()"
-          [class.border-transparent]="!showHidden()"
-          [class.text-theme-muted]="!showHidden()"
-          (click)="toggleShowHidden()"
-          title="Toggle hidden albums (admin)">
-          {{ showHidden() ? 'Hiding off' : 'Show hidden' }}
-        </button>
-      }
-    </div>
+      <div class="relative flex-1 min-w-[12rem]">
+        <svg class="absolute left-2.5 top-1/2 -translate-y-1/2 text-theme-muted pointer-events-none"
+          width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" />
+        </svg>
+        <input type="search" data-testid="library-search"
+          [value]="gridControls.searchText()"
+          (input)="gridControls.setSearchText($any($event.target).value)"
+          placeholder="Filter loaded albums…" aria-label="Filter albums"
+          class="w-full pl-9 pr-3 py-1.5 text-sm rounded-lg bg-theme-surface-2 text-theme-primary placeholder:text-theme-muted focus:outline-none focus:ring-1 focus:ring-[var(--theme-accent)]" />
+      </div>
 
-    <!-- Album grid -->
-    <app-list-toolbar
-      [searchText]="gridControls.searchText()"
-      [sortField]="gridControls.sortField()"
-      [sortDirection]="gridControls.sortDirection()"
-      [sortOptions]="gridSortOptions"
-      [resultCount]="filteredAlbums().length"
-      (searchChange)="gridControls.setSearchText($event)"
-      (sortFieldChange)="gridControls.setSortField($event)"
-      (toggleDirection)="gridControls.toggleSortDirection()"
-    />
+      <label class="sr-only" for="album-sort">Sort albums</label>
+      <select id="album-sort" data-testid="library-sort"
+        [value]="albumSort()"
+        (change)="setAlbumSort($any($event.target).value)"
+        class="px-3 py-1.5 text-sm rounded-lg bg-theme-surface-2 text-theme-primary focus:outline-none focus:ring-1 focus:ring-[var(--theme-accent)]">
+        @for (opt of albumSortOptions; track opt.value) {
+          <option [value]="opt.value">{{ opt.label }}</option>
+        }
+      </select>
 
-    <div class="flex flex-wrap items-center gap-2 mb-4">
-      @for (opt of trackCountOptions; track opt.label) {
-        <button type="button"
-          class="px-3 py-1 text-xs rounded-full transition-colors border"
-          [class.bg-theme-surface]="minSongCount() === opt.value"
-          [class.border-theme]="minSongCount() === opt.value"
-          [class.text-theme-primary]="minSongCount() === opt.value"
-          [class.border-transparent]="minSongCount() !== opt.value"
-          [class.text-theme-muted]="minSongCount() !== opt.value"
-          (click)="setMinSongCount(opt.value)">
-          {{ opt.label }}
-        </button>
-      }
+      <details class="relative group">
+        <summary data-testid="library-filters"
+          class="list-none cursor-pointer select-none px-3 py-1.5 text-sm rounded-lg bg-theme-surface-2 text-theme-primary hover:bg-theme-hover transition flex items-center gap-1.5">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="4" x2="4" y1="21" y2="14" /><line x1="4" x2="4" y1="10" y2="3" />
+            <line x1="12" x2="12" y1="21" y2="12" /><line x1="12" x2="12" y1="8" y2="3" />
+            <line x1="20" x2="20" y1="21" y2="16" /><line x1="20" x2="20" y1="12" y2="3" />
+            <line x1="2" x2="6" y1="14" y2="14" /><line x1="10" x2="14" y1="8" y2="8" /><line x1="18" x2="22" y1="16" y2="16" />
+          </svg>
+          Filters
+          @if (activeFilterCount() > 0) {
+            <span data-testid="library-filter-count" class="px-1.5 rounded-full bg-[var(--theme-accent)] text-white text-xs leading-5">{{ activeFilterCount() }}</span>
+          }
+        </summary>
+        <div class="absolute right-0 mt-2 z-20 w-60 p-3 rounded-lg bg-theme-surface border border-theme shadow-xl flex flex-col gap-3">
+          <label class="flex items-center justify-between gap-3 text-sm text-theme-secondary cursor-pointer">
+            <span>Starred only</span>
+            <input type="checkbox" data-testid="library-filter-starred"
+              [checked]="starredOnly()" (change)="toggleStarredOnly()" />
+          </label>
+          <label class="flex items-center justify-between gap-3 text-sm text-theme-secondary">
+            <span>Min tracks</span>
+            <select data-testid="library-filter-mintracks"
+              [value]="minSongCount() ?? ''"
+              (change)="setMinTracksFromSelect($any($event.target).value)"
+              class="px-2 py-1 rounded bg-theme-surface-2 text-theme-primary text-sm focus:outline-none">
+              @for (opt of trackCountOptions; track opt.label) {
+                <option [value]="opt.value ?? ''">{{ opt.label }}</option>
+              }
+            </select>
+          </label>
+          @if (auth.role() === 'admin') {
+            <label class="flex items-center justify-between gap-3 text-sm text-theme-secondary cursor-pointer">
+              <span>Show hidden</span>
+              <input type="checkbox" data-testid="library-filter-hidden"
+                [checked]="showHidden()" (change)="toggleShowHidden()" />
+            </label>
+          }
+        </div>
+      </details>
+
+      <span class="text-xs text-theme-muted ml-auto sm:ml-1">{{ filteredAlbums().length }}</span>
     </div>
 
     @if (loading()) {

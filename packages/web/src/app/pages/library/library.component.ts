@@ -21,25 +21,18 @@ import { ListToolbarComponent } from '../../components/list-toolbar/list-toolbar
 import { CoverArtComponent } from '../../components/cover-art/cover-art.component';
 import { resolveAlbumRoute, resolveGenreRoute, resolveArtistRoute } from '../../lib/route-utils';
 import { appendUnique } from '../../lib/append-unique';
+import {
+  type AlbumListType,
+  ALBUM_LIST_TYPES,
+  effectiveAlbumListType,
+  splitAlbumListType,
+  parseMinTracks,
+  activeFilterCount,
+} from '../../lib/library-filters';
+
+export type { AlbumListType };
 
 type LibraryMode = 'albums' | 'singles' | 'artists' | 'genre' | 'playlists';
-
-export type AlbumListType =
-  | 'newest'
-  | 'frequent'
-  | 'recent'
-  | 'starred'
-  | 'alphabeticalByName'
-  | 'random';
-
-const ALBUM_LIST_TYPES: AlbumListType[] = [
-  'newest',
-  'frequent',
-  'recent',
-  'starred',
-  'alphabeticalByName',
-  'random',
-];
 
 interface AlbumTypeOption {
   value: AlbumListType;
@@ -129,8 +122,13 @@ export class LibraryComponent implements OnInit, OnDestroy {
   }
 
   // ─── Albums (lazy-loaded) ─────────────────────────────────────────
-  readonly albumTypeOptions = ALBUM_TYPE_OPTIONS;
+  // Sort options exclude 'starred' — starred is a *filter* (a checkbox in the
+  // Filters disclosure), not an ordering, even though the server models both as
+  // one `type` enum. `albumListType` is the effective value sent to the API.
+  readonly albumSortOptions = ALBUM_TYPE_OPTIONS.filter((o) => o.value !== 'starred');
 
+  readonly albumSort = signal<AlbumListType>('newest');
+  readonly starredOnly = signal(false);
   readonly albumListType = signal<AlbumListType>('newest');
   readonly albums = signal<Album[]>([]);
   readonly loading = signal(true);
@@ -151,11 +149,13 @@ export class LibraryComponent implements OnInit, OnDestroy {
     { field: 'year', label: 'Year' },
   ];
 
+  // Search-only (empty sortOptions): the grid must preserve the *server* order
+  // from `albumListType`; a client sort would override Most Played / Newest /…
   readonly gridControls = this.listControls.connect({
     pageKey: 'library',
     items: this.albums,
     searchFields: ['name', 'artist'] as const,
-    sortOptions: this.gridSortOptions,
+    sortOptions: [],
   });
 
   readonly trackCountOptions: Array<{ label: string; value: number | null }> = [
@@ -180,8 +180,22 @@ export class LibraryComponent implements OnInit, OnDestroy {
     return this.gridControls.filtered().filter((a) => (a.songCount ?? 0) >= min);
   });
 
+  // Number of active filters shown as a badge on the Filters disclosure.
+  readonly activeFilterCount = computed(() =>
+    activeFilterCount({
+      starredOnly: this.starredOnly(),
+      minTracks: this.minSongCount(),
+      showHidden: this.showHidden(),
+    }),
+  );
+
   setMinSongCount(n: number | null): void {
     this.minSongCount.set(n);
+  }
+
+  /** `<select>` emits strings; '' is the "All" (no-minimum) option. */
+  setMinTracksFromSelect(value: string): void {
+    this.minSongCount.set(parseMinTracks(value));
   }
 
   // ─── Singles & EPs ────────────────────────────────────────────────
@@ -240,6 +254,10 @@ export class LibraryComponent implements OnInit, OnDestroy {
   async ngOnInit(): Promise<void> {
     const initialType = this.resolveInitialType();
     this.albumListType.set(initialType);
+    // Map the effective server type back onto the split sort/starred controls.
+    const split = splitAlbumListType(initialType);
+    this.albumSort.set(split.sort);
+    this.starredOnly.set(split.starredOnly);
 
     // Clear any pending dirty state on load to avoid unnecessary fetches
     this.transferService.clearLibraryDirty();
@@ -280,8 +298,10 @@ export class LibraryComponent implements OnInit, OnDestroy {
   }
 
   // ─── Albums fetcher ──────────────────────────────────────────────
-  async setAlbumListType(type: AlbumListType): Promise<void> {
-    if (this.albumListType() === type) return;
+  // The effective server `type` = the Starred filter (if on) else the chosen
+  // ordering. Both refetch from page 0 since ordering/filtering is server-side.
+  private async applyAlbumOrdering(): Promise<void> {
+    const type = effectiveAlbumListType(this.albumSort(), this.starredOnly());
     this.albumListType.set(type);
     void this.router.navigate([], {
       relativeTo: this.route,
@@ -289,6 +309,17 @@ export class LibraryComponent implements OnInit, OnDestroy {
       queryParamsHandling: 'merge',
     });
     await this.resetAndLoad();
+  }
+
+  async setAlbumSort(value: AlbumListType): Promise<void> {
+    if (this.albumSort() === value) return;
+    this.albumSort.set(value);
+    if (!this.starredOnly()) await this.applyAlbumOrdering();
+  }
+
+  async toggleStarredOnly(): Promise<void> {
+    this.starredOnly.update((v) => !v);
+    await this.applyAlbumOrdering();
   }
 
   toggleShowHidden(): void {
