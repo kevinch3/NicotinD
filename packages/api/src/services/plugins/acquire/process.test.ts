@@ -7,6 +7,7 @@ import {
   runAcquireProcess,
   parseYtdlpProgress,
   parseYtdlpPlaylistTitle,
+  parseSpotdlProgress,
   collectAudioPaths,
   type RunAcquireOptions,
 } from './process.js';
@@ -75,6 +76,57 @@ describe('parseYtdlpPlaylistTitle', () => {
     expect(parseYtdlpPlaylistTitle('[download]  45.2% of 5MiB')).toBeNull();
     expect(parseYtdlpPlaylistTitle('[download] Downloading item 1 of 10')).toBeNull();
     expect(parseYtdlpPlaylistTitle('')).toBeNull();
+  });
+});
+
+describe('parseSpotdlProgress', () => {
+  const start = { done: 0, total: 100 };
+
+  it('sets total from "Found N songs in playlist" line', () => {
+    expect(parseSpotdlProgress('Found 42 songs in playlist: My Mix', start)).toEqual({
+      done: 0,
+      total: 42,
+    });
+  });
+
+  it('sets total from "Downloading N songs to" line', () => {
+    expect(parseSpotdlProgress('Downloading 10 songs to /staging', start)).toEqual({
+      done: 0,
+      total: 10,
+    });
+  });
+
+  it('increments done for Downloaded lines', () => {
+    expect(parseSpotdlProgress('Downloaded "Song Name"', { done: 2, total: 10 })).toEqual({
+      done: 3,
+      total: 10,
+    });
+  });
+
+  it('increments done for Skipping lines', () => {
+    expect(parseSpotdlProgress('Skipping "Existing Song"', { done: 1, total: 10 })).toEqual({
+      done: 2,
+      total: 10,
+    });
+  });
+
+  it('is case-insensitive for Found/Downloaded/Skipping', () => {
+    expect(parseSpotdlProgress('found 5 songs in playlist', start)).toEqual({ done: 0, total: 5 });
+    expect(parseSpotdlProgress('downloaded "x"', { done: 0, total: 5 })).toEqual({
+      done: 1,
+      total: 5,
+    });
+  });
+
+  it('ignores zero-count Found lines', () => {
+    expect(parseSpotdlProgress('Found 0 songs', start)).toEqual(start);
+  });
+
+  it('keeps current on unrecognized lines', () => {
+    expect(parseSpotdlProgress('INFO: something else', { done: 3, total: 10 })).toEqual({
+      done: 3,
+      total: 10,
+    });
   });
 });
 

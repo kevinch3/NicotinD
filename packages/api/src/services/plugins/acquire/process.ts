@@ -62,6 +62,23 @@ export function parseYtdlpProgress(line: string, current: AcquireProgress): Acqu
 }
 
 /**
+ * Parse spotdl plain-log output (non-TTY mode) into a song-count progress.
+ * spotdl emits "Found N songs in playlist" for the total, then
+ * `Downloaded "Title"` / `Skipping "Title"` per song.
+ */
+export function parseSpotdlProgress(line: string, current: AcquireProgress): AcquireProgress {
+  const totalMatch = /\bFound (\d+) songs?\b/i.exec(line) ?? /\bDownloading (\d+) songs? to\b/i.exec(line);
+  if (totalMatch) {
+    const total = parseInt(totalMatch[1]!, 10);
+    if (total > 0) return { done: current.done, total };
+  }
+  if (/Downloaded "|Skipping "/i.test(line)) {
+    return { done: current.done + 1, total: current.total };
+  }
+  return current;
+}
+
+/**
  * Extract a playlist title from a yt-dlp output line, if present.
  * yt-dlp emits: `[download] Downloading playlist: My Playlist Title`
  */

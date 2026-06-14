@@ -1,7 +1,7 @@
 import type { spawn as nodeSpawn } from 'node:child_process';
 import { join } from 'node:path';
 import type { Plugin, PluginManifest, PluginHostContext, ResolveCapability } from '@nicotind/core';
-import { isBinaryAvailable, runAcquireProcess, type RunningAcquire } from '../acquire/process.js';
+import { isBinaryAvailable, runAcquireProcess, parseSpotdlProgress, type RunningAcquire } from '../acquire/process.js';
 
 export interface SpotdlPluginConfig {
   enabled: boolean;
@@ -64,6 +64,7 @@ export class SpotdlPlugin implements Plugin {
         join(stagingDir, '{artist}', '{album}', '{title}.{output-ext}'),
       ],
       stagingDir,
+      parseProgress: parseSpotdlProgress,
       onProgress: (p) => this.ctx!.emitProgress(jobId, p),
       spawn: this.spawn,
     });

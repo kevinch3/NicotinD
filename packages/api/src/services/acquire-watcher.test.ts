@@ -196,6 +196,53 @@ describe('AcquireWatcher (registry-driven)', () => {
     expect(h.organize).not.toHaveBeenCalled();
   });
 
+  it('marks job failed and stage error when organizeBatch rejects', async () => {
+    const plugin = fakePlugin();
+    const { watcher, registry } = makeHarness(plugin);
+    const failOrganize = mock(async () => {
+      throw new Error('disk full');
+    });
+    const scan = mock(async () => {});
+    const w = new AcquireWatcher({
+      db: h.db,
+      dataDir: DATA_DIR,
+      registry,
+      organizeBatch: failOrganize,
+      scanIncremental: scan,
+    });
+    await registry.enable('fake', 'admin');
+    const id = await w.submit('https://example.com/x');
+    await waitForState(w, id, 'failed');
+    const job = w.getJob(id)!;
+    expect(job.stage).toBe('error');
+    expect(job.error).toContain('disk full');
+    expect(scan).not.toHaveBeenCalled();
+  });
+
+  it('only reaches state done after the full ingest pipeline completes', async () => {
+    let resolveOrganize!: () => void;
+    const organize = mock(
+      (files: CompletedDownloadFile[]) =>
+        new Promise<void>((resolve) => {
+          for (const f of files) f.relativePath = 'Artist/Album/track.mp3';
+          resolveOrganize = resolve;
+        }),
+    );
+    const scan = mock(async () => {});
+    const db = new Database(':memory:');
+    applySchema(db);
+    const registry = new PluginRegistry({ db, dataDir: DATA_DIR });
+    registry.register(fakePlugin());
+    await registry.enable('fake', 'admin');
+    const watcher = new AcquireWatcher({ db, dataDir: DATA_DIR, registry, organizeBatch: organize, scanIncremental: scan });
+    const id = await watcher.submit('https://example.com/x');
+    // While organize is blocked, state must still be 'running'.
+    await new Promise((r) => setTimeout(r, 20));
+    expect(watcher.getJob(id)?.state).toBe('running');
+    resolveOrganize();
+    await waitForState(watcher, id, 'done');
+  });
+
   it('deleteJob removes done/failed jobs but not running ones', () => {
     h.db.run(
       `INSERT INTO acquire_jobs (id, backend, url, state) VALUES ('d', 'fake', 'u', 'done')`,

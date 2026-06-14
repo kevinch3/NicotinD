@@ -121,7 +121,8 @@ export class AcquireWatcher {
         this.setStage(id, 'error');
         return;
       }
-      this.updateState(id, 'done');
+      // Keep state='running' through ingest — only mark done once the full
+      // pipeline (organize → scan → enrich) completes.
       await this.ingest(id, plugin.manifest.id, url, paths);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -184,8 +185,12 @@ export class AcquireWatcher {
         if (this.options.enrichSingles) await this.options.enrichSingles(relPaths);
       }
       this.setStage(id, 'done');
+      this.updateState(id, 'done');
     } catch (err) {
-      log.error({ id, err }, 'Organize/scan after acquire failed');
+      const msg = err instanceof Error ? err.message : String(err);
+      log.error({ id, err: msg }, 'Organize/scan after acquire failed');
+      this.setStage(id, 'error');
+      this.updateState(id, 'failed', msg);
     }
   }
 
