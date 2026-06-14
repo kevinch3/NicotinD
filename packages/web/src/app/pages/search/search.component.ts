@@ -29,6 +29,7 @@ import { AlbumHuntModalComponent } from '../../components/album-hunt-modal/album
 import { TrackRowComponent } from '../../components/track-row/track-row.component';
 import { toTrack, addToPlaylistAction } from '../../lib/track-utils';
 import { extractSharedUrl } from '../../lib/share-url';
+import { httpErrorMessage } from '../../lib/http-error';
 
 /** Lighter song shape returned by the unified search's local results. */
 interface LibrarySong {
@@ -419,7 +420,10 @@ export class SearchComponent implements OnInit, OnDestroy {
         tracks: [],
       });
     } catch (err) {
-      this.resolveError.set(err instanceof Error ? err.message : 'Failed to prepare album');
+      // Surface the server's reason (e.g. "isn't in …'s Lidarr discography yet",
+      // or a transient Lidarr metadata outage) instead of a generic fallback —
+      // HttpErrorResponse isn't an Error, so we must read its `{ error }` body.
+      this.resolveError.set(httpErrorMessage(err, 'Failed to prepare album'));
     } finally {
       this.resolvingAlbum.set(null);
     }
