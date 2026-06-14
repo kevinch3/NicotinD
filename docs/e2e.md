@@ -69,3 +69,51 @@ The `e2e` job in `.github/workflows/deploy.yml` installs deps + the Chromium
 browser, builds web (the Hono server serves `packages/web/dist`), runs the suite,
 and uploads the Playwright HTML report on failure. `release` and `deploy` depend on
 `[ci, e2e]`, so a red e2e run blocks the deploy.
+
+The CI `ci` job also runs `bun test packages/e2e/playground` — the **pure logic**
+of the playground harness below (observation model, report rendering, response
+classifier). The playground *flows* need a live backend and stay out of CI; their
+helpers are unit-tested so regressions in the feedback machinery are still caught.
+
+## Playground harness (automated feedback)
+
+The playground is a **continuous feedback gatherer**, not a pass/fail suite. It
+drives real user flows and **records observations** — timings, result counts,
+dead-ends (gaps), enhancement ideas, cover-art 404s — that a custom reporter
+aggregates into a findings report (`packages/e2e/playground-report/*.{md,json}`).
+It is the automated successor to the hand-written
+[`e2e-playground-findings-2026-06.md`](e2e-playground-findings-2026-06.md) sessions
+(it implements that doc's §E2 recommendation).
+
+**Gated, never in CI.** Acquisition flows (catalog/hunt/network) need a live
+slskd/Lidarr, so the harness runs only under `PLAYGROUND=1` and stays out of the CI
+`e2e` job. Flows **degrade gracefully**: a dead backend yields a `degraded`
+observation (and the report is marked "managed"), never a red test — so it's safe
+to run anywhere.
+
+```bash
+# Against a live stack (full feedback):
+PLAYGROUND=1 E2E_BASE_URL=https://your-stack \
+  PLAYGROUND_USERNAME=you PLAYGROUND_PASSWORD=… \
+  bun run --filter @nicotind/e2e playground
+
+# Against the managed throwaway server (degraded — proves the harness, no real acquisition):
+bun run --filter @nicotind/e2e playground
+```
+
+| Flow (spec) | Gathers |
+|-------------|---------|
+| `tests/song-acquisition.playground.ts` (§F) | Reachability of a single song ("Toxic"): catalog is album-only, count of network files to sift, absence of a song-first affordance |
+| `tests/catalog-quality.playground.ts` (§A) | For a non-distinctive artist, the share of album cards that actually belong to the matched artist (own-album ratio) |
+| `tests/album-hunt.playground.ts` (§C) | Base/skew hunt latency + candidate count / dead-end. **Opt-in** via `PLAYGROUND_HUNT=1` (resolve adds a monitored artist to Lidarr); never triggers a download |
+| `tests/network-search.playground.ts` (§C2) | Time-to-first-result vs time-to-complete for a niche query |
+
+- **Structure**: pure logic in `playground/{observe,report,net-monitor}.ts`
+  (unit-tested, CI-covered); the Playwright fixture (`playground/fixtures.ts`) auto-
+  monitors responses (cover-art 404s, 503s, 5xx, slow calls) and exposes an `obs`
+  recorder + `obs.time()`; the reporter (`playground/reporter.ts`) writes the report.
+- **Tuning queries** via env: `PLAYGROUND_SONG_QUERY`, `PLAYGROUND_ARTIST`,
+  `PLAYGROUND_NETWORK_QUERY`, `PLAYGROUND_HUNT_ARTIST` / `PLAYGROUND_HUNT_ALBUM`.
+- **Adding a flow**: drop a `tests/*.playground.ts` that imports `test`/`expect` from
+  `../playground/fixtures` and records via `obs.record(...)`; the gated project picks
+  it up automatically (`testMatch: /\.playground\.ts$/`).

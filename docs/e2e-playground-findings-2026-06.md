@@ -22,6 +22,10 @@ Branch `fix/playground-findings-2026-06` implements **D1, A2, A3, B1, B2** (batc
 they need live-backend testing, a streaming/perf rework of the hunt, or a risky scanner/schema
 change, and warrant their own review. ✅ = fixed on this branch; ◻️ = open follow-up.
 
+A later playground pass (**2026-06-14**) added the **F-series** (§F) — the song/single acquisition
+gap. These are open follow-ups (documentation only this pass); the implementation is phased ("Songs
+lane now, track-hunter later") and deferred to its own session.
+
 ## TL;DR — prioritized follow-ups
 
 | # | Status | Severity | Area | Issue |
@@ -37,6 +41,9 @@ change, and warrant their own review. ✅ = fixed on this branch; ◻️ = open 
 | A4 | ✅ | Low | Catalog | Artist pills are noisy/duplicated ("Zara/ZarA/Zara…", "Los/King Los…") |
 | E1 | ✅ | Low (infra) | e2e | Hunt modal lacks `data-testid`s on its core controls — violates the project's e2e selector standard |
 | D2 | ◻️ | Low | Library | Duplicate artist rows from "The"-prefix handling ("The Jinx" + "Jinx"); `library_album_tombstones` is populated historically but no longer written by the delete path |
+| F1 | ◻️ | **High (UX)** | Search | No song-first acquire path — finding one song (e.g. "Toxic") means hand-picking from up to ~250 folder-grouped network files; curated tools are album/EP-only |
+| F2 | ◻️ | Medium | Hunt | No per-track hunter — the album hunt's skew/cross-peer/auto-retry robustness has no single-song equivalent (also unblocks the C1 0-candidate fallback) |
+| F3 | ◻️ | Low (infra) | e2e | No UI entry point / `data-testid` for song acquisition; CI (dead slskd) can't exercise it — needs the §E2 gated playground spec |
 
 **Fix notes:** D1 — delete handler now prunes orphaned `library_artists`/`library_genres`/
 `library_artwork` in the same transaction. A2 — `resolveAlbum` falls back to a diacritic-insensitive
@@ -246,8 +253,80 @@ Skew filters. Per the project's stated standard ("adding a `data-testid` is the 
 e2e-targeted elements"), the compliance-critical interactive hunt flow can't be driven by stable
 selectors. Add testids before writing a hunt e2e.
 
-### E2 — recommended playground harness (follow-up)
-A Playwright spec that drives search → catalog → hunt against a **real-backend** instance
-(`E2E_BASE_URL` pointed at a stack with slskd/Lidarr) would let these flows be exercised
-interactively. It must stay **out of the CI `e2e` job** (CI runs acquisition default-off with dead
-slskd/Lidarr) — gate it behind an env flag so it only runs against a live playground.
+### E2 — playground harness (✅ implemented 2026-06-14)
+**Done.** The gated playground harness now drives search → catalog → hunt → network flows against a
+**real-backend** instance (`E2E_BASE_URL` + `PLAYGROUND=1`) and writes an aggregated findings report
+(`packages/e2e/playground-report/*.{md,json}`) via a custom reporter. Flows **record observations**
+(timings, counts, gaps, enhancement signals, cover-art 404s) rather than asserting pass/fail, and
+**degrade gracefully** when a backend is down (a `degraded` observation, never a red test). It stays
+**out of the CI `e2e` job**; only its pure logic (`playground/{observe,report,net-monitor}.ts`) is
+unit-tested in CI. Seeded with §F (song acquisition), §A (catalog quality), §C (hunt latency/outcome,
+opt-in), §C2 (network responsiveness). → See [e2e.md](e2e.md) "Playground harness".
+
+The first concrete use for this harness is the §F song-acquisition gap below: drive
+`search "Toxic Britney Spears"` against the live stack and assert/observe that (a) the catalog lane
+returns only album/EP cards (or nothing) for a song query, (b) **no song-acquire affordance exists**
+pre-fix, and (c) post-Phase-1 a **Songs lane** offers a one-click best-version download. Gate behind
+an env flag (e.g. `PLAYGROUND=1` + `E2E_BASE_URL`), kept out of the CI `e2e` job.
+
+---
+
+## F. Song/single acquisition gap — "find me one song" (2026-06-14)
+
+**Reported:** Search is (correctly) the download entry point — a user who can't find a track in their
+library goes to Search to acquire it. But when the user wants a single **song** (e.g. *"Toxic"* by
+Britney Spears), the curated acquisition tools — catalog cards + the album-hunt modal — only operate
+on **albums and EPs**. There is no first-class "find/acquire this song" path; the user is dropped into
+raw Soulseek folder-browsing.
+
+**Root cause (verified in code):** NicotinD's acquisition model is structurally **album-centric**.
+
+- **Metadata lane is album-only.** `CatalogService.search()`
+  (`packages/api/src/services/catalog-search.service.ts:61`) fires only `lidarr.artist.lookup` +
+  `lidarr.album.lookup`. The Lidarr client exposes **no recording/track lookup** —
+  `packages/lidarr-client/src/api/track.ts` only does `listByAlbum(albumId)` for an album *already*
+  in Lidarr. So a song-level metadata search isn't possible through the existing client at all.
+- **Hunt is album-keyed.** Every hunt route is
+  `POST /api/discography/albums/:lidarrAlbumId/hunt[-download]`
+  (`packages/api/src/routes/discography.ts`), scoring peer folders against a Lidarr canonical
+  tracklist and requiring a real `lidarrAlbumId` from `catalog/resolve`. A single song has no handle.
+- **The only song-level path is the raw Soulseek fallback.** `SlskdSearchProvider.pollResults`
+  (`packages/api/src/services/providers/slskd-provider.ts`) returns individual files; the web groups
+  them by `username::directory` (`packages/web/src/app/lib/folder-utils.ts`) with per-file Download
+  buttons (`packages/web/src/app/pages/search/search.component.ts`). Functional, but manual: no
+  dedupe across peers, no best-version pick, no scoring, no skew/cross-peer robustness — the user
+  eyeballs up to ~250 files (per the §C benchmarks) and picks one.
+- **Local "Songs" results** (`packages/api/src/services/providers/library-provider.ts`) only show
+  tracks already owned — by definition no acquire affordance.
+
+So "Toxic" either surfaces as a catalog **album** card *only if* MusicBrainz/Lidarr happens to carry
+it as a standalone single release-group **and** it's in the artist's Lidarr discography (rare, and
+`resolve` often 404s per §A2), or it drops to raw network file-picking with zero curation.
+
+> Benchmarks for this section are **deferred — needs a live backend** (consistent with C1/C2/C3).
+
+### F1 — No song-first network lane (High UX)
+Network results are **folder-first**. A user hunting one song must expand peer folders and pick a file
+by hand out of up to ~250 results, with no help choosing the best copy.
+
+**Suggested improvement (Phase 1 — "lane now"):** a **Songs lane** that dedupes the slskd file results
+by normalized `(artist, title)`, auto-picks the best version (reuse the existing **FLAC > MP3 format
+preference**, then bitrate, then filename match), and offers a **one-click download** via the existing
+`enqueueDownload`. Gated on the slskd plugin like the rest of network search. Reuses
+`folder-utils.ts` / `download-status.ts` on the web side.
+
+### F2 — No track hunter (Medium)
+The album hunt's robustness — skew-query soft-ban bypass, cross-peer fallback, auto-retry — has **no
+per-track equivalent** surfaced to the user.
+
+**Suggested improvement (Phase 2 — "hunter later"):** a `TrackHunterService` reusing
+`AlbumFallbackService.searchBestForTrack`, fired with focused `"Artist Title"` queries + best-single
+selection + a single enqueued file. Wire it into **both** the Songs lane (a robust "grab" beyond the
+plain dedupe) **and** the album-hunt 0-candidate dead-end — this directly addresses the deferred
+**C1** (offer "we found N loose tracks — grab them" when a folder hunt finds nothing).
+
+### F3 — UI affordance + e2e gap (Low, infra)
+There is no UI entry point or `data-testid` for song acquisition, and the CI suite runs external-mode
+with a dead slskd, so song acquisition can't be exercised there. Covered by the **§E2** gated
+live-backend playground spec (drives the "Toxic" search; asserts the gap pre-fix and the Songs lane
+post-Phase-1).

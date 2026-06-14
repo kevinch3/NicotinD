@@ -2,4 +2,5 @@
 .tmp-data/
 test-results/
 playwright-report/
+playground-report/
 node_modules/

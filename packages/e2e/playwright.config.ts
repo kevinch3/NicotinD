@@ -25,26 +25,49 @@ if (!externalBaseUrl) {
   rmSync(dataDir, { recursive: true, force: true });
 }
 
+// Gated playground mode: PLAYGROUND=1 runs ONLY the `*.playground.ts` feedback
+// flows (against a live backend via E2E_BASE_URL, or the managed server in
+// degraded mode) and writes a findings report via the custom reporter. It stays
+// out of the CI `e2e` job — see docs/e2e.md "Playground harness".
+const playground = !!process.env.PLAYGROUND;
+const PLAYGROUND_RE = /\.playground\.ts$/;
+
 export default defineConfig({
   testDir: './tests',
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   workers: 1,
-  reporter: process.env.CI ? [['html', { open: 'never' }], ['list']] : 'list',
+  reporter: playground
+    ? [['./playground/reporter.ts'], ['list']]
+    : process.env.CI
+      ? [['html', { open: 'never' }], ['list']]
+      : 'list',
   use: {
     baseURL,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
   },
-  projects: [
-    { name: 'setup', testMatch: /auth\.setup\.ts/ },
-    {
-      name: 'chromium',
-      use: { ...devices['Desktop Chrome'], storageState: '.auth/admin.json' },
-      dependencies: ['setup'],
-    },
-  ],
+  projects: playground
+    ? [
+        { name: 'playground-setup', testMatch: /playground\.setup\.ts/ },
+        {
+          name: 'playground',
+          testMatch: PLAYGROUND_RE,
+          use: { ...devices['Desktop Chrome'], storageState: '.auth/playground.json' },
+          dependencies: ['playground-setup'],
+        },
+      ]
+    : [
+        { name: 'setup', testMatch: /auth\.setup\.ts/ },
+        {
+          name: 'chromium',
+          // The correctness suite never runs the playground feedback flows.
+          testIgnore: PLAYGROUND_RE,
+          use: { ...devices['Desktop Chrome'], storageState: '.auth/admin.json' },
+          dependencies: ['setup'],
+        },
+      ],
   webServer: externalBaseUrl
     ? undefined
     : {

@@ -37,6 +37,12 @@ jobs:
       - name: Test (API + slskd-client + core + service-manager)
         run: bun test packages/api/src packages/slskd-client/src packages/core/src packages/service-manager/src
 
+      # Pure logic of the gated e2e playground harness (observation model, report
+      # rendering, response classifier). The Playwright playground flows need a
+      # live backend and stay out of CI; their helpers are unit-tested here.
+      - name: Test (e2e playground helpers)
+        run: bun test packages/e2e/playground
+
       - name: Test (web)
         run: bun run --filter @nicotind/web test
 
