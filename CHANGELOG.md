@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.72](https://github.com/kevinch3/NicotinD/compare/v0.1.71...v0.1.72) (2026-06-14)
+
+
+### Features
+
+* **web:** song-first 'Songs' lane for network search ([b393984](https://github.com/kevinch3/NicotinD/commit/b3939840c35ad58a4582b4344bac9ea09bdd1948))
+
 ## [0.1.71](https://github.com/kevinch3/NicotinD/compare/v0.1.70...v0.1.71) (2026-06-14)
 
 
