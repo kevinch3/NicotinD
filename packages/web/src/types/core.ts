@@ -19,3 +19,8 @@ export type {
 } from '../../../core/src/types/acquire';
 
 export type { ArchiveCandidate } from '../../../core/src/types/archive';
+
+export type {
+  BpmAnalysisResult,
+  GenreSuggestion,
+} from '../../../core/src/types/track-analysis';

@@ -1,0 +1,119 @@
+import { existsSync, statSync } from 'node:fs';
+import { join } from 'node:path';
+import type { Database } from 'bun:sqlite';
+import { createLogger } from '@nicotind/core';
+import { isLossless, transcodeToOpus } from './post-download-transcode.js';
+import { ffmpegAvailable } from './transcode.js';
+import { LibraryScanner, songId } from './library-scanner.js';
+
+const log = createLogger('library-transcode');
+
+export interface LibraryTranscodeResult {
+  /** Lossless rows considered. */
+  candidates: number;
+  converted: number;
+  skipped: number;
+  failed: number;
+  bytesReclaimed: number;
+}
+
+interface SongRow {
+  id: string;
+  path: string;
+  suffix: string | null;
+  size: number | null;
+  starred: string | null;
+  hidden: number;
+}
+
+/**
+ * Convert the **existing** library's lossless files (FLAC/WAV/…) to Opus in
+ * place, mirroring the post-download standardization. Already-lossy files are
+ * left untouched.
+ *
+ * Re-encoding changes a file's extension → its relative path → its derived
+ * `songId` and `acquisitions` key. Album-keyed data (artwork, release-meta,
+ * classification) is keyed on the tag-derived `albumId` and survives; song-keyed
+ * data does not, so per file we **migrate identity**: carry `starred`/`hidden`
+ * onto the new song row, re-point `playlist_songs.song_id` and
+ * `acquisitions.relative_path`, and drop the stale lossless row. `scanPaths`
+ * inserts the new opus row and recomputes the album aggregate after the old row
+ * is gone, so counts stay correct.
+ */
+export async function transcodeLibraryToOpus(
+  db: Database,
+  musicDir: string,
+  opts: { apply: boolean; bitRate?: number },
+): Promise<LibraryTranscodeResult> {
+  const result: LibraryTranscodeResult = {
+    candidates: 0,
+    converted: 0,
+    skipped: 0,
+    failed: 0,
+    bytesReclaimed: 0,
+  };
+  if (opts.apply && !ffmpegAvailable()) {
+    throw new Error('ffmpeg is required to transcode the library but was not found on PATH');
+  }
+
+  const rows = db
+    .query<SongRow, []>(`SELECT id, path, suffix, size, starred, hidden FROM library_songs`)
+    .all()
+    .filter((r) => isLossless(r.suffix) || isLossless(r.path.split('.').pop() ?? ''));
+  result.candidates = rows.length;
+
+  const scanner = new LibraryScanner(musicDir, db);
+  const bitRate = opts.bitRate ?? 128;
+
+  for (const row of rows) {
+    const abs = join(musicDir, row.path);
+    if (!existsSync(abs)) {
+      log.warn({ path: row.path }, 'lossless row points at a missing file — skipping');
+      result.skipped += 1;
+      continue;
+    }
+    if (!opts.apply) {
+      result.converted += 1; // dry-run: report what would be converted
+      result.bytesReclaimed += row.size ?? 0;
+      continue;
+    }
+
+    let newAbs: string;
+    let oldSize = 0;
+    try {
+      oldSize = statSync(abs).size;
+      newAbs = await transcodeToOpus(abs, bitRate);
+    } catch (err) {
+      log.warn({ err, path: row.path }, 'library transcode failed — original kept');
+      result.failed += 1;
+      continue;
+    }
+
+    const newRel = newAbs.slice(musicDir.length).replace(/^[/\\]+/, '').replace(/\\/g, '/');
+    const newId = songId(newRel);
+    const newSize = existsSync(newAbs) ? statSync(newAbs).size : 0;
+
+    // Drop the stale lossless row first so scanPaths recomputes the album
+    // aggregate counting only the new opus row.
+    db.run('DELETE FROM library_songs WHERE id = ?', [row.id]);
+    await scanner.scanPaths([newRel]);
+
+    db.transaction(() => {
+      // Carry curation forward onto the new song id.
+      db.run('UPDATE library_songs SET starred = ?, hidden = ? WHERE id = ?', [
+        row.starred,
+        row.hidden,
+        newId,
+      ]);
+      // Re-point playlist + acquisition references (no FK on song_id).
+      db.run('UPDATE OR IGNORE playlist_songs SET song_id = ? WHERE song_id = ?', [newId, row.id]);
+      db.run('UPDATE acquisitions SET relative_path = ? WHERE relative_path = ?', [newRel, row.path]);
+    })();
+
+    result.converted += 1;
+    result.bytesReclaimed += Math.max(0, oldSize - newSize);
+  }
+
+  log.info({ ...result, apply: opts.apply }, 'library transcode pass complete');
+  return result;
+}

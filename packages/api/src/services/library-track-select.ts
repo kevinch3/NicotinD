@@ -3,8 +3,14 @@ import { normalizeTitle, titlesOverlap } from './album-hunter.service.js';
 // Lossless formats beat any lossy file when choosing the single best copy of a
 // track; within a tier, higher bitrate wins. Soulseek rips routinely leave a
 // folder with flac + mp3 + m4a (+ wav) copies of the same songs, so "best" here
-// is what the library should surface.
-const LOSSLESS = new Set(['flac', 'wav', 'wave', 'aiff', 'aif', 'alac', 'ape', 'wv']);
+// is what the library should surface. Also the set the post-download Opus
+// transcode targets (lossless → Opus; lossy left untouched).
+export const LOSSLESS = new Set(['flac', 'wav', 'wave', 'aiff', 'aif', 'alac', 'ape', 'wv']);
+
+/** Whether a file suffix/extension is a lossless format. Accepts ".flac" or "flac". */
+export function isLossless(suffix: string | null | undefined): boolean {
+  return LOSSLESS.has((suffix ?? '').toLowerCase().replace(/^\./, ''));
+}
 
 /** Quality score for picking the best file among copies of one track. */
 export function formatQuality(

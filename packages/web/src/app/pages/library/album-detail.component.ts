@@ -247,6 +247,33 @@ export class AlbumDetailComponent implements OnInit {
     });
   }
 
+  // ─── Optimize metadata (admin) ────────────────────────────────────
+  readonly optimizing = signal(false);
+  readonly optimizeMsg = signal<string | null>(null);
+  /** Bumped after an optimize so the cover URL busts its cache. */
+  readonly coverBust = signal(0);
+
+  async optimizeMetadata(): Promise<void> {
+    const album = this.selectedAlbum();
+    if (!album || this.optimizing()) return;
+    this.optimizing.set(true);
+    this.optimizeMsg.set(null);
+    try {
+      const r = await firstValueFrom(this.api.optimizeAlbumMetadata(album.id));
+      // Re-fetch so an updated year shows; bust the cover cache for the new art.
+      const detail = await firstValueFrom(this.api.getAlbum(album.id));
+      this.selectedAlbum.set(detail);
+      this.coverBust.update((v) => v + 1);
+      this.optimizeMsg.set(
+        r.coverUpdated || r.yearUpdated ? 'Metadata updated from Lidarr.' : 'No changes found.',
+      );
+    } catch {
+      this.optimizeMsg.set('Could not optimize — no Lidarr match or Lidarr unavailable.');
+    } finally {
+      this.optimizing.set(false);
+    }
+  }
+
   getArtistLink(id: string | undefined): string[] {
     return resolveArtistRoute(id);
   }

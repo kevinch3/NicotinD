@@ -198,7 +198,7 @@ describe('AcquireWatcher (registry-driven)', () => {
 
   it('marks job failed and stage error when organizeBatch rejects', async () => {
     const plugin = fakePlugin();
-    const { watcher, registry } = makeHarness(plugin);
+    const { registry } = makeHarness(plugin);
     const failOrganize = mock(async () => {
       throw new Error('disk full');
     });

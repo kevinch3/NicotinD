@@ -12,7 +12,7 @@
 
     <div class="flex flex-col sm:flex-row items-center sm:items-end gap-6 mb-8 text-center sm:text-left">
       <app-cover-art
-        [src]="selectedAlbum()!.coverArt ? '/api/cover/' + selectedAlbum()!.coverArt + '?size=300&token=' + auth.token() : undefined"
+        [src]="selectedAlbum()!.coverArt ? '/api/cover/' + selectedAlbum()!.coverArt + '?size=300&token=' + auth.token() + (coverBust() ? '&v=' + coverBust() : '') : undefined"
         [artist]="selectedAlbum()!.artist"
         [album]="selectedAlbum()!.name"
         [size]="192"
@@ -61,12 +61,20 @@
             @if (shareCopied()) { Link copied! } @else { Share }
           </button>
           @if (auth.role() === 'admin') {
+            <button (click)="optimizeMetadata()" [disabled]="optimizing()"
+              data-testid="optimize-metadata"
+              class="px-4 py-2 rounded-lg text-sm bg-theme-surface-2 text-theme-muted hover:bg-theme-hover transition disabled:opacity-50">
+              {{ optimizing() ? 'Optimizing…' : 'Optimize metadata' }}
+            </button>
             <button (click)="removeAlbum()" [disabled]="deleting()"
               class="px-4 py-2 rounded-lg text-sm text-red-400 hover:bg-red-500/10 transition disabled:opacity-50">
               {{ deleting() ? 'Removing...' : 'Remove album' }}
             </button>
           }
         </div>
+        @if (optimizeMsg(); as msg) {
+          <p class="text-theme-muted text-xs mt-2" data-testid="optimize-msg">{{ msg }}</p>
+        }
       </div>
     </div>
 

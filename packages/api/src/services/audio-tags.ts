@@ -24,6 +24,9 @@ export interface AudioTags {
   title?: string;
   trackNumber?: number;
   year?: number;
+  genre?: string;
+  /** Beats per minute (TBPM / Vorbis `BPM`). Written by on-demand track analysis. */
+  bpm?: number;
   compilation?: boolean;
   /** AcoustID track UUID. Doubles as a "we've already fingerprinted this" marker. */
   acoustIdId?: string;
@@ -181,6 +184,8 @@ async function writeId3Tags(filepath: string, tags: AudioTags): Promise<boolean>
   if (tags.title !== undefined) update.title = tags.title;
   if (tags.trackNumber !== undefined) update.trackNumber = String(tags.trackNumber);
   if (tags.year !== undefined) update.year = String(tags.year);
+  if (tags.genre !== undefined) update.genre = tags.genre;
+  if (tags.bpm !== undefined) update.bpm = String(tags.bpm);
   if (tags.compilation) update.TCMP = '1';
 
   const userText: NodeId3UserText[] = [];
@@ -208,6 +213,8 @@ function writeFfmpegTags(filepath: string, tags: AudioTags): Promise<boolean> {
   if (tags.title !== undefined) metaArgs.push('-metadata', `TITLE=${tags.title}`);
   if (tags.trackNumber !== undefined) metaArgs.push('-metadata', `TRACK=${tags.trackNumber}`);
   if (tags.year !== undefined) metaArgs.push('-metadata', `DATE=${tags.year}`);
+  if (tags.genre !== undefined) metaArgs.push('-metadata', `GENRE=${tags.genre}`);
+  if (tags.bpm !== undefined) metaArgs.push('-metadata', `BPM=${tags.bpm}`);
   if (tags.compilation) metaArgs.push('-metadata', 'COMPILATION=1');
   if (tags.acoustIdId) metaArgs.push('-metadata', `ACOUSTID_ID=${tags.acoustIdId}`);
   if (tags.mbRecordingId) metaArgs.push('-metadata', `MUSICBRAINZ_TRACKID=${tags.mbRecordingId}`);

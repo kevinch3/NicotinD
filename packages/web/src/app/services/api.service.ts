@@ -5,6 +5,8 @@ import type {
   AcquireJob,
   ArchiveCandidate,
   SongAcquisition,
+  BpmAnalysisResult,
+  GenreSuggestion,
 } from '@nicotind/core';
 
 // ─── Response types ─────────────────────────────────────────────────
@@ -132,6 +134,8 @@ export interface Song {
   bitRate: number;
   size: number;
   created: string;
+  genre?: string;
+  bpm?: number;
 }
 
 export interface StreamingSettings {
@@ -311,6 +315,26 @@ export class ApiService {
   clearAlbumOverride(id: string) {
     return this.http.post<{ ok: boolean }>(`/api/library/albums/${id}/clear-override`, {});
   }
+  /** Re-fetch better cover/year/release-type for one album from Lidarr (admin). */
+  optimizeAlbumMetadata(id: string) {
+    return this.http.post<{
+      matched: boolean;
+      coverUpdated: boolean;
+      yearUpdated: boolean;
+      releaseTypeUpdated: boolean;
+    }>(`/api/library/albums/${id}/optimize-metadata`, {});
+  }
+  /** Library-wide metadata optimization (admin). `all` re-verifies every album. */
+  optimizeAllMetadata(all = false) {
+    return this.http.post<{
+      ok: boolean;
+      albums: number;
+      matched: number;
+      coversUpdated: number;
+      yearsUpdated: number;
+      releaseTypesUpdated: number;
+    }>(`/api/admin/metadata-optimize${all ? '?all=1' : ''}`, {});
+  }
   resyncLibrary() {
     return this.http.post<{ ok: boolean }>(`/api/library/sync`, {});
   }
@@ -359,6 +383,23 @@ export class ApiService {
   /** Acquisition provenance (how/where-from/when); null when unrecorded. */
   getSongAcquisition(id: string) {
     return this.http.get<SongAcquisition | null>(`/api/library/songs/${id}/acquisition`);
+  }
+
+  /** On-demand BPM analysis: returns a tag value or freshly analyzed tempo. */
+  analyzeSong(id: string) {
+    return this.http.post<BpmAnalysisResult>(`/api/library/songs/${id}/analyze`, {});
+  }
+
+  /** Genre verification against Lidarr/MusicBrainz (read-only suggestion). */
+  getGenreSuggestion(id: string) {
+    return this.http.get<GenreSuggestion>(`/api/library/songs/${id}/genre-suggestion`);
+  }
+
+  /** Apply a genre to a song (admin); writes the tag + updates the library. */
+  applyGenre(id: string, genre: string) {
+    return this.http.post<{ ok: boolean; genre: string }>(`/api/library/songs/${id}/genre`, {
+      genre,
+    });
   }
 
   getSimilarSongs(id: string, size = 20) {

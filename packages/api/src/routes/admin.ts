@@ -1,9 +1,20 @@
 import { Hono } from 'hono';
 import { hashPassword } from '@nicotind/core';
+import type { Lidarr } from '@nicotind/lidarr-client';
 import type { AuthEnv } from '../middleware/auth.js';
 import { getDatabase } from '../db.js';
+import { transcodeLibraryToOpus } from '../services/library-transcode.js';
+import { optimizeAllAlbums } from '../services/metadata-optimize.js';
 
-export function adminRoutes() {
+export interface AdminRoutesDeps {
+  musicDir: string;
+  /** Cover-cache dir for metadata-optimize (purged when a canonical URL changes). */
+  coverCacheDir?: string;
+  /** Lidarr client; null when unconfigured (metadata-optimize then 503s). */
+  lidarr?: Lidarr | null;
+}
+
+export function adminRoutes(deps: AdminRoutesDeps) {
   const app = new Hono<AuthEnv>();
 
   // Admin guard — all routes require admin role
@@ -137,6 +148,34 @@ export function adminRoutes() {
       return c.json({ error: 'User not found' }, 404);
     }
     return c.json({ ok: true });
+  });
+
+  // Standardize the existing library's lossless files on Opus (storage + uniform
+  // codec). Long-running; runs to completion and returns the summary. `?dryRun=1`
+  // reports candidates without writing.
+  app.post('/transcode-library', async (c) => {
+    const dryRun = c.req.query('dryRun') === '1' || c.req.query('dryRun') === 'true';
+    try {
+      const result = await transcodeLibraryToOpus(getDatabase(), deps.musicDir, { apply: !dryRun });
+      return c.json({ ok: true, dryRun, ...result });
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : 'Transcode failed' }, 503);
+    }
+  });
+
+  // Library-wide metadata optimization: re-fetch better cover/year/release-type
+  // from Lidarr. `?all=1` re-verifies every album; default targets albums with
+  // missing artwork or year. `?dryRun=1` reports without writing.
+  app.post('/metadata-optimize', async (c) => {
+    if (!deps.lidarr) return c.json({ error: 'Lidarr not configured' }, 503);
+    const dryRun = c.req.query('dryRun') === '1' || c.req.query('dryRun') === 'true';
+    const onlyMissingOrPoor = !(c.req.query('all') === '1' || c.req.query('all') === 'true');
+    const result = await optimizeAllAlbums(getDatabase(), deps.lidarr, {
+      apply: !dryRun,
+      coverCacheDir: deps.coverCacheDir,
+      onlyMissingOrPoor,
+    });
+    return c.json({ ok: true, dryRun, ...result });
   });
 
   return app;

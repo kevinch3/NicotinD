@@ -5,6 +5,7 @@ export interface LidarrArtist {
   sortName: string;
   status: string;
   overview?: string;
+  genres?: string[];
   images: LidarrImage[];
   albumCount?: number;
   monitored: boolean;
@@ -20,6 +21,7 @@ export interface LidarrAlbum {
   releaseDate?: string;
   albumType: string; // "Album", "Single", "EP", "Broadcast", "Other"
   secondaryTypes?: string[];
+  genres?: string[];
   statistics?: {
     trackCount: number;
     totalTrackCount: number;

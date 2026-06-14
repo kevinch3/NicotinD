@@ -55,6 +55,8 @@ export interface Song {
   path: string;
   created: string;
   starred?: string;
+  /** Beats per minute, from tags or on-demand analysis. Absent when unknown. */
+  bpm?: number;
 }
 
 export interface SearchResult3 {

@@ -49,6 +49,27 @@ Shared logic lives in `packages/api/src/services/album-dedupe.ts` (`dupKey`/`pic
 
 ---
 
+## Lossless → Opus standardization (storage + web playback)
+
+FLAC is overkill for web streaming and large on disk. When `downloads.transcodeLossless.enabled` (config / `NICOTIND_TRANSCODE_LOSSLESS_ENABLED`; `bitRate` default 128), lossless downloads are transcoded to Opus and **already-lossy files (MP3/AAC/…) are left untouched**. The lossless set is shared (`isLossless()` in `library-track-select.ts`); the encoder is `post-download-transcode.ts` `transcodeToOpus()` (ffmpeg `libopus`, replace-in-place: write `<name>.opus`, drop the original). Everything is gated on `ffmpegAvailable()`.
+
+### New downloads (no identity churn)
+
+The hook fires in `LibraryOrganizer.placeFile()` **after the move and before the incremental scan**. Because the scanner only ever sees the final `.opus` path, the song's path-derived `songId` is computed once — no orphaned curation, and format-preference dedup keeps working (all kept files are opus). A transcode failure is best-effort: it logs and leaves the original in place.
+
+### Existing library (`transcodeLibraryToOpus`, the careful part)
+
+`services/library-transcode.ts` converts the lossless files already in the library — via `scripts/convert-library.ts` (`--apply`, optional `--bitrate`; dry-run reports candidates) or admin `POST /api/admin/transcode-library` (`?dryRun=1`). Re-encoding changes a file's extension → its relative path → its derived `songId` **and** its `acquisitions` key. Album-keyed data (`library_artwork`, `library_release_meta`, classification, all keyed on the tag-derived `albumId`) is unaffected and survives; song-keyed data does not, so **per file** the job:
+
+1. reads the old `library_songs` row (`id`, `path`, `starred`, `hidden`);
+2. transcodes on disk (FLAC → opus, original removed);
+3. **deletes the stale lossless row first**, then `scanPaths([newRel])` inserts the new opus row and recomputes the album aggregate counting only it;
+4. carries `starred`/`hidden` onto the new id and re-points `playlist_songs.song_id` + `acquisitions.relative_path` (no FK on `song_id`).
+
+Returns `{ candidates, converted, skipped, failed, bytesReclaimed }`.
+
+---
+
 ## Album deletion (reliability)
 
 `DELETE /api/library/albums/:id` (`packages/api/src/routes/library.ts`) is **folder-first**: `tryDeleteAlbumFolder` recursively removes the album's `<Artist>/<Album>` directory in one `rmSync` (taking cover art + sidecars with it) when all tracks share one album-specific folder, guarded against the music root, bare `<Artist>` roots, shared `Singles` folders, and folders holding foreign audio. Otherwise it falls back to the per-file `deleteOne` chain (which sources the path from `library_songs`, with stale-path/renamed-folder fuzzy recovery).

@@ -6,6 +6,7 @@ export * from './types/slskd.js';
 export * from './types/navidrome.js';
 export * from './types/nicotind.js';
 export * from './types/provider.js';
+export * from './types/track-analysis.js';
 
 // Plugin SDK (capability contracts + manifest)
 export * from './plugin/index.js';

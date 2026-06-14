@@ -255,6 +255,21 @@ function loadConfig() {
       ...(process.env.NICOTIND_PREFER_FLAC_SKIP_MP3
         ? { preferFlacSkipMp3: parseBooleanEnv(process.env.NICOTIND_PREFER_FLAC_SKIP_MP3) }
         : {}),
+      ...(process.env.NICOTIND_TRANSCODE_LOSSLESS_ENABLED ||
+      process.env.NICOTIND_TRANSCODE_LOSSLESS_BITRATE
+        ? {
+            transcodeLossless: {
+              ...(((fileConfig as Record<string, unknown>).downloads as Record<string, unknown>)
+                ?.transcodeLossless as Record<string, unknown>),
+              ...(process.env.NICOTIND_TRANSCODE_LOSSLESS_ENABLED
+                ? { enabled: parseBooleanEnv(process.env.NICOTIND_TRANSCODE_LOSSLESS_ENABLED) }
+                : {}),
+              ...(process.env.NICOTIND_TRANSCODE_LOSSLESS_BITRATE
+                ? { bitRate: Number(process.env.NICOTIND_TRANSCODE_LOSSLESS_BITRATE) }
+                : {}),
+            },
+          }
+        : {}),
     },
     soulseek: {
       ...((fileConfig as Record<string, unknown>).soulseek as Record<string, unknown>),

@@ -23,7 +23,7 @@ export interface BackfillArtworkResult {
  * never match a canonical MusicBrainz release-group, so a lookup is wasted (or
  * worse, returns a wrong-match cover).
  */
-function looksLikeNonAlbum(albumName: string, artist: string): boolean {
+export function looksLikeNonAlbum(albumName: string, artist: string): boolean {
   const a = normalizeForGrouping(albumName);
   const ar = normalizeName(artist);
   return (
@@ -58,7 +58,7 @@ interface AlbumLookupRow {
 export type BackfillLidarr = Pick<Lidarr, 'artist' | 'album'>;
 
 /** Loose name match (lowercase, strip punctuation) for artist resolution. */
-function normalizeName(name: string): string {
+export function normalizeName(name: string): string {
   return name
     .toLowerCase()
     .replace(/[^\w\s]/g, '')

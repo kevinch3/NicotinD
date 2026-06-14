@@ -38,6 +38,17 @@ export const NicotinDConfigSchema = z.object({
       // Drop an incoming MP3 when a FLAC of the same track is already in the
       // album folder (avoids mixed MP3+FLAC duplicate albums). Opt-in.
       preferFlacSkipMp3: z.boolean().default(false),
+      // Standardize on a small, browser-native codec for storage + web playback:
+      // transcode lossless downloads (FLAC/WAV/…) to Opus in place before they
+      // enter the library, leaving already-lossy files untouched. Opt-in.
+      transcodeLossless: z
+        .object({
+          enabled: z.boolean().default(false),
+          // Only opus today; left as an enum for headroom.
+          format: z.enum(['opus']).default('opus'),
+          bitRate: z.number().int().min(64).max(320).default(128),
+        })
+        .default({ enabled: false, format: 'opus', bitRate: 128 }),
     })
     .default({
       autoRetryEnabled: true,
@@ -49,6 +60,7 @@ export const NicotinDConfigSchema = z.object({
       exhaustedRetryCooldownMs: 3_600_000,
       exhaustedMaxRevives: 5,
       preferFlacSkipMp3: false,
+      transcodeLossless: { enabled: false, format: 'opus', bitRate: 128 },
     }),
 
   // Watchlist auto-hunt: a background poller re-hunts watched albums and

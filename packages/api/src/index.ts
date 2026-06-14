@@ -153,6 +153,10 @@ export function createApp({
       config.metadataFix.enabled && acoustidApiKey ? new AcoustIdLookup(acoustidApiKey) : undefined,
     unsortedRoot: `${expandedDataDir}/unsorted`,
     preferFlacSkipMp3: config.downloads.preferFlacSkipMp3,
+    transcodeLossless: {
+      enabled: config.downloads.transcodeLossless.enabled,
+      bitRate: config.downloads.transcodeLossless.bitRate,
+    },
     jobLookup: (directory) => {
       const exact = db
         .query<{ artist_name: string | null; album_title: string | null }, [string]>(
@@ -356,10 +360,21 @@ export function createApp({
   );
 
   app.route('/api/search', searchRoutes(registry));
-  app.route('/api/admin', adminRoutes());
+  app.route(
+    '/api/admin',
+    adminRoutes({ musicDir: expandedMusicDir, lidarr, coverCacheDir: `${expandedDataDir}/cover-cache` }),
+  );
   app.route('/api/downloads', downloadRoutes(registry, slskdRef));
   app.route('/api/uploads', uploadRoutes(slskdRef));
-  app.route('/api/library', libraryRoutes(config.musicDir, { curator, runSync: runSyncAndCurate }));
+  app.route(
+    '/api/library',
+    libraryRoutes(config.musicDir, {
+      curator,
+      runSync: runSyncAndCurate,
+      lidarr,
+      coverCacheDir: `${expandedDataDir}/cover-cache`,
+    }),
+  );
   app.route('/api', streamingRoutes(expandedMusicDir, db, expandedDataDir));
   app.route(
     '/api/system',

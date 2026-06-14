@@ -53,3 +53,16 @@ Two opt-in passes widen coverage when the artist isn't monitored:
 - `--lookup-missing`: slow per-artist lookup for every non-monitored artist (pathological on a large library, hence off by default).
 
 The web renders artist thumbnails via `CoverArtComponent` (gradient+initial fallback preserved) in the artists grid and artist-detail header.
+
+## On-demand track analysis (BPM + genre)
+
+The `track-info-sheet` drawer exposes an **Analysis** section that fills in per-track metadata the rip didn't carry.
+
+**BPM.** `library_songs` has an additive `bpm INTEGER` column. The scanner reads it from tags (`music-metadata` `common.bpm`), and `persist()` updates it via `bpm = COALESCE(excluded.bpm, library_songs.bpm)` so a rescan of a file whose tags lack BPM never wipes an analyzed value. `POST /api/library/songs/:id/analyze`:
+1. returns the existing tag value immediately (`source: 'tag'`) when present;
+2. otherwise `track-analysis.ts` `analyzeBpm()` decodes a ~90 s mono PCM slice via ffmpeg (`-ar 44100 -ac 1 -f f32le`, the rate `music-tempo`'s onset detection expects) and runs `music-tempo` (lazy-imported, degrades to `null` when absent);
+3. on a value it **writes the tag back** (`audio-tags.ts` now emits `TBPM` for ID3 and Vorbis `BPM` for FLAC/Opus/M4A) *and* sets `library_songs.bpm`, so the result is durable across rescans.
+
+**Genre.** `GET …/genre-suggestion` runs `verifyGenre()` — a Lidarr `artist.lookup` (diacritic/punctuation-insensitive name match via `normalizeForGrouping`, reading the artist's `genres`), returning `{ current, suggested, candidates, source }` and degrading to `source: null` when Lidarr is unconfigured or has nothing. Admin-only `POST …/genre` applies a chosen value: writes the file tag and updates `library_songs.genre`. The web gates the **Apply** button on `AuthService.role === 'admin'`.
+
+All ffmpeg-dependent paths are guarded by `ffmpegAvailable()`. Response types (`BpmAnalysisResult`, `GenreSuggestion`) live in `@nicotind/core` (re-exported to the web via `packages/web/src/types/core.ts`).
