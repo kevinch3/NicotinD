@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.75](https://github.com/kevinch3/NicotinD/compare/v0.1.74...v0.1.75) (2026-06-14)
+
+
+### Bug Fixes
+
+* **library:** stop duplicated albums in grid during active downloads ([e49f190](https://github.com/kevinch3/NicotinD/commit/e49f1902b27ed7c549e8028898e46d3713761eca))
+
 ## [0.1.74](https://github.com/kevinch3/NicotinD/compare/v0.1.73...v0.1.74) (2026-06-14)
 
 
