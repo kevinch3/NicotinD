@@ -89,6 +89,10 @@ Completed (and in-progress/failed) acquire jobs appear in the **Downloads → Ac
 
 `AcquireJob` shape is exported from `@nicotind/core` so the web package can type-check against it without a cross-package dep on `@nicotind/api`. Done/failed jobs older than 7 days are pruned at startup (`AcquireWatcher` constructor) so the list stays bounded. The Downloads Active tab badge counts both slskd in-progress folders and active acquire jobs.
 
+#### Unified Active feed (`DownloadItem`)
+
+The Downloads → **Active** tab is one feed, not two sections: slskd album groups and URL acquire jobs both map into a normalized `DownloadItem` (`lib/download-groups.ts` — `groupToDownloadItem` / `acquireJobToDownloadItem`, merged + stage-sorted by `buildDownloadFeed`). Each row (`components/download-item/`) shows the four facets the redesign called for — **how** (method badge from `lib/acquisition-method.ts`), **what stage** (`components/pipeline-stage-badge/`, label/tone from the pure `lib/pipeline-stage.ts`), **when** (started), **where** (storage path, behind a "Where?" toggle) — plus retry / cancel / remove that the component emits and the page dispatches by `item.kind`. slskd method is always `slskd` and its stage derives from the group's transfer state (job-level — organize/scan run as a batch); acquire rows read `method`/`stage`/`storage_path` straight off the job. Rows carry `data-testid="download-item"` + `data-method`/`data-stage` for e2e.
+
 ---
 
 ## Download list metadata (`AlbumJobMeta`)
