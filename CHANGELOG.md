@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.71](https://github.com/kevinch3/NicotinD/compare/v0.1.70...v0.1.71) (2026-06-14)
+
+
+### Bug Fixes
+
+* **web:** surface the server's reason when album-hunt prep fails ([d3ec578](https://github.com/kevinch3/NicotinD/commit/d3ec578481c99b291957e732e0af737d0cb57df0))
+
 ## [0.1.70](https://github.com/kevinch3/NicotinD/compare/v0.1.69...v0.1.70) (2026-06-13)
 
 
