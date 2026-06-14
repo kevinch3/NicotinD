@@ -8,6 +8,7 @@ import type { Database } from 'bun:sqlite';
 import { getDatabase } from '../db.js';
 import type { LibraryCurator } from '../services/library-curator.js';
 import { normalizeArtistForGrouping, normalizeForGrouping } from '../services/album-grouping.js';
+import { getAcquisitionByPath } from '../services/acquisition-store.js';
 
 const log = createLogger('library');
 
@@ -570,6 +571,20 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
         appliedAt: r.applied_at,
       })),
     );
+  });
+
+  // Acquisition provenance for a song (how/where-from/when it was acquired),
+  // joined from the `acquisitions` side-table on the song's on-disk path. Returns
+  // 404 for an unknown song and `null` for a song with no recorded provenance
+  // (e.g. a legacy import the backfill couldn't resolve) so the UI degrades.
+  app.get('/songs/:id/acquisition', (c) => {
+    const id = c.req.param('id');
+    const db = getDatabase();
+    const song = db
+      .query<{ path: string }, [string]>(`SELECT path FROM library_songs WHERE id = ?`)
+      .get(id);
+    if (!song) return c.json({ error: 'Song not found' }, 404);
+    return c.json(getAcquisitionByPath(db, song.path));
   });
 
   app.get('/songs/:id/similar', async (c) => {

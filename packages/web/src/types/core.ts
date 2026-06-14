@@ -9,6 +9,13 @@ export type {
   SlskdSearchResponse,
 } from '../../../core/src/types/slskd';
 
-export type { AcquireBackend, AcquireJobState, AcquireJob } from '../../../core/src/types/acquire';
+export type {
+  AcquireBackend,
+  AcquireJobState,
+  AcquireJob,
+  AcquisitionMethod,
+  PipelineStage,
+  SongAcquisition,
+} from '../../../core/src/types/acquire';
 
 export type { ArchiveCandidate } from '../../../core/src/types/archive';

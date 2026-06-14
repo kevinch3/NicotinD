@@ -46,6 +46,7 @@ import { AlbumFallbackService } from './services/album-fallback.service.js';
 import { ProviderRegistry } from './services/provider-registry.js';
 import { LibrarySearchProvider } from './services/providers/library-provider.js';
 import { LibraryScanner } from './services/library-scanner.js';
+import { backfillAcquisitions } from './services/acquisition-backfill.js';
 import { LibraryCurator } from './services/library-curator.js';
 import { LibraryOrganizer } from './services/library-organizer.js';
 import { AcoustIdLookup } from './services/acoustid-lookup.js';
@@ -100,6 +101,10 @@ export function createApp({
     try {
       await scanner.scanFull();
       curator.reclassifyAll();
+      // Once the library is on disk, best-effort backfill acquisition provenance
+      // for songs that predate the `acquisitions` table. Runs once (guarded by a
+      // library_sync_state marker); cheap no-op on subsequent boots.
+      backfillAcquisitions(db);
     } catch (err) {
       syncLog.error({ err }, 'Library scan/curate cycle failed');
     }

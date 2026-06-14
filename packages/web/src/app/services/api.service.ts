@@ -1,6 +1,11 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import type { SlskdUserTransferGroup, AcquireJob, ArchiveCandidate } from '@nicotind/core';
+import type {
+  SlskdUserTransferGroup,
+  AcquireJob,
+  ArchiveCandidate,
+  SongAcquisition,
+} from '@nicotind/core';
 
 // ─── Response types ─────────────────────────────────────────────────
 
@@ -349,6 +354,11 @@ export class ApiService {
 
   getSongProvenance(id: string) {
     return this.http.get<ProvenanceRecord[]>(`/api/library/songs/${id}/provenance`);
+  }
+
+  /** Acquisition provenance (how/where-from/when); null when unrecorded. */
+  getSongAcquisition(id: string) {
+    return this.http.get<SongAcquisition | null>(`/api/library/songs/${id}/acquisition`);
   }
 
   getSimilarSongs(id: string, size = 20) {

@@ -279,6 +279,41 @@ export function applySchema(db: Database): void {
   db.run(
     `CREATE INDEX IF NOT EXISTS idx_acquire_jobs_created_at ON acquire_jobs (created_at DESC)`,
   );
+  // Fine-grained pipeline stage + the canonical album dir the job landed in, so
+  // the downloads feed can show queued → downloading → organizing → scanning →
+  // done and where the files ended up. Added after the original schema shipped.
+  try {
+    db.run(`ALTER TABLE acquire_jobs ADD COLUMN stage TEXT`);
+  } catch {
+    // Column already exists — ignore
+  }
+  try {
+    db.run(`ALTER TABLE acquire_jobs ADD COLUMN storage_path TEXT`);
+  } catch {
+    // Column already exists — ignore
+  }
+
+  // Acquisition provenance, keyed on the final on-disk path (== library_songs.path)
+  // — the same join the rest of the system already uses. Records HOW (method),
+  // WHERE-FROM (source_ref: slskd peer or acquire URL), and WHEN each file was
+  // acquired. Written at download time by download-watcher (slskd) and
+  // acquire-watcher (URL), and best-effort backfilled for pre-existing rows.
+  // Same side-table pattern as library_artwork/library_release_meta: keyed on a
+  // stable path/id so it survives full rescans. A file moved by a later rescan
+  // changes its path and orphans its row (same fragility as library_songs.id).
+  db.run(`
+    CREATE TABLE IF NOT EXISTS acquisitions (
+      relative_path TEXT PRIMARY KEY,
+      method        TEXT NOT NULL,
+      source_ref    TEXT,
+      stage         TEXT NOT NULL,
+      started_at    INTEGER NOT NULL,
+      completed_at  INTEGER,
+      error         TEXT
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_acquisitions_method ON acquisitions (method)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_acquisitions_started ON acquisitions (started_at DESC)`);
 
   // Watchlist: albums the user asked to auto-acquire. A background poller
   // (WatchlistService) periodically hunts each `watching` row and, when a

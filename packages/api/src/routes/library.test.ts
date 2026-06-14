@@ -232,6 +232,32 @@ describe('library routes', () => {
     const row = sharedDb.query(`SELECT id FROM library_songs WHERE id = 'song-7'`).get();
     expect(row).toBeNull();
   });
+
+  it('GET /songs/:id/acquisition returns provenance for a recorded song', async () => {
+    seedSong('song-acq', 'Artist/Album/track.flac');
+    sharedDb.run(
+      `INSERT OR REPLACE INTO acquisitions (relative_path, method, source_ref, stage, started_at, completed_at)
+       VALUES ('Artist/Album/track.flac', 'slskd', 'peerZ', 'done', 100, 200)`,
+    );
+    const res = await app.request('/songs/song-acq/acquisition');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      method: 'slskd',
+      sourceRef: 'peerZ',
+      acquiredAt: 200,
+      storagePath: 'Artist/Album/track.flac',
+    });
+  });
+
+  it('GET /songs/:id/acquisition returns null when unrecorded, 404 when unknown', async () => {
+    seedSong('song-noacq', 'Artist/Album/none.flac');
+    const ok = await app.request('/songs/song-noacq/acquisition');
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toBeNull();
+
+    const missing = await app.request('/songs/does-not-exist/acquisition');
+    expect(missing.status).toBe(404);
+  });
 });
 
 describe('downloading album suppression', () => {
