@@ -9,7 +9,7 @@ import { TrackContextMenuComponent } from '../track-context-menu/track-context-m
 import { TrackInfoSheetComponent } from '../track-info-sheet/track-info-sheet.component';
 import { resolveArtistRoute } from '../../lib/route-utils';
 import { createPointerDrag } from '../../lib/pointer-drag';
-import { pointerSeekTime } from '../../lib/seek-utils';
+import { SeekBarComponent } from '../seek-bar/seek-bar.component';
 
 function formatTime(s: number): string {
   if (!Number.isFinite(s) || s < 0) return '0:00';
@@ -20,7 +20,12 @@ function formatTime(s: number): string {
 
 @Component({
   selector: 'app-now-playing',
-  imports: [DeviceSwitcherComponent, TrackContextMenuComponent, TrackInfoSheetComponent],
+  imports: [
+    DeviceSwitcherComponent,
+    TrackContextMenuComponent,
+    TrackInfoSheetComponent,
+    SeekBarComponent,
+  ],
   templateUrl: './now-playing.component.html',
 })
 export class NowPlayingComponent {
@@ -60,11 +65,6 @@ export class NowPlayingComponent {
     const t = this.displayTime();
     const d = this.safeDuration();
     return Number.isFinite(t) && t >= 0 ? Math.min(t, d || t) : 0;
-  });
-
-  readonly progressPercent = computed(() => {
-    const d = this.safeDuration();
-    return d > 0 ? Math.max(0, Math.min(100, (this.safeProgress() / d) * 100)) : 0;
   });
 
   readonly showPlaying = computed(() => {
@@ -141,32 +141,14 @@ export class NowPlayingComponent {
     }
   }
 
-  // Tap-to-seek + drag-scrub via pointer events (a `click` on the thin bar was
-  // routinely swallowed on touch when the tap moved a pixel). `touch-none` on the
-  // bar keeps the browser from treating the gesture as a vertical scroll.
-  private seekBarEl: HTMLElement | null = null;
-  readonly seekDrag = createPointerDrag({
-    onStart: (e) => {
-      this.seekBarEl = e.currentTarget as HTMLElement;
-      this.applySeekFromPointer(e);
-    },
-    onMove: (e) => this.applySeekFromPointer(e),
-    onEnd: () => {
-      this.seekBarEl = null;
-    },
-  });
-
-  private applySeekFromPointer(event: PointerEvent): void {
-    const bar = this.seekBarEl;
-    const safeDur = this.safeDuration();
-    if (!bar || !safeDur) return;
-    const newTime = pointerSeekTime(event.clientX, bar.getBoundingClientRect(), safeDur);
-
+  // Seek commit from app-seek-bar (native range — reliable click/drag/touch/
+  // keyboard across browsers; see SeekBarComponent). Fires once on release.
+  onSeek(time: number): void {
     if (this.isActiveDevice()) {
-      this.player.seek(newTime);
+      this.player.seek(time);
     } else {
-      this.ws.sendCommand('SEEK', { position: newTime });
-      this.remote.setRemoteProgress(newTime, safeDur);
+      this.ws.sendCommand('SEEK', { position: time });
+      this.remote.setRemoteProgress(time, this.safeDuration());
     }
   }
 

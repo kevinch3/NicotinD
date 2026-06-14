@@ -5,6 +5,12 @@
     <title>NicotinD</title>
     <base href="/" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- Favicons (brand mark — generated from the manifest icon source by
+         scripts/generate-icons.ts). SVG first for crisp high-DPI tabs; PNG and
+         .ico fall back for older browsers. -->
+    <link rel="icon" type="image/svg+xml" href="/icons/icon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/icons/icon-16.png" />
     <link rel="icon" type="image/x-icon" href="favicon.ico" />
     <link rel="manifest" href="manifest.webmanifest" />
     <meta name="theme-color" content="#6366f1" />
@@ -15,7 +21,7 @@
     <script>
       // Apply theme before first paint to avoid flash
       (function () {
-        var THEMES = ['midnight', 'daylight', 'warm-paper', 'oled', 'twilight', 'forest'];
+        var THEMES = ['midnight', 'daylight', 'warm-paper', 'oled', 'twilight', 'forest', 'eink'];
         try {
           var stored = JSON.parse(localStorage.getItem('nicotind-theme') || '{}');
           var theme = stored.state?.theme || 'midnight';

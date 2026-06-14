@@ -21,7 +21,7 @@ import { PreserveService } from '../../services/preserve.service';
 import * as db from '../../lib/preserve-store';
 import { createPointerDrag } from '../../lib/pointer-drag';
 import { miniPlayerSlideClass } from '../../lib/player-chrome';
-import { pointerSeekTime } from '../../lib/seek-utils';
+import { SeekBarComponent } from '../seek-bar/seek-bar.component';
 
 function formatTime(s: number): string {
   if (!Number.isFinite(s) || s < 0) return '0:00';
@@ -32,7 +32,7 @@ function formatTime(s: number): string {
 
 @Component({
   selector: 'app-player',
-  imports: [CoverArtComponent, DeviceSwitcherComponent],
+  imports: [CoverArtComponent, DeviceSwitcherComponent, SeekBarComponent],
   templateUrl: './player.component.html',
 })
 export class PlayerComponent implements AfterViewInit, OnDestroy {
@@ -95,11 +95,6 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
     const t = this.displayTime();
     const d = this.safeDuration();
     return Number.isFinite(t) && t >= 0 ? Math.min(t, d || t) : 0;
-  });
-
-  readonly progressPercent = computed(() => {
-    const d = this.safeDuration();
-    return d > 0 ? Math.max(0, Math.min(100, (this.safeProgress() / d) * 100)) : 0;
   });
 
   readonly showPlaying = computed(() => {
@@ -628,34 +623,17 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
     }
   }
 
-  // Tap-to-seek + drag-scrub. Pointer events fire immediately and survive the
-  // micro-movement that cancels a `click` on a thin bar (the old failure mode:
-  // taps on the slim seek bar did nothing on touch). `touch-none` on the bar
-  // stops the browser claiming the gesture as a scroll.
-  private seekBarEl: HTMLElement | null = null;
-  readonly seekDrag = createPointerDrag({
-    onStart: (e) => {
-      this.seekBarEl = e.currentTarget as HTMLElement;
-      this.applySeekFromPointer(e);
-    },
-    onMove: (e) => this.applySeekFromPointer(e),
-    onEnd: () => {
-      this.seekBarEl = null;
-    },
-  });
-
-  private applySeekFromPointer(event: PointerEvent): void {
-    const bar = this.seekBarEl;
-    const safeDur = this.safeDuration();
-    if (!bar || !safeDur) return;
-    const newTime = pointerSeekTime(event.clientX, bar.getBoundingClientRect(), safeDur);
-
+  // Seek commit from app-seek-bar (native range — see SeekBarComponent for why
+  // a range input replaced the old div + pointer-math that kept regressing on
+  // Firefox). Fires once on release: scrub locally for the active device, or
+  // forward a SEEK command to the remote device.
+  onSeek(time: number): void {
     const audio = this.audioEl()?.nativeElement;
     if (this.isActiveDevice() && audio) {
-      audio.currentTime = newTime;
+      audio.currentTime = time;
     } else {
-      this.ws.sendCommand('SEEK', { position: newTime });
-      this.remote.setRemoteProgress(newTime, safeDur);
+      this.ws.sendCommand('SEEK', { position: time });
+      this.remote.setRemoteProgress(time, this.safeDuration());
     }
   }
 
