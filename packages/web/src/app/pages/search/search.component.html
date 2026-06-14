@@ -287,14 +287,119 @@
         }
 
         @if (hasNetwork()) {
-          <div class="flex items-center justify-end mb-2">
+          <div class="flex items-center justify-between gap-2 mb-2">
+            <div class="inline-flex rounded-md overflow-hidden border border-zinc-800 text-xs">
+              <button
+                (click)="setNetworkView('songs')"
+                data-testid="network-view-songs"
+                [class]="
+                  'px-3 py-1 font-medium transition ' +
+                  (networkView() === 'songs'
+                    ? 'bg-zinc-700 text-zinc-100'
+                    : 'bg-zinc-900 text-zinc-400 hover:text-zinc-200')
+                "
+              >
+                Songs ({{ songResults().length }})
+              </button>
+              <button
+                (click)="setNetworkView('folders')"
+                data-testid="network-view-folders"
+                [class]="
+                  'px-3 py-1 font-medium transition ' +
+                  (networkView() === 'folders'
+                    ? 'bg-zinc-700 text-zinc-100'
+                    : 'bg-zinc-900 text-zinc-400 hover:text-zinc-200')
+                "
+              >
+                Folders ({{ folderGroups().length }})
+              </button>
+            </div>
             <button
               (click)="downloadAll()"
-              class="px-3 py-1 rounded-md text-xs font-medium bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition"
+              class="px-3 py-1 rounded-md text-xs font-medium bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition shrink-0"
             >
               Download all ({{ flatNetwork().length }})
             </button>
           </div>
+
+          <!-- Songs view: one row per song, deduped across peers, best copy
+               auto-picked — a single click grabs the right file (§F1). -->
+          @if (networkView() === 'songs') {
+            <div class="space-y-1" data-testid="song-results">
+              @for (song of songResults(); track song.key) {
+                <div
+                  class="relative flex items-center gap-3 px-3 py-2 rounded-lg border border-zinc-800/80 overflow-hidden transition"
+                  style="background: var(--theme-surface)"
+                  data-testid="song-result"
+                >
+                  @if (getSongVariant(song) === 'progress') {
+                    <div
+                      class="absolute inset-0 pointer-events-none rounded-lg transition-all duration-500"
+                      [style.width.%]="getSongPercent(song)"
+                      style="background: var(--theme-status-progress-bg)"
+                    ></div>
+                  }
+                  @if (getSongVariant(song) === 'done') {
+                    <div
+                      class="absolute inset-0 pointer-events-none rounded-lg"
+                      style="background: var(--theme-status-done-bg)"
+                    ></div>
+                  }
+
+                  <div class="relative flex-1 min-w-0">
+                    <p
+                      class="text-sm truncate"
+                      style="color: var(--theme-text-primary)"
+                      [innerHTML]="highlightSongTitle(song)"
+                    ></p>
+                    <p class="text-xs truncate" style="color: var(--theme-text-muted)">
+                      @if (song.artist) {
+                        <span [innerHTML]="highlightSongArtist(song)"></span> ·
+                      }
+                      <span style="color: var(--theme-accent)">{{ songFormatBadge(song) }}</span> ·
+                      {{ formatSize(song.best.size) }}
+                      @if (song.best.length) {
+                        · {{ formatDuration(song.best.length) }}
+                      }
+                      @if (song.versions.length > 1) {
+                        · {{ song.versions.length }} sources
+                      }
+                    </p>
+                  </div>
+
+                  <div class="relative shrink-0">
+                    @if (getSongVariant(song) === 'done') {
+                      <a
+                        routerLink="/library"
+                        class="px-2 py-1 rounded text-xs font-semibold transition"
+                        style="
+                          background: var(--theme-status-done-bg);
+                          color: var(--theme-status-done-text);
+                        "
+                      >
+                        Open
+                      </a>
+                    } @else {
+                      <button
+                        (click)="downloadSong(song)"
+                        [disabled]="getSongBtn(song).disabled"
+                        data-testid="song-download"
+                        [class]="
+                          'px-3 py-1 rounded text-xs font-medium transition ' +
+                          btnClasses[getSongVariant(song)] +
+                          (getSongBtn(song).disabled ? ' cursor-default' : '')
+                        "
+                      >
+                        {{ getSongBtn(song).label }}
+                      </button>
+                    }
+                  </div>
+                </div>
+              } @empty {
+                <p class="text-center py-6 text-zinc-500 text-sm">No individual songs matched.</p>
+              }
+            </div>
+          } @else {
           <div class="space-y-2">
             @for (group of folderGroups(); track getFolderKey(group)) {
               <div
@@ -455,6 +560,7 @@
               </div>
             }
           </div>
+          }
         }
       }
     </section>

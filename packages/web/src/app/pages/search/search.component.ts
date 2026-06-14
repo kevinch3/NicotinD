@@ -24,6 +24,7 @@ import {
   BUTTON_CLASSES,
 } from '../../lib/download-status';
 import { groupByDirectory, formatPeerInfo, type FolderGroup } from '../../lib/folder-utils';
+import { groupBySong, formatBadge, type SongResult } from '../../lib/song-results';
 import { FolderBrowserComponent } from '../../components/folder-browser/folder-browser.component';
 import { AlbumHuntModalComponent } from '../../components/album-hunt-modal/album-hunt-modal.component';
 import { TrackRowComponent } from '../../components/track-row/track-row.component';
@@ -235,6 +236,11 @@ export class SearchComponent implements OnInit, OnDestroy {
   readonly hasNetwork = computed(() => this.flatNetwork().length > 0);
   readonly highlightTerms = computed(() => getHighlightTerms(this.search.query()));
   readonly folderGroups = computed(() => groupByDirectory(this.flatNetwork()));
+  // Song-first view of the network results: one row per song (deduped across
+  // peers, best copy auto-picked) so finding a single track is one click. The
+  // folder view stays available for whole-album grabs. See §F1.
+  readonly networkView = signal<'songs' | 'folders'>('songs');
+  readonly songResults = computed(() => groupBySong(this.flatNetwork(), this.search.query()));
 
   private pollInterval: ReturnType<typeof setInterval> | null = null;
 
@@ -578,6 +584,50 @@ export class SearchComponent implements OnInit, OnDestroy {
 
   highlightGroupFileSubtitle(file: FolderGroup['files'][number]): string {
     return highlightHtml(getDisplaySubtitle(file), this.highlightTerms());
+  }
+
+  // ─── Songs view (network results, song-first) ───────────────────
+
+  setNetworkView(view: 'songs' | 'folders'): void {
+    this.networkView.set(view);
+  }
+
+  // Download the best copy of a deduped song in one click.
+  downloadSong(song: SongResult): Promise<void> {
+    return this.handleDownload(song.best.username, {
+      filename: song.best.filename,
+      size: song.best.size,
+    });
+  }
+
+  getSongBtn(song: SongResult) {
+    const key = `${song.best.username}:${song.best.filename}`;
+    return getSingleDownloadLabel(
+      song.best.username,
+      song.best.filename,
+      this.search.downloading().has(key),
+      (u, f) => this.transfers.getStatus(u, f),
+    );
+  }
+
+  getSongVariant(song: SongResult) {
+    return this.getSongBtn(song).variant;
+  }
+
+  getSongPercent(song: SongResult): number {
+    return this.transfers.getStatus(song.best.username, song.best.filename)?.percent ?? 0;
+  }
+
+  songFormatBadge(song: SongResult): string {
+    return formatBadge(song.best);
+  }
+
+  highlightSongTitle(song: SongResult): string {
+    return highlightHtml(song.title, this.highlightTerms());
+  }
+
+  highlightSongArtist(song: SongResult): string {
+    return highlightHtml(song.artist, this.highlightTerms());
   }
 
   // ─── Private ────────────────────────────────────────────────────

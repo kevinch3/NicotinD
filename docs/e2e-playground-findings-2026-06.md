@@ -41,7 +41,7 @@ lane now, track-hunter later") and deferred to its own session.
 | A4 | ✅ | Low | Catalog | Artist pills are noisy/duplicated ("Zara/ZarA/Zara…", "Los/King Los…") |
 | E1 | ✅ | Low (infra) | e2e | Hunt modal lacks `data-testid`s on its core controls — violates the project's e2e selector standard |
 | D2 | ◻️ | Low | Library | Duplicate artist rows from "The"-prefix handling ("The Jinx" + "Jinx"); `library_album_tombstones` is populated historically but no longer written by the delete path |
-| F1 | ◻️ | **High (UX)** | Search | No song-first acquire path — finding one song (e.g. "Toxic") means hand-picking from up to ~250 folder-grouped network files; curated tools are album/EP-only |
+| F1 | ✅ | **High (UX)** | Search | Song-first acquire path — a **Songs lane** dedupes network files by (artist,title), auto-picks the best copy (FLAC>MP3, then availability) and one-click downloads it (`lib/song-results.ts`) |
 | F2 | ◻️ | Medium | Hunt | No per-track hunter — the album hunt's skew/cross-peer/auto-retry robustness has no single-song equivalent (also unblocks the C1 0-candidate fallback) |
 | F3 | ◻️ | Low (infra) | e2e | No UI entry point / `data-testid` for song acquisition; CI (dead slskd) can't exercise it — needs the §E2 gated playground spec |
 
@@ -305,15 +305,18 @@ it as a standalone single release-group **and** it's in the artist's Lidarr disc
 
 > Benchmarks for this section are **deferred — needs a live backend** (consistent with C1/C2/C3).
 
-### F1 — No song-first network lane (High UX)
-Network results are **folder-first**. A user hunting one song must expand peer folders and pick a file
-by hand out of up to ~250 results, with no help choosing the best copy.
+### F1 — Song-first network lane (✅ implemented 2026-06-14)
+Network results were **folder-first**: a user hunting one song had to expand peer folders and pick a
+file by hand out of up to ~250 results, with no help choosing the best copy.
 
-**Suggested improvement (Phase 1 — "lane now"):** a **Songs lane** that dedupes the slskd file results
-by normalized `(artist, title)`, auto-picks the best version (reuse the existing **FLAC > MP3 format
-preference**, then bitrate, then filename match), and offers a **one-click download** via the existing
-`enqueueDownload`. Gated on the slskd plugin like the rest of network search. Reuses
-`folder-utils.ts` / `download-status.ts` on the web side.
+**Done.** The search page now defaults the network results to a **Songs lane** (toggle:
+Songs ↔ Folders). Pure logic in `packages/web/src/app/lib/song-results.ts` (`groupBySong`,
+unit-tested) dedupes the flat slskd file list by normalized `(artist, title)`, auto-picks the best
+copy (**FLAC > other lossless > highest-bitrate lossy**, then peer availability: free slot → shorter
+queue → faster upload → larger size), and orders rows by query relevance. One click downloads the
+best copy via the existing `enqueueDownload`/`handleDownload`; status (queued/↓%/done) reuses
+`download-status.ts`. The folder view is preserved for whole-album grabs. The playground §F flow now
+asserts the lane (`data-testid="network-view-songs"`/`song-result`) instead of recording the gap.
 
 ### F2 — No track hunter (Medium)
 The album hunt's robustness — skew-query soft-ban bypass, cross-peer fallback, auto-retry — has **no

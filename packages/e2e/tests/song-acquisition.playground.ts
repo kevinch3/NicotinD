@@ -65,24 +65,38 @@ test('song-acquisition (§F)', async ({ page, obs, apiToken }) => {
     });
   }
 
-  // 3. Network lane — the only song-level path is raw file picking.
+  // 3. Network lane — the Songs lane (§F1) is now the song-first path: deduped
+  //    rows, best copy auto-picked, one-click download. Verify it's there and
+  //    measure how much it collapses the raw file list.
   if (search.networkAvailable) {
     const net = await pollNetwork(page, token, search.searchId, { timeoutMs: 20_000 });
     obs.record({
       kind: 'metric',
-      title: 'Network files the user must sift to find one song',
-      value: net.fileCount,
-      unit: 'count',
-      severity: net.fileCount > 50 ? 'medium' : 'info',
+      title: 'Raw network files vs deduped songs',
+      value: `${net.fileCount} files`,
+      severity: 'info',
       detail: `${net.resultCount} peer responses`,
     });
-    obs.record({
-      kind: 'gap',
-      title: 'No song-first acquire affordance — only per-file folder picking',
-      severity: 'high',
-      suggestion:
-        'Phase 1: a "Songs" lane that dedupes network files by (artist,title), auto-picks the best version (FLAC>MP3, bitrate, filename match), one-click enqueueDownload.',
-    });
+
+    const hasSongsLane = (await page.getByTestId('network-view-songs').count()) > 0;
+    const songRows = await page.getByTestId('song-result').count();
+    if (hasSongsLane) {
+      obs.record({
+        kind: 'metric',
+        title: 'Song-first lane present (§F1 ✅)',
+        value: `${songRows} songs`,
+        unit: 'count',
+        severity: 'info',
+        detail: 'Deduped, best-copy-picked, one-click download.',
+      });
+    } else if (net.fileCount > 0) {
+      obs.record({
+        kind: 'gap',
+        title: 'Network results present but no song-first lane rendered',
+        severity: 'high',
+        suggestion: 'The §F1 Songs lane toggle did not render despite network files.',
+      });
+    }
   } else {
     obs.record({
       kind: 'degraded',
