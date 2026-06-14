@@ -1,4 +1,5 @@
 import { Component, input, output } from '@angular/core';
+import { IconComponent } from '../icon/icon.component';
 
 /**
  * Action bar shown while a track list is in multi-select mode. Stateless —
@@ -7,7 +8,7 @@ import { Component, input, output } from '@angular/core';
  */
 @Component({
   selector: 'app-selection-bar',
-  imports: [],
+  imports: [IconComponent],
   templateUrl: './selection-bar.component.html',
 })
 export class SelectionBarComponent {

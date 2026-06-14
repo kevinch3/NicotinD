@@ -11,6 +11,7 @@ import { ConfirmDialogComponent } from '../../components/confirm-dialog/confirm-
 import { toTrack, offlineTrackAction, addToPlaylistAction } from '../../lib/track-utils';
 import { createSelection } from '../../lib/selection';
 import { SelectionBarComponent } from '../../components/selection-bar/selection-bar.component';
+import { IconComponent } from '../../components/icon/icon.component';
 import { NavigationService } from '../../services/navigation.service';
 import { PreserveService } from '../../services/preserve.service';
 import type { PlaylistDetail } from '../../services/api.service';
@@ -18,7 +19,7 @@ import type { PlaylistDetail } from '../../services/api.service';
 @Component({
   selector: 'app-playlist-detail',
   standalone: true,
-  imports: [TrackRowComponent, ConfirmDialogComponent, SelectionBarComponent],
+  imports: [TrackRowComponent, ConfirmDialogComponent, SelectionBarComponent, IconComponent],
   templateUrl: './playlist-detail.component.html',
 })
 export class PlaylistDetailComponent implements OnInit {

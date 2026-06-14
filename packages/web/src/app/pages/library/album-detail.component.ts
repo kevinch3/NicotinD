@@ -19,6 +19,7 @@ import { toTrack, offlineTrackAction, addToPlaylistAction } from '../../lib/trac
 import { resolveArtistRoute } from '../../lib/route-utils';
 import { createSelection } from '../../lib/selection';
 import { SelectionBarComponent } from '../../components/selection-bar/selection-bar.component';
+import { IconComponent } from '../../components/icon/icon.component';
 import { NavigationService } from '../../services/navigation.service';
 import { PreserveService } from '../../services/preserve.service';
 
@@ -31,6 +32,7 @@ import { PreserveService } from '../../services/preserve.service';
     RouterLink,
     CoverArtComponent,
     SelectionBarComponent,
+    IconComponent,
   ],
   templateUrl: './album-detail.component.html',
 })

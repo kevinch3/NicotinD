@@ -5,17 +5,20 @@
     Select all{{ total() ? ' (' + total() + ')' : '' }}
   </button>
   <button type="button" (click)="add.emit()" [disabled]="count() === 0"
-    class="ml-auto px-3 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 transition disabled:opacity-40 disabled:pointer-events-none">
-    Add to playlist
+    data-testid="selection-add" aria-label="Add to playlist" title="Add to playlist"
+    class="ml-auto w-8 h-8 flex items-center justify-center rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 transition disabled:opacity-40 disabled:pointer-events-none">
+    <app-icon name="add" [size]="16" />
   </button>
   @if (canDelete()) {
     <button type="button" (click)="deleteSelected.emit()" [disabled]="count() === 0"
-      class="px-3 py-1.5 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 transition disabled:opacity-40 disabled:pointer-events-none">
-      {{ deleteLabel() }}
+      data-testid="selection-delete" [attr.aria-label]="deleteLabel()" [attr.title]="deleteLabel()"
+      class="w-8 h-8 flex items-center justify-center rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 transition disabled:opacity-40 disabled:pointer-events-none">
+      <app-icon name="delete" [size]="16" />
     </button>
   }
   <button type="button" (click)="cancel.emit()"
-    class="text-theme-muted hover:text-theme-secondary transition">
-    Cancel
+    data-testid="selection-cancel" aria-label="Cancel" title="Cancel"
+    class="w-8 h-8 flex items-center justify-center rounded-lg text-theme-muted hover:text-theme-secondary transition">
+    <app-icon name="close" [size]="16" />
   </button>
 </div>

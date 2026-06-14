@@ -12,7 +12,14 @@ function setup() {
   return fixture;
 }
 
-function click(fixture: ReturnType<typeof setup>, text: string): void {
+/** Iconified actions are selected by data-testid; "Select all" stays text. */
+function clickTestId(fixture: ReturnType<typeof setup>, testId: string): void {
+  const btn = fixture.debugElement.query(By.css(`[data-testid="${testId}"]`));
+  if (!btn) throw new Error(`button "${testId}" not found`);
+  btn.triggerEventHandler('click', null);
+}
+
+function clickText(fixture: ReturnType<typeof setup>, text: string): void {
   const btn = fixture.debugElement
     .queryAll(By.css('button'))
     .find((d) => (d.nativeElement as HTMLButtonElement).textContent?.trim().startsWith(text));
@@ -21,20 +28,25 @@ function click(fixture: ReturnType<typeof setup>, text: string): void {
 }
 
 describe('SelectionBarComponent', () => {
-  it('renders the action buttons and a "selected" label', () => {
+  it('renders the action buttons (icon actions carry accessible labels)', () => {
     const fixture = setup();
-    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
-    expect(text).toContain('selected');
-    expect(text).toContain('Select all');
-    expect(text).toContain('Add to playlist');
-    expect(text).toContain('Cancel');
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.textContent ?? '').toContain('selected');
+    expect(el.textContent ?? '').toContain('Select all');
+    // Iconified universal actions expose their name via aria-label.
+    expect(el.querySelector('[data-testid="selection-add"]')?.getAttribute('aria-label')).toBe(
+      'Add to playlist',
+    );
+    expect(el.querySelector('[data-testid="selection-cancel"]')?.getAttribute('aria-label')).toBe(
+      'Cancel',
+    );
   });
 
-  it('emits add when "Add to playlist" is clicked', () => {
+  it('emits add when the add button is clicked', () => {
     const fixture = setup();
     let fired = false;
     fixture.componentInstance.add.subscribe(() => (fired = true));
-    click(fixture, 'Add to playlist');
+    clickTestId(fixture, 'selection-add');
     expect(fired).toBe(true);
   });
 
@@ -42,25 +54,21 @@ describe('SelectionBarComponent', () => {
     const fixture = setup();
     let fired = false;
     fixture.componentInstance.selectAll.subscribe(() => (fired = true));
-    click(fixture, 'Select all');
+    clickText(fixture, 'Select all');
     expect(fired).toBe(true);
   });
 
-  it('emits cancel when "Cancel" is clicked', () => {
+  it('emits cancel when the cancel button is clicked', () => {
     const fixture = setup();
     let fired = false;
     fixture.componentInstance.cancel.subscribe(() => (fired = true));
-    click(fixture, 'Cancel');
+    clickTestId(fixture, 'selection-cancel');
     expect(fired).toBe(true);
   });
 
-  it('disables "Add to playlist" while nothing is selected (count 0)', () => {
+  it('disables the add button while nothing is selected (count 0)', () => {
     const fixture = setup();
-    const addBtn = fixture.debugElement
-      .queryAll(By.css('button'))
-      .find((d) =>
-        (d.nativeElement as HTMLButtonElement).textContent?.trim().startsWith('Add to playlist'),
-      );
+    const addBtn = fixture.debugElement.query(By.css('[data-testid="selection-add"]'));
     expect((addBtn!.nativeElement as HTMLButtonElement).disabled).toBe(true);
   });
 });
