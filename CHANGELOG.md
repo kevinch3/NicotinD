@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.76](https://github.com/kevinch3/NicotinD/compare/v0.1.75...v0.1.76) (2026-06-14)
+
+
+### Features
+
+* **library:** audio standardization, track analysis & metadata optimization ([13aa660](https://github.com/kevinch3/NicotinD/commit/13aa6607dccd750839d5c5afe16d8a5c7ca465f9))
+
+
+### Bug Fixes
+
+* **acquire:** spotdl progress never advances + premature done state ([e6f30d9](https://github.com/kevinch3/NicotinD/commit/e6f30d908b0e51d3ab1238acc2bfba0903361abb))
+* **web:** native-range seek bar, e-ink legibility, branded favicon ([793458f](https://github.com/kevinch3/NicotinD/commit/793458f2d46ba282ff3eecb5ce6a8e0ab3efabcc))
+
 ## [0.1.75](https://github.com/kevinch3/NicotinD/compare/v0.1.74...v0.1.75) (2026-06-14)
 
 
