@@ -45,6 +45,35 @@ export async function catalogSearch(
   return { ok, status: res.status(), artists: body.artists ?? [], albums: body.albums ?? [] };
 }
 
+export interface MetadataCandidatesResult {
+  ok: boolean;
+  status: number;
+  query: string;
+  candidates: Array<{ artist: string; title: string; score: number; year: number | null }>;
+}
+
+/** Fetch the metadata-fix candidates for an album (admin; needs Lidarr live). */
+export async function metadataCandidates(
+  page: Page,
+  token: string | null,
+  albumId: string,
+  q?: string,
+): Promise<MetadataCandidatesResult> {
+  const qs = q ? `?q=${encodeURIComponent(q)}` : '';
+  const res = await authGet(page, token, `/api/library/albums/${albumId}/metadata-candidates${qs}`);
+  if (!res.ok()) return { ok: false, status: res.status(), query: q ?? '', candidates: [] };
+  const body = (await res.json().catch(() => ({}))) as Partial<MetadataCandidatesResult>;
+  return { ok: true, status: res.status(), query: body.query ?? q ?? '', candidates: body.candidates ?? [] };
+}
+
+/** First album id in the library, for flows that need any album to act on. */
+export async function firstAlbumId(page: Page, token: string | null): Promise<string | null> {
+  const res = await authGet(page, token, '/api/library/albums');
+  if (!res.ok()) return null;
+  const albums = (await res.json().catch(() => [])) as Array<{ id: string }>;
+  return Array.isArray(albums) && albums.length ? (albums[0]?.id ?? null) : null;
+}
+
 export interface NetworkPoll {
   state: string;
   resultCount: number;

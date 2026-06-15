@@ -24,3 +24,10 @@ export type {
   BpmAnalysisResult,
   GenreSuggestion,
 } from '../../../core/src/types/track-analysis';
+
+export type {
+  MetadataReleaseType,
+  MetadataCandidate,
+  ApplyMetadataRequest,
+  MetadataOverride,
+} from '../../../core/src/types/metadata-fix';

@@ -95,28 +95,43 @@ describe('AlbumDetailComponent — bulk delete', () => {
   });
 });
 
-describe('AlbumDetailComponent — optimize metadata', () => {
-  it('busts the cover cache and reports an update on success', async () => {
-    const { component, optimizeAlbumMetadata } = setup();
+describe('AlbumDetailComponent — fix metadata', () => {
+  it('opens the fix modal only when an album is loaded', () => {
+    const { component } = setup();
+    component.openMetadataFix();
+    expect(component.showMetadataFix()).toBe(false);
+
     component.selectedAlbum.set(ALBUM);
-
-    await component.optimizeMetadata();
-
-    expect(optimizeAlbumMetadata).toHaveBeenCalledWith('a1');
-    expect(component.coverBust()).toBe(1);
-    expect(component.optimizeMsg()).toBe('Metadata updated from Lidarr.');
-    expect(component.optimizing()).toBe(false);
+    component.openMetadataFix();
+    expect(component.showMetadataFix()).toBe(true);
   });
 
-  it('reports "no changes" when nothing was updated', async () => {
-    const optimizeAlbumMetadata = vi.fn(() =>
-      of({ matched: true, coverUpdated: false, yearUpdated: false, releaseTypeUpdated: false }),
-    );
-    const { component } = setup({ optimizeAlbumMetadata });
+  it('re-fetches in place and busts the cover when the album id is unchanged', async () => {
+    const { component } = setup();
+    component.selectedAlbum.set(ALBUM);
+    component.showMetadataFix.set(true);
+
+    await component.onMetadataApplied({ albumId: 'a1' });
+
+    expect(component.showMetadataFix()).toBe(false);
+    expect(component.coverBust()).toBe(1);
+    expect(component.selectedAlbum()?.id).toBe('a1');
+  });
+
+  it('navigates to the new album when a correction changes its id', async () => {
+    const { component } = setup();
+    const navigate = vi
+      .spyOn(
+        (component as unknown as { router: { navigate: (c: unknown[]) => Promise<boolean> } })
+          .router,
+        'navigate',
+      )
+      .mockResolvedValue(true);
     component.selectedAlbum.set(ALBUM);
 
-    await component.optimizeMetadata();
+    await component.onMetadataApplied({ albumId: 'a2-new' });
 
-    expect(component.optimizeMsg()).toBe('No changes found.');
+    expect(navigate).toHaveBeenCalledWith(['/library', 'albums', 'a2-new']);
+    expect(component.showMetadataFix()).toBe(false);
   });
 });

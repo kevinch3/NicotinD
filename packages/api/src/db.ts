@@ -528,6 +528,30 @@ export function applySchema(db: Database): void {
     )
   `);
 
+  // User-confirmed metadata corrections (e.g. a mis-tagged artist "<Desconocido>"
+  // → "La Portuaria"). Keyed on the scanner's **raw** albumId — the id derived
+  // from the unchanged on-disk tags — because the scanner always re-derives that
+  // id at scan time and consults this table inside resolveTags to substitute the
+  // corrected artist/album/year. `corrected_album_id` (= albumIdFor(correctedArtist,
+  // correctedAlbum)) lets the apply handler reverse-look-up the raw row when the
+  // user re-corrects an already-corrected album. Same side-table philosophy as
+  // library_artwork/library_release_meta: no files moved, songId stays stable,
+  // survives full rescans.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS library_metadata_overrides (
+      raw_album_id       TEXT PRIMARY KEY,
+      artist             TEXT,
+      album              TEXT,
+      year               INTEGER,
+      corrected_album_id TEXT,
+      source             TEXT,
+      updated_at         INTEGER NOT NULL
+    )
+  `);
+  db.run(
+    `CREATE INDEX IF NOT EXISTS idx_metadata_overrides_corrected ON library_metadata_overrides(corrected_album_id)`,
+  );
+
   // Native per-user playlists (re-added after the Navidrome removal). Playlists
   // reference songs by the scanner's stable songId; reads JOIN library_songs and
   // drop rows whose song no longer exists (file moved → id changed), so a

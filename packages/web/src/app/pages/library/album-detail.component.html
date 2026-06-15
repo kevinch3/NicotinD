@@ -68,10 +68,10 @@
             <app-icon name="share" />
           </button>
           @if (auth.role() === 'admin') {
-            <button (click)="optimizeMetadata()" [disabled]="optimizing()"
+            <button (click)="openMetadataFix()"
               data-testid="optimize-metadata"
               class="px-4 py-2 rounded-lg text-sm bg-theme-surface-2 text-theme-muted hover:bg-theme-hover transition disabled:opacity-50">
-              {{ optimizing() ? 'Optimizing…' : 'Optimize metadata' }}
+              Fix metadata
             </button>
             <button (click)="removeAlbum()" [disabled]="deleting()"
               class="px-4 py-2 rounded-lg text-sm text-red-400 hover:bg-red-500/10 transition disabled:opacity-50">
@@ -79,9 +79,6 @@
             </button>
           }
         </div>
-        @if (optimizeMsg(); as msg) {
-          <p class="text-theme-muted text-xs mt-2" data-testid="optimize-msg">{{ msg }}</p>
-        }
       </div>
     </div>
 
@@ -156,6 +153,17 @@
       confirmLabel="Remove"
       (confirm)="onConfirm()"
       (cancel)="onCancelConfirm()"
+    />
+  }
+
+  <!-- Fix metadata (admin) -->
+  @if (showMetadataFix() && selectedAlbum(); as album) {
+    <app-metadata-fix-modal
+      [albumId]="album.id"
+      [currentArtist]="album.artist"
+      [currentAlbum]="album.name"
+      (applied)="onMetadataApplied($event)"
+      (cancel)="closeMetadataFix()"
     />
   }
 

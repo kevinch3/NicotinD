@@ -28,3 +28,26 @@ Album-keyed stores (`library_artwork`, `library_release_meta`) are keyed on the 
 - **CLI** — `bun run packages/api/src/scripts/optimize-metadata.ts` (dry-run default; `--apply`, `--all`). Resolves Lidarr URL/key like `backfill-artwork.ts` (env → config → `secrets.json`).
 
 Everything degrades gracefully when Lidarr is unconfigured (`503` / `null`).
+
+## User-driven fix (candidate picker + free-text fallback)
+
+The automatic `optimizeAlbum` matcher is **all-or-nothing**: it requires an exact normalized title+artist match against `lidarr.album.lookup("<artist> <title>")`. That fails badly when the stored artist is itself wrong — e.g. a rip tagged `<Desconocido>` searches `"<Desconocido> Selva"`, which **poisons the query** so a well-known band never matches, and the wrong cover is left in place. Bulk optimize deliberately stays conservative (it's a cheap backfill for *missing* art); the **interactive fix** is the answer to "the metadata is just wrong, let me correct it."
+
+### Service (`services/metadata-fix.ts`)
+
+- **`searchCandidates(db, lidarr, albumId, query?)`** — `query` defaults to the album's `"<artist> <album>"` but the **user can override it** (the key to escaping a poisoned query). Returns ranked `MetadataCandidate[]` (`@nicotind/core`) — `pickAlbumCover` for the thumb, `parseYear`, `mapLidarrAlbumType` for the type.
+- **`rankCandidates(hits, query)`** (pure) — scores each hit 0–100 by diacritic-folded (`NFD`) query-token overlap and returns the best-first top 8. **Low-confidence hits are kept on purpose** — the user makes the final call, so a weak match is still shown.
+- **`applyMetadataFix(db, albumId, { artist?, album?, year?, coverUrl?, releaseType?, source }, { coverCacheDir })`** — applies a user-confirmed correction (from a candidate, or free-text). Persists it in `library_metadata_overrides` so the scanner honors it forever, then mutates the canonical tables to match **immediately** (the exact rows a rescan-with-override would produce):
+  - **songs are UPDATEd in place** — `songId` is path-derived and files don't move, so curation (`starred`/`hidden`) and `playlist_songs` references survive untouched; only the denormalized `artist`/`artist_id`/`album_id`/`year` change;
+  - the `library_albums` row is moved to the corrected id (or merged if the corrected names collapse onto an existing album), album-keyed side tables (`library_artwork`, `library_release_meta`) are re-pointed, and the corrected artist is upserted while the orphaned old artist is pruned via the shared `pruneOrphanArtist` (`services/library-aggregates.ts`, reused by album-delete);
+  - an optional confirmed `coverUrl`/`releaseType` overwrite the art/type.
+
+  Returns the new `albumId`/`artistId` (the web navigates there).
+
+### Override persistence (`services/metadata-override-store.ts`)
+
+`library_metadata_overrides` is keyed on the scanner's **raw** `albumId` (derived from the unchanged on-disk tags), because `resolveTags` always re-derives that id at scan time and looks the override up to substitute the corrected `artist`/`album`/`year` *before* minting `artistId`/`albumId`. To avoid an orphaned row when a user re-corrects an already-corrected album, the row also stores `corrected_album_id` (= `albumIdFor(correctedArtist, correctedAlbum)`); `applyMetadataFix` reverse-resolves the raw row via `findByCorrectedId` and updates it in place. Same side-table philosophy as `library_artwork`/`library_release_meta`: **no files moved, survives full rescans.**
+
+### Surfaces
+
+- **`GET /api/library/albums/:id/metadata-candidates?q=`** (admin; `503` without Lidarr) and **`POST /api/library/albums/:id/metadata`** (admin; **no** Lidarr needed — free-text works offline). The album-detail **"Fix metadata"** button (admin, `data-testid="optimize-metadata"`) opens `MetadataFixModalComponent`: an editable search → candidate cards (cover / artist — title (year) [type] / confidence %) with **Apply**, plus a collapsed **"Enter manually"** fallback (artist/album/year). On apply the page re-fetches the corrected album (by the returned id) and cache-busts the cover.

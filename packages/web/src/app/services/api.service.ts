@@ -7,6 +7,8 @@ import type {
   SongAcquisition,
   BpmAnalysisResult,
   GenreSuggestion,
+  MetadataCandidate,
+  ApplyMetadataRequest,
 } from '@nicotind/core';
 
 // ─── Response types ─────────────────────────────────────────────────
@@ -332,6 +334,32 @@ export class ApiService {
       yearUpdated: boolean;
       releaseTypeUpdated: boolean;
     }>(`/api/library/albums/${id}/optimize-metadata`, {});
+  }
+  /**
+   * Search Lidarr/MusicBrainz for candidate releases to fix an album's metadata
+   * (admin). `q` overrides the default "<artist> <album>" query — needed when the
+   * stored artist is wrong and poisons it.
+   */
+  getMetadataCandidates(id: string, q?: string) {
+    const qs = q && q.trim() ? `?q=${encodeURIComponent(q.trim())}` : '';
+    return this.http.get<{
+      album: { id: string; name: string; artist: string };
+      query: string;
+      candidates: MetadataCandidate[];
+    }>(`/api/library/albums/${id}/metadata-candidates${qs}`);
+  }
+  /** Apply a user-confirmed metadata correction (candidate or free-text; admin). */
+  applyMetadata(id: string, body: ApplyMetadataRequest) {
+    return this.http.post<{
+      albumId: string;
+      artistId: string;
+      artist: string;
+      album: string;
+      year: number | null;
+      movedSongs: number;
+      coverUpdated: boolean;
+      releaseTypeUpdated: boolean;
+    }>(`/api/library/albums/${id}/metadata`, body);
   }
   /** Library-wide metadata optimization (admin). `all` re-verifies every album. */
   optimizeAllMetadata(all = false) {

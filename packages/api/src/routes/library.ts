@@ -13,6 +13,9 @@ import { getAcquisitionByPath } from '../services/acquisition-store.js';
 import { analyzeBpm, verifyGenre } from '../services/track-analysis.js';
 import { readAudioTags, writeAudioTags } from '../services/audio-tags.js';
 import { optimizeAlbum } from '../services/metadata-optimize.js';
+import { searchCandidates, applyMetadataFix } from '../services/metadata-fix.js';
+import { pruneOrphanArtist } from '../services/library-aggregates.js';
+import type { ApplyMetadataRequest } from '@nicotind/core';
 
 const log = createLogger('library');
 
@@ -443,32 +446,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       // `library_artists` with no albums). See
       // docs/e2e-playground-findings-2026-06.md §D.
       const artistId = albumRow?.artist_id ?? canonicalSongs.find((s) => s.artist_id)?.artist_id;
-      if (artistId) {
-        const remainingAlbums =
-          db
-            .query<
-              { c: number },
-              [string]
-            >('SELECT COUNT(*) AS c FROM library_albums WHERE artist_id = ?')
-            .get(artistId)?.c ?? 0;
-        const remainingSongs =
-          db
-            .query<
-              { c: number },
-              [string]
-            >('SELECT COUNT(*) AS c FROM library_songs WHERE artist_id = ?')
-            .get(artistId)?.c ?? 0;
-        if (remainingAlbums === 0 && remainingSongs === 0) {
-          db.run('DELETE FROM library_artists WHERE id = ?', [artistId]);
-          db.run('DELETE FROM library_artwork WHERE id = ?', [artistId]);
-        } else {
-          // Keep the artist's album_count honest so cards aren't off-by-one.
-          db.run('UPDATE library_artists SET album_count = ? WHERE id = ?', [
-            remainingAlbums,
-            artistId,
-          ]);
-        }
-      }
+      if (artistId) pruneOrphanArtist(db, artistId);
 
       // Drop a genre row only once nothing references it — recomputing exact
       // counts for a large shared genre on every delete isn't worth it (a full
@@ -576,6 +554,34 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     if (!result.matched) {
       return c.json({ ...result, error: 'No confident Lidarr match for this album' }, 404);
     }
+    return c.json(result);
+  });
+
+  // User-driven metadata fix: search Lidarr/MusicBrainz with an *editable* query
+  // (defaults to the album's current "<artist> <album>", which the user can
+  // override when the stored artist is wrong — e.g. "<Desconocido>") and return
+  // ranked candidates to confirm. Admin only; 503 without Lidarr.
+  app.get('/albums/:id/metadata-candidates', async (c) => {
+    const user = c.get('user');
+    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+    if (!lidarr) return c.json({ error: 'Lidarr not configured' }, 503);
+    const res = await searchCandidates(getDatabase(), lidarr, c.req.param('id'), c.req.query('q'));
+    if (!res) return c.json({ error: 'Album not found' }, 404);
+    return c.json(res);
+  });
+
+  // Apply a confirmed correction (from a candidate or free-text). Persists an
+  // override the scanner honors and re-buckets the canonical rows immediately.
+  // Admin only. Does NOT require Lidarr (free-text fallback works offline).
+  app.post('/albums/:id/metadata', async (c) => {
+    const user = c.get('user');
+    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+    const body = await c.req.json<ApplyMetadataRequest>().catch(() => ({}) as ApplyMetadataRequest);
+    if (!body.artist?.trim() && !body.album?.trim() && body.year == null && !body.coverUrl && !body.releaseType) {
+      return c.json({ error: 'Nothing to apply' }, 400);
+    }
+    const result = applyMetadataFix(getDatabase(), c.req.param('id'), body, { coverCacheDir });
+    if (!result) return c.json({ error: 'Album not found' }, 404);
     return c.json(result);
   });
 

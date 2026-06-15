@@ -16,10 +16,11 @@ import {
 import { ConfirmDialogComponent } from '../../components/confirm-dialog/confirm-dialog.component';
 import { CoverArtComponent } from '../../components/cover-art/cover-art.component';
 import { toTrack, offlineTrackAction, addToPlaylistAction } from '../../lib/track-utils';
-import { resolveArtistRoute } from '../../lib/route-utils';
+import { resolveArtistRoute, resolveAlbumRoute } from '../../lib/route-utils';
 import { createSelection } from '../../lib/selection';
 import { SelectionBarComponent } from '../../components/selection-bar/selection-bar.component';
 import { IconComponent } from '../../components/icon/icon.component';
+import { MetadataFixModalComponent } from '../../components/metadata-fix-modal/metadata-fix-modal.component';
 import { NavigationService } from '../../services/navigation.service';
 import { PreserveService } from '../../services/preserve.service';
 
@@ -33,6 +34,7 @@ import { PreserveService } from '../../services/preserve.service';
     CoverArtComponent,
     SelectionBarComponent,
     IconComponent,
+    MetadataFixModalComponent,
   ],
   templateUrl: './album-detail.component.html',
 })
@@ -249,30 +251,37 @@ export class AlbumDetailComponent implements OnInit {
     });
   }
 
-  // ─── Optimize metadata (admin) ────────────────────────────────────
-  readonly optimizing = signal(false);
-  readonly optimizeMsg = signal<string | null>(null);
-  /** Bumped after an optimize so the cover URL busts its cache. */
+  // ─── Fix metadata (admin) ─────────────────────────────────────────
+  readonly showMetadataFix = signal(false);
+  /** Bumped after a fix so the cover URL busts its cache. */
   readonly coverBust = signal(0);
 
-  async optimizeMetadata(): Promise<void> {
-    const album = this.selectedAlbum();
-    if (!album || this.optimizing()) return;
-    this.optimizing.set(true);
-    this.optimizeMsg.set(null);
+  openMetadataFix(): void {
+    if (this.selectedAlbum()) this.showMetadataFix.set(true);
+  }
+
+  closeMetadataFix(): void {
+    this.showMetadataFix.set(false);
+  }
+
+  /**
+   * A correction was applied. The corrected album may live under a new id (the
+   * artist/title changed → new deterministic id). Re-fetch by the returned id and
+   * update the view in place — a param-only route change reuses this component and
+   * would NOT re-run ngOnInit, so we can't rely on navigation to reload the data.
+   * Then sync the URL so refresh/back resolve the corrected album.
+   */
+  async onMetadataApplied(result: { albumId: string }): Promise<void> {
+    this.showMetadataFix.set(false);
     try {
-      const r = await firstValueFrom(this.api.optimizeAlbumMetadata(album.id));
-      // Re-fetch so an updated year shows; bust the cover cache for the new art.
-      const detail = await firstValueFrom(this.api.getAlbum(album.id));
+      const detail = await firstValueFrom(this.api.getAlbum(result.albumId));
       this.selectedAlbum.set(detail);
       this.coverBust.update((v) => v + 1);
-      this.optimizeMsg.set(
-        r.coverUpdated || r.yearUpdated ? 'Metadata updated from Lidarr.' : 'No changes found.',
-      );
     } catch {
-      this.optimizeMsg.set('Could not optimize — no Lidarr match or Lidarr unavailable.');
-    } finally {
-      this.optimizing.set(false);
+      /* ignore */
+    }
+    if (result.albumId !== this.route.snapshot.paramMap.get('id')) {
+      await this.router.navigate(resolveAlbumRoute(result.albumId));
     }
   }
 

@@ -111,13 +111,15 @@ bun run --filter @nicotind/e2e playground
 | `tests/catalog-quality.playground.ts` (§A) | For a non-distinctive artist, the share of album cards that actually belong to the matched artist (own-album ratio) |
 | `tests/album-hunt.playground.ts` (§C) | Base/skew hunt latency + candidate count / dead-end. **Opt-in** via `PLAYGROUND_HUNT=1` (resolve adds a monitored artist to Lidarr); never triggers a download |
 | `tests/network-search.playground.ts` (§C2) | Time-to-first-result vs time-to-complete for a niche query |
+| `tests/metadata-fix.playground.ts` (§G) | For an album (first in the library, or `PLAYGROUND_FIX_ALBUM`), candidate count + top-candidate confidence the fix modal would surface for a query; flags a 0-candidate gap |
 
 - **Structure**: pure logic in `playground/{observe,report,net-monitor}.ts`
   (unit-tested, CI-covered); the Playwright fixture (`playground/fixtures.ts`) auto-
   monitors responses (cover-art 404s, 503s, 5xx, slow calls) and exposes an `obs`
   recorder + `obs.time()`; the reporter (`playground/reporter.ts`) writes the report.
 - **Tuning queries** via env: `PLAYGROUND_SONG_QUERY`, `PLAYGROUND_ARTIST`,
-  `PLAYGROUND_NETWORK_QUERY`, `PLAYGROUND_HUNT_ARTIST` / `PLAYGROUND_HUNT_ALBUM`.
+  `PLAYGROUND_NETWORK_QUERY`, `PLAYGROUND_HUNT_ARTIST` / `PLAYGROUND_HUNT_ALBUM`,
+  `PLAYGROUND_FIX_ALBUM` / `PLAYGROUND_FIX_QUERY`.
 - **Adding a flow**: drop a `tests/*.playground.ts` that imports `test`/`expect` from
   `../playground/fixtures` and records via `obs.record(...)`; the gated project picks
   it up automatically (`testMatch: /\.playground\.ts$/`).

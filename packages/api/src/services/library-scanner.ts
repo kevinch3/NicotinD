@@ -7,6 +7,7 @@ import { albumGroupKey, normalizeArtistForGrouping } from './album-grouping.js';
 import { inferFolderAlbum, inferMetadataFromPath, hasUsableValue } from './path-inference.js';
 import { getMusicMetadata } from './music-metadata-loader.js';
 import { selectAlbumTracks } from './library-track-select.js';
+import { loadOverrides, type MetadataOverrideValue } from './metadata-override-store.js';
 
 const log = createLogger('library-scanner');
 
@@ -159,14 +160,17 @@ export function isLooseSinglesBucket(dir: string, album: string): boolean {
  * when ID3 tags are missing (common with Soulseek peers). Mirrors the
  * organizer's tag-derivation precedence so the scanner and organizer agree.
  */
-function resolveTags(t: ScannedTrack): { artist: string; album: string; title: string } {
+function resolveTags(
+  t: ScannedTrack,
+  overrides?: ReadonlyMap<string, MetadataOverrideValue>,
+): { artist: string; album: string; title: string; year: number | undefined } {
   const dir = t.relPath
     .split(/[\\/]+/)
     .slice(0, -1)
     .join('/');
   const inferred = inferMetadataFromPath(t.relPath, dir);
 
-  const artist =
+  let artist =
     (hasUsableValue(t.albumArtist) && t.albumArtist) ||
     (hasUsableValue(t.artist) && t.artist) ||
     (hasUsableValue(inferred.artist) ? inferred.artist : undefined) ||
@@ -195,7 +199,20 @@ function resolveTags(t: ScannedTrack): { artist: string; album: string; title: s
     album = title;
   }
 
-  return { artist, album, title };
+  let year = t.year ?? undefined;
+
+  // User-confirmed correction (e.g. a mis-tagged "<Desconocido>" artist): look up
+  // by the **raw** albumId derived from the on-disk tags above, then substitute
+  // the corrected names/year so downstream artistId/albumId re-bucket. Stable
+  // across rescans — tags never change, so the raw key is reproducible.
+  const ov = overrides?.get(albumIdFor(artist, album));
+  if (ov) {
+    if (ov.artist != null) artist = ov.artist;
+    if (ov.album != null) album = ov.album;
+    if (ov.year != null) year = ov.year;
+  }
+
+  return { artist, album, title, year };
 }
 
 /**
@@ -208,13 +225,14 @@ function resolveTags(t: ScannedTrack): { artist: string; album: string; title: s
 export function selectLibraryTracks(
   tracks: ScannedTrack[],
   canonicalByAlbum?: Map<string, string[]>,
+  overrides?: ReadonlyMap<string, MetadataOverrideValue>,
 ): ScannedTrack[] {
   const byAlbum = new Map<
     string,
     Array<{ track: ScannedTrack; relPath: string; title: string; suffix: string; bitRate: number }>
   >();
   for (const t of tracks) {
-    const { artist, album, title } = resolveTags(t);
+    const { artist, album, title } = resolveTags(t, overrides);
     const albId = albumIdFor(artist, album);
     const arr = byAlbum.get(albId) ?? [];
     arr.push({ track: t, relPath: t.relPath, title, suffix: t.suffix, bitRate: t.bitRate });
@@ -238,8 +256,9 @@ export function selectLibraryTracks(
 export function buildLibrary(
   tracks: ScannedTrack[],
   canonicalByAlbum?: Map<string, string[]>,
+  overrides?: ReadonlyMap<string, MetadataOverrideValue>,
 ): BuiltLibrary {
-  tracks = selectLibraryTracks(tracks, canonicalByAlbum);
+  tracks = selectLibraryTracks(tracks, canonicalByAlbum, overrides);
   const songs: SongRow[] = [];
   // album id -> accumulating state
   const albumAcc = new Map<
@@ -259,7 +278,7 @@ export function buildLibrary(
   >();
 
   for (const t of tracks) {
-    const { artist, album, title } = resolveTags(t);
+    const { artist, album, title, year } = resolveTags(t, overrides);
     const aId = artistIdFor(artist);
     const albId = albumIdFor(artist, album);
     const id = songId(t.relPath);
@@ -274,7 +293,7 @@ export function buildLibrary(
       track: t.track ?? null,
       disc: t.disc ?? null,
       duration: t.duration,
-      year: t.year ?? null,
+      year: year ?? null,
       genre: t.genre ?? null,
       bpm: t.bpm ?? null,
       coverArt: id,
@@ -291,7 +310,7 @@ export function buildLibrary(
       acc.names.push(album);
       acc.songCount += 1;
       acc.duration += t.duration;
-      if (t.year != null) acc.years.push(t.year);
+      if (year != null) acc.years.push(year);
       if (t.genre) acc.genres.push(t.genre);
       if (t.mtimeMs > acc.createdMs) acc.createdMs = t.mtimeMs;
     } else {
@@ -302,7 +321,7 @@ export function buildLibrary(
         names: [album],
         songCount: 1,
         duration: t.duration,
-        years: t.year != null ? [t.year] : [],
+        years: year != null ? [year] : [],
         genres: t.genre ? [t.genre] : [],
         createdMs: t.mtimeMs,
         // Album cover id = the album id itself: the cover route checks
@@ -406,7 +425,7 @@ export class LibraryScanner {
     const startedAt = Date.now();
     const files = await this.walk(this.musicDir);
     const tracks = await this.readTracks(files);
-    const built = buildLibrary(tracks, this.canonicalByAlbum());
+    const built = buildLibrary(tracks, this.canonicalByAlbum(), loadOverrides(this.db));
     const result = this.persist(built, startedAt, true);
     log.info({ ...result }, 'Full scan complete');
     return result;
@@ -455,7 +474,7 @@ export class LibraryScanner {
     const abs = relPaths.map((p) => join(this.musicDir, p));
     const tracks = await this.readTracks(abs);
     if (tracks.length === 0) return;
-    const built = buildLibrary(tracks, this.canonicalByAlbum());
+    const built = buildLibrary(tracks, this.canonicalByAlbum(), loadOverrides(this.db));
     this.persist(built, Date.now(), false);
     log.info({ files: tracks.length, albums: built.albums.length }, 'Incremental scan complete');
   }

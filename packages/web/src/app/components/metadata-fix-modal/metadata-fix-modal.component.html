@@ -1,0 +1,121 @@
+<div
+  class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+  (click)="cancel.emit()"
+>
+  <div
+    class="bg-theme-surface border border-theme rounded-xl p-6 max-w-lg w-full mx-4 shadow-2xl max-h-[85vh] overflow-y-auto"
+    data-testid="metadata-fix-modal"
+    (click)="$event.stopPropagation()"
+  >
+    <h2 class="text-theme-primary text-lg font-semibold mb-1">Fix metadata</h2>
+    <p class="text-theme-muted text-xs mb-4">
+      Search for the correct release and confirm — even a rough match. Or enter the details by hand.
+    </p>
+
+    <!-- Editable search -->
+    <div class="flex gap-2 mb-3">
+      <input
+        type="text"
+        [ngModel]="query()"
+        (ngModelChange)="query.set($event)"
+        (keydown.enter)="search()"
+        placeholder="Artist and album…"
+        data-testid="metadata-search-input"
+        class="flex-1 px-3 py-2 rounded-lg bg-theme-surface-2 text-theme-primary text-sm border border-theme focus:outline-none focus:border-theme-accent"
+      />
+      <button
+        (click)="search()"
+        [disabled]="searching()"
+        data-testid="metadata-search-btn"
+        class="px-4 py-2 rounded-lg text-sm bg-theme-accent text-white hover:opacity-90 transition disabled:opacity-50"
+      >
+        {{ searching() ? 'Searching…' : 'Search' }}
+      </button>
+    </div>
+
+    <!-- Candidates -->
+    @if (candidates().length) {
+      <ul class="flex flex-col gap-2 mb-4">
+        @for (c of candidates(); track c.releaseGroupId ?? c.title) {
+          <li
+            data-testid="metadata-candidate"
+            class="flex items-center gap-3 p-2 rounded-lg bg-theme-surface-2 border border-theme"
+          >
+            @if (c.coverUrl) {
+              <img [src]="c.coverUrl" alt="" class="w-12 h-12 rounded object-cover flex-shrink-0" />
+            } @else {
+              <div class="w-12 h-12 rounded bg-theme-hover flex-shrink-0"></div>
+            }
+            <div class="min-w-0 flex-1">
+              <p class="text-theme-primary text-sm truncate">{{ c.title }}</p>
+              <p class="text-theme-muted text-xs truncate">
+                {{ c.artist }}@if (c.year) { · {{ c.year }} }@if (c.releaseType) { · {{ c.releaseType }} }
+              </p>
+            </div>
+            <span class="text-theme-muted text-xs tabular-nums" title="match confidence">{{ c.score }}%</span>
+            <button
+              (click)="applyCandidate(c)"
+              [disabled]="applying()"
+              data-testid="apply-candidate"
+              class="px-3 py-1.5 rounded-lg text-xs bg-theme-surface text-theme-secondary hover:bg-theme-hover transition disabled:opacity-50 flex-shrink-0"
+            >
+              Apply
+            </button>
+          </li>
+        }
+      </ul>
+    }
+
+    <!-- Manual free-text fallback -->
+    <details class="mb-2" [open]="searched() && candidates().length === 0">
+      <summary class="text-theme-secondary text-sm cursor-pointer select-none">Enter manually</summary>
+      <div class="flex flex-col gap-2 mt-3">
+        <input
+          type="text"
+          [ngModel]="manualArtist()"
+          (ngModelChange)="manualArtist.set($event)"
+          placeholder="Artist"
+          data-testid="manual-artist"
+          class="px-3 py-2 rounded-lg bg-theme-surface-2 text-theme-primary text-sm border border-theme focus:outline-none focus:border-theme-accent"
+        />
+        <input
+          type="text"
+          [ngModel]="manualAlbum()"
+          (ngModelChange)="manualAlbum.set($event)"
+          placeholder="Album"
+          data-testid="manual-album"
+          class="px-3 py-2 rounded-lg bg-theme-surface-2 text-theme-primary text-sm border border-theme focus:outline-none focus:border-theme-accent"
+        />
+        <input
+          type="number"
+          [ngModel]="manualYear()"
+          (ngModelChange)="manualYear.set($event)"
+          placeholder="Year"
+          data-testid="manual-year"
+          class="px-3 py-2 rounded-lg bg-theme-surface-2 text-theme-primary text-sm border border-theme focus:outline-none focus:border-theme-accent"
+        />
+        <button
+          (click)="applyManual()"
+          [disabled]="applying()"
+          data-testid="apply-manual"
+          class="self-start px-4 py-2 rounded-lg text-sm bg-theme-accent text-white hover:opacity-90 transition disabled:opacity-50"
+        >
+          {{ applying() ? 'Applying…' : 'Apply' }}
+        </button>
+      </div>
+    </details>
+
+    @if (msg(); as m) {
+      <p class="text-theme-muted text-xs mt-3" data-testid="metadata-fix-msg">{{ m }}</p>
+    }
+
+    <div class="flex justify-end mt-4">
+      <button
+        (click)="cancel.emit()"
+        class="px-4 py-2 text-sm text-theme-secondary hover:text-theme-primary rounded-lg transition"
+      >
+        Close
+      </button>
+    </div>
+  </div>
+</div>

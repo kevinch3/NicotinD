@@ -63,6 +63,40 @@ describe('buildLibrary (pure aggregation)', () => {
     expect(built.songs[0]!.coverArt).toBe(built.songs[0]!.id);
   });
 
+  it('applies a metadata override: re-buckets under the corrected artist/year', () => {
+    const rawAlbumId = albumIdFor('<Desconocido>', 'Selva');
+    const overrides = new Map([
+      [rawAlbumId, { artist: 'La Portuaria', album: 'Selva', year: 1996 }],
+    ]);
+    const built = buildLibrary(
+      [
+        track({ relPath: '<Desconocido>/Selva/01.mp3', artist: '<Desconocido>', album: 'Selva', title: 'T', year: 2009 }),
+      ],
+      undefined,
+      overrides,
+    );
+    expect(built.artists[0]!.name).toBe('La Portuaria');
+    expect(built.albums[0]!.artist).toBe('La Portuaria');
+    expect(built.albums[0]!.id).toBe(albumIdFor('La Portuaria', 'Selva'));
+    expect(built.albums[0]!.year).toBe(1996);
+    // songId is path-derived → unchanged, so curation/playlist refs survive.
+    expect(built.songs[0]!.id).toBe(songId('<Desconocido>/Selva/01.mp3'));
+    expect(built.songs[0]!.artistId).toBe(built.artists[0]!.id);
+  });
+
+  it('reproduces the same corrected grouping on a simulated rescan', () => {
+    const overrides = new Map([
+      [albumIdFor('<Desconocido>', 'Selva'), { artist: 'La Portuaria', album: 'Selva' }],
+    ]);
+    const tracks = [
+      track({ relPath: '<Desconocido>/Selva/01.mp3', artist: '<Desconocido>', album: 'Selva', title: 'T' }),
+    ];
+    const a = buildLibrary(tracks, undefined, overrides);
+    const b = buildLibrary(tracks, undefined, overrides);
+    expect(b.albums[0]!.id).toBe(a.albums[0]!.id);
+    expect(b.artists[0]!.id).toBe(a.artists[0]!.id);
+  });
+
   it('collapses edition variants into one album via the group key', () => {
     const built = buildLibrary([
       track({ relPath: 'A/Album/01.mp3', artist: 'A', album: 'Circus', title: 'T1' }),
