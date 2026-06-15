@@ -23,8 +23,15 @@ they need live-backend testing, a streaming/perf rework of the hunt, or a risky 
 change, and warrant their own review. ✅ = fixed on this branch; ◻️ = open follow-up.
 
 A later playground pass (**2026-06-14**) added the **F-series** (§F) — the song/single acquisition
-gap. These are open follow-ups (documentation only this pass); the implementation is phased ("Songs
-lane now, track-hunter later") and deferred to its own session.
+gap. F1 (Songs lane) landed then; **F2 (track hunter) + F3 (affordance/selectors) landed 2026-06-15**.
+
+**2026-06-15 backlog clear-out.** The remaining open follow-ups were worked end-to-end (branch
+`fix/mobile-ux-findings-2026-06`, each its own tested commit): **A6 deep fix** (load discography on
+demand), **A7** (folder rank + format badge + cross-peer dedup), **C1/F2** (per-track hunter as the
+album-hunt fallback), **C2** (peer-response progress) — with **C3** and **G5** assessed as
+already-handled and the **D2** "The"-prefix split deferred as an intentional, tested design (its dead
+tombstones table was dropped). At this point **A, C, F, G are fully resolved or consciously deferred**;
+only the deliberately-deferred deep reworks (e.g. D2 artist canonicalization) remain.
 
 A **mobile** pass (**2026-06-15**, Pixel 7 viewport via Playwright) added the **G-series** (§G) — a
 screen-by-screen UX review of Player / Library list / Library album / Song details — and **A6**, a
@@ -52,7 +59,7 @@ mobile successor to the manual sessions, run the same way as the §E2 playground
 | D2 | ◑ | Low | Library | Duplicate artist rows from "The"-prefix handling ("The Jinx" + "Jinx"); dead `library_album_tombstones` table. **Tombstones dropped** (grep-confirmed unused). **The-prefix deferred** — reverses an intentional, *tested* normalization and re-IDs every "The X" artist (edge cases: "The The", collisions); needs a dedicated design pass as the finding itself flags |
 | F1 | ✅ | **High (UX)** | Search | Song-first acquire path — a **Songs lane** dedupes network files by (artist,title), auto-picks the best copy (FLAC>MP3, then availability) and one-click downloads it (`lib/song-results.ts`) |
 | F2 | ✅ | Medium | Hunt | No per-track hunter — the album hunt's skew/cross-peer/auto-retry robustness has no single-song equivalent (also unblocks the C1 0-candidate fallback). **Done:** `TrackHunterService` + pure `pickBestTrackFile` (cleanest-clean-copy scoring) search & enqueue per track; surfaced via the album-hunt C1 fallback |
-| F3 | ◻️ | Low (infra) | e2e | No UI entry point / `data-testid` for song acquisition; CI (dead slskd) can't exercise it — needs the §E2 gated playground spec |
+| F3 | ✅ | Low (infra) | e2e | No UI entry point / `data-testid` for song acquisition; CI (dead slskd) can't exercise it. **Resolved:** the testids now exist — F1's `song-results`/`song-download` (Songs lane) + this round's `hunt-tracks`/`track-hunt-result` (C1 fallback). The CI-exercise gap is inherent (no slskd in CI) and is covered by the gated live playground (§E2/§F) |
 | A6 | ✅ | **High (UX)** | Catalog/Hunt | **Guided hunt is unreachable for Zara Larsson** — catalog returns 10/10 junk, 10/10 cards `404`, the hunt modal never opens. **Fixed:** (1) `search()` suppresses the junk (0 cards + `discographyUnavailable`), auto-opens the network lane with an explanatory note; (2) **deep fix** — a "Load <artist>'s discography" button calls `loadDiscography()` which adds the artist to Lidarr on demand and lists their real, hunt-able albums. Turns the dead-end into a working guided hunt |
 | A7 | ✅* | Medium (UX) | Search (network) | Raw-folder lane is the *working* escape hatch (downloaded Poster Girl in FLAC), but dumps **~98 unranked near-dup album folders**; format buried (2/98 FLAC), "Unknown bitrate" shown under filenames that state the kbps, no free-slot/lossless ranking. **Mitigated:** folders now **ranked** (free-slot > lossless > more tracks > faster), each carries a **format badge** (FLAC highlighted), per-file quality falls back to the format name, and **cross-peer dedup** collapses the ~100 near-dup folders to one card per distinct copy (editions/formats preserved; "+N peers" shown) |
 | G1 | ✅ | **High (bug)** | Web (mobile) | Album-detail **primary Play button is clipped off the left edge** — 6 actions in a non-wrapping centered flex row overflow the viewport. **Fixed:** action row is now `flex-wrap` (admin actions wrap to a second line) + Play is an accent-filled primary button |
@@ -469,11 +476,18 @@ churning battle-tested recovery code). It's wired into the **album-hunt 0-candid
 above). Wiring it into the §F1 Songs lane as a "robust grab" remains an easy future add (the Songs lane
 already one-click-downloads the best copy from the *existing* search, so it's lower priority).
 
-### F3 — UI affordance + e2e gap (Low, infra)
-There is no UI entry point or `data-testid` for song acquisition, and the CI suite runs external-mode
-with a dead slskd, so song acquisition can't be exercised there. Covered by the **§E2** gated
-live-backend playground spec (drives the "Toxic" search; asserts the gap pre-fix and the Songs lane
-post-Phase-1).
+### F3 — UI affordance + e2e gap (Low, infra) — resolved
+The original gap (no UI entry point / `data-testid` for song acquisition) is closed: **F1** added the
+Songs lane (`data-testid="song-results"`/`song-result"`/`song-download`), and the **C1/F2** work this
+round added the per-track fallback affordance (`hunt-tracks` → `track-hunt-result`). So song acquisition
+now has discoverable, test-targetable entry points.
+
+The remaining half — *exercising* it in CI — is an **inherent constraint**, not a fix: the CI e2e job
+runs external-mode against a dead slskd (acquisition is default-off), so any real download flow simply
+can't run there. That coverage lives in the **gated live-backend playground** (§E2/§F:
+`song-acquisition.playground.ts` drives the "Toxic" search and asserts the Songs lane), which stays out
+of CI by design and degrades gracefully on a dead backend. No further code change — the addressable part
+(affordance + selectors) is done; the CI-exercise gap is covered where it can be.
 
 ---
 
