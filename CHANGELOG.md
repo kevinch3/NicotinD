@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.78](https://github.com/kevinch3/NicotinD/compare/v0.1.77...v0.1.78) (2026-06-15)
+
+
+### Bug Fixes
+
+* **web:** add visible Track-info button on Now Playing (G4) ([3ce9eda](https://github.com/kevinch3/NicotinD/commit/3ce9eda64fee7523fdb1ac88cf52ab209f02a2ef))
+* **web:** clamp track context menu to the viewport (G6) ([a8ace46](https://github.com/kevinch3/NicotinD/commit/a8ace4677b262fe12ba4c2eb6d37e63a873d8aa2))
+* **web:** label the library album count + de-crowd mode tabs (G7) ([b83446f](https://github.com/kevinch3/NicotinD/commit/b83446f81f547e8c67eeb696527e71e225d61538))
+
 ## [0.1.77](https://github.com/kevinch3/NicotinD/compare/v0.1.76...v0.1.77) (2026-06-15)
 
 
