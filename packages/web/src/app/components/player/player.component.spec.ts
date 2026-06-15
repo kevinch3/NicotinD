@@ -350,6 +350,40 @@ describe('PlayerComponent', () => {
     });
   });
 
+  // ─── Layout — deterministic control position ───────────────────────────────
+
+  describe('mini-player layout', () => {
+    // The control cluster must sit in a fixed position regardless of the track
+    // title/artist length. That holds iff the two side columns (track info + right)
+    // are equal flex on mobile and the controls are content-sized between them.
+    function columns(): { trackInfo: Element; controls: Element; right: Element } {
+      const root = fixture.nativeElement as HTMLElement;
+      const trackInfo = root.querySelector('.md\\:w-60');
+      const controls = root.querySelector('.flex-col');
+      const right = root.querySelector('.justify-end');
+      if (!trackInfo || !controls || !right) throw new Error('mini-player columns not found');
+      return { trackInfo, controls, right };
+    }
+
+    it('gives the two side columns equal flex on mobile so controls stay centered', () => {
+      const { trackInfo, right } = columns();
+      // Equal mobile flex (flex-1) → leftover space splits evenly → centered controls.
+      expect(trackInfo.classList.contains('flex-1')).toBe(true);
+      expect(right.classList.contains('flex-1')).toBe(true);
+      // Side columns collapse to content/fixed width on desktop.
+      expect(trackInfo.classList.contains('md:flex-none')).toBe(true);
+      expect(right.classList.contains('md:flex-none')).toBe(true);
+    });
+
+    it('content-sizes the control cluster on mobile (not flex-1, so it never drifts)', () => {
+      const { controls } = columns();
+      expect(controls.classList.contains('flex-none')).toBe(true);
+      expect(controls.classList.contains('flex-1')).toBe(false);
+      // Desktop reclaims flex-1 to host the inline progress bar.
+      expect(controls.classList.contains('md:flex-1')).toBe(true);
+    });
+  });
+
   // ─── Expand gesture — tap / swipe-up to open Now Playing ───────────────────
 
   describe('expand gesture', () => {
