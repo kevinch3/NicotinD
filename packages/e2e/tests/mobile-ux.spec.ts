@@ -57,13 +57,24 @@ test.describe('mobile UX', () => {
   // when opened from the player (where no full library Song is passed).
   test('Track-info sheet shows the song identity', async ({ page }) => {
     await openNowPlaying(page);
-    // Open the title context menu → "Track info".
+    // Open the title context menu → "Track info" (scope to the menu; a visible
+    // info button with the same label also exists — see the G4 test).
     await page.getByRole('heading', { name: 'Opening Static' }).click({ button: 'right' });
-    await page.getByRole('button', { name: 'Track info' }).click();
+    await page.locator('app-track-context-menu').getByRole('button', { name: 'Track info' }).click();
 
     const identity = page.getByTestId('track-info-identity');
     await expect(identity).toBeVisible();
     await expect(identity).toContainText('Opening Static');
     await expect(identity).toContainText(FIXTURE.album.artist);
+  });
+
+  // G4 — a *visible* Track-info affordance on Now Playing (previously the sheet
+  // was reachable only via long-press/right-click on the title).
+  test('Now Playing has a visible Track-info button that opens the sheet', async ({ page }) => {
+    await openNowPlaying(page);
+    const infoBtn = page.getByTestId('now-playing-info');
+    await expect(infoBtn).toBeVisible();
+    await infoBtn.click();
+    await expect(page.getByTestId('track-info-identity')).toContainText('Opening Static');
   });
 });

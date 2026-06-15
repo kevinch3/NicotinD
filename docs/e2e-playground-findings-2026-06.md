@@ -57,7 +57,7 @@ mobile successor to the manual sessions, run the same way as the §E2 playground
 | G1 | ✅ | **High (bug)** | Web (mobile) | Album-detail **primary Play button is clipped off the left edge** — 6 actions in a non-wrapping centered flex row overflow the viewport. **Fixed:** action row is now `flex-wrap` (admin actions wrap to a second line) + Play is an accent-filled primary button |
 | G2 | ✅ | **High (bug)** | Web (mobile) | Now Playing **hero cover + queue thumbnails render broken-image glyphs** — raw `<img>` instead of the `app-cover-art` gradient fallback used in the grid/mini-player. **Fixed:** both now use `app-cover-art` (gradient fallback on 404). Side effect: the hero filling its box also removes most of G4's vertical void |
 | G3 | ✅ | High (UX) | Web (mobile) | Track-info sheet **shows no song identity** (no title/artist/album) — Now Playing mounts it without the `[song]` input, so `song()` is null and the whole "File" block is hidden too. **Fixed:** added an always-on identity header (cover + title/artist/album) sourced from `song()` or new lightweight display inputs the player passes |
-| G4 | ◻️ | Medium (UX) | Web (mobile) | Now Playing has a **large vertical void** (cover pinned small at top, title floated to center); no visible affordance to reach Track info (long-press only). *Partial:* G2 (hero now fills its box) removes most of the void; the remaining piece is the missing visible Track-info affordance |
+| G4 | ✅ | Medium (UX) | Web (mobile) | Now Playing has a **large vertical void** (cover pinned small at top, title floated to center); no visible affordance to reach Track info (long-press only). **Fixed:** G2 (hero fills its box) removed the void, and an `ⓘ` button beside the title now opens the sheet directly (long-press still works) |
 | G5 | ◻️ | Medium (UX) | Web (mobile) | Mini-player progress is a **1px hairline**; list content is **occluded** by the player+tab-bar (no bottom scroll padding) |
 | G6 | ◻️ | Medium (UX) | Web (mobile) | Now Playing title **context menu overflows the right edge** — positioned at tap-X with no viewport clamp |
 | G7 | ◻️ | Low (UX) | Web (mobile) | Library list: **stray unlabeled "1" counter** on the Filters row; 5-tab segmented control crowds the edges |
@@ -499,8 +499,10 @@ Layout pins a small cover to the top and floats the title to vertical center, le
 (worsened by G2's collapse). Track info is reachable **only** via long-press/right-click on the title —
 no visible `⋯`, so it's effectively undiscoverable on mobile.
 
-**Fix:** larger centered hero, tighter gap to the title; add a visible Track-info (`⋯`) button near the
-title.
+**Fixed (2026-06-15):** G2 restored the hero to its full box, which closes most of the void; and a
+visible `ⓘ` button (`data-testid="now-playing-info"`) now sits beside the title and opens the track-info
+sheet on a single tap — the long-press context menu still works for power users. *Test:* `mobile-ux.spec.ts`
+clicks the visible button and asserts the sheet opens with the track identity.
 
 ### G5 — Mini-player hairline progress + content occlusion (Medium, UX)
 The mini-player progress is a ~1px line at the very bottom edge (easy to miss, doesn't read as
