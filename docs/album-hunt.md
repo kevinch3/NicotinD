@@ -8,6 +8,8 @@ Raw slskd file search (`/api/search`) remains as an **always-visible fallback** 
 
 Trade-off accepted: every hunted album becomes a monitored Lidarr artist — consistent with the pre-existing discography behavior.
 
+**Junk suppression + discography-on-demand (§A6).** The global `album.lookup` ranks mashups/tributes/wiki entities above a non-distinctive artist's real discography (e.g. "Zara Larsson" → zero of her studio albums). So `search()` scopes the cards to the matched artist; and when the query **exact-matches an artist but none of *their* albums appear**, it returns **0 cards** + `discographyUnavailable`/`scopedArtist` (never the junk, which all `404` on resolve). The web then suppresses the grid, auto-opens the network lane, and offers a **"Load &lt;artist&gt;'s discography"** button → `POST /api/catalog/discography` → `loadDiscography()` **adds the artist to Lidarr on demand** and lists their real, hunt-able releases (ranked Album > EP > Single). User-initiated only, so plain search stays read-only.
+
 ---
 
 ## Album hunt — soft-ban bypass ("skew search")
@@ -34,6 +36,14 @@ The `LibraryCurator` won't auto-hide a deliberately-hunted release (its normaliz
 **Two-phase hunt for live progress**: the hunt modal uses two separate requests — `POST .../hunt/base` (base queries only, returns `{ candidates, skewNeeded }`) followed by `POST .../hunt/skew` (skew queries only, if needed) — so the UI can highlight each query row in real time (idle → searching → done/skipped). The single-shot `POST .../hunt` endpoint is preserved for watchlist/catalog callers.
 
 **Transparency**: the album-hunt modal's loading screen lists the exact query strings it fires via the web helper `lib/hunt-queries.ts`, which **mirrors** `buildSkewedQueries`/`stripTitleQualifiers` (the web bundle can't import the server module — it pulls in pino/node deps). The two are kept in sync by matching unit tests on both sides.
+
+---
+
+## Per-track fallback — when no whole-album folder exists (§C1/§F2)
+
+The hunt works at **folder** granularity and dead-ends ("No candidates") when an album exists only as loose tracks scattered across peers (a real case: a 14-track album whose tracks are all on compilations/singles, no single matching folder). Instead of a pure dead-end, the modal's no-results state offers **"Grab individual tracks instead"** (`data-testid="hunt-tracks"`).
+
+It calls `POST /api/discography/albums/:id/hunt-tracks` (auth + acquisition gated like the album hunt), which resolves the canonical tracklist from Lidarr and runs `TrackHunterService` (`services/track-hunter.service.ts`): one slskd search per title, the **healthiest *cleanest*** file chosen by the shared pure `pickBestTrackFile` (`services/track-pick.ts`) — fewest extra words beyond the title wins, so it grabs "Bohemian Rhapsody" not the "(5.1 mix)" a healthy FLAC peer would otherwise win on; FLAC + peer health only break ties among equally-clean files. Picks are grouped per peer and enqueued; the modal reports "Enqueued N of M tracks individually" (+ misses). `pickBestTrackFile` is the testable core extracted for reuse (the cross-peer `AlbumFallbackService` keeps its own copy to avoid churning battle-tested recovery code).
 
 ---
 
