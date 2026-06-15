@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.81](https://github.com/kevinch3/NicotinD/compare/v0.1.80...v0.1.81) (2026-06-15)
+
+
+### Bug Fixes
+
+* **web:** keep mini-player controls in a deterministic position ([d0b3fd8](https://github.com/kevinch3/NicotinD/commit/d0b3fd81c458f94021639038ff6c2691f69c8c81))
+
 ## [0.1.80](https://github.com/kevinch3/NicotinD/compare/v0.1.79...v0.1.80) (2026-06-15)
 
 ## [0.1.79](https://github.com/kevinch3/NicotinD/compare/v0.1.78...v0.1.79) (2026-06-15)
