@@ -5,6 +5,7 @@ import type { AuthEnv } from '../middleware/auth.js';
 import type { SlskdRef } from '../index.js';
 import type { DiscographyService } from '../services/discography.service.js';
 import type { AlbumHunterService } from '../services/album-hunter.service.js';
+import { TrackHunterService } from '../services/track-hunter.service.js';
 import {
   AlbumFallbackService,
   type AlternateCandidate,
@@ -83,6 +84,37 @@ export function discographyRoutes({
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       log.warn({ albumId, err: msg }, 'Album hunt failed');
+      return c.json({ error: msg }, 500);
+    }
+  });
+
+  // POST /api/discography/albums/:lidarrAlbumId/hunt-tracks
+  // §C1/§F2 fallback for the album-hunt dead-end: when no whole-album folder
+  // exists, hunt each canonical track individually and enqueue the best match.
+  // Resolves the tracklist from Lidarr, then runs the per-track hunter.
+  app.post('/albums/:lidarrAlbumId/hunt-tracks', async (c) => {
+    const { lidarrAlbumId } = c.req.param();
+    const albumId = Number(lidarrAlbumId);
+    if (Number.isNaN(albumId)) return c.json({ error: 'Invalid album ID' }, 400);
+    if (!slskdRef.current) return c.json({ error: 'Soulseek is not available' }, 503);
+
+    const body = await c.req.json<{ artistName?: string }>().catch(() => ({}) as { artistName?: string });
+
+    try {
+      const [album, tracks] = await Promise.all([
+        lidarr.album.get(albumId),
+        lidarr.track.listByAlbum(albumId),
+      ]);
+      const artistName = body.artistName ?? album.artist?.artistName ?? '';
+      const titles = tracks.map((t) => t.title).filter((t): t is string => !!t?.trim());
+      if (titles.length === 0) return c.json({ error: 'No tracks to hunt' }, 404);
+
+      const hunter = new TrackHunterService(slskdRef.current);
+      const result = await hunter.huntAndDownload(artistName, titles);
+      return c.json(result);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      log.warn({ albumId, err: msg }, 'Track hunt failed');
       return c.json({ error: msg }, 500);
     }
   });

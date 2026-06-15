@@ -573,25 +573,12 @@ export function applySchema(db: Database): void {
   `);
   db.run(`CREATE INDEX IF NOT EXISTS idx_playlist_songs_pl ON playlist_songs(playlist_id)`);
 
-  // Legacy table from the Navidrome era (album-deletion tombstones). The native
-  // scanner reads disk directly and synchronously, so deletions can't be
-  // resurrected and this is no longer used. Kept for backward-compatible
-  // migrations; safe to drop in a future cleanup.
-  db.run(`
-    CREATE TABLE IF NOT EXISTS library_album_tombstones (
-      album_id   TEXT PRIMARY KEY,
-      name       TEXT,
-      artist     TEXT,
-      created_at INTEGER NOT NULL
-    )
-  `);
-  // artist lets the syncer suppress a deleted album by group key (artist+title),
-  // so a merged album can't resurrect via a surviving sibling fragment.
-  try {
-    db.run(`ALTER TABLE library_album_tombstones ADD COLUMN artist TEXT`);
-  } catch {
-    // Column already exists — ignore
-  }
+  // Drop the dead `library_album_tombstones` table (Navidrome-era album-deletion
+  // tombstones). The native scanner reads disk directly + synchronously, so the
+  // delete path stopped writing it long ago and **nothing reads it** — verified
+  // by grep across the codebase. Cleaning up the schema debt per §D2. Idempotent:
+  // a no-op on fresh installs that never created it.
+  db.run(`DROP TABLE IF EXISTS library_album_tombstones`);
 
   db.run(`
     CREATE TABLE IF NOT EXISTS artist_discography_links (

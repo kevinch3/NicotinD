@@ -252,6 +252,56 @@ describe('CatalogService.search', () => {
   });
 });
 
+describe('CatalogService.loadDiscography', () => {
+  it('adds the artist if absent, then returns their listByArtist albums ranked', async () => {
+    const add = mock(async (a: LidarrArtist) => ({ ...a, id: 7 }));
+    const lidarr = {
+      artist: {
+        list: mock(async () => []),
+        lookup: mock(async () => [
+          makeArtist({ id: 0, foreignArtistId: 'zl-mbid', artistName: 'Zara Larsson' }),
+        ]),
+        getQualityProfiles: mock(async () => [{ id: 1, name: 'Any' }]),
+        getMetadataProfiles: mock(async () => [{ id: 1, name: 'Std' }]),
+        getRootFolders: mock(async () => [{ id: 1, path: '/music', freeSpace: 0 }]),
+        add,
+      },
+      album: {
+        listByArtist: mock(async () => [
+          makeAlbum({ id: 1, title: 'So Good', albumType: 'Album', releaseDate: '2017-01-01' }),
+          makeAlbum({ id: 2, title: 'A Single', albumType: 'Single', releaseDate: '2019-01-01' }),
+          makeAlbum({ id: 3, title: 'Poster Girl', albumType: 'Album', releaseDate: '2021-01-01' }),
+        ]),
+      },
+    } as unknown as Lidarr;
+
+    const result = await new CatalogService(lidarr, '/music').loadDiscography(
+      'zl-mbid',
+      'Zara Larsson',
+    );
+
+    expect(add).toHaveBeenCalledTimes(1);
+    // Albums first (newest), Single last; artistName backfilled from input.
+    expect(result.albums.map((a) => a.title)).toEqual(['Poster Girl', 'So Good', 'A Single']);
+    expect(result.albums.every((a) => a.artistName === 'Zara Larsson')).toBe(true);
+    expect(result.scopedArtist).toBe('Zara Larsson');
+  });
+
+  it('reuses an already-added artist without re-adding', async () => {
+    const add = mock(async () => makeArtist({ id: 99 }));
+    const lidarr = {
+      artist: { list: mock(async () => [makeArtist({ id: 5, foreignArtistId: 'zl-mbid' })]), add },
+      album: {
+        listByArtist: mock(async () => [makeAlbum({ id: 1, title: 'Venus', albumType: 'Album' })]),
+      },
+    } as unknown as Lidarr;
+
+    const result = await new CatalogService(lidarr).loadDiscography('zl-mbid', 'Zara Larsson');
+    expect(add).not.toHaveBeenCalled();
+    expect(result.albums.map((a) => a.title)).toEqual(['Venus']);
+  });
+});
+
 describe('CatalogService.resolveAlbum', () => {
   const input = {
     foreignAlbumId: 'rg-10',

@@ -20,6 +20,8 @@ export interface FolderGroup {
   freeUploadSlots?: number;
   directory: string;
   bitRate?: number;
+  /** How many *other* peers offer an identical copy (set by dedupeFolders). */
+  duplicatePeers?: number;
   files: Array<{
     filename: string;
     size: number;
@@ -85,6 +87,41 @@ export function rankFolders(groups: FolderGroup[]): FolderGroup[] {
     if (tracks(a) !== tracks(b)) return tracks(b) - tracks(a);
     return b.uploadSpeed - a.uploadSpeed;
   });
+}
+
+/** Last path segment of a folder, e.g. "…\Zara Larsson\Poster Girl" → "Poster Girl". */
+export function folderBasename(directory: string): string {
+  return directory.split(/[\\/]/).filter(Boolean).at(-1) ?? directory;
+}
+
+function normalizeBasename(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+/**
+ * Collapse the ~100 near-identical album folders the network returns into one
+ * card per distinct copy. The dedup key is **basename + format + track-count**,
+ * so a different edition (deluxe → more tracks) or format (FLAC vs MP3) survives
+ * as its own card — only literally-identical copies across peers merge. Expects a
+ * pre-ranked list (keeps the first/best occurrence) and records how many other
+ * peers had the same copy in `duplicatePeers`. See §A7.
+ */
+export function dedupeFolders(groups: FolderGroup[]): FolderGroup[] {
+  const seen = new Map<string, FolderGroup>();
+  for (const g of groups) {
+    const key = [
+      normalizeBasename(folderBasename(g.directory)),
+      folderFormat(g)?.label ?? 'none',
+      folderAudioFiles(g).length,
+    ].join('|');
+    const existing = seen.get(key);
+    if (existing) {
+      existing.duplicatePeers = (existing.duplicatePeers ?? 0) + 1;
+    } else {
+      seen.set(key, { ...g, duplicatePeers: 0 });
+    }
+  }
+  return Array.from(seen.values());
 }
 
 export interface FolderNode {

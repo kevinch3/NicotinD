@@ -67,5 +67,27 @@ export function catalogRoutes({ catalog }: CatalogRoutesOptions) {
     }
   });
 
+  // POST /api/catalog/discography
+  // Loads an artist's real discography on demand (the §A6 deep fix). Adds the
+  // artist to Lidarr if absent — same mutation as resolve — so this is a POST,
+  // user-initiated only. Body: { artistMbid?, artistName }
+  app.post('/discography', async (c) => {
+    const body = await c.req
+      .json<{ artistMbid?: string; artistName?: string }>()
+      .catch(() => null);
+
+    if (!body?.artistName) return c.json({ error: 'Missing artistName' }, 400);
+
+    try {
+      const result = await catalog.loadDiscography(body.artistMbid ?? '', body.artistName);
+      return c.json(result);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const status = (err instanceof NicotinDError ? err.statusCode : 500) as ContentfulStatusCode;
+      if (status >= 500) log.warn({ artist: body.artistName, err: msg }, 'Load discography failed');
+      return c.json({ error: msg }, status);
+    }
+  });
+
   return app;
 }

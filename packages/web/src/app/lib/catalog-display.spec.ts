@@ -1,6 +1,21 @@
 import { describe, it, expect } from 'vitest';
-import { shouldOpenDirectSearch, discographyFallbackNote } from './catalog-display';
+import {
+  shouldOpenDirectSearch,
+  discographyFallbackNote,
+  scopedArtistMbid,
+  applyDiscography,
+} from './catalog-display';
 import type { CatalogSearchResult } from '../services/api.service';
+
+const album = (title: string) => ({
+  foreignAlbumId: title,
+  title,
+  artistName: 'Zara Larsson',
+  artistMbid: 'm',
+  albumType: 'Album',
+  secondaryTypes: [],
+  trackCount: 10,
+});
 
 const result = (over: Partial<CatalogSearchResult>): CatalogSearchResult => ({
   artists: [],
@@ -41,5 +56,36 @@ describe('discographyFallbackNote', () => {
     expect(discographyFallbackNote(null)).toBeNull();
     expect(discographyFallbackNote(result({ scopedArtist: 'X' }))).toBeNull();
     expect(discographyFallbackNote(result({ discographyUnavailable: true }))).toBeNull();
+  });
+});
+
+describe('scopedArtistMbid', () => {
+  it('finds the scoped artist mbid from the pills (case-insensitive)', () => {
+    expect(
+      scopedArtistMbid(
+        result({ scopedArtist: 'Zara Larsson', artists: [{ mbid: 'zl', name: 'zara larsson' }] }),
+      ),
+    ).toBe('zl');
+  });
+
+  it('is null without a scoped artist or matching pill', () => {
+    expect(scopedArtistMbid(null)).toBeNull();
+    expect(scopedArtistMbid(result({ scopedArtist: 'Zara Larsson', artists: [] }))).toBeNull();
+  });
+});
+
+describe('applyDiscography', () => {
+  it('replaces the empty album list with the loaded one and clears the flag', () => {
+    const before = result({
+      scopedArtist: 'Zara Larsson',
+      discographyUnavailable: true,
+      artists: [{ mbid: 'zl', name: 'Zara Larsson' }],
+    });
+    const loaded = result({ albums: [album('Poster Girl')], scopedArtist: 'Zara Larsson' });
+
+    const after = applyDiscography(before, loaded);
+    expect(after.albums.map((a) => a.title)).toEqual(['Poster Girl']);
+    expect(after.discographyUnavailable).toBe(false);
+    expect(after.artists).toEqual(before.artists); // pills preserved
   });
 });

@@ -122,6 +122,31 @@ export class CatalogService {
     return { artists, albums: allAlbums };
   }
 
+  /**
+   * Load an artist's *real* discography on demand — the deep fix for §A6. The
+   * global `album.lookup` carries none of a non-distinctive artist's own albums,
+   * and Lidarr can only list an artist's albums once it's added, so this **adds
+   * the artist to Lidarr** (same mutation `resolveAlbum` already makes on a hunt)
+   * and returns their `listByArtist` releases as ranked catalog cards. User-
+   * initiated (the web's "Load discography" button), never automatic on search.
+   */
+  async loadDiscography(artistMbid: string, artistName: string): Promise<CatalogSearchResult> {
+    const lidarrArtistId = await this.resolveOrAddArtist(artistMbid, artistName);
+    const albums = await this.lidarr.album.listByArtist(lidarrArtistId);
+    const cards = rankAlbums(
+      albums.map((a) => {
+        const card = mapAlbum(a);
+        // listByArtist payloads may omit the nested artist — backfill from input.
+        return {
+          ...card,
+          artistName: card.artistName || artistName,
+          artistMbid: card.artistMbid || artistMbid,
+        };
+      }),
+    );
+    return { artists: [], albums: cards, scopedArtist: artistName };
+  }
+
   async resolveAlbum(input: ResolveAlbumInput): Promise<ResolveAlbumResult> {
     const lidarrArtistId = await this.resolveOrAddArtist(input.artistMbid, input.artistName);
 

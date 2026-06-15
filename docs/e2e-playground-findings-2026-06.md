@@ -23,8 +23,15 @@ they need live-backend testing, a streaming/perf rework of the hunt, or a risky 
 change, and warrant their own review. ✅ = fixed on this branch; ◻️ = open follow-up.
 
 A later playground pass (**2026-06-14**) added the **F-series** (§F) — the song/single acquisition
-gap. These are open follow-ups (documentation only this pass); the implementation is phased ("Songs
-lane now, track-hunter later") and deferred to its own session.
+gap. F1 (Songs lane) landed then; **F2 (track hunter) + F3 (affordance/selectors) landed 2026-06-15**.
+
+**2026-06-15 backlog clear-out.** The remaining open follow-ups were worked end-to-end (branch
+`fix/mobile-ux-findings-2026-06`, each its own tested commit): **A6 deep fix** (load discography on
+demand), **A7** (folder rank + format badge + cross-peer dedup), **C1/F2** (per-track hunter as the
+album-hunt fallback), **C2** (peer-response progress) — with **C3** and **G5** assessed as
+already-handled and the **D2** "The"-prefix split deferred as an intentional, tested design (its dead
+tombstones table was dropped). At this point **A, C, F, G are fully resolved or consciously deferred**;
+only the deliberately-deferred deep reworks (e.g. D2 artist canonicalization) remain.
 
 A **mobile** pass (**2026-06-15**, Pixel 7 viewport via Playwright) added the **G-series** (§G) — a
 screen-by-screen UX review of Player / Library list / Library album / Song details — and **A6**, a
@@ -41,19 +48,20 @@ mobile successor to the manual sessions, run the same way as the §E2 playground
 | D1 | ✅ | **High (bug)** | Library | Album delete orphans the `library_artists` row → deleted artist still shows in search & opens an empty artist page until the next *full* scan |
 | A2 | ✅ | **High (bug)** | Catalog | `catalog/resolve` 500s ("not yet available in Lidarr") for a subset of returned album cards — clicking a valid-looking result errors |
 | A1 | ✅* | High (UX) | Catalog | Album cards are a global title search disjoint from the matched artist → for non-distinctive names (Falsa Cubana, Zara Larsson) the cards are entirely wrong/irrelevant |
-| C1 | ◻️ | Medium (UX) | Hunt | 42 s wait → "No candidates" with **no fallback** to the loose tracks that demonstrably exist on Soulseek |
+| C1 | ✅ | Medium (UX) | Hunt | 42 s wait → "No candidates" with **no fallback** to the loose tracks that demonstrably exist on Soulseek. **Fixed:** the no-candidates state now offers **"Grab individual tracks instead"** → `POST /albums/:id/hunt-tracks` resolves the tracklist + the new `TrackHunterService` hunts/enqueues each track's best clean copy (shared `pickBestTrackFile`) |
 | B1 | ✅ | Medium | archive.org | Low precision (radio shows / mixtapes) — query lacks phrase quoting + `creator:`/`title:` targeting |
 | B2 | ✅ | Medium | archive.org | Erratic recall + silent failure: same query returned 0 then 20 results within a minute; non-OK responses collapse to `[]` |
-| C2 | ◻️ | Low/Med (UX) | Search | Network results only surface at *completion* (~25 s for niche queries) though peers respond in ~5 s |
+| C2 | ✅* | Low/Med (UX) | Search | Network results only surface at *completion* (~25 s for niche queries) though peers respond in ~5 s. **Improved:** the search already polls + renders partial results every 2 s (not gated on completion); now also shows **"N peers responded"** during the wait so a slow niche query reads as progress, not a dead spinner. (Late *file* materialization is slskd-side) |
+| C3 | ✅ | Low | Hunt | Sequential base→skew latency (~45 s worst case). **Assessed — already handled:** `hunt()` early-terminates (skew only fires when `bestBasePct < SKEW_TRIGGER_PCT`), so a confidently-complete base skips skew entirely; always-parallel would just double slskd load |
 | A3 | ✅ | Low | Catalog | Bogus `year` (`0001`) rendered verbatim on album cards |
 | A4 | ✅ | Low | Catalog | Artist pills are noisy/duplicated ("Zara/ZarA/Zara…", "Los/King Los…") |
 | E1 | ✅ | Low (infra) | e2e | Hunt modal lacks `data-testid`s on its core controls — violates the project's e2e selector standard |
-| D2 | ◻️ | Low | Library | Duplicate artist rows from "The"-prefix handling ("The Jinx" + "Jinx"); `library_album_tombstones` is populated historically but no longer written by the delete path |
+| D2 | ◑ | Low | Library | Duplicate artist rows from "The"-prefix handling ("The Jinx" + "Jinx"); dead `library_album_tombstones` table. **Tombstones dropped** (grep-confirmed unused). **The-prefix deferred** — reverses an intentional, *tested* normalization and re-IDs every "The X" artist (edge cases: "The The", collisions); needs a dedicated design pass as the finding itself flags |
 | F1 | ✅ | **High (UX)** | Search | Song-first acquire path — a **Songs lane** dedupes network files by (artist,title), auto-picks the best copy (FLAC>MP3, then availability) and one-click downloads it (`lib/song-results.ts`) |
-| F2 | ◻️ | Medium | Hunt | No per-track hunter — the album hunt's skew/cross-peer/auto-retry robustness has no single-song equivalent (also unblocks the C1 0-candidate fallback) |
-| F3 | ◻️ | Low (infra) | e2e | No UI entry point / `data-testid` for song acquisition; CI (dead slskd) can't exercise it — needs the §E2 gated playground spec |
-| A6 | ✅* | **High (UX)** | Catalog/Hunt | **Guided hunt is unreachable for Zara Larsson** — catalog returns 10/10 junk (mashups/wiki/instrumental), 10/10 cards `404` `ALBUM_NOT_IN_LIDARR`, the hunt modal never opens. **Mitigated:** when an artist is matched but the lookup has none of *their* albums, `search()` now returns **0 cards** (not the junk) + a `discographyUnavailable` flag; the web suppresses the junk grid, auto-opens the network lane, and shows a "couldn't load X's albums" note. (Surfacing the real discography for an unadded artist is a Lidarr limitation — see note) |
-| A7 | ✅* | Medium (UX) | Search (network) | Raw-folder lane is the *working* escape hatch (downloaded Poster Girl in FLAC), but dumps **~98 unranked near-dup album folders**; format buried (2/98 FLAC), "Unknown bitrate" shown under filenames that state the kbps, no free-slot/lossless ranking. **Mitigated:** folders now **ranked** (free-slot > lossless > more tracks > faster), each carries a **format badge** (FLAC highlighted), and per-file quality falls back to the format name. Cross-peer *dedup* still deferred |
+| F2 | ✅ | Medium | Hunt | No per-track hunter — the album hunt's skew/cross-peer/auto-retry robustness has no single-song equivalent (also unblocks the C1 0-candidate fallback). **Done:** `TrackHunterService` + pure `pickBestTrackFile` (cleanest-clean-copy scoring) search & enqueue per track; surfaced via the album-hunt C1 fallback |
+| F3 | ✅ | Low (infra) | e2e | No UI entry point / `data-testid` for song acquisition; CI (dead slskd) can't exercise it. **Resolved:** the testids now exist — F1's `song-results`/`song-download` (Songs lane) + this round's `hunt-tracks`/`track-hunt-result` (C1 fallback). The CI-exercise gap is inherent (no slskd in CI) and is covered by the gated live playground (§E2/§F) |
+| A6 | ✅ | **High (UX)** | Catalog/Hunt | **Guided hunt is unreachable for Zara Larsson** — catalog returns 10/10 junk, 10/10 cards `404`, the hunt modal never opens. **Fixed:** (1) `search()` suppresses the junk (0 cards + `discographyUnavailable`), auto-opens the network lane with an explanatory note; (2) **deep fix** — a "Load <artist>'s discography" button calls `loadDiscography()` which adds the artist to Lidarr on demand and lists their real, hunt-able albums. Turns the dead-end into a working guided hunt |
+| A7 | ✅* | Medium (UX) | Search (network) | Raw-folder lane is the *working* escape hatch (downloaded Poster Girl in FLAC), but dumps **~98 unranked near-dup album folders**; format buried (2/98 FLAC), "Unknown bitrate" shown under filenames that state the kbps, no free-slot/lossless ranking. **Mitigated:** folders now **ranked** (free-slot > lossless > more tracks > faster), each carries a **format badge** (FLAC highlighted), per-file quality falls back to the format name, and **cross-peer dedup** collapses the ~100 near-dup folders to one card per distinct copy (editions/formats preserved; "+N peers" shown) |
 | G1 | ✅ | **High (bug)** | Web (mobile) | Album-detail **primary Play button is clipped off the left edge** — 6 actions in a non-wrapping centered flex row overflow the viewport. **Fixed:** action row is now `flex-wrap` (admin actions wrap to a second line) + Play is an accent-filled primary button |
 | G2 | ✅ | **High (bug)** | Web (mobile) | Now Playing **hero cover + queue thumbnails render broken-image glyphs** — raw `<img>` instead of the `app-cover-art` gradient fallback used in the grid/mini-player. **Fixed:** both now use `app-cover-art` (gradient fallback on 404). Side effect: the hero filling its box also removes most of G4's vertical void |
 | G3 | ✅ | High (UX) | Web (mobile) | Track-info sheet **shows no song identity** (no title/artist/album) — Now Playing mounts it without the `[song]` input, so `song()` is null and the whole "File" block is hidden too. **Fixed:** added an always-on identity header (cover + title/artist/album) sourced from `song()` or new lightweight display inputs the player passes |
@@ -188,12 +196,19 @@ flow no longer dead-ends on a wall of red-banner junk — it lands the user on t
 (which downloaded *Poster Girl*, §A7). *Tests:* `catalog-search.service.test.ts` (suppress-junk + flag,
 ranking) and `catalog-display.spec.ts` (lane-open + note logic).
 
-**Still open (the deep fix):** actually *surfacing* the real discography for an artist **not yet added
-to Lidarr** needs a metadata path the Lidarr client doesn't expose — `album.listByArtist` requires a
-numeric (added) artist id, and the artist-lookup payload carries only `albumCount`, not the album list.
-The global `album.lookup("Zara Larsson")` genuinely returns none of her real albums. Options for a
-follow-up: add the artist to Lidarr on demand (mutates Lidarr — same trade-off `resolve` already makes),
-or query MusicBrainz/SkyHook release-groups by artist MBID directly. Deferred to its own session.
+**Deep fix shipped (2026-06-15, option (a) — load on demand):** since `album.listByArtist` needs a
+numeric (added) artist id, the new `CatalogService.loadDiscography(artistMbid, artistName)` **adds the
+artist to Lidarr** (reusing `resolveOrAddArtist` — the same mutation `resolve` already makes) and returns
+their real releases as ranked cards. It's exposed at `POST /api/catalog/discography` and surfaced as a
+**"Load <artist>'s discography"** button (`data-testid="load-discography"`) beside the network-fallback
+note — **user-initiated only, never automatic on search** (so search stays read-only and Lidarr isn't
+polluted by every typed query). One click turns the Zara-Larsson dead-end into her real, hunt-able
+discography. *Tests:* `catalog-search.service.test.ts` (add-then-list + reuse-existing), `catalog.test.ts`
+(`POST /discography`), `catalog-display.spec.ts` (`scopedArtistMbid`, `applyDiscography`).
+
+The read-only alternative (query MusicBrainz/SkyHook release-groups by artist MBID, no Lidarr mutation)
+remains a possible future refinement, but the on-demand add is the pragmatic, fully-working path and
+matches the existing resolve trade-off.
 
 > Repro: `cd packages/e2e && E2E_BASE_URL=https://nicotined.kevinroberts.ar
 > PLAYGROUND_USERNAME=claude-e2e PLAYGROUND_PASSWORD=… bunx playwright test
@@ -232,9 +247,12 @@ highlighted emerald), and per-file rows use `fileQualityLabel`, which falls back
 FLAC file no longer reads "Unknown bitrate". A human would now spot the FLAC copy at a glance.
 *Tests:* `folder-utils.spec.ts` (ranking order + no-mutation, format detection, quality label).
 
-**Still deferred:** true **cross-peer dedup** (collapse the ~98 near-identical folders into one card per
-distinct copy) — it's risky (can merge legitimately-distinct editions) and wants its own design pass;
-ranking + badges already make the best copy findable, so dedup is a polish, not a blocker.
+**Cross-peer dedup shipped (2026-06-15):** `dedupeFolders` collapses the ~98 near-identical folders into
+one card per **distinct** copy, keyed on **basename + format + audio-track-count** — so a deluxe edition
+(more tracks) or a different format survives as its own card and only literally-identical copies across
+peers merge. It runs on the *ranked* list (keeps the best peer) and annotates `duplicatePeers`, rendered
+as "· N peers" so the user still sees availability. *Tests:* `folder-utils.spec.ts` (collapse + count,
+edition/format preservation, no input mutation).
 
 > Repro: `… bunx playwright test --config=playwright.hunt.config.ts network-album-download` (idempotent —
 > re-runs detect the already-downloaded "✓ Done" folder and skip; screenshots `12–15`).
@@ -273,20 +291,37 @@ canonical tracklist. The dead-end is the UX problem: after 42 s the user gets "N
 your filters" with the only escape hatches being the filter knobs and an archive.org section that
 (per §B) often returns junk/nothing.
 
-**Suggested improvement:** when a hunt yields 0 folder candidates but loose per-track matches exist,
-offer a "we found N individual tracks — grab them" fallback (reuse the existing per-track
-`AlbumFallbackService.searchBestForTrack` machinery) instead of a pure dead-end.
+**Fixed (2026-06-15):** the no-candidates state now shows **"Grab individual tracks instead"**
+(`data-testid="hunt-tracks"`). It calls `POST /api/discography/albums/:id/hunt-tracks`, which resolves
+the canonical tracklist from Lidarr and runs the new **`TrackHunterService`** (§F2): one slskd search
+per title, the healthiest *cleanest* file picked by the shared pure `pickBestTrackFile` (fewest extra
+words beyond the title → no "(5.1 mix)"), grouped per peer and enqueued. The modal reports "Enqueued N
+of M tracks individually" (+ misses). So the 42 s dead-end becomes an actionable grab. *Tests:*
+`track-pick.test.ts`, `track-hunter.service.test.ts`, `discography.hunt-tracks.test.ts`. (The flow needs
+a live slskd to exercise end-to-end — consistent with §F3 — so it's unit-tested, not in the CI e2e.)
 
 ### C2 — network results only appear at completion (Low/Med UX)
 For niche queries the search holds at "Searching…" with **0 results for ~20 s even though peers
 respond within ~5 s** (Los Chalchaleros: 19 responses at t+5 s, results materialized only at
-t+25 s on `state: complete`). Popular queries complete in ~3 s, so the variance is wide. Consider
-streaming partial results as responses arrive rather than gating on completion.
+t+25 s on `state: complete`). Popular queries complete in ~3 s, so the variance is wide.
 
-### C3 — sequential base→skew latency (Low)
-The two-phase hunt is back-to-back (20 s + 22 s). The split exists for live per-query UI animation,
-but the worst case is ~45 s of waiting; investigate overlapping or early-terminating once a
-confidently-complete base candidate appears.
+**Improved (2026-06-15):** the pipeline already streams — the slskd provider's `pollResults` returns
+`getResponses()` on every poll **during `InProgress`** (not gated on completion), and the web polls every
+2 s and re-renders `setNetwork(...)` each time, so partial results *do* appear incrementally. The
+residual gap is that for some niche queries slskd reports a rising `responseCount` while
+`getResponses()` is still empty (file lists not yet aggregated) — a slskd-side delay we don't control.
+To make that wait legible we now surface **"N peers responded"** (from `responseCount`,
+`SearchService.networkResponseCount`) in the Searching indicator, so the user sees progress instead of a
+dead spinner. Truly streaming the late files is bounded by slskd.
+
+### C3 — sequential base→skew latency (Low) — already handled
+The two-phase hunt is back-to-back (20 s + 22 s), but the **early-termination the finding asked for
+already exists**: `AlbumHunterService.hunt()` runs skew **only when `bestBasePct < SKEW_TRIGGER_PCT`**,
+so a confidently-complete base candidate skips the skew pass entirely (no second 22 s). Running base and
+skew always-in-parallel would remove the conditional but **double** the slskd search load on every hunt
+(and skew exists precisely as a soft-ban-bypass fallback, not a default) — a worse trade for a Low-sev
+latency case. The live-progress two-phase endpoints (`huntBase`/`huntSkew`) already let the UI animate
+each phase. No code change; assessed as handled.
 
 ---
 
@@ -339,12 +374,19 @@ truth, no async reconciliation needed" intent. A regression e2e (delete an artis
 assert it's absent from `GET /api/search` *and* `GET /api/library/artists/:id` 404s) should cover it.
 
 ### D2 — secondary observations
-- Two artist rows exist for the same act — **"The Jinx"** (`335115e1…`) and **"Jinx"**
-  (`ad91978f…`), both `album_count = 1` — from "The"-prefix normalization splitting one artist into
-  two. Worth a separate look at artist-name canonicalization.
-- `library_album_tombstones` is populated historically (≈45 rows per `docs/usage-analysis-2026-06.md`)
-  but the current delete path no longer writes it (`library.ts:397` comment: "no tombstone … needed").
-  Either the table is dead and should be dropped, or deletion should keep it consistent.
+- **Tombstones table — dropped (2026-06-15).** `library_album_tombstones` was created + migrated in
+  `db.ts` but **never read or written** anywhere in the code (grep-verified; the schema comment already
+  said "safe to drop"). `applySchema` now runs `DROP TABLE IF EXISTS library_album_tombstones` (idempotent;
+  no-op on fresh installs) to clear the schema debt. *Tests:* `db.test.ts` (drops a pre-existing table;
+  fresh install never has it).
+- **"The"-prefix artist split — deferred (intentional design).** Two artist rows for one act ("The Jinx"
+  `335115e1…` + "Jinx" `ad91978f…`) come from `normalizeArtistForGrouping` keeping the leading "The".
+  This is **intentional and tested** (`album-grouping.test.ts`: `'The Beatles'` → `'the beatles'`, plus
+  `'Miranda!' ≠ 'Miranda'`) — the normalization is deliberately conservative to avoid *merging distinct*
+  artists. Stripping "The" would reverse that, re-`artistIdFor` every "The X" artist (re-bucketing rows +
+  orphaning artist artwork keyed on the id) and risks edge cases ("The The", a band literally named "The
+  X" colliding with an "X"). The finding itself says "worth a separate look at artist-name
+  canonicalization" — i.e. a dedicated, data-validated design pass, not a blind flip. Left as-is.
 
 ---
 
@@ -423,21 +465,29 @@ best copy via the existing `enqueueDownload`/`handleDownload`; status (queued/�
 `download-status.ts`. The folder view is preserved for whole-album grabs. The playground §F flow now
 asserts the lane (`data-testid="network-view-songs"`/`song-result`) instead of recording the gap.
 
-### F2 — No track hunter (Medium)
-The album hunt's robustness — skew-query soft-ban bypass, cross-peer fallback, auto-retry — has **no
-per-track equivalent** surfaced to the user.
+### F2 — No track hunter (Medium) — done
+The album hunt's robustness had **no per-track equivalent** surfaced to the user.
 
-**Suggested improvement (Phase 2 — "hunter later"):** a `TrackHunterService` reusing
-`AlbumFallbackService.searchBestForTrack`, fired with focused `"Artist Title"` queries + best-single
-selection + a single enqueued file. Wire it into **both** the Songs lane (a robust "grab" beyond the
-plain dedupe) **and** the album-hunt 0-candidate dead-end — this directly addresses the deferred
-**C1** (offer "we found N loose tracks — grab them" when a folder hunt finds nothing).
+**Done (2026-06-15):** `TrackHunterService` (`services/track-hunter.service.ts`) fires one focused
+`"Artist Title"` slskd search per track and enqueues the best single file, picked by the shared pure
+`pickBestTrackFile` (`services/track-pick.ts` — the cleanest-copy scoring, extracted so both this and the
+cross-peer `AlbumFallbackService` could share it; the fallback keeps its own copy for now to avoid
+churning battle-tested recovery code). It's wired into the **album-hunt 0-candidate dead-end** (§C1
+above). Wiring it into the §F1 Songs lane as a "robust grab" remains an easy future add (the Songs lane
+already one-click-downloads the best copy from the *existing* search, so it's lower priority).
 
-### F3 — UI affordance + e2e gap (Low, infra)
-There is no UI entry point or `data-testid` for song acquisition, and the CI suite runs external-mode
-with a dead slskd, so song acquisition can't be exercised there. Covered by the **§E2** gated
-live-backend playground spec (drives the "Toxic" search; asserts the gap pre-fix and the Songs lane
-post-Phase-1).
+### F3 — UI affordance + e2e gap (Low, infra) — resolved
+The original gap (no UI entry point / `data-testid` for song acquisition) is closed: **F1** added the
+Songs lane (`data-testid="song-results"`/`song-result"`/`song-download`), and the **C1/F2** work this
+round added the per-track fallback affordance (`hunt-tracks` → `track-hunt-result`). So song acquisition
+now has discoverable, test-targetable entry points.
+
+The remaining half — *exercising* it in CI — is an **inherent constraint**, not a fix: the CI e2e job
+runs external-mode against a dead slskd (acquisition is default-off), so any real download flow simply
+can't run there. That coverage lives in the **gated live-backend playground** (§E2/§F:
+`song-acquisition.playground.ts` drives the "Toxic" search and asserts the Songs lane), which stays out
+of CI by design and degrades gracefully on a dead backend. No further code change — the addressable part
+(affordance + selectors) is done; the CI-exercise gap is covered where it can be.
 
 ---
 

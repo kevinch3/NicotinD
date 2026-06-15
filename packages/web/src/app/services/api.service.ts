@@ -206,6 +206,15 @@ export class ApiService {
     return this.http.get<CatalogSearchResult>('/api/catalog/search', { params: { q } });
   }
 
+  // Load an artist's real discography on demand (adds the artist to Lidarr) when
+  // the global lookup surfaced none of their albums. See §A6.
+  catalogDiscography(artistMbid: string, artistName: string) {
+    return this.http.post<CatalogSearchResult>('/api/catalog/discography', {
+      artistMbid,
+      artistName,
+    });
+  }
+
   // Resolves a searched album into a real Lidarr album id (adding the artist on
   // demand) so the album-hunt flow can run against its canonical tracklist.
   catalogResolve(payload: {
@@ -588,6 +597,15 @@ export class ApiService {
     return this.http.post<HuntResult & { skewNeeded: boolean }>(
       `/api/discography/albums/${lidarrAlbumId}/hunt/base`,
       overrides,
+    );
+  }
+
+  // §C1/§F2 fallback: when no whole-album folder exists, hunt each track
+  // individually and enqueue the best match. Returns per-track outcome.
+  huntAlbumTracks(lidarrAlbumId: number, artistName: string) {
+    return this.http.post<{ requested: number; enqueued: number; misses: string[] }>(
+      `/api/discography/albums/${lidarrAlbumId}/hunt-tracks`,
+      { artistName },
     );
   }
 

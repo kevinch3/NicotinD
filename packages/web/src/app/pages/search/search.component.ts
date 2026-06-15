@@ -27,6 +27,7 @@ import {
   groupByDirectory,
   formatPeerInfo,
   rankFolders,
+  dedupeFolders,
   folderFormat,
   fileQualityLabel,
   type FolderGroup,
@@ -38,7 +39,12 @@ import { TrackRowComponent } from '../../components/track-row/track-row.componen
 import { toTrack, addToPlaylistAction } from '../../lib/track-utils';
 import { extractSharedUrl } from '../../lib/share-url';
 import { httpErrorMessage } from '../../lib/http-error';
-import { shouldOpenDirectSearch, discographyFallbackNote } from '../../lib/catalog-display';
+import {
+  shouldOpenDirectSearch,
+  discographyFallbackNote,
+  scopedArtistMbid,
+  applyDiscography,
+} from '../../lib/catalog-display';
 
 /** Lighter song shape returned by the unified search's local results. */
 interface LibrarySong {
@@ -242,13 +248,22 @@ export class SearchComponent implements OnInit, OnDestroy {
   // Explains why we dropped to the network lane when an artist matched but the
   // catalog had none of their albums (§A6). Null when there's nothing to say.
   readonly discographyNote = computed(() => discographyFallbackNote(this.catalog()));
+  // The §A6 deep fix: offer to load the matched artist's real discography on
+  // demand (adds them to Lidarr) when the catalog couldn't surface their albums.
+  readonly canLoadDiscography = computed(
+    () => !!this.catalog()?.discographyUnavailable && scopedArtistMbid(this.catalog()) !== null,
+  );
+  readonly loadingDiscography = signal(false);
 
   readonly flatNetwork = computed(() => flattenAndFilter(this.search.network()));
   readonly hasNetwork = computed(() => this.flatNetwork().length > 0);
   readonly highlightTerms = computed(() => getHighlightTerms(this.search.query()));
-  // Ranked so the best copies (free slot, lossless, complete, fast) lead the ~100
-  // near-dup album folders the network returns. See §A7.
-  readonly folderGroups = computed(() => rankFolders(groupByDirectory(this.flatNetwork())));
+  // Ranked so the best copies (free slot, lossless, complete, fast) lead, then
+  // deduped so the ~100 near-identical album folders collapse to one card per
+  // distinct copy (distinct editions/formats survive). See §A7.
+  readonly folderGroups = computed(() =>
+    dedupeFolders(rankFolders(groupByDirectory(this.flatNetwork()))),
+  );
   // Template helpers for folder format badge + per-file quality label (§A7).
   readonly folderFormat = folderFormat;
   readonly fileQualityLabel = fileQualityLabel;
@@ -410,6 +425,26 @@ export class SearchComponent implements OnInit, OnDestroy {
   searchArtist(name: string): void {
     this.search.setQuery(name);
     this.executeSearch();
+  }
+
+  // §A6 deep fix: load the matched artist's real discography on demand. The
+  // global album.lookup surfaced none of their albums, so this adds the artist to
+  // Lidarr and lists their releases as real, resolvable cards.
+  async loadDiscography(): Promise<void> {
+    const cat = this.catalog();
+    const mbid = scopedArtistMbid(cat);
+    if (!cat?.scopedArtist || mbid === null || this.loadingDiscography()) return;
+    this.loadingDiscography.set(true);
+    this.resolveError.set(null);
+    try {
+      const loaded = await firstValueFrom(this.api.catalogDiscography(mbid, cat.scopedArtist));
+      this.catalog.set(applyDiscography(cat, loaded));
+      this.directSearchOpen.set(shouldOpenDirectSearch(this.catalog()));
+    } catch (err) {
+      this.resolveError.set(httpErrorMessage(err, "Couldn't load the artist's discography"));
+    } finally {
+      this.loadingDiscography.set(false);
+    }
   }
 
   // Resolve a searched album into a real Lidarr album, then open the same
@@ -709,6 +744,7 @@ export class SearchComponent implements OnInit, OnDestroy {
       try {
         const res = await firstValueFrom(this.api.pollNetwork(id));
         this.search.setNetwork(res.results);
+        this.search.setNetworkResponseCount(res.responseCount ?? 0);
         if (res.canBrowse !== undefined) this.search.setCanBrowse(res.canBrowse);
         if (res.state === 'complete') {
           this.search.setNetworkState('complete');
