@@ -243,10 +243,22 @@
     </section>
   }
 
-  <!-- §A6 — matched the artist but the catalog had none of their albums; tell the
-       user why we dropped to the network results below (which we auto-open). -->
+  <!-- §A6 — matched the artist but the catalog had none of their albums; explain
+       the network fallback and offer to load their real discography on demand. -->
   @if (!loading() && discographyNote(); as note) {
-    <p class="mt-2 px-1 text-xs text-zinc-500" data-testid="discography-note">{{ note }}</p>
+    <div class="mt-2 px-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+      <p class="text-xs text-zinc-500" data-testid="discography-note">{{ note }}</p>
+      @if (canLoadDiscography()) {
+        <button
+          (click)="loadDiscography()"
+          [disabled]="loadingDiscography()"
+          data-testid="load-discography"
+          class="text-xs font-medium text-[var(--theme-accent)] hover:underline disabled:opacity-50 disabled:no-underline"
+        >
+          {{ loadingDiscography() ? 'Loading…' : 'Load ' + catalog()!.scopedArtist + "'s discography" }}
+        </button>
+      }
+    </div>
   }
 
   <!-- Advanced: raw network search — a power-user escape hatch, demoted below the

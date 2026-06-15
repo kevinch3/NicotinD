@@ -21,3 +21,28 @@ export function discographyFallbackNote(catalog: CatalogSearchResult | null): st
   }
   return null;
 }
+
+/**
+ * The MusicBrainz id of the scoped artist (so we can load their discography on
+ * demand). Returns null when there's no scoped artist or it isn't in the pills.
+ */
+export function scopedArtistMbid(catalog: CatalogSearchResult | null): string | null {
+  if (!catalog?.scopedArtist) return null;
+  const norm = (s: string) => s.trim().toLowerCase();
+  const hit = catalog.artists.find((a) => norm(a.name) === norm(catalog.scopedArtist!));
+  return hit?.mbid ?? null;
+}
+
+/** Merge a loaded discography into the catalog: real album cards replace the
+ *  empty list and the "unavailable" flag clears. */
+export function applyDiscography(
+  catalog: CatalogSearchResult,
+  loaded: CatalogSearchResult,
+): CatalogSearchResult {
+  return {
+    ...catalog,
+    albums: loaded.albums,
+    discographyUnavailable: false,
+    scopedArtist: loaded.scopedArtist ?? catalog.scopedArtist,
+  };
+}

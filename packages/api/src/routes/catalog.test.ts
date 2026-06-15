@@ -13,6 +13,11 @@ function makeCatalogMock(over: Partial<Record<keyof CatalogService, unknown>> = 
       title: 'A',
       artistName: 'B',
     })),
+    loadDiscography: mock(async () => ({
+      artists: [],
+      albums: [{ foreignAlbumId: 'rg', title: 'Poster Girl', artistName: 'Zara Larsson' }],
+      scopedArtist: 'Zara Larsson',
+    })),
     ...over,
   } as unknown as CatalogService;
 }
@@ -74,6 +79,27 @@ describe('catalog routes', () => {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ albumTitle: 'Animals' }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /discography returns the loaded albums', async () => {
+    const res = await app.request('/discography', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ artistMbid: 'm', artistName: 'Zara Larsson' }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { albums: Array<{ title: string }>; scopedArtist: string };
+    expect(body.albums[0]?.title).toBe('Poster Girl');
+    expect(body.scopedArtist).toBe('Zara Larsson');
+  });
+
+  it('POST /discography 400s without artistName', async () => {
+    const res = await app.request('/discography', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ artistMbid: 'm' }),
     });
     expect(res.status).toBe(400);
   });
