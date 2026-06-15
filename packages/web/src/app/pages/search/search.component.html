@@ -417,9 +417,16 @@
               >
                 <div class="flex items-center gap-2 px-3 py-2 border-b border-zinc-800/80">
                   <div class="flex-1 min-w-0">
-                    <p class="text-sm truncate" style="color: var(--theme-text-primary)">
+                    <p class="text-sm truncate flex items-center gap-1.5" style="color: var(--theme-text-primary)">
+                      @if (folderFormat(group); as fmt) {
+                        <!-- Format badge so the (few) lossless folders are obvious in the dup wall (§A7). -->
+                        <span
+                          [class]="'shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold leading-none ' +
+                            (fmt.lossless ? 'bg-emerald-500/20 text-emerald-400' : 'bg-zinc-700 text-zinc-300')"
+                        >{{ fmt.label }}</span>
+                      }
                       <span
-                        class="cursor-pointer hover:underline transition"
+                        class="truncate cursor-pointer hover:underline transition"
                         style="color: var(--theme-text-primary)"
                         (click)="navigateAndSearch(getDirBasename(group))"
                       >
@@ -507,7 +514,7 @@
                           }
                         </div>
                         <p class="mt-0.5 text-xs truncate" style="color: var(--theme-text-muted)">
-                          {{ file.bitRate ? file.bitRate + ' kbps' : 'Unknown bitrate' }}
+                          {{ fileQualityLabel(file) }}
                           · {{ formatSize(file.size) }}
                         </p>
                       </div>

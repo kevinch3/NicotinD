@@ -23,7 +23,14 @@ import {
   isPathEffectivelyQueued,
   BUTTON_CLASSES,
 } from '../../lib/download-status';
-import { groupByDirectory, formatPeerInfo, type FolderGroup } from '../../lib/folder-utils';
+import {
+  groupByDirectory,
+  formatPeerInfo,
+  rankFolders,
+  folderFormat,
+  fileQualityLabel,
+  type FolderGroup,
+} from '../../lib/folder-utils';
 import { groupBySong, formatBadge, type SongResult } from '../../lib/song-results';
 import { FolderBrowserComponent } from '../../components/folder-browser/folder-browser.component';
 import { AlbumHuntModalComponent } from '../../components/album-hunt-modal/album-hunt-modal.component';
@@ -239,7 +246,12 @@ export class SearchComponent implements OnInit, OnDestroy {
   readonly flatNetwork = computed(() => flattenAndFilter(this.search.network()));
   readonly hasNetwork = computed(() => this.flatNetwork().length > 0);
   readonly highlightTerms = computed(() => getHighlightTerms(this.search.query()));
-  readonly folderGroups = computed(() => groupByDirectory(this.flatNetwork()));
+  // Ranked so the best copies (free slot, lossless, complete, fast) lead the ~100
+  // near-dup album folders the network returns. See §A7.
+  readonly folderGroups = computed(() => rankFolders(groupByDirectory(this.flatNetwork())));
+  // Template helpers for folder format badge + per-file quality label (§A7).
+  readonly folderFormat = folderFormat;
+  readonly fileQualityLabel = fileQualityLabel;
   // Song-first view of the network results: one row per song (deduped across
   // peers, best copy auto-picked) so finding a single track is one click. The
   // folder view stays available for whole-album grabs. See §F1.
