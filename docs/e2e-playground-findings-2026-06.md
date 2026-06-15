@@ -57,10 +57,10 @@ mobile successor to the manual sessions, run the same way as the §E2 playground
 | G1 | ✅ | **High (bug)** | Web (mobile) | Album-detail **primary Play button is clipped off the left edge** — 6 actions in a non-wrapping centered flex row overflow the viewport. **Fixed:** action row is now `flex-wrap` (admin actions wrap to a second line) + Play is an accent-filled primary button |
 | G2 | ✅ | **High (bug)** | Web (mobile) | Now Playing **hero cover + queue thumbnails render broken-image glyphs** — raw `<img>` instead of the `app-cover-art` gradient fallback used in the grid/mini-player. **Fixed:** both now use `app-cover-art` (gradient fallback on 404). Side effect: the hero filling its box also removes most of G4's vertical void |
 | G3 | ✅ | High (UX) | Web (mobile) | Track-info sheet **shows no song identity** (no title/artist/album) — Now Playing mounts it without the `[song]` input, so `song()` is null and the whole "File" block is hidden too. **Fixed:** added an always-on identity header (cover + title/artist/album) sourced from `song()` or new lightweight display inputs the player passes |
-| G4 | ◻️ | Medium (UX) | Web (mobile) | Now Playing has a **large vertical void** (cover pinned small at top, title floated to center); no visible affordance to reach Track info (long-press only). *Partial:* G2 (hero now fills its box) removes most of the void; the remaining piece is the missing visible Track-info affordance |
-| G5 | ◻️ | Medium (UX) | Web (mobile) | Mini-player progress is a **1px hairline**; list content is **occluded** by the player+tab-bar (no bottom scroll padding) |
-| G6 | ◻️ | Medium (UX) | Web (mobile) | Now Playing title **context menu overflows the right edge** — positioned at tap-X with no viewport clamp |
-| G7 | ◻️ | Low (UX) | Web (mobile) | Library list: **stray unlabeled "1" counter** on the Filters row; 5-tab segmented control crowds the edges |
+| G4 | ✅ | Medium (UX) | Web (mobile) | Now Playing has a **large vertical void** (cover pinned small at top, title floated to center); no visible affordance to reach Track info (long-press only). **Fixed:** G2 (hero fills its box) removed the void, and an `ⓘ` button beside the title now opens the sheet directly (long-press still works) |
+| G5 | ✅ | Medium (UX) | Web (mobile) | Mini-player progress is a **1px hairline**; list content is **occluded** by the player+tab-bar (no bottom scroll padding). **Assessed — already handled:** the seek bar is a 20px touch target (4px track + 12px thumb), and `mainBottomPadClass` already pads `<main>` `pb-8rem` when a track plays. Original finding was overstated (a *faint low-progress* bar, not a hairline) |
+| G6 | ✅ | Medium (UX) | Web (mobile) | Now Playing title **context menu overflows the right edge** — positioned at tap-X with no viewport clamp. **Fixed:** `clampMenuPosition` keeps the menu fully on-screen (+ `max-w` guard) |
+| G7 | ✅ | Low (UX) | Web (mobile) | Library list: **stray unlabeled "1" counter** on the Filters row; 5-tab segmented control crowds the edges. **Fixed:** count now reads "N album(s)"; tabs get tighter mobile padding + horizontal-scroll overflow so they don't crowd/clip |
 
 **Fix notes:** D1 — delete handler now prunes orphaned `library_artists`/`library_genres`/
 `library_artwork` in the same transaction. A2 — `resolveAlbum` falls back to a diacritic-insensitive
@@ -499,8 +499,10 @@ Layout pins a small cover to the top and floats the title to vertical center, le
 (worsened by G2's collapse). Track info is reachable **only** via long-press/right-click on the title —
 no visible `⋯`, so it's effectively undiscoverable on mobile.
 
-**Fix:** larger centered hero, tighter gap to the title; add a visible Track-info (`⋯`) button near the
-title.
+**Fixed (2026-06-15):** G2 restored the hero to its full box, which closes most of the void; and a
+visible `ⓘ` button (`data-testid="now-playing-info"`) now sits beside the title and opens the track-info
+sheet on a single tap — the long-press context menu still works for power users. *Test:* `mobile-ux.spec.ts`
+clicks the visible button and asserts the sheet opens with the track identity.
 
 ### G5 — Mini-player hairline progress + content occlusion (Medium, UX)
 The mini-player progress is a ~1px line at the very bottom edge (easy to miss, doesn't read as
@@ -508,19 +510,32 @@ interactive), and both the mini-player and the bottom tab bar **occlude list con
 tracklist's last row is cut because Library/Album pages reserve no bottom scroll padding for the player
 chrome.
 
-**Fix:** thicken/restyle the progress into a visible seek track; add bottom padding equal to
-player+tab-bar height on scrollable pages.
+**Assessed (2026-06-15) — already handled, finding overstated.** Reading the code: the mini-player seek
+is `app-seek-bar`, a native range styled as a **20px touch target** (`.seek-range` height `1.25rem`)
+with a **4px** visible track + **12px** thumb — not a 1px hairline; it only *looked* faint in the
+screenshot because the bar was at ~4% (the low-contrast `--theme-surface-2` empty track dominates at low
+progress). And occlusion is already solved by `mainBottomPadClass` (`lib/player-chrome.ts`), which pads
+`<main>` `pb-[8rem]` on mobile (tab bar + mini-player) whenever a track is loaded, so the last list row
+clears the chrome. No code change made — fabricating one for a non-issue would be churn. (A possible
+*nice-to-have*: a higher-contrast empty-track token in the mini context, but it's shared with Now Playing
+where it reads fine.)
 
 ### G6 — Title context menu overflows the viewport (Medium, UX)
 The Now Playing title context menu is positioned at the tap's X coordinate with no viewport clamping, so
 on mobile it extends past the right edge and its labels ("Search more by artist", "Track info") are
 clipped.
 
-**Fix:** clamp to the viewport (or present as a centered bottom-sheet on mobile).
+**Fixed (2026-06-15):** `clampMenuPosition` (`lib/menu-position.ts`) keeps the menu's top-left within
+the viewport (margin from every edge), and the menu gains a `max-w-[calc(100vw-1rem)]` guard. The
+context-menu component clamps `position()` against `window.inner{Width,Height}` via a computed. *Test:*
+`menu-position.spec.ts` covers right/bottom-edge clamping, the top-left floor, and custom menu sizes.
 
 ### G7 — Library list polish (Low, UX)
 A **stray, unlabeled low-contrast "1"** sits far-right on the Filters row (it's the album count, but
 reads as a glitch), and the 5-tab segmented control (Albums/Singles/Artists/Genre/Playlists) crowds the
 screen edges at 412px.
 
-**Fix:** label or remove the counter; let the tabs scroll horizontally or shrink at narrow widths.
+**Fixed (2026-06-15):** the count now renders "`{n} album`/`albums`" (`data-testid="library-album-count"`)
+instead of a bare number, and the mode tabs get tighter mobile padding (`px-3 sm:px-4`) +
+`overflow-x-auto` with `shrink-0 whitespace-nowrap` buttons, so they scroll rather than crowd/clip on a
+narrow phone. *Test:* `mobile-ux.spec.ts` asserts the count reads "1 album".

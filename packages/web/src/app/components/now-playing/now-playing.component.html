@@ -47,12 +47,28 @@
 
         <!-- Track info -->
         <div class="text-center px-4 mb-4 md:px-8 no-callout" translate="no">
-          <h2
-            class="text-xl font-semibold text-zinc-100 truncate select-none"
-            (contextmenu)="onTitleContextMenu($event)"
-          >
-            {{ track.title }}
-          </h2>
+          <div class="flex items-center justify-center gap-2 min-w-0">
+            <h2
+              class="text-xl font-semibold text-zinc-100 truncate select-none"
+              (contextmenu)="onTitleContextMenu($event)"
+            >
+              {{ track.title }}
+            </h2>
+            <!-- G4: visible affordance to open Track info (was long-press only). -->
+            <button
+              (click)="onOpenTrackInfo(track.id)"
+              data-testid="now-playing-info"
+              aria-label="Track info"
+              title="Track info"
+              class="shrink-0 text-zinc-500 hover:text-zinc-200 transition"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" y1="16" x2="12" y2="12" />
+                <line x1="12" y1="8" x2="12.01" y2="8" />
+              </svg>
+            </button>
+          </div>
           <p
             class="text-sm text-zinc-400 truncate mt-1 cursor-pointer select-none hover:underline hover:text-zinc-200 transition"
             (click)="navigateToArtist()"
