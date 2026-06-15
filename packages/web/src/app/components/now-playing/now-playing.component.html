@@ -31,23 +31,18 @@
           </div>
         </div>
 
-        <!-- Cover art -->
+        <!-- Cover art — app-cover-art degrades a missing/404 cover to the on-theme
+             gradient tile (like the grid/mini-player) instead of a broken-image glyph. -->
         <div class="flex-shrink-0 flex justify-center px-4 py-4 md:px-8">
-          @if (track.coverArt) {
-            <img
-              [src]="'/api/cover/' + track.coverArt + '?size=600&token=' + auth.token()"
-              alt=""
-              class="w-[60vw] max-w-80 aspect-square rounded-lg object-cover"
+          <div class="w-[60vw] max-w-80" data-testid="now-playing-cover">
+            <app-cover-art
+              [src]="track.coverArt ? '/api/cover/' + track.coverArt + '?size=600&token=' + auth.token() : undefined"
+              [artist]="track.artist"
+              [album]="track.album ?? ''"
+              [fill]="true"
+              rounded="rounded-lg"
             />
-          } @else {
-            <div class="w-[60vw] max-w-80 aspect-square rounded-lg bg-zinc-800 flex items-center justify-center">
-              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="text-zinc-600">
-                <path d="M9 18V5l12-2v13" />
-                <circle cx="6" cy="18" r="3" />
-                <circle cx="18" cy="16" r="3" />
-              </svg>
-            </div>
-          }
+          </div>
         </div>
 
         <!-- Track info -->
@@ -225,15 +220,13 @@
                   class="w-full flex items-center gap-3 px-2 py-2.5 rounded-lg hover:bg-zinc-800/50 transition text-left"
                 >
                   <span class="text-xs text-zinc-600 w-6 text-right">{{ $index + 1 }}</span>
-                  @if (queueTrack.coverArt) {
-                    <img
-                      [src]="'/api/cover/' + queueTrack.coverArt + '?size=40&token=' + auth.token()"
-                      alt=""
-                      class="w-8 h-8 rounded object-cover flex-shrink-0"
-                    />
-                  } @else {
-                    <div class="w-8 h-8 rounded bg-zinc-800 flex-shrink-0"></div>
-                  }
+                  <app-cover-art
+                    [src]="queueTrack.coverArt ? '/api/cover/' + queueTrack.coverArt + '?size=80&token=' + auth.token() : undefined"
+                    [artist]="queueTrack.artist"
+                    [album]="queueTrack.album ?? ''"
+                    [size]="32"
+                    rounded="rounded"
+                  />
                   <div class="min-w-0 flex-1">
                     <p class="text-sm text-zinc-200 truncate">{{ queueTrack.title }}</p>
                     <p class="text-xs text-zinc-500 truncate">{{ queueTrack.artist }}</p>

@@ -28,4 +28,25 @@ test.describe('mobile UX', () => {
     expect(box.x, 'left edge not clipped').toBeGreaterThanOrEqual(0);
     expect(box.x + box.width, 'right edge within viewport').toBeLessThanOrEqual(PHONE.width);
   });
+
+  // G2 — Now Playing renders covers via app-cover-art, so a missing/404 cover
+  // degrades to the gradient fallback (no broken-image glyph). The fixtures have
+  // no embedded art, so the hero cover must show the fallback initial and have
+  // no <img> element (app-cover-art swaps to the gradient div on error).
+  test('Now Playing hero cover degrades to the gradient fallback', async ({ page }) => {
+    await openAlbum(page);
+    await page.getByTestId('play-album').click();
+    await expect(page.getByTestId('player-title')).toBeVisible();
+
+    // Expand the mini-player into the Now Playing sheet.
+    await page.getByTestId('player-title').click();
+    await expect(page.getByText('Now Playing')).toBeVisible();
+
+    const cover = page.getByTestId('now-playing-cover');
+    await expect(cover).toBeVisible();
+    // Fallback active: no <img> survives (it errors → gradient div) and the
+    // album initial ("E" for "E2E Test Album") is shown over the gradient.
+    await expect(cover.locator('img')).toHaveCount(0);
+    await expect(cover).toContainText('E');
+  });
 });

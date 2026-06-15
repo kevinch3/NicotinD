@@ -55,9 +55,9 @@ mobile successor to the manual sessions, run the same way as the §E2 playground
 | A6 | ◻️ | **High (UX)** | Catalog/Hunt | **Guided hunt is unreachable for Zara Larsson** — catalog returns 10/10 junk (mashups/wiki/instrumental), 10/10 cards `404` `ALBUM_NOT_IN_LIDARR`, the hunt modal never opens. A1's deferred "deep fix" (artist-scoped discography lookup) is the real blocker |
 | A7 | ◻️ | Medium (UX) | Search (network) | Raw-folder lane is the *working* escape hatch (downloaded Poster Girl in FLAC), but dumps **~98 unranked near-dup album folders**; format buried (2/98 FLAC), "Unknown bitrate" shown under filenames that state the kbps, no free-slot/lossless ranking. Needs §F1-style album-folder dedup + a format badge/filter |
 | G1 | ✅ | **High (bug)** | Web (mobile) | Album-detail **primary Play button is clipped off the left edge** — 6 actions in a non-wrapping centered flex row overflow the viewport. **Fixed:** action row is now `flex-wrap` (admin actions wrap to a second line) + Play is an accent-filled primary button |
-| G2 | ◻️ | **High (bug)** | Web (mobile) | Now Playing **hero cover + queue thumbnails render broken-image glyphs** — raw `<img>` instead of the `app-cover-art` gradient fallback used in the grid/mini-player |
+| G2 | ✅ | **High (bug)** | Web (mobile) | Now Playing **hero cover + queue thumbnails render broken-image glyphs** — raw `<img>` instead of the `app-cover-art` gradient fallback used in the grid/mini-player. **Fixed:** both now use `app-cover-art` (gradient fallback on 404). Side effect: the hero filling its box also removes most of G4's vertical void |
 | G3 | ◻️ | High (UX) | Web (mobile) | Track-info sheet **shows no song identity** (no title/artist/album) — Now Playing mounts it without the `[song]` input, so `song()` is null and the whole "File" block is hidden too |
-| G4 | ◻️ | Medium (UX) | Web (mobile) | Now Playing has a **large vertical void** (cover pinned small at top, title floated to center); no visible affordance to reach Track info (long-press only) |
+| G4 | ◻️ | Medium (UX) | Web (mobile) | Now Playing has a **large vertical void** (cover pinned small at top, title floated to center); no visible affordance to reach Track info (long-press only). *Partial:* G2 (hero now fills its box) removes most of the void; the remaining piece is the missing visible Track-info affordance |
 | G5 | ◻️ | Medium (UX) | Web (mobile) | Mini-player progress is a **1px hairline**; list content is **occluded** by the player+tab-bar (no bottom scroll padding) |
 | G6 | ◻️ | Medium (UX) | Web (mobile) | Now Playing title **context menu overflows the right edge** — positioned at tap-X with no viewport clamp |
 | G7 | ◻️ | Low (UX) | Web (mobile) | Library list: **stray unlabeled "1" counter** on the Filters row; 5-tab segmented control crowds the edges |
@@ -454,8 +454,11 @@ The Now Playing hero cover and every "Next Up" queue thumbnail use a **raw `<img
 of the `app-cover-art` gradient fallback used in the Albums grid and the mini-player. Ugly, inconsistent
 degradation, and it collapses the hero box (feeding G4's layout void).
 
-**Fix:** swap the raw `<img>` (hero + queue rows) for `app-cover-art`. *Test:* web unit test that the
-now-playing cover renders the fallback when `coverArt` is absent.
+**Fixed (2026-06-15):** the hero cover and the queue thumbnails now render via `app-cover-art`, which
+swaps a 404/missing cover for the on-theme gradient tile + initial (same as the grid and mini-player).
+*Test:* `mobile-ux.spec.ts` opens Now Playing and asserts the hero (`data-testid="now-playing-cover"`)
+has **no `<img>`** (it errored → gradient div) and shows the album initial. Bonus: with the hero filling
+its box again, most of G4's vertical void is gone.
 
 ### G3 — Track-info sheet shows no song identity (High, UX)
 Opened from Now Playing (title long-press → "Track info"), the sheet header is a generic **"Track
