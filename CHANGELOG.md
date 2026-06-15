@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.82](https://github.com/kevinch3/NicotinD/compare/v0.1.81...v0.1.82) (2026-06-15)
+
+
+### Features
+
+* **library:** user-driven metadata fix (correct artist/album, confirm candidates) ([5b4b24e](https://github.com/kevinch3/NicotinD/commit/5b4b24e919f1dfcf6732c31c9c483f72ecdac1d7))
+
 ## [0.1.81](https://github.com/kevinch3/NicotinD/compare/v0.1.80...v0.1.81) (2026-06-15)
 
 
