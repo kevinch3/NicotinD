@@ -600,6 +600,15 @@ export class ApiService {
     );
   }
 
+  // §C1/§F2 fallback: when no whole-album folder exists, hunt each track
+  // individually and enqueue the best match. Returns per-track outcome.
+  huntAlbumTracks(lidarrAlbumId: number, artistName: string) {
+    return this.http.post<{ requested: number; enqueued: number; misses: string[] }>(
+      `/api/discography/albums/${lidarrAlbumId}/hunt-tracks`,
+      { artistName },
+    );
+  }
+
   // Phase-2 of the two-phase hunt: fires skew-variant queries and returns
   // their candidates independently (frontend merges with base results).
   huntAlbumSkew(

@@ -1,0 +1,96 @@
+import { normalizeTitle, titlesOverlap } from './album-hunter.service.js';
+
+/**
+ * Pure "pick the healthiest, cleanest file for a track" logic, shared by the
+ * cross-peer album fallback and the user-facing track hunter (§F2/§C1). Kept
+ * free of slskd/IO so it's unit-testable in isolation.
+ */
+
+const AUDIO_EXTENSIONS = new Set([
+  '.mp3', '.flac', '.ogg', '.opus', '.m4a', '.aac', '.wav', '.aiff', '.wma', '.ape', '.wv',
+]);
+
+export interface SearchResponseLike {
+  username: string;
+  freeUploadSlots?: number;
+  queueLength?: number;
+  uploadSpeed?: number;
+  files: Array<{ filename: string; size: number; bitRate?: number; length?: number }>;
+}
+
+export interface TrackPick {
+  username: string;
+  file: { filename: string; size: number };
+}
+
+/** Free slot dominates, then short queue, then speed — a peer-health proxy. */
+export function healthScore(r: {
+  freeUploadSlots?: number;
+  queueLength?: number;
+  uploadSpeed?: number;
+}): number {
+  const slots = (r.freeUploadSlots ?? 0) > 0 ? 1000 : 0;
+  const queuePenalty = Math.min(r.queueLength ?? 0, 999);
+  const speed = (r.uploadSpeed ?? 0) / 1_000_000;
+  return slots - queuePenalty + speed;
+}
+
+export function normalizeBasename(filename: string): string {
+  const base = filename.replace(/\\/g, '/').split('/').pop() ?? filename;
+  const noExt = base.slice(0, base.lastIndexOf('.') || base.length);
+  return normalizeTitle(noExt);
+}
+
+/**
+ * How many words a candidate filename has beyond the canonical track title — a
+ * proxy for version/edition noise ("(5.1 mix)", "(remastered)"). 0 = exact.
+ */
+export function extraTokenCount(canonicalNorm: string, fileNorm: string): number {
+  const canon = new Set(canonicalNorm.split(' ').filter(Boolean));
+  return fileNorm
+    .split(' ')
+    .filter(Boolean)
+    .reduce((n, w) => (canon.has(w) ? n : n + 1), 0);
+}
+
+function fileExt(filename: string): string {
+  return filename.slice(filename.lastIndexOf('.')).toLowerCase();
+}
+
+/**
+ * Choose the single best file matching `title` across all peer responses.
+ * Cleanliness dominates (fewest extra words beyond the title), so we get
+ * "Bohemian Rhapsody" not the "(5.1 mix)" a healthy FLAC peer would otherwise
+ * win on; FLAC + peer health only break ties among equally-clean files.
+ */
+export function pickBestTrackFile(
+  responses: SearchResponseLike[],
+  title: string,
+): TrackPick | null {
+  const normTitle = normalizeTitle(title);
+  let best: { username: string; file: { filename: string; size: number }; extras: number; score: number } | null =
+    null;
+
+  for (const response of responses) {
+    const peerScore = healthScore(response);
+    for (const file of response.files) {
+      const ext = fileExt(file.filename);
+      if (!AUDIO_EXTENSIONS.has(ext)) continue;
+      const normFile = normalizeBasename(file.filename);
+      if (!titlesOverlap(normTitle, normFile)) continue;
+
+      const extras = extraTokenCount(normTitle, normFile);
+      const score = peerScore + (ext === '.flac' ? 1 : 0);
+      if (!best || extras < best.extras || (extras === best.extras && score > best.score)) {
+        best = {
+          username: response.username,
+          file: { filename: file.filename, size: file.size },
+          extras,
+          score,
+        };
+      }
+    }
+  }
+
+  return best ? { username: best.username, file: best.file } : null;
+}

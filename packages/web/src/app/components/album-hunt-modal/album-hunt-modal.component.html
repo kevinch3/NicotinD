@@ -198,6 +198,28 @@
           <div data-testid="hunt-no-results" class="p-8 text-center text-theme-muted text-sm">
             No candidates match your filters. Try lowering the minimum match % or enabling live
             recordings.
+            <!-- §C1: offer the per-track fallback instead of a pure dead-end. -->
+            <div class="mt-4">
+              @if (trackHuntState() === 'done' && trackHuntResult(); as r) {
+                <p data-testid="track-hunt-result" class="text-theme-secondary">
+                  Enqueued {{ r.enqueued }} of {{ r.requested }} tracks individually.
+                  @if (r.misses.length) {
+                    <span class="text-theme-muted">{{ r.misses.length }} not found.</span>
+                  }
+                </p>
+              } @else if (trackHuntState() === 'error') {
+                <p class="text-red-400">Track hunt failed. Try again.</p>
+              } @else {
+                <button
+                  (click)="huntIndividualTracks()"
+                  [disabled]="trackHuntState() === 'running'"
+                  data-testid="hunt-tracks"
+                  class="px-4 py-2 rounded-lg text-sm bg-theme-surface-2 text-theme-primary hover:bg-theme-hover transition disabled:opacity-50"
+                >
+                  {{ trackHuntState() === 'running' ? 'Hunting tracks…' : 'Grab individual tracks instead' }}
+                </button>
+              }
+            </div>
           </div>
         } @else {
           <ul class="divide-y divide-theme-surface-2">

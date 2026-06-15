@@ -43,6 +43,12 @@ export class AlbumHuntModalComponent implements OnInit {
   readonly errorMsg = signal('');
   readonly selectedCandidate = signal<FolderCandidate | null>(null);
 
+  // §C1/§F2 per-track fallback for the no-candidates dead-end.
+  readonly trackHuntState = signal<'idle' | 'running' | 'done' | 'error'>('idle');
+  readonly trackHuntResult = signal<{ requested: number; enqueued: number; misses: string[] } | null>(
+    null,
+  );
+
   // Filter state — signals so the filtered list recomputes instantly. The server
   // returns ALL candidates (above a low floor); filtering is purely client-side,
   // so toggling a filter never requires another network round-trip.
@@ -266,6 +272,23 @@ export class AlbumHuntModalComponent implements OnInit {
 
   select(candidate: FolderCandidate): void {
     this.selectedCandidate.set(this.selectedCandidate() === candidate ? null : candidate);
+  }
+
+  // §C1: no whole-album folder matched — hunt each track individually and
+  // enqueue the best match per track. The server resolves the tracklist.
+  async huntIndividualTracks(): Promise<void> {
+    if (this.trackHuntState() === 'running') return;
+    this.trackHuntState.set('running');
+    try {
+      const result = await firstValueFrom(
+        this.api.huntAlbumTracks(this.album().lidarrId, this.artistName()),
+      );
+      this.trackHuntResult.set(result);
+      this.trackHuntState.set('done');
+      if (result.enqueued > 0) this.transfer.kickPoll();
+    } catch {
+      this.trackHuntState.set('error');
+    }
   }
 
   isSelected(candidate: FolderCandidate): boolean {
