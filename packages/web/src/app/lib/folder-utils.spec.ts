@@ -5,8 +5,10 @@ import {
   getDirectFiles,
   formatPeerInfo,
   rankFolders,
+  dedupeFolders,
   folderFormat,
   fileQualityLabel,
+  folderBasename,
   type FolderGroup,
 } from './folder-utils';
 
@@ -184,5 +186,38 @@ describe('rankFolders', () => {
     const copy = [...input];
     rankFolders(input);
     expect(input).toEqual(copy);
+  });
+});
+
+describe('folderBasename', () => {
+  it('takes the last path segment (backslash or slash)', () => {
+    expect(folderBasename('Music\\Zara Larsson\\Poster Girl')).toBe('Poster Girl');
+    expect(folderBasename('a/b/c')).toBe('c');
+  });
+});
+
+describe('dedupeFolders', () => {
+  const flacPosterGirl = (user: string) =>
+    folder({ username: user, directory: `x\\Poster Girl (2021)`, files: [f('01.flac'), f('02.flac')] });
+
+  it('collapses identical copies across peers and counts the extras', () => {
+    const out = dedupeFolders([flacPosterGirl('p1'), flacPosterGirl('p2'), flacPosterGirl('p3')]);
+    expect(out).toHaveLength(1);
+    expect(out[0].username).toBe('p1'); // first (best-ranked) kept
+    expect(out[0].duplicatePeers).toBe(2); // two other peers had the same copy
+  });
+
+  it('keeps distinct editions (different track count) and formats apart', () => {
+    const standard = folder({ username: 'a', directory: 'x\\Poster Girl', files: [f('1.flac'), f('2.flac')] });
+    const deluxe = folder({ username: 'b', directory: 'x\\Poster Girl', files: [f('1.flac'), f('2.flac'), f('3.flac')] });
+    const mp3 = folder({ username: 'c', directory: 'x\\Poster Girl', files: [f('1.mp3', 320), f('2.mp3', 320)] });
+    const out = dedupeFolders([standard, deluxe, mp3]);
+    expect(out).toHaveLength(3); // none merged — different track count / format
+  });
+
+  it('does not mutate the input folders', () => {
+    const input = [flacPosterGirl('p1'), flacPosterGirl('p2')];
+    dedupeFolders(input);
+    expect(input.every((g) => g.duplicatePeers === undefined)).toBe(true);
   });
 });

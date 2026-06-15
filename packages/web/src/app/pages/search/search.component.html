@@ -451,6 +451,9 @@
                       ·
                       <span style="color: var(--theme-accent)">{{ formatPeerInfo(group) }}</span> ·
                       {{ group.files.length }} files
+                      @if (group.duplicatePeers) {
+                        · {{ group.duplicatePeers + 1 }} peers
+                      }
                     </p>
                   </div>
                   <button

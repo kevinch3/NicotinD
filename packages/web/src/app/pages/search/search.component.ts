@@ -27,6 +27,7 @@ import {
   groupByDirectory,
   formatPeerInfo,
   rankFolders,
+  dedupeFolders,
   folderFormat,
   fileQualityLabel,
   type FolderGroup,
@@ -257,9 +258,12 @@ export class SearchComponent implements OnInit, OnDestroy {
   readonly flatNetwork = computed(() => flattenAndFilter(this.search.network()));
   readonly hasNetwork = computed(() => this.flatNetwork().length > 0);
   readonly highlightTerms = computed(() => getHighlightTerms(this.search.query()));
-  // Ranked so the best copies (free slot, lossless, complete, fast) lead the ~100
-  // near-dup album folders the network returns. See §A7.
-  readonly folderGroups = computed(() => rankFolders(groupByDirectory(this.flatNetwork())));
+  // Ranked so the best copies (free slot, lossless, complete, fast) lead, then
+  // deduped so the ~100 near-identical album folders collapse to one card per
+  // distinct copy (distinct editions/formats survive). See §A7.
+  readonly folderGroups = computed(() =>
+    dedupeFolders(rankFolders(groupByDirectory(this.flatNetwork()))),
+  );
   // Template helpers for folder format badge + per-file quality label (§A7).
   readonly folderFormat = folderFormat;
   readonly fileQualityLabel = fileQualityLabel;

@@ -53,7 +53,7 @@ mobile successor to the manual sessions, run the same way as the §E2 playground
 | F2 | ◻️ | Medium | Hunt | No per-track hunter — the album hunt's skew/cross-peer/auto-retry robustness has no single-song equivalent (also unblocks the C1 0-candidate fallback) |
 | F3 | ◻️ | Low (infra) | e2e | No UI entry point / `data-testid` for song acquisition; CI (dead slskd) can't exercise it — needs the §E2 gated playground spec |
 | A6 | ✅ | **High (UX)** | Catalog/Hunt | **Guided hunt is unreachable for Zara Larsson** — catalog returns 10/10 junk, 10/10 cards `404`, the hunt modal never opens. **Fixed:** (1) `search()` suppresses the junk (0 cards + `discographyUnavailable`), auto-opens the network lane with an explanatory note; (2) **deep fix** — a "Load <artist>'s discography" button calls `loadDiscography()` which adds the artist to Lidarr on demand and lists their real, hunt-able albums. Turns the dead-end into a working guided hunt |
-| A7 | ✅* | Medium (UX) | Search (network) | Raw-folder lane is the *working* escape hatch (downloaded Poster Girl in FLAC), but dumps **~98 unranked near-dup album folders**; format buried (2/98 FLAC), "Unknown bitrate" shown under filenames that state the kbps, no free-slot/lossless ranking. **Mitigated:** folders now **ranked** (free-slot > lossless > more tracks > faster), each carries a **format badge** (FLAC highlighted), and per-file quality falls back to the format name. Cross-peer *dedup* still deferred |
+| A7 | ✅* | Medium (UX) | Search (network) | Raw-folder lane is the *working* escape hatch (downloaded Poster Girl in FLAC), but dumps **~98 unranked near-dup album folders**; format buried (2/98 FLAC), "Unknown bitrate" shown under filenames that state the kbps, no free-slot/lossless ranking. **Mitigated:** folders now **ranked** (free-slot > lossless > more tracks > faster), each carries a **format badge** (FLAC highlighted), per-file quality falls back to the format name, and **cross-peer dedup** collapses the ~100 near-dup folders to one card per distinct copy (editions/formats preserved; "+N peers" shown) |
 | G1 | ✅ | **High (bug)** | Web (mobile) | Album-detail **primary Play button is clipped off the left edge** — 6 actions in a non-wrapping centered flex row overflow the viewport. **Fixed:** action row is now `flex-wrap` (admin actions wrap to a second line) + Play is an accent-filled primary button |
 | G2 | ✅ | **High (bug)** | Web (mobile) | Now Playing **hero cover + queue thumbnails render broken-image glyphs** — raw `<img>` instead of the `app-cover-art` gradient fallback used in the grid/mini-player. **Fixed:** both now use `app-cover-art` (gradient fallback on 404). Side effect: the hero filling its box also removes most of G4's vertical void |
 | G3 | ✅ | High (UX) | Web (mobile) | Track-info sheet **shows no song identity** (no title/artist/album) — Now Playing mounts it without the `[song]` input, so `song()` is null and the whole "File" block is hidden too. **Fixed:** added an always-on identity header (cover + title/artist/album) sourced from `song()` or new lightweight display inputs the player passes |
@@ -239,9 +239,12 @@ highlighted emerald), and per-file rows use `fileQualityLabel`, which falls back
 FLAC file no longer reads "Unknown bitrate". A human would now spot the FLAC copy at a glance.
 *Tests:* `folder-utils.spec.ts` (ranking order + no-mutation, format detection, quality label).
 
-**Still deferred:** true **cross-peer dedup** (collapse the ~98 near-identical folders into one card per
-distinct copy) — it's risky (can merge legitimately-distinct editions) and wants its own design pass;
-ranking + badges already make the best copy findable, so dedup is a polish, not a blocker.
+**Cross-peer dedup shipped (2026-06-15):** `dedupeFolders` collapses the ~98 near-identical folders into
+one card per **distinct** copy, keyed on **basename + format + audio-track-count** — so a deluxe edition
+(more tracks) or a different format survives as its own card and only literally-identical copies across
+peers merge. It runs on the *ranked* list (keeps the best peer) and annotates `duplicatePeers`, rendered
+as "· N peers" so the user still sees availability. *Tests:* `folder-utils.spec.ts` (collapse + count,
+edition/format preservation, no input mutation).
 
 > Repro: `… bunx playwright test --config=playwright.hunt.config.ts network-album-download` (idempotent —
 > re-runs detect the already-downloaded "✓ Done" folder and skip; screenshots `12–15`).
