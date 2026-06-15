@@ -54,7 +54,7 @@ mobile successor to the manual sessions, run the same way as the §E2 playground
 | F3 | ◻️ | Low (infra) | e2e | No UI entry point / `data-testid` for song acquisition; CI (dead slskd) can't exercise it — needs the §E2 gated playground spec |
 | A6 | ◻️ | **High (UX)** | Catalog/Hunt | **Guided hunt is unreachable for Zara Larsson** — catalog returns 10/10 junk (mashups/wiki/instrumental), 10/10 cards `404` `ALBUM_NOT_IN_LIDARR`, the hunt modal never opens. A1's deferred "deep fix" (artist-scoped discography lookup) is the real blocker |
 | A7 | ◻️ | Medium (UX) | Search (network) | Raw-folder lane is the *working* escape hatch (downloaded Poster Girl in FLAC), but dumps **~98 unranked near-dup album folders**; format buried (2/98 FLAC), "Unknown bitrate" shown under filenames that state the kbps, no free-slot/lossless ranking. Needs §F1-style album-folder dedup + a format badge/filter |
-| G1 | ◻️ | **High (bug)** | Web (mobile) | Album-detail **primary Play button is clipped off the left edge** — 6 actions in a non-wrapping centered flex row overflow the viewport |
+| G1 | ✅ | **High (bug)** | Web (mobile) | Album-detail **primary Play button is clipped off the left edge** — 6 actions in a non-wrapping centered flex row overflow the viewport. **Fixed:** action row is now `flex-wrap` (admin actions wrap to a second line) + Play is an accent-filled primary button |
 | G2 | ◻️ | **High (bug)** | Web (mobile) | Now Playing **hero cover + queue thumbnails render broken-image glyphs** — raw `<img>` instead of the `app-cover-art` gradient fallback used in the grid/mini-player |
 | G3 | ◻️ | High (UX) | Web (mobile) | Track-info sheet **shows no song identity** (no title/artist/album) — Now Playing mounts it without the `[song]` input, so `song()` is null and the whole "File" block is hidden too |
 | G4 | ◻️ | Medium (UX) | Web (mobile) | Now Playing has a **large vertical void** (cover pinned small at top, title floated to center); no visible affordance to reach Track info (long-press only) |
@@ -440,10 +440,13 @@ overflow both edges and centering pushes the **primary Play button partly off th
 Admin power-actions (greyed "Optimize metadata", bare-red "Remove album") also get equal/greater visual
 weight than playback, and destructive delete sits one mis-tap away in the same row.
 
-**Fix:** `flex-wrap` + `justify-start` on mobile; make Play visually primary (filled accent, not the
-neutral surface shared with Select); move Optimize/Remove into an overflow `⋯` menu and route Remove
-through the existing confirm dialog. *Test:* assert `play-album` is fully within the viewport at mobile
-width.
+**Fixed (2026-06-15):** the action row is now `flex flex-wrap` so the buttons wrap instead of
+clipping, and **Play is an accent-filled primary button** (`bg-theme-accent text-white`) distinct from
+the neutral-secondary Select/Download/Share. With wrap, the admin actions (Optimize metadata / Remove
+album) fall to a second line — a pragmatic demotion below the primary row; `removeAlbum` already routes
+through the confirm dialog. A dedicated overflow `⋯` menu remains a possible polish but is no longer
+needed to stop the clip. *Test:* `mobile-ux.spec.ts` asserts `play-album`'s box is within `[0, 412]` at
+a Pixel-7 width (CI chromium project).
 
 ### G2 — Now Playing cover + queue render broken-image glyphs (High, bug)
 The Now Playing hero cover and every "Next Up" queue thumbnail use a **raw `<img [src]="/api/cover/…">`**

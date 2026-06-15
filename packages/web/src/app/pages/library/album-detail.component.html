@@ -32,10 +32,13 @@
         @if (selectedAlbum()!.year) {
           <p class="text-theme-muted text-sm mt-1">{{ selectedAlbum()!.year }}</p>
         }
-        <div class="flex justify-center sm:justify-start gap-3 mt-4">
+        <!-- flex-wrap so the 4–6 actions never overflow/clip the primary Play
+             button off a narrow (mobile) viewport. Play is the accent-filled
+             primary action; the rest stay neutral-secondary. -->
+        <div class="flex flex-wrap justify-center sm:justify-start gap-3 mt-4">
           <button (click)="playAlbum()"
             data-testid="play-album" aria-label="Play album" title="Play album"
-            class="w-10 h-10 flex items-center justify-center rounded-lg bg-theme-surface-2 text-theme-primary hover:bg-theme-hover transition">
+            class="w-10 h-10 flex items-center justify-center rounded-lg bg-theme-accent text-white hover:opacity-90 transition">
             <app-icon name="play" />
           </button>
           @if (!selection.active()) {
