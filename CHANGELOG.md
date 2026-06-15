@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.79](https://github.com/kevinch3/NicotinD/compare/v0.1.78...v0.1.79) (2026-06-15)
+
+
+### Features
+
+* **catalog:** load artist discography on demand (A6 deep fix) ([2284483](https://github.com/kevinch3/NicotinD/commit/2284483c39fc5b3f20b28e5ea24c3154ebc3529f))
+* **hunt:** per-track hunter as the album-hunt 0-candidate fallback (C1, F2) ([798f151](https://github.com/kevinch3/NicotinD/commit/798f15157e653ccfb27eb0ddcff1d1946888740e))
+
+
+### Bug Fixes
+
+* **web:** dedupe near-identical network folders across peers (A7) ([4e86a78](https://github.com/kevinch3/NicotinD/commit/4e86a78c1cbcf0581779faa8f6d57e05c3dc8db5))
+* **web:** show peer-response progress during network search (C2); assess C3 ([f71afcb](https://github.com/kevinch3/NicotinD/commit/f71afcb3f1ff1a3648ea45dbcfe24278a39a9418))
+
 ## [0.1.78](https://github.com/kevinch3/NicotinD/compare/v0.1.77...v0.1.78) (2026-06-15)
 
 
