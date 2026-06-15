@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.77](https://github.com/kevinch3/NicotinD/compare/v0.1.76...v0.1.77) (2026-06-15)
+
+
+### Bug Fixes
+
+* **catalog:** suppress junk album cards for a matched artist, guide to network (A6) ([e49b973](https://github.com/kevinch3/NicotinD/commit/e49b9738084e966a7f662f835eca92d95821b07f))
+* **web:** album-detail action row wraps so primary Play isn't clipped (G1) ([48bddc5](https://github.com/kevinch3/NicotinD/commit/48bddc56a6d396256885e803f8e8e498c795491d))
+* **web:** now-playing covers use app-cover-art fallback, not broken imgs (G2) ([eba93cd](https://github.com/kevinch3/NicotinD/commit/eba93cd47d7a46d6c14600ab0821e446125e401d))
+* **web:** rank network folders + surface format, fix "Unknown bitrate" (A7) ([90a6cad](https://github.com/kevinch3/NicotinD/commit/90a6cad9d5fd2c60d4abaa9ebd7a3cba669e2bd2))
+* **web:** track-info sheet shows song identity header (G3) ([1a2279a](https://github.com/kevinch3/NicotinD/commit/1a2279a4570537c85e63d922d39a8f613f0b3416))
+
 ## [0.1.76](https://github.com/kevinch3/NicotinD/compare/v0.1.75...v0.1.76) (2026-06-14)
 
 
