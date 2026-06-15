@@ -56,7 +56,7 @@ mobile successor to the manual sessions, run the same way as the §E2 playground
 | A7 | ◻️ | Medium (UX) | Search (network) | Raw-folder lane is the *working* escape hatch (downloaded Poster Girl in FLAC), but dumps **~98 unranked near-dup album folders**; format buried (2/98 FLAC), "Unknown bitrate" shown under filenames that state the kbps, no free-slot/lossless ranking. Needs §F1-style album-folder dedup + a format badge/filter |
 | G1 | ✅ | **High (bug)** | Web (mobile) | Album-detail **primary Play button is clipped off the left edge** — 6 actions in a non-wrapping centered flex row overflow the viewport. **Fixed:** action row is now `flex-wrap` (admin actions wrap to a second line) + Play is an accent-filled primary button |
 | G2 | ✅ | **High (bug)** | Web (mobile) | Now Playing **hero cover + queue thumbnails render broken-image glyphs** — raw `<img>` instead of the `app-cover-art` gradient fallback used in the grid/mini-player. **Fixed:** both now use `app-cover-art` (gradient fallback on 404). Side effect: the hero filling its box also removes most of G4's vertical void |
-| G3 | ◻️ | High (UX) | Web (mobile) | Track-info sheet **shows no song identity** (no title/artist/album) — Now Playing mounts it without the `[song]` input, so `song()` is null and the whole "File" block is hidden too |
+| G3 | ✅ | High (UX) | Web (mobile) | Track-info sheet **shows no song identity** (no title/artist/album) — Now Playing mounts it without the `[song]` input, so `song()` is null and the whole "File" block is hidden too. **Fixed:** added an always-on identity header (cover + title/artist/album) sourced from `song()` or new lightweight display inputs the player passes |
 | G4 | ◻️ | Medium (UX) | Web (mobile) | Now Playing has a **large vertical void** (cover pinned small at top, title floated to center); no visible affordance to reach Track info (long-press only). *Partial:* G2 (hero now fills its box) removes most of the void; the remaining piece is the missing visible Track-info affordance |
 | G5 | ◻️ | Medium (UX) | Web (mobile) | Mini-player progress is a **1px hairline**; list content is **occluded** by the player+tab-bar (no bottom scroll padding) |
 | G6 | ◻️ | Medium (UX) | Web (mobile) | Now Playing title **context menu overflows the right edge** — positioned at tap-X with no viewport clamp |
@@ -468,9 +468,15 @@ optional `[song]` input (`track-info-sheet.component.ts`: `song = input<Song | n
 `song()` is null → the `@if (song(); as s)` block is skipped. You get three empty meta sections
 ("Source not recorded", BPM/Genre Unknown, "No processing history") and no idea which track it is.
 
-**Fix:** pass `[song]` from the Now Playing usage, and render a header block (cover thumb + title +
-artist + album + track#/duration) that resolves from `songId` even when the input is null. *Test:* sheet
-shows the song title when opened from Now Playing.
+**Fixed (2026-06-15):** the sheet now renders an **always-on identity header** (cover thumb + title +
+artist + album) just under the "Track info" title. It prefers the full `Song` when present, and
+otherwise reads four lightweight display inputs (`displayTitle`/`displayArtist`/`displayAlbum`/
+`displayCoverArt`) that the player passes from the current `Track` — so identity shows even though no
+library `Song` is handed in (the sheet is, in practice, only ever opened from the player). The cover
+uses `app-cover-art` for the same gradient fallback. *Test:* `mobile-ux.spec.ts` opens the sheet from
+Now Playing and asserts `track-info-identity` shows the track title + artist (CI chromium).
+(The deeper "File" block — path/format/size — still needs a real `Song`; a `GET /library/songs/:id`
+endpoint to self-resolve it is a possible follow-up, but identity — the actual gap — is fixed.)
 
 ### G4 — Now Playing vertical void + hidden Track-info affordance (Medium, UX)
 Layout pins a small cover to the top and floats the title to vertical center, leaving a large empty gap

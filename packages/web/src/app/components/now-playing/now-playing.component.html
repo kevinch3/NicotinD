@@ -194,6 +194,10 @@
         @if (trackInfoSongId(); as infoId) {
           <app-track-info-sheet
             [songId]="infoId"
+            [displayTitle]="track.title"
+            [displayArtist]="track.artist"
+            [displayAlbum]="track.album ?? ''"
+            [displayCoverArt]="track.coverArt ?? null"
             (close)="trackInfoSongId.set(null)"
           />
         }

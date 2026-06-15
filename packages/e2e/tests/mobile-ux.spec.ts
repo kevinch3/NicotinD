@@ -16,6 +16,15 @@ async function openAlbum(page: Page): Promise<void> {
   await expect(page.getByTestId('play-album')).toBeVisible();
 }
 
+/** Play the fixture album and expand the mini-player into the Now Playing sheet. */
+async function openNowPlaying(page: Page): Promise<void> {
+  await openAlbum(page);
+  await page.getByTestId('play-album').click();
+  await expect(page.getByTestId('player-title')).toBeVisible();
+  await page.getByTestId('player-title').click();
+  await expect(page.getByText('Now Playing')).toBeVisible();
+}
+
 test.describe('mobile UX', () => {
   test.use({ viewport: PHONE });
 
@@ -34,13 +43,7 @@ test.describe('mobile UX', () => {
   // no embedded art, so the hero cover must show the fallback initial and have
   // no <img> element (app-cover-art swaps to the gradient div on error).
   test('Now Playing hero cover degrades to the gradient fallback', async ({ page }) => {
-    await openAlbum(page);
-    await page.getByTestId('play-album').click();
-    await expect(page.getByTestId('player-title')).toBeVisible();
-
-    // Expand the mini-player into the Now Playing sheet.
-    await page.getByTestId('player-title').click();
-    await expect(page.getByText('Now Playing')).toBeVisible();
+    await openNowPlaying(page);
 
     const cover = page.getByTestId('now-playing-cover');
     await expect(cover).toBeVisible();
@@ -48,5 +51,19 @@ test.describe('mobile UX', () => {
     // album initial ("E" for "E2E Test Album") is shown over the gradient.
     await expect(cover.locator('img')).toHaveCount(0);
     await expect(cover).toContainText('E');
+  });
+
+  // G3 — the Track-info sheet must show which track it is (title/artist), even
+  // when opened from the player (where no full library Song is passed).
+  test('Track-info sheet shows the song identity', async ({ page }) => {
+    await openNowPlaying(page);
+    // Open the title context menu → "Track info".
+    await page.getByRole('heading', { name: 'Opening Static' }).click({ button: 'right' });
+    await page.getByRole('button', { name: 'Track info' }).click();
+
+    const identity = page.getByTestId('track-info-identity');
+    await expect(identity).toBeVisible();
+    await expect(identity).toContainText('Opening Static');
+    await expect(identity).toContainText(FIXTURE.album.artist);
   });
 });
