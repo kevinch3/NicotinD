@@ -791,6 +791,11 @@ export interface CatalogAlbum {
 export interface CatalogSearchResult {
   artists: CatalogArtist[];
   albums: CatalogAlbum[];
+  /** The artist the album cards were scoped to, when the query named one. */
+  scopedArtist?: string;
+  /** Artist matched but the catalog had none of their albums — fall back to the
+   *  network lane. See docs/e2e-playground-findings-2026-06.md §A6. */
+  discographyUnavailable?: boolean;
 }
 
 export interface CatalogResolveResult {

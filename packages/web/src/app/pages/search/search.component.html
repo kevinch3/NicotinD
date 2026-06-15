@@ -243,6 +243,12 @@
     </section>
   }
 
+  <!-- §A6 — matched the artist but the catalog had none of their albums; tell the
+       user why we dropped to the network results below (which we auto-open). -->
+  @if (!loading() && discographyNote(); as note) {
+    <p class="mt-2 px-1 text-xs text-zinc-500" data-testid="discography-note">{{ note }}</p>
+  }
+
   <!-- Advanced: raw network search — a power-user escape hatch, demoted below the
        guided catalog/song results. Peer stats + the folder-tree browser live only
        inside this collapsed disclosure so normal users never see them. -->

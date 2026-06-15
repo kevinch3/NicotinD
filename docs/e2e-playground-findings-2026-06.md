@@ -52,7 +52,7 @@ mobile successor to the manual sessions, run the same way as the §E2 playground
 | F1 | ✅ | **High (UX)** | Search | Song-first acquire path — a **Songs lane** dedupes network files by (artist,title), auto-picks the best copy (FLAC>MP3, then availability) and one-click downloads it (`lib/song-results.ts`) |
 | F2 | ◻️ | Medium | Hunt | No per-track hunter — the album hunt's skew/cross-peer/auto-retry robustness has no single-song equivalent (also unblocks the C1 0-candidate fallback) |
 | F3 | ◻️ | Low (infra) | e2e | No UI entry point / `data-testid` for song acquisition; CI (dead slskd) can't exercise it — needs the §E2 gated playground spec |
-| A6 | ◻️ | **High (UX)** | Catalog/Hunt | **Guided hunt is unreachable for Zara Larsson** — catalog returns 10/10 junk (mashups/wiki/instrumental), 10/10 cards `404` `ALBUM_NOT_IN_LIDARR`, the hunt modal never opens. A1's deferred "deep fix" (artist-scoped discography lookup) is the real blocker |
+| A6 | ✅* | **High (UX)** | Catalog/Hunt | **Guided hunt is unreachable for Zara Larsson** — catalog returns 10/10 junk (mashups/wiki/instrumental), 10/10 cards `404` `ALBUM_NOT_IN_LIDARR`, the hunt modal never opens. **Mitigated:** when an artist is matched but the lookup has none of *their* albums, `search()` now returns **0 cards** (not the junk) + a `discographyUnavailable` flag; the web suppresses the junk grid, auto-opens the network lane, and shows a "couldn't load X's albums" note. (Surfacing the real discography for an unadded artist is a Lidarr limitation — see note) |
 | A7 | ◻️ | Medium (UX) | Search (network) | Raw-folder lane is the *working* escape hatch (downloaded Poster Girl in FLAC), but dumps **~98 unranked near-dup album folders**; format buried (2/98 FLAC), "Unknown bitrate" shown under filenames that state the kbps, no free-slot/lossless ranking. Needs §F1-style album-folder dedup + a format badge/filter |
 | G1 | ✅ | **High (bug)** | Web (mobile) | Album-detail **primary Play button is clipped off the left edge** — 6 actions in a non-wrapping centered flex row overflow the viewport. **Fixed:** action row is now `flex-wrap` (admin actions wrap to a second line) + Play is an accent-filled primary button |
 | G2 | ✅ | **High (bug)** | Web (mobile) | Now Playing **hero cover + queue thumbnails render broken-image glyphs** — raw `<img>` instead of the `app-cover-art` gradient fallback used in the grid/mini-player. **Fixed:** both now use `app-cover-art` (gradient fallback on 404). Side effect: the hero filling its box also removes most of G4's vertical void |
@@ -178,11 +178,22 @@ open a hunt. The working escape hatches (the **Advanced: search the network dire
 **archive.org** lane, **Get from a link**) exist but are intentionally demoted, so the headline flow
 fails silently-ish (red banners) for exactly the queries users are most likely to type first.
 
-**Fix:** ship A1's deferred deep fix — when a confident top artist matches, drive album cards from
-**that artist's discography** (`lidarr.artist.lookup` → list albums), not the global title search; only
-then are cards real *and* resolvable by construction. Until then, consider: (a) suppressing cards whose
-`artistName` doesn't match any returned artist, and (b) when 0 real cards remain, auto-promoting the
-Advanced/network lane instead of showing a junk grid.
+**Fixed (2026-06-15, mitigation — interim (a)+(b)):** `CatalogService.search()` now, when the query
+**exact-matches a returned artist** but none of the `album.lookup` results belong to them, returns
+`albums: []` + `discographyUnavailable: true` + `scopedArtist` (instead of falling back to the junk),
+and ranks an artist's own albums by type (Album > EP > Single) then newest-first. The web suppresses the
+junk grid, **auto-opens the Advanced network lane** (`shouldOpenDirectSearch` — now keyed on *album
+cards*, not artist pills), and shows a `discography-note` explaining the fallback. So the Zara-Larsson
+flow no longer dead-ends on a wall of red-banner junk — it lands the user on the working network lane
+(which downloaded *Poster Girl*, §A7). *Tests:* `catalog-search.service.test.ts` (suppress-junk + flag,
+ranking) and `catalog-display.spec.ts` (lane-open + note logic).
+
+**Still open (the deep fix):** actually *surfacing* the real discography for an artist **not yet added
+to Lidarr** needs a metadata path the Lidarr client doesn't expose — `album.listByArtist` requires a
+numeric (added) artist id, and the artist-lookup payload carries only `albumCount`, not the album list.
+The global `album.lookup("Zara Larsson")` genuinely returns none of her real albums. Options for a
+follow-up: add the artist to Lidarr on demand (mutates Lidarr — same trade-off `resolve` already makes),
+or query MusicBrainz/SkyHook release-groups by artist MBID directly. Deferred to its own session.
 
 > Repro: `cd packages/e2e && E2E_BASE_URL=https://nicotined.kevinroberts.ar
 > PLAYGROUND_USERNAME=claude-e2e PLAYGROUND_PASSWORD=… bunx playwright test

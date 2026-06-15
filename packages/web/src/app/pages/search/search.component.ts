@@ -31,6 +31,7 @@ import { TrackRowComponent } from '../../components/track-row/track-row.componen
 import { toTrack, addToPlaylistAction } from '../../lib/track-utils';
 import { extractSharedUrl } from '../../lib/share-url';
 import { httpErrorMessage } from '../../lib/http-error';
+import { shouldOpenDirectSearch, discographyFallbackNote } from '../../lib/catalog-display';
 
 /** Lighter song shape returned by the unified search's local results. */
 interface LibrarySong {
@@ -231,6 +232,9 @@ export class SearchComponent implements OnInit, OnDestroy {
     const c = this.catalog();
     return !!c && (c.artists.length > 0 || c.albums.length > 0);
   });
+  // Explains why we dropped to the network lane when an artist matched but the
+  // catalog had none of their albums (§A6). Null when there's nothing to say.
+  readonly discographyNote = computed(() => discographyFallbackNote(this.catalog()));
 
   readonly flatNetwork = computed(() => flattenAndFilter(this.search.network()));
   readonly hasNetwork = computed(() => this.flatNetwork().length > 0);
@@ -674,9 +678,10 @@ export class SearchComponent implements OnInit, OnDestroy {
       this.searchError.set(err instanceof Error ? err.message : 'Search failed');
     } finally {
       await catalogPromise;
-      // Collapse the raw-search fallback when we have metadata hits; otherwise
-      // (no hits, or Lidarr unavailable) open it so the user always has a path.
-      this.directSearchOpen.set(!this.hasCatalog());
+      // Open the raw-search fallback whenever the guided path has no actionable
+      // album cards — no catalog, or an artist matched but their discography
+      // wasn't available (§A6). Artist pills alone don't keep it closed.
+      this.directSearchOpen.set(shouldOpenDirectSearch(this.catalog()));
       this.loading.set(false);
     }
   }
