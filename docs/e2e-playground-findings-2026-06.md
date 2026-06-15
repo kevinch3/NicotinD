@@ -589,3 +589,56 @@ screen edges at 412px.
 instead of a bare number, and the mode tabs get tighter mobile padding (`px-3 sm:px-4`) +
 `overflow-x-auto` with `shrink-0 whitespace-nowrap` buttons, so they scroll rather than crowd/clip on a
 narrow phone. *Test:* `mobile-ux.spec.ts` asserts the count reads "1 album".
+
+## H. Player & analysis + Downloads/acquire — live screenshot capture (2026-06-15)
+
+First run of the two new live mobile screenshot flows (`tests/{player-analysis,downloads-acquire}.screens.ts`
+via `playwright.live-screens.config.ts`) against prod (`nicotined.kevinroberts.ar`). Captures land in
+`packages/e2e/screenshots/mobile/<flow>/`; the same run emits a findings report. Overall the surfaces are
+**healthy** — Now Playing cover/queue/radio render, the track-info acquisition+analysis sections populate,
+the archive.org lane returned **17 real results**, watchlist star toggles, and empty/loaded states are clean.
+Signals below.
+
+### H0 — Harness bug: flows raced async render (fixed same day)
+The first prod run produced **false negatives** — "Library empty", "URL acquire box hidden", "Archive lane
+off" — even though prod has albums and *all* resolve plugins are enabled. Cause: the flows probed optional
+elements with a bare `count()` **before** the SPA's async fetches resolved (album grid, `/api/plugins` state,
+search results render after first paint). **Fixed**: added `playground/screens-ui.ts` (`appeared()` waits,
+`firstPresent()` testid→role/text fallback); flows now wait on a stable anchor before probing and never infer
+a cause they didn't verify. Lesson for any live-backend flow: **never `count()` an async-rendered element
+without first awaiting it.**
+
+### H1 — Cover-art 404s on prod (Medium, data gap)
+Auto-caught by `net-monitor`: several `/api/cover/<id>` 404s (e.g. `e1bdca7d…`, `d9443015…`), multiple
+occurrences. The UI degrades to the gradient tile (G2), so no broken-image glyph — but the canonical art is
+genuinely missing. *Fix:* run `scripts/backfill-artwork.ts` (and/or the metadata-optimize bulk job) on prod;
+these are data, not code. Worth a periodic backfill cron.
+
+### H2 — Soulseek method badge uses a link glyph (Low, bug)
+`lib/acquisition-method.ts` maps `slskd: { glyph: '🔗' }` — a chain/link icon — shown in the Downloads Active
+badge ("🔗 SOULSEEK") and the track-info Acquisition section ("🔗 Soulseek"). It's **backwards**: the
+*URL-based* backends use non-link glyphs (`ytdlp ▶`, `spotdl ♫`, `archive 🏛`), while the one method that is
+*not* a link reads as one. **Fixed (2026-06-15):** `slskd` now uses `🌐` (matches the app's "Soulseek
+network" wording); `acquisition-method.spec.ts` asserts it is never the link glyph.
+
+### H3 — "Active" downloads tab shows finished jobs for up to 7 days (Low, UX naming)
+A `Done · 3 of 3 · 5h ago` item ("Porfiado (2012)") sits in the **Active** tab. This is *by design* (the unified
+feed keeps completed/failed jobs until "Clear finished" or the 7-day prune), but a 5-hour-old *Done* row under
+a tab literally named **Active** is dissonant. *Options:* rename the tab (e.g. "Transfers"/"Downloads"),
+visually separate in-progress vs finished, or auto-collapse finished after a shorter window.
+
+### H4 — Archive.org lane: near-duplicates + "Unknown" placeholders (Low, UX)
+The 17-result lane lists obvious variants of the same release (e.g. *Porfiado* twice — once as
+`Porfiado - El Cuarteto De Nos · 2012`, once as `El Cuarteto de Nos - Porfiado (2012) [FLAC] · 2012`) and
+several rows whose year subtitle is the literal "Unknown". *Suggested:* dedupe/group by normalized
+title+year and drop the "Unknown" year label (show nothing) — mirrors the §B1 archive-precision note.
+
+### H5 — Acquisition "Source" shows a raw peer username (Low, polish)
+Track-info Acquisition renders `Source pirulazul` — a bare Soulseek peer handle with no context. Low priority;
+consider a `Peer ·` qualifier so it's self-describing (and consistent with URL sources, which show a link).
+
+### Harness coverage note
+The two new transport shots (`03-shuffle`, `04-repeat`) were **skipped** this run because prod predates the
+`now-playing-{shuffle,repeat,radio,queue}` testids added on this branch — the flow's `firstPresent` fallback
+recorded a note and continued (radio/queue still captured via text fallback). They'll capture once this branch
+deploys; the testids are asserted by `mobile-ux.spec.ts` so they can't regress.

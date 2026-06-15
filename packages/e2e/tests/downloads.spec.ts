@@ -17,4 +17,16 @@ test.describe('downloads', () => {
     await page.getByRole('button', { name: 'Recently Added' }).click();
     await expect(page.getByRole('button', { name: 'Saved Offline' })).toBeVisible();
   });
+
+  // The live-screens `downloads-acquire` flow targets the tabs by testid; guard
+  // that those stable hooks exist and drive tab switching.
+  test('tab buttons expose stable testids and switch', async ({ page }) => {
+    await page.goto('/downloads');
+    await expect(page.getByTestId('downloads-tab-active')).toBeVisible();
+    await expect(page.getByTestId('downloads-tab-offline')).toBeVisible();
+    await expect(page.getByTestId('downloads-tab-recent')).toBeVisible();
+
+    await page.getByTestId('downloads-tab-recent').click();
+    await expect(page.getByText('Recently Added')).toBeVisible();
+  });
 });

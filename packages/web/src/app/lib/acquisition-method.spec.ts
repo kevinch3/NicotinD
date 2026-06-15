@@ -19,4 +19,10 @@ describe('methodBadge', () => {
       expect(methodBadge(m).glyph.length).toBeGreaterThan(0);
     }
   });
+
+  // §H2: Soulseek is a P2P network, not a link source — its glyph must not be the
+  // chain link (the URL-based backends already avoid it).
+  it('does not use a link glyph for the (non-URL) Soulseek method', () => {
+    expect(methodBadge('slskd').glyph).not.toBe('🔗');
+  });
 });

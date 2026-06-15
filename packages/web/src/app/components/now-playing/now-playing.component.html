@@ -110,6 +110,8 @@
           <!-- Shuffle -->
           <button
             (click)="player.toggleShuffle()"
+            data-testid="now-playing-shuffle"
+            [attr.aria-pressed]="player.shuffle()"
             [class]="'w-8 h-8 flex items-center justify-center rounded-full transition ' +
               (player.shuffle() ? 'text-emerald-400' : 'text-zinc-500 hover:text-zinc-300')"
           >
@@ -164,6 +166,8 @@
           <!-- Repeat -->
           <button
             (click)="player.cycleRepeat()"
+            data-testid="now-playing-repeat"
+            [attr.aria-pressed]="player.repeat() !== 'off'"
             [class]="'w-8 h-8 flex items-center justify-center rounded-full transition relative ' +
               (player.repeat() !== 'off' ? 'text-emerald-400' : 'text-zinc-500 hover:text-zinc-300')"
           >
@@ -183,6 +187,7 @@
         <div class="flex justify-center mb-6 -mt-2">
           <button
             (click)="player.toggleRadio()"
+            data-testid="now-playing-radio"
             [attr.aria-pressed]="player.radio()"
             [class]="'flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium transition border ' +
               (player.radio()
@@ -219,7 +224,7 @@
         }
 
         <!-- Queue section -->
-        <div class="flex-1 min-h-0 flex flex-col px-4 overflow-hidden">
+        <div class="flex-1 min-h-0 flex flex-col px-4 overflow-hidden" data-testid="now-playing-queue">
           @if (player.context() && player.context()!.type !== 'adhoc') {
             <p class="text-xs text-zinc-500 px-2 mb-1">Next from: {{ player.context()!.name }}</p>
           }
