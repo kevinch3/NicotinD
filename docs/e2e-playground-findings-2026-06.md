@@ -49,7 +49,7 @@ mobile successor to the manual sessions, run the same way as the §E2 playground
 | A3 | ✅ | Low | Catalog | Bogus `year` (`0001`) rendered verbatim on album cards |
 | A4 | ✅ | Low | Catalog | Artist pills are noisy/duplicated ("Zara/ZarA/Zara…", "Los/King Los…") |
 | E1 | ✅ | Low (infra) | e2e | Hunt modal lacks `data-testid`s on its core controls — violates the project's e2e selector standard |
-| D2 | ◻️ | Low | Library | Duplicate artist rows from "The"-prefix handling ("The Jinx" + "Jinx"); `library_album_tombstones` is populated historically but no longer written by the delete path |
+| D2 | ◑ | Low | Library | Duplicate artist rows from "The"-prefix handling ("The Jinx" + "Jinx"); dead `library_album_tombstones` table. **Tombstones dropped** (grep-confirmed unused). **The-prefix deferred** — reverses an intentional, *tested* normalization and re-IDs every "The X" artist (edge cases: "The The", collisions); needs a dedicated design pass as the finding itself flags |
 | F1 | ✅ | **High (UX)** | Search | Song-first acquire path — a **Songs lane** dedupes network files by (artist,title), auto-picks the best copy (FLAC>MP3, then availability) and one-click downloads it (`lib/song-results.ts`) |
 | F2 | ✅ | Medium | Hunt | No per-track hunter — the album hunt's skew/cross-peer/auto-retry robustness has no single-song equivalent (also unblocks the C1 0-candidate fallback). **Done:** `TrackHunterService` + pure `pickBestTrackFile` (cleanest-clean-copy scoring) search & enqueue per track; surfaced via the album-hunt C1 fallback |
 | F3 | ◻️ | Low (infra) | e2e | No UI entry point / `data-testid` for song acquisition; CI (dead slskd) can't exercise it — needs the §E2 gated playground spec |
@@ -367,12 +367,19 @@ truth, no async reconciliation needed" intent. A regression e2e (delete an artis
 assert it's absent from `GET /api/search` *and* `GET /api/library/artists/:id` 404s) should cover it.
 
 ### D2 — secondary observations
-- Two artist rows exist for the same act — **"The Jinx"** (`335115e1…`) and **"Jinx"**
-  (`ad91978f…`), both `album_count = 1` — from "The"-prefix normalization splitting one artist into
-  two. Worth a separate look at artist-name canonicalization.
-- `library_album_tombstones` is populated historically (≈45 rows per `docs/usage-analysis-2026-06.md`)
-  but the current delete path no longer writes it (`library.ts:397` comment: "no tombstone … needed").
-  Either the table is dead and should be dropped, or deletion should keep it consistent.
+- **Tombstones table — dropped (2026-06-15).** `library_album_tombstones` was created + migrated in
+  `db.ts` but **never read or written** anywhere in the code (grep-verified; the schema comment already
+  said "safe to drop"). `applySchema` now runs `DROP TABLE IF EXISTS library_album_tombstones` (idempotent;
+  no-op on fresh installs) to clear the schema debt. *Tests:* `db.test.ts` (drops a pre-existing table;
+  fresh install never has it).
+- **"The"-prefix artist split — deferred (intentional design).** Two artist rows for one act ("The Jinx"
+  `335115e1…` + "Jinx" `ad91978f…`) come from `normalizeArtistForGrouping` keeping the leading "The".
+  This is **intentional and tested** (`album-grouping.test.ts`: `'The Beatles'` → `'the beatles'`, plus
+  `'Miranda!' ≠ 'Miranda'`) — the normalization is deliberately conservative to avoid *merging distinct*
+  artists. Stripping "The" would reverse that, re-`artistIdFor` every "The X" artist (re-bucketing rows +
+  orphaning artist artwork keyed on the id) and risks edge cases ("The The", a band literally named "The
+  X" colliding with an "X"). The finding itself says "worth a separate look at artist-name
+  canonicalization" — i.e. a dedicated, data-validated design pass, not a blind flip. Left as-is.
 
 ---
 

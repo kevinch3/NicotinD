@@ -171,3 +171,27 @@ describe('applySchema — acquire_jobs backend CHECK relaxation', () => {
     ).not.toThrow();
   });
 });
+
+describe('applySchema — drops the dead tombstones table (§D2)', () => {
+  it('drops a pre-existing library_album_tombstones table', () => {
+    const db = new Database(':memory:');
+    db.run(`CREATE TABLE library_album_tombstones (album_id TEXT PRIMARY KEY, created_at INTEGER)`);
+    db.run(`INSERT INTO library_album_tombstones (album_id, created_at) VALUES ('a', 1)`);
+
+    applySchema(db);
+
+    const row = db
+      .query(`SELECT name FROM sqlite_master WHERE type='table' AND name='library_album_tombstones'`)
+      .get();
+    expect(row).toBeNull();
+  });
+
+  it('is a no-op on a fresh database (table never created)', () => {
+    const db = new Database(':memory:');
+    expect(() => applySchema(db)).not.toThrow();
+    const row = db
+      .query(`SELECT name FROM sqlite_master WHERE type='table' AND name='library_album_tombstones'`)
+      .get();
+    expect(row).toBeNull();
+  });
+});
