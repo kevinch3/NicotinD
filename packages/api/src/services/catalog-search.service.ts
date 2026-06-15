@@ -27,6 +27,15 @@ export interface CatalogAlbum {
 export interface CatalogSearchResult {
   artists: CatalogArtist[];
   albums: CatalogAlbum[];
+  /** The artist the album cards were scoped to, when the query named one. */
+  scopedArtist?: string;
+  /**
+   * True when the query confidently matched an artist but the global
+   * `album.lookup` carried none of *their* releases (only mashups/tributes that
+   * merely mention them). We return an empty `albums` rather than that junk — the
+   * UI should fall back to the network lane. See §A6.
+   */
+  discographyUnavailable?: boolean;
 }
 
 export interface ResolveAlbumInput {
@@ -86,17 +95,31 @@ export class CatalogService {
     // Scope the album cards to the matched artist(s) when their *own* releases
     // are present. The global `album.lookup` ranks anything whose title contains
     // the query (mashups, tributes, compilations by unrelated artists) above the
-    // artist's actual discography — useless for non-distinctive names. When none
-    // of the albums belong to a returned artist (e.g. a pure album-title search),
-    // we keep them all so the lane never goes empty. See §A1.
+    // artist's actual discography — useless for non-distinctive names. See §A1.
     const artistNameSet = new Set(artists.map((a) => normalizeName(a.name)));
     const allAlbums = albumHits.map(mapAlbum);
-    const ownAlbums = allAlbums.filter((a) => artistNameSet.has(normalizeName(a.artistName)));
+    const ownAlbums = rankAlbums(
+      allAlbums.filter((a) => artistNameSet.has(normalizeName(a.artistName))),
+    );
 
-    return {
-      artists,
-      albums: ownAlbums.length > 0 ? ownAlbums : allAlbums,
-    };
+    // Did the query itself name an artist? (exact normalized match — conservative
+    // so an ambiguous one-word query doesn't suppress legitimate title hits.)
+    const normQuery = normalizeName(query);
+    const matchedArtist = artists.find((a) => normalizeName(a.name) === normQuery);
+
+    if (ownAlbums.length > 0) {
+      // Real discography found — show it (junk already filtered out).
+      return { artists, albums: ownAlbums, scopedArtist: matchedArtist?.name };
+    }
+    if (matchedArtist) {
+      // Artist named, but the lookup surfaced none of their albums (e.g. Zara
+      // Larsson). Suppress the mashup/tribute junk and flag so the UI promotes
+      // the network lane instead of rendering cards that all 404 on resolve. §A6.
+      return { artists, albums: [], scopedArtist: matchedArtist.name, discographyUnavailable: true };
+    }
+    // No artist named (pure album-title search) — keep the title matches so the
+    // lane never goes empty. See §A1.
+    return { artists, albums: allAlbums };
   }
 
   async resolveAlbum(input: ResolveAlbumInput): Promise<ResolveAlbumResult> {
@@ -148,6 +171,23 @@ export class CatalogService {
     const added = await addArtistFromLookup(this.lidarr, best, this.musicDir);
     return added.id;
   }
+}
+
+/** Album-type display priority for an artist's own discography. */
+const TYPE_RANK: Record<string, number> = { album: 0, ep: 1, single: 2 };
+
+/**
+ * Rank an artist's own albums for display: primary types first (Album > EP >
+ * Single > others), then newest first. Keeps the real discography readable
+ * instead of in raw lookup order. See §A1/§A6.
+ */
+function rankAlbums(albums: CatalogAlbum[]): CatalogAlbum[] {
+  return [...albums].sort((a, b) => {
+    const ra = TYPE_RANK[a.albumType?.toLowerCase()] ?? 3;
+    const rb = TYPE_RANK[b.albumType?.toLowerCase()] ?? 3;
+    if (ra !== rb) return ra - rb;
+    return Number(b.year ?? 0) - Number(a.year ?? 0);
+  });
 }
 
 function mapArtist(a: LidarrArtist): CatalogArtist {

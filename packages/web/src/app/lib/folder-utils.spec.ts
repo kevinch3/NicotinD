@@ -4,7 +4,21 @@ import {
   buildFolderTree,
   getDirectFiles,
   formatPeerInfo,
+  rankFolders,
+  folderFormat,
+  fileQualityLabel,
+  type FolderGroup,
 } from './folder-utils';
+
+function folder(over: Partial<FolderGroup> & { directory: string }): FolderGroup {
+  return {
+    username: 'peer',
+    uploadSpeed: 1_000_000,
+    files: [],
+    ...over,
+  };
+}
+const f = (filename: string, bitRate?: number) => ({ filename, size: 1, bitRate });
 
 describe('extractDirectory', () => {
   it('extracts the directory from a backslash-separated path', () => {
@@ -117,5 +131,58 @@ describe('getDirectFiles', () => {
     const files = getDirectFiles(dirs, 'Music\\Artist');
     expect(files).toHaveLength(1);
     expect(files[0].filename).toBe('Music\\Artist\\01.mp3');
+  });
+});
+
+describe('folderFormat', () => {
+  it('flags a lossless folder with the format label', () => {
+    expect(folderFormat(folder({ directory: 'd', files: [f('a.flac'), f('b.flac')] }))).toEqual({
+      label: 'FLAC',
+      lossless: true,
+    });
+  });
+
+  it('reports the max bitrate for an MP3 folder', () => {
+    expect(
+      folderFormat(folder({ directory: 'd', files: [f('a.mp3', 256), f('b.mp3', 320)] })),
+    ).toEqual({ label: '320k', lossless: false });
+  });
+
+  it('ignores non-audio files and returns null when there is no audio', () => {
+    expect(folderFormat(folder({ directory: 'd', files: [f('cover.jpg'), f('info.nfo')] }))).toBeNull();
+  });
+});
+
+describe('fileQualityLabel', () => {
+  it('shows the bitrate when known', () => {
+    expect(fileQualityLabel(f('x.mp3', 320))).toBe('320 kbps');
+  });
+
+  it('falls back to the format when the bitrate is unknown (no more "Unknown bitrate" on FLAC)', () => {
+    expect(fileQualityLabel(f('x.flac'))).toBe('FLAC');
+    expect(fileQualityLabel({ filename: 'noext' })).toBe('Unknown');
+  });
+});
+
+describe('rankFolders', () => {
+  it('orders free-slot > lossless > more tracks > faster', () => {
+    const queuedFlac = folder({ directory: 'qflac', freeUploadSlots: 0, files: [f('a.flac')] });
+    const freeMp3 = folder({ directory: 'fmp3', freeUploadSlots: 2, files: [f('a.mp3', 320)] });
+    const queuedMp3Big = folder({
+      directory: 'qmp3big',
+      freeUploadSlots: 0,
+      files: [f('a.mp3', 320), f('b.mp3', 320)],
+    });
+
+    const ranked = rankFolders([queuedFlac, freeMp3, queuedMp3Big]).map((g) => g.directory);
+    // free slot wins overall; among queued, lossless beats the bigger MP3 folder.
+    expect(ranked).toEqual(['fmp3', 'qflac', 'qmp3big']);
+  });
+
+  it('does not mutate the input array', () => {
+    const input = [folder({ directory: 'a' }), folder({ directory: 'b', freeUploadSlots: 1 })];
+    const copy = [...input];
+    rankFolders(input);
+    expect(input).toEqual(copy);
   });
 });

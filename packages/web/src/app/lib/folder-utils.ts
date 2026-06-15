@@ -1,3 +1,5 @@
+import { fileExt, isLossless } from './song-results';
+
 export interface BrowseFile {
   filename: string;
   size: number;
@@ -28,6 +30,61 @@ export interface FolderGroup {
     album?: string;
     trackNumber?: string;
   }>;
+}
+
+// ── A7: folder ranking + format visibility ──────────────────────────────────
+// The raw-network folder lane returns ~100 near-duplicate album folders in raw
+// order with the format buried. These helpers surface the best copies (lossless,
+// free slot, complete) and make the format legible. See §A7.
+
+const AUDIO_EXT = new Set([
+  'flac', 'wav', 'aiff', 'aif', 'ape', 'wv', 'alac', 'mp3', 'm4a', 'aac', 'ogg', 'opus', 'wma',
+]);
+
+export interface FolderFormat {
+  /** Short badge, e.g. "FLAC" or "320k". */
+  label: string;
+  lossless: boolean;
+}
+
+/** Audio files in a folder (filters out cue/log/jpg/etc.). */
+export function folderAudioFiles(g: Pick<FolderGroup, 'files'>): FolderGroup['files'] {
+  return g.files.filter((f) => AUDIO_EXT.has(fileExt(f.filename)));
+}
+
+/** The dominant audio format of a folder, for a badge — null if no audio. */
+export function folderFormat(g: Pick<FolderGroup, 'files'>): FolderFormat | null {
+  const audio = folderAudioFiles(g);
+  if (audio.length === 0) return null;
+  const lossless = audio.find((f) => isLossless(f.filename));
+  if (lossless) return { label: fileExt(lossless.filename).toUpperCase(), lossless: true };
+  const maxBr = Math.max(0, ...audio.map((f) => f.bitRate ?? 0));
+  return { label: maxBr ? `${maxBr}k` : 'MP3', lossless: false };
+}
+
+/** Per-file quality label — bitrate when known, else the format from the name
+ *  (so a "…FLAC…" file no longer reads "Unknown bitrate"). See §A7. */
+export function fileQualityLabel(file: { filename: string; bitRate?: number }): string {
+  if (file.bitRate) return `${file.bitRate} kbps`;
+  const ext = fileExt(file.filename);
+  return ext ? ext.toUpperCase() : 'Unknown';
+}
+
+/**
+ * Rank folder candidates so the best copies float to the top: a free upload slot
+ * first (instant vs queued), then lossless, then more tracks (more complete),
+ * then faster upload. Stable for equal keys. See §A7.
+ */
+export function rankFolders(groups: FolderGroup[]): FolderGroup[] {
+  return [...groups].sort((a, b) => {
+    const free = (g: FolderGroup) => ((g.freeUploadSlots ?? 0) > 0 ? 1 : 0);
+    if (free(a) !== free(b)) return free(b) - free(a);
+    const lossless = (g: FolderGroup) => (folderFormat(g)?.lossless ? 1 : 0);
+    if (lossless(a) !== lossless(b)) return lossless(b) - lossless(a);
+    const tracks = (g: FolderGroup) => folderAudioFiles(g).length;
+    if (tracks(a) !== tracks(b)) return tracks(b) - tracks(a);
+    return b.uploadSpeed - a.uploadSpeed;
+  });
 }
 
 export interface FolderNode {

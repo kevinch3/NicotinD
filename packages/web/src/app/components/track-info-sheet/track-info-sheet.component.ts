@@ -4,6 +4,7 @@ import type { AcquisitionMethod, GenreSuggestion, SongAcquisition } from '@nicot
 import { ApiService, type ProvenanceRecord, type Song } from '../../services/api.service';
 import { AuthService } from '../../services/auth.service';
 import { methodBadge } from '../../lib/acquisition-method';
+import { CoverArtComponent } from '../cover-art/cover-art.component';
 
 const ACTION_LABELS: Record<string, string> = {
   duplicate_removed: 'Duplicate removed',
@@ -16,7 +17,7 @@ const ACTION_LABELS: Record<string, string> = {
 @Component({
   selector: 'app-track-info-sheet',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, CoverArtComponent],
   template: `
     <!-- Backdrop -->
     <div class="fixed inset-0 z-[90] bg-black/60" (click)="close.emit()"></div>
@@ -43,6 +44,29 @@ const ACTION_LABELS: Record<string, string> = {
           ×
         </button>
       </div>
+
+      <!-- Identity: always shown so the sheet says WHICH track it is (prefers the
+           full Song; falls back to display inputs when opened from the player). -->
+      @if (headerTitle()) {
+        <div class="px-5 pb-3 flex items-center gap-3" data-testid="track-info-identity">
+          <app-cover-art
+            [src]="headerCoverUrl()"
+            [artist]="headerArtist()"
+            [album]="headerAlbum()"
+            [size]="48"
+            rounded="rounded"
+          />
+          <div class="min-w-0">
+            <p class="text-sm font-medium text-zinc-100 truncate">{{ headerTitle() }}</p>
+            @if (headerArtist()) {
+              <p class="text-xs text-zinc-400 truncate">{{ headerArtist() }}</p>
+            }
+            @if (headerAlbum()) {
+              <p class="text-xs text-zinc-500 truncate">{{ headerAlbum() }}</p>
+            }
+          </div>
+        </div>
+      }
 
       <div class="overflow-y-auto flex-1 px-5 pb-6">
         <!-- Basic file info -->
@@ -225,7 +249,22 @@ export class TrackInfoSheetComponent implements OnInit {
 
   readonly songId = input.required<string>();
   readonly song = input<Song | null>(null);
+  // Lightweight identity for callers (the player) that have a Track but not a
+  // full library Song — so the sheet can always say which track it is.
+  readonly displayTitle = input('');
+  readonly displayArtist = input('');
+  readonly displayAlbum = input('');
+  readonly displayCoverArt = input<string | null>(null);
   readonly close = output<void>();
+
+  // Identity header — prefer the full Song, fall back to the display inputs.
+  readonly headerTitle = computed(() => this.song()?.title ?? this.displayTitle());
+  readonly headerArtist = computed(() => this.song()?.artist ?? this.displayArtist());
+  readonly headerAlbum = computed(() => this.song()?.album ?? this.displayAlbum());
+  readonly headerCoverUrl = computed(() => {
+    const id = this.song()?.coverArt ?? this.displayCoverArt();
+    return id ? `/api/cover/${id}?size=96&token=${this.auth.token()}` : undefined;
+  });
 
   readonly provenance = signal<ProvenanceRecord[]>([]);
   readonly acquisition = signal<SongAcquisition | null>(null);

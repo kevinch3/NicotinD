@@ -155,6 +155,67 @@ describe('CatalogService.search', () => {
     expect(result.albums.map((a) => a.title)).toEqual(['Venus']);
   });
 
+  it('suppresses junk + flags discographyUnavailable when the named artist has no own albums', async () => {
+    // Zara Larsson is matched as an artist, but album.lookup carries only
+    // mashups/tributes by *other* artists — none of her real albums. §A6.
+    const lidarr = {
+      artist: {
+        lookup: mock(async () => [makeArtist({ id: 1, artistName: 'Zara Larsson' })]),
+      },
+      album: {
+        lookup: mock(async () => [
+          makeAlbum({
+            id: 2,
+            title: 'Zara Larsson Megamix',
+            artist: makeArtist({ id: 9, artistName: 'oneboredjeu' }),
+          }),
+          makeAlbum({
+            id: 3,
+            title: 'Zara Larsson discography',
+            artist: makeArtist({ id: 8, artistName: 'Random Wikipedia Article' }),
+          }),
+        ]),
+      },
+    } as unknown as Lidarr;
+
+    const result = await new CatalogService(lidarr).search('Zara Larsson');
+    expect(result.albums).toEqual([]); // no junk cards
+    expect(result.discographyUnavailable).toBe(true);
+    expect(result.scopedArtist).toBe('Zara Larsson');
+    expect(result.artists.map((a) => a.name)).toContain('Zara Larsson');
+  });
+
+  it('ranks own albums by type (Album > EP > Single) then newest first', async () => {
+    const own = (id: number, title: string, albumType: string, releaseDate?: string) =>
+      makeAlbum({
+        id,
+        title,
+        albumType,
+        releaseDate,
+        artist: makeArtist({ id: 1, artistName: 'Zara Larsson' }),
+      });
+    const lidarr = {
+      artist: { lookup: mock(async () => [makeArtist({ id: 1, artistName: 'Zara Larsson' })]) },
+      album: {
+        lookup: mock(async () => [
+          own(1, 'A Single', 'Single', '2019-01-01'),
+          own(2, 'Older Album', 'Album', '2017-01-01'),
+          own(3, 'Newer Album', 'Album', '2021-01-01'),
+          own(4, 'An EP', 'EP', '2020-01-01'),
+        ]),
+      },
+    } as unknown as Lidarr;
+
+    const result = await new CatalogService(lidarr).search('Zara Larsson');
+    expect(result.albums.map((a) => a.title)).toEqual([
+      'Newer Album',
+      'Older Album',
+      'An EP',
+      'A Single',
+    ]);
+    expect(result.discographyUnavailable).toBeFalsy();
+  });
+
   it('keeps all albums when none belong to a matched artist (album-title search)', async () => {
     const lidarr = {
       artist: { lookup: mock(async () => []) },

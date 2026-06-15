@@ -42,6 +42,11 @@ export function fileExt(filename: string): string {
   return m ? m[1] : '';
 }
 
+/** True when the file's extension is a lossless audio format. */
+export function isLossless(filename: string): boolean {
+  return LOSSLESS.has(fileExt(filename));
+}
+
 function formatRank(ext: string): number {
   if (ext === 'flac') return 3;
   if (LOSSLESS.has(ext)) return 2;

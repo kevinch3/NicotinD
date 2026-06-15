@@ -26,6 +26,14 @@ A later playground pass (**2026-06-14**) added the **F-series** (§F) — the so
 gap. These are open follow-ups (documentation only this pass); the implementation is phased ("Songs
 lane now, track-hunter later") and deferred to its own session.
 
+A **mobile** pass (**2026-06-15**, Pixel 7 viewport via Playwright) added the **G-series** (§G) — a
+screen-by-screen UX review of Player / Library list / Library album / Song details — and **A6**, a
+re-confirmation that the guided catalog→hunt path is still a **dead end for Zara Larsson** (10/10
+cards junk, 10/10 resolve `404`s, hunt modal never opens). Documentation only; fixes deferred. The
+shots were captured by a throwaway, out-of-CI harness (`packages/e2e/playwright.screenshots.config.ts`
+for the local managed server, `playwright.hunt.config.ts` for the live prod hunt) — the automated
+mobile successor to the manual sessions, run the same way as the §E2 playground.
+
 ## TL;DR — prioritized follow-ups
 
 | # | Status | Severity | Area | Issue |
@@ -44,6 +52,15 @@ lane now, track-hunter later") and deferred to its own session.
 | F1 | ✅ | **High (UX)** | Search | Song-first acquire path — a **Songs lane** dedupes network files by (artist,title), auto-picks the best copy (FLAC>MP3, then availability) and one-click downloads it (`lib/song-results.ts`) |
 | F2 | ◻️ | Medium | Hunt | No per-track hunter — the album hunt's skew/cross-peer/auto-retry robustness has no single-song equivalent (also unblocks the C1 0-candidate fallback) |
 | F3 | ◻️ | Low (infra) | e2e | No UI entry point / `data-testid` for song acquisition; CI (dead slskd) can't exercise it — needs the §E2 gated playground spec |
+| A6 | ✅* | **High (UX)** | Catalog/Hunt | **Guided hunt is unreachable for Zara Larsson** — catalog returns 10/10 junk (mashups/wiki/instrumental), 10/10 cards `404` `ALBUM_NOT_IN_LIDARR`, the hunt modal never opens. **Mitigated:** when an artist is matched but the lookup has none of *their* albums, `search()` now returns **0 cards** (not the junk) + a `discographyUnavailable` flag; the web suppresses the junk grid, auto-opens the network lane, and shows a "couldn't load X's albums" note. (Surfacing the real discography for an unadded artist is a Lidarr limitation — see note) |
+| A7 | ✅* | Medium (UX) | Search (network) | Raw-folder lane is the *working* escape hatch (downloaded Poster Girl in FLAC), but dumps **~98 unranked near-dup album folders**; format buried (2/98 FLAC), "Unknown bitrate" shown under filenames that state the kbps, no free-slot/lossless ranking. **Mitigated:** folders now **ranked** (free-slot > lossless > more tracks > faster), each carries a **format badge** (FLAC highlighted), and per-file quality falls back to the format name. Cross-peer *dedup* still deferred |
+| G1 | ✅ | **High (bug)** | Web (mobile) | Album-detail **primary Play button is clipped off the left edge** — 6 actions in a non-wrapping centered flex row overflow the viewport. **Fixed:** action row is now `flex-wrap` (admin actions wrap to a second line) + Play is an accent-filled primary button |
+| G2 | ✅ | **High (bug)** | Web (mobile) | Now Playing **hero cover + queue thumbnails render broken-image glyphs** — raw `<img>` instead of the `app-cover-art` gradient fallback used in the grid/mini-player. **Fixed:** both now use `app-cover-art` (gradient fallback on 404). Side effect: the hero filling its box also removes most of G4's vertical void |
+| G3 | ✅ | High (UX) | Web (mobile) | Track-info sheet **shows no song identity** (no title/artist/album) — Now Playing mounts it without the `[song]` input, so `song()` is null and the whole "File" block is hidden too. **Fixed:** added an always-on identity header (cover + title/artist/album) sourced from `song()` or new lightweight display inputs the player passes |
+| G4 | ◻️ | Medium (UX) | Web (mobile) | Now Playing has a **large vertical void** (cover pinned small at top, title floated to center); no visible affordance to reach Track info (long-press only). *Partial:* G2 (hero now fills its box) removes most of the void; the remaining piece is the missing visible Track-info affordance |
+| G5 | ◻️ | Medium (UX) | Web (mobile) | Mini-player progress is a **1px hairline**; list content is **occluded** by the player+tab-bar (no bottom scroll padding) |
+| G6 | ◻️ | Medium (UX) | Web (mobile) | Now Playing title **context menu overflows the right edge** — positioned at tap-X with no viewport clamp |
+| G7 | ◻️ | Low (UX) | Web (mobile) | Library list: **stray unlabeled "1" counter** on the Filters row; 5-tab segmented control crowds the edges |
 
 **Fix notes:** D1 — delete handler now prunes orphaned `library_artists`/`library_genres`/
 `library_artwork` in the same transaction. A2 — `resolveAlbum` falls back to a diacritic-insensitive
@@ -133,6 +150,94 @@ Artist pills include many near-duplicate / single-token entries ("Zara", "ZarA",
 ### A5 — non-deterministic ordering (Low, test hazard)
 Repeating the identical `catalog/search` returned the album list in a different order / membership
 between calls — worth pinning a sort before any snapshot-style test.
+
+### A6 — Zara Larsson re-test: guided hunt is a total dead end (High UX, 2026-06-15)
+A mobile pass drove the full **search → click album → hunt → download** flow against prod
+(`https://nicotined.kevinroberts.ar`, user `claude-e2e`) for **"Zara Larsson"**. Result: the **hunt
+modal never opened for any of the 10 cards** and **no album could be downloaded** via the guided path.
+
+Two compounding failures, both predicted by A1/A2:
+
+1. **Catalog returns 100% noise.** All 10 album cards are mashups/tributes/metadata-junk — none of her
+   real studio albums. The entity attribution is also inverted (artist/title swapped): cards render as
+   *title* "Zara Larsson" / *artist* "OVÖ", *title* "Zara Larsson discography" / *artist* "Random
+   Wikipedia Article", plus a "Piano Dreamers … (Instrumental)" and **five** *oneboredjeu* vs-mashup
+   singles, and a David Guetta single she merely features on. This is the exact case A1's `✅*` partial
+   fix **does not** cover — her own releases don't appear in the global `album.lookup` at all, so the
+   artist-scoping has nothing to scope to.
+
+2. **Every card 404s on resolve.** Clicking any card now surfaces the A2-fix's typed error inline
+   (`ALBUM_NOT_IN_LIDARR`), e.g. *`"Zara Larsson" isn't in OVÖ's Lidarr discography yet`*. So A2 is
+   working as designed (no more 500s), but for this artist it means **10/10 cards are non-actionable**
+   and the user is left with a wall of red banners and no way forward. The message is also confusing
+   given the swapped attribution ("X isn't in Y's discography" reads as nonsense to a user).
+
+**Net UX:** for a mainstream artist not already monitored in Lidarr, the documented *primary* guided
+path (catalog card → `AlbumHuntModalComponent`) is unreachable — you can neither see a real album nor
+open a hunt. The working escape hatches (the **Advanced: search the network directly** disclosure, the
+**archive.org** lane, **Get from a link**) exist but are intentionally demoted, so the headline flow
+fails silently-ish (red banners) for exactly the queries users are most likely to type first.
+
+**Fixed (2026-06-15, mitigation — interim (a)+(b)):** `CatalogService.search()` now, when the query
+**exact-matches a returned artist** but none of the `album.lookup` results belong to them, returns
+`albums: []` + `discographyUnavailable: true` + `scopedArtist` (instead of falling back to the junk),
+and ranks an artist's own albums by type (Album > EP > Single) then newest-first. The web suppresses the
+junk grid, **auto-opens the Advanced network lane** (`shouldOpenDirectSearch` — now keyed on *album
+cards*, not artist pills), and shows a `discography-note` explaining the fallback. So the Zara-Larsson
+flow no longer dead-ends on a wall of red-banner junk — it lands the user on the working network lane
+(which downloaded *Poster Girl*, §A7). *Tests:* `catalog-search.service.test.ts` (suppress-junk + flag,
+ranking) and `catalog-display.spec.ts` (lane-open + note logic).
+
+**Still open (the deep fix):** actually *surfacing* the real discography for an artist **not yet added
+to Lidarr** needs a metadata path the Lidarr client doesn't expose — `album.listByArtist` requires a
+numeric (added) artist id, and the artist-lookup payload carries only `albumCount`, not the album list.
+The global `album.lookup("Zara Larsson")` genuinely returns none of her real albums. Options for a
+follow-up: add the artist to Lidarr on demand (mutates Lidarr — same trade-off `resolve` already makes),
+or query MusicBrainz/SkyHook release-groups by artist MBID directly. Deferred to its own session.
+
+> Repro: `cd packages/e2e && E2E_BASE_URL=https://nicotined.kevinroberts.ar
+> PLAYGROUND_USERNAME=claude-e2e PLAYGROUND_PASSWORD=… bunx playwright test
+> --config=playwright.hunt.config.ts` (logs each card's resolve outcome; screenshots `07–10` under
+> `screenshots/mobile/`). No state was mutated — every resolve 404'd before adding any monitored artist,
+> and no download was enqueued.
+
+### A7 — The working escape hatch: raw-network folder lane (2026-06-15)
+With the guided path dead (A6), the **Advanced → Folders** lane (raw Soulseek) downloaded the album
+cleanly. Searched `Zara Larsson Poster Girl`, opened the `advanced-toggle` disclosure, switched to
+Folders, picked a FLAC folder, hit **Download folder** → it queued, downloaded 12/12, organized and
+scanned into the library (`GET /api/search?q=Poster Girl` now returns the album; song bitRate **1714
+kbps = FLAC lossless**, cover art resolved). The **Downloads → Active** UX for this is genuinely good:
+`SOULSEEK` method badge, `Downloading` stage chip, `1 of 12 · Just now`, an 11% progress bar, cancel.
+
+But the **folder lane itself surfaces the inverse of A6's problem — too much, unranked**:
+
+- **~98 folder results for one album**, almost all near-identical "Poster Girl (2021)" rips. No
+  album-level dedup/ranking — the §F1 Songs lane dedupes *songs* by `(artist,title)` and auto-picks the
+  best copy, but there is **no equivalent "best album folder" pick** for whole-album grabs. The user
+  scrolls a wall of duplicates.
+- **Format is buried.** Only **2 of ~98** folders were FLAC (#1, #48); the rest 320/260/187 kbps MP3.
+  Format isn't a folder-level badge or filter — you must read filenames or expand each folder. A
+  "FLAC only / lossless-first" sort or badge would make the recommended pick obvious.
+- **"Unknown bitrate" shown under filenames that state the kbps** (e.g. a row titled "Poster Girl (FLAC
+  24bit 1713 kbps)" still renders "Unknown bitrate · 37.9 MB"). The slskd file's `bitRate` is null, so
+  the UI says "Unknown" even when the format is right there in the name — confusing and contradictory.
+- **Almost every folder is `0 slots`** (queued, not instantly free). That's normal Soulseek, but the
+  lane doesn't sort by *free-slot-first*, so the top rows are often queued while a downloadable peer sits
+  further down.
+
+**Fixed (2026-06-15, mitigation):** the folder lane now **ranks** candidates (`rankFolders`:
+free-slot → lossless → more tracks → faster upload), so the 2 FLAC folders rise to the top of the
+~98 — instead of being lost in raw order. Each folder shows a **format badge** (`folderFormat`; FLAC
+highlighted emerald), and per-file rows use `fileQualityLabel`, which falls back to the format name so a
+FLAC file no longer reads "Unknown bitrate". A human would now spot the FLAC copy at a glance.
+*Tests:* `folder-utils.spec.ts` (ranking order + no-mutation, format detection, quality label).
+
+**Still deferred:** true **cross-peer dedup** (collapse the ~98 near-identical folders into one card per
+distinct copy) — it's risky (can merge legitimately-distinct editions) and wants its own design pass;
+ranking + badges already make the best copy findable, so dedup is a polish, not a blocker.
+
+> Repro: `… bunx playwright test --config=playwright.hunt.config.ts network-album-download` (idempotent —
+> re-runs detect the already-downloaded "✓ Done" folder and skip; screenshots `12–15`).
 
 ---
 
@@ -333,3 +438,89 @@ There is no UI entry point or `data-testid` for song acquisition, and the CI sui
 with a dead slskd, so song acquisition can't be exercised there. Covered by the **§E2** gated
 live-backend playground spec (drives the "Toxic" search; asserts the gap pre-fix and the Songs lane
 post-Phase-1).
+
+---
+
+## G. Mobile UX review (2026-06-15)
+
+Screen-by-screen review on a **Pixel 7** viewport (412×915) against the committed fixture library
+(silent FLACs, **no embedded cover art** — so a gradient "E" tile means the fallback *works*; a
+broken-image glyph means it *doesn't*). Captured by `playwright.screenshots.config.ts` +
+`tests/mobile-screenshots.screens.ts` (`bunx playwright test --config=playwright.screenshots.config.ts`
+→ `screenshots/mobile/01–06`). Ordered by severity.
+
+### G1 — Album-detail Play button clipped off-screen (High, bug)
+`album-detail.component.html` puts **six** controls — Play, Select, Download, Share, Optimize metadata,
+Remove album — in a single `flex justify-center gap-3` row with **no `flex-wrap`**. On a phone they
+overflow both edges and centering pushes the **primary Play button partly off the left margin**.
+Admin power-actions (greyed "Optimize metadata", bare-red "Remove album") also get equal/greater visual
+weight than playback, and destructive delete sits one mis-tap away in the same row.
+
+**Fixed (2026-06-15):** the action row is now `flex flex-wrap` so the buttons wrap instead of
+clipping, and **Play is an accent-filled primary button** (`bg-theme-accent text-white`) distinct from
+the neutral-secondary Select/Download/Share. With wrap, the admin actions (Optimize metadata / Remove
+album) fall to a second line — a pragmatic demotion below the primary row; `removeAlbum` already routes
+through the confirm dialog. A dedicated overflow `⋯` menu remains a possible polish but is no longer
+needed to stop the clip. *Test:* `mobile-ux.spec.ts` asserts `play-album`'s box is within `[0, 412]` at
+a Pixel-7 width (CI chromium project).
+
+### G2 — Now Playing cover + queue render broken-image glyphs (High, bug)
+The Now Playing hero cover and every "Next Up" queue thumbnail use a **raw `<img [src]="/api/cover/…">`**
+(`now-playing.component.html`) that shows the browser's broken-image icon when art is missing — instead
+of the `app-cover-art` gradient fallback used in the Albums grid and the mini-player. Ugly, inconsistent
+degradation, and it collapses the hero box (feeding G4's layout void).
+
+**Fixed (2026-06-15):** the hero cover and the queue thumbnails now render via `app-cover-art`, which
+swaps a 404/missing cover for the on-theme gradient tile + initial (same as the grid and mini-player).
+*Test:* `mobile-ux.spec.ts` opens Now Playing and asserts the hero (`data-testid="now-playing-cover"`)
+has **no `<img>`** (it errored → gradient div) and shows the album initial. Bonus: with the hero filling
+its box again, most of G4's vertical void is gone.
+
+### G3 — Track-info sheet shows no song identity (High, UX)
+Opened from Now Playing (title long-press → "Track info"), the sheet header is a generic **"Track
+info"** with **no title / artist / album** anywhere, and the entire "File" block (path/format/bitrate/
+size) is also missing. Root cause: Now Playing mounts `<app-track-info-sheet [songId]=…>` **without** the
+optional `[song]` input (`track-info-sheet.component.ts`: `song = input<Song | null>(null)`), so
+`song()` is null → the `@if (song(); as s)` block is skipped. You get three empty meta sections
+("Source not recorded", BPM/Genre Unknown, "No processing history") and no idea which track it is.
+
+**Fixed (2026-06-15):** the sheet now renders an **always-on identity header** (cover thumb + title +
+artist + album) just under the "Track info" title. It prefers the full `Song` when present, and
+otherwise reads four lightweight display inputs (`displayTitle`/`displayArtist`/`displayAlbum`/
+`displayCoverArt`) that the player passes from the current `Track` — so identity shows even though no
+library `Song` is handed in (the sheet is, in practice, only ever opened from the player). The cover
+uses `app-cover-art` for the same gradient fallback. *Test:* `mobile-ux.spec.ts` opens the sheet from
+Now Playing and asserts `track-info-identity` shows the track title + artist (CI chromium).
+(The deeper "File" block — path/format/size — still needs a real `Song`; a `GET /library/songs/:id`
+endpoint to self-resolve it is a possible follow-up, but identity — the actual gap — is fixed.)
+
+### G4 — Now Playing vertical void + hidden Track-info affordance (Medium, UX)
+Layout pins a small cover to the top and floats the title to vertical center, leaving a large empty gap
+(worsened by G2's collapse). Track info is reachable **only** via long-press/right-click on the title —
+no visible `⋯`, so it's effectively undiscoverable on mobile.
+
+**Fix:** larger centered hero, tighter gap to the title; add a visible Track-info (`⋯`) button near the
+title.
+
+### G5 — Mini-player hairline progress + content occlusion (Medium, UX)
+The mini-player progress is a ~1px line at the very bottom edge (easy to miss, doesn't read as
+interactive), and both the mini-player and the bottom tab bar **occlude list content** — the album
+tracklist's last row is cut because Library/Album pages reserve no bottom scroll padding for the player
+chrome.
+
+**Fix:** thicken/restyle the progress into a visible seek track; add bottom padding equal to
+player+tab-bar height on scrollable pages.
+
+### G6 — Title context menu overflows the viewport (Medium, UX)
+The Now Playing title context menu is positioned at the tap's X coordinate with no viewport clamping, so
+on mobile it extends past the right edge and its labels ("Search more by artist", "Track info") are
+clipped.
+
+**Fix:** clamp to the viewport (or present as a centered bottom-sheet on mobile).
+
+### G7 — Library list polish (Low, UX)
+A **stray, unlabeled low-contrast "1"** sits far-right on the Filters row (it's the album count, but
+reads as a glitch), and the 5-tab segmented control (Albums/Singles/Artists/Genre/Playlists) crowds the
+screen edges at 412px.
+
+**Fix:** label or remove the counter; let the tabs scroll horizontally or shrink at narrow widths.

@@ -23,7 +23,14 @@ import {
   isPathEffectivelyQueued,
   BUTTON_CLASSES,
 } from '../../lib/download-status';
-import { groupByDirectory, formatPeerInfo, type FolderGroup } from '../../lib/folder-utils';
+import {
+  groupByDirectory,
+  formatPeerInfo,
+  rankFolders,
+  folderFormat,
+  fileQualityLabel,
+  type FolderGroup,
+} from '../../lib/folder-utils';
 import { groupBySong, formatBadge, type SongResult } from '../../lib/song-results';
 import { FolderBrowserComponent } from '../../components/folder-browser/folder-browser.component';
 import { AlbumHuntModalComponent } from '../../components/album-hunt-modal/album-hunt-modal.component';
@@ -31,6 +38,7 @@ import { TrackRowComponent } from '../../components/track-row/track-row.componen
 import { toTrack, addToPlaylistAction } from '../../lib/track-utils';
 import { extractSharedUrl } from '../../lib/share-url';
 import { httpErrorMessage } from '../../lib/http-error';
+import { shouldOpenDirectSearch, discographyFallbackNote } from '../../lib/catalog-display';
 
 /** Lighter song shape returned by the unified search's local results. */
 interface LibrarySong {
@@ -231,11 +239,19 @@ export class SearchComponent implements OnInit, OnDestroy {
     const c = this.catalog();
     return !!c && (c.artists.length > 0 || c.albums.length > 0);
   });
+  // Explains why we dropped to the network lane when an artist matched but the
+  // catalog had none of their albums (§A6). Null when there's nothing to say.
+  readonly discographyNote = computed(() => discographyFallbackNote(this.catalog()));
 
   readonly flatNetwork = computed(() => flattenAndFilter(this.search.network()));
   readonly hasNetwork = computed(() => this.flatNetwork().length > 0);
   readonly highlightTerms = computed(() => getHighlightTerms(this.search.query()));
-  readonly folderGroups = computed(() => groupByDirectory(this.flatNetwork()));
+  // Ranked so the best copies (free slot, lossless, complete, fast) lead the ~100
+  // near-dup album folders the network returns. See §A7.
+  readonly folderGroups = computed(() => rankFolders(groupByDirectory(this.flatNetwork())));
+  // Template helpers for folder format badge + per-file quality label (§A7).
+  readonly folderFormat = folderFormat;
+  readonly fileQualityLabel = fileQualityLabel;
   // Song-first view of the network results: one row per song (deduped across
   // peers, best copy auto-picked) so finding a single track is one click. The
   // folder view stays available for whole-album grabs. See §F1.
@@ -674,9 +690,10 @@ export class SearchComponent implements OnInit, OnDestroy {
       this.searchError.set(err instanceof Error ? err.message : 'Search failed');
     } finally {
       await catalogPromise;
-      // Collapse the raw-search fallback when we have metadata hits; otherwise
-      // (no hits, or Lidarr unavailable) open it so the user always has a path.
-      this.directSearchOpen.set(!this.hasCatalog());
+      // Open the raw-search fallback whenever the guided path has no actionable
+      // album cards — no catalog, or an artist matched but their discography
+      // wasn't available (§A6). Artist pills alone don't keep it closed.
+      this.directSearchOpen.set(shouldOpenDirectSearch(this.catalog()));
       this.loading.set(false);
     }
   }

@@ -10,6 +10,7 @@ import { TrackInfoSheetComponent } from '../track-info-sheet/track-info-sheet.co
 import { resolveArtistRoute } from '../../lib/route-utils';
 import { createPointerDrag } from '../../lib/pointer-drag';
 import { SeekBarComponent } from '../seek-bar/seek-bar.component';
+import { CoverArtComponent } from '../cover-art/cover-art.component';
 
 function formatTime(s: number): string {
   if (!Number.isFinite(s) || s < 0) return '0:00';
@@ -25,6 +26,7 @@ function formatTime(s: number): string {
     TrackContextMenuComponent,
     TrackInfoSheetComponent,
     SeekBarComponent,
+    CoverArtComponent,
   ],
   templateUrl: './now-playing.component.html',
 })
