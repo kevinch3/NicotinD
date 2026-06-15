@@ -121,3 +121,42 @@ bun run --filter @nicotind/e2e playground
 - **Adding a flow**: drop a `tests/*.playground.ts` that imports `test`/`expect` from
   `../playground/fixtures` and records via `obs.record(...)`; the gated project picks
   it up automatically (`testMatch: /\.playground\.ts$/`).
+
+### Screenshot flows (`*.screens.ts`)
+
+A parallel family of flows captures **screenshots** for manual UX review rather than
+(or in addition to) observations. They are `tests/*.screens.ts` drivers — **never
+matched by the default `testMatch`** (which requires `test`/`spec`), so they only run
+under a dedicated `--config` and stay out of CI, like the playground flows. Shots land
+under `screenshots/mobile/<flow>/NN-label.png` via the pure `playground/shot.ts`
+helper (`shotPath`/`shot`, unit-tested in the `ci` job alongside `observe`/`report`).
+
+| Config | Backend | Flows |
+|--------|---------|-------|
+| `playwright.screenshots.config.ts` | managed server + fixtures (Pixel 7) | `mobile-screenshots.screens.ts` — library / album / player / now-playing / song-details |
+| `playwright.hunt.config.ts` | **live** (`E2E_BASE_URL`, Pixel 7) | `hunt-mobile` + `network-album-download` — **mutates prod** (real downloads) |
+| `playwright.live-screens.config.ts` | **live** (`E2E_BASE_URL`, Pixel 7) | `player-analysis` + `downloads-acquire` — read-mostly; mutating sub-steps env-gated |
+
+The **live-screens** config doubles as a findings run: its two flows use the playground
+`obs` fixture, so the config also wires `playground/reporter.ts` and a single run emits
+both the per-flow screenshots **and** `playground-report/*.{md,json}` (timings, cover-art
+404s, gated-state gaps).
+
+```bash
+# Live mobile screenshots + findings (read-mostly default):
+E2E_BASE_URL=https://nicotined.kevinroberts.ar \
+  PLAYGROUND_USERNAME=claude-e2e PLAYGROUND_PASSWORD=… \
+  bun run --filter @nicotind/e2e screens:live
+```
+
+- `player-analysis.screens.ts` — plays a real track, walks Now Playing
+  (shuffle/repeat/queue/radio) + the track-info sheet. BPM analysis (writes a tag) and
+  genre apply (admin write) are gated behind **`PLAYGROUND_ANALYZE=1`**.
+- `downloads-acquire.screens.ts` — Get-from-a-link box, watchlist star (toggled then
+  reverted), archive.org lane (captures its gated state), and the three Downloads tabs.
+  Actually pasting a URL to acquire is gated behind **`PLAYGROUND_ACQUIRE_URL=<url>`**
+  (`PLAYGROUND_ACQUIRE_QUERY` tunes the catalog query).
+- The few elements these flows target that lacked stable hooks gained `data-testid`s
+  (`now-playing-{shuffle,repeat,radio,queue}`, `downloads-tab-{active,offline,recent}`,
+  `offline-storage-bar`); their presence is asserted by the CI `mobile-ux.spec.ts` /
+  `downloads.spec.ts` so the screenshot flows can't silently rot.

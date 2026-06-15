@@ -84,4 +84,20 @@ test.describe('mobile UX', () => {
     await infoBtn.click();
     await expect(page.getByTestId('track-info-identity')).toContainText('Opening Static');
   });
+
+  // The live-screens `player-analysis` flow targets the transport controls by
+  // testid; guard that those stable hooks exist and that shuffle reflects state.
+  test('Now Playing exposes transport + queue testids', async ({ page }) => {
+    await openNowPlaying(page);
+    const shuffle = page.getByTestId('now-playing-shuffle');
+    await expect(shuffle).toBeVisible();
+    await expect(page.getByTestId('now-playing-repeat')).toBeVisible();
+    await expect(page.getByTestId('now-playing-radio')).toBeVisible();
+    await expect(page.getByTestId('now-playing-queue')).toBeVisible();
+
+    // Toggling shuffle flips its pressed state (the screenshot flow relies on it).
+    await expect(shuffle).toHaveAttribute('aria-pressed', 'false');
+    await shuffle.click();
+    await expect(shuffle).toHaveAttribute('aria-pressed', 'true');
+  });
 });

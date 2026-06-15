@@ -7,7 +7,9 @@ export interface MethodBadge {
 }
 
 const BADGES: Record<AcquisitionMethod, MethodBadge> = {
-  slskd: { label: 'Soulseek', glyph: '🔗' },
+  // Soulseek is a peer-to-peer network, not a link source — a globe/network
+  // glyph reads truer than a chain link (which the URL-based backends avoid).
+  slskd: { label: 'Soulseek', glyph: '🌐' },
   ytdlp: { label: 'YouTube', glyph: '▶' },
   spotdl: { label: 'Spotify', glyph: '♫' },
   archive: { label: 'archive.org', glyph: '🏛' },
