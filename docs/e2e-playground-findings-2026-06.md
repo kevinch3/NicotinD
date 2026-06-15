@@ -60,7 +60,7 @@ mobile successor to the manual sessions, run the same way as the §E2 playground
 | G4 | ✅ | Medium (UX) | Web (mobile) | Now Playing has a **large vertical void** (cover pinned small at top, title floated to center); no visible affordance to reach Track info (long-press only). **Fixed:** G2 (hero fills its box) removed the void, and an `ⓘ` button beside the title now opens the sheet directly (long-press still works) |
 | G5 | ✅ | Medium (UX) | Web (mobile) | Mini-player progress is a **1px hairline**; list content is **occluded** by the player+tab-bar (no bottom scroll padding). **Assessed — already handled:** the seek bar is a 20px touch target (4px track + 12px thumb), and `mainBottomPadClass` already pads `<main>` `pb-8rem` when a track plays. Original finding was overstated (a *faint low-progress* bar, not a hairline) |
 | G6 | ✅ | Medium (UX) | Web (mobile) | Now Playing title **context menu overflows the right edge** — positioned at tap-X with no viewport clamp. **Fixed:** `clampMenuPosition` keeps the menu fully on-screen (+ `max-w` guard) |
-| G7 | ◻️ | Low (UX) | Web (mobile) | Library list: **stray unlabeled "1" counter** on the Filters row; 5-tab segmented control crowds the edges |
+| G7 | ✅ | Low (UX) | Web (mobile) | Library list: **stray unlabeled "1" counter** on the Filters row; 5-tab segmented control crowds the edges. **Fixed:** count now reads "N album(s)"; tabs get tighter mobile padding + horizontal-scroll overflow so they don't crowd/clip |
 
 **Fix notes:** D1 — delete handler now prunes orphaned `library_artists`/`library_genres`/
 `library_artwork` in the same transaction. A2 — `resolveAlbum` falls back to a diacritic-insensitive
@@ -535,4 +535,7 @@ A **stray, unlabeled low-contrast "1"** sits far-right on the Filters row (it's 
 reads as a glitch), and the 5-tab segmented control (Albums/Singles/Artists/Genre/Playlists) crowds the
 screen edges at 412px.
 
-**Fix:** label or remove the counter; let the tabs scroll horizontally or shrink at narrow widths.
+**Fixed (2026-06-15):** the count now renders "`{n} album`/`albums`" (`data-testid="library-album-count"`)
+instead of a bare number, and the mode tabs get tighter mobile padding (`px-3 sm:px-4`) +
+`overflow-x-auto` with `shrink-0 whitespace-nowrap` buttons, so they scroll rather than crowd/clip on a
+narrow phone. *Test:* `mobile-ux.spec.ts` asserts the count reads "1 album".

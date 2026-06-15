@@ -68,6 +68,13 @@ test.describe('mobile UX', () => {
     await expect(identity).toContainText(FIXTURE.album.artist);
   });
 
+  // G7 — the album count is labeled (was a bare, unlabeled "1").
+  test('library album count is labeled, not a bare number', async ({ page }) => {
+    await page.goto('/library');
+    await expect(page.getByTestId('album-card').first()).toBeVisible();
+    await expect(page.getByTestId('library-album-count')).toHaveText('1 album');
+  });
+
   // G4 — a *visible* Track-info affordance on Now Playing (previously the sheet
   // was reachable only via long-press/right-click on the title).
   test('Now Playing has a visible Track-info button that opens the sheet', async ({ page }) => {

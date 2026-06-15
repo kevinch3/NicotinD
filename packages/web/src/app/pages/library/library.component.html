@@ -2,10 +2,12 @@
 
   <!-- Mode switcher -->
   <div class="flex items-center justify-between mb-6">
-    <div class="flex gap-1 p-1 bg-theme-surface-2 rounded-xl">
+    <!-- G7: tighter padding on mobile + horizontal scroll so the 5 tabs don't
+         crowd/clip the edges on a narrow phone. -->
+    <div class="flex gap-1 p-1 bg-theme-surface-2 rounded-xl max-w-full overflow-x-auto">
       @for (m of modes; track m.value) {
         <button
-          class="px-4 py-1.5 text-sm rounded-lg transition-colors"
+          class="shrink-0 whitespace-nowrap px-3 sm:px-4 py-1.5 text-sm rounded-lg transition-colors"
           [class.bg-theme-surface]="libraryMode() === m.value"
           [class.text-theme-primary]="libraryMode() === m.value"
           [class.text-theme-muted]="libraryMode() !== m.value"
@@ -87,7 +89,8 @@
         </div>
       </details>
 
-      <span class="text-xs text-theme-muted ml-auto sm:ml-1">{{ filteredAlbums().length }}</span>
+      <span class="text-xs text-theme-muted ml-auto sm:ml-1" data-testid="library-album-count"
+        >{{ filteredAlbums().length }} {{ filteredAlbums().length === 1 ? 'album' : 'albums' }}</span>
     </div>
 
     @if (loading()) {
