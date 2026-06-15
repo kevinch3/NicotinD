@@ -290,6 +290,9 @@
             Searching Soulseek...
             @if (flatNetwork().length > 0) {
               <span>{{ flatNetwork().length }} tracks</span>
+            } @else if (search.networkResponseCount() > 0) {
+              <!-- §C2: show peer-response progress before files materialize. -->
+              <span>{{ search.networkResponseCount() }} peers responded</span>
             }
             <button
               (click)="handleStopSearch()"

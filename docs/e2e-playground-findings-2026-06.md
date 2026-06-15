@@ -44,7 +44,8 @@ mobile successor to the manual sessions, run the same way as the §E2 playground
 | C1 | ◻️ | Medium (UX) | Hunt | 42 s wait → "No candidates" with **no fallback** to the loose tracks that demonstrably exist on Soulseek |
 | B1 | ✅ | Medium | archive.org | Low precision (radio shows / mixtapes) — query lacks phrase quoting + `creator:`/`title:` targeting |
 | B2 | ✅ | Medium | archive.org | Erratic recall + silent failure: same query returned 0 then 20 results within a minute; non-OK responses collapse to `[]` |
-| C2 | ◻️ | Low/Med (UX) | Search | Network results only surface at *completion* (~25 s for niche queries) though peers respond in ~5 s |
+| C2 | ✅* | Low/Med (UX) | Search | Network results only surface at *completion* (~25 s for niche queries) though peers respond in ~5 s. **Improved:** the search already polls + renders partial results every 2 s (not gated on completion); now also shows **"N peers responded"** during the wait so a slow niche query reads as progress, not a dead spinner. (Late *file* materialization is slskd-side) |
+| C3 | ✅ | Low | Hunt | Sequential base→skew latency (~45 s worst case). **Assessed — already handled:** `hunt()` early-terminates (skew only fires when `bestBasePct < SKEW_TRIGGER_PCT`), so a confidently-complete base skips skew entirely; always-parallel would just double slskd load |
 | A3 | ✅ | Low | Catalog | Bogus `year` (`0001`) rendered verbatim on album cards |
 | A4 | ✅ | Low | Catalog | Artist pills are noisy/duplicated ("Zara/ZarA/Zara…", "Los/King Los…") |
 | E1 | ✅ | Low (infra) | e2e | Hunt modal lacks `data-testid`s on its core controls — violates the project's e2e selector standard |
@@ -290,13 +291,25 @@ offer a "we found N individual tracks — grab them" fallback (reuse the existin
 ### C2 — network results only appear at completion (Low/Med UX)
 For niche queries the search holds at "Searching…" with **0 results for ~20 s even though peers
 respond within ~5 s** (Los Chalchaleros: 19 responses at t+5 s, results materialized only at
-t+25 s on `state: complete`). Popular queries complete in ~3 s, so the variance is wide. Consider
-streaming partial results as responses arrive rather than gating on completion.
+t+25 s on `state: complete`). Popular queries complete in ~3 s, so the variance is wide.
 
-### C3 — sequential base→skew latency (Low)
-The two-phase hunt is back-to-back (20 s + 22 s). The split exists for live per-query UI animation,
-but the worst case is ~45 s of waiting; investigate overlapping or early-terminating once a
-confidently-complete base candidate appears.
+**Improved (2026-06-15):** the pipeline already streams — the slskd provider's `pollResults` returns
+`getResponses()` on every poll **during `InProgress`** (not gated on completion), and the web polls every
+2 s and re-renders `setNetwork(...)` each time, so partial results *do* appear incrementally. The
+residual gap is that for some niche queries slskd reports a rising `responseCount` while
+`getResponses()` is still empty (file lists not yet aggregated) — a slskd-side delay we don't control.
+To make that wait legible we now surface **"N peers responded"** (from `responseCount`,
+`SearchService.networkResponseCount`) in the Searching indicator, so the user sees progress instead of a
+dead spinner. Truly streaming the late files is bounded by slskd.
+
+### C3 — sequential base→skew latency (Low) — already handled
+The two-phase hunt is back-to-back (20 s + 22 s), but the **early-termination the finding asked for
+already exists**: `AlbumHunterService.hunt()` runs skew **only when `bestBasePct < SKEW_TRIGGER_PCT`**,
+so a confidently-complete base candidate skips the skew pass entirely (no second 22 s). Running base and
+skew always-in-parallel would remove the conditional but **double** the slskd search load on every hunt
+(and skew exists precisely as a soft-ban-bypass fallback, not a default) — a worse trade for a Low-sev
+latency case. The live-progress two-phase endpoints (`huntBase`/`huntSkew`) already let the UI animate
+each phase. No code change; assessed as handled.
 
 ---
 

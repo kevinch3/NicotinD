@@ -45,6 +45,10 @@ export class SearchService {
   readonly query = signal('');
   readonly network = signal<NetworkResult[]>([]);
   readonly networkState = signal<'idle' | 'searching' | 'complete'>('idle');
+  // Peers that have responded so far (slskd's responseCount) — surfaced during
+  // the search so a slow niche query shows progress before files materialize,
+  // instead of a dead "Searching…". See §C2.
+  readonly networkResponseCount = signal(0);
   // archive.org lane — populated in parallel with the network search when the
   // archive plugin is enabled. Mirrors the network signals.
   readonly archive = signal<ArchiveCandidate[]>([]);
@@ -66,6 +70,10 @@ export class SearchService {
 
   setNetworkState(state: 'idle' | 'searching' | 'complete'): void {
     this.networkState.set(state);
+  }
+
+  setNetworkResponseCount(n: number): void {
+    this.networkResponseCount.set(n);
   }
 
   addDownloading(key: string): void {
@@ -126,6 +134,7 @@ export class SearchService {
   reset(): void {
     this.network.set([]);
     this.networkState.set('idle');
+    this.networkResponseCount.set(0);
     this.archive.set([]);
     this.archiveState.set('idle');
     this.canBrowse.set(false);

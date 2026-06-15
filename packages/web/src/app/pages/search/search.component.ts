@@ -744,6 +744,7 @@ export class SearchComponent implements OnInit, OnDestroy {
       try {
         const res = await firstValueFrom(this.api.pollNetwork(id));
         this.search.setNetwork(res.results);
+        this.search.setNetworkResponseCount(res.responseCount ?? 0);
         if (res.canBrowse !== undefined) this.search.setCanBrowse(res.canBrowse);
         if (res.state === 'complete') {
           this.search.setNetworkState('complete');
