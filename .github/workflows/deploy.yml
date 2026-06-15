@@ -166,6 +166,7 @@ jobs:
               exit 1
             fi
             cd ~/Documents/nicotind &&
-            git pull --ff-only origin master &&
+            git fetch origin master &&
+            git reset --hard origin/master &&
             docker compose up --build -d
           '
