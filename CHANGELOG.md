@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.84](https://github.com/kevinch3/NicotinD/compare/v0.1.83...v0.1.84) (2026-06-17)
+
+
+### Features
+
+* **mobile:** android app via Capacitor wrap of the web UI ([6d6243d](https://github.com/kevinch3/NicotinD/commit/6d6243d61bef6da2fd4cdd48a4ceabf177a90d4d))
+
 ## [0.1.83](https://github.com/kevinch3/NicotinD/compare/v0.1.82...v0.1.83) (2026-06-17)
 
 
