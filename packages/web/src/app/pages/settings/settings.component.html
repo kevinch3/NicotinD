@@ -237,7 +237,7 @@
 
               <button type="submit"
                 [disabled]="saving() || !username().trim() || !password().trim() || (isNewAccount() && password() !== confirmPassword())"
-                class="px-5 py-2.5 rounded-lg bg-zinc-100 text-zinc-900 text-sm font-semibold hover:bg-zinc-200 transition disabled:opacity-50">
+                class="px-5 py-2.5 rounded-lg bg-theme-inverse text-theme-inverse text-sm font-semibold hover:opacity-90 transition disabled:opacity-50">
                 {{ saving() ? (isNewAccount() ? 'Creating account...' : 'Saving...') : isNewAccount() ? 'Create Account & Connect' : configured() ? 'Update & Reconnect' : 'Save & Connect' }}
               </button>
             </form>

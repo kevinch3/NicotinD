@@ -344,8 +344,8 @@
                     [disabled]="isAcquired(item)"
                     data-testid="archive-get"
                     class="px-3 py-1.5 rounded-lg text-xs font-semibold flex-shrink-0 transition disabled:opacity-60"
-                    [class.bg-zinc-100]="!isAcquired(item)"
-                    [class.text-zinc-900]="!isAcquired(item)"
+                    [class.bg-theme-inverse]="!isAcquired(item)"
+                    [class.text-theme-inverse]="!isAcquired(item)"
                     [class.bg-theme-surface-2]="isAcquired(item)"
                     [class.text-theme-muted]="isAcquired(item)"
                   >
@@ -376,7 +376,7 @@
         <button
           (click)="downloadSelected()"
           data-testid="hunt-download"
-          class="px-5 py-2 rounded-lg bg-zinc-100 text-zinc-900 text-sm font-semibold hover:bg-zinc-200 transition flex-shrink-0"
+          class="px-5 py-2 rounded-lg bg-theme-inverse text-theme-inverse text-sm font-semibold hover:opacity-90 transition flex-shrink-0"
         >
           {{ selectedCandidate() ? 'Download' : 'Download best' }}
         </button>

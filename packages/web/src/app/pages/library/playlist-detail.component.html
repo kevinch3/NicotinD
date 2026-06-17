@@ -16,7 +16,7 @@
         @if (pl.songs.length > 0) {
           <div class="mt-3 flex items-center gap-3">
             <button (click)="playAll()" aria-label="Play all" title="Play all"
-              class="w-10 h-10 flex items-center justify-center rounded-lg bg-zinc-100 text-zinc-900 hover:bg-zinc-200 transition">
+              class="w-10 h-10 flex items-center justify-center rounded-lg bg-theme-inverse text-theme-inverse hover:opacity-90 transition">
               <app-icon name="play" />
             </button>
             @if (!selection.active()) {

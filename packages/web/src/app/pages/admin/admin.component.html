@@ -8,9 +8,9 @@
         <!-- User Management -->
         <div>
           <div class="flex items-center justify-between mb-8">
-            <h1 class="text-xl font-bold text-zinc-100">User Management</h1>
+            <h1 class="text-xl font-bold text-theme-primary">User Management</h1>
             <button (click)="showCreateUser.set(true)"
-              class="px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-100 text-zinc-900 hover:bg-zinc-200 transition">
+              class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-inverse text-theme-inverse hover:opacity-90 transition">
               Create User
             </button>
           </div>
@@ -84,7 +84,7 @@
 
         <!-- System Panel -->
         <div>
-          <h2 class="text-xl font-bold text-zinc-100 mb-8">System</h2>
+          <h2 class="text-xl font-bold text-theme-primary mb-8">System</h2>
 
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
             @for (svc of services; track svc) {
@@ -175,7 +175,7 @@
         <!-- Incomplete Albums (3A) -->
         <div>
           <div class="flex items-center justify-between mb-8">
-            <h2 class="text-xl font-bold text-zinc-100">Incomplete Albums</h2>
+            <h2 class="text-xl font-bold text-theme-primary">Incomplete Albums</h2>
             <button (click)="loadIncompleteJobs()"
               class="px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition">
               Refresh
@@ -213,7 +213,7 @@
                       <td class="px-4 py-3 text-right">
                         <button (click)="retryHunt(job)" [disabled]="job.lidarrAlbumId == null"
                           [title]="job.lidarrAlbumId == null ? 'No Lidarr album id recorded' : 'Re-hunt this album'"
-                          class="px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-100 text-zinc-900 hover:bg-zinc-200 transition disabled:opacity-40 disabled:cursor-not-allowed">
+                          class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-inverse text-theme-inverse hover:opacity-90 transition disabled:opacity-40 disabled:cursor-not-allowed">
                           Retry hunt
                         </button>
                       </td>
@@ -228,7 +228,7 @@
         <!-- Untracked Downloads (3E) -->
         <div>
           <div class="flex items-center justify-between mb-8">
-            <h2 class="text-xl font-bold text-zinc-100">
+            <h2 class="text-xl font-bold text-theme-primary">
               Untracked Downloads
               @if (untrackedTotal() > 0) { <span class="ml-2 text-sm font-normal text-zinc-500">{{ untrackedTotal() }} total</span> }
             </h2>
@@ -298,7 +298,7 @@
               <div class="flex justify-end gap-2 mt-4">
                 <button (click)="showCreateUser.set(false)" class="px-4 py-2 rounded-lg text-sm text-zinc-400 hover:text-zinc-200 transition">Cancel</button>
                 <button (click)="handleCreateUser()" [disabled]="creating() || !newUsername().trim() || newUserPassword().trim().length < 4"
-                  class="px-4 py-2 rounded-lg bg-zinc-100 text-zinc-900 text-sm font-semibold hover:bg-zinc-200 transition disabled:opacity-50">
+                  class="px-4 py-2 rounded-lg bg-theme-inverse text-theme-inverse text-sm font-semibold hover:opacity-90 transition disabled:opacity-50">
                   {{ creating() ? 'Creating...' : 'Create User' }}
                 </button>
               </div>
@@ -317,7 +317,7 @@
               <div class="flex justify-end gap-2 mt-4">
                 <button (click)="resetTarget.set(null)" class="px-4 py-2 rounded-lg text-sm text-zinc-400 hover:text-zinc-200 transition">Cancel</button>
                 <button (click)="handleResetPassword()" [disabled]="resetting() || !newPassword().trim() || newPassword().trim().length < 4"
-                  class="px-4 py-2 rounded-lg bg-zinc-100 text-zinc-900 text-sm font-semibold hover:bg-zinc-200 transition disabled:opacity-50">
+                  class="px-4 py-2 rounded-lg bg-theme-inverse text-theme-inverse text-sm font-semibold hover:opacity-90 transition disabled:opacity-50">
                   {{ resetting() ? 'Resetting...' : 'Reset Password' }}
                 </button>
               </div>

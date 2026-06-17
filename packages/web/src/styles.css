@@ -186,6 +186,30 @@
   }
 }
 
+/* Accent + auto-inverting neutral-button utilities. Defined with @utility (not
+   @layer) so variants like hover:/focus: work. `theme-accent` was previously
+   referenced (bg-theme-accent, focus:border-theme-accent) but never registered,
+   so those classes silently did nothing — accent-filled buttons had no fill.
+   `theme-inverse` is a neutral high-contrast fill (primary-text color as the
+   background, base bg as the text) that flips per theme: it keeps the dark-theme
+   "white button" look while staying visible on light themes (where a hardcoded
+   bg-zinc-100 button was white-on-white). */
+@utility bg-theme-accent {
+  background-color: var(--theme-accent);
+}
+@utility text-theme-accent {
+  color: var(--theme-accent);
+}
+@utility border-theme-accent {
+  border-color: var(--theme-accent);
+}
+@utility bg-theme-inverse {
+  background-color: var(--theme-text-primary);
+}
+@utility text-theme-inverse {
+  color: var(--theme-bg);
+}
+
 /* ─── Seek bar (app-seek-bar) ────────────────────────────────────────────
    A native <input type=range> styled to read as a slim progress bar with a
    draggable thumb. Lives in global CSS (not the component) so the vendor
