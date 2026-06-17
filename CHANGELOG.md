@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.85](https://github.com/kevinch3/NicotinD/compare/v0.1.84...v0.1.85) (2026-06-17)
+
+
+### Bug Fixes
+
+* **mobile:** resolve gradle versionCode parsing (space-before-paren) ([8e3f238](https://github.com/kevinch3/NicotinD/commit/8e3f23841e947ee8206d1bd766f8b2775a189cdc))
+
 ## [0.1.84](https://github.com/kevinch3/NicotinD/compare/v0.1.83...v0.1.84) (2026-06-17)
 
 
