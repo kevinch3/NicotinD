@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.83](https://github.com/kevinch3/NicotinD/compare/v0.1.82...v0.1.83) (2026-06-17)
+
+
+### Bug Fixes
+
+* **archive:** improve archive.org lane precision (exclude non-music, sort by popularity, dedupe) ([b6253df](https://github.com/kevinch3/NicotinD/commit/b6253df56e05cc024363678f909ae810e5128ec9))
+
 ## [0.1.82](https://github.com/kevinch3/NicotinD/compare/v0.1.81...v0.1.82) (2026-06-15)
 
 
