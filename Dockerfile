@@ -11,6 +11,9 @@ COPY packages/slskd-client/package.json packages/slskd-client/
 COPY packages/lidarr-client/package.json packages/lidarr-client/
 COPY packages/web/package.json packages/web/
 COPY packages/e2e/package.json packages/e2e/
+# Workspace member: only its package.json is needed for the lockfile to resolve
+# (the native android/ shell is never built in the image).
+COPY packages/mobile/package.json packages/mobile/
 RUN bun install --frozen-lockfile
 
 COPY packages/core/ packages/core/
@@ -44,6 +47,7 @@ COPY packages/api/ packages/api/
 COPY packages/cli/ packages/cli/
 COPY packages/web/package.json packages/web/
 COPY packages/e2e/package.json packages/e2e/
+COPY packages/mobile/package.json packages/mobile/
 COPY src/ src/
 
 RUN bun install --frozen-lockfile
