@@ -7,6 +7,7 @@ export interface SearchProviderResult {
     id: string;
     title: string;
     artist: string;
+    artistId?: string;
     album: string;
     duration?: number;
     bitRate?: number;

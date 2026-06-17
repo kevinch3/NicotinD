@@ -50,6 +50,7 @@ export class LibrarySearchProvider implements ISearchProvider {
           id: string;
           title: string;
           artist: string;
+          artist_id: string;
           album: string;
           duration: number;
           bit_rate: number | null;
@@ -57,7 +58,7 @@ export class LibrarySearchProvider implements ISearchProvider {
         },
         [string, string]
       >(
-        `SELECT s.id, s.title, s.artist, a.name AS album, s.duration, s.bit_rate, s.cover_art
+        `SELECT s.id, s.title, s.artist, s.artist_id, a.name AS album, s.duration, s.bit_rate, s.cover_art
          FROM library_songs s
          LEFT JOIN library_albums a ON a.id = s.album_id
          WHERE s.hidden = 0 AND (s.title LIKE ? ESCAPE '\\' OR s.artist LIKE ? ESCAPE '\\') COLLATE NOCASE
@@ -68,6 +69,7 @@ export class LibrarySearchProvider implements ISearchProvider {
         id: r.id,
         title: r.title,
         artist: r.artist,
+        artistId: r.artist_id,
         album: r.album ?? '',
         duration: r.duration,
         bitRate: r.bit_rate ?? undefined,

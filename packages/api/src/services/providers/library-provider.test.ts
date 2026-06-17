@@ -34,6 +34,12 @@ describe('LibrarySearchProvider song search', () => {
     expect(results!.songs.length).toBe(40);
   });
 
+  it('carries artistId on song hits (so the player can link to the artist page)', async () => {
+    seedSong('s1', 'Mi Canción');
+    const { results } = await new LibrarySearchProvider(db).search('canción');
+    expect(results!.songs[0]?.artistId).toBe('art');
+  });
+
   it('returns empty lists for a blank query', async () => {
     const { results } = await new LibrarySearchProvider(db).search('   ');
     expect(results).toEqual({ artists: [], albums: [], songs: [] });
