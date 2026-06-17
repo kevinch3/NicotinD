@@ -13,6 +13,12 @@ const config: CapacitorConfig = {
     // which the API CORS allowlist (NATIVE_APP_ORIGINS) accepts.
     allowMixedContent: false,
   },
+  ios: {
+    // iOS WKWebView serves the app from `capacitor://localhost` (already in the
+    // API CORS allowlist). `contentInset: 'always'` lets the SPA handle the safe
+    // areas itself (BottomNav/player already account for the home indicator).
+    contentInset: 'always',
+  },
 };
 
 export default config;

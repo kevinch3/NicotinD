@@ -3,16 +3,20 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Capacitor Android shell wrapping the @nicotind/web build",
+  "description": "Capacitor shell (Android + iOS) wrapping the @nicotind/web build",
   "scripts": {
     "cap:sync": "cap sync android",
     "cap:open": "cap open android",
     "cap:add": "cap add android",
+    "cap:sync:ios": "cap sync ios",
+    "cap:open:ios": "cap open ios",
+    "cap:add:ios": "cap add ios",
     "android:assemble": "cd android && ./gradlew assembleRelease"
   },
   "dependencies": {
     "@capacitor/android": "^6.2.0",
     "@capacitor/core": "^6.2.0",
+    "@capacitor/ios": "^6.2.0",
     "@capacitor/preferences": "^6.0.3",
     "@jofr/capacitor-media-session": "^4.0.0"
   },
