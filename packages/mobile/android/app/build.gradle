@@ -7,10 +7,13 @@ android {
         applicationId "ar.kevinroberts.nicotind"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        // Driven by the monorepo version via CI (see scripts/android-version.ts,
-        // derived from package.json by @nicotind/mobile's androidVersion()).
-        versionCode (System.getenv("NICOTIND_VERSION_CODE") ?: "1").toInteger()
-        versionName System.getenv("NICOTIND_VERSION_NAME") ?: "1.0"
+        // Driven by the monorepo version via CI (scripts/android-env.ts, derived
+        // from package.json by @nicotind/mobile's androidVersion()). Locals avoid
+        // the `versionCode (...)` space-before-paren Groovy method-call ambiguity.
+        def envVersionCode = System.getenv("NICOTIND_VERSION_CODE")
+        def envVersionName = System.getenv("NICOTIND_VERSION_NAME")
+        versionCode envVersionCode ? envVersionCode.toInteger() : 1
+        versionName envVersionName ?: "1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
