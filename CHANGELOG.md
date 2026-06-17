@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.88](https://github.com/kevinch3/NicotinD/compare/v0.1.87...v0.1.88) (2026-06-17)
+
+
+### Features
+
+* **mobile:** add iOS app build (Capacitor) + feasibility assessment ([49b0185](https://github.com/kevinch3/NicotinD/commit/49b01856a3c0f6fcf5daa2745be666aa30c37f1a))
+
 ## [0.1.87](https://github.com/kevinch3/NicotinD/compare/v0.1.86...v0.1.87) (2026-06-17)
 
 
