@@ -120,10 +120,11 @@ jobs:
         with:
           node-version-file: '.nvmrc'
 
+      # Capacitor 6 targets JDK 17.
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '21'
+          java-version: '17'
 
       - uses: android-actions/setup-android@v3
 

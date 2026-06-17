@@ -91,7 +91,7 @@
               (click)="handlePlayPause()"
               data-testid="player-playpause"
               [attr.data-playing]="showPlaying()"
-              class="w-8 h-8 rounded-full bg-zinc-100 text-zinc-900 flex items-center justify-center hover:bg-zinc-200 transition"
+              class="w-8 h-8 rounded-full bg-theme-inverse text-theme-inverse flex items-center justify-center hover:opacity-90 transition"
             >
               @if (showPlaying()) {
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">

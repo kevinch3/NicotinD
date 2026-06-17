@@ -274,7 +274,7 @@
         placeholder="New playlist name"
         [ngModel]="newPlaylistName()" (ngModelChange)="newPlaylistName.set($event)" name="newPlaylistName" />
       <button type="submit" [disabled]="creatingPlaylist() || !newPlaylistName().trim()"
-        class="px-4 py-2 rounded-lg bg-zinc-100 text-zinc-900 text-sm font-semibold disabled:opacity-50">
+        class="px-4 py-2 rounded-lg bg-theme-inverse text-theme-inverse text-sm font-semibold disabled:opacity-50">
         Create
       </button>
     </form>
