@@ -66,26 +66,39 @@ mounted before auth on `/api/*`) allows `https://localhost` / `http://localhost`
 work. The web UI is same-origin and unaffected. (The playback WebSocket performs no Origin check; auth is
 via the `?token=` query param.)
 
-## Background audio (device spike — pending)
+## Background audio + system controls
 
-WebView HTML5 audio is **suspended when Android backgrounds the app**, so continuous background playback
-needs native help. The manifest already declares the required permissions (`FOREGROUND_SERVICE`,
-`FOREGROUND_SERVICE_MEDIA_PLAYBACK`, `POST_NOTIFICATIONS`, `WAKE_LOCK`).
+The Android WebView **does not support the Web Media Session API**, so `navigator.mediaSession` calls are
+silently ignored — no lock-screen / notification controls appear — and WebView HTML5 audio is **suspended
+when the app is backgrounded**. Both are solved with **`@jofr/capacitor-media-session`**: on Android it
+implements a native `MediaSession` **and runs a media-playback foreground service** (keeping audio alive
+backgrounded); on web/iOS it's a thin wrapper over the Web API, so one code path serves all platforms.
 
-The remaining work is a **device-validated plugin spike** (it can't be validated in CI/headless):
-1. Add a **media-session bridge** (e.g. `@jofr/capacitor-media-session`) so the app's *existing*
-   `MediaSession` API calls + artwork (already wired in `player.component.ts`) surface as a native media
-   notification / lock-screen controls / hardware buttons.
-2. Add a **foreground-service / background-mode** plugin so the `<audio>` element keeps playing while
-   backgrounded.
-3. Validate on a physical device, then document the chosen plugins and rationale **here**.
+Wiring (so it stays maintainable and testable):
+- **`MediaControlsService`** (`packages/web/src/app/services/media-controls.service.ts`) wraps the plugin
+  with guarded, best-effort calls (`setMetadata` / `setPlaybackState` / `setActionHandler` /
+  `setPositionState`). The plugin is **lazily imported** (dynamic `import()`), so unit tests and the
+  initial web chunk never pull in Capacitor, and a browser without media-session support just no-ops.
+- **`buildMediaMetadata`** (`lib/media-metadata.ts`, pure + unit-tested) builds the title/artist/album +
+  multi-size artwork (artwork URLs go through `ServerConfigService.apiUrl`).
+- `player.component.ts` drives it: metadata + playback-state effects, action handlers (play/pause/next/
+  prev/seek), and `setPositionState` on the 2 s progress tick (keeps the notification scrubber in sync and
+  enables `seekto`). The plugin **requires** an explicit `setPlaybackState('playing')` + registered
+  play/pause handlers for the notification to appear — both are wired.
+- Manifest permissions: `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PLAYBACK`, `POST_NOTIFICATIONS`,
+  `WAKE_LOCK`.
 
-The existing Media Session + WakeLock code is the head start; until the spike lands, v1 plays in the
-foreground and pauses when backgrounded.
+**Capacitor version note**: `@jofr/capacitor-media-session@4` officially supports **Capacitor 6**, so
+`packages/mobile` is pinned to Capacitor 6 (CI uses **JDK 17**). This trades "latest Capacitor" for a
+media-session plugin on its supported major — the right call for a feature that can't be validated in CI
+and must work first try on device. Revisit if the plugin (or a equivalent) ships Capacitor 7+ support.
+
+Still device-validated, not CI-validated: confirm on a physical device that playback continues
+backgrounded and the lock-screen controls/scrubber work.
 
 ## Developer workflow
 
-Requires JDK 21 + the Android SDK (Android Studio). From the repo root:
+Requires JDK 17 + the Android SDK (Android Studio). From the repo root:
 
 ```bash
 bun install
@@ -115,6 +128,7 @@ browse → play.
 ## Tests (quality gates)
 
 - `lib/server-url.ts` (`packages/web/src/app/lib/server-url.spec.ts`) — normalize/build/health logic.
+- `lib/media-metadata.ts` (`media-metadata.spec.ts`) — title/artist/album + multi-size artwork building.
 - `middleware/cors.ts` (`packages/api/src/middleware/cors.test.ts`) — allowed-origin reflection, exposed
   Range headers, preflight OPTIONS, disallowed-origin rejection.
 - `src/version.ts` (`packages/mobile/src/version.test.ts`) — version mapping + monotonicity; run in CI via

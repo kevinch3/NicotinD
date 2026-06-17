@@ -10,7 +10,7 @@
         android:theme="@style/AppTheme">
 
         <activity
-            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode"
             android:name=".MainActivity"
             android:label="@string/title_activity_main"
             android:theme="@style/AppTheme.NoActionBarLaunch"
@@ -38,10 +38,11 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
-    <!-- Background music playback: a media-playback foreground service keeps audio
-         alive when the app is backgrounded; POST_NOTIFICATIONS surfaces the media
-         notification; WAKE_LOCK keeps the CPU awake while streaming. See
-         docs/mobile-app.md "Background audio". -->
+    <!-- Background music playback + system controls: @jofr/capacitor-media-session
+         runs a media-playback foreground service so audio keeps playing when
+         backgrounded and the media notification / lock-screen controls show.
+         POST_NOTIFICATIONS surfaces the notification; WAKE_LOCK keeps the CPU awake
+         while streaming. See docs/mobile-app.md "Background audio". -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />

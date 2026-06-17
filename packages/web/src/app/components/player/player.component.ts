@@ -19,6 +19,8 @@ import { CoverArtComponent } from '../cover-art/cover-art.component';
 import { DeviceSwitcherComponent } from '../device-switcher/device-switcher.component';
 import { PreserveService } from '../../services/preserve.service';
 import { ServerConfigService } from '../../services/server-config.service';
+import { MediaControlsService } from '../../services/media-controls.service';
+import { buildMediaMetadata } from '../../lib/media-metadata';
 import * as db from '../../lib/preserve-store';
 import { createPointerDrag } from '../../lib/pointer-drag';
 import { miniPlayerSlideClass } from '../../lib/player-chrome';
@@ -44,6 +46,7 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
   private zone = inject(NgZone);
   private preserve = inject(PreserveService);
   private server = inject(ServerConfigService);
+  private mediaControls = inject(MediaControlsService);
 
   private audioElA = viewChild<ElementRef<HTMLAudioElement>>('audioElA');
   private audioElB = viewChild<ElementRef<HTMLAudioElement>>('audioElB');
@@ -177,49 +180,30 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
       }
     });
 
-    // Effect 2: Media Session metadata
+    // Effect 2: Media Session metadata (OS lock-screen / notification). Routed
+    // through MediaControlsService so it works in the native WebView (which lacks
+    // the Web Media Session API) as well as the browser.
     effect(() => {
       const track = this.player.currentTrack();
       const token = this.auth.token();
-      if (!('mediaSession' in navigator)) return;
 
       if (!track) {
-        navigator.mediaSession.metadata = null;
-        navigator.mediaSession.playbackState = 'none';
+        this.mediaControls.setMetadata({ title: '', artist: '', album: '', artwork: [] });
+        this.mediaControls.setPlaybackState('none');
         return;
       }
 
-      navigator.mediaSession.metadata = new MediaMetadata({
-        title: track.title,
-        artist: track.artist,
-        album: track.album ?? '',
-        artwork: track.coverArt
-          ? [
-              {
-                src: this.server.apiUrl(`/api/cover/${track.coverArt}?size=96&token=${token}`),
-                sizes: '96x96',
-                type: 'image/jpeg',
-              },
-              {
-                src: this.server.apiUrl(`/api/cover/${track.coverArt}?size=256&token=${token}`),
-                sizes: '256x256',
-                type: 'image/jpeg',
-              },
-              {
-                src: this.server.apiUrl(`/api/cover/${track.coverArt}?size=512&token=${token}`),
-                sizes: '512x512',
-                type: 'image/jpeg',
-              },
-            ]
-          : [],
-      });
+      this.mediaControls.setMetadata(
+        buildMediaMetadata(track, (coverArt, size) =>
+          this.server.apiUrl(`/api/cover/${coverArt}?size=${size}&token=${token}`),
+        ),
+      );
     });
 
     // Effect 3: Media Session playback state
     effect(() => {
       const playing = this.player.isPlaying();
-      if (!('mediaSession' in navigator)) return;
-      navigator.mediaSession.playbackState = playing ? 'playing' : 'paused';
+      this.mediaControls.setPlaybackState(playing ? 'playing' : 'paused');
     });
 
     // Effect 4: Media Session action handlers
@@ -227,23 +211,17 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
     // track and across lock-screen sessions. All callbacks run inside zone.run() because
     // lock-screen/notification-shade dispatches fire outside Angular's zone.
     effect(() => {
-      if (!('mediaSession' in navigator)) return;
-
       // Read signals so effect re-runs when these change (keeps handlers fresh).
       this.player.queue();
       this.player.history();
       this.player.repeat();
 
-      navigator.mediaSession.setActionHandler('play', () =>
-        this.zone.run(() => this.player.resume()),
-      );
-      navigator.mediaSession.setActionHandler('pause', () =>
-        this.zone.run(() => this.player.pause()),
-      );
-      navigator.mediaSession.setActionHandler('nexttrack', () =>
+      this.mediaControls.setActionHandler('play', () => this.zone.run(() => this.player.resume()));
+      this.mediaControls.setActionHandler('pause', () => this.zone.run(() => this.player.pause()));
+      this.mediaControls.setActionHandler('nexttrack', () =>
         this.zone.run(() => this.player.playNext()),
       );
-      navigator.mediaSession.setActionHandler('previoustrack', () =>
+      this.mediaControls.setActionHandler('previoustrack', () =>
         this.zone.run(() => {
           const audio = this.audioEl()?.nativeElement;
           if (audio && audio.currentTime > 3) {
@@ -253,13 +231,13 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
           }
         }),
       );
-      navigator.mediaSession.setActionHandler('seekto', (details) => {
-        if (details.seekTime != null) this.zone.run(() => this.player.seek(details.seekTime!));
+      this.mediaControls.setActionHandler('seekto', (seekTime) => {
+        if (seekTime != null) this.zone.run(() => this.player.seek(seekTime));
       });
-      navigator.mediaSession.setActionHandler('seekforward', () =>
+      this.mediaControls.setActionHandler('seekforward', () =>
         this.zone.run(() => this.player.seek(this.player.currentTime() + 10)),
       );
-      navigator.mediaSession.setActionHandler('seekbackward', () =>
+      this.mediaControls.setActionHandler('seekbackward', () =>
         this.zone.run(() => this.player.seek(Math.max(0, this.player.currentTime() - 10))),
       );
     });
@@ -312,6 +290,8 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
       const report = () => {
         if (audio.duration > 0 && Number.isFinite(audio.currentTime)) {
           this.ws.sendProgressReport(audio.currentTime, audio.duration);
+          // Keep the OS notification scrubber in sync (and enable seekto).
+          this.mediaControls.setPositionState(audio.duration, audio.currentTime);
         }
       };
 

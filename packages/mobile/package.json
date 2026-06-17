@@ -11,11 +11,12 @@
     "android:assemble": "cd android && ./gradlew assembleRelease"
   },
   "dependencies": {
-    "@capacitor/android": "^7.0.0",
-    "@capacitor/core": "^7.0.0",
-    "@capacitor/preferences": "^7.0.0"
+    "@capacitor/android": "^6.2.0",
+    "@capacitor/core": "^6.2.0",
+    "@capacitor/preferences": "^6.0.3",
+    "@jofr/capacitor-media-session": "^4.0.0"
   },
   "devDependencies": {
-    "@capacitor/cli": "^7.0.0"
+    "@capacitor/cli": "^6.2.0"
   }
 }

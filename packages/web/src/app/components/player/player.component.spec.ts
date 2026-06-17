@@ -8,6 +8,7 @@ import { AuthService } from '../../services/auth.service';
 import { RemotePlaybackService } from '../../services/remote-playback.service';
 import { PlaybackWsService } from '../../services/playback-ws.service';
 import { PreserveService } from '../../services/preserve.service';
+import { MediaControlsService } from '../../services/media-controls.service';
 import type { Track } from '../../services/player.service';
 
 // Note: preserve-store (IndexedDB) is never reached in these tests because
@@ -92,6 +93,16 @@ describe('PlayerComponent', () => {
         },
         { provide: Router, useValue: { navigate: vi.fn() } },
         { provide: PreserveService, useValue: { isPreserved: vi.fn().mockReturnValue(false) } },
+        // Mocked so the Capacitor media-session plugin is never imported in jsdom.
+        {
+          provide: MediaControlsService,
+          useValue: {
+            setMetadata: vi.fn(),
+            setPlaybackState: vi.fn(),
+            setPositionState: vi.fn(),
+            setActionHandler: vi.fn(),
+          },
+        },
       ],
     }).compileComponents();
 
