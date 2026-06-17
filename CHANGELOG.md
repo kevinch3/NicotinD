@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.86](https://github.com/kevinch3/NicotinD/compare/v0.1.85...v0.1.86) (2026-06-17)
+
+
+### Features
+
+* **mobile:** system playback controls + background audio ([9adc65b](https://github.com/kevinch3/NicotinD/commit/9adc65b584fc92b6bc808521fe6416c7aec5b9b8))
+
+
+### Bug Fixes
+
+* **web:** button/heading contrast on light themes ([4990830](https://github.com/kevinch3/NicotinD/commit/4990830fecac5c5e28980db0a6d9121eb3db1391))
+
 ## [0.1.85](https://github.com/kevinch3/NicotinD/compare/v0.1.84...v0.1.85) (2026-06-17)
 
 
