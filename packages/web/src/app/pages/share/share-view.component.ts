@@ -13,6 +13,7 @@ import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Meta, Title } from '@angular/platform-browser';
 import { firstValueFrom } from 'rxjs';
 import { ShareSessionService } from '../../services/share-session.service';
+import { ServerConfigService } from '../../services/server-config.service';
 
 interface ShareTrack {
   id: string;
@@ -36,6 +37,7 @@ export class ShareViewComponent implements OnInit, OnDestroy {
   private meta = inject(Meta);
   private titleService = inject(Title);
   private shareSession = inject(ShareSessionService);
+  private server = inject(ServerConfigService);
 
   readonly audioRef = viewChild<ElementRef<HTMLAudioElement>>('audioEl');
 
@@ -56,13 +58,13 @@ export class ShareViewComponent implements OnInit, OnDestroy {
   readonly coverUrl = computed(() => {
     const id = this.coverArtId();
     const jwt = this.shareSession.shareJwt();
-    return id && jwt ? `/api/cover/${id}?size=300&token=${jwt}` : null;
+    return id && jwt ? this.server.apiUrl(`/api/cover/${id}?size=300&token=${jwt}`) : null;
   });
 
   readonly streamUrl = computed(() => {
     const track = this.currentTrack();
     const jwt = this.shareSession.shareJwt();
-    return track && jwt ? `/api/stream/${track.id}?token=${jwt}` : null;
+    return track && jwt ? this.server.apiUrl(`/api/stream/${track.id}?token=${jwt}`) : null;
   });
 
   async ngOnInit(): Promise<void> {
@@ -204,7 +206,7 @@ export class ShareViewComponent implements OnInit, OnDestroy {
     if (coverArtId) {
       this.meta.updateTag({
         property: 'og:image',
-        content: `/api/cover/${coverArtId}?token=${jwt}`,
+        content: this.server.apiUrl(`/api/cover/${coverArtId}?token=${jwt}`),
       });
     }
   }

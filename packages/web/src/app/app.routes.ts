@@ -1,9 +1,15 @@
 import { Routes } from '@angular/router';
-import { authGuard, adminGuard } from './guards/auth.guard';
+import { authGuard, adminGuard, serverGuard } from './guards/auth.guard';
 
 export const routes: Routes = [
   {
+    path: 'server',
+    loadComponent: () =>
+      import('./pages/server-config/server-config.component').then((m) => m.ServerConfigComponent),
+  },
+  {
     path: 'login',
+    canActivate: [serverGuard],
     loadComponent: () => import('./pages/login/login.component').then((m) => m.LoginComponent),
   },
   {
@@ -19,7 +25,7 @@ export const routes: Routes = [
     path: '',
     loadComponent: () =>
       import('./components/layout/layout.component').then((m) => m.LayoutComponent),
-    canActivate: [authGuard],
+    canActivate: [serverGuard, authGuard],
     children: [
       {
         path: '',

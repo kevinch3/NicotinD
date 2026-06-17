@@ -8,3 +8,7 @@ packages/web/dist/
 ~/.nicotind/
 .worktrees/
 .superpowers/
+
+# Android signing keystores — never commit; supplied to CI via secrets
+*.jks
+*.keystore

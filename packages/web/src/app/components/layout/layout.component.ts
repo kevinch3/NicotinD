@@ -1,6 +1,6 @@
 import { Component, inject, computed, OnInit, OnDestroy } from '@angular/core';
 import { APP_VERSION } from '../../app.config';
-import { RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
+import { Router, RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { AuthService } from '../../services/auth.service';
 import { PlayerService, shuffleArray } from '../../services/player.service';
@@ -50,6 +50,7 @@ export class LayoutComponent implements OnInit, OnDestroy {
   readonly auth = inject(AuthService);
   readonly player = inject(PlayerService);
   readonly setup = inject(SetupService);
+  private router = inject(Router);
   readonly version = inject(APP_VERSION);
   private transfers = inject(TransferService);
   private acquire = inject(AcquireService);
@@ -87,6 +88,6 @@ export class LayoutComponent implements OnInit, OnDestroy {
 
   logout(): void {
     this.auth.logout();
-    window.location.assign('/login');
+    this.router.navigateByUrl('/login');
   }
 }

@@ -23,6 +23,7 @@
     { "path": "packages/lidarr-client" },
     { "path": "packages/api" },
     { "path": "packages/cli" },
+    { "path": "packages/mobile" },
     { "path": "src" }
   ]
 }
