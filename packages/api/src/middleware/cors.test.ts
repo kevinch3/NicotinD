@@ -49,6 +49,13 @@ describe('nativeAppCors', () => {
     expect(allowMethods).toContain('OPTIONS');
   });
 
+  it("reflects the iOS WKWebView origin (capacitor://localhost) so iOS is covered", async () => {
+    const iosOrigin = 'capacitor://localhost';
+    expect(NATIVE_APP_ORIGINS).toContain(iosOrigin);
+    const res = await makeApp().request('/api/stream/1', { headers: { Origin: iosOrigin } });
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe(iosOrigin);
+  });
+
   it('does not reflect a disallowed origin', async () => {
     const res = await makeApp().request('/api/stream/1', {
       headers: { Origin: 'https://evil.example' },

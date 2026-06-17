@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { androidVersion } from './version.js';
+import { androidVersion, iosVersion } from './version.js';
 
 describe('androidVersion', () => {
   it('maps a semver to versionName + a monotonic versionCode', () => {
@@ -28,5 +28,25 @@ describe('androidVersion', () => {
   it('rejects minor/patch ≥ 1000 (would break monotonicity)', () => {
     expect(() => androidVersion('1.1000.0')).toThrow();
     expect(() => androidVersion('1.0.1000')).toThrow();
+  });
+});
+
+describe('iosVersion', () => {
+  it('maps a semver to CFBundleShortVersionString + a monotonic CFBundleVersion', () => {
+    expect(iosVersion('0.1.83')).toEqual({ shortVersion: '0.1.83', bundleVersion: 1083 });
+    expect(iosVersion('1.0.0')).toEqual({ shortVersion: '1.0.0', bundleVersion: 1_000_000 });
+    expect(iosVersion('2.5.9')).toEqual({ shortVersion: '2.5.9', bundleVersion: 2_005_009 });
+  });
+
+  it('shares the monotonic scheme with androidVersion (one source of truth)', () => {
+    expect(iosVersion('0.1.83').bundleVersion).toBe(androidVersion('0.1.83').versionCode);
+    expect(iosVersion('1.0.0').shortVersion).toBe(androidVersion('1.0.0').versionName);
+  });
+
+  it('tolerates whitespace + suffixes and rejects bad input like its Android sibling', () => {
+    expect(iosVersion('  0.1.83  ').bundleVersion).toBe(1083);
+    expect(iosVersion('1.2.3-rc.1').shortVersion).toBe('1.2.3');
+    expect(() => iosVersion('not-a-version')).toThrow();
+    expect(() => iosVersion('1.0.1000')).toThrow();
   });
 });

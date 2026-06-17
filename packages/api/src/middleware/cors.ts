@@ -1,10 +1,10 @@
 import { cors } from 'hono/cors';
 
-// Origins the native (Capacitor) Android shell can present. Modern Capacitor
-// serves the bundled web app from `https://localhost` (its default
-// `androidScheme`); `http://localhost` and `capacitor://localhost` are included
-// as fallbacks for older/alternate scheme configs. The web UI is served
-// same-origin and never needs to appear here.
+// Origins the native (Capacitor) shell can present, on both Android and iOS.
+// Modern Capacitor serves the bundled web app from `https://localhost` (the
+// default Android `androidScheme`); iOS WKWebView serves it from
+// `capacitor://localhost`; `http://localhost` covers older/alternate scheme
+// configs. The web UI is served same-origin and never needs to appear here.
 export const NATIVE_APP_ORIGINS = [
   'https://localhost',
   'http://localhost',
