@@ -626,12 +626,15 @@
             >
               <div class="min-w-0 flex-1">
                 <p class="text-sm font-medium text-zinc-200 truncate">{{ item.title }}</p>
-                <p class="text-xs text-zinc-500 mt-0.5 truncate">
-                  {{ item.creator || 'Unknown' }}
-                  @if (item.year) {
-                    · {{ item.year }}
-                  }
-                </p>
+                @if (item.creator || item.year) {
+                  <p class="text-xs text-zinc-500 mt-0.5 truncate">
+                    {{ item.creator }}
+                    @if (item.creator && item.year) {
+                      ·
+                    }
+                    {{ item.year }}
+                  </p>
+                }
               </div>
               <button
                 (click)="getFromArchive(item)"

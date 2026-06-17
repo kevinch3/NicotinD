@@ -2,7 +2,7 @@ import { describe, expect, it, mock } from 'bun:test';
 import { Hono } from 'hono';
 import type { AuthEnv } from '../middleware/auth.js';
 import { archiveRoutes } from './archive.js';
-import { ArchiveSearchService } from '../services/archive-search.service.js';
+import { ArchiveSearchService, archiveDedupeKey } from '../services/archive-search.service.js';
 import type { PluginRegistry } from '../services/plugins/registry.js';
 
 const SEARCH_BODY = {
@@ -104,6 +104,40 @@ describe('ArchiveSearchService', () => {
     expect(calls).toHaveLength(2); // initial attempt + one retry
   });
 
+  it('excludes non-music collections (audiobooks/radio/podcasts)', async () => {
+    const { fn, calls } = fetchReturning(SEARCH_BODY);
+    await new ArchiveSearchService(fn).search('Shaggy');
+    const decoded = decodeURIComponent(calls[0]!).replace(/\+/g, ' ');
+    expect(decoded).toContain('-collection:(librivoxaudio OR');
+    expect(decoded).toContain('oldtimeradio');
+    expect(decoded).toContain('podcasts');
+  });
+
+  it('sorts by downloads (popularity) descending', async () => {
+    const { fn, calls } = fetchReturning(SEARCH_BODY);
+    await new ArchiveSearchService(fn).search('foo');
+    const decoded = decodeURIComponent(calls[0]!).replace(/\+/g, ' ');
+    expect(decoded).toContain('sort[]=downloads desc');
+  });
+
+  it('dedupes format/year variants of the same release (keeps the first)', async () => {
+    const { fn } = fetchReturning({
+      response: {
+        docs: [
+          { identifier: 'a', title: 'Porfiado', creator: ['El Cuarteto De Nos'], year: 2012 },
+          {
+            identifier: 'b',
+            title: 'El Cuarteto de Nos - Porfiado (2012) [FLAC]',
+            creator: 'El Cuarteto de Nos',
+          },
+          { identifier: 'c', title: 'A Different Album', creator: ['El Cuarteto de Nos'] },
+        ],
+      },
+    });
+    const out = await new ArchiveSearchService(fn).search('cuarteto');
+    expect(out.map((c) => c.identifier)).toEqual(['a', 'c']);
+  });
+
   it('recovers when the retry succeeds', async () => {
     let n = 0;
     const fn = mock(async () => {
@@ -115,6 +149,24 @@ describe('ArchiveSearchService', () => {
     const out = await new ArchiveSearchService(fn).search('foo');
     expect(out).toHaveLength(2);
     expect(n).toBe(2);
+  });
+});
+
+describe('archiveDedupeKey', () => {
+  it('collapses diacritics, brackets, year and format noise to a sorted token set', () => {
+    const a = archiveDedupeKey({ creator: 'El Cuarteto De Nos', title: 'Porfiado' });
+    const b = archiveDedupeKey({
+      creator: 'El Cuarteto de Nos',
+      title: 'El Cuarteto de Nos - Porfiado (2012) [FLAC]',
+    });
+    expect(a).toBe(b);
+    expect(a).toBe('cuarteto de el nos porfiado');
+  });
+
+  it('keeps genuinely different releases distinct', () => {
+    const a = archiveDedupeKey({ creator: 'Shaggy', title: 'Hot Shot' });
+    const b = archiveDedupeKey({ creator: 'Shaggy', title: 'Boombastic' });
+    expect(a).not.toBe(b);
   });
 });
 

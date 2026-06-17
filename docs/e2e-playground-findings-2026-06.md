@@ -271,6 +271,13 @@ quoting, no field targeting.
 `creator:`/`title:` and quote phrases (e.g. `creator:("Zara Larsson") AND title:("Venus")`), and
 consider restricting to music collections.
 
+**Fixed (2026-06-17):** beyond the earlier field-targeting/phrase-quoting, `run()` now also
+**excludes the non-music audio collections** (`-collection:(librivoxaudio OR audio_bookspoetry OR
+oldtimeradio OR radioprograms OR podcasts OR audio_religion OR audio_news)`) — so audiobooks (a
+LibriVox "Patchwork Girl of Oz" for a "Shaggy" search), radio shows and podcasts no longer surface —
+and **sorts by `downloads desc`** so popular, real music ranks above obscure mashups/unknown uploads.
+*Tests:* `archive.test.ts` ("excludes non-music collections", "sorts by downloads").
+
 ### B2 — erratic recall + silent failure (Medium)
 Free-text `?q=Zara Larsson` returned **0 items on one call and 20 on the next within ~1 minute**. The
 service maps any non-OK status or thrown error to `[]` (logs a warning, returns empty), so a
@@ -632,6 +639,14 @@ The 17-result lane lists obvious variants of the same release (e.g. *Porfiado* t
 `Porfiado - El Cuarteto De Nos · 2012`, once as `El Cuarteto de Nos - Porfiado (2012) [FLAC] · 2012`) and
 several rows whose year subtitle is the literal "Unknown". *Suggested:* dedupe/group by normalized
 title+year and drop the "Unknown" year label (show nothing) — mirrors the §B1 archive-precision note.
+
+**Fixed (2026-06-17):** `ArchiveSearchService` dedupes server-side via the pure `archiveDedupeKey()`
+(diacritic-folded, bracket/format/year noise stripped, reduced to a sorted token set drawn from
+creator + title) — both *Porfiado* rows collapse to `cuarteto de el nos porfiado`, and since results
+are popularity-sorted the most-downloaded copy is kept. The web (search page + album-hunt modal) no
+longer renders a literal "Unknown": the creator/year subtitle is hidden entirely when both are absent
+and the `·` separator only shows when both are present. *Tests:* `archive.test.ts` (`archiveDedupeKey`
++ "dedupes format/year variants").
 
 ### H5 — Acquisition "Source" shows a raw peer username (Low, polish)
 Track-info Acquisition renders `Source pirulazul` — a bare Soulseek peer handle with no context. Low priority;
