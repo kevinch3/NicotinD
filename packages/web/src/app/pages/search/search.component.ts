@@ -51,6 +51,7 @@ interface LibrarySong {
   id: string;
   title: string;
   artist: string;
+  artistId?: string;
   album: string;
   duration?: number;
   coverArt?: string;
