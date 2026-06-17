@@ -18,6 +18,7 @@ import { PlaybackWsService } from '../../services/playback-ws.service';
 import { CoverArtComponent } from '../cover-art/cover-art.component';
 import { DeviceSwitcherComponent } from '../device-switcher/device-switcher.component';
 import { PreserveService } from '../../services/preserve.service';
+import { ServerConfigService } from '../../services/server-config.service';
 import * as db from '../../lib/preserve-store';
 import { createPointerDrag } from '../../lib/pointer-drag';
 import { miniPlayerSlideClass } from '../../lib/player-chrome';
@@ -42,6 +43,7 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
   private ws = inject(PlaybackWsService);
   private zone = inject(NgZone);
   private preserve = inject(PreserveService);
+  private server = inject(ServerConfigService);
 
   private audioElA = viewChild<ElementRef<HTMLAudioElement>>('audioElA');
   private audioElB = viewChild<ElementRef<HTMLAudioElement>>('audioElB');
@@ -153,14 +155,14 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
               db.updateLastAccessed(track.id);
             } else {
               // Metadata exists but blob missing — fall back to stream
-              audio.src = `/api/stream/${track.id}?token=${token}`;
+              audio.src = this.server.apiUrl(`/api/stream/${track.id}?token=${token}`);
             }
             audio.play().catch((err) => {
               if (err.name === 'NotAllowedError') this.handlePlayRejection();
             });
           })();
         } else {
-          audio.src = `/api/stream/${track.id}?token=${token}`;
+          audio.src = this.server.apiUrl(`/api/stream/${track.id}?token=${token}`);
           audio.play().catch((err) => {
             if (err.name === 'NotAllowedError') this.handlePlayRejection();
           });
@@ -194,17 +196,17 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
         artwork: track.coverArt
           ? [
               {
-                src: `/api/cover/${track.coverArt}?size=96&token=${token}`,
+                src: this.server.apiUrl(`/api/cover/${track.coverArt}?size=96&token=${token}`),
                 sizes: '96x96',
                 type: 'image/jpeg',
               },
               {
-                src: `/api/cover/${track.coverArt}?size=256&token=${token}`,
+                src: this.server.apiUrl(`/api/cover/${track.coverArt}?size=256&token=${token}`),
                 sizes: '256x256',
                 type: 'image/jpeg',
               },
               {
-                src: `/api/cover/${track.coverArt}?size=512&token=${token}`,
+                src: this.server.apiUrl(`/api/cover/${track.coverArt}?size=512&token=${token}`),
                 sizes: '512x512',
                 type: 'image/jpeg',
               },
@@ -442,7 +444,9 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
               const standby = this.standbyNativeEl;
               if (standby) {
                 this.preloadedTrackId = nextTrack.id;
-                standby.src = `/api/stream/${nextTrack.id}?token=${this.auth.token()}`;
+                standby.src = this.server.apiUrl(
+                  `/api/stream/${nextTrack.id}?token=${this.auth.token()}`,
+                );
                 standby.preload = 'auto';
                 // load() without play() — just buffer the initial bytes
                 standby.load();
@@ -525,12 +529,12 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
                   this.lastManualObjectUrl = url;
                   audio.src = url;
                 } else {
-                  audio.src = `/api/stream/${nextTrack.id}?token=${token}`;
+                  audio.src = this.server.apiUrl(`/api/stream/${nextTrack.id}?token=${token}`);
                 }
                 playNext();
               });
             } else {
-              audio.src = `/api/stream/${nextTrack.id}?token=${token}`;
+              audio.src = this.server.apiUrl(`/api/stream/${nextTrack.id}?token=${token}`);
               playNext();
             }
           }

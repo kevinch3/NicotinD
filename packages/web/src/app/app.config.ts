@@ -11,6 +11,7 @@ import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { provideServiceWorker } from '@angular/service-worker';
 import { routes } from './app.routes';
 import { authInterceptor } from './interceptors/auth.interceptor';
+import { isNativePlatform } from './lib/platform';
 import { SetupService } from './services/setup.service';
 import { ThemeService } from './services/theme.service';
 import { PreserveService } from './services/preserve.service';
@@ -36,7 +37,10 @@ export const appConfig: ApplicationConfig = {
       return setup.check();
     }),
     provideServiceWorker('ngsw-worker.js', {
-      enabled: !isDevMode(),
+      // Disabled in the native (Capacitor) shell: the WebView serves assets from a
+      // local origin, so ngsw caching is redundant and can fight Capacitor's own
+      // asset serving / cross-origin API calls. IndexedDB offline still works.
+      enabled: !isDevMode() && !isNativePlatform(),
       registrationStrategy: 'registerWhenStable:30000',
     }),
   ],

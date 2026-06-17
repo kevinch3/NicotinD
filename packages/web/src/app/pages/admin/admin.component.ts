@@ -9,6 +9,7 @@ import {
   type DiscographyAlbum,
 } from '../../services/api.service';
 import { AuthService } from '../../services/auth.service';
+import { ServerConfigService } from '../../services/server-config.service';
 import { PasswordFieldComponent } from '../../components/password-field/password-field.component';
 import { AlbumHuntModalComponent } from '../../components/album-hunt-modal/album-hunt-modal.component';
 
@@ -20,6 +21,7 @@ import { AlbumHuntModalComponent } from '../../components/album-hunt-modal/album
 export class AdminComponent implements OnInit, OnDestroy {
   private api = inject(ApiService);
   private auth = inject(AuthService);
+  private server = inject(ServerConfigService);
 
   readonly services: 'slskd'[] = ['slskd'];
 
@@ -297,7 +299,9 @@ export class AdminComponent implements OnInit, OnDestroy {
     this.disconnectLogStream();
     const service = this.selectedService();
     const src = new EventSource(
-      `/api/system/logs/${service}/stream?token=${encodeURIComponent(token ?? '')}`,
+      this.server.apiUrl(
+        `/api/system/logs/${service}/stream?token=${encodeURIComponent(token ?? '')}`,
+      ),
     );
     this.logEventSource = src;
     this.logStreamStatus.set('connecting');

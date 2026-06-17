@@ -3,6 +3,7 @@ import * as db from '../lib/preserve-store';
 import { DEFAULT_BUDGET, type PreservedTrackMeta } from '../lib/preserve-store';
 import type { Track } from './player.service';
 import { AuthService } from './auth.service';
+import { ServerConfigService } from './server-config.service';
 
 /** Sentinel "no cap" budget — large enough that the projected-usage check never trips. */
 export const UNLIMITED_BUDGET = Number.MAX_SAFE_INTEGER;
@@ -22,6 +23,7 @@ export interface PreserveBatch {
 @Injectable({ providedIn: 'root' })
 export class PreserveService {
   private auth = inject(AuthService);
+  private server = inject(ServerConfigService);
 
   readonly preservedIds = signal(new Set<string>());
   readonly totalUsage = signal(0);
@@ -191,14 +193,16 @@ export class PreserveService {
     track: Track,
     token: string,
   ): Promise<{ audioBlob: Blob; coverBlob: Blob | null; format: string } | null> {
-    const audioRes = await fetch(`/api/stream/${track.id}?token=${token}`);
+    const audioRes = await fetch(this.server.apiUrl(`/api/stream/${track.id}?token=${token}`));
     if (!audioRes.ok) return null;
     const audioBlob = await audioRes.blob();
 
     let coverBlob: Blob | null = null;
     if (track.coverArt) {
       try {
-        const coverRes = await fetch(`/api/cover/${track.coverArt}?size=600&token=${token}`);
+        const coverRes = await fetch(
+          this.server.apiUrl(`/api/cover/${track.coverArt}?size=600&token=${token}`),
+        );
         if (coverRes.ok) coverBlob = await coverRes.blob();
       } catch {
         /* ignore cover failures */

@@ -3,9 +3,10 @@
  * Handles connection, reconnection with exponential backoff, device registration,
  * heartbeat, and message routing via RxJS Observables.
  */
-import { Injectable, signal } from '@angular/core';
+import { Injectable, inject, signal } from '@angular/core';
 import { Subject, Observable } from 'rxjs';
 import { filter, map } from 'rxjs/operators';
+import { ServerConfigService } from './server-config.service';
 
 interface WsMessage {
   type: string;
@@ -14,6 +15,7 @@ interface WsMessage {
 
 @Injectable({ providedIn: 'root' })
 export class PlaybackWsService {
+  private server = inject(ServerConfigService);
   private ws: WebSocket | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
@@ -136,8 +138,7 @@ export class PlaybackWsService {
     const token = localStorage.getItem('nicotind_token');
     if (!token) return;
 
-    const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-    const url = `${protocol}://${window.location.host}/api/ws/playback?token=${encodeURIComponent(token)}`;
+    const url = this.server.wsUrl(`/api/ws/playback?token=${encodeURIComponent(token)}`);
 
     if (this.ws && this.ws.readyState === WebSocket.OPEN) return;
     this.didOpenSuccessfully = false;

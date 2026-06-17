@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">NicotinD</string>
+    <string name="title_activity_main">NicotinD</string>
+    <string name="package_name">ar.kevinroberts.nicotind</string>
+    <string name="custom_url_scheme">ar.kevinroberts.nicotind</string>
+</resources>

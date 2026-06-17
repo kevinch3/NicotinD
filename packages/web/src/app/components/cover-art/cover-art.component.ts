@@ -1,4 +1,5 @@
-import { Component, input, signal } from '@angular/core';
+import { Component, input, signal, computed, inject } from '@angular/core';
+import { ServerConfigService } from '../../services/server-config.service';
 
 export function hashCode(str: string): number {
   let h = 0;
@@ -35,7 +36,14 @@ export function placeholderFontSize(size: number | undefined, fill: boolean): st
   templateUrl: './cover-art.component.html',
 })
 export class CoverArtComponent {
+  private server = inject(ServerConfigService);
+
   readonly src = input<string | undefined>(undefined);
+  // Rewrites a relative `/api/cover/...` src to the configured server origin so
+  // covers load in the native shell (no-op on web). External URLs (e.g. Lidarr
+  // artwork) and undefined pass through untouched. This is the single chokepoint
+  // for every `<app-cover-art>` in the app.
+  readonly resolvedSrc = computed(() => this.server.apiUrl(this.src() ?? '') || undefined);
   readonly artist = input('');
   readonly album = input('');
   /** Fixed square size in px. Ignored (and optional) when `fill` is set. */

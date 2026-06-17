@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import type { AcquisitionMethod, GenreSuggestion, SongAcquisition } from '@nicotind/core';
 import { ApiService, type ProvenanceRecord, type Song } from '../../services/api.service';
 import { AuthService } from '../../services/auth.service';
+import { ServerConfigService } from '../../services/server-config.service';
 import { methodBadge } from '../../lib/acquisition-method';
 import { CoverArtComponent } from '../cover-art/cover-art.component';
 
@@ -246,6 +247,7 @@ const ACTION_LABELS: Record<string, string> = {
 export class TrackInfoSheetComponent implements OnInit {
   private api = inject(ApiService);
   private auth = inject(AuthService);
+  private server = inject(ServerConfigService);
 
   readonly songId = input.required<string>();
   readonly song = input<Song | null>(null);
@@ -263,7 +265,9 @@ export class TrackInfoSheetComponent implements OnInit {
   readonly headerAlbum = computed(() => this.song()?.album ?? this.displayAlbum());
   readonly headerCoverUrl = computed(() => {
     const id = this.song()?.coverArt ?? this.displayCoverArt();
-    return id ? `/api/cover/${id}?size=96&token=${this.auth.token()}` : undefined;
+    return id
+      ? this.server.apiUrl(`/api/cover/${id}?size=96&token=${this.auth.token()}`)
+      : undefined;
   });
 
   readonly provenance = signal<ProvenanceRecord[]>([]);

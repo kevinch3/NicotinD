@@ -1,6 +1,7 @@
 import { OpenAPIHono } from '@hono/zod-openapi';
 import { swaggerUI } from '@hono/swagger-ui';
 import { serveStatic, createBunWebSocket } from 'hono/bun';
+import { nativeAppCors } from './middleware/cors.js';
 import type { NicotinDConfig } from '@nicotind/core';
 import type { Slskd } from '@nicotind/slskd-client';
 import type { Lidarr } from '@nicotind/lidarr-client';
@@ -125,6 +126,9 @@ export function createApp({
 
   const app = new OpenAPIHono();
   const { upgradeWebSocket, websocket } = createBunWebSocket();
+
+  // Cross-origin support for the native (Capacitor) app — see middleware/cors.ts.
+  app.use('/api/*', nativeAppCors());
 
   app.get('/api/health', (c) => c.json({ ok: true }));
 

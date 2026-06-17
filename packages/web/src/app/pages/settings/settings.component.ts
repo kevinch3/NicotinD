@@ -1,6 +1,6 @@
 import { Component, inject, signal, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { ApiService, type StreamingSettings } from '../../services/api.service';
 import { AuthService } from '../../services/auth.service';
@@ -43,6 +43,7 @@ export class SettingsComponent implements OnInit {
   private api = inject(ApiService);
   readonly auth = inject(AuthService);
   readonly themeService = inject(ThemeService);
+  private router = inject(Router);
   readonly remote = inject(RemotePlaybackService);
   readonly preserve = inject(PreserveService);
   private ws = inject(PlaybackWsService);
@@ -104,7 +105,7 @@ export class SettingsComponent implements OnInit {
 
   logout(): void {
     this.auth.logout();
-    window.location.assign('/login');
+    this.router.navigateByUrl('/login');
   }
 
   ngOnInit(): void {
