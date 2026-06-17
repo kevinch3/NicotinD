@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.87](https://github.com/kevinch3/NicotinD/compare/v0.1.86...v0.1.87) (2026-06-17)
+
+
+### Bug Fixes
+
+* **web:** artist link resolves to artist page from search-played tracks ([3c71309](https://github.com/kevinch3/NicotinD/commit/3c71309b4723b6bde11fe2e37cdfcd6ee25a791b))
+
 ## [0.1.86](https://github.com/kevinch3/NicotinD/compare/v0.1.85...v0.1.86) (2026-06-17)
 
 
