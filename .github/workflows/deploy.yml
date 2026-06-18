@@ -1,13 +1,11 @@
-name: Deploy to server
+name: Build & Deploy
 
 on:
   push:
-    branches: [master]
+    tags:
+      - 'v*'
   workflow_dispatch: {}
 
-# Group per-commit so a release-bump push never cancels the original commit's
-# still-running pipeline (which previously starved the deploy job). Re-pushing
-# the same SHA still supersedes an older in-flight run.
 concurrency:
   group: deploy-${{ github.sha }}
   cancel-in-progress: true
@@ -16,96 +14,13 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  ci:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
-      - name: Install dependencies
-        run: bun install
-
-      - name: Typecheck
-        run: bun run typecheck
-
-      - name: Lint
-        run: bun run lint
-
-      - name: Test (API + slskd-client + core + service-manager + mobile)
-        run: bun test packages/api/src packages/slskd-client/src packages/core/src packages/service-manager/src packages/mobile/src
-
-      # Pure logic of the gated e2e playground harness (observation model, report
-      # rendering, response classifier). The Playwright playground flows need a
-      # live backend and stay out of CI; their helpers are unit-tested here.
-      - name: Test (e2e playground helpers)
-        run: bun test packages/e2e/playground
-
-      - name: Test (web)
-        run: bun run --filter @nicotind/web test
-
-      # Production AOT build — catches template/import errors (missing imports,
-      # unused-component warnings) that `tsc --build` and the vitest run miss but
-      # that fail the deploy's Docker `ng build`. Gate them here, before deploy.
-      - name: Build (web)
-        run: bun run --filter @nicotind/web build
-
-  # Playwright end-to-end: boots `bun run src/main.ts` against a temp data dir +
-  # committed music fixtures (no slskd/Lidarr — acquisition is default-off) and
-  # exercises auth, library, playback, and plugin capability-gating in a real
-  # browser. See packages/e2e and docs/e2e.md.
-  e2e:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
-      # ng build (run below) requires Node >= 22.22.3; pin from .nvmrc so CI,
-      # the Dockerfile, and local dev all resolve the exact same version.
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: '.nvmrc'
-
-      - name: Install dependencies
-        run: bun install
-
-      - name: Install Playwright browser
-        run: bunx playwright install --with-deps chromium
-        working-directory: packages/e2e
-
-      # The Hono server serves the SPA from packages/web/dist, so it must exist
-      # before the e2e webServer boots.
-      - name: Build (web)
-        run: bun run --filter @nicotind/web build
-
-      - name: Run e2e
-        run: bun run --filter @nicotind/e2e test
-        env:
-          CI: '1'
-
-      - name: Upload Playwright report
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-report
-          path: packages/e2e/playwright-report/
-          retention-days: 7
-
-  # Build and sign the Android APK and attach it to the GitHub Release. Gated like
-  # `deploy` (the chore(release): commit or a manual run) so every released version
-  # gets an APK. Runs in parallel with `deploy`; a failure here (e.g. missing signing
-  # secrets) does not block the server deploy. Requires repo secrets:
-  # ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS,
-  # ANDROID_KEY_PASSWORD. See docs/mobile-app.md "Release & signing".
+  # Build and sign the Android APK and attach it to the GitHub Release. Runs in
+  # parallel with `deploy`; a failure here (e.g. missing signing secrets) does not 
+  # block the server deploy. Requires repo secrets: ANDROID_KEYSTORE_BASE64, 
+  # ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD. 
+  # See docs/mobile-app.md "Release & signing".
   android:
     runs-on: ubuntu-latest
-    needs: [ci, e2e]
-    if: "github.event_name == 'workflow_dispatch' || startsWith(github.event.head_commit.message, 'chore(release):')"
     permissions:
       contents: write
     steps:
@@ -167,24 +82,16 @@ jobs:
       - name: Attach APK to the GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ env.NICOTIND_VERSION_NAME }}
+          tag_name: ${{ github.ref_name }}
           files: packages/mobile/android/app/build/outputs/apk/release/*.apk
           fail_on_unmatched_files: true
 
-  # Build an UNSIGNED iOS .ipa and attach it to the GitHub Release. Gated and
-  # parallelized exactly like `android`/`deploy`, on a macOS runner (Xcode can't
-  # run on Linux). There is no Apple Developer account yet, so the build is
-  # unsigned (CODE_SIGNING_ALLOWED=NO) — the .ipa installs only via AltStore /
-  # Sideloadly, which re-sign with the user's own Apple ID. The native `ios/`
-  # project is NOT committed (it must be generated on a Mac), so CI generates it
-  # ephemerally each run and patches Info.plist via a script. A future signed /
-  # TestFlight path swaps CODE_SIGNING_ALLOWED=NO for cert/profile/App-Store-
-  # Connect-API-key secrets (mirroring ANDROID_KEYSTORE_*). A failure here does
-  # not block the server deploy. See docs/ios-app.md.
+  # Build an UNSIGNED iOS .ipa and attach it to the GitHub Release.
+  # The native `ios/` project is NOT committed (it must be generated on a Mac), 
+  # so CI generates it ephemerally each run and patches Info.plist via a script. 
+  # A failure here does not block the server deploy. See docs/ios-app.md.
   ios:
     runs-on: macos-14
-    needs: [ci, e2e]
-    if: "github.event_name == 'workflow_dispatch' || startsWith(github.event.head_commit.message, 'chore(release):')"
     permissions:
       contents: write
     steps:
@@ -246,63 +153,12 @@ jobs:
       - name: Attach unsigned IPA to the GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ env.NICOTIND_IOS_SHORT_VERSION }}
+          tag_name: ${{ github.ref_name }}
           files: packages/mobile/ios/App/NicotinD-unsigned.ipa
           fail_on_unmatched_files: true
 
-  release:
-    runs-on: ubuntu-latest
-    needs: [ci, e2e]
-    # Only bump on real pushes, and skip when the triggering commit is already a
-    # release bump (avoids an infinite bump loop). Manual deploys never bump.
-    if: "github.event_name == 'push' && !startsWith(github.event.head_commit.message, 'chore(release):')"
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          token: ${{ secrets.RELEASE_TOKEN }}
-
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
-      - name: Install dependencies
-        run: bun install
-
-      - name: Configure git
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-      # Idempotent release: a dry-run computes the next version; if its tag
-      # already exists the release was already published (a previous run did the
-      # bump+tag+push), so we skip cleanly. This makes re-running the pipeline
-      # safe after a failed deploy, instead of dying on `tag already exists`.
-      - name: Release (idempotent bump, tag, push)
-        run: |
-          set -euo pipefail
-          version="$(bunx commit-and-tag-version --dry-run 2>&1 \
-            | grep -oP 'tagging release v\K[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
-          if [ -z "$version" ]; then
-            echo "Could not determine next version from dry-run output" >&2
-            exit 1
-          fi
-          if git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
-            echo "Tag v$version already exists — release already published, skipping."
-            exit 0
-          fi
-          bun run release
-          git push --follow-tags origin master
-
   deploy:
     runs-on: ubuntu-latest
-    # Deploy the release-bump commit (whose git state == the tagged version), or
-    # any manual run. Depends on `ci` + `e2e` only — `release` is skipped on the
-    # bump commit, and a skipped dependency would otherwise skip deploy too.
-    needs: [ci, e2e]
-    if: "github.event_name == 'workflow_dispatch' || startsWith(github.event.head_commit.message, 'chore(release):')"
     steps:
       - name: Connect to Tailscale
         uses: tailscale/github-action@v4
@@ -320,7 +176,7 @@ jobs:
               exit 1
             fi
             cd ~/Documents/nicotind &&
-            git fetch origin master &&
-            git reset --hard origin/master &&
+            git fetch origin master --tags &&
+            git reset --hard ${{ github.ref_name || "origin/master" }} &&
             docker compose up --build -d
           '
