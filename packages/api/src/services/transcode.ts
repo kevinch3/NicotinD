@@ -1,5 +1,5 @@
 import { spawn, execFileSync } from 'node:child_process';
-import { Readable } from 'node:stream';
+import { existsSync, renameSync, unlinkSync } from 'node:fs';
 import { createLogger } from '@nicotind/core';
 import type { TranscodeFormat } from './streaming-settings.js';
 
@@ -28,51 +28,97 @@ export function _resetFfmpegProbe(): void {
   ffmpegPresent = false;
 }
 
+export type TranscodeFmt = Exclude<TranscodeFormat, 'original'>;
+
 const FORMAT_ARGS: Record<
-  Exclude<TranscodeFormat, 'original'>,
-  { args: (kbps: number) => string[]; contentType: string }
+  TranscodeFmt,
+  { args: (kbps: number) => string[]; contentType: string; ext: string }
 > = {
   mp3: {
     args: (k) => ['-c:a', 'libmp3lame', '-b:a', `${k}k`, '-f', 'mp3'],
     contentType: 'audio/mpeg',
+    ext: 'mp3',
   },
   opus: {
     args: (k) => ['-c:a', 'libopus', '-b:a', `${k}k`, '-f', 'ogg'],
     contentType: 'audio/ogg',
+    ext: 'opus',
   },
-  aac: { args: (k) => ['-c:a', 'aac', '-b:a', `${k}k`, '-f', 'adts'], contentType: 'audio/aac' },
+  aac: {
+    args: (k) => ['-c:a', 'aac', '-b:a', `${k}k`, '-f', 'adts'],
+    contentType: 'audio/aac',
+    ext: 'aac',
+  },
 };
 
-export interface TranscodeStream {
-  body: ReadableStream<Uint8Array>;
-  contentType: string;
+/** File extension for a transcoded copy of a given format (drives the cache filename). */
+export function transcodeExt(format: TranscodeFmt): string {
+  return FORMAT_ARGS[format].ext;
+}
+
+/** Content-Type to advertise for a transcoded stream (Bun's by-extension sniff is unreliable for `.aac`). */
+export function transcodeContentType(format: TranscodeFmt): string {
+  return FORMAT_ARGS[format].contentType;
 }
 
 /**
- * Spawn ffmpeg to transcode a file on the fly, streaming stdout. No seeking /
- * range support — transcoded streams are sequential. Returns a web
- * ReadableStream suitable for a Hono Response.
+ * Transcode the whole file to `outPath` and return only once it's complete.
+ * Writes to a sibling temp file then atomically renames, so a reader never sees
+ * a half-written cache entry. Unlike a sequential ffmpeg pipe, a finished file
+ * on disk can be served with HTTP **range** support — which is what makes seeking
+ * work on transcoded streams (the iOS/Firefox "far seek does nothing" bug).
+ * Resolves on exit code 0, rejects (and cleans up the temp) otherwise.
  */
-export function transcodeFile(
+export function transcodeToFile(
   absPath: string,
-  format: Exclude<TranscodeFormat, 'original'>,
+  outPath: string,
+  format: TranscodeFmt,
   kbps: number,
-): TranscodeStream {
-  const spec = FORMAT_ARGS[format];
-  const args = [
-    '-hide_banner',
-    '-loglevel',
-    'error',
-    '-i',
-    absPath,
-    '-vn',
-    ...spec.args(kbps),
-    'pipe:1',
-  ];
-  const proc = spawn('ffmpeg', args);
-  proc.on('error', (err) => log.error({ err, absPath }, 'ffmpeg spawn failed'));
-  proc.stderr.on('data', (d: Buffer) => log.debug({ msg: d.toString() }, 'ffmpeg'));
-  // Node Readable (stdout) → web ReadableStream for the Response body.
-  const body = Readable.toWeb(proc.stdout) as unknown as ReadableStream<Uint8Array>;
-  return { body, contentType: spec.contentType };
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const spec = FORMAT_ARGS[format];
+    const tmp = `${outPath}.tmp-${process.pid}-${Date.now()}`;
+    const args = [
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-y',
+      '-i',
+      absPath,
+      '-vn',
+      ...spec.args(kbps),
+      tmp,
+    ];
+    const proc = spawn('ffmpeg', args);
+    let stderr = '';
+    proc.stderr.on('data', (d: Buffer) => {
+      stderr += d.toString();
+    });
+    proc.on('error', (err) => {
+      cleanupTmp(tmp);
+      reject(err);
+    });
+    proc.on('close', (code) => {
+      if (code === 0) {
+        try {
+          renameSync(tmp, outPath);
+          resolve();
+        } catch (err) {
+          cleanupTmp(tmp);
+          reject(err as Error);
+        }
+      } else {
+        cleanupTmp(tmp);
+        reject(new Error(`ffmpeg exited ${code}: ${stderr.slice(0, 500)}`));
+      }
+    });
+  });
+}
+
+function cleanupTmp(tmp: string): void {
+  try {
+    if (existsSync(tmp)) unlinkSync(tmp);
+  } catch {
+    /* best-effort */
+  }
 }

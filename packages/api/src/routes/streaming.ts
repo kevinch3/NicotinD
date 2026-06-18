@@ -6,7 +6,8 @@ import type { Database } from 'bun:sqlite';
 import { createLogger } from '@nicotind/core';
 import type { AuthEnv } from '../middleware/auth.js';
 import { getStreamingSettings } from '../services/streaming-settings.js';
-import { ffmpegAvailable, transcodeFile } from '../services/transcode.js';
+import { ffmpegAvailable, transcodeContentType } from '../services/transcode.js';
+import { getTranscodedFile } from '../services/transcode-cache.js';
 import { getMusicMetadata } from '../services/music-metadata-loader.js';
 import { resolveArtwork, canonicalCacheKey } from '../services/artwork-store.js';
 
@@ -42,6 +43,7 @@ export function streamingRoutes(musicDir: string, db: Database, dataDir: string)
   const app = new Hono<AuthEnv>();
   const musicRoot = resolve(musicDir);
   const coverCacheDir = join(dataDir, 'cover-cache');
+  const transcodeCacheDir = join(dataDir, 'transcode-cache');
 
   /** Resolve a library id (song id, or album id) to an absolute, in-root path. */
   function resolvePath(id: string): string | null {
@@ -91,6 +93,8 @@ export function streamingRoutes(musicDir: string, db: Database, dataDir: string)
       ffmpegAvailable() &&
       (settings.forceTranscode || (reqFormat && reqFormat !== 'raw') || reqBitRate != null);
 
+    const range = c.req.header('range');
+
     if (wantsTranscode) {
       const format =
         reqFormat && reqFormat !== 'raw' && reqFormat !== 'original'
@@ -98,8 +102,12 @@ export function streamingRoutes(musicDir: string, db: Database, dataDir: string)
           : settings.format;
       const kbps = reqBitRate && reqBitRate > 0 ? reqBitRate : settings.maxBitRate;
       try {
-        const { body, contentType } = transcodeFile(abs, format, kbps);
-        return new Response(body, { status: 200, headers: { 'content-type': contentType } });
+        // Transcode to a cached file (once) and serve THAT with range support, so
+        // transcoded streams are seekable. A sequential ffmpeg pipe (status 200,
+        // no content-length / accept-ranges) can't be seeked, which is why far
+        // seeks did nothing on iOS/Firefox when transcoding was on.
+        const cached = await getTranscodedFile(transcodeCacheDir, abs, format, kbps);
+        return serveFileWithRange(cached, range, transcodeContentType(format));
       } catch (err) {
         log.error({ err, abs }, 'transcode failed; falling back to original');
         // fall through to passthrough
@@ -107,44 +115,7 @@ export function streamingRoutes(musicDir: string, db: Database, dataDir: string)
     }
 
     // Passthrough with HTTP range support.
-    const file = Bun.file(abs);
-    const size = file.size;
-    const contentType = file.type || 'application/octet-stream';
-    const range = c.req.header('range');
-
-    if (range) {
-      const m = /^bytes=(\d*)-(\d*)$/.exec(range.trim());
-      if (m) {
-        let start = m[1] ? Number(m[1]) : 0;
-        let end = m[2] ? Number(m[2]) : size - 1;
-        if (Number.isNaN(start)) start = 0;
-        if (Number.isNaN(end) || end >= size) end = size - 1;
-        if (start > end || start >= size) {
-          return new Response(null, {
-            status: 416,
-            headers: { 'content-range': `bytes */${size}` },
-          });
-        }
-        return new Response(file.slice(start, end + 1), {
-          status: 206,
-          headers: {
-            'content-type': contentType,
-            'content-length': String(end - start + 1),
-            'content-range': `bytes ${start}-${end}/${size}`,
-            'accept-ranges': 'bytes',
-          },
-        });
-      }
-    }
-
-    return new Response(file, {
-      status: 200,
-      headers: {
-        'content-type': contentType,
-        'content-length': String(size),
-        'accept-ranges': 'bytes',
-      },
-    });
+    return serveFileWithRange(abs, range);
   });
 
   app.get('/cover/:id', async (c) => {
@@ -217,6 +188,56 @@ export function streamingRoutes(musicDir: string, db: Database, dataDir: string)
   });
 
   return app;
+}
+
+/**
+ * Serve a file from disk honouring an HTTP `Range` header (206 + Content-Range)
+ * and advertising `Accept-Ranges` on the full 200 response. Shared by the
+ * passthrough and transcode-cache paths so both are seekable. `contentTypeOverride`
+ * is used for transcoded files, whose extension Bun doesn't always sniff (`.aac`).
+ */
+function serveFileWithRange(
+  absPath: string,
+  range: string | undefined,
+  contentTypeOverride?: string,
+): Response {
+  const file = Bun.file(absPath);
+  const size = file.size;
+  const contentType = contentTypeOverride || file.type || 'application/octet-stream';
+
+  if (range) {
+    const m = /^bytes=(\d*)-(\d*)$/.exec(range.trim());
+    if (m) {
+      let start = m[1] ? Number(m[1]) : 0;
+      let end = m[2] ? Number(m[2]) : size - 1;
+      if (Number.isNaN(start)) start = 0;
+      if (Number.isNaN(end) || end >= size) end = size - 1;
+      if (start > end || start >= size) {
+        return new Response(null, {
+          status: 416,
+          headers: { 'content-range': `bytes */${size}` },
+        });
+      }
+      return new Response(file.slice(start, end + 1), {
+        status: 206,
+        headers: {
+          'content-type': contentType,
+          'content-length': String(end - start + 1),
+          'content-range': `bytes ${start}-${end}/${size}`,
+          'accept-ranges': 'bytes',
+        },
+      });
+    }
+  }
+
+  return new Response(file, {
+    status: 200,
+    headers: {
+      'content-type': contentType,
+      'content-length': String(size),
+      'accept-ranges': 'bytes',
+    },
+  });
 }
 
 interface CoverArt {

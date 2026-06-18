@@ -3,6 +3,18 @@
 
 /* ─── Theme tokens ───────────────────────────────────────────────────── */
 @layer base {
+  /* Kill the browser's double-tap-to-zoom gesture app-wide (web + native
+     WebView). It fires on stray double taps on cards/controls and is never
+     wanted in this SPA; `manipulation` is the accessibility-preserving opt-out
+     (keeps pinch-zoom + scroll, unlike viewport user-scalable=no). Applied at
+     the root so it covers every region. Elements that need a finer gesture (the
+     seek range = `none`, the player drag handles = `touch-pan-y`/`touch-none`)
+     set their own touch-action via higher-specificity utility classes, which
+     win over this element-selector rule. */
+  html {
+    touch-action: manipulation;
+  }
+
   /* Midnight (default — values match current hardcoded zinc classes) */
   :root,
   [data-theme="midnight"] {

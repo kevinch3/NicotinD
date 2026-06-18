@@ -53,8 +53,11 @@ platform-agnostic and works on iOS with no change:
   default. We expect users to point the app at an **HTTPS** self-hosted server
   (the default is HTTPS). Only add an `NSAppTransportSecurity` exception if a
   plain-HTTP server must be supported — document it then, don't pre-weaken ATS.
-- **iOS app icons / launch screen** assets (separate from Android's). The
-  ephemeral project ships Capacitor's placeholders for now.
+- **iOS app icon + splash**: the branded AppIcon **and launch/splash screen** are
+  generated **in CI** from the committed `packages/mobile/assets/` brand sources
+  (`bunx @capacitor/assets generate --ios`), because the ephemeral `ios/` project
+  would otherwise ship Capacitor's default bolt. Source of truth + Android
+  equivalent: see [mobile-app.md](./mobile-app.md) "App icon & splash screen".
 
 ## The macOS / "no committed `ios/`" constraint
 
@@ -115,8 +118,10 @@ ships Capacitor 7+ support.
 `.github/workflows/deploy.yml` → `ios` job (`runs-on: macos-14`), gated and
 parallelized exactly like `android`/`deploy` (`workflow_dispatch` or a
 `chore(release):` commit). Steps: build web → `cap add ios`/`cap sync ios` →
-derive version (`scripts/ios-env.ts` → `$GITHUB_ENV`) → patch Info.plist
-(`scripts/ios-plist.ts`) → `xcodebuild … CODE_SIGNING_ALLOWED=NO build` →
+generate the branded AppIcon (`bunx @capacitor/assets generate --ios`, from the
+committed `assets/` sources) → derive version (`scripts/ios-env.ts` →
+`$GITHUB_ENV`) → patch Info.plist (`scripts/ios-plist.ts`) → `xcodebuild …
+CODE_SIGNING_ALLOWED=NO build` →
 package `Payload/App.app` into `NicotinD-unsigned.ipa` → attach to the Release.
 A failure here does **not** block the server deploy.
 
@@ -130,7 +135,7 @@ A failure here does **not** block the server deploy.
 - [ ] Signing secrets in the repo (certificate, provisioning profile, App Store Connect API key) — then flip the CI build to signed.
 - [ ] A Mac to generate + **commit** the `ios/` project (durable native config) — replaces the ephemeral-generate path.
 - [ ] **On-device test of background audio + lock-screen controls** — the one capability not guaranteed by reuse.
-- [ ] iOS app icon + launch screen assets.
+- [x] iOS app icon + launch/splash screen (branded, generated in CI from the shared brand mark).
 
 ## Tests / quality gates
 

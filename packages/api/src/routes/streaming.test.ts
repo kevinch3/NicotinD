@@ -71,6 +71,25 @@ describe('streaming routes', () => {
     expect(res.status).toBe(416);
   });
 
+  it('keeps streams seekable (206) even with force-transcode enabled', async () => {
+    // Transcoding the fake (non-audio) bytes fails, so the route must fall back
+    // to a range-served passthrough rather than a non-seekable 200 pipe. (Where
+    // ffmpeg is absent the branch is skipped entirely — same seekable outcome.)
+    db.run(
+      `INSERT INTO app_settings (key, value) VALUES ('streaming', ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+      [JSON.stringify({ transcodeEnabled: true, forceTranscode: true, format: 'mp3', maxBitRate: 192 })],
+    );
+    try {
+      const res = await app.request('/stream/song-1', { headers: { range: 'bytes=2-5' } });
+      expect(res.status).toBe(206);
+      expect(res.headers.get('accept-ranges')).toBe('bytes');
+      expect(res.headers.get('content-range')).toBe('bytes 2-5/10');
+    } finally {
+      db.run(`DELETE FROM app_settings WHERE key = 'streaming'`);
+    }
+  });
+
   it('returns 404 when the song id is unknown', async () => {
     const res = await app.request('/stream/missing');
     expect(res.status).toBe(404);

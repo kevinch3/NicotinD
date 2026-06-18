@@ -68,6 +68,34 @@ test.describe('mobile UX', () => {
     await expect(identity).toContainText(FIXTURE.album.artist);
   });
 
+  // Double-tap-to-zoom is disabled app-wide (stray double taps on cards/controls
+  // zoomed the viewport on touch builds). `touch-action: manipulation` at the
+  // root is the accessibility-preserving opt-out; assert it resolves on <html>.
+  test('double-tap zoom is disabled via root touch-action', async ({ page }) => {
+    await page.goto('/library');
+    const touchAction = await page.evaluate(
+      () => getComputedStyle(document.documentElement).touchAction,
+    );
+    expect(touchAction).toBe('manipulation');
+  });
+
+  // The mini-player grab hatch must be a real drag target (it had no pointer
+  // handler before — only the bar below it) and swiping it up opens Now Playing.
+  test('mini-player grab handle opens Now Playing on swipe up', async ({ page }) => {
+    await openAlbum(page);
+    await page.getByTestId('play-album').click();
+    await expect(page.getByTestId('player-title')).toBeVisible();
+
+    const grab = page.getByTestId('player-grab');
+    const box = (await grab.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2, box.y - 90, { steps: 6 });
+    await page.mouse.up();
+
+    await expect(page.getByText('Now Playing')).toBeVisible();
+  });
+
   // G7 — the album count is labeled (was a bare, unlabeled "1").
   test('library album count is labeled, not a bare number', async ({ page }) => {
     await page.goto('/library');
