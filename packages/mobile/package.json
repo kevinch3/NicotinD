@@ -20,7 +20,8 @@
     "@capacitor/core": "^6.2.0",
     "@capacitor/ios": "^6.2.0",
     "@capacitor/preferences": "^6.0.3",
-    "@jofr/capacitor-media-session": "^4.0.0"
+    "@jofr/capacitor-media-session": "^4.0.0",
+    "@nicotind/capacitor-now-playing": "workspace:*"
   },
   "devDependencies": {
     "@capacitor/assets": "^3.0.5",
