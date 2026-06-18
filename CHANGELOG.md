@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.90](https://github.com/kevinch3/NicotinD/compare/v0.1.89...v0.1.90) (2026-06-18)
+
+
+### Features
+
+* **mobile:** brand native app icon and splash with the NicotinD mark ([a765978](https://github.com/kevinch3/NicotinD/commit/a7659781a897470f11469e2cfea2ae2952e643a4))
+
+
+### Bug Fixes
+
+* **api:** make transcoded streams seekable via a disk cache ([600f763](https://github.com/kevinch3/NicotinD/commit/600f76371fe1099cccb22a0345673de4f4f965b6))
+* **web:** disable double-tap zoom and wire the mini-player grab hatch ([468c313](https://github.com/kevinch3/NicotinD/commit/468c3132ac297093f4791b8e31540543a45bc76d))
+
 ## [0.1.89](https://github.com/kevinch3/NicotinD/compare/v0.1.88...v0.1.89) (2026-06-18)
 
 
