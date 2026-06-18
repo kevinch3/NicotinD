@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.93](https://github.com/kevinch3/NicotinD/compare/v0.1.92...v0.1.93) (2026-06-18)
+
+
+### Bug Fixes
+
+* **web:** truncate long download titles instead of stretching the row ([fc506d6](https://github.com/kevinch3/NicotinD/commit/fc506d6b42bc515d85bba94d2576565f5a8347a6))
+
 ## [0.1.92](https://github.com/kevinch3/NicotinD/compare/v0.1.91...v0.1.92) (2026-06-18)
 
 ## [0.1.91](https://github.com/kevinch3/NicotinD/compare/v0.1.90...v0.1.91) (2026-06-18)
