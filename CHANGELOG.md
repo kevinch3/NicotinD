@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.89](https://github.com/kevinch3/NicotinD/compare/v0.1.88...v0.1.89) (2026-06-18)
+
+
+### Features
+
+* **api:** tighten archive.org lane and show track count / album-single ([82765e7](https://github.com/kevinch3/NicotinD/commit/82765e770df51fc1e8a9603013fdb1bde2a8d8fb))
+* **web:** raw-network fallback when an album isn't in Lidarr discography ([9df6246](https://github.com/kevinch3/NicotinD/commit/9df62467b05f75369bf6b42f5021978f81c75f0e))
+* **web:** resolve artist link by name for network-played tracks ([ae52cc1](https://github.com/kevinch3/NicotinD/commit/ae52cc1cd0b9fbce26fcbdfef9f679b58bde9018))
+
+
+### Bug Fixes
+
+* **metadata:** drop placeholder artist from the fix/optimize query ([3915a8d](https://github.com/kevinch3/NicotinD/commit/3915a8d5c5bc98bb9cd58d18db880b4a9eeb672a))
+
 ## [0.1.88](https://github.com/kevinch3/NicotinD/compare/v0.1.87...v0.1.88) (2026-06-17)
 
 
