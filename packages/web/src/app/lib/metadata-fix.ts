@@ -1,7 +1,35 @@
 import type { MetadataCandidate, ApplyMetadataRequest } from '../../types/core';
 
-/** Default Lidarr query for an album's fix modal: its current "<artist> <album>". */
+/**
+ * Placeholder / "unknown" artist names that poison a "<artist> <album>" query
+ * (a rip tagged "<Desconocido>" never matches a real band). Mirrors the API's
+ * `isPlaceholderArtist`. Punctuation stripped so "<Desconocido>" → "desconocido".
+ */
+export function isPlaceholderArtist(artist: string): boolean {
+  const a = artist
+    .toLowerCase()
+    .replace(/[^\w\s]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return (
+    a === '' ||
+    a === 'desconocido' ||
+    a === 'artista desconocido' ||
+    a === 'unknown' ||
+    a === 'unknown artist' ||
+    a === 'various artists' ||
+    a === 'various' ||
+    a === 'va'
+  );
+}
+
+/**
+ * Default Lidarr query for an album's fix modal: its current "<artist> <album>",
+ * but album title alone when the stored artist is a placeholder ("<Desconocido>")
+ * that would otherwise poison the search.
+ */
 export function defaultQuery(artist: string, album: string): string {
+  if (isPlaceholderArtist(artist)) return album.trim();
   return `${artist} ${album}`.trim();
 }
 

@@ -9,6 +9,7 @@ import { setArtwork } from './artwork-store.js';
 import { setReleaseType, mapLidarrAlbumType } from './release-meta-store.js';
 import { setOverride, findByCorrectedId } from './metadata-override-store.js';
 import { pruneOrphanArtist } from './library-aggregates.js';
+import { isPlaceholderArtist } from './artwork-backfill.js';
 
 const log = createLogger('metadata-fix');
 
@@ -97,7 +98,11 @@ export async function searchCandidates(
     .query<AlbumRow, [string]>('SELECT id, name, artist FROM library_albums WHERE id = ?')
     .get(albumId);
   if (!album) return null;
-  const q = (query ?? `${album.artist} ${album.name}`).trim();
+  // A placeholder artist ("<Desconocido>") poisons the default query, so fall back
+  // to an album-title-only search — the user can refine it (e.g. add the real
+  // artist) in the editable box.
+  const fallback = isPlaceholderArtist(album.artist) ? album.name : `${album.artist} ${album.name}`;
+  const q = (query ?? fallback).trim();
   const hits = await lidarr.album.lookup(q).catch((err) => {
     log.warn({ err, q }, 'metadata-fix lookup failed');
     return [] as LidarrAlbum[];

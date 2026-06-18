@@ -4,7 +4,7 @@ import { createLogger } from '@nicotind/core';
 import { normalizeForGrouping } from './album-grouping.js';
 import { setArtwork, pickAlbumCover } from './artwork-store.js';
 import { setReleaseType, mapLidarrAlbumType } from './release-meta-store.js';
-import { looksLikeNonAlbum, normalizeName } from './artwork-backfill.js';
+import { looksLikeNonAlbum, normalizeName, isPlaceholderArtist } from './artwork-backfill.js';
 
 const log = createLogger('metadata-optimize');
 
@@ -74,6 +74,10 @@ export async function optimizeAlbum(
     .get(albumId);
   if (!album) return out;
   if (looksLikeNonAlbum(album.name, album.artist)) return out;
+  // A placeholder artist ("<Desconocido>") can't be matched all-or-nothing (the
+  // artist guard below would never pass, and the lookup is poisoned). These are
+  // fixed via the user-driven metadata-fix modal, not the bulk optimizer.
+  if (isPlaceholderArtist(album.artist)) return out;
 
   const hits = await lidarr.album.lookup(`${album.artist} ${album.name}`).catch((err) => {
     log.warn({ err, album: album.name }, 'Lidarr album lookup failed');

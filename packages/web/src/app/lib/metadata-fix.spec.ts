@@ -1,10 +1,24 @@
 import { describe, it, expect } from 'vitest';
 import type { MetadataCandidate } from '../../types/core';
-import { defaultQuery, candidateToRequest, manualToRequest } from './metadata-fix';
+import { defaultQuery, candidateToRequest, manualToRequest, isPlaceholderArtist } from './metadata-fix';
 
 describe('defaultQuery', () => {
   it('joins artist and album', () => {
     expect(defaultQuery('La Portuaria', 'Selva')).toBe('La Portuaria Selva');
+  });
+  it('drops a placeholder artist and searches by album only', () => {
+    expect(defaultQuery('<Desconocido>', 'Selva')).toBe('Selva');
+  });
+});
+
+describe('isPlaceholderArtist', () => {
+  it('flags bracketed / unknown placeholders', () => {
+    for (const n of ['<Desconocido>', 'Unknown Artist', 'Various Artists', '']) {
+      expect(isPlaceholderArtist(n)).toBe(true);
+    }
+  });
+  it('passes a real band through', () => {
+    expect(isPlaceholderArtist('La Portuaria')).toBe(false);
   });
 });
 
