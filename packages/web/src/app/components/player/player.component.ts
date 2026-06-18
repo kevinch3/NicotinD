@@ -630,11 +630,18 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
   // The bar itself does not move during the gesture; we only track start→end
   // displacement to distinguish a tap / swipe-up (open Now Playing) from a scroll.
   private readonly barDrag = createPointerDrag({
+    onMove: (event, start) => {
+      // Commit the open the moment an upward swipe crosses the threshold rather
+      // than waiting for pointerup: on touch the browser can reclaim a vertical
+      // pan and fire pointercancel before pointerup, so the old end-only check
+      // dropped real swipes. Idempotent — set(true) is a no-op once open.
+      if (start.clientY - event.clientY > PlayerComponent.OPEN_THRESHOLD_PX) {
+        this.player.setNowPlayingOpen(true);
+      }
+    },
     onEnd: (event, start) => {
       const deltaY = event.clientY - start.clientY;
-      const isTap = Math.abs(deltaY) <= PlayerComponent.TAP_TOLERANCE_PX;
-      const isSwipeUp = deltaY < -PlayerComponent.OPEN_THRESHOLD_PX;
-      if (isTap || isSwipeUp) {
+      if (Math.abs(deltaY) <= PlayerComponent.TAP_TOLERANCE_PX) {
         this.player.setNowPlayingOpen(true);
       }
     },

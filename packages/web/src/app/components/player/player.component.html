@@ -22,8 +22,15 @@
         </div>
       }
 
-      <!-- Grab handle — pull up / tap to open Now Playing -->
-      <div class="flex justify-center pt-1.5 pb-0.5 touch-none select-none cursor-pointer">
+      <!-- Grab handle — pull up / tap to open Now Playing. Wired to the same
+           open gesture as the bar so the visible hatch is actually draggable
+           (it had no handler before); `touch-none` keeps the browser from
+           reclaiming the vertical swipe as a page scroll. -->
+      <div
+        class="flex justify-center pt-2 pb-1 touch-none select-none cursor-pointer"
+        data-testid="player-grab"
+        (pointerdown)="onBarPointerDown($event)"
+      >
         <div class="w-10 h-1 rounded-full bg-theme-muted/60"></div>
       </div>
 

@@ -400,7 +400,9 @@ describe('PlayerComponent', () => {
   describe('expand gesture', () => {
     const down = (clientY: number, target: HTMLElement, button = 0) =>
       ({ clientY, button, target }) as unknown as PointerEvent;
-    // Release through the real document listener the primitive attaches.
+    // Move/release through the real document listeners the primitive attaches.
+    const move = (clientY: number) =>
+      document.dispatchEvent(new MouseEvent('pointermove', { clientY }));
     const release = (clientY: number) =>
       document.dispatchEvent(new MouseEvent('pointerup', { clientY }));
 
@@ -415,7 +417,10 @@ describe('PlayerComponent', () => {
     it('opens Now Playing on a swipe up past the threshold', () => {
       playerService.setNowPlayingOpen(false);
       component.onBarPointerDown(down(200, document.createElement('div')));
-      release(140); // delta -60 < -40 threshold
+      // Commits on move (delta -60 < -40) — touch can fire pointercancel before
+      // pointerup, so waiting for release dropped real swipes.
+      move(140);
+      release(140);
 
       expect(playerService.nowPlayingOpen()).toBe(true);
     });
