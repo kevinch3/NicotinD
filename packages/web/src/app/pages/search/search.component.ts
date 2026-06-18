@@ -33,12 +33,13 @@ import {
   type FolderGroup,
 } from '../../lib/folder-utils';
 import { groupBySong, formatBadge, type SongResult } from '../../lib/song-results';
+import { archiveSubtitle } from '../../lib/archive-display';
 import { FolderBrowserComponent } from '../../components/folder-browser/folder-browser.component';
 import { AlbumHuntModalComponent } from '../../components/album-hunt-modal/album-hunt-modal.component';
 import { TrackRowComponent } from '../../components/track-row/track-row.component';
 import { toTrack, addToPlaylistAction } from '../../lib/track-utils';
 import { extractSharedUrl } from '../../lib/share-url';
-import { httpErrorMessage } from '../../lib/http-error';
+import { httpErrorMessage, httpErrorCode } from '../../lib/http-error';
 import {
   shouldOpenDirectSearch,
   discographyFallbackNote,
@@ -231,6 +232,9 @@ export class SearchComponent implements OnInit, OnDestroy {
   readonly resolvingAlbum = signal<string | null>(null); // foreignAlbumId being resolved
   readonly resolveError = signal<string | null>(null);
   readonly directSearchOpen = signal(false);
+  // Set when a catalog album can't be resolved (not in Lidarr) and we fall back to
+  // a raw network search — explains why the results switched to the network lane.
+  readonly rawFallbackNote = signal<string | null>(null);
   readonly huntingAlbum = signal<DiscographyAlbum | null>(null);
   readonly huntingArtistName = signal('');
 
@@ -478,13 +482,35 @@ export class SearchComponent implements OnInit, OnDestroy {
         tracks: [],
       });
     } catch (err) {
-      // Surface the server's reason (e.g. "isn't in …'s Lidarr discography yet",
-      // or a transient Lidarr metadata outage) instead of a generic fallback —
-      // HttpErrorResponse isn't an Error, so we must read its `{ error }` body.
+      // A compilation/best-of that exists globally but not in the artist's Lidarr
+      // discography can't be hunted the guided way. Rather than dead-end, auto-fall
+      // back to a raw Soulseek search for "<artist> <album>" (user-chosen behavior)
+      // so the network lane still surfaces downloadable folder candidates.
+      if (httpErrorCode(err) === 'ALBUM_NOT_IN_LIDARR') {
+        this.rawHuntFallback(album);
+        return;
+      }
+      // Surface the server's reason (e.g. a transient Lidarr metadata outage)
+      // instead of a generic fallback — HttpErrorResponse isn't an Error, so we
+      // must read its `{ error }` body.
       this.resolveError.set(httpErrorMessage(err, 'Failed to prepare album'));
     } finally {
       this.resolvingAlbum.set(null);
     }
+  }
+
+  // Raw-string network fallback for an album missing from Lidarr's discography:
+  // search Soulseek for "<artist> <album>" and open the network lane so the user
+  // gets folder candidates to download. Mirrors the §A auto-open-network pattern.
+  private rawHuntFallback(album: CatalogAlbum): void {
+    this.resolvingAlbum.set(null);
+    this.search.setQuery(`${album.artistName} ${album.title}`.trim());
+    // executeSearch runs its synchronous reset (clearing the note) before its first
+    // await, so set the note *after* kicking it off and it survives the run.
+    void this.executeSearch({ forceDirectOpen: true });
+    this.rawFallbackNote.set(
+      `"${album.title}" isn't in ${album.artistName}'s catalog yet — searching the network for it instead.`,
+    );
   }
 
   closeHunt(): void {
@@ -561,6 +587,8 @@ export class SearchComponent implements OnInit, OnDestroy {
   isArchiveAcquired(item: ArchiveCandidate): boolean {
     return this.archiveAcquired().has(item.identifier);
   }
+
+  archiveSubtitle = archiveSubtitle;
 
   toggleDirectSearch(): void {
     this.directSearchOpen.update((v) => !v);
@@ -684,7 +712,7 @@ export class SearchComponent implements OnInit, OnDestroy {
 
   // ─── Private ────────────────────────────────────────────────────
 
-  private async executeSearch(): Promise<void> {
+  private async executeSearch(opts?: { forceDirectOpen?: boolean }): Promise<void> {
     const query = this.search.query().trim();
     if (!query) return;
 
@@ -700,6 +728,9 @@ export class SearchComponent implements OnInit, OnDestroy {
     this.searchError.set(null);
     this.downloadError.set(null);
     this.resolveError.set(null);
+    // A raw fallback re-sets this note right after kicking off the search; a normal
+    // user-initiated search clears it here so it never lingers.
+    this.rawFallbackNote.set(null);
     this.catalog.set(null);
     this.catalogUnavailable.set(false);
     this.librarySongs.set([]);
@@ -729,7 +760,7 @@ export class SearchComponent implements OnInit, OnDestroy {
       // Open the raw-search fallback whenever the guided path has no actionable
       // album cards — no catalog, or an artist matched but their discography
       // wasn't available (§A6). Artist pills alone don't keep it closed.
-      this.directSearchOpen.set(shouldOpenDirectSearch(this.catalog()));
+      this.directSearchOpen.set(opts?.forceDirectOpen || shouldOpenDirectSearch(this.catalog()));
       this.loading.set(false);
     }
   }

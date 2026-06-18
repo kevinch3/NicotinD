@@ -63,7 +63,10 @@ export function catalogRoutes({ catalog }: CatalogRoutesOptions) {
       // is a 404, not a server error — don't dump it at 500 with a scary log.
       const status = (err instanceof NicotinDError ? err.statusCode : 500) as ContentfulStatusCode;
       if (status >= 500) log.warn({ album: body.albumTitle, err: msg }, 'Catalog resolve failed');
-      return c.json({ error: msg }, status);
+      // Expose the typed error code so the web can branch (e.g. auto-fall back to a
+      // raw network hunt on ALBUM_NOT_IN_LIDARR) instead of string-matching the message.
+      const code = err instanceof NicotinDError ? err.code : undefined;
+      return c.json({ error: msg, code }, status);
     }
   });
 

@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { httpErrorMessage } from './http-error';
+import { httpErrorMessage, httpErrorCode } from './http-error';
 
 describe('httpErrorMessage', () => {
   it('prefers the server-supplied { error } body of an HttpErrorResponse', () => {
@@ -26,5 +26,19 @@ describe('httpErrorMessage', () => {
   it('ignores an empty server message string', () => {
     const err = new HttpErrorResponse({ status: 503, error: { error: '' } });
     expect(httpErrorMessage(err, 'fallback')).toBe('fallback');
+  });
+});
+
+describe('httpErrorCode', () => {
+  it('reads the typed code from an HttpErrorResponse body', () => {
+    const err = new HttpErrorResponse({
+      status: 404,
+      error: { error: 'nope', code: 'ALBUM_NOT_IN_LIDARR' },
+    });
+    expect(httpErrorCode(err)).toBe('ALBUM_NOT_IN_LIDARR');
+  });
+  it('returns undefined when no code is present', () => {
+    expect(httpErrorCode(new HttpErrorResponse({ status: 500 }))).toBeUndefined();
+    expect(httpErrorCode({})).toBeUndefined();
   });
 });
