@@ -99,13 +99,24 @@ describe('searchCandidates', () => {
     expect(await searchCandidates(db, fakeLidarr([]), 'nope')).toBeNull();
   });
   it('defaults the query to "<artist> <album>" and ranks hits', async () => {
+    const { albumId } = seedAlbum({ artist: 'La Portuaria', album: 'Selva' });
+    const res = await searchCandidates(
+      db,
+      fakeLidarr([{ foreignAlbumId: 'mb', title: 'Selva', artist: { artistName: 'La Portuaria' } as never }]),
+      albumId,
+    );
+    expect(res?.query).toBe('La Portuaria Selva');
+    expect(res?.candidates[0]?.artist).toBe('La Portuaria');
+  });
+  it('drops a placeholder artist from the default query (searches album only)', async () => {
+    // "<Desconocido> Selva" never matches the real band — fall back to "Selva".
     const { albumId } = seedAlbum({ artist: '<Desconocido>', album: 'Selva' });
     const res = await searchCandidates(
       db,
       fakeLidarr([{ foreignAlbumId: 'mb', title: 'Selva', artist: { artistName: 'La Portuaria' } as never }]),
       albumId,
     );
-    expect(res?.query).toBe('<Desconocido> Selva');
+    expect(res?.query).toBe('Selva');
     expect(res?.candidates[0]?.artist).toBe('La Portuaria');
   });
   it('honors an editable query override', async () => {

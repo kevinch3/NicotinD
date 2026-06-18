@@ -11,3 +11,9 @@ export function httpErrorMessage(err: unknown, fallback: string): string {
   if (err instanceof Error && err.message) return err.message;
   return fallback;
 }
+
+/** Read the server's typed error `code` (e.g. "ALBUM_NOT_IN_LIDARR") from a failed call, if any. */
+export function httpErrorCode(err: unknown): string | undefined {
+  const code = (err as { error?: { code?: string } })?.error?.code;
+  return typeof code === 'string' && code.length > 0 ? code : undefined;
+}

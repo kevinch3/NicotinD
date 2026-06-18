@@ -278,6 +278,16 @@ LibriVox "Patchwork Girl of Oz" for a "Shaggy" search), radio shows and podcasts
 and **sorts by `downloads desc`** so popular, real music ranks above obscure mashups/unknown uploads.
 *Tests:* `archive.test.ts` ("excludes non-music collections", "sorts by downloads").
 
+**Fixed again (2026-06-18):** a real "Shaggy" session still returned junk (a non-LibriVox audiobook,
+ICP, mashup singles), so the deny-list was **broadened** (`audiobooksandpoetry` umbrella, `radio`,
+`audio_tech`, live-tape archives `gratefuldead`/`etree`) and each deduped item is now **enriched with
+a track count + album/single `kind`** via a bounded parallel `/metadata/<id>` lookup
+(`countArchiveTracks` = largest single-format audio group). Items proven to have **no audio files are
+dropped**, and the web shows `creator · year · N tracks · album/single` so the user can tell an
+audiobook (one giant "album" by "L. Frank Baum") from a real record. *Tests:* `archive.test.ts`
+("excludes the broader … collections", "annotates each item with track count + kind", "drops items …
+no audio files", `countArchiveTracks`), web `archive-display.spec.ts`.
+
 ### B2 — erratic recall + silent failure (Medium)
 Free-text `?q=Zara Larsson` returned **0 items on one call and 20 on the next within ~1 minute**. The
 service maps any non-OK status or thrown error to `[]` (logs a warning, returns empty), so a

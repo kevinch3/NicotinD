@@ -258,6 +258,28 @@ describe('library routes', () => {
     const missing = await app.request('/songs/does-not-exist/acquisition');
     expect(missing.status).toBe(404);
   });
+
+  it('GET /artists/by-name resolves a name to its artist id (diacritic-insensitive)', async () => {
+    sharedDb.run('DELETE FROM library_artists');
+    sharedDb.run(
+      `INSERT INTO library_artists (id, name, album_count, synced_at) VALUES ('art-lp', 'La Portuaria', 1, 1)`,
+    );
+
+    const exact = await app.request('/artists/by-name?name=La%20Portuaria');
+    expect(exact.status).toBe(200);
+    expect(await exact.json()).toEqual({ id: 'art-lp' });
+
+    // Accented query still resolves via the diacritic-folded fallback scan.
+    const accented = await app.request('/artists/by-name?name=La%20Port%C3%BAaria');
+    expect(accented.status).toBe(200);
+    expect(await accented.json()).toEqual({ id: 'art-lp' });
+
+    const miss = await app.request('/artists/by-name?name=Nonexistent%20Band');
+    expect(miss.status).toBe(404);
+
+    const blank = await app.request('/artists/by-name?name=');
+    expect(blank.status).toBe(400);
+  });
 });
 
 describe('downloading album suppression', () => {

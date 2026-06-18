@@ -2,8 +2,21 @@ import { describe, expect, it, beforeEach } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import type { LidarrAlbum, LidarrArtist } from '@nicotind/lidarr-client';
 import { applySchema } from '../db.js';
-import { backfillArtwork, type BackfillLidarr } from './artwork-backfill.js';
+import { backfillArtwork, isPlaceholderArtist, type BackfillLidarr } from './artwork-backfill.js';
 import { resolveArtwork } from './artwork-store.js';
+
+describe('isPlaceholderArtist', () => {
+  it('matches bracketed / unknown placeholders (diacritic & punctuation tolerant)', () => {
+    for (const name of ['<Desconocido>', 'Desconocido', '[Unknown]', 'Unknown Artist', 'Various Artists', 'VA', '']) {
+      expect(isPlaceholderArtist(name)).toBe(true);
+    }
+  });
+  it('treats a real band as a non-placeholder', () => {
+    for (const name of ['La Portuaria', 'Shaggy', 'Bacilos']) {
+      expect(isPlaceholderArtist(name)).toBe(false);
+    }
+  });
+});
 
 let db: Database;
 

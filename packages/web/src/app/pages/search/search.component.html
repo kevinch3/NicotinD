@@ -95,6 +95,20 @@
       </button>
     </div>
   }
+  @if (rawFallbackNote()) {
+    <div
+      class="mb-6 px-4 py-3 rounded-lg bg-blue-950/40 border border-blue-900/50 flex items-center justify-between"
+      data-testid="raw-fallback-note"
+    >
+      <p class="text-sm text-blue-300">{{ rawFallbackNote() }}</p>
+      <button
+        (click)="rawFallbackNote.set(null)"
+        class="text-blue-400 hover:text-blue-200 text-lg font-medium"
+      >
+        ×
+      </button>
+    </div>
+  }
   @if (errors().length > 0) {
     <div class="mb-6 px-4 py-3 rounded-lg bg-amber-950/50 border border-amber-900/50 space-y-1">
       @for (err of errors(); track $index) {
@@ -626,14 +640,8 @@
             >
               <div class="min-w-0 flex-1">
                 <p class="text-sm font-medium text-zinc-200 truncate">{{ item.title }}</p>
-                @if (item.creator || item.year) {
-                  <p class="text-xs text-zinc-500 mt-0.5 truncate">
-                    {{ item.creator }}
-                    @if (item.creator && item.year) {
-                      ·
-                    }
-                    {{ item.year }}
-                  </p>
+                @if (archiveSubtitle(item); as sub) {
+                  <p class="text-xs text-zinc-500 mt-0.5 truncate">{{ sub }}</p>
                 }
               </div>
               <button

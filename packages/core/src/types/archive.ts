@@ -9,4 +9,13 @@ export interface ArchiveCandidate {
   creator: string;
   year: string | null;
   detailsUrl: string;
+  /**
+   * Number of audio tracks the item would download (the largest single-format
+   * group, mirroring what the `archive` plugin stages). `null` when the per-item
+   * metadata lookup was unavailable. Lets the UI show "N tracks" + album/single so
+   * the user knows what they'll get before acquiring.
+   */
+  trackCount?: number | null;
+  /** `single` (1 track), `album` (2+), or `null` when the track count is unknown. */
+  kind?: 'single' | 'album' | null;
 }

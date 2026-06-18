@@ -329,14 +329,8 @@
                 >
                   <div class="min-w-0 flex-1">
                     <p class="text-sm font-medium text-theme-primary truncate">{{ item.title }}</p>
-                    @if (item.creator || item.year) {
-                      <p class="text-xs text-theme-muted mt-0.5 truncate">
-                        {{ item.creator }}
-                        @if (item.creator && item.year) {
-                          ·
-                        }
-                        {{ item.year }}
-                      </p>
+                    @if (archiveSubtitle(item); as sub) {
+                      <p class="text-xs text-theme-muted mt-0.5 truncate">{{ sub }}</p>
                     }
                   </div>
                   <button

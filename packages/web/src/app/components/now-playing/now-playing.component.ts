@@ -7,7 +7,9 @@ import { PlaybackWsService } from '../../services/playback-ws.service';
 import { DeviceSwitcherComponent } from '../device-switcher/device-switcher.component';
 import { TrackContextMenuComponent } from '../track-context-menu/track-context-menu.component';
 import { TrackInfoSheetComponent } from '../track-info-sheet/track-info-sheet.component';
-import { resolveArtistRoute } from '../../lib/route-utils';
+import { resolveArtistTarget } from '../../lib/route-utils';
+import { ApiService } from '../../services/api.service';
+import { firstValueFrom } from 'rxjs';
 import { createPointerDrag } from '../../lib/pointer-drag';
 import { SeekBarComponent } from '../seek-bar/seek-bar.component';
 import { CoverArtComponent } from '../cover-art/cover-art.component';
@@ -36,6 +38,7 @@ export class NowPlayingComponent {
   readonly remote = inject(RemotePlaybackService);
   private ws = inject(PlaybackWsService);
   private router = inject(Router);
+  private api = inject(ApiService);
 
   // Context menu state
   readonly contextMenu = signal<{ x: number; y: number } | null>(null);
@@ -164,11 +167,16 @@ export class NowPlayingComponent {
     this.sheetDrag.start(event);
   }
 
-  navigateToArtist(): void {
+  async navigateToArtist(): Promise<void> {
     const track = this.player.currentTrack();
     if (!track) return;
     this.player.setNowPlayingOpen(false);
-    this.router.navigate(resolveArtistRoute(track.artistId));
+    // A track played from a network result has no artistId — resolve by name so
+    // the link still lands on the real artist page when they exist locally.
+    const target = await resolveArtistTarget(track, (name) =>
+      firstValueFrom(this.api.resolveArtistIdByName(name)),
+    );
+    void this.router.navigate(target);
   }
 
   onTitleContextMenu(event: MouseEvent): void {

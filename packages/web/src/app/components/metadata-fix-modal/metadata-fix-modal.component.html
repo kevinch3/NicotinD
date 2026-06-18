@@ -12,6 +12,13 @@
       Search for the correct release and confirm — even a rough match. Or enter the details by hand.
     </p>
 
+    @if (artistIsPlaceholder()) {
+      <p class="text-amber-400 text-xs mb-3" data-testid="placeholder-artist-hint">
+        The stored artist looks unknown, so we searched by album title only. Type the correct
+        artist into the box below (e.g. “La Portuaria Selva”) to narrow the results.
+      </p>
+    }
+
     <!-- Editable search -->
     <div class="flex gap-2 mb-3">
       <input

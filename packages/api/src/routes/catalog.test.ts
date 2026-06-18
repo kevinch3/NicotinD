@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, mock } from 'bun:test';
 import { Hono } from 'hono';
+import { NicotinDError } from '@nicotind/core';
 import type { AuthEnv } from '../middleware/auth.js';
 import { catalogRoutes } from './catalog.js';
 import type { CatalogService } from '../services/catalog-search.service.js';
@@ -120,5 +121,28 @@ describe('catalog routes', () => {
     expect(res.status).toBe(500);
     const body = (await res.json()) as { error: string };
     expect(body.error).toMatch(/not yet available/);
+  });
+
+  it('POST /resolve returns the typed code for ALBUM_NOT_IN_LIDARR (404)', async () => {
+    catalog = makeCatalogMock({
+      resolveAlbum: mock(async () => {
+        throw new NicotinDError(
+          `"The Best of Shaggy" isn't in Shaggy's Lidarr discography yet`,
+          'ALBUM_NOT_IN_LIDARR',
+          404,
+        );
+      }),
+    });
+    app = makeApp(catalog);
+
+    const res = await app.request('/resolve', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ foreignAlbumId: 'rg', artistName: 'Shaggy', albumTitle: 'The Best of Shaggy' }),
+    });
+    expect(res.status).toBe(404);
+    const body = (await res.json()) as { error: string; code?: string };
+    expect(body.code).toBe('ALBUM_NOT_IN_LIDARR');
+    expect(body.error).toMatch(/Lidarr discography/);
   });
 });

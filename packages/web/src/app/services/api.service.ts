@@ -1,5 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
+import { type Observable, of, map, catchError } from 'rxjs';
 import type {
   SlskdUserTransferGroup,
   AcquireJob,
@@ -393,6 +394,16 @@ export class ApiService {
       albums: Album[];
       singlesAndEps: Album[];
     }>(`/api/library/artists/${id}`);
+  }
+
+  /** Resolve an artist name → local artist id (null when not in the library). */
+  resolveArtistIdByName(name: string): Observable<string | null> {
+    return this.http
+      .get<{ id: string }>('/api/library/artists/by-name', { params: { name } })
+      .pipe(
+        map((r) => r.id),
+        catchError(() => of(null)),
+      );
   }
 
   // Dedicated singles & EPs listing (kept out of the main Albums grid).

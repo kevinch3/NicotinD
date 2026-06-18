@@ -1,11 +1,25 @@
-import { Component, HostListener, inject, input, output, signal, OnInit } from '@angular/core';
+import {
+  Component,
+  HostListener,
+  inject,
+  input,
+  output,
+  signal,
+  computed,
+  OnInit,
+} from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import type { MetadataCandidate } from '../../../types/core';
 import { ApiService } from '../../services/api.service';
 import { AuthService } from '../../services/auth.service';
 import { httpErrorMessage } from '../../lib/http-error';
-import { defaultQuery, candidateToRequest, manualToRequest } from '../../lib/metadata-fix';
+import {
+  defaultQuery,
+  candidateToRequest,
+  manualToRequest,
+  isPlaceholderArtist,
+} from '../../lib/metadata-fix';
 
 /**
  * Admin metadata fix modal: search Lidarr with an editable query, pick a candidate
@@ -31,6 +45,9 @@ export class MetadataFixModalComponent implements OnInit {
   readonly cancel = output<void>();
 
   readonly query = signal('');
+  // The stored artist is a placeholder ("<Desconocido>") — prompt the user to type
+  // the real artist, since the default query was searched by album title alone.
+  readonly artistIsPlaceholder = computed(() => isPlaceholderArtist(this.currentArtist()));
   readonly searched = signal(false);
   readonly searching = signal(false);
   readonly applying = signal(false);

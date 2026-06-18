@@ -67,6 +67,27 @@ export function normalizeName(name: string): string {
 }
 
 /**
+ * Placeholder / "unknown" artist names that poison a "<artist> <album>" Lidarr
+ * query: a rip tagged "<Desconocido>" searches `"<Desconocido> Selva"`, which a
+ * known band never matches. Callers drop the artist and search by album title
+ * alone when this is true. Punctuation is stripped first (via `normalizeName`),
+ * so bracketed variants like "<Desconocido>" / "[Unknown]" collapse to the word.
+ */
+export function isPlaceholderArtist(artist: string): boolean {
+  const a = normalizeName(artist);
+  return (
+    a === '' ||
+    a === 'desconocido' ||
+    a === 'artista desconocido' ||
+    a === 'unknown' ||
+    a === 'unknown artist' ||
+    a === 'various artists' ||
+    a === 'various' ||
+    a === 'va'
+  );
+}
+
+/**
  * Populate `library_artwork` for albums/artists already in the library by
  * matching them to Lidarr. Artists resolve via `artist_discography_links` or by
  * name against the monitored list; albums resolve by edition-stripped group key
