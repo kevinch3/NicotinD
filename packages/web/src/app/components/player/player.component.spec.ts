@@ -364,9 +364,10 @@ describe('PlayerComponent', () => {
   // ─── Layout — deterministic control position ───────────────────────────────
 
   describe('mini-player layout', () => {
-    // The control cluster must sit in a fixed position regardless of the track
-    // title/artist length. That holds iff the two side columns (track info + right)
-    // are equal flex on mobile and the controls are content-sized between them.
+    // Two-column mobile layout: track info is the only growing column (flex-1),
+    // so it fills the bar and pushes the content-sized controls to the right edge.
+    // The device-switcher column must NOT reserve mobile space (no empty third
+    // column) — it's content-sized so it's 0-width when the switcher is hidden.
     function columns(): { trackInfo: Element; controls: Element; right: Element } {
       const root = fixture.nativeElement as HTMLElement;
       const trackInfo = root.querySelector('.md\\:w-60');
@@ -376,17 +377,18 @@ describe('PlayerComponent', () => {
       return { trackInfo, controls, right };
     }
 
-    it('gives the two side columns equal flex on mobile so controls stay centered', () => {
+    it('grows only the track-info column on mobile (pushes controls right)', () => {
       const { trackInfo, right } = columns();
-      // Equal mobile flex (flex-1) → leftover space splits evenly → centered controls.
+      // Track info is the single mobile flex-1 column.
       expect(trackInfo.classList.contains('flex-1')).toBe(true);
-      expect(right.classList.contains('flex-1')).toBe(true);
-      // Side columns collapse to content/fixed width on desktop.
       expect(trackInfo.classList.contains('md:flex-none')).toBe(true);
+      // The right (device-switcher) column must NOT be flex-1 on mobile — that
+      // empty third column was the wasted-space bug.
+      expect(right.classList.contains('flex-1')).toBe(false);
       expect(right.classList.contains('md:flex-none')).toBe(true);
     });
 
-    it('content-sizes the control cluster on mobile (not flex-1, so it never drifts)', () => {
+    it('content-sizes the control cluster on mobile (sits at the right edge)', () => {
       const { controls } = columns();
       expect(controls.classList.contains('flex-none')).toBe(true);
       expect(controls.classList.contains('flex-1')).toBe(false);

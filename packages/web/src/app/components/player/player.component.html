@@ -39,8 +39,9 @@
         class="flex items-center px-3 md:px-4 gap-2 md:gap-4 h-14 cursor-pointer touch-pan-y"
         (pointerdown)="onBarPointerDown($event)"
       >
-        <!-- Track info — mobile: equal flex column (matches the right column) so the
-             centered controls stay put regardless of title/artist length; desktop: fixed width. -->
+        <!-- Track info — mobile: the only growing column (flex-1), so it fills the
+             bar and pushes the controls to the right edge (two-column layout);
+             desktop: fixed width. -->
         <div class="flex items-center gap-3 min-w-0 flex-1 md:flex-none md:w-60">
           @if (player.currentTrack(); as track) {
             <app-cover-art
@@ -60,8 +61,8 @@
           <!-- TODO: PreserveButton goes here (Phase 5) -->
         </div>
 
-        <!-- Controls — mobile: content-sized so the cluster is centered between the two
-             equal flex columns (deterministic position); desktop: flex-1 to host the progress bar. -->
+        <!-- Controls — mobile: content-sized, sits at the right edge after the
+             track-info column grows; desktop: flex-1 to host the progress bar. -->
         <div class="flex-none md:flex-1 flex flex-col items-center gap-1">
           <div class="flex items-center gap-2 md:gap-3">
             <!-- Shuffle - desktop only -->
@@ -156,9 +157,9 @@
           </div>
         </div>
 
-        <!-- Right side: device switcher — mobile: equal flex column (mirrors the track-info
-             column) so the controls remain centered; desktop: content-sized. -->
-        <div class="flex items-center justify-end flex-1 md:flex-none md:flex-shrink-0">
+        <!-- Right side: device switcher — content-sized on every breakpoint, so it
+             takes no space when the switcher is hidden (no empty third column). -->
+        <div class="flex items-center justify-end md:flex-none md:flex-shrink-0">
           @if (remote.remoteEnabled()) {
             <app-device-switcher />
           }

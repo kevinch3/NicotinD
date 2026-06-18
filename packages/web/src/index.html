@@ -4,7 +4,11 @@
     <meta charset="utf-8" />
     <title>NicotinD</title>
     <base href="/" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- viewport-fit=cover lets the layout extend under the iOS notch/home
+         indicator and makes env(safe-area-inset-*) non-zero so the sticky header
+         (top) and the player/bottom-nav (bottom) can pad themselves clear of it.
+         No-op on desktop / non-notched screens (insets resolve to 0). -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <!-- Favicons (brand mark — generated from the manifest icon source by
          scripts/generate-icons.ts). SVG first for crisp high-DPI tabs; PNG and
          .ico fall back for older browsers. -->
