@@ -237,7 +237,7 @@
       <section>
         <div class="flex items-center justify-between mb-3">
           <div class="flex items-center gap-2">
-            <h2 class="text-xs font-semibold uppercase tracking-wider text-theme-muted">
+            <h2 data-testid="recent-heading" class="text-xs font-semibold uppercase tracking-wider text-theme-muted">
               Recently Added
               @if (recentSongs().length > 0) {
                 <span class="font-normal normal-case ml-1.5 text-theme-muted">({{ recentSongs().length }})</span>

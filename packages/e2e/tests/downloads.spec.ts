@@ -27,6 +27,6 @@ test.describe('downloads', () => {
     await expect(page.getByTestId('downloads-tab-recent')).toBeVisible();
 
     await page.getByTestId('downloads-tab-recent').click();
-    await expect(page.getByText('Recently Added')).toBeVisible();
+    await expect(page.getByTestId('recent-heading')).toBeVisible();
   });
 });
