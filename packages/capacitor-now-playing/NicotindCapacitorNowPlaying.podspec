@@ -11,7 +11,10 @@ Pod::Spec.new do |s|
   s.author = 'NicotinD'
   s.source = { :git => 'https://github.com/kevinch3/nicotind.git', :tag => s.version.to_s }
   s.source_files = 'ios/Sources/**/*.{swift,h,m}'
-  s.ios.deployment_target = '14.0'
+  # Must be <= Capacitor's own pod target (13.0 on Capacitor 6.2), or the
+  # generated Podfile (platform :ios, '13.0') rejects this pod as requiring a
+  # higher minimum deployment target. MPNowPlayingInfoCenter is iOS 11+.
+  s.ios.deployment_target = '13.0'
   s.dependency 'Capacitor'
   s.swift_version = '5.1'
 end
