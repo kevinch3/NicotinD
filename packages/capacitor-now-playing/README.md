@@ -42,7 +42,8 @@ plugin only when `isIosNative()`):
 
 Pure native; no JS build step. It is a workspace dependency of
 `@nicotind/mobile`, so `cap sync ios` discovers it (via the `capacitor.ios.src`
-marker + `NicotindNowPlaying.podspec`) and `pod install` adds it to the
+marker + `NicotindCapacitorNowPlaying.podspec` — the pod name Capacitor derives
+from the `@nicotind/capacitor-now-playing` package name) and `pod install` adds it to the
 ephemerally-generated `ios/` project. The Swift compiles in the macOS CI `ios`
 job (`xcodebuild`). **On-device behavior is a manual validation gate** — see
 `docs/ios-app.md`.
