@@ -11,6 +11,7 @@ import { TransferService } from '../../services/transfer.service';
 import { AcquireService } from '../../services/acquire.service';
 import { PluginService } from '../../services/plugin.service';
 import { baseQueries, skewedQueries } from '../../lib/hunt-queries';
+import { archiveSubtitle } from '../../lib/archive-display';
 
 type HuntState = 'idle' | 'searching' | 'results' | 'error' | 'downloading';
 export type QueryPhaseState = 'idle' | 'searching' | 'done' | 'skipped';
@@ -145,6 +146,8 @@ export class AlbumHuntModalComponent implements OnInit {
   isAcquired(item: ArchiveCandidate): boolean {
     return this.archiveAcquired().has(item.identifier);
   }
+
+  archiveSubtitle = archiveSubtitle;
 
   async startHunt(): Promise<void> {
     this.state.set('searching');

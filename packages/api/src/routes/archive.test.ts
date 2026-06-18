@@ -2,7 +2,11 @@ import { describe, expect, it, mock } from 'bun:test';
 import { Hono } from 'hono';
 import type { AuthEnv } from '../middleware/auth.js';
 import { archiveRoutes } from './archive.js';
-import { ArchiveSearchService, archiveDedupeKey } from '../services/archive-search.service.js';
+import {
+  ArchiveSearchService,
+  archiveDedupeKey,
+  countArchiveTracks,
+} from '../services/archive-search.service.js';
 import type { PluginRegistry } from '../services/plugins/registry.js';
 
 const SEARCH_BODY = {
@@ -14,10 +18,32 @@ const SEARCH_BODY = {
   },
 };
 
-function fetchReturning(body: unknown, ok = true): { fn: typeof fetch; calls: string[] } {
+// Default per-item metadata: a 3-track MP3 album, so search candidates survive the
+// track-count enrichment (which drops items proven to have no audio).
+const DEFAULT_META_FILES = [
+  { name: 't1.mp3', format: 'VBR MP3' },
+  { name: 't2.mp3', format: 'VBR MP3' },
+  { name: 't3.mp3', format: 'VBR MP3' },
+];
+
+// URL-aware mock: advancedsearch calls return `body`; the per-item `/metadata/<id>`
+// enrichment calls return `metaFiles` (overridable per identifier).
+function fetchReturning(
+  body: unknown,
+  ok = true,
+  metaByIdentifier: Record<string, { name: string; format?: string }[]> = {},
+): { fn: typeof fetch; calls: string[] } {
   const calls: string[] = [];
   const fn = mock(async (url: string) => {
     calls.push(url);
+    if (url.includes('/metadata/')) {
+      const id = decodeURIComponent(url.split('/metadata/')[1] ?? '');
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ files: metaByIdentifier[id] ?? DEFAULT_META_FILES }),
+      };
+    }
     return { ok, status: ok ? 200 : 500, json: async () => body };
   }) as unknown as typeof fetch;
   return { fn, calls };
@@ -56,6 +82,8 @@ describe('ArchiveSearchService', () => {
         creator: 'Bar',
         year: '2016',
         detailsUrl: 'https://archive.org/details/foo-123',
+        trackCount: 3,
+        kind: 'album',
       },
       {
         identifier: 'baz-456',
@@ -63,6 +91,8 @@ describe('ArchiveSearchService', () => {
         creator: 'Qux',
         year: null,
         detailsUrl: 'https://archive.org/details/baz-456',
+        trackCount: 3,
+        kind: 'album',
       },
     ]);
     // Constrains to audio + requests the json output.
@@ -139,16 +169,66 @@ describe('ArchiveSearchService', () => {
   });
 
   it('recovers when the retry succeeds', async () => {
-    let n = 0;
-    const fn = mock(async () => {
-      n++;
-      return n === 1
+    let searchAttempts = 0;
+    const fn = mock(async (url: string) => {
+      if (url.includes('/metadata/')) {
+        return { ok: true, status: 200, json: async () => ({ files: DEFAULT_META_FILES }) };
+      }
+      searchAttempts++;
+      return searchAttempts === 1
         ? { ok: false, status: 503, json: async () => ({}) }
         : { ok: true, status: 200, json: async () => SEARCH_BODY };
     }) as unknown as typeof fetch;
     const out = await new ArchiveSearchService(fn).search('foo');
     expect(out).toHaveLength(2);
-    expect(n).toBe(2);
+    expect(searchAttempts).toBe(2);
+  });
+
+  it('excludes the broader audiobook/lecture/live-tape collections too', async () => {
+    const { fn, calls } = fetchReturning(SEARCH_BODY);
+    await new ArchiveSearchService(fn).search('Shaggy');
+    const decoded = decodeURIComponent(calls[0]!).replace(/\+/g, ' ');
+    expect(decoded).toContain('audiobooksandpoetry');
+    expect(decoded).toContain('etree'); // live-concert archive that floods music queries
+  });
+
+  it('annotates each item with track count + kind (album/single)', async () => {
+    const { fn } = fetchReturning(SEARCH_BODY, true, {
+      'foo-123': [{ name: 'only.flac', format: 'FLAC' }], // single
+      'baz-456': [
+        { name: 'a.mp3', format: 'VBR MP3' },
+        { name: 'b.mp3', format: 'VBR MP3' },
+      ], // album
+    });
+    const out = await new ArchiveSearchService(fn).search('foo');
+    expect(out.find((c) => c.identifier === 'foo-123')).toMatchObject({ trackCount: 1, kind: 'single' });
+    expect(out.find((c) => c.identifier === 'baz-456')).toMatchObject({ trackCount: 2, kind: 'album' });
+  });
+
+  it('drops items whose metadata proves they have no audio files', async () => {
+    const { fn } = fetchReturning(SEARCH_BODY, true, {
+      'foo-123': [{ name: 'cover.jpg' }, { name: 'meta.xml' }], // no audio → dropped
+      'baz-456': DEFAULT_META_FILES,
+    });
+    const out = await new ArchiveSearchService(fn).search('foo');
+    expect(out.map((c) => c.identifier)).toEqual(['baz-456']);
+  });
+});
+
+describe('countArchiveTracks', () => {
+  it('counts the largest single-format audio group (FLAC+MP3 dual-encode counts once)', () => {
+    expect(
+      countArchiveTracks([
+        { name: '1.flac', format: 'FLAC' },
+        { name: '2.flac', format: 'FLAC' },
+        { name: '1.mp3', format: 'VBR MP3' },
+        { name: '2.mp3', format: 'VBR MP3' },
+        { name: 'cover.jpg' },
+      ]),
+    ).toBe(2);
+  });
+  it('returns 0 when there are no audio files', () => {
+    expect(countArchiveTracks([{ name: 'reader.txt' }, { name: 'art.png' }])).toBe(0);
   });
 });
 

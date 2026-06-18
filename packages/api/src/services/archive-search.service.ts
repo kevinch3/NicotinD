@@ -3,6 +3,7 @@ import { createLogger, ServiceUnavailableError, type ArchiveCandidate } from '@n
 const log = createLogger('archive-search');
 
 const ADVANCED_SEARCH = 'https://archive.org/advancedsearch.php';
+const METADATA_BASE = 'https://archive.org/metadata';
 const DEFAULT_ROWS = 20;
 // archive.org occasionally rate-limits or blips; one immediate retry recovers
 // transient failures so a flaky response doesn't masquerade as "no results".
@@ -16,13 +17,47 @@ const MAX_RETRIES = 1;
 // keeps the lane musical. See docs/e2e-playground-findings-2026-06.md §B1.
 const NON_MUSIC_COLLECTIONS = [
   'librivoxaudio',
+  'audiobooksandpoetry', // umbrella over librivox/books/poetry — catches non-librivox audiobooks
   'audio_bookspoetry',
   'oldtimeradio',
   'radioprograms',
+  'radio', // umbrella radio collection
   'podcasts',
   'audio_religion',
   'audio_news',
+  'audio_tech', // lectures / tech talks
+  'gratefuldead', // live-tape archive that floods "best of" queries (not studio music)
+  'etree', // live concert recordings archive — same flooding problem
 ];
+
+// Cap how many deduped items we enrich with a per-item metadata lookup (track
+// count). archive.org's metadata endpoint is one request per item, fired in
+// parallel; this keeps a search to a bounded fan-out.
+const MAX_ENRICH = 16;
+
+/** A single file the metadata API reports for an item. */
+interface MetaFile {
+  name: string;
+  format?: string;
+}
+
+const AUDIO_EXTS = new Set(['.mp3', '.flac', '.ogg', '.opus', '.m4a', '.wav', '.aac', '.wma']);
+
+/**
+ * Count the audio tracks an item would yield: group audio files by format and
+ * return the largest group's size (mirrors the archive plugin's single-format
+ * selection, so a FLAC+MP3 dual-encoded album counts once, not twice). Pure.
+ */
+export function countArchiveTracks(files: MetaFile[]): number {
+  const byFormat = new Map<string, number>();
+  for (const f of files) {
+    const ext = f.name.slice(f.name.lastIndexOf('.')).toLowerCase();
+    if (!AUDIO_EXTS.has(ext)) continue;
+    const key = (f.format ?? ext).toLowerCase();
+    byFormat.set(key, (byFormat.get(key) ?? 0) + 1);
+  }
+  return byFormat.size ? Math.max(...byFormat.values()) : 0;
+}
 
 interface ArchiveDoc {
   identifier: string;
@@ -128,13 +163,49 @@ export class ArchiveSearchService {
     // Collapse format/quality/year variants of the same release. Results are
     // popularity-sorted, so keeping the first occurrence keeps the best copy.
     const seen = new Set<string>();
-    return candidates.filter((c) => {
+    const deduped = candidates.filter((c) => {
       const key = archiveDedupeKey(c);
       if (!key) return true;
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
     });
+
+    return this.enrichTrackCounts(deduped);
+  }
+
+  /**
+   * Annotate each candidate with its audio track count + kind (album/single) via a
+   * bounded, parallel per-item metadata lookup. Items the lookup proves have **no
+   * audio files** are dropped (more non-music junk removed); a failed/absent lookup
+   * leaves `trackCount`/`kind` null so the item still shows (degrades gracefully).
+   */
+  private async enrichTrackCounts(candidates: ArchiveCandidate[]): Promise<ArchiveCandidate[]> {
+    const head = candidates.slice(0, MAX_ENRICH);
+    const tail = candidates.slice(MAX_ENRICH);
+
+    const enriched = await Promise.all(
+      head.map(async (c): Promise<ArchiveCandidate | null> => {
+        const count = await this.fetchTrackCount(c.identifier);
+        if (count === null) return { ...c, trackCount: null, kind: null };
+        if (count === 0) return null; // metadata-only / non-audio item — drop it
+        return { ...c, trackCount: count, kind: count === 1 ? 'single' : 'album' };
+      }),
+    );
+
+    return [...enriched.filter((c): c is ArchiveCandidate => c !== null), ...tail];
+  }
+
+  /** Audio track count for an item, or null when its metadata is unavailable. */
+  private async fetchTrackCount(identifier: string): Promise<number | null> {
+    try {
+      const res = await this.fetchFn(`${METADATA_BASE}/${encodeURIComponent(identifier)}`);
+      if (!res.ok) return null;
+      const body = (await res.json()) as { files?: MetaFile[] };
+      return countArchiveTracks(body.files ?? []);
+    } catch {
+      return null;
+    }
   }
 
   /**
