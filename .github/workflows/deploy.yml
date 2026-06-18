@@ -214,6 +214,14 @@ jobs:
           bunx cap add ios || true
           bunx cap sync ios
 
+      # The ios/ project is ephemeral, so its AppIcon + splash are the default
+      # Capacitor mark — regenerate the branded AppIcon and splash screen from the
+      # committed assets/ sources (the same brand mark as the Android assets + PWA
+      # manifest). Android assets are committed, so only iOS needs this in CI.
+      - name: Generate branded iOS app icon + splash
+        working-directory: packages/mobile
+        run: bunx @capacitor/assets@3 generate --ios
+
       # CFBundleShortVersionString/CFBundleVersion, derived from the monorepo
       # version (same scheme as Android), consumed by the Info.plist patch below.
       - name: Derive iOS version

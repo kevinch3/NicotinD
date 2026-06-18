@@ -26,8 +26,48 @@ possible without new server work — but it is explicitly out of scope here.
 - `src/version.ts` — pure `androidVersion(semver)` → `{ versionName, versionCode }` (unit-tested); keeps
   `bun run release` the single source of truth for the app version.
 - `scripts/android-env.ts` — prints `NICOTIND_VERSION_{NAME,CODE}` for CI to feed gradle.
+- `src/native-icons.ts` — pure SVG builders for the brand mark (unit-tested), and
+  `scripts/generate-native-icons.ts` + `assets/` — see **App icons** below.
 
 The web app is built once and copied into the shell; there is **no second UI codebase**.
+
+## App icon & splash screen (Android + iOS)
+
+Both the native launcher icon **and** the launch/splash screen are the **NicotinD
+brand mark** (dark `#09090b` field, indigo `#6366f1` disc, off-white play glyph) — the
+**same mark as the PWA manifest icon / favicon** (`packages/web/scripts/generate-icons.ts`),
+not the default Capacitor bolt. One brand SVG is the source of truth, defined in
+`src/native-icons.ts` (pure, unit-tested builders):
+
+- `fullIconSvg` — the opaque full mark (iOS AppIcon + legacy Android launcher).
+- `backgroundSvg` + `foregroundSvg` — the Android **adaptive** icon layers; the
+  foreground glyph is scaled to `FOREGROUND_SAFE_ZONE` = 0.66 so launcher masks never
+  clip it.
+- `splashSvg` — the **splash**: the mark centred on the dark field, disc spanning
+  `SPLASH_DISC_FRACTION` = 0.22 of the width so it's never cropped when the square
+  source is letterboxed to a device aspect ratio. The same dark mark is used for both
+  light and dark mode (the app is dark-branded), so `splash.png` and `splash-dark.png`
+  are identical.
+
+Generation is two steps via the official **`@capacitor/assets`** tool:
+
+1. `bun run --filter @nicotind/mobile icons:source` — `scripts/generate-native-icons.ts`
+   rasterizes the SVG (via `sharp`) into the `assets/` source images: three 1024²
+   icon layers (`icon-only`, `icon-foreground`, `icon-background`) + two 2732²
+   splashes (`splash`, `splash-dark`). These are **committed** so CI needs no native
+   `sharp` build.
+2. `bun run --filter @nicotind/mobile icons:generate` (`bunx @capacitor/assets generate`)
+   — rasterizes the sources into the Android mipmaps + adaptive-icon XML + splash
+   drawables (light `drawable-*` and dark `drawable-night-*`), and the iOS AppIcon +
+   splash sets when an `ios/` project is present.
+
+The **Android** outputs are committed (regenerate + commit when the mark changes, like
+the PWA icons). The **iOS** AppIcon + splash are generated in CI because `ios/` is
+ephemeral — see [ios-app.md](./ios-app.md). Two artifacts of the regen: the old
+`values/ic_launcher_background.xml` color was dropped (the adaptive icon now references
+PNG background layers, not `@color/…`), and `@capacitor/assets` reflows
+`AndroidManifest.xml` whitespace on each run — that cosmetic churn is reverted so only
+the icon/splash assets change.
 
 ## Server-aware Angular (the core enabler)
 
