@@ -16,6 +16,21 @@ function timeAgo(ms: number): string {
 }
 
 /**
+ * Layout-critical classes for the row, exported and *bound* (not hardcoded in
+ * the template) so the long-text truncation contract is unit-testable — the JIT
+ * vitest harness can't drive a required `input()` into a render, so the spec
+ * asserts these constants instead, and the template can't drift from them.
+ *
+ * - Host: the grid item in the Downloads feed. Without `block` it stays inline
+ *   and sizes to content; without `min-w-0` a grid item refuses to shrink below
+ *   its content's max width — either way the inner `overflow-hidden` never clips.
+ * - Title: a flex item, which defaults to `min-width: auto`, so `truncate` is
+ *   inert without `min-w-0`. That missing class is what let a long URL overflow.
+ */
+export const DOWNLOAD_ITEM_HOST_CLASS = 'block min-w-0';
+export const DOWNLOAD_ITEM_TITLE_CLASS = 'text-sm text-theme-primary truncate min-w-0';
+
+/**
  * One row in the unified Downloads feed. Renders the four facets the user asked
  * for — how (method badge), what stage, when (started), where (storage path,
  * tucked behind a toggle) — plus retry / cancel / remove controls that emit to
@@ -25,6 +40,7 @@ function timeAgo(ms: number): string {
   selector: 'app-download-item',
   standalone: true,
   imports: [PipelineStageBadgeComponent],
+  host: { '[class]': 'hostClass' },
   template: `
     <div
       class="flex items-center gap-3 md:gap-4 px-3 md:px-4 py-3 rounded-lg bg-theme-surface/50 border border-theme min-w-0 overflow-hidden"
@@ -41,7 +57,7 @@ function timeAgo(ms: number): string {
           >
             <span translate="no">{{ badge().glyph }}</span>{{ badge().label }}
           </span>
-          <p class="text-sm text-theme-primary truncate" data-testid="download-title">
+          <p [class]="titleClass" data-testid="download-title">
             {{ item().title }}
           </p>
         </div>
@@ -131,6 +147,9 @@ function timeAgo(ms: number): string {
   `,
 })
 export class DownloadItemComponent {
+  readonly hostClass = DOWNLOAD_ITEM_HOST_CLASS;
+  readonly titleClass = DOWNLOAD_ITEM_TITLE_CLASS;
+
   readonly item = input.required<DownloadItem>();
   readonly retrying = input(false);
 
