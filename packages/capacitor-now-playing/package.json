@@ -6,7 +6,7 @@
   "license": "MIT",
   "files": [
     "ios",
-    "NicotindNowPlaying.podspec"
+    "NicotindCapacitorNowPlaying.podspec"
   ],
   "capacitor": {
     "ios": {

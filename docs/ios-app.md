@@ -155,7 +155,10 @@ back to `@jofr` with no regression.
 
 **Build/CI.** The plugin is a workspace dependency of `@nicotind/mobile`, so
 `cap sync ios` discovers it (via the `capacitor.ios.src` marker +
-`NicotindNowPlaying.podspec`) and `pod install` adds it to the ephemeral `ios/`
+`NicotindCapacitorNowPlaying.podspec` — the podspec filename and `s.name` **must**
+match the pod name Capacitor derives from the package name
+`@nicotind/capacitor-now-playing` → `NicotindCapacitorNowPlaying`, or `pod install`
+fails with "No podspec found") and `pod install` adds it to the ephemeral `ios/`
 project — **no `deploy.yml` change**. The Swift compiles in the macOS `ios` job
 (`xcodebuild`), the build-level gate.
 
