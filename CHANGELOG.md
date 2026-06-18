@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.91](https://github.com/kevinch3/NicotinD/compare/v0.1.90...v0.1.91) (2026-06-18)
+
+
+### Features
+
+* **mobile:** iOS Now Playing card via native MPNowPlayingInfoCenter plugin ([b149d5d](https://github.com/kevinch3/NicotinD/commit/b149d5d9bd34120e238ef55ed73e4d386478a2f4))
+
+
+### Bug Fixes
+
+* **web:** mobile two-column player, iOS notch safe-area, contained download rows ([b98259c](https://github.com/kevinch3/NicotinD/commit/b98259c18a7926213cf7f1b525d4f166e1ec2830))
+
 ## [0.1.90](https://github.com/kevinch3/NicotinD/compare/v0.1.89...v0.1.90) (2026-06-18)
 
 
