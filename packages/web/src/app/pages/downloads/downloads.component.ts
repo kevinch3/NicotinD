@@ -634,12 +634,16 @@ export class DownloadsComponent implements OnInit, OnDestroy {
     this.router.navigate(['/'], { queryParams: { q: query } });
   }
 
-  navigateToArtist(song: Song): void {
+  async navigateToArtist(song: Song): Promise<void> {
     if (song.artistId) {
-      this.router.navigate(resolveArtistRoute(song.artistId));
-    } else {
-      this.navigateAndSearch(song.artist);
+      void this.router.navigate(resolveArtistRoute(song.artistId));
+      return;
     }
+    // No id (network-origin row): resolve the name to a local artist page when
+    // possible, else fall back to searching for the artist.
+    const id = await firstValueFrom(this.api.resolveArtistIdByName(song.artist));
+    if (id) void this.router.navigate(resolveArtistRoute(id));
+    else this.navigateAndSearch(song.artist);
   }
 
   private async fetchRecentSongs(): Promise<void> {

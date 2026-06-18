@@ -255,6 +255,33 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     return c.json(rows.map(rowToArtist));
   });
 
+  // Resolve an artist *name* to its canonical id so the player/search can link a
+  // track with no known `artistId` (e.g. a Soulseek network hit) to the real
+  // artist page when that artist exists locally. Diacritic-insensitive; 404 when
+  // the artist isn't in the library (caller falls back to /library).
+  app.get('/artists/by-name', (c) => {
+    const name = (c.req.query('name') ?? '').trim();
+    if (!name) return c.json({ error: 'Missing name' }, 400);
+    const db = getDatabase();
+    // Fast path: exact case-insensitive match.
+    const exact = db
+      .query<{ id: string }, [string]>(
+        `SELECT id FROM library_artists WHERE name = ? COLLATE NOCASE AND hidden = 0 LIMIT 1`,
+      )
+      .get(name);
+    if (exact) return c.json({ id: exact.id });
+    // Fallback: diacritic-folded scan ("La Portuária" ↔ "La Portuaria").
+    const target = normalizeArtistForGrouping(name);
+    const rows = db
+      .query<{ id: string; name: string }, []>(
+        `SELECT id, name FROM library_artists WHERE hidden = 0`,
+      )
+      .all();
+    const match = rows.find((r) => normalizeArtistForGrouping(r.name) === target);
+    if (!match) return c.json({ error: 'Artist not found' }, 404);
+    return c.json({ id: match.id });
+  });
+
   app.get('/artists/:id', (c) => {
     const id = c.req.param('id');
     const db = getDatabase();
