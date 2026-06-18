@@ -1,0 +1,16 @@
+{
+  "name": "@nicotind/capacitor-now-playing",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Native iOS MPNowPlayingInfoCenter bridge for NicotinD",
+  "license": "MIT",
+  "files": [
+    "ios",
+    "NicotindNowPlaying.podspec"
+  ],
+  "capacitor": {
+    "ios": {
+      "src": "ios"
+    }
+  }
+}

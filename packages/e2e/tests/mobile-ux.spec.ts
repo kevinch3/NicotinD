@@ -96,6 +96,33 @@ test.describe('mobile UX', () => {
     await expect(page.getByText('Now Playing')).toBeVisible();
   });
 
+  // Downloads rows must stay inside the viewport — overflowing content (long
+  // titles / storage paths) used to widen the page and force the WebView to zoom
+  // out. Guard that no element pushes a horizontal scroll at phone width.
+  test('downloads page does not overflow horizontally', async ({ page }) => {
+    await page.goto('/downloads');
+    await page.getByTestId('downloads-tab-recent').click();
+    await expect(page.getByTestId('downloads-tab-recent')).toBeVisible();
+    const overflow = await page.evaluate(() => {
+      const el = document.scrollingElement ?? document.documentElement;
+      return el.scrollWidth - el.clientWidth;
+    });
+    expect(overflow, 'no horizontal page overflow at phone width').toBeLessThanOrEqual(1);
+  });
+
+  // The sticky header folds env(safe-area-inset-top) into its top padding so it
+  // clears the iOS notch. On the web/headless (inset = 0) it must resolve to the
+  // unchanged py-3 (12px) — i.e. the calc() is valid and desktop is unaffected.
+  test('header top padding resolves to 12px on web (safe-area inset = 0)', async ({ page }) => {
+    await page.goto('/library');
+    await expect(page.locator('header')).toBeVisible();
+    const paddingTop = await page.evaluate(() => {
+      const header = document.querySelector('header');
+      return header ? getComputedStyle(header).paddingTop : null;
+    });
+    expect(paddingTop).toBe('12px');
+  });
+
   // G7 — the album count is labeled (was a bare, unlabeled "1").
   test('library album count is labeled, not a bare number', async ({ page }) => {
     await page.goto('/library');

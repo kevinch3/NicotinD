@@ -43,6 +43,10 @@
         "zod": "^4.4.3",
       },
     },
+    "packages/capacitor-now-playing": {
+      "name": "@nicotind/capacitor-now-playing",
+      "version": "0.0.1",
+    },
     "packages/cli": {
       "name": "@nicotind/cli",
       "version": "0.1.0",
@@ -83,6 +87,7 @@
         "@capacitor/ios": "^6.2.0",
         "@capacitor/preferences": "^6.0.3",
         "@jofr/capacitor-media-session": "^4.0.0",
+        "@nicotind/capacitor-now-playing": "workspace:*",
       },
       "devDependencies": {
         "@capacitor/assets": "^3.0.5",
@@ -581,6 +586,8 @@
     "@napi-rs/nice-win32-x64-msvc": ["@napi-rs/nice-win32-x64-msvc@1.1.1", "", { "os": "win32", "cpu": "x64" }, "sha512-vB+4G/jBQCAh0jelMTY3+kgFy00Hlx2f2/1zjMoH821IbplbWZOkLiTYXQkygNTzQJTq5cvwBDgn2ppHD+bglQ=="],
 
     "@nicotind/api": ["@nicotind/api@workspace:packages/api"],
+
+    "@nicotind/capacitor-now-playing": ["@nicotind/capacitor-now-playing@workspace:packages/capacitor-now-playing"],
 
     "@nicotind/cli": ["@nicotind/cli@workspace:packages/cli"],
 

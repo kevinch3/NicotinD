@@ -27,7 +27,7 @@ function timeAgo(ms: number): string {
   imports: [PipelineStageBadgeComponent],
   template: `
     <div
-      class="flex items-center gap-3 md:gap-4 px-3 md:px-4 py-3 rounded-lg bg-theme-surface/50 border border-theme min-w-0"
+      class="flex items-center gap-3 md:gap-4 px-3 md:px-4 py-3 rounded-lg bg-theme-surface/50 border border-theme min-w-0 overflow-hidden"
       data-testid="download-item"
       [attr.data-method]="item().method"
       [attr.data-stage]="item().stage"
@@ -48,7 +48,7 @@ function timeAgo(ms: number): string {
         @if (item().subtitle) {
           <p class="text-xs text-theme-secondary truncate mt-0.5">{{ item().subtitle }}</p>
         }
-        <div class="flex items-center gap-2 mt-1 flex-wrap">
+        <div class="flex items-center gap-2 mt-1 flex-wrap min-w-0">
           <app-pipeline-stage-badge [stage]="item().stage" />
           @if (item().progress; as p) {
             <span class="text-xs text-theme-muted">{{ p.done }} of {{ p.total }}</span>
@@ -67,7 +67,7 @@ function timeAgo(ms: number): string {
           }
         </div>
         @if (showPath() && item().storagePath) {
-          <p class="text-xs text-theme-muted mt-1 break-all" data-testid="storage-path">
+          <p class="text-xs text-theme-muted mt-1 break-all max-w-full" data-testid="storage-path">
             {{ item().storagePath }}
           </p>
         }
