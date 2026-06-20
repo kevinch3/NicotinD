@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.97](https://github.com/kevinch3/NicotinD/compare/v0.1.96...v0.1.97) (2026-06-20)
+
+
+### Features
+
+* **auth:** sliding 30d sessions + vibrant glassmorphic login ([06b0d06](https://github.com/kevinch3/NicotinD/commit/06b0d066e8a8d78c471a0067a0090b199d0893ed))
+
 ## [0.1.96](https://github.com/kevinch3/NicotinD/compare/v0.1.95...v0.1.96) (2026-06-20)
 
 
