@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.99](https://github.com/kevinch3/NicotinD/compare/v0.1.98...v0.1.99) (2026-06-20)
+
+
+### Bug Fixes
+
+* **ios:** reclaim Now Playing session after an audio interruption ([6c22109](https://github.com/kevinch3/NicotinD/commit/6c22109db1b6154ee8f380619399763ed49dbb49))
+
 ## [0.1.98](https://github.com/kevinch3/NicotinD/compare/v0.1.97...v0.1.98) (2026-06-20)
 
 
