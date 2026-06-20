@@ -5,6 +5,16 @@ import { firstValueFrom } from 'rxjs';
 export type PluginKind = 'acquisition' | 'connectivity';
 export type PluginCapability = 'search' | 'browse' | 'resolve' | 'download' | 'connectivity';
 
+export type PluginConfigFieldType = 'text' | 'password';
+
+export interface PluginConfigField {
+  key: string;
+  label: string;
+  type: PluginConfigFieldType;
+  placeholder?: string;
+  help?: string;
+}
+
 export interface PluginInfo {
   id: string;
   name: string;
@@ -16,6 +26,11 @@ export interface PluginInfo {
   enabled: boolean;
   available: boolean;
   needsConfig: boolean;
+  configFields?: PluginConfigField[];
+  /** Which config keys have a stored value (secrets are never returned). */
+  configured?: Record<string, boolean>;
+  /** Prefill values for non-secret (`text`) fields. */
+  config?: Record<string, unknown>;
 }
 
 /**
@@ -48,6 +63,16 @@ export class PluginService {
   readonly hasDownload = computed(() => this.enabledCaps().has('download'));
   /** The archive.org plugin specifically is enabled (gates the archive.org search lane). */
   readonly hasArchive = computed(() => this.plugins().some((p) => p.id === 'archive' && p.enabled));
+  /** The Spotify metadata plugin is enabled (gates the Spotify fallback lane). */
+  readonly hasSpotify = computed(() => this.plugins().some((p) => p.id === 'spotify' && p.enabled));
+  /**
+   * spotDL is enabled **and** available (binary present) — gates whether a
+   * Spotify match downloads in one click. When false, the lane shows a manual
+   * note instead (the download path is spotDL).
+   */
+  readonly hasSpotdl = computed(() =>
+    this.plugins().some((p) => p.id === 'spotdl' && p.enabled && p.available),
+  );
 
   async refresh(): Promise<void> {
     try {

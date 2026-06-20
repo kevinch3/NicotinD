@@ -269,7 +269,9 @@
           data-testid="load-discography"
           class="text-xs font-medium text-[var(--theme-accent)] hover:underline disabled:opacity-50 disabled:no-underline"
         >
-          {{ loadingDiscography() ? 'Loading…' : 'Load ' + catalog()!.scopedArtist + "'s discography" }}
+          {{
+            loadingDiscography() ? 'Loading…' : 'Load ' + catalog()!.scopedArtist + "'s discography"
+          }}
         </button>
       }
     </div>
@@ -438,176 +440,184 @@
               }
             </div>
           } @else {
-          <div class="space-y-2">
-            @for (group of folderGroups(); track getFolderKey(group)) {
-              <div
-                class="rounded-lg border border-zinc-800/80 overflow-hidden"
-                style="background: var(--theme-surface)"
-              >
-                <div class="flex items-center gap-2 px-3 py-2 border-b border-zinc-800/80">
-                  <div class="flex-1 min-w-0">
-                    <p class="text-sm truncate flex items-center gap-1.5" style="color: var(--theme-text-primary)">
-                      @if (folderFormat(group); as fmt) {
-                        <!-- Format badge so the (few) lossless folders are obvious in the dup wall (§A7). -->
-                        <span
-                          [class]="'shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold leading-none ' +
-                            (fmt.lossless ? 'bg-emerald-500/20 text-emerald-400' : 'bg-zinc-700 text-zinc-300')"
-                        >{{ fmt.label }}</span>
-                      }
-                      <span
-                        class="truncate cursor-pointer hover:underline transition"
+            <div class="space-y-2">
+              @for (group of folderGroups(); track getFolderKey(group)) {
+                <div
+                  class="rounded-lg border border-zinc-800/80 overflow-hidden"
+                  style="background: var(--theme-surface)"
+                >
+                  <div class="flex items-center gap-2 px-3 py-2 border-b border-zinc-800/80">
+                    <div class="flex-1 min-w-0">
+                      <p
+                        class="text-sm truncate flex items-center gap-1.5"
                         style="color: var(--theme-text-primary)"
-                        (click)="navigateAndSearch(getDirBasename(group))"
                       >
-                        {{ getDirBasename(group) }}
-                      </span>
-                    </p>
-                    <p class="text-xs truncate" style="color: var(--theme-text-muted)">
-                      {{ group.username }}
-                      {{ group.bitRate ? ' · ' + group.bitRate + ' kbps' : '' }}
-                      ·
-                      <span style="color: var(--theme-accent)">{{ formatPeerInfo(group) }}</span> ·
-                      {{ group.files.length }} files
-                      @if (group.duplicatePeers) {
-                        · {{ group.duplicatePeers + 1 }} peers
-                      }
-                    </p>
-                  </div>
-                  <button
-                    (click)="downloadFolder(group)"
-                    [disabled]="
-                      getFolderBtn(group).disabled || getFolderValidFiles(group).length === 0
-                    "
-                    [class]="
-                      'px-2 py-1 rounded text-xs font-medium transition shrink-0 ' +
-                      btnClasses[getFolderBtn(group).variant] +
-                      (getFolderBtn(group).disabled ? ' cursor-default' : '')
-                    "
-                  >
-                    {{ getFolderBtn(group).label }}
-                  </button>
-                  @if (search.canBrowse()) {
+                        @if (folderFormat(group); as fmt) {
+                          <!-- Format badge so the (few) lossless folders are obvious in the dup wall (§A7). -->
+                          <span
+                            [class]="
+                              'shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold leading-none ' +
+                              (fmt.lossless
+                                ? 'bg-emerald-500/20 text-emerald-400'
+                                : 'bg-zinc-700 text-zinc-300')
+                            "
+                            >{{ fmt.label }}</span
+                          >
+                        }
+                        <span
+                          class="truncate cursor-pointer hover:underline transition"
+                          style="color: var(--theme-text-primary)"
+                          (click)="navigateAndSearch(getDirBasename(group))"
+                        >
+                          {{ getDirBasename(group) }}
+                        </span>
+                      </p>
+                      <p class="text-xs truncate" style="color: var(--theme-text-muted)">
+                        {{ group.username }}
+                        {{ group.bitRate ? ' · ' + group.bitRate + ' kbps' : '' }}
+                        ·
+                        <span style="color: var(--theme-accent)">{{ formatPeerInfo(group) }}</span>
+                        · {{ group.files.length }} files
+                        @if (group.duplicatePeers) {
+                          · {{ group.duplicatePeers + 1 }} peers
+                        }
+                      </p>
+                    </div>
                     <button
-                      (click)="toggleBrowser(getFolderKey(group))"
-                      class="px-2 py-1 rounded text-xs text-zinc-500 hover:text-zinc-300 transition shrink-0"
+                      (click)="downloadFolder(group)"
+                      [disabled]="
+                        getFolderBtn(group).disabled || getFolderValidFiles(group).length === 0
+                      "
+                      [class]="
+                        'px-2 py-1 rounded text-xs font-medium transition shrink-0 ' +
+                        btnClasses[getFolderBtn(group).variant] +
+                        (getFolderBtn(group).disabled ? ' cursor-default' : '')
+                      "
                     >
-                      {{
-                        search.openBrowserKey() === getFolderKey(group)
-                          ? 'Hide full tree'
-                          : 'Load full tree'
-                      }}
+                      {{ getFolderBtn(group).label }}
                     </button>
-                  }
-                </div>
+                    @if (search.canBrowse()) {
+                      <button
+                        (click)="toggleBrowser(getFolderKey(group))"
+                        class="px-2 py-1 rounded text-xs text-zinc-500 hover:text-zinc-300 transition shrink-0"
+                      >
+                        {{
+                          search.openBrowserKey() === getFolderKey(group)
+                            ? 'Hide full tree'
+                            : 'Load full tree'
+                        }}
+                      </button>
+                    }
+                  </div>
 
-                <div class="px-2 py-2 space-y-1">
-                  @for (file of group.files; track file.filename) {
-                    <div
-                      class="relative flex items-center gap-2 px-2 py-1.5 rounded-md overflow-hidden transition"
-                      style="background: var(--theme-hover)"
-                    >
-                      @if (getGroupFileVariant(group, file) === 'progress') {
-                        <div
-                          class="absolute inset-0 pointer-events-none rounded-md transition-all duration-500"
-                          [style.width.%]="getGroupFilePercent(group, file)"
-                          style="background: var(--theme-status-progress-bg)"
-                        ></div>
-                      }
-                      @if (getGroupFileVariant(group, file) === 'done') {
-                        <div
-                          class="absolute inset-0 pointer-events-none rounded-md"
-                          style="background: var(--theme-status-done-bg)"
-                        ></div>
-                      }
+                  <div class="px-2 py-2 space-y-1">
+                    @for (file of group.files; track file.filename) {
+                      <div
+                        class="relative flex items-center gap-2 px-2 py-1.5 rounded-md overflow-hidden transition"
+                        style="background: var(--theme-hover)"
+                      >
+                        @if (getGroupFileVariant(group, file) === 'progress') {
+                          <div
+                            class="absolute inset-0 pointer-events-none rounded-md transition-all duration-500"
+                            [style.width.%]="getGroupFilePercent(group, file)"
+                            style="background: var(--theme-status-progress-bg)"
+                          ></div>
+                        }
+                        @if (getGroupFileVariant(group, file) === 'done') {
+                          <div
+                            class="absolute inset-0 pointer-events-none rounded-md"
+                            style="background: var(--theme-status-done-bg)"
+                          ></div>
+                        }
 
-                      <div class="relative flex-1 min-w-0">
-                        <div class="flex items-start gap-2">
-                          <div class="min-w-0 flex-1">
-                            <p
-                              class="text-sm truncate"
-                              style="color: var(--theme-text-primary)"
-                              [innerHTML]="highlightGroupFileTitle(file)"
-                            ></p>
-                            @if (getGroupFileSubtitle(file)) {
+                        <div class="relative flex-1 min-w-0">
+                          <div class="flex items-start gap-2">
+                            <div class="min-w-0 flex-1">
                               <p
-                                class="text-xs truncate"
-                                style="color: var(--theme-text-secondary)"
-                                [innerHTML]="highlightGroupFileSubtitle(file)"
+                                class="text-sm truncate"
+                                style="color: var(--theme-text-primary)"
+                                [innerHTML]="highlightGroupFileTitle(file)"
                               ></p>
+                              @if (getGroupFileSubtitle(file)) {
+                                <p
+                                  class="text-xs truncate"
+                                  style="color: var(--theme-text-secondary)"
+                                  [innerHTML]="highlightGroupFileSubtitle(file)"
+                                ></p>
+                              }
+                            </div>
+                            @if (file.length) {
+                              <span
+                                class="shrink-0 pt-0.5 text-xs"
+                                style="color: var(--theme-text-muted)"
+                              >
+                                {{ formatDuration(file.length) }}
+                              </span>
                             }
                           </div>
-                          @if (file.length) {
-                            <span
-                              class="shrink-0 pt-0.5 text-xs"
-                              style="color: var(--theme-text-muted)"
+                          <p class="mt-0.5 text-xs truncate" style="color: var(--theme-text-muted)">
+                            {{ fileQualityLabel(file) }}
+                            · {{ formatSize(file.size) }}
+                          </p>
+                        </div>
+
+                        <div class="relative shrink-0">
+                          @if (getGroupFileVariant(group, file) === 'done') {
+                            <a
+                              routerLink="/library"
+                              class="px-2 py-1 rounded text-xs font-semibold transition"
+                              style="
+                                background: var(--theme-status-done-bg);
+                                color: var(--theme-status-done-text);
+                              "
                             >
-                              {{ formatDuration(file.length) }}
-                            </span>
+                              Open
+                            </a>
+                          } @else {
+                            <button
+                              (click)="
+                                handleDownload(group.username, {
+                                  filename: file.filename,
+                                  size: file.size,
+                                })
+                              "
+                              [disabled]="getGroupFileBtn(group, file).disabled"
+                              [class]="
+                                'px-2 py-1 rounded text-xs font-medium transition ' +
+                                (getGroupFileBtn(group, file).disabled ? 'cursor-default' : '')
+                              "
+                              [style]="
+                                getGroupFileVariant(group, file) === 'progress'
+                                  ? 'background: var(--theme-status-progress-bg); color: var(--theme-status-progress-text)'
+                                  : ''
+                              "
+                            >
+                              {{
+                                getGroupFileVariant(group, file) === 'progress'
+                                  ? getGroupFileBtn(group, file).label
+                                  : 'Download'
+                              }}
+                            </button>
                           }
                         </div>
-                        <p class="mt-0.5 text-xs truncate" style="color: var(--theme-text-muted)">
-                          {{ fileQualityLabel(file) }}
-                          · {{ formatSize(file.size) }}
-                        </p>
                       </div>
+                    }
+                  </div>
 
-                      <div class="relative shrink-0">
-                        @if (getGroupFileVariant(group, file) === 'done') {
-                          <a
-                            routerLink="/library"
-                            class="px-2 py-1 rounded text-xs font-semibold transition"
-                            style="
-                              background: var(--theme-status-done-bg);
-                              color: var(--theme-status-done-text);
-                            "
-                          >
-                            Open
-                          </a>
-                        } @else {
-                          <button
-                            (click)="
-                              handleDownload(group.username, {
-                                filename: file.filename,
-                                size: file.size,
-                              })
-                            "
-                            [disabled]="getGroupFileBtn(group, file).disabled"
-                            [class]="
-                              'px-2 py-1 rounded text-xs font-medium transition ' +
-                              (getGroupFileBtn(group, file).disabled ? 'cursor-default' : '')
-                            "
-                            [style]="
-                              getGroupFileVariant(group, file) === 'progress'
-                                ? 'background: var(--theme-status-progress-bg); color: var(--theme-status-progress-text)'
-                                : ''
-                            "
-                          >
-                            {{
-                              getGroupFileVariant(group, file) === 'progress'
-                                ? getGroupFileBtn(group, file).label
-                                : 'Download'
-                            }}
-                          </button>
-                        }
-                      </div>
+                  @if (search.openBrowserKey() === getFolderKey(group)) {
+                    <div class="px-2 pb-2">
+                      <app-folder-browser
+                        [username]="group.username"
+                        [matchedPath]="group.directory"
+                        [fallbackFiles]="getFolderBrowseFiles(group)"
+                        (download)="handleBrowserDownload(group.username, group.directory, $event)"
+                        (downloadTrack)="handleDownload($event.username, $event.file)"
+                      />
                     </div>
                   }
                 </div>
-
-                @if (search.openBrowserKey() === getFolderKey(group)) {
-                  <div class="px-2 pb-2">
-                    <app-folder-browser
-                      [username]="group.username"
-                      [matchedPath]="group.directory"
-                      [fallbackFiles]="getFolderBrowseFiles(group)"
-                      (download)="handleBrowserDownload(group.username, group.directory, $event)"
-                      (downloadTrack)="handleDownload($event.username, $event.file)"
-                    />
-                  </div>
-                }
-              </div>
-            }
-          </div>
+              }
+            </div>
           }
         }
       }
@@ -663,6 +673,80 @@
     </section>
   }
 
+  <!-- Spotify results — a metadata fallback; download routes through spotDL -->
+  @if (plugins.hasSpotify() && search.query().trim() && search.spotifyState() !== 'idle') {
+    <section class="mt-6" data-testid="spotify-section">
+      <div class="flex items-center gap-2 mb-3">
+        <h2 class="text-sm font-semibold text-zinc-400 uppercase tracking-wider">From Spotify</h2>
+        @if (search.spotifyState() === 'searching') {
+          <span
+            class="inline-block w-3 h-3 border border-zinc-600 border-t-transparent rounded-full animate-spin"
+          ></span>
+        } @else {
+          <span class="text-xs text-zinc-600">{{ search.spotify().length }} albums</span>
+        }
+      </div>
+      @if (!plugins.hasSpotdl() && search.spotify().length > 0) {
+        <p class="text-xs text-amber-500 mb-3" data-testid="spotify-needs-spotdl">
+          Downloading a Spotify match needs the spotDL plugin — enable it in Settings → Plugins.
+        </p>
+      }
+      @if (search.spotifyState() === 'complete' && search.spotify().length === 0) {
+        <p class="text-sm text-zinc-600">No Spotify results for "{{ search.query() }}"</p>
+      } @else {
+        <ul class="divide-y divide-zinc-800 rounded-lg border border-zinc-800 overflow-hidden">
+          @for (item of search.spotify(); track item.id) {
+            <li
+              class="flex items-center justify-between gap-3 px-4 py-3 bg-zinc-900/40"
+              data-testid="spotify-item"
+            >
+              <div class="flex items-center gap-3 min-w-0 flex-1">
+                @if (item.coverUrl) {
+                  <img
+                    [src]="item.coverUrl"
+                    alt=""
+                    loading="lazy"
+                    class="w-10 h-10 rounded object-cover flex-shrink-0 bg-zinc-800"
+                  />
+                }
+                <div class="min-w-0">
+                  <p class="text-sm font-medium text-zinc-200 truncate">{{ item.title }}</p>
+                  @if (spotifySubtitle(item); as sub) {
+                    <p class="text-xs text-zinc-500 mt-0.5 truncate">{{ sub }}</p>
+                  }
+                </div>
+              </div>
+              @if (plugins.hasSpotdl()) {
+                <button
+                  (click)="getFromSpotify(item)"
+                  [disabled]="isSpotifyAcquired(item)"
+                  data-testid="spotify-get"
+                  class="px-3 py-1.5 rounded-lg text-xs font-semibold flex-shrink-0 transition disabled:opacity-60"
+                  [class.bg-zinc-100]="!isSpotifyAcquired(item)"
+                  [class.text-zinc-900]="!isSpotifyAcquired(item)"
+                  [class.bg-zinc-800]="isSpotifyAcquired(item)"
+                  [class.text-zinc-400]="isSpotifyAcquired(item)"
+                >
+                  {{ isSpotifyAcquired(item) ? 'Started ✓' : 'Get via spotDL' }}
+                </button>
+              } @else {
+                <a
+                  [href]="item.url"
+                  target="_blank"
+                  rel="noopener"
+                  data-testid="spotify-open"
+                  class="px-3 py-1.5 rounded-lg text-xs font-semibold flex-shrink-0 bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition"
+                >
+                  Open ↗
+                </a>
+              }
+            </li>
+          }
+        </ul>
+      }
+    </section>
+  }
+
   <!-- Empty state -->
   @if (search.networkState() === 'idle' && !loading()) {
     <div class="text-center py-20">
@@ -688,7 +772,8 @@
         Get from a link
       </h2>
       <p class="text-xs text-zinc-500 mb-3">
-        Paste a YouTube, SoundCloud, Bandcamp, Spotify or archive.org link — we pick the right source.
+        Paste a YouTube, SoundCloud, Bandcamp, Spotify or archive.org link — we pick the right
+        source.
       </p>
       <form (submit)="submitAcquireUrl($event)" class="flex gap-2">
         <input

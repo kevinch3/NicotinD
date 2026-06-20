@@ -20,6 +20,8 @@ export type {
 
 export type { ArchiveCandidate } from '../../../core/src/types/archive';
 
+export type { SpotifyCandidate } from '../../../core/src/types/spotify';
+
 export type {
   BpmAnalysisResult,
   GenreSuggestion,

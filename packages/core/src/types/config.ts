@@ -126,11 +126,23 @@ export const NicotinDConfigSchema = z.object({
           preferredFormats: z.array(z.string()).default(['MP3', 'FLAC']),
         })
         .default({ enabled: true, preferredFormats: ['MP3', 'FLAC'] }),
+      spotify: z
+        .object({
+          // Metadata-only fallback lane (download is spotDL's job). `enabled`
+          // feeds isAvailable(); the real gate is the admin enabling the
+          // `spotify` plugin + entering credentials in Settings. The creds here
+          // only seed the config (env path); the UI is the primary way to set them.
+          enabled: z.boolean().default(true),
+          clientId: z.string().default(''),
+          clientSecret: z.string().default(''),
+        })
+        .default({ enabled: true, clientId: '', clientSecret: '' }),
     })
     .default({
       ytdlp: { enabled: true, binaryPath: 'yt-dlp', format: 'bestaudio', extraArgs: [] },
       spotdl: { enabled: true, binaryPath: 'spotdl' },
       archive: { enabled: true, preferredFormats: ['MP3', 'FLAC'] },
+      spotify: { enabled: true, clientId: '', clientSecret: '' },
     }),
 
   jwt: z.object({

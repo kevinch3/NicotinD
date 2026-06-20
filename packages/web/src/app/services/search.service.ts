@@ -1,5 +1,5 @@
 import { Injectable, signal } from '@angular/core';
-import type { ArchiveCandidate } from '@nicotind/core';
+import type { ArchiveCandidate, SpotifyCandidate } from '@nicotind/core';
 
 export interface NetworkResult {
   username: string;
@@ -53,6 +53,10 @@ export class SearchService {
   // archive plugin is enabled. Mirrors the network signals.
   readonly archive = signal<ArchiveCandidate[]>([]);
   readonly archiveState = signal<'idle' | 'searching' | 'complete'>('idle');
+  // Spotify metadata fallback lane — populated in parallel when the spotify
+  // plugin is enabled. Downloads route through spotDL. Mirrors the archive lane.
+  readonly spotify = signal<SpotifyCandidate[]>([]);
+  readonly spotifyState = signal<'idle' | 'searching' | 'complete'>('idle');
   readonly downloading = signal(new Set<string>());
   readonly downloadedFolders = signal(loadDownloadedFolders());
   readonly canBrowse = signal(false);
@@ -131,12 +135,22 @@ export class SearchService {
     this.archiveState.set(state);
   }
 
+  setSpotify(items: SpotifyCandidate[]): void {
+    this.spotify.set(items);
+  }
+
+  setSpotifyState(state: 'idle' | 'searching' | 'complete'): void {
+    this.spotifyState.set(state);
+  }
+
   reset(): void {
     this.network.set([]);
     this.networkState.set('idle');
     this.networkResponseCount.set(0);
     this.archive.set([]);
     this.archiveState.set('idle');
+    this.spotify.set([]);
+    this.spotifyState.set('idle');
     this.canBrowse.set(false);
     this.downloading.set(new Set());
     this.openBrowserKey.set(null);

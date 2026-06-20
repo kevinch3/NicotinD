@@ -1,7 +1,7 @@
 import { Component, inject, input, output, signal, computed, OnInit } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
 import { firstValueFrom } from 'rxjs';
-import type { ArchiveCandidate } from '@nicotind/core';
+import type { ArchiveCandidate, SpotifyCandidate } from '@nicotind/core';
 import {
   ApiService,
   type DiscographyAlbum,
@@ -12,6 +12,7 @@ import { AcquireService } from '../../services/acquire.service';
 import { PluginService } from '../../services/plugin.service';
 import { baseQueries, skewedQueries } from '../../lib/hunt-queries';
 import { archiveSubtitle } from '../../lib/archive-display';
+import { spotifySubtitle } from '../../lib/spotify-display';
 
 type HuntState = 'idle' | 'searching' | 'results' | 'error' | 'downloading';
 export type QueryPhaseState = 'idle' | 'searching' | 'done' | 'skipped';
@@ -104,9 +105,19 @@ export class AlbumHuntModalComponent implements OnInit {
   // Item identifiers whose download has been kicked off (button → "Started").
   readonly archiveAcquired = signal<Set<string>>(new Set());
 
+  // Spotify metadata fallback lane — like archive.org, surfaced alongside the
+  // Soulseek candidates. Download routes through spotDL (metadata-only source).
+  readonly hasSpotify = this.plugins.hasSpotify;
+  readonly hasSpotdl = this.plugins.hasSpotdl;
+  readonly spotifyState = signal<ArchiveState>('idle');
+  readonly spotifyCandidates = signal<SpotifyCandidate[]>([]);
+  readonly spotifyAcquired = signal<Set<string>>(new Set());
+
   async ngOnInit(): Promise<void> {
-    // Fire the archive.org search in parallel; it must not block the Soulseek hunt.
+    // Fire the archive.org + Spotify searches in parallel; neither must block the
+    // Soulseek hunt.
     void this.searchArchive();
+    void this.searchSpotify();
     await this.startHunt();
   }
 
@@ -148,6 +159,46 @@ export class AlbumHuntModalComponent implements OnInit {
   }
 
   archiveSubtitle = archiveSubtitle;
+
+  async searchSpotify(): Promise<void> {
+    if (!this.hasSpotify()) {
+      this.spotifyState.set('idle');
+      return;
+    }
+    this.spotifyState.set('searching');
+    this.spotifyCandidates.set([]);
+    try {
+      const res = await firstValueFrom(
+        this.api.spotifySearchAlbum(this.artistName(), this.album().title),
+      );
+      this.spotifyCandidates.set(res.candidates);
+      this.spotifyState.set('done');
+    } catch {
+      this.spotifyState.set('error');
+    }
+  }
+
+  // Download a Spotify album: hand its open.spotify.com URL to the acquire
+  // pipeline, where the spotDL plugin resolves it. Template-gated on spotDL being
+  // available; otherwise the section shows a manual note + an external link.
+  async getFromSpotify(item: SpotifyCandidate): Promise<void> {
+    this.spotifyAcquired.update((s) => new Set(s).add(item.id));
+    try {
+      await this.acquire.submit(item.url);
+    } catch {
+      this.spotifyAcquired.update((s) => {
+        const next = new Set(s);
+        next.delete(item.id);
+        return next;
+      });
+    }
+  }
+
+  isSpotifyAcquired(item: SpotifyCandidate): boolean {
+    return this.spotifyAcquired().has(item.id);
+  }
+
+  spotifySubtitle = spotifySubtitle;
 
   async startHunt(): Promise<void> {
     this.state.set('searching');

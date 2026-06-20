@@ -1,8 +1,10 @@
-import { Component, inject, signal, OnInit } from '@angular/core';
+import { Component, inject, signal, effect, OnInit } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { ConfirmDialogComponent } from '../../components/confirm-dialog/confirm-dialog.component';
 import { PluginService, type PluginInfo } from '../../services/plugin.service';
+import { buildPluginConfigPayload, initialPluginConfigValues } from '../../lib/plugin-config';
 
 /**
  * Admin-only plugin management. Lists plugins grouped by kind (acquisition now;
@@ -13,7 +15,7 @@ import { PluginService, type PluginInfo } from '../../services/plugin.service';
 @Component({
   selector: 'app-plugins',
   standalone: true,
-  imports: [RouterLink, NgTemplateOutlet, ConfirmDialogComponent],
+  imports: [RouterLink, NgTemplateOutlet, FormsModule, ConfirmDialogComponent],
   template: `
     <div class="max-w-3xl mx-auto px-4 py-8">
       <div class="flex items-center gap-3 mb-1">
@@ -120,6 +122,46 @@ import { PluginService, type PluginInfo } from '../../services/plugin.service';
               {{ p.enabled ? 'Disable' : 'Enable' }}
             </button>
           </div>
+
+          @if (p.configFields?.length) {
+            <form
+              (ngSubmit)="saveConfig(p)"
+              class="mt-4 pt-4 border-t border-zinc-800 space-y-3"
+              data-testid="plugin-config-form"
+            >
+              @for (f of p.configFields; track f.key) {
+                <label class="block">
+                  <span class="text-xs text-zinc-400">
+                    {{ f.label }}
+                    @if (f.type === 'password' && p.configured?.[f.key]) {
+                      <span class="text-emerald-500">• configured</span>
+                    }
+                  </span>
+                  <input
+                    [type]="f.type === 'password' ? 'password' : 'text'"
+                    [placeholder]="f.placeholder ?? ''"
+                    [ngModel]="draftValue(p.id, f.key)"
+                    (ngModelChange)="setField(p.id, f.key, $event)"
+                    [name]="p.id + '-' + f.key"
+                    [attr.data-testid]="'plugin-config-' + f.key"
+                    autocomplete="off"
+                    class="mt-1 w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-sm text-zinc-200 focus:outline-none focus:border-zinc-600"
+                  />
+                  @if (f.help) {
+                    <span class="text-[11px] text-zinc-600 mt-1 block">{{ f.help }}</span>
+                  }
+                </label>
+              }
+              <button
+                type="submit"
+                [disabled]="busy()"
+                data-testid="plugin-config-save"
+                class="px-3 py-1.5 rounded-lg text-sm font-medium bg-zinc-800 text-zinc-200 hover:bg-zinc-700 disabled:opacity-50"
+              >
+                Save
+              </button>
+            </form>
+          }
         </div>
       </ng-template>
     </div>
@@ -139,9 +181,41 @@ export class PluginsComponent implements OnInit {
   readonly busy = signal(false);
   readonly message = signal<{ type: 'success' | 'error'; text: string } | null>(null);
   readonly consentTarget = signal<PluginInfo | null>(null);
+  // Per-plugin editable config values (keyed by plugin id → field key). Seeded
+  // from each plugin's non-secret `config`; password fields always start blank.
+  readonly configDraft = signal<Record<string, Record<string, string>>>({});
+
+  constructor() {
+    // Reseed the form drafts whenever the plugin list changes (initial load,
+    // after enable/disable, after a save+refresh). Typing doesn't change the
+    // list, so in-progress edits aren't clobbered.
+    effect(() => {
+      const drafts: Record<string, Record<string, string>> = {};
+      for (const p of this.plugins.plugins()) {
+        if (p.configFields?.length) {
+          drafts[p.id] = initialPluginConfigValues(p.configFields, p.config);
+        }
+      }
+      this.configDraft.set(drafts);
+    });
+  }
 
   ngOnInit(): void {
     void this.plugins.refresh();
+  }
+
+  draftValue(pluginId: string, key: string): string {
+    return this.configDraft()[pluginId]?.[key] ?? '';
+  }
+
+  setField(pluginId: string, key: string, value: string): void {
+    this.configDraft.update((d) => ({ ...d, [pluginId]: { ...d[pluginId], [key]: value } }));
+  }
+
+  saveConfig(p: PluginInfo): void {
+    const fields = p.configFields ?? [];
+    const payload = buildPluginConfigPayload(fields, this.configDraft()[p.id] ?? {});
+    void this.run(() => this.plugins.saveConfig(p.id, payload), `${p.name} settings saved`);
   }
 
   toggle(p: PluginInfo): void {

@@ -40,6 +40,13 @@ acquire:
     preferredFormats:
       - MP3
       - FLAC
+  spotify:
+    # Metadata-only fallback lane (download is spotDL's job). Enable + set
+    # credentials in Settings → Plugins, or seed them here / via
+    # SPOTIFY_CLIENT_ID + SPOTIFY_CLIENT_SECRET.
+    enabled: true
+    clientId: ''
+    clientSecret: ''
 
 jwt:
   expiresIn: 24h

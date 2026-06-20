@@ -194,6 +194,52 @@ describe('PluginRegistry', () => {
     expect(registry.getConfig('ytdlp')).toEqual({ format: 'mp3' });
   });
 
+  it('merges a partial config update over the stored config (preserves other keys)', () => {
+    registry.register(
+      makePlugin(
+        acquisitionManifest({
+          id: 'spotify',
+          capabilities: ['search'],
+          configSchema: z
+            .object({ clientId: z.string().optional(), clientSecret: z.string().optional() })
+            .partial(),
+          compliance: { disclaimer: 'x', requiresConsent: false },
+        }),
+      ),
+    );
+    registry.setConfig('spotify', { clientId: 'id', clientSecret: 'secret' });
+    // Update only clientId — the secret must survive (the "blank password = keep" UX).
+    const merged = registry.setConfig('spotify', { clientId: 'id2' });
+    expect(merged).toEqual({ clientId: 'id2', clientSecret: 'secret' });
+    expect(registry.getConfig('spotify')).toEqual({ clientId: 'id2', clientSecret: 'secret' });
+  });
+
+  it('list() echoes configFields + configured flags but redacts password values', async () => {
+    registry.register(
+      makePlugin(
+        acquisitionManifest({
+          id: 'spotify',
+          capabilities: ['search'],
+          configSchema: z
+            .object({ clientId: z.string().optional(), clientSecret: z.string().optional() })
+            .partial(),
+          configFields: [
+            { key: 'clientId', label: 'Client ID', type: 'text' },
+            { key: 'clientSecret', label: 'Client Secret', type: 'password' },
+          ],
+          compliance: { disclaimer: 'x', requiresConsent: false },
+        }),
+      ),
+    );
+    registry.setConfig('spotify', { clientId: 'id', clientSecret: 'secret' });
+    const info = (await registry.list()).find((p) => p.id === 'spotify')!;
+    expect(info.configFields?.map((f) => f.key)).toEqual(['clientId', 'clientSecret']);
+    expect(info.configured).toEqual({ clientId: true, clientSecret: true });
+    // Non-secret value is prefilled; the secret is omitted from the payload entirely.
+    expect(info.config).toEqual({ clientId: 'id' });
+    expect(JSON.stringify(info)).not.toContain('secret');
+  });
+
   it('list() reports enabled/available/needsConfig state', async () => {
     registry.register(
       makePlugin(
