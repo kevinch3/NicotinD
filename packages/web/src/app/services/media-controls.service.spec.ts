@@ -31,12 +31,24 @@ type CapStub = {
   Plugins?: Record<string, unknown>;
 };
 
+type RemoteCommandCb = (e: { action: string; seekTime?: number }) => void;
+
 function nativePlugin() {
+  const listeners: RemoteCommandCb[] = [];
   return {
     setMetadata: vi.fn().mockResolvedValue(undefined),
     setPlaybackState: vi.fn().mockResolvedValue(undefined),
     setPositionState: vi.fn().mockResolvedValue(undefined),
     clear: vi.fn().mockResolvedValue(undefined),
+    addListener: vi.fn((_event: string, cb: RemoteCommandCb) => {
+      listeners.push(cb);
+      return Promise.resolve({ remove: vi.fn() });
+    }),
+    getDiagnostics: vi.fn().mockResolvedValue({ pluginRegistered: true }),
+    /** Test helper: simulate a native lock-screen command. */
+    emit(action: string, seekTime?: number) {
+      for (const cb of listeners) cb({ action, seekTime });
+    },
   };
 }
 
@@ -102,6 +114,50 @@ describe('MediaControlsService — iOS native routing', () => {
     expect(plugin.setPositionState).not.toHaveBeenCalled();
   });
 
+  it('routes transport through the native remoteCommand event, not @jofr', () => {
+    const plugin = nativePlugin();
+    asIos(plugin);
+    const svc = new MediaControlsService();
+    const play = vi.fn();
+    svc.setActionHandler('play', play);
+    expect(plugin.addListener).toHaveBeenCalledWith('remoteCommand', expect.any(Function));
+    // The web (@jofr) action-handler path must NOT be used on iOS (no double-fire).
+    expect(jofr.session.setActionHandler).not.toHaveBeenCalled();
+    plugin.emit('play');
+    expect(play).toHaveBeenCalledWith(null);
+  });
+
+  it('attaches the remoteCommand listener only once across handlers', () => {
+    const plugin = nativePlugin();
+    asIos(plugin);
+    const svc = new MediaControlsService();
+    svc.setActionHandler('play', vi.fn());
+    svc.setActionHandler('pause', vi.fn());
+    svc.setActionHandler('nexttrack', vi.fn());
+    expect(plugin.addListener).toHaveBeenCalledTimes(1);
+  });
+
+  it('dispatches each native action to its own handler, with seekTime only for seekto', () => {
+    const plugin = nativePlugin();
+    asIos(plugin);
+    const svc = new MediaControlsService();
+    const pause = vi.fn();
+    const seek = vi.fn();
+    svc.setActionHandler('pause', pause);
+    svc.setActionHandler('seekto', seek);
+    plugin.emit('pause');
+    plugin.emit('seekto', 42);
+    expect(pause).toHaveBeenCalledWith(null);
+    expect(seek).toHaveBeenCalledWith(42);
+  });
+
+  it('exposes native diagnostics', async () => {
+    const plugin = nativePlugin();
+    asIos(plugin);
+    const diag = await new MediaControlsService().getDiagnostics();
+    expect(plugin.getDiagnostics).toHaveBeenCalled();
+    expect(diag).toEqual({ pluginRegistered: true });
+  });
 });
 
 describe('MediaControlsService — web (@jofr) path', () => {
@@ -125,5 +181,9 @@ describe('MediaControlsService — web (@jofr) path', () => {
     await flush();
     expect(jofr.session.setMetadata).toHaveBeenCalledWith(META);
     expect(jofr.thenProbe).not.toHaveBeenCalled();
+  });
+
+  it('has no native diagnostics on web', async () => {
+    expect(await new MediaControlsService().getDiagnostics()).toBeNull();
   });
 });

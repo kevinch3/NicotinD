@@ -15,6 +15,25 @@ export type MediaAction =
 /** Called when the OS dispatches a media action; `seekTime` is set only for `seekto`. */
 export type MediaActionHandler = (seekTime: number | null) => void;
 
+/** A transport command forwarded from the native iOS lock-screen controls. */
+export interface RemoteCommandEvent {
+  action: MediaAction;
+  /** Present only for `seekto`. */
+  seekTime?: number;
+}
+
+/** Snapshot of the native iOS plugin's runtime state (on-device diagnostics). */
+export interface NowPlayingDiagnostics {
+  pluginRegistered: boolean;
+  sessionConfigured: boolean;
+  audioCategory: string;
+  isOtherAudioPlaying: boolean;
+  commandsRegistered: boolean;
+  nowPlayingInfoKeys: string[];
+  artworkUrl: string;
+  lastArtworkStatus: string;
+}
+
 // Minimal shape of the @jofr/capacitor-media-session `MediaSession` object we use.
 interface MediaSessionApi {
   setMetadata(o: MediaMetadataInit): Promise<void>;
@@ -32,6 +51,12 @@ interface IosNowPlayingPlugin {
   setPlaybackState(o: { state: 'playing' | 'paused' | 'none' }): Promise<void>;
   setPositionState(o: { duration: number; position: number; playbackRate: number }): Promise<void>;
   clear(): Promise<void>;
+  /** Lock-screen transport commands (play/pause/next/prev/seek) bridged to JS. */
+  addListener?(
+    event: 'remoteCommand',
+    cb: (e: RemoteCommandEvent) => void,
+  ): Promise<{ remove(): void }>;
+  getDiagnostics?(): Promise<NowPlayingDiagnostics>;
 }
 
 /**
@@ -46,11 +71,16 @@ interface IosNowPlayingPlugin {
  * - **iOS** is special: `@jofr` ships no iOS native code, so there it just
  *   proxies WKWebView's Web Media Session — which wires play/pause to the audio
  *   element but does **not** surface JS-set metadata/artwork/position. So the
- *   *displayed info* (title/artist/album/artwork/duration/elapsed) is routed to
- *   the native `@nicotind/capacitor-now-playing` plugin (MPNowPlayingInfoCenter),
- *   while transport controls (`setActionHandler`) stay on the Web Media Session
- *   path that already works on iOS. If the native plugin is unavailable we fall
- *   back to `@jofr` (no regression). See docs/ios-app.md "iOS Now Playing".
+ *   *displayed info* (title/artist/album/artwork/duration/elapsed) **and the
+ *   transport controls** are routed to the native
+ *   `@nicotind/capacitor-now-playing` plugin: it owns the AVAudioSession +
+ *   MPRemoteCommandCenter, so it both shows the card and forwards lock-screen
+ *   play/pause/next/seek back via a `remoteCommand` event. Because the native
+ *   plugin owns the commands, iOS **must not** also wire WKWebView's
+ *   `setActionHandler` (that would fire every transport action twice). If the
+ *   native plugin is unavailable we fall back to `@jofr` for info (no
+ *   regression); transport just no-ops until the plugin ships. See
+ *   docs/ios-app.md "iOS Now Playing".
  *
  * The `@jofr` plugin is **lazily imported** so unit tests and the initial web
  * chunk don't pull in Capacitor; every call is best-effort (a browser without
@@ -67,6 +97,9 @@ export class MediaControlsService {
   // console. Boxing it keeps the proxy off the resolution path. // why
   private api?: Promise<{ session: MediaSessionApi } | null>;
   private iosPlugin?: IosNowPlayingPlugin | null;
+  /** iOS transport handlers keyed by action; dispatched from one `remoteCommand` listener. */
+  private readonly iosHandlers = new Map<MediaAction, MediaActionHandler>();
+  private iosListenerAttached = false;
 
   /** The native iOS Now Playing plugin when running on iOS, else null (memoized). */
   private iosNowPlaying(): IosNowPlayingPlugin | null {
@@ -127,6 +160,35 @@ export class MediaControlsService {
   }
 
   setActionHandler(action: MediaAction, handler: MediaActionHandler): void {
+    const ios = this.iosNowPlaying();
+    if (ios) {
+      // Native plugin owns the lock-screen commands; route through its single
+      // `remoteCommand` event and do NOT also wire @jofr (would double-fire).
+      this.iosHandlers.set(action, handler);
+      if (!this.iosListenerAttached && ios.addListener) {
+        this.iosListenerAttached = true;
+        ios
+          .addListener('remoteCommand', (e) => {
+            const h = this.iosHandlers.get(e.action);
+            if (h) h(e.action === 'seekto' ? (e.seekTime ?? null) : null);
+          })
+          .catch(() => {
+            this.iosListenerAttached = false;
+          });
+      }
+      return;
+    }
     this.run((s) => s.setActionHandler({ action }, (d) => handler(d?.seekTime ?? null)));
+  }
+
+  /** Native iOS plugin diagnostics for the on-device debug panel; null elsewhere. */
+  async getDiagnostics(): Promise<NowPlayingDiagnostics | null> {
+    const ios = this.iosNowPlaying();
+    if (!ios?.getDiagnostics) return null;
+    try {
+      return await ios.getDiagnostics();
+    } catch {
+      return null;
+    }
   }
 }
