@@ -15,14 +15,23 @@ track data, no thumbnail, and no time.
 
 This plugin sets `nowPlayingInfo` natively so the system player shows real data.
 
-## Scope (intentionally narrow)
+## Scope
 
-- **Owns:** the displayed info — title, artist, album, artwork, duration, elapsed
-  time, and `playbackState`.
-- **Does NOT own:** transport controls. Play/pause/next/prev/seek stay on the
-  existing Web Media Session path (which already works on iOS), so this plugin
-  registers **no** `MPRemoteCommandCenter` handlers and cannot conflict with
-  WebKit's own.
+iOS only *displays* `nowPlayingInfo` for the app that **owns** the system
+now-playing session, and ownership requires an **active `AVAudioSession`** plus
+at least one **registered `MPRemoteCommandCenter` target**. WKWebView has both
+for its `<audio>` element, so merely writing `nowPlayingInfo` (this plugin's
+original behavior) lost to WebKit's empty session and the card showed nothing.
+So the plugin now takes full ownership:
+
+- **Owns the displayed info** — title, artist, album, artwork, duration, elapsed
+  time, `playbackState`.
+- **Owns transport** — it activates an `AVAudioSession` (`.playback`) and
+  registers the lock-screen commands (play / pause / next / prev / seek),
+  forwarding each to JS via a single `remoteCommand` event so the Angular player
+  responds. Because the plugin owns the commands, the web layer **must not** also
+  wire WKWebView's Web Media Session `setActionHandler` on iOS — that would fire
+  every transport action twice (see `MediaControlsService`).
 
 ## JS API
 
@@ -37,6 +46,14 @@ plugin only when `isIosNative()`):
 | `setPlaybackState` | `{ state: 'playing' \| 'paused' \| 'none' }` |
 | `setPositionState` | `{ duration, position, playbackRate }` |
 | `clear` | — |
+| `getDiagnostics` | — → `{ pluginRegistered, sessionConfigured, audioCategory, isOtherAudioPlaying, commandsRegistered, nowPlayingInfoKeys, artworkUrl, lastArtworkStatus }` |
+
+Events (via `addListener`):
+
+| Event | Payload |
+| --- | --- |
+| `remoteCommand` | `{ action: 'play' \| 'pause' \| 'nexttrack' \| 'previoustrack' \| 'seekto', seekTime? }` |
+| `artworkError` | `{ url, status?, message? }` |
 
 ## Build / install
 

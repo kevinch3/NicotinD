@@ -10,6 +10,11 @@ import { PlaybackWsService } from '../../services/playback-ws.service';
 import { PreserveService, UNLIMITED_BUDGET } from '../../services/preserve.service';
 import { PasswordFieldComponent } from '../../components/password-field/password-field.component';
 import { APP_VERSION } from '../../app.config';
+import {
+  MediaControlsService,
+  type NowPlayingDiagnostics,
+} from '../../services/media-controls.service';
+import { isIosNative } from '../../lib/platform';
 
 const GB = 1024 * 1024 * 1024;
 
@@ -47,6 +52,21 @@ export class SettingsComponent implements OnInit {
   readonly remote = inject(RemotePlaybackService);
   readonly preserve = inject(PreserveService);
   private ws = inject(PlaybackWsService);
+  private mediaControls = inject(MediaControlsService);
+
+  /** The Now Playing diagnostics panel only exists in the native iOS shell. */
+  readonly isNativeIos = isIosNative();
+  readonly nowPlayingDiag = signal<NowPlayingDiagnostics | null>(null);
+  readonly nowPlayingDiagLoading = signal(false);
+
+  async refreshNowPlayingDiagnostics(): Promise<void> {
+    this.nowPlayingDiagLoading.set(true);
+    try {
+      this.nowPlayingDiag.set(await this.mediaControls.getDiagnostics());
+    } finally {
+      this.nowPlayingDiagLoading.set(false);
+    }
+  }
 
   readonly budgetOptions = BUDGET_OPTIONS;
   readonly themePresets = THEME_PRESETS;

@@ -129,18 +129,38 @@ metadata/artwork/position for **cross-origin** web audio. Net effect on device:
 the system player showed play/pause + state but **no title/artist, no thumbnail,
 no scrubber/time**.
 
-**Fix — a minimal native plugin (`@nicotind/capacitor-now-playing`).** Swift
-`NowPlayingPlugin` (`packages/capacitor-now-playing/ios/`) sets
-`MPNowPlayingInfoCenter.default().nowPlayingInfo` directly. Scope is deliberately
-narrow:
+**Root cause (why the first attempt never worked).** The plugin's *original*
+design set `nowPlayingInfo` but registered **no** `MPRemoteCommandCenter` target
+and **never activated an `AVAudioSession`** — on the theory that WKWebView keeps
+owning transport and we only "add" the display info. That can't work: iOS only
+*displays* `nowPlayingInfo` for the app that **owns** the now-playing session,
+and ownership requires an active audio session **plus** at least one registered
+remote command. WKWebView has both for its `<audio>` element, so the system kept
+reading WebKit's (metadata-less, cross-origin) session and the card stayed blank.
+The "re-push the full dict on every update" mitigation was racing a contest we'd
+never entered.
 
-- **It owns the displayed *info*** — title / artist / album / artwork / duration
-  / elapsed time / `playbackState`. Artwork is fetched natively from the app's
-  `/api/cover/...?token=` URL (auth via query param, no headers needed).
-- **It does NOT own transport controls.** Play/pause/next/prev/seek stay on the
-  Web Media Session path (`setActionHandler`), which already works on iOS — so the
-  plugin registers **no** `MPRemoteCommandCenter` handlers and cannot fight
-  WKWebView's own.
+**Fix — the native plugin (`@nicotind/capacitor-now-playing`) takes ownership.**
+Swift `NowPlayingPlugin` (`packages/capacitor-now-playing/ios/`):
+
+- **Owns the displayed *info*** — title / artist / album / artwork / duration /
+  elapsed / `playbackState` via `MPNowPlayingInfoCenter`. Artwork is fetched
+  natively from the app's absolute `https://…/api/cover/...?token=` URL (auth via
+  query param, no headers); failures emit an `artworkError` event for diagnosis.
+- **Owns transport.** On first playback it activates `AVAudioSession(.playback)`
+  (`ensureSession`, idempotent, lazy) and registers the lock-screen commands
+  (`registerCommands`: play/pause/next/prev/`changePlaybackPosition`), each
+  forwarding a single `remoteCommand` event (`{ action, seekTime? }`) to JS. This
+  is what makes us the system now-playing app so the card actually renders.
+
+**Transport-ownership flip.** Because the plugin now owns
+`MPRemoteCommandCenter`, the web layer **must not** also wire WKWebView's Web
+Media Session `setActionHandler` on iOS — doing both fires every lock-screen
+action **twice**. So `MediaControlsService.setActionHandler` branches on
+`isIosNative()`: on iOS it stores handlers in a `Map<MediaAction, …>` and attaches
+**one** `addListener('remoteCommand', …)` that dispatches to them; web/Android
+keep the unchanged `@jofr` path. `player.component.ts` is untouched (its Effect 4
+already wraps handlers in `zone.run`).
 
 **Wiring.** `MediaControlsService` (`packages/web`) routes `setMetadata` /
 `setPlaybackState` / `setPositionState` to the native plugin **only when
@@ -149,9 +169,11 @@ narrow:
 `@capacitor/core` import. The metadata mapping (`toNativeMetadata` /
 `pickArtworkUrl`, which picks the largest declared artwork size) is pure and unit
 -tested in `lib/now-playing.spec.ts`; platform detection in `lib/platform.spec.ts`;
-the iOS routing in `services/media-controls.service.spec.ts`. Android and the web
-are unchanged (still `@jofr`); if the native plugin is missing the service falls
-back to `@jofr` with no regression.
+the iOS routing + transport dispatch in `services/media-controls.service.spec.ts`.
+Android and the web are unchanged (still `@jofr`); if the native plugin is missing,
+*info* falls back to `@jofr` with no regression (transport simply no-ops on iOS
+until the plugin ships — we deliberately do **not** fall back to `@jofr` transport
+to avoid the double-fire).
 
 **Build/CI.** The plugin is a workspace dependency of `@nicotind/mobile`, so
 `cap sync ios` discovers it (via the `capacitor.ios.src` marker +
@@ -162,11 +184,25 @@ fails with "No podspec found") and `pod install` adds it to the ephemeral `ios/`
 project — **no `deploy.yml` change**. The Swift compiles in the macOS `ios` job
 (`xcodebuild`), the build-level gate.
 
-**Open validation (on-device).** WKWebView may re-assert its *own* now-playing
-session and blank our fields; the plugin counters this by re-pushing the **full**
-info dictionary on every update, and the player's ~2 s position tick keeps it
-sticky. Whether that's sufficient — and whether artwork loads under ATS — must be
-confirmed on a real device (see checklist).
+**Verification — on-device diagnostics panel (no macOS CI).** Swift can't be
+unit-tested on the Linux dev host, and we deliberately did **not** add a macOS
+test job (cost). Instead the plugin exposes `getDiagnostics()` and the
+**Settings → "Now Playing (iOS)"** panel (rendered only when `isIosNative()`,
+`data-testid="now-playing-diagnostics"`) reads it back: is the plugin
+registered? is the `AVAudioSession` configured + which category? are the commands
+registered? how many `nowPlayingInfo` keys are populated? what was the last
+artwork outcome? This turns the manual gate from "stare at the lock screen and
+guess" into a structured self-check. The plugin also `print`s
+`NICOTIND_NOWPLAYING_LOADED` in `load()` so registration is visible in Console.app.
+
+To validate on device: play a track → open the panel → expect `pluginRegistered:
+true`, `commandsRegistered: true`, `audioCategory: playback`, several
+now-playing keys, `artwork: ok`. Then lock the screen and confirm the card shows
+title/artist/artwork/scrubber and that play/pause/next/seek each fire **once**.
+**Crucially, confirm background audio still plays** after the `AVAudioSession`
+change — activating our session is the one residual regression risk that only a
+device can rule out (mitigated: we use `.playback`, activate lazily on first
+play, and only `setActive(false)` in `clear()`).
 
 ## Background-audio risk (resolved on-device)
 
@@ -209,7 +245,7 @@ A failure here does **not** block the server deploy.
 - [ ] Signing secrets in the repo (certificate, provisioning profile, App Store Connect API key) — then flip the CI build to signed.
 - [ ] A Mac to generate + **commit** the `ios/` project (durable native config) — replaces the ephemeral-generate path.
 - [x] **On-device test of background audio** — confirmed working (backgrounded playback continues).
-- [ ] **On-device test of the Now Playing card** — confirm the native `MPNowPlayingInfoCenter` plugin shows title/artist/album + artwork + the position scrubber, and that WKWebView doesn't overwrite it (the re-push-on-update mitigation holds). Confirm artwork loads (ATS / HTTPS server).
+- [ ] **On-device test of the Now Playing card** — with the plugin now owning the `AVAudioSession` + `MPRemoteCommandCenter`: confirm the card shows title/artist/album + artwork + scrubber, lock-screen transport fires **once** per press, artwork loads (ATS / HTTPS), **and background audio still plays**. Use the Settings → "Now Playing (iOS)" diagnostics panel to read back plugin/session/command/artwork state.
 - [x] iOS app icon + launch/splash screen (branded, generated in CI from the shared brand mark).
 
 ## Tests / quality gates
@@ -224,13 +260,16 @@ A failure here does **not** block the server deploy.
   tested in `packages/web/src/app/lib/now-playing.spec.ts` (`pickArtworkUrl`
   picks the largest size; `toNativeMetadata` mapping), platform detection in
   `lib/platform.spec.ts` (`isIosNative`/`getCapacitorPlugin`), and the
-  service-level routing in `services/media-controls.service.spec.ts` (on iOS,
-  `setMetadata`/`setPlaybackState`/`setPositionState` hit the native plugin with
-  mapped args; invalid positions are dropped). These run in the web `ci` job
-  (`vitest run`). The Swift `NowPlayingPlugin` itself has no unit test — it is
-  build-gated by the macOS `ios` job and validated on-device (above).
-- The above (non-Swift) run in the CI `ci` job (`bun test … packages/mobile/src`,
-  the API test glob, and the web `vitest run`). The `ios` build job is the
-  build-level gate (analogous to Android's `assembleRelease`); like Android there
-  is **no device/simulator test in CI** — on-device validation of the Now Playing
-  card is a documented manual gate.
+  service-level routing + **transport dispatch** in
+  `services/media-controls.service.spec.ts` (on iOS, `setMetadata`/
+  `setPlaybackState`/`setPositionState` hit the native plugin with mapped args;
+  invalid positions are dropped; `setActionHandler` routes through a single
+  `remoteCommand` listener and **not** `@jofr`, each action dispatches to its own
+  handler with `seekTime` only for `seekto`; `getDiagnostics` passes through). These
+  run in the web `ci` job (`vitest run`).
+- **The Swift `NowPlayingPlugin` itself has no automated test** — Swift can't run
+  on the Linux dev host and we chose not to add a macOS CI test job (cost). This
+  is a conscious exception to the "every test runs in CI" gate; the substitute
+  native-verification mechanism is the **on-device diagnostics panel**
+  (Settings → "Now Playing (iOS)", backed by `getDiagnostics()`), documented above.
+  The Swift is still build-gated by the macOS `ios` job (`xcodebuild`).

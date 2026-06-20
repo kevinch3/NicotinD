@@ -437,4 +437,34 @@
         <button (click)="logout()" class="text-sm text-red-400 hover:text-red-300 transition">Sign out</button>
         <p class="text-xs text-theme-muted/50 mt-4">v{{ version }}</p>
       </section>
+
+      <!-- iOS Now Playing diagnostics (native iOS only) — confirms the lock-screen
+           plugin is registered, owns the audio session, and has metadata set. -->
+      @if (isNativeIos) {
+        <section class="rounded-xl border border-theme bg-theme-surface/50 p-6 mb-6" data-testid="now-playing-diagnostics">
+          <h2 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary mb-5">Now Playing (iOS)</h2>
+          <button
+            (click)="refreshNowPlayingDiagnostics()"
+            [disabled]="nowPlayingDiagLoading()"
+            class="text-sm text-theme-secondary hover:text-theme-primary transition mb-4"
+          >
+            {{ nowPlayingDiagLoading() ? 'Checking…' : 'Run diagnostics' }}
+          </button>
+          @if (nowPlayingDiag(); as d) {
+            <dl class="text-xs text-theme-muted space-y-1 font-mono">
+              <div>plugin registered: {{ d.pluginRegistered }}</div>
+              <div>session configured: {{ d.sessionConfigured }}</div>
+              <div>audio category: {{ d.audioCategory }}</div>
+              <div>other audio playing: {{ d.isOtherAudioPlaying }}</div>
+              <div>commands registered: {{ d.commandsRegistered }}</div>
+              <div>now-playing keys: {{ d.nowPlayingInfoKeys.length }}</div>
+              <div>artwork: {{ d.lastArtworkStatus }}</div>
+            </dl>
+          } @else if (!nowPlayingDiagLoading()) {
+            <p class="text-xs text-theme-muted/70">
+              Native plugin unavailable — the lock-screen card won’t show metadata.
+            </p>
+          }
+        </section>
+      }
     </div>
