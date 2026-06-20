@@ -49,4 +49,7 @@ acquire:
     clientSecret: ''
 
 jwt:
-  expiresIn: 24h
+  # Session length. Tokens are silently renewed on app boot (sliding session),
+  # so a long TTL means you stay signed in as long as you open the app within
+  # the window — no daily re-login. Accepts any jose duration (e.g. 24h, 30d).
+  expiresIn: 30d

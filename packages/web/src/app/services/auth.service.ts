@@ -16,6 +16,15 @@ export class AuthService {
     this.role.set(role);
   }
 
+  /**
+   * Swap in a renewed access token (sliding session) without disturbing the
+   * cached username/role. Used by the boot-time silent refresh.
+   */
+  setToken(token: string): void {
+    localStorage.setItem('nicotind_token', token);
+    this.token.set(token);
+  }
+
   logout(): void {
     // Clear auth tokens
     localStorage.removeItem('nicotind_token');

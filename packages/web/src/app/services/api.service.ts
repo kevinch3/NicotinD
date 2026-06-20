@@ -189,6 +189,11 @@ export class ApiService {
     return this.http.get<{ enabled: boolean }>('/api/auth/registration-status');
   }
 
+  // Sliding session: exchange the current valid token for a fresh one.
+  refreshToken() {
+    return this.http.post<{ token: string }>('/api/auth/refresh', {});
+  }
+
   // Search
   search(q: string) {
     return this.http.get<SearchResult>('/api/search', { params: { q } });

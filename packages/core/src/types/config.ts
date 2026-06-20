@@ -147,7 +147,7 @@ export const NicotinDConfigSchema = z.object({
 
   jwt: z.object({
     secret: z.string().min(32, 'JWT secret must be at least 32 characters'),
-    expiresIn: z.string().default('24h'),
+    expiresIn: z.string().default('30d'),
   }),
 });
 
