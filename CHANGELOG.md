@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.98](https://github.com/kevinch3/NicotinD/compare/v0.1.97...v0.1.98) (2026-06-20)
+
+
+### Bug Fixes
+
+* **ios:** make the lock-screen Now Playing card work via native session ownership ([33c6464](https://github.com/kevinch3/NicotinD/commit/33c64645d820ba50e91a13c7f288f293be4afbcb))
+
 ## [0.1.97](https://github.com/kevinch3/NicotinD/compare/v0.1.96...v0.1.97) (2026-06-20)
 
 
