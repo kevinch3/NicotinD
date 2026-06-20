@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.95](https://github.com/kevinch3/NicotinD/compare/v0.1.94...v0.1.95) (2026-06-20)
+
+
+### Features
+
+* **spotify:** metadata fallback lane with download via spotDL ([259acac](https://github.com/kevinch3/NicotinD/commit/259acac83c3df3eed18dfd091b7ef63c886d1bba))
+
 ## [0.1.94](https://github.com/kevinch3/NicotinD/compare/v0.1.93...v0.1.94) (2026-06-18)
 
 ## [0.1.93](https://github.com/kevinch3/NicotinD/compare/v0.1.92...v0.1.93) (2026-06-18)
