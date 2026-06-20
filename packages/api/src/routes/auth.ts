@@ -1,7 +1,8 @@
 import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
 import { hashPassword, verifyPassword } from '@nicotind/core';
 import { getDatabase } from '../db.js';
-import { signJwt } from '../middleware/auth.js';
+import { authMiddleware, signJwt } from '../middleware/auth.js';
+import type { AuthEnv } from '../middleware/auth.js';
 
 const AuthRequestSchema = z.object({
   username: z.string().min(1).openapi({ example: 'admin' }),
@@ -21,6 +22,12 @@ const AuthSuccessSchema = z
   })
   .openapi('AuthSuccess');
 
+const RefreshSuccessSchema = z
+  .object({
+    token: z.string(),
+  })
+  .openapi('RefreshSuccess');
+
 const ErrorSchema = z
   .object({
     error: z.string(),
@@ -28,7 +35,7 @@ const ErrorSchema = z
   .openapi('Error');
 
 export function authRoutes(jwtSecret: string, jwtExpiresIn: string, registrationEnabled: boolean) {
-  const app = new OpenAPIHono();
+  const app = new OpenAPIHono<AuthEnv>();
 
   // Public endpoint: check if registration is open
   app.openapi(
@@ -203,6 +210,48 @@ export function authRoutes(jwtSecret: string, jwtExpiresIn: string, registration
         { token, user: { id: user.id, username: user.username, role: user.role } },
         200,
       );
+    },
+  );
+
+  // Silent token renewal (sliding session): a currently-valid token is exchanged
+  // for a fresh one, so opening the app within the window resets the expiry and
+  // you never get bounced to /login. Guarded by authMiddleware, so an expired or
+  // missing token 401s and the client falls back to a normal login.
+  app.use('/refresh', authMiddleware(jwtSecret));
+  app.openapi(
+    createRoute({
+      method: 'post',
+      path: '/refresh',
+      responses: {
+        200: {
+          content: { 'application/json': { schema: RefreshSuccessSchema } },
+          description: 'Token renewed',
+        },
+        401: {
+          content: { 'application/json': { schema: ErrorSchema } },
+          description: 'Unauthorized',
+        },
+        403: {
+          content: { 'application/json': { schema: ErrorSchema } },
+          description: 'Forbidden',
+        },
+      },
+    }),
+    async (c) => {
+      const user = c.get('user');
+
+      // Share tokens are deliberately short-lived and read-only — never extend them.
+      if (user.share === true) {
+        return c.json({ error: 'Share sessions cannot be refreshed' }, 403);
+      }
+
+      const token = await signJwt(
+        { sub: user.sub, username: user.username, role: user.role },
+        jwtSecret,
+        jwtExpiresIn,
+      );
+
+      return c.json({ token }, 200);
     },
   );
 

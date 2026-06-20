@@ -333,7 +333,7 @@ function loadConfig() {
     },
     jwt: {
       secret: secrets.jwtSecret,
-      expiresIn: '24h',
+      expiresIn: '30d',
       ...((fileConfig as Record<string, unknown>).jwt as Record<string, unknown>),
       ...(process.env.NICOTIND_JWT_SECRET ? { secret: process.env.NICOTIND_JWT_SECRET } : {}),
     },
