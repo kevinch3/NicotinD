@@ -198,7 +198,11 @@ jobs:
               exit 1
             fi
             cd ~/Documents/nicotind &&
-            git fetch origin master --tags &&
+            # --force: the deploy host is a pure mirror of origin, but its local clone
+            # had a divergent tag (v0.1.26) that made a plain `fetch --tags` exit 1 with
+            # "would clobber existing tag", aborting the deploy. Force tags to match
+            # origin so a stale local tag can never block a release again.
+            git fetch --force --tags origin master &&
             git reset --hard ${{ steps.ref.outputs.ref }} &&
             docker compose up --build -d
           '
