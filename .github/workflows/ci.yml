@@ -19,6 +19,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Statically validate the workflow files themselves. A malformed `${{ }}`
+      # expression (e.g. a double-quoted string literal) makes a workflow invalid and
+      # fails it at startup with zero jobs — invisible until a deploy silently never
+      # runs. actionlint turns that into a failed PR check here instead.
+      - name: Lint GitHub Actions workflows
+        uses: raven-actions/actionlint@v2
+
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
