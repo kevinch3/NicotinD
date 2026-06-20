@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.96](https://github.com/kevinch3/NicotinD/compare/v0.1.95...v0.1.96) (2026-06-20)
+
+
+### Bug Fixes
+
+* **ci:** force-fetch tags on deploy so a divergent local tag can't block it ([e066616](https://github.com/kevinch3/NicotinD/commit/e06661627c24fcb0fea38b812175754a76b28f68))
+
 ## [0.1.95](https://github.com/kevinch3/NicotinD/compare/v0.1.94...v0.1.95) (2026-06-20)
 
 
