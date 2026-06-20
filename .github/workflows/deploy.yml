@@ -21,6 +21,11 @@ jobs:
   # See docs/mobile-app.md "Release & signing".
   android:
     runs-on: ubuntu-latest
+    # Only on a tag push: these jobs attach assets to the tag's GitHub Release (none
+    # exists for a manual dispatch). Best-effort — a flaky/unsigned mobile build must
+    # not mark the run red when the server `deploy` job below succeeded.
+    if: github.ref_type == 'tag'
+    continue-on-error: true
     permissions:
       contents: write
     steps:
@@ -92,6 +97,9 @@ jobs:
   # A failure here does not block the server deploy. See docs/ios-app.md.
   ios:
     runs-on: macos-14
+    # Tag-only + best-effort, same rationale as the `android` job above.
+    if: github.ref_type == 'tag'
+    continue-on-error: true
     permissions:
       contents: write
     steps:
@@ -160,6 +168,20 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
+      # Resolve exactly what the server should check out. On a tag push (the normal
+      # release path) deploy that exact tag; on a manual workflow_dispatch deploy the
+      # remote tip of master. NOTE: `github.ref_name` is never empty, so a bare
+      # `${{ github.ref_name || 'origin/master' }}` would resolve to the (stale, local)
+      # branch name on dispatch — hence the explicit branch here.
+      - name: Resolve deploy ref
+        id: ref
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            echo "ref=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=origin/master" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Connect to Tailscale
         uses: tailscale/github-action@v4
         with:
@@ -177,6 +199,6 @@ jobs:
             fi
             cd ~/Documents/nicotind &&
             git fetch origin master --tags &&
-            git reset --hard ${{ github.ref_name || "origin/master" }} &&
+            git reset --hard ${{ steps.ref.outputs.ref }} &&
             docker compose up --build -d
           '

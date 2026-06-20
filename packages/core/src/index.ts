@@ -3,6 +3,7 @@ export * from './types/acquire.js';
 export * from './types/archive.js';
 export * from './types/config.js';
 export * from './types/slskd.js';
+export * from './types/spotify.js';
 export * from './types/navidrome.js';
 export * from './types/nicotind.js';
 export * from './types/provider.js';

@@ -112,6 +112,17 @@ process.ts` — `runAcquireProcess` + progress parsing + audio collection; the i
   `GET /api/archive/search`) is gated specifically on `plugins.isEnabled('archive')` (so it works as
   an independent fallback even when slskd is off) and surfaces in the album-hunt modal + unified
   search → see [docs/album-hunt.md](album-hunt.md).
+- **spotify** (`services/plugins/spotify/index.ts`) — a **metadata-only** acquisition plugin
+  (capability `search`, pure JS, **no `resolve`/`download`**, no binary). It backs the Spotify
+  **fallback search lane** (`SpotifySearchService` + `routes/spotify.ts`, `GET /api/spotify/search`,
+  gated on `plugins.isEnabled('spotify')`) but downloads nothing itself — the lane hands a matched
+  album's `open.spotify.com` URL to `/api/acquire`, where the **spotdl** `resolve` plugin acquires it
+  (so the full flow needs both plugins). The plugin holds the Spotify app **client id/secret** via a
+  `configSchema` + `configFields` (the secret is a write-only `password`); `isAvailable()` is true
+  only when enabled **and** both creds are set. It declares `search` purely for honesty — nothing
+  consumes the generic `hasSearch`; the lane gates on the id-specific `hasSpotify`. **Not** seeded by
+  `seedLegacyAcquisitionPlugins`, so default-off for every install. → see
+  [docs/spotify-fallback.md](spotify-fallback.md).
 - **Back-compat seeding**: before plugins existed, slskd was active whenever credentials were set,
   and yt-dlp/spotdl whenever enabled in config. `PluginRegistry.seedEnabled(id, …)` (called from
   `index.ts`, `ON CONFLICT DO NOTHING`) keeps existing installs working; an admin's later toggle
@@ -131,12 +142,22 @@ process.ts` — `runAcquireProcess` + progress parsing + audio collection; the i
 
 - `services/plugin.service.ts` — Angular signal service over `/api/plugins`: a `plugins` signal,
   `enable(id, consent)` / `disable` / `saveConfig`, and the capability computeds `hasSearch` /
-  `hasResolve` / `hasDownload` (derived from **enabled** plugins). UI surfaces gate on these.
+  `hasResolve` / `hasDownload` plus id-specific gates `hasArchive` / `hasSpotify` / `hasSpotdl`
+  (the last requires **enabled AND available**, since one-click Spotify download needs the spotdl
+  binary present). UI surfaces gate on these.
 - `pages/plugins/plugins.component.ts` — admin-only page (route `/settings/plugins`, `adminGuard`),
   linked from Settings → Plugins. Cards grouped by kind (**Acquisition** + a generic
   **Connectivity** section that currently shows an empty-state — the wiring is ready for a
   tailscale/wireguard plugin to appear with no UI changes). Enabling a consent-gated plugin opens
   its disclaimer via `ConfirmDialogComponent` and only then calls `enable(id, true)`.
+- **Generic config-field editor**: a plugin manifest may declare `configFields` (UI descriptors:
+  `{ key, label, type: 'text'|'password', placeholder?, help? }`). The card renders a small form
+  from them; `GET /api/plugins` echoes `configFields` + a `configured` map (which keys have a stored
+  value) + `config` (non-secret prefill values only — **`password` fields are never returned**).
+  A blank password input is omitted on save, and `registry.setConfig` **merges** the update over the
+  stored config, so "leave the secret blank to keep it" round-trips safely. The build-submit /
+  prefill logic is in the DI-free `lib/plugin-config.ts` (unit-tested). The Spotify plugin is the
+  first consumer (client id/secret).
 - **Capability-gated surfaces**: the search page hides the **URL acquire box** unless `hasResolve()`
   and the **watchlist star** unless `hasDownload()`. The network search lane already self-hides via
   the server's `networkAvailable: false` (no enabled `search` plugin), and hunt/watchlist routes

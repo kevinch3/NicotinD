@@ -50,6 +50,33 @@ describe('PluginService', () => {
     expect(svc.hasDownload()).toBe(false);
   });
 
+  it('hasSpotify/hasSpotdl gate on the specific enabled (and available) plugins', async () => {
+    get.mockReturnValue(
+      of([
+        plugin({ id: 'spotify', capabilities: ['search'], enabled: true }),
+        // spotdl enabled but binary missing → not "ready" for one-click download.
+        plugin({ id: 'spotdl', capabilities: ['resolve'], enabled: true, available: false }),
+      ]),
+    );
+    await svc.refresh();
+    expect(svc.hasSpotify()).toBe(true);
+    expect(svc.hasSpotdl()).toBe(false); // enabled but unavailable
+  });
+
+  it('hasSpotdl is true only when spotdl is enabled AND available', async () => {
+    get.mockReturnValue(
+      of([plugin({ id: 'spotdl', capabilities: ['resolve'], enabled: true, available: true })]),
+    );
+    await svc.refresh();
+    expect(svc.hasSpotdl()).toBe(true);
+  });
+
+  it('saveConfig PUTs the payload and refreshes', async () => {
+    await svc.saveConfig('spotify', { clientId: 'id' });
+    expect(put).toHaveBeenCalledWith('/api/plugins/spotify/config', { clientId: 'id' });
+    expect(get).toHaveBeenCalled();
+  });
+
   it('groups plugins by kind', async () => {
     get.mockReturnValue(
       of([

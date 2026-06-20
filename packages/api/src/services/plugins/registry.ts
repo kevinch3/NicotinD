@@ -143,19 +143,25 @@ export class PluginRegistry {
     return this.getEnabledWithCapability(cap).length > 0;
   }
 
-  /** Validate (against the manifest schema) + persist a plugin's config. */
+  /**
+   * Validate (against the manifest schema) + persist a plugin's config. The new
+   * config is **merged over the existing** stored config, so a partial update
+   * (e.g. only `clientId`) doesn't wipe other keys — this is what makes the
+   * Plugins form's "leave a password blank to keep the current one" UX safe.
+   */
   setConfig(id: string, config: Record<string, unknown>): Record<string, unknown> {
     const plugin = this.plugins.get(id);
     if (!plugin) throw new Error(`unknown plugin "${id}"`);
     const parsed = plugin.manifest.configSchema
       ? (plugin.manifest.configSchema.parse(config) as Record<string, unknown>)
       : config;
+    const merged = { ...this.getConfig(id), ...parsed };
     this.opts.db.run(
       `INSERT INTO plugins (id, config_json) VALUES (?, ?)
        ON CONFLICT(id) DO UPDATE SET config_json = excluded.config_json`,
-      [id, JSON.stringify(parsed)],
+      [id, JSON.stringify(merged)],
     );
-    return parsed;
+    return merged;
   }
 
   get(id: string): Plugin | undefined {
@@ -194,6 +200,21 @@ export class PluginRegistry {
       } catch {
         available = false;
       }
+      // Surface config-field state for the admin form, never the raw secrets:
+      // `configured[key]` flags whether a value is stored; `config` carries only
+      // non-password values for prefill.
+      const stored = this.getConfig(m.id);
+      let configured: Record<string, boolean> | undefined;
+      let config: Record<string, unknown> | undefined;
+      if (m.configFields?.length) {
+        configured = {};
+        config = {};
+        for (const f of m.configFields) {
+          const value = stored[f.key];
+          configured[f.key] = value != null && value !== '';
+          if (f.type !== 'password' && value !== undefined) config[f.key] = value;
+        }
+      }
       infos.push({
         id: m.id,
         name: m.name,
@@ -205,6 +226,9 @@ export class PluginRegistry {
         enabled: this.isEnabled(m.id),
         available,
         needsConfig: Boolean(m.configSchema) && !this.row(m.id)?.config_json,
+        configFields: m.configFields,
+        configured,
+        config,
       });
     }
     return infos;

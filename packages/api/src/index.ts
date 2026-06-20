@@ -24,6 +24,8 @@ import { discographyRoutes } from './routes/discography.js';
 import { catalogRoutes } from './routes/catalog.js';
 import { archiveRoutes } from './routes/archive.js';
 import { ArchiveSearchService } from './services/archive-search.service.js';
+import { spotifyRoutes } from './routes/spotify.js';
+import { SpotifySearchService } from './services/spotify-search.service.js';
 import { watchlistRoutes } from './routes/watchlist.js';
 import { playlistRoutes } from './routes/playlists.js';
 import { acquireRoutes } from './routes/acquire.js';
@@ -33,6 +35,7 @@ import { SlskdPlugin } from './services/plugins/slskd/index.js';
 import { YtdlpPlugin } from './services/plugins/ytdlp/index.js';
 import { SpotdlPlugin } from './services/plugins/spotdl/index.js';
 import { ArchivePlugin } from './services/plugins/archive/index.js';
+import { SpotifyPlugin } from './services/plugins/spotify/index.js';
 import { requireAcquisitionMiddleware } from './services/plugins/gate.js';
 import { seedLegacyAcquisitionPlugins } from './services/plugins/legacy-seed.js';
 import { AcquireWatcher } from './services/acquire-watcher.js';
@@ -292,6 +295,14 @@ export function createApp({
       preferredFormats: config.acquire.archive.preferredFormats,
     }),
   );
+  // Metadata-only fallback lane — no `resolve`, so it never competes for URLs.
+  plugins.register(
+    new SpotifyPlugin({
+      enabled: config.acquire.spotify.enabled,
+      clientId: config.acquire.spotify.clientId,
+      clientSecret: config.acquire.spotify.clientSecret,
+    }),
+  );
   plugins.register(
     new YtdlpPlugin({
       enabled: config.acquire.ytdlp.enabled,
@@ -354,6 +365,7 @@ export function createApp({
   app.use('/api/acquire/*', auth);
   app.use('/api/plugins/*', auth);
   app.use('/api/archive/*', auth);
+  app.use('/api/spotify/*', auth);
 
   app.get(
     '/api/ws/playback',
@@ -395,6 +407,22 @@ export function createApp({
   // archive.org metadata search lane — always mounted (no Lidarr/slskd dep); the
   // route itself 503s unless the `archive` plugin is enabled.
   app.route('/api/archive', archiveRoutes({ search: new ArchiveSearchService(), plugins }));
+  // Spotify metadata fallback lane — reads the admin's current credentials live
+  // from the registry so a config edit takes effect without a restart. Downloads
+  // route to the spotDL plugin via /api/acquire.
+  app.route(
+    '/api/spotify',
+    spotifyRoutes({
+      search: new SpotifySearchService(() => {
+        const cfg = plugins.getConfig('spotify');
+        return {
+          clientId: (cfg.clientId as string) || config.acquire.spotify.clientId,
+          clientSecret: (cfg.clientSecret as string) || config.acquire.spotify.clientSecret,
+        };
+      }),
+      plugins,
+    }),
+  );
 
   // Ingest-time enrichment of loose singles/EPs (release type + artwork). Only
   // wired when Lidarr is configured; absent → acquisition degrades to heuristic.

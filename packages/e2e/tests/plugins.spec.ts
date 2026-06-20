@@ -51,4 +51,29 @@ test.describe('plugin capability gating', () => {
     // Compliance posture: a fresh install enables nothing.
     await expect(card.getByTestId('plugin-toggle')).toHaveText('Enable');
   });
+
+  test('the Spotify plugin ships registered, default-off, with a credentials form', async ({
+    page,
+  }) => {
+    await page.goto('/settings/plugins');
+    const card = page.locator('[data-testid="plugin-card"][data-plugin-id="spotify"]');
+    await expect(card).toBeVisible();
+    await expect(card.getByTestId('plugin-toggle')).toHaveText('Enable');
+    // The generic config-field form renders the Spotify API credentials, with the
+    // secret as a write-only password input.
+    await expect(card.getByTestId('plugin-config-form')).toBeVisible();
+    await expect(card.getByTestId('plugin-config-clientId')).toBeVisible();
+    await expect(card.getByTestId('plugin-config-clientSecret')).toHaveAttribute(
+      'type',
+      'password',
+    );
+  });
+
+  test('the From Spotify lane stays hidden while the plugin is disabled', async ({ page }) => {
+    await page.goto('/');
+    await page.getByTestId('search-input').fill('nina simone');
+    await page.getByTestId('search-input').press('Enter');
+    // Gated on the spotify plugin (default-off), so the lane never appears.
+    await expect(page.getByTestId('spotify-section')).toHaveCount(0);
+  });
 });

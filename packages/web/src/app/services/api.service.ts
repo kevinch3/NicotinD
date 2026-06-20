@@ -5,6 +5,7 @@ import type {
   SlskdUserTransferGroup,
   AcquireJob,
   ArchiveCandidate,
+  SpotifyCandidate,
   SongAcquisition,
   BpmAnalysisResult,
   GenreSuggestion,
@@ -240,6 +241,21 @@ export class ApiService {
 
   archiveSearchAlbum(artist: string, album: string) {
     return this.http.get<{ candidates: ArchiveCandidate[] }>('/api/archive/search', {
+      params: { artist, album },
+    });
+  }
+
+  // Spotify metadata fallback lane — returns album candidates; download via
+  // AcquireService with the candidate's `url` (spotDL resolves it). 503s when the
+  // spotify plugin is disabled or its credentials aren't configured.
+  spotifySearch(q: string) {
+    return this.http.get<{ candidates: SpotifyCandidate[] }>('/api/spotify/search', {
+      params: { q },
+    });
+  }
+
+  spotifySearchAlbum(artist: string, album: string) {
+    return this.http.get<{ candidates: SpotifyCandidate[] }>('/api/spotify/search', {
       params: { artist, album },
     });
   }

@@ -31,6 +31,26 @@ export interface PluginRequirements {
   binaries?: string[];
 }
 
+/** Input type for a config field, driving the admin form control + masking. */
+export type PluginConfigFieldType = 'text' | 'password';
+
+/**
+ * UI descriptor for one editable config field. The server still validates
+ * submitted config against `configSchema`; this only tells the admin Plugins
+ * page **how to render** the field. `password` fields are write-only — their
+ * stored value is never returned to the client (see `PluginInfo.configured`).
+ */
+export interface PluginConfigField {
+  /** Config key — must match a key in `configSchema`. */
+  key: string;
+  /** Human-readable label for the form. */
+  label: string;
+  type: PluginConfigFieldType;
+  placeholder?: string;
+  /** Short helper text shown under the input. */
+  help?: string;
+}
+
 /**
  * Declarative description of a plugin. The manifest is static (no I/O) so the
  * registry can list + reason about plugins without instantiating them.
@@ -44,8 +64,10 @@ export interface PluginManifest {
   kind: PluginKind;
   /** The subset of its kind's capabilities this plugin actually provides. */
   capabilities: PluginCapability[];
-  /** Validates + (later) renders the plugin's config form. Server-side only. */
+  /** Validates the plugin's config. Server-side only (never serialized). */
   configSchema?: ZodTypeAny;
+  /** UI descriptors for the admin config form (rendered by the Plugins page). */
+  configFields?: PluginConfigField[];
   requirements?: PluginRequirements;
   compliance?: PluginCompliance;
   /**
@@ -106,4 +128,17 @@ export interface PluginInfo {
   available: boolean;
   /** Declares a configSchema but has no stored config yet. */
   needsConfig: boolean;
+  /** UI descriptors for the config form (echoed from the manifest). */
+  configFields?: PluginConfigField[];
+  /**
+   * Which config keys currently have a stored value. Lets the form show a
+   * "configured" hint for write-only `password` fields without ever returning
+   * the secret itself.
+   */
+  configured?: Record<string, boolean>;
+  /**
+   * Current values for **non-secret** (`text`) config fields, so the form can
+   * prefill them. `password` fields are intentionally omitted.
+   */
+  config?: Record<string, unknown>;
 }

@@ -304,6 +304,25 @@ function loadConfig() {
         : {}),
       ...(process.env.SLSKD_PASSWORD ? { password: process.env.SLSKD_PASSWORD } : {}),
     },
+    acquire: {
+      ...((fileConfig as Record<string, unknown>).acquire as Record<string, unknown>),
+      // Optional env seeding of the Spotify metadata-lane credentials (Docker /
+      // headless). The admin Settings → Plugins form is the primary path.
+      ...(process.env.SPOTIFY_CLIENT_ID || process.env.SPOTIFY_CLIENT_SECRET
+        ? {
+            spotify: {
+              ...(((fileConfig as Record<string, unknown>).acquire as Record<string, unknown>)
+                ?.spotify as Record<string, unknown>),
+              ...(process.env.SPOTIFY_CLIENT_ID
+                ? { clientId: process.env.SPOTIFY_CLIENT_ID }
+                : {}),
+              ...(process.env.SPOTIFY_CLIENT_SECRET
+                ? { clientSecret: process.env.SPOTIFY_CLIENT_SECRET }
+                : {}),
+            },
+          }
+        : {}),
+    },
     lidarr: {
       url: 'http://localhost:8686',
       port: 8686,

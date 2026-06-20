@@ -2,7 +2,7 @@ import { Component, inject, signal, computed, effect, OnInit, OnDestroy } from '
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink, ActivatedRoute } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
-import type { ArchiveCandidate } from '@nicotind/core';
+import type { ArchiveCandidate, SpotifyCandidate } from '@nicotind/core';
 import {
   ApiService,
   type CatalogAlbum,
@@ -34,6 +34,7 @@ import {
 } from '../../lib/folder-utils';
 import { groupBySong, formatBadge, type SongResult } from '../../lib/song-results';
 import { archiveSubtitle } from '../../lib/archive-display';
+import { spotifySubtitle } from '../../lib/spotify-display';
 import { FolderBrowserComponent } from '../../components/folder-browser/folder-browser.component';
 import { AlbumHuntModalComponent } from '../../components/album-hunt-modal/album-hunt-modal.component';
 import { TrackRowComponent } from '../../components/track-row/track-row.component';
@@ -245,6 +246,8 @@ export class SearchComponent implements OnInit, OnDestroy {
 
   // archive.org item identifiers whose download has been kicked off.
   readonly archiveAcquired = signal<Set<string>>(new Set());
+  // Spotify album ids whose spotDL download has been kicked off.
+  readonly spotifyAcquired = signal<Set<string>>(new Set());
 
   readonly hasCatalog = computed(() => {
     const c = this.catalog();
@@ -590,6 +593,43 @@ export class SearchComponent implements OnInit, OnDestroy {
 
   archiveSubtitle = archiveSubtitle;
 
+  // Spotify metadata fallback lane — fired in parallel with the network search.
+  // Gated on the spotify plugin; failures degrade silently to an empty section.
+  private async searchSpotify(query: string): Promise<void> {
+    if (!this.plugins.hasSpotify()) return;
+    this.search.setSpotifyState('searching');
+    try {
+      const res = await firstValueFrom(this.api.spotifySearch(query));
+      this.search.setSpotify(res.candidates);
+    } catch {
+      // Non-fatal — leave the section empty.
+    } finally {
+      this.search.setSpotifyState('complete');
+    }
+  }
+
+  // Download a Spotify album via the acquire pipeline — the spotDL plugin resolves
+  // the open.spotify.com URL (spotify gives metadata only). The job surfaces in
+  // Downloads → Active. Only callable when spotDL is available (template-gated).
+  async getFromSpotify(item: SpotifyCandidate): Promise<void> {
+    this.spotifyAcquired.update((s) => new Set(s).add(item.id));
+    try {
+      await this.acquire.submit(item.url);
+    } catch {
+      this.spotifyAcquired.update((s) => {
+        const next = new Set(s);
+        next.delete(item.id);
+        return next;
+      });
+    }
+  }
+
+  isSpotifyAcquired(item: SpotifyCandidate): boolean {
+    return this.spotifyAcquired().has(item.id);
+  }
+
+  spotifySubtitle = spotifySubtitle;
+
   toggleDirectSearch(): void {
     this.directSearchOpen.update((v) => !v);
   }
@@ -744,6 +784,8 @@ export class SearchComponent implements OnInit, OnDestroy {
 
     // archive.org runs in parallel as a third lane (only when the plugin is on).
     void this.searchArchive(query);
+    // Spotify metadata fallback runs in parallel too (only when its plugin is on).
+    void this.searchSpotify(query);
 
     try {
       const res = await firstValueFrom(this.api.search(query));
