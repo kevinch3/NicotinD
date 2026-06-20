@@ -22,9 +22,18 @@ jobs:
       # Statically validate the workflow files themselves. A malformed `${{ }}`
       # expression (e.g. a double-quoted string literal) makes a workflow invalid and
       # fails it at startup with zero jobs — invisible until a deploy silently never
-      # runs. actionlint turns that into a failed PR check here instead.
+      # runs. actionlint turns that into a failed PR check here instead. We download
+      # the pinned binary directly rather than use a wrapper action: the popular ones
+      # run `npm install` in the repo root, which chokes on this Bun workspace's
+      # `workspace:*` deps (EUNSUPPORTEDPROTOCOL). shellcheck is preinstalled on the
+      # runner, so actionlint lints inline `run:` scripts too.
       - name: Lint GitHub Actions workflows
-        uses: raven-actions/actionlint@v2
+        run: |
+          set -euo pipefail
+          version=1.7.12
+          curl -fsSL "https://github.com/rhysd/actionlint/releases/download/v${version}/actionlint_${version}_linux_amd64.tar.gz" \
+            | tar -xz actionlint
+          ./actionlint -color
 
       - uses: oven-sh/setup-bun@v2
         with:
