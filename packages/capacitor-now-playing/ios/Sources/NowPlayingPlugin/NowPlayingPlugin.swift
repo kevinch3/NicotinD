@@ -54,6 +54,32 @@ public class NowPlayingPlugin: CAPPlugin, CAPBridgedPlugin {
         // Observable in Console.app / device logs to confirm the plugin actually
         // got registered into the (CI-generated) iOS project.
         print("NICOTIND_NOWPLAYING_LOADED")
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(handleInterruption),
+            name: AVAudioSession.interruptionNotification, object: nil
+        )
+    }
+
+    /// An interruption (phone call, Siri, another app's audio, route change)
+    /// deactivates our `AVAudioSession`, which silently strips us of the
+    /// system Now Playing slot — iOS gives the lock-screen card to whichever
+    /// app most recently held an *active* session + registered commands, and
+    /// gives no callback when that happens other than this notification. On
+    /// `.ended` we reclaim the session and re-push the existing info so the
+    /// card comes back instead of staying stuck on whatever interrupted us.
+    @objc private func handleInterruption(_ notification: Notification) {
+        guard let info = notification.userInfo,
+              let typeValue = info[AVAudioSessionInterruptionTypeKey] as? UInt,
+              let type = AVAudioSession.InterruptionType(rawValue: typeValue),
+              type == .ended else { return }
+        DispatchQueue.main.async {
+            guard !self.info.isEmpty else { return }
+            self.sessionConfigured = false
+            self.commandsRegistered = false
+            self.ensureSession()
+            self.registerCommands()
+            self.apply()
+        }
     }
 
     @objc func setMetadata(_ call: CAPPluginCall) {

@@ -204,6 +204,20 @@ change — activating our session is the one residual regression risk that only 
 device can rule out (mitigated: we use `.playback`, activate lazily on first
 play, and only `setActive(false)` in `clear()`).
 
+**Interruption recovery (lost ownership without symptoms).** `sessionConfigured`
+/`commandsRegistered` are one-shot latches — `ensureSession`/`registerCommands`
+no-op forever once they've run once. That's a problem because an interruption
+(phone call, Siri, another app starting audio, a route change) deactivates our
+`AVAudioSession` system-side with **no callback** other than
+`AVAudioSession.interruptionNotification`; ownership of the now-playing slot then
+silently passes to whatever else is holding an active session, while the latches
+keep reporting `sessionConfigured: true` / `commandsRegistered: true` in
+`getDiagnostics()` — i.e. the panel can look fully healthy (`isOtherAudioPlaying:
+true` is the tell) while the lock-screen card belongs to another app. The plugin
+now observes `AVAudioSession.interruptionNotification` in `load()` and, on
+`.ended`, resets both latches and re-runs `ensureSession()` / `registerCommands()`
+/ `apply()` to reclaim the session and re-push the existing `nowPlayingInfo`.
+
 ## Background-audio risk (resolved on-device)
 
 Android **guarantees** background audio via the plugin's native media-playback
