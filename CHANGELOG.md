@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.101](https://github.com/kevinch3/NicotinD/compare/v0.1.100...v0.1.101) (2026-06-21)
+
+
+### Bug Fixes
+
+* **settings:** return empty config when secrets.json is absent ([9989aed](https://github.com/kevinch3/NicotinD/commit/9989aed2321d61f320d3a38e2d05494bced8ebda))
+
 ## [0.1.100](https://github.com/kevinch3/NicotinD/compare/v0.1.99...v0.1.100) (2026-06-21)
 
 ## [0.1.99](https://github.com/kevinch3/NicotinD/compare/v0.1.98...v0.1.99) (2026-06-20)
