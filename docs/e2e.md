@@ -75,9 +75,10 @@ and uploads the Playwright HTML report on failure. `release` and `deploy` depend
 `[ci, e2e]`, so a red e2e run blocks the deploy.
 
 The CI `ci` job also runs `bun test packages/e2e/playground` — the **pure logic**
-of the playground harness below (observation model, report rendering, response
-classifier). The playground *flows* need a live backend and stay out of CI; their
-helpers are unit-tested so regressions in the feedback machinery are still caught.
+of the playground harness below (observation model, report rendering, the response +
+console classifiers, the friction/journey model). The playground *flows* need a live
+backend and stay out of CI; their helpers are unit-tested so regressions in the
+feedback machinery are still caught.
 
 ## Playground harness (automated feedback)
 
@@ -112,17 +113,53 @@ bun run --filter @nicotind/e2e playground
 | `tests/album-hunt.playground.ts` (§C) | Base/skew hunt latency + candidate count / dead-end. **Opt-in** via `PLAYGROUND_HUNT=1` (resolve adds a monitored artist to Lidarr); never triggers a download |
 | `tests/network-search.playground.ts` (§C2) | Time-to-first-result vs time-to-complete for a niche query |
 | `tests/metadata-fix.playground.ts` (§G) | For an album (first in the library, or `PLAYGROUND_FIX_ALBUM`), candidate count + top-candidate confidence the fix modal would surface for a query; flags a 0-candidate gap |
+| `tests/downloads.playground.ts` | Downloads feed (read-only): Active/Offline/Recent tab friction, feed-item count, retry/cancel/remove affordance presence |
+| `tests/playlists.playground.ts` | **Self-cleaning** create → render → delete round-trip (local feature, safe on prod); counts steps to build a playlist |
+| `tests/sharing.playground.ts` | Mints a share link, opens `/share/:token` in a fresh **unauthenticated** context, verifies the read-only view (and that auth chrome doesn't leak); tokens self-expire |
+| `tests/admin-plugins.playground.ts` | `/settings/plugins` + `/admin` read-only: enabled-plugin count, slskd status, console health. A single toggle is gated behind `PLAYGROUND_PLUGIN_TOGGLE=<id>` and reverted |
 
-- **Structure**: pure logic in `playground/{observe,report,net-monitor}.ts`
+- **Structure**: pure logic in `playground/{observe,report,net-monitor,console-monitor,journey}.ts`
   (unit-tested, CI-covered); the Playwright fixture (`playground/fixtures.ts`) auto-
-  monitors responses (cover-art 404s, 503s, 5xx, slow calls) and exposes an `obs`
-  recorder + `obs.time()`; the reporter (`playground/reporter.ts`) writes the report.
+  monitors **responses** (cover-art 404s, 503s, 5xx, slow calls) **and runtime health**
+  — `page.on('console')`/`pageerror`/`requestfailed` → `console-monitor.ts` (a real
+  `console.error` during a normal flow is a defect signal even when every HTTP call was
+  200; a small ignore list drops env noise). The `obs` recorder also exposes
+  `obs.time()`, `obs.journey()` (**friction / step-count** — `step`/`fallback`/`deadEnd`,
+  auto-flushed at teardown), and `obs.outcome('success'|'partial'|'degraded'|'failed')`
+  (a terminal success measurement). The report renders an **Outcome matrix** and a
+  **Health summary** on top of the per-flow detail; the reporter (`playground/reporter.ts`)
+  writes it.
 - **Tuning queries** via env: `PLAYGROUND_SONG_QUERY`, `PLAYGROUND_ARTIST`,
   `PLAYGROUND_NETWORK_QUERY`, `PLAYGROUND_HUNT_ARTIST` / `PLAYGROUND_HUNT_ALBUM`,
-  `PLAYGROUND_FIX_ALBUM` / `PLAYGROUND_FIX_QUERY`.
+  `PLAYGROUND_FIX_ALBUM` / `PLAYGROUND_FIX_QUERY`, `PLAYGROUND_PLUGIN_TOGGLE`.
 - **Adding a flow**: drop a `tests/*.playground.ts` that imports `test`/`expect` from
-  `../playground/fixtures` and records via `obs.record(...)`; the gated project picks
-  it up automatically (`testMatch: /\.playground\.ts$/`).
+  `../playground/fixtures`, records via `obs.record(...)`, tracks friction with
+  `obs.journey()`, and ends with `obs.outcome(...)`; the gated project picks it up
+  automatically (`testMatch: /\.playground\.ts$/`). Keep mutations self-cleaning (a
+  `finally` that undoes anything created) so the flow is safe against prod.
+
+### Real round-trip (`*.real.ts`) — opt-in, mutating, auto-cleanup
+
+The one config that performs **genuinely mutating acquisition** against a live backend:
+`playwright.real.config.ts` runs `tests/real-roundtrip.real.ts`, which **acquires** an
+album (URL via "Get from a link", or artist/album via the hunt path), waits for it to
+**land in the library**, verifies it's **playable** (a `206`/`200` range request), and then
+**DELETES it** in a `finally` — so prod is left clean even if the flow fails mid-way. It
+measures the end-to-end experience the synthetic flows can't (acquire → in-library →
+playable timings, step-count, console health). A deliberate **two-key guard** (`E2E_BASE_URL`
+**and** `PLAYGROUND_REAL=1`) means a stray `playwright test` can never trigger real
+downloads/removals.
+
+```bash
+E2E_BASE_URL=https://your-stack PLAYGROUND_REAL=1 \
+  PLAYGROUND_USERNAME=you PLAYGROUND_PASSWORD=… \
+  PLAYGROUND_REAL_URL=https://… \
+  bun run --filter @nicotind/e2e playground:real
+# or PLAYGROUND_REAL_ARTIST=… PLAYGROUND_REAL_ALBUM=… for the hunt path.
+```
+
+> See **[testing-routines.md](testing-routines.md)** for the full flow catalogue (every
+> main flow × which tier covers it) and the recurring routines (when to run what).
 
 ### Screenshot flows (`*.screens.ts`)
 

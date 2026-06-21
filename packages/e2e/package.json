@@ -10,6 +10,7 @@
     "test:unit": "bun test playground",
     "report": "playwright show-report",
     "playground": "PLAYGROUND=1 playwright test",
+    "playground:real": "playwright test --config=playwright.real.config.ts",
     "screens:live": "playwright test --config=playwright.live-screens.config.ts",
     "make-fixtures": "bun run scripts/make-fixtures.ts"
   },
