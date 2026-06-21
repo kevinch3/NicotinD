@@ -260,6 +260,7 @@
           <div class="space-y-5">
             <div class="flex items-start gap-3">
               <button role="switch" [attr.aria-checked]="remote.remoteEnabled()"
+                data-testid="remote-toggle"
                 (click)="toggleRemote()"
                 [class]="'relative mt-0.5 w-9 h-5 rounded-full transition-colors flex-shrink-0 ' + (remote.remoteEnabled() ? 'bg-emerald-600' : 'bg-theme-hover')">
                 <span [class]="'absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ' + (remote.remoteEnabled() ? 'translate-x-4' : 'translate-x-0')"></span>
