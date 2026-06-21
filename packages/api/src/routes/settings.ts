@@ -30,6 +30,14 @@ function expandDir(dir: string): string {
 
 function readSecrets(dataDir: string): PersistedSecrets {
   const secretsPath = join(expandDir(dataDir), 'secrets.json');
+  // why: a fresh install (or any data dir that never persisted secrets) has no
+  // secrets.json yet. Reading it unconditionally threw ENOENT and 500'd every
+  // admin GET /api/settings/soulseek — surfaced by the remote-playback flow,
+  // where the target opts in via the Settings page. A missing file just means
+  // "nothing configured", so return empty defaults instead of crashing.
+  if (!existsSync(secretsPath)) {
+    return { slskdPassword: '', jwtSecret: '' };
+  }
   return JSON.parse(readFileSync(secretsPath, 'utf-8'));
 }
 

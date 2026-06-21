@@ -1,5 +1,8 @@
 import { describe, expect, it, beforeEach, mock } from 'bun:test';
 import { Database } from 'bun:sqlite';
+import { existsSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { Hono } from 'hono';
 import { settingsRoutes } from './settings.js';
 import { authMiddleware, signJwt } from '../middleware/auth.js';
@@ -44,12 +47,15 @@ function makeSlskdMock() {
   };
 }
 
-function buildApp(slskd: ReturnType<typeof makeSlskdMock> | null) {
+function buildApp(
+  slskd: ReturnType<typeof makeSlskdMock> | null,
+  overrides: { dataDir?: string; soulseek?: { username: string; password: string } } = {},
+) {
   const app = new Hono<AuthEnv>();
   const auth = authMiddleware(SECRET);
   const config = {
-    soulseek: { username: 'u', password: 'p' },
-    dataDir: '/tmp/nicotind-test',
+    soulseek: overrides.soulseek ?? { username: 'u', password: 'p' },
+    dataDir: overrides.dataDir ?? '/tmp/nicotind-test',
     mode: 'external',
   } as unknown as Parameters<typeof settingsRoutes>[0];
   const routes = settingsRoutes(
@@ -67,6 +73,27 @@ function buildApp(slskd: ReturnType<typeof makeSlskdMock> | null) {
   app.route('/', routes);
   return app;
 }
+
+describe('GET /soulseek', () => {
+  it('returns 200 with empty config (not 500) when secrets.json is absent', async () => {
+    // Regression: a fresh data dir has no secrets.json. readSecrets used to
+    // ENOENT-throw → 500 on every admin Settings load. Surfaced by the
+    // remote-playback e2e flow (target opts in via the Settings page).
+    const missingDir = join(tmpdir(), `nicotind-no-secrets-${Date.now()}`);
+    expect(existsSync(join(missingDir, 'secrets.json'))).toBe(false);
+
+    const app = buildApp(null, { dataDir: missingDir, soulseek: { username: '', password: '' } });
+    const token = await adminToken();
+    const res = await app.request('/soulseek', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as { username: string; configured: boolean };
+    expect(data.configured).toBe(false);
+    expect(data.username).toBe('');
+  });
+});
 
 describe('POST /soulseek/toggle', () => {
   let slskdMock: ReturnType<typeof makeSlskdMock>;
