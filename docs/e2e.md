@@ -117,6 +117,7 @@ bun run --filter @nicotind/e2e playground
 | `tests/playlists.playground.ts` | **Self-cleaning** create → render → delete round-trip (local feature, safe on prod); counts steps to build a playlist |
 | `tests/sharing.playground.ts` | Mints a share link, opens `/share/:token` in a fresh **unauthenticated** context, verifies the read-only view (and that auth chrome doesn't leak); tokens self-expire |
 | `tests/admin-plugins.playground.ts` | `/settings/plugins` + `/admin` read-only: enabled-plugin count, slskd status, console health. A single toggle is gated behind `PLAYGROUND_PLUGIN_TOGGLE=<id>` and reverted |
+| `tests/remote-playback.playground.ts` | **Two-context** cast/device-control: a controller tab + a target speaker tab (distinct `nicotind_device_id` seeded per context) opt in, the controller discovers + casts to the target, then relays a remote PAUSE. Records device-discovery / cast-to-playback / PAUSE-round-trip latencies + opt-in friction. Mutates only **ephemeral** per-session playback state (self-resets when the target disconnects at teardown) |
 
 - **Structure**: pure logic in `playground/{observe,report,net-monitor,console-monitor,journey}.ts`
   (unit-tested, CI-covered); the Playwright fixture (`playground/fixtures.ts`) auto-

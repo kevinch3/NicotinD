@@ -32,6 +32,7 @@ an external service (slskd/Lidarr/plugin).
 | Auth — setup / login / logout / token refresh | L | CI (`auth.spec.ts`) |
 | Library — albums grid, artist/album detail, singles, genres | L | CI (`library.spec.ts`), PG (cover-404 health on every flow) |
 | Playback — play/pause/next/seek/shuffle, streaming, media session | L | CI (`playback.spec.ts`, `player.spec.ts`), Shot (`player-analysis`) |
+| Remote playback — cast to another device, remote PLAY/PAUSE, device discovery | L | PG (`remote-playback`, two-context: controller + target speaker) |
 | Search — unified (local + network), song-first lane | L+X | PG (`song-acquisition`, `network-search`) |
 | Catalog (metadata) search + discography | X | PG (`catalog-quality`) |
 | Album hunt | X | PG (`album-hunt`, opt-in), Shot (`hunt-mobile`, `network-album-download`) |
