@@ -68,10 +68,16 @@ export async function metadataCandidates(
 
 /** First album id in the library, for flows that need any album to act on. */
 export async function firstAlbumId(page: Page, token: string | null): Promise<string | null> {
+  const ids = await albumIds(page, token);
+  return ids[0] ?? null;
+}
+
+/** All album ids currently in the library — used to diff what an acquisition added. */
+export async function albumIds(page: Page, token: string | null): Promise<string[]> {
   const res = await authGet(page, token, '/api/library/albums');
-  if (!res.ok()) return null;
+  if (!res.ok()) return [];
   const albums = (await res.json().catch(() => [])) as Array<{ id: string }>;
-  return Array.isArray(albums) && albums.length ? (albums[0]?.id ?? null) : null;
+  return Array.isArray(albums) ? albums.map((a) => a.id).filter(Boolean) : [];
 }
 
 export interface NetworkPoll {

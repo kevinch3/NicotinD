@@ -10,6 +10,7 @@ import {
   sortObservations,
   summarize,
 } from './observe.js';
+import { OUTCOME_TITLE, type Outcome } from './journey.js';
 
 export interface ReportInput {
   generatedAt: string;
@@ -36,6 +37,32 @@ const KIND_LABEL: Record<ObservationKind, string> = {
   error: 'error',
 };
 
+const OUTCOME_ICON: Record<Outcome, string> = {
+  success: '✅',
+  partial: '🟠',
+  degraded: '🟡',
+  failed: '🔴',
+};
+
+const OUTCOMES: Outcome[] = ['success', 'partial', 'degraded', 'failed'];
+
+interface FlowOutcome {
+  flow: string;
+  outcome: Outcome;
+  detail?: string;
+}
+
+/** The latest `obs.outcome(...)` per flow (a flow records one terminal outcome). */
+function outcomeByFlow(observations: Observation[]): FlowOutcome[] {
+  const byFlow = new Map<string, FlowOutcome>();
+  for (const o of observations) {
+    if (o.title !== OUTCOME_TITLE || typeof o.value !== 'string') continue;
+    if (!OUTCOMES.includes(o.value as Outcome)) continue;
+    byFlow.set(o.flow, { flow: o.flow, outcome: o.value as Outcome, detail: o.detail });
+  }
+  return [...byFlow.values()].sort((a, b) => a.flow.localeCompare(b.flow));
+}
+
 export function renderJson(input: ReportInput): string {
   return JSON.stringify(
     {
@@ -43,6 +70,8 @@ export function renderJson(input: ReportInput): string {
       target: input.target,
       mode: input.mode,
       summary: summarize(input.observations),
+      outcomes: outcomeByFlow(input.observations),
+      errors: sortObservations(input.observations.filter((o) => o.kind === 'error')),
       observations: sortObservations(input.observations),
     },
     null,
@@ -84,6 +113,35 @@ export function renderMarkdown(input: ReportInput): string {
     const kindCell = k ? KIND_LABEL[k] : '';
     const kindCount = k ? String(sum.byKind[k] ?? 0) : '';
     out.push(`| ${sevCell} | ${sevCount} | ${kindCell} | ${kindCount} |`);
+  }
+  out.push('');
+
+  // Outcome matrix — per-flow terminal success (from `obs.outcome(...)`).
+  const outcomes = outcomeByFlow(input.observations);
+  if (outcomes.length > 0) {
+    out.push('## Outcomes');
+    out.push('');
+    out.push('| Flow | Outcome |');
+    out.push('|------|---------|');
+    for (const { flow, outcome, detail } of outcomes) {
+      out.push(`| ${flow} | ${OUTCOME_ICON[outcome]} ${outcome}${detail ? ` — ${detail}` : ''} |`);
+    }
+    out.push('');
+  }
+
+  // Health summary — runtime errors caught during the flows (console errors,
+  // uncaught page errors, failed requests, 5xx). The "is anything broken" line.
+  const errors = input.observations.filter((o) => o.kind === 'error');
+  const degraded = sum.byKind.degraded ?? 0;
+  out.push('## Health');
+  out.push('');
+  if (errors.length === 0) {
+    out.push(`✅ No runtime errors captured. ${degraded} degraded (backend unavailable) signal(s).`);
+  } else {
+    out.push(`🔴 ${errors.length} runtime error(s) captured; ${degraded} degraded signal(s).`);
+    for (const o of sortObservations(errors)) {
+      out.push(`- **[${o.flow}]** ${o.title}${o.detail ? ` — ${o.detail}` : ''}`);
+    }
   }
   out.push('');
 
