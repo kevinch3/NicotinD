@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.102](https://github.com/kevinch3/NicotinD/compare/v0.1.101...v0.1.102) (2026-06-22)
+
+
+### Features
+
+* **acquire:** source-agnostic candidate model, blended search + hunt aggregation ([758443d](https://github.com/kevinch3/NicotinD/commit/758443dea4513d072cb9849b51bb1702ae591ed9))
+* **hunt:** blend archive.org + Spotify into one chip-labelled list in the album-hunt modal ([6618a54](https://github.com/kevinch3/NicotinD/commit/6618a54f7f8e50c2d2c554824b5cfe2cc50eb140))
+* **search:** blended source-agnostic results list with source chips ([e94bd87](https://github.com/kevinch3/NicotinD/commit/e94bd87ad168b9f096f8fed545a7216dccc98b6e))
+
 ## [0.1.101](https://github.com/kevinch3/NicotinD/compare/v0.1.100...v0.1.101) (2026-06-21)
 
 
