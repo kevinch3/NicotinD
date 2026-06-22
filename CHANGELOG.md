@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.104](https://github.com/kevinch3/NicotinD/compare/v0.1.103...v0.1.104) (2026-06-22)
+
+
+### Features
+
+* album-hunt-modal ([5e6edc2](https://github.com/kevinch3/NicotinD/commit/5e6edc22c536f44e36a780cbf3126a6cded04da5))
+
+
+### Bug Fixes
+
+* **web:** add missing hunt-download-outcome module ([5d42dc3](https://github.com/kevinch3/NicotinD/commit/5d42dc3afd78083cf0c8c942b0c43fe9ace65bd9))
+
 ## [0.1.103](https://github.com/kevinch3/NicotinD/compare/v0.1.102...v0.1.103) (2026-06-22)
 
 
