@@ -64,26 +64,34 @@ test('downloads & acquire — mobile screens', async ({ page, obs }) => {
     });
   }
 
-  // 3) Archive.org lane — independent search, gated on the archive plugin. Give
-  //    it time to populate before concluding it's absent (don't infer "off").
-  const archive = page.getByTestId('archive-section');
-  if (await appeared(archive, 12_000)) {
-    await archive.scrollIntoViewIfNeeded();
-    await shot(page, FLOW, 3, 'archive lane', { settleMs: 400 });
+  // 3) Blended Results list — archive.org/Spotify/Soulseek flow into ONE
+  //    chip-labelled list (no separate "From archive.org" lane). Give it time to
+  //    populate before concluding it's absent (don't infer "off").
+  const results = page.getByTestId('results');
+  if (await appeared(results, 12_000)) {
+    await results.scrollIntoViewIfNeeded();
+    await shot(page, FLOW, 3, 'blended results', { settleMs: 400 });
     obs.record({
       kind: 'metric',
-      title: 'Archive.org lane items',
-      value: await page.getByTestId('archive-item').count(),
+      title: 'Blended result rows',
+      value: await page.getByTestId('acquire-result').count(),
+      unit: 'count',
+      severity: 'info',
+    });
+    obs.record({
+      kind: 'metric',
+      title: 'Distinct source chips shown',
+      value: await page.getByTestId('source-chip').count(),
       unit: 'count',
       severity: 'info',
     });
   } else {
     obs.record({
       kind: 'enhancement',
-      title: 'Archive.org lane not shown for this query',
+      title: 'Blended Results list not shown for this query',
       severity: 'low',
-      detail: `query="${QUERY}" — lane needs the archive plugin enabled AND ≥1 archive.org match.`,
-      suggestion: 'Expected empty when archive.org has no item for the query; verify the plugin is enabled if results were expected.',
+      detail: `query="${QUERY}" — needs ≥1 enabled source with a match (archive/Spotify/Soulseek).`,
+      suggestion: 'Expected empty when no enabled source returns a match; verify a source plugin is enabled if results were expected.',
     });
   }
 
