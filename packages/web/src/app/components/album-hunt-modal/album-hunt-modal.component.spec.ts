@@ -205,20 +205,22 @@ describe('AlbumHuntModalComponent', () => {
     expect(c.archiveState()).toBe('idle');
   });
 
-  it('getFromArchive submits the detailsUrl and marks the item started', async () => {
+  it('blends archive + Spotify into one otherSources list and getOtherSource submits a candidate', async () => {
     const c = create();
-    const item = {
-      identifier: 'a1',
+    const candidate = {
+      id: 'archive:a1',
+      source: 'archive' as const,
+      sourceLabel: 'Internet Archive',
       title: 'Album',
-      creator: 'Artist',
-      year: null,
-      detailsUrl: 'https://archive.org/details/a1',
+      subtitle: 'Artist',
+      score: 62,
+      acquire: { via: 'url' as const, url: 'https://archive.org/details/a1' },
     };
 
-    await c.getFromArchive(item);
+    await c.getOtherSource(candidate);
 
     expect(acquireSubmit).toHaveBeenCalledWith('https://archive.org/details/a1');
-    expect(c.isAcquired(item)).toBe(true);
+    expect(c.isOtherSourceAcquired(candidate)).toBe(true);
   });
 
   it('passes the current skewSearch flag to the base hunt phase', async () => {

@@ -170,19 +170,40 @@ describe('SearchComponent — metadata-driven search', () => {
     expect(search.archiveState()).toBe('idle');
   });
 
-  it('getFromArchive submits the item detailsUrl and marks it started', async () => {
+  it('blends archive + Spotify candidates into one ranked Results list', async () => {
+    const { component, search, plugins } = setup({
+      archiveSearch: () =>
+        of({
+          candidates: [
+            { identifier: 'a1', title: 'Album', creator: 'Artist', year: '2016', detailsUrl: 'u1' },
+          ],
+        }),
+    });
+    enableArchive(plugins);
+    search.setQuery('pink floyd');
+    component.handleSearch(new Event('submit'));
+    await flush();
+
+    const blended = component.blendedResults();
+    expect(blended.some((c) => c.source === 'archive' && c.id === 'archive:a1')).toBe(true);
+    expect(component.hasBlendedResults()).toBe(true);
+  });
+
+  it('getBlended submits a url candidate through the acquire pipeline and marks it started', async () => {
     const { component, acquireSubmit } = setup();
-    const item = {
-      identifier: 'a1',
+    const candidate = {
+      id: 'archive:a1',
+      source: 'archive' as const,
+      sourceLabel: 'Internet Archive',
       title: 'Album',
-      creator: 'Artist',
-      year: null,
-      detailsUrl: 'https://archive.org/details/a1',
+      subtitle: 'Artist',
+      score: 62,
+      acquire: { via: 'url' as const, url: 'https://archive.org/details/a1' },
     };
 
-    await component.getFromArchive(item);
+    await component.getBlended(candidate);
 
     expect(acquireSubmit).toHaveBeenCalledWith('https://archive.org/details/a1');
-    expect(component.isArchiveAcquired(item)).toBe(true);
+    expect(component.blendedState(candidate)).toBe('done');
   });
 });

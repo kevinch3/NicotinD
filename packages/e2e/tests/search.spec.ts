@@ -1,13 +1,14 @@
 import { test, expect } from '@playwright/test';
 
 /**
- * Phase 4 — guided acquire UX. Raw network search is demoted behind an
- * "Advanced" disclosure rather than presented as a primary "Search Soulseek
- * directly" lane. With Lidarr/slskd unreachable in e2e the catalog is empty so
- * the section is reachable; this asserts the demoted framing shipped.
+ * Source-agnostic search UX. Soulseek is no longer framed as "the network": the
+ * status line is source-neutral, raw peer browsing is demoted behind an
+ * "Advanced" disclosure, and there is no longer a "From archive.org"/"From
+ * Spotify" hierarchy — every source flows into one blended Results list. With
+ * Lidarr/slskd unreachable in e2e the catalog is empty so these are reachable.
  */
 test.describe('search', () => {
-  test('raw network search is framed as Advanced, not a primary Soulseek lane', async ({ page }) => {
+  test('raw peer browsing is framed as Advanced, not a primary Soulseek lane', async ({ page }) => {
     await page.goto('/');
     await page.getByTestId('search-input').fill('nonexistent test query xyz');
     await page.getByTestId('search-submit').click();
@@ -17,5 +18,13 @@ test.describe('search', () => {
     await expect(toggle).toContainText('Advanced');
     // The old raw-first framing must be gone.
     await expect(page.getByText('Search Soulseek directly')).toHaveCount(0);
+  });
+
+  test('source status is neutral, not "Soulseek network available"', async ({ page }) => {
+    await page.goto('/');
+    // The status line reframes from a Soulseek-centric label to a neutral
+    // "Sources: …" / "No acquisition sources enabled" line.
+    await expect(page.getByText('Soulseek network available')).toHaveCount(0);
+    await expect(page.getByTestId('source-status')).toBeVisible();
   });
 });

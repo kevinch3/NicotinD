@@ -26,6 +26,26 @@ function downloadPlugin(): Plugin {
   };
 }
 
+/** A metadata-only acquisition source (no download capability), e.g. archive/spotify. */
+function metadataPlugin(): Plugin {
+  return {
+    manifest: {
+      id: 'archive',
+      name: 'archive.org',
+      description: 'metadata source',
+      kind: 'acquisition',
+      capabilities: ['resolve'],
+      defaultEnabled: false,
+    },
+    async init() {},
+    async isAvailable() {
+      return true;
+    },
+    async dispose() {},
+    resolve: { canHandle: () => false, resolve: async () => [] },
+  };
+}
+
 function makeApp(plugins: PluginRegistry) {
   const app = new Hono<AuthEnv>();
   app.use('*', (c, next) => {
@@ -63,5 +83,14 @@ describe('requireAcquisitionMiddleware', () => {
     const res = await makeApp(plugins).request('/hunt/ping');
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true });
+  });
+
+  it('passes through for a non-download acquisition source (source-agnostic gate)', async () => {
+    // Soulseek disabled, but archive.org (a metadata source, no `download`) is
+    // enabled — the hunt group must be reachable so its source lanes work.
+    plugins.register(metadataPlugin());
+    await plugins.enable('archive', 'admin');
+    const res = await makeApp(plugins).request('/hunt/ping');
+    expect(res.status).toBe(200);
   });
 });

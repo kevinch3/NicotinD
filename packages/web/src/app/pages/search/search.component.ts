@@ -2,7 +2,6 @@ import { Component, inject, signal, computed, effect, OnInit, OnDestroy } from '
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink, ActivatedRoute } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
-import type { ArchiveCandidate, SpotifyCandidate } from '@nicotind/core';
 import {
   ApiService,
   type CatalogAlbum,
@@ -33,11 +32,17 @@ import {
   type FolderGroup,
 } from '../../lib/folder-utils';
 import { groupBySong, formatBadge, type SongResult } from '../../lib/song-results';
-import { archiveSubtitle } from '../../lib/archive-display';
-import { spotifySubtitle } from '../../lib/spotify-display';
+import {
+  songResultToCandidate,
+  archiveToCandidate,
+  spotifyToCandidate,
+  mergeAndRank,
+  type BlendedCandidate,
+} from '../../lib/acquisition-candidate';
 import { FolderBrowserComponent } from '../../components/folder-browser/folder-browser.component';
 import { AlbumHuntModalComponent } from '../../components/album-hunt-modal/album-hunt-modal.component';
 import { TrackRowComponent } from '../../components/track-row/track-row.component';
+import { SourceChipComponent } from '../../components/source-chip/source-chip.component';
 import { toTrack, addToPlaylistAction } from '../../lib/track-utils';
 import { extractSharedUrl } from '../../lib/share-url';
 import { httpErrorMessage, httpErrorCode } from '../../lib/http-error';
@@ -193,6 +198,7 @@ function escapeHtml(text: string): string {
     RouterLink,
     AlbumHuntModalComponent,
     TrackRowComponent,
+    SourceChipComponent,
   ],
   templateUrl: './search.component.html',
 })
@@ -244,11 +250,6 @@ export class SearchComponent implements OnInit, OnDestroy {
   readonly acquireSubmitting = signal(false);
   readonly acquireError = signal<string | null>(null);
 
-  // archive.org item identifiers whose download has been kicked off.
-  readonly archiveAcquired = signal<Set<string>>(new Set());
-  // Spotify album ids whose spotDL download has been kicked off.
-  readonly spotifyAcquired = signal<Set<string>>(new Set());
-
   readonly hasCatalog = computed(() => {
     const c = this.catalog();
     return !!c && (c.artists.length > 0 || c.albums.length > 0);
@@ -280,6 +281,29 @@ export class SearchComponent implements OnInit, OnDestroy {
   // folder view stays available for whole-album grabs. See §F1.
   readonly networkView = signal<'songs' | 'folders'>('songs');
   readonly songResults = computed(() => groupBySong(this.flatNetwork(), this.search.query()));
+
+  // ─── Source-agnostic blended results ────────────────────────────────
+  // One ranked list across every enabled source (Soulseek peer files +
+  // archive.org + Spotify), each row chip-labelled with a single Get action.
+  // Replaces the old "primary network + Also-on-X lanes" hierarchy. See
+  // docs/source-agnostic-acquisition.md.
+  readonly blendedResults = computed<BlendedCandidate[]>(() =>
+    mergeAndRank(
+      this.songResults().map(songResultToCandidate),
+      this.search.archive().map(archiveToCandidate),
+      this.search.spotify().map(spotifyToCandidate),
+    ),
+  );
+  readonly hasBlendedResults = computed(() => this.blendedResults().length > 0);
+  // Sources that contributed (or are still searching) — drives the neutral
+  // "Soulseek · Internet Archive · Spotify" availability line.
+  readonly availableSources = computed(() => {
+    const names: string[] = [];
+    if (this.networkConnected()) names.push('Soulseek');
+    if (this.plugins.hasArchive()) names.push('Internet Archive');
+    if (this.plugins.hasSpotify()) names.push('Spotify');
+    return names;
+  });
 
   private pollInterval: ReturnType<typeof setInterval> | null = null;
 
@@ -572,27 +596,6 @@ export class SearchComponent implements OnInit, OnDestroy {
     }
   }
 
-  // Download an archive.org item via the acquire pipeline (the `archive` resolve
-  // plugin stages it). The job surfaces in Downloads → Active.
-  async getFromArchive(item: ArchiveCandidate): Promise<void> {
-    this.archiveAcquired.update((s) => new Set(s).add(item.identifier));
-    try {
-      await this.acquire.submit(item.detailsUrl);
-    } catch {
-      this.archiveAcquired.update((s) => {
-        const next = new Set(s);
-        next.delete(item.identifier);
-        return next;
-      });
-    }
-  }
-
-  isArchiveAcquired(item: ArchiveCandidate): boolean {
-    return this.archiveAcquired().has(item.identifier);
-  }
-
-  archiveSubtitle = archiveSubtitle;
-
   // Spotify metadata fallback lane — fired in parallel with the network search.
   // Gated on the spotify plugin; failures degrade silently to an empty section.
   private async searchSpotify(query: string): Promise<void> {
@@ -608,27 +611,51 @@ export class SearchComponent implements OnInit, OnDestroy {
     }
   }
 
-  // Download a Spotify album via the acquire pipeline — the spotDL plugin resolves
-  // the open.spotify.com URL (spotify gives metadata only). The job surfaces in
-  // Downloads → Active. Only callable when spotDL is available (template-gated).
-  async getFromSpotify(item: SpotifyCandidate): Promise<void> {
-    this.spotifyAcquired.update((s) => new Set(s).add(item.id));
+  // ─── Blended candidate dispatch ─────────────────────────────────────
+  // Single Get for any source: a peer file is enqueued; a url (archive/Spotify)
+  // is handed to the acquire pipeline. State is tracked per candidate id.
+  readonly blendedAcquired = signal<Set<string>>(new Set());
+
+  async getBlended(c: BlendedCandidate): Promise<void> {
+    if (c.acquire.via === 'enqueue') {
+      // Reuse the network download path (downloading-state keyed on username:file).
+      await this.handleDownload(c.acquire.username, c.acquire.file);
+      return;
+    }
+    // Spotify gives metadata only — without spotDL there's nothing to resolve the
+    // URL, so open it in Spotify instead of queuing a doomed acquire job.
+    if (c.source === 'spotify' && !this.plugins.hasSpotdl()) {
+      window.open(c.acquire.url, '_blank', 'noopener');
+      return;
+    }
+    this.blendedAcquired.update((s) => new Set(s).add(c.id));
     try {
-      await this.acquire.submit(item.url);
+      await this.acquire.submit(c.acquire.url);
     } catch {
-      this.spotifyAcquired.update((s) => {
+      this.blendedAcquired.update((s) => {
         const next = new Set(s);
-        next.delete(item.id);
+        next.delete(c.id);
         return next;
       });
     }
   }
 
-  isSpotifyAcquired(item: SpotifyCandidate): boolean {
-    return this.spotifyAcquired().has(item.id);
+  /** Get-button label/state for a blended candidate (reuses per-source state). */
+  blendedState(c: BlendedCandidate): 'idle' | 'working' | 'done' {
+    if (c.acquire.via === 'enqueue') {
+      const key = `${c.acquire.username}:${c.acquire.file.filename}`;
+      const status = this.transfers.getStatus(c.acquire.username, c.acquire.file.filename);
+      if (status?.percent === 100) return 'done';
+      if (this.search.downloading().has(key) || status) return 'working';
+      return 'idle';
+    }
+    return this.blendedAcquired().has(c.id) ? 'done' : 'idle';
   }
 
-  spotifySubtitle = spotifySubtitle;
+  blendedPercent(c: BlendedCandidate): number {
+    if (c.acquire.via !== 'enqueue') return 0;
+    return this.transfers.getStatus(c.acquire.username, c.acquire.file.filename)?.percent ?? 0;
+  }
 
   toggleDirectSearch(): void {
     this.directSearchOpen.update((v) => !v);

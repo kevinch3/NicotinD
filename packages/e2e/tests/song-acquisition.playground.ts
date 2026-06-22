@@ -78,23 +78,25 @@ test('song-acquisition (§F)', async ({ page, obs, apiToken }) => {
       detail: `${net.resultCount} peer responses`,
     });
 
-    const hasSongsLane = (await page.getByTestId('network-view-songs').count()) > 0;
-    const songRows = await page.getByTestId('song-result').count();
-    if (hasSongsLane) {
+    // §F1 — deduped, best-copy songs now flow into the blended Results list with
+    // a "Soulseek" source chip (one-click Get), alongside any archive/Spotify hits.
+    const hasResults = (await page.getByTestId('results').count()) > 0;
+    const resultRows = await page.getByTestId('acquire-result').count();
+    if (hasResults) {
       obs.record({
         kind: 'metric',
-        title: 'Song-first lane present (§F1 ✅)',
-        value: `${songRows} songs`,
+        title: 'Blended Results present (§F1 ✅)',
+        value: `${resultRows} candidates`,
         unit: 'count',
         severity: 'info',
-        detail: 'Deduped, best-copy-picked, one-click download.',
+        detail: 'Source-agnostic: Soulseek best-copy + archive/Spotify, one-click Get.',
       });
     } else if (net.fileCount > 0) {
       obs.record({
         kind: 'gap',
-        title: 'Network results present but no song-first lane rendered',
+        title: 'Network results present but no blended Results list rendered',
         severity: 'high',
-        suggestion: 'The §F1 Songs lane toggle did not render despite network files.',
+        suggestion: 'The blended Results list did not render despite network files.',
       });
     }
   } else {

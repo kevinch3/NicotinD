@@ -144,6 +144,17 @@ export class PluginRegistry {
   }
 
   /**
+   * True when *any* acquisition plugin is enabled (Soulseek, archive.org,
+   * Spotify, yt-dlp, …). Source-agnostic gate for the hunt route group: the
+   * group is reachable when at least one source can contribute, while each
+   * source-specific sub-route self-gates (slskd on its ref, the blended sources
+   * endpoint per enabled source).
+   */
+  hasAnyAcquisitionEnabled(): boolean {
+    return this.getEnabled('acquisition').length > 0;
+  }
+
+  /**
    * Validate (against the manifest schema) + persist a plugin's config. The new
    * config is **merged over the existing** stored config, so a partial update
    * (e.g. only `clientId`) doesn't wipe other keys — this is what makes the

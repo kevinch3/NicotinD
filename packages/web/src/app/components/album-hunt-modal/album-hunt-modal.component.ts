@@ -11,8 +11,13 @@ import { TransferService } from '../../services/transfer.service';
 import { AcquireService } from '../../services/acquire.service';
 import { PluginService } from '../../services/plugin.service';
 import { baseQueries, skewedQueries } from '../../lib/hunt-queries';
-import { archiveSubtitle } from '../../lib/archive-display';
-import { spotifySubtitle } from '../../lib/spotify-display';
+import {
+  archiveToCandidate,
+  spotifyToCandidate,
+  mergeAndRank,
+  type BlendedCandidate,
+} from '../../lib/acquisition-candidate';
+import { SourceChipComponent } from '../source-chip/source-chip.component';
 
 type HuntState = 'idle' | 'searching' | 'results' | 'error' | 'downloading';
 export type QueryPhaseState = 'idle' | 'searching' | 'done' | 'skipped';
@@ -21,7 +26,7 @@ type ArchiveState = 'idle' | 'searching' | 'done' | 'error';
 @Component({
   selector: 'app-album-hunt-modal',
   standalone: true,
-  imports: [NgTemplateOutlet],
+  imports: [NgTemplateOutlet, SourceChipComponent],
   templateUrl: './album-hunt-modal.component.html',
   host: { '(document:keydown.escape)': 'close()' },
 })
@@ -96,22 +101,17 @@ export class AlbumHuntModalComponent implements OnInit {
   // What Download actually queues: the user's explicit pick if any, else the best.
   readonly effectiveCandidate = computed(() => this.selectedCandidate() ?? this.bestCandidate());
 
-  // archive.org lane — a second source surfaced alongside the Soulseek candidates
-  // (the user can pull a missing album from the Internet Archive in one click).
-  // Gated on the `archive` plugin being enabled.
+  // archive.org + Spotify metadata sources — searched in parallel with the
+  // Soulseek hunt and blended into one `otherSources` list below (chip-labelled).
+  // Each gates on its plugin being enabled.
   readonly hasArchive = this.plugins.hasArchive;
   readonly archiveState = signal<ArchiveState>('idle');
   readonly archiveCandidates = signal<ArchiveCandidate[]>([]);
-  // Item identifiers whose download has been kicked off (button → "Started").
-  readonly archiveAcquired = signal<Set<string>>(new Set());
 
-  // Spotify metadata fallback lane — like archive.org, surfaced alongside the
-  // Soulseek candidates. Download routes through spotDL (metadata-only source).
   readonly hasSpotify = this.plugins.hasSpotify;
   readonly hasSpotdl = this.plugins.hasSpotdl;
   readonly spotifyState = signal<ArchiveState>('idle');
   readonly spotifyCandidates = signal<SpotifyCandidate[]>([]);
-  readonly spotifyAcquired = signal<Set<string>>(new Set());
 
   async ngOnInit(): Promise<void> {
     // Fire the archive.org + Spotify searches in parallel; neither must block the
@@ -139,27 +139,6 @@ export class AlbumHuntModalComponent implements OnInit {
     }
   }
 
-  // Download an archive.org item: hand its detailsUrl to the acquire pipeline (the
-  // `archive` resolve plugin stages the audio; the job tracks in Downloads → Active).
-  async getFromArchive(item: ArchiveCandidate): Promise<void> {
-    this.archiveAcquired.update((s) => new Set(s).add(item.identifier));
-    try {
-      await this.acquire.submit(item.detailsUrl);
-    } catch {
-      this.archiveAcquired.update((s) => {
-        const next = new Set(s);
-        next.delete(item.identifier);
-        return next;
-      });
-    }
-  }
-
-  isAcquired(item: ArchiveCandidate): boolean {
-    return this.archiveAcquired().has(item.identifier);
-  }
-
-  archiveSubtitle = archiveSubtitle;
-
   async searchSpotify(): Promise<void> {
     if (!this.hasSpotify()) {
       this.spotifyState.set('idle');
@@ -178,27 +157,45 @@ export class AlbumHuntModalComponent implements OnInit {
     }
   }
 
-  // Download a Spotify album: hand its open.spotify.com URL to the acquire
-  // pipeline, where the spotDL plugin resolves it. Template-gated on spotDL being
-  // available; otherwise the section shows a manual note + an external link.
-  async getFromSpotify(item: SpotifyCandidate): Promise<void> {
-    this.spotifyAcquired.update((s) => new Set(s).add(item.id));
+  // ─── Blended "other sources" list ───────────────────────────────────
+  // archive.org + Spotify candidates merged into ONE ranked, chip-labelled list
+  // (no separate "Also on archive.org"/"Also on Spotify" lanes). The Soulseek
+  // folder candidates above stay their own ranked list (bespoke peer/selection
+  // UX); these metadata sources blend. See docs/source-agnostic-acquisition.md.
+  readonly otherSources = computed<BlendedCandidate[]>(() =>
+    mergeAndRank(
+      this.archiveCandidates().map(archiveToCandidate),
+      this.spotifyCandidates().map(spotifyToCandidate),
+    ),
+  );
+  readonly otherSourcesSearching = computed(
+    () => this.archiveState() === 'searching' || this.spotifyState() === 'searching',
+  );
+  readonly blendedAcquired = signal<Set<string>>(new Set());
+
+  async getOtherSource(c: BlendedCandidate): Promise<void> {
+    // Spotify needs spotDL to resolve; without it, open in Spotify instead.
+    if (c.acquire.via === 'url' && c.source === 'spotify' && !this.hasSpotdl()) {
+      window.open(c.acquire.url, '_blank', 'noopener');
+      return;
+    }
+    if (c.acquire.via !== 'url') return;
+    const url = c.acquire.url;
+    this.blendedAcquired.update((s) => new Set(s).add(c.id));
     try {
-      await this.acquire.submit(item.url);
+      await this.acquire.submit(url);
     } catch {
-      this.spotifyAcquired.update((s) => {
+      this.blendedAcquired.update((s) => {
         const next = new Set(s);
-        next.delete(item.id);
+        next.delete(c.id);
         return next;
       });
     }
   }
 
-  isSpotifyAcquired(item: SpotifyCandidate): boolean {
-    return this.spotifyAcquired().has(item.id);
+  isOtherSourceAcquired(c: BlendedCandidate): boolean {
+    return this.blendedAcquired().has(c.id);
   }
-
-  spotifySubtitle = spotifySubtitle;
 
   async startHunt(): Promise<void> {
     this.state.set('searching');

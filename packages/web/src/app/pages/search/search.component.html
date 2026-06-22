@@ -48,17 +48,22 @@
     </div>
   </form>
 
-  <!-- Network status indicator -->
+  <!-- Source availability — neutral across every enabled source (no "the network"
+       framing). Lists what will contribute to the blended results. -->
   @if (networkConnected() !== null) {
     <div class="flex items-center gap-2 mb-6">
       <span
         [class]="
           'inline-block w-2 h-2 rounded-full ' +
-          (networkConnected() ? 'bg-emerald-500' : 'bg-zinc-600')
+          (availableSources().length > 0 ? 'bg-emerald-500' : 'bg-zinc-600')
         "
       ></span>
-      <span class="text-xs text-zinc-500">
-        {{ networkConnected() ? 'Soulseek network available' : 'Soulseek unavailable' }}
+      <span class="text-xs text-zinc-500" data-testid="source-status">
+        @if (availableSources().length > 0) {
+          Sources: {{ availableSources().join(' · ') }}
+        } @else {
+          No acquisition sources enabled
+        }
       </span>
     </div>
   }
@@ -257,6 +262,55 @@
     </section>
   }
 
+  <!-- Source-agnostic blended results: one ranked list across every enabled
+       source (Soulseek peer files + archive.org + Spotify), each row chip-labelled
+       with a single Get action. No "primary network" / "Also on…" hierarchy. -->
+  @if (!loading() && search.query().trim() && hasBlendedResults()) {
+    <section class="mt-4" data-testid="results">
+      <h2 class="text-xs font-semibold uppercase tracking-wide text-zinc-500 mb-2">Results</h2>
+      @if (plugins.hasSpotify() && !plugins.hasSpotdl() && search.spotify().length > 0) {
+        <p class="text-xs text-amber-500 mb-2" data-testid="spotify-needs-spotdl">
+          Spotify matches open in Spotify — enable the spotDL plugin to download them.
+        </p>
+      }
+      <ul class="divide-y divide-zinc-800 rounded-lg border border-zinc-800 overflow-hidden">
+        @for (c of blendedResults(); track c.id) {
+          <li
+            class="flex items-center gap-3 px-3 py-2.5 bg-zinc-900/40"
+            data-testid="acquire-result"
+            [attr.data-source]="c.source"
+          >
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-2">
+                <app-source-chip [source]="c.source" [label]="c.sourceLabel" />
+                <p class="truncate text-sm text-zinc-200">{{ c.title }}</p>
+              </div>
+              @if (c.subtitle) {
+                <p class="truncate text-xs text-zinc-500 mt-0.5">{{ c.subtitle }}</p>
+              }
+            </div>
+            @if (blendedState(c) === 'done') {
+              <span class="shrink-0 text-xs text-emerald-400">Started ✓</span>
+            } @else {
+              <button
+                (click)="getBlended(c)"
+                [disabled]="blendedState(c) === 'working'"
+                data-testid="acquire-result-get"
+                class="shrink-0 px-3 py-1.5 rounded-md text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-200 disabled:opacity-60"
+              >
+                @if (blendedState(c) === 'working') {
+                  {{ blendedPercent(c) > 0 ? blendedPercent(c) + '%' : '…' }}
+                } @else {
+                  Get
+                }
+              </button>
+            }
+          </li>
+        }
+      </ul>
+    </section>
+  }
+
   <!-- §A6 — matched the artist but the catalog had none of their albums; explain
        the network fallback and offer to load their real discography on demand. -->
   @if (!loading() && discographyNote(); as note) {
@@ -287,7 +341,7 @@
         data-testid="advanced-toggle"
         class="w-full flex items-center justify-between px-1 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-500 hover:text-zinc-300 transition"
       >
-        <span>Advanced: search the network directly</span>
+        <span>Advanced: browse Soulseek peers &amp; folders</span>
         <span class="flex items-center gap-2 normal-case font-normal">
           @if (hasNetwork()) {
             <span>{{ folderGroups().length }} folders · {{ flatNetwork().length }} tracks</span>
@@ -624,134 +678,11 @@
     </section>
   }
 
-  <!-- archive.org results — a second source, shown when the plugin is enabled -->
-  @if (plugins.hasArchive() && search.query().trim() && search.archiveState() !== 'idle') {
-    <section class="mt-6" data-testid="archive-section">
-      <div class="flex items-center gap-2 mb-3">
-        <h2 class="text-sm font-semibold text-zinc-400 uppercase tracking-wider">
-          From archive.org
-        </h2>
-        @if (search.archiveState() === 'searching') {
-          <span
-            class="inline-block w-3 h-3 border border-zinc-600 border-t-transparent rounded-full animate-spin"
-          ></span>
-        } @else {
-          <span class="text-xs text-zinc-600">{{ search.archive().length }} items</span>
-        }
-      </div>
-      @if (search.archiveState() === 'complete' && search.archive().length === 0) {
-        <p class="text-sm text-zinc-600">No archive.org results for "{{ search.query() }}"</p>
-      } @else {
-        <ul class="divide-y divide-zinc-800 rounded-lg border border-zinc-800 overflow-hidden">
-          @for (item of search.archive(); track item.identifier) {
-            <li
-              class="flex items-center justify-between gap-3 px-4 py-3 bg-zinc-900/40"
-              data-testid="archive-item"
-            >
-              <div class="min-w-0 flex-1">
-                <p class="text-sm font-medium text-zinc-200 truncate">{{ item.title }}</p>
-                @if (archiveSubtitle(item); as sub) {
-                  <p class="text-xs text-zinc-500 mt-0.5 truncate">{{ sub }}</p>
-                }
-              </div>
-              <button
-                (click)="getFromArchive(item)"
-                [disabled]="isArchiveAcquired(item)"
-                data-testid="archive-get"
-                class="px-3 py-1.5 rounded-lg text-xs font-semibold flex-shrink-0 transition disabled:opacity-60"
-                [class.bg-zinc-100]="!isArchiveAcquired(item)"
-                [class.text-zinc-900]="!isArchiveAcquired(item)"
-                [class.bg-zinc-800]="isArchiveAcquired(item)"
-                [class.text-zinc-400]="isArchiveAcquired(item)"
-              >
-                {{ isArchiveAcquired(item) ? 'Started ✓' : 'Get' }}
-              </button>
-            </li>
-          }
-        </ul>
-      }
-    </section>
-  }
-
-  <!-- Spotify results — a metadata fallback; download routes through spotDL -->
-  @if (plugins.hasSpotify() && search.query().trim() && search.spotifyState() !== 'idle') {
-    <section class="mt-6" data-testid="spotify-section">
-      <div class="flex items-center gap-2 mb-3">
-        <h2 class="text-sm font-semibold text-zinc-400 uppercase tracking-wider">From Spotify</h2>
-        @if (search.spotifyState() === 'searching') {
-          <span
-            class="inline-block w-3 h-3 border border-zinc-600 border-t-transparent rounded-full animate-spin"
-          ></span>
-        } @else {
-          <span class="text-xs text-zinc-600">{{ search.spotify().length }} albums</span>
-        }
-      </div>
-      @if (!plugins.hasSpotdl() && search.spotify().length > 0) {
-        <p class="text-xs text-amber-500 mb-3" data-testid="spotify-needs-spotdl">
-          Downloading a Spotify match needs the spotDL plugin — enable it in Settings → Plugins.
-        </p>
-      }
-      @if (search.spotifyState() === 'complete' && search.spotify().length === 0) {
-        <p class="text-sm text-zinc-600">No Spotify results for "{{ search.query() }}"</p>
-      } @else {
-        <ul class="divide-y divide-zinc-800 rounded-lg border border-zinc-800 overflow-hidden">
-          @for (item of search.spotify(); track item.id) {
-            <li
-              class="flex items-center justify-between gap-3 px-4 py-3 bg-zinc-900/40"
-              data-testid="spotify-item"
-            >
-              <div class="flex items-center gap-3 min-w-0 flex-1">
-                @if (item.coverUrl) {
-                  <img
-                    [src]="item.coverUrl"
-                    alt=""
-                    loading="lazy"
-                    class="w-10 h-10 rounded object-cover flex-shrink-0 bg-zinc-800"
-                  />
-                }
-                <div class="min-w-0">
-                  <p class="text-sm font-medium text-zinc-200 truncate">{{ item.title }}</p>
-                  @if (spotifySubtitle(item); as sub) {
-                    <p class="text-xs text-zinc-500 mt-0.5 truncate">{{ sub }}</p>
-                  }
-                </div>
-              </div>
-              @if (plugins.hasSpotdl()) {
-                <button
-                  (click)="getFromSpotify(item)"
-                  [disabled]="isSpotifyAcquired(item)"
-                  data-testid="spotify-get"
-                  class="px-3 py-1.5 rounded-lg text-xs font-semibold flex-shrink-0 transition disabled:opacity-60"
-                  [class.bg-zinc-100]="!isSpotifyAcquired(item)"
-                  [class.text-zinc-900]="!isSpotifyAcquired(item)"
-                  [class.bg-zinc-800]="isSpotifyAcquired(item)"
-                  [class.text-zinc-400]="isSpotifyAcquired(item)"
-                >
-                  {{ isSpotifyAcquired(item) ? 'Started ✓' : 'Get via spotDL' }}
-                </button>
-              } @else {
-                <a
-                  [href]="item.url"
-                  target="_blank"
-                  rel="noopener"
-                  data-testid="spotify-open"
-                  class="px-3 py-1.5 rounded-lg text-xs font-semibold flex-shrink-0 bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition"
-                >
-                  Open ↗
-                </a>
-              }
-            </li>
-          }
-        </ul>
-      }
-    </section>
-  }
-
   <!-- Empty state -->
   @if (search.networkState() === 'idle' && !loading()) {
     <div class="text-center py-20">
       <p class="text-zinc-600 text-lg">Search for music to get started</p>
-      <p class="text-zinc-700 text-sm mt-1">Results from the Soulseek network will appear here</p>
+      <p class="text-zinc-700 text-sm mt-1">Results from your enabled sources will appear here</p>
     </div>
   }
 

@@ -26,6 +26,14 @@ import { archiveRoutes } from './routes/archive.js';
 import { ArchiveSearchService } from './services/archive-search.service.js';
 import { spotifyRoutes } from './routes/spotify.js';
 import { SpotifySearchService } from './services/spotify-search.service.js';
+import { sourcesRoutes } from './routes/sources.js';
+import { CandidateSearchAggregator } from './services/candidate-search.js';
+import {
+  AlbumHuntOrchestrator,
+  ArchiveAlbumHunter,
+  SpotifyAlbumHunter,
+} from './services/source-hunter.js';
+import { archiveToCandidate, spotifyToCandidate } from '@nicotind/core';
 import { watchlistRoutes } from './routes/watchlist.js';
 import { playlistRoutes } from './routes/playlists.js';
 import { acquireRoutes } from './routes/acquire.js';
@@ -366,6 +374,7 @@ export function createApp({
   app.use('/api/plugins/*', auth);
   app.use('/api/archive/*', auth);
   app.use('/api/spotify/*', auth);
+  app.use('/api/sources/*', auth);
 
   app.get(
     '/api/ws/playback',
@@ -404,24 +413,40 @@ export function createApp({
   app.route('/api/users', usersRoutes(registry));
   app.route('/api/playlists', playlistRoutes());
   app.route('/api/plugins', pluginRoutes(plugins));
+  // Metadata search sources, constructed once and shared between the legacy
+  // per-source lanes and the source-agnostic blended aggregator.
+  const archiveSearch = new ArchiveSearchService();
+  const spotifySearch = new SpotifySearchService(() => {
+    // Read the admin's current credentials live so a config edit takes effect
+    // without a restart.
+    const cfg = plugins.getConfig('spotify');
+    return {
+      clientId: (cfg.clientId as string) || config.acquire.spotify.clientId,
+      clientSecret: (cfg.clientSecret as string) || config.acquire.spotify.clientSecret,
+    };
+  });
   // archive.org metadata search lane — always mounted (no Lidarr/slskd dep); the
   // route itself 503s unless the `archive` plugin is enabled.
-  app.route('/api/archive', archiveRoutes({ search: new ArchiveSearchService(), plugins }));
-  // Spotify metadata fallback lane — reads the admin's current credentials live
-  // from the registry so a config edit takes effect without a restart. Downloads
-  // route to the spotDL plugin via /api/acquire.
-  app.route(
-    '/api/spotify',
-    spotifyRoutes({
-      search: new SpotifySearchService(() => {
-        const cfg = plugins.getConfig('spotify');
-        return {
-          clientId: (cfg.clientId as string) || config.acquire.spotify.clientId,
-          clientSecret: (cfg.clientSecret as string) || config.acquire.spotify.clientSecret,
-        };
-      }),
-      plugins,
-    }),
+  app.route('/api/archive', archiveRoutes({ search: archiveSearch, plugins }));
+  // Spotify metadata fallback lane — downloads route to spotDL via /api/acquire.
+  app.route('/api/spotify', spotifyRoutes({ search: spotifySearch, plugins }));
+  // Source-agnostic blended search: every enabled metadata source mapped to the
+  // unified AcquisitionCandidate shape. Adding a source = one adapter line + a
+  // pure mapper (see docs/source-agnostic-acquisition.md). Soulseek stays on
+  // /api/search (its polled live-progress search is blended client-side).
+  const candidateAggregator = new CandidateSearchAggregator(
+    [
+      { id: 'archive', search: async (q) => (await archiveSearch.search(q)).map(archiveToCandidate) },
+      { id: 'spotify', search: async (q) => (await spotifySearch.search(q)).map(spotifyToCandidate) },
+    ],
+    (id) => plugins.isEnabled(id),
+  );
+  app.route('/api/sources', sourcesRoutes({ aggregator: candidateAggregator }));
+  // Source-agnostic album hunt across the metadata sources (Soulseek keeps its
+  // specialized two-phase live search; these are the request/response sources).
+  const sourceHunt = new AlbumHuntOrchestrator(
+    [new ArchiveAlbumHunter(archiveSearch), new SpotifyAlbumHunter(spotifySearch)],
+    (id) => plugins.isEnabled(id),
   );
 
   // Ingest-time enrichment of loose singles/EPs (release type + artwork). Only
@@ -448,6 +473,7 @@ export function createApp({
       discographyRoutes({
         discography: discographySvc,
         hunter: hunterSvc,
+        sourceHunt,
         lidarr,
         db,
         slskdRef,
