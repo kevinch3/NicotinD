@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.103](https://github.com/kevinch3/NicotinD/compare/v0.1.102...v0.1.103) (2026-06-22)
+
+
+### Features
+
+* **library:** quality auditor with pollution cleanup, re-tag & offline year backfill ([21fc3c9](https://github.com/kevinch3/NicotinD/commit/21fc3c9d36c2a3faf62093b06bd992eb438fc968))
+
 ## [0.1.102](https://github.com/kevinch3/NicotinD/compare/v0.1.101...v0.1.102) (2026-06-22)
 
 
