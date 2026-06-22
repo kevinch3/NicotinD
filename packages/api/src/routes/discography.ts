@@ -5,6 +5,7 @@ import type { AuthEnv } from '../middleware/auth.js';
 import type { SlskdRef } from '../index.js';
 import type { DiscographyService } from '../services/discography.service.js';
 import type { AlbumHunterService } from '../services/album-hunter.service.js';
+import type { AlbumHuntOrchestrator } from '../services/source-hunter.js';
 import { TrackHunterService } from '../services/track-hunter.service.js';
 import {
   AlbumFallbackService,
@@ -21,6 +22,12 @@ const log = createLogger('discography');
 export interface DiscographyRoutesOptions {
   discography: DiscographyService;
   hunter: AlbumHunterService;
+  /**
+   * Source-agnostic hunt across the metadata sources (archive.org, Spotify, …).
+   * Backs `/hunt/sources` so the modal renders ONE blended candidate list with
+   * Soulseek's live two-phase folder candidates. See source-hunter.ts.
+   */
+  sourceHunt: AlbumHuntOrchestrator;
   lidarr: Lidarr;
   db: Database;
   slskdRef: SlskdRef;
@@ -31,6 +38,7 @@ export interface DiscographyRoutesOptions {
 export function discographyRoutes({
   discography,
   hunter,
+  sourceHunt,
   lidarr,
   db,
   slskdRef,
@@ -85,6 +93,36 @@ export function discographyRoutes({
       const msg = err instanceof Error ? err.message : String(err);
       log.warn({ albumId, err: msg }, 'Album hunt failed');
       return c.json({ error: msg }, 500);
+    }
+  });
+
+  // POST /api/discography/albums/:lidarrAlbumId/hunt/sources
+  // Source-agnostic hunt across the metadata sources (archive.org, Spotify, …):
+  // returns ONE blended, ranked `AcquisitionCandidate[]` so the modal can show a
+  // single results list (with Soulseek's live two-phase folder candidates) and a
+  // single Get action per row. Each source self-gates on its plugin; an all-off
+  // set returns an empty list (never an error). Optional body: { artistName?,
+  // albumTitle? }. See docs/source-agnostic-acquisition.md.
+  app.post('/albums/:lidarrAlbumId/hunt/sources', async (c) => {
+    const { lidarrAlbumId } = c.req.param();
+    const albumId = Number(lidarrAlbumId);
+    if (Number.isNaN(albumId)) return c.json({ error: 'Invalid album ID' }, 400);
+
+    type HuntBody = { artistName?: string; albumTitle?: string };
+    const body = await c.req.json<HuntBody>().catch(() => ({}) as HuntBody);
+
+    try {
+      const album = await lidarr.album.get(albumId);
+      const artistName = body.artistName ?? album.artist?.artistName ?? '';
+      const albumTitle = body.albumTitle ?? album.title;
+      const candidates = await sourceHunt.hunt(artistName, albumTitle);
+      return c.json({ candidates, sources: sourceHunt.enabledSourceIds() });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      log.warn({ albumId, err: msg }, 'Source hunt failed');
+      // Degrade to an empty blend rather than failing the modal — Soulseek
+      // candidates load independently.
+      return c.json({ candidates: [], sources: sourceHunt.enabledSourceIds() });
     }
   });
 

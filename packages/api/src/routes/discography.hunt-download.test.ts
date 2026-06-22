@@ -6,9 +6,15 @@ import type { AuthEnv } from '../middleware/auth.js';
 import { discographyRoutes } from './discography.js';
 import type { DiscographyService } from '../services/discography.service.js';
 import type { AlbumHunterService } from '../services/album-hunter.service.js';
+import type { AlbumHuntOrchestrator } from '../services/source-hunter.js';
 import type { Lidarr } from '@nicotind/lidarr-client';
 import type { SlskdRef } from '../index.js';
 import { albumIdFor, artistIdFor } from '../services/library-scanner.js';
+
+const noopSourceHunt = {
+  hunt: async () => [],
+  enabledSourceIds: () => [],
+} as unknown as AlbumHuntOrchestrator;
 import { resolveArtwork } from '../services/artwork-store.js';
 
 const ALBUM_ID = 42;
@@ -31,6 +37,7 @@ function makeApp(db: Database) {
     discographyRoutes({
       discography: {} as DiscographyService,
       hunter: {} as AlbumHunterService,
+      sourceHunt: noopSourceHunt,
       lidarr,
       db,
       slskdRef: { current: { transfers: { enqueue } } } as unknown as SlskdRef,
@@ -149,6 +156,7 @@ describe('POST /albums/:id/hunt-download idempotency guard', () => {
       discographyRoutes({
         discography: {} as DiscographyService,
         hunter: {} as AlbumHunterService,
+        sourceHunt: noopSourceHunt,
         lidarr,
         db,
         slskdRef: { current: { transfers: { enqueue } } } as unknown as SlskdRef,

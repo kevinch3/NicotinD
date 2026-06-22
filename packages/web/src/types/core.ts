@@ -20,6 +20,13 @@ export type {
 
 export type { ArchiveCandidate } from '../../../core/src/types/archive';
 
+export type {
+  AcquisitionCandidate,
+  AcquisitionSourceId,
+  AcquisitionKind,
+  AcquireIntent,
+} from '../../../core/src/types/acquisition-candidate';
+
 export type { SpotifyCandidate } from '../../../core/src/types/spotify';
 
 export type {

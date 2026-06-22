@@ -1,5 +1,6 @@
 // Types
 export * from './types/acquire.js';
+export * from './types/acquisition-candidate.js';
 export * from './types/archive.js';
 export * from './types/config.js';
 export * from './types/slskd.js';

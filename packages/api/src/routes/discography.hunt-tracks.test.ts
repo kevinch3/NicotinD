@@ -6,8 +6,14 @@ import type { AuthEnv } from '../middleware/auth.js';
 import { discographyRoutes } from './discography.js';
 import type { DiscographyService } from '../services/discography.service.js';
 import type { AlbumHunterService } from '../services/album-hunter.service.js';
+import type { AlbumHuntOrchestrator } from '../services/source-hunter.js';
 import type { Lidarr } from '@nicotind/lidarr-client';
 import type { SlskdRef } from '../index.js';
+
+const noopSourceHunt = {
+  hunt: async () => [],
+  enabledSourceIds: () => [],
+} as unknown as AlbumHuntOrchestrator;
 
 const mockLidarr = () =>
   ({
@@ -46,6 +52,7 @@ function makeApp(lidarr: Lidarr, slskdRef: SlskdRef): Hono<AuthEnv> {
     discographyRoutes({
       discography: {} as DiscographyService,
       hunter: {} as AlbumHunterService,
+      sourceHunt: noopSourceHunt,
       lidarr,
       db,
       slskdRef,
