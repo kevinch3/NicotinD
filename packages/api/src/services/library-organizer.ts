@@ -37,6 +37,7 @@ import { normalizeTitle } from './album-hunter.service.js';
 import { dedupeFolder } from './album-dedupe.js';
 import { isLossless, transcodeToOpus } from './post-download-transcode.js';
 import { ffmpegAvailable } from './transcode.js';
+import { looksLikeSourceWatermark } from './library-quality.js';
 
 const log = createLogger('library-organizer');
 
@@ -725,11 +726,16 @@ function moveFileAcrossDevices(src: string, dst: string): void {
 function sanitizeArtistTag(raw: string | undefined): string | undefined {
   if (!raw) return raw;
   if (isTrackNumberFragment(raw)) return undefined;
+  // DJ-pool / VA-source watermark tagged as the artist (e.g. "ftpdjemilio.com",
+  // "DJ KAIRUZ- SERVICIO ARG"): never a real artist — drop so it doesn't mint a
+  // junk artist row. This is the ingest half of the library auditor's
+  // `watermark_artist` rule (see docs/library-audit.md).
+  if (looksLikeSourceWatermark(raw)) return undefined;
   let v = stripTrackPrefix(raw);
   if (!v) return undefined;
   v = stripArtistLeadJunk(v);
   v = stripFeaturingSuffix(v);
-  if (!v || isTrackNumberFragment(v)) return undefined;
+  if (!v || isTrackNumberFragment(v) || looksLikeSourceWatermark(v)) return undefined;
   return v;
 }
 
@@ -743,5 +749,8 @@ function sanitizeAlbumTag(raw: string | undefined): string | undefined {
   if (!raw) return raw;
   if (looksLikeFilenameTag(raw)) return undefined;
   if (isTrackNumberFragment(raw)) return undefined;
+  // Source watermark in the album field ("MUSICAUNO.COM", "ftpdjemilio.com"):
+  // drop so the track buckets by its real album/single instead of a junk one.
+  if (looksLikeSourceWatermark(raw)) return undefined;
   return raw;
 }

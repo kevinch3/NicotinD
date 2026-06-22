@@ -1,6 +1,7 @@
 import { createLogger } from '@nicotind/core';
 import type { Database } from 'bun:sqlite';
 import { isUnknownLike } from './audio-tags.js';
+import { looksLikeSourceWatermark, isNumericLikeName } from './library-quality.js';
 import { normalizeArtistForGrouping, normalizeForGrouping } from './album-grouping.js';
 import { loadReleaseTypes, type ReleaseType } from './release-meta-store.js';
 
@@ -162,6 +163,19 @@ function classify(
   // The `[Unknown Album] / [Unknown Artist]` mega-bucket: hide outright,
   // regardless of any stray metadata.
   if (nameUnknown && artistUnknown) {
+    return { classification: 'unknown', hidden: true };
+  }
+
+  // DJ-pool / VA-source watermark, or a bare-number artist (mis-parsed disc-track
+  // tag): hide so existing pollution that predates the ingest-time guard
+  // (sanitizeArtistTag/sanitizeAlbumTag) disappears from the UI on the next scan,
+  // without deleting files. The auditor's `watermark_*`/`numeric_artist` rules
+  // still report it for the delete pass. (see docs/library-audit.md)
+  if (
+    looksLikeSourceWatermark(row.artist) ||
+    looksLikeSourceWatermark(row.name) ||
+    isNumericLikeName(row.artist)
+  ) {
     return { classification: 'unknown', hidden: true };
   }
 

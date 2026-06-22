@@ -90,6 +90,24 @@ describe('LibraryCurator', () => {
       expect(readRow(db, 'a1')).toEqual({ hidden: 1, classification: 'unknown' });
     });
 
+    it('hides a DJ-pool/VA-source watermark artist (ftpdjemilio.com)', () => {
+      seedAlbum(db, { id: 'a1', name: 'Some Track', artist: 'ftpdjemilio.com', songCount: 1 });
+      new LibraryCurator(db).reclassifyAll();
+      expect(readRow(db, 'a1')).toEqual({ hidden: 1, classification: 'unknown' });
+    });
+
+    it('hides a watermark album title even with a real artist (MUSICAUNO.COM)', () => {
+      seedAlbum(db, { id: 'a1', name: 'MUSICAUNO.COM', artist: 'UMEK', songCount: 1 });
+      new LibraryCurator(db).reclassifyAll();
+      expect(readRow(db, 'a1').hidden).toBe(1);
+    });
+
+    it('hides a bare-number artist (mis-parsed disc-track tag)', () => {
+      seedAlbum(db, { id: 'a1', name: 'María de Buenos Aires', artist: '101', songCount: 1 });
+      new LibraryCurator(db).reclassifyAll();
+      expect(readRow(db, 'a1').hidden).toBe(1);
+    });
+
     it('hides a 1-track album that also has unknown identity', () => {
       seedAlbum(db, { id: 'a1', name: '[Unknown Album]', artist: 'Real Artist', songCount: 1 });
       new LibraryCurator(db).reclassifyAll();
