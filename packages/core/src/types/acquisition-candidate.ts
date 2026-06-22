@@ -68,7 +68,7 @@ const yearToNum = (y: string | null | undefined): number | undefined => {
 export function archiveToCandidate(c: ArchiveCandidate): AcquisitionCandidate {
   return {
     source: 'archive',
-    sourceLabel: SOURCE_LABELS.archive,
+    sourceLabel: SOURCE_LABELS['archive'],
     kind: c.kind === 'single' ? 'single' : 'album',
     title: c.title,
     artist: c.creator || undefined,
@@ -82,7 +82,7 @@ export function archiveToCandidate(c: ArchiveCandidate): AcquisitionCandidate {
 export function spotifyToCandidate(c: SpotifyCandidate): AcquisitionCandidate {
   return {
     source: 'spotify',
-    sourceLabel: SOURCE_LABELS.spotify,
+    sourceLabel: SOURCE_LABELS['spotify'],
     kind: c.kind === 'single' ? 'single' : 'album',
     title: c.title,
     artist: c.artist || undefined,
