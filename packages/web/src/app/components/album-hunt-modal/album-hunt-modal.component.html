@@ -226,77 +226,133 @@
             </div>
           </div>
         } @else {
-          <ul class="divide-y divide-theme-surface-2">
-            @for (
-              candidate of filteredCandidates();
-              track candidate.directory + candidate.username
-            ) {
-              <li
-                (click)="select(candidate)"
-                data-testid="hunt-candidate"
-                class="flex flex-col gap-1 px-5 py-4 cursor-pointer transition"
-                [class.bg-theme-surface-2]="isSelected(candidate)"
-                [class.hover:bg-theme-surface-2]="!isSelected(candidate)"
-              >
-                <div class="flex items-center justify-between gap-3">
-                  <!-- Folder info -->
-                  <div class="min-w-0 flex-1">
-                    <p class="text-sm font-medium text-theme-primary truncate">
-                      {{ displayDir(candidate.directory) }}
-                    </p>
-                    <p class="text-xs text-theme-muted mt-0.5 flex items-center gap-2">
-                      <span class="truncate">{{ candidate.username }}</span>
+          <!-- Lead with the auto-selected best match; the full ranked peer list is
+               opt-in behind the disclosure below so the common "just get it" case
+               is a single tap on the footer's Download. -->
+          @if (effectiveCandidate(); as best) {
+            <div class="px-5 py-4" data-testid="hunt-best-match">
+              <p class="text-sm font-medium text-green-400">✓ Best match ready</p>
+              <p class="text-sm text-theme-primary mt-1 truncate">
+                {{ displayDir(best.directory) }}
+              </p>
+              <p class="text-xs text-theme-muted mt-0.5">
+                {{ best.format }} · {{ best.estimatedSizeMb }}MB ·
+                <span class="font-mono" [class]="matchClass(best.matchPct)"
+                  >{{ best.matchedTracks }}/{{ best.totalTracks }} ({{ best.matchPct }}%)</span
+                >
+              </p>
+            </div>
+          }
+          <details class="border-t border-theme-surface-2" data-testid="hunt-sources">
+            <summary
+              class="px-5 py-2.5 text-xs text-theme-muted hover:text-theme-secondary transition cursor-pointer select-none list-none"
+            >
+              Choose a different source ({{ filteredCandidates().length }} found)
+            </summary>
+            <ul class="divide-y divide-theme-surface-2">
+              @for (
+                candidate of filteredCandidates();
+                track candidate.directory + candidate.username
+              ) {
+                <li
+                  (click)="select(candidate)"
+                  data-testid="hunt-candidate"
+                  class="flex flex-col gap-1 px-5 py-4 cursor-pointer transition"
+                  [class.bg-theme-surface-2]="isSelected(candidate)"
+                  [class.hover:bg-theme-surface-2]="!isSelected(candidate)"
+                >
+                  <div class="flex items-center justify-between gap-3">
+                    <!-- Folder info -->
+                    <div class="min-w-0 flex-1">
+                      <p class="text-sm font-medium text-theme-primary truncate">
+                        {{ displayDir(candidate.directory) }}
+                      </p>
+                      <p class="text-xs text-theme-muted mt-0.5 flex items-center gap-2">
+                        <span class="truncate">{{ candidate.username }}</span>
+                        <span
+                          class="flex-shrink-0"
+                          [class.text-green-400]="candidate.freeUploadSlots > 0"
+                          [class.text-theme-muted]="candidate.freeUploadSlots <= 0"
+                          [title]="
+                            candidate.freeUploadSlots > 0
+                              ? 'Free upload slot available'
+                              : 'No free upload slot — queued'
+                          "
+                        >
+                          {{ candidate.freeUploadSlots > 0 ? '● free' : '○ queued' }}
+                        </span>
+                        @if (candidate.queueLength > 0) {
+                          <span class="flex-shrink-0">· queue {{ candidate.queueLength }}</span>
+                        }
+                      </p>
+                    </div>
+
+                    <!-- Badges -->
+                    <div class="flex items-center gap-2 flex-shrink-0 text-xs">
                       <span
-                        class="flex-shrink-0"
-                        [class.text-green-400]="candidate.freeUploadSlots > 0"
-                        [class.text-theme-muted]="candidate.freeUploadSlots <= 0"
-                        [title]="
-                          candidate.freeUploadSlots > 0
-                            ? 'Free upload slot available'
-                            : 'No free upload slot — queued'
-                        "
+                        class="px-2 py-0.5 rounded-full bg-theme-surface-2 font-mono"
+                        [class]="matchClass(candidate.matchPct)"
                       >
-                        {{ candidate.freeUploadSlots > 0 ? '● free' : '○ queued' }}
+                        {{ candidate.matchedTracks }}/{{ candidate.totalTracks }} ({{
+                          candidate.matchPct
+                        }}%)
                       </span>
-                      @if (candidate.queueLength > 0) {
-                        <span class="flex-shrink-0">· queue {{ candidate.queueLength }}</span>
+                      <span
+                        class="px-2 py-0.5 rounded-full bg-theme-surface-2 text-theme-secondary font-medium"
+                      >
+                        {{ candidate.format }}
+                      </span>
+                      <span class="text-theme-muted">{{ candidate.estimatedSizeMb }}MB</span>
+                    </div>
+                  </div>
+
+                  <!-- Selection indicator -->
+                  @if (isSelected(candidate)) {
+                    <p class="text-xs text-green-400 mt-1">
+                      @if (isAutoBest(candidate)) {
+                        ★ Best match (auto) — {{ candidate.files.length }} files will be queued
+                      } @else {
+                        ✓ Selected — {{ candidate.files.length }} files will be queued
                       }
                     </p>
-                  </div>
-
-                  <!-- Badges -->
-                  <div class="flex items-center gap-2 flex-shrink-0 text-xs">
-                    <span
-                      class="px-2 py-0.5 rounded-full bg-theme-surface-2 font-mono"
-                      [class]="matchClass(candidate.matchPct)"
-                    >
-                      {{ candidate.matchedTracks }}/{{ candidate.totalTracks }} ({{
-                        candidate.matchPct
-                      }}%)
-                    </span>
-                    <span
-                      class="px-2 py-0.5 rounded-full bg-theme-surface-2 text-theme-secondary font-medium"
-                    >
-                      {{ candidate.format }}
-                    </span>
-                    <span class="text-theme-muted">{{ candidate.estimatedSizeMb }}MB</span>
-                  </div>
-                </div>
-
-                <!-- Selection indicator -->
-                @if (isSelected(candidate)) {
-                  <p class="text-xs text-green-400 mt-1">
-                    @if (isAutoBest(candidate)) {
-                      ★ Best match (auto) — {{ candidate.files.length }} files will be queued
-                    } @else {
-                      ✓ Selected — {{ candidate.files.length }} files will be queued
-                    }
-                  </p>
-                }
-              </li>
-            }
-          </ul>
+                  }
+                </li>
+              }
+            </ul>
+          </details>
         }
+      }
+
+      @if (state() === 'already-complete') {
+        <div data-testid="hunt-already-complete" class="p-8 text-center">
+          <p class="text-green-400 text-sm font-medium">✓ You already have this album</p>
+          <p class="text-theme-muted text-sm mt-2">
+            @if (totalTracks() > 0) {
+              All {{ totalTracks() }} tracks are in your library — nothing to download.
+            } @else {
+              It's already in your library — nothing to download.
+            }
+          </p>
+          <button
+            (click)="close()"
+            class="mt-5 px-5 py-2 rounded-lg bg-theme-surface-2 text-theme-primary text-sm font-semibold hover:bg-theme-hover transition"
+          >
+            Done
+          </button>
+        </div>
+      }
+
+      @if (state() === 'already-downloading') {
+        <div data-testid="hunt-already-downloading" class="p-8 text-center">
+          <p class="text-theme-primary text-sm font-medium">This album is already downloading</p>
+          <p class="text-theme-muted text-sm mt-2">Check the Downloads tab to see its progress.</p>
+          <button
+            (click)="close()"
+            class="mt-5 px-5 py-2 rounded-lg bg-theme-surface-2 text-theme-primary text-sm font-semibold hover:bg-theme-hover transition"
+          >
+            Done
+          </button>
+        </div>
       }
 
       @if (state() === 'downloading') {
@@ -312,7 +368,11 @@
            ranked list (no separate "Also on…" lanes). Runs in parallel with the
            Soulseek hunt; a tap hands the item to /api/acquire. -->
       @if (
-        (hasArchive() || hasSpotify()) && state() !== 'searching' && state() !== 'downloading'
+        (hasArchive() || hasSpotify()) &&
+        state() !== 'searching' &&
+        state() !== 'downloading' &&
+        state() !== 'already-complete' &&
+        state() !== 'already-downloading'
       ) {
         <div class="border-t border-theme-surface-2" data-testid="other-sources-section">
           <div class="flex items-center gap-2 px-5 pt-4 pb-2">

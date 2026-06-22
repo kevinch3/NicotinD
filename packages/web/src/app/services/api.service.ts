@@ -419,12 +419,10 @@ export class ApiService {
 
   /** Resolve an artist name → local artist id (null when not in the library). */
   resolveArtistIdByName(name: string): Observable<string | null> {
-    return this.http
-      .get<{ id: string }>('/api/library/artists/by-name', { params: { name } })
-      .pipe(
-        map((r) => r.id),
-        catchError(() => of(null)),
-      );
+    return this.http.get<{ id: string }>('/api/library/artists/by-name', { params: { name } }).pipe(
+      map((r) => r.id),
+      catchError(() => of(null)),
+    );
   }
 
   // Dedicated singles & EPs listing (kept out of the main Albums grid).
@@ -702,7 +700,7 @@ export class ApiService {
     },
     replace = false,
   ) {
-    return this.http.post<{ ok: boolean; queued: number }>(
+    return this.http.post<{ ok: boolean; queued: number; alreadyComplete?: boolean }>(
       `/api/discography/albums/${lidarrAlbumId}/hunt-download`,
       payload,
       { params: replace ? { replace: 'true' } : {} },

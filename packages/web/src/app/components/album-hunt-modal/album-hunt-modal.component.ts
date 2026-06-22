@@ -17,9 +17,20 @@ import {
   mergeAndRank,
   type BlendedCandidate,
 } from '../../lib/acquisition-candidate';
+import {
+  classifyHuntDownloadResult,
+  classifyHuntDownloadError,
+} from '../../lib/hunt-download-outcome';
 import { SourceChipComponent } from '../source-chip/source-chip.component';
 
-type HuntState = 'idle' | 'searching' | 'results' | 'error' | 'downloading';
+type HuntState =
+  | 'idle'
+  | 'searching'
+  | 'results'
+  | 'error'
+  | 'downloading'
+  | 'already-complete'
+  | 'already-downloading';
 export type QueryPhaseState = 'idle' | 'searching' | 'done' | 'skipped';
 type ArchiveState = 'idle' | 'searching' | 'done' | 'error';
 
@@ -52,9 +63,11 @@ export class AlbumHuntModalComponent implements OnInit {
 
   // §C1/§F2 per-track fallback for the no-candidates dead-end.
   readonly trackHuntState = signal<'idle' | 'running' | 'done' | 'error'>('idle');
-  readonly trackHuntResult = signal<{ requested: number; enqueued: number; misses: string[] } | null>(
-    null,
-  );
+  readonly trackHuntResult = signal<{
+    requested: number;
+    enqueued: number;
+    misses: string[];
+  } | null>(null);
 
   // Filter state — signals so the filtered list recomputes instantly. The server
   // returns ALL candidates (above a low floor); filtering is purely client-side,
@@ -283,7 +296,7 @@ export class AlbumHuntModalComponent implements OnInit {
 
     this.state.set('downloading');
     try {
-      await firstValueFrom(
+      const res = await firstValueFrom(
         this.api.huntDownload(
           this.album().lidarrId,
           {
@@ -297,23 +310,29 @@ export class AlbumHuntModalComponent implements OnInit {
           this.replace(),
         ),
       );
+      // A 200 with queued 0 means every chosen file was already on disk — show
+      // the positive "you already have it" notice rather than closing silently
+      // as if a download had started.
+      if (classifyHuntDownloadResult(res) === 'already-complete') {
+        this.state.set('already-complete');
+        return;
+      }
       // Surface the new transfers immediately in the global download UI.
       this.transfer.kickPoll();
       this.downloaded.emit();
       this.close();
     } catch (err) {
-      this.errorMsg.set(this.downloadErrorMessage(err));
-      this.state.set('error');
+      // The server rejects a duplicate acquisition with 409 + a machine code;
+      // those are positive notices (already have it / already downloading), not
+      // red errors that read like the chosen source failed.
+      const outcome = classifyHuntDownloadError(err);
+      if (outcome.kind === 'already-complete') this.state.set('already-complete');
+      else if (outcome.kind === 'already-downloading') this.state.set('already-downloading');
+      else {
+        this.errorMsg.set(outcome.message);
+        this.state.set('error');
+      }
     }
-  }
-
-  // The server rejects a duplicate acquisition with 409 + a machine code; turn
-  // those into a clear message instead of a generic HTTP failure string.
-  private downloadErrorMessage(err: unknown): string {
-    const code = (err as { error?: { error?: string } })?.error?.error;
-    if (code === 'already-downloading') return 'This album is already downloading.';
-    if (code === 'already-complete') return 'This album is already in your library.';
-    return err instanceof Error ? err.message : 'Download failed';
   }
 
   setMinMatch(value: string): void {

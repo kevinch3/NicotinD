@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { vi } from 'vitest';
-import { of } from 'rxjs';
+import { of, throwError } from 'rxjs';
 import { AlbumHuntModalComponent } from './album-hunt-modal.component';
 import {
   ApiService,
@@ -171,6 +171,54 @@ describe('AlbumHuntModalComponent', () => {
       }),
       false,
     );
+  });
+
+  it('shows the already-complete notice (not a silent close) when the server queues nothing', async () => {
+    huntDownload.mockReturnValue(of({ ok: true, queued: 0, alreadyComplete: true }));
+    const c = create();
+    (c as unknown as { album: () => DiscographyAlbum }).album = () => ALBUM;
+    const closed = vi.fn();
+    c.closed.subscribe(closed);
+    c.candidates.set([candidate({ username: 'best' })]);
+
+    await c.downloadSelected();
+
+    expect(c.state()).toBe('already-complete');
+    expect(closed).not.toHaveBeenCalled();
+  });
+
+  it('maps the 409 already-complete error to a positive notice, not the red error state', async () => {
+    huntDownload.mockReturnValue(throwError(() => ({ error: { error: 'already-complete' } })));
+    const c = create();
+    (c as unknown as { album: () => DiscographyAlbum }).album = () => ALBUM;
+    c.candidates.set([candidate({ username: 'best' })]);
+
+    await c.downloadSelected();
+
+    expect(c.state()).toBe('already-complete');
+  });
+
+  it('maps the 409 already-downloading error to the already-downloading notice', async () => {
+    huntDownload.mockReturnValue(throwError(() => ({ error: { error: 'already-downloading' } })));
+    const c = create();
+    (c as unknown as { album: () => DiscographyAlbum }).album = () => ALBUM;
+    c.candidates.set([candidate({ username: 'best' })]);
+
+    await c.downloadSelected();
+
+    expect(c.state()).toBe('already-downloading');
+  });
+
+  it('keeps a genuine failure in the red error state', async () => {
+    huntDownload.mockReturnValue(throwError(() => new Error('peer offline')));
+    const c = create();
+    (c as unknown as { album: () => DiscographyAlbum }).album = () => ALBUM;
+    c.candidates.set([candidate({ username: 'best' })]);
+
+    await c.downloadSelected();
+
+    expect(c.state()).toBe('error');
+    expect(c.errorMsg()).toBe('peer offline');
   });
 
   it('searchArchive populates candidates when the archive plugin is enabled', async () => {
