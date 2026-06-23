@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.105](https://github.com/kevinch3/NicotinD/compare/v0.1.104...v0.1.105) (2026-06-23)
+
+
+### Features
+
+* curated playlists with gradient covers ([024ab10](https://github.com/kevinch3/NicotinD/commit/024ab1082e053e5075720e94d14f296600f75c89))
+
 ## [0.1.104](https://github.com/kevinch3/NicotinD/compare/v0.1.103...v0.1.104) (2026-06-22)
 
 
