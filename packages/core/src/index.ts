@@ -10,6 +10,7 @@ export * from './types/nicotind.js';
 export * from './types/provider.js';
 export * from './types/track-analysis.js';
 export * from './types/metadata-fix.js';
+export * from './types/lyrics.js';
 
 // Plugin SDK (capability contracts + manifest)
 export * from './plugin/index.js';

@@ -2,20 +2,26 @@ import type { ZodTypeAny } from 'zod';
 
 /**
  * Plugin kinds. `acquisition` plugins bring music into the library (slskd,
- * yt-dlp, …); `connectivity` plugins manage how the server is reached
- * (tailscale/wireguard — scaffolded, none shipped yet). The kernel
- * (registry/host/UI) is kind-agnostic; each kind defines its own capability
- * contracts in `./capabilities.ts`.
+ * yt-dlp, …); `metadata` plugins enrich existing tracks (lyrics, …);
+ * `connectivity` plugins manage how the server is reached (tailscale/wireguard —
+ * scaffolded, none shipped yet). The kernel (registry/host/UI) is kind-agnostic;
+ * each kind defines its own capability contracts in `./capabilities.ts`.
  */
-export type PluginKind = 'acquisition' | 'connectivity';
+export type PluginKind = 'acquisition' | 'metadata' | 'connectivity';
 
 /** Capabilities an acquisition plugin may declare + implement. */
 export type AcquisitionCapability = 'search' | 'browse' | 'resolve' | 'download';
 
+/** Capabilities a metadata plugin may declare + implement. */
+export type MetadataCapabilityName = 'lyrics';
+
 /** Capabilities a connectivity plugin may declare + implement. */
 export type ConnectivityCapabilityName = 'connectivity';
 
-export type PluginCapability = AcquisitionCapability | ConnectivityCapabilityName;
+export type PluginCapability =
+  | AcquisitionCapability
+  | MetadataCapabilityName
+  | ConnectivityCapabilityName;
 
 /** Legal/compliance metadata surfaced to the admin before enabling. */
 export interface PluginCompliance {
@@ -73,11 +79,13 @@ export interface PluginManifest {
   /**
    * Acquisition plugins are always opt-in (false) for the compliance posture —
    * the registry exposes zero acquisition capability until an admin enables one.
+   * Metadata/connectivity plugins may default-on (e.g. keyless lyrics).
    */
   defaultEnabled: boolean;
 }
 
 const ACQUISITION_CAPS: AcquisitionCapability[] = ['search', 'browse', 'resolve', 'download'];
+const METADATA_CAPS: MetadataCapabilityName[] = ['lyrics'];
 
 /**
  * Validate a manifest's shape + kind/capability coherence. Returns a list of
@@ -89,7 +97,7 @@ export function validatePluginManifest(m: PluginManifest): string[] {
     errors.push(`invalid plugin id "${m.id}" (expected kebab-case)`);
   }
   if (!m.name) errors.push(`plugin "${m.id}" is missing a name`);
-  if (m.kind !== 'acquisition' && m.kind !== 'connectivity') {
+  if (m.kind !== 'acquisition' && m.kind !== 'metadata' && m.kind !== 'connectivity') {
     errors.push(`plugin "${m.id}" has unknown kind "${m.kind}"`);
   }
   if (!Array.isArray(m.capabilities) || m.capabilities.length === 0) {
@@ -99,7 +107,9 @@ export function validatePluginManifest(m: PluginManifest): string[] {
       const ok =
         m.kind === 'acquisition'
           ? (ACQUISITION_CAPS as string[]).includes(cap)
-          : cap === 'connectivity';
+          : m.kind === 'metadata'
+            ? (METADATA_CAPS as string[]).includes(cap)
+            : cap === 'connectivity';
       if (!ok)
         errors.push(`plugin "${m.id}" declares capability "${cap}" invalid for kind "${m.kind}"`);
     }

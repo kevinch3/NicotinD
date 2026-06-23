@@ -27,6 +27,26 @@ describe('validatePluginManifest', () => {
     ).toEqual([]);
   });
 
+  it('accepts a metadata lyrics manifest that default-enables', () => {
+    expect(
+      validatePluginManifest(
+        base({
+          id: 'lrclib',
+          kind: 'metadata',
+          capabilities: ['lyrics'],
+          defaultEnabled: true,
+        }),
+      ),
+    ).toEqual([]);
+  });
+
+  it('rejects a metadata capability not in the metadata kind', () => {
+    const errs = validatePluginManifest(
+      base({ id: 'lrclib', kind: 'metadata', capabilities: ['search'] }),
+    );
+    expect(errs.some((e) => e.includes('invalid for kind'))).toBe(true);
+  });
+
   it('rejects a non-kebab-case id', () => {
     expect(validatePluginManifest(base({ id: 'Slsk D' }))).toContainEqual(
       expect.stringContaining('invalid plugin id'),

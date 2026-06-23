@@ -68,6 +68,23 @@
                 <line x1="12" y1="8" x2="12.01" y2="8" />
               </svg>
             </button>
+            <!-- Lyrics toggle -->
+            <button
+              (click)="toggleLyrics()"
+              data-testid="now-playing-lyrics-toggle"
+              aria-label="Lyrics"
+              title="Lyrics"
+              [attr.aria-pressed]="lyricsOpen()"
+              [class]="'shrink-0 transition ' + (lyricsOpen() ? 'text-emerald-400' : 'text-zinc-500 hover:text-zinc-200')"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M4 6h16" />
+                <path d="M4 12h10" />
+                <path d="M4 18h7" />
+                <circle cx="18" cy="16" r="3" />
+                <path d="M21 16V9l-3 1" />
+              </svg>
+            </button>
           </div>
           <p
             class="text-sm text-zinc-400 truncate mt-1 cursor-pointer select-none hover:underline hover:text-zinc-200 transition"
@@ -223,6 +240,31 @@
           />
         }
 
+        <!-- Lyrics panel (replaces the queue while open) -->
+        @if (lyricsOpen()) {
+          <div class="flex-1 min-h-0 flex flex-col px-4 overflow-hidden" data-testid="now-playing-lyrics">
+            @if (lyricsLoading()) {
+              <p class="text-sm text-zinc-500 px-2">Loading lyrics…</p>
+            } @else if (lyricLines().length > 0) {
+              <div class="flex-1 overflow-y-auto pb-4 text-center space-y-2">
+                @for (line of lyricLines(); track $index) {
+                  <p
+                    [class]="'text-base leading-relaxed transition-colors ' +
+                      ($index === activeLine() ? 'text-zinc-100 font-semibold' : 'text-zinc-500')"
+                    [attr.data-active]="$index === activeLine() ? 'true' : null"
+                  >
+                    {{ line.text || '♪' }}
+                  </p>
+                }
+              </div>
+            } @else if (plainLyrics()) {
+              <pre class="flex-1 overflow-y-auto pb-4 whitespace-pre-wrap font-sans text-sm text-zinc-300 text-center">{{ plainLyrics() }}</pre>
+            } @else {
+              <p class="text-sm text-zinc-600 px-2" data-testid="now-playing-lyrics-empty">No lyrics found for this track.</p>
+            }
+          </div>
+        } @else {
+
         <!-- Queue section -->
         <div class="flex-1 min-h-0 flex flex-col px-4 overflow-hidden" data-testid="now-playing-queue">
           @if (player.context() && player.context()!.type !== 'adhoc') {
@@ -261,6 +303,6 @@
             </div>
           }
         </div>
+        }
       </div>
     }
-  

@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { FIXTURE } from '../helpers';
+import { ADMIN, FIXTURE, bearer } from '../helpers';
 
 /**
  * Mobile-viewport UX regressions (the G-series in
@@ -154,5 +154,62 @@ test.describe('mobile UX', () => {
     await expect(shuffle).toHaveAttribute('aria-pressed', 'false');
     await shuffle.click();
     await expect(shuffle).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  // Lyrics — the Track-info sheet exposes a Lyrics section; an admin can write,
+  // save, and reset lyrics offline (the PUT/DELETE paths need no network, so this
+  // stays deterministic in CI; the LRCLIB fetch path is exercised by unit tests).
+  test('Track-info sheet lyrics: admin can add, save, and reset', async ({ page }) => {
+    await openNowPlaying(page);
+    await page.getByTestId('now-playing-info').click();
+
+    const section = page.getByTestId('lyrics-section');
+    await expect(section).toBeVisible();
+
+    // First user is admin → an "Add" affordance opens the editor (no lyrics yet).
+    await section.getByTestId('edit-lyrics-button').click();
+    await section.getByTestId('lyrics-editor').fill('la la la\nsung softly');
+    await section.getByTestId('save-lyrics-button').click();
+
+    await expect(section.getByTestId('lyrics-text')).toContainText('sung softly');
+    await expect(section).toContainText('Edited by you');
+
+    // Reset clears it back to the empty state.
+    await section.getByTestId('edit-lyrics-button').click();
+    await section.getByTestId('reset-lyrics-button').click();
+    await expect(section.getByTestId('lyrics-text')).toHaveCount(0);
+  });
+
+  // The Now Playing lyrics toggle swaps the queue for the lyrics panel. Lyrics
+  // are pre-seeded through the real (admin) API so the panel renders stored
+  // lyrics with no on-demand fetch — keeping the test offline + deterministic
+  // (the LRCLIB fetch + synced parsing are covered by the API/unit tests).
+  test('Now Playing lyrics toggle reveals the lyrics panel', async ({ page, request }) => {
+    const token = (
+      (await (await request.post('/api/auth/login', { data: ADMIN })).json()) as { token: string }
+    ).token;
+    const albums = (await (
+      await request.get('/api/library/albums', { headers: bearer(token) })
+    ).json()) as Array<{ id: string; title: string }>;
+    const album = albums.find((a) => a.title === FIXTURE.album.title) ?? albums[0]!;
+    const detail = (await (
+      await request.get(`/api/library/albums/${album.id}`, { headers: bearer(token) })
+    ).json()) as { song: Array<{ id: string }> };
+    // Seed every track so whichever plays first has stored lyrics.
+    for (const s of detail.song) {
+      await request.put(`/api/library/songs/${s.id}/lyrics`, {
+        headers: bearer(token),
+        data: { plain: 'seeded chorus line' },
+      });
+    }
+
+    await openNowPlaying(page);
+    await expect(page.getByTestId('now-playing-queue')).toBeVisible();
+    await page.getByTestId('now-playing-lyrics-toggle').click();
+
+    const panel = page.getByTestId('now-playing-lyrics');
+    await expect(panel).toBeVisible();
+    await expect(page.getByTestId('now-playing-queue')).toHaveCount(0);
+    await expect(panel).toContainText('seeded chorus line');
   });
 });
