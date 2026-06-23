@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.106](https://github.com/kevinch3/NicotinD/compare/v0.1.105...v0.1.106) (2026-06-23)
+
+
+### Features
+
+* artist songs tab, playlist sharing, faster thumbnails, viewport-safe menus ([8510b17](https://github.com/kevinch3/NicotinD/commit/8510b1717bcc475a25d133e0b17f9758ee98fd96))
+
 ## [0.1.105](https://github.com/kevinch3/NicotinD/compare/v0.1.104...v0.1.105) (2026-06-23)
 
 
