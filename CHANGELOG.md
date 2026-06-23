@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.107](https://github.com/kevinch3/NicotinD/compare/v0.1.106...v0.1.107) (2026-06-23)
+
+
+### Features
+
+* on-demand lyrics via a metadata-kind plugin (LRCLIB) ([974aa03](https://github.com/kevinch3/NicotinD/commit/974aa037c6e29e50fe6d9f43f219283d42cc1859))
+
 ## [0.1.106](https://github.com/kevinch3/NicotinD/compare/v0.1.105...v0.1.106) (2026-06-23)
 
 
