@@ -280,6 +280,15 @@ export class LibraryComponent implements OnInit, OnDestroy {
   readonly newPlaylistName = signal('');
   readonly creatingPlaylist = signal(false);
 
+  // Curated (system, global) playlists lead as a "Made for you" shelf; the
+  // user's own playlists follow. Split client-side off the one list call.
+  readonly curatedPlaylists = computed(() =>
+    this.playlistService.playlists().filter((p) => p.kind === 'curated'),
+  );
+  readonly userPlaylists = computed(() =>
+    this.playlistService.playlists().filter((p) => p.kind !== 'curated'),
+  );
+
   async createPlaylist(): Promise<void> {
     const name = this.newPlaylistName().trim();
     if (!name || this.creatingPlaylist()) return;

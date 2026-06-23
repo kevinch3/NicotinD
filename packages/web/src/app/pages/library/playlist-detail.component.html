@@ -9,9 +9,22 @@
       <span class="inline-block w-5 h-5 border-2 border-theme border-t-zinc-300 rounded-full animate-spin"></span>
     </div>
   } @else if (playlist(); as pl) {
-    <div class="flex items-start justify-between gap-4 mb-6">
-      <div class="min-w-0">
+    <div class="flex items-start gap-4 mb-6">
+      @if (pl.coverArt) {
+        <img [src]="pl.coverArt" [alt]="pl.name" data-testid="playlist-cover"
+          class="w-24 h-24 md:w-36 md:h-36 rounded-xl object-cover flex-shrink-0 shadow-lg" />
+      }
+      <div class="min-w-0 flex-1">
+        @if (isCurated()) {
+          <p data-testid="curated-badge"
+            class="text-[11px] font-semibold uppercase tracking-wide text-theme-muted mb-1">
+            Curated playlist
+          </p>
+        }
         <h1 class="text-2xl font-bold text-theme-primary truncate">{{ pl.name }}</h1>
+        @if (pl.description) {
+          <p class="text-theme-secondary text-sm mt-1">{{ pl.description }}</p>
+        }
         <p class="text-theme-muted text-sm mt-0.5">{{ pl.songCount }} song{{ pl.songCount !== 1 ? 's' : '' }}</p>
         @if (pl.songs.length > 0) {
           <div class="mt-3 flex items-center gap-3">
@@ -19,7 +32,7 @@
               class="w-10 h-10 flex items-center justify-center rounded-lg bg-theme-inverse text-theme-inverse hover:opacity-90 transition">
               <app-icon name="play" />
             </button>
-            @if (!selection.active()) {
+            @if (!selection.active() && !isCurated()) {
               <button (click)="selection.enter()"
                 class="px-4 py-2 rounded-lg text-sm bg-theme-surface-2 text-theme-muted hover:bg-theme-hover transition">
                 Select
@@ -40,10 +53,12 @@
           </div>
         }
       </div>
-      <button type="button" (click)="confirmingDelete.set(true)" aria-label="Delete playlist" title="Delete playlist"
-        class="w-9 h-9 flex items-center justify-center rounded-lg text-theme-muted hover:text-red-400 hover:bg-theme-surface-2 transition flex-shrink-0">
-        <app-icon name="delete" />
-      </button>
+      @if (!isCurated()) {
+        <button type="button" (click)="confirmingDelete.set(true)" aria-label="Delete playlist" title="Delete playlist"
+          class="w-9 h-9 flex items-center justify-center rounded-lg text-theme-muted hover:text-red-400 hover:bg-theme-surface-2 transition flex-shrink-0">
+          <app-icon name="delete" />
+        </button>
+      }
     </div>
 
     @if (preserve.batchFor(pl.id); as b) {
@@ -78,7 +93,7 @@
             [subtitle]="song.artist"
             [duration]="song.duration"
             [offline]="preserve.isPreserved(song.id)"
-            [showRemove]="true"
+            [showRemove]="!isCurated()"
             [selectable]="selection.active()"
             [selected]="selection.isSelected(song.id)"
             [actions]="songActions(song.id)"

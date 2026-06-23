@@ -25,6 +25,8 @@ const PLAYLIST: PlaylistDetail = {
   name: 'My mix',
   description: null,
   songCount: 4,
+  coverArt: null,
+  kind: 'user',
   createdAt: 0,
   modifiedAt: 0,
   songs: [SONG('s1'), SONG('s2'), SONG('s3'), SONG('s4')],

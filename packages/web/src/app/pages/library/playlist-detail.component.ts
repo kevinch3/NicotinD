@@ -35,6 +35,9 @@ export class PlaylistDetailComponent implements OnInit {
   readonly playlist = signal<PlaylistDetail | null>(null);
   readonly confirmingDelete = signal(false);
 
+  /** Curated (system) playlists are global + read-only: no edit/remove/delete. */
+  readonly isCurated = computed(() => this.playlist()?.kind === 'curated');
+
   private id = '';
 
   async ngOnInit(): Promise<void> {

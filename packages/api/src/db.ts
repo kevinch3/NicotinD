@@ -586,6 +586,22 @@ export function applySchema(db: Database): void {
     )
   `);
   db.run(`CREATE INDEX IF NOT EXISTS idx_playlists_user_id ON playlists(user_id)`);
+
+  // Curated (system-seeded) playlists vs user playlists. `kind='curated'` rows
+  // are globally visible (any user sees them) and read-only through the API —
+  // they're managed by scripts/seed-curated-playlists.ts, not user mutations.
+  // `cover_art` holds a designed gradient cover URL (e.g. /playlist-covers/<slug>.svg).
+  try {
+    db.run(`ALTER TABLE playlists ADD COLUMN cover_art TEXT`);
+  } catch {
+    // Column already exists — ignore.
+  }
+  try {
+    db.run(`ALTER TABLE playlists ADD COLUMN kind TEXT NOT NULL DEFAULT 'user'`);
+  } catch {
+    // Column already exists — ignore.
+  }
+
   db.run(`
     CREATE TABLE IF NOT EXISTS playlist_songs (
       playlist_id TEXT NOT NULL REFERENCES playlists(id) ON DELETE CASCADE,

@@ -10,6 +10,8 @@ function summary(over: Partial<PlaylistSummary> = {}): PlaylistSummary {
     name: 'Mine',
     description: null,
     songCount: 0,
+    coverArt: null,
+    kind: 'user',
     createdAt: 0,
     modifiedAt: 0,
     ...over,

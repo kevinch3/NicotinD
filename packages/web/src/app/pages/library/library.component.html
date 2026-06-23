@@ -268,29 +268,62 @@
 
   <!-- ═══ PLAYLISTS MODE ═══ -->
   @if (libraryMode() === 'playlists') {
-    <form class="flex gap-2 mb-5 max-w-md" (submit)="$event.preventDefault(); createPlaylist()">
-      <input
-        class="flex-1 px-3 py-2 rounded-lg bg-theme-surface-2 text-theme-primary text-sm outline-none"
-        placeholder="New playlist name"
-        [ngModel]="newPlaylistName()" (ngModelChange)="newPlaylistName.set($event)" name="newPlaylistName" />
-      <button type="submit" [disabled]="creatingPlaylist() || !newPlaylistName().trim()"
-        class="px-4 py-2 rounded-lg bg-theme-inverse text-theme-inverse text-sm font-semibold disabled:opacity-50">
-        Create
-      </button>
-    </form>
+    <!-- Curated (system) shelf — "Made for you" -->
+    @if (curatedPlaylists().length > 0) {
+      <section class="mb-8" data-testid="curated-playlists">
+        <h2 class="text-lg font-bold text-theme-primary mb-3">Made for you</h2>
+        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+          @for (pl of curatedPlaylists(); track pl.id) {
+            <a [routerLink]="['/library/playlists', pl.id]" data-testid="curated-playlist-tile"
+              class="group rounded-xl overflow-hidden bg-theme-surface/30 hover:bg-theme-surface-2/50 transition">
+              <div class="relative aspect-square">
+                @if (pl.coverArt) {
+                  <img [src]="pl.coverArt" [alt]="pl.name" loading="lazy"
+                    class="w-full h-full object-cover" />
+                } @else {
+                  <div class="w-full h-full bg-theme-surface-2"></div>
+                }
+                <span class="absolute top-2 left-2 px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide bg-black/50 text-white">
+                  Curated
+                </span>
+              </div>
+              <div class="p-2">
+                <p class="text-sm font-semibold text-theme-primary truncate">{{ pl.name }}</p>
+                <p class="text-xs text-theme-muted">{{ pl.songCount }} song{{ pl.songCount !== 1 ? 's' : '' }}</p>
+              </div>
+            </a>
+          }
+        </div>
+      </section>
+    }
 
-    <div class="space-y-1">
-      @for (pl of playlistService.playlists(); track pl.id) {
-        <a [routerLink]="['/library/playlists', pl.id]"
-          class="flex items-center justify-between px-4 py-3 rounded-lg bg-theme-surface/30 hover:bg-theme-surface-2/50 transition cursor-pointer">
-          <span class="text-sm text-theme-primary truncate">{{ pl.name }}</span>
-          <span class="text-xs text-theme-muted flex-shrink-0">{{ pl.songCount }} song{{ pl.songCount !== 1 ? 's' : '' }}</span>
-        </a>
-      }
-      @if (playlistService.loaded() && playlistService.playlists().length === 0) {
-        <p class="text-center text-theme-muted py-20">No playlists yet. Create one above.</p>
-      }
-    </div>
+    <!-- The user's own playlists -->
+    <section data-testid="user-playlists">
+      <h2 class="text-lg font-bold text-theme-primary mb-3">Your playlists</h2>
+      <form class="flex gap-2 mb-5 max-w-md" (submit)="$event.preventDefault(); createPlaylist()">
+        <input
+          class="flex-1 px-3 py-2 rounded-lg bg-theme-surface-2 text-theme-primary text-sm outline-none"
+          placeholder="New playlist name"
+          [ngModel]="newPlaylistName()" (ngModelChange)="newPlaylistName.set($event)" name="newPlaylistName" />
+        <button type="submit" [disabled]="creatingPlaylist() || !newPlaylistName().trim()"
+          class="px-4 py-2 rounded-lg bg-theme-inverse text-theme-inverse text-sm font-semibold disabled:opacity-50">
+          Create
+        </button>
+      </form>
+
+      <div class="space-y-1">
+        @for (pl of userPlaylists(); track pl.id) {
+          <a [routerLink]="['/library/playlists', pl.id]"
+            class="flex items-center justify-between px-4 py-3 rounded-lg bg-theme-surface/30 hover:bg-theme-surface-2/50 transition cursor-pointer">
+            <span class="text-sm text-theme-primary truncate">{{ pl.name }}</span>
+            <span class="text-xs text-theme-muted flex-shrink-0">{{ pl.songCount }} song{{ pl.songCount !== 1 ? 's' : '' }}</span>
+          </a>
+        }
+        @if (playlistService.loaded() && userPlaylists().length === 0) {
+          <p class="text-center text-theme-muted py-12">No playlists yet. Create one above.</p>
+        }
+      </div>
+    </section>
   }
 
 </div>

@@ -755,11 +755,17 @@ export class ApiService {
   }
 }
 
+export type PlaylistKind = 'user' | 'curated';
+
 export interface PlaylistSummary {
   id: string;
   name: string;
   description: string | null;
   songCount: number;
+  /** Designed gradient cover URL (e.g. /playlist-covers/<slug>.svg), or null. */
+  coverArt: string | null;
+  /** `curated` = system-seeded, global, read-only; `user` = the user's own. */
+  kind: PlaylistKind;
   createdAt: number;
   modifiedAt: number;
 }

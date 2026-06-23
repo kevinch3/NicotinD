@@ -1,11 +1,17 @@
 import type { Database } from 'bun:sqlite';
 import type { Song } from '@nicotind/core';
 
+/** `user` = created by a user (private). `curated` = system-seeded, global, read-only. */
+export type PlaylistKind = 'user' | 'curated';
+
 export interface PlaylistSummary {
   id: string;
   name: string;
   description: string | null;
   songCount: number;
+  /** Designed gradient cover URL (e.g. /playlist-covers/<slug>.svg), or null. */
+  coverArt: string | null;
+  kind: PlaylistKind;
   createdAt: number;
   modifiedAt: number;
 }
@@ -33,6 +39,8 @@ interface PlaylistRow {
   id: string;
   name: string;
   description: string | null;
+  cover_art: string | null;
+  kind: string | null;
   created_at: number;
   modified_at: number;
 }
@@ -92,26 +100,29 @@ function rowToSong(r: SongRow): Song {
 export class PlaylistService {
   constructor(private db: Database) {}
 
+  // Returns the user's own playlists plus every curated (system) playlist, which
+  // is global. Curated playlists sort first so the "Made for you" shelf leads.
   list(userId: string): PlaylistSummary[] {
     return this.db
       .query<PlaylistRow & { song_count: number }, [string]>(
-        `SELECT p.id, p.name, p.description, p.created_at, p.modified_at,
+        `SELECT p.id, p.name, p.description, p.cover_art, p.kind, p.created_at, p.modified_at,
                 (SELECT COUNT(*) FROM playlist_songs ps
                    JOIN library_songs s ON s.id = ps.song_id
                   WHERE ps.playlist_id = p.id) AS song_count
          FROM playlists p
-         WHERE p.user_id = ?
-         ORDER BY p.modified_at DESC`,
+         WHERE p.user_id = ? OR p.kind = 'curated'
+         ORDER BY (p.kind = 'curated') DESC, p.modified_at DESC`,
       )
       .all(userId)
       .map((r) => this.summary(r, r.song_count));
   }
 
   get(userId: string, id: string): PlaylistDetail | null {
+    // Visible if the user owns it OR it's a global curated playlist.
     const row = this.db
       .query<PlaylistRow, [string, string]>(
-        `SELECT id, name, description, created_at, modified_at
-         FROM playlists WHERE id = ? AND user_id = ?`,
+        `SELECT id, name, description, cover_art, kind, created_at, modified_at
+         FROM playlists WHERE id = ? AND (user_id = ? OR kind = 'curated')`,
       )
       .get(id, userId);
     if (!row) return null;
@@ -149,6 +160,8 @@ export class PlaylistService {
         id,
         name: input.name,
         description: input.description ?? null,
+        cover_art: null,
+        kind: 'user',
         created_at: now,
         modified_at: now,
       },
@@ -189,17 +202,23 @@ export class PlaylistService {
   }
 
   remove(userId: string, id: string): boolean {
-    const res = this.db.run(`DELETE FROM playlists WHERE id = ? AND user_id = ?`, [id, userId]);
+    // `kind = 'user'` guard: curated playlists are system-managed and never
+    // deletable through the per-user API, even by the admin who seeded them.
+    const res = this.db.run(
+      `DELETE FROM playlists WHERE id = ? AND user_id = ? AND kind = 'user'`,
+      [id, userId],
+    );
     return Number(res.changes ?? 0) > 0;
   }
 
+  /** True only for a user-owned, mutable playlist — curated rows are read-only. */
   private owns(userId: string, id: string): boolean {
     return Boolean(
       this.db
         .query<
           { id: string },
           [string, string]
-        >(`SELECT id FROM playlists WHERE id = ? AND user_id = ?`)
+        >(`SELECT id FROM playlists WHERE id = ? AND user_id = ? AND kind = 'user'`)
         .get(id, userId),
     );
   }
@@ -244,6 +263,8 @@ export class PlaylistService {
       name: r.name,
       description: r.description,
       songCount,
+      coverArt: r.cover_art ?? null,
+      kind: r.kind === 'curated' ? 'curated' : 'user',
       createdAt: r.created_at,
       modifiedAt: r.modified_at,
     };
