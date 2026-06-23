@@ -1,10 +1,16 @@
 import { Component, input, output, signal, computed, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import type { AcquisitionMethod, GenreSuggestion, SongAcquisition } from '@nicotind/core';
+import type {
+  AcquisitionMethod,
+  GenreSuggestion,
+  LyricsDto,
+  SongAcquisition,
+} from '@nicotind/core';
 import { ApiService, type ProvenanceRecord, type Song } from '../../services/api.service';
 import { AuthService } from '../../services/auth.service';
 import { ServerConfigService } from '../../services/server-config.service';
 import { methodBadge } from '../../lib/acquisition-method';
+import { parseLrc } from '../../lib/lrc-parser';
 import { CoverArtComponent } from '../cover-art/cover-art.component';
 
 const ACTION_LABELS: Record<string, string> = {
@@ -194,6 +200,87 @@ const ACTION_LABELS: Record<string, string> = {
           </div>
         </section>
 
+        <!-- Lyrics (on-demand, plugin-sourced, editable) -->
+        <section class="mb-5" data-testid="lyrics-section">
+          <div class="flex items-center justify-between mb-2">
+            <p class="text-xs text-zinc-500 uppercase tracking-wider">Lyrics</p>
+            @if (!editingLyrics()) {
+              <div class="flex gap-2">
+                @if (isAdmin()) {
+                  <button
+                    class="px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-xs"
+                    (click)="startEditLyrics()"
+                    data-testid="edit-lyrics-button"
+                  >
+                    {{ lyricsText() ? 'Edit' : 'Add' }}
+                  </button>
+                }
+                <button
+                  class="px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-xs disabled:opacity-50"
+                  [disabled]="fetchingLyrics()"
+                  (click)="fetchLyricsNow()"
+                  data-testid="fetch-lyrics-button"
+                >
+                  {{ fetchingLyrics() ? 'Fetching…' : lyricsText() ? 'Re-fetch' : 'Fetch lyrics' }}
+                </button>
+              </div>
+            }
+          </div>
+
+          @if (editingLyrics()) {
+            <textarea
+              class="w-full h-48 rounded bg-zinc-800 text-sm text-zinc-200 p-2 resize-y
+                     focus:outline-none focus:ring-1 focus:ring-blue-500"
+              [value]="lyricsDraft()"
+              (input)="lyricsDraft.set($any($event.target).value)"
+              data-testid="lyrics-editor"
+            ></textarea>
+            <div class="flex gap-2 mt-2">
+              <button
+                class="px-2 py-0.5 rounded bg-blue-600 hover:bg-blue-500 text-xs disabled:opacity-50"
+                [disabled]="savingLyrics() || !lyricsDraft().trim()"
+                (click)="saveLyricsNow()"
+                data-testid="save-lyrics-button"
+              >
+                {{ savingLyrics() ? 'Saving…' : 'Save' }}
+              </button>
+              <button
+                class="px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-xs"
+                (click)="editingLyrics.set(false)"
+              >
+                Cancel
+              </button>
+              @if (lyrics()) {
+                <button
+                  class="ml-auto px-2 py-0.5 rounded bg-zinc-800 hover:bg-red-900 text-xs"
+                  (click)="resetLyrics()"
+                  data-testid="reset-lyrics-button"
+                >
+                  Reset
+                </button>
+              }
+            </div>
+          } @else if (lyricsText()) {
+            <pre
+              class="whitespace-pre-wrap font-sans text-sm text-zinc-300 max-h-64 overflow-y-auto"
+              data-testid="lyrics-text"
+              >{{ lyricsText() }}</pre
+            >
+            @if (lyrics()?.customized) {
+              <p class="text-xs text-zinc-600 mt-1">Edited by you</p>
+            } @else if (lyrics()?.source) {
+              <p class="text-xs text-zinc-600 mt-1">Source: {{ lyrics()?.source }}</p>
+            }
+            @if (lyrics()?.synced) {
+              <p class="text-xs text-zinc-600">Synced lyrics shown in the now-playing view.</p>
+            }
+          } @else if (noLyricsFound()) {
+            <p class="text-sm text-zinc-600">No lyrics found for this track.</p>
+          } @else {
+            <p class="text-sm text-zinc-600">No lyrics yet — fetch them from a source.</p>
+          }
+        </section>
+
         <!-- Provenance history -->
         <section>
           <p class="text-xs text-zinc-500 uppercase tracking-wider mb-2">Processing history</p>
@@ -286,6 +373,22 @@ export class TrackInfoSheetComponent implements OnInit {
   /** Current genre: an applied override wins over the song's own tag. */
   readonly currentGenre = computed(() => this.genreOverride() ?? this.song()?.genre ?? '');
 
+  // Lyrics state
+  readonly lyrics = signal<LyricsDto | null>(null);
+  readonly fetchingLyrics = signal(false);
+  readonly noLyricsFound = signal(false);
+  readonly editingLyrics = signal(false);
+  readonly lyricsDraft = signal('');
+  readonly savingLyrics = signal(false);
+  /** Display text: plain wins; otherwise strip the synced LRC down to its words. */
+  readonly lyricsText = computed(() => {
+    const l = this.lyrics();
+    if (!l) return '';
+    if (l.plain) return l.plain;
+    if (l.synced) return parseLrc(l.synced).map((line) => line.text).join('\n');
+    return '';
+  });
+
   // Swipe-down-to-dismiss — mirrors now-playing.component pattern
   readonly dragging = signal(false);
   readonly dragOffsetPx = signal(0);
@@ -311,6 +414,55 @@ export class TrackInfoSheetComponent implements OnInit {
     this.api.getSongAcquisition(this.songId()).subscribe({
       next: (acq) => this.acquisition.set(acq),
       error: () => this.acquisition.set(null),
+    });
+    this.api.getLyrics(this.songId()).subscribe({
+      next: (l) => this.lyrics.set(l),
+      error: () => this.lyrics.set(null),
+    });
+  }
+
+  fetchLyricsNow(): void {
+    if (this.fetchingLyrics()) return;
+    this.fetchingLyrics.set(true);
+    this.noLyricsFound.set(false);
+    // Force a re-fetch when we already have a (cached/edited) row.
+    this.api.fetchLyrics(this.songId(), this.lyrics() !== null).subscribe({
+      next: (l) => {
+        this.lyrics.set(l);
+        this.noLyricsFound.set(l === null);
+        this.fetchingLyrics.set(false);
+      },
+      error: () => this.fetchingLyrics.set(false),
+    });
+  }
+
+  startEditLyrics(): void {
+    this.lyricsDraft.set(this.lyricsText());
+    this.editingLyrics.set(true);
+  }
+
+  saveLyricsNow(): void {
+    const plain = this.lyricsDraft().trim();
+    if (this.savingLyrics() || !plain) return;
+    this.savingLyrics.set(true);
+    this.api.saveLyrics(this.songId(), plain).subscribe({
+      next: (l) => {
+        this.lyrics.set(l);
+        this.savingLyrics.set(false);
+        this.editingLyrics.set(false);
+      },
+      error: () => this.savingLyrics.set(false),
+    });
+  }
+
+  resetLyrics(): void {
+    this.api.deleteLyrics(this.songId()).subscribe({
+      next: () => {
+        this.lyrics.set(null);
+        this.noLyricsFound.set(false);
+        this.editingLyrics.set(false);
+        this.lyricsDraft.set('');
+      },
     });
   }
 

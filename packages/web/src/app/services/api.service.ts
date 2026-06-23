@@ -9,6 +9,7 @@ import type {
   SongAcquisition,
   BpmAnalysisResult,
   GenreSuggestion,
+  LyricsDto,
   MetadataCandidate,
   ApplyMetadataRequest,
 } from '@nicotind/core';
@@ -481,6 +482,26 @@ export class ApiService {
     return this.http.post<{ ok: boolean; genre: string }>(`/api/library/songs/${id}/genre`, {
       genre,
     });
+  }
+
+  /** Stored lyrics for a song; null when none have been fetched yet. */
+  getLyrics(id: string) {
+    return this.http.get<LyricsDto | null>(`/api/library/songs/${id}/lyrics`);
+  }
+
+  /** Fetch lyrics on demand from an enabled source; null when none found. */
+  fetchLyrics(id: string, force = false) {
+    return this.http.post<LyricsDto | null>(`/api/library/songs/${id}/lyrics/fetch`, { force });
+  }
+
+  /** Save user-edited lyrics (admin); marks them customized + writes the tag. */
+  saveLyrics(id: string, plain: string) {
+    return this.http.put<LyricsDto>(`/api/library/songs/${id}/lyrics`, { plain });
+  }
+
+  /** Reset a song's lyrics (admin); drops the stored row. */
+  deleteLyrics(id: string) {
+    return this.http.delete<{ ok: boolean }>(`/api/library/songs/${id}/lyrics`);
   }
 
   getSimilarSongs(id: string, size = 20) {

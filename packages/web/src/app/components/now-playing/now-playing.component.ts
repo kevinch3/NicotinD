@@ -9,6 +9,8 @@ import { TrackContextMenuComponent } from '../track-context-menu/track-context-m
 import { TrackInfoSheetComponent } from '../track-info-sheet/track-info-sheet.component';
 import { resolveArtistTarget } from '../../lib/route-utils';
 import { ApiService } from '../../services/api.service';
+import { parseLrc, findActiveLine } from '../../lib/lrc-parser';
+import type { LyricsDto } from '@nicotind/core';
 import { firstValueFrom } from 'rxjs';
 import { createPointerDrag } from '../../lib/pointer-drag';
 import { SeekBarComponent } from '../seek-bar/seek-bar.component';
@@ -45,6 +47,19 @@ export class NowPlayingComponent {
 
   // Track info sheet state
   readonly trackInfoSongId = signal<string | null>(null);
+
+  // Lyrics view state. Lyrics load lazily on first open and reload when the
+  // track changes while the panel is open.
+  readonly lyricsOpen = signal(false);
+  readonly lyrics = signal<LyricsDto | null>(null);
+  readonly lyricsLoading = signal(false);
+  private lyricsLoadedForId = signal<string | null>(null);
+  /** Parsed synced LRC lines (empty when the lyrics are plain-only). */
+  readonly lyricLines = computed(() => parseLrc(this.lyrics()?.synced));
+  /** Index of the line to highlight for the current playback position. */
+  readonly activeLine = computed(() => findActiveLine(this.lyricLines(), this.displayTime() * 1000));
+  /** Plain text fallback when there are no synced lines. */
+  readonly plainLyrics = computed(() => this.lyrics()?.plain ?? '');
 
   // Playback progress interpolation
   private interpolatedTime = signal(0);
@@ -121,6 +136,42 @@ export class NowPlayingComponent {
       };
       rafId = requestAnimationFrame(tick);
       onCleanup(() => cancelAnimationFrame(rafId));
+    });
+
+    // Lazily (re)load lyrics whenever the panel is open and the track changes.
+    effect(() => {
+      if (!this.lyricsOpen()) return;
+      const id = this.player.currentTrack()?.id ?? null;
+      if (!id || id === this.lyricsLoadedForId()) return;
+      this.loadLyrics(id);
+    });
+  }
+
+  toggleLyrics(): void {
+    this.lyricsOpen.update((v) => !v);
+  }
+
+  private loadLyrics(id: string): void {
+    this.lyricsLoadedForId.set(id);
+    this.lyrics.set(null);
+    this.lyricsLoading.set(true);
+    this.api.getLyrics(id).subscribe({
+      next: (l) => {
+        // Auto-fetch on first view when nothing is stored yet.
+        if (l) {
+          this.lyrics.set(l);
+          this.lyricsLoading.set(false);
+        } else {
+          this.api.fetchLyrics(id).subscribe({
+            next: (f) => {
+              this.lyrics.set(f);
+              this.lyricsLoading.set(false);
+            },
+            error: () => this.lyricsLoading.set(false),
+          });
+        }
+      },
+      error: () => this.lyricsLoading.set(false),
     });
   }
 

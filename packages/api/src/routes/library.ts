@@ -12,6 +12,8 @@ import { normalizeArtistForGrouping, normalizeForGrouping } from '../services/al
 import { getAcquisitionByPath } from '../services/acquisition-store.js';
 import { analyzeBpm, verifyGenre } from '../services/track-analysis.js';
 import { readAudioTags, writeAudioTags } from '../services/audio-tags.js';
+import { getLyrics, setLyrics, deleteLyrics } from '../services/lyrics-store.js';
+import type { PluginRegistry } from '../services/plugins/registry.js';
 import { optimizeAlbum } from '../services/metadata-optimize.js';
 import { searchCandidates, applyMetadataFix } from '../services/metadata-fix.js';
 import { pruneOrphanArtist } from '../services/library-aggregates.js';
@@ -96,6 +98,8 @@ interface LibraryRoutesOptions {
   lidarr?: Lidarr | null;
   /** Cover-cache dir, purged when an optimized album's canonical URL changes. */
   coverCacheDir?: string;
+  /** Plugin registry, used to resolve lyrics-capable sources on demand. */
+  pluginRegistry?: PluginRegistry;
 }
 
 interface AlbumRow {
@@ -241,7 +245,7 @@ function albumOrderBy(type: string): string {
 
 export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions = {}) {
   const app = new Hono<AuthEnv>();
-  const { curator, runSync, lidarr, coverCacheDir } = options;
+  const { curator, runSync, lidarr, coverCacheDir, pluginRegistry } = options;
 
   app.get('/artists', (c) => {
     const db = getDatabase();
@@ -775,6 +779,132 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     }
     db.run('UPDATE library_songs SET genre = ? WHERE id = ?', [genre, id]);
     return c.json({ ok: true, genre });
+  });
+
+  // Stored lyrics for a song (any user — the library is shared). Returns the
+  // LyricsDto or `null` when none have been fetched yet; 404 for an unknown song.
+  app.get('/songs/:id/lyrics', (c) => {
+    const id = c.req.param('id');
+    const db = getDatabase();
+    const song = db
+      .query<{ id: string }, [string]>(`SELECT id FROM library_songs WHERE id = ?`)
+      .get(id);
+    if (!song) return c.json({ error: 'Song not found' }, 404);
+    return c.json(getLyrics(db, id));
+  });
+
+  // On-demand lyrics fetch (any user — LRCLIB is keyless/benign). Returns a
+  // non-customized cached row immediately; otherwise queries each enabled
+  // lyrics-capable plugin, persists the first hit, writes the plain text back to
+  // the file tag, and returns it. A user-edited row (customized=1) is left
+  // untouched unless `force:true`. 503 when no lyrics source is enabled.
+  app.post('/songs/:id/lyrics/fetch', async (c) => {
+    const id = c.req.param('id');
+    const db = getDatabase();
+    const song = db
+      .query<
+        { path: string; title: string; artist: string; duration: number; album: string | null },
+        [string]
+      >(
+        `SELECT s.path, s.title, s.artist, s.duration, a.name AS album
+         FROM library_songs s LEFT JOIN library_albums a ON a.id = s.album_id
+         WHERE s.id = ?`,
+      )
+      .get(id);
+    if (!song) return c.json({ error: 'Song not found' }, 404);
+
+    const body = await c.req.json<{ force?: boolean }>().catch(() => ({}) as { force?: boolean });
+    // Return any cached row as-is unless an explicit re-fetch is requested; this
+    // both serves repeat opens cheaply and protects user-edited (customized) rows.
+    const existing = getLyrics(db, id);
+    if (existing && !body.force) return c.json(existing);
+
+    // No DB row: recover lyrics embedded in the file tag before hitting a source.
+    // A transcode/move changes the path-derived songId and orphans the side-table
+    // row, but the plain text was written into the tag, so it travels with the file.
+    if (!existing && musicDir) {
+      const abs = resolveSongPath(expandDir(musicDir), song.path);
+      if (isUnderMusicDir(expandDir(musicDir), abs) && existsSync(abs)) {
+        const tags = await readAudioTags(abs).catch(() => null);
+        if (tags?.lyrics) {
+          return c.json(
+            setLyrics(db, id, {
+              plain: tags.lyrics,
+              synced: null,
+              source: 'file-tag',
+              customized: false,
+            }),
+          );
+        }
+      }
+    }
+
+    if (!pluginRegistry?.hasCapability('lyrics')) {
+      return c.json({ error: 'No lyrics source enabled' }, 503);
+    }
+
+    const query = {
+      title: song.title,
+      artist: song.artist,
+      album: song.album ?? undefined,
+      durationSec: song.duration || undefined,
+    };
+    for (const plugin of pluginRegistry.getEnabledWithCapability('lyrics')) {
+      const result = await plugin.lyrics?.fetchLyrics(query).catch(() => null);
+      if (!result) continue;
+      const saved = setLyrics(db, id, {
+        plain: result.plain,
+        synced: result.synced,
+        source: result.source,
+        customized: false,
+      });
+      if (result.plain && musicDir) {
+        const abs = resolveSongPath(expandDir(musicDir), song.path);
+        if (isUnderMusicDir(expandDir(musicDir), abs) && existsSync(abs)) {
+          await writeAudioTags(abs, { lyrics: result.plain }).catch(() => false);
+        }
+      }
+      return c.json(saved);
+    }
+    return c.json(null);
+  });
+
+  // Save user-edited lyrics (admin): marks the row customized so a re-fetch won't
+  // clobber it, clears the synced LRC (the edited body no longer matches its
+  // timing), and writes the plain text back to the file tag.
+  app.put('/songs/:id/lyrics', async (c) => {
+    const user = c.get('user');
+    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+    const id = c.req.param('id');
+    const body = await c.req.json<{ plain?: string }>().catch(() => ({}) as { plain?: string });
+    const plain = (body.plain ?? '').trim();
+    if (!plain) return c.json({ error: 'plain is required' }, 400);
+
+    const db = getDatabase();
+    const song = db
+      .query<{ path: string }, [string]>(`SELECT path FROM library_songs WHERE id = ?`)
+      .get(id);
+    if (!song) return c.json({ error: 'Song not found' }, 404);
+
+    const saved = setLyrics(db, id, { plain, synced: null, source: 'user', customized: true });
+    if (musicDir) {
+      const abs = resolveSongPath(expandDir(musicDir), song.path);
+      if (isUnderMusicDir(expandDir(musicDir), abs) && existsSync(abs)) {
+        await writeAudioTags(abs, { lyrics: plain }).catch(() => false);
+      }
+    }
+    return c.json(saved);
+  });
+
+  // Reset lyrics (admin): drops the stored row. Leaves any embedded file tag in
+  // place (rewriting a file to strip a tag is risky and low-value).
+  app.delete('/songs/:id/lyrics', (c) => {
+    const user = c.get('user');
+    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+    const id = c.req.param('id');
+    const db = getDatabase();
+    deleteLyrics(db, id);
+    return c.json({ ok: true });
   });
 
   app.get('/songs/:id/similar', async (c) => {

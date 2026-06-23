@@ -27,6 +27,8 @@ export interface AudioTags {
   genre?: string;
   /** Beats per minute (TBPM / Vorbis `BPM`). Written by on-demand track analysis. */
   bpm?: number;
+  /** Plain-text lyrics (ID3 USLT / Vorbis `LYRICS`). Written by on-demand lyrics fetch/edit. */
+  lyrics?: string;
   compilation?: boolean;
   /** AcoustID track UUID. Doubles as a "we've already fingerprinted this" marker. */
   acoustIdId?: string;
@@ -56,6 +58,7 @@ type MusicMetadataApi = {
       acoustid_id?: string;
       musicbrainz_recordingid?: string;
       musicbrainz_albumid?: string;
+      lyrics?: Array<string | { text?: string }> | string;
     };
   }>;
 };
@@ -71,6 +74,23 @@ function readUserText(raw: Record<string, unknown>, description: string): string
   if (!Array.isArray(list)) return undefined;
   const hit = list.find((u) => u?.description?.toLowerCase() === description.toLowerCase());
   return hit ? pickString(hit.value) : undefined;
+}
+
+/** node-id3 returns USLT as `{ language, shortText, text }` (or an array of them). */
+function readId3Lyrics(raw: Record<string, unknown>): string | undefined {
+  const u = raw.unsynchronisedLyrics as { text?: string } | Array<{ text?: string }> | undefined;
+  if (!u) return undefined;
+  const first = Array.isArray(u) ? u[0] : u;
+  return pickString(first?.text);
+}
+
+/** music-metadata returns `common.lyrics` as strings or `{ text }` objects. */
+function readVorbisLyrics(lyrics: Array<string | { text?: string }> | string | undefined): string | undefined {
+  if (!lyrics) return undefined;
+  if (typeof lyrics === 'string') return pickString(lyrics);
+  const first = lyrics[0];
+  if (typeof first === 'string') return pickString(first);
+  return pickString(first?.text);
 }
 
 let nodeId3Promise: Promise<NodeId3Api | null> | null = null;
@@ -135,6 +155,7 @@ export async function readAudioTags(filepath: string): Promise<AudioTags> {
         trackNumber: parseTrackNumber(d.trackNumber),
         year: parseYear(d.year),
         compilation: d.TCMP === '1' || d.compilation === '1',
+        lyrics: readId3Lyrics(d),
         acoustIdId: readUserText(d, TXXX_ACOUSTID),
         mbRecordingId: readUserText(d, TXXX_MB_RECORDING),
         mbReleaseId: readUserText(d, TXXX_MB_RELEASE),
@@ -156,6 +177,7 @@ export async function readAudioTags(filepath: string): Promise<AudioTags> {
         title: pickString(c.title),
         trackNumber: c.track?.no ?? undefined,
         year: c.year,
+        lyrics: readVorbisLyrics(c.lyrics),
         acoustIdId: pickString(c.acoustid_id),
         mbRecordingId: pickString(c.musicbrainz_recordingid),
         mbReleaseId: pickString(c.musicbrainz_albumid),
@@ -186,6 +208,8 @@ async function writeId3Tags(filepath: string, tags: AudioTags): Promise<boolean>
   if (tags.year !== undefined) update.year = String(tags.year);
   if (tags.genre !== undefined) update.genre = tags.genre;
   if (tags.bpm !== undefined) update.bpm = String(tags.bpm);
+  if (tags.lyrics !== undefined)
+    update.unsynchronisedLyrics = { language: 'eng', text: tags.lyrics };
   if (tags.compilation) update.TCMP = '1';
 
   const userText: NodeId3UserText[] = [];
@@ -215,6 +239,7 @@ function writeFfmpegTags(filepath: string, tags: AudioTags): Promise<boolean> {
   if (tags.year !== undefined) metaArgs.push('-metadata', `DATE=${tags.year}`);
   if (tags.genre !== undefined) metaArgs.push('-metadata', `GENRE=${tags.genre}`);
   if (tags.bpm !== undefined) metaArgs.push('-metadata', `BPM=${tags.bpm}`);
+  if (tags.lyrics !== undefined) metaArgs.push('-metadata', `LYRICS=${tags.lyrics}`);
   if (tags.compilation) metaArgs.push('-metadata', 'COMPILATION=1');
   if (tags.acoustIdId) metaArgs.push('-metadata', `ACOUSTID_ID=${tags.acoustIdId}`);
   if (tags.mbRecordingId) metaArgs.push('-metadata', `MUSICBRAINZ_TRACKID=${tags.mbRecordingId}`);

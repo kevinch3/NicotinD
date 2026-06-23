@@ -40,3 +40,5 @@ export type {
   ApplyMetadataRequest,
   MetadataOverride,
 } from '../../../core/src/types/metadata-fix';
+
+export type { LyricsDto } from '../../../core/src/types/lyrics';

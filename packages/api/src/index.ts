@@ -44,6 +44,7 @@ import { YtdlpPlugin } from './services/plugins/ytdlp/index.js';
 import { SpotdlPlugin } from './services/plugins/spotdl/index.js';
 import { ArchivePlugin } from './services/plugins/archive/index.js';
 import { SpotifyPlugin } from './services/plugins/spotify/index.js';
+import { LrclibPlugin } from './services/plugins/lrclib/index.js';
 import { requireAcquisitionMiddleware } from './services/plugins/gate.js';
 import { seedLegacyAcquisitionPlugins } from './services/plugins/legacy-seed.js';
 import { AcquireWatcher } from './services/acquire-watcher.js';
@@ -319,6 +320,9 @@ export function createApp({
       extraArgs: config.acquire.ytdlp.extraArgs,
     }),
   );
+  // Metadata source — lyrics from LRCLIB. Default-on (keyless, benign); seeded
+  // enabled on first boot only, so an admin's later disable is preserved.
+  plugins.register(new LrclibPlugin());
   // One-time migration: seed the previously-implicit acquisition plugins enabled
   // ONLY on an existing (pre-plugin) install, so upgrades stay seamless. Fresh
   // installs are default-off — an admin opts into acquisition in Settings →
@@ -328,6 +332,9 @@ export function createApp({
     ytdlpEnabled: config.acquire.ytdlp.enabled,
     spotdlEnabled: config.acquire.spotdl.enabled,
   });
+  // Default-on metadata plugins: seed enabled idempotently (no-op once a row
+  // exists), then initEnabled() activates them on this same boot.
+  plugins.seedEnabled('lrclib', 'system');
   void plugins.initEnabled();
 
   // Reusable gate for acquisition-only features (hunt, watchlist).
@@ -398,6 +405,7 @@ export function createApp({
       runSync: runSyncAndCurate,
       lidarr,
       coverCacheDir: `${expandedDataDir}/cover-cache`,
+      pluginRegistry: plugins,
     }),
   );
   app.route('/api', streamingRoutes(expandedMusicDir, db, expandedDataDir));

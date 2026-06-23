@@ -60,6 +60,32 @@ export interface ResolveCapability {
   cancel?(jobId: string): boolean;
 }
 
+/** What the host knows about a track when asking a source for lyrics. */
+export interface LyricsQuery {
+  title: string;
+  artist: string;
+  album?: string;
+  /** Track duration in seconds — lets exact-match sources (LRCLIB) disambiguate. */
+  durationSec?: number;
+}
+
+/** Lyrics a source returned for a query. `synced` is raw LRC ([mm:ss.xx] lines). */
+export interface LyricsResult {
+  plain: string | null;
+  synced: string | null;
+  /** Plugin id that produced this (e.g. 'lrclib'). */
+  source: string;
+}
+
+/**
+ * Metadata source that resolves lyrics for a track on demand. The host persists
+ * the result (DB side-table + file tag) and protects user edits from re-fetches.
+ */
+export interface LyricsCapability {
+  /** Returns lyrics for the query, or null when the source has none. */
+  fetchLyrics(query: LyricsQuery): Promise<LyricsResult | null>;
+}
+
 /** Connectivity plugins (tailscale/wireguard) — scaffold; none shipped yet. */
 export interface ConnectivityCapability {
   up(): Promise<void>;

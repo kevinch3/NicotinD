@@ -26,8 +26,9 @@ Host orchestrators (search route, album hunt, /api/acquire) + Settings → Plugi
 ```
 
 A generic **kernel** (manifest, enable/disable, config, consent, health, lifecycle) is
-kind-agnostic; each **kind** (`acquisition` now, `connectivity` scaffolded) defines its own
-capability contracts. New kinds add contracts without touching the kernel.
+kind-agnostic; each **kind** (`acquisition`, `metadata` [lyrics], `connectivity` scaffolded) defines
+its own capability contracts. New kinds add contracts without touching the kernel — the `metadata`
+kind (added for lyrics) is the worked example.
 
 ## Contracts — `packages/core/src/plugin/`
 
@@ -123,6 +124,17 @@ process.ts` — `runAcquireProcess` + progress parsing + audio collection; the i
   consumes the generic `hasSearch`; the lane gates on the id-specific `hasSpotify`. **Not** seeded by
   `seedLegacyAcquisitionPlugins`, so default-off for every install. → see
   [docs/spotify-fallback.md](spotify-fallback.md).
+- **lrclib** (`services/plugins/lrclib/index.ts`) — the first **`metadata`-kind** plugin (capability
+  `lyrics`, pure JS, no binary, no key). It introduced the metadata kind + the `LyricsCapability`
+  contract (`fetchLyrics(LyricsQuery) → LyricsResult|null`); `validatePluginManifest` now allows
+  `lyrics` for `metadata` and **scopes the `defaultEnabled:true` ban to `acquisition` only**, so this
+  benign source **default-enables**. It queries LRCLIB's `/api/get` (exact artist+title+album+duration
+  match) and falls back to `/api/search`, returning both plain and synced (LRC) lyrics; `fetchFn` is
+  constructor-injected for tests. Registered in `index.ts` and **seeded enabled on first boot** via
+  `seedEnabled('lrclib', 'system')` (idempotent — an admin's later disable wins). The host (lyrics
+  routes in `routes/library.ts`) owns persistence (`library_lyrics` side-table + file-tag write-back)
+  and the user-edit/`customized` protection — the plugin only resolves text. → see the "Lyrics"
+  bullet in [CLAUDE.md](../CLAUDE.md).
 - **Back-compat seeding**: before plugins existed, slskd was active whenever credentials were set,
   and yt-dlp/spotdl whenever enabled in config. `PluginRegistry.seedEnabled(id, …)` (called from
   `index.ts`, `ON CONFLICT DO NOTHING`) keeps existing installs working; an admin's later toggle

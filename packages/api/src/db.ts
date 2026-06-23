@@ -552,6 +552,24 @@ export function applySchema(db: Database): void {
     `CREATE INDEX IF NOT EXISTS idx_metadata_overrides_corrected ON library_metadata_overrides(corrected_album_id)`,
   );
 
+  // On-demand lyrics, keyed on the scanner's path-derived songId. Lyrics are
+  // fetched from a lyrics-capable plugin (LRCLIB, …), persisted here, and may be
+  // edited by the user (customized=1 protects them from being overwritten by a
+  // re-fetch). Plain text is also written back to the file tag, so it survives a
+  // move/transcode (which changes songId and orphans this row) — synced LRC is
+  // DB-only (no clean embedded standard). Same side-table pattern as
+  // library_artwork / library_metadata_overrides.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS library_lyrics (
+      song_id     TEXT PRIMARY KEY,
+      plain_text  TEXT,
+      synced_text TEXT,
+      source      TEXT,
+      customized  INTEGER NOT NULL DEFAULT 0,
+      updated_at  INTEGER NOT NULL
+    )
+  `);
+
   // Native per-user playlists (re-added after the Navidrome removal). Playlists
   // reference songs by the scanner's stable songId; reads JOIN library_songs and
   // drop rows whose song no longer exists (file moved → id changed), so a
