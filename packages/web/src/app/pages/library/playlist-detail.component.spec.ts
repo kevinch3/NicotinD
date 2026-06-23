@@ -1,6 +1,8 @@
 import { TestBed } from '@angular/core/testing';
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { provideRouter, ActivatedRoute } from '@angular/router';
+import { provideHttpClient } from '@angular/common/http';
+import { provideHttpClientTesting, HttpTestingController } from '@angular/common/http/testing';
 import { vi } from 'vitest';
 import { PlaylistDetailComponent } from './playlist-detail.component';
 import { AuthService } from '../../services/auth.service';
@@ -32,20 +34,22 @@ const PLAYLIST: PlaylistDetail = {
   songs: [SONG('s1'), SONG('s2'), SONG('s3'), SONG('s4')],
 };
 
-function setup() {
+function setup(playlist: PlaylistDetail = PLAYLIST) {
   const removeSong = vi.fn(() => Promise.resolve());
 
   TestBed.configureTestingModule({
     imports: [PlaylistDetailComponent],
     providers: [
       provideRouter([]),
+      provideHttpClient(),
+      provideHttpClientTesting(),
       { provide: ActivatedRoute, useValue: { snapshot: { paramMap: { get: () => 'pl1' } } } },
       { provide: AuthService, useValue: { token: signal('tok'), role: () => 'user' } },
       { provide: PlayerService, useValue: { play: () => {}, playWithContext: () => {} } },
       {
         provide: PlaylistService,
         useValue: {
-          get: () => Promise.resolve({ ...PLAYLIST, songs: [...PLAYLIST.songs] }),
+          get: () => Promise.resolve({ ...playlist, songs: [...playlist.songs] }),
           removeSong,
           openPicker: vi.fn(),
         },
@@ -56,7 +60,8 @@ function setup() {
 
   const fixture = TestBed.createComponent(PlaylistDetailComponent);
   fixture.detectChanges();
-  return { component: fixture.componentInstance, removeSong };
+  const httpMock = TestBed.inject(HttpTestingController);
+  return { component: fixture.componentInstance, removeSong, httpMock };
 }
 
 describe('PlaylistDetailComponent — bulk remove from playlist', () => {
@@ -85,5 +90,39 @@ describe('PlaylistDetailComponent — bulk remove from playlist', () => {
     await component.removeSelectedFromPlaylist();
 
     expect(removeSong).not.toHaveBeenCalled();
+  });
+});
+
+describe('PlaylistDetailComponent — sharing', () => {
+  beforeEach(() => {
+    // jsdom has no clipboard; stub it so sharePlaylist()'s copy doesn't throw.
+    Object.assign(navigator, { clipboard: { writeText: () => Promise.resolve() } });
+  });
+
+  it('POSTs a playlist share request and flashes the copied state', async () => {
+    const { component, httpMock } = setup();
+    await Promise.resolve(); // ngOnInit get()
+
+    expect(component.shareCopied()).toBe(false);
+    component.sharePlaylist();
+
+    const req = httpMock.expectOne('/api/share');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ resourceType: 'playlist', resourceId: 'pl1' });
+    req.flush({ url: 'http://x/share/tok' });
+    await Promise.resolve();
+
+    expect(component.shareCopied()).toBe(true);
+    httpMock.verify();
+  });
+
+  it('is a no-op for curated playlists (read-only, nothing to share)', async () => {
+    const { component, httpMock } = setup({ ...PLAYLIST, kind: 'curated' });
+    await Promise.resolve();
+
+    component.sharePlaylist();
+
+    httpMock.expectNone('/api/share');
+    httpMock.verify();
   });
 });

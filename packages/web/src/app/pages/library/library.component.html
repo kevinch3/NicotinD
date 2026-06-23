@@ -48,9 +48,9 @@
         }
       </select>
 
-      <details class="relative group">
-        <summary data-testid="library-filters"
-          class="list-none cursor-pointer select-none px-3 py-1.5 text-sm rounded-lg bg-theme-surface-2 text-theme-primary hover:bg-theme-hover transition flex items-center gap-1.5">
+      <app-menu-panel align="end" panelTestId="library-filter-panel">
+        <button menuTrigger type="button" data-testid="library-filters"
+          class="cursor-pointer select-none px-3 py-1.5 text-sm rounded-lg bg-theme-surface-2 text-theme-primary hover:bg-theme-hover transition flex items-center gap-1.5">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <line x1="4" x2="4" y1="21" y2="14" /><line x1="4" x2="4" y1="10" y2="3" />
             <line x1="12" x2="12" y1="21" y2="12" /><line x1="12" x2="12" y1="8" y2="3" />
@@ -61,8 +61,8 @@
           @if (activeFilterCount() > 0) {
             <span data-testid="library-filter-count" class="px-1.5 rounded-full bg-[var(--theme-accent)] text-white text-xs leading-5">{{ activeFilterCount() }}</span>
           }
-        </summary>
-        <div class="absolute right-0 mt-2 z-20 w-60 p-3 rounded-lg bg-theme-surface border border-theme shadow-xl flex flex-col gap-3">
+        </button>
+        <div menuPanel class="w-60 p-3 rounded-lg bg-theme-surface border border-theme shadow-xl flex flex-col gap-3">
           <label class="flex items-center justify-between gap-3 text-sm text-theme-secondary cursor-pointer">
             <span>Starred only</span>
             <input type="checkbox" data-testid="library-filter-starred"
@@ -87,7 +87,7 @@
             </label>
           }
         </div>
-      </details>
+      </app-menu-panel>
 
       <span class="text-xs text-theme-muted ml-auto sm:ml-1" data-testid="library-album-count"
         >{{ filteredAlbums().length }} {{ filteredAlbums().length === 1 ? 'album' : 'albums' }}</span>

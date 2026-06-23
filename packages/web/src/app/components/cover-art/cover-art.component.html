@@ -2,6 +2,8 @@
   <img
     [src]="resolvedSrc()"
     [alt]="album() || artist() || 'cover'"
+    [attr.loading]="loadingAttr()"
+    decoding="async"
     [class]="
       (fill() ? 'w-full aspect-square ' : '') + 'object-cover ' + rounded() + ' ' + className()
     "

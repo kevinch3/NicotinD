@@ -15,6 +15,7 @@ import { readAudioTags, writeAudioTags } from '../services/audio-tags.js';
 import { optimizeAlbum } from '../services/metadata-optimize.js';
 import { searchCandidates, applyMetadataFix } from '../services/metadata-fix.js';
 import { pruneOrphanArtist } from '../services/library-aggregates.js';
+import { songOrderBy } from '../services/song-sort.js';
 import type { ApplyMetadataRequest } from '@nicotind/core';
 
 const log = createLogger('library');
@@ -315,6 +316,27 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       .filter((r) => r.classification === 'single' || r.classification === 'ep')
       .map(rowToAlbum);
     return c.json({ artist: rowToArtist(artistRow), albums, singlesAndEps });
+  });
+
+  // Paginated individual songs for one artist (the artist page's "Songs" tab —
+  // lazy-loaded, sortable, starred-filterable). Separate from /artists/:id so the
+  // potentially-large track list loads on demand, not with the album shell.
+  app.get('/artists/:id/songs', (c) => {
+    const id = c.req.param('id');
+    const size = Math.min(Number(c.req.query('size') ?? 60), 200);
+    const offset = Math.max(Number(c.req.query('offset') ?? 0), 0);
+    const sort = c.req.query('sort') ?? 'newest';
+    const starredOnly = c.req.query('starred') === 'true';
+    const db = getDatabase();
+    const wheres = ['s.artist_id = ?', 's.hidden = 0'];
+    if (starredOnly) wheres.push('s.starred IS NOT NULL');
+    const rows = db
+      .query<SongRow, [string, number, number]>(
+        `${SONG_SELECT} WHERE ${wheres.join(' AND ')}
+         ORDER BY ${songOrderBy(sort)} LIMIT ? OFFSET ?`,
+      )
+      .all(id, size, offset);
+    return c.json(rows.map(rowToSong));
   });
 
   // Dedicated singles & EPs listing (the /library/singles view). Mirrors /albums

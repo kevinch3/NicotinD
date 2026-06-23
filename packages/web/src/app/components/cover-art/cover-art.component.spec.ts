@@ -3,7 +3,15 @@ import {
   placeholderGradient,
   placeholderInitial,
   placeholderFontSize,
+  coverLoadingAttr,
 } from './cover-art.component';
+
+describe('coverLoadingAttr', () => {
+  it('lazy-loads by default (grid tiles), eager only when opted in', () => {
+    expect(coverLoadingAttr(false)).toBe('lazy');
+    expect(coverLoadingAttr(true)).toBe('eager');
+  });
+});
 
 describe('hashCode', () => {
   it('returns a non-negative integer', () => {

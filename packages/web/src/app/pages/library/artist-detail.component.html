@@ -35,53 +35,147 @@
           </div>
         </div>
 
-        <!-- Albums grid -->
-        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-          @for (album of albums(); track album.id) {
-            <a [routerLink]="getAlbumLink(album.id)"
-              class="p-3 rounded-lg bg-theme-surface/30 hover:bg-theme-surface-2/50 transition text-left cursor-pointer block">
-              <app-cover-art
-                [src]="album.coverArt ? '/api/cover/' + album.coverArt + '?size=300&token=' + auth.token() : undefined"
-                [artist]="artist()!.name"
-                [album]="album.name"
-                [fill]="true"
-                rounded="rounded"
-                className="mb-2"
-              />
-              <p class="text-sm text-theme-primary truncate">{{ album.name }}</p>
-              <p class="text-xs text-theme-muted">{{ album.year ?? '' }}</p>
-            </a>
-          }
-        </div>
-
-        @if (albums().length === 0 && singlesAndEps().length === 0) {
+        @if (albums().length === 0 && singlesAndEps().length === 0 && activeTab() !== 'songs') {
           <p class="text-center text-theme-muted py-20">No releases found for this artist.</p>
-        }
-
-        <!-- Singles & EPs (kept out of the main Albums grid) -->
-        @if (singlesAndEps().length > 0) {
-          <div class="mt-10">
-            <h2 class="text-base font-semibold text-theme-primary mb-4">Singles &amp; EPs</h2>
-            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-              @for (album of singlesAndEps(); track album.id) {
-                <a [routerLink]="getAlbumLink(album.id)"
-                  class="p-3 rounded-lg bg-theme-surface/30 hover:bg-theme-surface-2/50 transition text-left cursor-pointer block">
-                  <app-cover-art
-                    [src]="album.coverArt ? '/api/cover/' + album.coverArt + '?size=300&token=' + auth.token() : undefined"
-                    [artist]="artist()!.name"
-                    [album]="album.name"
-                    [fill]="true"
-                    rounded="rounded"
-                    className="mb-2"
-                  />
-                  <p class="text-sm text-theme-primary truncate">{{ album.name }}</p>
-                  <p class="text-xs text-theme-muted">
-                    {{ album.classification === 'ep' ? 'EP' : 'Single' }}{{ album.year ? ' · ' + album.year : '' }}
-                  </p>
-                </a>
-              }
-            </div>
+        } @else {
+          <!-- Tabs: Albums | Singles & EPs | Songs -->
+          <div class="flex items-center gap-1 border-b border-theme-surface-2 mb-5" role="tablist">
+            @for (tab of visibleTabs(); track tab) {
+              <button type="button" role="tab"
+                [attr.data-testid]="'artist-tab-' + tab"
+                [attr.aria-selected]="activeTab() === tab"
+                (click)="setTab(tab)"
+                [class]="'px-3 py-2 text-sm font-medium border-b-2 -mb-px transition ' + (activeTab() === tab
+                  ? 'border-[var(--theme-accent)] text-theme-primary'
+                  : 'border-transparent text-theme-muted hover:text-theme-secondary')">
+                {{ tab === 'albums' ? 'Albums' : tab === 'singles' ? 'Singles & EPs' : 'Songs' }}
+              </button>
+            }
           </div>
+
+          @switch (activeTab()) {
+            @case ('albums') {
+              <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                @for (album of albums(); track album.id) {
+                  <a [routerLink]="getAlbumLink(album.id)"
+                    class="p-3 rounded-lg bg-theme-surface/30 hover:bg-theme-surface-2/50 transition text-left cursor-pointer block">
+                    <app-cover-art
+                      [src]="album.coverArt ? '/api/cover/' + album.coverArt + '?size=300&token=' + auth.token() : undefined"
+                      [artist]="artist()!.name"
+                      [album]="album.name"
+                      [fill]="true"
+                      rounded="rounded"
+                      className="mb-2"
+                    />
+                    <p class="text-sm text-theme-primary truncate">{{ album.name }}</p>
+                    <p class="text-xs text-theme-muted">{{ album.year ?? '' }}</p>
+                  </a>
+                }
+              </div>
+            }
+            @case ('singles') {
+              <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                @for (album of singlesAndEps(); track album.id) {
+                  <a [routerLink]="getAlbumLink(album.id)"
+                    class="p-3 rounded-lg bg-theme-surface/30 hover:bg-theme-surface-2/50 transition text-left cursor-pointer block">
+                    <app-cover-art
+                      [src]="album.coverArt ? '/api/cover/' + album.coverArt + '?size=300&token=' + auth.token() : undefined"
+                      [artist]="artist()!.name"
+                      [album]="album.name"
+                      [fill]="true"
+                      rounded="rounded"
+                      className="mb-2"
+                    />
+                    <p class="text-sm text-theme-primary truncate">{{ album.name }}</p>
+                    <p class="text-xs text-theme-muted">
+                      {{ album.classification === 'ep' ? 'EP' : 'Single' }}{{ album.year ? ' · ' + album.year : '' }}
+                    </p>
+                  </a>
+                }
+              </div>
+            }
+            @case ('songs') {
+              <!-- Sort + filter controls -->
+              <div class="flex items-center gap-2 mb-3">
+                <select data-testid="artist-songs-sort"
+                  [value]="songSort()"
+                  (change)="setSongSort($any($event.target).value)"
+                  class="px-3 py-1.5 text-sm rounded-lg bg-theme-surface-2 text-theme-primary focus:outline-none focus:ring-1 focus:ring-[var(--theme-accent)]">
+                  @for (opt of sortOptions; track opt.value) {
+                    <option [value]="opt.value">{{ opt.label }}</option>
+                  }
+                </select>
+
+                <app-menu-panel align="end" panelTestId="artist-songs-filter-panel">
+                  <button menuTrigger type="button" data-testid="artist-songs-filters"
+                    class="px-3 py-1.5 text-sm rounded-lg bg-theme-surface-2 text-theme-primary hover:bg-theme-hover transition flex items-center gap-1.5">
+                    Filters
+                    @if (activeSongFilterCount() > 0) {
+                      <span class="px-1.5 rounded-full bg-[var(--theme-accent)] text-white text-xs leading-5">{{ activeSongFilterCount() }}</span>
+                    }
+                  </button>
+                  <div menuPanel class="w-56 p-3 rounded-lg bg-theme-surface border border-theme shadow-xl flex flex-col gap-3">
+                    <label class="flex items-center justify-between gap-3 text-sm text-theme-secondary cursor-pointer">
+                      <span>Starred only</span>
+                      <input type="checkbox" data-testid="artist-songs-filter-starred"
+                        [checked]="songsStarredOnly()" (change)="toggleStarredOnly()" />
+                    </label>
+                  </div>
+                </app-menu-panel>
+
+                @if (!selection.active() && songs().length > 0) {
+                  <button (click)="selection.enter()"
+                    class="px-3 py-1.5 text-sm rounded-lg bg-theme-surface-2 text-theme-muted hover:bg-theme-hover transition">
+                    Select
+                  </button>
+                }
+              </div>
+
+              @if (selection.active()) {
+                <app-selection-bar
+                  [count]="selection.count()"
+                  [total]="songs().length"
+                  [canPlay]="true"
+                  [canQueue]="true"
+                  [canDownload]="true"
+                  (selectAll)="selectAllSongs()"
+                  (play)="playSelected()"
+                  (queue)="queueSelected()"
+                  (add)="addSelectedToPlaylist()"
+                  (download)="downloadSelected()"
+                  (cancel)="selection.exit()"
+                />
+              }
+
+              <div class="space-y-0.5" data-testid="artist-songs-list">
+                @for (song of songs(); track song.id; let i = $index) {
+                  <app-track-row
+                    [track]="toTrack(song)"
+                    [indexLabel]="i + 1"
+                    [subtitle]="songSubtitle(song)"
+                    [duration]="song.duration"
+                    [offline]="preserve.isPreserved(song.id)"
+                    [selectable]="selection.active()"
+                    [selected]="selection.isSelected(song.id)"
+                    (play)="playSong(i)"
+                    (selectedChange)="selection.toggleRange(song.id, songOrderedIds(), $event.shiftKey)"
+                  />
+                }
+              </div>
+
+              @if (songsLoadingMore()) {
+                <div class="flex justify-center py-6">
+                  <span class="inline-block w-5 h-5 border-2 border-theme border-t-zinc-300 rounded-full animate-spin"></span>
+                </div>
+              }
+              @if (songsLoaded() && songs().length === 0 && !songsLoadingMore()) {
+                <p class="text-center text-theme-muted py-16">
+                  {{ songsStarredOnly() ? 'No starred songs.' : 'No songs found.' }}
+                </p>
+              }
+              <div #songsSentinel class="h-px" aria-hidden="true"></div>
+            }
+          }
         }
 
         <!-- Discography section (requires Lidarr) -->

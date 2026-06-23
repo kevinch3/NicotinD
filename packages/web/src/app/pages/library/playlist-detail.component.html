@@ -50,6 +50,16 @@
                 <app-icon name="download" />
               </button>
             }
+            @if (!isCurated()) {
+              <button (click)="sharePlaylist()" data-testid="share-playlist"
+                [attr.aria-label]="shareCopied() ? 'Link copied' : 'Share playlist'"
+                [attr.title]="shareCopied() ? 'Link copied!' : 'Share'"
+                [class]="'w-10 h-10 flex items-center justify-center rounded-lg transition ' + (shareCopied()
+                  ? 'bg-emerald-500/20 text-emerald-400'
+                  : 'bg-theme-surface-2 text-theme-muted hover:bg-theme-hover')">
+                <app-icon name="share" />
+              </button>
+            }
           </div>
         }
       </div>

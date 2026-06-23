@@ -10,6 +10,7 @@ import { ffmpegAvailable, transcodeContentType } from '../services/transcode.js'
 import { getTranscodedFile } from '../services/transcode-cache.js';
 import { getMusicMetadata } from '../services/music-metadata-loader.js';
 import { resolveArtwork, canonicalCacheKey } from '../services/artwork-store.js';
+import { bucketCoverSize, resizeCover } from '../services/cover-thumbnail.js';
 
 const log = createLogger('streaming');
 
@@ -118,8 +119,35 @@ export function streamingRoutes(musicDir: string, db: Database, dataDir: string)
     return serveFileWithRange(abs, range);
   });
 
+  /** Build a cover Response, downsizing to the requested `size` bucket when one
+   *  was given. The resized variant is cached under `<baseKey>@<size>` so repeat
+   *  thumbnail hits read one small file; a resize failure falls back to the full
+   *  image so a cover is never lost to a bad encode. */
+  async function respondCover(
+    baseKey: string,
+    art: CoverArt,
+    size: number | null,
+  ): Promise<Response> {
+    if (size == null) return coverResponse(art);
+    const sizedKey = `${baseKey}@${size}`;
+    const sizedCached = await readCachedCover(coverCacheDir, sizedKey);
+    if (sizedCached) return coverResponse(sizedCached);
+    try {
+      const resized = await resizeCover(art.data, size);
+      void cacheCover(coverCacheDir, sizedKey, resized).catch((err) =>
+        log.debug({ err, baseKey, size }, 'sized cover cache write failed'),
+      );
+      return coverResponse(resized);
+    } catch (err) {
+      log.debug({ err, baseKey, size }, 'cover resize failed; serving original');
+      return coverResponse(art);
+    }
+  }
+
   app.get('/cover/:id', async (c) => {
     const id = c.req.param('id');
+    // Snap the requested dimension to a cache bucket (null → serve original).
+    const size = bucketCoverSize(c.req.query('size'));
 
     // Fast-path: id was already checked and found artless within the TTL.
     if ((noArtCache.get(id) ?? 0) > Date.now()) {
@@ -136,30 +164,20 @@ export function streamingRoutes(musicDir: string, db: Database, dataDir: string)
     if (canonical) {
       const cacheKey = canonicalCacheKey(canonical.key);
       const cached = await readCachedCover(coverCacheDir, cacheKey);
-      if (cached) {
-        return new Response(toBody(cached.data), {
-          headers: { 'content-type': cached.contentType, 'cache-control': COVER_CACHE_CONTROL },
-        });
-      }
+      if (cached) return respondCover(cacheKey, cached, size);
       const remote = await fetchRemoteCover(canonical.url);
       if (remote) {
         void cacheCover(coverCacheDir, cacheKey, remote).catch((err) =>
           log.debug({ err, id }, 'canonical cover cache write failed'),
         );
-        return new Response(toBody(remote.data), {
-          headers: { 'content-type': remote.contentType, 'cache-control': COVER_CACHE_CONTROL },
-        });
+        return respondCover(cacheKey, remote, size);
       }
       // Remote fetch failed (offline / dead URL) — fall through to on-disk art.
     }
 
     // 2. On-disk art (folder image, then embedded tag).
     const cached = await readCachedCover(coverCacheDir, id);
-    if (cached) {
-      return new Response(toBody(cached.data), {
-        headers: { 'content-type': cached.contentType, 'cache-control': COVER_CACHE_CONTROL },
-      });
-    }
+    if (cached) return respondCover(id, cached, size);
 
     const abs = resolvePath(id);
     if (!abs) {
@@ -182,9 +200,7 @@ export function streamingRoutes(musicDir: string, db: Database, dataDir: string)
     void cacheCover(coverCacheDir, id, art).catch((err) =>
       log.debug({ err, id }, 'cover cache write failed'),
     );
-    return new Response(toBody(art.data), {
-      headers: { 'content-type': art.contentType, 'cache-control': COVER_CACHE_CONTROL },
-    });
+    return respondCover(id, art, size);
   });
 
   return app;
@@ -249,6 +265,13 @@ interface CoverArt {
 // BodyInit union (under strict typed-array generics) rejects it — cast through.
 function toBody(data: Uint8Array): BodyInit {
   return data as unknown as BodyInit;
+}
+
+/** 200 response for resolved cover bytes, with the shared long-lived cache header. */
+function coverResponse(art: CoverArt): Response {
+  return new Response(toBody(art.data), {
+    headers: { 'content-type': art.contentType, 'cache-control': COVER_CACHE_CONTROL },
+  });
 }
 
 function extFromContentType(ct: string): string {

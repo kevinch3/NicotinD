@@ -1,0 +1,18 @@
+<div class="relative inline-flex">
+  <span #trigger (click)="toggle($event)" class="inline-flex">
+    <ng-content select="[menuTrigger]" />
+  </span>
+  @if (open()) {
+    <div
+      #panelEl
+      class="fixed z-50"
+      [style.left.px]="pos().x"
+      [style.top.px]="pos().y"
+      [style.visibility]="positioned() ? 'visible' : 'hidden'"
+      [attr.data-testid]="panelTestId()"
+      (click)="$event.stopPropagation()"
+    >
+      <ng-content select="[menuPanel]" />
+    </div>
+  }
+</div>

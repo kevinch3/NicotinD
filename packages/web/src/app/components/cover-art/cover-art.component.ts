@@ -31,6 +31,16 @@ export function placeholderFontSize(size: number | undefined, fill: boolean): st
   return fill || size == null ? '2rem' : `${size * 0.35}px`;
 }
 
+/**
+ * Native `<img loading>` value for a cover. Covers default to `lazy` so a grid of
+ * tiles doesn't fire dozens of eager requests; an above-the-fold cover passes
+ * `eager`. Pure so it's unit-testable without driving the `input()` (the JIT
+ * vitest harness can't set signal inputs).
+ */
+export function coverLoadingAttr(eager: boolean): 'eager' | 'lazy' {
+  return eager ? 'eager' : 'lazy';
+}
+
 @Component({
   selector: 'app-cover-art',
   templateUrl: './cover-art.component.html',
@@ -52,6 +62,12 @@ export class CoverArtComponent {
   readonly fill = input(false);
   readonly className = input('');
   readonly rounded = input('rounded');
+  // Covers lazy-load + async-decode by default so a grid of tiles doesn't fire
+  // dozens of eager, main-thread-decoded image requests at once. Set `eager` for
+  // the always-visible above-the-fold cover (e.g. the player bar) so it isn't
+  // deferred. Mirrors the native `<img loading>` semantics.
+  readonly eager = input(false);
+  readonly loadingAttr = computed<'eager' | 'lazy'>(() => coverLoadingAttr(this.eager()));
 
   readonly imgError = signal(false);
 

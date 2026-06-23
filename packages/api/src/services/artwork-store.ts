@@ -1,5 +1,5 @@
 import type { Database } from 'bun:sqlite';
-import { existsSync, rmSync } from 'node:fs';
+import { existsSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import type { LidarrImage } from '@nicotind/lidarr-client';
 
@@ -88,13 +88,37 @@ export function canonicalCacheKey(key: string): string {
   return CANONICAL_PREFIX + key;
 }
 
-/** Remove any cached canonical image for a key (all known extensions). */
+/**
+ * Remove any cached canonical image for a key — the full-size `c_<key>.<ext>`
+ * and every resized `c_<key>@<size>.<ext>` thumbnail variant — so a corrected
+ * cover doesn't leave stale thumbnails behind (the cover route re-materializes
+ * them on the next sized request).
+ */
 export function purgeCanonicalCache(coverCacheDir: string, key: string): void {
+  // Full-size variants by exact name.
   for (const ext of CACHE_EXTS) {
     const p = join(coverCacheDir, CANONICAL_PREFIX + key + ext);
     if (existsSync(p)) {
       try {
         rmSync(p);
+      } catch {
+        /* best-effort */
+      }
+    }
+  }
+  // Sized variants: `c_<key>@<size>.<ext>` — match by prefix since the size set
+  // can grow independently of this module.
+  const sizedPrefix = `${CANONICAL_PREFIX}${key}@`;
+  let entries: string[];
+  try {
+    entries = readdirSync(coverCacheDir);
+  } catch {
+    return;
+  }
+  for (const name of entries) {
+    if (name.startsWith(sizedPrefix)) {
+      try {
+        rmSync(join(coverCacheDir, name));
       } catch {
         /* best-effort */
       }

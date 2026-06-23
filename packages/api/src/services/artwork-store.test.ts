@@ -91,6 +91,22 @@ describe('purgeCanonicalCache', () => {
     expect(existsSync(png)).toBe(false);
     rmSync(cacheDir, { recursive: true, force: true });
   });
+
+  it('removes resized thumbnail variants (c_<key>@<size>.<ext>) too', () => {
+    const cacheDir = mkdtempSync(join(tmpdir(), 'nd-cache-'));
+    const full = join(cacheDir, canonicalCacheKey('k') + '.jpg');
+    const thumb80 = join(cacheDir, canonicalCacheKey('k') + '@80.webp');
+    const thumb320 = join(cacheDir, canonicalCacheKey('k') + '@320.webp');
+    const other = join(cacheDir, canonicalCacheKey('other') + '@80.webp');
+    for (const p of [full, thumb80, thumb320, other]) writeFileSync(p, new Uint8Array([1]));
+    purgeCanonicalCache(cacheDir, 'k');
+    expect(existsSync(full)).toBe(false);
+    expect(existsSync(thumb80)).toBe(false);
+    expect(existsSync(thumb320)).toBe(false);
+    // A different key's variants are untouched.
+    expect(existsSync(other)).toBe(true);
+    rmSync(cacheDir, { recursive: true, force: true });
+  });
 });
 
 describe('image pickers', () => {

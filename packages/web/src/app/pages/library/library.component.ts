@@ -19,6 +19,7 @@ import { TransferService } from '../../services/transfer.service';
 import { ListControlsService, type SortOption } from '../../services/list-controls.service';
 import { ListToolbarComponent } from '../../components/list-toolbar/list-toolbar.component';
 import { CoverArtComponent } from '../../components/cover-art/cover-art.component';
+import { MenuPanelComponent } from '../../components/menu-panel/menu-panel.component';
 import { resolveAlbumRoute, resolveGenreRoute, resolveArtistRoute } from '../../lib/route-utils';
 import { appendUnique } from '../../lib/append-unique';
 import {
@@ -87,7 +88,7 @@ function writePersistedState(state: PersistedLibraryState): void {
 
 @Component({
   selector: 'app-library',
-  imports: [ListToolbarComponent, RouterLink, CoverArtComponent, FormsModule],
+  imports: [ListToolbarComponent, RouterLink, CoverArtComponent, FormsModule, MenuPanelComponent],
   templateUrl: './library.component.html',
 })
 export class LibraryComponent implements OnInit, OnDestroy {

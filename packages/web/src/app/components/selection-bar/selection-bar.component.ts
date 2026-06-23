@@ -17,9 +17,18 @@ export class SelectionBarComponent {
   /** Show a destructive Delete button (host decides the semantics + gating). */
   readonly canDelete = input(false);
   readonly deleteLabel = input('Delete');
+  // Optional bulk actions — off by default so existing hosts (e.g. playlist
+  // detail, which only wants Add-to-playlist + Delete) render unchanged. The
+  // artist Songs tab opts into the full set.
+  readonly canPlay = input(false);
+  readonly canQueue = input(false);
+  readonly canDownload = input(false);
 
   readonly selectAll = output<void>();
+  readonly play = output<void>();
+  readonly queue = output<void>();
   readonly add = output<void>();
+  readonly download = output<void>();
   readonly deleteSelected = output<void>();
   readonly cancel = output<void>();
 }

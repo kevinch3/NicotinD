@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeAll, afterAll } from 'bun:test';
 import { Hono } from 'hono';
 import { Database } from 'bun:sqlite';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { streamingRoutes } from './streaming.js';
@@ -112,6 +112,35 @@ describe('streaming routes', () => {
   it('returns 404 cover for an unknown id', async () => {
     const res = await app.request('/cover/missing');
     expect(res.status).toBe(404);
+  });
+
+  it('serves a resized webp thumbnail for ?size= and caches the variant', async () => {
+    // A real (decodable) PNG folder cover so the resize actually runs.
+    const sharp = (await import('sharp')).default;
+    const png = await sharp({
+      create: { width: 600, height: 600, channels: 3, background: { r: 10, g: 120, b: 200 } },
+    })
+      .png()
+      .toBuffer();
+    mkdirSync(join(musicDir, 'ThumbArtist', 'ThumbAlbum'), { recursive: true });
+    writeFileSync(join(musicDir, 'ThumbArtist', 'ThumbAlbum', 't.mp3'), AUDIO_BYTES);
+    writeFileSync(join(musicDir, 'ThumbArtist', 'ThumbAlbum', 'cover.png'), png);
+    seedSong('song-thumb', 'ThumbArtist/ThumbAlbum/t.mp3');
+
+    const res = await app.request('/cover/song-thumb?size=80');
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('image/webp');
+    const buf = new Uint8Array(await res.arrayBuffer());
+    const meta = await sharp(Buffer.from(buf)).metadata();
+    expect(meta.width).toBe(80); // 300 (grid) → bucket, 80 stays 80
+    // The resized variant is written to the cover cache for fast repeat hits.
+    expect(existsSync(join(dataDir, 'cover-cache', 'song-thumb@80.webp'))).toBe(true);
+  });
+
+  it('serves the original (not a thumbnail) when no size is requested', async () => {
+    const res = await app.request('/cover/song-thumb');
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('image/png');
   });
 
   it('resolves an album cover from track 1 deterministically (not an arbitrary row)', async () => {

@@ -430,6 +430,19 @@ export class ApiService {
     return this.http.get<Album[]>('/api/library/singles', { params: { type, size, offset } });
   }
 
+  // Paginated individual songs for one artist (the artist page's lazy "Songs" tab).
+  getArtistSongs(
+    id: string,
+    size = 60,
+    offset = 0,
+    opts: { sort?: 'newest' | 'title' | 'album'; starred?: boolean } = {},
+  ) {
+    const params: Record<string, string | number | boolean> = { size, offset };
+    if (opts.sort) params['sort'] = opts.sort;
+    if (opts.starred) params['starred'] = true;
+    return this.http.get<Song[]>(`/api/library/artists/${id}/songs`, { params });
+  }
+
   getGenres() {
     return this.http.get<Array<{ value: string; songCount: number; albumCount: number }>>(
       '/api/library/genres',

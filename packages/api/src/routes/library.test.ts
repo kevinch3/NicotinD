@@ -735,3 +735,120 @@ describe('singles & EPs presentation', () => {
     expect(body.singlesAndEps.map((a) => a.id).sort()).toEqual(['ep', 'sng']);
   });
 });
+
+describe('GET /artists/:id/songs (Songs tab)', () => {
+  const testDb = new Database(':memory:');
+  applySchema(testDb);
+
+  beforeEach(() => {
+    testDb.run('DELETE FROM library_songs');
+    testDb.run('DELETE FROM library_albums');
+    mock.module('../db.js', () => ({ getDatabase: () => testDb, applySchema }));
+  });
+
+  afterEach(() => {
+    mock.module('../db.js', () => ({ getDatabase: () => sharedDb, applySchema }));
+  });
+
+  function seedAlbum(id: string, name: string): void {
+    testDb.run(
+      `INSERT INTO library_albums (id, name, artist, artist_id, song_count, duration, classification, hidden, synced_at)
+       VALUES (?, ?, 'A', 'art', 1, 60, 'album', 0, 1)`,
+      [id, name],
+    );
+  }
+
+  function seedSong(
+    id: string,
+    opts: {
+      title: string;
+      artistId?: string;
+      albumId?: string;
+      created?: string;
+      starred?: string | null;
+      hidden?: number;
+      track?: number;
+    },
+  ): void {
+    testDb.run(
+      `INSERT INTO library_songs (id, album_id, title, artist, artist_id, track, duration, path, size, bit_rate, suffix, content_type, created, starred, hidden, synced_at)
+       VALUES (?, ?, ?, 'A', ?, ?, 0, ?, 1000, 320, 'mp3', 'audio/mpeg', ?, ?, ?, 1)`,
+      [
+        id,
+        opts.albumId ?? 'alb',
+        opts.title,
+        opts.artistId ?? 'art',
+        opts.track ?? null,
+        `Artist/Album/${id}.mp3`,
+        opts.created ?? '2024-01-01',
+        opts.starred ?? null,
+        opts.hidden ?? 0,
+      ],
+    );
+  }
+
+  function makeApp(): Hono<AuthEnv> {
+    const testApp = new Hono<AuthEnv>();
+    testApp.use('*', (c, next) => {
+      c.set('user', { sub: 'u', role: 'user', iat: 0, exp: 9999999999 });
+      return next();
+    });
+    testApp.route('/', libraryRoutes());
+    return testApp;
+  }
+
+  it('returns the artist’s non-hidden songs and excludes other artists', async () => {
+    seedAlbum('alb', 'Album');
+    seedSong('s1', { title: 'Alpha' });
+    seedSong('s2', { title: 'Beta', hidden: 1 });
+    seedSong('s3', { title: 'Other', artistId: 'other' });
+
+    const body = (await (await makeApp().request('/artists/art/songs')).json()) as Array<{
+      id: string;
+    }>;
+    expect(body.map((s) => s.id)).toEqual(['s1']);
+  });
+
+  it('filters to starred only when starred=true', async () => {
+    seedAlbum('alb', 'Album');
+    seedSong('s1', { title: 'Alpha', starred: null });
+    seedSong('s2', { title: 'Beta', starred: '2024-02-02' });
+
+    const all = (await (await makeApp().request('/artists/art/songs')).json()) as Array<{
+      id: string;
+    }>;
+    expect(all.map((s) => s.id).sort()).toEqual(['s1', 's2']);
+
+    const starred = (await (
+      await makeApp().request('/artists/art/songs?starred=true')
+    ).json()) as Array<{ id: string }>;
+    expect(starred.map((s) => s.id)).toEqual(['s2']);
+  });
+
+  it('sorts by title when sort=title', async () => {
+    seedAlbum('alb', 'Album');
+    seedSong('s1', { title: 'Zebra', created: '2024-03-01' });
+    seedSong('s2', { title: 'apple', created: '2024-01-01' });
+
+    const body = (await (
+      await makeApp().request('/artists/art/songs?sort=title')
+    ).json()) as Array<{ title: string }>;
+    expect(body.map((s) => s.title)).toEqual(['apple', 'Zebra']); // NOCASE
+  });
+
+  it('defaults to newest-first and paginates by size/offset', async () => {
+    seedAlbum('alb', 'Album');
+    seedSong('old', { title: 'Old', created: '2020-01-01' });
+    seedSong('new', { title: 'New', created: '2024-01-01' });
+
+    const newest = (await (await makeApp().request('/artists/art/songs')).json()) as Array<{
+      id: string;
+    }>;
+    expect(newest.map((s) => s.id)).toEqual(['new', 'old']);
+
+    const page2 = (await (
+      await makeApp().request('/artists/art/songs?size=1&offset=1')
+    ).json()) as Array<{ id: string }>;
+    expect(page2.map((s) => s.id)).toEqual(['old']);
+  });
+});

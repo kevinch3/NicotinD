@@ -1,5 +1,6 @@
 import { Component, inject, signal, computed, OnInit } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
+import { HttpClient } from '@angular/common/http';
 import { PlayerService } from '../../services/player.service';
 import { PlaylistService } from '../../services/playlist.service';
 import { AuthService } from '../../services/auth.service';
@@ -30,10 +31,12 @@ export class PlaylistDetailComponent implements OnInit {
   private playlists = inject(PlaylistService);
   private nav = inject(NavigationService);
   readonly preserve = inject(PreserveService);
+  private http = inject(HttpClient);
 
   readonly loading = signal(true);
   readonly playlist = signal<PlaylistDetail | null>(null);
   readonly confirmingDelete = signal(false);
+  readonly shareCopied = signal(false);
 
   /** Curated (system) playlists are global + read-only: no edit/remove/delete. */
   readonly isCurated = computed(() => this.playlist()?.kind === 'curated');
@@ -144,6 +147,23 @@ export class PlaylistDetailComponent implements OnInit {
           addToPlaylistAction(this.playlists, song.id),
         ]
       : [];
+  }
+
+  // Mint a read-only share link (mirrors album sharing). Curated playlists are
+  // global + read-only already, so there's nothing to share — the button is
+  // hidden for them, and this guards the same.
+  sharePlaylist(): void {
+    const pl = this.playlist();
+    if (!pl || this.isCurated()) return;
+    this.http
+      .post<{ url: string }>('/api/share', { resourceType: 'playlist', resourceId: pl.id })
+      .subscribe({
+        next: ({ url }) => {
+          navigator.clipboard.writeText(url).catch(() => {});
+          this.shareCopied.set(true);
+          setTimeout(() => this.shareCopied.set(false), 3000);
+        },
+      });
   }
 
   async deletePlaylist(): Promise<void> {
