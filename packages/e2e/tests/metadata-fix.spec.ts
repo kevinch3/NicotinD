@@ -32,6 +32,22 @@ test.afterEach(async ({ page }) => {
   });
 });
 
+test('the fix modal shows the cover picker with the current cover', async ({ page }) => {
+  await page.goto('/library');
+  const card = page.getByTestId('album-card').filter({ hasText: FIXTURE.album.title });
+  await expect(card).toBeVisible();
+  await card.click();
+  await expect(page).toHaveURL(/\/library\/albums\//);
+
+  await page.getByTestId('optimize-metadata').click();
+  await expect(page.getByTestId('metadata-fix-modal')).toBeVisible();
+
+  // The cover section is always present (it offers at least the current cover);
+  // Lidarr alternatives are absent here because the e2e server has a dead Lidarr.
+  await expect(page.getByTestId('cover-picker')).toBeVisible();
+  await expect(page.getByTestId('cover-option').first()).toBeVisible();
+});
+
 test('admin fixes album metadata via free-text and it re-buckets', async ({ page }) => {
   await page.goto('/library');
   const card = page.getByTestId('album-card').filter({ hasText: FIXTURE.album.title });

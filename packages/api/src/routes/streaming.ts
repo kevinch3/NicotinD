@@ -8,7 +8,7 @@ import type { AuthEnv } from '../middleware/auth.js';
 import { getStreamingSettings } from '../services/streaming-settings.js';
 import { ffmpegAvailable, transcodeContentType } from '../services/transcode.js';
 import { getTranscodedFile } from '../services/transcode-cache.js';
-import { getMusicMetadata } from '../services/music-metadata-loader.js';
+import { extractEmbeddedPicture } from '../services/cover-sources.js';
 import { resolveArtwork, canonicalCacheKey } from '../services/artwork-store.js';
 import { bucketCoverSize, resizeCover } from '../services/cover-thumbnail.js';
 
@@ -148,6 +148,35 @@ export function streamingRoutes(musicDir: string, db: Database, dataDir: string)
     const id = c.req.param('id');
     // Snap the requested dimension to a cache bucket (null → serve original).
     const size = bucketCoverSize(c.req.query('size'));
+
+    // `?embedded=1` serves ONLY the file's embedded picture (skipping canonical
+    // and folder art) — used by the Fix-metadata cover picker so the user can
+    // see/choose the artwork baked into a specific track. Cached under a
+    // `~emb`-suffixed key so it never collides with the normal resolution chain.
+    if (c.req.query('embedded') === '1') {
+      const embKey = `${id}~emb`;
+      if ((noArtCache.get(embKey) ?? 0) > Date.now()) {
+        return new Response(null, {
+          status: 404,
+          headers: { 'cache-control': 'public, max-age=300' },
+        });
+      }
+      const embCached = await readCachedCover(coverCacheDir, embKey);
+      if (embCached) return respondCover(embKey, embCached, size);
+      const abs = resolvePath(id);
+      const pic = abs ? await extractEmbeddedPicture(abs) : null;
+      if (!pic) {
+        noArtCache.set(embKey, Date.now() + NO_ART_TTL_MS);
+        return new Response(null, {
+          status: 404,
+          headers: { 'cache-control': 'public, max-age=300' },
+        });
+      }
+      void cacheCover(coverCacheDir, embKey, pic).catch((err) =>
+        log.debug({ err, id }, 'embedded cover cache write failed'),
+      );
+      return respondCover(embKey, pic, size);
+    }
 
     // Fast-path: id was already checked and found artless within the TTL.
     if ((noArtCache.get(id) ?? 0) > Date.now()) {
@@ -323,18 +352,7 @@ async function cacheCover(dir: string, id: string, art: CoverArt): Promise<void>
 async function extractCover(absPath: string): Promise<CoverArt | null> {
   const folder = await folderCover(dirname(absPath));
   if (folder) return folder;
-  try {
-    const mm = await getMusicMetadata();
-    if (!mm) return null;
-    const meta = await mm.parseFile(absPath, { duration: false, skipCovers: false });
-    const pic = meta.common.picture?.[0];
-    if (pic) {
-      return { data: new Uint8Array(pic.data), contentType: pic.format || 'image/jpeg' };
-    }
-  } catch {
-    /* ignore */
-  }
-  return null;
+  return extractEmbeddedPicture(absPath);
 }
 
 async function folderCover(dir: string): Promise<CoverArt | null> {

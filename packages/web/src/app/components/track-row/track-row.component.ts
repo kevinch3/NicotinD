@@ -32,6 +32,14 @@ export class TrackRowComponent {
   readonly disabled = input(false);
   readonly showRemove = input(false);
   readonly offline = input(false);
+  /**
+   * When false, the per-track cover thumbnail is hidden. Set this in a
+   * single-album context (album/EP detail) where every row shares the same
+   * cover — the track number already identifies the row, so rendering ~12–20
+   * identical thumbnails is wasted cover fetches/decodes. Defaults true for
+   * mixed-album lists (playlists, artist Songs, search, queue).
+   */
+  readonly showCover = input(true);
   /** When true, the row shows a checkbox (multi-select mode) reflecting `selected`. */
   readonly selectable = input(false);
   readonly selected = input(false);

@@ -36,3 +36,37 @@ export interface MetadataOverride {
   album?: string;
   year?: number;
 }
+
+/** Where a selectable album cover comes from in the cover picker. */
+export type CoverCandidateSource = 'current' | 'lidarr' | 'file';
+
+/**
+ * One selectable cover in the Fix-metadata cover picker. `url` is always a
+ * renderable thumbnail; `file` covers also carry the `songId` the embedded
+ * image was read from so applying one can materialize it as the album cover.
+ */
+export interface AlbumCoverCandidate {
+  source: CoverCandidateSource;
+  url: string;
+  label: string;
+  /** Set only for `source:'file'` — the song whose embedded art this is. */
+  songId?: string;
+}
+
+/** Response of `GET /api/library/albums/:id/cover-candidates`. */
+export interface CoverCandidatesResponse {
+  current: AlbumCoverCandidate | null;
+  lidarr: AlbumCoverCandidate[];
+  files: AlbumCoverCandidate[];
+}
+
+/**
+ * Body for `POST /api/library/albums/:id/cover` — apply only the cover, leaving
+ * artist/album/year untouched. Exactly one of `coverUrl` (Lidarr alt / custom
+ * URL) or `songId` (an album track's embedded art → written as folder cover) is
+ * provided.
+ */
+export interface ApplyCoverRequest {
+  coverUrl?: string;
+  songId?: string;
+}

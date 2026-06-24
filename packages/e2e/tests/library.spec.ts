@@ -17,6 +17,22 @@ test.describe('library', () => {
     await expect(page.getByText('Closing Time')).toBeVisible();
   });
 
+  test('album track rows omit the redundant per-track thumbnail', async ({ page }) => {
+    await page.goto('/library');
+    await page.getByTestId('album-card').filter({ hasText: FIXTURE.album.title }).first().click();
+    await expect(page).toHaveURL(/\/library\/albums\//);
+    await expect(page.getByText('Opening Static')).toBeVisible();
+
+    // In a single-album context every row shares the album cover, so the per-row
+    // thumbnail is suppressed — the track number carries row identity. The
+    // CoverArtComponent (`app-cover-art`) renders an img OR a gradient fallback,
+    // so assert the whole component is absent (an img check passes trivially when
+    // the fixtures have no art).
+    const rows = page.locator('app-track-row');
+    await expect(rows.first()).toBeVisible();
+    expect(await rows.locator('app-cover-art').count()).toBe(0);
+  });
+
   test('the loose single is not in the Albums grid', async ({ page }) => {
     await page.goto('/library');
     await expect(page.getByTestId('album-card').first()).toBeVisible();

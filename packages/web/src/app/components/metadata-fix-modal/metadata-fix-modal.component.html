@@ -12,6 +12,52 @@
       Search for the correct release and confirm — even a rough match. Or enter the details by hand.
     </p>
 
+    <!-- Cover picker — change just the artwork, independent of the fields below. -->
+    @if (coverOptions().length) {
+      <div class="mb-4" data-testid="cover-picker">
+        <p class="text-theme-secondary text-sm font-medium mb-2">Cover</p>
+        <div class="flex flex-wrap gap-2">
+          @for (cv of coverOptions(); track cv.url) {
+            <button
+              type="button"
+              (click)="selectCover(cv)"
+              [disabled]="coverApplying() || cv.source === 'current'"
+              [title]="cv.label"
+              data-testid="cover-option"
+              class="relative w-16 h-16 rounded-lg overflow-hidden border border-theme bg-theme-hover hover:border-theme-accent transition disabled:cursor-default"
+            >
+              <img [src]="coverSrc(cv)" [alt]="cv.label" class="w-full h-full object-cover" />
+              @if (cv.source === 'current') {
+                <span
+                  class="absolute bottom-0 inset-x-0 text-[10px] text-white bg-black/60 text-center leading-tight py-0.5"
+                  >Current</span
+                >
+              }
+            </button>
+          }
+        </div>
+        <div class="flex gap-2 mt-2">
+          <input
+            type="text"
+            [ngModel]="customCoverUrl()"
+            (ngModelChange)="customCoverUrl.set($event)"
+            (keydown.enter)="applyCustomCover()"
+            placeholder="Or paste an image URL…"
+            data-testid="cover-url-input"
+            class="flex-1 px-3 py-2 rounded-lg bg-theme-surface-2 text-theme-primary text-sm border border-theme focus:outline-none focus:border-theme-accent"
+          />
+          <button
+            (click)="applyCustomCover()"
+            [disabled]="coverApplying()"
+            data-testid="cover-url-apply"
+            class="px-4 py-2 rounded-lg text-sm bg-theme-surface text-theme-secondary hover:bg-theme-hover transition disabled:opacity-50"
+          >
+            {{ coverApplying() ? 'Applying…' : 'Set cover' }}
+          </button>
+        </div>
+      </div>
+    }
+
     @if (artistIsPlaceholder()) {
       <p class="text-amber-400 text-xs mb-3" data-testid="placeholder-artist-hint">
         The stored artist looks unknown, so we searched by album title only. Type the correct

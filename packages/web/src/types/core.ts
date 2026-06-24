@@ -39,6 +39,10 @@ export type {
   MetadataCandidate,
   ApplyMetadataRequest,
   MetadataOverride,
+  CoverCandidateSource,
+  AlbumCoverCandidate,
+  CoverCandidatesResponse,
+  ApplyCoverRequest,
 } from '../../../core/src/types/metadata-fix';
 
 export type { LyricsDto } from '../../../core/src/types/lyrics';

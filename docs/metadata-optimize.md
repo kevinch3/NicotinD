@@ -51,3 +51,30 @@ The automatic `optimizeAlbum` matcher is **all-or-nothing**: it requires an exac
 ### Surfaces
 
 - **`GET /api/library/albums/:id/metadata-candidates?q=`** (admin; `503` without Lidarr) and **`POST /api/library/albums/:id/metadata`** (admin; **no** Lidarr needed — free-text works offline). The album-detail **"Fix metadata"** button (admin, `data-testid="optimize-metadata"`) opens `MetadataFixModalComponent`: an editable search → candidate cards (cover / artist — title (year) [type] / confidence %) with **Apply**, plus a collapsed **"Enter manually"** fallback (artist/album/year). On apply the page re-fetches the corrected album (by the returned id) and cache-busts the cover.
+
+## Cover picker (change just the artwork)
+
+The candidate "Apply" above always set artist+album+year+cover **together**, and only ever carried the *single* cover Lidarr's top match happened to have — so a wrong/stale cover got stuck. The Fix-metadata modal's top **Cover section** (`data-testid="cover-picker"`) is the cover-only escape hatch.
+
+### Sources (`services/cover-sources.ts`, pure + injectable)
+
+- `dedupeCoverUrls(urls)` — first-seen-order dedupe of Lidarr cover URLs.
+- `hashBytes(data)` — FNV-1a fold (length + 32-bit hash) used to collapse identical embedded images.
+- `selectDistinctEmbeddedCovers(songs, extract, limit=8)` — one entry per *distinct* image across the album's tracks; `extract` is injected so tests don't touch disk.
+- `extractEmbeddedPicture(absPath, loadMM?)` — embedded picture **only** (no folder-art fallback); the cover route's `extractCover` now delegates its embedded branch here.
+- `writeFolderCover(albumDir, pic)` — writes `cover.<ext>` (the folder-art name the cover route prefers).
+
+### Endpoints (admin)
+
+- **`GET /api/library/albums/:id/cover-candidates?q=`** → `CoverCandidatesResponse { current, lidarr[], files[] }`:
+  - `current` — `{ source:'current', url:'/api/cover/<id>' }`, always present.
+  - `lidarr` — deduped alternatives from `searchCandidates` (each `{ url, label:"<title> (<year>)" }`); **omitted, not `503`,** when Lidarr is unconfigured/down.
+  - `files` — one `{ source:'file', songId, url:'/api/cover/<songId>?embedded=1' }` per distinct embedded image (empty when no music dir / no art).
+- **`POST /api/library/albums/:id/cover`** (`ApplyCoverRequest`): exactly one of —
+  - `coverUrl` (Lidarr alt **or** a pasted custom URL) → `setArtwork(db, id, 'album', url, coverCacheDir)`.
+  - `songId` (an album track) → `extractEmbeddedPicture` → `writeFolderCover(dirname)` → **`deleteArtwork` (clears the canonical override) + `purgeDiskArtCache`** so the cover route falls back to the new folder image. This is also the **revert-to-original** path: pick a track whose embedded art is the original to undo a bad canonical cover.
+- Embedded thumbnails are served by the existing cover route with **`?embedded=1`** (skips canonical+folder, caches under a `~emb`-suffixed key) — see [library-scanner.md](library-scanner.md).
+
+### Web
+
+`MetadataFixModalComponent`'s cover grid (`data-testid="cover-option"`) + a custom-URL input (`data-testid="cover-url-input"`/`-apply`). The picker seeds a **synthetic "Current"** option in `ngOnInit` so it renders instantly and never blocks on a slow Lidarr lookup; pure mapping lives in `lib/cover-candidates.ts` (`flattenCoverCandidates`/`coverThumbUrl`/`coverCandidateToRequest`/`customCoverToRequest`). Applying a cover emits **`coverChanged`** (distinct from `applied`) so album-detail refetches + cache-busts the hero cover **without closing** the modal.

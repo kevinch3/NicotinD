@@ -12,6 +12,8 @@ import type {
   LyricsDto,
   MetadataCandidate,
   ApplyMetadataRequest,
+  CoverCandidatesResponse,
+  ApplyCoverRequest,
 } from '@nicotind/core';
 
 // ─── Response types ─────────────────────────────────────────────────
@@ -384,6 +386,21 @@ export class ApiService {
       coverUpdated: boolean;
       releaseTypeUpdated: boolean;
     }>(`/api/library/albums/${id}/metadata`, body);
+  }
+  /**
+   * Cover candidates for an album (admin): the current cover, Lidarr
+   * alternatives (when configured), and per-track embedded art. `q` overrides
+   * the Lidarr lookup query.
+   */
+  getCoverCandidates(id: string, q?: string) {
+    const qs = q && q.trim() ? `?q=${encodeURIComponent(q.trim())}` : '';
+    return this.http.get<CoverCandidatesResponse>(
+      `/api/library/albums/${id}/cover-candidates${qs}`,
+    );
+  }
+  /** Apply only the album cover (admin) — by URL or an album track's embedded art. */
+  applyCover(id: string, body: ApplyCoverRequest) {
+    return this.http.post<{ ok: boolean }>(`/api/library/albums/${id}/cover`, body);
   }
   /** Library-wide metadata optimization (admin). `all` re-verifies every album. */
   optimizeAllMetadata(all = false) {
