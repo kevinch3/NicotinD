@@ -285,6 +285,22 @@ export class AlbumDetailComponent implements OnInit {
     }
   }
 
+  /**
+   * Cover-only change applied from the fix modal: the album id is unchanged, so
+   * just refetch in place and bump the cache-bust token. The modal stays open.
+   */
+  async onCoverChanged(): Promise<void> {
+    const id = this.selectedAlbum()?.id;
+    if (!id) return;
+    try {
+      const detail = await firstValueFrom(this.api.getAlbum(id));
+      this.selectedAlbum.set(detail);
+    } catch {
+      /* ignore */
+    }
+    this.coverBust.update((v) => v + 1);
+  }
+
   getArtistLink(id: string | undefined): string[] {
     return resolveArtistRoute(id);
   }

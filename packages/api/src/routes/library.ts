@@ -16,9 +16,21 @@ import { getLyrics, setLyrics, deleteLyrics } from '../services/lyrics-store.js'
 import type { PluginRegistry } from '../services/plugins/registry.js';
 import { optimizeAlbum } from '../services/metadata-optimize.js';
 import { searchCandidates, applyMetadataFix } from '../services/metadata-fix.js';
+import { setArtwork, deleteArtwork, purgeDiskArtCache } from '../services/artwork-store.js';
+import {
+  dedupeCoverUrls,
+  selectDistinctEmbeddedCovers,
+  extractEmbeddedPicture,
+  writeFolderCover,
+} from '../services/cover-sources.js';
 import { pruneOrphanArtist } from '../services/library-aggregates.js';
 import { songOrderBy } from '../services/song-sort.js';
-import type { ApplyMetadataRequest } from '@nicotind/core';
+import type {
+  ApplyMetadataRequest,
+  AlbumCoverCandidate,
+  CoverCandidatesResponse,
+  ApplyCoverRequest,
+} from '@nicotind/core';
 
 const log = createLogger('library');
 
@@ -636,6 +648,111 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     const result = applyMetadataFix(getDatabase(), c.req.param('id'), body, { coverCacheDir });
     if (!result) return c.json({ error: 'Album not found' }, 404);
     return c.json(result);
+  });
+
+  // Cover picker: aggregate the covers a user can choose from to fix an album's
+  // artwork — the current cover, deduped Lidarr alternatives (omitted when Lidarr
+  // is unconfigured, not a 503), and one entry per *distinct* image embedded in
+  // the album's own tracks. Admin only.
+  app.get('/albums/:id/cover-candidates', async (c) => {
+    const user = c.get('user');
+    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+    const id = c.req.param('id');
+    const db = getDatabase();
+    const album = db
+      .query<{ id: string }, [string]>('SELECT id FROM library_albums WHERE id = ?')
+      .get(id);
+    if (!album) return c.json({ error: 'Album not found' }, 404);
+
+    const current: AlbumCoverCandidate = { source: 'current', url: `/api/cover/${id}`, label: 'Current' };
+
+    let lidarr_: AlbumCoverCandidate[] = [];
+    if (lidarr) {
+      const res = await searchCandidates(db, lidarr, id, c.req.query('q'));
+      const cands = res?.candidates ?? [];
+      const labelByUrl = new Map<string, string>();
+      for (const cand of cands) {
+        if (cand.coverUrl && !labelByUrl.has(cand.coverUrl)) {
+          labelByUrl.set(cand.coverUrl, `${cand.title}${cand.year ? ` (${cand.year})` : ''}`);
+        }
+      }
+      lidarr_ = dedupeCoverUrls(cands.map((x) => x.coverUrl)).map((url) => ({
+        source: 'lidarr' as const,
+        url,
+        label: labelByUrl.get(url) ?? 'Lidarr cover',
+      }));
+    }
+
+    let files: AlbumCoverCandidate[] = [];
+    if (musicDir) {
+      const md = expandDir(musicDir);
+      const songs = db
+        .query<{ id: string; path: string }, [string]>(
+          `SELECT id, path FROM library_songs WHERE album_id = ?
+           ORDER BY COALESCE(disc, 1), COALESCE(track, 999999), path`,
+        )
+        .all(id);
+      const sources = songs
+        .map((s) => ({ id: s.id, absPath: resolveSongPath(md, s.path) }))
+        .filter((s) => isUnderMusicDir(md, s.absPath) && existsSync(s.absPath));
+      const distinct = await selectDistinctEmbeddedCovers(sources, (p) => extractEmbeddedPicture(p));
+      files = distinct.map((d) => ({
+        source: 'file' as const,
+        songId: d.songId,
+        url: `/api/cover/${d.songId}?embedded=1`,
+        label: "From this album's files",
+      }));
+    }
+
+    const payload: CoverCandidatesResponse = { current, lidarr: lidarr_, files };
+    return c.json(payload);
+  });
+
+  // Cover-only apply (admin): set just the album cover, leaving artist/album/year
+  // untouched. A `coverUrl` (Lidarr alt / custom URL) becomes the canonical
+  // artwork; a `songId` materializes that track's embedded image as the album's
+  // folder cover and clears the canonical override so the file art is served.
+  app.post('/albums/:id/cover', async (c) => {
+    const user = c.get('user');
+    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+    const id = c.req.param('id');
+    const db = getDatabase();
+    const album = db
+      .query<{ id: string }, [string]>('SELECT id FROM library_albums WHERE id = ?')
+      .get(id);
+    if (!album) return c.json({ error: 'Album not found' }, 404);
+
+    const body = await c.req.json<ApplyCoverRequest>().catch(() => ({}) as ApplyCoverRequest);
+
+    const coverUrl = body.coverUrl?.trim();
+    if (coverUrl) {
+      setArtwork(db, id, 'album', coverUrl, coverCacheDir);
+      return c.json({ ok: true });
+    }
+
+    const songId = body.songId?.trim();
+    if (songId) {
+      if (!musicDir) return c.json({ error: 'Music directory not configured' }, 503);
+      const song = db
+        .query<{ path: string }, [string, string]>(
+          'SELECT path FROM library_songs WHERE id = ? AND album_id = ?',
+        )
+        .get(songId, id);
+      if (!song) return c.json({ error: 'Song not in this album' }, 404);
+      const md = expandDir(musicDir);
+      const abs = resolveSongPath(md, song.path);
+      if (!isUnderMusicDir(md, abs) || !existsSync(abs)) {
+        return c.json({ error: 'Song file not found' }, 404);
+      }
+      const pic = await extractEmbeddedPicture(abs);
+      if (!pic) return c.json({ error: 'That track has no embedded artwork' }, 400);
+      writeFolderCover(dirname(abs), pic);
+      deleteArtwork(db, id, coverCacheDir); // clear canonical → folder art wins
+      if (coverCacheDir) purgeDiskArtCache(coverCacheDir, id);
+      return c.json({ ok: true });
+    }
+
+    return c.json({ error: 'Provide coverUrl or songId' }, 400);
   });
 
   app.post('/sync', async (c) => {

@@ -125,6 +125,7 @@
         <app-track-row
           [track]="toTrackFromSong(song)"
           [indexLabel]="song.track ?? ''"
+          [showCover]="false"
           [duration]="song.duration"
           [offline]="preserve.isPreserved(song.id)"
           [selectable]="selection.active()"
@@ -163,6 +164,7 @@
       [currentArtist]="album.artist"
       [currentAlbum]="album.name"
       (applied)="onMetadataApplied($event)"
+      (coverChanged)="onCoverChanged()"
       (cancel)="closeMetadataFix()"
     />
   }

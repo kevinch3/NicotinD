@@ -89,15 +89,14 @@ export function canonicalCacheKey(key: string): string {
 }
 
 /**
- * Remove any cached canonical image for a key — the full-size `c_<key>.<ext>`
- * and every resized `c_<key>@<size>.<ext>` thumbnail variant — so a corrected
- * cover doesn't leave stale thumbnails behind (the cover route re-materializes
- * them on the next sized request).
+ * Remove every cached image for a key under a given filename `prefix` — the
+ * full-size `<prefix><key>.<ext>` and every resized `<prefix><key>@<size>.<ext>`
+ * variant — so a corrected cover doesn't leave stale thumbnails behind.
  */
-export function purgeCanonicalCache(coverCacheDir: string, key: string): void {
+function purgeKeyVariants(coverCacheDir: string, prefix: string, key: string): void {
   // Full-size variants by exact name.
   for (const ext of CACHE_EXTS) {
-    const p = join(coverCacheDir, CANONICAL_PREFIX + key + ext);
+    const p = join(coverCacheDir, prefix + key + ext);
     if (existsSync(p)) {
       try {
         rmSync(p);
@@ -106,9 +105,9 @@ export function purgeCanonicalCache(coverCacheDir: string, key: string): void {
       }
     }
   }
-  // Sized variants: `c_<key>@<size>.<ext>` — match by prefix since the size set
-  // can grow independently of this module.
-  const sizedPrefix = `${CANONICAL_PREFIX}${key}@`;
+  // Sized variants: `<prefix><key>@<size>.<ext>` — match by prefix since the size
+  // set can grow independently of this module.
+  const sizedPrefix = `${prefix}${key}@`;
   let entries: string[];
   try {
     entries = readdirSync(coverCacheDir);
@@ -124,6 +123,32 @@ export function purgeCanonicalCache(coverCacheDir: string, key: string): void {
       }
     }
   }
+}
+
+/**
+ * Purge the cached *canonical* (`c_<key>`) image variants for a key — used after
+ * a canonical URL changes (the cover route re-materializes them on next request).
+ */
+export function purgeCanonicalCache(coverCacheDir: string, key: string): void {
+  purgeKeyVariants(coverCacheDir, CANONICAL_PREFIX, key);
+}
+
+/**
+ * Purge the cached *on-disk-art* (un-prefixed `<key>`) image variants for a key —
+ * used after an album's folder cover image is replaced so the new one is served.
+ */
+export function purgeDiskArtCache(coverCacheDir: string, key: string): void {
+  purgeKeyVariants(coverCacheDir, '', key);
+}
+
+/**
+ * Delete the canonical artwork row for an id so cover resolution falls back to
+ * the file's folder/embedded art, purging the stale canonical cache. Used when a
+ * user picks an album track's embedded image as the cover.
+ */
+export function deleteArtwork(db: Database, id: string, coverCacheDir?: string): void {
+  db.run('DELETE FROM library_artwork WHERE id = ?', [id]);
+  if (coverCacheDir) purgeCanonicalCache(coverCacheDir, id);
 }
 
 /** Lidarr exposes album covers under coverType 'cover'; fall back to the first. */

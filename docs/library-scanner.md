@@ -31,6 +31,10 @@ Non-destructive: unselected files stay on disk but get no `library_songs` row, s
 
 Successful cover responses carry `Cache-Control: public, max-age=86400` so the browser caches them and navigation stops re-requesting every tile — the connection-pool pressure that otherwise stalled album pages. The remote canonical fetch (`fetchRemoteCover`) is bounded by `AbortSignal.timeout` (6 s) so a slow/dead Lidarr URL can't hang a request (and a browser connection slot); on timeout it falls through to on-disk art. Negative (artless) results are still short-circuited by the module-level `noArtCache` (10 min TTL).
 
+`GET /api/cover/:id?embedded=1` is a special mode that serves **only** the file's embedded picture — skipping both canonical and folder art — for a *song* id, cached under a distinct `<id>~emb` key. It backs the Fix-metadata cover picker (so a user can preview/choose the artwork baked into a specific track); extraction is the shared `extractEmbeddedPicture` (`services/cover-sources.ts`), which the normal `extractCover` also delegates to for its embedded fallback. See [metadata-optimize.md](metadata-optimize.md) "Cover picker".
+
+The album/EP **detail track list omits the per-track thumbnail** (every row shares the album cover): `TrackRowComponent`'s `showCover` input is `false` there, cutting ~12–20 identical cover requests per page. Mixed-album lists keep it `true`.
+
 ---
 
 ## Canonical artwork
@@ -68,3 +72,22 @@ The `track-info-sheet` drawer exposes an **Analysis** section that fills in per-
 **Genre.** `GET …/genre-suggestion` runs `verifyGenre()` — a Lidarr `artist.lookup` (diacritic/punctuation-insensitive name match via `normalizeForGrouping`, reading the artist's `genres`), returning `{ current, suggested, candidates, source }` and degrading to `source: null` when Lidarr is unconfigured or has nothing. Admin-only `POST …/genre` applies a chosen value: writes the file tag and updates `library_songs.genre`. The web gates the **Apply** button on `AuthService.role === 'admin'`.
 
 All ffmpeg-dependent paths are guarded by `ffmpegAvailable()`. Response types (`BpmAnalysisResult`, `GenreSuggestion`) live in `@nicotind/core` (re-exported to the web via `packages/web/src/types/core.ts`).
+
+### Bulk backfill scripts
+
+The per-track buttons only touch one song at a time, so two batch scripts fill the whole library — the same offline-vs-Lidarr split as `backfill-years.ts` (offline) vs `optimize-metadata.ts` (needs Lidarr). Both are **dry-run unless `--apply`**, write to the canonical column **and** the file tag (so a rescan keeps the value), append to `<dataDir>/*.log`, and **resume on re-run** (selection is "still missing", writes are incremental). The thin selection/grouping logic is the pure, unit-tested `services/track-backfill.ts` (`resolveSongAbsPath`, `groupSongsByArtist`, `planGenreBackfill`); the heavy lifting reuses the already-tested `analyzeBpm` / `verifyGenre`.
+
+**`scripts/analyze-bpm.ts` — offline** (ffmpeg + music-tempo, no Lidarr). Walks every `bpm IS NULL` song; per song it prefers a BPM already on the file tag, else runs `analyzeBpm()`. Each `analyzeBpm` is a ~90 s ffmpeg decode, so work runs through a bounded worker pool (`--concurrency`, default 3); `--limit N` takes a test slice. Aborts early if ffmpeg isn't on PATH.
+
+```bash
+bun run packages/api/src/scripts/analyze-bpm.ts                 # dry run
+bun run packages/api/src/scripts/analyze-bpm.ts --apply         # write DB + tags
+bun run packages/api/src/scripts/analyze-bpm.ts --apply --limit 50 --concurrency 4
+```
+
+**`scripts/backfill-genre.ts` — needs a live Lidarr** (genre comes from the artist's Lidarr/MusicBrainz metadata). Walks songs with no genre, groups them by artist, and looks each artist up **once** (`verifyGenre`), fanning the suggested genre out to all of that artist's genre-less songs. Lidarr config + `secrets.json` fallback mirror `optimize-metadata.ts`; exits non-zero if no API key. The `library_genres` facet counts are **not** recomputed here — they refresh on the next full scan (matching the per-song genre route).
+
+```bash
+bun run packages/api/src/scripts/backfill-genre.ts             # dry run
+bun run packages/api/src/scripts/backfill-genre.ts --apply     # write DB + tags
+```

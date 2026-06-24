@@ -16,13 +16,15 @@
       @if (offline()) {
         <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" title="Saved offline"></span>
       }
-      <app-cover-art
-        [src]="track().coverArt ? '/api/cover/' + track().coverArt + '?size=40&token=' + auth.token() : undefined"
-        [artist]="track().artist"
-        [album]="track().album ?? ''"
-        [size]="36"
-        rounded="rounded"
-      />
+      @if (showCover()) {
+        <app-cover-art
+          [src]="track().coverArt ? '/api/cover/' + track().coverArt + '?size=40&token=' + auth.token() : undefined"
+          [artist]="track().artist"
+          [album]="track().album ?? ''"
+          [size]="36"
+          rounded="rounded"
+        />
+      }
       <button type="button" (click)="play.emit()" class="flex-1 min-w-0 text-left">
         <p class="text-sm text-theme-primary truncate">{{ track().title }}</p>
         @if (subtitle()) {

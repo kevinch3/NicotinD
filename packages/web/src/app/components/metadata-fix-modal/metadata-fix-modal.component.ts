@@ -10,9 +10,10 @@ import {
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
-import type { MetadataCandidate } from '../../../types/core';
+import type { MetadataCandidate, AlbumCoverCandidate } from '../../../types/core';
 import { ApiService } from '../../services/api.service';
 import { AuthService } from '../../services/auth.service';
+import { ServerConfigService } from '../../services/server-config.service';
 import { httpErrorMessage } from '../../lib/http-error';
 import {
   defaultQuery,
@@ -20,6 +21,12 @@ import {
   manualToRequest,
   isPlaceholderArtist,
 } from '../../lib/metadata-fix';
+import {
+  flattenCoverCandidates,
+  coverThumbUrl,
+  coverCandidateToRequest,
+  customCoverToRequest,
+} from '../../lib/cover-candidates';
 
 /**
  * Admin metadata fix modal: search Lidarr with an editable query, pick a candidate
@@ -36,13 +43,21 @@ import {
 export class MetadataFixModalComponent implements OnInit {
   private api = inject(ApiService);
   readonly auth = inject(AuthService);
+  private server = inject(ServerConfigService);
 
   readonly albumId = input.required<string>();
   readonly currentArtist = input<string>('');
   readonly currentAlbum = input<string>('');
 
   readonly applied = output<{ albumId: string }>();
+  /** Emitted after a cover-only change so the parent can refetch + cache-bust without closing. */
+  readonly coverChanged = output<void>();
   readonly cancel = output<void>();
+
+  // Cover picker state.
+  readonly coverOptions = signal<AlbumCoverCandidate[]>([]);
+  readonly coverApplying = signal(false);
+  readonly customCoverUrl = signal('');
 
   readonly query = signal('');
   // The stored artist is a placeholder ("<Desconocido>") — prompt the user to type
@@ -64,6 +79,63 @@ export class MetadataFixModalComponent implements OnInit {
     this.query.set(defaultQuery(this.currentArtist(), this.currentAlbum()));
     this.manualArtist.set(this.currentArtist());
     this.manualAlbum.set(this.currentAlbum());
+    // Show the current cover immediately; Lidarr alts + per-track art arrive
+    // async (and must not block the picker on a slow/dead Lidarr lookup).
+    this.coverOptions.set([this.currentCoverOption()]);
+    void this.loadCovers();
+  }
+
+  private currentCoverOption(): AlbumCoverCandidate {
+    return { source: 'current', url: `/api/cover/${this.albumId()}`, label: 'Current' };
+  }
+
+  /** Load the cover picker options (current + Lidarr alts + per-track embedded). */
+  async loadCovers(): Promise<void> {
+    try {
+      const res = await firstValueFrom(this.api.getCoverCandidates(this.albumId(), this.query()));
+      this.coverOptions.set(flattenCoverCandidates(res));
+    } catch {
+      // Keep the synthetic current option so the picker still renders.
+      this.coverOptions.set([this.currentCoverOption()]);
+    }
+  }
+
+  /** Renderable thumbnail src for a cover option (token + size for our own URLs). */
+  coverSrc(c: AlbumCoverCandidate): string {
+    return this.server.apiUrl(coverThumbUrl(c, this.auth.token() ?? ''));
+  }
+
+  /** Apply a picked cover (Lidarr alt / album-track embedded art). Current = no-op. */
+  async selectCover(c: AlbumCoverCandidate): Promise<void> {
+    const req = coverCandidateToRequest(c);
+    if (req) await this.applyCover(req);
+  }
+
+  /** Apply a pasted cover URL. */
+  async applyCustomCover(): Promise<void> {
+    const req = customCoverToRequest(this.customCoverUrl());
+    if (!req) {
+      this.msg.set('Paste an image URL first.');
+      return;
+    }
+    await this.applyCover(req);
+  }
+
+  private async applyCover(req: import('../../../types/core').ApplyCoverRequest): Promise<void> {
+    if (this.coverApplying()) return;
+    this.coverApplying.set(true);
+    this.msg.set(null);
+    try {
+      await firstValueFrom(this.api.applyCover(this.albumId(), req));
+      this.customCoverUrl.set('');
+      this.coverChanged.emit();
+      // Refresh the picker so the "Current" thumbnail reflects the new cover.
+      await this.loadCovers();
+    } catch (err) {
+      this.msg.set(httpErrorMessage(err, 'Could not apply the cover.'));
+    } finally {
+      this.coverApplying.set(false);
+    }
   }
 
   @HostListener('document:keydown.escape')
@@ -79,6 +151,8 @@ export class MetadataFixModalComponent implements OnInit {
       const r = await firstValueFrom(this.api.getMetadataCandidates(this.albumId(), this.query()));
       this.candidates.set(r.candidates);
       this.searched.set(true);
+      // Refresh the Lidarr cover alternatives against the same edited query.
+      void this.loadCovers();
       if (r.candidates.length === 0) {
         this.msg.set('No matches — refine the search or enter the details manually below.');
       }
