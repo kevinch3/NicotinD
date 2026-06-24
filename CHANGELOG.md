@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.111](https://github.com/kevinch3/NicotinD/compare/v0.1.110...v0.1.111) (2026-06-24)
+
+
+### Features
+
+* windowed background library enrichment (BPM/genre) ([be35f97](https://github.com/kevinch3/NicotinD/commit/be35f9779a234bcc854a92931575341af945375e))
+
 ## [0.1.110](https://github.com/kevinch3/NicotinD/compare/v0.1.109...v0.1.110) (2026-06-24)
 
 
