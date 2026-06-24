@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.108](https://github.com/kevinch3/NicotinD/compare/v0.1.107...v0.1.108) (2026-06-24)
+
+
+### Features
+
+* album cover picker + drop redundant per-track thumbnails ([4fd62c7](https://github.com/kevinch3/NicotinD/commit/4fd62c7fdf946aa98b7eb1642df05d05ad066f73))
+* bulk BPM/genre backfill scripts ([6221c7f](https://github.com/kevinch3/NicotinD/commit/6221c7f1761b02cabed2d0ff52118a5547622a96))
+
 ## [0.1.107](https://github.com/kevinch3/NicotinD/compare/v0.1.106...v0.1.107) (2026-06-23)
 
 
