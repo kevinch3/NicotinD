@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.109](https://github.com/kevinch3/NicotinD/compare/v0.1.108...v0.1.109) (2026-06-24)
+
+
+### Features
+
+* fix playlist sharing + server-side OG link previews ([86216b4](https://github.com/kevinch3/NicotinD/commit/86216b4604cc464f022a152aec75a3fa3aecfdbc))
+
 ## [0.1.108](https://github.com/kevinch3/NicotinD/compare/v0.1.107...v0.1.108) (2026-06-24)
 
 
