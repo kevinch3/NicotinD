@@ -22,16 +22,19 @@
         </div>
       }
 
-      <!-- Grab handle — pull up / tap to open Now Playing. Wired to the same
-           open gesture as the bar so the visible hatch is actually draggable
+      <!-- Grab handle ("notch") — pull up / tap to open Now Playing. Wired to the
+           same open gesture as the bar so the visible hatch is actually draggable
            (it had no handler before); `touch-none` keeps the browser from
-           reclaiming the vertical swipe as a page scroll. -->
+           reclaiming the vertical swipe as a page scroll. The hatch is a solid,
+           full-opacity pill (was a faint 4px `/60` bar that read as invisible at
+           the bottom of the screen — the user couldn't tell the player was
+           draggable). -->
       <div
-        class="flex justify-center pt-2 pb-1 touch-none select-none cursor-pointer"
+        class="flex justify-center pt-2.5 pb-1.5 touch-none select-none cursor-pointer"
         data-testid="player-grab"
         (pointerdown)="onBarPointerDown($event)"
       >
-        <div class="w-10 h-1 rounded-full bg-theme-muted/60"></div>
+        <div class="w-10 h-1.5 rounded-full bg-theme-muted"></div>
       </div>
 
       <!-- Tap / swipe-up to open Now Playing -->

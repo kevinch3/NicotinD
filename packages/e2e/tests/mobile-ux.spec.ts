@@ -79,6 +79,38 @@ test.describe('mobile UX', () => {
     expect(touchAction).toBe('manipulation');
   });
 
+  // The mini-player grab "notch" must be visibly rendered on-screen while the
+  // player sits at the bottom (it used to be a faint 4px /60 hatch the user
+  // reported as invisible). Assert it's visible, fully within the viewport, has a
+  // real size, and paints a non-transparent fill — and attach a screenshot of the
+  // notch for visual review. (We shoot the static grab element, not the whole
+  // playing mini-player, whose moving seek bar never stabilizes so a full-player
+  // screenshot would hang on Playwright's stability wait until the test times out.)
+  test('mini-player grab notch is visible on-screen', async ({ page }, testInfo) => {
+    await openAlbum(page);
+    await page.getByTestId('play-album').click();
+    await expect(page.getByTestId('player-title')).toBeVisible();
+
+    const grab = page.getByTestId('player-grab');
+    await expect(grab).toBeVisible();
+
+    const box = (await grab.boundingBox())!;
+    expect(box, 'grab notch should have a layout box').toBeTruthy();
+    expect(box.width, 'notch has width').toBeGreaterThan(0);
+    expect(box.height, 'notch has height').toBeGreaterThan(0);
+    expect(box.y, 'top edge on-screen').toBeGreaterThanOrEqual(0);
+    expect(box.y + box.height, 'bottom edge within viewport').toBeLessThanOrEqual(PHONE.height);
+
+    // The hatch pill must paint a non-transparent fill (the visibility fix).
+    const hatch = grab.locator('div').first();
+    const bg = await hatch.evaluate((el) => getComputedStyle(el).backgroundColor);
+    expect(bg).not.toBe('rgba(0, 0, 0, 0)');
+    expect(bg).not.toBe('transparent');
+
+    const shot = await grab.screenshot({ animations: 'disabled' });
+    await testInfo.attach('player-grab-notch', { body: shot, contentType: 'image/png' });
+  });
+
   // The mini-player grab hatch must be a real drag target (it had no pointer
   // handler before — only the bar below it) and swiping it up opens Now Playing.
   test('mini-player grab handle opens Now Playing on swipe up', async ({ page }) => {

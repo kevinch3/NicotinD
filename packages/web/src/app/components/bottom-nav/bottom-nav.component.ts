@@ -25,6 +25,15 @@ const TABS: BottomNavItem[] = [
  * bottom of the viewport; the mini-player floats just above it (the player is
  * shifted up by the bar's height on mobile), and the full-screen Now Playing
  * sheet (higher z-index) covers it when open.
+ *
+ * Stacking contract (the "menu + player share visibility" rule): the tab bar is
+ * `z-50`, the SAME level as the mini-player. Both are bottom-chrome shell layers
+ * rendered after the routed page, so a page-level modal backdrop (`z-50`,
+ * e.g. the album-hunt dialog) sits *under* both — they stay visible together.
+ * If they diverged (the old `z-40` bar), a modal would hide the menu while the
+ * player kept showing. True full-screen sheets (Now Playing / add-to-playlist
+ * `z-[60]`, context menu `z-[70]`) still cover both. Don't drop this below the
+ * player's `z-50` — keep the two bottom layers on one plane.
  */
 @Component({
   selector: 'app-bottom-nav',

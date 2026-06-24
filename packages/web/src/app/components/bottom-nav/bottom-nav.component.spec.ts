@@ -50,6 +50,15 @@ describe('BottomNavComponent', () => {
     expect(badge?.textContent?.trim()).toBe('4');
   });
 
+  it('sits at the mini-player stacking level (z-50) so a modal hides menu + player together', () => {
+    const { fixture } = setup();
+    const nav = fixture.nativeElement.querySelector('nav') as HTMLElement;
+    // The player bar is z-50; the tab bar must match so a z-50 modal backdrop
+    // can't hide the menu while leaving the player visible.
+    expect(nav.classList).toContain('z-50');
+    expect(nav.classList).not.toContain('z-40');
+  });
+
   it('isDisabled is true only for online-only tabs while offline', () => {
     const { fixture, isOffline } = setup();
     const c = fixture.componentInstance;
