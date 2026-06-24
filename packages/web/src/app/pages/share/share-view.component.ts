@@ -14,15 +14,7 @@ import { Meta, Title } from '@angular/platform-browser';
 import { firstValueFrom } from 'rxjs';
 import { ShareSessionService } from '../../services/share-session.service';
 import { ServerConfigService } from '../../services/server-config.service';
-
-interface ShareTrack {
-  id: string;
-  title: string;
-  artist: string;
-  duration?: number;
-  coverArt?: string;
-  track?: number;
-}
+import { mapSharedAlbum, mapSharedPlaylist, type ShareTrack } from './share-view.lib';
 
 type PageState = 'loading' | 'active' | 'expired' | 'error';
 
@@ -73,49 +65,23 @@ export class ShareViewComponent implements OnInit, OnDestroy {
       const { jwt, resourceType, resourceId } = await this.shareSession.activate(this.shareToken);
       const headers = new HttpHeaders({ Authorization: `Bearer ${jwt}` });
 
+      let view;
       if (resourceType === 'album') {
         const album = await firstValueFrom(
           this.http.get<any>(`/api/library/albums/${resourceId}`, { headers }),
         );
-        this.resourceName.set(album.name);
-        this.resourceSubtitle.set(album.artist);
-        this.coverArtId.set(album.coverArt ?? null);
-        this.tracks.set(
-          (album.song ?? []).map((s: any) => ({
-            id: s.id,
-            title: s.title,
-            artist: s.artist,
-            duration: s.duration,
-            coverArt: s.coverArt,
-            track: s.track,
-          })),
-        );
-        this.setOgTags(album.name, album.artist, jwt, album.coverArt, 'music.album');
+        view = mapSharedAlbum(album);
       } else {
         const pl = await firstValueFrom(
           this.http.get<any>(`/api/playlists/${resourceId}`, { headers }),
         );
-        this.resourceName.set(pl.name);
-        this.resourceSubtitle.set(`by ${pl.owner}`);
-        this.coverArtId.set(pl.coverArt ?? null);
-        this.tracks.set(
-          (pl.entry ?? []).map((s: any) => ({
-            id: s.id,
-            title: s.title,
-            artist: s.artist,
-            duration: s.duration,
-            coverArt: s.coverArt,
-            track: s.track,
-          })),
-        );
-        this.setOgTags(
-          pl.name,
-          `${pl.entry?.length ?? pl.songCount} tracks`,
-          jwt,
-          pl.coverArt,
-          'music.playlist',
-        );
+        view = mapSharedPlaylist(pl);
       }
+      this.resourceName.set(view.name);
+      this.resourceSubtitle.set(view.subtitle);
+      this.coverArtId.set(view.coverId);
+      this.tracks.set(view.tracks);
+      this.setOgTags(view.name, view.ogDescription, jwt, view.coverId ?? undefined, view.ogType);
       this.state.set('active');
     } catch (err: any) {
       this.state.set(err?.status === 410 ? 'expired' : 'error');

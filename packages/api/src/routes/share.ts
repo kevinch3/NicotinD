@@ -15,7 +15,7 @@ interface ShareTokenRow {
   expires_at: number | null;
 }
 
-async function mintShareJwt(
+export async function mintShareJwt(
   creatorId: string,
   expiresAtMs: number,
   jwtSecret: string,
