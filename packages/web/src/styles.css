@@ -179,6 +179,10 @@
   .bg-theme-surface { background-color: var(--theme-surface); }
   .bg-theme-surface-2 { background-color: var(--theme-surface-2); }
   .bg-theme-hover   { background-color: var(--theme-hover); }
+  /* Muted neutral fill (the player grab-notch pill, settings status dots). Was
+     referenced as `bg-theme-muted` in two places but never registered, so it
+     rendered transparent — the grab notch looked invisible. */
+  .bg-theme-muted   { background-color: var(--theme-text-muted); }
   .border-theme     { border-color: var(--theme-border); }
   .text-theme-primary   { color: var(--theme-text-primary); }
   .text-theme-secondary { color: var(--theme-text-secondary); }

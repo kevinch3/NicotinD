@@ -83,7 +83,9 @@ test.describe('mobile UX', () => {
   // player sits at the bottom (it used to be a faint 4px /60 hatch the user
   // reported as invisible). Assert it's visible, fully within the viewport, has a
   // real size, and paints a non-transparent fill — and attach a screenshot of the
-  // player for visual review.
+  // notch for visual review. (We shoot the static grab element, not the whole
+  // playing mini-player, whose moving seek bar never stabilizes so a full-player
+  // screenshot would hang on Playwright's stability wait until the test times out.)
   test('mini-player grab notch is visible on-screen', async ({ page }, testInfo) => {
     await openAlbum(page);
     await page.getByTestId('play-album').click();
@@ -105,8 +107,8 @@ test.describe('mobile UX', () => {
     expect(bg).not.toBe('rgba(0, 0, 0, 0)');
     expect(bg).not.toBe('transparent');
 
-    const shot = await page.locator('app-player').screenshot();
-    await testInfo.attach('player-with-grab-notch', { body: shot, contentType: 'image/png' });
+    const shot = await grab.screenshot({ animations: 'disabled' });
+    await testInfo.attach('player-grab-notch', { body: shot, contentType: 'image/png' });
   });
 
   // The mini-player grab hatch must be a real drag target (it had no pointer
