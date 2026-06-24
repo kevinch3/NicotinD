@@ -1,9 +1,12 @@
-import { Component, inject, signal, OnInit } from '@angular/core';
+import { Component, inject, signal, OnInit, OnDestroy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
+import type { ProcessingSettings, ProcessingStatus } from '../../../types/core';
 import { ApiService, type StreamingSettings } from '../../services/api.service';
 import { AuthService } from '../../services/auth.service';
+import { ServerConfigService } from '../../services/server-config.service';
+import { progressPercent, phaseLabel, totalPending } from '../../lib/processing-progress';
 import { ThemeService, THEME_PRESETS, type ThemeId } from '../../services/theme.service';
 import { RemotePlaybackService } from '../../services/remote-playback.service';
 import { PlaybackWsService } from '../../services/playback-ws.service';
@@ -44,11 +47,12 @@ type DuplicateSong = {
   imports: [FormsModule, RouterLink, PasswordFieldComponent],
   templateUrl: './settings.component.html',
 })
-export class SettingsComponent implements OnInit {
+export class SettingsComponent implements OnInit, OnDestroy {
   private api = inject(ApiService);
   readonly auth = inject(AuthService);
   readonly themeService = inject(ThemeService);
   private router = inject(Router);
+  private server = inject(ServerConfigService);
   readonly remote = inject(RemotePlaybackService);
   readonly preserve = inject(PreserveService);
   private ws = inject(PlaybackWsService);
@@ -119,8 +123,34 @@ export class SettingsComponent implements OnInit {
   readonly streamingSaving = signal(false);
   readonly streamingMessage = signal<{ type: 'success' | 'error'; text: string } | null>(null);
 
+  // Windowed library processing (BPM / genre enrichment) — admin only.
+  readonly processing = signal<ProcessingSettings | null>(null);
+  readonly processingStatus = signal<ProcessingStatus | null>(null);
+  readonly processingSaving = signal(false);
+  readonly processingMessage = signal<{ type: 'success' | 'error'; text: string } | null>(null);
+  private processingStream: EventSource | null = null;
+
   isAdmin(): boolean {
     return this.auth.role() === 'admin';
+  }
+
+  // --- processing panel helpers (delegate to the pure lib) ---
+  processingPercent(): number {
+    const s = this.processingStatus();
+    return s ? progressPercent(s) : 0;
+  }
+  processingPhaseLabel(): string {
+    const s = this.processingStatus();
+    return s ? phaseLabel(s.phase) : '';
+  }
+  processingPending(): number {
+    const s = this.processingStatus();
+    return s ? totalPending(s) : 0;
+  }
+  /** Availability reason for a task, or '' when runnable. */
+  taskUnavailable(task: 'bpm' | 'genre'): string {
+    const a = this.processingStatus()?.availability[task];
+    return a === true || a === undefined ? '' : a;
   }
 
   logout(): void {
@@ -133,6 +163,85 @@ export class SettingsComponent implements OnInit {
     if (this.isAdmin()) {
       this.loadShares();
       this.loadStreaming();
+      this.loadProcessing();
+      this.connectProcessingStream();
+    }
+  }
+
+  ngOnDestroy(): void {
+    this.processingStream?.close();
+    this.processingStream = null;
+  }
+
+  private async loadProcessing(): Promise<void> {
+    try {
+      const data = await firstValueFrom(this.api.getProcessing());
+      this.processing.set(data.settings);
+      this.processingStatus.set(data.status);
+    } catch {
+      /* ignore — non-admin or service unavailable */
+    }
+  }
+
+  /** Live status via SSE (progress bar + snippets) — same pattern as admin logs. */
+  private connectProcessingStream(): void {
+    const token = this.auth.token();
+    if (!token) return;
+    const src = new EventSource(
+      this.server.apiUrl(`/api/admin/processing/stream?token=${encodeURIComponent(token)}`),
+    );
+    this.processingStream = src;
+    src.onmessage = (e) => {
+      try {
+        this.processingStatus.set(JSON.parse(e.data) as ProcessingStatus);
+      } catch {
+        /* ignore malformed frame */
+      }
+    };
+    src.onerror = () => {
+      /* EventSource auto-reconnects; nothing to do */
+    };
+  }
+
+  async saveProcessing(patch: Partial<ProcessingSettings>): Promise<void> {
+    this.processingSaving.set(true);
+    this.processingMessage.set(null);
+    try {
+      const data = await firstValueFrom(this.api.saveProcessing(patch));
+      this.processing.set(data.settings);
+      this.processingStatus.set(data.status);
+      this.processingMessage.set({ type: 'success', text: 'Processing settings saved' });
+    } catch {
+      this.processingMessage.set({ type: 'error', text: 'Failed to save processing settings' });
+    } finally {
+      this.processingSaving.set(false);
+    }
+  }
+
+  /** Toggle a per-task flag and persist immediately. */
+  toggleProcessingTask(task: 'bpm' | 'genre'): void {
+    const current = this.processing();
+    if (!current) return;
+    void this.saveProcessing({
+      tasks: { ...current.tasks, [task]: !current.tasks[task] },
+    });
+  }
+
+  async runProcessingNow(): Promise<void> {
+    try {
+      await firstValueFrom(this.api.runProcessing());
+      this.processingMessage.set({ type: 'success', text: 'Processing started' });
+    } catch {
+      this.processingMessage.set({ type: 'error', text: 'Failed to start processing' });
+    }
+  }
+
+  async stopProcessing(): Promise<void> {
+    try {
+      await firstValueFrom(this.api.stopProcessing());
+      this.processingMessage.set({ type: 'success', text: 'Stopping…' });
+    } catch {
+      /* ignore */
     }
   }
 

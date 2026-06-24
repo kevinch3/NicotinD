@@ -152,6 +152,104 @@
           </section>
         }
 
+        <!-- Library processing (BPM / genre enrichment) — admin only -->
+        @if (isAdmin()) {
+          <section class="rounded-xl border border-theme bg-theme-surface/50 p-6 mb-6" data-testid="processing-panel">
+            <h2 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary mb-2">Library processing</h2>
+            <p class="text-xs text-theme-muted mb-5">Analyze BPM and fill genres for tracks that are missing them. Runs in the background only during the time window below.</p>
+            @if (processing(); as p) {
+              <div class="space-y-4">
+                <!-- Master enable -->
+                <label class="flex items-center justify-between gap-4">
+                  <span class="text-sm text-theme-primary">Enable background processing</span>
+                  <input type="checkbox" [checked]="p.enabled" [disabled]="processingSaving()"
+                    data-testid="processing-enabled"
+                    (change)="saveProcessing({ enabled: $any($event.target).checked })"
+                    class="w-4 h-4 rounded accent-emerald-500" />
+                </label>
+
+                <!-- Window -->
+                <div class="flex items-center justify-between gap-4">
+                  <span class="text-sm text-theme-primary">Processing window
+                    <span class="block text-xs text-theme-muted">Local server time</span>
+                  </span>
+                  <div class="flex items-center gap-2">
+                    <input type="time" [value]="p.window.start" [disabled]="processingSaving()"
+                      data-testid="processing-window-start"
+                      (change)="saveProcessing({ window: { start: $any($event.target).value, end: p.window.end } })"
+                      class="text-sm rounded-lg bg-theme-surface border border-theme px-2 py-1 text-theme-primary" />
+                    <span class="text-theme-muted">–</span>
+                    <input type="time" [value]="p.window.end" [disabled]="processingSaving()"
+                      data-testid="processing-window-end"
+                      (change)="saveProcessing({ window: { start: p.window.start, end: $any($event.target).value } })"
+                      class="text-sm rounded-lg bg-theme-surface border border-theme px-2 py-1 text-theme-primary" />
+                  </div>
+                </div>
+
+                <!-- Tasks -->
+                <div class="space-y-2">
+                  <label class="flex items-center justify-between gap-4">
+                    <span class="text-sm text-theme-primary">BPM analysis
+                      @if (taskUnavailable('bpm'); as reason) {
+                        <span class="block text-xs text-amber-500">{{ reason }}</span>
+                      }
+                    </span>
+                    <input type="checkbox" [checked]="p.tasks.bpm" [disabled]="processingSaving()"
+                      data-testid="processing-task-bpm"
+                      (change)="toggleProcessingTask('bpm')"
+                      class="w-4 h-4 rounded accent-emerald-500" />
+                  </label>
+                  <label class="flex items-center justify-between gap-4">
+                    <span class="text-sm text-theme-primary">Genre
+                      @if (taskUnavailable('genre'); as reason) {
+                        <span class="block text-xs text-amber-500">{{ reason }}</span>
+                      }
+                    </span>
+                    <input type="checkbox" [checked]="p.tasks.genre" [disabled]="processingSaving()"
+                      data-testid="processing-task-genre"
+                      (change)="toggleProcessingTask('genre')"
+                      class="w-4 h-4 rounded accent-emerald-500" />
+                  </label>
+                </div>
+
+                <!-- Progress -->
+                @if (processingStatus(); as st) {
+                  <div class="pt-2 border-t border-theme" data-testid="processing-progress">
+                    <div class="flex items-center justify-between mb-1">
+                      <span class="text-xs text-theme-secondary">{{ processingPhaseLabel() }}</span>
+                      <span class="text-xs text-theme-muted">{{ processingPending() }} remaining</span>
+                    </div>
+                    <div class="h-2 rounded-full bg-theme-surface overflow-hidden">
+                      <div class="h-full bg-emerald-500 transition-all" [style.width.%]="processingPercent()"></div>
+                    </div>
+                    @if (st.lastItems.length > 0) {
+                      <ul class="mt-3 space-y-1" data-testid="processing-snippets">
+                        @for (item of st.lastItems.slice().reverse(); track item) {
+                          <li class="text-xs text-theme-muted truncate">{{ item }}</li>
+                        }
+                      </ul>
+                    }
+                  </div>
+                }
+
+                <!-- Actions -->
+                <div class="flex items-center gap-3 pt-1">
+                  <button type="button" (click)="runProcessingNow()"
+                    data-testid="processing-run-now"
+                    class="text-sm rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5">Run now</button>
+                  <button type="button" (click)="stopProcessing()"
+                    data-testid="processing-stop"
+                    class="text-sm rounded-lg border border-theme text-theme-primary px-3 py-1.5">Stop</button>
+                </div>
+
+                @if (processingMessage(); as m) {
+                  <p class="text-xs" [class.text-emerald-500]="m.type === 'success'" [class.text-red-500]="m.type === 'error'">{{ m.text }}</p>
+                }
+              </div>
+            }
+          </section>
+        }
+
         <!-- Soulseek Network -->
         <section class="rounded-xl border border-theme bg-theme-surface/50 p-6">
           <div class="flex items-center gap-3 mb-6 flex-wrap">

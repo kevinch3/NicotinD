@@ -9,6 +9,7 @@ export * from './types/navidrome.js';
 export * from './types/nicotind.js';
 export * from './types/provider.js';
 export * from './types/track-analysis.js';
+export * from './types/processing.js';
 export * from './types/metadata-fix.js';
 export * from './types/lyrics.js';
 

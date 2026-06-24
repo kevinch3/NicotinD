@@ -9,6 +9,8 @@ import type {
   SongAcquisition,
   BpmAnalysisResult,
   GenreSuggestion,
+  ProcessingSettings,
+  ProcessingStatus,
   LyricsDto,
   MetadataCandidate,
   ApplyMetadataRequest,
@@ -647,6 +649,28 @@ export class ApiService {
 
   saveStreamingSettings(patch: Partial<StreamingSettings>) {
     return this.http.put<StreamingSettings>('/api/settings/streaming', patch);
+  }
+
+  // Windowed library processing (BPM / genre enrichment) — admin only.
+  getProcessing() {
+    return this.http.get<{ settings: ProcessingSettings; status: ProcessingStatus }>(
+      '/api/admin/processing',
+    );
+  }
+
+  saveProcessing(patch: Partial<ProcessingSettings>) {
+    return this.http.put<{ settings: ProcessingSettings; status: ProcessingStatus }>(
+      '/api/admin/processing',
+      patch,
+    );
+  }
+
+  runProcessing() {
+    return this.http.post<{ ok: boolean }>('/api/admin/processing/run', {});
+  }
+
+  stopProcessing() {
+    return this.http.post<{ ok: boolean }>('/api/admin/processing/stop', {});
   }
 
   // Setup (public — no auth token)

@@ -1,10 +1,15 @@
 import { Hono } from 'hono';
+import { streamSSE } from 'hono/streaming';
 import { hashPassword } from '@nicotind/core';
+import type { ProcessingSettings, ProcessingStatus } from '@nicotind/core';
 import type { Lidarr } from '@nicotind/lidarr-client';
 import type { AuthEnv } from '../middleware/auth.js';
 import { getDatabase } from '../db.js';
 import { transcodeLibraryToOpus } from '../services/library-transcode.js';
 import { optimizeAllAlbums } from '../services/metadata-optimize.js';
+import { setProcessingSettings } from '../services/processing-settings.js';
+import { parseHhMm } from '../services/processing-window.js';
+import type { LibraryProcessingService } from '../services/library-processing.service.js';
 
 export interface AdminRoutesDeps {
   musicDir: string;
@@ -12,6 +17,8 @@ export interface AdminRoutesDeps {
   coverCacheDir?: string;
   /** Lidarr client; null when unconfigured (metadata-optimize then 503s). */
   lidarr?: Lidarr | null;
+  /** Windowed library-processing scheduler; null when not wired (503s). */
+  processing?: LibraryProcessingService | null;
 }
 
 export function adminRoutes(deps: AdminRoutesDeps) {
@@ -176,6 +183,80 @@ export function adminRoutes(deps: AdminRoutesDeps) {
       onlyMissingOrPoor,
     });
     return c.json({ ok: true, dryRun, ...result });
+  });
+
+  // --- Windowed library processing (BPM / genre enrichment) ----------------
+
+  const requireProcessing = (): LibraryProcessingService | null => deps.processing ?? null;
+
+  // Current settings + a fresh status snapshot (pending counts, availability).
+  app.get('/processing', (c) => {
+    const svc = requireProcessing();
+    if (!svc) return c.json({ error: 'Library processing not available' }, 503);
+    return c.json(svc.getState());
+  });
+
+  // Update settings (window, enable, per-task flags, batch/concurrency).
+  app.put('/processing', async (c) => {
+    const svc = requireProcessing();
+    if (!svc) return c.json({ error: 'Library processing not available' }, 503);
+    const body = await c.req.json<Partial<ProcessingSettings>>();
+    if (body.window) {
+      const { start, end } = body.window;
+      if (
+        (start !== undefined && parseHhMm(start) === null) ||
+        (end !== undefined && parseHhMm(end) === null)
+      ) {
+        return c.json({ error: 'window.start/end must be HH:MM' }, 400);
+      }
+    }
+    if (body.batchSize !== undefined && (!Number.isInteger(body.batchSize) || body.batchSize < 1)) {
+      return c.json({ error: 'batchSize must be a positive integer' }, 400);
+    }
+    if (
+      body.concurrency !== undefined &&
+      (!Number.isInteger(body.concurrency) || body.concurrency < 1)
+    ) {
+      return c.json({ error: 'concurrency must be a positive integer' }, 400);
+    }
+    const settings = setProcessingSettings(getDatabase(), body);
+    return c.json({ settings, status: svc.getState().status });
+  });
+
+  // Drain pending work now, ignoring the time window (fire-and-forget).
+  app.post('/processing/run', (c) => {
+    const svc = requireProcessing();
+    if (!svc) return c.json({ error: 'Library processing not available' }, 503);
+    void svc.runNow();
+    return c.json({ ok: true });
+  });
+
+  // Abort the current run without disabling the scheduler.
+  app.post('/processing/stop', (c) => {
+    const svc = requireProcessing();
+    if (!svc) return c.json({ error: 'Library processing not available' }, 503);
+    svc.cancelRun();
+    return c.json({ ok: true });
+  });
+
+  // SSE: push a status snapshot on every change (progress bar + live snippets).
+  app.get('/processing/stream', (c) => {
+    const svc = requireProcessing();
+    if (!svc) return c.json({ error: 'Library processing not available' }, 503);
+    return streamSSE(c, async (stream) => {
+      const send = (status: ProcessingStatus) =>
+        void stream.writeSSE({ data: JSON.stringify(status) }).catch(() => {});
+      // Prime with the current snapshot, then stream updates.
+      send(svc.getState().status);
+      const onStatus = (status: ProcessingStatus) => send(status);
+      svc.on('status', onStatus);
+      await new Promise<void>((resolve) => {
+        stream.onAbort(() => {
+          svc.off('status', onStatus);
+          resolve();
+        });
+      });
+    });
   });
 
   return app;
