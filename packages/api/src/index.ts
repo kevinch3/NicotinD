@@ -20,6 +20,7 @@ import { settingsRoutes } from './routes/settings.js';
 import { adminRoutes } from './routes/admin.js';
 import { usersRoutes } from './routes/users.js';
 import { shareRoutes } from './routes/share.js';
+import { shareMetaHandler } from './routes/share-meta.js';
 import { discographyRoutes } from './routes/discography.js';
 import { catalogRoutes } from './routes/catalog.js';
 import { archiveRoutes } from './routes/archive.js';
@@ -524,6 +525,10 @@ export function createApp({
   // Serve web UI static files
   if (webDistPath) {
     app.use('*', serveStatic({ root: webDistPath }));
+    // Server-side OG/Twitter meta for shared links so crawlers (Slack, iMessage,
+    // WhatsApp, …) render a rich preview — they don't run the SPA's JS. Must come
+    // before the index.html catch-all below.
+    app.get('/share/:token', shareMetaHandler({ db, jwtSecret: config.jwt.secret, webDistPath }));
     app.get('*', (c, next) => {
       const path = c.req.path;
       if (path === '/doc' || path === '/openapi.json' || path.startsWith('/api/')) {
