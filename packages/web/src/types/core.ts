@@ -29,10 +29,15 @@ export type {
 
 export type { SpotifyCandidate } from '../../../core/src/types/spotify';
 
+export type { BpmAnalysisResult, GenreSuggestion } from '../../../core/src/types/track-analysis';
+
 export type {
-  BpmAnalysisResult,
-  GenreSuggestion,
-} from '../../../core/src/types/track-analysis';
+  ProcessingTaskId,
+  ProcessingWindow,
+  ProcessingSettings,
+  ProcessingPhase,
+  ProcessingStatus,
+} from '../../../core/src/types/processing';
 
 export type {
   MetadataReleaseType,

@@ -57,6 +57,7 @@ import { WatchlistService } from './services/watchlist.service.js';
 import { DownloadWatcher } from './services/download-watcher.js';
 import { DownloadRetryService } from './services/download-retry.service.js';
 import { AlbumFallbackService } from './services/album-fallback.service.js';
+import { LibraryProcessingService } from './services/library-processing.service.js';
 import { ProviderRegistry } from './services/provider-registry.js';
 import { LibrarySearchProvider } from './services/providers/library-provider.js';
 import { LibraryScanner } from './services/library-scanner.js';
@@ -73,6 +74,7 @@ import type { AuthEnv } from './middleware/auth.js';
 export type SlskdRef = { current: Slskd | null };
 export type WatcherRef = { current: DownloadWatcher | null };
 export type RetryRef = { current: DownloadRetryService | null };
+export type ProcessingRef = { current: LibraryProcessingService | null };
 
 export interface CreateAppOptions {
   config: NicotinDConfig;
@@ -256,6 +258,17 @@ export function createApp({
         : null,
   };
 
+  // Windowed library-processing scheduler — runs enrichment tasks (BPM, genre)
+  // over songs still missing them, only inside the configured daily window.
+  const processingRef: ProcessingRef = {
+    current: new LibraryProcessingService({
+      db,
+      lidarr,
+      musicDir: expandedMusicDir,
+      dataDir: expandedDataDir,
+    }),
+  };
+
   // Provider registry holds the always-on local library provider. The slskd
   // (network/browse/download) provider is registered/unregistered by the slskd
   // *plugin* on enable/disable — so the search network lane, downloads enqueue,
@@ -395,7 +408,12 @@ export function createApp({
   app.route('/api/search', searchRoutes(registry));
   app.route(
     '/api/admin',
-    adminRoutes({ musicDir: expandedMusicDir, lidarr, coverCacheDir: `${expandedDataDir}/cover-cache` }),
+    adminRoutes({
+      musicDir: expandedMusicDir,
+      lidarr,
+      coverCacheDir: `${expandedDataDir}/cover-cache`,
+      processing: processingRef.current,
+    }),
   );
   app.route('/api/downloads', downloadRoutes(registry, slskdRef));
   app.route('/api/uploads', uploadRoutes(slskdRef));
@@ -445,8 +463,14 @@ export function createApp({
   // /api/search (its polled live-progress search is blended client-side).
   const candidateAggregator = new CandidateSearchAggregator(
     [
-      { id: 'archive', search: async (q) => (await archiveSearch.search(q)).map(archiveToCandidate) },
-      { id: 'spotify', search: async (q) => (await spotifySearch.search(q)).map(spotifyToCandidate) },
+      {
+        id: 'archive',
+        search: async (q) => (await archiveSearch.search(q)).map(archiveToCandidate),
+      },
+      {
+        id: 'spotify',
+        search: async (q) => (await spotifySearch.search(q)).map(spotifyToCandidate),
+      },
     ],
     (id) => plugins.isEnabled(id),
   );
@@ -538,7 +562,7 @@ export function createApp({
     });
   }
 
-  return { app, watcherRef, retryRef, websocket };
+  return { app, watcherRef, retryRef, processingRef, websocket };
 }
 
 export { DownloadWatcher } from './services/download-watcher.js';

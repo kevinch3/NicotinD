@@ -107,7 +107,7 @@ async function main() {
   // 4. Create and start API server
   const webDistPath = resolve(import.meta.dir, '../packages/web/dist');
 
-  const { app, watcherRef, retryRef, websocket } = createApp({
+  const { app, watcherRef, retryRef, processingRef, websocket } = createApp({
     config,
     slskdRef,
     lidarr,
@@ -131,6 +131,7 @@ async function main() {
 
   if (watcherRef.current) watcherRef.current.start();
   if (retryRef.current) retryRef.current.start();
+  if (processingRef.current) processingRef.current.start();
 
   log.info({ port: config.port }, 'NicotinD is ready');
 
@@ -145,6 +146,7 @@ async function main() {
     log.info('Shutting down...');
     if (watcherRef.current) watcherRef.current.stop();
     if (retryRef.current) retryRef.current.stop();
+    if (processingRef.current) processingRef.current.stop();
     await serviceManager.stopAll();
     process.exit(0);
   });
@@ -153,6 +155,7 @@ async function main() {
     log.info('Shutting down...');
     if (watcherRef.current) watcherRef.current.stop();
     if (retryRef.current) retryRef.current.stop();
+    if (processingRef.current) processingRef.current.stop();
     await serviceManager.stopAll();
     process.exit(0);
   });
@@ -313,9 +316,7 @@ function loadConfig() {
             spotify: {
               ...(((fileConfig as Record<string, unknown>).acquire as Record<string, unknown>)
                 ?.spotify as Record<string, unknown>),
-              ...(process.env.SPOTIFY_CLIENT_ID
-                ? { clientId: process.env.SPOTIFY_CLIENT_ID }
-                : {}),
+              ...(process.env.SPOTIFY_CLIENT_ID ? { clientId: process.env.SPOTIFY_CLIENT_ID } : {}),
               ...(process.env.SPOTIFY_CLIENT_SECRET
                 ? { clientSecret: process.env.SPOTIFY_CLIENT_SECRET }
                 : {}),
