@@ -16,6 +16,8 @@ export interface MMCommon {
   genre?: string[];
   /** Beats per minute from tags (TBPM / `BPM`), when present. */
   bpm?: number;
+  /** Musical key from tags (TKEY / `KEY` / `INITIALKEY`), when present. */
+  key?: string;
   picture?: Array<{ format?: string; data: Uint8Array }>;
 }
 

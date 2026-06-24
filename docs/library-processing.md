@@ -49,6 +49,23 @@ Launch tasks:
 - **genre** — `WHERE genre IS NULL OR genre = ''`, available only with Lidarr. Uses
   `planGenreBackfill` so an artist is looked up **once** and fanned out to all their
   pending songs. Writes `library_songs.genre` and the file tag.
+- **key** — `WHERE key IS NULL OR key = ''`, ffmpeg-gated, **offline**. Reads a tag
+  key if present, else `analyzeKey()` → the pure Krumhansl–Schmuckler estimator in
+  `services/key-detection.ts` (chromagram via per-semitone Goertzel filters → KS
+  major/minor profile correlation → key + Camelot code). Writes `library_songs.key`
+  (e.g. "C major") and the file tag (ID3 `TKEY` / Vorbis `KEY`). Bulk script:
+  `scripts/analyze-key.ts`.
+
+### Durability vs. the periodic full scan
+
+The scanner runs frequent full scans. A plain `col = excluded.col` upsert would
+revert any **DB-only** enrichment to the (tag-less) file value before the task's
+slower/failable file-tag write lands. So `genre`, `bpm`, and `key` are written
+`COALESCE(excluded.col, library_songs.col)` in `library-scanner.ts`: a file tag that
+*carries* the value still overrides, but a tag-less rescan keeps the enrichment.
+This is why a backfill that writes only the DB (e.g. a script killed mid-run before
+its tag writes) reverts, while the windowed task — which completes tag+DB per song —
+sticks.
 
 All IO-heavy primitives come from the injected `EnrichmentContext`
 (`ffmpegAvailable`, `readTags`, `writeTags`, `analyzeBpm`, `lookupGenre`,
@@ -119,6 +136,11 @@ the backlog quickly (the window then keeps up with new downloads):
 ```bash
 docker exec <container> bun run packages/api/src/scripts/backfill-genre.ts --apply       # fast, needs Lidarr
 docker exec -d <container> bun run packages/api/src/scripts/analyze-bpm.ts --apply --concurrency 4   # slow, offline
+docker exec -d <container> bun run packages/api/src/scripts/analyze-key.ts --apply --concurrency 4   # slow, offline
 ```
 
-Both are dry-run without `--apply` and resume on re-run.
+All are dry-run without `--apply` and resume on re-run. **Run them sequentially**, not
+concurrently — multiple writer processes plus the app fight over the SQLite write
+lock. Prefer the in-process windowed processor (or admin **Run now**) over scripts:
+it shares the app's connection (no lock contention) and completes tag+DB per song so
+nothing reverts on the next full scan.

@@ -32,6 +32,7 @@ function fakeCtx(counters: { analyzed: number; genreLookups: number }) {
       counters.analyzed += 1;
       return 120;
     },
+    analyzeKey: async () => 'C major',
     lookupGenre: async () => {
       counters.genreLookups += 1;
       return 'Rock';
@@ -88,7 +89,7 @@ describe('LibraryProcessingService', () => {
 
   it('resumes without reprocessing already-enriched rows', async () => {
     for (let i = 0; i < 4; i++) seedSong(`s${i}`);
-    setProcessingSettings(db, { batchSize: 2, tasks: { bpm: true, genre: false } });
+    setProcessingSettings(db, { batchSize: 2, tasks: { bpm: true, genre: false, key: false } });
     const counters = { analyzed: 0, genreLookups: 0 };
     const svc = service({ now: new Date(2024, 0, 1, 12, 0), counters });
 
@@ -119,7 +120,7 @@ describe('LibraryProcessingService', () => {
     setProcessingSettings(db, {
       window: { start: '05:00', end: '08:00' },
       batchSize: 2,
-      tasks: { bpm: true, genre: false },
+      tasks: { bpm: true, genre: false, key: false },
     });
     const counters = { analyzed: 0, genreLookups: 0 };
     const svc = service({ now: new Date(2024, 0, 1, 6, 30), counters });
@@ -144,7 +145,7 @@ describe('LibraryProcessingService', () => {
 
   it('guards against overlapping runs', async () => {
     for (let i = 0; i < 4; i++) seedSong(`s${i}`);
-    setProcessingSettings(db, { batchSize: 10, tasks: { bpm: true, genre: false } });
+    setProcessingSettings(db, { batchSize: 10, tasks: { bpm: true, genre: false, key: false } });
     const counters = { analyzed: 0, genreLookups: 0 };
     const svc = service({ now: new Date(2024, 0, 1, 12, 0), counters });
 
@@ -158,7 +159,7 @@ describe('LibraryProcessingService', () => {
 
   it('appends a log line per enriched item', async () => {
     for (let i = 0; i < 3; i++) seedSong(`s${i}`);
-    setProcessingSettings(db, { batchSize: 10, tasks: { bpm: true, genre: true } });
+    setProcessingSettings(db, { batchSize: 10, tasks: { bpm: true, genre: true, key: false } });
     const counters = { analyzed: 0, genreLookups: 0 };
     const svc = service({ now: new Date(2024, 0, 1, 12, 0), counters });
 
@@ -174,7 +175,7 @@ describe('LibraryProcessingService', () => {
 
   it('persists status across a restart', async () => {
     for (let i = 0; i < 2; i++) seedSong(`s${i}`);
-    setProcessingSettings(db, { batchSize: 10, tasks: { bpm: true, genre: false } });
+    setProcessingSettings(db, { batchSize: 10, tasks: { bpm: true, genre: false, key: false } });
     const counters = { analyzed: 0, genreLookups: 0 };
     const svc = service({ now: new Date(2024, 0, 1, 12, 0), counters });
     await svc.runNow();

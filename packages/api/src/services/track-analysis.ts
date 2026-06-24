@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { createLogger, type GenreSuggestion } from '@nicotind/core';
 import type { Lidarr } from '@nicotind/lidarr-client';
 import { normalizeForGrouping } from './album-grouping.js';
+import { detectKey } from './key-detection.js';
 
 const log = createLogger('track-analysis');
 
@@ -95,6 +96,24 @@ export async function analyzeBpm(absPath: string): Promise<number | null> {
 }
 
 /**
+ * Detect a track's musical key by decoding its audio and running the
+ * Krumhansl–Schmuckler estimator (see key-detection.ts). Returns a key string
+ * like "C major" / "A minor", or null when ffmpeg is unavailable or the signal
+ * has no tonal content. Pure analysis — no DB or tag writes.
+ */
+export async function analyzeKey(absPath: string): Promise<string | null> {
+  let samples: Float32Array;
+  try {
+    samples = await decodePcm(absPath);
+  } catch (err) {
+    log.warn({ err, absPath }, 'key decode failed');
+    return null;
+  }
+  if (samples.length < ANALYZE_SAMPLE_RATE * 5) return null;
+  return detectKey(samples, ANALYZE_SAMPLE_RATE)?.key ?? null;
+}
+
+/**
  * Verify a song's genre against Lidarr/MusicBrainz. Looks the artist up and
  * returns its genres (best-first) as candidates plus a single suggestion (the
  * first genre that differs from the current tag, else the top genre). Degrades
@@ -120,8 +139,7 @@ export async function verifyGenre(
     return base;
   }
   const want = normalizeForGrouping(input.artist);
-  const match =
-    hits.find((a) => normalizeForGrouping(a.artistName) === want) ?? hits[0];
+  const match = hits.find((a) => normalizeForGrouping(a.artistName) === want) ?? hits[0];
   const candidates = (match?.genres ?? []).map((g) => g.trim()).filter((g) => g.length > 0);
   if (candidates.length === 0) return base;
 

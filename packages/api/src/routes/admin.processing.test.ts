@@ -49,6 +49,7 @@ function makeService(): LibraryProcessingService {
       readTags: async () => ({}),
       writeTags: async () => true,
       analyzeBpm: async () => null,
+      analyzeKey: async () => null,
       lookupGenre: async () => null,
       fileExists: () => false,
     }),

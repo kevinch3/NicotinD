@@ -54,6 +54,7 @@ export interface ScannedTrack {
   year?: number;
   genre?: string;
   bpm?: number;
+  key?: string;
 }
 
 export interface SongRow {
@@ -68,6 +69,7 @@ export interface SongRow {
   year: number | null;
   genre: string | null;
   bpm: number | null;
+  key: string | null;
   coverArt: string;
   path: string;
   size: number;
@@ -296,6 +298,7 @@ export function buildLibrary(
       year: year ?? null,
       genre: t.genre ?? null,
       bpm: t.bpm ?? null,
+      key: t.key ?? null,
       coverArt: id,
       path: t.relPath,
       size: t.size,
@@ -546,6 +549,7 @@ export class LibraryScanner {
       year: common?.year ?? undefined,
       genre: common?.genre?.[0],
       bpm: typeof common?.bpm === 'number' && common.bpm > 0 ? Math.round(common.bpm) : undefined,
+      key: typeof common?.key === 'string' && common.key.trim() ? common.key.trim() : undefined,
     };
   }
 
@@ -575,9 +579,9 @@ export class LibraryScanner {
     const songStmt = this.db.prepare(`
       INSERT INTO library_songs (
         id, album_id, title, artist, artist_id, track, disc, duration,
-        year, genre, bpm, cover_art, path, size, bit_rate, suffix, content_type,
+        year, genre, bpm, key, cover_art, path, size, bit_rate, suffix, content_type,
         created, synced_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         album_id = excluded.album_id,
         title = excluded.title,
@@ -587,9 +591,16 @@ export class LibraryScanner {
         disc = excluded.disc,
         duration = excluded.duration,
         year = excluded.year,
-        genre = excluded.genre,
+        -- Keep an enriched genre when a rescan reads no genre tag. Windowed/Lidarr
+        -- genre fills write the DB immediately but the file-tag write can lag; a
+        -- plain genre=excluded.genre would let the frequent full scans revert the
+        -- enrichment before the tag lands. A tag that DOES carry a genre still
+        -- overrides. (Same durability contract as bpm/key.)
+        genre = COALESCE(excluded.genre, library_songs.genre),
         -- Keep an existing (e.g. analyzed) bpm when a rescan reads no tag value.
         bpm = COALESCE(excluded.bpm, library_songs.bpm),
+        -- Likewise keep an analyzed key when a rescan reads no tag value.
+        key = COALESCE(excluded.key, library_songs.key),
         cover_art = excluded.cover_art,
         path = excluded.path,
         size = excluded.size,
@@ -646,6 +657,7 @@ export class LibraryScanner {
           s.year,
           s.genre,
           s.bpm,
+          s.key,
           s.coverArt,
           s.path,
           s.size,
