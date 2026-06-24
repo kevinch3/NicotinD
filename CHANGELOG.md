@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.110](https://github.com/kevinch3/NicotinD/compare/v0.1.109...v0.1.110) (2026-06-24)
+
+
+### Features
+
+* unify bottom-chrome stacking, scroll-lock full-screen sheets, fold downloads badge into nav ([a724f57](https://github.com/kevinch3/NicotinD/commit/a724f574c68c0febed34e800dc3e3c28dd0c8b89))
+
+
+### Bug Fixes
+
+* **web:** register bg-theme-muted utility so the grab notch isn't transparent ([176ecf3](https://github.com/kevinch3/NicotinD/commit/176ecf3056614c20e8722c14a1e055991ba15560))
+
 ## [0.1.109](https://github.com/kevinch3/NicotinD/compare/v0.1.108...v0.1.109) (2026-06-24)
 
 
