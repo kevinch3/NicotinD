@@ -10,7 +10,6 @@ import { mainBottomPadClass } from '../../lib/player-chrome';
 import { SetupService } from '../../services/setup.service';
 import { TransferService } from '../../services/transfer.service';
 import { AcquireService } from '../../services/acquire.service';
-import { DownloadIndicatorComponent } from '../download-indicator/download-indicator.component';
 import { PlayerComponent } from '../player/player.component';
 import { NowPlayingComponent } from '../now-playing/now-playing.component';
 import { UpdateBannerComponent } from '../update-banner/update-banner.component';
@@ -37,7 +36,6 @@ const ONLINE_ONLY_ROUTES = new Set(['/', '/library']);
     RouterOutlet,
     RouterLink,
     RouterLinkActive,
-    DownloadIndicatorComponent,
     PlayerComponent,
     NowPlayingComponent,
     UpdateBannerComponent,
@@ -63,6 +61,14 @@ export class LayoutComponent implements OnInit, OnDestroy {
   isNavDisabled(route: string): boolean {
     return this.setup.isOffline() && ONLINE_ONLY_ROUTES.has(route);
   }
+
+  // Active download badge on the desktop "Downloads" nav link — slskd transfers
+  // + in-flight URL acquisitions (the old standalone header indicator's signal,
+  // folded into the nav item now that the dedicated header button is gone; the
+  // mobile tab bar already carries the same badge).
+  readonly downloadCount = computed(
+    () => this.transfers.activeDownloadCount() + this.acquire.activeJobs().length,
+  );
 
   // Bottom padding so fixed chrome never covers the last list item — geometry
   // shared with the mini-player/tab-bar stack in lib/player-chrome.ts.

@@ -13,6 +13,7 @@ import { parseLrc, findActiveLine } from '../../lib/lrc-parser';
 import type { LyricsDto } from '@nicotind/core';
 import { firstValueFrom } from 'rxjs';
 import { createPointerDrag } from '../../lib/pointer-drag';
+import { ScrollLockService } from '../../services/scroll-lock.service';
 import { SeekBarComponent } from '../seek-bar/seek-bar.component';
 import { CoverArtComponent } from '../cover-art/cover-art.component';
 
@@ -41,6 +42,7 @@ export class NowPlayingComponent {
   private ws = inject(PlaybackWsService);
   private router = inject(Router);
   private api = inject(ApiService);
+  private scrollLock = inject(ScrollLockService);
 
   // Context menu state
   readonly contextMenu = signal<{ x: number; y: number } | null>(null);
@@ -136,6 +138,18 @@ export class NowPlayingComponent {
       };
       rafId = requestAnimationFrame(tick);
       onCleanup(() => cancelAnimationFrame(rafId));
+    });
+
+    // Lock the document while the full-screen sheet is actually on screen (open
+    // AND a track exists — clear() drops the track without touching the open
+    // flag, and the template gates on currentTrack). Prevents the backgrounded
+    // page from scrolling/overscrolling behind the sheet. onCleanup releases the
+    // lock when it closes or the component is destroyed.
+    effect((onCleanup) => {
+      if (this.player.nowPlayingOpen() && this.player.currentTrack() !== null) {
+        this.scrollLock.lock();
+        onCleanup(() => this.scrollLock.unlock());
+      }
     });
 
     // Lazily (re)load lyrics whenever the panel is open and the track changes.

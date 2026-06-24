@@ -4,6 +4,8 @@ import { provideRouter } from '@angular/router';
 import { LayoutComponent } from './layout.component';
 import { AuthService } from '../../services/auth.service';
 import { PlayerService } from '../../services/player.service';
+import { TransferService } from '../../services/transfer.service';
+import { AcquireService } from '../../services/acquire.service';
 import { APP_VERSION } from '../../app.config';
 
 function setup() {
@@ -72,5 +74,48 @@ describe('LayoutComponent — player + tab-bar safe margin', () => {
     const main: HTMLElement = fixture.nativeElement.querySelector('main');
     expect(main.classList).not.toContain('pb-[calc(8rem+env(safe-area-inset-bottom))]');
     expect(main.classList).toContain('pb-[calc(3.5rem+env(safe-area-inset-bottom))]');
+  });
+});
+
+describe('LayoutComponent — desktop downloads badge', () => {
+  it('sums active transfers and in-flight acquire jobs into downloadCount', () => {
+    const playerStub = {
+      currentTrack: signal<{ id: string } | null>(null),
+      setRadioProvider: () => {},
+    };
+    const transfersStub = {
+      activeDownloadCount: signal(2),
+      startPolling: () => {},
+      stopPolling: () => {},
+    };
+    const acquireStub = {
+      activeJobs: signal<unknown[]>([{}, {}, {}]),
+      refresh: async () => {},
+    };
+
+    TestBed.configureTestingModule({
+      imports: [LayoutComponent],
+      providers: [
+        provideRouter([]),
+        { provide: PlayerService, useValue: playerStub },
+        { provide: AuthService, useValue: { username: signal('u'), role: signal('user'), logout: () => {} } },
+        { provide: TransferService, useValue: transfersStub },
+        { provide: AcquireService, useValue: acquireStub },
+        { provide: APP_VERSION, useValue: '0.0.0-test' },
+      ],
+      schemas: [NO_ERRORS_SCHEMA],
+    });
+    TestBed.overrideComponent(LayoutComponent, {
+      set: { template: `<span>{{ downloadCount() }}</span>`, imports: [] },
+    });
+
+    const fixture = TestBed.createComponent(LayoutComponent);
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.downloadCount()).toBe(5);
+
+    transfersStub.activeDownloadCount.set(0);
+    acquireStub.activeJobs.set([]);
+    expect(fixture.componentInstance.downloadCount()).toBe(0);
   });
 });
