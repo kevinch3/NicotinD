@@ -40,15 +40,16 @@ export const NicotinDConfigSchema = z.object({
       preferFlacSkipMp3: z.boolean().default(false),
       // Standardize on a small, browser-native codec for storage + web playback:
       // transcode lossless downloads (FLAC/WAV/…) to Opus in place before they
-      // enter the library, leaving already-lossy files untouched. Opt-in.
+      // enter the library, leaving already-lossy files untouched. Default-on at
+      // 192 kbps (transparent headroom since the source lossless file is dropped).
       transcodeLossless: z
         .object({
-          enabled: z.boolean().default(false),
+          enabled: z.boolean().default(true),
           // Only opus today; left as an enum for headroom.
           format: z.enum(['opus']).default('opus'),
-          bitRate: z.number().int().min(64).max(320).default(128),
+          bitRate: z.number().int().min(64).max(320).default(192),
         })
-        .default({ enabled: false, format: 'opus', bitRate: 128 }),
+        .default({ enabled: true, format: 'opus', bitRate: 192 }),
     })
     .default({
       autoRetryEnabled: true,
@@ -60,7 +61,7 @@ export const NicotinDConfigSchema = z.object({
       exhaustedRetryCooldownMs: 3_600_000,
       exhaustedMaxRevives: 5,
       preferFlacSkipMp3: false,
-      transcodeLossless: { enabled: false, format: 'opus', bitRate: 128 },
+      transcodeLossless: { enabled: true, format: 'opus', bitRate: 192 },
     }),
 
   // Watchlist auto-hunt: a background poller re-hunts watched albums and

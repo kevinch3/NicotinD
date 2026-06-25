@@ -35,6 +35,7 @@ import { isAbsolute } from 'node:path';
 import type { AcoustIdLookup } from './acoustid-lookup.js';
 import { normalizeTitle } from './album-hunter.service.js';
 import { dedupeFolder } from './album-dedupe.js';
+import { albumGroupKey } from './album-grouping.js';
 import { isLossless, transcodeToOpus } from './post-download-transcode.js';
 import { ffmpegAvailable } from './transcode.js';
 import { looksLikeSourceWatermark } from './library-quality.js';
@@ -70,6 +71,13 @@ export interface LibraryOrganizerOptions {
    * default — these are always-unwanted collisions that split Navidrome albums.
    */
   autoDedupe?: boolean;
+  /**
+   * When placing a file, reuse an existing `<Artist>/<Album>` folder whose
+   * edition-collapsing identity (`albumGroupKey`) matches — so a deluxe/remaster/
+   * JP edition lands in the base album's folder instead of spawning a sibling on
+   * disk that the per-folder dedupe could never collapse. On by default.
+   */
+  dedupeAcrossEditions?: boolean;
   /**
    * Resolve a peer-side download directory to the canonical album it was hunted
    * as. When a group's directory matches a recorded album job, the destination
@@ -111,11 +119,21 @@ export class LibraryOrganizer {
   private preferFlacSkipMp3: boolean;
   private transcodeLossless: { enabled: boolean; bitRate: number };
   private autoDedupe: boolean;
+  private dedupeAcrossEditions: boolean;
   private jobLookup?: (
     peerDirectory: string,
   ) => { artist?: string | null; album?: string | null } | null;
   /** Real <Artist>/<Album> dirs written during the current batch (for dedupe). */
   private touchedAlbumDirs = new Set<string>();
+  /**
+   * Per-batch cache of an artist's album folders (name + group key + audio-file
+   * count), so cross-edition consolidation is one disk read per artist and dirs
+   * created mid-batch are visible to later files. Cleared at each batch start.
+   */
+  private albumFolderCache = new Map<
+    string,
+    Array<{ name: string; key: string; count: number }>
+  >();
 
   constructor(opts: LibraryOrganizerOptions) {
     this.musicDir = expandHome(opts.musicDir);
@@ -125,6 +143,7 @@ export class LibraryOrganizer {
     this.preferFlacSkipMp3 = opts.preferFlacSkipMp3 ?? false;
     this.transcodeLossless = opts.transcodeLossless ?? { enabled: false, bitRate: 128 };
     this.autoDedupe = opts.autoDedupe ?? true;
+    this.dedupeAcrossEditions = opts.dedupeAcrossEditions ?? true;
     this.jobLookup = opts.jobLookup;
     // unsortedRoot may be relative (resolved under musicDir) or absolute (e.g.
     // <dataDir>/unsorted so Navidrome doesn't index the bucket).
@@ -149,6 +168,7 @@ export class LibraryOrganizer {
     if (files.length === 0) return result;
 
     this.touchedAlbumDirs.clear();
+    this.albumFolderCache.clear();
 
     const groups = new Map<string, CompletedDownloadFile[]>();
     for (const file of files) {
@@ -267,6 +287,82 @@ export class LibraryOrganizer {
       tags.albumArtist ??
       (job.artist ? sanitizeArtistTag(normalizeTagValue(job.artist)) : undefined);
     return { ...tags, album: canonicalAlbum, albumArtist };
+  }
+
+  /**
+   * Find an existing `<musicDir>/<artist>/<Album>` folder that represents the SAME
+   * album as `(artist, album)` by the edition-collapsing `albumGroupKey` — so a
+   * deluxe/remaster/JP/year-tagged edition reuses the base album's folder instead
+   * of spawning a sibling the per-folder dedupe could never reach. Considers
+   * folders already on disk AND ones created earlier in this batch (via the
+   * per-batch cache). Returns the fullest match (prefer the shortest/base title on
+   * a tie), or null when there's no match or the feature is disabled.
+   */
+  private findCanonicalAlbumFolder(artist: string, album: string): string | null {
+    if (!this.dedupeAcrossEditions) return null;
+    const key = albumGroupKey(artist, album);
+    const candidates = this.artistAlbumFolders(artist);
+    let best: { name: string; count: number } | null = null;
+    for (const c of candidates) {
+      if (c.key !== key) continue;
+      const better =
+        !best ||
+        c.count > best.count ||
+        (c.count === best.count &&
+          (c.name.length < best.name.length ||
+            (c.name.length === best.name.length && c.name < best.name)));
+      if (better) best = { name: c.name, count: c.count };
+    }
+    return best?.name ?? null;
+  }
+
+  /** Cached (per batch) list of an artist's album folders with group keys + counts. */
+  private artistAlbumFolders(
+    artist: string,
+  ): Array<{ name: string; key: string; count: number }> {
+    const artistDir = join(this.musicDir, artist);
+    const cached = this.albumFolderCache.get(artistDir);
+    if (cached) return cached;
+    const list: Array<{ name: string; key: string; count: number }> = [];
+    let entries: string[];
+    try {
+      entries = readdirSync(artistDir);
+    } catch {
+      this.albumFolderCache.set(artistDir, list);
+      return list;
+    }
+    for (const name of entries) {
+      if (name === 'Singles') continue;
+      const dir = join(artistDir, name);
+      try {
+        if (!statSync(dir).isDirectory()) continue;
+      } catch {
+        continue;
+      }
+      let count = 0;
+      try {
+        for (const f of readdirSync(dir)) {
+          if (AUDIO_EXTS.has(extname(f).toLowerCase())) count++;
+        }
+      } catch {
+        /* unreadable — count stays 0 */
+      }
+      list.push({ name, key: albumGroupKey(artist, name), count });
+    }
+    this.albumFolderCache.set(artistDir, list);
+    return list;
+  }
+
+  /**
+   * Record that a file was placed into `<artist>/<folderName>` so later files in
+   * the same batch (and the same album's other editions) converge onto it.
+   */
+  private rememberAlbumFolder(artist: string, folderName: string): void {
+    if (!this.dedupeAcrossEditions) return;
+    const list = this.artistAlbumFolders(artist);
+    const existing = list.find((c) => c.name === folderName);
+    if (existing) existing.count++;
+    else list.push({ name: folderName, key: albumGroupKey(artist, folderName), count: 1 });
   }
 
   private async readWithFallback(path: string, peerDirectory: string): Promise<AudioTags> {
@@ -407,10 +503,15 @@ export class LibraryOrganizer {
       : join(this.musicDir, this.unsortedRoot);
     let destDir: string;
     if (folderArtist && folderAlbum && trackTitle) {
-      destDir = join(this.musicDir, folderArtist, folderAlbum);
+      // Reuse an existing same-album folder (edition-collapsed) so deluxe/remaster/
+      // JP editions converge into one dir instead of spawning siblings the
+      // per-folder dedupe can't reach. Falls back to this edition's own name.
+      const canonicalFolder = this.findCanonicalAlbumFolder(folderArtist, folderAlbum) ?? folderAlbum;
+      destDir = join(this.musicDir, folderArtist, canonicalFolder);
       // Only real <Artist>/<Album> dirs are dedupe targets — never Singles (many
       // distinct tracks) or the unsorted bucket.
       this.touchedAlbumDirs.add(destDir);
+      this.rememberAlbumFolder(folderArtist, canonicalFolder);
     } else if (folderArtist && trackTitle) {
       // Single artist, no album info → place under <Artist>/Singles/ on disk,
       // but leave the album tag empty (no longer force "Singles"): the scanner

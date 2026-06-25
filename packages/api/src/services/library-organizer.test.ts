@@ -11,7 +11,15 @@
  */
 import { describe, expect, it, afterEach } from 'bun:test';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, copyFileSync, rmSync, existsSync, writeFileSync } from 'node:fs';
+import {
+  mkdtempSync,
+  mkdirSync,
+  copyFileSync,
+  rmSync,
+  existsSync,
+  writeFileSync,
+  readdirSync,
+} from 'node:fs';
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -144,6 +152,136 @@ describe('LibraryOrganizer (real fs)', () => {
     expect(result.moved).toBe(1);
     expect(existsSync(join(root, 'Queen', 'Hot Space', '01 - Staying Power.mp3'))).toBe(true);
     expect(existsSync(join(root, 'Queen', 'Hot Space (Deluxe Remastered Version)'))).toBe(false);
+  });
+
+  it('consolidates two editions of one album (in a single batch) into one folder + dedupes', async () => {
+    const root = tmpRoot();
+    const staging = join(root, '_staging');
+    // Base edition + a deluxe edition of the SAME album, different peer folders.
+    // They share track 01 (a true duplicate) and the deluxe adds a bonus track.
+    seed(staging, 'Lana Del Rey - Ultraviolence/01 - Cruel World.mp3', {
+      artist: 'Lana Del Rey',
+      album: 'Ultraviolence',
+      title: 'Cruel World',
+      trackNumber: 1,
+    });
+    seed(staging, 'Lana Del Rey - Ultraviolence (Deluxe)/01 - Cruel World.mp3', {
+      artist: 'Lana Del Rey',
+      album: 'Ultraviolence (Deluxe Edition)',
+      title: 'Cruel World',
+      trackNumber: 1,
+    });
+    seed(staging, 'Lana Del Rey - Ultraviolence (Deluxe)/02 - Florida Kilos.mp3', {
+      artist: 'Lana Del Rey',
+      album: 'Ultraviolence (Deluxe Edition)',
+      title: 'Florida Kilos',
+      trackNumber: 2,
+    });
+    const org = makeOrg(root, staging);
+    const result = await org.organizeBatch([
+      // Base edition first so it wins the canonical folder name.
+      {
+        username: 'u',
+        directory: 'Lana Del Rey - Ultraviolence',
+        filename: '01 - Cruel World.mp3',
+        directoryFileCount: 1,
+      },
+      {
+        username: 'u',
+        directory: 'Lana Del Rey - Ultraviolence (Deluxe)',
+        filename: '01 - Cruel World.mp3',
+        directoryFileCount: 2,
+      },
+      {
+        username: 'u',
+        directory: 'Lana Del Rey - Ultraviolence (Deluxe)',
+        filename: '02 - Florida Kilos.mp3',
+        directoryFileCount: 2,
+      },
+    ]);
+    const albumDir = join(root, 'Lana Del Rey', 'Ultraviolence');
+    // Everything landed in ONE folder; the deluxe-named sibling was never created.
+    expect(existsSync(join(root, 'Lana Del Rey', 'Ultraviolence (Deluxe Edition)'))).toBe(false);
+    expect(existsSync(join(albumDir, '02 - Florida Kilos.mp3'))).toBe(true);
+    // The duplicate track 01 was collapsed by the auto-dedupe pass — exactly one
+    // copy survives (whichever pickKeeper chose), not both.
+    const cruelWorldCopies = readdirSync(albumDir).filter((f) => /cruel world/i.test(f));
+    expect(cruelWorldCopies.length).toBe(1);
+    expect(result.dedupedBasenames.some((b) => /cruel world/i.test(b))).toBe(true);
+  });
+
+  it('folds a later-batch edition into a pre-existing album folder on disk', async () => {
+    const root = tmpRoot();
+    const staging = join(root, '_staging');
+    // First batch: the base album lands normally.
+    seed(staging, 'Lana Del Rey - Ultraviolence/01 - Cruel World.mp3', {
+      artist: 'Lana Del Rey',
+      album: 'Ultraviolence',
+      title: 'Cruel World',
+      trackNumber: 1,
+    });
+    const org = makeOrg(root, staging);
+    await org.organizeBatch([
+      {
+        username: 'u',
+        directory: 'Lana Del Rey - Ultraviolence',
+        filename: '01 - Cruel World.mp3',
+        directoryFileCount: 1,
+      },
+    ]);
+    // Second batch (separate call → cache cleared): a JP deluxe edition arrives.
+    seed(staging, 'Lana Del Rey - Ultraviolence (JP Deluxe Edition)/02 - Florida Kilos.mp3', {
+      artist: 'Lana Del Rey',
+      album: 'Ultraviolence (JP Deluxe Edition)',
+      title: 'Florida Kilos',
+      trackNumber: 2,
+    });
+    await org.organizeBatch([
+      {
+        username: 'u',
+        directory: 'Lana Del Rey - Ultraviolence (JP Deluxe Edition)',
+        filename: '02 - Florida Kilos.mp3',
+        directoryFileCount: 1,
+      },
+    ]);
+    const albumDir = join(root, 'Lana Del Rey', 'Ultraviolence');
+    expect(existsSync(join(root, 'Lana Del Rey', 'Ultraviolence (JP Deluxe Edition)'))).toBe(false);
+    expect(existsSync(join(albumDir, '01 - Cruel World.mp3'))).toBe(true);
+    expect(existsSync(join(albumDir, '02 - Florida Kilos.mp3'))).toBe(true);
+  });
+
+  it('does NOT merge distinct titles like "Greatest Hits" vs "Greatest Hits II"', async () => {
+    const root = tmpRoot();
+    const staging = join(root, '_staging');
+    seed(staging, 'Band - Greatest Hits/01 - A.mp3', {
+      artist: 'Band',
+      album: 'Greatest Hits',
+      title: 'A',
+      trackNumber: 1,
+    });
+    seed(staging, 'Band - Greatest Hits II/01 - B.mp3', {
+      artist: 'Band',
+      album: 'Greatest Hits II',
+      title: 'B',
+      trackNumber: 1,
+    });
+    const org = makeOrg(root, staging);
+    await org.organizeBatch([
+      {
+        username: 'u',
+        directory: 'Band - Greatest Hits',
+        filename: '01 - A.mp3',
+        directoryFileCount: 1,
+      },
+      {
+        username: 'u',
+        directory: 'Band - Greatest Hits II',
+        filename: '01 - B.mp3',
+        directoryFileCount: 1,
+      },
+    ]);
+    expect(existsSync(join(root, 'Band', 'Greatest Hits', '01 - A.mp3'))).toBe(true);
+    expect(existsSync(join(root, 'Band', 'Greatest Hits II', '01 - B.mp3'))).toBe(true);
   });
 
   it('preserves unicode characters in artist and album folders', async () => {

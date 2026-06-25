@@ -10,11 +10,12 @@ metadataFix:
 downloads:
   # Standardize lossless downloads (FLAC/WAV/…) on Opus before they enter the
   # library — smaller files + a uniform browser-native codec. Already-lossy files
-  # (MP3/AAC) are left untouched. Requires ffmpeg on PATH. Opt-in.
+  # (MP3/AAC) are left untouched. Requires ffmpeg on PATH. Default-on at 192 kbps
+  # (transparent headroom since the source lossless file is replaced in place).
   transcodeLossless:
-    enabled: false
+    enabled: true
     format: opus
-    bitRate: 128
+    bitRate: 192
 
 soulseek:
   username: ''
