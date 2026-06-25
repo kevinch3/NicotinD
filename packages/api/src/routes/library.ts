@@ -9,6 +9,8 @@ import type { Database } from 'bun:sqlite';
 import { getDatabase } from '../db.js';
 import type { LibraryCurator } from '../services/library-curator.js';
 import { normalizeArtistForGrouping, normalizeForGrouping } from '../services/album-grouping.js';
+import { transferGroupKeys } from '../services/transfer-group-keys.js';
+import type { SlskdRef } from '../index.js';
 import { getAcquisitionByPath } from '../services/acquisition-store.js';
 import { analyzeBpm, verifyGenre } from '../services/track-analysis.js';
 import { readAudioTags, writeAudioTags } from '../services/audio-tags.js';
@@ -44,22 +46,58 @@ const GRID_CLASSIFICATION_SQL = `classification IN ('album','compilation')`;
 const SINGLE_EP_CLASSIFICATION_SQL = `classification IN ('single','ep')`;
 
 /**
- * Returns a Set of "artist album" group keys for
- * every album that has an active download job. Used to suppress partially-downloaded
- * albums from library listing endpoints so the user never sees an incomplete album.
+ * Returns a Set of "artist album" group keys for every album that is actively
+ * downloading: active `album_jobs` rows, unioned with `extraKeys` derived from
+ * in-flight slskd transfers (so raw folder-browser/per-track grabs that never
+ * create a job row are suppressed too). Used to hide partially-downloaded albums
+ * from library listings so the user never sees an incomplete album.
  */
-function getDownloadingGroupKeys(db: Database): Set<string> {
+function getDownloadingGroupKeys(db: Database, extraKeys?: Set<string>): Set<string> {
   const jobs = db
     .query<{ artist_name: string; album_title: string }, []>(
       `SELECT artist_name, album_title FROM album_jobs
        WHERE state = 'active' AND artist_name IS NOT NULL AND album_title IS NOT NULL`,
     )
     .all();
-  return new Set(
-    jobs.map(
-      (j) => `${normalizeArtistForGrouping(j.artist_name)} ${normalizeForGrouping(j.album_title)}`,
-    ),
-  );
+  const keys = new Set(extraKeys);
+  for (const j of jobs) {
+    keys.add(`${normalizeArtistForGrouping(j.artist_name)} ${normalizeForGrouping(j.album_title)}`);
+  }
+  return keys;
+}
+
+/** Cache the (potentially slow, network) slskd transfer fetch briefly so a burst
+ * of listing requests doesn't hammer slskd. */
+let transferKeysCache: { at: number; keys: Set<string> } | null = null;
+const TRANSFER_KEYS_TTL_MS = 4000;
+
+/** Test hook: clear the cached transfer keys so a test can change slskd state. */
+export function __resetDownloadSuppressionCache(): void {
+  transferKeysCache = null;
+}
+
+/**
+ * Active-transfer group keys, fetched from slskd with a short cache. Returns an
+ * empty set when slskd is absent/unreachable (fast path — suppression then keys
+ * on album_jobs only). Never throws.
+ */
+async function activeTransferKeys(slskdRef?: SlskdRef): Promise<Set<string>> {
+  if (!slskdRef?.current) return new Set();
+  const now = Date.now();
+  if (transferKeysCache && now - transferKeysCache.at < TRANSFER_KEYS_TTL_MS) {
+    return transferKeysCache.keys;
+  }
+  try {
+    const groups = await slskdRef.current.transfers.getDownloads();
+    const keys = transferGroupKeys(groups);
+    transferKeysCache = { at: now, keys };
+    return keys;
+  } catch {
+    // slskd unreachable — degrade to album_jobs-only suppression, cache the miss
+    // briefly so we don't retry on every request.
+    transferKeysCache = { at: now, keys: new Set() };
+    return transferKeysCache.keys;
+  }
 }
 
 /**
@@ -71,8 +109,11 @@ function getDownloadingGroupKeys(db: Database): Set<string> {
  *
  * Fast path: no active downloads → empty fragment, no extra query, no change.
  */
-function downloadingExclusion(db: Database): { sql: string; params: string[] } {
-  const keys = getDownloadingGroupKeys(db);
+function downloadingExclusion(
+  db: Database,
+  extraKeys?: Set<string>,
+): { sql: string; params: string[] } {
+  const keys = getDownloadingGroupKeys(db, extraKeys);
   if (keys.size === 0) return { sql: '', params: [] };
   const all = db
     .query<{ id: string; artist: string; name: string }, []>(
@@ -112,6 +153,8 @@ interface LibraryRoutesOptions {
   coverCacheDir?: string;
   /** Plugin registry, used to resolve lyrics-capable sources on demand. */
   pluginRegistry?: PluginRegistry;
+  /** slskd handle, used to suppress albums with an in-flight (non-job) transfer. */
+  slskdRef?: SlskdRef;
 }
 
 interface AlbumRow {
@@ -299,7 +342,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     return c.json({ id: match.id });
   });
 
-  app.get('/artists/:id', (c) => {
+  app.get('/artists/:id', async (c) => {
     const id = c.req.param('id');
     const db = getDatabase();
     const artistRow = db
@@ -317,7 +360,10 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
          ORDER BY year DESC NULLS LAST, name COLLATE NOCASE ASC`,
       )
       .all(id);
-    const downloadingKeys = getDownloadingGroupKeys(db);
+    const downloadingKeys = getDownloadingGroupKeys(
+      db,
+      await activeTransferKeys(options.slskdRef),
+    );
     const visible = allRows.filter(
       (r) =>
         !downloadingKeys.has(
@@ -357,15 +403,15 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
 
   // Dedicated singles & EPs listing (the /library/singles view). Mirrors /albums
   // but inverts the grid filter: only single + ep releases.
-  app.get('/singles', (c) => {
+  app.get('/singles', async (c) => {
     const type = c.req.query('type') ?? 'newest';
     const size = Math.min(Number(c.req.query('size') ?? 60), 500);
     const offset = Math.max(Number(c.req.query('offset') ?? 0), 0);
     const order = albumOrderBy(type);
     const db = getDatabase();
     // Exclude actively-downloading albums in SQL (pre-LIMIT) to keep pagination
-    // correct — see downloadingExclusion().
-    const excl = downloadingExclusion(db);
+    // correct — see downloadingExclusion(). Also keys on in-flight slskd transfers.
+    const excl = downloadingExclusion(db, await activeTransferKeys(options.slskdRef));
     const exclClause = excl.sql ? `AND ${excl.sql}` : '';
     const rows = db
       .query<AlbumRow, (string | number)[]>(
@@ -377,7 +423,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     return c.json(singles);
   });
 
-  app.get('/albums', (c) => {
+  app.get('/albums', async (c) => {
     const type = c.req.query('type') ?? 'newest';
     const size = Math.min(Number(c.req.query('size') ?? 20), 500);
     const offset = Math.max(Number(c.req.query('offset') ?? 0), 0);
@@ -398,8 +444,8 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       wheres.push(GRID_CLASSIFICATION_SQL);
     }
     // Exclude actively-downloading albums in SQL (not post-LIMIT) so pagination
-    // stays correct — see downloadingExclusion().
-    const excl = downloadingExclusion(db);
+    // stays correct — see downloadingExclusion(). Also keys on in-flight transfers.
+    const excl = downloadingExclusion(db, await activeTransferKeys(options.slskdRef));
     if (excl.sql) {
       wheres.push(excl.sql);
       params.push(...excl.params);

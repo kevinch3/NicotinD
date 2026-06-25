@@ -40,18 +40,19 @@ Files mislabeled as Singles before the original organizer fix can still be repai
 
 ---
 
-## Duplicate prevention (two layers)
+## Duplicate prevention (three layers)
 
 Shared logic lives in `packages/api/src/services/album-dedupe.ts` (`dupKey`/`pickKeeper`/`dedupeFolder`), reused by the manual `repair-album-dupes.ts` script.
 
 1. **Format preference** — when config `downloads.preferFlacSkipMp3` is on, `LibraryOrganizer.placeFile` drops an incoming MP3 (and removes its source) if a same-title FLAC already sits in the destination album folder.
 2. **Auto-dedupe** — after each batch, `organizeBatch` runs `dedupeFolder` on every real `<Artist>/<Album>` dir it touched (never `Singles`/unsorted), removing collision-suffix/mixed-format true copies and returning `dedupedBasenames` so `DownloadWatcher` prunes the matching `completed_downloads` rows. On by default (`autoDedupe`).
+3. **Cross-edition folder consolidation** — auto-dedupe is *per folder*, so duplicates split across sibling edition folders (`<Artist>/Ultraviolence/` + `<Artist>/Ultraviolence (JP Deluxe Edition)/`) were never collapsed: album-grouping merges them into one *card* but they stay duplicated on disk. So `placeFile` now resolves the destination through `findCanonicalAlbumFolder(artist, album)` — it reuses an existing same-album folder by the edition-collapsing `albumGroupKey` (a per-batch readdir cache covers on-disk siblings *and* dirs created earlier in the same batch; it picks the fullest match, preferring the shortest/base title on a tie). Deluxe/remaster/JP/year-tagged editions therefore land in **one** `<Artist>/<Album>` dir and layer 2 then collapses the cross-edition true-dups. The active-job canonical name (`applyJobCanonicalName`) still wins when present; the feature is gated by `dedupeAcrossEditions` (default on); `normalizeForGrouping` keeps genuinely distinct titles ("Greatest Hits" vs "II") and live albums separate. **Editions already split on disk** (acquired before this) are merged by the existing `scripts/repair-album-folders.ts` (group by `albumGroupKey` → fullest canonical → move files in → trim to the recorded Lidarr tracklist or `dupKey` → drop empty siblings; dry-run unless `--apply`).
 
 ---
 
 ## Lossless → Opus standardization (storage + web playback)
 
-FLAC is overkill for web streaming and large on disk. When `downloads.transcodeLossless.enabled` (config / `NICOTIND_TRANSCODE_LOSSLESS_ENABLED`; `bitRate` default 128), lossless downloads are transcoded to Opus and **already-lossy files (MP3/AAC/…) are left untouched**. The lossless set is shared (`isLossless()` in `library-track-select.ts`); the encoder is `post-download-transcode.ts` `transcodeToOpus()` (ffmpeg `libopus`, replace-in-place: write `<name>.opus`, drop the original). Everything is gated on `ffmpegAvailable()`.
+FLAC is overkill for web streaming and large on disk. `downloads.transcodeLossless` is **default-on at 192 kbps** (config / `NICOTIND_TRANSCODE_LOSSLESS_ENABLED` + `NICOTIND_TRANSCODE_LOSSLESS_BITRATE`; set `enabled:false` to keep originals). When enabled, lossless downloads are transcoded to Opus and **already-lossy files (MP3/AAC/…) are left untouched**. The lossless set is shared (`isLossless()` in `library-track-select.ts`); the encoder is `post-download-transcode.ts` `transcodeToOpus()` (ffmpeg `libopus`, replace-in-place: write `<name>.opus`, drop the original). Everything is gated on `ffmpegAvailable()`.
 
 ### New downloads (no identity churn)
 

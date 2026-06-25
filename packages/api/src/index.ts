@@ -425,6 +425,7 @@ export function createApp({
       lidarr,
       coverCacheDir: `${expandedDataDir}/cover-cache`,
       pluginRegistry: plugins,
+      slskdRef,
     }),
   );
   app.route('/api', streamingRoutes(expandedMusicDir, db, expandedDataDir));

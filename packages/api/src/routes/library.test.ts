@@ -8,8 +8,10 @@ import * as realFsNamespace from 'node:fs';
 // partial stub below leaks into later test files (e.g. library-organizer.test.ts),
 // leaving their mkdirSync/copyFileSync/etc. undefined and silently breaking them.
 const realFs = { ...realFsNamespace };
-import { libraryRoutes } from './library.js';
+import { libraryRoutes, __resetDownloadSuppressionCache } from './library.js';
 import type { AuthEnv } from '../middleware/auth.js';
+import type { SlskdUserTransferGroup } from '@nicotind/core';
+import type { SlskdRef } from '../index.js';
 
 import { applySchema } from '../db.js';
 
@@ -119,6 +121,65 @@ describe('library routes', () => {
     userApp.route('/', libraryRoutes('/home/kevinch3/Music'));
     const res = await userApp.request('/untracked');
     expect(res.status).toBe(403);
+  });
+
+  it('hides an album with an in-flight slskd transfer from /albums, shows it once settled', async () => {
+    sharedDb.run(
+      `INSERT INTO library_albums (id, name, artist, artist_id, song_count, duration, classification, synced_at)
+       VALUES ('uv', 'Ultraviolence', 'Lana Del Rey', 'ldr', 12, 1000, 'album', 1)`,
+    );
+    const inFlight: SlskdUserTransferGroup[] = [
+      {
+        username: 'peer',
+        directories: [
+          {
+            // A raw (non-album_jobs) grab; the edition qualifier collapses to the card.
+            directory: 'Lana Del Rey\\Ultraviolence (Deluxe Edition)',
+            fileCount: 1,
+            files: [
+              {
+                id: 't1',
+                username: 'peer',
+                filename: '01 - Cruel World.flac',
+                size: 1,
+                state: 'InProgress',
+                bytesTransferred: 0,
+                averageSpeed: 0,
+                percentComplete: 0,
+              },
+            ],
+          },
+        ],
+      },
+    ];
+    const makeApp = (groups: SlskdUserTransferGroup[]) => {
+      const a = new Hono<AuthEnv>();
+      a.use('*', (c, next) => {
+        c.set('user', { sub: 'u', role: 'admin', iat: 0, exp: 9999999999 });
+        return next();
+      });
+      a.route(
+        '/',
+        libraryRoutes('/home/kevinch3/Music', {
+          slskdRef: {
+            current: { transfers: { getDownloads: async () => groups } },
+          } as unknown as SlskdRef,
+        }),
+      );
+      return a;
+    };
+
+    __resetDownloadSuppressionCache();
+    const hidden = (await (await makeApp(inFlight).request('/albums')).json()) as Array<{
+      id: string;
+    }>;
+    expect(hidden.some((al) => al.id === 'uv')).toBe(false);
+
+    __resetDownloadSuppressionCache();
+    const shown = (await (await makeApp([]).request('/albums')).json()) as Array<{ id: string }>;
+    expect(shown.some((al) => al.id === 'uv')).toBe(true);
+
+    sharedDb.run(`DELETE FROM library_albums WHERE id = 'uv'`);
   });
 
   it('bulk deletes multiple songs', async () => {
