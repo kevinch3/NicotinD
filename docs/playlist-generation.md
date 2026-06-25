@@ -131,11 +131,16 @@ The richer the per-track metadata, the better §2/§3 get. Everything below is j
 + windowed-fill pattern as bpm/genre/key — see docs/library-processing.md). Grouped
 by how we'd get it:
 
-**Tag-readable now (cheap, no analysis)** — surface from `music-metadata`/ffprobe at
-scan time, mostly already captured:
-- Duration, sample rate, bit depth, channel count, file format, bitrate.
-- Embedded tags: title, artist, album, year, track number, comment.
-- Loudness-normalization data (ReplayGain tags), time signature (`TIME`/tag) when present.
+**Tag-readable (cheap, no analysis)** — surface from `music-metadata`/ffprobe at scan
+time. *Status today:* the scanner (`MMFormat`) captures only **duration, bitrate,
+container, codec** (stored as `duration`/`bit_rate`/`suffix`/`content_type`) plus the
+embedded text tags (title/artist/album/year/track + the enriched genre/bpm/key). The
+rest below are **readable but not yet captured/stored** — each needs a column + a
+scan-read line (the cheapest items on this roadmap, no DSP):
+- **Not captured yet**: sample rate, bit depth, channel count (extend `MMFormat` +
+  `library_songs`), comment field.
+- **Not captured yet**: loudness-normalization data (ReplayGain tags), time signature
+  (`TIME`/tag) when present.
 
 **Offline DSP (ffmpeg decode + pure JS, like bpm/key)** — no external service:
 - **Key / harmonic key** — ✅ shipped (`key-detection.ts`).
