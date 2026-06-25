@@ -3,8 +3,9 @@
  * track. The companion to repair-album-dupes (which only de-dups within a single
  * folder) — this one works *across* folders.
  *
- *   bun run packages/api/src/scripts/repair-album-folders.ts          # dry run
- *   bun run packages/api/src/scripts/repair-album-folders.ts --apply  # move + delete
+ *   bun run packages/api/src/scripts/repair-album-folders.ts            # dry run
+ *   bun run packages/api/src/scripts/repair-album-folders.ts --apply    # move + delete
+ *   bun run packages/api/src/scripts/repair-album-folders.ts --no-trim  # consolidate-only
  *
  * Background:
  *   Before the idempotent-hunt fix, an album could be acquired into several
@@ -21,6 +22,12 @@
  *      file per canonical track and drops everything else (deluxe/5.1/remix
  *      extras); otherwise collapses only true-duplicate copies (`dupKey`).
  *   4. Removes emptied folders; best-effort prunes `completed_downloads` rows.
+ *
+ * `--no-trim`: skip step 3's canonical-tracklist trimming entirely and only ever
+ * collapse true-duplicate copies (`dupKey`) — so distinct remixes/edits/5.1 mixes
+ * are kept, never dropped. This mirrors the live organizer's cross-edition
+ * consolidation behavior and is the safe choice for a bulk library pass where you
+ * don't want to lose non-canonical versions.
  *
  * Safe by default: dry-run unless --apply. Moves/deletes are NOT reversible —
  * review the dry-run first. After applying, trigger a Navidrome rescan.
@@ -242,6 +249,7 @@ function lookupCanonicalTitles(db: Database, artist: string, album: string): str
 
 async function main(): Promise<void> {
   const apply = process.argv.includes('--apply');
+  const noTrim = process.argv.includes('--no-trim');
   const { dataDir, musicDir } = loadConfig();
   const dbPath = join(dataDir, 'nicotind.db');
   if (!existsSync(dbPath)) {
@@ -253,6 +261,9 @@ async function main(): Promise<void> {
   const logPath = join(dataDir, 'repair-album-folders.log');
 
   console.log(`Mode      : ${apply ? 'APPLY (moving + deleting)' : 'DRY RUN (no changes)'}`);
+  console.log(
+    `Trimming  : ${noTrim ? 'OFF (consolidate + true-dups only)' : 'ON (canonical tracklist)'}`,
+  );
   console.log(`Music dir : ${musicDir}`);
   console.log(`Database  : ${dbPath}`);
   if (apply) console.log(`Log       : ${logPath}\n`);
@@ -271,7 +282,11 @@ async function main(): Promise<void> {
     const allFiles = withCounts.flatMap((x) => x.files);
     if (allFiles.length === 0) continue;
 
-    const canonicalTitles = lookupCanonicalTitles(db, canonical.f.artist, canonical.f.album);
+    // --no-trim: never trim to the canonical tracklist (which would drop distinct
+    // remixes/edits) — only collapse true-duplicate copies via dupKey.
+    const canonicalTitles = noTrim
+      ? undefined
+      : lookupCanonicalTitles(db, canonical.f.artist, canonical.f.album);
     const { keep, drop } = planTrackKeepers(allFiles, canonicalTitles);
 
     const foreignKeepers = keep.filter((k) => k.dir !== canonical.f.dir);
