@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.112](https://github.com/kevinch3/NicotinD/compare/v0.1.111...v0.1.112) (2026-06-25)
+
+
+### Features
+
+* musical key analyzer + enrichment durability fix ([7adbd46](https://github.com/kevinch3/NicotinD/commit/7adbd4668467e65403973117b80b76a11f93b3c0))
+
 ## [0.1.111](https://github.com/kevinch3/NicotinD/compare/v0.1.110...v0.1.111) (2026-06-24)
 
 
