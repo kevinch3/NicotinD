@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.114](https://github.com/kevinch3/NicotinD/compare/v0.1.113...v0.1.114) (2026-06-25)
+
+
+### Features
+
+* **library:** on-disk edition consolidation, in-flight download suppression, default-on Opus ([e84a03a](https://github.com/kevinch3/NicotinD/commit/e84a03a746016f9e69db13037e5f9300ecc7fa4d))
+
 ## [0.1.113](https://github.com/kevinch3/NicotinD/compare/v0.1.112...v0.1.113) (2026-06-25)
 
 ## [0.1.112](https://github.com/kevinch3/NicotinD/compare/v0.1.111...v0.1.112) (2026-06-25)
