@@ -1,5 +1,11 @@
 import type { Database } from 'bun:sqlite';
-import type { ProcessingSettings } from '@nicotind/core';
+import type { ProcessingSettings, ProcessingTaskId, ProcessingWindow } from '@nicotind/core';
+
+/** Patch shape: top-level optional, with partial nested tasks/window (deep-merged). */
+export type ProcessingSettingsPatch = Partial<Omit<ProcessingSettings, 'tasks' | 'window'>> & {
+  tasks?: Partial<Record<ProcessingTaskId, boolean>>;
+  window?: Partial<ProcessingWindow>;
+};
 
 /**
  * Persistence for the windowed library-processing config. Same `app_settings`
@@ -11,7 +17,7 @@ const KEY = 'processing';
 export const DEFAULT_PROCESSING_SETTINGS: ProcessingSettings = {
   enabled: true,
   window: { start: '05:00', end: '08:00' },
-  tasks: { bpm: true, genre: true },
+  tasks: { bpm: true, genre: true, key: true },
   batchSize: 25,
   concurrency: 3,
 };
@@ -37,7 +43,7 @@ export function getProcessingSettings(db: Database): ProcessingSettings {
 
 export function setProcessingSettings(
   db: Database,
-  patch: Partial<ProcessingSettings>,
+  patch: ProcessingSettingsPatch,
 ): ProcessingSettings {
   const current = getProcessingSettings(db);
   const next: ProcessingSettings = {

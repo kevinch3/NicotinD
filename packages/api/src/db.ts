@@ -447,6 +447,7 @@ export function applySchema(db: Database): void {
       starred       TEXT,
       hidden        INTEGER NOT NULL DEFAULT 0,
       bpm           INTEGER,
+      key           TEXT,
       synced_at     INTEGER NOT NULL
     )
   `);
@@ -454,6 +455,13 @@ export function applySchema(db: Database): void {
   // tag reads at scan time and by on-demand track analysis.
   try {
     db.run(`ALTER TABLE library_songs ADD COLUMN bpm INTEGER`);
+  } catch {
+    // Column already exists — ignore
+  }
+  // Musical key (e.g. "C major" / "A minor"), same additive pattern as bpm — read
+  // from tags at scan time, filled by on-demand/windowed key analysis.
+  try {
+    db.run(`ALTER TABLE library_songs ADD COLUMN key TEXT`);
   } catch {
     // Column already exists — ignore
   }

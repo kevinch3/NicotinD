@@ -2,7 +2,7 @@ import { Component, inject, signal, OnInit, OnDestroy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
-import type { ProcessingSettings, ProcessingStatus } from '../../../types/core';
+import type { ProcessingSettings, ProcessingStatus, ProcessingTaskId } from '../../../types/core';
 import { ApiService, type StreamingSettings } from '../../services/api.service';
 import { AuthService } from '../../services/auth.service';
 import { ServerConfigService } from '../../services/server-config.service';
@@ -148,7 +148,7 @@ export class SettingsComponent implements OnInit, OnDestroy {
     return s ? totalPending(s) : 0;
   }
   /** Availability reason for a task, or '' when runnable. */
-  taskUnavailable(task: 'bpm' | 'genre'): string {
+  taskUnavailable(task: ProcessingTaskId): string {
     const a = this.processingStatus()?.availability[task];
     return a === true || a === undefined ? '' : a;
   }
@@ -219,7 +219,7 @@ export class SettingsComponent implements OnInit, OnDestroy {
   }
 
   /** Toggle a per-task flag and persist immediately. */
-  toggleProcessingTask(task: 'bpm' | 'genre'): void {
+  toggleProcessingTask(task: ProcessingTaskId): void {
     const current = this.processing();
     if (!current) return;
     void this.saveProcessing({

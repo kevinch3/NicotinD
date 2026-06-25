@@ -7,11 +7,17 @@ let db: Database;
 
 function seedSong(
   id: string,
-  opts: { artist?: string; title?: string; bpm?: number | null; genre?: string | null } = {},
+  opts: {
+    artist?: string;
+    title?: string;
+    bpm?: number | null;
+    genre?: string | null;
+    key?: string | null;
+  } = {},
 ): void {
   db.run(
-    `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, size, bit_rate, suffix, content_type, created, synced_at, bpm, genre)
-     VALUES (?, 'alb', ?, ?, 'art', 0, ?, 10, 320, 'opus', 'audio/opus', '2024-01-01', 1, ?, ?)`,
+    `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, size, bit_rate, suffix, content_type, created, synced_at, bpm, genre, key)
+     VALUES (?, 'alb', ?, ?, 'art', 0, ?, 10, 320, 'opus', 'audio/opus', '2024-01-01', 1, ?, ?, ?)`,
     [
       id,
       opts.title ?? `T-${id}`,
@@ -19,6 +25,7 @@ function seedSong(
       `${opts.artist ?? 'Artist'}/Album/${id}.opus`,
       opts.bpm ?? null,
       opts.genre ?? null,
+      opts.key ?? null,
     ],
   );
 }
@@ -32,6 +39,7 @@ function ctx(overrides: Partial<EnrichmentContext> = {}): EnrichmentContext {
     readTags: async () => ({}),
     writeTags: async () => true,
     analyzeBpm: async () => 120,
+    analyzeKey: async () => 'C major',
     lookupGenre: async () => 'Rock',
     fileExists: () => true,
     ...overrides,
@@ -150,8 +158,56 @@ describe('genre task', () => {
   });
 });
 
+describe('key task', () => {
+  const key = getTask('key')!;
+
+  it('is unavailable without ffmpeg', () => {
+    expect(key.available(ctx({ ffmpegAvailable: () => false }))).toBe('ffmpeg not found on PATH');
+    expect(key.available(ctx())).toBe(true);
+  });
+
+  it('counts only songs with NULL/empty key', () => {
+    seedSong('a');
+    seedSong('b', { key: 'A minor' });
+    seedSong('c');
+    expect(key.countPending(db)).toBe(2);
+  });
+
+  it('analyzes pending songs and writes the analyzed key to the tag', async () => {
+    seedSong('a');
+    let wrote = 0;
+    const c = ctx({
+      analyzeKey: async () => 'G major',
+      writeTags: async () => ((wrote += 1), true),
+    });
+    const res = await key.run(db, c, 25);
+    expect(res.applied).toBe(1);
+    expect(wrote).toBe(1);
+    const row = db
+      .query<{ key: string }, [string]>('SELECT key FROM library_songs WHERE id = ?')
+      .get('a');
+    expect(row?.key).toBe('G major');
+  });
+
+  it('prefers an existing tag key and does not re-analyze', async () => {
+    seedSong('a');
+    let analyzed = 0;
+    const c = ctx({
+      readTags: async () => ({ key: 'F# minor' }),
+      analyzeKey: async () => ((analyzed += 1), 'C major'),
+    });
+    const res = await key.run(db, c, 25);
+    expect(res.applied).toBe(1);
+    expect(analyzed).toBe(0);
+    const row = db
+      .query<{ key: string }, [string]>('SELECT key FROM library_songs WHERE id = ?')
+      .get('a');
+    expect(row?.key).toBe('F# minor');
+  });
+});
+
 describe('registry', () => {
-  it('exposes bpm and genre tasks', () => {
-    expect(ENRICHMENT_TASKS.map((t) => t.id).sort()).toEqual(['bpm', 'genre']);
+  it('exposes bpm, genre and key tasks', () => {
+    expect(ENRICHMENT_TASKS.map((t) => t.id).sort()).toEqual(['bpm', 'genre', 'key']);
   });
 });

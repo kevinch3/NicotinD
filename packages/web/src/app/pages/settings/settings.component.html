@@ -210,6 +210,17 @@
                       (change)="toggleProcessingTask('genre')"
                       class="w-4 h-4 rounded accent-emerald-500" />
                   </label>
+                  <label class="flex items-center justify-between gap-4">
+                    <span class="text-sm text-theme-primary">Musical key
+                      @if (taskUnavailable('key'); as reason) {
+                        <span class="block text-xs text-amber-500">{{ reason }}</span>
+                      }
+                    </span>
+                    <input type="checkbox" [checked]="p.tasks.key" [disabled]="processingSaving()"
+                      data-testid="processing-task-key"
+                      (change)="toggleProcessingTask('key')"
+                      class="w-4 h-4 rounded accent-emerald-500" />
+                  </label>
                 </div>
 
                 <!-- Progress -->

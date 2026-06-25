@@ -27,6 +27,8 @@ export interface AudioTags {
   genre?: string;
   /** Beats per minute (TBPM / Vorbis `BPM`). Written by on-demand track analysis. */
   bpm?: number;
+  /** Musical key (TKEY / Vorbis `KEY`). Written by on-demand/windowed key analysis. */
+  key?: string;
   /** Plain-text lyrics (ID3 USLT / Vorbis `LYRICS`). Written by on-demand lyrics fetch/edit. */
   lyrics?: string;
   compilation?: boolean;
@@ -55,6 +57,7 @@ type MusicMetadataApi = {
       title?: string;
       track?: { no?: number | null };
       year?: number;
+      key?: string;
       acoustid_id?: string;
       musicbrainz_recordingid?: string;
       musicbrainz_albumid?: string;
@@ -85,7 +88,9 @@ function readId3Lyrics(raw: Record<string, unknown>): string | undefined {
 }
 
 /** music-metadata returns `common.lyrics` as strings or `{ text }` objects. */
-function readVorbisLyrics(lyrics: Array<string | { text?: string }> | string | undefined): string | undefined {
+function readVorbisLyrics(
+  lyrics: Array<string | { text?: string }> | string | undefined,
+): string | undefined {
   if (!lyrics) return undefined;
   if (typeof lyrics === 'string') return pickString(lyrics);
   const first = lyrics[0];
@@ -154,6 +159,7 @@ export async function readAudioTags(filepath: string): Promise<AudioTags> {
         title: pickString(d.title),
         trackNumber: parseTrackNumber(d.trackNumber),
         year: parseYear(d.year),
+        key: pickString(d.initialKey),
         compilation: d.TCMP === '1' || d.compilation === '1',
         lyrics: readId3Lyrics(d),
         acoustIdId: readUserText(d, TXXX_ACOUSTID),
@@ -177,6 +183,7 @@ export async function readAudioTags(filepath: string): Promise<AudioTags> {
         title: pickString(c.title),
         trackNumber: c.track?.no ?? undefined,
         year: c.year,
+        key: pickString(c.key),
         lyrics: readVorbisLyrics(c.lyrics),
         acoustIdId: pickString(c.acoustid_id),
         mbRecordingId: pickString(c.musicbrainz_recordingid),
@@ -208,6 +215,7 @@ async function writeId3Tags(filepath: string, tags: AudioTags): Promise<boolean>
   if (tags.year !== undefined) update.year = String(tags.year);
   if (tags.genre !== undefined) update.genre = tags.genre;
   if (tags.bpm !== undefined) update.bpm = String(tags.bpm);
+  if (tags.key !== undefined) update.initialKey = tags.key;
   if (tags.lyrics !== undefined)
     update.unsynchronisedLyrics = { language: 'eng', text: tags.lyrics };
   if (tags.compilation) update.TCMP = '1';
@@ -239,6 +247,7 @@ function writeFfmpegTags(filepath: string, tags: AudioTags): Promise<boolean> {
   if (tags.year !== undefined) metaArgs.push('-metadata', `DATE=${tags.year}`);
   if (tags.genre !== undefined) metaArgs.push('-metadata', `GENRE=${tags.genre}`);
   if (tags.bpm !== undefined) metaArgs.push('-metadata', `BPM=${tags.bpm}`);
+  if (tags.key !== undefined) metaArgs.push('-metadata', `KEY=${tags.key}`);
   if (tags.lyrics !== undefined) metaArgs.push('-metadata', `LYRICS=${tags.lyrics}`);
   if (tags.compilation) metaArgs.push('-metadata', 'COMPILATION=1');
   if (tags.acoustIdId) metaArgs.push('-metadata', `ACOUSTID_ID=${tags.acoustIdId}`);

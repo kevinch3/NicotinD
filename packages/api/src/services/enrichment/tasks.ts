@@ -2,7 +2,11 @@ import type { Database } from 'bun:sqlite';
 import { existsSync } from 'node:fs';
 import type { Lidarr } from '@nicotind/lidarr-client';
 import type { ProcessingTaskId } from '@nicotind/core';
-import { analyzeBpm as realAnalyzeBpm, verifyGenre as realVerifyGenre } from '../track-analysis.js';
+import {
+  analyzeBpm as realAnalyzeBpm,
+  analyzeKey as realAnalyzeKey,
+  verifyGenre as realVerifyGenre,
+} from '../track-analysis.js';
 import { readAudioTags, writeAudioTags } from '../audio-tags.js';
 import { ffmpegAvailable as realFfmpegAvailable } from '../transcode.js';
 import { resolveSongAbsPath, planGenreBackfill } from '../track-backfill.js';
@@ -32,9 +36,14 @@ export interface EnrichmentContext {
   /** Worker-pool size for parallelisable tasks (BPM). */
   concurrency: number;
   ffmpegAvailable: () => boolean;
-  readTags: (abs: string) => Promise<{ bpm?: number; genre?: string }>;
-  writeTags: (abs: string, tags: { bpm?: number; genre?: string }) => Promise<boolean>;
+  readTags: (abs: string) => Promise<{ bpm?: number; genre?: string; key?: string }>;
+  writeTags: (
+    abs: string,
+    tags: { bpm?: number; genre?: string; key?: string },
+  ) => Promise<boolean>;
   analyzeBpm: (abs: string) => Promise<number | null>;
+  /** Detect the musical key (e.g. "C major"), or null when undetectable. */
+  analyzeKey: (abs: string) => Promise<string | null>;
   /** Returns the suggested genre for an artist, or null when unavailable. */
   lookupGenre: (artist: string) => Promise<string | null>;
   fileExists: (abs: string) => boolean;
@@ -71,6 +80,7 @@ export function createEnrichmentContext(deps: {
     readTags: (abs) => readAudioTags(abs),
     writeTags: (abs, tags) => writeAudioTags(abs, tags),
     analyzeBpm: (abs) => realAnalyzeBpm(abs),
+    analyzeKey: (abs) => realAnalyzeKey(abs),
     lookupGenre: async (artist) => {
       const r = await realVerifyGenre(deps.lidarr, { artist, currentGenre: null });
       return r.suggested;
@@ -174,8 +184,66 @@ const genreTask: EnrichmentTask = {
   },
 };
 
+const keyTask: EnrichmentTask = {
+  id: 'key',
+  label: 'Musical key',
+  available: (ctx) => (ctx.ffmpegAvailable() ? true : 'ffmpeg not found on PATH'),
+  countPending: (db) =>
+    Number(
+      (
+        db
+          .query<
+            { n: number },
+            []
+          >("SELECT COUNT(*) AS n FROM library_songs WHERE key IS NULL OR key = ''")
+          .get() ?? { n: 0 }
+      ).n,
+    ),
+  run: async (db, ctx, limit) => {
+    const rows = db
+      .query<
+        SongRow,
+        [number]
+      >("SELECT id, path, artist, title FROM library_songs WHERE key IS NULL OR key = '' ORDER BY created DESC LIMIT ?")
+      .all(limit);
+
+    const labels: string[] = [];
+    let applied = 0;
+    let cursor = 0;
+    const worker = async (): Promise<void> => {
+      for (;;) {
+        const idx = cursor++;
+        if (idx >= rows.length) return;
+        const song = rows[idx]!;
+        const abs = resolveSongAbsPath(ctx.musicDir, song.path);
+        if (!ctx.fileExists(abs)) continue;
+        let key: string | null = null;
+        let fromTag = false;
+        try {
+          const tags = await ctx.readTags(abs);
+          if (tags.key) {
+            key = tags.key;
+            fromTag = true;
+          } else {
+            key = await ctx.analyzeKey(abs);
+          }
+        } catch {
+          key = null;
+        }
+        if (!key) continue;
+        db.run('UPDATE library_songs SET key = ? WHERE id = ?', [key, song.id]);
+        if (!fromTag) await ctx.writeTags(abs, { key }).catch(() => false);
+        applied++;
+        labels.push(`${song.artist} — ${song.title} → ${key}`);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.max(1, ctx.concurrency) }, () => worker()));
+    return { applied, labels };
+  },
+};
+
 /** All registered enrichment tasks, in run order. */
-export const ENRICHMENT_TASKS: readonly EnrichmentTask[] = [bpmTask, genreTask];
+export const ENRICHMENT_TASKS: readonly EnrichmentTask[] = [bpmTask, genreTask, keyTask];
 
 export function getTask(id: ProcessingTaskId): EnrichmentTask | undefined {
   return ENRICHMENT_TASKS.find((t) => t.id === id);
