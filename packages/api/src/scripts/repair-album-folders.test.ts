@@ -76,4 +76,22 @@ describe('planTrackKeepers', () => {
     ]);
     expect(drop.map((d) => d.name)).toEqual(['02 - Song.mp3']);
   });
+
+  it('--no-trim path (no canonical list) keeps distinct remixes/edits that trimming would drop', () => {
+    // The exact files that the canonical-list path (first test) drops as alt mixes
+    // must SURVIVE when no canonical list is passed — this is the `--no-trim`
+    // guarantee that a bulk repair pass never loses non-canonical versions.
+    const files = [
+      file('02 - Song Two.flac'),
+      file('02 - Song Two (5.1 mix).flac'),
+      file('02 - Song Two (New Mix).flac'),
+    ];
+    const { keep, drop } = planTrackKeepers(files);
+    expect(drop).toHaveLength(0);
+    expect(keep.map((k) => k.name).sort()).toEqual([
+      '02 - Song Two (5.1 mix).flac',
+      '02 - Song Two (New Mix).flac',
+      '02 - Song Two.flac',
+    ]);
+  });
 });
