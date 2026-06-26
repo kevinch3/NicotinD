@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.115](https://github.com/kevinch3/NicotinD/compare/v0.1.114...v0.1.115) (2026-06-26)
+
+
+### Features
+
+* **scripts:** add --no-trim to repair-album-folders (consolidate without dropping remixes) ([bc52f36](https://github.com/kevinch3/NicotinD/commit/bc52f360b0f6628777b7eb88a65265a4fdf118ac))
+
 ## [0.1.114](https://github.com/kevinch3/NicotinD/compare/v0.1.113...v0.1.114) (2026-06-25)
 
 
