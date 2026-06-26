@@ -129,14 +129,54 @@ describe('transcodeLibraryToOpus', () => {
       expect(newRow?.hidden).toBe(1);
 
       // Playlist + acquisition re-pointed to the new id/path.
-      const pl = db
-        .query<{ song_id: string }, []>('SELECT song_id FROM playlist_songs')
-        .get();
+      const pl = db.query<{ song_id: string }, []>('SELECT song_id FROM playlist_songs').get();
       expect(pl?.song_id).toBe(newId);
       const acq = db
         .query<{ relative_path: string }, []>('SELECT relative_path FROM acquisitions')
         .get();
       expect(acq?.relative_path).toBe(newRel);
+    },
+  );
+
+  it.skipIf(!ffmpegAvailable())(
+    'survives a pre-existing acquisitions row at the opus path (dup) instead of crashing on the PK',
+    async () => {
+      const music = tmpMusic();
+      const db = new Database(':memory:');
+      applySchema(db);
+
+      const rel = 'Aphex Twin/Drukqs/01 - Avril 14th.flac';
+      makeFlac(music, rel, 'Avril 14th');
+      const oldId = seedSongRow(db, rel);
+
+      const newRel = 'Aphex Twin/Drukqs/01 - Avril 14th.opus';
+      // Provenance for BOTH the lossless source and a pre-existing opus dup. The
+      // re-point used to collide on the relative_path PK and abort the migration.
+      db.run(
+        "INSERT INTO acquisitions (relative_path, method, source_ref, stage, started_at) VALUES (?, 'slskd', 'flac-peer', 'done', 1)",
+        [rel],
+      );
+      db.run(
+        "INSERT INTO acquisitions (relative_path, method, source_ref, stage, started_at) VALUES (?, 'slskd', 'opus-peer', 'done', 1)",
+        [newRel],
+      );
+
+      const r = await transcodeLibraryToOpus(db, music, { apply: true, bitRate: 96 });
+      expect(r.converted).toBe(1);
+      expect(r.failed).toBe(0);
+
+      // Exactly one acquisitions row remains at the opus path — the pre-existing
+      // one is kept, the stale lossless row dropped.
+      expect(db.query('SELECT id FROM library_songs WHERE id = ?').get(oldId)).toBeNull();
+      const acqs = db
+        .query<
+          { relative_path: string; source_ref: string },
+          []
+        >('SELECT relative_path, source_ref FROM acquisitions')
+        .all();
+      expect(acqs).toHaveLength(1);
+      expect(acqs[0]?.relative_path).toBe(newRel);
+      expect(acqs[0]?.source_ref).toBe('opus-peer');
     },
   );
 

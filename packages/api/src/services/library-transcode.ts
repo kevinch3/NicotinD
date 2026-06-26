@@ -89,7 +89,10 @@ export async function transcodeLibraryToOpus(
       continue;
     }
 
-    const newRel = newAbs.slice(musicDir.length).replace(/^[/\\]+/, '').replace(/\\/g, '/');
+    const newRel = newAbs
+      .slice(musicDir.length)
+      .replace(/^[/\\]+/, '')
+      .replace(/\\/g, '/');
     const newId = songId(newRel);
     const newSize = existsSync(newAbs) ? statSync(newAbs).size : 0;
 
@@ -107,7 +110,22 @@ export async function transcodeLibraryToOpus(
       ]);
       // Re-point playlist + acquisition references (no FK on song_id).
       db.run('UPDATE OR IGNORE playlist_songs SET song_id = ? WHERE song_id = ?', [newId, row.id]);
-      db.run('UPDATE acquisitions SET relative_path = ? WHERE relative_path = ?', [newRel, row.path]);
+      // The lossless file may have a pre-existing opus duplicate whose provenance
+      // row already sits at `newRel` (the relative_path PK). A plain UPDATE would
+      // collide (SQLITE_CONSTRAINT_PRIMARYKEY) and abort the whole migration, so
+      // keep the existing target row and drop the now-stale lossless one; only
+      // re-point when the opus path has no row yet.
+      const targetExists = db
+        .query('SELECT 1 FROM acquisitions WHERE relative_path = ?')
+        .get(newRel);
+      if (targetExists) {
+        db.run('DELETE FROM acquisitions WHERE relative_path = ?', [row.path]);
+      } else {
+        db.run('UPDATE acquisitions SET relative_path = ? WHERE relative_path = ?', [
+          newRel,
+          row.path,
+        ]);
+      }
     })();
 
     result.converted += 1;
