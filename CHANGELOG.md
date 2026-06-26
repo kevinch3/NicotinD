@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.116](https://github.com/kevinch3/NicotinD/compare/v0.1.115...v0.1.116) (2026-06-26)
+
+
+### Bug Fixes
+
+* **transcode:** don't crash library migration on a pre-existing opus acquisitions row ([4e1b044](https://github.com/kevinch3/NicotinD/commit/4e1b044a660a38848ba32b7c88790835c786b649))
+
 ## [0.1.115](https://github.com/kevinch3/NicotinD/compare/v0.1.114...v0.1.115) (2026-06-26)
 
 
