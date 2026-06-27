@@ -83,6 +83,13 @@ sources (archive.org, Spotify, future). The user sees one list either way.
 5. Do **not** add a new route or a new UI section. If you find yourself adding a
    "From <source>" lane, stop — it belongs in the blended list.
 
+## Unified search
+
+`GET /api/search?q=` queries the local library first (`LibrarySearchProvider`) and fires the slskd network search in parallel. Local results render above a divider, network/other-source results below.
+
+- **Artist links resolve even for not-yet-local results.** Local song hits carry `artistId` (selected from `library_songs.artist_id`, threaded through `SearchProviderResult.songs` → `toTrack`) so a track played from search resolves the player's now-playing **"Go to artist"** link to the real artist page. **Network (slskd) hits have no `artistId`** (the artist isn't local yet), so the now-playing + downloads artist links resolve **by name** via `GET /api/library/artists/by-name?name=` (diacritic-insensitive lookup against `library_artists`; the pure `resolveArtistTarget()` in `lib/route-utils.ts`): known id → artist page, else a name that resolves to a local artist → their page, else `/library` (downloads falls back to a name search instead).
+- **Network song hits are blended, not a separate lane.** `lib/song-results.ts` `groupBySong()` (dedupe + best-copy pick: FLAC > other lossless > highest-bitrate lossy, then peer availability) feeds `songResultToCandidate` and is merged into the **one source-agnostic Results list** (`data-testid="results"`, rows `acquire-result` + `source-chip`) alongside archive.org/Spotify candidates (from `GET /api/sources/search`), each with a single Get. The raw folder-tree browser stays under the demoted "Advanced" disclosure for whole-album peer grabs. The source-status line (`data-testid="source-status"`) is neutral ("Sources: …").
+
 ## Known follow-ups
 
 - **Unattended watchlist auto-download stays Soulseek-only** for now: it needs
