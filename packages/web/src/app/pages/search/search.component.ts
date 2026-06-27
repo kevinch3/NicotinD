@@ -5,6 +5,7 @@ import { firstValueFrom } from 'rxjs';
 import {
   ApiService,
   type CatalogAlbum,
+  type CatalogArtist,
   type CatalogSearchResult,
   type DiscographyAlbum,
 } from '../../services/api.service';
@@ -452,11 +453,16 @@ export class SearchComponent implements OnInit, OnDestroy {
 
   // ─── Catalog (metadata) results ─────────────────────────────────
 
-  // Re-run the search scoped to an artist so album.lookup surfaces their
-  // releases (there is no discography page for non-library artists).
-  searchArtist(name: string): void {
-    this.search.setQuery(name);
-    this.executeSearch();
+  // Artist pill click: navigate to the local library page if this artist is
+  // already downloaded, otherwise load their full Lidarr discography as album
+  // cards — much more useful than re-running the same search query.
+  async activateArtist(artist: CatalogArtist): Promise<void> {
+    const localId = await firstValueFrom(this.api.resolveArtistIdByName(artist.name));
+    if (localId) {
+      void this.router.navigate(['/library/artists', localId]);
+      return;
+    }
+    await this.doLoadDiscography(artist.mbid, artist.name);
   }
 
   // §A6 deep fix: load the matched artist's real discography on demand. The
@@ -465,12 +471,18 @@ export class SearchComponent implements OnInit, OnDestroy {
   async loadDiscography(): Promise<void> {
     const cat = this.catalog();
     const mbid = scopedArtistMbid(cat);
-    if (!cat?.scopedArtist || mbid === null || this.loadingDiscography()) return;
+    if (!cat?.scopedArtist || mbid === null) return;
+    await this.doLoadDiscography(mbid, cat.scopedArtist);
+  }
+
+  private async doLoadDiscography(mbid: string, artistName: string): Promise<void> {
+    if (this.loadingDiscography()) return;
     this.loadingDiscography.set(true);
     this.resolveError.set(null);
     try {
-      const loaded = await firstValueFrom(this.api.catalogDiscography(mbid, cat.scopedArtist));
-      this.catalog.set(applyDiscography(cat, loaded));
+      const loaded = await firstValueFrom(this.api.catalogDiscography(mbid, artistName));
+      const cat = this.catalog();
+      this.catalog.set(cat ? applyDiscography(cat, loaded) : loaded);
       this.directSearchOpen.set(shouldOpenDirectSearch(this.catalog()));
     } catch (err) {
       this.resolveError.set(httpErrorMessage(err, "Couldn't load the artist's discography"));
@@ -528,15 +540,20 @@ export class SearchComponent implements OnInit, OnDestroy {
 
   // Raw-string network fallback for an album missing from Lidarr's discography:
   // search Soulseek for "<artist> <album>" and open the network lane so the user
-  // gets folder candidates to download. Mirrors the §A auto-open-network pattern.
+  // gets folder candidates to download. Also loads the artist's full discography
+  // so real album cards reappear alongside the network results.
   private rawHuntFallback(album: CatalogAlbum): void {
     this.resolvingAlbum.set(null);
     this.search.setQuery(`${album.artistName} ${album.title}`.trim());
     // executeSearch runs its synchronous reset (clearing the note) before its first
     // await, so set the note *after* kicking it off and it survives the run.
-    void this.executeSearch({ forceDirectOpen: true });
+    // After the search settles, reload the artist's full discography so album cards
+    // appear alongside the network results.
+    void this.executeSearch({ forceDirectOpen: true }).then(() => {
+      void this.doLoadDiscography(album.artistMbid, album.artistName);
+    });
     this.rawFallbackNote.set(
-      `"${album.title}" isn't in ${album.artistName}'s catalog yet — searching the network for it instead.`,
+      `"${album.title}" isn't in ${album.artistName}'s Lidarr catalog — showing network results and their full discography below.`,
     );
   }
 
