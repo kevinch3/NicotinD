@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.117](https://github.com/kevinch3/NicotinD/compare/v0.1.116...v0.1.117) (2026-06-27)
+
+
+### Features
+
+* **search:** artist pill opens the artist or loads their discography ([9eef0c3](https://github.com/kevinch3/NicotinD/commit/9eef0c3ab9e181915e6d0eff40bf2c5b00778c70))
+
 ## [0.1.116](https://github.com/kevinch3/NicotinD/compare/v0.1.115...v0.1.116) (2026-06-26)
 
 
