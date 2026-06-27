@@ -77,6 +77,8 @@ Returns `{ candidates, converted, skipped, failed, bytesReclaimed }`.
 
 It then **synchronously** deletes the canonical rows (`library_songs`, `library_albums`, `completed_downloads`) in one transaction. No tombstone/async-scan reconciliation needed: the native scanner reads disk directly and the files are gone, so a later rescan can't resurrect the album.
 
+The same transaction also **prunes the now-orphaned aggregate rows** so a deleted album doesn't linger until the next *full* scan: the `library_artists` row (deleted if no releases/songs remain, else its `album_count` corrected — via the shared `pruneOrphanArtist`, `services/library-aggregates.ts`, also reused by the metadata-fix re-point), the album's `library_artwork` row, and an emptied `library_genres` row. So deleting an artist's only release also removes the artist from search and the empty artist page immediately.
+
 ---
 
 ## Untracked downloads (legacy `relative_path`)
@@ -85,11 +87,11 @@ Rows predating the organizer have `relative_path IS NULL` and are invisible to d
 
 ---
 
-## URL acquisition (yt-dlp / spotdl)
+## URL acquisition (yt-dlp / spotdl / archive.org)
 
-`AcquireWatcher` (`packages/api/src/services/acquire-watcher.ts`) + `YtdlpService` (`ytdlp.service.ts`) download audio from a pasted/shared URL (`POST /api/acquire`, backend auto-detected: `spotify.com` → spotdl, else yt-dlp), stage it, then run it through the **same shared `LibraryOrganizer` + incremental scan** as Soulseek downloads.
+`POST /api/acquire` routes a pasted/shared URL to an enabled `resolve`-capable **plugin** via `registry.getEnabledForUrl()` — **no hardcoded backend detection** (the old `detectBackend` enum that special-cased `spotify.com → spotdl, else yt-dlp` is gone). The resolve plugins are **yt-dlp**, **spotdl**, and the pure-JS **archive.org** backend (pasting an `archive.org` item URL routes to the last). Plugins **stage files only**; `AcquireWatcher` (`packages/api/src/services/acquire-watcher.ts`) owns the job records + ingest, running staged files through the **same shared `LibraryOrganizer` + incremental scan** as Soulseek downloads. The route returns **503** when no enabled plugin can handle/serve the URL. → See [plugins.md](plugins.md) for the plugin model.
 
-Availability is gated by **both** the `acquire.{ytdlp,spotdl}.enabled` config flag **and** the binary being present on PATH (`isBinaryAvailable`, cached) — the route returns 503 otherwise. Both default **on** (`config/default.yml`); the production **Dockerfile installs `yt-dlp` + `spotdl`** via pip.
+Availability is gated by **both** the plugin's enable-state **and** (for yt-dlp/spotdl) the binary being present on PATH (`isBinaryAvailable`, cached). The production **Dockerfile installs `yt-dlp` + `spotdl`** via pip.
 
 Historical gotcha: the `enabled` flag used to be dead config — only binary presence was checked — and the image shipped neither binary, so acquisition always 503'd; both are fixed.
 
