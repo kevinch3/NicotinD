@@ -176,11 +176,26 @@ describe('MediaControlsService — web (@jofr) path', () => {
     expect(jofr.thenProbe).not.toHaveBeenCalled();
   });
 
-  it('routes metadata to @jofr on web (mapped through, not the native shape)', async () => {
+  it('routes metadata to @jofr on web, testing artwork URLs first', async () => {
+    const OriginalImage = globalThis.Image;
+    globalThis.Image = class {
+      onload?: () => void;
+      _src = '';
+      set src(val: string) {
+        this._src = val;
+        if (this.onload) this.onload();
+      }
+      get src() { return this._src; }
+    } as any;
+
     new MediaControlsService().setMetadata(META);
     await flush();
+    
+    expect(jofr.session.setMetadata).toHaveBeenCalledWith({ ...META, artwork: [] });
     expect(jofr.session.setMetadata).toHaveBeenCalledWith(META);
     expect(jofr.thenProbe).not.toHaveBeenCalled();
+
+    globalThis.Image = OriginalImage;
   });
 
   it('has no native diagnostics on web', async () => {

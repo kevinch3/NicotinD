@@ -133,7 +133,25 @@ export class MediaControlsService {
       });
       return;
     }
-    this.run((s) => s.setMetadata(meta));
+
+    // Android/Web: guard against a 404 cover URL killing the app.
+    // The @jofr plugin synchronously fetches the URL on the Capacitor thread;
+    // if it 404s, Java's HttpURLConnection throws FileNotFoundException,
+    // crashing the app. Test the URL first via an Image object.
+    if (!meta.artwork || meta.artwork.length === 0) {
+      this.run((s) => s.setMetadata(meta));
+      return;
+    }
+
+    // Set metadata without artwork immediately so controls stay responsive
+    this.run((s) => s.setMetadata({ ...meta, artwork: [] }));
+
+    const img = new Image();
+    img.onload = () => {
+      // If the image resolves, we're safe to pass it to the native plugin
+      this.run((s) => s.setMetadata(meta));
+    };
+    img.src = meta.artwork[0].src;
   }
 
   setPlaybackState(state: 'playing' | 'paused' | 'none'): void {

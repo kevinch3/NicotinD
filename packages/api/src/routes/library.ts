@@ -254,7 +254,7 @@ function rowToSong(r: SongRow): Song {
     track: r.track ?? undefined,
     year: r.year ?? undefined,
     genre: r.genre ?? undefined,
-    coverArt: r.cover_art ?? r.album_cover_art ?? undefined,
+    coverArt: r.cover_art ?? r.album_cover_art ?? r.album_id,
     size: r.size ?? 0,
     contentType: r.content_type ?? '',
     suffix: r.suffix ?? '',
