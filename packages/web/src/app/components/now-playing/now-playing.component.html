@@ -85,6 +85,22 @@
                 <path d="M21 16V9l-3 1" />
               </svg>
             </button>
+            <!-- Karaoke fullscreen toggle -->
+            <button
+              (click)="toggleKaraokeMode()"
+              data-testid="now-playing-karaoke-toggle"
+              aria-label="Karaoke mode"
+              title="Karaoke mode"
+              [attr.aria-pressed]="karaokeMode()"
+              [class]="'shrink-0 transition ' + (karaokeMode() ? 'text-emerald-400' : 'text-zinc-500 hover:text-zinc-200')"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 18.5A3.5 3.5 0 1 0 8.5 15H12Z" />
+                <path d="M12 2v13" />
+                <path d="M17 5H12" />
+                <rect x="2" y="2" width="20" height="20" rx="3" />
+              </svg>
+            </button>
           </div>
           <p
             class="text-sm text-zinc-400 truncate mt-1 cursor-pointer select-none hover:underline hover:text-zinc-200 transition"
@@ -241,7 +257,7 @@
         }
 
         <!-- Lyrics panel (replaces the queue while open) -->
-        @if (lyricsOpen()) {
+        @if (lyricsOpen() && !karaokeMode()) {
           <div class="flex-1 min-h-0 flex flex-col px-4 overflow-hidden" data-testid="now-playing-lyrics">
             @if (lyricsLoading()) {
               <p class="text-sm text-zinc-500 px-2">Loading lyrics…</p>
@@ -303,6 +319,140 @@
             </div>
           }
         </div>
+        }
+
+        <!-- Fullscreen karaoke overlay -->
+        @if (karaokeMode()) {
+          <div
+            class="fixed inset-0 z-[70] flex flex-col transition-opacity duration-500"
+            [style.background]="'linear-gradient(135deg, ' + coverColors().primary + ' 0%, ' + coverColors().secondary + ' 50%, ' + coverColors().primary + ' 100%)'"
+            data-testid="karaoke-overlay"
+          >
+            <!-- Animated background glow orbs -->
+            <div class="absolute inset-0 overflow-hidden pointer-events-none">
+              <div
+                class="absolute w-[60vw] h-[60vw] rounded-full opacity-20 blur-[80px] animate-pulse"
+                [style.background]="coverColors().glow"
+                style="top: -10%; left: -10%; animation-duration: 6s;"
+              ></div>
+              <div
+                class="absolute w-[50vw] h-[50vw] rounded-full opacity-15 blur-[60px] animate-pulse"
+                [style.background]="coverColors().secondary"
+                style="bottom: -5%; right: -10%; animation-duration: 8s; animation-delay: 2s;"
+              ></div>
+              <div
+                class="absolute w-[30vw] h-[30vw] rounded-full opacity-10 blur-[50px] animate-pulse"
+                [style.background]="coverColors().glow"
+                style="top: 40%; left: 60%; animation-duration: 10s; animation-delay: 4s;"
+              ></div>
+            </div>
+
+            <!-- Karaoke header -->
+            <div class="relative z-10 flex items-center justify-between px-6 pt-4 pb-2">
+              <button
+                (click)="toggleKaraokeMode()"
+                class="w-10 h-10 flex items-center justify-center text-white/60 hover:text-white transition rounded-full hover:bg-white/10"
+                aria-label="Exit karaoke"
+              >
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M18 6L6 18" />
+                  <path d="M6 6l12 12" />
+                </svg>
+              </button>
+              <div class="text-center flex-1 min-w-0 px-4">
+                <p class="text-sm font-medium text-white/90 truncate">{{ track.title }}</p>
+                <p class="text-xs text-white/50 truncate">{{ track.artist }}</p>
+              </div>
+              <div class="w-10"></div> <!-- spacer for centering -->
+            </div>
+
+            <!-- Lyrics body -->
+            <div class="relative z-10 flex-1 min-h-0 flex flex-col items-center justify-center px-4 overflow-hidden">
+              @if (lyricsLoading()) {
+                <p class="text-lg text-white/40">Loading lyrics…</p>
+              } @else if (lyricLines().length > 0) {
+                <div
+                  #karaokeLyrics
+                  class="w-full max-w-2xl overflow-y-auto pb-[40vh] pt-[40vh] scroll-smooth karaoke-scroll"
+                  style="mask-image: linear-gradient(transparent 0%, black 25%, black 75%, transparent 100%); -webkit-mask-image: linear-gradient(transparent 0%, black 25%, black 75%, transparent 100%);"
+                >
+                  @for (line of lyricLines(); track $index) {
+                    <p
+                      data-karaoke-line
+                      [class]="'text-center py-3 transition-all duration-500 ease-out select-none ' +
+                        ($index === activeLine()
+                          ? 'text-3xl md:text-4xl font-bold text-white scale-105 drop-shadow-lg'
+                          : $index === activeLine() - 1 || $index === activeLine() + 1
+                            ? 'text-xl md:text-2xl text-white/40'
+                            : 'text-lg md:text-xl text-white/20')"
+                      [style.transform]="$index === activeLine() ? 'scale(1.05)' : 'scale(1)'"
+                    >
+                      {{ line.text || '♪' }}
+                    </p>
+                  }
+                </div>
+              } @else if (plainLyrics()) {
+                <pre class="max-w-xl text-center text-lg text-white/70 whitespace-pre-wrap font-sans overflow-y-auto pb-4">{{ plainLyrics() }}</pre>
+              } @else {
+                <div class="text-center">
+                  <p class="text-xl text-white/30 mb-2">No lyrics available</p>
+                  <p class="text-sm text-white/15">Lyrics will appear here when synced lyrics are found</p>
+                </div>
+              }
+            </div>
+
+            <!-- Karaoke transport controls -->
+            <div class="relative z-10 px-6 pb-6 pt-2">
+              <!-- Seek bar -->
+              <div class="max-w-md mx-auto mb-3">
+                <app-seek-bar
+                  [position]="safeProgress()"
+                  [duration]="safeDuration()"
+                  (seek)="onSeek($event)"
+                />
+                <div class="flex justify-between mt-1">
+                  <span class="text-xs text-white/40">{{ formatTime(safeProgress()) }}</span>
+                  <span class="text-xs text-white/40">{{ formatTime(safeDuration()) }}</span>
+                </div>
+              </div>
+              <!-- Controls -->
+              <div class="flex items-center justify-center gap-6">
+                <button
+                  (click)="handlePrev()"
+                  class="w-10 h-10 flex items-center justify-center text-white/60 hover:text-white transition"
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                    <rect x="3" y="5" width="3" height="14" />
+                    <polygon points="21,5 9,12 21,19" />
+                  </svg>
+                </button>
+                <button
+                  (click)="handlePlayPause()"
+                  class="w-14 h-14 rounded-full bg-white/20 backdrop-blur-sm text-white flex items-center justify-center hover:bg-white/30 transition border border-white/10"
+                >
+                  @if (showPlaying()) {
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                      <rect x="6" y="4" width="4" height="16" />
+                      <rect x="14" y="4" width="4" height="16" />
+                    </svg>
+                  } @else {
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                      <polygon points="6,3 20,12 6,21" />
+                    </svg>
+                  }
+                </button>
+                <button
+                  (click)="handleNext()"
+                  class="w-10 h-10 flex items-center justify-center text-white/60 hover:text-white transition"
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                    <polygon points="3,5 15,12 3,19" />
+                    <rect x="18" y="5" width="3" height="14" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
         }
       </div>
     }

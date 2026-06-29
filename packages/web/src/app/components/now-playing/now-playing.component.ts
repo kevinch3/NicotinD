@@ -1,4 +1,4 @@
-import { Component, inject, signal, computed, effect } from '@angular/core';
+import { Component, inject, signal, computed, effect, ElementRef, viewChild } from '@angular/core';
 import { Router } from '@angular/router';
 import { PlayerService } from '../../services/player.service';
 import { AuthService } from '../../services/auth.service';
@@ -16,6 +16,7 @@ import { createPointerDrag } from '../../lib/pointer-drag';
 import { ScrollLockService } from '../../services/scroll-lock.service';
 import { SeekBarComponent } from '../seek-bar/seek-bar.component';
 import { CoverArtComponent } from '../cover-art/cover-art.component';
+import { ServerConfigService } from '../../services/server-config.service';
 
 function formatTime(s: number): string {
   if (!Number.isFinite(s) || s < 0) return '0:00';
@@ -43,6 +44,7 @@ export class NowPlayingComponent {
   private router = inject(Router);
   private api = inject(ApiService);
   private scrollLock = inject(ScrollLockService);
+  private server = inject(ServerConfigService);
 
   // Context menu state
   readonly contextMenu = signal<{ x: number; y: number } | null>(null);
@@ -62,6 +64,16 @@ export class NowPlayingComponent {
   readonly activeLine = computed(() => findActiveLine(this.lyricLines(), this.displayTime() * 1000));
   /** Plain text fallback when there are no synced lines. */
   readonly plainLyrics = computed(() => this.lyrics()?.plain ?? '');
+
+  // Fullscreen karaoke mode
+  readonly karaokeMode = signal(false);
+  /** Dominant colors extracted from the current track's cover art. */
+  readonly coverColors = signal<{ primary: string; secondary: string; glow: string }>({
+    primary: '#1a1a2e', secondary: '#16213e', glow: '#0f3460',
+  });
+  /** Reference to the karaoke lyrics scroll container for auto-scroll. */
+  readonly karaokeLyricsRef = viewChild<ElementRef<HTMLElement>>('karaokeLyrics');
+  private colorExtractedForId: string | null = null;
 
   // Playback progress interpolation
   private interpolatedTime = signal(0);
@@ -154,15 +166,138 @@ export class NowPlayingComponent {
 
     // Lazily (re)load lyrics whenever the panel is open and the track changes.
     effect(() => {
-      if (!this.lyricsOpen()) return;
+      if (!this.lyricsOpen() && !this.karaokeMode()) return;
       const id = this.player.currentTrack()?.id ?? null;
       if (!id || id === this.lyricsLoadedForId()) return;
       this.loadLyrics(id);
+    });
+
+    // Extract cover colors when karaoke mode is active and the track changes.
+    effect(() => {
+      const track = this.player.currentTrack();
+      if (!track?.coverArt) return;
+      // Only extract if karaoke mode is on or lyrics panel is open
+      if (!this.karaokeMode() && !this.lyricsOpen()) return;
+      if (this.colorExtractedForId === track.id) return;
+      this.colorExtractedForId = track.id;
+      const token = this.auth.token();
+      const url = this.server.apiUrl(`/api/cover/${track.coverArt}?size=80&token=${token}`);
+      this.extractColorsFromImage(url);
+    });
+
+    // Auto-scroll karaoke lyrics to the active line.
+    effect(() => {
+      const active = this.activeLine();
+      if (!this.karaokeMode() || active < 0) return;
+      const container = this.karaokeLyricsRef()?.nativeElement;
+      if (!container) return;
+      const lines = container.querySelectorAll('[data-karaoke-line]');
+      const el = lines[active] as HTMLElement | undefined;
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
     });
   }
 
   toggleLyrics(): void {
     this.lyricsOpen.update((v) => !v);
+  }
+
+  toggleKaraokeMode(): void {
+    const entering = !this.karaokeMode();
+    this.karaokeMode.set(entering);
+    if (entering) {
+      // Ensure lyrics are loaded and open
+      if (!this.lyricsOpen()) this.lyricsOpen.set(true);
+      // Re-extract colors if needed
+      const track = this.player.currentTrack();
+      if (track?.coverArt && this.colorExtractedForId !== track.id) {
+        this.colorExtractedForId = track.id;
+        const token = this.auth.token();
+        const url = this.server.apiUrl(`/api/cover/${track.coverArt}?size=80&token=${token}`);
+        this.extractColorsFromImage(url);
+      }
+    }
+  }
+
+  /**
+   * Extract dominant colors from a cover art image via a tiny offscreen canvas.
+   * Samples a small grid and picks the two most common color clusters to create
+   * an artistic gradient background for karaoke mode.
+   */
+  private extractColorsFromImage(src: string): void {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        const size = 40; // downscale for fast sampling
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        if (!ctx) return;
+        ctx.drawImage(img, 0, 0, size, size);
+        const data = ctx.getImageData(0, 0, size, size).data;
+
+        // Collect pixel colors (skip very dark/very bright)
+        const colors: Array<[number, number, number]> = [];
+        for (let i = 0; i < data.length; i += 16) { // sample every 4th pixel
+          const r = data[i]!, g = data[i + 1]!, b = data[i + 2]!;
+          const brightness = (r + g + b) / 3;
+          if (brightness > 20 && brightness < 240) {
+            colors.push([r, g, b]);
+          }
+        }
+        if (colors.length < 2) {
+          this.coverColors.set({ primary: '#1a1a2e', secondary: '#16213e', glow: '#0f3460' });
+          return;
+        }
+
+        // Simple k-means with k=2 for two dominant colors
+        let c1 = colors[0]!;
+        let c2 = colors[Math.floor(colors.length / 2)]!;
+        for (let iter = 0; iter < 5; iter++) {
+          const g1: Array<[number, number, number]> = [];
+          const g2: Array<[number, number, number]> = [];
+          for (const c of colors) {
+            const d1 = (c[0] - c1[0]) ** 2 + (c[1] - c1[1]) ** 2 + (c[2] - c1[2]) ** 2;
+            const d2 = (c[0] - c2[0]) ** 2 + (c[1] - c2[1]) ** 2 + (c[2] - c2[2]) ** 2;
+            (d1 <= d2 ? g1 : g2).push(c);
+          }
+          if (g1.length > 0) {
+            c1 = [
+              Math.round(g1.reduce((s, c) => s + c[0], 0) / g1.length),
+              Math.round(g1.reduce((s, c) => s + c[1], 0) / g1.length),
+              Math.round(g1.reduce((s, c) => s + c[2], 0) / g1.length),
+            ];
+          }
+          if (g2.length > 0) {
+            c2 = [
+              Math.round(g2.reduce((s, c) => s + c[0], 0) / g2.length),
+              Math.round(g2.reduce((s, c) => s + c[1], 0) / g2.length),
+              Math.round(g2.reduce((s, c) => s + c[2], 0) / g2.length),
+            ];
+          }
+        }
+
+        // Darken colors for readability (lyrics are white)
+        const darken = (c: [number, number, number], f: number): string =>
+          `rgb(${Math.round(c[0] * f)}, ${Math.round(c[1] * f)}, ${Math.round(c[2] * f)})`;
+
+        this.coverColors.set({
+          primary: darken(c1, 0.35),
+          secondary: darken(c2, 0.3),
+          glow: darken(c1, 0.5),
+        });
+      } catch {
+        // CORS or canvas error — use defaults
+        this.coverColors.set({ primary: '#1a1a2e', secondary: '#16213e', glow: '#0f3460' });
+      }
+    };
+    img.onerror = () => {
+      this.coverColors.set({ primary: '#1a1a2e', secondary: '#16213e', glow: '#0f3460' });
+    };
+    img.src = src;
   }
 
   private loadLyrics(id: string): void {
