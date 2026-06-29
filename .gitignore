@@ -5,6 +5,8 @@ dist/
 .DS_Store
 *.log
 packages/web/dist/
+# Stray in-place tsc output next to TS sources (real build emits to dist/)
+packages/core/src/**/*.js
 ~/.nicotind/
 .worktrees/
 .superpowers/
