@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.118](https://github.com/kevinch3/NicotinD/compare/v0.1.117...v0.1.118) (2026-06-29)
+
+
+### Bug Fixes
+
+* prevent app crashes by validating artwork URLs before native processing ([60938fb](https://github.com/kevinch3/NicotinD/commit/60938fb766ceae9dd6fbf5fdd4a64e5e9b72f23a))
+
 ## [0.1.117](https://github.com/kevinch3/NicotinD/compare/v0.1.116...v0.1.117) (2026-06-27)
 
 
