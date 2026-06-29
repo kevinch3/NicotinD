@@ -477,6 +477,11 @@ export class ApiService {
     return this.http.get<Song[]>('/api/library/recent-songs', { params: { size } });
   }
 
+  /** Fetch a single song (incl. stored bpm/genre) by id; 404 → null. */
+  getSong(id: string) {
+    return this.http.get<Song>(`/api/library/songs/${id}`);
+  }
+
   getSongProvenance(id: string) {
     return this.http.get<ProvenanceRecord[]>(`/api/library/songs/${id}/provenance`);
   }

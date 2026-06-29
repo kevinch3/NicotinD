@@ -68,6 +68,8 @@ The web renders artist thumbnails via `CoverArtComponent` (gradient+initial fall
 
 The `track-info-sheet` drawer exposes an **Analysis** section that fills in per-track metadata the rip didn't carry.
 
+**Reading stored values.** The sheet renders BPM/genre from its `effectiveSong()` — the caller's `Song` input when given, else one lazily fetched via `getSong(songId)` (`GET /api/library/songs/:id`) on init. This fetch matters because the player opens the sheet with only a `songId` and display strings (no `Song`); without it, already-stored `bpm`/`genre` (e.g. from the windowed enrichment) would render as "Unknown" even though the columns are populated.
+
 **BPM.** `library_songs` has an additive `bpm INTEGER` column. The scanner reads it from tags (`music-metadata` `common.bpm`), and `persist()` updates it via `bpm = COALESCE(excluded.bpm, library_songs.bpm)` so a rescan of a file whose tags lack BPM never wipes an analyzed value. `POST /api/library/songs/:id/analyze`:
 1. returns the existing tag value immediately (`source: 'tag'`) when present;
 2. otherwise `track-analysis.ts` `analyzeBpm()` decodes a ~90 s mono PCM slice via ffmpeg (`-ar 44100 -ac 1 -f f32le`, the rate `music-tempo`'s onset detection expects) and runs `music-tempo` (lazy-imported, degrades to `null` when absent);

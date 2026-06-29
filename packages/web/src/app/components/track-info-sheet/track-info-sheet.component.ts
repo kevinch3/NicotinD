@@ -77,7 +77,7 @@ const ACTION_LABELS: Record<string, string> = {
 
       <div class="overflow-y-auto flex-1 px-5 pb-6">
         <!-- Basic file info -->
-        @if (song(); as s) {
+        @if (effectiveSong(); as s) {
           <section class="mb-5">
             <p class="text-xs text-zinc-500 uppercase tracking-wider mb-2">File</p>
             <div class="space-y-1 text-sm text-zinc-300">
@@ -346,12 +346,18 @@ export class TrackInfoSheetComponent implements OnInit {
   readonly displayCoverArt = input<string | null>(null);
   readonly close = output<void>();
 
+  // Song the sheet renders from: the caller's Song when given, otherwise the
+  // one we lazily fetch by id (callers like the player pass only a songId, so
+  // without this the stored bpm/genre would never load → always "Unknown").
+  private readonly loadedSong = signal<Song | null>(null);
+  readonly effectiveSong = computed(() => this.song() ?? this.loadedSong());
+
   // Identity header — prefer the full Song, fall back to the display inputs.
-  readonly headerTitle = computed(() => this.song()?.title ?? this.displayTitle());
-  readonly headerArtist = computed(() => this.song()?.artist ?? this.displayArtist());
-  readonly headerAlbum = computed(() => this.song()?.album ?? this.displayAlbum());
+  readonly headerTitle = computed(() => this.effectiveSong()?.title ?? this.displayTitle());
+  readonly headerArtist = computed(() => this.effectiveSong()?.artist ?? this.displayArtist());
+  readonly headerAlbum = computed(() => this.effectiveSong()?.album ?? this.displayAlbum());
   readonly headerCoverUrl = computed(() => {
-    const id = this.song()?.coverArt ?? this.displayCoverArt();
+    const id = this.effectiveSong()?.coverArt ?? this.displayCoverArt();
     return id
       ? this.server.apiUrl(`/api/cover/${id}?size=96&token=${this.auth.token()}`)
       : undefined;
@@ -371,7 +377,7 @@ export class TrackInfoSheetComponent implements OnInit {
   readonly applyingGenre = signal(false);
   readonly isAdmin = computed(() => this.auth.role() === 'admin');
   /** Current genre: an applied override wins over the song's own tag. */
-  readonly currentGenre = computed(() => this.genreOverride() ?? this.song()?.genre ?? '');
+  readonly currentGenre = computed(() => this.genreOverride() ?? this.effectiveSong()?.genre ?? '');
 
   // Lyrics state
   readonly lyrics = signal<LyricsDto | null>(null);
@@ -397,10 +403,25 @@ export class TrackInfoSheetComponent implements OnInit {
   private onDocUp: ((e: PointerEvent) => void) | null = null;
 
   ngOnInit(): void {
-    const known = this.song()?.bpm;
-    if (known) {
-      this.bpm.set(known);
+    const provided = this.song();
+    if (provided?.bpm) {
+      this.bpm.set(provided.bpm);
       this.bpmSource.set('tag');
+    }
+    // Callers that pass only a songId (the player) have no Song to read the
+    // stored bpm/genre from — fetch it so analysis values render instead of
+    // "Unknown".
+    if (!provided) {
+      this.api.getSong(this.songId()).subscribe({
+        next: (s) => {
+          this.loadedSong.set(s);
+          if (s.bpm) {
+            this.bpm.set(s.bpm);
+            this.bpmSource.set('tag');
+          }
+        },
+        error: () => this.loadedSong.set(null),
+      });
     }
     this.api.getSongProvenance(this.songId()).subscribe({
       next: (records) => {

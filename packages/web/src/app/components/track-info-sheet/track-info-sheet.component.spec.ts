@@ -16,6 +16,7 @@ describe('TrackInfoSheetComponent (analysis)', () => {
     of({ current: 'IDM', suggested: 'Electronic', candidates: ['Electronic', 'IDM'], source: 'lidarr' as const }),
   );
   const applyGenre = vi.fn(() => of({ ok: true, genre: 'Electronic' }));
+  const getSong = vi.fn(() => of({ id: 'song-1', bpm: 128, genre: 'Latin' } as never));
   const role = signal<string | null>('admin');
 
   beforeEach(async () => {
@@ -24,6 +25,8 @@ describe('TrackInfoSheetComponent (analysis)', () => {
     getGenreSuggestion.mockClear();
     applyGenre.mockClear();
     applyGenre.mockReturnValue(of({ ok: true, genre: 'Electronic' }));
+    getSong.mockClear();
+    getSong.mockReturnValue(of({ id: 'song-1', bpm: 128, genre: 'Latin' } as never));
     role.set('admin');
 
     await TestBed.configureTestingModule({
@@ -35,8 +38,10 @@ describe('TrackInfoSheetComponent (analysis)', () => {
             analyzeSong,
             getGenreSuggestion,
             applyGenre,
+            getSong,
             getSongProvenance: vi.fn(() => of([])),
             getSongAcquisition: vi.fn(() => of(null)),
+            getLyrics: vi.fn(() => of(null)),
           },
         },
         { provide: AuthService, useValue: { role } },
@@ -80,6 +85,17 @@ describe('TrackInfoSheetComponent (analysis)', () => {
     c.applySuggestedGenre('Electronic');
     expect(applyGenre).toHaveBeenCalledWith('song-1', 'Electronic');
     expect(c.currentGenre()).toBe('Electronic');
+  });
+
+  it('ngOnInit fetches the song by id and shows its stored bpm + genre', () => {
+    // The player opens the sheet with only a songId (no Song input), so without
+    // the lazy fetch the stored analysis would render as "Unknown".
+    const c = create();
+    c.ngOnInit();
+    expect(getSong).toHaveBeenCalledWith('song-1');
+    expect(c.bpm()).toBe(128);
+    expect(c.bpmSource()).toBe('tag');
+    expect(c.currentGenre()).toBe('Latin');
   });
 
   it('isAdmin() reflects the auth role', () => {
