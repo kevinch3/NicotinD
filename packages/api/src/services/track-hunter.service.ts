@@ -1,6 +1,6 @@
 import { createLogger } from '@nicotind/core';
 import type { Slskd } from '@nicotind/slskd-client';
-import { pickBestTrackFile, type TrackPick } from './track-pick.js';
+import { buildTrackQueries, pickBestTrackFile, type TrackPick } from './track-pick.js';
 
 const log = createLogger('track-hunter');
 
@@ -68,13 +68,28 @@ export class TrackHunterService {
     return { requested: titles.length, enqueued, misses };
   }
 
-  /** One slskd search for a single track → the best matching file (or null). */
+  /**
+   * Hunt a single track across the skewed query variants, stopping at the first
+   * that yields a pick. why: a lone `"<artist> <title>"` search is silently
+   * soft-banned for many phrases, so we fall through progressively skewed forms
+   * (`buildTrackQueries`) the same way the album hunter's skew-search bypasses the
+   * ban. A first-query hit fires no extra searches.
+   */
   private async huntTrack(artistName: string, title: string): Promise<TrackPick | null> {
+    for (const query of buildTrackQueries(artistName, title)) {
+      const pick = await this.runQuery(query, title);
+      if (pick) return pick;
+    }
+    return null;
+  }
+
+  /** One slskd search for a query → the best file matching `title` (or null). */
+  private async runQuery(query: string, title: string): Promise<TrackPick | null> {
     let search: { id: string } | null = null;
     try {
-      search = await this.slskd.searches.create(`${artistName} ${title}`);
+      search = await this.slskd.searches.create(query);
     } catch (err) {
-      log.debug({ title, err }, 'Track-hunt search create failed');
+      log.debug({ query, err }, 'Track-hunt search create failed');
       return null;
     }
 

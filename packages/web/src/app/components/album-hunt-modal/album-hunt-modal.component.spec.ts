@@ -173,6 +173,21 @@ describe('AlbumHuntModalComponent', () => {
     );
   });
 
+  it('forwards the resolved localAlbumId so the server filters out on-disk tracks', async () => {
+    const c = create();
+    (c as unknown as { album: () => DiscographyAlbum }).album = () =>
+      ({ ...ALBUM, localAlbumId: 'local-42' }) as DiscographyAlbum;
+    c.candidates.set([candidate({ username: 'best' })]);
+
+    await c.downloadSelected();
+
+    expect(huntDownload).toHaveBeenCalledWith(
+      ALBUM.lidarrId,
+      expect.objectContaining({ localAlbumId: 'local-42' }),
+      false,
+    );
+  });
+
   it('shows the already-complete notice (not a silent close) when the server queues nothing', async () => {
     huntDownload.mockReturnValue(of({ ok: true, queued: 0, alreadyComplete: true }));
     const c = create();

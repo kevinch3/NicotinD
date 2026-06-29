@@ -772,6 +772,9 @@ export class ApiService {
         directory: string;
         files: Array<{ filename: string; size: number }>;
       }>;
+      // The local album being completed, so the server filters out tracks already
+      // on disk even when the canonical artist/title diverges from the local tags.
+      localAlbumId?: string;
     },
     replace = false,
   ) {

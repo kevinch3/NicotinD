@@ -121,8 +121,8 @@ describe('POST /albums/:id/hunt-download idempotency guard', () => {
     // Seed a library album with the same artist+title and >= canonical track count.
     db.run(
       `INSERT INTO library_albums (id, name, artist, artist_id, song_count, synced_at)
-       VALUES ('alb1', 'Dynamo', 'Soda Stereo', 'art1', ?, 1)`,
-      [TRACKS.length],
+       VALUES ('alb1', 'Dynamo', 'Soda Stereo', ?, ?, 1)`,
+      [artistIdFor('Soda Stereo'), TRACKS.length],
     );
     const res = await post(app);
     expect(res.status).toBe(409);
@@ -248,8 +248,8 @@ describe('POST /albums/:id/hunt-download idempotency guard', () => {
     const { app, enqueue } = makeApp(db);
     db.run(
       `INSERT INTO library_albums (id, name, artist, artist_id, song_count, synced_at)
-       VALUES ('alb1', 'Dynamo (Deluxe Edition)', 'Soda Stereo', 'art1', ?, 1)`,
-      [TRACKS.length],
+       VALUES ('alb1', 'Dynamo (Deluxe Edition)', 'Soda Stereo', ?, ?, 1)`,
+      [artistIdFor('Soda Stereo'), TRACKS.length],
     );
     const res = await post(app);
     expect(res.status).toBe(409);

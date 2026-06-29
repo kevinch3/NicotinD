@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'bun:test';
-import { pickBestTrackFile, healthScore, extraTokenCount, type SearchResponseLike } from './track-pick';
+import {
+  pickBestTrackFile,
+  healthScore,
+  extraTokenCount,
+  buildTrackQueries,
+  type SearchResponseLike,
+} from './track-pick';
 
 const resp = (
   username: string,
@@ -54,6 +60,37 @@ describe('pickBestTrackFile', () => {
   it('matches across a leading track number and folder path', () => {
     const pick = pickBestTrackFile([resp('a', ['Music\\Album\\07 Closing Time.flac'])], 'Closing Time');
     expect(pick?.file.filename).toContain('Closing Time.flac');
+  });
+
+  it('matches a peer file that drops the title\'s (feat …) qualifier', () => {
+    // Lidarr title carries "(feat. Drake)"; the peer's filename omits it. Matching
+    // on the qualifier-stripped core rescues the near-hit.
+    const pick = pickBestTrackFile(
+      [resp('a', ['x\\Work.flac'])],
+      'Work (feat. Drake)',
+    );
+    expect(pick?.file.filename).toContain('Work.flac');
+  });
+
+  it('does not loosen matching for an already-bare title', () => {
+    // "Work" must not spuriously match "Workout" via a core fallback.
+    expect(pickBestTrackFile([resp('a', ['x\\Workout Mix.flac'])], 'Work')).toBeNull();
+  });
+});
+
+describe('buildTrackQueries', () => {
+  it('emits exact, title-only, truncated-artist, and qualifier-stripped variants', () => {
+    expect(buildTrackQueries('Bahiano', 'Cuando reina el Amor (feat. X)')).toEqual([
+      'Bahiano Cuando reina el Amor (feat. X)',
+      'Cuando reina el Amor (feat. X)',
+      'Bahian Cuando reina el Amor (feat. X)',
+      'Bahiano Cuando reina el Amor',
+    ]);
+  });
+
+  it('de-dupes and skips empty variants for a short artist / bare title', () => {
+    // Short artist (<=3 chars) → no truncation; bare title → no qualifier variant.
+    expect(buildTrackQueries('U2', 'One')).toEqual(['U2 One', 'One']);
   });
 });
 

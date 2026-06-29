@@ -270,6 +270,10 @@ export function discographyRoutes({
           files: Array<{ filename: string; size: number }>;
         };
         alternates?: AlternateCandidate[];
+        // The local album the user is completing, already resolved by the artist
+        // page. Lets the completeness filter match on-disk tracks precisely even
+        // when the canonical Lidarr artist/title diverges from the local tags.
+        localAlbumId?: string;
       }>()
       .catch(() => null);
 
@@ -339,7 +343,7 @@ export function discographyRoutes({
     // the album isn't on disk yet (a fresh hunt downloads everything).
     const filesToDownload =
       artistName && albumTitle
-        ? filesMissingOnDisk(db, artistName, albumTitle, body.selected.files)
+        ? filesMissingOnDisk(db, artistName, albumTitle, body.selected.files, body.localAlbumId)
         : body.selected.files;
 
     if (filesToDownload.length === 0) {

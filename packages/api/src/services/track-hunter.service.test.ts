@@ -78,6 +78,24 @@ describe('TrackHunterService.huntAndDownload', () => {
     expect(enqueue).toHaveBeenCalledTimes(2);
   });
 
+  it('falls through to a skewed query when the exact phrase is soft-banned', async () => {
+    // The exact "<artist> <title>" phrase returns nothing (soft ban); the
+    // title-only skew variant finds it. The pick is still enqueued.
+    const { slskd, enqueue } = makeSlskd({
+      'Bahiano Cuando reina el Amor': [], // soft-banned exact phrase
+      'Cuando reina el Amor': [resp('peerA', ['x\\Cuando reina el Amor.flac'])],
+    });
+
+    const result = await new TrackHunterService(slskd, { pollMs: 1, timeoutMs: 10 }).huntAndDownload(
+      'Bahiano',
+      ['Cuando reina el Amor'],
+    );
+
+    expect(result.enqueued).toBe(1);
+    expect(result.misses).toEqual([]);
+    expect(enqueue).toHaveBeenCalledTimes(1);
+  });
+
   it('returns all misses when no peer responds', async () => {
     const { slskd, enqueue } = makeSlskd({});
     const result = await new TrackHunterService(slskd, { pollMs: 1, timeoutMs: 10 }).huntAndDownload(

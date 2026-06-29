@@ -45,7 +45,9 @@ The `LibraryCurator` won't auto-hide a deliberately-hunted release (its normaliz
 
 The hunt works at **folder** granularity and dead-ends ("No candidates") when an album exists only as loose tracks scattered across peers (a real case: a 14-track album whose tracks are all on compilations/singles, no single matching folder). Instead of a pure dead-end, the modal's no-results state offers **"Grab individual tracks instead"** (`data-testid="hunt-tracks"`).
 
-It calls `POST /api/discography/albums/:id/hunt-tracks` (auth + acquisition gated like the album hunt), which resolves the canonical tracklist from Lidarr and runs `TrackHunterService` (`services/track-hunter.service.ts`): one slskd search per title, the **healthiest *cleanest*** file chosen by the shared pure `pickBestTrackFile` (`services/track-pick.ts`) — fewest extra words beyond the title wins, so it grabs "Bohemian Rhapsody" not the "(5.1 mix)" a healthy FLAC peer would otherwise win on; FLAC + peer health only break ties among equally-clean files. Picks are grouped per peer and enqueued; the modal reports "Enqueued N of M tracks individually" (+ misses). `pickBestTrackFile` is the testable core extracted for reuse (the cross-peer `AlbumFallbackService` keeps its own copy to avoid churning battle-tested recovery code).
+It calls `POST /api/discography/albums/:id/hunt-tracks` (auth + acquisition gated like the album hunt), which resolves the canonical tracklist from Lidarr and runs `TrackHunterService` (`services/track-hunter.service.ts`): the **healthiest *cleanest*** file chosen by the shared pure `pickBestTrackFile` (`services/track-pick.ts`) — fewest extra words beyond the title wins, so it grabs "Bohemian Rhapsody" not the "(5.1 mix)" a healthy FLAC peer would otherwise win on; FLAC + peer health only break ties among equally-clean files. Picks are grouped per peer and enqueued; the modal reports "Enqueued N of M tracks individually" and **lists the still-missing titles** (`data-testid="track-hunt-misses"`) so the user can act. `pickBestTrackFile` is the testable core extracted for reuse (the cross-peer `AlbumFallbackService` keeps its own copy to avoid churning battle-tested recovery code).
+
+**Skew + qualifier-aware per track (don't lose 13 of 14).** A lone `"<artist> <title>"` search is silently soft-banned for many phrases — the *same* server-side ban the album-hunt skew-search bypasses — so a single query loses most tracks (a real case: album hunt found no folder, per-track fallback then enqueued only 1 of 14). `huntTrack` therefore runs the pure, ordered `buildTrackQueries(artist, title)` (`track-pick.ts`) — exact phrase, **title-only**, **artist-name truncation** (drop the last char, the documented Spanish/Portuguese per-name ban bypass), and **qualifier-stripped title** (`stripTitleQualifiers`) — stopping at the first variant that yields a pick (a confident first hit fires no extra searches, mirroring the album hunter's budget discipline). Matching is also qualifier-aware: `pickBestTrackFile` falls back from the full normalized title to `stripTitleQualifiers`'s core, so a peer that omits a `(feat …)`/`(Remasterizado)` suffix still matches (the core is `null` for already-bare titles, so matching never loosens spuriously).
 
 ---
 
@@ -99,7 +101,9 @@ Idempotent: an album already on disk (`albumAlreadyComplete`, shared in `library
 1. Returns **409 `already-downloading`** if an `album_jobs` row for that `lidarr_album_id` is still `state='active'`.
 2. Returns **409 `already-complete`** if the library already holds the album — `albumAlreadyComplete` matches by `normalizeForGrouping(artist)+title` with `song_count >= canonical track count`.
 3. On `?replace=true` (admin re-hunt) marks the prior active job `'superseded'` first, so at most one active job per album.
-4. **Complete-only / disk-aware enqueue**: `filesMissingOnDisk` (`library-completeness.ts`) filters the chosen folder's files to only those whose track isn't already in `library_songs` (keyed on `albumIdFor`, matched via `normalizeTitle`/`titlesOverlap`). `hunt-download` enqueues **only the missing tracks**, returning `{ queued: 0, alreadyComplete: true }` when nothing is missing. A fresh hunt still downloads everything. The watchlist auto-hunt applies the same filter.
+4. **Complete-only / disk-aware enqueue**: `filesMissingOnDisk` (`library-completeness.ts`) filters the chosen folder's files to only those whose track isn't already in `library_songs` (matched via `normalizeTitle`/`titlesOverlap`). `hunt-download` enqueues **only the missing tracks**, returning `{ queued: 0, alreadyComplete: true }` when nothing is missing. A fresh hunt still downloads everything. The watchlist auto-hunt applies the same filter.
+
+   **why it must not be keyed on an exact `albumIdFor`** (the duplicate-versions root cause): `hunt-download` runs with the **canonical Lidarr** artist/title, but the partial album already on disk is tagged with the **peer's** artist/title (accents, `feat.`, edition words, artist spelling — routine in this Latin-American-heavy library). Keying the on-disk lookup on `albumIdFor(canonicalArtist, canonicalTitle)` then finds **nothing**, so the *whole* folder re-downloads on top of what we have — and any rip whose filename differs slightly escapes the post-organize dedupe and lands as a second copy. So the filter resolves on-disk tracks two ways: the artist page sends the already-resolved **`localAlbumId`** (precise, divergence-proof), and absent that (catalog/watchlist, which only have canonical names) it unions the exact minted id with **every** local album whose `artist_id` + `normalizeForGrouping(title)` match (so an edition/divergent-id row still counts). `albumAlreadyComplete` (guard 2) uses the same `artist_id`-based identity match.
 
 **Web — "already have it" is a positive notice, not a failure.** `AlbumHuntModalComponent.downloadSelected` classifies the result/error through the pure, DI-free `lib/hunt-download-outcome.ts`: `classifyHuntDownloadResult` maps a `200 {queued:0, alreadyComplete:true}` (and a `queued:0`) to a green **"✓ You already have this album"** panel (`data-testid="hunt-already-complete"`) instead of the old silent `close()` that looked like a download had started; `classifyHuntDownloadError` maps the **409 `already-complete`** to that same panel and the **409 `already-downloading`** to a neutral "already downloading — check Downloads" panel (`data-testid="hunt-already-downloading"`), each with a single **Done** button. Both replace the prior red error state for these codes, which read like the *chosen source* had failed and nudged a needless retry from another source. Only a genuine failure (502 offline peer, hunt error) keeps the red error state.
 
@@ -108,3 +112,25 @@ Idempotent: an album already on disk (`albumAlreadyComplete`, shared in `library
 The fresh-search fallback (`album-fallback.service.ts` `searchBestForTrack`) prefers the **cleanest** title match (fewest extra tokens beyond the canonical title) over health/FLAC, so recovery never pulls a `(5.1 mix)`/`(New Mix)` in place of the studio track.
 
 **Repair script**: `scripts/repair-album-folders.ts` (dry-run default, `--apply`) groups `<Artist>/<Album*>` folders by `albumGroupKey`, merges each group into the fullest folder, and trims to one file per track — keeping the cleanest best file per **canonical** track (from `album_jobs.canonical_tracks_json`) and dropping deluxe/5.1/remix extras.
+
+---
+
+## Deferred: unify the hunt engines
+
+The fixes above are targeted; the underlying structure still has avoidable duplication worth folding
+later (captured here so it's discoverable, not lost):
+
+1. **One track-search primitive.** `TrackHunterService` and `AlbumFallbackService.searchBestForTrack`
+   are two divergent per-track searchers. Fold both onto the shared skewed `buildTrackQueries` +
+   `pickBestTrackFile` (`track-pick.ts`) so user-facing per-track hunts and cross-peer recovery can
+   never drift in quality again.
+2. **One album-identity resolver.** The duplicate-versions bug is normalizer drift: the discography
+   diff matches a local album with `normalizeTitle`, while the completeness filter matches with
+   `normalizeForGrouping`/`albumIdFor`. Extract a single `resolveLocalAlbum(db, artist, title) →
+   { albumId, songs }` used by the discography diff, the completeness filter, and the watchlist, so
+   "is this the same album we have?" has exactly one answer (the threaded `localAlbumId` is the
+   interim bridge).
+3. **Auto-retry the per-track misses.** Register still-missing per-track hunts with the existing
+   `AlbumFallbackService.reviveExhausted` sweep so offline peers get retried automatically.
+4. Longer term: a single source-pluggable acquisition engine (folder + per-track + archive) behind
+   one matching/identity layer.

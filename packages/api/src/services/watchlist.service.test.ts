@@ -2,7 +2,7 @@ import { describe, expect, it, beforeEach, mock } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { applySchema } from '../db.js';
 import { WatchlistService } from './watchlist.service.js';
-import { albumIdFor } from './library-scanner.js';
+import { albumIdFor, artistIdFor } from './library-scanner.js';
 import type { CatalogService } from './catalog-search.service.js';
 import type { AlbumHunterService, FolderCandidate } from './album-hunter.service.js';
 import type { Lidarr } from '@nicotind/lidarr-client';
@@ -172,8 +172,8 @@ describe('WatchlistService', () => {
       const albumId = albumIdFor('Artist', 'Album');
       db.run(
         `INSERT INTO library_albums (id, name, artist, artist_id, song_count, duration, created, synced_at)
-         VALUES (?, 'Album', 'Artist', 'aid', 2, 0, '2024-01-01', 0)`,
-        [albumId],
+         VALUES (?, 'Album', 'Artist', ?, 2, 0, '2024-01-01', 0)`,
+        [albumId, artistIdFor('Artist')],
       );
 
       await svc.sweep();

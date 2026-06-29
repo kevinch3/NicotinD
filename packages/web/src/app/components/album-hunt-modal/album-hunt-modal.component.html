@@ -207,6 +207,13 @@
                     <span class="text-theme-muted">{{ r.misses.length }} not found.</span>
                   }
                 </p>
+                @if (r.misses.length) {
+                  <ul data-testid="track-hunt-misses" class="mt-2 space-y-0.5 text-xs text-theme-muted">
+                    @for (miss of r.misses; track miss) {
+                      <li class="truncate">· {{ miss }}</li>
+                    }
+                  </ul>
+                }
               } @else if (trackHuntState() === 'error') {
                 <p class="text-red-400">Track hunt failed. Try again.</p>
               } @else {
