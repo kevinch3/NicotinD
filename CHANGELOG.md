@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.121](https://github.com/kevinch3/NicotinD/compare/v0.1.120...v0.1.121) (2026-06-29)
+
+
+### Bug Fixes
+
+* load stored bpm/genre in track info sheet opened from player ([1942788](https://github.com/kevinch3/NicotinD/commit/194278840211cb9eda8a99ea5aee663e7985eab4))
+
 ## [0.1.120](https://github.com/kevinch3/NicotinD/compare/v0.1.119...v0.1.120) (2026-06-29)
 
 
