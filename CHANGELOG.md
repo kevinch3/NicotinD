@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.119](https://github.com/kevinch3/NicotinD/compare/v0.1.118...v0.1.119) (2026-06-29)
+
+
+### Features
+
+* implement fullscreen karaoke mode with synchronized lyrics display and playback controls ([3f41beb](https://github.com/kevinch3/NicotinD/commit/3f41beb4ded21a411934fc0813878c88c28073e8))
+
 ## [0.1.118](https://github.com/kevinch3/NicotinD/compare/v0.1.117...v0.1.118) (2026-06-29)
 
 
