@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.120](https://github.com/kevinch3/NicotinD/compare/v0.1.119...v0.1.120) (2026-06-29)
+
+
+### Bug Fixes
+
+* stop "Complete Album" duplicating tracks + strengthen per-track hunt ([717e0c4](https://github.com/kevinch3/NicotinD/commit/717e0c472e41c8a814f5fe45fbe408b670257adf))
+
 ## [0.1.119](https://github.com/kevinch3/NicotinD/compare/v0.1.118...v0.1.119) (2026-06-29)
 
 
