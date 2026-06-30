@@ -129,6 +129,7 @@ export interface Song {
   created: string;
   genre?: string;
   bpm?: number;
+  key?: string;
 }
 
 export interface StreamingSettings {

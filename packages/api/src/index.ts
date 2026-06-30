@@ -39,6 +39,7 @@ import { watchlistRoutes } from './routes/watchlist.js';
 import { playlistRoutes } from './routes/playlists.js';
 import { acquireRoutes } from './routes/acquire.js';
 import { pluginRoutes } from './routes/plugins.js';
+import { radioRoutes } from './routes/radio.js';
 import { PluginRegistry } from './services/plugins/registry.js';
 import { SlskdPlugin } from './services/plugins/slskd/index.js';
 import { YtdlpPlugin } from './services/plugins/ytdlp/index.js';
@@ -451,6 +452,7 @@ export function createApp({
   app.route('/api/share', shareRoutes(config.jwt.secret, auth));
   app.route('/api/users', usersRoutes(registry));
   app.route('/api/playlists', playlistRoutes());
+  app.route('/api/radio', radioRoutes());
   app.route('/api/plugins', pluginRoutes(plugins));
   // Metadata search sources, constructed once and shared between the legacy
   // per-source lanes and the source-agnostic blended aggregator.

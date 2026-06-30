@@ -9,6 +9,9 @@ export interface Track {
   coverArt?: string;
   duration?: number;
   bitRate?: number;
+  genre?: string;
+  bpm?: number;
+  key?: string;
 }
 
 export interface PlayContext {

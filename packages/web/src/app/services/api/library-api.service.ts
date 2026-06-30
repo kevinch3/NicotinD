@@ -186,6 +186,12 @@ export class LibraryApiService {
     return this.http.get<Song[]>('/api/library/recent-songs', { params: { size } });
   }
 
+  getRadioNext(seedId: string, exclude: string[], count = 10) {
+    return this.http.get<Song[]>('/api/radio/next', {
+      params: { seedId, exclude: exclude.join(','), count },
+    });
+  }
+
   /** Fetch a single song (incl. stored bpm/genre) by id; 404 → null. */
   getSong(id: string) {
     return this.http.get<Song>(`/api/library/songs/${id}`);
