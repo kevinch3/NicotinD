@@ -6,7 +6,7 @@
  */
 
 /** Identifier of an enrichment task. Open union — new tasks append here. */
-export type ProcessingTaskId = 'bpm' | 'genre' | 'key';
+export type ProcessingTaskId = 'bpm' | 'genre' | 'key' | 'artist-image';
 
 /** Daily time window during which background enrichment may run (server-local). */
 export interface ProcessingWindow {

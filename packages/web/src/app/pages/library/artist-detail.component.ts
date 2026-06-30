@@ -77,6 +77,79 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
   readonly albums = signal<Album[]>([]);
   readonly singlesAndEps = signal<Album[]>([]);
 
+  // ─── Artist image override (admin: upload / pick-from-album / reset) ───────
+  readonly imageBusy = signal(false);
+  // Bumped after any image change to bust the browser cache for the (otherwise
+  // identical) cover URL so the new portrait shows without a hard refresh.
+  readonly imageVersion = signal(0);
+  readonly albumPickerOpen = signal(false);
+  readonly imageMenu = viewChild<MenuPanelComponent>('imageMenu');
+  readonly imageFileInput = viewChild<ElementRef<HTMLInputElement>>('imageFileInput');
+
+  /** The portrait src, cache-busted after an override change. */
+  readonly artistImageSrc = computed<string | undefined>(() => {
+    const a = this.artist();
+    if (!a?.coverArt) return undefined;
+    const v = this.imageVersion();
+    return `/api/cover/${a.coverArt}?size=200&token=${this.auth.token()}${v ? `&v=${v}` : ''}`;
+  });
+
+  /** Albums the user can copy a cover from (regular albums + singles/EPs). */
+  readonly pickableAlbums = computed<Album[]>(() => [...this.albums(), ...this.singlesAndEps()]);
+
+  private closeImageMenu(): void {
+    this.imageMenu()?.open.set(false);
+  }
+
+  /** Open the OS file picker (wired to the hidden input). */
+  triggerImageUpload(): void {
+    this.closeImageMenu();
+    this.imageFileInput()?.nativeElement.click();
+  }
+
+  async onImageFileSelected(event: Event): Promise<void> {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = ''; // allow re-selecting the same file later
+    if (!file) return;
+    await this.runImageChange(() => firstValueFrom(this.api.uploadArtistImage(this.artistId, file)));
+  }
+
+  openAlbumPicker(): void {
+    this.closeImageMenu();
+    this.albumPickerOpen.set(true);
+  }
+
+  closeAlbumPicker(): void {
+    this.albumPickerOpen.set(false);
+  }
+
+  async pickAlbumCover(albumId: string): Promise<void> {
+    this.albumPickerOpen.set(false);
+    await this.runImageChange(() =>
+      firstValueFrom(this.api.setArtistImageFromAlbum(this.artistId, albumId)),
+    );
+  }
+
+  async resetImage(): Promise<void> {
+    this.closeImageMenu();
+    await this.runImageChange(() => firstValueFrom(this.api.resetArtistImage(this.artistId)));
+  }
+
+  /** Shared busy-guard + cache-bust for the three image-change actions. */
+  private async runImageChange(action: () => Promise<unknown>): Promise<void> {
+    if (this.imageBusy()) return;
+    this.imageBusy.set(true);
+    try {
+      await action();
+      this.imageVersion.update((v) => v + 1);
+    } catch {
+      /* best-effort; the tile simply keeps its prior image */
+    } finally {
+      this.imageBusy.set(false);
+    }
+  }
+
   // ─── Tabs ─────────────────────────────────────────────────────────
   readonly activeTab = signal<ArtistTab>('albums');
   // Which tabs to show: Albums/Singles only when populated; Songs is always

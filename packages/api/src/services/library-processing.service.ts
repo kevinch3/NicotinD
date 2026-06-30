@@ -24,6 +24,8 @@ export interface LibraryProcessingDeps {
   lidarr: Lidarr | null;
   musicDir: string;
   dataDir: string;
+  /** Spotify portrait lookup for the artist-image task, or null when unconfigured. */
+  lookupArtistImageSpotify?: ((name: string) => Promise<string | null>) | null;
   /** Poll interval. Defaults to 60s. */
   intervalMs?: number;
   /** Injectable clock for window tests. */
@@ -51,6 +53,8 @@ export class LibraryProcessingService extends EventEmitter {
   private readonly db: Database;
   private readonly lidarr: Lidarr | null;
   private readonly musicDir: string;
+  private readonly dataDir: string;
+  private readonly lookupArtistImageSpotify: ((name: string) => Promise<string | null>) | null;
   private readonly logPath: string;
   private readonly intervalMs: number;
   private readonly now: () => Date;
@@ -67,6 +71,8 @@ export class LibraryProcessingService extends EventEmitter {
     this.db = deps.db;
     this.lidarr = deps.lidarr;
     this.musicDir = deps.musicDir;
+    this.dataDir = deps.dataDir;
+    this.lookupArtistImageSpotify = deps.lookupArtistImageSpotify ?? null;
     this.logPath = join(deps.dataDir, 'library-processing.log');
     this.intervalMs = deps.intervalMs ?? 60_000;
     this.now = deps.now ?? (() => new Date());
@@ -75,8 +81,10 @@ export class LibraryProcessingService extends EventEmitter {
       ((settings) =>
         createEnrichmentContext({
           musicDir: this.musicDir,
+          coverCacheDir: join(this.dataDir, 'cover-cache'),
           lidarr: this.lidarr,
           concurrency: settings.concurrency,
+          lookupArtistImageSpotify: this.lookupArtistImageSpotify,
         }));
     this.logToFile = deps.logToFile ?? true;
     this.status = this.loadStatus();
@@ -276,8 +284,8 @@ export class LibraryProcessingService extends EventEmitter {
       lastItems: [],
       startedAt: null,
       updatedAt: null,
-      taskPending: { bpm: 0, genre: 0, key: 0 },
-      availability: { bpm: 'unknown', genre: 'unknown', key: 'unknown' },
+      taskPending: { bpm: 0, genre: 0, key: 0, 'artist-image': 0 },
+      availability: { bpm: 'unknown', genre: 'unknown', key: 'unknown', 'artist-image': 'unknown' },
     };
     const row = this.db
       .query<{ value: string }, [string]>('SELECT value FROM app_settings WHERE key = ?')

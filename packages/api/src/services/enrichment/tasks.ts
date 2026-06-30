@@ -10,6 +10,10 @@ import {
 import { readAudioTags, writeAudioTags } from '../audio-tags.js';
 import { ffmpegAvailable as realFfmpegAvailable } from '../transcode.js';
 import { resolveSongAbsPath, planGenreBackfill } from '../track-backfill.js';
+import { setArtwork } from '../artwork-store.js';
+import { isPlaceholderArtist } from '../artwork-backfill.js';
+import { indexLidarrArtists, resolveArtistImageUrl } from '../artist-image.js';
+import { clearCoverNegativeCache } from '../../routes/streaming.js';
 
 /**
  * Enrichment task registry — the single extension point for the windowed library
@@ -32,6 +36,9 @@ interface SongRow {
 /** Injected dependencies + swappable primitives for an enrichment run. */
 export interface EnrichmentContext {
   musicDir: string;
+  /** Canonical-artwork cache dir — passed to setArtwork so a corrected URL purges
+   *  its stale thumbnails. */
+  coverCacheDir: string;
   lidarr: Lidarr | null;
   /** Worker-pool size for parallelisable tasks (BPM). */
   concurrency: number;
@@ -46,6 +53,9 @@ export interface EnrichmentContext {
   analyzeKey: (abs: string) => Promise<string | null>;
   /** Returns the suggested genre for an artist, or null when unavailable. */
   lookupGenre: (artist: string) => Promise<string | null>;
+  /** Returns a Spotify portrait url for an artist name, or null. Null when Spotify
+   *  isn't configured — the artist-image task then relies on Lidarr alone. */
+  lookupArtistImageSpotify: ((name: string) => Promise<string | null>) | null;
   fileExists: (abs: string) => boolean;
 }
 
@@ -69,11 +79,15 @@ export interface EnrichmentTask {
 /** Build a context wired to the real primitives. */
 export function createEnrichmentContext(deps: {
   musicDir: string;
+  coverCacheDir: string;
   lidarr: Lidarr | null;
   concurrency: number;
+  /** Spotify portrait lookup, or null when Spotify creds aren't configured. */
+  lookupArtistImageSpotify?: ((name: string) => Promise<string | null>) | null;
 }): EnrichmentContext {
   return {
     musicDir: deps.musicDir,
+    coverCacheDir: deps.coverCacheDir,
     lidarr: deps.lidarr,
     concurrency: deps.concurrency,
     ffmpegAvailable: realFfmpegAvailable,
@@ -85,6 +99,7 @@ export function createEnrichmentContext(deps: {
       const r = await realVerifyGenre(deps.lidarr, { artist, currentGenre: null });
       return r.suggested;
     },
+    lookupArtistImageSpotify: deps.lookupArtistImageSpotify ?? null,
     fileExists: (abs) => existsSync(abs),
   };
 }
@@ -242,8 +257,94 @@ const keyTask: EnrichmentTask = {
   },
 };
 
+interface ArtistRow {
+  id: string;
+  name: string;
+}
+
+/**
+ * Backfill real artist portraits into `library_artwork (kind='artist')` so the
+ * artist grid shows a face, not a (often misleading) representative album cover —
+ * which the cover route now declines to serve for an artist id. Resolves each
+ * artist via {@link resolveArtistImageUrl} (Lidarr poster → Spotify portrait).
+ *
+ * Unlike the per-song tasks this works per *artist*: it skips placeholder/VA
+ * names and any artist the user manually set (`manual_override = 1`), and
+ * processes the most-prolific artists first (`album_count DESC`) so the library's
+ * headline names get faces soonest.
+ */
+const artistImageTask: EnrichmentTask = {
+  id: 'artist-image',
+  label: 'Artist images',
+  available: (ctx) =>
+    ctx.lidarr || ctx.lookupArtistImageSpotify ? true : 'Lidarr/Spotify not configured',
+  countPending: (db) =>
+    Number(
+      (
+        db
+          .query<{ n: number }, []>(
+            `SELECT COUNT(*) AS n FROM library_artists a
+             WHERE a.hidden = 0 AND a.manual_override = 0
+               AND NOT EXISTS (
+                 SELECT 1 FROM library_artwork w WHERE w.id = a.id AND w.kind = 'artist')`,
+          )
+          .get() ?? { n: 0 }
+      ).n,
+    ),
+  run: async (db, ctx, limit) => {
+    const rows = db
+      .query<
+        ArtistRow,
+        [number]
+      >(`SELECT id, name FROM library_artists a
+         WHERE a.hidden = 0 AND a.manual_override = 0
+           AND NOT EXISTS (
+             SELECT 1 FROM library_artwork w WHERE w.id = a.id AND w.kind = 'artist')
+         ORDER BY a.album_count DESC, a.name LIMIT ?`)
+      .all(limit);
+
+    // One Lidarr `artist.list()` per batch (not per artist), reused across rows.
+    // Wrapped so a Lidarr blip (or, in tests, a partial stub) yields an empty
+    // index and the batch still runs via Spotify rather than aborting the whole run.
+    let index = null;
+    if (ctx.lidarr) {
+      const monitored = await (async () => {
+        try {
+          return await ctx.lidarr!.artist.list();
+        } catch {
+          return [];
+        }
+      })();
+      index = indexLidarrArtists(monitored);
+    }
+
+    const labels: string[] = [];
+    let applied = 0;
+    for (const artist of rows) {
+      if (isPlaceholderArtist(artist.name)) continue;
+      const resolved = await resolveArtistImageUrl(
+        db,
+        { lidarr: ctx.lidarr, index, spotifyLookup: ctx.lookupArtistImageSpotify },
+        artist,
+      );
+      if (!resolved) continue;
+      setArtwork(db, artist.id, 'artist', resolved.url, ctx.coverCacheDir);
+      // Evict any cached 404 for this artist id so the new portrait shows at once.
+      clearCoverNegativeCache(artist.id);
+      applied++;
+      labels.push(`${artist.name} → ${resolved.source}`);
+    }
+    return { applied, labels };
+  },
+};
+
 /** All registered enrichment tasks, in run order. */
-export const ENRICHMENT_TASKS: readonly EnrichmentTask[] = [bpmTask, genreTask, keyTask];
+export const ENRICHMENT_TASKS: readonly EnrichmentTask[] = [
+  bpmTask,
+  genreTask,
+  keyTask,
+  artistImageTask,
+];
 
 export function getTask(id: ProcessingTaskId): EnrichmentTask | undefined {
   return ENRICHMENT_TASKS.find((t) => t.id === id);

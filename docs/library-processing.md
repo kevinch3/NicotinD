@@ -55,6 +55,17 @@ Launch tasks:
   major/minor profile correlation → key + Camelot code). Writes `library_songs.key`
   (e.g. "C major") and the file tag (ID3 `TKEY` / Vorbis `KEY`). Bulk script:
   `scripts/analyze-key.ts`.
+- **artist-image** — per *artist*, not per song: artists with no
+  `library_artwork(kind='artist')` row, `manual_override = 0`, `hidden = 0`, and a
+  non-placeholder name (`isPlaceholderArtist`), most-prolific first (`album_count DESC`).
+  Available with **Lidarr or Spotify** configured. Resolves a real portrait via
+  `resolveArtistImageUrl` (Lidarr poster → Spotify fallback, one `artist.list()` per
+  batch), writes the `library_artwork` URL via `setArtwork`, and evicts the cover
+  route's negative-cache (`clearCoverNegativeCache`) so the portrait shows at once. It
+  never touches a manually-overridden artist. The auto path for the artist grid — see
+  [library-scanner.md](library-scanner.md) "Artist images" and
+  [spotify-fallback.md](spotify-fallback.md). Its context carries `coverCacheDir` +
+  `lookupArtistImageSpotify` (the Spotify portrait lookup, null when unconfigured).
 
 ### Durability vs. the periodic full scan
 

@@ -163,6 +163,28 @@ describe('streaming routes', () => {
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toBe('image/jpeg');
   });
+
+  it('returns 404 for an artist id with no canonical artwork (no album-cover fallback)', async () => {
+    // The artist's only track sits in a folder that DOES have a cover.jpg. Before
+    // this change the cover route fell back to that representative track's folder
+    // art, painting the artist with a (often misleading) album cover. Now an
+    // artist id resolves to null → 404 → the UI shows the neutral initial tile.
+    // (A distinct artist_id, never reused with canonical artwork below, so the
+    // module-level negative-cache 404 can't leak into the poster suite.)
+    mkdirSync(join(musicDir, 'LoneArtist', 'LoneAlbum'), { recursive: true });
+    writeFileSync(join(musicDir, 'LoneArtist', 'LoneAlbum', 'l.mp3'), AUDIO_BYTES);
+    writeFileSync(join(musicDir, 'LoneArtist', 'LoneAlbum', 'cover.jpg'), JPEG_BYTES);
+    db.run(
+      `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, size, bit_rate, suffix, content_type, created, synced_at)
+       VALUES ('lone-1', 'lone-alb', 'L', 'Lone', 'lone-art', 0, 'LoneArtist/LoneAlbum/l.mp3', 10, 320, 'mp3', 'audio/mpeg', '2024-01-01', 1)`,
+    );
+
+    // The album id still resolves to the folder cover (sanity: only the artist
+    // path changed), …
+    expect((await app.request('/cover/lone-alb')).status).toBe(200);
+    // … but the artist id does not.
+    expect((await app.request('/cover/lone-art')).status).toBe(404);
+  });
 });
 
 describe('streaming routes — canonical artwork', () => {

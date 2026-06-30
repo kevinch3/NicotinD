@@ -18,7 +18,19 @@ import { getLyrics, setLyrics, deleteLyrics } from '../services/lyrics-store.js'
 import type { PluginRegistry } from '../services/plugins/registry.js';
 import { optimizeAlbum } from '../services/metadata-optimize.js';
 import { searchCandidates, applyMetadataFix } from '../services/metadata-fix.js';
-import { setArtwork, deleteArtwork, purgeDiskArtCache } from '../services/artwork-store.js';
+import {
+  setArtwork,
+  deleteArtwork,
+  purgeDiskArtCache,
+  purgeCanonicalCache,
+  resolveArtwork,
+} from '../services/artwork-store.js';
+import {
+  writeArtistImageOverride,
+  deleteArtistImageOverride,
+  ALLOWED_OVERRIDE_TYPES,
+} from '../services/artist-image-override.js';
+import { clearCoverNegativeCache, extractCover, fetchRemoteCover } from './streaming.js';
 import {
   dedupeCoverUrls,
   selectDistinctEmbeddedCovers,
@@ -151,6 +163,8 @@ interface LibraryRoutesOptions {
   lidarr?: Lidarr | null;
   /** Cover-cache dir, purged when an optimized album's canonical URL changes. */
   coverCacheDir?: string;
+  /** Data dir root — used to persist manual artist-image overrides. */
+  dataDir?: string;
   /** Plugin registry, used to resolve lyrics-capable sources on demand. */
   pluginRegistry?: PluginRegistry;
   /** slskd handle, used to suppress albums with an in-flight (non-job) transfer. */
@@ -300,7 +314,7 @@ function albumOrderBy(type: string): string {
 
 export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions = {}) {
   const app = new Hono<AuthEnv>();
-  const { curator, runSync, lidarr, coverCacheDir, pluginRegistry } = options;
+  const { curator, runSync, lidarr, coverCacheDir, dataDir, pluginRegistry } = options;
 
   app.get('/artists', (c) => {
     const db = getDatabase();
@@ -799,6 +813,128 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     }
 
     return c.json({ error: 'Provide coverUrl or songId' }, 400);
+  });
+
+  // ── Artist image override (admin) ──────────────────────────────────────────
+  // Give an artist a proper portrait — uploaded, or copied from one of the
+  // artist's album covers — overriding the auto (Lidarr/Spotify) artwork and the
+  // neutral placeholder. Stored as bytes keyed on the artist id and flagged
+  // manual_override=1 so the enrichment task leaves the choice alone.
+  const MAX_ARTIST_IMAGE_BYTES = 8 * 1024 * 1024;
+
+  /** Persist override bytes for an artist + flip the manual flag + bust caches. */
+  function commitArtistImage(
+    db: Database,
+    artistId: string,
+    data: Uint8Array,
+    contentType: string,
+  ): void {
+    writeArtistImageOverride(dataDir!, artistId, data, contentType);
+    db.run('UPDATE library_artists SET manual_override = 1 WHERE id = ?', [artistId]);
+    // The override occupies the un-prefixed cache namespace for this id; drop any
+    // sized variants and the negative 404 so the new portrait shows immediately.
+    if (coverCacheDir) purgeDiskArtCache(coverCacheDir, artistId);
+    clearCoverNegativeCache(artistId);
+  }
+
+  function findArtist(db: Database, id: string): boolean {
+    return !!db
+      .query<{ id: string }, [string]>('SELECT id FROM library_artists WHERE id = ?')
+      .get(id);
+  }
+
+  // Upload a custom portrait (multipart form-data, field "image"). Admin only.
+  app.put('/artists/:id/image', async (c) => {
+    const user = c.get('user');
+    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+    if (!dataDir) return c.json({ error: 'Data directory not configured' }, 503);
+    const id = c.req.param('id');
+    const db = getDatabase();
+    if (!findArtist(db, id)) return c.json({ error: 'Artist not found' }, 404);
+
+    let form: FormData;
+    try {
+      form = await c.req.formData();
+    } catch {
+      return c.json({ error: 'Expected multipart form-data' }, 400);
+    }
+    const file = form.get('image');
+    if (!(file instanceof File)) return c.json({ error: 'Missing "image" file' }, 400);
+    const contentType = file.type || '';
+    if (!(ALLOWED_OVERRIDE_TYPES as readonly string[]).includes(contentType)) {
+      return c.json({ error: 'Unsupported image type (use JPEG, PNG or WebP)' }, 415);
+    }
+    if (file.size > MAX_ARTIST_IMAGE_BYTES) {
+      return c.json({ error: 'Image too large (max 8 MB)' }, 413);
+    }
+    const data = new Uint8Array(await file.arrayBuffer());
+    if (data.length === 0) return c.json({ error: 'Empty image' }, 400);
+
+    commitArtistImage(db, id, data, contentType);
+    return c.json({ ok: true });
+  });
+
+  // Copy one of the artist's album covers into the portrait slot. Admin only.
+  app.post('/artists/:id/image/from-album', async (c) => {
+    const user = c.get('user');
+    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+    if (!dataDir) return c.json({ error: 'Data directory not configured' }, 503);
+    const id = c.req.param('id');
+    const db = getDatabase();
+    if (!findArtist(db, id)) return c.json({ error: 'Artist not found' }, 404);
+
+    const body = await c.req.json<{ albumId?: string }>().catch(() => ({}) as { albumId?: string });
+    const albumId = body.albumId?.trim();
+    if (!albumId) return c.json({ error: 'Provide albumId' }, 400);
+    const album = db
+      .query<
+        { id: string },
+        [string, string]
+      >('SELECT id FROM library_albums WHERE id = ? AND artist_id = ?')
+      .get(albumId, id);
+    if (!album) return c.json({ error: 'Album not found for this artist' }, 404);
+
+    // Resolve the album's cover bytes exactly as the cover route does: canonical
+    // URL first, then on-disk folder/embedded art.
+    let bytes = null;
+    const canonical = resolveArtwork(db, albumId);
+    if (canonical) bytes = await fetchRemoteCover(canonical.url);
+    if (!bytes && musicDir) {
+      const md = expandDir(musicDir);
+      const song = db
+        .query<{ path: string }, [string]>(
+          `SELECT path FROM library_songs WHERE album_id = ?
+           ORDER BY COALESCE(disc, 1), COALESCE(track, 999999), path LIMIT 1`,
+        )
+        .get(albumId);
+      if (song) {
+        const abs = resolveSongPath(md, song.path);
+        if (isUnderMusicDir(md, abs) && existsSync(abs)) bytes = await extractCover(abs);
+      }
+    }
+    if (!bytes) return c.json({ error: 'That album has no cover to copy' }, 400);
+
+    commitArtistImage(db, id, bytes.data, bytes.contentType);
+    return c.json({ ok: true });
+  });
+
+  // Remove the manual override → revert to auto (canonical) artwork or placeholder.
+  app.delete('/artists/:id/image', async (c) => {
+    const user = c.get('user');
+    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+    if (!dataDir) return c.json({ error: 'Data directory not configured' }, 503);
+    const id = c.req.param('id');
+    const db = getDatabase();
+    if (!findArtist(db, id)) return c.json({ error: 'Artist not found' }, 404);
+
+    deleteArtistImageOverride(dataDir, id);
+    db.run('UPDATE library_artists SET manual_override = 0 WHERE id = ?', [id]);
+    if (coverCacheDir) {
+      purgeDiskArtCache(coverCacheDir, id);
+      purgeCanonicalCache(coverCacheDir, id); // also drop any stale auto-artwork cache
+    }
+    clearCoverNegativeCache(id);
+    return c.json({ ok: true });
   });
 
   app.post('/sync', async (c) => {

@@ -23,6 +23,7 @@ function seedSong(id: string, artist = 'Artist'): void {
 function fakeCtx(counters: { analyzed: number; genreLookups: number }) {
   return (): EnrichmentContext => ({
     musicDir: '/music',
+    coverCacheDir: '/data/cover-cache',
     lidarr: {} as never,
     concurrency: 2,
     ffmpegAvailable: () => true,
@@ -37,6 +38,7 @@ function fakeCtx(counters: { analyzed: number; genreLookups: number }) {
       counters.genreLookups += 1;
       return 'Rock';
     },
+    lookupArtistImageSpotify: async () => null,
     fileExists: () => true,
   });
 }

@@ -404,6 +404,22 @@ export class ApiService {
   applyCover(id: string, body: ApplyCoverRequest) {
     return this.http.post<{ ok: boolean }>(`/api/library/albums/${id}/cover`, body);
   }
+  /** Upload a custom artist portrait (admin); overrides auto artwork + placeholder. */
+  uploadArtistImage(id: string, file: File) {
+    const form = new FormData();
+    form.append('image', file);
+    return this.http.put<{ ok: boolean }>(`/api/library/artists/${id}/image`, form);
+  }
+  /** Use one of the artist's album covers as the portrait (admin). */
+  setArtistImageFromAlbum(id: string, albumId: string) {
+    return this.http.post<{ ok: boolean }>(`/api/library/artists/${id}/image/from-album`, {
+      albumId,
+    });
+  }
+  /** Remove the manual artist-image override → revert to auto/placeholder (admin). */
+  resetArtistImage(id: string) {
+    return this.http.delete<{ ok: boolean }>(`/api/library/artists/${id}/image`);
+  }
   /** Library-wide metadata optimization (admin). `all` re-verifies every album. */
   optimizeAllMetadata(all = false) {
     return this.http.post<{

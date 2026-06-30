@@ -42,6 +42,14 @@ interface SpotifyAlbumItem {
 interface SpotifySearchResponse {
   albums?: { items?: SpotifyAlbumItem[] };
 }
+interface SpotifyArtistItem {
+  id: string;
+  name: string;
+  images?: SpotifyImage[];
+}
+interface SpotifyArtistSearchResponse {
+  artists?: { items?: SpotifyArtistItem[] };
+}
 interface SpotifyTokenResponse {
   access_token: string;
   expires_in: number;
@@ -92,6 +100,15 @@ export function mapSpotifyAlbum(item: SpotifyAlbumItem): SpotifyCandidate {
           ? 'album'
           : kindFromTrackCount(trackCount),
   };
+}
+
+/**
+ * Largest image url for a Spotify artist item, or null. Spotify returns an
+ * artist's images widest-first, so the first entry is the highest resolution —
+ * ideal for an artist portrait tile. Pure.
+ */
+export function pickSpotifyArtistImage(item: SpotifyArtistItem | undefined): string | null {
+  return item?.images?.[0]?.url ?? null;
 }
 
 /** Diacritic-folded `artist + title` token set, for collapsing duplicate releases. */
@@ -156,6 +173,30 @@ export class SpotifySearchService {
     const q = buildAlbumQuery(artist, album);
     if (!q) return [];
     return this.run(q, limit);
+  }
+
+  /**
+   * Best-effort artist portrait url for a name, or null. Used as the enrichment
+   * fallback when Lidarr has no poster, so — unlike {@link search} — it never
+   * throws: missing creds or an upstream blip just yields null and the artist
+   * keeps the neutral placeholder rather than surfacing an error.
+   */
+  async searchArtistImage(name: string): Promise<string | null> {
+    const q = name.trim();
+    if (!q) return null;
+    try {
+      const token = await this.accessToken();
+      const params = new URLSearchParams({ q, type: 'artist', limit: '1' });
+      const url = `${API_BASE}/search?${params.toString()}`;
+      const res = await this.fetchWithRetry(url, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const body = (await res.json()) as SpotifyArtistSearchResponse;
+      return pickSpotifyArtistImage(body.artists?.items?.[0]);
+    } catch (err) {
+      log.debug({ err, name }, 'Spotify artist-image lookup failed');
+      return null;
+    }
   }
 
   private async run(q: string, limit: number): Promise<SpotifyCandidate[]> {

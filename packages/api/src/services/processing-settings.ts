@@ -17,7 +17,7 @@ const KEY = 'processing';
 export const DEFAULT_PROCESSING_SETTINGS: ProcessingSettings = {
   enabled: true,
   window: { start: '05:00', end: '08:00' },
-  tasks: { bpm: true, genre: true, key: true },
+  tasks: { bpm: true, genre: true, key: true, 'artist-image': true },
   batchSize: 25,
   concurrency: 3,
 };

@@ -43,6 +43,7 @@ function makeService(): LibraryProcessingService {
     // Never let a real run touch ffmpeg/Lidarr in a route test.
     contextFactory: () => ({
       musicDir: '/music',
+      coverCacheDir: '/tmp/cover-cache',
       lidarr: null,
       concurrency: 1,
       ffmpegAvailable: () => false,
@@ -51,6 +52,7 @@ function makeService(): LibraryProcessingService {
       analyzeBpm: async () => null,
       analyzeKey: async () => null,
       lookupGenre: async () => null,
+      lookupArtistImageSpotify: null,
       fileExists: () => false,
     }),
   });

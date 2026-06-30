@@ -3,6 +3,12 @@ import type { Lidarr } from '@nicotind/lidarr-client';
 import { createLogger } from '@nicotind/core';
 import { normalizeForGrouping } from './album-grouping.js';
 import { setArtwork, pickAlbumCover, pickArtistImage } from './artwork-store.js';
+import { findLidarrArtist, indexLidarrArtists, normalizeName } from './artist-image.js';
+
+// Re-exported so existing importers (metadata-optimize) keep their path; the
+// canonical definition now lives in artist-image.ts alongside the shared
+// Lidarr-artist resolution it underpins.
+export { normalizeName };
 
 const log = createLogger('artwork-backfill');
 
@@ -56,15 +62,6 @@ interface AlbumLookupRow {
 
 /** Lidarr surface the backfill needs — narrowed so tests can inject a mock. */
 export type BackfillLidarr = Pick<Lidarr, 'artist' | 'album'>;
-
-/** Loose name match (lowercase, strip punctuation) for artist resolution. */
-export function normalizeName(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^\w\s]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
 
 /**
  * Placeholder / "unknown" artist names that poison a "<artist> <album>" Lidarr
@@ -139,25 +136,13 @@ export async function backfillArtwork(
     log.warn({ err }, 'Lidarr artist.list failed');
     return [];
   });
-  const monitoredByName = new Map(monitored.map((a) => [normalizeName(a.artistName), a]));
+  const index = indexLidarrArtists(monitored);
 
   for (const artist of artists) {
     // Resolve the Lidarr artist: discography link → monitored by name → lookup.
-    const link = db
-      .query<
-        { lidarr_id: number | null },
-        [string]
-      >('SELECT lidarr_id FROM artist_discography_links WHERE artist_id = ?')
-      .get(artist.id);
-    let lidarrArtist =
-      (link?.lidarr_id != null ? monitored.find((a) => a.id === link.lidarr_id) : undefined) ??
-      monitoredByName.get(normalizeName(artist.name));
-
-    if (!lidarrArtist && opts.lookupMissing) {
-      const hits = await lidarr.artist.lookup(artist.name).catch(() => []);
-      lidarrArtist =
-        hits.find((a) => normalizeName(a.artistName) === normalizeName(artist.name)) ?? hits[0];
-    }
+    const lidarrArtist = await findLidarrArtist(db, lidarr, index, artist, {
+      lookupMissing: opts.lookupMissing,
+    });
 
     if (!lidarrArtist) {
       result.artistsUnresolved += 1;

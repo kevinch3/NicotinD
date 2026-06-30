@@ -27,7 +27,9 @@ Non-destructive: unselected files stay on disk but get no `library_songs` row, s
 
 `streamingRoutes` (`packages/api/src/routes/streaming.ts`) serves `GET /api/stream/:id` straight from disk via `Bun.file` with HTTP `Range`/`206` support (path looked up from `library_songs.path`, traversal-guarded under the music root). Optional **ffmpeg transcoding** is gated by admin streaming settings (`streaming-settings.ts` in the `app_settings` table; `transcode.ts` spawns ffmpeg, probing availability once).
 
-`GET /api/cover/:id` resolves **canonical artwork first** (see below), then folder art (`cover.jpg`/`folder.jpg`/…), then embedded art, caching extracted/fetched images under `dataDir/cover-cache`. For an **album** id with no canonical art, the disk fallback picks the album's **first track** (`ORDER BY disc, track`) as the representative — *not* an arbitrary `LIMIT 1` row — so the album shows track 1's folder cover (the real album art) rather than a wrong thumbnail from a mislabeled sibling file.
+`GET /api/cover/:id` resolves a **manual artist override first** (see "Artist images" below), then **canonical artwork** (see below), then folder art (`cover.jpg`/`folder.jpg`/…), then embedded art, caching extracted/fetched images under `dataDir/cover-cache`. For an **album** id with no canonical art, the disk fallback picks the album's **first track** (`ORDER BY disc, track`) as the representative — *not* an arbitrary `LIMIT 1` row — so the album shows track 1's folder cover (the real album art) rather than a wrong thumbnail from a mislabeled sibling file.
+
+**Artist ids never fall back to a track's album art.** `resolvePath` has *no* `artist_id` branch: an artist id (a distinct sha1 namespace, never matched by `album_id`) with no override and no canonical poster resolves to **404**, so `CoverArtComponent` shows the neutral initial-on-gradient tile. A representative track's cover is a *wrong* face for an artist (often an old/misleading release) — worse than the clean placeholder.
 
 Successful cover responses carry `Cache-Control: public, max-age=86400` so the browser caches them and navigation stops re-requesting every tile — the connection-pool pressure that otherwise stalled album pages. The remote canonical fetch (`fetchRemoteCover`) is bounded by `AbortSignal.timeout` (6 s) so a slow/dead Lidarr URL can't hang a request (and a browser connection slot); on timeout it falls through to on-disk art. Negative (artless) results are still short-circuited by the module-level `noArtCache` (10 min TTL).
 
@@ -56,13 +58,21 @@ The scanner sets album `coverArt = albumId` and artist `coverArt = artistId` (so
 
 **Population**:
 1. `hunt-download` writes album + artist artwork from the Lidarr payload.
-2. `scripts/backfill-artwork.ts` (dry-run default, `--apply`) backfills the existing library by matching artists via `artist_discography_links`/name and albums via edition-stripped group key against the monitored Lidarr list (`artwork-backfill.ts`).
+2. The **`artist-image` windowed enrichment task** auto-fills artist posters in the background — see [library-processing.md](library-processing.md). It's the standing population path; the script below remains for one-shot/manual runs.
+3. `scripts/backfill-artwork.ts` (dry-run default, `--apply`) backfills the existing library by matching artists via `artist_discography_links`/name and albums via edition-stripped group key against the monitored Lidarr list (`artwork-backfill.ts`).
 
 Two opt-in passes widen coverage when the artist isn't monitored:
 - `--album-lookup`: targeted per-album `album.lookup("<artist> <album>")` for substantial albums (default >3 tracks, `--min-tracks N`) still missing art — skips Singles/Various-Artists junk.
 - `--lookup-missing`: slow per-artist lookup for every non-monitored artist (pathological on a large library, hence off by default).
 
 The web renders artist thumbnails via `CoverArtComponent` (gradient+initial fallback preserved) in the artists grid and artist-detail header.
+
+### Artist images (auto + manual override)
+
+Artist photos come from two layers, both keyed on `artistIdFor(name)` so they survive rescans:
+
+- **Auto (canonical)** — `resolveArtistImageUrl` (`services/artist-image.ts`) resolves a real portrait **Lidarr poster first, Spotify portrait as fallback** (see [spotify-fallback.md](spotify-fallback.md)), shared by the manual backfill script and the windowed `artist-image` task. The result is a `library_artwork(kind='artist')` URL the cover route fetches.
+- **Manual override** — a user (admin) can **upload** a photo or **copy one of the artist's album covers**, stored as *bytes* in the persistent `<dataDir>/artist-overrides/<artistId>.<ext>` dir (`services/artist-image-override.ts`) — bytes because an upload has no URL and a disk-only album cover has no public one. Routes (`routes/library.ts`): `PUT /api/library/artists/:id/image` (multipart upload, JPEG/PNG/WebP ≤ 8 MB), `POST …/image/from-album` (`{ albumId }` → copies that album's resolved cover bytes), `DELETE …/image` (revert). An override sets `library_artists.manual_override = 1` so the auto task leaves the choice alone, and is served **ahead of** canonical artwork by the cover route. `DELETE` clears the flag → the artist reverts to auto/placeholder. The web edit affordance lives on the artist-detail portrait (`artist-image-*` testids), admin-gated.
 
 ## On-demand track analysis (BPM + genre)
 

@@ -14,13 +14,45 @@
       } @else if (artist()) {
         <!-- Artist header -->
         <div class="flex items-center gap-5 mb-8">
-          <app-cover-art
-            [src]="artist()!.coverArt ? '/api/cover/' + artist()!.coverArt + '?size=200&token=' + auth.token() : undefined"
-            [artist]="artist()!.name"
-            [size]="80"
-            rounded="rounded-full"
-            className="flex-shrink-0"
-          />
+          <div class="relative flex-shrink-0 group">
+            <app-cover-art
+              [src]="artistImageSrc()"
+              [artist]="artist()!.name"
+              [size]="80"
+              rounded="rounded-full"
+            />
+            @if (auth.role() === 'admin') {
+              <app-menu-panel align="start" panelTestId="artist-image-menu">
+                <button menuTrigger type="button" data-testid="artist-image-edit"
+                  [disabled]="imageBusy()"
+                  aria-label="Change artist image" title="Change artist image"
+                  class="absolute bottom-0 right-0 w-7 h-7 flex items-center justify-center rounded-full bg-theme-inverse text-theme-inverse shadow-lg ring-2 ring-theme-bg hover:opacity-90 transition disabled:opacity-50">
+                  @if (imageBusy()) {
+                    <span class="inline-block w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin"></span>
+                  } @else {
+                    <app-icon name="edit" />
+                  }
+                </button>
+                <div menuPanel class="w-52 p-1.5 rounded-lg bg-theme-surface border border-theme shadow-xl flex flex-col">
+                  <button type="button" data-testid="artist-image-upload" (click)="triggerImageUpload()"
+                    class="text-left px-3 py-2 text-sm rounded-md text-theme-secondary hover:bg-theme-surface-2 transition">
+                    Upload image…
+                  </button>
+                  <button type="button" data-testid="artist-image-from-album" (click)="openAlbumPicker()"
+                    [disabled]="pickableAlbums().length === 0"
+                    class="text-left px-3 py-2 text-sm rounded-md text-theme-secondary hover:bg-theme-surface-2 transition disabled:opacity-40">
+                    Choose from album…
+                  </button>
+                  <button type="button" data-testid="artist-image-reset" (click)="resetImage()"
+                    class="text-left px-3 py-2 text-sm rounded-md text-theme-secondary hover:bg-theme-surface-2 transition">
+                    Reset to default
+                  </button>
+                </div>
+              </app-menu-panel>
+              <input #imageFileInput type="file" accept="image/jpeg,image/png,image/webp" class="hidden"
+                data-testid="artist-image-file" (change)="onImageFileSelected($event)" />
+            }
+          </div>
           <div>
             <h1 class="text-2xl font-bold text-theme-primary">{{ artist()!.name }}</h1>
             <p class="text-theme-muted text-sm mt-0.5">{{ albums().length }} album{{ albums().length !== 1 ? 's' : '' }}</p>
@@ -259,5 +291,37 @@
         [artistName]="artist()!.name"
         (closed)="closeHunt()"
         (downloaded)="closeHunt()" />
+    }
+
+    <!-- Choose-from-album picker: tap an album to use its cover as the portrait -->
+    @if (albumPickerOpen()) {
+      <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60"
+        data-testid="artist-image-album-picker" (click)="closeAlbumPicker()">
+        <div class="w-full max-w-lg max-h-[80vh] overflow-y-auto rounded-xl bg-theme-surface border border-theme p-4 shadow-2xl"
+          (click)="$event.stopPropagation()">
+          <div class="flex items-center justify-between mb-4">
+            <h2 class="text-base font-semibold text-theme-primary">Use an album cover</h2>
+            <button type="button" (click)="closeAlbumPicker()" aria-label="Close"
+              class="w-8 h-8 flex items-center justify-center rounded-lg text-theme-muted hover:bg-theme-surface-2 transition">
+              <app-icon name="close" />
+            </button>
+          </div>
+          <div class="grid grid-cols-3 sm:grid-cols-4 gap-3">
+            @for (album of pickableAlbums(); track album.id) {
+              <button type="button" [attr.data-testid]="'artist-image-album-' + album.id"
+                [disabled]="imageBusy()" (click)="pickAlbumCover(album.id)"
+                class="flex flex-col gap-1 text-left disabled:opacity-50 hover:opacity-90 transition">
+                <app-cover-art
+                  [src]="album.coverArt ? '/api/cover/' + album.coverArt + '?size=160&token=' + auth.token() : undefined"
+                  [album]="album.name"
+                  [artist]="artist()?.name ?? ''"
+                  [size]="120"
+                  rounded="rounded-md" />
+                <span class="text-xs text-theme-secondary truncate">{{ album.name }}</span>
+              </button>
+            }
+          </div>
+        </div>
+      </div>
     }
   

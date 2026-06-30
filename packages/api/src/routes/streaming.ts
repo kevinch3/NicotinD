@@ -11,6 +11,7 @@ import { getTranscodedFile } from '../services/transcode-cache.js';
 import { extractEmbeddedPicture } from '../services/cover-sources.js';
 import { resolveArtwork, canonicalCacheKey } from '../services/artwork-store.js';
 import { bucketCoverSize, resizeCover } from '../services/cover-thumbnail.js';
+import { readArtistImageOverride } from '../services/artist-image-override.js';
 
 const log = createLogger('streaming');
 
@@ -52,27 +53,28 @@ export function streamingRoutes(musicDir: string, db: Database, dataDir: string)
       .query<{ path: string }, [string]>('SELECT path FROM library_songs WHERE id = ?')
       .get(id);
     if (!row) {
-      // Album/artist cover ids point at a representative song. Pick the album's
-      // FIRST track (lowest disc/track) deterministically rather than an arbitrary
-      // row: track 1 lives in the canonical album folder, so its folder image is
-      // the album's real cover. why: an unordered `LIMIT 1` could land on a
+      // Album cover ids point at a representative song. Pick the album's FIRST
+      // track (lowest disc/track) deterministically rather than an arbitrary row:
+      // track 1 lives in the canonical album folder, so its folder image is the
+      // album's real cover. why: an unordered `LIMIT 1` could land on a
       // mislabeled/wrong-source file in the same folder, giving the album the
       // wrong thumbnail even while individual tracks show correct embedded art.
       // (Foreign rips are already excluded from library_songs by the scanner's
       // track selection, which further narrows this to real album tracks.)
-      row =
-        db
-          .query<{ path: string }, [string]>(
-            `SELECT path FROM library_songs WHERE album_id = ?
+      //
+      // why no `artist_id` fallback: an artist id (a distinct sha1 namespace,
+      // never matched by `album_id`) deliberately resolves to null here, so the
+      // cover route returns 404 and the UI shows the neutral initial-on-gradient
+      // tile. A representative track's album art is a *wrong* face for the artist
+      // (often an old/misleading release) — worse than the clean placeholder. Real
+      // artist portraits come from canonical artwork (Lidarr/Spotify) or a manual
+      // override, both resolved before this fallback.
+      row = db
+        .query<{ path: string }, [string]>(
+          `SELECT path FROM library_songs WHERE album_id = ?
              ORDER BY COALESCE(disc, 1), COALESCE(track, 999999), path LIMIT 1`,
-          )
-          .get(id) ??
-        db
-          .query<
-            { path: string },
-            [string]
-          >('SELECT path FROM library_songs WHERE artist_id = ? ORDER BY path LIMIT 1')
-          .get(id);
+        )
+        .get(id);
     }
     if (!row) return null;
     const abs = resolve(join(musicRoot, row.path));
@@ -177,6 +179,13 @@ export function streamingRoutes(musicDir: string, db: Database, dataDir: string)
       );
       return respondCover(embKey, pic, size);
     }
+
+    // 0. Manual artist-image override (user upload / album-cover pick) wins over
+    //    everything. Served from a persistent dir keyed on the artist id, under the
+    //    un-prefixed cache namespace — which, for an artist id, only the override
+    //    can occupy (artist ids have no on-disk-art fallback, see resolvePath).
+    const override = await readArtistImageOverride(dataDir, id);
+    if (override) return respondCover(id, override, size);
 
     // Fast-path: id was already checked and found artless within the TTL.
     if ((noArtCache.get(id) ?? 0) > Date.now()) {
@@ -310,7 +319,7 @@ function extFromContentType(ct: string): string {
 }
 
 /** Fetch a remote canonical cover URL into memory. Null on any failure/non-image. */
-async function fetchRemoteCover(url: string): Promise<CoverArt | null> {
+export async function fetchRemoteCover(url: string): Promise<CoverArt | null> {
   try {
     // why: a slow/dead canonical (Lidarr) URL must not hang the request — an
     // unbounded fetch ties up a browser connection slot and stalls sibling cover
@@ -349,7 +358,7 @@ async function cacheCover(dir: string, id: string, art: CoverArt): Promise<void>
 }
 
 /** Prefer a folder image (cover.jpg/folder.jpg…); fall back to embedded art. */
-async function extractCover(absPath: string): Promise<CoverArt | null> {
+export async function extractCover(absPath: string): Promise<CoverArt | null> {
   const folder = await folderCover(dirname(absPath));
   if (folder) return folder;
   return extractEmbeddedPicture(absPath);

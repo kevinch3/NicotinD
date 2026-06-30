@@ -6,6 +6,7 @@ import {
   releaseYear,
   mapSpotifyAlbum,
   mapSearchResponse,
+  pickSpotifyArtistImage,
   spotifyDedupeKey,
   type SpotifyCredentials,
 } from './spotify-search.service.js';
@@ -110,6 +111,18 @@ describe('spotify pure helpers', () => {
     expect(spotifyDedupeKey({ artist: 'El Cuarteto De Nos', title: 'Porfiado' })).toBe(
       spotifyDedupeKey({ artist: 'el cuarteto de nos', title: 'pórfiado' }),
     );
+  });
+
+  it('pickSpotifyArtistImage returns the widest (first) image, else null', () => {
+    expect(
+      pickSpotifyArtistImage({
+        id: 'a',
+        name: 'A',
+        images: [{ url: 'https://i.scdn.co/big.jpg' }, { url: 'https://i.scdn.co/small.jpg' }],
+      }),
+    ).toBe('https://i.scdn.co/big.jpg');
+    expect(pickSpotifyArtistImage({ id: 'a', name: 'A', images: [] })).toBe(null);
+    expect(pickSpotifyArtistImage(undefined)).toBe(null);
   });
 
   it('mapSearchResponse dedupes duplicate releases (keeps the first)', () => {
@@ -220,5 +233,31 @@ describe('SpotifySearchService', () => {
     const { fn, calls } = fetchMock({});
     expect(await new SpotifySearchService(() => creds(), fn).search('   ')).toEqual([]);
     expect(calls).toHaveLength(0);
+  });
+
+  it('searchArtistImage queries type=artist and returns the portrait url', async () => {
+    const { fn, calls } = fetchMock({
+      searchBody: { artists: { items: [{ id: 'x', name: 'A', images: [{ url: 'https://p.jpg' }] }] } },
+    });
+    const out = await new SpotifySearchService(() => creds(), fn).searchArtistImage('A');
+    expect(out).toBe('https://p.jpg');
+    expect(decodeURIComponent(calls[1]!)).toContain('type=artist');
+  });
+
+  it('searchArtistImage returns null (never throws) when the lookup fails', async () => {
+    const { fn } = fetchMock({ searchOk: false });
+    expect(await new SpotifySearchService(() => creds(), fn).searchArtistImage('A')).toBe(null);
+  });
+
+  it('searchArtistImage returns null without hitting the network for a blank name', async () => {
+    const { fn, calls } = fetchMock({});
+    expect(await new SpotifySearchService(() => creds(), fn).searchArtistImage('  ')).toBe(null);
+    expect(calls).toHaveLength(0);
+  });
+
+  it('searchArtistImage returns null (not an error) when creds are missing', async () => {
+    const { fn } = fetchMock({});
+    const svc = new SpotifySearchService(() => creds({ clientId: '', clientSecret: '' }), fn);
+    expect(await svc.searchArtistImage('A')).toBe(null);
   });
 });

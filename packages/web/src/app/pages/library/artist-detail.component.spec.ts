@@ -7,7 +7,7 @@ import { ApiService } from '../../services/api.service';
 import { AuthService } from '../../services/auth.service';
 import { PlayerService } from '../../services/player.service';
 
-const ARTIST = { id: 'ar1', name: 'Natiruts', albumCount: 2 };
+const ARTIST = { id: 'ar1', name: 'Natiruts', albumCount: 2, coverArt: 'ar1' };
 const ALBUMS = [
   { id: 'a1', name: 'Natiruts', artist: 'Natiruts' },
   { id: 'a2', name: 'Acústico', artist: 'Natiruts' },
@@ -60,11 +60,16 @@ function song(id: string) {
   };
 }
 
-function setup() {
+function setup(role = 'admin') {
   const playWithContextCalls: unknown[][] = [];
   const addToQueueCalls: unknown[] = [];
   const getAlbumCalls: string[] = [];
   const getArtistSongsCalls: GetSongsCall[] = [];
+  const imageCalls = {
+    upload: [] as Array<{ id: string; file: File }>,
+    fromAlbum: [] as Array<{ id: string; albumId: string }>,
+    reset: [] as string[],
+  };
 
   TestBed.configureTestingModule({
     imports: [ArtistDetailComponent],
@@ -90,9 +95,21 @@ function setup() {
             // First page returns two songs; subsequent pages are empty (done).
             return of(offset === 0 ? [song('s1'), song('s2')] : []);
           },
+          uploadArtistImage: (id: string, file: File) => {
+            imageCalls.upload.push({ id, file });
+            return of({ ok: true });
+          },
+          setArtistImageFromAlbum: (id: string, albumId: string) => {
+            imageCalls.fromAlbum.push({ id, albumId });
+            return of({ ok: true });
+          },
+          resetArtistImage: (id: string) => {
+            imageCalls.reset.push(id);
+            return of({ ok: true });
+          },
         },
       },
-      { provide: AuthService, useValue: { token: signal('tok') } },
+      { provide: AuthService, useValue: { token: signal('tok'), role: signal(role) } },
       {
         provide: PlayerService,
         useValue: {
@@ -116,6 +133,7 @@ function setup() {
     addToQueueCalls,
     getAlbumCalls,
     getArtistSongsCalls,
+    imageCalls,
   };
 }
 
@@ -272,6 +290,68 @@ describe('ArtistDetailComponent — Songs tab', () => {
 
     expect(addToQueueCalls).toHaveLength(2);
     expect(component.selection.active()).toBe(false);
+  });
+});
+
+describe('ArtistDetailComponent — image override', () => {
+  it('uploads a selected file and bumps the cache-bust version', async () => {
+    const { component, imageCalls } = setup();
+    await fixture_stable();
+    expect(component.imageVersion()).toBe(0);
+
+    const file = new File([new Uint8Array([1, 2, 3])], 'p.png', { type: 'image/png' });
+    const event = { target: { files: [file], value: 'x' } } as unknown as Event;
+    await component.onImageFileSelected(event);
+
+    expect(imageCalls.upload).toHaveLength(1);
+    expect(imageCalls.upload[0].id).toBe('ar1');
+    expect(component.imageVersion()).toBe(1);
+    expect(component.imageBusy()).toBe(false);
+  });
+
+  it('does nothing when no file is selected', async () => {
+    const { component, imageCalls } = setup();
+    await fixture_stable();
+    const event = { target: { files: [], value: '' } } as unknown as Event;
+    await component.onImageFileSelected(event);
+    expect(imageCalls.upload).toHaveLength(0);
+    expect(component.imageVersion()).toBe(0);
+  });
+
+  it('copies a chosen album cover and closes the picker', async () => {
+    const { component, imageCalls } = setup();
+    await fixture_stable();
+    component.openAlbumPicker();
+    expect(component.albumPickerOpen()).toBe(true);
+
+    await component.pickAlbumCover('a2');
+
+    expect(imageCalls.fromAlbum).toEqual([{ id: 'ar1', albumId: 'a2' }]);
+    expect(component.albumPickerOpen()).toBe(false);
+    expect(component.imageVersion()).toBe(1);
+  });
+
+  it('resets the image override', async () => {
+    const { component, imageCalls } = setup();
+    await fixture_stable();
+    await component.resetImage();
+    expect(imageCalls.reset).toEqual(['ar1']);
+    expect(component.imageVersion()).toBe(1);
+  });
+
+  it('exposes the artist albums + singles as pickable covers', async () => {
+    const { component } = setup();
+    await fixture_stable();
+    component.singlesAndEps.set([{ id: 's-ep', name: 'EP', artist: 'Natiruts' } as never]);
+    expect(component.pickableAlbums().map((a) => a.id)).toEqual(['a1', 'a2', 's-ep']);
+  });
+
+  it('cache-busts the portrait src only after a change', async () => {
+    const { component } = setup();
+    await fixture_stable();
+    expect(component.artistImageSrc()).toBe('/api/cover/ar1?size=200&token=tok');
+    await component.resetImage();
+    expect(component.artistImageSrc()).toBe('/api/cover/ar1?size=200&token=tok&v=1');
   });
 });
 

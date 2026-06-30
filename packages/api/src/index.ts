@@ -258,14 +258,24 @@ export function createApp({
         : null,
   };
 
-  // Windowed library-processing scheduler — runs enrichment tasks (BPM, genre)
-  // over songs still missing them, only inside the configured daily window.
+  // Spotify portrait lookup for the artist-image enrichment task. Bridged through
+  // a ref because SpotifySearchService is constructed further down (it needs the
+  // plugin registry for live creds); the scheduler only invokes this lazily during
+  // a run, by which point the ref is populated.
+  const spotifyArtistImageRef: { lookup: ((name: string) => Promise<string | null>) | null } = {
+    lookup: null,
+  };
+
+  // Windowed library-processing scheduler — runs enrichment tasks (BPM, genre,
+  // key, artist images) over the library, only inside the configured daily window.
   const processingRef: ProcessingRef = {
     current: new LibraryProcessingService({
       db,
       lidarr,
       musicDir: expandedMusicDir,
       dataDir: expandedDataDir,
+      lookupArtistImageSpotify: (name) =>
+        spotifyArtistImageRef.lookup?.(name) ?? Promise.resolve(null),
     }),
   };
 
@@ -424,6 +434,7 @@ export function createApp({
       runSync: runSyncAndCurate,
       lidarr,
       coverCacheDir: `${expandedDataDir}/cover-cache`,
+      dataDir: expandedDataDir,
       pluginRegistry: plugins,
       slskdRef,
     }),
@@ -453,6 +464,9 @@ export function createApp({
       clientSecret: (cfg.clientSecret as string) || config.acquire.spotify.clientSecret,
     };
   });
+  // Now that the Spotify search service exists, let the artist-image enrichment
+  // task reach it (no-ops gracefully when creds aren't configured).
+  spotifyArtistImageRef.lookup = (name) => spotifySearch.searchArtistImage(name);
   // archive.org metadata search lane — always mounted (no Lidarr/slskd dep); the
   // route itself 503s unless the `archive` plugin is enabled.
   app.route('/api/archive', archiveRoutes({ search: archiveSearch, plugins }));

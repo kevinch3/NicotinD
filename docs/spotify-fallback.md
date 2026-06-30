@@ -37,6 +37,18 @@ The candidate's `url` is the archive lane's `detailsUrl` analogue — there is *
 new acquire-path code**; spotDL's `canHandle = url.includes('spotify.com')`
 already routes it.
 
+## Also: artist portraits
+
+`SpotifySearchService.searchArtistImage(name)` (`/v1/search?type=artist&limit=1` →
+`pickSpotifyArtistImage`, the widest image) supplies a **fallback artist portrait**
+when Lidarr has no poster. It's wired into the `artist-image` enrichment task via
+`resolveArtistImageUrl` (Lidarr first, Spotify second — see
+[library-scanner.md](library-scanner.md) "Artist images" and
+[library-processing.md](library-processing.md)). Unlike album `search`, it **never
+throws**: missing creds or an upstream blip just yields `null` and the artist keeps
+its neutral placeholder. It reuses the same client-credentials token + retry as the
+album lane and reads the admin's live creds through the same `index.ts` accessor.
+
 ## Two plugins, two responsibilities
 
 - **`spotify`** (metadata, capability `search`, pure JS, **default-off**) — finds the

@@ -33,6 +33,7 @@ function seedSong(
 function ctx(overrides: Partial<EnrichmentContext> = {}): EnrichmentContext {
   return {
     musicDir: '/music',
+    coverCacheDir: '/data/cover-cache',
     lidarr: {} as never,
     concurrency: 2,
     ffmpegAvailable: () => true,
@@ -41,9 +42,35 @@ function ctx(overrides: Partial<EnrichmentContext> = {}): EnrichmentContext {
     analyzeBpm: async () => 120,
     analyzeKey: async () => 'C major',
     lookupGenre: async () => 'Rock',
+    lookupArtistImageSpotify: async () => null,
     fileExists: () => true,
     ...overrides,
   };
+}
+
+function seedArtist(
+  id: string,
+  opts: { name?: string; albumCount?: number; hidden?: number; manualOverride?: number } = {},
+): void {
+  db.run(
+    'INSERT INTO library_artists (id, name, album_count, hidden, manual_override, synced_at) VALUES (?, ?, ?, ?, ?, 1)',
+    [id, opts.name ?? `Artist ${id}`, opts.albumCount ?? 1, opts.hidden ?? 0, opts.manualOverride ?? 0],
+  );
+}
+
+/** A Lidarr stub whose monitored list carries one poster per named artist. */
+function lidarrWithPosters(posters: Record<string, string>): EnrichmentContext['lidarr'] {
+  return {
+    artist: {
+      list: async () =>
+        Object.entries(posters).map(([artistName, url], i) => ({
+          id: i + 1,
+          artistName,
+          images: [{ coverType: 'poster', url }],
+        })),
+      lookup: async () => [],
+    },
+  } as unknown as EnrichmentContext['lidarr'];
 }
 
 beforeEach(() => {
@@ -206,8 +233,86 @@ describe('key task', () => {
   });
 });
 
+describe('artist-image task', () => {
+  const artistImage = getTask('artist-image')!;
+
+  it('is available with Lidarr or Spotify, unavailable with neither', () => {
+    expect(artistImage.available(ctx())).toBe(true);
+    expect(artistImage.available(ctx({ lidarr: null }))).toBe(true); // Spotify present
+    expect(
+      artistImage.available(ctx({ lidarr: null, lookupArtistImageSpotify: null })),
+    ).toBe('Lidarr/Spotify not configured');
+  });
+
+  it('counts artists missing an artist artwork row (excludes hidden/manual/has-artwork)', () => {
+    seedArtist('a'); // pending
+    seedArtist('b', { hidden: 1 }); // excluded: hidden
+    seedArtist('c', { manualOverride: 1 }); // excluded: manual
+    seedArtist('d'); // excluded: already has artwork
+    db.run(
+      `INSERT INTO library_artwork (id, kind, cover_url, updated_at) VALUES ('d', 'artist', 'https://x/p.jpg', 1)`,
+    );
+    expect(artistImage.countPending(db)).toBe(1);
+  });
+
+  it('writes a Lidarr poster for a matching artist and skips placeholder/VA names', async () => {
+    seedArtist('art-real', { name: 'Radiohead', albumCount: 5 });
+    seedArtist('art-va', { name: 'Various Artists', albumCount: 9 });
+    const c = ctx({
+      lidarr: lidarrWithPosters({ Radiohead: 'https://x/radiohead.jpg' }),
+      lookupArtistImageSpotify: async () => null,
+    });
+    const res = await artistImage.run(db, c, 25);
+    expect(res.applied).toBe(1);
+    const real = db
+      .query<{ cover_url: string }, [string]>(
+        `SELECT cover_url FROM library_artwork WHERE id = ? AND kind = 'artist'`,
+      )
+      .get('art-real');
+    expect(real?.cover_url).toBe('https://x/radiohead.jpg');
+    // VA placeholder is never written even with a high album_count.
+    expect(
+      db
+        .query<{ n: number }, [string]>(
+          `SELECT COUNT(*) AS n FROM library_artwork WHERE id = ? AND kind = 'artist'`,
+        )
+        .get('art-va')?.n,
+    ).toBe(0);
+  });
+
+  it('falls back to Spotify when Lidarr has no poster, labelling the source', async () => {
+    seedArtist('art-1', { name: 'Obscure Band' });
+    const c = ctx({
+      lidarr: lidarrWithPosters({}),
+      lookupArtistImageSpotify: async () => 'https://x/spotify.jpg',
+    });
+    const res = await artistImage.run(db, c, 25);
+    expect(res.applied).toBe(1);
+    expect(res.labels[0]).toContain('spotify');
+    expect(
+      db
+        .query<{ cover_url: string }, [string]>(
+          `SELECT cover_url FROM library_artwork WHERE id = ? AND kind = 'artist'`,
+        )
+        .get('art-1')?.cover_url,
+    ).toBe('https://x/spotify.jpg');
+  });
+
+  it('does not overwrite a manually-set (manual_override) artist', async () => {
+    seedArtist('art-1', { name: 'Radiohead', manualOverride: 1 });
+    const c = ctx({ lidarr: lidarrWithPosters({ Radiohead: 'https://x/p.jpg' }) });
+    const res = await artistImage.run(db, c, 25);
+    expect(res.applied).toBe(0);
+  });
+});
+
 describe('registry', () => {
-  it('exposes bpm, genre and key tasks', () => {
-    expect(ENRICHMENT_TASKS.map((t) => t.id).sort()).toEqual(['bpm', 'genre', 'key']);
+  it('exposes bpm, genre, key and artist-image tasks', () => {
+    expect(ENRICHMENT_TASKS.map((t) => t.id).sort()).toEqual([
+      'artist-image',
+      'bpm',
+      'genre',
+      'key',
+    ]);
   });
 });
