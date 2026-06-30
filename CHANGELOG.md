@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.122](https://github.com/kevinch3/NicotinD/compare/v0.1.121...v0.1.122) (2026-06-30)
+
+
+### Features
+
+* real artist portraits with auto-fill + manual override ([90100f3](https://github.com/kevinch3/NicotinD/commit/90100f35a0ec5a0ac97a925b4085450e3d1f17d8))
+
 ## [0.1.121](https://github.com/kevinch3/NicotinD/compare/v0.1.120...v0.1.121) (2026-06-29)
 
 
