@@ -17,6 +17,7 @@ import { readAudioTags, writeAudioTags } from '../services/audio-tags.js';
 import { getLyrics, setLyrics, deleteLyrics } from '../services/lyrics-store.js';
 import type { PluginRegistry } from '../services/plugins/registry.js';
 import { optimizeAlbum } from '../services/metadata-optimize.js';
+import { rankCandidates, DEFAULT_WEIGHTS, type SongFeatures } from '../services/radio.service.js';
 import { searchCandidates, applyMetadataFix } from '../services/metadata-fix.js';
 import {
   setArtwork,
@@ -209,6 +210,7 @@ interface SongRow {
   created: string | null;
   starred: string | null;
   bpm: number | null;
+  key: string | null;
 }
 
 interface ArtistRow {
@@ -229,7 +231,7 @@ const SONG_SELECT = `
   SELECT s.id, s.album_id, a.name AS album_name, a.cover_art AS album_cover_art,
          s.title, s.artist, s.artist_id, s.track, s.duration, s.year, s.genre,
          s.cover_art, s.path, s.size, s.bit_rate, s.suffix, s.content_type,
-         s.created, s.starred, s.bpm
+         s.created, s.starred, s.bpm, s.key
   FROM library_songs s
   LEFT JOIN library_albums a ON a.id = s.album_id
 `;
@@ -278,6 +280,7 @@ function rowToSong(r: SongRow): Song {
     created: r.created ?? '',
     starred: r.starred ?? undefined,
     bpm: r.bpm ?? undefined,
+    key: r.key ?? undefined,
   };
 }
 
@@ -1214,29 +1217,29 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     const source = db.query<SongRow, [string]>(`${SONG_SELECT} WHERE s.id = ?`).get(id);
     if (!source) return c.json({ error: 'Song not found' }, 404);
 
-    const sourceDirParts = source.path.split('/').filter(Boolean).slice(0, -1);
-    const pathPrefix = sourceDirParts.slice(0, 2).join('/');
-
-    const scored = new Map<string, { song: Song; score: number }>();
-    const add = (s: Song, delta: number) => {
-      if (s.id === source.id) return;
-      const entry = scored.get(s.id);
-      if (entry) entry.score += delta;
-      else scored.set(s.id, { song: s, score: delta });
+    const seed: SongFeatures = {
+      bpm: source.bpm ?? undefined,
+      key: source.key ?? undefined,
+      genre: source.genre ?? undefined,
+      duration: source.duration,
+      year: source.year ?? undefined,
+      artistId: source.artist_id,
     };
 
-    // Same-artist songs (boost same-album less to surface other albums first)
+    // Build candidate pool: same-artist + same-genre songs
+    const candidateRows: SongRow[] = [];
+    const seen = new Set<string>([id]);
+
     const artistSongs = db
       .query<SongRow, [string]>(`${SONG_SELECT} WHERE s.artist_id = ? AND s.hidden = 0`)
       .all(source.artist_id);
     for (const row of artistSongs) {
-      const s = rowToSong(row);
-      const score = row.album_id === source.album_id ? 5 : 10;
-      add(s, score);
-      if (pathPrefix && row.path.includes(pathPrefix)) add(s, 4);
+      if (!seen.has(row.id)) {
+        seen.add(row.id);
+        candidateRows.push(row);
+      }
     }
 
-    // Same-genre songs within ±5 years
     if (source.genre) {
       const genreRows = db
         .query<SongRow, [string, string]>(
@@ -1244,20 +1247,35 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
            ORDER BY RANDOM() LIMIT 200`,
         )
         .all(source.genre, source.artist_id);
-      const yearMin = source.year ? source.year - 5 : null;
-      const yearMax = source.year ? source.year + 5 : null;
       for (const row of genreRows) {
-        if (yearMin && yearMax && row.year && (row.year < yearMin || row.year > yearMax)) continue;
-        const s = rowToSong(row);
-        add(s, 3);
-        if (pathPrefix && row.path.includes(pathPrefix)) add(s, 4);
+        if (!seen.has(row.id)) {
+          seen.add(row.id);
+          candidateRows.push(row);
+        }
       }
     }
 
-    const results = [...scored.values()]
-      .sort((a, b) => b.score - a.score)
-      .slice(0, size)
-      .map((e) => e.song);
+    const candidates = candidateRows.map((r) => ({
+      bpm: r.bpm ?? undefined,
+      key: r.key ?? undefined,
+      genre: r.genre ?? undefined,
+      duration: r.duration,
+      year: r.year ?? undefined,
+      artistId: r.artist_id,
+      _row: r,
+    }));
+
+    // Use a higher artist cap for "similar" than for radio — same-artist results
+    // are expected here.
+    const ranked = rankCandidates(seed, candidates, {
+      count: size,
+      maxPerArtist: 5,
+      weights: { ...DEFAULT_WEIGHTS, artistPenalty: -3 },
+    });
+
+    const results = ranked.map((e) =>
+      rowToSong((e.song as (typeof candidates)[number])._row),
+    );
 
     return c.json(results);
   });

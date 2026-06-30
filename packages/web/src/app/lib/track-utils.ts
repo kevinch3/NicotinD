@@ -12,6 +12,9 @@ export interface BaseSong {
   coverArt?: string;
   duration?: number;
   bitRate?: number;
+  genre?: string;
+  bpm?: number;
+  key?: string;
 }
 
 export function toTrack(song: BaseSong, fallbackAlbum?: string): Track {
@@ -24,6 +27,9 @@ export function toTrack(song: BaseSong, fallbackAlbum?: string): Track {
     coverArt: song.coverArt,
     duration: song.duration,
     bitRate: song.bitRate,
+    genre: song.genre,
+    bpm: song.bpm,
+    key: song.key,
   };
 }
 

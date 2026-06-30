@@ -57,6 +57,8 @@ export interface Song {
   starred?: string;
   /** Beats per minute, from tags or on-demand analysis. Absent when unknown. */
   bpm?: number;
+  /** Musical key, e.g. "C major" / "A minor". Absent when unknown. */
+  key?: string;
 }
 
 export interface SearchResult3 {

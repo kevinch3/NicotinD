@@ -80,11 +80,22 @@ export class LayoutComponent implements OnInit, OnDestroy {
     // app-wide (AcquireService self-polls while jobs are active).
     void this.acquire.refresh();
 
-    // Radio source: a shuffled pool of library tracks so playback never stops.
-    // Registered here (not in PlayerService) so the service stays HTTP-free.
-    this.player.setRadioProvider(async () => {
-      const songs = await firstValueFrom(this.api.getRecentSongs(200));
-      return shuffleArray(songs.map((s) => toTrack(s)));
+    // Radio source: metadata-aware track selection so playback continues with
+    // musically similar tracks. Falls back to shuffled recent songs when no seed.
+    this.player.setRadioProvider(async (seed) => {
+      if (!seed.currentTrack) {
+        const songs = await firstValueFrom(this.api.getRecentSongs(200));
+        return shuffleArray(songs.map((s) => toTrack(s)));
+      }
+      const exclude = [
+        seed.currentTrack.id,
+        ...this.player.queue().map((t) => t.id),
+        ...this.player.history().slice(-20).map((t) => t.id),
+      ];
+      const songs = await firstValueFrom(
+        this.api.getRadioNext(seed.currentTrack.id, exclude, 10),
+      );
+      return songs.map((s) => toTrack(s));
     });
   }
 
