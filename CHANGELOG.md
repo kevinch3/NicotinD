@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.124](https://github.com/kevinch3/NicotinD/compare/v0.1.123...v0.1.124) (2026-06-30)
+
+
+### Features
+
+* metadata-driven smart radio using BPM, key, and genre scoring ([a441861](https://github.com/kevinch3/NicotinD/commit/a4418616efaf04dd733d4e4e166a2997634bc637))
+
 ## [0.1.123](https://github.com/kevinch3/NicotinD/compare/v0.1.122...v0.1.123) (2026-06-30)
 
 ## [0.1.122](https://github.com/kevinch3/NicotinD/compare/v0.1.121...v0.1.122) (2026-06-30)
