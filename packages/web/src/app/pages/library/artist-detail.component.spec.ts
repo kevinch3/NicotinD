@@ -3,7 +3,8 @@ import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { provideRouter, ActivatedRoute } from '@angular/router';
 import { of } from 'rxjs';
 import { ArtistDetailComponent } from './artist-detail.component';
-import { ApiService } from '../../services/api.service';
+import { LibraryApiService } from '../../services/api/library-api.service';
+import { DownloadsApiService } from '../../services/api/downloads-api.service';
 import { AuthService } from '../../services/auth.service';
 import { PlayerService } from '../../services/player.service';
 
@@ -77,14 +78,19 @@ function setup(role = 'admin') {
       provideRouter([]),
       { provide: ActivatedRoute, useValue: { snapshot: { paramMap: { get: () => 'ar1' } } } },
       {
-        provide: ApiService,
+        provide: DownloadsApiService,
+        useValue: {
+          getArtistDiscography: () => of({ artistId: 'ar1', lidarrId: 0, mbid: '', albums: [] }),
+        },
+      },
+      {
+        provide: LibraryApiService,
         useValue: {
           getArtist: () => of({ artist: ARTIST, albums: ALBUMS, singlesAndEps: [] }),
           getAlbum: (id: string) => {
             getAlbumCalls.push(id);
             return of(ALBUM_DETAILS[id]);
           },
-          getArtistDiscography: () => of({ artistId: 'ar1', lidarrId: 0, mbid: '', albums: [] }),
           getArtistSongs: (
             id: string,
             size: number,

@@ -1,10 +1,11 @@
 import { Injectable, inject, signal } from '@angular/core';
-import { ApiService, type SetupStatus } from './api.service';
+import { SystemApiService } from './api/system-api.service';
+import type { SetupStatus } from './api/api-types';
 import { firstValueFrom, timeout } from 'rxjs';
 
 @Injectable({ providedIn: 'root' })
 export class SetupService {
-  private api = inject(ApiService);
+  private api = inject(SystemApiService);
 
   readonly status = signal<SetupStatus | null>(null);
   readonly checked = signal(false);

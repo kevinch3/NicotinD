@@ -2,13 +2,16 @@ import { Component, inject, signal, computed, effect, OnInit, OnDestroy } from '
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink, ActivatedRoute } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
-import {
-  ApiService,
-  type CatalogAlbum,
-  type CatalogArtist,
-  type CatalogSearchResult,
-  type DiscographyAlbum,
-} from '../../services/api.service';
+import { SearchApiService } from '../../services/api/search-api.service';
+import { DownloadsApiService } from '../../services/api/downloads-api.service';
+import { LibraryApiService } from '../../services/api/library-api.service';
+import { SystemApiService } from '../../services/api/system-api.service';
+import type {
+  CatalogAlbum,
+  CatalogArtist,
+  CatalogSearchResult,
+  DiscographyAlbum,
+} from '../../services/api/api-types';
 import { SearchService, type NetworkResult } from '../../services/search.service';
 import { TransferService } from '../../services/transfer.service';
 import { AcquireService } from '../../services/acquire.service';
@@ -206,7 +209,10 @@ function escapeHtml(text: string): string {
 export class SearchComponent implements OnInit, OnDestroy {
   readonly router = inject(Router);
   private route = inject(ActivatedRoute);
-  private api = inject(ApiService);
+  private api = inject(SearchApiService);
+  private downloadsApi = inject(DownloadsApiService);
+  private libraryApi = inject(LibraryApiService);
+  private systemApi = inject(SystemApiService);
   readonly search = inject(SearchService);
   private transfers = inject(TransferService);
   readonly acquire = inject(AcquireService);
@@ -316,7 +322,7 @@ export class SearchComponent implements OnInit, OnDestroy {
   });
 
   ngOnInit(): void {
-    firstValueFrom(this.api.getSoulseekStatus())
+    firstValueFrom(this.systemApi.getSoulseekStatus())
       .then((s) => this.networkConnected.set(s.connected))
       .catch(() => this.networkConnected.set(false));
     void this.acquire.refresh();
@@ -378,7 +384,7 @@ export class SearchComponent implements OnInit, OnDestroy {
     const key = `${username}:${file.filename}`;
     this.search.addDownloading(key);
     try {
-      await firstValueFrom(this.api.enqueueDownload(username, [file]));
+      await firstValueFrom(this.downloadsApi.enqueueDownload(username, [file]));
       this.downloadError.set(null);
     } catch (err) {
       this.search.removeDownloading(key);
@@ -397,7 +403,7 @@ export class SearchComponent implements OnInit, OnDestroy {
       for (const f of files) this.search.addDownloading(`${username}:${f.filename}`);
       try {
         await firstValueFrom(
-          this.api.enqueueDownload(
+          this.downloadsApi.enqueueDownload(
             username,
             files.map((f) => ({ filename: f.filename, size: f.size })),
           ),
@@ -415,7 +421,7 @@ export class SearchComponent implements OnInit, OnDestroy {
     for (const f of validFiles) this.search.addDownloading(`${group.username}:${f.filename}`);
     try {
       await firstValueFrom(
-        this.api.enqueueDownload(
+        this.downloadsApi.enqueueDownload(
           group.username,
           validFiles.map((f) => ({ filename: f.filename, size: f.size })),
         ),
@@ -437,7 +443,7 @@ export class SearchComponent implements OnInit, OnDestroy {
     this.search.addDownloadedFolder(folderKey);
     for (const f of validFiles) this.search.addDownloading(`${username}:${f.filename}`);
     try {
-      await firstValueFrom(this.api.enqueueDownload(username, validFiles));
+      await firstValueFrom(this.downloadsApi.enqueueDownload(username, validFiles));
       this.downloadError.set(null);
     } catch (err) {
       for (const f of validFiles) this.search.removeDownloading(`${username}:${f.filename}`);
@@ -457,7 +463,7 @@ export class SearchComponent implements OnInit, OnDestroy {
   // already downloaded, otherwise load their full Lidarr discography as album
   // cards — much more useful than re-running the same search query.
   async activateArtist(artist: CatalogArtist): Promise<void> {
-    const localId = await firstValueFrom(this.api.resolveArtistIdByName(artist.name));
+    const localId = await firstValueFrom(this.libraryApi.resolveArtistIdByName(artist.name));
     if (localId) {
       void this.router.navigate(['/library/artists', localId]);
       return;

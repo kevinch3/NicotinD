@@ -5,7 +5,7 @@ import {
   scopedArtistMbid,
   applyDiscography,
 } from './catalog-display';
-import type { CatalogSearchResult } from '../services/api.service';
+import type { CatalogSearchResult } from '../services/api/api-types';
 
 const album = (title: string) => ({
   foreignAlbumId: title,

@@ -1,6 +1,7 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
-import { ApiService, type PlaylistSummary, type PlaylistDetail } from './api.service';
+import { PlaylistsApiService } from './api/playlists-api.service';
+import type { PlaylistSummary, PlaylistDetail } from './api/api-types';
 
 /**
  * Per-user playlists (web). Holds the summary list as a signal and drives the
@@ -9,7 +10,7 @@ import { ApiService, type PlaylistSummary, type PlaylistDetail } from './api.ser
  */
 @Injectable({ providedIn: 'root' })
 export class PlaylistService {
-  private api = inject(ApiService);
+  private api = inject(PlaylistsApiService);
 
   readonly playlists = signal<PlaylistSummary[]>([]);
   readonly loaded = signal(false);

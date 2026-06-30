@@ -4,7 +4,11 @@ import { provideRouter } from '@angular/router';
 import { of, throwError } from 'rxjs';
 import { vi } from 'vitest';
 import { SearchComponent } from './search.component';
-import { ApiService, type CatalogAlbum } from '../../services/api.service';
+import { SearchApiService } from '../../services/api/search-api.service';
+import { DownloadsApiService } from '../../services/api/downloads-api.service';
+import { LibraryApiService } from '../../services/api/library-api.service';
+import { SystemApiService } from '../../services/api/system-api.service';
+import type { CatalogAlbum } from '../../services/api/api-types';
 import { SearchService } from '../../services/search.service';
 import { TransferService } from '../../services/transfer.service';
 import { AcquireService } from '../../services/acquire.service';
@@ -22,10 +26,9 @@ const CATALOG_ALBUM: CatalogAlbum = {
   trackCount: 10,
 };
 
-function setup(apiOverrides: Partial<Record<keyof ApiService, unknown>> = {}) {
+function setup(apiOverrides: Partial<Record<keyof SearchApiService, unknown>> = {}) {
   const acquireSubmit = vi.fn(() => Promise.resolve('job1'));
-  const api = {
-    getSoulseekStatus: () => of({ connected: true }),
+  const searchApi = {
     catalogSearch: () =>
       of({ artists: [{ mbid: 'pf-mbid', name: 'Pink Floyd' }], albums: [CATALOG_ALBUM] }),
     search: () =>
@@ -47,7 +50,10 @@ function setup(apiOverrides: Partial<Record<keyof ApiService, unknown>> = {}) {
     imports: [SearchComponent],
     providers: [
       provideRouter([]),
-      { provide: ApiService, useValue: api },
+      { provide: SearchApiService, useValue: searchApi },
+      { provide: SystemApiService, useValue: { getSoulseekStatus: () => of({ connected: true }) } },
+      { provide: DownloadsApiService, useValue: { enqueueDownload: () => of({ ok: true }) } },
+      { provide: LibraryApiService, useValue: { resolveArtistIdByName: () => of(null) } },
       { provide: TransferService, useValue: { poll: () => {}, getStatus: () => undefined } },
       { provide: AcquireService, useValue: { submit: acquireSubmit } },
       SearchService,

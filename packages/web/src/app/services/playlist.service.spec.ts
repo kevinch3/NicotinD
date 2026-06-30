@@ -2,7 +2,8 @@ import { TestBed } from '@angular/core/testing';
 import { of } from 'rxjs';
 import { vi } from 'vitest';
 import { PlaylistService } from './playlist.service';
-import { ApiService, type PlaylistSummary } from './api.service';
+import { PlaylistsApiService } from './api/playlists-api.service';
+import type { PlaylistSummary } from './api/api-types';
 
 function summary(over: Partial<PlaylistSummary> = {}): PlaylistSummary {
   return {
@@ -35,7 +36,7 @@ describe('PlaylistService (web)', () => {
       providers: [
         PlaylistService,
         {
-          provide: ApiService,
+          provide: PlaylistsApiService,
           useValue: { getPlaylists, createPlaylist, updatePlaylist, deletePlaylist },
         },
       ],

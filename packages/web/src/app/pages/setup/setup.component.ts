@@ -1,7 +1,8 @@
 import { Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { AuthService } from '../../services/auth.service';
-import { ApiService, type SetupStatus } from '../../services/api.service';
+import { SystemApiService } from '../../services/api/system-api.service';
+import type { SetupStatus } from '../../services/api/api-types';
 import { SetupService } from '../../services/setup.service';
 import { PasswordFieldComponent } from '../../components/password-field/password-field.component';
 
@@ -14,7 +15,7 @@ type Step = 'admin' | 'soulseek' | 'done';
 })
 export class SetupComponent {
   private auth = inject(AuthService);
-  private api = inject(ApiService);
+  private api = inject(SystemApiService);
   private setupService = inject(SetupService);
 
   readonly step = signal<Step>('admin');

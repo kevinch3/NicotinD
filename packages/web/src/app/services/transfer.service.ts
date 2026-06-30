@@ -1,6 +1,7 @@
 import { Injectable, inject, signal, computed } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
-import { ApiService } from './api.service';
+import { DownloadsApiService } from './api/downloads-api.service';
+import { SystemApiService } from './api/system-api.service';
 import type { SlskdUserTransferGroup, AcquireJob } from '@nicotind/core';
 import type { TransferEntry } from '../lib/transfer-types';
 import { detectNewCompletion } from '../lib/transfer-utils';
@@ -12,7 +13,8 @@ const ACTIVE_STATES = new Set(['InProgress', 'Queued', 'Initializing']);
 
 @Injectable({ providedIn: 'root' })
 export class TransferService {
-  private api = inject(ApiService);
+  private api = inject(DownloadsApiService);
+  private systemApi = inject(SystemApiService);
 
   readonly transfers = signal(new Map<string, TransferEntry>());
   readonly downloads = signal<SlskdUserTransferGroup[]>([]);
@@ -68,7 +70,7 @@ export class TransferService {
       return;
     }
     try {
-      const { scanning } = await firstValueFrom(this.api.getScanStatus());
+      const { scanning } = await firstValueFrom(this.systemApi.getScanStatus());
       if (scanning) {
         this.scanPollTimer = setTimeout(() => this.doPollScan(attempts + 1, true), 1500);
       } else if (!seenScanning && attempts < 5) {

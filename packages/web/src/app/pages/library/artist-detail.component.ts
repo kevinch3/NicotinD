@@ -11,13 +11,14 @@ import {
 } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
-import {
-  ApiService,
-  type Album,
-  type Song,
-  type DiscographyAlbum,
-  type DiscographyResult,
-} from '../../services/api.service';
+import { LibraryApiService } from '../../services/api/library-api.service';
+import { DownloadsApiService } from '../../services/api/downloads-api.service';
+import type {
+  Album,
+  Song,
+  DiscographyAlbum,
+  DiscographyResult,
+} from '../../services/api/api-types';
 import { AuthService } from '../../services/auth.service';
 import { PlayerService } from '../../services/player.service';
 import { PlaylistService } from '../../services/playlist.service';
@@ -54,7 +55,8 @@ const SONGS_PAGE_SIZE = 60;
 })
 export class ArtistDetailComponent implements OnInit, OnDestroy {
   private route = inject(ActivatedRoute);
-  private api = inject(ApiService);
+  private api = inject(LibraryApiService);
+  private downloadsApi = inject(DownloadsApiService);
   readonly auth = inject(AuthService);
   private player = inject(PlayerService);
   private playlists = inject(PlaylistService);
@@ -355,7 +357,7 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
   private async loadDiscography(artistId: string): Promise<void> {
     this.discographyLoading.set(true);
     try {
-      const result = await firstValueFrom(this.api.getArtistDiscography(artistId));
+      const result = await firstValueFrom(this.downloadsApi.getArtistDiscography(artistId));
       this.discography.set(result);
     } catch {
       // Lidarr not configured or artist not found — no discography shown

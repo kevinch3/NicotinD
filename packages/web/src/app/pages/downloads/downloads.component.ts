@@ -12,7 +12,10 @@ import { NgTemplateOutlet } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
-import { ApiService, type Song } from '../../services/api.service';
+import { DownloadsApiService } from '../../services/api/downloads-api.service';
+import { LibraryApiService } from '../../services/api/library-api.service';
+import { SystemApiService } from '../../services/api/system-api.service';
+import type { Song } from '../../services/api/api-types';
 import { AuthService } from '../../services/auth.service';
 import { PlayerService, type Track, shuffleArray } from '../../services/player.service';
 import { TransferService } from '../../services/transfer.service';
@@ -117,7 +120,9 @@ function sortAcquireJobs(jobs: AcquireJob[]): AcquireJob[] {
   templateUrl: './downloads.component.html',
 })
 export class DownloadsComponent implements OnInit, OnDestroy {
-  private api = inject(ApiService);
+  private api = inject(DownloadsApiService);
+  private libraryApi = inject(LibraryApiService);
+  private systemApi = inject(SystemApiService);
   private player = inject(PlayerService);
   private transferService = inject(TransferService);
   private listControls = inject(ListControlsService);
@@ -393,7 +398,7 @@ export class DownloadsComponent implements OnInit, OnDestroy {
     });
 
     try {
-      const result = await firstValueFrom(this.api.deleteSongs(songIds));
+      const result = await firstValueFrom(this.libraryApi.deleteSongs(songIds));
       this.recentSongs.update((prev) => prev.filter((s) => !songIds.includes(s.id)));
       this.selected.update((prev) => {
         const next = new Set(prev);
@@ -475,7 +480,7 @@ export class DownloadsComponent implements OnInit, OnDestroy {
     if (this.scanning()) return;
     this.scanning.set(true);
     try {
-      await firstValueFrom(this.api.triggerScan());
+      await firstValueFrom(this.systemApi.triggerScan());
       this.pollRecentSongs();
     } catch {
       /* ignore */
@@ -641,14 +646,14 @@ export class DownloadsComponent implements OnInit, OnDestroy {
     }
     // No id (network-origin row): resolve the name to a local artist page when
     // possible, else fall back to searching for the artist.
-    const id = await firstValueFrom(this.api.resolveArtistIdByName(song.artist));
+    const id = await firstValueFrom(this.libraryApi.resolveArtistIdByName(song.artist));
     if (id) void this.router.navigate(resolveArtistRoute(id));
     else this.navigateAndSearch(song.artist);
   }
 
   private async fetchRecentSongs(): Promise<void> {
     try {
-      const data = await firstValueFrom(this.api.getRecentSongs(50));
+      const data = await firstValueFrom(this.libraryApi.getRecentSongs(50));
       this.recentSongs.set(data);
     } catch {
       /* ignore */

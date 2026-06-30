@@ -4,7 +4,8 @@ import { provideRouter, ActivatedRoute } from '@angular/router';
 import { of } from 'rxjs';
 import { GenreDetailComponent } from './genre-detail.component';
 import { vi } from 'vitest';
-import { ApiService, type Song } from '../../services/api.service';
+import { LibraryApiService } from '../../services/api/library-api.service';
+import type { Song } from '../../services/api/api-types';
 import { AuthService } from '../../services/auth.service';
 import { PlayerService } from '../../services/player.service';
 import { PreserveService } from '../../services/preserve.service';
@@ -63,7 +64,7 @@ function setup(opts: { role?: 'admin' | 'user'; deleteSongs?: ReturnType<typeof 
       provideRouter([]),
       { provide: ActivatedRoute, useValue: { snapshot: { paramMap: { get: () => 'Reggae' } } } },
       {
-        provide: ApiService,
+        provide: LibraryApiService,
         useValue: {
           getSongsByGenre: () => of(MOCK_SONGS),
           deleteSongs,

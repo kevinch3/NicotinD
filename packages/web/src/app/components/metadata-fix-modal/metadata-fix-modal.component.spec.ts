@@ -3,7 +3,7 @@ import { vi } from 'vitest';
 import { of } from 'rxjs';
 import type { AlbumCoverCandidate } from '../../../types/core';
 import { MetadataFixModalComponent } from './metadata-fix-modal.component';
-import { ApiService } from '../../services/api.service';
+import { LibraryApiService } from '../../services/api/library-api.service';
 import { AuthService } from '../../services/auth.service';
 import { ServerConfigService } from '../../services/server-config.service';
 
@@ -24,7 +24,7 @@ describe('MetadataFixModalComponent cover picker', () => {
       imports: [MetadataFixModalComponent],
       providers: [
         {
-          provide: ApiService,
+          provide: LibraryApiService,
           useValue: { getCoverCandidates, applyCover, getMetadataCandidates: vi.fn() },
         },
         { provide: AuthService, useValue: { token: () => 'tok' } },
