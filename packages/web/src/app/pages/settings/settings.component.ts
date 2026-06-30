@@ -3,7 +3,9 @@ import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import type { ProcessingSettings, ProcessingStatus, ProcessingTaskId } from '../../../types/core';
-import { ApiService, type StreamingSettings } from '../../services/api.service';
+import { SystemApiService } from '../../services/api/system-api.service';
+import { LibraryApiService } from '../../services/api/library-api.service';
+import type { StreamingSettings } from '../../services/api/api-types';
 import { AuthService } from '../../services/auth.service';
 import { ServerConfigService } from '../../services/server-config.service';
 import { progressPercent, phaseLabel, totalPending } from '../../lib/processing-progress';
@@ -48,7 +50,8 @@ type DuplicateSong = {
   templateUrl: './settings.component.html',
 })
 export class SettingsComponent implements OnInit, OnDestroy {
-  private api = inject(ApiService);
+  private api = inject(SystemApiService);
+  private libraryApi = inject(LibraryApiService);
   readonly auth = inject(AuthService);
   readonly themeService = inject(ThemeService);
   private router = inject(Router);
@@ -476,7 +479,7 @@ export class SettingsComponent implements OnInit, OnDestroy {
     this.duplicates.set([]);
     this.duplicatesDeleteSet.set(new Set());
     try {
-      const groups = await firstValueFrom(this.api.getDuplicates());
+      const groups = await firstValueFrom(this.libraryApi.getDuplicates());
       this.duplicates.set(groups);
       if (groups.length === 0) {
         this.duplicatesMessage.set({ type: 'success', text: 'No duplicates found' });
@@ -517,7 +520,7 @@ export class SettingsComponent implements OnInit, OnDestroy {
     this.deletingDuplicates.set(true);
     this.duplicatesMessage.set(null);
     try {
-      const result = await firstValueFrom(this.api.deleteSongs(ids));
+      const result = await firstValueFrom(this.libraryApi.deleteSongs(ids));
       this.duplicatesMessage.set({
         type: 'success',
         text: `Deleted ${result.deletedCount} file${result.deletedCount !== 1 ? 's' : ''}`,

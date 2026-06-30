@@ -3,7 +3,7 @@ import { signal } from '@angular/core';
 import { vi } from 'vitest';
 import { of, throwError } from 'rxjs';
 import { TrackInfoSheetComponent } from './track-info-sheet.component';
-import { ApiService } from '../../services/api.service';
+import { LibraryApiService } from '../../services/api/library-api.service';
 import { AuthService } from '../../services/auth.service';
 
 // Instantiated without detectChanges so ngOnInit (which reads required inputs +
@@ -33,7 +33,7 @@ describe('TrackInfoSheetComponent (analysis)', () => {
       imports: [TrackInfoSheetComponent],
       providers: [
         {
-          provide: ApiService,
+          provide: LibraryApiService,
           useValue: {
             analyzeSong,
             getGenreSuggestion,

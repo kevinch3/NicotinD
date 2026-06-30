@@ -5,7 +5,8 @@ import { HttpClient } from '@angular/common/http';
 import { of } from 'rxjs';
 import { vi } from 'vitest';
 import { AlbumDetailComponent } from './album-detail.component';
-import { ApiService, type AlbumDetail } from '../../services/api.service';
+import { LibraryApiService } from '../../services/api/library-api.service';
+import type { AlbumDetail } from '../../services/api/api-types';
 import { AuthService } from '../../services/auth.service';
 import { PlayerService } from '../../services/player.service';
 import { PlaylistService } from '../../services/playlist.service';
@@ -42,7 +43,7 @@ function setup(
       provideRouter([]),
       { provide: ActivatedRoute, useValue: { snapshot: { paramMap: { get: () => 'a1' } } } },
       {
-        provide: ApiService,
+        provide: LibraryApiService,
         useValue: { getAlbum: () => of(ALBUM), deleteSongs, optimizeAlbumMetadata },
       },
       { provide: AuthService, useValue: { token: signal('tok'), role: () => 'admin' } },

@@ -1,13 +1,15 @@
 import { Component, inject, signal, effect, OnInit, OnDestroy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
-import {
-  ApiService,
-  type AdminUser,
-  type AlbumJob,
-  type UntrackedDownload,
-  type DiscographyAlbum,
-} from '../../services/api.service';
+import { SystemApiService } from '../../services/api/system-api.service';
+import { DownloadsApiService } from '../../services/api/downloads-api.service';
+import { LibraryApiService } from '../../services/api/library-api.service';
+import type {
+  AdminUser,
+  AlbumJob,
+  UntrackedDownload,
+  DiscographyAlbum,
+} from '../../services/api/api-types';
 import { AuthService } from '../../services/auth.service';
 import { ServerConfigService } from '../../services/server-config.service';
 import { PasswordFieldComponent } from '../../components/password-field/password-field.component';
@@ -19,7 +21,9 @@ import { AlbumHuntModalComponent } from '../../components/album-hunt-modal/album
   templateUrl: './admin.component.html',
 })
 export class AdminComponent implements OnInit, OnDestroy {
-  private api = inject(ApiService);
+  private api = inject(SystemApiService);
+  private downloadsApi = inject(DownloadsApiService);
+  private libraryApi = inject(LibraryApiService);
   private auth = inject(AuthService);
   private server = inject(ServerConfigService);
 
@@ -54,7 +58,7 @@ export class AdminComponent implements OnInit, OnDestroy {
     this.optimizingMetadata.set(true);
     this.optimizeMetadataMsg.set(null);
     try {
-      const r = await firstValueFrom(this.api.optimizeAllMetadata());
+      const r = await firstValueFrom(this.libraryApi.optimizeAllMetadata());
       this.optimizeMetadataMsg.set(
         `Checked ${r.albums} album(s): ${r.coversUpdated} cover(s), ${r.yearsUpdated} year(s) updated.`,
       );
@@ -109,7 +113,7 @@ export class AdminComponent implements OnInit, OnDestroy {
   async loadIncompleteJobs(): Promise<void> {
     this.jobsLoading.set(true);
     try {
-      const { jobs } = await firstValueFrom(this.api.listAlbumJobs('incomplete'));
+      const { jobs } = await firstValueFrom(this.downloadsApi.listAlbumJobs('incomplete'));
       this.incompleteJobs.set(jobs);
     } catch {
       this.incompleteJobs.set([]);
@@ -121,7 +125,7 @@ export class AdminComponent implements OnInit, OnDestroy {
   async loadUntracked(): Promise<void> {
     this.untrackedLoading.set(true);
     try {
-      const { total, rows } = await firstValueFrom(this.api.getUntrackedDownloads(200));
+      const { total, rows } = await firstValueFrom(this.downloadsApi.getUntrackedDownloads(200));
       this.untracked.set(rows);
       this.untrackedTotal.set(total);
     } catch {

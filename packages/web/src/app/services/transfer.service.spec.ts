@@ -2,7 +2,8 @@ import { TestBed } from '@angular/core/testing';
 import { vi } from 'vitest';
 import { of } from 'rxjs';
 import { TransferService } from './transfer.service';
-import { ApiService } from './api.service';
+import { DownloadsApiService } from './api/downloads-api.service';
+import { SystemApiService } from './api/system-api.service';
 import type { SlskdUserTransferGroup, AcquireJob } from '@nicotind/core';
 
 function makeGroup(states: string[][]): SlskdUserTransferGroup {
@@ -25,13 +26,19 @@ function makeGroup(states: string[][]): SlskdUserTransferGroup {
   };
 }
 
-function makeApiMock(overrides: Partial<ApiService> = {}): ApiService {
+function makeApiMock(overrides: Partial<DownloadsApiService> = {}): DownloadsApiService {
   return {
     getDownloads: () => of([]),
     getAcquireJobs: () => of([]),
     ...overrides,
-  } as unknown as ApiService;
+  } as unknown as DownloadsApiService;
 }
+
+// TransferService also injects SystemApiService (getScanStatus, used only by the
+// scan-poll path); provide a minimal stub so the real one isn't instantiated.
+const systemApiMock = {
+  getScanStatus: () => of({ scanning: false, count: 0 }),
+} as unknown as SystemApiService;
 
 function makeAcquireJob(state: AcquireJob['state']): AcquireJob {
   return { id: 'j1', state, url: 'http://x', backend: 'yt-dlp', createdAt: 0 };
@@ -42,7 +49,11 @@ describe('TransferService.activeDownloadCount', () => {
 
   beforeEach(() => {
     TestBed.configureTestingModule({
-      providers: [TransferService, { provide: ApiService, useValue: makeApiMock() }],
+      providers: [
+        TransferService,
+        { provide: DownloadsApiService, useValue: makeApiMock() },
+        { provide: SystemApiService, useValue: systemApiMock },
+      ],
     });
     service = TestBed.inject(TransferService);
   });
@@ -87,7 +98,7 @@ describe('TransferService adaptive polling', () => {
   let service: TransferService;
   let pollCount: number;
 
-  function setup(apiOverrides: Partial<ApiService> = {}): void {
+  function setup(apiOverrides: Partial<DownloadsApiService> = {}): void {
     vi.useFakeTimers();
     pollCount = 0;
     const api = makeApiMock({
@@ -99,7 +110,11 @@ describe('TransferService adaptive polling', () => {
       ...apiOverrides,
     });
     TestBed.configureTestingModule({
-      providers: [TransferService, { provide: ApiService, useValue: api }],
+      providers: [
+        TransferService,
+        { provide: DownloadsApiService, useValue: api },
+        { provide: SystemApiService, useValue: systemApiMock },
+      ],
     });
     service = TestBed.inject(TransferService);
   }
@@ -191,7 +206,11 @@ describe('TransferService libraryDirty flagging', () => {
       getAcquireJobs: () => of([]),
     });
     TestBed.configureTestingModule({
-      providers: [TransferService, { provide: ApiService, useValue: api }],
+      providers: [
+        TransferService,
+        { provide: DownloadsApiService, useValue: api },
+        { provide: SystemApiService, useValue: systemApiMock },
+      ],
     });
     service = TestBed.inject(TransferService);
   });

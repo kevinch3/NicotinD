@@ -145,7 +145,7 @@ One-line index; **full detail for every entry is in [docs/design-patterns.md](do
 
 ## Web UI
 
-Angular v22 standalone SPA with signals, `HttpClient` + interceptors, and lazy-loaded routes. Built via `ng build` (esbuild); tests via `ng test` (vitest). → See [docs/web-ui.md](docs/web-ui.md) for theme system, Angular patterns, and component conventions.
+Angular v22 standalone SPA with signals, `HttpClient` + interceptors, and lazy-loaded routes. Built via `ng build` (esbuild); tests via `ng test` (vitest). The HTTP surface is split into per-domain stateless services under `services/api/` (`Auth`/`Search`/`Library`/`Downloads`/`System`/`Playlists` ApiService + shared `api-types.ts`) — inject the specific one; there is no monolithic `ApiService`. → See [docs/web-ui.md](docs/web-ui.md) for theme system, Angular patterns, and component conventions.
 
 ## Mobile app (Capacitor Android + iOS)
 

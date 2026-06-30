@@ -2,7 +2,10 @@ import { TestBed } from '@angular/core/testing';
 import { vi } from 'vitest';
 import { of } from 'rxjs';
 import { AdminComponent } from './admin.component';
-import { ApiService, type AlbumJob } from '../../services/api.service';
+import { DownloadsApiService } from '../../services/api/downloads-api.service';
+import { SystemApiService } from '../../services/api/system-api.service';
+import { LibraryApiService } from '../../services/api/library-api.service';
+import type { AlbumJob } from '../../services/api/api-types';
 import { AuthService } from '../../services/auth.service';
 import { TransferService } from '../../services/transfer.service';
 
@@ -34,7 +37,9 @@ describe('AdminComponent (incomplete albums + untracked)', () => {
     await TestBed.configureTestingModule({
       imports: [AdminComponent],
       providers: [
-        { provide: ApiService, useValue: { listAlbumJobs, getUntrackedDownloads } },
+        { provide: DownloadsApiService, useValue: { listAlbumJobs, getUntrackedDownloads } },
+        { provide: SystemApiService, useValue: {} },
+        { provide: LibraryApiService, useValue: {} },
         { provide: AuthService, useValue: { token: () => null } },
         { provide: TransferService, useValue: { poll: vi.fn() } },
       ],

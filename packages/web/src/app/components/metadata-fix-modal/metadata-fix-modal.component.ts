@@ -11,7 +11,7 @@ import {
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import type { MetadataCandidate, AlbumCoverCandidate } from '../../../types/core';
-import { ApiService } from '../../services/api.service';
+import { LibraryApiService } from '../../services/api/library-api.service';
 import { AuthService } from '../../services/auth.service';
 import { ServerConfigService } from '../../services/server-config.service';
 import { httpErrorMessage } from '../../lib/http-error';
@@ -41,7 +41,7 @@ import {
   templateUrl: './metadata-fix-modal.component.html',
 })
 export class MetadataFixModalComponent implements OnInit {
-  private api = inject(ApiService);
+  private api = inject(LibraryApiService);
   readonly auth = inject(AuthService);
   private server = inject(ServerConfigService);
 

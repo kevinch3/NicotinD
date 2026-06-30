@@ -1,6 +1,6 @@
 import { Component, inject, input, output, signal, computed } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
-import { ApiService } from '../../services/api.service';
+import { DownloadsApiService } from '../../services/api/downloads-api.service';
 import { SearchService } from '../../services/search.service';
 import { TransferService } from '../../services/transfer.service';
 import {
@@ -49,7 +49,7 @@ const MAX_TREE_WIDTH = 420;
   templateUrl: './folder-browser.component.html',
 })
 export class FolderBrowserComponent {
-  private api = inject(ApiService);
+  private api = inject(DownloadsApiService);
   private search = inject(SearchService);
   private transfers = inject(TransferService);
 

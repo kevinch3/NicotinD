@@ -4,7 +4,7 @@ import { Router, RouterOutlet, RouterLink, RouterLinkActive } from '@angular/rou
 import { firstValueFrom } from 'rxjs';
 import { AuthService } from '../../services/auth.service';
 import { PlayerService, shuffleArray } from '../../services/player.service';
-import { ApiService } from '../../services/api.service';
+import { LibraryApiService } from '../../services/api/library-api.service';
 import { toTrack } from '../../lib/track-utils';
 import { mainBottomPadClass } from '../../lib/player-chrome';
 import { SetupService } from '../../services/setup.service';
@@ -52,7 +52,7 @@ export class LayoutComponent implements OnInit, OnDestroy {
   readonly version = inject(APP_VERSION);
   private transfers = inject(TransferService);
   private acquire = inject(AcquireService);
-  private api = inject(ApiService);
+  private api = inject(LibraryApiService);
 
   readonly navItems = computed<NavItem[]>(() =>
     this.auth.role() === 'admin' ? [...BASE_NAV, { to: '/admin', label: 'Admin' }] : BASE_NAV,

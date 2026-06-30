@@ -15,7 +15,7 @@ import { SelectionBarComponent } from '../../components/selection-bar/selection-
 import { IconComponent } from '../../components/icon/icon.component';
 import { NavigationService } from '../../services/navigation.service';
 import { PreserveService } from '../../services/preserve.service';
-import type { PlaylistDetail } from '../../services/api.service';
+import type { PlaylistDetail } from '../../services/api/api-types';
 
 @Component({
   selector: 'app-playlist-detail',

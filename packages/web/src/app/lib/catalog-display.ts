@@ -1,4 +1,4 @@
-import type { CatalogSearchResult } from '../services/api.service';
+import type { CatalogSearchResult } from '../services/api/api-types';
 
 /**
  * The raw-network ("Advanced") lane should open when the guided path has no

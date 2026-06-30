@@ -8,7 +8,7 @@ import { PlaylistDetailComponent } from './playlist-detail.component';
 import { AuthService } from '../../services/auth.service';
 import { PlayerService } from '../../services/player.service';
 import { PlaylistService } from '../../services/playlist.service';
-import type { PlaylistDetail, Song } from '../../services/api.service';
+import type { PlaylistDetail, Song } from '../../services/api/api-types';
 
 const SONG = (id: string): Song => ({
   id,

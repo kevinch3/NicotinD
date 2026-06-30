@@ -6,7 +6,8 @@ import type {
   LyricsDto,
   SongAcquisition,
 } from '@nicotind/core';
-import { ApiService, type ProvenanceRecord, type Song } from '../../services/api.service';
+import { LibraryApiService } from '../../services/api/library-api.service';
+import type { ProvenanceRecord, Song } from '../../services/api/api-types';
 import { AuthService } from '../../services/auth.service';
 import { ServerConfigService } from '../../services/server-config.service';
 import { methodBadge } from '../../lib/acquisition-method';
@@ -332,7 +333,7 @@ const ACTION_LABELS: Record<string, string> = {
   `,
 })
 export class TrackInfoSheetComponent implements OnInit {
-  private api = inject(ApiService);
+  private api = inject(LibraryApiService);
   private auth = inject(AuthService);
   private server = inject(ServerConfigService);
 

@@ -2,7 +2,8 @@ import { Component, inject, signal, computed, OnInit } from '@angular/core';
 import { Router, ActivatedRoute, RouterLink } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
-import { ApiService, type AlbumDetail } from '../../services/api.service';
+import { LibraryApiService } from '../../services/api/library-api.service';
+import type { AlbumDetail } from '../../services/api/api-types';
 import { AuthService } from '../../services/auth.service';
 import { PlayerService, type Track } from '../../services/player.service';
 import { PlaylistService } from '../../services/playlist.service';
@@ -39,7 +40,7 @@ import { PreserveService } from '../../services/preserve.service';
   templateUrl: './album-detail.component.html',
 })
 export class AlbumDetailComponent implements OnInit {
-  private api = inject(ApiService);
+  private api = inject(LibraryApiService);
   readonly auth = inject(AuthService);
   readonly player = inject(PlayerService);
   private playlists = inject(PlaylistService);

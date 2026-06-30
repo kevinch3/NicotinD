@@ -2,11 +2,9 @@ import { Component, inject, input, output, signal, computed, OnInit } from '@ang
 import { NgTemplateOutlet } from '@angular/common';
 import { firstValueFrom } from 'rxjs';
 import type { ArchiveCandidate, SpotifyCandidate } from '@nicotind/core';
-import {
-  ApiService,
-  type DiscographyAlbum,
-  type FolderCandidate,
-} from '../../services/api.service';
+import { DownloadsApiService } from '../../services/api/downloads-api.service';
+import { SearchApiService } from '../../services/api/search-api.service';
+import type { DiscographyAlbum, FolderCandidate } from '../../services/api/api-types';
 import { TransferService } from '../../services/transfer.service';
 import { AcquireService } from '../../services/acquire.service';
 import { PluginService } from '../../services/plugin.service';
@@ -42,7 +40,8 @@ type ArchiveState = 'idle' | 'searching' | 'done' | 'error';
   host: { '(document:keydown.escape)': 'close()' },
 })
 export class AlbumHuntModalComponent implements OnInit {
-  private api = inject(ApiService);
+  private api = inject(DownloadsApiService);
+  private searchApi = inject(SearchApiService);
   private transfer = inject(TransferService);
   private acquire = inject(AcquireService);
   private plugins = inject(PluginService);
@@ -143,7 +142,7 @@ export class AlbumHuntModalComponent implements OnInit {
     this.archiveCandidates.set([]);
     try {
       const res = await firstValueFrom(
-        this.api.archiveSearchAlbum(this.artistName(), this.album().title),
+        this.searchApi.archiveSearchAlbum(this.artistName(), this.album().title),
       );
       this.archiveCandidates.set(res.candidates);
       this.archiveState.set('done');
@@ -161,7 +160,7 @@ export class AlbumHuntModalComponent implements OnInit {
     this.spotifyCandidates.set([]);
     try {
       const res = await firstValueFrom(
-        this.api.spotifySearchAlbum(this.artistName(), this.album().title),
+        this.searchApi.spotifySearchAlbum(this.artistName(), this.album().title),
       );
       this.spotifyCandidates.set(res.candidates);
       this.spotifyState.set('done');

@@ -2,7 +2,7 @@ import { Component, inject, signal, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { AuthService } from '../../services/auth.service';
-import { ApiService } from '../../services/api.service';
+import { AuthApiService } from '../../services/api/auth-api.service';
 import { PasswordFieldComponent } from '../../components/password-field/password-field.component';
 
 @Component({
@@ -12,7 +12,7 @@ import { PasswordFieldComponent } from '../../components/password-field/password
 })
 export class LoginComponent implements OnInit {
   private auth = inject(AuthService);
-  private api = inject(ApiService);
+  private api = inject(AuthApiService);
   private router = inject(Router);
 
   username = '';

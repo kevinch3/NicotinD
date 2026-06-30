@@ -17,7 +17,7 @@ import { ThemeService } from './services/theme.service';
 import { PreserveService } from './services/preserve.service';
 import { PlayerService } from './services/player.service';
 import { AuthService } from './services/auth.service';
-import { ApiService } from './services/api.service';
+import { AuthApiService } from './services/api/auth-api.service';
 import pkg from '../../../../package.json';
 
 export const APP_VERSION = new InjectionToken<string>('APP_VERSION');
@@ -34,7 +34,7 @@ export const appConfig: ApplicationConfig = {
       const preserve = inject(PreserveService);
       const player = inject(PlayerService);
       const auth = inject(AuthService);
-      const api = inject(ApiService);
+      const api = inject(AuthApiService);
       theme.apply();
       preserve.init();
       player.restoreState();

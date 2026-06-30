@@ -12,7 +12,8 @@ import {
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
-import { ApiService, type Album } from '../../services/api.service';
+import { LibraryApiService } from '../../services/api/library-api.service';
+import type { Album } from '../../services/api/api-types';
 import { AuthService } from '../../services/auth.service';
 import { PlaylistService } from '../../services/playlist.service';
 import { TransferService } from '../../services/transfer.service';
@@ -92,7 +93,7 @@ function writePersistedState(state: PersistedLibraryState): void {
   templateUrl: './library.component.html',
 })
 export class LibraryComponent implements OnInit, OnDestroy {
-  private api = inject(ApiService);
+  private api = inject(LibraryApiService);
   readonly auth = inject(AuthService);
   readonly playlistService = inject(PlaylistService);
   private transferService = inject(TransferService);

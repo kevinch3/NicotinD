@@ -2,11 +2,9 @@ import { TestBed } from '@angular/core/testing';
 import { vi } from 'vitest';
 import { of, throwError } from 'rxjs';
 import { AlbumHuntModalComponent } from './album-hunt-modal.component';
-import {
-  ApiService,
-  type DiscographyAlbum,
-  type FolderCandidate,
-} from '../../services/api.service';
+import { DownloadsApiService } from '../../services/api/downloads-api.service';
+import { SearchApiService } from '../../services/api/search-api.service';
+import type { DiscographyAlbum, FolderCandidate } from '../../services/api/api-types';
 import { TransferService } from '../../services/transfer.service';
 import { AcquireService } from '../../services/acquire.service';
 import { PluginService } from '../../services/plugin.service';
@@ -61,9 +59,10 @@ describe('AlbumHuntModalComponent', () => {
       imports: [AlbumHuntModalComponent],
       providers: [
         {
-          provide: ApiService,
-          useValue: { huntAlbumBase, huntAlbumSkew, huntDownload, archiveSearchAlbum },
+          provide: DownloadsApiService,
+          useValue: { huntAlbumBase, huntAlbumSkew, huntDownload },
         },
+        { provide: SearchApiService, useValue: { archiveSearchAlbum } },
         { provide: TransferService, useValue: { poll: vi.fn(), kickPoll: vi.fn() } },
         { provide: AcquireService, useValue: { submit: acquireSubmit } },
         { provide: PluginService, useValue: { hasArchive: () => archiveEnabled } },
