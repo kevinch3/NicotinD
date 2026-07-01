@@ -5,7 +5,7 @@ Unified music acquisition + streaming platform. NicotinD orchestrates [slskd](ht
 ## Quick Start (Docker)
 
 ```bash
-git clone https://github.com/your-user/NicotinD.git
+git clone https://github.com/kevinch3/NicotinD.git
 cd NicotinD
 docker compose up -d
 ```
