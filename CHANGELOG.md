@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.131](https://github.com/kevinch3/NicotinD/compare/v0.1.130...v0.1.131) (2026-07-01)
+
+
+### Bug Fixes
+
+* **web:** make search source chips & artist pills theme-aware ([5be6da5](https://github.com/kevinch3/NicotinD/commit/5be6da59a4efeb17402c8b208160d35cd08f0f8c))
+
 ## [0.1.130](https://github.com/kevinch3/NicotinD/compare/v0.1.129...v0.1.130) (2026-07-01)
 
 ## [0.1.129](https://github.com/kevinch3/NicotinD/compare/v0.1.128...v0.1.129) (2026-07-01)
