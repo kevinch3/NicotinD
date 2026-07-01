@@ -1,0 +1,55 @@
+@if (toastService.toasts().length) {
+  <div class="fixed bottom-[calc(5rem+env(safe-area-inset-bottom))] md:bottom-24
+              left-0 right-0 flex flex-col items-center gap-2 px-4 z-[60]
+              pointer-events-none">
+    @for (toast of toastService.toasts(); track toast.id) {
+      <div
+        data-testid="toast"
+        class="pointer-events-auto w-full max-w-sm rounded-xl shadow-lg border
+               bg-theme-surface text-sm overflow-hidden
+               {{ toast.kind === 'error' ? 'border-red-500/40' :
+                  toast.kind === 'success' ? 'border-green-500/30' :
+                  'border-theme' }}">
+
+        <!-- Progress bar (countdown only) -->
+        @if (toast.countdown) {
+          <div data-testid="toast-progress"
+               class="h-0.5 bg-theme-surface-2">
+            <div class="h-full bg-blue-400 transition-none"
+                 [style.width.%]="toastService.getCountdownPct(toast.id)"></div>
+          </div>
+        }
+
+        <div class="flex items-start gap-3 px-3 py-2.5">
+          <!-- Icon -->
+          <span class="mt-0.5 shrink-0 text-base
+                       {{ toast.kind === 'error' ? 'text-red-400' :
+                          toast.kind === 'success' ? 'text-green-400' :
+                          'text-blue-400' }}">
+            {{ toast.kind === 'error' ? '✕' : toast.kind === 'success' ? '✓' : 'ℹ' }}
+          </span>
+
+          <!-- Message -->
+          <p class="flex-1 text-theme-primary leading-snug pt-0.5">{{ toast.message }}</p>
+        </div>
+
+        <!-- Actions -->
+        @if (toast.actions?.length) {
+          <div class="flex gap-1 px-3 pb-2.5 justify-end">
+            @for (action of toast.actions; track $index) {
+              <button
+                [attr.data-testid]="'toast-action-' + $index"
+                (click)="action.callback()"
+                class="px-2.5 py-1 rounded-lg text-xs font-medium transition-colors
+                       {{ $index === 0 && toast.countdown
+                          ? 'bg-blue-500/20 text-blue-300 hover:bg-blue-500/30'
+                          : 'text-theme-secondary hover:text-theme-primary hover:bg-theme-surface-2' }}">
+                {{ action.label }}
+              </button>
+            }
+          </div>
+        }
+      </div>
+    }
+  </div>
+}

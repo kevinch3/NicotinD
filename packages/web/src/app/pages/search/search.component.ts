@@ -19,6 +19,7 @@ import { WatchlistService } from '../../services/watchlist.service';
 import { PluginService } from '../../services/plugin.service';
 import { PlayerService } from '../../services/player.service';
 import { PlaylistService } from '../../services/playlist.service';
+import { AutoHuntService } from '../../services/auto-hunt.service';
 import type { TrackAction } from '../../components/track-row/track-row.component';
 import {
   getSingleDownloadLabel,
@@ -221,6 +222,7 @@ export class SearchComponent implements OnInit, OnDestroy {
   readonly plugins = inject(PluginService);
   private player = inject(PlayerService);
   private playlists = inject(PlaylistService);
+  private autoHunt = inject(AutoHuntService);
 
   readonly btnClasses = BUTTON_CLASSES;
   readonly formatDuration = formatDuration;
@@ -513,8 +515,7 @@ export class SearchComponent implements OnInit, OnDestroy {
           albumTitle: album.title,
         }),
       );
-      this.huntingArtistName.set(resolved.artistName || album.artistName);
-      this.huntingAlbum.set({
+      const discAlbum: DiscographyAlbum = {
         lidarrId: resolved.lidarrAlbumId,
         foreignAlbumId: album.foreignAlbumId,
         title: resolved.title || album.title,
@@ -526,7 +527,10 @@ export class SearchComponent implements OnInit, OnDestroy {
         status: 'missing',
         coverArtUrl: album.coverUrl,
         tracks: [],
-      });
+      };
+      const artistName = resolved.artistName || album.artistName;
+      this.huntingArtistName.set(artistName);
+      this.autoHunt.hunt(discAlbum, artistName, () => this.huntingAlbum.set(discAlbum));
     } catch (err) {
       // A compilation/best-of that exists globally but not in the artist's Lidarr
       // discography can't be hunted the guided way. Rather than dead-end, auto-fall

@@ -34,6 +34,7 @@ import { toTrack } from '../../lib/track-utils';
 import { appendUnique } from '../../lib/append-unique';
 import { resolveAlbumRoute } from '../../lib/route-utils';
 import { NavigationService } from '../../services/navigation.service';
+import { AutoHuntService } from '../../services/auto-hunt.service';
 
 export type ArtistTab = 'albums' | 'singles' | 'appears-on' | 'songs';
 export type SongSort = 'newest' | 'title' | 'album';
@@ -62,6 +63,7 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
   private playlists = inject(PlaylistService);
   readonly preserve = inject(PreserveService);
   private nav = inject(NavigationService);
+  private autoHunt = inject(AutoHuntService);
 
   // Return to the previous in-app view, falling back to the library grid.
   goBack(): void {
@@ -379,7 +381,8 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
   }
 
   openHunt(album: DiscographyAlbum): void {
-    this.huntingAlbum.set(album);
+    const artistName = this.artist()?.name ?? '';
+    this.autoHunt.hunt(album, artistName, () => this.huntingAlbum.set(album));
   }
 
   closeHunt(): void {

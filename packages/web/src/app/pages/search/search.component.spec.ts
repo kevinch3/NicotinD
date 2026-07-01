@@ -13,6 +13,7 @@ import { SearchService } from '../../services/search.service';
 import { TransferService } from '../../services/transfer.service';
 import { AcquireService } from '../../services/acquire.service';
 import { PluginService, type PluginInfo } from '../../services/plugin.service';
+import { AutoHuntService } from '../../services/auto-hunt.service';
 
 const CATALOG_ALBUM: CatalogAlbum = {
   foreignAlbumId: 'dsotm-rg',
@@ -28,6 +29,7 @@ const CATALOG_ALBUM: CatalogAlbum = {
 
 function setup(apiOverrides: Partial<Record<keyof SearchApiService, unknown>> = {}) {
   const acquireSubmit = vi.fn(() => Promise.resolve('job1'));
+  const autoHunt = { hunt: vi.fn() };
   const searchApi = {
     catalogSearch: () =>
       of({ artists: [{ mbid: 'pf-mbid', name: 'Pink Floyd' }], albums: [CATALOG_ALBUM] }),
@@ -56,6 +58,7 @@ function setup(apiOverrides: Partial<Record<keyof SearchApiService, unknown>> = 
       { provide: LibraryApiService, useValue: { resolveArtistIdByName: () => of(null) } },
       { provide: TransferService, useValue: { poll: () => {}, getStatus: () => undefined } },
       { provide: AcquireService, useValue: { submit: acquireSubmit } },
+      { provide: AutoHuntService, useValue: autoHunt },
       SearchService,
       PluginService,
     ],
@@ -68,6 +71,7 @@ function setup(apiOverrides: Partial<Record<keyof SearchApiService, unknown>> = 
     search: TestBed.inject(SearchService),
     plugins: TestBed.inject(PluginService),
     acquireSubmit,
+    autoHunt,
   };
 }
 
@@ -122,26 +126,28 @@ describe('SearchComponent — metadata-driven search', () => {
     expect(component.directSearchOpen()).toBe(true);
   });
 
-  it('resolves a searched album and opens the album-hunt modal with the real Lidarr id', async () => {
-    const { component } = setup();
+  it('resolves a searched album and calls autoHunt.hunt() with the real Lidarr id', async () => {
+    const { component, autoHunt } = setup();
 
     await component.huntCatalogAlbum(CATALOG_ALBUM);
 
-    const album = component.huntingAlbum();
-    expect(album?.lidarrId).toBe(55);
-    expect(album?.totalTracks).toBe(10);
+    expect(autoHunt.hunt).toHaveBeenCalledWith(
+      expect.objectContaining({ lidarrId: 55, totalTracks: 10 }),
+      'Pink Floyd',
+      expect.any(Function),
+    );
     expect(component.huntingArtistName()).toBe('Pink Floyd');
     expect(component.resolvingAlbum()).toBeNull();
   });
 
   it('surfaces a resolve failure without opening the modal', async () => {
-    const { component } = setup({
+    const { component, autoHunt } = setup({
       catalogResolve: () => throwError(() => new Error('not yet available')),
     });
 
     await component.huntCatalogAlbum(CATALOG_ALBUM);
 
-    expect(component.huntingAlbum()).toBeNull();
+    expect(autoHunt.hunt).not.toHaveBeenCalled();
     expect(component.resolveError()).toMatch(/not yet available/);
   });
 
