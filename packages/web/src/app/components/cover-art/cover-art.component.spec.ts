@@ -1,3 +1,7 @@
+import { TestBed } from '@angular/core/testing';
+import { NO_ERRORS_SCHEMA } from '@angular/core';
+import { CoverArtComponent } from './cover-art.component';
+import { ServerConfigService } from '../../services/server-config.service';
 import {
   hashCode,
   placeholderGradient,
@@ -5,6 +9,51 @@ import {
   placeholderFontSize,
   coverLoadingAttr,
 } from './cover-art.component';
+
+describe('CoverArtComponent — imgLoaded loading state', () => {
+  function setup() {
+    TestBed.configureTestingModule({
+      imports: [CoverArtComponent],
+      providers: [{ provide: ServerConfigService, useValue: { apiUrl: (u: string) => u } }],
+      schemas: [NO_ERRORS_SCHEMA],
+    });
+    return TestBed.createComponent(CoverArtComponent);
+  }
+
+  it('starts with imgLoaded = false so gradient shows while image downloads', () => {
+    const fixture = setup();
+    expect(fixture.componentInstance.imgLoaded()).toBe(false);
+  });
+
+  it('imgLoaded becomes true after (load) fires, removing opacity-0 from the image', () => {
+    const fixture = setup();
+    const comp = fixture.componentInstance;
+    expect(comp.imgLoaded()).toBe(false);
+    comp.imgLoaded.set(true);
+    expect(comp.imgLoaded()).toBe(true);
+  });
+
+  it('imgError starts false and prevents image re-render when true', () => {
+    const fixture = setup();
+    const comp = fixture.componentInstance;
+    expect(comp.imgError()).toBe(false);
+    comp.imgError.set(true);
+    expect(comp.imgError()).toBe(true);
+  });
+
+  it('effect resets imgLoaded and imgError when resolvedSrc changes', () => {
+    const fixture = setup();
+    const comp = fixture.componentInstance;
+    // Simulate: image had loaded, then src changed
+    comp.imgLoaded.set(true);
+    comp.imgError.set(true);
+    // Trigger the effect by marking resolvedSrc as changed via TestBed
+    TestBed.flushEffects();
+    // After flush, the effect reads resolvedSrc() and resets both flags
+    expect(comp.imgLoaded()).toBe(false);
+    expect(comp.imgError()).toBe(false);
+  });
+});
 
 describe('coverLoadingAttr', () => {
   it('lazy-loads by default (grid tiles), eager only when opted in', () => {

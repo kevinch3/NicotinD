@@ -194,7 +194,7 @@
           </a>
         }
       </div>
-      @if (compilationsControls.filtered().length === 0) {
+      @if (isCompilationsEmpty()) {
         <p class="text-center text-theme-muted py-20">No compilations yet.</p>
       }
     }
@@ -237,7 +237,7 @@
           </a>
         }
       </div>
-      @if (singlesControls.filtered().length === 0) {
+      @if (isSinglesEmpty()) {
         <p class="text-center text-theme-muted py-20">No singles or EPs yet.</p>
       }
     }
@@ -278,7 +278,7 @@
           </a>
         }
       </div>
-      @if (artistControls.filtered().length === 0 && !loadingArtists()) {
+      @if (isArtistsEmpty()) {
         <p class="text-center text-theme-muted py-20">No artists found.</p>
       }
     }
@@ -301,7 +301,7 @@
           </a>
         }
       </div>
-      @if (genres().length === 0) {
+      @if (isGenresEmpty()) {
         <p class="text-center text-theme-muted py-20">No genres found.</p>
       }
     }

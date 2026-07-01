@@ -1,37 +1,43 @@
-@if (resolvedSrc() && !imgError()) {
-  <img
-    [src]="resolvedSrc()"
-    [alt]="album() || artist() || 'cover'"
-    [attr.loading]="loadingAttr()"
-    decoding="async"
-    [class]="
-      (fill() ? 'w-full aspect-square ' : '') + 'object-cover ' + rounded() + ' ' + className()
-    "
-    [style.width.px]="fill() ? null : size()"
-    [style.height.px]="fill() ? null : size()"
-    [style.flex-shrink]="0"
-    (error)="imgError.set(true)"
-  />
-} @else {
-  <div
-    [class]="
-      (fill() ? 'w-full aspect-square ' : '') +
-      rounded() +
-      ' flex items-center justify-center select-none ' +
-      className()
-    "
-    [style.width.px]="fill() ? null : size()"
-    [style.height.px]="fill() ? null : size()"
-    [style.flex-shrink]="0"
-    [style.background]="gradient"
-  >
-    <span
-      [style.font-size]="initialFontSize"
-      [style.color]="'rgba(255,255,255,0.9)'"
-      [style.text-shadow]="'0 1px 3px rgba(0,0,0,0.35)'"
-      [style.font-weight]="700"
+<div
+  [class]="
+    (fill() ? 'w-full aspect-square ' : '') +
+    'relative overflow-hidden ' +
+    rounded() +
+    (className() ? ' ' + className() : '')
+  "
+  [style.width.px]="fill() ? null : size()"
+  [style.height.px]="fill() ? null : size()"
+  [style.flex-shrink]="0"
+>
+  <!-- Gradient placeholder: visible until the image bytes have loaded or on error -->
+  @if (!resolvedSrc() || !imgLoaded() || imgError()) {
+    <div
+      class="absolute inset-0 flex items-center justify-center select-none"
+      [style.background]="gradient"
     >
-      {{ initial }}
-    </span>
-  </div>
-}
+      <span
+        [style.font-size]="initialFontSize"
+        [style.color]="'rgba(255,255,255,0.9)'"
+        [style.text-shadow]="'0 1px 3px rgba(0,0,0,0.35)'"
+        [style.font-weight]="700"
+      >
+        {{ initial }}
+      </span>
+    </div>
+  }
+
+  <!-- Image: rendered immediately so the browser can start the request, but
+       kept invisible (opacity-0) until the (load) event fires, then fades in. -->
+  @if (resolvedSrc() && !imgError()) {
+    <img
+      [src]="resolvedSrc()"
+      [alt]="album() || artist() || 'cover'"
+      [attr.loading]="loadingAttr()"
+      decoding="async"
+      class="absolute inset-0 w-full h-full object-cover transition-opacity duration-300"
+      [class.opacity-0]="!imgLoaded()"
+      (load)="imgLoaded.set(true)"
+      (error)="imgError.set(true)"
+    />
+  }
+</div>
