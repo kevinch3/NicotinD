@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.127](https://github.com/kevinch3/NicotinD/compare/v0.1.126...v0.1.127) (2026-07-01)
+
+
+### Performance
+
+* **web:** hold cover gradient until image loads, fix empty-state flash on tab switch ([85d42fb](https://github.com/kevinch3/NicotinD/commit/85d42fb1aaa73b7aa70daa3a934ca38bc03d30ae))
+
 ## [0.1.126](https://github.com/kevinch3/NicotinD/compare/v0.1.125...v0.1.126) (2026-07-01)
 
 
