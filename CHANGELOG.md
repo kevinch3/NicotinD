@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.129](https://github.com/kevinch3/NicotinD/compare/v0.1.128...v0.1.129) (2026-07-01)
+
+
+### Features
+
+* **web:** add AutoHuntService — headless hunt with countdown toast ([b5584b8](https://github.com/kevinch3/NicotinD/commit/b5584b88908b17da75b54f676c559fcd5e9766d9))
+* **web:** add ToastOutletComponent, mount at app root ([bf7ace1](https://github.com/kevinch3/NicotinD/commit/bf7ace17df281d438289b104d4a2a54e8bfbc350))
+* **web:** add ToastService with countdown and auto-dismiss ([36b8b1f](https://github.com/kevinch3/NicotinD/commit/36b8b1f1d2a47b274c25adec19dcb3c240e004ff))
+* **web:** wire AutoHuntService into Find Album flow ([545cdfa](https://github.com/kevinch3/NicotinD/commit/545cdfac28b5b461b2fab48efd19093cc584ddb4))
+
+
+### Bug Fixes
+
+* **web:** dismiss actions close toast; enforce capacity cap with all-countdown toasts ([9c4faca](https://github.com/kevinch3/NicotinD/commit/9c4faca46c7edebea6eb9ea7a03f14004bebab11))
+* **web:** never arm a timer for a dropped over-capacity toast ([19f1a2c](https://github.com/kevinch3/NicotinD/commit/19f1a2c780c12b3c21f2ed881afe22e8eb51a2af))
+
 ## [0.1.128](https://github.com/kevinch3/NicotinD/compare/v0.1.127...v0.1.128) (2026-07-01)
 
 ## [0.1.127](https://github.com/kevinch3/NicotinD/compare/v0.1.126...v0.1.127) (2026-07-01)
