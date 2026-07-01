@@ -32,6 +32,7 @@ export class ToastService {
 
   show(config: ToastConfig): string {
     const id = crypto.randomUUID();
+    let dropped = false;
     this.toasts.update((prev) => {
       const next = [...prev, { ...config, id }];
       if (next.length > MAX_TOASTS) {
@@ -41,13 +42,18 @@ export class ToastService {
           this._clearTimer(evicted.id);
           next.splice(evictIdx, 1);
         } else {
-          // All active toasts are countdowns — drop the new one rather than exceed the cap
-          this._clearTimer(id);
+          // All active toasts are countdowns — drop the new one rather than exceed the cap.
           next.pop();
+          dropped = true;
         }
       }
       return next;
     });
+
+    // The toast was dropped to honour the cap — never arm a timer for it, or its
+    // countdown would still fire actions[0] (e.g. an auto-download) for a toast
+    // the user never saw.
+    if (dropped) return id;
 
     if (config.countdown) {
       const totalMs = config.countdown * 1000;

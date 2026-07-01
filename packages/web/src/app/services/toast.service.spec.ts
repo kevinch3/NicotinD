@@ -98,6 +98,22 @@ describe('ToastService', () => {
     expect(svc.toasts().find((t) => t.id === id4)).toBeUndefined();
   });
 
+  it('never fires the action of a dropped countdown toast', () => {
+    const dropped = vi.fn();
+    svc.show({ message: 'CD1', kind: 'info', countdown: 10 });
+    svc.show({ message: 'CD2', kind: 'info', countdown: 10 });
+    svc.show({ message: 'CD3', kind: 'info', countdown: 10 });
+    // 4th is dropped to honour the cap; its timer must never be armed.
+    svc.show({
+      message: 'CD4',
+      kind: 'info',
+      countdown: 10,
+      actions: [{ label: 'Download Now', callback: dropped }],
+    });
+    vi.advanceTimersByTime(11000);
+    expect(dropped).not.toHaveBeenCalled();
+  });
+
   it('does not evict countdown toasts when at capacity', () => {
     const cdId = svc.show({ message: 'CD', kind: 'info', countdown: 10 });
     svc.show({ message: '2', kind: 'info', duration: 60 });
