@@ -465,6 +465,20 @@ export function applySchema(db: Database): void {
   } catch {
     // Column already exists — ignore
   }
+  // Album-level artist (e.g. "Various Artists" on compilations) vs track-level
+  // artist. Existing rows backfill from the current artist column.
+  try {
+    db.run(`ALTER TABLE library_songs ADD COLUMN album_artist TEXT NOT NULL DEFAULT ''`);
+    db.run(`UPDATE library_songs SET album_artist = artist WHERE album_artist = ''`);
+  } catch {
+    // Column already exists — ignore
+  }
+  try {
+    db.run(`ALTER TABLE library_songs ADD COLUMN album_artist_id TEXT NOT NULL DEFAULT ''`);
+    db.run(`UPDATE library_songs SET album_artist_id = artist_id WHERE album_artist_id = ''`);
+  } catch {
+    // Column already exists — ignore
+  }
   db.run(`CREATE INDEX IF NOT EXISTS idx_library_songs_album_id ON library_songs(album_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_library_songs_artist_id ON library_songs(artist_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_library_songs_path ON library_songs(path)`);

@@ -43,6 +43,8 @@ export interface Song {
   albumId: string;
   artist: string;
   artistId: string;
+  albumArtist?: string;
+  albumArtistId?: string;
   track?: number;
   year?: number;
   genre?: string;

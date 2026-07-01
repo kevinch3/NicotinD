@@ -55,7 +55,7 @@ const VALID_CLASSIFICATIONS = new Set(['album', 'ep', 'single', 'compilation', '
 // surfaced on the artist page and the dedicated /singles view instead, so the
 // grid stays album-only. Defined once here so no album-listing endpoint can
 // re-pollute the grid by forgetting the filter.
-const GRID_CLASSIFICATION_SQL = `classification IN ('album','compilation')`;
+const GRID_CLASSIFICATION_SQL = `classification = 'album'`;
 const SINGLE_EP_CLASSIFICATION_SQL = `classification IN ('single','ep')`;
 
 /**
@@ -197,6 +197,8 @@ interface SongRow {
   title: string;
   artist: string;
   artist_id: string;
+  album_artist: string;
+  album_artist_id: string;
   track: number | null;
   duration: number;
   year: number | null;
@@ -229,7 +231,8 @@ const ALBUM_SELECT = `
 
 const SONG_SELECT = `
   SELECT s.id, s.album_id, a.name AS album_name, a.cover_art AS album_cover_art,
-         s.title, s.artist, s.artist_id, s.track, s.duration, s.year, s.genre,
+         s.title, s.artist, s.artist_id, s.album_artist, s.album_artist_id,
+         s.track, s.duration, s.year, s.genre,
          s.cover_art, s.path, s.size, s.bit_rate, s.suffix, s.content_type,
          s.created, s.starred, s.bpm, s.key
   FROM library_songs s
@@ -267,6 +270,8 @@ function rowToSong(r: SongRow): Song {
     albumId: r.album_id,
     artist: r.artist,
     artistId: r.artist_id,
+    albumArtist: r.album_artist || undefined,
+    albumArtistId: r.album_artist_id || undefined,
     track: r.track ?? undefined,
     year: r.year ?? undefined,
     genre: r.genre ?? undefined,
@@ -325,7 +330,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       .query<ArtistRow, []>(
         `SELECT id, name, album_count, cover_art, starred
          FROM library_artists
-         WHERE hidden = 0
+         WHERE hidden = 0 AND name != 'Various Artists' COLLATE NOCASE
          ORDER BY name COLLATE NOCASE ASC`,
       )
       .all();
@@ -418,6 +423,21 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     return c.json(rows.map(rowToSong));
   });
 
+  app.get('/artists/:id/appears-on', (c) => {
+    const id = c.req.param('id');
+    const db = getDatabase();
+    const rows = db
+      .query<AlbumRow, [string]>(
+        `${ALBUM_SELECT} WHERE id IN (
+           SELECT DISTINCT ls.album_id FROM library_songs ls
+           JOIN library_albums la ON la.id = ls.album_id
+           WHERE ls.artist_id = ? AND la.classification = 'compilation' AND la.hidden = 0
+         ) ORDER BY year DESC NULLS LAST, name COLLATE NOCASE ASC`,
+      )
+      .all(id);
+    return c.json(rows.map(rowToAlbum));
+  });
+
   // Dedicated singles & EPs listing (the /library/singles view). Mirrors /albums
   // but inverts the grid filter: only single + ep releases.
   app.get('/singles', async (c) => {
@@ -479,6 +499,21 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       .all(...params, size, offset);
     const albums = rows.map(rowToAlbum);
     return c.json(albums);
+  });
+
+  app.get('/compilations', async (c) => {
+    const type = c.req.query('type') ?? 'newest';
+    const size = Math.min(Number(c.req.query('size') ?? 20), 500);
+    const offset = Math.max(Number(c.req.query('offset') ?? 0), 0);
+    const db = getDatabase();
+    const order = albumOrderBy(type);
+    const rows = db
+      .query<AlbumRow, [number, number]>(
+        `${ALBUM_SELECT} WHERE hidden = 0 AND classification = 'compilation'
+         ORDER BY ${order} LIMIT ? OFFSET ?`,
+      )
+      .all(size, offset);
+    return c.json(rows.map(rowToAlbum));
   });
 
   app.get('/albums/:id', (c) => {

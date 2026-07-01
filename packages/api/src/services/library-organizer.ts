@@ -473,6 +473,8 @@ export class LibraryOrganizer {
     const signals = files.map((f) => ({
       artist: normalizeTagValue(f.tags.artist),
       album: normalizeTagValue(f.tags.album),
+      albumArtist: normalizeTagValue(f.tags.albumArtist),
+      compilation: f.tags.compilation === true ? true : undefined,
       filename: f.filename,
     }));
     const classification = classifyFolder(signals, files[0]!.peerDirectory);

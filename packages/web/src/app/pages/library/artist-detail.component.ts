@@ -35,7 +35,7 @@ import { appendUnique } from '../../lib/append-unique';
 import { resolveAlbumRoute } from '../../lib/route-utils';
 import { NavigationService } from '../../services/navigation.service';
 
-export type ArtistTab = 'albums' | 'singles' | 'songs';
+export type ArtistTab = 'albums' | 'singles' | 'appears-on' | 'songs';
 export type SongSort = 'newest' | 'title' | 'album';
 const SONGS_PAGE_SIZE = 60;
 
@@ -78,6 +78,7 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
   } | null>(null);
   readonly albums = signal<Album[]>([]);
   readonly singlesAndEps = signal<Album[]>([]);
+  readonly appearsOn = signal<Album[]>([]);
 
   // ─── Artist image override (admin: upload / pick-from-album / reset) ───────
   readonly imageBusy = signal(false);
@@ -161,6 +162,7 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
     const tabs: ArtistTab[] = [];
     if (this.albums().length > 0) tabs.push('albums');
     if (this.singlesAndEps().length > 0) tabs.push('singles');
+    if (this.appearsOn().length > 0) tabs.push('appears-on');
     tabs.push('songs');
     return tabs;
   });
@@ -346,12 +348,22 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
       this.loading.set(false);
     }
 
-    // Load discography in background — gracefully absent if Lidarr not configured
+    // Load "appears on" compilations and discography in background
+    this.loadAppearsOn(id);
     this.loadDiscography(id);
   }
 
   ngOnDestroy(): void {
     this.songsObserver?.disconnect();
+  }
+
+  private async loadAppearsOn(artistId: string): Promise<void> {
+    try {
+      const data = await firstValueFrom(this.api.getArtistAppearsOn(artistId));
+      this.appearsOn.set(data);
+    } catch {
+      /* no-op — compilations may not exist for this artist */
+    }
   }
 
   private async loadDiscography(artistId: string): Promise<void> {

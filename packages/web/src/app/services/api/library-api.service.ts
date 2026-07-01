@@ -159,6 +159,14 @@ export class LibraryApiService {
     return this.http.get<Album[]>('/api/library/singles', { params: { type, size, offset } });
   }
 
+  getCompilations(type = 'newest', size = 500, offset = 0) {
+    return this.http.get<Album[]>('/api/library/compilations', { params: { type, size, offset } });
+  }
+
+  getArtistAppearsOn(id: string) {
+    return this.http.get<Album[]>(`/api/library/artists/${id}/appears-on`);
+  }
+
   // Paginated individual songs for one artist (the artist page's lazy "Songs" tab).
   getArtistSongs(
     id: string,

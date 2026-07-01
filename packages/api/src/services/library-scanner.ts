@@ -4,6 +4,7 @@ import { readdir, stat } from 'node:fs/promises';
 import { createLogger } from '@nicotind/core';
 import type { Database } from 'bun:sqlite';
 import { albumGroupKey, normalizeArtistForGrouping } from './album-grouping.js';
+import { isVariousArtists } from './compilation-tagger.js';
 import { inferFolderAlbum, inferMetadataFromPath, hasUsableValue } from './path-inference.js';
 import { getMusicMetadata } from './music-metadata-loader.js';
 import { selectAlbumTracks } from './library-track-select.js';
@@ -63,6 +64,8 @@ export interface SongRow {
   title: string;
   artist: string;
   artistId: string;
+  albumArtist: string;
+  albumArtistId: string;
   track: number | null;
   disc: number | null;
   duration: number;
@@ -159,24 +162,37 @@ export function isLooseSinglesBucket(dir: string, album: string): boolean {
 
 /**
  * Resolve final artist/album/title for a track, falling back to path inference
- * when ID3 tags are missing (common with Soulseek peers). Mirrors the
- * organizer's tag-derivation precedence so the scanner and organizer agree.
+ * when ID3 tags are missing (common with Soulseek peers). Returns both the
+ * album-level artist (for grouping/ownership) and the track-level artist (for
+ * display). On compilations the two differ: albumArtist = "Various Artists",
+ * trackArtist = the actual performer.
  */
 function resolveTags(
   t: ScannedTrack,
   overrides?: ReadonlyMap<string, MetadataOverrideValue>,
-): { artist: string; album: string; title: string; year: number | undefined } {
+): { albumArtist: string; trackArtist: string; album: string; title: string; year: number | undefined } {
   const dir = t.relPath
     .split(/[\\/]+/)
     .slice(0, -1)
     .join('/');
   const inferred = inferMetadataFromPath(t.relPath, dir);
 
-  let artist =
+  // Album artist: used for album grouping and artist ownership.
+  let albumArtist =
     (hasUsableValue(t.albumArtist) && t.albumArtist) ||
     (hasUsableValue(t.artist) && t.artist) ||
     (hasUsableValue(inferred.artist) ? inferred.artist : undefined) ||
     UNKNOWN_ARTIST;
+
+  // Track artist: the actual performer on this track. For compilations where
+  // albumArtist is "Various Artists", prefer the per-track artist tag.
+  const albumArtistIsVA = hasUsableValue(t.albumArtist) && isVariousArtists(t.albumArtist!);
+  let trackArtist: string;
+  if (albumArtistIsVA && hasUsableValue(t.artist)) {
+    trackArtist = t.artist!;
+  } else {
+    trackArtist = albumArtist;
+  }
 
   const title =
     (hasUsableValue(t.title) && t.title) ||
@@ -189,7 +205,7 @@ function resolveTags(
 
   let album =
     (hasUsableValue(t.album) && t.album) ||
-    inferFolderAlbum(dir, artist) ||
+    inferFolderAlbum(dir, albumArtist) ||
     (hasUsableValue(inferred.album) ? inferred.album : undefined) ||
     UNKNOWN_ALBUM;
 
@@ -207,14 +223,17 @@ function resolveTags(
   // by the **raw** albumId derived from the on-disk tags above, then substitute
   // the corrected names/year so downstream artistId/albumId re-bucket. Stable
   // across rescans — tags never change, so the raw key is reproducible.
-  const ov = overrides?.get(albumIdFor(artist, album));
+  const ov = overrides?.get(albumIdFor(albumArtist, album));
   if (ov) {
-    if (ov.artist != null) artist = ov.artist;
+    if (ov.artist != null) {
+      albumArtist = ov.artist;
+      if (!albumArtistIsVA) trackArtist = ov.artist;
+    }
     if (ov.album != null) album = ov.album;
     if (ov.year != null) year = ov.year;
   }
 
-  return { artist, album, title, year };
+  return { albumArtist, trackArtist, album, title, year };
 }
 
 /**
@@ -234,8 +253,8 @@ export function selectLibraryTracks(
     Array<{ track: ScannedTrack; relPath: string; title: string; suffix: string; bitRate: number }>
   >();
   for (const t of tracks) {
-    const { artist, album, title } = resolveTags(t, overrides);
-    const albId = albumIdFor(artist, album);
+    const { albumArtist, album, title } = resolveTags(t, overrides);
+    const albId = albumIdFor(albumArtist, album);
     const arr = byAlbum.get(albId) ?? [];
     arr.push({ track: t, relPath: t.relPath, title, suffix: t.suffix, bitRate: t.bitRate });
     byAlbum.set(albId, arr);
@@ -280,9 +299,10 @@ export function buildLibrary(
   >();
 
   for (const t of tracks) {
-    const { artist, album, title, year } = resolveTags(t, overrides);
-    const aId = artistIdFor(artist);
-    const albId = albumIdFor(artist, album);
+    const { albumArtist, trackArtist, album, title, year } = resolveTags(t, overrides);
+    const albumArtistId = artistIdFor(albumArtist);
+    const trackArtistId = artistIdFor(trackArtist);
+    const albId = albumIdFor(albumArtist, album);
     const id = songId(t.relPath);
     const created = new Date(t.mtimeMs).toISOString();
 
@@ -290,8 +310,10 @@ export function buildLibrary(
       id,
       albumId: albId,
       title,
-      artist,
-      artistId: aId,
+      artist: trackArtist,
+      artistId: trackArtistId,
+      albumArtist,
+      albumArtistId,
       track: t.track ?? null,
       disc: t.disc ?? null,
       duration: t.duration,
@@ -319,8 +341,8 @@ export function buildLibrary(
     } else {
       albumAcc.set(albId, {
         id: albId,
-        artist,
-        artistId: aId,
+        artist: albumArtist,
+        artistId: albumArtistId,
         names: [album],
         songCount: 1,
         duration: t.duration,
@@ -578,15 +600,18 @@ export class LibraryScanner {
     `);
     const songStmt = this.db.prepare(`
       INSERT INTO library_songs (
-        id, album_id, title, artist, artist_id, track, disc, duration,
+        id, album_id, title, artist, artist_id, album_artist, album_artist_id,
+        track, disc, duration,
         year, genre, bpm, key, cover_art, path, size, bit_rate, suffix, content_type,
         created, synced_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         album_id = excluded.album_id,
         title = excluded.title,
         artist = excluded.artist,
         artist_id = excluded.artist_id,
+        album_artist = excluded.album_artist,
+        album_artist_id = excluded.album_artist_id,
         track = excluded.track,
         disc = excluded.disc,
         duration = excluded.duration,
@@ -651,6 +676,8 @@ export class LibraryScanner {
           s.title,
           s.artist,
           s.artistId,
+          s.albumArtist,
+          s.albumArtistId,
           s.track,
           s.disc,
           s.duration,

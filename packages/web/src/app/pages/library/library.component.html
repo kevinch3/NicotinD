@@ -159,6 +159,47 @@
     <div #scrollSentinel class="h-px" aria-hidden="true"></div>
   }
 
+  <!-- ═══ COMPILATIONS MODE ═══ -->
+  @if (libraryMode() === 'compilations') {
+    <app-list-toolbar
+      [searchText]="compilationsControls.searchText()"
+      [sortField]="compilationsControls.sortField()"
+      [sortDirection]="compilationsControls.sortDirection()"
+      [sortOptions]="gridSortOptions"
+      [resultCount]="compilationsControls.filtered().length"
+      (searchChange)="compilationsControls.setSearchText($event)"
+      (sortFieldChange)="compilationsControls.setSortField($event)"
+      (toggleDirection)="compilationsControls.toggleSortDirection()"
+    />
+
+    @if (loadingCompilations()) {
+      <div class="text-center py-20">
+        <span class="inline-block w-5 h-5 border-2 border-theme border-t-zinc-300 rounded-full animate-spin"></span>
+      </div>
+    } @else {
+      <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+        @for (album of compilationsControls.filtered(); track album.id) {
+          <a [routerLink]="getAlbumLink(album.id)"
+            class="p-3 rounded-lg bg-theme-surface/30 hover:bg-theme-surface-2/50 transition text-left cursor-pointer block">
+            <app-cover-art
+              [src]="album.coverArt ? '/api/cover/' + album.coverArt + '?size=300&token=' + auth.token() : undefined"
+              [artist]="album.artist"
+              [album]="album.name"
+              [fill]="true"
+              rounded="rounded"
+              className="mb-2"
+            />
+            <p class="text-sm text-theme-primary truncate">{{ album.name }}</p>
+            <p class="text-xs text-theme-muted truncate">Various Artists</p>
+          </a>
+        }
+      </div>
+      @if (compilationsControls.filtered().length === 0) {
+        <p class="text-center text-theme-muted py-20">No compilations yet.</p>
+      }
+    }
+  }
+
   <!-- ═══ SINGLES & EPs MODE ═══ -->
   @if (libraryMode() === 'singles') {
     <app-list-toolbar
