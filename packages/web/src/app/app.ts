@@ -3,11 +3,12 @@ import { Router, RouterOutlet } from '@angular/router';
 import { SetupService } from './services/setup.service';
 import { AuthService } from './services/auth.service';
 import { RemotePlaybackService } from './services/remote-playback.service';
+import { ToastOutletComponent } from './components/toast-outlet/toast-outlet.component';
 
 @Component({
   selector: 'app-root',
-  imports: [RouterOutlet],
-  template: `<router-outlet />`,
+  imports: [RouterOutlet, ToastOutletComponent],
+  template: `<router-outlet /><app-toast-outlet />`,
 })
 export class App {
   private setup = inject(SetupService);
