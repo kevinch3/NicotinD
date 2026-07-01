@@ -40,6 +40,10 @@ export class ToastService {
           const evicted = next[evictIdx];
           this._clearTimer(evicted.id);
           next.splice(evictIdx, 1);
+        } else {
+          // All active toasts are countdowns — drop the new one rather than exceed the cap
+          this._clearTimer(id);
+          next.pop();
         }
       }
       return next;

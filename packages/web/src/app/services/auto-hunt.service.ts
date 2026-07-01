@@ -63,12 +63,13 @@ export class AutoHuntService {
           ),
       );
     } catch {
-      this.toasts.show({
+      let searchErrId!: string;
+      searchErrId = this.toasts.show({
         message: `Search failed for "${album.title}"`,
         kind: 'error',
         actions: [
-          { label: 'Dismiss', callback: () => {} },
-          { label: 'Find Manually', callback: () => { openManual(); } },
+          { label: 'Dismiss', callback: () => { this.toasts.dismiss(searchErrId); } },
+          { label: 'Find Manually', callback: () => { this.toasts.dismiss(searchErrId); openManual(); } },
         ],
       });
       return;
@@ -76,12 +77,13 @@ export class AutoHuntService {
 
     const best = candidates[0];
     if (!best || best.matchPct < AUTO_THRESHOLD) {
-      this.toasts.show({
+      let noMatchId!: string;
+      noMatchId = this.toasts.show({
         message: `No confident match found for "${album.title}"`,
         kind: 'error',
         actions: [
-          { label: 'Dismiss', callback: () => {} },
-          { label: 'Find Manually', callback: () => { openManual(); } },
+          { label: 'Dismiss', callback: () => { this.toasts.dismiss(noMatchId); } },
+          { label: 'Find Manually', callback: () => { this.toasts.dismiss(noMatchId); openManual(); } },
         ],
       });
       return;
@@ -161,12 +163,13 @@ export class AutoHuntService {
       } else if (outcome.kind === 'already-downloading') {
         this.toasts.show({ message: `"${album.title}" is already downloading`, kind: 'info' });
       } else {
-        this.toasts.show({
+        let dlErrId!: string;
+        dlErrId = this.toasts.show({
           message: `Download failed for "${album.title}"`,
           kind: 'error',
           actions: [
-            { label: 'Dismiss', callback: () => {} },
-            { label: 'Find Manually', callback: () => { openManual(); } },
+            { label: 'Dismiss', callback: () => { this.toasts.dismiss(dlErrId); } },
+            { label: 'Find Manually', callback: () => { this.toasts.dismiss(dlErrId); openManual(); } },
           ],
         });
       }

@@ -89,6 +89,15 @@ describe('ToastService', () => {
     expect(ids).toHaveLength(3);
   });
 
+  it('drops the 4th toast when all existing toasts are countdowns', () => {
+    svc.show({ message: 'CD1', kind: 'info', countdown: 10 });
+    svc.show({ message: 'CD2', kind: 'info', countdown: 10 });
+    svc.show({ message: 'CD3', kind: 'info', countdown: 10 });
+    const id4 = svc.show({ message: 'CD4', kind: 'info', countdown: 10 });
+    expect(svc.toasts()).toHaveLength(3);
+    expect(svc.toasts().find((t) => t.id === id4)).toBeUndefined();
+  });
+
   it('does not evict countdown toasts when at capacity', () => {
     const cdId = svc.show({ message: 'CD', kind: 'info', countdown: 10 });
     svc.show({ message: '2', kind: 'info', duration: 60 });

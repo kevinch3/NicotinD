@@ -252,6 +252,24 @@ describe('AutoHuntService', () => {
     expect(huntAlbumBase).toHaveBeenCalledTimes(1);
   });
 
+  it('Dismiss action on no-match error toast calls dismiss()', async () => {
+    huntAlbumBase.mockReturnValue(
+      of({ candidates: [], totalTracks: 10, skewNeeded: false }),
+    );
+    let dismissCb: (() => void) | undefined;
+    show.mockImplementation((config) => {
+      // Dismiss is the first action on error toasts
+      dismissCb = config.actions?.[0]?.callback;
+      return 'toast-err-id';
+    });
+
+    svc().hunt(ALBUM, 'Pink Floyd', vi.fn());
+    await Promise.resolve();
+
+    dismissCb?.();
+    expect(dismiss).toHaveBeenCalledWith('toast-err-id');
+  });
+
   it('runs skew phase when base reports skewNeeded', async () => {
     huntAlbumBase.mockReturnValue(
       of({ candidates: [], totalTracks: 10, skewNeeded: true }),
