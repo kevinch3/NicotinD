@@ -22,6 +22,7 @@
     "@angular/router": "^22.0.1",
     "@angular/service-worker": "^22.0.1",
     "@jofr/capacitor-media-session": "^4.0.0",
+    "@sentry/angular": "^10.62.0",
     "rxjs": "~7.8.2",
     "tslib": "^2.8.1"
   },
