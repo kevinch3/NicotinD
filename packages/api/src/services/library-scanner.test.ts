@@ -230,7 +230,7 @@ describe('LibraryScanner.persist', () => {
     expect(db.query('SELECT COUNT(*) AS c FROM library_albums').get()).toEqual({ c: 1 });
 
     // A later full scan that no longer reports the file prunes it.
-    scanner.persist({ songs: [], albums: [], artists: [], genres: [] }, Date.now() + 1, true);
+    scanner.persist({ songs: [], albums: [], artists: [], genres: [], songArtists: [], albumArtists: [] }, Date.now() + 1, true);
     expect(db.query('SELECT COUNT(*) AS c FROM library_songs').get()).toEqual({ c: 0 });
     expect(db.query('SELECT COUNT(*) AS c FROM library_albums').get()).toEqual({ c: 0 });
   });

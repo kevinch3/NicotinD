@@ -63,6 +63,7 @@ interface LibrarySong {
   title: string;
   artist: string;
   artistId?: string;
+  artists?: Array<{ id: string; name: string; role: 'primary' | 'featuring' }>;
   album: string;
   duration?: number;
   coverArt?: string;

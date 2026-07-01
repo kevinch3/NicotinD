@@ -21,14 +21,13 @@
       />
       <div class="flex flex-col justify-end">
         <h1 class="text-2xl font-bold text-theme-primary">{{ selectedAlbum()!.name }}</h1>
-        @if (selectedAlbum()!.artistId) {
-          <a [routerLink]="getArtistLink(selectedAlbum()!.artistId)"
-             class="text-theme-secondary hover:text-theme-primary transition mt-1 cursor-pointer">
-            {{ selectedAlbum()!.artist }}
-          </a>
-        } @else {
-          <p class="text-theme-secondary mt-1">{{ selectedAlbum()!.artist }}</p>
-        }
+        <p class="text-theme-secondary hover:text-theme-primary transition mt-1">
+          <app-artist-links
+            [artists]="selectedAlbum()!.artists"
+            [fallbackArtist]="selectedAlbum()!.artist"
+            [fallbackArtistId]="selectedAlbum()!.artistId"
+          />
+        </p>
         @if (selectedAlbum()!.year) {
           <p class="text-theme-muted text-sm mt-1">{{ selectedAlbum()!.year }}</p>
         }
@@ -126,6 +125,7 @@
           [track]="toTrackFromSong(song)"
           [indexLabel]="song.track ?? ''"
           [showCover]="false"
+          [artists]="song.artists"
           [duration]="song.duration"
           [offline]="preserve.isPreserved(song.id)"
           [selectable]="selection.active()"

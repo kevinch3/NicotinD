@@ -59,7 +59,8 @@
     @for (song of filteredGenreSongs(); track song.id) {
       <app-track-row
         [track]="toTrackFn(song)"
-        [subtitle]="song.artist + ' · ' + song.album"
+        [artists]="song.artists"
+        [subtitle]="song.artists?.length ? song.album : (song.artist + ' · ' + song.album)"
         [duration]="song.duration"
         [offline]="preserve.isPreserved(song.id)"
         [selectable]="selection.active()"

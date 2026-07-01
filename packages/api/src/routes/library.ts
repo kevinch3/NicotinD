@@ -40,6 +40,7 @@ import {
 } from '../services/cover-sources.js';
 import { pruneOrphanArtist } from '../services/library-aggregates.js';
 import { songOrderBy } from '../services/song-sort.js';
+import { attachSongArtists, attachAlbumArtists } from '../services/artist-attach.js';
 import type {
   ApplyMetadataRequest,
   AlbumCoverCandidate,
@@ -377,11 +378,11 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       return c.json({ error: 'Artist not found' }, 404);
     }
     const allRows = db
-      .query<AlbumRow, [string]>(
-        `${ALBUM_SELECT} WHERE artist_id = ? AND hidden = 0
+      .query<AlbumRow, [string, string]>(
+        `${ALBUM_SELECT} WHERE (artist_id = ? OR id IN (SELECT album_id FROM library_album_artists WHERE artist_id = ?)) AND hidden = 0
          ORDER BY year DESC NULLS LAST, name COLLATE NOCASE ASC`,
       )
-      .all(id);
+      .all(id, id);
     const downloadingKeys = getDownloadingGroupKeys(
       db,
       await activeTransferKeys(options.slskdRef),
@@ -399,6 +400,8 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     const singlesAndEps = visible
       .filter((r) => r.classification === 'single' || r.classification === 'ep')
       .map(rowToAlbum);
+    attachAlbumArtists(db, albums);
+    attachAlbumArtists(db, singlesAndEps);
     return c.json({ artist: rowToArtist(artistRow), albums, singlesAndEps });
   });
 
@@ -412,30 +415,35 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     const sort = c.req.query('sort') ?? 'newest';
     const starredOnly = c.req.query('starred') === 'true';
     const db = getDatabase();
-    const wheres = ['s.artist_id = ?', 's.hidden = 0'];
+    const wheres = ['(s.artist_id = ? OR s.id IN (SELECT song_id FROM library_song_artists WHERE artist_id = ?))', 's.hidden = 0'];
     if (starredOnly) wheres.push('s.starred IS NOT NULL');
     const rows = db
-      .query<SongRow, [string, number, number]>(
+      .query<SongRow, [string, string, number, number]>(
         `${SONG_SELECT} WHERE ${wheres.join(' AND ')}
          ORDER BY ${songOrderBy(sort)} LIMIT ? OFFSET ?`,
       )
-      .all(id, size, offset);
-    return c.json(rows.map(rowToSong));
+      .all(id, id, size, offset);
+    const songs = rows.map(rowToSong);
+    attachSongArtists(db, songs);
+    return c.json(songs);
   });
 
   app.get('/artists/:id/appears-on', (c) => {
     const id = c.req.param('id');
     const db = getDatabase();
     const rows = db
-      .query<AlbumRow, [string]>(
+      .query<AlbumRow, [string, string]>(
         `${ALBUM_SELECT} WHERE id IN (
            SELECT DISTINCT ls.album_id FROM library_songs ls
            JOIN library_albums la ON la.id = ls.album_id
-           WHERE ls.artist_id = ? AND la.classification = 'compilation' AND la.hidden = 0
+           WHERE (ls.artist_id = ? OR ls.id IN (SELECT song_id FROM library_song_artists WHERE artist_id = ?))
+             AND la.classification = 'compilation' AND la.hidden = 0
          ) ORDER BY year DESC NULLS LAST, name COLLATE NOCASE ASC`,
       )
-      .all(id);
-    return c.json(rows.map(rowToAlbum));
+      .all(id, id);
+    const albums = rows.map(rowToAlbum);
+    attachAlbumArtists(db, albums);
+    return c.json(albums);
   });
 
   // Dedicated singles & EPs listing (the /library/singles view). Mirrors /albums
@@ -529,7 +537,11 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
          ORDER BY s.track ASC NULLS LAST, s.title COLLATE NOCASE ASC`,
       )
       .all(id);
-    return c.json({ ...rowToAlbum(albumRow), song: songRows.map(rowToSong) });
+    const album = rowToAlbum(albumRow);
+    const songs = songRows.map(rowToSong);
+    attachAlbumArtists(db, [album]);
+    attachSongArtists(db, songs);
+    return c.json({ ...album, song: songs });
   });
 
   app.delete('/albums/:id', async (c) => {
@@ -988,7 +1000,11 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     const id = c.req.param('id');
     const db = getDatabase();
     const row = db.query<SongRow, [string]>(`${SONG_SELECT} WHERE s.id = ?`).get(id);
-    if (row) return c.json(rowToSong(row));
+    if (row) {
+      const song = rowToSong(row);
+      attachSongArtists(db, [song]);
+      return c.json(song);
+    }
     return c.json({ error: 'Song not found' }, 404);
   });
 
@@ -1341,7 +1357,9 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
          ORDER BY s.created DESC NULLS LAST LIMIT ?`,
       )
       .all(genre, count);
-    return c.json(rows.map(rowToSong));
+    const songs = rows.map(rowToSong);
+    attachSongArtists(db, songs);
+    return c.json(songs);
   });
 
   app.get('/random', (c) => {
@@ -1355,7 +1373,9 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
          ORDER BY RANDOM() LIMIT ?`,
       )
       .all(size);
-    return c.json(rows.map(rowToSong));
+    const songs = rows.map(rowToSong);
+    attachSongArtists(db, songs);
+    return c.json(songs);
   });
 
   // Recently added — uses completed_downloads history to surface user's most-recent imports.
@@ -1369,10 +1389,12 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
          ORDER BY s.created DESC NULLS LAST LIMIT ?`,
       )
       .all(size * 4);
-    const songs = rows.map((r) => ({
-      ...rowToSong(r),
-      albumName: r.album_name ?? '',
-      albumArtist: r.artist,
+    const baseSongs = rows.map(rowToSong);
+    attachSongArtists(db, baseSongs);
+    const songs = baseSongs.map((s, i) => ({
+      ...s,
+      albumName: rows[i].album_name ?? '',
+      albumArtist: rows[i].artist,
     }));
     const ordered = orderByCompletionHistory(songs);
     return c.json(ordered.slice(0, size));

@@ -3,6 +3,12 @@
 // to. Split out of the former monolithic api.service.ts so the per-domain
 // services and their consumers share one types module.
 
+export interface ArtistCredit {
+  id: string;
+  name: string;
+  role: 'primary' | 'featuring';
+}
+
 export interface SetupStatus {
   needsSetup: boolean;
 }
@@ -72,6 +78,7 @@ export interface Album {
   name: string;
   artist: string;
   artistId?: string;
+  artists?: ArtistCredit[];
   coverArt?: string;
   songCount?: number;
   year?: number;
@@ -84,6 +91,7 @@ export interface AlbumDetail {
   name: string;
   artist: string;
   artistId?: string;
+  artists?: ArtistCredit[];
   coverArt?: string;
   year?: number;
   song: Array<{
@@ -91,6 +99,7 @@ export interface AlbumDetail {
     title: string;
     artist: string;
     artistId?: string;
+    artists?: ArtistCredit[];
     albumId?: string;
     duration?: number;
     track?: number;
@@ -118,6 +127,7 @@ export interface Song {
   title: string;
   artist: string;
   artistId?: string;
+  artists?: ArtistCredit[];
   albumArtist?: string;
   albumArtistId?: string;
   album: string;

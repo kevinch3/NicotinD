@@ -25,12 +25,18 @@
           rounded="rounded"
         />
       }
-      <button type="button" (click)="play.emit()" class="flex-1 min-w-0 text-left">
-        <p class="text-sm text-theme-primary truncate">{{ track().title }}</p>
-        @if (subtitle()) {
+      <div class="flex-1 min-w-0">
+        <button type="button" (click)="play.emit()" class="w-full text-left">
+          <p class="text-sm text-theme-primary truncate">{{ track().title }}</p>
+        </button>
+        @if (artists()?.length) {
+          <p class="text-xs text-theme-muted truncate">
+            <app-artist-links [artists]="artists()" />@if (subtitle()) {<span> · {{ subtitle() }}</span>}
+          </p>
+        } @else if (subtitle()) {
           <p class="text-xs text-theme-muted truncate">{{ subtitle() }}</p>
         }
-      </button>
+      </div>
       <span class="text-xs text-theme-muted">{{ formatDuration(duration() ?? track().duration) }}</span>
       <button type="button" (click)="play.emit()" class="p-1 text-theme-muted group-hover:text-theme-secondary transition flex-shrink-0" title="Play">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">

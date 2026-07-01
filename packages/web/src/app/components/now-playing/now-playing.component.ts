@@ -16,6 +16,7 @@ import { createPointerDrag } from '../../lib/pointer-drag';
 import { ScrollLockService } from '../../services/scroll-lock.service';
 import { SeekBarComponent } from '../seek-bar/seek-bar.component';
 import { CoverArtComponent } from '../cover-art/cover-art.component';
+import { ArtistLinksComponent } from '../artist-links/artist-links.component';
 import { ServerConfigService } from '../../services/server-config.service';
 import {
   computePaletteFromPixels,
@@ -39,6 +40,7 @@ function formatTime(s: number): string {
     TrackInfoSheetComponent,
     SeekBarComponent,
     CoverArtComponent,
+    ArtistLinksComponent,
   ],
   templateUrl: './now-playing.component.html',
 })

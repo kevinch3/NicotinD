@@ -22,6 +22,7 @@ import { createSelection } from '../../lib/selection';
 import { SelectionBarComponent } from '../../components/selection-bar/selection-bar.component';
 import { IconComponent } from '../../components/icon/icon.component';
 import { MetadataFixModalComponent } from '../../components/metadata-fix-modal/metadata-fix-modal.component';
+import { ArtistLinksComponent } from '../../components/artist-links/artist-links.component';
 import { NavigationService } from '../../services/navigation.service';
 import { PreserveService } from '../../services/preserve.service';
 
@@ -36,6 +37,7 @@ import { PreserveService } from '../../services/preserve.service';
     SelectionBarComponent,
     IconComponent,
     MetadataFixModalComponent,
+    ArtistLinksComponent,
   ],
   templateUrl: './album-detail.component.html',
 })

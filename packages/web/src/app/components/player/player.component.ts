@@ -16,6 +16,7 @@ import { AuthService } from '../../services/auth.service';
 import { RemotePlaybackService } from '../../services/remote-playback.service';
 import { PlaybackWsService } from '../../services/playback-ws.service';
 import { CoverArtComponent } from '../cover-art/cover-art.component';
+import { ArtistLinksComponent } from '../artist-links/artist-links.component';
 import { DeviceSwitcherComponent } from '../device-switcher/device-switcher.component';
 import { PreserveService } from '../../services/preserve.service';
 import { ServerConfigService } from '../../services/server-config.service';
@@ -35,7 +36,7 @@ function formatTime(s: number): string {
 
 @Component({
   selector: 'app-player',
-  imports: [CoverArtComponent, DeviceSwitcherComponent, SeekBarComponent],
+  imports: [CoverArtComponent, DeviceSwitcherComponent, SeekBarComponent, ArtistLinksComponent],
   templateUrl: './player.component.html',
 })
 export class PlayerComponent implements AfterViewInit, OnDestroy {
