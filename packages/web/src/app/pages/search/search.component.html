@@ -233,7 +233,7 @@
             @for (artist of catalog()!.artists; track artist.mbid) {
               <button
                 (click)="activateArtist(artist)"
-                class="px-3 py-1.5 rounded-full text-sm border border-zinc-800 text-zinc-300 hover:border-zinc-600 hover:text-zinc-100 transition"
+                class="px-3 py-1.5 rounded-full text-sm border border-theme text-theme-secondary hover:border-theme-accent hover:text-theme-primary transition"
               >
                 {{ artist.name }}
               </button>
