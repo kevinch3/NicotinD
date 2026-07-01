@@ -5,6 +5,7 @@ import { AlbumHuntModalComponent } from './album-hunt-modal.component';
 import { DownloadsApiService } from '../../services/api/downloads-api.service';
 import { SearchApiService } from '../../services/api/search-api.service';
 import type { DiscographyAlbum, FolderCandidate } from '../../services/api/api-types';
+import type { ArchiveCandidate } from '../../../types/core';
 import { TransferService } from '../../services/transfer.service';
 import { AcquireService } from '../../services/acquire.service';
 import { PluginService } from '../../services/plugin.service';
@@ -39,7 +40,7 @@ describe('AlbumHuntModalComponent', () => {
   const huntAlbumBase = vi.fn(() => of({ candidates: [], totalTracks: 0, skewNeeded: false }));
   const huntAlbumSkew = vi.fn(() => of({ candidates: [] }));
   const huntDownload = vi.fn(() => of({}));
-  const archiveSearchAlbum = vi.fn(() => of({ candidates: [] }));
+  const archiveSearchAlbum = vi.fn(() => of({ candidates: [] as ArchiveCandidate[] }));
   const acquireSubmit = vi.fn(() => Promise.resolve('job1'));
   let archiveEnabled = false;
 

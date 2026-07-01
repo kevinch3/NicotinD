@@ -206,6 +206,7 @@ export class LibraryComponent implements OnInit, OnDestroy {
   // Dedicated view for the release types kept out of the Albums grid.
   readonly singles = signal<Album[]>([]);
   readonly loadingSingles = signal(false);
+  readonly singlesFetched = signal(false);
 
   readonly singlesControls = this.listControls.connect({
     pageKey: 'library-singles',
@@ -214,9 +215,17 @@ export class LibraryComponent implements OnInit, OnDestroy {
     sortOptions: this.gridSortOptions,
   });
 
+  readonly isSinglesEmpty = computed(
+    () =>
+      this.singlesFetched() &&
+      !this.loadingSingles() &&
+      this.singlesControls.filtered().length === 0,
+  );
+
   // ─── Compilations ─────────────────────────────────────────────────
   readonly compilations = signal<Album[]>([]);
   readonly loadingCompilations = signal(false);
+  readonly compilationsFetched = signal(false);
 
   readonly compilationsControls = this.listControls.connect({
     pageKey: 'library-compilations',
@@ -225,11 +234,25 @@ export class LibraryComponent implements OnInit, OnDestroy {
     sortOptions: this.gridSortOptions,
   });
 
+  readonly isCompilationsEmpty = computed(
+    () =>
+      this.compilationsFetched() &&
+      !this.loadingCompilations() &&
+      this.compilationsControls.filtered().length === 0,
+  );
+
   // ─── Artists ──────────────────────────────────────────────────────
   readonly artists = signal<
     Array<{ id: string; name: string; albumCount: number; coverArt?: string }>
   >([]);
   readonly loadingArtists = signal(false);
+  readonly artistsFetched = signal(false);
+  readonly isArtistsEmpty = computed(
+    () =>
+      this.artistsFetched() &&
+      !this.loadingArtists() &&
+      this.artistControls.filtered().length === 0,
+  );
 
   readonly artistSortOptions: SortOption[] = [
     { field: 'name', label: 'Name' },
@@ -247,6 +270,10 @@ export class LibraryComponent implements OnInit, OnDestroy {
   // ─── Genre ────────────────────────────────────────────────────────
   readonly genres = signal<Array<{ value: string; songCount: number; albumCount: number }>>([]);
   readonly loadingGenres = signal(false);
+  readonly genresFetched = signal(false);
+  readonly isGenresEmpty = computed(
+    () => this.genresFetched() && !this.loadingGenres() && this.genres().length === 0,
+  );
 
   // ─── Lifecycle ────────────────────────────────────────────────────
   private observerEffect = effect(() => {
@@ -475,6 +502,7 @@ export class LibraryComponent implements OnInit, OnDestroy {
       /* ignore */
     } finally {
       this.loadingArtists.set(false);
+      this.artistsFetched.set(true);
     }
   }
 
@@ -488,6 +516,7 @@ export class LibraryComponent implements OnInit, OnDestroy {
       /* ignore */
     } finally {
       this.loadingSingles.set(false);
+      this.singlesFetched.set(true);
     }
   }
 
@@ -501,6 +530,7 @@ export class LibraryComponent implements OnInit, OnDestroy {
       /* ignore */
     } finally {
       this.loadingCompilations.set(false);
+      this.compilationsFetched.set(true);
     }
   }
 
@@ -514,6 +544,7 @@ export class LibraryComponent implements OnInit, OnDestroy {
       /* ignore */
     } finally {
       this.loadingGenres.set(false);
+      this.genresFetched.set(true);
     }
   }
 

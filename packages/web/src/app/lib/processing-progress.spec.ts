@@ -31,11 +31,17 @@ describe('phaseLabel', () => {
 
 describe('totalPending / isComplete', () => {
   it('sums per-task pending counts', () => {
-    expect(totalPending({ taskPending: { bpm: 4, genre: 2 } })).toBe(6);
+    expect(
+      totalPending({ taskPending: { bpm: 4, genre: 2, key: 0, 'artist-image': 0 } }),
+    ).toBe(6);
   });
 
   it('isComplete when all task counts are zero', () => {
-    expect(isComplete({ taskPending: { bpm: 0, genre: 0 } })).toBe(true);
-    expect(isComplete({ taskPending: { bpm: 1, genre: 0 } })).toBe(false);
+    expect(
+      isComplete({ taskPending: { bpm: 0, genre: 0, key: 0, 'artist-image': 0 } }),
+    ).toBe(true);
+    expect(
+      isComplete({ taskPending: { bpm: 1, genre: 0, key: 0, 'artist-image': 0 } }),
+    ).toBe(false);
   });
 });
