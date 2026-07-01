@@ -8,6 +8,7 @@ export interface BaseSong {
   title: string;
   artist: string;
   artistId?: string;
+  artists?: Array<{ id: string; name: string; role: 'primary' | 'featuring' }>;
   album?: string;
   coverArt?: string;
   duration?: number;
@@ -23,6 +24,7 @@ export function toTrack(song: BaseSong, fallbackAlbum?: string): Track {
     title: song.title,
     artist: song.artist,
     artistId: song.artistId,
+    artists: song.artists,
     album: song.album ?? fallbackAlbum,
     coverArt: song.coverArt,
     duration: song.duration,

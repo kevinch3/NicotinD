@@ -102,11 +102,12 @@
               </svg>
             </button>
           </div>
-          <p
-            class="text-sm text-zinc-400 truncate mt-1 cursor-pointer select-none hover:underline hover:text-zinc-200 transition"
-            (click)="navigateToArtist()"
-          >
-            {{ track.artist }}
+          <p class="text-sm text-zinc-400 truncate mt-1 select-none hover:text-zinc-200 transition">
+            @if (track.artists?.length) {
+              <app-artist-links [artists]="track.artists" />
+            } @else {
+              <span class="cursor-pointer hover:underline" (click)="navigateToArtist()">{{ track.artist }}</span>
+            }
           </p>
           <div class="flex justify-center mt-2">
             <!-- TODO: PreserveButton goes here (Phase 5) -->

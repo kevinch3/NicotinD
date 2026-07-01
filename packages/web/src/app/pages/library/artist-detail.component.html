@@ -204,6 +204,7 @@
                     [track]="toTrack(song)"
                     [indexLabel]="i + 1"
                     [subtitle]="songSubtitle(song)"
+                    [artists]="song.artists"
                     [duration]="song.duration"
                     [offline]="preserve.isPreserved(song.id)"
                     [selectable]="selection.active()"

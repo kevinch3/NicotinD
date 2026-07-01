@@ -5,6 +5,7 @@ export interface Track {
   title: string;
   artist: string;
   artistId?: string;
+  artists?: Array<{ id: string; name: string; role: 'primary' | 'featuring' }>;
   album?: string;
   coverArt?: string;
   duration?: number;

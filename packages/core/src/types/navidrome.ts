@@ -22,11 +22,18 @@ export interface Artist {
   starred?: string;
 }
 
+export interface ArtistCredit {
+  id: string;
+  name: string;
+  role: 'primary' | 'featuring';
+}
+
 export interface Album {
   id: string;
   name: string;
   artist: string;
   artistId: string;
+  artists?: ArtistCredit[];
   coverArt?: string;
   songCount: number;
   duration: number;
@@ -43,6 +50,7 @@ export interface Song {
   albumId: string;
   artist: string;
   artistId: string;
+  artists?: ArtistCredit[];
   albumArtist?: string;
   albumArtistId?: string;
   track?: number;

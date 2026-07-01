@@ -1,7 +1,9 @@
 import { Component, HostListener, inject, input, output, signal } from '@angular/core';
 import { AuthService } from '../../services/auth.service';
 import { CoverArtComponent } from '../cover-art/cover-art.component';
+import { ArtistLinksComponent } from '../artist-links/artist-links.component';
 import type { Track } from '../../services/player.service';
+import type { ArtistCredit } from '../../services/api/api-types';
 
 export interface TrackAction {
   label: string;
@@ -19,7 +21,7 @@ function formatDuration(seconds?: number): string {
 
 @Component({
   selector: 'app-track-row',
-  imports: [CoverArtComponent],
+  imports: [CoverArtComponent, ArtistLinksComponent],
   templateUrl: './track-row.component.html',
 })
 export class TrackRowComponent {
@@ -43,6 +45,7 @@ export class TrackRowComponent {
   /** When true, the row shows a checkbox (multi-select mode) reflecting `selected`. */
   readonly selectable = input(false);
   readonly selected = input(false);
+  readonly artists = input<ArtistCredit[]>();
   readonly actions = input<TrackAction[]>([]);
   readonly play = output<void>();
   readonly remove = output<void>();

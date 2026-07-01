@@ -58,7 +58,11 @@
           <div class="min-w-0 no-callout" translate="no">
             <p class="text-sm font-medium text-theme-primary truncate" data-testid="player-title">{{ player.currentTrack()?.title }}</p>
             <p class="text-xs text-theme-secondary truncate">
-              {{ player.currentTrack()?.artist }}
+              @if (player.currentTrack()?.artists?.length) {
+                <app-artist-links [artists]="player.currentTrack()!.artists!" />
+              } @else {
+                {{ player.currentTrack()?.artist }}
+              }
             </p>
           </div>
           <!-- TODO: PreserveButton goes here (Phase 5) -->

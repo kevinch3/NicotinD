@@ -252,8 +252,9 @@
         @for (song of librarySongs(); track song.id; let i = $index) {
           <app-track-row
             [track]="toTrack(song)"
-            [subtitle]="song.artist + (song.album ? ' · ' + song.album : '')"
-            [duration]="song.duration"
+            [artists]="song.artists"
+            [subtitle]="song.artists?.length ? song.album : (song.artist + (song.album ? ' · ' + song.album : ''))"
+            [duration]="song.duration ?? 0"
             [actions]="songActions(song.id)"
             (play)="playLibrarySong(i)"
           />

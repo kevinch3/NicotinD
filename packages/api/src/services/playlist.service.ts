@@ -1,5 +1,6 @@
 import type { Database } from 'bun:sqlite';
 import type { Song } from '@nicotind/core';
+import { attachSongArtists } from './artist-attach.js';
 
 /** `user` = created by a user (private). `curated` = system-seeded, global, read-only. */
 export type PlaylistKind = 'user' | 'curated';
@@ -142,6 +143,7 @@ export class PlaylistService {
       )
       .all(id)
       .map(rowToSong);
+    attachSongArtists(this.db, songs);
 
     return { ...this.summary(row, songs.length), songs };
   }

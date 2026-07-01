@@ -503,6 +503,30 @@ export function applySchema(db: Database): void {
   db.run(`CREATE INDEX IF NOT EXISTS idx_library_artists_hidden ON library_artists(hidden)`);
 
   db.run(`
+    CREATE TABLE IF NOT EXISTS library_song_artists (
+      song_id   TEXT NOT NULL,
+      artist_id TEXT NOT NULL,
+      role      TEXT NOT NULL DEFAULT 'primary',
+      position  INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (song_id, artist_id, role)
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_song_artists_artist ON library_song_artists(artist_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_song_artists_song ON library_song_artists(song_id)`);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS library_album_artists (
+      album_id  TEXT NOT NULL,
+      artist_id TEXT NOT NULL,
+      role      TEXT NOT NULL DEFAULT 'primary',
+      position  INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (album_id, artist_id, role)
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_album_artists_artist ON library_album_artists(artist_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_album_artists_album ON library_album_artists(album_id)`);
+
+  db.run(`
     CREATE TABLE IF NOT EXISTS library_genres (
       name        TEXT PRIMARY KEY,
       song_count  INTEGER NOT NULL DEFAULT 0,

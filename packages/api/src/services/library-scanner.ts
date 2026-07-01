@@ -9,6 +9,7 @@ import { inferFolderAlbum, inferMetadataFromPath, hasUsableValue } from './path-
 import { getMusicMetadata } from './music-metadata-loader.js';
 import { selectAlbumTracks } from './library-track-select.js';
 import { loadOverrides, type MetadataOverrideValue } from './metadata-override-store.js';
+import { splitArtists, type ArtistCredit } from './artist-split.js';
 
 const log = createLogger('library-scanner');
 
@@ -108,11 +109,20 @@ export interface GenreRow {
   albumCount: number;
 }
 
+export interface ArtistLink {
+  parentId: string;
+  artistId: string;
+  role: 'primary' | 'featuring';
+  position: number;
+}
+
 export interface BuiltLibrary {
   songs: SongRow[];
   albums: AlbumRow[];
   artists: ArtistRow[];
   genres: GenreRow[];
+  songArtists: ArtistLink[];
+  albumArtists: ArtistLink[];
 }
 
 const UNKNOWN_ARTIST = 'Unknown Artist';
@@ -280,8 +290,22 @@ export function buildLibrary(
   overrides?: ReadonlyMap<string, MetadataOverrideValue>,
 ): BuiltLibrary {
   tracks = selectLibraryTracks(tracks, canonicalByAlbum, overrides);
+
+  // Pass 1: collect all raw artist strings to build the cross-reference set.
+  // Any artist name that appears as-is across the library is considered "known"
+  // and won't be split by the artist-split parser (prevents splitting band
+  // names like "Earth, Wind & Fire").
+  const knownArtists = new Set<string>();
+  for (const t of tracks) {
+    const { albumArtist, trackArtist } = resolveTags(t, overrides);
+    knownArtists.add(normalizeArtistForGrouping(albumArtist));
+    knownArtists.add(normalizeArtistForGrouping(trackArtist));
+  }
+
+  // Pass 2: build songs, albums, artists, and artist-link join rows.
   const songs: SongRow[] = [];
-  // album id -> accumulating state
+  const songArtistLinks: ArtistLink[] = [];
+  const albumArtistLinks: ArtistLink[] = [];
   const albumAcc = new Map<
     string,
     {
@@ -295,6 +319,7 @@ export function buildLibrary(
       genres: string[];
       createdMs: number;
       coverArt: string;
+      splitCredits: ArtistCredit[];
     }
   >();
 
@@ -330,6 +355,16 @@ export function buildLibrary(
       created,
     });
 
+    const trackCredits = splitArtists(trackArtist, knownArtists);
+    for (let i = 0; i < trackCredits.length; i++) {
+      songArtistLinks.push({
+        parentId: id,
+        artistId: artistIdFor(trackCredits[i].name),
+        role: trackCredits[i].role,
+        position: i,
+      });
+    }
+
     const acc = albumAcc.get(albId);
     if (acc) {
       acc.names.push(album);
@@ -349,10 +384,8 @@ export function buildLibrary(
         years: year != null ? [year] : [],
         genres: t.genre ? [t.genre] : [],
         createdMs: t.mtimeMs,
-        // Album cover id = the album id itself: the cover route checks
-        // library_artwork (canonical Lidarr art) by this id first, then falls
-        // back to a representative song's folder/embedded art via resolvePath.
         coverArt: albId,
+        splitCredits: splitArtists(albumArtist, knownArtists),
       });
     }
   }
@@ -362,9 +395,22 @@ export function buildLibrary(
     string,
     { id: string; name: string; albums: Set<string>; coverArt: string | null }
   >();
+
+  function ensureArtist(artistId: string, name: string, albumId?: string) {
+    const ar = artistAcc.get(artistId);
+    if (ar) {
+      if (albumId) ar.albums.add(albumId);
+    } else {
+      artistAcc.set(artistId, {
+        id: artistId,
+        name,
+        albums: albumId ? new Set([albumId]) : new Set(),
+        coverArt: artistId,
+      });
+    }
+  }
+
   for (const a of albumAcc.values()) {
-    // Display name = shortest member title so the base edition wins over a
-    // longer "(Deluxe Edition)" sibling that shares the group key.
     const name = a.names.reduce((x, y) => (y.length < x.length ? y : x));
     albums.push({
       id: a.id,
@@ -379,19 +425,33 @@ export function buildLibrary(
       created: new Date(a.createdMs).toISOString(),
     });
 
-    const ar = artistAcc.get(a.artistId);
-    if (ar) {
-      ar.albums.add(a.id);
-    } else {
-      artistAcc.set(a.artistId, {
-        id: a.artistId,
-        name: a.artist,
-        albums: new Set([a.id]),
-        // Artist cover id = the artist id itself, so the cover route serves the
-        // canonical Lidarr poster (audio files carry none); disk fallback finds
-        // a representative song by artist_id.
-        coverArt: a.artistId,
+    // Primary album artist (backward-compat single column)
+    ensureArtist(a.artistId, a.artist, a.id);
+
+    // Multi-artist join rows for this album
+    for (let i = 0; i < a.splitCredits.length; i++) {
+      const credit = a.splitCredits[i];
+      const creditId = artistIdFor(credit.name);
+      albumArtistLinks.push({
+        parentId: a.id,
+        artistId: creditId,
+        role: credit.role,
+        position: i,
       });
+      ensureArtist(creditId, credit.name, a.id);
+    }
+  }
+
+  // Ensure all song-level split artists have rows too
+  for (const link of songArtistLinks) {
+    if (!artistAcc.has(link.artistId)) {
+      // Find the name from the credits — look up via songs
+      const song = songs.find((s) => s.id === link.parentId);
+      if (song) {
+        const credits = splitArtists(song.artist, knownArtists);
+        const credit = credits.find((c) => artistIdFor(c.name) === link.artistId);
+        if (credit) ensureArtist(link.artistId, credit.name);
+      }
     }
   }
 
@@ -416,7 +476,7 @@ export function buildLibrary(
     albumCount: g.albums.size,
   }));
 
-  return { songs, albums, artists, genres };
+  return { songs, albums, artists, genres, songArtists: songArtistLinks, albumArtists: albumArtistLinks };
 }
 
 export interface ScanResult {
@@ -652,6 +712,18 @@ export class LibraryScanner {
         album_count = excluded.album_count,
         synced_at = excluded.synced_at
     `);
+    const songArtistStmt = this.db.prepare(`
+      INSERT INTO library_song_artists (song_id, artist_id, role, position)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(song_id, artist_id, role) DO UPDATE SET
+        position = excluded.position
+    `);
+    const albumArtistStmt = this.db.prepare(`
+      INSERT INTO library_album_artists (album_id, artist_id, role, position)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(album_id, artist_id, role) DO UPDATE SET
+        position = excluded.position
+    `);
 
     this.db.transaction(() => {
       for (const a of built.albums) {
@@ -701,6 +773,12 @@ export class LibraryScanner {
       for (const g of built.genres) {
         genreStmt.run(g.name, g.songCount, g.albumCount, syncedAt);
       }
+      for (const link of built.songArtists) {
+        songArtistStmt.run(link.parentId, link.artistId, link.role, link.position);
+      }
+      for (const link of built.albumArtists) {
+        albumArtistStmt.run(link.parentId, link.artistId, link.role, link.position);
+      }
     })();
 
     let removedAlbums = 0;
@@ -714,6 +792,9 @@ export class LibraryScanner {
       );
       this.db.run('DELETE FROM library_artists WHERE synced_at < ?', [syncedAt]);
       this.db.run('DELETE FROM library_genres WHERE synced_at < ?', [syncedAt]);
+      this.db.run('DELETE FROM library_song_artists WHERE song_id NOT IN (SELECT id FROM library_songs)');
+      this.db.run('DELETE FROM library_album_artists WHERE album_id NOT IN (SELECT id FROM library_albums)');
+
     } else {
       // Incremental: an album we just touched may have gained songs; recompute
       // its aggregate counts from all of its current songs so the card is right.
