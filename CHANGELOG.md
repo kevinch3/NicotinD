@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.126](https://github.com/kevinch3/NicotinD/compare/v0.1.125...v0.1.126) (2026-07-01)
+
+
+### Features
+
+* multi-artist support with parsing, join tables, and linked UI ([e832c17](https://github.com/kevinch3/NicotinD/commit/e832c179f35f4e2fb5b1dea5c081f0b82cc6b74e))
+
+
+### Bug Fixes
+
+* lint unused var and e2e strict-mode violation from multi-artist links ([76f1641](https://github.com/kevinch3/NicotinD/commit/76f1641d38d734d895cd96e28b6d56589afa0211))
+
 ## [0.1.125](https://github.com/kevinch3/NicotinD/compare/v0.1.124...v0.1.125) (2026-07-01)
 
 
