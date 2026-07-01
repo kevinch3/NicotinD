@@ -2,10 +2,6 @@ import { describe, expect, it } from 'bun:test';
 import { splitArtists, formatArtistDisplay } from './artist-split.js';
 import type { ArtistCredit } from './artist-split.js';
 
-function names(credits: ArtistCredit[]): string[] {
-  return credits.map((c) => c.name);
-}
-
 function primaries(credits: ArtistCredit[]): string[] {
   return credits.filter((c) => c.role === 'primary').map((c) => c.name);
 }
