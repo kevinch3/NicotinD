@@ -1,17 +1,20 @@
 import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { vi } from 'vitest';
-import { PreserveService, UNLIMITED_BUDGET } from './preserve.service';
+import { PreserveService, PRESERVE_STORE, UNLIMITED_BUDGET } from './preserve.service';
+import type { PreserveStore } from './preserve.service';
 import { AuthService } from './auth.service';
 import type { Track } from './player.service';
 
-// In-memory fake of the IndexedDB store module. vi.mock is hoisted and
-// file-scoped, so this does not leak into other specs.
-vi.mock('../lib/preserve-store', () => {
-  const tracks = new Map<string, { id: string; size: number; lastAccessedAt: number }>();
+// In-memory fake of the IndexedDB store, injected via PRESERVE_STORE. The
+// Angular unit-test system forbids `vi.mock` on relative imports, so the store
+// is swapped through DI instead of module mocking.
+type StoredMeta = { id: string; size: number; lastAccessedAt: number };
+
+function makeStoreFake() {
+  const tracks = new Map<string, StoredMeta>();
   return {
-    DEFAULT_BUDGET: 2 * 1024 * 1024 * 1024,
-    preserve: vi.fn(async (meta: { id: string; size: number; lastAccessedAt: number }) => {
+    preserve: vi.fn(async (meta: StoredMeta) => {
       tracks.set(meta.id, meta);
     }),
     remove: vi.fn(async (id: string) => {
@@ -20,13 +23,11 @@ vi.mock('../lib/preserve-store', () => {
     getAll: vi.fn(async () => [...tracks.values()]),
     getBlob: vi.fn(async () => undefined),
     evictLRU: vi.fn(async () => [] as string[]),
-    updateLastAccessed: vi.fn(async () => {}),
-    __reset: () => tracks.clear(),
-  };
-});
+    reset: () => tracks.clear(),
+  } as unknown as PreserveStore & { reset: () => void };
+}
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-import * as store from '../lib/preserve-store';
+let store: PreserveStore & { reset: () => void };
 
 const BLOB_SIZE = 100;
 
@@ -47,13 +48,17 @@ describe('PreserveService', () => {
   let svc: PreserveService;
 
   beforeEach(() => {
-    (store as unknown as { __reset: () => void }).__reset();
+    store = makeStoreFake();
     vi.clearAllMocks();
     localStorage.clear();
     globalThis.fetch = mockFetch();
 
     TestBed.configureTestingModule({
-      providers: [PreserveService, { provide: AuthService, useValue: { token: signal('tok') } }],
+      providers: [
+        PreserveService,
+        { provide: AuthService, useValue: { token: signal('tok') } },
+        { provide: PRESERVE_STORE, useValue: store },
+      ],
     });
     svc = TestBed.inject(PreserveService);
   });
@@ -152,7 +157,11 @@ describe('PreserveService', () => {
       localStorage.setItem('nicotind-preserve-budget', String(UNLIMITED_BUDGET));
       TestBed.resetTestingModule();
       TestBed.configureTestingModule({
-        providers: [PreserveService, { provide: AuthService, useValue: { token: signal('tok') } }],
+        providers: [
+          PreserveService,
+          { provide: AuthService, useValue: { token: signal('tok') } },
+          { provide: PRESERVE_STORE, useValue: store },
+        ],
       });
       const fresh = TestBed.inject(PreserveService);
       expect(fresh.budget()).toBe(UNLIMITED_BUDGET);

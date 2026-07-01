@@ -1,9 +1,27 @@
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, InjectionToken, inject, signal } from '@angular/core';
 import * as db from '../lib/preserve-store';
 import { DEFAULT_BUDGET, type PreservedTrackMeta } from '../lib/preserve-store';
 import type { Track } from './player.service';
 import { AuthService } from './auth.service';
 import { ServerConfigService } from './server-config.service';
+
+/**
+ * The IndexedDB-backed store, injected so tests can swap in an in-memory fake.
+ * The Angular unit-test system forbids `vi.mock` on relative imports, so the
+ * store is provided through DI rather than module mocking.
+ */
+export interface PreserveStore {
+  preserve: typeof db.preserve;
+  remove: typeof db.remove;
+  getBlob: typeof db.getBlob;
+  getAll: typeof db.getAll;
+  evictLRU: typeof db.evictLRU;
+}
+
+export const PRESERVE_STORE = new InjectionToken<PreserveStore>('PRESERVE_STORE', {
+  providedIn: 'root',
+  factory: () => db,
+});
 
 /** Sentinel "no cap" budget — large enough that the projected-usage check never trips. */
 export const UNLIMITED_BUDGET = Number.MAX_SAFE_INTEGER;
@@ -24,6 +42,7 @@ export interface PreserveBatch {
 export class PreserveService {
   private auth = inject(AuthService);
   private server = inject(ServerConfigService);
+  private db = inject(PRESERVE_STORE);
 
   readonly preservedIds = signal(new Set<string>());
   readonly totalUsage = signal(0);
@@ -60,7 +79,7 @@ export class PreserveService {
       const blobs = await this.fetchTrackBlobs(track, token);
       if (!blobs) return;
       // Single-track save evicts least-recently-played tracks to make room (LRU).
-      await db.evictLRU(blobs.audioBlob.size, this.budget());
+      await this.db.evictLRU(blobs.audioBlob.size, this.budget());
       await this.storeTrack(track, blobs);
       await this.refreshList();
     } catch {
@@ -131,7 +150,7 @@ export class PreserveService {
   }
 
   async remove(id: string): Promise<void> {
-    await db.remove(id);
+    await this.db.remove(id);
     this.preservedIds.update((s) => {
       const n = new Set(s);
       n.delete(id);
@@ -141,7 +160,7 @@ export class PreserveService {
   }
 
   async removeMany(ids: string[]): Promise<void> {
-    for (const id of ids) await db.remove(id);
+    for (const id of ids) await this.db.remove(id);
     this.preservedIds.update((s) => {
       const n = new Set(s);
       for (const id of ids) n.delete(id);
@@ -166,7 +185,7 @@ export class PreserveService {
   }
 
   async downloadToDevice(id: string, filename: string): Promise<void> {
-    const blob = await db.getBlob(id);
+    const blob = await this.db.getBlob(id);
     if (!blob) return;
 
     const url = URL.createObjectURL(blob.audio);
@@ -180,7 +199,7 @@ export class PreserveService {
   }
 
   async refreshList(): Promise<void> {
-    const all = await db.getAll();
+    const all = await this.db.getAll();
     const ids = new Set(all.map((t) => t.id));
     const usage = all.reduce((sum, t) => sum + t.size, 0);
     this.preservedIds.set(ids);
@@ -229,7 +248,7 @@ export class PreserveService {
       preservedAt: now,
       lastAccessedAt: now,
     };
-    await db.preserve(meta, blobs.audioBlob, blobs.coverBlob);
+    await this.db.preserve(meta, blobs.audioBlob, blobs.coverBlob);
     this.preservedIds.update((s) => new Set(s).add(track.id));
   }
 
