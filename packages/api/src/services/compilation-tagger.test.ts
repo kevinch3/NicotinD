@@ -1,10 +1,16 @@
 import { describe, expect, it } from 'bun:test';
 import { classifyFolder } from './compilation-tagger.js';
 
-type FileSignal = { artist: string | undefined; album: string | undefined; filename: string };
+type FileSignal = {
+  artist: string | undefined;
+  album: string | undefined;
+  albumArtist: string | undefined;
+  compilation: boolean | undefined;
+  filename: string;
+};
 
-function file(artist: string | undefined, album: string | undefined): FileSignal {
-  return { artist, album, filename: '' };
+function file(artist: string | undefined, album: string | undefined, extra?: { albumArtist?: string; compilation?: boolean }): FileSignal {
+  return { artist, album, albumArtist: extra?.albumArtist, compilation: extra?.compilation, filename: '' };
 }
 
 function repeat<T>(n: number, fn: () => T): T[] {
@@ -96,10 +102,13 @@ describe('classifyFolder — test matrix', () => {
     }
   });
 
-  it('row 9: NOW-style well-tagged comp → leave-alone', () => {
+  it('row 9: NOW-style well-tagged comp → compilation (coherent album + multi-artist)', () => {
     const files = Array.from({ length: 20 }, (_, i) => file(`Artist ${i}`, 'NOW 86'));
     const result = classifyFolder(files, 'NOW 86');
-    expect(result.type).toBe('leave-alone');
+    expect(result.type).toBe('compilation');
+    if (result.type === 'compilation') {
+      expect(result.album).toBe('NOW 86');
+    }
   });
 
   it('row 10: live bootleg → leave-alone', () => {
@@ -108,10 +117,13 @@ describe('classifyFolder — test matrix', () => {
     expect(result.type).toBe('leave-alone');
   });
 
-  it('row 11: soundtrack VA, well-tagged → leave-alone', () => {
+  it('row 11: soundtrack VA, well-tagged → compilation (coherent album + multi-artist)', () => {
     const files = Array.from({ length: 15 }, (_, i) => file(`Artist ${i}`, 'Pulp Fiction OST'));
     const result = classifyFolder(files, 'Pulp Fiction OST');
-    expect(result.type).toBe('leave-alone');
+    expect(result.type).toBe('compilation');
+    if (result.type === 'compilation') {
+      expect(result.album).toBe('Pulp Fiction OST');
+    }
   });
 
   it('row 12: pair of unrelated tracks → leave-alone (no rule fires)', () => {
@@ -207,5 +219,49 @@ describe('classifyFolder — protection against false positives', () => {
     if (result.type === 'single-artist') {
       expect(result.artist).toBe('Band');
     }
+  });
+});
+
+describe('classifyFolder — COMPILATION flag and VA albumArtist', () => {
+  it('detects compilation when files have COMPILATION=true tag', () => {
+    const files: FileSignal[] = [
+      file('Artist A', 'Summer Mix', { compilation: true }),
+      file('Artist B', 'Summer Mix', { compilation: true }),
+    ];
+    const result = classifyFolder(files, 'Summer Mix');
+    expect(result.type).toBe('compilation');
+    if (result.type === 'compilation') {
+      expect(result.album).toBe('Summer Mix');
+    }
+  });
+
+  it('detects compilation when albumArtist is "Various Artists"', () => {
+    const files: FileSignal[] = [
+      file('Artist A', 'Club Anthems', { albumArtist: 'Various Artists' }),
+      file('Artist B', 'Club Anthems', { albumArtist: 'Various Artists' }),
+    ];
+    const result = classifyFolder(files, 'Club Anthems');
+    expect(result.type).toBe('compilation');
+    if (result.type === 'compilation') {
+      expect(result.album).toBe('Club Anthems');
+    }
+  });
+
+  it('detects compilation when albumArtist is "VA"', () => {
+    const files: FileSignal[] = [
+      file('Artist A', 'Hits', { albumArtist: 'VA' }),
+      file('Artist B', 'Hits'),
+    ];
+    const result = classifyFolder(files, 'Hits 2024');
+    expect(result.type).toBe('compilation');
+  });
+
+  it('coherent album + 2 artists stays leave-alone (below 3-artist threshold)', () => {
+    const files: FileSignal[] = [
+      file('Artist A', 'Collab Album'),
+      file('Artist B', 'Collab Album'),
+    ];
+    const result = classifyFolder(files, 'Collab Album');
+    expect(result.type).toBe('leave-alone');
   });
 });

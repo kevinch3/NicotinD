@@ -34,7 +34,7 @@ import {
 
 export type { AlbumListType };
 
-type LibraryMode = 'albums' | 'singles' | 'artists' | 'genre' | 'playlists';
+type LibraryMode = 'albums' | 'compilations' | 'singles' | 'artists' | 'genre' | 'playlists';
 
 interface AlbumTypeOption {
   value: AlbumListType;
@@ -104,6 +104,7 @@ export class LibraryComponent implements OnInit, OnDestroy {
   // ─── Mode ─────────────────────────────────────────────────────────
   readonly modes = [
     { value: 'albums' as LibraryMode, label: 'Albums' },
+    { value: 'compilations' as LibraryMode, label: 'Compilations' },
     { value: 'singles' as LibraryMode, label: 'Singles' },
     { value: 'artists' as LibraryMode, label: 'Artists' },
     { value: 'genre' as LibraryMode, label: 'Genre' },
@@ -117,6 +118,7 @@ export class LibraryComponent implements OnInit, OnDestroy {
   setMode(mode: LibraryMode): void {
     this.libraryMode.set(mode);
     localStorage.setItem('nicotind-library-mode', mode);
+    if (mode === 'compilations' && !this.compilations().length) this.fetchCompilations();
     if (mode === 'singles' && !this.singles().length) this.fetchSingles();
     if (mode === 'artists' && !this.artists().length) this.fetchArtists();
     if (mode === 'genre' && !this.genres().length) this.fetchGenres();
@@ -212,6 +214,17 @@ export class LibraryComponent implements OnInit, OnDestroy {
     sortOptions: this.gridSortOptions,
   });
 
+  // ─── Compilations ─────────────────────────────────────────────────
+  readonly compilations = signal<Album[]>([]);
+  readonly loadingCompilations = signal(false);
+
+  readonly compilationsControls = this.listControls.connect({
+    pageKey: 'library-compilations',
+    items: this.compilations,
+    searchFields: ['name', 'artist'] as const,
+    sortOptions: this.gridSortOptions,
+  });
+
   // ─── Artists ──────────────────────────────────────────────────────
   readonly artists = signal<
     Array<{ id: string; name: string; albumCount: number; coverArt?: string }>
@@ -272,6 +285,7 @@ export class LibraryComponent implements OnInit, OnDestroy {
     }
 
     const mode = this.libraryMode();
+    if (mode === 'compilations') this.fetchCompilations();
     if (mode === 'singles') this.fetchSingles();
     if (mode === 'artists') this.fetchArtists();
     if (mode === 'genre') this.fetchGenres();
@@ -474,6 +488,19 @@ export class LibraryComponent implements OnInit, OnDestroy {
       /* ignore */
     } finally {
       this.loadingSingles.set(false);
+    }
+  }
+
+  async fetchCompilations(): Promise<void> {
+    if (this.loadingCompilations()) return;
+    this.loadingCompilations.set(true);
+    try {
+      const data = await firstValueFrom(this.api.getCompilations('newest', 500));
+      this.compilations.set(data);
+    } catch {
+      /* ignore */
+    } finally {
+      this.loadingCompilations.set(false);
     }
   }
 

@@ -118,6 +118,8 @@ export interface Song {
   title: string;
   artist: string;
   artistId?: string;
+  albumArtist?: string;
+  albumArtistId?: string;
   album: string;
   albumId: string;
   duration?: number;
