@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.125](https://github.com/kevinch3/NicotinD/compare/v0.1.124...v0.1.125) (2026-07-01)
+
+
+### Features
+
+* va compilation handling with detection, per-track artists, and dedicated UI ([a884e51](https://github.com/kevinch3/NicotinD/commit/a884e510b11c5360790b4d3b89d6cc9d50d420d9))
+
 ## [0.1.124](https://github.com/kevinch3/NicotinD/compare/v0.1.123...v0.1.124) (2026-06-30)
 
 
