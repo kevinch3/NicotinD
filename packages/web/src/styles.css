@@ -194,6 +194,24 @@
     background-color: var(--theme-highlight-bg);
     color: var(--theme-highlight-text);
   }
+  /* Source chips (blended acquisition results). Each keeps a distinct hue but
+     stays legible on ANY theme: the tint mixes the hue into the theme surface,
+     and the text mixes the hue toward the theme's primary text colour — so on
+     dark themes the text lightens and on light themes (daylight/warm-paper/eink)
+     it darkens, instead of the old fixed `text-*-300` tints that vanished on
+     light backgrounds. */
+  .chip-tone-soulseek {
+    background-color: color-mix(in srgb, #6366f1 16%, var(--theme-surface));
+    color: color-mix(in srgb, #6366f1 60%, var(--theme-text-primary));
+  }
+  .chip-tone-archive {
+    background-color: color-mix(in srgb, #d97706 16%, var(--theme-surface));
+    color: color-mix(in srgb, #d97706 60%, var(--theme-text-primary));
+  }
+  .chip-tone-spotify {
+    background-color: color-mix(in srgb, #22c55e 16%, var(--theme-surface));
+    color: color-mix(in srgb, #22c55e 60%, var(--theme-text-primary));
+  }
   /* Suppress the iOS/Android long-press callout & translate bubble on player text */
   .no-callout {
     -webkit-touch-callout: none;
