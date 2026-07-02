@@ -197,11 +197,13 @@
                   [canPlay]="true"
                   [canQueue]="true"
                   [canDownload]="true"
+                  [canDelete]="auth.role() === 'admin'"
                   (selectAll)="selectAllSongs()"
                   (play)="playSelected()"
                   (queue)="queueSelected()"
                   (add)="addSelectedToPlaylist()"
                   (download)="downloadSelected()"
+                  (deleteSelected)="deleteSelectedSongs()"
                   (cancel)="selection.exit()"
                 />
               }
@@ -217,6 +219,7 @@
                     [offline]="preserve.isPreserved(song.id)"
                     [selectable]="selection.active()"
                     [selected]="selection.isSelected(song.id)"
+                    [actions]="artistTrackActions(song)"
                     (play)="playSong(i)"
                     (selectedChange)="selection.toggleRange(song.id, songOrderedIds(), $event.shiftKey)"
                   />
@@ -363,4 +366,19 @@
         </div>
       </div>
     }
-  
+
+    @if (deleteError()) {
+      <div class="mt-4 px-4 py-2 rounded-lg bg-red-500/10 text-red-400 text-sm">
+        {{ deleteError() }}
+      </div>
+    }
+
+    <!-- Confirm dialog (admin delete) -->
+    @if (showConfirm()) {
+      <app-confirm-dialog
+        [message]="confirmMessage()"
+        confirmLabel="Remove"
+        (confirm)="onConfirm()"
+        (cancel)="onCancelConfirm()"
+      />
+    }
