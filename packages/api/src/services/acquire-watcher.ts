@@ -7,6 +7,7 @@ import type { PluginRegistry } from './plugins/registry.js';
 import { pluginStagingDir } from './plugins/host-context.js';
 import type { CompletedDownloadFile } from './path-inference.js';
 import { recordAcquisition } from './acquisition-store.js';
+import { deriveAcquireAlbum } from './acquire-album.js';
 
 /** Map an acquisition plugin id to an AcquisitionMethod; unknown ids → 'unknown'. */
 function methodForBackend(backend: string): AcquisitionMethod {
@@ -280,6 +281,7 @@ export class AcquireWatcher {
         /* ignore */
       }
     }
+    const dest = deriveAcquireAlbum(row.storage_path);
     return {
       id: row.id,
       backend: row.backend as AcquireJob['backend'],
@@ -288,6 +290,9 @@ export class AcquireWatcher {
       state: row.state as AcquireJob['state'],
       stage: (row.stage as AcquireJob['stage']) ?? null,
       storage_path: row.storage_path ?? null,
+      albumId: dest?.albumId ?? null,
+      albumArtist: dest?.albumArtist ?? null,
+      albumTitle: dest?.albumTitle ?? null,
       progress,
       error: row.error,
       created_at: row.created_at,

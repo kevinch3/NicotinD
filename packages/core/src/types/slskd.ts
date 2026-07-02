@@ -68,6 +68,8 @@ export interface AlbumJobMeta {
   albumTitle: string;
   /** Canonical Lidarr tracklist length — the "of N" the album should contain. */
   canonicalTrackCount: number;
+  /** Deterministic library album id for the destination album, for deep-linking. */
+  albumId: string;
 }
 
 export interface SlskdTransferDirectory {
