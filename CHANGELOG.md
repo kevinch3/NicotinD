@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.132](https://github.com/kevinch3/NicotinD/compare/v0.1.131...v0.1.132) (2026-07-02)
+
+
+### Features
+
+* **playlists:** recipe-driven auto shelves + Radio-scored seed generator ([088a7ea](https://github.com/kevinch3/NicotinD/commit/088a7ea7db8c2cce6a34a5eff9f2075d49c402f9))
+
 ## [0.1.131](https://github.com/kevinch3/NicotinD/compare/v0.1.130...v0.1.131) (2026-07-01)
 
 
