@@ -6,6 +6,8 @@ import { getDatabase } from '../db.js';
 import { signJwt } from '../middleware/auth.js';
 import type { DownloadWatcher } from '../services/download-watcher.js';
 import { updateExternalSoulseekCredentials } from '../services/slskd-config.js';
+import { updateExternalLidarrCredentials } from '../services/lidarr-config.js';
+import { setStreamingSettings } from '../services/streaming-settings.js';
 import type { SlskdRef, WatcherRef } from '../index.js';
 
 interface SetupDeps {
@@ -16,6 +18,7 @@ interface SetupDeps {
   /** Builds a fully-wired download watcher (organizer + native scan hook). */
   makeWatcher: () => DownloadWatcher | null;
   saveSecretsFn: (username: string, password: string) => void;
+  saveLidarrSecretsFn: (apiKey: string) => void;
 }
 
 export function setupRoutes({
@@ -25,6 +28,7 @@ export function setupRoutes({
   watcherRef,
   makeWatcher,
   saveSecretsFn,
+  saveLidarrSecretsFn,
 }: SetupDeps) {
   const app = new Hono();
 
@@ -50,6 +54,9 @@ export function setupRoutes({
     const body = await c.req.json<{
       admin: { username: string; password: string };
       soulseek?: { username: string; password: string };
+      musicDir?: string;
+      transcodeLossless?: { enabled?: boolean; bitRate?: number };
+      lidarr?: { url?: string; apiKey?: string };
     }>();
 
     // Validate admin credentials
@@ -68,7 +75,52 @@ export function setupRoutes({
     );
     db.query('INSERT INTO user_settings (user_id) VALUES (?)').run(id);
 
-    // 2. Configure Soulseek (optional)
+    // 2. Configure music directory (optional)
+    if (body.musicDir?.trim()) {
+      config.musicDir = body.musicDir.trim();
+      serviceManager.updateConfig(config);
+    }
+
+    // 3. Configure lossless-to-Opus transcoding (optional)
+    if (body.transcodeLossless !== undefined) {
+      setStreamingSettings(db, {
+        transcodeEnabled: body.transcodeLossless.enabled ?? true,
+        maxBitRate: body.transcodeLossless.bitRate ?? 192,
+        format: 'opus',
+        forceTranscode: false,
+      });
+    }
+
+    // 4. Configure Lidarr (optional)
+    let needsRestart = false;
+    if (body.lidarr?.url?.trim() || body.lidarr?.apiKey?.trim()) {
+      config.lidarr = {
+        url: body.lidarr.url?.trim() ?? config.lidarr?.url ?? 'http://localhost:8686',
+        apiKey: body.lidarr.apiKey?.trim() ?? '',
+        port: config.lidarr?.port ?? 8686,
+      };
+
+      if (body.lidarr.apiKey?.trim()) {
+        saveLidarrSecretsFn(body.lidarr.apiKey.trim());
+      }
+
+      serviceManager.updateConfig(config);
+      needsRestart = true;
+
+      if (serviceManager.hasService('lidarr')) {
+        await serviceManager.restartService('lidarr');
+      } else {
+        try {
+          const { LidarrClient } = await import('@nicotind/lidarr-client');
+          const lidarrClient = new LidarrClient({ baseUrl: config.lidarr.url, apiKey: config.lidarr.apiKey });
+          await updateExternalLidarrCredentials(lidarrClient, config.lidarr.apiKey);
+        } catch (err) {
+          console.warn('Failed to update external Lidarr credentials:', err);
+        }
+      }
+    }
+
+    // 5. Configure Soulseek (optional)
     if (body.soulseek?.username?.trim() && body.soulseek?.password?.trim()) {
       saveSecretsFn(body.soulseek.username.trim(), body.soulseek.password.trim());
 
@@ -77,10 +129,8 @@ export function setupRoutes({
       serviceManager.updateConfig(config);
 
       if (serviceManager.hasService('slskd')) {
-        // Embedded mode: NicotinD owns the slskd process.
         await serviceManager.restartService('slskd');
       } else {
-        // External mode: update the Dockerized slskd instance directly.
         await updateExternalSoulseekCredentials(
           slskdRef.current!,
           body.soulseek.username.trim(),
@@ -95,7 +145,7 @@ export function setupRoutes({
       watcherRef.current?.start();
     }
 
-    // 3. Sign JWT for immediate login
+    // 6. Sign JWT for immediate login
     const token = await signJwt(
       { sub: id, username: body.admin.username.trim(), role: 'admin' },
       config.jwt.secret,
@@ -106,6 +156,7 @@ export function setupRoutes({
       {
         token,
         user: { id, username: body.admin.username.trim(), role: 'admin' },
+        needsRestart,
       },
       201,
     );

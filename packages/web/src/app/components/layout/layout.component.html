@@ -46,6 +46,9 @@
         </div>
       }
 
+      <!-- First-login welcome banner for admin-provisioned users -->
+      <app-welcome-banner />
+
       <!-- Content — pad bottom so the fixed player + mobile tab bar never cover the last item -->
       <main [class]="'flex-1 ' + mainPadClass()">
         <router-outlet />

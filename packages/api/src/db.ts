@@ -35,13 +35,21 @@ export function applySchema(db: Database): void {
       user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
       theme TEXT NOT NULL DEFAULT 'system',
       default_min_bitrate INTEGER,
-      default_file_types TEXT
+      default_file_types TEXT,
+      welcome_dismissed INTEGER NOT NULL DEFAULT 0
     )
   `);
 
   // Add status column to existing users table (safe if column already exists)
   try {
     db.run(`ALTER TABLE users ADD COLUMN status TEXT NOT NULL DEFAULT 'active'`);
+  } catch {
+    // Column already exists — ignore
+  }
+
+  // Add welcome_dismissed column to existing user_settings table
+  try {
+    db.run(`ALTER TABLE user_settings ADD COLUMN welcome_dismissed INTEGER NOT NULL DEFAULT 0`);
   } catch {
     // Column already exists — ignore
   }

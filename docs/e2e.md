@@ -16,6 +16,8 @@ unit can: boot → auth → scan → stream → playback → plugin gating.
 | `tests/playback.spec.ts` | Play Album fires a `206`/`200` on `/api/stream/...` and an `<audio>` element advances |
 | `tests/player.spec.ts` | pause/resume, next-track, seek (click the progress bar → position jumps), shuffle toggle |
 | `tests/plugins.spec.ts` | the compliance contract: the URL-acquire box is absent until an admin enables the consent-gated yt-dlp `resolve` plugin, and reappears/disappears with enable/disable |
+| `tests/onboarding.spec.ts` | (**`onboarding` project**, own fresh server) drives the 4-step setup wizard end-to-end incl. the Advanced/Lidarr panel, then confirms it lands authenticated in the app |
+| `tests/welcome-banner.spec.ts` | an admin-provisioned user sees the first-login welcome banner and can dismiss it (seeded server) |
 
 ## How it runs
 
@@ -29,6 +31,14 @@ unit can: boot → auth → scan → stream → playback → plugin gating.
   (`http://127.0.0.1:1`) keep the test server from reaching — or mutating — any real
   slskd/Lidarr. No slskd/Lidarr is needed: acquisition is default-off, so auth,
   library, playback and gating all work with zero plugins enabled.
+- **Onboarding wizard needs a never-seeded server**: the setup wizard only renders
+  when `needsSetup: true` (zero users), but the setup project seeds an admin on the
+  main server. So a **second** managed server boots on **8586** (`E2E_ONBOARDING_PORT`)
+  with its own `.tmp-data-onboarding` DB, and the `onboarding` project targets it
+  with **no `storageState` and no `setup` dependency**. Completing the wizard creates
+  the first admin — a one-shot per server — so the spec is a single end-to-end pass.
+  The onboarding project is **omitted in external/prod-smoke mode** (`E2E_BASE_URL`):
+  the setup wizard must never run against a real instance.
 - **Selectors**: the suite selects on `data-testid` attributes added to the relevant
   components (login/setup/search/library/album-detail/plugins/player). **This is the
   e2e selector standard** — prefer adding a `data-testid` over text/CSS coupling when
