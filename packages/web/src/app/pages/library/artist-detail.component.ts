@@ -23,14 +23,16 @@ import { AuthService } from '../../services/auth.service';
 import { PlayerService } from '../../services/player.service';
 import { PlaylistService } from '../../services/playlist.service';
 import { PreserveService } from '../../services/preserve.service';
+import { TransferService } from '../../services/transfer.service';
 import { AlbumHuntModalComponent } from '../../components/album-hunt-modal/album-hunt-modal.component';
 import { CoverArtComponent } from '../../components/cover-art/cover-art.component';
 import { IconComponent } from '../../components/icon/icon.component';
-import { TrackRowComponent } from '../../components/track-row/track-row.component';
+import { TrackRowComponent, type TrackAction } from '../../components/track-row/track-row.component';
 import { SelectionBarComponent } from '../../components/selection-bar/selection-bar.component';
 import { MenuPanelComponent } from '../../components/menu-panel/menu-panel.component';
+import { ConfirmDialogComponent } from '../../components/confirm-dialog/confirm-dialog.component';
 import { createSelection } from '../../lib/selection';
-import { toTrack } from '../../lib/track-utils';
+import { toTrack, offlineTrackAction, addToPlaylistAction } from '../../lib/track-utils';
 import { appendUnique } from '../../lib/append-unique';
 import { resolveAlbumRoute } from '../../lib/route-utils';
 import { NavigationService } from '../../services/navigation.service';
@@ -51,6 +53,7 @@ const SONGS_PAGE_SIZE = 60;
     TrackRowComponent,
     SelectionBarComponent,
     MenuPanelComponent,
+    ConfirmDialogComponent,
   ],
   templateUrl: './artist-detail.component.html',
 })
@@ -63,6 +66,7 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
   private player = inject(PlayerService);
   private playlists = inject(PlaylistService);
   readonly preserve = inject(PreserveService);
+  private transferService = inject(TransferService);
   private nav = inject(NavigationService);
   protected autoHunt = inject(AutoHuntService);
 
@@ -303,6 +307,87 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
 
   selectAllSongs(): void {
     this.selection.selectAll(this.songs().map((s) => s.id));
+  }
+
+  // ─── Delete (admin only) ──────────────────────────────────────────
+  // The Songs tab is the ONLY view that surfaces albumless files, so it must
+  // offer removal too — parity with album/genre detail. Backend delete routes
+  // are hard-gated to admins; the UI mirrors that gate.
+  readonly deleteError = signal<string | null>(null);
+  readonly confirmMessage = signal('');
+  readonly confirmCallback = signal<(() => void | Promise<void>) | null>(null);
+  readonly showConfirm = computed(() => this.confirmCallback() !== null);
+
+  private askConfirm(message: string, cb: () => void | Promise<void>): void {
+    this.confirmMessage.set(message);
+    this.confirmCallback.set(cb);
+  }
+
+  onConfirm(): void {
+    const cb = this.confirmCallback();
+    this.confirmCallback.set(null);
+    Promise.resolve(cb?.()).catch(() => {
+      /* ignore */
+    });
+  }
+
+  onCancelConfirm(): void {
+    this.confirmCallback.set(null);
+  }
+
+  private pruneSongs(ids: string[]): void {
+    const gone = new Set(ids);
+    this.songs.update((s) => s.filter((x) => !gone.has(x.id)));
+  }
+
+  deleteSelectedSongs(): void {
+    const ids = [...this.selection.ids()];
+    if (ids.length === 0) return;
+    this.askConfirm(
+      `Remove ${ids.length} song${ids.length !== 1 ? 's' : ''} from library?`,
+      async () => {
+        this.deleteError.set(null);
+        try {
+          const result = await firstValueFrom(this.api.deleteSongs(ids));
+          this.transferService.addDeletedIds(ids);
+          this.pruneSongs(ids);
+          this.selection.exit();
+          if (result.deletedCount < ids.length) {
+            this.deleteError.set(
+              `Removed ${result.deletedCount} of ${ids.length} songs. ${ids.length - result.deletedCount} could not be removed.`,
+            );
+          }
+        } catch {
+          this.deleteError.set('Failed to remove the selected songs.');
+        }
+      },
+    );
+  }
+
+  artistTrackActions(song: Song): TrackAction[] {
+    return [
+      offlineTrackAction(this.preserve, toTrack(song)),
+      addToPlaylistAction(this.playlists, song.id),
+      ...(this.auth.role() === 'admin'
+        ? [
+            {
+              label: 'Remove',
+              destructive: true,
+              action: () =>
+                this.askConfirm(`Remove "${song.title}" from library?`, async () => {
+                  this.deleteError.set(null);
+                  try {
+                    await firstValueFrom(this.api.deleteSongs([song.id]));
+                    this.transferService.addDeletedIds([song.id]);
+                    this.pruneSongs([song.id]);
+                  } catch {
+                    this.deleteError.set(`Failed to remove "${song.title}".`);
+                  }
+                }),
+            },
+          ]
+        : []),
+    ];
   }
 
   readonly discography = signal<DiscographyResult | null>(null);
