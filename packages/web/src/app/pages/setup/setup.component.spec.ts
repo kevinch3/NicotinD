@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { provideRouter, Router } from '@angular/router';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { of, throwError } from 'rxjs';
 import { SetupComponent } from './setup.component';
@@ -10,11 +11,13 @@ describe('SetupComponent', () => {
   const mockCompleteSetup = vi.fn();
   const mockLogin = vi.fn();
   const mockCheck = vi.fn().mockReturnValue(of({}));
+  const mockMarkComplete = vi.fn();
 
   function setup() {
     TestBed.configureTestingModule({
       imports: [SetupComponent],
       providers: [
+        provideRouter([]),
         {
           provide: SystemApiService,
           useValue: {
@@ -28,7 +31,11 @@ describe('SetupComponent', () => {
         },
         {
           provide: SetupService,
-          useValue: { check: mockCheck, status: vi.fn().mockReturnValue({ needsSetup: true }) },
+          useValue: {
+            check: mockCheck,
+            markComplete: mockMarkComplete,
+            status: vi.fn().mockReturnValue({ needsSetup: true }),
+          },
         },
       ],
     });
@@ -40,6 +47,7 @@ describe('SetupComponent', () => {
   beforeEach(() => {
     mockCompleteSetup.mockClear();
     mockLogin.mockClear();
+    mockMarkComplete.mockClear();
   });
 
   it('shows admin step by default', () => {
@@ -138,5 +146,16 @@ describe('SetupComponent', () => {
   it('has 4 step dots', () => {
     const comp = TestBed.createComponent(SetupComponent).componentInstance;
     expect(comp.stepDots()).toEqual([1, 2, 3, 4]);
+  });
+
+  it('enterApp marks setup complete and navigates into the app', () => {
+    const comp = TestBed.createComponent(SetupComponent).componentInstance;
+    const markSpy = vi.spyOn(TestBed.inject(SetupService), 'markComplete');
+    const navSpy = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+
+    comp.enterApp();
+
+    expect(markSpy).toHaveBeenCalled();
+    expect(navSpy).toHaveBeenCalledWith(['/']);
   });
 });

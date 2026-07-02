@@ -49,6 +49,13 @@ The setup wizard at `/setup` runs when no users exist in the database. It guides
 
 **`POST /api/setup/complete`** → `201 { token, user, needsRestart }` | `400` if already set up
 
+### E2E coverage
+
+Because the wizard only renders at `needsSetup: true` (zero users) and completing it
+creates the first admin (a one-shot per server), `tests/onboarding.spec.ts` runs in a
+dedicated `onboarding` Playwright project against a **second, never-seeded server**
+(port 8586, own DB) — separate from the seeded main suite. See [e2e.md](e2e.md).
+
 ---
 
 ## App users: First-Login Welcome Banner

@@ -1,4 +1,5 @@
 import { Component, inject, signal } from '@angular/core';
+import { Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { AuthService } from '../../services/auth.service';
 import { SystemApiService } from '../../services/api/system-api.service';
@@ -17,6 +18,7 @@ export class SetupComponent {
   private auth = inject(AuthService);
   private api = inject(SystemApiService);
   private setupService = inject(SetupService);
+  private router = inject(Router);
 
   readonly step = signal<Step>('admin');
   readonly loading = signal(false);
@@ -133,7 +135,13 @@ export class SetupComponent {
     });
   }
 
-  reload(): void {
-    window.location.reload();
+  /**
+   * Leave the finished wizard and enter the app. `/setup` has no guard, so a bare
+   * reload would just re-render the wizard; and the boot-time setup status is now
+   * stale, so we mark it resolved to stop the root redirect bouncing us back here.
+   */
+  enterApp(): void {
+    this.setupService.markComplete();
+    this.router.navigate(['/']);
   }
 }

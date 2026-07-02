@@ -21,4 +21,9 @@ export class SetupService {
     }
     this.checked.set(true);
   }
+
+  /** Records that setup just finished so redirects treat the app as configured. */
+  markComplete(): void {
+    this.status.set({ needsSetup: false });
+  }
 }
