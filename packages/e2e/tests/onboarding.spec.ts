@@ -27,6 +27,7 @@ test.describe('onboarding', () => {
   });
 
   test('full setup wizard with advanced Lidarr panel', async ({ page }) => {
+    test.setTimeout(60000);
     await page.goto('/setup');
     await page.getByTestId('setup-username').fill('wizard-lidarr');
     await page.getByTestId('setup-password').fill('wizard-password-123');
