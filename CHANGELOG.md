@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.136](https://github.com/kevinch3/NicotinD/compare/v0.1.135...v0.1.136) (2026-07-02)
+
+
+### Features
+
+* **onboarding:** expanded setup wizard and first-login welcome banner ([6011a35](https://github.com/kevinch3/NicotinD/commit/6011a355da17dafa38631cf90a76187d0f1e4426))
+
+
+### Bug Fixes
+
+* **e2e:** add type=button to setup wizard buttons; wait for API 201 response ([9e66be8](https://github.com/kevinch3/NicotinD/commit/9e66be88ba065461f10bc39a74e6771370aee2d0))
+* **onboarding:** enter app after setup + isolate wizard e2e on a fresh server ([bba3bdb](https://github.com/kevinch3/NicotinD/commit/bba3bdb48febc1565b07d1685cd958be19e26a74))
+
 ## [0.1.135](https://github.com/kevinch3/NicotinD/compare/v0.1.134...v0.1.135) (2026-07-02)
 
 
