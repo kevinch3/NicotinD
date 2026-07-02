@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.135](https://github.com/kevinch3/NicotinD/compare/v0.1.134...v0.1.135) (2026-07-02)
+
+
+### Bug Fixes
+
+* **artists:** admin delete on the Songs tab for albumless files ([6930a32](https://github.com/kevinch3/NicotinD/commit/6930a32609cadaac038ecf15b6a0ac27c3873b04))
+
 ## [0.1.134](https://github.com/kevinch3/NicotinD/compare/v0.1.133...v0.1.134) (2026-07-02)
 
 
