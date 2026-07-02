@@ -28,6 +28,10 @@ test.describe('onboarding', () => {
 
   test('full setup wizard with advanced Lidarr panel', async ({ page }) => {
     test.setTimeout(60000);
+    const errors: string[] = [];
+    page.on('console', (msg) => { if (msg.type() === 'error') errors.push(msg.text()); });
+    page.on('requestfailed', (req) => errors.push(`FAILED ${req.method()} ${req.url()} - ${req.failure()?.errorText}`));
+
     await page.goto('/setup');
     await page.getByTestId('setup-username').fill('wizard-lidarr');
     await page.getByTestId('setup-password').fill('wizard-password-123');
@@ -43,7 +47,16 @@ test.describe('onboarding', () => {
     await expect(page.getByText('Advanced Services')).toBeVisible({ timeout: 10000 });
     await page.getByTestId('setup-soulseek-next').click();
 
-    await expect(page.getByTestId('setup-done')).toBeVisible({ timeout: 30000 });
+    // Wait for either done or an error message to appear
+    await expect.poll(async () => {
+      const done = await page.getByTestId('setup-done').count();
+      const err = await page.locator('.text-red-400').count();
+      if (done > 0) return 'done';
+      if (err > 0) return 'error: ' + (await page.locator('.text-red-400').textContent());
+      return 'waiting';
+    }, { timeout: 30000, intervals: [1000] }).toBe('done');
+
+    if (errors.length) console.log('Browser errors:', errors);
   });
 
   test('welcome banner shown to new user and dismissible', async ({ page, request }) => {
