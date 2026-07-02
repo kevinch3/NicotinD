@@ -352,6 +352,12 @@
         </button>
       </form>
 
+      <button type="button" data-testid="generate-from-favorites"
+        [disabled]="generating()" (click)="generateFromFavorites()"
+        class="mb-5 px-4 py-2 rounded-lg bg-theme-surface-2 text-theme-primary text-sm font-medium disabled:opacity-50 hover:bg-theme-surface-2/70 transition">
+        {{ generating() ? 'Generating…' : '✨ Generate from your favorites' }}
+      </button>
+
       <div class="space-y-1">
         @for (pl of userPlaylists(); track pl.id) {
           <a [routerLink]="['/library/playlists', pl.id]"

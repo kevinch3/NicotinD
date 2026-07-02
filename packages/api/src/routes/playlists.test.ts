@@ -96,4 +96,64 @@ describe('playlist routes', () => {
     const res = await appAs('u1').request('/c1', { method: 'DELETE' });
     expect(res.status).toBe(404);
   });
+
+  // ─── Seed generator (POST /generate) ───────────────────────────────
+  function seedLibrary(): void {
+    db.run('DELETE FROM library_songs');
+    for (let i = 0; i < 20; i++) {
+      db.run(
+        `INSERT INTO library_songs
+           (id, album_id, title, artist, artist_id, duration, year, genre, path, bpm, key, starred, hidden, synced_at)
+         VALUES (?, 'al', ?, ?, ?, 200, 2015, 'Rock', ?, ?, 'C major', ?, 0, 0)`,
+        [
+          `s${i}`,
+          `Song ${i}`,
+          `Artist ${i % 5}`,
+          `art${i % 5}`,
+          `/m/${i}.flac`,
+          120 + i,
+          i < 3 ? '2020-01-01' : null,
+        ],
+      );
+    }
+  }
+
+  async function generate(user: string, body: unknown) {
+    return appAs(user).request('/generate', { method: 'POST', body: JSON.stringify(body) });
+  }
+
+  it('rejects a generate with no seed', async () => {
+    const res = await generate('u1', {});
+    expect(res.status).toBe(400);
+  });
+
+  it('404s when the seed matches no songs', async () => {
+    seedLibrary();
+    const res = await generate('u1', { seed: { songId: 'nope' } });
+    expect(res.status).toBe(404);
+  });
+
+  it('generates an editable user playlist from a song seed', async () => {
+    seedLibrary();
+    const res = await generate('u1', { seed: { songId: 's0' }, size: 8 });
+    expect(res.status).toBe(201);
+    const { playlist } = (await res.json()) as { playlist: { id: string; kind: string } };
+    expect(playlist.kind).toBe('user');
+
+    const detail = (await (await appAs('u1').request(`/${playlist.id}`)).json()) as {
+      songs: unknown[];
+    };
+    expect(detail.songs.length).toBeGreaterThan(0);
+    expect(detail.songs.length).toBeLessThanOrEqual(8);
+    // seed song itself is excluded from its own generated list
+    expect((detail.songs as Array<{ id: string }>).some((s) => s.id === 's0')).toBe(false);
+  });
+
+  it('generates from an artist seed and the starred set', async () => {
+    seedLibrary();
+    const byArtist = await generate('u1', { seed: { artistId: 'art0' } });
+    expect(byArtist.status).toBe(201);
+    const byStarred = await generate('u1', { seed: { starred: true } });
+    expect(byStarred.status).toBe(201);
+  });
 });

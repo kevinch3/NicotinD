@@ -7,6 +7,7 @@ import type { Lidarr } from '@nicotind/lidarr-client';
 import type { ProcessingSettings, ProcessingStatus, ProcessingTaskId } from '@nicotind/core';
 import { getProcessingSettings } from './processing-settings.js';
 import { isWithinWindow } from './processing-window.js';
+import { maybeRefreshAutoPlaylists } from './auto-playlists.service.js';
 import {
   ENRICHMENT_TASKS,
   createEnrichmentContext,
@@ -130,6 +131,9 @@ export class LibraryProcessingService extends EventEmitter {
       return;
     }
     await this.guarded(async () => {
+      // Once per ISO week, inside the maintenance window, refresh the automated
+      // recipe-driven shelves (idempotent; guarded by a library_sync_state marker).
+      maybeRefreshAutoPlaylists(this.db, this.now().getTime());
       await this.processOneBatch(settings);
     });
   }
