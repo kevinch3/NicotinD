@@ -1,4 +1,4 @@
-import { Injectable, inject } from '@angular/core';
+import { Injectable, inject, signal } from '@angular/core';
 import { firstValueFrom, of, switchMap, map } from 'rxjs';
 import { DownloadsApiService } from './api/downloads-api.service';
 import { TransferService } from './transfer.service';
@@ -19,13 +19,21 @@ export class AutoHuntService {
   private transfer = inject(TransferService);
   private toasts = inject(ToastService);
 
-  private inFlight = new Set<number>();
+  readonly huntingAlbumIds = signal<Set<number>>(new Set());
+
+  isHunting(lidarrId: number): boolean {
+    return this.huntingAlbumIds().has(lidarrId);
+  }
 
   hunt(album: DiscographyAlbum, artistName: string, openManual: () => void): void {
-    if (this.inFlight.has(album.lidarrId)) return;
-    this.inFlight.add(album.lidarrId);
+    if (this.huntingAlbumIds().has(album.lidarrId)) return;
+    this.huntingAlbumIds.update((s) => new Set(s).add(album.lidarrId));
     void this._run(album, artistName, openManual).finally(() => {
-      this.inFlight.delete(album.lidarrId);
+      this.huntingAlbumIds.update((s) => {
+        const next = new Set(s);
+        next.delete(album.lidarrId);
+        return next;
+      });
     });
   }
 
