@@ -87,6 +87,7 @@ export interface CreateAppOptions {
   saveSecretsFn?: (username: string, password: string) => void;
   stagingDir?: string;
   acoustidApiKey?: string;
+  version?: string;
 }
 
 export function createApp({
@@ -98,6 +99,7 @@ export function createApp({
   saveSecretsFn,
   stagingDir,
   acoustidApiKey,
+  version,
 }: CreateAppOptions) {
   const expandedDataDir = config.dataDir.startsWith('~')
     ? config.dataDir.replace('~', process.env.HOME ?? '/root')
@@ -474,7 +476,10 @@ export function createApp({
   app.route('/api', streamingRoutes(expandedMusicDir, db, expandedDataDir));
   app.route(
     '/api/system',
-    systemRoutes(slskdRef, serviceManager, config, { triggerScan: runSyncAndCurate }),
+    systemRoutes(slskdRef, serviceManager, config, {
+      triggerScan: runSyncAndCurate,
+      version,
+    }),
   );
   app.route(
     '/api/settings',

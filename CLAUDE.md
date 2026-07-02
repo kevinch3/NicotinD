@@ -147,6 +147,7 @@ One-line index; **full detail for every entry is in [docs/design-patterns.md](do
 - **Unified downloads feed**: slskd groups + URL acquire jobs both adapt into a normalized `DownloadItem` with method/stage badges. → [docs/download-pipeline.md](docs/download-pipeline.md)
 - **Acquisition provenance (how/where/when)**: the `acquisitions` side-table records method/source/time at download time; surfaced per track. → [docs/download-pipeline.md](docs/download-pipeline.md)
 - **Plugin architecture (acquisition as opt-in plugins)**: kind-agnostic kernel + `PluginRegistry`; acquisition is default-off; plugins = slskd/yt-dlp/spotdl/archive/spotify/lrclib. → [docs/plugins.md](docs/plugins.md)
+- **Changelog modal**: build-time `CHANGELOG.md` → `changelog.json` (capped at 50 versions); version string in header/settings is clickable → [docs/web-ui.md](docs/web-ui.md)
 
 ## Web UI
 

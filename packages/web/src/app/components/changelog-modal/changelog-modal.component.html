@@ -1,0 +1,89 @@
+<div
+  class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+  (click)="close.emit()"
+  data-testid="changelog-modal"
+>
+  <div
+    class="relative w-full max-w-lg max-h-[80vh] flex flex-col rounded-xl bg-theme-surface border border-theme shadow-2xl overflow-hidden"
+    role="dialog"
+    aria-modal="true"
+    aria-label="Changelog"
+    (click)="$event.stopPropagation()"
+  >
+    <div class="flex items-center justify-between p-4 border-b border-theme flex-shrink-0">
+      <h2 class="text-base font-semibold text-theme-primary">Changelog</h2>
+      <button
+        (click)="close.emit()"
+        class="text-theme-muted hover:text-theme-primary transition flex-shrink-0"
+        aria-label="Close changelog"
+      >
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M6 18L18 6M6 6l12 12"
+          />
+        </svg>
+      </button>
+    </div>
+
+    <div class="overflow-y-auto flex-1 p-4 space-y-5">
+      @for (entry of entries; track entry.version) {
+        <div>
+          <div class="flex items-baseline gap-2">
+            <span class="text-sm font-semibold text-theme-primary">v{{ entry.version }}</span>
+            @if (entry.date) {
+              <span class="text-xs text-theme-muted">— {{ entry.date }}</span>
+            }
+            @if (entry.compareUrl) {
+              <a
+                [href]="entry.compareUrl"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="ml-auto text-xs text-theme-muted hover:text-theme-secondary transition underline"
+                >diff</a
+              >
+            }
+          </div>
+
+          @if (entry.sections.length === 0) {
+            <p class="text-xs text-theme-muted mt-1">No notable changes.</p>
+          }
+
+          @for (section of entry.sections; track section.title) {
+            <div class="mt-2">
+              <p
+                class="text-xs font-medium text-theme-secondary uppercase tracking-wide mb-1"
+              >
+                {{ section.title }}
+              </p>
+              <ul class="space-y-1">
+                @for (item of section.items; track $index) {
+                  <li class="text-xs text-theme-secondary leading-relaxed flex gap-1.5">
+                    <span class="text-theme-muted flex-shrink-0">•</span>
+                    <span>
+                      @if (item.scope) {
+                        <strong class="text-theme-primary">{{ item.scope }}:</strong>
+                      }
+                      {{ item.description }}
+                      @if (item.commitSha && item.commitUrl) {
+                        <a
+                          [href]="item.commitUrl"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          class="text-theme-muted hover:text-theme-secondary transition"
+                          >({{ item.commitSha }})</a
+                        >
+                      }
+                    </span>
+                  </li>
+                }
+              </ul>
+            </div>
+          }
+        </div>
+      }
+    </div>
+  </div>
+</div>

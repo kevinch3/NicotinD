@@ -545,7 +545,13 @@
           <a routerLink="/admin" class="block text-sm text-theme-secondary hover:text-theme-primary transition mb-4">Admin panel →</a>
         }
         <button (click)="logout()" class="text-sm text-red-400 hover:text-red-300 transition">Sign out</button>
-        <p class="text-xs text-theme-muted/50 mt-4">v{{ version }}</p>
+        <button
+          (click)="showChangelog.set(true)"
+          data-testid="version-changelog-settings"
+          class="text-xs text-theme-muted/50 mt-4 hover:text-theme-secondary transition cursor-pointer block"
+        >
+          v{{ version }}
+        </button>
       </section>
 
       <!-- iOS Now Playing diagnostics (native iOS only) — confirms the lock-screen
@@ -576,5 +582,9 @@
             </p>
           }
         </section>
+      }
+
+      @if (showChangelog()) {
+        <app-changelog-modal (close)="showChangelog.set(false)" />
       }
     </div>
