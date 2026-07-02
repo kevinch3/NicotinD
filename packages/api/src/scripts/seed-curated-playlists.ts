@@ -27,6 +27,7 @@ import {
   type CandidateRow,
   type CuratedPlaylistDef,
 } from '../services/curated-playlists.js';
+import { upsertCuratedPlaylist } from '../services/auto-playlists.service.js';
 
 function expandHome(p: string): string {
   return p.startsWith('~') ? join(process.env.HOME ?? '/root', p.slice(1)) : p;
@@ -102,31 +103,13 @@ function main(): void {
 
   const now = Date.now();
   const seedOne = db.transaction((def: CuratedPlaylistDef, songIds: string[]) => {
-    const existing = db
-      .query<
-        { id: string },
-        [string]
-      >("SELECT id FROM playlists WHERE kind = 'curated' AND name = ?")
-      .get(def.name);
-    const id = existing?.id ?? crypto.randomUUID();
-    const coverArt = `/playlist-covers/${def.slug}.svg`;
-    if (existing) {
-      db.run(
-        `UPDATE playlists SET description = ?, cover_art = ?, modified_at = ? WHERE id = ?`,
-        [def.description, coverArt, now, id],
-      );
-      db.run(`DELETE FROM playlist_songs WHERE playlist_id = ?`, [id]);
-    } else {
-      db.run(
-        `INSERT INTO playlists (id, user_id, name, description, cover_art, kind, created_at, modified_at)
-         VALUES (?, ?, ?, ?, ?, 'curated', ?, ?)`,
-        [id, admin.id, def.name, def.description, coverArt, now, now],
-      );
-    }
-    const insert = db.prepare(
-      `INSERT INTO playlist_songs (playlist_id, song_id, position, added_at) VALUES (?, ?, ?, ?)`,
+    upsertCuratedPlaylist(
+      db,
+      admin.id,
+      { name: def.name, description: def.description, slug: def.slug },
+      songIds,
+      now,
     );
-    songIds.forEach((songId, i) => insert.run(id, songId, i, now));
   });
 
   for (const { def, songIds } of plans) seedOne(def, songIds);

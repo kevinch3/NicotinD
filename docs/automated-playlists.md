@@ -1,10 +1,30 @@
 # Automated playlists — strategy & build guide
 
-A concrete, step-by-step guide to building **auto-generated, auto-refreshed
-playlists** on top of the existing curated-playlist infrastructure. This is the
-*how to build it* runbook; the broader vision and metadata mapping live in
+**Status: shipped (deterministic core).** Recipe-driven, weekly-refreshed shelves
+now exist and materialize into `kind='curated'` playlists that appear in
+"Made for you" unchanged. The broader vision and metadata mapping live in
 [playlist-generation.md](playlist-generation.md), and the ML features that feed
 richer recipes are planned in [audio-ml-enrichment.md](audio-ml-enrichment.md).
+The optional **LLM concept layer (§7) is not yet built** — it remains the
+documented follow-up.
+
+## What shipped (code map)
+
+| Piece | Location |
+| --- | --- |
+| `PlaylistRecipe` type + `RECIPES` array (Late Night / Workout / Fresh This Week / Harmonic Electronic) | `services/playlist-recipe.ts` |
+| Pure `runRecipe` / `orderTracks` (incl. `harmonic` Camelot+BPM chaining) / `weekSeedFor` / `slugSeed` / `seedCentroid` | `services/playlist-recipe.ts` |
+| `refreshAutoPlaylists(db, now, {apply})` + shared idempotent `upsertCuratedPlaylist` + weekly guard `maybeRefreshAutoPlaylists` | `services/auto-playlists.service.ts` |
+| In-process weekly guard hook (once per ISO week, inside the maintenance window) | `services/library-processing.service.ts` `tick()` |
+| Ops/first-rollout script (dry-run default, `--apply`) | `scripts/refresh-auto-playlists.ts` |
+| Covers for recipe slugs (same generator as curated) | `scripts/generate-playlist-covers.ts` |
+
+The `harmonic` order reuses `camelotCompatibility` from `radio.service.ts` (the
+Radio scorer) rather than duplicating wheel logic, and `runRecipe` reuses
+`selectCuratedTracks` (seeded shuffle + per-artist cap). The weekly guard stores
+its marker in `library_sync_state` under `auto_playlists_week`.
+
+## Original build guide (retained for the design rationale)
 
 ## Strategy
 

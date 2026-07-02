@@ -344,6 +344,22 @@ export class LibraryComponent implements OnInit, OnDestroy {
     }
   }
 
+  readonly generating = signal(false);
+
+  /** Build a playlist from the starred set via the Radio scorer, then open it. */
+  async generateFromFavorites(): Promise<void> {
+    if (this.generating()) return;
+    this.generating.set(true);
+    try {
+      const playlist = await this.playlistService.generate({ starred: true });
+      await this.router.navigate(['/library/playlists', playlist.id]);
+    } catch {
+      // Non-fatal (e.g. nothing starred yet) — stay on the list.
+    } finally {
+      this.generating.set(false);
+    }
+  }
+
   ngOnDestroy(): void {
     this.observer?.disconnect();
     this.persistState();

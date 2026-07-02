@@ -4,7 +4,7 @@ import type { Song } from '@nicotind/core';
 import { getDatabase } from '../db.js';
 import { rankCandidates, type SongFeatures } from '../services/radio.service.js';
 
-interface RadioSongRow {
+export interface RadioSongRow {
   id: string;
   album_id: string;
   album_name: string;
@@ -28,7 +28,7 @@ interface RadioSongRow {
   key: string | null;
 }
 
-const RADIO_SONG_SELECT = `
+export const RADIO_SONG_SELECT = `
   SELECT s.id, s.album_id, a.name AS album_name, a.cover_art AS album_cover_art,
          s.title, s.artist, s.artist_id, s.track, s.duration, s.year, s.genre,
          s.cover_art, s.path, s.size, s.bit_rate, s.suffix, s.content_type,
@@ -62,7 +62,7 @@ function rowToSong(r: RadioSongRow): Song & SongFeatures {
   };
 }
 
-function toFeatures(r: RadioSongRow): SongFeatures {
+export function toFeatures(r: RadioSongRow): SongFeatures {
   return {
     bpm: r.bpm ?? undefined,
     key: r.key ?? undefined,

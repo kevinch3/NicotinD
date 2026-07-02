@@ -39,6 +39,19 @@ export class PlaylistService {
     return res.playlist;
   }
 
+  /**
+   * Generate a playlist from a seed (song / artist / starred set) via the Radio
+   * scorer and prepend it to the list. Returns the created playlist.
+   */
+  async generate(
+    seed: { songId?: string; artistId?: string; starred?: boolean },
+    opts?: { name?: string; size?: number },
+  ): Promise<PlaylistSummary> {
+    const res = await firstValueFrom(this.api.generatePlaylist(seed, opts));
+    this.playlists.update((list) => [res.playlist, ...list]);
+    return res.playlist;
+  }
+
   async addSongs(playlistId: string, songIds: string[]): Promise<void> {
     await firstValueFrom(this.api.updatePlaylist(playlistId, { add: songIds }));
     await this.refresh();

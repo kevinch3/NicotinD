@@ -1,12 +1,22 @@
 # Metadata-driven playlist generation (weekly, with or without an LLM)
 
-This is a design note, not shipped code. It explains how NicotinD's **existing
-per-track metadata** — plus the enrichment we're now filling in the background
-(BPM, genre, musical key) — can generate Spotify-style custom playlists like the
-existing **curated playlists**, refreshed on a cadence (≈ weekly), using only
-light, deterministic algorithms. It also shows where an LLM helps (and where it
-must *not* be trusted), and maps the longer metadata wishlist onto concrete
-enrichment tasks.
+**Status: the deterministic core is shipped** (see
+[automated-playlists.md](automated-playlists.md) for the code map). Two lanes now
+exist, both reusing the Radio scorer + curated selection engines:
+1. **Automated system shelves** — recipe → weekly-refreshed `kind='curated'`
+   playlists (§2a), refreshed in-process once per ISO week.
+2. **User-driven seed generator** — `POST /api/playlists/generate` fills an
+   editable `kind='user'` playlist from a song / artist / starred-set seed using
+   `rankCandidates` (the Radio scorer) + harmonic ordering (§2b/§2c). Surfaced in
+   the web via "✨ Generate playlist" on the artist page and "Generate from your
+   favorites" in the playlists tab.
+
+The remainder is the original design note. It explains how NicotinD's **existing
+per-track metadata** — plus the enrichment we fill in the background (BPM, genre,
+musical key) — generates Spotify-style playlists using light, deterministic
+algorithms, and where an LLM helps (and where it must *not* be trusted). The
+**LLM concept layer (§3) is not yet built** — it remains the documented
+follow-up.
 
 The north star: **the catalogue is the source of truth; algorithms only select
 and order tracks that already exist.** Nothing here should invent track IDs.

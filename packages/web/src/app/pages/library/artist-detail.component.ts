@@ -9,7 +9,7 @@ import {
   OnInit,
   OnDestroy,
 } from '@angular/core';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import { DownloadsApiService } from '../../services/api/downloads-api.service';
@@ -56,6 +56,7 @@ const SONGS_PAGE_SIZE = 60;
 })
 export class ArtistDetailComponent implements OnInit, OnDestroy {
   private route = inject(ActivatedRoute);
+  private router = inject(Router);
   private api = inject(LibraryApiService);
   private downloadsApi = inject(DownloadsApiService);
   readonly auth = inject(AuthService);
@@ -183,6 +184,22 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
   readonly songsStarredOnly = signal(false);
   private songsOffset = 0;
   private artistId = '';
+
+  readonly generating = signal(false);
+
+  /** Generate a playlist seeded on this artist (Radio scorer), then open it. */
+  async generatePlaylist(): Promise<void> {
+    if (this.generating() || !this.artistId) return;
+    this.generating.set(true);
+    try {
+      const playlist = await this.playlists.generate({ artistId: this.artistId });
+      await this.router.navigate(['/library/playlists', playlist.id]);
+    } catch {
+      // Non-fatal — stay on the artist page.
+    } finally {
+      this.generating.set(false);
+    }
+  }
 
   readonly songsSentinel = viewChild<ElementRef<HTMLElement>>('songsSentinel');
   private songsObserver?: IntersectionObserver;
