@@ -69,6 +69,7 @@ import { AcoustIdLookup } from './services/acoustid-lookup.js';
 import { normalizeArtistForGrouping, normalizeForGrouping } from './services/album-grouping.js';
 import { createLogger } from '@nicotind/core';
 import { initDatabase } from './db.js';
+import { dirname, join } from 'node:path';
 import { createWebSocketHandlers } from './services/websocket.js';
 import type { AuthEnv } from './middleware/auth.js';
 
@@ -126,14 +127,20 @@ export function createApp({
       syncLog.error({ err }, 'Library scan/curate cycle failed');
     }
   };
-  // Incremental scan of a just-organized batch (post-download). Synchronous from
-  // the caller's view — no async external scanner, so no scan-timing races.
+  // Reconcile a just-organized batch at the download→library seam: expand the
+  // post-move file paths to their album folders and run an album-scoped
+  // rescan + orphan-row prune, so cross-wave duplicate rows never surface (not
+  // only after the next full scan). Synchronous from the caller's view — no
+  // async external scanner, so no scan-timing races.
   const scanIncremental = async (relPaths: string[]): Promise<void> => {
     try {
-      await scanner.scanPaths(relPaths);
+      if (relPaths.length > 0) {
+        const albumDirs = [...new Set(relPaths.map((p) => dirname(join(expandedMusicDir, p))))];
+        await scanner.reconcileAlbums(albumDirs);
+      }
       curator.reclassifyAll();
     } catch (err) {
-      syncLog.error({ err }, 'Incremental scan/curate failed');
+      syncLog.error({ err }, 'Incremental reconcile/curate failed');
     }
   };
   // First full scan runs in the background — the UI gracefully shows an empty
@@ -211,6 +218,30 @@ export function createApp({
         }
       }
       return null;
+    },
+    // Canonical Lidarr track titles for an album folder, so the reconciler drops
+    // foreign rips (matching the scanner's canonical-aware track selection). The
+    // folder is named by the canonical title (see jobLookup above), so its
+    // last-two segments map back to the album_jobs artist/album.
+    canonicalTitlesLookup: (dir) => {
+      const segs = dir.replace(/\\/g, '/').split('/').filter(Boolean);
+      if (segs.length < 2) return null;
+      const album = segs[segs.length - 1]!;
+      const artist = segs[segs.length - 2]!;
+      const row = db
+        .query<{ canonical_tracks_json: string }, [string, string]>(
+          `SELECT canonical_tracks_json FROM album_jobs
+           WHERE artist_name = ? AND album_title = ? AND canonical_tracks_json IS NOT NULL
+           ORDER BY created_at DESC LIMIT 1`,
+        )
+        .get(artist, album);
+      if (!row) return null;
+      try {
+        const parsed = JSON.parse(row.canonical_tracks_json);
+        return Array.isArray(parsed) && parsed.length ? (parsed as string[]) : null;
+      } catch {
+        return null;
+      }
     },
   });
 
