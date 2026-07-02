@@ -846,13 +846,13 @@ export class LibraryScanner {
     if (tracks.length > 0) {
       const built = buildLibrary(tracks, this.canonicalByAlbum(), loadOverrides(this.db));
       this.persist(built, syncedAt, false);
-      this.pruneAlbumOrphans(built.albums.map((a) => a.id), syncedAt);
+      this.pruneAlbumOrphans(built.albums.map((a) => a.id));
     }
     log.info({ dirs: dirs.length, files: abs.length }, 'Album-scoped reconcile complete');
   }
 
   /** Delete library_songs rows for the given albums whose file is gone from disk. */
-  private pruneAlbumOrphans(albumIds: string[], _syncedAt: number): void {
+  private pruneAlbumOrphans(albumIds: string[]): void {
     for (const albumId of [...new Set(albumIds)]) {
       const rows = this.db
         .query<{ id: string; path: string; artist_id: string | null }, [string]>(
