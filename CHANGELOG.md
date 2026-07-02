@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.133](https://github.com/kevinch3/NicotinD/compare/v0.1.132...v0.1.133) (2026-07-02)
+
+
+### Features
+
+* **downloads:** expose destination albumId for deep-linking downloads ([11313cf](https://github.com/kevinch3/NicotinD/commit/11313cfe3f4d86817f465dacc76014981070e1c4))
+* **library:** album-scoped reconcile scan + orphan-row prune ([816b607](https://github.com/kevinch3/NicotinD/commit/816b60743845c48e6855f96670c689b8cde8a6ba))
+* **library:** organizer runs tag-aware reconcile, reports deleted paths + album dirs ([f7e5310](https://github.com/kevinch3/NicotinD/commit/f7e53102acaf63bf4a225daf7bf81dd6f450a441))
+* **library:** reconcile whole album at download→library seam for both ingests ([4beab80](https://github.com/kevinch3/NicotinD/commit/4beab80bd909355bfe94617edad71fdf2c929e26))
+* **library:** tag/title-aware album-folder reconciler (pure core) ([5257a4a](https://github.com/kevinch3/NicotinD/commit/5257a4a1f4827ba2cba37a4289d991948d602087))
+
 ## [0.1.132](https://github.com/kevinch3/NicotinD/compare/v0.1.131...v0.1.132) (2026-07-02)
 
 
