@@ -85,6 +85,7 @@ export interface CreateAppOptions {
   serviceManager: ServiceManager;
   webDistPath?: string;
   saveSecretsFn?: (username: string, password: string) => void;
+  saveLidarrSecretsFn?: (apiKey: string) => void;
   stagingDir?: string;
   acoustidApiKey?: string;
 }
@@ -96,6 +97,7 @@ export function createApp({
   serviceManager,
   webDistPath,
   saveSecretsFn,
+  saveLidarrSecretsFn,
   stagingDir,
   acoustidApiKey,
 }: CreateAppOptions) {
@@ -410,6 +412,7 @@ export function createApp({
       watcherRef,
       makeWatcher,
       saveSecretsFn: saveSecretsFn ?? (() => {}),
+      saveLidarrSecretsFn: saveLidarrSecretsFn ?? (() => {}),
     }),
   );
 

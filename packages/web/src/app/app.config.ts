@@ -19,6 +19,7 @@ import { PlayerService } from './services/player.service';
 import { AuthService } from './services/auth.service';
 import { AuthApiService } from './services/api/auth-api.service';
 import pkg from '../../../../package.json';
+import { switchMap } from 'rxjs/operators';
 
 export const APP_VERSION = new InjectionToken<string>('APP_VERSION');
 
@@ -38,21 +39,20 @@ export const appConfig: ApplicationConfig = {
       theme.apply();
       preserve.init();
       player.restoreState();
-      // Sliding session: renew the token on every boot so an active user never
-      // hits the expiry wall. Fire-and-forget — never block render; a failure is
-      // handled by the auth interceptor (401 → logout → /login).
       if (auth.isAuthenticated()) {
-        api.refreshToken().subscribe({
-          next: (res) => auth.setToken(res.token),
+        api.refreshToken().pipe(
+          switchMap((res) => {
+            auth.setToken(res.token);
+            return api.getMe();
+          }),
+        ).subscribe({
+          next: (profile) => auth.welcomeDismissed.set(profile.welcomeDismissed),
           error: () => {},
         });
       }
       return setup.check();
     }),
     provideServiceWorker('ngsw-worker.js', {
-      // Disabled in the native (Capacitor) shell: the WebView serves assets from a
-      // local origin, so ngsw caching is redundant and can fight Capacitor's own
-      // asset serving / cross-origin API calls. IndexedDB offline still works.
       enabled: !isDevMode() && !isNativePlatform(),
       registrationStrategy: 'registerWhenStable:30000',
     }),

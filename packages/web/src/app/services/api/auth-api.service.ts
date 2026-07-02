@@ -2,6 +2,13 @@ import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import type { AuthResult } from './api-types';
 
+export interface UserProfile {
+  id: string;
+  username: string;
+  role: string;
+  welcomeDismissed: boolean;
+}
+
 /** Auth endpoints: login, registration, and sliding-session refresh. */
 @Injectable({ providedIn: 'root' })
 export class AuthApiService {
@@ -22,5 +29,13 @@ export class AuthApiService {
   // Sliding session: exchange the current valid token for a fresh one.
   refreshToken() {
     return this.http.post<{ token: string }>('/api/auth/refresh', {});
+  }
+
+  dismissWelcome() {
+    return this.http.post<void>('/api/auth/dismiss-welcome', {});
+  }
+
+  getMe() {
+    return this.http.get<UserProfile>('/api/auth/me');
   }
 }

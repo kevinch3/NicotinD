@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeAll, mock } from 'bun:test';
+import { describe, expect, it, beforeAll, beforeEach, mock } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import * as jose from 'jose';
 import { applySchema } from '../db.js';
@@ -9,6 +9,9 @@ const testDb = new Database(':memory:');
 applySchema(testDb);
 testDb.run(
   "INSERT INTO users (id, username, password_hash, role) VALUES ('user-123', 'testuser', 'hash', 'user')",
+);
+testDb.run(
+  "INSERT INTO user_settings (user_id) VALUES ('user-123')",
 );
 
 mock.module('../db.js', () => ({
@@ -77,5 +80,111 @@ describe('POST /refresh', () => {
     });
 
     expect(res.status).toBe(403);
+  });
+});
+
+describe('POST /dismiss-welcome', () => {
+  let app: Awaited<ReturnType<typeof makeApp>>;
+
+  async function makeApp() {
+    const { authRoutes } = await import('./auth.js');
+    return authRoutes(SECRET, '30d', true);
+  }
+
+  beforeAll(async () => {
+    app = await makeApp();
+  });
+
+  it('returns 401 when no token is provided', async () => {
+    const res = await app.request('/dismiss-welcome', { method: 'POST' });
+    expect(res.status).toBe(401);
+  });
+
+  it('sets welcome_dismissed = 1 for the user', async () => {
+    const token = await signJwt(
+      { sub: 'user-123', username: 'testuser', role: 'user' },
+      SECRET,
+      '1h',
+    );
+
+    const res = await app.request('/dismiss-welcome', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: boolean };
+    expect(body.ok).toBe(true);
+
+    const row = testDb
+      .query<{ welcome_dismissed: number }, [string]>(
+        'SELECT welcome_dismissed FROM user_settings WHERE user_id = ?',
+      )
+      .get('user-123') as { welcome_dismissed: number } | undefined;
+    expect(row?.welcome_dismissed).toBe(1);
+  });
+});
+
+describe('GET /me', () => {
+  let app: Awaited<ReturnType<typeof makeApp>>;
+
+  async function makeApp() {
+    const { authRoutes } = await import('./auth.js');
+    return authRoutes(SECRET, '30d', true);
+  }
+
+  beforeAll(async () => {
+    app = await makeApp();
+  });
+
+  beforeEach(() => {
+    testDb.run("UPDATE user_settings SET welcome_dismissed = 0 WHERE user_id = 'user-123'");
+  });
+
+  it('returns 401 when no token is provided', async () => {
+    const res = await app.request('/me', { method: 'GET' });
+    expect(res.status).toBe(401);
+  });
+
+  it('returns user profile with welcomeDismissed false for a new user', async () => {
+    const token = await signJwt(
+      { sub: 'user-123', username: 'testuser', role: 'user' },
+      SECRET,
+      '1h',
+    );
+
+    const res = await app.request('/me', {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { id: string; username: string; role: string; welcomeDismissed: boolean };
+    expect(body.id).toBe('user-123');
+    expect(body.username).toBe('testuser');
+    expect(body.role).toBe('user');
+    expect(body.welcomeDismissed).toBe(false);
+  });
+
+  it('returns welcomeDismissed true after dismiss-welcome is called', async () => {
+    const token = await signJwt(
+      { sub: 'user-123', username: 'testuser', role: 'user' },
+      SECRET,
+      '1h',
+    );
+
+    await app.request('/dismiss-welcome', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    const res = await app.request('/me', {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { welcomeDismissed: boolean };
+    expect(body.welcomeDismissed).toBe(true);
   });
 });

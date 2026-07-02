@@ -255,5 +255,68 @@ export function authRoutes(jwtSecret: string, jwtExpiresIn: string, registration
     },
   );
 
+  app.use('/dismiss-welcome', authMiddleware(jwtSecret));
+  app.openapi(
+    createRoute({
+      method: 'post',
+      path: '/dismiss-welcome',
+      responses: {
+        200: {
+          content: { 'application/json': { schema: z.object({ ok: z.boolean() }) } },
+          description: 'Welcome banner dismissed',
+        },
+        401: {
+          content: { 'application/json': { schema: ErrorSchema } },
+          description: 'Unauthorized',
+        },
+      },
+    }),
+    async (c) => {
+      const user = c.get('user');
+      const db = getDatabase();
+      db.query('UPDATE user_settings SET welcome_dismissed = 1 WHERE user_id = ?').run(user.sub);
+      return c.json({ ok: true }, 200);
+    },
+  );
+
+  app.use('/me', authMiddleware(jwtSecret));
+  app.openapi(
+    createRoute({
+      method: 'get',
+      path: '/me',
+      responses: {
+        200: {
+          content: {
+            'application/json': {
+              schema: UserResponseSchema.extend({
+                welcomeDismissed: z.boolean(),
+              }).openapi('UserProfile'),
+            },
+          },
+          description: 'Current user profile',
+        },
+        401: {
+          content: { 'application/json': { schema: ErrorSchema } },
+          description: 'Unauthorized',
+        },
+      },
+    }),
+    async (c) => {
+      const user = c.get('user');
+      const db = getDatabase();
+      const settings = db
+        .query<{ welcome_dismissed: number }, [string]>(
+          'SELECT COALESCE(welcome_dismissed, 0) as welcome_dismissed FROM user_settings WHERE user_id = ?',
+        )
+        .get(user.sub);
+      return c.json({
+        id: user.sub,
+        username: user.username ?? '',
+        role: user.role ?? 'user',
+        welcomeDismissed: (settings?.welcome_dismissed ?? 0) === 1,
+      } as { id: string; username: string; role: string; welcomeDismissed: boolean }, 200);
+    },
+  );
+
   return app;
 }

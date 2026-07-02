@@ -16,6 +16,15 @@ export interface SetupStatus {
 export interface SetupResult {
   token: string;
   user: { id: string; username: string; role: string };
+  needsRestart?: boolean;
+}
+
+export interface SetupBody {
+  admin: { username: string; password: string };
+  soulseek?: { username: string; password: string };
+  musicDir?: string;
+  transcodeLossless?: { enabled?: boolean; bitRate?: number };
+  lidarr?: { url?: string; apiKey?: string };
 }
 
 export interface AuthResult {

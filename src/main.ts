@@ -119,6 +119,11 @@ async function main() {
       currentSecrets.soulseekPassword = password;
       saveSecrets(config.dataDir, currentSecrets);
     },
+    saveLidarrSecretsFn: (apiKey: string) => {
+      const currentSecrets = loadOrCreateSecrets(config.dataDir);
+      currentSecrets.lidarrApiKey = apiKey;
+      saveSecrets(config.dataDir, currentSecrets);
+    },
     stagingDir: join(
       config.dataDir.startsWith('~')
         ? join(process.env.HOME ?? '/root', config.dataDir.slice(1))
