@@ -153,8 +153,8 @@
 
             @if (error()) { <p class="text-red-400 text-sm">{{ error() }}</p> }
             <div class="flex gap-3">
-              <button (click)="step.set('quality')" class="px-5 py-3 rounded-lg border border-zinc-800 text-zinc-400 text-sm font-medium hover:border-zinc-600 transition">Back</button>
-              <button (click)="handleSoulseekNext()" [disabled]="loading()"
+              <button type="button" (click)="step.set('quality')" class="px-5 py-3 rounded-lg border border-zinc-800 text-zinc-400 text-sm font-medium hover:border-zinc-600 transition">Back</button>
+              <button type="button" (click)="handleSoulseekNext()" [disabled]="loading()"
                 data-testid="setup-soulseek-next"
                 class="flex-1 py-3 rounded-lg bg-zinc-100 text-zinc-900 font-semibold hover:bg-zinc-200 transition disabled:opacity-50">
                 {{ soulseekButtonLabel() }}
@@ -178,7 +178,7 @@
                 <p class="text-xs text-amber-400 mt-2">Lidarr will be available after restarting NicotinD.</p>
               }
             </div>
-            <button (click)="reload()" data-testid="setup-done" class="w-full py-3 rounded-lg bg-zinc-100 text-zinc-900 font-semibold hover:bg-zinc-200 transition">Get Started</button>
+            <button type="button" (click)="reload()" data-testid="setup-done" class="w-full py-3 rounded-lg bg-zinc-100 text-zinc-900 font-semibold hover:bg-zinc-200 transition">Get Started</button>
           </div>
         }
       </div>

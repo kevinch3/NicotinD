@@ -18,9 +18,15 @@ test.describe('onboarding', () => {
     await page.getByTestId('setup-next-quality').click();
 
     await expect(page.getByText('Soulseek Network')).toBeVisible({ timeout: 10000 });
-    await page.getByTestId('setup-soulseek-next').click();
 
-    await expect(page.getByText('Setup Complete')).toBeVisible({ timeout: 20000 });
+    const respPromise = page.waitForResponse(
+      (r) => r.url().includes('/api/setup/complete') && r.status() === 201,
+      { timeout: 20000 },
+    );
+    await page.getByTestId('setup-soulseek-next').click();
+    await respPromise;
+
+    await expect(page.getByTestId('setup-done')).toBeVisible({ timeout: 10000 });
     await page.getByTestId('setup-done').click();
 
     await expect(page.getByTestId('search-input')).toBeVisible({ timeout: 10000 });
@@ -40,9 +46,15 @@ test.describe('onboarding', () => {
     await page.getByTestId('setup-next-quality').click();
 
     await expect(page.getByText('Advanced Services')).toBeVisible({ timeout: 10000 });
-    await page.getByTestId('setup-soulseek-next').click();
 
-    await expect(page.getByText('Setup Complete')).toBeVisible({ timeout: 20000 });
+    const respPromise = page.waitForResponse(
+      (r) => r.url().includes('/api/setup/complete') && r.status() === 201,
+      { timeout: 20000 },
+    );
+    await page.getByTestId('setup-soulseek-next').click();
+    await respPromise;
+
+    await expect(page.getByTestId('setup-done')).toBeVisible({ timeout: 10000 });
   });
 
   test('welcome banner shown to new user and dismissible', async ({ page, request }) => {
