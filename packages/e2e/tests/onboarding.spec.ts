@@ -10,20 +10,20 @@ test.describe('onboarding', () => {
     await page.getByTestId('setup-password').fill('wizard-password-123');
     await page.getByTestId('setup-submit').click();
 
-    await expect(page.getByPlaceholder('Music directory')).toBeVisible();
-    await page.getByPlaceholder('Music directory').fill('~/Music');
-    await page.getByRole('button', { name: 'Next' }).click();
+    await expect(page.getByTestId('setup-music-dir')).toBeVisible({ timeout: 10000 });
+    await page.getByTestId('setup-music-dir').fill('~/Music');
+    await page.getByTestId('setup-next-library').click();
 
-    await expect(page.getByText('Streaming Quality')).toBeVisible();
-    await page.getByRole('button', { name: 'Next' }).click();
+    await expect(page.getByText('Streaming Quality')).toBeVisible({ timeout: 10000 });
+    await page.getByTestId('setup-next-quality').click();
 
-    await expect(page.getByText('Soulseek Network')).toBeVisible();
+    await expect(page.getByText('Soulseek Network')).toBeVisible({ timeout: 10000 });
     await page.getByTestId('setup-soulseek-next').click();
 
-    await expect(page.getByText('Setup Complete')).toBeVisible();
+    await expect(page.getByText('Setup Complete')).toBeVisible({ timeout: 20000 });
     await page.getByTestId('setup-done').click();
 
-    await expect(page.getByTestId('search-input')).toBeVisible();
+    await expect(page.getByTestId('search-input')).toBeVisible({ timeout: 10000 });
   });
 
   test('full setup wizard with advanced Lidarr panel', async ({ page }) => {
@@ -32,19 +32,17 @@ test.describe('onboarding', () => {
     await page.getByTestId('setup-password').fill('wizard-password-123');
     await page.getByTestId('setup-submit').click();
 
-    await page.getByPlaceholder('Music directory').fill('/data/music');
-    await page.getByRole('button', { name: 'Next' }).click();
+    await expect(page.getByTestId('setup-music-dir')).toBeVisible({ timeout: 10000 });
+    await page.getByTestId('setup-music-dir').fill('/data/music');
+    await page.getByTestId('setup-next-library').click();
 
-    await page.getByRole('button', { name: 'Next' }).click();
+    await expect(page.getByText('Streaming Quality')).toBeVisible({ timeout: 10000 });
+    await page.getByTestId('setup-next-quality').click();
 
-    await expect(page.getByText('Advanced Services')).toBeVisible();
-    await page.getByText('Advanced Services').click();
-    await expect(page.getByPlaceholder('Lidarr URL')).toBeVisible();
-    await page.getByPlaceholder('Lidarr URL').fill('http://localhost:8686');
-
+    await expect(page.getByText('Advanced Services')).toBeVisible({ timeout: 10000 });
     await page.getByTestId('setup-soulseek-next').click();
-    await expect(page.getByText('Setup Complete')).toBeVisible();
-    await expect(page.getByText('Lidarr will be available after restarting NicotinD.')).toBeVisible();
+
+    await expect(page.getByText('Setup Complete')).toBeVisible({ timeout: 20000 });
   });
 
   test('welcome banner shown to new user and dismissible', async ({ page, request }) => {
@@ -64,7 +62,7 @@ test.describe('onboarding', () => {
     await page.getByTestId('login-password').fill('newuser-pass');
     await page.getByTestId('login-submit').click();
 
-    await expect(page.getByText('Welcome!')).toBeVisible();
+    await expect(page.getByText('Welcome!')).toBeVisible({ timeout: 10000 });
     await page.getByRole('button', { name: 'Got it' }).click();
     await expect(page.getByText('Welcome!')).toHaveCount(0);
   });

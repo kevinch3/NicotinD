@@ -52,8 +52,9 @@
             </div>
             @if (error()) { <p class="text-red-400 text-sm">{{ error() }}</p> }
             <div class="flex gap-3">
-              <button (click)="step.set('admin')" class="px-5 py-3 rounded-lg border border-zinc-800 text-zinc-400 text-sm font-medium hover:border-zinc-600 transition">Back</button>
-              <button (click)="handleLibraryNext()" class="flex-1 py-3 rounded-lg bg-zinc-100 text-zinc-900 font-semibold hover:bg-zinc-200 transition">Next</button>
+              <button type="button" (click)="step.set('admin')" class="px-5 py-3 rounded-lg border border-zinc-800 text-zinc-400 text-sm font-medium hover:border-zinc-600 transition">Back</button>
+              <button type="button" (click)="handleLibraryNext()" data-testid="setup-next-library"
+                class="flex-1 py-3 rounded-lg bg-zinc-100 text-zinc-900 font-semibold hover:bg-zinc-200 transition">Next</button>
             </div>
           </div>
         }
@@ -92,8 +93,9 @@
             </div>
             @if (error()) { <p class="text-red-400 text-sm">{{ error() }}</p> }
             <div class="flex gap-3">
-              <button (click)="step.set('library')" class="px-5 py-3 rounded-lg border border-zinc-800 text-zinc-400 text-sm font-medium hover:border-zinc-600 transition">Back</button>
-              <button (click)="handleQualityNext()" class="flex-1 py-3 rounded-lg bg-zinc-100 text-zinc-900 font-semibold hover:bg-zinc-200 transition">Next</button>
+              <button type="button" (click)="step.set('library')" class="px-5 py-3 rounded-lg border border-zinc-800 text-zinc-400 text-sm font-medium hover:border-zinc-600 transition">Back</button>
+              <button type="button" (click)="handleQualityNext()" data-testid="setup-next-quality"
+                class="flex-1 py-3 rounded-lg bg-zinc-100 text-zinc-900 font-semibold hover:bg-zinc-200 transition">Next</button>
             </div>
           </div>
         }
