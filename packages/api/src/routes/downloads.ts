@@ -5,6 +5,7 @@ import type { ProviderRegistry } from '../services/provider-registry.js';
 import type { Database } from 'bun:sqlite';
 import type { SlskdUserTransferGroup } from '@nicotind/core';
 import { getDatabase } from '../db.js';
+import { albumIdFor } from '../services/library-scanner.js';
 
 interface ActiveJobRow {
   username: string;
@@ -20,7 +21,7 @@ interface ActiveJobRow {
  * Pure given the rows — only reads the DB once up front. Direct (non-hunt)
  * downloads are returned unchanged so the UI falls back to folder-name parsing.
  */
-function enrichWithAlbumJobs(
+export function enrichWithAlbumJobs(
   db: Database,
   groups: SlskdUserTransferGroup[],
 ): SlskdUserTransferGroup[] {
@@ -33,7 +34,7 @@ function enrichWithAlbumJobs(
 
   const byKey = new Map<
     string,
-    { artistName: string; albumTitle: string; canonicalTrackCount: number }
+    { artistName: string; albumTitle: string; canonicalTrackCount: number; albumId: string }
   >();
   for (const r of rows) {
     if (!r.artist_name || !r.album_title) continue;
@@ -48,6 +49,7 @@ function enrichWithAlbumJobs(
       artistName: r.artist_name,
       albumTitle: r.album_title,
       canonicalTrackCount: trackCount,
+      albumId: albumIdFor(r.artist_name, r.album_title),
     });
   }
 

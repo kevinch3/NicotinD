@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { existsSync } from 'node:fs';
 import { join, relative, sep, extname } from 'node:path';
 import { readdir, stat } from 'node:fs/promises';
 import { createLogger } from '@nicotind/core';
@@ -10,6 +11,7 @@ import { getMusicMetadata } from './music-metadata-loader.js';
 import { selectAlbumTracks } from './library-track-select.js';
 import { loadOverrides, type MetadataOverrideValue } from './metadata-override-store.js';
 import { splitArtists, type ArtistCredit } from './artist-split.js';
+import { pruneOrphanArtist } from './library-aggregates.js';
 
 const log = createLogger('library-scanner');
 
@@ -825,5 +827,71 @@ export class LibraryScanner {
       removedAlbums,
       removedSongs,
     };
+  }
+
+  /**
+   * Album-scoped reconcile: rescan the WHOLE of each affected album folder (so
+   * every surviving on-disk file is re-indexed with a fresh synced_at), then
+   * prune any library_songs row for those albums whose file no longer exists on
+   * disk. This is the incremental analogue of scanFull's global prune — it kills
+   * cross-wave orphan rows (files the organizer just deleted) without a full walk.
+   */
+  async reconcileAlbums(albumDirs: string[]): Promise<void> {
+    const dirs = [...new Set(albumDirs)];
+    if (dirs.length === 0) return;
+    const abs: string[] = [];
+    for (const d of dirs) abs.push(...(await this.walk(d)));
+    const syncedAt = Date.now();
+    const tracks = await this.readTracks(abs);
+    if (tracks.length > 0) {
+      const built = buildLibrary(tracks, this.canonicalByAlbum(), loadOverrides(this.db));
+      this.persist(built, syncedAt, false);
+      this.pruneAlbumOrphans(built.albums.map((a) => a.id));
+    }
+    log.info({ dirs: dirs.length, files: abs.length }, 'Album-scoped reconcile complete');
+  }
+
+  /** Delete library_songs rows for the given albums whose file is gone from disk. */
+  private pruneAlbumOrphans(albumIds: string[]): void {
+    for (const albumId of [...new Set(albumIds)]) {
+      const rows = this.db
+        .query<{ id: string; path: string; artist_id: string | null }, [string]>(
+          'SELECT id, path, artist_id FROM library_songs WHERE album_id = ?',
+        )
+        .all(albumId);
+      let removed = 0;
+      for (const r of rows) {
+        if (r.path && existsSync(join(this.musicDir, r.path))) continue;
+        this.db.run('DELETE FROM library_songs WHERE id = ?', [r.id]);
+        this.db.run('DELETE FROM library_song_artists WHERE song_id = ?', [r.id]);
+        removed++;
+      }
+      if (removed > 0) {
+        // Recompute the album aggregate from its surviving songs.
+        this.db.run(
+          `UPDATE library_albums SET
+             song_count = (SELECT COUNT(*) FROM library_songs WHERE album_id = ?),
+             duration   = (SELECT COALESCE(SUM(duration),0) FROM library_songs WHERE album_id = ?)
+           WHERE id = ?`,
+          [albumId, albumId, albumId],
+        );
+        // Drop an album row that lost all songs, and prune a now-orphan artist.
+        const count = this.db
+          .query<{ n: number }, [string]>(
+            'SELECT COUNT(*) AS n FROM library_songs WHERE album_id = ?',
+          )
+          .get(albumId)!.n;
+        if (count === 0) {
+          const artistRow = this.db
+            .query<{ artist_id: string | null }, [string]>(
+              'SELECT artist_id FROM library_albums WHERE id = ?',
+            )
+            .get(albumId);
+          this.db.run('DELETE FROM library_albums WHERE id = ?', [albumId]);
+          this.db.run('DELETE FROM library_album_artists WHERE album_id = ?', [albumId]);
+          if (artistRow?.artist_id) pruneOrphanArtist(this.db, artistRow.artist_id);
+        }
+      }
+    }
   }
 }

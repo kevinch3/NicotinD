@@ -33,6 +33,12 @@ export interface AcquireJob {
   stage: PipelineStage | null;
   /** Canonical album dir the job's files were organized into, once known. */
   storage_path: string | null;
+  /** Destination library album id (derived from storage_path), for deep-linking. */
+  albumId: string | null;
+  /** Destination album artist, derived from storage_path. */
+  albumArtist: string | null;
+  /** Destination album title, derived from storage_path. */
+  albumTitle: string | null;
   progress: { done: number; total: number } | null;
   error: string | null;
   created_at: number;
