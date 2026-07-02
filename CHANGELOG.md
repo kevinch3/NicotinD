@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.134](https://github.com/kevinch3/NicotinD/compare/v0.1.133...v0.1.134) (2026-07-02)
+
+
+### Bug Fixes
+
+* **artists:** add hunt loading feedback + cover art timing fix ([b337f57](https://github.com/kevinch3/NicotinD/commit/b337f57951459aee704a4286d24ff2bab3d51ab1))
+
 ## [0.1.133](https://github.com/kevinch3/NicotinD/compare/v0.1.132...v0.1.133) (2026-07-02)
 
 
