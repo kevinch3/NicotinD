@@ -584,6 +584,32 @@ describe('LibraryOrganizer (real fs)', () => {
     });
   });
 
+  describe('reconcileTouched', () => {
+    it('deletes a cross-name duplicate and reports rel path + album dir', async () => {
+      const music = tmpRoot();
+      const albumDir = join(music, 'Britney Spears', 'Circus');
+      mkdirSync(albumDir, { recursive: true });
+      // Two MP3s with the same ID3 title but different filenames — dedupeFolder (filename-only)
+      // would MISS this; reconcileTouched uses tag-aware reconcileAlbumFolder.
+      seed(albumDir, '02 - Circus.mp3', {
+        title: 'Circus',
+        artist: 'Britney Spears',
+        album: 'Circus',
+        trackNumber: 2,
+      });
+      seed(albumDir, 'circus_radio.mp3', {
+        title: 'Circus',
+        artist: 'Britney Spears',
+        album: 'Circus',
+      });
+      const org = new LibraryOrganizer({ musicDir: music, autoDedupe: true });
+      const res = await org.reconcileTouched([albumDir], () => null);
+      // One copy removed (lexicographic tiebreak keeps '02 - Circus.mp3')
+      expect(res.deletedRelPaths.length).toBe(1);
+      expect(res.affectedAlbumDirs).toContain(albumDir);
+    });
+  });
+
   describe('lossless → opus transcode hook', () => {
     it.skipIf(!ffmpegAvailable())(
       'transcodes a lossless download to opus in place when enabled',
