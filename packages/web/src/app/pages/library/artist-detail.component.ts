@@ -64,7 +64,7 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
   private playlists = inject(PlaylistService);
   readonly preserve = inject(PreserveService);
   private nav = inject(NavigationService);
-  private autoHunt = inject(AutoHuntService);
+  protected autoHunt = inject(AutoHuntService);
 
   // Return to the previous in-app view, falling back to the library grid.
   goBack(): void {

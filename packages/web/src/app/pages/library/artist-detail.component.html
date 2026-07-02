@@ -275,15 +275,13 @@
                         {{ statusIcon(album.status) }}
                       </div>
 
-                      <!-- Cover art (Lidarr/MusicBrainz) with placeholder fallback -->
-                      @if (album.coverArtUrl) {
-                        <img [src]="album.coverArtUrl" alt="" loading="lazy"
-                          class="w-full aspect-square rounded object-cover mb-2" />
-                      } @else {
-                        <div class="w-full aspect-square rounded bg-theme-surface-2 mb-2 flex items-center justify-center">
-                          <span class="text-xs text-theme-muted text-center px-1 leading-tight">{{ album.albumType }}</span>
-                        </div>
-                      }
+                      <!-- Cover art (Lidarr/MusicBrainz) with gradient placeholder -->
+                      <app-cover-art
+                        [src]="album.coverArtUrl"
+                        [artist]="artist()!.name"
+                        [album]="album.title"
+                        [fill]="true"
+                        className="mb-2" />
 
                       <p class="text-sm text-theme-primary truncate font-medium">{{ album.title }}</p>
                       <p class="text-xs text-theme-muted mt-0.5">{{ album.releaseDate?.slice(0, 4) ?? '' }}</p>
@@ -296,10 +294,23 @@
 
                       <!-- Hunt button for missing / partial -->
                       @if (album.status !== 'present') {
-                        <button (click)="openHunt(album)"
+                        <button
+                          (click)="openHunt(album)"
+                          [disabled]="autoHunt.isHunting(album.lidarrId)"
                           class="mt-2 w-full px-2 py-1.5 rounded-md text-xs font-semibold
-                                 bg-theme-surface-2 text-theme-secondary hover:bg-theme-surface-2/80 transition">
-                          {{ album.status === 'partial' ? 'Complete Album' : 'Find Album' }}
+                                 bg-theme-surface-2 text-theme-secondary
+                                 hover:bg-theme-surface-2/80 transition
+                                 disabled:opacity-50 disabled:cursor-not-allowed
+                                 flex items-center justify-center gap-1.5">
+                          @if (autoHunt.isHunting(album.lidarrId)) {
+                            <svg class="animate-spin h-3 w-3" viewBox="0 0 24 24">
+                              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none" />
+                              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                            </svg>
+                            <span>Finding…</span>
+                          } @else {
+                            {{ album.status === 'partial' ? 'Complete Album' : 'Find Album' }}
+                          }
                         </button>
                       }
                     </div>
