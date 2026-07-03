@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.141](https://github.com/kevinch3/NicotinD/compare/v0.1.140...v0.1.141) (2026-07-03)
+
+
+### Features
+
+* **api:** native auto-acquisition loop over Lidarr wanted/missing ([5cbc6ba](https://github.com/kevinch3/NicotinD/commit/5cbc6ba5a638c318226ef48dcaf808edc80ca2d5))
+
 ## [0.1.140](https://github.com/kevinch3/NicotinD/compare/v0.1.139...v0.1.140) (2026-07-03)
 
 
