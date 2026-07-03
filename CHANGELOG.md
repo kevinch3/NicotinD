@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.140](https://github.com/kevinch3/NicotinD/compare/v0.1.139...v0.1.140) (2026-07-03)
+
+
+### Features
+
+* **analysis:** essentia audio-analysis sidecar (packages/analysis) ([73de8e6](https://github.com/kevinch3/NicotinD/commit/73de8e6c6a43059f86ccb9c7926dae59ffa30089))
+* **library:** audio-features enrichment task wired to the analysis sidecar ([721d400](https://github.com/kevinch3/NicotinD/commit/721d4009823e9482e0abea5714074fd66d4e7e7a))
+* **library:** perceptual feature storage + ffmpeg energy/loudness enrichment task ([c787c8e](https://github.com/kevinch3/NicotinD/commit/c787c8e5e81fe5881003eea7f34514d0fd56c7e0))
+* **radio:** score and sequence on the perceptual features ([18fc725](https://github.com/kevinch3/NicotinD/commit/18fc725fca79dbdab9c63c5b6e0715323eedd024))
+* **web:** show key + perceptual features in the track-info drawer ([911fd6c](https://github.com/kevinch3/NicotinD/commit/911fd6c3c93af46a06c42ee0709d30a84ea29210))
+
+
+### Bug Fixes
+
+* **library:** make Vorbis-family tag writes actually work + opus decode in sidecar ([1319826](https://github.com/kevinch3/NicotinD/commit/13198268979ef5987e7dd89c61e3fa2abbda63b4))
+
 ## [0.1.139](https://github.com/kevinch3/NicotinD/compare/v0.1.138...v0.1.139) (2026-07-03)
 
 
