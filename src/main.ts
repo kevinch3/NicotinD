@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { parse } from 'yaml';
+import pkg from '../package.json';
 import { NicotinDConfigSchema, createLogger, generateSecret } from '@nicotind/core';
 import { ServiceManager, NativeProcessStrategy } from '@nicotind/service-manager';
 import { Slskd } from '@nicotind/slskd-client';
@@ -132,6 +133,7 @@ async function main() {
       'downloads',
     ),
     acoustidApiKey: startupSecrets.acoustidApiKey,
+    version: pkg.version,
   });
 
   if (watcherRef.current) watcherRef.current.start();

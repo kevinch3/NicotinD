@@ -8,7 +8,9 @@
   "scripts": {
     "ng": "ng",
     "dev": "ng serve --proxy-config proxy.conf.json",
+    "prebuild": "bun run scripts/build-changelog.ts",
     "build": "ng build",
+    "pretest": "bun run scripts/build-changelog.ts",
     "test": "vitest run",
     "generate-icons": "bun run scripts/generate-icons.ts"
   },

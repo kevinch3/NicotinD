@@ -1,4 +1,4 @@
-import { Component, inject, computed, OnInit, OnDestroy } from '@angular/core';
+import { Component, inject, computed, signal, OnInit, OnDestroy } from '@angular/core';
 import { APP_VERSION } from '../../app.config';
 import { Router, RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
@@ -16,6 +16,7 @@ import { UpdateBannerComponent } from '../update-banner/update-banner.component'
 import { WelcomeBannerComponent } from '../welcome-banner/welcome-banner.component';
 import { BottomNavComponent } from '../bottom-nav/bottom-nav.component';
 import { AddToPlaylistComponent } from '../add-to-playlist/add-to-playlist.component';
+import { ChangelogModalComponent } from '../changelog-modal/changelog-modal.component';
 
 interface NavItem {
   to: string;
@@ -43,6 +44,7 @@ const ONLINE_ONLY_ROUTES = new Set(['/', '/library']);
     WelcomeBannerComponent,
     BottomNavComponent,
     AddToPlaylistComponent,
+    ChangelogModalComponent,
   ],
   templateUrl: './layout.component.html',
 })
@@ -75,6 +77,8 @@ export class LayoutComponent implements OnInit, OnDestroy {
   // Bottom padding so fixed chrome never covers the last list item — geometry
   // shared with the mini-player/tab-bar stack in lib/player-chrome.ts.
   readonly mainPadClass = computed(() => mainBottomPadClass(this.player.currentTrack() !== null));
+
+  readonly showChangelog = signal(false);
 
   ngOnInit(): void {
     this.transfers.startPolling();
