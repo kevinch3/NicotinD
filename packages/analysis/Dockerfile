@@ -3,6 +3,12 @@
 # GPU upgrade path see docs/audio-ml-enrichment.md.
 FROM python:3.11-slim
 
+# ffmpeg does ALL audio decoding (essentia's bundled AudioLoader lacks Opus —
+# the library's standard codec — see app/models.py load_audio).
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
 # Pinned model set (~25 MB). URLs + SHA256 verified 2026-07; stems double as the
 # modelVersions reported by /health, and the golden tests anchor on them.
 RUN set -eux; \

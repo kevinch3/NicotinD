@@ -1,9 +1,11 @@
 /**
  * Round-trips lyrics (and a sibling genre tag) through the ID3 path on a real
  * MP3 fixture via node-id3 — no ffmpeg needed. Guards the USLT write/read added
- * for the on-demand lyrics feature.
+ * for the on-demand lyrics feature. The Vorbis/Opus round-trip below IS
+ * ffmpeg-gated (skipped where ffmpeg is absent; CI runners have it).
  */
 import { describe, expect, it, beforeEach, afterEach } from 'bun:test';
+import { spawnSync } from 'node:child_process';
 import { mkdtempSync, copyFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -12,6 +14,7 @@ import {
   readAudioTags,
   writeAudioTags,
 } from './audio-tags.js';
+import { ffmpegAvailable } from './transcode.js';
 
 const FIXTURE = join(import.meta.dir, '../../test-fixtures/silence.mp3');
 
@@ -73,6 +76,74 @@ describe('audio-tags perceptual features (ID3 TXXX)', () => {
     nodeId3.update({ userDefinedText: [{ description: 'MOOD', value: 'euphoric-gabber' }] }, mp3);
     const tags = await readAudioTags(mp3);
     expect(tags.mood).toBeUndefined();
+  });
+});
+
+// Regression guard for the silent Vorbis-write failure: the ffmpeg tmp output
+// ends in `.nicotind.tmp`, so without an explicit `-f <muxer>` EVERY
+// Opus/FLAC/ogg tag write failed ("Unable to choose an output format") and the
+// catch-all returned false — masked by the COALESCE durability contract.
+describe.if(ffmpegAvailable())('audio-tags perceptual features (Opus/Vorbis round-trip)', () => {
+  it('writes and reads back feature tags on a real opus file', async () => {
+    const opus = join(dir, 'track.opus');
+    const gen = spawnSync('ffmpeg', [
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-f',
+      'lavfi',
+      '-i',
+      'sine=frequency=440:sample_rate=48000',
+      '-t',
+      '1',
+      '-c:a',
+      'libopus',
+      opus,
+    ]);
+    expect(gen.status).toBe(0);
+
+    expect(
+      await writeAudioTags(opus, {
+        energy: 0.42,
+        loudness: -12.5,
+        mood: 'happy',
+        valence: 0.61,
+        danceability: 0.3,
+        acousticness: 0.9,
+        instrumental: 1,
+      }),
+    ).toBe(true);
+    const tags = await readAudioTags(opus);
+    expect(tags.energy).toBeCloseTo(0.42, 3);
+    expect(tags.loudness).toBeCloseTo(-12.5, 1);
+    expect(tags.mood).toBe('happy');
+    expect(tags.valence).toBeCloseTo(0.61, 3);
+    expect(tags.danceability).toBeCloseTo(0.3, 3);
+    expect(tags.acousticness).toBeCloseTo(0.9, 3);
+    expect(tags.instrumental).toBe(1);
+  });
+
+  it('classic tags (bpm/key/genre) also round-trip on opus', async () => {
+    const opus = join(dir, 'classic.opus');
+    spawnSync('ffmpeg', [
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-f',
+      'lavfi',
+      '-i',
+      'sine=frequency=220:sample_rate=48000',
+      '-t',
+      '1',
+      '-c:a',
+      'libopus',
+      opus,
+    ]);
+    expect(await writeAudioTags(opus, { bpm: 128, key: 'A minor', genre: 'Techno' })).toBe(true);
+    const tags = await readAudioTags(opus);
+    // genre is written but readAudioTags doesn't surface it (scanner reads it
+    // via common.genre) — assert the fields this module reads back.
+    expect(tags.key).toBe('A minor');
   });
 });
 

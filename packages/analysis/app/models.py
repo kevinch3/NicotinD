@@ -8,12 +8,54 @@ fake registry instead.
 
 from __future__ import annotations
 
+import subprocess
 import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
 from .features import derive_features
+
+# Both embedding models expect 16 kHz mono input.
+SAMPLE_RATE = 16000
+
+
+def load_audio(path: str):
+    """Decode any codec to 16 kHz mono float32 via the system ffmpeg CLI.
+
+    Essentia's bundled AudioLoader lacks Opus support (the library's standard
+    codec after lossless→Opus standardization), so decoding goes through
+    ffmpeg — which handles everything — and the raw PCM feeds the TF
+    predictors directly.
+    """
+    import numpy as np  # deferred with the rest of the model deps
+
+    proc = subprocess.run(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-i",
+            path,
+            "-vn",
+            "-ac",
+            "1",
+            "-ar",
+            str(SAMPLE_RATE),
+            "-f",
+            "f32le",
+            "pipe:1",
+        ],
+        capture_output=True,
+        check=False,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(f"ffmpeg decode failed: {proc.stderr.decode(errors='replace')[:300]}")
+    audio = np.frombuffer(proc.stdout, dtype=np.float32)
+    if audio.size < SAMPLE_RATE:  # under a second of audio — nothing to analyze
+        raise RuntimeError("decoded audio too short")
+    return audio
 
 EMBEDDING_MODEL = "discogs-effnet-bs64-1"
 EMBEDDING_DIM = 1280
@@ -64,7 +106,6 @@ class EssentiaRegistry:
     def __init__(self, models_dir: str) -> None:
         # Deferred import: only the real registry needs essentia installed.
         from essentia.standard import (  # type: ignore[import-not-found]
-            MonoLoader,
             TensorflowPredict2D,
             TensorflowPredictEffnetDiscogs,
             TensorflowPredictMusiCNN,
@@ -79,7 +120,6 @@ class EssentiaRegistry:
         if missing:
             raise FileNotFoundError(f"missing model files in {models_dir}: {', '.join(missing)}")
 
-        self._loader_cls = MonoLoader
         self._lock = threading.Lock()
         self._effnet = TensorflowPredictEffnetDiscogs(
             graphFilename=str(base / f"{EMBEDDING_MODEL}.pb"), output="PartitionedCall:1"
@@ -119,8 +159,7 @@ class EssentiaRegistry:
 
     def analyze(self, path: str) -> AnalysisResult:
         with self._lock:
-            # Both embedding models expect 16 kHz mono.
-            audio = self._loader_cls(filename=path, sampleRate=16000, resampleQuality=4)()
+            audio = load_audio(path)
 
             effnet_frames = self._effnet(audio)  # frames x 1280
             embedding = effnet_frames.mean(axis=0)

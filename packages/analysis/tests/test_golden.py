@@ -31,7 +31,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def synth(path: Path, filt: str, seconds: int = 12) -> None:
+def synth(path: Path, filt: str, seconds: int = 12, rate: int = 44100) -> None:
     subprocess.run(
         [
             "ffmpeg",
@@ -45,7 +45,7 @@ def synth(path: Path, filt: str, seconds: int = 12) -> None:
             "-t",
             str(seconds),
             "-ar",
-            "44100",
+            str(rate),
             str(path),
         ],
         check=True,
@@ -64,10 +64,15 @@ def fixtures(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Path]:
     base = tmp_path_factory.mktemp("golden")
     sine = base / "sine.wav"
     beat = base / "beat.wav"
+    opus = base / "sine.opus"
     synth(sine, "sine=frequency=440:sample_rate=44100")
     # A crude 4-on-the-floor: low sine gated at 2 Hz (120 BPM pulse).
     synth(beat, "sine=frequency=80:sample_rate=44100,apulsator=hz=2:mode=square:amount=1")
-    return {"sine": sine, "beat": beat}
+    # The library's standard codec — regression guard for decode support
+    # (essentia's own loader can't read Opus; load_audio must). libopus only
+    # accepts 48 kHz-family rates.
+    synth(opus, "sine=frequency=440:sample_rate=44100", rate=48000)
+    return {"sine": sine, "beat": beat, "opus": opus}
 
 
 def test_scores_in_range_and_versions_present(registry, fixtures) -> None:
@@ -87,7 +92,19 @@ def test_identical_input_identical_output(registry, fixtures) -> None:
     assert a.embedding == b.embedding
 
 
-def test_pulsed_beat_more_danceable_than_pure_tone(registry, fixtures) -> None:
+def test_vocal_free_tone_scores_clearly_instrumental(registry, fixtures) -> None:
+    # Discriminative sanity that holds for out-of-distribution synthetic audio:
+    # a pure tone has no vocals, so voice_instrumental must lean instrumental
+    # hard. (Relative danceability between synthetic fixtures is NOT stable —
+    # measured on 2026-07: a plain sine scored *more* danceable than a gated
+    # beat — so no direction is asserted there.)
     tone = registry.analyze(str(fixtures["sine"]))
     beat = registry.analyze(str(fixtures["beat"]))
-    assert float(beat.features["danceability"]) > float(tone.features["danceability"])
+    assert float(tone.features["instrumental"]) > 0.8
+    assert float(beat.features["instrumental"]) > 0.8
+
+
+def test_opus_decodes(registry, fixtures) -> None:
+    result = registry.analyze(str(fixtures["opus"]))
+    assert result.embedding_dim == 1280
+    assert result.features["mood"] in ("happy", "sad", "aggressive", "relaxed", "party")

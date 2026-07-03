@@ -369,8 +369,20 @@ async function writeId3Tags(filepath: string, tags: AudioTags): Promise<boolean>
   }
 }
 
+// ffmpeg muxer per extension. The tmp output ends in `.nicotind.tmp`, so the
+// muxer CANNOT be inferred from the filename — without an explicit `-f`,
+// EVERY Vorbis-family tag write fails ("Unable to choose an output format").
+const FFMPEG_MUXERS: Record<string, string> = {
+  '.flac': 'flac',
+  '.ogg': 'ogg',
+  '.opus': 'opus',
+  '.m4a': 'ipod',
+};
+
 function writeFfmpegTags(filepath: string, tags: AudioTags): Promise<boolean> {
   const tmpPath = filepath + '.nicotind.tmp';
+  const muxer = FFMPEG_MUXERS[extname(filepath).toLowerCase()];
+  if (!muxer) return Promise.resolve(false);
   const metaArgs: string[] = [];
   if (tags.album !== undefined) metaArgs.push('-metadata', `ALBUM=${tags.album}`);
   if (tags.albumArtist !== undefined) metaArgs.push('-metadata', `ALBUMARTIST=${tags.albumArtist}`);
@@ -394,7 +406,19 @@ function writeFfmpegTags(filepath: string, tags: AudioTags): Promise<boolean> {
   if (tags.mbReleaseId) metaArgs.push('-metadata', `MUSICBRAINZ_ALBUMID=${tags.mbReleaseId}`);
   if (metaArgs.length === 0) return Promise.resolve(true);
 
-  const args = ['-y', '-i', filepath, '-map_metadata', '0', ...metaArgs, '-c', 'copy', tmpPath];
+  const args = [
+    '-y',
+    '-i',
+    filepath,
+    '-map_metadata',
+    '0',
+    ...metaArgs,
+    '-c',
+    'copy',
+    '-f',
+    muxer,
+    tmpPath,
+  ];
   return new Promise<boolean>((resolve) => {
     const proc = spawn('ffmpeg', args, { stdio: 'ignore' });
     proc.on('error', () => {

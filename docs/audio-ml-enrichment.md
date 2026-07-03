@@ -44,6 +44,17 @@ The shipped pipeline:
   own `MUSIC_DIR` (no shared absolute paths); `GET /health` reports
   `modelVersions` (the drift anchor). Models pinned by URL + sha256 in the
   Dockerfile (~25 MB total).
+- **Decoding is ffmpeg, not Essentia's loader** (found in live verification):
+  the essentia pip wheel's bundled AudioLoader can't decode Opus — the
+  library's standard codec — so `app/models.py load_audio` decodes any codec
+  to 16 kHz mono f32 via the ffmpeg CLI (installed in the image) and feeds the
+  raw PCM to the TF predictors. Golden test `test_opus_decodes` guards this.
+- **Vorbis tag writes were silently broken app-wide** (also found in live
+  verification): `writeFfmpegTags`' tmp output ends in `.nicotind.tmp`, so
+  ffmpeg could not infer a muxer and every Opus/FLAC/ogg/m4a tag write failed
+  (bpm/key/genre/lyrics included) — masked by the COALESCE durability
+  contract. Fixed with an explicit `-f <muxer>` per extension; an ffmpeg-gated
+  Opus round-trip test in `audio-tags.test.ts` guards it.
 
 ## 0. Recommended model stack (the answer)
 
