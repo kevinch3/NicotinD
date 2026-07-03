@@ -167,3 +167,55 @@ describe('rankCandidates', () => {
     expect(result).toEqual([]);
   });
 });
+
+describe('scoreSimilarity — perceptual axes', () => {
+  it('is unchanged for feature-less songs (NULL neutrality pin)', () => {
+    // Neither side carries perceptual features: the score must be exactly what
+    // the pre-feature scorer produced — genre(10) + bpm + key(6) + year + duration.
+    const seed = makeSeed();
+    const cand = makeCandidate();
+    const score = scoreSimilarity(seed, cand);
+    const bpm = Math.max(0, Math.min(1, 1 - (Math.abs(120 - 122) / 120) * 5)) * 10 * 0.8;
+    const year = (1 - 1 / 20) * 2;
+    const duration = (1 - 10 / 240) * 1;
+    expect(score).toBeCloseTo(10 + bpm + 6 + year + duration, 10);
+  });
+
+  it('a one-sided feature contributes exactly 0', () => {
+    const base = scoreSimilarity(makeSeed(), makeCandidate());
+    // Seed analyzed, candidate not: no change.
+    expect(scoreSimilarity(makeSeed({ energy: 0.9, valence: 0.9 }), makeCandidate())).toBe(base);
+    // Candidate analyzed, seed not: no change.
+    expect(scoreSimilarity(makeSeed(), makeCandidate({ energy: 0.9, danceability: 1 }))).toBe(base);
+  });
+
+  it('rewards energy closeness with the energy weight', () => {
+    const base = scoreSimilarity(makeSeed(), makeCandidate());
+    const identical = scoreSimilarity(makeSeed({ energy: 0.7 }), makeCandidate({ energy: 0.7 }));
+    expect(identical).toBeCloseTo(base + DEFAULT_WEIGHTS.energy, 10);
+    const distant = scoreSimilarity(makeSeed({ energy: 1 }), makeCandidate({ energy: 0 }));
+    expect(distant).toBeCloseTo(base, 10);
+  });
+
+  it('scores each perceptual axis independently with its weight', () => {
+    const base = scoreSimilarity(makeSeed(), makeCandidate());
+    const all = scoreSimilarity(
+      makeSeed({ energy: 0.5, valence: 0.5, danceability: 0.5, instrumental: 0.5, acousticness: 0.5 }),
+      makeCandidate({ energy: 0.5, valence: 0.5, danceability: 0.5, instrumental: 0.5, acousticness: 0.5 }),
+    );
+    const featureSum =
+      DEFAULT_WEIGHTS.energy +
+      DEFAULT_WEIGHTS.valence +
+      DEFAULT_WEIGHTS.danceability +
+      DEFAULT_WEIGHTS.instrumental +
+      DEFAULT_WEIGHTS.acousticness;
+    expect(all).toBeCloseTo(base + featureSum, 10);
+  });
+
+  it('prefers the perceptually-closer candidate at equal classic features', () => {
+    const seed = makeSeed({ energy: 0.8, valence: 0.7 });
+    const close = makeCandidate({ energy: 0.75, valence: 0.65 });
+    const far = makeCandidate({ energy: 0.2, valence: 0.1 });
+    expect(scoreSimilarity(seed, close)).toBeGreaterThan(scoreSimilarity(seed, far));
+  });
+});

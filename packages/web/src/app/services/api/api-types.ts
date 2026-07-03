@@ -151,6 +151,20 @@ export interface Song {
   genre?: string;
   bpm?: number;
   key?: string;
+  /** Perceived energy 0..1 (server enrichment). */
+  energy?: number;
+  /** Integrated loudness in LUFS. */
+  loudness?: number;
+  /** Musical positivity 0..1. */
+  valence?: number;
+  /** Danceability 0..1. */
+  danceability?: number;
+  /** Acoustic confidence 0..1. */
+  acousticness?: number;
+  /** Probability the track is instrumental 0..1. */
+  instrumental?: number;
+  /** Dominant mood label (happy|sad|aggressive|relaxed|party). */
+  mood?: string;
 }
 
 export interface StreamingSettings {

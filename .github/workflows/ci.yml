@@ -60,6 +60,27 @@ jobs:
       - name: Build (web)
         run: bun run --filter @nicotind/web build
 
+  # Analysis sidecar (packages/analysis): contract + pure-function tests against
+  # a fake model registry — no TensorFlow/Essentia download in CI. The gated
+  # golden tests (real models) auto-skip without ANALYSIS_MODELS_DIR.
+  analysis:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install (dev extras only)
+        run: pip install -e './packages/analysis[dev]'
+
+      - name: Lint (ruff)
+        run: ruff check packages/analysis/app packages/analysis/tests
+
+      - name: Test (pytest)
+        run: pytest packages/analysis/tests -q
+
   e2e:
     runs-on: ubuntu-latest
     steps:
@@ -98,7 +119,7 @@ jobs:
 
   release:
     runs-on: ubuntu-latest
-    needs: [ci, e2e]
+    needs: [ci, e2e, analysis]
     if: "github.event_name == 'push' && github.ref == 'refs/heads/master' && !startsWith(github.event.head_commit.message, 'chore(release):')"
     permissions:
       contents: write

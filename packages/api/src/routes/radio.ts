@@ -26,13 +26,22 @@ export interface RadioSongRow {
   starred: string | null;
   bpm: number | null;
   key: string | null;
+  energy: number | null;
+  loudness: number | null;
+  valence: number | null;
+  danceability: number | null;
+  acousticness: number | null;
+  instrumental: number | null;
+  mood: string | null;
 }
 
 export const RADIO_SONG_SELECT = `
   SELECT s.id, s.album_id, a.name AS album_name, a.cover_art AS album_cover_art,
          s.title, s.artist, s.artist_id, s.track, s.duration, s.year, s.genre,
          s.cover_art, s.path, s.size, s.bit_rate, s.suffix, s.content_type,
-         s.created, s.starred, s.bpm, s.key
+         s.created, s.starred, s.bpm, s.key,
+         s.energy, s.loudness, s.valence, s.danceability, s.acousticness,
+         s.instrumental, s.mood
   FROM library_songs s
   LEFT JOIN library_albums a ON a.id = s.album_id
 `;
@@ -59,6 +68,13 @@ function rowToSong(r: RadioSongRow): Song & SongFeatures {
     starred: r.starred ?? undefined,
     bpm: r.bpm ?? undefined,
     key: r.key ?? undefined,
+    energy: r.energy ?? undefined,
+    loudness: r.loudness ?? undefined,
+    valence: r.valence ?? undefined,
+    danceability: r.danceability ?? undefined,
+    acousticness: r.acousticness ?? undefined,
+    instrumental: r.instrumental ?? undefined,
+    mood: r.mood ?? undefined,
   };
 }
 
@@ -70,6 +86,11 @@ export function toFeatures(r: RadioSongRow): SongFeatures {
     duration: r.duration,
     year: r.year ?? undefined,
     artistId: r.artist_id,
+    energy: r.energy ?? undefined,
+    valence: r.valence ?? undefined,
+    danceability: r.danceability ?? undefined,
+    instrumental: r.instrumental ?? undefined,
+    acousticness: r.acousticness ?? undefined,
   };
 }
 
@@ -131,7 +152,24 @@ export function radioRoutes() {
       }
     }
 
-    // Pool 3: random backfill if we don't have enough candidates
+    // Pool 3: energy-adjacent across genres (±0.15), up to 100 — keeps the
+    // set's momentum coherent once the library carries energy values.
+    if (seed.energy !== undefined) {
+      const energyRows = db
+        .query<RadioSongRow, [number, number]>(
+          `${RADIO_SONG_SELECT} WHERE s.energy BETWEEN ? AND ? AND s.hidden = 0
+           ORDER BY RANDOM() LIMIT 100`,
+        )
+        .all(Math.max(0, seed.energy - 0.15), Math.min(1, seed.energy + 0.15));
+      for (const r of energyRows) {
+        if (!seen.has(r.id)) {
+          seen.add(r.id);
+          candidates.push(r);
+        }
+      }
+    }
+
+    // Pool 4: random backfill if we don't have enough candidates
     if (candidates.length < 50) {
       const backfill = db
         .query<RadioSongRow, []>(

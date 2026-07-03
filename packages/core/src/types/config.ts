@@ -146,6 +146,15 @@ export const NicotinDConfigSchema = z.object({
       spotify: { enabled: true, clientId: '', clientSecret: '' },
     }),
 
+  // Audio-analysis sidecar (packages/analysis). Empty url = not configured —
+  // the audio-features enrichment task reports itself unavailable and
+  // everything else works normally.
+  analysis: z
+    .object({
+      url: z.string().url().or(z.literal('')).default(''),
+    })
+    .default({ url: '' }),
+
   jwt: z.object({
     secret: z.string().min(32, 'JWT secret must be at least 32 characters'),
     expiresIn: z.string().default('30d'),

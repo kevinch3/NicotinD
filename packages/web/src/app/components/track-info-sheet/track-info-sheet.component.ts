@@ -198,6 +198,18 @@ const ACTION_LABELS: Record<string, string> = {
                 <p class="text-xs text-zinc-600 pl-16">Genre matches the source.</p>
               }
             }
+
+            <!-- Perceptual/harmonic features (filled by server enrichment) -->
+            @for (f of featureRows(); track f.label) {
+              <div class="flex gap-2 items-center">
+                <span class="text-zinc-500 w-20 flex-shrink-0">{{ f.label }}</span>
+                @if (f.value !== null) {
+                  <span [attr.data-testid]="f.testid">{{ f.value }}</span>
+                } @else {
+                  <span class="text-zinc-600">Unknown</span>
+                }
+              </div>
+            }
           </div>
         </section>
 
@@ -379,6 +391,24 @@ export class TrackInfoSheetComponent implements OnInit {
   readonly isAdmin = computed(() => this.auth.role() === 'admin');
   /** Current genre: an applied override wins over the song's own tag. */
   readonly currentGenre = computed(() => this.genreOverride() ?? this.effectiveSong()?.genre ?? '');
+
+  /** Read-only perceptual/harmonic rows for the Analysis section ("Unknown"
+   *  until the server enrichment has analyzed the track). */
+  readonly featureRows = computed(() => {
+    const s = this.effectiveSong();
+    const pct = (v: number | undefined): string | null =>
+      typeof v === 'number' ? `${Math.round(v * 100)}%` : null;
+    const mood = s?.mood ? s.mood.charAt(0).toUpperCase() + s.mood.slice(1) : null;
+    return [
+      { label: 'Key', value: s?.key ?? null, testid: 'key-value' },
+      { label: 'Energy', value: pct(s?.energy), testid: 'energy-value' },
+      { label: 'Mood', value: mood, testid: 'mood-value' },
+      { label: 'Valence', value: pct(s?.valence), testid: 'valence-value' },
+      { label: 'Dance', value: pct(s?.danceability), testid: 'danceability-value' },
+      { label: 'Acoustic', value: pct(s?.acousticness), testid: 'acousticness-value' },
+      { label: 'Instrumental', value: pct(s?.instrumental), testid: 'instrumental-value' },
+    ];
+  });
 
   // Lyrics state
   readonly lyrics = signal<LyricsDto | null>(null);
