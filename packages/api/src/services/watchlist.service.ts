@@ -3,9 +3,8 @@ import type { Database } from 'bun:sqlite';
 import type { Lidarr } from '@nicotind/lidarr-client';
 import type { SlskdRef } from '../index.js';
 import type { CatalogService } from './catalog-search.service.js';
-import type { AlbumHunterService, FolderCandidate } from './album-hunter.service.js';
-import { AlbumFallbackService } from './album-fallback.service.js';
-import { albumAlreadyComplete, filesMissingOnDisk } from './library-completeness.js';
+import type { AlbumHunterService } from './album-hunter.service.js';
+import { acquireAlbum } from './album-acquire.js';
 
 const log = createLogger('watchlist');
 
@@ -175,91 +174,34 @@ export class WatchlistService {
         return;
       }
 
-      const tracks = await this.lidarr.track.listByAlbum(albumId);
-
-      // Already on disk (any edition) → done, no download.
-      if (albumAlreadyComplete(this.db, row.artist_name, row.album_title, tracks.length || 1)) {
-        this.markAcquired(row.id);
-        return;
-      }
-
-      // A download for this album is already in flight (e.g. user hunted it
-      // manually) → consider it handled; don't enqueue a duplicate.
-      const active = this.db
-        .query<
-          { id: number },
-          [number]
-        >(`SELECT id FROM album_jobs WHERE lidarr_album_id = ? AND state = 'active' LIMIT 1`)
-        .get(albumId);
-      if (active) {
-        this.markAcquired(row.id);
-        return;
-      }
-
-      const slskd = this.slskdRef.current;
-      if (!slskd) {
-        this.touch(row.id);
-        return;
-      }
-
-      const candidates = await this.hunter.hunt(row.artist_name, row.album_title, tracks, {
-        skewSearch: true,
-      });
-      // Candidates are ranked best-first; take the top one clearing the unattended
-      // confidence threshold. Nothing good enough yet → try again next sweep.
-      const best = candidates.find((c) => c.matchPct >= this.minMatchPct);
-      if (!best) {
-        this.touch(row.id);
-        return;
-      }
-
-      // Complete-only: enqueue only tracks not already on disk (see
-      // filesMissingOnDisk) so a partially-present watched album fills in cleanly
-      // instead of re-downloading duplicate versions of tracks we already have.
-      const filesToDownload = filesMissingOnDisk(
-        this.db,
-        row.artist_name,
-        row.album_title,
-        best.files,
-      );
-      if (filesToDownload.length === 0) {
-        // The chosen folder's tracks are all on disk already — treat as acquired.
-        this.markAcquired(row.id);
-        return;
-      }
-
-      try {
-        await slskd.transfers.enqueue(best.username, filesToDownload);
-      } catch (err) {
-        this.fail(row.id, `Enqueue failed: ${err instanceof Error ? err.message : String(err)}`);
-        return;
-      }
-
-      const toFiles = (c: FolderCandidate) =>
-        c.files.map((f) => ({ filename: f.filename, size: f.size }));
-      const alternates = candidates
-        .filter((c) => c !== best)
-        .map((c) => ({ username: c.username, directory: c.directory, files: toFiles(c) }));
-      try {
-        AlbumFallbackService.recordJob(this.db, {
+      // Delegate the acquire to the shared core (the same primitives the
+      // interactive hunt and the Lidarr auto-acquire loop use), then map its
+      // outcome to this row's state transitions.
+      const outcome = await acquireAlbum(
+        { db: this.db, hunter: this.hunter, lidarr: this.lidarr, slskdRef: this.slskdRef },
+        {
           lidarrAlbumId: albumId,
-          username: best.username,
-          directory: best.directory,
           artistName: row.artist_name,
           albumTitle: row.album_title,
-          canonicalTracks: tracks.map((t) => t.title),
-          targetFiles: filesToDownload,
-          alternates,
-        });
-      } catch (err) {
-        log.warn({ id: row.id, err }, 'Failed to record album job for watchlist acquisition');
-      }
-
-      this.markAcquired(row.id);
-      log.info(
-        { id: row.id, album: row.album_title, from: best.username, matchPct: best.matchPct },
-        'Watchlist: auto-acquired album',
+          minMatchPct: this.minMatchPct,
+        },
       );
+
+      switch (outcome) {
+        case 'enqueued':
+        case 'already-complete':
+        case 'in-flight':
+          this.markAcquired(row.id);
+          break;
+        case 'enqueue-failed':
+          this.fail(row.id, 'Enqueue failed');
+          break;
+        case 'no-candidate':
+        case 'slskd-unavailable':
+          // Nothing good enough (or slskd down) yet — try again next sweep.
+          this.touch(row.id);
+          break;
+      }
     } catch (err) {
       this.touch(row.id, err instanceof Error ? err.message : String(err));
       log.debug({ id: row.id, err }, 'Watchlist acquire attempt failed; will retry');

@@ -1,7 +1,8 @@
 # Native auto-acquisition loop (Soularr-equivalent, NicotinD-internal)
 
-Status: **design / not yet implemented**. This document records the decision and the
-intended design so it can be picked up later.
+Status: **implemented** (opt-in, default-off). This document records the original decision
+and design; the "As-built" note at the end records where the shipped code diverged from the
+plan below (it landed smaller than first sketched).
 
 ## Context
 
@@ -90,3 +91,30 @@ A read-only "Auto-acquire" status panel + toggle in the admin page, reusing the 
   confident candidate enqueues nothing. (Mirrors `download-retry.service.test.ts`'s injectable-seam
   style; runs under the existing `bun test packages/api/src` CI job.)
 - `lidarr-client` `wantedMissing` request-shape test.
+
+## As-built (what actually shipped)
+
+The plan above predated two things that collapsed most of its proposed work, so the shipped
+version is smaller and reuses more:
+
+- **No extraction from `discography.ts` was needed.** By the time this was built,
+  `WatchlistService.tryAcquire` already implemented the *entire* per-album acquire core the plan
+  wanted (resolve → `albumAlreadyComplete` → active-`album_jobs` guard →
+  `hunter.hunt(…, {skewSearch:true})` → auto-select top candidate `>= minMatchPct` →
+  `filesMissingOnDisk` → enqueue → `AlbumFallbackService.recordJob`), and `albumAlreadyComplete`
+  was already shared in `services/library-completeness.ts`.
+- **Shared core lives in `services/album-acquire.ts`** (`acquireAlbum(deps, input)` → an
+  `AcquireOutcome` enum). It was extracted out of `WatchlistService.tryAcquire`, which now calls
+  it and maps the outcome to its row state (`enqueued|already-complete|in-flight` → acquired;
+  `enqueue-failed` → failed; `no-candidate|slskd-unavailable` → touch/retry). The watchlist tests
+  stayed green, proving the extraction was behavior-preserving.
+- **`AutoAcquireService`** (`services/auto-acquire.service.ts`) is therefore just the interval
+  poller: each sweep pulls `lidarr.album.wantedMissing(1, maxPerSweep)` and feeds each record to
+  `acquireAlbum`. No new dedupe table — the `already-complete`/`in-flight` outcomes make repeated
+  sweeps idempotent. The optional admin status panel (§4 above) was **not** built; the existing
+  `/api/discography/jobs` view already surfaces what the loop queued.
+- **Config** landed under `downloads.autoAcquire{Enabled,IntervalMs,MaxPerSweep}` (default off),
+  env `NICOTIND_AUTO_ACQUIRE_ENABLED`; `minMatchPct` reuses `watchlist.minMatchPct`.
+- **Tests:** `album-acquire.test.ts` (every outcome), `auto-acquire.service.test.ts` (sweep
+  enqueues once, respects `maxPerSweep`, gated on acquisition, skips artistless records),
+  `lidarr-client/src/api/album.test.ts` (request shape). All under existing CI globs.
