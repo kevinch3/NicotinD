@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.138](https://github.com/kevinch3/NicotinD/compare/v0.1.137...v0.1.138) (2026-07-03)
+
+
+### Bug Fixes
+
+* **web:** handle missing CHANGELOG.md in Docker build + add OAuth docs ([34572a2](https://github.com/kevinch3/NicotinD/commit/34572a2c7434dc0cc2dd862c1eaef4a4e5dea12c))
+
 ## [0.1.137](https://github.com/kevinch3/NicotinD/compare/v0.1.136...v0.1.137) (2026-07-03)
 
 
