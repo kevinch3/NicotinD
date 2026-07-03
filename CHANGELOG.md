@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.137](https://github.com/kevinch3/NicotinD/compare/v0.1.136...v0.1.137) (2026-07-03)
+
+
+### Features
+
+* **web:** changelog modal on version click + fix hardcoded API version ([db592d7](https://github.com/kevinch3/NicotinD/commit/db592d76e0344435284995a07b0a7a9b777f389f))
+
+
+### Bug Fixes
+
+* **web:** add pretest hook to generate changelog.json before vitest ([bb9a170](https://github.com/kevinch3/NicotinD/commit/bb9a17070db70a89a1ebfb8f930754f97d56030c))
+
 ## [0.1.136](https://github.com/kevinch3/NicotinD/compare/v0.1.135...v0.1.136) (2026-07-02)
 
 
