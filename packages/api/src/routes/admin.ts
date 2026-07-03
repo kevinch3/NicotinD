@@ -9,6 +9,7 @@ import { transcodeLibraryToOpus } from '../services/library-transcode.js';
 import { optimizeAllAlbums } from '../services/metadata-optimize.js';
 import { setProcessingSettings } from '../services/processing-settings.js';
 import { parseHhMm } from '../services/processing-window.js';
+import { presenceService } from '../services/presence.js';
 import type { LibraryProcessingService } from '../services/library-processing.service.js';
 
 export interface AdminRoutesDeps {
@@ -61,7 +62,17 @@ export function adminRoutes(deps: AdminRoutesDeps) {
     db.query('INSERT INTO user_settings (user_id) VALUES (?)').run(id);
 
     return c.json(
-      { id, username, role: 'user', status: 'active', created_at: new Date().toISOString() },
+      {
+        id,
+        username,
+        role: 'user',
+        status: 'active',
+        created_at: new Date().toISOString(),
+        // A just-created user has no active sessions yet.
+        isConnected: false,
+        amountOfDevices: 0,
+        amountOfSessions: 0,
+      },
       201,
     );
   });
@@ -75,7 +86,18 @@ export function adminRoutes(deps: AdminRoutesDeps) {
         []
       >("SELECT id, username, role, COALESCE(status, 'active') as status, created_at FROM users ORDER BY created_at ASC")
       .all();
-    return c.json(users);
+
+    // Merge ephemeral presence (in-memory) into each row; absent users read as offline.
+    const active = presenceService.getActiveUsers();
+    const enriched = users.map((u) => {
+      const p = active.get(u.id) ?? {
+        isConnected: false,
+        amountOfDevices: 0,
+        amountOfSessions: 0,
+      };
+      return { ...u, ...p };
+    });
+    return c.json(enriched);
   });
 
   // Toggle user role

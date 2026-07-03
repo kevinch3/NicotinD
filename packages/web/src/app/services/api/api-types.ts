@@ -192,6 +192,10 @@ export interface AdminUser {
   role: string;
   status: string;
   created_at: string;
+  // Ephemeral presence, merged server-side from PresenceService (see docs/presence-tracking.md).
+  isConnected: boolean;
+  amountOfDevices: number;
+  amountOfSessions: number;
 }
 
 export type PlaylistKind = 'user' | 'curated';
