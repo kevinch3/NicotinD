@@ -2,11 +2,6 @@
 FROM imbios/bun-node:1.3.14-22.22.3-debian AS web-builder
 WORKDIR /app
 
-# Install system dependencies for sharp (image processing)
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends libvips-dev brotli && \
-    rm -rf /var/lib/apt/lists/*
-
 COPY package.json bun.lock bunfig.toml ./
 COPY packages/api/package.json packages/api/
 COPY packages/cli/package.json packages/cli/
