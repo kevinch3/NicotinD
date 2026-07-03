@@ -10,6 +10,7 @@ import {
 import { readAudioTags, writeAudioTags, type FeatureTags } from '../audio-tags.js';
 import { analyzeLoudness as realAnalyzeLoudness } from '../loudness-analysis.js';
 import type { LoudnessResult } from '../loudness-analysis.js';
+import type { AudioFeaturesClient, AudioFeaturesResult } from '../audio-features-client.js';
 import { ffmpegAvailable as realFfmpegAvailable } from '../transcode.js';
 import { resolveSongAbsPath, planGenreBackfill } from '../track-backfill.js';
 import { setArtwork } from '../artwork-store.js';
@@ -55,6 +56,11 @@ export interface EnrichmentContext {
   analyzeKey: (abs: string) => Promise<string | null>;
   /** Measure integrated loudness + derived energy, or null on decode failure. */
   analyzeLoudness: (abs: string) => Promise<LoudnessResult | null>;
+  /** Analyze one track via the analysis sidecar (library-relative path), or
+   *  null on failure. Null client when NICOTIND_ANALYSIS_URL isn't configured. */
+  analyzeAudioFeatures: ((relPath: string) => Promise<AudioFeaturesResult | null>) | null;
+  /** Last-known sidecar health (sync — the availability hook can't await). */
+  audioFeaturesAvailable: () => boolean;
   /** Returns the suggested genre for an artist, or null when unavailable. */
   lookupGenre: (artist: string) => Promise<string | null>;
   /** Returns a Spotify portrait url for an artist name, or null. Null when Spotify
@@ -88,7 +94,10 @@ export function createEnrichmentContext(deps: {
   concurrency: number;
   /** Spotify portrait lookup, or null when Spotify creds aren't configured. */
   lookupArtistImageSpotify?: ((name: string) => Promise<string | null>) | null;
+  /** Sidecar client, or null when NICOTIND_ANALYSIS_URL isn't configured. */
+  audioFeaturesClient?: AudioFeaturesClient | null;
 }): EnrichmentContext {
+  const featuresClient = deps.audioFeaturesClient ?? null;
   return {
     musicDir: deps.musicDir,
     coverCacheDir: deps.coverCacheDir,
@@ -100,6 +109,8 @@ export function createEnrichmentContext(deps: {
     analyzeBpm: (abs) => realAnalyzeBpm(abs),
     analyzeKey: (abs) => realAnalyzeKey(abs),
     analyzeLoudness: (abs) => realAnalyzeLoudness(abs),
+    analyzeAudioFeatures: featuresClient ? (relPath) => featuresClient.analyze(relPath) : null,
+    audioFeaturesAvailable: () => featuresClient?.healthySnapshot() ?? false,
     lookupGenre: async (artist) => {
       const r = await realVerifyGenre(deps.lidarr, { artist, currentGenre: null });
       return r.suggested;
@@ -333,6 +344,131 @@ const energyTask: EnrichmentTask = {
   },
 };
 
+/**
+ * Fill danceability/valence/acousticness/instrumental/mood (+ the cached
+ * embedding) from the analysis sidecar. Tag-first: a file already carrying all
+ * five feature tags is adopted without a sidecar call (no embedding in that
+ * case — embeddings only come from analysis). Gated on live sidecar health;
+ * a mid-batch sidecar loss just leaves the remaining songs pending.
+ */
+const audioFeaturesTask: EnrichmentTask = {
+  id: 'audio-features',
+  label: 'Audio features (mood/valence/danceability)',
+  available: (ctx) => {
+    if (!ctx.analyzeAudioFeatures) return 'analysis sidecar not configured';
+    return ctx.audioFeaturesAvailable() ? true : 'analysis sidecar unreachable';
+  },
+  countPending: (db) =>
+    Number(
+      (
+        db
+          .query<
+            { n: number },
+            []
+          >('SELECT COUNT(*) AS n FROM library_songs WHERE danceability IS NULL')
+          .get() ?? { n: 0 }
+      ).n,
+    ),
+  run: async (db, ctx, limit) => {
+    const rows = db
+      .query<
+        SongRow,
+        [number]
+      >('SELECT id, path, artist, title FROM library_songs WHERE danceability IS NULL ORDER BY created DESC LIMIT ?')
+      .all(limit);
+
+    const labels: string[] = [];
+    let applied = 0;
+    let cursor = 0;
+    // The sidecar serializes inference internally, so more than 2 in flight
+    // only queues — keep the pool small regardless of ctx.concurrency.
+    const worker = async (): Promise<void> => {
+      for (;;) {
+        const idx = cursor++;
+        if (idx >= rows.length) return;
+        const song = rows[idx]!;
+        const abs = resolveSongAbsPath(ctx.musicDir, song.path);
+        if (!ctx.fileExists(abs)) continue;
+
+        // Tag-first: adopt a fully-tagged file without re-analysis.
+        let tagged: FeatureTags | null = null;
+        try {
+          const tags = await ctx.readTags(abs);
+          if (
+            tags.danceability !== undefined &&
+            tags.valence !== undefined &&
+            tags.acousticness !== undefined &&
+            tags.instrumental !== undefined &&
+            tags.mood !== undefined
+          ) {
+            tagged = tags;
+          }
+        } catch {
+          tagged = null;
+        }
+        if (tagged) {
+          db.run(
+            `UPDATE library_songs SET danceability = ?, valence = ?, acousticness = ?, instrumental = ?, mood = ? WHERE id = ?`,
+            [
+              tagged.danceability!,
+              tagged.valence!,
+              tagged.acousticness!,
+              tagged.instrumental!,
+              tagged.mood!,
+              song.id,
+            ],
+          );
+          applied++;
+          labels.push(`${song.artist} — ${song.title} → ${tagged.mood} (tags)`);
+          continue;
+        }
+
+        if (!ctx.analyzeAudioFeatures) return;
+        const result = await ctx.analyzeAudioFeatures(song.path).catch(() => null);
+        if (!result) {
+          // Sidecar gone mid-batch? Stop pulling more work; songs stay pending.
+          if (!ctx.audioFeaturesAvailable()) return;
+          continue;
+        }
+        const f = result.features;
+        const tx = db.transaction(() => {
+          db.run(
+            `UPDATE library_songs SET danceability = ?, valence = ?, acousticness = ?, instrumental = ?, mood = ? WHERE id = ?`,
+            [f.danceability, f.valence, f.acousticness, f.instrumental, f.mood, song.id],
+          );
+          db.run(
+            `INSERT OR REPLACE INTO library_embeddings (song_id, model, dim, vec, updated_at)
+             VALUES (?, ?, ?, ?, ?)`,
+            [
+              song.id,
+              result.embedding.model,
+              result.embedding.dim,
+              Buffer.from(new Float32Array(result.embedding.values).buffer),
+              Date.now(),
+            ],
+          );
+        });
+        tx();
+        await ctx
+          .writeTags(abs, {
+            danceability: f.danceability,
+            valence: f.valence,
+            acousticness: f.acousticness,
+            instrumental: f.instrumental,
+            mood: f.mood,
+          })
+          .catch(() => false);
+        applied++;
+        labels.push(`${song.artist} — ${song.title} → ${f.mood}`);
+      }
+    };
+    await Promise.all(
+      Array.from({ length: Math.max(1, Math.min(ctx.concurrency, 2)) }, () => worker()),
+    );
+    return { applied, labels };
+  },
+};
+
 interface ArtistRow {
   id: string;
   name: string;
@@ -420,6 +556,7 @@ export const ENRICHMENT_TASKS: readonly EnrichmentTask[] = [
   genreTask,
   keyTask,
   energyTask,
+  audioFeaturesTask,
   artistImageTask,
 ];
 

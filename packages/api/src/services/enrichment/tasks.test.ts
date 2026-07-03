@@ -44,6 +44,18 @@ function ctx(overrides: Partial<EnrichmentContext> = {}): EnrichmentContext {
     analyzeBpm: async () => 120,
     analyzeKey: async () => 'C major',
     analyzeLoudness: async () => ({ loudness: -9.5, energy: 0.7 }),
+    analyzeAudioFeatures: async () => ({
+      features: {
+        danceability: 0.6,
+        valence: 0.4,
+        acousticness: 0.2,
+        instrumental: 0.9,
+        mood: 'relaxed',
+      },
+      embedding: { model: 'discogs-effnet-bs64-1', dim: 4, values: [1, 2, 3, 4] },
+      modelVersions: { embedding: 'discogs-effnet-bs64-1' },
+    }),
+    audioFeaturesAvailable: () => true,
     lookupGenre: async () => 'Rock',
     lookupArtistImageSpotify: async () => null,
     fileExists: () => true,
@@ -377,10 +389,143 @@ describe('energy task', () => {
   });
 });
 
+describe('audio-features task', () => {
+  const features = getTask('audio-features')!;
+
+  it('is unavailable without a configured sidecar, or when unreachable', () => {
+    expect(features.available(ctx({ analyzeAudioFeatures: null }))).toBe(
+      'analysis sidecar not configured',
+    );
+    expect(features.available(ctx({ audioFeaturesAvailable: () => false }))).toBe(
+      'analysis sidecar unreachable',
+    );
+    expect(features.available(ctx())).toBe(true);
+  });
+
+  it('counts only songs with NULL danceability', () => {
+    seedSong('a');
+    db.run("UPDATE library_songs SET danceability = 0.5 WHERE id = 'a'");
+    seedSong('b');
+    expect(features.countPending(db)).toBe(1);
+  });
+
+  it('analyzes pending songs: feature columns + embedding row + tag write', async () => {
+    seedSong('a');
+    let wroteTags: unknown = null;
+    const c = ctx({
+      writeTags: async (_abs, tags) => {
+        wroteTags = tags;
+        return true;
+      },
+    });
+    const res = await features.run(db, c, 25);
+    expect(res.applied).toBe(1);
+    const row = db
+      .query<
+        { danceability: number; valence: number; mood: string },
+        [string]
+      >('SELECT danceability, valence, mood FROM library_songs WHERE id = ?')
+      .get('a');
+    expect(row?.danceability).toBeCloseTo(0.6);
+    expect(row?.valence).toBeCloseTo(0.4);
+    expect(row?.mood).toBe('relaxed');
+    const emb = db
+      .query<
+        { model: string; dim: number; vec: Uint8Array },
+        [string]
+      >('SELECT model, dim, vec FROM library_embeddings WHERE song_id = ?')
+      .get('a');
+    expect(emb?.model).toBe('discogs-effnet-bs64-1');
+    expect(emb?.dim).toBe(4);
+    expect(Array.from(new Float32Array(emb!.vec.buffer.slice(0)))).toEqual([1, 2, 3, 4]);
+    expect(wroteTags).toEqual({
+      danceability: 0.6,
+      valence: 0.4,
+      acousticness: 0.2,
+      instrumental: 0.9,
+      mood: 'relaxed',
+    });
+  });
+
+  it('adopts fully-tagged files without calling the sidecar', async () => {
+    seedSong('a');
+    let sidecarCalls = 0;
+    const c = ctx({
+      readTags: async () => ({
+        danceability: 0.7,
+        valence: 0.2,
+        acousticness: 0.9,
+        instrumental: 0.1,
+        mood: 'sad',
+      }),
+      analyzeAudioFeatures: async () => {
+        sidecarCalls++;
+        return null;
+      },
+    });
+    const res = await features.run(db, c, 25);
+    expect(res.applied).toBe(1);
+    expect(sidecarCalls).toBe(0);
+    const row = db
+      .query<{ mood: string; danceability: number }, [string]>(
+        'SELECT mood, danceability FROM library_songs WHERE id = ?',
+      )
+      .get('a');
+    expect(row?.mood).toBe('sad');
+    expect(row?.danceability).toBeCloseTo(0.7);
+    // No embedding without a sidecar analysis.
+    expect(
+      db.query('SELECT COUNT(*) AS c FROM library_embeddings').get() as { c: number },
+    ).toEqual({ c: 0 });
+  });
+
+  it('partially-tagged files still go to the sidecar', async () => {
+    seedSong('a');
+    let sidecarCalls = 0;
+    const c = ctx({
+      readTags: async () => ({ danceability: 0.7 }), // missing the rest
+      analyzeAudioFeatures: async () => {
+        sidecarCalls++;
+        return {
+          features: {
+            danceability: 0.5,
+            valence: 0.5,
+            acousticness: 0.5,
+            instrumental: 0.5,
+            mood: 'happy',
+          },
+          embedding: { model: 'm', dim: 1, values: [0] },
+          modelVersions: {},
+        };
+      },
+    });
+    await features.run(db, c, 25);
+    expect(sidecarCalls).toBe(1);
+  });
+
+  it('stops the batch when the sidecar goes down mid-run (songs stay pending)', async () => {
+    for (let i = 0; i < 4; i++) seedSong(`s${i}`);
+    let calls = 0;
+    const c = ctx({
+      concurrency: 1,
+      analyzeAudioFeatures: async () => {
+        calls++;
+        return null; // every call fails…
+      },
+      audioFeaturesAvailable: () => false, // …and health says it's gone
+    });
+    const res = await features.run(db, c, 25);
+    expect(res.applied).toBe(0);
+    expect(calls).toBe(1); // aborted after the first failure, not 4 attempts
+    expect(features.countPending(db)).toBe(4);
+  });
+});
+
 describe('registry', () => {
-  it('exposes bpm, genre, key, energy and artist-image tasks', () => {
+  it('exposes bpm, genre, key, energy, audio-features and artist-image tasks', () => {
     expect(ENRICHMENT_TASKS.map((t) => t.id).sort()).toEqual([
       'artist-image',
+      'audio-features',
       'bpm',
       'energy',
       'genre',
