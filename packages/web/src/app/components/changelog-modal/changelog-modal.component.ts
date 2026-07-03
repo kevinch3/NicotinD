@@ -3,6 +3,18 @@ import { CommonModule } from '@angular/common';
 import changelog from '../../../../public/changelog.json';
 import { parseChangelogItem, type ParsedChangelogItem } from '../../lib/changelog';
 
+interface RawChangelogSection {
+  title: string;
+  items: string[];
+}
+
+interface RawChangelogEntry {
+  version: string;
+  date: string;
+  compareUrl: string;
+  sections: RawChangelogSection[];
+}
+
 interface ParsedSection {
   title: string;
   items: ParsedChangelogItem[];
@@ -24,7 +36,7 @@ interface ParsedEntry {
 export class ChangelogModalComponent {
   close = output<void>();
 
-  readonly entries: ParsedEntry[] = changelog.map((e) => ({
+  readonly entries: ParsedEntry[] = (changelog as RawChangelogEntry[]).map((e) => ({
     version: e.version,
     date: e.date,
     compareUrl: e.compareUrl,
