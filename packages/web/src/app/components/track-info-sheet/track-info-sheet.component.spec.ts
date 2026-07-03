@@ -104,4 +104,35 @@ describe('TrackInfoSheetComponent (analysis)', () => {
     role.set('user');
     expect(c.isAdmin()).toBe(false);
   });
+
+  it('featureRows() renders percentages, key and capitalized mood from the loaded song', () => {
+    getSong.mockReturnValueOnce(
+      of({
+        id: 'song-1',
+        key: 'A minor',
+        energy: 0.72,
+        mood: 'party',
+        valence: 0.405,
+        danceability: 0.88,
+        acousticness: 0.05,
+        instrumental: 1,
+      } as never),
+    );
+    const c = create();
+    c.ngOnInit();
+    const rows = Object.fromEntries(c.featureRows().map((r) => [r.label, r.value]));
+    expect(rows['Key']).toBe('A minor');
+    expect(rows['Energy']).toBe('72%');
+    expect(rows['Mood']).toBe('Party');
+    expect(rows['Valence']).toBe('41%');
+    expect(rows['Dance']).toBe('88%');
+    expect(rows['Acoustic']).toBe('5%');
+    expect(rows['Instrumental']).toBe('100%');
+  });
+
+  it('featureRows() shows null values for an un-analyzed song', () => {
+    const c = create(); // default getSong: only bpm + genre
+    c.ngOnInit();
+    for (const r of c.featureRows()) expect(r.value).toBeNull();
+  });
 });
