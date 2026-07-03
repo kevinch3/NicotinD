@@ -134,7 +134,15 @@ describe('streaming routes', () => {
     const meta = await sharp(Buffer.from(buf)).metadata();
     expect(meta.width).toBe(80); // 300 (grid) → bucket, 80 stays 80
     // The resized variant is written to the cover cache for fast repeat hits.
-    expect(existsSync(join(dataDir, 'cover-cache', 'song-thumb@80.webp'))).toBe(true);
+    // That write is fire-and-forget (`void cacheCover(...)` — the route responds
+    // before the cache lands), so poll briefly instead of racing it: a plain
+    // existsSync right after the response flakes on loaded CI runners.
+    const cached = join(dataDir, 'cover-cache', 'song-thumb@80.webp');
+    const deadline = Date.now() + 2000;
+    while (!existsSync(cached) && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    expect(existsSync(cached)).toBe(true);
   });
 
   it('serves the original (not a thumbnail) when no size is requested', async () => {
