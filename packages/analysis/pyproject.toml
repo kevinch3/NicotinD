@@ -1,0 +1,36 @@
+[project]
+name = "nicotind-analysis"
+version = "0.1.0"
+description = "NicotinD audio-analysis sidecar: Essentia embeddings + music-tagging heads over HTTP"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.110",
+  "uvicorn>=0.29",
+]
+
+[project.optional-dependencies]
+# The real model stack — deliberately NOT in dev/CI installs (hundreds of MB of
+# TensorFlow). The app degrades to 503s without it; tests use a fake registry.
+models = [
+  "essentia-tensorflow>=2.1b6.dev1110",
+  "numpy<2",
+]
+dev = [
+  "pytest>=8",
+  "httpx>=0.27",
+  "ruff>=0.4",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["app"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
