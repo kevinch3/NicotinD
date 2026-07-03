@@ -288,8 +288,15 @@ export class LibraryProcessingService extends EventEmitter {
       lastItems: [],
       startedAt: null,
       updatedAt: null,
-      taskPending: { bpm: 0, genre: 0, key: 0, 'artist-image': 0 },
-      availability: { bpm: 'unknown', genre: 'unknown', key: 'unknown', 'artist-image': 'unknown' },
+      taskPending: { bpm: 0, genre: 0, key: 0, 'artist-image': 0, energy: 0, 'audio-features': 0 },
+      availability: {
+        bpm: 'unknown',
+        genre: 'unknown',
+        key: 'unknown',
+        'artist-image': 'unknown',
+        energy: 'unknown',
+        'audio-features': 'unknown',
+      },
     };
     const row = this.db
       .query<{ value: string }, [string]>('SELECT value FROM app_settings WHERE key = ?')

@@ -8,6 +8,7 @@ import { albumGroupKey, normalizeArtistForGrouping } from './album-grouping.js';
 import { isVariousArtists } from './compilation-tagger.js';
 import { inferFolderAlbum, inferMetadataFromPath, hasUsableValue } from './path-inference.js';
 import { getMusicMetadata } from './music-metadata-loader.js';
+import { featureTagsFromNative } from './audio-tags.js';
 import { selectAlbumTracks } from './library-track-select.js';
 import { loadOverrides, type MetadataOverrideValue } from './metadata-override-store.js';
 import { splitArtists, type ArtistCredit } from './artist-split.js';
@@ -59,6 +60,13 @@ export interface ScannedTrack {
   genre?: string;
   bpm?: number;
   key?: string;
+  energy?: number;
+  loudness?: number;
+  danceability?: number;
+  valence?: number;
+  acousticness?: number;
+  instrumental?: number;
+  mood?: string;
 }
 
 export interface SongRow {
@@ -76,6 +84,13 @@ export interface SongRow {
   genre: string | null;
   bpm: number | null;
   key: string | null;
+  energy: number | null;
+  loudness: number | null;
+  danceability: number | null;
+  valence: number | null;
+  acousticness: number | null;
+  instrumental: number | null;
+  mood: string | null;
   coverArt: string;
   path: string;
   size: number;
@@ -348,6 +363,13 @@ export function buildLibrary(
       genre: t.genre ?? null,
       bpm: t.bpm ?? null,
       key: t.key ?? null,
+      energy: t.energy ?? null,
+      loudness: t.loudness ?? null,
+      danceability: t.danceability ?? null,
+      valence: t.valence ?? null,
+      acousticness: t.acousticness ?? null,
+      instrumental: t.instrumental ?? null,
+      mood: t.mood ?? null,
       coverArt: id,
       path: t.relPath,
       size: t.size,
@@ -634,6 +656,9 @@ export class LibraryScanner {
       genre: common?.genre?.[0],
       bpm: typeof common?.bpm === 'number' && common.bpm > 0 ? Math.round(common.bpm) : undefined,
       key: typeof common?.key === 'string' && common.key.trim() ? common.key.trim() : undefined,
+      // Perceptual features live in custom Vorbis/TXXX frames — parse them from
+      // the native tag map so pre-tagged files are dense from the first scan.
+      ...featureTagsFromNative(meta?.native, common?.mood),
     };
   }
 
@@ -664,9 +689,11 @@ export class LibraryScanner {
       INSERT INTO library_songs (
         id, album_id, title, artist, artist_id, album_artist, album_artist_id,
         track, disc, duration,
-        year, genre, bpm, key, cover_art, path, size, bit_rate, suffix, content_type,
+        year, genre, bpm, key,
+        energy, loudness, danceability, valence, acousticness, instrumental, mood,
+        cover_art, path, size, bit_rate, suffix, content_type,
         created, synced_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         album_id = excluded.album_id,
         title = excluded.title,
@@ -688,6 +715,16 @@ export class LibraryScanner {
         bpm = COALESCE(excluded.bpm, library_songs.bpm),
         -- Likewise keep an analyzed key when a rescan reads no tag value.
         key = COALESCE(excluded.key, library_songs.key),
+        -- Perceptual features: same durability contract — enrichment writes the
+        -- DB immediately, the file-tag write may lag or fail; never let a
+        -- tag-less rescan revert them.
+        energy = COALESCE(excluded.energy, library_songs.energy),
+        loudness = COALESCE(excluded.loudness, library_songs.loudness),
+        danceability = COALESCE(excluded.danceability, library_songs.danceability),
+        valence = COALESCE(excluded.valence, library_songs.valence),
+        acousticness = COALESCE(excluded.acousticness, library_songs.acousticness),
+        instrumental = COALESCE(excluded.instrumental, library_songs.instrumental),
+        mood = COALESCE(excluded.mood, library_songs.mood),
         cover_art = excluded.cover_art,
         path = excluded.path,
         size = excluded.size,
@@ -759,6 +796,13 @@ export class LibraryScanner {
           s.genre,
           s.bpm,
           s.key,
+          s.energy,
+          s.loudness,
+          s.danceability,
+          s.valence,
+          s.acousticness,
+          s.instrumental,
+          s.mood,
           s.coverArt,
           s.path,
           s.size,

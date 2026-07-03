@@ -13,11 +13,12 @@ function seedSong(
     bpm?: number | null;
     genre?: string | null;
     key?: string | null;
+    energy?: number | null;
   } = {},
 ): void {
   db.run(
-    `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, size, bit_rate, suffix, content_type, created, synced_at, bpm, genre, key)
-     VALUES (?, 'alb', ?, ?, 'art', 0, ?, 10, 320, 'opus', 'audio/opus', '2024-01-01', 1, ?, ?, ?)`,
+    `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, size, bit_rate, suffix, content_type, created, synced_at, bpm, genre, key, energy)
+     VALUES (?, 'alb', ?, ?, 'art', 0, ?, 10, 320, 'opus', 'audio/opus', '2024-01-01', 1, ?, ?, ?, ?)`,
     [
       id,
       opts.title ?? `T-${id}`,
@@ -26,6 +27,7 @@ function seedSong(
       opts.bpm ?? null,
       opts.genre ?? null,
       opts.key ?? null,
+      opts.energy ?? null,
     ],
   );
 }
@@ -41,6 +43,7 @@ function ctx(overrides: Partial<EnrichmentContext> = {}): EnrichmentContext {
     writeTags: async () => true,
     analyzeBpm: async () => 120,
     analyzeKey: async () => 'C major',
+    analyzeLoudness: async () => ({ loudness: -9.5, energy: 0.7 }),
     lookupGenre: async () => 'Rock',
     lookupArtistImageSpotify: async () => null,
     fileExists: () => true,
@@ -306,11 +309,80 @@ describe('artist-image task', () => {
   });
 });
 
+describe('energy task', () => {
+  const energy = getTask('energy')!;
+
+  it('is unavailable without ffmpeg', () => {
+    expect(energy.available(ctx({ ffmpegAvailable: () => false }))).toBe(
+      'ffmpeg not found on PATH',
+    );
+    expect(energy.available(ctx())).toBe(true);
+  });
+
+  it('counts only songs with NULL energy', () => {
+    seedSong('a');
+    seedSong('b', { energy: 0.5 });
+    expect(energy.countPending(db)).toBe(1);
+  });
+
+  it('analyzes pending songs, writing energy + loudness to DB and tag', async () => {
+    seedSong('a');
+    let wroteTags: unknown = null;
+    const c = ctx({
+      analyzeLoudness: async () => ({ loudness: -8.2, energy: 0.81 }),
+      writeTags: async (_abs, tags) => {
+        wroteTags = tags;
+        return true;
+      },
+    });
+    const res = await energy.run(db, c, 25);
+    expect(res.applied).toBe(1);
+    const row = db
+      .query<{ energy: number; loudness: number }, [string]>(
+        'SELECT energy, loudness FROM library_songs WHERE id = ?',
+      )
+      .get('a');
+    expect(row?.energy).toBeCloseTo(0.81);
+    expect(row?.loudness).toBeCloseTo(-8.2);
+    expect(wroteTags).toEqual({ energy: 0.81, loudness: -8.2 });
+  });
+
+  it('prefers an existing ENERGY tag and does NOT rewrite the tag', async () => {
+    seedSong('a');
+    let analyzed = 0;
+    let wrote = 0;
+    const c = ctx({
+      readTags: async () => ({ energy: 0.33, loudness: -14.0 }),
+      analyzeLoudness: async () => ((analyzed += 1), { loudness: -6, energy: 0.99 }),
+      writeTags: async () => ((wrote += 1), true),
+    });
+    const res = await energy.run(db, c, 25);
+    expect(res.applied).toBe(1);
+    expect(analyzed).toBe(0);
+    expect(wrote).toBe(0);
+    const row = db
+      .query<{ energy: number; loudness: number }, [string]>(
+        'SELECT energy, loudness FROM library_songs WHERE id = ?',
+      )
+      .get('a');
+    expect(row?.energy).toBeCloseTo(0.33);
+    expect(row?.loudness).toBeCloseTo(-14.0);
+  });
+
+  it('does not apply when analysis returns null (stays pending)', async () => {
+    seedSong('a');
+    const res = await energy.run(db, ctx({ analyzeLoudness: async () => null }), 25);
+    expect(res.applied).toBe(0);
+    expect(energy.countPending(db)).toBe(1);
+  });
+});
+
 describe('registry', () => {
-  it('exposes bpm, genre, key and artist-image tasks', () => {
+  it('exposes bpm, genre, key, energy and artist-image tasks', () => {
     expect(ENRICHMENT_TASKS.map((t) => t.id).sort()).toEqual([
       'artist-image',
       'bpm',
+      'energy',
       'genre',
       'key',
     ]);

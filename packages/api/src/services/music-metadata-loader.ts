@@ -18,6 +18,8 @@ export interface MMCommon {
   bpm?: number;
   /** Musical key from tags (TKEY / `KEY` / `INITIALKEY`), when present. */
   key?: string;
+  /** Mood label from tags (Vorbis `MOOD` / ID3 TMOO), when present. */
+  mood?: string;
   picture?: Array<{ format?: string; data: Uint8Array }>;
 }
 
@@ -31,6 +33,8 @@ export interface MMFormat {
 export interface MMResult {
   common: MMCommon;
   format: MMFormat;
+  /** Raw per-format tag frames (e.g. `vorbis`, `ID3v2.4`) — needed for custom keys. */
+  native?: Record<string, Array<{ id: string; value: unknown }>>;
 }
 
 export type MusicMetadataApi = {
