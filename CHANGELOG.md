@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.142](https://github.com/kevinch3/NicotinD/compare/v0.1.141...v0.1.142) (2026-07-03)
+
+
+### Features
+
+* **presence:** admin-only presence tracking via HTTP heartbeats ([abe9cd2](https://github.com/kevinch3/NicotinD/commit/abe9cd243177c91f0a1f20df5779c2f6caefeb26))
+
 ## [0.1.141](https://github.com/kevinch3/NicotinD/compare/v0.1.140...v0.1.141) (2026-07-03)
 
 
