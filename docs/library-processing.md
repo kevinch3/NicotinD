@@ -55,6 +55,23 @@ Launch tasks:
   major/minor profile correlation → key + Camelot code). Writes `library_songs.key`
   (e.g. "C major") and the file tag (ID3 `TKEY` / Vorbis `KEY`). Bulk script:
   `scripts/analyze-key.ts`.
+- **energy** — `WHERE energy IS NULL`, ffmpeg-gated, **offline**. Reads an
+  `ENERGY` tag if present, else `analyzeLoudness()` (`loudness-analysis.ts`:
+  ffmpeg `ebur128` → integrated LUFS + loudness range → derived 0..1 energy).
+  Writes `library_songs.energy` + `loudness` and the `ENERGY`/`LOUDNESS_LUFS`
+  file tags. Bulk script: `scripts/analyze-energy.ts`.
+- **audio-features** — `WHERE danceability IS NULL`, gated on the **analysis
+  sidecar** (`packages/analysis/`, configured via `NICOTIND_ANALYSIS_URL` /
+  `analysis.url`; availability = live cached health probe, so the Settings row
+  shows "not configured" vs "unreachable"). Tag-first: a file already carrying
+  all five feature tags is adopted without a sidecar call. Otherwise `POST
+  /analyze {relPath}` returns danceability/valence/acousticness/instrumental/
+  mood + the EffNet embedding; the task writes the five columns + a
+  `library_embeddings` row in one transaction, then the file tags. Concurrency
+  is capped at 2 (the sidecar serializes inference). A sidecar loss mid-batch
+  aborts the batch; songs stay pending. Bulk script:
+  `scripts/analyze-audio-features.ts`. See
+  [audio-ml-enrichment.md](audio-ml-enrichment.md).
 - **artist-image** — per *artist*, not per song: artists with no
   `library_artwork(kind='artist')` row, `manual_override = 0`, `hidden = 0`, and a
   non-placeholder name (`isPlaceholderArtist`), most-prolific first (`album_count DESC`).
@@ -71,7 +88,9 @@ Launch tasks:
 
 The scanner runs frequent full scans. A plain `col = excluded.col` upsert would
 revert any **DB-only** enrichment to the (tag-less) file value before the task's
-slower/failable file-tag write lands. So `genre`, `bpm`, and `key` are written
+slower/failable file-tag write lands. So `genre`, `bpm`, `key`, and all seven
+perceptual columns (`energy`, `loudness`, `danceability`, `valence`,
+`acousticness`, `instrumental`, `mood`) are written
 `COALESCE(excluded.col, library_songs.col)` in `library-scanner.ts`: a file tag that
 *carries* the value still overrides, but a tag-less rescan keeps the enrichment.
 This is why a backfill that writes only the DB (e.g. a script killed mid-run before
@@ -148,6 +167,8 @@ the backlog quickly (the window then keeps up with new downloads):
 docker exec <container> bun run packages/api/src/scripts/backfill-genre.ts --apply       # fast, needs Lidarr
 docker exec -d <container> bun run packages/api/src/scripts/analyze-bpm.ts --apply --concurrency 4   # slow, offline
 docker exec -d <container> bun run packages/api/src/scripts/analyze-key.ts --apply --concurrency 4   # slow, offline
+docker exec -d <container> bun run packages/api/src/scripts/analyze-energy.ts --apply --concurrency 4  # slow, offline
+docker exec -d <container> bun run packages/api/src/scripts/analyze-audio-features.ts --apply          # needs the analysis sidecar up
 ```
 
 All are dry-run without `--apply` and resume on re-run. **Run them sequentially**, not

@@ -97,7 +97,9 @@ tracks mix well — the payoff of the new `key` data:
 - **Camelot adjacency**: `keyToCamelot` gives "8A/8B" codes; compatible moves are
   same code, ±1 number, or A↔B swap. Greedily chain tracks by compatible key.
 - **BPM proximity**: prefer the next track within ±5–8% BPM.
-- **Energy arc**: if/when we have an `energy` field (§4), ramp it up then down.
+- **Energy arc**: ✅ shipped — `orderTracks('energy-arc')` builds a ramp-up →
+  peak → ramp-down over `energy`, and `harmonicChain` adds an energy-closeness
+  term (0-neutral when either side is un-analyzed).
 
 This turns a flat list into a set that flows like a DJ mix — a real differentiator
 over genre-only playlists.
@@ -154,17 +156,19 @@ scan-read line (the cheapest items on this roadmap, no DSP):
 
 **Offline DSP (ffmpeg decode + pure JS, like bpm/key)** — no external service:
 - **Key / harmonic key** — ✅ shipped (`key-detection.ts`).
-- **Loudness / dynamic range** — integrated LUFS + crest factor via ffmpeg
-  `ebur128` (parse its output; no DSP of our own).
+- **Loudness + energy** — ✅ shipped (`loudness-analysis.ts`): integrated LUFS +
+  loudness range via ffmpeg `ebur128`, energy derived from both; the `energy`
+  enrichment task + `scripts/analyze-energy.ts` fill `library_songs.energy`/
+  `loudness` and the `ENERGY`/`LOUDNESS_LUFS` file tags.
 - **Tempo variation over time** — windowed `analyzeBpm` over segments → stability score.
 - **Time signature** — autocorrelation of the onset envelope (moderate effort).
-- **Energy** — RMS/loudness + spectral flux aggregate (easy, high value for ordering).
-- **Acousticness / instrumentation / vocal-presence** — needs a small classifier
-  (spectral features → logistic model, or a lightweight model); heavier.
 
-**Model / LLM-assisted (batched, weekly)**:
-- **Valence / danceability / mood / vibe** — small audio model or LLM-over-features;
-  store as tags, treat as another windowed task.
+**Model-assisted (local audio models — no LLM, per the dropped-scope decision in
+[audio-ml-enrichment.md](audio-ml-enrichment.md))**:
+- **Valence / danceability / mood / acousticness / instrumentation** — ✅ shipped:
+  the `audio-features` task calls the Essentia analysis sidecar
+  (`packages/analysis/`), stores columns + `VALENCE`/`DANCEABILITY`/`MOOD`/…
+  file tags and caches the embedding in `library_embeddings`.
 - **Section markers (intro/verse/chorus/drop)** — structural segmentation; the
   heaviest item, a dedicated model. Useful later for smart previews/transitions.
 
