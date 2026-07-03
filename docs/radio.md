@@ -29,6 +29,19 @@ Each factor produces a 0–1 score, multiplied by its weight:
 | Year proximity | 1 − clamp(\|Δyear\| / 20, 0, 1) | 2 |
 | Duration similarity | 1 − clamp(\|Δdur\| / seedDur, 0, 1) | 1 |
 | Artist diversity | same artist → subtract penalty | 8 |
+| Energy closeness | 1 − \|Δenergy\| (both sides present, else 0) | 5 |
+| Valence closeness | 1 − \|Δvalence\| (both sides present, else 0) | 4 |
+| Danceability closeness | 1 − \|Δdanceability\| (both sides present, else 0) | 3 |
+| Instrumentalness closeness | 1 − \|Δinstrumental\| (both sides present, else 0) | 3 |
+| Acousticness closeness | 1 − \|Δacousticness\| (both sides present, else 0) | 2 |
+
+The five perceptual axes come from the enrichment tasks (ffmpeg energy +
+analysis sidecar — see [audio-ml-enrichment.md](audio-ml-enrichment.md)). A
+missing value on **either** side contributes exactly 0, so an un-analyzed
+library scores identically to the pre-feature scorer (pinned by test). Note
+for tuning: a fully-analyzed library raises the max attainable score ~27 → ~44,
+which weakens `artistPenalty` relatively — revisit weights after the first
+full backfill.
 
 ### Camelot harmonic compatibility
 
@@ -42,11 +55,13 @@ the Camelot wheel:
 
 ### Candidate pool construction
 
-The `/api/radio/next` endpoint builds a diverse pool in three passes:
+The `/api/radio/next` endpoint builds a diverse pool in four passes:
 
 1. Same genre as seed (up to 150 random)
 2. Similar BPM range ±15% across all genres (up to 100 random)
-3. Random backfill if the pool is still small
+3. Energy-adjacent ±0.15 across all genres (up to 100 random; only when the
+   seed carries an energy value)
+4. Random backfill if the pool is still small
 
 The `rankCandidates` function scores all candidates, sorts by score, and
 applies a per-artist cap (default 2) to prevent any single artist from
@@ -58,32 +73,15 @@ dominating the radio queue.
 |--------|------|--------|---------|
 | GET | `/api/radio/next` | `seedId` (required), `exclude` (comma-separated IDs), `count` (1–50, default 10) | `Song[]` |
 
-## Extension points for future audio features
+## Perceptual features (shipped)
 
-The `SongFeatures` interface and `ScoringWeights` are designed to grow:
-
-```ts
-interface SongFeatures {
-  bpm?: number;
-  key?: string;
-  genre?: string;
-  duration: number;
-  year?: number;
-  artistId: string;
-  // Future: energy, valence, danceability, loudness, instrumentalness
-}
-```
-
-When Essentia enrichment lands (per `docs/audio-ml-enrichment.md`):
-
-1. New columns get added to `library_songs` as enrichment tasks
-2. `SongFeatures` grows the new fields
-3. `scoreSimilarity` gains new weighted factors
-4. The radio route and RadioProvider stay unchanged — they just get better results
-
-A sequencing layer (energy curves, harmonic transitions) is a future
-post-selection ordering pass — it slots in as a `sequenceTracks()` function
-called after scoring.
+The Essentia/ffmpeg enrichment landed exactly along the planned extension
+points: `SongFeatures` carries `energy`/`valence`/`danceability`/
+`instrumental`/`acousticness`, `scoreSimilarity` scores them as weighted
+closeness axes (table above), and the radio route + RadioProvider were
+unchanged apart from the extra pool. Sequencing on top of selection lives in
+`playlist-recipe.ts`: `orderTracks('energy-arc')` (ramp-up → peak → ramp-down)
+and the energy term inside `harmonicChain`.
 
 ## Shared scoring with `/songs/:id/similar`
 

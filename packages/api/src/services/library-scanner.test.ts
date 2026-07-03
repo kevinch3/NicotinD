@@ -258,6 +258,78 @@ describe('LibraryScanner.persist', () => {
     expect(row?.classification).toBe('single');
   });
 
+  it('keeps DB-only perceptual features across a tag-less rescan (COALESCE contract)', () => {
+    const built = buildLibrary([
+      track({ relPath: 'A/Album/01.mp3', artist: 'A', album: 'Album', title: 'T1' }),
+    ]);
+    scanner.persist(built, Date.now(), true);
+    const id = built.songs[0]!.id;
+    // Simulate the enrichment tasks writing DB values before the tag lands.
+    db.run(
+      `UPDATE library_songs SET energy = 0.7, loudness = -9.5, danceability = 0.6,
+       valence = 0.4, acousticness = 0.1, instrumental = 0.9, mood = 'relaxed' WHERE id = ?`,
+      [id],
+    );
+
+    // A rescan whose tracks carry no feature tags must not revert the enrichment.
+    scanner.persist(built, Date.now() + 1, true);
+    const row = db
+      .query<
+        {
+          energy: number;
+          loudness: number;
+          danceability: number;
+          valence: number;
+          acousticness: number;
+          instrumental: number;
+          mood: string;
+        },
+        [string]
+      >(
+        `SELECT energy, loudness, danceability, valence, acousticness, instrumental, mood
+         FROM library_songs WHERE id = ?`,
+      )
+      .get(id);
+    expect(row?.energy).toBeCloseTo(0.7);
+    expect(row?.loudness).toBeCloseTo(-9.5);
+    expect(row?.danceability).toBeCloseTo(0.6);
+    expect(row?.valence).toBeCloseTo(0.4);
+    expect(row?.acousticness).toBeCloseTo(0.1);
+    expect(row?.instrumental).toBeCloseTo(0.9);
+    expect(row?.mood).toBe('relaxed');
+  });
+
+  it('lets a rescan that DOES read feature tags override stale DB values', () => {
+    const first = buildLibrary([
+      track({ relPath: 'A/Album/01.mp3', artist: 'A', album: 'Album', title: 'T1' }),
+    ]);
+    scanner.persist(first, Date.now(), true);
+    db.run('UPDATE library_songs SET energy = 0.2, mood = ? WHERE id = ?', [
+      'sad',
+      first.songs[0]!.id,
+    ]);
+
+    // Same file rescanned, now carrying feature tags (e.g. retagged externally).
+    const second = buildLibrary([
+      track({
+        relPath: 'A/Album/01.mp3',
+        artist: 'A',
+        album: 'Album',
+        title: 'T1',
+        energy: 0.85,
+        mood: 'party',
+      }),
+    ]);
+    scanner.persist(second, Date.now() + 1, true);
+    const row = db
+      .query<{ energy: number; mood: string }, [string]>(
+        'SELECT energy, mood FROM library_songs WHERE id = ?',
+      )
+      .get(first.songs[0]!.id);
+    expect(row?.energy).toBeCloseTo(0.85);
+    expect(row?.mood).toBe('party');
+  });
+
   it('incremental persist does not prune untouched rows', () => {
     scanner.persist(
       buildLibrary([

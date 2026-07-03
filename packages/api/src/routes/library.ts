@@ -214,6 +214,13 @@ interface SongRow {
   starred: string | null;
   bpm: number | null;
   key: string | null;
+  energy: number | null;
+  loudness: number | null;
+  valence: number | null;
+  danceability: number | null;
+  acousticness: number | null;
+  instrumental: number | null;
+  mood: string | null;
 }
 
 interface ArtistRow {
@@ -235,7 +242,9 @@ const SONG_SELECT = `
          s.title, s.artist, s.artist_id, s.album_artist, s.album_artist_id,
          s.track, s.duration, s.year, s.genre,
          s.cover_art, s.path, s.size, s.bit_rate, s.suffix, s.content_type,
-         s.created, s.starred, s.bpm, s.key
+         s.created, s.starred, s.bpm, s.key,
+         s.energy, s.loudness, s.valence, s.danceability, s.acousticness,
+         s.instrumental, s.mood
   FROM library_songs s
   LEFT JOIN library_albums a ON a.id = s.album_id
 `;
@@ -287,6 +296,30 @@ function rowToSong(r: SongRow): Song {
     starred: r.starred ?? undefined,
     bpm: r.bpm ?? undefined,
     key: r.key ?? undefined,
+    energy: r.energy ?? undefined,
+    loudness: r.loudness ?? undefined,
+    valence: r.valence ?? undefined,
+    danceability: r.danceability ?? undefined,
+    acousticness: r.acousticness ?? undefined,
+    instrumental: r.instrumental ?? undefined,
+    mood: r.mood ?? undefined,
+  };
+}
+
+/** SongRow → the scorer's SongFeatures (incl. the perceptual axes). */
+function songRowFeatures(r: SongRow): SongFeatures {
+  return {
+    bpm: r.bpm ?? undefined,
+    key: r.key ?? undefined,
+    genre: r.genre ?? undefined,
+    duration: r.duration,
+    year: r.year ?? undefined,
+    artistId: r.artist_id,
+    energy: r.energy ?? undefined,
+    valence: r.valence ?? undefined,
+    danceability: r.danceability ?? undefined,
+    instrumental: r.instrumental ?? undefined,
+    acousticness: r.acousticness ?? undefined,
   };
 }
 
@@ -1268,14 +1301,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     const source = db.query<SongRow, [string]>(`${SONG_SELECT} WHERE s.id = ?`).get(id);
     if (!source) return c.json({ error: 'Song not found' }, 404);
 
-    const seed: SongFeatures = {
-      bpm: source.bpm ?? undefined,
-      key: source.key ?? undefined,
-      genre: source.genre ?? undefined,
-      duration: source.duration,
-      year: source.year ?? undefined,
-      artistId: source.artist_id,
-    };
+    const seed: SongFeatures = songRowFeatures(source);
 
     // Build candidate pool: same-artist + same-genre songs
     const candidateRows: SongRow[] = [];
@@ -1307,12 +1333,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     }
 
     const candidates = candidateRows.map((r) => ({
-      bpm: r.bpm ?? undefined,
-      key: r.key ?? undefined,
-      genre: r.genre ?? undefined,
-      duration: r.duration,
-      year: r.year ?? undefined,
-      artistId: r.artist_id,
+      ...songRowFeatures(r),
       _row: r,
     }));
 

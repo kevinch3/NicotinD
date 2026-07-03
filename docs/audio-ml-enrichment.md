@@ -1,20 +1,60 @@
-# Audio-ML metadata enrichment (Essentia → tagging models → LLM)
+# Audio-ML metadata enrichment (Essentia → tagging models)
 
-Design + implementation plan for the model-dependent metadata wishlist — valence,
-danceability, acousticness, mood/vibe, instrumentation/vocal-presence, section
-markers — that the light deterministic enrichment (key/bpm/genre, see
-[library-processing.md](library-processing.md)) can't produce. Status: **planned,
-not built.** This doc sets the architecture, the model stack, the workflow, the
-deterministic test strategy, and a compute budget for *this* server.
+Design + implementation record for the model-dependent metadata wishlist — valence,
+danceability, acousticness, mood/vibe, instrumentation/vocal-presence — that the
+light deterministic enrichment (key/bpm/genre, see
+[library-processing.md](library-processing.md)) can't produce. Status: **built**
+(2026-07, minus section markers and the LLM layer — see below). The sidecar lives
+in `packages/analysis/`; the bun side is the `audio-features` + `energy`
+enrichment tasks.
 
-The agreed pipeline (user's framing, refined here):
+The shipped pipeline:
 
-1. **Essentia** extracts low-level features **and** an embedding per track.
-2. A **tagging/classification model** (MusiCNN / EffNet-Discogs / VGGish / OpenL3,
-   run *on the embedding*) produces the labels (mood, danceability, valence,
-   voice/instrumental, …).
-3. The labels + embedding feed an **LLM** for narrative descriptions, playlist
-   concepts, and naming — never for picking tracks (see playlist-generation.md §3).
+1. **Essentia** extracts an embedding per track (EffNet-Discogs 1280-d, plus a
+   MusiCNN 200-d for the valence head).
+2. **Tagging/classification heads** run on the embedding and produce the labels
+   (mood, danceability, valence, voice/instrumental, acousticness).
+3. ~~The labels + embedding feed an **LLM** for narrative descriptions~~ —
+   **dropped scope**: the user chose pure audio analysis; no LLM anywhere in the
+   pipeline. The catalogue + deterministic recipes (playlist-generation.md §2)
+   consume the labels directly. §3.4/§5.5 below are therefore not pursued.
+
+## Implementation decisions (as built)
+
+- **D1 — energy/loudness are bun-side, not sidecar**: `loudness-analysis.ts`
+  spawns ffmpeg `ebur128` and derives a 0..1 energy from integrated LUFS +
+  loudness range. They work with no sidecar (the degradation requirement) and
+  have exactly one writer per column. Two tasks: `energy` (ffmpeg-gated) and
+  `audio-features` (sidecar-health-gated).
+- **D2 — tag keys**: `ENERGY`, `LOUDNESS_LUFS`, `VALENCE`, `DANCEABILITY`,
+  `ACOUSTICNESS`, `INSTRUMENTALNESS` (0..1 / LUFS numerics) and `MOOD`
+  (happy|sad|aggressive|relaxed|party) — written as Vorbis comments and ID3 TXXX
+  by `audio-tags.ts`, read back by the scanner (`featureTagsFromNative`) so
+  tagged files are dense from the first scan on any install.
+- **D3 — valence normalization in the sidecar**: the emomusic head emits 1..9;
+  the HTTP contract is uniformly 0..1. Mood = argmax over the five mood heads
+  (per-head class order is inconsistent — encoded in `app/features.py`).
+- **D4 — CPU-first**: the `essentia-tensorflow` wheel bundles CPU libtensorflow;
+  GPU needs a swapped GPU `libtensorflow.so` (deferred — commented device block
+  in docker-compose.yml). CPU backfill ≈ 4–6 h for ~7k tracks in the window.
+- **D5 — `library_embeddings` keyed `(song_id, model)`** so a second embedding
+  model can coexist; the vec is a packed Float32 blob, reused later for
+  similarity (playlist-generation.md §2b).
+- **Sidecar contract**: `POST /analyze {relPath}` resolved against the sidecar's
+  own `MUSIC_DIR` (no shared absolute paths); `GET /health` reports
+  `modelVersions` (the drift anchor). Models pinned by URL + sha256 in the
+  Dockerfile (~25 MB total).
+- **Decoding is ffmpeg, not Essentia's loader** (found in live verification):
+  the essentia pip wheel's bundled AudioLoader can't decode Opus — the
+  library's standard codec — so `app/models.py load_audio` decodes any codec
+  to 16 kHz mono f32 via the ffmpeg CLI (installed in the image) and feeds the
+  raw PCM to the TF predictors. Golden test `test_opus_decodes` guards this.
+- **Vorbis tag writes were silently broken app-wide** (also found in live
+  verification): `writeFfmpegTags`' tmp output ends in `.nicotind.tmp`, so
+  ffmpeg could not infer a muxer and every Opus/FLAC/ogg/m4a tag write failed
+  (bpm/key/genre/lyrics included) — masked by the COALESCE durability
+  contract. Fixed with an explicit `-f <muxer>` per extension; an ffmpeg-gated
+  Opus round-trip test in `audio-tags.test.ts` guards it.
 
 ## 0. Recommended model stack (the answer)
 
@@ -140,15 +180,20 @@ configured hours.
 
 ## 5. Rollout phases
 
-1. **Sidecar skeleton** — FastAPI + Essentia-TF, `GET /health`, `POST /analyze`
-   returning embedding + the danceability/mood/voice heads; GPU in compose; warm load.
-2. **bun `audio-features` task** — client, `library_embeddings` table + label columns,
-   registry entry, Settings checkbox, plumbing tests (§3.1). Gated on sidecar health.
-3. **First windowed backfill** — ~2–4 h on GPU; verify durability + resume.
-4. **Similarity** — nearest-neighbour over cached embeddings (playlist-generation.md
-   §2b) → "more like this" + clustering.
-5. **LLM concept/naming pass** — weekly, structured outputs, schema-validated.
-6. **Section markers** — separate heavier task once the above is proven.
+1. **Sidecar skeleton** — ✅ built (`packages/analysis/`): FastAPI + Essentia-TF,
+   `GET /health`, `POST /analyze` with embedding + all heads; compose service
+   (CPU; commented GPU block); warm load at startup.
+2. **bun `audio-features` task** — ✅ built: `audio-features-client.ts`,
+   `library_embeddings` + label columns, registry entry, Settings checkbox,
+   mocked-sidecar plumbing tests. Gated on live sidecar health. Bulk script:
+   `scripts/analyze-audio-features.ts` (tag-first, resumable). The bun-side
+   `energy` task + `scripts/analyze-energy.ts` cover energy/loudness (D1).
+3. **First windowed backfill** — pending on prod (enable both tasks, or run the
+   scripts; ~4–6 h CPU); verify durability + resume after.
+4. **Similarity** — future: nearest-neighbour over cached embeddings
+   (playlist-generation.md §2b) → "more like this" + clustering.
+5. **LLM concept/naming pass** — **not pursued** (dropped scope — no LLM).
+6. **Section markers** — future, separate heavier task.
 
 ## 6. Risks / open decisions
 

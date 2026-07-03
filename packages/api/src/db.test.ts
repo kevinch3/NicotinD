@@ -195,3 +195,65 @@ describe('applySchema — drops the dead tombstones table (§D2)', () => {
     expect(row).toBeNull();
   });
 });
+
+describe('applySchema — perceptual feature columns + embeddings table', () => {
+  it('adds the seven feature columns and library_embeddings on a fresh database', () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    db.run(
+      `INSERT INTO library_songs (id, album_id, title, artist, artist_id, path, energy, loudness,
+         danceability, valence, acousticness, instrumental, mood, synced_at)
+       VALUES ('s', 'a', 'T', 'X', 'art', 'p', 0.5, -10.1, 0.6, 0.4, 0.2, 0.9, 'happy', 1)`,
+    );
+    const row = db
+      .query<{ energy: number; mood: string }, []>(
+        `SELECT energy, mood FROM library_songs WHERE id = 's'`,
+      )
+      .get();
+    expect(row?.energy).toBeCloseTo(0.5);
+    expect(row?.mood).toBe('happy');
+
+    db.run(
+      `INSERT INTO library_embeddings (song_id, model, dim, vec, updated_at)
+       VALUES ('s', 'discogs-effnet-bs64-1', 4, ?, 1)`,
+      [Buffer.from(new Float32Array([1, 2, 3, 4]).buffer)],
+    );
+    const emb = db
+      .query<{ dim: number }, []>(`SELECT dim FROM library_embeddings WHERE song_id = 's'`)
+      .get();
+    expect(emb?.dim).toBe(4);
+  });
+
+  it('is idempotent — a second applySchema on the same db does not throw', () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    expect(() => applySchema(db)).not.toThrow();
+  });
+
+  it('backfills the columns onto a legacy library_songs table', () => {
+    const db = new Database(':memory:');
+    // Minimal legacy table without the feature columns.
+    db.run(`
+      CREATE TABLE library_songs (
+        id TEXT PRIMARY KEY, album_id TEXT NOT NULL, title TEXT NOT NULL,
+        artist TEXT NOT NULL, artist_id TEXT NOT NULL, track INTEGER, disc INTEGER,
+        duration INTEGER NOT NULL DEFAULT 0, year INTEGER, genre TEXT, cover_art TEXT,
+        path TEXT NOT NULL, size INTEGER, bit_rate INTEGER, suffix TEXT, content_type TEXT,
+        created TEXT, starred TEXT, hidden INTEGER NOT NULL DEFAULT 0, synced_at INTEGER NOT NULL
+      )
+    `);
+    db.run(
+      `INSERT INTO library_songs (id, album_id, title, artist, artist_id, path, synced_at)
+       VALUES ('s', 'a', 'T', 'X', 'art', 'p', 1)`,
+    );
+    applySchema(db);
+    db.run(`UPDATE library_songs SET valence = 0.3, mood = 'relaxed' WHERE id = 's'`);
+    const row = db
+      .query<{ valence: number; mood: string }, []>(
+        `SELECT valence, mood FROM library_songs WHERE id = 's'`,
+      )
+      .get();
+    expect(row?.valence).toBeCloseTo(0.3);
+    expect(row?.mood).toBe('relaxed');
+  });
+});

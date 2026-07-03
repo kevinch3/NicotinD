@@ -68,7 +68,7 @@ describe('refreshAutoPlaylists', () => {
 
   it('materializes curated playlists idempotently (no dupes on re-run)', () => {
     const now = Date.now();
-    refreshAutoPlaylists(db, now, { apply: true });
+    const results = refreshAutoPlaylists(db, now, { apply: true });
     const after1 = db
       .query<{ n: number }, []>("SELECT COUNT(*) n FROM playlists WHERE kind='curated'")
       .get();
@@ -82,7 +82,30 @@ describe('refreshAutoPlaylists', () => {
 
     expect(after2?.n).toBe(after1?.n);
     expect(songs2?.n).toBe(songs1?.n);
-    expect(after1?.n).toBe(RECIPES.length);
+    // Only recipes with candidates materialize; zero-candidate shelves (e.g.
+    // the perceptual-feature ones before any enrichment) are not created.
+    const nonEmpty = results.filter((r) => r.count > 0).length;
+    expect(after1?.n).toBe(nonEmpty);
+    expect(nonEmpty).toBeGreaterThan(0);
+    expect(nonEmpty).toBeLessThan(RECIPES.length);
+  });
+
+  it('creates a feature shelf once enrichment fills the columns', () => {
+    // Analyzed library: high valence + danceability satisfies 'feel-good'.
+    for (let i = 0; i < 10; i++) {
+      db.run('UPDATE library_songs SET valence = 0.8, danceability = 0.7, energy = 0.6 WHERE id = ?', [
+        `s${i}`,
+      ]);
+    }
+    const results = refreshAutoPlaylists(db, Date.now(), { apply: true });
+    const feelGood = results.find((r) => r.slug === 'feel-good');
+    expect(feelGood?.count).toBeGreaterThan(0);
+    const row = db
+      .query<{ n: number }, []>(
+        "SELECT COUNT(*) n FROM playlists WHERE kind='curated' AND name='Feel Good'",
+      )
+      .get();
+    expect(row?.n).toBe(1);
   });
 
   it('drops a track that left the library on refresh', () => {

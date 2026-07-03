@@ -131,3 +131,76 @@ describe('seedCentroid', () => {
     expect(c!.artistId).toBe('');
   });
 });
+
+describe('orderTracks — energy-arc', () => {
+  it('builds a ramp-up → peak → ramp-down shape', () => {
+    const rows = [0.1, 0.9, 0.3, 0.7, 0.5].map((energy, i) => row({ id: `e${i}`, energy }));
+    const ordered = orderTracks(rows, 'energy-arc');
+    const energies = ordered.map((r) => r.energy!);
+    // Peak sits strictly inside the set, not at either edge.
+    const peakIdx = energies.indexOf(Math.max(...energies));
+    expect(peakIdx).toBeGreaterThan(0);
+    expect(peakIdx).toBeLessThan(energies.length - 1);
+    // Non-decreasing up to the peak, non-increasing after it.
+    for (let i = 1; i <= peakIdx; i++) expect(energies[i]!).toBeGreaterThanOrEqual(energies[i - 1]!);
+    for (let i = peakIdx + 1; i < energies.length; i++)
+      expect(energies[i]!).toBeLessThanOrEqual(energies[i - 1]!);
+  });
+
+  it('keeps every input row and pushes energy-less tracks to the edges', () => {
+    const rows = [
+      row({ id: 'nul1' }),
+      row({ id: 'hi', energy: 0.9 }),
+      row({ id: 'mid', energy: 0.5 }),
+      row({ id: 'nul2' }),
+      row({ id: 'lo', energy: 0.1 }),
+    ];
+    const ordered = orderTracks(rows, 'energy-arc');
+    expect(ordered).toHaveLength(rows.length);
+    expect(new Set(ordered.map((r) => r.id)).size).toBe(rows.length);
+    // The unknown-energy rows must not occupy the peak position.
+    const ids = ordered.map((r) => r.id);
+    expect(ids.indexOf('hi')).toBeGreaterThan(ids.indexOf('nul1'));
+    expect(ordered[0]!.energy ?? -1).toBeLessThanOrEqual(0.1);
+    // Never mutates.
+    expect(rows.map((r) => r.id)).toEqual(['nul1', 'hi', 'mid', 'nul2', 'lo']);
+  });
+});
+
+describe('harmonicChain — energy tiebreak', () => {
+  it('prefers the energy-closer neighbour when key/bpm tie', () => {
+    // Same key + bpm for all: harmonic + bpm axes tie, energy decides.
+    const rows = [
+      row({ id: 'start', key: 'C major', bpm: 120, energy: 0.8 }),
+      row({ id: 'far', key: 'C major', bpm: 120, energy: 0.1 }),
+      row({ id: 'near', key: 'C major', bpm: 120, energy: 0.75 }),
+    ];
+    const ordered = orderTracks(rows, 'harmonic');
+    expect(ordered.map((r) => r.id)).toEqual(['start', 'near', 'far']);
+  });
+
+  it('chains identically to before when no track carries energy', () => {
+    const rows = [
+      row({ id: 'a', key: 'C major', bpm: 120 }),
+      row({ id: 'x', key: 'F# major', bpm: 80 }),
+      row({ id: 'b', key: 'A minor', bpm: 121 }),
+    ];
+    // 'a' (8B) chains to relative-minor 'b' (8A) before the distant 'x'.
+    expect(orderTracks(rows, 'harmonic').map((r) => r.id)).toEqual(['a', 'b', 'x']);
+  });
+});
+
+describe('seedCentroid — perceptual means', () => {
+  it('averages the perceptual fields over rows that have them', () => {
+    const c = seedCentroid([
+      row({ id: 'a', energy: 0.2, valence: 0.4, danceability: 0.6 }),
+      row({ id: 'b', energy: 0.8, valence: 0.6 }), // no danceability
+      row({ id: 'c' }), // un-analyzed
+    ]);
+    expect(c?.energy).toBeCloseTo(0.5);
+    expect(c?.valence).toBeCloseTo(0.5);
+    expect(c?.danceability).toBeCloseTo(0.6);
+    expect(c?.instrumental).toBeUndefined();
+    expect(c?.acousticness).toBeUndefined();
+  });
+});

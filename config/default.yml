@@ -49,6 +49,13 @@ acquire:
     clientId: ''
     clientSecret: ''
 
+# Audio-analysis sidecar (packages/analysis) — fills mood/valence/danceability/
+# acousticness/instrumentalness. Leave empty to run without it (the
+# audio-features task just shows as unavailable). In compose this is set via
+# NICOTIND_ANALYSIS_URL=http://analysis:8000.
+analysis:
+  url: ''
+
 jwt:
   # Session length. Tokens are silently renewed on app boot (sliding session),
   # so a long TTL means you stay signed in as long as you open the app within

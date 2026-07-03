@@ -31,6 +31,11 @@ interface RecipeRow {
   key: string | null;
   year: number | null;
   duration: number;
+  energy: number | null;
+  valence: number | null;
+  danceability: number | null;
+  instrumental: number | null;
+  acousticness: number | null;
   created: string | null;
 }
 
@@ -44,6 +49,11 @@ function toOrderable(r: RecipeRow): OrderableRow {
     key: r.key ?? undefined,
     year: r.year ?? undefined,
     duration: r.duration,
+    energy: r.energy ?? undefined,
+    valence: r.valence ?? undefined,
+    danceability: r.danceability ?? undefined,
+    instrumental: r.instrumental ?? undefined,
+    acousticness: r.acousticness ?? undefined,
     addedAt: Number.isNaN(addedAt) ? undefined : addedAt,
   };
 }
@@ -104,6 +114,8 @@ function candidatesFor(db: Database, recipe: PlaylistRecipe): OrderableRow[] {
     .query<RecipeRow, []>(
       `SELECT s.id AS id, s.artist AS artist, s.artist_id AS artistId,
               s.bpm AS bpm, s.key AS key, s.year AS year, s.duration AS duration,
+              s.energy AS energy, s.valence AS valence, s.danceability AS danceability,
+              s.instrumental AS instrumental, s.acousticness AS acousticness,
               s.created AS created
          FROM library_songs s
         WHERE s.hidden = 0 AND (${recipe.where})`,
@@ -146,7 +158,18 @@ export function refreshAutoPlaylists(
         now,
       );
     });
-    for (const { recipe, songIds } of plans) writeOne(recipe, songIds);
+    // Zero-candidate recipes (e.g. perceptual-feature shelves before the
+    // enrichment backfill has run) don't CREATE empty shelves. An already-
+    // materialized shelf still updates — even to empty — so tracks that left
+    // the library drain out on refresh.
+    for (const { recipe, songIds } of plans) {
+      const exists = db
+        .query<{ id: string }, [string]>(
+          "SELECT id FROM playlists WHERE kind = 'curated' AND name = ?",
+        )
+        .get(recipe.name);
+      if (songIds.length > 0 || exists) writeOne(recipe, songIds);
+    }
   }
 
   return plans.map(({ recipe, songIds }) => ({

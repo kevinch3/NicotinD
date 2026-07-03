@@ -21,7 +21,7 @@ import { camelotCompatibility, type SongFeatures } from './radio.service.js';
 import { keyToCamelot } from './key-detection.js';
 
 /** How a selected track set is ordered for playback. */
-export type PlaylistSort = 'shuffle' | 'bpm' | 'year' | 'newest' | 'harmonic';
+export type PlaylistSort = 'shuffle' | 'bpm' | 'year' | 'newest' | 'harmonic' | 'energy-arc';
 
 /** A self-describing, code-defined recipe for an automated shelf. */
 export interface PlaylistRecipe extends CuratedPlaylistDef {
@@ -64,7 +64,9 @@ export const RECIPES: PlaylistRecipe[] = [
     name: 'Workout',
     description: 'High-energy, harmonically-mixed tempo to keep you moving.',
     palette: { from: '#f7971e', to: '#ff2d73' },
-    where: 's.bpm BETWEEN 125 AND 145',
+    // NULL-tolerant energy refinement: un-analyzed libraries behave exactly as
+    // before; once energy is filled, low-energy 130-BPM ballads drop out.
+    where: 's.bpm BETWEEN 125 AND 145 AND (s.energy IS NULL OR s.energy >= 0.6)',
     sort: 'harmonic',
     targetSize: 40,
     maxPerArtist: 2,
@@ -87,6 +89,48 @@ export const RECIPES: PlaylistRecipe[] = [
     where:
       "(s.genre LIKE '%electronic%' OR s.genre LIKE '%house%' OR s.genre LIKE '%techno%') AND s.bpm > 0",
     sort: 'harmonic',
+    targetSize: 40,
+    maxPerArtist: 2,
+  },
+  // ---- shelves over the perceptual features (empty until the audio-features /
+  // energy enrichment has run; SQL comparisons exclude NULL rows naturally) ----
+  {
+    slug: 'mellow-acoustic',
+    name: 'Mellow Acoustic',
+    description: 'Organic, low-energy tracks for a quiet room.',
+    palette: { from: '#5d4157', to: '#a8caba' },
+    where: 's.acousticness >= 0.6 AND s.energy <= 0.5',
+    sort: 'bpm',
+    targetSize: 40,
+    maxPerArtist: 2,
+  },
+  {
+    slug: 'instrumental-focus',
+    name: 'Instrumental Focus',
+    description: 'Vocal-free tracks to think to, key-matched for flow.',
+    palette: { from: '#141e30', to: '#35577d' },
+    where: 's.instrumental >= 0.7',
+    sort: 'harmonic',
+    targetSize: 40,
+    maxPerArtist: 2,
+  },
+  {
+    slug: 'feel-good',
+    name: 'Feel Good',
+    description: 'Upbeat, danceable tracks riding an energy arc.',
+    palette: { from: '#f953c6', to: '#ffcc33' },
+    where: 's.valence >= 0.6 AND s.danceability >= 0.55',
+    sort: 'energy-arc',
+    targetSize: 40,
+    maxPerArtist: 2,
+  },
+  {
+    slug: 'late-night-unwind',
+    name: 'Late Night Unwind',
+    description: 'Low-energy, relaxed moods drifting downward.',
+    palette: { from: '#232526', to: '#414345' },
+    where: "s.energy <= 0.35 AND (s.mood IN ('relaxed', 'sad') OR s.mood IS NULL)",
+    sort: 'energy-arc',
     targetSize: 40,
     maxPerArtist: 2,
   },
@@ -122,10 +166,28 @@ export function orderTracks<T extends OrderableRow>(rows: readonly T[], sort: Pl
       return [...rows].sort((a, b) => (b.addedAt ?? 0) - (a.addedAt ?? 0));
     case 'harmonic':
       return harmonicChain(rows);
+    case 'energy-arc':
+      return energyArc(rows);
     case 'shuffle':
     default:
       return [...rows];
   }
+}
+
+/**
+ * Ramp-up → peak → ramp-down ordering over the `energy` column: sort ascending,
+ * then deal alternately onto the front half (ascending) and the back half
+ * (later reversed → descending), so the most energetic tracks land mid-set.
+ * Tracks without energy sort lowest and therefore sit at the set's edges.
+ * Pure; always returns every input row.
+ */
+function energyArc<T extends OrderableRow>(rows: readonly T[]): T[] {
+  const asc = [...rows].sort((a, b) => (a.energy ?? -1) - (b.energy ?? -1));
+  const up: T[] = [];
+  const down: T[] = [];
+  asc.forEach((row, i) => (i % 2 === 0 ? up : down).push(row));
+  down.reverse();
+  return [...up, ...down];
 }
 
 /**
@@ -152,7 +214,13 @@ function harmonicChain<T extends OrderableRow>(rows: readonly T[]): T[] {
         prev.bpm && cand.bpm && prev.bpm > 0
           ? Math.max(0, 1 - Math.abs(prev.bpm - cand.bpm) / prev.bpm)
           : 0;
-      const score = compat * 2 + bpmClose;
+      // Energy closeness in [0,1]; 0-neutral when either side lacks energy so
+      // un-analyzed libraries chain exactly as before.
+      const energyClose =
+        prev.energy !== undefined && cand.energy !== undefined
+          ? Math.max(0, 1 - Math.abs(prev.energy - cand.energy))
+          : 0;
+      const score = compat * 2 + bpmClose + energyClose * 0.5;
       if (score > bestScore) {
         bestScore = score;
         bestIdx = i;
@@ -211,12 +279,19 @@ export function seedCentroid(rows: readonly OrderableRow[]): SongFeatures | null
     }
     return best;
   };
+  const meanOf = (pick: (r: OrderableRow) => number | undefined): number | undefined =>
+    mean(rows.map(pick).filter((v): v is number => typeof v === 'number'));
   return {
-    bpm: mean(rows.map((r) => r.bpm).filter((v): v is number => typeof v === 'number')),
-    year: mean(rows.map((r) => r.year).filter((v): v is number => typeof v === 'number')),
+    bpm: meanOf((r) => r.bpm),
+    year: meanOf((r) => r.year),
     duration: mean(rows.map((r) => r.duration).filter((v) => v > 0)) ?? 0,
     genre: mode(rows.map((r) => r.genre)),
     key: mode(rows.map((r) => r.key)),
+    energy: meanOf((r) => r.energy),
+    valence: meanOf((r) => r.valence),
+    danceability: meanOf((r) => r.danceability),
+    instrumental: meanOf((r) => r.instrumental),
+    acousticness: meanOf((r) => r.acousticness),
     artistId: '',
   };
 }

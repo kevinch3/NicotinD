@@ -473,6 +473,26 @@ export function applySchema(db: Database): void {
   } catch {
     // Column already exists — ignore
   }
+  // Perceptual audio features. energy/loudness come from ffmpeg ebur128 (works
+  // without the analysis sidecar); danceability/valence/acousticness/instrumental/
+  // mood come from the Essentia analysis sidecar. Same additive contract as
+  // bpm/key: read from file tags at scan time, filled by windowed enrichment,
+  // COALESCE-preserved on rescan.
+  for (const col of [
+    'energy REAL',
+    'loudness REAL',
+    'danceability REAL',
+    'valence REAL',
+    'acousticness REAL',
+    'instrumental REAL',
+    'mood TEXT',
+  ]) {
+    try {
+      db.run(`ALTER TABLE library_songs ADD COLUMN ${col}`);
+    } catch {
+      // Column already exists — ignore
+    }
+  }
   // Album-level artist (e.g. "Various Artists" on compilations) vs track-level
   // artist. Existing rows backfill from the current artist column.
   try {
@@ -492,6 +512,21 @@ export function applySchema(db: Database): void {
   db.run(`CREATE INDEX IF NOT EXISTS idx_library_songs_path ON library_songs(path)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_library_songs_genre ON library_songs(genre)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_library_songs_hidden ON library_songs(hidden)`);
+
+  // Cached audio embeddings from the analysis sidecar. The embedding is the
+  // expensive artifact — computed once per (song, model), reused for classifier
+  // heads and future similarity search. Keyed (song_id, model) so a second
+  // embedding model can coexist later. Survives rescans (path-derived song ids).
+  db.run(`
+    CREATE TABLE IF NOT EXISTS library_embeddings (
+      song_id    TEXT NOT NULL,
+      model      TEXT NOT NULL,
+      dim        INTEGER NOT NULL,
+      vec        BLOB NOT NULL,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY (song_id, model)
+    )
+  `);
 
   db.run(`
     CREATE TABLE IF NOT EXISTS library_artists (
