@@ -22,33 +22,35 @@
               rounded="rounded-full"
             />
             @if (auth.role() === 'admin') {
-              <app-menu-panel align="start" panelTestId="artist-image-menu">
-                <button menuTrigger type="button" data-testid="artist-image-edit"
-                  [disabled]="imageBusy()"
-                  aria-label="Change artist image" title="Change artist image"
-                  class="absolute bottom-0 right-0 w-7 h-7 flex items-center justify-center rounded-full bg-theme-inverse text-theme-inverse shadow-lg ring-2 ring-theme-bg hover:opacity-90 transition disabled:opacity-50">
-                  @if (imageBusy()) {
-                    <span class="inline-block w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin"></span>
-                  } @else {
-                    <app-icon name="edit" />
-                  }
-                </button>
-                <div menuPanel class="w-52 p-1.5 rounded-lg bg-theme-surface border border-theme shadow-xl flex flex-col">
-                  <button type="button" data-testid="artist-image-upload" (click)="triggerImageUpload()"
-                    class="text-left px-3 py-2 text-sm rounded-md text-theme-secondary hover:bg-theme-surface-2 transition">
-                    Upload image…
+              <div class="absolute bottom-0 right-0">
+                <app-menu-panel align="start" panelTestId="artist-image-menu">
+                  <button menuTrigger type="button" data-testid="artist-image-edit"
+                    [disabled]="imageBusy()"
+                    aria-label="Change artist image" title="Change artist image"
+                    class="w-7 h-7 flex items-center justify-center rounded-full bg-theme-inverse text-theme-inverse shadow-lg ring-2 ring-theme-bg hover:opacity-90 transition disabled:opacity-50">
+                    @if (imageBusy()) {
+                      <span class="inline-block w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin"></span>
+                    } @else {
+                      <app-icon name="edit" />
+                    }
                   </button>
-                  <button type="button" data-testid="artist-image-from-album" (click)="openAlbumPicker()"
-                    [disabled]="pickableAlbums().length === 0"
-                    class="text-left px-3 py-2 text-sm rounded-md text-theme-secondary hover:bg-theme-surface-2 transition disabled:opacity-40">
-                    Choose from album…
-                  </button>
-                  <button type="button" data-testid="artist-image-reset" (click)="resetImage()"
-                    class="text-left px-3 py-2 text-sm rounded-md text-theme-secondary hover:bg-theme-surface-2 transition">
-                    Reset to default
-                  </button>
-                </div>
-              </app-menu-panel>
+                  <div menuPanel class="w-52 p-1.5 rounded-lg bg-theme-surface border border-theme shadow-xl flex flex-col">
+                    <button type="button" data-testid="artist-image-upload" (click)="triggerImageUpload()"
+                      class="text-left px-3 py-2 text-sm rounded-md text-theme-secondary hover:bg-theme-surface-2 transition">
+                      Upload image…
+                    </button>
+                    <button type="button" data-testid="artist-image-from-album" (click)="openAlbumPicker()"
+                      [disabled]="pickableAlbums().length === 0"
+                      class="text-left px-3 py-2 text-sm rounded-md text-theme-secondary hover:bg-theme-surface-2 transition disabled:opacity-40">
+                      Choose from album…
+                    </button>
+                    <button type="button" data-testid="artist-image-reset" (click)="resetImage()"
+                      class="text-left px-3 py-2 text-sm rounded-md text-theme-secondary hover:bg-theme-surface-2 transition">
+                      Reset to default
+                    </button>
+                  </div>
+                </app-menu-panel>
+              </div>
               <input #imageFileInput type="file" accept="image/jpeg,image/png,image/webp" class="hidden"
                 data-testid="artist-image-file" (change)="onImageFileSelected($event)" />
             }
