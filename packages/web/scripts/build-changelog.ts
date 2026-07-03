@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 
 const ROOT = resolve(import.meta.dir, '../../..');
@@ -55,9 +55,16 @@ function parseChangelog(md: string): ChangelogEntry[] {
 }
 
 function main() {
+  mkdirSync(dirname(OUT), { recursive: true });
+
+  if (!existsSync(SOURCE)) {
+    writeFileSync(OUT, '[]\n', 'utf8');
+    console.log('changelog.json: CHANGELOG.md not found, wrote empty array');
+    return;
+  }
+
   const md = readFileSync(SOURCE, 'utf8');
   const entries = parseChangelog(md).slice(0, MAX_VERSIONS);
-  mkdirSync(dirname(OUT), { recursive: true });
   writeFileSync(OUT, JSON.stringify(entries, null, 2) + '\n', 'utf8');
   console.log(`changelog.json: ${entries.length} versions written`);
 }

@@ -124,6 +124,7 @@ One-line index; **full detail for every entry is in [docs/design-patterns.md](do
 - **Remote playback (cast, Spotify-Connect-style)**: per-user `PlaybackStateManager` broadcasts state/commands over `GET /api/ws/playback`; each browser tab is a device. → [docs/remote-playback.md](docs/remote-playback.md)
 - **Service modes**: `embedded` (spawn slskd as child process) or `external`; the library/streaming stack is in-process. → [docs/design-patterns.md](docs/design-patterns.md)
 - **Auth flow**: NicotinD issues its own JWTs (30-day sliding sessions, silent refresh on boot); share tokens are short-lived, read-only, non-refreshable. → [docs/design-patterns.md](docs/design-patterns.md)
+- **OAuth authentication (planned)**: Google + Microsoft login as `auth` kind plugins with `oauth` capability; auto-creates users by email (no validation); dev bypass provider gated by `OAUTH_DEV_BYPASS` env var. → [docs/oauth-auth.md](docs/oauth-auth.md)
 - **Release-type model (singles & EPs)**: every album carries a `classification`, set metadata-first (Lidarr/MusicBrainz) with a track-count heuristic fallback. → [docs/download-pipeline.md](docs/download-pipeline.md)
 - **Native playlists (per-user)**: `playlists`/`playlist_songs` + `PlaylistService`, private per user, with sharing + server-side OG/Twitter link previews. → [docs/web-ui.md](docs/web-ui.md)
 - **Curated playlists (system, global)**: gradient-covered Spotify-style shelves shown to all users; read-only by `kind` (not ownership). → [docs/curated-playlists.md](docs/curated-playlists.md)
@@ -147,7 +148,7 @@ One-line index; **full detail for every entry is in [docs/design-patterns.md](do
 - **Download list metadata**: `GET /api/downloads` annotates in-flight folders matching `album_jobs` with album-job info. → [docs/download-pipeline.md](docs/download-pipeline.md)
 - **Unified downloads feed**: slskd groups + URL acquire jobs both adapt into a normalized `DownloadItem` with method/stage badges. → [docs/download-pipeline.md](docs/download-pipeline.md)
 - **Acquisition provenance (how/where/when)**: the `acquisitions` side-table records method/source/time at download time; surfaced per track. → [docs/download-pipeline.md](docs/download-pipeline.md)
-- **Plugin architecture (acquisition as opt-in plugins)**: kind-agnostic kernel + `PluginRegistry`; acquisition is default-off; plugins = slskd/yt-dlp/spotdl/archive/spotify/lrclib. → [docs/plugins.md](docs/plugins.md)
+- **Plugin architecture (acquisition as opt-in plugins)**: kind-agnostic kernel + `PluginRegistry`; acquisition is default-off; plugins = slskd/yt-dlp/spotdl/archive/spotify/lrclib; `auth` kind planned for OAuth. → [docs/plugins.md](docs/plugins.md)
 - **Changelog modal**: build-time `CHANGELOG.md` → `changelog.json` (capped at 50 versions); version string in header/settings is clickable → [docs/web-ui.md](docs/web-ui.md)
 
 ## Web UI
