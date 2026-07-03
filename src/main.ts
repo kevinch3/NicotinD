@@ -250,6 +250,9 @@ function loadConfig() {
       ...(process.env.NICOTIND_AUTO_RETRY_ENABLED
         ? { autoRetryEnabled: parseBooleanEnv(process.env.NICOTIND_AUTO_RETRY_ENABLED) }
         : {}),
+      ...(process.env.NICOTIND_AUTO_ACQUIRE_ENABLED
+        ? { autoAcquireEnabled: parseBooleanEnv(process.env.NICOTIND_AUTO_ACQUIRE_ENABLED) }
+        : {}),
       ...(process.env.NICOTIND_RETRY_MAX_ATTEMPTS
         ? { retryMaxAttempts: Number(process.env.NICOTIND_RETRY_MAX_ATTEMPTS) }
         : {}),

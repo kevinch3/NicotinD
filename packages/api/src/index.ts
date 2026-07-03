@@ -55,6 +55,7 @@ import { CatalogService } from './services/catalog-search.service.js';
 import { SingleEnrichmentService } from './services/single-enrichment.service.js';
 import { AlbumHunterService } from './services/album-hunter.service.js';
 import { WatchlistService } from './services/watchlist.service.js';
+import { AutoAcquireService } from './services/auto-acquire.service.js';
 import { DownloadWatcher } from './services/download-watcher.js';
 import { DownloadRetryService } from './services/download-retry.service.js';
 import { AlbumFallbackService } from './services/album-fallback.service.js';
@@ -587,6 +588,23 @@ export function createApp({
     });
     app.route('/api/watchlist', watchlistRoutes(watchlistSvc));
     watchlistSvc.start();
+
+    // Native auto-acquisition loop (opt-in): sweeps Lidarr's wanted/missing list
+    // and auto-acquires each album through the same shared core as the watchlist
+    // poller. Off by default — it initiates downloads unattended.
+    if (config.downloads.autoAcquireEnabled) {
+      const autoAcquireSvc = new AutoAcquireService({
+        db,
+        hunter: hunterSvc,
+        lidarr,
+        slskdRef,
+        intervalMs: config.downloads.autoAcquireIntervalMs,
+        maxPerSweep: config.downloads.autoAcquireMaxPerSweep,
+        minMatchPct: config.watchlist.minMatchPct,
+        isAcquisitionEnabled: () => plugins.hasCapability('download'),
+      });
+      autoAcquireSvc.start();
+    }
   }
 
   // URL-based acquisition (yt-dlp / spotdl). The watcher routes each URL to an
@@ -623,4 +641,5 @@ export function createApp({
 
 export { DownloadWatcher } from './services/download-watcher.js';
 export { DownloadRetryService } from './services/download-retry.service.js';
+export { AutoAcquireService } from './services/auto-acquire.service.js';
 export { initDatabase, getDatabase } from './db.js';

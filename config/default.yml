@@ -16,6 +16,13 @@ downloads:
     enabled: true
     format: opus
     bitRate: 192
+  # Native auto-acquisition loop: a background poller over Lidarr's wanted/missing
+  # list that auto-hunts + downloads monitored albums Lidarr lacks, through the
+  # same engine as the interactive hunt. Off by default — it initiates downloads
+  # unattended. See docs/auto-acquisition-plan.md.
+  autoAcquireEnabled: false
+  autoAcquireIntervalMs: 3600000 # sweep Lidarr's missing list hourly
+  autoAcquireMaxPerSweep: 3 # cap so a large missing list never floods slskd
 
 soulseek:
   username: ''
