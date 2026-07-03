@@ -29,6 +29,9 @@
                   <th class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-zinc-500">User</th>
                   <th class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-zinc-500">Role</th>
                   <th class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-zinc-500">Status</th>
+                  <th class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-zinc-500 hidden sm:table-cell">Online</th>
+                  <th class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-zinc-500 hidden sm:table-cell">Devices</th>
+                  <th class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-zinc-500 hidden sm:table-cell">Sessions</th>
                   <th class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-zinc-500 hidden sm:table-cell">Joined</th>
                   <th class="text-right px-4 py-3 text-xs font-semibold uppercase tracking-wider text-zinc-500">Actions</th>
                 </tr>
@@ -50,6 +53,16 @@
                         <span [class]="'w-1.5 h-1.5 rounded-full ' + (user.status === 'active' ? 'bg-emerald-500' : 'bg-red-500')"></span>
                         {{ user.status }}
                       </span>
+                    </td>
+                    <td class="px-4 py-3 hidden sm:table-cell">
+                      <span [class]="'inline-block w-1.5 h-1.5 rounded-full ' + (user.isConnected ? 'bg-emerald-500' : 'bg-zinc-600')"
+                        [title]="user.isConnected ? 'Online' : 'Offline'"></span>
+                    </td>
+                    <td class="px-4 py-3 text-zinc-400 text-xs hidden sm:table-cell">
+                      {{ user.amountOfDevices }}
+                    </td>
+                    <td class="px-4 py-3 text-zinc-400 text-xs hidden sm:table-cell">
+                      {{ user.amountOfSessions }}
                     </td>
                     <td class="px-4 py-3 text-zinc-500 text-xs hidden sm:table-cell">
                       {{ formatDate(user.created_at) }}

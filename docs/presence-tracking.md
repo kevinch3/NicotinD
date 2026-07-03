@@ -93,13 +93,12 @@ Users with no active sessions get `isConnected: false, amountOfDevices: 0, amoun
 
 ### `PresenceService` (`packages/web/src/app/services/presence.service.ts`)
 
-Angular injectable service:
+Angular injectable service (owns lifecycle only — the actual HTTP call lives on `SystemApiService.postHeartbeat()`, per this repo's per-domain `services/api/*` convention):
 
-- On app init, if `auth.isAuthenticated()`: start a 60s `setInterval` that calls `POST /api/presence/heartbeat` with `{ deviceId, tabId }`.
-- `deviceId` is read from existing `localStorage.getItem('nicotind_device_id')` — same device identity as the playback WS, which is correct (same physical device).
-- `tabId` is generated once per tab in `sessionStorage` via `crypto.randomUUID()` (with the same fallback as `PlaybackWsService`).
-- Fires an immediate heartbeat on start (don't wait 60s for first report).
-- Stops the interval on `auth.logout()`.
+- `initialize()` is called once from the root `App` constructor (same pattern as `RemotePlaybackService.initialize()`). It runs an `effect(() => …)` on `auth.token()`: while authenticated, fire an immediate heartbeat then start a 60s `setInterval`; when the token clears (logout / 401), the interval is cleared.
+- `deviceId` is read from `PlaybackWsService.getDeviceId()` (which persists `nicotind_device_id` in `localStorage`) — same device identity as the playback WS, which is correct (same physical device).
+- `tabId` is generated once per tab in `sessionStorage` under the key `nicotind_tab_id` via `crypto.randomUUID()` (with the same fallback as `PlaybackWsService`).
+- Heartbeat errors are swallowed (best-effort); the auth interceptor already handles 401/403 logout.
 
 ### Types (`packages/web/src/app/services/api/api-types.ts`)
 
@@ -162,7 +161,9 @@ The existing playback WS (`GET /api/ws/playback`) only connects when remote play
 
 | File | Role |
 |------|------|
-| `packages/web/src/app/services/presence.service.ts` | Heartbeat interval, deviceId/tabId management |
+| `packages/web/src/app/services/presence.service.ts` | Heartbeat interval (token-gated `effect`), deviceId/tabId management |
+| `packages/web/src/app/services/api/system-api.service.ts` | `postHeartbeat()` → `POST /api/presence/heartbeat` |
+| `packages/web/src/app/app.ts` | Calls `presence.initialize()` once at bootstrap |
 | `packages/web/src/app/services/api/api-types.ts` | `AdminUser` type with presence fields |
 | `packages/web/src/app/pages/admin/admin.component.ts` | Reads enriched user data |
 | `packages/web/src/app/pages/admin/admin.component.html` | Online / Devices / Sessions columns |

@@ -18,6 +18,7 @@ import { streamingRoutes } from './routes/streaming.js';
 import { systemRoutes } from './routes/system.js';
 import { settingsRoutes } from './routes/settings.js';
 import { adminRoutes } from './routes/admin.js';
+import { presenceRoutes } from './routes/presence.js';
 import { usersRoutes } from './routes/users.js';
 import { shareRoutes } from './routes/share.js';
 import { shareMetaHandler } from './routes/share-meta.js';
@@ -429,6 +430,7 @@ export function createApp({
   app.use('/api/system/*', auth);
   app.use('/api/settings/*', auth);
   app.use('/api/admin/*', auth);
+  app.use('/api/presence/*', auth);
   app.use('/api/users/*', auth);
   app.use('/api/ws/*', auth);
   app.use('/api/discography/*', auth);
@@ -462,6 +464,7 @@ export function createApp({
       processing: processingRef.current,
     }),
   );
+  app.route('/api/presence', presenceRoutes());
   app.route('/api/downloads', downloadRoutes(registry, slskdRef));
   app.route('/api/uploads', uploadRoutes(slskdRef));
   app.route(

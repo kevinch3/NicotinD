@@ -120,6 +120,11 @@ export class SystemApiService {
     return this.http.post<SetupResult>('/api/setup/complete', data);
   }
 
+  // Presence — best-effort heartbeat so admins can see who is active (see PresenceService).
+  postHeartbeat(deviceId: string, tabId: string) {
+    return this.http.post<void>('/api/presence/heartbeat', { deviceId, tabId });
+  }
+
   // Admin
   getUsers() {
     return this.http.get<AdminUser[]>('/api/admin/users');
