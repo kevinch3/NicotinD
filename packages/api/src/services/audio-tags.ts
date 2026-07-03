@@ -31,6 +31,20 @@ export interface AudioTags {
   key?: string;
   /** Plain-text lyrics (ID3 USLT / Vorbis `LYRICS`). Written by on-demand lyrics fetch/edit. */
   lyrics?: string;
+  /** Perceived energy 0..1 (TXXX/Vorbis `ENERGY`). Derived from ffmpeg ebur128 loudness. */
+  energy?: number;
+  /** Integrated loudness in LUFS (TXXX/Vorbis `LOUDNESS_LUFS`). From ffmpeg ebur128. */
+  loudness?: number;
+  /** Musical positivity 0..1 (TXXX/Vorbis `VALENCE`). From the analysis sidecar. */
+  valence?: number;
+  /** Danceability 0..1 (TXXX/Vorbis `DANCEABILITY`). From the analysis sidecar. */
+  danceability?: number;
+  /** Acoustic (vs produced/electronic) confidence 0..1 (TXXX/Vorbis `ACOUSTICNESS`). */
+  acousticness?: number;
+  /** Probability the track is instrumental 0..1 (TXXX/Vorbis `INSTRUMENTALNESS`). */
+  instrumental?: number;
+  /** Dominant mood label (TXXX/Vorbis `MOOD`), from MOOD_VOCAB. */
+  mood?: string;
   compilation?: boolean;
   /** AcoustID track UUID. Doubles as a "we've already fingerprinted this" marker. */
   acoustIdId?: string;
@@ -58,11 +72,13 @@ type MusicMetadataApi = {
       track?: { no?: number | null };
       year?: number;
       key?: string;
+      mood?: string;
       acoustid_id?: string;
       musicbrainz_recordingid?: string;
       musicbrainz_albumid?: string;
       lyrics?: Array<string | { text?: string }> | string;
     };
+    native?: NativeTagMap;
   }>;
 };
 
@@ -71,6 +87,110 @@ type MusicMetadataApi = {
 const TXXX_ACOUSTID = 'Acoustid Id';
 const TXXX_MB_RECORDING = 'MusicBrainz Track Id';
 const TXXX_MB_RELEASE = 'MusicBrainz Album Id';
+
+/** Closed mood vocabulary — argmax over the sidecar's mood heads. */
+export const MOOD_VOCAB = ['happy', 'sad', 'aggressive', 'relaxed', 'party'] as const;
+export type MoodLabel = (typeof MOOD_VOCAB)[number];
+
+// Tag keys for the perceptual features. Used verbatim as Vorbis comment names
+// and as ID3 TXXX descriptions (no cross-tool standard exists for these except
+// MOOD, which music-metadata maps to common.mood).
+export const FEATURE_TAG_KEYS = {
+  energy: 'ENERGY',
+  loudness: 'LOUDNESS_LUFS',
+  valence: 'VALENCE',
+  danceability: 'DANCEABILITY',
+  acousticness: 'ACOUSTICNESS',
+  instrumental: 'INSTRUMENTALNESS',
+  mood: 'MOOD',
+} as const;
+
+/** The perceptual-feature subset of AudioTags, parsed from file tags. */
+export interface FeatureTags {
+  energy?: number;
+  loudness?: number;
+  valence?: number;
+  danceability?: number;
+  acousticness?: number;
+  instrumental?: number;
+  mood?: string;
+}
+
+type NativeTagMap = Record<string, Array<{ id: string; value: unknown }>>;
+
+type NumericFeatureField = Exclude<keyof FeatureTags, 'mood'>;
+
+function numericFeatureEntries(): Array<[NumericFeatureField, string]> {
+  return [
+    ['energy', FEATURE_TAG_KEYS.energy],
+    ['loudness', FEATURE_TAG_KEYS.loudness],
+    ['valence', FEATURE_TAG_KEYS.valence],
+    ['danceability', FEATURE_TAG_KEYS.danceability],
+    ['acousticness', FEATURE_TAG_KEYS.acousticness],
+    ['instrumental', FEATURE_TAG_KEYS.instrumental],
+  ];
+}
+
+/** 0..1 scores get 3 decimals; loudness keeps 1 decimal (LUFS). */
+function formatFeature(field: NumericFeatureField, value: number): string {
+  return field === 'loudness' ? value.toFixed(1) : value.toFixed(3);
+}
+
+/** Parse a 0..1 score; rejects non-finite, clamps into range. */
+function parseUnit(v: unknown): number | undefined {
+  const n = typeof v === 'number' ? v : typeof v === 'string' ? Number.parseFloat(v) : NaN;
+  if (!Number.isFinite(n)) return undefined;
+  return Math.min(1, Math.max(0, n));
+}
+
+/** Parse an integrated-LUFS value; sane range for music is ~[-70, 5]. */
+function parseLufs(v: unknown): number | undefined {
+  const n = typeof v === 'number' ? v : typeof v === 'string' ? Number.parseFloat(v) : NaN;
+  if (!Number.isFinite(n)) return undefined;
+  if (n < -70 || n > 5) return undefined;
+  return n;
+}
+
+function parseMood(v: unknown): string | undefined {
+  const s = pickString(typeof v === 'string' ? v.toLowerCase() : undefined);
+  return s && (MOOD_VOCAB as readonly string[]).includes(s) ? s : undefined;
+}
+
+/** Case-insensitive lookup of one key across every native tag format block. */
+function readNativeValue(native: NativeTagMap | undefined, key: string): unknown {
+  if (!native) return undefined;
+  const wanted = key.toLowerCase();
+  for (const frames of Object.values(native)) {
+    if (!Array.isArray(frames)) continue;
+    for (const frame of frames) {
+      const id = frame?.id?.toLowerCase();
+      // ID3 native frames surface TXXX as "TXXX:DESCRIPTION".
+      if (id === wanted || id === `txxx:${wanted}`) return frame.value;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Parse the perceptual-feature tags from a music-metadata parse result.
+ * Shared by readAudioTags and the library scanner so tagged files are dense
+ * from the very first scan. Pure; tolerates missing/garbage values.
+ */
+export function featureTagsFromNative(
+  native: NativeTagMap | undefined,
+  commonMood?: string,
+): FeatureTags {
+  const out: FeatureTags = {
+    energy: parseUnit(readNativeValue(native, FEATURE_TAG_KEYS.energy)),
+    loudness: parseLufs(readNativeValue(native, FEATURE_TAG_KEYS.loudness)),
+    valence: parseUnit(readNativeValue(native, FEATURE_TAG_KEYS.valence)),
+    danceability: parseUnit(readNativeValue(native, FEATURE_TAG_KEYS.danceability)),
+    acousticness: parseUnit(readNativeValue(native, FEATURE_TAG_KEYS.acousticness)),
+    instrumental: parseUnit(readNativeValue(native, FEATURE_TAG_KEYS.instrumental)),
+    mood: parseMood(commonMood) ?? parseMood(readNativeValue(native, FEATURE_TAG_KEYS.mood)),
+  };
+  return out;
+}
 
 function readUserText(raw: Record<string, unknown>, description: string): string | undefined {
   const list = raw.userDefinedText as NodeId3UserText[] | undefined;
@@ -162,6 +282,13 @@ export async function readAudioTags(filepath: string): Promise<AudioTags> {
         key: pickString(d.initialKey),
         compilation: d.TCMP === '1' || d.compilation === '1',
         lyrics: readId3Lyrics(d),
+        energy: parseUnit(readUserText(d, FEATURE_TAG_KEYS.energy)),
+        loudness: parseLufs(readUserText(d, FEATURE_TAG_KEYS.loudness)),
+        valence: parseUnit(readUserText(d, FEATURE_TAG_KEYS.valence)),
+        danceability: parseUnit(readUserText(d, FEATURE_TAG_KEYS.danceability)),
+        acousticness: parseUnit(readUserText(d, FEATURE_TAG_KEYS.acousticness)),
+        instrumental: parseUnit(readUserText(d, FEATURE_TAG_KEYS.instrumental)),
+        mood: parseMood(readUserText(d, FEATURE_TAG_KEYS.mood)),
         acoustIdId: readUserText(d, TXXX_ACOUSTID),
         mbRecordingId: readUserText(d, TXXX_MB_RECORDING),
         mbReleaseId: readUserText(d, TXXX_MB_RELEASE),
@@ -185,6 +312,7 @@ export async function readAudioTags(filepath: string): Promise<AudioTags> {
         year: c.year,
         key: pickString(c.key),
         lyrics: readVorbisLyrics(c.lyrics),
+        ...featureTagsFromNative(parsed.native, c.mood),
         acoustIdId: pickString(c.acoustid_id),
         mbRecordingId: pickString(c.musicbrainz_recordingid),
         mbReleaseId: pickString(c.musicbrainz_albumid),
@@ -221,6 +349,11 @@ async function writeId3Tags(filepath: string, tags: AudioTags): Promise<boolean>
   if (tags.compilation) update.TCMP = '1';
 
   const userText: NodeId3UserText[] = [];
+  for (const [field, key] of numericFeatureEntries()) {
+    const v = tags[field];
+    if (v !== undefined) userText.push({ description: key, value: formatFeature(field, v) });
+  }
+  if (tags.mood !== undefined) userText.push({ description: FEATURE_TAG_KEYS.mood, value: tags.mood });
   if (tags.acoustIdId) userText.push({ description: TXXX_ACOUSTID, value: tags.acoustIdId });
   if (tags.mbRecordingId)
     userText.push({ description: TXXX_MB_RECORDING, value: tags.mbRecordingId });
@@ -236,8 +369,20 @@ async function writeId3Tags(filepath: string, tags: AudioTags): Promise<boolean>
   }
 }
 
+// ffmpeg muxer per extension. The tmp output ends in `.nicotind.tmp`, so the
+// muxer CANNOT be inferred from the filename — without an explicit `-f`,
+// EVERY Vorbis-family tag write fails ("Unable to choose an output format").
+const FFMPEG_MUXERS: Record<string, string> = {
+  '.flac': 'flac',
+  '.ogg': 'ogg',
+  '.opus': 'opus',
+  '.m4a': 'ipod',
+};
+
 function writeFfmpegTags(filepath: string, tags: AudioTags): Promise<boolean> {
   const tmpPath = filepath + '.nicotind.tmp';
+  const muxer = FFMPEG_MUXERS[extname(filepath).toLowerCase()];
+  if (!muxer) return Promise.resolve(false);
   const metaArgs: string[] = [];
   if (tags.album !== undefined) metaArgs.push('-metadata', `ALBUM=${tags.album}`);
   if (tags.albumArtist !== undefined) metaArgs.push('-metadata', `ALBUMARTIST=${tags.albumArtist}`);
@@ -249,13 +394,31 @@ function writeFfmpegTags(filepath: string, tags: AudioTags): Promise<boolean> {
   if (tags.bpm !== undefined) metaArgs.push('-metadata', `BPM=${tags.bpm}`);
   if (tags.key !== undefined) metaArgs.push('-metadata', `KEY=${tags.key}`);
   if (tags.lyrics !== undefined) metaArgs.push('-metadata', `LYRICS=${tags.lyrics}`);
+  for (const [field, key] of numericFeatureEntries()) {
+    const v = tags[field];
+    if (v !== undefined) metaArgs.push('-metadata', `${key}=${formatFeature(field, v)}`);
+  }
+  if (tags.mood !== undefined)
+    metaArgs.push('-metadata', `${FEATURE_TAG_KEYS.mood}=${tags.mood}`);
   if (tags.compilation) metaArgs.push('-metadata', 'COMPILATION=1');
   if (tags.acoustIdId) metaArgs.push('-metadata', `ACOUSTID_ID=${tags.acoustIdId}`);
   if (tags.mbRecordingId) metaArgs.push('-metadata', `MUSICBRAINZ_TRACKID=${tags.mbRecordingId}`);
   if (tags.mbReleaseId) metaArgs.push('-metadata', `MUSICBRAINZ_ALBUMID=${tags.mbReleaseId}`);
   if (metaArgs.length === 0) return Promise.resolve(true);
 
-  const args = ['-y', '-i', filepath, '-map_metadata', '0', ...metaArgs, '-c', 'copy', tmpPath];
+  const args = [
+    '-y',
+    '-i',
+    filepath,
+    '-map_metadata',
+    '0',
+    ...metaArgs,
+    '-c',
+    'copy',
+    '-f',
+    muxer,
+    tmpPath,
+  ];
   return new Promise<boolean>((resolve) => {
     const proc = spawn('ffmpeg', args, { stdio: 'ignore' });
     proc.on('error', () => {

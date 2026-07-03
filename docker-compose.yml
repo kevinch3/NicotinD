@@ -20,6 +20,7 @@ services:
       SLSKD_PASSWORD: slskd
       NICOTIND_LIDARR_URL: http://lidarr:8686
       LIDARR_API_KEY: nicotind-lidarr-internal
+      NICOTIND_ANALYSIS_URL: http://analysis:8000
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8484/api/health"]
       interval: 15s
@@ -64,6 +65,29 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - internal
+    restart: unless-stopped
+
+  # Audio-analysis sidecar (Essentia embeddings + tagging heads). The API has NO
+  # depends_on for it — everything degrades gracefully when the sidecar is down;
+  # only the audio-features enrichment task pauses.
+  analysis:
+    build: packages/analysis
+    user: "1000:1000"
+    volumes:
+      - music:/data/music:ro
+    environment:
+      MUSIC_DIR: /data/music
+    # GPU upgrade path (also needs a GPU libtensorflow in the image — see
+    # docs/audio-ml-enrichment.md):
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
     networks:
       - internal
     restart: unless-stopped

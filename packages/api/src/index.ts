@@ -59,6 +59,7 @@ import { DownloadWatcher } from './services/download-watcher.js';
 import { DownloadRetryService } from './services/download-retry.service.js';
 import { AlbumFallbackService } from './services/album-fallback.service.js';
 import { LibraryProcessingService } from './services/library-processing.service.js';
+import { AudioFeaturesClient } from './services/audio-features-client.js';
 import { ProviderRegistry } from './services/provider-registry.js';
 import { LibrarySearchProvider } from './services/providers/library-provider.js';
 import { LibraryScanner } from './services/library-scanner.js';
@@ -302,8 +303,15 @@ export function createApp({
     lookup: null,
   };
 
+  // Analysis-sidecar client for the audio-features enrichment task; null when
+  // no sidecar is configured (the task then reports itself unavailable).
+  const audioFeaturesClient = config.analysis.url
+    ? new AudioFeaturesClient({ baseUrl: config.analysis.url })
+    : null;
+
   // Windowed library-processing scheduler — runs enrichment tasks (BPM, genre,
-  // key, artist images) over the library, only inside the configured daily window.
+  // key, energy, audio features, artist images) over the library, only inside
+  // the configured daily window.
   const processingRef: ProcessingRef = {
     current: new LibraryProcessingService({
       db,
@@ -312,6 +320,7 @@ export function createApp({
       dataDir: expandedDataDir,
       lookupArtistImageSpotify: (name) =>
         spotifyArtistImageRef.lookup?.(name) ?? Promise.resolve(null),
+      audioFeaturesClient,
     }),
   };
 
