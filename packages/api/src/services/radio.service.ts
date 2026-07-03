@@ -7,6 +7,13 @@ export interface SongFeatures {
   duration: number;
   year?: number;
   artistId: string;
+  /** Perceptual features (0..1), filled by the enrichment tasks. Optional —
+   *  scoring treats a missing value on either side as contributing exactly 0. */
+  energy?: number;
+  valence?: number;
+  danceability?: number;
+  instrumental?: number;
+  acousticness?: number;
 }
 
 export interface ScoringWeights {
@@ -16,6 +23,11 @@ export interface ScoringWeights {
   year: number;
   duration: number;
   artistPenalty: number;
+  energy: number;
+  valence: number;
+  danceability: number;
+  instrumental: number;
+  acousticness: number;
 }
 
 export const DEFAULT_WEIGHTS: ScoringWeights = {
@@ -25,10 +37,25 @@ export const DEFAULT_WEIGHTS: ScoringWeights = {
   year: 2,
   duration: 1,
   artistPenalty: 8,
+  // Perceptual axes. Energy leads (it defines the "momentum" of a set);
+  // valence shapes the mood arc; the rest refine. Note: once a library is
+  // fully analyzed the max attainable score rises ~27 → ~44, which weakens
+  // artistPenalty *relatively* — revisit after the first full backfill.
+  energy: 5,
+  valence: 4,
+  danceability: 3,
+  instrumental: 3,
+  acousticness: 2,
 };
 
 function clamp01(v: number): number {
   return Math.max(0, Math.min(1, v));
+}
+
+/** 1 − |a − b| over a 0..1 domain; 0 when either side is missing. */
+function unitCloseness(a: number | undefined, b: number | undefined): number {
+  if (a === undefined || b === undefined) return 0;
+  return clamp01(1 - Math.abs(a - b));
 }
 
 export function camelotCompatibility(a: string | null, b: string | null): number {
@@ -85,6 +112,15 @@ export function scoreSimilarity(
     const ratio = Math.abs(seed.duration - candidate.duration) / seed.duration;
     score += clamp01(1 - ratio) * weights.duration;
   }
+
+  // Perceptual axes (all 0..1 domains): linear closeness when BOTH sides carry
+  // the feature; an un-analyzed side contributes exactly 0 so scores are
+  // unchanged for libraries that haven't run the enrichment yet.
+  score += unitCloseness(seed.energy, candidate.energy) * weights.energy;
+  score += unitCloseness(seed.valence, candidate.valence) * weights.valence;
+  score += unitCloseness(seed.danceability, candidate.danceability) * weights.danceability;
+  score += unitCloseness(seed.instrumental, candidate.instrumental) * weights.instrumental;
+  score += unitCloseness(seed.acousticness, candidate.acousticness) * weights.acousticness;
 
   // Same artist penalty
   if (seed.artistId === candidate.artistId) {

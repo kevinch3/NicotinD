@@ -16,6 +16,11 @@ function toOrderable(r: RadioSongRow): OrderableRow {
     key: r.key ?? undefined,
     year: r.year ?? undefined,
     duration: r.duration,
+    energy: r.energy ?? undefined,
+    valence: r.valence ?? undefined,
+    danceability: r.danceability ?? undefined,
+    instrumental: r.instrumental ?? undefined,
+    acousticness: r.acousticness ?? undefined,
     addedAt: r.created ? Date.parse(r.created) : undefined,
   };
 }
