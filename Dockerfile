@@ -16,7 +16,9 @@ COPY packages/e2e/package.json packages/e2e/
 # mobile depends on capacitor-now-playing so its manifest must be present).
 COPY packages/mobile/package.json packages/mobile/
 COPY packages/capacitor-now-playing/package.json packages/capacitor-now-playing/
-RUN bun install --frozen-lockfile
+# Skip postinstall scripts — sharp's binary download fails in this stage and
+# generate-icons is never run in Docker (outputs are committed).
+RUN bun install --frozen-lockfile --ignore-scripts
 
 COPY packages/core/ packages/core/
 COPY packages/web/ packages/web/
