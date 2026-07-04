@@ -354,6 +354,9 @@ describe('downloading album suppression', () => {
     testDb.run('DELETE FROM library_albums');
     testDb.run('DELETE FROM library_songs');
     testDb.run('DELETE FROM album_jobs');
+    // The album-group-key suppression cache is memoized per-db with a short TTL;
+    // clear it so each test sees the albums it just seeded, not a prior test's.
+    __resetDownloadSuppressionCache();
   });
 
   function seedAlbumRecord(id: string, name: string, artist: string): void {

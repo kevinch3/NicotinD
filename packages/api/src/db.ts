@@ -11,8 +11,29 @@ export function initDatabase(dataDir: string): Database {
 
   db.run('PRAGMA journal_mode=WAL');
   db.run('PRAGMA foreign_keys=ON');
+  applyPerformancePragmas(db);
   applySchema(db);
   return db;
+}
+
+/**
+ * Connection-level performance pragmas. Split out so it's directly testable and
+ * so both `initDatabase` and any auxiliary connection can share one policy.
+ *
+ * - `synchronous=NORMAL`: safe under WAL (no corruption on app crash; only a
+ *   power-loss window can lose the last commit) and much faster for the large
+ *   scan-write transaction than the default FULL.
+ * - `cache_size=-64000`: ~64 MiB page cache (negative = KiB) — keeps hot library
+ *   pages resident across listing queries.
+ * - `mmap_size`: memory-map up to 256 MiB so reads avoid syscall copies.
+ * - `busy_timeout=5000`: wait out a concurrent writer (the background scan)
+ *   instead of erroring immediately, matching the one-off scripts.
+ */
+export function applyPerformancePragmas(db: Database): void {
+  db.run('PRAGMA synchronous=NORMAL');
+  db.run('PRAGMA cache_size=-64000');
+  db.run('PRAGMA mmap_size=268435456');
+  db.run('PRAGMA busy_timeout=5000');
 }
 
 /**
@@ -431,6 +452,13 @@ export function applySchema(db: Database): void {
   db.run(`CREATE INDEX IF NOT EXISTS idx_library_albums_created ON library_albums(created DESC)`);
   db.run(
     `CREATE INDEX IF NOT EXISTS idx_library_albums_name ON library_albums(name COLLATE NOCASE)`,
+  );
+  // Composite index covering the default /albums grid: WHERE hidden = 0
+  // AND classification IN (...) ORDER BY created DESC. Lets SQLite satisfy the
+  // filter + sort from one index instead of picking a single-column index then
+  // sorting the result set.
+  db.run(
+    `CREATE INDEX IF NOT EXISTS idx_library_albums_grid ON library_albums(hidden, classification, created DESC)`,
   );
 
   db.run(`
