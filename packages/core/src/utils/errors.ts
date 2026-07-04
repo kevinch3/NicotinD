@@ -16,6 +16,13 @@ export class AuthError extends NicotinDError {
   }
 }
 
+export class ForbiddenError extends NicotinDError {
+  constructor(message = 'Forbidden') {
+    super(message, 'FORBIDDEN', 403);
+    this.name = 'ForbiddenError';
+  }
+}
+
 export class NotFoundError extends NicotinDError {
   constructor(resource: string) {
     super(`${resource} not found`, 'NOT_FOUND', 404);
