@@ -23,6 +23,9 @@ RUN bun install --frozen-lockfile --ignore-scripts
 COPY packages/core/ packages/core/
 COPY packages/web/ packages/web/
 COPY tsconfig.json ./
+# build-changelog.ts reads repo-root CHANGELOG.md → static JSON for the changelog
+# modal; without it the web build silently emits an empty changelog.
+COPY CHANGELOG.md ./
 RUN cd packages/web && bun run build
 
 # Stage 2: Production server
