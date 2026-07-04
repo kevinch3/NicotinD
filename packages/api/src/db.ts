@@ -459,6 +459,18 @@ export function applySchema(db: Database): void {
       synced_at     INTEGER NOT NULL
     )
   `);
+  // Scan cache: raw, IO-derived tags keyed by relative path. Lets a full rescan
+  // skip music-metadata parseFile() for files whose size + mtime are unchanged.
+  // Stores the *raw* ScannedTrack (not resolved values) so the resolveTags /
+  // override pipeline still runs identically — overrides survive rescans.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS scan_cache (
+      path       TEXT PRIMARY KEY,
+      size       INTEGER NOT NULL,
+      mtime_ms   REAL NOT NULL,
+      track_json TEXT NOT NULL
+    )
+  `);
   // Add bpm to existing library_songs tables (safe if it already exists). Set by
   // tag reads at scan time and by on-demand track analysis.
   try {

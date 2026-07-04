@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
+import { cpus } from 'node:os';
 import { join, relative, sep, extname } from 'node:path';
 import { readdir, stat } from 'node:fs/promises';
 import { createLogger } from '@nicotind/core';
@@ -13,8 +14,43 @@ import { selectAlbumTracks } from './library-track-select.js';
 import { loadOverrides, type MetadataOverrideValue } from './metadata-override-store.js';
 import { splitArtists, type ArtistCredit } from './artist-split.js';
 import { pruneOrphanArtist } from './library-aggregates.js';
+import {
+  partitionByCache,
+  loadScanCache,
+  saveScanCache,
+  type FileStat,
+} from './scan-cache.js';
 
 const log = createLogger('library-scanner');
+
+/**
+ * How many files to tag-parse in parallel. Tag reads are IO + CPU bound; a pool
+ * bounded to the core count keeps a large cold scan busy without starving the
+ * event loop or opening thousands of file handles at once.
+ */
+const TAG_READ_CONCURRENCY = Math.max(2, Math.min(8, cpus().length || 4));
+
+/**
+ * Run `fn` over `items` with at most `limit` in flight, preserving input order
+ * in the returned results. Pure/generic — unit-testable without the scanner.
+ */
+export async function mapPool<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (true) {
+      const idx = next++;
+      if (idx >= items.length) return;
+      results[idx] = await fn(items[idx]!);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}
 
 /** File extensions we treat as scannable audio. */
 export const AUDIO_EXTENSIONS = new Set([
@@ -608,25 +644,47 @@ export class LibraryScanner {
     return out;
   }
 
+  /**
+   * Resolve a flat list of files into scanned tracks. Files whose size + mtime
+   * match the scan cache reuse their stored raw tags (no parseFile); the rest
+   * are tag-parsed with bounded concurrency. Order is preserved (walk order) so
+   * downstream aggregation is deterministic. Newly parsed tracks are written
+   * back to the cache so the next scan skips them.
+   */
   private async readTracks(absPaths: string[]): Promise<ScannedTrack[]> {
-    const out: ScannedTrack[] = [];
+    const files: FileStat[] = [];
     for (const abs of absPaths) {
-      const track = await this.readTrack(abs);
-      if (track) out.push(track);
+      const f = await this.statFile(abs);
+      if (f) files.push(f);
     }
-    return out;
+
+    const { hits, misses } = partitionByCache(files, loadScanCache(this.db));
+    const parsed = await mapPool(misses, TAG_READ_CONCURRENCY, (f) => this.parseTrack(f));
+    if (parsed.length > 0) saveScanCache(this.db, parsed);
+
+    // Re-emit in walk order (hits + parsed merged by path) for deterministic aggregation.
+    const byPath = new Map<string, ScannedTrack>();
+    for (const t of hits) byPath.set(t.relPath, t);
+    for (const t of parsed) byPath.set(t.relPath, t);
+    return files.map((f) => byPath.get(f.relPath)).filter((t): t is ScannedTrack => t != null);
   }
 
-  private async readTrack(abs: string): Promise<ScannedTrack | null> {
+  /** Stat one file and compute its normalized relative path, or null if outside the music dir. */
+  private async statFile(abs: string): Promise<FileStat | null> {
     let relPath = relative(this.musicDir, abs);
     if (sep !== '/') relPath = relPath.split(sep).join('/');
     if (relPath.startsWith('..')) return null;
-    let st;
     try {
-      st = await stat(abs);
+      const st = await stat(abs);
+      return { abs, relPath, size: st.size, mtimeMs: st.mtimeMs };
     } catch {
       return null;
     }
+  }
+
+  /** Parse tags for one already-stat'd file into a raw ScannedTrack (never re-stats). */
+  private async parseTrack(f: FileStat): Promise<ScannedTrack> {
+    const { abs, relPath } = f;
     const suffix = extname(abs).slice(1).toLowerCase();
     const mm = await getMusicMetadata();
     let meta;
@@ -640,8 +698,8 @@ export class LibraryScanner {
     const format = meta?.format;
     return {
       relPath,
-      size: st.size,
-      mtimeMs: st.mtimeMs,
+      size: f.size,
+      mtimeMs: f.mtimeMs,
       suffix,
       contentType: contentTypeFor(suffix),
       duration: format?.duration ? Math.round(format.duration) : 0,
