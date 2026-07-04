@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.143](https://github.com/kevinch3/NicotinD/compare/v0.1.142...v0.1.143) (2026-07-04)
+
+
+### Bug Fixes
+
+* **web:** provision CHANGELOG.md into Docker build so changelog modal isn't empty ([ac269ef](https://github.com/kevinch3/NicotinD/commit/ac269ef4ad7fa1959f779a6d03babad177d5d50b))
+
 ## [0.1.142](https://github.com/kevinch3/NicotinD/compare/v0.1.141...v0.1.142) (2026-07-03)
 
 
