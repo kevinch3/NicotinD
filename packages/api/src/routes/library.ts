@@ -85,9 +85,45 @@ function getDownloadingGroupKeys(db: Database, extraKeys?: Set<string>): Set<str
 let transferKeysCache: { at: number; keys: Set<string> } | null = null;
 const TRANSFER_KEYS_TTL_MS = 4000;
 
-/** Test hook: clear the cached transfer keys so a test can change slskd state. */
+/** Cache the album id→group-key mapping so a burst of listing requests during an
+ * active download doesn't re-scan library_albums each time. Short TTL (like the
+ * transfer cache): a stale rename for a few seconds is harmless — downloading
+ * albums are excluded regardless — and avoids wiring invalidation into every
+ * album mutation. Only consulted when a download is actually active. Keyed by db
+ * instance so it's correct in production (one db) and never leaks across the
+ * many throwaway databases a test suite spins up. */
+let albumKeyCache = new WeakMap<Database, { at: number; byGroupKey: Map<string, string[]> }>();
+const ALBUM_KEY_TTL_MS = 4000;
+
+/** Test hook: clear the cached transfer keys + album map so a test can change state. */
 export function __resetDownloadSuppressionCache(): void {
   transferKeysCache = null;
+  albumKeyCache = new WeakMap();
+}
+
+/**
+ * Map every album's normalized `"artist album"` group key → its id(s), memoized
+ * for {@link ALBUM_KEY_TTL_MS}. Replaces a per-request full-table scan +
+ * per-row normalization with an O(active-keys) lookup during downloads.
+ */
+export function albumIdsByGroupKey(db: Database): Map<string, string[]> {
+  const now = Date.now();
+  const cached = albumKeyCache.get(db);
+  if (cached && now - cached.at < ALBUM_KEY_TTL_MS) return cached.byGroupKey;
+  const rows = db
+    .query<{ id: string; artist: string; name: string }, []>(
+      `SELECT id, artist, name FROM library_albums`,
+    )
+    .all();
+  const byGroupKey = new Map<string, string[]>();
+  for (const r of rows) {
+    const key = `${normalizeArtistForGrouping(r.artist)} ${normalizeForGrouping(r.name)}`;
+    const arr = byGroupKey.get(key);
+    if (arr) arr.push(r.id);
+    else byGroupKey.set(key, [r.id]);
+  }
+  albumKeyCache.set(db, { at: now, byGroupKey });
+  return byGroupKey;
 }
 
 /**
@@ -129,16 +165,12 @@ function downloadingExclusion(
 ): { sql: string; params: string[] } {
   const keys = getDownloadingGroupKeys(db, extraKeys);
   if (keys.size === 0) return { sql: '', params: [] };
-  const all = db
-    .query<{ id: string; artist: string; name: string }, []>(
-      `SELECT id, artist, name FROM library_albums`,
-    )
-    .all();
-  const excluded = all
-    .filter((r) =>
-      keys.has(`${normalizeArtistForGrouping(r.artist)} ${normalizeForGrouping(r.name)}`),
-    )
-    .map((r) => r.id);
+  const byGroupKey = albumIdsByGroupKey(db);
+  const excluded: string[] = [];
+  for (const key of keys) {
+    const ids = byGroupKey.get(key);
+    if (ids) excluded.push(...ids);
+  }
   if (excluded.length === 0) return { sql: '', params: [] };
   return { sql: `id NOT IN (${excluded.map(() => '?').join(',')})`, params: excluded };
 }

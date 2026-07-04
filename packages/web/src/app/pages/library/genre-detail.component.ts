@@ -1,5 +1,16 @@
-import { Component, inject, signal, computed, OnInit } from '@angular/core';
+import {
+  Component,
+  inject,
+  signal,
+  computed,
+  OnInit,
+  OnDestroy,
+  ElementRef,
+  effect,
+  viewChild,
+} from '@angular/core';
 import { Router, ActivatedRoute, RouterLink } from '@angular/router';
+import { createRenderWindow } from '../../lib/render-window';
 import { firstValueFrom } from 'rxjs';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import type { Song } from '../../services/api/api-types';
@@ -30,7 +41,7 @@ import { PlaylistService } from '../../services/playlist.service';
   ],
   templateUrl: './genre-detail.component.html',
 })
-export class GenreDetailComponent implements OnInit {
+export class GenreDetailComponent implements OnInit, OnDestroy {
   private api = inject(LibraryApiService);
   readonly auth = inject(AuthService);
   readonly player = inject(PlayerService);
@@ -49,6 +60,32 @@ export class GenreDetailComponent implements OnInit {
     const deleted = this.transferService.deletedSongIds();
     return this.genreSongs().filter((s) => !deleted.has(s.id));
   });
+
+  // Render-window: a genre can hold thousands of songs. Keep the full list (for
+  // play-all / select-all / download) but only mount a growing slice so the DOM
+  // stays small; an IntersectionObserver on the sentinel grows it on scroll.
+  readonly songWindow = createRenderWindow(this.filteredGenreSongs, 100);
+  private readonly songsSentinel = viewChild<ElementRef<HTMLElement>>('songsSentinel');
+  private songsObserver?: IntersectionObserver;
+
+  constructor() {
+    effect(() => {
+      const sentinel = this.songsSentinel();
+      this.songsObserver?.disconnect();
+      if (!sentinel) return;
+      this.songsObserver = new IntersectionObserver(
+        (entries) => {
+          if (entries.some((e) => e.isIntersecting)) this.songWindow.showMore();
+        },
+        { rootMargin: '600px' },
+      );
+      this.songsObserver.observe(sentinel.nativeElement);
+    });
+  }
+
+  ngOnDestroy(): void {
+    this.songsObserver?.disconnect();
+  }
 
   // ─── Confirm dialog ───────────────────────────────────────────────
   readonly confirmMessage = signal('');

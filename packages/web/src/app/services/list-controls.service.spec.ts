@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
+import { vi } from 'vitest';
 import { ListControlsService } from './list-controls.service';
 
 interface Item {
@@ -115,6 +116,61 @@ describe('ListControlsService', () => {
       });
 
       expect(c1.sortDirection()).toBe('asc');
+    });
+  });
+
+  describe('search debounce', () => {
+    it('exposes the typed text immediately but debounces the filtered result', () => {
+      vi.useFakeTimers();
+      try {
+        const items = signal(ITEMS);
+        const controls = service.connect({
+          pageKey: 'test-debounce',
+          items,
+          searchFields: ['name'],
+          sortOptions: SORT_OPTIONS,
+          defaultSort: 'name',
+        });
+
+        controls.setSearchText('Beta');
+        // The input binding reflects the keystroke immediately...
+        expect(controls.searchText()).toBe('Beta');
+        // ...but the expensive filter has not applied yet (still all 3 items).
+        expect(controls.filtered()).toHaveLength(3);
+
+        vi.advanceTimersByTime(300);
+        // After the debounce window the filter applies.
+        expect(controls.filtered().map((i) => i.name)).toEqual(['Beta']);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('collapses a burst of keystrokes into a single filter application', () => {
+      vi.useFakeTimers();
+      try {
+        const items = signal(ITEMS);
+        const controls = service.connect({
+          pageKey: 'test-debounce-burst',
+          items,
+          searchFields: ['name'],
+          sortOptions: SORT_OPTIONS,
+          defaultSort: 'name',
+        });
+
+        controls.setSearchText('G');
+        vi.advanceTimersByTime(50);
+        controls.setSearchText('Ga');
+        vi.advanceTimersByTime(50);
+        controls.setSearchText('Gamma');
+        // Still within the debounce window since the last keystroke — no filter yet.
+        expect(controls.filtered()).toHaveLength(3);
+
+        vi.advanceTimersByTime(300);
+        expect(controls.filtered().map((i) => i.name)).toEqual(['Gamma']);
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 
