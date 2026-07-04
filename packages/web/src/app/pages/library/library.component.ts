@@ -23,6 +23,7 @@ import { CoverArtComponent } from '../../components/cover-art/cover-art.componen
 import { MenuPanelComponent } from '../../components/menu-panel/menu-panel.component';
 import { resolveAlbumRoute, resolveGenreRoute, resolveArtistRoute } from '../../lib/route-utils';
 import { appendUnique } from '../../lib/append-unique';
+import { createRenderWindow } from '../../lib/render-window';
 import {
   type AlbumListType,
   ALBUM_LIST_TYPES,
@@ -267,6 +268,45 @@ export class LibraryComponent implements OnInit, OnDestroy {
     defaultSort: 'name',
   });
 
+  // Render-windows over the (filtered) tab lists. These tabs used to fetch and
+  // render everything at once (artists is unbounded; singles/compilations up to
+  // 500), mounting thousands of tiles. Windowing keeps the full filtered list
+  // for search/sort but only mounts a growing slice, grown by the shared
+  // `#tabSentinel` observer below (tabs are mutually exclusive, so one sentinel).
+  readonly singlesWindow = createRenderWindow(this.singlesControls.filtered, 60);
+  readonly compilationsWindow = createRenderWindow(this.compilationsControls.filtered, 60);
+  readonly artistsWindow = createRenderWindow(this.artistControls.filtered, 80);
+
+  private tabSentinel = viewChild<ElementRef<HTMLElement>>('tabSentinel');
+  private tabObserver: IntersectionObserver | null = null;
+  private tabObserverEffect = effect(() => {
+    const sentinel = this.tabSentinel();
+    this.tabObserver?.disconnect();
+    this.tabObserver = null;
+    if (!sentinel) return;
+    this.tabObserver = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) this.growActiveTab();
+      },
+      { rootMargin: '400px 0px' },
+    );
+    this.tabObserver.observe(sentinel.nativeElement);
+  });
+
+  private growActiveTab(): void {
+    switch (this.libraryMode()) {
+      case 'singles':
+        this.singlesWindow.showMore();
+        break;
+      case 'compilations':
+        this.compilationsWindow.showMore();
+        break;
+      case 'artists':
+        this.artistsWindow.showMore();
+        break;
+    }
+  }
+
   // ─── Genre ────────────────────────────────────────────────────────
   readonly genres = signal<Array<{ value: string; songCount: number; albumCount: number }>>([]);
   readonly loadingGenres = signal(false);
@@ -362,6 +402,7 @@ export class LibraryComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.observer?.disconnect();
+    this.tabObserver?.disconnect();
     this.persistState();
   }
 

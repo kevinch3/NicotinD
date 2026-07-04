@@ -56,7 +56,7 @@
         (cancel)="selection.exit()"
       />
     }
-    @for (song of filteredGenreSongs(); track song.id) {
+    @for (song of songWindow.visible(); track song.id) {
       <app-track-row
         [track]="toTrackFn(song)"
         [artists]="song.artists"
@@ -69,6 +69,9 @@
         (play)="player.play(toTrackFn(song))"
         (selectedChange)="selection.toggleRange(song.id, genreTrackIds(), $event.shiftKey)"
       />
+    }
+    @if (songWindow.hasMore()) {
+      <div #songsSentinel data-testid="genre-songs-sentinel" class="h-8"></div>
     }
     @if (filteredGenreSongs().length === 0) {
       <div class="text-center py-20 text-theme-muted">
