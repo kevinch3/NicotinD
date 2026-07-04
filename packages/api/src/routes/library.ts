@@ -5,6 +5,8 @@ import { createLogger } from '@nicotind/core';
 import type { Song, Album, Artist } from '@nicotind/core';
 import type { Lidarr } from '@nicotind/lidarr-client';
 import type { AuthEnv } from '../middleware/auth.js';
+import { requireAdmin } from '../middleware/current-user.js';
+import { errorHandler } from '../middleware/error-handler.js';
 import type { Database } from 'bun:sqlite';
 import { getDatabase } from '../db.js';
 import type { LibraryCurator } from '../services/library-curator.js';
@@ -388,6 +390,11 @@ function albumOrderBy(type: string): string {
 
 export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions = {}) {
   const app = new Hono<AuthEnv>();
+  // Self-contained error mapping so typed throws (e.g. requireAdmin's
+  // ForbiddenError) become the standard { error, code } + status even when this
+  // router is mounted on a bare app (as the route tests do) without the global
+  // onError. Mirrors the app-level handler.
+  app.onError(errorHandler);
   const { curator, runSync, lidarr, coverCacheDir, dataDir, pluginRegistry } = options;
 
   app.get('/artists', (c) => {
@@ -610,8 +617,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
   });
 
   app.delete('/albums/:id', async (c) => {
-    const user = c.get('user');
-    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+    requireAdmin(c);
 
     const albumId = c.req.param('id');
     const db = getDatabase();
@@ -716,8 +722,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
   // organizer and are otherwise invisible to playlist/deletion logic. Run the
   // backfill-untracked script to resolve the ones still on disk.
   app.get('/untracked', (c) => {
-    const user = c.get('user');
-    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+    requireAdmin(c);
     const db = getDatabase();
     const limit = Math.min(Number(c.req.query('limit') ?? 200) || 200, 1000);
     const total = (
@@ -742,24 +747,21 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
 
   // --- Curation admin endpoints -------------------------------------------------
   app.post('/albums/:id/hide', (c) => {
-    const user = c.get('user');
-    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+    requireAdmin(c);
     if (!curator) return c.json({ error: 'Curator not available' }, 503);
     const ok = curator.setManualOverride(c.req.param('id'), { hidden: true });
     return c.json({ ok });
   });
 
   app.post('/albums/:id/unhide', (c) => {
-    const user = c.get('user');
-    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+    requireAdmin(c);
     if (!curator) return c.json({ error: 'Curator not available' }, 503);
     const ok = curator.setManualOverride(c.req.param('id'), { hidden: false });
     return c.json({ ok });
   });
 
   app.post('/albums/:id/reclassify', async (c) => {
-    const user = c.get('user');
-    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+    requireAdmin(c);
     if (!curator) return c.json({ error: 'Curator not available' }, 503);
     const body = await c.req.json<{ classification?: string }>();
     const cls = body.classification;
@@ -773,8 +775,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
   });
 
   app.post('/albums/:id/clear-override', (c) => {
-    const user = c.get('user');
-    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+    requireAdmin(c);
     if (!curator) return c.json({ error: 'Curator not available' }, 503);
     const ok = curator.clearManualOverride(c.req.param('id'));
     return c.json({ ok });
@@ -784,8 +785,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
   // overwrite what's stored (the "fix a wrong/poor thumbnail" action). Admin
   // only; 503 when Lidarr is unconfigured, 404 when the album/match is absent.
   app.post('/albums/:id/optimize-metadata', async (c) => {
-    const user = c.get('user');
-    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+    requireAdmin(c);
     if (!lidarr) return c.json({ error: 'Lidarr not configured' }, 503);
     const result = await optimizeAlbum(getDatabase(), lidarr, c.req.param('id'), {
       apply: true,
@@ -802,8 +802,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
   // override when the stored artist is wrong — e.g. "<Desconocido>") and return
   // ranked candidates to confirm. Admin only; 503 without Lidarr.
   app.get('/albums/:id/metadata-candidates', async (c) => {
-    const user = c.get('user');
-    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+    requireAdmin(c);
     if (!lidarr) return c.json({ error: 'Lidarr not configured' }, 503);
     const res = await searchCandidates(getDatabase(), lidarr, c.req.param('id'), c.req.query('q'));
     if (!res) return c.json({ error: 'Album not found' }, 404);
@@ -814,8 +813,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
   // override the scanner honors and re-buckets the canonical rows immediately.
   // Admin only. Does NOT require Lidarr (free-text fallback works offline).
   app.post('/albums/:id/metadata', async (c) => {
-    const user = c.get('user');
-    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+    requireAdmin(c);
     const body = await c.req.json<ApplyMetadataRequest>().catch(() => ({}) as ApplyMetadataRequest);
     if (!body.artist?.trim() && !body.album?.trim() && body.year == null && !body.coverUrl && !body.releaseType) {
       return c.json({ error: 'Nothing to apply' }, 400);
@@ -830,8 +828,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
   // is unconfigured, not a 503), and one entry per *distinct* image embedded in
   // the album's own tracks. Admin only.
   app.get('/albums/:id/cover-candidates', async (c) => {
-    const user = c.get('user');
-    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+    requireAdmin(c);
     const id = c.req.param('id');
     const db = getDatabase();
     const album = db
@@ -888,8 +885,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
   // artwork; a `songId` materializes that track's embedded image as the album's
   // folder cover and clears the canonical override so the file art is served.
   app.post('/albums/:id/cover', async (c) => {
-    const user = c.get('user');
-    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+    requireAdmin(c);
     const id = c.req.param('id');
     const db = getDatabase();
     const album = db
@@ -960,8 +956,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
 
   // Upload a custom portrait (multipart form-data, field "image"). Admin only.
   app.put('/artists/:id/image', async (c) => {
-    const user = c.get('user');
-    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+    requireAdmin(c);
     if (!dataDir) return c.json({ error: 'Data directory not configured' }, 503);
     const id = c.req.param('id');
     const db = getDatabase();
@@ -991,8 +986,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
 
   // Copy one of the artist's album covers into the portrait slot. Admin only.
   app.post('/artists/:id/image/from-album', async (c) => {
-    const user = c.get('user');
-    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+    requireAdmin(c);
     if (!dataDir) return c.json({ error: 'Data directory not configured' }, 503);
     const id = c.req.param('id');
     const db = getDatabase();
@@ -1035,8 +1029,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
 
   // Remove the manual override → revert to auto (canonical) artwork or placeholder.
   app.delete('/artists/:id/image', async (c) => {
-    const user = c.get('user');
-    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+    requireAdmin(c);
     if (!dataDir) return c.json({ error: 'Data directory not configured' }, 503);
     const id = c.req.param('id');
     const db = getDatabase();
@@ -1053,8 +1046,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
   });
 
   app.post('/sync', async (c) => {
-    const user = c.get('user');
-    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+    requireAdmin(c);
     if (!runSync) return c.json({ error: 'Sync not available' }, 503);
     await runSync();
     return c.json({ ok: true });
@@ -1174,8 +1166,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
   // Apply a genre to a song (admin): writes the tag and updates library_songs +
   // library_genres counts so search/grouping reflect it immediately.
   app.post('/songs/:id/genre', async (c) => {
-    const user = c.get('user');
-    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+    requireAdmin(c);
     const id = c.req.param('id');
     const body = await c.req.json<{ genre?: string }>().catch(() => ({}) as { genre?: string });
     const genre = (body.genre ?? '').trim();
@@ -1291,8 +1282,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
   // clobber it, clears the synced LRC (the edited body no longer matches its
   // timing), and writes the plain text back to the file tag.
   app.put('/songs/:id/lyrics', async (c) => {
-    const user = c.get('user');
-    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+    requireAdmin(c);
     const id = c.req.param('id');
     const body = await c.req.json<{ plain?: string }>().catch(() => ({}) as { plain?: string });
     const plain = (body.plain ?? '').trim();
@@ -1317,8 +1307,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
   // Reset lyrics (admin): drops the stored row. Leaves any embedded file tag in
   // place (rewriting a file to strip a tag is risky and low-value).
   app.delete('/songs/:id/lyrics', (c) => {
-    const user = c.get('user');
-    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+    requireAdmin(c);
     const id = c.req.param('id');
     const db = getDatabase();
     deleteLyrics(db, id);
@@ -1626,8 +1615,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
   }
 
   app.delete('/songs/:id', async (c) => {
-    const user = c.get('user');
-    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+    requireAdmin(c);
 
     const result = await deleteOne(c.req.param('id'));
     if (!result.ok) {
@@ -1640,8 +1628,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
   });
 
   app.post('/songs/bulk-delete', async (c) => {
-    const user = c.get('user');
-    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+    requireAdmin(c);
 
     const { ids } = await c.req.json<{ ids: string[] }>();
     if (!ids || !Array.isArray(ids)) {
@@ -1672,8 +1659,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
 
   // Duplicate detection — now reads entirely from canonical DB.
   app.get('/duplicates', (c) => {
-    const user = c.get('user');
-    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+    requireAdmin(c);
 
     const db = getDatabase();
     const rows = db
