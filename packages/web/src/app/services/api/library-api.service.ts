@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { type Observable, of, map, catchError } from 'rxjs';
+import { createCachedObservable } from '../../lib/cached-observable';
 import type {
   SongAcquisition,
   BpmAnalysisResult,
@@ -132,10 +133,29 @@ export class LibraryApiService {
     return this.http.get<AlbumDetail>(`/api/library/albums/${id}`);
   }
 
-  getArtists() {
-    return this.http.get<Array<{ id: string; name: string; albumCount?: number }>>(
+  // Stable, whole-library reads that the library page re-fetches on every visit.
+  // Cached (shared + replayed) so tab-switching / re-navigation doesn't re-hit
+  // the network; invalidated on library changes via invalidateLibraryReads().
+  private artistsCache = createCachedObservable(() =>
+    this.http.get<Array<{ id: string; name: string; albumCount?: number }>>(
       '/api/library/artists',
-    );
+    ),
+  );
+  private genresCache = createCachedObservable(() =>
+    this.http.get<Array<{ value: string; songCount: number; albumCount: number }>>(
+      '/api/library/genres',
+    ),
+  );
+
+  getArtists() {
+    return this.artistsCache.get();
+  }
+
+  /** Drop cached artist/genre lists so the next read re-fetches (call after a
+   * download lands or a delete that could change the artist/genre set). */
+  invalidateLibraryReads(): void {
+    this.artistsCache.invalidate();
+    this.genresCache.invalidate();
   }
 
   getArtist(id: string) {
@@ -181,9 +201,7 @@ export class LibraryApiService {
   }
 
   getGenres() {
-    return this.http.get<Array<{ value: string; songCount: number; albumCount: number }>>(
-      '/api/library/genres',
-    );
+    return this.genresCache.get();
   }
 
   getSongsByGenre(genre: string, count = 100) {

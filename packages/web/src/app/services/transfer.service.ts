@@ -2,6 +2,7 @@ import { Injectable, inject, signal, computed } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { DownloadsApiService } from './api/downloads-api.service';
 import { SystemApiService } from './api/system-api.service';
+import { LibraryApiService } from './api/library-api.service';
 import type { SlskdUserTransferGroup, AcquireJob } from '@nicotind/core';
 import type { TransferEntry } from '../lib/transfer-types';
 import { detectNewCompletion } from '../lib/transfer-utils';
@@ -15,6 +16,7 @@ const ACTIVE_STATES = new Set(['InProgress', 'Queued', 'Initializing']);
 export class TransferService {
   private api = inject(DownloadsApiService);
   private systemApi = inject(SystemApiService);
+  private libraryApi = inject(LibraryApiService);
 
   readonly transfers = signal(new Map<string, TransferEntry>());
   readonly downloads = signal<SlskdUserTransferGroup[]>([]);
@@ -44,6 +46,14 @@ export class TransferService {
     this.libraryDirty.set(false);
   }
 
+  // Flag the library as changed AND drop cached whole-library reads (artists /
+  // genres), so the refresh that the dirty flag triggers actually re-fetches
+  // instead of replaying a now-stale cached list.
+  private markLibraryDirty(): void {
+    this.libraryDirty.set(true);
+    this.libraryApi.invalidateLibraryReads();
+  }
+
   addDeletedIds(ids: string[]): void {
     this.deletedSongIds.update((s) => {
       const next = new Set(s);
@@ -66,7 +76,7 @@ export class TransferService {
     this.scanPollTimer = null;
     if (attempts >= 20) {
       this.clearDeletedIds();
-      this.libraryDirty.set(true);
+      this.markLibraryDirty();
       return;
     }
     try {
@@ -77,7 +87,7 @@ export class TransferService {
         this.scanPollTimer = setTimeout(() => this.doPollScan(attempts + 1, false), 1000);
       } else {
         this.clearDeletedIds();
-        this.libraryDirty.set(true);
+        this.markLibraryDirty();
       }
     } catch {
       this.clearDeletedIds();
@@ -103,7 +113,7 @@ export class TransferService {
       this.transfers.set(map);
       this.downloads.set(data);
       this.hasPolled = true;
-      if (newCompletion) this.libraryDirty.set(true);
+      if (newCompletion) this.markLibraryDirty();
     } catch {
       // non-fatal: keep stale data on network error
     }
@@ -119,7 +129,7 @@ export class TransferService {
       }
       this.prevAcquireStates = new Map(jobs.map((j) => [j.id, j.state]));
       this.acquireJobs.set(jobs);
-      if (acquireCompletion) this.libraryDirty.set(true);
+      if (acquireCompletion) this.markLibraryDirty();
     } catch {
       // non-fatal
     }
