@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.145](https://github.com/kevinch3/NicotinD/compare/v0.1.144...v0.1.145) (2026-07-04)
+
+
+### Performance
+
+* **web:** cache whole-library reads (artists, genres) ([0ebf753](https://github.com/kevinch3/NicotinD/commit/0ebf7533d26faf1c5b8d5bdd38689af85cd73f10))
+
 ## [0.1.144](https://github.com/kevinch3/NicotinD/compare/v0.1.143...v0.1.144) (2026-07-04)
 
 
