@@ -51,4 +51,30 @@ describe('LibraryApiService', () => {
     req.flush('not found', { status: 404, statusText: 'Not Found' });
     expect(result).toBeNull();
   });
+
+  it('caches getArtists so a repeat read shares one HTTP request', () => {
+    const captured: string[] = [];
+    service.getArtists().subscribe((a) => captured.push('first:' + a.length));
+    const req = http.expectOne('/api/library/artists');
+    req.flush([{ id: 'a1', name: 'A' }]);
+
+    // Second read within the TTL must NOT hit the network — expectNone verifies it.
+    service.getArtists().subscribe((a) => captured.push('second:' + a.length));
+    http.expectNone('/api/library/artists');
+    expect(captured).toEqual(['first:1', 'second:1']);
+  });
+
+  it('invalidateLibraryReads() forces the next getArtists/getGenres to re-fetch', () => {
+    service.getArtists().subscribe();
+    http.expectOne('/api/library/artists').flush([]);
+    service.getGenres().subscribe();
+    http.expectOne('/api/library/genres').flush([]);
+
+    service.invalidateLibraryReads();
+
+    service.getArtists().subscribe();
+    http.expectOne('/api/library/artists').flush([]);
+    service.getGenres().subscribe();
+    http.expectOne('/api/library/genres').flush([]);
+  });
 });
