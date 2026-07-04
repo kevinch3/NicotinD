@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.144](https://github.com/kevinch3/NicotinD/compare/v0.1.143...v0.1.144) (2026-07-04)
+
+
+### Performance
+
+* **db:** tune SQLite pragmas, add grid index, cache suppression scan ([26545f6](https://github.com/kevinch3/NicotinD/commit/26545f68655e46d3123a7475b710fbd4e1221112))
+* **scanner:** incremental tag cache skips re-parsing unchanged files ([03646ea](https://github.com/kevinch3/NicotinD/commit/03646ea618f2d4efb82870ebf7938eafe5624479))
+* **web:** render-window large lists + debounce list search ([2edbe59](https://github.com/kevinch3/NicotinD/commit/2edbe5962301fac173b583fa968f71a904a22cb7))
+
 ## [0.1.143](https://github.com/kevinch3/NicotinD/compare/v0.1.142...v0.1.143) (2026-07-04)
 
 
