@@ -161,6 +161,140 @@ describe('DownloadWatcher', () => {
     expect(scanMock).toHaveBeenCalledWith(['Artist/Album/a.mp3', 'Artist/Album/b.mp3']);
   });
 
+  it('does not re-process a transfer it has already completed (idempotent)', async () => {
+    const completed = [
+      {
+        username: 'user1',
+        directories: [
+          {
+            directory: 'dir1',
+            fileCount: 1,
+            files: [{ filename: 'song1.mp3', state: 'Completed, Succeeded' }],
+          },
+        ],
+      },
+    ];
+    slskdMock.transfers.getDownloads.mockReturnValue(Promise.resolve(completed));
+
+    // Same completed transfer seen on two consecutive checks (slskd keeps
+    // reporting it until it drops off). It must organize exactly once.
+    await (watcher as unknown as { check(): Promise<void> }).check();
+    await (watcher as unknown as { check(): Promise<void> }).check();
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(libraryOrganizerMock.organizeBatch).toHaveBeenCalledTimes(1);
+    expect(scanMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores transfers that are not "Completed, Succeeded"', async () => {
+    slskdMock.transfers.getDownloads.mockReturnValue(
+      Promise.resolve([
+        {
+          username: 'user1',
+          directories: [
+            {
+              directory: 'dir1',
+              fileCount: 2,
+              files: [
+                { filename: 'a.mp3', state: 'InProgress' },
+                { filename: 'b.mp3', state: 'Completed, Errored' },
+              ],
+            },
+          ],
+        },
+      ]),
+    );
+
+    await (watcher as unknown as { check(): Promise<void> }).check();
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(libraryOrganizerMock.organizeBatch).not.toHaveBeenCalled();
+    expect(scanMock).not.toHaveBeenCalled();
+  });
+
+  it('flushes a still-pending debounced scan when stopped', async () => {
+    const stopWatcher = new DownloadWatcher(
+      slskdMock as unknown as ConstructorParameters<typeof DownloadWatcher>[0],
+      {
+        intervalMs: 10,
+        scanDebounceMs: 10_000, // long enough that the debounce won't fire on its own
+        libraryOrganizer: libraryOrganizerMock,
+        scan: scanMock,
+        db: (() => {
+          const d = new Database(':memory:');
+          applySchema(d);
+          return d;
+        })(),
+      },
+    );
+    slskdMock.transfers.getDownloads.mockReturnValue(
+      Promise.resolve([
+        {
+          username: 'user1',
+          directories: [
+            {
+              directory: 'dir1',
+              fileCount: 1,
+              files: [{ filename: 'song1.mp3', state: 'Completed, Succeeded' }],
+            },
+          ],
+        },
+      ]),
+    );
+
+    await (stopWatcher as unknown as { check(): Promise<void> }).check();
+    expect(scanMock).not.toHaveBeenCalled(); // still within the long debounce
+
+    stopWatcher.stop(); // must flush the pending batch instead of dropping it
+    await new Promise((r) => setTimeout(r, 20));
+    expect(scanMock).toHaveBeenCalledWith(['Artist/Album/song1.mp3']);
+  });
+
+  it('drops completed_downloads rows for basenames auto-dedupe removed from disk', async () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    // Organizer reports it deleted a duplicate file on disk.
+    const dedupingOrganizer = {
+      organizeBatch: mock((files: CompletedDownloadFile[]) => {
+        for (const f of files) f.relativePath = `Artist/Album/${f.filename}`;
+        return Promise.resolve({ dedupedBasenames: ['song1.mp3'] });
+      }),
+    };
+    const dw = new DownloadWatcher(
+      slskdMock as unknown as ConstructorParameters<typeof DownloadWatcher>[0],
+      { intervalMs: 10, scanDebounceMs: 10, libraryOrganizer: dedupingOrganizer, scan: scanMock, db },
+    );
+    try {
+      slskdMock.transfers.getDownloads.mockReturnValue(
+        Promise.resolve([
+          {
+            username: 'user1',
+            directories: [
+              {
+                directory: 'dir1',
+                fileCount: 1,
+                files: [{ filename: 'song1.mp3', state: 'Completed, Succeeded' }],
+              },
+            ],
+          },
+        ]),
+      );
+
+      await (dw as unknown as { check(): Promise<void> }).check();
+      await new Promise((r) => setTimeout(r, 50));
+
+      const remaining = db
+        .query<{ c: number }, [string]>(
+          'SELECT COUNT(*) AS c FROM completed_downloads WHERE basename = ?',
+        )
+        .get('song1.mp3')!.c;
+      expect(remaining).toBe(0);
+    } finally {
+      dw.stop();
+      db.close();
+    }
+  });
+
   it('records slskd acquisition provenance for each organized file', async () => {
     // Inject an isolated in-memory DB so this test doesn't race bun's concurrent
     // test files for the module-level getDatabase() singleton (project memory).
