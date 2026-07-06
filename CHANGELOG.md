@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.151](https://github.com/kevinch3/NicotinD/compare/v0.1.150...v0.1.151) (2026-07-06)
+
+
+### Bug Fixes
+
+* resolve circular dependency in AuthService logout ([460aa1a](https://github.com/kevinch3/NicotinD/commit/460aa1af7bdaf6228af48bb8e347e0fdf209d1a1))
+* **search:** don't clear query in reset() to preserve advanced toggle ([caa7d87](https://github.com/kevinch3/NicotinD/commit/caa7d87373c663e7f58a469d04564afca1d0f1a7))
+* **search:** set networkState to complete on API failure ([315c3a7](https://github.com/kevinch3/NicotinD/commit/315c3a76d79c48f4f451f59245f5786a09dd97c6))
+* **web:** clear all user state on logout to prevent data leaks ([abc4f23](https://github.com/kevinch3/NicotinD/commit/abc4f2348605bb96f9d5e5c2a054d007255abc4a))
+
 ## [0.1.150](https://github.com/kevinch3/NicotinD/compare/v0.1.149...v0.1.150) (2026-07-06)
 
 ## [0.1.149](https://github.com/kevinch3/NicotinD/compare/v0.1.148...v0.1.149) (2026-07-06)
