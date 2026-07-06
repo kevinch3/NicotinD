@@ -9,6 +9,7 @@ import { TransferService } from '../../services/transfer.service';
 import { AcquireService } from '../../services/acquire.service';
 import { PluginService } from '../../services/plugin.service';
 import { baseQueries, skewedQueries } from '../../lib/hunt-queries';
+import { mergeCandidates } from '../../lib/merge-candidates';
 import {
   archiveToCandidate,
   spotifyToCandidate,
@@ -387,8 +388,8 @@ export class AlbumHuntModalComponent implements OnInit {
   }
 
   queryRowClass(st: QueryPhaseState): string {
-    if (st === 'searching') return 'bg-blue-500/20 text-blue-300';
-    if (st === 'done') return 'bg-green-500/15 text-green-300';
+    if (st === 'searching') return 'status-progress';
+    if (st === 'done') return 'status-done';
     if (st === 'skipped') return 'bg-theme-surface-2 opacity-40';
     return 'bg-theme-surface-2'; // idle
   }
@@ -396,16 +397,4 @@ export class AlbumHuntModalComponent implements OnInit {
   close(): void {
     this.closed.emit();
   }
-}
-
-// Client-side candidate merge: de-dupe by username::directory, keep the
-// higher-scoring instance per key, then sort by matchPct descending.
-function mergeCandidates(base: FolderCandidate[], extra: FolderCandidate[]): FolderCandidate[] {
-  const byKey = new Map<string, FolderCandidate>();
-  for (const c of [...base, ...extra]) {
-    const key = `${c.username}::${c.directory}`;
-    const prev = byKey.get(key);
-    if (!prev || c.matchPct > prev.matchPct) byKey.set(key, c);
-  }
-  return [...byKey.values()].sort((a, b) => b.matchPct - a.matchPct);
 }

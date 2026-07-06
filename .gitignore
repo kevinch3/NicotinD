@@ -5,11 +5,19 @@ dist/
 .DS_Store
 *.log
 packages/web/dist/
+packages/web/public/changelog.json
 # Stray in-place tsc output next to TS sources (real build emits to dist/)
 packages/core/src/**/*.js
 ~/.nicotind/
 .worktrees/
 .superpowers/
+
+# Python (analysis sidecar)
+packages/analysis/.venv/
+__pycache__/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
 
 # Android signing keystores — never commit; supplied to CI via secrets
 *.jks

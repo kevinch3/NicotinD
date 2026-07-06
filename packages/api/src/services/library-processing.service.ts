@@ -7,12 +7,14 @@ import type { Lidarr } from '@nicotind/lidarr-client';
 import type { ProcessingSettings, ProcessingStatus, ProcessingTaskId } from '@nicotind/core';
 import { getProcessingSettings } from './processing-settings.js';
 import { isWithinWindow } from './processing-window.js';
+import { maybeRefreshAutoPlaylists } from './auto-playlists.service.js';
 import {
   ENRICHMENT_TASKS,
   createEnrichmentContext,
   type EnrichmentContext,
   type EnrichmentTask,
 } from './enrichment/tasks.js';
+import type { AudioFeaturesClient } from './audio-features-client.js';
 
 const log = createLogger('library-processing');
 
@@ -26,6 +28,8 @@ export interface LibraryProcessingDeps {
   dataDir: string;
   /** Spotify portrait lookup for the artist-image task, or null when unconfigured. */
   lookupArtistImageSpotify?: ((name: string) => Promise<string | null>) | null;
+  /** Analysis-sidecar client for the audio-features task, or null when unconfigured. */
+  audioFeaturesClient?: AudioFeaturesClient | null;
   /** Poll interval. Defaults to 60s. */
   intervalMs?: number;
   /** Injectable clock for window tests. */
@@ -55,6 +59,7 @@ export class LibraryProcessingService extends EventEmitter {
   private readonly musicDir: string;
   private readonly dataDir: string;
   private readonly lookupArtistImageSpotify: ((name: string) => Promise<string | null>) | null;
+  private readonly audioFeaturesClient: AudioFeaturesClient | null;
   private readonly logPath: string;
   private readonly intervalMs: number;
   private readonly now: () => Date;
@@ -73,6 +78,7 @@ export class LibraryProcessingService extends EventEmitter {
     this.musicDir = deps.musicDir;
     this.dataDir = deps.dataDir;
     this.lookupArtistImageSpotify = deps.lookupArtistImageSpotify ?? null;
+    this.audioFeaturesClient = deps.audioFeaturesClient ?? null;
     this.logPath = join(deps.dataDir, 'library-processing.log');
     this.intervalMs = deps.intervalMs ?? 60_000;
     this.now = deps.now ?? (() => new Date());
@@ -85,6 +91,7 @@ export class LibraryProcessingService extends EventEmitter {
           lidarr: this.lidarr,
           concurrency: settings.concurrency,
           lookupArtistImageSpotify: this.lookupArtistImageSpotify,
+          audioFeaturesClient: this.audioFeaturesClient,
         }));
     this.logToFile = deps.logToFile ?? true;
     this.status = this.loadStatus();
@@ -130,6 +137,9 @@ export class LibraryProcessingService extends EventEmitter {
       return;
     }
     await this.guarded(async () => {
+      // Once per ISO week, inside the maintenance window, refresh the automated
+      // recipe-driven shelves (idempotent; guarded by a library_sync_state marker).
+      maybeRefreshAutoPlaylists(this.db, this.now().getTime());
       await this.processOneBatch(settings);
     });
   }
@@ -284,8 +294,15 @@ export class LibraryProcessingService extends EventEmitter {
       lastItems: [],
       startedAt: null,
       updatedAt: null,
-      taskPending: { bpm: 0, genre: 0, key: 0, 'artist-image': 0 },
-      availability: { bpm: 'unknown', genre: 'unknown', key: 'unknown', 'artist-image': 'unknown' },
+      taskPending: { bpm: 0, genre: 0, key: 0, 'artist-image': 0, energy: 0, 'audio-features': 0 },
+      availability: {
+        bpm: 'unknown',
+        genre: 'unknown',
+        key: 'unknown',
+        'artist-image': 'unknown',
+        energy: 'unknown',
+        'audio-features': 'unknown',
+      },
     };
     const row = this.db
       .query<{ value: string }, [string]>('SELECT value FROM app_settings WHERE key = ?')

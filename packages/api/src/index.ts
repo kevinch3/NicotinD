@@ -18,6 +18,7 @@ import { streamingRoutes } from './routes/streaming.js';
 import { systemRoutes } from './routes/system.js';
 import { settingsRoutes } from './routes/settings.js';
 import { adminRoutes } from './routes/admin.js';
+import { presenceRoutes } from './routes/presence.js';
 import { usersRoutes } from './routes/users.js';
 import { shareRoutes } from './routes/share.js';
 import { shareMetaHandler } from './routes/share-meta.js';
@@ -55,10 +56,12 @@ import { CatalogService } from './services/catalog-search.service.js';
 import { SingleEnrichmentService } from './services/single-enrichment.service.js';
 import { AlbumHunterService } from './services/album-hunter.service.js';
 import { WatchlistService } from './services/watchlist.service.js';
+import { AutoAcquireService } from './services/auto-acquire.service.js';
 import { DownloadWatcher } from './services/download-watcher.js';
 import { DownloadRetryService } from './services/download-retry.service.js';
 import { AlbumFallbackService } from './services/album-fallback.service.js';
 import { LibraryProcessingService } from './services/library-processing.service.js';
+import { AudioFeaturesClient } from './services/audio-features-client.js';
 import { ProviderRegistry } from './services/provider-registry.js';
 import { LibrarySearchProvider } from './services/providers/library-provider.js';
 import { LibraryScanner } from './services/library-scanner.js';
@@ -69,6 +72,7 @@ import { AcoustIdLookup } from './services/acoustid-lookup.js';
 import { normalizeArtistForGrouping, normalizeForGrouping } from './services/album-grouping.js';
 import { createLogger } from '@nicotind/core';
 import { initDatabase } from './db.js';
+import { dirname, join } from 'node:path';
 import { createWebSocketHandlers } from './services/websocket.js';
 import type { AuthEnv } from './middleware/auth.js';
 
@@ -84,8 +88,10 @@ export interface CreateAppOptions {
   serviceManager: ServiceManager;
   webDistPath?: string;
   saveSecretsFn?: (username: string, password: string) => void;
+  saveLidarrSecretsFn?: (apiKey: string) => void;
   stagingDir?: string;
   acoustidApiKey?: string;
+  version?: string;
 }
 
 export function createApp({
@@ -95,8 +101,10 @@ export function createApp({
   serviceManager,
   webDistPath,
   saveSecretsFn,
+  saveLidarrSecretsFn,
   stagingDir,
   acoustidApiKey,
+  version,
 }: CreateAppOptions) {
   const expandedDataDir = config.dataDir.startsWith('~')
     ? config.dataDir.replace('~', process.env.HOME ?? '/root')
@@ -126,14 +134,20 @@ export function createApp({
       syncLog.error({ err }, 'Library scan/curate cycle failed');
     }
   };
-  // Incremental scan of a just-organized batch (post-download). Synchronous from
-  // the caller's view — no async external scanner, so no scan-timing races.
+  // Reconcile a just-organized batch at the download→library seam: expand the
+  // post-move file paths to their album folders and run an album-scoped
+  // rescan + orphan-row prune, so cross-wave duplicate rows never surface (not
+  // only after the next full scan). Synchronous from the caller's view — no
+  // async external scanner, so no scan-timing races.
   const scanIncremental = async (relPaths: string[]): Promise<void> => {
     try {
-      await scanner.scanPaths(relPaths);
+      if (relPaths.length > 0) {
+        const albumDirs = [...new Set(relPaths.map((p) => dirname(join(expandedMusicDir, p))))];
+        await scanner.reconcileAlbums(albumDirs);
+      }
       curator.reclassifyAll();
     } catch (err) {
-      syncLog.error({ err }, 'Incremental scan/curate failed');
+      syncLog.error({ err }, 'Incremental reconcile/curate failed');
     }
   };
   // First full scan runs in the background — the UI gracefully shows an empty
@@ -212,6 +226,30 @@ export function createApp({
       }
       return null;
     },
+    // Canonical Lidarr track titles for an album folder, so the reconciler drops
+    // foreign rips (matching the scanner's canonical-aware track selection). The
+    // folder is named by the canonical title (see jobLookup above), so its
+    // last-two segments map back to the album_jobs artist/album.
+    canonicalTitlesLookup: (dir) => {
+      const segs = dir.replace(/\\/g, '/').split('/').filter(Boolean);
+      if (segs.length < 2) return null;
+      const album = segs[segs.length - 1]!;
+      const artist = segs[segs.length - 2]!;
+      const row = db
+        .query<{ canonical_tracks_json: string }, [string, string]>(
+          `SELECT canonical_tracks_json FROM album_jobs
+           WHERE artist_name = ? AND album_title = ? AND canonical_tracks_json IS NOT NULL
+           ORDER BY created_at DESC LIMIT 1`,
+        )
+        .get(artist, album);
+      if (!row) return null;
+      try {
+        const parsed = JSON.parse(row.canonical_tracks_json);
+        return Array.isArray(parsed) && parsed.length ? (parsed as string[]) : null;
+      } catch {
+        return null;
+      }
+    },
   });
 
   // Download watcher (mutable ref — settings/setup routes can create/replace it).
@@ -267,8 +305,15 @@ export function createApp({
     lookup: null,
   };
 
+  // Analysis-sidecar client for the audio-features enrichment task; null when
+  // no sidecar is configured (the task then reports itself unavailable).
+  const audioFeaturesClient = config.analysis.url
+    ? new AudioFeaturesClient({ baseUrl: config.analysis.url })
+    : null;
+
   // Windowed library-processing scheduler — runs enrichment tasks (BPM, genre,
-  // key, artist images) over the library, only inside the configured daily window.
+  // key, energy, audio features, artist images) over the library, only inside
+  // the configured daily window.
   const processingRef: ProcessingRef = {
     current: new LibraryProcessingService({
       db,
@@ -277,6 +322,7 @@ export function createApp({
       dataDir: expandedDataDir,
       lookupArtistImageSpotify: (name) =>
         spotifyArtistImageRef.lookup?.(name) ?? Promise.resolve(null),
+      audioFeaturesClient,
     }),
   };
 
@@ -379,6 +425,7 @@ export function createApp({
       watcherRef,
       makeWatcher,
       saveSecretsFn: saveSecretsFn ?? (() => {}),
+      saveLidarrSecretsFn: saveLidarrSecretsFn ?? (() => {}),
     }),
   );
 
@@ -393,6 +440,7 @@ export function createApp({
   app.use('/api/system/*', auth);
   app.use('/api/settings/*', auth);
   app.use('/api/admin/*', auth);
+  app.use('/api/presence/*', auth);
   app.use('/api/users/*', auth);
   app.use('/api/ws/*', auth);
   app.use('/api/discography/*', auth);
@@ -426,6 +474,7 @@ export function createApp({
       processing: processingRef.current,
     }),
   );
+  app.route('/api/presence', presenceRoutes());
   app.route('/api/downloads', downloadRoutes(registry, slskdRef));
   app.route('/api/uploads', uploadRoutes(slskdRef));
   app.route(
@@ -443,7 +492,10 @@ export function createApp({
   app.route('/api', streamingRoutes(expandedMusicDir, db, expandedDataDir));
   app.route(
     '/api/system',
-    systemRoutes(slskdRef, serviceManager, config, { triggerScan: runSyncAndCurate }),
+    systemRoutes(slskdRef, serviceManager, config, {
+      triggerScan: runSyncAndCurate,
+      version,
+    }),
   );
   app.route(
     '/api/settings',
@@ -548,6 +600,23 @@ export function createApp({
     });
     app.route('/api/watchlist', watchlistRoutes(watchlistSvc));
     watchlistSvc.start();
+
+    // Native auto-acquisition loop (opt-in): sweeps Lidarr's wanted/missing list
+    // and auto-acquires each album through the same shared core as the watchlist
+    // poller. Off by default — it initiates downloads unattended.
+    if (config.downloads.autoAcquireEnabled) {
+      const autoAcquireSvc = new AutoAcquireService({
+        db,
+        hunter: hunterSvc,
+        lidarr,
+        slskdRef,
+        intervalMs: config.downloads.autoAcquireIntervalMs,
+        maxPerSweep: config.downloads.autoAcquireMaxPerSweep,
+        minMatchPct: config.watchlist.minMatchPct,
+        isAcquisitionEnabled: () => plugins.hasCapability('download'),
+      });
+      autoAcquireSvc.start();
+    }
   }
 
   // URL-based acquisition (yt-dlp / spotdl). The watcher routes each URL to an
@@ -584,6 +653,7 @@ export function createApp({
 
 export { DownloadWatcher } from './services/download-watcher.js';
 export { DownloadRetryService } from './services/download-retry.service.js';
+export { AutoAcquireService } from './services/auto-acquire.service.js';
 export { initDatabase, getDatabase } from './db.js';
 // initServerSentry is intentionally NOT re-exported from the barrel: it must be
 // imported via the isolated `@nicotind/api/instrument` subpath so Sentry inits

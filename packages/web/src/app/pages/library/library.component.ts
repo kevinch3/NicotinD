@@ -23,6 +23,7 @@ import { CoverArtComponent } from '../../components/cover-art/cover-art.componen
 import { MenuPanelComponent } from '../../components/menu-panel/menu-panel.component';
 import { resolveAlbumRoute, resolveGenreRoute, resolveArtistRoute } from '../../lib/route-utils';
 import { appendUnique } from '../../lib/append-unique';
+import { createRenderWindow } from '../../lib/render-window';
 import {
   type AlbumListType,
   ALBUM_LIST_TYPES,
@@ -34,7 +35,7 @@ import {
 
 export type { AlbumListType };
 
-type LibraryMode = 'albums' | 'singles' | 'artists' | 'genre' | 'playlists';
+type LibraryMode = 'albums' | 'compilations' | 'singles' | 'artists' | 'genre' | 'playlists';
 
 interface AlbumTypeOption {
   value: AlbumListType;
@@ -104,6 +105,7 @@ export class LibraryComponent implements OnInit, OnDestroy {
   // ─── Mode ─────────────────────────────────────────────────────────
   readonly modes = [
     { value: 'albums' as LibraryMode, label: 'Albums' },
+    { value: 'compilations' as LibraryMode, label: 'Compilations' },
     { value: 'singles' as LibraryMode, label: 'Singles' },
     { value: 'artists' as LibraryMode, label: 'Artists' },
     { value: 'genre' as LibraryMode, label: 'Genre' },
@@ -117,6 +119,7 @@ export class LibraryComponent implements OnInit, OnDestroy {
   setMode(mode: LibraryMode): void {
     this.libraryMode.set(mode);
     localStorage.setItem('nicotind-library-mode', mode);
+    if (mode === 'compilations' && !this.compilations().length) this.fetchCompilations();
     if (mode === 'singles' && !this.singles().length) this.fetchSingles();
     if (mode === 'artists' && !this.artists().length) this.fetchArtists();
     if (mode === 'genre' && !this.genres().length) this.fetchGenres();
@@ -204,6 +207,7 @@ export class LibraryComponent implements OnInit, OnDestroy {
   // Dedicated view for the release types kept out of the Albums grid.
   readonly singles = signal<Album[]>([]);
   readonly loadingSingles = signal(false);
+  readonly singlesFetched = signal(false);
 
   readonly singlesControls = this.listControls.connect({
     pageKey: 'library-singles',
@@ -212,11 +216,44 @@ export class LibraryComponent implements OnInit, OnDestroy {
     sortOptions: this.gridSortOptions,
   });
 
+  readonly isSinglesEmpty = computed(
+    () =>
+      this.singlesFetched() &&
+      !this.loadingSingles() &&
+      this.singlesControls.filtered().length === 0,
+  );
+
+  // ─── Compilations ─────────────────────────────────────────────────
+  readonly compilations = signal<Album[]>([]);
+  readonly loadingCompilations = signal(false);
+  readonly compilationsFetched = signal(false);
+
+  readonly compilationsControls = this.listControls.connect({
+    pageKey: 'library-compilations',
+    items: this.compilations,
+    searchFields: ['name', 'artist'] as const,
+    sortOptions: this.gridSortOptions,
+  });
+
+  readonly isCompilationsEmpty = computed(
+    () =>
+      this.compilationsFetched() &&
+      !this.loadingCompilations() &&
+      this.compilationsControls.filtered().length === 0,
+  );
+
   // ─── Artists ──────────────────────────────────────────────────────
   readonly artists = signal<
     Array<{ id: string; name: string; albumCount: number; coverArt?: string }>
   >([]);
   readonly loadingArtists = signal(false);
+  readonly artistsFetched = signal(false);
+  readonly isArtistsEmpty = computed(
+    () =>
+      this.artistsFetched() &&
+      !this.loadingArtists() &&
+      this.artistControls.filtered().length === 0,
+  );
 
   readonly artistSortOptions: SortOption[] = [
     { field: 'name', label: 'Name' },
@@ -231,9 +268,52 @@ export class LibraryComponent implements OnInit, OnDestroy {
     defaultSort: 'name',
   });
 
+  // Render-windows over the (filtered) tab lists. These tabs used to fetch and
+  // render everything at once (artists is unbounded; singles/compilations up to
+  // 500), mounting thousands of tiles. Windowing keeps the full filtered list
+  // for search/sort but only mounts a growing slice, grown by the shared
+  // `#tabSentinel` observer below (tabs are mutually exclusive, so one sentinel).
+  readonly singlesWindow = createRenderWindow(this.singlesControls.filtered, 60);
+  readonly compilationsWindow = createRenderWindow(this.compilationsControls.filtered, 60);
+  readonly artistsWindow = createRenderWindow(this.artistControls.filtered, 80);
+
+  private tabSentinel = viewChild<ElementRef<HTMLElement>>('tabSentinel');
+  private tabObserver: IntersectionObserver | null = null;
+  private tabObserverEffect = effect(() => {
+    const sentinel = this.tabSentinel();
+    this.tabObserver?.disconnect();
+    this.tabObserver = null;
+    if (!sentinel) return;
+    this.tabObserver = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) this.growActiveTab();
+      },
+      { rootMargin: '400px 0px' },
+    );
+    this.tabObserver.observe(sentinel.nativeElement);
+  });
+
+  private growActiveTab(): void {
+    switch (this.libraryMode()) {
+      case 'singles':
+        this.singlesWindow.showMore();
+        break;
+      case 'compilations':
+        this.compilationsWindow.showMore();
+        break;
+      case 'artists':
+        this.artistsWindow.showMore();
+        break;
+    }
+  }
+
   // ─── Genre ────────────────────────────────────────────────────────
   readonly genres = signal<Array<{ value: string; songCount: number; albumCount: number }>>([]);
   readonly loadingGenres = signal(false);
+  readonly genresFetched = signal(false);
+  readonly isGenresEmpty = computed(
+    () => this.genresFetched() && !this.loadingGenres() && this.genres().length === 0,
+  );
 
   // ─── Lifecycle ────────────────────────────────────────────────────
   private observerEffect = effect(() => {
@@ -272,6 +352,7 @@ export class LibraryComponent implements OnInit, OnDestroy {
     }
 
     const mode = this.libraryMode();
+    if (mode === 'compilations') this.fetchCompilations();
     if (mode === 'singles') this.fetchSingles();
     if (mode === 'artists') this.fetchArtists();
     if (mode === 'genre') this.fetchGenres();
@@ -303,8 +384,25 @@ export class LibraryComponent implements OnInit, OnDestroy {
     }
   }
 
+  readonly generating = signal(false);
+
+  /** Build a playlist from the starred set via the Radio scorer, then open it. */
+  async generateFromFavorites(): Promise<void> {
+    if (this.generating()) return;
+    this.generating.set(true);
+    try {
+      const playlist = await this.playlistService.generate({ starred: true });
+      await this.router.navigate(['/library/playlists', playlist.id]);
+    } catch {
+      // Non-fatal (e.g. nothing starred yet) — stay on the list.
+    } finally {
+      this.generating.set(false);
+    }
+  }
+
   ngOnDestroy(): void {
     this.observer?.disconnect();
+    this.tabObserver?.disconnect();
     this.persistState();
   }
 
@@ -461,6 +559,7 @@ export class LibraryComponent implements OnInit, OnDestroy {
       /* ignore */
     } finally {
       this.loadingArtists.set(false);
+      this.artistsFetched.set(true);
     }
   }
 
@@ -474,6 +573,21 @@ export class LibraryComponent implements OnInit, OnDestroy {
       /* ignore */
     } finally {
       this.loadingSingles.set(false);
+      this.singlesFetched.set(true);
+    }
+  }
+
+  async fetchCompilations(): Promise<void> {
+    if (this.loadingCompilations()) return;
+    this.loadingCompilations.set(true);
+    try {
+      const data = await firstValueFrom(this.api.getCompilations('newest', 500));
+      this.compilations.set(data);
+    } catch {
+      /* ignore */
+    } finally {
+      this.loadingCompilations.set(false);
+      this.compilationsFetched.set(true);
     }
   }
 
@@ -487,6 +601,7 @@ export class LibraryComponent implements OnInit, OnDestroy {
       /* ignore */
     } finally {
       this.loadingGenres.set(false);
+      this.genresFetched.set(true);
     }
   }
 

@@ -27,6 +27,7 @@
     --theme-text-secondary: #a1a1aa;
     --theme-text-muted:   #71717a;
     --theme-accent:       #6366f1;
+    --theme-on-accent:    #ffffff;
     --theme-highlight-bg: rgba(245,158,11,0.35);
     --theme-highlight-text: #fef3c7;
     --theme-status-progress-bg:   rgba(30,58,138,0.6);
@@ -35,6 +36,8 @@
     --theme-status-done-text:     #86efac;
     --theme-status-error-bg:      rgba(127,29,29,0.6);
     --theme-status-error-text:    #fca5a5;
+    --theme-status-warn-bg:       rgba(120,53,15,0.5);
+    --theme-status-warn-text:     #fcd34d;
   }
 
   [data-theme="daylight"] {
@@ -47,6 +50,7 @@
     --theme-text-secondary: #52525b;
     --theme-text-muted:   #71717a;
     --theme-accent:       #6366f1;
+    --theme-on-accent:    #ffffff;
     --theme-highlight-bg: #fde68a;
     --theme-highlight-text: #78350f;
     --theme-status-progress-bg:   #dbeafe;
@@ -55,6 +59,8 @@
     --theme-status-done-text:     #166534;
     --theme-status-error-bg:      #fee2e2;
     --theme-status-error-text:    #991b1b;
+    --theme-status-warn-bg:       #fef3c7;
+    --theme-status-warn-text:     #92400e;
   }
 
   [data-theme="warm-paper"] {
@@ -67,6 +73,7 @@
     --theme-text-secondary: #57534e;
     --theme-text-muted:   #78716c;
     --theme-accent:       #d97706;
+    --theme-on-accent:    #431407;
     --theme-highlight-bg: #fcd34d;
     --theme-highlight-text: #78350f;
     --theme-status-progress-bg:   #fef3c7;
@@ -75,6 +82,8 @@
     --theme-status-done-text:     #065f46;
     --theme-status-error-bg:      #fee2e2;
     --theme-status-error-text:    #991b1b;
+    --theme-status-warn-bg:       #fbe6bf;
+    --theme-status-warn-text:     #7c2d12;
   }
 
   [data-theme="oled"] {
@@ -87,6 +96,7 @@
     --theme-text-secondary: #a3a3a3;
     --theme-text-muted:   #737373;
     --theme-accent:       #818cf8;
+    --theme-on-accent:    #0a0a0a;
     --theme-highlight-bg: #78350f;
     --theme-highlight-text: #fef3c7;
     --theme-status-progress-bg:   #172554;
@@ -95,6 +105,8 @@
     --theme-status-done-text:     #86efac;
     --theme-status-error-bg:      #450a0a;
     --theme-status-error-text:    #fca5a5;
+    --theme-status-warn-bg:       #451a03;
+    --theme-status-warn-text:     #fcd34d;
   }
 
   [data-theme="twilight"] {
@@ -107,6 +119,7 @@
     --theme-text-secondary: #a39fc4;
     --theme-text-muted:   #7c7a9a;
     --theme-accent:       #a78bfa;
+    --theme-on-accent:    #1e1b2e;
     --theme-highlight-bg: rgba(167,139,250,0.35);
     --theme-highlight-text: #f5f3ff;
     --theme-status-progress-bg:   #312e81;
@@ -115,6 +128,8 @@
     --theme-status-done-text:     #86efac;
     --theme-status-error-bg:      #450a0a;
     --theme-status-error-text:    #fca5a5;
+    --theme-status-warn-bg:       rgba(120,53,15,0.45);
+    --theme-status-warn-text:     #fcd34d;
   }
 
   [data-theme="forest"] {
@@ -127,6 +142,7 @@
     --theme-text-secondary: #7aaa96;
     --theme-text-muted:   #4d8070;
     --theme-accent:       #2dd4bf;
+    --theme-on-accent:    #05130f;
     --theme-highlight-bg: rgba(45,212,191,0.28);
     --theme-highlight-text: #ccfbf1;
     --theme-status-progress-bg:   #134e4a;
@@ -135,6 +151,8 @@
     --theme-status-done-text:     #86efac;
     --theme-status-error-bg:      #450a0a;
     --theme-status-error-text:    #fca5a5;
+    --theme-status-warn-bg:       #3a2408;
+    --theme-status-warn-text:     #fde68a;
   }
 
   /* E-Ink: maximum contrast, larger base font, no transparency. On low-contrast
@@ -151,6 +169,7 @@
     --theme-text-secondary: #000000;
     --theme-text-muted:   #333333;
     --theme-accent:       #000000;
+    --theme-on-accent:    #ffffff;
     --theme-highlight-bg: #000000;
     --theme-highlight-text: #ffffff;
     --theme-status-progress-bg:   #d0e4ff;
@@ -159,6 +178,8 @@
     --theme-status-done-text:     #005000;
     --theme-status-error-bg:      #ffd0d0;
     --theme-status-error-text:    #8b0000;
+    --theme-status-warn-bg:       #fff2d0;
+    --theme-status-warn-text:     #663300;
     font-size: 1.125rem;
     font-weight: 500;
   }
@@ -184,7 +205,21 @@
      rendered transparent — the grab notch looked invisible. */
   .bg-theme-muted   { background-color: var(--theme-text-muted); }
   .border-theme     { border-color: var(--theme-border); }
+  /* Subtle divider using the *lighter* surface-2 tone (not the border token) —
+     album-hunt-modal section rules + artist-detail tabs referenced
+     `border-theme-surface-2`/`divide-theme-surface-2` but neither was ever
+     registered, so those borders fell back to currentColor (a stray dark line).
+     `divide-*` supplies the width via Tailwind's own child-combinator; we only
+     add the colour on the same selector. */
+  .border-theme-surface-2 { border-color: var(--theme-surface-2); }
+  .divide-theme-surface-2 > :not([hidden]) ~ :not([hidden]) { border-color: var(--theme-surface-2); }
+  .divide-theme-border > :not([hidden]) ~ :not([hidden]) { border-color: var(--theme-border); }
   .text-theme-primary   { color: var(--theme-text-primary); }
+  /* Foreground for text/icons painted on top of a bg-theme-accent fill (count
+     badges). Chosen per-theme to contrast the accent — `text-theme-base` was
+     used here but never existed as a text utility, so badge numbers inherited an
+     arbitrary color that didn't contrast the accent pill. */
+  .text-theme-on-accent { color: var(--theme-on-accent); }
   .text-theme-secondary { color: var(--theme-text-secondary); }
   .text-theme-muted     { color: var(--theme-text-muted); }
   .search-highlight {
@@ -194,6 +229,38 @@
     background-color: var(--theme-highlight-bg);
     color: var(--theme-highlight-text);
   }
+  /* Source chips (blended acquisition results). Each keeps a distinct hue but
+     stays legible on ANY theme: the tint mixes the hue into the theme surface,
+     and the text mixes the hue toward the theme's primary text colour — so on
+     dark themes the text lightens and on light themes (daylight/warm-paper/eink)
+     it darkens, instead of the old fixed `text-*-300` tints that vanished on
+     light backgrounds. */
+  .chip-tone-soulseek {
+    background-color: color-mix(in srgb, #6366f1 16%, var(--theme-surface));
+    color: color-mix(in srgb, #6366f1 60%, var(--theme-text-primary));
+  }
+  .chip-tone-archive {
+    background-color: color-mix(in srgb, #d97706 16%, var(--theme-surface));
+    color: color-mix(in srgb, #d97706 60%, var(--theme-text-primary));
+  }
+  .chip-tone-spotify {
+    background-color: color-mix(in srgb, #22c55e 16%, var(--theme-surface));
+    color: color-mix(in srgb, #22c55e 60%, var(--theme-text-primary));
+  }
+  /* Themed status colours. The four semantic roles (progress/done/warn/error)
+     each resolve to a per-theme token pair, so a status pill or coloured label
+     stays legible on every preset instead of the old hardcoded
+     `bg-emerald-500/20 text-emerald-400` / `text-amber-500` tints that vanished
+     on the light themes (daylight/warm-paper/eink). `.status-*` = filled pill
+     (bg+text); `.text-status-*` = coloured label only. */
+  .status-progress { background-color: var(--theme-status-progress-bg); color: var(--theme-status-progress-text); }
+  .status-done     { background-color: var(--theme-status-done-bg);     color: var(--theme-status-done-text); }
+  .status-warn     { background-color: var(--theme-status-warn-bg);     color: var(--theme-status-warn-text); }
+  .status-error    { background-color: var(--theme-status-error-bg);    color: var(--theme-status-error-text); }
+  .text-status-progress { color: var(--theme-status-progress-text); }
+  .text-status-done     { color: var(--theme-status-done-text); }
+  .text-status-warn     { color: var(--theme-status-warn-text); }
+  .text-status-error    { color: var(--theme-status-error-text); }
   /* Suppress the iOS/Android long-press callout & translate bubble on player text */
   .no-callout {
     -webkit-touch-callout: none;
@@ -224,6 +291,27 @@
 }
 @utility text-theme-inverse {
   color: var(--theme-bg);
+}
+/* More themed utilities that were referenced but never registered (silent
+   no-ops). These are `@utility` (not `@layer`) because some are used with
+   `hover:` variants. `border-theme-secondary` = the muted secondary-text tone
+   as a border (spinner ring / track-row checkbox hover); `ring-theme-bg` rings
+   an element in the page bg colour to separate it from the surface behind;
+   `accent-theme[-secondary]` themes native form-control `accent-color`. */
+@utility border-theme-secondary {
+  border-color: var(--theme-text-secondary);
+}
+@utility ring-theme-bg {
+  --tw-ring-color: var(--theme-bg);
+}
+@utility ring-theme-accent {
+  --tw-ring-color: var(--theme-accent);
+}
+@utility accent-theme {
+  accent-color: var(--theme-accent);
+}
+@utility accent-theme-secondary {
+  accent-color: var(--theme-text-secondary);
 }
 
 /* ─── Seek bar (app-seek-bar) ────────────────────────────────────────────

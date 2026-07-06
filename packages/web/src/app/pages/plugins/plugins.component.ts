@@ -19,10 +19,10 @@ import { buildPluginConfigPayload, initialPluginConfigValues } from '../../lib/p
   template: `
     <div class="max-w-3xl mx-auto px-4 py-8">
       <div class="flex items-center gap-3 mb-1">
-        <a routerLink="/settings" class="text-zinc-500 hover:text-zinc-300 text-sm">← Settings</a>
+        <a routerLink="/settings" class="text-theme-muted hover:text-theme-secondary text-sm">← Settings</a>
       </div>
-      <h1 class="text-2xl font-bold text-zinc-100 mb-1">Plugins</h1>
-      <p class="text-sm text-zinc-500 mb-8">
+      <h1 class="text-2xl font-bold text-theme-primary mb-1">Plugins</h1>
+      <p class="text-sm text-theme-muted mb-8">
         Acquisition is opt-in. Nothing is downloaded until you enable a plugin here — you are
         responsible for ensuring its use is lawful where you are.
       </p>
@@ -32,8 +32,8 @@ import { buildPluginConfigPayload, initialPluginConfigValues } from '../../lib/p
           class="mb-4 px-4 py-2.5 rounded-xl text-sm"
           [class]="
             message()!.type === 'error'
-              ? 'bg-red-950 text-red-300'
-              : 'bg-emerald-950 text-emerald-300'
+              ? 'status-error'
+              : 'status-done'
           "
         >
           {{ message()!.text }}
@@ -41,26 +41,26 @@ import { buildPluginConfigPayload, initialPluginConfigValues } from '../../lib/p
       }
 
       <section class="mb-10">
-        <h2 class="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-3">
+        <h2 class="text-sm font-semibold text-theme-secondary uppercase tracking-wider mb-3">
           Acquisition
         </h2>
         @for (p of plugins.acquisition(); track p.id) {
           <ng-container [ngTemplateOutlet]="card" [ngTemplateOutletContext]="{ $implicit: p }" />
         }
         @if (plugins.acquisition().length === 0) {
-          <p class="text-sm text-zinc-600">No acquisition plugins registered.</p>
+          <p class="text-sm text-theme-muted">No acquisition plugins registered.</p>
         }
       </section>
 
       <section>
-        <h2 class="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-3">
+        <h2 class="text-sm font-semibold text-theme-secondary uppercase tracking-wider mb-3">
           Connectivity
         </h2>
         @for (p of plugins.connectivity(); track p.id) {
           <ng-container [ngTemplateOutlet]="card" [ngTemplateOutletContext]="{ $implicit: p }" />
         }
         @if (plugins.connectivity().length === 0) {
-          <p class="text-sm text-zinc-600">
+          <p class="text-sm text-theme-muted">
             No connectivity plugins yet. Tailscale / WireGuard support will appear here.
           </p>
         }
@@ -68,42 +68,42 @@ import { buildPluginConfigPayload, initialPluginConfigValues } from '../../lib/p
 
       <ng-template #card let-p>
         <div
-          class="mb-3 p-4 rounded-xl bg-zinc-900 border border-zinc-800"
+          class="mb-3 p-4 rounded-xl bg-theme-surface border border-theme"
           data-testid="plugin-card"
           [attr.data-plugin-id]="p.id"
         >
           <div class="flex items-start justify-between gap-4">
             <div class="min-w-0">
               <div class="flex items-center gap-2 flex-wrap">
-                <span class="font-medium text-zinc-100">{{ p.name }}</span>
+                <span class="font-medium text-theme-primary">{{ p.name }}</span>
                 @if (p.enabled) {
                   <span
-                    class="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-400"
+                    class="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded status-done"
                     >Enabled</span
                   >
                 } @else {
                   <span
-                    class="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-500"
+                    class="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-theme-surface-2 text-theme-muted"
                     >Disabled</span
                   >
                 }
                 @if (p.enabled && !p.available) {
                   <span
-                    class="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-amber-950 text-amber-400"
+                    class="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded status-warn"
                     >Unavailable</span
                   >
                 }
               </div>
-              <p class="text-sm text-zinc-400 mt-1">{{ p.description }}</p>
+              <p class="text-sm text-theme-secondary mt-1">{{ p.description }}</p>
               <div class="flex gap-1.5 mt-2 flex-wrap">
                 @for (cap of p.capabilities; track cap) {
-                  <span class="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">{{
+                  <span class="text-[10px] px-1.5 py-0.5 rounded bg-theme-surface-2 text-theme-secondary">{{
                     cap
                   }}</span>
                 }
               </div>
               @if (p.enabled && !p.available && p.requirements?.binaries?.length) {
-                <p class="text-xs text-amber-500 mt-2">
+                <p class="text-xs text-status-warn mt-2">
                   Requires on PATH: {{ p.requirements.binaries.join(', ') }}
                 </p>
               }
@@ -115,8 +115,8 @@ import { buildPluginConfigPayload, initialPluginConfigValues } from '../../lib/p
               class="shrink-0 px-3 py-1.5 rounded-lg text-sm font-medium transition disabled:opacity-50"
               [class]="
                 p.enabled
-                  ? 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
-                  : 'bg-emerald-600 text-white hover:bg-emerald-500'
+                  ? 'bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover'
+                  : 'bg-theme-accent text-theme-on-accent hover:opacity-90'
               "
             >
               {{ p.enabled ? 'Disable' : 'Enable' }}
@@ -126,15 +126,15 @@ import { buildPluginConfigPayload, initialPluginConfigValues } from '../../lib/p
           @if (p.configFields?.length) {
             <form
               (ngSubmit)="saveConfig(p)"
-              class="mt-4 pt-4 border-t border-zinc-800 space-y-3"
+              class="mt-4 pt-4 border-t border-theme space-y-3"
               data-testid="plugin-config-form"
             >
               @for (f of p.configFields; track f.key) {
                 <label class="block">
-                  <span class="text-xs text-zinc-400">
+                  <span class="text-xs text-theme-secondary">
                     {{ f.label }}
                     @if (f.type === 'password' && p.configured?.[f.key]) {
-                      <span class="text-emerald-500">• configured</span>
+                      <span class="text-status-done">• configured</span>
                     }
                   </span>
                   <input
@@ -145,10 +145,10 @@ import { buildPluginConfigPayload, initialPluginConfigValues } from '../../lib/p
                     [name]="p.id + '-' + f.key"
                     [attr.data-testid]="'plugin-config-' + f.key"
                     autocomplete="off"
-                    class="mt-1 w-full px-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-sm text-zinc-200 focus:outline-none focus:border-zinc-600"
+                    class="mt-1 w-full px-3 py-2 rounded-lg bg-theme-surface border border-theme text-sm text-theme-primary focus:outline-none focus:border-theme-accent"
                   />
                   @if (f.help) {
-                    <span class="text-[11px] text-zinc-600 mt-1 block">{{ f.help }}</span>
+                    <span class="text-[11px] text-theme-muted mt-1 block">{{ f.help }}</span>
                   }
                 </label>
               }
@@ -156,7 +156,7 @@ import { buildPluginConfigPayload, initialPluginConfigValues } from '../../lib/p
                 type="submit"
                 [disabled]="busy()"
                 data-testid="plugin-config-save"
-                class="px-3 py-1.5 rounded-lg text-sm font-medium bg-zinc-800 text-zinc-200 hover:bg-zinc-700 disabled:opacity-50"
+                class="px-3 py-1.5 rounded-lg text-sm font-medium bg-theme-surface-2 text-theme-primary hover:bg-theme-hover disabled:opacity-50"
               >
                 Save
               </button>

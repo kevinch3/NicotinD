@@ -1,0 +1,135 @@
+import { describe, expect, it, mock } from 'bun:test';
+import { Database } from 'bun:sqlite';
+import { applySchema } from '../db.js';
+import { acquireAlbum } from './album-acquire.js';
+import { albumIdFor, artistIdFor } from './library-scanner.js';
+import type { AlbumHunterService, FolderCandidate } from './album-hunter.service.js';
+import type { Lidarr } from '@nicotind/lidarr-client';
+import type { SlskdRef } from '../index.js';
+
+function makeDb(): Database {
+  const db = new Database(':memory:');
+  applySchema(db);
+  return db;
+}
+
+function candidate(overrides: Partial<FolderCandidate>): FolderCandidate {
+  return {
+    directory: 'Artist/Album',
+    username: 'peer',
+    files: [{ filename: 'Artist/Album/01 Song.flac', size: 1 }],
+    matchedTracks: 10,
+    totalTracks: 10,
+    matchPct: 100,
+    format: 'FLAC',
+    estimatedSizeMb: 100,
+    isLive: false,
+    freeUploadSlots: 1,
+    queueLength: 0,
+    uploadSpeed: 1,
+    ...overrides,
+  } as FolderCandidate;
+}
+
+function makeDeps(opts: {
+  db?: Database;
+  candidates?: FolderCandidate[];
+  tracks?: Array<{ title: string }>;
+  slskd?: boolean;
+  enqueueThrows?: boolean;
+}) {
+  const db = opts.db ?? makeDb();
+  const tracks = opts.tracks ?? [{ title: 'Song One' }, { title: 'Song Two' }];
+  const enqueue = mock(async () => {
+    if (opts.enqueueThrows) throw new Error('peer offline');
+  });
+  const hunt = mock(async () => opts.candidates ?? []);
+  const listByAlbum = mock(async () => tracks);
+  const deps = {
+    db,
+    hunter: { hunt } as unknown as AlbumHunterService,
+    lidarr: { track: { listByAlbum } } as unknown as Lidarr,
+    slskdRef: (opts.slskd === false
+      ? { current: null }
+      : { current: { transfers: { enqueue } } }) as unknown as SlskdRef,
+  };
+  return { db, deps, enqueue, hunt, listByAlbum };
+}
+
+const input = { lidarrAlbumId: 99, artistName: 'Artist', albumTitle: 'Album', minMatchPct: 80 };
+
+describe('acquireAlbum', () => {
+  it('enqueues the best candidate and records a fallback job', async () => {
+    const { db, deps, enqueue } = makeDeps({
+      candidates: [candidate({ username: 'good', matchPct: 100 })],
+    });
+
+    const outcome = await acquireAlbum(deps, input);
+
+    expect(outcome).toBe('enqueued');
+    expect(enqueue).toHaveBeenCalledWith('good', expect.any(Array));
+    const job = db.query('SELECT lidarr_album_id AS a FROM album_jobs').get() as { a: number };
+    expect(job.a).toBe(99);
+  });
+
+  it('returns no-candidate when nothing clears the threshold (no enqueue)', async () => {
+    const { deps, enqueue } = makeDeps({ candidates: [candidate({ matchPct: 50 })] });
+
+    const outcome = await acquireAlbum(deps, input);
+
+    expect(outcome).toBe('no-candidate');
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+
+  it('returns already-complete when the album is on disk (no hunt)', async () => {
+    const db = makeDb();
+    const albumId = albumIdFor('Artist', 'Album');
+    db.run(
+      `INSERT INTO library_albums (id, name, artist, artist_id, song_count, duration, created, synced_at)
+       VALUES (?, 'Album', 'Artist', ?, 2, 0, '2024-01-01', 0)`,
+      [albumId, artistIdFor('Artist')],
+    );
+    const { deps, enqueue, hunt } = makeDeps({ db });
+
+    const outcome = await acquireAlbum(deps, input);
+
+    expect(outcome).toBe('already-complete');
+    expect(hunt).not.toHaveBeenCalled();
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+
+  it('returns in-flight when a job is already active for the album (no hunt)', async () => {
+    const db = makeDb();
+    db.run(
+      `INSERT INTO album_jobs (lidarr_album_id, username, directory, canonical_tracks_json, alternates_json, state, created_at)
+       VALUES (99, 'u', 'd', '[]', '[]', 'active', 0)`,
+    );
+    const { deps, enqueue, hunt } = makeDeps({ db });
+
+    const outcome = await acquireAlbum(deps, input);
+
+    expect(outcome).toBe('in-flight');
+    expect(hunt).not.toHaveBeenCalled();
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+
+  it('returns slskd-unavailable when slskd is not connected', async () => {
+    const { deps, hunt } = makeDeps({ slskd: false });
+
+    const outcome = await acquireAlbum(deps, input);
+
+    expect(outcome).toBe('slskd-unavailable');
+    expect(hunt).not.toHaveBeenCalled();
+  });
+
+  it('returns enqueue-failed when the transfer enqueue throws', async () => {
+    const { deps } = makeDeps({
+      candidates: [candidate({ matchPct: 100 })],
+      enqueueThrows: true,
+    });
+
+    const outcome = await acquireAlbum(deps, input);
+
+    expect(outcome).toBe('enqueue-failed');
+  });
+});

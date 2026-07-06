@@ -34,6 +34,9 @@ function fakeCtx(counters: { analyzed: number; genreLookups: number }) {
       return 120;
     },
     analyzeKey: async () => 'C major',
+    analyzeLoudness: async () => ({ loudness: -9.5, energy: 0.7 }),
+    analyzeAudioFeatures: null,
+    audioFeaturesAvailable: () => false,
     lookupGenre: async () => {
       counters.genreLookups += 1;
       return 'Rock';
@@ -161,7 +164,10 @@ describe('LibraryProcessingService', () => {
 
   it('appends a log line per enriched item', async () => {
     for (let i = 0; i < 3; i++) seedSong(`s${i}`);
-    setProcessingSettings(db, { batchSize: 10, tasks: { bpm: true, genre: true, key: false } });
+    setProcessingSettings(db, {
+      batchSize: 10,
+      tasks: { bpm: true, genre: true, key: false, energy: false },
+    });
     const counters = { analyzed: 0, genreLookups: 0 };
     const svc = service({ now: new Date(2024, 0, 1, 12, 0), counters });
 
@@ -177,7 +183,10 @@ describe('LibraryProcessingService', () => {
 
   it('persists status across a restart', async () => {
     for (let i = 0; i < 2; i++) seedSong(`s${i}`);
-    setProcessingSettings(db, { batchSize: 10, tasks: { bpm: true, genre: false, key: false } });
+    setProcessingSettings(db, {
+      batchSize: 10,
+      tasks: { bpm: true, genre: false, key: false, energy: false },
+    });
     const counters = { analyzed: 0, genreLookups: 0 };
     const svc = service({ now: new Date(2024, 0, 1, 12, 0), counters });
     await svc.runNow();

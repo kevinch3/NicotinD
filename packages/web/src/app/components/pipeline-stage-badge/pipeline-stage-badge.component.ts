@@ -33,11 +33,11 @@ export class PipelineStageBadgeComponent {
   readonly toneClass = computed(() => {
     switch (this.badge().tone) {
       case 'active':
-        return 'bg-blue-500/15 text-blue-400';
+        return 'status-progress';
       case 'error':
-        return 'bg-red-500/15 text-red-400';
+        return 'status-error';
       case 'done':
-        return 'bg-emerald-500/15 text-emerald-400';
+        return 'status-done';
       default:
         return 'bg-theme-surface-2 text-theme-muted';
     }

@@ -22,6 +22,8 @@ interface AlbumTags {
 interface FileSignal {
   artist: string | undefined;
   album: string | undefined;
+  albumArtist: string | undefined;
+  compilation: boolean | undefined;
   filename: string;
 }
 
@@ -39,6 +41,12 @@ const COMPILATION_NAME_REGEXES: RegExp[] = [
 
 function looksLikeCompilationName(folderName: string): boolean {
   return COMPILATION_NAME_REGEXES.some((re) => re.test(folderName));
+}
+
+const VA_PATTERNS = /^(various\s*artists?|va|v\.?\s*a\.?|v\s*\/\s*a)$/i;
+
+export function isVariousArtists(name: string): boolean {
+  return VA_PATTERNS.test(name.trim());
 }
 
 function normalizeTag(value: string | undefined): string | undefined {
@@ -85,12 +93,14 @@ function consensusValue(values: Array<string | undefined>): string | undefined {
  * through as `undefined`. Length ≥ 2 is guaranteed by the caller.
  *
  * Rule evaluation order (first match wins):
- *   1. Coherent album already (1 distinct album, 0 missing) → leave-alone.
- *   2. Single-artist consensus (1 distinct artist, ≤25% missing) → single-artist.
- *   3. Folder name shouts comp → compilation.
- *   4. ≥5 distinct artists → compilation.
- *   5. ≥6 files AND ≥75% artist-missing AND ≥75% album-missing → compilation.
- *   6. Otherwise → leave-alone.
+ *   1. Existing COMPILATION flag or VA albumArtist in tags → compilation.
+ *   2. Coherent album + single artist → leave-alone (well-tagged, don't touch).
+ *   3. Single-artist consensus (1 distinct artist, ≤25% missing) → single-artist.
+ *   4. Folder name shouts comp → compilation.
+ *   5. Coherent album + ≥3 artists → compilation (classic VA pattern).
+ *   6. ≥5 distinct artists → compilation.
+ *   7. ≥6 files AND ≥75% artist-missing AND ≥75% album-missing → compilation.
+ *   8. Otherwise → leave-alone.
  */
 export function classifyFolder(files: FileSignal[], folderName: string): Classification {
   const total = files.length;
@@ -109,14 +119,23 @@ export function classifyFolder(files: FileSignal[], folderName: string): Classif
 
   const year = parseYearFromFolder(folderName);
 
-  // 1. Already coherent — one album value across every file. Strict equality
-  //    (not a fraction) so that even one missing tag falls through to the
-  //    single-artist consolidation path, which fills the gap.
-  if (distinctAlbums === 1 && albumMissingFraction === 0) {
+  // 1. Existing COMPILATION flag or VA album artist in tags — trust the source.
+  const hasCompilationFlag = files.some((f) => f.compilation === true);
+  const hasVaAlbumArtist = files.some(
+    (f) => f.albumArtist !== undefined && isVariousArtists(f.albumArtist),
+  );
+  if (hasCompilationFlag || hasVaAlbumArtist) {
+    const album =
+      distinctAlbums === 1 ? nonEmptyAlbums[0]! : cleanFolderName(folderName);
+    return { type: 'compilation', album, year };
+  }
+
+  // 2. Coherent album + single artist → already well-tagged, don't rewrite.
+  if (distinctAlbums === 1 && albumMissingFraction === 0 && distinctArtists <= 1) {
     return { type: 'leave-alone' };
   }
 
-  // 2. Single-artist consolidation
+  // 3. Single-artist consolidation
   if (distinctArtists === 1 && artistMissingFraction <= 0.25) {
     const artist = consensusValue(artists) ?? nonEmptyArtists[0]!;
     return {
@@ -127,17 +146,23 @@ export function classifyFolder(files: FileSignal[], folderName: string): Classif
     };
   }
 
-  // 3. Folder name shouts compilation
+  // 4. Folder name shouts compilation
   if (looksLikeCompilationName(folderName)) {
     return { type: 'compilation', album: cleanFolderName(folderName), year };
   }
 
-  // 4. Scattered artists (5+ distinct)
+  // 5. Coherent album + multiple artists → the tracks were intentionally
+  //    grouped under one album name by different artists (classic VA pattern).
+  if (distinctAlbums === 1 && albumMissingFraction === 0 && distinctArtists >= 3) {
+    return { type: 'compilation', album: nonEmptyAlbums[0]!, year };
+  }
+
+  // 6. Scattered artists (5+ distinct)
   if (distinctArtists >= 5) {
     return { type: 'compilation', album: cleanFolderName(folderName), year };
   }
 
-  // 5. Untagged sizable dump
+  // 7. Untagged sizable dump
   if (total >= 6 && artistMissingFraction >= 0.75 && albumMissingFraction >= 0.75) {
     return { type: 'compilation', album: cleanFolderName(folderName), year };
   }
@@ -150,7 +175,7 @@ type NodeId3Api = {
   update: (tags: Record<string, string>, filepath: string) => boolean;
 };
 
-type MusicMetadataCommon = { album?: string; artist?: string };
+type MusicMetadataCommon = { album?: string; artist?: string; albumartist?: string };
 type MusicMetadataApi = {
   parseFile: (
     path: string,
@@ -247,17 +272,21 @@ export class CompilationTagger {
       const ext = extname(path).toLowerCase();
       if (!ID3_EXTS.has(ext) && !VORBIS_EXTS.has(ext)) continue;
 
-      const tags = await this.readArtistAndAlbum(path, ext);
+      const tags = await this.readFileTags(path, ext);
       const filename = file.filename;
       let artist = normalizeTag(tags.artist);
       const album = normalizeTag(tags.album);
+      const albumArtist = normalizeTag(tags.albumArtist);
 
       if (!artist) {
         const inferred = inferMetadataFromPath(filename, file.directory);
         artist = normalizeTag(inferred.artist);
       }
 
-      resolved.push({ path, signal: { artist, album, filename } });
+      resolved.push({
+        path,
+        signal: { artist, album, albumArtist, compilation: tags.compilation, filename },
+      });
     }
 
     if (resolved.length < 2) return;
@@ -299,10 +328,10 @@ export class CompilationTagger {
     );
   }
 
-  private async readArtistAndAlbum(
+  private async readFileTags(
     filepath: string,
     ext: string,
-  ): Promise<{ artist?: string; album?: string }> {
+  ): Promise<{ artist?: string; album?: string; albumArtist?: string; compilation?: boolean }> {
     if (ID3_EXTS.has(ext)) {
       const nodeId3 = await getNodeId3();
       if (!nodeId3) return {};
@@ -312,6 +341,15 @@ export class CompilationTagger {
         return {
           artist: typeof data.artist === 'string' ? data.artist : undefined,
           album: typeof data.album === 'string' ? data.album : undefined,
+          albumArtist:
+            typeof data.performerInfo === 'string' ? data.performerInfo : undefined,
+          compilation:
+            Array.isArray(data.userDefinedText) &&
+            (data.userDefinedText as Array<Record<string, string>>).some(
+              (t) => t.description === 'COMPILATION' && t.value === '1',
+            )
+              ? true
+              : undefined,
         };
       } catch {
         return {};
@@ -322,7 +360,12 @@ export class CompilationTagger {
       if (!mm) return {};
       try {
         const parsed = await mm.parseFile(filepath, { duration: false });
-        return { artist: parsed.common.artist, album: parsed.common.album };
+        return {
+          artist: parsed.common.artist,
+          album: parsed.common.album,
+          albumArtist: parsed.common.albumartist,
+          compilation: (parsed.common as Record<string, unknown>).compilation === true ? true : undefined,
+        };
       } catch {
         return {};
       }

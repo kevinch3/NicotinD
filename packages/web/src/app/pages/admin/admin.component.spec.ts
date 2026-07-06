@@ -5,7 +5,7 @@ import { AdminComponent } from './admin.component';
 import { DownloadsApiService } from '../../services/api/downloads-api.service';
 import { SystemApiService } from '../../services/api/system-api.service';
 import { LibraryApiService } from '../../services/api/library-api.service';
-import type { AlbumJob } from '../../services/api/api-types';
+import type { AlbumJob, UntrackedDownload } from '../../services/api/api-types';
 import { AuthService } from '../../services/auth.service';
 import { TransferService } from '../../services/transfer.service';
 
@@ -26,7 +26,7 @@ function job(overrides: Partial<AlbumJob>): AlbumJob {
 
 describe('AdminComponent (incomplete albums + untracked)', () => {
   const listAlbumJobs = vi.fn(() => of({ jobs: [] as AlbumJob[] }));
-  const getUntrackedDownloads = vi.fn(() => of({ total: 0, rows: [] }));
+  const getUntrackedDownloads = vi.fn(() => of({ total: 0, rows: [] as UntrackedDownload[] }));
 
   beforeEach(async () => {
     listAlbumJobs.mockClear();
@@ -99,7 +99,7 @@ describe('AdminComponent (incomplete albums + untracked)', () => {
 
   it('jobStateClass maps states to colors', () => {
     const c = create();
-    expect(c.jobStateClass('exhausted')).toContain('red');
-    expect(c.jobStateClass('active')).toContain('amber');
+    expect(c.jobStateClass('exhausted')).toContain('status-error');
+    expect(c.jobStateClass('active')).toContain('status-warn');
   });
 });

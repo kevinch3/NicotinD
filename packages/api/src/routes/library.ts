@@ -5,6 +5,8 @@ import { createLogger } from '@nicotind/core';
 import type { Song, Album, Artist } from '@nicotind/core';
 import type { Lidarr } from '@nicotind/lidarr-client';
 import type { AuthEnv } from '../middleware/auth.js';
+import { requireAdmin } from '../middleware/current-user.js';
+import { errorHandler } from '../middleware/error-handler.js';
 import type { Database } from 'bun:sqlite';
 import { getDatabase } from '../db.js';
 import type { LibraryCurator } from '../services/library-curator.js';
@@ -40,6 +42,7 @@ import {
 } from '../services/cover-sources.js';
 import { pruneOrphanArtist } from '../services/library-aggregates.js';
 import { songOrderBy } from '../services/song-sort.js';
+import { attachSongArtists, attachAlbumArtists } from '../services/artist-attach.js';
 import type {
   ApplyMetadataRequest,
   AlbumCoverCandidate,
@@ -55,7 +58,7 @@ const VALID_CLASSIFICATIONS = new Set(['album', 'ep', 'single', 'compilation', '
 // surfaced on the artist page and the dedicated /singles view instead, so the
 // grid stays album-only. Defined once here so no album-listing endpoint can
 // re-pollute the grid by forgetting the filter.
-const GRID_CLASSIFICATION_SQL = `classification IN ('album','compilation')`;
+const GRID_CLASSIFICATION_SQL = `classification = 'album'`;
 const SINGLE_EP_CLASSIFICATION_SQL = `classification IN ('single','ep')`;
 
 /**
@@ -84,9 +87,45 @@ function getDownloadingGroupKeys(db: Database, extraKeys?: Set<string>): Set<str
 let transferKeysCache: { at: number; keys: Set<string> } | null = null;
 const TRANSFER_KEYS_TTL_MS = 4000;
 
-/** Test hook: clear the cached transfer keys so a test can change slskd state. */
+/** Cache the album id→group-key mapping so a burst of listing requests during an
+ * active download doesn't re-scan library_albums each time. Short TTL (like the
+ * transfer cache): a stale rename for a few seconds is harmless — downloading
+ * albums are excluded regardless — and avoids wiring invalidation into every
+ * album mutation. Only consulted when a download is actually active. Keyed by db
+ * instance so it's correct in production (one db) and never leaks across the
+ * many throwaway databases a test suite spins up. */
+let albumKeyCache = new WeakMap<Database, { at: number; byGroupKey: Map<string, string[]> }>();
+const ALBUM_KEY_TTL_MS = 4000;
+
+/** Test hook: clear the cached transfer keys + album map so a test can change state. */
 export function __resetDownloadSuppressionCache(): void {
   transferKeysCache = null;
+  albumKeyCache = new WeakMap();
+}
+
+/**
+ * Map every album's normalized `"artist album"` group key → its id(s), memoized
+ * for {@link ALBUM_KEY_TTL_MS}. Replaces a per-request full-table scan +
+ * per-row normalization with an O(active-keys) lookup during downloads.
+ */
+export function albumIdsByGroupKey(db: Database): Map<string, string[]> {
+  const now = Date.now();
+  const cached = albumKeyCache.get(db);
+  if (cached && now - cached.at < ALBUM_KEY_TTL_MS) return cached.byGroupKey;
+  const rows = db
+    .query<{ id: string; artist: string; name: string }, []>(
+      `SELECT id, artist, name FROM library_albums`,
+    )
+    .all();
+  const byGroupKey = new Map<string, string[]>();
+  for (const r of rows) {
+    const key = `${normalizeArtistForGrouping(r.artist)} ${normalizeForGrouping(r.name)}`;
+    const arr = byGroupKey.get(key);
+    if (arr) arr.push(r.id);
+    else byGroupKey.set(key, [r.id]);
+  }
+  albumKeyCache.set(db, { at: now, byGroupKey });
+  return byGroupKey;
 }
 
 /**
@@ -128,16 +167,12 @@ function downloadingExclusion(
 ): { sql: string; params: string[] } {
   const keys = getDownloadingGroupKeys(db, extraKeys);
   if (keys.size === 0) return { sql: '', params: [] };
-  const all = db
-    .query<{ id: string; artist: string; name: string }, []>(
-      `SELECT id, artist, name FROM library_albums`,
-    )
-    .all();
-  const excluded = all
-    .filter((r) =>
-      keys.has(`${normalizeArtistForGrouping(r.artist)} ${normalizeForGrouping(r.name)}`),
-    )
-    .map((r) => r.id);
+  const byGroupKey = albumIdsByGroupKey(db);
+  const excluded: string[] = [];
+  for (const key of keys) {
+    const ids = byGroupKey.get(key);
+    if (ids) excluded.push(...ids);
+  }
   if (excluded.length === 0) return { sql: '', params: [] };
   return { sql: `id NOT IN (${excluded.map(() => '?').join(',')})`, params: excluded };
 }
@@ -197,6 +232,8 @@ interface SongRow {
   title: string;
   artist: string;
   artist_id: string;
+  album_artist: string;
+  album_artist_id: string;
   track: number | null;
   duration: number;
   year: number | null;
@@ -211,6 +248,13 @@ interface SongRow {
   starred: string | null;
   bpm: number | null;
   key: string | null;
+  energy: number | null;
+  loudness: number | null;
+  valence: number | null;
+  danceability: number | null;
+  acousticness: number | null;
+  instrumental: number | null;
+  mood: string | null;
 }
 
 interface ArtistRow {
@@ -229,9 +273,12 @@ const ALBUM_SELECT = `
 
 const SONG_SELECT = `
   SELECT s.id, s.album_id, a.name AS album_name, a.cover_art AS album_cover_art,
-         s.title, s.artist, s.artist_id, s.track, s.duration, s.year, s.genre,
+         s.title, s.artist, s.artist_id, s.album_artist, s.album_artist_id,
+         s.track, s.duration, s.year, s.genre,
          s.cover_art, s.path, s.size, s.bit_rate, s.suffix, s.content_type,
-         s.created, s.starred, s.bpm, s.key
+         s.created, s.starred, s.bpm, s.key,
+         s.energy, s.loudness, s.valence, s.danceability, s.acousticness,
+         s.instrumental, s.mood
   FROM library_songs s
   LEFT JOIN library_albums a ON a.id = s.album_id
 `;
@@ -267,6 +314,8 @@ function rowToSong(r: SongRow): Song {
     albumId: r.album_id,
     artist: r.artist,
     artistId: r.artist_id,
+    albumArtist: r.album_artist || undefined,
+    albumArtistId: r.album_artist_id || undefined,
     track: r.track ?? undefined,
     year: r.year ?? undefined,
     genre: r.genre ?? undefined,
@@ -281,6 +330,30 @@ function rowToSong(r: SongRow): Song {
     starred: r.starred ?? undefined,
     bpm: r.bpm ?? undefined,
     key: r.key ?? undefined,
+    energy: r.energy ?? undefined,
+    loudness: r.loudness ?? undefined,
+    valence: r.valence ?? undefined,
+    danceability: r.danceability ?? undefined,
+    acousticness: r.acousticness ?? undefined,
+    instrumental: r.instrumental ?? undefined,
+    mood: r.mood ?? undefined,
+  };
+}
+
+/** SongRow → the scorer's SongFeatures (incl. the perceptual axes). */
+function songRowFeatures(r: SongRow): SongFeatures {
+  return {
+    bpm: r.bpm ?? undefined,
+    key: r.key ?? undefined,
+    genre: r.genre ?? undefined,
+    duration: r.duration,
+    year: r.year ?? undefined,
+    artistId: r.artist_id,
+    energy: r.energy ?? undefined,
+    valence: r.valence ?? undefined,
+    danceability: r.danceability ?? undefined,
+    instrumental: r.instrumental ?? undefined,
+    acousticness: r.acousticness ?? undefined,
   };
 }
 
@@ -317,6 +390,11 @@ function albumOrderBy(type: string): string {
 
 export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions = {}) {
   const app = new Hono<AuthEnv>();
+  // Self-contained error mapping so typed throws (e.g. requireAdmin's
+  // ForbiddenError) become the standard { error, code } + status even when this
+  // router is mounted on a bare app (as the route tests do) without the global
+  // onError. Mirrors the app-level handler.
+  app.onError(errorHandler);
   const { curator, runSync, lidarr, coverCacheDir, dataDir, pluginRegistry } = options;
 
   app.get('/artists', (c) => {
@@ -325,7 +403,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       .query<ArtistRow, []>(
         `SELECT id, name, album_count, cover_art, starred
          FROM library_artists
-         WHERE hidden = 0
+         WHERE hidden = 0 AND name != 'Various Artists' COLLATE NOCASE
          ORDER BY name COLLATE NOCASE ASC`,
       )
       .all();
@@ -372,11 +450,11 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       return c.json({ error: 'Artist not found' }, 404);
     }
     const allRows = db
-      .query<AlbumRow, [string]>(
-        `${ALBUM_SELECT} WHERE artist_id = ? AND hidden = 0
+      .query<AlbumRow, [string, string]>(
+        `${ALBUM_SELECT} WHERE (artist_id = ? OR id IN (SELECT album_id FROM library_album_artists WHERE artist_id = ?)) AND hidden = 0
          ORDER BY year DESC NULLS LAST, name COLLATE NOCASE ASC`,
       )
-      .all(id);
+      .all(id, id);
     const downloadingKeys = getDownloadingGroupKeys(
       db,
       await activeTransferKeys(options.slskdRef),
@@ -394,6 +472,8 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     const singlesAndEps = visible
       .filter((r) => r.classification === 'single' || r.classification === 'ep')
       .map(rowToAlbum);
+    attachAlbumArtists(db, albums);
+    attachAlbumArtists(db, singlesAndEps);
     return c.json({ artist: rowToArtist(artistRow), albums, singlesAndEps });
   });
 
@@ -407,15 +487,35 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     const sort = c.req.query('sort') ?? 'newest';
     const starredOnly = c.req.query('starred') === 'true';
     const db = getDatabase();
-    const wheres = ['s.artist_id = ?', 's.hidden = 0'];
+    const wheres = ['(s.artist_id = ? OR s.id IN (SELECT song_id FROM library_song_artists WHERE artist_id = ?))', 's.hidden = 0'];
     if (starredOnly) wheres.push('s.starred IS NOT NULL');
     const rows = db
-      .query<SongRow, [string, number, number]>(
+      .query<SongRow, [string, string, number, number]>(
         `${SONG_SELECT} WHERE ${wheres.join(' AND ')}
          ORDER BY ${songOrderBy(sort)} LIMIT ? OFFSET ?`,
       )
-      .all(id, size, offset);
-    return c.json(rows.map(rowToSong));
+      .all(id, id, size, offset);
+    const songs = rows.map(rowToSong);
+    attachSongArtists(db, songs);
+    return c.json(songs);
+  });
+
+  app.get('/artists/:id/appears-on', (c) => {
+    const id = c.req.param('id');
+    const db = getDatabase();
+    const rows = db
+      .query<AlbumRow, [string, string]>(
+        `${ALBUM_SELECT} WHERE id IN (
+           SELECT DISTINCT ls.album_id FROM library_songs ls
+           JOIN library_albums la ON la.id = ls.album_id
+           WHERE (ls.artist_id = ? OR ls.id IN (SELECT song_id FROM library_song_artists WHERE artist_id = ?))
+             AND la.classification = 'compilation' AND la.hidden = 0
+         ) ORDER BY year DESC NULLS LAST, name COLLATE NOCASE ASC`,
+      )
+      .all(id, id);
+    const albums = rows.map(rowToAlbum);
+    attachAlbumArtists(db, albums);
+    return c.json(albums);
   });
 
   // Dedicated singles & EPs listing (the /library/singles view). Mirrors /albums
@@ -481,6 +581,21 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     return c.json(albums);
   });
 
+  app.get('/compilations', async (c) => {
+    const type = c.req.query('type') ?? 'newest';
+    const size = Math.min(Number(c.req.query('size') ?? 20), 500);
+    const offset = Math.max(Number(c.req.query('offset') ?? 0), 0);
+    const db = getDatabase();
+    const order = albumOrderBy(type);
+    const rows = db
+      .query<AlbumRow, [number, number]>(
+        `${ALBUM_SELECT} WHERE hidden = 0 AND classification = 'compilation'
+         ORDER BY ${order} LIMIT ? OFFSET ?`,
+      )
+      .all(size, offset);
+    return c.json(rows.map(rowToAlbum));
+  });
+
   app.get('/albums/:id', (c) => {
     const id = c.req.param('id');
     const db = getDatabase();
@@ -494,12 +609,15 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
          ORDER BY s.track ASC NULLS LAST, s.title COLLATE NOCASE ASC`,
       )
       .all(id);
-    return c.json({ ...rowToAlbum(albumRow), song: songRows.map(rowToSong) });
+    const album = rowToAlbum(albumRow);
+    const songs = songRows.map(rowToSong);
+    attachAlbumArtists(db, [album]);
+    attachSongArtists(db, songs);
+    return c.json({ ...album, song: songs });
   });
 
   app.delete('/albums/:id', async (c) => {
-    const user = c.get('user');
-    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+    requireAdmin(c);
 
     const albumId = c.req.param('id');
     const db = getDatabase();
@@ -604,8 +722,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
   // organizer and are otherwise invisible to playlist/deletion logic. Run the
   // backfill-untracked script to resolve the ones still on disk.
   app.get('/untracked', (c) => {
-    const user = c.get('user');
-    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+    requireAdmin(c);
     const db = getDatabase();
     const limit = Math.min(Number(c.req.query('limit') ?? 200) || 200, 1000);
     const total = (
@@ -630,24 +747,21 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
 
   // --- Curation admin endpoints -------------------------------------------------
   app.post('/albums/:id/hide', (c) => {
-    const user = c.get('user');
-    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+    requireAdmin(c);
     if (!curator) return c.json({ error: 'Curator not available' }, 503);
     const ok = curator.setManualOverride(c.req.param('id'), { hidden: true });
     return c.json({ ok });
   });
 
   app.post('/albums/:id/unhide', (c) => {
-    const user = c.get('user');
-    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+    requireAdmin(c);
     if (!curator) return c.json({ error: 'Curator not available' }, 503);
     const ok = curator.setManualOverride(c.req.param('id'), { hidden: false });
     return c.json({ ok });
   });
 
   app.post('/albums/:id/reclassify', async (c) => {
-    const user = c.get('user');
-    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+    requireAdmin(c);
     if (!curator) return c.json({ error: 'Curator not available' }, 503);
     const body = await c.req.json<{ classification?: string }>();
     const cls = body.classification;
@@ -661,8 +775,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
   });
 
   app.post('/albums/:id/clear-override', (c) => {
-    const user = c.get('user');
-    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+    requireAdmin(c);
     if (!curator) return c.json({ error: 'Curator not available' }, 503);
     const ok = curator.clearManualOverride(c.req.param('id'));
     return c.json({ ok });
@@ -672,8 +785,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
   // overwrite what's stored (the "fix a wrong/poor thumbnail" action). Admin
   // only; 503 when Lidarr is unconfigured, 404 when the album/match is absent.
   app.post('/albums/:id/optimize-metadata', async (c) => {
-    const user = c.get('user');
-    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+    requireAdmin(c);
     if (!lidarr) return c.json({ error: 'Lidarr not configured' }, 503);
     const result = await optimizeAlbum(getDatabase(), lidarr, c.req.param('id'), {
       apply: true,
@@ -690,8 +802,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
   // override when the stored artist is wrong — e.g. "<Desconocido>") and return
   // ranked candidates to confirm. Admin only; 503 without Lidarr.
   app.get('/albums/:id/metadata-candidates', async (c) => {
-    const user = c.get('user');
-    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+    requireAdmin(c);
     if (!lidarr) return c.json({ error: 'Lidarr not configured' }, 503);
     const res = await searchCandidates(getDatabase(), lidarr, c.req.param('id'), c.req.query('q'));
     if (!res) return c.json({ error: 'Album not found' }, 404);
@@ -702,8 +813,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
   // override the scanner honors and re-buckets the canonical rows immediately.
   // Admin only. Does NOT require Lidarr (free-text fallback works offline).
   app.post('/albums/:id/metadata', async (c) => {
-    const user = c.get('user');
-    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+    requireAdmin(c);
     const body = await c.req.json<ApplyMetadataRequest>().catch(() => ({}) as ApplyMetadataRequest);
     if (!body.artist?.trim() && !body.album?.trim() && body.year == null && !body.coverUrl && !body.releaseType) {
       return c.json({ error: 'Nothing to apply' }, 400);
@@ -718,8 +828,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
   // is unconfigured, not a 503), and one entry per *distinct* image embedded in
   // the album's own tracks. Admin only.
   app.get('/albums/:id/cover-candidates', async (c) => {
-    const user = c.get('user');
-    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+    requireAdmin(c);
     const id = c.req.param('id');
     const db = getDatabase();
     const album = db
@@ -776,8 +885,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
   // artwork; a `songId` materializes that track's embedded image as the album's
   // folder cover and clears the canonical override so the file art is served.
   app.post('/albums/:id/cover', async (c) => {
-    const user = c.get('user');
-    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+    requireAdmin(c);
     const id = c.req.param('id');
     const db = getDatabase();
     const album = db
@@ -848,8 +956,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
 
   // Upload a custom portrait (multipart form-data, field "image"). Admin only.
   app.put('/artists/:id/image', async (c) => {
-    const user = c.get('user');
-    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+    requireAdmin(c);
     if (!dataDir) return c.json({ error: 'Data directory not configured' }, 503);
     const id = c.req.param('id');
     const db = getDatabase();
@@ -879,8 +986,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
 
   // Copy one of the artist's album covers into the portrait slot. Admin only.
   app.post('/artists/:id/image/from-album', async (c) => {
-    const user = c.get('user');
-    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+    requireAdmin(c);
     if (!dataDir) return c.json({ error: 'Data directory not configured' }, 503);
     const id = c.req.param('id');
     const db = getDatabase();
@@ -923,8 +1029,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
 
   // Remove the manual override → revert to auto (canonical) artwork or placeholder.
   app.delete('/artists/:id/image', async (c) => {
-    const user = c.get('user');
-    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+    requireAdmin(c);
     if (!dataDir) return c.json({ error: 'Data directory not configured' }, 503);
     const id = c.req.param('id');
     const db = getDatabase();
@@ -941,8 +1046,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
   });
 
   app.post('/sync', async (c) => {
-    const user = c.get('user');
-    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+    requireAdmin(c);
     if (!runSync) return c.json({ error: 'Sync not available' }, 503);
     await runSync();
     return c.json({ ok: true });
@@ -953,7 +1057,11 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     const id = c.req.param('id');
     const db = getDatabase();
     const row = db.query<SongRow, [string]>(`${SONG_SELECT} WHERE s.id = ?`).get(id);
-    if (row) return c.json(rowToSong(row));
+    if (row) {
+      const song = rowToSong(row);
+      attachSongArtists(db, [song]);
+      return c.json(song);
+    }
     return c.json({ error: 'Song not found' }, 404);
   });
 
@@ -1058,8 +1166,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
   // Apply a genre to a song (admin): writes the tag and updates library_songs +
   // library_genres counts so search/grouping reflect it immediately.
   app.post('/songs/:id/genre', async (c) => {
-    const user = c.get('user');
-    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+    requireAdmin(c);
     const id = c.req.param('id');
     const body = await c.req.json<{ genre?: string }>().catch(() => ({}) as { genre?: string });
     const genre = (body.genre ?? '').trim();
@@ -1175,8 +1282,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
   // clobber it, clears the synced LRC (the edited body no longer matches its
   // timing), and writes the plain text back to the file tag.
   app.put('/songs/:id/lyrics', async (c) => {
-    const user = c.get('user');
-    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+    requireAdmin(c);
     const id = c.req.param('id');
     const body = await c.req.json<{ plain?: string }>().catch(() => ({}) as { plain?: string });
     const plain = (body.plain ?? '').trim();
@@ -1201,8 +1307,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
   // Reset lyrics (admin): drops the stored row. Leaves any embedded file tag in
   // place (rewriting a file to strip a tag is risky and low-value).
   app.delete('/songs/:id/lyrics', (c) => {
-    const user = c.get('user');
-    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+    requireAdmin(c);
     const id = c.req.param('id');
     const db = getDatabase();
     deleteLyrics(db, id);
@@ -1217,14 +1322,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     const source = db.query<SongRow, [string]>(`${SONG_SELECT} WHERE s.id = ?`).get(id);
     if (!source) return c.json({ error: 'Song not found' }, 404);
 
-    const seed: SongFeatures = {
-      bpm: source.bpm ?? undefined,
-      key: source.key ?? undefined,
-      genre: source.genre ?? undefined,
-      duration: source.duration,
-      year: source.year ?? undefined,
-      artistId: source.artist_id,
-    };
+    const seed: SongFeatures = songRowFeatures(source);
 
     // Build candidate pool: same-artist + same-genre songs
     const candidateRows: SongRow[] = [];
@@ -1256,12 +1354,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     }
 
     const candidates = candidateRows.map((r) => ({
-      bpm: r.bpm ?? undefined,
-      key: r.key ?? undefined,
-      genre: r.genre ?? undefined,
-      duration: r.duration,
-      year: r.year ?? undefined,
-      artistId: r.artist_id,
+      ...songRowFeatures(r),
       _row: r,
     }));
 
@@ -1306,7 +1399,9 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
          ORDER BY s.created DESC NULLS LAST LIMIT ?`,
       )
       .all(genre, count);
-    return c.json(rows.map(rowToSong));
+    const songs = rows.map(rowToSong);
+    attachSongArtists(db, songs);
+    return c.json(songs);
   });
 
   app.get('/random', (c) => {
@@ -1320,7 +1415,9 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
          ORDER BY RANDOM() LIMIT ?`,
       )
       .all(size);
-    return c.json(rows.map(rowToSong));
+    const songs = rows.map(rowToSong);
+    attachSongArtists(db, songs);
+    return c.json(songs);
   });
 
   // Recently added — uses completed_downloads history to surface user's most-recent imports.
@@ -1334,10 +1431,12 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
          ORDER BY s.created DESC NULLS LAST LIMIT ?`,
       )
       .all(size * 4);
-    const songs = rows.map((r) => ({
-      ...rowToSong(r),
-      albumName: r.album_name ?? '',
-      albumArtist: r.artist,
+    const baseSongs = rows.map(rowToSong);
+    attachSongArtists(db, baseSongs);
+    const songs = baseSongs.map((s, i) => ({
+      ...s,
+      albumName: rows[i].album_name ?? '',
+      albumArtist: rows[i].artist,
     }));
     const ordered = orderByCompletionHistory(songs);
     return c.json(ordered.slice(0, size));
@@ -1516,8 +1615,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
   }
 
   app.delete('/songs/:id', async (c) => {
-    const user = c.get('user');
-    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+    requireAdmin(c);
 
     const result = await deleteOne(c.req.param('id'));
     if (!result.ok) {
@@ -1530,8 +1628,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
   });
 
   app.post('/songs/bulk-delete', async (c) => {
-    const user = c.get('user');
-    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+    requireAdmin(c);
 
     const { ids } = await c.req.json<{ ids: string[] }>();
     if (!ids || !Array.isArray(ids)) {
@@ -1562,8 +1659,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
 
   // Duplicate detection — now reads entirely from canonical DB.
   app.get('/duplicates', (c) => {
-    const user = c.get('user');
-    if (user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+    requireAdmin(c);
 
     const db = getDatabase();
     const rows = db

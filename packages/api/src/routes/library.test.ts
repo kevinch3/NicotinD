@@ -354,6 +354,9 @@ describe('downloading album suppression', () => {
     testDb.run('DELETE FROM library_albums');
     testDb.run('DELETE FROM library_songs');
     testDb.run('DELETE FROM album_jobs');
+    // The album-group-key suppression cache is memoized per-db with a short TTL;
+    // clear it so each test sees the albums it just seeded, not a prior test's.
+    __resetDownloadSuppressionCache();
   });
 
   function seedAlbumRecord(id: string, name: string, artist: string): void {
@@ -756,7 +759,7 @@ describe('singles & EPs presentation', () => {
     return testApp;
   }
 
-  it('GET /albums excludes singles and EPs', async () => {
+  it('GET /albums excludes singles, EPs, and compilations', async () => {
     seedAlbum('full', 'Real Album', 'art', 'album');
     seedAlbum('comp', 'Greatest Hits', 'art', 'compilation');
     seedAlbum('sng', 'Loose Single', 'art', 'single');
@@ -765,9 +768,21 @@ describe('singles & EPs presentation', () => {
     const body = (await (await makeApp().request('/albums')).json()) as Array<{ id: string }>;
     const ids = body.map((a) => a.id);
     expect(ids).toContain('full');
-    expect(ids).toContain('comp');
+    expect(ids).not.toContain('comp');
     expect(ids).not.toContain('sng');
     expect(ids).not.toContain('ep');
+  });
+
+  it('GET /compilations returns only compilations', async () => {
+    seedAlbum('full', 'Real Album', 'art', 'album');
+    seedAlbum('comp', 'Greatest Hits', 'art', 'compilation');
+    seedAlbum('sng', 'Loose Single', 'art', 'single');
+
+    const body = (await (await makeApp().request('/compilations')).json()) as Array<{ id: string }>;
+    const ids = body.map((a) => a.id);
+    expect(ids).toContain('comp');
+    expect(ids).not.toContain('full');
+    expect(ids).not.toContain('sng');
   });
 
   it('GET /singles returns only singles and EPs', async () => {
@@ -778,6 +793,21 @@ describe('singles & EPs presentation', () => {
     const body = (await (await makeApp().request('/singles')).json()) as Array<{ id: string }>;
     const ids = body.map((a) => a.id);
     expect(ids.sort()).toEqual(['ep', 'sng']);
+  });
+
+  it('GET /artists hides Various Artists from the list', async () => {
+    testDb.run(`DELETE FROM library_artists`);
+    testDb.run(
+      `INSERT INTO library_artists (id, name, album_count, synced_at) VALUES ('art', 'Real Artist', 1, 1)`,
+    );
+    testDb.run(
+      `INSERT INTO library_artists (id, name, album_count, synced_at) VALUES ('va', 'Various Artists', 3, 1)`,
+    );
+
+    const body = (await (await makeApp().request('/artists')).json()) as Array<{ name: string }>;
+    const names = body.map((a) => a.name);
+    expect(names).toContain('Real Artist');
+    expect(names).not.toContain('Various Artists');
   });
 
   it('GET /artists/:id splits albums from singlesAndEps', async () => {

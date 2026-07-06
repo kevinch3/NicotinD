@@ -32,7 +32,7 @@ const ACTION_LABELS: Record<string, string> = {
 
     <!-- Sheet -->
     <div
-      class="fixed bottom-0 left-0 right-0 z-[91] bg-zinc-900 rounded-t-2xl shadow-2xl
+      class="fixed bottom-0 left-0 right-0 z-[91] bg-theme-surface rounded-t-2xl shadow-2xl
              flex flex-col max-h-[80vh] transition-transform duration-300"
       [style.transform]="dragging() ? 'translateY(' + dragOffsetPx() + 'px)' : 'translateY(0)'"
       [class.transition-none]="dragging()"
@@ -40,13 +40,13 @@ const ACTION_LABELS: Record<string, string> = {
     >
       <!-- Grab handle -->
       <div class="flex justify-center pt-3 pb-1 cursor-grab" translate="no">
-        <div class="w-10 h-1 rounded-full bg-zinc-700"></div>
+        <div class="w-10 h-1 rounded-full bg-theme-muted"></div>
       </div>
 
       <div class="px-5 pb-2 flex items-center justify-between">
-        <h2 class="text-base font-semibold text-zinc-100">Track info</h2>
+        <h2 class="text-base font-semibold text-theme-primary">Track info</h2>
         <button
-          class="text-zinc-500 hover:text-zinc-300 text-2xl leading-none"
+          class="text-theme-muted hover:text-theme-secondary text-2xl leading-none"
           (click)="close.emit()"
         >
           ×
@@ -65,12 +65,12 @@ const ACTION_LABELS: Record<string, string> = {
             rounded="rounded"
           />
           <div class="min-w-0">
-            <p class="text-sm font-medium text-zinc-100 truncate">{{ headerTitle() }}</p>
+            <p class="text-sm font-medium text-theme-primary truncate">{{ headerTitle() }}</p>
             @if (headerArtist()) {
-              <p class="text-xs text-zinc-400 truncate">{{ headerArtist() }}</p>
+              <p class="text-xs text-theme-secondary truncate">{{ headerArtist() }}</p>
             }
             @if (headerAlbum()) {
-              <p class="text-xs text-zinc-500 truncate">{{ headerAlbum() }}</p>
+              <p class="text-xs text-theme-muted truncate">{{ headerAlbum() }}</p>
             }
           </div>
         </div>
@@ -80,22 +80,22 @@ const ACTION_LABELS: Record<string, string> = {
         <!-- Basic file info -->
         @if (effectiveSong(); as s) {
           <section class="mb-5">
-            <p class="text-xs text-zinc-500 uppercase tracking-wider mb-2">File</p>
-            <div class="space-y-1 text-sm text-zinc-300">
+            <p class="text-xs text-theme-muted uppercase tracking-wider mb-2">File</p>
+            <div class="space-y-1 text-sm text-theme-secondary">
               <div class="flex gap-2">
-                <span class="text-zinc-500 w-16 flex-shrink-0">Path</span>
-                <span class="break-all text-zinc-400 text-xs">{{ s.path }}</span>
+                <span class="text-theme-muted w-16 flex-shrink-0">Path</span>
+                <span class="break-all text-theme-secondary text-xs">{{ s.path }}</span>
               </div>
               <div class="flex gap-2">
-                <span class="text-zinc-500 w-16 flex-shrink-0">Format</span>
+                <span class="text-theme-muted w-16 flex-shrink-0">Format</span>
                 <span>{{ s.path.split('.').pop()?.toUpperCase() ?? '?' }}</span>
               </div>
               <div class="flex gap-2">
-                <span class="text-zinc-500 w-16 flex-shrink-0">Bitrate</span>
+                <span class="text-theme-muted w-16 flex-shrink-0">Bitrate</span>
                 <span>{{ s.bitRate }} kbps</span>
               </div>
               <div class="flex gap-2">
-                <span class="text-zinc-500 w-16 flex-shrink-0">Size</span>
+                <span class="text-theme-muted w-16 flex-shrink-0">Size</span>
                 <span>{{ formatBytes(s.size) }}</span>
               </div>
             </div>
@@ -104,13 +104,13 @@ const ACTION_LABELS: Record<string, string> = {
 
         <!-- Acquisition provenance (how/where-from/when) -->
         <section class="mb-5" data-testid="acquisition-section">
-          <p class="text-xs text-zinc-500 uppercase tracking-wider mb-2">Acquisition</p>
+          <p class="text-xs text-theme-muted uppercase tracking-wider mb-2">Acquisition</p>
           @if (acquisition(); as a) {
-            <div class="space-y-1 text-sm text-zinc-300">
+            <div class="space-y-1 text-sm text-theme-secondary">
               <div class="flex gap-2 items-center">
-                <span class="text-zinc-500 w-16 flex-shrink-0">Method</span>
+                <span class="text-theme-muted w-16 flex-shrink-0">Method</span>
                 <span
-                  class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-zinc-800 text-xs"
+                  class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-theme-surface-2 text-xs"
                   data-testid="acquisition-method"
                 >
                   <span translate="no">{{ methodGlyph(a.method) }}</span>
@@ -119,39 +119,39 @@ const ACTION_LABELS: Record<string, string> = {
               </div>
               @if (a.acquiredAt) {
                 <div class="flex gap-2">
-                  <span class="text-zinc-500 w-16 flex-shrink-0">Acquired</span>
+                  <span class="text-theme-muted w-16 flex-shrink-0">Acquired</span>
                   <span>{{ formatDate(a.acquiredAt) }}</span>
                 </div>
               }
               @if (a.sourceRef) {
                 <div class="flex gap-2">
-                  <span class="text-zinc-500 w-16 flex-shrink-0">Source</span>
-                  <span class="break-all text-zinc-400 text-xs">{{ a.sourceRef }}</span>
+                  <span class="text-theme-muted w-16 flex-shrink-0">Source</span>
+                  <span class="break-all text-theme-secondary text-xs">{{ a.sourceRef }}</span>
                 </div>
               }
             </div>
           } @else {
-            <p class="text-sm text-zinc-600">Source not recorded for this track.</p>
+            <p class="text-sm text-theme-muted">Source not recorded for this track.</p>
           }
         </section>
 
         <!-- Track analysis (BPM + genre) -->
         <section class="mb-5" data-testid="analysis-section">
-          <p class="text-xs text-zinc-500 uppercase tracking-wider mb-2">Analysis</p>
-          <div class="space-y-2 text-sm text-zinc-300">
+          <p class="text-xs text-theme-muted uppercase tracking-wider mb-2">Analysis</p>
+          <div class="space-y-2 text-sm text-theme-secondary">
             <!-- BPM -->
             <div class="flex gap-2 items-center">
-              <span class="text-zinc-500 w-16 flex-shrink-0">BPM</span>
+              <span class="text-theme-muted w-16 flex-shrink-0">BPM</span>
               @if (bpm() !== null) {
                 <span data-testid="bpm-value">{{ bpm() }}</span>
                 @if (bpmSource() === 'analyzed') {
-                  <span class="text-xs text-zinc-600">(analyzed)</span>
+                  <span class="text-xs text-theme-muted">(analyzed)</span>
                 }
               } @else {
-                <span class="text-zinc-600">Unknown</span>
+                <span class="text-theme-muted">Unknown</span>
               }
               <button
-                class="ml-auto px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-xs
+                class="ml-auto px-2 py-0.5 rounded bg-theme-surface-2 hover:bg-theme-hover text-xs
                        disabled:opacity-50"
                 [disabled]="analyzing()"
                 (click)="analyze()"
@@ -163,10 +163,10 @@ const ACTION_LABELS: Record<string, string> = {
 
             <!-- Genre -->
             <div class="flex gap-2 items-center">
-              <span class="text-zinc-500 w-16 flex-shrink-0">Genre</span>
+              <span class="text-theme-muted w-16 flex-shrink-0">Genre</span>
               <span data-testid="genre-value">{{ currentGenre() || 'Unknown' }}</span>
               <button
-                class="ml-auto px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-xs
+                class="ml-auto px-2 py-0.5 rounded bg-theme-surface-2 hover:bg-theme-hover text-xs
                        disabled:opacity-50"
                 [disabled]="verifyingGenre()"
                 (click)="verifyGenreNow()"
@@ -177,14 +177,14 @@ const ACTION_LABELS: Record<string, string> = {
             </div>
             @if (genreSuggestion(); as g) {
               @if (g.source === null) {
-                <p class="text-xs text-zinc-600">No genre source available.</p>
+                <p class="text-xs text-theme-muted">No genre source available.</p>
               } @else if (g.suggested && g.suggested !== currentGenre()) {
                 <div class="flex gap-2 items-center pl-16" data-testid="genre-suggestion">
-                  <span class="text-zinc-500 text-xs">Suggested</span>
-                  <span class="text-zinc-300">{{ g.suggested }}</span>
+                  <span class="text-theme-muted text-xs">Suggested</span>
+                  <span class="text-theme-secondary">{{ g.suggested }}</span>
                   @if (isAdmin()) {
                     <button
-                      class="ml-auto px-2 py-0.5 rounded bg-blue-600 hover:bg-blue-500 text-xs
+                      class="ml-auto px-2 py-0.5 rounded bg-theme-accent text-theme-on-accent hover:opacity-90 text-xs
                              disabled:opacity-50"
                       [disabled]="applyingGenre()"
                       (click)="applySuggestedGenre(g.suggested!)"
@@ -195,8 +195,20 @@ const ACTION_LABELS: Record<string, string> = {
                   }
                 </div>
               } @else {
-                <p class="text-xs text-zinc-600 pl-16">Genre matches the source.</p>
+                <p class="text-xs text-theme-muted pl-16">Genre matches the source.</p>
               }
+            }
+
+            <!-- Perceptual/harmonic features (filled by server enrichment) -->
+            @for (f of featureRows(); track f.label) {
+              <div class="flex gap-2 items-center">
+                <span class="text-theme-muted w-20 flex-shrink-0">{{ f.label }}</span>
+                @if (f.value !== null) {
+                  <span [attr.data-testid]="f.testid">{{ f.value }}</span>
+                } @else {
+                  <span class="text-theme-muted">Unknown</span>
+                }
+              </div>
             }
           </div>
         </section>
@@ -204,12 +216,12 @@ const ACTION_LABELS: Record<string, string> = {
         <!-- Lyrics (on-demand, plugin-sourced, editable) -->
         <section class="mb-5" data-testid="lyrics-section">
           <div class="flex items-center justify-between mb-2">
-            <p class="text-xs text-zinc-500 uppercase tracking-wider">Lyrics</p>
+            <p class="text-xs text-theme-muted uppercase tracking-wider">Lyrics</p>
             @if (!editingLyrics()) {
               <div class="flex gap-2">
                 @if (isAdmin()) {
                   <button
-                    class="px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-xs"
+                    class="px-2 py-0.5 rounded bg-theme-surface-2 hover:bg-theme-hover text-xs"
                     (click)="startEditLyrics()"
                     data-testid="edit-lyrics-button"
                   >
@@ -217,7 +229,7 @@ const ACTION_LABELS: Record<string, string> = {
                   </button>
                 }
                 <button
-                  class="px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-xs disabled:opacity-50"
+                  class="px-2 py-0.5 rounded bg-theme-surface-2 hover:bg-theme-hover text-xs disabled:opacity-50"
                   [disabled]="fetchingLyrics()"
                   (click)="fetchLyricsNow()"
                   data-testid="fetch-lyrics-button"
@@ -230,15 +242,15 @@ const ACTION_LABELS: Record<string, string> = {
 
           @if (editingLyrics()) {
             <textarea
-              class="w-full h-48 rounded bg-zinc-800 text-sm text-zinc-200 p-2 resize-y
-                     focus:outline-none focus:ring-1 focus:ring-blue-500"
+              class="w-full h-48 rounded bg-theme-surface-2 text-sm text-theme-primary p-2 resize-y
+                     focus:outline-none focus:ring-1 focus:ring-theme-accent"
               [value]="lyricsDraft()"
               (input)="lyricsDraft.set($any($event.target).value)"
               data-testid="lyrics-editor"
             ></textarea>
             <div class="flex gap-2 mt-2">
               <button
-                class="px-2 py-0.5 rounded bg-blue-600 hover:bg-blue-500 text-xs disabled:opacity-50"
+                class="px-2 py-0.5 rounded bg-theme-accent text-theme-on-accent hover:opacity-90 text-xs disabled:opacity-50"
                 [disabled]="savingLyrics() || !lyricsDraft().trim()"
                 (click)="saveLyricsNow()"
                 data-testid="save-lyrics-button"
@@ -246,14 +258,14 @@ const ACTION_LABELS: Record<string, string> = {
                 {{ savingLyrics() ? 'Saving…' : 'Save' }}
               </button>
               <button
-                class="px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-xs"
+                class="px-2 py-0.5 rounded bg-theme-surface-2 hover:bg-theme-hover text-xs"
                 (click)="editingLyrics.set(false)"
               >
                 Cancel
               </button>
               @if (lyrics()) {
                 <button
-                  class="ml-auto px-2 py-0.5 rounded bg-zinc-800 hover:bg-red-900 text-xs"
+                  class="ml-auto px-2 py-0.5 rounded bg-theme-surface-2 text-status-error hover:bg-theme-hover text-xs"
                   (click)="resetLyrics()"
                   data-testid="reset-lyrics-button"
                 >
@@ -263,55 +275,55 @@ const ACTION_LABELS: Record<string, string> = {
             </div>
           } @else if (lyricsText()) {
             <pre
-              class="whitespace-pre-wrap font-sans text-sm text-zinc-300 max-h-64 overflow-y-auto"
+              class="whitespace-pre-wrap font-sans text-sm text-theme-secondary max-h-64 overflow-y-auto"
               data-testid="lyrics-text"
               >{{ lyricsText() }}</pre
             >
             @if (lyrics()?.customized) {
-              <p class="text-xs text-zinc-600 mt-1">Edited by you</p>
+              <p class="text-xs text-theme-muted mt-1">Edited by you</p>
             } @else if (lyrics()?.source) {
-              <p class="text-xs text-zinc-600 mt-1">Source: {{ lyrics()?.source }}</p>
+              <p class="text-xs text-theme-muted mt-1">Source: {{ lyrics()?.source }}</p>
             }
             @if (lyrics()?.synced) {
-              <p class="text-xs text-zinc-600">Synced lyrics shown in the now-playing view.</p>
+              <p class="text-xs text-theme-muted">Synced lyrics shown in the now-playing view.</p>
             }
           } @else if (noLyricsFound()) {
-            <p class="text-sm text-zinc-600">No lyrics found for this track.</p>
+            <p class="text-sm text-theme-muted">No lyrics found for this track.</p>
           } @else {
-            <p class="text-sm text-zinc-600">No lyrics yet — fetch them from a source.</p>
+            <p class="text-sm text-theme-muted">No lyrics yet — fetch them from a source.</p>
           }
         </section>
 
         <!-- Provenance history -->
         <section>
-          <p class="text-xs text-zinc-500 uppercase tracking-wider mb-2">Processing history</p>
+          <p class="text-xs text-theme-muted uppercase tracking-wider mb-2">Processing history</p>
 
           @if (loading()) {
-            <p class="text-sm text-zinc-500">Loading…</p>
+            <p class="text-sm text-theme-muted">Loading…</p>
           } @else if (provenance().length === 0) {
-            <p class="text-sm text-zinc-600">No processing history recorded for this track.</p>
+            <p class="text-sm text-theme-muted">No processing history recorded for this track.</p>
           } @else {
-            <ol class="relative border-l border-zinc-700 space-y-4 ml-2">
+            <ol class="relative border-l border-theme space-y-4 ml-2">
               @for (record of provenance(); track record.appliedAt) {
                 <li class="ml-4">
                   <div
-                    class="absolute -left-1.5 mt-1 w-3 h-3 rounded-full bg-zinc-600 border-2 border-zinc-900"
+                    class="absolute -left-1.5 mt-1 w-3 h-3 rounded-full bg-theme-muted border-2 border-theme"
                   ></div>
-                  <p class="text-xs text-zinc-500 mb-0.5">{{ formatDate(record.appliedAt) }}</p>
-                  <p class="text-sm font-medium text-zinc-200">{{ labelFor(record.action) }}</p>
+                  <p class="text-xs text-theme-muted mb-0.5">{{ formatDate(record.appliedAt) }}</p>
+                  <p class="text-sm font-medium text-theme-primary">{{ labelFor(record.action) }}</p>
                   @if (record.detail.from) {
-                    <p class="text-xs text-zinc-500 mt-0.5">
-                      <span class="text-zinc-600">from</span> {{ record.detail.from }}
+                    <p class="text-xs text-theme-muted mt-0.5">
+                      <span class="text-theme-muted">from</span> {{ record.detail.from }}
                     </p>
                   }
                   @if (record.detail.to) {
-                    <p class="text-xs text-zinc-500">
-                      <span class="text-zinc-600">→</span> {{ record.detail.to }}
+                    <p class="text-xs text-theme-muted">
+                      <span class="text-theme-muted">→</span> {{ record.detail.to }}
                     </p>
                   }
                   @if (record.detail.mb_album_title) {
-                    <p class="text-xs text-zinc-500">
-                      <span class="text-zinc-600">Album</span> {{ record.detail.mb_album_title }}
+                    <p class="text-xs text-theme-muted">
+                      <span class="text-theme-muted">Album</span> {{ record.detail.mb_album_title }}
                     </p>
                   }
                   @if (record.detail.mb_recording_id) {
@@ -319,7 +331,7 @@ const ACTION_LABELS: Record<string, string> = {
                       [href]="'https://musicbrainz.org/recording/' + record.detail.mb_recording_id"
                       target="_blank"
                       rel="noopener"
-                      class="text-xs text-blue-400 hover:underline"
+                      class="text-xs text-theme-accent hover:underline"
                       >MusicBrainz ↗</a
                     >
                   }
@@ -379,6 +391,24 @@ export class TrackInfoSheetComponent implements OnInit {
   readonly isAdmin = computed(() => this.auth.role() === 'admin');
   /** Current genre: an applied override wins over the song's own tag. */
   readonly currentGenre = computed(() => this.genreOverride() ?? this.effectiveSong()?.genre ?? '');
+
+  /** Read-only perceptual/harmonic rows for the Analysis section ("Unknown"
+   *  until the server enrichment has analyzed the track). */
+  readonly featureRows = computed(() => {
+    const s = this.effectiveSong();
+    const pct = (v: number | undefined): string | null =>
+      typeof v === 'number' ? `${Math.round(v * 100)}%` : null;
+    const mood = s?.mood ? s.mood.charAt(0).toUpperCase() + s.mood.slice(1) : null;
+    return [
+      { label: 'Key', value: s?.key ?? null, testid: 'key-value' },
+      { label: 'Energy', value: pct(s?.energy), testid: 'energy-value' },
+      { label: 'Mood', value: mood, testid: 'mood-value' },
+      { label: 'Valence', value: pct(s?.valence), testid: 'valence-value' },
+      { label: 'Dance', value: pct(s?.danceability), testid: 'danceability-value' },
+      { label: 'Acoustic', value: pct(s?.acousticness), testid: 'acousticness-value' },
+      { label: 'Instrumental', value: pct(s?.instrumental), testid: 'instrumental-value' },
+    ];
+  });
 
   // Lyrics state
   readonly lyrics = signal<LyricsDto | null>(null);

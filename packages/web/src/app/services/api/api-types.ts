@@ -3,6 +3,12 @@
 // to. Split out of the former monolithic api.service.ts so the per-domain
 // services and their consumers share one types module.
 
+export interface ArtistCredit {
+  id: string;
+  name: string;
+  role: 'primary' | 'featuring';
+}
+
 export interface SetupStatus {
   needsSetup: boolean;
 }
@@ -10,6 +16,15 @@ export interface SetupStatus {
 export interface SetupResult {
   token: string;
   user: { id: string; username: string; role: string };
+  needsRestart?: boolean;
+}
+
+export interface SetupBody {
+  admin: { username: string; password: string };
+  soulseek?: { username: string; password: string };
+  musicDir?: string;
+  transcodeLossless?: { enabled?: boolean; bitRate?: number };
+  lidarr?: { url?: string; apiKey?: string };
 }
 
 export interface AuthResult {
@@ -72,6 +87,7 @@ export interface Album {
   name: string;
   artist: string;
   artistId?: string;
+  artists?: ArtistCredit[];
   coverArt?: string;
   songCount?: number;
   year?: number;
@@ -84,6 +100,7 @@ export interface AlbumDetail {
   name: string;
   artist: string;
   artistId?: string;
+  artists?: ArtistCredit[];
   coverArt?: string;
   year?: number;
   song: Array<{
@@ -91,6 +108,7 @@ export interface AlbumDetail {
     title: string;
     artist: string;
     artistId?: string;
+    artists?: ArtistCredit[];
     albumId?: string;
     duration?: number;
     track?: number;
@@ -118,6 +136,9 @@ export interface Song {
   title: string;
   artist: string;
   artistId?: string;
+  artists?: ArtistCredit[];
+  albumArtist?: string;
+  albumArtistId?: string;
   album: string;
   albumId: string;
   duration?: number;
@@ -130,6 +151,20 @@ export interface Song {
   genre?: string;
   bpm?: number;
   key?: string;
+  /** Perceived energy 0..1 (server enrichment). */
+  energy?: number;
+  /** Integrated loudness in LUFS. */
+  loudness?: number;
+  /** Musical positivity 0..1. */
+  valence?: number;
+  /** Danceability 0..1. */
+  danceability?: number;
+  /** Acoustic confidence 0..1. */
+  acousticness?: number;
+  /** Probability the track is instrumental 0..1. */
+  instrumental?: number;
+  /** Dominant mood label (happy|sad|aggressive|relaxed|party). */
+  mood?: string;
 }
 
 export interface StreamingSettings {
@@ -157,6 +192,10 @@ export interface AdminUser {
   role: string;
   status: string;
   created_at: string;
+  // Ephemeral presence, merged server-side from PresenceService (see docs/presence-tracking.md).
+  isConnected: boolean;
+  amountOfDevices: number;
+  amountOfSessions: number;
 }
 
 export type PlaylistKind = 'user' | 'curated';

@@ -19,7 +19,7 @@
                   class="relative px-3 py-1.5 rounded-md text-sm font-medium transition text-theme-secondary hover:text-theme-primary hover:bg-theme-surface-2/50">
                   {{ item.label }}
                   @if (item.to === '/downloads' && downloadCount() > 0) {
-                    <span class="absolute -top-1 -right-1 bg-theme-accent text-theme-base text-[10px] font-bold rounded-full min-w-4 h-4 px-1 flex items-center justify-center">
+                    <span class="absolute -top-1 -right-1 bg-theme-accent text-theme-on-accent text-[10px] font-bold rounded-full min-w-4 h-4 px-1 flex items-center justify-center">
                       {{ downloadCount() }}
                     </span>
                   }
@@ -30,7 +30,13 @@
         </div>
 
         <div class="flex items-center gap-3">
-          <span class="hidden md:inline text-xs text-theme-muted/50">v{{ version }}</span>
+          <button
+            (click)="showChangelog.set(true)"
+            data-testid="version-changelog"
+            class="hidden md:inline text-xs text-theme-muted/50 hover:text-theme-secondary transition cursor-pointer"
+          >
+            v{{ version }}
+          </button>
           <span class="hidden md:inline text-sm text-theme-muted">{{ auth.username() }}</span>
           <button (click)="logout()" data-testid="logout" class="hidden md:inline text-sm text-theme-muted hover:text-theme-secondary transition">Sign out</button>
         </div>
@@ -38,13 +44,16 @@
 
       <!-- Offline banner -->
       @if (setup.isOffline()) {
-        <div class="flex items-center justify-center gap-2 px-4 py-2 text-xs font-medium bg-amber-500/10 text-amber-400 border-b border-amber-500/20">
+        <div class="flex items-center justify-center gap-2 px-4 py-2 text-xs font-medium status-warn border-b border-theme">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M1 1l22 22M16.72 11.06A10.94 10.94 0 0 1 19 12.55M5 12.55a10.94 10.94 0 0 1 5.17-2.39M10.71 5.05A16 16 0 0 1 22.56 9M1.42 9a15.91 15.91 0 0 1 4.7-2.88M8.53 16.11a6 6 0 0 1 6.95 0M12 20h.01" />
           </svg>
           Offline mode — showing cached content only
         </div>
       }
+
+      <!-- First-login welcome banner for admin-provisioned users -->
+      <app-welcome-banner />
 
       <!-- Content — pad bottom so the fixed player + mobile tab bar never cover the last item -->
       <main [class]="'flex-1 ' + mainPadClass()">
@@ -65,5 +74,45 @@
 
       <!-- Global "Add to playlist" picker (renders only when invoked) -->
       <app-add-to-playlist />
+
+      <!-- Changelog modal (renders when version is clicked) -->
+      @if (showChangelog()) {
+        <app-changelog-modal (close)="showChangelog.set(false)" />
+      }
+
+      <!-- Logout confirmation dialog -->
+      @if (showLogoutDialog()) {
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div class="bg-theme-surface border border-theme rounded-xl p-6 max-w-sm w-full shadow-2xl">
+            <h3 class="text-lg font-semibold text-theme-primary mb-4">Sign out?</h3>
+            <label class="flex items-start gap-3 mb-6 cursor-pointer">
+              <input
+                type="checkbox"
+                [ngModel]="cleanPreserveOnLogout()"
+                (ngModelChange)="cleanPreserveOnLogout.set($event)"
+                class="mt-0.5 rounded border-theme-muted bg-theme-base text-theme-accent focus:ring-theme-accent focus:ring-offset-0"
+              />
+              <span class="text-sm text-theme-secondary">
+                Remove downloaded music from this device
+                <span class="text-theme-muted">({{ formatStorage(preserve.totalUsage()) }})</span>
+              </span>
+            </label>
+            <div class="flex gap-3 justify-end">
+              <button
+                (click)="showLogoutDialog.set(false)"
+                class="px-4 py-2 text-sm font-medium text-theme-secondary hover:text-theme-primary transition"
+              >
+                Cancel
+              </button>
+              <button
+                (click)="confirmLogout()"
+                class="px-4 py-2 text-sm font-medium text-status-error hover:opacity-80 transition"
+              >
+                Sign out
+              </button>
+            </div>
+          </div>
+        </div>
+      }
     </div>
   

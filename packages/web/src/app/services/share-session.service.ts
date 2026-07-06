@@ -21,4 +21,8 @@ export class ShareSessionService {
     this.shareJwt.set(result.jwt);
     return result;
   }
+
+  reset(): void {
+    this.shareJwt.set(null);
+  }
 }

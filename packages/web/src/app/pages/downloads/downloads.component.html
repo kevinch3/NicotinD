@@ -30,7 +30,7 @@
           [class]="activeTab() === 'active' ? 'border-theme-accent text-theme-primary' : 'border-transparent text-theme-muted hover:text-theme-secondary'">
           Active
           @if (activeFeedCount() > 0) {
-            <span class="ml-1.5 text-xs text-blue-400">{{ activeFeedCount() }}</span>
+            <span class="ml-1.5 text-xs text-status-progress">{{ activeFeedCount() }}</span>
           }
         </button>
         <button (click)="activeTab.set('offline')"
@@ -61,12 +61,12 @@
               <h2 class="text-xs font-semibold uppercase tracking-wider text-theme-muted">
                 Downloads
                 @if (activeFeedCount() > 0) {
-                  <span class="ml-2 text-blue-400 normal-case font-normal">{{ activeFeedCount() }} in progress</span>
+                  <span class="ml-2 text-status-progress normal-case font-normal">{{ activeFeedCount() }} in progress</span>
                 }
               </h2>
               <div class="flex items-center gap-3">
                 @if (activeFeedCount() > 0) {
-                  <button (click)="cancelAll()" class="text-xs text-red-500/70 hover:text-red-400 transition">Cancel all</button>
+                  <button (click)="cancelAll()" class="text-xs text-status-error hover:text-status-error transition">Cancel all</button>
                 }
                 @if (clearableFeedCount() > 0) {
                   <button (click)="clearAllFinished()" class="text-xs text-theme-muted hover:text-theme-secondary transition">Clear finished</button>
@@ -145,7 +145,7 @@
                 <div class="flex-1 min-w-0"></div>
 
                 <button (click)="removeOfflineTracks(offlineSelectedArray())"
-                  class="text-xs px-3 py-1.5 rounded-lg text-red-400 hover:bg-red-500/10 transition border border-red-500/20">
+                  class="text-xs px-3 py-1.5 rounded-lg text-status-error hover:bg-theme-hover transition border border-theme">
                   Remove from device
                 </button>
               </div>
@@ -187,7 +187,7 @@
                   </button>
                   <!-- Remove button (hover) -->
                   <button (click)="removeOfflineTracks([track.id])"
-                    class="p-1.5 text-theme-muted hover:text-red-400 transition flex-shrink-0 md:opacity-0 md:group-hover:opacity-100"
+                    class="p-1.5 text-theme-muted hover:text-status-error transition flex-shrink-0 md:opacity-0 md:group-hover:opacity-100"
                     title="Remove from device">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                       <polyline points="3 6 5 6 21 6" />
@@ -207,7 +207,7 @@
                     @if (offlineMenuId() === track.id) {
                       <div class="absolute right-0 top-7 z-50 bg-theme-surface border border-theme rounded-xl shadow-xl py-1 min-w-40"
                            (click)="$event.stopPropagation()">
-                        <button class="w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-theme-hover transition-colors"
+                        <button class="w-full text-left px-4 py-2 text-sm text-status-error hover:bg-theme-hover transition-colors"
                           (click)="offlineMenuId.set(null); removeOfflineTracks([track.id])">
                           Remove from device
                         </button>
@@ -221,7 +221,7 @@
             <!-- Clear all -->
             <div class="mt-3 flex justify-end">
               <button (click)="clearAllPreserved()"
-                class="text-xs text-theme-muted hover:text-red-400 transition">
+                class="text-xs text-theme-muted hover:text-status-error transition">
                 Clear all
               </button>
             </div>
@@ -270,7 +270,7 @@
 
             @if (auth.role() === 'admin') {
               <button (click)="confirmDeleteSelected()"
-                class="px-3 py-1.5 rounded-md text-xs font-medium bg-theme-hover text-red-400 hover:bg-red-500/20 transition">
+                class="px-3 py-1.5 rounded-md text-xs font-medium bg-theme-hover text-status-error hover:bg-theme-hover transition">
                 Delete
               </button>
             }
@@ -321,7 +321,7 @@
             <!-- Checkbox -->
             <button (click)="toggleSelect(song.id, $event)"
               [class]="'w-4.5 h-4.5 rounded border flex-shrink-0 flex items-center justify-center transition '
-                + (isSelected(song.id) ? 'bg-blue-500 border-blue-500' : 'border-theme hover:border-zinc-500')">
+                + (isSelected(song.id) ? 'bg-theme-accent border-theme-accent' : 'border-theme hover:border-theme-secondary')">
               @if (isSelected(song.id)) {
                 <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
                   <polyline points="20 6 9 17 4 12" />
@@ -351,7 +351,7 @@
 
             <!-- Delete (admin only) -->
             @if (auth.role() === 'admin') {
-              <button (click)="handleDelete([song.id])" class="p-1.5 text-theme-muted hover:text-red-400 transition flex-shrink-0 md:opacity-0 md:group-hover:opacity-100" title="Delete from library">
+              <button (click)="handleDelete([song.id])" class="p-1.5 text-theme-muted hover:text-status-error transition flex-shrink-0 md:opacity-0 md:group-hover:opacity-100" title="Delete from library">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
                 </svg>
@@ -373,7 +373,7 @@
                   @for (action of songActions(song); track action.label) {
                     <button type="button"
                       class="w-full text-left px-4 py-2 text-sm transition-colors hover:bg-theme-hover"
-                      [class.text-red-400]="action.destructive"
+                      [class.text-status-error]="action.destructive"
                       [class.text-theme-secondary]="!action.destructive"
                       (click)="action.action(); songMenuId.set(null)">
                       {{ action.label }}
@@ -388,7 +388,7 @@
       } <!-- end activeTab === 'recent' -->
 
       @if (deleteError()) {
-        <div class="mx-4 mb-2 px-4 py-2 rounded-lg bg-red-500/10 text-red-400 text-sm">
+        <div class="mx-4 mb-2 px-4 py-2 rounded-lg status-error text-sm">
           {{ deleteError() }}
         </div>
       }

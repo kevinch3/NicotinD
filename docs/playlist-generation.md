@@ -1,12 +1,22 @@
 # Metadata-driven playlist generation (weekly, with or without an LLM)
 
-This is a design note, not shipped code. It explains how NicotinD's **existing
-per-track metadata** — plus the enrichment we're now filling in the background
-(BPM, genre, musical key) — can generate Spotify-style custom playlists like the
-existing **curated playlists**, refreshed on a cadence (≈ weekly), using only
-light, deterministic algorithms. It also shows where an LLM helps (and where it
-must *not* be trusted), and maps the longer metadata wishlist onto concrete
-enrichment tasks.
+**Status: the deterministic core is shipped** (see
+[automated-playlists.md](automated-playlists.md) for the code map). Two lanes now
+exist, both reusing the Radio scorer + curated selection engines:
+1. **Automated system shelves** — recipe → weekly-refreshed `kind='curated'`
+   playlists (§2a), refreshed in-process once per ISO week.
+2. **User-driven seed generator** — `POST /api/playlists/generate` fills an
+   editable `kind='user'` playlist from a song / artist / starred-set seed using
+   `rankCandidates` (the Radio scorer) + harmonic ordering (§2b/§2c). Surfaced in
+   the web via "✨ Generate playlist" on the artist page and "Generate from your
+   favorites" in the playlists tab.
+
+The remainder is the original design note. It explains how NicotinD's **existing
+per-track metadata** — plus the enrichment we fill in the background (BPM, genre,
+musical key) — generates Spotify-style playlists using light, deterministic
+algorithms, and where an LLM helps (and where it must *not* be trusted). The
+**LLM concept layer (§3) is not yet built** — it remains the documented
+follow-up.
 
 The north star: **the catalogue is the source of truth; algorithms only select
 and order tracks that already exist.** Nothing here should invent track IDs.
@@ -87,7 +97,9 @@ tracks mix well — the payoff of the new `key` data:
 - **Camelot adjacency**: `keyToCamelot` gives "8A/8B" codes; compatible moves are
   same code, ±1 number, or A↔B swap. Greedily chain tracks by compatible key.
 - **BPM proximity**: prefer the next track within ±5–8% BPM.
-- **Energy arc**: if/when we have an `energy` field (§4), ramp it up then down.
+- **Energy arc**: ✅ shipped — `orderTracks('energy-arc')` builds a ramp-up →
+  peak → ramp-down over `energy`, and `harmonicChain` adds an energy-closeness
+  term (0-neutral when either side is un-analyzed).
 
 This turns a flat list into a set that flows like a DJ mix — a real differentiator
 over genre-only playlists.
@@ -144,17 +156,19 @@ scan-read line (the cheapest items on this roadmap, no DSP):
 
 **Offline DSP (ffmpeg decode + pure JS, like bpm/key)** — no external service:
 - **Key / harmonic key** — ✅ shipped (`key-detection.ts`).
-- **Loudness / dynamic range** — integrated LUFS + crest factor via ffmpeg
-  `ebur128` (parse its output; no DSP of our own).
+- **Loudness + energy** — ✅ shipped (`loudness-analysis.ts`): integrated LUFS +
+  loudness range via ffmpeg `ebur128`, energy derived from both; the `energy`
+  enrichment task + `scripts/analyze-energy.ts` fill `library_songs.energy`/
+  `loudness` and the `ENERGY`/`LOUDNESS_LUFS` file tags.
 - **Tempo variation over time** — windowed `analyzeBpm` over segments → stability score.
 - **Time signature** — autocorrelation of the onset envelope (moderate effort).
-- **Energy** — RMS/loudness + spectral flux aggregate (easy, high value for ordering).
-- **Acousticness / instrumentation / vocal-presence** — needs a small classifier
-  (spectral features → logistic model, or a lightweight model); heavier.
 
-**Model / LLM-assisted (batched, weekly)**:
-- **Valence / danceability / mood / vibe** — small audio model or LLM-over-features;
-  store as tags, treat as another windowed task.
+**Model-assisted (local audio models — no LLM, per the dropped-scope decision in
+[audio-ml-enrichment.md](audio-ml-enrichment.md))**:
+- **Valence / danceability / mood / acousticness / instrumentation** — ✅ shipped:
+  the `audio-features` task calls the Essentia analysis sidecar
+  (`packages/analysis/`), stores columns + `VALENCE`/`DANCEABILITY`/`MOOD`/…
+  file tags and caches the embedding in `library_embeddings`.
 - **Section markers (intro/verse/chorus/drop)** — structural segmentation; the
   heaviest item, a dedicated model. Useful later for smart previews/transitions.
 

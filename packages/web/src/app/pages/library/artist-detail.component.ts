@@ -9,7 +9,7 @@ import {
   OnInit,
   OnDestroy,
 } from '@angular/core';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import { DownloadsApiService } from '../../services/api/downloads-api.service';
@@ -23,19 +23,22 @@ import { AuthService } from '../../services/auth.service';
 import { PlayerService } from '../../services/player.service';
 import { PlaylistService } from '../../services/playlist.service';
 import { PreserveService } from '../../services/preserve.service';
+import { TransferService } from '../../services/transfer.service';
 import { AlbumHuntModalComponent } from '../../components/album-hunt-modal/album-hunt-modal.component';
 import { CoverArtComponent } from '../../components/cover-art/cover-art.component';
 import { IconComponent } from '../../components/icon/icon.component';
-import { TrackRowComponent } from '../../components/track-row/track-row.component';
+import { TrackRowComponent, type TrackAction } from '../../components/track-row/track-row.component';
 import { SelectionBarComponent } from '../../components/selection-bar/selection-bar.component';
 import { MenuPanelComponent } from '../../components/menu-panel/menu-panel.component';
+import { ConfirmDialogComponent } from '../../components/confirm-dialog/confirm-dialog.component';
 import { createSelection } from '../../lib/selection';
-import { toTrack } from '../../lib/track-utils';
+import { toTrack, offlineTrackAction, addToPlaylistAction } from '../../lib/track-utils';
 import { appendUnique } from '../../lib/append-unique';
 import { resolveAlbumRoute } from '../../lib/route-utils';
 import { NavigationService } from '../../services/navigation.service';
+import { AutoHuntService } from '../../services/auto-hunt.service';
 
-export type ArtistTab = 'albums' | 'singles' | 'songs';
+export type ArtistTab = 'albums' | 'singles' | 'appears-on' | 'songs';
 export type SongSort = 'newest' | 'title' | 'album';
 const SONGS_PAGE_SIZE = 60;
 
@@ -50,18 +53,22 @@ const SONGS_PAGE_SIZE = 60;
     TrackRowComponent,
     SelectionBarComponent,
     MenuPanelComponent,
+    ConfirmDialogComponent,
   ],
   templateUrl: './artist-detail.component.html',
 })
 export class ArtistDetailComponent implements OnInit, OnDestroy {
   private route = inject(ActivatedRoute);
+  private router = inject(Router);
   private api = inject(LibraryApiService);
   private downloadsApi = inject(DownloadsApiService);
   readonly auth = inject(AuthService);
   private player = inject(PlayerService);
   private playlists = inject(PlaylistService);
   readonly preserve = inject(PreserveService);
+  private transferService = inject(TransferService);
   private nav = inject(NavigationService);
+  protected autoHunt = inject(AutoHuntService);
 
   // Return to the previous in-app view, falling back to the library grid.
   goBack(): void {
@@ -78,6 +85,7 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
   } | null>(null);
   readonly albums = signal<Album[]>([]);
   readonly singlesAndEps = signal<Album[]>([]);
+  readonly appearsOn = signal<Album[]>([]);
 
   // ─── Artist image override (admin: upload / pick-from-album / reset) ───────
   readonly imageBusy = signal(false);
@@ -161,6 +169,7 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
     const tabs: ArtistTab[] = [];
     if (this.albums().length > 0) tabs.push('albums');
     if (this.singlesAndEps().length > 0) tabs.push('singles');
+    if (this.appearsOn().length > 0) tabs.push('appears-on');
     tabs.push('songs');
     return tabs;
   });
@@ -179,6 +188,22 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
   readonly songsStarredOnly = signal(false);
   private songsOffset = 0;
   private artistId = '';
+
+  readonly generating = signal(false);
+
+  /** Generate a playlist seeded on this artist (Radio scorer), then open it. */
+  async generatePlaylist(): Promise<void> {
+    if (this.generating() || !this.artistId) return;
+    this.generating.set(true);
+    try {
+      const playlist = await this.playlists.generate({ artistId: this.artistId });
+      await this.router.navigate(['/library/playlists', playlist.id]);
+    } catch {
+      // Non-fatal — stay on the artist page.
+    } finally {
+      this.generating.set(false);
+    }
+  }
 
   readonly songsSentinel = viewChild<ElementRef<HTMLElement>>('songsSentinel');
   private songsObserver?: IntersectionObserver;
@@ -284,6 +309,87 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
     this.selection.selectAll(this.songs().map((s) => s.id));
   }
 
+  // ─── Delete (admin only) ──────────────────────────────────────────
+  // The Songs tab is the ONLY view that surfaces albumless files, so it must
+  // offer removal too — parity with album/genre detail. Backend delete routes
+  // are hard-gated to admins; the UI mirrors that gate.
+  readonly deleteError = signal<string | null>(null);
+  readonly confirmMessage = signal('');
+  readonly confirmCallback = signal<(() => void | Promise<void>) | null>(null);
+  readonly showConfirm = computed(() => this.confirmCallback() !== null);
+
+  private askConfirm(message: string, cb: () => void | Promise<void>): void {
+    this.confirmMessage.set(message);
+    this.confirmCallback.set(cb);
+  }
+
+  onConfirm(): void {
+    const cb = this.confirmCallback();
+    this.confirmCallback.set(null);
+    Promise.resolve(cb?.()).catch(() => {
+      /* ignore */
+    });
+  }
+
+  onCancelConfirm(): void {
+    this.confirmCallback.set(null);
+  }
+
+  private pruneSongs(ids: string[]): void {
+    const gone = new Set(ids);
+    this.songs.update((s) => s.filter((x) => !gone.has(x.id)));
+  }
+
+  deleteSelectedSongs(): void {
+    const ids = [...this.selection.ids()];
+    if (ids.length === 0) return;
+    this.askConfirm(
+      `Remove ${ids.length} song${ids.length !== 1 ? 's' : ''} from library?`,
+      async () => {
+        this.deleteError.set(null);
+        try {
+          const result = await firstValueFrom(this.api.deleteSongs(ids));
+          this.transferService.addDeletedIds(ids);
+          this.pruneSongs(ids);
+          this.selection.exit();
+          if (result.deletedCount < ids.length) {
+            this.deleteError.set(
+              `Removed ${result.deletedCount} of ${ids.length} songs. ${ids.length - result.deletedCount} could not be removed.`,
+            );
+          }
+        } catch {
+          this.deleteError.set('Failed to remove the selected songs.');
+        }
+      },
+    );
+  }
+
+  artistTrackActions(song: Song): TrackAction[] {
+    return [
+      offlineTrackAction(this.preserve, toTrack(song)),
+      addToPlaylistAction(this.playlists, song.id),
+      ...(this.auth.role() === 'admin'
+        ? [
+            {
+              label: 'Remove',
+              destructive: true,
+              action: () =>
+                this.askConfirm(`Remove "${song.title}" from library?`, async () => {
+                  this.deleteError.set(null);
+                  try {
+                    await firstValueFrom(this.api.deleteSongs([song.id]));
+                    this.transferService.addDeletedIds([song.id]);
+                    this.pruneSongs([song.id]);
+                  } catch {
+                    this.deleteError.set(`Failed to remove "${song.title}".`);
+                  }
+                }),
+            },
+          ]
+        : []),
+    ];
+  }
+
   readonly discography = signal<DiscographyResult | null>(null);
   readonly discographyLoading = signal(false);
   readonly huntingAlbum = signal<DiscographyAlbum | null>(null);
@@ -346,12 +452,22 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
       this.loading.set(false);
     }
 
-    // Load discography in background — gracefully absent if Lidarr not configured
+    // Load "appears on" compilations and discography in background
+    this.loadAppearsOn(id);
     this.loadDiscography(id);
   }
 
   ngOnDestroy(): void {
     this.songsObserver?.disconnect();
+  }
+
+  private async loadAppearsOn(artistId: string): Promise<void> {
+    try {
+      const data = await firstValueFrom(this.api.getArtistAppearsOn(artistId));
+      this.appearsOn.set(data);
+    } catch {
+      /* no-op — compilations may not exist for this artist */
+    }
   }
 
   private async loadDiscography(artistId: string): Promise<void> {
@@ -367,7 +483,8 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
   }
 
   openHunt(album: DiscographyAlbum): void {
-    this.huntingAlbum.set(album);
+    const artistName = this.artist()?.name ?? '';
+    this.autoHunt.hunt(album, artistName, () => this.huntingAlbum.set(album));
   }
 
   closeHunt(): void {
@@ -381,8 +498,8 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
   }
 
   statusClass(status: 'present' | 'partial' | 'missing'): string {
-    if (status === 'present') return 'text-green-400';
-    if (status === 'partial') return 'text-yellow-400';
+    if (status === 'present') return 'text-status-done';
+    if (status === 'partial') return 'text-status-warn';
     return 'text-zinc-500';
   }
 

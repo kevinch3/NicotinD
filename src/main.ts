@@ -3,6 +3,7 @@ import { sentryEnabled } from './instrument.js';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { parse } from 'yaml';
+import pkg from '../package.json';
 import { NicotinDConfigSchema, createLogger, generateSecret } from '@nicotind/core';
 import { ServiceManager, NativeProcessStrategy } from '@nicotind/service-manager';
 import { Slskd } from '@nicotind/slskd-client';
@@ -124,6 +125,11 @@ async function main() {
       currentSecrets.soulseekPassword = password;
       saveSecrets(config.dataDir, currentSecrets);
     },
+    saveLidarrSecretsFn: (apiKey: string) => {
+      const currentSecrets = loadOrCreateSecrets(config.dataDir);
+      currentSecrets.lidarrApiKey = apiKey;
+      saveSecrets(config.dataDir, currentSecrets);
+    },
     stagingDir: join(
       config.dataDir.startsWith('~')
         ? join(process.env.HOME ?? '/root', config.dataDir.slice(1))
@@ -132,6 +138,7 @@ async function main() {
       'downloads',
     ),
     acoustidApiKey: startupSecrets.acoustidApiKey,
+    version: pkg.version,
   });
 
   if (watcherRef.current) watcherRef.current.start();
@@ -248,6 +255,9 @@ function loadConfig() {
       ...(process.env.NICOTIND_AUTO_RETRY_ENABLED
         ? { autoRetryEnabled: parseBooleanEnv(process.env.NICOTIND_AUTO_RETRY_ENABLED) }
         : {}),
+      ...(process.env.NICOTIND_AUTO_ACQUIRE_ENABLED
+        ? { autoAcquireEnabled: parseBooleanEnv(process.env.NICOTIND_AUTO_ACQUIRE_ENABLED) }
+        : {}),
       ...(process.env.NICOTIND_RETRY_MAX_ATTEMPTS
         ? { retryMaxAttempts: Number(process.env.NICOTIND_RETRY_MAX_ATTEMPTS) }
         : {}),
@@ -336,6 +346,11 @@ function loadConfig() {
       ...((fileConfig as Record<string, unknown>).lidarr as Record<string, unknown>),
       ...(process.env.NICOTIND_LIDARR_URL ? { url: process.env.NICOTIND_LIDARR_URL } : {}),
       ...(process.env.LIDARR_API_KEY ? { apiKey: process.env.LIDARR_API_KEY } : {}),
+    },
+    analysis: {
+      url: '',
+      ...((fileConfig as Record<string, unknown>).analysis as Record<string, unknown>),
+      ...(process.env.NICOTIND_ANALYSIS_URL ? { url: process.env.NICOTIND_ANALYSIS_URL } : {}),
     },
     jwt: {
       secret: secrets.jwtSecret,

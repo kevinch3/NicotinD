@@ -38,6 +38,15 @@ export const NicotinDConfigSchema = z.object({
       // Drop an incoming MP3 when a FLAC of the same track is already in the
       // album folder (avoids mixed MP3+FLAC duplicate albums). Opt-in.
       preferFlacSkipMp3: z.boolean().default(false),
+      // Native auto-acquisition loop: a background poller over Lidarr's
+      // wanted/missing list that auto-hunts + downloads monitored albums Lidarr
+      // lacks, through the same engine as the interactive hunt. Opt-in (off by
+      // default) — it initiates downloads unattended. See docs/auto-acquisition-plan.md.
+      autoAcquireEnabled: z.boolean().default(false),
+      // How often the loop sweeps Lidarr's missing list (default 1h).
+      autoAcquireIntervalMs: z.number().int().min(10_000).default(3_600_000),
+      // Max albums acquired per sweep, so a large missing list never floods slskd.
+      autoAcquireMaxPerSweep: z.number().int().min(1).default(3),
       // Standardize on a small, browser-native codec for storage + web playback:
       // transcode lossless downloads (FLAC/WAV/…) to Opus in place before they
       // enter the library, leaving already-lossy files untouched. Default-on at
@@ -61,6 +70,9 @@ export const NicotinDConfigSchema = z.object({
       exhaustedRetryCooldownMs: 3_600_000,
       exhaustedMaxRevives: 5,
       preferFlacSkipMp3: false,
+      autoAcquireEnabled: false,
+      autoAcquireIntervalMs: 3_600_000,
+      autoAcquireMaxPerSweep: 3,
       transcodeLossless: { enabled: true, format: 'opus', bitRate: 192 },
     }),
 
@@ -145,6 +157,15 @@ export const NicotinDConfigSchema = z.object({
       archive: { enabled: true, preferredFormats: ['MP3', 'FLAC'] },
       spotify: { enabled: true, clientId: '', clientSecret: '' },
     }),
+
+  // Audio-analysis sidecar (packages/analysis). Empty url = not configured —
+  // the audio-features enrichment task reports itself unavailable and
+  // everything else works normally.
+  analysis: z
+    .object({
+      url: z.string().url().or(z.literal('')).default(''),
+    })
+    .default({ url: '' }),
 
   jwt: z.object({
     secret: z.string().min(32, 'JWT secret must be at least 32 characters'),

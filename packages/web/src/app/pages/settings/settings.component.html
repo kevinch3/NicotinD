@@ -25,7 +25,7 @@
             @for (preset of themePresets; track preset.id) {
               <button (click)="themeService.setTheme(preset.id)"
                 [attr.data-theme]="preset.id"
-                [class]="'rounded-lg overflow-hidden border-2 transition-all text-left ' + (themeService.theme() === preset.id ? 'border-indigo-500' : 'border-transparent hover:border-theme')"
+                [class]="'rounded-lg overflow-hidden border-2 transition-all text-left ' + (themeService.theme() === preset.id ? 'border-theme-accent' : 'border-transparent hover:border-theme')"
                 [attr.aria-label]="'Switch to ' + preset.name + ' theme'">
                 <div class="h-10 flex flex-col gap-1 p-1.5" style="background: var(--theme-bg, #09090b)">
                   <div class="h-2 rounded-sm w-full" style="background: var(--theme-surface, #18181b)"></div>
@@ -34,7 +34,7 @@
                 <div class="px-2 py-1.5 flex items-center justify-between" style="background: var(--theme-surface, #18181b)">
                   <span class="text-xs font-semibold" style="color: var(--theme-text-primary, #f4f4f5)">{{ preset.name }}</span>
                   @if (themeService.theme() === preset.id) {
-                    <span class="text-indigo-400 text-xs">✓</span>
+                    <span class="text-theme-accent text-xs">✓</span>
                   }
                 </div>
               </button>
@@ -54,7 +54,7 @@
           <div class="grid grid-cols-5 gap-2 mb-4">
             @for (opt of budgetOptions; track opt.bytes) {
               <button (click)="preserve.setBudget(opt.bytes)"
-                [class]="'rounded-lg border-2 py-2 text-sm transition-all ' + (preserve.budget() === opt.bytes ? 'border-indigo-500 text-theme-primary' : 'border-transparent bg-theme-surface-2 text-theme-muted hover:border-theme')">
+                [class]="'rounded-lg border-2 py-2 text-sm transition-all ' + (preserve.budget() === opt.bytes ? 'border-theme-accent text-theme-primary' : 'border-transparent bg-theme-surface-2 text-theme-muted hover:border-theme')">
                 {{ opt.label }}
               </button>
             }
@@ -95,7 +95,7 @@
                 <label class="flex items-center justify-between gap-4">
                   <span class="text-sm text-theme-primary">Transcode on the fly
                     @if (s.ffmpegAvailable === false) {
-                      <span class="block text-xs text-amber-500">ffmpeg not found on the server — transcoding unavailable</span>
+                      <span class="block text-xs text-status-warn">ffmpeg not found on the server — transcoding unavailable</span>
                     } @else {
                       <span class="block text-xs text-theme-muted">Re-encode streams to a smaller format/bitrate</span>
                     }
@@ -145,7 +145,7 @@
                 }
 
                 @if (streamingMessage(); as m) {
-                  <p class="text-xs" [class.text-emerald-500]="m.type === 'success'" [class.text-red-500]="m.type === 'error'">{{ m.text }}</p>
+                  <p class="text-xs" [class.text-status-done]="m.type === 'success'" [class.text-status-error]="m.type === 'error'">{{ m.text }}</p>
                 }
               </div>
             }
@@ -169,20 +169,20 @@
                 </label>
 
                 <!-- Window -->
-                <div class="flex items-center justify-between gap-4">
-                  <span class="text-sm text-theme-primary">Processing window
+                <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+                  <span class="min-w-0 text-sm text-theme-primary">Processing window
                     <span class="block text-xs text-theme-muted">Local server time</span>
                   </span>
-                  <div class="flex items-center gap-2">
+                  <div class="flex min-w-0 items-center gap-2">
                     <input type="time" [value]="p.window.start" [disabled]="processingSaving()"
                       data-testid="processing-window-start"
                       (change)="saveProcessing({ window: { start: $any($event.target).value, end: p.window.end } })"
-                      class="text-sm rounded-lg bg-theme-surface border border-theme px-2 py-1 text-theme-primary" />
+                      class="min-w-0 text-sm rounded-lg bg-theme-surface border border-theme px-2 py-1 text-theme-primary" />
                     <span class="text-theme-muted">–</span>
                     <input type="time" [value]="p.window.end" [disabled]="processingSaving()"
                       data-testid="processing-window-end"
                       (change)="saveProcessing({ window: { start: p.window.start, end: $any($event.target).value } })"
-                      class="text-sm rounded-lg bg-theme-surface border border-theme px-2 py-1 text-theme-primary" />
+                      class="min-w-0 text-sm rounded-lg bg-theme-surface border border-theme px-2 py-1 text-theme-primary" />
                   </div>
                 </div>
 
@@ -191,7 +191,7 @@
                   <label class="flex items-center justify-between gap-4">
                     <span class="text-sm text-theme-primary">BPM analysis
                       @if (taskUnavailable('bpm'); as reason) {
-                        <span class="block text-xs text-amber-500">{{ reason }}</span>
+                        <span class="block text-xs text-status-warn">{{ reason }}</span>
                       }
                     </span>
                     <input type="checkbox" [checked]="p.tasks.bpm" [disabled]="processingSaving()"
@@ -202,7 +202,7 @@
                   <label class="flex items-center justify-between gap-4">
                     <span class="text-sm text-theme-primary">Genre
                       @if (taskUnavailable('genre'); as reason) {
-                        <span class="block text-xs text-amber-500">{{ reason }}</span>
+                        <span class="block text-xs text-status-warn">{{ reason }}</span>
                       }
                     </span>
                     <input type="checkbox" [checked]="p.tasks.genre" [disabled]="processingSaving()"
@@ -213,12 +213,34 @@
                   <label class="flex items-center justify-between gap-4">
                     <span class="text-sm text-theme-primary">Musical key
                       @if (taskUnavailable('key'); as reason) {
-                        <span class="block text-xs text-amber-500">{{ reason }}</span>
+                        <span class="block text-xs text-status-warn">{{ reason }}</span>
                       }
                     </span>
                     <input type="checkbox" [checked]="p.tasks.key" [disabled]="processingSaving()"
                       data-testid="processing-task-key"
                       (change)="toggleProcessingTask('key')"
+                      class="w-4 h-4 rounded accent-emerald-500" />
+                  </label>
+                  <label class="flex items-center justify-between gap-4">
+                    <span class="text-sm text-theme-primary">Energy &amp; loudness
+                      @if (taskUnavailable('energy'); as reason) {
+                        <span class="block text-xs text-status-warn">{{ reason }}</span>
+                      }
+                    </span>
+                    <input type="checkbox" [checked]="p.tasks.energy" [disabled]="processingSaving()"
+                      data-testid="processing-task-energy"
+                      (change)="toggleProcessingTask('energy')"
+                      class="w-4 h-4 rounded accent-emerald-500" />
+                  </label>
+                  <label class="flex items-center justify-between gap-4">
+                    <span class="text-sm text-theme-primary">Audio features (mood, valence, danceability)
+                      @if (taskUnavailable('audio-features'); as reason) {
+                        <span class="block text-xs text-status-warn">{{ reason }}</span>
+                      }
+                    </span>
+                    <input type="checkbox" [checked]="p.tasks['audio-features']" [disabled]="processingSaving()"
+                      data-testid="processing-task-audio-features"
+                      (change)="toggleProcessingTask('audio-features')"
                       class="w-4 h-4 rounded accent-emerald-500" />
                   </label>
                 </div>
@@ -254,7 +276,7 @@
                 </div>
 
                 @if (processingMessage(); as m) {
-                  <p class="text-xs" [class.text-emerald-500]="m.type === 'success'" [class.text-red-500]="m.type === 'error'">{{ m.text }}</p>
+                  <p class="text-xs" [class.text-status-done]="m.type === 'success'" [class.text-status-error]="m.type === 'error'">{{ m.text }}</p>
                 }
               </div>
             }
@@ -272,13 +294,13 @@
             @if (isAdmin() && configured()) {
               <button type="button" (click)="toggleConnection()" [disabled]="toggling()"
                 class="px-3 py-1 rounded-lg border border-theme text-xs font-medium transition disabled:opacity-50"
-                [class]="connected() ? 'text-amber-400 hover:bg-amber-900/20' : 'text-emerald-400 hover:bg-emerald-900/20'">
+                [class]="connected() ? 'text-status-warn hover:bg-theme-hover' : 'text-status-done hover:bg-theme-hover'">
                 {{ toggling() ? '...' : (connected() ? 'Disconnect' : 'Connect') }}
               </button>
             }
           </div>
           @if (toggleMessage()) {
-            <p [class]="'text-xs mb-4 ' + (toggleMessage()!.type === 'success' ? 'text-emerald-400' : 'text-red-400')">
+            <p [class]="'text-xs mb-4 ' + (toggleMessage()!.type === 'success' ? 'text-status-done' : 'text-status-error')">
               {{ toggleMessage()!.text }}
             </p>
           }
@@ -316,7 +338,7 @@
                     placeholder="Confirm password" autocomplete="new-password"
                     inputClass="px-4 py-2.5 rounded-lg bg-theme-surface-2 border border-theme text-theme-primary placeholder-zinc-600 focus:outline-none focus:border-zinc-500 transition text-sm" />
                   @if (confirmPassword() && password() !== confirmPassword()) {
-                    <p class="text-xs text-red-400 mt-1">Passwords do not match</p>
+                    <p class="text-xs text-status-error mt-1">Passwords do not match</p>
                   }
                 </div>
               }
@@ -339,7 +361,7 @@
               </div>
 
               @if (message()) {
-                <div [class]="'px-4 py-2.5 rounded-lg text-sm ' + (message()!.type === 'success' ? 'bg-emerald-950/50 border border-emerald-900/50 text-emerald-400' : 'bg-red-950/50 border border-red-900/50 text-red-400')">
+                <div [class]="'px-4 py-2.5 rounded-lg text-sm border border-theme ' + (message()!.type === 'success' ? 'status-done' : 'status-error')">
                   {{ message()!.text }}
                 </div>
               }
@@ -378,13 +400,13 @@
                 <p class="text-sm text-theme-primary">Make this device available as an audio output</p>
                 <p class="text-xs text-theme-muted mt-0.5">When enabled, other devices on your account can cast audio to this device.</p>
                 @if (!remote.remoteEnabled()) {
-                  <p class="text-xs text-amber-500/80 mt-1">This device is hidden from the device selector on other devices.</p>
+                  <p class="text-xs text-status-warn mt-1">This device is hidden from the device selector on other devices.</p>
                 }
               </div>
             </div>
 
             @if (remote.disabledReason()) {
-              <div class="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs text-amber-400">
+              <div class="flex items-start gap-2 px-3 py-2.5 rounded-lg status-warn border border-theme text-xs">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="flex-shrink-0 mt-0.5">
                   <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
                 </svg>
@@ -420,7 +442,7 @@
                         <span class="text-xs text-theme-muted">(this device)</span>
                       }
                       @if (device.id === remote.activeDeviceId()) {
-                        <span class="ml-auto text-xs font-semibold tracking-wide px-1.5 py-0.5 rounded bg-emerald-900/60 text-emerald-400">HOST</span>
+                        <span class="ml-auto text-xs font-semibold tracking-wide px-1.5 py-0.5 rounded status-done">HOST</span>
                       }
                     </li>
                   }
@@ -443,7 +465,7 @@
               </p>
 
               @if (duplicatesMessage()) {
-                <p [class]="'text-xs mb-3 ' + (duplicatesMessage()!.type === 'success' ? 'text-emerald-400' : 'text-red-400')">
+                <p [class]="'text-xs mb-3 ' + (duplicatesMessage()!.type === 'success' ? 'text-status-done' : 'text-status-error')">
                   {{ duplicatesMessage()!.text }}
                 </p>
               }
@@ -460,13 +482,13 @@
                       @for (song of group; track song.id) {
                         <label class="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-theme-hover/30 transition">
                           <input type="checkbox" [checked]="isDuplicateMarked(song.id)" (change)="toggleDuplicateDelete(song.id)"
-                            class="w-4 h-4 rounded border-theme bg-theme-surface-2 text-red-500 focus:ring-0 focus:ring-offset-0 flex-shrink-0" />
+                            class="w-4 h-4 rounded border-theme bg-theme-surface-2 text-status-error focus:ring-0 focus:ring-offset-0 flex-shrink-0" />
                           <div class="flex-1 min-w-0">
                             <p class="text-sm text-theme-primary truncate">{{ song.title }}</p>
                             <p class="text-xs text-theme-muted truncate">{{ song.artist }} — {{ song.album }}</p>
                           </div>
                           <div class="text-right flex-shrink-0 space-y-0.5">
-                            <p class="text-xs font-medium" [class]="(song.suffix ?? '') === 'flac' ? 'text-emerald-400' : 'text-theme-muted'">
+                            <p class="text-xs font-medium" [class]="(song.suffix ?? '') === 'flac' ? 'text-status-done' : 'text-theme-muted'">
                               {{ (song.suffix ?? '').toUpperCase() }}@if (song.bitRate) { {{ song.bitRate }}k}
                             </p>
                             <p class="text-xs text-theme-muted">{{ formatDuration(song.duration) }}</p>
@@ -480,7 +502,7 @@
                 <div class="flex items-center gap-3">
                   <button type="button" (click)="deleteMarkedDuplicates()"
                     [disabled]="deletingDuplicates() || duplicatesDeleteSet().size === 0"
-                    class="px-4 py-2 rounded-lg bg-red-900/30 border border-red-800/50 text-sm text-red-400 hover:bg-red-900/50 transition disabled:opacity-40">
+                    class="px-4 py-2 rounded-lg status-error border border-theme text-sm hover:opacity-80 transition disabled:opacity-40">
                     {{ deletingDuplicates() ? 'Deleting...' : 'Delete ' + duplicatesDeleteSet().size + ' selected' }}
                   </button>
                   <p class="text-xs text-theme-muted">Checked = will be deleted. Uncheck to keep.</p>
@@ -501,7 +523,7 @@
                   <li class="flex items-center gap-2 px-3 py-2 rounded-lg bg-theme-surface-2/50 border border-theme">
                     <span class="flex-1 text-sm text-theme-secondary truncate font-mono">{{ path }}</span>
                     <button type="button" (click)="removeShare(path)" [disabled]="sharesLoading()"
-                      class="text-theme-muted hover:text-red-400 transition disabled:opacity-40 flex-shrink-0" title="Remove">
+                      class="text-theme-muted hover:text-status-error transition disabled:opacity-40 flex-shrink-0" title="Remove">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
                       </svg>
@@ -529,7 +551,7 @@
             </div>
 
             @if (sharesMessage()) {
-              <p [class]="'text-xs ' + (sharesMessage()!.type === 'success' ? 'text-emerald-400' : 'text-red-400')">
+              <p [class]="'text-xs ' + (sharesMessage()!.type === 'success' ? 'text-status-done' : 'text-status-error')">
                 {{ sharesMessage()!.text }}
               </p>
             }
@@ -544,8 +566,14 @@
         @if (isAdmin()) {
           <a routerLink="/admin" class="block text-sm text-theme-secondary hover:text-theme-primary transition mb-4">Admin panel →</a>
         }
-        <button (click)="logout()" class="text-sm text-red-400 hover:text-red-300 transition">Sign out</button>
-        <p class="text-xs text-theme-muted/50 mt-4">v{{ version }}</p>
+        <button (click)="logout()" class="text-sm text-status-error hover:text-status-error transition">Sign out</button>
+        <button
+          (click)="showChangelog.set(true)"
+          data-testid="version-changelog-settings"
+          class="text-xs text-theme-muted/50 mt-4 hover:text-theme-secondary transition cursor-pointer block"
+        >
+          v{{ version }}
+        </button>
       </section>
 
       <!-- iOS Now Playing diagnostics (native iOS only) — confirms the lock-screen
@@ -576,5 +604,43 @@
             </p>
           }
         </section>
+      }
+
+      @if (showChangelog()) {
+        <app-changelog-modal (close)="showChangelog.set(false)" />
+      }
+
+      @if (showLogoutDialog()) {
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div class="bg-theme-surface border border-theme rounded-xl p-6 max-w-sm w-full shadow-2xl">
+            <h3 class="text-lg font-semibold text-theme-primary mb-4">Sign out?</h3>
+            <label class="flex items-start gap-3 mb-6 cursor-pointer">
+              <input
+                type="checkbox"
+                [ngModel]="cleanPreserveOnLogout()"
+                (ngModelChange)="cleanPreserveOnLogout.set($event)"
+                class="mt-0.5 rounded border-theme-muted bg-theme-base text-theme-accent focus:ring-theme-accent focus:ring-offset-0"
+              />
+              <span class="text-sm text-theme-secondary">
+                Remove downloaded music from this device
+                <span class="text-theme-muted">({{ formatStorage(preserve.totalUsage()) }})</span>
+              </span>
+            </label>
+            <div class="flex gap-3 justify-end">
+              <button
+                (click)="showLogoutDialog.set(false)"
+                class="px-4 py-2 text-sm font-medium text-theme-secondary hover:text-theme-primary transition"
+              >
+                Cancel
+              </button>
+              <button
+                (click)="confirmLogout()"
+                class="px-4 py-2 text-sm font-medium text-status-error hover:opacity-80 transition"
+              >
+                Sign out
+              </button>
+            </div>
+          </div>
+        </div>
       }
     </div>

@@ -1,4 +1,4 @@
-import { Component, input, signal, computed, inject } from '@angular/core';
+import { Component, input, signal, computed, effect, inject } from '@angular/core';
 import { ServerConfigService } from '../../services/server-config.service';
 
 export function hashCode(str: string): number {
@@ -70,6 +70,17 @@ export class CoverArtComponent {
   readonly loadingAttr = computed<'eager' | 'lazy'>(() => coverLoadingAttr(this.eager()));
 
   readonly imgError = signal(false);
+  readonly imgLoaded = signal(false);
+
+  constructor() {
+    // Reset loading/error state when the resolved src changes so the gradient
+    // placeholder re-appears while new image bytes are in flight.
+    effect(() => {
+      this.resolvedSrc();
+      this.imgLoaded.set(false);
+      this.imgError.set(false);
+    });
+  }
 
   get initialFontSize(): string {
     return placeholderFontSize(this.size(), this.fill());

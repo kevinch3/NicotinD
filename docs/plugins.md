@@ -26,9 +26,10 @@ Host orchestrators (search route, album hunt, /api/acquire) + Settings → Plugi
 ```
 
 A generic **kernel** (manifest, enable/disable, config, consent, health, lifecycle) is
-kind-agnostic; each **kind** (`acquisition`, `metadata` [lyrics], `connectivity` scaffolded) defines
-its own capability contracts. New kinds add contracts without touching the kernel — the `metadata`
-kind (added for lyrics) is the worked example.
+kind-agnostic; each **kind** (`acquisition`, `metadata` [lyrics], `connectivity` scaffolded,
+`auth` [planned for OAuth](oauth-auth.md)) defines its own capability contracts. New kinds
+add contracts without touching the kernel — the `metadata` kind (added for lyrics) is the
+worked example.
 
 ## Contracts — `packages/core/src/plugin/`
 

@@ -2,6 +2,8 @@
 .git
 .gitignore
 *.md
+# ...but the web build bakes CHANGELOG.md into the changelog modal at build time
+!CHANGELOG.md
 dist
 .env
 .env.*

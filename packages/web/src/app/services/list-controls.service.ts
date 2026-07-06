@@ -6,16 +6,25 @@ export interface SortOption {
 }
 
 interface PageState {
+  /** Raw text bound to the search input — updates on every keystroke. */
   searchText: string;
+  /** Debounced text the (expensive) `filtered` computed reads — trails `searchText`. */
+  debouncedSearchText: string;
   sortField: string;
   sortDirection: 'asc' | 'desc';
 }
 
 const DEFAULT_STATE: PageState = {
   searchText: '',
+  debouncedSearchText: '',
   sortField: '',
   sortDirection: 'asc',
 };
+
+/** How long to wait after the last keystroke before re-running filter+sort.
+ * Large lists (all artists, a 5000-song genre) copy+filter+sort per recompute,
+ * so debouncing collapses a typing burst into one pass. */
+const SEARCH_DEBOUNCE_MS = 200;
 
 export interface ListControls<T> {
   filtered: Signal<T[]>;
@@ -30,6 +39,7 @@ export interface ListControls<T> {
 @Injectable({ providedIn: 'root' })
 export class ListControlsService {
   private pages = signal<Record<string, PageState>>({});
+  private searchTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   private getPage(pageKey: string): PageState {
     return this.pages()[pageKey] ?? DEFAULT_STATE;
@@ -40,6 +50,21 @@ export class ListControlsService {
       ...pages,
       [pageKey]: { ...(pages[pageKey] ?? DEFAULT_STATE), ...patch },
     }));
+  }
+
+  /** Reflect the keystroke immediately (input binding) and debounce the value the
+   * `filtered` computed reads, so a typing burst triggers a single filter+sort. */
+  private setSearchText(pageKey: string, text: string): void {
+    this.updatePage(pageKey, { searchText: text });
+    const existing = this.searchTimers.get(pageKey);
+    if (existing) clearTimeout(existing);
+    this.searchTimers.set(
+      pageKey,
+      setTimeout(() => {
+        this.searchTimers.delete(pageKey);
+        this.updatePage(pageKey, { debouncedSearchText: text });
+      }, SEARCH_DEBOUNCE_MS),
+    );
   }
 
   connect<T>(config: {
@@ -68,10 +93,12 @@ export class ListControlsService {
     const sortField = computed(() => this.getPage(pageKey).sortField);
     const sortDirection = computed(() => this.getPage(pageKey).sortDirection);
 
+    const debouncedSearch = computed(() => this.getPage(pageKey).debouncedSearchText);
+
     const filtered = computed(() => {
       let result = [...items()];
 
-      const query = searchText().toLowerCase().trim();
+      const query = debouncedSearch().toLowerCase().trim();
       if (query) {
         result = result.filter((item) =>
           searchFields.some((field) => {
@@ -106,12 +133,20 @@ export class ListControlsService {
       searchText,
       sortField,
       sortDirection,
-      setSearchText: (text: string) => this.updatePage(pageKey, { searchText: text }),
+      setSearchText: (text: string) => this.setSearchText(pageKey, text),
       setSortField: (field: string) => this.updatePage(pageKey, { sortField: field }),
       toggleSortDirection: () => {
         const cur = this.getPage(pageKey);
         this.updatePage(pageKey, { sortDirection: cur.sortDirection === 'asc' ? 'desc' : 'asc' });
       },
     };
+  }
+
+  reset(): void {
+    for (const timer of this.searchTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.searchTimers.clear();
+    this.pages.set({});
   }
 }

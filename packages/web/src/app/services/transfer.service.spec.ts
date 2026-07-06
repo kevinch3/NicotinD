@@ -41,7 +41,18 @@ const systemApiMock = {
 } as unknown as SystemApiService;
 
 function makeAcquireJob(state: AcquireJob['state']): AcquireJob {
-  return { id: 'j1', state, url: 'http://x', backend: 'yt-dlp', createdAt: 0 };
+  return {
+    id: 'j1',
+    state,
+    url: 'http://x',
+    backend: 'yt-dlp',
+    label: null,
+    stage: null,
+    storage_path: null,
+    progress: null,
+    error: null,
+    created_at: 0,
+  };
 }
 
 describe('TransferService.activeDownloadCount', () => {

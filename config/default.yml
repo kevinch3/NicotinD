@@ -16,6 +16,13 @@ downloads:
     enabled: true
     format: opus
     bitRate: 192
+  # Native auto-acquisition loop: a background poller over Lidarr's wanted/missing
+  # list that auto-hunts + downloads monitored albums Lidarr lacks, through the
+  # same engine as the interactive hunt. Off by default — it initiates downloads
+  # unattended. See docs/auto-acquisition-plan.md.
+  autoAcquireEnabled: false
+  autoAcquireIntervalMs: 3600000 # sweep Lidarr's missing list hourly
+  autoAcquireMaxPerSweep: 3 # cap so a large missing list never floods slskd
 
 soulseek:
   username: ''
@@ -48,6 +55,13 @@ acquire:
     enabled: true
     clientId: ''
     clientSecret: ''
+
+# Audio-analysis sidecar (packages/analysis) — fills mood/valence/danceability/
+# acousticness/instrumentalness. Leave empty to run without it (the
+# audio-features task just shows as unavailable). In compose this is set via
+# NICOTIND_ANALYSIS_URL=http://analysis:8000.
+analysis:
+  url: ''
 
 jwt:
   # Session length. Tokens are silently renewed on app boot (sliding session),

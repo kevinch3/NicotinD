@@ -14,6 +14,7 @@ import { RemotePlaybackService } from '../../services/remote-playback.service';
 import { PlaybackWsService } from '../../services/playback-ws.service';
 import { PreserveService, UNLIMITED_BUDGET } from '../../services/preserve.service';
 import { PasswordFieldComponent } from '../../components/password-field/password-field.component';
+import { ChangelogModalComponent } from '../../components/changelog-modal/changelog-modal.component';
 import { APP_VERSION } from '../../app.config';
 import {
   MediaControlsService,
@@ -46,7 +47,7 @@ type DuplicateSong = {
 
 @Component({
   selector: 'app-settings',
-  imports: [FormsModule, RouterLink, PasswordFieldComponent],
+  imports: [FormsModule, RouterLink, PasswordFieldComponent, ChangelogModalComponent],
   templateUrl: './settings.component.html',
 })
 export class SettingsComponent implements OnInit, OnDestroy {
@@ -79,6 +80,9 @@ export class SettingsComponent implements OnInit, OnDestroy {
   readonly themePresets = THEME_PRESETS;
   readonly myDeviceId = this.ws.getDeviceId();
   readonly version = inject(APP_VERSION);
+  readonly showChangelog = signal(false);
+  readonly showLogoutDialog = signal(false);
+  readonly cleanPreserveOnLogout = signal(false);
 
   formatStorage(bytes: number): string {
     if (bytes >= UNLIMITED_BUDGET) return '∞';
@@ -157,6 +161,20 @@ export class SettingsComponent implements OnInit, OnDestroy {
   }
 
   logout(): void {
+    if (this.preserve.totalUsage() > 0) {
+      this.cleanPreserveOnLogout.set(false);
+      this.showLogoutDialog.set(true);
+    } else {
+      this.auth.logout();
+      this.router.navigateByUrl('/login');
+    }
+  }
+
+  async confirmLogout(): Promise<void> {
+    if (this.cleanPreserveOnLogout()) {
+      await this.preserve.clearAll();
+    }
+    this.showLogoutDialog.set(false);
     this.auth.logout();
     this.router.navigateByUrl('/login');
   }

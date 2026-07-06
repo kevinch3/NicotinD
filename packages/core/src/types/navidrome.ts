@@ -22,11 +22,18 @@ export interface Artist {
   starred?: string;
 }
 
+export interface ArtistCredit {
+  id: string;
+  name: string;
+  role: 'primary' | 'featuring';
+}
+
 export interface Album {
   id: string;
   name: string;
   artist: string;
   artistId: string;
+  artists?: ArtistCredit[];
   coverArt?: string;
   songCount: number;
   duration: number;
@@ -43,6 +50,9 @@ export interface Song {
   albumId: string;
   artist: string;
   artistId: string;
+  artists?: ArtistCredit[];
+  albumArtist?: string;
+  albumArtistId?: string;
   track?: number;
   year?: number;
   genre?: string;
@@ -59,6 +69,20 @@ export interface Song {
   bpm?: number;
   /** Musical key, e.g. "C major" / "A minor". Absent when unknown. */
   key?: string;
+  /** Perceived energy 0..1 (ffmpeg ebur128 enrichment). Absent when unknown. */
+  energy?: number;
+  /** Integrated loudness in LUFS. Absent when unknown. */
+  loudness?: number;
+  /** Musical positivity 0..1 (analysis sidecar). Absent when unknown. */
+  valence?: number;
+  /** Danceability 0..1 (analysis sidecar). Absent when unknown. */
+  danceability?: number;
+  /** Acoustic confidence 0..1 (analysis sidecar). Absent when unknown. */
+  acousticness?: number;
+  /** Probability the track is instrumental 0..1. Absent when unknown. */
+  instrumental?: number;
+  /** Dominant mood label (happy|sad|aggressive|relaxed|party). Absent when unknown. */
+  mood?: string;
 }
 
 export interface SearchResult3 {

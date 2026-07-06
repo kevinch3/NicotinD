@@ -1,15 +1,56 @@
 import { createHash } from 'node:crypto';
+import { existsSync } from 'node:fs';
+import { cpus } from 'node:os';
 import { join, relative, sep, extname } from 'node:path';
 import { readdir, stat } from 'node:fs/promises';
 import { createLogger } from '@nicotind/core';
 import type { Database } from 'bun:sqlite';
 import { albumGroupKey, normalizeArtistForGrouping } from './album-grouping.js';
+import { isVariousArtists } from './compilation-tagger.js';
 import { inferFolderAlbum, inferMetadataFromPath, hasUsableValue } from './path-inference.js';
 import { getMusicMetadata } from './music-metadata-loader.js';
+import { featureTagsFromNative } from './audio-tags.js';
 import { selectAlbumTracks } from './library-track-select.js';
 import { loadOverrides, type MetadataOverrideValue } from './metadata-override-store.js';
+import { splitArtists, type ArtistCredit } from './artist-split.js';
+import { pruneOrphanArtist } from './library-aggregates.js';
+import {
+  partitionByCache,
+  loadScanCache,
+  saveScanCache,
+  type FileStat,
+} from './scan-cache.js';
 
 const log = createLogger('library-scanner');
+
+/**
+ * How many files to tag-parse in parallel. Tag reads are IO + CPU bound; a pool
+ * bounded to the core count keeps a large cold scan busy without starving the
+ * event loop or opening thousands of file handles at once.
+ */
+const TAG_READ_CONCURRENCY = Math.max(2, Math.min(8, cpus().length || 4));
+
+/**
+ * Run `fn` over `items` with at most `limit` in flight, preserving input order
+ * in the returned results. Pure/generic — unit-testable without the scanner.
+ */
+export async function mapPool<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (true) {
+      const idx = next++;
+      if (idx >= items.length) return;
+      results[idx] = await fn(items[idx]!);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}
 
 /** File extensions we treat as scannable audio. */
 export const AUDIO_EXTENSIONS = new Set([
@@ -55,6 +96,13 @@ export interface ScannedTrack {
   genre?: string;
   bpm?: number;
   key?: string;
+  energy?: number;
+  loudness?: number;
+  danceability?: number;
+  valence?: number;
+  acousticness?: number;
+  instrumental?: number;
+  mood?: string;
 }
 
 export interface SongRow {
@@ -63,6 +111,8 @@ export interface SongRow {
   title: string;
   artist: string;
   artistId: string;
+  albumArtist: string;
+  albumArtistId: string;
   track: number | null;
   disc: number | null;
   duration: number;
@@ -70,6 +120,13 @@ export interface SongRow {
   genre: string | null;
   bpm: number | null;
   key: string | null;
+  energy: number | null;
+  loudness: number | null;
+  danceability: number | null;
+  valence: number | null;
+  acousticness: number | null;
+  instrumental: number | null;
+  mood: string | null;
   coverArt: string;
   path: string;
   size: number;
@@ -105,11 +162,20 @@ export interface GenreRow {
   albumCount: number;
 }
 
+export interface ArtistLink {
+  parentId: string;
+  artistId: string;
+  role: 'primary' | 'featuring';
+  position: number;
+}
+
 export interface BuiltLibrary {
   songs: SongRow[];
   albums: AlbumRow[];
   artists: ArtistRow[];
   genres: GenreRow[];
+  songArtists: ArtistLink[];
+  albumArtists: ArtistLink[];
 }
 
 const UNKNOWN_ARTIST = 'Unknown Artist';
@@ -159,24 +225,37 @@ export function isLooseSinglesBucket(dir: string, album: string): boolean {
 
 /**
  * Resolve final artist/album/title for a track, falling back to path inference
- * when ID3 tags are missing (common with Soulseek peers). Mirrors the
- * organizer's tag-derivation precedence so the scanner and organizer agree.
+ * when ID3 tags are missing (common with Soulseek peers). Returns both the
+ * album-level artist (for grouping/ownership) and the track-level artist (for
+ * display). On compilations the two differ: albumArtist = "Various Artists",
+ * trackArtist = the actual performer.
  */
 function resolveTags(
   t: ScannedTrack,
   overrides?: ReadonlyMap<string, MetadataOverrideValue>,
-): { artist: string; album: string; title: string; year: number | undefined } {
+): { albumArtist: string; trackArtist: string; album: string; title: string; year: number | undefined } {
   const dir = t.relPath
     .split(/[\\/]+/)
     .slice(0, -1)
     .join('/');
   const inferred = inferMetadataFromPath(t.relPath, dir);
 
-  let artist =
+  // Album artist: used for album grouping and artist ownership.
+  let albumArtist =
     (hasUsableValue(t.albumArtist) && t.albumArtist) ||
     (hasUsableValue(t.artist) && t.artist) ||
     (hasUsableValue(inferred.artist) ? inferred.artist : undefined) ||
     UNKNOWN_ARTIST;
+
+  // Track artist: the actual performer on this track. For compilations where
+  // albumArtist is "Various Artists", prefer the per-track artist tag.
+  const albumArtistIsVA = hasUsableValue(t.albumArtist) && isVariousArtists(t.albumArtist!);
+  let trackArtist: string;
+  if (albumArtistIsVA && hasUsableValue(t.artist)) {
+    trackArtist = t.artist!;
+  } else {
+    trackArtist = albumArtist;
+  }
 
   const title =
     (hasUsableValue(t.title) && t.title) ||
@@ -189,7 +268,7 @@ function resolveTags(
 
   let album =
     (hasUsableValue(t.album) && t.album) ||
-    inferFolderAlbum(dir, artist) ||
+    inferFolderAlbum(dir, albumArtist) ||
     (hasUsableValue(inferred.album) ? inferred.album : undefined) ||
     UNKNOWN_ALBUM;
 
@@ -207,14 +286,17 @@ function resolveTags(
   // by the **raw** albumId derived from the on-disk tags above, then substitute
   // the corrected names/year so downstream artistId/albumId re-bucket. Stable
   // across rescans — tags never change, so the raw key is reproducible.
-  const ov = overrides?.get(albumIdFor(artist, album));
+  const ov = overrides?.get(albumIdFor(albumArtist, album));
   if (ov) {
-    if (ov.artist != null) artist = ov.artist;
+    if (ov.artist != null) {
+      albumArtist = ov.artist;
+      if (!albumArtistIsVA) trackArtist = ov.artist;
+    }
     if (ov.album != null) album = ov.album;
     if (ov.year != null) year = ov.year;
   }
 
-  return { artist, album, title, year };
+  return { albumArtist, trackArtist, album, title, year };
 }
 
 /**
@@ -234,8 +316,8 @@ export function selectLibraryTracks(
     Array<{ track: ScannedTrack; relPath: string; title: string; suffix: string; bitRate: number }>
   >();
   for (const t of tracks) {
-    const { artist, album, title } = resolveTags(t, overrides);
-    const albId = albumIdFor(artist, album);
+    const { albumArtist, album, title } = resolveTags(t, overrides);
+    const albId = albumIdFor(albumArtist, album);
     const arr = byAlbum.get(albId) ?? [];
     arr.push({ track: t, relPath: t.relPath, title, suffix: t.suffix, bitRate: t.bitRate });
     byAlbum.set(albId, arr);
@@ -261,8 +343,22 @@ export function buildLibrary(
   overrides?: ReadonlyMap<string, MetadataOverrideValue>,
 ): BuiltLibrary {
   tracks = selectLibraryTracks(tracks, canonicalByAlbum, overrides);
+
+  // Pass 1: collect all raw artist strings to build the cross-reference set.
+  // Any artist name that appears as-is across the library is considered "known"
+  // and won't be split by the artist-split parser (prevents splitting band
+  // names like "Earth, Wind & Fire").
+  const knownArtists = new Set<string>();
+  for (const t of tracks) {
+    const { albumArtist, trackArtist } = resolveTags(t, overrides);
+    knownArtists.add(normalizeArtistForGrouping(albumArtist));
+    knownArtists.add(normalizeArtistForGrouping(trackArtist));
+  }
+
+  // Pass 2: build songs, albums, artists, and artist-link join rows.
   const songs: SongRow[] = [];
-  // album id -> accumulating state
+  const songArtistLinks: ArtistLink[] = [];
+  const albumArtistLinks: ArtistLink[] = [];
   const albumAcc = new Map<
     string,
     {
@@ -276,13 +372,15 @@ export function buildLibrary(
       genres: string[];
       createdMs: number;
       coverArt: string;
+      splitCredits: ArtistCredit[];
     }
   >();
 
   for (const t of tracks) {
-    const { artist, album, title, year } = resolveTags(t, overrides);
-    const aId = artistIdFor(artist);
-    const albId = albumIdFor(artist, album);
+    const { albumArtist, trackArtist, album, title, year } = resolveTags(t, overrides);
+    const albumArtistId = artistIdFor(albumArtist);
+    const trackArtistId = artistIdFor(trackArtist);
+    const albId = albumIdFor(albumArtist, album);
     const id = songId(t.relPath);
     const created = new Date(t.mtimeMs).toISOString();
 
@@ -290,8 +388,10 @@ export function buildLibrary(
       id,
       albumId: albId,
       title,
-      artist,
-      artistId: aId,
+      artist: trackArtist,
+      artistId: trackArtistId,
+      albumArtist,
+      albumArtistId,
       track: t.track ?? null,
       disc: t.disc ?? null,
       duration: t.duration,
@@ -299,6 +399,13 @@ export function buildLibrary(
       genre: t.genre ?? null,
       bpm: t.bpm ?? null,
       key: t.key ?? null,
+      energy: t.energy ?? null,
+      loudness: t.loudness ?? null,
+      danceability: t.danceability ?? null,
+      valence: t.valence ?? null,
+      acousticness: t.acousticness ?? null,
+      instrumental: t.instrumental ?? null,
+      mood: t.mood ?? null,
       coverArt: id,
       path: t.relPath,
       size: t.size,
@@ -307,6 +414,16 @@ export function buildLibrary(
       contentType: t.contentType,
       created,
     });
+
+    const trackCredits = splitArtists(trackArtist, knownArtists);
+    for (let i = 0; i < trackCredits.length; i++) {
+      songArtistLinks.push({
+        parentId: id,
+        artistId: artistIdFor(trackCredits[i].name),
+        role: trackCredits[i].role,
+        position: i,
+      });
+    }
 
     const acc = albumAcc.get(albId);
     if (acc) {
@@ -319,18 +436,16 @@ export function buildLibrary(
     } else {
       albumAcc.set(albId, {
         id: albId,
-        artist,
-        artistId: aId,
+        artist: albumArtist,
+        artistId: albumArtistId,
         names: [album],
         songCount: 1,
         duration: t.duration,
         years: year != null ? [year] : [],
         genres: t.genre ? [t.genre] : [],
         createdMs: t.mtimeMs,
-        // Album cover id = the album id itself: the cover route checks
-        // library_artwork (canonical Lidarr art) by this id first, then falls
-        // back to a representative song's folder/embedded art via resolvePath.
         coverArt: albId,
+        splitCredits: splitArtists(albumArtist, knownArtists),
       });
     }
   }
@@ -340,9 +455,22 @@ export function buildLibrary(
     string,
     { id: string; name: string; albums: Set<string>; coverArt: string | null }
   >();
+
+  function ensureArtist(artistId: string, name: string, albumId?: string) {
+    const ar = artistAcc.get(artistId);
+    if (ar) {
+      if (albumId) ar.albums.add(albumId);
+    } else {
+      artistAcc.set(artistId, {
+        id: artistId,
+        name,
+        albums: albumId ? new Set([albumId]) : new Set(),
+        coverArt: artistId,
+      });
+    }
+  }
+
   for (const a of albumAcc.values()) {
-    // Display name = shortest member title so the base edition wins over a
-    // longer "(Deluxe Edition)" sibling that shares the group key.
     const name = a.names.reduce((x, y) => (y.length < x.length ? y : x));
     albums.push({
       id: a.id,
@@ -357,19 +485,33 @@ export function buildLibrary(
       created: new Date(a.createdMs).toISOString(),
     });
 
-    const ar = artistAcc.get(a.artistId);
-    if (ar) {
-      ar.albums.add(a.id);
-    } else {
-      artistAcc.set(a.artistId, {
-        id: a.artistId,
-        name: a.artist,
-        albums: new Set([a.id]),
-        // Artist cover id = the artist id itself, so the cover route serves the
-        // canonical Lidarr poster (audio files carry none); disk fallback finds
-        // a representative song by artist_id.
-        coverArt: a.artistId,
+    // Primary album artist (backward-compat single column)
+    ensureArtist(a.artistId, a.artist, a.id);
+
+    // Multi-artist join rows for this album
+    for (let i = 0; i < a.splitCredits.length; i++) {
+      const credit = a.splitCredits[i];
+      const creditId = artistIdFor(credit.name);
+      albumArtistLinks.push({
+        parentId: a.id,
+        artistId: creditId,
+        role: credit.role,
+        position: i,
       });
+      ensureArtist(creditId, credit.name, a.id);
+    }
+  }
+
+  // Ensure all song-level split artists have rows too
+  for (const link of songArtistLinks) {
+    if (!artistAcc.has(link.artistId)) {
+      // Find the name from the credits — look up via songs
+      const song = songs.find((s) => s.id === link.parentId);
+      if (song) {
+        const credits = splitArtists(song.artist, knownArtists);
+        const credit = credits.find((c) => artistIdFor(c.name) === link.artistId);
+        if (credit) ensureArtist(link.artistId, credit.name);
+      }
     }
   }
 
@@ -394,7 +536,7 @@ export function buildLibrary(
     albumCount: g.albums.size,
   }));
 
-  return { songs, albums, artists, genres };
+  return { songs, albums, artists, genres, songArtists: songArtistLinks, albumArtists: albumArtistLinks };
 }
 
 export interface ScanResult {
@@ -502,25 +644,47 @@ export class LibraryScanner {
     return out;
   }
 
+  /**
+   * Resolve a flat list of files into scanned tracks. Files whose size + mtime
+   * match the scan cache reuse their stored raw tags (no parseFile); the rest
+   * are tag-parsed with bounded concurrency. Order is preserved (walk order) so
+   * downstream aggregation is deterministic. Newly parsed tracks are written
+   * back to the cache so the next scan skips them.
+   */
   private async readTracks(absPaths: string[]): Promise<ScannedTrack[]> {
-    const out: ScannedTrack[] = [];
+    const files: FileStat[] = [];
     for (const abs of absPaths) {
-      const track = await this.readTrack(abs);
-      if (track) out.push(track);
+      const f = await this.statFile(abs);
+      if (f) files.push(f);
     }
-    return out;
+
+    const { hits, misses } = partitionByCache(files, loadScanCache(this.db));
+    const parsed = await mapPool(misses, TAG_READ_CONCURRENCY, (f) => this.parseTrack(f));
+    if (parsed.length > 0) saveScanCache(this.db, parsed);
+
+    // Re-emit in walk order (hits + parsed merged by path) for deterministic aggregation.
+    const byPath = new Map<string, ScannedTrack>();
+    for (const t of hits) byPath.set(t.relPath, t);
+    for (const t of parsed) byPath.set(t.relPath, t);
+    return files.map((f) => byPath.get(f.relPath)).filter((t): t is ScannedTrack => t != null);
   }
 
-  private async readTrack(abs: string): Promise<ScannedTrack | null> {
+  /** Stat one file and compute its normalized relative path, or null if outside the music dir. */
+  private async statFile(abs: string): Promise<FileStat | null> {
     let relPath = relative(this.musicDir, abs);
     if (sep !== '/') relPath = relPath.split(sep).join('/');
     if (relPath.startsWith('..')) return null;
-    let st;
     try {
-      st = await stat(abs);
+      const st = await stat(abs);
+      return { abs, relPath, size: st.size, mtimeMs: st.mtimeMs };
     } catch {
       return null;
     }
+  }
+
+  /** Parse tags for one already-stat'd file into a raw ScannedTrack (never re-stats). */
+  private async parseTrack(f: FileStat): Promise<ScannedTrack> {
+    const { abs, relPath } = f;
     const suffix = extname(abs).slice(1).toLowerCase();
     const mm = await getMusicMetadata();
     let meta;
@@ -534,8 +698,8 @@ export class LibraryScanner {
     const format = meta?.format;
     return {
       relPath,
-      size: st.size,
-      mtimeMs: st.mtimeMs,
+      size: f.size,
+      mtimeMs: f.mtimeMs,
       suffix,
       contentType: contentTypeFor(suffix),
       duration: format?.duration ? Math.round(format.duration) : 0,
@@ -550,6 +714,9 @@ export class LibraryScanner {
       genre: common?.genre?.[0],
       bpm: typeof common?.bpm === 'number' && common.bpm > 0 ? Math.round(common.bpm) : undefined,
       key: typeof common?.key === 'string' && common.key.trim() ? common.key.trim() : undefined,
+      // Perceptual features live in custom Vorbis/TXXX frames — parse them from
+      // the native tag map so pre-tagged files are dense from the first scan.
+      ...featureTagsFromNative(meta?.native, common?.mood),
     };
   }
 
@@ -578,15 +745,20 @@ export class LibraryScanner {
     `);
     const songStmt = this.db.prepare(`
       INSERT INTO library_songs (
-        id, album_id, title, artist, artist_id, track, disc, duration,
-        year, genre, bpm, key, cover_art, path, size, bit_rate, suffix, content_type,
+        id, album_id, title, artist, artist_id, album_artist, album_artist_id,
+        track, disc, duration,
+        year, genre, bpm, key,
+        energy, loudness, danceability, valence, acousticness, instrumental, mood,
+        cover_art, path, size, bit_rate, suffix, content_type,
         created, synced_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         album_id = excluded.album_id,
         title = excluded.title,
         artist = excluded.artist,
         artist_id = excluded.artist_id,
+        album_artist = excluded.album_artist,
+        album_artist_id = excluded.album_artist_id,
         track = excluded.track,
         disc = excluded.disc,
         duration = excluded.duration,
@@ -601,6 +773,16 @@ export class LibraryScanner {
         bpm = COALESCE(excluded.bpm, library_songs.bpm),
         -- Likewise keep an analyzed key when a rescan reads no tag value.
         key = COALESCE(excluded.key, library_songs.key),
+        -- Perceptual features: same durability contract — enrichment writes the
+        -- DB immediately, the file-tag write may lag or fail; never let a
+        -- tag-less rescan revert them.
+        energy = COALESCE(excluded.energy, library_songs.energy),
+        loudness = COALESCE(excluded.loudness, library_songs.loudness),
+        danceability = COALESCE(excluded.danceability, library_songs.danceability),
+        valence = COALESCE(excluded.valence, library_songs.valence),
+        acousticness = COALESCE(excluded.acousticness, library_songs.acousticness),
+        instrumental = COALESCE(excluded.instrumental, library_songs.instrumental),
+        mood = COALESCE(excluded.mood, library_songs.mood),
         cover_art = excluded.cover_art,
         path = excluded.path,
         size = excluded.size,
@@ -627,6 +809,18 @@ export class LibraryScanner {
         album_count = excluded.album_count,
         synced_at = excluded.synced_at
     `);
+    const songArtistStmt = this.db.prepare(`
+      INSERT INTO library_song_artists (song_id, artist_id, role, position)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(song_id, artist_id, role) DO UPDATE SET
+        position = excluded.position
+    `);
+    const albumArtistStmt = this.db.prepare(`
+      INSERT INTO library_album_artists (album_id, artist_id, role, position)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(album_id, artist_id, role) DO UPDATE SET
+        position = excluded.position
+    `);
 
     this.db.transaction(() => {
       for (const a of built.albums) {
@@ -651,6 +845,8 @@ export class LibraryScanner {
           s.title,
           s.artist,
           s.artistId,
+          s.albumArtist,
+          s.albumArtistId,
           s.track,
           s.disc,
           s.duration,
@@ -658,6 +854,13 @@ export class LibraryScanner {
           s.genre,
           s.bpm,
           s.key,
+          s.energy,
+          s.loudness,
+          s.danceability,
+          s.valence,
+          s.acousticness,
+          s.instrumental,
+          s.mood,
           s.coverArt,
           s.path,
           s.size,
@@ -674,6 +877,12 @@ export class LibraryScanner {
       for (const g of built.genres) {
         genreStmt.run(g.name, g.songCount, g.albumCount, syncedAt);
       }
+      for (const link of built.songArtists) {
+        songArtistStmt.run(link.parentId, link.artistId, link.role, link.position);
+      }
+      for (const link of built.albumArtists) {
+        albumArtistStmt.run(link.parentId, link.artistId, link.role, link.position);
+      }
     })();
 
     let removedAlbums = 0;
@@ -687,6 +896,9 @@ export class LibraryScanner {
       );
       this.db.run('DELETE FROM library_artists WHERE synced_at < ?', [syncedAt]);
       this.db.run('DELETE FROM library_genres WHERE synced_at < ?', [syncedAt]);
+      this.db.run('DELETE FROM library_song_artists WHERE song_id NOT IN (SELECT id FROM library_songs)');
+      this.db.run('DELETE FROM library_album_artists WHERE album_id NOT IN (SELECT id FROM library_albums)');
+
     } else {
       // Incremental: an album we just touched may have gained songs; recompute
       // its aggregate counts from all of its current songs so the card is right.
@@ -717,5 +929,71 @@ export class LibraryScanner {
       removedAlbums,
       removedSongs,
     };
+  }
+
+  /**
+   * Album-scoped reconcile: rescan the WHOLE of each affected album folder (so
+   * every surviving on-disk file is re-indexed with a fresh synced_at), then
+   * prune any library_songs row for those albums whose file no longer exists on
+   * disk. This is the incremental analogue of scanFull's global prune — it kills
+   * cross-wave orphan rows (files the organizer just deleted) without a full walk.
+   */
+  async reconcileAlbums(albumDirs: string[]): Promise<void> {
+    const dirs = [...new Set(albumDirs)];
+    if (dirs.length === 0) return;
+    const abs: string[] = [];
+    for (const d of dirs) abs.push(...(await this.walk(d)));
+    const syncedAt = Date.now();
+    const tracks = await this.readTracks(abs);
+    if (tracks.length > 0) {
+      const built = buildLibrary(tracks, this.canonicalByAlbum(), loadOverrides(this.db));
+      this.persist(built, syncedAt, false);
+      this.pruneAlbumOrphans(built.albums.map((a) => a.id));
+    }
+    log.info({ dirs: dirs.length, files: abs.length }, 'Album-scoped reconcile complete');
+  }
+
+  /** Delete library_songs rows for the given albums whose file is gone from disk. */
+  private pruneAlbumOrphans(albumIds: string[]): void {
+    for (const albumId of [...new Set(albumIds)]) {
+      const rows = this.db
+        .query<{ id: string; path: string; artist_id: string | null }, [string]>(
+          'SELECT id, path, artist_id FROM library_songs WHERE album_id = ?',
+        )
+        .all(albumId);
+      let removed = 0;
+      for (const r of rows) {
+        if (r.path && existsSync(join(this.musicDir, r.path))) continue;
+        this.db.run('DELETE FROM library_songs WHERE id = ?', [r.id]);
+        this.db.run('DELETE FROM library_song_artists WHERE song_id = ?', [r.id]);
+        removed++;
+      }
+      if (removed > 0) {
+        // Recompute the album aggregate from its surviving songs.
+        this.db.run(
+          `UPDATE library_albums SET
+             song_count = (SELECT COUNT(*) FROM library_songs WHERE album_id = ?),
+             duration   = (SELECT COALESCE(SUM(duration),0) FROM library_songs WHERE album_id = ?)
+           WHERE id = ?`,
+          [albumId, albumId, albumId],
+        );
+        // Drop an album row that lost all songs, and prune a now-orphan artist.
+        const count = this.db
+          .query<{ n: number }, [string]>(
+            'SELECT COUNT(*) AS n FROM library_songs WHERE album_id = ?',
+          )
+          .get(albumId)!.n;
+        if (count === 0) {
+          const artistRow = this.db
+            .query<{ artist_id: string | null }, [string]>(
+              'SELECT artist_id FROM library_albums WHERE id = ?',
+            )
+            .get(albumId);
+          this.db.run('DELETE FROM library_albums WHERE id = ?', [albumId]);
+          this.db.run('DELETE FROM library_album_artists WHERE album_id = ?', [albumId]);
+          if (artistRow?.artist_id) pruneOrphanArtist(this.db, artistRow.artist_id);
+        }
+      }
+    }
   }
 }

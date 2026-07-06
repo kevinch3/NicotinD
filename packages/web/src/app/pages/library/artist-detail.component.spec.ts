@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { provideRouter, ActivatedRoute } from '@angular/router';
 import { of } from 'rxjs';
+import { vi } from 'vitest';
 import { ArtistDetailComponent } from './artist-detail.component';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import { DownloadsApiService } from '../../services/api/downloads-api.service';
@@ -61,7 +62,7 @@ function song(id: string) {
   };
 }
 
-function setup(role = 'admin') {
+function setup(role = 'admin', deleteSongs = vi.fn(() => of({ ok: true, deletedCount: 0 }))) {
   const playWithContextCalls: unknown[][] = [];
   const addToQueueCalls: unknown[] = [];
   const getAlbumCalls: string[] = [];
@@ -113,6 +114,7 @@ function setup(role = 'admin') {
             imageCalls.reset.push(id);
             return of({ ok: true });
           },
+          deleteSongs,
         },
       },
       { provide: AuthService, useValue: { token: signal('tok'), role: signal(role) } },
@@ -140,6 +142,7 @@ function setup(role = 'admin') {
     getAlbumCalls,
     getArtistSongsCalls,
     imageCalls,
+    deleteSongs,
   };
 }
 
@@ -358,6 +361,86 @@ describe('ArtistDetailComponent — image override', () => {
     expect(component.artistImageSrc()).toBe('/api/cover/ar1?size=200&token=tok');
     await component.resetImage();
     expect(component.artistImageSrc()).toBe('/api/cover/ar1?size=200&token=tok&v=1');
+  });
+});
+
+describe('ArtistDetailComponent — delete (admin only)', () => {
+  it('exposes a destructive "Remove" track action for admins', async () => {
+    const { component } = setup('admin');
+    await fixture_stable();
+    component.setTab('songs');
+    await flush();
+
+    const action = component
+      .artistTrackActions(component.songs()[0])
+      .find((a) => a.label === 'Remove');
+    expect(action).toBeDefined();
+    expect(action!.destructive).toBe(true);
+  });
+
+  it('hides the "Remove" track action from non-admins', async () => {
+    const { component } = setup('user');
+    await fixture_stable();
+    component.setTab('songs');
+    await flush();
+
+    const action = component
+      .artistTrackActions(component.songs()[0])
+      .find((a) => a.label === 'Remove');
+    expect(action).toBeUndefined();
+  });
+
+  it('deletes the selected songs, prunes them, and exits select mode', async () => {
+    const deleteSongs = vi.fn(() => of({ ok: true, deletedCount: 2 }));
+    const { component } = setup('admin', deleteSongs);
+    await fixture_stable();
+    component.setTab('songs');
+    await flush();
+
+    component.selection.enter();
+    component.selection.toggle('s1');
+    component.selection.toggle('s2');
+    component.deleteSelectedSongs();
+
+    // deleteSelectedSongs defers to the confirm dialog; run the queued callback.
+    const cb = component.confirmCallback();
+    expect(cb).toBeTruthy();
+    await cb!();
+
+    expect(deleteSongs).toHaveBeenCalledWith(['s1', 's2']);
+    expect(component.songs().map((s) => s.id)).toEqual([]);
+    expect(component.selection.active()).toBe(false);
+    expect(component.deleteError()).toBeNull();
+  });
+
+  it('surfaces a partial-failure message when not all songs were removed', async () => {
+    const deleteSongs = vi.fn(() => of({ ok: true, deletedCount: 1 }));
+    const { component } = setup('admin', deleteSongs);
+    await fixture_stable();
+    component.setTab('songs');
+    await flush();
+
+    component.selection.enter();
+    component.selection.toggle('s1');
+    component.selection.toggle('s2');
+    component.deleteSelectedSongs();
+    await component.confirmCallback()!();
+
+    expect(component.deleteError()).toContain('1 of 2');
+  });
+
+  it('does nothing when no songs are selected', async () => {
+    const deleteSongs = vi.fn(() => of({ ok: true, deletedCount: 0 }));
+    const { component } = setup('admin', deleteSongs);
+    await fixture_stable();
+    component.setTab('songs');
+    await flush();
+
+    component.selection.enter();
+    component.deleteSelectedSongs();
+
+    expect(component.confirmCallback()).toBeNull();
+    expect(deleteSongs).not.toHaveBeenCalled();
   });
 });
 

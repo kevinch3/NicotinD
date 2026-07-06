@@ -11,8 +11,29 @@ export function initDatabase(dataDir: string): Database {
 
   db.run('PRAGMA journal_mode=WAL');
   db.run('PRAGMA foreign_keys=ON');
+  applyPerformancePragmas(db);
   applySchema(db);
   return db;
+}
+
+/**
+ * Connection-level performance pragmas. Split out so it's directly testable and
+ * so both `initDatabase` and any auxiliary connection can share one policy.
+ *
+ * - `synchronous=NORMAL`: safe under WAL (no corruption on app crash; only a
+ *   power-loss window can lose the last commit) and much faster for the large
+ *   scan-write transaction than the default FULL.
+ * - `cache_size=-64000`: ~64 MiB page cache (negative = KiB) — keeps hot library
+ *   pages resident across listing queries.
+ * - `mmap_size`: memory-map up to 256 MiB so reads avoid syscall copies.
+ * - `busy_timeout=5000`: wait out a concurrent writer (the background scan)
+ *   instead of erroring immediately, matching the one-off scripts.
+ */
+export function applyPerformancePragmas(db: Database): void {
+  db.run('PRAGMA synchronous=NORMAL');
+  db.run('PRAGMA cache_size=-64000');
+  db.run('PRAGMA mmap_size=268435456');
+  db.run('PRAGMA busy_timeout=5000');
 }
 
 /**
@@ -35,13 +56,21 @@ export function applySchema(db: Database): void {
       user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
       theme TEXT NOT NULL DEFAULT 'system',
       default_min_bitrate INTEGER,
-      default_file_types TEXT
+      default_file_types TEXT,
+      welcome_dismissed INTEGER NOT NULL DEFAULT 0
     )
   `);
 
   // Add status column to existing users table (safe if column already exists)
   try {
     db.run(`ALTER TABLE users ADD COLUMN status TEXT NOT NULL DEFAULT 'active'`);
+  } catch {
+    // Column already exists — ignore
+  }
+
+  // Add welcome_dismissed column to existing user_settings table
+  try {
+    db.run(`ALTER TABLE user_settings ADD COLUMN welcome_dismissed INTEGER NOT NULL DEFAULT 0`);
   } catch {
     // Column already exists — ignore
   }
@@ -424,6 +453,13 @@ export function applySchema(db: Database): void {
   db.run(
     `CREATE INDEX IF NOT EXISTS idx_library_albums_name ON library_albums(name COLLATE NOCASE)`,
   );
+  // Composite index covering the default /albums grid: WHERE hidden = 0
+  // AND classification IN (...) ORDER BY created DESC. Lets SQLite satisfy the
+  // filter + sort from one index instead of picking a single-column index then
+  // sorting the result set.
+  db.run(
+    `CREATE INDEX IF NOT EXISTS idx_library_albums_grid ON library_albums(hidden, classification, created DESC)`,
+  );
 
   db.run(`
     CREATE TABLE IF NOT EXISTS library_songs (
@@ -451,6 +487,18 @@ export function applySchema(db: Database): void {
       synced_at     INTEGER NOT NULL
     )
   `);
+  // Scan cache: raw, IO-derived tags keyed by relative path. Lets a full rescan
+  // skip music-metadata parseFile() for files whose size + mtime are unchanged.
+  // Stores the *raw* ScannedTrack (not resolved values) so the resolveTags /
+  // override pipeline still runs identically — overrides survive rescans.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS scan_cache (
+      path       TEXT PRIMARY KEY,
+      size       INTEGER NOT NULL,
+      mtime_ms   REAL NOT NULL,
+      track_json TEXT NOT NULL
+    )
+  `);
   // Add bpm to existing library_songs tables (safe if it already exists). Set by
   // tag reads at scan time and by on-demand track analysis.
   try {
@@ -465,11 +513,60 @@ export function applySchema(db: Database): void {
   } catch {
     // Column already exists — ignore
   }
+  // Perceptual audio features. energy/loudness come from ffmpeg ebur128 (works
+  // without the analysis sidecar); danceability/valence/acousticness/instrumental/
+  // mood come from the Essentia analysis sidecar. Same additive contract as
+  // bpm/key: read from file tags at scan time, filled by windowed enrichment,
+  // COALESCE-preserved on rescan.
+  for (const col of [
+    'energy REAL',
+    'loudness REAL',
+    'danceability REAL',
+    'valence REAL',
+    'acousticness REAL',
+    'instrumental REAL',
+    'mood TEXT',
+  ]) {
+    try {
+      db.run(`ALTER TABLE library_songs ADD COLUMN ${col}`);
+    } catch {
+      // Column already exists — ignore
+    }
+  }
+  // Album-level artist (e.g. "Various Artists" on compilations) vs track-level
+  // artist. Existing rows backfill from the current artist column.
+  try {
+    db.run(`ALTER TABLE library_songs ADD COLUMN album_artist TEXT NOT NULL DEFAULT ''`);
+    db.run(`UPDATE library_songs SET album_artist = artist WHERE album_artist = ''`);
+  } catch {
+    // Column already exists — ignore
+  }
+  try {
+    db.run(`ALTER TABLE library_songs ADD COLUMN album_artist_id TEXT NOT NULL DEFAULT ''`);
+    db.run(`UPDATE library_songs SET album_artist_id = artist_id WHERE album_artist_id = ''`);
+  } catch {
+    // Column already exists — ignore
+  }
   db.run(`CREATE INDEX IF NOT EXISTS idx_library_songs_album_id ON library_songs(album_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_library_songs_artist_id ON library_songs(artist_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_library_songs_path ON library_songs(path)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_library_songs_genre ON library_songs(genre)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_library_songs_hidden ON library_songs(hidden)`);
+
+  // Cached audio embeddings from the analysis sidecar. The embedding is the
+  // expensive artifact — computed once per (song, model), reused for classifier
+  // heads and future similarity search. Keyed (song_id, model) so a second
+  // embedding model can coexist later. Survives rescans (path-derived song ids).
+  db.run(`
+    CREATE TABLE IF NOT EXISTS library_embeddings (
+      song_id    TEXT NOT NULL,
+      model      TEXT NOT NULL,
+      dim        INTEGER NOT NULL,
+      vec        BLOB NOT NULL,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY (song_id, model)
+    )
+  `);
 
   db.run(`
     CREATE TABLE IF NOT EXISTS library_artists (
@@ -487,6 +584,30 @@ export function applySchema(db: Database): void {
     `CREATE INDEX IF NOT EXISTS idx_library_artists_name ON library_artists(name COLLATE NOCASE)`,
   );
   db.run(`CREATE INDEX IF NOT EXISTS idx_library_artists_hidden ON library_artists(hidden)`);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS library_song_artists (
+      song_id   TEXT NOT NULL,
+      artist_id TEXT NOT NULL,
+      role      TEXT NOT NULL DEFAULT 'primary',
+      position  INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (song_id, artist_id, role)
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_song_artists_artist ON library_song_artists(artist_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_song_artists_song ON library_song_artists(song_id)`);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS library_album_artists (
+      album_id  TEXT NOT NULL,
+      artist_id TEXT NOT NULL,
+      role      TEXT NOT NULL DEFAULT 'primary',
+      position  INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (album_id, artist_id, role)
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_album_artists_artist ON library_album_artists(artist_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_album_artists_album ON library_album_artists(album_id)`);
 
   db.run(`
     CREATE TABLE IF NOT EXISTS library_genres (

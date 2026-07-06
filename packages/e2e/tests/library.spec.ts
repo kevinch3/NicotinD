@@ -48,7 +48,7 @@ test.describe('library', () => {
     await expect(page).toHaveURL(/\/library\/albums\//);
 
     // Album detail → artist page via the artist name link.
-    await page.getByRole('link', { name: FIXTURE.album.artist }).click();
+    await page.getByRole('link', { name: FIXTURE.album.artist }).first().click();
     await expect(page).toHaveURL(/\/library\/artists\//);
 
     // Open the Songs tab; it lazy-loads the artist's individual tracks.

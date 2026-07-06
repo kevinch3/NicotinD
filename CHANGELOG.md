@@ -2,6 +2,219 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.151](https://github.com/kevinch3/NicotinD/compare/v0.1.150...v0.1.151) (2026-07-06)
+
+
+### Bug Fixes
+
+* resolve circular dependency in AuthService logout ([460aa1a](https://github.com/kevinch3/NicotinD/commit/460aa1af7bdaf6228af48bb8e347e0fdf209d1a1))
+* **search:** don't clear query in reset() to preserve advanced toggle ([caa7d87](https://github.com/kevinch3/NicotinD/commit/caa7d87373c663e7f58a469d04564afca1d0f1a7))
+* **search:** set networkState to complete on API failure ([315c3a7](https://github.com/kevinch3/NicotinD/commit/315c3a76d79c48f4f451f59245f5786a09dd97c6))
+* **web:** clear all user state on logout to prevent data leaks ([abc4f23](https://github.com/kevinch3/NicotinD/commit/abc4f2348605bb96f9d5e5c2a054d007255abc4a))
+
+## [0.1.150](https://github.com/kevinch3/NicotinD/compare/v0.1.149...v0.1.150) (2026-07-06)
+
+## [0.1.149](https://github.com/kevinch3/NicotinD/compare/v0.1.148...v0.1.149) (2026-07-06)
+
+
+### Bug Fixes
+
+* **web:** migrate dark-island components to themed tokens ([982cc01](https://github.com/kevinch3/NicotinD/commit/982cc018afb23d9693e1cdf089a29971a4c660fc))
+* **web:** register unregistered theme utilities (silent no-op classes) ([ea86e51](https://github.com/kevinch3/NicotinD/commit/ea86e511296f525d032d754671c6e5f01ca8ecff))
+* **web:** themed status colours for warnings/pills (light-theme contrast) ([b488844](https://github.com/kevinch3/NicotinD/commit/b488844d16476702b38f1b695143e45a7212ec0c))
+* **web:** use text-theme-on-accent for text on accent fills ([f6a7d9b](https://github.com/kevinch3/NicotinD/commit/f6a7d9bc9ac8856dbfe4d678ba682e164a621b99))
+
+## [0.1.148](https://github.com/kevinch3/NicotinD/compare/v0.1.147...v0.1.148) (2026-07-06)
+
+
+### Bug Fixes
+
+* **web:** resolve lyrics overflow, badge contrast, and settings mobile overflow ([d883bbb](https://github.com/kevinch3/NicotinD/commit/d883bbb0a854a8b5d6fd88bf8e1a8255d522b639))
+
+## [0.1.147](https://github.com/kevinch3/NicotinD/compare/v0.1.146...v0.1.147) (2026-07-05)
+
+## [0.1.146](https://github.com/kevinch3/NicotinD/compare/v0.1.145...v0.1.146) (2026-07-04)
+
+## [0.1.145](https://github.com/kevinch3/NicotinD/compare/v0.1.144...v0.1.145) (2026-07-04)
+
+
+### Performance
+
+* **web:** cache whole-library reads (artists, genres) ([0ebf753](https://github.com/kevinch3/NicotinD/commit/0ebf7533d26faf1c5b8d5bdd38689af85cd73f10))
+
+## [0.1.144](https://github.com/kevinch3/NicotinD/compare/v0.1.143...v0.1.144) (2026-07-04)
+
+
+### Performance
+
+* **db:** tune SQLite pragmas, add grid index, cache suppression scan ([26545f6](https://github.com/kevinch3/NicotinD/commit/26545f68655e46d3123a7475b710fbd4e1221112))
+* **scanner:** incremental tag cache skips re-parsing unchanged files ([03646ea](https://github.com/kevinch3/NicotinD/commit/03646ea618f2d4efb82870ebf7938eafe5624479))
+* **web:** render-window large lists + debounce list search ([2edbe59](https://github.com/kevinch3/NicotinD/commit/2edbe5962301fac173b583fa968f71a904a22cb7))
+
+## [0.1.143](https://github.com/kevinch3/NicotinD/compare/v0.1.142...v0.1.143) (2026-07-04)
+
+
+### Bug Fixes
+
+* **web:** provision CHANGELOG.md into Docker build so changelog modal isn't empty ([ac269ef](https://github.com/kevinch3/NicotinD/commit/ac269ef4ad7fa1959f779a6d03babad177d5d50b))
+
+## [0.1.142](https://github.com/kevinch3/NicotinD/compare/v0.1.141...v0.1.142) (2026-07-03)
+
+
+### Features
+
+* **presence:** admin-only presence tracking via HTTP heartbeats ([abe9cd2](https://github.com/kevinch3/NicotinD/commit/abe9cd243177c91f0a1f20df5779c2f6caefeb26))
+
+## [0.1.141](https://github.com/kevinch3/NicotinD/compare/v0.1.140...v0.1.141) (2026-07-03)
+
+
+### Features
+
+* **api:** native auto-acquisition loop over Lidarr wanted/missing ([5cbc6ba](https://github.com/kevinch3/NicotinD/commit/5cbc6ba5a638c318226ef48dcaf808edc80ca2d5))
+
+## [0.1.140](https://github.com/kevinch3/NicotinD/compare/v0.1.139...v0.1.140) (2026-07-03)
+
+
+### Features
+
+* **analysis:** essentia audio-analysis sidecar (packages/analysis) ([73de8e6](https://github.com/kevinch3/NicotinD/commit/73de8e6c6a43059f86ccb9c7926dae59ffa30089))
+* **library:** audio-features enrichment task wired to the analysis sidecar ([721d400](https://github.com/kevinch3/NicotinD/commit/721d4009823e9482e0abea5714074fd66d4e7e7a))
+* **library:** perceptual feature storage + ffmpeg energy/loudness enrichment task ([c787c8e](https://github.com/kevinch3/NicotinD/commit/c787c8e5e81fe5881003eea7f34514d0fd56c7e0))
+* **radio:** score and sequence on the perceptual features ([18fc725](https://github.com/kevinch3/NicotinD/commit/18fc725fca79dbdab9c63c5b6e0715323eedd024))
+* **web:** show key + perceptual features in the track-info drawer ([911fd6c](https://github.com/kevinch3/NicotinD/commit/911fd6c3c93af46a06c42ee0709d30a84ea29210))
+
+
+### Bug Fixes
+
+* **library:** make Vorbis-family tag writes actually work + opus decode in sidecar ([1319826](https://github.com/kevinch3/NicotinD/commit/13198268979ef5987e7dd89c61e3fa2abbda63b4))
+
+## [0.1.139](https://github.com/kevinch3/NicotinD/compare/v0.1.138...v0.1.139) (2026-07-03)
+
+
+### Bug Fixes
+
+* **docker:** install libvips-dev for sharp in web-builder stage ([b8d0d58](https://github.com/kevinch3/NicotinD/commit/b8d0d5862ed734cea1ddbaac635e76416db4a89a))
+* **docker:** skip postinstall scripts in web-builder stage ([bd9d829](https://github.com/kevinch3/NicotinD/commit/bd9d8298e97f091cacf0c2e14def97fecde853cc))
+* **web:** add type assertion for changelog.json import ([c9f10af](https://github.com/kevinch3/NicotinD/commit/c9f10af8e7b21da4f3a5efb219d91861763bc587))
+* **web:** wrap artist image menu in positioned container ([88fa5c8](https://github.com/kevinch3/NicotinD/commit/88fa5c8424062967f3f009aa7bf9adfec4d31b7e))
+
+## [0.1.138](https://github.com/kevinch3/NicotinD/compare/v0.1.137...v0.1.138) (2026-07-03)
+
+
+### Bug Fixes
+
+* **web:** handle missing CHANGELOG.md in Docker build + add OAuth docs ([34572a2](https://github.com/kevinch3/NicotinD/commit/34572a2c7434dc0cc2dd862c1eaef4a4e5dea12c))
+
+## [0.1.137](https://github.com/kevinch3/NicotinD/compare/v0.1.136...v0.1.137) (2026-07-03)
+
+
+### Features
+
+* **web:** changelog modal on version click + fix hardcoded API version ([db592d7](https://github.com/kevinch3/NicotinD/commit/db592d76e0344435284995a07b0a7a9b777f389f))
+
+
+### Bug Fixes
+
+* **web:** add pretest hook to generate changelog.json before vitest ([bb9a170](https://github.com/kevinch3/NicotinD/commit/bb9a17070db70a89a1ebfb8f930754f97d56030c))
+
+## [0.1.136](https://github.com/kevinch3/NicotinD/compare/v0.1.135...v0.1.136) (2026-07-02)
+
+
+### Features
+
+* **onboarding:** expanded setup wizard and first-login welcome banner ([6011a35](https://github.com/kevinch3/NicotinD/commit/6011a355da17dafa38631cf90a76187d0f1e4426))
+
+
+### Bug Fixes
+
+* **e2e:** add type=button to setup wizard buttons; wait for API 201 response ([9e66be8](https://github.com/kevinch3/NicotinD/commit/9e66be88ba065461f10bc39a74e6771370aee2d0))
+* **onboarding:** enter app after setup + isolate wizard e2e on a fresh server ([bba3bdb](https://github.com/kevinch3/NicotinD/commit/bba3bdb48febc1565b07d1685cd958be19e26a74))
+
+## [0.1.135](https://github.com/kevinch3/NicotinD/compare/v0.1.134...v0.1.135) (2026-07-02)
+
+
+### Bug Fixes
+
+* **artists:** admin delete on the Songs tab for albumless files ([6930a32](https://github.com/kevinch3/NicotinD/commit/6930a32609cadaac038ecf15b6a0ac27c3873b04))
+
+## [0.1.134](https://github.com/kevinch3/NicotinD/compare/v0.1.133...v0.1.134) (2026-07-02)
+
+
+### Bug Fixes
+
+* **artists:** add hunt loading feedback + cover art timing fix ([b337f57](https://github.com/kevinch3/NicotinD/commit/b337f57951459aee704a4286d24ff2bab3d51ab1))
+
+## [0.1.133](https://github.com/kevinch3/NicotinD/compare/v0.1.132...v0.1.133) (2026-07-02)
+
+
+### Features
+
+* **downloads:** expose destination albumId for deep-linking downloads ([11313cf](https://github.com/kevinch3/NicotinD/commit/11313cfe3f4d86817f465dacc76014981070e1c4))
+* **library:** album-scoped reconcile scan + orphan-row prune ([816b607](https://github.com/kevinch3/NicotinD/commit/816b60743845c48e6855f96670c689b8cde8a6ba))
+* **library:** organizer runs tag-aware reconcile, reports deleted paths + album dirs ([f7e5310](https://github.com/kevinch3/NicotinD/commit/f7e53102acaf63bf4a225daf7bf81dd6f450a441))
+* **library:** reconcile whole album at download→library seam for both ingests ([4beab80](https://github.com/kevinch3/NicotinD/commit/4beab80bd909355bfe94617edad71fdf2c929e26))
+* **library:** tag/title-aware album-folder reconciler (pure core) ([5257a4a](https://github.com/kevinch3/NicotinD/commit/5257a4a1f4827ba2cba37a4289d991948d602087))
+
+## [0.1.132](https://github.com/kevinch3/NicotinD/compare/v0.1.131...v0.1.132) (2026-07-02)
+
+
+### Features
+
+* **playlists:** recipe-driven auto shelves + Radio-scored seed generator ([088a7ea](https://github.com/kevinch3/NicotinD/commit/088a7ea7db8c2cce6a34a5eff9f2075d49c402f9))
+
+## [0.1.131](https://github.com/kevinch3/NicotinD/compare/v0.1.130...v0.1.131) (2026-07-01)
+
+
+### Bug Fixes
+
+* **web:** make search source chips & artist pills theme-aware ([5be6da5](https://github.com/kevinch3/NicotinD/commit/5be6da59a4efeb17402c8b208160d35cd08f0f8c))
+
+## [0.1.130](https://github.com/kevinch3/NicotinD/compare/v0.1.129...v0.1.130) (2026-07-01)
+
+## [0.1.129](https://github.com/kevinch3/NicotinD/compare/v0.1.128...v0.1.129) (2026-07-01)
+
+
+### Features
+
+* **web:** add AutoHuntService — headless hunt with countdown toast ([b5584b8](https://github.com/kevinch3/NicotinD/commit/b5584b88908b17da75b54f676c559fcd5e9766d9))
+* **web:** add ToastOutletComponent, mount at app root ([bf7ace1](https://github.com/kevinch3/NicotinD/commit/bf7ace17df281d438289b104d4a2a54e8bfbc350))
+* **web:** add ToastService with countdown and auto-dismiss ([36b8b1f](https://github.com/kevinch3/NicotinD/commit/36b8b1f1d2a47b274c25adec19dcb3c240e004ff))
+* **web:** wire AutoHuntService into Find Album flow ([545cdfa](https://github.com/kevinch3/NicotinD/commit/545cdfac28b5b461b2fab48efd19093cc584ddb4))
+
+
+### Bug Fixes
+
+* **web:** dismiss actions close toast; enforce capacity cap with all-countdown toasts ([9c4faca](https://github.com/kevinch3/NicotinD/commit/9c4faca46c7edebea6eb9ea7a03f14004bebab11))
+* **web:** never arm a timer for a dropped over-capacity toast ([19f1a2c](https://github.com/kevinch3/NicotinD/commit/19f1a2c780c12b3c21f2ed881afe22e8eb51a2af))
+
+## [0.1.128](https://github.com/kevinch3/NicotinD/compare/v0.1.127...v0.1.128) (2026-07-01)
+
+## [0.1.127](https://github.com/kevinch3/NicotinD/compare/v0.1.126...v0.1.127) (2026-07-01)
+
+
+### Performance
+
+* **web:** hold cover gradient until image loads, fix empty-state flash on tab switch ([85d42fb](https://github.com/kevinch3/NicotinD/commit/85d42fb1aaa73b7aa70daa3a934ca38bc03d30ae))
+
+## [0.1.126](https://github.com/kevinch3/NicotinD/compare/v0.1.125...v0.1.126) (2026-07-01)
+
+
+### Features
+
+* multi-artist support with parsing, join tables, and linked UI ([e832c17](https://github.com/kevinch3/NicotinD/commit/e832c179f35f4e2fb5b1dea5c081f0b82cc6b74e))
+
+
+### Bug Fixes
+
+* lint unused var and e2e strict-mode violation from multi-artist links ([76f1641](https://github.com/kevinch3/NicotinD/commit/76f1641d38d734d895cd96e28b6d56589afa0211))
+
+## [0.1.125](https://github.com/kevinch3/NicotinD/compare/v0.1.124...v0.1.125) (2026-07-01)
+
+
+### Features
+
+* va compilation handling with detection, per-track artists, and dedicated UI ([a884e51](https://github.com/kevinch3/NicotinD/commit/a884e510b11c5360790b4d3b89d6cc9d50d420d9))
+
 ## [0.1.124](https://github.com/kevinch3/NicotinD/compare/v0.1.123...v0.1.124) (2026-06-30)
 
 

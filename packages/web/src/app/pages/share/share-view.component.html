@@ -1,13 +1,13 @@
 <!-- Loading -->
 @if (state() === 'loading') {
-  <div class="min-h-screen flex items-center justify-center bg-theme-bg">
+  <div class="min-h-screen flex items-center justify-center bg-theme-base">
     <span class="inline-block w-6 h-6 border-2 border-theme-secondary border-t-transparent rounded-full animate-spin"></span>
   </div>
 }
 
 <!-- Expired -->
 @if (state() === 'expired' || state() === 'error') {
-  <div class="min-h-screen flex flex-col items-center justify-center bg-theme-bg gap-4 text-center px-4">
+  <div class="min-h-screen flex flex-col items-center justify-center bg-theme-base gap-4 text-center px-4">
     <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
       class="text-theme-muted" stroke-linecap="round" stroke-linejoin="round">
       <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
@@ -24,7 +24,7 @@
 
 <!-- Active -->
 @if (state() === 'active') {
-  <div class="min-h-screen bg-theme-bg pb-24">
+  <div class="min-h-screen bg-theme-base pb-24">
     <div class="max-w-3xl mx-auto px-4 py-8">
 
       <!-- Header: cover + metadata -->
@@ -89,7 +89,7 @@
 
   <!-- Mini player (fixed bottom) -->
   @if (currentTrack()) {
-    <div class="fixed bottom-0 left-0 right-0 bg-theme-surface border-t border-theme-border px-4 py-3 flex items-center gap-4 z-50">
+    <div class="fixed bottom-0 left-0 right-0 bg-theme-surface border-t border-theme px-4 py-3 flex items-center gap-4 z-50">
 
       <!-- Track info -->
       <div class="flex-1 min-w-0">

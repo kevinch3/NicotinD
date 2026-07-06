@@ -9,7 +9,7 @@ import {
   copyFileSync,
   unlinkSync,
 } from 'node:fs';
-import { basename, dirname, extname, join, relative } from 'node:path';
+import { basename, dirname, extname, join, relative, sep } from 'node:path';
 import { cleanFolderName, createLogger, parseYearFromFolder } from '@nicotind/core';
 import { classifyFolder, type Classification } from './compilation-tagger.js';
 import { extractAlbumName, inferFolderAlbum, inferMetadataFromPath } from './path-inference.js';
@@ -34,7 +34,7 @@ import {
 import { isAbsolute } from 'node:path';
 import type { AcoustIdLookup } from './acoustid-lookup.js';
 import { normalizeTitle } from './album-hunter.service.js';
-import { dedupeFolder } from './album-dedupe.js';
+import { reconcileAlbumFolder } from './album-reconcile.js';
 import { albumGroupKey } from './album-grouping.js';
 import { isLossless, transcodeToOpus } from './post-download-transcode.js';
 import { ffmpegAvailable } from './transcode.js';
@@ -86,6 +86,8 @@ export interface LibraryOrganizerOptions {
    * `<Artist>/<canonical-album>` dir instead of spawning edition-variant siblings.
    */
   jobLookup?: (peerDirectory: string) => { artist?: string | null; album?: string | null } | null;
+  /** Canonical Lidarr track titles for a folder (enables foreign-rip dropping). */
+  canonicalTitlesLookup?: (dir: string) => readonly string[] | null;
 }
 
 export interface OrganizeResult {
@@ -95,6 +97,10 @@ export interface OrganizeResult {
   failed: number;
   /** Basenames (lowercased) of duplicate files auto-dedupe removed this batch. */
   dedupedBasenames: string[];
+  /** Music-dir-relative paths of files removed by reconciliation this batch. */
+  deletedRelPaths: string[];
+  /** Absolute canonical album dirs touched this batch (for album-scoped rescan). */
+  affectedAlbumDirs: string[];
 }
 
 /** A file already located on disk, plus its read tags. */
@@ -123,6 +129,7 @@ export class LibraryOrganizer {
   private jobLookup?: (
     peerDirectory: string,
   ) => { artist?: string | null; album?: string | null } | null;
+  private canonicalTitlesLookup?: (dir: string) => readonly string[] | null;
   /** Real <Artist>/<Album> dirs written during the current batch (for dedupe). */
   private touchedAlbumDirs = new Set<string>();
   /**
@@ -145,6 +152,7 @@ export class LibraryOrganizer {
     this.autoDedupe = opts.autoDedupe ?? true;
     this.dedupeAcrossEditions = opts.dedupeAcrossEditions ?? true;
     this.jobLookup = opts.jobLookup;
+    this.canonicalTitlesLookup = opts.canonicalTitlesLookup;
     // unsortedRoot may be relative (resolved under musicDir) or absolute (e.g.
     // <dataDir>/unsorted so Navidrome doesn't index the bucket).
     const rawUnsorted = opts.unsortedRoot ?? 'Unsorted';
@@ -164,6 +172,8 @@ export class LibraryOrganizer {
       unsorted: 0,
       failed: 0,
       dedupedBasenames: [],
+      deletedRelPaths: [],
+      affectedAlbumDirs: [],
     };
     if (files.length === 0) return result;
 
@@ -182,19 +192,33 @@ export class LibraryOrganizer {
     }
 
     if (this.autoDedupe) {
-      for (const dir of this.touchedAlbumDirs) {
-        const { deleted } = dedupeFolder(dir, { apply: true });
-        for (const d of deleted) {
-          result.dedupedBasenames.push(basename(d.name).toLowerCase());
-          log.info(
-            { dir, dropped: d.name, kept: d.keptName },
-            'Auto-dedupe removed a duplicate copy',
-          );
-        }
-      }
+      const r = await this.reconcileTouched([...this.touchedAlbumDirs], this.canonicalTitlesLookup);
+      result.deletedRelPaths = r.deletedRelPaths;
+      result.affectedAlbumDirs = r.affectedAlbumDirs;
+      result.dedupedBasenames = r.deletedRelPaths.map((p) => basename(p).toLowerCase());
+    } else {
+      result.affectedAlbumDirs = [...this.touchedAlbumDirs];
     }
 
     return result;
+  }
+
+  /** Reconcile each touched album folder on disk; returns removed rel paths + dirs. */
+  async reconcileTouched(
+    dirs: string[],
+    canonicalTitlesLookup?: (dir: string) => readonly string[] | null,
+  ): Promise<{ deletedRelPaths: string[]; affectedAlbumDirs: string[] }> {
+    const deletedRelPaths: string[] = [];
+    for (const dir of dirs) {
+      const canonical = canonicalTitlesLookup?.(dir) ?? null;
+      const { deletedNames } = await reconcileAlbumFolder(dir, canonical, { apply: true });
+      for (const name of deletedNames) {
+        const rel = relative(this.musicDir, join(dir, name)).split(sep).join('/');
+        deletedRelPaths.push(rel);
+        log.info({ dir, dropped: name }, 'Reconcile removed a duplicate copy');
+      }
+    }
+    return { deletedRelPaths, affectedAlbumDirs: dirs };
   }
 
   /**
@@ -473,6 +497,8 @@ export class LibraryOrganizer {
     const signals = files.map((f) => ({
       artist: normalizeTagValue(f.tags.artist),
       album: normalizeTagValue(f.tags.album),
+      albumArtist: normalizeTagValue(f.tags.albumArtist),
+      compilation: f.tags.compilation === true ? true : undefined,
       filename: f.filename,
     }));
     const classification = classifyFolder(signals, files[0]!.peerDirectory);

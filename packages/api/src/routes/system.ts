@@ -13,7 +13,7 @@ export function systemRoutes(
   slskdRef: SlskdRef,
   serviceManager: ServiceManager,
   config: NicotinDConfig,
-  opts: { triggerScan?: () => Promise<void> | void } = {},
+  opts: { triggerScan?: () => Promise<void> | void; version?: string } = {},
 ) {
   const app = new Hono<AuthEnv>();
   let scanning = false;
@@ -43,7 +43,7 @@ export function systemRoutes(
 
     return c.json({
       nicotind: {
-        version: '0.1.0',
+        version: opts.version ?? 'unknown',
         uptime: Math.floor((Date.now() - startTime) / 1000),
       },
       slskd: {

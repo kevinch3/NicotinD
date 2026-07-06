@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import type { ProcessingSettings, ProcessingStatus } from '@nicotind/core';
-import type { StreamingSettings, SetupStatus, SetupResult, AdminUser } from './api-types';
+import type { StreamingSettings, SetupStatus, SetupResult, SetupBody, AdminUser } from './api-types';
 
 /** System surface: status/scan/logs, settings (soulseek/shares/streaming/
  *  processing), first-run setup, and admin user management. */
@@ -116,11 +116,13 @@ export class SystemApiService {
     return this.http.get<SetupStatus>('/api/setup/status');
   }
 
-  completeSetup(data: {
-    admin: { username: string; password: string };
-    soulseek?: { username: string; password: string };
-  }) {
+  completeSetup(data: SetupBody) {
     return this.http.post<SetupResult>('/api/setup/complete', data);
+  }
+
+  // Presence — best-effort heartbeat so admins can see who is active (see PresenceService).
+  postHeartbeat(deviceId: string, tabId: string) {
+    return this.http.post<void>('/api/presence/heartbeat', { deviceId, tabId });
   }
 
   // Admin

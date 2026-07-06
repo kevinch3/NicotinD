@@ -1,10 +1,35 @@
 # Automated playlists — strategy & build guide
 
-A concrete, step-by-step guide to building **auto-generated, auto-refreshed
-playlists** on top of the existing curated-playlist infrastructure. This is the
-*how to build it* runbook; the broader vision and metadata mapping live in
-[playlist-generation.md](playlist-generation.md), and the ML features that feed
-richer recipes are planned in [audio-ml-enrichment.md](audio-ml-enrichment.md).
+**Status: shipped (deterministic core).** Recipe-driven, weekly-refreshed shelves
+now exist and materialize into `kind='curated'` playlists that appear in
+"Made for you" unchanged. The broader vision and metadata mapping live in
+[playlist-generation.md](playlist-generation.md); the ML features that feed
+richer recipes shipped too ([audio-ml-enrichment.md](audio-ml-enrichment.md)).
+The optional **LLM concept layer (§7) was dropped** — the user chose pure audio
+analysis; recipes consume the perceptual columns directly.
+
+## What shipped (code map)
+
+| Piece | Location |
+| --- | --- |
+| `PlaylistRecipe` type + `RECIPES` array (Late Night / Workout / Fresh This Week / Harmonic Electronic + the perceptual shelves Mellow Acoustic / Instrumental Focus / Feel Good / Late Night Unwind) | `services/playlist-recipe.ts` |
+| Pure `runRecipe` / `orderTracks` (incl. `harmonic` Camelot+BPM+energy chaining and the `energy-arc` ramp) / `weekSeedFor` / `slugSeed` / `seedCentroid` | `services/playlist-recipe.ts` |
+| `refreshAutoPlaylists(db, now, {apply})` + shared idempotent `upsertCuratedPlaylist` + weekly guard `maybeRefreshAutoPlaylists` | `services/auto-playlists.service.ts` |
+| In-process weekly guard hook (once per ISO week, inside the maintenance window) | `services/library-processing.service.ts` `tick()` |
+| Ops/first-rollout script (dry-run default, `--apply`) | `scripts/refresh-auto-playlists.ts` |
+| Covers for recipe slugs (same generator as curated) | `scripts/generate-playlist-covers.ts` |
+
+The `harmonic` order reuses `camelotCompatibility` from `radio.service.ts` (the
+Radio scorer) rather than duplicating wheel logic, and `runRecipe` reuses
+`selectCuratedTracks` (seeded shuffle + per-artist cap). The weekly guard stores
+its marker in `library_sync_state` under `auto_playlists_week`.
+
+**Zero-candidate recipes don't create shelves**: a recipe whose `where` matches
+nothing (the perceptual shelves before the enrichment backfill has run) is
+skipped rather than materialized empty. An already-materialized shelf still
+updates — even down to empty — so tracks that left the library drain out.
+
+## Original build guide (retained for the design rationale)
 
 ## Strategy
 

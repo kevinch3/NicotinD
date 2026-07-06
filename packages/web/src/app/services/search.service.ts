@@ -153,6 +153,10 @@ export class SearchService {
     this.spotifyState.set('idle');
     this.canBrowse.set(false);
     this.downloading.set(new Set());
+    this.downloadedFolders.set(new Set());
+    this.history.set([]);
+    this.autoSearch.set(false);
     this.openBrowserKey.set(null);
+    localStorage.removeItem(DOWNLOADED_FOLDERS_KEY);
   }
 }
