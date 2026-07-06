@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.148](https://github.com/kevinch3/NicotinD/compare/v0.1.147...v0.1.148) (2026-07-06)
+
+
+### Bug Fixes
+
+* **web:** resolve lyrics overflow, badge contrast, and settings mobile overflow ([d883bbb](https://github.com/kevinch3/NicotinD/commit/d883bbb0a854a8b5d6fd88bf8e1a8255d522b639))
+
 ## [0.1.147](https://github.com/kevinch3/NicotinD/compare/v0.1.146...v0.1.147) (2026-07-05)
 
 ## [0.1.146](https://github.com/kevinch3/NicotinD/compare/v0.1.145...v0.1.146) (2026-07-04)
