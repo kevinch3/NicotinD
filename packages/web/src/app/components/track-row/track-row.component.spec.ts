@@ -26,6 +26,9 @@ const OTHER_TRACK: Track = { id: 't2', title: 'Song Two', artist: 'Artist B' };
  * missing transform ran. This exercises the real production template/CSS,
  * just swaps out *how* the input value gets in.
  */
+// Call ONLY before the fixture's first detectChanges(): the raw .value write
+// bypasses signalSetFn, so consumers that already read the signal are never
+// notified and would keep rendering the stale value.
 function setInputValue<T>(inputSignal: () => T, value: T): void {
   (inputSignal as unknown as Record<typeof SIGNAL, { value: T }>)[SIGNAL].value = value;
 }
