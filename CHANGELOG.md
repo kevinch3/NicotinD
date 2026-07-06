@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.153](https://github.com/kevinch3/NicotinD/compare/v0.1.152...v0.1.153) (2026-07-06)
+
+
+### Bug Fixes
+
+* **web:** pad now-playing sheet header with safe-area-inset-top ([2a46d72](https://github.com/kevinch3/NicotinD/commit/2a46d725227c071f4f39a5dc68820323b8d42aa0))
+
 ## [0.1.152](https://github.com/kevinch3/NicotinD/compare/v0.1.151...v0.1.152) (2026-07-06)
 
 
