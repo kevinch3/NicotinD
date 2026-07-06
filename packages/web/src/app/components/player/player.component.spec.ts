@@ -462,4 +462,90 @@ describe('PlayerComponent', () => {
       expect(router.navigate).not.toHaveBeenCalled();
     });
   });
+
+  // ─── Buffering feedback (HDD-aware loaders) ────────────────────────────────
+
+  describe('buffering feedback', () => {
+    it('waiting event sets buffering', () => {
+      fakeAudio.dispatchEvent(new Event('waiting'));
+      expect(playerService.buffering()).toBe(true);
+    });
+
+    it('seeking event sets buffering', () => {
+      fakeAudio.dispatchEvent(new Event('seeking'));
+      expect(playerService.buffering()).toBe(true);
+    });
+
+    it('playing event clears buffering', () => {
+      playerService.setBuffering(true);
+      fakeAudio.dispatchEvent(new Event('playing'));
+      expect(playerService.buffering()).toBe(false);
+    });
+
+    it('canplay clears buffering (covers seeks while paused)', () => {
+      playerService.setBuffering(true);
+      fakeAudio.dispatchEvent(new Event('canplay'));
+      expect(playerService.buffering()).toBe(false);
+    });
+
+    it('error clears buffering so the spinner cannot spin forever', () => {
+      playerService.setBuffering(true);
+      fakeAudio.dispatchEvent(new Event('error'));
+      expect(playerService.buffering()).toBe(false);
+    });
+
+    it('stalled sets buffering only when playback genuinely lacks data', () => {
+      Object.defineProperty(fakeAudio, 'readyState', { value: 4, configurable: true });
+      fakeAudio.dispatchEvent(new Event('stalled'));
+      expect(playerService.buffering()).toBe(false);
+
+      Object.defineProperty(fakeAudio, 'readyState', { value: 2, configurable: true });
+      fakeAudio.dispatchEvent(new Event('stalled'));
+      expect(playerService.buffering()).toBe(true);
+    });
+
+    it('loading a new track sets buffering and clears stale buffered ranges', () => {
+      playerService.setBufferedRanges([{ start: 0, end: 10 }]);
+      playerService.currentTrack.set(TRACK);
+      fixture.detectChanges();
+      expect(playerService.buffering()).toBe(true);
+      expect(playerService.bufferedRanges()).toEqual([]);
+    });
+
+    it('clears buffering when this device stops being the active one', () => {
+      playerService.setBuffering(true);
+      isActiveDevice.set(false);
+      fixture.detectChanges();
+      expect(playerService.buffering()).toBe(false);
+    });
+
+    it('progress event snapshots audio.buffered into the service', () => {
+      Object.defineProperty(fakeAudio, 'buffered', {
+        value: { length: 2, start: (i: number) => [0, 60][i], end: (i: number) => [30, 90][i] },
+        configurable: true,
+      });
+      fakeAudio.dispatchEvent(new Event('progress'));
+      expect(playerService.bufferedRanges()).toEqual([
+        { start: 0, end: 30 },
+        { start: 60, end: 90 },
+      ]);
+    });
+
+    it('handlePlayRejection clears buffering (banner replaces the spinner)', () => {
+      playerService.setBuffering(true);
+      setVisibility('visible');
+      component['handlePlayRejection']();
+      expect(playerService.buffering()).toBe(false);
+    });
+
+    it('ended-with-queue advance flags buffering for the incoming track', () => {
+      playerService.currentTrack.set(TRACK);
+      playerService.queue.set([TRACK_2]);
+      playerService.setBuffering(false);
+
+      fakeAudio.dispatchEvent(new Event('ended'));
+
+      expect(playerService.buffering()).toBe(true);
+    });
+  });
 });

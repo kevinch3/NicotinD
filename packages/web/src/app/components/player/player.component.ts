@@ -142,12 +142,18 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
         audio.pause();
         this.pausingByStore = false;
         audio.src = '';
+        this.player.setBuffering(false);
+        this.player.setBufferedRanges([]);
         return;
       }
 
       if (track) {
         this.player.setCurrentTime(0);
         this.player.setDuration(track.duration ?? 0);
+        // New load beginning — flag it before any bytes move so track rows and
+        // play buttons can acknowledge instantly (HDD loads take seconds).
+        this.player.setBuffering(true);
+        this.player.setBufferedRanges([]);
 
         if (untracked(() => this.preserve.isPreserved(track.id))) {
           // Load from IndexedDB — no network request
@@ -178,6 +184,8 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
         audio.src = '';
         this.player.setCurrentTime(0);
         this.player.setDuration(0);
+        this.player.setBuffering(false);
+        this.player.setBufferedRanges([]);
       }
     });
 
@@ -333,6 +341,7 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
   }
 
   private handlePlayRejection(): void {
+    this.player.setBuffering(false);
     if (document.visibilityState === 'hidden') {
       // Browser revoked autoplay while screen is locked — resume when app returns.
       this.resumePendingAfterVisible = true;
@@ -481,6 +490,11 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
             // Re-bind all audio listeners to the now-active element.
             this.bindAudioListeners(standby);
 
+            // Usually clears within ms (the standby is buffered) — the 250ms visibility
+            // delay means no spinner unless the swap actually stalls.
+            this.player.setBuffering(true);
+            this.player.setBufferedRanges([]);
+
             // Start playback — the element is already buffered so this is near-instant.
             standby.play().catch((err) => {
               if (document.visibilityState === 'hidden') {
@@ -494,6 +508,8 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
             const isPreserved = untracked(() => this.preserve.isPreserved(nextTrack.id));
 
             const playNext = () => {
+              this.player.setBuffering(true);
+              this.player.setBufferedRanges([]);
               audio.play().catch((err) => {
                 if (document.visibilityState === 'hidden') {
                   this.resumePendingAfterVisible = true;
@@ -553,12 +569,37 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
       }, 250);
     };
 
+    const onWaiting = () => this.player.setBuffering(true);
+    const onSeeking = () => this.player.setBuffering(true);
+    // stalled also fires on harmless network hiccups while plenty is buffered —
+    // only treat it as buffering when playback genuinely can't proceed.
+    const onStalled = () => {
+      if (audio.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) this.player.setBuffering(true);
+    };
+    const onPlaying = () => this.player.setBuffering(false);
+    const onCanPlay = () => this.player.setBuffering(false);
+    const onError = () => this.player.setBuffering(false);
+    const onProgress = () => {
+      const ranges: { start: number; end: number }[] = [];
+      for (let i = 0; i < audio.buffered.length; i++) {
+        ranges.push({ start: audio.buffered.start(i), end: audio.buffered.end(i) });
+      }
+      this.player.setBufferedRanges(ranges);
+    };
+
     audio.addEventListener('timeupdate', onTime);
     audio.addEventListener('loadedmetadata', onDuration);
     audio.addEventListener('durationchange', onDuration);
     audio.addEventListener('ended', onEnded);
     audio.addEventListener('play', onPlay);
     audio.addEventListener('pause', onPause);
+    audio.addEventListener('waiting', onWaiting);
+    audio.addEventListener('seeking', onSeeking);
+    audio.addEventListener('stalled', onStalled);
+    audio.addEventListener('playing', onPlaying);
+    audio.addEventListener('canplay', onCanPlay);
+    audio.addEventListener('error', onError);
+    audio.addEventListener('progress', onProgress);
 
     this.audioListenerCleanups = [
       () => audio.removeEventListener('timeupdate', onTime),
@@ -567,6 +608,13 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
       () => audio.removeEventListener('ended', onEnded),
       () => audio.removeEventListener('play', onPlay),
       () => audio.removeEventListener('pause', onPause),
+      () => audio.removeEventListener('waiting', onWaiting),
+      () => audio.removeEventListener('seeking', onSeeking),
+      () => audio.removeEventListener('stalled', onStalled),
+      () => audio.removeEventListener('playing', onPlaying),
+      () => audio.removeEventListener('canplay', onCanPlay),
+      () => audio.removeEventListener('error', onError),
+      () => audio.removeEventListener('progress', onProgress),
     ];
   }
 
