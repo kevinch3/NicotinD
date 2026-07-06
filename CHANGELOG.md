@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.152](https://github.com/kevinch3/NicotinD/compare/v0.1.151...v0.1.152) (2026-07-06)
+
+
+### Features
+
+* **api:** opt-in server-side Sentry init helper ([10dd129](https://github.com/kevinch3/NicotinD/commit/10dd129155c45b3173ddc13565bf41b45190ae54))
+* **api:** report unknown 500 errors to Sentry ([9ef78b0](https://github.com/kevinch3/NicotinD/commit/9ef78b0d0c3afcac13bed8224e1f41eff3a909c6))
+* initialize server Sentry at boot (opt-in via env) ([5414bdc](https://github.com/kevinch3/NicotinD/commit/5414bdc7173e9929edbccccdab4df8c2483cbe70))
+* integrate Sentry error tracking and session replay with custom CTA event directive ([6f59143](https://github.com/kevinch3/NicotinD/commit/6f591439ead38be3c279932bd692e007c915ffd6))
+* **web:** testable opt-in Sentry init, disabled in dev ([4de7b67](https://github.com/kevinch3/NicotinD/commit/4de7b670fa287c9cf626db65490e69cb4b5093d0))
+
+
+### Bug Fixes
+
+* preload server Sentry before Hono; drop unused CTA directive ([8a6d3d0](https://github.com/kevinch3/NicotinD/commit/8a6d3d0b5ddce49ae1f9eefe800191a68c30b9c6))
+
 ## [0.1.151](https://github.com/kevinch3/NicotinD/compare/v0.1.150...v0.1.151) (2026-07-06)
 
 
