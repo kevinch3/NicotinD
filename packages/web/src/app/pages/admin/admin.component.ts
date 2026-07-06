@@ -165,9 +165,9 @@ export class AdminComponent implements OnInit, OnDestroy {
   }
 
   jobStateClass(state: string): string {
-    if (state === 'exhausted') return 'text-red-400';
-    if (state === 'active') return 'text-amber-400';
-    return 'text-zinc-400';
+    if (state === 'exhausted') return 'text-status-error';
+    if (state === 'active') return 'text-status-warn';
+    return 'text-theme-secondary';
   }
 
   formatTimestamp(ms: number): string {
@@ -184,15 +184,15 @@ export class AdminComponent implements OnInit, OnDestroy {
 
   getBadgeColor(svc: 'slskd'): string {
     const status = this.systemStatus();
-    if (!status) return 'text-zinc-500';
+    if (!status) return 'text-theme-muted';
     const health = status[svc];
     const connected = health.connected;
-    return connected ? 'text-emerald-400' : health.healthy ? 'text-amber-400' : 'text-red-400';
+    return connected ? 'text-status-done' : health.healthy ? 'text-status-warn' : 'text-status-error';
   }
 
   getDotColor(svc: 'slskd'): string {
     const status = this.systemStatus();
-    if (!status) return 'bg-zinc-500';
+    if (!status) return 'bg-theme-muted';
     const health = status[svc];
     const connected = health.connected;
     return connected ? 'bg-emerald-500' : health.healthy ? 'bg-amber-400' : 'bg-red-500';

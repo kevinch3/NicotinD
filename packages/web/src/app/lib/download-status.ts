@@ -9,11 +9,11 @@ export interface ButtonState {
 }
 
 export const BUTTON_CLASSES: Record<ButtonVariant, string> = {
-  default: 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700',
-  queued: 'bg-zinc-700 text-zinc-400 opacity-75',
-  progress: 'bg-blue-900/60 text-blue-300',
-  done: 'bg-green-900/60 text-green-300',
-  error: 'bg-red-900/60 text-red-300',
+  default: 'bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover',
+  queued: 'bg-theme-surface-2 text-theme-muted opacity-75',
+  progress: 'status-progress',
+  done: 'status-done',
+  error: 'status-error',
 };
 
 export function getSingleDownloadLabel(

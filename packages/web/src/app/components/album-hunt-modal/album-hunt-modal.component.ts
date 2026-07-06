@@ -388,8 +388,8 @@ export class AlbumHuntModalComponent implements OnInit {
   }
 
   queryRowClass(st: QueryPhaseState): string {
-    if (st === 'searching') return 'bg-blue-500/20 text-blue-300';
-    if (st === 'done') return 'bg-green-500/15 text-green-300';
+    if (st === 'searching') return 'status-progress';
+    if (st === 'done') return 'status-done';
     if (st === 'skipped') return 'bg-theme-surface-2 opacity-40';
     return 'bg-theme-surface-2'; // idle
   }

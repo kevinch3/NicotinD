@@ -172,7 +172,7 @@
                     class="px-3 py-1.5 text-sm rounded-lg bg-theme-surface-2 text-theme-primary hover:bg-theme-hover transition flex items-center gap-1.5">
                     Filters
                     @if (activeSongFilterCount() > 0) {
-                      <span class="px-1.5 rounded-full bg-[var(--theme-accent)] text-white text-xs leading-5">{{ activeSongFilterCount() }}</span>
+                      <span class="px-1.5 rounded-full bg-theme-accent text-theme-on-accent text-xs leading-5">{{ activeSongFilterCount() }}</span>
                     }
                   </button>
                   <div menuPanel class="w-56 p-3 rounded-lg bg-theme-surface border border-theme shadow-xl flex flex-col gap-3">
@@ -370,7 +370,7 @@
     }
 
     @if (deleteError()) {
-      <div class="mt-4 px-4 py-2 rounded-lg bg-red-500/10 text-red-400 text-sm">
+      <div class="mt-4 px-4 py-2 rounded-lg status-error text-sm">
         {{ deleteError() }}
       </div>
     }

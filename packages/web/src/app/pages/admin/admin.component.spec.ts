@@ -99,7 +99,7 @@ describe('AdminComponent (incomplete albums + untracked)', () => {
 
   it('jobStateClass maps states to colors', () => {
     const c = create();
-    expect(c.jobStateClass('exhausted')).toContain('red');
-    expect(c.jobStateClass('active')).toContain('amber');
+    expect(c.jobStateClass('exhausted')).toContain('status-error');
+    expect(c.jobStateClass('active')).toContain('status-warn');
   });
 });
