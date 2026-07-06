@@ -1,8 +1,9 @@
-import { Component, HostListener, inject, input, output, signal } from '@angular/core';
+import { Component, HostListener, computed, inject, input, output, signal } from '@angular/core';
 import { AuthService } from '../../services/auth.service';
 import { CoverArtComponent } from '../cover-art/cover-art.component';
 import { ArtistLinksComponent } from '../artist-links/artist-links.component';
-import type { Track } from '../../services/player.service';
+import { PlayerService, type Track } from '../../services/player.service';
+import { rowPlaybackState } from '../../lib/row-playback-state';
 import type { ArtistCredit } from '../../services/api/api-types';
 
 export interface TrackAction {
@@ -26,6 +27,7 @@ function formatDuration(seconds?: number): string {
 })
 export class TrackRowComponent {
   readonly auth = inject(AuthService);
+  readonly player = inject(PlayerService);
 
   readonly track = input.required<Track>();
   readonly indexLabel = input<string | number>();
@@ -51,6 +53,18 @@ export class TrackRowComponent {
   readonly remove = output<void>();
   /** Emits the originating click so hosts can detect shift-click range selection. */
   readonly selectedChange = output<MouseEvent>();
+
+  // Current-track indicator: currentTrack is set synchronously on click, so the
+  // row acknowledges a tap instantly — before any (HDD-slow) bytes arrive.
+  readonly playbackState = computed(() =>
+    rowPlaybackState(
+      this.player.currentTrack()?.id,
+      this.track().id,
+      this.player.bufferingVisible(),
+      this.player.isPlaying(),
+    ),
+  );
+  readonly isCurrent = computed(() => this.playbackState() !== null);
 
   readonly menuOpen = signal(false);
 

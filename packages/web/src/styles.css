@@ -384,6 +384,34 @@
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--theme-accent) 45%, transparent);
 }
 
+/* ─── Track-row playing indicator (app-track-row) ────────────────────────
+   Equalizer bars for the current track: animated while playing, frozen
+   short while paused. Global CSS because the row is rendered by many hosts
+   and the animation must not be re-declared per component. */
+.eq-bars {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 12px;
+}
+.eq-bars > span {
+  width: 3px;
+  border-radius: 1px;
+  background: var(--theme-accent);
+  animation: eq-bounce 1s ease-in-out infinite;
+}
+.eq-bars > span:nth-child(1) { animation-delay: -0.45s; }
+.eq-bars > span:nth-child(2) { animation-delay: -0.2s; }
+.eq-bars > span:nth-child(3) { animation-delay: 0s; }
+.eq-bars.eq-paused > span {
+  animation: none;
+  height: 4px;
+}
+@keyframes eq-bounce {
+  0%, 100% { height: 4px; }
+  50% { height: 12px; }
+}
+
 /* ─── Custom animations ──────────────────────────────────────────────── */
 @keyframes loading-bar {
   0% {
