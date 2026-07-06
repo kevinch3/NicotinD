@@ -304,6 +304,9 @@
 @utility ring-theme-bg {
   --tw-ring-color: var(--theme-bg);
 }
+@utility ring-theme-accent {
+  --tw-ring-color: var(--theme-accent);
+}
 @utility accent-theme {
   accent-color: var(--theme-accent);
 }
