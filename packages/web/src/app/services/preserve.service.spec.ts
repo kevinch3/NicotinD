@@ -23,6 +23,9 @@ function makeStoreFake() {
     getAll: vi.fn(async () => [...tracks.values()]),
     getBlob: vi.fn(async () => undefined),
     evictLRU: vi.fn(async () => [] as string[]),
+    clearAll: vi.fn(async () => {
+      tracks.clear();
+    }),
     reset: () => tracks.clear(),
   } as unknown as PreserveStore & { reset: () => void };
 }
@@ -171,6 +174,23 @@ describe('PreserveService', () => {
   describe('isCollectionPreserved', () => {
     it('returns false for an empty id list', () => {
       expect(svc.isCollectionPreserved([])).toBe(false);
+    });
+  });
+
+  describe('clearAll', () => {
+    it('clears all preserved tracks and resets signals', async () => {
+      await svc.preserveCollection('album1', 'Album', [track('a'), track('b'), track('c')]);
+      expect(svc.preservedIds().size).toBe(3);
+      expect(svc.totalUsage()).toBe(3 * BLOB_SIZE);
+
+      await svc.clearAll();
+
+      expect(svc.preservedIds().size).toBe(0);
+      expect(svc.totalUsage()).toBe(0);
+      expect(svc.preservedTracks()).toEqual([]);
+      expect(svc.preserving().size).toBe(0);
+      expect(svc.batches().size).toBe(0);
+      expect(store.clearAll).toHaveBeenCalled();
     });
   });
 });

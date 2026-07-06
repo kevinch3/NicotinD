@@ -98,4 +98,13 @@ export class ToastService {
       this.timers.delete(id);
     }
   }
+
+  reset(): void {
+    for (const timer of this.timers.values()) {
+      clearInterval(timer);
+    }
+    this.timers.clear();
+    this.toasts.set([]);
+    this.countdownPcts.set({});
+  }
 }

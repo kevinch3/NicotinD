@@ -150,3 +150,15 @@ export async function evictLRU(bytesNeeded: number, budget: number): Promise<str
 
   return evicted;
 }
+
+export async function clearAll(): Promise<void> {
+  const db = await open();
+  const transaction = db.transaction([TRACKS_STORE, BLOBS_STORE], 'readwrite');
+  transaction.objectStore(TRACKS_STORE).clear();
+  transaction.objectStore(BLOBS_STORE).clear();
+  await new Promise<void>((resolve, reject) => {
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error);
+  });
+  db.close();
+}

@@ -164,6 +164,22 @@ export class TransferService {
     }
   }
 
+  reset(): void {
+    this.stopPolling();
+    if (this.scanPollTimer !== null) {
+      clearTimeout(this.scanPollTimer);
+      this.scanPollTimer = null;
+    }
+    this.transfers.set(new Map());
+    this.downloads.set([]);
+    this.uploads.set([]);
+    this.acquireJobs.set([]);
+    this.libraryDirty.set(false);
+    this.deletedSongIds.set(new Set());
+    this.prevAcquireStates = new Map();
+    this.hasPolled = false;
+  }
+
   /** Immediately fires a poll and resets the adaptive timer. Call after initiating a download. */
   kickPoll(): void {
     if (this.timerId) {

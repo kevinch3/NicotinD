@@ -16,6 +16,7 @@ export interface PreserveStore {
   getBlob: typeof db.getBlob;
   getAll: typeof db.getAll;
   evictLRU: typeof db.evictLRU;
+  clearAll: typeof db.clearAll;
 }
 
 export const PRESERVE_STORE = new InjectionToken<PreserveStore>('PRESERVE_STORE', {
@@ -167,6 +168,15 @@ export class PreserveService {
       return n;
     });
     await this.refreshList();
+  }
+
+  async clearAll(): Promise<void> {
+    await this.db.clearAll();
+    this.preservedIds.set(new Set());
+    this.totalUsage.set(0);
+    this.preserving.set(new Set());
+    this.preservedTracks.set([]);
+    this.batches.set(new Map());
   }
 
   isPreserved(id: string): boolean {

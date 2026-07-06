@@ -269,4 +269,17 @@ export class RemotePlaybackService {
         if (action === 'PREV') this.player.playPrev();
       });
   }
+
+  reset(): void {
+    this.activeDeviceId.set(null);
+    this.devices.set([]);
+    this.remoteIsPlaying.set(false);
+    this.remotePosition.set(0);
+    this.remotePositionTs.set(0);
+    this.remoteDuration.set(0);
+    this.disabledReason.set(null);
+    this.lateJoinApplied = false;
+    this.lastRemoteTrackId = null;
+    this.previousTrackId = null;
+  }
 }
