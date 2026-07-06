@@ -585,3 +585,4 @@ export function createApp({
 export { DownloadWatcher } from './services/download-watcher.js';
 export { DownloadRetryService } from './services/download-retry.service.js';
 export { initDatabase, getDatabase } from './db.js';
+export { initServerSentry } from './observability/sentry.js';

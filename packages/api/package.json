@@ -10,6 +10,7 @@
     "@nicotind/lidarr-client": "workspace:*",
     "@nicotind/service-manager": "workspace:*",
     "@nicotind/slskd-client": "workspace:*",
+    "@sentry/bun": "^10.62.0",
     "hono": "^4.12.25",
     "jose": "^6.2.3",
     "music-metadata": "^11.13.0",
