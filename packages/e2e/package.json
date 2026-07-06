@@ -15,6 +15,6 @@
     "make-fixtures": "bun run scripts/make-fixtures.ts"
   },
   "devDependencies": {
-    "@playwright/test": "^1.50.0"
+    "@playwright/test": "^1.61.1"
   }
 }
