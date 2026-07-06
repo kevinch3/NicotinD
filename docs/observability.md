@@ -13,13 +13,15 @@ surfaces** and inert when unconfigured.
 - Prod config: `tracesSampleRate: 0.1`, session replay `0.1` / on-error `1.0`,
   `sendDefaultPii: false`, and every issue tagged with `release` (app version) +
   `environment`.
-- `[appSentryCta]` (`directives/sentry-cta.directive.ts`) emits a `captureMessage`
-  breadcrumb on click for CTA analytics; safely no-ops when Sentry is uninitialized.
 
 ## API (Bun/Hono)
 
-- `initServerSentry()` (`packages/api/src/observability/sentry.ts`) runs first in
-  `src/main.ts`. It reads `NICOTIND_SENTRY_DSN` (**empty = disabled**, default off,
+- `initServerSentry()` (`packages/api/src/observability/sentry.ts`) is invoked at
+  **process load** from `src/instrument.ts`, which `src/main.ts` imports on its first
+  line — before the `createApp` import pulls in Hono/http. This ordering lets
+  `@sentry/bun`'s auto-instrumentation patch those modules for HTTP tracing. The
+  isolated `@nicotind/api/instrument` export subpath keeps the API barrel out of the
+  preload. It reads `NICOTIND_SENTRY_DSN` (**empty = disabled**, default off,
   matching the plugin/acquisition opt-in ethos) and
   `NICOTIND_SENTRY_TRACES_SAMPLE_RATE` (default `0.1`). `@sentry/bun` auto-captures
   `uncaughtException` / `unhandledRejection` once initialized.
@@ -42,6 +44,5 @@ Web DSN is build-time (`environment.prod.ts`); there is no runtime web-DSN chann
 
 - API: `packages/api/src/observability/sentry.test.ts` (init on/off) +
   `packages/api/src/middleware/error-handler.test.ts` (captures 500s, skips 4xx/503).
-- Web: `app/observability/sentry.spec.ts` (init on/off + prod config) +
-  `directives/sentry-cta.directive.spec.ts`.
+- Web: `app/observability/sentry.spec.ts` (init on/off + prod config).
 - CI: API via `ci.yml:52`, web via `ci.yml:58`.
