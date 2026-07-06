@@ -25,6 +25,10 @@ export class AutoHuntService {
     return this.huntingAlbumIds().has(lidarrId);
   }
 
+  reset(): void {
+    this.huntingAlbumIds.set(new Set());
+  }
+
   hunt(album: DiscographyAlbum, artistName: string, openManual: () => void): void {
     if (this.huntingAlbumIds().has(album.lidarrId)) return;
     this.huntingAlbumIds.update((s) => new Set(s).add(album.lidarrId));

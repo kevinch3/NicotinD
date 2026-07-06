@@ -1,4 +1,5 @@
 import { Component, inject, computed, signal, OnInit, OnDestroy } from '@angular/core';
+import { FormsModule } from '@angular/forms';
 import { APP_VERSION } from '../../app.config';
 import { Router, RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
@@ -10,6 +11,7 @@ import { mainBottomPadClass } from '../../lib/player-chrome';
 import { SetupService } from '../../services/setup.service';
 import { TransferService } from '../../services/transfer.service';
 import { AcquireService } from '../../services/acquire.service';
+import { PreserveService } from '../../services/preserve.service';
 import { PlayerComponent } from '../player/player.component';
 import { NowPlayingComponent } from '../now-playing/now-playing.component';
 import { UpdateBannerComponent } from '../update-banner/update-banner.component';
@@ -35,6 +37,7 @@ const ONLINE_ONLY_ROUTES = new Set(['/', '/library']);
 @Component({
   selector: 'app-layout',
   imports: [
+    FormsModule,
     RouterOutlet,
     RouterLink,
     RouterLinkActive,
@@ -52,6 +55,7 @@ export class LayoutComponent implements OnInit, OnDestroy {
   readonly auth = inject(AuthService);
   readonly player = inject(PlayerService);
   readonly setup = inject(SetupService);
+  readonly preserve = inject(PreserveService);
   private router = inject(Router);
   readonly version = inject(APP_VERSION);
   private transfers = inject(TransferService);
@@ -79,6 +83,34 @@ export class LayoutComponent implements OnInit, OnDestroy {
   readonly mainPadClass = computed(() => mainBottomPadClass(this.player.currentTrack() !== null));
 
   readonly showChangelog = signal(false);
+  readonly showLogoutDialog = signal(false);
+  readonly cleanPreserveOnLogout = signal(false);
+
+  readonly GB = 1024 * 1024 * 1024;
+
+  formatStorage(bytes: number): string {
+    if (bytes < this.GB) return `${(bytes / (1024 * 1024)).toFixed(0)} MB`;
+    return `${(bytes / this.GB).toFixed(bytes % this.GB === 0 ? 0 : 1)} GB`;
+  }
+
+  logout(): void {
+    if (this.preserve.totalUsage() > 0) {
+      this.cleanPreserveOnLogout.set(false);
+      this.showLogoutDialog.set(true);
+    } else {
+      this.auth.logout();
+      this.router.navigateByUrl('/login');
+    }
+  }
+
+  async confirmLogout(): Promise<void> {
+    if (this.cleanPreserveOnLogout()) {
+      await this.preserve.clearAll();
+    }
+    this.showLogoutDialog.set(false);
+    this.auth.logout();
+    this.router.navigateByUrl('/login');
+  }
 
   ngOnInit(): void {
     this.transfers.startPolling();
@@ -107,10 +139,5 @@ export class LayoutComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.transfers.stopPolling();
-  }
-
-  logout(): void {
-    this.auth.logout();
-    this.router.navigateByUrl('/login');
   }
 }

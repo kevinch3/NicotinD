@@ -86,4 +86,8 @@ export class WatchlistService {
       });
     }
   }
+
+  reset(): void {
+    this.items.set([]);
+  }
 }

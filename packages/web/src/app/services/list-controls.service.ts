@@ -141,4 +141,12 @@ export class ListControlsService {
       },
     };
   }
+
+  reset(): void {
+    for (const timer of this.searchTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.searchTimers.clear();
+    this.pages.set({});
+  }
 }

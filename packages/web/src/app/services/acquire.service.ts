@@ -64,4 +64,9 @@ export class AcquireService {
       this.pollTimer = null;
     }
   }
+
+  reset(): void {
+    this.stopPolling();
+    this.jobs.set([]);
+  }
 }

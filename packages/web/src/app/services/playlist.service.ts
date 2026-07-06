@@ -80,4 +80,10 @@ export class PlaylistService {
   closePicker(): void {
     this.pendingSongIds.set(null);
   }
+
+  reset(): void {
+    this.playlists.set([]);
+    this.loaded.set(false);
+    this.pendingSongIds.set(null);
+  }
 }

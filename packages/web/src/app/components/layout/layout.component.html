@@ -79,5 +79,40 @@
       @if (showChangelog()) {
         <app-changelog-modal (close)="showChangelog.set(false)" />
       }
+
+      <!-- Logout confirmation dialog -->
+      @if (showLogoutDialog()) {
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div class="bg-theme-surface border border-theme rounded-xl p-6 max-w-sm w-full shadow-2xl">
+            <h3 class="text-lg font-semibold text-theme-primary mb-4">Sign out?</h3>
+            <label class="flex items-start gap-3 mb-6 cursor-pointer">
+              <input
+                type="checkbox"
+                [ngModel]="cleanPreserveOnLogout()"
+                (ngModelChange)="cleanPreserveOnLogout.set($event)"
+                class="mt-0.5 rounded border-theme-muted bg-theme-base text-theme-accent focus:ring-theme-accent focus:ring-offset-0"
+              />
+              <span class="text-sm text-theme-secondary">
+                Remove downloaded music from this device
+                <span class="text-theme-muted">({{ formatStorage(preserve.totalUsage()) }})</span>
+              </span>
+            </label>
+            <div class="flex gap-3 justify-end">
+              <button
+                (click)="showLogoutDialog.set(false)"
+                class="px-4 py-2 text-sm font-medium text-theme-secondary hover:text-theme-primary transition"
+              >
+                Cancel
+              </button>
+              <button
+                (click)="confirmLogout()"
+                class="px-4 py-2 text-sm font-medium text-status-error hover:opacity-80 transition"
+              >
+                Sign out
+              </button>
+            </div>
+          </div>
+        </div>
+      }
     </div>
   

@@ -852,6 +852,7 @@ export class SearchComponent implements OnInit, OnDestroy {
       if (res.networkAvailable) this.startPoll();
     } catch (err) {
       this.searchError.set(err instanceof Error ? err.message : 'Search failed');
+      this.search.setNetworkState('complete');
     } finally {
       await catalogPromise;
       // Open the raw-search fallback whenever the guided path has no actionable

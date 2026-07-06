@@ -81,6 +81,8 @@ export class SettingsComponent implements OnInit, OnDestroy {
   readonly myDeviceId = this.ws.getDeviceId();
   readonly version = inject(APP_VERSION);
   readonly showChangelog = signal(false);
+  readonly showLogoutDialog = signal(false);
+  readonly cleanPreserveOnLogout = signal(false);
 
   formatStorage(bytes: number): string {
     if (bytes >= UNLIMITED_BUDGET) return '∞';
@@ -159,6 +161,20 @@ export class SettingsComponent implements OnInit, OnDestroy {
   }
 
   logout(): void {
+    if (this.preserve.totalUsage() > 0) {
+      this.cleanPreserveOnLogout.set(false);
+      this.showLogoutDialog.set(true);
+    } else {
+      this.auth.logout();
+      this.router.navigateByUrl('/login');
+    }
+  }
+
+  async confirmLogout(): Promise<void> {
+    if (this.cleanPreserveOnLogout()) {
+      await this.preserve.clearAll();
+    }
+    this.showLogoutDialog.set(false);
     this.auth.logout();
     this.router.navigateByUrl('/login');
   }
