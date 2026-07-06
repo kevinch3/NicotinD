@@ -80,7 +80,7 @@
         (click)="search()"
         [disabled]="searching()"
         data-testid="metadata-search-btn"
-        class="px-4 py-2 rounded-lg text-sm bg-theme-accent text-white hover:opacity-90 transition disabled:opacity-50"
+        class="px-4 py-2 rounded-lg text-sm bg-theme-accent text-theme-on-accent hover:opacity-90 transition disabled:opacity-50"
       >
         {{ searching() ? 'Searching…' : 'Search' }}
       </button>
@@ -151,7 +151,7 @@
           (click)="applyManual()"
           [disabled]="applying()"
           data-testid="apply-manual"
-          class="self-start px-4 py-2 rounded-lg text-sm bg-theme-accent text-white hover:opacity-90 transition disabled:opacity-50"
+          class="self-start px-4 py-2 rounded-lg text-sm bg-theme-accent text-theme-on-accent hover:opacity-90 transition disabled:opacity-50"
         >
           {{ applying() ? 'Applying…' : 'Apply' }}
         </button>
