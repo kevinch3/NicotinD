@@ -7,9 +7,14 @@
         [style.transform]="dragOffsetPx() > 0 ? 'translateY(' + dragOffsetPx() + 'px)' : null"
       >
 
-        <!-- Header — drag handle to dismiss (live-follow) -->
+        <!-- Header — drag handle to dismiss (live-follow).
+             pt folds in env(safe-area-inset-top) so the grab pill and the
+             close chevron drop below the iPhone hardware notch — on a PWA with
+             viewport-fit=cover an un-padded top would tuck the handle under the
+             cutout, making it invisible / untappable to close the sheet. No-op
+             on desktop / non-notched screens (inset resolves to 0). -->
         <div
-          class="flex flex-col items-center px-4 pt-2 pb-3 relative touch-none select-none"
+          class="flex flex-col items-center px-4 pt-[calc(0.5rem+env(safe-area-inset-top))] pb-3 relative touch-none select-none"
           (pointerdown)="onSheetDragStart($event)"
         >
           <div class="w-10 h-1 rounded-full bg-zinc-600 mb-2"></div>
@@ -348,8 +353,10 @@
               ></div>
             </div>
 
-            <!-- Karaoke header -->
-            <div class="relative z-10 flex items-center justify-between px-6 pt-4 pb-2">
+            <!-- Karaoke header — pt folds in env(safe-area-inset-top) so the
+                 exit button clears the iPhone notch (sheet is fixed inset-0
+                 over a viewport-fit=cover page). -->
+            <div class="relative z-10 flex items-center justify-between px-6 pt-[calc(1rem+env(safe-area-inset-top))] pb-2">
               <button
                 (click)="toggleKaraokeMode()"
                 class="w-10 h-10 flex items-center justify-center text-white/60 hover:text-white transition rounded-full hover:bg-white/10"

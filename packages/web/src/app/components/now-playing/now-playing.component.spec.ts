@@ -97,6 +97,28 @@ describe('NowPlayingComponent', () => {
     });
   });
 
+  describe('notch / safe-area clearance', () => {
+    // The now-playing sheet is fixed inset-0 over a viewport-fit=cover page, so
+    // on notched iPhones the grab pill + close chevron sit right under the
+    // hardware cutout. The header must pad its top by env(safe-area-inset-top)
+    // so the dismiss affordance stays visible/tappable; otherwise the user
+    // can't close the sheet (regression: iPhone 13 Pro PWA).
+    it('pads the drag-handle header with env(safe-area-inset-top)', () => {
+      const { fixture, playerStub } = setup();
+      playerStub.currentTrack.set({ id: '1', title: 'Song', artist: 'Artist' });
+      fixture.detectChanges();
+
+      // The drag-handle header is the touch-none element that pads its top
+      // with env(safe-area-inset-top) to drop below the iPhone hardware notch.
+      const candidate = Array.from(
+        fixture.nativeElement.querySelectorAll('[class*="safe-area-inset-top"]'),
+      ).find((el) => (el as HTMLElement).classList.contains('touch-none'));
+
+      expect(candidate).toBeTruthy();
+      expect((candidate as HTMLElement).className).toContain('safe-area-inset-top');
+    });
+  });
+
   describe('drag-to-dismiss (live-follow)', () => {
     // jsdom has no PointerEvent constructor; MouseEvent carries clientY + button
     // and dispatches under any type string, driving the real document listeners.
