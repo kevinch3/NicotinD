@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.149](https://github.com/kevinch3/NicotinD/compare/v0.1.148...v0.1.149) (2026-07-06)
+
+
+### Bug Fixes
+
+* **web:** migrate dark-island components to themed tokens ([982cc01](https://github.com/kevinch3/NicotinD/commit/982cc018afb23d9693e1cdf089a29971a4c660fc))
+* **web:** register unregistered theme utilities (silent no-op classes) ([ea86e51](https://github.com/kevinch3/NicotinD/commit/ea86e511296f525d032d754671c6e5f01ca8ecff))
+* **web:** themed status colours for warnings/pills (light-theme contrast) ([b488844](https://github.com/kevinch3/NicotinD/commit/b488844d16476702b38f1b695143e45a7212ec0c))
+* **web:** use text-theme-on-accent for text on accent fills ([f6a7d9b](https://github.com/kevinch3/NicotinD/commit/f6a7d9bc9ac8856dbfe4d678ba682e164a621b99))
+
 ## [0.1.148](https://github.com/kevinch3/NicotinD/compare/v0.1.147...v0.1.148) (2026-07-06)
 
 
