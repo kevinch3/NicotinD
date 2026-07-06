@@ -1,5 +1,10 @@
 import { Component, computed, input, output, signal } from '@angular/core';
 import { seekPercent } from '../../lib/seek-utils';
+import {
+  bufferedGradient,
+  computeBufferedSegments,
+  type BufferedRange,
+} from '../../lib/buffered-ranges';
 
 /**
  * app-seek-bar — the single seek control behind the desktop mini-player bar, the
@@ -29,6 +34,8 @@ export class SeekBarComponent {
   readonly duration = input(0);
   /** Accessible label for the slider. */
   readonly ariaLabel = input('Seek');
+  /** Buffered ranges (seconds) painted as a lighter band under the fill. */
+  readonly buffered = input<BufferedRange[]>([]);
 
   /** Committed seek target, in absolute seconds. */
   readonly seek = output<number>();
@@ -43,6 +50,11 @@ export class SeekBarComponent {
 
   /** 0..100 fill percentage for the gradient track. */
   readonly percent = computed(() => seekPercent(this.value(), this.duration()));
+
+  /** Gradient for the buffered band, or null → CSS falls back to the plain track. */
+  readonly bufferedBackground = computed(() =>
+    bufferedGradient(computeBufferedSegments(this.buffered(), this.duration())),
+  );
 
   readonly disabled = computed(() => {
     const d = this.duration();

@@ -1,3 +1,4 @@
+import { ɵSIGNAL as SIGNAL } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { SeekBarComponent } from './seek-bar.component';
 
@@ -55,5 +56,38 @@ describe('SeekBarComponent', () => {
     input.value = '7';
     input.dispatchEvent(new Event('change'));
     expect(seeks).toEqual([7]);
+  });
+});
+
+// The JIT harness can't drive input() signals via bindings or setInput() —
+// write straight to the node behind ɵSIGNAL instead, BEFORE the fixture's
+// first detectChanges(). Pattern + full rationale documented in
+// track-row.component.spec.ts.
+function setInputValue<T>(inputSignal: () => T, value: T): void {
+  (inputSignal as unknown as Record<typeof SIGNAL, { value: T }>)[SIGNAL].value = value;
+}
+
+describe('SeekBarComponent — buffered band', () => {
+  function setupBuffered(buffered: { start: number; end: number }[]) {
+    TestBed.configureTestingModule({ imports: [SeekBarComponent] });
+    const fixture = TestBed.createComponent(SeekBarComponent);
+    setInputValue(fixture.componentInstance.position, 10);
+    setInputValue(fixture.componentInstance.duration, 100);
+    setInputValue(fixture.componentInstance.buffered, buffered);
+    fixture.detectChanges();
+    return fixture.nativeElement.querySelector('input') as HTMLInputElement;
+  }
+
+  it('exposes the buffered segments as a gradient CSS var on the input', () => {
+    const input = setupBuffered([{ start: 0, end: 50 }]);
+    const bg = input.style.getPropertyValue('--seek-buffered-bg');
+    expect(bg).toContain('linear-gradient(to right');
+    expect(bg).toContain('var(--seek-buffered-color) 0%');
+    expect(bg).toContain('var(--theme-surface-2) 50%');
+  });
+
+  it('sets no gradient var when nothing is buffered (falls back to plain track)', () => {
+    const input = setupBuffered([]);
+    expect(input.style.getPropertyValue('--seek-buffered-bg')).toBe('');
   });
 });

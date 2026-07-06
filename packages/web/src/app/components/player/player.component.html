@@ -160,6 +160,7 @@
               <app-seek-bar
                 [position]="safeProgress()"
                 [duration]="safeDuration()"
+                [buffered]="player.bufferedRanges()"
                 (seek)="onSeek($event)"
               />
             </div>
@@ -183,6 +184,7 @@
         <app-seek-bar
           [position]="safeProgress()"
           [duration]="safeDuration()"
+          [buffered]="player.bufferedRanges()"
           (seek)="onSeek($event)"
         />
       </div>

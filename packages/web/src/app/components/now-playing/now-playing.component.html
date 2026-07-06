@@ -119,6 +119,7 @@
           <app-seek-bar
             [position]="safeProgress()"
             [duration]="safeDuration()"
+            [buffered]="player.bufferedRanges()"
             (seek)="onSeek($event)"
           />
           <div class="flex justify-between mt-1.5">
@@ -412,6 +413,7 @@
                 <app-seek-bar
                   [position]="safeProgress()"
                   [duration]="safeDuration()"
+                  [buffered]="player.bufferedRanges()"
                   (seek)="onSeek($event)"
                 />
                 <div class="flex justify-between mt-1">
