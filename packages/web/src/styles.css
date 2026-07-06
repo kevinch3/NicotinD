@@ -191,6 +191,15 @@
      rendered transparent — the grab notch looked invisible. */
   .bg-theme-muted   { background-color: var(--theme-text-muted); }
   .border-theme     { border-color: var(--theme-border); }
+  /* Subtle divider using the *lighter* surface-2 tone (not the border token) —
+     album-hunt-modal section rules + artist-detail tabs referenced
+     `border-theme-surface-2`/`divide-theme-surface-2` but neither was ever
+     registered, so those borders fell back to currentColor (a stray dark line).
+     `divide-*` supplies the width via Tailwind's own child-combinator; we only
+     add the colour on the same selector. */
+  .border-theme-surface-2 { border-color: var(--theme-surface-2); }
+  .divide-theme-surface-2 > :not([hidden]) ~ :not([hidden]) { border-color: var(--theme-surface-2); }
+  .divide-theme-border > :not([hidden]) ~ :not([hidden]) { border-color: var(--theme-border); }
   .text-theme-primary   { color: var(--theme-text-primary); }
   /* Foreground for text/icons painted on top of a bg-theme-accent fill (count
      badges). Chosen per-theme to contrast the accent — `text-theme-base` was
@@ -254,6 +263,24 @@
 }
 @utility text-theme-inverse {
   color: var(--theme-bg);
+}
+/* More themed utilities that were referenced but never registered (silent
+   no-ops). These are `@utility` (not `@layer`) because some are used with
+   `hover:` variants. `border-theme-secondary` = the muted secondary-text tone
+   as a border (spinner ring / track-row checkbox hover); `ring-theme-bg` rings
+   an element in the page bg colour to separate it from the surface behind;
+   `accent-theme[-secondary]` themes native form-control `accent-color`. */
+@utility border-theme-secondary {
+  border-color: var(--theme-text-secondary);
+}
+@utility ring-theme-bg {
+  --tw-ring-color: var(--theme-bg);
+}
+@utility accent-theme {
+  accent-color: var(--theme-accent);
+}
+@utility accent-theme-secondary {
+  accent-color: var(--theme-text-secondary);
 }
 
 /* ─── Seek bar (app-seek-bar) ────────────────────────────────────────────
