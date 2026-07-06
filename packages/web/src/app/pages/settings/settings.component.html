@@ -169,20 +169,20 @@
                 </label>
 
                 <!-- Window -->
-                <div class="flex items-center justify-between gap-4">
-                  <span class="text-sm text-theme-primary">Processing window
+                <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+                  <span class="min-w-0 text-sm text-theme-primary">Processing window
                     <span class="block text-xs text-theme-muted">Local server time</span>
                   </span>
-                  <div class="flex items-center gap-2">
+                  <div class="flex min-w-0 items-center gap-2">
                     <input type="time" [value]="p.window.start" [disabled]="processingSaving()"
                       data-testid="processing-window-start"
                       (change)="saveProcessing({ window: { start: $any($event.target).value, end: p.window.end } })"
-                      class="text-sm rounded-lg bg-theme-surface border border-theme px-2 py-1 text-theme-primary" />
+                      class="min-w-0 text-sm rounded-lg bg-theme-surface border border-theme px-2 py-1 text-theme-primary" />
                     <span class="text-theme-muted">–</span>
                     <input type="time" [value]="p.window.end" [disabled]="processingSaving()"
                       data-testid="processing-window-end"
                       (change)="saveProcessing({ window: { start: p.window.start, end: $any($event.target).value } })"
-                      class="text-sm rounded-lg bg-theme-surface border border-theme px-2 py-1 text-theme-primary" />
+                      class="min-w-0 text-sm rounded-lg bg-theme-surface border border-theme px-2 py-1 text-theme-primary" />
                   </div>
                 </div>
 

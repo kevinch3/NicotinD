@@ -142,6 +142,21 @@ test.describe('mobile UX', () => {
     expect(overflow, 'no horizontal page overflow at phone width').toBeLessThanOrEqual(1);
   });
 
+  // The Settings "Library processing" window row holds two native
+  // <input type="time"> controls whose intrinsic min-width used to force the
+  // whole page wider than the phone (the WebView then zoomed out). The row now
+  // wraps + the inputs can shrink; guard there's no horizontal page overflow.
+  test('settings page does not overflow horizontally', async ({ page }) => {
+    await page.goto('/settings');
+    // Admin-only processing panel with the offending time inputs.
+    await expect(page.getByTestId('processing-panel')).toBeVisible();
+    const overflow = await page.evaluate(() => {
+      const el = document.scrollingElement ?? document.documentElement;
+      return el.scrollWidth - el.clientWidth;
+    });
+    expect(overflow, 'no horizontal page overflow at phone width').toBeLessThanOrEqual(1);
+  });
+
   // The sticky header folds env(safe-area-inset-top) into its top padding so it
   // clears the iOS notch. On the web/headless (inset = 0) it must resolve to the
   // unchanged py-3 (12px) — i.e. the calc() is valid and desktop is unaffected.
@@ -243,5 +258,39 @@ test.describe('mobile UX', () => {
     await expect(panel).toBeVisible();
     await expect(page.getByTestId('now-playing-queue')).toHaveCount(0);
     await expect(panel).toContainText('seeded chorus line');
+  });
+
+  // A long lyric line (no natural break) must wrap inside the lyrics panel and
+  // never push the page wider than the phone — the panel/lines gained
+  // overflow-x-hidden + break-words after lyrics were reported overflowing the
+  // screen. Seed an unbreakably long line and assert no horizontal overflow.
+  test('long lyrics wrap and do not overflow horizontally', async ({ page, request }) => {
+    const token = (
+      (await (await request.post('/api/auth/login', { data: ADMIN })).json()) as { token: string }
+    ).token;
+    const albums = (await (
+      await request.get('/api/library/albums', { headers: bearer(token) })
+    ).json()) as Array<{ id: string; title: string }>;
+    const album = albums.find((a) => a.title === FIXTURE.album.title) ?? albums[0]!;
+    const detail = (await (
+      await request.get(`/api/library/albums/${album.id}`, { headers: bearer(token) })
+    ).json()) as { song: Array<{ id: string }> };
+    const longLine = 'supercalifragilisticexpialidociousandthensomemoreveryverylongwordindeed';
+    for (const s of detail.song) {
+      await request.put(`/api/library/songs/${s.id}/lyrics`, {
+        headers: bearer(token),
+        data: { plain: `${longLine}\n${longLine}` },
+      });
+    }
+
+    await openNowPlaying(page);
+    await page.getByTestId('now-playing-lyrics-toggle').click();
+    await expect(page.getByTestId('now-playing-lyrics')).toBeVisible();
+
+    const overflow = await page.evaluate(() => {
+      const el = document.scrollingElement ?? document.documentElement;
+      return el.scrollWidth - el.clientWidth;
+    });
+    expect(overflow, 'long lyrics must not widen the page').toBeLessThanOrEqual(1);
   });
 });

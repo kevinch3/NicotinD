@@ -27,6 +27,7 @@
     --theme-text-secondary: #a1a1aa;
     --theme-text-muted:   #71717a;
     --theme-accent:       #6366f1;
+    --theme-on-accent:    #ffffff;
     --theme-highlight-bg: rgba(245,158,11,0.35);
     --theme-highlight-text: #fef3c7;
     --theme-status-progress-bg:   rgba(30,58,138,0.6);
@@ -47,6 +48,7 @@
     --theme-text-secondary: #52525b;
     --theme-text-muted:   #71717a;
     --theme-accent:       #6366f1;
+    --theme-on-accent:    #ffffff;
     --theme-highlight-bg: #fde68a;
     --theme-highlight-text: #78350f;
     --theme-status-progress-bg:   #dbeafe;
@@ -67,6 +69,7 @@
     --theme-text-secondary: #57534e;
     --theme-text-muted:   #78716c;
     --theme-accent:       #d97706;
+    --theme-on-accent:    #431407;
     --theme-highlight-bg: #fcd34d;
     --theme-highlight-text: #78350f;
     --theme-status-progress-bg:   #fef3c7;
@@ -87,6 +90,7 @@
     --theme-text-secondary: #a3a3a3;
     --theme-text-muted:   #737373;
     --theme-accent:       #818cf8;
+    --theme-on-accent:    #0a0a0a;
     --theme-highlight-bg: #78350f;
     --theme-highlight-text: #fef3c7;
     --theme-status-progress-bg:   #172554;
@@ -107,6 +111,7 @@
     --theme-text-secondary: #a39fc4;
     --theme-text-muted:   #7c7a9a;
     --theme-accent:       #a78bfa;
+    --theme-on-accent:    #1e1b2e;
     --theme-highlight-bg: rgba(167,139,250,0.35);
     --theme-highlight-text: #f5f3ff;
     --theme-status-progress-bg:   #312e81;
@@ -127,6 +132,7 @@
     --theme-text-secondary: #7aaa96;
     --theme-text-muted:   #4d8070;
     --theme-accent:       #2dd4bf;
+    --theme-on-accent:    #05130f;
     --theme-highlight-bg: rgba(45,212,191,0.28);
     --theme-highlight-text: #ccfbf1;
     --theme-status-progress-bg:   #134e4a;
@@ -151,6 +157,7 @@
     --theme-text-secondary: #000000;
     --theme-text-muted:   #333333;
     --theme-accent:       #000000;
+    --theme-on-accent:    #ffffff;
     --theme-highlight-bg: #000000;
     --theme-highlight-text: #ffffff;
     --theme-status-progress-bg:   #d0e4ff;
@@ -185,6 +192,11 @@
   .bg-theme-muted   { background-color: var(--theme-text-muted); }
   .border-theme     { border-color: var(--theme-border); }
   .text-theme-primary   { color: var(--theme-text-primary); }
+  /* Foreground for text/icons painted on top of a bg-theme-accent fill (count
+     badges). Chosen per-theme to contrast the accent — `text-theme-base` was
+     used here but never existed as a text utility, so badge numbers inherited an
+     arbitrary color that didn't contrast the accent pill. */
+  .text-theme-on-accent { color: var(--theme-on-accent); }
   .text-theme-secondary { color: var(--theme-text-secondary); }
   .text-theme-muted     { color: var(--theme-text-muted); }
   .search-highlight {
