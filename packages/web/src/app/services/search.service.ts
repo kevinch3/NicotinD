@@ -144,7 +144,6 @@ export class SearchService {
   }
 
   reset(): void {
-    this.query.set('');
     this.network.set([]);
     this.networkState.set('idle');
     this.networkResponseCount.set(0);
