@@ -1,4 +1,5 @@
 import { Injectable, signal, computed, effect, untracked } from '@angular/core';
+import type { BufferedRange } from '../lib/buffered-ranges';
 
 export interface Track {
   id: string;
@@ -49,6 +50,11 @@ export type RadioProvider = (seed: {
 // Replenish the queue once it drops to this many remaining tracks.
 const RADIO_MIN_QUEUE = 2;
 
+// How long buffering must persist before surfaces show a spinner. HDD
+// spin-up/seek (multi-second) is the target; cached tracks that start in
+// <250ms must never flash a loader.
+const BUFFERING_VISIBLE_DELAY_MS = 250;
+
 @Injectable({ providedIn: 'root' })
 export class PlayerService {
   private static readonly STORAGE_KEY = 'nicotind_player_state';
@@ -68,6 +74,15 @@ export class PlayerService {
   readonly duration = signal(0);
   readonly seekTo = signal<number | null>(null);
   readonly autoplayBlocked = signal(false);
+
+  // Audio is loading/stalled on the active device (set by PlayerComponent from
+  // native <audio> events). `bufferingVisible` is the render-safe view: it only
+  // turns on after BUFFERING_VISIBLE_DELAY_MS, but turns off instantly.
+  readonly buffering = signal(false);
+  readonly bufferingVisible = signal(false);
+  // Snapshot of audio.buffered (seconds) for the seek bar's loaded-so-far band.
+  readonly bufferedRanges = signal<BufferedRange[]>([]);
+  private bufferingVisibleTimer: ReturnType<typeof setTimeout> | null = null;
 
   // Set by restoreState(); consumed by PlayerComponent.onDuration after audio is ready.
   restoredTime: number | null = null;
@@ -245,6 +260,8 @@ export class PlayerService {
     this.context.set(null);
     this.currentTime.set(0);
     this.duration.set(0);
+    this.setBuffering(false);
+    this.bufferedRanges.set([]);
     localStorage.removeItem(PlayerService.STORAGE_KEY);
   }
 
@@ -387,5 +404,26 @@ export class PlayerService {
 
   setAutoplayBlocked(blocked: boolean): void {
     this.autoplayBlocked.set(blocked);
+  }
+
+  setBuffering(value: boolean): void {
+    this.buffering.set(value);
+    if (value) {
+      if (this.bufferingVisibleTimer !== null || this.bufferingVisible()) return;
+      this.bufferingVisibleTimer = setTimeout(() => {
+        this.bufferingVisibleTimer = null;
+        if (this.buffering()) this.bufferingVisible.set(true);
+      }, BUFFERING_VISIBLE_DELAY_MS);
+    } else {
+      if (this.bufferingVisibleTimer !== null) {
+        clearTimeout(this.bufferingVisibleTimer);
+        this.bufferingVisibleTimer = null;
+      }
+      this.bufferingVisible.set(false);
+    }
+  }
+
+  setBufferedRanges(ranges: BufferedRange[]): void {
+    this.bufferedRanges.set(ranges);
   }
 }
