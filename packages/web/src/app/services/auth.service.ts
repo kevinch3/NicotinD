@@ -1,4 +1,4 @@
-import { Injectable, signal, computed, inject } from '@angular/core';
+import { Injectable, signal, computed, inject, Injector } from '@angular/core';
 import { PlayerService } from './player.service';
 import { SearchService } from './search.service';
 import { TransferService } from './transfer.service';
@@ -14,13 +14,13 @@ import { LibraryApiService } from './api/library-api.service';
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
+  private injector = inject(Injector);
   private player = inject(PlayerService);
   private search = inject(SearchService);
   private transfers = inject(TransferService);
   private acquire = inject(AcquireService);
   private playlists = inject(PlaylistService);
   private watchlist = inject(WatchlistService);
-  private remote = inject(RemotePlaybackService);
   private shareSession = inject(ShareSessionService);
   private autoHunt = inject(AutoHuntService);
   private toasts = inject(ToastService);
@@ -58,7 +58,8 @@ export class AuthService {
     this.acquire.reset();
     this.playlists.reset();
     this.watchlist.reset();
-    this.remote.reset();
+    // Lazy resolve to break circular dependency (RemotePlaybackService injects AuthService)
+    this.injector.get(RemotePlaybackService).reset();
     this.shareSession.reset();
     this.autoHunt.reset();
     this.toasts.reset();
