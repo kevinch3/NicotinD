@@ -21,7 +21,7 @@
     }
     <button type="button" (click)="add.emit()" [disabled]="count() === 0"
       data-testid="selection-add" aria-label="Add to playlist" title="Add to playlist"
-      class="w-8 h-8 flex items-center justify-center rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 transition disabled:opacity-40 disabled:pointer-events-none">
+      class="w-8 h-8 flex items-center justify-center rounded-lg status-done hover:opacity-80 transition disabled:opacity-40 disabled:pointer-events-none">
       <app-icon name="add" [size]="16" />
     </button>
     @if (canDownload()) {
@@ -34,7 +34,7 @@
     @if (canDelete()) {
       <button type="button" (click)="deleteSelected.emit()" [disabled]="count() === 0"
         data-testid="selection-delete" [attr.aria-label]="deleteLabel()" [attr.title]="deleteLabel()"
-        class="w-8 h-8 flex items-center justify-center rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 transition disabled:opacity-40 disabled:pointer-events-none">
+        class="w-8 h-8 flex items-center justify-center rounded-lg status-error hover:opacity-80 transition disabled:opacity-40 disabled:pointer-events-none">
         <app-icon name="delete" [size]="16" />
       </button>
     }

@@ -498,8 +498,8 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
   }
 
   statusClass(status: 'present' | 'partial' | 'missing'): string {
-    if (status === 'present') return 'text-green-400';
-    if (status === 'partial') return 'text-yellow-400';
+    if (status === 'present') return 'text-status-done';
+    if (status === 'partial') return 'text-status-warn';
     return 'text-zinc-500';
   }
 

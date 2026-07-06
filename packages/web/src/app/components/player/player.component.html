@@ -13,7 +13,7 @@
           (click)="unblockAutoplay()"
         >
           <div class="flex items-center gap-3 px-4">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-amber-400 flex-shrink-0">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-status-warn flex-shrink-0">
               <circle cx="12" cy="12" r="10" />
               <polygon points="10,8 16,12 10,16" fill="currentColor" />
             </svg>
@@ -78,7 +78,7 @@
               data-testid="player-shuffle"
               [attr.data-active]="player.shuffle()"
               [class]="'hidden md:flex w-7 h-7 items-center justify-center rounded-full transition ' +
-                (player.shuffle() ? 'text-emerald-400' : 'text-theme-muted hover:text-theme-secondary')"
+                (player.shuffle() ? 'text-status-done' : 'text-theme-muted hover:text-theme-secondary')"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M16 3h5v5" />
@@ -136,7 +136,7 @@
             <button
               (click)="player.cycleRepeat()"
               [class]="'hidden md:flex w-7 h-7 items-center justify-center rounded-full transition relative ' +
-                (player.repeat() !== 'off' ? 'text-emerald-400' : 'text-theme-muted hover:text-theme-secondary')"
+                (player.repeat() !== 'off' ? 'text-status-done' : 'text-theme-muted hover:text-theme-secondary')"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M17 2l4 4-4 4" />
@@ -145,7 +145,7 @@
                 <path d="M21 13v1a4 4 0 01-4 4H3" />
               </svg>
               @if (player.repeat() === 'one') {
-                <span class="absolute -top-1 -right-1 text-[9px] font-bold text-emerald-400">1</span>
+                <span class="absolute -top-1 -right-1 text-[9px] font-bold text-status-done">1</span>
               }
             </button>
           </div>

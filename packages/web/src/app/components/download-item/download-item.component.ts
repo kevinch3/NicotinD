@@ -88,7 +88,7 @@ export const DOWNLOAD_ITEM_TITLE_CLASS = 'text-sm text-theme-primary truncate mi
           </p>
         }
         @if (item().error) {
-          <p class="text-xs text-red-400/70 mt-1 truncate" [title]="item().error">
+          <p class="text-xs text-status-error mt-1 truncate" [title]="item().error">
             {{ item().error }}
           </p>
         }
@@ -103,7 +103,7 @@ export const DOWNLOAD_ITEM_TITLE_CLASS = 'text-sm text-theme-primary truncate mi
               [style.width.%]="item().percent"
             ></div>
           </div>
-          <p class="text-xs text-blue-400 text-right mt-1">{{ item().percent }}%</p>
+          <p class="text-xs text-status-progress text-right mt-1">{{ item().percent }}%</p>
         </div>
       }
 
@@ -122,7 +122,7 @@ export const DOWNLOAD_ITEM_TITLE_CLASS = 'text-sm text-theme-primary truncate mi
       @if (item().canCancel) {
         <button
           (click)="cancel.emit()"
-          class="p-1 text-theme-muted hover:text-red-400 transition flex-shrink-0"
+          class="p-1 text-theme-muted hover:text-status-error transition flex-shrink-0"
           data-testid="download-cancel"
           title="Cancel"
         >
@@ -134,7 +134,7 @@ export const DOWNLOAD_ITEM_TITLE_CLASS = 'text-sm text-theme-primary truncate mi
       @if (item().canRemove && !item().canCancel) {
         <button
           (click)="remove.emit()"
-          class="p-1 text-theme-muted hover:text-red-400 transition flex-shrink-0"
+          class="p-1 text-theme-muted hover:text-status-error transition flex-shrink-0"
           data-testid="download-remove"
           title="Dismiss"
         >

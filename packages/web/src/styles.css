@@ -36,6 +36,8 @@
     --theme-status-done-text:     #86efac;
     --theme-status-error-bg:      rgba(127,29,29,0.6);
     --theme-status-error-text:    #fca5a5;
+    --theme-status-warn-bg:       rgba(120,53,15,0.5);
+    --theme-status-warn-text:     #fcd34d;
   }
 
   [data-theme="daylight"] {
@@ -57,6 +59,8 @@
     --theme-status-done-text:     #166534;
     --theme-status-error-bg:      #fee2e2;
     --theme-status-error-text:    #991b1b;
+    --theme-status-warn-bg:       #fef3c7;
+    --theme-status-warn-text:     #92400e;
   }
 
   [data-theme="warm-paper"] {
@@ -78,6 +82,8 @@
     --theme-status-done-text:     #065f46;
     --theme-status-error-bg:      #fee2e2;
     --theme-status-error-text:    #991b1b;
+    --theme-status-warn-bg:       #fbe6bf;
+    --theme-status-warn-text:     #7c2d12;
   }
 
   [data-theme="oled"] {
@@ -99,6 +105,8 @@
     --theme-status-done-text:     #86efac;
     --theme-status-error-bg:      #450a0a;
     --theme-status-error-text:    #fca5a5;
+    --theme-status-warn-bg:       #451a03;
+    --theme-status-warn-text:     #fcd34d;
   }
 
   [data-theme="twilight"] {
@@ -120,6 +128,8 @@
     --theme-status-done-text:     #86efac;
     --theme-status-error-bg:      #450a0a;
     --theme-status-error-text:    #fca5a5;
+    --theme-status-warn-bg:       rgba(120,53,15,0.45);
+    --theme-status-warn-text:     #fcd34d;
   }
 
   [data-theme="forest"] {
@@ -141,6 +151,8 @@
     --theme-status-done-text:     #86efac;
     --theme-status-error-bg:      #450a0a;
     --theme-status-error-text:    #fca5a5;
+    --theme-status-warn-bg:       #3a2408;
+    --theme-status-warn-text:     #fde68a;
   }
 
   /* E-Ink: maximum contrast, larger base font, no transparency. On low-contrast
@@ -166,6 +178,8 @@
     --theme-status-done-text:     #005000;
     --theme-status-error-bg:      #ffd0d0;
     --theme-status-error-text:    #8b0000;
+    --theme-status-warn-bg:       #fff2d0;
+    --theme-status-warn-text:     #663300;
     font-size: 1.125rem;
     font-weight: 500;
   }
@@ -233,6 +247,20 @@
     background-color: color-mix(in srgb, #22c55e 16%, var(--theme-surface));
     color: color-mix(in srgb, #22c55e 60%, var(--theme-text-primary));
   }
+  /* Themed status colours. The four semantic roles (progress/done/warn/error)
+     each resolve to a per-theme token pair, so a status pill or coloured label
+     stays legible on every preset instead of the old hardcoded
+     `bg-emerald-500/20 text-emerald-400` / `text-amber-500` tints that vanished
+     on the light themes (daylight/warm-paper/eink). `.status-*` = filled pill
+     (bg+text); `.text-status-*` = coloured label only. */
+  .status-progress { background-color: var(--theme-status-progress-bg); color: var(--theme-status-progress-text); }
+  .status-done     { background-color: var(--theme-status-done-bg);     color: var(--theme-status-done-text); }
+  .status-warn     { background-color: var(--theme-status-warn-bg);     color: var(--theme-status-warn-text); }
+  .status-error    { background-color: var(--theme-status-error-bg);    color: var(--theme-status-error-text); }
+  .text-status-progress { color: var(--theme-status-progress-text); }
+  .text-status-done     { color: var(--theme-status-done-text); }
+  .text-status-warn     { color: var(--theme-status-warn-text); }
+  .text-status-error    { color: var(--theme-status-error-text); }
   /* Suppress the iOS/Android long-press callout & translate bubble on player text */
   .no-callout {
     -webkit-touch-callout: none;

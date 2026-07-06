@@ -53,7 +53,7 @@
               [attr.aria-label]="albumDownloaded() ? 'Downloaded — remove offline' : 'Download album'"
               [attr.title]="albumDownloaded() ? 'Downloaded' : 'Download'"
               [class]="'w-10 h-10 flex items-center justify-center rounded-lg transition ' + (albumDownloaded()
-                ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30'
+                ? 'status-done hover:opacity-80'
                 : 'bg-theme-surface-2 text-theme-muted hover:bg-theme-hover')">
               <app-icon name="download" />
             </button>
@@ -62,7 +62,7 @@
             [attr.aria-label]="shareCopied() ? 'Link copied' : 'Share album'"
             [attr.title]="shareCopied() ? 'Link copied!' : 'Share'"
             [class]="'w-10 h-10 flex items-center justify-center rounded-lg transition ' + (shareCopied()
-              ? 'bg-emerald-500/20 text-emerald-400'
+              ? 'status-done'
               : 'bg-theme-surface-2 text-theme-muted hover:bg-theme-hover')">
             <app-icon name="share" />
           </button>
@@ -73,7 +73,7 @@
               Fix metadata
             </button>
             <button (click)="removeAlbum()" [disabled]="deleting()"
-              class="px-4 py-2 rounded-lg text-sm text-red-400 hover:bg-red-500/10 transition disabled:opacity-50">
+              class="px-4 py-2 rounded-lg text-sm text-status-error hover:bg-theme-hover transition disabled:opacity-50">
               {{ deleting() ? 'Removing...' : 'Remove album' }}
             </button>
           }
@@ -82,14 +82,14 @@
     </div>
 
     @if (deleteError()) {
-      <div class="mx-4 mb-4 px-4 py-2 rounded-lg bg-red-500/10 text-red-400 text-sm">
+      <div class="mx-4 mb-4 px-4 py-2 rounded-lg status-error text-sm">
         {{ deleteError() }}
       </div>
     }
 
     @if (preserve.batchFor(selectedAlbum()!.id); as b) {
       @if (b.stoppedAtCap) {
-        <div class="mx-4 mb-4 px-4 py-2 rounded-lg bg-amber-500/10 text-amber-400 text-sm flex items-center justify-between gap-3">
+        <div class="mx-4 mb-4 px-4 py-2 rounded-lg status-warn text-sm flex items-center justify-between gap-3">
           <span>Saved {{ b.done }} of {{ b.total }} — offline storage limit reached.</span>
           <button (click)="preserve.dismissBatch(selectedAlbum()!.id)" class="text-theme-muted hover:text-theme-secondary">Dismiss</button>
         </div>

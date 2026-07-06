@@ -23,7 +23,7 @@
           [attr.aria-label]="genreDownloaded() ? 'Downloaded — remove offline' : 'Download genre'"
           [attr.title]="genreDownloaded() ? 'Downloaded' : 'Download'"
           [class]="'w-9 h-9 flex items-center justify-center rounded-lg transition ' + (genreDownloaded()
-            ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30'
+            ? 'status-done hover:opacity-80'
             : 'bg-theme-surface-2 text-theme-muted hover:bg-theme-hover')">
           <app-icon name="download" />
         </button>
@@ -33,7 +33,7 @@
 
   @if (preserve.batchFor(genreSlug()); as b) {
     @if (b.stoppedAtCap) {
-      <div class="mb-4 px-4 py-2 rounded-lg bg-amber-500/10 text-amber-400 text-sm flex items-center justify-between gap-3">
+      <div class="mb-4 px-4 py-2 rounded-lg status-warn text-sm flex items-center justify-between gap-3">
         <span>Saved {{ b.done }} of {{ b.total }} — offline storage limit reached.</span>
         <button (click)="preserve.dismissBatch(genreSlug())" class="text-theme-muted hover:text-theme-secondary">Dismiss</button>
       </div>
@@ -81,7 +81,7 @@
   }
 
   @if (deleteError()) {
-    <div class="mt-4 px-4 py-2 rounded-lg bg-red-500/10 text-red-400 text-sm">
+    <div class="mt-4 px-4 py-2 rounded-lg status-error text-sm">
       {{ deleteError() }}
     </div>
   }
