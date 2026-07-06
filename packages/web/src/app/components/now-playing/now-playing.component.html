@@ -172,9 +172,12 @@
           <!-- Play/Pause -->
           <button
             (click)="handlePlayPause()"
+            [attr.data-buffering]="showBuffering()"
             class="w-14 h-14 rounded-full bg-zinc-100 text-zinc-900 flex items-center justify-center hover:bg-zinc-200 transition"
           >
-            @if (showPlaying()) {
+            @if (showBuffering()) {
+              <span class="inline-block w-6 h-6 border-[3px] border-current border-t-transparent rounded-full animate-spin"></span>
+            } @else if (showPlaying()) {
               <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
                 <rect x="6" y="4" width="4" height="16" />
                 <rect x="14" y="4" width="4" height="16" />
@@ -429,9 +432,12 @@
                 </button>
                 <button
                   (click)="handlePlayPause()"
+                  [attr.data-buffering]="showBuffering()"
                   class="w-14 h-14 rounded-full bg-white/20 backdrop-blur-sm text-white flex items-center justify-center hover:bg-white/30 transition border border-white/10"
                 >
-                  @if (showPlaying()) {
+                  @if (showBuffering()) {
+                    <span class="inline-block w-5 h-5 border-[3px] border-current border-t-transparent rounded-full animate-spin"></span>
+                  } @else if (showPlaying()) {
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                       <rect x="6" y="4" width="4" height="16" />
                       <rect x="14" y="4" width="4" height="16" />

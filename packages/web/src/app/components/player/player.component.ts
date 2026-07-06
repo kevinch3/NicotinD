@@ -107,6 +107,8 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
     return this.isActiveDevice() ? this.player.isPlaying() : this.remote.remoteIsPlaying();
   });
 
+  readonly showBuffering = computed(() => this.isActiveDevice() && this.player.bufferingVisible());
+
   // Event listener teardown references
   private audioListenerCleanups: (() => void)[] = [];
 

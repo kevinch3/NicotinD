@@ -111,6 +111,8 @@ export class NowPlayingComponent {
     return this.isActiveDevice() ? this.player.isPlaying() : this.remote.remoteIsPlaying();
   });
 
+  readonly showBuffering = computed(() => this.isActiveDevice() && this.player.bufferingVisible());
+
   // Live-follow dismiss gesture: the sheet tracks the finger downward and
   // snaps closed past DISMISS_THRESHOLD_PX, otherwise springs back open.
   readonly dragOffsetPx = signal(0);

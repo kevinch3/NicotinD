@@ -25,6 +25,7 @@ function makePlayerStub() {
     currentTime: signal(0),
     duration: signal(0),
     autoplayBlocked: signal(false),
+    bufferingVisible: signal(false),
     setNowPlayingOpen: () => {},
     seek: () => {},
   };
