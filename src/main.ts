@@ -5,7 +5,7 @@ import { NicotinDConfigSchema, createLogger, generateSecret } from '@nicotind/co
 import { ServiceManager, NativeProcessStrategy } from '@nicotind/service-manager';
 import { Slskd } from '@nicotind/slskd-client';
 import { Lidarr } from '@nicotind/lidarr-client';
-import { createApp } from '@nicotind/api';
+import { createApp, initServerSentry } from '@nicotind/api';
 
 const log = createLogger('nicotind');
 
@@ -22,6 +22,10 @@ function parseBooleanEnv(value: string | undefined): boolean | undefined {
 }
 
 async function main() {
+  // Opt-in server-side error tracking. No-op unless NICOTIND_SENTRY_DSN is set.
+  const sentryOn = initServerSentry();
+  if (sentryOn) log.info('Sentry error tracking enabled');
+
   log.info('Starting NicotinD...');
 
   // 1. Load configuration

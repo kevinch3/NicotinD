@@ -35,7 +35,7 @@ describe('initServerSentry', () => {
     process.env.NICOTIND_SENTRY_DSN = 'https://abc@o1.ingest.sentry.io/1';
     expect(initServerSentry()).toBe(true);
     expect(initMock).toHaveBeenCalledTimes(1);
-    const cfg = initMock.mock.calls[0][0] as Record<string, unknown>;
+    const cfg = (initMock.mock.calls as unknown[][])[0][0] as Record<string, unknown>;
     expect(cfg.dsn).toBe('https://abc@o1.ingest.sentry.io/1');
     expect(cfg.tracesSampleRate).toBe(0.1);
   });
@@ -44,7 +44,7 @@ describe('initServerSentry', () => {
     process.env.NICOTIND_SENTRY_DSN = 'https://abc@o1.ingest.sentry.io/1';
     process.env.NICOTIND_SENTRY_TRACES_SAMPLE_RATE = '0.5';
     initServerSentry();
-    const cfg = initMock.mock.calls[0][0] as Record<string, unknown>;
+    const cfg = (initMock.mock.calls as unknown[][])[0][0] as Record<string, unknown>;
     expect(cfg.tracesSampleRate).toBe(0.5);
   });
 });
