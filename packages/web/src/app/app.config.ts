@@ -5,8 +5,10 @@ import {
   provideAppInitializer,
   isDevMode,
   InjectionToken,
+  ErrorHandler,
 } from '@angular/core';
-import { provideRouter } from '@angular/router';
+import * as Sentry from '@sentry/angular';
+import { provideRouter, Router } from '@angular/router';
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { provideServiceWorker } from '@angular/service-worker';
 import { routes } from './app.routes';
@@ -26,6 +28,16 @@ export const APP_VERSION = new InjectionToken<string>('APP_VERSION');
 export const appConfig: ApplicationConfig = {
   providers: [
     { provide: APP_VERSION, useValue: pkg.version },
+    {
+      provide: ErrorHandler,
+      useValue: Sentry.createErrorHandler({
+        showDialog: false,
+      }),
+    },
+    {
+      provide: Sentry.TraceService,
+      deps: [Router],
+    },
     provideBrowserGlobalErrorListeners(),
     provideRouter(routes),
     provideHttpClient(withInterceptors([authInterceptor])),
@@ -50,6 +62,7 @@ export const appConfig: ApplicationConfig = {
           error: () => {},
         });
       }
+      const traceService = inject(Sentry.TraceService);
       return setup.check();
     }),
     provideServiceWorker('ngsw-worker.js', {

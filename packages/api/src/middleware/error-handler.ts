@@ -1,5 +1,6 @@
 import type { ErrorHandler } from 'hono';
 import { NicotinDError } from '@nicotind/core';
+import * as Sentry from '@sentry/bun';
 
 export const errorHandler: ErrorHandler = (err, c) => {
   if (err instanceof NicotinDError) {
@@ -20,5 +21,9 @@ export const errorHandler: ErrorHandler = (err, c) => {
   }
 
   console.error('Unhandled error:', err);
+  // why: only genuinely unexpected 500-class failures reach Sentry. Expected
+  // client errors (NicotinDError → 4xx) and upstream-offline connectivity errors
+  // are handled and returned above, so they never get captured as noise.
+  Sentry.captureException(err);
   return c.json({ error: 'Internal server error' }, 500);
 };

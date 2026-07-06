@@ -655,3 +655,6 @@ export { DownloadWatcher } from './services/download-watcher.js';
 export { DownloadRetryService } from './services/download-retry.service.js';
 export { AutoAcquireService } from './services/auto-acquire.service.js';
 export { initDatabase, getDatabase } from './db.js';
+// initServerSentry is intentionally NOT re-exported from the barrel: it must be
+// imported via the isolated `@nicotind/api/instrument` subpath so Sentry inits
+// before Hono/http modules load. See src/instrument.ts.

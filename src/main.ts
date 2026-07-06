@@ -1,3 +1,5 @@
+// Must be first: initializes Sentry before Hono/http modules load (see instrument.ts).
+import { sentryEnabled } from './instrument.js';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { parse } from 'yaml';
@@ -23,6 +25,9 @@ function parseBooleanEnv(value: string | undefined): boolean | undefined {
 }
 
 async function main() {
+  // Sentry was initialized at process load (instrument.ts); just report state here.
+  if (sentryEnabled) log.info('Sentry error tracking enabled');
+
   log.info('Starting NicotinD...');
 
   // 1. Load configuration
