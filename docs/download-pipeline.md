@@ -54,6 +54,21 @@ Shared logic lives in `packages/api/src/services/album-dedupe.ts` (`dupKey`/`pic
 
 FLAC is overkill for web streaming and large on disk. `downloads.transcodeLossless` is **default-on at 192 kbps** (config / `NICOTIND_TRANSCODE_LOSSLESS_ENABLED` + `NICOTIND_TRANSCODE_LOSSLESS_BITRATE`; set `enabled:false` to keep originals). When enabled, lossless downloads are transcoded to Opus and **already-lossy files (MP3/AAC/…) are left untouched**. The lossless set is shared (`isLossless()` in `library-track-select.ts`); the encoder is `post-download-transcode.ts` `transcodeToOpus()` (ffmpeg `libopus`, replace-in-place: write `<name>.opus`, drop the original). Everything is gated on `ffmpegAvailable()`.
 
+**Detection is codec-aware, not extension-only** (`isLosslessFile()` in
+`post-download-transcode.ts`): unambiguous extensions (flac/wav/aiff/ape/wv)
+are decided without IO, but `.m4a`/`.m4b`/`.mp4` are probed with
+music-metadata (`format.lossless`) because **ALAC (Apple Lossless) ships in
+the exact same container as lossy AAC** — the `alac` entry in the extension
+set never matches real files. ALAC matters doubly: it's lossless (storage) and
+**no browser can decode it** (Firefox: `NS_ERROR_DOM_MEDIA_METADATA_ERR`,
+Chrome likewise), so an ALAC file that slips through is unplayable in the web
+UI whenever server transcoding is off. Found in real use 2026-07-07: 63 ALAC
+`.m4a`s across 8 albums had bypassed the standardization. A probe failure
+(unreadable/corrupt file, music-metadata absent) answers `false` and the file
+is left untouched. Both the ingest hook and the existing-library migration use
+`isLosslessFile`, so a library pass (`convert-library.ts` / admin
+`POST /api/admin/transcode-library`) also sweeps up historical ALAC.
+
 ### New downloads (no identity churn)
 
 The hook fires in `LibraryOrganizer.placeFile()` **after the move and before the incremental scan**. Because the scanner only ever sees the final `.opus` path, the song's path-derived `songId` is computed once — no orphaned curation, and format-preference dedup keeps working (all kept files are opus). A transcode failure is best-effort: it logs and leaves the original in place.

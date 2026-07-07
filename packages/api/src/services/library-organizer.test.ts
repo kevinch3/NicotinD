@@ -29,6 +29,16 @@ import { ffmpegAvailable } from './transcode.js';
 
 /** Generate a tagged FLAC via ffmpeg (lossless source for the transcode hook). */
 function seedFlac(dir: string, relPath: string, tags: SeedTags): string {
+  return seedAudio(dir, relPath, tags, 'flac');
+}
+
+/** Generate a tagged audio file via ffmpeg with the given codec. */
+function seedAudio(
+  dir: string,
+  relPath: string,
+  tags: SeedTags,
+  codec: 'flac' | 'alac' | 'aac',
+): string {
   const dest = join(dir, relPath);
   mkdirSync(dirname(dest), { recursive: true });
   const meta: string[] = [];
@@ -49,7 +59,7 @@ function seedFlac(dir: string, relPath: string, tags: SeedTags): string {
       '-t',
       '0.3',
       '-c:a',
-      'flac',
+      codec,
       ...meta,
       dest,
     ],
@@ -672,6 +682,80 @@ describe('LibraryOrganizer (real fs)', () => {
       expect(
         existsSync(join(root, 'Boards of Canada', 'Geogaddi', '01 - Music Is Math.opus')),
       ).toBe(false);
+    });
+
+    it.skipIf(!ffmpegAvailable())(
+      'transcodes ALAC hiding in an .m4a — extension checks miss it',
+      async () => {
+        // ALAC (Apple Lossless) uses the same .m4a container as lossy AAC.
+        // Browsers cannot decode ALAC (Firefox: NS_ERROR_DOM_MEDIA_METADATA_ERR),
+        // so it must be standardized to Opus at ingest like every other lossless.
+        const root = tmpRoot();
+        const staging = join(root, '_staging');
+        seedAudio(
+          staging,
+          'Matias Aguayo - Support Alien Invasion/09 - Spread This Number.m4a',
+          {
+            artist: 'Matias Aguayo',
+            album: 'Support Alien Invasion',
+            title: 'Spread This Number',
+            trackNumber: 9,
+          },
+          'alac',
+        );
+        const org = new LibraryOrganizer({
+          musicDir: root,
+          stagingDir: staging,
+          transcodeLossless: { enabled: true, bitRate: 96 },
+        });
+        const result = await org.organizeBatch([
+          {
+            username: 'u',
+            directory: 'Matias Aguayo - Support Alien Invasion',
+            filename: '09 - Spread This Number.m4a',
+            directoryFileCount: 1,
+          },
+        ]);
+
+        expect(result.moved).toBe(1);
+        const dir = join(root, 'Matias Aguayo', 'Support Alien Invasion');
+        expect(existsSync(join(dir, '09 - Spread This Number.opus'))).toBe(true);
+        expect(existsSync(join(dir, '09 - Spread This Number.m4a'))).toBe(false);
+      },
+    );
+
+    it.skipIf(!ffmpegAvailable())('leaves lossy AAC .m4a downloads untouched', async () => {
+      const root = tmpRoot();
+      const staging = join(root, '_staging');
+      seedAudio(
+        staging,
+        'Matias Aguayo - Support Alien Invasion/01 - Rollerskate.m4a',
+        {
+          artist: 'Matias Aguayo',
+          album: 'Support Alien Invasion',
+          title: 'Rollerskate',
+          trackNumber: 1,
+        },
+        'aac',
+      );
+      const org = new LibraryOrganizer({
+        musicDir: root,
+        stagingDir: staging,
+        transcodeLossless: { enabled: true, bitRate: 96 },
+      });
+      const result = await org.organizeBatch([
+        {
+          username: 'u',
+          directory: 'Matias Aguayo - Support Alien Invasion',
+          filename: '01 - Rollerskate.m4a',
+          directoryFileCount: 1,
+        },
+      ]);
+
+      expect(result.moved).toBe(1);
+      const dir = join(root, 'Matias Aguayo', 'Support Alien Invasion');
+      expect(existsSync(join(dir, '01 - Rollerskate.m4a'))).toBe(true);
+      expect(existsSync(join(dir, '01 - Rollerskate.opus'))).toBe(false);
     });
   });
 });
