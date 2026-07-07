@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.156](https://github.com/kevinch3/NicotinD/compare/v0.1.155...v0.1.156) (2026-07-07)
+
+
+### Features
+
+* **web:** show success toast when URL acquire job completes ([071a8bf](https://github.com/kevinch3/NicotinD/commit/071a8bf2a6fe693d2127fe6206f2fb5f6eb49584)), closes [#85](https://github.com/kevinch3/NicotinD/issues/85)
+
+
+### Bug Fixes
+
+* **web:** bypass the Angular service worker for audio stream requests ([034cfab](https://github.com/kevinch3/NicotinD/commit/034cfabe3e15b32e2414dca2d589f01bbad0d5e0)), closes [#87](https://github.com/kevinch3/NicotinD/issues/87)
+* **web:** route the standby-preload stream URL through streamUrl too ([7ad07d3](https://github.com/kevinch3/NicotinD/commit/7ad07d377af46e434bb7102014403a8d2e575374))
+
 ## [0.1.155](https://github.com/kevinch3/NicotinD/compare/v0.1.154...v0.1.155) (2026-07-07)
 
 
