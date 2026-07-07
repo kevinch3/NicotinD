@@ -2,7 +2,7 @@ import { existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Database } from 'bun:sqlite';
 import { createLogger } from '@nicotind/core';
-import { isLossless, transcodeToOpus } from './post-download-transcode.js';
+import { isLossless, isLosslessFile, transcodeToOpus } from './post-download-transcode.js';
 import { ffmpegAvailable } from './transcode.js';
 import { LibraryScanner, songId } from './library-scanner.js';
 
@@ -56,10 +56,23 @@ export async function transcodeLibraryToOpus(
     throw new Error('ffmpeg is required to transcode the library but was not found on PATH');
   }
 
-  const rows = db
+  const allRows = db
     .query<SongRow, []>(`SELECT id, path, suffix, size, starred, hidden FROM library_songs`)
-    .all()
-    .filter((r) => isLossless(r.suffix) || isLossless(r.path.split('.').pop() ?? ''));
+    .all();
+  const rows: SongRow[] = [];
+  for (const r of allRows) {
+    if (isLossless(r.suffix) || isLossless(r.path.split('.').pop() ?? '')) {
+      rows.push(r);
+      continue;
+    }
+    // .m4a-family rows need a codec probe: ALAC (lossless, browser-undecodable)
+    // shares the extension with lossy AAC. Probe only files that exist.
+    const ext = (r.path.split('.').pop() ?? '').toLowerCase();
+    if (['m4a', 'm4b', 'mp4'].includes(ext)) {
+      const abs = join(musicDir, r.path);
+      if (existsSync(abs) && (await isLosslessFile(abs))) rows.push(r);
+    }
+  }
   result.candidates = rows.length;
 
   const scanner = new LibraryScanner(musicDir, db);

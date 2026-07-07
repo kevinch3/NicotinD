@@ -10,7 +10,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, rmSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { isLossless, transcodeToOpus } from './post-download-transcode.js';
+import { isLossless, isLosslessFile, transcodeToOpus } from './post-download-transcode.js';
 import { ffmpegAvailable } from './transcode.js';
 
 const cleanups: Array<() => void> = [];
@@ -25,7 +25,7 @@ function tmpRoot() {
   return root;
 }
 
-function makeFlac(path: string): void {
+function makeAudio(path: string, codec: 'flac' | 'alac' | 'aac'): void {
   execFileSync(
     'ffmpeg',
     [
@@ -39,11 +39,15 @@ function makeFlac(path: string): void {
       '-t',
       '0.3',
       '-c:a',
-      'flac',
+      codec,
       path,
     ],
     { stdio: 'ignore' },
   );
+}
+
+function makeFlac(path: string): void {
+  makeAudio(path, 'flac');
 }
 
 describe('isLossless', () => {
@@ -57,6 +61,40 @@ describe('isLossless', () => {
     for (const s of ['mp3', '.mp3', 'm4a', 'aac', 'opus', 'ogg', '', null, undefined]) {
       expect(isLossless(s)).toBe(false);
     }
+  });
+});
+
+describe('isLosslessFile', () => {
+  it('trusts unambiguous lossless extensions without opening the file', async () => {
+    // Path doesn't exist — extension alone must decide.
+    expect(await isLosslessFile('/nope/track.flac')).toBe(true);
+    expect(await isLosslessFile('/nope/track.WAV')).toBe(true);
+  });
+
+  it('trusts unambiguous lossy extensions without opening the file', async () => {
+    expect(await isLosslessFile('/nope/track.mp3')).toBe(false);
+    expect(await isLosslessFile('/nope/track.opus')).toBe(false);
+  });
+
+  it.skipIf(!ffmpegAvailable())('detects ALAC hiding behind an .m4a extension', async () => {
+    // ALAC ships in the same .m4a container as lossy AAC, so extension checks
+    // miss it — this is how Apple Lossless rips slipped past the Opus
+    // standardization and reached Firefox raw (NS_ERROR_DOM_MEDIA_METADATA_ERR).
+    const root = tmpRoot();
+    const alac = join(root, 'alac.m4a');
+    makeAudio(alac, 'alac');
+    expect(await isLosslessFile(alac)).toBe(true);
+  });
+
+  it.skipIf(!ffmpegAvailable())('leaves lossy AAC .m4a files alone', async () => {
+    const root = tmpRoot();
+    const aac = join(root, 'aac.m4a');
+    makeAudio(aac, 'aac');
+    expect(await isLosslessFile(aac)).toBe(false);
+  });
+
+  it('returns false for an unreadable .m4a instead of throwing', async () => {
+    expect(await isLosslessFile('/nope/missing.m4a')).toBe(false);
   });
 });
 

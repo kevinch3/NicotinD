@@ -36,7 +36,7 @@ import type { AcoustIdLookup } from './acoustid-lookup.js';
 import { normalizeTitle } from './album-hunter.service.js';
 import { reconcileAlbumFolder } from './album-reconcile.js';
 import { albumGroupKey } from './album-grouping.js';
-import { isLossless, transcodeToOpus } from './post-download-transcode.js';
+import { isLosslessFile, transcodeToOpus } from './post-download-transcode.js';
 import { ffmpegAvailable } from './transcode.js';
 import { looksLikeSourceWatermark } from './library-quality.js';
 
@@ -591,7 +591,9 @@ export class LibraryOrganizer {
       // Standardize lossless on Opus before the scan sees the file, so the song's
       // stable id (derived from its final path) is computed once and storage is
       // reclaimed. Best-effort: a transcode failure leaves the original in place.
-      if (this.transcodeLossless.enabled && isLossless(ext) && ffmpegAvailable()) {
+      // isLosslessFile (not isLossless): ALAC hides behind the same .m4a
+      // extension as lossy AAC, so .m4a needs a codec probe.
+      if (this.transcodeLossless.enabled && ffmpegAvailable() && (await isLosslessFile(destPath))) {
         try {
           destPath = await transcodeToOpus(destPath, this.transcodeLossless.bitRate);
         } catch (err) {

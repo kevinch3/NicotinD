@@ -6,7 +6,7 @@
  */
 import { describe, expect, it, afterEach } from 'bun:test';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { Database } from 'bun:sqlite';
@@ -28,6 +28,10 @@ function tmpMusic() {
 }
 
 function makeFlac(musicDir: string, rel: string, title: string): void {
+  makeAudio(musicDir, rel, title, 'flac');
+}
+
+function makeAudio(musicDir: string, rel: string, title: string, codec: 'flac' | 'alac' | 'aac'): void {
   const dest = join(musicDir, rel);
   mkdirSync(dirname(dest), { recursive: true });
   execFileSync(
@@ -43,7 +47,7 @@ function makeFlac(musicDir: string, rel: string, title: string): void {
       '-t',
       '0.3',
       '-c:a',
-      'flac',
+      codec,
       '-metadata',
       'ARTIST=Aphex Twin',
       '-metadata',
@@ -193,4 +197,28 @@ describe('transcodeLibraryToOpus', () => {
     expect(r.candidates).toBe(0);
     expect(r.converted).toBe(0);
   });
+
+  it.skipIf(!ffmpegAvailable())(
+    'treats ALAC .m4a rows as lossless candidates (extension alone misses them)',
+    async () => {
+      const music = tmpMusic();
+      const db = new Database(':memory:');
+      applySchema(db);
+      const alacRel = 'Matias Aguayo/Support Alien Invasion/09 - Spread This Number.m4a';
+      const aacRel = 'Matias Aguayo/Support Alien Invasion/01 - Rollerskate.m4a';
+      makeAudio(music, alacRel, 'Spread This Number', 'alac');
+      makeAudio(music, aacRel, 'Rollerskate', 'aac');
+      seedSongRow(db, alacRel);
+      seedSongRow(db, aacRel);
+      db.run(`UPDATE library_songs SET suffix = 'm4a'`);
+
+      const r = await transcodeLibraryToOpus(db, music, { apply: true, bitRate: 96 });
+      // Only the ALAC file is a candidate; the lossy AAC one is untouched.
+      expect(r.candidates).toBe(1);
+      expect(r.converted).toBe(1);
+      expect(existsSync(join(music, alacRel))).toBe(false);
+      expect(existsSync(join(music, alacRel.replace(/\.m4a$/, '.opus')))).toBe(true);
+      expect(existsSync(join(music, aacRel))).toBe(true);
+    },
+  );
 });

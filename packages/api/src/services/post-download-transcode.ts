@@ -3,10 +3,38 @@ import { renameSync, rmSync } from 'node:fs';
 import { extname } from 'node:path';
 import { createLogger } from '@nicotind/core';
 import { isLossless } from './library-track-select.js';
+import { getMusicMetadata } from './music-metadata-loader.js';
 
 const log = createLogger('post-download-transcode');
 
 export { isLossless };
+
+// Containers that hold either lossy AAC or lossless ALAC — the extension alone
+// can't tell, only the codec inside can.
+const AMBIGUOUS_CONTAINERS = new Set(['m4a', 'm4b', 'mp4']);
+
+/**
+ * Codec-aware lossless check. Unambiguous extensions are decided without IO
+ * (`isLossless`); `.m4a`-family files are probed with music-metadata because
+ * ALAC (Apple Lossless) ships in the exact same container as lossy AAC.
+ * Browsers cannot decode ALAC at all (Firefox surfaces
+ * NS_ERROR_DOM_MEDIA_METADATA_ERR), so missing it here means a file the web
+ * player can only play while server transcoding is enabled. Unreadable or
+ * unparseable files answer `false` — the pipeline then leaves them untouched.
+ */
+export async function isLosslessFile(absPath: string): Promise<boolean> {
+  const ext = extname(absPath).toLowerCase().replace(/^\./, '');
+  if (isLossless(ext)) return true;
+  if (!AMBIGUOUS_CONTAINERS.has(ext)) return false;
+  try {
+    const mm = await getMusicMetadata();
+    if (!mm) return false;
+    const meta = await mm.parseFile(absPath, { duration: false, skipCovers: true });
+    return meta.format.lossless === true;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Transcode a lossless file to Opus **in place**, replacing the original.

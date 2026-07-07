@@ -28,6 +28,8 @@ export interface MMFormat {
   bitrate?: number;
   container?: string;
   codec?: string;
+  /** True when the audio codec is lossless (e.g. FLAC, ALAC) — codec-derived, not extension-derived. */
+  lossless?: boolean;
 }
 
 export interface MMResult {
