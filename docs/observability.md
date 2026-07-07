@@ -29,6 +29,13 @@ surfaces** and inert when unconfigured.
   deliberately skips `NicotinDError` (expected 4xx) and the connectivity 502/503
   branches, so routine "bad request" / "slskd offline" outcomes never become Sentry
   noise.
+- `captureProcessingFailure(report)` is a second, non-HTTP capture path used by the
+  windowed library processor (`library-processing.service.ts`) to report enrichment
+  failures (ffmpeg decode / analysis-sidecar errors) as **one aggregated event per
+  failing task per run**. It tags `scope: 'library-processing'` + `processing_task`,
+  and sets a `['library-processing', task, sample]` fingerprint so a broken decoder
+  collapses into a single grouped issue instead of one event per file. No-op when
+  Sentry is unconfigured. → [library-processing.md](library-processing.md).
 
 ## Config
 
@@ -42,7 +49,8 @@ Web DSN is build-time (`environment.prod.ts`); there is no runtime web-DSN chann
 
 ## Tests
 
-- API: `packages/api/src/observability/sentry.test.ts` (init on/off) +
+- API: `packages/api/src/observability/sentry.test.ts` (init on/off +
+  `captureProcessingFailure` grouping/extra) +
   `packages/api/src/middleware/error-handler.test.ts` (captures 500s, skips 4xx/503).
 - Web: `app/observability/sentry.spec.ts` (init on/off + prod config).
 - CI: API via `ci.yml:52`, web via `ci.yml:58`.

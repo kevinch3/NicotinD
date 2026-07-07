@@ -154,6 +154,27 @@ describe('bpm task', () => {
     const res = await bpm.run(db, ctx({ analyzeBpm: async () => null }), 25);
     expect(res.applied).toBe(0);
     expect(bpm.countPending(db)).toBe(1);
+    // A quiet null (no onError) is not a hard failure — nothing to report.
+    expect(res.failed).toBe(0);
+    expect(res.errorSample).toBeNull();
+  });
+
+  it('counts decode failures and keeps the first error as a sample', async () => {
+    seedSong('a');
+    seedSong('b');
+    const res = await bpm.run(
+      db,
+      ctx({
+        analyzeBpm: async (_abs, onError) => {
+          onError?.(new Error('ffmpeg PCM decode exited with code 183: Invalid data'));
+          return null;
+        },
+      }),
+      25,
+    );
+    expect(res.applied).toBe(0);
+    expect(res.failed).toBe(2);
+    expect(res.errorSample).toContain('code 183');
   });
 });
 
@@ -518,6 +539,22 @@ describe('audio-features task', () => {
     expect(res.applied).toBe(0);
     expect(calls).toBe(1); // aborted after the first failure, not 4 attempts
     expect(features.countPending(db)).toBe(4);
+    // A sidecar *outage* is not counted against individual files.
+    expect(res.failed).toBe(0);
+  });
+
+  it('counts per-file failures when the sidecar is up but rejects a file (404)', async () => {
+    seedSong('a');
+    seedSong('b');
+    const c = ctx({
+      concurrency: 1,
+      analyzeAudioFeatures: async () => null, // sidecar rejects each file…
+      audioFeaturesAvailable: () => true, // …but is otherwise healthy
+    });
+    const res = await features.run(db, c, 25);
+    expect(res.applied).toBe(0);
+    expect(res.failed).toBe(2);
+    expect(res.errorSample).toContain('sidecar');
   });
 });
 

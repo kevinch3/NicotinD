@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { createLogger } from '@nicotind/core';
+import { summarizeFfmpegStderr } from './track-analysis.js';
 
 const log = createLogger('loudness-analysis');
 
@@ -74,7 +75,10 @@ export function computeEnergy(integratedLufs: number, loudnessRange: number): nu
  * energy score. Returns null when ffmpeg fails or produces no summary. Pure
  * analysis — no DB or tag writes.
  */
-export async function analyzeLoudness(absPath: string): Promise<LoudnessResult | null> {
+export async function analyzeLoudness(
+  absPath: string,
+  onError?: (err: unknown) => void,
+): Promise<LoudnessResult | null> {
   const args = [
     '-hide_banner',
     '-nostats',
@@ -88,22 +92,28 @@ export async function analyzeLoudness(absPath: string): Promise<LoudnessResult |
     'null',
     '-',
   ];
-  const stderr = await new Promise<string | null>((resolve) => {
+  // Always keep stderr: on success we parse the ebur128 summary from it; on a
+  // non-zero exit we surface the tail as the failure reason instead of swallowing
+  // it. why: bug where every ebur128 run failed opaquely and the reason was lost.
+  const result = await new Promise<{ code: number | null; stderr: string }>((resolve) => {
     const proc = spawn('ffmpeg', args, { stdio: ['ignore', 'ignore', 'pipe'] });
     const chunks: Buffer[] = [];
     proc.stderr.on('data', (d: Buffer) => chunks.push(d));
-    proc.on('error', () => resolve(null));
-    proc.on('close', (code) => {
-      resolve(code === 0 ? Buffer.concat(chunks).toString('utf8') : null);
-    });
+    proc.on('error', () => resolve({ code: -1, stderr: '' }));
+    proc.on('close', (code) => resolve({ code, stderr: Buffer.concat(chunks).toString('utf8') }));
   });
-  if (stderr === null) {
-    log.warn({ absPath }, 'ebur128 analysis failed');
+  if (result.code !== 0) {
+    const detail = summarizeFfmpegStderr(result.stderr);
+    log.warn({ absPath, detail }, 'ebur128 analysis failed');
+    onError?.(
+      new Error(`ffmpeg ebur128 exited with code ${result.code}${detail ? `: ${detail}` : ''}`),
+    );
     return null;
   }
-  const parsed = parseEbur128Output(stderr);
+  const parsed = parseEbur128Output(result.stderr);
   if (!parsed) {
     log.warn({ absPath }, 'ebur128 produced no summary');
+    onError?.(new Error('ffmpeg ebur128 produced no summary (not decodable audio?)'));
     return null;
   }
   return {

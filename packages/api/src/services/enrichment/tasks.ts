@@ -51,11 +51,14 @@ export interface EnrichmentContext {
     abs: string,
     tags: { bpm?: number; genre?: string; key?: string } & FeatureTags,
   ) => Promise<boolean>;
-  analyzeBpm: (abs: string) => Promise<number | null>;
+  analyzeBpm: (abs: string, onError?: (err: unknown) => void) => Promise<number | null>;
   /** Detect the musical key (e.g. "C major"), or null when undetectable. */
-  analyzeKey: (abs: string) => Promise<string | null>;
+  analyzeKey: (abs: string, onError?: (err: unknown) => void) => Promise<string | null>;
   /** Measure integrated loudness + derived energy, or null on decode failure. */
-  analyzeLoudness: (abs: string) => Promise<LoudnessResult | null>;
+  analyzeLoudness: (
+    abs: string,
+    onError?: (err: unknown) => void,
+  ) => Promise<LoudnessResult | null>;
   /** Analyze one track via the analysis sidecar (library-relative path), or
    *  null on failure. Null client when NICOTIND_ANALYSIS_URL isn't configured. */
   analyzeAudioFeatures: ((relPath: string) => Promise<AudioFeaturesResult | null>) | null;
@@ -73,6 +76,21 @@ export interface EnrichmentRunResult {
   applied: number;
   /** Human labels for the items enriched (for log + UI snippets). */
   labels: string[];
+  /** Items that were attempted (file present, work needed) but errored. */
+  failed: number;
+  /** A representative failure reason from this run, or null when none failed. */
+  errorSample: string | null;
+}
+
+/** Mutable accumulator a task worker uses to tally failures + keep one sample. */
+interface FailureTally {
+  failed: number;
+  sample: string | null;
+}
+
+function recordFailure(tally: FailureTally, err: unknown): void {
+  tally.failed++;
+  if (tally.sample === null) tally.sample = err instanceof Error ? err.message : String(err);
 }
 
 export interface EnrichmentTask {
@@ -106,9 +124,9 @@ export function createEnrichmentContext(deps: {
     ffmpegAvailable: realFfmpegAvailable,
     readTags: (abs) => readAudioTags(abs),
     writeTags: (abs, tags) => writeAudioTags(abs, tags),
-    analyzeBpm: (abs) => realAnalyzeBpm(abs),
-    analyzeKey: (abs) => realAnalyzeKey(abs),
-    analyzeLoudness: (abs) => realAnalyzeLoudness(abs),
+    analyzeBpm: (abs, onError) => realAnalyzeBpm(abs, onError),
+    analyzeKey: (abs, onError) => realAnalyzeKey(abs, onError),
+    analyzeLoudness: (abs, onError) => realAnalyzeLoudness(abs, onError),
     analyzeAudioFeatures: featuresClient ? (relPath) => featuresClient.analyze(relPath) : null,
     audioFeaturesAvailable: () => featuresClient?.healthySnapshot() ?? false,
     lookupGenre: async (artist) => {
@@ -141,6 +159,7 @@ const bpmTask: EnrichmentTask = {
       .all(limit);
 
     const labels: string[] = [];
+    const tally: FailureTally = { failed: 0, sample: null };
     let applied = 0;
     let cursor = 0;
     // Bounded worker pool — each analyzeBpm is a slow ffmpeg decode.
@@ -159,9 +178,10 @@ const bpmTask: EnrichmentTask = {
             bpm = tags.bpm;
             fromTag = true;
           } else {
-            bpm = await ctx.analyzeBpm(abs);
+            bpm = await ctx.analyzeBpm(abs, (err) => recordFailure(tally, err));
           }
-        } catch {
+        } catch (err) {
+          recordFailure(tally, err);
           bpm = null;
         }
         if (!bpm) continue;
@@ -172,7 +192,7 @@ const bpmTask: EnrichmentTask = {
       }
     };
     await Promise.all(Array.from({ length: Math.max(1, ctx.concurrency) }, () => worker()));
-    return { applied, labels };
+    return { applied, labels, failed: tally.failed, errorSample: tally.sample };
   },
 };
 
@@ -211,7 +231,7 @@ const genreTask: EnrichmentTask = {
       applied++;
       labels.push(`${a.song.artist} — ${a.song.title} → ${a.genre}`);
     }
-    return { applied, labels };
+    return { applied, labels, failed: 0, errorSample: null };
   },
 };
 
@@ -239,6 +259,7 @@ const keyTask: EnrichmentTask = {
       .all(limit);
 
     const labels: string[] = [];
+    const tally: FailureTally = { failed: 0, sample: null };
     let applied = 0;
     let cursor = 0;
     const worker = async (): Promise<void> => {
@@ -256,9 +277,10 @@ const keyTask: EnrichmentTask = {
             key = tags.key;
             fromTag = true;
           } else {
-            key = await ctx.analyzeKey(abs);
+            key = await ctx.analyzeKey(abs, (err) => recordFailure(tally, err));
           }
-        } catch {
+        } catch (err) {
+          recordFailure(tally, err);
           key = null;
         }
         if (!key) continue;
@@ -269,7 +291,7 @@ const keyTask: EnrichmentTask = {
       }
     };
     await Promise.all(Array.from({ length: Math.max(1, ctx.concurrency) }, () => worker()));
-    return { applied, labels };
+    return { applied, labels, failed: tally.failed, errorSample: tally.sample };
   },
 };
 
@@ -300,6 +322,7 @@ const energyTask: EnrichmentTask = {
       .all(limit);
 
     const labels: string[] = [];
+    const tally: FailureTally = { failed: 0, sample: null };
     let applied = 0;
     let cursor = 0;
     // Bounded worker pool — each analyzeLoudness is a full-file ffmpeg decode.
@@ -318,9 +341,10 @@ const energyTask: EnrichmentTask = {
             result = { energy: tags.energy, loudness: tags.loudness ?? NaN };
             fromTag = true;
           } else {
-            result = await ctx.analyzeLoudness(abs);
+            result = await ctx.analyzeLoudness(abs, (err) => recordFailure(tally, err));
           }
-        } catch {
+        } catch (err) {
+          recordFailure(tally, err);
           result = null;
         }
         if (!result) continue;
@@ -340,7 +364,7 @@ const energyTask: EnrichmentTask = {
       }
     };
     await Promise.all(Array.from({ length: Math.max(1, ctx.concurrency) }, () => worker()));
-    return { applied, labels };
+    return { applied, labels, failed: tally.failed, errorSample: tally.sample };
   },
 };
 
@@ -378,6 +402,7 @@ const audioFeaturesTask: EnrichmentTask = {
       .all(limit);
 
     const labels: string[] = [];
+    const tally: FailureTally = { failed: 0, sample: null };
     let applied = 0;
     let cursor = 0;
     // The sidecar serializes inference internally, so more than 2 in flight
@@ -426,8 +451,11 @@ const audioFeaturesTask: EnrichmentTask = {
         if (!ctx.analyzeAudioFeatures) return;
         const result = await ctx.analyzeAudioFeatures(song.path).catch(() => null);
         if (!result) {
-          // Sidecar gone mid-batch? Stop pulling more work; songs stay pending.
+          // Sidecar gone mid-batch? Stop pulling more work; songs stay pending
+          // (an outage, not a per-file failure — don't count it against the file).
           if (!ctx.audioFeaturesAvailable()) return;
+          // Sidecar is up but rejected this file (e.g. 404 / unreadable). Count it.
+          recordFailure(tally, new Error('analysis sidecar could not analyze file (see logs)'));
           continue;
         }
         const f = result.features;
@@ -465,7 +493,7 @@ const audioFeaturesTask: EnrichmentTask = {
     await Promise.all(
       Array.from({ length: Math.max(1, Math.min(ctx.concurrency, 2)) }, () => worker()),
     );
-    return { applied, labels };
+    return { applied, labels, failed: tally.failed, errorSample: tally.sample };
   },
 };
 
@@ -546,7 +574,7 @@ const artistImageTask: EnrichmentTask = {
       applied++;
       labels.push(`${artist.name} → ${resolved.source}`);
     }
-    return { applied, labels };
+    return { applied, labels, failed: 0, errorSample: null };
   },
 };
 

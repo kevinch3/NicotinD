@@ -7,12 +7,7 @@
 
 /** Identifier of an enrichment task. Open union — new tasks append here. */
 export type ProcessingTaskId =
-  | 'bpm'
-  | 'genre'
-  | 'key'
-  | 'artist-image'
-  | 'energy'
-  | 'audio-features';
+  'bpm' | 'genre' | 'key' | 'artist-image' | 'energy' | 'audio-features';
 
 /** Daily time window during which background enrichment may run (server-local). */
 export interface ProcessingWindow {
@@ -46,6 +41,11 @@ export interface ProcessingStatus {
   currentTask: ProcessingTaskId | null;
   /** Items enriched in the current/last run. */
   processed: number;
+  /** Items that failed to enrich in the current/last run (decode/sidecar errors). */
+  failed: number;
+  /** A representative failure reason from the current/last run (ffmpeg stderr
+   *  tail, sidecar error, …), or null when the run had no failures. */
+  lastError: string | null;
   /** Total pending across enabled tasks at the start of the run (denominator). */
   total: number;
   /** Most-recent enriched item labels (newest last), capped for display. */
