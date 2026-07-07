@@ -62,4 +62,43 @@ describe('nativeAppCors', () => {
     });
     expect(res.headers.get('Access-Control-Allow-Origin')).not.toBe('https://evil.example');
   });
+
+  // Regression: the real /api/stream route returns `new Response(Bun.file(...), ...)`,
+  // not a string body like the mock handler above. hono/cors's built-in Vary-append
+  // (via c.header() after the route already returned a Response) rebuilds the
+  // Response from res.body, turning a Blob body into a generic ReadableStream — Bun
+  // then writes it chunked over the wire and drops Content-Length. Firefox's <audio>
+  // can't complete a chunked, length-less 206 range read and gets stuck
+  // stalling/re-buffering forever; Chrome tolerates it, which is why this only
+  // showed up on Firefox. Hono's in-process `app.request()` doesn't reproduce this —
+  // the header-dropping happens in Bun's real HTTP writer, so this test spins up an
+  // actual server and fetches it over the wire.
+  it('preserves Content-Length on a Blob-bodied 206 response (Firefox streaming regression)', async () => {
+    const app = new Hono();
+    app.use('/api/*', nativeAppCors());
+    const bytes = new Uint8Array(2048);
+    app.get('/api/stream/:id', () => {
+      const blob = new Blob([bytes]);
+      return new Response(blob.slice(0, 1024), {
+        status: 206,
+        headers: {
+          'content-length': '1024',
+          'content-range': 'bytes 0-1023/2048',
+          'accept-ranges': 'bytes',
+        },
+      });
+    });
+
+    const server = Bun.serve({ port: 0, fetch: app.fetch });
+    try {
+      const res = await fetch(`http://localhost:${server.port}/api/stream/1`, {
+        headers: { Origin: origin },
+      });
+      await res.arrayBuffer();
+      expect(res.headers.get('content-length')).toBe('1024');
+      expect(res.headers.get('transfer-encoding')).toBeNull();
+    } finally {
+      server.stop(true);
+    }
+  });
 });
