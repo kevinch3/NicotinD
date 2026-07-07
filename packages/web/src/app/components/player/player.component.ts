@@ -573,6 +573,13 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
 
     const onWaiting = () => this.player.setBuffering(true);
     const onSeeking = () => this.player.setBuffering(true);
+    // Seeking into an already-buffered region fires no playing/canplay while
+    // paused (readyState never dips), so seeked must clear the flag itself —
+    // but only when data is really there; unbuffered targets keep the spinner
+    // up until waiting/canplay resolve it.
+    const onSeeked = () => {
+      if (audio.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) this.player.setBuffering(false);
+    };
     // stalled also fires on harmless network hiccups while plenty is buffered —
     // only treat it as buffering when playback genuinely can't proceed.
     const onStalled = () => {
@@ -597,6 +604,7 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
     audio.addEventListener('pause', onPause);
     audio.addEventListener('waiting', onWaiting);
     audio.addEventListener('seeking', onSeeking);
+    audio.addEventListener('seeked', onSeeked);
     audio.addEventListener('stalled', onStalled);
     audio.addEventListener('playing', onPlaying);
     audio.addEventListener('canplay', onCanPlay);
@@ -612,6 +620,7 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
       () => audio.removeEventListener('pause', onPause),
       () => audio.removeEventListener('waiting', onWaiting),
       () => audio.removeEventListener('seeking', onSeeking),
+      () => audio.removeEventListener('seeked', onSeeked),
       () => audio.removeEventListener('stalled', onStalled),
       () => audio.removeEventListener('playing', onPlaying),
       () => audio.removeEventListener('canplay', onCanPlay),

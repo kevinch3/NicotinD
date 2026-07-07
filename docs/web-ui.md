@@ -66,7 +66,10 @@ from one source of truth on `PlayerService`:
   begins (Effect 1 / `onEnded` src assignment in `PlayerComponent`) and from
   native audio events: `waiting`/`seeking` set it, `stalled` sets it only when
   `readyState < HAVE_FUTURE_DATA` (plain `stalled` also fires on harmless
-  network hiccups), `playing`/`canplay`/`error` clear it. Active-device only —
+  network hiccups), `playing`/`canplay`/`error` clear it, and `seeked` clears
+  it when `readyState >= HAVE_FUTURE_DATA` (a paused seek into an
+  already-buffered region fires neither `playing` nor `canplay`, so without
+  this the spinner would stick until the next play). Active-device only —
   remote-controller tabs always read `false`.
 - `bufferingVisible` — the render-safe view: turns on only after 250 ms
   (cached tracks must never flash a spinner), turns off instantly. Surfaces

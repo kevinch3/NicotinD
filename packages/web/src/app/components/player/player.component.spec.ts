@@ -482,10 +482,26 @@ describe('PlayerComponent', () => {
       expect(playerService.buffering()).toBe(false);
     });
 
-    it('canplay clears buffering (covers seeks while paused)', () => {
+    it('canplay clears buffering', () => {
       playerService.setBuffering(true);
       fakeAudio.dispatchEvent(new Event('canplay'));
       expect(playerService.buffering()).toBe(false);
+    });
+
+    // canplay does NOT re-fire when seeking lands in an already-buffered region
+    // (readyState never dips), so while paused only seeked can clear the flag.
+    it('seeked into a buffered region clears buffering even while paused', () => {
+      playerService.setBuffering(true);
+      Object.defineProperty(fakeAudio, 'readyState', { value: 4, configurable: true });
+      fakeAudio.dispatchEvent(new Event('seeked'));
+      expect(playerService.buffering()).toBe(false);
+    });
+
+    it('seeked into an unbuffered region keeps buffering until data arrives', () => {
+      playerService.setBuffering(true);
+      Object.defineProperty(fakeAudio, 'readyState', { value: 2, configurable: true });
+      fakeAudio.dispatchEvent(new Event('seeked'));
+      expect(playerService.buffering()).toBe(true);
     });
 
     it('error clears buffering so the spinner cannot spin forever', () => {
