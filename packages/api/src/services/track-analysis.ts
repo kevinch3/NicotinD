@@ -34,6 +34,17 @@ async function getMusicTempo(): Promise<MusicTempoCtor | null> {
   return mtPromise;
 }
 
+/**
+ * A deterministic per-file "the analysis ran but found nothing" outcome (signal
+ * too short/quiet to lock a tempo, no tonal content for key detection). Passed
+ * to `onError` so callers can stop retrying the file — the windowed processor
+ * records it in the analysis-failure ledger (excluding the file after the
+ * attempt cap) but does NOT count it as a run failure, since nothing is broken.
+ * Environmental nulls (music-tempo module unavailable) deliberately do not use
+ * this: they must leave files pending so they're retried once the env is fixed.
+ */
+export class NoConfidentResultError extends Error {}
+
 /** Trim ffmpeg stderr to its last non-empty line(s) for a compact diagnostic. */
 export function summarizeFfmpegStderr(stderr: string, maxLen = 400): string {
   const lines = stderr
@@ -127,13 +138,19 @@ export async function analyzeBpm(
     return null;
   }
   // music-tempo needs a few seconds of audio to produce a meaningful estimate.
-  if (samples.length < ANALYZE_SAMPLE_RATE * 5) return null;
+  if (samples.length < ANALYZE_SAMPLE_RATE * 5) {
+    onError?.(new NoConfidentResultError('audio too short to estimate a tempo'));
+    return null;
+  }
   try {
     const mt = new MusicTempo(samples);
     const bpm = Math.round(mt.tempo);
-    return Number.isFinite(bpm) && bpm > 0 ? bpm : null;
+    if (Number.isFinite(bpm) && bpm > 0) return bpm;
+    onError?.(new NoConfidentResultError('no confident tempo detected'));
+    return null;
   } catch (err) {
     log.warn({ err, absPath }, 'BPM estimation failed');
+    onError?.(new NoConfidentResultError('tempo estimation failed on this signal'));
     return null;
   }
 }
@@ -156,8 +173,13 @@ export async function analyzeKey(
     onError?.(err);
     return null;
   }
-  if (samples.length < ANALYZE_SAMPLE_RATE * 5) return null;
-  return detectKey(samples, ANALYZE_SAMPLE_RATE)?.key ?? null;
+  if (samples.length < ANALYZE_SAMPLE_RATE * 5) {
+    onError?.(new NoConfidentResultError('audio too short to estimate a key'));
+    return null;
+  }
+  const key = detectKey(samples, ANALYZE_SAMPLE_RATE)?.key ?? null;
+  if (key === null) onError?.(new NoConfidentResultError('no tonal content detected'));
+  return key;
 }
 
 /**

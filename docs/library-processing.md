@@ -156,12 +156,19 @@ unconfigured and uses a task+sample `fingerprint` so a broken decoder collapses 
 single Sentry issue rather than one event per file. `runNow` reports once for the whole
 drain; `tick` once per batch.
 
+A "run" for the tally spans one **window session**: tick batches inside the same window
+continue accumulating `processed`/`failed`/`lastError`; the first batch after the phase
+was `outside-window`/`disabled` (or an explicit `runNow`) resets them. why: the tally is
+persisted + reloaded across restarts, so without a session boundary a long-resolved
+failure banner ("38 failed — ffmpeg …") stayed on the panel forever, even after the
+offending files were excluded by the ledger below.
+
 `processOneBatch` leaves the phase `running` between batches; a run's terminal `idle` is
 set exactly once by `finishRun`, so an SSE client sees a single `running → idle`
 completion (not one per batch). The Settings panel uses that transition to toast the
 outcome (see Web).
 
-### Corrupt-file exclusion (stop retrying broken files)
+### Corrupt/undetectable-file exclusion (stop retrying files that can't yield a result)
 
 Without this, a permanently-broken file (e.g. a truncated download that ffmpeg rejects
 with "Invalid data") stays `NULL` forever, so it's re-attempted — and re-alerted — on
@@ -171,6 +178,16 @@ table (keyed `(song_id, task)`) fix that:
 - On a hard per-item failure the worker calls `noteItemFailure`, which both tallies the
   run and `recordAnalysisFailure`s it (incrementing `fail_count`, storing the file `size`
   + a truncated reason).
+- **Undetectable results are ledgered too, but not tallied.** `analyzeBpm`/`analyzeKey`
+  signal a deterministic "analysis ran, found nothing" outcome (signal too short/quiet to
+  lock a tempo, no tonal content) via `NoConfidentResultError` on the `onError` callback.
+  `noteItemFailure` records those in the ledger — otherwise the same undetectable files
+  head the `created DESC` selection and are re-decoded every batch forever, starving
+  everything queued behind them (in prod this wedged the bpm task on ~95 files and kept
+  the corrupt ones from ever reaching the ledger) — but does **not** count them as run
+  failures: nothing is broken, so they must not trip the panel banner or Sentry.
+  Environmental nulls (music-tempo module unavailable) deliberately stay un-ledgered so
+  files remain pending until the environment is fixed.
 - Once `fail_count` reaches `MAX_ANALYSIS_ATTEMPTS` (3), the task's `countPending`/`run`
   SELECTs exclude the file via `notPermanentlyFailedClause` (a bare correlated
   `NOT EXISTS`, threshold + task inlined so it drops into an existing `LIMIT ?` without
@@ -184,7 +201,8 @@ table (keyed `(song_id, task)`) fix that:
   permanently skipping on that would leave the whole library excluded even after the
   sidecar is fixed. `genre`/`artist-image` never fail per audio-file.
 - `countSkippedFiles` (distinct files at the cap) surfaces as `ProcessingStatus.skipped`,
-  shown in the panel as "N files skipped as unreadable (re-download to retry)".
+  shown in the panel as "N files skipped: unreadable or not analyzable (re-download to
+  retry)".
 
 ### Runtime hardening — ffmpeg timeouts
 
