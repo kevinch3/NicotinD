@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.157](https://github.com/kevinch3/NicotinD/compare/v0.1.156...v0.1.157) (2026-07-07)
+
+
+### Bug Fixes
+
+* **web:** stop the track-load effect from aborting its own stream loads ([7fc96d1](https://github.com/kevinch3/NicotinD/commit/7fc96d1e5e9d283aee3391e350665b5a1d0b9c3f))
+
 ## [0.1.156](https://github.com/kevinch3/NicotinD/compare/v0.1.155...v0.1.156) (2026-07-07)
 
 
