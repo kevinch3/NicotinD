@@ -57,7 +57,7 @@ export class ServerConfigService {
    * is Angular's own documented escape hatch: `onFetch()` returns immediately
    * without ever touching the SW driver when it sees this query param.
    */
-  streamUrl(id: string, token: string): string {
+  streamUrl(id: string, token: string | null): string {
     return this.apiUrl(`/api/stream/${id}?token=${token}&ngsw-bypass=1`);
   }
 }

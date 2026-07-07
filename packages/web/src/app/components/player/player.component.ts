@@ -436,9 +436,7 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
               const standby = this.standbyNativeEl;
               if (standby) {
                 this.preloadedTrackId = nextTrack.id;
-                standby.src = this.server.apiUrl(
-                  `/api/stream/${nextTrack.id}?token=${this.auth.token()}`,
-                );
+                standby.src = this.server.streamUrl(nextTrack.id, this.auth.token());
                 standby.preload = 'auto';
                 // load() without play() — just buffer the initial bytes
                 standby.load();
