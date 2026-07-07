@@ -409,7 +409,12 @@ export class PlayerService {
   setBuffering(value: boolean): void {
     this.buffering.set(value);
     if (value) {
-      if (this.bufferingVisibleTimer !== null || this.bufferingVisible()) return;
+      // untracked: callers include PlayerComponent's track-load effect. A plain
+      // bufferingVisible() read here would register it as that effect's
+      // dependency, so the 250ms spinner timer firing would re-run the effect,
+      // re-assign audio.src and abort the in-flight load — endlessly, whenever
+      // a stream's first byte takes longer than the spinner delay.
+      if (this.bufferingVisibleTimer !== null || untracked(() => this.bufferingVisible())) return;
       this.bufferingVisibleTimer = setTimeout(() => {
         this.bufferingVisibleTimer = null;
         if (this.buffering()) this.bufferingVisible.set(true);

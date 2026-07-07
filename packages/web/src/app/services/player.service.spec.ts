@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { effect } from '@angular/core';
 import { PlayerService, type Track, type PlayContext } from './player.service';
 import { vi } from 'vitest';
 
@@ -401,6 +402,40 @@ describe('PlayerService', () => {
       expect(service.buffering()).toBe(false);
       expect(service.bufferingVisible()).toBe(false);
       expect(service.bufferedRanges()).toEqual([]);
+    });
+
+    it('setBuffering(true) inside an effect does not subscribe the effect to bufferingVisible', () => {
+      // Regression: PlayerComponent's track-load effect calls setBuffering(true)
+      // right before assigning audio.src. setBuffering(true)'s guard used to
+      // *read* bufferingVisible(), silently making it a dependency of any
+      // calling effect. Whenever a load took longer than the 250ms spinner
+      // delay, the timer flipped bufferingVisible → the load effect re-ran →
+      // audio.src was re-assigned, aborting the in-flight request — an endless
+      // ~300ms abort loop. Firefox never got past readyState 0 ("track never
+      // plays"); slow first-byte streams (fresh transcodes, remote proxies)
+      // triggered it every time.
+      let runs = 0;
+      TestBed.runInInjectionContext(() => {
+        effect(() => {
+          service.currentTrack(); // the intended dependency, as in the component
+          runs++;
+          service.setBuffering(true);
+        });
+      });
+      TestBed.flushEffects();
+      expect(runs).toBe(1);
+
+      // Fire the 250ms spinner-delay timer → bufferingVisible flips true.
+      vi.advanceTimersByTime(250);
+      expect(service.bufferingVisible()).toBe(true);
+      TestBed.flushEffects();
+      expect(runs).toBe(1); // must NOT re-run: bufferingVisible is not a dependency
+
+      // Buffering clears (canplay) and re-arms (next stall) — still no re-run.
+      service.setBuffering(false);
+      service.setBuffering(true);
+      TestBed.flushEffects();
+      expect(runs).toBe(1);
     });
   });
 });
