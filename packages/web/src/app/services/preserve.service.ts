@@ -222,7 +222,7 @@ export class PreserveService {
     track: Track,
     token: string,
   ): Promise<{ audioBlob: Blob; coverBlob: Blob | null; format: string } | null> {
-    const audioRes = await fetch(this.server.apiUrl(`/api/stream/${track.id}?token=${token}`));
+    const audioRes = await fetch(this.server.streamUrl(track.id, token));
     if (!audioRes.ok) return null;
     const audioBlob = await audioRes.blob();
 

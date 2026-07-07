@@ -167,14 +167,14 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
               db.updateLastAccessed(track.id);
             } else {
               // Metadata exists but blob missing — fall back to stream
-              audio.src = this.server.apiUrl(`/api/stream/${track.id}?token=${token}`);
+              audio.src = this.server.streamUrl(track.id, token);
             }
             audio.play().catch((err) => {
               if (err.name === 'NotAllowedError') this.handlePlayRejection();
             });
           })();
         } else {
-          audio.src = this.server.apiUrl(`/api/stream/${track.id}?token=${token}`);
+          audio.src = this.server.streamUrl(track.id, token);
           audio.play().catch((err) => {
             if (err.name === 'NotAllowedError') this.handlePlayRejection();
           });
@@ -436,9 +436,7 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
               const standby = this.standbyNativeEl;
               if (standby) {
                 this.preloadedTrackId = nextTrack.id;
-                standby.src = this.server.apiUrl(
-                  `/api/stream/${nextTrack.id}?token=${this.auth.token()}`,
-                );
+                standby.src = this.server.streamUrl(nextTrack.id, this.auth.token());
                 standby.preload = 'auto';
                 // load() without play() — just buffer the initial bytes
                 standby.load();
@@ -528,12 +526,12 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
                   this.lastManualObjectUrl = url;
                   audio.src = url;
                 } else {
-                  audio.src = this.server.apiUrl(`/api/stream/${nextTrack.id}?token=${token}`);
+                  audio.src = this.server.streamUrl(nextTrack.id, token);
                 }
                 playNext();
               });
             } else {
-              audio.src = this.server.apiUrl(`/api/stream/${nextTrack.id}?token=${token}`);
+              audio.src = this.server.streamUrl(nextTrack.id, token);
               playNext();
             }
           }

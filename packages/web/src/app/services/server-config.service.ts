@@ -44,4 +44,20 @@ export class ServerConfigService {
       host: window.location.host,
     });
   }
+
+  /**
+   * Absolute URL for streaming a track's audio bytes. Always appends
+   * `ngsw-bypass` — the Angular service worker's `Driver.handleFetch()`
+   * unconditionally intercepts every same-origin fetch (there's no configured
+   * `dataGroup` to opt this path out of), and in Firefox specifically that
+   * interception occasionally throws instead of falling through to a plain
+   * network passthrough for a Range request, which surfaces as "ServiceWorker
+   * intercepted the request and encountered an unexpected error" and a track
+   * that never plays (intermittent — only some tracks hit it). `ngsw-bypass`
+   * is Angular's own documented escape hatch: `onFetch()` returns immediately
+   * without ever touching the SW driver when it sees this query param.
+   */
+  streamUrl(id: string, token: string | null): string {
+    return this.apiUrl(`/api/stream/${id}?token=${token}&ngsw-bypass=1`);
+  }
 }

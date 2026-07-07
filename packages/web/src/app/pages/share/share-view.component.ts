@@ -56,7 +56,7 @@ export class ShareViewComponent implements OnInit, OnDestroy {
   readonly streamUrl = computed(() => {
     const track = this.currentTrack();
     const jwt = this.shareSession.shareJwt();
-    return track && jwt ? this.server.apiUrl(`/api/stream/${track.id}?token=${jwt}`) : null;
+    return track && jwt ? this.server.streamUrl(track.id, jwt) : null;
   });
 
   async ngOnInit(): Promise<void> {
