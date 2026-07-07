@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.160](https://github.com/kevinch3/NicotinD/compare/v0.1.159...v0.1.160) (2026-07-07)
+
+
+### Features
+
+* **library-processing:** exclude permanently-broken files + harden the analysis runtime ([520805d](https://github.com/kevinch3/NicotinD/commit/520805d558e916813a6d77b79e24e7b39dae587d))
+
 ## [0.1.159](https://github.com/kevinch3/NicotinD/compare/v0.1.158...v0.1.159) (2026-07-07)
 
 
