@@ -2,6 +2,7 @@ import { describe, expect, it, beforeEach } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { applySchema } from '../../db.js';
 import { ENRICHMENT_TASKS, getTask, type EnrichmentContext } from './tasks.js';
+import { MAX_ANALYSIS_ATTEMPTS } from './analysis-failures.js';
 
 let db: Database;
 
@@ -175,6 +176,53 @@ describe('bpm task', () => {
     expect(res.applied).toBe(0);
     expect(res.failed).toBe(2);
     expect(res.errorSample).toContain('code 183');
+  });
+});
+
+describe('corrupt-file exclusion', () => {
+  const bpm = getTask('bpm')!;
+  const alwaysFails = () =>
+    ctx({
+      analyzeBpm: async (_abs, onError) => {
+        onError?.(new Error('ffmpeg PCM decode exited with code 183: Invalid data'));
+        return null;
+      },
+    });
+
+  it('drops a repeatedly-failing file out of the pending set after the cap', async () => {
+    seedSong('a');
+    expect(bpm.countPending(db)).toBe(1);
+    // Each run attempts + fails the file once; after the cap it is excluded.
+    for (let i = 0; i < MAX_ANALYSIS_ATTEMPTS; i++) {
+      await bpm.run(db, alwaysFails(), 25);
+    }
+    expect(bpm.countPending(db)).toBe(0);
+    // A further run doesn't even attempt it (nothing selected → no failures).
+    const res = await bpm.run(db, alwaysFails(), 25);
+    expect(res.failed).toBe(0);
+  });
+
+  it('clears the failure record when the file later succeeds', async () => {
+    seedSong('a');
+    await bpm.run(db, alwaysFails(), 25); // one failure recorded
+    // A subsequent good run enriches it and wipes the ledger row.
+    const res = await bpm.run(db, ctx({ analyzeBpm: async () => 120 }), 25);
+    expect(res.applied).toBe(1);
+    const remaining = db
+      .query<{ n: number }, []>('SELECT COUNT(*) AS n FROM library_song_analysis_failures')
+      .get()!.n;
+    expect(remaining).toBe(0);
+  });
+
+  it('re-includes a file after it is re-downloaded (size change)', async () => {
+    seedSong('a');
+    for (let i = 0; i < MAX_ANALYSIS_ATTEMPTS; i++) {
+      await bpm.run(db, alwaysFails(), 25);
+    }
+    expect(bpm.countPending(db)).toBe(0);
+    // seedSong inserts size 10; simulate a re-download by changing it.
+    db.run("UPDATE library_songs SET size = 9999 WHERE id = 'a'");
+    expect(bpm.countPending(db)).toBe(1);
   });
 });
 

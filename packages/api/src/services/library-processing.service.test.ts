@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { applySchema } from '../db.js';
 import { setProcessingSettings } from './processing-settings.js';
 import { LibraryProcessingService } from './library-processing.service.js';
-import type { EnrichmentContext } from './enrichment/tasks.js';
+import { getTask, type EnrichmentContext } from './enrichment/tasks.js';
 
 let db: Database;
 let dataDir: string;
@@ -216,6 +216,38 @@ describe('LibraryProcessingService', () => {
     const { status } = svc.getState();
     expect(status.failed).toBe(3);
     expect(status.lastError).toContain('code 183');
+  });
+
+  it('excludes a permanently-failing file after repeated runs and reports it skipped', async () => {
+    seedSong('s0');
+    setProcessingSettings(db, {
+      batchSize: 10,
+      tasks: { bpm: true, genre: false, key: false, energy: false },
+    });
+    const failingCtx = (): EnrichmentContext => ({
+      ...fakeCtx({ analyzed: 0, genreLookups: 0 })(),
+      analyzeBpm: async (_abs, onError) => {
+        onError?.(new Error('ffmpeg PCM decode exited with code 183: Invalid data'));
+        return null;
+      },
+    });
+    const svc = new LibraryProcessingService({
+      db,
+      lidarr: {} as never,
+      musicDir: '/music',
+      dataDir,
+      now: () => new Date(2024, 0, 1, 12, 0),
+      contextFactory: failingCtx,
+      reportFailure: () => {},
+    });
+
+    // Each runNow attempts the file once (then stops on no progress). After the
+    // attempt cap the file is excluded and reported as skipped.
+    expect(pendingBpm()).toBe(1);
+    for (let i = 0; i < 3; i++) await svc.runNow();
+
+    expect(getTask('bpm')!.countPending(db)).toBe(0);
+    expect(svc.getState().status.skipped).toBe(1);
   });
 
   it('persists status across a restart', async () => {

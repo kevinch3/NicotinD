@@ -17,6 +17,11 @@ import { setArtwork } from '../artwork-store.js';
 import { isPlaceholderArtist } from '../artwork-backfill.js';
 import { indexLidarrArtists, resolveArtistImageUrl } from '../artist-image.js';
 import { clearCoverNegativeCache } from '../../routes/streaming.js';
+import {
+  recordAnalysisFailure,
+  clearAnalysisFailure,
+  notPermanentlyFailedClause,
+} from './analysis-failures.js';
 
 /**
  * Enrichment task registry — the single extension point for the windowed library
@@ -34,6 +39,8 @@ interface SongRow {
   path: string;
   artist: string;
   title: string;
+  /** Byte size — recorded with a failure so a re-download (size change) resets it. */
+  size: number | null;
 }
 
 /** Injected dependencies + swappable primitives for an enrichment run. */
@@ -93,6 +100,22 @@ function recordFailure(tally: FailureTally, err: unknown): void {
   if (tally.sample === null) tally.sample = err instanceof Error ? err.message : String(err);
 }
 
+/**
+ * A hard per-item failure: tally it for this run's reporting *and* persist it to
+ * the per-file ledger so a permanently-broken file eventually drops out of the
+ * task's pending set (see analysis-failures.ts).
+ */
+function noteItemFailure(
+  db: Database,
+  tally: FailureTally,
+  song: SongRow,
+  task: ProcessingTaskId,
+  err: unknown,
+): void {
+  recordFailure(tally, err);
+  recordAnalysisFailure(db, song.id, task, err, song.size);
+}
+
 export interface EnrichmentTask {
   id: ProcessingTaskId;
   label: string;
@@ -146,7 +169,9 @@ const bpmTask: EnrichmentTask = {
     Number(
       (
         db
-          .query<{ n: number }, []>('SELECT COUNT(*) AS n FROM library_songs WHERE bpm IS NULL')
+          .query<{ n: number }, []>(
+            `SELECT COUNT(*) AS n FROM library_songs WHERE bpm IS NULL${notPermanentlyFailedClause('bpm')}`,
+          )
           .get() ?? { n: 0 }
       ).n,
     ),
@@ -155,7 +180,7 @@ const bpmTask: EnrichmentTask = {
       .query<
         SongRow,
         [number]
-      >('SELECT id, path, artist, title FROM library_songs WHERE bpm IS NULL ORDER BY created DESC LIMIT ?')
+      >(`SELECT id, path, artist, title, size FROM library_songs WHERE bpm IS NULL${notPermanentlyFailedClause('bpm')} ORDER BY created DESC LIMIT ?`)
       .all(limit);
 
     const labels: string[] = [];
@@ -178,15 +203,16 @@ const bpmTask: EnrichmentTask = {
             bpm = tags.bpm;
             fromTag = true;
           } else {
-            bpm = await ctx.analyzeBpm(abs, (err) => recordFailure(tally, err));
+            bpm = await ctx.analyzeBpm(abs, (err) => noteItemFailure(db, tally, song, 'bpm', err));
           }
         } catch (err) {
-          recordFailure(tally, err);
+          noteItemFailure(db, tally, song, 'bpm', err);
           bpm = null;
         }
         if (!bpm) continue;
         db.run('UPDATE library_songs SET bpm = ? WHERE id = ?', [bpm, song.id]);
         if (!fromTag) await ctx.writeTags(abs, { bpm }).catch(() => false);
+        clearAnalysisFailure(db, song.id, 'bpm');
         applied++;
         labels.push(`${song.artist} — ${song.title} → ${bpm} BPM`);
       }
@@ -246,7 +272,7 @@ const keyTask: EnrichmentTask = {
           .query<
             { n: number },
             []
-          >("SELECT COUNT(*) AS n FROM library_songs WHERE key IS NULL OR key = ''")
+          >(`SELECT COUNT(*) AS n FROM library_songs WHERE (key IS NULL OR key = '')${notPermanentlyFailedClause('key')}`)
           .get() ?? { n: 0 }
       ).n,
     ),
@@ -255,7 +281,7 @@ const keyTask: EnrichmentTask = {
       .query<
         SongRow,
         [number]
-      >("SELECT id, path, artist, title FROM library_songs WHERE key IS NULL OR key = '' ORDER BY created DESC LIMIT ?")
+      >(`SELECT id, path, artist, title, size FROM library_songs WHERE (key IS NULL OR key = '')${notPermanentlyFailedClause('key')} ORDER BY created DESC LIMIT ?`)
       .all(limit);
 
     const labels: string[] = [];
@@ -277,15 +303,16 @@ const keyTask: EnrichmentTask = {
             key = tags.key;
             fromTag = true;
           } else {
-            key = await ctx.analyzeKey(abs, (err) => recordFailure(tally, err));
+            key = await ctx.analyzeKey(abs, (err) => noteItemFailure(db, tally, song, 'key', err));
           }
         } catch (err) {
-          recordFailure(tally, err);
+          noteItemFailure(db, tally, song, 'key', err);
           key = null;
         }
         if (!key) continue;
         db.run('UPDATE library_songs SET key = ? WHERE id = ?', [key, song.id]);
         if (!fromTag) await ctx.writeTags(abs, { key }).catch(() => false);
+        clearAnalysisFailure(db, song.id, 'key');
         applied++;
         labels.push(`${song.artist} — ${song.title} → ${key}`);
       }
@@ -309,7 +336,9 @@ const energyTask: EnrichmentTask = {
     Number(
       (
         db
-          .query<{ n: number }, []>('SELECT COUNT(*) AS n FROM library_songs WHERE energy IS NULL')
+          .query<{ n: number }, []>(
+            `SELECT COUNT(*) AS n FROM library_songs WHERE energy IS NULL${notPermanentlyFailedClause('energy')}`,
+          )
           .get() ?? { n: 0 }
       ).n,
     ),
@@ -318,7 +347,7 @@ const energyTask: EnrichmentTask = {
       .query<
         SongRow,
         [number]
-      >('SELECT id, path, artist, title FROM library_songs WHERE energy IS NULL ORDER BY created DESC LIMIT ?')
+      >(`SELECT id, path, artist, title, size FROM library_songs WHERE energy IS NULL${notPermanentlyFailedClause('energy')} ORDER BY created DESC LIMIT ?`)
       .all(limit);
 
     const labels: string[] = [];
@@ -341,10 +370,12 @@ const energyTask: EnrichmentTask = {
             result = { energy: tags.energy, loudness: tags.loudness ?? NaN };
             fromTag = true;
           } else {
-            result = await ctx.analyzeLoudness(abs, (err) => recordFailure(tally, err));
+            result = await ctx.analyzeLoudness(abs, (err) =>
+              noteItemFailure(db, tally, song, 'energy', err),
+            );
           }
         } catch (err) {
-          recordFailure(tally, err);
+          noteItemFailure(db, tally, song, 'energy', err);
           result = null;
         }
         if (!result) continue;
@@ -359,6 +390,7 @@ const energyTask: EnrichmentTask = {
             .writeTags(abs, { energy: result.energy, loudness: loudness ?? undefined })
             .catch(() => false);
         }
+        clearAnalysisFailure(db, song.id, 'energy');
         applied++;
         labels.push(`${song.artist} — ${song.title} → energy ${result.energy.toFixed(2)}`);
       }

@@ -58,4 +58,7 @@ export interface ProcessingStatus {
   taskPending: Record<ProcessingTaskId, number>;
   /** Per-task availability: `true` if runnable, else a human reason it can't run. */
   availability: Record<ProcessingTaskId, true | string>;
+  /** Distinct files excluded from processing after repeated hard decode failures
+   *  (corrupt/unreadable); auto-cleared when the file is repaired (size change). */
+  skipped: number;
 }

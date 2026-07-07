@@ -16,6 +16,7 @@ import {
 } from './enrichment/tasks.js';
 import type { AudioFeaturesClient } from './audio-features-client.js';
 import { captureProcessingFailure, type ProcessingFailureReport } from '../observability/sentry.js';
+import { countSkippedFiles } from './enrichment/analysis-failures.js';
 
 const log = createLogger('library-processing');
 
@@ -314,6 +315,7 @@ export class LibraryProcessingService extends EventEmitter {
       phase,
       taskPending,
       availability,
+      skipped: countSkippedFiles(this.db),
       updatedAt: this.status.updatedAt,
     };
   }
@@ -379,6 +381,7 @@ export class LibraryProcessingService extends EventEmitter {
         energy: 'unknown',
         'audio-features': 'unknown',
       },
+      skipped: 0,
     };
     const row = this.db
       .query<{ value: string }, [string]>('SELECT value FROM app_settings WHERE key = ?')

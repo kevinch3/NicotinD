@@ -11,6 +11,10 @@ const log = createLogger('track-analysis');
 // keeping the decode fast and memory bounded.
 const ANALYZE_SAMPLE_RATE = 44_100;
 const ANALYZE_SECONDS = 90;
+// Hard wall-clock cap on a single ffmpeg decode. A 90 s slice decodes far faster
+// than realtime, so this only ever trips on a pathological/hung file — killing it
+// keeps one bad file from wedging a worker (and the whole run) forever.
+const DECODE_TIMEOUT_MS = 120_000;
 
 type MusicTempoCtor = new (
   audioData: Float32Array | number[],
@@ -70,10 +74,23 @@ function decodePcm(absPath: string): Promise<Float32Array> {
     // and "Invalid data" (corrupt file). why: bug where every decode failed with
     // an opaque "exited with code 183" and the real reason was thrown away.
     const errChunks: Buffer[] = [];
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      proc.kill('SIGKILL');
+    }, DECODE_TIMEOUT_MS);
     proc.stdout.on('data', (d: Buffer) => chunks.push(d));
     proc.stderr.on('data', (d: Buffer) => errChunks.push(d));
-    proc.on('error', reject);
+    proc.on('error', (err) => {
+      clearTimeout(timer);
+      reject(err);
+    });
     proc.on('close', (code) => {
+      clearTimeout(timer);
+      if (timedOut) {
+        reject(new Error(`ffmpeg PCM decode timed out after ${DECODE_TIMEOUT_MS}ms`));
+        return;
+      }
       if (code !== 0) {
         const detail = summarizeFfmpegStderr(Buffer.concat(errChunks).toString('utf8'));
         reject(

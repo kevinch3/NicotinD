@@ -568,6 +568,25 @@ export function applySchema(db: Database): void {
     )
   `);
 
+  // Per-(song, task) analysis failure ledger. A file that hard-fails a decode/
+  // sidecar analysis (e.g. a corrupt "Invalid data" mp3) is recorded here; once
+  // fail_count reaches the task's attempt cap the windowed processor excludes it
+  // (see enrichment/analysis-failures.ts), so a permanently-broken file stops
+  // being retried — and re-alerting — every run. file_size is the size at the
+  // last failure: a re-download changes it, which clears the skip and lets the
+  // repaired file be retried. A successful analysis also clears the row.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS library_song_analysis_failures (
+      song_id      TEXT NOT NULL,
+      task         TEXT NOT NULL,
+      fail_count   INTEGER NOT NULL DEFAULT 0,
+      last_error   TEXT,
+      file_size    INTEGER,
+      last_attempt INTEGER NOT NULL,
+      PRIMARY KEY (song_id, task)
+    )
+  `);
+
   db.run(`
     CREATE TABLE IF NOT EXISTS library_artists (
       id              TEXT PRIMARY KEY,
