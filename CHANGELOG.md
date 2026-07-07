@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.159](https://github.com/kevinch3/NicotinD/compare/v0.1.158...v0.1.159) (2026-07-07)
+
+
+### Features
+
+* **library-processing:** diagnose enrichment failures, surface them, report to Sentry ([d3a60b3](https://github.com/kevinch3/NicotinD/commit/d3a60b36bebd8d649e9ffdb952c8aa6ebf3524fa))
+
 ## [0.1.158](https://github.com/kevinch3/NicotinD/compare/v0.1.157...v0.1.158) (2026-07-07)
 
 
