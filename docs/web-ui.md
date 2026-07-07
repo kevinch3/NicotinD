@@ -56,6 +56,63 @@ CSS custom properties set via `[data-theme]` on `<html>`. Seven built-in presets
 - **Seek bar (`app-seek-bar`, native range)**: all three seek bars — the mini-player's desktop bar, the mini-player's **mobile bottom-edge bar** (the only progress UI the mini bar shows on mobile, so it must seek), and Now Playing — share one component, `components/seek-bar/seek-bar.component.ts`, which is a **native `<input type="range">`**. This replaced a bespoke `<div>` + `createPointerDrag` + `getBoundingClientRect` implementation that **kept regressing on Firefox desktop** (click-to-seek and drag did nothing, while touch worked) — the exact failure class of hand-rolled pointer handling. A native range delegates click-anywhere, drag, touch, and **keyboard (arrow keys)** to the browser uniformly across engines, and renders a real **draggable thumb**. The control emits `seek` once on commit (pointer release / keyboard change) so the parent's active-vs-remote dispatch (set `audio.currentTime`, or send a WS `SEEK`) runs once instead of spamming on every drag tick; while scrubbing, the thumb follows a local value so a re-fed `position` can't snap it back. Styling lives in **global** `styles.css` (`.seek-range` + `::-webkit-slider-thumb`/`::-moz-range-thumb`/`::-moz-range-progress`) so the vendor pseudo-elements aren't rewritten by Angular view encapsulation; the fill uses `--theme-accent`. Fill-% math is the DI-free `seekPercent()` in `lib/seek-utils.ts` (unit-tested). The input carries `data-seek` so the mini bar's tap/swipe-to-open handler (`onBarPointerDown` excludes `[data-seek]` targets) never hijacks a scrub; the e2e `player-seek` testid sits on the desktop wrapper to stay unique across the desktop/mobile instances. `createPointerDrag` (`lib/pointer-drag.ts`) is retained for the unrelated mini-bar-open and sheet-dismiss gestures.
 - **Playback auto-radio**: `PlayerService.radio` (persisted in the player state snapshot) keeps playback going — a constructor `effect()` watching `queue().length` calls `replenishRadio()` when the queue drains to `RADIO_MIN_QUEUE` (and `repeat==='off'`), appending fresh tracks (de-duped against current/queue/recent history). The `RadioProvider` registered by `LayoutComponent` calls `GET /api/radio/next` with the current track as seed — the server scores candidates by BPM, key (Camelot), genre, year, duration, and artist diversity, returning musically similar tracks. Falls back to shuffled recent songs when no seed track. `PlayerService` stays HTTP-free via the `RadioProvider` callback. Toggle lives in the Now Playing sheet. → [docs/radio.md](../docs/radio.md)
 
+## Playback loading feedback (HDD-aware loaders)
+
+Libraries often sit on HDDs: starting an uncached track or seeking into an
+untranscoded region can take multiple seconds. All loading feedback derives
+from one source of truth on `PlayerService`:
+
+- `buffering` — raw state. Set synchronously the moment a new track load
+  begins (Effect 1 / `onEnded` src assignment in `PlayerComponent`) and from
+  native audio events: `waiting`/`seeking` set it, `stalled` sets it only when
+  `readyState < HAVE_FUTURE_DATA` (plain `stalled` also fires on harmless
+  network hiccups), `playing`/`canplay`/`error` clear it. Active-device only —
+  remote-controller tabs always read `false`.
+- `bufferingVisible` — the render-safe view: turns on only after 250 ms
+  (cached tracks must never flash a spinner), turns off instantly. Surfaces
+  bind to this, never to raw `buffering`.
+- `bufferedRanges` — snapshot of `audio.buffered` (from `progress` events),
+  cleared on every new load and when the device goes remote.
+
+Surfaces:
+
+- **Play/pause buttons** (mini-player + Now Playing, incl. the lyrics-panel
+  controls): spinner replaces the icon while `bufferingVisible`; the button
+  stays clickable (pause = cancel).
+- **Track rows** (`TrackRowComponent`, injected `PlayerService`): the current
+  row accents its title and swaps the index number for a spinner (buffering),
+  animated `.eq-bars` (playing), or static bars (paused) — logic in the pure
+  `rowPlaybackState` helper (`lib/row-playback-state.ts`). Because
+  `currentTrack` is set synchronously on click, the row acknowledges a tap
+  before any bytes arrive. E2e contract: `data-testid="track-row"`,
+  `data-testid="track-row-title"`,
+  `data-playback-state="buffering|playing|paused"`.
+- **Seek bar**: `buffered` input renders `bufferedRanges` as a lighter band
+  (`--seek-buffered-bg` gradient built by the pure `computeBufferedSegments` +
+  `bufferedGradient` helpers in `lib/buffered-ranges.ts`) under the accent
+  fill, so users can see what's safe to seek into. Firefox keeps its native
+  `::-moz-range-progress` fill; the band rides the track background in both
+  engines.
+
+Deliberately out of scope: buffering over the remote-playback WS protocol
+(controller tabs show remote state, not remote buffering).
+
+**Testing `input()`-signal components (JIT vitest limitation)**: the web unit
+suite runs on the JIT/vitest harness (`@angular/compiler`, no ngtsc build
+step), which has no compile-time transform for signal `input()`/
+`input.required()` — neither a template `[foo]="value"` binding nor
+`componentRef.setInput()` reaches the input (see "Web JIT vitest can't drive
+input() signals" in project memory). `track-row.component.spec.ts` and
+`seek-bar.component.spec.ts` (the specs driving the buffering/playback-state
+and buffered-band DOM output) work around this with a local `setInputValue`
+helper that writes straight to the input's underlying signal node via
+Angular's `ɵSIGNAL` symbol, called **before** the fixture's first
+`detectChanges()` (the raw write bypasses `signalSetFn`, so anything that
+already read the signal wouldn't be notified). This exercises the real
+production template/CSS — it only swaps out *how* the input value gets in —
+and is the pattern to reuse for any new component spec that needs to drive
+`input()` values directly rather than through a parent/host template.
+
 ## Changelog Modal
 
 Clicking the version string in the **desktop header** (`layout.component`, `data-testid="version-changelog"`) or the **Settings page footer** (`settings.component`, `data-testid="version-changelog-settings"`) opens a scrollable modal showing the project's release history — versions, dates, and commit links from `CHANGELOG.md`.
