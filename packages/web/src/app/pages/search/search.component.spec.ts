@@ -201,7 +201,7 @@ describe('SearchComponent — metadata-driven search', () => {
     expect(component.hasBlendedResults()).toBe(true);
   });
 
-  it('getBlended submits a url candidate through the acquire pipeline and marks it started', async () => {
+  it('getBlended submits a url candidate through the acquire pipeline and marks it added to library', async () => {
     const { component, acquireSubmit } = setup();
     const candidate = {
       id: 'archive:a1',

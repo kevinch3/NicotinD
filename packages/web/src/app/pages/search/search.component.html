@@ -291,7 +291,7 @@
               }
             </div>
             @if (blendedState(c) === 'done') {
-              <span class="shrink-0 text-xs text-emerald-400">Started ✓</span>
+              <span class="shrink-0 text-xs text-emerald-400">Added to library ✓</span>
             } @else {
               <button
                 (click)="getBlended(c)"
@@ -749,8 +749,8 @@
               }
               @if (job.state === 'queued' || job.state === 'running') {
                 <span class="shrink-0 w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
-              } @else if (job.state === 'done') {
-                <span class="shrink-0 text-xs text-emerald-400">Done</span>
+              }               @else if (job.state === 'done') {
+                <span class="shrink-0 text-xs text-emerald-400">Added to library</span>
               } @else if (job.state === 'failed') {
                 <span class="shrink-0 text-xs text-red-400" [title]="job.error ?? ''">Failed</span>
               }
