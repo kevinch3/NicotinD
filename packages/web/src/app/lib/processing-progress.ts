@@ -36,3 +36,34 @@ export function totalPending(status: Pick<ProcessingStatus, 'taskPending'>): num
 export function isComplete(status: Pick<ProcessingStatus, 'taskPending'>): boolean {
   return totalPending(status) === 0;
 }
+
+/** True while a run is actively working (drives the disabled "Run now" button). */
+export function isRunning(status: Pick<ProcessingStatus, 'phase'>): boolean {
+  return status.phase === 'running';
+}
+
+/**
+ * Toast message for a settled run, or null when there's nothing worth surfacing.
+ * A run with failures is an error; an all-clear run that enriched something is a
+ * success; a no-op run (nothing pending) returns null (the "started" toast said
+ * enough).
+ */
+export function runOutcomeToast(
+  status: Pick<ProcessingStatus, 'processed' | 'failed' | 'lastError'>,
+): { kind: 'success' | 'error'; message: string } | null {
+  if (status.failed > 0) {
+    const reason = status.lastError ? ` — ${status.lastError}` : '';
+    const noneOk =
+      status.processed === 0
+        ? 'Processing failed: '
+        : `Processing finished with ${status.failed} failure(s): `;
+    return {
+      kind: 'error',
+      message: `${noneOk}${status.failed} item(s) could not be processed${reason}`,
+    };
+  }
+  if (status.processed > 0) {
+    return { kind: 'success', message: `Processing complete — ${status.processed} enriched` };
+  }
+  return null;
+}

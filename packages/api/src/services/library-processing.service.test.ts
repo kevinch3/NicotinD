@@ -181,6 +181,43 @@ describe('LibraryProcessingService', () => {
     expect(lines.some((l) => l.includes('\tgenre\t'))).toBe(true);
   });
 
+  it('tallies failures and reports one aggregated event per failing task', async () => {
+    for (let i = 0; i < 3; i++) seedSong(`s${i}`);
+    setProcessingSettings(db, {
+      batchSize: 10, // one batch attempts all three; runNow then stops (no progress)
+      tasks: { bpm: true, genre: false, key: false, energy: false },
+    });
+    const reports: { task: string | null; failed: number; sample: string | null }[] = [];
+    // A context whose bpm decode always fails via the onError callback.
+    const failingCtx = (): EnrichmentContext => ({
+      ...fakeCtx({ analyzed: 0, genreLookups: 0 })(),
+      analyzeBpm: async (_abs, onError) => {
+        onError?.(new Error('ffmpeg PCM decode exited with code 183: Invalid data'));
+        return null;
+      },
+    });
+    const svc = new LibraryProcessingService({
+      db,
+      lidarr: {} as never,
+      musicDir: '/music',
+      dataDir,
+      now: () => new Date(2024, 0, 1, 12, 0),
+      contextFactory: failingCtx,
+      reportFailure: (r) => reports.push({ task: r.task, failed: r.failed, sample: r.sample }),
+    });
+
+    await svc.runNow();
+
+    // Nothing applied, everything failed — reported exactly once (aggregated).
+    expect(reports.length).toBe(1);
+    expect(reports[0].task).toBe('bpm');
+    expect(reports[0].failed).toBe(3);
+    expect(reports[0].sample).toContain('code 183');
+    const { status } = svc.getState();
+    expect(status.failed).toBe(3);
+    expect(status.lastError).toContain('code 183');
+  });
+
   it('persists status across a restart', async () => {
     for (let i = 0; i < 2; i++) seedSong(`s${i}`);
     setProcessingSettings(db, {

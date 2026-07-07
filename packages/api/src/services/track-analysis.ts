@@ -30,6 +30,19 @@ async function getMusicTempo(): Promise<MusicTempoCtor | null> {
   return mtPromise;
 }
 
+/** Trim ffmpeg stderr to its last non-empty line(s) for a compact diagnostic. */
+export function summarizeFfmpegStderr(stderr: string, maxLen = 400): string {
+  const lines = stderr
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
+  if (lines.length === 0) return '';
+  // The final line is usually the actual decode error (e.g. "Invalid data found
+  // when processing input"); keep the tail so the reason survives truncation.
+  const tail = lines.slice(-3).join(' | ');
+  return tail.length > maxLen ? `…${tail.slice(-maxLen)}` : tail;
+}
+
 /** Decode the head of a file to mono 32-bit-float PCM samples via ffmpeg. */
 function decodePcm(absPath: string): Promise<Float32Array> {
   const args = [
@@ -52,11 +65,20 @@ function decodePcm(absPath: string): Promise<Float32Array> {
   return new Promise<Float32Array>((resolve, reject) => {
     const proc = spawn('ffmpeg', args);
     const chunks: Buffer[] = [];
+    // Capture stderr so a non-zero exit reports *why* ffmpeg failed instead of a
+    // bare exit code — the difference between "codec not found" (build problem)
+    // and "Invalid data" (corrupt file). why: bug where every decode failed with
+    // an opaque "exited with code 183" and the real reason was thrown away.
+    const errChunks: Buffer[] = [];
     proc.stdout.on('data', (d: Buffer) => chunks.push(d));
+    proc.stderr.on('data', (d: Buffer) => errChunks.push(d));
     proc.on('error', reject);
     proc.on('close', (code) => {
       if (code !== 0) {
-        reject(new Error(`ffmpeg PCM decode exited with code ${code}`));
+        const detail = summarizeFfmpegStderr(Buffer.concat(errChunks).toString('utf8'));
+        reject(
+          new Error(`ffmpeg PCM decode exited with code ${code}${detail ? `: ${detail}` : ''}`),
+        );
         return;
       }
       const buf = Buffer.concat(chunks);
@@ -73,7 +95,10 @@ function decodePcm(absPath: string): Promise<Float32Array> {
  * a rounded BPM, or null when ffmpeg/music-tempo are unavailable or the signal
  * is too short/quiet to lock a tempo. Pure analysis — no DB or tag writes.
  */
-export async function analyzeBpm(absPath: string): Promise<number | null> {
+export async function analyzeBpm(
+  absPath: string,
+  onError?: (err: unknown) => void,
+): Promise<number | null> {
   const MusicTempo = await getMusicTempo();
   if (!MusicTempo) return null;
   let samples: Float32Array;
@@ -81,6 +106,7 @@ export async function analyzeBpm(absPath: string): Promise<number | null> {
     samples = await decodePcm(absPath);
   } catch (err) {
     log.warn({ err, absPath }, 'BPM decode failed');
+    onError?.(err);
     return null;
   }
   // music-tempo needs a few seconds of audio to produce a meaningful estimate.
@@ -101,12 +127,16 @@ export async function analyzeBpm(absPath: string): Promise<number | null> {
  * like "C major" / "A minor", or null when ffmpeg is unavailable or the signal
  * has no tonal content. Pure analysis — no DB or tag writes.
  */
-export async function analyzeKey(absPath: string): Promise<string | null> {
+export async function analyzeKey(
+  absPath: string,
+  onError?: (err: unknown) => void,
+): Promise<string | null> {
   let samples: Float32Array;
   try {
     samples = await decodePcm(absPath);
   } catch (err) {
     log.warn({ err, absPath }, 'key decode failed');
+    onError?.(err);
     return null;
   }
   if (samples.length < ANALYZE_SAMPLE_RATE * 5) return null;

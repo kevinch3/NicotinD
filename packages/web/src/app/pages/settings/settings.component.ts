@@ -8,7 +8,14 @@ import { LibraryApiService } from '../../services/api/library-api.service';
 import type { StreamingSettings } from '../../services/api/api-types';
 import { AuthService } from '../../services/auth.service';
 import { ServerConfigService } from '../../services/server-config.service';
-import { progressPercent, phaseLabel, totalPending } from '../../lib/processing-progress';
+import {
+  progressPercent,
+  phaseLabel,
+  totalPending,
+  isRunning,
+  runOutcomeToast,
+} from '../../lib/processing-progress';
+import { ToastService } from '../../services/toast.service';
 import { ThemeService, THEME_PRESETS, type ThemeId } from '../../services/theme.service';
 import { RemotePlaybackService } from '../../services/remote-playback.service';
 import { PlaybackWsService } from '../../services/playback-ws.service';
@@ -61,6 +68,7 @@ export class SettingsComponent implements OnInit, OnDestroy {
   readonly preserve = inject(PreserveService);
   private ws = inject(PlaybackWsService);
   private mediaControls = inject(MediaControlsService);
+  private toast = inject(ToastService);
 
   /** The Now Playing diagnostics panel only exists in the native iOS shell. */
   readonly isNativeIos = isIosNative();
@@ -134,8 +142,14 @@ export class SettingsComponent implements OnInit, OnDestroy {
   readonly processing = signal<ProcessingSettings | null>(null);
   readonly processingStatus = signal<ProcessingStatus | null>(null);
   readonly processingSaving = signal(false);
+  /** True while the "Run now" request is in flight (before the first SSE frame). */
+  readonly processingStarting = signal(false);
   readonly processingMessage = signal<{ type: 'success' | 'error'; text: string } | null>(null);
   private processingStream: EventSource | null = null;
+  // A user pressed "Run now" and we're waiting for the run to settle so we can
+  // toast its outcome. `sawRunning` guards against toasting a no-op/priming frame.
+  private awaitingRun = false;
+  private sawRunning = false;
 
   isAdmin(): boolean {
     return this.auth.role() === 'admin';
@@ -158,6 +172,23 @@ export class SettingsComponent implements OnInit, OnDestroy {
   taskUnavailable(task: ProcessingTaskId): string {
     const a = this.processingStatus()?.availability[task];
     return a === true || a === undefined ? '' : a;
+  }
+  /** True while a run is actively working. */
+  processingRunning(): boolean {
+    const s = this.processingStatus();
+    return s ? isRunning(s) : false;
+  }
+  /** "Run now" is disabled while starting or while a run is in progress. */
+  runNowDisabled(): boolean {
+    return this.processingStarting() || this.processingRunning();
+  }
+  /** "Stop" is only meaningful while a run is in progress. */
+  stopDisabled(): boolean {
+    return !this.processingRunning();
+  }
+  /** Count of failures in the current/last run (surfaced in the progress area). */
+  processingFailed(): number {
+    return this.processingStatus()?.failed ?? 0;
   }
 
   logout(): void {
@@ -214,7 +245,9 @@ export class SettingsComponent implements OnInit, OnDestroy {
     this.processingStream = src;
     src.onmessage = (e) => {
       try {
-        this.processingStatus.set(JSON.parse(e.data) as ProcessingStatus);
+        const status = JSON.parse(e.data) as ProcessingStatus;
+        this.processingStatus.set(status);
+        this.handleRunSettled(status);
       } catch {
         /* ignore malformed frame */
       }
@@ -248,19 +281,47 @@ export class SettingsComponent implements OnInit, OnDestroy {
     });
   }
 
+  /**
+   * When a user-initiated run settles (running → non-running), toast its outcome.
+   * `sawRunning` ensures we only react to a real run, not the priming frame or a
+   * no-op, and clearing `awaitingRun` here keeps background/window runs silent.
+   */
+  private handleRunSettled(status: ProcessingStatus): void {
+    if (!this.awaitingRun) return;
+    if (status.phase === 'running') {
+      this.sawRunning = true;
+      return;
+    }
+    // Settled (idle/disabled/outside-window) after a click.
+    if (this.sawRunning) {
+      const outcome = runOutcomeToast(status);
+      if (outcome) this.toast.show({ message: outcome.message, kind: outcome.kind });
+    }
+    this.awaitingRun = false;
+    this.sawRunning = false;
+  }
+
   async runProcessingNow(): Promise<void> {
+    // Guard against double-starting while a run is already active or starting.
+    if (this.runNowDisabled()) return;
+    this.processingStarting.set(true);
+    this.awaitingRun = true;
+    this.sawRunning = false;
     try {
       await firstValueFrom(this.api.runProcessing());
-      this.processingMessage.set({ type: 'success', text: 'Processing started' });
+      this.toast.show({ message: 'Processing started', kind: 'info' });
     } catch {
-      this.processingMessage.set({ type: 'error', text: 'Failed to start processing' });
+      this.awaitingRun = false;
+      this.toast.show({ message: 'Failed to start processing', kind: 'error' });
+    } finally {
+      this.processingStarting.set(false);
     }
   }
 
   async stopProcessing(): Promise<void> {
     try {
       await firstValueFrom(this.api.stopProcessing());
-      this.processingMessage.set({ type: 'success', text: 'Stopping…' });
+      this.toast.show({ message: 'Stopping…', kind: 'info' });
     } catch {
       /* ignore */
     }

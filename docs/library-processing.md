@@ -36,9 +36,21 @@ interface EnrichmentTask {
   label: string;
   available(ctx): true | string;   // true, or a human reason it can't run
   countPending(db): number;        // COUNT(*) of the NULL-predicate — drives resume + progress
-  run(db, ctx, limit): Promise<{ applied: number; labels: string[] }>;
+  run(db, ctx, limit): Promise<{
+    applied: number;
+    labels: string[];
+    failed: number;                // items attempted (file present, work needed) but errored
+    errorSample: string | null;    // one representative reason (ffmpeg stderr tail / sidecar error)
+  }>;
 }
 ```
+
+The `analyzeBpm` / `analyzeKey` / `analyzeLoudness` primitives on `EnrichmentContext`
+take an optional `onError(err)` callback; a decode failure fires it (returning null),
+which the worker folds into `failed`/`errorSample`. A quiet null (e.g. audio too short
+to lock a tempo) is **not** a failure. The audio-features task distinguishes a per-file
+sidecar rejection (counted) from a whole-sidecar outage (not counted — songs just stay
+pending).
 
 Launch tasks:
 
@@ -128,6 +140,27 @@ Modeled on `WatchlistService` (interval + a `busy` guard so runs never overlap):
   of every run.
 - **`stop()`**: full shutdown (clears the interval + aborts). Wired into SIGTERM/SIGINT.
 
+### Failure diagnosis, feedback & Sentry
+
+Both ffmpeg call sites (`track-analysis.ts` `decodePcm`, `loudness-analysis.ts`
+`analyzeLoudness`) **capture stderr** and fold its tail into the thrown/logged error
+via `summarizeFfmpegStderr`, so a decode failure reports *why* (e.g. "Invalid data found
+when processing input") instead of a bare "exited with code 183". why: a real bug where
+every decode failed opaquely and the reason was thrown away.
+
+Each run tallies `failed`/`lastError` into `ProcessingStatus` (persisted + streamed over
+SSE). At a run boundary the scheduler calls `flushFailures`, emitting **one aggregated
+event per failing task** through an injectable `reportFailure` sink — defaulting to
+`captureProcessingFailure` (`observability/sentry.ts`), which is a no-op when Sentry is
+unconfigured and uses a task+sample `fingerprint` so a broken decoder collapses into a
+single Sentry issue rather than one event per file. `runNow` reports once for the whole
+drain; `tick` once per batch.
+
+`processOneBatch` leaves the phase `running` between batches; a run's terminal `idle` is
+set exactly once by `finishRun`, so an SSE client sees a single `running → idle`
+completion (not one per batch). The Settings panel uses that transition to toast the
+outcome (see Web).
+
 ### Resume & logging
 
 Resume is inherent: each task selects by its `… IS NULL` predicate and writes
@@ -157,6 +190,15 @@ enable toggle, window `<input type="time">`s, per-task checkboxes (greyed with t
 availability reason when ffmpeg/Lidarr is missing), a progress bar + live snippet
 list driven by an `EventSource` on the stream endpoint, and Run now / Stop. Percent
 and phase-label math is the DI-free, unit-tested `lib/processing-progress.ts`.
+
+**Feedback (this change):** "Run now" is disabled while a run is starting or in progress
+(`runNowDisabled()`, label flips to "Running…"); "Stop" is disabled unless a run is
+active. A failure count + reason renders in the progress area (`data-testid="processing-failed"`).
+When a *user-initiated* run settles, the panel toasts the outcome via `ToastService`
+(error with the reason if any item failed, success otherwise) — gated on having seen a
+`running` frame so background/window runs and the priming frame stay silent. The pure
+`runOutcomeToast` / `isRunning` helpers in `lib/processing-progress.ts` carry that logic
+and are unit-tested.
 
 ## One-time prod backfill
 

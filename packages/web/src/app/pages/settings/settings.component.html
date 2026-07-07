@@ -255,6 +255,11 @@
                     <div class="h-2 rounded-full bg-theme-surface overflow-hidden">
                       <div class="h-full bg-emerald-500 transition-all" [style.width.%]="processingPercent()"></div>
                     </div>
+                    @if (processingFailed() > 0) {
+                      <p class="mt-2 text-xs text-status-error break-words" data-testid="processing-failed">
+                        {{ processingFailed() }} failed{{ st.lastError ? ' — ' + st.lastError : '' }}
+                      </p>
+                    }
                     @if (st.lastItems.length > 0) {
                       <ul class="mt-3 space-y-1" data-testid="processing-snippets">
                         @for (item of st.lastItems.slice().reverse(); track item) {
@@ -268,11 +273,15 @@
                 <!-- Actions -->
                 <div class="flex items-center gap-3 pt-1">
                   <button type="button" (click)="runProcessingNow()"
+                    [disabled]="runNowDisabled()"
                     data-testid="processing-run-now"
-                    class="text-sm rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5">Run now</button>
+                    class="text-sm rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-emerald-600">
+                    {{ processingRunning() ? 'Running…' : 'Run now' }}
+                  </button>
                   <button type="button" (click)="stopProcessing()"
+                    [disabled]="stopDisabled()"
                     data-testid="processing-stop"
-                    class="text-sm rounded-lg border border-theme text-theme-primary px-3 py-1.5">Stop</button>
+                    class="text-sm rounded-lg border border-theme text-theme-primary px-3 py-1.5 disabled:opacity-50 disabled:cursor-not-allowed">Stop</button>
                 </div>
 
                 @if (processingMessage(); as m) {

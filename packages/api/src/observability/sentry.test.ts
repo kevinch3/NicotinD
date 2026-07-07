@@ -1,12 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test';
 
 const initMock = mock(() => {});
+const captureExceptionMock = mock((_err: unknown, _hint?: unknown) => {});
 mock.module('@sentry/bun', () => ({
   init: initMock,
-  captureException: mock(() => {}),
+  captureException: captureExceptionMock,
 }));
 
-import { initServerSentry } from './sentry.js';
+import { initServerSentry, captureProcessingFailure } from './sentry.js';
 
 describe('initServerSentry', () => {
   const original = { ...process.env };
@@ -46,5 +47,30 @@ describe('initServerSentry', () => {
     initServerSentry();
     const cfg = (initMock.mock.calls as unknown[][])[0][0] as Record<string, unknown>;
     expect(cfg.tracesSampleRate).toBe(0.5);
+  });
+});
+
+describe('captureProcessingFailure', () => {
+  beforeEach(() => captureExceptionMock.mockClear());
+
+  it('captures one exception carrying the task, counts and sample', () => {
+    captureProcessingFailure({
+      task: 'key',
+      failed: 25,
+      applied: 0,
+      sample: 'code 183: Invalid data',
+    });
+    expect(captureExceptionMock).toHaveBeenCalledTimes(1);
+    const [err, hint] = (captureExceptionMock.mock.calls as unknown[][])[0] as [
+      Error,
+      Record<string, unknown>,
+    ];
+    expect(err).toBeInstanceOf(Error);
+    expect(err.message).toContain("task 'key'");
+    expect(err.message).toContain('code 183');
+    expect((hint.tags as Record<string, string>).processing_task).toBe('key');
+    expect((hint.extra as Record<string, number>).failed).toBe(25);
+    // Grouped so repeated identical failures collapse into one Sentry issue.
+    expect(hint.fingerprint).toEqual(['library-processing', 'key', 'code 183: Invalid data']);
   });
 });

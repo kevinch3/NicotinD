@@ -9,8 +9,29 @@ import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import type { Lidarr } from '@nicotind/lidarr-client';
-import { analyzeBpm, verifyGenre } from './track-analysis.js';
+import { analyzeBpm, verifyGenre, summarizeFfmpegStderr } from './track-analysis.js';
 import { ffmpegAvailable } from './transcode.js';
+
+describe('summarizeFfmpegStderr', () => {
+  it('returns the last non-empty lines as a compact reason', () => {
+    const stderr = '  \n[mp3 @ 0x1] Header missing\nInvalid data found when processing input\n\n';
+    expect(summarizeFfmpegStderr(stderr)).toBe(
+      '[mp3 @ 0x1] Header missing | Invalid data found when processing input',
+    );
+  });
+
+  it('returns empty string when there is no stderr', () => {
+    expect(summarizeFfmpegStderr('')).toBe('');
+    expect(summarizeFfmpegStderr('   \n  \n')).toBe('');
+  });
+
+  it('truncates very long output but keeps the tail', () => {
+    const long = 'x'.repeat(1000);
+    const out = summarizeFfmpegStderr(long, 100);
+    expect(out.length).toBeLessThanOrEqual(101); // 100 + leading ellipsis
+    expect(out.startsWith('…')).toBe(true);
+  });
+});
 
 const cleanups: Array<() => void> = [];
 afterEach(() => {

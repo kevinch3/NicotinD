@@ -21,3 +21,42 @@ export function initServerSentry(): boolean {
   });
   return true;
 }
+
+/** Summary of a library-processing run's failures, for Sentry + logs. */
+export interface ProcessingFailureReport {
+  /** Task the failures came from (or null for a mixed/aggregate run). */
+  task: string | null;
+  /** Number of items that failed to enrich in the run. */
+  failed: number;
+  /** Number of items that succeeded in the run. */
+  applied: number;
+  /** A representative failure reason (e.g. ffmpeg's stderr tail), if any. */
+  sample: string | null;
+}
+
+/**
+ * Report a batch of library-processing failures to Sentry as one aggregated
+ * event (never one-per-file — a broken ffmpeg build would otherwise flood the
+ * project). No-op when Sentry isn't initialized (`captureException` is a safe
+ * no-op then), so unconfigured deploys stay silent. Grouped by task + sample so
+ * repeated identical failures collapse into a single Sentry issue.
+ */
+export function captureProcessingFailure(report: ProcessingFailureReport): void {
+  const err = new Error(
+    `Library processing: ${report.failed} item(s) failed` +
+      (report.task ? ` in task '${report.task}'` : '') +
+      (report.sample ? ` — ${report.sample}` : ''),
+  );
+  err.name = 'LibraryProcessingFailure';
+  Sentry.captureException(err, {
+    tags: { scope: 'library-processing', processing_task: report.task ?? 'mixed' },
+    extra: {
+      task: report.task,
+      failed: report.failed,
+      applied: report.applied,
+      sample: report.sample,
+    },
+    // Group all failures of a task+reason into one issue rather than per-message.
+    fingerprint: ['library-processing', report.task ?? 'mixed', report.sample ?? 'unknown'],
+  });
+}

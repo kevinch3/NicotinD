@@ -15,11 +15,34 @@ import {
   type EnrichmentTask,
 } from './enrichment/tasks.js';
 import type { AudioFeaturesClient } from './audio-features-client.js';
+import { captureProcessingFailure, type ProcessingFailureReport } from '../observability/sentry.js';
 
 const log = createLogger('library-processing');
 
 const STATUS_KEY = 'processing_status';
 const MAX_SNIPPETS = 12;
+
+/** Per-task failure tally accumulated over a run (task → count + one sample). */
+type RunFailures = Map<ProcessingTaskId, { failed: number; sample: string | null }>;
+
+/** Outcome of one bounded batch: items applied + per-task failures within it. */
+interface BatchOutcome {
+  applied: number;
+  byTask: RunFailures;
+}
+
+/** Fold `src` into `dst`, summing counts and keeping the first sample per task. */
+function mergeFailures(dst: RunFailures, src: RunFailures): void {
+  for (const [task, agg] of src) {
+    const prev = dst.get(task);
+    if (prev) {
+      prev.failed += agg.failed;
+      if (prev.sample === null) prev.sample = agg.sample;
+    } else {
+      dst.set(task, { failed: agg.failed, sample: agg.sample });
+    }
+  }
+}
 
 export interface LibraryProcessingDeps {
   db: Database;
@@ -38,6 +61,9 @@ export interface LibraryProcessingDeps {
   contextFactory?: (settings: ProcessingSettings) => EnrichmentContext;
   /** Disable file logging (tests). Default true. */
   logToFile?: boolean;
+  /** Failure sink for a run's aggregated errors. Defaults to the Sentry reporter
+   *  (a no-op when Sentry is unconfigured); injectable so tests can assert on it. */
+  reportFailure?: (report: ProcessingFailureReport) => void;
 }
 
 /**
@@ -65,6 +91,7 @@ export class LibraryProcessingService extends EventEmitter {
   private readonly now: () => Date;
   private readonly contextFactory: (settings: ProcessingSettings) => EnrichmentContext;
   private readonly logToFile: boolean;
+  private readonly reportFailure: (report: ProcessingFailureReport) => void;
 
   private timer: ReturnType<typeof setInterval> | null = null;
   private busy = false;
@@ -94,6 +121,7 @@ export class LibraryProcessingService extends EventEmitter {
           audioFeaturesClient: this.audioFeaturesClient,
         }));
     this.logToFile = deps.logToFile ?? true;
+    this.reportFailure = deps.reportFailure ?? captureProcessingFailure;
     this.status = this.loadStatus();
   }
 
@@ -140,13 +168,16 @@ export class LibraryProcessingService extends EventEmitter {
       // Once per ISO week, inside the maintenance window, refresh the automated
       // recipe-driven shelves (idempotent; guarded by a library_sync_state marker).
       maybeRefreshAutoPlaylists(this.db, this.now().getTime());
-      await this.processOneBatch(settings);
+      const batch = await this.processOneBatch(settings);
+      this.flushFailures(batch.byTask);
+      this.finishRun(settings);
     });
   }
 
   /** Admin override: drain all pending work now, ignoring the time window. */
   async runNow(): Promise<void> {
     await this.guarded(async () => {
+      const runFailures: RunFailures = new Map();
       let first = true;
       for (;;) {
         if (this.stopRequested) break;
@@ -154,12 +185,17 @@ export class LibraryProcessingService extends EventEmitter {
         const tasks = this.runnableTasks(settings);
         const pending = tasks.reduce((sum, t) => sum + t.countPending(this.db), 0);
         if (pending === 0) break;
-        const applied = await this.processOneBatch(settings, first);
+        const batch = await this.processOneBatch(settings, first);
+        mergeFailures(runFailures, batch.byTask);
         first = false;
         // No progress (e.g. every remaining file missing / unresolvable) → stop
         // rather than spin forever.
-        if (applied === 0) break;
+        if (batch.applied === 0) break;
       }
+      // One aggregated Sentry event per failing task for the whole drain, so a
+      // broken decoder reports once (grouped) rather than per file or per batch.
+      this.flushFailures(runFailures);
+      this.finishRun(getProcessingSettings(this.db));
     });
   }
 
@@ -186,8 +222,11 @@ export class LibraryProcessingService extends EventEmitter {
     return ENRICHMENT_TASKS.filter((t) => settings.tasks[t.id] && t.available(ctx) === true);
   }
 
-  /** One bounded batch across each runnable task. Returns total items applied. */
-  private async processOneBatch(settings: ProcessingSettings, fresh = false): Promise<number> {
+  /** One bounded batch across each runnable task. */
+  private async processOneBatch(
+    settings: ProcessingSettings,
+    fresh = false,
+  ): Promise<BatchOutcome> {
     const ctx = this.contextFactory(settings);
     const tasks = this.runnableTasks(settings);
     const total = tasks.reduce((sum, t) => sum + t.countPending(this.db), 0);
@@ -199,28 +238,61 @@ export class LibraryProcessingService extends EventEmitter {
       phase: 'running',
       startedAt,
       processed: fresh ? 0 : this.status.processed,
+      // A fresh run resets the failure tally; an in-window continuation keeps it.
+      failed: fresh ? 0 : this.status.failed,
+      lastError: fresh ? null : this.status.lastError,
       total,
     };
     this.emitStatus(settings);
 
     let appliedTotal = 0;
+    const byTask: RunFailures = new Map();
     for (const task of tasks) {
       if (this.stopRequested) break;
       this.status = { ...this.status, currentTask: task.id };
       const result = await task.run(this.db, ctx, settings.batchSize);
       appliedTotal += result.applied;
+      if (result.failed > 0) {
+        mergeFailures(
+          byTask,
+          new Map([[task.id, { failed: result.failed, sample: result.errorSample }]]),
+        );
+      }
       this.status = {
         ...this.status,
         processed: this.status.processed + result.applied,
+        failed: this.status.failed + result.failed,
+        lastError: result.errorSample ?? this.status.lastError,
         lastItems: [...this.status.lastItems, ...result.labels].slice(-MAX_SNIPPETS),
       };
       for (const label of result.labels) this.writeLog(task.id, label);
       this.emitStatus(settings);
     }
 
+    // Leave phase 'running' between batches; the run's terminal state is set once
+    // by finishRun() so SSE clients see a single running→idle completion (not one
+    // per batch during a multi-batch drain).
+    this.status = { ...this.status, currentTask: null };
+    this.emitStatus(settings);
+    return { applied: appliedTotal, byTask };
+  }
+
+  /** Settle a finished run to idle and emit once, so clients get one completion. */
+  private finishRun(settings: ProcessingSettings): void {
     this.status = { ...this.status, phase: 'idle', currentTask: null };
     this.emitStatus(settings);
-    return appliedTotal;
+  }
+
+  /** Emit one aggregated failure report per task that failed during a run. */
+  private flushFailures(byTask: RunFailures): void {
+    for (const [task, agg] of byTask) {
+      if (agg.failed <= 0) continue;
+      log.warn(
+        { task, failed: agg.failed, sample: agg.sample },
+        'library-processing task failures',
+      );
+      this.reportFailure({ task, failed: agg.failed, applied: 0, sample: agg.sample });
+    }
   }
 
   private snapshot(settings: ProcessingSettings): ProcessingStatus {
@@ -273,6 +345,8 @@ export class LibraryProcessingService extends EventEmitter {
       phase: this.status.phase,
       currentTask: this.status.currentTask,
       processed: this.status.processed,
+      failed: this.status.failed,
+      lastError: this.status.lastError,
       total: this.status.total,
       lastItems: this.status.lastItems,
       startedAt: this.status.startedAt,
@@ -290,6 +364,8 @@ export class LibraryProcessingService extends EventEmitter {
       phase: 'idle',
       currentTask: null,
       processed: 0,
+      failed: 0,
+      lastError: null,
       total: 0,
       lastItems: [],
       startedAt: null,
