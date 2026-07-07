@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.158](https://github.com/kevinch3/NicotinD/compare/v0.1.157...v0.1.158) (2026-07-07)
+
+
+### Bug Fixes
+
+* **api:** detect ALAC hiding in .m4a so it gets standardized to Opus ([b23d2b2](https://github.com/kevinch3/NicotinD/commit/b23d2b220cbcc9b8d64209001284e3fc9294e506))
+
 ## [0.1.157](https://github.com/kevinch3/NicotinD/compare/v0.1.156...v0.1.157) (2026-07-07)
 
 
