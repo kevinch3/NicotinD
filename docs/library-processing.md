@@ -161,6 +161,41 @@ set exactly once by `finishRun`, so an SSE client sees a single `running → idl
 completion (not one per batch). The Settings panel uses that transition to toast the
 outcome (see Web).
 
+### Corrupt-file exclusion (stop retrying broken files)
+
+Without this, a permanently-broken file (e.g. a truncated download that ffmpeg rejects
+with "Invalid data") stays `NULL` forever, so it's re-attempted — and re-alerted — on
+*every* run. `enrichment/analysis-failures.ts` + the `library_song_analysis_failures`
+table (keyed `(song_id, task)`) fix that:
+
+- On a hard per-item failure the worker calls `noteItemFailure`, which both tallies the
+  run and `recordAnalysisFailure`s it (incrementing `fail_count`, storing the file `size`
+  + a truncated reason).
+- Once `fail_count` reaches `MAX_ANALYSIS_ATTEMPTS` (3), the task's `countPending`/`run`
+  SELECTs exclude the file via `notPermanentlyFailedClause` (a bare correlated
+  `NOT EXISTS`, threshold + task inlined so it drops into an existing `LIMIT ?` without
+  new params). So `total`/"remaining" comes to mean *analyzable* remaining.
+- **Reset is content-based**: the clause matches on `file_size IS library_songs.size`, so
+  a re-download (which changes the size) re-includes the file automatically. A *success*
+  calls `clearAnalysisFailure` to wipe the row outright.
+- **Scope is the ffmpeg-decode tasks only** (`bpm`/`key`/`energy`), where a failure
+  reliably means the file is bad. `audio-features` is deliberately **excluded** — a
+  sidecar failure is usually environmental (a mount/URL misconfig 404s every file), and
+  permanently skipping on that would leave the whole library excluded even after the
+  sidecar is fixed. `genre`/`artist-image` never fail per audio-file.
+- `countSkippedFiles` (distinct files at the cap) surfaces as `ProcessingStatus.skipped`,
+  shown in the panel as "N files skipped as unreadable (re-download to retry)".
+
+### Runtime hardening — ffmpeg timeouts
+
+Each ffmpeg decode is spawned with a wall-clock **kill timer** (`DECODE_TIMEOUT_MS` 120s
+for the bpm/key head-slice; `EBUR128_TIMEOUT_MS` 180s for the full-file energy pass). A
+90 s slice decodes far faster than realtime, so the timer only trips on a hung/pathological
+file — where it `SIGKILL`s ffmpeg and surfaces a "timed out" error (counted like any other
+failure, so it feeds the exclusion ledger). Without this, one file that makes ffmpeg hang
+would leave a worker's `Promise` unresolved, wedging the whole run (and the `busy` guard)
+indefinitely.
+
 ### Resume & logging
 
 Resume is inherent: each task selects by its `… IS NULL` predicate and writes

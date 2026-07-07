@@ -260,6 +260,11 @@
                         {{ processingFailed() }} failed{{ st.lastError ? ' — ' + st.lastError : '' }}
                       </p>
                     }
+                    @if (st.skipped > 0) {
+                      <p class="mt-1 text-xs text-theme-muted" data-testid="processing-skipped">
+                        {{ st.skipped }} file{{ st.skipped === 1 ? '' : 's' }} skipped as unreadable (re-download to retry)
+                      </p>
+                    }
                     @if (st.lastItems.length > 0) {
                       <ul class="mt-3 space-y-1" data-testid="processing-snippets">
                         @for (item of st.lastItems.slice().reverse(); track item) {
