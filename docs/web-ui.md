@@ -75,6 +75,12 @@ from one source of truth on `PlayerService`:
 - `bufferingVisible` — the render-safe view: turns on only after 250 ms
   (cached tracks must never flash a spinner), turns off instantly. Surfaces
   bind to this, never to raw `buffering`.
+  **Constraint:** `setBuffering(true)`'s de-dup guard reads `bufferingVisible`
+  through `untracked()`. It is called from inside reactive contexts
+  (PlayerComponent's track-load effect), and a plain signal read there would
+  silently register `bufferingVisible` as a dependency of the *calling* effect
+  — see Firefox bug #3 below. Keep any future signal reads inside
+  `PlayerService` setters untracked for the same reason.
 - `bufferedRanges` — snapshot of `audio.buffered` (from `progress` events),
   cleared on every new load and when the device goes remote.
 
@@ -116,6 +122,28 @@ which appends `ngsw-bypass=1` — Angular's own documented escape hatch;
 `onFetch()` returns immediately, before any Driver logic runs, when it sees
 that param. All `/api/stream` call sites (`PlayerComponent`, `PreserveService`,
 share view) go through this one method now — never hand-build a stream URL.
+
+**Firefox "never plays" bug #3 — the track-load effect aborted its own load in
+a ~300 ms loop.** `setBuffering(true)`'s guard (`if (timer !== null ||
+this.bufferingVisible()) return`) *read* `bufferingVisible` while running
+inside PlayerComponent's track-load effect, making `bufferingVisible` a hidden
+dependency of that effect. Whenever a stream's first byte took longer than the
+250 ms spinner delay (fresh server-side transcode ≈ 4 s of ffmpeg, remote
+proxy latency, HDD spin-up), the timer flipped `bufferingVisible` → the effect
+re-ran → `audio.src` was re-assigned, aborting the in-flight request
+(`NS_ERROR_PARSED_DATA_CACHED` in the network log) → audio events flipped
+`buffering` back → re-run again, forever. Firefox never left `readyState 0`
+(pause icon / spinner alternation); fast paths (localhost, already-cached
+transcodes reaching `canplay` in <250 ms) never armed the timer, which is why
+it looked track-specific and "mostly transcoded files". Chrome recovers from
+the same re-assignment pattern, so it read as Firefox-only. Fixed by wrapping
+the guard read in `untracked()`; regression-pinned in `player.service.spec.ts`
+("setBuffering(true) inside an effect does not subscribe the effect to
+bufferingVisible"). Diagnosed by instrumenting `HTMLMediaElement` src/play in
+a Playwright Firefox run against prod — the loop's ~300 ms cadence and the
+single looping call site (the load effect) identified the dependency; verified
+by rebuilding master vs. fix behind a 900 ms first-byte delay proxy (master:
+20 src assignments, never plays; fix: 1 assignment, plays).
 
 **Testing `input()`-signal components (JIT vitest limitation)**: the web unit
 suite runs on the JIT/vitest harness (`@angular/compiler`, no ngtsc build
