@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.155](https://github.com/kevinch3/NicotinD/compare/v0.1.154...v0.1.155) (2026-07-07)
+
+
+### Bug Fixes
+
+* **api:** stop Firefox <audio> from stalling forever on stream requests ([0f1d0b7](https://github.com/kevinch3/NicotinD/commit/0f1d0b7622057bb8427d1100fd29473cfd7fee97))
+
 ## [0.1.154](https://github.com/kevinch3/NicotinD/compare/v0.1.153...v0.1.154) (2026-07-07)
 
 
