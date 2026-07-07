@@ -9,6 +9,7 @@
   [value]="value()"
   [disabled]="disabled()"
   [style.--seek-percent]="percent() + '%'"
+  [style.--seek-buffered-bg]="bufferedBackground()"
   (input)="onInput($event)"
   (change)="onChange($event)"
 />

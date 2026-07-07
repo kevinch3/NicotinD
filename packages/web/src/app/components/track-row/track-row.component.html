@@ -1,5 +1,6 @@
 
-    <div [class]="'flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-theme-hover transition group' + (disabled() ? ' opacity-40 pointer-events-none' : '')">
+    <div data-testid="track-row" [attr.data-playback-state]="playbackState()"
+      [class]="'flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-theme-hover transition group' + (disabled() ? ' opacity-40 pointer-events-none' : '')">
       @if (selectable()) {
         <button type="button" (click)="selectedChange.emit($event)"
           [class]="'w-5 h-5 flex-shrink-0 rounded border flex items-center justify-center transition ' + (selected()
@@ -10,6 +11,16 @@
             <polyline points="20 6 9 17 4 12" />
           </svg>
         </button>
+      } @else if (playbackState() !== null) {
+        <span class="w-6 flex items-center justify-end flex-shrink-0">
+          @if (playbackState() === 'buffering') {
+            <span class="inline-block w-3.5 h-3.5 border-2 border-theme border-t-[var(--theme-accent)] rounded-full animate-spin"></span>
+          } @else {
+            <span class="eq-bars" [class.eq-paused]="playbackState() === 'paused'" aria-hidden="true">
+              <span></span><span></span><span></span>
+            </span>
+          }
+        </span>
       } @else {
         <span class="text-xs text-theme-muted w-6 text-right">{{ indexLabel() ?? '' }}</span>
       }
@@ -26,8 +37,8 @@
         />
       }
       <div class="flex-1 min-w-0">
-        <button type="button" (click)="play.emit()" class="w-full text-left">
-          <p class="text-sm text-theme-primary truncate">{{ track().title }}</p>
+        <button type="button" data-testid="track-row-title" (click)="play.emit()" class="w-full text-left">
+          <p class="text-sm truncate" [class.text-theme-accent]="isCurrent()" [class.text-theme-primary]="!isCurrent()">{{ track().title }}</p>
         </button>
         @if (artists()?.length) {
           <p class="text-xs text-theme-muted truncate">

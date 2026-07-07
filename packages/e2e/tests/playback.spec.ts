@@ -30,4 +30,24 @@ test.describe('playback', () => {
       )
       .toBe(true);
   });
+
+  test('track row acknowledges the click and settles into playing state', async ({ page }) => {
+    await page.goto('/library');
+    await page.getByTestId('album-card').filter({ hasText: FIXTURE.album.title }).click();
+    await expect(page).toHaveURL(/\/library\/albums\//);
+
+    const firstRow = page.getByTestId('track-row').first();
+    await firstRow.getByTestId('track-row-title').click();
+
+    // Instant acknowledgment: the row carries a playback state right away
+    // (buffering while bytes arrive on slow disks, or straight to playing).
+    await expect(firstRow).toHaveAttribute('data-playback-state', /buffering|playing/, {
+      timeout: 2_000,
+    });
+
+    // And settles to playing once audio actually starts.
+    await expect(firstRow).toHaveAttribute('data-playback-state', 'playing', {
+      timeout: 15_000,
+    });
+  });
 });

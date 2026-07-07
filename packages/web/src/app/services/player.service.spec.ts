@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { PlayerService, type Track, type PlayContext } from './player.service';
+import { vi } from 'vitest';
 
 const track1: Track = { id: 't1', title: 'Track 1', artist: 'Artist A' };
 const track2: Track = { id: 't2', title: 'Track 2', artist: 'Artist B' };
@@ -345,6 +346,61 @@ describe('PlayerService', () => {
       await flush();
 
       expect(calls).toBe(0);
+    });
+  });
+
+  describe('buffering state', () => {
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => vi.useRealTimers());
+
+    it('setBuffering(true) sets the raw signal immediately', () => {
+      service.setBuffering(true);
+      expect(service.buffering()).toBe(true);
+      expect(service.bufferingVisible()).toBe(false);
+    });
+
+    it('bufferingVisible turns on only after the 250ms delay (no flash on fast tracks)', () => {
+      service.setBuffering(true);
+      vi.advanceTimersByTime(249);
+      expect(service.bufferingVisible()).toBe(false);
+      vi.advanceTimersByTime(1);
+      expect(service.bufferingVisible()).toBe(true);
+    });
+
+    it('never shows the spinner when buffering clears before the delay', () => {
+      service.setBuffering(true);
+      vi.advanceTimersByTime(100);
+      service.setBuffering(false);
+      vi.advanceTimersByTime(500);
+      expect(service.bufferingVisible()).toBe(false);
+    });
+
+    it('setBuffering(false) hides the spinner immediately', () => {
+      service.setBuffering(true);
+      vi.advanceTimersByTime(250);
+      expect(service.bufferingVisible()).toBe(true);
+      service.setBuffering(false);
+      expect(service.buffering()).toBe(false);
+      expect(service.bufferingVisible()).toBe(false);
+    });
+
+    it('re-asserting buffering(true) does not restart the pending delay', () => {
+      service.setBuffering(true);
+      vi.advanceTimersByTime(200);
+      service.setBuffering(true); // e.g. waiting fires again
+      vi.advanceTimersByTime(50);
+      expect(service.bufferingVisible()).toBe(true);
+    });
+
+    it('setBufferedRanges stores ranges; clear() resets buffering and ranges', () => {
+      service.setBufferedRanges([{ start: 0, end: 30 }]);
+      expect(service.bufferedRanges()).toEqual([{ start: 0, end: 30 }]);
+      service.setBuffering(true);
+      vi.advanceTimersByTime(250);
+      service.clear();
+      expect(service.buffering()).toBe(false);
+      expect(service.bufferingVisible()).toBe(false);
+      expect(service.bufferedRanges()).toEqual([]);
     });
   });
 });
