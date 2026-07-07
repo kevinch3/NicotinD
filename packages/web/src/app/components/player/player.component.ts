@@ -167,14 +167,14 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
               db.updateLastAccessed(track.id);
             } else {
               // Metadata exists but blob missing — fall back to stream
-              audio.src = this.server.apiUrl(`/api/stream/${track.id}?token=${token}`);
+              audio.src = this.server.streamUrl(track.id, token);
             }
             audio.play().catch((err) => {
               if (err.name === 'NotAllowedError') this.handlePlayRejection();
             });
           })();
         } else {
-          audio.src = this.server.apiUrl(`/api/stream/${track.id}?token=${token}`);
+          audio.src = this.server.streamUrl(track.id, token);
           audio.play().catch((err) => {
             if (err.name === 'NotAllowedError') this.handlePlayRejection();
           });
@@ -528,12 +528,12 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
                   this.lastManualObjectUrl = url;
                   audio.src = url;
                 } else {
-                  audio.src = this.server.apiUrl(`/api/stream/${nextTrack.id}?token=${token}`);
+                  audio.src = this.server.streamUrl(nextTrack.id, token);
                 }
                 playNext();
               });
             } else {
-              audio.src = this.server.apiUrl(`/api/stream/${nextTrack.id}?token=${token}`);
+              audio.src = this.server.streamUrl(nextTrack.id, token);
               playNext();
             }
           }

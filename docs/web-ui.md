@@ -101,6 +101,22 @@ Surfaces:
 Deliberately out of scope: buffering over the remote-playback WS protocol
 (controller tabs show remote state, not remote buffering).
 
+**Firefox "never plays" bug #2 — the Angular service worker was intercepting
+stream requests.** `Driver.handleFetch()` in the generated `ngsw-worker.js`
+unconditionally calls `event.respondWith()` for every same-origin fetch — there
+is no `dataGroup` configured to opt `/api/stream` out (`ngsw-config.json` only
+declares `assetGroups` for the app shell/CSS/JS/icons). For most requests that
+resolves to a harmless passthrough, but in Firefox specifically it sometimes
+throws instead of falling through to the network for a Range request,
+surfacing in DevTools as "A ServiceWorker intercepted the request and
+encountered an unexpected error" — the track never plays, and which tracks hit
+it is intermittent (SW-state-dependent), not tied to the file itself. Fixed by
+routing every stream URL through `ServerConfigService.streamUrl(id, token)`,
+which appends `ngsw-bypass=1` — Angular's own documented escape hatch;
+`onFetch()` returns immediately, before any Driver logic runs, when it sees
+that param. All `/api/stream` call sites (`PlayerComponent`, `PreserveService`,
+share view) go through this one method now — never hand-build a stream URL.
+
 **Testing `input()`-signal components (JIT vitest limitation)**: the web unit
 suite runs on the JIT/vitest harness (`@angular/compiler`, no ngtsc build
 step), which has no compile-time transform for signal `input()`/
