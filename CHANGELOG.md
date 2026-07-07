@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.154](https://github.com/kevinch3/NicotinD/compare/v0.1.153...v0.1.154) (2026-07-07)
+
+
+### Features
+
+* **web:** add buffered-range segment + gradient helpers ([8923c94](https://github.com/kevinch3/NicotinD/commit/8923c947afd34b50cf35752ed023cf802406fce7))
+* **web:** add buffering + bufferedRanges state to PlayerService ([4820888](https://github.com/kevinch3/NicotinD/commit/4820888ec415bae16995d08dd880331961040ddc))
+* **web:** current-track indicator with instant click acknowledgment on track rows ([2966053](https://github.com/kevinch3/NicotinD/commit/29660538f28c6a642491f658b4ee5acd2f650b6c))
+* **web:** drive buffering state from native audio events ([6f2b728](https://github.com/kevinch3/NicotinD/commit/6f2b728069ee12ae2dc78100c98f5a8dfb3da957))
+* **web:** paint buffered ranges band on the seek bar ([29ca727](https://github.com/kevinch3/NicotinD/commit/29ca7275acc162f9679afe281a96cd943ba26322))
+* **web:** show buffering spinner on play/pause buttons ([1f96c36](https://github.com/kevinch3/NicotinD/commit/1f96c36c334a704bb2aafb94b04f93effab41254))
+
+
+### Bug Fixes
+
+* **web:** clear buffering on seeked when the target is already buffered ([c00642c](https://github.com/kevinch3/NicotinD/commit/c00642c6e35a55301f6834915c0485d9bff18918))
+
 ## [0.1.153](https://github.com/kevinch3/NicotinD/compare/v0.1.152...v0.1.153) (2026-07-06)
 
 
