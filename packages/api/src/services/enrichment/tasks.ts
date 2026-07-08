@@ -6,6 +6,7 @@ import {
   analyzeBpm as realAnalyzeBpm,
   analyzeKey as realAnalyzeKey,
   verifyGenre as realVerifyGenre,
+  NoConfidentResultError,
 } from '../track-analysis.js';
 import { readAudioTags, writeAudioTags, type FeatureTags } from '../audio-tags.js';
 import { analyzeLoudness as realAnalyzeLoudness } from '../loudness-analysis.js';
@@ -104,6 +105,12 @@ function recordFailure(tally: FailureTally, err: unknown): void {
  * A hard per-item failure: tally it for this run's reporting *and* persist it to
  * the per-file ledger so a permanently-broken file eventually drops out of the
  * task's pending set (see analysis-failures.ts).
+ *
+ * A {@link NoConfidentResultError} ("analysis ran, found nothing") is ledgered —
+ * otherwise the same undetectable files head the created-DESC queue and are
+ * re-decoded every batch forever, starving everything behind them — but NOT
+ * tallied as a run failure: nothing is broken, so it must not trip the panel
+ * banner or the Sentry report.
  */
 function noteItemFailure(
   db: Database,
@@ -112,7 +119,7 @@ function noteItemFailure(
   task: ProcessingTaskId,
   err: unknown,
 ): void {
-  recordFailure(tally, err);
+  if (!(err instanceof NoConfidentResultError)) recordFailure(tally, err);
   recordAnalysisFailure(db, song.id, task, err, song.size);
 }
 

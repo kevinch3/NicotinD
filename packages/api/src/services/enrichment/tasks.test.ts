@@ -3,6 +3,7 @@ import { Database } from 'bun:sqlite';
 import { applySchema } from '../../db.js';
 import { ENRICHMENT_TASKS, getTask, type EnrichmentContext } from './tasks.js';
 import { MAX_ANALYSIS_ATTEMPTS } from './analysis-failures.js';
+import { NoConfidentResultError } from '../track-analysis.js';
 
 let db: Database;
 
@@ -223,6 +224,58 @@ describe('corrupt-file exclusion', () => {
     // seedSong inserts size 10; simulate a re-download by changing it.
     db.run("UPDATE library_songs SET size = 9999 WHERE id = 'a'");
     expect(bpm.countPending(db)).toBe(1);
+  });
+});
+
+describe('undetectable-signal exclusion', () => {
+  const bpm = getTask('bpm')!;
+  const key = getTask('key')!;
+  const noConfidentBpm = () =>
+    ctx({
+      analyzeBpm: async (_abs, onError) => {
+        onError?.(new NoConfidentResultError('no confident tempo detected'));
+        return null;
+      },
+    });
+
+  it('ledgers a no-result file WITHOUT counting it as a run failure', async () => {
+    seedSong('a');
+    const res = await bpm.run(db, noConfidentBpm(), 25);
+    // Nothing is broken → no failure tally, no error sample…
+    expect(res.failed).toBe(0);
+    expect(res.errorSample).toBeNull();
+    // …but the attempt IS ledgered so the file eventually stops being retried.
+    const row = db
+      .query<
+        { fail_count: number; last_error: string },
+        []
+      >("SELECT fail_count, last_error FROM library_song_analysis_failures WHERE song_id = 'a' AND task = 'bpm'")
+      .get();
+    expect(row?.fail_count).toBe(1);
+    expect(row?.last_error).toContain('no confident tempo');
+  });
+
+  it('drops a persistently-undetectable file out of the pending set after the cap', async () => {
+    seedSong('a');
+    for (let i = 0; i < MAX_ANALYSIS_ATTEMPTS; i++) {
+      await bpm.run(db, noConfidentBpm(), 25);
+    }
+    expect(bpm.countPending(db)).toBe(0);
+  });
+
+  it('applies to the key task too (no tonal content)', async () => {
+    seedSong('a');
+    const c = ctx({
+      analyzeKey: async (_abs, onError) => {
+        onError?.(new NoConfidentResultError('no tonal content detected'));
+        return null;
+      },
+    });
+    for (let i = 0; i < MAX_ANALYSIS_ATTEMPTS; i++) {
+      const res = await key.run(db, c, 25);
+      expect(res.failed).toBe(0);
+    }
+    expect(key.countPending(db)).toBe(0);
   });
 });
 

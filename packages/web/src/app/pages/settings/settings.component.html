@@ -262,7 +262,7 @@
                     }
                     @if (st.skipped > 0) {
                       <p class="mt-1 text-xs text-theme-muted" data-testid="processing-skipped">
-                        {{ st.skipped }} file{{ st.skipped === 1 ? '' : 's' }} skipped as unreadable (re-download to retry)
+                        {{ st.skipped }} file{{ st.skipped === 1 ? '' : 's' }} skipped: unreadable or not analyzable (re-download to retry)
                       </p>
                     }
                     @if (st.lastItems.length > 0) {

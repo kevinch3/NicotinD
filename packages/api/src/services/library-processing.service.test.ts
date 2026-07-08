@@ -250,6 +250,87 @@ describe('LibraryProcessingService', () => {
     expect(svc.getState().status.skipped).toBe(1);
   });
 
+  it('accumulates the failure tally across ticks within one window session', async () => {
+    seedSong('s0');
+    seedSong('s1');
+    setProcessingSettings(db, {
+      window: { start: '05:00', end: '08:00' },
+      batchSize: 1, // one failing song per tick
+      tasks: { bpm: true, genre: false, key: false, energy: false },
+    });
+    const failingCtx = (): EnrichmentContext => ({
+      ...fakeCtx({ analyzed: 0, genreLookups: 0 })(),
+      analyzeBpm: async (_abs, onError) => {
+        onError?.(new Error('ffmpeg PCM decode exited with code 183: Invalid data'));
+        return null;
+      },
+    });
+    const svc = new LibraryProcessingService({
+      db,
+      lidarr: {} as never,
+      musicDir: '/music',
+      dataDir,
+      now: () => new Date(2024, 0, 1, 6, 0),
+      contextFactory: failingCtx,
+      reportFailure: () => {},
+    });
+
+    await svc.tick();
+    expect(svc.getState().status.failed).toBe(1);
+    // Second in-window tick continues the same session's tally.
+    await svc.tick();
+    expect(svc.getState().status.failed).toBe(2);
+  });
+
+  it('resets the stale failure tally when a new window session starts', async () => {
+    seedSong('s0');
+    setProcessingSettings(db, {
+      window: { start: '05:00', end: '08:00' },
+      batchSize: 10,
+      tasks: { bpm: true, genre: false, key: false, energy: false },
+    });
+    let clock = new Date(2024, 0, 1, 6, 0);
+    let failDecode = true;
+    const ctxFactory = (): EnrichmentContext => ({
+      ...fakeCtx({ analyzed: 0, genreLookups: 0 })(),
+      analyzeBpm: async (_abs, onError) => {
+        if (failDecode) {
+          onError?.(new Error('ffmpeg PCM decode exited with code 183: Invalid data'));
+          return null;
+        }
+        return 120;
+      },
+    });
+    const svc = new LibraryProcessingService({
+      db,
+      lidarr: {} as never,
+      musicDir: '/music',
+      dataDir,
+      now: () => clock,
+      contextFactory: ctxFactory,
+      reportFailure: () => {},
+    });
+
+    // Night 1: the file fails; the tally shows it.
+    await svc.tick();
+    expect(svc.getState().status.failed).toBe(1);
+    expect(svc.getState().status.lastError).toContain('code 183');
+
+    // Daytime: outside the window (marks the session boundary).
+    clock = new Date(2024, 0, 1, 12, 0);
+    await svc.tick();
+    expect(svc.getState().status.phase).toBe('outside-window');
+
+    // Night 2: the file now succeeds — the old failure banner must be gone.
+    failDecode = false;
+    clock = new Date(2024, 0, 2, 6, 0);
+    await svc.tick();
+    const { status } = svc.getState();
+    expect(status.failed).toBe(0);
+    expect(status.lastError).toBeNull();
+    expect(status.processed).toBe(1);
+  });
+
   it('persists status across a restart', async () => {
     for (let i = 0; i < 2; i++) seedSong(`s${i}`);
     setProcessingSettings(db, {

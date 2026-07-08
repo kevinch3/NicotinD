@@ -7,6 +7,13 @@ services:
       - ~/.nicotind:/data/nicotind
       - /mnt/data1tb_new/music:/data/music
 
+  # The analysis sidecar resolves relPaths against ITS OWN /data/music mount —
+  # it must see the same files as the API or every /analyze call 404s and the
+  # audio-features task never drains (this exact bug shipped once; don't repeat it).
+  analysis:
+    volumes:
+      - /mnt/data1tb_new/music:/data/music:ro
+
   slskd:
     volumes:
       - /mnt/data1tb_new/music:/data/music

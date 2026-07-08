@@ -9,7 +9,13 @@ import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import type { Lidarr } from '@nicotind/lidarr-client';
-import { analyzeBpm, verifyGenre, summarizeFfmpegStderr } from './track-analysis.js';
+import {
+  analyzeBpm,
+  analyzeKey,
+  verifyGenre,
+  summarizeFfmpegStderr,
+  NoConfidentResultError,
+} from './track-analysis.js';
 import { ffmpegAvailable } from './transcode.js';
 
 describe('summarizeFfmpegStderr', () => {
@@ -117,4 +123,40 @@ describe('analyzeBpm', () => {
     expect(bpm).not.toBeNull();
     expect(bpm!).toBeGreaterThan(0);
   });
+
+  it.skipIf(!ffmpegAvailable())(
+    'signals a NoConfidentResultError (not a hard failure) when the signal is too short',
+    async () => {
+      mkdirSync(tmpdir(), { recursive: true });
+      const root = mkdtempSync(join(tmpdir(), 'nicotind-bpm-short-'));
+      cleanups.push(() => rmSync(root, { recursive: true, force: true }));
+      const wav = join(root, 'short.wav');
+      // 1 s of audio — decodes fine, but far below the 5 s analysis minimum.
+      execFileSync(
+        'ffmpeg',
+        [
+          '-hide_banner',
+          '-loglevel',
+          'error',
+          '-f',
+          'lavfi',
+          '-i',
+          'sine=frequency=440:duration=1:sample_rate=44100',
+          wav,
+        ],
+        { stdio: 'ignore' },
+      );
+      const errors: unknown[] = [];
+      const bpm = await analyzeBpm(wav, (err) => errors.push(err));
+      expect(bpm).toBeNull();
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toBeInstanceOf(NoConfidentResultError);
+
+      const keyErrors: unknown[] = [];
+      const key = await analyzeKey(wav, (err) => keyErrors.push(err));
+      expect(key).toBeNull();
+      expect(keyErrors).toHaveLength(1);
+      expect(keyErrors[0]).toBeInstanceOf(NoConfidentResultError);
+    },
+  );
 });

@@ -232,16 +232,21 @@ export class LibraryProcessingService extends EventEmitter {
     const tasks = this.runnableTasks(settings);
     const total = tasks.reduce((sum, t) => sum + t.countPending(this.db), 0);
 
-    const startedAt =
-      fresh || this.status.phase !== 'running' ? this.now().toISOString() : this.status.startedAt;
+    // A "run" spans one window session: tick batches inside the same window
+    // continue the tally; the first batch after re-entering the window (or
+    // re-enabling, or an explicit runNow) starts a fresh one. why: the tally is
+    // persisted + reloaded, so without a session boundary a long-resolved
+    // failure ("38 failed — ffmpeg…") stayed on the panel forever.
+    const newRun =
+      fresh || this.status.phase === 'outside-window' || this.status.phase === 'disabled';
     this.status = {
       ...this.status,
       phase: 'running',
-      startedAt,
-      processed: fresh ? 0 : this.status.processed,
-      // A fresh run resets the failure tally; an in-window continuation keeps it.
-      failed: fresh ? 0 : this.status.failed,
-      lastError: fresh ? null : this.status.lastError,
+      startedAt:
+        newRun || this.status.startedAt === null ? this.now().toISOString() : this.status.startedAt,
+      processed: newRun ? 0 : this.status.processed,
+      failed: newRun ? 0 : this.status.failed,
+      lastError: newRun ? null : this.status.lastError,
       total,
     };
     this.emitStatus(settings);

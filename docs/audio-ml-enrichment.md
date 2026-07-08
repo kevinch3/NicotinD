@@ -99,6 +99,13 @@ container:
   (`runtime: nvidia` / device reservation — the host has a Quadro P4000). Reads the
   shared `/data/music` volume (same mount the API uses), returns embedding + labels.
   Stateless; the bun side owns the DB.
+  **Deployment pitfall**: the sidecar resolves `relPath` against *its own* mount, so
+  every music-volume override (e.g. the host bind in `docker-compose.override.yml`)
+  must be applied to the `analysis` service too. If it isn't, the API decodes files
+  fine while the sidecar 404s every `/analyze` call, and the whole audio-features
+  backlog silently stays pending (this happened in prod: the override rebound
+  `/data/music` for nicotind/slskd/lidarr but left `analysis` on the empty named
+  volume).
 - **Bun side**: a new `audio-features` `EnrichmentTask` (same registry/window/resume
   pattern as key/bpm/genre) calls the sidecar, **caches the embedding** in a
   `library_embeddings` side-table (keyed on `songId`; reusable for *every* head + the
