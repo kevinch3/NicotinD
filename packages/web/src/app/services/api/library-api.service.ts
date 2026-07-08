@@ -98,6 +98,12 @@ export class LibraryApiService {
   applyCover(id: string, body: ApplyCoverRequest) {
     return this.http.post<{ ok: boolean }>(`/api/library/albums/${id}/cover`, body);
   }
+  /** Upload a custom cover image for an album (admin); converted + written as the folder cover. */
+  uploadAlbumCover(id: string, file: File) {
+    const form = new FormData();
+    form.append('image', file);
+    return this.http.put<{ ok: boolean }>(`/api/library/albums/${id}/cover`, form);
+  }
   /** Upload a custom artist portrait (admin); overrides auto artwork + placeholder. */
   uploadArtistImage(id: string, file: File) {
     const form = new FormData();
