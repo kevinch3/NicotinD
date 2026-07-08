@@ -21,9 +21,9 @@ import { buildPluginConfigPayload, initialPluginConfigValues } from '../../lib/p
       <div class="flex items-center gap-3 mb-1">
         <a routerLink="/settings" class="text-theme-muted hover:text-theme-secondary text-sm">← Settings</a>
       </div>
-      <h1 class="text-2xl font-bold text-theme-primary mb-1">Plugins</h1>
+      <h1 class="text-2xl font-bold text-theme-primary mb-1">Extensions</h1>
       <p class="text-sm text-theme-muted mb-8">
-        Acquisition is opt-in. Nothing is downloaded until you enable a plugin here — you are
+        Acquisition is opt-in. Nothing is downloaded until you enable an extension here — you are
         responsible for ensuring its use is lawful where you are.
       </p>
 
@@ -108,19 +108,29 @@ import { buildPluginConfigPayload, initialPluginConfigValues } from '../../lib/p
                 </p>
               }
             </div>
-            <button
-              (click)="toggle(p)"
-              [disabled]="busy()"
-              data-testid="plugin-toggle"
-              class="shrink-0 px-3 py-1.5 rounded-lg text-sm font-medium transition disabled:opacity-50"
-              [class]="
-                p.enabled
-                  ? 'bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover'
-                  : 'bg-theme-accent text-theme-on-accent hover:opacity-90'
-              "
-            >
-              {{ p.enabled ? 'Disable' : 'Enable' }}
-            </button>
+            <div class="shrink-0 flex flex-col items-end gap-2">
+              <button
+                (click)="toggle(p)"
+                [disabled]="busy()"
+                data-testid="plugin-toggle"
+                class="px-3 py-1.5 rounded-lg text-sm font-medium transition disabled:opacity-50"
+                [class]="
+                  p.enabled
+                    ? 'bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover'
+                    : 'bg-theme-accent text-theme-on-accent hover:opacity-90'
+                "
+              >
+                {{ p.enabled ? 'Disable' : 'Enable' }}
+              </button>
+              @if (detailRoute(p.id); as route) {
+                <a
+                  [routerLink]="route"
+                  data-testid="plugin-configure"
+                  class="text-xs text-theme-accent hover:underline"
+                  >Configure →</a
+                >
+              }
+            </div>
           </div>
 
           @if (p.configFields?.length) {
@@ -176,6 +186,16 @@ import { buildPluginConfigPayload, initialPluginConfigValues } from '../../lib/p
     }
   `,
 })
+/**
+ * Plugins that own a dedicated settings surface (bespoke UI beyond the generic
+ * `configFields` form) map their id → detail route here. The card renders a
+ * "Configure →" link when an entry exists. Keeps the extension-specific UI with
+ * the extension instead of leaking it into this generic list.
+ */
+const PLUGIN_DETAIL_ROUTES: Record<string, string> = {
+  slskd: '/settings/plugins/slskd',
+};
+
 export class PluginsComponent implements OnInit {
   readonly plugins = inject(PluginService);
   readonly busy = signal(false);
@@ -202,6 +222,11 @@ export class PluginsComponent implements OnInit {
 
   ngOnInit(): void {
     void this.plugins.refresh();
+  }
+
+  /** Dedicated settings route for a plugin, or null when it uses the inline form only. */
+  detailRoute(pluginId: string): string | null {
+    return PLUGIN_DETAIL_ROUTES[pluginId] ?? null;
   }
 
   draftValue(pluginId: string, key: string): string {

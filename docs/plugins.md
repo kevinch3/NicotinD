@@ -159,10 +159,33 @@ process.ts` — `runAcquireProcess` + progress parsing + audio collection; the i
   (the last requires **enabled AND available**, since one-click Spotify download needs the spotdl
   binary present). UI surfaces gate on these.
 - `pages/plugins/plugins.component.ts` — admin-only page (route `/settings/plugins`, `adminGuard`),
-  linked from Settings → Plugins. Cards grouped by kind (**Acquisition** + a generic
-  **Connectivity** section that currently shows an empty-state — the wiring is ready for a
-  tailscale/wireguard plugin to appear with no UI changes). Enabling a consent-gated plugin opens
-  its disclaimer via `ConfirmDialogComponent` and only then calls `enable(id, true)`.
+  labelled **Extensions** in the UI (linked from Settings → Extensions; identifiers stay `plugin*`).
+  Cards grouped by kind (**Acquisition** + a generic **Connectivity** section that currently shows
+  an empty-state — the wiring is ready for a tailscale/wireguard plugin to appear with no UI
+  changes). Enabling a consent-gated plugin opens its disclaimer via `ConfirmDialogComponent` and
+  only then calls `enable(id, true)`.
+- **Per-extension settings surface (`PLUGIN_DETAIL_ROUTES`)**: extensions whose settings are too
+  bespoke for the generic config-field form own a dedicated page. `plugins.component.ts` maps
+  `plugin id → detail route` and renders a **Configure →** link on the card when an entry exists;
+  otherwise the inline `configFields` form is the whole story (spotify/ytdlp). This keeps
+  extension-specific UI *with the extension* instead of leaking into core Settings. First consumer:
+  **slskd** → `/settings/plugins/slskd` (`pages/plugins/slskd/slskd-settings.component.ts`,
+  `adminGuard`). That page owns the Soulseek **connection** form (creds/port/UPnP + connect/
+  disconnect), **shared folders**, and a live **status panel** — all moved out of the old core
+  Settings page. It gates its own body on `PluginService.hasSlskd()` (shows an enable-first notice
+  when the extension is off). *Backend credential storage is unchanged* — it still uses the
+  admin-gated `/api/settings/soulseek*` + `/api/settings/shares*` routes (`secrets.json`, wired to
+  embedded-mode via `slskd-config.ts`); only the UI relocated, to avoid destabilizing the
+  embedded-mode credential wiring.
+- **slskd status panel (Nicotine+-style)**: `GET /api/plugins/slskd/status` (admin, self-gates on
+  the plugin being enabled + a reachable client) returns a typed `SlskdStatus` — current up/down
+  speeds, active/queued transfer counts, configured limits (upload/download speed + slots), share
+  size, and connection/version/uptime. It aggregates `server.getState()`, `transfers.getDownloads/
+  Uploads()`, `options.get()` (new JSON options accessor), and `application.getInfo()` via the
+  DI-free, unit-tested `services/slskd-status.ts` (`buildSlskdStatus` + `extractSlskdLimits` — the
+  limit extractor is defensive because slskd's options JSON shape varies by version). Each probe is
+  fetched independently (`Promise.all` + `.catch`) so one failure degrades to zeros, never a 500.
+  The panel polls every ~3s while the tab is visible.
 - **Generic config-field editor**: a plugin manifest may declare `configFields` (UI descriptors:
   `{ key, label, type: 'text'|'password', placeholder?, help? }`). The card renders a small form
   from them; `GET /api/plugins` echoes `configFields` + a `configured` map (which keys have a stored
@@ -197,7 +220,11 @@ process.ts` — `runAcquireProcess` + progress parsing + audio collection; the i
   routes URLs via `registry.getEnabledForUrl()` (no `detectBackend`); submit 503s when none is
   enabled/available; `acquire_jobs.backend` relaxed to an open plugin id.
 - **D** _(done)_ — default-off for fresh installs (one-time migration for existing installs) +
-  Settings → Plugins management UI + capability-gating of the web surfaces.
+  Settings → Extensions management UI + capability-gating of the web surfaces.
+- **Decoupling refactor** _(done)_ — core **Settings** page slimmed to universal prefs only;
+  server-admin tools (streaming, library processing, find-duplicates) moved to **Admin**; slskd
+  config + a new live status panel moved to its own **extension page**. See "Per-extension settings
+  surface" above and [docs/admin-settings-decoupling.md](admin-settings-decoupling.md).
 - **E** _(scaffolded, not shipped)_ — connectivity kind (tailscale/wireguard). The contracts,
   registry, and UI handle the kind generically; a real connectivity plugin can be registered in
   `index.ts` with no further wiring. Per current direction, none is integrated yet.

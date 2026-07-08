@@ -69,6 +69,20 @@ test.describe('plugin capability gating', () => {
     );
   });
 
+  test('the slskd card links to its own extension page (disabled notice when off)', async ({
+    page,
+  }) => {
+    await page.goto('/settings/plugins');
+    const card = page.locator('[data-testid="plugin-card"][data-plugin-id="slskd"]');
+    await expect(card).toBeVisible();
+    // Bespoke settings live on the extension's own page, not an inline form.
+    await card.getByTestId('plugin-configure').click();
+    await expect(page).toHaveURL(/\/settings\/plugins\/slskd$/);
+    await expect(page.getByTestId('slskd-settings')).toBeVisible();
+    // Acquisition is default-off in e2e, so the extension shows its enable-first notice.
+    await expect(page.getByTestId('slskd-disabled-notice')).toBeVisible();
+  });
+
   test('the From Spotify lane stays hidden while the plugin is disabled', async ({ page }) => {
     await page.goto('/');
     await page.getByTestId('search-input').fill('nina simone');

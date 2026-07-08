@@ -1,6 +1,7 @@
 import { Injectable, inject, signal, computed } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, type Observable } from 'rxjs';
+import type { SlskdStatus } from '@nicotind/core';
 
 export type PluginKind = 'acquisition' | 'connectivity';
 export type PluginCapability = 'search' | 'browse' | 'resolve' | 'download' | 'connectivity';
@@ -97,5 +98,13 @@ export class PluginService {
   async saveConfig(id: string, config: Record<string, unknown>): Promise<void> {
     await firstValueFrom(this.http.put(`/api/plugins/${id}/config`, config));
     await this.refresh();
+  }
+
+  /** Whether the slskd extension is enabled (gates its dedicated settings page). */
+  readonly hasSlskd = computed(() => this.plugins().some((p) => p.id === 'slskd' && p.enabled));
+
+  /** Live slskd status (speeds/limits/counts) for the extension's status panel. */
+  getSlskdStatus(): Observable<SlskdStatus> {
+    return this.http.get<SlskdStatus>('/api/plugins/slskd/status');
   }
 }

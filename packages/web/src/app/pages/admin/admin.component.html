@@ -146,6 +146,213 @@
             }
           </div>
 
+          <!-- Streaming / transcoding (moved from Settings) -->
+          <section class="rounded-xl border border-theme bg-theme-surface p-6 mb-8" data-testid="streaming-panel">
+            <h3 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary mb-5">Streaming</h3>
+            @if (streaming(); as s) {
+              <div class="space-y-4">
+                <label class="flex items-center justify-between gap-4">
+                  <span class="text-sm text-theme-primary">Transcode on the fly
+                    @if (s.ffmpegAvailable === false) {
+                      <span class="block text-xs text-status-warn">ffmpeg not found on the server — transcoding unavailable</span>
+                    } @else {
+                      <span class="block text-xs text-theme-muted">Re-encode streams to a smaller format/bitrate</span>
+                    }
+                  </span>
+                  <input type="checkbox" [checked]="s.transcodeEnabled"
+                    [disabled]="streamingSaving() || s.ffmpegAvailable === false"
+                    (change)="saveStreaming({ transcodeEnabled: $any($event.target).checked })"
+                    class="w-4 h-4 rounded accent-emerald-500" />
+                </label>
+
+                @if (s.transcodeEnabled) {
+                  <label class="flex items-center justify-between gap-4">
+                    <span class="text-sm text-theme-primary">Format</span>
+                    <select [value]="s.format"
+                      [disabled]="streamingSaving()"
+                      (change)="saveStreaming({ format: $any($event.target).value })"
+                      class="text-sm rounded-lg bg-theme-surface border border-theme px-2 py-1 text-theme-primary">
+                      <option value="mp3">MP3</option>
+                      <option value="opus">Opus</option>
+                      <option value="aac">AAC</option>
+                    </select>
+                  </label>
+
+                  <label class="flex items-center justify-between gap-4">
+                    <span class="text-sm text-theme-primary">Max bitrate (kbps)</span>
+                    <select [value]="s.maxBitRate"
+                      [disabled]="streamingSaving()"
+                      (change)="saveStreaming({ maxBitRate: +$any($event.target).value })"
+                      class="text-sm rounded-lg bg-theme-surface border border-theme px-2 py-1 text-theme-primary">
+                      <option [value]="96">96</option>
+                      <option [value]="128">128</option>
+                      <option [value]="192">192</option>
+                      <option [value]="256">256</option>
+                      <option [value]="320">320</option>
+                    </select>
+                  </label>
+
+                  <label class="flex items-center justify-between gap-4">
+                    <span class="text-sm text-theme-primary">Always transcode
+                      <span class="block text-xs text-theme-muted">Even when the player doesn't request it</span>
+                    </span>
+                    <input type="checkbox" [checked]="s.forceTranscode"
+                      [disabled]="streamingSaving()"
+                      (change)="saveStreaming({ forceTranscode: $any($event.target).checked })"
+                      class="w-4 h-4 rounded accent-emerald-500" />
+                  </label>
+                }
+
+                @if (streamingMessage(); as m) {
+                  <p class="text-xs" [class.text-status-done]="m.type === 'success'" [class.text-status-error]="m.type === 'error'">{{ m.text }}</p>
+                }
+              </div>
+            }
+          </section>
+
+          <!-- Library processing (BPM / genre enrichment; moved from Settings) -->
+          <section class="rounded-xl border border-theme bg-theme-surface p-6 mb-8" data-testid="processing-panel">
+            <h3 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary mb-2">Library processing</h3>
+            <p class="text-xs text-theme-muted mb-5">Analyze BPM and fill genres for tracks that are missing them. Runs in the background only during the time window below.</p>
+            @if (processing(); as p) {
+              <div class="space-y-4">
+                <!-- Master enable -->
+                <label class="flex items-center justify-between gap-4">
+                  <span class="text-sm text-theme-primary">Enable background processing</span>
+                  <input type="checkbox" [checked]="p.enabled" [disabled]="processingSaving()"
+                    data-testid="processing-enabled"
+                    (change)="saveProcessing({ enabled: $any($event.target).checked })"
+                    class="w-4 h-4 rounded accent-emerald-500" />
+                </label>
+
+                <!-- Window -->
+                <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+                  <span class="min-w-0 text-sm text-theme-primary">Processing window
+                    <span class="block text-xs text-theme-muted">Local server time</span>
+                  </span>
+                  <div class="flex min-w-0 items-center gap-2">
+                    <input type="time" [value]="p.window.start" [disabled]="processingSaving()"
+                      data-testid="processing-window-start"
+                      (change)="saveProcessing({ window: { start: $any($event.target).value, end: p.window.end } })"
+                      class="min-w-0 text-sm rounded-lg bg-theme-surface border border-theme px-2 py-1 text-theme-primary" />
+                    <span class="text-theme-muted">–</span>
+                    <input type="time" [value]="p.window.end" [disabled]="processingSaving()"
+                      data-testid="processing-window-end"
+                      (change)="saveProcessing({ window: { start: p.window.start, end: $any($event.target).value } })"
+                      class="min-w-0 text-sm rounded-lg bg-theme-surface border border-theme px-2 py-1 text-theme-primary" />
+                  </div>
+                </div>
+
+                <!-- Tasks -->
+                <div class="space-y-2">
+                  <label class="flex items-center justify-between gap-4">
+                    <span class="text-sm text-theme-primary">BPM analysis
+                      @if (taskUnavailable('bpm'); as reason) {
+                        <span class="block text-xs text-status-warn">{{ reason }}</span>
+                      }
+                    </span>
+                    <input type="checkbox" [checked]="p.tasks.bpm" [disabled]="processingSaving()"
+                      data-testid="processing-task-bpm"
+                      (change)="toggleProcessingTask('bpm')"
+                      class="w-4 h-4 rounded accent-emerald-500" />
+                  </label>
+                  <label class="flex items-center justify-between gap-4">
+                    <span class="text-sm text-theme-primary">Genre
+                      @if (taskUnavailable('genre'); as reason) {
+                        <span class="block text-xs text-status-warn">{{ reason }}</span>
+                      }
+                    </span>
+                    <input type="checkbox" [checked]="p.tasks.genre" [disabled]="processingSaving()"
+                      data-testid="processing-task-genre"
+                      (change)="toggleProcessingTask('genre')"
+                      class="w-4 h-4 rounded accent-emerald-500" />
+                  </label>
+                  <label class="flex items-center justify-between gap-4">
+                    <span class="text-sm text-theme-primary">Musical key
+                      @if (taskUnavailable('key'); as reason) {
+                        <span class="block text-xs text-status-warn">{{ reason }}</span>
+                      }
+                    </span>
+                    <input type="checkbox" [checked]="p.tasks.key" [disabled]="processingSaving()"
+                      data-testid="processing-task-key"
+                      (change)="toggleProcessingTask('key')"
+                      class="w-4 h-4 rounded accent-emerald-500" />
+                  </label>
+                  <label class="flex items-center justify-between gap-4">
+                    <span class="text-sm text-theme-primary">Energy &amp; loudness
+                      @if (taskUnavailable('energy'); as reason) {
+                        <span class="block text-xs text-status-warn">{{ reason }}</span>
+                      }
+                    </span>
+                    <input type="checkbox" [checked]="p.tasks.energy" [disabled]="processingSaving()"
+                      data-testid="processing-task-energy"
+                      (change)="toggleProcessingTask('energy')"
+                      class="w-4 h-4 rounded accent-emerald-500" />
+                  </label>
+                  <label class="flex items-center justify-between gap-4">
+                    <span class="text-sm text-theme-primary">Audio features (mood, valence, danceability)
+                      @if (taskUnavailable('audio-features'); as reason) {
+                        <span class="block text-xs text-status-warn">{{ reason }}</span>
+                      }
+                    </span>
+                    <input type="checkbox" [checked]="p.tasks['audio-features']" [disabled]="processingSaving()"
+                      data-testid="processing-task-audio-features"
+                      (change)="toggleProcessingTask('audio-features')"
+                      class="w-4 h-4 rounded accent-emerald-500" />
+                  </label>
+                </div>
+
+                <!-- Progress -->
+                @if (processingStatus(); as st) {
+                  <div class="pt-2 border-t border-theme" data-testid="processing-progress">
+                    <div class="flex items-center justify-between mb-1">
+                      <span class="text-xs text-theme-secondary">{{ processingPhaseLabel() }}</span>
+                      <span class="text-xs text-theme-muted">{{ processingPending() }} remaining</span>
+                    </div>
+                    <div class="h-2 rounded-full bg-theme-surface overflow-hidden">
+                      <div class="h-full bg-emerald-500 transition-all" [style.width.%]="processingPercent()"></div>
+                    </div>
+                    @if (processingFailed() > 0) {
+                      <p class="mt-2 text-xs text-status-error break-words" data-testid="processing-failed">
+                        {{ processingFailed() }} failed{{ st.lastError ? ' — ' + st.lastError : '' }}
+                      </p>
+                    }
+                    @if (st.skipped > 0) {
+                      <p class="mt-1 text-xs text-theme-muted" data-testid="processing-skipped">
+                        {{ st.skipped }} file{{ st.skipped === 1 ? '' : 's' }} skipped: unreadable or not analyzable (re-download to retry)
+                      </p>
+                    }
+                    @if (st.lastItems.length > 0) {
+                      <ul class="mt-3 space-y-1" data-testid="processing-snippets">
+                        @for (item of st.lastItems.slice().reverse(); track item) {
+                          <li class="text-xs text-theme-muted truncate">{{ item }}</li>
+                        }
+                      </ul>
+                    }
+                  </div>
+                }
+
+                <!-- Actions -->
+                <div class="flex items-center gap-3 pt-1">
+                  <button type="button" (click)="runProcessingNow()"
+                    [disabled]="runNowDisabled()"
+                    data-testid="processing-run-now"
+                    class="text-sm rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-emerald-600">
+                    {{ processingRunning() ? 'Running…' : 'Run now' }}
+                  </button>
+                  <button type="button" (click)="stopProcessing()"
+                    [disabled]="stopDisabled()"
+                    data-testid="processing-stop"
+                    class="text-sm rounded-lg border border-theme text-theme-primary px-3 py-1.5 disabled:opacity-50 disabled:cursor-not-allowed">Stop</button>
+                </div>
+
+                @if (processingMessage(); as m) {
+                  <p class="text-xs" [class.text-status-done]="m.type === 'success'" [class.text-status-error]="m.type === 'error'">{{ m.text }}</p>
+                }
+              </div>
+            }
+          </section>
+
           <!-- Log viewer -->
           <div>
             <span class="text-xs font-semibold uppercase tracking-wider text-theme-muted">Logs</span>
@@ -183,6 +390,63 @@
               }
             </div>
           </div>
+        </div>
+
+        <!-- Library Maintenance: Find Duplicates (moved from Settings) -->
+        <div>
+          <h2 class="text-xl font-bold text-theme-primary mb-8">Library Maintenance</h2>
+          <section class="rounded-xl border border-theme bg-theme-surface p-6" data-testid="duplicates-panel">
+            <p class="text-sm text-theme-primary mb-1">Find Duplicates</p>
+            <p class="text-xs text-theme-muted mb-3">
+              Finds songs with the same title and artist in your library. Lower-quality copies are pre-selected for deletion (sorted FLAC > MP3 > lower bitrate).
+            </p>
+
+            @if (duplicatesMessage()) {
+              <p [class]="'text-xs mb-3 ' + (duplicatesMessage()!.type === 'success' ? 'text-status-done' : 'text-status-error')">
+                {{ duplicatesMessage()!.text }}
+              </p>
+            }
+
+            <button type="button" (click)="loadDuplicates()" [disabled]="duplicatesLoading()"
+              data-testid="find-duplicates"
+              class="px-4 py-2 rounded-lg bg-theme-surface-2 border border-theme text-sm text-theme-secondary hover:text-theme-primary transition disabled:opacity-40 mb-4">
+              {{ duplicatesLoading() ? 'Scanning...' : 'Find Duplicates' }}
+            </button>
+
+            @if (duplicates().length > 0) {
+              <div class="space-y-3 mb-4 max-h-96 overflow-y-auto pr-1">
+                @for (group of duplicates(); track group[0].id) {
+                  <div class="rounded-lg border border-theme bg-theme-surface-2/30 divide-y divide-theme">
+                    @for (song of group; track song.id) {
+                      <label class="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-theme-hover/30 transition">
+                        <input type="checkbox" [checked]="isDuplicateMarked(song.id)" (change)="toggleDuplicateDelete(song.id)"
+                          class="w-4 h-4 rounded border-theme bg-theme-surface-2 text-status-error focus:ring-0 focus:ring-offset-0 flex-shrink-0" />
+                        <div class="flex-1 min-w-0">
+                          <p class="text-sm text-theme-primary truncate">{{ song.title }}</p>
+                          <p class="text-xs text-theme-muted truncate">{{ song.artist }} — {{ song.album }}</p>
+                        </div>
+                        <div class="text-right flex-shrink-0 space-y-0.5">
+                          <p class="text-xs font-medium" [class]="(song.suffix ?? '') === 'flac' ? 'text-status-done' : 'text-theme-muted'">
+                            {{ (song.suffix ?? '').toUpperCase() }}@if (song.bitRate) { {{ song.bitRate }}k}
+                          </p>
+                          <p class="text-xs text-theme-muted">{{ formatDuration(song.duration) }}</p>
+                        </div>
+                      </label>
+                    }
+                  </div>
+                }
+              </div>
+
+              <div class="flex items-center gap-3">
+                <button type="button" (click)="deleteMarkedDuplicates()"
+                  [disabled]="deletingDuplicates() || duplicatesDeleteSet().size === 0"
+                  class="px-4 py-2 rounded-lg status-error border border-theme text-sm hover:opacity-80 transition disabled:opacity-40">
+                  {{ deletingDuplicates() ? 'Deleting...' : 'Delete ' + duplicatesDeleteSet().size + ' selected' }}
+                </button>
+                <p class="text-xs text-theme-muted">Checked = will be deleted. Uncheck to keep.</p>
+              </div>
+            }
+          </section>
         </div>
 
         <!-- Incomplete Albums (3A) -->

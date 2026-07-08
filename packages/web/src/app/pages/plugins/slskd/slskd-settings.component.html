@@ -1,0 +1,222 @@
+<div class="max-w-2xl mx-auto px-4 py-5 md:px-6 md:py-8" data-testid="slskd-settings">
+  <div class="flex items-center gap-3 mb-1">
+    <a routerLink="/settings/plugins" class="text-theme-muted hover:text-theme-secondary text-sm">← Extensions</a>
+  </div>
+  <h1 class="text-xl font-bold text-theme-primary mb-1">Soulseek (slskd)</h1>
+  <p class="text-sm text-theme-muted mb-8">
+    Connection, shared folders, and live transfer status for the slskd extension.
+  </p>
+
+  @if (!plugins.hasSlskd()) {
+    <!-- Extension disabled: nothing slskd-specific is functional. -->
+    <section class="rounded-xl border border-theme bg-theme-surface/50 p-6" data-testid="slskd-disabled-notice">
+      <p class="text-sm text-theme-secondary">
+        The Soulseek extension is disabled. Enable it on the
+        <a routerLink="/settings/plugins" class="text-theme-accent hover:underline">Extensions</a>
+        page to configure a connection and download from the network.
+      </p>
+    </section>
+  } @else {
+    <!-- Status & speeds (Nicotine+-style) -->
+    <section class="rounded-xl border border-theme bg-theme-surface/50 p-6 mb-6" data-testid="slskd-status">
+      <h2 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary mb-5">Status</h2>
+      @if (status(); as s) {
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-5">
+          <div>
+            <p class="text-xs text-theme-muted mb-0.5">Download</p>
+            <p class="text-lg font-semibold text-theme-primary" data-testid="slskd-download-speed">{{ formatSpeed(s.speeds.downloadBytesPerSec) }}</p>
+            <p class="text-xs text-theme-muted">{{ s.counts.downloading }} active</p>
+          </div>
+          <div>
+            <p class="text-xs text-theme-muted mb-0.5">Upload</p>
+            <p class="text-lg font-semibold text-theme-primary" data-testid="slskd-upload-speed">{{ formatSpeed(s.speeds.uploadBytesPerSec) }}</p>
+            <p class="text-xs text-theme-muted">{{ s.counts.uploading }} active</p>
+          </div>
+          <div>
+            <p class="text-xs text-theme-muted mb-0.5">Queued</p>
+            <p class="text-lg font-semibold text-theme-primary">{{ s.counts.queued }}</p>
+            <p class="text-xs text-theme-muted">transfers</p>
+          </div>
+          <div>
+            <p class="text-xs text-theme-muted mb-0.5">Shared</p>
+            <p class="text-lg font-semibold text-theme-primary">{{ s.shares.files ?? '—' }}</p>
+            <p class="text-xs text-theme-muted">{{ s.shares.directories ?? 0 }} folders</p>
+          </div>
+        </div>
+
+        <dl class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm border-t border-theme pt-4">
+          <div class="flex items-center justify-between">
+            <dt class="text-theme-muted">Connection</dt>
+            <dd class="flex items-center gap-1.5">
+              <span [class]="'inline-block w-2 h-2 rounded-full ' + (s.connection?.isConnected ? 'bg-emerald-500' : 'bg-theme-muted')"></span>
+              <span class="text-theme-secondary">{{ s.connection?.isConnected ? 'Connected' : (s.available ? 'Offline' : 'Unavailable') }}</span>
+            </dd>
+          </div>
+          <div class="flex items-center justify-between">
+            <dt class="text-theme-muted">Upload limit</dt>
+            <dd class="text-theme-secondary">{{ formatLimit(s.limits.uploadSpeedLimit) }}</dd>
+          </div>
+          <div class="flex items-center justify-between">
+            <dt class="text-theme-muted">Upload slots</dt>
+            <dd class="text-theme-secondary">{{ s.limits.uploadSlots ?? '—' }}</dd>
+          </div>
+          <div class="flex items-center justify-between">
+            <dt class="text-theme-muted">Download limit</dt>
+            <dd class="text-theme-secondary">{{ formatLimit(s.limits.downloadSpeedLimit) }}</dd>
+          </div>
+          <div class="flex items-center justify-between">
+            <dt class="text-theme-muted">slskd version</dt>
+            <dd class="text-theme-secondary">{{ s.version ?? '—' }}</dd>
+          </div>
+          <div class="flex items-center justify-between">
+            <dt class="text-theme-muted">Uptime</dt>
+            <dd class="text-theme-secondary">{{ formatUptime(s.uptimeSeconds) }}</dd>
+          </div>
+        </dl>
+        <p class="text-xs text-theme-muted mt-4">
+          Speed limits and slots are configured in slskd itself (its <code class="px-1 rounded bg-theme-surface-2">slskd.yml</code>). Live speeds update every few seconds.
+        </p>
+      } @else {
+        <p class="text-sm text-theme-muted">Waiting for slskd status…</p>
+      }
+    </section>
+
+    <!-- Connection -->
+    <section class="rounded-xl border border-theme bg-theme-surface/50 p-6 mb-6">
+      <div class="flex items-center gap-3 mb-6 flex-wrap">
+        <h2 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary">Connection</h2>
+        <div class="flex items-center gap-2 flex-1">
+          <span [class]="'inline-block w-2.5 h-2.5 rounded-full ' + statusDotClass()"></span>
+          <span class="text-xs text-theme-muted">{{ statusLabel() }}</span>
+        </div>
+        @if (configured()) {
+          <button type="button" (click)="toggleConnection()" [disabled]="toggling()"
+            class="px-3 py-1 rounded-lg border border-theme text-xs font-medium transition disabled:opacity-50"
+            [class]="connected() ? 'text-status-warn hover:bg-theme-hover' : 'text-status-done hover:bg-theme-hover'">
+            {{ toggling() ? '...' : (connected() ? 'Disconnect' : 'Connect') }}
+          </button>
+        }
+      </div>
+      @if (toggleMessage()) {
+        <p [class]="'text-xs mb-4 ' + (toggleMessage()!.type === 'success' ? 'text-status-done' : 'text-status-error')">
+          {{ toggleMessage()!.text }}
+        </p>
+      }
+
+      @if (loading()) {
+        <p class="text-sm text-theme-muted">Loading…</p>
+      } @else {
+        <form (submit)="handleSave($event)" class="space-y-4">
+          <div class="flex gap-1 p-1 rounded-lg bg-theme-surface-2/50 w-fit">
+            <button type="button" (click)="isNewAccount.set(false); confirmPassword.set(''); message.set(null)"
+              [class]="'px-3 py-1.5 rounded-md text-xs font-medium transition ' + (!isNewAccount() ? 'bg-theme-hover text-theme-primary' : 'text-theme-secondary hover:text-theme-primary')">
+              I have an account
+            </button>
+            <button type="button" (click)="isNewAccount.set(true); message.set(null)"
+              [class]="'px-3 py-1.5 rounded-md text-xs font-medium transition ' + (isNewAccount() ? 'bg-theme-hover text-theme-primary' : 'text-theme-secondary hover:text-theme-primary')">
+              Create new account
+            </button>
+          </div>
+
+          <div>
+            <label class="block text-sm text-theme-secondary mb-1.5">Username</label>
+            <input type="text" [ngModel]="username()" (ngModelChange)="username.set($event)" name="slskUser" placeholder="Soulseek username"
+              class="w-full px-4 py-2.5 rounded-lg bg-theme-surface-2 border border-theme text-theme-primary placeholder-zinc-600 focus:outline-none focus:border-zinc-500 transition text-sm" />
+          </div>
+          <div>
+            <label class="block text-sm text-theme-secondary mb-1.5">Password</label>
+            <app-password-field [ngModel]="password()" (ngModelChange)="password.set($event)" name="slskPass"
+              [placeholder]="configured() && !isNewAccount() ? '••••••••' : 'Soulseek password'"
+              autocomplete="new-password"
+              inputClass="px-4 py-2.5 rounded-lg bg-theme-surface-2 border border-theme text-theme-primary placeholder-zinc-600 focus:outline-none focus:border-zinc-500 transition text-sm" />
+          </div>
+
+          @if (isNewAccount()) {
+            <div>
+              <label class="block text-sm text-theme-secondary mb-1.5">Confirm Password</label>
+              <app-password-field [ngModel]="confirmPassword()" (ngModelChange)="confirmPassword.set($event)" name="slskConfirm"
+                placeholder="Confirm password" autocomplete="new-password"
+                inputClass="px-4 py-2.5 rounded-lg bg-theme-surface-2 border border-theme text-theme-primary placeholder-zinc-600 focus:outline-none focus:border-zinc-500 transition text-sm" />
+              @if (confirmPassword() && password() !== confirmPassword()) {
+                <p class="text-xs text-status-error mt-1">Passwords do not match</p>
+              }
+            </div>
+          }
+
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm text-theme-secondary mb-1.5">Listening Port</label>
+              <input type="number" [ngModel]="listeningPort()" (ngModelChange)="listeningPort.set($event)" name="slskPort" placeholder="50000"
+                class="w-full px-4 py-2.5 rounded-lg bg-theme-surface-2 border border-theme text-theme-primary placeholder-zinc-600 focus:outline-none focus:border-zinc-500 transition text-sm" />
+              <p class="text-xs text-theme-muted mt-1">Port for incoming P2P connections.</p>
+            </div>
+            <div class="flex flex-col justify-center">
+              <label class="flex items-center gap-2 cursor-pointer mt-2">
+                <input type="checkbox" [ngModel]="enableUPnP()" (ngModelChange)="enableUPnP.set($event)" name="slskUpnp"
+                  class="w-4 h-4 rounded border-theme bg-theme-surface-2 text-theme-primary focus:ring-0 focus:ring-offset-0" />
+                <span class="text-sm text-theme-secondary">Enable UPnP</span>
+              </label>
+              <p class="text-xs text-theme-muted mt-1">Auto-forward port (requires router support).</p>
+            </div>
+          </div>
+
+          @if (message()) {
+            <div [class]="'px-4 py-2.5 rounded-lg text-sm border border-theme ' + (message()!.type === 'success' ? 'status-done' : 'status-error')">
+              {{ message()!.text }}
+            </div>
+          }
+
+          <button type="submit"
+            [disabled]="saving() || !username().trim() || !password().trim() || (isNewAccount() && password() !== confirmPassword())"
+            class="px-5 py-2.5 rounded-lg bg-theme-inverse text-theme-inverse text-sm font-semibold hover:opacity-90 transition disabled:opacity-50">
+            {{ saving() ? (isNewAccount() ? 'Creating account...' : 'Saving...') : isNewAccount() ? 'Create Account & Connect' : configured() ? 'Update & Reconnect' : 'Save & Connect' }}
+          </button>
+        </form>
+      }
+    </section>
+
+    <!-- Shared Folders -->
+    <section class="rounded-xl border border-theme bg-theme-surface/50 p-6">
+      <h2 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary mb-5">Shared Folders</h2>
+
+      @if (shares().length > 0) {
+        <ul class="space-y-1.5 mb-4">
+          @for (path of shares(); track path) {
+            <li class="flex items-center gap-2 px-3 py-2 rounded-lg bg-theme-surface-2/50 border border-theme">
+              <span class="flex-1 text-sm text-theme-secondary truncate font-mono">{{ path }}</span>
+              <button type="button" (click)="removeShare(path)" [disabled]="sharesLoading()"
+                class="text-theme-muted hover:text-status-error transition disabled:opacity-40 flex-shrink-0" title="Remove">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </li>
+          }
+        </ul>
+      } @else {
+        <p class="text-xs text-theme-muted mb-4">No shared folders configured.</p>
+      }
+
+      <div class="flex gap-2 mb-3">
+        <input type="text" [ngModel]="newSharePath()" (ngModelChange)="newSharePath.set($event)"
+          name="newSharePath" placeholder="/path/to/music"
+          class="flex-1 px-3 py-2 rounded-lg bg-theme-surface-2 border border-theme text-theme-primary placeholder-zinc-600 focus:outline-none focus:border-zinc-500 transition text-sm font-mono" />
+        <button type="button" (click)="addShare()" [disabled]="sharesLoading() || !newSharePath().trim()"
+          class="px-4 py-2 rounded-lg bg-theme-surface-2 border border-theme text-sm text-theme-secondary hover:text-theme-primary transition disabled:opacity-40">
+          Add
+        </button>
+        <button type="button" (click)="rescanShares()" [disabled]="sharesLoading()"
+          class="px-4 py-2 rounded-lg bg-theme-surface-2 border border-theme text-sm text-theme-secondary hover:text-theme-primary transition disabled:opacity-40"
+          title="Trigger slskd share rescan">
+          Rescan
+        </button>
+      </div>
+
+      @if (sharesMessage()) {
+        <p [class]="'text-xs ' + (sharesMessage()!.type === 'success' ? 'text-status-done' : 'text-status-error')">
+          {{ sharesMessage()!.text }}
+        </p>
+      }
+    </section>
+  }
+</div>

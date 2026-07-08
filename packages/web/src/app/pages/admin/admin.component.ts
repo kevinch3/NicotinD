@@ -1,6 +1,7 @@
 import { Component, inject, signal, effect, OnInit, OnDestroy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
+import type { ProcessingSettings, ProcessingStatus, ProcessingTaskId } from '../../../types/core';
 import { SystemApiService } from '../../services/api/system-api.service';
 import { DownloadsApiService } from '../../services/api/downloads-api.service';
 import { LibraryApiService } from '../../services/api/library-api.service';
@@ -9,11 +10,33 @@ import type {
   AlbumJob,
   UntrackedDownload,
   DiscographyAlbum,
+  StreamingSettings,
 } from '../../services/api/api-types';
 import { AuthService } from '../../services/auth.service';
 import { ServerConfigService } from '../../services/server-config.service';
+import { ToastService } from '../../services/toast.service';
+import {
+  progressPercent,
+  phaseLabel,
+  totalPending,
+  isRunning,
+  runOutcomeToast,
+} from '../../lib/processing-progress';
 import { PasswordFieldComponent } from '../../components/password-field/password-field.component';
 import { AlbumHuntModalComponent } from '../../components/album-hunt-modal/album-hunt-modal.component';
+
+/** A copy in a duplicate group — shape returned by the maintenance duplicates API. */
+type DuplicateSong = {
+  id: string;
+  title: string;
+  artist: string;
+  album: string;
+  duration?: number;
+  bitRate?: number;
+  suffix?: string;
+  path: string;
+  coverArt?: string;
+};
 
 @Component({
   selector: 'app-admin',
@@ -26,6 +49,7 @@ export class AdminComponent implements OnInit, OnDestroy {
   private libraryApi = inject(LibraryApiService);
   private auth = inject(AuthService);
   private server = inject(ServerConfigService);
+  private toast = inject(ToastService);
 
   readonly services: 'slskd'[] = ['slskd'];
 
@@ -69,6 +93,31 @@ export class AdminComponent implements OnInit, OnDestroy {
     }
   }
 
+  // --- Streaming / transcoding (moved from Settings) ---
+  readonly streaming = signal<StreamingSettings | null>(null);
+  readonly streamingSaving = signal(false);
+  readonly streamingMessage = signal<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // --- Windowed library processing (BPM / genre enrichment; moved from Settings) ---
+  readonly processing = signal<ProcessingSettings | null>(null);
+  readonly processingStatus = signal<ProcessingStatus | null>(null);
+  readonly processingSaving = signal(false);
+  /** True while the "Run now" request is in flight (before the first SSE frame). */
+  readonly processingStarting = signal(false);
+  readonly processingMessage = signal<{ type: 'success' | 'error'; text: string } | null>(null);
+  private processingStream: EventSource | null = null;
+  // A user pressed "Run now" and we're waiting for the run to settle so we can
+  // toast its outcome. `sawRunning` guards against toasting a no-op/priming frame.
+  private awaitingRun = false;
+  private sawRunning = false;
+
+  // --- Library maintenance: find duplicates (moved from Settings) ---
+  readonly duplicatesLoading = signal(false);
+  readonly duplicates = signal<DuplicateSong[][]>([]);
+  readonly duplicatesDeleteSet = signal<Set<string>>(new Set());
+  readonly duplicatesMessage = signal<{ type: 'success' | 'error'; text: string } | null>(null);
+  readonly deletingDuplicates = signal(false);
+
   // Incomplete album hunts (3A) — exhausted/active jobs with a re-hunt action.
   readonly incompleteJobs = signal<AlbumJob[]>([]);
   readonly jobsLoading = signal(true);
@@ -108,6 +157,236 @@ export class AdminComponent implements OnInit, OnDestroy {
     this.loadSystemStatus();
     this.loadIncompleteJobs();
     this.loadUntracked();
+    this.loadStreaming();
+    this.loadProcessing();
+    this.connectProcessingStream();
+  }
+
+  // --- Streaming ---
+  private async loadStreaming(): Promise<void> {
+    try {
+      this.streaming.set(await firstValueFrom(this.api.getStreamingSettings()));
+    } catch {
+      /* ignore */
+    }
+  }
+
+  async saveStreaming(patch: Partial<StreamingSettings>): Promise<void> {
+    this.streamingSaving.set(true);
+    this.streamingMessage.set(null);
+    try {
+      this.streaming.set(await firstValueFrom(this.api.saveStreamingSettings(patch)));
+      this.streamingMessage.set({ type: 'success', text: 'Streaming settings saved' });
+    } catch {
+      this.streamingMessage.set({ type: 'error', text: 'Failed to save streaming settings' });
+    } finally {
+      this.streamingSaving.set(false);
+    }
+  }
+
+  // --- Library processing (delegates to the pure processing-progress lib) ---
+  processingPercent(): number {
+    const s = this.processingStatus();
+    return s ? progressPercent(s) : 0;
+  }
+  processingPhaseLabel(): string {
+    const s = this.processingStatus();
+    return s ? phaseLabel(s.phase) : '';
+  }
+  processingPending(): number {
+    const s = this.processingStatus();
+    return s ? totalPending(s) : 0;
+  }
+  /** Availability reason for a task, or '' when runnable. */
+  taskUnavailable(task: ProcessingTaskId): string {
+    const a = this.processingStatus()?.availability[task];
+    return a === true || a === undefined ? '' : a;
+  }
+  /** True while a run is actively working. */
+  processingRunning(): boolean {
+    const s = this.processingStatus();
+    return s ? isRunning(s) : false;
+  }
+  /** "Run now" is disabled while starting or while a run is in progress. */
+  runNowDisabled(): boolean {
+    return this.processingStarting() || this.processingRunning();
+  }
+  /** "Stop" is only meaningful while a run is in progress. */
+  stopDisabled(): boolean {
+    return !this.processingRunning();
+  }
+  /** Count of failures in the current/last run (surfaced in the progress area). */
+  processingFailed(): number {
+    return this.processingStatus()?.failed ?? 0;
+  }
+
+  private async loadProcessing(): Promise<void> {
+    try {
+      const data = await firstValueFrom(this.api.getProcessing());
+      this.processing.set(data.settings);
+      this.processingStatus.set(data.status);
+    } catch {
+      /* ignore — non-admin or service unavailable */
+    }
+  }
+
+  /** Live status via SSE (progress bar + snippets) — same pattern as the log stream. */
+  private connectProcessingStream(): void {
+    const token = this.auth.token();
+    if (!token) return;
+    const src = new EventSource(
+      this.server.apiUrl(`/api/admin/processing/stream?token=${encodeURIComponent(token)}`),
+    );
+    this.processingStream = src;
+    src.onmessage = (e) => {
+      try {
+        const status = JSON.parse(e.data) as ProcessingStatus;
+        this.processingStatus.set(status);
+        this.handleRunSettled(status);
+      } catch {
+        /* ignore malformed frame */
+      }
+    };
+    src.onerror = () => {
+      /* EventSource auto-reconnects; nothing to do */
+    };
+  }
+
+  async saveProcessing(patch: Partial<ProcessingSettings>): Promise<void> {
+    this.processingSaving.set(true);
+    this.processingMessage.set(null);
+    try {
+      const data = await firstValueFrom(this.api.saveProcessing(patch));
+      this.processing.set(data.settings);
+      this.processingStatus.set(data.status);
+      this.processingMessage.set({ type: 'success', text: 'Processing settings saved' });
+    } catch {
+      this.processingMessage.set({ type: 'error', text: 'Failed to save processing settings' });
+    } finally {
+      this.processingSaving.set(false);
+    }
+  }
+
+  /** Toggle a per-task flag and persist immediately. */
+  toggleProcessingTask(task: ProcessingTaskId): void {
+    const current = this.processing();
+    if (!current) return;
+    void this.saveProcessing({
+      tasks: { ...current.tasks, [task]: !current.tasks[task] },
+    });
+  }
+
+  /**
+   * When a user-initiated run settles (running → non-running), toast its outcome.
+   * `sawRunning` ensures we only react to a real run, not the priming frame or a
+   * no-op, and clearing `awaitingRun` here keeps background/window runs silent.
+   */
+  private handleRunSettled(status: ProcessingStatus): void {
+    if (!this.awaitingRun) return;
+    if (status.phase === 'running') {
+      this.sawRunning = true;
+      return;
+    }
+    if (this.sawRunning) {
+      const outcome = runOutcomeToast(status);
+      if (outcome) this.toast.show({ message: outcome.message, kind: outcome.kind });
+    }
+    this.awaitingRun = false;
+    this.sawRunning = false;
+  }
+
+  async runProcessingNow(): Promise<void> {
+    if (this.runNowDisabled()) return;
+    this.processingStarting.set(true);
+    this.awaitingRun = true;
+    this.sawRunning = false;
+    try {
+      await firstValueFrom(this.api.runProcessing());
+      this.toast.show({ message: 'Processing started', kind: 'info' });
+    } catch {
+      this.awaitingRun = false;
+      this.toast.show({ message: 'Failed to start processing', kind: 'error' });
+    } finally {
+      this.processingStarting.set(false);
+    }
+  }
+
+  async stopProcessing(): Promise<void> {
+    try {
+      await firstValueFrom(this.api.stopProcessing());
+      this.toast.show({ message: 'Stopping…', kind: 'info' });
+    } catch {
+      /* ignore */
+    }
+  }
+
+  // --- Library maintenance: find duplicates ---
+  async loadDuplicates(): Promise<void> {
+    this.duplicatesLoading.set(true);
+    this.duplicatesMessage.set(null);
+    this.duplicates.set([]);
+    this.duplicatesDeleteSet.set(new Set());
+    try {
+      const groups = await firstValueFrom(this.libraryApi.getDuplicates());
+      this.duplicates.set(groups);
+      if (groups.length === 0) {
+        this.duplicatesMessage.set({ type: 'success', text: 'No duplicates found' });
+      } else {
+        // Auto-select lower-quality copies (all but the first, which is best-first sorted).
+        const toDelete = new Set<string>();
+        for (const group of groups) {
+          for (const song of group.slice(1)) toDelete.add(song.id);
+        }
+        this.duplicatesDeleteSet.set(toDelete);
+      }
+    } catch (err) {
+      this.duplicatesMessage.set({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'Failed to load duplicates',
+      });
+    } finally {
+      this.duplicatesLoading.set(false);
+    }
+  }
+
+  toggleDuplicateDelete(id: string): void {
+    const current = new Set(this.duplicatesDeleteSet());
+    if (current.has(id)) current.delete(id);
+    else current.add(id);
+    this.duplicatesDeleteSet.set(current);
+  }
+
+  isDuplicateMarked(id: string): boolean {
+    return this.duplicatesDeleteSet().has(id);
+  }
+
+  async deleteMarkedDuplicates(): Promise<void> {
+    const ids = [...this.duplicatesDeleteSet()];
+    if (ids.length === 0) return;
+    this.deletingDuplicates.set(true);
+    this.duplicatesMessage.set(null);
+    try {
+      const result = await firstValueFrom(this.libraryApi.deleteSongs(ids));
+      this.duplicatesMessage.set({
+        type: 'success',
+        text: `Deleted ${result.deletedCount} file${result.deletedCount !== 1 ? 's' : ''}`,
+      });
+      await this.loadDuplicates();
+    } catch (err) {
+      this.duplicatesMessage.set({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'Failed to delete',
+      });
+    } finally {
+      this.deletingDuplicates.set(false);
+    }
+  }
+
+  formatDuration(seconds?: number): string {
+    if (!seconds) return '';
+    const m = Math.floor(seconds / 60);
+    const s = Math.floor(seconds % 60);
+    return `${m}:${s.toString().padStart(2, '0')}`;
   }
 
   async loadIncompleteJobs(): Promise<void> {
@@ -176,6 +455,8 @@ export class AdminComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.disconnectLogStream();
+    this.processingStream?.close();
+    this.processingStream = null;
   }
 
   formatDate(dateStr: string): string {

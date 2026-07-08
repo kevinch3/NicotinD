@@ -103,3 +103,75 @@ describe('AdminComponent (incomplete albums + untracked)', () => {
     expect(c.jobStateClass('active')).toContain('status-warn');
   });
 });
+
+// Full render pass validating the sections moved in from Settings (streaming,
+// library processing, find-duplicates). `token: () => null` keeps ngOnInit from
+// opening any EventSource so detectChanges is safe.
+describe('AdminComponent (moved admin panels render)', () => {
+  const systemApi = {
+    getUsers: vi.fn(() => of([])),
+    getStatus: vi.fn(() => of({ slskd: { healthy: true, connected: true } })),
+    getScanStatus: vi.fn(() => of({ scanning: false, count: 10 })),
+    getStreamingSettings: vi.fn(() =>
+      of({
+        transcodeEnabled: true,
+        format: 'opus',
+        maxBitRate: 192,
+        forceTranscode: false,
+        ffmpegAvailable: true,
+      }),
+    ),
+    saveStreamingSettings: vi.fn((p: unknown) => of({ ...(p as object) })),
+    getProcessing: vi.fn(() =>
+      of({
+        settings: {
+          enabled: true,
+          window: { start: '02:00', end: '06:00' },
+          tasks: { bpm: true, genre: true, key: false, energy: false, 'audio-features': false },
+        },
+        status: {
+          phase: 'idle',
+          availability: {},
+          failed: 0,
+          skipped: 0,
+          processed: 0,
+          total: 0,
+          taskPending: { bpm: 0, genre: 0, key: 0, energy: 0, 'audio-features': 0 },
+          lastItems: [],
+        },
+      }),
+    ),
+  };
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [AdminComponent],
+      providers: [
+        {
+          provide: DownloadsApiService,
+          useValue: {
+            listAlbumJobs: vi.fn(() => of({ jobs: [] })),
+            getUntrackedDownloads: vi.fn(() => of({ total: 0, rows: [] })),
+          },
+        },
+        { provide: SystemApiService, useValue: systemApi },
+        { provide: LibraryApiService, useValue: {} },
+        { provide: AuthService, useValue: { token: () => null } },
+        { provide: TransferService, useValue: { poll: vi.fn() } },
+      ],
+    }).compileComponents();
+  });
+
+  it('renders streaming, library-processing and duplicates panels', async () => {
+    const fixture = TestBed.createComponent(AdminComponent);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('[data-testid="streaming-panel"]')).toBeTruthy();
+    expect(el.querySelector('[data-testid="processing-panel"]')).toBeTruthy();
+    expect(el.querySelector('[data-testid="duplicates-panel"]')).toBeTruthy();
+    expect(el.querySelector('[data-testid="processing-run-now"]')).toBeTruthy();
+    fixture.destroy();
+  });
+});

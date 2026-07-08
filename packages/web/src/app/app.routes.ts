@@ -76,6 +76,14 @@ export const routes: Routes = [
         canActivate: [adminGuard],
       },
       {
+        path: 'settings/plugins/slskd',
+        loadComponent: () =>
+          import('./pages/plugins/slskd/slskd-settings.component').then(
+            (m) => m.SlskdSettingsComponent,
+          ),
+        canActivate: [adminGuard],
+      },
+      {
         path: 'admin',
         loadComponent: () => import('./pages/admin/admin.component').then((m) => m.AdminComponent),
         canActivate: [adminGuard],
