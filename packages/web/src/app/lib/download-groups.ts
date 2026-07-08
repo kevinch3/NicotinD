@@ -9,6 +9,8 @@ export interface AlbumGroup {
   albumTitle?: string;
   /** Canonical Lidarr track count — the "of N" the album should contain. */
   expectedTracks?: number;
+  /** Deterministic destination library album id, for deep-linking once scanned. */
+  albumId?: string;
   username: string;
   fileIds: string[];
   erroredFileIds: string[];
@@ -87,6 +89,7 @@ export function groupByAlbum(downloads: SlskdUserTransferGroup[]): AlbumGroup[] 
         artistName: dir.albumJob?.artistName,
         albumTitle: dir.albumJob?.albumTitle,
         expectedTracks: dir.albumJob?.canonicalTrackCount,
+        albumId: dir.albumJob?.albumId,
         username: transfer.username,
         fileIds: files.map((f) => f.id),
         erroredFileIds: erroredFiles.map((f) => f.id),
@@ -122,6 +125,8 @@ export interface DownloadItem {
   startedAt?: number;
   /** Canonical album dir the files landed in, once known. */
   storagePath?: string;
+  /** Destination library album id, for deep-linking to the completed album. */
+  albumId?: string;
   /** Completed / total tracks (or playlist items). */
   progress?: { done: number; total: number };
   /** 0–100 progress for the in-flight bar, when a percentage is meaningful. */
@@ -166,6 +171,7 @@ export function groupToDownloadItem(g: AlbumGroup): DownloadItem {
     subtitle: g.artistName,
     method: 'slskd',
     stage: slskdStage(g.state),
+    albumId: g.albumId,
     startedAt: g.startedAt,
     progress: { done: g.completedFiles, total: albumGroupTotal(g) },
     percent: g.state === 'downloading' ? g.overallPercent : undefined,
@@ -199,6 +205,7 @@ export function acquireJobToDownloadItem(job: AcquireJob): DownloadItem {
     stage,
     startedAt: job.created_at ? job.created_at * 1000 : undefined,
     storagePath: job.storage_path ?? undefined,
+    albumId: job.albumId ?? undefined,
     progress,
     percent:
       stage === 'downloading' && progress && progress.total > 0

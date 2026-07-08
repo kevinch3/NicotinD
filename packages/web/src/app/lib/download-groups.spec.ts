@@ -45,17 +45,19 @@ describe('groupByAlbum with album-hunt metadata', () => {
             artistName: 'Babasónicos',
             albumTitle: 'Trance Zomba',
             canonicalTrackCount: 12,
+            albumId: 'album-trance-zomba',
           },
         },
       ],
     },
   ];
 
-  it('carries canonical artist/album/track-count onto the group', () => {
+  it('carries canonical artist/album/track-count and deep-link album id onto the group', () => {
     const [g] = groupByAlbum(downloads);
     expect(g.artistName).toBe('Babasónicos');
     expect(g.albumTitle).toBe('Trance Zomba');
     expect(g.expectedTracks).toBe(12);
+    expect(g.albumId).toBe('album-trance-zomba');
   });
 
   it('albumGroupTitle prefers the canonical album title over the folder name', () => {
@@ -78,9 +80,10 @@ describe('groupByAlbum for direct (non-hunt) downloads', () => {
     },
   ];
 
-  it('falls back to the peer folder name and file count', () => {
+  it('falls back to the peer folder name and file count, with no deep-link album id', () => {
     const [g] = groupByAlbum(downloads);
     expect(g.artistName).toBeUndefined();
+    expect(g.albumId).toBeUndefined();
     expect(albumGroupTitle(g)).toBe('My Mixtape');
     expect(albumGroupTotal(g)).toBe(1); // totalFiles, no canonical count
   });
@@ -95,6 +98,9 @@ function job(over: Partial<AcquireJob> = {}): AcquireJob {
     state: 'running',
     stage: 'downloading',
     storage_path: null,
+    albumId: null,
+    albumArtist: null,
+    albumTitle: null,
     progress: { done: 2, total: 5 },
     error: null,
     created_at: 1_000,
@@ -130,7 +136,12 @@ describe('groupToDownloadItem', () => {
             directory: 'M\\Album',
             fileCount: 2,
             files: [file({ id: 'a', state: 'Completed, Succeeded' }), file({ id: 'b' })],
-            albumJob: { artistName: 'Artist', albumTitle: 'Album', canonicalTrackCount: 10 },
+            albumJob: {
+              artistName: 'Artist',
+              albumTitle: 'Album',
+              canonicalTrackCount: 10,
+              albumId: 'album-id-1',
+            },
           },
         ],
       },
@@ -142,6 +153,7 @@ describe('groupToDownloadItem', () => {
     expect(item.subtitle).toBe('Artist');
     expect(item.stage).toBe('downloading');
     expect(item.progress).toEqual({ done: 1, total: 10 });
+    expect(item.albumId).toBe('album-id-1');
     expect(item.canCancel).toBe(true);
     expect(item.canRetry).toBe(false);
   });
@@ -171,6 +183,13 @@ describe('acquireJobToDownloadItem', () => {
     expect(item.canRetry).toBe(true);
     expect(item.canRemove).toBe(true);
     expect(item.canCancel).toBe(false);
+  });
+
+  it('carries the deep-link album id when the job resolved one, else undefined', () => {
+    expect(
+      acquireJobToDownloadItem(job({ state: 'done', stage: 'done', albumId: 'acq-album-1' })).albumId,
+    ).toBe('acq-album-1');
+    expect(acquireJobToDownloadItem(job({ albumId: null })).albumId).toBeUndefined();
   });
 });
 
