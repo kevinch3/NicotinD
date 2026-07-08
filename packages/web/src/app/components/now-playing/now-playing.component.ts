@@ -73,12 +73,13 @@ export class NowPlayingComponent {
   /** Plain text fallback when there are no synced lines. */
   readonly plainLyrics = computed(() => this.lyrics()?.plain ?? '');
 
-  // Fullscreen karaoke mode
-  readonly karaokeMode = signal(false);
+  // Fullscreen karaoke overlay (the in-place lyrics panel is always open when
+  // lyricsOpen is true; this flag expands it to a gradient-covered immersive view).
+  readonly karaokeFullscreen = signal(false);
   /** Dominant colors extracted from the current track's cover art. */
   readonly coverColors = signal<CoverPalette>(DEFAULT_PALETTE);
-  /** Reference to the karaoke lyrics scroll container for auto-scroll. */
-  readonly karaokeLyricsRef = viewChild<ElementRef<HTMLElement>>('karaokeLyrics');
+  /** Reference to the lyrics scroll container for auto-scroll (in-place or fullscreen). */
+  readonly lyricsScrollRef = viewChild<ElementRef<HTMLElement>>('lyricsScroll');
   private colorExtractedForId: string | null = null;
 
   // Playback progress interpolation
@@ -174,18 +175,17 @@ export class NowPlayingComponent {
 
     // Lazily (re)load lyrics whenever the panel is open and the track changes.
     effect(() => {
-      if (!this.lyricsOpen() && !this.karaokeMode()) return;
+      if (!this.lyricsOpen()) return;
       const id = this.player.currentTrack()?.id ?? null;
       if (!id || id === this.lyricsLoadedForId()) return;
       this.loadLyrics(id);
     });
 
-    // Extract cover colors when karaoke mode is active and the track changes.
+    // Extract cover colors when lyrics are open (needed for the fullscreen gradient).
     effect(() => {
       const track = this.player.currentTrack();
       if (!track?.coverArt) return;
-      // Only extract if karaoke mode is on or lyrics panel is open
-      if (!this.karaokeMode() && !this.lyricsOpen()) return;
+      if (!this.lyricsOpen()) return;
       if (this.colorExtractedForId === track.id) return;
       this.colorExtractedForId = track.id;
       const token = this.auth.token();
@@ -193,25 +193,29 @@ export class NowPlayingComponent {
       this.extractColorsFromImage(url);
     });
 
-    // Auto-scroll karaoke lyrics to the active line.
+    // Auto-scroll lyrics to the active line (in-place panel or fullscreen overlay).
     effect(() => {
       const active = this.activeLine();
-      if (!this.karaokeMode() || active < 0) return;
-      const container = this.karaokeLyricsRef()?.nativeElement;
+      if (!this.lyricsOpen() || active < 0) return;
+      const container = this.lyricsScrollRef()?.nativeElement;
       if (!container) return;
       scrollToActiveLine(container, active);
     });
   }
 
   toggleLyrics(): void {
+    const opening = !this.lyricsOpen();
     this.lyricsOpen.update((v) => !v);
+    if (!opening) {
+      this.karaokeFullscreen.set(false);
+    }
   }
 
-  toggleKaraokeMode(): void {
-    const entering = !this.karaokeMode();
-    this.karaokeMode.set(entering);
+  toggleKaraokeFullscreen(): void {
+    const entering = !this.karaokeFullscreen();
+    this.karaokeFullscreen.set(entering);
     if (entering) {
-      // Ensure lyrics are loaded and open
+      // Ensure lyrics stay loaded
       if (!this.lyricsOpen()) this.lyricsOpen.set(true);
       // Re-extract colors if needed
       const track = this.player.currentTrack();
@@ -255,19 +259,21 @@ export class NowPlayingComponent {
   }
 
   private loadLyrics(id: string): void {
-    this.lyricsLoadedForId.set(id);
     this.lyrics.set(null);
     this.lyricsLoading.set(true);
     this.api.getLyrics(id).subscribe({
       next: (l) => {
-        // Auto-fetch on first view when nothing is stored yet.
         if (l) {
           this.lyrics.set(l);
+          this.lyricsLoadedForId.set(id);
           this.lyricsLoading.set(false);
         } else {
           this.api.fetchLyrics(id).subscribe({
             next: (f) => {
               this.lyrics.set(f);
+              // Only cache the id on success so a later external fetch (e.g.
+              // from the track-info sheet) is picked up on the next effect run.
+              if (f) this.lyricsLoadedForId.set(id);
               this.lyricsLoading.set(false);
             },
             error: () => this.lyricsLoading.set(false),
