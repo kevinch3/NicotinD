@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.162](https://github.com/kevinch3/NicotinD/compare/v0.1.161...v0.1.162) (2026-07-08)
+
+
+### Features
+
+* **analysis:** optional GPU inference via --build-arg GPU=1, with inherent CPU fallback ([dee93da](https://github.com/kevinch3/NicotinD/commit/dee93da24e4688a3619c077f1783a749bad083bf))
+
+
+### Bug Fixes
+
+* **library-processing:** treat a process restart as a failure-tally session boundary ([6a8ea23](https://github.com/kevinch3/NicotinD/commit/6a8ea23f124b77aa2f8867e3b8f65ea093ca9cf8))
+
 ## [0.1.161](https://github.com/kevinch3/NicotinD/compare/v0.1.160...v0.1.161) (2026-07-08)
 
 
