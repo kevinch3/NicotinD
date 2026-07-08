@@ -73,6 +73,7 @@ The candidate "Apply" above always set artist+album+year+cover **together**, and
 - **`POST /api/library/albums/:id/cover`** (`ApplyCoverRequest`): exactly one of —
   - `coverUrl` (Lidarr alt **or** a pasted custom URL) → `setArtwork(db, id, 'album', url, coverCacheDir)`.
   - `songId` (an album track) → `extractEmbeddedPicture` → `writeFolderCover(dirname)` → **`deleteArtwork` (clears the canonical override) + `purgeDiskArtCache`** so the cover route falls back to the new folder image. This is also the **revert-to-original** path: pick a track whose embedded art is the original to undo a bad canonical cover.
+  - Both branches, plus `applyMetadataFix`'s `coverUrl` path and `optimizeAlbum`'s Lidarr-match cover write, call `clearCoverNegativeCache(id)` (`routes/streaming.js`) after the write. **Why:** an album with no art yet gets its id memoized in the cover route's `noArtCache` (10 min TTL, see [library-scanner.md](library-scanner.md)) the first time `/api/cover/:id` 404s; every album-cover writer must invalidate that entry for its id or the picked cover silently never appears — not even on a page refresh — until the TTL expires (regression: was only wired for the artist-image override paths, not the album ones; regression-tested in `routes/library.cover.test.ts`).
 - Embedded thumbnails are served by the existing cover route with **`?embedded=1`** (skips canonical+folder, caches under a `~emb`-suffixed key) — see [library-scanner.md](library-scanner.md).
 
 ### Web

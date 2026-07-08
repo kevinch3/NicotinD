@@ -899,6 +899,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     const coverUrl = body.coverUrl?.trim();
     if (coverUrl) {
       setArtwork(db, id, 'album', coverUrl, coverCacheDir);
+      clearCoverNegativeCache(id); // in case this id was 404-cached as artless
       return c.json({ ok: true });
     }
 
@@ -921,6 +922,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       writeFolderCover(dirname(abs), pic);
       deleteArtwork(db, id, coverCacheDir); // clear canonical → folder art wins
       if (coverCacheDir) purgeDiskArtCache(coverCacheDir, id);
+      clearCoverNegativeCache(id); // in case this id was 404-cached as artless
       return c.json({ ok: true });
     }
 

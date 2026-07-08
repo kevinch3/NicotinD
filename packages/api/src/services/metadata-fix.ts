@@ -10,6 +10,7 @@ import { setReleaseType, mapLidarrAlbumType } from './release-meta-store.js';
 import { setOverride, findByCorrectedId } from './metadata-override-store.js';
 import { pruneOrphanArtist } from './library-aggregates.js';
 import { isPlaceholderArtist } from './artwork-backfill.js';
+import { clearCoverNegativeCache } from '../routes/streaming.js';
 
 const log = createLogger('metadata-fix');
 
@@ -244,6 +245,7 @@ export function applyMetadataFix(
 
     if (input.coverUrl) {
       setArtwork(db, newAlbumId, 'album', input.coverUrl, opts.coverCacheDir);
+      clearCoverNegativeCache(newAlbumId); // in case this id was 404-cached as artless
       coverUpdated = true;
     }
     if (releaseType) {
