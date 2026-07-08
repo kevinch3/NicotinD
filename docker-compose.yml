@@ -79,8 +79,14 @@ services:
       - music:/data/music:ro
     environment:
       MUSIC_DIR: /data/music
-    # GPU upgrade path (also needs a GPU libtensorflow in the image — see
-    # docs/audio-ml-enrichment.md):
+    # GPU inference (optional, ~10x faster embeddings; needs the NVIDIA
+    # container toolkit on the host). The GPU image keeps full CPU fallback —
+    # started without a GPU it silently runs on CPU — so enabling is safe.
+    # Uncomment here or in an override file (see docs/audio-ml-enrichment.md):
+    # build:
+    #   context: packages/analysis
+    #   args:
+    #     GPU: "1"
     # deploy:
     #   resources:
     #     reservations:

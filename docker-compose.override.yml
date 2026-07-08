@@ -10,9 +10,22 @@ services:
   # The analysis sidecar resolves relPaths against ITS OWN /data/music mount —
   # it must see the same files as the API or every /analyze call 404s and the
   # audio-features task never drains (this exact bug shipped once; don't repeat it).
+  # GPU=1 swaps in the GPU libtensorflow (Quadro P4000 on this host); the image
+  # still falls back to CPU if the GPU is unavailable at runtime.
   analysis:
+    build:
+      context: packages/analysis
+      args:
+        GPU: "1"
     volumes:
       - /mnt/data1tb_new/music:/data/music:ro
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
 
   slskd:
     volumes:

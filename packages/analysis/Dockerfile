@@ -1,7 +1,12 @@
 # NicotinD analysis sidecar — Essentia-TensorFlow embeddings + tagging heads.
-# CPU-first (the essentia-tensorflow wheel bundles CPU libtensorflow); for the
-# GPU upgrade path see docs/audio-ml-enrichment.md.
+# CPU by default; `--build-arg GPU=1` swaps in Google's GPU libtensorflow (the
+# SAME 2.5.0 version the essentia wheel bundles) + the CUDA-11 runtime wheels.
+# The GPU image keeps FULL CPU fallback: TF dlopens its CUDA libs instead of
+# linking them, so with no GPU/driver at runtime it silently runs on CPU.
+# See docs/audio-ml-enrichment.md.
 FROM python:3.11-slim
+
+ARG GPU=0
 
 # ffmpeg does ALL audio decoding (essentia's bundled AudioLoader lacks Opus —
 # the library's standard codec — see app/models.py load_audio).
@@ -45,10 +50,36 @@ RUN set -eux; \
 WORKDIR /srv/analysis
 COPY pyproject.toml ./
 COPY app ./app
-RUN pip install --no-cache-dir '.[models]'
+RUN if [ "$GPU" = "1" ]; then pip install --no-cache-dir '.[models,gpu]'; \
+    else pip install --no-cache-dir '.[models]'; fi
 
+# GPU=1: replace the wheel's vendored CPU libtensorflow with Google's official
+# GPU build of the same version. The essentia extension links the vendored file
+# by its auditwheel-mangled name (RPATH $ORIGIN/../essentia_tensorflow.libs),
+# so the GPU .so is dropped in UNDER THAT EXACT NAME; its libtensorflow_framework
+# dependency lands alongside (resolved through the extension's inherited RPATH).
+RUN set -eux; \
+    if [ "$GPU" = "1" ]; then \
+      libs_dir="$(python -c 'import pathlib, essentia; print(pathlib.Path(essentia.__file__).resolve().parent.parent / "essentia_tensorflow.libs")')"; \
+      vendored="$(ls "$libs_dir"/libtensorflow-*.so.2.5.0)"; \
+      python -c "import urllib.request; urllib.request.urlretrieve('https://storage.googleapis.com/tensorflow/libtensorflow/libtensorflow-gpu-linux-x86_64-2.5.0.tar.gz', '/tmp/tf-gpu.tar.gz')"; \
+      echo "2261c4d315432fde9df1cb52de5ea088b6bc904d343c6d38d613555dc66c8665  /tmp/tf-gpu.tar.gz" | sha256sum -c; \
+      tar -xzf /tmp/tf-gpu.tar.gz -C /tmp ./lib/libtensorflow.so.2.5.0 ./lib/libtensorflow_framework.so.2.5.0; \
+      mv /tmp/lib/libtensorflow.so.2.5.0 "$vendored"; \
+      mv /tmp/lib/libtensorflow_framework.so.2.5.0 "$libs_dir/libtensorflow_framework.so.2"; \
+      rm -rf /tmp/tf-gpu.tar.gz /tmp/lib; \
+    fi
+
+# ANALYSIS_GPU_BUILD feeds runtime_device() (an honest "gpu" only when the swap
+# happened AND a driver is visible). LD_LIBRARY_PATH exposes the pip CUDA libs
+# TF dlopens; the dirs simply don't exist in the CPU image, which is harmless.
+# TF_FORCE_GPU_ALLOW_GROWTH stops TF from grabbing all GPU memory up front
+# (the card may be shared with other workloads).
 ENV ANALYSIS_MODELS_DIR=/models \
-    MUSIC_DIR=/data/music
+    MUSIC_DIR=/data/music \
+    ANALYSIS_GPU_BUILD=$GPU \
+    TF_FORCE_GPU_ALLOW_GROWTH=true \
+    LD_LIBRARY_PATH=/usr/local/lib/python3.11/site-packages/nvidia/cuda_runtime/lib:/usr/local/lib/python3.11/site-packages/nvidia/cublas/lib:/usr/local/lib/python3.11/site-packages/nvidia/cufft/lib:/usr/local/lib/python3.11/site-packages/nvidia/curand/lib:/usr/local/lib/python3.11/site-packages/nvidia/cusolver/lib:/usr/local/lib/python3.11/site-packages/nvidia/cusparse/lib:/usr/local/lib/python3.11/site-packages/nvidia/cudnn/lib:/usr/local/lib/python3.11/site-packages/nvidia/cuda_nvrtc/lib
 
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=120s \
