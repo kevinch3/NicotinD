@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.161](https://github.com/kevinch3/NicotinD/compare/v0.1.160...v0.1.161) (2026-07-08)
+
+
+### Bug Fixes
+
+* **library-processing:** unwedge stuck enrichment backlog + stop stale failure banner ([845f63a](https://github.com/kevinch3/NicotinD/commit/845f63a3ac1950b5bc31d0cf98c2e0790b29c819))
+
 ## [0.1.160](https://github.com/kevinch3/NicotinD/compare/v0.1.159...v0.1.160) (2026-07-07)
 
 
