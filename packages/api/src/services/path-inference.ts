@@ -160,7 +160,16 @@ export function inferMetadataFromPath(filename: string, directory: string): Pars
     parsed.trackNumber = String(Number(parts[0]));
     parsed.title = parts.slice(1).join(' - ');
   } else if (parts.length >= 2) {
-    parsed.artist = parts[0];
+    // parts[0] failed the pure-numeric test above but may still carry a
+    // glued track-number prefix ("01. Los Tekis"), which would otherwise
+    // leak into the artist field as a distinct value per track.
+    const artistPrefixMatch = parts[0]?.match(/^\s*(\d{1,3})\s*(?:[.)\-_]\s*|\s+)(\S.*)$/);
+    if (artistPrefixMatch) {
+      parsed.trackNumber = String(Number(artistPrefixMatch[1]));
+      parsed.artist = artistPrefixMatch[2];
+    } else {
+      parsed.artist = parts[0];
+    }
     parsed.title = parts.slice(1).join(' - ');
   } else if (fileNoExt.length > 0) {
     parsed.title = fileNoExt;

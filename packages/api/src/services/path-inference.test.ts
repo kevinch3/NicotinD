@@ -72,6 +72,23 @@ describe('inferMetadataFromPath', () => {
     expect(parsed.trackNumber).toBeUndefined();
   });
 
+  it('strips a glued track-number prefix from the artist in "01. Artist - Title.mp3"', () => {
+    const parsed = inferMetadataFromPath(
+      '01. Los Tekis - Escondiditos.mp3',
+      'Various Artists/Los Tekis - Somos (2004)',
+    );
+    expect(parsed.artist).toBe('Los Tekis');
+    expect(parsed.trackNumber).toBe('1');
+    expect(parsed.title).toBe('Escondiditos');
+  });
+
+  it('strips a glued track-number prefix from the artist regardless of separator style', () => {
+    const parsed = inferMetadataFromPath('12) Los Tekis - Seleccion De Carnavalitos.mp3', 'Los Tekis');
+    expect(parsed.artist).toBe('Los Tekis');
+    expect(parsed.trackNumber).toBe('12');
+    expect(parsed.title).toBe('Seleccion De Carnavalitos');
+  });
+
   it('does not use a phantom-dir folder (filename-shaped) as the album', () => {
     const parsed = inferMetadataFromPath(
       'Los Nota Lokos - Poputona.mp3',
