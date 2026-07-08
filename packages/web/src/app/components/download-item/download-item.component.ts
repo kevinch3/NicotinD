@@ -1,6 +1,8 @@
 import { Component, input, output, signal, computed } from '@angular/core';
+import { RouterLink } from '@angular/router';
 import type { DownloadItem } from '../../lib/download-groups';
 import { methodBadge } from '../../lib/acquisition-method';
+import { resolveAlbumRoute } from '../../lib/route-utils';
 import { PipelineStageBadgeComponent } from '../pipeline-stage-badge/pipeline-stage-badge.component';
 
 /** Relative "Xm ago" from a ms timestamp. */
@@ -31,15 +33,26 @@ export const DOWNLOAD_ITEM_HOST_CLASS = 'block min-w-0';
 export const DOWNLOAD_ITEM_TITLE_CLASS = 'text-sm text-theme-primary truncate min-w-0';
 
 /**
+ * Whether the row should offer an "Open in Library" deep-link: only once the
+ * download is complete *and* we know the destination album id (hunt / URL
+ * acquire; direct non-hunt Soulseek downloads have no id, so no link). Exported
+ * so the gating contract is unit-testable without rendering the component.
+ */
+export function canOpenInLibrary(item: DownloadItem): boolean {
+  return item.stage === 'done' && !!item.albumId;
+}
+
+/**
  * One row in the unified Downloads feed. Renders the four facets the user asked
  * for — how (method badge), what stage, when (started), where (storage path,
- * tucked behind a toggle) — plus retry / cancel / remove controls that emit to
+ * tucked behind a toggle) — plus, once complete, an "Open in Library" deep-link
+ * to the destination album, and retry / cancel / remove controls that emit to
  * the parent, which dispatches by `item.kind`.
  */
 @Component({
   selector: 'app-download-item',
   standalone: true,
-  imports: [PipelineStageBadgeComponent],
+  imports: [PipelineStageBadgeComponent, RouterLink],
   host: { '[class]': 'hostClass' },
   template: `
     <div
@@ -71,6 +84,16 @@ export const DOWNLOAD_ITEM_TITLE_CLASS = 'text-sm text-theme-primary truncate mi
           }
           @if (item().startedAt) {
             <span class="text-xs text-theme-muted">· {{ startedAgo() }}</span>
+          }
+          @if (canOpen()) {
+            <a
+              [routerLink]="albumRoute()"
+              class="px-2 py-0.5 rounded text-xs font-semibold transition"
+              style="background: var(--theme-status-done-bg); color: var(--theme-status-done-text)"
+              data-testid="download-open-album"
+            >
+              Open in Library
+            </a>
           }
           @if (item().storagePath) {
             <button
@@ -160,6 +183,10 @@ export class DownloadItemComponent {
   readonly showPath = signal(false);
 
   readonly badge = computed(() => methodBadge(this.item().method));
+  /** Whether to show the "Open in Library" deep-link on this row. */
+  readonly canOpen = computed(() => canOpenInLibrary(this.item()));
+  /** Deep-link target for the completed album ('/library' when the id is unknown). */
+  readonly albumRoute = computed(() => resolveAlbumRoute(this.item().albumId));
 
   startedAgo(): string {
     const at = this.item().startedAt;
