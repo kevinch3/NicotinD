@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.168](https://github.com/kevinch3/NicotinD/compare/v0.1.167...v0.1.168) (2026-07-08)
+
+
+### Features
+
+* **library:** upload a custom album cover image ([cf29fca](https://github.com/kevinch3/NicotinD/commit/cf29fca51bd56ebf63cc501d1b095605a209c76c))
+* **web:** upload a custom album cover image from the Fix-metadata modal ([103707b](https://github.com/kevinch3/NicotinD/commit/103707b0bfc5e98f12e352c07e79f42748c1e574))
+
+
+### Bug Fixes
+
+* **library:** clear cover negative-cache after album artwork writes ([b74b288](https://github.com/kevinch3/NicotinD/commit/b74b288208d848d68e9acabe39c2fd920ce2756a))
+
 ## [0.1.167](https://github.com/kevinch3/NicotinD/compare/v0.1.166...v0.1.167) (2026-07-08)
 
 
