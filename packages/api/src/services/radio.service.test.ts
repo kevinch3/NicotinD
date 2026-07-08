@@ -2,6 +2,8 @@ import { describe, it, expect } from 'bun:test';
 import {
   scoreSimilarity,
   camelotCompatibility,
+  genreCloseness,
+  cosineSim,
   rankCandidates,
   DEFAULT_WEIGHTS,
   type SongFeatures,
@@ -55,6 +57,21 @@ describe('camelotCompatibility', () => {
     expect(camelotCompatibility('12A', '1A')).toBe(0.7);
   });
 
+  it('returns 0.4 for a ±2 move on the same ring (energy jump)', () => {
+    expect(camelotCompatibility('8B', '6B')).toBe(0.4);
+    expect(camelotCompatibility('8B', '10B')).toBe(0.4);
+    // wraps: 12 and 2 are ±2 apart
+    expect(camelotCompatibility('12A', '2A')).toBe(0.4);
+    expect(camelotCompatibility('1B', '11B')).toBe(0.4);
+  });
+
+  it('returns 0.4 for a diagonal move (±1 number + ring swap)', () => {
+    expect(camelotCompatibility('8B', '7A')).toBe(0.4);
+    expect(camelotCompatibility('8B', '9A')).toBe(0.4);
+    // wraps
+    expect(camelotCompatibility('1B', '12A')).toBe(0.4);
+  });
+
   it('returns 0 for distant codes', () => {
     expect(camelotCompatibility('8B', '3A')).toBe(0);
     expect(camelotCompatibility('1A', '6B')).toBe(0);
@@ -67,7 +84,63 @@ describe('camelotCompatibility', () => {
   });
 });
 
+describe('genreCloseness', () => {
+  it('is 1.0 for an exact (case-insensitive) match', () => {
+    expect(genreCloseness('House', 'house')).toBe(1.0);
+    expect(genreCloseness('Deep House', 'deep house')).toBe(1.0);
+  });
+
+  it('gives strong partial credit when one token-set contains the other', () => {
+    expect(genreCloseness('Deep House', 'House')).toBe(0.6);
+    expect(genreCloseness('house', 'tech house')).toBe(0.6);
+  });
+
+  it('gives modest credit for partial token overlap, below containment', () => {
+    const partial = genreCloseness('Deep House', 'Tech House');
+    expect(partial).toBeGreaterThan(0);
+    expect(partial).toBeLessThan(0.6);
+  });
+
+  it('is 0 for disjoint genres', () => {
+    expect(genreCloseness('Jazz', 'Death Metal')).toBe(0);
+  });
+
+  it('is null when either side is missing', () => {
+    expect(genreCloseness(undefined, 'House')).toBeNull();
+    expect(genreCloseness('House', undefined)).toBeNull();
+    expect(genreCloseness('', 'House')).toBeNull();
+  });
+});
+
+describe('cosineSim', () => {
+  it('is 1 for identical vectors', () => {
+    const v = new Float32Array([1, 2, 3]);
+    expect(cosineSim(v, new Float32Array([1, 2, 3]))).toBeCloseTo(1, 6);
+  });
+
+  it('is 0 for orthogonal vectors', () => {
+    expect(cosineSim(new Float32Array([1, 0]), new Float32Array([0, 1]))).toBeCloseTo(0, 6);
+  });
+
+  it('is -1 for opposite vectors', () => {
+    expect(cosineSim(new Float32Array([1, 1]), new Float32Array([-1, -1]))).toBeCloseTo(-1, 6);
+  });
+
+  it('is null for missing, empty, mismatched-dim, or zero vectors', () => {
+    expect(cosineSim(undefined, new Float32Array([1]))).toBeNull();
+    expect(cosineSim(new Float32Array([]), new Float32Array([]))).toBeNull();
+    expect(cosineSim(new Float32Array([1, 2]), new Float32Array([1]))).toBeNull();
+    expect(cosineSim(new Float32Array([0, 0]), new Float32Array([1, 1]))).toBeNull();
+  });
+});
+
 describe('scoreSimilarity', () => {
+  it('produces a normalized 0..1 fit score for a matching different-artist track', () => {
+    const score = scoreSimilarity(makeSeed(), makeCandidate());
+    expect(score).toBeGreaterThan(0);
+    expect(score).toBeLessThanOrEqual(1);
+  });
+
   it('gives highest score to a near-identical track', () => {
     const seed = makeSeed();
     const ideal = makeCandidate({ bpm: 120, key: 'C major', genre: 'Electronic', year: 2020 });
@@ -82,50 +155,73 @@ describe('scoreSimilarity', () => {
     expect(scoreSimilarity(seed, diffArtist)).toBeGreaterThan(scoreSimilarity(seed, sameArtist));
   });
 
-  it('scores BPM proximity — ±5% gets near-full weight', () => {
+  it('subtracts exactly the artistPenalty (normalized space) for same-artist', () => {
+    const diff = scoreSimilarity(makeSeed(), makeCandidate({ artistId: 'artist-other' }));
+    const same = scoreSimilarity(makeSeed(), makeCandidate({ artistId: 'artist-seed' }));
+    expect(diff - same).toBeCloseTo(DEFAULT_WEIGHTS.artistPenalty, 10);
+  });
+
+  it('scores BPM proximity — closer BPM ranks higher', () => {
     const seed = makeSeed({ bpm: 120 });
     const close = makeCandidate({ bpm: 126 }); // 5%
     const far = makeCandidate({ bpm: 150 }); // 25%
-    const scoreClose = scoreSimilarity(seed, close);
-    const scoreFar = scoreSimilarity(seed, far);
-    expect(scoreClose).toBeGreaterThan(scoreFar);
+    expect(scoreSimilarity(seed, close)).toBeGreaterThan(scoreSimilarity(seed, far));
   });
 
   it('handles missing BPM gracefully', () => {
     const seed = makeSeed({ bpm: undefined });
     const candidate = makeCandidate({ bpm: 120 });
-    const score = scoreSimilarity(seed, candidate);
-    expect(typeof score).toBe('number');
+    expect(typeof scoreSimilarity(seed, candidate)).toBe('number');
   });
 
   it('handles missing key gracefully', () => {
     const seed = makeSeed({ key: undefined });
     const candidate = makeCandidate({ key: 'A minor' });
-    const score = scoreSimilarity(seed, candidate);
-    expect(typeof score).toBe('number');
+    expect(typeof scoreSimilarity(seed, candidate)).toBe('number');
   });
 
-  it('gives genre match the configured weight', () => {
-    const weights: ScoringWeights = { ...DEFAULT_WEIGHTS, genre: 20, bpm: 0, key: 0, year: 0, duration: 0, artistPenalty: 0 };
-    const seed = makeSeed({ genre: 'Rock' });
-    const match = makeCandidate({ genre: 'Rock' });
-    const mismatch = makeCandidate({ genre: 'Jazz' });
-    expect(scoreSimilarity(seed, match, weights)).toBe(20);
-    expect(scoreSimilarity(seed, mismatch, weights)).toBe(0);
+  it('a single comparable axis normalizes to that axis score', () => {
+    // Only genre is comparable (bpm/key/year/duration zeroed by weights); an
+    // exact genre match then normalizes to 1.0 regardless of the weight value.
+    const weights: ScoringWeights = {
+      ...DEFAULT_WEIGHTS,
+      bpm: 0,
+      key: 0,
+      year: 0,
+      duration: 0,
+      artistPenalty: 0,
+    };
+    const match = scoreSimilarity(makeSeed({ genre: 'Rock' }), makeCandidate({ genre: 'Rock' }), weights);
+    const mismatch = scoreSimilarity(
+      makeSeed({ genre: 'Rock' }),
+      makeCandidate({ genre: 'Jazz' }),
+      weights,
+    );
+    expect(match).toBe(1);
+    expect(mismatch).toBe(0);
   });
 
-  it('scores key compatibility via Camelot adjacency', () => {
-    const weights: ScoringWeights = { ...DEFAULT_WEIGHTS, genre: 0, bpm: 0, key: 10, year: 0, duration: 0, artistPenalty: 0 };
+  it('scores key compatibility via Camelot adjacency (relative ordering)', () => {
+    const weights: ScoringWeights = {
+      ...DEFAULT_WEIGHTS,
+      genre: 0,
+      bpm: 0,
+      year: 0,
+      duration: 0,
+      artistPenalty: 0,
+    };
     const seed = makeSeed({ key: 'C major' }); // 8B
-    const same = makeCandidate({ key: 'C major' }); // 8B — exact
-    const adjacent = makeCandidate({ key: 'G major' }); // 9B — adjacent
-    const relative = makeCandidate({ key: 'A minor' }); // 8A — relative
-    const distant = makeCandidate({ key: 'F# minor' }); // 2A — distant
-
-    expect(scoreSimilarity(seed, same, weights)).toBe(10);
-    expect(scoreSimilarity(seed, adjacent, weights)).toBe(7);
-    expect(scoreSimilarity(seed, relative, weights)).toBe(8);
-    expect(scoreSimilarity(seed, distant, weights)).toBe(0);
+    const same = scoreSimilarity(seed, makeCandidate({ key: 'C major' }), weights); // 8B exact → 1
+    const relative = scoreSimilarity(seed, makeCandidate({ key: 'A minor' }), weights); // 8A → 0.8
+    const adjacent = scoreSimilarity(seed, makeCandidate({ key: 'G major' }), weights); // 9B → 0.7
+    const distant = scoreSimilarity(seed, makeCandidate({ key: 'F# minor' }), weights); // 2A → 0
+    expect(same).toBe(1);
+    expect(relative).toBeCloseTo(0.8, 10);
+    expect(adjacent).toBeCloseTo(0.7, 10);
+    expect(distant).toBe(0);
+    expect(same).toBeGreaterThan(relative);
+    expect(relative).toBeGreaterThan(adjacent);
+    expect(adjacent).toBeGreaterThan(distant);
   });
 });
 
@@ -168,54 +264,68 @@ describe('rankCandidates', () => {
   });
 });
 
-describe('scoreSimilarity — perceptual axes', () => {
-  it('is unchanged for feature-less songs (NULL neutrality pin)', () => {
-    // Neither side carries perceptual features: the score must be exactly what
-    // the pre-feature scorer produced — genre(10) + bpm + key(6) + year + duration.
-    const seed = makeSeed();
-    const cand = makeCandidate();
-    const score = scoreSimilarity(seed, cand);
-    const bpm = Math.max(0, Math.min(1, 1 - (Math.abs(120 - 122) / 120) * 5)) * 10 * 0.8;
-    const year = (1 - 1 / 20) * 2;
-    const duration = (1 - 10 / 240) * 1;
-    expect(score).toBeCloseTo(10 + bpm + 6 + year + duration, 10);
-  });
-
-  it('a one-sided feature contributes exactly 0', () => {
-    const base = scoreSimilarity(makeSeed(), makeCandidate());
-    // Seed analyzed, candidate not: no change.
-    expect(scoreSimilarity(makeSeed({ energy: 0.9, valence: 0.9 }), makeCandidate())).toBe(base);
-    // Candidate analyzed, seed not: no change.
-    expect(scoreSimilarity(makeSeed(), makeCandidate({ energy: 0.9, danceability: 1 }))).toBe(base);
-  });
-
-  it('rewards energy closeness with the energy weight', () => {
-    const base = scoreSimilarity(makeSeed(), makeCandidate());
-    const identical = scoreSimilarity(makeSeed({ energy: 0.7 }), makeCandidate({ energy: 0.7 }));
-    expect(identical).toBeCloseTo(base + DEFAULT_WEIGHTS.energy, 10);
-    const distant = scoreSimilarity(makeSeed({ energy: 1 }), makeCandidate({ energy: 0 }));
-    expect(distant).toBeCloseTo(base, 10);
-  });
-
-  it('scores each perceptual axis independently with its weight', () => {
-    const base = scoreSimilarity(makeSeed(), makeCandidate());
-    const all = scoreSimilarity(
-      makeSeed({ energy: 0.5, valence: 0.5, danceability: 0.5, instrumental: 0.5, acousticness: 0.5 }),
-      makeCandidate({ energy: 0.5, valence: 0.5, danceability: 0.5, instrumental: 0.5, acousticness: 0.5 }),
+describe('scoreSimilarity — normalization & perceptual axes', () => {
+  it('does not penalize an un-analyzed candidate against an analyzed one at equal classic features', () => {
+    // The core mid-backfill fix: the analyzed candidate must not automatically
+    // outrank the un-analyzed one just for carrying perceptual features. Here
+    // the seed is analyzed; the analyzed candidate's perceptual axes are a poor
+    // match, so the un-analyzed candidate (scored only on its shared classic
+    // features) should not lose purely for being un-analyzed.
+    const seed = makeSeed({ energy: 0.9, valence: 0.9 });
+    const unanalyzed = makeCandidate(); // classic features match well, no perceptual
+    const analyzedButFar = makeCandidate({ energy: 0.0, valence: 0.0 });
+    expect(scoreSimilarity(seed, unanalyzed)).toBeGreaterThan(
+      scoreSimilarity(seed, analyzedButFar),
     );
-    const featureSum =
-      DEFAULT_WEIGHTS.energy +
-      DEFAULT_WEIGHTS.valence +
-      DEFAULT_WEIGHTS.danceability +
-      DEFAULT_WEIGHTS.instrumental +
-      DEFAULT_WEIGHTS.acousticness;
-    expect(all).toBeCloseTo(base + featureSum, 10);
   });
 
-  it('prefers the perceptually-closer candidate at equal classic features', () => {
+  it('a one-sided perceptual feature is ignored (axis skipped, not zero-scored)', () => {
+    // With normalization, an un-comparable axis is dropped from BOTH numerator
+    // and denominator, so a one-sided feature leaves the score unchanged.
+    const base = scoreSimilarity(makeSeed(), makeCandidate());
+    expect(scoreSimilarity(makeSeed({ energy: 0.9, valence: 0.9 }), makeCandidate())).toBeCloseTo(
+      base,
+      10,
+    );
+    expect(
+      scoreSimilarity(makeSeed(), makeCandidate({ energy: 0.9, danceability: 1 })),
+    ).toBeCloseTo(base, 10);
+  });
+
+  it('rewards perceptual closeness at equal classic features', () => {
     const seed = makeSeed({ energy: 0.8, valence: 0.7 });
     const close = makeCandidate({ energy: 0.75, valence: 0.65 });
     const far = makeCandidate({ energy: 0.2, valence: 0.1 });
     expect(scoreSimilarity(seed, close)).toBeGreaterThan(scoreSimilarity(seed, far));
+  });
+
+  it('perfect match on every comparable axis normalizes to 1.0 (before artist delta)', () => {
+    const seed = makeSeed({
+      energy: 0.5,
+      valence: 0.5,
+      danceability: 0.5,
+      instrumental: 0.5,
+      acousticness: 0.5,
+    });
+    const twin = makeCandidate({
+      bpm: 120,
+      key: 'C major',
+      genre: 'Electronic',
+      year: 2020,
+      duration: 240,
+      energy: 0.5,
+      valence: 0.5,
+      danceability: 0.5,
+      instrumental: 0.5,
+      acousticness: 0.5,
+    });
+    expect(scoreSimilarity(seed, twin)).toBeCloseTo(1, 10);
+  });
+
+  it('uses the embedding cosine axis when both sides carry an embedding', () => {
+    const seed = makeSeed({ embedding: new Float32Array([1, 0, 0]) });
+    const aligned = makeCandidate({ embedding: new Float32Array([1, 0, 0]) });
+    const opposed = makeCandidate({ embedding: new Float32Array([-1, 0, 0]) });
+    expect(scoreSimilarity(seed, aligned)).toBeGreaterThan(scoreSimilarity(seed, opposed));
   });
 });

@@ -132,4 +132,44 @@ describe('radio /next', () => {
     const songs = await res.json();
     expect(songs.length).toBeGreaterThanOrEqual(1);
   });
+
+  it('surfaces un-analyzed (bpm-less) tracks via the dedicated pool', async () => {
+    seedSong(testDb, { id: 'seed', title: 'Seed', artist: 'A', albumId: 'alb1', album: 'Alb 1', genre: 'Rock', bpm: 120 });
+    // No genre and no bpm: only reachable through the un-analyzed pool pass.
+    seedSong(testDb, { id: 'raw', title: 'Raw', artist: 'B', artistId: 'B', albumId: 'alb2', album: 'Alb 2' });
+
+    const res = await app.request('/radio/next?seedId=seed');
+    const ids = (await res.json()).map((s: { id: string }) => s.id);
+    expect(ids).toContain('raw');
+  });
+
+  it('matches genre variants (Deep House ↔ House) and ranks them above disjoint genres', async () => {
+    seedSong(testDb, { id: 'seed', title: 'Seed', artist: 'A', albumId: 'alb1', album: 'Alb 1', genre: 'Deep House', bpm: 120 });
+    seedSong(testDb, { id: 'variant', title: 'Variant', artist: 'B', artistId: 'B', albumId: 'alb2', album: 'Alb 2', genre: 'House', bpm: 121 });
+    seedSong(testDb, { id: 'unrelated', title: 'Unrelated', artist: 'C', artistId: 'C', albumId: 'alb3', album: 'Alb 3', genre: 'Death Metal', bpm: 121 });
+
+    const res = await app.request('/radio/next?seedId=seed');
+    const ids = (await res.json()).map((s: { id: string }) => s.id);
+    expect(ids).toContain('variant');
+    expect(ids.indexOf('variant')).toBeLessThan(ids.indexOf('unrelated'));
+  });
+
+  it('still returns results when embeddings are present for some songs', async () => {
+    seedSong(testDb, { id: 'seed', title: 'Seed', artist: 'A', albumId: 'alb1', album: 'Alb 1', genre: 'Rock', bpm: 120 });
+    seedSong(testDb, { id: 'aligned', title: 'Aligned', artist: 'B', artistId: 'B', albumId: 'alb2', album: 'Alb 2', genre: 'Rock', bpm: 120 });
+    seedSong(testDb, { id: 'opposed', title: 'Opposed', artist: 'C', artistId: 'C', albumId: 'alb3', album: 'Alb 3', genre: 'Rock', bpm: 120 });
+    const embed = (id: string, v: number[]) =>
+      testDb.run(
+        `INSERT INTO library_embeddings (song_id, model, dim, vec, updated_at) VALUES (?, 'test', ?, ?, 0)`,
+        [id, v.length, Buffer.from(new Float32Array(v).buffer)],
+      );
+    embed('seed', [1, 0, 0]);
+    embed('aligned', [1, 0, 0]);
+    embed('opposed', [-1, 0, 0]);
+
+    const res = await app.request('/radio/next?seedId=seed');
+    const ids = (await res.json()).map((s: { id: string }) => s.id);
+    // The embedding axis breaks the otherwise-identical tie toward 'aligned'.
+    expect(ids.indexOf('aligned')).toBeLessThan(ids.indexOf('opposed'));
+  });
 });

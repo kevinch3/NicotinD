@@ -71,6 +71,19 @@ describe('orderTracks', () => {
     expect(ordered[1]).toBe('rel');
     expect(ordered).toHaveLength(3);
   });
+
+  it('prefers a ±2 / diagonal Camelot move over a fully-incompatible key', () => {
+    // 8B seed: 10B is a +2 same-ring move (0.4), D# minor (2A) is incompatible
+    // (0). The extended wheel should chain to the mixable +2 neighbour first.
+    const rows = [
+      row({ id: 'seed', key: 'C major', bpm: 120 }), // 8B
+      row({ id: 'incompatible', key: 'D# minor', bpm: 120 }), // 2A
+      row({ id: 'plus2', key: 'D major', bpm: 120 }), // 10B
+    ];
+    const ordered = orderTracks(rows, 'harmonic').map((r) => r.id);
+    expect(ordered[0]).toBe('seed');
+    expect(ordered[1]).toBe('plus2');
+  });
 });
 
 describe('runRecipe', () => {

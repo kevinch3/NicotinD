@@ -8,12 +8,16 @@ export interface SongFeatures {
   year?: number;
   artistId: string;
   /** Perceptual features (0..1), filled by the enrichment tasks. Optional —
-   *  scoring treats a missing value on either side as contributing exactly 0. */
+   *  scoring only counts an axis when BOTH sides carry it (see scoreSimilarity). */
   energy?: number;
   valence?: number;
   danceability?: number;
   instrumental?: number;
   acousticness?: number;
+  /** Cached Essentia embedding (from `library_embeddings`), attached by the
+   *  route layer via `loadEmbeddings`. Scored as an extra closeness axis when
+   *  both seed and candidate carry one of matching dimensionality. */
+  embedding?: Float32Array;
 }
 
 export interface ScoringWeights {
@@ -22,40 +26,92 @@ export interface ScoringWeights {
   key: number;
   year: number;
   duration: number;
+  /** Same-artist adjustment applied in NORMALIZED (0..1) space after the fit
+   *  score is computed: `final = base - artistPenalty` when artists match.
+   *  Positive = penalize repeats (radio); negative = boost (similar). */
   artistPenalty: number;
   energy: number;
   valence: number;
   danceability: number;
   instrumental: number;
   acousticness: number;
+  embedding: number;
 }
 
 export const DEFAULT_WEIGHTS: ScoringWeights = {
+  // Relative weights of each comparable axis. Since scoreSimilarity normalizes
+  // by the sum of weights of the axes both tracks actually share, only the
+  // *ratios* matter for a single seed — an un-analyzed candidate competes on the
+  // axes it has instead of being penalized for un-measured ones.
   genre: 10,
   bpm: 8,
   key: 6,
   year: 2,
   duration: 1,
-  artistPenalty: 8,
   // Perceptual axes. Energy leads (it defines the "momentum" of a set);
-  // valence shapes the mood arc; the rest refine. Note: once a library is
-  // fully analyzed the max attainable score rises ~27 → ~44, which weakens
-  // artistPenalty *relatively* — revisit after the first full backfill.
+  // valence shapes the mood arc; the rest refine.
   energy: 5,
   valence: 4,
   danceability: 3,
   instrumental: 3,
   acousticness: 2,
+  // Cached embedding cosine — overlaps the 5 scalar axes (they are classifier
+  // heads over the same vector) so it's an augment, weighted modestly.
+  embedding: 4,
+  // Applied post-normalization as a delta on the 0..1 fit score.
+  artistPenalty: 0.15,
 };
 
 function clamp01(v: number): number {
   return Math.max(0, Math.min(1, v));
 }
 
-/** 1 − |a − b| over a 0..1 domain; 0 when either side is missing. */
-function unitCloseness(a: number | undefined, b: number | undefined): number {
-  if (a === undefined || b === undefined) return 0;
+/** 1 − |a − b| over a 0..1 domain; null when either side is missing (so the
+ *  axis is skipped — contributes to neither numerator nor denominator). */
+function unitCloseness(a: number | undefined, b: number | undefined): number | null {
+  if (a === undefined || b === undefined) return null;
   return clamp01(1 - Math.abs(a - b));
+}
+
+/** Cosine similarity of two equal-length vectors in [−1, 1]; null when either
+ *  is absent, empty, or of a different dimension (can't compare). */
+export function cosineSim(a?: Float32Array, b?: Float32Array): number | null {
+  if (!a || !b || a.length === 0 || a.length !== b.length) return null;
+  let dot = 0;
+  let na = 0;
+  let nb = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i]! * b[i]!;
+    na += a[i]! * a[i]!;
+    nb += b[i]! * b[i]!;
+  }
+  if (na === 0 || nb === 0) return null;
+  return dot / (Math.sqrt(na) * Math.sqrt(nb));
+}
+
+/**
+ * Lexical genre closeness in [0, 1] — case-fold + tokenized, no external map.
+ * Exact (case-insensitive) → 1.0; one token-set a superset of the other
+ * (e.g. "deep house" ⊇ "house") → 0.6; otherwise Jaccard-scaled up to 0.5;
+ * disjoint → 0. Returns null when either side is blank (axis skipped).
+ */
+export function genreCloseness(a: string | undefined, b: string | undefined): number | null {
+  if (!a || !b) return null;
+  const na = a.trim().toLowerCase();
+  const nb = b.trim().toLowerCase();
+  if (!na || !nb) return null;
+  if (na === nb) return 1.0;
+  const ta = new Set(na.split(/[^a-z0-9]+/).filter(Boolean));
+  const tb = new Set(nb.split(/[^a-z0-9]+/).filter(Boolean));
+  if (ta.size === 0 || tb.size === 0) return 0;
+  let inter = 0;
+  for (const t of ta) if (tb.has(t)) inter++;
+  if (inter === 0) return 0;
+  // One set fully contained in the other → strong partial credit.
+  if (inter === ta.size || inter === tb.size) return 0.6;
+  // Otherwise Jaccard, scaled so a partial overlap can't beat containment.
+  const jaccard = inter / (ta.size + tb.size - inter);
+  return clamp01(jaccard) * 0.5;
 }
 
 export function camelotCompatibility(a: string | null, b: string | null): number {
@@ -66,13 +122,19 @@ export function camelotCompatibility(a: string | null, b: string | null): number
   const ringB = b.slice(-1);
   if (isNaN(numA) || isNaN(numB)) return 0;
 
-  if (numA === numB && ringA === ringB) return 1.0;
+  // Circular distance on the 12-hour wheel (1↔12 wrap).
+  const rawDiff = Math.abs(numA - numB);
+  const numDiff = Math.min(rawDiff, 12 - rawDiff);
+  const sameRing = ringA === ringB;
+
+  if (numDiff === 0 && sameRing) return 1.0;
   // Same number, different ring (A↔B swap) — relative minor/major
-  if (numA === numB) return 0.8;
-  // Adjacent number on the same ring (wrapping 1↔12)
-  if (ringA === ringB) {
-    const diff = Math.abs(numA - numB);
-    if (diff === 1 || diff === 11) return 0.7;
+  if (numDiff === 0) return 0.8;
+  if (sameRing) {
+    if (numDiff === 1) return 0.7; // adjacent — energy shift
+    if (numDiff === 2) return 0.4; // ±2 — bigger energy jump, still mixable
+  } else if (numDiff === 1) {
+    return 0.4; // diagonal move (±1 number + ring swap)
   }
   return 0;
 }
@@ -82,52 +144,59 @@ export function scoreSimilarity(
   candidate: SongFeatures,
   weights: ScoringWeights = DEFAULT_WEIGHTS,
 ): number {
-  let score = 0;
+  // Accumulate a weighted numerator and the weight of the axes that are
+  // actually comparable (both sides present), then normalize. An axis missing
+  // on either side is skipped entirely, so an un-analyzed candidate competes on
+  // the axes it has rather than being dragged down by un-measured features.
+  let scoreAcc = 0;
+  let weightAcc = 0;
+  const add = (value: number | null, weight: number): void => {
+    if (value === null || weight === 0) return;
+    scoreAcc += value * weight;
+    weightAcc += weight;
+  };
 
-  // Genre: exact match = full, both present but different = 0
-  if (seed.genre && candidate.genre) {
-    score += seed.genre === candidate.genre ? weights.genre : 0;
-  }
+  // Genre: lexical closeness (exact / containment / partial overlap).
+  add(genreCloseness(seed.genre, candidate.genre), weights.genre);
 
-  // BPM proximity: ±5% = near-full score, scaled linearly
+  // BPM proximity: ±5% ≈ near-full score, scaled linearly.
   if (seed.bpm && candidate.bpm && seed.bpm > 0) {
     const ratio = Math.abs(seed.bpm - candidate.bpm) / seed.bpm;
-    score += clamp01(1 - ratio * 5) * weights.bpm;
+    add(clamp01(1 - ratio * 5), weights.bpm);
   }
 
-  // Harmonic key compatibility via Camelot wheel
+  // Harmonic key compatibility via Camelot wheel.
   if (seed.key && candidate.key) {
-    const seedCamelot = keyToCamelot(seed.key);
-    const candCamelot = keyToCamelot(candidate.key);
-    score += camelotCompatibility(seedCamelot, candCamelot) * weights.key;
+    add(camelotCompatibility(keyToCamelot(seed.key), keyToCamelot(candidate.key)), weights.key);
   }
 
-  // Year proximity: ±20 years scaled
+  // Year proximity: ±20 years scaled.
   if (seed.year && candidate.year) {
-    score += clamp01(1 - Math.abs(seed.year - candidate.year) / 20) * weights.year;
+    add(clamp01(1 - Math.abs(seed.year - candidate.year) / 20), weights.year);
   }
 
-  // Duration similarity: scaled against seed duration
+  // Duration similarity: scaled against seed duration.
   if (seed.duration > 0 && candidate.duration > 0) {
     const ratio = Math.abs(seed.duration - candidate.duration) / seed.duration;
-    score += clamp01(1 - ratio) * weights.duration;
+    add(clamp01(1 - ratio), weights.duration);
   }
 
-  // Perceptual axes (all 0..1 domains): linear closeness when BOTH sides carry
-  // the feature; an un-analyzed side contributes exactly 0 so scores are
-  // unchanged for libraries that haven't run the enrichment yet.
-  score += unitCloseness(seed.energy, candidate.energy) * weights.energy;
-  score += unitCloseness(seed.valence, candidate.valence) * weights.valence;
-  score += unitCloseness(seed.danceability, candidate.danceability) * weights.danceability;
-  score += unitCloseness(seed.instrumental, candidate.instrumental) * weights.instrumental;
-  score += unitCloseness(seed.acousticness, candidate.acousticness) * weights.acousticness;
+  // Perceptual axes (0..1 domains) — only when BOTH sides carry the feature.
+  add(unitCloseness(seed.energy, candidate.energy), weights.energy);
+  add(unitCloseness(seed.valence, candidate.valence), weights.valence);
+  add(unitCloseness(seed.danceability, candidate.danceability), weights.danceability);
+  add(unitCloseness(seed.instrumental, candidate.instrumental), weights.instrumental);
+  add(unitCloseness(seed.acousticness, candidate.acousticness), weights.acousticness);
 
-  // Same artist penalty
-  if (seed.artistId === candidate.artistId) {
-    score -= weights.artistPenalty;
-  }
+  // Cached embedding cosine, mapped from [−1,1] to [0,1] closeness.
+  const cos = cosineSim(seed.embedding, candidate.embedding);
+  add(cos === null ? null : (cos + 1) / 2, weights.embedding);
 
-  return score;
+  const base = weightAcc > 0 ? scoreAcc / weightAcc : 0;
+
+  // Same-artist adjustment in normalized space (penalty for radio, boost for
+  // "similar"). The per-artist cap in rankCandidates remains the main lever.
+  return seed.artistId === candidate.artistId ? base - weights.artistPenalty : base;
 }
 
 export interface ScoredSong<T> {
