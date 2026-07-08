@@ -158,10 +158,14 @@ drain; `tick` once per batch.
 
 A "run" for the tally spans one **window session**: tick batches inside the same window
 continue accumulating `processed`/`failed`/`lastError`; the first batch after the phase
-was `outside-window`/`disabled` (or an explicit `runNow`) resets them. why: the tally is
-persisted + reloaded across restarts, so without a session boundary a long-resolved
-failure banner ("38 failed — ffmpeg …") stayed on the panel forever, even after the
-offending files were excluded by the ledger below.
+was `outside-window`/`disabled` (or an explicit `runNow`, or a **process restart**)
+resets them. why: the tally is persisted + reloaded across restarts, so without a
+session boundary a long-resolved failure banner ("38 failed — ffmpeg …") stayed on the
+panel forever, even after the offending files were excluded by the ledger below. The
+restart boundary exists because a restored tally belongs to the *previous* process — a
+mid-window deploy once carried 2,300 pre-fix sidecar failures into a perfectly healthy
+run's display. The restored counts remain visible until the new process's first batch
+(so the panel still shows last-known state after a reboot), then reset.
 
 `processOneBatch` leaves the phase `running` between batches; a run's terminal `idle` is
 set exactly once by `finishRun`, so an SSE client sees a single `running → idle`

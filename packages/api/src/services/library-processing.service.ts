@@ -98,6 +98,10 @@ export class LibraryProcessingService extends EventEmitter {
   private busy = false;
   private stopRequested = false;
   private status: ProcessingStatus;
+  /** True until the first batch after construction: a restart is a session
+   *  boundary. why: the restored tally belongs to the *previous* process (a
+   *  deploy once carried 2300 pre-fix failures into a healthy run's display). */
+  private freshProcess = true;
 
   constructor(deps: LibraryProcessingDeps) {
     super();
@@ -234,11 +238,15 @@ export class LibraryProcessingService extends EventEmitter {
 
     // A "run" spans one window session: tick batches inside the same window
     // continue the tally; the first batch after re-entering the window (or
-    // re-enabling, or an explicit runNow) starts a fresh one. why: the tally is
-    // persisted + reloaded, so without a session boundary a long-resolved
-    // failure ("38 failed — ffmpeg…") stayed on the panel forever.
+    // re-enabling, a restart, or an explicit runNow) starts a fresh one. why:
+    // the tally is persisted + reloaded, so without a session boundary a
+    // long-resolved failure ("38 failed — ffmpeg…") stayed on the panel forever.
     const newRun =
-      fresh || this.status.phase === 'outside-window' || this.status.phase === 'disabled';
+      fresh ||
+      this.freshProcess ||
+      this.status.phase === 'outside-window' ||
+      this.status.phase === 'disabled';
+    this.freshProcess = false;
     this.status = {
       ...this.status,
       phase: 'running',

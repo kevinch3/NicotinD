@@ -331,6 +331,44 @@ describe('LibraryProcessingService', () => {
     expect(status.processed).toBe(1);
   });
 
+  it('resets a restored stale failure tally on the first batch after a restart', async () => {
+    seedSong('s0');
+    setProcessingSettings(db, {
+      window: { start: '05:00', end: '08:00' },
+      batchSize: 10,
+      tasks: { bpm: true, genre: false, key: false, energy: false },
+    });
+    // A previous process died mid-window having tallied failures (e.g. the
+    // pre-mount-fix sidecar era): phase 'running', failed 2300, persisted.
+    db.run(
+      `INSERT INTO app_settings (key, value) VALUES ('processing_status', ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+      [
+        JSON.stringify({
+          phase: 'running',
+          processed: 0,
+          failed: 2300,
+          lastError: 'analysis sidecar could not analyze file (see logs)',
+          total: 10900,
+          lastItems: [],
+          startedAt: '2024-01-01T05:45:00.000Z',
+          updatedAt: '2024-01-01T05:50:00.000Z',
+        }),
+      ],
+    );
+    const counters = { analyzed: 0, genreLookups: 0 };
+    const svc = service({ now: new Date(2024, 0, 1, 6, 0), counters });
+    // The restored tally is visible until the process actually runs something…
+    expect(svc.getState().status.failed).toBe(2300);
+
+    // …but the first batch of the new process starts a fresh session.
+    await svc.tick();
+    const { status } = svc.getState();
+    expect(status.failed).toBe(0);
+    expect(status.lastError).toBeNull();
+    expect(status.processed).toBe(1);
+  });
+
   it('persists status across a restart', async () => {
     for (let i = 0; i < 2; i++) seedSong(`s${i}`);
     setProcessingSettings(db, {
