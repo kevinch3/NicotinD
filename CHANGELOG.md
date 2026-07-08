@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.164](https://github.com/kevinch3/NicotinD/compare/v0.1.163...v0.1.164) (2026-07-08)
+
+
+### Features
+
+* **settings:** decouple Admin/Settings/Extensions and add slskd status panel ([8447f99](https://github.com/kevinch3/NicotinD/commit/8447f99afeb0b1c31aaaa15b73f1c4137de51af7))
+
+
+### Bug Fixes
+
+* **web:** repair AOT build — decorator placement + slskd type re-exports ([ef58a27](https://github.com/kevinch3/NicotinD/commit/ef58a278ea0a21ab30f4e917aac59bf512ef6121))
+
 ## [0.1.163](https://github.com/kevinch3/NicotinD/compare/v0.1.162...v0.1.163) (2026-07-08)
 
 
