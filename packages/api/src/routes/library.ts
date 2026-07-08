@@ -20,6 +20,7 @@ import { getLyrics, setLyrics, deleteLyrics } from '../services/lyrics-store.js'
 import type { PluginRegistry } from '../services/plugins/registry.js';
 import { optimizeAlbum } from '../services/metadata-optimize.js';
 import { rankCandidates, DEFAULT_WEIGHTS, type SongFeatures } from '../services/radio.service.js';
+import { embeddingModelFor, loadEmbeddings } from '../services/embedding-store.js';
 import { searchCandidates, applyMetadataFix } from '../services/metadata-fix.js';
 import {
   setArtwork,
@@ -1353,17 +1354,27 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       }
     }
 
+    // Attach cached embeddings so the scorer's cosine axis engages when present
+    // (no-op when the seed has no embedding — comparison needs both sides).
+    const model = embeddingModelFor(db, id);
+    const embeddings = model
+      ? loadEmbeddings(db, [id, ...candidateRows.map((r) => r.id)], model)
+      : new Map<string, Float32Array>();
+    seed.embedding = embeddings.get(id);
+
     const candidates = candidateRows.map((r) => ({
       ...songRowFeatures(r),
+      embedding: embeddings.get(r.id),
       _row: r,
     }));
 
     // Use a higher artist cap for "similar" than for radio — same-artist results
-    // are expected here.
+    // are expected here — and a small NORMALIZED-space boost (scores are 0..1)
+    // so same-artist tracks are nudged up rather than penalized.
     const ranked = rankCandidates(seed, candidates, {
       count: size,
       maxPerArtist: 5,
-      weights: { ...DEFAULT_WEIGHTS, artistPenalty: -3 },
+      weights: { ...DEFAULT_WEIGHTS, artistPenalty: -0.1 },
     });
 
     const results = ranked.map((e) =>

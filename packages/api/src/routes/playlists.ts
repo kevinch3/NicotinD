@@ -2,8 +2,9 @@ import { Hono } from 'hono';
 import type { AuthEnv } from '../middleware/auth.js';
 import { getDatabase } from '../db.js';
 import { PlaylistService } from '../services/playlist.service.js';
-import { RADIO_SONG_SELECT, toFeatures, type RadioSongRow } from './radio.js';
+import { RADIO_SONG_SELECT, toFeatures, longestGenreToken, type RadioSongRow } from './radio.js';
 import { rankCandidates, type SongFeatures } from '../services/radio.service.js';
+import { embeddingModelFor, loadEmbeddings } from '../services/embedding-store.js';
 import { orderTracks, seedCentroid, type OrderableRow } from '../services/playlist-recipe.js';
 
 /** RadioSongRow → the row shape the ordering/centroid helpers consume. */
@@ -23,6 +24,23 @@ function toOrderable(r: RadioSongRow): OrderableRow {
     acousticness: r.acousticness ?? undefined,
     addedAt: r.created ? Date.parse(r.created) : undefined,
   };
+}
+
+/** Component-wise mean of equal-length embeddings; undefined for an empty set.
+ *  Vectors of a different length than the first are skipped (can't average). */
+function meanEmbedding(vecs: readonly Float32Array[]): Float32Array | undefined {
+  const first = vecs[0];
+  if (!first) return undefined;
+  const acc = new Float32Array(first.length);
+  let n = 0;
+  for (const v of vecs) {
+    if (v.length !== first.length) continue;
+    for (let i = 0; i < first.length; i++) acc[i]! += v[i]!;
+    n++;
+  }
+  if (n === 0) return undefined;
+  for (let i = 0; i < acc.length; i++) acc[i]! /= n;
+  return acc;
 }
 
 /**
@@ -126,6 +144,29 @@ export function playlistRoutes() {
           .all(seedFeatures.genre),
       );
     }
+    // Genre-variant match via the seed's longest token so lexical genre
+    // closeness has variants ("Deep House" ↔ "House") to score, not just exact.
+    const genreToken = longestGenreToken(seedFeatures.genre);
+    if (genreToken) {
+      addRows(
+        db
+          .query<RadioSongRow, [string]>(
+            `${RADIO_SONG_SELECT} WHERE LOWER(s.genre) LIKE '%' || ? || '%' AND s.hidden = 0
+             ORDER BY RANDOM() LIMIT 150`,
+          )
+          .all(genreToken),
+      );
+    }
+    // Un-analyzed tracks get a guaranteed seat so a mid-backfill library stays
+    // discoverable to the generator.
+    addRows(
+      db
+        .query<RadioSongRow, []>(
+          `${RADIO_SONG_SELECT} WHERE (s.bpm IS NULL OR s.energy IS NULL) AND s.hidden = 0
+           ORDER BY RANDOM() LIMIT 60`,
+        )
+        .all(),
+    );
     addRows(
       db
         .query<RadioSongRow, []>(
@@ -134,9 +175,20 @@ export function playlistRoutes() {
         .all(),
     );
 
+    // Attach cached embeddings (seed + pool) so the scorer's cosine axis
+    // engages when present. For a multi-song seed (artist/starred) the seed
+    // embedding is the mean over the seed rows that carry one — the vector
+    // analogue of seedCentroid's mean-of-fields.
+    const model = seedRows[0] ? embeddingModelFor(db, seedRows[0].id) : null;
+    const embeddings = model
+      ? loadEmbeddings(db, [...seedRows.map((r) => r.id), ...candidates.map((r) => r.id)], model)
+      : new Map<string, Float32Array>();
+    const seedVecs = seedRows.map((r) => embeddings.get(r.id)).filter((v): v is Float32Array => !!v);
+    seedFeatures.embedding = meanEmbedding(seedVecs);
+
     const ranked = rankCandidates(
       seedFeatures,
-      candidates.map((r) => ({ ...toFeatures(r), _row: r })),
+      candidates.map((r) => ({ ...toFeatures(r), embedding: embeddings.get(r.id), _row: r })),
       { count: size, maxPerArtist: 2 },
     );
     const orderedRows = orderTracks(

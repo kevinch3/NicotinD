@@ -76,18 +76,28 @@ another windowed task) re-runs the recipes with a **week-derived seed** so the s
 rotates deterministically but feels fresh, and writes them as `kind='curated'`
 playlists via the existing idempotent `seed-curated-playlists.ts` path.
 
-### 2b. Similarity ("more like this") via a feature vector
+### 2b. Similarity ("more like this") via a feature vector — ✅ realized
 
-Build a small per-track vector and use plain distance — no ML framework:
+Shipped as the shared Radio scorer (`scoreSimilarity` / `rankCandidates` in
+`radio.service.ts`), used by `/api/radio/next`, `/songs/:id/similar`, and
+`POST /api/playlists/generate`. Two refinements landed on top of the original
+scalar blend:
 
-- **Numeric, normalized 0..1**: bpm (e.g. `/ 200`), year (min-max over library),
-  duration.
-- **Categorical**: genre (one-hot over the top-N genres, or a hand-grouped
-  super-genre map), key.
-- **Distance**: weighted Euclidean / cosine. "Tracks like X" = nearest neighbours.
+- **Weight-normalized blend, not a raw sum.** Each factor counts only when both
+  tracks carry it; the score is `Σ(factorScore×weight) / Σ(weight of comparable
+  factors)` → `0..1`. So a mid-backfill library isn't biased toward the
+  already-enriched slice (un-analyzed tracks compete on the factors they have).
+- **The cached Essentia embedding is now a real similarity axis.** `cosineSim`
+  over `library_embeddings` vectors (loaded per-pool by `loadEmbeddings`) is added
+  as an augment closeness term — the vector distance §2b originally proposed,
+  reusing the embedding we already cache. Genre matching is softened lexically
+  (`genreCloseness`: case-fold + token-set containment/overlap) rather than
+  exact-string, and the candidate pools were widened with a genre-`LIKE` pass so
+  variants are actually considered.
 
-A seed track (or a starred set's centroid) → a coherent playlist. This is a few
-dozen lines, pure, unit-testable, and runs in-memory over ~thousands of rows.
+A seed track (or a starred set's / artist's centroid — `seedCentroid`, plus a
+mean seed embedding) → a coherent playlist. Pure, unit-tested, in-memory over the
+candidate pool.
 
 ### 2c. Harmonic / energy *ordering* (DJ-style sequencing)
 

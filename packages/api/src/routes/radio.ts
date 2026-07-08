@@ -3,6 +3,19 @@ import type { AuthEnv } from '../middleware/auth.js';
 import type { Song } from '@nicotind/core';
 import { getDatabase } from '../db.js';
 import { rankCandidates, type SongFeatures } from '../services/radio.service.js';
+import { embeddingModelFor, loadEmbeddings } from '../services/embedding-store.js';
+
+/** Longest alphanumeric token in a genre string, for the LIKE-widened pool.
+ *  Returns null for genres whose longest token is too short to be selective. */
+export function longestGenreToken(genre: string | undefined): string | null {
+  if (!genre) return null;
+  const tokens = genre
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((t) => t.length >= 4);
+  if (tokens.length === 0) return null;
+  return tokens.reduce((a, b) => (b.length > a.length ? b : a));
+}
 
 export interface RadioSongRow {
   id: string;
@@ -119,74 +132,102 @@ export function radioRoutes() {
     const candidates: RadioSongRow[] = [];
     const seen = new Set<string>(excludeIds);
 
-    // Pool 1: same genre (up to 150), most useful signal
-    if (seed.genre) {
-      const genreRows = db
-        .query<RadioSongRow, [string]>(
-          `${RADIO_SONG_SELECT} WHERE s.genre = ? AND s.hidden = 0 ORDER BY RANDOM() LIMIT 150`,
-        )
-        .all(seed.genre);
-      for (const r of genreRows) {
+    const addRows = (rows: RadioSongRow[]): void => {
+      for (const r of rows) {
         if (!seen.has(r.id)) {
           seen.add(r.id);
           candidates.push(r);
         }
       }
+    };
+
+    // Pool 1: same genre (up to 150), most useful signal
+    if (seed.genre) {
+      addRows(
+        db
+          .query<RadioSongRow, [string]>(
+            `${RADIO_SONG_SELECT} WHERE s.genre = ? AND s.hidden = 0 ORDER BY RANDOM() LIMIT 150`,
+          )
+          .all(seed.genre),
+      );
+    }
+
+    // Pool 1b: genre-variant match via the seed's longest token (e.g. seed
+    // "Deep House" also pulls "House"/"Tech House"), so lexical genre closeness
+    // has variants to score instead of only exact-string matches.
+    const genreToken = longestGenreToken(seed.genre);
+    if (genreToken) {
+      addRows(
+        db
+          .query<RadioSongRow, [string]>(
+            `${RADIO_SONG_SELECT} WHERE LOWER(s.genre) LIKE '%' || ? || '%' AND s.hidden = 0
+             ORDER BY RANDOM() LIMIT 100`,
+          )
+          .all(genreToken),
+      );
     }
 
     // Pool 2: similar BPM range across genres (± 15%), up to 100
     if (seed.bpm) {
       const bpmLow = Math.round(seed.bpm * 0.85);
       const bpmHigh = Math.round(seed.bpm * 1.15);
-      const bpmRows = db
-        .query<RadioSongRow, [number, number]>(
-          `${RADIO_SONG_SELECT} WHERE s.bpm BETWEEN ? AND ? AND s.hidden = 0
-           ORDER BY RANDOM() LIMIT 100`,
-        )
-        .all(bpmLow, bpmHigh);
-      for (const r of bpmRows) {
-        if (!seen.has(r.id)) {
-          seen.add(r.id);
-          candidates.push(r);
-        }
-      }
+      addRows(
+        db
+          .query<RadioSongRow, [number, number]>(
+            `${RADIO_SONG_SELECT} WHERE s.bpm BETWEEN ? AND ? AND s.hidden = 0
+             ORDER BY RANDOM() LIMIT 100`,
+          )
+          .all(bpmLow, bpmHigh),
+      );
     }
 
     // Pool 3: energy-adjacent across genres (±0.15), up to 100 — keeps the
     // set's momentum coherent once the library carries energy values.
     if (seed.energy !== undefined) {
-      const energyRows = db
-        .query<RadioSongRow, [number, number]>(
-          `${RADIO_SONG_SELECT} WHERE s.energy BETWEEN ? AND ? AND s.hidden = 0
-           ORDER BY RANDOM() LIMIT 100`,
-        )
-        .all(Math.max(0, seed.energy - 0.15), Math.min(1, seed.energy + 0.15));
-      for (const r of energyRows) {
-        if (!seen.has(r.id)) {
-          seen.add(r.id);
-          candidates.push(r);
-        }
-      }
+      addRows(
+        db
+          .query<RadioSongRow, [number, number]>(
+            `${RADIO_SONG_SELECT} WHERE s.energy BETWEEN ? AND ? AND s.hidden = 0
+             ORDER BY RANDOM() LIMIT 100`,
+          )
+          .all(Math.max(0, seed.energy - 0.15), Math.min(1, seed.energy + 0.15)),
+      );
     }
 
-    // Pool 4: random backfill if we don't have enough candidates
-    if (candidates.length < 50) {
-      const backfill = db
+    // Pool 4: un-analyzed tracks (no bpm/energy) get a guaranteed seat so a
+    // mid-backfill library stays discoverable and radio doesn't tunnel on the
+    // already-analyzed slice.
+    addRows(
+      db
         .query<RadioSongRow, []>(
-          `${RADIO_SONG_SELECT} WHERE s.hidden = 0 ORDER BY RANDOM() LIMIT 100`,
+          `${RADIO_SONG_SELECT} WHERE (s.bpm IS NULL OR s.energy IS NULL) AND s.hidden = 0
+           ORDER BY RANDOM() LIMIT 30`,
         )
-        .all();
-      for (const r of backfill) {
-        if (!seen.has(r.id)) {
-          seen.add(r.id);
-          candidates.push(r);
-        }
-      }
+        .all(),
+    );
+
+    // Pool 5: random backfill if we still don't have enough candidates
+    if (candidates.length < 50) {
+      addRows(
+        db
+          .query<RadioSongRow, []>(
+            `${RADIO_SONG_SELECT} WHERE s.hidden = 0 ORDER BY RANDOM() LIMIT 100`,
+          )
+          .all(),
+      );
     }
+
+    // Attach cached embeddings (seed + pool) so the scorer can add the cosine
+    // axis. No-op when the seed has no embedding (comparison needs both sides).
+    const model = embeddingModelFor(db, seedId);
+    const embeddings = model
+      ? loadEmbeddings(db, [seedId, ...candidates.map((r) => r.id)], model)
+      : new Map<string, Float32Array>();
+    seed.embedding = embeddings.get(seedId);
 
     const ranked = rankCandidates(
       seed,
-      candidates.map((r) => ({ ...toFeatures(r), _row: r })),
+      candidates.map((r) => ({ ...toFeatures(r), embedding: embeddings.get(r.id), _row: r })),
       { count, maxPerArtist: 2 },
     );
 
