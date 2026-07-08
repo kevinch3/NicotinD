@@ -153,7 +153,8 @@ One-line index; **full detail for every entry is in [docs/design-patterns.md](do
 - **Download list metadata**: `GET /api/downloads` annotates in-flight folders matching `album_jobs` with album-job info. → [docs/download-pipeline.md](docs/download-pipeline.md)
 - **Unified downloads feed**: slskd groups + URL acquire jobs both adapt into a normalized `DownloadItem` with method/stage badges. → [docs/download-pipeline.md](docs/download-pipeline.md)
 - **Acquisition provenance (how/where/when)**: the `acquisitions` side-table records method/source/time at download time; surfaced per track. → [docs/download-pipeline.md](docs/download-pipeline.md)
-- **Plugin architecture (acquisition as opt-in plugins)**: kind-agnostic kernel + `PluginRegistry`; acquisition is default-off; plugins = slskd/yt-dlp/spotdl/archive/spotify/lrclib; `auth` kind planned for OAuth. → [docs/plugins.md](docs/plugins.md)
+- **Plugin architecture (acquisition as opt-in plugins)**: kind-agnostic kernel + `PluginRegistry`; acquisition is default-off; plugins = slskd/yt-dlp/spotdl/archive/spotify/lrclib; `auth` kind planned for OAuth. UI labelled **Extensions**; extensions with bespoke config own a dedicated settings page via `PLUGIN_DETAIL_ROUTES` (first: slskd). → [docs/plugins.md](docs/plugins.md)
+- **Admin/Settings/Extensions decoupling**: core Settings = universal prefs only; server-admin tools (streaming, library processing, find-duplicates) live in **Admin**; slskd owns its connection/shares + a Nicotine+-style live status panel (`GET /api/plugins/slskd/status`, `SlskdStatus`) on its extension page. Credential storage unchanged (UI relocation only). → [docs/admin-settings-decoupling.md](docs/admin-settings-decoupling.md)
 - **Changelog modal**: build-time `CHANGELOG.md` → `changelog.json` (capped at 50 versions); version string in header/settings is clickable → [docs/web-ui.md](docs/web-ui.md)
 
 ## Web UI

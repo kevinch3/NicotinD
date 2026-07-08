@@ -98,9 +98,67 @@ export interface SlskdServerState {
   isConnected: boolean;
 }
 
+/** Share roll-up as reported by slskd's `/api/v0/application` `shares` block. */
+export interface SlskdShareStats {
+  directories?: number;
+  files?: number;
+}
+
 export interface SlskdApplicationInfo {
   version: string;
   uptime: number;
+  /**
+   * Live server block from slskd's `/api/v0/application`. Optional because older
+   * slskd builds (and the minimal shape the DownloadWatcher uptime probe relies
+   * on) may omit it; the status endpoint falls back to `server.getState()`.
+   */
+  server?: SlskdServerState;
+  /** Shared library size, when slskd reports it. */
+  shares?: SlskdShareStats;
+}
+
+/** Aggregate live transfer speeds, bytes/sec, summed over in-progress transfers. */
+export interface SlskdSpeeds {
+  downloadBytesPerSec: number;
+  uploadBytesPerSec: number;
+}
+
+/** Transfer activity roll-up used by the slskd extension status panel. */
+export interface SlskdTransferCounts {
+  downloading: number;
+  uploading: number;
+  queued: number;
+}
+
+/**
+ * Global transfer limits parsed from slskd's runtime options. All optional — the
+ * exact slskd options JSON shape varies by version, so the extractor is
+ * best-effort and the UI shows "—" for anything it can't resolve. Speed limits
+ * are in KiB/s (slskd's unit); 0 means unlimited.
+ */
+export interface SlskdLimits {
+  uploadSpeedLimit?: number;
+  downloadSpeedLimit?: number;
+  uploadSlots?: number;
+  downloadSlots?: number;
+}
+
+/**
+ * Nicotine+-style live status for the slskd extension page. Aggregates the
+ * server connection, current up/down speeds, active/queued transfer counts,
+ * configured limits, and share size. `enabled` reflects the plugin toggle;
+ * `available` reflects whether a slskd client is actually reachable.
+ */
+export interface SlskdStatus {
+  enabled: boolean;
+  available: boolean;
+  connection: SlskdServerState | null;
+  speeds: SlskdSpeeds;
+  counts: SlskdTransferCounts;
+  limits: SlskdLimits;
+  shares: SlskdShareStats;
+  version?: string;
+  uptimeSeconds?: number;
 }
 
 export interface SlskdShareDirectory {

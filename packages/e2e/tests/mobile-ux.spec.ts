@@ -142,12 +142,13 @@ test.describe('mobile UX', () => {
     expect(overflow, 'no horizontal page overflow at phone width').toBeLessThanOrEqual(1);
   });
 
-  // The Settings "Library processing" window row holds two native
+  // The Admin "Library processing" window row holds two native
   // <input type="time"> controls whose intrinsic min-width used to force the
   // whole page wider than the phone (the WebView then zoomed out). The row now
   // wraps + the inputs can shrink; guard there's no horizontal page overflow.
-  test('settings page does not overflow horizontally', async ({ page }) => {
-    await page.goto('/settings');
+  // (The processing panel moved from Settings to Admin in the settings refactor.)
+  test('admin page does not overflow horizontally', async ({ page }) => {
+    await page.goto('/admin');
     // Admin-only processing panel with the offending time inputs.
     await expect(page.getByTestId('processing-panel')).toBeVisible();
     const overflow = await page.evaluate(() => {

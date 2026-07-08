@@ -7,6 +7,12 @@ export type {
   SlskdTransferState,
   SlskdFile,
   SlskdSearchResponse,
+  SlskdServerState,
+  SlskdStatus,
+  SlskdSpeeds,
+  SlskdTransferCounts,
+  SlskdLimits,
+  SlskdShareStats,
 } from '../../../core/src/types/slskd';
 
 export type {

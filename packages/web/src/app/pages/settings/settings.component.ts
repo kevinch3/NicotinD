@@ -1,26 +1,11 @@
-import { Component, inject, signal, OnInit, OnDestroy } from '@angular/core';
+import { Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
-import { firstValueFrom } from 'rxjs';
-import type { ProcessingSettings, ProcessingStatus, ProcessingTaskId } from '../../../types/core';
-import { SystemApiService } from '../../services/api/system-api.service';
-import { LibraryApiService } from '../../services/api/library-api.service';
-import type { StreamingSettings } from '../../services/api/api-types';
 import { AuthService } from '../../services/auth.service';
-import { ServerConfigService } from '../../services/server-config.service';
-import {
-  progressPercent,
-  phaseLabel,
-  totalPending,
-  isRunning,
-  runOutcomeToast,
-} from '../../lib/processing-progress';
-import { ToastService } from '../../services/toast.service';
-import { ThemeService, THEME_PRESETS, type ThemeId } from '../../services/theme.service';
+import { ThemeService, THEME_PRESETS } from '../../services/theme.service';
 import { RemotePlaybackService } from '../../services/remote-playback.service';
 import { PlaybackWsService } from '../../services/playback-ws.service';
 import { PreserveService, UNLIMITED_BUDGET } from '../../services/preserve.service';
-import { PasswordFieldComponent } from '../../components/password-field/password-field.component';
 import { ChangelogModalComponent } from '../../components/changelog-modal/changelog-modal.component';
 import { APP_VERSION } from '../../app.config';
 import {
@@ -40,40 +25,46 @@ export const BUDGET_OPTIONS: { label: string; bytes: number }[] = [
   { label: 'Unlimited', bytes: UNLIMITED_BUDGET },
 ];
 
-type DuplicateSong = {
-  id: string;
-  title: string;
-  artist: string;
-  album: string;
-  duration?: number;
-  bitRate?: number;
-  suffix?: string;
-  path: string;
-  coverArt?: string;
-};
-
+/**
+ * User-scoped preferences only. Server-admin tools (streaming, library
+ * processing, maintenance) live on the Admin page, and extension config (slskd
+ * connection/shares/status) lives on each extension's own page under Extensions.
+ * Keeping this page free of admin/extension coupling is the point of the
+ * refactor — it renders identically for every user.
+ */
 @Component({
   selector: 'app-settings',
-  imports: [FormsModule, RouterLink, PasswordFieldComponent, ChangelogModalComponent],
+  imports: [FormsModule, RouterLink, ChangelogModalComponent],
   templateUrl: './settings.component.html',
 })
-export class SettingsComponent implements OnInit, OnDestroy {
-  private api = inject(SystemApiService);
-  private libraryApi = inject(LibraryApiService);
+export class SettingsComponent {
   readonly auth = inject(AuthService);
   readonly themeService = inject(ThemeService);
   private router = inject(Router);
-  private server = inject(ServerConfigService);
   readonly remote = inject(RemotePlaybackService);
   readonly preserve = inject(PreserveService);
   private ws = inject(PlaybackWsService);
   private mediaControls = inject(MediaControlsService);
-  private toast = inject(ToastService);
 
   /** The Now Playing diagnostics panel only exists in the native iOS shell. */
   readonly isNativeIos = isIosNative();
   readonly nowPlayingDiag = signal<NowPlayingDiagnostics | null>(null);
   readonly nowPlayingDiagLoading = signal(false);
+
+  readonly budgetOptions = BUDGET_OPTIONS;
+  readonly themePresets = THEME_PRESETS;
+  readonly myDeviceId = this.ws.getDeviceId();
+  readonly version = inject(APP_VERSION);
+  readonly showChangelog = signal(false);
+  readonly showLogoutDialog = signal(false);
+  readonly cleanPreserveOnLogout = signal(false);
+
+  readonly deviceName = signal(this.ws.getDeviceName());
+  readonly deviceNameSaved = signal(false);
+
+  isAdmin(): boolean {
+    return this.auth.role() === 'admin';
+  }
 
   async refreshNowPlayingDiagnostics(): Promise<void> {
     this.nowPlayingDiagLoading.set(true);
@@ -83,14 +74,6 @@ export class SettingsComponent implements OnInit, OnDestroy {
       this.nowPlayingDiagLoading.set(false);
     }
   }
-
-  readonly budgetOptions = BUDGET_OPTIONS;
-  readonly themePresets = THEME_PRESETS;
-  readonly myDeviceId = this.ws.getDeviceId();
-  readonly version = inject(APP_VERSION);
-  readonly showChangelog = signal(false);
-  readonly showLogoutDialog = signal(false);
-  readonly cleanPreserveOnLogout = signal(false);
 
   formatStorage(bytes: number): string {
     if (bytes >= UNLIMITED_BUDGET) return '∞';
@@ -102,93 +85,6 @@ export class SettingsComponent implements OnInit, OnDestroy {
     const budget = this.preserve.budget();
     if (budget <= 0) return 0;
     return Math.min(100, (this.preserve.totalUsage() / budget) * 100);
-  }
-
-  readonly loading = signal(true);
-  readonly username = signal('');
-  readonly password = signal('');
-  readonly confirmPassword = signal('');
-  readonly listeningPort = signal(50000);
-  readonly enableUPnP = signal(true);
-  readonly isNewAccount = signal(false);
-  readonly configured = signal(false);
-  readonly connected = signal(false);
-  readonly saving = signal(false);
-  readonly message = signal<{ type: 'success' | 'error'; text: string } | null>(null);
-
-  readonly toggling = signal(false);
-  readonly toggleMessage = signal<{ type: 'success' | 'error'; text: string } | null>(null);
-
-  readonly shares = signal<string[]>([]);
-  readonly newSharePath = signal('');
-  readonly sharesLoading = signal(false);
-  readonly sharesMessage = signal<{ type: 'success' | 'error'; text: string } | null>(null);
-
-  readonly deviceName = signal(this.ws.getDeviceName());
-  readonly deviceNameSaved = signal(false);
-
-  // Maintenance — find duplicates
-  readonly duplicatesLoading = signal(false);
-  readonly duplicates = signal<DuplicateSong[][]>([]);
-  readonly duplicatesDeleteSet = signal<Set<string>>(new Set());
-  readonly duplicatesMessage = signal<{ type: 'success' | 'error'; text: string } | null>(null);
-  readonly deletingDuplicates = signal(false);
-
-  readonly streaming = signal<StreamingSettings | null>(null);
-  readonly streamingSaving = signal(false);
-  readonly streamingMessage = signal<{ type: 'success' | 'error'; text: string } | null>(null);
-
-  // Windowed library processing (BPM / genre enrichment) — admin only.
-  readonly processing = signal<ProcessingSettings | null>(null);
-  readonly processingStatus = signal<ProcessingStatus | null>(null);
-  readonly processingSaving = signal(false);
-  /** True while the "Run now" request is in flight (before the first SSE frame). */
-  readonly processingStarting = signal(false);
-  readonly processingMessage = signal<{ type: 'success' | 'error'; text: string } | null>(null);
-  private processingStream: EventSource | null = null;
-  // A user pressed "Run now" and we're waiting for the run to settle so we can
-  // toast its outcome. `sawRunning` guards against toasting a no-op/priming frame.
-  private awaitingRun = false;
-  private sawRunning = false;
-
-  isAdmin(): boolean {
-    return this.auth.role() === 'admin';
-  }
-
-  // --- processing panel helpers (delegate to the pure lib) ---
-  processingPercent(): number {
-    const s = this.processingStatus();
-    return s ? progressPercent(s) : 0;
-  }
-  processingPhaseLabel(): string {
-    const s = this.processingStatus();
-    return s ? phaseLabel(s.phase) : '';
-  }
-  processingPending(): number {
-    const s = this.processingStatus();
-    return s ? totalPending(s) : 0;
-  }
-  /** Availability reason for a task, or '' when runnable. */
-  taskUnavailable(task: ProcessingTaskId): string {
-    const a = this.processingStatus()?.availability[task];
-    return a === true || a === undefined ? '' : a;
-  }
-  /** True while a run is actively working. */
-  processingRunning(): boolean {
-    const s = this.processingStatus();
-    return s ? isRunning(s) : false;
-  }
-  /** "Run now" is disabled while starting or while a run is in progress. */
-  runNowDisabled(): boolean {
-    return this.processingStarting() || this.processingRunning();
-  }
-  /** "Stop" is only meaningful while a run is in progress. */
-  stopDisabled(): boolean {
-    return !this.processingRunning();
-  }
-  /** Count of failures in the current/last run (surfaced in the progress area). */
-  processingFailed(): number {
-    return this.processingStatus()?.failed ?? 0;
   }
 
   logout(): void {
@@ -208,215 +104,6 @@ export class SettingsComponent implements OnInit, OnDestroy {
     this.showLogoutDialog.set(false);
     this.auth.logout();
     this.router.navigateByUrl('/login');
-  }
-
-  ngOnInit(): void {
-    this.loadSettings();
-    if (this.isAdmin()) {
-      this.loadShares();
-      this.loadStreaming();
-      this.loadProcessing();
-      this.connectProcessingStream();
-    }
-  }
-
-  ngOnDestroy(): void {
-    this.processingStream?.close();
-    this.processingStream = null;
-  }
-
-  private async loadProcessing(): Promise<void> {
-    try {
-      const data = await firstValueFrom(this.api.getProcessing());
-      this.processing.set(data.settings);
-      this.processingStatus.set(data.status);
-    } catch {
-      /* ignore — non-admin or service unavailable */
-    }
-  }
-
-  /** Live status via SSE (progress bar + snippets) — same pattern as admin logs. */
-  private connectProcessingStream(): void {
-    const token = this.auth.token();
-    if (!token) return;
-    const src = new EventSource(
-      this.server.apiUrl(`/api/admin/processing/stream?token=${encodeURIComponent(token)}`),
-    );
-    this.processingStream = src;
-    src.onmessage = (e) => {
-      try {
-        const status = JSON.parse(e.data) as ProcessingStatus;
-        this.processingStatus.set(status);
-        this.handleRunSettled(status);
-      } catch {
-        /* ignore malformed frame */
-      }
-    };
-    src.onerror = () => {
-      /* EventSource auto-reconnects; nothing to do */
-    };
-  }
-
-  async saveProcessing(patch: Partial<ProcessingSettings>): Promise<void> {
-    this.processingSaving.set(true);
-    this.processingMessage.set(null);
-    try {
-      const data = await firstValueFrom(this.api.saveProcessing(patch));
-      this.processing.set(data.settings);
-      this.processingStatus.set(data.status);
-      this.processingMessage.set({ type: 'success', text: 'Processing settings saved' });
-    } catch {
-      this.processingMessage.set({ type: 'error', text: 'Failed to save processing settings' });
-    } finally {
-      this.processingSaving.set(false);
-    }
-  }
-
-  /** Toggle a per-task flag and persist immediately. */
-  toggleProcessingTask(task: ProcessingTaskId): void {
-    const current = this.processing();
-    if (!current) return;
-    void this.saveProcessing({
-      tasks: { ...current.tasks, [task]: !current.tasks[task] },
-    });
-  }
-
-  /**
-   * When a user-initiated run settles (running → non-running), toast its outcome.
-   * `sawRunning` ensures we only react to a real run, not the priming frame or a
-   * no-op, and clearing `awaitingRun` here keeps background/window runs silent.
-   */
-  private handleRunSettled(status: ProcessingStatus): void {
-    if (!this.awaitingRun) return;
-    if (status.phase === 'running') {
-      this.sawRunning = true;
-      return;
-    }
-    // Settled (idle/disabled/outside-window) after a click.
-    if (this.sawRunning) {
-      const outcome = runOutcomeToast(status);
-      if (outcome) this.toast.show({ message: outcome.message, kind: outcome.kind });
-    }
-    this.awaitingRun = false;
-    this.sawRunning = false;
-  }
-
-  async runProcessingNow(): Promise<void> {
-    // Guard against double-starting while a run is already active or starting.
-    if (this.runNowDisabled()) return;
-    this.processingStarting.set(true);
-    this.awaitingRun = true;
-    this.sawRunning = false;
-    try {
-      await firstValueFrom(this.api.runProcessing());
-      this.toast.show({ message: 'Processing started', kind: 'info' });
-    } catch {
-      this.awaitingRun = false;
-      this.toast.show({ message: 'Failed to start processing', kind: 'error' });
-    } finally {
-      this.processingStarting.set(false);
-    }
-  }
-
-  async stopProcessing(): Promise<void> {
-    try {
-      await firstValueFrom(this.api.stopProcessing());
-      this.toast.show({ message: 'Stopping…', kind: 'info' });
-    } catch {
-      /* ignore */
-    }
-  }
-
-  private async loadStreaming(): Promise<void> {
-    try {
-      this.streaming.set(await firstValueFrom(this.api.getStreamingSettings()));
-    } catch {
-      /* ignore */
-    }
-  }
-
-  async saveStreaming(patch: Partial<StreamingSettings>): Promise<void> {
-    this.streamingSaving.set(true);
-    this.streamingMessage.set(null);
-    try {
-      this.streaming.set(await firstValueFrom(this.api.saveStreamingSettings(patch)));
-      this.streamingMessage.set({ type: 'success', text: 'Streaming settings saved' });
-    } catch {
-      this.streamingMessage.set({ type: 'error', text: 'Failed to save streaming settings' });
-    } finally {
-      this.streamingSaving.set(false);
-    }
-  }
-
-  statusDotClass(): string {
-    if (!this.configured()) return 'bg-theme-muted';
-    if (this.connected()) return 'bg-emerald-500';
-    return 'bg-amber-500';
-  }
-
-  statusLabel(): string {
-    if (!this.configured()) return 'Not configured';
-    if (this.connected()) return 'Connected';
-    return 'Disconnected';
-  }
-
-  async handleSave(e: Event): Promise<void> {
-    e.preventDefault();
-    if (!this.username().trim() || !this.password().trim()) return;
-    if (this.isNewAccount() && this.password() !== this.confirmPassword()) {
-      this.message.set({ type: 'error', text: 'Passwords do not match' });
-      return;
-    }
-
-    this.saving.set(true);
-    this.message.set(null);
-
-    try {
-      const result = await firstValueFrom(
-        this.api.saveSoulseekSettings(this.username().trim(), this.password().trim(), {
-          listeningPort: this.listeningPort(),
-          enableUPnP: this.enableUPnP(),
-        }),
-      );
-      this.password.set('');
-      this.confirmPassword.set('');
-
-      if (result.connected) {
-        this.configured.set(true);
-        this.connected.set(true);
-        this.message.set({
-          type: 'success',
-          text: this.isNewAccount()
-            ? `Account created — connected as ${result.username ?? this.username().trim()}`
-            : `Connected as ${result.username ?? this.username().trim()}`,
-        });
-      } else {
-        this.configured.set(true);
-        this.message.set({
-          type: this.isNewAccount() ? 'error' : 'success',
-          text: this.isNewAccount()
-            ? 'Connection failed — username may already be taken'
-            : 'Service started — connection may take a moment',
-        });
-        setTimeout(async () => {
-          try {
-            const status = await firstValueFrom(this.api.getSoulseekStatus());
-            this.connected.set(status.connected);
-            if (status.connected)
-              this.message.set({ type: 'success', text: 'Connected to Soulseek network' });
-          } catch {
-            /* ignore */
-          }
-        }, 5000);
-      }
-    } catch (err) {
-      this.message.set({
-        type: 'error',
-        text: err instanceof Error ? err.message : 'Failed to save settings',
-      });
-    } finally {
-      this.saving.set(false);
-    }
   }
 
   async toggleRemote(): Promise<void> {
@@ -444,181 +131,5 @@ export class SettingsComponent implements OnInit, OnDestroy {
   getDeviceEmoji(device: { type: string; name: string }): string {
     if (device.type !== 'web') return '🎵';
     return /iPhone|iPad|Android/i.test(device.name) ? '📱' : '🖥️';
-  }
-
-  private async loadSettings(): Promise<void> {
-    this.loading.set(true);
-    try {
-      if (this.isAdmin()) {
-        const data = await firstValueFrom(this.api.getSoulseekSettings());
-        this.username.set(data.username);
-        this.listeningPort.set(data.listeningPort ?? 50000);
-        this.enableUPnP.set(data.enableUPnP ?? true);
-        this.configured.set(data.configured);
-        this.connected.set(data.connected);
-      } else {
-        const data = await firstValueFrom(this.api.getSoulseekStatus());
-        this.configured.set(data.configured);
-        this.connected.set(data.connected);
-        this.username.set(data.username ?? '');
-      }
-    } catch {
-      /* ignore */
-    } finally {
-      this.loading.set(false);
-    }
-  }
-
-  async toggleConnection(): Promise<void> {
-    this.toggling.set(true);
-    this.toggleMessage.set(null);
-    try {
-      const result = await firstValueFrom(this.api.toggleSoulseekConnection());
-      this.connected.set(result.connected);
-      this.toggleMessage.set({
-        type: 'success',
-        text: result.connected
-          ? 'Connected to Soulseek network'
-          : 'Disconnected from Soulseek network',
-      });
-    } catch (err) {
-      this.toggleMessage.set({
-        type: 'error',
-        text: err instanceof Error ? err.message : 'Toggle failed',
-      });
-    } finally {
-      this.toggling.set(false);
-    }
-  }
-
-  private async loadShares(): Promise<void> {
-    try {
-      const data = await firstValueFrom(this.api.getShares());
-      this.shares.set(data.directories);
-    } catch {
-      /* ignore */
-    }
-  }
-
-  async addShare(): Promise<void> {
-    const path = this.newSharePath().trim();
-    if (!path) return;
-    this.sharesLoading.set(true);
-    this.sharesMessage.set(null);
-    try {
-      await firstValueFrom(this.api.addShare(path));
-      this.newSharePath.set('');
-      await this.loadShares();
-      this.sharesMessage.set({ type: 'success', text: `Added: ${path}` });
-    } catch (err) {
-      this.sharesMessage.set({
-        type: 'error',
-        text: err instanceof Error ? err.message : 'Failed to add directory',
-      });
-    } finally {
-      this.sharesLoading.set(false);
-    }
-  }
-
-  async removeShare(path: string): Promise<void> {
-    this.sharesLoading.set(true);
-    this.sharesMessage.set(null);
-    try {
-      await firstValueFrom(this.api.removeShare(path));
-      await this.loadShares();
-    } catch (err) {
-      this.sharesMessage.set({
-        type: 'error',
-        text: err instanceof Error ? err.message : 'Failed to remove directory',
-      });
-    } finally {
-      this.sharesLoading.set(false);
-    }
-  }
-
-  async rescanShares(): Promise<void> {
-    this.sharesLoading.set(true);
-    this.sharesMessage.set(null);
-    try {
-      await firstValueFrom(this.api.rescanShares());
-      this.sharesMessage.set({ type: 'success', text: 'Rescan triggered' });
-    } catch (err) {
-      this.sharesMessage.set({
-        type: 'error',
-        text: err instanceof Error ? err.message : 'Rescan failed',
-      });
-    } finally {
-      this.sharesLoading.set(false);
-    }
-  }
-
-  async loadDuplicates(): Promise<void> {
-    this.duplicatesLoading.set(true);
-    this.duplicatesMessage.set(null);
-    this.duplicates.set([]);
-    this.duplicatesDeleteSet.set(new Set());
-    try {
-      const groups = await firstValueFrom(this.libraryApi.getDuplicates());
-      this.duplicates.set(groups);
-      if (groups.length === 0) {
-        this.duplicatesMessage.set({ type: 'success', text: 'No duplicates found' });
-      } else {
-        // Auto-select lower-quality copies for deletion (all but the first in each group, which is sorted best-first)
-        const toDelete = new Set<string>();
-        for (const group of groups) {
-          for (const song of group.slice(1)) {
-            toDelete.add(song.id);
-          }
-        }
-        this.duplicatesDeleteSet.set(toDelete);
-      }
-    } catch (err) {
-      this.duplicatesMessage.set({
-        type: 'error',
-        text: err instanceof Error ? err.message : 'Failed to load duplicates',
-      });
-    } finally {
-      this.duplicatesLoading.set(false);
-    }
-  }
-
-  toggleDuplicateDelete(id: string): void {
-    const current = new Set(this.duplicatesDeleteSet());
-    if (current.has(id)) current.delete(id);
-    else current.add(id);
-    this.duplicatesDeleteSet.set(current);
-  }
-
-  isDuplicateMarked(id: string): boolean {
-    return this.duplicatesDeleteSet().has(id);
-  }
-
-  async deleteMarkedDuplicates(): Promise<void> {
-    const ids = [...this.duplicatesDeleteSet()];
-    if (ids.length === 0) return;
-    this.deletingDuplicates.set(true);
-    this.duplicatesMessage.set(null);
-    try {
-      const result = await firstValueFrom(this.libraryApi.deleteSongs(ids));
-      this.duplicatesMessage.set({
-        type: 'success',
-        text: `Deleted ${result.deletedCount} file${result.deletedCount !== 1 ? 's' : ''}`,
-      });
-      await this.loadDuplicates();
-    } catch (err) {
-      this.duplicatesMessage.set({
-        type: 'error',
-        text: err instanceof Error ? err.message : 'Failed to delete',
-      });
-    } finally {
-      this.deletingDuplicates.set(false);
-    }
-  }
-
-  formatDuration(seconds?: number): string {
-    if (!seconds) return '';
-    const m = Math.floor(seconds / 60);
-    const s = Math.floor(seconds % 60);
-    return `${m}:${s.toString().padStart(2, '0')}`;
   }
 }

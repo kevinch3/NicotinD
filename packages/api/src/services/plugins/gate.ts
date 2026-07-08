@@ -15,7 +15,7 @@ export function requireAcquisitionMiddleware(plugins: PluginRegistry) {
   return createMiddleware<AuthEnv>(async (c, next) => {
     if (!plugins.hasAnyAcquisitionEnabled()) {
       return c.json(
-        { error: 'Acquisition is disabled — enable an acquisition plugin in Settings → Plugins' },
+        { error: 'Acquisition is disabled — enable an acquisition plugin in Settings → Extensions' },
         503,
       );
     }

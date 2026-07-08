@@ -31,13 +31,17 @@ function fixturePlugin(over: Partial<PluginManifest> = {}): Plugin {
   };
 }
 
-function makeApp(registry: PluginRegistry, role: 'admin' | 'user') {
+function makeApp(
+  registry: PluginRegistry,
+  role: 'admin' | 'user',
+  slskdRef: { current: unknown } = { current: null },
+) {
   const app = new Hono<AuthEnv>();
   app.use('*', (c, next) => {
     c.set('user', { sub: 'u1', role, iat: 0, exp: 9999999999 } as AuthEnv['Variables']['user']);
     return next();
   });
-  app.route('/', pluginRoutes(registry));
+  app.route('/', pluginRoutes(registry, slskdRef as never));
   return app;
 }
 
@@ -102,6 +106,65 @@ describe('plugin routes', () => {
     const res = await makeApp(registry, 'admin').request('/slskd/disable', { method: 'POST' });
     expect(res.status).toBe(200);
     expect(registry.isEnabled('slskd')).toBe(false);
+  });
+
+  it('GET /slskd/status returns a disabled shell when the plugin is off', async () => {
+    const res = await makeApp(registry, 'admin').request('/slskd/status');
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as { enabled: boolean; available: boolean };
+    expect(json).toMatchObject({ enabled: false, available: false });
+  });
+
+  it('GET /slskd/status is admin-only', async () => {
+    const res = await makeApp(registry, 'user').request('/slskd/status');
+    expect(res.status).toBe(403);
+  });
+
+  it('GET /slskd/status aggregates live slskd data when enabled', async () => {
+    await registry.enable('slskd', 'u1');
+    const slskd = {
+      server: { getState: async () => ({ state: 'Connected', username: 'me', isConnected: true }) },
+      transfers: {
+        getDownloads: async () => [
+          {
+            username: 'peer',
+            directories: [
+              {
+                directory: 'd',
+                fileCount: 1,
+                files: [
+                  {
+                    id: '1',
+                    username: 'peer',
+                    filename: 'a.mp3',
+                    size: 1,
+                    state: 'InProgress',
+                    bytesTransferred: 0,
+                    averageSpeed: 250,
+                    percentComplete: 0,
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+        getUploads: async () => [],
+      },
+      options: { get: async () => ({ global: { upload: { slots: 4 } } }) },
+      application: { getInfo: async () => ({ version: '1.0', uptime: 5 }) },
+    };
+    const res = await makeApp(registry, 'admin', { current: slskd }).request('/slskd/status');
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as {
+      available: boolean;
+      speeds: { downloadBytesPerSec: number };
+      connection: { username: string };
+      limits: { uploadSlots: number };
+    };
+    expect(json.available).toBe(true);
+    expect(json.speeds.downloadBytesPerSec).toBe(250);
+    expect(json.connection.username).toBe('me');
+    expect(json.limits.uploadSlots).toBe(4);
   });
 
   it('rejects invalid config with 400', async () => {

@@ -18,7 +18,7 @@ export interface LegacySeedConfig {
  * already registered) we seed those plugins enabled so the upgrade is seamless.
  *
  * A **fresh** install (no users yet) is left default-off — the compliant posture:
- * an admin must explicitly opt into acquisition in Settings → Plugins. A
+ * an admin must explicitly opt into acquisition in Settings → Extensions. A
  * persistent marker in `app_settings` makes this run exactly once, so a fresh
  * install that registers a user later is never retroactively auto-enabled.
  * `seedEnabled` is ON CONFLICT DO NOTHING, so an admin's own toggle always wins.
@@ -42,7 +42,7 @@ export function seedLegacyAcquisitionPlugins(
     if (cfg.spotdlEnabled) registry.seedEnabled('spotdl', 'system-migration');
     log.info('Migrated pre-plugin install — seeded previously-active acquisition plugins enabled');
   } else {
-    log.info('Fresh install — acquisition is default-off until enabled in Settings → Plugins');
+    log.info('Fresh install — acquisition is default-off until enabled in Settings → Extensions');
   }
 
   db.run(`INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, '1')`, [MARKER_KEY]);

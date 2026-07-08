@@ -27,7 +27,7 @@ export function spotifyRoutes({ search, plugins }: SpotifyRoutesOptions) {
   app.get('/search', async (c) => {
     if (!plugins.isEnabled(SPOTIFY_PLUGIN_ID)) {
       return c.json(
-        { error: 'Spotify is disabled — enable + configure it in Settings → Plugins' },
+        { error: 'Spotify is disabled — enable + configure it in Settings → Extensions' },
         503,
       );
     }
