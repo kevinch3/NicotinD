@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.165](https://github.com/kevinch3/NicotinD/compare/v0.1.164...v0.1.165) (2026-07-08)
+
+
+### Features
+
+* **downloads:** deep-link completed downloads to their album ([50db5dc](https://github.com/kevinch3/NicotinD/commit/50db5dca3d96e6464c0322459fab932ac4f0ff8c))
+
 ## [0.1.164](https://github.com/kevinch3/NicotinD/compare/v0.1.163...v0.1.164) (2026-07-08)
 
 
