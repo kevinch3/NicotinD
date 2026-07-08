@@ -12,6 +12,17 @@ import { buildPluginConfigPayload, initialPluginConfigValues } from '../../lib/p
  * drop in with no UI changes). Enabling a consent-gated plugin shows its legal
  * disclaimer and requires explicit acknowledgement.
  */
+
+/**
+ * Plugins that own a dedicated settings surface (bespoke UI beyond the generic
+ * `configFields` form) map their id → detail route here. The card renders a
+ * "Configure →" link when an entry exists. Keeps the extension-specific UI with
+ * the extension instead of leaking it into this generic list.
+ */
+const PLUGIN_DETAIL_ROUTES: Record<string, string> = {
+  slskd: '/settings/plugins/slskd',
+};
+
 @Component({
   selector: 'app-plugins',
   standalone: true,
@@ -186,16 +197,6 @@ import { buildPluginConfigPayload, initialPluginConfigValues } from '../../lib/p
     }
   `,
 })
-/**
- * Plugins that own a dedicated settings surface (bespoke UI beyond the generic
- * `configFields` form) map their id → detail route here. The card renders a
- * "Configure →" link when an entry exists. Keeps the extension-specific UI with
- * the extension instead of leaking it into this generic list.
- */
-const PLUGIN_DETAIL_ROUTES: Record<string, string> = {
-  slskd: '/settings/plugins/slskd',
-};
-
 export class PluginsComponent implements OnInit {
   readonly plugins = inject(PluginService);
   readonly busy = signal(false);
