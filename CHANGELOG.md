@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.167](https://github.com/kevinch3/NicotinD/compare/v0.1.166...v0.1.167) (2026-07-08)
+
+
+### Features
+
+* **lyrics:** merge lyrics and karaoke into a single feature ([ad1aee4](https://github.com/kevinch3/NicotinD/commit/ad1aee47b8181dafae346c0c6401564075e13acb))
+
 ## [0.1.166](https://github.com/kevinch3/NicotinD/compare/v0.1.165...v0.1.166) (2026-07-08)
 
 
