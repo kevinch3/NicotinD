@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.163](https://github.com/kevinch3/NicotinD/compare/v0.1.162...v0.1.163) (2026-07-08)
+
+
+### Performance
+
+* **radio:** weight-normalized scoring + embeddings for better matchmaking ([83c2c75](https://github.com/kevinch3/NicotinD/commit/83c2c758b36a6df37d6604eeba3da0b0235ce803))
+
 ## [0.1.162](https://github.com/kevinch3/NicotinD/compare/v0.1.161...v0.1.162) (2026-07-08)
 
 
