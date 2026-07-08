@@ -34,9 +34,23 @@ The shipped pipeline:
 - **D3 — valence normalization in the sidecar**: the emomusic head emits 1..9;
   the HTTP contract is uniformly 0..1. Mood = argmax over the five mood heads
   (per-head class order is inconsistent — encoded in `app/features.py`).
-- **D4 — CPU-first**: the `essentia-tensorflow` wheel bundles CPU libtensorflow;
-  GPU needs a swapped GPU `libtensorflow.so` (deferred — commented device block
-  in docker-compose.yml). CPU backfill ≈ 4–6 h for ~7k tracks in the window.
+- **D4 — CPU by default, GPU as a build ARG (with inherent CPU fallback)**: the
+  `essentia-tensorflow` wheel bundles CPU libtensorflow 2.5.0. `--build-arg
+  GPU=1` (Dockerfile) swaps the vendored lib for **Google's official GPU build
+  of the exact same version** (sha256-pinned) and pip-installs the CUDA-11
+  runtime wheels (`[gpu]` extra in pyproject). Mechanics: the essentia
+  extension links the vendored file by its auditwheel-mangled name via
+  `$ORIGIN` RPATH, so the GPU `.so` is dropped in **under that exact name**;
+  its `libtensorflow_framework.so.2` dependency lands alongside (resolved via
+  the extension's inherited DT_RPATH). **Fallback is TF's own behavior, not
+  ours**: CUDA libs are `dlopen`'d, so a GPU image started without a GPU (or
+  on a driverless host) silently runs on CPU — one image works everywhere.
+  `runtime_device()` (`app/models.py`) mirrors that rule for `/health`:
+  "gpu" only when `ANALYSIS_GPU_BUILD=1` (baked by the ARG) *and* a probe of
+  `libcuda.so.1` reports a device. `TF_FORCE_GPU_ALLOW_GROWTH=true` is set so
+  TF doesn't grab all GPU memory (the card may be shared, e.g. with a game
+  streamer). Enable per-host via a compose override (build arg + nvidia device
+  reservation — see the commented block in docker-compose.yml).
 - **D5 — `library_embeddings` keyed `(song_id, model)`** so a second embedding
   model can coexist; the vec is a packed Float32 blob, reused later for
   similarity (playlist-generation.md §2b).
@@ -181,6 +195,13 @@ downloads are processed (seconds each). Re-running heads after a model update is
 game streaming is idle, and the windowed processor already confines heavy work to the
 configured hours.
 
+**Measured (2026-07-08, P4000, GPU=1 image, same track, warm models):** CPU 21.4 s →
+GPU 5.4 s per track (~4×; the residual is the CPU-side ffmpeg decode, which now
+dominates). First GPU inference adds ~4 s of one-time cuDNN autotune. TF holds
+~4.3 GB VRAM with `TF_FORCE_GPU_ALLOW_GROWTH=true` (coexists with other GPU tenants
+on the 8 GB card — keep an eye on it if another large model is resident). CPU/GPU
+outputs are numerically identical (embedding max |Δ| ≈ 2e-7, features equal).
+
 > Contrast: the current pure-JS `key` analysis is CPU-bound at ~3–4 s/track (~7 h)
 > precisely because it can't use the GPU. Moving heavy DSP/inference to the GPU
 > sidecar is the structural fix — and a candidate to *also* offload key/bpm later.
@@ -189,7 +210,8 @@ configured hours.
 
 1. **Sidecar skeleton** — ✅ built (`packages/analysis/`): FastAPI + Essentia-TF,
    `GET /health`, `POST /analyze` with embedding + all heads; compose service
-   (CPU; commented GPU block); warm load at startup.
+   (CPU default, `--build-arg GPU=1` variant with inherent CPU fallback — D4);
+   warm load at startup.
 2. **bun `audio-features` task** — ✅ built: `audio-features-client.ts`,
    `library_embeddings` + label columns, registry entry, Settings checkbox,
    mocked-sidecar plumbing tests. Gated on live sidecar health. Bulk script:

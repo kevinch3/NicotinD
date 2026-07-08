@@ -15,6 +15,20 @@ models = [
   "essentia-tensorflow>=2.1b6.dev1110",
   "numpy<2",
 ]
+# CUDA runtime libs for GPU inference (Dockerfile `--build-arg GPU=1`, which
+# also swaps the wheel's CPU libtensorflow for Google's GPU build of the same
+# version). cu11 series = the CUDA-11 ABI TF 2.5 dlopens (libcudart.so.11.0,
+# libcublas.so.11, libcufft.so.10, libcudnn.so.8, …). Runtime-optional: without
+# a GPU (or without these), inference silently stays on CPU.
+gpu = [
+  "nvidia-cuda-runtime-cu11==11.8.89",
+  "nvidia-cublas-cu11==11.11.3.6",
+  "nvidia-cufft-cu11==10.9.0.58",
+  "nvidia-curand-cu11==10.3.0.86",
+  "nvidia-cusolver-cu11==11.4.1.48",
+  "nvidia-cusparse-cu11==11.7.5.86",
+  "nvidia-cudnn-cu11==8.9.6.50",
+]
 dev = [
   "pytest>=8",
   "httpx>=0.27",

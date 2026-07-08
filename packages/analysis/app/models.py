@@ -8,8 +8,11 @@ fake registry instead.
 
 from __future__ import annotations
 
+import ctypes
+import os
 import subprocess
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -56,6 +59,44 @@ def load_audio(path: str):
     if audio.size < SAMPLE_RATE:  # under a second of audio — nothing to analyze
         raise RuntimeError("decoded audio too short")
     return audio
+
+def cuda_device_count(loader: Callable[[str], ctypes.CDLL] = ctypes.CDLL) -> int:
+    """Number of CUDA devices the NVIDIA *driver* reports, 0 when there is no
+    usable driver. Probes libcuda.so.1 directly (the library the container
+    toolkit injects) because the bundled libtensorflow is a C library — there
+    is no Python `tensorflow` module to ask. `loader` is injectable for tests.
+    """
+    try:
+        cuda = loader("libcuda.so.1")
+    except OSError:
+        return 0
+    try:
+        if cuda.cuInit(0) != 0:
+            return 0
+        count = ctypes.c_int(0)
+        if cuda.cuDeviceGetCount(ctypes.byref(count)) != 0:
+            return 0
+        return count.value
+    except Exception:
+        return 0
+
+
+def runtime_device(
+    env: dict[str, str] | os._Environ[str] | None = None,
+    loader: Callable[[str], ctypes.CDLL] = ctypes.CDLL,
+) -> str:
+    """The device inference actually runs on: "gpu" only when BOTH hold —
+    the image was built with the GPU libtensorflow swap (ANALYSIS_GPU_BUILD=1,
+    baked by the Dockerfile ARG) *and* the NVIDIA driver is present with a
+    device (the container was started with GPU access). A GPU build without a
+    driver silently degrades to CPU inside TensorFlow (CUDA libs are dlopen'd,
+    not linked), so reporting must follow the same rule.
+    """
+    e = os.environ if env is None else env
+    if e.get("ANALYSIS_GPU_BUILD") != "1":
+        return "cpu"
+    return "gpu" if cuda_device_count(loader) > 0 else "cpu"
+
 
 EMBEDDING_MODEL = "discogs-effnet-bs64-1"
 EMBEDDING_DIM = 1280
@@ -142,12 +183,7 @@ class EssentiaRegistry:
         )
 
     def device(self) -> str:
-        try:
-            import tensorflow as tf  # type: ignore[import-not-found]
-
-            return "gpu" if tf.config.list_physical_devices("GPU") else "cpu"
-        except Exception:
-            return "cpu"
+        return runtime_device()
 
     def versions(self) -> dict[str, str]:
         return {
