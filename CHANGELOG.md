@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.166](https://github.com/kevinch3/NicotinD/compare/v0.1.165...v0.1.166) (2026-07-08)
+
+
+### Bug Fixes
+
+* **library-scanner:** strip glued track-number prefix from inferred artist ([a68d131](https://github.com/kevinch3/NicotinD/commit/a68d13184ab489b4417bc2d3aa9294df6e3b1f86))
+
 ## [0.1.165](https://github.com/kevinch3/NicotinD/compare/v0.1.164...v0.1.165) (2026-07-08)
 
 
