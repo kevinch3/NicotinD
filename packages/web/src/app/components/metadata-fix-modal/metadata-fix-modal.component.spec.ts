@@ -13,19 +13,27 @@ import { ServerConfigService } from '../../services/server-config.service';
 describe('MetadataFixModalComponent cover picker', () => {
   const getCoverCandidates = vi.fn(() => of({ current: null, lidarr: [], files: [] }));
   const applyCover = vi.fn(() => of({ ok: true }));
+  const uploadAlbumCover = vi.fn(() => of({ ok: true }));
 
   function create() {
     getCoverCandidates.mockClear();
     applyCover.mockClear();
+    uploadAlbumCover.mockClear();
     getCoverCandidates.mockReturnValue(of({ current: null, lidarr: [], files: [] }));
     applyCover.mockReturnValue(of({ ok: true }));
+    uploadAlbumCover.mockReturnValue(of({ ok: true }));
 
     TestBed.configureTestingModule({
       imports: [MetadataFixModalComponent],
       providers: [
         {
           provide: LibraryApiService,
-          useValue: { getCoverCandidates, applyCover, getMetadataCandidates: vi.fn() },
+          useValue: {
+            getCoverCandidates,
+            applyCover,
+            uploadAlbumCover,
+            getMetadataCandidates: vi.fn(),
+          },
         },
         { provide: AuthService, useValue: { token: () => 'tok' } },
         { provide: ServerConfigService, useValue: { apiUrl: (p: string) => p } },
@@ -77,5 +85,25 @@ describe('MetadataFixModalComponent cover picker', () => {
     await c.applyCustomCover();
     expect(applyCover).not.toHaveBeenCalled();
     expect(c.msg()).toBeTruthy();
+  });
+
+  it('uploads a selected file and emits coverChanged', async () => {
+    const c = create();
+    const emitted = vi.fn();
+    c.coverChanged.subscribe(emitted);
+    const file = new File([new Uint8Array([1, 2, 3])], 'cover.png', { type: 'image/png' });
+    const event = { target: { files: [file], value: 'x' } } as unknown as Event;
+
+    await c.onCoverFileSelected(event);
+
+    expect(uploadAlbumCover).toHaveBeenCalledWith('album-1', file);
+    expect(emitted).toHaveBeenCalledTimes(1);
+  });
+
+  it('does nothing when no file is selected for upload', async () => {
+    const c = create();
+    const event = { target: { files: [], value: '' } } as unknown as Event;
+    await c.onCoverFileSelected(event);
+    expect(uploadAlbumCover).not.toHaveBeenCalled();
   });
 });

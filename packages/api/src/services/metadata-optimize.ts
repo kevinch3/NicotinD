@@ -5,6 +5,7 @@ import { normalizeForGrouping } from './album-grouping.js';
 import { setArtwork, pickAlbumCover } from './artwork-store.js';
 import { setReleaseType, mapLidarrAlbumType } from './release-meta-store.js';
 import { looksLikeNonAlbum, normalizeName, isPlaceholderArtist } from './artwork-backfill.js';
+import { clearCoverNegativeCache } from '../routes/streaming.js';
 
 const log = createLogger('metadata-optimize');
 
@@ -95,7 +96,10 @@ export async function optimizeAlbum(
 
   const cover = pickAlbumCover(match.images);
   if (cover) {
-    if (opts.apply) setArtwork(db, album.id, 'album', cover, opts.coverCacheDir);
+    if (opts.apply) {
+      setArtwork(db, album.id, 'album', cover, opts.coverCacheDir);
+      clearCoverNegativeCache(album.id); // in case this id was 404-cached as artless
+    }
     out.coverUpdated = true;
   }
 

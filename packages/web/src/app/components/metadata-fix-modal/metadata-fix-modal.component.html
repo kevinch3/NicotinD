@@ -55,6 +55,25 @@
             {{ coverApplying() ? 'Applying…' : 'Set cover' }}
           </button>
         </div>
+        <div class="flex gap-2 mt-2">
+          <button
+            type="button"
+            (click)="triggerCoverUpload()"
+            [disabled]="coverApplying()"
+            data-testid="cover-upload-button"
+            class="px-4 py-2 rounded-lg text-sm bg-theme-surface text-theme-secondary hover:bg-theme-hover transition disabled:opacity-50"
+          >
+            Upload image…
+          </button>
+          <input
+            #coverFileInput
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            class="hidden"
+            data-testid="cover-upload-file"
+            (change)="onCoverFileSelected($event)"
+          />
+        </div>
       </div>
     }
 

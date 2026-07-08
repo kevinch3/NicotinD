@@ -35,6 +35,7 @@ import {
   ALLOWED_OVERRIDE_TYPES,
 } from '../services/artist-image-override.js';
 import { clearCoverNegativeCache, extractCover, fetchRemoteCover } from './streaming.js';
+import { resizeCover } from '../services/cover-thumbnail.js';
 import {
   dedupeCoverUrls,
   selectDistinctEmbeddedCovers,
@@ -899,6 +900,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     const coverUrl = body.coverUrl?.trim();
     if (coverUrl) {
       setArtwork(db, id, 'album', coverUrl, coverCacheDir);
+      clearCoverNegativeCache(id); // in case this id was 404-cached as artless
       return c.json({ ok: true });
     }
 
@@ -921,10 +923,69 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       writeFolderCover(dirname(abs), pic);
       deleteArtwork(db, id, coverCacheDir); // clear canonical → folder art wins
       if (coverCacheDir) purgeDiskArtCache(coverCacheDir, id);
+      clearCoverNegativeCache(id); // in case this id was 404-cached as artless
       return c.json({ ok: true });
     }
 
     return c.json({ error: 'Provide coverUrl or songId' }, 400);
+  });
+
+  // Upload a custom cover image (multipart form-data, field "image"). Converted to
+  // a standardized square WebP (resizeCover, same treatment thumbnails get) before
+  // being written as the album's folder cover, so an arbitrary upload ends up
+  // looking/behaving like every other cover this route serves. Admin only.
+  app.put('/albums/:id/cover', async (c) => {
+    requireAdmin(c);
+    const id = c.req.param('id');
+    if (!musicDir) return c.json({ error: 'Music directory not configured' }, 503);
+    const db = getDatabase();
+    const album = db
+      .query<{ id: string }, [string]>('SELECT id FROM library_albums WHERE id = ?')
+      .get(id);
+    if (!album) return c.json({ error: 'Album not found' }, 404);
+
+    let form: FormData;
+    try {
+      form = await c.req.formData();
+    } catch {
+      return c.json({ error: 'Expected multipart form-data' }, 400);
+    }
+    const file = form.get('image');
+    if (!(file instanceof File)) return c.json({ error: 'Missing "image" file' }, 400);
+    const contentType = file.type || '';
+    if (!(ALLOWED_OVERRIDE_TYPES as readonly string[]).includes(contentType)) {
+      return c.json({ error: 'Unsupported image type (use JPEG, PNG or WebP)' }, 415);
+    }
+    if (file.size > MAX_IMAGE_UPLOAD_BYTES) {
+      return c.json({ error: 'Image too large (max 8 MB)' }, 413);
+    }
+    const data = new Uint8Array(await file.arrayBuffer());
+    if (data.length === 0) return c.json({ error: 'Empty image' }, 400);
+
+    const md = expandDir(musicDir);
+    const song = db
+      .query<{ path: string }, [string]>(
+        `SELECT path FROM library_songs WHERE album_id = ?
+         ORDER BY COALESCE(disc, 1), COALESCE(track, 999999), path LIMIT 1`,
+      )
+      .get(id);
+    const abs = song ? resolveSongPath(md, song.path) : null;
+    if (!abs || !isUnderMusicDir(md, abs) || !existsSync(abs)) {
+      return c.json({ error: 'Album has no track files to store a cover next to' }, 404);
+    }
+
+    let resized: { data: Uint8Array; contentType: string };
+    try {
+      resized = await resizeCover(data, 1200);
+    } catch {
+      return c.json({ error: 'Could not read that image' }, 400);
+    }
+
+    writeFolderCover(dirname(abs), resized);
+    deleteArtwork(db, id, coverCacheDir); // clear canonical → folder art wins
+    if (coverCacheDir) purgeDiskArtCache(coverCacheDir, id);
+    clearCoverNegativeCache(id); // in case this id was 404-cached as artless
+    return c.json({ ok: true });
   });
 
   // ── Artist image override (admin) ──────────────────────────────────────────
@@ -932,7 +993,8 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
   // artist's album covers — overriding the auto (Lidarr/Spotify) artwork and the
   // neutral placeholder. Stored as bytes keyed on the artist id and flagged
   // manual_override=1 so the enrichment task leaves the choice alone.
-  const MAX_ARTIST_IMAGE_BYTES = 8 * 1024 * 1024;
+  // Shared by the artist-image and album-cover upload routes.
+  const MAX_IMAGE_UPLOAD_BYTES = 8 * 1024 * 1024;
 
   /** Persist override bytes for an artist + flip the manual flag + bust caches. */
   function commitArtistImage(
@@ -975,7 +1037,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     if (!(ALLOWED_OVERRIDE_TYPES as readonly string[]).includes(contentType)) {
       return c.json({ error: 'Unsupported image type (use JPEG, PNG or WebP)' }, 415);
     }
-    if (file.size > MAX_ARTIST_IMAGE_BYTES) {
+    if (file.size > MAX_IMAGE_UPLOAD_BYTES) {
       return c.json({ error: 'Image too large (max 8 MB)' }, 413);
     }
     const data = new Uint8Array(await file.arrayBuffer());

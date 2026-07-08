@@ -1,15 +1,17 @@
 import {
   Component,
+  ElementRef,
   HostListener,
   inject,
   input,
   output,
   signal,
   computed,
+  viewChild,
   OnInit,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, type Observable } from 'rxjs';
 import type { MetadataCandidate, AlbumCoverCandidate } from '../../../types/core';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import { AuthService } from '../../services/auth.service';
@@ -58,6 +60,7 @@ export class MetadataFixModalComponent implements OnInit {
   readonly coverOptions = signal<AlbumCoverCandidate[]>([]);
   readonly coverApplying = signal(false);
   readonly customCoverUrl = signal('');
+  readonly coverFileInput = viewChild<ElementRef<HTMLInputElement>>('coverFileInput');
 
   readonly query = signal('');
   // The stored artist is a placeholder ("<Desconocido>") — prompt the user to type
@@ -108,7 +111,7 @@ export class MetadataFixModalComponent implements OnInit {
   /** Apply a picked cover (Lidarr alt / album-track embedded art). Current = no-op. */
   async selectCover(c: AlbumCoverCandidate): Promise<void> {
     const req = coverCandidateToRequest(c);
-    if (req) await this.applyCover(req);
+    if (req) await this.runCoverApply(() => this.api.applyCover(this.albumId(), req));
   }
 
   /** Apply a pasted cover URL. */
@@ -118,15 +121,29 @@ export class MetadataFixModalComponent implements OnInit {
       this.msg.set('Paste an image URL first.');
       return;
     }
-    await this.applyCover(req);
+    await this.runCoverApply(() => this.api.applyCover(this.albumId(), req));
   }
 
-  private async applyCover(req: import('../../../types/core').ApplyCoverRequest): Promise<void> {
+  /** Open the OS file picker (wired to the hidden input). */
+  triggerCoverUpload(): void {
+    this.coverFileInput()?.nativeElement.click();
+  }
+
+  /** Upload a local image file as the album cover. */
+  async onCoverFileSelected(event: Event): Promise<void> {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = ''; // allow re-selecting the same file later
+    if (!file) return;
+    await this.runCoverApply(() => this.api.uploadAlbumCover(this.albumId(), file));
+  }
+
+  private async runCoverApply(action: () => Observable<{ ok: boolean }>): Promise<void> {
     if (this.coverApplying()) return;
     this.coverApplying.set(true);
     this.msg.set(null);
     try {
-      await firstValueFrom(this.api.applyCover(this.albumId(), req));
+      await firstValueFrom(action());
       this.customCoverUrl.set('');
       this.coverChanged.emit();
       // Refresh the picker so the "Current" thumbnail reflects the new cover.
