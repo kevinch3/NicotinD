@@ -20,18 +20,24 @@ import { TransferService } from '../../services/transfer.service';
 import { ListControlsService, type SortOption } from '../../services/list-controls.service';
 import { ListToolbarComponent } from '../../components/list-toolbar/list-toolbar.component';
 import { CoverArtComponent } from '../../components/cover-art/cover-art.component';
-import { MenuPanelComponent } from '../../components/menu-panel/menu-panel.component';
+import { LibraryFilterPanelComponent } from '../../components/library-filter-panel/library-filter-panel.component';
 import { resolveAlbumRoute, resolveGenreRoute, resolveArtistRoute } from '../../lib/route-utils';
 import { appendUnique } from '../../lib/append-unique';
 import { createRenderWindow } from '../../lib/render-window';
 import {
   type AlbumListType,
   ALBUM_LIST_TYPES,
-  effectiveAlbumListType,
   splitAlbumListType,
   parseMinTracks,
-  activeFilterCount,
+  activeExtraFilterCount,
 } from '../../lib/library-filters';
+import {
+  LIBRARY_FILTER_PARAM_KEYS,
+  isEmptyLibraryFilter,
+  parseLibraryFilter,
+  serializeLibraryFilter,
+  type LibraryFilter,
+} from '@nicotind/core';
 
 export type { AlbumListType };
 
@@ -90,7 +96,13 @@ function writePersistedState(state: PersistedLibraryState): void {
 
 @Component({
   selector: 'app-library',
-  imports: [ListToolbarComponent, RouterLink, CoverArtComponent, FormsModule, MenuPanelComponent],
+  imports: [
+    ListToolbarComponent,
+    RouterLink,
+    CoverArtComponent,
+    FormsModule,
+    LibraryFilterPanelComponent,
+  ],
   templateUrl: './library.component.html',
 })
 export class LibraryComponent implements OnInit, OnDestroy {
@@ -119,22 +131,34 @@ export class LibraryComponent implements OnInit, OnDestroy {
   setMode(mode: LibraryMode): void {
     this.libraryMode.set(mode);
     localStorage.setItem('nicotind-library-mode', mode);
-    if (mode === 'compilations' && !this.compilations().length) this.fetchCompilations();
-    if (mode === 'singles' && !this.singles().length) this.fetchSingles();
-    if (mode === 'artists' && !this.artists().length) this.fetchArtists();
-    if (mode === 'genre' && !this.genres().length) this.fetchGenres();
+    // Fetched flags (not list lengths) gate the lazy fetches so a filter change
+    // can invalidate a tab and have it refetch on the next switch.
+    if (mode === 'albums' && this.albumsStale) {
+      this.albumsStale = false;
+      void this.resetAndLoad();
+    }
+    if (mode === 'compilations' && !this.compilationsFetched()) this.fetchCompilations();
+    if (mode === 'singles' && !this.singlesFetched()) this.fetchSingles();
+    if (mode === 'artists' && !this.artistsFetched()) this.fetchArtists();
+    if (mode === 'genre' && !this.genresFetched()) this.fetchGenres();
     if (mode === 'playlists') void this.playlistService.refresh();
   }
 
+  // ─── Shared metadata filter (all four tabs) ───────────────────────
+  // One LibraryFilter drives Albums/Compilations/Singles/Artists ("filter my
+  // library, then look at it as albums or artists"), mirrored into URL query
+  // params so filtered views are shareable and survive refresh.
+  readonly libFilter = signal<LibraryFilter>({});
+  /** Albums refetch lazily when the filter changed while another tab was active. */
+  private albumsStale = false;
+
   // ─── Albums (lazy-loaded) ─────────────────────────────────────────
-  // Sort options exclude 'starred' — starred is a *filter* (a checkbox in the
-  // Filters disclosure), not an ordering, even though the server models both as
-  // one `type` enum. `albumListType` is the effective value sent to the API.
+  // Sort options exclude 'starred' — starred is a real WHERE filter in
+  // `libFilter` now, not an ordering; `type` is ordering-only. Legacy
+  // `type=starred` URLs/persisted state map onto the filter in ngOnInit.
   readonly albumSortOptions = ALBUM_TYPE_OPTIONS.filter((o) => o.value !== 'starred');
 
   readonly albumSort = signal<AlbumListType>('newest');
-  readonly starredOnly = signal(false);
-  readonly albumListType = signal<AlbumListType>('newest');
   readonly albums = signal<Album[]>([]);
   readonly loading = signal(true);
   readonly loadingMore = signal(false);
@@ -185,14 +209,21 @@ export class LibraryComponent implements OnInit, OnDestroy {
     return this.gridControls.filtered().filter((a) => (a.songCount ?? 0) >= min);
   });
 
-  // Number of active filters shown as a badge on the Filters disclosure.
-  readonly activeFilterCount = computed(() =>
-    activeFilterCount({
-      starredOnly: this.starredOnly(),
+  // Albums-tab-specific filters (projected into the shared panel's content
+  // slot); counted separately so the panel badge includes them.
+  readonly albumExtraFilterCount = computed(() =>
+    activeExtraFilterCount({
       minTracks: this.minSongCount(),
       showHidden: this.showHidden(),
     }),
   );
+
+  // Genre options for the shared panel, lazy-loaded on first open.
+  readonly genreOptions = computed(() => this.genres().map((g) => g.value));
+
+  ensureGenresLoaded(): void {
+    if (!this.genresFetched() && !this.loadingGenres()) void this.fetchGenres();
+  }
 
   setMinSongCount(n: number | null): void {
     this.minSongCount.set(n);
@@ -334,18 +365,28 @@ export class LibraryComponent implements OnInit, OnDestroy {
   });
 
   async ngOnInit(): Promise<void> {
+    // Shared filter from the URL; a legacy `type=starred` (URL or persisted
+    // state) folds into it as the starred filter with a `newest` ordering.
+    const qp = this.route.snapshot.queryParamMap;
+    const urlFilter = parseLibraryFilter(
+      Object.fromEntries(qp.keys.map((k) => [k, qp.getAll(k)])),
+    );
     const initialType = this.resolveInitialType();
-    this.albumListType.set(initialType);
-    // Map the effective server type back onto the split sort/starred controls.
     const split = splitAlbumListType(initialType);
     this.albumSort.set(split.sort);
-    this.starredOnly.set(split.starredOnly);
+    if (split.starredOnly) urlFilter.starred = true;
+    this.libFilter.set(urlFilter);
 
     // Clear any pending dirty state on load to avoid unnecessary fetches
     this.transferService.clearLibraryDirty();
 
     const persisted = readPersistedState();
-    if (persisted && persisted.type === initialType && persisted.loaded > PAGE_SIZE) {
+    if (
+      persisted &&
+      persisted.type === initialType &&
+      persisted.loaded > PAGE_SIZE &&
+      isEmptyLibraryFilter(urlFilter)
+    ) {
       await this.restoreAndLoad(persisted);
     } else {
       await this.resetAndLoad();
@@ -407,28 +448,46 @@ export class LibraryComponent implements OnInit, OnDestroy {
   }
 
   // ─── Albums fetcher ──────────────────────────────────────────────
-  // The effective server `type` = the Starred filter (if on) else the chosen
-  // ordering. Both refetch from page 0 since ordering/filtering is server-side.
-  private async applyAlbumOrdering(): Promise<void> {
-    const type = effectiveAlbumListType(this.albumSort(), this.starredOnly());
-    this.albumListType.set(type);
+  async setAlbumSort(value: AlbumListType): Promise<void> {
+    if (this.albumSort() === value) return;
+    this.albumSort.set(value);
     void this.router.navigate([], {
       relativeTo: this.route,
-      queryParams: { type },
+      queryParams: { type: value },
       queryParamsHandling: 'merge',
     });
     await this.resetAndLoad();
   }
 
-  async setAlbumSort(value: AlbumListType): Promise<void> {
-    if (this.albumSort() === value) return;
-    this.albumSort.set(value);
-    if (!this.starredOnly()) await this.applyAlbumOrdering();
-  }
-
-  async toggleStarredOnly(): Promise<void> {
-    this.starredOnly.update((v) => !v);
-    await this.applyAlbumOrdering();
+  /**
+   * Shared-panel change: mirror the filter into the URL (nulling cleared
+   * params), refetch the active tab now, and invalidate the rest so they
+   * lazily refetch on their next switch.
+   */
+  async onFilterChange(filter: LibraryFilter): Promise<void> {
+    this.libFilter.set(filter);
+    const cleared: Record<string, string | string[] | null> = {};
+    for (const key of LIBRARY_FILTER_PARAM_KEYS) cleared[key] = null;
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { ...cleared, ...serializeLibraryFilter(filter) },
+      queryParamsHandling: 'merge',
+    });
+    this.singlesFetched.set(false);
+    this.compilationsFetched.set(false);
+    this.artistsFetched.set(false);
+    this.albumsStale = true;
+    const mode = this.libraryMode();
+    if (mode === 'albums') {
+      this.albumsStale = false;
+      await this.resetAndLoad();
+    } else if (mode === 'singles') {
+      await this.fetchSingles();
+    } else if (mode === 'compilations') {
+      await this.fetchCompilations();
+    } else if (mode === 'artists') {
+      await this.fetchArtists();
+    }
   }
 
   toggleShowHidden(): void {
@@ -465,8 +524,9 @@ export class LibraryComponent implements OnInit, OnDestroy {
     this.loadingMore.set(true);
     try {
       const page = await firstValueFrom(
-        this.api.getAlbums(this.albumListType(), PAGE_SIZE, this.offset, {
+        this.api.getAlbums(this.albumSort(), PAGE_SIZE, this.offset, {
           includeHidden: this.showHidden(),
+          filter: this.libFilter(),
         }),
       );
       if (page.length === 0) {
@@ -508,7 +568,7 @@ export class LibraryComponent implements OnInit, OnDestroy {
         const remaining = target - this.offset;
         const fetchSize = Math.min(PAGE_SIZE, remaining);
         const page = await firstValueFrom(
-          this.api.getAlbums(this.albumListType(), fetchSize, this.offset, {
+          this.api.getAlbums(this.albumSort(), fetchSize, this.offset, {
             includeHidden: this.showHidden(),
           }),
         );
@@ -542,7 +602,7 @@ export class LibraryComponent implements OnInit, OnDestroy {
 
   private persistState(): void {
     writePersistedState({
-      type: this.albumListType(),
+      type: this.albumSort(),
       loaded: this.albums().length,
       scrollY: typeof window !== 'undefined' ? window.scrollY : 0,
     });
@@ -553,7 +613,7 @@ export class LibraryComponent implements OnInit, OnDestroy {
     if (this.loadingArtists()) return;
     this.loadingArtists.set(true);
     try {
-      const data = await firstValueFrom(this.api.getArtists());
+      const data = await firstValueFrom(this.api.getArtists(this.libFilter()));
       this.artists.set(data.map((a) => ({ ...a, albumCount: a.albumCount ?? 0 })));
     } catch {
       /* ignore */
@@ -567,7 +627,7 @@ export class LibraryComponent implements OnInit, OnDestroy {
     if (this.loadingSingles()) return;
     this.loadingSingles.set(true);
     try {
-      const data = await firstValueFrom(this.api.getSingles('newest', 500));
+      const data = await firstValueFrom(this.api.getSingles('newest', 500, 0, this.libFilter()));
       this.singles.set(data);
     } catch {
       /* ignore */
@@ -581,7 +641,9 @@ export class LibraryComponent implements OnInit, OnDestroy {
     if (this.loadingCompilations()) return;
     this.loadingCompilations.set(true);
     try {
-      const data = await firstValueFrom(this.api.getCompilations('newest', 500));
+      const data = await firstValueFrom(
+        this.api.getCompilations('newest', 500, 0, this.libFilter()),
+      );
       this.compilations.set(data);
     } catch {
       /* ignore */

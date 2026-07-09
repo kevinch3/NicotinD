@@ -111,21 +111,23 @@ export function camelotToKeys(code: string): string[] {
  * commas); every closed-vocabulary list is comma-joined.
  */
 export function serializeLibraryFilter(f: LibraryFilter): Record<string, string | string[]> {
+  // Bracket access throughout: q is an index-signature Record and this module
+  // also compiles under the web's noPropertyAccessFromIndexSignature tsconfig.
   const q: Record<string, string | string[]> = {};
-  if (f.bpmMin !== undefined) q.bpmMin = String(f.bpmMin);
-  if (f.bpmMax !== undefined) q.bpmMax = String(f.bpmMax);
-  if (f.keys?.length) q.key = f.keys.join(',');
-  if (f.moods?.length) q.mood = f.moods.join(',');
+  if (f.bpmMin !== undefined) q['bpmMin'] = String(f.bpmMin);
+  if (f.bpmMax !== undefined) q['bpmMax'] = String(f.bpmMax);
+  if (f.keys?.length) q['key'] = f.keys.join(',');
+  if (f.moods?.length) q['mood'] = f.moods.join(',');
   for (const axis of PERCEPTUAL_AXES) {
     const buckets = f.buckets?.[axis];
     if (buckets?.length) q[axis] = buckets.join(',');
   }
-  if (f.yearMin !== undefined) q.yearMin = String(f.yearMin);
-  if (f.yearMax !== undefined) q.yearMax = String(f.yearMax);
-  if (f.genres?.length) q.genre = [...f.genres];
-  if (f.starred) q.starred = 'true';
-  if (f.durationMin !== undefined) q.durMin = String(f.durationMin);
-  if (f.durationMax !== undefined) q.durMax = String(f.durationMax);
+  if (f.yearMin !== undefined) q['yearMin'] = String(f.yearMin);
+  if (f.yearMax !== undefined) q['yearMax'] = String(f.yearMax);
+  if (f.genres?.length) q['genre'] = [...f.genres];
+  if (f.starred) q['starred'] = 'true';
+  if (f.durationMin !== undefined) q['durMin'] = String(f.durationMin);
+  if (f.durationMax !== undefined) q['durMax'] = String(f.durationMax);
   return q;
 }
 
@@ -154,17 +156,17 @@ export function parseLibraryFilter(
   query: Record<string, string | string[] | undefined>,
 ): LibraryFilter {
   const f: LibraryFilter = {};
-  const bpmMin = num(query.bpmMin);
-  const bpmMax = num(query.bpmMax);
+  const bpmMin = num(query['bpmMin']);
+  const bpmMax = num(query['bpmMax']);
   if (bpmMin !== undefined) f.bpmMin = bpmMin;
   if (bpmMax !== undefined) f.bpmMax = bpmMax;
 
-  const keys = list(query.key)
+  const keys = list(query['key'])
     .map((k) => k.toUpperCase())
     .filter((k) => WHEEL_BY_CODE.has(k));
   if (keys.length) f.keys = [...new Set(keys)];
 
-  const moods = list(query.mood).filter((m): m is MoodLabel =>
+  const moods = list(query['mood']).filter((m): m is MoodLabel =>
     (MOOD_VOCAB as readonly string[]).includes(m),
   );
   if (moods.length) f.moods = [...new Set(moods)];
@@ -179,25 +181,43 @@ export function parseLibraryFilter(
     }
   }
 
-  const yearMin = num(query.yearMin);
-  const yearMax = num(query.yearMax);
+  const yearMin = num(query['yearMin']);
+  const yearMax = num(query['yearMax']);
   if (yearMin !== undefined) f.yearMin = yearMin;
   if (yearMax !== undefined) f.yearMax = yearMax;
 
-  const genreRaw = query.genre;
+  const genreRaw = query['genre'];
   const genres = (Array.isArray(genreRaw) ? genreRaw : genreRaw !== undefined ? [genreRaw] : [])
     .map((g) => g.trim())
     .filter(Boolean);
   if (genres.length) f.genres = [...new Set(genres)];
 
-  if (first(query.starred) === 'true') f.starred = true;
+  if (first(query['starred']) === 'true') f.starred = true;
 
-  const durMin = num(query.durMin);
-  const durMax = num(query.durMax);
+  const durMin = num(query['durMin']);
+  const durMax = num(query['durMax']);
   if (durMin !== undefined) f.durationMin = durMin;
   if (durMax !== undefined) f.durationMax = durMax;
   return f;
 }
+
+/**
+ * Every query-param key the filter grammar can emit — hosts null these out
+ * when syncing a changed filter into the URL so cleared properties disappear.
+ */
+export const LIBRARY_FILTER_PARAM_KEYS: readonly string[] = [
+  'bpmMin',
+  'bpmMax',
+  'key',
+  'mood',
+  ...PERCEPTUAL_AXES,
+  'yearMin',
+  'yearMax',
+  'genre',
+  'starred',
+  'durMin',
+  'durMax',
+];
 
 // ── State helpers ──────────────────────────────────────────────────────────
 

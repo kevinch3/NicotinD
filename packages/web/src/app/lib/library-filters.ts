@@ -1,9 +1,10 @@
 /**
- * Pure resolution logic for the consolidated library Albums controls. The
- * server models ordering AND the starred filter as a single `type` enum, while
- * the UI splits them into a Sort dropdown + a Starred checkbox; these helpers
- * convert between the two representations (and parse the Min-tracks select).
- * DI-free so they're unit-testable without the component.
+ * Pure resolution logic for the library Albums controls. Starred used to be
+ * modeled as the server `type=starred` ordering; it now lives in the shared
+ * `LibraryFilter` (a real WHERE filter, independent of sort), so `type` is
+ * ordering-only. `splitAlbumListType` remains to map legacy `type=starred`
+ * URLs / persisted state onto the new split. DI-free so unit-testable
+ * without the component.
  */
 export type AlbumListType =
   | 'newest'
@@ -22,12 +23,7 @@ export const ALBUM_LIST_TYPES: AlbumListType[] = [
   'random',
 ];
 
-/** Effective server `type` from the split Sort + Starred-filter controls. */
-export function effectiveAlbumListType(sort: AlbumListType, starredOnly: boolean): AlbumListType {
-  return starredOnly ? 'starred' : sort;
-}
-
-/** Inverse: map a server `type` back onto the split controls. */
+/** Map a (possibly legacy `starred`) server `type` onto sort + starred filter. */
 export function splitAlbumListType(type: AlbumListType): {
   sort: AlbumListType;
   starredOnly: boolean;
@@ -42,13 +38,14 @@ export function parseMinTracks(value: string): number | null {
   return value === '' ? null : Number(value);
 }
 
-/** Active-filter count for the Filters disclosure badge. */
-export function activeFilterCount(opts: {
-  starredOnly: boolean;
+/**
+ * Count of the Albums tab's page-specific filters (projected into the shared
+ * panel's content slot). The shared properties (starred, bpm, …) are counted
+ * by `activeLibraryFilterCount` in @nicotind/core.
+ */
+export function activeExtraFilterCount(opts: {
   minTracks: number | null;
   showHidden: boolean;
 }): number {
-  return (
-    (opts.starredOnly ? 1 : 0) + (opts.minTracks !== null ? 1 : 0) + (opts.showHidden ? 1 : 0)
-  );
+  return (opts.minTracks !== null ? 1 : 0) + (opts.showHidden ? 1 : 0);
 }

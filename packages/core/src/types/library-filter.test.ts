@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import {
   CAMELOT_WHEEL,
+  LIBRARY_FILTER_PARAM_KEYS,
   MOOD_VOCAB,
   PERCEPTUAL_AXES,
   activeLibraryFilterCount,
@@ -74,6 +75,12 @@ describe('serializeLibraryFilter / parseLibraryFilter', () => {
 
   it('ignores unrelated query params (size, offset, type)', () => {
     expect(parseLibraryFilter({ size: '20', offset: '40', type: 'newest' })).toEqual({});
+  });
+
+  it('LIBRARY_FILTER_PARAM_KEYS covers every serialized key (URL clearing)', () => {
+    for (const key of Object.keys(serializeLibraryFilter(fullFilter))) {
+      expect(LIBRARY_FILTER_PARAM_KEYS).toContain(key);
+    }
   });
 });
 
