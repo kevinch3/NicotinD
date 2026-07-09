@@ -9,7 +9,7 @@
         [ngModelOptions]="{ standalone: true }"
         (focus)="searchFocused.set(true)"
         (blur)="onSearchBlur()"
-        placeholder="Search for music..."
+        placeholder="Search music or paste a link…"
         data-testid="search-input"
         class="w-full px-5 py-4 text-lg rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-600 transition"
       />
@@ -120,6 +120,91 @@
         <p class="text-sm text-amber-400">{{ err }}</p>
       }
     </div>
+  }
+
+  <!-- Link-intent card: a pasted/shared URL is one acquisition candidate,
+       styled like a blended Results row but rendered standalone (no search
+       runs for a URL). The card itself carries the job lifecycle — no
+       separate job list (replaces the old bottom "Get from a link" section).
+       See docs/source-agnostic-acquisition.md. -->
+  @if (linkIntent(); as intent) {
+    <section class="mb-6" data-testid="link-intent-section">
+      <ul class="divide-y divide-zinc-800 rounded-lg border border-zinc-800 overflow-hidden">
+        <li
+          class="flex items-center gap-3 px-3 py-2.5 bg-zinc-900/40"
+          data-testid="link-intent-card"
+        >
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center gap-2">
+              <app-source-chip [source]="intent.source" [label]="intent.sourceLabel" />
+              <p class="truncate text-sm text-zinc-200">{{ intent.url }}</p>
+            </div>
+            @if (linkJob()?.state === 'failed') {
+              <p class="truncate text-xs text-red-400 mt-0.5">
+                {{ linkJob()?.error ?? 'Download failed' }}
+              </p>
+            } @else if (linkSubmitError()) {
+              <p class="truncate text-xs text-red-400 mt-0.5">{{ linkSubmitError() }}</p>
+            }
+          </div>
+
+          @if (linkJob(); as job) {
+            @switch (job.state) {
+              @case ('done') {
+                <a
+                  routerLink="/library"
+                  class="shrink-0 px-3 py-1.5 rounded-md text-xs font-semibold"
+                  style="
+                    background: var(--theme-status-done-bg);
+                    color: var(--theme-status-done-text);
+                  "
+                >
+                  Added to library ✓ · Open
+                </a>
+              }
+              @case ('failed') {
+                <button
+                  (click)="retryLinkJob()"
+                  data-testid="link-intent-retry"
+                  class="shrink-0 px-3 py-1.5 rounded-md text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-200"
+                >
+                  Retry
+                </button>
+              }
+              @default {
+                <span class="shrink-0 text-xs text-zinc-400">
+                  {{ job.progress ? job.progress.done + '/' + job.progress.total : 'Starting…' }}
+                </span>
+                <button
+                  (click)="cancelLinkJob()"
+                  data-testid="link-intent-cancel"
+                  class="shrink-0 text-zinc-600 hover:text-zinc-300 transition text-base leading-none"
+                  title="Cancel"
+                >
+                  ×
+                </button>
+              }
+            }
+          } @else {
+            <button
+              (click)="submitLinkIntent()"
+              data-testid="link-intent-get"
+              class="shrink-0 px-3 py-1.5 rounded-md text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-200"
+            >
+              {{ intent.source === 'spotify' && !plugins.hasSpotdl() ? 'Open in Spotify' : 'Get' }}
+            </button>
+          }
+          <button
+            (click)="dismissLinkIntent()"
+            data-testid="link-intent-dismiss"
+            class="shrink-0 text-zinc-600 hover:text-zinc-300 transition text-base leading-none"
+            title="Dismiss"
+          >
+            ×
+          </button>
+        </li>
+      </ul>
+    </section>
   }
 
   <!-- Loading spinner -->
@@ -697,77 +782,4 @@
     />
   }
 
-  <!-- URL acquisition (yt-dlp / spotdl) — only when a resolve-capable plugin is enabled -->
-  @if (plugins.hasResolve()) {
-    <div class="mt-10 border-t border-zinc-800 pt-8">
-      <h2 class="text-sm font-semibold text-zinc-400 uppercase tracking-wider mb-1">
-        Get from a link
-      </h2>
-      <p class="text-xs text-zinc-500 mb-3">
-        Paste a YouTube, SoundCloud, Bandcamp, Spotify or archive.org link — we pick the right
-        source.
-      </p>
-      <form (submit)="submitAcquireUrl($event)" class="flex gap-2">
-        <input
-          type="url"
-          [(ngModel)]="acquireUrl"
-          name="acquireUrl"
-          placeholder="Paste a link…"
-          data-testid="acquire-url-input"
-          class="flex-1 px-4 py-2.5 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-600 transition text-sm"
-        />
-        <button
-          type="submit"
-          [disabled]="acquireSubmitting()"
-          data-testid="acquire-submit"
-          class="px-4 py-2.5 rounded-xl bg-zinc-700 text-zinc-200 text-sm font-medium hover:bg-zinc-600 transition disabled:opacity-50 whitespace-nowrap"
-        >
-          {{ acquireSubmitting() ? 'Starting…' : 'Download' }}
-        </button>
-      </form>
-      @if (acquireError()) {
-        <p class="mt-2 text-xs text-red-400">{{ acquireError() }}</p>
-      }
-
-      @if (acquire.jobs().length > 0) {
-        <ul class="mt-4 space-y-2">
-          @for (job of acquire.jobs(); track job.id) {
-            <li
-              class="flex items-center gap-3 px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-sm"
-            >
-              <span class="shrink-0 w-16 text-xs text-zinc-500 uppercase font-medium">{{
-                job.backend
-              }}</span>
-              <span class="flex-1 truncate text-zinc-300" [title]="job.url">{{
-                job.label ?? job.url
-              }}</span>
-
-              @if (job.state === 'running' && job.progress) {
-                <span class="shrink-0 text-xs text-blue-400"
-                  >{{ job.progress.done }}/{{ job.progress.total }}</span
-                >
-              }
-              @if (job.state === 'queued' || job.state === 'running') {
-                <span class="shrink-0 w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
-              }               @else if (job.state === 'done') {
-                <span class="shrink-0 text-xs text-emerald-400">Added to library</span>
-              } @else if (job.state === 'failed') {
-                <span class="shrink-0 text-xs text-red-400" [title]="job.error ?? ''">Failed</span>
-              }
-
-              @if (job.state === 'queued' || job.state === 'running') {
-                <button
-                  (click)="cancelAcquireJob(job.id)"
-                  class="shrink-0 text-zinc-600 hover:text-zinc-300 transition text-base leading-none"
-                  title="Cancel"
-                >
-                  ×
-                </button>
-              }
-            </li>
-          }
-        </ul>
-      }
-    </div>
-  }
 </div>
