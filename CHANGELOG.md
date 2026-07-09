@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.172](https://github.com/kevinch3/NicotinD/compare/v0.1.171...v0.1.172) (2026-07-09)
+
+
+### Features
+
+* **api:** standardized library metadata filters on all list routes ([7aec2f2](https://github.com/kevinch3/NicotinD/commit/7aec2f22edcc28664b06ee46a528e19fe32cd4af))
+* **web:** metadata filters on the artist Songs tab + e2e filter flow ([f70ca64](https://github.com/kevinch3/NicotinD/commit/f70ca64718cb975817851b720be47c092cfc8eb3))
+* **web:** standardized metadata filter panel on the four library tabs ([05321c1](https://github.com/kevinch3/NicotinD/commit/05321c11100b6c9b4299bdeccc19646bdc666e9f))
+
 ## [0.1.171](https://github.com/kevinch3/NicotinD/compare/v0.1.170...v0.1.171) (2026-07-09)
 
 
