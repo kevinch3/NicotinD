@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.171](https://github.com/kevinch3/NicotinD/compare/v0.1.170...v0.1.171) (2026-07-09)
+
+
+### Bug Fixes
+
+* **api:** demote compilation reissues in catalog album ranking ([d91f9a4](https://github.com/kevinch3/NicotinD/commit/d91f9a4f202ad623097416c686b525207a73afb5))
+
 ## [0.1.170](https://github.com/kevinch3/NicotinD/compare/v0.1.169...v0.1.170) (2026-07-09)
 
 
