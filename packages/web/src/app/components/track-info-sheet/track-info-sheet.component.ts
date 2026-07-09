@@ -13,6 +13,7 @@ import { ServerConfigService } from '../../services/server-config.service';
 import { methodBadge } from '../../lib/acquisition-method';
 import { parseLrc } from '../../lib/lrc-parser';
 import { CoverArtComponent } from '../cover-art/cover-art.component';
+import { TrackStatsBarsComponent } from '../track-stats-bars/track-stats-bars.component';
 
 const ACTION_LABELS: Record<string, string> = {
   duplicate_removed: 'Duplicate removed',
@@ -25,7 +26,7 @@ const ACTION_LABELS: Record<string, string> = {
 @Component({
   selector: 'app-track-info-sheet',
   standalone: true,
-  imports: [CommonModule, CoverArtComponent],
+  imports: [CommonModule, CoverArtComponent, TrackStatsBarsComponent],
   template: `
     <!-- Backdrop -->
     <div class="fixed inset-0 z-[90] bg-black/60" (click)="close.emit()"></div>
@@ -199,16 +200,19 @@ const ACTION_LABELS: Record<string, string> = {
               }
             }
 
-            <!-- Perceptual/harmonic features (filled by server enrichment) -->
-            @for (f of featureRows(); track f.label) {
-              <div class="flex gap-2 items-center">
-                <span class="text-theme-muted w-20 flex-shrink-0">{{ f.label }}</span>
-                @if (f.value !== null) {
-                  <span [attr.data-testid]="f.testid">{{ f.value }}</span>
-                } @else {
-                  <span class="text-theme-muted">Unknown</span>
-                }
-              </div>
+            <!-- Perceptual/harmonic features (Sims-style bars) -->
+            @if (effectiveSong(); as s) {
+              <app-track-stats-bars
+                [bpm]="bpm()"
+                [genre]="currentGenre()"
+                [key]="s.key ?? null"
+                [mood]="s.mood ?? null"
+                [energy]="s.energy ?? null"
+                [valence]="s.valence ?? null"
+                [danceability]="s.danceability ?? null"
+                [acousticness]="s.acousticness ?? null"
+                [instrumental]="s.instrumental ?? null"
+              />
             }
           </div>
         </section>
