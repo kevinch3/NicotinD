@@ -24,21 +24,24 @@ const ACQUIRE_URL = process.env.PLAYGROUND_ACQUIRE_URL;
 const QUERY = process.env.PLAYGROUND_ACQUIRE_QUERY ?? 'El Cuarteto de Nos';
 
 test('downloads & acquire — mobile screens', async ({ page, obs }) => {
-  // 1) Search page — the "Get from a link" box. It renders only once plugin
-  //    state loads and a resolve-capable plugin is enabled, so wait for it.
+  // 1) Search page — pasting a link renders the link-intent card. It only
+  //    appears once plugin state loads and a resolve-capable plugin is
+  //    enabled, so wait for it after submitting a recognizable URL.
   await page.goto('/');
   await expect(page.getByTestId('search-input')).toBeVisible();
-  const acquireBox = page.getByTestId('acquire-url-input');
-  if (await appeared(acquireBox, 8000)) {
-    await acquireBox.scrollIntoViewIfNeeded();
-    await shot(page, FLOW, 1, 'acquire box', { settleMs: 300 });
+  await page.getByTestId('search-input').fill('https://youtu.be/dQw4w9WgXcQ');
+  await page.getByTestId('search-submit').click();
+  const linkCard = page.getByTestId('link-intent-card');
+  if (await appeared(linkCard, 8000)) {
+    await linkCard.scrollIntoViewIfNeeded();
+    await shot(page, FLOW, 1, 'link intent card', { settleMs: 300 });
   } else {
     obs.record({
       kind: 'gap',
-      title: 'URL acquire box not shown despite resolve plugins',
+      title: 'Link-intent card not shown despite resolve plugins',
       severity: 'medium',
-      detail: 'No acquire-url-input after 8s — expected when a resolve plugin (ytdlp/spotdl/archive) is enabled.',
-      suggestion: 'Confirm PluginService.hasResolve drives the box; investigate if a resolve plugin is enabled but it stays hidden.',
+      detail: 'No link-intent-card after 8s — expected when a resolve plugin (ytdlp/spotdl/archive) is enabled.',
+      suggestion: 'Confirm PluginService.hasResolve gates SearchComponent.handleSearch; investigate if a resolve plugin is enabled but the card stays hidden.',
     });
     await shot(page, FLOW, 1, 'search idle', { settleMs: 300 });
   }
@@ -140,13 +143,15 @@ test('downloads & acquire — mobile screens', async ({ page, obs }) => {
     await shot(page, FLOW, 7, 'recently added', { settleMs: 300 });
   }
 
-  // 7) Optional: paste a URL and capture the in-flight Active card.
+  // 7) Optional: paste a URL, click Get on the link-intent card, and capture
+  //    the in-flight Active card.
   if (ACQUIRE_URL) {
     await page.goto('/');
-    const box = page.getByTestId('acquire-url-input');
-    if (await appeared(box, 8000)) {
-      await box.fill(ACQUIRE_URL);
-      await page.getByTestId('acquire-submit').click();
+    await page.getByTestId('search-input').fill(ACQUIRE_URL);
+    await page.getByTestId('search-submit').click();
+    const linkCard = page.getByTestId('link-intent-card');
+    if (await appeared(linkCard, 8000)) {
+      await linkCard.getByTestId('link-intent-get').click();
       await page.goto('/downloads');
       const tab = await firstPresent(
         page.getByTestId('downloads-tab-active'),
@@ -158,7 +163,7 @@ test('downloads & acquire — mobile screens', async ({ page, obs }) => {
     } else {
       obs.record({
         kind: 'degraded',
-        title: 'Cannot acquire URL — box hidden',
+        title: 'Cannot acquire URL — card hidden',
         severity: 'medium',
         suggestion: 'Enable a resolve plugin to test URL acquisition.',
       });

@@ -8,8 +8,9 @@ import { albumIds } from '../playground/flow-helpers';
  * to "playable", how many steps, and any console/runtime errors along the way.
  *
  * SAFETY: every album this run adds is tracked and DELETED in `finally`, even on
- * failure, so prod is left clean. Drive it by URL ("Get from a link") with
- * PLAYGROUND_REAL_URL, or by artist/album with PLAYGROUND_REAL_ARTIST/_ALBUM.
+ * failure, so prod is left clean. Drive it by URL (pasted into the search
+ * omnibox as a link-intent card) with PLAYGROUND_REAL_URL, or by artist/album
+ * with PLAYGROUND_REAL_ARTIST/_ALBUM.
  * See docs/testing-routines.md.
  */
 const REAL_URL = process.env.PLAYGROUND_REAL_URL;
@@ -42,17 +43,16 @@ test('real-roundtrip', async ({ page, obs, apiToken }) => {
     // ── 1. Trigger acquisition through the real UI ──────────────────────────
     if (REAL_URL) {
       await page.goto('/');
-      const input = page.getByTestId('acquire-url-input');
-      if ((await input.count()) === 0) {
-        j.deadEnd('URL acquire box not present (resolve plugin disabled?)');
-        obs.outcome('failed', 'no acquire box');
+      await page.getByTestId('search-input').fill(REAL_URL);
+      await page.getByTestId('search-submit').click();
+      j.step('paste URL into the search omnibox');
+      const linkCard = page.getByTestId('link-intent-card');
+      if ((await linkCard.count()) === 0) {
+        j.deadEnd('link-intent card not present (resolve plugin disabled?)');
+        obs.outcome('failed', 'no link-intent card');
         return;
       }
-      await input.fill(REAL_URL);
-      j.step('paste URL into "Get from a link"');
-      const submit = page.getByRole('button', { name: /acquire|get|download|add/i }).first();
-      if ((await submit.count()) > 0) await submit.click();
-      else await input.press('Enter');
+      await linkCard.getByTestId('link-intent-get').click();
       j.step('submit acquisition');
     } else {
       await page.goto('/');

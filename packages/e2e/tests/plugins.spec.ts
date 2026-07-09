@@ -18,11 +18,19 @@ test.describe('plugin capability gating', () => {
     }
   });
 
-  test('enabling yt-dlp reveals the URL acquire box; disabling hides it', async ({ page }) => {
-    // Baseline: no resolve plugin -> the acquire box is absent on the search page.
+  test('enabling yt-dlp reveals the link-intent card for a pasted URL; disabling hides it', async ({
+    page,
+  }) => {
+    const pasteUrl = async () => {
+      await page.getByTestId('search-input').fill('https://youtu.be/dQw4w9WgXcQ');
+      await page.getByTestId('search-submit').click();
+    };
+
+    // Baseline: no resolve plugin -> pasting a URL just searches, no card.
     await page.goto('/');
     await expect(page.getByTestId('search-input')).toBeVisible();
-    await expect(page.getByTestId('acquire-url-input')).toHaveCount(0);
+    await pasteUrl();
+    await expect(page.getByTestId('link-intent-card')).toHaveCount(0);
 
     // Enable yt-dlp (consent-gated) on the admin plugins page.
     await page.goto('/settings/plugins');
@@ -32,16 +40,18 @@ test.describe('plugin capability gating', () => {
     await page.getByTestId('confirm-ok').click(); // acknowledge the disclaimer
     await expect(card.getByTestId('plugin-toggle')).toHaveText('Disable');
 
-    // Now the acquire box is exposed on the search page.
+    // Now pasting a URL renders the link-intent card instead of searching.
     await page.goto('/');
-    await expect(page.getByTestId('acquire-url-input')).toBeVisible();
+    await pasteUrl();
+    await expect(page.getByTestId('link-intent-card')).toBeVisible();
 
     // Disabling it removes the capability again.
     await page.goto('/settings/plugins');
     await card.getByTestId('plugin-toggle').click();
     await expect(card.getByTestId('plugin-toggle')).toHaveText('Enable');
     await page.goto('/');
-    await expect(page.getByTestId('acquire-url-input')).toHaveCount(0);
+    await pasteUrl();
+    await expect(page.getByTestId('link-intent-card')).toHaveCount(0);
   });
 
   test('the archive.org plugin ships registered and default-off', async ({ page }) => {
