@@ -216,6 +216,57 @@ describe('CatalogService.search', () => {
     expect(result.discographyUnavailable).toBeFalsy();
   });
 
+  // Regression for the "almost every search dead-ends into the raw-fallback
+  // banner" bug: reproduced live against prod Lidarr for "Deep Purple" and
+  // "Cyndi Lauper", where album.lookup's free-text relevance ranking put 6-7
+  // "Best of"/"Very Best Of" compilations ahead of the artist's real studio
+  // albums — and Lidarr's own listByArtist discography carried *zero* of
+  // those compilations, so resolving the top-ranked (and therefore most
+  // likely clicked) card 404s almost every time. Fixture mirrors the real
+  // Lidarr `album.lookup` ordering for "Deep Purple" (comps newest-first,
+  // real albums oldest-last).
+  it('demotes compilations behind the artist real releases, even when the comps are newer', async () => {
+    const own = (
+      id: number,
+      title: string,
+      releaseDate: string,
+      secondaryTypes: string[] = [],
+    ) =>
+      makeAlbum({
+        id,
+        title,
+        albumType: 'Album',
+        releaseDate,
+        secondaryTypes,
+        artist: makeArtist({ id: 1, artistName: 'Deep Purple' }),
+      });
+    const lidarr = {
+      artist: { lookup: mock(async () => [makeArtist({ id: 1, artistName: 'Deep Purple' })]) },
+      album: {
+        lookup: mock(async () => [
+          own(1, 'Deep Purple Forever: The Very Best Of', '2005-01-01', ['Compilation']),
+          own(2, 'The Best of Deep Purple', '2002-01-01', ['Compilation']),
+          own(3, 'The Very Best of Deep Purple', '2000-01-01', ['Compilation']),
+          own(4, 'Deepest Purple: The Very Best of Deep Purple', '1980-01-01', ['Compilation']),
+          own(5, 'Deep Purple in Rock', '1970-01-01'),
+          own(6, 'Deep Purple', '1969-01-01'),
+          own(7, 'Shades of Deep Purple', '1968-01-01'),
+        ]),
+      },
+    } as unknown as Lidarr;
+
+    const result = await new CatalogService(lidarr).search('Deep Purple');
+    expect(result.albums.map((a) => a.title)).toEqual([
+      'Deep Purple in Rock',
+      'Deep Purple',
+      'Shades of Deep Purple',
+      'Deep Purple Forever: The Very Best Of',
+      'The Best of Deep Purple',
+      'The Very Best of Deep Purple',
+      'Deepest Purple: The Very Best of Deep Purple',
+    ]);
+  });
+
   it('keeps all albums when none belong to a matched artist (album-title search)', async () => {
     const lidarr = {
       artist: { lookup: mock(async () => []) },
