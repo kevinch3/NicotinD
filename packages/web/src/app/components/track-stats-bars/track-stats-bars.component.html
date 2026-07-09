@@ -1,0 +1,30 @@
+<!-- Badges: BPM, Genre, Key, Mood -->
+@if (badges().length) {
+  <div class="badge-row">
+    @for (b of badges(); track b.label) {
+      <span class="badge" [attr.data-testid]="'badge-' + b.label.toLowerCase()">
+        <span class="badge-icon">{{ b.icon }}</span>
+        <span class="badge-value">{{ b.value }}</span>
+      </span>
+    }
+  </div>
+}
+
+<!-- Bars: Energy, Valence, Dance, Acoustic, Instrumental -->
+@if (metrics().length) {
+  <div class="bar-list">
+    @for (m of metrics(); track m.label) {
+      <div class="bar-item" [attr.data-testid]="'bar-' + m.label.toLowerCase()">
+        <span class="bar-label">{{ m.label }}</span>
+        <div class="bar-track">
+          <div
+            class="bar-fill"
+            [style.--bar-current.%]="m.value"
+            [style.background]="m.color"
+          ></div>
+        </div>
+        <span class="bar-value">{{ m.value }}%</span>
+      </div>
+    }
+  </div>
+}
