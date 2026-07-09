@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
-import { provideRouter } from '@angular/router';
+import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
 import { of, throwError } from 'rxjs';
 import { vi } from 'vitest';
 import { SearchComponent } from './search.component';
@@ -31,6 +31,9 @@ const CATALOG_ALBUM: CatalogAlbum = {
 function setup(
   apiOverrides: Partial<Record<keyof SearchApiService, unknown>> = {},
   acquireOverrides: { submit?: () => Promise<string> } = {},
+  // PWA share-target query params (?url=/?text=/?title=), consumed by ngOnInit
+  // via this.route.snapshot.queryParamMap. Empty by default (no share intent).
+  shareParams: { url?: string; text?: string; title?: string } = {},
 ) {
   const acquireSubmit = vi.fn(acquireOverrides.submit ?? (() => Promise.resolve('job1')));
   const acquireCancel = vi.fn(() => Promise.resolve());
@@ -78,6 +81,10 @@ function setup(
         },
       },
       { provide: AutoHuntService, useValue: autoHunt },
+      {
+        provide: ActivatedRoute,
+        useValue: { snapshot: { queryParamMap: convertToParamMap(shareParams) } },
+      },
       SearchService,
       PluginService,
     ],
@@ -417,6 +424,24 @@ describe('SearchComponent — link-intent card (merged URL acquisition)', () => 
 
     expect(retryAcquireJob).toHaveBeenCalledWith('job1');
     expect(acquireRefresh).toHaveBeenCalled();
+  });
+
+  it('ngOnInit submits a share-target URL even when no resolve plugin is enabled', async () => {
+    const { component, plugins, acquireSubmit } = setup(
+      {},
+      {},
+      { url: 'https://youtu.be/dQw4w9WgXcQ' },
+    );
+
+    expect(plugins.hasResolve()).toBe(false);
+
+    component.ngOnInit();
+    await flush();
+
+    expect(component.linkIntent()).toEqual(
+      expect.objectContaining({ url: 'https://youtu.be/dQw4w9WgXcQ', source: 'youtube' }),
+    );
+    expect(acquireSubmit).toHaveBeenCalledWith('https://youtu.be/dQw4w9WgXcQ');
   });
 
   it('dismissLinkIntent clears the card and any error', () => {
