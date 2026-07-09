@@ -48,46 +48,32 @@
         }
       </select>
 
-      <app-menu-panel align="end" panelTestId="library-filter-panel">
-        <button menuTrigger type="button" data-testid="library-filters"
-          class="cursor-pointer select-none px-3 py-1.5 text-sm rounded-lg bg-theme-surface-2 text-theme-primary hover:bg-theme-hover transition flex items-center gap-1.5">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="4" x2="4" y1="21" y2="14" /><line x1="4" x2="4" y1="10" y2="3" />
-            <line x1="12" x2="12" y1="21" y2="12" /><line x1="12" x2="12" y1="8" y2="3" />
-            <line x1="20" x2="20" y1="21" y2="16" /><line x1="20" x2="20" y1="12" y2="3" />
-            <line x1="2" x2="6" y1="14" y2="14" /><line x1="10" x2="14" y1="8" y2="8" /><line x1="18" x2="22" y1="16" y2="16" />
-          </svg>
-          Filters
-          @if (activeFilterCount() > 0) {
-            <span data-testid="library-filter-count" class="px-1.5 rounded-full bg-theme-accent text-theme-on-accent text-xs leading-5">{{ activeFilterCount() }}</span>
-          }
-        </button>
-        <div menuPanel class="w-60 p-3 rounded-lg bg-theme-surface border border-theme shadow-xl flex flex-col gap-3">
+      <app-library-filter-panel
+        [filter]="libFilter()"
+        [genres]="genreOptions()"
+        [extraCount]="albumExtraFilterCount()"
+        (filterChange)="onFilterChange($event)"
+        (panelOpened)="ensureGenresLoaded()">
+        <!-- Albums-tab-specific extras (client-side / admin) -->
+        <label class="flex items-center justify-between gap-3 text-sm text-theme-secondary">
+          <span>Min tracks</span>
+          <select data-testid="library-filter-mintracks"
+            [value]="minSongCount() ?? ''"
+            (change)="setMinTracksFromSelect($any($event.target).value)"
+            class="px-2 py-1 rounded bg-theme-surface-2 text-theme-primary text-sm focus:outline-none">
+            @for (opt of trackCountOptions; track opt.label) {
+              <option [value]="opt.value ?? ''">{{ opt.label }}</option>
+            }
+          </select>
+        </label>
+        @if (auth.role() === 'admin') {
           <label class="flex items-center justify-between gap-3 text-sm text-theme-secondary cursor-pointer">
-            <span>Starred only</span>
-            <input type="checkbox" data-testid="library-filter-starred"
-              [checked]="starredOnly()" (change)="toggleStarredOnly()" />
+            <span>Show hidden</span>
+            <input type="checkbox" data-testid="library-filter-hidden"
+              [checked]="showHidden()" (change)="toggleShowHidden()" />
           </label>
-          <label class="flex items-center justify-between gap-3 text-sm text-theme-secondary">
-            <span>Min tracks</span>
-            <select data-testid="library-filter-mintracks"
-              [value]="minSongCount() ?? ''"
-              (change)="setMinTracksFromSelect($any($event.target).value)"
-              class="px-2 py-1 rounded bg-theme-surface-2 text-theme-primary text-sm focus:outline-none">
-              @for (opt of trackCountOptions; track opt.label) {
-                <option [value]="opt.value ?? ''">{{ opt.label }}</option>
-              }
-            </select>
-          </label>
-          @if (auth.role() === 'admin') {
-            <label class="flex items-center justify-between gap-3 text-sm text-theme-secondary cursor-pointer">
-              <span>Show hidden</span>
-              <input type="checkbox" data-testid="library-filter-hidden"
-                [checked]="showHidden()" (change)="toggleShowHidden()" />
-            </label>
-          }
-        </div>
-      </app-menu-panel>
+        }
+      </app-library-filter-panel>
 
       <span class="text-xs text-theme-muted ml-auto sm:ml-1" data-testid="library-album-count"
         >{{ filteredAlbums().length }} {{ filteredAlbums().length === 1 ? 'album' : 'albums' }}</span>
@@ -161,16 +147,26 @@
 
   <!-- ═══ COMPILATIONS MODE ═══ -->
   @if (libraryMode() === 'compilations') {
-    <app-list-toolbar
-      [searchText]="compilationsControls.searchText()"
-      [sortField]="compilationsControls.sortField()"
-      [sortDirection]="compilationsControls.sortDirection()"
-      [sortOptions]="gridSortOptions"
-      [resultCount]="compilationsControls.filtered().length"
-      (searchChange)="compilationsControls.setSearchText($event)"
-      (sortFieldChange)="compilationsControls.setSortField($event)"
-      (toggleDirection)="compilationsControls.toggleSortDirection()"
-    />
+    <div class="flex items-start gap-2">
+      <div class="flex-1 min-w-0">
+        <app-list-toolbar
+          [searchText]="compilationsControls.searchText()"
+          [sortField]="compilationsControls.sortField()"
+          [sortDirection]="compilationsControls.sortDirection()"
+          [sortOptions]="gridSortOptions"
+          [resultCount]="compilationsControls.filtered().length"
+          (searchChange)="compilationsControls.setSearchText($event)"
+          (sortFieldChange)="compilationsControls.setSortField($event)"
+          (toggleDirection)="compilationsControls.toggleSortDirection()"
+        />
+      </div>
+      <app-library-filter-panel
+        testIdPrefix="library-compilations"
+        [filter]="libFilter()"
+        [genres]="genreOptions()"
+        (filterChange)="onFilterChange($event)"
+        (panelOpened)="ensureGenresLoaded()" />
+    </div>
 
     @if (loadingCompilations()) {
       <div class="text-center py-20">
@@ -205,16 +201,26 @@
 
   <!-- ═══ SINGLES & EPs MODE ═══ -->
   @if (libraryMode() === 'singles') {
-    <app-list-toolbar
-      [searchText]="singlesControls.searchText()"
-      [sortField]="singlesControls.sortField()"
-      [sortDirection]="singlesControls.sortDirection()"
-      [sortOptions]="gridSortOptions"
-      [resultCount]="singlesControls.filtered().length"
-      (searchChange)="singlesControls.setSearchText($event)"
-      (sortFieldChange)="singlesControls.setSortField($event)"
-      (toggleDirection)="singlesControls.toggleSortDirection()"
-    />
+    <div class="flex items-start gap-2">
+      <div class="flex-1 min-w-0">
+        <app-list-toolbar
+          [searchText]="singlesControls.searchText()"
+          [sortField]="singlesControls.sortField()"
+          [sortDirection]="singlesControls.sortDirection()"
+          [sortOptions]="gridSortOptions"
+          [resultCount]="singlesControls.filtered().length"
+          (searchChange)="singlesControls.setSearchText($event)"
+          (sortFieldChange)="singlesControls.setSortField($event)"
+          (toggleDirection)="singlesControls.toggleSortDirection()"
+        />
+      </div>
+      <app-library-filter-panel
+        testIdPrefix="library-singles"
+        [filter]="libFilter()"
+        [genres]="genreOptions()"
+        (filterChange)="onFilterChange($event)"
+        (panelOpened)="ensureGenresLoaded()" />
+    </div>
 
     @if (loadingSingles()) {
       <div class="text-center py-20">
@@ -251,16 +257,26 @@
 
   <!-- ═══ ARTISTS MODE ═══ -->
   @if (libraryMode() === 'artists') {
-    <app-list-toolbar
-      [searchText]="artistControls.searchText()"
-      [sortField]="artistControls.sortField()"
-      [sortDirection]="artistControls.sortDirection()"
-      [sortOptions]="artistSortOptions"
-      [resultCount]="artistControls.filtered().length"
-      (searchChange)="artistControls.setSearchText($event)"
-      (sortFieldChange)="artistControls.setSortField($event)"
-      (toggleDirection)="artistControls.toggleSortDirection()"
-    />
+    <div class="flex items-start gap-2">
+      <div class="flex-1 min-w-0">
+        <app-list-toolbar
+          [searchText]="artistControls.searchText()"
+          [sortField]="artistControls.sortField()"
+          [sortDirection]="artistControls.sortDirection()"
+          [sortOptions]="artistSortOptions"
+          [resultCount]="artistControls.filtered().length"
+          (searchChange)="artistControls.setSearchText($event)"
+          (sortFieldChange)="artistControls.setSortField($event)"
+          (toggleDirection)="artistControls.toggleSortDirection()"
+        />
+      </div>
+      <app-library-filter-panel
+        testIdPrefix="library-artists"
+        [filter]="libFilter()"
+        [genres]="genreOptions()"
+        (filterChange)="onFilterChange($event)"
+        (panelOpened)="ensureGenresLoaded()" />
+    </div>
 
     @if (loadingArtists()) {
       <div class="text-center py-20">

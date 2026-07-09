@@ -1,0 +1,121 @@
+import { ɵSIGNAL as SIGNAL } from '@angular/core';
+import { TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
+import type { LibraryFilter } from '@nicotind/core';
+import { LibraryFilterPanelComponent } from './library-filter-panel.component';
+
+/** Sanctioned JIT escape hatch for signal inputs (see track-row.component.spec.ts). */
+function setInputValue<T>(inputSignal: () => T, value: T): void {
+  (inputSignal as unknown as Record<typeof SIGNAL, { value: T }>)[SIGNAL].value = value;
+}
+
+function setup(filter: LibraryFilter = {}, extraCount = 0) {
+  // Inputs must be set before the first read: the SIGNAL escape hatch writes
+  // the value without bumping the version, so computeds would keep a stale cache.
+  TestBed.configureTestingModule({ imports: [LibraryFilterPanelComponent] });
+  const fixture = TestBed.createComponent(LibraryFilterPanelComponent);
+  setInputValue(fixture.componentInstance.filter, filter);
+  setInputValue(fixture.componentInstance.extraCount, extraCount);
+  fixture.detectChanges();
+  return fixture;
+}
+
+function lastEmitted(fixture: ReturnType<typeof setup>): () => LibraryFilter | undefined {
+  let last: LibraryFilter | undefined;
+  fixture.componentInstance.filterChange.subscribe((f) => (last = f));
+  return () => last;
+}
+
+describe('LibraryFilterPanelComponent', () => {
+  it('shows no badge for an empty filter', () => {
+    const empty = setup();
+    expect(empty.debugElement.query(By.css('[data-testid="library-filter-count"]'))).toBeNull();
+  });
+
+  it('badges one count per active property group', () => {
+    const active = setup({ starred: true, bpmMin: 120, buckets: { energy: ['high'] } });
+    const badge = active.debugElement.query(By.css('[data-testid="library-filter-count"]'));
+    expect(badge.nativeElement.textContent.trim()).toBe('3');
+  });
+
+  it('adds page-specific extraCount into the badge', () => {
+    const fixture = setup({ starred: true }, 2);
+    const badge = fixture.debugElement.query(By.css('[data-testid="library-filter-count"]'));
+    expect(badge.nativeElement.textContent.trim()).toBe('3');
+  });
+
+  it('toggles moods immutably, computing from the input state (host owns it)', () => {
+    const fixture = setup({ moods: ['happy'] });
+    const emitted = lastEmitted(fixture);
+    fixture.componentInstance.toggleMood('party');
+    expect(emitted()?.moods).toEqual(['happy', 'party']);
+    // The input hasn't changed, so a second toggle still derives from it.
+    fixture.componentInstance.toggleMood('sad');
+    expect(emitted()?.moods).toEqual(['happy', 'sad']);
+  });
+
+  it('removes a mood (and the key entirely when the list empties)', () => {
+    const fixture = setup({ moods: ['happy'] });
+    const emitted = lastEmitted(fixture);
+    fixture.componentInstance.toggleMood('happy');
+    expect(emitted()).toEqual({});
+  });
+
+  it('toggles perceptual buckets per axis', () => {
+    const fixture = setup({ buckets: { energy: ['low'] } });
+    const emitted = lastEmitted(fixture);
+    fixture.componentInstance.toggleBucket('energy', 'high');
+    expect(emitted()?.buckets).toEqual({ energy: ['low', 'high'] });
+    fixture.componentInstance.toggleBucket('valence', 'mid');
+    expect(emitted()?.buckets).toEqual({ energy: ['low'], valence: ['mid'] });
+  });
+
+  it('drops an axis when its last bucket is deselected', () => {
+    const fixture = setup({ buckets: { energy: ['low'] }, starred: true });
+    const emitted = lastEmitted(fixture);
+    fixture.componentInstance.toggleBucket('energy', 'low');
+    expect(emitted()).toEqual({ starred: true });
+  });
+
+  it('toggles Camelot keys and genres', () => {
+    const fixture = setup();
+    const emitted = lastEmitted(fixture);
+    fixture.componentInstance.toggleKey('8A');
+    expect(emitted()?.keys).toEqual(['8A']);
+    fixture.componentInstance.toggleGenre('Rock');
+    expect(emitted()?.genres).toEqual(['Rock']);
+  });
+
+  it('parses numeric range inputs, dropping empty/garbage values', () => {
+    const fixture = setup();
+    const emitted = lastEmitted(fixture);
+    fixture.componentInstance.setNumber('bpmMin', '120');
+    expect(emitted()).toEqual({ bpmMin: 120 });
+    fixture.componentInstance.setNumber('bpmMin', '');
+    expect(emitted()).toEqual({});
+    fixture.componentInstance.setNumber('yearMax', 'abc');
+    expect(emitted()).toEqual({});
+  });
+
+  it('converts duration inputs from minutes to seconds', () => {
+    const fixture = setup();
+    const emitted = lastEmitted(fixture);
+    fixture.componentInstance.setDurationMinutes('durationMin', '2');
+    expect(emitted()).toEqual({ durationMin: 120 });
+    expect(fixture.componentInstance.durationMinutes('durationMin')).toBe('');
+  });
+
+  it('displays stored duration seconds as minutes', () => {
+    const fixture = setup({ durationMax: 360 });
+    expect(fixture.componentInstance.durationMinutes('durationMax')).toBe('6');
+  });
+
+  it('toggles starred and clears everything', () => {
+    const fixture = setup({ starred: true, moods: ['sad'], yearMin: 1990 });
+    const emitted = lastEmitted(fixture);
+    fixture.componentInstance.toggleStarred();
+    expect(emitted()).toEqual({ moods: ['sad'], yearMin: 1990 });
+    fixture.componentInstance.clearAll();
+    expect(emitted()).toEqual({});
+  });
+});

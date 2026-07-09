@@ -11,8 +11,17 @@ import type {
   ApplyMetadataRequest,
   CoverCandidatesResponse,
   ApplyCoverRequest,
+  LibraryFilter,
 } from '@nicotind/core';
+import { serializeLibraryFilter, isEmptyLibraryFilter } from '@nicotind/core';
 import type { Album, AlbumDetail, Song, ProvenanceRecord } from './api-types';
+
+type QueryParams = Record<string, string | number | boolean | string[]>;
+
+/** Merge the standardized filter's query params into a request's params. */
+function withFilter(params: QueryParams, filter?: LibraryFilter): QueryParams {
+  return filter ? { ...params, ...serializeLibraryFilter(filter) } : params;
+}
 
 /** Library reads/writes: albums, artists, songs, genres, lyrics, metadata fixes. */
 @Injectable({ providedIn: 'root' })
@@ -23,12 +32,14 @@ export class LibraryApiService {
     type = 'newest',
     size = 40,
     offset = 0,
-    opts: { includeHidden?: boolean; classification?: string } = {},
+    opts: { includeHidden?: boolean; classification?: string; filter?: LibraryFilter } = {},
   ) {
-    const params: Record<string, string | number | boolean> = { type, size, offset };
+    const params: QueryParams = { type, size, offset };
     if (opts.includeHidden) params['includeHidden'] = true;
     if (opts.classification) params['classification'] = opts.classification;
-    return this.http.get<Album[]>('/api/library/albums', { params });
+    return this.http.get<Album[]>('/api/library/albums', {
+      params: withFilter(params, opts.filter),
+    });
   }
 
   hideAlbum(id: string) {
@@ -153,8 +164,13 @@ export class LibraryApiService {
     ),
   );
 
-  getArtists() {
-    return this.artistsCache.get();
+  getArtists(filter?: LibraryFilter) {
+    // The cache is the unfiltered fast path; filtered reads always hit the API.
+    if (!filter || isEmptyLibraryFilter(filter)) return this.artistsCache.get();
+    return this.http.get<Array<{ id: string; name: string; albumCount?: number }>>(
+      '/api/library/artists',
+      { params: withFilter({}, filter) },
+    );
   }
 
   /** Drop cached artist/genre lists so the next read re-fetches (call after a
@@ -181,12 +197,16 @@ export class LibraryApiService {
   }
 
   // Dedicated singles & EPs listing (kept out of the main Albums grid).
-  getSingles(type = 'newest', size = 60, offset = 0) {
-    return this.http.get<Album[]>('/api/library/singles', { params: { type, size, offset } });
+  getSingles(type = 'newest', size = 60, offset = 0, filter?: LibraryFilter) {
+    return this.http.get<Album[]>('/api/library/singles', {
+      params: withFilter({ type, size, offset }, filter),
+    });
   }
 
-  getCompilations(type = 'newest', size = 500, offset = 0) {
-    return this.http.get<Album[]>('/api/library/compilations', { params: { type, size, offset } });
+  getCompilations(type = 'newest', size = 500, offset = 0, filter?: LibraryFilter) {
+    return this.http.get<Album[]>('/api/library/compilations', {
+      params: withFilter({ type, size, offset }, filter),
+    });
   }
 
   getArtistAppearsOn(id: string) {
@@ -198,12 +218,13 @@ export class LibraryApiService {
     id: string,
     size = 60,
     offset = 0,
-    opts: { sort?: 'newest' | 'title' | 'album'; starred?: boolean } = {},
+    opts: { sort?: 'newest' | 'title' | 'album'; filter?: LibraryFilter } = {},
   ) {
-    const params: Record<string, string | number | boolean> = { size, offset };
+    const params: QueryParams = { size, offset };
     if (opts.sort) params['sort'] = opts.sort;
-    if (opts.starred) params['starred'] = true;
-    return this.http.get<Song[]>(`/api/library/artists/${id}/songs`, { params });
+    return this.http.get<Song[]>(`/api/library/artists/${id}/songs`, {
+      params: withFilter(params, opts.filter),
+    });
   }
 
   getGenres() {

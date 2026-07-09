@@ -44,7 +44,7 @@ interface GetSongsCall {
   id: string;
   size: number;
   offset: number;
-  opts: { sort?: string; starred?: boolean };
+  opts: { sort?: string; filter?: Record<string, unknown> };
 }
 
 function song(id: string) {
@@ -77,7 +77,15 @@ function setup(role = 'admin', deleteSongs = vi.fn(() => of({ ok: true, deletedC
     imports: [ArtistDetailComponent],
     providers: [
       provideRouter([]),
-      { provide: ActivatedRoute, useValue: { snapshot: { paramMap: { get: () => 'ar1' } } } },
+      {
+        provide: ActivatedRoute,
+        useValue: {
+          snapshot: {
+            paramMap: { get: () => 'ar1' },
+            queryParamMap: { get: () => null, getAll: () => [], keys: [] as string[] },
+          },
+        },
+      },
       {
         provide: DownloadsApiService,
         useValue: {
@@ -257,18 +265,19 @@ describe('ArtistDetailComponent — Songs tab', () => {
     expect(last.opts.sort).toBe('title');
   });
 
-  it('refetches with starred=true when the starred filter is toggled', async () => {
+  it('refetches from the top when the shared metadata filter changes', async () => {
     const { component, getArtistSongsCalls } = setup();
     await fixture_stable();
     component.setTab('songs');
     await flush();
 
-    component.toggleStarredOnly();
+    await component.onSongFilterChange({ starred: true, bpmMin: 120 });
     await flush();
 
     const last = getArtistSongsCalls[getArtistSongsCalls.length - 1];
-    expect(last.opts.starred).toBe(true);
-    expect(component.activeSongFilterCount()).toBe(1);
+    expect(last.offset).toBe(0);
+    expect(last.opts.filter).toEqual({ starred: true, bpmMin: 120 });
+    expect(component.songFilter()).toEqual({ starred: true, bpmMin: 120 });
   });
 
   it('plays the selected songs and exits select mode', async () => {

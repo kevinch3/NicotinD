@@ -30,7 +30,15 @@ import { IconComponent } from '../../components/icon/icon.component';
 import { TrackRowComponent, type TrackAction } from '../../components/track-row/track-row.component';
 import { SelectionBarComponent } from '../../components/selection-bar/selection-bar.component';
 import { MenuPanelComponent } from '../../components/menu-panel/menu-panel.component';
+import { LibraryFilterPanelComponent } from '../../components/library-filter-panel/library-filter-panel.component';
 import { ConfirmDialogComponent } from '../../components/confirm-dialog/confirm-dialog.component';
+import {
+  LIBRARY_FILTER_PARAM_KEYS,
+  isEmptyLibraryFilter,
+  parseLibraryFilter,
+  serializeLibraryFilter,
+  type LibraryFilter,
+} from '@nicotind/core';
 import { createSelection } from '../../lib/selection';
 import { toTrack, offlineTrackAction, addToPlaylistAction } from '../../lib/track-utils';
 import { appendUnique } from '../../lib/append-unique';
@@ -53,6 +61,7 @@ const SONGS_PAGE_SIZE = 60;
     TrackRowComponent,
     SelectionBarComponent,
     MenuPanelComponent,
+    LibraryFilterPanelComponent,
     ConfirmDialogComponent,
   ],
   templateUrl: './artist-detail.component.html',
@@ -185,7 +194,11 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
   readonly songsLoadingMore = signal(false);
   readonly songsDone = signal(false);
   readonly songSort = signal<SongSort>('newest');
-  readonly songsStarredOnly = signal(false);
+  // Shared metadata filter for the Songs tab (same panel as the library tabs),
+  // mirrored into URL query params; starred lives inside it (song-level).
+  readonly songFilter = signal<LibraryFilter>({});
+  readonly hasActiveSongFilter = computed(() => !isEmptyLibraryFilter(this.songFilter()));
+  readonly genreOptions = signal<string[]>([]);
   private songsOffset = 0;
   private artistId = '';
 
@@ -219,7 +232,6 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
     { value: 'title', label: 'Title' },
     { value: 'album', label: 'Album' },
   ];
-  readonly activeSongFilterCount = computed(() => (this.songsStarredOnly() ? 1 : 0));
 
   setSongSort(sort: SongSort): void {
     if (sort === this.songSort()) return;
@@ -227,9 +239,25 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
     void this.loadSongs(true);
   }
 
-  toggleStarredOnly(): void {
-    this.songsStarredOnly.update((v) => !v);
-    void this.loadSongs(true);
+  /** Shared-panel change: mirror into the URL, refetch songs from the top. */
+  async onSongFilterChange(filter: LibraryFilter): Promise<void> {
+    this.songFilter.set(filter);
+    const cleared: Record<string, string | string[] | null> = {};
+    for (const key of LIBRARY_FILTER_PARAM_KEYS) cleared[key] = null;
+    void this.router.navigate([], {
+      queryParams: { ...cleared, ...serializeLibraryFilter(filter) },
+      queryParamsHandling: 'merge',
+    });
+    await this.loadSongs(true);
+  }
+
+  ensureGenresLoaded(): void {
+    if (this.genreOptions().length) return;
+    void firstValueFrom(this.api.getGenres())
+      .then((genres) => this.genreOptions.set(genres.map((g) => g.value)))
+      .catch(() => {
+        /* panel simply shows no genre section */
+      });
   }
 
   // Lazy page loader — mirrors the library grid (offset + appendUnique + done).
@@ -247,7 +275,7 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
       const page = await firstValueFrom(
         this.api.getArtistSongs(this.artistId, SONGS_PAGE_SIZE, this.songsOffset, {
           sort: this.songSort(),
-          starred: this.songsStarredOnly(),
+          filter: this.songFilter(),
         }),
       );
       this.songs.update((existing) => appendUnique(existing, page));
@@ -439,6 +467,11 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
   async ngOnInit(): Promise<void> {
     const id = this.route.snapshot.paramMap.get('id') ?? '';
     this.artistId = id;
+    // Restore the Songs-tab filter from the URL (shareable, refresh-proof).
+    const qp = this.route.snapshot.queryParamMap;
+    this.songFilter.set(
+      parseLibraryFilter(Object.fromEntries(qp.keys.map((k) => [k, qp.getAll(k)]))),
+    );
     try {
       const data = await firstValueFrom(this.api.getArtist(id));
       this.artist.set(data.artist);

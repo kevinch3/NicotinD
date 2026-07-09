@@ -943,3 +943,188 @@ describe('GET /artists/:id/songs (Songs tab)', () => {
     expect(page2.map((s) => s.id)).toEqual(['old']);
   });
 });
+
+describe('library metadata filters', () => {
+  const testDb = new Database(':memory:');
+  applySchema(testDb);
+
+  beforeEach(() => {
+    testDb.run('DELETE FROM library_songs');
+    testDb.run('DELETE FROM library_albums');
+    testDb.run('DELETE FROM library_artists');
+    testDb.run('DELETE FROM library_song_artists');
+    mock.module('../db.js', () => ({ getDatabase: () => testDb, applySchema }));
+  });
+
+  afterEach(() => {
+    mock.module('../db.js', () => ({ getDatabase: () => sharedDb, applySchema }));
+  });
+
+  function seedAlbum(
+    id: string,
+    opts: { classification?: string; starred?: string | null; year?: number | null } = {},
+  ): void {
+    testDb.run(
+      `INSERT INTO library_albums (id, name, artist, artist_id, song_count, duration, year, created, starred, classification, hidden, synced_at)
+       VALUES (?, ?, 'A', 'art', 1, 60, ?, '2024-01-01', ?, ?, 0, 1)`,
+      [id, `Album ${id}`, opts.year ?? null, opts.starred ?? null, opts.classification ?? 'album'],
+    );
+  }
+
+  function seedArtist(id: string, opts: { starred?: string | null } = {}): void {
+    testDb.run(
+      `INSERT INTO library_artists (id, name, album_count, starred, hidden, synced_at)
+       VALUES (?, ?, 1, ?, 0, 1)`,
+      [id, `Artist ${id}`, opts.starred ?? null],
+    );
+  }
+
+  function seedSong(
+    id: string,
+    opts: {
+      albumId?: string;
+      artistId?: string;
+      bpm?: number | null;
+      key?: string | null;
+      energy?: number | null;
+      mood?: string | null;
+      genre?: string | null;
+      year?: number | null;
+      duration?: number;
+      starred?: string | null;
+    } = {},
+  ): void {
+    testDb.run(
+      `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, year, genre, path, created, starred, hidden, bpm, key, energy, mood, synced_at)
+       VALUES (?, ?, ?, 'A', ?, ?, ?, ?, ?, '2024-01-01', ?, 0, ?, ?, ?, ?, 1)`,
+      [
+        id,
+        opts.albumId ?? 'alb',
+        `Song ${id}`,
+        opts.artistId ?? 'art',
+        opts.duration ?? 200,
+        opts.year ?? null,
+        opts.genre ?? null,
+        `Artist/Album/${id}.mp3`,
+        opts.starred ?? null,
+        opts.bpm ?? null,
+        opts.key ?? null,
+        opts.energy ?? null,
+        opts.mood ?? null,
+      ],
+    );
+  }
+
+  function makeApp(): Hono<AuthEnv> {
+    const testApp = new Hono<AuthEnv>();
+    testApp.use('*', (c, next) => {
+      c.set('user', { sub: 'u', role: 'user', iat: 0, exp: 9999999999 });
+      return next();
+    });
+    testApp.route('/', libraryRoutes());
+    return testApp;
+  }
+
+  async function ids(path: string): Promise<string[]> {
+    const res = await makeApp().request(path);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Array<{ id: string }>;
+    return body.map((r) => r.id).sort();
+  }
+
+  it('GET /albums?energy=high matches albums where ANY track matches', async () => {
+    seedAlbum('a-mixed');
+    seedAlbum('a-calm');
+    seedSong('s1', { albumId: 'a-mixed', energy: 0.9 });
+    seedSong('s2', { albumId: 'a-mixed', energy: 0.1 });
+    seedSong('s3', { albumId: 'a-calm', energy: 0.2 });
+
+    expect(await ids('/albums?energy=high')).toEqual(['a-mixed']);
+  });
+
+  it('GET /albums?starred=true filters on album-level starred, not tracks', async () => {
+    seedAlbum('a-star', { starred: '2024-01-01' });
+    seedAlbum('a-plain');
+    seedSong('s1', { albumId: 'a-star' });
+    seedSong('s2', { albumId: 'a-plain', starred: '2024-01-01' }); // starred song, unstarred album
+
+    expect(await ids('/albums?starred=true')).toEqual(['a-star']);
+  });
+
+  it('GET /albums?key=8A matches enharmonic key spellings', async () => {
+    seedAlbum('a-am');
+    seedAlbum('a-cmaj');
+    seedSong('s1', { albumId: 'a-am', key: 'A minor' });
+    seedSong('s2', { albumId: 'a-cmaj', key: 'C major' });
+
+    expect(await ids('/albums?key=8A')).toEqual(['a-am']);
+  });
+
+  it('GET /albums with bpm + genre + year ranges combined', async () => {
+    seedAlbum('a-hit');
+    seedAlbum('a-miss');
+    seedSong('s1', { albumId: 'a-hit', bpm: 125, genre: 'House', year: 1995 });
+    seedSong('s2', { albumId: 'a-miss', bpm: 125, genre: 'House', year: 2005 });
+
+    expect(await ids('/albums?bpmMin=120&bpmMax=130&genre=House&yearMax=1999')).toEqual([
+      'a-hit',
+    ]);
+  });
+
+  it('GET /singles and /compilations accept the same filter params', async () => {
+    seedAlbum('single-fast', { classification: 'single' });
+    seedAlbum('single-slow', { classification: 'single' });
+    seedAlbum('comp-90s', { classification: 'compilation' });
+    seedAlbum('comp-00s', { classification: 'compilation' });
+    seedSong('f1', { albumId: 'single-fast', bpm: 160 });
+    seedSong('f2', { albumId: 'single-slow', bpm: 80 });
+    seedSong('c1', { albumId: 'comp-90s', year: 1994 });
+    seedSong('c2', { albumId: 'comp-00s', year: 2004 });
+
+    expect(await ids('/singles?bpmMin=140')).toEqual(['single-fast']);
+    expect(await ids('/compilations?yearMax=1999')).toEqual(['comp-90s']);
+  });
+
+  it('GET /artists?mood=happy matches via the multi-artist join table', async () => {
+    seedArtist('art-main');
+    seedArtist('art-feat');
+    seedArtist('art-none');
+    seedSong('s1', { artistId: 'art-main', mood: 'happy' });
+    testDb.run(
+      `INSERT INTO library_song_artists (song_id, artist_id, role, position) VALUES ('s1', 'art-feat', 'featured', 1)`,
+    );
+
+    expect(await ids('/artists?mood=happy')).toEqual(['art-feat', 'art-main']);
+  });
+
+  it('GET /artists without filter params keeps its current behavior', async () => {
+    seedArtist('art-a');
+    seedArtist('art-b');
+
+    expect(await ids('/artists')).toEqual(['art-a', 'art-b']);
+  });
+
+  it('GET /artists?starred=true filters on artist-level starred', async () => {
+    seedArtist('art-star', { starred: '2024-01-01' });
+    seedArtist('art-plain');
+    seedSong('s1', { artistId: 'art-plain', starred: '2024-01-01' });
+
+    expect(await ids('/artists?starred=true')).toEqual(['art-star']);
+  });
+
+  it('GET /artists/:id/songs applies song-level filters directly', async () => {
+    seedAlbum('alb');
+    seedSong('fast', { bpm: 150 });
+    seedSong('slow', { bpm: 90 });
+    seedSong('fast-other-artist', { artistId: 'other', bpm: 150 });
+
+    expect(await ids('/artists/art/songs?bpmMin=120')).toEqual(['fast']);
+  });
+
+  it('ignores malformed filter values instead of failing', async () => {
+    seedAlbum('a1');
+    seedSong('s1', { albumId: 'a1' });
+
+    expect(await ids('/albums?bpmMin=abc&mood=confused&energy=extreme')).toEqual(['a1']);
+  });
+});

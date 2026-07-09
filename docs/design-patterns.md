@@ -27,6 +27,7 @@ These are documented in full elsewhere; `CLAUDE.md` links straight to them.
 | Spotify metadata fallback | [spotify-fallback.md](spotify-fallback.md) |
 | Library quality auditor | [library-audit.md](library-audit.md) |
 | Plugin architecture | [plugins.md](plugins.md) |
+| Standardized library metadata filters (shared LibraryFilter + panel + SQL fragment builder) | [library-filters.md](library-filters.md) |
 | Mobile app (Capacitor Android) | [mobile-app.md](mobile-app.md) |
 | iOS app | [ios-app.md](ios-app.md) |
 | End-to-end tests (+ playground, real round-trip, screenshots) | [e2e.md](e2e.md), [testing-routines.md](testing-routines.md) |

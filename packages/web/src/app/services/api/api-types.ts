@@ -91,6 +91,11 @@ export interface Album {
   coverArt?: string;
   songCount?: number;
   year?: number;
+  genre?: string;
+  duration?: number;
+  created?: string;
+  /** ISO timestamp when starred, absent otherwise. */
+  starred?: string;
   classification?: 'album' | 'ep' | 'single' | 'compilation' | 'unknown';
   hidden?: boolean;
 }
@@ -149,6 +154,9 @@ export interface Song {
   size: number;
   created: string;
   genre?: string;
+  year?: number;
+  /** ISO timestamp when starred, absent otherwise. */
+  starred?: string;
   bpm?: number;
   key?: string;
   /** Perceived energy 0..1 (server enrichment). */

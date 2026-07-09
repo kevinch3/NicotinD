@@ -1,0 +1,160 @@
+<app-menu-panel align="end" [panelTestId]="testIdPrefix() + '-filter-panel'">
+  <button menuTrigger type="button" [attr.data-testid]="testIdPrefix() + '-filters'"
+    (click)="panelOpened.emit()"
+    class="cursor-pointer select-none px-3 py-1.5 text-sm rounded-lg bg-theme-surface-2 text-theme-primary hover:bg-theme-hover transition flex items-center gap-1.5">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="4" x2="4" y1="21" y2="14" /><line x1="4" x2="4" y1="10" y2="3" />
+      <line x1="12" x2="12" y1="21" y2="12" /><line x1="12" x2="12" y1="8" y2="3" />
+      <line x1="20" x2="20" y1="21" y2="16" /><line x1="20" x2="20" y1="12" y2="3" />
+      <line x1="2" x2="6" y1="14" y2="14" /><line x1="10" x2="14" y1="8" y2="8" /><line x1="18" x2="22" y1="16" y2="16" />
+    </svg>
+    Filters
+    @if (badgeCount() > 0) {
+      <span [attr.data-testid]="testIdPrefix() + '-filter-count'"
+        class="px-1.5 rounded-full bg-theme-accent text-theme-on-accent text-xs leading-5">{{ badgeCount() }}</span>
+    }
+  </button>
+
+  <div menuPanel
+    class="w-72 max-h-[70vh] overflow-y-auto p-3 rounded-lg bg-theme-surface border border-theme shadow-xl flex flex-col gap-3 text-sm">
+
+    <!-- Starred -->
+    <label class="flex items-center justify-between gap-3 text-theme-secondary cursor-pointer">
+      <span>Starred only</span>
+      <input type="checkbox" [attr.data-testid]="testIdPrefix() + '-filter-starred'"
+        [checked]="filter().starred ?? false" (change)="toggleStarred()" />
+    </label>
+
+    <!-- BPM -->
+    <div class="flex items-center justify-between gap-2 text-theme-secondary">
+      <span>BPM</span>
+      <span class="flex items-center gap-1">
+        <input type="number" inputmode="numeric" min="0" placeholder="min"
+          [attr.data-testid]="testIdPrefix() + '-filter-bpm-min'"
+          [value]="numberValue('bpmMin')" (change)="setNumber('bpmMin', $any($event.target).value)"
+          class="w-16 px-2 py-1 rounded bg-theme-surface-2 text-theme-primary focus:outline-none" />
+        <span class="text-theme-muted">–</span>
+        <input type="number" inputmode="numeric" min="0" placeholder="max"
+          [attr.data-testid]="testIdPrefix() + '-filter-bpm-max'"
+          [value]="numberValue('bpmMax')" (change)="setNumber('bpmMax', $any($event.target).value)"
+          class="w-16 px-2 py-1 rounded bg-theme-surface-2 text-theme-primary focus:outline-none" />
+      </span>
+    </div>
+
+    <!-- Year -->
+    <div class="flex items-center justify-between gap-2 text-theme-secondary">
+      <span>Year</span>
+      <span class="flex items-center gap-1">
+        <input type="number" inputmode="numeric" min="0" placeholder="from"
+          [attr.data-testid]="testIdPrefix() + '-filter-year-min'"
+          [value]="numberValue('yearMin')" (change)="setNumber('yearMin', $any($event.target).value)"
+          class="w-16 px-2 py-1 rounded bg-theme-surface-2 text-theme-primary focus:outline-none" />
+        <span class="text-theme-muted">–</span>
+        <input type="number" inputmode="numeric" min="0" placeholder="to"
+          [attr.data-testid]="testIdPrefix() + '-filter-year-max'"
+          [value]="numberValue('yearMax')" (change)="setNumber('yearMax', $any($event.target).value)"
+          class="w-16 px-2 py-1 rounded bg-theme-surface-2 text-theme-primary focus:outline-none" />
+      </span>
+    </div>
+
+    <!-- Duration (minutes) -->
+    <div class="flex items-center justify-between gap-2 text-theme-secondary">
+      <span>Length (min)</span>
+      <span class="flex items-center gap-1">
+        <input type="number" inputmode="decimal" min="0" step="0.5" placeholder="min"
+          [attr.data-testid]="testIdPrefix() + '-filter-dur-min'"
+          [value]="durationMinutes('durationMin')" (change)="setDurationMinutes('durationMin', $any($event.target).value)"
+          class="w-16 px-2 py-1 rounded bg-theme-surface-2 text-theme-primary focus:outline-none" />
+        <span class="text-theme-muted">–</span>
+        <input type="number" inputmode="decimal" min="0" step="0.5" placeholder="max"
+          [attr.data-testid]="testIdPrefix() + '-filter-dur-max'"
+          [value]="durationMinutes('durationMax')" (change)="setDurationMinutes('durationMax', $any($event.target).value)"
+          class="w-16 px-2 py-1 rounded bg-theme-surface-2 text-theme-primary focus:outline-none" />
+      </span>
+    </div>
+
+    <!-- Mood -->
+    <div>
+      <p class="text-theme-muted text-xs mb-1.5">Mood</p>
+      <div class="flex flex-wrap gap-1">
+        @for (mood of moodOptions; track mood) {
+          <button type="button" [attr.data-testid]="testIdPrefix() + '-filter-mood-' + mood"
+            (click)="toggleMood(mood)"
+            class="px-2 py-0.5 text-xs rounded-full capitalize transition"
+            [class.bg-theme-accent]="isMoodActive(mood)"
+            [class.text-theme-on-accent]="isMoodActive(mood)"
+            [class.bg-theme-surface-2]="!isMoodActive(mood)"
+            [class.text-theme-secondary]="!isMoodActive(mood)">
+            {{ mood }}
+          </button>
+        }
+      </div>
+    </div>
+
+    <!-- Perceptual axes -->
+    @for (row of axisOptions; track row.axis) {
+      <div class="flex items-center justify-between gap-2">
+        <span class="text-theme-secondary">{{ row.label }}</span>
+        <div class="flex gap-1">
+          @for (bucket of bucketOptions; track bucket) {
+            <button type="button"
+              [attr.data-testid]="testIdPrefix() + '-filter-' + row.axis + '-' + bucket"
+              (click)="toggleBucket(row.axis, bucket)"
+              class="px-2 py-0.5 text-xs rounded-full capitalize transition"
+              [class.bg-theme-accent]="isBucketActive(row.axis, bucket)"
+              [class.text-theme-on-accent]="isBucketActive(row.axis, bucket)"
+              [class.bg-theme-surface-2]="!isBucketActive(row.axis, bucket)"
+              [class.text-theme-secondary]="!isBucketActive(row.axis, bucket)">
+              {{ bucket }}
+            </button>
+          }
+        </div>
+      </div>
+    }
+
+    <!-- Key (Camelot wheel) -->
+    <div>
+      <p class="text-theme-muted text-xs mb-1.5">Key</p>
+      <div class="grid grid-cols-6 gap-1">
+        @for (entry of camelotWheel; track entry.code) {
+          <button type="button" [attr.data-testid]="testIdPrefix() + '-filter-key-' + entry.code"
+            (click)="toggleKey(entry.code)" [title]="entry.key"
+            class="px-1 py-0.5 text-xs rounded transition text-center"
+            [class.bg-theme-accent]="isKeyActive(entry.code)"
+            [class.text-theme-on-accent]="isKeyActive(entry.code)"
+            [class.bg-theme-surface-2]="!isKeyActive(entry.code)"
+            [class.text-theme-secondary]="!isKeyActive(entry.code)">
+            {{ entry.code }}
+          </button>
+        }
+      </div>
+    </div>
+
+    <!-- Genre -->
+    @if (genres().length > 0) {
+      <div>
+        <p class="text-theme-muted text-xs mb-1.5">Genre</p>
+        <div class="max-h-36 overflow-y-auto flex flex-col gap-1 pr-1">
+          @for (genre of genres(); track genre) {
+            <label class="flex items-center gap-2 text-theme-secondary cursor-pointer">
+              <input type="checkbox" [attr.data-testid]="testIdPrefix() + '-filter-genre-' + genre"
+                [checked]="isGenreActive(genre)" (change)="toggleGenre(genre)" />
+              <span class="truncate">{{ genre }}</span>
+            </label>
+          }
+        </div>
+      </div>
+    }
+
+    <!-- Page-specific extras (e.g. Albums' min-tracks / show-hidden) -->
+    <ng-content />
+
+    @if (badgeCount() > 0) {
+      <button type="button" [attr.data-testid]="testIdPrefix() + '-filter-clear'"
+        (click)="clearAll()"
+        class="self-start text-xs text-theme-muted hover:text-theme-primary underline">
+        Clear filters
+      </button>
+    }
+  </div>
+</app-menu-panel>
