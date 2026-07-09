@@ -11,19 +11,7 @@ import { stageBadge } from '../../lib/pipeline-stage';
 @Component({
   selector: 'app-pipeline-stage-badge',
   standalone: true,
-  template: `
-    <span
-      class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium"
-      [class]="toneClass()"
-      [attr.data-stage]="stage()"
-      data-testid="stage-badge"
-    >
-      @if (badge().tone === 'active') {
-        <span class="w-1.5 h-1.5 rounded-full bg-current animate-pulse"></span>
-      }
-      {{ badge().label }}
-    </span>
-  `,
+  templateUrl: './pipeline-stage-badge.component.html',
 })
 export class PipelineStageBadgeComponent {
   readonly stage = input.required<PipelineStage>();
