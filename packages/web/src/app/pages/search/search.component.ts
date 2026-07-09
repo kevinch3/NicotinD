@@ -14,7 +14,7 @@ import type {
 } from '../../services/api/api-types';
 import { SearchService, type NetworkResult } from '../../services/search.service';
 import { TransferService } from '../../services/transfer.service';
-import { AcquireService } from '../../services/acquire.service';
+import { AcquireService, type AcquireJob } from '../../services/acquire.service';
 import { WatchlistService } from '../../services/watchlist.service';
 import { PluginService } from '../../services/plugin.service';
 import { PlayerService } from '../../services/player.service';
@@ -44,6 +44,7 @@ import {
   mergeAndRank,
   type BlendedCandidate,
 } from '../../lib/acquisition-candidate';
+import { parseLinkIntent, type LinkIntent } from '../../lib/link-intent';
 import { FolderBrowserComponent } from '../../components/folder-browser/folder-browser.component';
 import { AlbumHuntModalComponent } from '../../components/album-hunt-modal/album-hunt-modal.component';
 import { TrackRowComponent } from '../../components/track-row/track-row.component';
@@ -255,10 +256,12 @@ export class SearchComponent implements OnInit, OnDestroy {
   readonly huntingAlbum = signal<DiscographyAlbum | null>(null);
   readonly huntingArtistName = signal('');
 
-  // URL acquisition (yt-dlp / spotdl)
-  acquireUrl = '';
-  readonly acquireSubmitting = signal(false);
-  readonly acquireError = signal<string | null>(null);
+  // Link-intent card: a pasted/shared URL recognized as one acquisition
+  // candidate. Replaces the old standalone "Get from a link" box + job list —
+  // the card itself carries the job lifecycle via `linkJob`. See
+  // docs/source-agnostic-acquisition.md.
+  readonly linkIntent = signal<LinkIntent | null>(null);
+  readonly linkSubmitError = signal<string | null>(null);
 
   readonly hasCatalog = computed(() => {
     const c = this.catalog();
@@ -315,6 +318,14 @@ export class SearchComponent implements OnInit, OnDestroy {
     return names;
   });
 
+  // The link card's own job, tracked by URL against the shared acquire job
+  // list (already polled by AcquireService) — no separate job list needed.
+  readonly linkJob = computed<AcquireJob | null>(() => {
+    const intent = this.linkIntent();
+    if (!intent) return null;
+    return this.acquire.jobs().find((j) => j.url === intent.url) ?? null;
+  });
+
   private pollInterval: ReturnType<typeof setInterval> | null = null;
 
   private autoSearchEffect = effect(() => {
@@ -333,11 +344,15 @@ export class SearchComponent implements OnInit, OnDestroy {
     void this.plugins.refresh();
 
     // PWA share-target: a link shared from another app lands here as ?url=/?text=.
-    // Auto-start an acquisition job for it so "Share → NicotinD" just works.
+    // Sharing is an explicit intent, so this submits regardless of the
+    // hasResolve() gate in handleSearch below — a plugin that can't handle it
+    // surfaces as the card's failed state instead of a silent drop.
     const qp = this.route.snapshot.queryParamMap;
     const shared = extractSharedUrl(qp.get('url'), qp.get('text'), qp.get('title'));
-    if (shared) {
-      void this.startAcquire(shared);
+    const sharedIntent = shared ? parseLinkIntent(shared) : null;
+    if (sharedIntent) {
+      this.linkIntent.set(sharedIntent);
+      void this.submitLinkIntent();
       // Drop the share params so a refresh doesn't re-submit.
       void this.router.navigate([], { queryParams: {}, replaceUrl: true });
     }
@@ -372,6 +387,17 @@ export class SearchComponent implements OnInit, OnDestroy {
 
   handleSearch(e: Event): void {
     e.preventDefault();
+    // A pasted URL becomes a link-intent card, not a search — but detection
+    // stays behind the hasResolve() gate so acquisition UI never appears
+    // before a plugin is enabled (compliance; see packages/e2e/tests/plugins.spec.ts).
+    const intent = this.plugins.hasResolve() ? parseLinkIntent(this.search.query()) : null;
+    if (intent) {
+      this.linkSubmitError.set(null);
+      this.linkIntent.set(intent);
+      this.resetResultSurfaces();
+      return;
+    }
+    this.linkIntent.set(null);
     this.executeSearch();
   }
 
@@ -585,28 +611,50 @@ export class SearchComponent implements OnInit, OnDestroy {
 
   toTrack = toTrack;
 
-  async submitAcquireUrl(e: Event): Promise<void> {
-    e.preventDefault();
-    await this.startAcquire(this.acquireUrl.trim());
-  }
+  // ─── Link-intent card (merged "Get from a link") ────────────────────
+  // Get dispatches through the same AcquireService.submit(url) as every
+  // via:'url' blended candidate; the card then tracks its own job by URL
+  // against acquire.jobs() instead of a separate job list.
 
-  private async startAcquire(url: string): Promise<void> {
-    if (!url) return;
-    this.acquireError.set(null);
-    this.acquireSubmitting.set(true);
+  async submitLinkIntent(): Promise<void> {
+    const intent = this.linkIntent();
+    if (!intent) return;
+    // Spotify gives metadata only — without spotDL there's nothing to resolve
+    // the URL, so open it in Spotify instead of queuing a doomed acquire job
+    // (mirrors getBlended's rule for Spotify blended candidates).
+    if (intent.source === 'spotify' && !this.plugins.hasSpotdl()) {
+      window.open(intent.url, '_blank', 'noopener');
+      return;
+    }
+    this.linkSubmitError.set(null);
     try {
-      await this.acquire.submit(url);
-      this.acquireUrl = '';
+      await this.acquire.submit(intent.url);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Failed to start download';
-      this.acquireError.set(msg);
-    } finally {
-      this.acquireSubmitting.set(false);
+      this.linkSubmitError.set(err instanceof Error ? err.message : 'Failed to start download');
     }
   }
 
-  async cancelAcquireJob(jobId: string): Promise<void> {
-    await this.acquire.cancel(jobId).catch(() => {});
+  async cancelLinkJob(): Promise<void> {
+    const job = this.linkJob();
+    if (!job) return;
+    await this.acquire.cancel(job.id).catch(() => {});
+  }
+
+  async retryLinkJob(): Promise<void> {
+    const job = this.linkJob();
+    if (!job) return;
+    this.linkSubmitError.set(null);
+    try {
+      await firstValueFrom(this.downloadsApi.retryAcquireJob(job.id));
+      await this.acquire.refresh();
+    } catch (err: unknown) {
+      this.linkSubmitError.set(err instanceof Error ? err.message : 'Retry failed');
+    }
+  }
+
+  dismissLinkIntent(): void {
+    this.linkIntent.set(null);
+    this.linkSubmitError.set(null);
   }
 
   // archive.org search lane — fired in parallel with the network search. Gated on
@@ -807,17 +855,7 @@ export class SearchComponent implements OnInit, OnDestroy {
 
   // ─── Private ────────────────────────────────────────────────────
 
-  private async executeSearch(opts?: { forceDirectOpen?: boolean }): Promise<void> {
-    const query = this.search.query().trim();
-    if (!query) return;
-
-    this.search.addToHistory(query);
-
-    const prevId = this.searchId();
-    if (prevId) this.cleanupSearch(prevId);
-    this.stopPoll();
-
-    this.loading.set(true);
+  private resetResultSurfaces(): void {
     this.search.reset();
     this.errors.set([]);
     this.searchError.set(null);
@@ -829,6 +867,20 @@ export class SearchComponent implements OnInit, OnDestroy {
     this.catalog.set(null);
     this.catalogUnavailable.set(false);
     this.librarySongs.set([]);
+  }
+
+  private async executeSearch(opts?: { forceDirectOpen?: boolean }): Promise<void> {
+    const query = this.search.query().trim();
+    if (!query) return;
+
+    this.search.addToHistory(query);
+
+    const prevId = this.searchId();
+    if (prevId) this.cleanupSearch(prevId);
+    this.stopPoll();
+
+    this.loading.set(true);
+    this.resetResultSurfaces();
     this.networkAvailable.set(true);
 
     // Fire metadata (catalog) + raw Soulseek search in parallel. Catalog is the

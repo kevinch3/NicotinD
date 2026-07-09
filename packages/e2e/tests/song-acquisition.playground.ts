@@ -108,12 +108,17 @@ test('song-acquisition (§F)', async ({ page, obs, apiToken }) => {
     });
   }
 
-  // 4. UI affordance: the curated acquire box is the URL box (resolve plugins),
-  // never a per-song control. Note its presence so the report shows what IS there.
-  const hasUrlAcquire = (await page.getByTestId('acquire-url-input').count()) > 0;
+  // 4. UI affordance: the curated acquire path is the link-intent card that
+  // appears in the search omnibox when a resolve plugin is enabled — never a
+  // per-song control. Paste a harmless URL (non-mutating: only clicking Get
+  // would submit) to check for it, then clear the box.
+  await page.getByTestId('search-input').fill('https://youtu.be/dQw4w9WgXcQ');
+  await page.getByTestId('search-submit').click();
+  const hasUrlAcquire = (await page.getByTestId('link-intent-card').count()) > 0;
+  await page.getByTestId('search-input').fill('');
   obs.record({
     kind: 'metric',
-    title: 'URL acquire box present (resolve plugin enabled)',
+    title: 'Link-intent card present (resolve plugin enabled)',
     value: hasUrlAcquire ? 'yes' : 'no',
     severity: 'info',
   });

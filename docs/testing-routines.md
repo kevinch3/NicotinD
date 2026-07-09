@@ -36,7 +36,7 @@ an external service (slskd/Lidarr/plugin).
 | Search — unified (local + network), song-first lane | L+X | PG (`song-acquisition`, `network-search`) |
 | Catalog (metadata) search + discography | X | PG (`catalog-quality`) |
 | Album hunt | X | PG (`album-hunt`, opt-in), Shot (`hunt-mobile`, `network-album-download`) |
-| Acquire — URL "Get from a link" / archive.org / Spotify | X | PG (`song-acquisition` affordance), Shot (`downloads-acquire`), **Real** (`real-roundtrip`) |
+| Acquire — URL via link-intent card / archive.org / Spotify | X | PG (`song-acquisition` affordance), Shot (`downloads-acquire`), **Real** (`real-roundtrip`) |
 | Watchlist | L | Shot (`downloads-acquire` star toggle) |
 | Downloads — feed, tabs, retry/cancel/remove | L+X | CI (`downloads.spec.ts`), PG (`downloads`) |
 | Metadata — fix modal, optimize, BPM/genre analysis | X | CI (`metadata-fix.spec.ts`), PG (`metadata-fix`), Shot (`player-analysis` analyze) |

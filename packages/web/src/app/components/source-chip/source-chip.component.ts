@@ -1,5 +1,9 @@
 import { Component, input, computed } from '@angular/core';
 import type { CandidateSource } from '../../lib/acquisition-candidate';
+import type { LinkSource } from '../../lib/link-intent';
+
+/** Sources the chip can render: blended-result sources plus link-intent hosts. */
+export type ChipSource = CandidateSource | LinkSource;
 
 /**
  * Source → tone class. Kept a pure, exported function (not inline in the
@@ -10,7 +14,7 @@ import type { CandidateSource } from '../../lib/acquisition-candidate';
  * tints like `text-indigo-300`, which rendered near-invisible on light themes
  * (daylight/warm-paper/eink).
  */
-export function sourceChipToneClass(source: CandidateSource): string {
+export function sourceChipToneClass(source: ChipSource): string {
   switch (source) {
     case 'soulseek':
       return 'chip-tone-soulseek';
@@ -44,7 +48,7 @@ export function sourceChipToneClass(source: CandidateSource): string {
   `,
 })
 export class SourceChipComponent {
-  readonly source = input.required<CandidateSource>();
+  readonly source = input.required<ChipSource>();
   readonly label = input.required<string>();
 
   readonly toneClass = computed(() => sourceChipToneClass(this.source()));
