@@ -80,10 +80,16 @@ New pure module `packages/web/src/app/lib/link-intent.ts`:
 
 ### 4. Edge rules
 
-- **No resolve-capable plugin enabled:** the card still renders, Get disabled,
-  hint: "Enable a download extension (yt-dlp / spotDL) to get links." (Today
-  the whole capability is hidden by the `hasResolve()` gate; the card makes it
-  discoverable instead.)
+- **No resolve-capable plugin enabled:** link-intent parsing is gated behind
+  `plugins.hasResolve()` — a pasted URL is treated as plain search text (no
+  card), preserving the existing compliance-critical invariant that
+  acquisition UI never appears before a plugin is enabled
+  (`packages/e2e/tests/plugins.spec.ts`). This tightens the original design:
+  during planning, a "disabled Get + hint" card was found to conflict with
+  that invariant, so the card only appears once a resolve-capable plugin is
+  enabled. A small × dismiss control (matching the existing banner-dismiss
+  pattern elsewhere on the page) resets the card without requiring a new
+  search.
 - **Spotify URL without spotDL:** Get opens the link in Spotify — same rule and
   amber hint as the blended list today.
 - **PWA share-target (`?url=`/`?text=`):** still auto-submits (sharing is an
