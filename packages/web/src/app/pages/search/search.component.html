@@ -194,14 +194,16 @@
               {{ intent.source === 'spotify' && !plugins.hasSpotdl() ? 'Open in Spotify' : 'Get' }}
             </button>
           }
-          <button
-            (click)="dismissLinkIntent()"
-            data-testid="link-intent-dismiss"
-            class="shrink-0 text-zinc-600 hover:text-zinc-300 transition text-base leading-none"
-            title="Dismiss"
-          >
-            ×
-          </button>
+          @if (linkJob() === null || (linkJob()!.state !== 'queued' && linkJob()!.state !== 'running')) {
+            <button
+              (click)="dismissLinkIntent()"
+              data-testid="link-intent-dismiss"
+              class="shrink-0 text-zinc-600 hover:text-zinc-300 transition text-base leading-none"
+              title="Dismiss"
+            >
+              ×
+            </button>
+          }
         </li>
       </ul>
     </section>
@@ -765,7 +767,7 @@
   }
 
   <!-- Empty state -->
-  @if (search.networkState() === 'idle' && !loading()) {
+  @if (search.networkState() === 'idle' && !loading() && !linkIntent()) {
     <div class="text-center py-20">
       <p class="text-zinc-600 text-lg">Search for music to get started</p>
       <p class="text-zinc-700 text-sm mt-1">Results from your enabled sources will appear here</p>

@@ -394,6 +394,7 @@ export class SearchComponent implements OnInit, OnDestroy {
     if (intent) {
       this.linkSubmitError.set(null);
       this.linkIntent.set(intent);
+      this.resetResultSurfaces();
       return;
     }
     this.linkIntent.set(null);
@@ -854,17 +855,7 @@ export class SearchComponent implements OnInit, OnDestroy {
 
   // ─── Private ────────────────────────────────────────────────────
 
-  private async executeSearch(opts?: { forceDirectOpen?: boolean }): Promise<void> {
-    const query = this.search.query().trim();
-    if (!query) return;
-
-    this.search.addToHistory(query);
-
-    const prevId = this.searchId();
-    if (prevId) this.cleanupSearch(prevId);
-    this.stopPoll();
-
-    this.loading.set(true);
+  private resetResultSurfaces(): void {
     this.search.reset();
     this.errors.set([]);
     this.searchError.set(null);
@@ -876,6 +867,20 @@ export class SearchComponent implements OnInit, OnDestroy {
     this.catalog.set(null);
     this.catalogUnavailable.set(false);
     this.librarySongs.set([]);
+  }
+
+  private async executeSearch(opts?: { forceDirectOpen?: boolean }): Promise<void> {
+    const query = this.search.query().trim();
+    if (!query) return;
+
+    this.search.addToHistory(query);
+
+    const prevId = this.searchId();
+    if (prevId) this.cleanupSearch(prevId);
+    this.stopPoll();
+
+    this.loading.set(true);
+    this.resetResultSurfaces();
     this.networkAvailable.set(true);
 
     // Fire metadata (catalog) + raw Soulseek search in parallel. Catalog is the

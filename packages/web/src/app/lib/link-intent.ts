@@ -66,7 +66,7 @@ export function parseLinkIntent(input: string): LinkIntent | null {
   const host = new URL(candidate).hostname.toLowerCase();
   const rule = HOST_RULES.find((r) => r.test(host));
   return {
-    url: trimmed,
+    url: candidate,
     source: rule?.source ?? 'link',
     sourceLabel: rule?.label ?? 'Link',
     host,

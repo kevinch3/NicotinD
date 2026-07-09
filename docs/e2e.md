@@ -153,7 +153,7 @@ bun run --filter @nicotind/e2e playground
 
 The one config that performs **genuinely mutating acquisition** against a live backend:
 `playwright.real.config.ts` runs `tests/real-roundtrip.real.ts`, which **acquires** an
-album (URL via "Get from a link", or artist/album via the hunt path), waits for it to
+album (URL via the search omnibox's link-intent card, or artist/album via the hunt path), waits for it to
 **land in the library**, verifies it's **playable** (a `206`/`200` range request), and then
 **DELETES it** in a `finally` — so prod is left clean even if the flow fails mid-way. It
 measures the end-to-end experience the synthetic flows can't (acquire → in-library →

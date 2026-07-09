@@ -297,6 +297,26 @@ describe('SearchComponent — link-intent card (merged URL acquisition)', () => 
     expect(component.hasCatalog()).toBe(true);
   });
 
+  it('clears stale search results when a link intent follows a prior search', async () => {
+    const { component, search, plugins } = setup();
+    enableResolve(plugins);
+    search.setQuery('pink floyd');
+
+    component.handleSearch(new Event('submit'));
+    await flush();
+
+    expect(component.hasCatalog()).toBe(true);
+
+    search.setQuery('https://youtu.be/dQw4w9WgXcQ');
+    component.handleSearch(new Event('submit'));
+    await flush();
+
+    expect(component.hasCatalog()).toBe(false);
+    expect(component.linkIntent()).toEqual(
+      expect.objectContaining({ source: 'youtube', sourceLabel: 'YouTube' }),
+    );
+  });
+
   it('submitLinkIntent submits the URL through the acquire pipeline', async () => {
     const { component, acquireSubmit } = setup();
     component.linkIntent.set({

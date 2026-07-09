@@ -66,6 +66,6 @@ describe('parseLinkIntent', () => {
   it('tolerates a bare www. host with no protocol', () => {
     const result = parseLinkIntent('www.youtube.com/watch?v=dQw4w9WgXcQ');
     expect(result?.source).toBe('youtube');
-    expect(result?.url).toBe('www.youtube.com/watch?v=dQw4w9WgXcQ');
+    expect(result?.url).toBe('https://www.youtube.com/watch?v=dQw4w9WgXcQ');
   });
 });
