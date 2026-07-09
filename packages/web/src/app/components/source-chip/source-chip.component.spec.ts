@@ -22,4 +22,11 @@ describe('sourceChipToneClass', () => {
       expect(sourceChipToneClass(source)).not.toMatch(/-\d{3}\b/);
     }
   });
+
+  it('falls back to neutral tone for link-intent hosts without a dedicated tone', () => {
+    expect(sourceChipToneClass('youtube')).toBe('bg-theme-surface-2 text-theme-muted');
+    expect(sourceChipToneClass('soundcloud')).toBe('bg-theme-surface-2 text-theme-muted');
+    expect(sourceChipToneClass('bandcamp')).toBe('bg-theme-surface-2 text-theme-muted');
+    expect(sourceChipToneClass('link')).toBe('bg-theme-surface-2 text-theme-muted');
+  });
 });
