@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.170](https://github.com/kevinch3/NicotinD/compare/v0.1.169...v0.1.170) (2026-07-09)
+
+
+### Features
+
+* **web:** add Sims-style track stats bars to track info sheet ([c0cde91](https://github.com/kevinch3/NicotinD/commit/c0cde91a3401d33d74c7bd5af14f3fabbcfe78ec))
+
 ## [0.1.169](https://github.com/kevinch3/NicotinD/compare/v0.1.168...v0.1.169) (2026-07-09)
 
 
