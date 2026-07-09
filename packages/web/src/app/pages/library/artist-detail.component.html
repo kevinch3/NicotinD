@@ -167,22 +167,12 @@
                   }
                 </select>
 
-                <app-menu-panel align="end" panelTestId="artist-songs-filter-panel">
-                  <button menuTrigger type="button" data-testid="artist-songs-filters"
-                    class="px-3 py-1.5 text-sm rounded-lg bg-theme-surface-2 text-theme-primary hover:bg-theme-hover transition flex items-center gap-1.5">
-                    Filters
-                    @if (activeSongFilterCount() > 0) {
-                      <span class="px-1.5 rounded-full bg-theme-accent text-theme-on-accent text-xs leading-5">{{ activeSongFilterCount() }}</span>
-                    }
-                  </button>
-                  <div menuPanel class="w-56 p-3 rounded-lg bg-theme-surface border border-theme shadow-xl flex flex-col gap-3">
-                    <label class="flex items-center justify-between gap-3 text-sm text-theme-secondary cursor-pointer">
-                      <span>Starred only</span>
-                      <input type="checkbox" data-testid="artist-songs-filter-starred"
-                        [checked]="songsStarredOnly()" (change)="toggleStarredOnly()" />
-                    </label>
-                  </div>
-                </app-menu-panel>
+                <app-library-filter-panel
+                  testIdPrefix="artist-songs"
+                  [filter]="songFilter()"
+                  [genres]="genreOptions()"
+                  (filterChange)="onSongFilterChange($event)"
+                  (panelOpened)="ensureGenresLoaded()" />
 
                 @if (!selection.active() && songs().length > 0) {
                   <button (click)="selection.enter()"
@@ -235,7 +225,7 @@
               }
               @if (songsLoaded() && songs().length === 0 && !songsLoadingMore()) {
                 <p class="text-center text-theme-muted py-16">
-                  {{ songsStarredOnly() ? 'No starred songs.' : 'No songs found.' }}
+                  {{ hasActiveSongFilter() ? 'No songs match the filters.' : 'No songs found.' }}
                 </p>
               }
               <div #songsSentinel class="h-px" aria-hidden="true"></div>

@@ -62,6 +62,34 @@ test.describe('library', () => {
     await expect(page.getByTestId('artist-songs-filter-panel')).toBeVisible();
   });
 
+  test('metadata filters narrow the grid, live in the URL, and survive reload', async ({
+    page,
+  }) => {
+    await page.goto('/library');
+    await expect(page.getByTestId('album-card').first()).toBeVisible();
+
+    // Fixtures are tagged date=2024, so yearMin=2030 must empty the grid.
+    await page.getByTestId('library-filters').click();
+    await expect(page.getByTestId('library-filter-panel')).toBeVisible();
+    await page.getByTestId('library-filter-year-min').fill('2030');
+    await page.getByTestId('library-filter-year-min').blur();
+
+    await expect(page.getByTestId('library-filter-count')).toHaveText('1');
+    await expect(page).toHaveURL(/yearMin=2030/);
+    await expect(page.getByTestId('album-card')).toHaveCount(0);
+
+    // The filter is URL state: a reload keeps it applied.
+    await page.reload();
+    await expect(page).toHaveURL(/yearMin=2030/);
+    await expect(page.getByTestId('album-card')).toHaveCount(0);
+    await expect(page.getByTestId('library-filter-count')).toHaveText('1');
+
+    // Clearing restores the grid (and drops the param).
+    await page.getByTestId('library-filters').click();
+    await page.getByTestId('library-filter-clear').click();
+    await expect(page.getByTestId('album-card').first()).toBeVisible();
+  });
+
   test('the Filters menu stays inside the viewport on a narrow screen', async ({ page }) => {
     // A phone-width viewport is where a bare `right-0` panel overflowed. The
     // clamped MenuPanel must keep the whole panel on-screen.
