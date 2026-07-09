@@ -12,19 +12,7 @@ interface Segment {
   selector: 'app-artist-links',
   standalone: true,
   imports: [RouterLink],
-  template: `
-    @for (seg of segments(); track $index) {
-      @if (seg.type === 'link') {
-        <a
-          [routerLink]="['/library', 'artists', seg.id]"
-          class="hover:underline cursor-pointer"
-          (click)="$event.stopPropagation()"
-        >{{ seg.text }}</a>
-      } @else {
-        <span>{{ seg.text }}</span>
-      }
-    }
-  `,
+  templateUrl: './artist-links.component.html',
 })
 export class ArtistLinksComponent {
   readonly artists = input<ArtistCredit[]>();

@@ -36,16 +36,7 @@ export function sourceChipToneClass(source: ChipSource): string {
 @Component({
   selector: 'app-source-chip',
   standalone: true,
-  template: `
-    <span
-      class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium uppercase tracking-wider"
-      [class]="toneClass()"
-      [attr.data-source]="source()"
-      data-testid="source-chip"
-    >
-      {{ label() }}
-    </span>
-  `,
+  templateUrl: './source-chip.component.html',
 })
 export class SourceChipComponent {
   readonly source = input.required<ChipSource>();
