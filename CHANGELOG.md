@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.169](https://github.com/kevinch3/NicotinD/compare/v0.1.168...v0.1.169) (2026-07-09)
+
+
+### Features
+
+* **web:** add parseLinkIntent to classify pasted URLs by host ([d27282d](https://github.com/kevinch3/NicotinD/commit/d27282d68107606bbdab865936a4b9056c73321e))
+* **web:** let the source chip render link-intent hosts ([3661ffe](https://github.com/kevinch3/NicotinD/commit/3661ffe1eba0f71346be963c4c65d36fbbb23d95))
+* **web:** merge the URL acquire box into the search omnibox ([ac028de](https://github.com/kevinch3/NicotinD/commit/ac028de496fa99c8a4f1b9a59f5691ecbd5e6985))
+
+
+### Bug Fixes
+
+* **web:** clear stale results under the link-intent card ([263cc90](https://github.com/kevinch3/NicotinD/commit/263cc9037ac52631f38254c53ed03eec48963a44))
+
 ## [0.1.168](https://github.com/kevinch3/NicotinD/compare/v0.1.167...v0.1.168) (2026-07-08)
 
 
