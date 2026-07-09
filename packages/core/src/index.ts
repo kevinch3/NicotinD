@@ -12,6 +12,7 @@ export * from './types/track-analysis.js';
 export * from './types/processing.js';
 export * from './types/metadata-fix.js';
 export * from './types/lyrics.js';
+export * from './types/library-filter.js';
 
 // Plugin SDK (capability contracts + manifest)
 export * from './plugin/index.js';

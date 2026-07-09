@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { extname } from 'node:path';
 import { renameSync, unlinkSync } from 'node:fs';
-import { createLogger } from '@nicotind/core';
+import { createLogger, MOOD_VOCAB, type MoodLabel } from '@nicotind/core';
 
 const log = createLogger('audio-tags');
 
@@ -88,9 +88,12 @@ const TXXX_ACOUSTID = 'Acoustid Id';
 const TXXX_MB_RECORDING = 'MusicBrainz Track Id';
 const TXXX_MB_RELEASE = 'MusicBrainz Album Id';
 
-/** Closed mood vocabulary — argmax over the sidecar's mood heads. */
-export const MOOD_VOCAB = ['happy', 'sad', 'aggressive', 'relaxed', 'party'] as const;
-export type MoodLabel = (typeof MOOD_VOCAB)[number];
+/**
+ * Closed mood vocabulary — argmax over the sidecar's mood heads. Canonical
+ * definition lives in @nicotind/core (shared with the web filter UI);
+ * re-exported here so tag-pipeline importers keep their import path.
+ */
+export { MOOD_VOCAB, type MoodLabel };
 
 // Tag keys for the perceptual features. Used verbatim as Vorbis comment names
 // and as ID3 TXXX descriptions (no cross-tool standard exists for these except

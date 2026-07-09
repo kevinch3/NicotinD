@@ -51,6 +51,12 @@ import type {
   CoverCandidatesResponse,
   ApplyCoverRequest,
 } from '@nicotind/core';
+import { parseLibraryFilter } from '@nicotind/core';
+import {
+  albumFilterWheres,
+  artistFilterWheres,
+  songFilterWheres,
+} from '../services/library-filter-sql.js';
 
 const log = createLogger('library');
 
@@ -401,14 +407,20 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
 
   app.get('/artists', (c) => {
     const db = getDatabase();
+    // Metadata filters use any-track semantics: an artist matches when at
+    // least one of their songs does (see library-filter-sql.ts). With no
+    // filter params this stays byte-identical to the historical query.
+    const filter = parseLibraryFilter(c.req.queries());
+    const frag = artistFilterWheres(filter);
+    const filterClause = frag.wheres.length ? ` AND ${frag.wheres.join(' AND ')}` : '';
     const rows = db
-      .query<ArtistRow, []>(
+      .query<ArtistRow, (string | number)[]>(
         `SELECT id, name, album_count, cover_art, starred
          FROM library_artists
-         WHERE hidden = 0 AND name != 'Various Artists' COLLATE NOCASE
+         WHERE hidden = 0 AND name != 'Various Artists' COLLATE NOCASE${filterClause}
          ORDER BY name COLLATE NOCASE ASC`,
       )
-      .all();
+      .all(...frag.params);
     return c.json(rows.map(rowToArtist));
   });
 
@@ -487,16 +499,20 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     const size = Math.min(Number(c.req.query('size') ?? 60), 200);
     const offset = Math.max(Number(c.req.query('offset') ?? 0), 0);
     const sort = c.req.query('sort') ?? 'newest';
-    const starredOnly = c.req.query('starred') === 'true';
     const db = getDatabase();
     const wheres = ['(s.artist_id = ? OR s.id IN (SELECT song_id FROM library_song_artists WHERE artist_id = ?))', 's.hidden = 0'];
-    if (starredOnly) wheres.push('s.starred IS NOT NULL');
+    const params: Array<string | number> = [id, id];
+    // Standardized metadata filters (bpm/key/mood/…); `starred=true` is part of
+    // the same grammar and keeps its historical meaning here (song-level).
+    const frag = songFilterWheres(parseLibraryFilter(c.req.queries()), 's');
+    wheres.push(...frag.wheres);
+    params.push(...frag.params);
     const rows = db
-      .query<SongRow, [string, string, number, number]>(
+      .query<SongRow, (string | number)[]>(
         `${SONG_SELECT} WHERE ${wheres.join(' AND ')}
          ORDER BY ${songOrderBy(sort)} LIMIT ? OFFSET ?`,
       )
-      .all(id, id, size, offset);
+      .all(...params, size, offset);
     const songs = rows.map(rowToSong);
     attachSongArtists(db, songs);
     return c.json(songs);
@@ -531,13 +547,21 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     // Exclude actively-downloading albums in SQL (pre-LIMIT) to keep pagination
     // correct — see downloadingExclusion(). Also keys on in-flight slskd transfers.
     const excl = downloadingExclusion(db, await activeTransferKeys(options.slskdRef));
-    const exclClause = excl.sql ? `AND ${excl.sql}` : '';
+    const wheres = ['hidden = 0', SINGLE_EP_CLASSIFICATION_SQL];
+    const params: Array<string | number> = [];
+    if (excl.sql) {
+      wheres.push(excl.sql);
+      params.push(...excl.params);
+    }
+    const frag = albumFilterWheres(parseLibraryFilter(c.req.queries()));
+    wheres.push(...frag.wheres);
+    params.push(...frag.params);
     const rows = db
       .query<AlbumRow, (string | number)[]>(
-        `${ALBUM_SELECT} WHERE hidden = 0 AND ${SINGLE_EP_CLASSIFICATION_SQL} ${exclClause}
+        `${ALBUM_SELECT} WHERE ${wheres.join(' AND ')}
          ORDER BY ${order} LIMIT ? OFFSET ?`,
       )
-      .all(...excl.params, size, offset);
+      .all(...params, size, offset);
     const singles = rows.map(rowToAlbum);
     return c.json(singles);
   });
@@ -569,6 +593,11 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       wheres.push(excl.sql);
       params.push(...excl.params);
     }
+    // Standardized metadata filters: song-level properties match any-track via
+    // EXISTS, starred filters the album row itself (library-filter-sql.ts).
+    const filterFrag = albumFilterWheres(parseLibraryFilter(c.req.queries()));
+    wheres.push(...filterFrag.wheres);
+    params.push(...filterFrag.params);
 
     const whereClause = wheres.length > 0 ? `WHERE ${wheres.join(' AND ')}` : '';
     const order = albumOrderBy(type);
@@ -589,12 +618,17 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     const offset = Math.max(Number(c.req.query('offset') ?? 0), 0);
     const db = getDatabase();
     const order = albumOrderBy(type);
+    const wheres = ['hidden = 0', `classification = 'compilation'`];
+    const params: Array<string | number> = [];
+    const frag = albumFilterWheres(parseLibraryFilter(c.req.queries()));
+    wheres.push(...frag.wheres);
+    params.push(...frag.params);
     const rows = db
-      .query<AlbumRow, [number, number]>(
-        `${ALBUM_SELECT} WHERE hidden = 0 AND classification = 'compilation'
+      .query<AlbumRow, (string | number)[]>(
+        `${ALBUM_SELECT} WHERE ${wheres.join(' AND ')}
          ORDER BY ${order} LIMIT ? OFFSET ?`,
       )
-      .all(size, offset);
+      .all(...params, size, offset);
     return c.json(rows.map(rowToAlbum));
   });
 
