@@ -202,17 +202,36 @@ export class CatalogService {
 const TYPE_RANK: Record<string, number> = { album: 0, ep: 1, single: 2 };
 
 /**
- * Rank an artist's own albums for display: primary types first (Album > EP >
- * Single > others), then newest first. Keeps the real discography readable
- * instead of in raw lookup order. See §A1/§A6.
+ * Rank an artist's own albums for display: real (non-compilation) releases
+ * first, then primary types (Album > EP > Single > others), then newest
+ * first. Keeps the real discography readable instead of in raw lookup order.
+ * See §A1/§A6.
+ *
+ * Compilations sort *after* everything else: `album.lookup`'s free-text
+ * relevance ranking surfaces "Best of"/"Greatest Hits" reissues extremely
+ * well (they're heavily re-tagged on MusicBrainz), often crowding out an
+ * artist's real studio albums entirely from the top of the card grid — but
+ * Lidarr's own `listByArtist` typically doesn't track compilations at all, so
+ * a card built from one reliably 404s on resolve (`ALBUM_NOT_IN_LIDARR`,
+ * §A2) and dead-ends into the raw-fallback banner. Demoting them keeps the
+ * default, most-clickable cards on the releases that actually resolve,
+ * without hiding compilations — they're still legitimate acquisition
+ * targets via the raw fallback, just no longer the accidental default.
  */
 function rankAlbums(albums: CatalogAlbum[]): CatalogAlbum[] {
   return [...albums].sort((a, b) => {
+    const ca = isCompilation(a) ? 1 : 0;
+    const cb = isCompilation(b) ? 1 : 0;
+    if (ca !== cb) return ca - cb;
     const ra = TYPE_RANK[a.albumType?.toLowerCase()] ?? 3;
     const rb = TYPE_RANK[b.albumType?.toLowerCase()] ?? 3;
     if (ra !== rb) return ra - rb;
     return Number(b.year ?? 0) - Number(a.year ?? 0);
   });
+}
+
+function isCompilation(album: CatalogAlbum): boolean {
+  return album.secondaryTypes.some((t) => t.toLowerCase() === 'compilation');
 }
 
 function mapArtist(a: LidarrArtist): CatalogArtist {
