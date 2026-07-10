@@ -6,6 +6,7 @@ import {
   recordAnalysisFailure,
   clearAnalysisFailure,
   notPermanentlyFailedClause,
+  permanentlyFailedClause,
   countSkippedFiles,
 } from './analysis-failures.js';
 
@@ -122,6 +123,34 @@ describe('notPermanentlyFailedClause', () => {
       .get()!.n;
     expect(bpmCount).toBe(0); // excluded for bpm
     expect(keyCount).toBe(1); // still eligible for key
+  });
+});
+
+describe('permanentlyFailedClause', () => {
+  function seedSong(id: string, size: number): void {
+    db.run(
+      `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, size, synced_at)
+       VALUES (?, 'alb', ?, 'A', 'art', 0, ?, ?, 1)`,
+      [id, `T-${id}`, `${id}.mp3`, size],
+    );
+  }
+
+  // It's the exact complement of notPermanentlyFailedClause: true only once a file
+  // is at the attempt cap for the task (and unchanged in size). Composed into an
+  // OR in the graduation predicate.
+  it('matches a song only once it hits the attempt cap (same file)', () => {
+    seedSong('s1', 100);
+    const sql = `SELECT COUNT(*) AS n FROM library_songs WHERE ${permanentlyFailedClause('bpm')}`;
+    const count = () => db.query<{ n: number }, []>(sql).get()!.n;
+
+    expect(count()).toBe(0); // no failures yet
+    for (let i = 0; i < MAX_ANALYSIS_ATTEMPTS; i++) {
+      recordAnalysisFailure(db, 's1', 'bpm', new Error('boom'), 100);
+    }
+    expect(count()).toBe(1); // at the cap — permanently failed
+    // A re-download (size change) clears the permanent-failure state.
+    db.run('UPDATE library_songs SET size = 250 WHERE id = ?', ['s1']);
+    expect(count()).toBe(0);
   });
 });
 

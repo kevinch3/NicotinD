@@ -1,5 +1,32 @@
 # Download Pipeline
 
+## Process-before-landing (quarantine gate)
+
+A completed download is scanned into `library_songs` but does **not** appear in the
+library until its **required processing steps** finish. New rows land quarantined
+(`landed_at IS NULL`) and are hidden from every listing; the windowed processor
+graduates them (sets `landed_at`) once their gate steps are done — see the **Landing
+gate** section of [library-processing.md](library-processing.md) for the graduation
+predicate, the per-task `gates` flag, the availability guarantee, and the 24h safety
+valve. `scanIncremental` fires an eager `kickEager()` right after organize+scan so
+gate steps run immediately (out of window) and the download surfaces as soon as it's
+ready.
+
+**Listing coverage** — quarantine is enforced at query time, mirroring the
+`downloadingExclusion` pattern (`routes/library.ts`):
+
+- `quarantineExclusion(db)` (cached ~4s, fast-path empty when nothing is quarantined)
+  excludes any album with an un-landed track from `/albums`, `/compilations`,
+  `/singles`, `/artists/:id` albums, `/artists/:id/appears-on`; `/albums/:id` 404s
+  while quarantined.
+- `landed_at IS NOT NULL` filters the song/artist surfaces: `/artists` (grid),
+  `/artists/:id/songs`, `/genres/songs`, `/random`, `/recent-songs`, `/songs/:id/similar`,
+  local search (`library-provider.ts`), radio candidate pools (`routes/radio.ts`),
+  and the playlist generator + automated-playlist recipes.
+- Per-download step visibility: `GET /api/admin/processing/queue` returns quarantined
+  songs grouped by album with per-step badges (downloaded ✓ · bpm ✓ · key ⏳ · mood …),
+  rendered under the Admin → Library processing panel.
+
 ## Release-type model — albums, EPs & singles (Spotify-style)
 
 NicotinD is album-centric, but loose tracks (a YouTube single, a Soulseek peer with no album tag) are **first-class** rather than hidden. Every `library_albums` row carries a `classification`: `album` | `ep` | `single` | `compilation` | `unknown`.

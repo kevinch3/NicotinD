@@ -11,10 +11,13 @@ import { getTask, type EnrichmentContext } from './enrichment/tasks.js';
 let db: Database;
 let dataDir: string;
 
+// Seeds an already-landed song (landed_at set): these tests cover windowed
+// backfill of the existing library, not the fresh-download quarantine path
+// (which lives in library-processing.landing.test.ts).
 function seedSong(id: string, artist = 'Artist'): void {
   db.run(
-    `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, size, bit_rate, suffix, content_type, created, synced_at)
-     VALUES (?, 'alb', ?, ?, 'art', 0, ?, 10, 320, 'opus', 'audio/opus', '2024-01-01', 1)`,
+    `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, size, bit_rate, suffix, content_type, created, landed_at, synced_at)
+     VALUES (?, 'alb', ?, ?, 'art', 0, ?, 10, 320, 'opus', 'audio/opus', '2024-01-01', 1, 1)`,
     [id, `T-${id}`, artist, `${artist}/Album/${id}.opus`],
   );
 }

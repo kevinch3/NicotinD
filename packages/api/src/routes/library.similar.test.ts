@@ -52,8 +52,8 @@ function seedSong(
   db.run(
     `INSERT INTO library_songs
       (id, album_id, title, artist, artist_id, duration, year, genre, path,
-       size, bit_rate, suffix, content_type, created, synced_at)
-     VALUES (?, ?, ?, ?, ?, 180, ?, ?, ?, 1000, 320, 'flac', 'audio/flac', '2024-01-01', 0)`,
+       size, bit_rate, suffix, content_type, created, landed_at, synced_at)
+     VALUES (?, ?, ?, ?, ?, 180, ?, ?, ?, 1000, 320, 'flac', 'audio/flac', '2024-01-01', 1, 0)`,
     [s.id, s.albumId, s.title, s.artist, s.artistId, s.year ?? null, s.genre ?? null, s.path],
   );
 }

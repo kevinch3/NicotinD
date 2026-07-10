@@ -120,6 +120,11 @@ function makeServer(port: string, dir: string): NonNullable<PlaywrightTestConfig
       NICOTIND_LIDARR_URL: 'http://127.0.0.1:1', // likewise isolate from a real Lidarr
       NICOTIND_DATA_DIR: dir,
       NICOTIND_MUSIC_DIR: resolve(__dirname, 'fixtures/music'),
+      // Bypass the process-before-landing gate: the silent-FLAC fixtures can't
+      // yield a confident BPM/key, so with the gate on they'd stay quarantined
+      // (invisible) behind analysis that never completes. The gate has its own
+      // unit/route coverage (library-processing.landing.test.ts, library.test.ts).
+      NICOTIND_DISABLE_LANDING_GATE: '1',
     },
   };
 }

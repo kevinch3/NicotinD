@@ -122,6 +122,10 @@ export function createApp({
   const scanner = new LibraryScanner(expandedMusicDir, db);
   const curator = new LibraryCurator(db);
   const syncLog = createLogger('library-sync');
+  // Declared here (assigned below, once its deps exist) so the incremental scan
+  // seam can fire an eager processing kick the moment a download is scanned in —
+  // late-bound via `.current`, evaluated at call time.
+  const processingRef: ProcessingRef = { current: null };
   const runSyncAndCurate = async (): Promise<void> => {
     try {
       await scanner.scanFull();
@@ -130,6 +134,10 @@ export function createApp({
       // for songs that predate the `acquisitions` table. Runs once (guarded by a
       // library_sync_state marker); cheap no-op on subsequent boots.
       backfillAcquisitions(db);
+      // Eagerly process any quarantined backlog from this scan (a fresh install,
+      // or downloads that arrived while the server was down) instead of waiting
+      // for the first in-window tick, so freshly-scanned music lands promptly.
+      void processingRef.current?.kickEager();
     } catch (err) {
       syncLog.error({ err }, 'Library scan/curate cycle failed');
     }
@@ -146,6 +154,12 @@ export function createApp({
         await scanner.reconcileAlbums(albumDirs);
       }
       curator.reclassifyAll();
+      // Freshly-scanned songs land quarantined (landed_at NULL). Kick an eager,
+      // out-of-window processing pass so their required gate steps run now and the
+      // download becomes visible as soon as it's ready — rather than waiting for
+      // the next daily window. Fire-and-forget: a no-op if a run is already in
+      // flight (that run graduates the new song), and never blocks the scan seam.
+      void processingRef.current?.kickEager();
     } catch (err) {
       syncLog.error({ err }, 'Incremental reconcile/curate failed');
     }
@@ -314,17 +328,15 @@ export function createApp({
   // Windowed library-processing scheduler — runs enrichment tasks (BPM, genre,
   // key, energy, audio features, artist images) over the library, only inside
   // the configured daily window.
-  const processingRef: ProcessingRef = {
-    current: new LibraryProcessingService({
-      db,
-      lidarr,
-      musicDir: expandedMusicDir,
-      dataDir: expandedDataDir,
-      lookupArtistImageSpotify: (name) =>
-        spotifyArtistImageRef.lookup?.(name) ?? Promise.resolve(null),
-      audioFeaturesClient,
-    }),
-  };
+  processingRef.current = new LibraryProcessingService({
+    db,
+    lidarr,
+    musicDir: expandedMusicDir,
+    dataDir: expandedDataDir,
+    lookupArtistImageSpotify: (name) =>
+      spotifyArtistImageRef.lookup?.(name) ?? Promise.resolve(null),
+    audioFeaturesClient,
+  });
 
   // Provider registry holds the always-on local library provider. The slskd
   // (network/browse/download) provider is registered/unregistered by the slskd

@@ -103,8 +103,8 @@ describe('playlist routes', () => {
     for (let i = 0; i < 20; i++) {
       db.run(
         `INSERT INTO library_songs
-           (id, album_id, title, artist, artist_id, duration, year, genre, path, bpm, key, starred, hidden, synced_at)
-         VALUES (?, 'al', ?, ?, ?, 200, 2015, 'Rock', ?, ?, 'C major', ?, 0, 0)`,
+           (id, album_id, title, artist, artist_id, duration, year, genre, path, bpm, key, starred, hidden, landed_at, synced_at)
+         VALUES (?, 'al', ?, ?, ?, 200, 2015, 'Rock', ?, ?, 'C major', ?, 0, 1, 0)`,
         [
           `s${i}`,
           `Song ${i}`,

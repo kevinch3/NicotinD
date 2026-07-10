@@ -257,3 +257,50 @@ describe('applySchema — perceptual feature columns + embeddings table', () => 
     expect(row?.mood).toBe('relaxed');
   });
 });
+
+describe('applySchema — landing backfill', () => {
+  it('lands every pre-existing song exactly once and never re-lands later rows', () => {
+    const db = new Database(':memory:');
+    // A legacy library (no landed_at column) with one existing song.
+    db.run(`
+      CREATE TABLE library_songs (
+        id TEXT PRIMARY KEY, album_id TEXT NOT NULL, title TEXT NOT NULL, artist TEXT NOT NULL,
+        artist_id TEXT NOT NULL, duration INTEGER NOT NULL DEFAULT 0, genre TEXT, path TEXT NOT NULL,
+        hidden INTEGER NOT NULL DEFAULT 0, synced_at INTEGER NOT NULL
+      )
+    `);
+    db.run(
+      `INSERT INTO library_songs (id, album_id, title, artist, artist_id, path, synced_at)
+       VALUES ('old', 'a', 'T', 'X', 'art', 'p', 1)`,
+    );
+
+    applySchema(db);
+    // The pre-existing song is landed (not retroactively quarantined).
+    expect(landed(db, 'old')).not.toBeNull();
+    // The backfill marker is set so it won't run again.
+    expect(
+      db.query(`SELECT 1 FROM library_sync_state WHERE key = 'landing_backfill_v1'`).get(),
+    ).not.toBeNull();
+
+    // A fresh download arrives quarantined…
+    db.run(
+      `INSERT INTO library_songs (id, album_id, title, artist, artist_id, path, synced_at)
+       VALUES ('new', 'a', 'T2', 'X', 'art', 'p2', 1)`,
+    );
+    expect(landed(db, 'new')).toBeNull();
+
+    // …and a second applySchema (a restart) must NOT land the in-flight download.
+    applySchema(db);
+    expect(landed(db, 'new')).toBeNull();
+  });
+});
+
+function landed(db: Database, id: string): number | null {
+  return (
+    db
+      .query<{ landed_at: number | null }, [string]>(
+        'SELECT landed_at FROM library_songs WHERE id = ?',
+      )
+      .get(id)?.landed_at ?? null
+  );
+}

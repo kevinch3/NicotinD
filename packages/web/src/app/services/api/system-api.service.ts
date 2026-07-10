@@ -1,7 +1,14 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import type { ProcessingSettings, ProcessingStatus } from '@nicotind/core';
-import type { StreamingSettings, SetupStatus, SetupResult, SetupBody, AdminUser } from './api-types';
+import type {
+  StreamingSettings,
+  SetupStatus,
+  SetupResult,
+  SetupBody,
+  AdminUser,
+  QuarantineAlbum,
+} from './api-types';
 
 /** System surface: status/scan/logs, settings (soulseek/shares/streaming/
  *  processing), first-run setup, and admin user management. */
@@ -109,6 +116,12 @@ export class SystemApiService {
 
   stopProcessing() {
     return this.http.post<{ ok: boolean }>('/api/admin/processing/stop', {});
+  }
+
+  // Quarantine queue: downloads awaiting their required processing steps before
+  // they're added to the library, grouped by album with per-step badges.
+  getProcessingQueue() {
+    return this.http.get<{ albums: QuarantineAlbum[] }>('/api/admin/processing/queue');
   }
 
   // Setup (public — no auth token)

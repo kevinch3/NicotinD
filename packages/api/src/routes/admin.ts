@@ -9,6 +9,7 @@ import { transcodeLibraryToOpus } from '../services/library-transcode.js';
 import { optimizeAllAlbums } from '../services/metadata-optimize.js';
 import { setProcessingSettings } from '../services/processing-settings.js';
 import { parseHhMm } from '../services/processing-window.js';
+import { loadQuarantineQueue } from '../services/song-steps.js';
 import { presenceService } from '../services/presence.js';
 import type { LibraryProcessingService } from '../services/library-processing.service.js';
 
@@ -241,8 +242,27 @@ export function adminRoutes(deps: AdminRoutesDeps) {
     ) {
       return c.json({ error: 'concurrency must be a positive integer' }, 400);
     }
+    // gates is a sparse per-task boolean map ("require before landing"); reject a
+    // malformed value so a bad client can't poison the persisted JSON blob.
+    if (body.gates !== undefined) {
+      const ok =
+        body.gates !== null &&
+        typeof body.gates === 'object' &&
+        !Array.isArray(body.gates) &&
+        Object.values(body.gates).every((v) => typeof v === 'boolean');
+      if (!ok) return c.json({ error: 'gates must be a map of task→boolean' }, 400);
+    }
     const settings = setProcessingSettings(getDatabase(), body);
     return c.json({ settings, status: svc.getState().status });
+  });
+
+  // Quarantine queue: songs scanned but not yet added to the library (their
+  // required processing steps haven't finished), grouped by album with per-step
+  // badges — the "control which steps a download has been through" surface.
+  app.get('/processing/queue', (c) => {
+    const svc = requireProcessing();
+    if (!svc) return c.json({ error: 'Library processing not available' }, 503);
+    return c.json({ albums: loadQuarantineQueue(getDatabase()) });
   });
 
   // Drain pending work now, ignoring the time window (fire-and-forget).

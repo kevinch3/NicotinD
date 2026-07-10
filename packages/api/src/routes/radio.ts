@@ -146,7 +146,7 @@ export function radioRoutes() {
       addRows(
         db
           .query<RadioSongRow, [string]>(
-            `${RADIO_SONG_SELECT} WHERE s.genre = ? AND s.hidden = 0 ORDER BY RANDOM() LIMIT 150`,
+            `${RADIO_SONG_SELECT} WHERE s.genre = ? AND s.hidden = 0 AND s.landed_at IS NOT NULL ORDER BY RANDOM() LIMIT 150`,
           )
           .all(seed.genre),
       );
@@ -160,7 +160,7 @@ export function radioRoutes() {
       addRows(
         db
           .query<RadioSongRow, [string]>(
-            `${RADIO_SONG_SELECT} WHERE LOWER(s.genre) LIKE '%' || ? || '%' AND s.hidden = 0
+            `${RADIO_SONG_SELECT} WHERE LOWER(s.genre) LIKE '%' || ? || '%' AND s.hidden = 0 AND s.landed_at IS NOT NULL
              ORDER BY RANDOM() LIMIT 100`,
           )
           .all(genreToken),
@@ -174,7 +174,7 @@ export function radioRoutes() {
       addRows(
         db
           .query<RadioSongRow, [number, number]>(
-            `${RADIO_SONG_SELECT} WHERE s.bpm BETWEEN ? AND ? AND s.hidden = 0
+            `${RADIO_SONG_SELECT} WHERE s.bpm BETWEEN ? AND ? AND s.hidden = 0 AND s.landed_at IS NOT NULL
              ORDER BY RANDOM() LIMIT 100`,
           )
           .all(bpmLow, bpmHigh),
@@ -187,7 +187,7 @@ export function radioRoutes() {
       addRows(
         db
           .query<RadioSongRow, [number, number]>(
-            `${RADIO_SONG_SELECT} WHERE s.energy BETWEEN ? AND ? AND s.hidden = 0
+            `${RADIO_SONG_SELECT} WHERE s.energy BETWEEN ? AND ? AND s.hidden = 0 AND s.landed_at IS NOT NULL
              ORDER BY RANDOM() LIMIT 100`,
           )
           .all(Math.max(0, seed.energy - 0.15), Math.min(1, seed.energy + 0.15)),
@@ -200,7 +200,7 @@ export function radioRoutes() {
     addRows(
       db
         .query<RadioSongRow, []>(
-          `${RADIO_SONG_SELECT} WHERE (s.bpm IS NULL OR s.energy IS NULL) AND s.hidden = 0
+          `${RADIO_SONG_SELECT} WHERE (s.bpm IS NULL OR s.energy IS NULL) AND s.hidden = 0 AND s.landed_at IS NOT NULL
            ORDER BY RANDOM() LIMIT 30`,
         )
         .all(),
@@ -211,7 +211,7 @@ export function radioRoutes() {
       addRows(
         db
           .query<RadioSongRow, []>(
-            `${RADIO_SONG_SELECT} WHERE s.hidden = 0 ORDER BY RANDOM() LIMIT 100`,
+            `${RADIO_SONG_SELECT} WHERE s.hidden = 0 AND s.landed_at IS NOT NULL ORDER BY RANDOM() LIMIT 100`,
           )
           .all(),
       );

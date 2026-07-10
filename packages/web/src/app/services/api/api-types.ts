@@ -338,3 +338,31 @@ export interface CatalogResolveResult {
   title: string;
   artistName: string;
 }
+
+/** Per-track processing-step state for the admin quarantine queue. Mirrors the
+ *  API's song-steps.ts. `done` = value produced, `skipped` = permanently failed
+ *  (won't block landing), `pending` = still to run. */
+export type StepState = 'done' | 'pending' | 'skipped';
+
+export interface SongSteps {
+  download: 'done';
+  bpm: StepState;
+  key: StepState;
+  energy: StepState;
+  genre: StepState;
+  mood: StepState;
+}
+
+export interface QuarantineSong {
+  id: string;
+  title: string;
+  track: number | null;
+  steps: SongSteps;
+}
+
+export interface QuarantineAlbum {
+  albumId: string;
+  albumTitle: string;
+  albumArtist: string;
+  songs: QuarantineSong[];
+}

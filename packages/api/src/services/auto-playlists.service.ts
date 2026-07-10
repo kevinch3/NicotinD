@@ -118,7 +118,7 @@ function candidatesFor(db: Database, recipe: PlaylistRecipe): OrderableRow[] {
               s.instrumental AS instrumental, s.acousticness AS acousticness,
               s.created AS created
          FROM library_songs s
-        WHERE s.hidden = 0 AND (${recipe.where})`,
+        WHERE s.hidden = 0 AND s.landed_at IS NOT NULL AND (${recipe.where})`,
     )
     .all();
   return rows.map(toOrderable);

@@ -12,8 +12,8 @@ beforeEach(() => {
 
 function seedSong(id: string, title: string, opts: { hidden?: boolean } = {}): void {
   db.run(
-    `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, hidden, synced_at)
-     VALUES (?, 'alb', ?, 'Alfredo Casero', 'art', 60, ?, ?, 1)`,
+    `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, hidden, landed_at, synced_at)
+     VALUES (?, 'alb', ?, 'Alfredo Casero', 'art', 60, ?, ?, 1, 1)`,
     [id, title, `p/${id}.mp3`, opts.hidden ? 1 : 0],
   );
 }

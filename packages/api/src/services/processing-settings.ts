@@ -1,9 +1,12 @@
 import type { Database } from 'bun:sqlite';
 import type { ProcessingSettings, ProcessingTaskId, ProcessingWindow } from '@nicotind/core';
 
-/** Patch shape: top-level optional, with partial nested tasks/window (deep-merged). */
-export type ProcessingSettingsPatch = Partial<Omit<ProcessingSettings, 'tasks' | 'window'>> & {
+/** Patch shape: top-level optional, with partial nested tasks/gates/window (deep-merged). */
+export type ProcessingSettingsPatch = Partial<
+  Omit<ProcessingSettings, 'tasks' | 'gates' | 'window'>
+> & {
   tasks?: Partial<Record<ProcessingTaskId, boolean>>;
+  gates?: Partial<Record<ProcessingTaskId, boolean>>;
   window?: Partial<ProcessingWindow>;
 };
 
@@ -25,6 +28,17 @@ export const DEFAULT_PROCESSING_SETTINGS: ProcessingSettings = {
     energy: true,
     'audio-features': true,
   },
+  // Steps that must finish before a fresh download is added to the library.
+  // Fast, offline, no-sidecar analysis (bpm/key/energy) plus genre are gated by
+  // default; genre auto-skips when Lidarr is absent (never blocks). Mood/
+  // audio-features (sidecar, off on fresh installs) and per-artist artist-image
+  // are intentionally NOT gates, so nothing extra is required out of the box.
+  gates: {
+    bpm: true,
+    key: true,
+    energy: true,
+    genre: true,
+  },
   batchSize: 25,
   concurrency: 3,
 };
@@ -42,6 +56,7 @@ export function getProcessingSettings(db: Database): ProcessingSettings {
       // Nested objects must deep-merge so an older/partial blob can't drop a field.
       window: { ...DEFAULT_PROCESSING_SETTINGS.window, ...parsed.window },
       tasks: { ...DEFAULT_PROCESSING_SETTINGS.tasks, ...parsed.tasks },
+      gates: { ...DEFAULT_PROCESSING_SETTINGS.gates, ...parsed.gates },
     };
   } catch {
     return clone(DEFAULT_PROCESSING_SETTINGS);
@@ -58,6 +73,7 @@ export function setProcessingSettings(
     ...patch,
     window: { ...current.window, ...patch.window },
     tasks: { ...current.tasks, ...patch.tasks },
+    gates: { ...current.gates, ...patch.gates },
   };
   db.run(
     `INSERT INTO app_settings (key, value) VALUES (?, ?)
@@ -72,5 +88,6 @@ function clone(s: ProcessingSettings): ProcessingSettings {
     ...s,
     window: { ...s.window },
     tasks: { ...s.tasks },
+    gates: { ...s.gates },
   };
 }

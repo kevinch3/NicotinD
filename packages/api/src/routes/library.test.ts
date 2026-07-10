@@ -65,8 +65,8 @@ afterAll(() => {
 function seedSong(id: string, path: string): void {
   sharedDb.run('DELETE FROM library_songs WHERE id = ?', [id]);
   sharedDb.run(
-    `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, size, bit_rate, suffix, content_type, created, synced_at)
-     VALUES (?, 'alb', ?, 'Artist', 'art', 0, ?, 1000, 320, 'mp3', 'audio/mpeg', '2024-01-01', 1)`,
+    `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, size, bit_rate, suffix, content_type, created, landed_at, synced_at)
+     VALUES (?, 'alb', ?, 'Artist', 'art', 0, ?, 1000, 320, 'mp3', 'audio/mpeg', '2024-01-01', 1, 1)`,
     [id, id, path],
   );
 }
@@ -498,8 +498,8 @@ describe('album deletion', () => {
     );
     for (const s of songs) {
       sharedDb.run(
-        `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, size, bit_rate, suffix, content_type, created, synced_at)
-         VALUES (?, ?, ?, 'Artist', 'art-1', 0, ?, 1000, 320, 'mp3', 'audio/mpeg', '2024-01-01', 1)`,
+        `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, size, bit_rate, suffix, content_type, created, landed_at, synced_at)
+         VALUES (?, ?, ?, 'Artist', 'art-1', 0, ?, 1000, 320, 'mp3', 'audio/mpeg', '2024-01-01', 1, 1)`,
         [s.id, albumId, s.id, s.path],
       );
     }
@@ -862,8 +862,8 @@ describe('GET /artists/:id/songs (Songs tab)', () => {
     },
   ): void {
     testDb.run(
-      `INSERT INTO library_songs (id, album_id, title, artist, artist_id, track, duration, path, size, bit_rate, suffix, content_type, created, starred, hidden, synced_at)
-       VALUES (?, ?, ?, 'A', ?, ?, 0, ?, 1000, 320, 'mp3', 'audio/mpeg', ?, ?, ?, 1)`,
+      `INSERT INTO library_songs (id, album_id, title, artist, artist_id, track, duration, path, size, bit_rate, suffix, content_type, created, starred, hidden, landed_at, synced_at)
+       VALUES (?, ?, ?, 'A', ?, ?, 0, ?, 1000, 320, 'mp3', 'audio/mpeg', ?, ?, ?, 1, 1)`,
       [
         id,
         opts.albumId ?? 'alb',
@@ -953,6 +953,10 @@ describe('library metadata filters', () => {
     testDb.run('DELETE FROM library_albums');
     testDb.run('DELETE FROM library_artists');
     testDb.run('DELETE FROM library_song_artists');
+    // The download/quarantine suppression caches are keyed by db instance and
+    // outlive a single test; clear them so a prior test's "nothing quarantined"
+    // snapshot can't leak into one that seeds quarantined rows.
+    __resetDownloadSuppressionCache();
     mock.module('../db.js', () => ({ getDatabase: () => testDb, applySchema }));
   });
 
@@ -995,8 +999,8 @@ describe('library metadata filters', () => {
     } = {},
   ): void {
     testDb.run(
-      `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, year, genre, path, created, starred, hidden, bpm, key, energy, mood, synced_at)
-       VALUES (?, ?, ?, 'A', ?, ?, ?, ?, ?, '2024-01-01', ?, 0, ?, ?, ?, ?, 1)`,
+      `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, year, genre, path, created, starred, hidden, bpm, key, energy, mood, landed_at, synced_at)
+       VALUES (?, ?, ?, 'A', ?, ?, ?, ?, ?, '2024-01-01', ?, 0, ?, ?, ?, ?, 1, 1)`,
       [
         id,
         opts.albumId ?? 'alb',
@@ -1126,5 +1130,78 @@ describe('library metadata filters', () => {
     seedSong('s1', { albumId: 'a1' });
 
     expect(await ids('/albums?bpmMin=abc&mood=confused&energy=extreme')).toEqual(['a1']);
+  });
+
+  describe('landing-gate quarantine suppression', () => {
+    /** Seed a quarantined song (landed_at NULL) directly, bypassing seedSong. */
+    function seedQuarantined(id: string, albumId: string, artistId = 'art'): void {
+      testDb.run(
+        `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, created, hidden, synced_at)
+         VALUES (?, ?, ?, 'A', ?, 0, ?, '2024-01-01', 0, 1)`,
+        [id, albumId, `Song ${id}`, artistId, `A/Al/${id}.mp3`],
+      );
+    }
+
+    it('hides an album from /albums until all its songs land', async () => {
+      seedAlbum('a-live');
+      seedAlbum('a-quar');
+      seedSong('landed', { albumId: 'a-live' });
+      seedSong('landed2', { albumId: 'a-quar' }); // one landed…
+      seedQuarantined('pending', 'a-quar'); // …but one still processing
+
+      // a-quar has an un-landed track → whole album hidden.
+      expect(await ids('/albums')).toEqual(['a-live']);
+    });
+
+    it('reveals the album once its last song lands', async () => {
+      seedAlbum('a1');
+      seedSong('s-done', { albumId: 'a1' });
+      seedQuarantined('s-pending', 'a1');
+      expect(await ids('/albums')).toEqual([]);
+
+      // Graduate the pending track.
+      testDb.run(`UPDATE library_songs SET landed_at = 1 WHERE id = 's-pending'`);
+      __resetDownloadSuppressionCache();
+      expect(await ids('/albums')).toEqual(['a1']);
+    });
+
+    it('hides a quarantined-only album from /singles and /compilations', async () => {
+      seedAlbum('sng', { classification: 'single' });
+      seedAlbum('cmp', { classification: 'compilation' });
+      seedQuarantined('s1', 'sng');
+      seedQuarantined('c1', 'cmp');
+      __resetDownloadSuppressionCache();
+
+      expect(await ids('/singles')).toEqual([]);
+      expect(await ids('/compilations')).toEqual([]);
+    });
+
+    it('omits quarantined songs from the artist Songs tab', async () => {
+      seedAlbum('alb');
+      seedSong('landed', { albumId: 'alb' });
+      seedQuarantined('pending', 'alb');
+
+      expect(await ids('/artists/art/songs')).toEqual(['landed']);
+    });
+
+    it('404s a quarantined album on direct fetch', async () => {
+      seedAlbum('a1');
+      seedQuarantined('s1', 'a1');
+      __resetDownloadSuppressionCache();
+      const res = await makeApp().request('/albums/a1');
+      expect(res.status).toBe(404);
+    });
+
+    it('hides an artist whose only songs are all quarantined', async () => {
+      seedArtist('ghost');
+      seedArtist('real');
+      seedAlbum('a-ghost');
+      seedAlbum('a-real');
+      seedQuarantined('g1', 'a-ghost', 'ghost');
+      seedSong('r1', { albumId: 'a-real', artistId: 'real' });
+      __resetDownloadSuppressionCache();
+
+      expect(await ids('/artists')).toEqual(['real']);
+    });
   });
 });

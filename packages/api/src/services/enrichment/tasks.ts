@@ -133,6 +133,15 @@ export interface EnrichmentTask {
   countPending(db: Database): number;
   /** Process up to `limit` pending songs; persist DB + file tag. */
   run(db: Database, ctx: EnrichmentContext, limit: number): Promise<EnrichmentRunResult>;
+  /**
+   * SQL predicate (against a bare `library_songs` row) that is true once this task
+   * has produced its value for a song — the inverse of `countPending`'s NULL test.
+   * Present only on *per-song* tasks that can gate landing; absent (e.g.
+   * `artist-image`, which is per-artist) means the task can never be a landing
+   * gate. Used by the graduation predicate to decide when a quarantined song may
+   * be added to the library.
+   */
+  satisfiedColumnSql?: string;
 }
 
 /** Build a context wired to the real primitives. */
@@ -172,6 +181,7 @@ export function createEnrichmentContext(deps: {
 const bpmTask: EnrichmentTask = {
   id: 'bpm',
   label: 'BPM analysis',
+  satisfiedColumnSql: 'bpm IS NOT NULL',
   available: (ctx) => (ctx.ffmpegAvailable() ? true : 'ffmpeg not found on PATH'),
   countPending: (db) =>
     Number(
@@ -233,6 +243,7 @@ const bpmTask: EnrichmentTask = {
 const genreTask: EnrichmentTask = {
   id: 'genre',
   label: 'Genre',
+  satisfiedColumnSql: "(genre IS NOT NULL AND genre != '')",
   available: (ctx) => (ctx.lidarr ? true : 'Lidarr not configured'),
   countPending: (db) =>
     Number(
@@ -290,6 +301,7 @@ const genreTask: EnrichmentTask = {
 const keyTask: EnrichmentTask = {
   id: 'key',
   label: 'Musical key',
+  satisfiedColumnSql: "(key IS NOT NULL AND key != '')",
   available: (ctx) => (ctx.ffmpegAvailable() ? true : 'ffmpeg not found on PATH'),
   countPending: (db) =>
     Number(
@@ -357,6 +369,7 @@ const keyTask: EnrichmentTask = {
 const energyTask: EnrichmentTask = {
   id: 'energy',
   label: 'Energy & loudness',
+  satisfiedColumnSql: 'energy IS NOT NULL',
   available: (ctx) => (ctx.ffmpegAvailable() ? true : 'ffmpeg not found on PATH'),
   countPending: (db) =>
     Number(
@@ -436,6 +449,9 @@ const energyTask: EnrichmentTask = {
 const audioFeaturesTask: EnrichmentTask = {
   id: 'audio-features',
   label: 'Audio features (mood/valence/danceability)',
+  // `danceability` is written in the same tx as the other feature columns, so a
+  // non-null danceability means the whole sidecar feature set landed for the song.
+  satisfiedColumnSql: 'danceability IS NOT NULL',
   available: (ctx) => {
     if (!ctx.analyzeAudioFeatures) return 'analysis sidecar not configured';
     return ctx.audioFeaturesAvailable() ? true : 'analysis sidecar unreachable';

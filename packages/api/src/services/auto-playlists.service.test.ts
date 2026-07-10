@@ -24,8 +24,8 @@ function insertSong(id: string, over: Partial<Record<string, unknown>> = {}): vo
   };
   db.run(
     `INSERT INTO library_songs
-       (id, album_id, title, artist, artist_id, duration, year, genre, path, bpm, key, hidden, synced_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+       (id, album_id, title, artist, artist_id, duration, year, genre, path, bpm, key, hidden, landed_at, synced_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0)`,
     [
       id,
       s.album_id as string,

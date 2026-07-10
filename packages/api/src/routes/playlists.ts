@@ -101,14 +101,14 @@ export function playlistRoutes() {
     } else if (seedSpec.artistId) {
       seedRows = db
         .query<RadioSongRow, [string]>(
-          `${RADIO_SONG_SELECT} WHERE s.artist_id = ? AND s.hidden = 0`,
+          `${RADIO_SONG_SELECT} WHERE s.artist_id = ? AND s.hidden = 0 AND s.landed_at IS NOT NULL`,
         )
         .all(seedSpec.artistId);
       if (seedRows.length) defaultName = `Inspired by ${seedRows[0].artist}`;
     } else if (seedSpec.starred) {
       seedRows = db
         .query<RadioSongRow, []>(
-          `${RADIO_SONG_SELECT} WHERE s.starred IS NOT NULL AND s.hidden = 0`,
+          `${RADIO_SONG_SELECT} WHERE s.starred IS NOT NULL AND s.hidden = 0 AND s.landed_at IS NOT NULL`,
         )
         .all();
       defaultName = 'From your favorites';
@@ -139,7 +139,7 @@ export function playlistRoutes() {
       addRows(
         db
           .query<RadioSongRow, [string]>(
-            `${RADIO_SONG_SELECT} WHERE s.genre = ? AND s.hidden = 0 ORDER BY RANDOM() LIMIT 300`,
+            `${RADIO_SONG_SELECT} WHERE s.genre = ? AND s.hidden = 0 AND s.landed_at IS NOT NULL ORDER BY RANDOM() LIMIT 300`,
           )
           .all(seedFeatures.genre),
       );
@@ -151,7 +151,7 @@ export function playlistRoutes() {
       addRows(
         db
           .query<RadioSongRow, [string]>(
-            `${RADIO_SONG_SELECT} WHERE LOWER(s.genre) LIKE '%' || ? || '%' AND s.hidden = 0
+            `${RADIO_SONG_SELECT} WHERE LOWER(s.genre) LIKE '%' || ? || '%' AND s.hidden = 0 AND s.landed_at IS NOT NULL
              ORDER BY RANDOM() LIMIT 150`,
           )
           .all(genreToken),
@@ -162,7 +162,7 @@ export function playlistRoutes() {
     addRows(
       db
         .query<RadioSongRow, []>(
-          `${RADIO_SONG_SELECT} WHERE (s.bpm IS NULL OR s.energy IS NULL) AND s.hidden = 0
+          `${RADIO_SONG_SELECT} WHERE (s.bpm IS NULL OR s.energy IS NULL) AND s.hidden = 0 AND s.landed_at IS NOT NULL
            ORDER BY RANDOM() LIMIT 60`,
         )
         .all(),
@@ -170,7 +170,7 @@ export function playlistRoutes() {
     addRows(
       db
         .query<RadioSongRow, []>(
-          `${RADIO_SONG_SELECT} WHERE s.hidden = 0 ORDER BY RANDOM() LIMIT 300`,
+          `${RADIO_SONG_SELECT} WHERE s.hidden = 0 AND s.landed_at IS NOT NULL ORDER BY RANDOM() LIMIT 300`,
         )
         .all(),
     );
