@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.176](https://github.com/kevinch3/NicotinD/compare/v0.1.175...v0.1.176) (2026-07-10)
+
+
+### Features
+
+* **web:** clear queue + drag-and-drop reorder in Now Playing ([dfd997c](https://github.com/kevinch3/NicotinD/commit/dfd997cad042f8c12b953b1623ff59922c53d4ef))
+* **web:** per-row remove from Now Playing queue ([5c36d01](https://github.com/kevinch3/NicotinD/commit/5c36d019f545cddeed594290ff3020d4f337d12d))
+
 ## [0.1.175](https://github.com/kevinch3/NicotinD/compare/v0.1.174...v0.1.175) (2026-07-10)
 
 
