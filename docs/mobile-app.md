@@ -136,6 +136,34 @@ and must work first try on device. Revisit if the plugin (or a equivalent) ships
 Still device-validated, not CI-validated: confirm on a physical device that playback continues
 backgrounded and the lock-screen controls/scrubber work.
 
+## OAuth login (proposed — not yet implemented)
+
+Google + Microsoft OAuth login is **proposed** for NicotinD as an `auth` plugin
+kind, with full mobile parity. The complete design lives in
+[oauth-auth.md](oauth-auth.md); this section covers the mobile-specific parts.
+
+The native app and the served web UI share the **same server callback** — the
+provider redirects back to `${NICOTIND_PUBLIC_URL}/api/auth/callback/:provider`
+in both cases. The difference is the **final hop**: the server inspects
+`state.client` (`'web'` or `'mobile'`, recorded when the flow started) and
+302-redirects to:
+
+- **web**: `/auth/callback#token=…` (SPA route parses the hash)
+- **mobile**: `nicotind://auth-callback#token=…&provider=…` (a custom-scheme
+  deep link the Capacitor app receives via `@capacitor/app`'s `appUrlOpen`
+  listener)
+
+The mobile login button opens the provider consent screen in the **system
+browser** (`@capacitor/browser`, not the WebView) so the user authenticates with
+their real Google/Microsoft session. After consent: system browser → server
+callback → `nicotind://` deep link → the app reads `#token=…` →
+`AuthService.login()` → navigates to `/`.
+
+Proposed new deps (already Capacitor 6 compatible): `@capacitor/app`,
+`@capacitor/browser`. The `nicotind` custom scheme is registered in
+`capacitor.config.ts` + an Android intent-filter in `AndroidManifest.xml`. No
+new native plugin — just the official ones.
+
 ## Developer workflow
 
 Requires JDK 17 + the Android SDK (Android Studio). From the repo root:

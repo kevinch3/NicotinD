@@ -12,6 +12,8 @@ acquisition is an affirmative, admin-gated, consent-recorded opt-in (legality va
 >
 > - capability-gating of the web surfaces. Connectivity (Phase E) is **scaffolded but not shipped**
 >   — the kernel + UI handle the kind generically; no connectivity plugin is registered yet.
+>   The `auth` kind (OAuth — Google + Microsoft) is **proposed, not yet implemented**; see
+>   [oauth-auth.md](oauth-auth.md).
 
 ## Layering
 
@@ -27,7 +29,7 @@ Host orchestrators (search route, album hunt, /api/acquire) + Settings → Plugi
 
 A generic **kernel** (manifest, enable/disable, config, consent, health, lifecycle) is
 kind-agnostic; each **kind** (`acquisition`, `metadata` [lyrics], `connectivity` scaffolded,
-`auth` [planned for OAuth](oauth-auth.md)) defines its own capability contracts. New kinds
+`auth` [**proposed** for OAuth — not yet implemented](oauth-auth.md)) defines its own capability contracts. New kinds
 add contracts without touching the kernel — the `metadata` kind (added for lyrics) is the
 worked example.
 
@@ -40,7 +42,8 @@ worked example.
 - **`capabilities.ts`** — `SearchCapability`, `BrowseCapability`, `ResolveCapability`,
   `DownloadCapability`, `ConnectivityCapability`. A plugin exposes exactly the accessors its
   manifest declares. `SearchCapability` mirrors the legacy `ISearchProvider` so existing providers
-  satisfy it unchanged.
+  satisfy it unchanged. An **`OAuthCapability`** (`getAuthorizationUrl`/`exchangeCode`) is
+  **proposed** for the `auth` kind — not yet implemented; see [oauth-auth.md](oauth-auth.md).
 - **`context.ts`** — `PluginHostContext`: the **only** surface a plugin may use to affect the
   system (scoped logger, resolved config, `allocStagingDir(jobId)`, `emitProgress(jobId, …)`,
   scoped `storage`). A plugin **cannot** touch the library DB or the organizer. It produces files
@@ -136,6 +139,19 @@ process.ts` — `runAcquireProcess` + progress parsing + audio collection; the i
   routes in `routes/library.ts`) owns persistence (`library_lyrics` side-table + file-tag write-back)
   and the user-edit/`customized` protection — the plugin only resolves text. → see the "Lyrics"
   bullet in [CLAUDE.md](../CLAUDE.md).
+- **oauth-google** + **oauth-microsoft** (`services/plugins/oauth-google/index.ts`,
+  `services/plugins/oauth-microsoft/index.ts`) — **proposed `auth`-kind** plugins (capability
+  `oauth`), **not yet implemented.** Each wraps its provider's authorize/token/userinfo endpoints,
+  holds the OAuth client id/secret via a `configSchema` + `configFields` (the secret is a write-only
+  `password` — same masking pattern as the Spotify plugin), and exposes
+  `OAuthCapability.getAuthorizationUrl(state, redirectUri)` /
+  `exchangeCode(code, redirectUri)`. The `redirectUri` is derived at call time from
+  `NICOTIND_PUBLIC_URL` (or `http://localhost:${port}` fallback) so one plugin serves dev, prod,
+  and mobile. Auto-enabled on first boot when env-set creds are present (`seedEnabled`,
+  idempotent — admin can disable later). Pure JS (no binary), `fetchFn` constructor-injected
+  for tests. The host (`routes/oauth.ts`, also proposed) owns the user lookup/create + JWT sign +
+  the `/api/auth/{providers,oauth/:provider,callback/:provider,dev-login}` public routes. → see
+  [docs/oauth-auth.md](oauth-auth.md).
 - **Back-compat seeding**: before plugins existed, slskd was active whenever credentials were set,
   and yt-dlp/spotdl whenever enabled in config. `PluginRegistry.seedEnabled(id, …)` (called from
   `index.ts`, `ON CONFLICT DO NOTHING`) keeps existing installs working; an admin's later toggle
@@ -230,3 +246,8 @@ process.ts` — `runAcquireProcess` + progress parsing + audio collection; the i
   `index.ts` with no further wiring. Per current direction, none is integrated yet.
 - **Later** — extract contracts to a standalone `@nicotind/plugin-sdk` and add a dynamic/3rd-party
   loader (the contracts are designed to outlive that change).
+- **Auth (OAuth)** _(proposed, not yet implemented)_ — a new `auth` plugin kind with an `oauth`
+  capability for Google + Microsoft login. The `OAuthCapability` contract, the two provider
+  plugins, DB schema (`oauth_states`), public routes (`/api/auth/oauth`, `/api/auth/callback`,
+  `/api/auth/dev-login`), the Capacitor deep-link for mobile, and `.env.example` vars are all
+  designed and documented in [docs/oauth-auth.md](oauth-auth.md). No code exists yet.
