@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.174](https://github.com/kevinch3/NicotinD/compare/v0.1.173...v0.1.174) (2026-07-10)
+
+
+### Bug Fixes
+
+* **library-processing:** ledger audio-features (422) + genre failures so the drain can't stall ([4ea0bb2](https://github.com/kevinch3/NicotinD/commit/4ea0bb26e8f6da6ce63eacf5e0810105be517454))
+
 ## [0.1.173](https://github.com/kevinch3/NicotinD/compare/v0.1.172...v0.1.173) (2026-07-10)
 
 
