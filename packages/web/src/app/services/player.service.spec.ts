@@ -438,4 +438,21 @@ describe('PlayerService', () => {
       expect(runs).toBe(1);
     });
   });
+
+  describe('PlayerService queueNext / startRadio', () => {
+    const t = (id: string): Track => ({ id, title: id, artist: 'a' });
+
+    it('queueNext inserts at the front of the queue', () => {
+      service.addToQueue(t('b'));
+      service.queueNext(t('a'));
+      expect(service.queue().map((x) => x.id)).toEqual(['a', 'b']);
+    });
+
+    it('startRadio makes the track current and turns radio on', () => {
+      service.startRadio(t('seed'));
+      expect(service.currentTrack()?.id).toBe('seed');
+      expect(service.isPlaying()).toBe(true);
+      expect(service.radio()).toBe(true);
+    });
+  });
 });
