@@ -97,6 +97,11 @@ describe('trackUtils', () => {
       const song: BaseSong = { id: '8', title: 'T', artist: 'A' };
       expect(toTrack(song).bitRate).toBeUndefined();
     });
+
+    it('carries albumId through', () => {
+      const track = toTrack({ id: 's1', title: 'T', artist: 'A', albumId: 'alb1' });
+      expect(track.albumId).toBe('alb1');
+    });
   });
 
   describe('offlineTrackAction', () => {
