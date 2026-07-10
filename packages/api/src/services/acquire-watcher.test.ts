@@ -271,6 +271,63 @@ describe('AcquireWatcher (registry-driven)', () => {
     expect(await h.watcher.retryJob('nope')).toBeNull();
   });
 
+  it('reuses the in-flight job instead of queueing a duplicate for the same URL', async () => {
+    // A plugin whose resolve() never settles, simulating a job still running.
+    let releaseResolve!: () => void;
+    const plugin = fakePlugin();
+    plugin.resolve!.resolve = (_url, jobId) =>
+      new Promise((resolve) => {
+        releaseResolve = () =>
+          resolve([join(pluginStagingDir(DATA_DIR, 'fake', jobId), 'Artist', 'Album', 'track.mp3')]);
+      });
+    h = makeHarness(plugin);
+    await h.registry.enable('fake', 'admin');
+
+    const firstId = await h.watcher.submit('https://example.com/x');
+    const secondId = await h.watcher.submit('https://example.com/x');
+    expect(secondId).toBe(firstId);
+    expect(h.watcher.listJobs().filter((j) => j.url === 'https://example.com/x')).toHaveLength(1);
+
+    releaseResolve();
+    await waitForState(h.watcher, firstId, 'done');
+  });
+
+  it('flags a truncated download (fewer files than the source reported) with a warning, but still marks it done', async () => {
+    const plugin = fakePlugin();
+    plugin.resolve!.resolve = async (_url, jobId) => {
+      // Mirrors what spotdl's progress parser records ("Found 16 songs") before
+      // only 1 track actually lands on disk.
+      h.db.run(`UPDATE acquire_jobs SET progress = ? WHERE id = ?`, [
+        JSON.stringify({ done: 1, total: 16 }),
+        jobId,
+      ]);
+      return [join(pluginStagingDir(DATA_DIR, 'fake', jobId), 'Artist', 'Album', 'track.mp3')];
+    };
+    h = makeHarness(plugin);
+    await h.registry.enable('fake', 'admin');
+    const id = await h.watcher.submit('https://example.com/x');
+    await waitForState(h.watcher, id, 'done');
+    const job = h.watcher.getJob(id)!;
+    expect(job.state).toBe('done');
+    expect(job.error).toContain('1 of 16');
+  });
+
+  it('does not flag a complete download as partial', async () => {
+    const plugin = fakePlugin();
+    plugin.resolve!.resolve = async (_url, jobId) => {
+      h.db.run(`UPDATE acquire_jobs SET progress = ? WHERE id = ?`, [
+        JSON.stringify({ done: 1, total: 1 }),
+        jobId,
+      ]);
+      return [join(pluginStagingDir(DATA_DIR, 'fake', jobId), 'Artist', 'Album', 'track.mp3')];
+    };
+    h = makeHarness(plugin);
+    await h.registry.enable('fake', 'admin');
+    const id = await h.watcher.submit('https://example.com/x');
+    await waitForState(h.watcher, id, 'done');
+    expect(h.watcher.getJob(id)?.error).toBeNull();
+  });
+
   it('specific plugin wins over catch-all when both are enabled', async () => {
     // Simulates archive (specific) vs yt-dlp (catch-all: !spotify).
     // The specific plugin must be registered first so find() returns it.

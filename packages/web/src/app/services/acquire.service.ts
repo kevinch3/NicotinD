@@ -50,10 +50,15 @@ export class AcquireService {
       for (const job of jobs) {
         if (job.state === 'done' && !this.completedJobIds.has(job.id)) {
           this.completedJobIds.add(job.id);
-          this.toasts.show({
-            message: 'Your track has been added to the library.',
-            kind: 'success',
-          });
+          // A 'done' job can still carry an `error`: a partial-download
+          // warning (e.g. spotdl only matching some tracks) rides in the same
+          // field as a hard failure so this can't read as an unqualified
+          // success when it wasn't one.
+          this.toasts.show(
+            job.error
+              ? { message: job.error, kind: 'error' }
+              : { message: 'Your track has been added to the library.', kind: 'success' },
+          );
         }
       }
       this.jobs.set(jobs);

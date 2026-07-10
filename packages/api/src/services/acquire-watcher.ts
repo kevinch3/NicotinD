@@ -94,6 +94,17 @@ export class AcquireWatcher {
    * plugin's binary is missing.
    */
   async submit(url: string, label?: string): Promise<string> {
+    // Idempotency guard mirroring the slskd hunt path's "one album = one
+    // download": without this, every re-paste/re-click of a URL whose job is
+    // still in flight queues a brand-new row, so the list grows unbounded for
+    // the same link instead of just tracking the one job already working on it.
+    const existing = this.db
+      .query<{ id: string }, [string]>(
+        `SELECT id FROM acquire_jobs WHERE url = ? AND state IN ('queued', 'running') LIMIT 1`,
+      )
+      .get(url);
+    if (existing) return existing.id;
+
     const plugin = this.pluginForUrl(url);
     if (!plugin?.resolve) throw new NoAcquisitionPluginError(url);
     if (!(await plugin.isAvailable())) throw new PluginUnavailableError(plugin.manifest.id);
@@ -122,9 +133,19 @@ export class AcquireWatcher {
         this.setStage(id, 'error');
         return;
       }
+      // The plugin's return value only carries the files that landed, not the
+      // total the source reported (e.g. spotdl's "Found 16 songs"). Compare
+      // against the last progress the plugin emitted so a truncated result
+      // (1 of 16) still surfaces a warning instead of silently reading as a
+      // full success — this is what was landing as an unexplained "Done".
+      const progress = this.getProgress(id);
+      const partialWarning =
+        progress && progress.total > paths.length
+          ? `Downloaded ${paths.length} of ${progress.total} tracks — the rest failed or were skipped.`
+          : undefined;
       // Keep state='running' through ingest — only mark done once the full
       // pipeline (organize → scan → enrich) completes.
-      await this.ingest(id, plugin.manifest.id, url, paths);
+      await this.ingest(id, plugin.manifest.id, url, paths, partialWarning);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       log.warn({ id, err: msg }, 'Acquire job failed');
@@ -148,6 +169,7 @@ export class AcquireWatcher {
     pluginId: string,
     url: string,
     paths: string[],
+    partialWarning?: string,
   ): Promise<void> {
     if (paths.length === 0) {
       log.warn({ id }, 'Acquire job produced no audio files');
@@ -186,7 +208,11 @@ export class AcquireWatcher {
         if (this.options.enrichSingles) await this.options.enrichSingles(relPaths);
       }
       this.setStage(id, 'done');
-      this.updateState(id, 'done');
+      // A partial-download warning rides in the (state='done') job's `error`
+      // field — it's still a success worth keeping (files did land), but the
+      // user needs to see *why* the track count is short instead of it
+      // reading as a clean, unqualified "Done".
+      this.updateState(id, 'done', partialWarning);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       log.error({ id, err: msg }, 'Organize/scan after acquire failed');
@@ -260,6 +286,21 @@ export class AcquireWatcher {
       this.db.run(`UPDATE acquire_jobs SET stage = ? WHERE id = ?`, [stage, jobId]);
     } catch (err) {
       log.warn({ jobId, err }, 'Failed to update acquire_jobs stage');
+    }
+  }
+
+  /** Read the last progress the plugin emitted for this job, if any. */
+  private getProgress(jobId: string): { done: number; total: number } | null {
+    const row = this.db
+      .query<{ progress: string | null }, [string]>(
+        `SELECT progress FROM acquire_jobs WHERE id = ?`,
+      )
+      .get(jobId);
+    if (!row?.progress) return null;
+    try {
+      return JSON.parse(row.progress);
+    } catch {
+      return null;
     }
   }
 

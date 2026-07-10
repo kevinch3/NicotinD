@@ -143,6 +143,10 @@
               <p class="truncate text-xs text-red-400 mt-0.5">
                 {{ linkJob()?.error ?? 'Download failed' }}
               </p>
+            } @else if (linkJob()?.state === 'done' && linkJob()?.error) {
+              <p class="truncate text-xs text-amber-400 mt-0.5" [title]="linkJob()?.error ?? ''">
+                {{ linkJob()?.error }}
+              </p>
             } @else if (linkSubmitError()) {
               <p class="truncate text-xs text-red-400 mt-0.5">{{ linkSubmitError() }}</p>
             }
@@ -161,6 +165,15 @@
                 >
                   Added to library ✓ · Open
                 </a>
+                @if (job.error) {
+                  <button
+                    (click)="retryLinkJob()"
+                    data-testid="link-intent-retry"
+                    class="shrink-0 px-3 py-1.5 rounded-md text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-200"
+                  >
+                    Retry
+                  </button>
+                }
               }
               @case ('failed') {
                 <button

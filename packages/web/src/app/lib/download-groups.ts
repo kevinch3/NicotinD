@@ -212,7 +212,10 @@ export function acquireJobToDownloadItem(job: AcquireJob): DownloadItem {
         ? Math.round((progress.done / progress.total) * 100)
         : undefined,
     error: job.error ?? undefined,
-    canRetry: job.state === 'failed',
+    // A 'done' job can still carry an error: a partial-download warning (e.g.
+    // "1 of 16 tracks") rides in the same field as a hard failure so the row
+    // can offer Retry instead of reading as an unqualified success.
+    canRetry: job.state === 'failed' || (job.state === 'done' && !!job.error),
     canCancel: job.state === 'running' || job.state === 'queued',
     canRemove: job.state === 'done' || job.state === 'failed',
   };
