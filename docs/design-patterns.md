@@ -20,6 +20,7 @@ These are documented in full elsewhere; `CLAUDE.md` links straight to them.
 | Metadata optimization; User-driven metadata fix (+ cover picker) | [metadata-optimize.md](metadata-optimize.md) |
 | Windowed library processing | [library-processing.md](library-processing.md) |
 | Remote playback (cast) | [remote-playback.md](remote-playback.md) |
+| Hardware cast (Chromecast + DLNA) | [cast-integration.md](cast-integration.md) |
 | Release-type model; Duplicate prevention; Lossless→Opus; Album deletion; Untracked downloads; URL acquisition; Unified downloads feed; Download list metadata; Acquisition provenance | [download-pipeline.md](download-pipeline.md) |
 | Native playlists (+ sharing & link previews) | [web-ui.md](web-ui.md) |
 | Curated playlists | [curated-playlists.md](curated-playlists.md) |
