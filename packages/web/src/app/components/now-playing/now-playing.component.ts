@@ -6,7 +6,7 @@ import { RemotePlaybackService } from '../../services/remote-playback.service';
 import { PlaybackWsService } from '../../services/playback-ws.service';
 import { DeviceSwitcherComponent } from '../device-switcher/device-switcher.component';
 import { TrackContextMenuComponent } from '../track-context-menu/track-context-menu.component';
-import { TrackInfoSheetComponent } from '../track-info-sheet/track-info-sheet.component';
+import { TrackInfoService } from '../../services/track-info.service';
 import { resolveArtistTarget } from '../../lib/route-utils';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import { parseLrc, findActiveLine } from '../../lib/lrc-parser';
@@ -37,7 +37,6 @@ function formatTime(s: number): string {
   imports: [
     DeviceSwitcherComponent,
     TrackContextMenuComponent,
-    TrackInfoSheetComponent,
     SeekBarComponent,
     CoverArtComponent,
     ArtistLinksComponent,
@@ -53,12 +52,10 @@ export class NowPlayingComponent {
   private api = inject(LibraryApiService);
   private scrollLock = inject(ScrollLockService);
   private server = inject(ServerConfigService);
+  readonly trackInfo = inject(TrackInfoService);
 
   // Context menu state
   readonly contextMenu = signal<{ x: number; y: number } | null>(null);
-
-  // Track info sheet state
-  readonly trackInfoSongId = signal<string | null>(null);
 
   // Lyrics view state. Lyrics load lazily on first open and reload when the
   // track changes while the panel is open.
@@ -346,7 +343,14 @@ export class NowPlayingComponent {
 
   onOpenTrackInfo(songId: string): void {
     this.contextMenu.set(null);
-    this.trackInfoSongId.set(songId);
+    const t = this.player.currentTrack();
+    this.trackInfo.open({
+      songId,
+      title: t?.title,
+      artist: t?.artist,
+      album: t?.album,
+      coverArt: t?.coverArt ?? null,
+    });
   }
 
   unblockAutoplay(): void {

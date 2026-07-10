@@ -19,6 +19,7 @@ import { WelcomeBannerComponent } from '../welcome-banner/welcome-banner.compone
 import { BottomNavComponent } from '../bottom-nav/bottom-nav.component';
 import { AddToPlaylistComponent } from '../add-to-playlist/add-to-playlist.component';
 import { ConfirmHostComponent } from '../confirm-host/confirm-host.component';
+import { TrackInfoHostComponent } from '../track-info-host/track-info-host.component';
 import { ChangelogModalComponent } from '../changelog-modal/changelog-modal.component';
 
 interface NavItem {
@@ -50,6 +51,7 @@ const ONLINE_ONLY_ROUTES = new Set(['/', '/library']);
     AddToPlaylistComponent,
     ConfirmHostComponent,
     ChangelogModalComponent,
+    TrackInfoHostComponent,
   ],
   templateUrl: './layout.component.html',
 })
