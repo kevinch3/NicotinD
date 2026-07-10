@@ -11,6 +11,7 @@ import { AuthService } from '../../services/auth.service';
 import { PlayerService } from '../../services/player.service';
 import { PlaylistService } from '../../services/playlist.service';
 import { ListControlsService } from '../../services/list-controls.service';
+import { TransferService } from '../../services/transfer.service';
 
 const ALBUM: AlbumDetail = {
   id: 'a1',
@@ -93,6 +94,18 @@ describe('AlbumDetailComponent — bulk delete', () => {
     await component.confirmCallback()!();
 
     expect(component.deleteError()).toContain('1 of 2');
+  });
+});
+
+describe('AlbumDetailComponent — deletedSongIds filter', () => {
+  it('drops a row whose id is marked deleted elsewhere in the app', () => {
+    const { component } = setup();
+    component.selectedAlbum.set(ALBUM);
+    expect(component.detailSongs().map((s) => s.id)).toEqual(['s1', 's2', 's3']);
+
+    TestBed.inject(TransferService).deletedSongIds.set(new Set(['s2']));
+
+    expect(component.detailSongs().map((s) => s.id)).toEqual(['s1', 's3']);
   });
 });
 

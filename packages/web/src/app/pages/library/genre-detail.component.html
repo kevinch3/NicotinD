@@ -65,7 +65,7 @@
         [offline]="preserve.isPreserved(song.id)"
         [selectable]="selection.active()"
         [selected]="selection.isSelected(song.id)"
-        [actions]="genreTrackActions(song)"
+        [actions]="songMenu.build(song, { removable: true })"
         (play)="player.play(toTrackFn(song))"
         (selectedChange)="selection.toggleRange(song.id, genreTrackIds(), $event.shiftKey)"
       />

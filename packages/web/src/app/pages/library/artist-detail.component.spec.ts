@@ -8,6 +8,7 @@ import { LibraryApiService } from '../../services/api/library-api.service';
 import { DownloadsApiService } from '../../services/api/downloads-api.service';
 import { AuthService } from '../../services/auth.service';
 import { PlayerService } from '../../services/player.service';
+import { TransferService } from '../../services/transfer.service';
 
 const ARTIST = { id: 'ar1', name: 'Natiruts', albumCount: 2, coverArt: 'ar1' };
 const ALBUMS = [
@@ -374,28 +375,28 @@ describe('ArtistDetailComponent — image override', () => {
 });
 
 describe('ArtistDetailComponent — delete (admin only)', () => {
-  it('exposes a destructive "Remove" track action for admins', async () => {
+  it('exposes a destructive "Remove from library" track action for admins', async () => {
     const { component } = setup('admin');
     await fixture_stable();
     component.setTab('songs');
     await flush();
 
     const action = component
-      .artistTrackActions(component.songs()[0])
-      .find((a) => a.label === 'Remove');
+      .songMenu.build(component.songs()[0], { hideGoToArtist: true, removable: true })
+      .find((a) => a.label === 'Remove from library');
     expect(action).toBeDefined();
     expect(action!.destructive).toBe(true);
   });
 
-  it('hides the "Remove" track action from non-admins', async () => {
+  it('hides the "Remove from library" track action from non-admins', async () => {
     const { component } = setup('user');
     await fixture_stable();
     component.setTab('songs');
     await flush();
 
     const action = component
-      .artistTrackActions(component.songs()[0])
-      .find((a) => a.label === 'Remove');
+      .songMenu.build(component.songs()[0], { hideGoToArtist: true, removable: true })
+      .find((a) => a.label === 'Remove from library');
     expect(action).toBeUndefined();
   });
 
@@ -450,6 +451,21 @@ describe('ArtistDetailComponent — delete (admin only)', () => {
 
     expect(component.confirmCallback()).toBeNull();
     expect(deleteSongs).not.toHaveBeenCalled();
+  });
+});
+
+describe('ArtistDetailComponent — visibleSongs filters deletedSongIds', () => {
+  it('excludes a song whose id was deleted elsewhere in the app', async () => {
+    const { component } = setup();
+    await fixture_stable();
+    component.setTab('songs');
+    await flush();
+
+    expect(component.visibleSongs().map((s) => s.id)).toEqual(['s1', 's2']);
+
+    TestBed.inject(TransferService).deletedSongIds.set(new Set(['s1']));
+
+    expect(component.visibleSongs().map((s) => s.id)).toEqual(['s2']);
   });
 });
 

@@ -130,7 +130,7 @@
           [offline]="preserve.isPreserved(song.id)"
           [selectable]="selection.active()"
           [selected]="selection.isSelected(song.id)"
-          [actions]="albumTrackActions(song)"
+          [actions]="songMenu.build(toSong(song), { hideGoToAlbum: true, removable: true })"
           (play)="playSong(song)"
           (selectedChange)="selection.toggleRange(song.id, albumOrderedIds(), $event.shiftKey)"
         />

@@ -8,6 +8,7 @@ import { PlaylistDetailComponent } from './playlist-detail.component';
 import { AuthService } from '../../services/auth.service';
 import { PlayerService } from '../../services/player.service';
 import { PlaylistService } from '../../services/playlist.service';
+import { TransferService } from '../../services/transfer.service';
 import type { PlaylistDetail, Song } from '../../services/api/api-types';
 
 const SONG = (id: string): Song => ({
@@ -90,6 +91,19 @@ describe('PlaylistDetailComponent — bulk remove from playlist', () => {
     await component.removeSelectedFromPlaylist();
 
     expect(removeSong).not.toHaveBeenCalled();
+  });
+});
+
+describe('PlaylistDetailComponent — visibleSongs filters deletedSongIds', () => {
+  it('excludes a song whose id was deleted elsewhere in the app', async () => {
+    const { component } = setup();
+    await Promise.resolve(); // ngOnInit get()
+
+    expect(component.visibleSongs().map((s) => s.id)).toEqual(['s1', 's2', 's3', 's4']);
+
+    TestBed.inject(TransferService).deletedSongIds.set(new Set(['s3']));
+
+    expect(component.visibleSongs().map((s) => s.id)).toEqual(['s1', 's2', 's4']);
   });
 });
 
