@@ -9,7 +9,7 @@ import {
   effect,
   viewChild,
 } from '@angular/core';
-import { Router, ActivatedRoute, RouterLink } from '@angular/router';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { createRenderWindow } from '../../lib/render-window';
 import { firstValueFrom } from 'rxjs';
 import { LibraryApiService } from '../../services/api/library-api.service';
@@ -17,18 +17,15 @@ import type { Song } from '../../services/api/api-types';
 import { AuthService } from '../../services/auth.service';
 import { PlayerService, type Track } from '../../services/player.service';
 import { TransferService } from '../../services/transfer.service';
-import {
-  TrackRowComponent,
-  type TrackAction,
-} from '../../components/track-row/track-row.component';
+import { TrackRowComponent } from '../../components/track-row/track-row.component';
 import { ConfirmDialogComponent } from '../../components/confirm-dialog/confirm-dialog.component';
-import { toTrack, offlineTrackAction, addToPlaylistAction } from '../../lib/track-utils';
-import { resolveArtistRoute } from '../../lib/route-utils';
+import { toTrack } from '../../lib/track-utils';
 import { createSelection } from '../../lib/selection';
 import { SelectionBarComponent } from '../../components/selection-bar/selection-bar.component';
 import { IconComponent } from '../../components/icon/icon.component';
 import { PreserveService } from '../../services/preserve.service';
 import { PlaylistService } from '../../services/playlist.service';
+import { SongMenuService } from '../../services/song-menu.service';
 
 @Component({
   selector: 'app-genre-detail',
@@ -48,7 +45,7 @@ export class GenreDetailComponent implements OnInit, OnDestroy {
   private transferService = inject(TransferService);
   readonly preserve = inject(PreserveService);
   private playlists = inject(PlaylistService);
-  private router = inject(Router);
+  readonly songMenu = inject(SongMenuService);
   private route = inject(ActivatedRoute);
 
   readonly loadingGenreSongs = signal(true);
@@ -195,39 +192,4 @@ export class GenreDetailComponent implements OnInit, OnDestroy {
     }
   }
 
-  genreTrackActions(song: Song): TrackAction[] {
-    return [
-      offlineTrackAction(this.preserve, toTrack(song)),
-      addToPlaylistAction(this.playlists, song.id),
-      ...(song.artistId
-        ? [
-            {
-              label: 'Go to artist',
-              action: () => {
-                void this.router.navigate(resolveArtistRoute(song.artistId));
-              },
-            },
-          ]
-        : []),
-      ...(this.auth.role() === 'admin'
-        ? [
-            {
-              label: 'Remove',
-              destructive: true,
-              action: () =>
-                this.askConfirm(`Remove "${song.title}" from library?`, async () => {
-                  this.deleteError.set(null);
-                  try {
-                    await firstValueFrom(this.api.deleteSongs([song.id]));
-                    this.transferService.addDeletedIds([song.id]);
-                    this.genreSongs.update((s) => s.filter((x) => x.id !== song.id));
-                  } catch {
-                    this.deleteError.set(`Failed to remove "${song.title}".`);
-                  }
-                }),
-            },
-          ]
-        : []),
-    ];
-  }
 }

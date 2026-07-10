@@ -8,6 +8,7 @@ export interface Track {
   artistId?: string;
   artists?: Array<{ id: string; name: string; role: 'primary' | 'featuring' }>;
   album?: string;
+  albumId?: string;
   coverArt?: string;
   duration?: number;
   bitRate?: number;
@@ -193,6 +194,18 @@ export class PlayerService {
 
   addToQueue(track: Track): void {
     this.queue.update((q) => [...q, track]);
+  }
+
+  /** Insert a track to play immediately after the current one. */
+  queueNext(track: Track): void {
+    this.queue.update((q) => [track, ...q]);
+  }
+
+  /** Start radio seeded on a specific song: play it, then enable radio (which
+   * replenishes from the current track). */
+  startRadio(track: Track): void {
+    this.play(track);
+    if (!this.radio()) this.toggleRadio();
   }
 
   playNext(): void {

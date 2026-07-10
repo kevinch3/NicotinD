@@ -18,9 +18,8 @@ import { AcquireService, type AcquireJob } from '../../services/acquire.service'
 import { WatchlistService } from '../../services/watchlist.service';
 import { PluginService } from '../../services/plugin.service';
 import { PlayerService } from '../../services/player.service';
-import { PlaylistService } from '../../services/playlist.service';
 import { AutoHuntService } from '../../services/auto-hunt.service';
-import type { TrackAction } from '../../components/track-row/track-row.component';
+import { SongMenuService } from '../../services/song-menu.service';
 import {
   getSingleDownloadLabel,
   getFolderDownloadLabel,
@@ -49,7 +48,7 @@ import { FolderBrowserComponent } from '../../components/folder-browser/folder-b
 import { AlbumHuntModalComponent } from '../../components/album-hunt-modal/album-hunt-modal.component';
 import { TrackRowComponent } from '../../components/track-row/track-row.component';
 import { SourceChipComponent } from '../../components/source-chip/source-chip.component';
-import { toTrack, addToPlaylistAction } from '../../lib/track-utils';
+import { toTrack } from '../../lib/track-utils';
 import { extractSharedUrl } from '../../lib/share-url';
 import { httpErrorMessage, httpErrorCode } from '../../lib/http-error';
 import {
@@ -222,8 +221,8 @@ export class SearchComponent implements OnInit, OnDestroy {
   readonly watchlist = inject(WatchlistService);
   readonly plugins = inject(PluginService);
   private player = inject(PlayerService);
-  private playlists = inject(PlaylistService);
   private autoHunt = inject(AutoHuntService);
+  readonly songMenu = inject(SongMenuService);
 
   readonly btnClasses = BUTTON_CLASSES;
   readonly formatDuration = formatDuration;
@@ -603,10 +602,6 @@ export class SearchComponent implements OnInit, OnDestroy {
     const tracks = this.librarySongs().map((s) => toTrack(s));
     if (!tracks.length) return;
     this.player.playWithContext(tracks, index, { type: 'adhoc', name: 'Search' });
-  }
-
-  songActions(songId: string): TrackAction[] {
-    return [addToPlaylistAction(this.playlists, songId)];
   }
 
   toTrack = toTrack;

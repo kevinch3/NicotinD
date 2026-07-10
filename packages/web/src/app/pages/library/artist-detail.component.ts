@@ -24,10 +24,11 @@ import { PlayerService } from '../../services/player.service';
 import { PlaylistService } from '../../services/playlist.service';
 import { PreserveService } from '../../services/preserve.service';
 import { TransferService } from '../../services/transfer.service';
+import { SongMenuService } from '../../services/song-menu.service';
 import { AlbumHuntModalComponent } from '../../components/album-hunt-modal/album-hunt-modal.component';
 import { CoverArtComponent } from '../../components/cover-art/cover-art.component';
 import { IconComponent } from '../../components/icon/icon.component';
-import { TrackRowComponent, type TrackAction } from '../../components/track-row/track-row.component';
+import { TrackRowComponent } from '../../components/track-row/track-row.component';
 import { SelectionBarComponent } from '../../components/selection-bar/selection-bar.component';
 import { MenuPanelComponent } from '../../components/menu-panel/menu-panel.component';
 import { LibraryFilterPanelComponent } from '../../components/library-filter-panel/library-filter-panel.component';
@@ -40,7 +41,7 @@ import {
   type LibraryFilter,
 } from '@nicotind/core';
 import { createSelection } from '../../lib/selection';
-import { toTrack, offlineTrackAction, addToPlaylistAction } from '../../lib/track-utils';
+import { toTrack } from '../../lib/track-utils';
 import { appendUnique } from '../../lib/append-unique';
 import { resolveAlbumRoute } from '../../lib/route-utils';
 import { NavigationService } from '../../services/navigation.service';
@@ -76,6 +77,7 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
   private playlists = inject(PlaylistService);
   readonly preserve = inject(PreserveService);
   private transferService = inject(TransferService);
+  readonly songMenu = inject(SongMenuService);
   private nav = inject(NavigationService);
   protected autoHunt = inject(AutoHuntService);
 
@@ -190,6 +192,11 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
 
   // ─── Songs tab (lazy, filtered, multi-select) ─────────────────────
   readonly songs = signal<Song[]>([]);
+  /** Rendered/rows list — excludes songs deleted (this session) elsewhere in the app. */
+  readonly visibleSongs = computed(() => {
+    const deleted = this.transferService.deletedSongIds();
+    return this.songs().filter((s) => !deleted.has(s.id));
+  });
   readonly songsLoaded = signal(false);
   readonly songsLoadingMore = signal(false);
   readonly songsDone = signal(false);
@@ -222,9 +229,9 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
   private songsObserver?: IntersectionObserver;
 
   readonly selection = createSelection();
-  readonly songOrderedIds = computed(() => this.songs().map((s) => s.id));
+  readonly songOrderedIds = computed(() => this.visibleSongs().map((s) => s.id));
   private selectedSongs(): Song[] {
-    return this.songs().filter((s) => this.selection.isSelected(s.id));
+    return this.visibleSongs().filter((s) => this.selection.isSelected(s.id));
   }
 
   readonly sortOptions: { value: SongSort; label: string }[] = [
@@ -290,7 +297,7 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
   }
 
   playSong(index: number): void {
-    const tracks = this.songs().map((s) => toTrack(s));
+    const tracks = this.visibleSongs().map((s) => toTrack(s));
     if (!tracks.length) return;
     this.player.playWithContext(tracks, index, {
       type: 'adhoc',
@@ -334,7 +341,7 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
   }
 
   selectAllSongs(): void {
-    this.selection.selectAll(this.songs().map((s) => s.id));
+    this.selection.selectAll(this.visibleSongs().map((s) => s.id));
   }
 
   // ─── Delete (admin only) ──────────────────────────────────────────
@@ -390,32 +397,6 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
         }
       },
     );
-  }
-
-  artistTrackActions(song: Song): TrackAction[] {
-    return [
-      offlineTrackAction(this.preserve, toTrack(song)),
-      addToPlaylistAction(this.playlists, song.id),
-      ...(this.auth.role() === 'admin'
-        ? [
-            {
-              label: 'Remove',
-              destructive: true,
-              action: () =>
-                this.askConfirm(`Remove "${song.title}" from library?`, async () => {
-                  this.deleteError.set(null);
-                  try {
-                    await firstValueFrom(this.api.deleteSongs([song.id]));
-                    this.transferService.addDeletedIds([song.id]);
-                    this.pruneSongs([song.id]);
-                  } catch {
-                    this.deleteError.set(`Failed to remove "${song.title}".`);
-                  }
-                }),
-            },
-          ]
-        : []),
-    ];
   }
 
   readonly discography = signal<DiscographyResult | null>(null);

@@ -23,12 +23,15 @@ export class SelectionBarComponent {
   readonly canPlay = input(false);
   readonly canQueue = input(false);
   readonly canDownload = input(false);
+  /** Show a "Save offline" bulk action — distinct from `canDownload` (network download). */
+  readonly canPreserve = input(false);
 
   readonly selectAll = output<void>();
   readonly play = output<void>();
   readonly queue = output<void>();
   readonly add = output<void>();
   readonly download = output<void>();
+  readonly preserve = output<void>();
   readonly deleteSelected = output<void>();
   readonly cancel = output<void>();
 }

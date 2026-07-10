@@ -4,17 +4,16 @@ import { HttpClient } from '@angular/common/http';
 import { PlayerService } from '../../services/player.service';
 import { PlaylistService } from '../../services/playlist.service';
 import { AuthService } from '../../services/auth.service';
-import {
-  TrackRowComponent,
-  type TrackAction,
-} from '../../components/track-row/track-row.component';
+import { TrackRowComponent } from '../../components/track-row/track-row.component';
 import { ConfirmDialogComponent } from '../../components/confirm-dialog/confirm-dialog.component';
-import { toTrack, offlineTrackAction, addToPlaylistAction } from '../../lib/track-utils';
+import { toTrack } from '../../lib/track-utils';
 import { createSelection } from '../../lib/selection';
 import { SelectionBarComponent } from '../../components/selection-bar/selection-bar.component';
 import { IconComponent } from '../../components/icon/icon.component';
 import { NavigationService } from '../../services/navigation.service';
 import { PreserveService } from '../../services/preserve.service';
+import { TransferService } from '../../services/transfer.service';
+import { SongMenuService } from '../../services/song-menu.service';
 import type { PlaylistDetail } from '../../services/api/api-types';
 
 @Component({
@@ -31,6 +30,8 @@ export class PlaylistDetailComponent implements OnInit {
   private playlists = inject(PlaylistService);
   private nav = inject(NavigationService);
   readonly preserve = inject(PreserveService);
+  private transferService = inject(TransferService);
+  readonly songMenu = inject(SongMenuService);
   private http = inject(HttpClient);
 
   readonly loading = signal(true);
@@ -40,6 +41,12 @@ export class PlaylistDetailComponent implements OnInit {
 
   /** Curated (system) playlists are global + read-only: no edit/remove/delete. */
   readonly isCurated = computed(() => this.playlist()?.kind === 'curated');
+
+  /** Rendered/rows list — excludes songs deleted (this session) elsewhere in the app. */
+  readonly visibleSongs = computed(() => {
+    const deleted = this.transferService.deletedSongIds();
+    return (this.playlist()?.songs ?? []).filter((s) => !deleted.has(s.id));
+  });
 
   private id = '';
 
@@ -64,7 +71,7 @@ export class PlaylistDetailComponent implements OnInit {
   }
 
   playFrom(index: number): void {
-    const songs = this.playlist()?.songs ?? [];
+    const songs = this.visibleSongs();
     if (!songs.length) return;
     const tracks = songs.map((s) => toTrack(s));
     this.player.playWithContext(tracks, index, {
@@ -89,7 +96,7 @@ export class PlaylistDetailComponent implements OnInit {
   readonly selection = createSelection();
 
   selectAllSongs(): void {
-    this.selection.selectAll((this.playlist()?.songs ?? []).map((s) => s.id));
+    this.selection.selectAll(this.visibleSongs().map((s) => s.id));
   }
 
   addSelectedToPlaylist(): void {
@@ -99,7 +106,7 @@ export class PlaylistDetailComponent implements OnInit {
     this.selection.exit();
   }
 
-  readonly playlistOrderedIds = computed(() => (this.playlist()?.songs ?? []).map((s) => s.id));
+  readonly playlistOrderedIds = computed(() => this.visibleSongs().map((s) => s.id));
 
   async removeSelectedFromPlaylist(): Promise<void> {
     const ids = [...this.selection.ids()];
@@ -119,34 +126,24 @@ export class PlaylistDetailComponent implements OnInit {
   }
 
   // ─── Offline download ─────────────────────────────────────────────
-  readonly playlistTrackIds = computed(() => (this.playlist()?.songs ?? []).map((s) => s.id));
+  readonly playlistTrackIds = computed(() => this.visibleSongs().map((s) => s.id));
   readonly playlistDownloaded = computed(() =>
     this.preserve.isCollectionPreserved(this.playlistTrackIds()),
   );
 
   toggleDownload(): void {
     const pl = this.playlist();
-    if (!pl?.songs?.length) return;
+    const songs = this.visibleSongs();
+    if (!pl || !songs.length) return;
     if (this.playlistDownloaded()) {
       void this.preserve.removeMany(this.playlistTrackIds());
     } else {
       void this.preserve.preserveCollection(
         pl.id,
         pl.name,
-        pl.songs.map((s) => toTrack(s)),
+        songs.map((s) => toTrack(s)),
       );
     }
-  }
-
-  songActions(songId: string): TrackAction[] {
-    const songs = this.playlist()?.songs ?? [];
-    const song = songs.find((s) => s.id === songId);
-    return song
-      ? [
-          offlineTrackAction(this.preserve, toTrack(song)),
-          addToPlaylistAction(this.playlists, song.id),
-        ]
-      : [];
   }
 
   // Mint a read-only share link (mirrors album sharing). Curated playlists are

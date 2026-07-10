@@ -239,17 +239,6 @@
           />
         }
 
-        @if (trackInfoSongId(); as infoId) {
-          <app-track-info-sheet
-            [songId]="infoId"
-            [displayTitle]="track.title"
-            [displayArtist]="track.artist"
-            [displayAlbum]="track.album ?? ''"
-            [displayCoverArt]="track.coverArt ?? null"
-            (close)="trackInfoSongId.set(null)"
-          />
-        }
-
         <!-- Lyrics panel — karaoke-styled synced view, replaces the queue while open -->
         @if (lyricsOpen() && !karaokeFullscreen()) {
           <div class="flex-1 min-h-0 flex flex-col overflow-hidden relative" data-testid="now-playing-lyrics">

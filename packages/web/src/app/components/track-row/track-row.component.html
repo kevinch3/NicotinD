@@ -65,6 +65,7 @@
         <div class="relative flex-shrink-0">
           <button
             type="button"
+            data-testid="track-row-menu-toggle"
             class="p-1 text-theme-muted group-hover:text-theme-secondary hover:!text-theme-primary transition"
             title="More options"
             (click)="toggleMenu($event)">
@@ -74,10 +75,12 @@
           </button>
           @if (menuOpen()) {
             <div class="absolute right-0 top-7 z-50 bg-theme-surface border border-theme rounded-xl shadow-xl py-1 min-w-40"
+                 data-testid="track-row-menu"
                  (click)="$event.stopPropagation()">
               @for (action of actions(); track action.label) {
                 <button
                   type="button"
+                  [attr.data-testid]="'track-action-' + action.label"
                   class="w-full text-left px-4 py-2 text-sm transition-colors hover:bg-theme-hover"
                   [class.text-red-400]="action.destructive"
                   [class.text-theme-secondary]="!action.destructive"

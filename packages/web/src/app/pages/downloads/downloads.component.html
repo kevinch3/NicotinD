@@ -16,7 +16,7 @@
           @if (activeTab() === 'recent' && recentSongs().length > 0) {
             <button (click)="handlePlayAll()"
               class="px-4 py-1.5 rounded-lg bg-theme-surface-2 text-theme-secondary text-sm font-medium hover:bg-theme-hover transition">
-              {{ selected().size > 0 ? 'Play ' + selected().size + ' selected' : 'Play all' }}
+              {{ selection.count() > 0 ? 'Play ' + selection.count() + ' selected' : 'Play all' }}
             </button>
           }
         </div>
@@ -110,7 +110,7 @@
                   </button>
                 }
                 <button (click)="selectAllOffline()" class="text-xs text-theme-muted hover:text-theme-secondary transition">
-                  {{ offlineControls.filtered().every(t => offlineSelected().has(t.id)) ? 'Deselect all' : 'Select all' }}
+                  {{ offlineControls.filtered().every(t => offlineSelection.isSelected(t.id)) ? 'Deselect all' : 'Select all' }}
                 </button>
               </div>
             </div>
@@ -139,9 +139,9 @@
             />
 
             <!-- Bulk action bar -->
-            @if (offlineSelected().size > 0) {
+            @if (offlineSelection.count() > 0) {
               <div class="flex flex-wrap items-center gap-2 md:gap-3 px-3 md:px-4 py-2.5 mb-3 rounded-lg bg-theme-surface-2/60 border border-theme">
-                <span class="text-sm text-theme-secondary font-medium">{{ offlineSelected().size }} selected</span>
+                <span class="text-sm text-theme-secondary font-medium">{{ offlineSelection.count() }} selected</span>
                 <div class="flex-1 min-w-0"></div>
 
                 <button (click)="removeOfflineTracks(offlineSelectedArray())"
@@ -157,7 +157,7 @@
                 <div class="flex items-center gap-3 px-1.5 md:px-4 py-2.5 rounded-lg hover:bg-theme-surface-2/30 transition group">
                   <!-- Checkbox -->
                   <input type="checkbox"
-                    [checked]="offlineSelected().has(track.id)"
+                    [checked]="offlineSelection.isSelected(track.id)"
                     (change)="toggleOfflineSelect(track.id)"
                     class="w-4 h-4 rounded flex-shrink-0 cursor-pointer accent-emerald-500" />
                   <!-- Track info -->
@@ -239,14 +239,14 @@
           <div class="flex items-center gap-2">
             <h2 data-testid="recent-heading" class="text-xs font-semibold uppercase tracking-wider text-theme-muted">
               Recently Added
-              @if (recentSongs().length > 0) {
-                <span class="font-normal normal-case ml-1.5 text-theme-muted">({{ recentSongs().length }})</span>
+              @if (visibleRecent().length > 0) {
+                <span class="font-normal normal-case ml-1.5 text-theme-muted">({{ visibleRecent().length }})</span>
               }
             </h2>
           </div>
-          @if (recentSongs().length > 0) {
+          @if (visibleRecent().length > 0) {
             <button (click)="selectAll()" class="text-xs text-theme-muted hover:text-theme-secondary transition">
-              {{ selected().size === recentControls.filtered().length ? 'Deselect all' : 'Select all' }}
+              {{ selection.count() === recentOrderedIds().length ? 'Deselect all' : 'Select all' }}
             </button>
           }
         </div>
@@ -263,27 +263,31 @@
         />
 
         <!-- Bulk action bar -->
-        @if (selected().size > 0) {
-          <div class="flex flex-wrap items-center gap-2 md:gap-3 px-3 md:px-4 py-2.5 mb-3 rounded-lg bg-theme-surface-2/60 border border-theme">
-            <span class="text-sm text-theme-secondary font-medium">{{ selected().size }} selected</span>
-            <div class="flex-1 min-w-0"></div>
-
-            @if (auth.role() === 'admin') {
-              <button (click)="confirmDeleteSelected()"
-                class="px-3 py-1.5 rounded-md text-xs font-medium bg-theme-hover text-status-error hover:bg-theme-hover transition">
-                Delete
-              </button>
-            }
-          </div>
+        @if (selection.count() > 0) {
+          <app-selection-bar
+            [count]="selection.count()"
+            [total]="recentOrderedIds().length"
+            [canDelete]="auth.role() === 'admin'"
+            [canPlay]="true"
+            [canQueue]="true"
+            [canPreserve]="true"
+            (selectAll)="selectAll()"
+            (play)="playSelectedRecent()"
+            (queue)="queueSelectedRecent()"
+            (add)="addSelectedRecentToPlaylist()"
+            (preserve)="preserveSelectedRecent()"
+            (deleteSelected)="confirmDeleteSelected()"
+            (cancel)="selection.exit()"
+          />
         }
 
         <!-- Song list -->
-        @if (recentSongs().length === 0 && groups().length === 0) {
+        @if (visibleRecent().length === 0 && groups().length === 0) {
           <p class="text-center text-theme-muted text-sm py-20">
             No recent downloads. Search for music and start downloading!
           </p>
         }
-        @if (recentSongs().length === 0 && groups().length > 0) {
+        @if (visibleRecent().length === 0 && groups().length > 0) {
           <p class="text-center text-theme-muted text-sm py-12">
             New songs will appear here after downloads complete and library rescans.
           </p>
@@ -316,13 +320,13 @@
         <!-- Song row template -->
         <ng-template #songRow let-song>
           <div [class]="'flex items-center gap-1.5 md:gap-3 px-1.5 md:px-4 py-2.5 rounded-lg transition group '
-            + (isSelected(song.id) ? 'bg-theme-surface-2/60 border border-theme' : 'hover:bg-theme-surface-2/30 border border-transparent')
+            + (selection.isSelected(song.id) ? 'bg-theme-surface-2/60 border border-theme' : 'hover:bg-theme-surface-2/30 border border-transparent')
             + (deleting().has(song.id) ? ' opacity-40 pointer-events-none' : '')">
             <!-- Checkbox -->
-            <button (click)="toggleSelect(song.id, $event)"
+            <button (click)="selection.toggleRange(song.id, recentOrderedIds(), $event.shiftKey)"
               [class]="'w-4.5 h-4.5 rounded border flex-shrink-0 flex items-center justify-center transition '
-                + (isSelected(song.id) ? 'bg-theme-accent border-theme-accent' : 'border-theme hover:border-theme-secondary')">
-              @if (isSelected(song.id)) {
+                + (selection.isSelected(song.id) ? 'bg-theme-accent border-theme-accent' : 'border-theme hover:border-theme-secondary')">
+              @if (selection.isSelected(song.id)) {
                 <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
                   <polyline points="20 6 9 17 4 12" />
                 </svg>
@@ -370,7 +374,7 @@
               @if (songMenuId() === song.id) {
                 <div class="absolute right-0 top-7 z-50 bg-theme-surface border border-theme rounded-xl shadow-xl py-1 min-w-40"
                      (click)="$event.stopPropagation()">
-                  @for (action of songActions(song); track action.label) {
+                  @for (action of songMenu.build(song, { removable: true }); track action.label) {
                     <button type="button"
                       class="w-full text-left px-4 py-2 text-sm transition-colors hover:bg-theme-hover"
                       [class.text-status-error]="action.destructive"

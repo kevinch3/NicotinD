@@ -18,6 +18,7 @@ unit can: boot → auth → scan → stream → playback → plugin gating.
 | `tests/plugins.spec.ts` | the compliance contract: the URL-acquire box is absent until an admin enables the consent-gated yt-dlp `resolve` plugin, and reappears/disappears with enable/disable |
 | `tests/onboarding.spec.ts` | (**`onboarding` project**, own fresh server) drives the 4-step setup wizard end-to-end incl. the Advanced/Lidarr panel, then confirms it lands authenticated in the app |
 | `tests/welcome-banner.spec.ts` | an admin-provisioned user sees the first-login welcome banner and can dismiss it (seeded server) |
+| `tests/song-menu.spec.ts` | on an album detail page: the unified `⋯` row menu's common actions + "Go to album" suppression, "Song info" opens the track-info sheet, admin "Remove from library" → global `ConfirmHost` → row removal (see `docs/song-actions.md#testing`) |
 
 ## How it runs
 

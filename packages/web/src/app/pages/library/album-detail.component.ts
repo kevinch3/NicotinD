@@ -8,15 +8,13 @@ import { AuthService } from '../../services/auth.service';
 import { PlayerService, type Track } from '../../services/player.service';
 import { PlaylistService } from '../../services/playlist.service';
 import { TransferService } from '../../services/transfer.service';
+import { SongMenuService } from '../../services/song-menu.service';
 import { ListControlsService, type SortOption } from '../../services/list-controls.service';
 import { ListToolbarComponent } from '../../components/list-toolbar/list-toolbar.component';
-import {
-  TrackRowComponent,
-  type TrackAction,
-} from '../../components/track-row/track-row.component';
+import { TrackRowComponent } from '../../components/track-row/track-row.component';
 import { ConfirmDialogComponent } from '../../components/confirm-dialog/confirm-dialog.component';
 import { CoverArtComponent } from '../../components/cover-art/cover-art.component';
-import { toTrack, offlineTrackAction, addToPlaylistAction } from '../../lib/track-utils';
+import { toTrack } from '../../lib/track-utils';
 import { resolveArtistRoute, resolveAlbumRoute } from '../../lib/route-utils';
 import { createSelection } from '../../lib/selection';
 import { SelectionBarComponent } from '../../components/selection-bar/selection-bar.component';
@@ -47,6 +45,7 @@ export class AlbumDetailComponent implements OnInit {
   readonly player = inject(PlayerService);
   private playlists = inject(PlaylistService);
   private transferService = inject(TransferService);
+  readonly songMenu = inject(SongMenuService);
   private listControls = inject(ListControlsService);
   private router = inject(Router);
   private route = inject(ActivatedRoute);
@@ -308,50 +307,18 @@ export class AlbumDetailComponent implements OnInit {
     return resolveArtistRoute(id);
   }
 
-  albumTrackActions(song: {
+  /** Shape an album track into `BaseSong` for `SongMenuService.build()` — album
+   * tracks don't individually carry albumId/album, so borrow it from the page. */
+  toSong(s: {
     id: string;
     title: string;
     artist: string;
     artistId?: string;
-    duration?: number;
     coverArt?: string;
+    duration?: number;
     bitRate?: number;
-  }): TrackAction[] {
-    return [
-      offlineTrackAction(this.preserve, this.toTrackFromSong(song)),
-      addToPlaylistAction(this.playlists, song.id),
-      ...(song.artistId
-        ? [
-            {
-              label: 'Go to artist',
-              action: () => {
-                void this.router.navigate(resolveArtistRoute(song.artistId));
-              },
-            },
-          ]
-        : []),
-      ...(this.auth.role() === 'admin'
-        ? [
-            {
-              label: 'Remove',
-              destructive: true,
-              action: () =>
-                this.askConfirm(`Remove "${song.title}" from library?`, async () => {
-                  this.deleteError.set(null);
-                  try {
-                    await firstValueFrom(this.api.deleteSongs([song.id]));
-                    this.transferService.addDeletedIds([song.id]);
-                    this.selectedAlbum.update((a) =>
-                      a ? { ...a, song: a.song.filter((s) => s.id !== song.id) } : null,
-                    );
-                  } catch {
-                    this.deleteError.set(`Failed to remove "${song.title}".`);
-                  }
-                }),
-            },
-          ]
-        : []),
-    ];
+  }) {
+    return { ...s, albumId: this.selectedAlbum()?.id, album: this.selectedAlbum()?.name };
   }
 
   shareAlbum(): void {

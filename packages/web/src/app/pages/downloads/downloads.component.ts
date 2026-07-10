@@ -22,9 +22,13 @@ import { TransferService } from '../../services/transfer.service';
 import { ListControlsService, type SortOption } from '../../services/list-controls.service';
 import { ListToolbarComponent } from '../../components/list-toolbar/list-toolbar.component';
 import { ConfirmDialogComponent } from '../../components/confirm-dialog/confirm-dialog.component';
-import { TrackAction } from '../../components/track-row/track-row.component';
 import { resolveArtistRoute } from '../../lib/route-utils';
 import { PreserveService } from '../../services/preserve.service';
+import { PlaylistService } from '../../services/playlist.service';
+import { SongMenuService } from '../../services/song-menu.service';
+import { createSelection } from '../../lib/selection';
+import { SelectionBarComponent } from '../../components/selection-bar/selection-bar.component';
+import { toTrack } from '../../lib/track-utils';
 import type { AcquireJob } from '@nicotind/core';
 import {
   type AlbumGroup,
@@ -116,6 +120,7 @@ function sortAcquireJobs(jobs: AcquireJob[]): AcquireJob[] {
     ListToolbarComponent,
     ConfirmDialogComponent,
     DownloadItemComponent,
+    SelectionBarComponent,
   ],
   templateUrl: './downloads.component.html',
 })
@@ -129,6 +134,8 @@ export class DownloadsComponent implements OnInit, OnDestroy {
   private router = inject(Router);
   readonly preserve = inject(PreserveService);
   readonly auth = inject(AuthService);
+  private playlists = inject(PlaylistService);
+  readonly songMenu = inject(SongMenuService);
 
   readonly Math = Math;
   readonly formatDuration = formatDuration;
@@ -144,8 +151,8 @@ export class DownloadsComponent implements OnInit, OnDestroy {
   // State
   readonly activeTab = signal<'active' | 'offline' | 'recent'>('active');
   readonly recentSongs = signal<Song[]>([]);
-  readonly selected = signal(new Set<string>());
-  readonly lastSelectedId = signal<string | null>(null);
+  /** Recent-songs multi-select, shared with SelectionBarComponent. */
+  readonly selection = createSelection();
   readonly deleting = signal(new Set<string>());
   readonly retrying = signal(new Set<string>());
   readonly deleteError = signal<string | null>(null);
@@ -191,18 +198,34 @@ export class DownloadsComponent implements OnInit, OnDestroy {
     { field: 'artist', label: 'Artist' },
   ];
 
+  /**
+   * Excludes songs deleted (this session) elsewhere in the app — mirrors the
+   * pattern in genre-detail/artist-detail. Feeds `recentControls` so search,
+   * sort, and date-grouping all agree with the deleted-id filter (rather than
+   * filtering downstream of it, which would let the rendered list and the
+   * selection/order helpers disagree).
+   */
+  readonly visibleRecent = computed(() => {
+    const deleted = this.transferService.deletedSongIds();
+    return this.recentSongs().filter((s) => !deleted.has(s.id));
+  });
+
   readonly recentControls = this.listControls.connect({
     pageKey: 'downloads-recent',
-    items: this.recentSongs,
+    items: this.visibleRecent,
     searchFields: ['title', 'artist', 'album'] as const,
     sortOptions: this.recentSortOptions,
     defaultSort: 'created',
     defaultDirection: 'desc',
   });
 
+  /** The ids as currently displayed (post search/sort/date-filter) — the single
+   * source shift-click range-select, selectAll, and bulk actions all read from. */
+  readonly recentOrderedIds = computed(() => this.recentControls.filtered().map((s) => s.id));
+
   // ─── Offline tab state ────────────────────────────────────────────
-  readonly offlineSelected = signal(new Set<string>());
-  readonly offlineSelectedArray = computed(() => Array.from(this.offlineSelected()));
+  readonly offlineSelection = createSelection();
+  readonly offlineSelectedArray = computed(() => [...this.offlineSelection.ids()]);
   readonly offlineMenuId = signal<string | null>(null);
 
   readonly offlineSortOptions: SortOption[] = [
@@ -256,7 +279,7 @@ export class DownloadsComponent implements OnInit, OnDestroy {
 
   readonly dateGroups = computed(() => groupRecentSongsByDate(this.recentControls.filtered()));
 
-  readonly selectedArray = computed(() => Array.from(this.selected()));
+  readonly selectedArray = computed(() => [...this.selection.ids()]);
 
   // Auto-refresh when active downloads complete; auto-switch to active tab when downloads start
   private completionEffect = effect(() => {
@@ -276,53 +299,49 @@ export class DownloadsComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {}
 
-  isSelected(id: string): boolean {
-    return this.selected().has(id);
-  }
-
-  toggleSelect(id: string, event: MouseEvent): void {
-    const isShift = event.shiftKey;
-    const lastId = this.lastSelectedId();
-
-    if (isShift && lastId && lastId !== id) {
-      const visible = this.recentControls.filtered();
-      const lastIndex = visible.findIndex((s) => s.id === lastId);
-      const currIndex = visible.findIndex((s) => s.id === id);
-
-      if (lastIndex !== -1 && currIndex !== -1) {
-        const [start, end] = [Math.min(lastIndex, currIndex), Math.max(lastIndex, currIndex)];
-        const rangeIds = visible.slice(start, end + 1).map((s) => s.id);
-
-        this.selected.update((prev) => {
-          const next = new Set(prev);
-          const shouldSelect = !prev.has(id);
-          for (const rid of rangeIds) {
-            if (shouldSelect) next.add(rid);
-            else next.delete(rid);
-          }
-          return next;
-        });
-        this.lastSelectedId.set(id);
-        return;
-      }
-    }
-
-    this.selected.update((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-    this.lastSelectedId.set(id);
-  }
-
   selectAll(): void {
-    const visible = this.recentControls.filtered();
-    if (this.selected().size === visible.length) {
-      this.selected.set(new Set());
+    const visible = this.recentOrderedIds();
+    if (this.selection.count() === visible.length) {
+      this.selection.ids.set(new Set());
     } else {
-      this.selected.set(new Set(visible.map((s) => s.id)));
+      this.selection.selectAll(visible);
     }
+  }
+
+  playSelectedRecent(): void {
+    const songs = this.recentControls.filtered().filter((s) => this.selection.isSelected(s.id));
+    if (!songs.length) return;
+    this.player.playWithContext(
+      songs.map((s) => toTrack(s)),
+      0,
+      { type: 'adhoc' },
+    );
+    this.selection.exit();
+  }
+
+  queueSelectedRecent(): void {
+    for (const s of this.recentControls.filtered().filter((s) => this.selection.isSelected(s.id))) {
+      this.player.addToQueue(toTrack(s));
+    }
+    this.selection.exit();
+  }
+
+  addSelectedRecentToPlaylist(): void {
+    const ids = this.selectedArray();
+    if (!ids.length) return;
+    this.playlists.openPicker(ids);
+    this.selection.exit();
+  }
+
+  preserveSelectedRecent(): void {
+    const songs = this.recentControls.filtered().filter((s) => this.selection.isSelected(s.id));
+    if (!songs.length) return;
+    void this.preserve.preserveCollection(
+      'downloads-recent-selection',
+      'Selected tracks',
+      songs.map((s) => toTrack(s)),
+    );
+    this.selection.exit();
   }
 
   handlePlay(song: Song): void {
@@ -338,23 +357,11 @@ export class DownloadsComponent implements OnInit, OnDestroy {
   }
 
   handlePlayAll(): void {
+    const visible = this.recentControls.filtered();
     const songs =
-      this.selected().size > 0
-        ? this.recentSongs().filter((s) => this.selected().has(s.id))
-        : this.recentSongs();
+      this.selection.count() > 0 ? visible.filter((s) => this.selection.isSelected(s.id)) : visible;
     if (!songs.length) return;
-    const tracks = shuffleArray(
-      songs.map(
-        (s): Track => ({
-          id: s.id,
-          title: s.title,
-          artist: s.artist,
-          album: s.album,
-          coverArt: s.coverArt,
-          duration: s.duration,
-        }),
-      ),
-    );
+    const tracks = shuffleArray(songs.map((s) => toTrack(s)));
     this.player.playWithContext(tracks, 0, { type: 'adhoc' });
   }
 
@@ -400,7 +407,7 @@ export class DownloadsComponent implements OnInit, OnDestroy {
     try {
       const result = await firstValueFrom(this.libraryApi.deleteSongs(songIds));
       this.recentSongs.update((prev) => prev.filter((s) => !songIds.includes(s.id)));
-      this.selected.update((prev) => {
+      this.selection.ids.update((prev) => {
         const next = new Set(prev);
         songIds.forEach((id) => next.delete(id));
         return next;
@@ -567,21 +574,8 @@ export class DownloadsComponent implements OnInit, OnDestroy {
     }
   }
 
-  songActions(song: Song): TrackAction[] {
-    return [
-      {
-        label: 'Remove',
-        destructive: true,
-        action: () =>
-          this.askConfirm(`Remove "${song.title}" from library?`, () =>
-            this.handleDelete([song.id]),
-          ),
-      },
-    ];
-  }
-
   confirmDeleteSelected(): void {
-    const count = this.selected().size;
+    const count = this.selection.count();
     this.askConfirm(`Delete ${count} song${count !== 1 ? 's' : ''} from library?`, () =>
       this.handleDelete(this.selectedArray()),
     );
@@ -600,21 +594,15 @@ export class DownloadsComponent implements OnInit, OnDestroy {
 
   selectAllOffline(): void {
     const all = this.offlineControls.filtered().map((t) => t.id);
-    const selected = this.offlineSelected();
-    if (all.every((id) => selected.has(id))) {
-      this.offlineSelected.set(new Set());
+    if (all.every((id) => this.offlineSelection.isSelected(id))) {
+      this.offlineSelection.ids.set(new Set());
     } else {
-      this.offlineSelected.set(new Set(all));
+      this.offlineSelection.selectAll(all);
     }
   }
 
   toggleOfflineSelect(id: string): void {
-    this.offlineSelected.update((s) => {
-      const n = new Set(s);
-      if (n.has(id)) n.delete(id);
-      else n.add(id);
-      return n;
-    });
+    this.offlineSelection.toggle(id);
   }
 
   async removeOfflineTracks(ids: string[]): Promise<void> {
@@ -627,7 +615,7 @@ export class DownloadsComponent implements OnInit, OnDestroy {
     } catch {
       /* ignore individual failure */
     } finally {
-      this.offlineSelected.update((s) => {
+      this.offlineSelection.ids.update((s) => {
         const n = new Set(s);
         removed.forEach((id) => n.delete(id));
         return n;
