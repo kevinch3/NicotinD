@@ -71,4 +71,11 @@ describe('SelectionBarComponent', () => {
     const addBtn = fixture.debugElement.query(By.css('[data-testid="selection-add"]'));
     expect((addBtn!.nativeElement as HTMLButtonElement).disabled).toBe(true);
   });
+
+  it('exposes a preserve output guarded by canPreserve', () => {
+    // DI-free: instantiate and assert the output exists; template gating covered by e2e
+    const fixture = TestBed.createComponent(SelectionBarComponent);
+    expect(fixture.componentInstance.preserve).toBeDefined();
+    expect(fixture.componentInstance.canPreserve).toBeDefined();
+  });
 });

@@ -31,6 +31,13 @@
         <app-icon name="download" [size]="16" />
       </button>
     }
+    @if (canPreserve()) {
+      <button type="button" (click)="preserve.emit()" [disabled]="count() === 0"
+        data-testid="selection-preserve" aria-label="Save offline" title="Save offline"
+        class="w-8 h-8 flex items-center justify-center rounded-lg bg-theme-surface text-theme-secondary hover:bg-theme-hover transition disabled:opacity-40 disabled:pointer-events-none">
+        <app-icon name="download" [size]="16" />
+      </button>
+    }
     @if (canDelete()) {
       <button type="button" (click)="deleteSelected.emit()" [disabled]="count() === 0"
         data-testid="selection-delete" [attr.aria-label]="deleteLabel()" [attr.title]="deleteLabel()"
