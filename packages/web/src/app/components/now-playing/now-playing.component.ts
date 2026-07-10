@@ -331,6 +331,10 @@ export class NowPlayingComponent {
     this.player.clearQueue();
   }
 
+  removeFromQueue(index: number): void {
+    this.player.removeFromQueue(index);
+  }
+
   onQueueDragStart(event: DragEvent, index: number): void {
     this.dragSourceIndex.set(index);
     if (event.dataTransfer) {

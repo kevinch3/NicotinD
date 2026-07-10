@@ -366,6 +366,42 @@ describe('PlayerService', () => {
     });
   });
 
+  describe('removeFromQueue()', () => {
+    it('removes the track at the given index', () => {
+      service.queue.set([track1, track2, track3]);
+      service.removeFromQueue(1);
+      expect(service.queue()).toEqual([track1, track3]);
+    });
+
+    it('removes the first track', () => {
+      service.queue.set([track1, track2, track3]);
+      service.removeFromQueue(0);
+      expect(service.queue()).toEqual([track2, track3]);
+    });
+
+    it('removes the last track', () => {
+      service.queue.set([track1, track2, track3]);
+      service.removeFromQueue(2);
+      expect(service.queue()).toEqual([track1, track2]);
+    });
+
+    it('does not affect currentTrack or history', () => {
+      service.play(track1);
+      service.queue.set([track2, track3]);
+      service.history.set([track3]);
+      service.removeFromQueue(0);
+      expect(service.currentTrack()).toEqual(track1);
+      expect(service.history()).toEqual([track3]);
+    });
+
+    it('is a no-op for an out-of-range index', () => {
+      service.queue.set([track1, track2]);
+      service.removeFromQueue(5);
+      service.removeFromQueue(-1);
+      expect(service.queue()).toEqual([track1, track2]);
+    });
+  });
+
   describe('moveInQueue()', () => {
     it('moves a track forward in the queue', () => {
       service.queue.set([track1, track2, track3]);
