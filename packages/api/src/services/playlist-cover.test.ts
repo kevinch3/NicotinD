@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'bun:test';
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { playlistCoverSvg, wrapTitle, escapeXml, COVER_SIZE } from './playlist-cover.js';
+import { CURATED_PLAYLISTS } from './curated-playlists.js';
+import { RECIPES } from './playlist-recipe.js';
 
 describe('wrapTitle', () => {
   it('keeps a short title on one line', () => {
@@ -52,5 +56,18 @@ describe('playlistCoverSvg', () => {
     expect(playlistCoverSvg({ title: 'Latin Beats', palette: { from: '#ff2d73', to: '#ff8a3d' } })).toBe(
       svg,
     );
+  });
+});
+
+describe('committed cover assets', () => {
+  // Regression guard: a recipe/def added without re-running
+  // scripts/generate-playlist-covers.ts leaves cover_art pointing at a 404 (a
+  // real bug — the four perceptual-shelf recipes shipped without covers).
+  const coversDir = resolve(import.meta.dir, '../../../web/public/playlist-covers');
+
+  it('has a committed SVG for every curated def and recipe slug', () => {
+    const slugs = [...CURATED_PLAYLISTS, ...RECIPES].map((def) => def.slug);
+    const missing = slugs.filter((slug) => !existsSync(resolve(coversDir, `${slug}.svg`)));
+    expect(missing).toEqual([]);
   });
 });
