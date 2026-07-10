@@ -35,3 +35,18 @@ Multi-select is one `createSelection()` per list (see `lib/selection.ts`) +
 `SelectionBarComponent`. The bar's bulk set mirrors the row's common actions
 (Play, Queue, Add to playlist, Save offline, Download, Delete via capability
 flags). Downloads uses `createSelection()` too (one instance per list it shows).
+
+## Testing
+
+`TrackRowComponent`'s menu buttons carry `data-testid="track-action-<Label>"`
+(the exact action label, e.g. `track-action-Go to artist`), plus
+`track-row-menu-toggle` (the `⋯` button) and `track-row-menu` (the open panel),
+so e2e specs can target actions without CSS/text-fragile selectors. The
+track-info sheet root carries `data-testid="track-info-sheet"`.
+`packages/e2e/tests/song-menu.spec.ts` covers, on an album detail page: the
+common-action set + "Go to album" suppression, "Song info" opening the sheet,
+and the admin "Remove from library" → `ConfirmHost` (`confirm-dialog`) →
+`confirm-ok` → row-removal flow. That spec scopes confirm-dialog selectors to
+the `[data-testid="confirm-dialog"]` overlay (unique to the global
+`ConfirmHost`) since the legacy per-page `app-confirm-dialog` also exposes a
+`confirm-ok` testid.
