@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.173](https://github.com/kevinch3/NicotinD/compare/v0.1.172...v0.1.173) (2026-07-10)
+
+
+### Features
+
+* **web:** add SongMenuService as single source of truth for song menus ([7d1cf82](https://github.com/kevinch3/NicotinD/commit/7d1cf8293f5a64474449451b3e5d15742570ce55))
+* **web:** add track albumid and playerservice queuenext/startradio ([1423382](https://github.com/kevinch3/NicotinD/commit/1423382c6ed1dd3a0c671fa1bc36428971450ebe))
+* **web:** global ConfirmService + confirm dialog ([b6dc86e](https://github.com/kevinch3/NicotinD/commit/b6dc86ee534bf51eb070ac3e957ed2bf8eb988e8))
+* **web:** global TrackInfoService + host, delegate now-playing to it ([7b29980](https://github.com/kevinch3/NicotinD/commit/7b29980fb68f30456297ab254446cc70d155abeb))
+* **web:** thread albumId through BaseSong/toTrack ([80646d7](https://github.com/kevinch3/NicotinD/commit/80646d7d9f0e5f55cad8c3142495151a58f809d7))
+
+
+### Bug Fixes
+
+* **web:** downloads recent count/empty-state track the deletedSongIds-filtered list ([dfd80d0](https://github.com/kevinch3/NicotinD/commit/dfd80d0e1137903a31002f470360d06abceb1004))
+* **web:** generate missing covers for perceptual-shelf curated playlists ([7589ad3](https://github.com/kevinch3/NicotinD/commit/7589ad300b75ea11cc18746c0e65fce616c5da07))
+* **web:** restore ConfirmDialogComponent, put global confirm under app-confirm-host ([0a2f8f7](https://github.com/kevinch3/NicotinD/commit/0a2f8f7510896ac9b0e7824086a61bb4b974c76e))
+
 ## [0.1.172](https://github.com/kevinch3/NicotinD/compare/v0.1.171...v0.1.172) (2026-07-09)
 
 
