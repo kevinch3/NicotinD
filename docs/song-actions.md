@@ -1,10 +1,13 @@
 # Unified song listings
 
-Every song listing renders one `TrackRowComponent` and draws its `⋯` menu from
-one root `SongMenuService.build(song, ctx)` — the single source of truth for a
-song's actions. This prevents the per-page menu drift that previously left
+Every song listing draws its `⋯` menu from one root
+`SongMenuService.build(song, ctx)` — the single source of truth for a song's
+actions. This prevents the per-page menu drift that previously left
 "Go to album", "Start radio", "Add to queue", "Play next" and "Song info"
-missing everywhere and "Go to artist" on only some pages.
+missing everywhere and "Go to artist" on only some pages. Most listings render
+the menu on the shared `TrackRowComponent`; the one exception is the Downloads
+"Recently added" list, which keeps its own bespoke row markup but still builds
+its menu from the same `SongMenuService`.
 
 ## Common actions (always present when the data supports them)
 

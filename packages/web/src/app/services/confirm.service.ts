@@ -1,7 +1,7 @@
 import { Injectable, signal } from '@angular/core';
 
 /**
- * Global confirm dialog. A single modal (see ConfirmDialogComponent, mounted in
+ * Global confirm dialog. A single modal (see ConfirmHostComponent, mounted in
  * the layout) renders whatever `request()` holds; callers await `ask()`. Root
  * so any service/page shares one modal instead of hand-rolling askConfirm.
  */
