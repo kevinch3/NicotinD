@@ -342,7 +342,7 @@
             [artists]="song.artists"
             [subtitle]="song.artists?.length ? song.album : (song.artist + (song.album ? ' · ' + song.album : ''))"
             [duration]="song.duration ?? 0"
-            [actions]="songActions(song.id)"
+            [actions]="songMenu.build(song)"
             (play)="playLibrarySong(i)"
           />
         }
