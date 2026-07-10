@@ -75,6 +75,9 @@
       <!-- Global "Add to playlist" picker (renders only when invoked) -->
       <app-add-to-playlist />
 
+      <!-- Global confirm dialog (renders only when a request is open) -->
+      <app-confirm-dialog />
+
       <!-- Changelog modal (renders when version is clicked) -->
       @if (showChangelog()) {
         <app-changelog-modal (close)="showChangelog.set(false)" />

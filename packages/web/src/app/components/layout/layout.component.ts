@@ -18,6 +18,7 @@ import { UpdateBannerComponent } from '../update-banner/update-banner.component'
 import { WelcomeBannerComponent } from '../welcome-banner/welcome-banner.component';
 import { BottomNavComponent } from '../bottom-nav/bottom-nav.component';
 import { AddToPlaylistComponent } from '../add-to-playlist/add-to-playlist.component';
+import { ConfirmDialogComponent } from '../confirm-dialog/confirm-dialog.component';
 import { ChangelogModalComponent } from '../changelog-modal/changelog-modal.component';
 
 interface NavItem {
@@ -47,6 +48,7 @@ const ONLINE_ONLY_ROUTES = new Set(['/', '/library']);
     WelcomeBannerComponent,
     BottomNavComponent,
     AddToPlaylistComponent,
+    ConfirmDialogComponent,
     ChangelogModalComponent,
   ],
   templateUrl: './layout.component.html',
