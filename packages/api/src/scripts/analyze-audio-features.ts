@@ -21,7 +21,7 @@ import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { parse } from 'yaml';
 import { Database } from 'bun:sqlite';
-import { AudioFeaturesClient } from '../services/audio-features-client.js';
+import { AudioFeaturesClient, AudioFileRejectedError } from '../services/audio-features-client.js';
 import { readAudioTags, writeAudioTags } from '../services/audio-tags.js';
 import { resolveSongAbsPath } from '../services/track-backfill.js';
 
@@ -150,7 +150,18 @@ async function main(): Promise<void> {
         continue;
       }
 
-      const result = await client.analyze(song.path);
+      let result;
+      try {
+        result = await client.analyze(song.path);
+      } catch (err) {
+        // 422 = the file is genuinely un-decodable (corrupt/too short) — count
+        // it and move on; don't let one bad file abort the whole bulk run.
+        failed++;
+        if (samples.length < 25 && err instanceof AudioFileRejectedError) {
+          samples.push(`  • ${label}  →  REJECTED (${err.message})`);
+        }
+        continue;
+      }
       if (!result) {
         failed++;
         if (!(await client.healthy())) {

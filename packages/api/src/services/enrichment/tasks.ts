@@ -12,6 +12,7 @@ import { readAudioTags, writeAudioTags, type FeatureTags } from '../audio-tags.j
 import { analyzeLoudness as realAnalyzeLoudness } from '../loudness-analysis.js';
 import type { LoudnessResult } from '../loudness-analysis.js';
 import type { AudioFeaturesClient, AudioFeaturesResult } from '../audio-features-client.js';
+import { AudioFileRejectedError } from '../audio-features-client.js';
 import { ffmpegAvailable as realFfmpegAvailable } from '../transcode.js';
 import { resolveSongAbsPath, planGenreBackfill } from '../track-backfill.js';
 import { setArtwork } from '../artwork-store.js';
@@ -240,7 +241,11 @@ const genreTask: EnrichmentTask = {
           .query<
             { n: number },
             []
-          >("SELECT COUNT(*) AS n FROM library_songs WHERE genre IS NULL OR genre = ''")
+          >(
+            `SELECT COUNT(*) AS n FROM library_songs WHERE (genre IS NULL OR genre = '')${notPermanentlyFailedClause(
+              'genre',
+            )}`,
+          )
           .get() ?? { n: 0 }
       ).n,
     ),
@@ -249,11 +254,25 @@ const genreTask: EnrichmentTask = {
       .query<
         SongRow,
         [number]
-      >("SELECT id, path, artist, title FROM library_songs WHERE genre IS NULL OR genre = '' ORDER BY created DESC LIMIT ?")
+      >(`SELECT id, path, artist, title, size FROM library_songs WHERE (genre IS NULL OR genre = '')${notPermanentlyFailedClause(
+        'genre',
+      )} ORDER BY created DESC LIMIT ?`)
       .all(limit);
 
     // One Lidarr lookup per artist, fanned out to that artist's pending songs.
     const { assignments } = await planGenreBackfill(rows, ctx.lookupGenre);
+
+    // Songs whose artist Lidarr can't resolve stay pending and would be
+    // re-queried every batch forever — starving the queue. Ledger each so it
+    // drops out of the pending set after {@link MAX_ANALYSIS_ATTEMPTS} attempts
+    // (a re-tag/re-download changes the size and re-includes). This is NOT
+    // tallied as a run failure: nothing is broken, Lidarr simply has no genre.
+    const resolved = new Set(assignments.map((a) => a.song.id));
+    const unresolvable = new Error('Lidarr has no genre for this artist');
+    for (const song of rows) {
+      if (resolved.has(song.id)) clearAnalysisFailure(db, song.id, 'genre');
+      else recordAnalysisFailure(db, song.id, 'genre', unresolvable, song.size);
+    }
 
     const labels: string[] = [];
     let applied = 0;
@@ -428,7 +447,11 @@ const audioFeaturesTask: EnrichmentTask = {
           .query<
             { n: number },
             []
-          >('SELECT COUNT(*) AS n FROM library_songs WHERE danceability IS NULL')
+          >(
+            `SELECT COUNT(*) AS n FROM library_songs WHERE danceability IS NULL${notPermanentlyFailedClause(
+              'audio-features',
+            )}`,
+          )
           .get() ?? { n: 0 }
       ).n,
     ),
@@ -437,7 +460,9 @@ const audioFeaturesTask: EnrichmentTask = {
       .query<
         SongRow,
         [number]
-      >('SELECT id, path, artist, title FROM library_songs WHERE danceability IS NULL ORDER BY created DESC LIMIT ?')
+      >(`SELECT id, path, artist, title, size FROM library_songs WHERE danceability IS NULL${notPermanentlyFailedClause(
+        'audio-features',
+      )} ORDER BY created DESC LIMIT ?`)
       .all(limit);
 
     const labels: string[] = [];
@@ -488,12 +513,31 @@ const audioFeaturesTask: EnrichmentTask = {
         }
 
         if (!ctx.analyzeAudioFeatures) return;
-        const result = await ctx.analyzeAudioFeatures(song.path).catch(() => null);
+        let result: AudioFeaturesResult | null = null;
+        try {
+          result = await ctx.analyzeAudioFeatures(song.path);
+        } catch (err) {
+          if (err instanceof AudioFileRejectedError) {
+            // The file is genuinely un-decodable (sidecar 422) — ledger it so
+            // it stops being retried forever (mirrors bpm/key/energy corrupt
+            // files). Count it as a run failure: the file is bad.
+            noteItemFailure(db, tally, song, 'audio-features', err);
+          } else {
+            // An unexpected throw from the client (transport error). Treat it
+            // like an outage unless we can still reach the sidecar.
+            if (!ctx.audioFeaturesAvailable()) return;
+            recordFailure(tally, err instanceof Error ? err : new Error(String(err)));
+          }
+          continue;
+        }
         if (!result) {
           // Sidecar gone mid-batch? Stop pulling more work; songs stay pending
           // (an outage, not a per-file failure — don't count it against the file).
           if (!ctx.audioFeaturesAvailable()) return;
-          // Sidecar is up but rejected this file (e.g. 404 / unreadable). Count it.
+          // Sidecar is up but returned no result (e.g. 404 — file not visible
+          // to the sidecar, usually a mount mismatch). Don't ledger: a misconfig
+          // would otherwise exclude the whole library; count it as a failure
+          // so the run still surfaces the problem.
           recordFailure(tally, new Error('analysis sidecar could not analyze file (see logs)'));
           continue;
         }
@@ -525,6 +569,7 @@ const audioFeaturesTask: EnrichmentTask = {
             mood: f.mood,
           })
           .catch(() => false);
+        clearAnalysisFailure(db, song.id, 'audio-features');
         applied++;
         labels.push(`${song.artist} — ${song.title} → ${f.mood}`);
       }
