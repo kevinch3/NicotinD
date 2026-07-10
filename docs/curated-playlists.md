@@ -105,7 +105,15 @@ remain available.
 ## Tests
 
 - `services/playlist-cover.test.ts` — wrap/escape/SVG builder (palette + title
-  present, deterministic).
+  present, deterministic); also asserts every `CURATED_PLAYLISTS` **and**
+  `RECIPES` slug has a committed `.svg` under `packages/web/public/playlist-covers/`
+  — a regression guard, since `cover_art` is set to `/playlist-covers/<slug>.svg`
+  unconditionally at materialize time (`auto-playlists.service.ts`) regardless of
+  whether the file exists on disk. **Adding a curated def or recipe requires
+  re-running `bun run packages/api/src/scripts/generate-playlist-covers.ts` and
+  committing the new SVG(s) in the same change**, or the shelf materializes with
+  a 404 thumbnail (this happened to the four perceptual-shelf recipes in
+  `playlist-recipe.ts`, shipped in a commit that never re-ran the generator).
 - `services/curated-playlists.test.ts` — 15 unique defs; `selectCuratedTracks`
   enforces the cap, respects `targetSize`, dedups, degrades gracefully, and is
   seed-deterministic.
