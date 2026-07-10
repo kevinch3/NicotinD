@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.175](https://github.com/kevinch3/NicotinD/compare/v0.1.174...v0.1.175) (2026-07-10)
+
+
+### Bug Fixes
+
+* **download-pipeline:** flag truncated spotdl/ytdlp downloads and stop duplicate acquire jobs ([462f39b](https://github.com/kevinch3/NicotinD/commit/462f39b41825e4487692332c0429873f6a3af2c4))
+
 ## [0.1.174](https://github.com/kevinch3/NicotinD/compare/v0.1.173...v0.1.174) (2026-07-10)
 
 
