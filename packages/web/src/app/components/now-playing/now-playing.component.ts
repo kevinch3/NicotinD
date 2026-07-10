@@ -57,6 +57,12 @@ export class NowPlayingComponent {
   // Context menu state
   readonly contextMenu = signal<{ x: number; y: number } | null>(null);
 
+  // Queue drag-and-drop reorder (HTML5 DnD; works with mouse + touch via
+  // pointer events polyfill on mobile — Angular's (dragstart) etc. are fine
+  // for a desktop-first feature, the rows are also tappable to jump).
+  readonly dragSourceIndex = signal<number | null>(null);
+  readonly dropTargetIndex = signal<number | null>(null);
+
   // Lyrics view state. Lyrics load lazily on first open and reload when the
   // track changes while the panel is open.
   readonly lyricsOpen = signal(false);
@@ -315,9 +321,40 @@ export class NowPlayingComponent {
   }
 
   jumpToTrack(index: number): void {
+    if (this.dragSourceIndex() !== null) return;
     const queue = this.player.queue();
     const track = queue[index];
     if (track) this.player.play(track);
+  }
+
+  clearQueue(): void {
+    this.player.clearQueue();
+  }
+
+  onQueueDragStart(event: DragEvent, index: number): void {
+    this.dragSourceIndex.set(index);
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', String(index));
+    }
+  }
+
+  onQueueDragOver(event: DragEvent, index: number): void {
+    event.preventDefault();
+    if (this.dragSourceIndex() !== null) this.dropTargetIndex.set(index);
+  }
+
+  onQueueDrop(event: DragEvent, index: number): void {
+    event.preventDefault();
+    const from = this.dragSourceIndex();
+    this.dragSourceIndex.set(null);
+    this.dropTargetIndex.set(null);
+    if (from !== null && from !== index) this.player.moveInQueue(from, index);
+  }
+
+  onQueueDragEnd(): void {
+    this.dragSourceIndex.set(null);
+    this.dropTargetIndex.set(null);
   }
 
   onSheetDragStart(event: PointerEvent): void {

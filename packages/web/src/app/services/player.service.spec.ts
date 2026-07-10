@@ -350,6 +350,50 @@ describe('PlayerService', () => {
     });
   });
 
+  describe('clearQueue()', () => {
+    it('empties the queue without affecting currentTrack, history, or context', () => {
+      const ctx: PlayContext = { type: 'album', id: 'a1', name: 'A', originalOrder: [track1, track2, track3] };
+      service.play(track1);
+      service.queue.set([track2, track3]);
+      service.history.set([track3]);
+      service.context.set(ctx);
+      service.clearQueue();
+      expect(service.queue()).toEqual([]);
+      expect(service.currentTrack()).toEqual(track1);
+      expect(service.history()).toEqual([track3]);
+      expect(service.context()).toEqual(ctx);
+      expect(service.isPlaying()).toBe(true);
+    });
+  });
+
+  describe('moveInQueue()', () => {
+    it('moves a track forward in the queue', () => {
+      service.queue.set([track1, track2, track3]);
+      service.moveInQueue(0, 2);
+      expect(service.queue()).toEqual([track2, track3, track1]);
+    });
+
+    it('moves a track backward in the queue', () => {
+      service.queue.set([track1, track2, track3]);
+      service.moveInQueue(2, 0);
+      expect(service.queue()).toEqual([track3, track1, track2]);
+    });
+
+    it('is a no-op when from and to are the same', () => {
+      service.queue.set([track1, track2, track3]);
+      service.moveInQueue(1, 1);
+      expect(service.queue()).toEqual([track1, track2, track3]);
+    });
+
+    it('is a no-op for out-of-range indices', () => {
+      service.queue.set([track1, track2]);
+      service.moveInQueue(-1, 0);
+      service.moveInQueue(0, 5);
+      service.moveInQueue(5, 0);
+      expect(service.queue()).toEqual([track1, track2]);
+    });
+  });
+
   describe('buffering state', () => {
     beforeEach(() => vi.useFakeTimers());
     afterEach(() => vi.useRealTimers());
