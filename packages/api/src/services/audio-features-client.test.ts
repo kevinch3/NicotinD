@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { AudioFeaturesClient } from './audio-features-client.js';
+import { AudioFeaturesClient, AudioFileRejectedError } from './audio-features-client.js';
 
 const GOOD_PAYLOAD = {
   embedding: { model: 'discogs-effnet-bs64-1', dim: 3, values: [0.1, 0.2, 0.3] },
@@ -94,6 +94,30 @@ describe('AudioFeaturesClient.analyze', () => {
       throw new Error('socket hang up');
     });
     expect(await c.analyze('x.opus')).toBeNull();
+  });
+
+  it('throws AudioFileRejectedError on 422 (un-decodable file) without flipping health', async () => {
+    const c = clientWith((url) =>
+      url.endsWith('/health')
+        ? jsonResponse({ status: 'ok' })
+        : jsonResponse({ detail: 'decoded audio too short' }, 422),
+    );
+    await c.healthy(); // prime cached health = true
+    try {
+      await c.analyze('bad.opus');
+      throw new Error('should have thrown');
+    } catch (err) {
+      expect(err).toBeInstanceOf(AudioFileRejectedError);
+      expect((err as AudioFileRejectedError).message).toContain('too short');
+      expect((err as AudioFileRejectedError).status).toBe(422);
+    }
+    // 422 is a per-file failure, not an outage: health stays healthy.
+    expect(c.healthySnapshot()).toBe(true);
+  });
+
+  it('returns null (does not throw) on 404 so an env mount mismatch never gets ledgered', async () => {
+    const c = clientWith(() => jsonResponse({ detail: 'nope' }, 404));
+    expect(await c.analyze('missing.opus')).toBeNull();
   });
 
   it('rejects payloads with out-of-vocab mood', async () => {

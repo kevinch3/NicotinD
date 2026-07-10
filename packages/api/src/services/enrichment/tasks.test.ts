@@ -4,6 +4,7 @@ import { applySchema } from '../../db.js';
 import { ENRICHMENT_TASKS, getTask, type EnrichmentContext } from './tasks.js';
 import { MAX_ANALYSIS_ATTEMPTS } from './analysis-failures.js';
 import { NoConfidentResultError } from '../track-analysis.js';
+import { AudioFileRejectedError } from '../audio-features-client.js';
 
 let db: Database;
 
@@ -644,18 +645,171 @@ describe('audio-features task', () => {
     expect(res.failed).toBe(0);
   });
 
-  it('counts per-file failures when the sidecar is up but rejects a file (404)', async () => {
+  it('counts per-file failures when the sidecar is up but returns no result (404)', async () => {
+    // A 404 — file not visible to the sidecar (usually a mount mismatch that
+    // 404s *every* file) — must stay an outage-style failure, NOT ledgered, so a
+    // misconfig never excludes the whole library even after repeated runs.
     seedSong('a');
     seedSong('b');
     const c = ctx({
       concurrency: 1,
-      analyzeAudioFeatures: async () => null, // sidecar rejects each file…
+      analyzeAudioFeatures: async () => null, // sidecar returns no result…
       audioFeaturesAvailable: () => true, // …but is otherwise healthy
     });
     const res = await features.run(db, c, 25);
     expect(res.applied).toBe(0);
     expect(res.failed).toBe(2);
     expect(res.errorSample).toContain('sidecar');
+    expect(
+      db.query('SELECT COUNT(*) AS n FROM library_song_analysis_failures').get() as { n: number },
+    ).toEqual({ n: 0 }); // nothing ledgered — env safety preserves the library
+    // Files remain pending so the run keeps surfacing the problem.
+    expect(features.countPending(db)).toBe(2);
+  });
+
+  it('ledgers a sidecar-rejected file (422) as a hard failure and excludes it after the cap', async () => {
+    seedSong('a');
+    const reject = () =>
+      ctx({
+        concurrency: 1,
+        analyzeAudioFeatures: async () => {
+          throw new AudioFileRejectedError('decoded audio too short', 422);
+        },
+      });
+    // Each run attempts the file once + ledgers it.
+    for (let i = 0; i < MAX_ANALYSIS_ATTEMPTS; i++) {
+      const res = await features.run(db, reject(), 25);
+      expect(res.failed).toBe(1); // tallied — the file is genuinely bad
+      expect(res.errorSample).toContain('too short');
+    }
+    // At the cap the file drops out of the pending set (auto-excluded).
+    expect(features.countPending(db)).toBe(0);
+    // No-further-failure: a run selects nothing.
+    const idle = await features.run(db, reject(), 25);
+    expect(idle.failed).toBe(0);
+  });
+
+  it('clears the audio-features ledger row when the file later succeeds', async () => {
+    seedSong('a');
+    await features.run(
+      db,
+      ctx({
+        concurrency: 1,
+        analyzeAudioFeatures: async () => {
+          throw new AudioFileRejectedError('invalid data', 422);
+        },
+      }),
+      25,
+    ); // one failure recorded — file still pending
+    // A subsequent good run enriches it and wipes the ledger row.
+    const res = await features.run(db, ctx(), 25);
+    expect(res.applied).toBe(1);
+    expect(
+      db.query('SELECT COUNT(*) AS n FROM library_song_analysis_failures').get() as { n: number },
+    ).toEqual({ n: 0 });
+  });
+
+  it('re-includes a rejected file after it is re-downloaded (size change)', async () => {
+    seedSong('a');
+    for (let i = 0; i < MAX_ANALYSIS_ATTEMPTS; i++) {
+      await features.run(
+        db,
+        ctx({
+          concurrency: 1,
+          analyzeAudioFeatures: async () => {
+            throw new AudioFileRejectedError('invalid data', 422);
+          },
+        }),
+        25,
+      );
+    }
+    expect(features.countPending(db)).toBe(0);
+    db.run("UPDATE library_songs SET size = 9999 WHERE id = 'a'");
+    expect(features.countPending(db)).toBe(1);
+  });
+
+  it('does not ledger a network/transport error — treats an unreachable sidecar as an outage', async () => {
+    seedSong('a');
+    seedSong('b');
+    const res = await features.run(
+      db,
+      ctx({
+        concurrency: 1,
+        analyzeAudioFeatures: async () => {
+          throw new TypeError('fetch failed');
+        },
+        audioFeaturesAvailable: () => false, // sidecar is down
+      }),
+      25,
+    );
+    // Outage: nothing counted against files, nothing ledgered, batch aborted.
+    expect(res.applied).toBe(0);
+    expect(res.failed).toBe(0);
+    expect(features.countPending(db)).toBe(2);
+    expect(
+      db.query('SELECT COUNT(*) AS n FROM library_song_analysis_failures').get() as { n: number },
+    ).toEqual({ n: 0 });
+  });
+});
+
+describe('genre task — unresolvable-artist ledger', () => {
+  const genre = getTask('genre')!;
+
+  it('ledgers songs whose artist Lidarr cannot resolve without counting a run failure', async () => {
+    seedSong('a', { artist: 'Obscure' });
+    const res = await genre.run(db, ctx({ lookupGenre: async () => null }), 25);
+    expect(res.applied).toBe(0);
+    expect(res.failed).toBe(0); // genre-unavailable is not a broken failure
+    const row = db
+      .query<{ fail_count: number }, []>(
+        "SELECT fail_count FROM library_song_analysis_failures WHERE song_id = 'a' AND task = 'genre'",
+      )
+      .get();
+    expect(row?.fail_count).toBe(1);
+  });
+
+  it('drops unresolvable-artist songs out of the pending set after the cap', async () => {
+    seedSong('a', { artist: 'Obscure' });
+    for (let i = 0; i < MAX_ANALYSIS_ATTEMPTS; i++) {
+      await genre.run(db, ctx({ lookupGenre: async () => null }), 25);
+    }
+    expect(genre.countPending(db)).toBe(0);
+  });
+
+  it('clears the ledger row when the genre is later resolved', async () => {
+    seedSong('a', { artist: 'Foo' });
+    await genre.run(db, ctx({ lookupGenre: async () => null }), 25); // ledgered
+    const res = await genre.run(db, ctx({ lookupGenre: async () => 'Rock' }), 25);
+    expect(res.applied).toBe(1);
+    expect(
+      db.query('SELECT COUNT(*) AS n FROM library_song_analysis_failures').get() as { n: number },
+    ).toEqual({ n: 0 });
+  });
+
+  it('re-includes a ledgered genre song after it is re-downloaded (size change)', async () => {
+    seedSong('a', { artist: 'Obscure' });
+    for (let i = 0; i < MAX_ANALYSIS_ATTEMPTS; i++) {
+      await genre.run(db, ctx({ lookupGenre: async () => null }), 25);
+    }
+    expect(genre.countPending(db)).toBe(0);
+    db.run("UPDATE library_songs SET size = 9999 WHERE id = 'a'");
+    expect(genre.countPending(db)).toBe(1);
+  });
+
+  it('does not ledger songs for artists it successfully resolved', async () => {
+    seedSong('a', { artist: 'Foo' });
+    seedSong('b', { artist: 'Bar' });
+    await genre.run(
+      db,
+      ctx({ lookupGenre: async (artist) => (artist === 'Foo' ? 'Punk' : null) }),
+      25,
+    );
+    const ledgers = db
+      .query<{ song_id: string }, []>(
+        "SELECT song_id FROM library_song_analysis_failures WHERE task = 'genre'",
+      )
+      .all();
+    expect(ledgers.map((r) => r.song_id)).toEqual(['b']);
   });
 });
 

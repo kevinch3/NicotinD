@@ -22,6 +22,29 @@ export interface AudioFeaturesResult {
   modelVersions: Record<string, string>;
 }
 
+/**
+ * Thrown by {@link AudioFeaturesClient.analyze} when the sidecar returns HTTP
+ * 422 — i.e. it *reached* the file and tried to decode it, but the bytes are
+ * unusable (ffmpeg "Invalid data" / "decoded audio too short"). This is a
+ * per-file condition (the file itself is bad), so the windowed processor ledgers
+ * it so the file eventually drops out of the pending set — mirroring the
+ * corrupt-file handling of the bpm/key/energy ffmpeg tasks.
+ *
+ * A 404 (file not found from the sidecar's perspective — usually a MUSIC_DIR
+ * mount mismatch that 404s *every* file) and a 503 (models not loaded) stay as
+ * `null`: those are environmental outages, and permanently skipping on them
+ * would wrongly exclude the whole library even after the sidecar is fixed.
+ */
+export class AudioFileRejectedError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = 'AudioFileRejectedError';
+  }
+}
+
 const HEALTH_TTL_MS = 30_000;
 const HEALTH_TIMEOUT_MS = 5_000;
 // Analysis is ~seconds per track on CPU; leave generous headroom for cold caches.
@@ -108,7 +131,22 @@ export class AudioFeaturesClient {
       return null;
     }
     if (!res.ok) {
-      // 404/422 are per-file problems; 503 means the sidecar lost its models.
+      // 422 = the sidecar reached + tried to decode the file but the bytes are
+      // unusable (corrupt / too short). That's a per-file condition — throw so
+      // the processor ledgers it (mirrors bpm/key/energy corrupt-file handling).
+      // 404 (file not found from the sidecar — usually a mount mismatch that
+      // 404s *every* file) and 503 (models not loaded) stay null: environmental
+      // outages must NOT be ledgered or a misconfig would exclude the library.
+      if (res.status === 422) {
+        let detail = 'analysis sidecar rejected file';
+        try {
+          const body = (await res.json()) as { detail?: string };
+          if (body.detail) detail = body.detail;
+        } catch {
+          /* keep the generic message */
+        }
+        throw new AudioFileRejectedError(detail, 422);
+      }
       if (res.status === 503) {
         this.lastHealthy = false;
         this.lastHealthAt = Date.now();

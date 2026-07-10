@@ -60,7 +60,10 @@ Launch tasks:
   file tag (analyzed values only).
 - **genre** — `WHERE genre IS NULL OR genre = ''`, available only with Lidarr. Uses
   `planGenreBackfill` so an artist is looked up **once** and fanned out to all their
-  pending songs. Writes `library_songs.genre` and the file tag.
+  pending songs. Writes `library_songs.genre` and the file tag. Songs whose artist
+  Lidarr can't resolve are `recordAnalysisFailure`d (not tallied — see the exclusion
+  section below) so they drop out of the pending set after the attempt cap instead of
+  being re-queried every batch forever.
 - **key** — `WHERE key IS NULL OR key = ''`, ffmpeg-gated, **offline**. Reads a tag
   key if present, else `analyzeKey()` → the pure Krumhansl–Schmuckler estimator in
   `services/key-detection.ts` (chromagram via per-semitone Goertzel filters → KS
@@ -81,7 +84,10 @@ Launch tasks:
   mood + the EffNet embedding; the task writes the five columns + a
   `library_embeddings` row in one transaction, then the file tags. Concurrency
   is capped at 2 (the sidecar serializes inference). A sidecar loss mid-batch
-  aborts the batch; songs stay pending. Bulk script:
+  aborts the batch; songs stay pending. A **422** (un-decodable file) throws
+  `AudioFileRejectedError` → ledgered + tallied so corrupt files auto-skip after
+  `MAX_ANALYSIS_ATTEMPTS` (mirrors bpm/key/energy); a 404/503 stays `null` and
+  un-ledgered (environmental — see the exclusion section below). Bulk script:
   `scripts/analyze-audio-features.ts`. See
   [audio-ml-enrichment.md](audio-ml-enrichment.md).
 - **artist-image** — per *artist*, not per song: artists with no
@@ -199,11 +205,28 @@ table (keyed `(song_id, task)`) fix that:
 - **Reset is content-based**: the clause matches on `file_size IS library_songs.size`, so
   a re-download (which changes the size) re-includes the file automatically. A *success*
   calls `clearAnalysisFailure` to wipe the row outright.
-- **Scope is the ffmpeg-decode tasks only** (`bpm`/`key`/`energy`), where a failure
-  reliably means the file is bad. `audio-features` is deliberately **excluded** — a
-  sidecar failure is usually environmental (a mount/URL misconfig 404s every file), and
-  permanently skipping on that would leave the whole library excluded even after the
-  sidecar is fixed. `genre`/`artist-image` never fail per audio-file.
+- **Scope now covers the decode + metadata-resolution tasks**, each
+  provenance-aware so environmental outages never get ledgered:
+  - `bpm`/`key`/`energy`: an ffmpeg *decode* failure reliably means the *file*
+    is bad (corrupt / truncated) — ledgered + tallied as run failures.
+  - `audio-features`: the sidecar throws `AudioFileRejectedError` on HTTP **422**
+    (it reached + tried to decode the file but the bytes are unusable —
+    "Invalid data" / "decoded audio too short"). That's a per-file condition
+    mirroring the decode tasks, so it's ledgered + tallied. A **404** (file not
+    visible to the sidecar — usually a `MUSIC_DIR` mount mismatch that 404s
+    *every* file) and a **503** (models not loaded) stay `null` and are **not**
+    ledgered: those are environmental, and permanently skipping on them would
+    leave the whole library excluded even after the sidecar is fixed. This was
+    the prod stall: ~32 sub-10 KB junk/AppleDouble files 422'd every run, the
+    task had no ledger so they stayed pending forever, tripping `runNow`'s
+    `applied === 0` early-exit after one batch.
+  - `genre`: a song whose artist Lidarr can't resolve is ledgered (so it stops
+    being re-queried every batch — a real prod backlog of ~1100 songs across
+    ~150 Lidarr-unknown artists starved the queue) but **not** tallied as a
+    failure: nothing is broken, Lidarr simply has no genre. A re-tag/re-download
+    changes the size and re-includes it.
+- `artist-image` (per-artist; failures there are metadata-service issues, not
+  audio-file problems) is **not** ledgered.
 - `countSkippedFiles` (distinct files at the cap) surfaces as `ProcessingStatus.skipped`,
   shown in the panel as "N files skipped: unreadable or not analyzable (re-download to
   retry)".

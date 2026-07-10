@@ -12,12 +12,21 @@ import type { ProcessingTaskId } from '@nicotind/core';
  * failure, so a re-download (which changes the size) clears the skip and lets the
  * repaired file be retried. A *successful* analysis clears the row outright.
  *
- * Scope is deliberately the **ffmpeg-decode tasks** (`bpm`, `key`, `energy`),
- * where a decode failure reliably means the *file* is bad. It is NOT used for:
- *  - `audio-features`: a sidecar failure is usually environmental (a mount/URL
- *    misconfig 404s every file), and permanently skipping on that would leave the
- *    whole library excluded even after the sidecar is fixed — the wrong outcome.
- *  - `genre` (Lidarr) / `artist-image` (per-artist): never fail per audio-file.
+ * Scope is the provenance-aware tasks:
+ *  - `bpm`, `key`, `energy`: ffmpeg *decode* failures reliably mean the *file*
+ *    is bad (corrupt / truncated) — ledgered + tallied as run failures.
+ *  - `audio-features`: a sidecar **422** (the sidecar reached + tried to decode
+ *    the file but the bytes are unusable) is ledgered, since it's a per-file
+ *    condition mirroring the corrupt-file handling of the decode tasks. A 404
+ *    (file not visible to the sidecar, usually a mount mismatch that 404s *every*
+ *    file) is NOT ledgered: that's environmental, and permanently skipping on it
+ *    would leave the whole library excluded even after the sidecar is fixed.
+ *  - `genre`: a song whose artist Lidarr can't resolve is ledgered (so it stops
+ *    being re-queried every batch) but NOT tallied as a failure — nothing is
+ *    broken, Lidarr simply has no genre. A re-tag/re-download re-includes it.
+ *
+ * It is NOT used for `artist-image` (per-artist; failures there are metadata
+ * service issues, not audio-file problems).
  */
 
 /** Failures at or above this count exclude the file from the task's pending set. */
