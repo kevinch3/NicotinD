@@ -191,6 +191,20 @@ describe('acquireJobToDownloadItem', () => {
     ).toBe('acq-album-1');
     expect(acquireJobToDownloadItem(job({ albumId: null })).albumId).toBeUndefined();
   });
+
+  it('a done job with a partial-download warning can be retried, not just removed', () => {
+    const item = acquireJobToDownloadItem(
+      job({ state: 'done', stage: 'done', error: 'Downloaded 1 of 16 tracks — the rest failed or were skipped.' }),
+    );
+    expect(item.canRetry).toBe(true);
+    expect(item.canRemove).toBe(true);
+    expect(item.error).toContain('1 of 16');
+  });
+
+  it('a clean done job (no error) cannot be retried', () => {
+    const item = acquireJobToDownloadItem(job({ state: 'done', stage: 'done', error: null }));
+    expect(item.canRetry).toBe(false);
+  });
 });
 
 describe('buildDownloadFeed', () => {
