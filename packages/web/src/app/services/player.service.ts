@@ -391,6 +391,21 @@ export class PlayerService {
     this.queue.update((q) => q.filter((_, i) => i !== index));
   }
 
+  clearQueue(): void {
+    this.queue.set([]);
+  }
+
+  moveInQueue(fromIndex: number, toIndex: number): void {
+    if (fromIndex === toIndex) return;
+    this.queue.update((q) => {
+      if (fromIndex < 0 || fromIndex >= q.length || toIndex < 0 || toIndex >= q.length) return q;
+      const next = [...q];
+      const [moved] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, moved);
+      return next;
+    });
+  }
+
   setNowPlayingOpen(open: boolean): void {
     this.nowPlayingOpen.set(open);
   }
