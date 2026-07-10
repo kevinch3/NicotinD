@@ -59,6 +59,29 @@ platform-agnostic and works on iOS with no change:
   would otherwise ship Capacitor's default bolt. Source of truth + Android
   equivalent: see [mobile-app.md](./mobile-app.md) "App icon & splash screen".
 
+## OAuth login (proposed — not yet implemented)
+
+Google + Microsoft OAuth login is **proposed** for NicotinD with full mobile
+parity, including iOS. The complete design lives in
+[oauth-auth.md](oauth-auth.md); this section covers the iOS-specific parts.
+
+The iOS app uses the same Capacitor shell (`packages/mobile`) as Android, so
+the OAuth deep-link handoff (**`nicotind://auth-callback#token=…`**) works
+identically on both. The only iOS-specific addition is:
+
+- **`CFBundleURLTypes` for the `nicotind` URL scheme** in `Info.plist`. Because
+  `ios/` is generated ephemerally (no committed project — see below), this is
+  injected by `scripts/ios-plist.ts` at build time, not hand-edited. The script
+  already patches `UIBackgroundModes` and version keys; the OAuth scheme is one
+  more `PlistBuddy` entry.
+
+No macOS CI test job is added for OAuth — the deep-link is a config/plist
+declaration, not code that compiles, and the token-handling JS lives in the
+web bundle (unit-tested via vitest, same as the existing Now Playing routing
+tests). On-device validation is the gate: tap "Sign in with Google" from the
+iOS app → system browser opens → consent → app receives the deep link → lands in
+the authenticated state.
+
 ## The macOS / "no committed `ios/`" constraint
 
 Android committed a hand-generated `android/` Gradle tree. We **cannot** mirror
