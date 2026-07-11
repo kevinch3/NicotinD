@@ -55,9 +55,19 @@ pending).
 Launch tasks:
 
 - **bpm** — `WHERE bpm IS NULL`, available only when `ffmpegAvailable()`. Reads a
-  tag BPM if present, else `analyzeBpm()` (ffmpeg decode → `music-tempo`). Runs a
-  bounded worker pool (`settings.concurrency`). Writes `library_songs.bpm` and the
-  file tag (analyzed values only).
+  tag BPM if present, else detects one **sidecar-first**: `ctx.analyzeRhythm`
+  (the analysis sidecar's `POST /rhythm`, Essentia RhythmExtractor2013) when a
+  sidecar is configured, falling back to `analyzeBpm()` (ffmpeg decode →
+  `music-tempo`) when it isn't or is unreachable. Why: music-tempo makes
+  frequent octave errors — it locks onto half- or double-tempo beat agents (a
+  prod sample showed ~50% of stored BPMs off by 2× in *both* directions, e.g.
+  AC/DC "Shoot to Thrill" stored 73 vs real ~141, ska tracks stored 175–182 vs
+  real ~88), and the errors go both ways so no one-direction heuristic can
+  repair them locally. A sidecar 422 (un-decodable file) is ledgered without
+  attempting the local fallback (same bytes would fail again); a transport
+  error falls back. Runs a bounded worker pool (`settings.concurrency`).
+  Writes `library_songs.bpm` and the file tag (analyzed values only). Repairing
+  historical octave errors: `scripts/analyze-bpm.ts --recheck` (below).
 - **genre** — `WHERE genre IS NULL OR genre = ''`, available only with Lidarr. Uses
   `planGenreBackfill` so an artist is looked up **once** and fanned out to all their
   pending songs. Writes `library_songs.genre` and the file tag. Songs whose artist
@@ -298,3 +308,22 @@ concurrently — multiple writer processes plus the app fight over the SQLite wr
 lock. Prefer the in-process windowed processor (or admin **Run now**) over scripts:
 it shares the app's connection (no lock contention) and completes tag+DB per song so
 nothing reverts on the next full scan.
+
+### BPM octave-error repair (`--recheck`)
+
+The pre-sidecar library was BPM'd by music-tempo, which wrote octave errors
+(half/double tempo) into **both** the DB and the file tags. `--recheck`
+re-detects *every* song via the sidecar (required: `NICOTIND_ANALYSIS_URL`),
+deliberately ignoring the poisoned tags, and overwrites only when the new
+detection is confident and disagrees — policy is the unit-tested
+`shouldUpdateBpm` in `track-backfill.ts` (fill any NULL; overwrite an existing
+value only when Essentia confidence ≥ `--min-conf`, default 1.5 on its 0–5.32
+scale, and the difference exceeds ±2 BPM). ~1.3 s/track sidecar analysis, so a
+10k-song library is a few hours:
+
+```bash
+NICOTIND_ANALYSIS_URL=http://<analysis-host>:8000 \
+  bun run packages/api/src/scripts/analyze-bpm.ts --recheck            # dry run, prints planned changes
+NICOTIND_ANALYSIS_URL=http://<analysis-host>:8000 \
+  bun run packages/api/src/scripts/analyze-bpm.ts --recheck --apply    # write DB + tags (log: analyze-bpm-recheck.log)
+```

@@ -11,7 +11,11 @@ import {
 import { readAudioTags, writeAudioTags, type FeatureTags } from '../audio-tags.js';
 import { analyzeLoudness as realAnalyzeLoudness } from '../loudness-analysis.js';
 import type { LoudnessResult } from '../loudness-analysis.js';
-import type { AudioFeaturesClient, AudioFeaturesResult } from '../audio-features-client.js';
+import type {
+  AudioFeaturesClient,
+  AudioFeaturesResult,
+  RhythmResult,
+} from '../audio-features-client.js';
 import { AudioFileRejectedError } from '../audio-features-client.js';
 import { ffmpegAvailable as realFfmpegAvailable } from '../transcode.js';
 import { resolveSongAbsPath, planGenreBackfill } from '../track-backfill.js';
@@ -61,6 +65,11 @@ export interface EnrichmentContext {
     tags: { bpm?: number; genre?: string; key?: string } & FeatureTags,
   ) => Promise<boolean>;
   analyzeBpm: (abs: string, onError?: (err: unknown) => void) => Promise<number | null>;
+  /** Sidecar tempo detection (library-relative path) — preferred over the local
+   *  music-tempo analyzer, which makes frequent octave (half/double) errors.
+   *  Null when no sidecar is configured; a null *result* means an environmental
+   *  failure and falls back to {@link analyzeBpm}. */
+  analyzeRhythm: ((relPath: string) => Promise<RhythmResult | null>) | null;
   /** Detect the musical key (e.g. "C major"), or null when undetectable. */
   analyzeKey: (abs: string, onError?: (err: unknown) => void) => Promise<string | null>;
   /** Measure integrated loudness + derived energy, or null on decode failure. */
@@ -156,6 +165,7 @@ export function createEnrichmentContext(deps: {
     readTags: (abs) => readAudioTags(abs),
     writeTags: (abs, tags) => writeAudioTags(abs, tags),
     analyzeBpm: (abs, onError) => realAnalyzeBpm(abs, onError),
+    analyzeRhythm: featuresClient ? (relPath) => featuresClient.rhythm(relPath) : null,
     analyzeKey: (abs, onError) => realAnalyzeKey(abs, onError),
     analyzeLoudness: (abs, onError) => realAnalyzeLoudness(abs, onError),
     analyzeAudioFeatures: featuresClient ? (relPath) => featuresClient.analyze(relPath) : null,
@@ -185,10 +195,9 @@ const bpmTask: EnrichmentTask = {
     ),
   run: async (db, ctx, limit) => {
     const rows = db
-      .query<
-        SongRow,
-        [number]
-      >(`SELECT id, path, artist, title, size FROM library_songs WHERE bpm IS NULL${notPermanentlyFailedClause('bpm')} ORDER BY created DESC LIMIT ?`)
+      .query<SongRow, [number]>(
+        `SELECT id, path, artist, title, size FROM library_songs WHERE bpm IS NULL${notPermanentlyFailedClause('bpm')} ORDER BY created DESC LIMIT ?`,
+      )
       .all(limit);
 
     const labels: string[] = [];
@@ -211,7 +220,25 @@ const bpmTask: EnrichmentTask = {
             bpm = tags.bpm;
             fromTag = true;
           } else {
-            bpm = await ctx.analyzeBpm(abs, (err) => noteItemFailure(db, tally, song, 'bpm', err));
+            if (ctx.analyzeRhythm) {
+              try {
+                const r = await ctx.analyzeRhythm(song.path);
+                if (r) bpm = Math.round(r.bpm);
+              } catch (err) {
+                if (err instanceof AudioFileRejectedError) {
+                  // Un-decodable per the sidecar (422) — the local decoder would
+                  // fail on the same bytes; ledger once and skip the fallback.
+                  noteItemFailure(db, tally, song, 'bpm', err);
+                  continue;
+                }
+                // Transport-level throw: treat like an outage, use the fallback.
+              }
+            }
+            if (!bpm) {
+              bpm = await ctx.analyzeBpm(abs, (err) =>
+                noteItemFailure(db, tally, song, 'bpm', err),
+              );
+            }
           }
         } catch (err) {
           noteItemFailure(db, tally, song, 'bpm', err);
@@ -238,10 +265,7 @@ const genreTask: EnrichmentTask = {
     Number(
       (
         db
-          .query<
-            { n: number },
-            []
-          >(
+          .query<{ n: number }, []>(
             `SELECT COUNT(*) AS n FROM library_songs WHERE (genre IS NULL OR genre = '')${notPermanentlyFailedClause(
               'genre',
             )}`,
@@ -251,12 +275,11 @@ const genreTask: EnrichmentTask = {
     ),
   run: async (db, ctx, limit) => {
     const rows = db
-      .query<
-        SongRow,
-        [number]
-      >(`SELECT id, path, artist, title, size FROM library_songs WHERE (genre IS NULL OR genre = '')${notPermanentlyFailedClause(
-        'genre',
-      )} ORDER BY created DESC LIMIT ?`)
+      .query<SongRow, [number]>(
+        `SELECT id, path, artist, title, size FROM library_songs WHERE (genre IS NULL OR genre = '')${notPermanentlyFailedClause(
+          'genre',
+        )} ORDER BY created DESC LIMIT ?`,
+      )
       .all(limit);
 
     // One Lidarr lookup per artist, fanned out to that artist's pending songs.
@@ -295,19 +318,17 @@ const keyTask: EnrichmentTask = {
     Number(
       (
         db
-          .query<
-            { n: number },
-            []
-          >(`SELECT COUNT(*) AS n FROM library_songs WHERE (key IS NULL OR key = '')${notPermanentlyFailedClause('key')}`)
+          .query<{ n: number }, []>(
+            `SELECT COUNT(*) AS n FROM library_songs WHERE (key IS NULL OR key = '')${notPermanentlyFailedClause('key')}`,
+          )
           .get() ?? { n: 0 }
       ).n,
     ),
   run: async (db, ctx, limit) => {
     const rows = db
-      .query<
-        SongRow,
-        [number]
-      >(`SELECT id, path, artist, title, size FROM library_songs WHERE (key IS NULL OR key = '')${notPermanentlyFailedClause('key')} ORDER BY created DESC LIMIT ?`)
+      .query<SongRow, [number]>(
+        `SELECT id, path, artist, title, size FROM library_songs WHERE (key IS NULL OR key = '')${notPermanentlyFailedClause('key')} ORDER BY created DESC LIMIT ?`,
+      )
       .all(limit);
 
     const labels: string[] = [];
@@ -370,10 +391,9 @@ const energyTask: EnrichmentTask = {
     ),
   run: async (db, ctx, limit) => {
     const rows = db
-      .query<
-        SongRow,
-        [number]
-      >(`SELECT id, path, artist, title, size FROM library_songs WHERE energy IS NULL${notPermanentlyFailedClause('energy')} ORDER BY created DESC LIMIT ?`)
+      .query<SongRow, [number]>(
+        `SELECT id, path, artist, title, size FROM library_songs WHERE energy IS NULL${notPermanentlyFailedClause('energy')} ORDER BY created DESC LIMIT ?`,
+      )
       .all(limit);
 
     const labels: string[] = [];
@@ -444,10 +464,7 @@ const audioFeaturesTask: EnrichmentTask = {
     Number(
       (
         db
-          .query<
-            { n: number },
-            []
-          >(
+          .query<{ n: number }, []>(
             `SELECT COUNT(*) AS n FROM library_songs WHERE danceability IS NULL${notPermanentlyFailedClause(
               'audio-features',
             )}`,
@@ -457,12 +474,11 @@ const audioFeaturesTask: EnrichmentTask = {
     ),
   run: async (db, ctx, limit) => {
     const rows = db
-      .query<
-        SongRow,
-        [number]
-      >(`SELECT id, path, artist, title, size FROM library_songs WHERE danceability IS NULL${notPermanentlyFailedClause(
-        'audio-features',
-      )} ORDER BY created DESC LIMIT ?`)
+      .query<SongRow, [number]>(
+        `SELECT id, path, artist, title, size FROM library_songs WHERE danceability IS NULL${notPermanentlyFailedClause(
+          'audio-features',
+        )} ORDER BY created DESC LIMIT ?`,
+      )
       .all(limit);
 
     const labels: string[] = [];
@@ -617,14 +633,13 @@ const artistImageTask: EnrichmentTask = {
     ),
   run: async (db, ctx, limit) => {
     const rows = db
-      .query<
-        ArtistRow,
-        [number]
-      >(`SELECT id, name FROM library_artists a
+      .query<ArtistRow, [number]>(
+        `SELECT id, name FROM library_artists a
          WHERE a.hidden = 0 AND a.manual_override = 0
            AND NOT EXISTS (
              SELECT 1 FROM library_artwork w WHERE w.id = a.id AND w.kind = 'artist')
-         ORDER BY a.album_count DESC, a.name LIMIT ?`)
+         ORDER BY a.album_count DESC, a.name LIMIT ?`,
+      )
       .all(limit);
 
     // One Lidarr `artist.list()` per batch (not per artist), reused across rows.

@@ -15,6 +15,7 @@ import { transferGroupKeys } from '../services/transfer-group-keys.js';
 import type { SlskdRef } from '../index.js';
 import { getAcquisitionByPath } from '../services/acquisition-store.js';
 import { analyzeBpm, verifyGenre } from '../services/track-analysis.js';
+import type { AudioFeaturesClient } from '../services/audio-features-client.js';
 import { readAudioTags, writeAudioTags } from '../services/audio-tags.js';
 import { getLyrics, setLyrics, deleteLyrics } from '../services/lyrics-store.js';
 import type { PluginRegistry } from '../services/plugins/registry.js';
@@ -213,6 +214,10 @@ interface LibraryRoutesOptions {
   pluginRegistry?: PluginRegistry;
   /** slskd handle, used to suppress albums with an in-flight (non-job) transfer. */
   slskdRef?: SlskdRef;
+  /** Analysis-sidecar client: preferred BPM detector for on-demand analysis
+   *  (Essentia — the local music-tempo fallback makes frequent octave errors).
+   *  Null when no sidecar is configured. */
+  audioFeaturesClient?: AudioFeaturesClient | null;
 }
 
 interface AlbumRow {
@@ -403,7 +408,8 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
   // router is mounted on a bare app (as the route tests do) without the global
   // onError. Mirrors the app-level handler.
   app.onError(errorHandler);
-  const { curator, runSync, lidarr, coverCacheDir, dataDir, pluginRegistry } = options;
+  const { curator, runSync, lidarr, coverCacheDir, dataDir, pluginRegistry, audioFeaturesClient } =
+    options;
 
   app.get('/artists', (c) => {
     const db = getDatabase();
@@ -469,10 +475,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
          ORDER BY year DESC NULLS LAST, name COLLATE NOCASE ASC`,
       )
       .all(id, id);
-    const downloadingKeys = getDownloadingGroupKeys(
-      db,
-      await activeTransferKeys(options.slskdRef),
-    );
+    const downloadingKeys = getDownloadingGroupKeys(db, await activeTransferKeys(options.slskdRef));
     const visible = allRows.filter(
       (r) =>
         !downloadingKeys.has(
@@ -500,7 +503,10 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     const offset = Math.max(Number(c.req.query('offset') ?? 0), 0);
     const sort = c.req.query('sort') ?? 'newest';
     const db = getDatabase();
-    const wheres = ['(s.artist_id = ? OR s.id IN (SELECT song_id FROM library_song_artists WHERE artist_id = ?))', 's.hidden = 0'];
+    const wheres = [
+      '(s.artist_id = ? OR s.id IN (SELECT song_id FROM library_song_artists WHERE artist_id = ?))',
+      's.hidden = 0',
+    ];
     const params: Array<string | number> = [id, id];
     // Standardized metadata filters (bpm/key/mood/…); `starred=true` is part of
     // the same grammar and keeps its historical meaning here (song-level).
@@ -603,10 +609,9 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     const order = albumOrderBy(type);
 
     const rows = db
-      .query<
-        AlbumRow,
-        (string | number)[]
-      >(`${ALBUM_SELECT} ${whereClause} ORDER BY ${order} LIMIT ? OFFSET ?`)
+      .query<AlbumRow, (string | number)[]>(
+        `${ALBUM_SELECT} ${whereClause} ORDER BY ${order} LIMIT ? OFFSET ?`,
+      )
       .all(...params, size, offset);
     const albums = rows.map(rowToAlbum);
     return c.json(albums);
@@ -666,10 +671,9 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       >('SELECT name, artist, artist_id, genre FROM library_albums WHERE id = ?')
       .get(albumId);
     const canonicalSongs = db
-      .query<
-        { id: string; path: string; artist_id: string | null },
-        [string]
-      >('SELECT id, path, artist_id FROM library_songs WHERE album_id = ?')
+      .query<{ id: string; path: string; artist_id: string | null }, [string]>(
+        'SELECT id, path, artist_id FROM library_songs WHERE album_id = ?',
+      )
       .all(albumId);
     const songIds: string[] = canonicalSongs.map((s) => s.id);
     const songPaths: string[] = canonicalSongs.map((s) => s.path);
@@ -851,7 +855,13 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
   app.post('/albums/:id/metadata', async (c) => {
     requireAdmin(c);
     const body = await c.req.json<ApplyMetadataRequest>().catch(() => ({}) as ApplyMetadataRequest);
-    if (!body.artist?.trim() && !body.album?.trim() && body.year == null && !body.coverUrl && !body.releaseType) {
+    if (
+      !body.artist?.trim() &&
+      !body.album?.trim() &&
+      body.year == null &&
+      !body.coverUrl &&
+      !body.releaseType
+    ) {
       return c.json({ error: 'Nothing to apply' }, 400);
     }
     const result = applyMetadataFix(getDatabase(), c.req.param('id'), body, { coverCacheDir });
@@ -872,7 +882,11 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       .get(id);
     if (!album) return c.json({ error: 'Album not found' }, 404);
 
-    const current: AlbumCoverCandidate = { source: 'current', url: `/api/cover/${id}`, label: 'Current' };
+    const current: AlbumCoverCandidate = {
+      source: 'current',
+      url: `/api/cover/${id}`,
+      label: 'Current',
+    };
 
     let lidarr_: AlbumCoverCandidate[] = [];
     if (lidarr) {
@@ -903,7 +917,9 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       const sources = songs
         .map((s) => ({ id: s.id, absPath: resolveSongPath(md, s.path) }))
         .filter((s) => isUnderMusicDir(md, s.absPath) && existsSync(s.absPath));
-      const distinct = await selectDistinctEmbeddedCovers(sources, (p) => extractEmbeddedPicture(p));
+      const distinct = await selectDistinctEmbeddedCovers(sources, (p) =>
+        extractEmbeddedPicture(p),
+      );
       files = distinct.map((d) => ({
         source: 'file' as const,
         songId: d.songId,
@@ -1093,10 +1109,9 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     const albumId = body.albumId?.trim();
     if (!albumId) return c.json({ error: 'Provide albumId' }, 400);
     const album = db
-      .query<
-        { id: string },
-        [string, string]
-      >('SELECT id FROM library_albums WHERE id = ? AND artist_id = ?')
+      .query<{ id: string }, [string, string]>(
+        'SELECT id FROM library_albums WHERE id = ? AND artist_id = ?',
+      )
       .get(albumId, id);
     if (!album) return c.json({ error: 'Album not found for this artist' }, 404);
 
@@ -1228,8 +1243,14 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     let bpm = tags.bpm ?? null;
     let source: 'tag' | 'analyzed' = 'tag';
     if (!bpm) {
-      bpm = await analyzeBpm(abs);
       source = 'analyzed';
+      // Sidecar first (Essentia): the local music-tempo fallback makes frequent
+      // octave errors. A null/throwing sidecar falls through to the local path.
+      if (audioFeaturesClient) {
+        const r = await audioFeaturesClient.rhythm(song.path).catch(() => null);
+        if (r) bpm = Math.round(r.bpm);
+      }
+      if (!bpm) bpm = await analyzeBpm(abs);
       if (bpm) {
         // Persist into the file so a future rescan reads it back.
         await writeAudioTags(abs, { bpm }).catch(() => false);
@@ -1473,9 +1494,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       weights: { ...DEFAULT_WEIGHTS, artistPenalty: -0.1 },
     });
 
-    const results = ranked.map((e) =>
-      rowToSong((e.song as (typeof candidates)[number])._row),
-    );
+    const results = ranked.map((e) => rowToSong((e.song as (typeof candidates)[number])._row));
 
     return c.json(results);
   });
@@ -1483,10 +1502,9 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
   app.get('/genres', (c) => {
     const db = getDatabase();
     const rows = db
-      .query<
-        { name: string; song_count: number; album_count: number },
-        []
-      >(`SELECT name, song_count, album_count FROM library_genres ORDER BY song_count DESC`)
+      .query<{ name: string; song_count: number; album_count: number }, []>(
+        `SELECT name, song_count, album_count FROM library_genres ORDER BY song_count DESC`,
+      )
       .all();
     return c.json(
       rows.map((r) => ({ value: r.name, songCount: r.song_count, albumCount: r.album_count })),
@@ -1750,8 +1768,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     );
     if (failed.length === ids.length) {
       const firstError = results.find((r) => r.status === 'fulfilled' && !r.value.ok) as
-        | PromiseFulfilledResult<{ ok: false; error: string; status: number }>
-        | undefined;
+        PromiseFulfilledResult<{ ok: false; error: string; status: number }> | undefined;
       const status = firstError?.value.status ?? 500;
       return c.json(
         { error: firstError?.value.error ?? 'Failed to delete any songs' },
@@ -1770,10 +1787,9 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
 
     const db = getDatabase();
     const rows = db
-      .query<
-        SongRow,
-        []
-      >(`${SONG_SELECT} WHERE s.hidden = 0 AND (a.hidden IS NULL OR a.hidden = 0)`)
+      .query<SongRow, []>(
+        `${SONG_SELECT} WHERE s.hidden = 0 AND (a.hidden IS NULL OR a.hidden = 0)`,
+      )
       .all();
     const allSongs = rows.map(rowToSong);
 

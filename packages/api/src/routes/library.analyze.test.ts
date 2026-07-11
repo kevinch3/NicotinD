@@ -4,11 +4,15 @@
  * genre suggestion via a stubbed Lidarr, and the admin-gated apply.
  */
 import { describe, expect, it, beforeEach, afterEach, mock } from 'bun:test';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { Hono } from 'hono';
 import { Database } from 'bun:sqlite';
 import type { JwtPayload } from '@nicotind/core';
 import type { Lidarr } from '@nicotind/lidarr-client';
 import type { AuthEnv } from '../middleware/auth.js';
+import type { AudioFeaturesClient } from '../services/audio-features-client.js';
 import { applySchema } from '../db.js';
 import { libraryRoutes } from './library.js';
 
@@ -41,13 +45,22 @@ const lidarr = {
   },
 } as unknown as Lidarr;
 
-function makeApp(role: 'admin' | 'user' = 'admin'): Hono<AuthEnv> {
+function makeApp(
+  role: 'admin' | 'user' = 'admin',
+  opts: { musicDir?: string; audioFeaturesClient?: AudioFeaturesClient | null } = {},
+): Hono<AuthEnv> {
   const app = new Hono<AuthEnv>();
   app.use('*', async (c, next) => {
     c.set('user', { sub: 'u1', role, iat: 0, exp: 0 } as JwtPayload);
     await next();
   });
-  app.route('/', libraryRoutes('/music', { lidarr }));
+  app.route(
+    '/',
+    libraryRoutes(opts.musicDir ?? '/music', {
+      lidarr,
+      audioFeaturesClient: opts.audioFeaturesClient ?? null,
+    }),
+  );
   return app;
 }
 
@@ -74,6 +87,35 @@ describe('POST /songs/:id/analyze', () => {
     seedSong(testDb, { id: 'song-2' }); // no bpm, file not on disk under /music
     const res = await makeApp().request('/songs/song-2/analyze', { method: 'POST' });
     expect(res.status).toBe(404);
+  });
+
+  it('uses the sidecar rhythm result (rounded) when a client is wired', async () => {
+    const musicDir = mkdtempSync(join(tmpdir(), 'nicotind-analyze-'));
+    try {
+      mkdirSync(join(musicDir, 'Aphex Twin/Drukqs'), { recursive: true });
+      writeFileSync(join(musicDir, 'Aphex Twin/Drukqs/01 - Avril 14th.flac'), 'fake');
+      seedSong(testDb, { id: 'song-3' }); // no bpm; readAudioTags fails on fake bytes
+      const calls: string[] = [];
+      const client = {
+        rhythm: async (relPath: string) => {
+          calls.push(relPath);
+          return { bpm: 141.9, confidence: 2.92 };
+        },
+      } as unknown as AudioFeaturesClient;
+      const res = await makeApp('admin', { musicDir, audioFeaturesClient: client }).request(
+        '/songs/song-3/analyze',
+        { method: 'POST' },
+      );
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ bpm: 142, source: 'analyzed' });
+      expect(calls).toEqual(['Aphex Twin/Drukqs/01 - Avril 14th.flac']);
+      const row = testDb
+        .query<{ bpm: number }, [string]>('SELECT bpm FROM library_songs WHERE id = ?')
+        .get('song-3');
+      expect(row?.bpm).toBe(142);
+    } finally {
+      rmSync(musicDir, { recursive: true, force: true });
+    }
   });
 });
 

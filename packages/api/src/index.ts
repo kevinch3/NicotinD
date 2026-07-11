@@ -487,6 +487,7 @@ export function createApp({
       dataDir: expandedDataDir,
       pluginRegistry: plugins,
       slskdRef,
+      audioFeaturesClient,
     }),
   );
   app.route('/api', streamingRoutes(expandedMusicDir, db, expandedDataDir));
