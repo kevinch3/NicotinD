@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.180](https://github.com/kevinch3/NicotinD/compare/v0.1.179...v0.1.180) (2026-07-11)
+
+
+### Features
+
+* **processing:** quarantine downloads until required steps complete before landing ([5d1a358](https://github.com/kevinch3/NicotinD/commit/5d1a358cd17ece3aa8c55c54360f6b158d974760))
+
 ## [0.1.179](https://github.com/kevinch3/NicotinD/compare/v0.1.178...v0.1.179) (2026-07-11)
 
 
