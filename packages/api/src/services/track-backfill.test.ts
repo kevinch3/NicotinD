@@ -3,6 +3,7 @@ import {
   groupSongsByArtist,
   planGenreBackfill,
   resolveSongAbsPath,
+  shouldUpdateBpm,
 } from './track-backfill.js';
 
 describe('resolveSongAbsPath', () => {
@@ -78,5 +79,28 @@ describe('planGenreBackfill', () => {
     );
     expect(assignments).toEqual([]);
     expect(skippedArtists).toEqual(['Nobody']);
+  });
+});
+
+describe('shouldUpdateBpm', () => {
+  it('fills a missing bpm at any confidence', () => {
+    expect(shouldUpdateBpm(null, 141.9, 0.2, 1.5)).toBe(true);
+    expect(shouldUpdateBpm(null, 141.9, 0, 1.5)).toBe(true);
+  });
+
+  it('rejects invalid candidate bpm values', () => {
+    expect(shouldUpdateBpm(null, 0, 5, 1.5)).toBe(false);
+    expect(shouldUpdateBpm(120, NaN, 5, 1.5)).toBe(false);
+  });
+
+  it('overwrites a disagreeing stored bpm only at/above the confidence floor', () => {
+    expect(shouldUpdateBpm(73, 141.9, 2.92, 1.5)).toBe(true);
+    expect(shouldUpdateBpm(73, 141.9, 0.47, 1.5)).toBe(false); // low confidence: keep stored
+  });
+
+  it('keeps a stored bpm that agrees within tolerance (no churn)', () => {
+    expect(shouldUpdateBpm(142, 141.9, 4.0, 1.5)).toBe(false);
+    expect(shouldUpdateBpm(140, 141.9, 4.0, 1.5)).toBe(false); // ±2 BPM tolerance
+    expect(shouldUpdateBpm(139, 141.9, 4.0, 1.5)).toBe(true); // outside tolerance
   });
 });

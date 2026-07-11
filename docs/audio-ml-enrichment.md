@@ -56,8 +56,25 @@ The shipped pipeline:
   similarity (playlist-generation.md §2b).
 - **Sidecar contract**: `POST /analyze {relPath}` resolved against the sidecar's
   own `MUSIC_DIR` (no shared absolute paths); `GET /health` reports
-  `modelVersions` (the drift anchor). Models pinned by URL + sha256 in the
-  Dockerfile (~25 MB total).
+  `modelVersions` (the drift anchor) plus `rhythm` (tempo availability). Models
+  pinned by URL + sha256 in the Dockerfile (~25 MB total).
+- **`POST /rhythm {relPath}` → `{bpm, confidence, method}`** (`app/rhythm.py`,
+  Essentia RhythmExtractor2013 *multifeature* over an ffmpeg-decoded 90 s
+  44.1 kHz slice, ~1.3 s/track). Added because the bun-side detector
+  (music-tempo) makes frequent octave errors — half *and* double tempo, ~50%
+  of a prod sample — while RhythmExtractor2013 matched known tempos on every
+  confident spot-check. Deliberately independent of the TF model registry
+  (tempo needs no models, so /rhythm keeps working when model files are
+  absent; injectable `RhythmAnalyzer` protocol mirrors `ModelRegistry` for
+  contract tests). Consumed by `AudioFeaturesClient.rhythm()`: the bpm
+  enrichment task, the on-demand analyze route, and
+  `scripts/analyze-bpm.ts --recheck` (octave-error repair — see
+  library-processing.md) all prefer it over music-tempo. `confidence` is
+  Essentia's 0–5.32 scale (in practice <1.5 = poor lock).
+  **Time signature was evaluated and rejected**: Essentia's `Meter`
+  (BeatsLoudness → Beatogram chain) returned 2.0 for 4/4 AC/DC and 12.0 for
+  6/8 Metallica — too unreliable to store; proper meter needs downbeat
+  tracking (madmom-class dependency), deferred.
 - **Decoding is ffmpeg, not Essentia's loader** (found in live verification):
   the essentia pip wheel's bundled AudioLoader can't decode Opus — the
   library's standard codec — so `app/models.py load_audio` decodes any codec

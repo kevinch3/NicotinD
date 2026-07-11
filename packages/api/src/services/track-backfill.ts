@@ -23,6 +23,32 @@ export function resolveSongAbsPath(musicDir: string, songPath: string): string {
   return normalize(join(musicDir, normalized));
 }
 
+/** Stored vs freshly-detected BPM within this margin count as agreement. */
+const BPM_AGREE_TOLERANCE = 2;
+
+/**
+ * Decide whether a re-detected BPM should replace the stored one (the
+ * `--recheck` backfill: repairing music-tempo's octave errors with Essentia).
+ *
+ * - A missing stored BPM is filled at any confidence — same posture as the
+ *   enrichment task, anything beats nothing.
+ * - An existing stored BPM is only overwritten when the new detection is
+ *   confident (`confidence >= minConfidence`, Essentia's 0–5.32 scale) AND
+ *   actually disagrees (beyond ±2 BPM) — low-confidence detections on e.g.
+ *   rubato ballads must not churn plausible stored values.
+ */
+export function shouldUpdateBpm(
+  stored: number | null,
+  next: number,
+  confidence: number,
+  minConfidence: number,
+): boolean {
+  if (!Number.isFinite(next) || next <= 0) return false;
+  if (stored === null) return true;
+  if (confidence < minConfidence) return false;
+  return Math.abs(Math.round(next) - stored) > BPM_AGREE_TOLERANCE;
+}
+
 export interface ArtistGroup<T> {
   /** The display artist of the first song in the group. */
   artist: string;
