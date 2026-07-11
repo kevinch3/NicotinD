@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.177](https://github.com/kevinch3/NicotinD/compare/v0.1.176...v0.1.177) (2026-07-11)
+
+
+### Bug Fixes
+
+* **library:** repair BPM octave errors with Essentia sidecar-first detection ([4de68d2](https://github.com/kevinch3/NicotinD/commit/4de68d2029713b0557a99a4cdca8598a0b97033e))
+
 ## [0.1.176](https://github.com/kevinch3/NicotinD/compare/v0.1.175...v0.1.176) (2026-07-10)
 
 
