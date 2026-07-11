@@ -189,9 +189,21 @@ jobs:
           oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
           tags: tag:ci
 
+      # Pin the deploy host's SSH key into known_hosts so we can drop the
+      # insecure `-o StrictHostKeyChecking=no` (which accepts any key on
+      # first connect, vulnerable to MITM). `ssh-keyscan` runs at workflow
+      # start over the Tailscale network, so the key is fetched from the
+      # genuine host. If the host's SSH key changes (reinstall/reprovision),
+      # ssh-keyscan will pick up the new key automatically — no manual secret
+      # rotation needed. This is strictly safer than the old flag.
+      - name: Pin deploy host SSH key
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keyscan -H ${{ secrets.DEPLOY_HOST }} >> ~/.ssh/known_hosts
+
       - name: Deploy via SSH
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} '
+          ssh ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} '
             set -e
             if systemctl --user is-active --quiet nicotind; then
               echo "ERROR: systemd nicotind is active on the host — Docker deploy would collide on :5030/:8484. Run: systemctl --user disable --now nicotind" >&2
