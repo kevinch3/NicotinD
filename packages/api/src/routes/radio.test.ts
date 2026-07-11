@@ -44,8 +44,8 @@ function seedSong(
     [s.albumId, s.album, s.artist, artistId, s.year ?? null, s.genre ?? null],
   );
   db.run(
-    `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, size, bit_rate, suffix, content_type, created, genre, bpm, key, year, synced_at)
-     VALUES (?, ?, ?, ?, ?, 240, '/music/test.mp3', 0, 320, 'mp3', 'audio/mpeg', '2024-01-01', ?, ?, ?, ?, 0)`,
+    `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, size, bit_rate, suffix, content_type, created, genre, bpm, key, year, landed_at, synced_at)
+     VALUES (?, ?, ?, ?, ?, 240, '/music/test.mp3', 0, 320, 'mp3', 'audio/mpeg', '2024-01-01', ?, ?, ?, ?, 1, 0)`,
     [s.id, s.albumId, s.title, s.artist, artistId, s.genre ?? null, s.bpm ?? null, s.key ?? null, s.year ?? null],
   );
 }

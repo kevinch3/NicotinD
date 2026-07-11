@@ -22,9 +22,10 @@ continuous, hands-off background process while keeping the download pipeline fas
 | Settings store | `services/processing-settings.ts` (`app_settings` key `processing`) |
 | Pure window math | `services/processing-window.ts` (`isWithinWindow`, midnight-crossing) |
 | Task registry | `services/enrichment/tasks.ts` (`ENRICHMENT_TASKS`) |
-| Scheduler | `services/library-processing.service.ts` (`LibraryProcessingService`) |
-| Admin routes | `routes/admin.ts` (`/api/admin/processing*`) |
-| Web panel | `pages/settings/` + DI-free `lib/processing-progress.ts` |
+| Scheduler + landing gate | `services/library-processing.service.ts` (`LibraryProcessingService`) |
+| Per-track step state | `services/song-steps.ts` (`loadQuarantineQueue`, `computeSongSteps`) |
+| Admin routes | `routes/admin.ts` (`/api/admin/processing*`, incl. `/processing/queue`) |
+| Web panel | `pages/admin/` (`AdminComponent`) + DI-free `lib/processing-progress.ts` |
 
 ## The task registry — the extension point
 
@@ -155,6 +156,63 @@ Modeled on `WatchlistService` (interval + a `busy` guard so runs never overlap):
   **without** disabling the scheduler. The cancellation token is reset at the start
   of every run.
 - **`stop()`**: full shutdown (clears the interval + aborts). Wired into SIGTERM/SIGINT.
+- **`kickEager()`** (eager, out-of-window): drains **only the required gate tasks**
+  for quarantined songs then graduates — see the landing gate below.
+
+## Landing gate (process-before-landing)
+
+A freshly-downloaded song is written to `library_songs` by the scanner (so the
+enrichment tasks can operate on it) but starts **quarantined**: `landed_at IS NULL`,
+hidden from *every* library listing (see `docs/download-pipeline.md` for the listing
+coverage). It **graduates** (a `landed_at` timestamp is set) only once its required
+processing steps are done. This inverts the old flow where a download appeared
+instantly, un-enriched.
+
+- **`landed_at`** (`library_songs`, `db.ts`): NULL = quarantined, timestamp = landed.
+  The scanner deliberately never writes it (omitted from `persist()`'s INSERT and
+  UPDATE), so a fresh scan mints NULL and a rescan preserves the value. The
+  processing service is the **only** writer that sets a timestamp. A one-time
+  marker-gated backfill (`library_sync_state` key `landing_backfill_v1`) lands every
+  pre-existing row so an upgrade never retroactively hides music.
+- **Per-task gate flag** (`ProcessingSettings.gates`, a sparse
+  `Partial<Record<ProcessingTaskId, boolean>>`, deep-merged like `tasks`): distinct
+  from `tasks` (background enable). Defaults: `bpm`/`key`/`energy`/`genre` gated;
+  `audio-features` (sidecar, off on fresh installs) and per-artist `artist-image`
+  are **not** gates. Admin toggles both flags per task (Admin → Library processing).
+- **`requiredGateTasks(settings)`** = tasks that are `gates[id]` **AND** `tasks[id]`
+  **AND** `available(ctx)===true` **AND** have a `satisfiedColumnSql`. The
+  availability intersection is the **fresh-install / sidecar-off guarantee**: an
+  off/unavailable gated task is silently dropped from the required set, so a missing
+  tool, absent Lidarr, or a dark sidecar can never strand a download. An empty
+  required set means nothing gates landing (the pre-feature behaviour).
+- **`satisfiedColumnSql`** (per `EnrichmentTask`): the inverse of its `countPending`
+  NULL predicate (`bpm IS NOT NULL`, `danceability IS NOT NULL`, …). `artist-image`
+  has none → never a landing gate.
+- **`graduatePending(settings)`** runs at the end of every batch (`processOneBatch`)
+  and inside `kickEager`. It lands songs where every required step is `satisfied OR
+  permanentlyFailed` (the ledger complement `permanentlyFailedClause`, so a corrupt
+  file the enrichment can never analyze still lands), **OR** the song has been
+  quarantined longer than `QUARANTINE_MAX_HOURS` (24h). That **safety valve** is the
+  key correctness guard: it covers the deliberately un-ledgered failure modes
+  (sidecar 404/503 mount mismatch, an env-level decode outage) that would otherwise
+  hold a download invisible forever.
+- **Eager processing**: `scanIncremental` (`index.ts`) fires a fire-and-forget
+  `processingRef.current?.kickEager()` after every organize+scan, so a new download's
+  gate steps run **immediately, ignoring the window**, and it lands as soon as it's
+  ready. `tick()` also runs a gate-only pass out-of-window whenever a quarantined
+  song exists, backstopping a missed kick (crash between scan and kick, restart
+  mid-quarantine). The window still governs full/background enrichment of the
+  existing library.
+- **`ProcessingStatus.quarantined`** counts songs awaiting their gate steps;
+  `GET /api/admin/processing/queue` (`song-steps.ts` `loadQuarantineQueue`) returns
+  them grouped by album with per-step badges (`done`/`pending`/`skipped`).
+- **Boot backlog**: `runSyncAndCurate` fires `kickEager()` after the initial
+  `scanFull`, and `tick()` runs a gate-only pass whenever a quarantined song exists,
+  so a restart processes any quarantined backlog without waiting for the window.
+- **Escape hatch**: `NICOTIND_DISABLE_LANDING_GATE=1` bypasses the gate entirely
+  (`requiredGateTasks` returns `[]` → everything lands immediately). The e2e harness
+  sets it because its silent-FLAC fixtures can't yield a confident BPM/key and would
+  otherwise stay quarantined behind analysis that never completes.
 
 ### Failure diagnosis, feedback & Sentry
 

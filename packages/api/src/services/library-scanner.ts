@@ -791,6 +791,11 @@ export class LibraryScanner {
         content_type = excluded.content_type,
         created = excluded.created,
         synced_at = excluded.synced_at
+        -- landed_at is deliberately absent from BOTH the INSERT column list and
+        -- this UPDATE SET: a fresh insert defaults it to NULL (quarantined until
+        -- required processing steps finish) and a rescan of an already-landed song
+        -- preserves its timestamp. The library-processing service (graduatePending)
+        -- is the sole writer that sets a landed timestamp — do not add it here.
     `);
     const artistStmt = this.db.prepare(`
       INSERT INTO library_artists (id, name, album_count, cover_art, synced_at)

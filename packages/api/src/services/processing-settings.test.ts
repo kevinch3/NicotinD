@@ -55,4 +55,18 @@ describe('processing-settings', () => {
     expect(s.tasks).toEqual(DEFAULT_PROCESSING_SETTINGS.tasks);
     expect(s.batchSize).toBe(DEFAULT_PROCESSING_SETTINGS.batchSize);
   });
+
+  it('back-fills the gates map from a legacy blob that predates it', () => {
+    // A blob written before the landing-gate feature has no `gates` key.
+    db.run(`INSERT INTO app_settings (key, value) VALUES ('processing', ?)`, [
+      JSON.stringify({ enabled: true, tasks: { bpm: true } }),
+    ]);
+    expect(getProcessingSettings(db).gates).toEqual(DEFAULT_PROCESSING_SETTINGS.gates);
+  });
+
+  it('deep-merges a partial gates patch without dropping other gate flags', () => {
+    const merged = setProcessingSettings(db, { gates: { bpm: false } });
+    expect(merged.gates.bpm).toBe(false); // patched
+    expect(merged.gates.key).toBe(DEFAULT_PROCESSING_SETTINGS.gates.key); // untouched default
+  });
 });

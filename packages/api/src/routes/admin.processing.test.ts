@@ -171,4 +171,57 @@ describe('admin /processing', () => {
     expect((await app.request('/processing/run', { method: 'POST' })).status).toBe(200);
     expect((await app.request('/processing/stop', { method: 'POST' })).status).toBe(200);
   });
+
+  it('persists the per-task landing gates via PUT', async () => {
+    const app = authed(
+      new Hono<AuthEnv>().route('/', adminRoutes({ musicDir: '/music', processing: makeService() })),
+      'admin',
+    );
+    const res = await app.request('/processing', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ gates: { bpm: false } }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { settings: { gates: Record<string, boolean> } };
+    expect(body.settings.gates.bpm).toBe(false);
+    expect(body.settings.gates.key).toBe(true); // other default gate untouched
+  });
+
+  it('rejects a malformed gates map', async () => {
+    const app = authed(
+      new Hono<AuthEnv>().route('/', adminRoutes({ musicDir: '/music', processing: makeService() })),
+      'admin',
+    );
+    const res = await app.request('/processing', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ gates: { bpm: 'yes' } }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('returns the quarantine queue grouped by album', async () => {
+    testDb.run(
+      `INSERT INTO library_albums (id, name, artist, artist_id, song_count, duration, synced_at)
+       VALUES ('al', 'Album', 'Artist', 'art', 1, 0, 1)`,
+    );
+    // A quarantined song (landed_at NULL) with bpm done, others pending.
+    testDb.run(
+      `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, size, created, bpm, synced_at)
+       VALUES ('s1', 'al', 'T', 'Artist', 'art', 0, 's1.opus', 10, '2024-01-01', 120, 1)`,
+    );
+    const app = authed(
+      new Hono<AuthEnv>().route('/', adminRoutes({ musicDir: '/music', processing: makeService() })),
+      'admin',
+    );
+    const res = await app.request('/processing/queue');
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      albums: { albumId: string; songs: { steps: Record<string, string> }[] }[];
+    };
+    expect(body.albums).toHaveLength(1);
+    expect(body.albums[0].songs[0].steps.bpm).toBe('done');
+    expect(body.albums[0].songs[0].steps.key).toBe('pending');
+  });
 });

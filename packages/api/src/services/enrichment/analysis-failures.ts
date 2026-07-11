@@ -88,6 +88,23 @@ export function notPermanentlyFailedClause(task: ProcessingTaskId, s = 'library_
   );
 }
 
+/**
+ * The positive complement of {@link notPermanentlyFailedClause}: a correlated
+ * `EXISTS (...)` fragment (leading ` AND ` intentionally omitted so callers can
+ * compose it into an `OR`) that is true when `task` has hit the attempt cap for a
+ * still-unchanged file. Used by the landing-gate graduation predicate to express
+ * "this required step succeeded, OR it's permanently failed for this file" — so a
+ * corrupt file the enrichment can never analyze still eventually lands. Same
+ * no-bind-param, inline-constant contract as `notPermanentlyFailedClause`.
+ */
+export function permanentlyFailedClause(task: ProcessingTaskId, s = 'library_songs'): string {
+  return (
+    `EXISTS (SELECT 1 FROM library_song_analysis_failures f` +
+    ` WHERE f.song_id = ${s}.id AND f.task = '${task}'` +
+    ` AND f.fail_count >= ${MAX_ANALYSIS_ATTEMPTS} AND f.file_size IS ${s}.size)`
+  );
+}
+
 /** Count of distinct files currently excluded (any task at the attempt cap). */
 export function countSkippedFiles(db: Database): number {
   const row = db

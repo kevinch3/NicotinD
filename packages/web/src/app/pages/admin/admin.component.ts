@@ -11,6 +11,8 @@ import type {
   UntrackedDownload,
   DiscographyAlbum,
   StreamingSettings,
+  QuarantineAlbum,
+  SongSteps,
 } from '../../services/api/api-types';
 import { AuthService } from '../../services/auth.service';
 import { ServerConfigService } from '../../services/server-config.service';
@@ -106,6 +108,12 @@ export class AdminComponent implements OnInit, OnDestroy {
   readonly processingStarting = signal(false);
   readonly processingMessage = signal<{ type: 'success' | 'error'; text: string } | null>(null);
   private processingStream: EventSource | null = null;
+  /** Downloads awaiting their required processing steps before landing (grouped
+   *  by album, per-step badges). Refreshed on load + when the run status changes. */
+  readonly quarantineQueue = signal<QuarantineAlbum[]>([]);
+  /** The processing steps shown as per-track badges, typed as `keyof SongSteps`
+   *  so the template can index `song.steps[step]` without an `$any` cast. */
+  readonly stepKeys = ['bpm', 'key', 'energy', 'genre', 'mood'] as const satisfies (keyof SongSteps)[];
   // A user pressed "Run now" and we're waiting for the run to settle so we can
   // toast its outcome. `sawRunning` guards against toasting a no-op/priming frame.
   private awaitingRun = false;
@@ -159,6 +167,7 @@ export class AdminComponent implements OnInit, OnDestroy {
     this.loadUntracked();
     this.loadStreaming();
     this.loadProcessing();
+    void this.loadQuarantineQueue();
     this.connectProcessingStream();
   }
 
@@ -241,8 +250,12 @@ export class AdminComponent implements OnInit, OnDestroy {
     src.onmessage = (e) => {
       try {
         const status = JSON.parse(e.data) as ProcessingStatus;
+        const prevQuarantined = this.processingStatus()?.quarantined;
         this.processingStatus.set(status);
         this.handleRunSettled(status);
+        // Refresh the per-download queue whenever the quarantine count moves (a
+        // download landed, or a new one arrived) so the badges track reality.
+        if (status.quarantined !== prevQuarantined) void this.loadQuarantineQueue();
       } catch {
         /* ignore malformed frame */
       }
@@ -274,6 +287,45 @@ export class AdminComponent implements OnInit, OnDestroy {
     void this.saveProcessing({
       tasks: { ...current.tasks, [task]: !current.tasks[task] },
     });
+  }
+
+  /** Per-song enrichment tasks shown in the panel (artist-image is per-artist and
+   *  not a landing gate, so it's excluded here). Order matches the run order. */
+  readonly processingTaskDefs: { id: ProcessingTaskId; label: string }[] = [
+    { id: 'bpm', label: 'BPM analysis' },
+    { id: 'genre', label: 'Genre' },
+    { id: 'key', label: 'Musical key' },
+    { id: 'energy', label: 'Energy & loudness' },
+    { id: 'audio-features', label: 'Audio features (mood, valence, danceability)' },
+  ];
+
+  /** Whether a task is required to finish before a download lands in the library. */
+  taskGated(task: ProcessingTaskId): boolean {
+    return this.processing()?.gates?.[task] ?? false;
+  }
+
+  /** Toggle a per-task "require before adding to library" gate and persist. */
+  toggleProcessingGate(task: ProcessingTaskId): void {
+    const current = this.processing();
+    if (!current) return;
+    void this.saveProcessing({
+      gates: { ...current.gates, [task]: !this.taskGated(task) },
+    });
+  }
+
+  /** Songs currently held back from the library awaiting their gate steps. */
+  processingQuarantined(): number {
+    return this.processingStatus()?.quarantined ?? 0;
+  }
+
+  /** Load the quarantine queue (per-download step badges). Best-effort. */
+  private async loadQuarantineQueue(): Promise<void> {
+    try {
+      const data = await firstValueFrom(this.api.getProcessingQueue());
+      this.quarantineQueue.set(data.albums);
+    } catch {
+      /* ignore — non-admin or service unavailable */
+    }
   }
 
   /**

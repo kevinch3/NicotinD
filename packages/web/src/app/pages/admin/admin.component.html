@@ -243,63 +243,41 @@
                   </div>
                 </div>
 
-                <!-- Tasks -->
+                <!-- Tasks: per-task "Run" (background enrichment) + "Gate"
+                     (require before a download is added to the library). -->
                 <div class="space-y-2">
-                  <label class="flex items-center justify-between gap-4">
-                    <span class="text-sm text-theme-primary">BPM analysis
-                      @if (taskUnavailable('bpm'); as reason) {
-                        <span class="block text-xs text-status-warn">{{ reason }}</span>
-                      }
-                    </span>
-                    <input type="checkbox" [checked]="p.tasks.bpm" [disabled]="processingSaving()"
-                      data-testid="processing-task-bpm"
-                      (change)="toggleProcessingTask('bpm')"
-                      class="w-4 h-4 rounded accent-emerald-500" />
-                  </label>
-                  <label class="flex items-center justify-between gap-4">
-                    <span class="text-sm text-theme-primary">Genre
-                      @if (taskUnavailable('genre'); as reason) {
-                        <span class="block text-xs text-status-warn">{{ reason }}</span>
-                      }
-                    </span>
-                    <input type="checkbox" [checked]="p.tasks.genre" [disabled]="processingSaving()"
-                      data-testid="processing-task-genre"
-                      (change)="toggleProcessingTask('genre')"
-                      class="w-4 h-4 rounded accent-emerald-500" />
-                  </label>
-                  <label class="flex items-center justify-between gap-4">
-                    <span class="text-sm text-theme-primary">Musical key
-                      @if (taskUnavailable('key'); as reason) {
-                        <span class="block text-xs text-status-warn">{{ reason }}</span>
-                      }
-                    </span>
-                    <input type="checkbox" [checked]="p.tasks.key" [disabled]="processingSaving()"
-                      data-testid="processing-task-key"
-                      (change)="toggleProcessingTask('key')"
-                      class="w-4 h-4 rounded accent-emerald-500" />
-                  </label>
-                  <label class="flex items-center justify-between gap-4">
-                    <span class="text-sm text-theme-primary">Energy &amp; loudness
-                      @if (taskUnavailable('energy'); as reason) {
-                        <span class="block text-xs text-status-warn">{{ reason }}</span>
-                      }
-                    </span>
-                    <input type="checkbox" [checked]="p.tasks.energy" [disabled]="processingSaving()"
-                      data-testid="processing-task-energy"
-                      (change)="toggleProcessingTask('energy')"
-                      class="w-4 h-4 rounded accent-emerald-500" />
-                  </label>
-                  <label class="flex items-center justify-between gap-4">
-                    <span class="text-sm text-theme-primary">Audio features (mood, valence, danceability)
-                      @if (taskUnavailable('audio-features'); as reason) {
-                        <span class="block text-xs text-status-warn">{{ reason }}</span>
-                      }
-                    </span>
-                    <input type="checkbox" [checked]="p.tasks['audio-features']" [disabled]="processingSaving()"
-                      data-testid="processing-task-audio-features"
-                      (change)="toggleProcessingTask('audio-features')"
-                      class="w-4 h-4 rounded accent-emerald-500" />
-                  </label>
+                  <div class="flex items-center justify-between gap-4 pb-1 border-b border-theme">
+                    <span class="text-xs uppercase tracking-wider text-theme-muted">Step</span>
+                    <div class="flex items-center gap-6 text-xs uppercase tracking-wider text-theme-muted">
+                      <span class="w-10 text-center">Run</span>
+                      <span class="w-10 text-center" title="Hold new downloads out of the library until this step finishes">Gate</span>
+                    </div>
+                  </div>
+                  @for (t of processingTaskDefs; track t.id) {
+                    <div class="flex items-center justify-between gap-4">
+                      <span class="min-w-0 text-sm text-theme-primary">{{ t.label }}
+                        @if (taskUnavailable(t.id); as reason) {
+                          <span class="block text-xs text-status-warn">{{ reason }}</span>
+                        }
+                      </span>
+                      <div class="flex items-center gap-6">
+                        <input type="checkbox" [checked]="p.tasks[t.id]" [disabled]="processingSaving()"
+                          [attr.data-testid]="'processing-task-' + t.id"
+                          (change)="toggleProcessingTask(t.id)"
+                          title="Run this analysis in the background"
+                          class="w-4 h-4 mx-3 rounded accent-emerald-500" />
+                        <input type="checkbox" [checked]="taskGated(t.id)"
+                          [disabled]="processingSaving() || !!taskUnavailable(t.id) || !p.tasks[t.id]"
+                          [attr.data-testid]="'processing-gate-' + t.id"
+                          (change)="toggleProcessingGate(t.id)"
+                          title="Require this step before the download is added to the library"
+                          class="w-4 h-4 mx-3 rounded accent-amber-500" />
+                      </div>
+                    </div>
+                  }
+                  <p class="text-xs text-theme-muted pt-1">
+                    Gated steps hold a fresh download out of the library until they finish. A step that's off or unavailable never blocks — so a missing tool or the sidecar being off can't strand a download.
+                  </p>
                 </div>
 
                 <!-- Progress -->
@@ -348,6 +326,43 @@
 
                 @if (processingMessage(); as m) {
                   <p class="text-xs" [class.text-status-done]="m.type === 'success'" [class.text-status-error]="m.type === 'error'">{{ m.text }}</p>
+                }
+
+                <!-- Quarantine queue: downloads awaiting their required steps -->
+                @if (quarantineQueue().length > 0) {
+                  <div class="pt-3 border-t border-theme" data-testid="processing-queue">
+                    <div class="flex items-center justify-between mb-2">
+                      <span class="text-xs font-semibold uppercase tracking-wider text-theme-secondary">Awaiting processing</span>
+                      <span class="text-xs text-theme-muted">{{ processingQuarantined() }} track{{ processingQuarantined() === 1 ? '' : 's' }} not yet in library</span>
+                    </div>
+                    <div class="space-y-3">
+                      @for (al of quarantineQueue(); track al.albumId) {
+                        <div data-testid="processing-queue-album">
+                          <p class="text-sm text-theme-primary truncate">{{ al.albumTitle || 'Unknown album' }}
+                            <span class="text-theme-muted">— {{ al.albumArtist }}</span>
+                          </p>
+                          <ul class="mt-1 space-y-1">
+                            @for (song of al.songs; track song.id) {
+                              <li class="flex items-center justify-between gap-3 text-xs">
+                                <span class="min-w-0 truncate text-theme-secondary">{{ song.title }}</span>
+                                <span class="flex items-center gap-2 shrink-0">
+                                  @for (step of stepKeys; track step) {
+                                    <span class="inline-flex items-center gap-1"
+                                      [class.text-status-done]="song.steps[step] === 'done'"
+                                      [class.text-status-warn]="song.steps[step] === 'skipped'"
+                                      [class.text-theme-muted]="song.steps[step] === 'pending'">
+                                      {{ step }}
+                                      {{ song.steps[step] === 'done' ? '✓' : song.steps[step] === 'skipped' ? '⤫' : '⏳' }}
+                                    </span>
+                                  }
+                                </span>
+                              </li>
+                            }
+                          </ul>
+                        </div>
+                      }
+                    </div>
+                  </div>
                 }
               </div>
             }

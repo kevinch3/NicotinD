@@ -16,12 +16,32 @@ import {
 } from './enrichment/tasks.js';
 import type { AudioFeaturesClient } from './audio-features-client.js';
 import { captureProcessingFailure, type ProcessingFailureReport } from '../observability/sentry.js';
-import { countSkippedFiles } from './enrichment/analysis-failures.js';
+import { countSkippedFiles, permanentlyFailedClause } from './enrichment/analysis-failures.js';
 
 const log = createLogger('library-processing');
 
 const STATUS_KEY = 'processing_status';
 const MAX_SNIPPETS = 12;
+
+/**
+ * Safety valve: a quarantined song lands after this many hours even if a required
+ * step never completed. Covers the deliberately un-ledgered failure modes (a
+ * sidecar 404/503 mount mismatch, an env-level decode outage) that would otherwise
+ * hold a download invisible forever. The 3-attempt failure ledger still graduates
+ * genuinely-broken files sooner; this only backstops the stuck-environment case.
+ */
+const QUARANTINE_MAX_HOURS = 24;
+
+/**
+ * Ops/test escape hatch. When `NICOTIND_DISABLE_LANDING_GATE` is truthy the
+ * process-before-landing gate is bypassed entirely: the required-gate set is
+ * always empty, so `graduatePending` lands every quarantined song at once (the
+ * pre-feature behaviour). Used by the e2e harness so its silent-FLAC fixtures
+ * aren't held behind analysis that can't confidently complete.
+ */
+const LANDING_GATE_DISABLED =
+  process.env.NICOTIND_DISABLE_LANDING_GATE === '1' ||
+  process.env.NICOTIND_DISABLE_LANDING_GATE === 'true';
 
 /** Per-task failure tally accumulated over a run (task → count + one sample). */
 type RunFailures = Map<ProcessingTaskId, { failed: number; sample: string | null }>;
@@ -166,6 +186,15 @@ export class LibraryProcessingService extends EventEmitter {
       return;
     }
     if (!isWithinWindow(this.now(), settings.window)) {
+      // Outside the window we still clear quarantine: a fresh download must not
+      // stay invisible until 05:00 just because the eager kick was missed (a crash
+      // between scan and kick, or a restart mid-quarantine). Run gate tasks only —
+      // full/background enrichment stays window-gated — then publish outside-window.
+      if (this.hasQuarantined()) {
+        await this.guarded(async () => {
+          await this.kickEagerInner();
+        });
+      }
       this.publish(settings, 'outside-window');
       return;
     }
@@ -204,6 +233,50 @@ export class LibraryProcessingService extends EventEmitter {
     });
   }
 
+  /**
+   * Eager, out-of-window pass triggered right after a download is scanned in:
+   * drains ONLY the required gate tasks (so a fresh song's blocking steps finish
+   * and it lands quickly) then graduates. Non-gate background enrichment
+   * (artist-image, and audio-features when it isn't a gate) stays deferred to the
+   * daily window, which still governs bulk backfill of the pre-existing library.
+   * Guarded by the same `busy` lock as tick/runNow — a no-op if a run is already
+   * underway (that run's own graduatePending lands the new song). When nothing
+   * gates landing the required set is empty, so it graduates the song outright.
+   * Best-effort: fired fire-and-forget from the scan seam, never throws upward.
+   */
+  async kickEager(): Promise<void> {
+    if (this.busy) return;
+    await this.guarded(() => this.kickEagerInner());
+  }
+
+  /** The eager drain loop, assuming the caller already holds the `busy` guard. */
+  private async kickEagerInner(): Promise<void> {
+    const runFailures: RunFailures = new Map();
+    let first = true;
+    for (;;) {
+      if (this.stopRequested) break;
+      const settings = getProcessingSettings(this.db);
+      const gateTasks = this.requiredGateTasks(settings);
+      // No gates (or all satisfied) → just land what's ready and stop.
+      const pending = gateTasks.reduce((sum, t) => sum + t.countPending(this.db), 0);
+      if (pending === 0) {
+        this.graduatePending(settings);
+        break;
+      }
+      const batch = await this.processOneBatch(settings, first, gateTasks);
+      mergeFailures(runFailures, batch.byTask);
+      first = false;
+      if (batch.applied === 0) {
+        // No progress (every remaining gate file missing/unresolvable) — land
+        // what we can (ledger/valve) and stop rather than spin.
+        this.graduatePending(settings);
+        break;
+      }
+    }
+    this.flushFailures(runFailures);
+    this.finishRun(getProcessingSettings(this.db));
+  }
+
   // --- internals -----------------------------------------------------------
 
   private async guarded(fn: () => Promise<void>): Promise<void> {
@@ -227,13 +300,87 @@ export class LibraryProcessingService extends EventEmitter {
     return ENRICHMENT_TASKS.filter((t) => settings.tasks[t.id] && t.available(ctx) === true);
   }
 
-  /** One bounded batch across each runnable task. */
+  /**
+   * Tasks that must complete before a quarantined song may be added to the
+   * library: gated in settings AND enabled AND available right now AND able to
+   * express a per-song "done" predicate. The availability intersection is the
+   * fresh-install / sidecar-off guarantee — a gated-but-unavailable task (sidecar
+   * down, ffmpeg missing, no Lidarr) is silently excluded so it can never strand a
+   * download. An empty result means nothing gates landing (today's behaviour).
+   */
+  private requiredGateTasks(settings: ProcessingSettings): EnrichmentTask[] {
+    // Ops/test escape hatch: with the landing gate disabled, nothing is required,
+    // so every song lands immediately (the pre-feature behaviour). The e2e harness
+    // sets this so its silent-audio fixtures — which can't yield a confident BPM —
+    // aren't quarantined behind analysis that will never complete.
+    if (LANDING_GATE_DISABLED) return [];
+    const ctx = this.contextFactory(settings);
+    return ENRICHMENT_TASKS.filter(
+      (t) =>
+        settings.gates[t.id] &&
+        settings.tasks[t.id] &&
+        t.available(ctx) === true &&
+        t.satisfiedColumnSql,
+    );
+  }
+
+  /** Count of songs currently quarantined (scanned but not yet landed). */
+  private countQuarantined(): number {
+    const row = this.db
+      .query<{ n: number }, []>(
+        `SELECT COUNT(*) AS n FROM library_songs WHERE landed_at IS NULL`,
+      )
+      .get();
+    return Number(row?.n ?? 0);
+  }
+
+  /** True when at least one song is waiting on its required gate steps. */
+  private hasQuarantined(): boolean {
+    return (
+      this.db.query<{ n: number }, []>(`SELECT EXISTS(SELECT 1 FROM library_songs WHERE landed_at IS NULL) AS n`).get()
+        ?.n === 1
+    );
+  }
+
+  /**
+   * Land every quarantined song whose required gate steps are all satisfied (each
+   * required task has produced its value OR is permanently failed for the file),
+   * plus any song past the {@link QUARANTINE_MAX_HOURS} safety valve. Idempotent —
+   * only touches `landed_at IS NULL` rows. When no task gates landing the WHERE
+   * reduces to "landed_at IS NULL", so every quarantined song lands at once.
+   */
+  private graduatePending(settings: ProcessingSettings): void {
+    const required = this.requiredGateTasks(settings);
+    const now = this.now().getTime();
+    const cutoff = now - QUARANTINE_MAX_HOURS * 3_600_000;
+    // Each required step is satisfied when it has a value OR the file has
+    // permanently failed that step (corrupt/unanalyzable — must still land).
+    const stepConds = required.map(
+      (t) => `(${t.satisfiedColumnSql} OR ${permanentlyFailedClause(t.id)})`,
+    );
+    if (stepConds.length === 0) {
+      // Nothing gates landing → every quarantined song lands now.
+      this.db.run(`UPDATE library_songs SET landed_at = ? WHERE landed_at IS NULL`, [now]);
+      return;
+    }
+    // `created` is an ISO-8601 string; compare against the cutoff as an ISO string
+    // so a genuinely-stuck song (un-ledgered environmental failure) still lands.
+    const valve = `(created IS NOT NULL AND created <= ?)`;
+    const gate = `((${stepConds.join(' AND ')}) OR ${valve})`;
+    this.db.run(`UPDATE library_songs SET landed_at = ? WHERE landed_at IS NULL AND ${gate}`, [
+      now,
+      new Date(cutoff).toISOString(),
+    ]);
+  }
+
+  /** One bounded batch across each runnable task (or the given subset). */
   private async processOneBatch(
     settings: ProcessingSettings,
     fresh = false,
+    tasksOverride?: EnrichmentTask[],
   ): Promise<BatchOutcome> {
     const ctx = this.contextFactory(settings);
-    const tasks = this.runnableTasks(settings);
+    const tasks = tasksOverride ?? this.runnableTasks(settings);
     const total = tasks.reduce((sum, t) => sum + t.countPending(this.db), 0);
 
     // A "run" spans one window session: tick batches inside the same window
@@ -283,6 +430,11 @@ export class LibraryProcessingService extends EventEmitter {
       this.emitStatus(settings);
     }
 
+    // Land any quarantined song whose required gate steps are now satisfied (or
+    // past the safety valve). Runs every batch so newly-downloaded music appears
+    // as soon as its gates clear — during the daily window and during eager runs.
+    this.graduatePending(settings);
+
     // Leave phase 'running' between batches; the run's terminal state is set once
     // by finishRun() so SSE clients see a single running→idle completion (not one
     // per batch during a multi-batch drain).
@@ -329,6 +481,7 @@ export class LibraryProcessingService extends EventEmitter {
       taskPending,
       availability,
       skipped: countSkippedFiles(this.db),
+      quarantined: this.countQuarantined(),
       updatedAt: this.status.updatedAt,
     };
   }
@@ -395,6 +548,7 @@ export class LibraryProcessingService extends EventEmitter {
         'audio-features': 'unknown',
       },
       skipped: 0,
+      quarantined: 0,
     };
     const row = this.db
       .query<{ value: string }, [string]>('SELECT value FROM app_settings WHERE key = ?')

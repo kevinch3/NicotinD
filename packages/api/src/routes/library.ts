@@ -110,6 +110,7 @@ const ALBUM_KEY_TTL_MS = 4000;
 export function __resetDownloadSuppressionCache(): void {
   transferKeysCache = null;
   albumKeyCache = new WeakMap();
+  quarantineCache = new WeakMap();
 }
 
 /**
@@ -184,6 +185,54 @@ function downloadingExclusion(
   }
   if (excluded.length === 0) return { sql: '', params: [] };
   return { sql: `id NOT IN (${excluded.map(() => '?').join(',')})`, params: excluded };
+}
+
+/** Cache "is any song quarantined?" briefly so a burst of listing requests during
+ * a download doesn't re-run the EXISTS probe each time. Keyed by db instance (one
+ * db in prod; never leaks across the throwaway DBs a test suite spins up). */
+let quarantineCache = new WeakMap<Database, { at: number; any: boolean }>();
+const QUARANTINE_TTL_MS = 4000;
+
+/** True when at least one song is quarantined (landed_at IS NULL), memoized ~4s. */
+function anyQuarantined(db: Database): boolean {
+  const now = Date.now();
+  const cached = quarantineCache.get(db);
+  if (cached && now - cached.at < QUARANTINE_TTL_MS) return cached.any;
+  const any =
+    db
+      .query<{ n: number }, []>(`SELECT EXISTS(SELECT 1 FROM library_songs WHERE landed_at IS NULL) AS n`)
+      .get()?.n === 1;
+  quarantineCache.set(db, { at: now, any });
+  return any;
+}
+
+/**
+ * Returns a SQL WHERE fragment excluding *quarantined* albums by id — an album is
+ * quarantined if ANY of its songs is still un-landed (`landed_at IS NULL`), i.e.
+ * its required processing steps haven't finished, so the whole album stays hidden
+ * until it's complete (matching the "never show an incomplete album" intent).
+ * Applied *inside* the query (pre-LIMIT) so pagination stays honest, mirroring
+ * downloadingExclusion. Fast path: no quarantined song → empty fragment, no
+ * subquery. No bind params — the fragment is self-contained.
+ */
+function quarantineExclusion(db: Database): { sql: string; params: string[] } {
+  if (!anyQuarantined(db)) return { sql: '', params: [] };
+  return {
+    sql: `id NOT IN (SELECT DISTINCT album_id FROM library_songs WHERE landed_at IS NULL)`,
+    params: [],
+  };
+}
+
+/** True when the given album has any un-landed (quarantined) song. */
+function isAlbumQuarantined(db: Database, albumId: string): boolean {
+  if (!anyQuarantined(db)) return false;
+  return (
+    db
+      .query<{ n: number }, [string]>(
+        `SELECT EXISTS(SELECT 1 FROM library_songs WHERE album_id = ? AND landed_at IS NULL) AS n`,
+      )
+      .get(albumId)?.n === 1
+  );
 }
 
 const AUDIO_EXTENSIONS = new Set([
@@ -419,11 +468,19 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     const filter = parseLibraryFilter(c.req.queries());
     const frag = artistFilterWheres(filter);
     const filterClause = frag.wheres.length ? ` AND ${frag.wheres.join(' AND ')}` : '';
+    // Hide an artist whose only tracks are still quarantined — until at least one
+    // of their songs has landed they aren't "in the library" yet. Fast path: only
+    // when something is actually quarantined (steady state adds no clause).
+    const quarantineClause = anyQuarantined(db)
+      ? ` AND EXISTS (SELECT 1 FROM library_songs s WHERE (s.artist_id = library_artists.id` +
+        ` OR s.id IN (SELECT song_id FROM library_song_artists WHERE artist_id = library_artists.id))` +
+        ` AND s.landed_at IS NOT NULL)`
+      : '';
     const rows = db
       .query<ArtistRow, (string | number)[]>(
         `SELECT id, name, album_count, cover_art, starred
          FROM library_artists
-         WHERE hidden = 0 AND name != 'Various Artists' COLLATE NOCASE${filterClause}
+         WHERE hidden = 0 AND name != 'Various Artists' COLLATE NOCASE${filterClause}${quarantineClause}
          ORDER BY name COLLATE NOCASE ASC`,
       )
       .all(...frag.params);
@@ -469,9 +526,13 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     if (!artistRow) {
       return c.json({ error: 'Artist not found' }, 404);
     }
+    // Quarantined albums (a required processing step unfinished) are hidden here
+    // too — same treatment as the main grid. Self-contained subquery, fast-pathed.
+    const artistQ = quarantineExclusion(db);
+    const artistQClause = artistQ.sql ? ` AND ${artistQ.sql}` : '';
     const allRows = db
       .query<AlbumRow, [string, string]>(
-        `${ALBUM_SELECT} WHERE (artist_id = ? OR id IN (SELECT album_id FROM library_album_artists WHERE artist_id = ?)) AND hidden = 0
+        `${ALBUM_SELECT} WHERE (artist_id = ? OR id IN (SELECT album_id FROM library_album_artists WHERE artist_id = ?)) AND hidden = 0${artistQClause}
          ORDER BY year DESC NULLS LAST, name COLLATE NOCASE ASC`,
       )
       .all(id, id);
@@ -506,6 +567,8 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     const wheres = [
       '(s.artist_id = ? OR s.id IN (SELECT song_id FROM library_song_artists WHERE artist_id = ?))',
       's.hidden = 0',
+      // Quarantined songs aren't in the library yet — exclude from the Songs tab.
+      's.landed_at IS NOT NULL',
     ];
     const params: Array<string | number> = [id, id];
     // Standardized metadata filters (bpm/key/mood/…); `starred=true` is part of
@@ -527,6 +590,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
   app.get('/artists/:id/appears-on', (c) => {
     const id = c.req.param('id');
     const db = getDatabase();
+    const q = quarantineExclusion(db);
     const rows = db
       .query<AlbumRow, [string, string]>(
         `${ALBUM_SELECT} WHERE id IN (
@@ -534,7 +598,8 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
            JOIN library_albums la ON la.id = ls.album_id
            WHERE (ls.artist_id = ? OR ls.id IN (SELECT song_id FROM library_song_artists WHERE artist_id = ?))
              AND la.classification = 'compilation' AND la.hidden = 0
-         ) ORDER BY year DESC NULLS LAST, name COLLATE NOCASE ASC`,
+         )${q.sql ? ` AND ${q.sql}` : ''}
+         ORDER BY year DESC NULLS LAST, name COLLATE NOCASE ASC`,
       )
       .all(id, id);
     const albums = rows.map(rowToAlbum);
@@ -559,6 +624,9 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       wheres.push(excl.sql);
       params.push(...excl.params);
     }
+    // Hide albums still in quarantine (a required processing step hasn't finished).
+    const q = quarantineExclusion(db);
+    if (q.sql) wheres.push(q.sql);
     const frag = albumFilterWheres(parseLibraryFilter(c.req.queries()));
     wheres.push(...frag.wheres);
     params.push(...frag.params);
@@ -599,6 +667,9 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       wheres.push(excl.sql);
       params.push(...excl.params);
     }
+    // Hide albums still in quarantine (a required processing step hasn't finished).
+    const q = quarantineExclusion(db);
+    if (q.sql) wheres.push(q.sql);
     // Standardized metadata filters: song-level properties match any-track via
     // EXISTS, starred filters the album row itself (library-filter-sql.ts).
     const filterFrag = albumFilterWheres(parseLibraryFilter(c.req.queries()));
@@ -625,6 +696,9 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     const order = albumOrderBy(type);
     const wheres = ['hidden = 0', `classification = 'compilation'`];
     const params: Array<string | number> = [];
+    // Hide albums still in quarantine (a required processing step hasn't finished).
+    const q = quarantineExclusion(db);
+    if (q.sql) wheres.push(q.sql);
     const frag = albumFilterWheres(parseLibraryFilter(c.req.queries()));
     wheres.push(...frag.wheres);
     params.push(...frag.params);
@@ -644,9 +718,15 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     if (!albumRow) {
       return c.json({ error: 'Album not found' }, 404);
     }
+    // Hide the album while it's still in quarantine (a required processing step
+    // hasn't finished for one of its tracks) — same "not in the library yet"
+    // treatment the grid gives it, so a deep link can't reach a half-processed album.
+    if (isAlbumQuarantined(db, id)) {
+      return c.json({ error: 'Album not found' }, 404);
+    }
     const songRows = db
       .query<SongRow, [string]>(
-        `${SONG_SELECT} WHERE s.album_id = ? AND s.hidden = 0
+        `${SONG_SELECT} WHERE s.album_id = ? AND s.hidden = 0 AND s.landed_at IS NOT NULL
          ORDER BY s.track ASC NULLS LAST, s.title COLLATE NOCASE ASC`,
       )
       .all(id);
@@ -1447,7 +1527,9 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     const seen = new Set<string>([id]);
 
     const artistSongs = db
-      .query<SongRow, [string]>(`${SONG_SELECT} WHERE s.artist_id = ? AND s.hidden = 0`)
+      .query<SongRow, [string]>(
+        `${SONG_SELECT} WHERE s.artist_id = ? AND s.hidden = 0 AND s.landed_at IS NOT NULL`,
+      )
       .all(source.artist_id);
     for (const row of artistSongs) {
       if (!seen.has(row.id)) {
@@ -1459,7 +1541,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     if (source.genre) {
       const genreRows = db
         .query<SongRow, [string, string]>(
-          `${SONG_SELECT} WHERE s.genre = ? AND s.artist_id != ? AND s.hidden = 0
+          `${SONG_SELECT} WHERE s.genre = ? AND s.artist_id != ? AND s.hidden = 0 AND s.landed_at IS NOT NULL
            ORDER BY RANDOM() LIMIT 200`,
         )
         .all(source.genre, source.artist_id);
@@ -1520,7 +1602,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     const db = getDatabase();
     const rows = db
       .query<SongRow, [string, number]>(
-        `${SONG_SELECT} WHERE s.genre = ? AND s.hidden = 0
+        `${SONG_SELECT} WHERE s.genre = ? AND s.hidden = 0 AND s.landed_at IS NOT NULL
          ORDER BY s.created DESC NULLS LAST LIMIT ?`,
       )
       .all(genre, count);
@@ -1536,7 +1618,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       .query<SongRow, [number]>(
         `${SONG_SELECT}
          LEFT JOIN library_albums alb ON alb.id = s.album_id
-         WHERE s.hidden = 0 AND (alb.hidden IS NULL OR alb.hidden = 0)
+         WHERE s.hidden = 0 AND s.landed_at IS NOT NULL AND (alb.hidden IS NULL OR alb.hidden = 0)
          ORDER BY RANDOM() LIMIT ?`,
       )
       .all(size);
@@ -1552,7 +1634,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     const rows = db
       .query<SongRow, [number]>(
         `${SONG_SELECT}
-         WHERE s.hidden = 0 AND (a.hidden IS NULL OR a.hidden = 0)
+         WHERE s.hidden = 0 AND s.landed_at IS NOT NULL AND (a.hidden IS NULL OR a.hidden = 0)
          ORDER BY s.created DESC NULLS LAST LIMIT ?`,
       )
       .all(size * 4);

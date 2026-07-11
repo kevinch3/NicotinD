@@ -533,6 +533,19 @@ export function applySchema(db: Database): void {
       // Column already exists — ignore
     }
   }
+  // "Landed" timestamp (epoch ms) — NULL means the song is *quarantined*: it has
+  // been scanned into the DB (so the windowed enrichment tasks can operate on it)
+  // but is hidden from every library listing until its required processing steps
+  // finish. The library-processing service is the ONLY writer that sets a
+  // timestamp here (see graduatePending); the scanner deliberately never touches
+  // this column on insert or rescan, so a fresh scan mints NULL (quarantined) and
+  // a rescan of an already-landed song preserves its value. A one-time backfill
+  // below lands every pre-existing row so upgrades never retroactively hide music.
+  try {
+    db.run(`ALTER TABLE library_songs ADD COLUMN landed_at INTEGER`);
+  } catch {
+    // Column already exists — ignore
+  }
   // Album-level artist (e.g. "Various Artists" on compilations) vs track-level
   // artist. Existing rows backfill from the current artist column.
   try {
@@ -552,6 +565,10 @@ export function applySchema(db: Database): void {
   db.run(`CREATE INDEX IF NOT EXISTS idx_library_songs_path ON library_songs(path)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_library_songs_genre ON library_songs(genre)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_library_songs_hidden ON library_songs(hidden)`);
+  // Landing-gate listing suppression filters on `landed_at IS NULL`; index it so
+  // the "any song quarantined?" fast-path check and the per-album exclusion stay
+  // cheap even with a large library.
+  db.run(`CREATE INDEX IF NOT EXISTS idx_library_songs_landed ON library_songs(landed_at)`);
 
   // Cached audio embeddings from the analysis sidecar. The embedding is the
   // expensive artifact — computed once per (song, model), reused for classifier
@@ -837,6 +854,26 @@ export function applySchema(db: Database): void {
       PRIMARY KEY (plugin_id, key)
     )
   `);
+
+  // One-time landing backfill. The landed_at column defaults to NULL (quarantined)
+  // for every row, so an upgrade of an existing library would otherwise hide the
+  // entire catalogue behind the new processing gate. Land every pre-existing song
+  // exactly once, marker-gated on library_sync_state so it never re-runs: a second
+  // run after new quarantined downloads existed would wrongly land them mid-flight.
+  // Runs here (end of applySchema) because library_sync_state is created above.
+  const landingBackfillDone = db
+    .query<{ value: string }, [string]>(`SELECT value FROM library_sync_state WHERE key = ?`)
+    .get('landing_backfill_v1');
+  if (!landingBackfillDone) {
+    const now = Date.now();
+    db.transaction(() => {
+      db.run(`UPDATE library_songs SET landed_at = ? WHERE landed_at IS NULL`, [now]);
+      db.run(
+        `INSERT OR REPLACE INTO library_sync_state (key, value, updated_at) VALUES (?, '1', ?)`,
+        ['landing_backfill_v1', now],
+      );
+    })();
+  }
 }
 
 export function getDatabase(): Database {
