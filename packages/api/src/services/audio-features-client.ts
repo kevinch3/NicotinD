@@ -45,6 +45,13 @@ export class AudioFileRejectedError extends Error {
   }
 }
 
+/** Tempo result from the sidecar's RhythmExtractor2013 (`POST /rhythm`).
+ *  `confidence` is Essentia's 0–5.32 scale (0 = none reported, ≥3.5 excellent). */
+export interface RhythmResult {
+  bpm: number;
+  confidence: number;
+}
+
 const HEALTH_TTL_MS = 30_000;
 const HEALTH_TIMEOUT_MS = 5_000;
 // Analysis is ~seconds per track on CPU; leave generous headroom for cold caches.
@@ -161,6 +168,57 @@ export class AudioFeaturesClient {
       return null;
     }
     return this.validate(body, relPath);
+  }
+
+  /**
+   * Detect one track's tempo via the sidecar (`POST /rhythm`, Essentia
+   * RhythmExtractor2013 — no TF models involved). Returns null on environmental
+   * failures (unreachable, 503, 404 mount mismatch) so callers fall back to the
+   * local music-tempo analyzer; throws {@link AudioFileRejectedError} on 422
+   * (un-decodable file) so the processor ledgers it, mirroring analyze().
+   */
+  async rhythm(relPath: string): Promise<RhythmResult | null> {
+    let res: Response;
+    try {
+      res = await this.fetchFn(`${this.baseUrl}/rhythm`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ relPath }),
+        signal: AbortSignal.timeout(ANALYZE_TIMEOUT_MS),
+      });
+    } catch (err) {
+      log.warn({ err, relPath }, 'rhythm request failed');
+      return null;
+    }
+    if (!res.ok) {
+      if (res.status === 422) {
+        let detail = 'analysis sidecar rejected file';
+        try {
+          const body = (await res.json()) as { detail?: string };
+          if (body.detail) detail = body.detail;
+        } catch {
+          /* keep the generic message */
+        }
+        throw new AudioFileRejectedError(detail, 422);
+      }
+      log.warn({ relPath, status: res.status }, 'rhythm returned non-OK');
+      return null;
+    }
+    let body: unknown;
+    try {
+      body = await res.json();
+    } catch {
+      return null;
+    }
+    const b = body as { bpm?: unknown; confidence?: unknown };
+    const bpm = typeof b?.bpm === 'number' && Number.isFinite(b.bpm) && b.bpm > 0 ? b.bpm : null;
+    if (bpm === null) {
+      log.warn({ relPath }, 'rhythm payload failed validation');
+      return null;
+    }
+    const confidence =
+      typeof b.confidence === 'number' && Number.isFinite(b.confidence) ? b.confidence : 0;
+    return { bpm, confidence };
   }
 
   /** Validate + clamp the sidecar payload; null when structurally unusable. */

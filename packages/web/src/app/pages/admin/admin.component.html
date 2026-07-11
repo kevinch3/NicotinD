@@ -346,13 +346,13 @@
                               <li class="flex items-center justify-between gap-3 text-xs">
                                 <span class="min-w-0 truncate text-theme-secondary">{{ song.title }}</span>
                                 <span class="flex items-center gap-2 shrink-0">
-                                  @for (step of ['bpm','key','energy','genre','mood']; track step) {
+                                  @for (step of stepKeys; track step) {
                                     <span class="inline-flex items-center gap-1"
-                                      [class.text-status-done]="song.steps[$any(step)] === 'done'"
-                                      [class.text-status-warn]="song.steps[$any(step)] === 'skipped'"
-                                      [class.text-theme-muted]="song.steps[$any(step)] === 'pending'">
+                                      [class.text-status-done]="song.steps[step] === 'done'"
+                                      [class.text-status-warn]="song.steps[step] === 'skipped'"
+                                      [class.text-theme-muted]="song.steps[step] === 'pending'">
                                       {{ step }}
-                                      {{ song.steps[$any(step)] === 'done' ? '✓' : song.steps[$any(step)] === 'skipped' ? '⤫' : '⏳' }}
+                                      {{ song.steps[step] === 'done' ? '✓' : song.steps[step] === 'skipped' ? '⤫' : '⏳' }}
                                     </span>
                                   }
                                 </span>

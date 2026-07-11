@@ -142,3 +142,45 @@ describe('AudioFeaturesClient.analyze', () => {
     expect(res?.features.danceability).toBe(1);
   });
 });
+
+describe('AudioFeaturesClient.rhythm', () => {
+  it('returns the validated rhythm payload', async () => {
+    let calledUrl = '';
+    let sentBody = '';
+    const c = clientWith((url, init) => {
+      calledUrl = url;
+      sentBody = String(init?.body);
+      return jsonResponse({ bpm: 142.0, confidence: 2.92, method: 'multifeature' });
+    });
+    const res = await c.rhythm('AC DC/song.opus');
+    expect(calledUrl).toBe('http://analysis:8000/rhythm');
+    expect(JSON.parse(sentBody)).toEqual({ relPath: 'AC DC/song.opus' });
+    expect(res).toEqual({ bpm: 142.0, confidence: 2.92 });
+  });
+
+  it('throws AudioFileRejectedError on 422 (un-decodable file)', async () => {
+    const c = clientWith(() => jsonResponse({ detail: 'rhythm analysis failed' }, 422));
+    await expect(c.rhythm('x.opus')).rejects.toBeInstanceOf(AudioFileRejectedError);
+  });
+
+  it('returns null on 503/404 and transport errors (environmental, not per-file)', async () => {
+    expect(await clientWith(() => jsonResponse({}, 503)).rhythm('x.opus')).toBeNull();
+    expect(await clientWith(() => jsonResponse({}, 404)).rhythm('x.opus')).toBeNull();
+    const throwing = clientWith(() => {
+      throw new Error('ECONNREFUSED');
+    });
+    expect(await throwing.rhythm('x.opus')).toBeNull();
+  });
+
+  it('rejects non-positive or non-finite bpm payloads', async () => {
+    expect(await clientWith(() => jsonResponse({ bpm: 0, confidence: 1 })).rhythm('x')).toBeNull();
+    expect(
+      await clientWith(() => jsonResponse({ bpm: 'fast', confidence: 1 })).rhythm('x'),
+    ).toBeNull();
+  });
+
+  it('defaults a missing confidence to 0', async () => {
+    const c = clientWith(() => jsonResponse({ bpm: 120.4 }));
+    expect(await c.rhythm('x.opus')).toEqual({ bpm: 120.4, confidence: 0 });
+  });
+});

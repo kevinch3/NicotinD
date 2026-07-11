@@ -45,6 +45,7 @@ function fakeCtx(opts: { bpmResult?: number | null; sidecar?: boolean } = {}) {
     readTags: async () => ({}),
     writeTags: async () => true,
     analyzeBpm: async () => bpm,
+    analyzeRhythm: null,
     analyzeKey: async () => 'C major',
     analyzeLoudness: async () => ({ loudness: -9.5, energy: 0.7 }),
     analyzeAudioFeatures: opts.sidecar ? async () => null : null,

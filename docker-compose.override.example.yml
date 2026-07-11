@@ -1,0 +1,43 @@
+# Docker Compose local override (EXAMPLE)
+#
+# Copy to `docker-compose.override.yml` (gitignored) and adjust paths for
+# your machine. Docker Compose auto-meres this file with docker-compose.yml
+# on `docker compose up`.
+#
+# This template shows the three common dev customizations:
+#   1. Bind-mount your existing music library instead of the named volume
+#   2. Bind-mount the NicotinD data dir (secrets, DB) for persistence
+#   3. Enable GPU passthrough for the analysis sidecar
+#
+# See docker-compose.yml for the full service definitions this overrides.
+
+services:
+  nicotind:
+    volumes:
+      - ~/.nicotind:/data/nicotind
+      - /path/to/your/music:/data/music
+
+  analysis:
+    build:
+      context: packages/analysis
+      args:
+        GPU: "1"
+    volumes:
+      - /path/to/your/music:/data/music:ro
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  slskd:
+    volumes:
+      - /path/to/your/music:/data/music
+    ports:
+      - "5030:5030"
+
+  lidarr:
+    volumes:
+      - /path/to/your/music:/data/music

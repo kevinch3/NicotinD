@@ -45,6 +45,7 @@ function ctx(overrides: Partial<EnrichmentContext> = {}): EnrichmentContext {
     readTags: async () => ({}),
     writeTags: async () => true,
     analyzeBpm: async () => 120,
+    analyzeRhythm: null,
     analyzeKey: async () => 'C major',
     analyzeLoudness: async () => ({ loudness: -9.5, energy: 0.7 }),
     analyzeAudioFeatures: async () => ({
@@ -72,7 +73,13 @@ function seedArtist(
 ): void {
   db.run(
     'INSERT INTO library_artists (id, name, album_count, hidden, manual_override, synced_at) VALUES (?, ?, ?, ?, ?, 1)',
-    [id, opts.name ?? `Artist ${id}`, opts.albumCount ?? 1, opts.hidden ?? 0, opts.manualOverride ?? 0],
+    [
+      id,
+      opts.name ?? `Artist ${id}`,
+      opts.albumCount ?? 1,
+      opts.hidden ?? 0,
+      opts.manualOverride ?? 0,
+    ],
   );
 }
 
@@ -142,6 +149,73 @@ describe('bpm task', () => {
       .query<{ bpm: number }, [string]>('SELECT bpm FROM library_songs WHERE id = ?')
       .get('a');
     expect(row?.bpm).toBe(95);
+  });
+
+  it('prefers the sidecar rhythm result over the local analyzer', async () => {
+    seedSong('a');
+    let localCalls = 0;
+    let wrote = 0;
+    const c = ctx({
+      analyzeRhythm: async () => ({ bpm: 141.9, confidence: 2.92 }),
+      analyzeBpm: async () => ((localCalls += 1), 73),
+      writeTags: async () => ((wrote += 1), true),
+    });
+    const res = await bpm.run(db, c, 25);
+    expect(res.applied).toBe(1);
+    expect(localCalls).toBe(0); // sidecar won — no local decode
+    expect(wrote).toBe(1);
+    const row = db
+      .query<{ bpm: number }, [string]>('SELECT bpm FROM library_songs WHERE id = ?')
+      .get('a');
+    expect(row?.bpm).toBe(142); // rounded
+  });
+
+  it('falls back to the local analyzer when the sidecar returns null', async () => {
+    seedSong('a');
+    const c = ctx({ analyzeRhythm: async () => null, analyzeBpm: async () => 128 });
+    const res = await bpm.run(db, c, 25);
+    expect(res.applied).toBe(1);
+    const row = db
+      .query<{ bpm: number }, [string]>('SELECT bpm FROM library_songs WHERE id = ?')
+      .get('a');
+    expect(row?.bpm).toBe(128);
+  });
+
+  it('ledgers a sidecar-rejected (422) file without attempting local analysis', async () => {
+    seedSong('a');
+    let localCalls = 0;
+    const c = ctx({
+      analyzeRhythm: async () => {
+        throw new AudioFileRejectedError('rhythm analysis failed', 422);
+      },
+      analyzeBpm: async () => ((localCalls += 1), 128),
+    });
+    const res = await bpm.run(db, c, 25);
+    expect(res.applied).toBe(0);
+    expect(res.failed).toBe(1);
+    expect(localCalls).toBe(0); // the local decoder would fail the same way
+    const ledgered = db
+      .query<{ n: number }, []>(
+        `SELECT COUNT(*) AS n FROM library_song_analysis_failures WHERE task = 'bpm'`,
+      )
+      .get();
+    expect(ledgered?.n).toBe(1);
+  });
+
+  it('falls back to the local analyzer on a sidecar transport error', async () => {
+    seedSong('a');
+    const c = ctx({
+      analyzeRhythm: async () => {
+        throw new Error('socket hang up');
+      },
+      analyzeBpm: async () => 128,
+    });
+    const res = await bpm.run(db, c, 25);
+    expect(res.applied).toBe(1);
+    const row = db
+      .query<{ bpm: number }, [string]>('SELECT bpm FROM library_songs WHERE id = ?')
+      .get('a');
+    expect(row?.bpm).toBe(128);
   });
 
   it('respects the batch limit and skips missing files', async () => {
@@ -247,10 +321,9 @@ describe('undetectable-signal exclusion', () => {
     expect(res.errorSample).toBeNull();
     // …but the attempt IS ledgered so the file eventually stops being retried.
     const row = db
-      .query<
-        { fail_count: number; last_error: string },
-        []
-      >("SELECT fail_count, last_error FROM library_song_analysis_failures WHERE song_id = 'a' AND task = 'bpm'")
+      .query<{ fail_count: number; last_error: string }, []>(
+        "SELECT fail_count, last_error FROM library_song_analysis_failures WHERE song_id = 'a' AND task = 'bpm'",
+      )
       .get();
     expect(row?.fail_count).toBe(1);
     expect(row?.last_error).toContain('no confident tempo');
@@ -377,9 +450,9 @@ describe('artist-image task', () => {
   it('is available with Lidarr or Spotify, unavailable with neither', () => {
     expect(artistImage.available(ctx())).toBe(true);
     expect(artistImage.available(ctx({ lidarr: null }))).toBe(true); // Spotify present
-    expect(
-      artistImage.available(ctx({ lidarr: null, lookupArtistImageSpotify: null })),
-    ).toBe('Lidarr/Spotify not configured');
+    expect(artistImage.available(ctx({ lidarr: null, lookupArtistImageSpotify: null }))).toBe(
+      'Lidarr/Spotify not configured',
+    );
   });
 
   it('counts artists missing an artist artwork row (excludes hidden/manual/has-artwork)', () => {
@@ -544,19 +617,17 @@ describe('audio-features task', () => {
     const res = await features.run(db, c, 25);
     expect(res.applied).toBe(1);
     const row = db
-      .query<
-        { danceability: number; valence: number; mood: string },
-        [string]
-      >('SELECT danceability, valence, mood FROM library_songs WHERE id = ?')
+      .query<{ danceability: number; valence: number; mood: string }, [string]>(
+        'SELECT danceability, valence, mood FROM library_songs WHERE id = ?',
+      )
       .get('a');
     expect(row?.danceability).toBeCloseTo(0.6);
     expect(row?.valence).toBeCloseTo(0.4);
     expect(row?.mood).toBe('relaxed');
     const emb = db
-      .query<
-        { model: string; dim: number; vec: Uint8Array },
-        [string]
-      >('SELECT model, dim, vec FROM library_embeddings WHERE song_id = ?')
+      .query<{ model: string; dim: number; vec: Uint8Array }, [string]>(
+        'SELECT model, dim, vec FROM library_embeddings WHERE song_id = ?',
+      )
       .get('a');
     expect(emb?.model).toBe('discogs-effnet-bs64-1');
     expect(emb?.dim).toBe(4);
@@ -597,9 +668,9 @@ describe('audio-features task', () => {
     expect(row?.mood).toBe('sad');
     expect(row?.danceability).toBeCloseTo(0.7);
     // No embedding without a sidecar analysis.
-    expect(
-      db.query('SELECT COUNT(*) AS c FROM library_embeddings').get() as { c: number },
-    ).toEqual({ c: 0 });
+    expect(db.query('SELECT COUNT(*) AS c FROM library_embeddings').get() as { c: number }).toEqual(
+      { c: 0 },
+    );
   });
 
   it('partially-tagged files still go to the sidecar', async () => {

@@ -9,6 +9,11 @@ services:
     volumes:
       - nicotind-data:/data/nicotind
       - music:/data/music
+      # SECURITY: bind-mounting /var/run/docker.sock grants the `nicotind`
+      # container full Docker API access = host-root-equivalent privilege.
+      # Required for the admin log-streaming feature (packages/api/src/routes/
+      # system.ts). The container runs as UID 1000 but this does not mitigate
+      # socket access. Remove this bind mount unless you need log streaming.
       - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
       NICOTIND_MODE: external

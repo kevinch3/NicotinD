@@ -13,6 +13,7 @@
 |---|--------|----------|------|-------|
 | 1 | ✅ | High | Player (Firefox) | Tracks intermittently never play — third distinct root cause (self-aborting load-effect loop) after the Content-Length and ngsw-bypass fixes |
 | 2 | ✅ | High | Download pipeline / Player | ALAC-in-.m4a bypassed the lossless→Opus standardization (extension-based detection) — undecodable in any browser when transcoding is off |
+| 3 | ◑ | Medium | Library metadata / filters | BPM values wrong by an octave (half/double) on ~50% of a spot-check sample — music-tempo detector; fix shipped (Essentia sidecar-first), prod backfill pending |
 
 ---
 
@@ -25,6 +26,10 @@
   *Lesson for the log:* three "Firefox never plays" bugs shipped/manifested within one day of the loading-feedback feature. When a symptom recurs after a fix, treat it as a *new* root cause until proven otherwise — all three had different mechanisms (response headers, service worker, signal graph).
 
 - **(High) "Spread This Number" (Matias Aguayo): `NS_ERROR_DOM_MEDIA_METADATA_ERR` in Firefox.** *Use:* right after the effect-loop fix deployed, this track errored with "media resource couldn't be decoded". *Root cause:* the file is **ALAC in an .m4a container** (~883 kbps Apple Lossless). `isLossless()` is extension-based and its `alac` entry never matches real files (ALAC ships as `.m4a`, same as lossy AAC), so the lossless→Opus ingest standardization skipped it. No browser decodes ALAC; it only ever played because forceTranscode was on — turning the transcode master switch off (during today's debugging) exposed it. Library sweep found **63 ALAC files across 8 albums** (Fred again, Jamiroquai, Bandana, Calamaro, BVSC, BEP, Eiffel 65). **✅ Fixed:** codec-aware `isLosslessFile()` (music-metadata `format.lossless` probe for .m4a-family) wired into both the ingest hook and the existing-library migration; backfill = one `transcode-library` pass. → `docs/download-pipeline.md`.
+
+### 2026-07-11
+
+- **(Medium) BPM wrongly calculated — octave errors both ways.** *Use:* filtering artists by `bpmMax=80` surfaced AC/DC "Shoot to Thrill" at 73 BPM when the real tempo is ~141. *Root cause:* the `music-tempo` detector's agent-based beat tracker prefers half- or double-tempo lock-ins even when its own tempo-induction top hypothesis is right (for this file: hypothesis 141.3, chosen agent 72.6). A random 8-track prod sample showed **4/8 stored BPMs off by 2×, in both directions** (stored 178 vs real ~89, stored 186 vs ~93…), so no one-direction bun-side heuristic can repair it. The wrong values were also written to file tags. **◑ Fixed in code:** sidecar `POST /rhythm` (Essentia RhythmExtractor2013, matched every confident spot-check) now preferred by the bpm task + on-demand analyze; `analyze-bpm.ts --recheck` repairs stored values (tag-ignoring, confidence-gated). **Pending:** run the recheck backfill on prod after deploy. *Also evaluated:* time-signature storage — rejected; Essentia's `Meter` gave 2.0 for 4/4 and 12.0 for 6/8 (needs downbeat tracking to do properly). → `docs/audio-ml-enrichment.md`, `docs/library-processing.md`.
 
 ---
 

@@ -36,6 +36,7 @@ function fakeCtx(counters: { analyzed: number; genreLookups: number }) {
       counters.analyzed += 1;
       return 120;
     },
+    analyzeRhythm: null,
     analyzeKey: async () => 'C major',
     analyzeLoudness: async () => ({ loudness: -9.5, energy: 0.7 }),
     analyzeAudioFeatures: null,

@@ -1,8 +1,18 @@
 {
   "name": "nicotind",
-  "version": "0.1.176",
+  "version": "0.1.179",
   "private": true,
   "type": "module",
+  "license": "AGPL-3.0-only",
+  "author": "Kevin Chavarria",
+  "homepage": "https://github.com/kevinch3/NicotinD",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kevinch3/NicotinD.git"
+  },
+  "bugs": {
+    "url": "https://github.com/kevinch3/NicotinD/issues"
+  },
   "workspaces": [
     "packages/*"
   ],

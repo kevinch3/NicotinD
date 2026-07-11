@@ -22,3 +22,13 @@ __pycache__/
 # Android signing keystores — never commit; supplied to CI via secrets
 *.jks
 *.keystore
+
+# Dev artifacts — never track
+coverage/
+packages/web/.vscode/
+docs/superpowers/
+
+# Docker compose local overrides — machine-specific bind mounts / GPU setup
+docker-compose.override*.yml
+# Keep the sanitized example template tracked for newcomers
+!docker-compose.override.example.yml

@@ -12,6 +12,7 @@ import type {
   DiscographyAlbum,
   StreamingSettings,
   QuarantineAlbum,
+  SongSteps,
 } from '../../services/api/api-types';
 import { AuthService } from '../../services/auth.service';
 import { ServerConfigService } from '../../services/server-config.service';
@@ -110,6 +111,9 @@ export class AdminComponent implements OnInit, OnDestroy {
   /** Downloads awaiting their required processing steps before landing (grouped
    *  by album, per-step badges). Refreshed on load + when the run status changes. */
   readonly quarantineQueue = signal<QuarantineAlbum[]>([]);
+  /** The processing steps shown as per-track badges, typed as `keyof SongSteps`
+   *  so the template can index `song.steps[step]` without an `$any` cast. */
+  readonly stepKeys = ['bpm', 'key', 'energy', 'genre', 'mood'] as const satisfies (keyof SongSteps)[];
   // A user pressed "Run now" and we're waiting for the run to settle so we can
   // toast its outcome. `sawRunning` guards against toasting a no-op/priming frame.
   private awaitingRun = false;
