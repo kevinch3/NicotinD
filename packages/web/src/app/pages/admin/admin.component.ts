@@ -95,6 +95,29 @@ export class AdminComponent implements OnInit, OnDestroy {
     }
   }
 
+  // Full library rescan (`POST /api/library/sync`) — rebuilds the canonical
+  // library_* tables from disk. Long-running; the button stays disabled while
+  // in flight and refreshes scan status on success so the count updates.
+  readonly syncing = signal(false);
+  readonly syncMsg = signal<string | null>(null);
+
+  async syncLibrary(): Promise<void> {
+    if (this.syncing()) return;
+    this.syncing.set(true);
+    this.syncMsg.set(null);
+    try {
+      await firstValueFrom(this.libraryApi.resyncLibrary());
+      this.syncMsg.set('Library rescan complete.');
+      void this.loadSystemStatus();
+    } catch (err) {
+      this.syncMsg.set(
+        err instanceof Error ? err.message : 'Library rescan failed — is the server configured?',
+      );
+    } finally {
+      this.syncing.set(false);
+    }
+  }
+
   // --- Streaming / transcoding (moved from Settings) ---
   readonly streaming = signal<StreamingSettings | null>(null);
   readonly streamingSaving = signal(false);
