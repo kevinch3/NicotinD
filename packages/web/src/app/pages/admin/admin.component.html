@@ -146,6 +146,21 @@
             }
           </div>
 
+          <!-- Maintenance: full library rescan from disk -->
+          <div class="flex flex-col gap-2 mb-8">
+            <div class="flex items-center gap-3">
+              <button (click)="syncLibrary()" [disabled]="syncing()"
+                data-testid="sync-library"
+                class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition disabled:opacity-50">
+                {{ syncing() ? 'Rescanning…' : 'Sync library' }}
+              </button>
+              <span class="text-xs text-theme-muted">Re-scan the music dir and rebuild the library index from disk.</span>
+            </div>
+            @if (syncMsg(); as msg) {
+              <p class="text-xs text-theme-secondary" data-testid="sync-library-msg">{{ msg }}</p>
+            }
+          </div>
+
           <!-- Streaming / transcoding (moved from Settings) -->
           <section class="rounded-xl border border-theme bg-theme-surface p-6 mb-8" data-testid="streaming-panel">
             <h3 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary mb-5">Streaming</h3>

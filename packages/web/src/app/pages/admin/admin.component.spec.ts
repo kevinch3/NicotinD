@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { vi } from 'vitest';
-import { of } from 'rxjs';
+import { of, throwError } from 'rxjs';
 import { AdminComponent } from './admin.component';
 import { DownloadsApiService } from '../../services/api/downloads-api.service';
 import { SystemApiService } from '../../services/api/system-api.service';
@@ -27,19 +27,22 @@ function job(overrides: Partial<AlbumJob>): AlbumJob {
 describe('AdminComponent (incomplete albums + untracked)', () => {
   const listAlbumJobs = vi.fn(() => of({ jobs: [] as AlbumJob[] }));
   const getUntrackedDownloads = vi.fn(() => of({ total: 0, rows: [] as UntrackedDownload[] }));
+  const resyncLibrary = vi.fn(() => of({ ok: true }));
 
   beforeEach(async () => {
     listAlbumJobs.mockClear();
     getUntrackedDownloads.mockClear();
+    resyncLibrary.mockClear();
     listAlbumJobs.mockReturnValue(of({ jobs: [] }));
     getUntrackedDownloads.mockReturnValue(of({ total: 0, rows: [] }));
+    resyncLibrary.mockReturnValue(of({ ok: true }));
 
     await TestBed.configureTestingModule({
       imports: [AdminComponent],
       providers: [
         { provide: DownloadsApiService, useValue: { listAlbumJobs, getUntrackedDownloads } },
         { provide: SystemApiService, useValue: {} },
-        { provide: LibraryApiService, useValue: {} },
+        { provide: LibraryApiService, useValue: { resyncLibrary } },
         { provide: AuthService, useValue: { token: () => null } },
         { provide: TransferService, useValue: { poll: vi.fn() } },
       ],
@@ -101,6 +104,23 @@ describe('AdminComponent (incomplete albums + untracked)', () => {
     const c = create();
     expect(c.jobStateClass('exhausted')).toContain('status-error');
     expect(c.jobStateClass('active')).toContain('status-warn');
+  });
+
+  it('syncLibrary calls resyncLibrary and reports success', async () => {
+    const c = create();
+    expect(c.syncing()).toBe(false);
+    await c.syncLibrary();
+    expect(resyncLibrary).toHaveBeenCalled();
+    expect(c.syncing()).toBe(false);
+    expect(c.syncMsg()).toBe('Library rescan complete.');
+  });
+
+  it('syncLibrary surfaces an error message on failure', async () => {
+    resyncLibrary.mockReturnValueOnce(throwError(() => new Error('boom')));
+    const c = create();
+    await c.syncLibrary();
+    expect(c.syncing()).toBe(false);
+    expect(c.syncMsg()).toBe('boom');
   });
 });
 
