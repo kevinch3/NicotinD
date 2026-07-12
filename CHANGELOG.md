@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.182](https://github.com/kevinch3/NicotinD/compare/v0.1.181...v0.1.182) (2026-07-12)
+
+
+### Features
+
+* **web:** wire Sync library button to POST /api/library/sync ([c23a758](https://github.com/kevinch3/NicotinD/commit/c23a7589c7881eb62e7019bb325465944b800881))
+
 ## [0.1.181](https://github.com/kevinch3/NicotinD/compare/v0.1.180...v0.1.181) (2026-07-12)
 
 
