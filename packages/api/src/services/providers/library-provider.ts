@@ -1,5 +1,6 @@
 import type { ISearchProvider, ProviderType, SearchProviderResult } from '@nicotind/core';
 import type { Database } from 'bun:sqlite';
+import { attachSongArtists, attachAlbumArtists } from '../artist-attach.js';
 
 /**
  * Local search over the canonical library tables (library_artists/albums/songs)
@@ -84,6 +85,11 @@ export class LibrarySearchProvider implements ISearchProvider {
         bitRate: r.bit_rate ?? undefined,
         coverArt: r.cover_art ?? undefined,
       }));
+
+    // Surface multi-artist credits so search rows render linked artists (same as
+    // library/album/artist pages) instead of a plain string.
+    attachAlbumArtists(this.db, albums);
+    attachSongArtists(this.db, songs);
 
     return { results: { artists, albums, songs } };
   }

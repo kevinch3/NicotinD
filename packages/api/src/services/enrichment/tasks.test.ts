@@ -62,6 +62,7 @@ function ctx(overrides: Partial<EnrichmentContext> = {}): EnrichmentContext {
     audioFeaturesAvailable: () => true,
     lookupGenre: async () => 'Rock',
     lookupArtistImageSpotify: async () => null,
+    resolveArtistIdentity: null,
     fileExists: () => true,
     ...overrides,
   };
@@ -472,6 +473,7 @@ describe('artist-image task', () => {
     const c = ctx({
       lidarr: lidarrWithPosters({ Radiohead: 'https://x/radiohead.jpg' }),
       lookupArtistImageSpotify: async () => null,
+      resolveArtistIdentity: null,
     });
     const res = await artistImage.run(db, c, 25);
     expect(res.applied).toBe(1);
@@ -884,9 +886,53 @@ describe('genre task — unresolvable-artist ledger', () => {
   });
 });
 
+describe('artist-identity task', () => {
+  const task = getTask('artist-identity')!;
+
+  it('is unavailable without a resolver (Lidarr not configured)', () => {
+    expect(task.available(ctx({ resolveArtistIdentity: null }))).not.toBe(true);
+  });
+
+  it('records single / split / unknown decisions and drops them from the pending set', async () => {
+    seedSong('a', { artist: 'Bob Marley & The Wailers' });
+    seedSong('b', { artist: 'Bob Marley, Peter Tosh' });
+    seedSong('c', { artist: 'Some, Weird Combo' });
+    seedSong('d', { artist: 'Daft Punk' }); // atomic — not a pending compound
+
+    const resolve = async (rawName: string) => {
+      if (rawName === 'Bob Marley & The Wailers')
+        return { decision: 'single' as const, members: [] };
+      if (rawName === 'Bob Marley, Peter Tosh')
+        return { decision: 'split' as const, members: ['Bob Marley', 'Peter Tosh'] };
+      return { decision: 'unknown' as const, members: [] };
+    };
+    const c = ctx({ resolveArtistIdentity: resolve });
+
+    expect(task.countPending(db)).toBe(3); // the three compounds, not Daft Punk
+    const res = await task.run(db, c, 25);
+    expect(res.applied).toBe(3);
+    expect(task.countPending(db)).toBe(0); // all three now have a fresh row
+
+    const rows = db
+      .query<{ raw_name: string; decision: string; members: string | null }, []>(
+        'SELECT raw_name, decision, members FROM library_artist_identity ORDER BY raw_name',
+      )
+      .all();
+    const byName = Object.fromEntries(rows.map((r) => [r.raw_name, r]));
+    expect(byName['Bob Marley & The Wailers']!.decision).toBe('single');
+    expect(byName['Bob Marley, Peter Tosh']!.decision).toBe('split');
+    expect(JSON.parse(byName['Bob Marley, Peter Tosh']!.members!)).toEqual([
+      'Bob Marley',
+      'Peter Tosh',
+    ]);
+    expect(byName['Some, Weird Combo']!.decision).toBe('unknown');
+  });
+});
+
 describe('registry', () => {
-  it('exposes bpm, genre, key, energy, audio-features and artist-image tasks', () => {
+  it('exposes bpm, genre, key, energy, audio-features, artist-image and artist-identity tasks', () => {
     expect(ENRICHMENT_TASKS.map((t) => t.id).sort()).toEqual([
+      'artist-identity',
       'artist-image',
       'audio-features',
       'bpm',

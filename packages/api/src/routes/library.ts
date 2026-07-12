@@ -200,7 +200,9 @@ function anyQuarantined(db: Database): boolean {
   if (cached && now - cached.at < QUARANTINE_TTL_MS) return cached.any;
   const any =
     db
-      .query<{ n: number }, []>(`SELECT EXISTS(SELECT 1 FROM library_songs WHERE landed_at IS NULL) AS n`)
+      .query<{ n: number }, []>(
+        `SELECT EXISTS(SELECT 1 FROM library_songs WHERE landed_at IS NULL) AS n`,
+      )
       .get()?.n === 1;
   quarantineCache.set(db, { at: now, any });
   return any;
@@ -637,6 +639,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       )
       .all(...params, size, offset);
     const singles = rows.map(rowToAlbum);
+    attachAlbumArtists(db, singles);
     return c.json(singles);
   });
 
@@ -685,6 +688,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       )
       .all(...params, size, offset);
     const albums = rows.map(rowToAlbum);
+    attachAlbumArtists(db, albums);
     return c.json(albums);
   });
 
@@ -708,7 +712,9 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
          ORDER BY ${order} LIMIT ? OFFSET ?`,
       )
       .all(...params, size, offset);
-    return c.json(rows.map(rowToAlbum));
+    const compilations = rows.map(rowToAlbum);
+    attachAlbumArtists(db, compilations);
+    return c.json(compilations);
   });
 
   app.get('/albums/:id', (c) => {
@@ -1577,6 +1583,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     });
 
     const results = ranked.map((e) => rowToSong((e.song as (typeof candidates)[number])._row));
+    attachSongArtists(db, results);
 
     return c.json(results);
   });

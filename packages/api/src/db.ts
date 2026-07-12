@@ -278,10 +278,9 @@ export function applySchema(db: Database): void {
   // `backend` was once CHECK (backend IN ('ytdlp','spotdl')); it's now an open
   // acquisition-plugin id. Rebuild legacy tables to drop that constraint.
   const acquireSql = db
-    .query<
-      { sql: string },
-      []
-    >(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'acquire_jobs'`)
+    .query<{ sql: string }, []>(
+      `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'acquire_jobs'`,
+    )
     .get();
   if (acquireSql?.sql.includes('backend IN')) {
     db.run('ALTER TABLE acquire_jobs RENAME TO acquire_jobs_old');
@@ -411,10 +410,9 @@ export function applySchema(db: Database): void {
   // statements below so they re-create indexes on the rebuilt table.
   const albumsSql =
     db
-      .query<
-        { sql: string },
-        []
-      >(`SELECT sql FROM sqlite_master WHERE type='table' AND name='library_albums'`)
+      .query<{ sql: string }, []>(
+        `SELECT sql FROM sqlite_master WHERE type='table' AND name='library_albums'`,
+      )
       .get()?.sql ?? '';
   if (albumsSql && !albumsSql.includes("'ep'")) {
     db.transaction(() => {
@@ -746,10 +744,9 @@ export function applySchema(db: Database): void {
   // — the feature was disabled — so it's safe to drop and recreate them.
   const playlistsOldSql =
     db
-      .query<
-        { sql: string },
-        []
-      >(`SELECT sql FROM sqlite_master WHERE type='table' AND name='playlists'`)
+      .query<{ sql: string }, []>(
+        `SELECT sql FROM sqlite_master WHERE type='table' AND name='playlists'`,
+      )
       .get()?.sql ?? '';
   if (playlistsOldSql && !playlistsOldSql.includes('description')) {
     db.transaction(() => {
@@ -810,6 +807,26 @@ export function applySchema(db: Database): void {
       mbid       TEXT,
       checked_at INTEGER NOT NULL,
       PRIMARY KEY (artist_id)
+    )
+  `);
+
+  // Cached artist-split authority. For a compound artist string like
+  // "Bob Marley & The Wailers" (one act) vs "Bob Marley, Peter Tosh" (two artists),
+  // this records the resolved decision so the *synchronous* scanner can split with
+  // zero network calls. Keyed on artistIdFor(rawCompoundName) and kept off the
+  // scanner-managed tables (like library_artwork / library_release_meta) so it
+  // survives full rescans/prunes and can be written at hunt/ingest time before scan.
+  // Populated by the `artist-identity` windowed enrichment task (Lidarr/MB) and, as a
+  // fallback, inferred purely from atomic library names when no authority row exists.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS library_artist_identity (
+      artist_key  TEXT NOT NULL,
+      raw_name    TEXT NOT NULL,
+      decision    TEXT NOT NULL,   -- 'single' | 'split'
+      members     TEXT,            -- JSON string[] of resolved member names (decision='split')
+      source      TEXT NOT NULL,   -- 'lidarr' | 'mb' | 'library'
+      checked_at  INTEGER NOT NULL,
+      PRIMARY KEY (artist_key)
     )
   `);
 

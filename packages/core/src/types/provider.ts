@@ -1,8 +1,17 @@
 export type ProviderType = 'local' | 'network';
 
+import type { ArtistCredit } from './navidrome.js';
+
 export interface SearchProviderResult {
   artists: Array<{ id: string; name: string; albumCount?: number }>;
-  albums: Array<{ id: string; name: string; artist: string; year?: number; coverArt?: string }>;
+  albums: Array<{
+    id: string;
+    name: string;
+    artist: string;
+    year?: number;
+    coverArt?: string;
+    artists?: ArtistCredit[];
+  }>;
   songs: Array<{
     id: string;
     title: string;
@@ -12,6 +21,7 @@ export interface SearchProviderResult {
     duration?: number;
     bitRate?: number;
     coverArt?: string;
+    artists?: ArtistCredit[];
   }>;
 }
 

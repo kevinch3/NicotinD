@@ -113,6 +113,21 @@ Launch tasks:
   [spotify-fallback.md](spotify-fallback.md). Its context carries `coverCacheDir` +
   `lookupArtistImageSpotify` (the Spotify portrait lookup, null when unconfigured).
 
+- **artist-identity** — per *compound artist string*, not per song. Resolves whether a
+  delimited artist like "Bob Marley & The Wailers" (one act) vs "Bob Marley, Peter Tosh"
+  (two artists) should be split, and caches the decision in `library_artist_identity` so
+  the **synchronous scanner** can split with zero network calls (see
+  [library-scanner.md](library-scanner.md) "Multi-artist support"). Pending = distinct
+  delimited `artist`/`album_artist` strings lacking a fresh (7-day TTL) authority row.
+  Available with **Lidarr** configured (`ctx.resolveArtistIdentity`, a memoized
+  `artist.lookup` wrapper). Per compound it records `single` (the whole string is a
+  canonical artist → keep whole), `split` (every part resolves to a real artist →
+  members feed the confirmed set), or `unknown` (Lidarr has no confident opinion —
+  recorded anyway so it drops out of the pending set until the TTL lapses; the scanner's
+  library-atomic confirmation then decides). Like `artist-image` it's per-artist, so it
+  has **no `satisfiedColumnSql`** and is never a landing gate. One-shot seed:
+  `scripts/resolve-artist-identity.ts` (dry-run default, `--apply`).
+
 ### Durability vs. the periodic full scan
 
 The scanner runs frequent full scans. A plain `col = excluded.col` upsert would

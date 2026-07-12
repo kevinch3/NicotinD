@@ -12,14 +12,14 @@ import { getMusicMetadata } from './music-metadata-loader.js';
 import { featureTagsFromNative } from './audio-tags.js';
 import { selectAlbumTracks } from './library-track-select.js';
 import { loadOverrides, type MetadataOverrideValue } from './metadata-override-store.js';
-import { splitArtists, type ArtistCredit } from './artist-split.js';
-import { pruneOrphanArtist } from './library-aggregates.js';
+import { splitArtists, isAtomicArtist, type ArtistCredit } from './artist-split.js';
 import {
-  partitionByCache,
-  loadScanCache,
-  saveScanCache,
-  type FileStat,
-} from './scan-cache.js';
+  loadSplitAuthority,
+  emptyAuthority,
+  type SplitAuthority,
+} from './artist-identity-store.js';
+import { pruneOrphanArtist } from './library-aggregates.js';
+import { partitionByCache, loadScanCache, saveScanCache, type FileStat } from './scan-cache.js';
 
 const log = createLogger('library-scanner');
 
@@ -233,7 +233,13 @@ export function isLooseSinglesBucket(dir: string, album: string): boolean {
 function resolveTags(
   t: ScannedTrack,
   overrides?: ReadonlyMap<string, MetadataOverrideValue>,
-): { albumArtist: string; trackArtist: string; album: string; title: string; year: number | undefined } {
+): {
+  albumArtist: string;
+  trackArtist: string;
+  album: string;
+  title: string;
+  year: number | undefined;
+} {
   const dir = t.relPath
     .split(/[\\/]+/)
     .slice(0, -1)
@@ -341,19 +347,25 @@ export function buildLibrary(
   tracks: ScannedTrack[],
   canonicalByAlbum?: Map<string, string[]>,
   overrides?: ReadonlyMap<string, MetadataOverrideValue>,
+  authority: SplitAuthority = emptyAuthority(),
 ): BuiltLibrary {
   tracks = selectLibraryTracks(tracks, canonicalByAlbum, overrides);
 
-  // Pass 1: collect all raw artist strings to build the cross-reference set.
-  // Any artist name that appears as-is across the library is considered "known"
-  // and won't be split by the artist-split parser (prevents splitting band
-  // names like "Earth, Wind & Fire").
-  const knownArtists = new Set<string>();
+  // Pass 1: assemble the split authority. A compound like "Bob Marley, Peter Tosh" is
+  // split into individual artists ONLY when every part is confirmed; otherwise it is
+  // kept whole (never mangle a band name). Confirmations come from (a) the caller's
+  // DB-loaded authority (whole-library atomic names + Lidarr/MB decisions) and (b) any
+  // *atomic* artist string in this batch — a compound never confirms itself. This is
+  // the fix for the old self-defeating guard that added the compound strings verbatim
+  // to the known set, so nothing ever split.
+  const confirmedArtists = new Set<string>(authority.confirmedArtists);
+  const canonicalWhole = authority.canonicalWhole;
   for (const t of tracks) {
     const { albumArtist, trackArtist } = resolveTags(t, overrides);
-    knownArtists.add(normalizeArtistForGrouping(albumArtist));
-    knownArtists.add(normalizeArtistForGrouping(trackArtist));
+    if (isAtomicArtist(albumArtist)) confirmedArtists.add(normalizeArtistForGrouping(albumArtist));
+    if (isAtomicArtist(trackArtist)) confirmedArtists.add(normalizeArtistForGrouping(trackArtist));
   }
+  const known = { confirmedArtists, canonicalWhole };
 
   // Pass 2: build songs, albums, artists, and artist-link join rows.
   const songs: SongRow[] = [];
@@ -415,7 +427,7 @@ export function buildLibrary(
       created,
     });
 
-    const trackCredits = splitArtists(trackArtist, knownArtists);
+    const trackCredits = splitArtists(trackArtist, known);
     for (let i = 0; i < trackCredits.length; i++) {
       songArtistLinks.push({
         parentId: id,
@@ -445,7 +457,7 @@ export function buildLibrary(
         genres: t.genre ? [t.genre] : [],
         createdMs: t.mtimeMs,
         coverArt: albId,
-        splitCredits: splitArtists(albumArtist, knownArtists),
+        splitCredits: splitArtists(albumArtist, known),
       });
     }
   }
@@ -508,7 +520,7 @@ export function buildLibrary(
       // Find the name from the credits — look up via songs
       const song = songs.find((s) => s.id === link.parentId);
       if (song) {
-        const credits = splitArtists(song.artist, knownArtists);
+        const credits = splitArtists(song.artist, known);
         const credit = credits.find((c) => artistIdFor(c.name) === link.artistId);
         if (credit) ensureArtist(link.artistId, credit.name);
       }
@@ -536,7 +548,14 @@ export function buildLibrary(
     albumCount: g.albums.size,
   }));
 
-  return { songs, albums, artists, genres, songArtists: songArtistLinks, albumArtists: albumArtistLinks };
+  return {
+    songs,
+    albums,
+    artists,
+    genres,
+    songArtists: songArtistLinks,
+    albumArtists: albumArtistLinks,
+  };
 }
 
 export interface ScanResult {
@@ -570,7 +589,12 @@ export class LibraryScanner {
     const startedAt = Date.now();
     const files = await this.walk(this.musicDir);
     const tracks = await this.readTracks(files);
-    const built = buildLibrary(tracks, this.canonicalByAlbum(), loadOverrides(this.db));
+    const built = buildLibrary(
+      tracks,
+      this.canonicalByAlbum(),
+      loadOverrides(this.db),
+      loadSplitAuthority(this.db),
+    );
     const result = this.persist(built, startedAt, true);
     log.info({ ...result }, 'Full scan complete');
     return result;
@@ -619,7 +643,12 @@ export class LibraryScanner {
     const abs = relPaths.map((p) => join(this.musicDir, p));
     const tracks = await this.readTracks(abs);
     if (tracks.length === 0) return;
-    const built = buildLibrary(tracks, this.canonicalByAlbum(), loadOverrides(this.db));
+    const built = buildLibrary(
+      tracks,
+      this.canonicalByAlbum(),
+      loadOverrides(this.db),
+      loadSplitAuthority(this.db),
+    );
     this.persist(built, Date.now(), false);
     log.info({ files: tracks.length, albums: built.albums.length }, 'Incremental scan complete');
   }
@@ -901,9 +930,12 @@ export class LibraryScanner {
       );
       this.db.run('DELETE FROM library_artists WHERE synced_at < ?', [syncedAt]);
       this.db.run('DELETE FROM library_genres WHERE synced_at < ?', [syncedAt]);
-      this.db.run('DELETE FROM library_song_artists WHERE song_id NOT IN (SELECT id FROM library_songs)');
-      this.db.run('DELETE FROM library_album_artists WHERE album_id NOT IN (SELECT id FROM library_albums)');
-
+      this.db.run(
+        'DELETE FROM library_song_artists WHERE song_id NOT IN (SELECT id FROM library_songs)',
+      );
+      this.db.run(
+        'DELETE FROM library_album_artists WHERE album_id NOT IN (SELECT id FROM library_albums)',
+      );
     } else {
       // Incremental: an album we just touched may have gained songs; recompute
       // its aggregate counts from all of its current songs so the card is right.
@@ -951,7 +983,12 @@ export class LibraryScanner {
     const syncedAt = Date.now();
     const tracks = await this.readTracks(abs);
     if (tracks.length > 0) {
-      const built = buildLibrary(tracks, this.canonicalByAlbum(), loadOverrides(this.db));
+      const built = buildLibrary(
+        tracks,
+        this.canonicalByAlbum(),
+        loadOverrides(this.db),
+        loadSplitAuthority(this.db),
+      );
       this.persist(built, syncedAt, false);
       this.pruneAlbumOrphans(built.albums.map((a) => a.id));
     }

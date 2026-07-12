@@ -1,12 +1,18 @@
 import type { Database } from 'bun:sqlite';
-import type { Song, Album } from '@nicotind/core';
+import type { ArtistCredit } from '@nicotind/core';
 
-export function attachSongArtists(db: Database, songs: Song[]): void {
+/** Minimal shape both the full `Song`/`Album` and the lighter search results satisfy. */
+type HasArtists = { id: string; artists?: ArtistCredit[] };
+
+export function attachSongArtists(db: Database, songs: HasArtists[]): void {
   if (songs.length === 0) return;
   const ids = songs.map((s) => s.id);
   const placeholders = ids.map(() => '?').join(',');
   const rows = db
-    .query<{ song_id: string; artist_id: string; name: string; role: string; position: number }, string[]>(
+    .query<
+      { song_id: string; artist_id: string; name: string; role: string; position: number },
+      string[]
+    >(
       `SELECT sa.song_id, sa.artist_id, a.name, sa.role, sa.position
        FROM library_song_artists sa
        JOIN library_artists a ON a.id = sa.artist_id
@@ -26,12 +32,15 @@ export function attachSongArtists(db: Database, songs: Song[]): void {
   }
 }
 
-export function attachAlbumArtists(db: Database, albums: Album[]): void {
+export function attachAlbumArtists(db: Database, albums: HasArtists[]): void {
   if (albums.length === 0) return;
   const ids = albums.map((a) => a.id);
   const placeholders = ids.map(() => '?').join(',');
   const rows = db
-    .query<{ album_id: string; artist_id: string; name: string; role: string; position: number }, string[]>(
+    .query<
+      { album_id: string; artist_id: string; name: string; role: string; position: number },
+      string[]
+    >(
       `SELECT aa.album_id, aa.artist_id, a.name, aa.role, aa.position
        FROM library_album_artists aa
        JOIN library_artists a ON a.id = aa.artist_id

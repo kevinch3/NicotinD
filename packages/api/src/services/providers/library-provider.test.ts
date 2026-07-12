@@ -44,4 +44,17 @@ describe('LibrarySearchProvider song search', () => {
     const { results } = await new LibrarySearchProvider(db).search('   ');
     expect(results).toEqual({ artists: [], albums: [], songs: [] });
   });
+
+  it('attaches multi-artist credits to song hits', async () => {
+    seedSong('s1', 'Collab Song');
+    db.run(
+      `INSERT INTO library_artists (id, name, synced_at) VALUES ('a1','Charly García',1),('a2','Spinetta',1)`,
+    );
+    db.run(
+      `INSERT INTO library_song_artists (song_id, artist_id, role, position)
+       VALUES ('s1','a1','primary',0),('s1','a2','primary',1)`,
+    );
+    const { results } = await new LibrarySearchProvider(db).search('Collab');
+    expect(results!.songs[0]?.artists?.map((a) => a.name)).toEqual(['Charly García', 'Spinetta']);
+  });
 });
