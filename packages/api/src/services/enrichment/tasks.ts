@@ -825,6 +825,8 @@ const artistIdentityTask: EnrichmentTask = {
         recordFailure(tally, err);
       }
     }
+    // NOTE: no unattended alias derivation here — deriveMbidAliases proposals need
+    // human review (the MBID cache holds fuzzy top-hit lookups; see its docblock).
     return { applied, labels, failed: tally.failed, errorSample: tally.sample };
   },
 };

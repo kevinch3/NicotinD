@@ -12,6 +12,7 @@
  *   bun run packages/api/src/scripts/resolve-artist-identity.ts            # dry run
  *   bun run packages/api/src/scripts/resolve-artist-identity.ts --apply    # write authority
  *   ... --limit 100                                                        # process a slice
+ *   ... --aliases                                                          # also derive MBID spelling aliases
  *
  * Env: NICOTIND_DATA_DIR, LIDARR_URL/NICOTIND_LIDARR_URL, LIDARR_API_KEY
  *      (falls back to config.lidarr.url + dataDir/secrets.json).
@@ -23,7 +24,7 @@ import { Database } from 'bun:sqlite';
 import { Lidarr } from '@nicotind/lidarr-client';
 import { splitOnDelimiters } from '../services/artist-split.js';
 import { artistIdFor } from '../services/library-scanner.js';
-import { upsertArtistIdentity } from '../services/artist-identity-store.js';
+import { deriveMbidAliases, upsertArtistIdentity } from '../services/artist-identity-store.js';
 import {
   makeLidarrArtistIdentityResolver,
   pendingArtistIdentityRows,
@@ -120,6 +121,18 @@ async function main(): Promise<void> {
   }
 
   console.log(`\nsingle=${counts.single}  split=${counts.split}  unknown=${counts.unknown}`);
+
+  if (process.argv.includes('--aliases')) {
+    // Human-gated on purpose: the MBID cache holds fuzzy top-hit lookups, so a
+    // proposal can be wrong (real example: "Âme" vs "ME"). Review the dry-run list
+    // before re-running with --apply.
+    const proposals = deriveMbidAliases(db, { apply });
+    console.log(`\naliases   : ${proposals.length} MBID-equality merge proposal(s)`);
+    for (const p of proposals) {
+      console.log(`  ${apply ? '[written]' : '[proposed]'} ${p.variantName} → ${p.canonicalName}`);
+    }
+  }
+
   if (!apply) console.log('Dry run — re-run with --apply to write, then trigger a full rescan.');
 }
 
