@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.181](https://github.com/kevinch3/NicotinD/compare/v0.1.180...v0.1.181) (2026-07-12)
+
+
+### Features
+
+* **library:** confirmation-gated multi-artist splitting ([2fa57c5](https://github.com/kevinch3/NicotinD/commit/2fa57c58a333782edac90f74c5b5a68e70707d5d))
+
 ## [0.1.180](https://github.com/kevinch3/NicotinD/compare/v0.1.179...v0.1.180) (2026-07-11)
 
 
