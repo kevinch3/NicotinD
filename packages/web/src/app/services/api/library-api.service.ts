@@ -145,6 +145,22 @@ export class LibraryApiService {
   resyncLibrary() {
     return this.http.post<{ ok: boolean }>(`/api/library/sync`, {});
   }
+  /**
+   * User-corrected artist identity (admin): mark a compound one act, force-split it,
+   * or merge a spelling variant into another artist. Permanent source='user' authority;
+   * the server kicks a rescan (202).
+   */
+  fixArtistIdentity(
+    body:
+      | { rawName: string; decision: 'single' }
+      | { rawName: string; decision: 'split'; members: string[] }
+      | { rawName: string; mergeInto: string },
+  ) {
+    return this.http.post<{ ok: boolean; resyncing: boolean }>(
+      `/api/library/artists/identity`,
+      body,
+    );
+  }
 
   getAlbum(id: string) {
     return this.http.get<AlbumDetail>(`/api/library/albums/${id}`);

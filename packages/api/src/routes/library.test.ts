@@ -96,6 +96,72 @@ describe('library routes', () => {
     expect(fsState.has('/home/kevinch3/Music/Artist/Album/song.mp3')).toBe(false);
   });
 
+  it('POST /artists/identity writes a user split decision and 202s', async () => {
+    const res = await app.request('/artists/identity', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        rawName: 'Bob Marley, Peter Tosh',
+        decision: 'split',
+        members: ['Bob Marley', 'Peter Tosh'],
+      }),
+    });
+    expect(res.status).toBe(202);
+    const row = sharedDb
+      .query<{ decision: string; source: string; members: string }, [string]>(
+        `SELECT decision, source, members FROM library_artist_identity WHERE raw_name = ?`,
+      )
+      .get('Bob Marley, Peter Tosh');
+    expect(row).toEqual({
+      decision: 'split',
+      source: 'user',
+      members: JSON.stringify(['Bob Marley', 'Peter Tosh']),
+    });
+  });
+
+  it('POST /artists/identity writes a user merge alias', async () => {
+    const res = await app.request('/artists/identity', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ rawName: 'Snoop Dog', mergeInto: 'Snoop Dogg' }),
+    });
+    expect(res.status).toBe(202);
+    const row = sharedDb
+      .query<{ canonical_name: string; source: string }, [string]>(
+        `SELECT canonical_name, source FROM library_artist_aliases WHERE alias_norm = ?`,
+      )
+      .get('snoop dog');
+    expect(row).toEqual({ canonical_name: 'Snoop Dogg', source: 'user' });
+  });
+
+  it('POST /artists/identity validates its shapes', async () => {
+    const post = (body: unknown) =>
+      app.request('/artists/identity', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    expect((await post({})).status).toBe(400); // no rawName
+    expect((await post({ rawName: 'X' })).status).toBe(400); // no decision/mergeInto
+    expect((await post({ rawName: 'A & B', decision: 'split', members: ['A'] })).status).toBe(400); // <2 members
+    expect((await post({ rawName: 'Same', mergeInto: 'same' })).status).toBe(400); // self-merge
+  });
+
+  it('POST /artists/identity is admin-only', async () => {
+    const userApp = new Hono<AuthEnv>();
+    userApp.use('*', (c, next) => {
+      c.set('user', { sub: 'u', role: 'user', iat: 0, exp: 9999999999 });
+      return next();
+    });
+    userApp.route('/', libraryRoutes('/home/kevinch3/Music'));
+    const res = await userApp.request('/artists/identity', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ rawName: 'X', decision: 'single' }),
+    });
+    expect(res.status).toBe(403);
+  });
+
   it('GET /untracked lists completed downloads with no relative_path', async () => {
     sharedDb.run(
       `INSERT INTO completed_downloads (transfer_key, username, directory, filename, relative_path, basename, completed_at)

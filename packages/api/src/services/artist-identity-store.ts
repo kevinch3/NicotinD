@@ -205,7 +205,13 @@ export function recordAcquiredArtistIdentity(
   }
 }
 
-/** Upsert a resolved split decision (written by the enrichment task / seed script). */
+/**
+ * Upsert a resolved split decision (written by the enrichment task / seed script /
+ * acquisition / the admin fix flow). A `source='user'` row is the highest authority:
+ * background writers (lidarr/mb/library) can never overwrite it — only another user
+ * decision can. See also {@link pendingArtistIdentityRows}, which keeps user rows out
+ * of the background task's pending set permanently (no TTL re-resolution).
+ */
 export function upsertArtistIdentity(
   db: Database,
   row: {
@@ -224,7 +230,8 @@ export function upsertArtistIdentity(
        decision = excluded.decision,
        members = excluded.members,
        source = excluded.source,
-       checked_at = excluded.checked_at`,
+       checked_at = excluded.checked_at
+     WHERE library_artist_identity.source != 'user' OR excluded.source = 'user'`,
     [
       row.artistKey,
       row.rawName,

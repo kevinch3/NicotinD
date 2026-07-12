@@ -780,7 +780,7 @@ export function pendingArtistIdentityRows(db: Database, cutoff: number, limit?: 
        WHERE ${DELIMITED_ARTIST_SQL}
          AND NOT EXISTS (
            SELECT 1 FROM library_artist_identity i
-           WHERE i.raw_name = t.name AND i.checked_at > ?
+           WHERE i.raw_name = t.name AND (i.checked_at > ? OR i.source = 'user')
          )
        ORDER BY name${limit != null ? ' LIMIT ?' : ''}`,
     )

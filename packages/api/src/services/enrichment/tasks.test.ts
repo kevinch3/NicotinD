@@ -5,6 +5,8 @@ import { ENRICHMENT_TASKS, getTask, type EnrichmentContext } from './tasks.js';
 import { MAX_ANALYSIS_ATTEMPTS } from './analysis-failures.js';
 import { NoConfidentResultError } from '../track-analysis.js';
 import { AudioFileRejectedError } from '../audio-features-client.js';
+import { upsertArtistIdentity } from '../artist-identity-store.js';
+import { artistIdFor } from '../library-scanner.js';
 
 let db: Database;
 
@@ -926,6 +928,21 @@ describe('artist-identity task', () => {
       'Peter Tosh',
     ]);
     expect(byName['Some, Weird Combo']!.decision).toBe('unknown');
+  });
+
+  it('never re-resolves a user decision (permanent authority, no TTL)', async () => {
+    seedSong('a', { artist: 'Bob Marley, Peter Tosh' });
+    upsertArtistIdentity(db, {
+      artistKey: artistIdFor('Bob Marley, Peter Tosh'),
+      rawName: 'Bob Marley, Peter Tosh',
+      decision: 'single',
+      source: 'user',
+    });
+    // Stale beyond any TTL — still excluded from pending because it's user-sourced.
+    db.run(`UPDATE library_artist_identity SET checked_at = 1 WHERE raw_name = ?`, [
+      'Bob Marley, Peter Tosh',
+    ]);
+    expect(task.countPending(db)).toBe(0);
   });
 });
 

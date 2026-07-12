@@ -72,6 +72,44 @@ describe('loadSplitAuthority', () => {
   });
 });
 
+describe('upsertArtistIdentity precedence', () => {
+  const key = artistIdFor('Bob Marley, Peter Tosh');
+  const base = { artistKey: key, rawName: 'Bob Marley, Peter Tosh' };
+
+  function decision(): { decision: string; source: string } | null {
+    return db
+      .query<{ decision: string; source: string }, [string]>(
+        `SELECT decision, source FROM library_artist_identity WHERE artist_key = ?`,
+      )
+      .get(key);
+  }
+
+  it('a background write never clobbers a user decision; another user write can', () => {
+    upsertArtistIdentity(db, { ...base, decision: 'single', source: 'user' });
+    upsertArtistIdentity(db, {
+      ...base,
+      decision: 'split',
+      members: ['Bob Marley', 'Peter Tosh'],
+      source: 'lidarr',
+    });
+    expect(decision()).toEqual({ decision: 'single', source: 'user' });
+
+    upsertArtistIdentity(db, {
+      ...base,
+      decision: 'split',
+      members: ['Bob Marley', 'Peter Tosh'],
+      source: 'user',
+    });
+    expect(decision()).toEqual({ decision: 'split', source: 'user' });
+  });
+
+  it('background writes still replace background rows', () => {
+    upsertArtistIdentity(db, { ...base, decision: 'unknown', source: 'lidarr' });
+    upsertArtistIdentity(db, { ...base, decision: 'single', source: 'lidarr' });
+    expect(decision()).toEqual({ decision: 'single', source: 'lidarr' });
+  });
+});
+
 describe('deriveMbidAliases', () => {
   /** Seed one library artist with `songs` songs and a cached MBID link. */
   function seedArtist(name: string, mbid: string, songs: number, albums = 0): void {
