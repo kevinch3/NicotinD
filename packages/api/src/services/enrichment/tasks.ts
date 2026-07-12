@@ -1,6 +1,6 @@
 import type { Database } from 'bun:sqlite';
 import { existsSync } from 'node:fs';
-import type { Lidarr } from '@nicotind/lidarr-client';
+import type { Lidarr, LidarrArtist } from '@nicotind/lidarr-client';
 import type { ProcessingTaskId } from '@nicotind/core';
 import {
   analyzeBpm as realAnalyzeBpm,
@@ -23,6 +23,10 @@ import { setArtwork } from '../artwork-store.js';
 import { isPlaceholderArtist } from '../artwork-backfill.js';
 import { indexLidarrArtists, resolveArtistImageUrl } from '../artist-image.js';
 import { clearCoverNegativeCache } from '../../routes/streaming.js';
+import { normalizeArtistForGrouping } from '../album-grouping.js';
+import { splitOnDelimiters } from '../artist-split.js';
+import { upsertArtistIdentity } from '../artist-identity-store.js';
+import { artistIdFor } from '../library-scanner.js';
 import {
   recordAnalysisFailure,
   clearAnalysisFailure,
@@ -87,7 +91,62 @@ export interface EnrichmentContext {
   /** Returns a Spotify portrait url for an artist name, or null. Null when Spotify
    *  isn't configured — the artist-image task then relies on Lidarr alone. */
   lookupArtistImageSpotify: ((name: string) => Promise<string | null>) | null;
+  /** Resolve a compound artist string to a split decision via Lidarr/MB. Null when
+   *  Lidarr isn't configured (the `artist-identity` task is then unavailable and the
+   *  scanner falls back to library-only atomic confirmation). */
+  resolveArtistIdentity:
+    ((rawName: string, parts: string[]) => Promise<ArtistIdentityDecision>) | null;
   fileExists: (abs: string) => boolean;
+}
+
+/** A resolved split decision for one compound artist string. */
+export interface ArtistIdentityDecision {
+  /** 'single' → one act (keep whole); 'split' → real collab; 'unknown' → no opinion. */
+  decision: 'single' | 'split' | 'unknown';
+  /** Raw member names (tag spelling) when `decision === 'split'`; else empty. */
+  members: string[];
+}
+
+/**
+ * Build a Lidarr-backed resolver for compound artist strings. Memoizes per-name
+ * lookups for the lifetime of the context (one window run) so compounds sharing a
+ * member don't re-query. Every Lidarr call is guarded — a blip degrades to 'unknown',
+ * never throws, so one bad name can't abort the batch.
+ */
+export function makeLidarrArtistIdentityResolver(
+  lidarr: Lidarr,
+): (rawName: string, parts: string[]) => Promise<ArtistIdentityDecision> {
+  const memo = new Map<string, LidarrArtist[]>();
+  const lookup = async (term: string): Promise<LidarrArtist[]> => {
+    const key = normalizeArtistForGrouping(term);
+    const cached = memo.get(key);
+    if (cached) return cached;
+    let hits: LidarrArtist[];
+    try {
+      hits = await lidarr.artist.lookup(term);
+    } catch {
+      hits = [];
+    }
+    memo.set(key, hits);
+    return hits;
+  };
+  const matches = (hits: LidarrArtist[], name: string): boolean => {
+    const want = normalizeArtistForGrouping(name);
+    return hits.some((a) => normalizeArtistForGrouping(a.artistName) === want);
+  };
+
+  return async (rawName, parts) => {
+    // 1. Is the whole compound itself a canonical artist (band/duo)? Keep it whole.
+    if (matches(await lookup(rawName), rawName)) return { decision: 'single', members: [] };
+    // 2. Does every part resolve to a real artist? Then it's a genuine collab.
+    if (parts.length > 1) {
+      for (const part of parts) {
+        if (!matches(await lookup(part), part)) return { decision: 'unknown', members: [] };
+      }
+      return { decision: 'split', members: parts };
+    }
+    return { decision: 'unknown', members: [] };
+  };
 }
 
 export interface EnrichmentRunResult {
@@ -184,6 +243,7 @@ export function createEnrichmentContext(deps: {
       return r.suggested;
     },
     lookupArtistImageSpotify: deps.lookupArtistImageSpotify ?? null,
+    resolveArtistIdentity: deps.lidarr ? makeLidarrArtistIdentityResolver(deps.lidarr) : null,
     fileExists: (abs) => existsSync(abs),
   };
 }
@@ -693,6 +753,82 @@ const artistImageTask: EnrichmentTask = {
   },
 };
 
+/**
+ * SQL predicate (against the alias `name`) selecting compound artist strings that
+ * *might* be splittable — a cheap superset of {@link splitOnDelimiters}. False
+ * positives (e.g. a stray ` x ` inside a word) simply resolve to 'unknown' and drop
+ * out, so a permissive match is fine.
+ */
+const DELIMITED_ARTIST_SQL = `(
+  name LIKE '% & %' OR name LIKE '%, %' OR name LIKE '% / %' OR name LIKE '% + %'
+  OR name LIKE '% and %' OR name LIKE '% y %' OR name LIKE '% x %' OR name LIKE '% con %'
+  OR name LIKE '% vs %' OR name LIKE '% vs. %'
+)`;
+
+/** Re-resolve a compound's identity at most this often. */
+export const ARTIST_IDENTITY_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** Distinct delimited artist/album-artist strings lacking a fresh authority row. */
+export function pendingArtistIdentityRows(db: Database, cutoff: number, limit?: number): string[] {
+  const rows = db
+    .query<{ name: string }, [number] | [number, number]>(
+      `SELECT name FROM (
+         SELECT DISTINCT artist AS name FROM library_songs WHERE artist IS NOT NULL
+         UNION
+         SELECT DISTINCT album_artist AS name FROM library_songs WHERE album_artist IS NOT NULL
+       ) t
+       WHERE ${DELIMITED_ARTIST_SQL}
+         AND NOT EXISTS (
+           SELECT 1 FROM library_artist_identity i
+           WHERE i.raw_name = t.name AND i.checked_at > ?
+         )
+       ORDER BY name${limit != null ? ' LIMIT ?' : ''}`,
+    )
+    .all(...((limit != null ? [cutoff, limit] : [cutoff]) as [number] | [number, number]));
+  return rows.map((r) => r.name);
+}
+
+/**
+ * Resolve compound artist strings (e.g. "Bob Marley & The Wailers" vs
+ * "Bob Marley, Peter Tosh") into a cached split decision the *synchronous* scanner
+ * reads — so multi-artist splitting never makes a live network call. Per-artist (like
+ * {@link artistImageTask}), so it is never a landing gate. Records a row for every
+ * attempted compound (incl. 'unknown') so an unresolvable name drops out of the
+ * pending set until the TTL lapses, instead of being re-queried every window.
+ */
+const artistIdentityTask: EnrichmentTask = {
+  id: 'artist-identity',
+  label: 'Artist identity',
+  available: (ctx) => (ctx.resolveArtistIdentity ? true : 'Lidarr not configured'),
+  countPending: (db) => pendingArtistIdentityRows(db, Date.now() - ARTIST_IDENTITY_TTL_MS).length,
+  run: async (db, ctx, limit) => {
+    if (!ctx.resolveArtistIdentity) return { applied: 0, labels: [], failed: 0, errorSample: null };
+    const names = pendingArtistIdentityRows(db, Date.now() - ARTIST_IDENTITY_TTL_MS, limit);
+    const labels: string[] = [];
+    const tally: FailureTally = { failed: 0, sample: null };
+    let applied = 0;
+    for (const name of names) {
+      const parts = splitOnDelimiters(name);
+      try {
+        const { decision, members } = await ctx.resolveArtistIdentity(name, parts);
+        upsertArtistIdentity(db, {
+          artistKey: artistIdFor(name),
+          rawName: name,
+          decision,
+          members,
+          source: 'lidarr',
+        });
+        applied++;
+        if (decision === 'split') labels.push(`${name} → ${members.join(' + ')}`);
+        else if (decision === 'single') labels.push(`${name} (one act)`);
+      } catch (err) {
+        recordFailure(tally, err);
+      }
+    }
+    return { applied, labels, failed: tally.failed, errorSample: tally.sample };
+  },
+};
+
 /** All registered enrichment tasks, in run order. */
 export const ENRICHMENT_TASKS: readonly EnrichmentTask[] = [
   bpmTask,
@@ -701,6 +837,7 @@ export const ENRICHMENT_TASKS: readonly EnrichmentTask[] = [
   energyTask,
   audioFeaturesTask,
   artistImageTask,
+  artistIdentityTask,
 ];
 
 export function getTask(id: ProcessingTaskId): EnrichmentTask | undefined {

@@ -327,9 +327,7 @@ export class LibraryProcessingService extends EventEmitter {
   /** Count of songs currently quarantined (scanned but not yet landed). */
   private countQuarantined(): number {
     const row = this.db
-      .query<{ n: number }, []>(
-        `SELECT COUNT(*) AS n FROM library_songs WHERE landed_at IS NULL`,
-      )
+      .query<{ n: number }, []>(`SELECT COUNT(*) AS n FROM library_songs WHERE landed_at IS NULL`)
       .get();
     return Number(row?.n ?? 0);
   }
@@ -337,8 +335,11 @@ export class LibraryProcessingService extends EventEmitter {
   /** True when at least one song is waiting on its required gate steps. */
   private hasQuarantined(): boolean {
     return (
-      this.db.query<{ n: number }, []>(`SELECT EXISTS(SELECT 1 FROM library_songs WHERE landed_at IS NULL) AS n`).get()
-        ?.n === 1
+      this.db
+        .query<{ n: number }, []>(
+          `SELECT EXISTS(SELECT 1 FROM library_songs WHERE landed_at IS NULL) AS n`,
+        )
+        .get()?.n === 1
     );
   }
 
@@ -538,7 +539,15 @@ export class LibraryProcessingService extends EventEmitter {
       lastItems: [],
       startedAt: null,
       updatedAt: null,
-      taskPending: { bpm: 0, genre: 0, key: 0, 'artist-image': 0, energy: 0, 'audio-features': 0 },
+      taskPending: {
+        bpm: 0,
+        genre: 0,
+        key: 0,
+        'artist-image': 0,
+        energy: 0,
+        'audio-features': 0,
+        'artist-identity': 0,
+      },
       availability: {
         bpm: 'unknown',
         genre: 'unknown',
@@ -546,6 +555,7 @@ export class LibraryProcessingService extends EventEmitter {
         'artist-image': 'unknown',
         energy: 'unknown',
         'audio-features': 'unknown',
+        'artist-identity': 'unknown',
       },
       skipped: 0,
       quarantined: 0,

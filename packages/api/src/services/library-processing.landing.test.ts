@@ -24,9 +24,11 @@ function seedSong(id: string, created = '2024-01-01'): void {
 }
 
 const landedAt = (id: string): number | null =>
-  db.query<{ landed_at: number | null }, [string]>(
-    'SELECT landed_at FROM library_songs WHERE id = ?',
-  ).get(id)?.landed_at ?? null;
+  db
+    .query<{ landed_at: number | null }, [string]>(
+      'SELECT landed_at FROM library_songs WHERE id = ?',
+    )
+    .get(id)?.landed_at ?? null;
 
 const isLanded = (id: string): boolean => landedAt(id) !== null;
 
@@ -52,6 +54,7 @@ function fakeCtx(opts: { bpmResult?: number | null; sidecar?: boolean } = {}) {
     audioFeaturesAvailable: () => opts.sidecar ?? false,
     lookupGenre: async () => 'Rock',
     lookupArtistImageSpotify: async () => null,
+    resolveArtistIdentity: null,
     fileExists: () => true,
   });
 }

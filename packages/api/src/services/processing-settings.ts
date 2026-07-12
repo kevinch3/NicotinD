@@ -27,6 +27,9 @@ export const DEFAULT_PROCESSING_SETTINGS: ProcessingSettings = {
     'artist-image': true,
     energy: true,
     'audio-features': true,
+    // Resolves compound artist strings (bands/duos vs collabs) via Lidarr/MB so the
+    // scanner can split them; auto-skips when Lidarr is absent. Per-artist, never a gate.
+    'artist-identity': true,
   },
   // Steps that must finish before a fresh download is added to the library.
   // Fast, offline, no-sidecar analysis (bpm/key/energy) plus genre are gated by

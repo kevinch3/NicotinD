@@ -5,6 +5,7 @@ import {
   buildLibrary,
   songId,
   albumIdFor,
+  artistIdFor,
   isLooseSinglesBucket,
   LibraryScanner,
   type ScannedTrack,
@@ -70,7 +71,13 @@ describe('buildLibrary (pure aggregation)', () => {
     ]);
     const built = buildLibrary(
       [
-        track({ relPath: '<Desconocido>/Selva/01.mp3', artist: '<Desconocido>', album: 'Selva', title: 'T', year: 2009 }),
+        track({
+          relPath: '<Desconocido>/Selva/01.mp3',
+          artist: '<Desconocido>',
+          album: 'Selva',
+          title: 'T',
+          year: 2009,
+        }),
       ],
       undefined,
       overrides,
@@ -89,7 +96,12 @@ describe('buildLibrary (pure aggregation)', () => {
       [albumIdFor('<Desconocido>', 'Selva'), { artist: 'La Portuaria', album: 'Selva' }],
     ]);
     const tracks = [
-      track({ relPath: '<Desconocido>/Selva/01.mp3', artist: '<Desconocido>', album: 'Selva', title: 'T' }),
+      track({
+        relPath: '<Desconocido>/Selva/01.mp3',
+        artist: '<Desconocido>',
+        album: 'Selva',
+        title: 'T',
+      }),
     ];
     const a = buildLibrary(tracks, undefined, overrides);
     const b = buildLibrary(tracks, undefined, overrides);
@@ -230,7 +242,11 @@ describe('LibraryScanner.persist', () => {
     expect(db.query('SELECT COUNT(*) AS c FROM library_albums').get()).toEqual({ c: 1 });
 
     // A later full scan that no longer reports the file prunes it.
-    scanner.persist({ songs: [], albums: [], artists: [], genres: [], songArtists: [], albumArtists: [] }, Date.now() + 1, true);
+    scanner.persist(
+      { songs: [], albums: [], artists: [], genres: [], songArtists: [], albumArtists: [] },
+      Date.now() + 1,
+      true,
+    );
     expect(db.query('SELECT COUNT(*) AS c FROM library_songs').get()).toEqual({ c: 0 });
     expect(db.query('SELECT COUNT(*) AS c FROM library_albums').get()).toEqual({ c: 0 });
   });
@@ -249,10 +265,9 @@ describe('LibraryScanner.persist', () => {
     // Rescan the same file — curation must stick.
     scanner.persist(built, Date.now() + 1, true);
     const row = db
-      .query<
-        { hidden: number; classification: string },
-        [string]
-      >('SELECT hidden, classification FROM library_albums WHERE id = ?')
+      .query<{ hidden: number; classification: string }, [string]>(
+        'SELECT hidden, classification FROM library_albums WHERE id = ?',
+      )
       .get(albumId);
     expect(row?.hidden).toBe(1);
     expect(row?.classification).toBe('single');
@@ -347,5 +362,73 @@ describe('LibraryScanner.persist', () => {
       false,
     );
     expect(db.query('SELECT COUNT(*) AS c FROM library_songs').get()).toEqual({ c: 2 });
+  });
+});
+
+describe('buildLibrary — multi-artist splitting (conservative, confirmation-gated)', () => {
+  function songCredits(built: ReturnType<typeof buildLibrary>, relPath: string) {
+    const id = songId(relPath);
+    return built.songArtists
+      .filter((l) => l.parentId === id)
+      .sort((a, b) => a.position - b.position);
+  }
+
+  it('splits a collab when both members appear atomically elsewhere in the batch', () => {
+    // Charly García and Luis Alberto Spinetta each have their own solo tracks, so the
+    // collab "Charly García y Luis Alberto Spinetta" splits into two linked artists.
+    const built = buildLibrary([
+      track({ relPath: 'Charly/Solo/01.mp3', artist: 'Charly García', album: 'Solo', title: 'A' }),
+      track({
+        relPath: 'Spinetta/Solo/01.mp3',
+        artist: 'Luis Alberto Spinetta',
+        album: 'Solo',
+        title: 'B',
+      }),
+      track({
+        relPath: 'Collab/Album/01.mp3',
+        artist: 'Charly García y Luis Alberto Spinetta',
+        album: 'Collab',
+        title: 'C',
+      }),
+    ]);
+    const credits = songCredits(built, 'Collab/Album/01.mp3');
+    expect(credits.map((c) => c.artistId)).toEqual([
+      artistIdFor('Charly García'),
+      artistIdFor('Luis Alberto Spinetta'),
+    ]);
+    expect(credits.every((c) => c.role === 'primary')).toBe(true);
+  });
+
+  it('keeps a band whole when its members are not independently confirmed (no garbage)', () => {
+    // "The Wailers" never appears atomically, so the band stays a single credit — and
+    // crucially there is NO "part == raw" garbage row (the old bug produced
+    // "Bob Marley" + "Bob Marley & The Wailers").
+    const built = buildLibrary([
+      track({
+        relPath: 'BM/Album/01.mp3',
+        artist: 'Bob Marley & The Wailers',
+        album: 'Legend',
+        title: 'A',
+      }),
+    ]);
+    const credits = songCredits(built, 'BM/Album/01.mp3');
+    expect(credits).toHaveLength(1);
+    expect(credits[0]!.artistId).toBe(artistIdFor('Bob Marley & The Wailers'));
+  });
+
+  it('keeps a duo whole when the authority marks it canonical, even if both members confirmed', () => {
+    const built = buildLibrary(
+      [
+        track({ relPath: 'Wisin/Solo/01.mp3', artist: 'Wisin', album: 'Solo', title: 'A' }),
+        track({ relPath: 'Yandel/Solo/01.mp3', artist: 'Yandel', album: 'Solo', title: 'B' }),
+        track({ relPath: 'Duo/Album/01.mp3', artist: 'Wisin & Yandel', album: 'Duo', title: 'C' }),
+      ],
+      undefined,
+      undefined,
+      { confirmedArtists: new Set(), canonicalWhole: new Set(['wisin & yandel']) },
+    );
+    const credits = songCredits(built, 'Duo/Album/01.mp3');
+    expect(credits).toHaveLength(1);
+    expect(credits[0]!.artistId).toBe(artistIdFor('Wisin & Yandel'));
   });
 });

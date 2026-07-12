@@ -46,6 +46,7 @@ function fakeCtx(counters: { analyzed: number; genreLookups: number }) {
       return 'Rock';
     },
     lookupArtistImageSpotify: async () => null,
+    resolveArtistIdentity: null,
     fileExists: () => true,
   });
 }

@@ -57,6 +57,7 @@ function makeService(): LibraryProcessingService {
       audioFeaturesAvailable: () => false,
       lookupGenre: async () => null,
       lookupArtistImageSpotify: null,
+      resolveArtistIdentity: null,
       fileExists: () => false,
     }),
   });
@@ -174,7 +175,10 @@ describe('admin /processing', () => {
 
   it('persists the per-task landing gates via PUT', async () => {
     const app = authed(
-      new Hono<AuthEnv>().route('/', adminRoutes({ musicDir: '/music', processing: makeService() })),
+      new Hono<AuthEnv>().route(
+        '/',
+        adminRoutes({ musicDir: '/music', processing: makeService() }),
+      ),
       'admin',
     );
     const res = await app.request('/processing', {
@@ -190,7 +194,10 @@ describe('admin /processing', () => {
 
   it('rejects a malformed gates map', async () => {
     const app = authed(
-      new Hono<AuthEnv>().route('/', adminRoutes({ musicDir: '/music', processing: makeService() })),
+      new Hono<AuthEnv>().route(
+        '/',
+        adminRoutes({ musicDir: '/music', processing: makeService() }),
+      ),
       'admin',
     );
     const res = await app.request('/processing', {
@@ -212,7 +219,10 @@ describe('admin /processing', () => {
        VALUES ('s1', 'al', 'T', 'Artist', 'art', 0, 's1.opus', 10, '2024-01-01', 120, 1)`,
     );
     const app = authed(
-      new Hono<AuthEnv>().route('/', adminRoutes({ musicDir: '/music', processing: makeService() })),
+      new Hono<AuthEnv>().route(
+        '/',
+        adminRoutes({ musicDir: '/music', processing: makeService() }),
+      ),
       'admin',
     );
     const res = await app.request('/processing/queue');

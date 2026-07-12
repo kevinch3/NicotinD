@@ -5,17 +5,28 @@ export interface ArtistCredit {
   role: 'primary' | 'featuring';
 }
 
+/**
+ * Split authority sets (all values normalized via {@link normalizeArtistForGrouping}).
+ *
+ * - `confirmedArtists` — names known to be a **real individual artist** (they appear
+ *   atomically somewhere in the library, or a Lidarr/MB lookup confirmed them). A
+ *   compound is only split when *every* candidate part is confirmed.
+ * - `canonicalWhole` — compound strings that Lidarr/MB says are **one act** (bands,
+ *   duos like "Wisin & Yandel"). These are kept whole even when both members are
+ *   independently confirmed.
+ *
+ * With empty sets the parser keeps every compound whole (the safe default) — it only
+ * ever splits on positive confirmation, never mangling a band/duo name.
+ */
+export interface KnownArtistSets {
+  confirmedArtists?: ReadonlySet<string>;
+  canonicalWhole?: ReadonlySet<string>;
+}
+
 const FEAT_BRACKET = /\s*[([]\s*(?:feat\.?|ft\.?|featuring|with|w\/)\s+([^)\]]+)[)\]]/gi;
 const FEAT_BARE = /\s+(?:feat\.?|ft\.?|featuring|with|w\/)\s+(.+)$/i;
 
-const DELIMITERS = [
-  / & /i,
-  / and /i,
-  /\s*,\s+/,
-  / \/ /,
-  / \+ /,
-  / vs\.? /i,
-];
+const DELIMITERS = [/ & /i, / and /i, /\s*,\s+/, / \/ /, / \+ /, / vs\.? /i];
 
 const WORD_BOUNDARY_DELIMITERS = [
   { pattern: /\bx\b/i, text: ' x ' },
@@ -25,10 +36,6 @@ const WORD_BOUNDARY_DELIMITERS = [
 
 function normalize(s: string): string {
   return normalizeArtistForGrouping(s);
-}
-
-function isKnown(name: string, knownArtists: ReadonlySet<string>): boolean {
-  return knownArtists.has(normalize(name));
 }
 
 function extractFeaturing(raw: string): { primary: string; featuring: string[] } {
@@ -48,9 +55,18 @@ function extractFeaturing(raw: string): { primary: string; featuring: string[] }
   return { primary: primary.trim(), featuring: featuringNames };
 }
 
-function splitOnDelimiters(segment: string): string[] {
+/**
+ * Break a segment into candidate artist names on the known delimiters. This is purely
+ * lexical detection — it does NOT decide whether the split *should* happen (that gate
+ * lives in {@link splitArtists} and requires confirmation). Exported so the scanner can
+ * ask "is this raw name a single atomic artist?" via {@link isAtomicArtist}.
+ */
+export function splitOnDelimiters(segment: string): string[] {
   for (const delim of DELIMITERS) {
-    const parts = segment.split(delim).map((s) => s.trim()).filter(Boolean);
+    const parts = segment
+      .split(delim)
+      .map((s) => s.trim())
+      .filter(Boolean);
     if (parts.length > 1) return parts.flatMap((p) => splitOnDelimiters(p));
   }
 
@@ -68,22 +84,35 @@ function splitOnDelimiters(segment: string): string[] {
   return [segment];
 }
 
-export function splitArtists(
-  raw: string,
-  knownArtists: ReadonlySet<string> = new Set(),
-): ArtistCredit[] {
+/**
+ * True when `raw` denotes a single individual artist — no featuring credit and no
+ * delimiter that would split it. The scanner uses this to decide which raw library
+ * artist strings seed the `confirmedArtists` set (a compound must never confirm itself).
+ */
+export function isAtomicArtist(raw: string): boolean {
+  if (!raw || raw === 'Unknown Artist') return true;
+  const { primary, featuring } = extractFeaturing(raw);
+  if (featuring.length > 0) return false;
+  return splitOnDelimiters(primary).length === 1;
+}
+
+export function splitArtists(raw: string, known: KnownArtistSets = {}): ArtistCredit[] {
+  const confirmedArtists = known.confirmedArtists ?? EMPTY;
+  const canonicalWhole = known.canonicalWhole ?? EMPTY;
+
   if (!raw || raw === 'Unknown Artist') return [{ name: raw || 'Unknown Artist', role: 'primary' }];
 
   const { primary, featuring } = extractFeaturing(raw);
 
   let primaryNames: string[];
-  if (isKnown(primary, knownArtists)) {
+  if (canonicalWhole.has(normalize(primary))) {
+    // Lidarr/MB says this compound is one act (band/duo) — never split it.
     primaryNames = [primary];
   } else {
     const candidates = splitOnDelimiters(primary);
-    if (candidates.length > 1 && candidates.every((c) => isKnown(c, knownArtists))) {
-      primaryNames = candidates;
-    } else if (candidates.length > 1) {
+    // Conservative: split only when every candidate is an independently confirmed
+    // artist. Otherwise keep the string whole (never mangle a band name).
+    if (candidates.length > 1 && candidates.every((c) => confirmedArtists.has(normalize(c)))) {
       primaryNames = candidates;
     } else {
       primaryNames = [primary];
@@ -91,20 +120,16 @@ export function splitArtists(
   }
 
   const result: ArtistCredit[] = primaryNames.map((name) => ({ name, role: 'primary' as const }));
-
+  // Featuring credits are extracted unconditionally — a "feat. X" is an explicit,
+  // unambiguous credit, so it never needs library confirmation to be surfaced.
   for (const name of featuring) {
-    if (isKnown(name, knownArtists)) {
-      result.push({ name, role: 'featuring' });
-    } else {
-      const subSplit = splitOnDelimiters(name);
-      for (const sub of subSplit) {
-        result.push({ name: sub, role: 'featuring' });
-      }
-    }
+    result.push({ name, role: 'featuring' });
   }
 
   return result;
 }
+
+const EMPTY: ReadonlySet<string> = new Set();
 
 export function formatArtistDisplay(artists: ArtistCredit[]): string {
   const primaries = artists.filter((a) => a.role === 'primary');
