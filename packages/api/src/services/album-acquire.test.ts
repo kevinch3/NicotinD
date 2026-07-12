@@ -72,6 +72,28 @@ describe('acquireAlbum', () => {
     expect(job.a).toBe(99);
   });
 
+  it('persists the acquired artist identity (+MBID) on enqueue', async () => {
+    const { db, deps } = makeDeps({
+      candidates: [candidate({ username: 'good', matchPct: 100 })],
+    });
+
+    const outcome = await acquireAlbum(deps, { ...input, artistMbid: 'mbid-artist' });
+
+    expect(outcome).toBe('enqueued');
+    const identity = db
+      .query<{ raw_name: string; decision: string; source: string }, [string]>(
+        'SELECT raw_name, decision, source FROM library_artist_identity WHERE artist_key = ?',
+      )
+      .get(artistIdFor('Artist'));
+    expect(identity).toEqual({ raw_name: 'Artist', decision: 'single', source: 'lidarr' });
+    const link = db
+      .query<{ mbid: string }, [string]>(
+        'SELECT mbid FROM artist_discography_links WHERE artist_id = ?',
+      )
+      .get(artistIdFor('Artist'));
+    expect(link?.mbid).toBe('mbid-artist');
+  });
+
   it('returns no-candidate when nothing clears the threshold (no enqueue)', async () => {
     const { deps, enqueue } = makeDeps({ candidates: [candidate({ matchPct: 50 })] });
 

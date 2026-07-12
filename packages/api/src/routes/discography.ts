@@ -14,6 +14,7 @@ import {
 import { albumIdFor, artistIdFor } from '../services/library-scanner.js';
 import { albumAlreadyComplete, filesMissingOnDisk } from '../services/library-completeness.js';
 import { setArtwork, pickAlbumCover, pickArtistImage } from '../services/artwork-store.js';
+import { recordAcquiredArtistIdentity } from '../services/artist-identity-store.js';
 import { join } from 'node:path';
 import type { Lidarr } from '@nicotind/lidarr-client';
 
@@ -323,6 +324,18 @@ export function discographyRoutes({
         }
       } catch (err) {
         log.warn({ albumId, err }, 'Failed to persist canonical artwork');
+      }
+      // Same rationale as the artwork: persist the canonical artist identity
+      // (one-act decision + MBID) so the scan that lands this download already
+      // knows the artist — no waiting on the artist-identity background task.
+      try {
+        recordAcquiredArtistIdentity(db, {
+          artistKey: artistIdFor(artistName),
+          artistName,
+          mbid: album.artist?.foreignArtistId ?? null,
+        });
+      } catch (err) {
+        log.warn({ albumId, err }, 'Failed to persist acquired artist identity');
       }
     }
 

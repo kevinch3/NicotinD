@@ -184,6 +184,7 @@ export class WatchlistService {
           artistName: row.artist_name,
           albumTitle: row.album_title,
           minMatchPct: this.minMatchPct,
+          artistMbid: row.artist_mbid,
         },
       );
 
