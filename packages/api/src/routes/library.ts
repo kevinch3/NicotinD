@@ -480,9 +480,12 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       : '';
     const rows = db
       .query<ArtistRow, (string | number)[]>(
+        // split_compound = 0: a compound that split ("Charly García y Luis
+        // Alberto Spinetta") is represented by its member tiles, not its own —
+        // the row stays reachable via direct links/search.
         `SELECT id, name, album_count, cover_art, starred
          FROM library_artists
-         WHERE hidden = 0 AND name != 'Various Artists' COLLATE NOCASE${filterClause}${quarantineClause}
+         WHERE hidden = 0 AND split_compound = 0 AND name != 'Various Artists' COLLATE NOCASE${filterClause}${quarantineClause}
          ORDER BY name COLLATE NOCASE ASC`,
       )
       .all(...frag.params);
