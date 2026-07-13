@@ -29,6 +29,9 @@ export class AcquireService {
 
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private completedJobIds = new Set<string>();
+  // Guard so the first refresh baselines all existing terminal jobs silently
+  // (no toast). Matches TransferService.hasPolled.
+  private hasRefreshed = false;
 
   async submit(url: string, backend?: AcquireBackend): Promise<string> {
     const res = await firstValueFrom(
@@ -48,17 +51,24 @@ export class AcquireService {
     try {
       const jobs = await firstValueFrom(this.http.get<AcquireJob[]>('/api/acquire/jobs'));
       for (const job of jobs) {
-        if (job.state === 'done' && !this.completedJobIds.has(job.id)) {
+        if ((job.state === 'done' || job.state === 'failed') && !this.completedJobIds.has(job.id)) {
           this.completedJobIds.add(job.id);
-          // A 'done' job can still carry an `error`: a partial-download
-          // warning (e.g. spotdl only matching some tracks) rides in the same
-          // field as a hard failure so this can't read as an unqualified
-          // success when it wasn't one.
-          this.toasts.show(
-            job.error
-              ? { message: job.error, kind: 'error' }
-              : { message: 'Your track has been added to the library.', kind: 'success' },
-          );
+          // Only toast if this job transitioned after the first refresh — on
+          // the initial load we silently baseline to avoid replaying stale
+          // completions/failures from before the user opened the app.
+          if (this.hasRefreshed) {
+            // A 'done' job can still carry an `error`: a partial-download
+            // warning (e.g. spotdl only matching some tracks) rides in the same
+            // field as a hard failure so this can't read as an unqualified
+            // success when it wasn't one.
+            this.toasts.show(
+              job.state === 'failed'
+                ? { message: job.error ?? 'Download failed.', kind: 'error' }
+                : job.error
+                  ? { message: job.error, kind: 'error' }
+                  : { message: 'Your track has been added to the library.', kind: 'success' },
+            );
+          }
         }
       }
       this.jobs.set(jobs);
@@ -68,6 +78,7 @@ export class AcquireService {
     } catch {
       // Non-fatal; stale UI is acceptable
     }
+    this.hasRefreshed = true;
   }
 
   private ensurePolling(): void {
@@ -86,5 +97,6 @@ export class AcquireService {
     this.stopPolling();
     this.jobs.set([]);
     this.completedJobIds.clear();
+    this.hasRefreshed = false;
   }
 }
