@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.188](https://github.com/kevinch3/NicotinD/compare/v0.1.187...v0.1.188) (2026-07-13)
+
+
+### Bug Fixes
+
+* **player:** don't autoplay on page load by default; add opt-in user setting ([260f062](https://github.com/kevinch3/NicotinD/commit/260f06271bbb249ffe04aea28526c322a1e32ea7))
+
 ## [0.1.187](https://github.com/kevinch3/NicotinD/compare/v0.1.186...v0.1.187) (2026-07-13)
 
 
