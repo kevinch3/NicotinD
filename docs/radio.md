@@ -24,7 +24,7 @@ Each factor produces a 0–1 score; the result is a **weight-normalized** blend
 
 | Factor | Logic | Weight |
 |--------|-------|----------------|
-| Genre | `genreCloseness`: exact (case-fold) = 1.0, token-set containment (e.g. "Deep House" ⊇ "House") = 0.6, partial overlap = Jaccard×0.5, disjoint = 0 | 10 |
+| Genre | `genreSetCloseness`: **max pairwise `genreCloseness` across the two full genre sets** (`SongFeatures.genres`, primary-first from `library_song_genres`; falls back to the single `genre`). Per pair: exact (case-fold) = 1.0, token-set containment (e.g. "Deep House" ⊇ "House") = 0.6, partial overlap = Jaccard×0.5, disjoint = 0. A shared *secondary* genre scores like a shared primary — a track tagged "Electronic; House" is an exact match for a "House" seed. | 10 |
 | BPM proximity | 1 − clamp(\|Δbpm\| / seedBpm × 5, 0, 1) | 8 |
 | Key compatibility | Camelot wheel: same=1.0, A↔B=0.8, ±1 same-ring=0.7, ±2 same-ring=0.4, diagonal (±1 + ring swap)=0.4, else 0 | 6 |
 | Year proximity | 1 − clamp(\|Δyear\| / 20, 0, 1) | 2 |
@@ -80,7 +80,8 @@ The same `camelotCompatibility` powers `harmonicChain` in
 
 The `/api/radio/next` endpoint builds a diverse pool in several passes:
 
-1. Same genre as seed (exact, up to 150 random)
+1. Shares ANY genre with the seed's full set (primary column OR a
+   `library_song_genres` EXISTS, up to 150 random)
 1b. **Genre variants** — `LOWER(genre) LIKE '%<longest seed token>%'` (up to 100),
    so "Deep House" also pulls "House"/"Tech House" for `genreCloseness` to score
    (tokens shorter than 4 chars are skipped as non-selective; `longestGenreToken`)

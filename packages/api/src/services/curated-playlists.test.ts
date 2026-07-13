@@ -77,3 +77,34 @@ describe('selectCuratedTracks', () => {
     expect(a1).not.toEqual(b);
   });
 });
+
+describe('expandGenreWhere (multi-genre recipe predicates)', () => {
+  it('rewrites s.genre to the full-set expression so LIKE sees every genre', async () => {
+    const { expandGenreWhere, GENRE_SET_EXPR } = await import('./curated-playlists.js');
+    const where = "(s.genre LIKE '%house%' OR s.genre LIKE '%techno%') AND s.bpm > 0";
+    const out = expandGenreWhere(where);
+    expect(out).not.toContain('s.genre ');
+    expect(out).toContain(GENRE_SET_EXPR);
+    expect(out.endsWith('AND s.bpm > 0')).toBe(true);
+  });
+
+  it('matches a song whose SECONDARY genre satisfies the predicate', async () => {
+    const { Database } = await import('bun:sqlite');
+    const { applySchema } = await import('../db.js');
+    const { expandGenreWhere } = await import('./curated-playlists.js');
+    const db = new Database(':memory:');
+    applySchema(db);
+    db.run(
+      `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, genre, path, size, suffix, content_type, synced_at, hidden)
+       VALUES ('s1', 'al1', 'T', 'A', 'ar1', 200, 'Electronic', 'p1', 1, 'mp3', 'audio/mpeg', 0, 0)`,
+    );
+    db.run(`INSERT INTO library_song_genres (song_id, genre, position) VALUES ('s1', 'Electronic', 0)`);
+    db.run(`INSERT INTO library_song_genres (song_id, genre, position) VALUES ('s1', 'House', 1)`);
+    const rows = db
+      .query<{ id: string }, []>(
+        `SELECT s.id FROM library_songs s WHERE ${expandGenreWhere("s.genre LIKE '%house%'")}`,
+      )
+      .all();
+    expect(rows.map((r) => r.id)).toEqual(['s1']);
+  });
+});

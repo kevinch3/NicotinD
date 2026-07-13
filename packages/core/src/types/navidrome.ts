@@ -55,7 +55,10 @@ export interface Song {
   albumArtistId?: string;
   track?: number;
   year?: number;
+  /** Primary genre (first of `genres`) — kept for single-value consumers. */
   genre?: string;
+  /** Full genre set, primary first (from library_song_genres). */
+  genres?: string[];
   coverArt?: string;
   size: number;
   contentType: string;

@@ -46,6 +46,7 @@ export interface RadioSongRow {
   acousticness: number | null;
   instrumental: number | null;
   mood: string | null;
+  genres_all: string | null;
 }
 
 export const RADIO_SONG_SELECT = `
@@ -54,10 +55,19 @@ export const RADIO_SONG_SELECT = `
          s.cover_art, s.path, s.size, s.bit_rate, s.suffix, s.content_type,
          s.created, s.starred, s.bpm, s.key,
          s.energy, s.loudness, s.valence, s.danceability, s.acousticness,
-         s.instrumental, s.mood
+         s.instrumental, s.mood,
+         (SELECT GROUP_CONCAT(genre, '; ') FROM (
+            SELECT genre FROM library_song_genres WHERE song_id = s.id ORDER BY position
+          )) AS genres_all
   FROM library_songs s
   LEFT JOIN library_albums a ON a.id = s.album_id
 `;
+
+/** Full genre set from the aggregated join-table column (primary-first). */
+export function genresOf(r: RadioSongRow): string[] | undefined {
+  if (r.genres_all) return r.genres_all.split('; ');
+  return r.genre ? [r.genre] : undefined;
+}
 
 function rowToSong(r: RadioSongRow): Song & SongFeatures {
   return {
@@ -70,6 +80,7 @@ function rowToSong(r: RadioSongRow): Song & SongFeatures {
     track: r.track ?? undefined,
     year: r.year ?? undefined,
     genre: r.genre ?? undefined,
+    genres: genresOf(r),
     coverArt: r.cover_art ?? r.album_cover_art ?? r.album_id,
     size: r.size ?? 0,
     contentType: r.content_type ?? '',
@@ -96,6 +107,7 @@ export function toFeatures(r: RadioSongRow): SongFeatures {
     bpm: r.bpm ?? undefined,
     key: r.key ?? undefined,
     genre: r.genre ?? undefined,
+    genres: genresOf(r),
     duration: r.duration,
     year: r.year ?? undefined,
     artistId: r.artist_id,
@@ -141,14 +153,21 @@ export function radioRoutes() {
       }
     };
 
-    // Pool 1: same genre (up to 150), most useful signal
-    if (seed.genre) {
+    // Pool 1: shares ANY genre with the seed's full set (up to 150) — the
+    // join-table EXISTS means a track whose 3rd genre matches the seed's 2nd
+    // is pooled just like a primary-genre match.
+    const seedGenres = seed.genres ?? (seed.genre ? [seed.genre] : []);
+    if (seedGenres.length > 0) {
+      const marks = seedGenres.map(() => '?').join(', ');
       addRows(
         db
-          .query<RadioSongRow, [string]>(
-            `${RADIO_SONG_SELECT} WHERE s.genre = ? AND s.hidden = 0 AND s.landed_at IS NOT NULL ORDER BY RANDOM() LIMIT 150`,
+          .query<RadioSongRow, string[]>(
+            `${RADIO_SONG_SELECT}
+             WHERE (s.genre IN (${marks}) OR EXISTS (
+               SELECT 1 FROM library_song_genres g WHERE g.song_id = s.id AND g.genre IN (${marks})
+             )) AND s.hidden = 0 AND s.landed_at IS NOT NULL ORDER BY RANDOM() LIMIT 150`,
           )
-          .all(seed.genre),
+          .all(...seedGenres, ...seedGenres),
       );
     }
 

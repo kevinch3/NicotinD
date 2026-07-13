@@ -143,10 +143,25 @@
           </button>
         </div>
 
-        <!-- Genre -->
+        <!-- Genre: full set as chips, primary first/highlighted -->
         <div class="flex gap-2 items-center">
           <span class="text-theme-muted w-16 flex-shrink-0">Genre</span>
-          <span data-testid="genre-value">{{ currentGenre() || 'Unknown' }}</span>
+          <span class="flex flex-wrap gap-1 items-center" data-testid="genre-value">
+            @for (g of genreList(); track g; let first = $first) {
+              <span
+                class="rounded-full px-2 py-0.5 text-xs"
+                [class]="
+                  first
+                    ? 'bg-theme-accent/15 text-theme-accent font-medium'
+                    : 'bg-theme-surface-2 text-theme-secondary'
+                "
+                data-testid="genre-chip"
+                >{{ g }}</span
+              >
+            } @empty {
+              <span class="text-theme-muted">Unknown</span>
+            }
+          </span>
           <button
             class="ml-auto px-2 py-0.5 rounded bg-theme-surface-2 hover:bg-theme-hover text-xs
                    disabled:opacity-50"

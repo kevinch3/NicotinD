@@ -243,7 +243,15 @@ describe('LibraryScanner.persist', () => {
 
     // A later full scan that no longer reports the file prunes it.
     scanner.persist(
-      { songs: [], albums: [], artists: [], genres: [], songArtists: [], albumArtists: [] },
+      {
+        songs: [],
+        albums: [],
+        artists: [],
+        genres: [],
+        songArtists: [],
+        albumArtists: [],
+        songGenres: [],
+      },
       Date.now() + 1,
       true,
     );
@@ -526,5 +534,135 @@ describe('buildLibrary — multi-artist splitting (conservative, confirmation-ga
     expect(built.artists.find((a) => a.name === 'Bob Marley & The Wailers')?.splitCompound).toBe(
       false,
     );
+  });
+});
+
+describe('buildLibrary — multi-genre', () => {
+  it('splits a joined tag: primary in song.genre, full set in songGenres, aggregate over set', () => {
+    const built = buildLibrary([
+      track({
+        relPath: 'A/Alb/01.mp3',
+        artist: 'A',
+        album: 'Alb',
+        title: 'T1',
+        genre: 'Latin Rock;Latin Music',
+      }),
+      track({ relPath: 'A/Alb/02.mp3', artist: 'A', album: 'Alb', title: 'T2', genre: 'Latin Rock' }),
+    ]);
+    expect(built.songs[0]!.genre).toBe('Latin Rock');
+    const g1 = built.songGenres.filter((g) => g.songId === built.songs[0]!.id);
+    expect(g1.map((g) => [g.genre, g.position])).toEqual([
+      ['Latin Rock', 0],
+      ['Latin Music', 1],
+    ]);
+    const rock = built.genres.find((g) => g.name === 'Latin Rock');
+    const music = built.genres.find((g) => g.name === 'Latin Music');
+    expect(rock?.songCount).toBe(2);
+    expect(music?.songCount).toBe(1);
+    expect(rock?.albumCount).toBe(1);
+  });
+
+  it('accepts multi-frame array genres from the tag parser', () => {
+    const built = buildLibrary([
+      track({
+        relPath: 'A/Alb/01.mp3',
+        artist: 'A',
+        album: 'Alb',
+        title: 'T',
+        genre: ['Rock', 'Pop'],
+      }),
+    ]);
+    expect(built.songs[0]!.genre).toBe('Rock');
+    expect(built.songGenres.map((g) => g.genre)).toEqual(['Rock', 'Pop']);
+  });
+
+  it('applies the genre alias context (drop junk, expand concatenations)', () => {
+    const ctx = {
+      aliases: new Map([
+        ['other', ''],
+        ['rockpunk', 'Rock;Punk'],
+      ]),
+      known: new Map<string, string>(),
+    };
+    const built = buildLibrary(
+      [
+        track({ relPath: 'A/Alb/01.mp3', artist: 'A', album: 'Alb', title: 'T1', genre: 'Other' }),
+        track({ relPath: 'A/Alb/02.mp3', artist: 'A', album: 'Alb', title: 'T2', genre: 'RockPunk' }),
+      ],
+      undefined,
+      undefined,
+      undefined,
+      ctx,
+    );
+    expect(built.songs[0]!.genre).toBeNull();
+    expect(built.songGenres.filter((g) => g.songId === built.songs[0]!.id)).toEqual([]);
+    expect(built.songs[1]!.genre).toBe('Rock');
+    expect(
+      built.songGenres.filter((g) => g.songId === built.songs[1]!.id).map((g) => g.genre),
+    ).toEqual(['Rock', 'Punk']);
+  });
+
+  it('normalizes casing variants to one genre via the in-batch vocabulary', () => {
+    const built = buildLibrary([
+      track({ relPath: 'A/Alb/01.mp3', artist: 'A', album: 'Alb', title: 'T1', genre: 'Deep House' }),
+      track({ relPath: 'A/Alb/02.mp3', artist: 'A', album: 'Alb', title: 'T2', genre: 'Deep House' }),
+      track({ relPath: 'A/Alb/03.mp3', artist: 'A', album: 'Alb', title: 'T3', genre: 'deep house' }),
+    ]);
+    expect(built.genres).toHaveLength(1);
+    expect(built.genres[0]!.name).toBe('Deep House');
+    expect(built.songs[2]!.genre).toBe('Deep House');
+  });
+});
+
+describe('LibraryScanner.persist — multi-genre join table', () => {
+  let db: Database;
+  let scanner: LibraryScanner;
+
+  beforeEach(() => {
+    db = new Database(':memory:');
+    applySchema(db);
+    scanner = new LibraryScanner('/music', db);
+  });
+
+  it('writes library_song_genres rows and replaces them on rescan', () => {
+    const built = buildLibrary([
+      track({ relPath: 'A/Alb/01.mp3', artist: 'A', album: 'Alb', title: 'T', genre: 'Rock;Pop' }),
+    ]);
+    scanner.persist(built, Date.now(), true);
+    const id = built.songs[0]!.id;
+    const rows = db
+      .query<{ genre: string; position: number }, [string]>(
+        'SELECT genre, position FROM library_song_genres WHERE song_id = ? ORDER BY position',
+      )
+      .all(id);
+    expect(rows).toEqual([
+      { genre: 'Rock', position: 0 },
+      { genre: 'Pop', position: 1 },
+    ]);
+
+    // Rescan with a changed tag replaces the set (no stale leftovers).
+    const built2 = buildLibrary([
+      track({ relPath: 'A/Alb/01.mp3', artist: 'A', album: 'Alb', title: 'T', genre: 'Techno' }),
+    ]);
+    scanner.persist(built2, Date.now() + 1, true);
+    const rows2 = db
+      .query<{ genre: string }, [string]>(
+        'SELECT genre FROM library_song_genres WHERE song_id = ? ORDER BY position',
+      )
+      .all(id);
+    expect(rows2).toEqual([{ genre: 'Techno' }]);
+  });
+
+  it('prunes join rows for songs removed by a full scan', () => {
+    const built = buildLibrary([
+      track({ relPath: 'A/Alb/01.mp3', artist: 'A', album: 'Alb', title: 'T', genre: 'Rock' }),
+    ]);
+    scanner.persist(built, Date.now(), true);
+    scanner.persist(
+      { songs: [], albums: [], artists: [], genres: [], songArtists: [], albumArtists: [], songGenres: [] },
+      Date.now() + 1,
+      true,
+    );
+    expect(db.query('SELECT COUNT(*) AS c FROM library_song_genres').get()).toEqual({ c: 0 });
   });
 });

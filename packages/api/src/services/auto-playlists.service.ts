@@ -11,6 +11,7 @@
  */
 import type { Database } from 'bun:sqlite';
 import { RECIPES, runRecipe, weekSeedFor, type PlaylistRecipe, type OrderableRow } from './playlist-recipe.js';
+import { expandGenreWhere } from './curated-playlists.js';
 import { createLogger } from '@nicotind/core';
 
 const log = createLogger('auto-playlists');
@@ -118,7 +119,7 @@ function candidatesFor(db: Database, recipe: PlaylistRecipe): OrderableRow[] {
               s.instrumental AS instrumental, s.acousticness AS acousticness,
               s.created AS created
          FROM library_songs s
-        WHERE s.hidden = 0 AND s.landed_at IS NOT NULL AND (${recipe.where})`,
+        WHERE s.hidden = 0 AND s.landed_at IS NOT NULL AND (${expandGenreWhere(recipe.where)})`,
     )
     .all();
   return rows.map(toOrderable);

@@ -26,6 +26,7 @@ import { Lidarr } from '@nicotind/lidarr-client';
 import { verifyGenre } from '../services/track-analysis.js';
 import { writeAudioTags } from '../services/audio-tags.js';
 import { planGenreBackfill, resolveSongAbsPath } from '../services/track-backfill.js';
+import { setSongGenres } from '../services/genre-split.js';
 
 function expandHome(p: string): string {
   return p.startsWith('~') ? join(process.env.HOME ?? '/root', p.slice(1)) : p;
@@ -144,10 +145,17 @@ async function main(): Promise<void> {
   const logPath = join(dataDir, 'backfill-genre.log');
   let applied = 0;
   for (const a of assignments) {
-    db.run('UPDATE library_songs SET genre = ? WHERE id = ?', [a.genre, a.song.id]);
+    // Keep the multi-genre join table in step with the primary column so
+    // filters/radio see the fill before the next rescan.
+    const genres = a.genre
+      .split(/[;,|]/)
+      .map((g) => g.trim().replace(/\s+/g, ' '))
+      .filter(Boolean);
+    setSongGenres(db, a.song.id, genres);
     if (musicDir) {
       const abs = resolveSongAbsPath(musicDir, a.song.path);
-      if (existsSync(abs)) await writeAudioTags(abs, { genre: a.genre }).catch(() => false);
+      if (existsSync(abs))
+        await writeAudioTags(abs, { genre: genres.join('; ') }).catch(() => false);
     }
     appendFileSync(logPath, `${new Date().toISOString()}\t${a.genre}\t${a.artist}\t${a.song.id}\n`);
     applied++;

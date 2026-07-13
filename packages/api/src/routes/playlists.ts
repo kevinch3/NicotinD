@@ -135,13 +135,20 @@ export function playlistRoutes() {
           candidates.push(r);
         }
     };
-    if (seedFeatures.genre) {
+    // Pool on ANY genre in the seed's full set via the join table, so a shared
+    // secondary genre pools candidates just like a primary match.
+    const seedGenres = seedFeatures.genres ?? (seedFeatures.genre ? [seedFeatures.genre] : []);
+    if (seedGenres.length > 0) {
+      const marks = seedGenres.map(() => '?').join(', ');
       addRows(
         db
-          .query<RadioSongRow, [string]>(
-            `${RADIO_SONG_SELECT} WHERE s.genre = ? AND s.hidden = 0 AND s.landed_at IS NOT NULL ORDER BY RANDOM() LIMIT 300`,
+          .query<RadioSongRow, string[]>(
+            `${RADIO_SONG_SELECT}
+             WHERE (s.genre IN (${marks}) OR EXISTS (
+               SELECT 1 FROM library_song_genres g WHERE g.song_id = s.id AND g.genre IN (${marks})
+             )) AND s.hidden = 0 AND s.landed_at IS NOT NULL ORDER BY RANDOM() LIMIT 300`,
           )
-          .all(seedFeatures.genre),
+          .all(...seedGenres, ...seedGenres),
       );
     }
     // Genre-variant match via the seed's longest token so lexical genre

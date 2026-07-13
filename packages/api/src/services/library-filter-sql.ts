@@ -79,8 +79,14 @@ export function songFilterWheres(f: LibraryFilter, alias = 's'): FilterSqlFragme
     params.push(f.yearMax);
   }
   if (f.genres?.length) {
-    wheres.push(`${alias}.genre IN (${placeholders(f.genres.length)})`);
-    params.push(...f.genres);
+    // Match the FULL genre set via the join table so a track filed under
+    // "Electronic; House" matches a House filter; the primary-column IN keeps
+    // pre-first-rescan rows (join table not yet populated) filterable.
+    const marks = placeholders(f.genres.length);
+    wheres.push(
+      `(${alias}.genre IN (${marks}) OR EXISTS (SELECT 1 FROM library_song_genres sg WHERE sg.song_id = ${alias}.id AND sg.genre IN (${marks})))`,
+    );
+    params.push(...f.genres, ...f.genres);
   }
   if (f.durationMin !== undefined) {
     wheres.push(`${alias}.duration >= ?`);

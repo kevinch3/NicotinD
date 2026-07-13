@@ -82,6 +82,21 @@ export class TrackInfoSheetComponent implements OnInit {
   /** Current genre: an applied override wins over the song's own tag. */
   readonly currentGenre = computed(() => this.genreOverride() ?? this.effectiveSong()?.genre ?? '');
 
+  /** Full genre set for the chips row (primary first). An applied override
+   *  (possibly a ';'-joined list) replaces the whole set until refetch. */
+  readonly genreList = computed<string[]>(() => {
+    const override = this.genreOverride();
+    if (override !== null) {
+      return override
+        .split(/[;,|]/)
+        .map((g) => g.trim())
+        .filter(Boolean);
+    }
+    const s = this.effectiveSong();
+    if (s?.genres?.length) return s.genres;
+    return s?.genre ? [s.genre] : [];
+  });
+
   /** Read-only perceptual/harmonic rows for the Analysis section ("Unknown"
    *  until the server enrichment has analyzed the track). */
   readonly featureRows = computed(() => {
