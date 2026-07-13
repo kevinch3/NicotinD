@@ -491,4 +491,40 @@ describe('buildLibrary — multi-artist splitting (conservative, confirmation-ga
     expect(built.artists.some((a) => a.name === 'Snoop Dogg')).toBe(true);
     expect(built.artists.some((a) => a.name === 'Snoop Dog')).toBe(false);
   });
+
+  it('flags a split compound entity so the grid can hide it (members stay visible)', () => {
+    const built = buildLibrary([
+      track({ relPath: 'Charly/Solo/01.mp3', artist: 'Charly García', album: 'Solo', title: 'A' }),
+      track({
+        relPath: 'Spinetta/Solo/01.mp3',
+        artist: 'Luis Alberto Spinetta',
+        album: 'Solo',
+        title: 'B',
+      }),
+      track({
+        relPath: 'Collab/Album/01.mp3',
+        artist: 'Charly García y Luis Alberto Spinetta',
+        album: 'Collab',
+        title: 'C',
+      }),
+    ]);
+    const byName = new Map(built.artists.map((a) => [a.name, a]));
+    expect(byName.get('Charly García y Luis Alberto Spinetta')?.splitCompound).toBe(true);
+    expect(byName.get('Charly García')?.splitCompound).toBe(false);
+    expect(byName.get('Luis Alberto Spinetta')?.splitCompound).toBe(false);
+  });
+
+  it('does not flag a band kept whole', () => {
+    const built = buildLibrary([
+      track({
+        relPath: 'BM/Album/01.mp3',
+        artist: 'Bob Marley & The Wailers',
+        album: 'Legend',
+        title: 'A',
+      }),
+    ]);
+    expect(built.artists.find((a) => a.name === 'Bob Marley & The Wailers')?.splitCompound).toBe(
+      false,
+    );
+  });
 });

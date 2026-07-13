@@ -810,6 +810,22 @@ describe('singles & EPs presentation', () => {
     expect(names).not.toContain('Various Artists');
   });
 
+  it('GET /artists hides split-compound entities (members represent them)', async () => {
+    testDb.run(`DELETE FROM library_artists`);
+    testDb.run(
+      `INSERT INTO library_artists (id, name, album_count, synced_at) VALUES ('m1', 'Charly García', 2, 1)`,
+    );
+    testDb.run(
+      `INSERT INTO library_artists (id, name, album_count, split_compound, synced_at)
+       VALUES ('cmp', 'Charly García y Luis Alberto Spinetta', 1, 1, 1)`,
+    );
+
+    const body = (await (await makeApp().request('/artists')).json()) as Array<{ name: string }>;
+    const names = body.map((a) => a.name);
+    expect(names).toContain('Charly García');
+    expect(names).not.toContain('Charly García y Luis Alberto Spinetta');
+  });
+
   it('GET /artists/:id splits albums from singlesAndEps', async () => {
     testDb.run(
       `INSERT INTO library_artists (id, name, album_count, synced_at) VALUES ('art', 'Alfredo Casero', 3, 1)`,

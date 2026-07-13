@@ -154,6 +154,8 @@ export interface ArtistRow {
   name: string;
   albumCount: number;
   coverArt: string | null;
+  /** True when the name is a compound the splitter resolves into >1 primary credit. */
+  splitCompound: boolean;
 }
 
 export interface GenreRow {
@@ -552,6 +554,9 @@ export function buildLibrary(
     name: a.name,
     albumCount: a.albums.size,
     coverArt: a.coverArt,
+    // A compound that splits keeps its row (songs/albums key its id) but is
+    // flagged so the grid shows only the member artists as tiles.
+    splitCompound: splitCredits(a.name).filter((c) => c.role === 'primary').length > 1,
   }));
 
   const genreAcc = new Map<string, { songs: number; albums: Set<string> }>();
@@ -847,12 +852,13 @@ export class LibraryScanner {
         -- is the sole writer that sets a landed timestamp — do not add it here.
     `);
     const artistStmt = this.db.prepare(`
-      INSERT INTO library_artists (id, name, album_count, cover_art, synced_at)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO library_artists (id, name, album_count, cover_art, split_compound, synced_at)
+      VALUES (?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         name = excluded.name,
         album_count = excluded.album_count,
         cover_art = excluded.cover_art,
+        split_compound = excluded.split_compound,
         synced_at = excluded.synced_at
     `);
     const genreStmt = this.db.prepare(`
@@ -926,7 +932,7 @@ export class LibraryScanner {
         );
       }
       for (const a of built.artists) {
-        artistStmt.run(a.id, a.name, a.albumCount, a.coverArt, syncedAt);
+        artistStmt.run(a.id, a.name, a.albumCount, a.coverArt, a.splitCompound ? 1 : 0, syncedAt);
       }
       for (const g of built.genres) {
         genreStmt.run(g.name, g.songCount, g.albumCount, syncedAt);
