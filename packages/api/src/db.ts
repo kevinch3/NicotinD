@@ -869,6 +869,37 @@ export function applySchema(db: Database): void {
     )
   `);
 
+  // Full multi-genre set per song (position 0 = the primary, which is also
+  // mirrored into library_songs.genre for zero-breakage single-value reads).
+  // Scanner-managed like library_song_artists: rebuilt from tags on rescan.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS library_song_genres (
+      song_id  TEXT NOT NULL,
+      genre    TEXT NOT NULL,
+      position INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (song_id, genre)
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_song_genres_genre ON library_song_genres(genre)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_song_genres_song ON library_song_genres(song_id)`);
+
+  // Genre alias map (human-gated, like library_artist_aliases): a raw tag
+  // value → its canonical form. Canonical may be a ';'-joined LIST (one alias
+  // expands to many genres — fixes no-separator concatenations like
+  // "RockPunk") or '' (junk value dropped, e.g. "Other"). Applied by
+  // splitGenres in buildLibrary before aggregation, so rescans of unchanged
+  // messy files still produce clean genres without rewriting the files.
+  // Side table: survives rescans/prunes. Populated by reclassify-genres.ts.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS library_genre_aliases (
+      alias      TEXT NOT NULL COLLATE NOCASE,
+      canonical  TEXT NOT NULL,
+      source     TEXT NOT NULL,   -- 'rule' | 'user'
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (alias)
+    )
+  `);
+
   // Audit trail written by normalize-library.ts and future automation.
   // navidrome_id is null until NavidromeSyncer backfills it via path join.
   db.run(`
@@ -927,6 +958,25 @@ export function applySchema(db: Database): void {
       db.run(
         `INSERT OR REPLACE INTO library_sync_state (key, value, updated_at) VALUES (?, '1', ?)`,
         ['landing_backfill_v1', now],
+      );
+    })();
+  }
+
+  // One-time scan-cache flush for multi-genre. Pre-multi-genre cache rows kept
+  // only the FIRST genre frame (ScannedTrack.genre = common.genre[0]), so a
+  // file tagged with several genre frames can't recover its extras from cache.
+  // Version-marker-gated: absent marker ⇒ flush once (next scan re-parses all
+  // files), then never again.
+  const scanCacheVersion = db
+    .query<{ value: string }, [string]>(`SELECT value FROM library_sync_state WHERE key = ?`)
+    .get('scan_cache_version');
+  if (scanCacheVersion?.value !== '2') {
+    const now = Date.now();
+    db.transaction(() => {
+      db.run(`DELETE FROM scan_cache`);
+      db.run(
+        `INSERT OR REPLACE INTO library_sync_state (key, value, updated_at) VALUES (?, '2', ?)`,
+        ['scan_cache_version', now],
       );
     })();
   }
