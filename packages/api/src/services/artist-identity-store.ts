@@ -74,6 +74,37 @@ export function loadSplitAuthority(db: Database): SplitAuthority {
   return { confirmedArtists, canonicalWhole };
 }
 
+/**
+ * Record the canonical artist identity resolved during acquisition (hunt / watchlist /
+ * auto-acquire), so a freshly-downloaded album's artist is a known identity *before*
+ * the scan lands — no background-task latency. The Lidarr canonical artist name is one
+ * act by definition, so it's protected as `decision='single'` (a compound canonical
+ * name like "Bob Marley & The Wailers" instantly joins `canonicalWhole`). The MBID is
+ * cached in `artist_discography_links` keyed on the same deterministic artist id the
+ * scanner will mint, preserving any `lidarr_id` a prior discography fetch stored.
+ */
+export function recordAcquiredArtistIdentity(
+  db: Database,
+  input: { artistKey: string; artistName: string; mbid?: string | null },
+): void {
+  upsertArtistIdentity(db, {
+    artistKey: input.artistKey,
+    rawName: input.artistName,
+    decision: 'single',
+    source: 'lidarr',
+  });
+  if (input.mbid) {
+    db.run(
+      `INSERT INTO artist_discography_links (artist_id, lidarr_id, mbid, checked_at)
+       VALUES (?, NULL, ?, ?)
+       ON CONFLICT(artist_id) DO UPDATE SET
+         mbid = excluded.mbid,
+         checked_at = excluded.checked_at`,
+      [input.artistKey, input.mbid, Date.now()],
+    );
+  }
+}
+
 /** Upsert a resolved split decision (written by the enrichment task / seed script). */
 export function upsertArtistIdentity(
   db: Database,

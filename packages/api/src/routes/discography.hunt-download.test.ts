@@ -171,6 +171,51 @@ describe('POST /albums/:id/hunt-download idempotency guard', () => {
     expect(resolveArtwork(db, artistIdFor('Soda Stereo'))?.url).toBe('https://art/soda.jpg');
   });
 
+  it('persists the acquired artist identity (+MBID) from the Lidarr payload', async () => {
+    const enqueue = mock(async () => undefined);
+    const lidarr = {
+      album: {
+        get: mock(async () => ({
+          title: 'Dynamo',
+          artist: { artistName: 'Soda Stereo', foreignArtistId: 'mbid-soda' },
+        })),
+      },
+      track: { listByAlbum: mock(async () => TRACKS) },
+    } as unknown as Lidarr;
+
+    const app = new Hono<AuthEnv>();
+    app.use('*', (c, next) => {
+      c.set('user', { sub: 'u', role: 'admin', iat: 0, exp: 9999999999 });
+      return next();
+    });
+    app.route(
+      '/',
+      discographyRoutes({
+        discography: {} as DiscographyService,
+        hunter: {} as AlbumHunterService,
+        sourceHunt: noopSourceHunt,
+        lidarr,
+        db,
+        slskdRef: { current: { transfers: { enqueue } } } as unknown as SlskdRef,
+      }),
+    );
+
+    const res = await post(app);
+    expect(res.status).toBe(201);
+    const identity = db
+      .query<{ raw_name: string; decision: string; source: string }, [string]>(
+        'SELECT raw_name, decision, source FROM library_artist_identity WHERE artist_key = ?',
+      )
+      .get(artistIdFor('Soda Stereo'));
+    expect(identity).toEqual({ raw_name: 'Soda Stereo', decision: 'single', source: 'lidarr' });
+    const link = db
+      .query<{ mbid: string }, [string]>(
+        'SELECT mbid FROM artist_discography_links WHERE artist_id = ?',
+      )
+      .get(artistIdFor('Soda Stereo'));
+    expect(link?.mbid).toBe('mbid-soda');
+  });
+
   it('enqueues only the missing tracks when the album is partially on disk', async () => {
     const { app, enqueue } = makeApp(db);
     // 'One' is already on disk for this album (same grouping id).

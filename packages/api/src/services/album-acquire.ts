@@ -5,6 +5,8 @@ import type { SlskdRef } from '../index.js';
 import type { AlbumHunterService, FolderCandidate } from './album-hunter.service.js';
 import { AlbumFallbackService } from './album-fallback.service.js';
 import { albumAlreadyComplete, filesMissingOnDisk } from './library-completeness.js';
+import { recordAcquiredArtistIdentity } from './artist-identity-store.js';
+import { artistIdFor } from './library-scanner.js';
 
 const log = createLogger('album-acquire');
 
@@ -37,6 +39,8 @@ export interface AcquireAlbumInput {
   albumTitle: string;
   /** Minimum folder match % to auto-acquire unattended. */
   minMatchPct: number;
+  /** Lidarr/MusicBrainz artist id, when the caller has it — persisted as identity. */
+  artistMbid?: string | null;
 }
 
 /**
@@ -58,7 +62,7 @@ export async function acquireAlbum(
   input: AcquireAlbumInput,
 ): Promise<AcquireOutcome> {
   const { db, hunter, lidarr, slskdRef } = deps;
-  const { lidarrAlbumId, artistName, albumTitle, minMatchPct } = input;
+  const { lidarrAlbumId, artistName, albumTitle, minMatchPct, artistMbid } = input;
 
   const tracks = await lidarr.track.listByAlbum(lidarrAlbumId);
 
@@ -106,6 +110,18 @@ export async function acquireAlbum(
   const alternates = candidates
     .filter((c) => c !== best)
     .map((c) => ({ username: c.username, directory: c.directory, files: toFiles(c) }));
+  // The download is coming: persist the canonical artist identity (one act + MBID)
+  // now, so the scan that lands it already knows the artist. Best-effort.
+  try {
+    recordAcquiredArtistIdentity(db, {
+      artistKey: artistIdFor(artistName),
+      artistName,
+      mbid: artistMbid ?? null,
+    });
+  } catch (err) {
+    log.warn({ lidarrAlbumId, err }, 'Failed to persist acquired artist identity');
+  }
+
   try {
     AlbumFallbackService.recordJob(db, {
       lidarrAlbumId,

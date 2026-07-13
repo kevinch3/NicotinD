@@ -106,6 +106,7 @@ export class AutoAcquireService {
               artistName,
               albumTitle: album.title,
               minMatchPct: this.minMatchPct,
+              artistMbid: album.artist?.foreignArtistId ?? null,
             },
           );
           log.debug({ albumId: album.id, album: album.title, outcome }, 'Auto-acquire sweep result');

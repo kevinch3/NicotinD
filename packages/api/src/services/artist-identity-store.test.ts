@@ -1,7 +1,11 @@
 import { describe, expect, it, beforeEach } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { applySchema } from '../db.js';
-import { loadSplitAuthority, upsertArtistIdentity } from './artist-identity-store.js';
+import {
+  loadSplitAuthority,
+  recordAcquiredArtistIdentity,
+  upsertArtistIdentity,
+} from './artist-identity-store.js';
 import { artistIdFor } from './library-scanner.js';
 
 let db: Database;
@@ -63,5 +67,65 @@ describe('loadSplitAuthority', () => {
     const auth = loadSplitAuthority(db);
     expect(auth.canonicalWhole.size).toBe(0);
     expect(auth.confirmedArtists.size).toBe(0);
+  });
+});
+
+describe('recordAcquiredArtistIdentity', () => {
+  const key = artistIdFor('Bob Marley & The Wailers');
+
+  it('writes a single/lidarr identity row and caches the MBID link', () => {
+    recordAcquiredArtistIdentity(db, {
+      artistKey: key,
+      artistName: 'Bob Marley & The Wailers',
+      mbid: 'mbid-wailers',
+    });
+    const identity = db
+      .query<{ decision: string; source: string }, [string]>(
+        'SELECT decision, source FROM library_artist_identity WHERE artist_key = ?',
+      )
+      .get(key);
+    expect(identity).toEqual({ decision: 'single', source: 'lidarr' });
+    const link = db
+      .query<{ mbid: string }, [string]>(
+        'SELECT mbid FROM artist_discography_links WHERE artist_id = ?',
+      )
+      .get(key);
+    expect(link?.mbid).toBe('mbid-wailers');
+    // The canonical compound is now protected as one act for the scanner.
+    expect(loadSplitAuthority(db).canonicalWhole.has('bob marley & the wailers')).toBe(true);
+  });
+
+  it('preserves an existing lidarr_id when refreshing the MBID link', () => {
+    db.run(
+      `INSERT INTO artist_discography_links (artist_id, lidarr_id, mbid, checked_at) VALUES (?, 42, 'old', 1)`,
+      [key],
+    );
+    recordAcquiredArtistIdentity(db, {
+      artistKey: key,
+      artistName: 'Bob Marley & The Wailers',
+      mbid: 'new',
+    });
+    const link = db
+      .query<{ lidarr_id: number | null; mbid: string }, [string]>(
+        'SELECT lidarr_id, mbid FROM artist_discography_links WHERE artist_id = ?',
+      )
+      .get(key);
+    expect(link).toEqual({ lidarr_id: 42, mbid: 'new' });
+  });
+
+  it('skips the link entirely when no MBID is available', () => {
+    recordAcquiredArtistIdentity(db, { artistKey: key, artistName: 'Bob Marley & The Wailers' });
+    const link = db
+      .query<{ 1: number }, [string]>('SELECT 1 FROM artist_discography_links WHERE artist_id = ?')
+      .get(key);
+    expect(link).toBeNull();
+    expect(
+      db
+        .query<
+          { 1: number },
+          [string]
+        >('SELECT 1 FROM library_artist_identity WHERE artist_key = ?')
+        .get(key),
+    ).not.toBeNull();
   });
 });
