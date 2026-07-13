@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.184](https://github.com/kevinch3/NicotinD/compare/v0.1.183...v0.1.184) (2026-07-13)
+
+
+### Features
+
+* **api:** artist spelling-variant aliases applied before ID minting ([a55a4f5](https://github.com/kevinch3/NicotinD/commit/a55a4f5fbe57b3c594ab7bc0a53f7eada11e6468))
+* **api:** hide split-compound artist entities from the artists grid ([96d3343](https://github.com/kevinch3/NicotinD/commit/96d33438164d83887f7bb1efca03df36bd346145))
+* user-fixable artist splits & merges (admin, permanent authority) ([e392ad5](https://github.com/kevinch3/NicotinD/commit/e392ad5a34adf2ded65667d3c800690834f99636))
+
 ## [0.1.183](https://github.com/kevinch3/NicotinD/compare/v0.1.182...v0.1.183) (2026-07-13)
 
 
