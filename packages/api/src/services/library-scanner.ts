@@ -20,6 +20,14 @@ import {
 } from './artist-identity-store.js';
 import { pruneOrphanArtist } from './library-aggregates.js';
 import { partitionByCache, loadScanCache, saveScanCache, type FileStat } from './scan-cache.js';
+import {
+  splitGenres,
+  buildKnownFromRaw,
+  genreKey,
+  loadGenreContext,
+  emptyGenreContext,
+  type GenreContext,
+} from './genre-split.js';
 
 const log = createLogger('library-scanner');
 
@@ -93,7 +101,12 @@ export interface ScannedTrack {
   track?: number;
   disc?: number;
   year?: number;
-  genre?: string;
+  /**
+   * Raw genre tag value(s). New parses store the FULL frame array; rows cached
+   * before the multi-genre migration hold the old single string — both shapes
+   * are valid splitGenres input, so stale cache rows still scan correctly.
+   */
+  genre?: string | string[];
   bpm?: number;
   key?: string;
   energy?: number;
@@ -171,6 +184,12 @@ export interface ArtistLink {
   position: number;
 }
 
+export interface SongGenreLink {
+  songId: string;
+  genre: string;
+  position: number;
+}
+
 export interface BuiltLibrary {
   songs: SongRow[];
   albums: AlbumRow[];
@@ -178,6 +197,7 @@ export interface BuiltLibrary {
   genres: GenreRow[];
   songArtists: ArtistLink[];
   albumArtists: ArtistLink[];
+  songGenres: SongGenreLink[];
 }
 
 const UNKNOWN_ARTIST = 'Unknown Artist';
@@ -350,8 +370,17 @@ export function buildLibrary(
   canonicalByAlbum?: Map<string, string[]>,
   overrides?: ReadonlyMap<string, MetadataOverrideValue>,
   authority: SplitAuthority = emptyAuthority(),
+  genreCtx: GenreContext = emptyGenreContext(),
 ): BuiltLibrary {
   tracks = selectLibraryTracks(tracks, canonicalByAlbum, overrides);
+
+  // Genre context: the caller's loaded vocabulary/aliases (db-settled display
+  // casing wins) merged over the in-batch vocabulary, so the `/` rule and
+  // casing normalization work on a fresh db and on incremental batches alike.
+  const gctx: GenreContext = {
+    aliases: genreCtx.aliases,
+    known: new Map([...buildKnownFromRaw(tracks.map((t) => t.genre)), ...genreCtx.known]),
+  };
 
   // Pass 1: assemble the split authority. A compound like "Bob Marley, Peter Tosh" is
   // split into individual artists ONLY when every part is confirmed; otherwise it is
@@ -391,6 +420,8 @@ export function buildLibrary(
   const songs: SongRow[] = [];
   const songArtistLinks: ArtistLink[] = [];
   const albumArtistLinks: ArtistLink[] = [];
+  const songGenreLinks: SongGenreLink[] = [];
+  const genreAcc = new Map<string, { display: string; songs: number; albums: Set<string> }>();
   const albumAcc = new Map<
     string,
     {
@@ -417,6 +448,15 @@ export function buildLibrary(
     const albId = albumIdFor(albumArtist, album);
     const id = songId(t.relPath);
     const created = new Date(t.mtimeMs).toISOString();
+    const genres = splitGenres(t.genre, gctx);
+    for (let i = 0; i < genres.length; i++) {
+      songGenreLinks.push({ songId: id, genre: genres[i]!, position: i });
+      const key = genreKey(genres[i]!);
+      const g = genreAcc.get(key) ?? { display: genres[i]!, songs: 0, albums: new Set<string>() };
+      g.songs += 1;
+      g.albums.add(albId);
+      genreAcc.set(key, g);
+    }
 
     songs.push({
       id,
@@ -430,7 +470,7 @@ export function buildLibrary(
       disc: t.disc ?? null,
       duration: t.duration,
       year: year ?? null,
-      genre: t.genre ?? null,
+      genre: genres[0] ?? null,
       bpm: t.bpm ?? null,
       key: t.key ?? null,
       energy: t.energy ?? null,
@@ -465,7 +505,7 @@ export function buildLibrary(
       acc.songCount += 1;
       acc.duration += t.duration;
       if (year != null) acc.years.push(year);
-      if (t.genre) acc.genres.push(t.genre);
+      acc.genres.push(...genres);
       if (t.mtimeMs > acc.createdMs) acc.createdMs = t.mtimeMs;
     } else {
       albumAcc.set(albId, {
@@ -476,7 +516,7 @@ export function buildLibrary(
         songCount: 1,
         duration: t.duration,
         years: year != null ? [year] : [],
-        genres: t.genre ? [t.genre] : [],
+        genres: [...genres],
         createdMs: t.mtimeMs,
         coverArt: albId,
         splitCredits: splitCredits(albumArtist),
@@ -559,16 +599,10 @@ export function buildLibrary(
     splitCompound: splitCredits(a.name).filter((c) => c.role === 'primary').length > 1,
   }));
 
-  const genreAcc = new Map<string, { songs: number; albums: Set<string> }>();
-  for (const s of songs) {
-    if (!s.genre) continue;
-    const g = genreAcc.get(s.genre) ?? { songs: 0, albums: new Set<string>() };
-    g.songs += 1;
-    g.albums.add(s.albumId);
-    genreAcc.set(s.genre, g);
-  }
-  const genres: GenreRow[] = [...genreAcc.entries()].map(([name, g]) => ({
-    name,
+  // Genre aggregate over the FULL set (a song counts under every genre it
+  // has), accumulated in the track loop above.
+  const genres: GenreRow[] = [...genreAcc.values()].map((g) => ({
+    name: g.display,
     songCount: g.songs,
     albumCount: g.albums.size,
   }));
@@ -580,6 +614,7 @@ export function buildLibrary(
     genres,
     songArtists: songArtistLinks,
     albumArtists: albumArtistLinks,
+    songGenres: songGenreLinks,
   };
 }
 
@@ -619,6 +654,7 @@ export class LibraryScanner {
       this.canonicalByAlbum(),
       loadOverrides(this.db),
       loadSplitAuthority(this.db),
+      loadGenreContext(this.db),
     );
     const result = this.persist(built, startedAt, true);
     log.info({ ...result }, 'Full scan complete');
@@ -673,6 +709,7 @@ export class LibraryScanner {
       this.canonicalByAlbum(),
       loadOverrides(this.db),
       loadSplitAuthority(this.db),
+      loadGenreContext(this.db),
     );
     this.persist(built, Date.now(), false);
     log.info({ files: tracks.length, albums: built.albums.length }, 'Incremental scan complete');
@@ -765,7 +802,8 @@ export class LibraryScanner {
       track: common?.track?.no ?? undefined,
       disc: common?.disk?.no ?? undefined,
       year: common?.year ?? undefined,
-      genre: common?.genre?.[0],
+      // FULL frame array — buildLibrary's splitGenres derives the set/primary.
+      genre: common?.genre?.length ? common.genre : undefined,
       bpm: typeof common?.bpm === 'number' && common.bpm > 0 ? Math.round(common.bpm) : undefined,
       key: typeof common?.key === 'string' && common.key.trim() ? common.key.trim() : undefined,
       // Perceptual features live in custom Vorbis/TXXX frames — parse them from
@@ -881,6 +919,15 @@ export class LibraryScanner {
       ON CONFLICT(album_id, artist_id, role) DO UPDATE SET
         position = excluded.position
     `);
+    const songGenreDeleteStmt = this.db.prepare(
+      `DELETE FROM library_song_genres WHERE song_id = ?`,
+    );
+    const songGenreStmt = this.db.prepare(`
+      INSERT INTO library_song_genres (song_id, genre, position)
+      VALUES (?, ?, ?)
+      ON CONFLICT(song_id, genre) DO UPDATE SET
+        position = excluded.position
+    `);
 
     this.db.transaction(() => {
       for (const a of built.albums) {
@@ -943,6 +990,14 @@ export class LibraryScanner {
       for (const link of built.albumArtists) {
         albumArtistStmt.run(link.parentId, link.artistId, link.role, link.position);
       }
+      // Replace (not merge) each rescanned song's genre set so a changed tag
+      // leaves no stale rows behind.
+      for (const s of built.songs) {
+        songGenreDeleteStmt.run(s.id);
+      }
+      for (const link of built.songGenres) {
+        songGenreStmt.run(link.songId, link.genre, link.position);
+      }
     })();
 
     let removedAlbums = 0;
@@ -961,6 +1016,9 @@ export class LibraryScanner {
       );
       this.db.run(
         'DELETE FROM library_album_artists WHERE album_id NOT IN (SELECT id FROM library_albums)',
+      );
+      this.db.run(
+        'DELETE FROM library_song_genres WHERE song_id NOT IN (SELECT id FROM library_songs)',
       );
     } else {
       // Incremental: an album we just touched may have gained songs; recompute
@@ -1034,6 +1092,7 @@ export class LibraryScanner {
         if (r.path && existsSync(join(this.musicDir, r.path))) continue;
         this.db.run('DELETE FROM library_songs WHERE id = ?', [r.id]);
         this.db.run('DELETE FROM library_song_artists WHERE song_id = ?', [r.id]);
+        this.db.run('DELETE FROM library_song_genres WHERE song_id = ?', [r.id]);
         removed++;
       }
       if (removed > 0) {
