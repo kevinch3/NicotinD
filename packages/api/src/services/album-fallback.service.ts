@@ -4,6 +4,10 @@ import type { Database } from 'bun:sqlite';
 import { getDatabase } from '../db.js';
 import { normalizeTitle, titlesOverlap } from './album-hunter.service.js';
 import { albumIdFor } from './library-scanner.js';
+import {
+  acquisitionJobIdForAlbumJob,
+  repointOrAttachItem,
+} from './acquisition-job-store.js';
 
 const log = createLogger('album-fallback');
 
@@ -122,8 +126,11 @@ export class AlbumFallbackService {
     this.exhaustedMaxRevives = options.exhaustedMaxRevives ?? 5;
   }
 
-  /** Persist an album job so its missing tracks can later be recovered. */
-  static recordJob(db: Database, input: RecordJobInput): void {
+  /**
+   * Persist an album job so its missing tracks can later be recovered.
+   * Returns the new row id so callers can link it from `acquisition_jobs`.
+   */
+  static recordJob(db: Database, input: RecordJobInput): number {
     db.run(
       `INSERT INTO album_jobs
          (lidarr_album_id, username, directory, artist_name, album_title, canonical_tracks_json, target_files_json, alternates_json, created_at)
@@ -140,6 +147,8 @@ export class AlbumFallbackService {
         Date.now(),
       ],
     );
+    const row = db.query<{ id: number }, []>(`SELECT last_insert_rowid() AS id`).get();
+    return row?.id ?? 0;
   }
 
   /** One reconciliation pass. Public so tests can drive it deterministically. */
@@ -234,6 +243,17 @@ export class AlbumFallbackService {
           'Fallback: pulled missing tracks from an alternate peer',
         );
 
+        // Keep the unified acquisition job pointing at the live transfers: the
+        // re-pulled tracks now come from the alternate's folder, so without
+        // this the feed/organizer would lose them (they no longer match the
+        // primary's stored keys). Best-effort.
+        this.repointAcquisitionItems(
+          job.id,
+          picked.alternate.username,
+          picked.files.map((f) => f.filename),
+          missing,
+        );
+
         // Consume the used alternate and bump the attempt counter.
         const remaining = alternates.filter((a) => a !== picked.alternate);
         this.db.run(
@@ -255,7 +275,7 @@ export class AlbumFallbackService {
       const freshTargets = missing.filter((m) => !inFlight.some((s) => titlesOverlap(m, s)));
       if (!freshTargets.length) continue;
 
-      const enqueued = await this.recoverViaFreshSearch(job.artist_name, freshTargets);
+      const enqueued = await this.recoverViaFreshSearch(job.id, job.artist_name, freshTargets);
       // Count the wave as an attempt either way so a hopeless gap eventually
       // exhausts instead of re-searching forever.
       this.db.run('UPDATE album_jobs SET fallback_attempts = fallback_attempts + 1 WHERE id = ?', [
@@ -278,18 +298,25 @@ export class AlbumFallbackService {
    * primary fails they may be offline or never had the track. A live search is
    * the only way to recover those, turning would-be `exhausted` jobs into `done`.
    */
-  private async recoverViaFreshSearch(artistName: string, missing: string[]): Promise<number> {
+  private async recoverViaFreshSearch(
+    albumJobId: number,
+    artistName: string,
+    missing: string[],
+  ): Promise<number> {
     const picks = await Promise.all(
       missing.map((title) => this.searchBestForTrack(artistName, title)),
     );
 
-    // Group the chosen files by peer, de-duping identical filenames.
+    // Group the chosen files by peer, de-duping identical filenames. Keep the
+    // missing title each file recovers so the unified job item can be repointed.
     const byPeer = new Map<string, Array<{ filename: string; size: number }>>();
-    for (const pick of picks) {
+    const titleForFilename = new Map<string, string>();
+    for (const [i, pick] of picks.entries()) {
       if (!pick) continue;
       const list = byPeer.get(pick.username) ?? [];
       if (!list.some((f) => f.filename === pick.file.filename)) list.push(pick.file);
       byPeer.set(pick.username, list);
+      titleForFilename.set(pick.file.filename, missing[i]!);
     }
 
     let enqueued = 0;
@@ -299,9 +326,44 @@ export class AlbumFallbackService {
         enqueued += files.length;
       } catch (err) {
         log.warn({ username, err }, 'Fresh-search fallback enqueue failed');
+        continue;
       }
+      this.repointAcquisitionItems(
+        albumJobId,
+        username,
+        files.map((f) => f.filename),
+        files.map((f) => titleForFilename.get(f.filename) ?? normalizeBasename(f.filename)),
+      );
     }
     return enqueued;
+  }
+
+  /**
+   * Point the unified acquisition job's items at the transfers a fallback wave
+   * just enqueued. Each filename is matched to the missing title it recovers
+   * (fuzzy, same titlesOverlap the wave selection used). Best-effort: a repoint
+   * failure must never break the recovery that already succeeded.
+   */
+  private repointAcquisitionItems(
+    albumJobId: number,
+    username: string,
+    filenames: string[],
+    missingTitles: string[],
+  ): void {
+    try {
+      const acqJobId = acquisitionJobIdForAlbumJob(this.db, albumJobId);
+      if (!acqJobId) return;
+      for (const filename of filenames) {
+        const base = normalizeBasename(filename);
+        const title =
+          missingTitles.find((t) => titlesOverlap(t, base)) ??
+          missingTitles.find((t) => titlesOverlap(normalizeTitle(t), base)) ??
+          base;
+        repointOrAttachItem(this.db, acqJobId, title, username, filename);
+      }
+    } catch (err) {
+      log.warn({ albumJobId, err }, 'Failed to repoint acquisition job items');
+    }
   }
 
   /** Run one slskd search for a track and return the healthiest matching file. */

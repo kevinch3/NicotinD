@@ -72,6 +72,44 @@ describe('acquireAlbum', () => {
     expect(job.a).toBe(99);
   });
 
+  it('wraps the enqueue in a unified acquisition job linked to the fallback job', async () => {
+    const { db, deps } = makeDeps({
+      candidates: [candidate({ username: 'good', matchPct: 100 })],
+    });
+
+    await acquireAlbum(deps, { ...input, artistMbid: 'mbid-artist' });
+
+    const job = db
+      .query(
+        `SELECT kind, method, artist_name, album_title, lidarr_album_id, artist_mbid, album_job_id, source_ref
+         FROM acquisition_jobs`,
+      )
+      .get() as {
+      kind: string;
+      method: string;
+      artist_name: string;
+      album_title: string;
+      lidarr_album_id: number;
+      artist_mbid: string | null;
+      album_job_id: number | null;
+      source_ref: string;
+    };
+    expect(job.kind).toBe('auto-acquire');
+    expect(job.method).toBe('slskd');
+    expect(job.artist_name).toBe('Artist');
+    expect(job.album_title).toBe('Album');
+    expect(job.lidarr_album_id).toBe(99);
+    expect(job.artist_mbid).toBe('mbid-artist');
+    expect(job.source_ref).toBe('good');
+    const albumJob = db.query(`SELECT id FROM album_jobs`).get() as { id: number };
+    expect(job.album_job_id).toBe(albumJob.id);
+
+    const item = db.query(`SELECT transfer_key FROM acquisition_job_items`).get() as {
+      transfer_key: string;
+    };
+    expect(item.transfer_key).toBe('good::Artist/Album/01 Song.flac');
+  });
+
   it('persists the acquired artist identity (+MBID) on enqueue', async () => {
     const { db, deps } = makeDeps({
       candidates: [candidate({ username: 'good', matchPct: 100 })],

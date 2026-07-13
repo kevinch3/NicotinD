@@ -89,6 +89,51 @@ describe('POST /albums/:id/hunt-download idempotency guard', () => {
     expect(activeJobCount(db)).toBe(1);
   });
 
+  it('wraps the download in a unified acquisition job linked to the fallback job', async () => {
+    const { app } = makeApp(db);
+    await post(app);
+    const job = db
+      .query(
+        `SELECT kind, method, artist_name, album_title, lidarr_album_id, album_job_id, source_ref
+         FROM acquisition_jobs`,
+      )
+      .get() as {
+      kind: string;
+      method: string;
+      artist_name: string;
+      album_title: string;
+      lidarr_album_id: number;
+      album_job_id: number | null;
+      source_ref: string;
+    };
+    expect(job.kind).toBe('album-hunt');
+    expect(job.method).toBe('slskd');
+    expect(job.artist_name).toBe('Soda Stereo');
+    expect(job.album_title).toBe('Dynamo');
+    expect(job.lidarr_album_id).toBe(ALBUM_ID);
+    expect(job.source_ref).toBe('peer');
+    // Owned fallback detail: the album_jobs row the hunt recorded.
+    const albumJob = db.query(`SELECT id FROM album_jobs`).get() as { id: number };
+    expect(job.album_job_id).toBe(albumJob.id);
+
+    const item = db.query(`SELECT transfer_key, state FROM acquisition_job_items`).get() as {
+      transfer_key: string;
+      state: string;
+    };
+    expect(item.transfer_key).toBe('peer::01 One.flac');
+    expect(item.state).toBe('downloading');
+  });
+
+  it('replace=true supersedes the prior unified job too', async () => {
+    const { app } = makeApp(db);
+    await post(app);
+    await post(app, '?replace=true');
+    const states = db.query(`SELECT state FROM acquisition_jobs`).all() as Array<{
+      state: string;
+    }>;
+    expect(states.map((s) => s.state).sort()).toEqual(['active', 'superseded']);
+  });
+
   it('rejects a second download while one is already in flight (409, no second job)', async () => {
     const { app, enqueue } = makeApp(db);
     await post(app);

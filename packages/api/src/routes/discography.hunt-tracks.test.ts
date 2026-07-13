@@ -39,7 +39,7 @@ const mockSlskd = () =>
     transfers: { enqueue: mock(async () => {}) },
   }) as unknown as SlskdRef['current'];
 
-function makeApp(lidarr: Lidarr, slskdRef: SlskdRef): Hono<AuthEnv> {
+function makeApp(lidarr: Lidarr, slskdRef: SlskdRef): { app: Hono<AuthEnv>; db: Database } {
   const db = new Database(':memory:');
   applySchema(db);
   const app = new Hono<AuthEnv>();
@@ -58,7 +58,7 @@ function makeApp(lidarr: Lidarr, slskdRef: SlskdRef): Hono<AuthEnv> {
       slskdRef,
     }),
   );
-  return app;
+  return { app, db };
 }
 
 const post = (app: Hono<AuthEnv>, body: unknown) =>
@@ -70,7 +70,7 @@ const post = (app: Hono<AuthEnv>, body: unknown) =>
 
 describe('POST /albums/:id/hunt-tracks', () => {
   it('resolves the tracklist from Lidarr and enqueues matched tracks', async () => {
-    const app = makeApp(mockLidarr(), { current: mockSlskd() } as SlskdRef);
+    const { app } = makeApp(mockLidarr(), { current: mockSlskd() } as SlskdRef);
     const res = await post(app, { artistName: 'Zara Larsson' });
     expect(res.status).toBe(200);
     const body = (await res.json()) as { requested: number; enqueued: number; misses: string[] };
@@ -80,8 +80,44 @@ describe('POST /albums/:id/hunt-tracks', () => {
     expect(body.misses).toEqual(['Never Forget You']);
   });
 
+  it('wraps the enqueued tracks in a track-search acquisition job', async () => {
+    const { app, db } = makeApp(mockLidarr(), { current: mockSlskd() } as SlskdRef);
+    await post(app, { artistName: 'Zara Larsson' });
+
+    const job = db
+      .query(`SELECT kind, method, artist_name, album_title, lidarr_album_id FROM acquisition_jobs`)
+      .get() as {
+      kind: string;
+      method: string;
+      artist_name: string;
+      album_title: string;
+      lidarr_album_id: number;
+    };
+    expect(job.kind).toBe('track-search');
+    expect(job.method).toBe('slskd');
+    expect(job.artist_name).toBe('Zara Larsson');
+    expect(job.album_title).toBe('So Good');
+    expect(job.lidarr_album_id).toBe(1);
+
+    const item = db
+      .query(`SELECT transfer_key, track_title FROM acquisition_job_items`)
+      .get() as { transfer_key: string; track_title: string };
+    expect(item.transfer_key).toBe('p::x\\Lush Life.flac');
+    expect(item.track_title).toBe('Lush Life');
+  });
+
+  it('records no job when nothing was enqueued', async () => {
+    const lidarr = mockLidarr();
+    const slskd = mockSlskd()!;
+    (slskd.searches.getResponses as ReturnType<typeof mock>).mockImplementation(async () => []);
+    const { app, db } = makeApp(lidarr, { current: slskd } as SlskdRef);
+    await post(app, {});
+    const count = db.query(`SELECT COUNT(*) c FROM acquisition_jobs`).get() as { c: number };
+    expect(count.c).toBe(0);
+  });
+
   it('503s when Soulseek is unavailable', async () => {
-    const app = makeApp(mockLidarr(), { current: null } as SlskdRef);
+    const { app } = makeApp(mockLidarr(), { current: null } as SlskdRef);
     expect((await post(app, {})).status).toBe(503);
   });
 
@@ -90,7 +126,7 @@ describe('POST /albums/:id/hunt-tracks', () => {
       album: { get: mock(async () => ({ id: 1, title: 'X', artist: { artistName: 'A' } })) },
       track: { listByAlbum: mock(async () => []) },
     } as unknown as Lidarr;
-    const app = makeApp(lidarr, { current: mockSlskd() } as SlskdRef);
+    const { app } = makeApp(lidarr, { current: mockSlskd() } as SlskdRef);
     expect((await post(app, {})).status).toBe(404);
   });
 });

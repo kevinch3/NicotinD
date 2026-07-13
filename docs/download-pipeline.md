@@ -184,6 +184,8 @@ Once a row is complete, it also offers an **"Open in Library"** deep-link to the
 
 The web groups transfers via the pure `lib/download-groups.ts` (`groupByAlbum`/`albumGroupTitle`/`albumGroupTotal`), which prefers the hunt metadata and falls back to the peer folder name + file count for **direct (non-hunt)** downloads that have no job.
 
+> **Unified acquisition jobs** ([docs/acquisition-jobs.md](acquisition-jobs.md)): every enqueue path now also records an `acquisition_jobs` + `acquisition_job_items` row pair storing the exact `username::filename` transfer keys and the hunt's Lidarr metadata at enqueue time. This is the stored replacement for the string matching described above; the read paths (`enrichWithAlbumJobs`, organizer `jobLookup`) migrate to it phase by phase.
+
 ---
 
 ## Acquisition provenance (`acquisitions` table)

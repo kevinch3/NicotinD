@@ -4,8 +4,12 @@ import type { SlskdRef } from '../index.js';
 import type { ProviderRegistry } from '../services/provider-registry.js';
 import type { Database } from 'bun:sqlite';
 import type { SlskdUserTransferGroup } from '@nicotind/core';
+import { createLogger } from '@nicotind/core';
 import { getDatabase } from '../db.js';
 import { albumIdFor } from '../services/library-scanner.js';
+import { createJob } from '../services/acquisition-job-store.js';
+
+const log = createLogger('downloads');
 
 interface ActiveJobRow {
   username: string;
@@ -176,6 +180,30 @@ export function downloadRoutes(registry: ProviderRegistry, slskdRef: SlskdRef) {
           );
         }
         return c.json({ error: 'Soulseek is temporarily unreachable' }, 503);
+      }
+
+      // Wrap even raw folder-browser grabs in a lightweight acquisition job so
+      // every transfer belongs to a job (uniform feed, stored linkage). No
+      // canonical metadata here — artist/album are best-effort display hints
+      // parsed from the peer's folder segments. Best-effort: must never fail
+      // the enqueue that already succeeded.
+      try {
+        const segments = (files[0]?.filename ?? '')
+          .replace(/\\/g, '/')
+          .split('/')
+          .filter(Boolean)
+          .slice(0, -1); // drop the file basename
+        createJob(getDatabase(), {
+          kind: 'direct',
+          method: 'slskd',
+          artistName: segments.length >= 2 ? segments[segments.length - 2] : null,
+          albumTitle: segments.length >= 1 ? segments[segments.length - 1] : null,
+          sourceRef: username,
+          username,
+          files,
+        });
+      } catch (err) {
+        log.warn({ username, err }, 'Failed to record acquisition job for direct download');
       }
       return c.json({ ok: true, queued: files.length }, 201);
     },

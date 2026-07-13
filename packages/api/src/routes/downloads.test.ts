@@ -37,6 +37,7 @@ function makeSlskdMock() {
           },
         ]),
       ),
+      enqueue: mock(() => Promise.resolve()),
       cancel: mock(() => Promise.resolve()),
       cancelAll: mock(() => Promise.resolve()),
     },
@@ -58,6 +59,39 @@ describe('downloads routes', () => {
     const registry = new ProviderRegistry();
     registry.register(new SlskdSearchProvider(slskdRef));
     app.route('/', downloadRoutes(registry, slskdRef));
+  });
+
+  it('POST / wraps a direct grab in a lightweight acquisition job', async () => {
+    testDb.run('DELETE FROM acquisition_jobs');
+    testDb.run('DELETE FROM acquisition_job_items');
+    const res = await app.request('/', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        username: 'peerX',
+        files: [{ filename: '@@x\\Music\\Some Artist\\Some Album\\01 Track.flac', size: 1 }],
+      }),
+    });
+    expect(res.status).toBe(201);
+    const job = testDb
+      .query(`SELECT kind, method, artist_name, album_title, source_ref FROM acquisition_jobs`)
+      .get() as {
+      kind: string;
+      method: string;
+      artist_name: string | null;
+      album_title: string | null;
+      source_ref: string;
+    };
+    expect(job.kind).toBe('direct');
+    expect(job.method).toBe('slskd');
+    expect(job.source_ref).toBe('peerX');
+    // Best-effort display hints from the peer's folder segments.
+    expect(job.artist_name).toBe('Some Artist');
+    expect(job.album_title).toBe('Some Album');
+    const item = testDb.query(`SELECT transfer_key FROM acquisition_job_items`).get() as {
+      transfer_key: string;
+    };
+    expect(item.transfer_key).toBe('peerX::@@x\\Music\\Some Artist\\Some Album\\01 Track.flac');
   });
 
   it('GET / returns all downloads when none are hidden', async () => {
