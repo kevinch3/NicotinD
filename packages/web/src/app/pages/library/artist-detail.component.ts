@@ -33,6 +33,7 @@ import { SelectionBarComponent } from '../../components/selection-bar/selection-
 import { MenuPanelComponent } from '../../components/menu-panel/menu-panel.component';
 import { LibraryFilterPanelComponent } from '../../components/library-filter-panel/library-filter-panel.component';
 import { ConfirmDialogComponent } from '../../components/confirm-dialog/confirm-dialog.component';
+import { ArtistIdentityModalComponent } from '../../components/artist-identity-modal/artist-identity-modal.component';
 import {
   LIBRARY_FILTER_PARAM_KEYS,
   isEmptyLibraryFilter,
@@ -64,6 +65,7 @@ const SONGS_PAGE_SIZE = 60;
     MenuPanelComponent,
     LibraryFilterPanelComponent,
     ConfirmDialogComponent,
+    ArtistIdentityModalComponent,
   ],
   templateUrl: './artist-detail.component.html',
 })
@@ -97,6 +99,9 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
   readonly albums = signal<Album[]>([]);
   readonly singlesAndEps = signal<Album[]>([]);
   readonly appearsOn = signal<Album[]>([]);
+
+  // ─── Artist identity fix (admin: one act / split / merge-variant) ──────────
+  readonly identityOpen = signal(false);
 
   // ─── Artist image override (admin: upload / pick-from-album / reset) ───────
   readonly imageBusy = signal(false);

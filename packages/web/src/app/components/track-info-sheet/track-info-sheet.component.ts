@@ -14,6 +14,7 @@ import { methodBadge } from '../../lib/acquisition-method';
 import { parseLrc } from '../../lib/lrc-parser';
 import { CoverArtComponent } from '../cover-art/cover-art.component';
 import { TrackStatsBarsComponent } from '../track-stats-bars/track-stats-bars.component';
+import { ArtistIdentityModalComponent } from '../artist-identity-modal/artist-identity-modal.component';
 
 const ACTION_LABELS: Record<string, string> = {
   duplicate_removed: 'Duplicate removed',
@@ -26,7 +27,7 @@ const ACTION_LABELS: Record<string, string> = {
 @Component({
   selector: 'app-track-info-sheet',
   standalone: true,
-  imports: [CommonModule, CoverArtComponent, TrackStatsBarsComponent],
+  imports: [CommonModule, CoverArtComponent, TrackStatsBarsComponent, ArtistIdentityModalComponent],
   templateUrl: './track-info-sheet.component.html',
 })
 export class TrackInfoSheetComponent implements OnInit {
@@ -74,6 +75,10 @@ export class TrackInfoSheetComponent implements OnInit {
   readonly verifyingGenre = signal(false);
   readonly applyingGenre = signal(false);
   readonly isAdmin = computed(() => this.auth.role() === 'admin');
+
+  // Admin fix for a wrong artist-credit decision, acting on the song's RAW tag
+  // artist string (covers compounds that no longer have their own artist page).
+  readonly identityOpen = signal(false);
   /** Current genre: an applied override wins over the song's own tag. */
   readonly currentGenre = computed(() => this.genreOverride() ?? this.effectiveSong()?.genre ?? '');
 
