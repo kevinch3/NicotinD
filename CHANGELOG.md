@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.189](https://github.com/kevinch3/NicotinD/compare/v0.1.188...v0.1.189) (2026-07-13)
+
+
+### Features
+
+* **acquire:** resume truncated jobs in place instead of restarting from scratch ([dc15d2c](https://github.com/kevinch3/NicotinD/commit/dc15d2c2c3d5e7badd4e4f10badd38a150874483))
+
+
+### Bug Fixes
+
+* **acquire:** clear stale progress column when retryJob resumes a job ([bc1b613](https://github.com/kevinch3/NicotinD/commit/bc1b613033c4234519fb7fa58958cda22c33daa0))
+* **acquire:** keep a failed job's staging dir until success or deletion ([c215055](https://github.com/kevinch3/NicotinD/commit/c2150555dea01ad5f3d1ad5fd97356ceef8dbe05))
+* correct resume-mechanism doc scope + clear storage_path on retry ([1fda6c7](https://github.com/kevinch3/NicotinD/commit/1fda6c7df2bda5a47e658c816332cc2455728e7b))
+* **spotdl:** pass --overwrite skip to make retries idempotent on already-downloaded tracks ([0a8860e](https://github.com/kevinch3/NicotinD/commit/0a8860e89392b7148288addd6fefa50af68712af))
+
 ## [0.1.188](https://github.com/kevinch3/NicotinD/compare/v0.1.187...v0.1.188) (2026-07-13)
 
 
