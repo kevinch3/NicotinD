@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.183](https://github.com/kevinch3/NicotinD/compare/v0.1.182...v0.1.183) (2026-07-13)
+
+
+### Features
+
+* **api:** persist canonical artist identity at acquisition time ([ec78d5f](https://github.com/kevinch3/NicotinD/commit/ec78d5f70c6192924e52af7329ca8aeffe7c1358))
+
 ## [0.1.182](https://github.com/kevinch3/NicotinD/compare/v0.1.181...v0.1.182) (2026-07-12)
 
 
