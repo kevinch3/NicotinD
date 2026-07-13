@@ -450,6 +450,36 @@ describe('AcquireWatcher (registry-driven)', () => {
     expect(h.watcher.getJob(id)?.error).toBeNull();
   });
 
+  it('retryJob clears stale progress so a clean retry is not misreported as a partial download', async () => {
+    const plugin = fakePlugin();
+    let attempt = 0;
+    plugin.resolve!.resolve = async (_url, jobId) => {
+      attempt += 1;
+      if (attempt === 1) {
+        // Attempt 1: mirrors spotdl reporting "Found 16 songs" before the run
+        // fails outright, leaving that stale total sitting in the row.
+        h.db.run(`UPDATE acquire_jobs SET progress = ? WHERE id = ?`, [
+          JSON.stringify({ done: 1, total: 16 }),
+          jobId,
+        ]);
+        throw new Error('interrupted');
+      }
+      // Attempt 2 (the retry): a single-track URL that finishes before the
+      // plugin ever emits its own progress line — the row must not still be
+      // carrying attempt 1's stale total: 16.
+      return [join(pluginStagingDir(DATA_DIR, 'fake', jobId), 'Artist', 'Album', 'track.mp3')];
+    };
+    h = makeHarness(plugin);
+    await h.registry.enable('fake', 'admin');
+    const id = await h.watcher.submit('https://example.com/x');
+    await waitForState(h.watcher, id, 'failed');
+
+    const retryId = await h.watcher.retryJob(id);
+    expect(retryId).toBe(id);
+    await waitForState(h.watcher, id, 'done');
+    expect(h.watcher.getJob(id)?.error).toBeNull();
+  });
+
   it('specific plugin wins over catch-all when both are enabled', async () => {
     // Simulates archive (specific) vs yt-dlp (catch-all: !spotify).
     // The specific plugin must be registered first so find() returns it.
