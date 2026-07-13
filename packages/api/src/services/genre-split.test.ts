@@ -158,3 +158,62 @@ describe('loadGenreContext', () => {
     expect(n2!.c).toBe(1);
   });
 });
+
+describe('proposeGenreAliases', () => {
+  const vocab = (entries: Array<[string, number]>) =>
+    entries.map(([value, count]) => ({ value, count }));
+
+  it('proposes dropping known junk values', async () => {
+    const { proposeGenreAliases } = await import('./genre-split.js');
+    const out = proposeGenreAliases(vocab([['Other', 255], ['<Desconocido>', 3], ['Rock', 800]]));
+    expect(out).toContainEqual({ alias: 'Other', canonical: '', kind: 'junk', count: 255 });
+    expect(out).toContainEqual({ alias: '<Desconocido>', canonical: '', kind: 'junk', count: 3 });
+    expect(out.find((p) => p.alias === 'Rock')).toBeUndefined();
+  });
+
+  it('proposes punctuation/casing variant merges onto the most common form', async () => {
+    const { proposeGenreAliases } = await import('./genre-split.js');
+    const out = proposeGenreAliases(vocab([['Hip Hop', 105], ['Hip-Hop', 4]]));
+    expect(out).toContainEqual({ alias: 'Hip-Hop', canonical: 'Hip Hop', kind: 'variant', count: 4 });
+    expect(out.find((p) => p.alias === 'Hip Hop')).toBeUndefined();
+  });
+
+  it('proposes case-boundary segmentations only when every segment is known', async () => {
+    const { proposeGenreAliases } = await import('./genre-split.js');
+    const out = proposeGenreAliases(
+      vocab([['RockPunk', 3], ['LatinPopLatin Pop', 20], ['BritPop', 2], ['Rock', 800], ['Punk', 30], ['Latin', 600], ['Pop', 1200], ['Latin Pop', 111]]),
+    );
+    expect(out).toContainEqual({ alias: 'RockPunk', canonical: 'Rock;Punk', kind: 'concat', count: 3 });
+    expect(out).toContainEqual({
+      alias: 'LatinPopLatin Pop',
+      canonical: 'Latin;Pop;Latin Pop',
+      kind: 'concat',
+      count: 20,
+    });
+    // "Brit" is not a known genre → no proposal for BritPop.
+    expect(out.find((p) => p.alias === 'BritPop')).toBeUndefined();
+  });
+
+  it('proposes keeping only the known sides of an unresolved "/" join', async () => {
+    const { proposeGenreAliases } = await import('./genre-split.js');
+    const out = proposeGenreAliases(vocab([['Deep House / Vinyl', 1], ['Deep House', 71]]));
+    expect(out).toContainEqual({
+      alias: 'Deep House / Vinyl',
+      canonical: 'Deep House',
+      kind: 'slash',
+      count: 1,
+    });
+  });
+});
+
+describe('proposeGenreAliases — junk-aware variants', () => {
+  it('maps a variant of a junk value to a drop, not to the junk canonical', async () => {
+    const { proposeGenreAliases } = await import('./genre-split.js');
+    const out = proposeGenreAliases([
+      { value: '<Desconocido>', count: 11 },
+      { value: 'Desconocido', count: 6 },
+    ]);
+    expect(out).toContainEqual({ alias: 'Desconocido', canonical: '', kind: 'junk', count: 6 });
+    expect(out.find((p) => p.canonical === '<Desconocido>')).toBeUndefined();
+  });
+});

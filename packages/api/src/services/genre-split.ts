@@ -129,3 +129,100 @@ export function loadGenreContext(db: Database): GenreContext {
   }
   return { aliases, known };
 }
+
+export interface GenreAliasProposal {
+  alias: string;
+  canonical: string;
+  kind: 'junk' | 'variant' | 'concat' | 'slash';
+  count: number;
+}
+
+// Values that are metadata noise, not genres. Proposed as drops, never applied
+// without human review (reclassify-genres.ts --apply).
+const JUNK_GENRES = new Set([
+  'other',
+  'genre',
+  'default',
+  'unknown',
+  'misc',
+  'none',
+  '<desconocido>',
+  'entertainment',
+]);
+
+/** Squash key for punctuation/spacing variants: letters+digits only. */
+const squash = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]+/g, '');
+
+/**
+ * Deterministic alias suggestions from the library's post-split genre
+ * vocabulary. Human-gated by design: the output is a reviewable list, never
+ * auto-applied — segmentation in particular has real false positives
+ * ("BritPop") that only vocabulary membership filters out.
+ */
+export function proposeGenreAliases(
+  vocabulary: Array<{ value: string; count: number }>,
+): GenreAliasProposal[] {
+  const out: GenreAliasProposal[] = [];
+  const byKey = new Map(vocabulary.map((v) => [genreKey(v.value), v]));
+  const isKnown = (s: string): boolean => byKey.has(genreKey(s));
+
+  // Group punctuation/spacing variants; the most common form is canonical.
+  const bySquash = new Map<string, Array<{ value: string; count: number }>>();
+  for (const v of vocabulary) {
+    const k = squash(v.value);
+    if (!k) continue;
+    const group = bySquash.get(k) ?? [];
+    group.push(v);
+    bySquash.set(k, group);
+  }
+
+  for (const v of vocabulary) {
+    if (JUNK_GENRES.has(genreKey(v.value))) {
+      out.push({ alias: v.value, canonical: '', kind: 'junk', count: v.count });
+      continue;
+    }
+
+    const group = bySquash.get(squash(v.value)) ?? [];
+    if (group.length > 1) {
+      const canonical = group.reduce((a, b) => (b.count > a.count ? b : a));
+      if (canonical.value !== v.value) {
+        // A variant of a junk value is itself junk — propose a drop, never a
+        // merge onto the junk spelling.
+        if (JUNK_GENRES.has(genreKey(canonical.value))) {
+          out.push({ alias: v.value, canonical: '', kind: 'junk', count: v.count });
+        } else {
+          out.push({ alias: v.value, canonical: canonical.value, kind: 'variant', count: v.count });
+        }
+        continue;
+      }
+    }
+
+    // Unresolved "/" join: keep only the sides that are real genres.
+    if (v.value.includes('/')) {
+      const sides = v.value.split('/').map((s) => s.trim().replace(/\s+/g, ' ')).filter(Boolean);
+      const knownSides = sides.filter(isKnown);
+      if (sides.length > 1 && knownSides.length > 0 && knownSides.length < sides.length) {
+        out.push({
+          alias: v.value,
+          canonical: knownSides.join(';'),
+          kind: 'slash',
+          count: v.count,
+        });
+      }
+      continue;
+    }
+
+    // No-separator concatenation: split on lowercase→Uppercase boundaries and
+    // propose only when EVERY segment is a known genre.
+    const segments = v.value.split(/(?<=[a-z])(?=[A-Z])/);
+    if (segments.length > 1 && segments.every(isKnown)) {
+      out.push({
+        alias: v.value,
+        canonical: segments.map((s) => s.trim()).join(';'),
+        kind: 'concat',
+        count: v.count,
+      });
+    }
+  }
+  return out;
+}
