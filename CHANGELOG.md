@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.190](https://github.com/kevinch3/NicotinD/compare/v0.1.189...v0.1.190) (2026-07-13)
+
+
+### Features
+
+* **library:** multi-genre consumers — filters, radio, recipes, enrichment ([f9b0b04](https://github.com/kevinch3/NicotinD/commit/f9b0b0437e1b7b0630a83b7ec982f134f89cab44))
+* **library:** reclassify-genres propose/apply script for genre aliases ([92015ed](https://github.com/kevinch3/NicotinD/commit/92015ed37c40e3cabafd995bbf8283647770aa90))
+* **library:** scanner populates multi-genre join table from full tag frames ([a8e8285](https://github.com/kevinch3/NicotinD/commit/a8e82855c51dd4156989326adcde51850e0f698a))
+* **library:** splitGenres parser + genre alias/join-table schema ([60acec9](https://github.com/kevinch3/NicotinD/commit/60acec9d63a9e1b7528cd3460831734f82aaac6b))
+* **web:** genre chips in track-info sheet (full set, primary highlighted) ([1059550](https://github.com/kevinch3/NicotinD/commit/1059550831c2149da904a678754c06c835a83463))
+
 ## [0.1.189](https://github.com/kevinch3/NicotinD/compare/v0.1.188...v0.1.189) (2026-07-13)
 
 
