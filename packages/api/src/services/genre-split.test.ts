@@ -217,3 +217,40 @@ describe('proposeGenreAliases — junk-aware variants', () => {
     expect(out.find((p) => p.canonical === '<Desconocido>')).toBeUndefined();
   });
 });
+
+describe('setSongGenres', () => {
+  it('replaces the set, mirrors the primary, and refreshes library_genres counts', async () => {
+    const { Database } = await import('bun:sqlite');
+    const { applySchema } = await import('../db.js');
+    const { setSongGenres, loadGenreSets } = await import('./genre-split.js');
+    const db = new Database(':memory:');
+    applySchema(db);
+    db.run(
+      `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, genre, path, size, suffix, content_type, synced_at)
+       VALUES ('s1', 'al1', 'T', 'A', 'ar1', 200, 'Old', 'p1', 1, 'mp3', 'audio/mpeg', 0)`,
+    );
+    setSongGenres(db, 's1', ['Latin Rock', 'Latin Music']);
+    const row = db
+      .query<{ genre: string | null }, [string]>(`SELECT genre FROM library_songs WHERE id = ?`)
+      .get('s1');
+    expect(row?.genre).toBe('Latin Rock');
+    expect(loadGenreSets(db, ['s1']).get('s1')).toEqual(['Latin Rock', 'Latin Music']);
+    const counts = db
+      .query<{ name: string; song_count: number }, []>(
+        `SELECT name, song_count FROM library_genres ORDER BY name`,
+      )
+      .all();
+    expect(counts).toEqual([
+      { name: 'Latin Music', song_count: 1 },
+      { name: 'Latin Rock', song_count: 1 },
+    ]);
+
+    // Empty set clears the primary and the join rows.
+    setSongGenres(db, 's1', []);
+    expect(
+      db.query<{ genre: string | null }, [string]>(`SELECT genre FROM library_songs WHERE id = ?`).get('s1')
+        ?.genre,
+    ).toBeNull();
+    expect(loadGenreSets(db, ['s1']).get('s1')).toBeUndefined();
+  });
+});

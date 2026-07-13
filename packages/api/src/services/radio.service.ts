@@ -3,7 +3,10 @@ import { keyToCamelot } from './key-detection.js';
 export interface SongFeatures {
   bpm?: number;
   key?: string;
+  /** Primary genre (single-value compat; used when `genres` is absent). */
   genre?: string;
+  /** Full genre set (primary first). When present it drives the genre axis. */
+  genres?: string[];
   duration: number;
   year?: number;
   artistId: string;
@@ -114,6 +117,31 @@ export function genreCloseness(a: string | undefined, b: string | undefined): nu
   return clamp01(jaccard) * 0.5;
 }
 
+/**
+ * Genre closeness over full genre SETS: the best (max) pairwise lexical
+ * closeness between the two sides. A shared secondary genre thus scores as
+ * well as a shared primary — the whole point of multi-genre for radio.
+ * Accepts a single string for single-genre compat. Null when either side is
+ * empty (axis skipped), matching genreCloseness semantics.
+ */
+export function genreSetCloseness(
+  a: string | string[] | undefined,
+  b: string | string[] | undefined,
+): number | null {
+  const la = (Array.isArray(a) ? a : a == null ? [] : [a]).filter(Boolean);
+  const lb = (Array.isArray(b) ? b : b == null ? [] : [b]).filter(Boolean);
+  if (la.length === 0 || lb.length === 0) return null;
+  let best: number | null = null;
+  for (const ga of la) {
+    for (const gb of lb) {
+      const c = genreCloseness(ga, gb);
+      if (c !== null && (best === null || c > best)) best = c;
+      if (best === 1) return 1;
+    }
+  }
+  return best;
+}
+
 export function camelotCompatibility(a: string | null, b: string | null): number {
   if (!a || !b) return 0;
   const numA = parseInt(a, 10);
@@ -156,8 +184,12 @@ export function scoreSimilarity(
     weightAcc += weight;
   };
 
-  // Genre: lexical closeness (exact / containment / partial overlap).
-  add(genreCloseness(seed.genre, candidate.genre), weights.genre);
+  // Genre: best pairwise lexical closeness across the two genre sets (falls
+  // back to the single primary when a side has no set).
+  add(
+    genreSetCloseness(seed.genres ?? seed.genre, candidate.genres ?? candidate.genre),
+    weights.genre,
+  );
 
   // BPM proximity: ±5% ≈ near-full score, scaled linearly.
   if (seed.bpm && candidate.bpm && seed.bpm > 0) {

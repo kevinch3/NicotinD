@@ -329,3 +329,35 @@ describe('scoreSimilarity — normalization & perceptual axes', () => {
     expect(scoreSimilarity(seed, aligned)).toBeGreaterThan(scoreSimilarity(seed, opposed));
   });
 });
+
+describe('genreSetCloseness (multi-genre)', () => {
+  it('scores the best pairwise match across two genre sets', async () => {
+    const { genreSetCloseness } = await import('./radio.service.js');
+    // "House" appears in both sets → exact 1.0 despite different primaries.
+    expect(genreSetCloseness(['Electronic', 'House'], ['House'])).toBe(1.0);
+    // Best pair is containment ("Deep House" ⊇ "House") → 0.6.
+    expect(genreSetCloseness(['Deep House'], ['House', 'Ambient'])).toBe(0.6);
+    // Disjoint sets → 0.
+    expect(genreSetCloseness(['Rock'], ['Salsa'])).toBe(0);
+    // Either side empty/missing → null (axis skipped).
+    expect(genreSetCloseness([], ['Rock'])).toBeNull();
+    expect(genreSetCloseness(undefined, ['Rock'])).toBeNull();
+    // String input (single-genre compat) still works.
+    expect(genreSetCloseness('House', ['House'])).toBe(1.0);
+  });
+});
+
+describe('scoreSimilarity — multi-genre axis', () => {
+  it('uses the genre sets when present so a shared secondary genre scores 1.0', async () => {
+    const { scoreSimilarity, DEFAULT_WEIGHTS } = await import('./radio.service.js');
+    const base = { duration: 200, artistId: 'x' };
+    const seed = { ...base, genres: ['Electronic', 'House'], genre: 'Electronic' };
+    const single = scoreSimilarity(
+      { ...base, genre: 'Electronic' },
+      { ...base, genre: 'House' },
+      DEFAULT_WEIGHTS,
+    );
+    const multi = scoreSimilarity(seed, { ...base, genres: ['House'], genre: 'House' }, DEFAULT_WEIGHTS);
+    expect(multi).toBeGreaterThan(single);
+  });
+});

@@ -38,6 +38,7 @@ import {
 import { clearCoverNegativeCache, extractCover, fetchRemoteCover } from './streaming.js';
 import { upsertArtistIdentity, upsertArtistAlias } from '../services/artist-identity-store.js';
 import { artistIdFor } from '../services/library-scanner.js';
+import { loadGenreSets, setSongGenres } from '../services/genre-split.js';
 import { resizeCover } from '../services/cover-thumbnail.js';
 import {
   dedupeCoverUrls,
@@ -1431,14 +1432,19 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     return c.json(result);
   });
 
-  // Apply a genre to a song (admin): writes the tag and updates library_songs +
-  // library_genres counts so search/grouping reflect it immediately.
+  // Apply a genre (or ';'-separated genre LIST, primary first) to a song
+  // (admin): writes the full set to the file tag + library_song_genres, mirrors
+  // the primary into library_songs, and refreshes library_genres counts so
+  // search/grouping reflect it immediately.
   app.post('/songs/:id/genre', async (c) => {
     requireAdmin(c);
     const id = c.req.param('id');
     const body = await c.req.json<{ genre?: string }>().catch(() => ({}) as { genre?: string });
-    const genre = (body.genre ?? '').trim();
-    if (!genre) return c.json({ error: 'genre is required' }, 400);
+    const genres = (body.genre ?? '')
+      .split(/[;,|]/)
+      .map((g) => g.trim().replace(/\s+/g, ' '))
+      .filter(Boolean);
+    if (genres.length === 0) return c.json({ error: 'genre is required' }, 400);
 
     const db = getDatabase();
     const song = db
@@ -1451,11 +1457,11 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     if (musicDir) {
       const abs = resolveSongPath(expandDir(musicDir), song.path);
       if (isUnderMusicDir(expandDir(musicDir), abs) && existsSync(abs)) {
-        await writeAudioTags(abs, { genre }).catch(() => false);
+        await writeAudioTags(abs, { genre: genres.join('; ') }).catch(() => false);
       }
     }
-    db.run('UPDATE library_songs SET genre = ? WHERE id = ?', [genre, id]);
-    return c.json({ ok: true, genre });
+    setSongGenres(db, id, genres);
+    return c.json({ ok: true, genre: genres[0], genres });
   });
 
   // Stored lyrics for a song (any user — the library is shared). Returns the
@@ -1608,13 +1614,19 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       }
     }
 
-    if (source.genre) {
+    // Pool on ANY shared genre (full set), not just the primary column.
+    const seedGenres = loadGenreSets(db, [id]).get(id) ?? (source.genre ? [source.genre] : []);
+    seed.genres = seedGenres.length > 0 ? seedGenres : undefined;
+    if (seedGenres.length > 0) {
+      const marks = seedGenres.map(() => '?').join(', ');
       const genreRows = db
-        .query<SongRow, [string, string]>(
-          `${SONG_SELECT} WHERE s.genre = ? AND s.artist_id != ? AND s.hidden = 0 AND s.landed_at IS NOT NULL
+        .query<SongRow, string[]>(
+          `${SONG_SELECT} WHERE (s.genre IN (${marks}) OR EXISTS (
+             SELECT 1 FROM library_song_genres g WHERE g.song_id = s.id AND g.genre IN (${marks})
+           )) AND s.artist_id != ? AND s.hidden = 0 AND s.landed_at IS NOT NULL
            ORDER BY RANDOM() LIMIT 200`,
         )
-        .all(source.genre, source.artist_id);
+        .all(...seedGenres, ...seedGenres, source.artist_id);
       for (const row of genreRows) {
         if (!seen.has(row.id)) {
           seen.add(row.id);
@@ -1631,8 +1643,10 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       : new Map<string, Float32Array>();
     seed.embedding = embeddings.get(id);
 
+    const candidateGenres = loadGenreSets(db, candidateRows.map((r) => r.id));
     const candidates = candidateRows.map((r) => ({
       ...songRowFeatures(r),
+      genres: candidateGenres.get(r.id),
       embedding: embeddings.get(r.id),
       _row: r,
     }));

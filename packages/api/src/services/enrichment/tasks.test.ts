@@ -397,6 +397,33 @@ describe('genre task', () => {
     expect(res.applied).toBe(0);
     expect(genre.countPending(db)).toBe(1);
   });
+
+  it("writes a ';'-joined Lidarr list as a full genre set (primary mirrored, tag joined)", async () => {
+    seedSong('m1', { artist: 'Foo' });
+    const written: Array<{ genre?: string }> = [];
+    const c = ctx({
+      lookupGenre: async () => 'Latin Pop; Pop; Reggaeton',
+      fileExists: () => true,
+      writeTags: async (_abs: string, tags: { genre?: string }) => {
+        written.push(tags);
+        return true;
+      },
+    });
+    const res = await genre.run(db, c, 25);
+    expect(res.applied).toBe(1);
+    expect(
+      db.query<{ genre: string }, [string]>('SELECT genre FROM library_songs WHERE id = ?').get('m1')
+        ?.genre,
+    ).toBe('Latin Pop');
+    const set = db
+      .query<{ genre: string }, [string]>(
+        'SELECT genre FROM library_song_genres WHERE song_id = ? ORDER BY position',
+      )
+      .all('m1')
+      .map((r) => r.genre);
+    expect(set).toEqual(['Latin Pop', 'Pop', 'Reggaeton']);
+    expect(written).toEqual([{ genre: 'Latin Pop; Pop; Reggaeton' }]);
+  });
 });
 
 describe('key task', () => {

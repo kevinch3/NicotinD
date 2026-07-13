@@ -19,6 +19,7 @@ import type {
 import { AudioFileRejectedError } from '../audio-features-client.js';
 import { ffmpegAvailable as realFfmpegAvailable } from '../transcode.js';
 import { resolveSongAbsPath, planGenreBackfill } from '../track-backfill.js';
+import { setSongGenres } from '../genre-split.js';
 import { setArtwork } from '../artwork-store.js';
 import { isPlaceholderArtist } from '../artwork-backfill.js';
 import { indexLidarrArtists, resolveArtistImageUrl } from '../artist-image.js';
@@ -240,7 +241,9 @@ export function createEnrichmentContext(deps: {
     audioFeaturesAvailable: () => featuresClient?.healthySnapshot() ?? false,
     lookupGenre: async (artist) => {
       const r = await realVerifyGenre(deps.lidarr, { artist, currentGenre: null });
-      return r.suggested;
+      // Full Lidarr genre list (best-first, ';'-joined) so the fill populates
+      // the whole set, not just a primary; fall back to the single suggestion.
+      return r.candidates.length > 0 ? r.candidates.join('; ') : r.suggested;
     },
     lookupArtistImageSpotify: deps.lookupArtistImageSpotify ?? null,
     resolveArtistIdentity: deps.lidarr ? makeLidarrArtistIdentityResolver(deps.lidarr) : null,
@@ -371,11 +374,19 @@ const genreTask: EnrichmentTask = {
     const labels: string[] = [];
     let applied = 0;
     for (const a of assignments) {
-      db.run('UPDATE library_songs SET genre = ? WHERE id = ?', [a.genre, a.song.id]);
+      // a.genre may be a ';'-joined list (full Lidarr set, best-first): write
+      // the whole set to the join table + primary mirror, and the joined form
+      // to the file tag.
+      const genres = a.genre
+        .split(/[;,|]/)
+        .map((g) => g.trim().replace(/\s+/g, ' '))
+        .filter(Boolean);
+      setSongGenres(db, a.song.id, genres);
       const abs = resolveSongAbsPath(ctx.musicDir, a.song.path);
-      if (ctx.fileExists(abs)) await ctx.writeTags(abs, { genre: a.genre }).catch(() => false);
+      if (ctx.fileExists(abs))
+        await ctx.writeTags(abs, { genre: genres.join('; ') }).catch(() => false);
       applied++;
-      labels.push(`${a.song.artist} — ${a.song.title} → ${a.genre}`);
+      labels.push(`${a.song.artist} — ${a.song.title} → ${genres.join('; ')}`);
     }
     return { applied, labels, failed: 0, errorSample: null };
   },

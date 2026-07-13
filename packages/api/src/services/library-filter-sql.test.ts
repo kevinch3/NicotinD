@@ -39,9 +39,14 @@ describe('songFilterWheres', () => {
       wheres: ['s.mood IN (?, ?)'],
       params: ['happy', 'party'],
     });
+    // Genre matches the FULL set via the join table (a track filed under
+    // "Electronic; House" matches a House filter), with the primary column as
+    // a pre-first-rescan fallback.
     expect(songFilterWheres({ genres: ['Rock', 'Hip-Hop, Rap'] })).toEqual({
-      wheres: ['s.genre IN (?, ?)'],
-      params: ['Rock', 'Hip-Hop, Rap'],
+      wheres: [
+        '(s.genre IN (?, ?) OR EXISTS (SELECT 1 FROM library_song_genres sg WHERE sg.song_id = s.id AND sg.genre IN (?, ?)))',
+      ],
+      params: ['Rock', 'Hip-Hop, Rap', 'Rock', 'Hip-Hop, Rap'],
     });
   });
 

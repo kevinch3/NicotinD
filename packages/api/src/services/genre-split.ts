@@ -226,3 +226,71 @@ export function proposeGenreAliases(
   }
   return out;
 }
+
+/** Batch-load full genre sets (primary-first) for a set of song ids. */
+export function loadGenreSets(db: Database, songIds: string[]): Map<string, string[]> {
+  const map = new Map<string, string[]>();
+  if (songIds.length === 0) return map;
+  const CHUNK = 400; // stay under SQLite's bound-parameter limit
+  for (let i = 0; i < songIds.length; i += CHUNK) {
+    const chunk = songIds.slice(i, i + CHUNK);
+    const marks = chunk.map(() => '?').join(', ');
+    const rows = db
+      .query<{ song_id: string; genre: string }, string[]>(
+        `SELECT song_id, genre FROM library_song_genres
+         WHERE song_id IN (${marks}) ORDER BY song_id, position`,
+      )
+      .all(...chunk);
+    for (const r of rows) {
+      const list = map.get(r.song_id) ?? [];
+      list.push(r.genre);
+      map.set(r.song_id, list);
+    }
+  }
+  return map;
+}
+
+/**
+ * Replace one song's genre set outside a scan (enrichment fill, admin edit):
+ * join rows + the mirrored primary column, plus a library_genres count refresh
+ * for the touched names so search/grouping reflect the change immediately.
+ * The next full scan rebuilds the aggregate wholesale anyway.
+ */
+export function setSongGenres(db: Database, songId: string, genres: string[]): void {
+  const touched = new Set<string>(genres);
+  for (const r of db
+    .query<{ genre: string }, [string]>(
+      `SELECT genre FROM library_song_genres WHERE song_id = ?`,
+    )
+    .all(songId)) {
+    touched.add(r.genre);
+  }
+  db.transaction(() => {
+    db.run(`DELETE FROM library_song_genres WHERE song_id = ?`, [songId]);
+    for (let i = 0; i < genres.length; i++) {
+      db.run(`INSERT INTO library_song_genres (song_id, genre, position) VALUES (?, ?, ?)`, [
+        songId,
+        genres[i]!,
+        i,
+      ]);
+    }
+    db.run(`UPDATE library_songs SET genre = ? WHERE id = ?`, [genres[0] ?? null, songId]);
+    const now = Date.now();
+    for (const name of touched) {
+      db.run(
+        `INSERT INTO library_genres (name, song_count, album_count, synced_at)
+         VALUES (?,
+           (SELECT COUNT(*) FROM library_song_genres WHERE genre = ?),
+           (SELECT COUNT(DISTINCT s.album_id) FROM library_song_genres sg
+             JOIN library_songs s ON s.id = sg.song_id WHERE sg.genre = ?),
+           ?)
+         ON CONFLICT(name) DO UPDATE SET
+           song_count = excluded.song_count,
+           album_count = excluded.album_count,
+           synced_at = excluded.synced_at`,
+        [name, name, name, now],
+      );
+      db.run(`DELETE FROM library_genres WHERE name = ? AND song_count = 0`, [name]);
+    }
+  })();
+}

@@ -24,6 +24,7 @@ import { applySchema } from '../db.js';
 import {
   CURATED_PLAYLISTS,
   selectCuratedTracks,
+  expandGenreWhere,
   type CandidateRow,
   type CuratedPlaylistDef,
 } from '../services/curated-playlists.js';
@@ -52,7 +53,7 @@ function selectForDef(db: Database, def: CuratedPlaylistDef): string[] {
     .query<CandidateRow, []>(
       `SELECT s.id AS id, s.artist AS artist
          FROM library_songs s
-        WHERE s.hidden = 0 AND (${def.where})`,
+        WHERE s.hidden = 0 AND (${expandGenreWhere(def.where)})`,
     )
     .all();
   // Deterministic per-playlist seed so re-runs are stable but lists differ.

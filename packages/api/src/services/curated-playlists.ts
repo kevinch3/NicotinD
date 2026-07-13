@@ -220,6 +220,21 @@ export const CURATED_PLAYLISTS: CuratedPlaylistDef[] = [
 
 // ─── Pure track selection ────────────────────────────────────────────
 
+/**
+ * Full genre set of `library_songs s` as one '; '-joined string, falling back
+ * to the primary column pre-first-rescan. Recipe/curated `where` fragments
+ * write plain `s.genre LIKE …`; expandGenreWhere swaps this in so the
+ * predicate sees EVERY genre — after the multi-genre split, s.genre alone
+ * holds only the primary and would silently drop secondary-genre matches.
+ */
+export const GENRE_SET_EXPR =
+  "COALESCE((SELECT GROUP_CONCAT(sg.genre, '; ') FROM library_song_genres sg WHERE sg.song_id = s.id), s.genre)";
+
+/** Rewrite a recipe `where` fragment to match against the full genre set. */
+export function expandGenreWhere(where: string): string {
+  return where.replace(/\bs\.genre\b/g, GENRE_SET_EXPR);
+}
+
 export interface CandidateRow {
   id: string;
   artist: string;
