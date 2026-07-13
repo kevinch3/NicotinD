@@ -322,6 +322,23 @@ describe('PlayerComponent', () => {
       expect(playerService.isPlaying()).toBe(true);
     });
 
+    // Effect 1 must not call audio.play() on its own — only Effect 5 (which
+    // drives isPlaying sync) gets to start playback. Otherwise restoring a
+    // track on page load would autoplay (with the rejected-play banner
+    // overlay), even before the user has pressed anything. The seek position
+    // is still restored by onDuration; the audio just stays paused.
+    it('loading a track while isPlaying=false sets audio.src but does not call audio.play()', () => {
+      playerService.isPlaying.set(false);
+      mockPlay.mockClear();
+      fakeAudio.src = '';
+
+      playerService.currentTrack.set(TRACK);
+      fixture.detectChanges();
+
+      expect(fakeAudio.src).not.toBe('');
+      expect(mockPlay).not.toHaveBeenCalled();
+    });
+
     it('ended event advances to the next track in the queue', () => {
       playerService.currentTrack.set(TRACK);
       playerService.queue.set([TRACK_2]);

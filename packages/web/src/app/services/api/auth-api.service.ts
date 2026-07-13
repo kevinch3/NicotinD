@@ -7,6 +7,7 @@ export interface UserProfile {
   username: string;
   role: string;
   welcomeDismissed: boolean;
+  autoplayOnLoad: boolean;
 }
 
 /** Auth endpoints: login, registration, and sliding-session refresh. */
@@ -33,6 +34,10 @@ export class AuthApiService {
 
   dismissWelcome() {
     return this.http.post<void>('/api/auth/dismiss-welcome', {});
+  }
+
+  setAutoplayOnLoad(enabled: boolean) {
+    return this.http.post<{ ok: boolean }>('/api/auth/autoplay', { enabled });
   }
 
   getMe() {

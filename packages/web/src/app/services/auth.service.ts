@@ -11,6 +11,7 @@ import { AutoHuntService } from './auto-hunt.service';
 import { ToastService } from './toast.service';
 import { ListControlsService } from './list-controls.service';
 import { LibraryApiService } from './api/library-api.service';
+import { AuthApiService } from './api/auth-api.service';
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
@@ -26,12 +27,14 @@ export class AuthService {
   private toasts = inject(ToastService);
   private listControls = inject(ListControlsService);
   private libraryApi = inject(LibraryApiService);
+  private authApi = inject(AuthApiService);
 
   readonly token = signal<string | null>(localStorage.getItem('nicotind_token'));
   readonly username = signal<string | null>(localStorage.getItem('nicotind_username'));
   readonly role = signal<string | null>(localStorage.getItem('nicotind_role') ?? 'user');
   readonly isAuthenticated = computed(() => !!this.token());
   readonly welcomeDismissed = signal<boolean>(false);
+  readonly autoplayOnLoad = signal<boolean>(false);
 
   login(token: string, username: string, role: string): void {
     localStorage.setItem('nicotind_token', token);
@@ -49,6 +52,19 @@ export class AuthService {
   setToken(token: string): void {
     localStorage.setItem('nicotind_token', token);
     this.token.set(token);
+  }
+
+  /**
+   * Persist the per-user "autoplay on page load" preference server-side and
+   * mirror it in the local signal. Optimistic: the toggle reflects instantly
+   * while the request is in flight; errors roll it back to the previous value.
+   */
+  setAutoplayOnLoad(enabled: boolean): void {
+    const prev = this.autoplayOnLoad();
+    this.autoplayOnLoad.set(enabled);
+    this.authApi.setAutoplayOnLoad(enabled).subscribe({
+      error: () => this.autoplayOnLoad.set(prev),
+    });
   }
 
   logout(): void {
@@ -80,5 +96,6 @@ export class AuthService {
     this.username.set(null);
     this.role.set(null);
     this.welcomeDismissed.set(false);
+    this.autoplayOnLoad.set(false);
   }
 }

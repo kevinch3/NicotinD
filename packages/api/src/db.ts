@@ -57,7 +57,8 @@ export function applySchema(db: Database): void {
       theme TEXT NOT NULL DEFAULT 'system',
       default_min_bitrate INTEGER,
       default_file_types TEXT,
-      welcome_dismissed INTEGER NOT NULL DEFAULT 0
+      welcome_dismissed INTEGER NOT NULL DEFAULT 0,
+      autoplay_on_load INTEGER NOT NULL DEFAULT 0
     )
   `);
 
@@ -71,6 +72,14 @@ export function applySchema(db: Database): void {
   // Add welcome_dismissed column to existing user_settings table
   try {
     db.run(`ALTER TABLE user_settings ADD COLUMN welcome_dismissed INTEGER NOT NULL DEFAULT 0`);
+  } catch {
+    // Column already exists — ignore
+  }
+
+  // Add autoplay_on_load column to existing user_settings table (opt-in
+  // resume-on-page-load; default off — see PlayerService.maybeResumeAutoplay).
+  try {
+    db.run(`ALTER TABLE user_settings ADD COLUMN autoplay_on_load INTEGER NOT NULL DEFAULT 0`);
   } catch {
     // Column already exists — ignore
   }

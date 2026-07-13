@@ -122,6 +122,10 @@ export class SettingsComponent {
     this.remote.setRemoteEnabled(enabled);
   }
 
+  toggleAutoplayOnLoad(): void {
+    this.auth.setAutoplayOnLoad(!this.auth.autoplayOnLoad());
+  }
+
   saveDeviceName(): void {
     if (!this.deviceName().trim()) return;
     this.ws.setDeviceName(this.deviceName().trim());

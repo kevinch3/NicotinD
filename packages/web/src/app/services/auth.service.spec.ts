@@ -13,6 +13,7 @@ import { AutoHuntService } from './auto-hunt.service';
 import { ToastService } from './toast.service';
 import { ListControlsService } from './list-controls.service';
 import { LibraryApiService } from './api/library-api.service';
+import { AuthApiService } from './api/auth-api.service';
 
 describe('AuthService', () => {
   let auth: AuthService;
@@ -28,6 +29,7 @@ describe('AuthService', () => {
   let toasts: { reset: ReturnType<typeof vi.fn> };
   let listControls: { reset: ReturnType<typeof vi.fn> };
   let libraryApi: { invalidateLibraryReads: ReturnType<typeof vi.fn> };
+  let authApi: { setAutoplayOnLoad: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
     localStorage.clear();
@@ -43,6 +45,7 @@ describe('AuthService', () => {
     toasts = { reset: vi.fn() };
     listControls = { reset: vi.fn() };
     libraryApi = { invalidateLibraryReads: vi.fn() };
+    authApi = { setAutoplayOnLoad: vi.fn().mockReturnValue({ subscribe: () => ({}) }) };
 
     TestBed.configureTestingModule({
       providers: [
@@ -59,6 +62,7 @@ describe('AuthService', () => {
         { provide: ToastService, useValue: toasts },
         { provide: ListControlsService, useValue: listControls },
         { provide: LibraryApiService, useValue: libraryApi },
+        { provide: AuthApiService, useValue: authApi },
       ],
     });
     auth = TestBed.inject(AuthService);
@@ -92,6 +96,7 @@ describe('AuthService', () => {
           { provide: ToastService, useValue: toasts },
           { provide: ListControlsService, useValue: listControls },
           { provide: LibraryApiService, useValue: libraryApi },
+          { provide: AuthApiService, useValue: authApi },
         ],
       });
       const freshAuth = TestBed.inject(AuthService);
