@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.185](https://github.com/kevinch3/NicotinD/compare/v0.1.184...v0.1.185) (2026-07-13)
+
+
+### Bug Fixes
+
+* **acquire:** unblock YouTube-backed downloads and fail restart-orphaned jobs ([0312b92](https://github.com/kevinch3/NicotinD/commit/0312b92ec0d1fab703c4cff2c46daeb7125a579a))
+
 ## [0.1.184](https://github.com/kevinch3/NicotinD/compare/v0.1.183...v0.1.184) (2026-07-13)
 
 
