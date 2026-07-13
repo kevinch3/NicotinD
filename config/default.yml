@@ -40,9 +40,14 @@ acquire:
     binaryPath: yt-dlp
     format: bestaudio
     extraArgs: []
+    # Netscape cookies.txt for YouTube's "confirm you're not a bot" gate on
+    # flagged server IPs. Empty = auto-use <dataDir>/youtube-cookies.txt when
+    # that file exists. See docs/download-pipeline.md.
+    cookiesFile: ''
   spotdl:
     enabled: true
     binaryPath: spotdl
+    cookiesFile: ''
   archive:
     enabled: true
     preferredFormats:

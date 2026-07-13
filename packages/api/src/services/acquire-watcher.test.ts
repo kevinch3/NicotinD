@@ -243,6 +243,33 @@ describe('AcquireWatcher (registry-driven)', () => {
     await waitForState(watcher, id, 'done');
   });
 
+  it('marks jobs orphaned by a restart (queued/running) as failed on construction', () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    db.run(
+      `INSERT INTO acquire_jobs (id, backend, url, state, stage) VALUES ('orph-r', 'fake', 'u1', 'running', 'downloading')`,
+    );
+    db.run(
+      `INSERT INTO acquire_jobs (id, backend, url, state, stage) VALUES ('orph-q', 'fake', 'u2', 'queued', 'queued')`,
+    );
+    db.run(
+      `INSERT INTO acquire_jobs (id, backend, url, state, stage) VALUES ('kept', 'fake', 'u3', 'done', 'done')`,
+    );
+    const registry = new PluginRegistry({ db, dataDir: DATA_DIR });
+    const watcher = new AcquireWatcher({
+      db,
+      dataDir: DATA_DIR,
+      registry,
+      organizeBatch: mock(async () => {}),
+      scanIncremental: mock(async () => {}),
+    });
+    expect(watcher.getJob('orph-r')?.state).toBe('failed');
+    expect(watcher.getJob('orph-r')?.stage).toBe('error');
+    expect(watcher.getJob('orph-r')?.error).toContain('restart');
+    expect(watcher.getJob('orph-q')?.state).toBe('failed');
+    expect(watcher.getJob('kept')?.state).toBe('done');
+  });
+
   it('deleteJob removes done/failed jobs but not running ones', () => {
     h.db.run(
       `INSERT INTO acquire_jobs (id, backend, url, state) VALUES ('d', 'fake', 'u', 'done')`,

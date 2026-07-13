@@ -33,16 +33,25 @@ FROM oven/bun:1.3.14 AS production
 WORKDIR /app
 
 # Install curl (healthchecks), ffmpeg, docker CLI (log streaming via mounted
-# socket), and python3/pip (for yt-dlp + spotdl URL acquisition).
+# socket), python3/pip (for yt-dlp + spotdl URL acquisition), and unzip (for
+# the Deno installer below).
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends curl ca-certificates ffmpeg python3 python3-pip && \
+    apt-get install -y --no-install-recommends curl ca-certificates ffmpeg python3 python3-pip unzip && \
     rm -rf /var/lib/apt/lists/*
 COPY --from=docker:cli /usr/local/bin/docker /usr/local/bin/docker
+
+# Deno: yt-dlp needs a JS runtime to solve YouTube's player signature
+# challenges — without one, many YouTube downloads fail outright.
+RUN curl -fsSL https://deno.land/install.sh | DENO_INSTALL=/usr/local sh
 
 # yt-dlp + spotdl power the /api/acquire URL downloader. Installed system-wide
 # via pip (Debian externally-managed env needs --break-system-packages). They
 # land on PATH as `yt-dlp` / `spotdl`, matching the default acquire.binaryPath.
-RUN pip3 install --no-cache-dir --break-system-packages yt-dlp spotdl
+# --upgrade keeps yt-dlp at the latest release each image build — YouTube
+# breaks older versions continuously. bgutil-ytdlp-pot-provider is the yt-dlp
+# plugin that fetches PO tokens from the bgutil companion service (see
+# docker-compose.yml); it applies to spotdl too (same python env).
+RUN pip3 install --no-cache-dir --break-system-packages --upgrade yt-dlp spotdl bgutil-ytdlp-pot-provider
 
 # Copy all packages (web needs package.json for workspace resolution)
 COPY package.json bun.lock bunfig.toml tsconfig.json ./

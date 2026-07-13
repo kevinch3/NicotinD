@@ -137,6 +137,16 @@ Availability is gated by **both** the plugin's enable-state **and** (for yt-dlp/
 
 Historical gotcha: the `enabled` flag used to be dead config — only binary presence was checked — and the image shipped neither binary, so acquisition always 503'd; both are fixed.
 
+**Restart reconciliation**: `AcquireWatcher`'s constructor marks any job still `queued`/`running` as `failed` ("Interrupted by a server restart — use Retry"). The downloader child process dies with the server, so nothing can ever advance those rows; before this they sat as stuck-forever "running" entries in the Downloads feed after every redeploy (found in real use 2026-07-13: an 893-track spotdl playlist job frozen at 0/893 across restarts).
+
+### YouTube bot-check mitigation (PO tokens + cookies)
+
+Found in real use 2026-07-13: **every** spotdl job failed with "Download produced no audio files". spotdl resolves Spotify metadata fine, but each YouTube fetch died on yt-dlp's `Sign in to confirm you're not a bot` — YouTube had bot-flagged the server's egress IP (all player clients + IPv4/IPv6 affected, so it's the IP, not the client fingerprint). Three stacked mitigations, all baked into the deployment:
+
+1. **Deno in the image** (Dockerfile): yt-dlp needs a JS runtime to solve YouTube's player signature challenges; without one many downloads fail regardless of bot-flagging. The pip line also `--upgrade`s yt-dlp every image build (YouTube continuously breaks old versions) and installs `bgutil-ytdlp-pot-provider`.
+2. **PO-token provider** (docker-compose `bgutil-provider` service): YouTube demands "proof of origin" tokens from unrecognized clients; the bgutil companion service generates them and the pip-installed yt-dlp plugin fetches them automatically (spotdl included — same python env). The service runs with `network_mode: "service:nicotind"` so the plugin's default base URL `http://127.0.0.1:4416` works with zero per-invocation config (extractor-args can't be threaded through spotdl).
+3. **Account cookies (`cookiesFile`)** — the only reliable unblock once an IP is *hard*-flagged (verified: valid PO tokens still got `LOGIN_REQUIRED`). Both plugins take a `cookiesFile` config (`acquire.ytdlp.cookiesFile` / `acquire.spotdl.cookiesFile`, also settable per-plugin via `PUT /api/plugins/:id/config`); empty config defaults to the convention path **`<dataDir>/youtube-cookies.txt`** (in Docker: `~/.nicotind/youtube-cookies.txt` on the host). The flag (`--cookies` for yt-dlp, `--cookie-file` for spotdl) is only passed **when the file actually exists**, so a missing/stale path can never break downloads — drop a Netscape-format cookies export there and the next job picks it up. Export from a logged-in browser (e.g. the "Get cookies.txt" extension); note downloads then run under that Google account.
+
 ### Playlists (yt-dlp)
 
 A `watch?v=…&list=…` or `playlist?list=…` URL downloads the whole playlist. Two behaviors make this robust:

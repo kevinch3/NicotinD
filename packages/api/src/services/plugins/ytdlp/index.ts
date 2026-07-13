@@ -1,4 +1,5 @@
 import type { spawn as nodeSpawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
 import type { Plugin, PluginManifest, PluginHostContext, ResolveCapability } from '@nicotind/core';
@@ -9,6 +10,12 @@ export interface YtdlpPluginConfig {
   binaryPath: string;
   format: 'mp3' | 'opus' | 'bestaudio';
   extraArgs: string[];
+  /**
+   * Netscape cookies.txt passed as `--cookies` when the file exists.
+   * YouTube bot-flags server IPs ("Sign in to confirm you're not a bot");
+   * account cookies are the only reliable unblock for a flagged IP.
+   */
+  cookiesFile?: string;
 }
 
 const DISCLAIMER =
@@ -29,6 +36,7 @@ export class YtdlpPlugin implements Plugin {
       .object({
         format: z.enum(['mp3', 'opus', 'bestaudio']).optional(),
         extraArgs: z.array(z.string()).optional(),
+        cookiesFile: z.string().optional(),
       })
       .partial(),
     compliance: { disclaimer: DISCLAIMER, requiresConsent: true },
@@ -112,6 +120,11 @@ export class YtdlpPlugin implements Plugin {
       '--no-warnings',
     ];
     if (this.cfg.format !== 'bestaudio') args.push('--audio-format', this.cfg.format);
+    // Only pass cookies when the file actually exists — a configured-but-absent
+    // path must not break downloads (yt-dlp errors on a missing cookie file).
+    if (this.cfg.cookiesFile && existsSync(this.cfg.cookiesFile)) {
+      args.push('--cookies', this.cfg.cookiesFile);
+    }
     return [...args, ...this.cfg.extraArgs];
   }
 }
