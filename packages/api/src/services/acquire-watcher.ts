@@ -263,15 +263,29 @@ export class AcquireWatcher {
     return true;
   }
 
-  /** Re-submit a failed (or done) job using the same URL. */
+  /**
+   * Resume a failed (or done) job in place — same job id, same staging dir.
+   * A truncated spotdl run (server restart, crash, etc.) leaves its
+   * downloaded files under that staging dir (Task 1); reusing the id means
+   * the plugin resolves into the same directory and can pick up where it
+   * left off instead of re-downloading everything.
+   */
   async retryJob(jobId: string): Promise<string | null> {
     const row = this.db
       .query<AcquireJobRow, [string]>(`SELECT * FROM acquire_jobs WHERE id = ?`)
       .get(jobId);
     if (!row) return null;
-    const newId = await this.submit(row.url, row.label ?? undefined);
-    this.db.run(`DELETE FROM acquire_jobs WHERE id = ?`, [jobId]);
-    return newId;
+    // Already in flight — don't double-start (mirrors submit()'s dedupe guard).
+    if (row.state === 'queued' || row.state === 'running') return jobId;
+    const plugin = this.pluginForUrl(row.url);
+    if (!plugin?.resolve) throw new NoAcquisitionPluginError(row.url);
+    if (!(await plugin.isAvailable())) throw new PluginUnavailableError(plugin.manifest.id);
+    this.db.run(
+      `UPDATE acquire_jobs SET backend = ?, state = 'queued', stage = 'queued', error = NULL WHERE id = ?`,
+      [plugin.manifest.id, jobId],
+    );
+    void this.run(plugin, jobId, row.url);
+    return jobId;
   }
 
   getJob(jobId: string): AcquireJob | null {
