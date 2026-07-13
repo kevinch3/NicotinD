@@ -200,7 +200,10 @@ describe('PlayerService', () => {
       expect(service.context()).toEqual(ctx);
     });
 
-    it('restoreState() always leaves isPlaying = false', () => {
+    it('restoreState() always leaves isPlaying = false even if wasPlaying was true', () => {
+      // The autoplay decision is deferred until /me resolves (see
+      // maybeResumeAutoplay). Loading a track must never start playback by
+      // itself, so the user always has to press play the first time.
       localStorage.setItem(
         STORAGE_KEY,
         JSON.stringify({
@@ -211,6 +214,7 @@ describe('PlayerService', () => {
           repeat: 'off',
           context: null,
           currentTime: 5,
+          wasPlaying: true,
         }),
       );
       service.restoreState();
@@ -283,6 +287,45 @@ describe('PlayerService', () => {
       localStorage.setItem(STORAGE_KEY, JSON.stringify({ currentTrack: track1, radio: true }));
       service.restoreState();
       expect(service.radio()).toBe(true);
+    });
+  });
+
+  describe('maybeResumeAutoplay()', () => {
+    const STORAGE_KEY = 'nicotind_player_state';
+
+    function restoreWith(snapshot: Record<string, unknown>): void {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+      service.restoreState();
+    }
+
+    it('resumes when enabled=true and wasPlaying was captured', () => {
+      restoreWith({ currentTrack: track1, wasPlaying: true });
+      expect(service.isPlaying()).toBe(false);
+      service.maybeResumeAutoplay(true);
+      expect(service.isPlaying()).toBe(true);
+    });
+
+    it('does not resume when enabled=false even if wasPlaying was captured', () => {
+      restoreWith({ currentTrack: track1, wasPlaying: true });
+      service.maybeResumeAutoplay(false);
+      expect(service.isPlaying()).toBe(false);
+    });
+
+    it('does nothing when wasPlaying was not captured (e.g. user paused before reload)', () => {
+      restoreWith({ currentTrack: track1, wasPlaying: false });
+      service.maybeResumeAutoplay(true);
+      expect(service.isPlaying()).toBe(false);
+    });
+
+    it('is one-shot: a second call after the user paused must not replay', () => {
+      restoreWith({ currentTrack: track1, wasPlaying: true });
+      service.maybeResumeAutoplay(true); // resumes
+      expect(service.isPlaying()).toBe(true);
+      service.pause();
+      // Subsequent calls (e.g. another /me) cannot resurrect playback — the
+      // captured flag is cleared on first read.
+      service.maybeResumeAutoplay(true);
+      expect(service.isPlaying()).toBe(false);
     });
   });
 

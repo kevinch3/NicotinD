@@ -58,7 +58,13 @@ export const appConfig: ApplicationConfig = {
             return api.getMe();
           }),
         ).subscribe({
-          next: (profile) => auth.welcomeDismissed.set(profile.welcomeDismissed),
+          next: (profile) => {
+            auth.welcomeDismissed.set(profile.welcomeDismissed);
+            auth.autoplayOnLoad.set(profile.autoplayOnLoad);
+            // Resume a previously playing session if the user opted in to
+            // autoplay-on-load. See PlayerService.maybeResumeAutoplay.
+            player.maybeResumeAutoplay(profile.autoplayOnLoad);
+          },
           error: () => {},
         });
       }

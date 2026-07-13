@@ -169,15 +169,24 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
               // Metadata exists but blob missing — fall back to stream
               audio.src = this.server.streamUrl(track.id, token);
             }
-            audio.play().catch((err) => {
-              if (err.name === 'NotAllowedError') this.handlePlayRejection();
-            });
+            // Don't autoplay on a fresh track load: the user must have pressed
+            // play (or have autoplay_on_load + restored session — which routes
+            // through Effect 5 via isPlaying). Otherwise just loading the
+            // metadata is enough — the seek position is restored by onDuration.
+            if (untracked(() => this.player.isPlaying())) {
+              audio.play().catch((err) => {
+                if (err.name === 'NotAllowedError') this.handlePlayRejection();
+              });
+            }
           })();
         } else {
           audio.src = this.server.streamUrl(track.id, token);
-          audio.play().catch((err) => {
-            if (err.name === 'NotAllowedError') this.handlePlayRejection();
-          });
+          // See the preserve branch above for why play() is gated here.
+          if (untracked(() => this.player.isPlaying())) {
+            audio.play().catch((err) => {
+              if (err.name === 'NotAllowedError') this.handlePlayRejection();
+            });
+          }
         }
       } else {
         this.pausingByStore = true;

@@ -138,7 +138,9 @@ describe('GET /me', () => {
   });
 
   beforeEach(() => {
-    testDb.run("UPDATE user_settings SET welcome_dismissed = 0 WHERE user_id = 'user-123'");
+    testDb.run(
+      "UPDATE user_settings SET welcome_dismissed = 0, autoplay_on_load = 0 WHERE user_id = 'user-123'",
+    );
   });
 
   it('returns 401 when no token is provided', async () => {
@@ -146,7 +148,7 @@ describe('GET /me', () => {
     expect(res.status).toBe(401);
   });
 
-  it('returns user profile with welcomeDismissed false for a new user', async () => {
+  it('returns user profile with welcomeDismissed false and autoplayOnLoad false for a new user', async () => {
     const token = await signJwt(
       { sub: 'user-123', username: 'testuser', role: 'user' },
       SECRET,
@@ -159,11 +161,18 @@ describe('GET /me', () => {
     });
 
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { id: string; username: string; role: string; welcomeDismissed: boolean };
+    const body = (await res.json()) as {
+      id: string;
+      username: string;
+      role: string;
+      welcomeDismissed: boolean;
+      autoplayOnLoad: boolean;
+    };
     expect(body.id).toBe('user-123');
     expect(body.username).toBe('testuser');
     expect(body.role).toBe('user');
     expect(body.welcomeDismissed).toBe(false);
+    expect(body.autoplayOnLoad).toBe(false);
   });
 
   it('returns welcomeDismissed true after dismiss-welcome is called', async () => {
@@ -186,5 +195,71 @@ describe('GET /me', () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { welcomeDismissed: boolean };
     expect(body.welcomeDismissed).toBe(true);
+  });
+
+  it('returns autoplayOnLoad true after POST /autoplay is called with enabled=true', async () => {
+    const token = await signJwt(
+      { sub: 'user-123', username: 'testuser', role: 'user' },
+      SECRET,
+      '1h',
+    );
+
+    const updateRes = await app.request('/autoplay', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ enabled: true }),
+    });
+    expect(updateRes.status).toBe(200);
+
+    // Persisted to the DB scoped to this user.
+    const row = testDb
+      .query<{ autoplay_on_load: number }, [string]>(
+        'SELECT autoplay_on_load FROM user_settings WHERE user_id = ?',
+      )
+      .get('user-123');
+    expect(row?.autoplay_on_load).toBe(1);
+
+    const res = await app.request('/me', {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { autoplayOnLoad: boolean };
+    expect(body.autoplayOnLoad).toBe(true);
+  });
+
+  it('POST /autoplay with enabled=false clears the flag', async () => {
+    const token = await signJwt(
+      { sub: 'user-123', username: 'testuser', role: 'user' },
+      SECRET,
+      '1h',
+    );
+
+    await app.request('/autoplay', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ enabled: true }),
+    });
+    await app.request('/autoplay', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ enabled: false }),
+    });
+
+    const res = await app.request('/me', {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const body = (await res.json()) as { autoplayOnLoad: boolean };
+    expect(body.autoplayOnLoad).toBe(false);
+  });
+
+  it('POST /autoplay returns 401 when no token is provided', async () => {
+    const res = await app.request('/autoplay', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: true }),
+    });
+    expect(res.status).toBe(401);
   });
 });

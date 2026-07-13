@@ -20,7 +20,14 @@ function providers(role: 'admin' | 'user') {
   return [
     provideRouter([]),
     { provide: APP_VERSION, useValue: '9.9.9' },
-    { provide: AuthService, useValue: { username: signal('kev'), role: signal(role), logout: vi.fn() } },
+    { provide: AuthService, useValue: {
+        username: signal('kev'),
+        role: signal(role),
+        welcomeDismissed: signal(false),
+        autoplayOnLoad: signal(false),
+        setAutoplayOnLoad: vi.fn(),
+        logout: vi.fn(),
+      } },
     {
       provide: ThemeService,
       useValue: {
@@ -70,6 +77,8 @@ describe('SettingsComponent (universal prefs only)', () => {
     expect(text).toContain('Appearance');
     expect(text).toContain('Offline storage');
     expect(text).toContain('Remote Playback');
+    // The new per-user Playback section containing the autoplay-on-load toggle.
+    expect(text).toContain('Resume playback when opening the app');
     // Extension/admin surfaces must be gone from Settings.
     expect(text).not.toContain('Soulseek');
     expect(text).not.toContain('Shared Folders');
@@ -91,6 +100,25 @@ describe('SettingsComponent (universal prefs only)', () => {
       fixture.nativeElement.querySelector('[data-testid="settings-extensions-link"]'),
     ).toBeTruthy();
     expect(fixture.nativeElement.textContent).toContain('Admin panel');
+    fixture.destroy();
+  });
+
+  it('autoplay toggle routes through AuthService.setAutoplayOnLoad', async () => {
+    await TestBed.configureTestingModule({
+      imports: [SettingsComponent],
+      providers: providers('user'),
+    }).compileComponents();
+    const fixture = TestBed.createComponent(SettingsComponent);
+    fixture.detectChanges();
+    const toggle = fixture.nativeElement.querySelector(
+      '[data-testid="autoplay-on-load-toggle"]',
+    ) as HTMLButtonElement;
+    expect(toggle).toBeTruthy();
+    toggle.click();
+    const auth = TestBed.inject(AuthService) as unknown as {
+      setAutoplayOnLoad: ReturnType<typeof vi.fn>;
+    };
+    expect(auth.setAutoplayOnLoad).toHaveBeenCalledWith(true);
     fixture.destroy();
   });
 });
