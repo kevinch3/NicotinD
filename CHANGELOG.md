@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.187](https://github.com/kevinch3/NicotinD/compare/v0.1.186...v0.1.187) (2026-07-13)
+
+
+### Bug Fixes
+
+* **docker:** replace curl-based slskd healthcheck with bash /dev/tcp probe ([9379511](https://github.com/kevinch3/NicotinD/commit/9379511c61ab52139f10da0b2b0f3f3af1691966))
+
 ## [0.1.186](https://github.com/kevinch3/NicotinD/compare/v0.1.185...v0.1.186) (2026-07-13)
 
 
