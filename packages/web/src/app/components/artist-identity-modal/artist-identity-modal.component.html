@@ -1,0 +1,77 @@
+<div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60"
+  data-testid="artist-identity-modal" (click)="closed.emit()">
+  <div class="w-full max-w-md rounded-xl bg-theme-surface border border-theme p-4 shadow-2xl"
+    (click)="$event.stopPropagation()">
+    <div class="flex items-center justify-between mb-1">
+      <h2 class="text-base font-semibold text-theme-primary">Fix artist identity</h2>
+      <button type="button" (click)="closed.emit()" aria-label="Close"
+        class="w-8 h-8 flex items-center justify-center rounded-lg text-theme-muted hover:bg-theme-surface-2 transition">
+        <app-icon name="close" />
+      </button>
+    </div>
+    <p class="text-sm text-theme-muted mb-4 break-words">“{{ rawName() }}”</p>
+
+    <div class="flex flex-col gap-2 mb-4" role="radiogroup">
+      <label class="flex items-start gap-2 text-sm text-theme-secondary cursor-pointer">
+        <input type="radio" name="identity-mode" class="mt-0.5" data-testid="identity-mode-single"
+          [checked]="mode() === 'single'" (change)="mode.set('single')" />
+        <span><span class="font-medium text-theme-primary">This is one artist</span><br />
+          <span class="text-xs text-theme-muted">Keep the whole name as a single act (band, duo…).</span></span>
+      </label>
+      <label class="flex items-start gap-2 text-sm text-theme-secondary cursor-pointer">
+        <input type="radio" name="identity-mode" class="mt-0.5" data-testid="identity-mode-split"
+          [checked]="mode() === 'split'" (change)="mode.set('split')" />
+        <span><span class="font-medium text-theme-primary">These are separate artists</span><br />
+          <span class="text-xs text-theme-muted">Split into the individual artists below.</span></span>
+      </label>
+      <label class="flex items-start gap-2 text-sm text-theme-secondary cursor-pointer">
+        <input type="radio" name="identity-mode" class="mt-0.5" data-testid="identity-mode-merge"
+          [checked]="mode() === 'merge'" (change)="mode.set('merge')" />
+        <span><span class="font-medium text-theme-primary">Same as another artist</span><br />
+          <span class="text-xs text-theme-muted">This spelling is a variant — merge it into the artist named below.</span></span>
+      </label>
+    </div>
+
+    @if (mode() === 'split') {
+      <div class="flex flex-col gap-2 mb-4" data-testid="identity-members">
+        @for (member of memberList(); track $index) {
+          <div class="flex items-center gap-2">
+            <input type="text" [value]="member"
+              (input)="updateMember($index, $any($event.target).value)"
+              [attr.data-testid]="'identity-member-' + $index"
+              class="flex-1 px-3 py-1.5 rounded-lg bg-theme-surface-2 text-sm text-theme-primary border border-theme focus:outline-none" />
+            <button type="button" (click)="removeMember($index)" aria-label="Remove member"
+              class="w-7 h-7 flex items-center justify-center rounded-lg text-theme-muted hover:bg-theme-surface-2 transition">
+              <app-icon name="close" />
+            </button>
+          </div>
+        }
+        <button type="button" (click)="addMember()" data-testid="identity-add-member"
+          class="self-start px-2 py-1 text-xs rounded-md text-theme-secondary hover:bg-theme-surface-2 transition">
+          + Add artist
+        </button>
+      </div>
+    }
+
+    @if (mode() === 'merge') {
+      <input type="text" [ngModel]="mergeTarget()" (ngModelChange)="mergeTarget.set($event)"
+        placeholder="Canonical artist name…" data-testid="identity-merge-target"
+        class="w-full px-3 py-1.5 mb-4 rounded-lg bg-theme-surface-2 text-sm text-theme-primary border border-theme focus:outline-none" />
+    }
+
+    @if (error()) {
+      <div class="mb-3 px-3 py-2 rounded-lg status-error text-sm" data-testid="identity-error">{{ error() }}</div>
+    }
+
+    <div class="flex justify-end gap-2">
+      <button type="button" (click)="closed.emit()"
+        class="px-3 py-1.5 rounded-lg text-sm text-theme-secondary hover:bg-theme-surface-2 transition">
+        Cancel
+      </button>
+      <button type="button" (click)="save()" [disabled]="!canSave()" data-testid="identity-save"
+        class="px-3 py-1.5 rounded-lg text-sm font-medium bg-theme-inverse text-theme-inverse hover:opacity-90 transition disabled:opacity-50">
+        {{ busy() ? 'Saving…' : 'Save fix' }}
+      </button>
+    </div>
+  </div>
+</div>

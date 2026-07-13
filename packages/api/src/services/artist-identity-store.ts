@@ -11,10 +11,12 @@ import { isAtomicArtist } from './artist-split';
 export interface SplitAuthority {
   confirmedArtists: ReadonlySet<string>;
   canonicalWhole: ReadonlySet<string>;
+  /** normalizeArtistForGrouping(variant) → canonical display spelling (see deriveMbidAliases). */
+  aliases: ReadonlyMap<string, string>;
 }
 
 export function emptyAuthority(): SplitAuthority {
-  return { confirmedArtists: new Set(), canonicalWhole: new Set() };
+  return { confirmedArtists: new Set(), canonicalWhole: new Set(), aliases: new Map() };
 }
 
 /**
@@ -27,6 +29,7 @@ export function emptyAuthority(): SplitAuthority {
 export function loadSplitAuthority(db: Database): SplitAuthority {
   const confirmedArtists = new Set<string>();
   const canonicalWhole = new Set<string>();
+  const aliases = new Map<string, string>();
 
   try {
     const rows = db
@@ -71,7 +74,104 @@ export function loadSplitAuthority(db: Database): SplitAuthority {
     // library_artist_identity absent (pre-migration) — degrade to library-only authority.
   }
 
-  return { confirmedArtists, canonicalWhole };
+  try {
+    const rows = db
+      .query<{ alias_norm: string; canonical_name: string }, []>(
+        `SELECT alias_norm, canonical_name FROM library_artist_aliases`,
+      )
+      .all();
+    for (const r of rows) aliases.set(r.alias_norm, r.canonical_name);
+  } catch {
+    // library_artist_aliases absent (pre-migration) — no alias rewriting.
+  }
+
+  return { confirmedArtists, canonicalWhole, aliases };
+}
+
+/** Write one alias row; a task-derived ('mbid') write never clobbers a user merge. */
+export function upsertArtistAlias(
+  db: Database,
+  row: { aliasNorm: string; canonicalName: string; mbid?: string | null; source: 'mbid' | 'user' },
+): void {
+  db.run(
+    `INSERT INTO library_artist_aliases (alias_norm, canonical_name, mbid, source, created_at)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(alias_norm) DO UPDATE SET
+       canonical_name = excluded.canonical_name,
+       mbid = excluded.mbid,
+       source = excluded.source,
+       created_at = excluded.created_at
+     WHERE library_artist_aliases.source != 'user' OR excluded.source = 'user'`,
+    [row.aliasNorm, row.canonicalName, row.mbid ?? null, row.source, Date.now()],
+  );
+}
+
+export interface AliasProposal {
+  aliasNorm: string;
+  variantName: string;
+  canonicalName: string;
+  mbid: string;
+}
+
+/**
+ * Derive artist-name alias PROPOSALS from MBID equality: when several
+ * `library_artists` rows' cached `artist_discography_links` MBIDs coincide, they are
+ * likely spelling variants of ONE MusicBrainz artist that `artistIdFor` (a pure
+ * string hash) minted as separate entities. The spelling with the most songs (tie:
+ * most albums, then name) becomes canonical; every other spelling is proposed as an
+ * alias so a rescan can mint the canonical id for all of them.
+ *
+ * NOT written unattended, and deliberately so: the MBID cache is only as trustworthy
+ * as its writer, and `DiscographyService` stores Lidarr's *top fuzzy lookup hit*
+ * (`candidates[0]`) with no name verification — verified against the real library,
+ * where the one live MBID-equal pair was "Âme" vs "ME": two different artists whose
+ * lookups fuzzy-matched to the same MusicBrainz id. An automatic merge would corrupt
+ * the library, so proposals go through a human: `resolve-artist-identity.ts --aliases`
+ * prints them for review and `--apply` writes the reviewed set (source='mbid'); the
+ * admin merge flow writes its own rows (source='user'). Pass `apply: true` to write.
+ */
+export function deriveMbidAliases(db: Database, opts: { apply?: boolean } = {}): AliasProposal[] {
+  const rows = db
+    .query<{ mbid: string; name: string; songs: number; albums: number }, []>(
+      `SELECT l.mbid AS mbid, a.name AS name, a.album_count AS albums,
+              (SELECT COUNT(*) FROM library_songs s WHERE s.artist_id = a.id) AS songs
+       FROM artist_discography_links l
+       JOIN library_artists a ON a.id = l.artist_id
+       WHERE l.mbid IS NOT NULL`,
+    )
+    .all();
+
+  const byMbid = new Map<string, typeof rows>();
+  for (const r of rows) {
+    const group = byMbid.get(r.mbid);
+    if (group) group.push(r);
+    else byMbid.set(r.mbid, [r]);
+  }
+
+  const proposals: AliasProposal[] = [];
+  for (const [mbid, group] of byMbid) {
+    if (group.length < 2) continue;
+    const canonical = [...group].sort(
+      (a, b) => b.songs - a.songs || b.albums - a.albums || a.name.localeCompare(b.name),
+    )[0];
+    for (const variant of group) {
+      const aliasNorm = normalizeArtistForGrouping(variant.name);
+      if (aliasNorm === normalizeArtistForGrouping(canonical.name)) continue;
+      proposals.push({ aliasNorm, variantName: variant.name, canonicalName: canonical.name, mbid });
+    }
+  }
+
+  if (opts.apply) {
+    for (const p of proposals) {
+      upsertArtistAlias(db, {
+        aliasNorm: p.aliasNorm,
+        canonicalName: p.canonicalName,
+        mbid: p.mbid,
+        source: 'mbid',
+      });
+    }
+  }
+  return proposals;
 }
 
 /**
@@ -105,7 +205,13 @@ export function recordAcquiredArtistIdentity(
   }
 }
 
-/** Upsert a resolved split decision (written by the enrichment task / seed script). */
+/**
+ * Upsert a resolved split decision (written by the enrichment task / seed script /
+ * acquisition / the admin fix flow). A `source='user'` row is the highest authority:
+ * background writers (lidarr/mb/library) can never overwrite it — only another user
+ * decision can. See also {@link pendingArtistIdentityRows}, which keeps user rows out
+ * of the background task's pending set permanently (no TTL re-resolution).
+ */
 export function upsertArtistIdentity(
   db: Database,
   row: {
@@ -124,7 +230,8 @@ export function upsertArtistIdentity(
        decision = excluded.decision,
        members = excluded.members,
        source = excluded.source,
-       checked_at = excluded.checked_at`,
+       checked_at = excluded.checked_at
+     WHERE library_artist_identity.source != 'user' OR excluded.source = 'user'`,
     [
       row.artistKey,
       row.rawName,

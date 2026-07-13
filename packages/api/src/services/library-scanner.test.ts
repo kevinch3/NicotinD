@@ -425,10 +425,106 @@ describe('buildLibrary — multi-artist splitting (conservative, confirmation-ga
       ],
       undefined,
       undefined,
-      { confirmedArtists: new Set(), canonicalWhole: new Set(['wisin & yandel']) },
+      {
+        confirmedArtists: new Set(),
+        canonicalWhole: new Set(['wisin & yandel']),
+        aliases: new Map(),
+      },
     );
     const credits = songCredits(built, 'Duo/Album/01.mp3');
     expect(credits).toHaveLength(1);
     expect(credits[0]!.artistId).toBe(artistIdFor('Wisin & Yandel'));
+  });
+
+  it('collapses spelling variants into one entity via the MBID alias map', () => {
+    const built = buildLibrary(
+      [
+        track({ relPath: 'SD1/A/01.mp3', artist: 'Snoop Dog', album: 'A', title: 'X' }),
+        track({ relPath: 'SD2/B/01.mp3', artist: 'Snoop Dogg', album: 'B', title: 'Y' }),
+      ],
+      undefined,
+      undefined,
+      {
+        confirmedArtists: new Set(),
+        canonicalWhole: new Set(),
+        aliases: new Map([['snoop dog', 'Snoop Dogg']]),
+      },
+    );
+    // One artist entity, both albums keyed under the canonical spelling.
+    expect(built.artists.map((a) => a.name)).toEqual(['Snoop Dogg']);
+    expect(new Set(built.songs.map((s) => s.artistId))).toEqual(
+      new Set([artistIdFor('Snoop Dogg')]),
+    );
+    expect(new Set(built.albums.map((a) => a.artistId))).toEqual(
+      new Set([artistIdFor('Snoop Dogg')]),
+    );
+    expect(built.songs.every((s) => s.artist === 'Snoop Dogg')).toBe(true);
+  });
+
+  it('rewrites split-member credit spelling through the alias map', () => {
+    // The collab names a member in a variant spelling; the alias map both confirms
+    // the part (it is a known real artist by MBID) and canonicalizes the credit.
+    const built = buildLibrary(
+      [
+        track({ relPath: 'Dre/Solo/01.mp3', artist: 'Dr. Dre', album: 'Solo', title: 'A' }),
+        track({
+          relPath: 'Collab/Album/01.mp3',
+          artist: 'Snoop Dog & Dr. Dre',
+          album: 'Collab',
+          title: 'B',
+        }),
+      ],
+      undefined,
+      undefined,
+      {
+        confirmedArtists: new Set(),
+        canonicalWhole: new Set(),
+        aliases: new Map([['snoop dog', 'Snoop Dogg']]),
+      },
+    );
+    const credits = songCredits(built, 'Collab/Album/01.mp3');
+    expect(credits.map((c) => c.artistId)).toEqual([
+      artistIdFor('Snoop Dogg'),
+      artistIdFor('Dr. Dre'),
+    ]);
+    // The credit-only artist row carries the canonical spelling too.
+    expect(built.artists.some((a) => a.name === 'Snoop Dogg')).toBe(true);
+    expect(built.artists.some((a) => a.name === 'Snoop Dog')).toBe(false);
+  });
+
+  it('flags a split compound entity so the grid can hide it (members stay visible)', () => {
+    const built = buildLibrary([
+      track({ relPath: 'Charly/Solo/01.mp3', artist: 'Charly García', album: 'Solo', title: 'A' }),
+      track({
+        relPath: 'Spinetta/Solo/01.mp3',
+        artist: 'Luis Alberto Spinetta',
+        album: 'Solo',
+        title: 'B',
+      }),
+      track({
+        relPath: 'Collab/Album/01.mp3',
+        artist: 'Charly García y Luis Alberto Spinetta',
+        album: 'Collab',
+        title: 'C',
+      }),
+    ]);
+    const byName = new Map(built.artists.map((a) => [a.name, a]));
+    expect(byName.get('Charly García y Luis Alberto Spinetta')?.splitCompound).toBe(true);
+    expect(byName.get('Charly García')?.splitCompound).toBe(false);
+    expect(byName.get('Luis Alberto Spinetta')?.splitCompound).toBe(false);
+  });
+
+  it('does not flag a band kept whole', () => {
+    const built = buildLibrary([
+      track({
+        relPath: 'BM/Album/01.mp3',
+        artist: 'Bob Marley & The Wailers',
+        album: 'Legend',
+        title: 'A',
+      }),
+    ]);
+    expect(built.artists.find((a) => a.name === 'Bob Marley & The Wailers')?.splitCompound).toBe(
+      false,
+    );
   });
 });

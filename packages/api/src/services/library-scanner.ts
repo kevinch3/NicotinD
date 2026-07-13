@@ -154,6 +154,8 @@ export interface ArtistRow {
   name: string;
   albumCount: number;
   coverArt: string | null;
+  /** True when the name is a compound the splitter resolves into >1 primary credit. */
+  splitCompound: boolean;
 }
 
 export interface GenreRow {
@@ -358,12 +360,30 @@ export function buildLibrary(
   // *atomic* artist string in this batch — a compound never confirms itself. This is
   // the fix for the old self-defeating guard that added the compound strings verbatim
   // to the known set, so nothing ever split.
+  // MBID-derived alias map: a spelling variant is rewritten to its canonical spelling
+  // BEFORE any id is minted, so "Snoop Dog" and "Snoop Dogg" collapse into one entity
+  // (artistIdFor is a pure string hash and would otherwise mint two). See
+  // deriveMbidAliases — aliases exist only on MBID equality, never fuzzy matching.
+  const aliasFix = (name: string): string =>
+    authority.aliases.get(normalizeArtistForGrouping(name)) ?? name;
+  // Split, then canonicalize each credit's spelling too (a member can be a variant).
+  const splitCredits = (raw: string): ArtistCredit[] =>
+    splitArtists(raw, known).map((c) => ({ ...c, name: aliasFix(c.name) }));
+
   const confirmedArtists = new Set<string>(authority.confirmedArtists);
   const canonicalWhole = authority.canonicalWhole;
+  // Every alias pair is a confirmed real artist by construction (MBID-matched), so a
+  // compound part written in a variant spelling still passes the split gate.
+  for (const [aliasNorm, canonical] of authority.aliases) {
+    confirmedArtists.add(aliasNorm);
+    confirmedArtists.add(normalizeArtistForGrouping(canonical));
+  }
   for (const t of tracks) {
     const { albumArtist, trackArtist } = resolveTags(t, overrides);
-    if (isAtomicArtist(albumArtist)) confirmedArtists.add(normalizeArtistForGrouping(albumArtist));
-    if (isAtomicArtist(trackArtist)) confirmedArtists.add(normalizeArtistForGrouping(trackArtist));
+    if (isAtomicArtist(albumArtist))
+      confirmedArtists.add(normalizeArtistForGrouping(aliasFix(albumArtist)));
+    if (isAtomicArtist(trackArtist))
+      confirmedArtists.add(normalizeArtistForGrouping(aliasFix(trackArtist)));
   }
   const known = { confirmedArtists, canonicalWhole };
 
@@ -389,7 +409,9 @@ export function buildLibrary(
   >();
 
   for (const t of tracks) {
-    const { albumArtist, trackArtist, album, title, year } = resolveTags(t, overrides);
+    const { album, title, year, ...rawArtists } = resolveTags(t, overrides);
+    const albumArtist = aliasFix(rawArtists.albumArtist);
+    const trackArtist = aliasFix(rawArtists.trackArtist);
     const albumArtistId = artistIdFor(albumArtist);
     const trackArtistId = artistIdFor(trackArtist);
     const albId = albumIdFor(albumArtist, album);
@@ -427,7 +449,7 @@ export function buildLibrary(
       created,
     });
 
-    const trackCredits = splitArtists(trackArtist, known);
+    const trackCredits = splitCredits(trackArtist);
     for (let i = 0; i < trackCredits.length; i++) {
       songArtistLinks.push({
         parentId: id,
@@ -457,7 +479,7 @@ export function buildLibrary(
         genres: t.genre ? [t.genre] : [],
         createdMs: t.mtimeMs,
         coverArt: albId,
-        splitCredits: splitArtists(albumArtist, known),
+        splitCredits: splitCredits(albumArtist),
       });
     }
   }
@@ -520,7 +542,7 @@ export function buildLibrary(
       // Find the name from the credits — look up via songs
       const song = songs.find((s) => s.id === link.parentId);
       if (song) {
-        const credits = splitArtists(song.artist, known);
+        const credits = splitCredits(song.artist);
         const credit = credits.find((c) => artistIdFor(c.name) === link.artistId);
         if (credit) ensureArtist(link.artistId, credit.name);
       }
@@ -532,6 +554,9 @@ export function buildLibrary(
     name: a.name,
     albumCount: a.albums.size,
     coverArt: a.coverArt,
+    // A compound that splits keeps its row (songs/albums key its id) but is
+    // flagged so the grid shows only the member artists as tiles.
+    splitCompound: splitCredits(a.name).filter((c) => c.role === 'primary').length > 1,
   }));
 
   const genreAcc = new Map<string, { songs: number; albums: Set<string> }>();
@@ -827,12 +852,13 @@ export class LibraryScanner {
         -- is the sole writer that sets a landed timestamp — do not add it here.
     `);
     const artistStmt = this.db.prepare(`
-      INSERT INTO library_artists (id, name, album_count, cover_art, synced_at)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO library_artists (id, name, album_count, cover_art, split_compound, synced_at)
+      VALUES (?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         name = excluded.name,
         album_count = excluded.album_count,
         cover_art = excluded.cover_art,
+        split_compound = excluded.split_compound,
         synced_at = excluded.synced_at
     `);
     const genreStmt = this.db.prepare(`
@@ -906,7 +932,7 @@ export class LibraryScanner {
         );
       }
       for (const a of built.artists) {
-        artistStmt.run(a.id, a.name, a.albumCount, a.coverArt, syncedAt);
+        artistStmt.run(a.id, a.name, a.albumCount, a.coverArt, a.splitCompound ? 1 : 0, syncedAt);
       }
       for (const g of built.genres) {
         genreStmt.run(g.name, g.songCount, g.albumCount, syncedAt);

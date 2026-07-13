@@ -611,9 +611,21 @@ export function applySchema(db: Database): void {
       starred         TEXT,
       hidden          INTEGER NOT NULL DEFAULT 0,
       manual_override INTEGER NOT NULL DEFAULT 0,
+      split_compound  INTEGER NOT NULL DEFAULT 0,
       synced_at       INTEGER NOT NULL
     )
   `);
+  // Scanner-owned flag (distinct from the user-curated `hidden`): 1 when this
+  // artist entity's name is a compound the splitter resolves into >1 primary
+  // credit ("Charly García y Luis Alberto Spinetta"). The grid hides these —
+  // only the member artists show as tiles — while the row stays functional for
+  // direct navigation/search. Recomputed on every scan, so it self-corrects
+  // when the split authority changes.
+  try {
+    db.run(`ALTER TABLE library_artists ADD COLUMN split_compound INTEGER NOT NULL DEFAULT 0`);
+  } catch {
+    // Column already exists — ignore
+  }
   db.run(
     `CREATE INDEX IF NOT EXISTS idx_library_artists_name ON library_artists(name COLLATE NOCASE)`,
   );
@@ -827,6 +839,24 @@ export function applySchema(db: Database): void {
       source      TEXT NOT NULL,   -- 'lidarr' | 'mb' | 'library'
       checked_at  INTEGER NOT NULL,
       PRIMARY KEY (artist_key)
+    )
+  `);
+
+  // Artist-name alias map: a spelling variant ("Snoop Dog") → the canonical display
+  // spelling ("Snoop Dogg") the scanner should mint IDs from. Applied in buildLibrary
+  // *before* artistIdFor/albumIdFor run, so variants collapse into one entity on the
+  // next rescan — deriveMbidAliases writes rows only on MBID equality (two library
+  // artists resolving to the same MusicBrainz artist), never string distance;
+  // source='user' rows come from the admin merge flow and are never overwritten.
+  // Side table (like library_artist_identity): survives rescans/prunes.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS library_artist_aliases (
+      alias_norm     TEXT NOT NULL,  -- normalizeArtistForGrouping(variant spelling)
+      canonical_name TEXT NOT NULL,  -- display spelling to mint IDs from
+      mbid           TEXT,
+      source         TEXT NOT NULL,  -- 'mbid' | 'user'
+      created_at     INTEGER NOT NULL,
+      PRIMARY KEY (alias_norm)
     )
   `);
 

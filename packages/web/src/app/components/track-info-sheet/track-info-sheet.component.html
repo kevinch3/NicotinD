@@ -39,7 +39,17 @@
       <div class="min-w-0">
         <p class="text-sm font-medium text-theme-primary truncate">{{ headerTitle() }}</p>
         @if (headerArtist()) {
-          <p class="text-xs text-theme-secondary truncate">{{ headerArtist() }}</p>
+          <p class="text-xs text-theme-secondary truncate">
+            {{ headerArtist() }}
+            @if (isAdmin()) {
+              <button type="button" data-testid="track-artist-identity-fix"
+                (click)="identityOpen.set(true)"
+                title="Fix artist credit (one act / split / merge)"
+                class="ml-1 text-theme-muted hover:text-theme-secondary underline decoration-dotted">
+                fix
+              </button>
+            }
+          </p>
         }
         @if (headerAlbum()) {
           <p class="text-xs text-theme-muted truncate">{{ headerAlbum() }}</p>
@@ -316,4 +326,12 @@
       }
     </section>
   </div>
+
+  <!-- Fix artist credit (admin) — acts on the raw tag artist string -->
+  @if (identityOpen() && headerArtist()) {
+    <app-artist-identity-modal
+      [rawName]="headerArtist()"
+      (closed)="identityOpen.set(false)"
+    />
+  }
 </div>

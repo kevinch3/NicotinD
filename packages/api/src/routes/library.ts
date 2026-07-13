@@ -36,6 +36,8 @@ import {
   ALLOWED_OVERRIDE_TYPES,
 } from '../services/artist-image-override.js';
 import { clearCoverNegativeCache, extractCover, fetchRemoteCover } from './streaming.js';
+import { upsertArtistIdentity, upsertArtistAlias } from '../services/artist-identity-store.js';
+import { artistIdFor } from '../services/library-scanner.js';
 import { resizeCover } from '../services/cover-thumbnail.js';
 import {
   dedupeCoverUrls,
@@ -480,9 +482,12 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       : '';
     const rows = db
       .query<ArtistRow, (string | number)[]>(
+        // split_compound = 0: a compound that split ("Charly García y Luis
+        // Alberto Spinetta") is represented by its member tiles, not its own —
+        // the row stays reachable via direct links/search.
         `SELECT id, name, album_count, cover_art, starred
          FROM library_artists
-         WHERE hidden = 0 AND name != 'Various Artists' COLLATE NOCASE${filterClause}${quarantineClause}
+         WHERE hidden = 0 AND split_compound = 0 AND name != 'Various Artists' COLLATE NOCASE${filterClause}${quarantineClause}
          ORDER BY name COLLATE NOCASE ASC`,
       )
       .all(...frag.params);
@@ -1241,6 +1246,65 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     }
     clearCoverNegativeCache(id);
     return c.json({ ok: true });
+  });
+
+  // User-corrected artist identity (admin). Writes the highest-authority
+  // source='user' row — permanent: the background artist-identity task neither
+  // re-resolves nor overwrites it (see upsertArtistIdentity / pendingArtistIdentityRows)
+  // — then kicks a full rescan so the join tables re-bucket. Three shapes:
+  //   { rawName, decision: 'single' }                  → keep the compound as one act
+  //   { rawName, decision: 'split', members: [...] }   → split into the given artists
+  //   { rawName, mergeInto }                           → spelling alias onto another artist
+  app.post('/artists/identity', async (c) => {
+    requireAdmin(c);
+    const body = await c.req
+      .json<{
+        rawName?: string;
+        decision?: 'single' | 'split';
+        members?: string[];
+        mergeInto?: string;
+      }>()
+      .catch(() => null);
+    const rawName = body?.rawName?.trim();
+    if (!rawName) return c.json({ error: 'rawName required' }, 400);
+    const db = getDatabase();
+
+    if (body?.mergeInto != null) {
+      const mergeInto = body.mergeInto.trim();
+      if (!mergeInto || normalizeArtistForGrouping(mergeInto) === normalizeArtistForGrouping(rawName)) {
+        return c.json({ error: 'mergeInto must be a different artist name' }, 400);
+      }
+      upsertArtistAlias(db, {
+        aliasNorm: normalizeArtistForGrouping(rawName),
+        canonicalName: mergeInto,
+        source: 'user',
+      });
+    } else if (body?.decision === 'single') {
+      upsertArtistIdentity(db, {
+        artistKey: artistIdFor(rawName),
+        rawName,
+        decision: 'single',
+        source: 'user',
+      });
+    } else if (body?.decision === 'split') {
+      const members = (body.members ?? []).map((m) => m.trim()).filter(Boolean);
+      if (members.length < 2) {
+        return c.json({ error: 'split requires at least 2 member names' }, 400);
+      }
+      upsertArtistIdentity(db, {
+        artistKey: artistIdFor(rawName),
+        rawName,
+        decision: 'split',
+        members,
+        source: 'user',
+      });
+    } else {
+      return c.json({ error: 'decision (single|split) or mergeInto required' }, 400);
+    }
+
+    // Re-bucket asynchronously; the caller gets an immediate ack.
+    if (runSync) void runSync();
+    return c.json({ ok: true, resyncing: Boolean(runSync) }, 202);
   });
 
   app.post('/sync', async (c) => {
