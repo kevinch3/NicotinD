@@ -69,6 +69,11 @@ export class SpotdlPlugin implements Plugin {
       url,
       '--output',
       join(stagingDir, '{artist}', '{album}', '{title}.{output-ext}'),
+      // A retry resumes into this same staging dir (AcquireWatcher.retryJob);
+      // explicit skip means already-downloaded tracks aren't re-fetched or
+      // treated as an error, regardless of spotdl's version-dependent default.
+      '--overwrite',
+      'skip',
     ];
     // Only pass cookies when the file actually exists — a configured-but-absent
     // path must not break downloads (spotdl errors on a missing cookie file).
