@@ -85,3 +85,4 @@ an edit takes effect without a restart.
   empty result). One retry covers a transient blip.
 - Default-off for every install (not seeded by `seedLegacyAcquisitionPlugins`),
   matching the compliance posture.
+- **Retry resumes truncated downloads.** A failed acquire job (server restart mid-download, network blip, etc.) keeps its staged files on disk instead of having them deleted; clicking **Retry** re-invokes spotdl against that same staging directory with `--overwrite skip`, so it skips tracks already downloaded and only fetches what's missing. See `docs/download-pipeline.md` → "Resume after truncation" for the full mechanism.

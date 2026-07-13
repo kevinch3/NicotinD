@@ -93,6 +93,20 @@ describe('SpotdlPlugin', () => {
       expect(calls[0]!.args.some((a) => a.startsWith(stagingDir))).toBe(true);
     });
 
+    it('passes --overwrite skip so a resumed run does not re-download existing files', async () => {
+      const { spawn, child, calls } = fakeSpawn();
+      const plugin = new SpotdlPlugin({ enabled: true, binaryPath: 'spotdl' }, { spawn });
+      await plugin.init(fakeCtx([]));
+
+      const done = plugin.resolve.resolve('https://open.spotify.com/album/abc', 'job-skip');
+      writeFileSync(join(stagingDir, 'song.mp3'), 'x');
+      child.emit('close', 0);
+      await done;
+
+      const args = calls[0]!.args;
+      expect(args[args.indexOf('--overwrite') + 1]).toBe('skip');
+    });
+
     it('resolves with staged audio paths and forwards progress', async () => {
       const progress: Array<{ done: number; total: number }> = [];
       const { spawn, child } = fakeSpawn();

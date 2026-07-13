@@ -1,5 +1,6 @@
 import { describe, expect, it, beforeEach, mock } from 'bun:test';
 import { join } from 'node:path';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { Database } from 'bun:sqlite';
 import type { Plugin } from '@nicotind/core';
 import { applySchema } from '../db.js';
@@ -270,6 +271,68 @@ describe('AcquireWatcher (registry-driven)', () => {
     expect(watcher.getJob('kept')?.state).toBe('done');
   });
 
+  it('keeps the staging dir when a job fails, so a retry can resume it', async () => {
+    const plugin = fakePlugin();
+    plugin.resolve!.resolve = async (_url, jobId) => {
+      // Mirrors a truncated spotdl run: some files land before the process dies.
+      const dir = pluginStagingDir(DATA_DIR, 'fake', jobId);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, 'partial.mp3'), 'x');
+      throw new Error('interrupted');
+    };
+    h = makeHarness(plugin);
+    await h.registry.enable('fake', 'admin');
+    const id = await h.watcher.submit('https://example.com/x');
+    await waitForState(h.watcher, id, 'failed');
+    expect(existsSync(join(pluginStagingDir(DATA_DIR, 'fake', id), 'partial.mp3'))).toBe(true);
+  });
+
+  it('removes the staging dir once a job completes successfully', async () => {
+    const plugin = fakePlugin();
+    const stagedResolve = plugin.resolve!.resolve;
+    plugin.resolve!.resolve = async (url, jobId) => {
+      const dir = pluginStagingDir(DATA_DIR, 'fake', jobId);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, 'marker.mp3'), 'x');
+      return stagedResolve(url, jobId);
+    };
+    h = makeHarness(plugin);
+    await h.registry.enable('fake', 'admin');
+    const id = await h.watcher.submit('https://example.com/x');
+    await waitForState(h.watcher, id, 'done');
+    expect(existsSync(pluginStagingDir(DATA_DIR, 'fake', id))).toBe(false);
+  });
+
+  it('deleteJob also removes the staging dir on disk', () => {
+    const dir = pluginStagingDir(DATA_DIR, 'fake', 'd');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'leftover.mp3'), 'x');
+    h.db.run(`INSERT INTO acquire_jobs (id, backend, url, state) VALUES ('d', 'fake', 'u', 'failed')`);
+    expect(h.watcher.deleteJob('d')).toBe(true);
+    expect(existsSync(dir)).toBe(false);
+  });
+
+  it('removes staging dirs for jobs pruned by the 7-day janitor', () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    const dir = pluginStagingDir(DATA_DIR, 'fake', 'old-stale');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'leftover.mp3'), 'x');
+    db.run(
+      `INSERT INTO acquire_jobs (id, backend, url, state, created_at)
+       VALUES ('old-stale', 'fake', 'u', 'failed', unixepoch() - 700000)`,
+    );
+    const registry = new PluginRegistry({ db, dataDir: DATA_DIR });
+    new AcquireWatcher({
+      db,
+      dataDir: DATA_DIR,
+      registry,
+      organizeBatch: mock(async () => {}),
+      scanIncremental: mock(async () => {}),
+    });
+    expect(existsSync(dir)).toBe(false);
+  });
+
   it('deleteJob removes done/failed jobs but not running ones', () => {
     h.db.run(
       `INSERT INTO acquire_jobs (id, backend, url, state) VALUES ('d', 'fake', 'u', 'done')`,
@@ -282,16 +345,48 @@ describe('AcquireWatcher (registry-driven)', () => {
     expect(h.watcher.deleteJob('nope')).toBe(false);
   });
 
-  it('retryJob re-submits the same URL and removes the old row', async () => {
+  it('retryJob resumes the same job id (and staging dir) instead of starting fresh', async () => {
     await h.registry.enable('fake', 'admin');
     h.db.run(
       `INSERT INTO acquire_jobs (id, backend, url, state) VALUES ('old', 'fake', 'https://example.com/x', 'failed')`,
     );
-    const newId = await h.watcher.retryJob('old');
-    expect(typeof newId).toBe('string');
-    expect(newId).not.toBe('old');
-    expect(h.watcher.getJob('old')).toBeNull();
-    expect(h.watcher.getJob(newId!)?.url).toBe('https://example.com/x');
+    const id = await h.watcher.retryJob('old');
+    expect(id).toBe('old');
+    await waitForState(h.watcher, 'old', 'done');
+    expect(h.watcher.getJob('old')?.url).toBe('https://example.com/x');
+  });
+
+  it('retryJob passes the same job id to resolve(), preserving files the failed attempt left in staging', async () => {
+    const plugin = fakePlugin();
+    const seenIds: string[] = [];
+    plugin.resolve!.resolve = async (_url, jobId) => {
+      seenIds.push(jobId);
+      const dir = pluginStagingDir(DATA_DIR, 'fake', jobId);
+      mkdirSync(dir, { recursive: true });
+      if (seenIds.length === 1) throw new Error('interrupted');
+      // Second attempt (the retry): the file from attempt 1 must still be there.
+      expect(existsSync(join(dir, 'partial.mp3'))).toBe(true);
+      return [join(dir, 'partial.mp3')];
+    };
+    h = makeHarness(plugin);
+    await h.registry.enable('fake', 'admin');
+    const id = await h.watcher.submit('https://example.com/x');
+    await waitForState(h.watcher, id, 'failed');
+    // Attempt 1's staging dir survives the failure (Task 1); simulate the
+    // partial file spotdl would have left behind before the interruption.
+    writeFileSync(join(pluginStagingDir(DATA_DIR, 'fake', id), 'partial.mp3'), 'x');
+
+    const retryId = await h.watcher.retryJob(id);
+    expect(retryId).toBe(id);
+    await waitForState(h.watcher, id, 'done');
+    expect(seenIds).toEqual([id, id]);
+  });
+
+  it('retryJob no-ops (returns the existing id) when the job is already in flight', async () => {
+    h.db.run(
+      `INSERT INTO acquire_jobs (id, backend, url, state) VALUES ('r', 'fake', 'https://example.com/x', 'running')`,
+    );
+    expect(await h.watcher.retryJob('r')).toBe('r');
   });
 
   it('retryJob returns null for an unknown job', async () => {
@@ -351,6 +446,36 @@ describe('AcquireWatcher (registry-driven)', () => {
     h = makeHarness(plugin);
     await h.registry.enable('fake', 'admin');
     const id = await h.watcher.submit('https://example.com/x');
+    await waitForState(h.watcher, id, 'done');
+    expect(h.watcher.getJob(id)?.error).toBeNull();
+  });
+
+  it('retryJob clears stale progress so a clean retry is not misreported as a partial download', async () => {
+    const plugin = fakePlugin();
+    let attempt = 0;
+    plugin.resolve!.resolve = async (_url, jobId) => {
+      attempt += 1;
+      if (attempt === 1) {
+        // Attempt 1: mirrors spotdl reporting "Found 16 songs" before the run
+        // fails outright, leaving that stale total sitting in the row.
+        h.db.run(`UPDATE acquire_jobs SET progress = ? WHERE id = ?`, [
+          JSON.stringify({ done: 1, total: 16 }),
+          jobId,
+        ]);
+        throw new Error('interrupted');
+      }
+      // Attempt 2 (the retry): a single-track URL that finishes before the
+      // plugin ever emits its own progress line — the row must not still be
+      // carrying attempt 1's stale total: 16.
+      return [join(pluginStagingDir(DATA_DIR, 'fake', jobId), 'Artist', 'Album', 'track.mp3')];
+    };
+    h = makeHarness(plugin);
+    await h.registry.enable('fake', 'admin');
+    const id = await h.watcher.submit('https://example.com/x');
+    await waitForState(h.watcher, id, 'failed');
+
+    const retryId = await h.watcher.retryJob(id);
+    expect(retryId).toBe(id);
     await waitForState(h.watcher, id, 'done');
     expect(h.watcher.getJob(id)?.error).toBeNull();
   });
