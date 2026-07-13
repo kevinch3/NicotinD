@@ -1,6 +1,6 @@
 import { describe, expect, it, mock, beforeEach, afterEach } from 'bun:test';
 import { EventEmitter } from 'node:events';
-import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { validatePluginManifest, type PluginHostContext } from '@nicotind/core';
@@ -103,5 +103,31 @@ describe('YtdlpPlugin', () => {
     expect(args).toContain('--sleep-requests');
     // Partly-unavailable playlists must not fail the whole job.
     expect(args).toContain('--ignore-errors');
+  });
+
+  it('passes --cookies when the configured cookies file exists', async () => {
+    const cookies = join(staging, 'youtube-cookies.txt');
+    writeFileSync(cookies, '# Netscape HTTP Cookie File\n');
+    const p = new YtdlpPlugin(cfg({ cookiesFile: cookies }), { spawn: spawnMock as never });
+    await p.init(fakeCtx());
+    const done = p.resolve.resolve('https://youtu.be/abc', 'j2');
+    fakeProc.finish(0);
+    await done;
+
+    const [, args] = spawnMock.mock.calls[0] as [string, string[]];
+    expect(args[args.indexOf('--cookies') + 1]).toBe(cookies);
+  });
+
+  it('omits --cookies when the configured cookies file is missing', async () => {
+    const p = new YtdlpPlugin(cfg({ cookiesFile: join(staging, 'no-such-cookies.txt') }), {
+      spawn: spawnMock as never,
+    });
+    await p.init(fakeCtx());
+    const done = p.resolve.resolve('https://youtu.be/abc', 'j3');
+    fakeProc.finish(0);
+    await done;
+
+    const [, args] = spawnMock.mock.calls[0] as [string, string[]];
+    expect(args).not.toContain('--cookies');
   });
 });

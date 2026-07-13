@@ -122,6 +122,41 @@ describe('SpotdlPlugin', () => {
       await expect(done).rejects.toThrow('no results found');
     });
 
+    it('passes --cookie-file when the configured cookies file exists', async () => {
+      const cookies = join(tmp, 'youtube-cookies.txt');
+      writeFileSync(cookies, '# Netscape HTTP Cookie File\n');
+      const { spawn, child, calls } = fakeSpawn();
+      const plugin = new SpotdlPlugin(
+        { enabled: true, binaryPath: 'spotdl', cookiesFile: cookies },
+        { spawn },
+      );
+      await plugin.init(fakeCtx([]));
+
+      const done = plugin.resolve.resolve('https://open.spotify.com/track/x', 'job-c1');
+      writeFileSync(join(stagingDir, 'song.mp3'), 'x');
+      child.emit('close', 0);
+      await done;
+
+      const args = calls[0]!.args;
+      expect(args[args.indexOf('--cookie-file') + 1]).toBe(cookies);
+    });
+
+    it('omits --cookie-file when the configured cookies file is missing', async () => {
+      const { spawn, child, calls } = fakeSpawn();
+      const plugin = new SpotdlPlugin(
+        { enabled: true, binaryPath: 'spotdl', cookiesFile: join(tmp, 'no-such-cookies.txt') },
+        { spawn },
+      );
+      await plugin.init(fakeCtx([]));
+
+      const done = plugin.resolve.resolve('https://open.spotify.com/track/x', 'job-c2');
+      writeFileSync(join(stagingDir, 'song.mp3'), 'x');
+      child.emit('close', 0);
+      await done;
+
+      expect(calls[0]!.args).not.toContain('--cookie-file');
+    });
+
     it('throws when resolving before init()', () => {
       const { spawn } = fakeSpawn();
       const plugin = new SpotdlPlugin({ enabled: true, binaryPath: 'spotdl' }, { spawn });

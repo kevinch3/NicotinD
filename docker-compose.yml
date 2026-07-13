@@ -41,6 +41,20 @@ services:
       - internal
     restart: unless-stopped
 
+  # PO-token provider for YouTube downloads (yt-dlp / spotdl). YouTube demands
+  # "proof of origin" tokens from unrecognized clients; the pip-installed
+  # bgutil-ytdlp-pot-provider plugin (see Dockerfile) fetches them from this
+  # companion service. It shares the nicotind container's network namespace so
+  # the plugin's default base URL (http://127.0.0.1:4416) just works — no
+  # per-invocation extractor-args plumbing through spotdl/yt-dlp needed.
+  bgutil-provider:
+    image: brainicism/bgutil-ytdlp-pot-provider:latest
+    network_mode: "service:nicotind"
+    depends_on:
+      nicotind:
+        condition: service_started
+    restart: unless-stopped
+
   slskd:
     image: slskd/slskd:0.25.1
     user: "1000:1000"

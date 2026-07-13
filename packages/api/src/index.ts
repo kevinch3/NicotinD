@@ -372,6 +372,11 @@ export function createApp({
     },
   });
   plugins.register(new SlskdPlugin(slskdRef, registry));
+  // Zero-config cookies: drop a Netscape cookies.txt at
+  // <dataDir>/youtube-cookies.txt and both YouTube-backed downloaders pick it
+  // up (only when the file exists) — the unblock for YouTube's bot-check on
+  // flagged server IPs. An explicit config path overrides the convention.
+  const defaultCookiesFile = join(expandedDataDir, 'youtube-cookies.txt');
   // Register specific-URL plugins before the catch-all yt-dlp so that
   // getEnabledForUrl's find() returns the right handler.
   // (spotdl: spotify.com only; archive: archive.org only; ytdlp: everything else)
@@ -379,6 +384,7 @@ export function createApp({
     new SpotdlPlugin({
       enabled: config.acquire.spotdl.enabled,
       binaryPath: config.acquire.spotdl.binaryPath,
+      cookiesFile: config.acquire.spotdl.cookiesFile || defaultCookiesFile,
     }),
   );
   plugins.register(
@@ -401,6 +407,7 @@ export function createApp({
       binaryPath: config.acquire.ytdlp.binaryPath,
       format: config.acquire.ytdlp.format,
       extraArgs: config.acquire.ytdlp.extraArgs,
+      cookiesFile: config.acquire.ytdlp.cookiesFile || defaultCookiesFile,
     }),
   );
   // Metadata source — lyrics from LRCLIB. Default-on (keyless, benign); seeded

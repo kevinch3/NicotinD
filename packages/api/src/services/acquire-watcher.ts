@@ -77,6 +77,15 @@ export class AcquireWatcher {
 
   constructor(private options: AcquireWatcherOptions) {
     this.db = options.db;
+    // Jobs left 'queued'/'running' by a previous process are orphans — their
+    // downloader child process died with the server, so nothing will ever
+    // advance them. Without this they sit as stuck-forever "running" rows in
+    // the Downloads feed after every restart/redeploy.
+    this.db.run(
+      `UPDATE acquire_jobs SET state = 'failed', stage = 'error',
+         error = 'Interrupted by a server restart — use Retry to run it again'
+       WHERE state IN ('queued', 'running')`,
+    );
     // Prune done/failed jobs older than 7 days so the list stays bounded.
     this.db.run(
       `DELETE FROM acquire_jobs WHERE state IN ('done', 'failed') AND created_at < unixepoch() - 604800`,

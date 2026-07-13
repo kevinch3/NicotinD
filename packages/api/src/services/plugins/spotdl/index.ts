@@ -1,11 +1,19 @@
 import type { spawn as nodeSpawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { z } from 'zod';
 import type { Plugin, PluginManifest, PluginHostContext, ResolveCapability } from '@nicotind/core';
 import { isBinaryAvailable, runAcquireProcess, parseSpotdlProgress, type RunningAcquire } from '../acquire/process.js';
 
 export interface SpotdlPluginConfig {
   enabled: boolean;
   binaryPath: string;
+  /**
+   * Netscape cookies.txt passed as `--cookie-file` when the file exists.
+   * YouTube bot-flags server IPs ("Sign in to confirm you're not a bot");
+   * account cookies are the only reliable unblock for a flagged IP.
+   */
+  cookiesFile?: string;
 }
 
 const DISCLAIMER =
@@ -22,6 +30,7 @@ export class SpotdlPlugin implements Plugin {
     kind: 'acquisition',
     capabilities: ['resolve'],
     requirements: { binaries: ['spotdl'] },
+    configSchema: z.object({ cookiesFile: z.string().optional() }).partial(),
     compliance: { disclaimer: DISCLAIMER, requiresConsent: true },
     defaultEnabled: false,
   };
@@ -55,14 +64,20 @@ export class SpotdlPlugin implements Plugin {
   private async run(url: string, jobId: string): Promise<string[]> {
     if (!this.ctx) throw new Error('spotdl plugin not initialized');
     const stagingDir = this.ctx.allocStagingDir(jobId);
+    const args = [
+      'download',
+      url,
+      '--output',
+      join(stagingDir, '{artist}', '{album}', '{title}.{output-ext}'),
+    ];
+    // Only pass cookies when the file actually exists — a configured-but-absent
+    // path must not break downloads (spotdl errors on a missing cookie file).
+    if (this.cfg.cookiesFile && existsSync(this.cfg.cookiesFile)) {
+      args.push('--cookie-file', this.cfg.cookiesFile);
+    }
     const run = runAcquireProcess({
       binaryPath: this.cfg.binaryPath,
-      args: [
-        'download',
-        url,
-        '--output',
-        join(stagingDir, '{artist}', '{album}', '{title}.{output-ext}'),
-      ],
+      args,
       stagingDir,
       parseProgress: parseSpotdlProgress,
       onProgress: (p) => this.ctx!.emitProgress(jobId, p),
