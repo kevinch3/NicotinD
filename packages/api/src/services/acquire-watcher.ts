@@ -86,10 +86,21 @@ export class AcquireWatcher {
          error = 'Interrupted by a server restart — use Retry to run it again'
        WHERE state IN ('queued', 'running')`,
     );
-    // Prune done/failed jobs older than 7 days so the list stays bounded.
+    // Prune done/failed jobs older than 7 days so the list stays bounded, and
+    // sweep their staging dirs too — they now survive failed jobs (see run()),
+    // so nothing else will ever clean them up once the row is gone.
+    const stale = this.db
+      .query<
+        { id: string; backend: string },
+        []
+      >(`SELECT id, backend FROM acquire_jobs WHERE state IN ('done', 'failed') AND created_at < unixepoch() - 604800`)
+      .all();
     this.db.run(
       `DELETE FROM acquire_jobs WHERE state IN ('done', 'failed') AND created_at < unixepoch() - 604800`,
     );
+    for (const row of stale) {
+      this.cleanupStaging(pluginStagingDir(this.options.dataDir, row.backend, row.id));
+    }
   }
 
   /** Plugin that would handle this URL right now (enabled + canHandle), if any. */
@@ -162,14 +173,6 @@ export class AcquireWatcher {
       this.setStage(id, 'error');
     } finally {
       this.active.delete(id);
-      try {
-        rmSync(pluginStagingDir(this.options.dataDir, plugin.manifest.id, id), {
-          recursive: true,
-          force: true,
-        });
-      } catch {
-        // Non-fatal; files have already been moved by organizeBatch.
-      }
     }
   }
 
@@ -222,6 +225,9 @@ export class AcquireWatcher {
       // user needs to see *why* the track count is short instead of it
       // reading as a clean, unqualified "Done".
       this.updateState(id, 'done', partialWarning);
+      // Only a fully-succeeded job's staging dir is disposable — a failed one
+      // is left in place so Retry can resume it (see retryJob()).
+      this.cleanupStaging(stagingDir);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       log.error({ id, err: msg }, 'Organize/scan after acquire failed');
@@ -235,13 +241,26 @@ export class AcquireWatcher {
     return plugin?.resolve?.cancel?.(jobId) ?? false;
   }
 
-  /** Remove a done or failed job from the DB. Returns true if a row was deleted. */
+  /** Best-effort staging-dir removal; safe to call on a path that no longer exists. */
+  private cleanupStaging(stagingDir: string): void {
+    try {
+      rmSync(stagingDir, { recursive: true, force: true });
+    } catch {
+      // Non-fatal; nothing downstream depends on staging dirs being gone.
+    }
+  }
+
+  /** Remove a done or failed job from the DB (and its staging dir, if any). */
   deleteJob(jobId: string): boolean {
-    const result = this.db.run(
-      `DELETE FROM acquire_jobs WHERE id = ? AND state IN ('done', 'failed')`,
-      [jobId],
-    );
-    return result.changes > 0;
+    const row = this.db
+      .query<{ backend: string }, [string]>(
+        `SELECT backend FROM acquire_jobs WHERE id = ? AND state IN ('done', 'failed')`,
+      )
+      .get(jobId);
+    if (!row) return false;
+    this.db.run(`DELETE FROM acquire_jobs WHERE id = ?`, [jobId]);
+    this.cleanupStaging(pluginStagingDir(this.options.dataDir, row.backend, jobId));
+    return true;
   }
 
   /** Re-submit a failed (or done) job using the same URL. */

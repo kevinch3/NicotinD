@@ -1,5 +1,6 @@
 import { describe, expect, it, beforeEach, mock } from 'bun:test';
 import { join } from 'node:path';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { Database } from 'bun:sqlite';
 import type { Plugin } from '@nicotind/core';
 import { applySchema } from '../db.js';
@@ -268,6 +269,68 @@ describe('AcquireWatcher (registry-driven)', () => {
     expect(watcher.getJob('orph-r')?.error).toContain('restart');
     expect(watcher.getJob('orph-q')?.state).toBe('failed');
     expect(watcher.getJob('kept')?.state).toBe('done');
+  });
+
+  it('keeps the staging dir when a job fails, so a retry can resume it', async () => {
+    const plugin = fakePlugin();
+    plugin.resolve!.resolve = async (_url, jobId) => {
+      // Mirrors a truncated spotdl run: some files land before the process dies.
+      const dir = pluginStagingDir(DATA_DIR, 'fake', jobId);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, 'partial.mp3'), 'x');
+      throw new Error('interrupted');
+    };
+    h = makeHarness(plugin);
+    await h.registry.enable('fake', 'admin');
+    const id = await h.watcher.submit('https://example.com/x');
+    await waitForState(h.watcher, id, 'failed');
+    expect(existsSync(join(pluginStagingDir(DATA_DIR, 'fake', id), 'partial.mp3'))).toBe(true);
+  });
+
+  it('removes the staging dir once a job completes successfully', async () => {
+    const plugin = fakePlugin();
+    const stagedResolve = plugin.resolve!.resolve;
+    plugin.resolve!.resolve = async (url, jobId) => {
+      const dir = pluginStagingDir(DATA_DIR, 'fake', jobId);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, 'marker.mp3'), 'x');
+      return stagedResolve(url, jobId);
+    };
+    h = makeHarness(plugin);
+    await h.registry.enable('fake', 'admin');
+    const id = await h.watcher.submit('https://example.com/x');
+    await waitForState(h.watcher, id, 'done');
+    expect(existsSync(pluginStagingDir(DATA_DIR, 'fake', id))).toBe(false);
+  });
+
+  it('deleteJob also removes the staging dir on disk', () => {
+    const dir = pluginStagingDir(DATA_DIR, 'fake', 'd');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'leftover.mp3'), 'x');
+    h.db.run(`INSERT INTO acquire_jobs (id, backend, url, state) VALUES ('d', 'fake', 'u', 'failed')`);
+    expect(h.watcher.deleteJob('d')).toBe(true);
+    expect(existsSync(dir)).toBe(false);
+  });
+
+  it('removes staging dirs for jobs pruned by the 7-day janitor', () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    const dir = pluginStagingDir(DATA_DIR, 'fake', 'old-stale');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'leftover.mp3'), 'x');
+    db.run(
+      `INSERT INTO acquire_jobs (id, backend, url, state, created_at)
+       VALUES ('old-stale', 'fake', 'u', 'failed', unixepoch() - 700000)`,
+    );
+    const registry = new PluginRegistry({ db, dataDir: DATA_DIR });
+    new AcquireWatcher({
+      db,
+      dataDir: DATA_DIR,
+      registry,
+      organizeBatch: mock(async () => {}),
+      scanIncremental: mock(async () => {}),
+    });
+    expect(existsSync(dir)).toBe(false);
   });
 
   it('deleteJob removes done/failed jobs but not running ones', () => {
