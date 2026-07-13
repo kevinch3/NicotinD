@@ -281,7 +281,7 @@ export class AcquireWatcher {
     if (!plugin?.resolve) throw new NoAcquisitionPluginError(row.url);
     if (!(await plugin.isAvailable())) throw new PluginUnavailableError(plugin.manifest.id);
     this.db.run(
-      `UPDATE acquire_jobs SET backend = ?, state = 'queued', stage = 'queued', error = NULL, progress = NULL WHERE id = ?`,
+      `UPDATE acquire_jobs SET backend = ?, state = 'queued', stage = 'queued', error = NULL, progress = NULL, storage_path = NULL WHERE id = ?`,
       [plugin.manifest.id, jobId],
     );
     void this.run(plugin, jobId, row.url);
