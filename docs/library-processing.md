@@ -71,7 +71,9 @@ Launch tasks:
   historical octave errors: `scripts/analyze-bpm.ts --recheck` (below).
 - **genre** — `WHERE genre IS NULL OR genre = ''`, available only with Lidarr. Uses
   `planGenreBackfill` so an artist is looked up **once** and fanned out to all their
-  pending songs. Writes `library_songs.genre` and the file tag. Songs whose artist
+  pending songs. Writes the **full Lidarr genre list** (best-first): the whole set
+  goes to `library_song_genres` + the mirrored `library_songs.genre` primary via
+  `setSongGenres`, and the file tag gets the `"; "`-joined list. Songs whose artist
   Lidarr can't resolve are `recordAnalysisFailure`d (not tallied — see the exclusion
   section below) so they drop out of the pending set after the attempt cap instead of
   being re-queried every batch forever.

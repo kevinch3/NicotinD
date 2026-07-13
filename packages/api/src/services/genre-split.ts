@@ -118,8 +118,11 @@ export function loadGenreContext(db: Database): GenreContext {
       .all()) {
       aliases.set(genreKey(r.alias), r.canonical);
     }
+    // Ascending song_count so on a pre-migration table still holding casing
+    // duplicates ("Latin" + "latin") the most common spelling wins the display
+    // slot; post-migration tables have one row per key and this is a no-op.
     for (const r of db
-      .query<{ name: string }, []>(`SELECT name FROM library_genres`)
+      .query<{ name: string }, []>(`SELECT name FROM library_genres ORDER BY song_count ASC`)
       .all()) {
       const k = genreKey(r.name);
       if (k && !r.name.includes('/')) known.set(k, r.name.trim().replace(/\s+/g, ' '));

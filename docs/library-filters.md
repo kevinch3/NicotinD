@@ -27,7 +27,7 @@ so hand-edited URLs degrade gracefully).
 | Mood | `mood` (comma list from `MOOD_VOCAB`) | `mood=happy,party` |
 | Perceptual axes | axis name = comma list of buckets | `energy=low,high&valence=mid` |
 | Year range | `yearMin`, `yearMax` | `yearMin=1990&yearMax=1999` |
-| Genre | `genre` (repeated param — free text may contain commas) | `genre=Rock&genre=Hip-Hop` |
+| Genre | `genre` (repeated param — free text may contain commas). Matches the **full multi-genre set**: the predicate is `(s.genre IN (…) OR EXISTS(… library_song_genres …))`, so a track filed under "Electronic; House" matches a House filter; the primary-column IN keeps pre-first-rescan rows filterable. | `genre=Rock&genre=Hip-Hop` |
 | Starred | `starred=true` | entity-level, see below |
 | Duration range (s) | `durMin`, `durMax` | `durMin=120&durMax=360` |
 
@@ -70,7 +70,8 @@ core wheel and `key-detection.ts`'s `keyToCamelot` can never drift apart.
 ## Performance
 
 The EXISTS probes ride the existing indexes (`idx_library_songs_album_id`,
-`idx_library_songs_artist_id`, `idx_song_artists_artist`, `idx_library_songs_genre`). At
+`idx_library_songs_artist_id`, `idx_song_artists_artist`, `idx_library_songs_genre`,
+`idx_song_genres_genre`/`idx_song_genres_song` for the multi-genre EXISTS). At
 library scale nothing more is needed; if filtering ever profiles slow, a composite
 `(album_id, hidden)` index on `library_songs` is the first thing to add.
 
