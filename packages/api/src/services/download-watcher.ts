@@ -6,8 +6,15 @@ import type { CompletedDownloadFile } from './path-inference.js';
 import { LibraryOrganizer } from './library-organizer.js';
 import { AcoustIdLookup } from './acoustid-lookup.js';
 import { getDatabase } from '../db.js';
-import { normalizeArtistForGrouping, normalizeForGrouping } from './album-grouping.js';
 import { recordAcquisition } from './acquisition-store.js';
+import {
+  jobMetaForTransfer,
+  markItemCompleted,
+  markItemOrganized,
+  markItemsScanned,
+  recomputeStage,
+  transferKeyFor,
+} from './acquisition-job-store.js';
 
 const log = createLogger('download-watcher');
 
@@ -59,6 +66,11 @@ export class DownloadWatcher {
     this.intervalMs = options.intervalMs ?? 5_000;
     this.scanDebounceMs = options.scanDebounceMs ?? 10_000;
     this.musicDir = options.musicDir ? this.expandDir(options.musicDir) : null;
+    // No jobLookup here: production always injects the shared organizer built
+    // in index.ts (which carries the album_jobs lookup), and per-file
+    // acquisition-job metadata (file.jobMeta) now covers the canonical-name
+    // decision anyway. A duplicate lookup here was dead code drifting from the
+    // real one.
     this.libraryOrganizer =
       options.libraryOrganizer ??
       new LibraryOrganizer({
@@ -67,53 +79,6 @@ export class DownloadWatcher {
         acoustid: options.acoustidApiKey ? new AcoustIdLookup(options.acoustidApiKey) : undefined,
         unsortedRoot: options.unsortedRoot,
         preferFlacSkipMp3: options.preferFlacSkipMp3,
-        // Name a hunted album's folder after its Lidarr canonical title so every
-        // edition/re-hunt consolidates into one <Artist>/<album> dir.
-        jobLookup: (directory) => {
-          const db = getDatabase();
-
-          // 1. Exact match on the primary peer directory recorded at hunt time.
-          const exact = db
-            .query<{ artist_name: string | null; album_title: string | null }, [string]>(
-              `SELECT artist_name, album_title FROM album_jobs
-               WHERE directory = ? AND album_title IS NOT NULL
-               ORDER BY created_at DESC LIMIT 1`,
-            )
-            .get(directory);
-          if (exact) return { artist: exact.artist_name, album: exact.album_title };
-
-          // 2. Fuzzy match for fallback/alternate peer directories. Soulseek peers
-          // use their own folder names (e.g. "Kiss Me Once (2014)") which won't
-          // match the primary job's directory exactly but should map to the same
-          // canonical album so their tracks land in one folder, not a duplicate.
-          // Extract probable artist/album from the last two path segments and
-          // compare against active jobs after normalizing both sides.
-          const segments = directory.replace(/\\/g, '/').split('/').filter(Boolean);
-          if (segments.length < 2) return null;
-          const candidateAlbum = segments[segments.length - 1]!;
-          const candidateArtist = segments[segments.length - 2]!;
-          const normAlbum = normalizeForGrouping(candidateAlbum);
-          const normArtist = normalizeArtistForGrouping(candidateArtist);
-
-          const activeJobs = db
-            .query<{ artist_name: string; album_title: string }, []>(
-              `SELECT artist_name, album_title FROM album_jobs
-               WHERE state = 'active' AND artist_name IS NOT NULL AND album_title IS NOT NULL
-               ORDER BY created_at DESC LIMIT 50`,
-            )
-            .all();
-
-          for (const job of activeJobs) {
-            if (
-              normalizeForGrouping(job.album_title) === normAlbum &&
-              normalizeArtistForGrouping(job.artist_name) === normArtist
-            ) {
-              return { artist: job.artist_name, album: job.album_title };
-            }
-          }
-
-          return null;
-        },
       });
     this.scan = options.scan;
   }
@@ -210,7 +175,9 @@ export class DownloadWatcher {
                 filename: file.filename,
                 relativePath,
                 directoryFileCount: dir.fileCount,
+                jobMeta: this.resolveJobMeta(group.username, file.filename),
               };
+              this.markJobItemCompleted(group.username, file.filename);
               completedFiles.push(fileData);
               this.pendingScanFiles.push(fileData);
               this.recordCompletedDownload(
@@ -253,6 +220,7 @@ export class DownloadWatcher {
             );
             // Record acquisition provenance keyed on the final path (== library_songs.path).
             this.recordSlskdAcquisition(file.relativePath, file.username, acquiredAt);
+            this.markJobItemOrganized(file);
           }
         }
         this.debouncedScan();
@@ -290,6 +258,63 @@ export class DownloadWatcher {
       await this.scan(relPaths);
     } catch (err) {
       log.error({ err }, 'Library scan after download failed');
+    }
+    this.markJobItemsScanned(relPaths, files);
+  }
+
+  /**
+   * After the incremental scan, attach the freshly-minted song ids to the
+   * batch's acquisition-job items and re-derive each touched job's stage
+   * (scanning → processing/done). Best-effort: job bookkeeping must never
+   * break the scan that already happened.
+   */
+  private markJobItemsScanned(relPaths: string[], files: CompletedDownloadFile[]): void {
+    try {
+      const db = this.getDb();
+      const pathToSongId = new Map<string, string>();
+      for (const relPath of relPaths) {
+        const row = db
+          .query<{ id: string }, [string]>('SELECT id FROM library_songs WHERE path = ?')
+          .get(relPath);
+        if (row) pathToSongId.set(relPath, row.id);
+      }
+      if (pathToSongId.size) markItemsScanned(db, pathToSongId);
+      const jobIds = new Set(
+        files.map((f) => f.jobMeta?.jobId).filter((id): id is string => Boolean(id)),
+      );
+      for (const jobId of jobIds) recomputeStage(db, jobId);
+    } catch (err) {
+      log.warn({ err }, 'Failed to mark acquisition job items scanned');
+    }
+  }
+
+  /** Best-effort acquisition-job lookup for a completing transfer. */
+  private resolveJobMeta(username: string, filename: string) {
+    try {
+      return jobMetaForTransfer(this.getDb(), username, filename);
+    } catch {
+      return null;
+    }
+  }
+
+  private markJobItemCompleted(username: string, filename: string): void {
+    try {
+      markItemCompleted(this.getDb(), transferKeyFor(username, filename));
+    } catch {
+      // Non-fatal: job bookkeeping must never break the watcher.
+    }
+  }
+
+  private markJobItemOrganized(file: CompletedDownloadFile): void {
+    if (!file.relativePath) return;
+    try {
+      markItemOrganized(
+        this.getDb(),
+        transferKeyFor(file.username, file.filename),
+        file.relativePath,
+      );
+    } catch {
+      // Non-fatal.
     }
   }
 

@@ -441,6 +441,18 @@ export function recomputeStage(db: Database, jobId: string): string | null {
   return stage;
 }
 
+/**
+ * Re-derive every active job's stage. Called after landing passes
+ * (`graduatePending`) so jobs waiting in `processing` close the moment their
+ * songs land. Bounded: active jobs are few.
+ */
+export function recomputeActiveJobStages(db: Database): void {
+  const rows = db
+    .query<{ id: string }, []>(`SELECT id FROM acquisition_jobs WHERE state = 'active'`)
+    .all();
+  for (const row of rows) recomputeStage(db, row.id);
+}
+
 /** Mirror of the hunt route's `?replace=true`: retire prior active jobs for the album. */
 export function supersedeActiveJobs(
   db: Database,

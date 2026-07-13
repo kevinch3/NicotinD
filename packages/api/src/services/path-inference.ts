@@ -8,6 +8,12 @@ export interface CompletedDownloadFile {
   filename: string;
   relativePath?: string | null;
   directoryFileCount?: number;
+  /**
+   * The acquisition job this transfer belongs to (stored at enqueue time),
+   * resolved by the watcher so the organizer can prefer the hunt's canonical
+   * artist/album over folder-string matching.
+   */
+  jobMeta?: import('./acquisition-job-store.js').TransferJobMeta | null;
 }
 
 export interface ParsedMetadata {

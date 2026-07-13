@@ -8,6 +8,7 @@ import { setProcessingSettings } from './processing-settings.js';
 import { LibraryProcessingService } from './library-processing.service.js';
 import { MAX_ANALYSIS_ATTEMPTS } from './enrichment/analysis-failures.js';
 import type { EnrichmentContext } from './enrichment/tasks.js';
+import { createJob, getJob, recomputeStage } from './acquisition-job-store.js';
 
 let db: Database;
 let dataDir: string;
@@ -89,6 +90,29 @@ describe('landing gate', () => {
     await service(new Date(2024, 0, 1, 12, 0)).runNow();
 
     expect(isLanded('s1')).toBe(true);
+  });
+
+  it('closes a processing-stage acquisition job once its songs land', async () => {
+    seedSong('s1');
+    const jobId = createJob(db, {
+      kind: 'album-hunt',
+      method: 'slskd',
+      username: 'peer',
+      files: [{ filename: 'a\\s1.opus' }],
+    });
+    db.run(
+      `UPDATE acquisition_job_items SET state = 'scanned', song_id = 's1', relative_path = 'Artist/Album/s1.opus'`,
+    );
+    recomputeStage(db, jobId);
+    expect(getJob(db, jobId)?.stage).toBe('processing');
+
+    setProcessingSettings(db, { gates: { bpm: true, key: true, energy: true, genre: true } });
+    await service(new Date(2024, 0, 1, 12, 0)).runNow();
+
+    expect(isLanded('s1')).toBe(true);
+    const job = getJob(db, jobId)!;
+    expect(job.stage).toBe('done');
+    expect(job.state).toBe('done');
   });
 
   it('an unavailable gate step never blocks landing (sidecar off)', async () => {

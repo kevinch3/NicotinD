@@ -95,13 +95,38 @@ valves in `reconcileOnBoot`: items idle past 24h are failed (so a restart or
 vanished transfer can't strand a job), and finished jobs are pruned 7 days
 after they last moved (`updated_at`, so a just-closed job stays visible).
 
+## Pipeline stage tracking (Phase 2 — shipped)
+
+- **DownloadWatcher** (`download-watcher.ts`): on a new `Completed, Succeeded`
+  transfer it calls `markItemCompleted` and attaches `jobMeta`
+  (`jobMetaForTransfer`) to the `CompletedDownloadFile`; after organize it
+  calls `markItemOrganized` with the post-move path; after the incremental
+  scan it maps the new paths to `library_songs.id` (`markItemsScanned`) and
+  recomputes each touched job's stage. All best-effort — job bookkeeping never
+  breaks the pipeline.
+- **LibraryOrganizer**: `applyJobCanonicalName` prefers the per-file `jobMeta`
+  (artist/album) over the directory-keyed `jobLookup`, which fixes
+  alternate-peer fallback folders that match no folder string. The dead
+  duplicate default `jobLookup` in the watcher constructor was removed
+  (production always injects the shared organizer from `index.ts`).
+- **Fallback exhaustion**: `AlbumFallbackService.setState('exhausted')` marks
+  the owning job's still-missing items `unavailable` and recomputes — the
+  honest-partial close. `setState('done')` recomputes too.
+- **Landing**: `graduatePending` (library-processing) calls
+  `recomputeActiveJobStages` after every landing pass, closing jobs waiting in
+  `processing`.
+- **AcquireWatcher (URL)**: `submit` mirrors the job into `acquisition_jobs`
+  (same uuid, kind `url`); `updateState`/`setStage` dual-write
+  (queued/running → `active`); the boot orphan-fail updates the mirror rows in
+  the same pass. `acquire_jobs` stays authoritative.
+- **Boot + periodic hygiene**: `index.ts` runs `reconcileOnBoot` at startup and
+  after every retry sweep (alongside `fallback.sweep()`).
+
 ## Rollout phases
 
-1. **Schema + store + write-only recording** (this phase) — no readers, zero
+1. **Schema + store + write-only recording** (shipped) — no readers, zero
    behavior change.
-2. Pipeline stage tracking: DownloadWatcher marks completions, organizer gets
-   per-file job metadata, scan seam marks scanned + recomputes stage,
-   `graduatePending` closes jobs, AcquireWatcher dual-writes, boot reconcile.
+2. **Pipeline stage tracking** (shipped) — see above.
 3. Read model + web: downloads-feed enrichment switches to stored
    transfer-key lookup; `GET /api/downloads/jobs`; job stage badges.
 4. Metadata pre-fill: job-supplied genre/year written at scan time through the

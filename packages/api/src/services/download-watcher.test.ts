@@ -3,6 +3,7 @@ import { Database } from 'bun:sqlite';
 import { DownloadWatcher } from './download-watcher.js';
 import { applySchema } from '../db.js';
 import type { CompletedDownloadFile } from './path-inference.js';
+import { createJob, getJob } from './acquisition-job-store.js';
 
 type DownloadUser = {
   username: string;
@@ -336,6 +337,78 @@ describe('DownloadWatcher', () => {
         >('SELECT method, source_ref, stage FROM acquisitions WHERE relative_path = ?')
         .get('Artist/Album/song1.mp3');
       expect(row).toEqual({ method: 'slskd', source_ref: 'peer42', stage: 'done' });
+    } finally {
+      dwWatcher.stop();
+      db.close();
+    }
+  });
+
+  it('tracks the acquisition job item through completed → organized → scanned', async () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    // The scan hook stands in for the incremental scanner: it inserts the
+    // library_songs row for the organized path (still quarantined).
+    const scan = mock((relPaths: string[]) => {
+      db.run(
+        `INSERT OR IGNORE INTO library_albums (id, name, artist, artist_id, song_count, duration, synced_at)
+         VALUES ('al', 'Album', 'Artist', 'art', 1, 0, 1)`,
+      );
+      for (const p of relPaths) {
+        db.run(
+          `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, size, created, synced_at)
+           VALUES ('s-song1', 'al', 'Song', 'Artist', 'art', 0, ?, 10, '2024-01-01', 1)`,
+          [p],
+        );
+      }
+      return Promise.resolve();
+    });
+    const organizer = makeLibraryOrganizerMock();
+    const dwWatcher = new DownloadWatcher(
+      slskdMock as unknown as ConstructorParameters<typeof DownloadWatcher>[0],
+      { intervalMs: 10, scanDebounceMs: 10, libraryOrganizer: organizer, scan, db },
+    );
+    try {
+      const jobId = createJob(db, {
+        kind: 'album-hunt',
+        method: 'slskd',
+        artistName: 'Artist',
+        albumTitle: 'Album',
+        username: 'peer42',
+        files: [{ filename: 'song1.mp3', trackTitle: 'Song' }],
+      });
+      slskdMock.transfers.getDownloads.mockReturnValue(
+        Promise.resolve([
+          {
+            username: 'peer42',
+            directories: [
+              {
+                directory: 'Artist - Album',
+                fileCount: 1,
+                files: [{ filename: 'song1.mp3', state: 'Completed, Succeeded' }],
+              },
+            ],
+          },
+        ]),
+      );
+
+      await (dwWatcher as unknown as { check(): Promise<void> }).check();
+      // Completion + organize both happen inside check(); the organizer mock
+      // rewrote relativePath, so the item should already be organized.
+      const afterOrganize = getJob(db, jobId)!.items[0];
+      expect(afterOrganize.state).toBe('organized');
+      expect(afterOrganize.relativePath).toBe('Artist/Album/song1.mp3');
+
+      // The organizer received the job metadata alongside the file.
+      const [files] = organizer.organizeBatch.mock.calls[0] as [CompletedDownloadFile[]];
+      expect(files[0].jobMeta?.jobId).toBe(jobId);
+      expect(files[0].jobMeta?.artistName).toBe('Artist');
+
+      await new Promise((r) => setTimeout(r, 50)); // debounce → scan
+      const job = getJob(db, jobId)!;
+      expect(job.items[0].state).toBe('scanned');
+      expect(job.items[0].songId).toBe('s-song1');
+      // Scanned but not landed → the job is in the processing stage.
+      expect(job.stage).toBe('processing');
     } finally {
       dwWatcher.stop();
       db.close();

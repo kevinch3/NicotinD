@@ -120,6 +120,51 @@ describe('AcquireWatcher (registry-driven)', () => {
     expect(h.scan).toHaveBeenCalledTimes(1);
   });
 
+  it('mirrors the job into acquisition_jobs and keeps state/stage in sync', async () => {
+    await h.registry.enable('fake', 'admin');
+    const id = await h.watcher.submit('https://example.com/x');
+
+    const mirror = h.db
+      .query<
+        { kind: string; method: string; source_ref: string },
+        [string]
+      >(`SELECT kind, method, source_ref FROM acquisition_jobs WHERE id = ?`)
+      .get(id);
+    expect(mirror).toEqual({ kind: 'url', method: 'fake', source_ref: 'https://example.com/x' });
+
+    await waitForStage(h.watcher, id, 'done');
+    const after = h.db
+      .query<{ state: string; stage: string }, [string]>(
+        `SELECT state, stage FROM acquisition_jobs WHERE id = ?`,
+      )
+      .get(id);
+    expect(after).toEqual({ state: 'done', stage: 'done' });
+  });
+
+  it('boot reconciliation fails the orphaned mirror row alongside acquire_jobs', () => {
+    h.db.run(
+      `INSERT INTO acquire_jobs (id, backend, url, label, state, stage) VALUES ('orph', 'fake', 'u', NULL, 'running', 'downloading')`,
+    );
+    h.db.run(
+      `INSERT INTO acquisition_jobs (id, kind, method, state, stage, source_ref, created_at, updated_at)
+       VALUES ('orph', 'url', 'fake', 'active', 'downloading', 'u', 1, 1)`,
+    );
+    // A fresh watcher (server restart) must fail both rows.
+    new AcquireWatcher({
+      db: h.db,
+      dataDir: DATA_DIR,
+      registry: h.registry,
+      organizeBatch: h.organize as never,
+      scanIncremental: h.scan as never,
+    });
+    const mirror = h.db
+      .query<{ state: string; stage: string }, [string]>(
+        `SELECT state, stage FROM acquisition_jobs WHERE id = ?`,
+      )
+      .get('orph');
+    expect(mirror).toEqual({ state: 'failed', stage: 'error' });
+  });
+
   it('reaches stage "done", records storage_path, and writes an acquisitions row', async () => {
     await h.registry.enable('fake', 'admin');
     const id = await h.watcher.submit('https://example.com/x');

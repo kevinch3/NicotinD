@@ -6,6 +6,8 @@ import { normalizeTitle, titlesOverlap } from './album-hunter.service.js';
 import { albumIdFor } from './library-scanner.js';
 import {
   acquisitionJobIdForAlbumJob,
+  markMissingItemsUnavailable,
+  recomputeStage,
   repointOrAttachItem,
 } from './acquisition-job-store.js';
 
@@ -461,6 +463,20 @@ export class AlbumFallbackService {
 
   private setState(id: number, state: string): void {
     this.db.run('UPDATE album_jobs SET state = ? WHERE id = ?', [state, id]);
+    // The fallback giving up is the signal that the still-missing tracks are
+    // unobtainable: close the owning unified job as an honest partial
+    // ("N of M · K unavailable") instead of leaving it downloading forever.
+    if (state === 'exhausted' || state === 'done') {
+      try {
+        const acqJobId = acquisitionJobIdForAlbumJob(this.db, id);
+        if (acqJobId) {
+          if (state === 'exhausted') markMissingItemsUnavailable(this.db, acqJobId);
+          recomputeStage(this.db, acqJobId);
+        }
+      } catch (err) {
+        log.warn({ albumJobId: id, err }, 'Failed to close acquisition job with fallback state');
+      }
+    }
   }
 
   /**
