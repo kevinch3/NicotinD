@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.186](https://github.com/kevinch3/NicotinD/compare/v0.1.185...v0.1.186) (2026-07-13)
+
+
+### Bug Fixes
+
+* **web:** suppress stale acquire-job toasts on app open ([eed3120](https://github.com/kevinch3/NicotinD/commit/eed312093c557b1eadbccf489e557c6c54108e39))
+
 ## [0.1.185](https://github.com/kevinch3/NicotinD/compare/v0.1.184...v0.1.185) (2026-07-13)
 
 
