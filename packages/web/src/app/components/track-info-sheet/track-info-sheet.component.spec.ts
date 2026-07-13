@@ -136,3 +136,65 @@ describe('TrackInfoSheetComponent (analysis)', () => {
     for (const r of c.featureRows()) expect(r.value).toBeNull();
   });
 });
+
+describe('TrackInfoSheetComponent (multi-genre chips)', () => {
+  const role = signal<string | null>('admin');
+  const getSong = vi.fn(() => of({ id: 'song-1' } as never));
+
+  beforeEach(async () => {
+    getSong.mockClear();
+    await TestBed.configureTestingModule({
+      imports: [TrackInfoSheetComponent],
+      providers: [
+        {
+          provide: LibraryApiService,
+          useValue: {
+            analyzeSong: vi.fn(() => of({ bpm: 120, source: 'analyzed' as const })),
+            getGenreSuggestion: vi.fn(() => of(null)),
+            applyGenre: vi.fn(() => of({ ok: true, genre: 'X' })),
+            getSong,
+            getSongProvenance: vi.fn(() => of([])),
+            getSongAcquisition: vi.fn(() => of(null)),
+            getLyrics: vi.fn(() => of(null)),
+          },
+        },
+        { provide: AuthService, useValue: { role } },
+      ],
+    }).compileComponents();
+  });
+
+  function create() {
+    const c = TestBed.createComponent(TrackInfoSheetComponent).componentInstance;
+    (c as unknown as { songId: () => string }).songId = () => 'song-1';
+    return c;
+  }
+
+  it('genreList() prefers the full set (primary first) over the single genre', () => {
+    getSong.mockReturnValue(
+      of({ id: 'song-1', genre: 'Electronic', genres: ['Electronic', 'House', 'Techno'] } as never),
+    );
+    const c = create();
+    c.ngOnInit();
+    expect(c.genreList()).toEqual(['Electronic', 'House', 'Techno']);
+  });
+
+  it('genreList() falls back to the single genre, and empty when none', () => {
+    getSong.mockReturnValue(of({ id: 'song-1', genre: 'Latin' } as never));
+    const c = create();
+    c.ngOnInit();
+    expect(c.genreList()).toEqual(['Latin']);
+
+    getSong.mockReturnValue(of({ id: 'song-2' } as never));
+    const c2 = create();
+    c2.ngOnInit();
+    expect(c2.genreList()).toEqual([]);
+  });
+
+  it("genreList() splits an applied ';'-joined override into chips", () => {
+    getSong.mockReturnValue(of({ id: 'song-1', genre: 'Old' } as never));
+    const c = create();
+    c.ngOnInit();
+    c.genreOverride.set('Latin Rock; Latin Music');
+    expect(c.genreList()).toEqual(['Latin Rock', 'Latin Music']);
+  });
+});

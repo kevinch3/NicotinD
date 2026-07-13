@@ -154,6 +154,8 @@ export interface Song {
   size: number;
   created: string;
   genre?: string;
+  /** Full genre set, primary first (from library_song_genres). */
+  genres?: string[];
   year?: number;
   /** ISO timestamp when starred, absent otherwise. */
   starred?: string;

@@ -1323,6 +1323,9 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     if (row) {
       const song = rowToSong(row);
       attachSongArtists(db, [song]);
+      // Full genre set for the track-info sheet's chips (listings show primary).
+      const genres = loadGenreSets(db, [id]).get(id);
+      if (genres) song.genres = genres;
       return c.json(song);
     }
     return c.json({ error: 'Song not found' }, 404);
