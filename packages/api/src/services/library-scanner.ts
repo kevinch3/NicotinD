@@ -358,12 +358,30 @@ export function buildLibrary(
   // *atomic* artist string in this batch — a compound never confirms itself. This is
   // the fix for the old self-defeating guard that added the compound strings verbatim
   // to the known set, so nothing ever split.
+  // MBID-derived alias map: a spelling variant is rewritten to its canonical spelling
+  // BEFORE any id is minted, so "Snoop Dog" and "Snoop Dogg" collapse into one entity
+  // (artistIdFor is a pure string hash and would otherwise mint two). See
+  // deriveMbidAliases — aliases exist only on MBID equality, never fuzzy matching.
+  const aliasFix = (name: string): string =>
+    authority.aliases.get(normalizeArtistForGrouping(name)) ?? name;
+  // Split, then canonicalize each credit's spelling too (a member can be a variant).
+  const splitCredits = (raw: string): ArtistCredit[] =>
+    splitArtists(raw, known).map((c) => ({ ...c, name: aliasFix(c.name) }));
+
   const confirmedArtists = new Set<string>(authority.confirmedArtists);
   const canonicalWhole = authority.canonicalWhole;
+  // Every alias pair is a confirmed real artist by construction (MBID-matched), so a
+  // compound part written in a variant spelling still passes the split gate.
+  for (const [aliasNorm, canonical] of authority.aliases) {
+    confirmedArtists.add(aliasNorm);
+    confirmedArtists.add(normalizeArtistForGrouping(canonical));
+  }
   for (const t of tracks) {
     const { albumArtist, trackArtist } = resolveTags(t, overrides);
-    if (isAtomicArtist(albumArtist)) confirmedArtists.add(normalizeArtistForGrouping(albumArtist));
-    if (isAtomicArtist(trackArtist)) confirmedArtists.add(normalizeArtistForGrouping(trackArtist));
+    if (isAtomicArtist(albumArtist))
+      confirmedArtists.add(normalizeArtistForGrouping(aliasFix(albumArtist)));
+    if (isAtomicArtist(trackArtist))
+      confirmedArtists.add(normalizeArtistForGrouping(aliasFix(trackArtist)));
   }
   const known = { confirmedArtists, canonicalWhole };
 
@@ -389,7 +407,9 @@ export function buildLibrary(
   >();
 
   for (const t of tracks) {
-    const { albumArtist, trackArtist, album, title, year } = resolveTags(t, overrides);
+    const { album, title, year, ...rawArtists } = resolveTags(t, overrides);
+    const albumArtist = aliasFix(rawArtists.albumArtist);
+    const trackArtist = aliasFix(rawArtists.trackArtist);
     const albumArtistId = artistIdFor(albumArtist);
     const trackArtistId = artistIdFor(trackArtist);
     const albId = albumIdFor(albumArtist, album);
@@ -427,7 +447,7 @@ export function buildLibrary(
       created,
     });
 
-    const trackCredits = splitArtists(trackArtist, known);
+    const trackCredits = splitCredits(trackArtist);
     for (let i = 0; i < trackCredits.length; i++) {
       songArtistLinks.push({
         parentId: id,
@@ -457,7 +477,7 @@ export function buildLibrary(
         genres: t.genre ? [t.genre] : [],
         createdMs: t.mtimeMs,
         coverArt: albId,
-        splitCredits: splitArtists(albumArtist, known),
+        splitCredits: splitCredits(albumArtist),
       });
     }
   }
@@ -520,7 +540,7 @@ export function buildLibrary(
       // Find the name from the credits — look up via songs
       const song = songs.find((s) => s.id === link.parentId);
       if (song) {
-        const credits = splitArtists(song.artist, known);
+        const credits = splitCredits(song.artist);
         const credit = credits.find((c) => artistIdFor(c.name) === link.artistId);
         if (credit) ensureArtist(link.artistId, credit.name);
       }

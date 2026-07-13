@@ -830,6 +830,24 @@ export function applySchema(db: Database): void {
     )
   `);
 
+  // Artist-name alias map: a spelling variant ("Snoop Dog") → the canonical display
+  // spelling ("Snoop Dogg") the scanner should mint IDs from. Applied in buildLibrary
+  // *before* artistIdFor/albumIdFor run, so variants collapse into one entity on the
+  // next rescan — deriveMbidAliases writes rows only on MBID equality (two library
+  // artists resolving to the same MusicBrainz artist), never string distance;
+  // source='user' rows come from the admin merge flow and are never overwritten.
+  // Side table (like library_artist_identity): survives rescans/prunes.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS library_artist_aliases (
+      alias_norm     TEXT NOT NULL,  -- normalizeArtistForGrouping(variant spelling)
+      canonical_name TEXT NOT NULL,  -- display spelling to mint IDs from
+      mbid           TEXT,
+      source         TEXT NOT NULL,  -- 'mbid' | 'user'
+      created_at     INTEGER NOT NULL,
+      PRIMARY KEY (alias_norm)
+    )
+  `);
+
   // Audit trail written by normalize-library.ts and future automation.
   // navidrome_id is null until NavidromeSyncer backfills it via path join.
   db.run(`

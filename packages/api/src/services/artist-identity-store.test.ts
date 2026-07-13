@@ -2,8 +2,10 @@ import { describe, expect, it, beforeEach } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { applySchema } from '../db.js';
 import {
+  deriveMbidAliases,
   loadSplitAuthority,
   recordAcquiredArtistIdentity,
+  upsertArtistAlias,
   upsertArtistIdentity,
 } from './artist-identity-store.js';
 import { artistIdFor } from './library-scanner.js';
@@ -67,6 +69,74 @@ describe('loadSplitAuthority', () => {
     const auth = loadSplitAuthority(db);
     expect(auth.canonicalWhole.size).toBe(0);
     expect(auth.confirmedArtists.size).toBe(0);
+  });
+});
+
+describe('deriveMbidAliases', () => {
+  /** Seed one library artist with `songs` songs and a cached MBID link. */
+  function seedArtist(name: string, mbid: string, songs: number, albums = 0): void {
+    const id = artistIdFor(name);
+    db.run(
+      `INSERT INTO library_artists (id, name, album_count, synced_at) VALUES (?, ?, ?, 1)`,
+      [id, name, albums],
+    );
+    db.run(
+      `INSERT INTO artist_discography_links (artist_id, lidarr_id, mbid, checked_at) VALUES (?, NULL, ?, 1)`,
+      [id, mbid],
+    );
+    for (let i = 0; i < songs; i++) {
+      db.run(
+        `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, size, bit_rate, suffix, content_type, created, synced_at)
+         VALUES (?, 'alb', 'T', ?, ?, 0, ?, 10, 320, 'opus', 'audio/opus', '2024-01-01', 1)`,
+        [`${name}-${i}`, name, id, `${name}/${i}.opus`],
+      );
+    }
+  }
+
+  it('proposes aliasing the fewer-songs spelling to the canonical one on MBID equality', () => {
+    seedArtist('Snoop Dogg', 'mbid-snoop', 5);
+    seedArtist('Snoop Dog', 'mbid-snoop', 1);
+    seedArtist('Dr. Dre', 'mbid-dre', 3); // unique MBID — untouched
+
+    const proposals = deriveMbidAliases(db);
+
+    expect(proposals).toEqual([
+      {
+        aliasNorm: 'snoop dog',
+        variantName: 'Snoop Dog',
+        canonicalName: 'Snoop Dogg',
+        mbid: 'mbid-snoop',
+      },
+    ]);
+    // Proposals only — nothing written without apply (human-gated; see docblock).
+    expect(loadSplitAuthority(db).aliases.size).toBe(0);
+
+    deriveMbidAliases(db, { apply: true });
+    const auth = loadSplitAuthority(db);
+    expect(auth.aliases.get('snoop dog')).toBe('Snoop Dogg');
+    expect(auth.aliases.has('snoop dogg')).toBe(false);
+    expect(auth.aliases.has('dr. dre')).toBe(false);
+  });
+
+  it('never overwrites a user-sourced alias', () => {
+    seedArtist('Snoop Dogg', 'mbid-snoop', 5);
+    seedArtist('Snoop Dog', 'mbid-snoop', 1);
+    upsertArtistAlias(db, {
+      aliasNorm: 'snoop dog',
+      canonicalName: 'Snoop D-O-Double-G',
+      source: 'user',
+    });
+
+    deriveMbidAliases(db, { apply: true });
+
+    expect(loadSplitAuthority(db).aliases.get('snoop dog')).toBe('Snoop D-O-Double-G');
+  });
+
+  it('proposes nothing when every MBID is unique', () => {
+    seedArtist('Charly García', 'mbid-charly', 4);
+    seedArtist('Fito Páez', 'mbid-fito', 2);
+    expect(deriveMbidAliases(db, { apply: true })).toHaveLength(0);
+    expect(loadSplitAuthority(db).aliases.size).toBe(0);
   });
 });
 
