@@ -17,7 +17,6 @@ export type FileTranscoder = (
   outPath: string,
   format: TranscodeFmt,
   kbps: number,
-  vocalRemoval?: boolean,
 ) => Promise<void>;
 
 export interface TranscodeCacheOptions {
@@ -34,16 +33,15 @@ const DEFAULT_BUDGET_BYTES = 2 * 1024 * 1024 * 1024; // 2 GiB
 // track (or a play + its pre-buffer) don't spawn two ffmpegs for one cache entry.
 const inFlight = new Map<string, Promise<string>>();
 
-/** Deterministic cache id: source path + mtime + target format/bitrate + vocal removal flag + filter version. */
+/** Deterministic cache id: source path + mtime + target format/bitrate. */
 export function transcodeCacheKey(
   absPath: string,
   mtimeMs: number,
   format: TranscodeFmt,
   kbps: number,
-  vocalRemoval = false,
 ): string {
   return createHash('sha1')
-    .update(`${absPath}|${Math.round(mtimeMs)}|${format}|${kbps}|${vocalRemoval ? 1 : 0}|v4`)
+    .update(`${absPath}|${Math.round(mtimeMs)}|${format}|${kbps}`)
     .digest('hex');
 }
 
@@ -55,23 +53,19 @@ export function transcodeCacheKey(
  *
  * The key includes the source mtime, so re-encoding the original (e.g. the
  * lossless→Opus migration) naturally invalidates the stale transcode.
- *
- * When `vocalRemoval` is true, the cache key includes that flag so vocal-removed
- * variants are stored separately from normal transcodes.
  */
 export async function getTranscodedFile(
   cacheDir: string,
   absPath: string,
   format: TranscodeFmt,
   kbps: number,
-  opts: TranscodeCacheOptions & { vocalRemoval?: boolean } = {},
+  opts: TranscodeCacheOptions = {},
 ): Promise<string> {
   const transcoder = opts.transcoder ?? defaultTranscodeToFile;
   const budgetBytes = opts.budgetBytes ?? DEFAULT_BUDGET_BYTES;
-  const vocalRemoval = opts.vocalRemoval ?? false;
 
   const st = statSync(absPath);
-  const key = transcodeCacheKey(absPath, st.mtimeMs, format, kbps, vocalRemoval);
+  const key = transcodeCacheKey(absPath, st.mtimeMs, format, kbps);
   const outPath = join(cacheDir, `${key}.${transcodeExt(format)}`);
   if (existsSync(outPath)) return outPath;
 
@@ -79,7 +73,7 @@ export async function getTranscodedFile(
   if (!pending) {
     pending = (async () => {
       mkdirSync(cacheDir, { recursive: true });
-      await transcoder(absPath, outPath, format, kbps, vocalRemoval);
+      await transcoder(absPath, outPath, format, kbps);
       void pruneTranscodeCache(cacheDir, budgetBytes).catch((err) =>
         log.debug({ err }, 'transcode cache prune failed'),
       );
