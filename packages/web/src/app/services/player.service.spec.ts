@@ -578,4 +578,30 @@ describe('PlayerService', () => {
       expect(service.radio()).toBe(true);
     });
   });
+
+  describe('vocal mute (karaoke)', () => {
+    it('toggleVocalMute flips the signal', () => {
+      expect(service.vocalsMuted()).toBe(false);
+      service.toggleVocalMute();
+      expect(service.vocalsMuted()).toBe(true);
+      service.toggleVocalMute();
+      expect(service.vocalsMuted()).toBe(false);
+    });
+
+    it('vocalsMuted persists across track changes', () => {
+      service.play(track1);
+      service.toggleVocalMute();
+      expect(service.vocalsMuted()).toBe(true);
+      service.play(track2);
+      expect(service.vocalsMuted()).toBe(true);
+    });
+
+    it('clear() resets vocalsMuted to false', () => {
+      service.play(track1);
+      service.toggleVocalMute();
+      expect(service.vocalsMuted()).toBe(true);
+      service.clear();
+      expect(service.vocalsMuted()).toBe(false);
+    });
+  });
 });

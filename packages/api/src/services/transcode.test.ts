@@ -12,6 +12,7 @@ const realFs = { ...realFsNamespace };
 // Mutable knobs the mocks read, reset per test.
 let execThrows = false;
 let lastProc: FakeProc | null = null;
+let lastSpawnArgs: string[] | null = null;
 const renamed: Array<{ from: string; to: string }> = [];
 const unlinked: string[] = [];
 
@@ -24,7 +25,8 @@ mock.module('node:child_process', () => ({
     if (execThrows) throw new Error('ffmpeg: command not found');
     return Buffer.from('');
   },
-  spawn: () => {
+  spawn: (_cmd: string, args: string[]) => {
+    lastSpawnArgs = args;
     lastProc = new FakeProc();
     return lastProc;
   },
@@ -59,6 +61,7 @@ afterAll(() => {
 beforeEach(() => {
   execThrows = false;
   lastProc = null;
+  lastSpawnArgs = null;
   renamed.length = 0;
   unlinked.length = 0;
   _resetFfmpegProbe();
@@ -117,5 +120,20 @@ describe('transcodeToFile', () => {
     lastProc!.emit('error', new Error('spawn ENOENT'));
     await expect(p).rejects.toThrow(/ENOENT/);
     expect(unlinked.some((u) => u.startsWith('/out.mp3.tmp-'))).toBe(true);
+  });
+
+  it('injects the center-channel cancellation filter when vocalRemoval is true', async () => {
+    const p = transcodeToFile('/in.flac', '/out.opus', 'opus', 128, true);
+    lastProc!.emit('close', 0);
+    await expect(p).resolves.toBeUndefined();
+    expect(lastSpawnArgs).toContain('-af');
+    expect(lastSpawnArgs).toContain('pan=stereo|c0=c0-c1|c1=c1-c0');
+  });
+
+  it('omits the -af filter when vocalRemoval is false (default)', async () => {
+    const p = transcodeToFile('/in.flac', '/out.mp3', 'mp3', 192);
+    lastProc!.emit('close', 0);
+    await expect(p).resolves.toBeUndefined();
+    expect(lastSpawnArgs).not.toContain('-af');
   });
 });

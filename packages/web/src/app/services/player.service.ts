@@ -75,6 +75,9 @@ export class PlayerService {
   readonly duration = signal(0);
   readonly seekTo = signal<number | null>(null);
   readonly autoplayBlocked = signal(false);
+  // Karaoke vocal mute: when true, streams include ?vocals=off for center-channel
+  // cancellation. Persists across tracks until toggled off or player cleared.
+  readonly vocalsMuted = signal(false);
 
   // Audio is loading/stalled on the active device (set by PlayerComponent from
   // native <audio> events). `bufferingVisible` is the render-safe view: it only
@@ -291,6 +294,7 @@ export class PlayerService {
     this.context.set(null);
     this.currentTime.set(0);
     this.duration.set(0);
+    this.vocalsMuted.set(false);
     this.setBuffering(false);
     this.bufferedRanges.set([]);
     localStorage.removeItem(PlayerService.STORAGE_KEY);
@@ -351,6 +355,10 @@ export class PlayerService {
     this.radio.update((r) => !r);
     // Turning it on with a low queue should fill immediately, not wait for a drain.
     if (this.radio()) untracked(() => void this.replenishRadio());
+  }
+
+  toggleVocalMute(): void {
+    this.vocalsMuted.update((v) => !v);
   }
 
   /** Append fresh library tracks to the queue, skipping anything already lined up. */

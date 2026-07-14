@@ -117,6 +117,24 @@ export function streamingRoutes(musicDir: string, db: Database, dataDir: string)
       }
     }
 
+    // Vocal removal: a separate branch that runs regardless of transcodeEnabled.
+    // Only gated on ffmpeg availability since it's an explicit user request.
+    const wantsVocalRemoval = c.req.query('vocals') === 'off';
+    if (wantsVocalRemoval) {
+      if (!ffmpegAvailable()) {
+        return c.json({ error: 'vocal removal requires ffmpeg' }, 501);
+      }
+      try {
+        const cached = await getTranscodedFile(transcodeCacheDir, abs, 'opus', 128, {
+          vocalRemoval: true,
+        });
+        return serveFileWithRange(cached, range, transcodeContentType('opus'));
+      } catch (err) {
+        log.error({ err, abs }, 'vocal removal failed; falling back to original');
+        // fall through to passthrough
+      }
+    }
+
     // Passthrough with HTTP range support.
     return serveFileWithRange(abs, range);
   });
