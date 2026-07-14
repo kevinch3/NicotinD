@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.192](https://github.com/kevinch3/NicotinD/compare/v0.1.191...v0.1.192) (2026-07-14)
+
+
+### Features
+
+* **web:** collapse every peer folder of one album into a single download card ([2e68adf](https://github.com/kevinch3/NicotinD/commit/2e68adf581ad373e075d3b238af732c26e6472aa))
+
 ## [0.1.191](https://github.com/kevinch3/NicotinD/compare/v0.1.190...v0.1.191) (2026-07-14)
 
 
