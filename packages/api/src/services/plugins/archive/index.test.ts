@@ -194,12 +194,31 @@ describe('ArchivePlugin', () => {
 
     // Two files (MP3s): track01.mp3 and track02.mp3 → 2 files × 2 events = 4 events
     expect(tracks).toHaveLength(4);
-    // First file: downloading, then done
-    expect(tracks[0]).toEqual({ jobId: 'j-tracks', title: 'track01.mp3', status: 'downloading' });
-    expect(tracks[1]).toEqual({ jobId: 'j-tracks', title: 'track01.mp3', status: 'done' });
+    // First file: downloading, then done — extension stripped from the title.
+    expect(tracks[0]).toEqual({ jobId: 'j-tracks', title: 'track01', status: 'downloading' });
+    expect(tracks[1]).toEqual({ jobId: 'j-tracks', title: 'track01', status: 'done' });
     // Second file: downloading, then done
-    expect(tracks[2]).toEqual({ jobId: 'j-tracks', title: 'track02.mp3', status: 'downloading' });
-    expect(tracks[3]).toEqual({ jobId: 'j-tracks', title: 'track02.mp3', status: 'done' });
+    expect(tracks[2]).toEqual({ jobId: 'j-tracks', title: 'track02', status: 'downloading' });
+    expect(tracks[3]).toEqual({ jobId: 'j-tracks', title: 'track02', status: 'done' });
+  });
+
+  it('strips the file extension from the emitted track title', async () => {
+    // Regression: the raw archive.org filename (incl. extension) used to leak
+    // into the "Now:" line as e.g. "Now: track01.mp3" — poor UX for the one
+    // backend where "Now:" reliably fires.
+    const downloadFile = mock(async () => {});
+    const p = new ArchivePlugin(cfg(), {
+      fetchFn: metadataFetch(SAMPLE_META),
+      downloadFile,
+    });
+    await p.init(fakeCtx());
+
+    await p.resolve.resolve('https://archive.org/details/rafaga-una-cerveza', 'j-ext');
+
+    expect(tracks.length).toBeGreaterThan(0);
+    for (const t of tracks) {
+      expect(t.title).not.toMatch(/\.[a-zA-Z0-9]+$/);
+    }
   });
 
   it('rejects when metadata lookup 404s', async () => {
