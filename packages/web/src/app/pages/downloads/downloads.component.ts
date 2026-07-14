@@ -524,10 +524,19 @@ export class DownloadsComponent implements OnInit, OnDestroy {
 
   // ─── Unified feed dispatch (routes a DownloadItem action to its source) ───
 
+  /**
+   * The slskd folder groups behind a feed card. A collapsed card (one album
+   * spread over several peers/subfolders) carries every member's key, so
+   * actions fan out to all of them.
+   */
+  private groupsForItem(item: DownloadItem): AlbumGroup[] {
+    const keys = new Set(item.memberKeys ?? [item.key]);
+    return this.groups().filter((g) => keys.has(g.key));
+  }
+
   onItemRetry(item: DownloadItem): void {
     if (item.kind === 'slskd') {
-      const g = this.groups().find((x) => x.key === item.key);
-      if (g) void this.retryGroup(g);
+      for (const g of this.groupsForItem(item)) void this.retryGroup(g);
     } else {
       const j = this.transferService.acquireJobs().find((x) => x.id === item.key);
       if (j) void this.retryAcquireJob(j);
@@ -536,8 +545,7 @@ export class DownloadsComponent implements OnInit, OnDestroy {
 
   onItemCancel(item: DownloadItem): void {
     if (item.kind === 'slskd') {
-      const g = this.groups().find((x) => x.key === item.key);
-      if (g) void this.clearGroup(g);
+      for (const g of this.groupsForItem(item)) void this.clearGroup(g);
     } else {
       const j = this.transferService.acquireJobs().find((x) => x.id === item.key);
       if (j) void this.dismissAcquireJob(j);
@@ -546,8 +554,7 @@ export class DownloadsComponent implements OnInit, OnDestroy {
 
   onItemRemove(item: DownloadItem): void {
     if (item.kind === 'slskd') {
-      const g = this.groups().find((x) => x.key === item.key);
-      if (g) this.removeGroup(g);
+      for (const g of this.groupsForItem(item)) this.removeGroup(g);
     } else {
       const j = this.transferService.acquireJobs().find((x) => x.id === item.key);
       if (j) void this.dismissAcquireJob(j);

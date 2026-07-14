@@ -1,5 +1,22 @@
 [
   {
+    "version": "0.1.191",
+    "date": "2026-07-14",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.190...v0.1.191",
+    "sections": [
+      {
+        "title": "Features",
+        "items": [
+          "**api:** acquisition-job stage tracking through the download pipeline ([f663210](https://github.com/kevinch3/NicotinD/commit/f6632100661071d2cf79cccfe971de39efd0e307))",
+          "**api:** legacy album_jobs readers UNION the unified acquisition_jobs ([17ac6ae](https://github.com/kevinch3/NicotinD/commit/17ac6ae190d84cee2a8519fccf486cf8e237ca4d))",
+          "**api:** pre-fill genre/year from acquisition-job metadata at scan time ([c1047dd](https://github.com/kevinch3/NicotinD/commit/c1047ddfbaaa2f951d9a028cfff65cae8a429d96))",
+          "**api:** unified acquisition jobs — schema, store, enqueue-time recording ([083d08a](https://github.com/kevinch3/NicotinD/commit/083d08a4a90d1b2b3d8131159e66b7bc4c8d788f))",
+          "unified acquisition-job feed — stored-key enrichment, /downloads/jobs, web stage merge ([8e375c1](https://github.com/kevinch3/NicotinD/commit/8e375c13806b734c4a345ff31bc530eb54ce2bf0))"
+        ]
+      }
+    ]
+  },
+  {
     "version": "0.1.190",
     "date": "2026-07-13",
     "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.189...v0.1.190",
@@ -697,19 +714,6 @@
         "title": "Features",
         "items": [
           "**presence:** admin-only presence tracking via HTTP heartbeats ([abe9cd2](https://github.com/kevinch3/NicotinD/commit/abe9cd243177c91f0a1f20df5779c2f6caefeb26))"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.1.141",
-    "date": "2026-07-03",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.140...v0.1.141",
-    "sections": [
-      {
-        "title": "Features",
-        "items": [
-          "**api:** native auto-acquisition loop over Lidarr wanted/missing ([5cbc6ba](https://github.com/kevinch3/NicotinD/commit/5cbc6ba5a638c318226ef48dcaf808edc80ca2d5))"
         ]
       }
     ]

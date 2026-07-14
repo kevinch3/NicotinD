@@ -31,6 +31,10 @@
 
 - **(Medium) BPM wrongly calculated — octave errors both ways.** *Use:* filtering artists by `bpmMax=80` surfaced AC/DC "Shoot to Thrill" at 73 BPM when the real tempo is ~141. *Root cause:* the `music-tempo` detector's agent-based beat tracker prefers half- or double-tempo lock-ins even when its own tempo-induction top hypothesis is right (for this file: hypothesis 141.3, chosen agent 72.6). A random 8-track prod sample showed **4/8 stored BPMs off by 2×, in both directions** (stored 178 vs real ~89, stored 186 vs ~93…), so no one-direction bun-side heuristic can repair it. The wrong values were also written to file tags. **◑ Fixed in code:** sidecar `POST /rhythm` (Essentia RhythmExtractor2013, matched every confident spot-check) now preferred by the bpm task + on-demand analyze; `analyze-bpm.ts --recheck` repairs stored values (tag-ignoring, confidence-gated). **Pending:** run the recheck backfill on prod after deploy. *Also evaluated:* time-signature storage — rejected; Essentia's `Meter` gave 2.0 for 4/4 and 12.0 for 6/8 (needs downbeat tracking to do properly). → `docs/audio-ml-enrichment.md`, `docs/library-processing.md`.
 
+### 2026-07-14
+
+- **(Medium) One album hunt still shows as 5 separate download cards.** *Use:* right after the unified acquisition-jobs deploy (PR #132), a "Los Chalchaleros" hunt rendered five Active-feed entries — the user expected one card with all the queues. *Root cause:* the jobs shipped stored transfer↔job linkage and per-row stage upgrades, but the web feed still built **one row per slskd peer folder** (`groupByAlbum` keys on `username:directory`); multi-peer hunts, CD1/CD2 subfolders and alternate-peer fallback pulls each got their own row, and the merge only upgraded a single matching row's stage. **✅ Fixed:** `collapseAlbumMembers` in `mergeAcquisitionJobs` folds every folder group sharing an `albumId` into one card (progress from the job's item tallies, most-active member's stage, actions fan out via `memberKeys`). Pre-deploy transfers have no job rows and stay per-folder until cleared (one-time). → `docs/acquisition-jobs.md`.
+
 ---
 
 ## Aggregated themes (window total)

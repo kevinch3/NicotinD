@@ -140,6 +140,12 @@ export interface DownloadItem {
   error?: string;
   /** Tracks the fallback gave up on — renders "· K unavailable" (honest partial). */
   unavailable?: number;
+  /**
+   * When this card collapses several slskd folder groups of one album
+   * (multi-peer hunts, CD1/CD2 subfolders, fallback pulls), the member group
+   * keys — actions (cancel/retry/remove) must fan out to every one of them.
+   */
+  memberKeys?: string[];
   canRetry: boolean;
   canCancel: boolean;
   canRemove: boolean;
@@ -249,42 +255,91 @@ const POST_DOWNLOAD_STAGES: ReadonlySet<PipelineStage> = new Set([
 ]);
 
 /**
+ * Collapse the slskd folder groups of ONE album (multi-peer hunts, CD1/CD2
+ * subfolders, alternate-peer fallback pulls) into a single card, preferring
+ * the job's item tallies ("9 of 13") over per-folder file counts. The card
+ * stays on the most-active member's stage while anything is still moving, and
+ * only adopts the job's post-download stage once every folder finished.
+ */
+function collapseAlbumMembers(
+  albumId: string,
+  members: DownloadItem[],
+  job: AcquisitionJobView | undefined,
+): DownloadItem {
+  const base = members[0];
+  const single = members.length === 1;
+  const mostActive = members.reduce((a, b) => (STAGE_ORDER[b.stage] < STAGE_ORDER[a.stage] ? b : a));
+  const allDone = members.every((m) => m.stage === 'done');
+  const stage =
+    allDone && job && POST_DOWNLOAD_STAGES.has(job.stage) ? job.stage : mostActive.stage;
+
+  const progress = job
+    ? { done: job.progress.delivered, total: job.progress.expected }
+    : {
+        done: members.reduce((s, m) => s + (m.progress?.done ?? 0), 0),
+        total: Math.max(...members.map((m) => m.progress?.total ?? 0)),
+      };
+  const percents = members.map((m) => m.percent).filter((p): p is number => p !== undefined);
+  const startTimes = members.map((m) => m.startedAt).filter((t): t is number => t !== undefined);
+  const unavailable = job && job.progress.unavailable > 0 ? job.progress.unavailable : undefined;
+
+  return {
+    ...base,
+    // A single member keeps its own key so nothing observable changes for the
+    // common one-folder case; a collapsed card gets a stable album-level key.
+    key: single ? base.key : `alb:${albumId}`,
+    stage,
+    progress,
+    percent: stage === 'downloading' && percents.length ? Math.round(percents.reduce((a, b) => a + b, 0) / percents.length) : undefined,
+    startedAt: startTimes.length ? Math.min(...startTimes) : undefined,
+    unavailable: unavailable ?? base.unavailable,
+    memberKeys: members.map((m) => m.key),
+    canRetry: members.some((m) => m.canRetry),
+    canCancel: members.some((m) => m.canCancel),
+    canRemove: true,
+  };
+}
+
+/**
  * Fold the unified acquisition jobs (`GET /api/downloads/jobs`) into the feed:
- * a slskd row whose transfers all succeeded adopts the job's post-download
- * stage (organizing → scanning → processing → done) and its unavailable count,
- * so the row keeps reporting until the album actually lands in the library.
- * Active jobs whose transfers vanished from slskd (restart, cleared list) are
- * appended as their own rows so a job in flight is never invisible. URL jobs
- * are skipped — the AcquireJob lane already renders them.
+ * every slskd folder group of one album collapses into a single card (see
+ * {@link collapseAlbumMembers}); a card whose transfers all succeeded adopts
+ * the job's post-download stage (organizing → scanning → processing → done)
+ * and its unavailable count, so it keeps reporting until the album actually
+ * lands in the library. Active jobs whose transfers vanished from slskd
+ * (restart, cleared list) are appended as their own rows so a job in flight
+ * is never invisible. URL jobs are skipped — the AcquireJob lane already
+ * renders them.
  */
 export function mergeAcquisitionJobs(
   items: DownloadItem[],
   jobs: AcquisitionJobView[],
 ): DownloadItem[] {
-  const merged = [...items];
-  const byAlbumId = new Map<string, number>();
-  merged.forEach((item, i) => {
-    if (item.kind === 'slskd' && item.albumId) byAlbumId.set(item.albumId, i);
-  });
+  const merged: DownloadItem[] = [];
+  const buckets = new Map<string, DownloadItem[]>();
+  for (const item of items) {
+    if (item.kind === 'slskd' && item.albumId) {
+      const list = buckets.get(item.albumId) ?? [];
+      list.push(item);
+      buckets.set(item.albumId, list);
+    } else {
+      merged.push(item);
+    }
+  }
+
+  const jobByAlbumId = new Map<string, AcquisitionJobView>();
+  for (const job of jobs) {
+    if (job.kind !== 'url' && job.albumId) jobByAlbumId.set(job.albumId, job);
+  }
+
+  const representedAlbumIds = new Set(buckets.keys());
+  for (const [albumId, members] of buckets) {
+    merged.push(collapseAlbumMembers(albumId, members, jobByAlbumId.get(albumId)));
+  }
 
   for (const job of jobs) {
     if (job.kind === 'url') continue;
-    const idx = job.albumId != null ? byAlbumId.get(job.albumId) : undefined;
-    if (idx !== undefined) {
-      const item = merged[idx];
-      // Only advance a row whose transfers are finished; an in-flight row keeps
-      // its live progress/percent from slskd.
-      if (item.stage === 'done' && POST_DOWNLOAD_STAGES.has(job.stage)) {
-        merged[idx] = {
-          ...item,
-          stage: job.stage,
-          unavailable: job.progress.unavailable > 0 ? job.progress.unavailable : item.unavailable,
-        };
-      } else if (job.progress.unavailable > 0) {
-        merged[idx] = { ...item, unavailable: job.progress.unavailable };
-      }
-      continue;
-    }
+    if (job.albumId && representedAlbumIds.has(job.albumId)) continue;
     // No live transfers for this job: only surface it while it's still active
     // (finished jobs with no transfers are history, not feed).
     if (job.state !== 'active') continue;
