@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.194](https://github.com/kevinch3/NicotinD/compare/v0.1.193...v0.1.194) (2026-07-14)
+
+
+### Bug Fixes
+
+* **api:** switch vocal removal to stereotools mid/side filter ([d3e101d](https://github.com/kevinch3/NicotinD/commit/d3e101d92fd7bb294443a6fdd0fbcac422981cc3))
+
 ## [0.1.193](https://github.com/kevinch3/NicotinD/compare/v0.1.192...v0.1.193) (2026-07-14)
 
 
