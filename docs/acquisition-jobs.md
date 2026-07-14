@@ -143,6 +143,15 @@ after they last moved (`updated_at`, so a just-closed job stays visible).
   ("11 of 13 · 2 unavailable" via the `download-unavailable` chip); active
   jobs whose transfers vanished from slskd render as their own rows; URL jobs
   are skipped (the AcquireJob lane already shows them).
+- **One card per album** (`collapseAlbumMembers`): every slskd folder group
+  sharing an `albumId` (multi-peer hunts, CD1/CD2 subfolders, alternate-peer
+  fallback pulls) collapses into a single card. Progress prefers the job's
+  item tallies ("9 of 13") over per-folder file counts; the card stays on the
+  most-active member's stage while anything is still downloading. The
+  collapsed `DownloadItem` carries `memberKeys` and the Downloads page fans
+  cancel/retry/remove out to every member folder group (`groupsForItem`).
+  Transfers enqueued before this feature deployed have no job rows, so they
+  still render per-folder until they finish/are cleared — expected, one-time.
 
 ## Metadata pre-fill (Phase 4 — shipped)
 

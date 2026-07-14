@@ -252,6 +252,121 @@ describe('mergeAcquisitionJobs', () => {
       [],
     );
 
+  it('collapses every peer folder of one album into a single card', () => {
+    // One hunt whose transfers ended up in three slskd folder groups: the
+    // primary peer's CD1/CD2 subfolders plus an alternate-peer fallback pull.
+    // The user must see ONE card for the album, not three.
+    const meta = {
+      artistName: 'Los Chalchaleros',
+      albumTitle: 'Los Chalchaleros',
+      canonicalTrackCount: 13,
+      albumId: 'chalcha-1',
+    };
+    const items = buildDownloadFeed(
+      groupByAlbum([
+        {
+          username: 'primary',
+          directories: [
+            {
+              directory: 'M\\Album\\CD1',
+              fileCount: 2,
+              files: [
+                file({ id: 'a', state: 'Completed, Succeeded' }),
+                file({ id: 'b', state: 'InProgress' }),
+              ],
+              albumJob: meta,
+            },
+            {
+              directory: 'M\\Album\\CD2',
+              fileCount: 1,
+              files: [file({ id: 'c', state: 'Completed, Succeeded' })],
+              albumJob: meta,
+            },
+          ],
+        },
+        {
+          username: 'alt-peer',
+          directories: [
+            {
+              directory: 'Elsewhere\\Album',
+              fileCount: 1,
+              files: [file({ id: 'd', state: 'Completed, Succeeded' })],
+              albumJob: meta,
+            },
+          ],
+        },
+      ]),
+      [],
+    );
+    expect(items).toHaveLength(3); // sanity: pre-merge fragmentation
+
+    const merged = mergeAcquisitionJobs(items, [
+      acqJob({
+        id: 'job-ch',
+        albumId: 'chalcha-1',
+        artistName: 'Los Chalchaleros',
+        albumTitle: 'Los Chalchaleros',
+        progress: { expected: 13, delivered: 9, unavailable: 0, failed: 0 },
+      }),
+    ]);
+
+    expect(merged).toHaveLength(1);
+    const card = merged[0];
+    expect(card.title).toBe('Los Chalchaleros');
+    expect(card.subtitle).toBe('Los Chalchaleros');
+    // The job's item tallies are authoritative: "9 of 13".
+    expect(card.progress).toEqual({ done: 9, total: 13 });
+    // One member still downloading → the card is downloading (never hides live work).
+    expect(card.stage).toBe('downloading');
+    // Actions must fan out to every member folder group.
+    expect(card.memberKeys?.sort()).toEqual([
+      'alt-peer:Elsewhere\\Album',
+      'primary:M\\Album\\CD1',
+      'primary:M\\Album\\CD2',
+    ]);
+    expect(card.canCancel).toBe(true);
+  });
+
+  it('collapses same-album folders even without a matching job row (shared albumId)', () => {
+    const meta = {
+      artistName: 'A',
+      albumTitle: 'B',
+      canonicalTrackCount: 10,
+      albumId: 'ab-1',
+    };
+    const items = buildDownloadFeed(
+      groupByAlbum([
+        {
+          username: 'p1',
+          directories: [
+            {
+              directory: 'x\\B',
+              fileCount: 1,
+              files: [file({ id: 'a', state: 'Completed, Succeeded' })],
+              albumJob: meta,
+            },
+          ],
+        },
+        {
+          username: 'p2',
+          directories: [
+            {
+              directory: 'y\\B',
+              fileCount: 1,
+              files: [file({ id: 'b', state: 'Completed, Succeeded' })],
+              albumJob: meta,
+            },
+          ],
+        },
+      ]),
+      [],
+    );
+    const merged = mergeAcquisitionJobs(items, []);
+    expect(merged).toHaveLength(1);
+    // No job tallies → sum member completions against the canonical total.
+    expect(merged[0].progress).toEqual({ done: 2, total: 10 });
+  });
+
   it("upgrades a finished slskd group to the job's post-download stage", () => {
     const merged = mergeAcquisitionJobs(doneGroupItems(), [acqJob({ stage: 'processing' })]);
     expect(merged).toHaveLength(1);
