@@ -90,6 +90,24 @@ describe('streaming routes', () => {
     }
   });
 
+  it('accepts ?vocals=off and stays seekable even with transcoding disabled', async () => {
+    // Vocal mute must force the transcode path regardless of the transcodeEnabled
+    // setting. Transcoding the fake (non-audio) bytes fails (or ffmpeg is absent),
+    // so the route degrades to a range-served passthrough — never a broken stream.
+    db.run(
+      `INSERT INTO app_settings (key, value) VALUES ('streaming', ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+      [JSON.stringify({ transcodeEnabled: false, forceTranscode: false, format: 'mp3', maxBitRate: 192 })],
+    );
+    try {
+      const res = await app.request('/stream/song-1?vocals=off', { headers: { range: 'bytes=2-5' } });
+      expect(res.status).toBe(206);
+      expect(res.headers.get('content-range')).toBe('bytes 2-5/10');
+    } finally {
+      db.run(`DELETE FROM app_settings WHERE key = 'streaming'`);
+    }
+  });
+
   it('returns 404 when the song id is unknown', async () => {
     const res = await app.request('/stream/missing');
     expect(res.status).toBe(404);

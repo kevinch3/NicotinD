@@ -25,14 +25,16 @@ afterEach(() => {
   rmSync(cacheDir, { recursive: true, force: true });
 });
 
-/** Fake transcoder: writes deterministic bytes and counts invocations. */
-function makeTranscoder(): { fn: FileTranscoder; calls: () => number } {
+/** Fake transcoder: writes deterministic bytes and records each invocation. */
+function makeTranscoder(): { fn: FileTranscoder; calls: () => number; vocalFlags: boolean[] } {
   let count = 0;
-  const fn: FileTranscoder = async (_absPath, outPath) => {
+  const vocalFlags: boolean[] = [];
+  const fn: FileTranscoder = async (_absPath, outPath, _format, _kbps, vocalRemoval) => {
     count += 1;
+    vocalFlags.push(vocalRemoval);
     writeFileSync(outPath, `TRANSCODED-${count}`);
   };
-  return { fn, calls: () => count };
+  return { fn, calls: () => count, vocalFlags };
 }
 
 describe('transcode cache', () => {
@@ -59,6 +61,19 @@ describe('transcode cache', () => {
     const aac = await getTranscodedFile(cacheDir, srcPath, 'aac', 128, { transcoder: t.fn });
     expect(aac).not.toBe(mp3);
     expect(t.calls()).toBe(2);
+  });
+
+  it('keys by vocal-removal flag (filtered stream is a distinct cache entry)', async () => {
+    const t = makeTranscoder();
+    const normal = await getTranscodedFile(cacheDir, srcPath, 'mp3', 192, { transcoder: t.fn });
+    const noVocals = await getTranscodedFile(cacheDir, srcPath, 'mp3', 192, {
+      transcoder: t.fn,
+      vocalRemoval: true,
+    });
+    expect(noVocals).not.toBe(normal);
+    expect(t.calls()).toBe(2);
+    // The transcoder is told to filter for the vocal-removal request.
+    expect(t.vocalFlags).toEqual([false, true]);
   });
 
   it('re-transcodes when the source mtime changes (key includes mtime)', async () => {
@@ -94,6 +109,14 @@ describe('transcode cache', () => {
     const k3 = transcodeCacheKey('/m/a.flac', 2000, 'mp3', 192);
     expect(k1).toBe(k2);
     expect(k1).not.toBe(k3);
+  });
+
+  it('vocal-removal changes the key, and the default key is unchanged (cache-preserving)', () => {
+    const normal = transcodeCacheKey('/m/a.flac', 1000, 'mp3', 192);
+    const noVocals = transcodeCacheKey('/m/a.flac', 1000, 'mp3', 192, true);
+    expect(noVocals).not.toBe(normal);
+    // Passing the flag falsy must match the 4-arg call so existing cache entries survive.
+    expect(transcodeCacheKey('/m/a.flac', 1000, 'mp3', 192, false)).toBe(normal);
   });
 
   it('evicts oldest files when over the disk budget', async () => {
