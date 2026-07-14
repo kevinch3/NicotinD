@@ -74,6 +74,8 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
   private lastManualObjectUrl: string | null = null;
   // Track id that has been pre-buffered into the standby element.
   private preloadedTrackId: string | null = null;
+  // Tracks the last vocalsMuted value so Effect 6b skips its initial run.
+  private lastVocalsMuted: boolean | null = null;
 
   // Playback progress interpolation
   private interpolatedTime = signal(0);
@@ -167,7 +169,9 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
               db.updateLastAccessed(track.id);
             } else {
               // Metadata exists but blob missing — fall back to stream
-              audio.src = this.server.streamUrl(track.id, token);
+              audio.src = this.server.streamUrl(track.id, token, {
+                vocalsOff: this.player.vocalsMuted(),
+              });
             }
             // Don't autoplay on a fresh track load: the user must have pressed
             // play (or have autoplay_on_load + restored session — which routes
@@ -180,7 +184,9 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
             }
           })();
         } else {
-          audio.src = this.server.streamUrl(track.id, token);
+          audio.src = this.server.streamUrl(track.id, token, {
+            vocalsOff: this.player.vocalsMuted(),
+          });
           // See the preserve branch above for why play() is gated here.
           if (untracked(() => this.player.isPlaying())) {
             audio.play().catch((err) => {
@@ -296,6 +302,36 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
       if (!audio || seekTo === null) return;
       audio.currentTime = seekTo;
       this.player.clearSeek();
+    });
+
+    // Effect 6b: Vocal mute toggle — reloads the stream with/without the
+    // ?vocals=off param while preserving playback position. The brief gap
+    // (~1-2s transcode on first toggle, instant on cache hit) is acceptable
+    // for karaoke use.
+    effect(() => {
+      const vocalsMuted = this.player.vocalsMuted();
+      const track = this.player.currentTrack();
+      const token = this.auth.token();
+      const audio = this.audioEl()?.nativeElement;
+      if (!audio || !track) return;
+
+      // Skip the initial run (track load is handled by Effect 1).
+      if (this.lastVocalsMuted === null) {
+        this.lastVocalsMuted = vocalsMuted;
+        return;
+      }
+      if (vocalsMuted === this.lastVocalsMuted) return;
+      this.lastVocalsMuted = vocalsMuted;
+
+      // Preserve position across the reload.
+      const resumeAt = audio.currentTime;
+      audio.src = this.server.streamUrl(track.id, token, { vocalsOff: vocalsMuted });
+      audio.currentTime = resumeAt;
+      if (this.player.isPlaying()) {
+        audio.play().catch((err) => {
+          if (err.name === 'NotAllowedError') this.handlePlayRejection();
+        });
+      }
     });
 
     // Effect 7: Progress reporting interval
@@ -445,7 +481,9 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
               const standby = this.standbyNativeEl;
               if (standby) {
                 this.preloadedTrackId = nextTrack.id;
-                standby.src = this.server.streamUrl(nextTrack.id, this.auth.token());
+                standby.src = this.server.streamUrl(nextTrack.id, this.auth.token(), {
+                  vocalsOff: untracked(() => this.player.vocalsMuted()),
+                });
                 standby.preload = 'auto';
                 // load() without play() — just buffer the initial bytes
                 standby.load();
@@ -535,12 +573,16 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
                   this.lastManualObjectUrl = url;
                   audio.src = url;
                 } else {
-                  audio.src = this.server.streamUrl(nextTrack.id, token);
+                  audio.src = this.server.streamUrl(nextTrack.id, token, {
+                    vocalsOff: untracked(() => this.player.vocalsMuted()),
+                  });
                 }
                 playNext();
               });
             } else {
-              audio.src = this.server.streamUrl(nextTrack.id, token);
+              audio.src = this.server.streamUrl(nextTrack.id, token, {
+                vocalsOff: untracked(() => this.player.vocalsMuted()),
+              });
               playNext();
             }
           }
