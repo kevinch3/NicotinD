@@ -24,6 +24,7 @@ export type {
   AcquisitionMethod,
   PipelineStage,
   SongAcquisition,
+  TrackStatus,
 } from '../../../core/src/types/acquire';
 
 export type { ArchiveCandidate } from '../../../core/src/types/archive';

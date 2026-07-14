@@ -103,6 +103,7 @@ function job(over: Partial<AcquireJob> = {}): AcquireJob {
     albumArtist: null,
     albumTitle: null,
     destinationAlbums: [],
+    tracks: [],
     progress: { done: 2, total: 5 },
     error: null,
     created_at: 1_000,
@@ -221,6 +222,16 @@ describe('acquireJobToDownloadItem', () => {
     const item = acquireJobToDownloadItem(job({ destinationAlbums: [] }));
     expect(item.destinationAlbums).toEqual([]);
   });
+
+  it('carries tracks through from the acquire job onto the unified field', () => {
+    const tracks = [
+      { title: 'Track One', status: 'done' as const },
+      { title: 'Track Two', status: 'downloading' as const },
+      { title: 'Track Three', status: 'pending' as const },
+    ];
+    const item = acquireJobToDownloadItem(job({ tracks }));
+    expect(item.tracks).toEqual(tracks);
+  });
 });
 
 function acqJob(over: Partial<AcquisitionJobView> = {}): AcquisitionJobView {
@@ -239,6 +250,7 @@ function acqJob(over: Partial<AcquisitionJobView> = {}): AcquisitionJobView {
     updatedAt: 1000,
     albumId: 'album-id-1',
     progress: { expected: 2, delivered: 1, unavailable: 0, failed: 0 },
+    items: [],
     ...over,
   };
 }
@@ -434,6 +446,26 @@ describe('mergeAcquisitionJobs', () => {
     expect(merged[0].subtitle).toBe('Artist');
     expect(merged[0].stage).toBe('scanning');
     expect(merged[0].albumId).toBe('album-id-1');
+  });
+
+  it("carries the job's per-item statuses through onto the unified tracks field when a collapsed card has a matching job", () => {
+    const items = [
+      { title: 'Track One', status: 'done' as const },
+      { title: 'Track Two', status: 'downloading' as const },
+    ];
+    const merged = mergeAcquisitionJobs(doneGroupItems(), [acqJob({ items })]);
+    expect(merged[0].tracks).toEqual(items);
+  });
+
+  it('carries tracks through onto an appended job with no matching slskd transfers', () => {
+    const items = [{ title: 'Only Track', status: 'pending' as const }];
+    const merged = mergeAcquisitionJobs([], [acqJob({ stage: 'scanning', items })]);
+    expect(merged[0].tracks).toEqual(items);
+  });
+
+  it('leaves tracks undefined for a collapsed card with no matching job row', () => {
+    const merged = mergeAcquisitionJobs(doneGroupItems(), []);
+    expect(merged[0].tracks).toBeUndefined();
   });
 
   it('skips url-kind jobs (the AcquireJob lane already renders them)', () => {

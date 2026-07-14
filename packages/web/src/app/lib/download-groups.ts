@@ -4,6 +4,7 @@ import type {
   AcquisitionMethod,
   PipelineStage,
   SlskdUserTransferGroup,
+  TrackStatus,
 } from '@nicotind/core';
 
 export interface AlbumGroup {
@@ -140,6 +141,13 @@ export interface DownloadItem {
    * single "Open in Library" link.
    */
   destinationAlbums?: { albumArtist: string; albumTitle: string; albumId: string }[];
+  /**
+   * Per-track status, uniform across every acquisition backend (slskd hunts
+   * via the matched `AcquisitionJobView.items`, URL acquires via
+   * `AcquireJob.tracks`) — the frontend doesn't need to know which backend a
+   * job came from to render "now playing" / "up next".
+   */
+  tracks?: { title: string; status: TrackStatus }[];
   /** Completed / total tracks (or playlist items). */
   progress?: { done: number; total: number };
   /** 0–100 progress for the in-flight bar, when a percentage is meaningful. */
@@ -228,6 +236,7 @@ export function acquireJobToDownloadItem(job: AcquireJob): DownloadItem {
     storagePath: job.storage_path ?? undefined,
     albumId: job.albumId ?? undefined,
     destinationAlbums: job.destinationAlbums,
+    tracks: job.tracks,
     progress,
     percent:
       stage === 'downloading' && progress && progress.total > 0
@@ -297,6 +306,10 @@ function collapseAlbumMembers(
     // common one-folder case; a collapsed card gets a stable album-level key.
     key: single ? base.key : `alb:${albumId}`,
     stage,
+    // The job's per-item statuses are authoritative for a collapsed album card
+    // (same source as the tallies above) — the member groups have no
+    // per-track granularity of their own to conflict with.
+    tracks: job?.items,
     progress,
     percent: stage === 'downloading' && percents.length ? Math.round(percents.reduce((a, b) => a + b, 0) / percents.length) : undefined,
     startedAt: startTimes.length ? Math.min(...startTimes) : undefined,
@@ -360,6 +373,7 @@ export function mergeAcquisitionJobs(
       stage: job.stage,
       albumId: job.albumId ?? undefined,
       startedAt: job.createdAt,
+      tracks: job.items,
       progress: { done: job.progress.delivered, total: job.progress.expected },
       unavailable: job.progress.unavailable > 0 ? job.progress.unavailable : undefined,
       error: job.error ?? undefined,
