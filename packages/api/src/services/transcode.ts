@@ -68,16 +68,24 @@ export function transcodeContentType(format: TranscodeFmt): string {
  * on disk can be served with HTTP **range** support — which is what makes seeking
  * work on transcoded streams (the iOS/Firefox "far seek does nothing" bug).
  * Resolves on exit code 0, rejects (and cleans up the temp) otherwise.
+ *
+ * When `vocalRemoval` is true, injects a center-channel cancellation filter
+ * (`pan=stereo|c0=c0-c1|c1=c1-c0`) that subtracts L from R and vice versa,
+ * removing most center-panned vocals for karaoke use.
  */
 export function transcodeToFile(
   absPath: string,
   outPath: string,
   format: TranscodeFmt,
   kbps: number,
+  vocalRemoval = false,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const spec = FORMAT_ARGS[format];
     const tmp = `${outPath}.tmp-${process.pid}-${Date.now()}`;
+    const filterArgs = vocalRemoval
+      ? ['-af', 'pan=stereo|c0=c0-c1|c1=c1-c0']
+      : [];
     const args = [
       '-hide_banner',
       '-loglevel',
@@ -86,6 +94,7 @@ export function transcodeToFile(
       '-i',
       absPath,
       '-vn',
+      ...filterArgs,
       ...spec.args(kbps),
       tmp,
     ];
