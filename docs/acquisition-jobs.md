@@ -161,6 +161,12 @@ full rescan re-reads the value from the tag instead of wiping it.
 2. **Pipeline stage tracking** (shipped) — see above.
 3. **Read model + web feed** (shipped) — see above.
 4. **Metadata pre-fill** (shipped) — see above.
-5. Cleanup: legacy `album_jobs` readers (library suppression, curator, scanner
-   canonical map) migrate to `acquisition_jobs`; `transfer-group-keys.ts`
-   remains the safety net for job-less transfers.
+5. **Cleanup** (shipped) — the three legacy `album_jobs` readers now UNION the
+   unified table, so track-search/direct acquisitions (which never create an
+   `album_jobs` row) are covered too: download suppression
+   (`getDownloadingGroupKeys`, `routes/library.ts`), the curator's protected
+   keys (`loadProtectedKeys`, `library-curator.ts`), and the scanner's
+   canonical-tracklist map (`canonicalByAlbum`, `library-scanner.ts`).
+   `transfer-group-keys.ts` remains the permanent safety net for transfers
+   with no job at all (enqueued outside NicotinD). `enrichWithAlbumJobs`
+   remains one release as the legacy feed-label fallback.

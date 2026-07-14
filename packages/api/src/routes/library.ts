@@ -81,9 +81,14 @@ const SINGLE_EP_CLASSIFICATION_SQL = `classification IN ('single','ep')`;
  * from library listings so the user never sees an incomplete album.
  */
 function getDownloadingGroupKeys(db: Database, extraKeys?: Set<string>): Set<string> {
+  // Legacy album_jobs UNION the unified acquisition_jobs: the latter also
+  // covers track-search/direct jobs that never create an album_jobs row.
   const jobs = db
     .query<{ artist_name: string; album_title: string }, []>(
       `SELECT artist_name, album_title FROM album_jobs
+       WHERE state = 'active' AND artist_name IS NOT NULL AND album_title IS NOT NULL
+       UNION
+       SELECT artist_name, album_title FROM acquisition_jobs
        WHERE state = 'active' AND artist_name IS NOT NULL AND album_title IS NOT NULL`,
     )
     .all();
