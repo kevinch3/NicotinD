@@ -601,4 +601,63 @@ describe('PlayerComponent', () => {
       expect(btn.querySelector('.animate-spin')).toBeNull();
     });
   });
+
+  // ─── Vocal mute toggle (karaoke) ──────────────────────────────────────────
+
+  describe('vocal mute toggle', () => {
+    it('preserves playback position across the toggle via restoredTime', () => {
+      // Load a track first (Effect 1) without any vocal mute.
+      playerService.currentTrack.set(TRACK);
+      playerService.isPlaying.set(true);
+      fixture.detectChanges();
+
+      // Mock the audio element's currentTime + duration so Effect 6b sees them.
+      Object.defineProperty(fakeAudio, 'currentTime', { value: 30, configurable: true });
+      Object.defineProperty(fakeAudio, 'duration', { value: 180, configurable: true });
+      fakeAudio.removeAttribute('src');
+
+      // Toggle vocal mute ON. Effect 6b fires: sees lastVocalsMuted=false,
+      // vocalsMuted=true → they differ → stash 30 on restoredTime + reload.
+      playerService.toggleVocalMute();
+      fixture.detectChanges();
+
+      expect(playerService.restoredTime).toBe(30);
+      expect(fakeAudio.src).toContain('/api/stream/t1');
+      expect(fakeAudio.src).toContain('vocals=off');
+      expect(mockPlay).toHaveBeenCalled();
+    });
+
+    it('onDuration restores currentTime from restoredTime after the new audio loads', () => {
+      // Simulate the toggle reload sequence: restoredTime is set, then
+      // loadedmetadata fires on the new audio, onDuration runs and seeks.
+      playerService.restoredTime = 42;
+      Object.defineProperty(fakeAudio, 'duration', { value: 200, configurable: true });
+      Object.defineProperty(fakeAudio, 'currentTime', { value: 0, writable: true, configurable: true });
+
+      fakeAudio.dispatchEvent(new Event('loadedmetadata'));
+
+      expect(fakeAudio.currentTime).toBe(42);
+      expect(playerService.restoredTime).toBeNull();
+    });
+
+    it('does not stash restoredTime when currentTime is near the start', () => {
+      // Don't bother restoring within the first second of a track — the brief
+      // rebuffer is invisible at the start.
+      playerService.currentTrack.set(TRACK);
+      playerService.isPlaying.set(true);
+      fixture.detectChanges();
+
+      Object.defineProperty(fakeAudio, 'currentTime', { value: 0.5, configurable: true });
+      Object.defineProperty(fakeAudio, 'duration', { value: 180, configurable: true });
+      fakeAudio.removeAttribute('src');
+      playerService.restoredTime = null;
+
+      playerService.toggleVocalMute();
+      fixture.detectChanges();
+
+      // Within the first second, restoredTime stays null — the toggle reloads
+      // but there's no position to restore.
+      expect(playerService.restoredTime).toBeNull();
+    });
+  });
 });
