@@ -671,9 +671,15 @@ export class LibraryScanner {
     const map = new Map<string, string[]>();
     let rows: Array<{ artist_name: string; album_title: string; canonical_tracks_json: string }>;
     try {
+      // album_jobs UNION acquisition_jobs: the unified job table also carries
+      // canonical tracklists for acquisitions that never record an album_jobs
+      // row (track-search grabs).
       rows = this.db
         .query<{ artist_name: string; album_title: string; canonical_tracks_json: string }, []>(
           `SELECT artist_name, album_title, canonical_tracks_json FROM album_jobs
+           WHERE artist_name IS NOT NULL AND album_title IS NOT NULL AND canonical_tracks_json IS NOT NULL
+           UNION
+           SELECT artist_name, album_title, canonical_tracks_json FROM acquisition_jobs
            WHERE artist_name IS NOT NULL AND album_title IS NOT NULL AND canonical_tracks_json IS NOT NULL`,
         )
         .all();

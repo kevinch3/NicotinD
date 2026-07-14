@@ -3,6 +3,7 @@ import { Database } from 'bun:sqlite';
 import { applySchema } from '../db.js';
 import { AlbumFallbackService, type AlternateCandidate } from './album-fallback.service.js';
 import { albumIdFor } from './library-scanner.js';
+import { createJob, getJob } from './acquisition-job-store.js';
 import type { Slskd } from '@nicotind/slskd-client';
 
 interface MockFile {
@@ -125,6 +126,166 @@ describe('AlbumFallbackService', () => {
       'AltAlbum/02 Song Two.flac',
       'AltAlbum/03 Song Three.flac',
     ]);
+  });
+
+  it('repoints the unified acquisition job items when pulling from an alternate peer', async () => {
+    const { slskd } = makeSlskd([
+      {
+        username: 'primary',
+        directory: 'Album',
+        files: [
+          { id: 'p1', filename: 'Album/01 Song One.flac', size: 1, state: 'Completed, Succeeded' },
+          { id: 'p2', filename: 'Album/02 Song Two.flac', size: 1, state: 'Completed, Errored' },
+          { id: 'p3', filename: 'Album/03 Song Three.flac', size: 1, state: 'Completed, Errored' },
+        ],
+      },
+    ]);
+    db.run(
+      `INSERT INTO transfer_retries (transfer_key, username, filename, attempts, gave_up) VALUES
+       ('primary::Album/02 Song Two.flac', 'primary', 'x', 3, 1),
+       ('primary::Album/03 Song Three.flac', 'primary', 'x', 3, 1)`,
+    );
+    recordJob(db, [ALT]);
+    const acqId = createJob(db, {
+      kind: 'album-hunt',
+      method: 'slskd',
+      username: 'primary',
+      canonicalTracks: ['Song One', 'Song Two', 'Song Three'],
+      albumJobId: 1,
+      files: [
+        { filename: 'Album/01 Song One.flac' },
+        { filename: 'Album/02 Song Two.flac' },
+        { filename: 'Album/03 Song Three.flac' },
+      ],
+    });
+
+    const svc = new AlbumFallbackService(slskd, { db });
+    await svc.sweep();
+
+    const items = getJob(db, acqId)!.items;
+    // Track one was delivered by the primary — untouched.
+    expect(items[0].username).toBe('primary');
+    // Tracks two + three were re-pulled from the alternate: same item rows,
+    // new peer identity, attempts bumped.
+    expect(items[1].username).toBe('alt');
+    expect(items[1].transferKey).toBe('alt::AltAlbum/02 Song Two.flac');
+    expect(items[1].attempts).toBe(2);
+    expect(items[2].username).toBe('alt');
+    expect(items[2].transferKey).toBe('alt::AltAlbum/03 Song Three.flac');
+  });
+
+  it('repoints the unified job item on a fresh per-track search recovery', async () => {
+    const { slskd } = makeSlskdWithSearch(
+      [
+        {
+          username: 'primary',
+          directory: 'Album',
+          files: [
+            {
+              id: 'p1',
+              filename: 'Album/01 Song One.flac',
+              size: 1,
+              state: 'Completed, Succeeded',
+            },
+            { id: 'p2', filename: 'Album/02 Song Two.flac', size: 1, state: 'Completed, Errored' },
+          ],
+        },
+      ],
+      [
+        {
+          username: 'fresh-peer',
+          files: [{ filename: 'Elsewhere/Song Two.flac', size: 9 }],
+          freeUploadSlots: 1,
+          queueLength: 0,
+          uploadSpeed: 100,
+        },
+      ],
+    );
+    db.run(
+      `INSERT INTO transfer_retries (transfer_key, username, filename, attempts, gave_up) VALUES
+       ('primary::Album/02 Song Two.flac', 'primary', 'x', 3, 1)`,
+    );
+    AlbumFallbackService.recordJob(db, {
+      lidarrAlbumId: 1,
+      username: 'primary',
+      directory: 'Album',
+      artistName: 'Artist',
+      canonicalTracks: ['Song One', 'Song Two'],
+      alternates: [],
+    });
+    const acqId = createJob(db, {
+      kind: 'album-hunt',
+      method: 'slskd',
+      username: 'primary',
+      canonicalTracks: ['Song One', 'Song Two'],
+      albumJobId: 1,
+      files: [{ filename: 'Album/01 Song One.flac' }, { filename: 'Album/02 Song Two.flac' }],
+    });
+
+    const svc = new AlbumFallbackService(slskd, { db });
+    await svc.sweep();
+
+    const items = getJob(db, acqId)!.items;
+    expect(items[1].username).toBe('fresh-peer');
+    expect(items[1].transferKey).toBe('fresh-peer::Elsewhere/Song Two.flac');
+    expect(items[1].attempts).toBe(2);
+  });
+
+  it('closes the unified job as an honest partial when the fallback exhausts', async () => {
+    // Track one delivered + already scanned/landed; track two failed everywhere,
+    // no alternates left → album_job exhausts → the unified job must close as
+    // "done, 1 of 2" with the missing item unavailable — never an eternal spinner.
+    const { slskd } = makeSlskd([
+      {
+        username: 'primary',
+        directory: 'Album',
+        files: [
+          { id: 'p1', filename: 'Album/01 Song One.flac', size: 1, state: 'Completed, Succeeded' },
+          { id: 'p2', filename: 'Album/02 Song Two.flac', size: 1, state: 'Completed, Errored' },
+        ],
+      },
+    ]);
+    db.run(
+      `INSERT INTO transfer_retries (transfer_key, username, filename, attempts, gave_up) VALUES
+       ('primary::Album/02 Song Two.flac', 'primary', 'x', 3, 1)`,
+    );
+    AlbumFallbackService.recordJob(db, {
+      lidarrAlbumId: 1,
+      username: 'primary',
+      directory: 'Album',
+      canonicalTracks: ['Song One', 'Song Two'],
+      alternates: [],
+    });
+    const acqId = createJob(db, {
+      kind: 'album-hunt',
+      method: 'slskd',
+      username: 'primary',
+      canonicalTracks: ['Song One', 'Song Two'],
+      albumJobId: 1,
+      files: [{ filename: 'Album/01 Song One.flac' }, { filename: 'Album/02 Song Two.flac' }],
+    });
+    // Song One already made it through organize + scan + landing.
+    db.run(
+      `UPDATE acquisition_job_items SET state = 'scanned', song_id = 's1', relative_path = 'p/01.opus'
+       WHERE filename = 'Album/01 Song One.flac'`,
+    );
+    db.run(
+      `INSERT INTO library_albums (id, name, artist, artist_id, song_count, duration, synced_at)
+       VALUES ('al', 'Album', 'A', 'art', 1, 0, 1)`,
+    );
+    db.run(
+      `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, size, created, landed_at, synced_at)
+       VALUES ('s1', 'al', 'Song One', 'A', 'art', 0, 'p/01.opus', 10, '2024-01-01', 1, 1)`,
+    );
+
+    const svc = new AlbumFallbackService(slskd, { db, maxFallbackAttempts: 0 });
+    await svc.sweep();
+
+    expect(jobState(db)).toBe('exhausted');
+    const job = getJob(db, acqId)!;
+    expect(job.state).toBe('done');
+    expect(job.stage).toBe('done');
+    expect(job.items.map((i) => i.state).sort()).toEqual(['scanned', 'unavailable']);
   });
 
   it('does not act while the primary is still working', async () => {

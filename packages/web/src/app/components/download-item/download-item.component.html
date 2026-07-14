@@ -25,6 +25,12 @@
       @if (item().progress; as p) {
         <span class="text-xs text-theme-muted">{{ p.done }} of {{ p.total }}</span>
       }
+      @if (item().unavailable; as u) {
+        <!-- Honest partial: the fallback gave up on these tracks (nobody has them). -->
+        <span class="text-xs text-theme-muted" data-testid="download-unavailable"
+          >· {{ u }} unavailable</span
+        >
+      }
       @if (item().startedAt) {
         <span class="text-xs text-theme-muted">· {{ startedAgo() }}</span>
       }

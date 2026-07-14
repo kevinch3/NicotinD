@@ -1,5 +1,22 @@
 [
   {
+    "version": "0.1.190",
+    "date": "2026-07-13",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.189...v0.1.190",
+    "sections": [
+      {
+        "title": "Features",
+        "items": [
+          "**library:** multi-genre consumers — filters, radio, recipes, enrichment ([f9b0b04](https://github.com/kevinch3/NicotinD/commit/f9b0b0437e1b7b0630a83b7ec982f134f89cab44))",
+          "**library:** reclassify-genres propose/apply script for genre aliases ([92015ed](https://github.com/kevinch3/NicotinD/commit/92015ed37c40e3cabafd995bbf8283647770aa90))",
+          "**library:** scanner populates multi-genre join table from full tag frames ([a8e8285](https://github.com/kevinch3/NicotinD/commit/a8e82855c51dd4156989326adcde51850e0f698a))",
+          "**library:** splitGenres parser + genre alias/join-table schema ([60acec9](https://github.com/kevinch3/NicotinD/commit/60acec9d63a9e1b7528cd3460831734f82aaac6b))",
+          "**web:** genre chips in track-info sheet (full set, primary highlighted) ([1059550](https://github.com/kevinch3/NicotinD/commit/1059550831c2149da904a678754c06c835a83463))"
+        ]
+      }
+    ]
+  },
+  {
     "version": "0.1.189",
     "date": "2026-07-13",
     "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.188...v0.1.189",
@@ -693,29 +710,6 @@
         "title": "Features",
         "items": [
           "**api:** native auto-acquisition loop over Lidarr wanted/missing ([5cbc6ba](https://github.com/kevinch3/NicotinD/commit/5cbc6ba5a638c318226ef48dcaf808edc80ca2d5))"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.1.140",
-    "date": "2026-07-03",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.139...v0.1.140",
-    "sections": [
-      {
-        "title": "Features",
-        "items": [
-          "**analysis:** essentia audio-analysis sidecar (packages/analysis) ([73de8e6](https://github.com/kevinch3/NicotinD/commit/73de8e6c6a43059f86ccb9c7926dae59ffa30089))",
-          "**library:** audio-features enrichment task wired to the analysis sidecar ([721d400](https://github.com/kevinch3/NicotinD/commit/721d4009823e9482e0abea5714074fd66d4e7e7a))",
-          "**library:** perceptual feature storage + ffmpeg energy/loudness enrichment task ([c787c8e](https://github.com/kevinch3/NicotinD/commit/c787c8e5e81fe5881003eea7f34514d0fd56c7e0))",
-          "**radio:** score and sequence on the perceptual features ([18fc725](https://github.com/kevinch3/NicotinD/commit/18fc725fca79dbdab9c63c5b6e0715323eedd024))",
-          "**web:** show key + perceptual features in the track-info drawer ([911fd6c](https://github.com/kevinch3/NicotinD/commit/911fd6c3c93af46a06c42ee0709d30a84ea29210))"
-        ]
-      },
-      {
-        "title": "Bug Fixes",
-        "items": [
-          "**library:** make Vorbis-family tag writes actually work + opus decode in sidecar ([1319826](https://github.com/kevinch3/NicotinD/commit/13198268979ef5987e7dd89c61e3fa2abbda63b4))"
         ]
       }
     ]

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { AcquireJob, SlskdUserTransferGroup } from '@nicotind/core';
+import type { AcquireJob, AcquisitionJobView, SlskdUserTransferGroup } from '@nicotind/core';
 import {
   groupByAlbum,
   albumGroupTitle,
@@ -10,6 +10,7 @@ import {
   acquireJobLabel,
   methodForBackend,
   buildDownloadFeed,
+  mergeAcquisitionJobs,
 } from './download-groups';
 
 function file(over: Partial<SlskdUserTransferGroup['directories'][0]['files'][0]> = {}) {
@@ -204,6 +205,115 @@ describe('acquireJobToDownloadItem', () => {
   it('a clean done job (no error) cannot be retried', () => {
     const item = acquireJobToDownloadItem(job({ state: 'done', stage: 'done', error: null }));
     expect(item.canRetry).toBe(false);
+  });
+});
+
+function acqJob(over: Partial<AcquisitionJobView> = {}): AcquisitionJobView {
+  return {
+    id: 'aj1',
+    kind: 'album-hunt',
+    method: 'slskd',
+    state: 'active',
+    stage: 'downloading',
+    artistName: 'Artist',
+    albumTitle: 'Album',
+    lidarrAlbumId: null,
+    sourceRef: 'peer',
+    error: null,
+    createdAt: 1000,
+    updatedAt: 1000,
+    albumId: 'album-id-1',
+    progress: { expected: 2, delivered: 1, unavailable: 0, failed: 0 },
+    ...over,
+  };
+}
+
+describe('mergeAcquisitionJobs', () => {
+  const doneGroupItems = () =>
+    buildDownloadFeed(
+      groupByAlbum([
+        {
+          username: 'peer',
+          directories: [
+            {
+              directory: 'M\\Album',
+              fileCount: 1,
+              files: [file({ id: 'a', state: 'Completed, Succeeded' })],
+              albumJob: {
+                artistName: 'Artist',
+                albumTitle: 'Album',
+                canonicalTrackCount: 2,
+                albumId: 'album-id-1',
+              },
+            },
+          ],
+        },
+      ]),
+      [],
+    );
+
+  it("upgrades a finished slskd group to the job's post-download stage", () => {
+    const merged = mergeAcquisitionJobs(doneGroupItems(), [acqJob({ stage: 'processing' })]);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].stage).toBe('processing');
+  });
+
+  it('annotates unavailable tracks so the row reads as an honest partial', () => {
+    const merged = mergeAcquisitionJobs(doneGroupItems(), [
+      acqJob({
+        state: 'done',
+        stage: 'done',
+        progress: { expected: 13, delivered: 11, unavailable: 2, failed: 0 },
+      }),
+    ]);
+    expect(merged[0].stage).toBe('done');
+    expect(merged[0].unavailable).toBe(2);
+  });
+
+  it('never downgrades an in-flight slskd row', () => {
+    const items = buildDownloadFeed(
+      groupByAlbum([
+        {
+          username: 'peer',
+          directories: [
+            {
+              directory: 'M\\Album',
+              fileCount: 1,
+              files: [file({ id: 'a', state: 'InProgress' })],
+              albumJob: {
+                artistName: 'Artist',
+                albumTitle: 'Album',
+                canonicalTrackCount: 2,
+                albumId: 'album-id-1',
+              },
+            },
+          ],
+        },
+      ]),
+      [],
+    );
+    const merged = mergeAcquisitionJobs(items, [acqJob({ stage: 'downloading' })]);
+    expect(merged[0].stage).toBe('downloading');
+    expect(merged[0].percent).toBeDefined();
+  });
+
+  it('appends an active job whose transfers vanished from slskd', () => {
+    const merged = mergeAcquisitionJobs([], [acqJob({ stage: 'scanning' })]);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].title).toBe('Album');
+    expect(merged[0].subtitle).toBe('Artist');
+    expect(merged[0].stage).toBe('scanning');
+    expect(merged[0].albumId).toBe('album-id-1');
+  });
+
+  it('skips url-kind jobs (the AcquireJob lane already renders them)', () => {
+    const merged = mergeAcquisitionJobs([], [acqJob({ kind: 'url', method: 'spotdl' })]);
+    expect(merged).toHaveLength(0);
+  });
+
+  it('does not append finished jobs with no matching transfers (history, not feed)', () => {
+    const merged = mergeAcquisitionJobs([], [acqJob({ state: 'done', stage: 'done' })]);
+    expect(merged).toHaveLength(0);
   });
 });
 

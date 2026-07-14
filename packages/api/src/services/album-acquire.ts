@@ -7,6 +7,7 @@ import { AlbumFallbackService } from './album-fallback.service.js';
 import { albumAlreadyComplete, filesMissingOnDisk } from './library-completeness.js';
 import { recordAcquiredArtistIdentity } from './artist-identity-store.js';
 import { artistIdFor } from './library-scanner.js';
+import { createJob } from './acquisition-job-store.js';
 
 const log = createLogger('album-acquire');
 
@@ -122,8 +123,9 @@ export async function acquireAlbum(
     log.warn({ lidarrAlbumId, err }, 'Failed to persist acquired artist identity');
   }
 
+  let albumJobId: number | null = null;
   try {
-    AlbumFallbackService.recordJob(db, {
+    albumJobId = AlbumFallbackService.recordJob(db, {
       lidarrAlbumId,
       username: best.username,
       directory: best.directory,
@@ -135,6 +137,26 @@ export async function acquireAlbum(
     });
   } catch (err) {
     log.warn({ lidarrAlbumId, err }, 'Failed to record album job for auto-acquisition');
+  }
+
+  // Unified acquisition job: stored transfer↔job linkage + hunt metadata for
+  // the downloads feed, organizer and enrichment. Best-effort like the above.
+  try {
+    createJob(db, {
+      kind: 'auto-acquire',
+      method: 'slskd',
+      artistName,
+      albumTitle,
+      lidarrAlbumId,
+      artistMbid: artistMbid ?? null,
+      canonicalTracks: tracks.map((t) => t.title),
+      albumJobId,
+      sourceRef: best.username,
+      username: best.username,
+      files: filesToDownload,
+    });
+  } catch (err) {
+    log.warn({ lidarrAlbumId, err }, 'Failed to record acquisition job');
   }
 
   log.info(

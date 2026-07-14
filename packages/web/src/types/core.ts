@@ -19,6 +19,8 @@ export type {
   AcquireBackend,
   AcquireJobState,
   AcquireJob,
+  AcquisitionJobKind,
+  AcquisitionJobView,
   AcquisitionMethod,
   PipelineStage,
   SongAcquisition,

@@ -3,7 +3,7 @@ import { firstValueFrom } from 'rxjs';
 import { DownloadsApiService } from './api/downloads-api.service';
 import { SystemApiService } from './api/system-api.service';
 import { LibraryApiService } from './api/library-api.service';
-import type { SlskdUserTransferGroup, AcquireJob } from '@nicotind/core';
+import type { SlskdUserTransferGroup, AcquireJob, AcquisitionJobView } from '@nicotind/core';
 import type { TransferEntry } from '../lib/transfer-types';
 import { detectNewCompletion } from '../lib/transfer-utils';
 
@@ -22,6 +22,8 @@ export class TransferService {
   readonly downloads = signal<SlskdUserTransferGroup[]>([]);
   readonly uploads = signal<SlskdUserTransferGroup[]>([]);
   readonly acquireJobs = signal<AcquireJob[]>([]);
+  /** Unified acquisition jobs (all methods) — post-download stage source for the feed. */
+  readonly acquisitionJobs = signal<AcquisitionJobView[]>([]);
   readonly libraryDirty = signal(false);
   readonly deletedSongIds = signal<ReadonlySet<string>>(new Set());
 
@@ -130,6 +132,11 @@ export class TransferService {
       this.prevAcquireStates = new Map(jobs.map((j) => [j.id, j.state]));
       this.acquireJobs.set(jobs);
       if (acquireCompletion) this.markLibraryDirty();
+    } catch {
+      // non-fatal
+    }
+    try {
+      this.acquisitionJobs.set(await firstValueFrom(this.api.getAcquisitionJobs()));
     } catch {
       // non-fatal
     }

@@ -6,6 +6,7 @@ import type { Database } from 'bun:sqlite';
 import type { PluginRegistry } from './plugins/registry.js';
 import { pluginStagingDir } from './plugins/host-context.js';
 import type { CompletedDownloadFile } from './path-inference.js';
+import { createJob } from './acquisition-job-store.js';
 import { recordAcquisition } from './acquisition-store.js';
 import { deriveAcquireAlbum } from './acquire-album.js';
 
@@ -82,6 +83,11 @@ export class AcquireWatcher {
     // advance them. Without this they sit as stuck-forever "running" rows in
     // the Downloads feed after every restart/redeploy.
     this.db.run(
+      `UPDATE acquisition_jobs SET state = 'failed', stage = 'error', updated_at = unixepoch() * 1000
+       WHERE kind = 'url' AND state = 'active'
+         AND id IN (SELECT id FROM acquire_jobs WHERE state IN ('queued', 'running'))`,
+    );
+    this.db.run(
       `UPDATE acquire_jobs SET state = 'failed', stage = 'error',
          error = 'Interrupted by a server restart — use Retry to run it again'
        WHERE state IN ('queued', 'running')`,
@@ -134,6 +140,20 @@ export class AcquireWatcher {
       `INSERT INTO acquire_jobs (id, backend, url, label, state, stage) VALUES (?, ?, ?, ?, 'queued', 'queued')`,
       [id, plugin.manifest.id, url, label ?? null],
     );
+    // Mirror into the unified acquisition_jobs table (same uuid; acquire_jobs
+    // stays authoritative for the URL engine). Best-effort.
+    try {
+      createJob(this.db, {
+        id,
+        kind: 'url',
+        method: plugin.manifest.id,
+        albumTitle: label ?? null,
+        sourceRef: url,
+      });
+      this.db.run(`UPDATE acquisition_jobs SET stage = 'queued' WHERE id = ?`, [id]);
+    } catch (err) {
+      log.warn({ id, err }, 'Failed to mirror acquire job into acquisition_jobs');
+    }
 
     void this.run(plugin, id, url);
     return id;
@@ -317,6 +337,13 @@ export class AcquireWatcher {
         error ?? null,
         jobId,
       ]);
+      // Mirror into acquisition_jobs: the URL engine's queued/running collapse
+      // to the unified 'active'.
+      const mirrored = state === 'queued' || state === 'running' ? 'active' : state;
+      this.db.run(
+        `UPDATE acquisition_jobs SET state = ?, error = ?, updated_at = ? WHERE id = ?`,
+        [mirrored, error ?? null, Date.now(), jobId],
+      );
     } catch (err) {
       log.warn({ jobId, err }, 'Failed to update acquire_jobs state');
     }
@@ -326,6 +353,11 @@ export class AcquireWatcher {
   private setStage(jobId: string, stage: string): void {
     try {
       this.db.run(`UPDATE acquire_jobs SET stage = ? WHERE id = ?`, [stage, jobId]);
+      this.db.run(`UPDATE acquisition_jobs SET stage = ?, updated_at = ? WHERE id = ?`, [
+        stage,
+        Date.now(),
+        jobId,
+      ]);
     } catch (err) {
       log.warn({ jobId, err }, 'Failed to update acquire_jobs stage');
     }

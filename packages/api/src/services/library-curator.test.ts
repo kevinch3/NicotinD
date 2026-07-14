@@ -172,5 +172,15 @@ describe('LibraryCurator', () => {
       new LibraryCurator(db).reclassifyAll();
       expect(readRow(db, 'a1').hidden).toBe(0);
     });
+
+    it('keeps a release acquired via a unified acquisition job visible (no album_jobs row)', () => {
+      seedAlbum(db, { id: 'a1', name: '[Unknown Album]', artist: 'Babasónicos', songCount: 1 });
+      db.run(
+        `INSERT INTO acquisition_jobs (id, kind, method, state, stage, artist_name, album_title, created_at, updated_at)
+         VALUES ('acq1', 'track-search', 'slskd', 'done', 'done', 'Babasónicos', '[Unknown Album]', 1, 1)`,
+      );
+      new LibraryCurator(db).reclassifyAll();
+      expect(readRow(db, 'a1').hidden).toBe(0);
+    });
   });
 });

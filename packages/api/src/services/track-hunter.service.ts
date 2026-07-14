@@ -17,6 +17,8 @@ export interface TrackHuntResult {
   enqueued: number;
   /** Titles no peer offered a clean match for. */
   misses: string[];
+  /** The transfers actually enqueued, so the caller can record an acquisition job. */
+  downloads: Array<{ username: string; filename: string; size: number; title: string }>;
 }
 
 /**
@@ -46,26 +48,38 @@ export class TrackHunterService {
 
     const misses = picks.filter((p) => !p.pick).map((p) => p.title);
 
-    // Group the chosen files by peer, de-duping identical filenames.
+    // Group the chosen files by peer, de-duping identical filenames. Keep the
+    // hunted title per filename so the acquisition job can itemise transfers.
     const byPeer = new Map<string, Array<{ filename: string; size: number }>>();
-    for (const { pick } of picks) {
+    const titleForFilename = new Map<string, string>();
+    for (const { title, pick } of picks) {
       if (!pick) continue;
       const list = byPeer.get(pick.username) ?? [];
       if (!list.some((f) => f.filename === pick.file.filename)) list.push(pick.file);
       byPeer.set(pick.username, list);
+      titleForFilename.set(pick.file.filename, title);
     }
 
     let enqueued = 0;
+    const downloads: TrackHuntResult['downloads'] = [];
     for (const [username, files] of byPeer) {
       try {
         await this.slskd.transfers.enqueue(username, files);
         enqueued += files.length;
+        for (const file of files) {
+          downloads.push({
+            username,
+            filename: file.filename,
+            size: file.size,
+            title: titleForFilename.get(file.filename) ?? file.filename,
+          });
+        }
       } catch (err) {
         log.warn({ username, err }, 'Track-hunt enqueue failed');
       }
     }
 
-    return { requested: titles.length, enqueued, misses };
+    return { requested: titles.length, enqueued, misses, downloads };
   }
 
   /**

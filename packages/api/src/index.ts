@@ -60,6 +60,7 @@ import { AutoAcquireService } from './services/auto-acquire.service.js';
 import { DownloadWatcher } from './services/download-watcher.js';
 import { DownloadRetryService } from './services/download-retry.service.js';
 import { AlbumFallbackService } from './services/album-fallback.service.js';
+import { reconcileOnBoot as reconcileAcquisitionJobs } from './services/acquisition-job-store.js';
 import { LibraryProcessingService } from './services/library-processing.service.js';
 import { AudioFeaturesClient } from './services/audio-features-client.js';
 import { ProviderRegistry } from './services/provider-registry.js';
@@ -111,6 +112,11 @@ export function createApp({
     : config.dataDir;
 
   const db = initDatabase(expandedDataDir);
+
+  // Startup hygiene for the unified acquisition jobs: fail items idle past the
+  // 24h valve (a restart must never strand a job "downloading") and prune
+  // long-finished jobs. Same contract the AcquireWatcher gives acquire_jobs.
+  reconcileAcquisitionJobs(db);
 
   const expandedMusicDir = config.musicDir.startsWith('~')
     ? config.musicDir.replace('~', process.env.HOME ?? '/root')
@@ -305,8 +311,15 @@ export function createApp({
             intervalMs: config.downloads.retryIntervalMs,
             maxAttempts: config.downloads.retryMaxAttempts,
             cooldownMs: config.downloads.retryCooldownMs,
-            // After each retry pass, let the fallback recover given-up tracks.
-            onSweep: fallback ? () => fallback.sweep() : undefined,
+            // After each retry pass, let the fallback recover given-up tracks,
+            // then run acquisition-job hygiene (24h idle valve + TTL prune) so
+            // a vanished transfer can never strand a job "downloading" forever.
+            onSweep: fallback
+              ? async () => {
+                  await fallback.sweep();
+                  reconcileAcquisitionJobs(db);
+                }
+              : () => reconcileAcquisitionJobs(db),
           })
         : null,
   };

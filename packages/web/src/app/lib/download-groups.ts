@@ -1,4 +1,10 @@
-import type { AcquireJob, AcquisitionMethod, PipelineStage, SlskdUserTransferGroup } from '@nicotind/core';
+import type {
+  AcquireJob,
+  AcquisitionJobView,
+  AcquisitionMethod,
+  PipelineStage,
+  SlskdUserTransferGroup,
+} from '@nicotind/core';
 
 export interface AlbumGroup {
   key: string;
@@ -132,6 +138,8 @@ export interface DownloadItem {
   /** 0–100 progress for the in-flight bar, when a percentage is meaningful. */
   percent?: number;
   error?: string;
+  /** Tracks the fallback gave up on — renders "· K unavailable" (honest partial). */
+  unavailable?: number;
   canRetry: boolean;
   canCancel: boolean;
   canRemove: boolean;
@@ -226,10 +234,83 @@ const STAGE_ORDER: Record<PipelineStage, number> = {
   downloading: 0,
   organizing: 1,
   scanning: 2,
-  queued: 3,
-  error: 4,
-  done: 5,
+  processing: 3,
+  queued: 4,
+  error: 5,
+  done: 6,
 };
+
+/** Stages the unified job can advance a finished slskd row to (post-download). */
+const POST_DOWNLOAD_STAGES: ReadonlySet<PipelineStage> = new Set([
+  'organizing',
+  'scanning',
+  'processing',
+  'done',
+]);
+
+/**
+ * Fold the unified acquisition jobs (`GET /api/downloads/jobs`) into the feed:
+ * a slskd row whose transfers all succeeded adopts the job's post-download
+ * stage (organizing → scanning → processing → done) and its unavailable count,
+ * so the row keeps reporting until the album actually lands in the library.
+ * Active jobs whose transfers vanished from slskd (restart, cleared list) are
+ * appended as their own rows so a job in flight is never invisible. URL jobs
+ * are skipped — the AcquireJob lane already renders them.
+ */
+export function mergeAcquisitionJobs(
+  items: DownloadItem[],
+  jobs: AcquisitionJobView[],
+): DownloadItem[] {
+  const merged = [...items];
+  const byAlbumId = new Map<string, number>();
+  merged.forEach((item, i) => {
+    if (item.kind === 'slskd' && item.albumId) byAlbumId.set(item.albumId, i);
+  });
+
+  for (const job of jobs) {
+    if (job.kind === 'url') continue;
+    const idx = job.albumId != null ? byAlbumId.get(job.albumId) : undefined;
+    if (idx !== undefined) {
+      const item = merged[idx];
+      // Only advance a row whose transfers are finished; an in-flight row keeps
+      // its live progress/percent from slskd.
+      if (item.stage === 'done' && POST_DOWNLOAD_STAGES.has(job.stage)) {
+        merged[idx] = {
+          ...item,
+          stage: job.stage,
+          unavailable: job.progress.unavailable > 0 ? job.progress.unavailable : item.unavailable,
+        };
+      } else if (job.progress.unavailable > 0) {
+        merged[idx] = { ...item, unavailable: job.progress.unavailable };
+      }
+      continue;
+    }
+    // No live transfers for this job: only surface it while it's still active
+    // (finished jobs with no transfers are history, not feed).
+    if (job.state !== 'active') continue;
+    merged.push({
+      key: `acq:${job.id}`,
+      kind: 'slskd',
+      title: job.albumTitle ?? job.artistName ?? job.sourceRef ?? job.id,
+      subtitle: job.artistName ?? undefined,
+      method: (job.method as AcquisitionMethod) ?? 'slskd',
+      stage: job.stage,
+      albumId: job.albumId ?? undefined,
+      startedAt: job.createdAt,
+      progress: { done: job.progress.delivered, total: job.progress.expected },
+      unavailable: job.progress.unavailable > 0 ? job.progress.unavailable : undefined,
+      error: job.error ?? undefined,
+      canRetry: false,
+      canCancel: false,
+      canRemove: false,
+    });
+  }
+  return merged.sort((a, b) => {
+    const byStage = STAGE_ORDER[a.stage] - STAGE_ORDER[b.stage];
+    if (byStage !== 0) return byStage;
+    return (b.startedAt ?? 0) - (a.startedAt ?? 0);
+  });
+}
 
 /**
  * Merge slskd groups + acquire jobs into one sorted feed for the Active tab.

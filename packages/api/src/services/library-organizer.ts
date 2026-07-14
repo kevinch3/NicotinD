@@ -280,7 +280,15 @@ export class LibraryOrganizer {
 
     if (resolved.length === 0) return;
 
-    const folderTags = this.applyJobCanonicalName(directory, this.deriveFolderTags(resolved));
+    // Per-file job metadata (stored at enqueue) beats folder-string matching:
+    // an alternate-peer fallback folder matches no jobLookup entry, but its
+    // files carry their job identity directly.
+    const jobMeta = resolved.find((r) => r.source?.jobMeta)?.source?.jobMeta ?? null;
+    const folderTags = this.applyJobCanonicalName(
+      directory,
+      this.deriveFolderTags(resolved),
+      jobMeta,
+    );
 
     for (const r of resolved) {
       const outcome = await this.placeFile(r, folderTags);
@@ -302,8 +310,15 @@ export class LibraryOrganizer {
    * so every edition/re-hunt of the album lands in one `<Artist>/<album>` dir.
    * No match → tags pass through unchanged.
    */
-  private applyJobCanonicalName(directory: string, tags: AlbumTags): AlbumTags {
-    const job = this.jobLookup?.(directory);
+  private applyJobCanonicalName(
+    directory: string,
+    tags: AlbumTags,
+    jobMeta?: { artistName: string | null; albumTitle: string | null } | null,
+  ): AlbumTags {
+    const job =
+      jobMeta?.albumTitle != null
+        ? { artist: jobMeta.artistName, album: jobMeta.albumTitle }
+        : this.jobLookup?.(directory);
     if (!job?.album) return tags;
     const canonicalAlbum = sanitizeAlbumTag(normalizeTagValue(job.album));
     if (!canonicalAlbum) return tags;

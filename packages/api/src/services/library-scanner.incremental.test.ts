@@ -67,6 +67,32 @@ describe('scanFull incremental cache', () => {
   });
 });
 
+describe('canonical track selection from acquisition jobs', () => {
+  it('drops a foreign rip using the canonical tracklist recorded on a unified acquisition job', async () => {
+    const albumDir = join(musicDir, 'Artist', 'Album');
+    mkdirSync(albumDir, { recursive: true });
+    writeFileSync(join(albumDir, '01 Real Song.mp3'), Buffer.alloc(8));
+    writeFileSync(join(albumDir, '99 Foreign Bonus Cut.mp3'), Buffer.alloc(8));
+    // No album_jobs row — only the unified job carries the canonical tracklist
+    // (a track-search acquisition, for example). The untagged fixture files
+    // scan under the inferred "Unknown Artist", so the job is keyed the same
+    // way — the map lookup is by albumIdFor(artist, album).
+    db.run(
+      `INSERT INTO acquisition_jobs (id, kind, method, state, stage, artist_name, album_title, canonical_tracks_json, created_at, updated_at)
+       VALUES ('acq1', 'track-search', 'slskd', 'done', 'done', 'Unknown Artist', 'Album', ?, 1, 1)`,
+      [JSON.stringify(['Real Song'])],
+    );
+
+    await new LibraryScanner(musicDir, db).scanFull();
+
+    const titles = db
+      .query<{ title: string }, []>('SELECT title FROM library_songs ORDER BY title')
+      .all()
+      .map((r) => r.title);
+    expect(titles).toEqual(['Real Song']);
+  });
+});
+
 describe('mapPool', () => {
   it('preserves input order regardless of completion order', async () => {
     const out = await mapPool([30, 10, 20, 5], 2, async (ms) => {

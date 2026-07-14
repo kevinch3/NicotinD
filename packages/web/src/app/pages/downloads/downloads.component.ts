@@ -35,6 +35,7 @@ import {
   type DownloadItem,
   groupByAlbum,
   buildDownloadFeed,
+  mergeAcquisitionJobs,
 } from '../../lib/download-groups';
 import { DownloadItemComponent } from '../../components/download-item/download-item.component';
 
@@ -259,9 +260,15 @@ export class DownloadsComponent implements OnInit, OnDestroy {
     this.sortedAcquireJobs().filter((j) => j.state === 'done'),
   );
 
-  // Unified Active-tab feed: slskd groups + acquire jobs as one sorted list.
+  // Unified Active-tab feed: slskd groups + acquire jobs as one sorted list,
+  // then the unified acquisition jobs folded in (post-download stages:
+  // organizing → scanning → processing → done, honest-partial unavailable
+  // counts, and job rows whose transfers vanished from slskd).
   readonly downloadFeed = computed(() =>
-    buildDownloadFeed(this.groups(), this.transferService.acquireJobs()),
+    mergeAcquisitionJobs(
+      buildDownloadFeed(this.groups(), this.transferService.acquireJobs()),
+      this.transferService.acquisitionJobs(),
+    ),
   );
   readonly activeFeedCount = computed(
     () => this.downloadFeed().filter((i) => i.stage !== 'done' && i.stage !== 'error').length,

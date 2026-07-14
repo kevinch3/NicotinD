@@ -164,6 +164,45 @@ describe('LibraryOrganizer (real fs)', () => {
     expect(existsSync(join(root, 'Queen', 'Hot Space (Deluxe Remastered Version)'))).toBe(false);
   });
 
+  it('prefers the per-file acquisition-job metadata over the folder-string jobLookup', async () => {
+    const root = tmpRoot();
+    const staging = join(root, '_staging');
+    // Alternate-peer fallback: the folder name matches nothing the jobLookup
+    // knows, but the file carries its job identity directly.
+    seed(staging, 'weird peer folder xyz/01 - Staying Power.mp3', {
+      artist: 'Queen',
+      album: 'Hot Space (Deluxe Remastered Version)',
+      title: 'Staying Power',
+      trackNumber: 1,
+    });
+    const org = new LibraryOrganizer({
+      musicDir: root,
+      stagingDir: staging,
+      jobLookup: () => null, // folder matching finds nothing
+    });
+    const result = await org.organizeBatch([
+      {
+        username: 'alt-peer',
+        directory: 'weird peer folder xyz',
+        filename: '01 - Staying Power.mp3',
+        directoryFileCount: 1,
+        jobMeta: {
+          jobId: 'j1',
+          kind: 'album-hunt',
+          artistName: 'Queen',
+          albumTitle: 'Hot Space',
+          lidarrAlbumId: null,
+          genres: null,
+          year: null,
+          canonicalTracks: null,
+        },
+      },
+    ]);
+    expect(result.moved).toBe(1);
+    expect(existsSync(join(root, 'Queen', 'Hot Space', '01 - Staying Power.mp3'))).toBe(true);
+    expect(existsSync(join(root, 'Queen', 'Hot Space (Deluxe Remastered Version)'))).toBe(false);
+  });
+
   it('consolidates two editions of one album (in a single batch) into one folder + dedupes', async () => {
     const root = tmpRoot();
     const staging = join(root, '_staging');

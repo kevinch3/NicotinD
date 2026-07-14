@@ -180,6 +180,64 @@ export function applySchema(db: Database): void {
     // Column already exists — ignore
   }
 
+  // Unified acquisition jobs: every download (slskd hunt, fallback recovery,
+  // direct grab, track search, URL acquire) belongs to one job whose
+  // transfer↔job linkage is stored at enqueue time — never re-derived by
+  // string-matching folders. `album_jobs` above remains the cross-peer
+  // fallback engine's private table, owned via album_job_id. For kind='url'
+  // the id equals acquire_jobs.id (mirror row; acquire_jobs stays authoritative).
+  db.run(`
+    CREATE TABLE IF NOT EXISTS acquisition_jobs (
+      id TEXT PRIMARY KEY,
+      kind TEXT NOT NULL,
+      method TEXT NOT NULL,
+      state TEXT NOT NULL DEFAULT 'active',
+      stage TEXT NOT NULL DEFAULT 'downloading',
+      artist_name TEXT,
+      album_title TEXT,
+      lidarr_album_id INTEGER,
+      release_mbid TEXT,
+      artist_mbid TEXT,
+      genres_json TEXT,
+      year INTEGER,
+      canonical_tracks_json TEXT,
+      album_job_id INTEGER,
+      source_ref TEXT,
+      error TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_acquisition_jobs_state ON acquisition_jobs (state)`);
+  db.run(
+    `CREATE INDEX IF NOT EXISTS idx_acquisition_jobs_lidarr ON acquisition_jobs (lidarr_album_id)`,
+  );
+
+  // One row per expected file. The row is stable across peers: when the
+  // fallback re-pulls a track from a new peer, username/filename/transfer_key
+  // are updated in place (attempts++), so relative_path/song_id accumulate on
+  // one row. transfer_key is the EXACT enqueued `username::filename` string —
+  // backslashes and case preserved (same contract as transfer_retries).
+  db.run(`
+    CREATE TABLE IF NOT EXISTS acquisition_job_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      job_id TEXT NOT NULL REFERENCES acquisition_jobs(id) ON DELETE CASCADE,
+      track_title TEXT,
+      username TEXT,
+      filename TEXT,
+      transfer_key TEXT,
+      attempts INTEGER NOT NULL DEFAULT 1,
+      state TEXT NOT NULL DEFAULT 'downloading',
+      relative_path TEXT,
+      song_id TEXT,
+      updated_at INTEGER NOT NULL
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_acq_items_job ON acquisition_job_items (job_id)`);
+  db.run(
+    `CREATE INDEX IF NOT EXISTS idx_acq_items_transfer ON acquisition_job_items (transfer_key)`,
+  );
+
   db.run(`
     CREATE TABLE IF NOT EXISTS completed_downloads (
       transfer_key TEXT PRIMARY KEY,

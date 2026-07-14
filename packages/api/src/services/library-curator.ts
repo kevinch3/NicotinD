@@ -124,9 +124,14 @@ export class LibraryCurator {
   private loadProtectedKeys(): Set<string> {
     const keys = new Set<string>();
     try {
+      // album_jobs UNION acquisition_jobs: the unified table also covers
+      // track-search/direct acquisitions that never create an album_jobs row.
       const jobs = this.db
         .query<{ artist_name: string | null; album_title: string | null }, []>(
           `SELECT artist_name, album_title FROM album_jobs
+           WHERE artist_name IS NOT NULL AND album_title IS NOT NULL
+           UNION
+           SELECT artist_name, album_title FROM acquisition_jobs
            WHERE artist_name IS NOT NULL AND album_title IS NOT NULL`,
         )
         .all();

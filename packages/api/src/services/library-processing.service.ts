@@ -17,6 +17,7 @@ import {
 import type { AudioFeaturesClient } from './audio-features-client.js';
 import { captureProcessingFailure, type ProcessingFailureReport } from '../observability/sentry.js';
 import { countSkippedFiles, permanentlyFailedClause } from './enrichment/analysis-failures.js';
+import { recomputeActiveJobStages } from './acquisition-job-store.js';
 
 const log = createLogger('library-processing');
 
@@ -362,6 +363,7 @@ export class LibraryProcessingService extends EventEmitter {
     if (stepConds.length === 0) {
       // Nothing gates landing → every quarantined song lands now.
       this.db.run(`UPDATE library_songs SET landed_at = ? WHERE landed_at IS NULL`, [now]);
+      recomputeActiveJobStages(this.db);
       return;
     }
     // `created` is an ISO-8601 string; compare against the cutoff as an ISO string
@@ -372,6 +374,8 @@ export class LibraryProcessingService extends EventEmitter {
       now,
       new Date(cutoff).toISOString(),
     ]);
+    // Landing may have completed an acquisition job waiting in `processing`.
+    recomputeActiveJobStages(this.db);
   }
 
   /** One bounded batch across each runnable task (or the given subset). */

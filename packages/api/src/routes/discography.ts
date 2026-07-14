@@ -15,6 +15,7 @@ import { albumIdFor, artistIdFor } from '../services/library-scanner.js';
 import { albumAlreadyComplete, filesMissingOnDisk } from '../services/library-completeness.js';
 import { setArtwork, pickAlbumCover, pickArtistImage } from '../services/artwork-store.js';
 import { recordAcquiredArtistIdentity } from '../services/artist-identity-store.js';
+import { createJob, supersedeActiveJobs } from '../services/acquisition-job-store.js';
 import { join } from 'node:path';
 import type { Lidarr } from '@nicotind/lidarr-client';
 
@@ -150,6 +151,33 @@ export function discographyRoutes({
 
       const hunter = new TrackHunterService(slskdRef.current);
       const result = await hunter.huntAndDownload(artistName, titles);
+
+      // Wrap whatever actually got enqueued (possibly from several peers) in
+      // one track-search acquisition job. Best-effort: never fail the hunt.
+      if (result.downloads.length) {
+        try {
+          createJob(db, {
+            kind: 'track-search',
+            method: 'slskd',
+            artistName: artistName || null,
+            albumTitle: album.title ?? null,
+            lidarrAlbumId: albumId,
+            releaseMbid: album.foreignAlbumId ?? null,
+            artistMbid: album.artist?.foreignArtistId ?? null,
+            genres: album.genres?.length ? album.genres : (album.artist?.genres ?? null),
+            year: album.releaseDate ? new Date(album.releaseDate).getUTCFullYear() : null,
+            canonicalTracks: titles,
+            files: result.downloads.map((d) => ({
+              filename: d.filename,
+              size: d.size,
+              trackTitle: d.title,
+              username: d.username,
+            })),
+          });
+        } catch (err) {
+          log.warn({ albumId, err }, 'Failed to record track-search acquisition job');
+        }
+      }
       return c.json(result);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -298,6 +326,7 @@ export function discographyRoutes({
         `UPDATE album_jobs SET state = 'superseded' WHERE lidarr_album_id = ? AND state = 'active'`,
         [albumId],
       );
+      supersedeActiveJobs(db, { lidarrAlbumId: albumId });
     }
 
     // Fetch canonical metadata up front — needed for the completeness guard and
@@ -375,8 +404,9 @@ export function discographyRoutes({
 
     // Record the album job for fallback. Best-effort: a failure here must not
     // fail the download that already succeeded.
+    let albumJobId: number | null = null;
     try {
-      AlbumFallbackService.recordJob(db, {
+      albumJobId = AlbumFallbackService.recordJob(db, {
         lidarrAlbumId: albumId,
         username: body.selected.username,
         directory: body.selected.directory,
@@ -393,6 +423,31 @@ export function discographyRoutes({
       });
     } catch (err) {
       log.warn({ albumId, err }, 'Failed to record album job for fallback');
+    }
+
+    // Wrap the download in a unified acquisition job: stores the exact
+    // transfer↔job linkage plus the Lidarr metadata (genres/year/MBIDs) so the
+    // downloads feed, organizer and enrichment never re-derive it by string
+    // matching. Best-effort, same as the fallback job above.
+    try {
+      createJob(db, {
+        kind: 'album-hunt',
+        method: 'slskd',
+        artistName,
+        albumTitle,
+        lidarrAlbumId: albumId,
+        releaseMbid: album?.foreignAlbumId ?? null,
+        artistMbid: album?.artist?.foreignArtistId ?? null,
+        genres: album?.genres?.length ? album.genres : (album?.artist?.genres ?? null),
+        year: album?.releaseDate ? new Date(album.releaseDate).getUTCFullYear() : null,
+        canonicalTracks: tracks.map((t) => t.title),
+        albumJobId,
+        sourceRef: body.selected.username,
+        username: body.selected.username,
+        files: filesToDownload,
+      });
+    } catch (err) {
+      log.warn({ albumId, err }, 'Failed to record acquisition job');
     }
 
     return c.json({ ok: true, queued: body.selected.files.length }, 201);

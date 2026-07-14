@@ -420,6 +420,7 @@ describe('downloading album suppression', () => {
     testDb.run('DELETE FROM library_albums');
     testDb.run('DELETE FROM library_songs');
     testDb.run('DELETE FROM album_jobs');
+    testDb.run('DELETE FROM acquisition_jobs');
     // The album-group-key suppression cache is memoized per-db with a short TTL;
     // clear it so each test sees the albums it just seeded, not a prior test's.
     __resetDownloadSuppressionCache();
@@ -482,6 +483,32 @@ describe('downloading album suppression', () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as Array<{ id: string }>;
     expect(body.some((a) => a.id === 'album-3')).toBe(false);
+  });
+
+  it('hides albums while a unified acquisition job with no album_jobs row is active (track-search/direct)', async () => {
+    seedAlbumRecord('album-acq', 'So Good', 'Zara Larsson');
+    testDb.run(
+      `INSERT INTO acquisition_jobs (id, kind, method, state, stage, artist_name, album_title, created_at, updated_at)
+       VALUES ('acq1', 'track-search', 'slskd', 'active', 'downloading', 'Zara Larsson', 'So Good', 1, 1)`,
+    );
+
+    const testApp = new Hono<AuthEnv>();
+    testApp.use('*', (c, next) => {
+      c.set('user', { sub: 'u', role: 'user', iat: 0, exp: 9999999999 });
+      return next();
+    });
+    testApp.route('/', libraryRoutes());
+
+    const res = await testApp.request('/albums');
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Array<{ id: string }>;
+    expect(body.some((a) => a.id === 'album-acq')).toBe(false);
+
+    // Job finishes → album reappears.
+    testDb.run(`UPDATE acquisition_jobs SET state = 'done' WHERE id = 'acq1'`);
+    __resetDownloadSuppressionCache();
+    const after = (await (await testApp.request('/albums')).json()) as Array<{ id: string }>;
+    expect(after.some((a) => a.id === 'album-acq')).toBe(true);
   });
 
   it('shows albums whose job is done', async () => {

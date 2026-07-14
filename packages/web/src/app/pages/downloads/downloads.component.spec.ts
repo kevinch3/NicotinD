@@ -53,6 +53,7 @@ function setup(opts: { songs?: Song[]; deletedIds?: Set<string> } = {}) {
     downloads: signal([]),
     uploads: signal([]),
     acquireJobs: signal([]),
+    acquisitionJobs: signal([]),
     libraryDirty: signal(false),
     deletedSongIds,
     addDeletedIds: (ids: string[]) => {

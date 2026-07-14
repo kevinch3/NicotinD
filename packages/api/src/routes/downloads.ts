@@ -4,8 +4,49 @@ import type { SlskdRef } from '../index.js';
 import type { ProviderRegistry } from '../services/provider-registry.js';
 import type { Database } from 'bun:sqlite';
 import type { SlskdUserTransferGroup } from '@nicotind/core';
+import { createLogger } from '@nicotind/core';
 import { getDatabase } from '../db.js';
 import { albumIdFor } from '../services/library-scanner.js';
+import {
+  createJob,
+  jobMetaForTransfer,
+  listJobFeed,
+} from '../services/acquisition-job-store.js';
+
+const log = createLogger('downloads');
+
+/**
+ * Attach `albumJob` metadata by the STORED transfer keys — the unified
+ * acquisition-job replacement for the legacy folder-string matching below.
+ * Works for any peer folder (alternate-peer fallbacks included) because the
+ * link was recorded at enqueue time, not guessed from the directory name.
+ */
+export function enrichWithAcquisitionJobs(
+  db: Database,
+  groups: SlskdUserTransferGroup[],
+): SlskdUserTransferGroup[] {
+  return groups.map((group) => ({
+    ...group,
+    directories: group.directories.map((dir) => {
+      if (dir.albumJob) return dir;
+      for (const file of dir.files) {
+        const meta = jobMetaForTransfer(db, group.username, file.filename);
+        if (!meta) continue;
+        if (!meta.artistName || !meta.albumTitle) return dir;
+        return {
+          ...dir,
+          albumJob: {
+            artistName: meta.artistName,
+            albumTitle: meta.albumTitle,
+            canonicalTrackCount: meta.canonicalTracks?.length ?? 0,
+            albumId: albumIdFor(meta.artistName, meta.albumTitle),
+          },
+        };
+      }
+      return dir;
+    }),
+  }));
+}
 
 interface ActiveJobRow {
   username: string;
@@ -58,6 +99,7 @@ export function enrichWithAlbumJobs(
   return groups.map((group) => ({
     ...group,
     directories: group.directories.map((dir) => {
+      if (dir.albumJob) return dir; // stored-key enrichment already labelled it
       const meta = byKey.get(`${group.username}::${dir.directory}`);
       return meta ? { ...dir, albumJob: meta } : dir;
     }),
@@ -176,6 +218,30 @@ export function downloadRoutes(registry: ProviderRegistry, slskdRef: SlskdRef) {
           );
         }
         return c.json({ error: 'Soulseek is temporarily unreachable' }, 503);
+      }
+
+      // Wrap even raw folder-browser grabs in a lightweight acquisition job so
+      // every transfer belongs to a job (uniform feed, stored linkage). No
+      // canonical metadata here — artist/album are best-effort display hints
+      // parsed from the peer's folder segments. Best-effort: must never fail
+      // the enqueue that already succeeded.
+      try {
+        const segments = (files[0]?.filename ?? '')
+          .replace(/\\/g, '/')
+          .split('/')
+          .filter(Boolean)
+          .slice(0, -1); // drop the file basename
+        createJob(getDatabase(), {
+          kind: 'direct',
+          method: 'slskd',
+          artistName: segments.length >= 2 ? segments[segments.length - 2] : null,
+          albumTitle: segments.length >= 1 ? segments[segments.length - 1] : null,
+          sourceRef: username,
+          username,
+          files,
+        });
+      } catch (err) {
+        log.warn({ username, err }, 'Failed to record acquisition job for direct download');
       }
       return c.json({ ok: true, queued: files.length }, 201);
     },
@@ -319,9 +385,24 @@ export function downloadRoutes(registry: ProviderRegistry, slskdRef: SlskdRef) {
       // Annotate folders that came from the album-hunt flow with their canonical
       // artist/album/track-count so the UI can show real metadata instead of the
       // peer's noisy folder name. Matched by (username, peer directory).
-      return c.json(enrichWithAlbumJobs(db, visible), 200);
+      // Stored transfer-key enrichment first; the legacy album_jobs folder
+      // match remains as fallback for pre-migration active downloads only.
+      return c.json(enrichWithAlbumJobs(db, enrichWithAcquisitionJobs(db, visible)), 200);
     },
   );
+
+  // Unified acquisition-job feed: one row per job (any method), newest first,
+  // with per-state item progress and a deep-linkable albumId. Read model for
+  // the Downloads page's job view.
+  app.get('/jobs', (c) => {
+    const db = getDatabase();
+    const jobs = listJobFeed(db).map((job) => ({
+      ...job,
+      albumId:
+        job.artistName && job.albumTitle ? albumIdFor(job.artistName, job.albumTitle) : null,
+    }));
+    return c.json(jobs, 200);
+  });
 
   // Cancel/Remove a download
   app.openapi(
