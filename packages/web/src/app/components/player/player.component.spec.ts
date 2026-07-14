@@ -9,7 +9,6 @@ import { RemotePlaybackService } from '../../services/remote-playback.service';
 import { PlaybackWsService } from '../../services/playback-ws.service';
 import { PreserveService } from '../../services/preserve.service';
 import { MediaControlsService } from '../../services/media-controls.service';
-import { VocalFilterService } from '../../services/vocal-filter.service';
 import type { Track } from '../../services/player.service';
 
 // Note: preserve-store (IndexedDB) is never reached in these tests because
@@ -102,15 +101,6 @@ describe('PlayerComponent', () => {
             setPlaybackState: vi.fn(),
             setPositionState: vi.fn(),
             setActionHandler: vi.fn(),
-          },
-        },
-        // Mocked so jsdom (no Web Audio API) doesn't crash the component init.
-        {
-          provide: VocalFilterService,
-          useValue: {
-            attach: vi.fn(),
-            setEnabled: vi.fn(),
-            destroy: vi.fn(),
           },
         },
       ],
@@ -690,6 +680,37 @@ describe('PlayerComponent', () => {
       expect(playerService.restoredTime).toBe(45);
       // But play() must NOT be called since we were paused.
       expect(mockPlay).not.toHaveBeenCalled();
+    });
+
+    it('restores position and drops the flag when toggling back off', () => {
+      playerService.currentTrack.set(TRACK);
+      playerService.isPlaying.set(true);
+      fixture.detectChanges();
+
+      // First toggle: vocals off.
+      Object.defineProperty(fakeAudio, 'currentTime', {
+        value: 30,
+        writable: true,
+        configurable: true,
+      });
+      playerService.toggleVocalMute();
+      fixture.detectChanges();
+      expect(fakeAudio.src).toContain('vocals=off');
+      // Simulate onDuration consuming the stash so the next toggle starts clean.
+      playerService.restoredTime = null;
+
+      // Second toggle back on: position must be stashed again and the flag gone.
+      Object.defineProperty(fakeAudio, 'currentTime', {
+        value: 62,
+        writable: true,
+        configurable: true,
+      });
+      playerService.toggleVocalMute();
+      fixture.detectChanges();
+
+      expect(playerService.restoredTime).toBe(62);
+      expect(fakeAudio.src).toContain('/api/stream/t1');
+      expect(fakeAudio.src).not.toContain('vocals=off');
     });
   });
 });

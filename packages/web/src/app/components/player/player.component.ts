@@ -21,7 +21,6 @@ import { DeviceSwitcherComponent } from '../device-switcher/device-switcher.comp
 import { PreserveService } from '../../services/preserve.service';
 import { ServerConfigService } from '../../services/server-config.service';
 import { MediaControlsService } from '../../services/media-controls.service';
-import { VocalFilterService } from '../../services/vocal-filter.service';
 import { buildMediaMetadata } from '../../lib/media-metadata';
 import * as db from '../../lib/preserve-store';
 import { createPointerDrag } from '../../lib/pointer-drag';
@@ -49,7 +48,6 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
   private preserve = inject(PreserveService);
   private server = inject(ServerConfigService);
   private mediaControls = inject(MediaControlsService);
-  private vocalFilter = inject(VocalFilterService);
 
   private audioElA = viewChild<ElementRef<HTMLAudioElement>>('audioElA');
   private audioElB = viewChild<ElementRef<HTMLAudioElement>>('audioElB');
@@ -308,6 +306,10 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
     // player.restoredTime, which the existing onDuration handler (above)
     // applies once loadedmetadata fires on the new audio. This re-uses the
     // same restore mechanism as the page-reload path (PlayerService.restoreState).
+    // why backend (not a client Web Audio graph): routing the <audio> element
+    // through a MediaElementAudioSourceNode silenced playback entirely on
+    // Android, so vocal removal must stay server-side. Do not reintroduce a
+    // client-side vocal filter.
     effect(() => {
       const vocalsMuted = this.player.vocalsMuted();
       const track = this.player.currentTrack();
@@ -680,7 +682,6 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
     if (this.progressReportInterval) clearInterval(this.progressReportInterval);
     if (this.rafId) cancelAnimationFrame(this.rafId);
     this.releaseWakeLock();
-    this.vocalFilter.destroy();
     if (this.visibilityChangeHandler) {
       document.removeEventListener('visibilitychange', this.visibilityChangeHandler);
     }
