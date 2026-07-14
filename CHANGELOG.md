@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.195](https://github.com/kevinch3/NicotinD/compare/v0.1.194...v0.1.195) (2026-07-14)
+
+
+### Bug Fixes
+
+* **api:** embed filter version in transcode cache key ([34752b3](https://github.com/kevinch3/NicotinD/commit/34752b336d4f79380c37ca76dbf897585d585523))
+* **api:** run vocal-removal branch before general transcode ([39d3e35](https://github.com/kevinch3/NicotinD/commit/39d3e359ba42c88bd147238232929574ea5e34a5))
+* **web:** preserve playback position across vocal-mute toggle ([a8363e6](https://github.com/kevinch3/NicotinD/commit/a8363e60c5f0880f62dd7746d5689a9aa56c3ca1))
+
 ## [0.1.194](https://github.com/kevinch3/NicotinD/compare/v0.1.193...v0.1.194) (2026-07-14)
 
 
