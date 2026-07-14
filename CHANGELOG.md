@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.191](https://github.com/kevinch3/NicotinD/compare/v0.1.190...v0.1.191) (2026-07-14)
+
+
+### Features
+
+* **api:** acquisition-job stage tracking through the download pipeline ([f663210](https://github.com/kevinch3/NicotinD/commit/f6632100661071d2cf79cccfe971de39efd0e307))
+* **api:** legacy album_jobs readers UNION the unified acquisition_jobs ([17ac6ae](https://github.com/kevinch3/NicotinD/commit/17ac6ae190d84cee2a8519fccf486cf8e237ca4d))
+* **api:** pre-fill genre/year from acquisition-job metadata at scan time ([c1047dd](https://github.com/kevinch3/NicotinD/commit/c1047ddfbaaa2f951d9a028cfff65cae8a429d96))
+* **api:** unified acquisition jobs — schema, store, enqueue-time recording ([083d08a](https://github.com/kevinch3/NicotinD/commit/083d08a4a90d1b2b3d8131159e66b7bc4c8d788f))
+* unified acquisition-job feed — stored-key enrichment, /downloads/jobs, web stage merge ([8e375c1](https://github.com/kevinch3/NicotinD/commit/8e375c13806b734c4a345ff31bc530eb54ce2bf0))
+
 ## [0.1.190](https://github.com/kevinch3/NicotinD/compare/v0.1.189...v0.1.190) (2026-07-13)
 
 
