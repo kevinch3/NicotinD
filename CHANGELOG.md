@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.193](https://github.com/kevinch3/NicotinD/compare/v0.1.192...v0.1.193) (2026-07-14)
+
+
+### Features
+
+* **api:** add ?vocals=off stream route param for karaoke ([630daa9](https://github.com/kevinch3/NicotinD/commit/630daa966ec32f997b94cf2de099b8aab8db9c79))
+* **api:** add vocal removal filter to transcode pipeline ([242eff2](https://github.com/kevinch3/NicotinD/commit/242eff22ef0f383e66b5b8a0fc5d91ac0df293ad))
+* **api:** include vocalRemoval flag in transcode cache key ([a4d7ec4](https://github.com/kevinch3/NicotinD/commit/a4d7ec4bd8050723baf3707bf9ce8d3f421403e6))
+* **web:** add vocal mute mic toggle in karaoke overlay ([54b3638](https://github.com/kevinch3/NicotinD/commit/54b3638ca4b3e499f8c053c697b5b04090dad515))
+* **web:** add vocalsMuted signal to PlayerService ([6692591](https://github.com/kevinch3/NicotinD/commit/66925918245b8e812cae7aad5e719cae1589c6ad))
+* **web:** pass vocalsOff option through streamUrl ([2f7f504](https://github.com/kevinch3/NicotinD/commit/2f7f504ae88bad7fd16380a7249147a6f3b2bfa4))
+* **web:** wire vocalsMuted to audio element src and add reload effect ([60c367a](https://github.com/kevinch3/NicotinD/commit/60c367a358033653731966244122502c318ae93d))
+
 ## [0.1.192](https://github.com/kevinch3/NicotinD/compare/v0.1.191...v0.1.192) (2026-07-14)
 
 
