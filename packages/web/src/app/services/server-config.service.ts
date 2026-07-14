@@ -49,19 +49,15 @@ export class ServerConfigService {
    * Absolute URL for streaming a track's audio bytes. Always appends
    * `ngsw-bypass` — the Angular service worker's `Driver.handleFetch()`
    * unconditionally intercepts every same-origin fetch (there's no configured
-   * `dataGroup` to opt this path out of), and in Firefox specifically that
-   * interception occasionally throws instead of falling through to a plain
-   * network passthrough for a Range request, which surfaces as "ServiceWorker
-   * intercepted the request and encountered an unexpected error" and a track
-   * that never plays (intermittent — only some tracks hit it). `ngsw-bypass`
-   * is Angular's own documented escape hatch: `onFetch()` returns immediately
-   * without ever touching the SW driver when it sees this query param.
-   *
-   * When `opts.vocalsOff` is true, appends `&vocals=off` to request server-side
-   * center-channel cancellation (karaoke mode).
+   * `dataGroup` to opt the stream path out of), and in Firefox specifically
+   * that interception occasionally throws instead of falling through to a
+   * plain network passthrough for a Range request, which surfaces as
+   * "ServiceWorker intercepted the request and encountered an unexpected
+   * error" and a track that never plays. `ngsw-bypass` is Angular's own
+   * documented escape hatch: `onFetch()` returns immediately without ever
+   * touching the SW driver when it sees this query param.
    */
-  streamUrl(id: string, token: string | null, opts?: { vocalsOff?: boolean }): string {
-    const vocalsParam = opts?.vocalsOff ? '&vocals=off' : '';
-    return this.apiUrl(`/api/stream/${id}?token=${token}&ngsw-bypass=1${vocalsParam}`);
+  streamUrl(id: string, token: string | null): string {
+    return this.apiUrl(`/api/stream/${id}?token=${token}&ngsw-bypass=1`);
   }
 }
