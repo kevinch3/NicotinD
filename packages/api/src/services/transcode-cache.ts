@@ -34,7 +34,7 @@ const DEFAULT_BUDGET_BYTES = 2 * 1024 * 1024 * 1024; // 2 GiB
 // track (or a play + its pre-buffer) don't spawn two ffmpegs for one cache entry.
 const inFlight = new Map<string, Promise<string>>();
 
-/** Deterministic cache id: source path + mtime + target format/bitrate + vocal removal flag. */
+/** Deterministic cache id: source path + mtime + target format/bitrate + vocal removal flag + filter version. */
 export function transcodeCacheKey(
   absPath: string,
   mtimeMs: number,
@@ -43,7 +43,7 @@ export function transcodeCacheKey(
   vocalRemoval = false,
 ): string {
   return createHash('sha1')
-    .update(`${absPath}|${Math.round(mtimeMs)}|${format}|${kbps}|${vocalRemoval ? 1 : 0}`)
+    .update(`${absPath}|${Math.round(mtimeMs)}|${format}|${kbps}|${vocalRemoval ? 1 : 0}|v3`)
     .digest('hex');
 }
 
