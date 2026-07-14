@@ -305,9 +305,8 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
     });
 
     // Effect 6b: Vocal mute toggle — reloads the stream with/without the
-    // ?vocals=off param while preserving playback position. The brief gap
-    // (~1-2s transcode on first toggle, instant on cache hit) is acceptable
-    // for karaoke use.
+    // ?vocals=off param. Position is preserved via restoredTime (set before
+    // the src change, applied in onDuration once loadedmetadata fires).
     effect(() => {
       const vocalsMuted = this.player.vocalsMuted();
       const track = this.player.currentTrack();
@@ -323,10 +322,9 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
       if (vocalsMuted === this.lastVocalsMuted) return;
       this.lastVocalsMuted = vocalsMuted;
 
-      // Preserve position across the reload.
       const resumeAt = audio.currentTime;
+      if (resumeAt > 1) this.player.restoredTime = resumeAt;
       audio.src = this.server.streamUrl(track.id, token, { vocalsOff: vocalsMuted });
-      audio.currentTime = resumeAt;
       if (this.player.isPlaying()) {
         audio.play().catch((err) => {
           if (err.name === 'NotAllowedError') this.handlePlayRejection();
