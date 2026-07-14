@@ -43,7 +43,7 @@ export function transcodeCacheKey(
   vocalRemoval = false,
 ): string {
   return createHash('sha1')
-    .update(`${absPath}|${Math.round(mtimeMs)}|${format}|${kbps}|${vocalRemoval ? 1 : 0}|v3`)
+    .update(`${absPath}|${Math.round(mtimeMs)}|${format}|${kbps}|${vocalRemoval ? 1 : 0}|v4`)
     .digest('hex');
 }
 

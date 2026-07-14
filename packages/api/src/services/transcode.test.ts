@@ -122,12 +122,12 @@ describe('transcodeToFile', () => {
     expect(unlinked.some((u) => u.startsWith('/out.mp3.tmp-'))).toBe(true);
   });
 
-  it('injects the stereotools mid/side vocal removal filter when vocalRemoval is true', async () => {
+  it('injects the pan channel-subtraction vocal removal filter when vocalRemoval is true', async () => {
     const p = transcodeToFile('/in.flac', '/out.opus', 'opus', 128, true);
     lastProc!.emit('close', 0);
     await expect(p).resolves.toBeUndefined();
     expect(lastSpawnArgs).toContain('-af');
-    expect(lastSpawnArgs).toContain('stereotools=mode=lr>ms:mlev=0.015625:mode=ms>lr');
+    expect(lastSpawnArgs).toContain('pan=stereo|c0=c0-c1|c1=c1-c0');
   });
 
   it('omits the -af filter when vocalRemoval is false (default)', async () => {
