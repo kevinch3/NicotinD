@@ -57,7 +57,8 @@ export class ServerConfigService {
    * documented escape hatch: `onFetch()` returns immediately without ever
    * touching the SW driver when it sees this query param.
    */
-  streamUrl(id: string, token: string | null): string {
-    return this.apiUrl(`/api/stream/${id}?token=${token}&ngsw-bypass=1`);
+  streamUrl(id: string, token: string | null, opts?: { vocalsOff?: boolean }): string {
+    const params = `token=${token}&ngsw-bypass=1${opts?.vocalsOff ? '&vocals=off' : ''}`;
+    return this.apiUrl(`/api/stream/${id}?${params}`);
   }
 }

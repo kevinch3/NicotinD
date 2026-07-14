@@ -76,6 +76,8 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
   private lastManualObjectUrl: string | null = null;
   // Track id that has been pre-buffered into the standby element.
   private preloadedTrackId: string | null = null;
+  // Tracks the last vocal mute state to detect toggle changes (Effect 6b).
+  private lastVocalsMuted: boolean | null = null;
 
   // Playback progress interpolation
   private interpolatedTime = signal(0);
@@ -300,23 +302,38 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
       this.player.clearSeek();
     });
 
-    // Effect 6b: Vocal mute toggle — flips the Web Audio filter graph on/off
-    // via VocalFilterService. The <audio> element's src and currentTime are
-    // never touched, so playback continues seamlessly across the toggle (no
-    // position reset, no audible gap beyond the filter chain latency).
+    // Effect 6b: Vocal mute toggle — reloads the stream with/without the
+    // ?vocals=off param. The toggle requires a fresh audio src because the
+    // server-side filter produces a different file. Position is preserved via
+    // player.restoredTime, which the existing onDuration handler (above)
+    // applies once loadedmetadata fires on the new audio. This re-uses the
+    // same restore mechanism as the page-reload path (PlayerService.restoreState).
     effect(() => {
-      this.vocalFilter.setEnabled(this.player.vocalsMuted());
-    });
+      const vocalsMuted = this.player.vocalsMuted();
+      const track = this.player.currentTrack();
+      const audio = this.audioEl()?.nativeElement;
+      if (!track || !audio) return;
 
-    // Wire each <audio> element through the vocal-filter graph as soon as the
-    // viewChild signal resolves. createMediaElementSource() can only be called
-    // once per element — the service dedups via a dataset flag so re-runs
-    // (e.g. if the effect re-fires on track swaps) are safe no-ops.
-    effect(() => {
-      const a = this.audioElA()?.nativeElement;
-      if (a) this.vocalFilter.attach(a);
-      const b = this.audioElB()?.nativeElement;
-      if (b) this.vocalFilter.attach(b);
+      // Skip the initial run (track load is handled by Effect 1).
+      if (this.lastVocalsMuted === null) {
+        this.lastVocalsMuted = vocalsMuted;
+        return;
+      }
+      if (vocalsMuted === this.lastVocalsMuted) return;
+      this.lastVocalsMuted = vocalsMuted;
+
+      // Stash the current position so onDuration restores it once the new
+      // media's loadedmetadata fires (browser resets currentTime to 0 when
+      // audio.src changes).
+      if (audio.currentTime > 1) this.player.restoredTime = audio.currentTime;
+      const wasPlaying = this.player.isPlaying();
+      const token = this.auth.token();
+      audio.src = this.server.streamUrl(track.id, token, { vocalsOff: vocalsMuted });
+      if (wasPlaying) {
+        audio.play().catch((err) => {
+          if (err.name === 'NotAllowedError') this.handlePlayRejection();
+        });
+      }
     });
 
     // Effect 7: Progress reporting interval

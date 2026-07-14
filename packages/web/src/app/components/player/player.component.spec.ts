@@ -615,50 +615,81 @@ describe('PlayerComponent', () => {
   // ─── Vocal mute toggle (karaoke) ──────────────────────────────────────────
 
   describe('vocal mute toggle', () => {
-    it('toggles the Web Audio filter graph — no audio src change, no position reset', () => {
-      // The vocal mute is implemented client-side via Web Audio API: the
-      // <audio> element's src and currentTime are never touched, so the
-      // position reset bug is structurally impossible (no reload, no seek).
-      const vocalFilter = TestBed.inject(VocalFilterService);
+    beforeEach(() => {
+      playerService.restoredTime = null;
+    });
+
+    it('stashes restoredTime before src change and plays when wasPlaying', () => {
+      // Load a track first (Effect 1) without any vocal mute.
       playerService.currentTrack.set(TRACK);
       playerService.isPlaying.set(true);
       fixture.detectChanges();
-      vi.mocked(vocalFilter.setEnabled).mockClear();
+      mockPlay.mockClear();
       mockPause.mockClear();
-      fakeAudio.removeAttribute('src');
 
-      const posBefore = 30;
       Object.defineProperty(fakeAudio, 'currentTime', {
-        value: posBefore,
+        value: 30,
         writable: true,
         configurable: true,
       });
+      fakeAudio.removeAttribute('src');
 
       playerService.toggleVocalMute();
       fixture.detectChanges();
 
-      // The effect calls into the vocal filter service — it does NOT touch
-      // audio.src or audio.currentTime.
-      expect(vocalFilter.setEnabled).toHaveBeenCalledWith(true);
-      expect(fakeAudio.src).toBe(''); // never changed
-      expect(fakeAudio.currentTime).toBe(posBefore); // never reset
-      // No pause + replay needed (client-side filter swap is inaudible).
+      // Effect 6b must stash the position on player.restoredTime so the
+      // existing onDuration handler restores it once the new media loads.
+      expect(playerService.restoredTime).toBe(30);
+      // The new src includes the vocals=off flag.
+      expect(fakeAudio.src).toContain('/api/stream/t1');
+      expect(fakeAudio.src).toContain('vocals=off');
+      // Was playing, so audio.play() is called immediately.
+      expect(mockPlay).toHaveBeenCalled();
+      // No explicit pause — onDuration handles the restore.
       expect(mockPause).not.toHaveBeenCalled();
     });
 
-    it('persists toggle across track changes', () => {
-      const vocalFilter = TestBed.inject(VocalFilterService);
+    it('does not stash restoredTime when currentTime is near the start', () => {
       playerService.currentTrack.set(TRACK);
       playerService.isPlaying.set(true);
+      fixture.detectChanges();
+      mockPlay.mockClear();
+
+      Object.defineProperty(fakeAudio, 'currentTime', {
+        value: 0.5,
+        writable: true,
+        configurable: true,
+      });
+      fakeAudio.removeAttribute('src');
+
       playerService.toggleVocalMute();
       fixture.detectChanges();
-      vi.mocked(vocalFilter.setEnabled).mockClear();
 
-      // Change to another track — the filter stays on (setEnabled isn't
-      // called again because the value didn't change).
-      playerService.currentTrack.set(TRACK_2);
+      // Within the first second, no point stashing — no restoredTime set.
+      expect(playerService.restoredTime).toBeNull();
+      expect(mockPlay).toHaveBeenCalled();
+    });
+
+    it('does not play when paused', () => {
+      playerService.currentTrack.set(TRACK);
+      playerService.isPlaying.set(false);
       fixture.detectChanges();
-      expect(vocalFilter.setEnabled).not.toHaveBeenCalled();
+      mockPlay.mockClear();
+
+      Object.defineProperty(fakeAudio, 'currentTime', {
+        value: 45,
+        writable: true,
+        configurable: true,
+      });
+      fakeAudio.removeAttribute('src');
+
+      playerService.toggleVocalMute();
+      fixture.detectChanges();
+
+      // Position should still be stashed.
+      expect(playerService.restoredTime).toBe(45);
+      // But play() must NOT be called since we were paused.
+      expect(mockPlay).not.toHaveBeenCalled();
     });
   });
 });
