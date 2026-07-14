@@ -605,7 +605,11 @@ describe('PlayerComponent', () => {
   // ─── Vocal mute toggle (karaoke) ──────────────────────────────────────────
 
   describe('vocal mute toggle', () => {
-    it('pauses before src change, then seeks + plays on loadedmetadata', () => {
+    beforeEach(() => {
+      playerService.restoredTime = null;
+    });
+
+    it('stashes restoredTime before src change and plays when wasPlaying', () => {
       // Load a track first (Effect 1) without any vocal mute.
       playerService.currentTrack.set(TRACK);
       playerService.isPlaying.set(true);
@@ -613,12 +617,6 @@ describe('PlayerComponent', () => {
       mockPlay.mockClear();
       mockPause.mockClear();
 
-      // Pre-set readyState >= 1 so the effect takes the synchronous path;
-      // the e2e test covers the async loadedmetadata path in a real browser.
-      Object.defineProperty(fakeAudio, 'readyState', { value: 1, configurable: true });
-      Object.defineProperty(fakeAudio, 'duration', { value: 180, configurable: true });
-      // currentTime is read-only on HTMLMediaElement unless HAVE_METADATA, and
-      // assignment requires the descriptor to be writable.
       Object.defineProperty(fakeAudio, 'currentTime', {
         value: 30,
         writable: true,
@@ -629,26 +627,24 @@ describe('PlayerComponent', () => {
       playerService.toggleVocalMute();
       fixture.detectChanges();
 
-      // Effect 6b must have paused before the src change (prevents the
-      // browser from auto-playing the new media from position 0).
-      expect(mockPause).toHaveBeenCalled();
+      // Effect 6b must stash the position on player.restoredTime so the
+      // existing onDuration handler restores it once the new media loads.
+      expect(playerService.restoredTime).toBe(30);
       // The new src includes the vocals=off flag.
       expect(fakeAudio.src).toContain('/api/stream/t1');
       expect(fakeAudio.src).toContain('vocals=off');
-      // readyState >= 1 takes the sync path: seek + play happen immediately.
-      expect(fakeAudio.currentTime).toBe(30);
+      // Was playing, so audio.play() is called immediately.
       expect(mockPlay).toHaveBeenCalled();
+      // No explicit pause — onDuration handles the restore.
+      expect(mockPause).not.toHaveBeenCalled();
     });
 
-    it('does not seek when currentTime is near the start (no point seeking)', () => {
+    it('does not stash restoredTime when currentTime is near the start', () => {
       playerService.currentTrack.set(TRACK);
       playerService.isPlaying.set(true);
       fixture.detectChanges();
       mockPlay.mockClear();
-      mockPause.mockClear();
 
-      Object.defineProperty(fakeAudio, 'readyState', { value: 1, configurable: true });
-      Object.defineProperty(fakeAudio, 'duration', { value: 180, configurable: true });
       Object.defineProperty(fakeAudio, 'currentTime', {
         value: 0.5,
         writable: true,
@@ -659,23 +655,19 @@ describe('PlayerComponent', () => {
       playerService.toggleVocalMute();
       fixture.detectChanges();
 
-      // Within the first second, no seek needed — playback continues from 0.5.
+      // Within the first second, no point stashing — no restoredTime set.
+      expect(playerService.restoredTime).toBeNull();
       expect(mockPlay).toHaveBeenCalled();
     });
 
-    it('seek guard skips the seek when currentTime is within 1s of duration', () => {
-      // If resumeAt is near the end of the track, seeking to it would
-      // immediately end playback. The guard skips the seek in that case.
+    it('does not play when paused', () => {
       playerService.currentTrack.set(TRACK);
-      playerService.isPlaying.set(true);
+      playerService.isPlaying.set(false);
       fixture.detectChanges();
       mockPlay.mockClear();
 
-      Object.defineProperty(fakeAudio, 'readyState', { value: 1, configurable: true });
-      Object.defineProperty(fakeAudio, 'duration', { value: 100, configurable: true });
-      // currentTime is 99s — within 1s of duration (100s).
       Object.defineProperty(fakeAudio, 'currentTime', {
-        value: 99,
+        value: 45,
         writable: true,
         configurable: true,
       });
@@ -684,8 +676,10 @@ describe('PlayerComponent', () => {
       playerService.toggleVocalMute();
       fixture.detectChanges();
 
-      // currentTime should NOT have been overwritten to 99 (the seek is skipped).
-      expect(mockPlay).toHaveBeenCalled();
+      // Position should still be stashed.
+      expect(playerService.restoredTime).toBe(45);
+      // But play() must NOT be called since we were paused.
+      expect(mockPlay).not.toHaveBeenCalled();
     });
   });
 });

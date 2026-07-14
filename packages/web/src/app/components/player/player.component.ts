@@ -306,9 +306,10 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
 
     // Effect 6b: Vocal mute toggle — reloads the stream with/without the
     // ?vocals=off param. The toggle requires a fresh audio src because the
-    // server-side filter produces a different file. Pause before changing src
-    // (otherwise the browser may auto-play the new media from position 0
-    // before loadedmetadata fires), then seek + resume on loadedmetadata.
+    // server-side filter produces a different file. Position is preserved via
+    // player.restoredTime, which the existing onDuration handler (above)
+    // applies once loadedmetadata fires on the new audio. This re-uses the
+    // same restore mechanism as the page-reload path (PlayerService.restoreState).
     effect(() => {
       const vocalsMuted = this.player.vocalsMuted();
       const track = this.player.currentTrack();
@@ -324,25 +325,17 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
       if (vocalsMuted === this.lastVocalsMuted) return;
       this.lastVocalsMuted = vocalsMuted;
 
-      const resumeAt = audio.currentTime;
+      // Stash the current position so onDuration restores it once the new
+      // media's loadedmetadata fires (browser resets currentTime to 0 when
+      // audio.src changes).
+      if (audio.currentTime > 1) this.player.restoredTime = audio.currentTime;
       const wasPlaying = this.player.isPlaying();
-      audio.pause();
       audio.src = this.server.streamUrl(track.id, token, { vocalsOff: vocalsMuted });
-
-      const onLoaded = () => {
-        if (resumeAt > 1 && Number.isFinite(audio.duration) && resumeAt < audio.duration - 1) {
-          audio.currentTime = resumeAt;
-        }
-        if (wasPlaying) {
-          audio.play().catch((err) => {
-            if (err.name === 'NotAllowedError') this.handlePlayRejection();
-          });
-        }
-      };
-      // readyState >= 1 (HAVE_METADATA) means we can seek immediately;
-      // otherwise wait for loadedmetadata (cache hits fire this synchronously).
-      if (audio.readyState >= 1) onLoaded();
-      else audio.addEventListener('loadedmetadata', onLoaded, { once: true });
+      if (wasPlaying) {
+        audio.play().catch((err) => {
+          if (err.name === 'NotAllowedError') this.handlePlayRejection();
+        });
+      }
     });
 
     // Effect 7: Progress reporting interval
