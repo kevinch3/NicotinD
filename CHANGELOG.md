@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.202](https://github.com/kevinch3/NicotinD/compare/v0.1.201...v0.1.202) (2026-07-14)
+
+
+### Bug Fixes
+
+* **web:** remove client-side vocal filter, keep backend-only vocal mute ([ec6cb08](https://github.com/kevinch3/NicotinD/commit/ec6cb0847f3324d3cf36d5008644a52d44d48441))
+
 ## [0.1.201](https://github.com/kevinch3/NicotinD/compare/v0.1.199...v0.1.201) (2026-07-14)
 
 
