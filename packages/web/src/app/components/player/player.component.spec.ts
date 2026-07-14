@@ -9,6 +9,7 @@ import { RemotePlaybackService } from '../../services/remote-playback.service';
 import { PlaybackWsService } from '../../services/playback-ws.service';
 import { PreserveService } from '../../services/preserve.service';
 import { MediaControlsService } from '../../services/media-controls.service';
+import { VocalFilterService } from '../../services/vocal-filter.service';
 import type { Track } from '../../services/player.service';
 
 // Note: preserve-store (IndexedDB) is never reached in these tests because
@@ -101,6 +102,15 @@ describe('PlayerComponent', () => {
             setPlaybackState: vi.fn(),
             setPositionState: vi.fn(),
             setActionHandler: vi.fn(),
+          },
+        },
+        // Mocked so jsdom (no Web Audio API) doesn't crash the component init.
+        {
+          provide: VocalFilterService,
+          useValue: {
+            attach: vi.fn(),
+            setEnabled: vi.fn(),
+            destroy: vi.fn(),
           },
         },
       ],
@@ -605,87 +615,50 @@ describe('PlayerComponent', () => {
   // ─── Vocal mute toggle (karaoke) ──────────────────────────────────────────
 
   describe('vocal mute toggle', () => {
-    it('pauses before src change, then seeks + plays on loadedmetadata', () => {
-      // Load a track first (Effect 1) without any vocal mute.
+    it('toggles the Web Audio filter graph — no audio src change, no position reset', () => {
+      // The vocal mute is implemented client-side via Web Audio API: the
+      // <audio> element's src and currentTime are never touched, so the
+      // position reset bug is structurally impossible (no reload, no seek).
+      const vocalFilter = TestBed.inject(VocalFilterService);
       playerService.currentTrack.set(TRACK);
       playerService.isPlaying.set(true);
       fixture.detectChanges();
-      mockPlay.mockClear();
+      vi.mocked(vocalFilter.setEnabled).mockClear();
       mockPause.mockClear();
+      fakeAudio.removeAttribute('src');
 
-      // Pre-set readyState >= 1 so the effect takes the synchronous path;
-      // the e2e test covers the async loadedmetadata path in a real browser.
-      Object.defineProperty(fakeAudio, 'readyState', { value: 1, configurable: true });
-      Object.defineProperty(fakeAudio, 'duration', { value: 180, configurable: true });
-      // currentTime is read-only on HTMLMediaElement unless HAVE_METADATA, and
-      // assignment requires the descriptor to be writable.
+      const posBefore = 30;
       Object.defineProperty(fakeAudio, 'currentTime', {
-        value: 30,
+        value: posBefore,
         writable: true,
         configurable: true,
       });
-      fakeAudio.removeAttribute('src');
 
       playerService.toggleVocalMute();
       fixture.detectChanges();
 
-      // Effect 6b must have paused before the src change (prevents the
-      // browser from auto-playing the new media from position 0).
-      expect(mockPause).toHaveBeenCalled();
-      // The new src includes the vocals=off flag.
-      expect(fakeAudio.src).toContain('/api/stream/t1');
-      expect(fakeAudio.src).toContain('vocals=off');
-      // readyState >= 1 takes the sync path: seek + play happen immediately.
-      expect(fakeAudio.currentTime).toBe(30);
-      expect(mockPlay).toHaveBeenCalled();
+      // The effect calls into the vocal filter service — it does NOT touch
+      // audio.src or audio.currentTime.
+      expect(vocalFilter.setEnabled).toHaveBeenCalledWith(true);
+      expect(fakeAudio.src).toBe(''); // never changed
+      expect(fakeAudio.currentTime).toBe(posBefore); // never reset
+      // No pause + replay needed (client-side filter swap is inaudible).
+      expect(mockPause).not.toHaveBeenCalled();
     });
 
-    it('does not seek when currentTime is near the start (no point seeking)', () => {
+    it('persists toggle across track changes', () => {
+      const vocalFilter = TestBed.inject(VocalFilterService);
       playerService.currentTrack.set(TRACK);
       playerService.isPlaying.set(true);
-      fixture.detectChanges();
-      mockPlay.mockClear();
-      mockPause.mockClear();
-
-      Object.defineProperty(fakeAudio, 'readyState', { value: 1, configurable: true });
-      Object.defineProperty(fakeAudio, 'duration', { value: 180, configurable: true });
-      Object.defineProperty(fakeAudio, 'currentTime', {
-        value: 0.5,
-        writable: true,
-        configurable: true,
-      });
-      fakeAudio.removeAttribute('src');
-
       playerService.toggleVocalMute();
       fixture.detectChanges();
+      vi.mocked(vocalFilter.setEnabled).mockClear();
 
-      // Within the first second, no seek needed — playback continues from 0.5.
-      expect(mockPlay).toHaveBeenCalled();
-    });
-
-    it('seek guard skips the seek when currentTime is within 1s of duration', () => {
-      // If resumeAt is near the end of the track, seeking to it would
-      // immediately end playback. The guard skips the seek in that case.
-      playerService.currentTrack.set(TRACK);
-      playerService.isPlaying.set(true);
+      // Change to another track — the filter stays on (setEnabled isn't
+      // called again because the value didn't change).
+      playerService.currentTrack.set(TRACK_2);
       fixture.detectChanges();
-      mockPlay.mockClear();
-
-      Object.defineProperty(fakeAudio, 'readyState', { value: 1, configurable: true });
-      Object.defineProperty(fakeAudio, 'duration', { value: 100, configurable: true });
-      // currentTime is 99s — within 1s of duration (100s).
-      Object.defineProperty(fakeAudio, 'currentTime', {
-        value: 99,
-        writable: true,
-        configurable: true,
-      });
-      fakeAudio.removeAttribute('src');
-
-      playerService.toggleVocalMute();
-      fixture.detectChanges();
-
-      // currentTime should NOT have been overwritten to 99 (the seek is skipped).
-      expect(mockPlay).toHaveBeenCalled();
+      expect(vocalFilter.setEnabled).not.toHaveBeenCalled();
     });
   });
 });
