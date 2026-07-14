@@ -64,18 +64,12 @@ export function transcodeContentType(format: TranscodeFmt): string {
 /**
  * Transcode the whole file to `outPath` and return only once it's complete.
  * Writes to a sibling temp file then atomically renames, so a reader never sees
- * a half-written cache entry. Unlike a sequential ffmpeg pipe, a finished file
- * on disk can be served with HTTP **range** support — which is what makes seeking
- * work on transcoded streams (the iOS/Firefox "far seek does nothing" bug).
- * Resolves on exit code 0, rejects (and cleans up the temp) otherwise.
+ * a half-written cache entry. The on-disk file enables HTTP **range** support,
+ * which is what makes seeking work on transcoded streams.
  *
- * When `vocalRemoval` is true, applies a two-step mid/side transform via
- * `stereotools`: convert L/R to M/S, heavily attenuate the middle channel
- * (where center-panned vocals sit, `mlev=0.015625` is the filter's minimum),
- * then convert back. This is more effective than the raw `pan=c0-c1` trick
- * because it preserves the stereo side image (reverb, panned instruments)
- * while removing the center, instead of subtracting channels from each other
- * (which can thin out the instrumental).
+ * When `vocalRemoval` is true, applies ffmpeg's `stereotools` mid/side filter to
+ * attenuate the center channel (where vocals typically sit) while preserving
+ * the stereo side image.
  */
 export function transcodeToFile(
   absPath: string,
@@ -87,8 +81,6 @@ export function transcodeToFile(
   return new Promise((resolve, reject) => {
     const spec = FORMAT_ARGS[format];
     const tmp = `${outPath}.tmp-${process.pid}-${Date.now()}`;
-    // stereotools does lr→ms, sets mid level to the minimum (0.015625 is the
-    // filter's floor — 0 is rejected), then ms→lr in a single instance.
     const filterArgs = vocalRemoval
       ? ['-af', 'stereotools=mode=lr>ms:mlev=0.015625:mode=ms>lr']
       : [];
