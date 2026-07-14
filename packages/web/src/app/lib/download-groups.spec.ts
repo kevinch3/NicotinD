@@ -207,6 +207,20 @@ describe('acquireJobToDownloadItem', () => {
     const item = acquireJobToDownloadItem(job({ state: 'done', stage: 'done', error: null }));
     expect(item.canRetry).toBe(false);
   });
+
+  it('carries destinationAlbums through unchanged', () => {
+    const destinationAlbums = [
+      { albumArtist: 'Artist A', albumTitle: 'Album A', albumId: 'alb-a' },
+      { albumArtist: 'Artist B', albumTitle: 'Album B', albumId: 'alb-b' },
+    ];
+    const item = acquireJobToDownloadItem(job({ destinationAlbums }));
+    expect(item.destinationAlbums).toEqual(destinationAlbums);
+  });
+
+  it('defaults destinationAlbums to an empty array when the job has none', () => {
+    const item = acquireJobToDownloadItem(job({ destinationAlbums: [] }));
+    expect(item.destinationAlbums).toEqual([]);
+  });
 });
 
 function acqJob(over: Partial<AcquisitionJobView> = {}): AcquisitionJobView {

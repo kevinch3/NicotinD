@@ -4,6 +4,7 @@ import type { DownloadItem } from '../../lib/download-groups';
 import { methodBadge } from '../../lib/acquisition-method';
 import { resolveAlbumRoute } from '../../lib/route-utils';
 import { PipelineStageBadgeComponent } from '../pipeline-stage-badge/pipeline-stage-badge.component';
+import { MenuPanelComponent } from '../menu-panel/menu-panel.component';
 
 /** Relative "Xm ago" from a ms timestamp. */
 function timeAgo(ms: number): string {
@@ -43,6 +44,16 @@ export function canOpenInLibrary(item: DownloadItem): boolean {
 }
 
 /**
+ * Whether the row should offer a "View N albums" menu instead: a completed
+ * job whose files landed in more than one album (Task 1's `destinationAlbums`
+ * — `albumId` is null in this case, so `canOpenInLibrary` is already false).
+ * Exported so the gating contract is unit-testable without rendering.
+ */
+export function hasMultipleDestinationAlbums(item: DownloadItem): boolean {
+  return item.stage === 'done' && (item.destinationAlbums?.length ?? 0) > 1;
+}
+
+/**
  * One row in the unified Downloads feed. Renders the four facets the user asked
  * for — how (method badge), what stage, when (started), where (storage path,
  * tucked behind a toggle) — plus, once complete, an "Open in Library" deep-link
@@ -52,7 +63,7 @@ export function canOpenInLibrary(item: DownloadItem): boolean {
 @Component({
   selector: 'app-download-item',
   standalone: true,
-  imports: [PipelineStageBadgeComponent, RouterLink],
+  imports: [PipelineStageBadgeComponent, RouterLink, MenuPanelComponent],
   host: { '[class]': 'hostClass' },
   templateUrl: './download-item.component.html',
 })
@@ -75,8 +86,18 @@ export class DownloadItemComponent {
   /** Deep-link target for the completed album ('/library' when the id is unknown). */
   readonly albumRoute = computed(() => resolveAlbumRoute(this.item().albumId));
 
+  /** The destination albums to list in the "View N albums" menu, when shown. */
+  readonly destinationAlbums = computed(() => this.item().destinationAlbums ?? []);
+  /** Whether to show the "View N albums" menu on this row. */
+  readonly showAlbumsMenu = computed(() => hasMultipleDestinationAlbums(this.item()));
+
   startedAgo(): string {
     const at = this.item().startedAt;
     return at ? timeAgo(at) : '';
+  }
+
+  /** Deep-link target for one destination album row in the "View N albums" menu. */
+  albumRouteFor(albumId: string): string[] {
+    return resolveAlbumRoute(albumId);
   }
 }

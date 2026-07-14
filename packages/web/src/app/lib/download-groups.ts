@@ -133,6 +133,13 @@ export interface DownloadItem {
   storagePath?: string;
   /** Destination library album id, for deep-linking to the completed album. */
   albumId?: string;
+  /**
+   * The full set of albums this job's files landed in, when known (URL
+   * acquire jobs only). More than one entry means `albumId` above is null
+   * (Task 1's design) — the row offers a "View N albums" menu instead of a
+   * single "Open in Library" link.
+   */
+  destinationAlbums?: { albumArtist: string; albumTitle: string; albumId: string }[];
   /** Completed / total tracks (or playlist items). */
   progress?: { done: number; total: number };
   /** 0–100 progress for the in-flight bar, when a percentage is meaningful. */
@@ -220,6 +227,7 @@ export function acquireJobToDownloadItem(job: AcquireJob): DownloadItem {
     startedAt: job.created_at ? job.created_at * 1000 : undefined,
     storagePath: job.storage_path ?? undefined,
     albumId: job.albumId ?? undefined,
+    destinationAlbums: job.destinationAlbums,
     progress,
     percent:
       stage === 'downloading' && progress && progress.total > 0
