@@ -63,11 +63,21 @@ export function hasMultipleDestinationAlbums(item: DownloadItem): boolean {
  * `currentAndNextTracks` report a stale "Now" even after the job's `stage`
  * moved to a terminal one — gating on `stage` here makes the block disappear
  * the moment the job leaves the in-flight state, regardless of what a stale
- * per-track array still says. Exported so it's unit-testable without
- * rendering, matching the convention of the gating helpers above.
+ * per-track array still says.
+ *
+ * Also requires `kind === 'acquire'`: slskd hunts download several tracks in
+ * parallel from different peers, so multiple `tracks` entries can be
+ * 'downloading' at once. `currentAndNextTracks` picks the LAST one as "Now",
+ * which for slskd is an arbitrary, jumpy title rather than a meaningful
+ * "current track" — so the block is suppressed for slskd-sourced rows even
+ * though the field is still populated (harmless to keep threading it
+ * through). URL-acquire backends (spotdl/yt-dlp/archive) download one track
+ * at a time, so "last downloading" is meaningful there. Exported so it's
+ * unit-testable without rendering, matching the convention of the gating
+ * helpers above.
  */
 export function canShowNowNext(item: DownloadItem): boolean {
-  return item.stage === 'downloading';
+  return item.kind === 'acquire' && item.stage === 'downloading';
 }
 
 /**

@@ -137,15 +137,28 @@ describe('download-item "View N albums" menu gating', () => {
 // stuck 'downloading' track entry must not keep showing "Now:" once the
 // job's overall stage has left the in-flight state).
 describe('download-item "Now: / Next:" gating', () => {
-  it('is gated on the in-flight stage, not on the tracks array', () => {
-    expect(canShowNowNext(item({ stage: 'downloading' }))).toBe(true);
+  it('is gated on the in-flight stage, not on the tracks array (acquire jobs)', () => {
+    expect(canShowNowNext(item({ kind: 'acquire', stage: 'downloading' }))).toBe(true);
     // Terminal stages: gated off regardless of a stale 'downloading' track.
-    expect(canShowNowNext(item({ stage: 'done' }))).toBe(false);
-    expect(canShowNowNext(item({ stage: 'error' }))).toBe(false);
-    expect(canShowNowNext(item({ stage: 'queued' }))).toBe(false);
-    expect(canShowNowNext(item({ stage: 'organizing' }))).toBe(false);
-    expect(canShowNowNext(item({ stage: 'scanning' }))).toBe(false);
-    expect(canShowNowNext(item({ stage: 'processing' }))).toBe(false);
+    expect(canShowNowNext(item({ kind: 'acquire', stage: 'done' }))).toBe(false);
+    expect(canShowNowNext(item({ kind: 'acquire', stage: 'error' }))).toBe(false);
+    expect(canShowNowNext(item({ kind: 'acquire', stage: 'queued' }))).toBe(false);
+    expect(canShowNowNext(item({ kind: 'acquire', stage: 'organizing' }))).toBe(false);
+    expect(canShowNowNext(item({ kind: 'acquire', stage: 'scanning' }))).toBe(false);
+    expect(canShowNowNext(item({ kind: 'acquire', stage: 'processing' }))).toBe(false);
+  });
+
+  // Finding 2: slskd hunts download several tracks in parallel, so the "last
+  // downloading" entry `currentAndNextTracks` picks is an arbitrary, jumpy
+  // title, not a meaningful "current track" — suppress the block for every
+  // slskd-sourced row regardless of stage, while leaving it working for the
+  // otherwise-identical acquire-sourced row.
+  it('is suppressed for slskd-sourced rows even while downloading', () => {
+    expect(canShowNowNext(item({ kind: 'slskd', stage: 'downloading' }))).toBe(false);
+  });
+
+  it('is shown for an otherwise-identical acquire-sourced row', () => {
+    expect(canShowNowNext(item({ kind: 'acquire', stage: 'downloading' }))).toBe(true);
   });
 });
 
@@ -240,9 +253,10 @@ describe('download-item "Now: / Next:" — rendered', () => {
     return fixture;
   }
 
-  it('shows "Now:" and "Next:" while in flight with a current track', () => {
+  it('shows "Now:" and "Next:" while in flight with a current track (acquire job)', () => {
     const fixture = setup(
       item({
+        kind: 'acquire',
         stage: 'downloading',
         tracks: [
           { title: 'Track One', status: 'done' },
@@ -266,6 +280,7 @@ describe('download-item "Now: / Next:" — rendered', () => {
     // job's own stage has moved on the block must not show a stale "Now:".
     const fixture = setup(
       item({
+        kind: 'acquire',
         stage: 'done',
         tracks: [{ title: 'Stuck Track', status: 'downloading' }],
       }),
@@ -275,16 +290,17 @@ describe('download-item "Now: / Next:" — rendered', () => {
   });
 
   it('renders nothing when tracks is empty or absent, matching today\'s behavior', () => {
-    const fixtureAbsent = setup(item({ stage: 'downloading' }));
+    const fixtureAbsent = setup(item({ kind: 'acquire', stage: 'downloading' }));
     expect(fixtureAbsent.nativeElement.querySelector('[data-testid="download-now"]')).toBeNull();
 
-    const fixtureEmpty = setup(item({ stage: 'downloading', tracks: [] }));
+    const fixtureEmpty = setup(item({ kind: 'acquire', stage: 'downloading', tracks: [] }));
     expect(fixtureEmpty.nativeElement.querySelector('[data-testid="download-now"]')).toBeNull();
   });
 
   it('hides "Next:" when there are no pending tracks after the current one', () => {
     const fixture = setup(
       item({
+        kind: 'acquire',
         stage: 'downloading',
         tracks: [{ title: 'Only Track', status: 'downloading' }],
       }),
@@ -292,6 +308,22 @@ describe('download-item "Now: / Next:" — rendered', () => {
     expect(fixture.nativeElement.querySelector('[data-testid="download-now"]')?.textContent).toContain(
       'Now: Only Track',
     );
+    expect(fixture.nativeElement.querySelector('[data-testid="download-next"]')).toBeNull();
+  });
+
+  // Finding 2 regression: a slskd hunt with a 'downloading' track entry must
+  // NOT show the Now/Next block (parallel per-peer downloads make "last
+  // downloading" meaningless), while an otherwise-identical acquire-kind item
+  // does show it.
+  it('does not render the block for a slskd-kind item, even with a downloading track', () => {
+    const fixture = setup(
+      item({
+        kind: 'slskd',
+        stage: 'downloading',
+        tracks: [{ title: 'Some Track', status: 'downloading' }],
+      }),
+    );
+    expect(fixture.nativeElement.querySelector('[data-testid="download-now"]')).toBeNull();
     expect(fixture.nativeElement.querySelector('[data-testid="download-next"]')).toBeNull();
   });
 });
