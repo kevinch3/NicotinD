@@ -19,8 +19,42 @@ export type PipelineStage =
   | 'downloading'
   | 'organizing'
   | 'scanning'
+  /** Scanned into the library but still quarantined behind enrichment gates. */
+  | 'processing'
   | 'done'
   | 'error';
+
+/** How a unified acquisition job was initiated. */
+export type AcquisitionJobKind = 'album-hunt' | 'auto-acquire' | 'direct' | 'track-search' | 'url';
+
+/**
+ * Read model of one unified acquisition job (`GET /api/downloads/jobs`).
+ * Every download — slskd hunts, fallback recoveries, direct grabs, per-track
+ * searches, URL acquires — is wrapped in one of these; the transfer↔job
+ * linkage is stored at enqueue time (see docs/acquisition-jobs.md).
+ */
+export interface AcquisitionJobView {
+  id: string;
+  kind: AcquisitionJobKind;
+  method: string;
+  state: 'active' | 'done' | 'failed' | 'superseded';
+  stage: PipelineStage;
+  artistName: string | null;
+  albumTitle: string | null;
+  lidarrAlbumId: number | null;
+  sourceRef: string | null;
+  error: string | null;
+  createdAt: number;
+  updatedAt: number;
+  /** Destination library album id, for deep-linking. */
+  albumId: string | null;
+  /**
+   * Per-item tallies. `delivered` = items on disk (completed/organized/
+   * scanned); `unavailable` = tracks the fallback gave up on — a job with
+   * some renders as an honest partial ("11 of 13 · 2 unavailable").
+   */
+  progress: { expected: number; delivered: number; unavailable: number; failed: number };
+}
 
 export interface AcquireJob {
   id: string;

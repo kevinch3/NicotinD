@@ -122,16 +122,45 @@ after they last moved (`updated_at`, so a just-closed job stays visible).
 - **Boot + periodic hygiene**: `index.ts` runs `reconcileOnBoot` at startup and
   after every retry sweep (alongside `fallback.sweep()`).
 
+## Read model + web feed (Phase 3 — shipped)
+
+- `GET /api/downloads` enrichment now runs **stored transfer-key lookup first**
+  (`enrichWithAcquisitionJobs` in `routes/downloads.ts`: per-file
+  `jobMetaForTransfer`), with the legacy `(username, directory)` `album_jobs`
+  match kept one release as fallback for pre-migration active downloads.
+- **`GET /api/downloads/jobs`**: unified job feed (`listJobFeed`), newest
+  first, with per-state progress
+  (`{ expected, delivered, unavailable, failed }`) and a deep-linkable
+  `albumId`.
+- Core type `AcquisitionJobView` (+ `AcquisitionJobKind`) in
+  `packages/core/src/types/acquire.ts`, re-exported through the web shim.
+  `PipelineStage` gained **`processing`** (scanned but quarantined behind
+  enrichment gates) — badge + stepper updated in `lib/pipeline-stage.ts`.
+- Web: `TransferService.acquisitionJobs` polls the feed;
+  `mergeAcquisitionJobs` (`lib/download-groups.ts`) folds jobs into the Active
+  feed — a slskd row whose transfers finished adopts the job's post-download
+  stage (organizing → scanning → processing → done) and its unavailable count
+  ("11 of 13 · 2 unavailable" via the `download-unavailable` chip); active
+  jobs whose transfers vanished from slskd render as their own rows; URL jobs
+  are skipped (the AcquireJob lane already shows them).
+
+## Metadata pre-fill (Phase 4 — shipped)
+
+`applyJobMetadataPrefill` (`services/job-metadata-prefill.ts`), called from the
+watcher's scan seam: freshly scanned songs whose job carries Lidarr
+`genres`/`year` get them applied immediately — `setSongGenres` (join table +
+mirrored primary column, the same helper the genre task uses) plus a file-tag
+write, so the genre enrichment task's pending query naturally skips them and a
+full rescan re-reads the value from the tag instead of wiping it.
+**Fill-only-empty**: an existing tag or user metadata fix always wins.
+
 ## Rollout phases
 
 1. **Schema + store + write-only recording** (shipped) — no readers, zero
    behavior change.
 2. **Pipeline stage tracking** (shipped) — see above.
-3. Read model + web: downloads-feed enrichment switches to stored
-   transfer-key lookup; `GET /api/downloads/jobs`; job stage badges.
-4. Metadata pre-fill: job-supplied genre/year written at scan time through the
-   same helper the genre enrichment task uses (DB + file tag, fill-only-empty),
-   so enrichment skips those songs and a rescan can't wipe the value.
+3. **Read model + web feed** (shipped) — see above.
+4. **Metadata pre-fill** (shipped) — see above.
 5. Cleanup: legacy `album_jobs` readers (library suppression, curator, scanner
    canonical map) migrate to `acquisition_jobs`; `transfer-group-keys.ts`
    remains the safety net for job-less transfers.

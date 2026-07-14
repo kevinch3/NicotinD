@@ -12,6 +12,7 @@ const BADGES: Record<PipelineStage, StageBadge> = {
   downloading: { label: 'Downloading', tone: 'active' },
   organizing: { label: 'Organizing', tone: 'active' },
   scanning: { label: 'Scanning', tone: 'active' },
+  processing: { label: 'Processing', tone: 'active' },
   done: { label: 'Done', tone: 'done' },
   error: { label: 'Error', tone: 'error' },
 };
@@ -26,6 +27,7 @@ export const STAGE_STEPS: readonly PipelineStage[] = [
   'downloading',
   'organizing',
   'scanning',
+  'processing',
   'done',
 ];
 

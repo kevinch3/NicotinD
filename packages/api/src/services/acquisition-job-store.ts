@@ -507,6 +507,68 @@ export function reconcileOnBoot(db: Database, now = Date.now()): void {
   prune();
 }
 
+export interface AcquisitionJobFeedItem {
+  id: string;
+  kind: AcquisitionJobKind;
+  method: string;
+  state: string;
+  stage: string;
+  artistName: string | null;
+  albumTitle: string | null;
+  lidarrAlbumId: number | null;
+  sourceRef: string | null;
+  error: string | null;
+  createdAt: number;
+  updatedAt: number;
+  progress: { expected: number; delivered: number; unavailable: number; failed: number };
+}
+
+/**
+ * Downloads-feed read model: jobs newest-first with per-state item progress.
+ * `delivered` counts every item that made it onto disk (completed, organized
+ * or scanned); `unavailable`/`failed` make an honest partial renderable
+ * ("11 of 13 · 2 unavailable").
+ */
+export function listJobFeed(db: Database, limit = 50): AcquisitionJobFeedItem[] {
+  const jobs = db
+    .query<JobRow, [number]>(`SELECT * FROM acquisition_jobs ORDER BY created_at DESC LIMIT ?`)
+    .all(limit);
+  return jobs.map((row) => {
+    const counts = new Map<string, number>();
+    for (const r of db
+      .query<
+        { state: string; c: number },
+        [string]
+      >(`SELECT state, COUNT(*) c FROM acquisition_job_items WHERE job_id = ? GROUP BY state`)
+      .all(row.id)) {
+      counts.set(r.state, r.c);
+    }
+    const expected = [...counts.values()].reduce((a, b) => a + b, 0);
+    const delivered =
+      (counts.get('completed') ?? 0) + (counts.get('organized') ?? 0) + (counts.get('scanned') ?? 0);
+    return {
+      id: row.id,
+      kind: row.kind,
+      method: row.method,
+      state: row.state,
+      stage: row.stage,
+      artistName: row.artist_name,
+      albumTitle: row.album_title,
+      lidarrAlbumId: row.lidarr_album_id,
+      sourceRef: row.source_ref,
+      error: row.error,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      progress: {
+        expected,
+        delivered,
+        unavailable: counts.get('unavailable') ?? 0,
+        failed: counts.get('failed') ?? 0,
+      },
+    };
+  });
+}
+
 /**
  * Resolve the job a transfer belongs to by its exact stored key — the
  * replacement for every read-time folder-string matcher.

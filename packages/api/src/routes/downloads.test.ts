@@ -3,6 +3,7 @@ import { Hono } from 'hono';
 import { Database } from 'bun:sqlite';
 import { downloadRoutes, enrichWithAlbumJobs } from './downloads.js';
 import { albumIdFor } from '../services/library-scanner.js';
+import { createJob } from '../services/acquisition-job-store.js';
 import type { SlskdUserTransferGroup } from '@nicotind/core';
 import { ProviderRegistry } from '../services/provider-registry.js';
 import { SlskdSearchProvider } from '../services/providers/slskd-provider.js';
@@ -51,6 +52,8 @@ describe('downloads routes', () => {
   beforeEach(() => {
     testDb.run('DELETE FROM hidden_transfers');
     testDb.run('DELETE FROM album_jobs');
+    testDb.run('DELETE FROM acquisition_job_items');
+    testDb.run('DELETE FROM acquisition_jobs');
 
     slskdMock = makeSlskdMock();
 
@@ -137,6 +140,66 @@ describe('downloads routes', () => {
       canonicalTrackCount: 4,
       albumId: albumIdFor('Patricio Rey', 'Oktubre'),
     });
+  });
+
+  it('GET / enriches via stored acquisition-job transfer keys (no album_jobs row needed)', async () => {
+    createJob(testDb, {
+      kind: 'album-hunt',
+      method: 'slskd',
+      artistName: 'Bowie',
+      albumTitle: 'Heathen',
+      username: 'user1',
+      canonicalTracks: ['a', 'b', 'c'],
+      files: [{ filename: 'file1.mp3' }, { filename: 'file2.mp3' }],
+    });
+
+    const res = await app.request('/');
+    const data = (await res.json()) as Array<{
+      directories: Array<{
+        albumJob?: { artistName: string; albumTitle: string; canonicalTrackCount: number };
+      }>;
+    }>;
+    expect(data[0].directories[0].albumJob).toMatchObject({
+      artistName: 'Bowie',
+      albumTitle: 'Heathen',
+      canonicalTrackCount: 3,
+      albumId: albumIdFor('Bowie', 'Heathen'),
+    });
+  });
+
+  it('GET /jobs returns the unified job feed with per-state progress', async () => {
+    const id = createJob(testDb, {
+      kind: 'album-hunt',
+      method: 'slskd',
+      artistName: 'Bowie',
+      albumTitle: 'Heathen',
+      username: 'user1',
+      canonicalTracks: ['a', 'b'],
+      files: [{ filename: 'file1.mp3' }, { filename: 'file2.mp3' }],
+    });
+    testDb.run(
+      `UPDATE acquisition_job_items SET state = 'scanned', song_id = 's1' WHERE filename = 'file1.mp3'`,
+    );
+
+    const res = await app.request('/jobs');
+    expect(res.status).toBe(200);
+    const jobs = (await res.json()) as Array<{
+      id: string;
+      kind: string;
+      method: string;
+      state: string;
+      stage: string;
+      artistName: string | null;
+      albumTitle: string | null;
+      albumId: string | null;
+      progress: { expected: number; delivered: number; unavailable: number; failed: number };
+    }>;
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0].id).toBe(id);
+    expect(jobs[0].kind).toBe('album-hunt');
+    expect(jobs[0].artistName).toBe('Bowie');
+    expect(jobs[0].albumId).toBe(albumIdFor('Bowie', 'Heathen'));
+    expect(jobs[0].progress).toEqual({ expected: 2, delivered: 1, unavailable: 0, failed: 0 });
   });
 
   it('GET / leaves direct (non-hunt) folders without albumJob metadata', async () => {
