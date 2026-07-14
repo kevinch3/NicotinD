@@ -53,6 +53,7 @@ function makeAcquireJob(state: AcquireJob['state']): AcquireJob {
     albumArtist: null,
     albumTitle: null,
     destinationAlbums: [],
+    tracks: [],
     progress: null,
     error: null,
     created_at: 0,
