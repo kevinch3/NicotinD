@@ -17,12 +17,15 @@ export type FileTranscoder = (
   outPath: string,
   format: TranscodeFmt,
   kbps: number,
+  vocalRemoval: boolean,
 ) => Promise<void>;
 
 export interface TranscodeCacheOptions {
   transcoder?: FileTranscoder;
   /** Max total bytes of transcoded copies to keep on disk (evicts oldest first). */
   budgetBytes?: number;
+  /** When true, produce (and key) a vocal-muted variant — a distinct cache entry. */
+  vocalRemoval?: boolean;
 }
 
 // Default disk budget for transcoded copies. They're a derived/regenerable cache,
@@ -33,15 +36,22 @@ const DEFAULT_BUDGET_BYTES = 2 * 1024 * 1024 * 1024; // 2 GiB
 // track (or a play + its pre-buffer) don't spawn two ffmpegs for one cache entry.
 const inFlight = new Map<string, Promise<string>>();
 
-/** Deterministic cache id: source path + mtime + target format/bitrate. */
+/**
+ * Deterministic cache id: source path + mtime + target format/bitrate, plus a
+ * `novox` marker for the vocal-muted variant. The marker is only appended when
+ * `vocalRemoval` is true, so ordinary streams keep the exact same keys as
+ * before — a deploy doesn't invalidate the whole transcode cache.
+ */
 export function transcodeCacheKey(
   absPath: string,
   mtimeMs: number,
   format: TranscodeFmt,
   kbps: number,
+  vocalRemoval = false,
 ): string {
+  const vox = vocalRemoval ? '|novox' : '';
   return createHash('sha1')
-    .update(`${absPath}|${Math.round(mtimeMs)}|${format}|${kbps}`)
+    .update(`${absPath}|${Math.round(mtimeMs)}|${format}|${kbps}${vox}`)
     .digest('hex');
 }
 
@@ -63,9 +73,10 @@ export async function getTranscodedFile(
 ): Promise<string> {
   const transcoder = opts.transcoder ?? defaultTranscodeToFile;
   const budgetBytes = opts.budgetBytes ?? DEFAULT_BUDGET_BYTES;
+  const vocalRemoval = opts.vocalRemoval ?? false;
 
   const st = statSync(absPath);
-  const key = transcodeCacheKey(absPath, st.mtimeMs, format, kbps);
+  const key = transcodeCacheKey(absPath, st.mtimeMs, format, kbps, vocalRemoval);
   const outPath = join(cacheDir, `${key}.${transcodeExt(format)}`);
   if (existsSync(outPath)) return outPath;
 
@@ -73,7 +84,7 @@ export async function getTranscodedFile(
   if (!pending) {
     pending = (async () => {
       mkdirSync(cacheDir, { recursive: true });
-      await transcoder(absPath, outPath, format, kbps);
+      await transcoder(absPath, outPath, format, kbps, vocalRemoval);
       void pruneTranscodeCache(cacheDir, budgetBytes).catch((err) =>
         log.debug({ err }, 'transcode cache prune failed'),
       );

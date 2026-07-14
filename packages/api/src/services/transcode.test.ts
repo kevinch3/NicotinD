@@ -107,7 +107,7 @@ describe('transcodeToFile', () => {
   });
 
   it('rejects with the ffmpeg message and cleans up the temp on a non-zero exit', async () => {
-    const p = transcodeToFile('/in.flac', '/out.mp3', 'mp3', 192);
+    const p = transcodeToFile('/in.flac', '/out.mp3', 'mp3', 192, false);
     lastProc!.stderr.emit('data', Buffer.from('boom'));
     lastProc!.emit('close', 1);
     await expect(p).rejects.toThrow(/ffmpeg exited 1: boom/);
@@ -122,10 +122,21 @@ describe('transcodeToFile', () => {
     expect(unlinked.some((u) => u.startsWith('/out.mp3.tmp-'))).toBe(true);
   });
 
-  it('omits the -af filter (vocal removal moved to client-side Web Audio)', async () => {
-    const p = transcodeToFile('/in.flac', '/out.mp3', 'mp3', 192);
+  it('omits the -af filter when vocal removal is off', async () => {
+    const p = transcodeToFile('/in.flac', '/out.mp3', 'mp3', 192, false);
     lastProc!.emit('close', 0);
     await expect(p).resolves.toBeUndefined();
     expect(lastSpawnArgs).not.toContain('-af');
+  });
+
+  it('applies the center-channel cancellation filter when vocal removal is on', async () => {
+    const p = transcodeToFile('/in.flac', '/out.mp3', 'mp3', 192, true);
+    lastProc!.emit('close', 0);
+    await expect(p).resolves.toBeUndefined();
+    const af = lastSpawnArgs!.indexOf('-af');
+    expect(af).toBeGreaterThanOrEqual(0);
+    // Center cancellation: each output channel is the L/R difference, so anything
+    // panned dead-center (typically lead vocals) cancels out.
+    expect(lastSpawnArgs![af + 1]).toBe('pan=stereo|c0=c0-c1|c1=c1-c0');
   });
 });

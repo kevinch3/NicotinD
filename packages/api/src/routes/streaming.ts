@@ -92,11 +92,17 @@ export function streamingRoutes(musicDir: string, db: Database, dataDir: string)
     const reqFormat = c.req.query('format');
     const reqBitRate = c.req.query('maxBitRate') ? Number(c.req.query('maxBitRate')) : undefined;
     const range = c.req.header('range');
+    // Karaoke vocal mute (?vocals=off). Filtering can only happen while re-encoding,
+    // so it forces the transcode path even when transcoding is otherwise off — the
+    // one thing that must override `transcodeEnabled`. Still needs ffmpeg; without
+    // it we degrade to an unfiltered passthrough rather than 500.
+    const vocalRemoval = c.req.query('vocals') === 'off';
 
     const wantsTranscode =
-      settings.transcodeEnabled &&
       ffmpegAvailable() &&
-      (settings.forceTranscode || (reqFormat && reqFormat !== 'raw') || reqBitRate != null);
+      (vocalRemoval ||
+        (settings.transcodeEnabled &&
+          (settings.forceTranscode || (reqFormat && reqFormat !== 'raw') || reqBitRate != null)));
 
     if (wantsTranscode) {
       const format =
@@ -109,7 +115,9 @@ export function streamingRoutes(musicDir: string, db: Database, dataDir: string)
         // transcoded streams are seekable. A sequential ffmpeg pipe (status 200,
         // no content-length / accept-ranges) can't be seeked, which is why far
         // seeks did nothing on iOS/Firefox when transcoding was on.
-        const cached = await getTranscodedFile(transcodeCacheDir, abs, format, kbps);
+        const cached = await getTranscodedFile(transcodeCacheDir, abs, format, kbps, {
+          vocalRemoval,
+        });
         return serveFileWithRange(cached, range, transcodeContentType(format));
       } catch (err) {
         log.error({ err, abs }, 'transcode failed; falling back to original');

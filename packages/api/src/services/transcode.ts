@@ -62,17 +62,27 @@ export function transcodeContentType(format: TranscodeFmt): string {
 }
 
 /**
+ * Karaoke / vocal-mute filter: center-channel cancellation. Each output channel
+ * becomes the L−R difference, so anything mixed dead-center (typically the lead
+ * vocal) cancels while stereo-panned instruments survive. Deterministic and
+ * dependency-free — imperfect (reverb/backing vocals leak; a mono downmix
+ * collapses toward silence) but this is the intended vocal-mute behaviour that
+ * was never actually wired into the transcode args.
+ */
+const VOCAL_REMOVAL_FILTER = 'pan=stereo|c0=c0-c1|c1=c1-c0';
+
+/**
  * Transcode the whole file to `outPath` and return only once it's complete.
  * Writes to a sibling temp file then atomically renames, so a reader never sees
  * a half-written cache entry. The on-disk file enables HTTP **range** support,
- * which is what makes seeking work on transcoded streams.
+ * which is what makes seeking work on transcoded streams. Pass `vocalRemoval`
+ * to apply the center-channel cancellation filter (karaoke / `?vocals=off`).
  */
 export function transcodeToFile(
   absPath: string,
   outPath: string,
   format: TranscodeFmt,
   kbps: number,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   vocalRemoval = false,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -86,6 +96,7 @@ export function transcodeToFile(
       '-i',
       absPath,
       '-vn',
+      ...(vocalRemoval ? ['-af', VOCAL_REMOVAL_FILTER] : []),
       ...spec.args(kbps),
       tmp,
     ];

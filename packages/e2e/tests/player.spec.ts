@@ -91,21 +91,21 @@ test.describe('player controls', () => {
     await expect.poll(() => anyAudioPaused(page)).toBe(false);
   });
 
-  test('vocal mute toggle preserves playback position (client-side Web Audio filter)', async ({
+  test('vocal mute toggle preserves playback position (server-side transcode filter)', async ({
     page,
   }) => {
-    // Vocal removal is now client-side via Web Audio API: the <audio> element's
-    // src and currentTime are never touched on toggle, so position is
-    // structurally preserved (no reload, no seek). The setup seeds lyrics
-    // on the first track so the karaoke overlay renders.
+    // Vocal removal is server-side: ?vocals=off forces an ffmpeg center-channel
+    // cancellation transcode, so the toggle DOES re-assign audio.src. Position is
+    // preserved across that reload by `restoredTime` rather than by avoiding the
+    // reload. The setup seeds lyrics on the first track so the overlay renders.
     await startAlbum(page);
 
     // Open the Now Playing sheet so the karaoke overlay can be reached.
     await page.getByTestId('player-title').click();
     await expect(page.getByText('Now Playing')).toBeVisible();
 
-    // Seek to ~8s into the 30s fixture track. With the client-side filter
-    // there is no reload, so the position is stable; we just need a
+    // Seek to ~8s into the 30s fixture track. The toggle reloads the src, so
+    // this is the position `restoredTime` must carry across; we just need a
     // starting point that's clearly past 0 for the assertion.
     await page.evaluate(() => {
       const a = Array.from(document.querySelectorAll('audio')).find(
@@ -128,8 +128,8 @@ test.describe('player controls', () => {
     // The aria-label toggles between "Mute vocals" and "Unmute vocals".
     await expect(toggle).toHaveAttribute('aria-label', /Unmute vocals/);
 
-    // Position should not have reset — the client-side filter swap is
-    // inaudible. Allow a small advance for the audio continuing to play.
+    // Position should not have reset — restoredTime carries it across the src
+    // reload. Allow a small advance for the audio continuing to play.
     await expect
       .poll(async () => {
         const t = await audioTime(page);
