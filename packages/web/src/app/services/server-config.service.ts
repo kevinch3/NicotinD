@@ -56,8 +56,12 @@ export class ServerConfigService {
    * that never plays (intermittent — only some tracks hit it). `ngsw-bypass`
    * is Angular's own documented escape hatch: `onFetch()` returns immediately
    * without ever touching the SW driver when it sees this query param.
+   *
+   * When `opts.vocalsOff` is true, appends `&vocals=off` to request server-side
+   * center-channel cancellation (karaoke mode).
    */
-  streamUrl(id: string, token: string | null): string {
-    return this.apiUrl(`/api/stream/${id}?token=${token}&ngsw-bypass=1`);
+  streamUrl(id: string, token: string | null, opts?: { vocalsOff?: boolean }): string {
+    const vocalsParam = opts?.vocalsOff ? '&vocals=off' : '';
+    return this.apiUrl(`/api/stream/${id}?token=${token}&ngsw-bypass=1${vocalsParam}`);
   }
 }
