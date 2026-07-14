@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.203](https://github.com/kevinch3/NicotinD/compare/v0.1.202...v0.1.203) (2026-07-14)
+
+
+### Bug Fixes
+
+* **stream:** actually apply the vocal-mute filter server-side ([08a8a32](https://github.com/kevinch3/NicotinD/commit/08a8a32cb27fb453a37edafb144ecabc22df8da8)), closes [#134](https://github.com/kevinch3/NicotinD/issues/134) [-#141](https://github.com/kevinch3/-/issues/141)
+
 ## [0.1.202](https://github.com/kevinch3/NicotinD/compare/v0.1.201...v0.1.202) (2026-07-14)
 
 
