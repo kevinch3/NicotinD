@@ -2,10 +2,11 @@ import { test, expect } from '../playground/fixtures';
 import { appeared, firstPresent } from '../playground/screens-ui';
 
 /**
- * Downloads feed feedback flow. Read-only — exercises the Active / Saved Offline /
- * Recently Added tabs, counts feed items, notes retry/cancel/remove affordances,
- * and measures tab-switch friction. Records console health + a terminal outcome.
- * Safe against prod (no mutations). See docs/testing-routines.md.
+ * Downloads feed feedback flow. Read-only — the page is now Active-feed-only
+ * ("Recently Added" + "Saved Offline" moved to the Library Songs tab), so this
+ * counts feed items, notes retry/cancel/remove affordances, and records console
+ * health + a terminal outcome. Safe against prod (no mutations).
+ * See docs/testing-routines.md.
  */
 test('downloads-feed', async ({ page, obs }) => {
   const j = obs.journey();
@@ -15,25 +16,6 @@ test('downloads-feed', async ({ page, obs }) => {
     await page.waitForLoadState('networkidle').catch(() => {});
   });
   j.step('open /downloads');
-
-  const tabs = [
-    { id: 'downloads-tab-active', name: 'Active' },
-    { id: 'downloads-tab-offline', name: 'Saved Offline' },
-    { id: 'downloads-tab-recent', name: 'Recently Added' },
-  ] as const;
-
-  for (const tab of tabs) {
-    const byId = page.getByTestId(tab.id);
-    const target = (await firstPresent(byId, page.getByRole('button', { name: tab.name }))) ?? null;
-    if (!target) {
-      j.deadEnd(`${tab.name} tab not found`);
-      continue;
-    }
-    if ((await byId.count()) === 0) j.fallback(`${tab.name} tab has no data-testid`);
-    await target.click();
-    j.step(`switch to ${tab.name}`);
-    await page.waitForTimeout(300);
-  }
 
   // Count whatever the feed currently shows (zero is fine on a clean stack).
   const items = await page.getByTestId('download-item').count();

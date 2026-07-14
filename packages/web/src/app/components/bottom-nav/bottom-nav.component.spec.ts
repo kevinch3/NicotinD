@@ -33,11 +33,12 @@ describe('BottomNavComponent', () => {
 
   it('renders online-only tabs as disabled spans when offline', () => {
     const { fixture } = setup({ offline: true });
-    // Search + Library are online-only → spans; Downloads + Settings → links.
+    // Only Search is online-only → span; Library (offline Songs), Downloads,
+    // and Settings stay links.
     const anchors = fixture.nativeElement.querySelectorAll('a');
     const spans = fixture.nativeElement.querySelectorAll('nav span');
-    expect(anchors.length).toBe(2);
-    expect(spans.length).toBe(2);
+    expect(anchors.length).toBe(3);
+    expect(spans.length).toBe(1);
   });
 
   it('shows a badge on Downloads when transfers are active', () => {

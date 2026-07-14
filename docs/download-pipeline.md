@@ -20,7 +20,8 @@ ready.
   `/singles`, `/artists/:id` albums, `/artists/:id/appears-on`; `/albums/:id` 404s
   while quarantined.
 - `landed_at IS NOT NULL` filters the song/artist surfaces: `/artists` (grid),
-  `/artists/:id/songs`, `/genres/songs`, `/random`, `/recent-songs`, `/songs/:id/similar`,
+  `/artists/:id/songs`, `/songs` (whole-library flat listing → the Library "Songs" tab),
+  `/genres/songs`, `/random`, `/recent-songs`, `/songs/:id/similar`,
   local search (`library-provider.ts`), radio candidate pools (`routes/radio.ts`),
   and the playlist generator + automated-playlist recipes.
 - Per-download step visibility: `GET /api/admin/processing/queue` returns quarantined

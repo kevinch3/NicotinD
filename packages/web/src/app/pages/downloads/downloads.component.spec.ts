@@ -4,61 +4,18 @@ import { provideRouter } from '@angular/router';
 import { of } from 'rxjs';
 import { DownloadsComponent } from './downloads.component';
 import { DownloadsApiService } from '../../services/api/downloads-api.service';
-import { LibraryApiService } from '../../services/api/library-api.service';
 import { SystemApiService } from '../../services/api/system-api.service';
-import { AuthService } from '../../services/auth.service';
-import { PlayerService } from '../../services/player.service';
 import { TransferService } from '../../services/transfer.service';
-import { PreserveService } from '../../services/preserve.service';
-import { PlaylistService } from '../../services/playlist.service';
-import type { Song } from '../../services/api/api-types';
+import type { AcquireJob } from '@nicotind/core';
 
-const MOCK_SONGS: Song[] = [
-  {
-    id: 's1',
-    title: 'Track One',
-    artist: 'Artist',
-    album: 'Album',
-    path: '',
-    bitRate: 320,
-    size: 1000,
-    created: '2024-01-03',
-  },
-  {
-    id: 's2',
-    title: 'Track Two',
-    artist: 'Artist',
-    album: 'Album',
-    path: '',
-    bitRate: 320,
-    size: 1000,
-    created: '2024-01-02',
-  },
-  {
-    id: 's3',
-    title: 'Track Three',
-    artist: 'Artist',
-    album: 'Album',
-    path: '',
-    bitRate: 320,
-    size: 1000,
-    created: '2024-01-01',
-  },
-];
-
-function setup(opts: { songs?: Song[]; deletedIds?: Set<string> } = {}) {
-  const songs = opts.songs ?? MOCK_SONGS;
-  const deletedSongIds = signal<ReadonlySet<string>>(opts.deletedIds ?? new Set());
+function setup(opts: { acquireJobs?: AcquireJob[] } = {}) {
+  let scanned = false;
   const transferStub = {
     downloads: signal([]),
     uploads: signal([]),
-    acquireJobs: signal([]),
+    acquireJobs: signal(opts.acquireJobs ?? []),
     acquisitionJobs: signal([]),
     libraryDirty: signal(false),
-    deletedSongIds,
-    addDeletedIds: (ids: string[]) => {
-      deletedSongIds.update((s) => new Set([...s, ...ids]));
-    },
     kickPoll: () => {},
   };
 
@@ -66,66 +23,68 @@ function setup(opts: { songs?: Song[]; deletedIds?: Set<string> } = {}) {
     imports: [DownloadsComponent],
     providers: [
       provideRouter([]),
+      { provide: DownloadsApiService, useValue: {} },
       {
-        provide: LibraryApiService,
+        provide: SystemApiService,
         useValue: {
-          getRecentSongs: () => of(songs),
-          deleteSongs: () => of({ ok: true, deletedCount: 0 }),
+          triggerScan: () => {
+            scanned = true;
+            return of({});
+          },
         },
       },
-      { provide: DownloadsApiService, useValue: {} },
-      { provide: SystemApiService, useValue: { triggerScan: () => of({}) } },
-      { provide: AuthService, useValue: { token: signal('tok'), role: () => 'user' } },
-      { provide: PlayerService, useValue: { play: () => {}, playWithContext: () => {}, addToQueue: () => {} } },
       { provide: TransferService, useValue: transferStub },
-      { provide: PreserveService, useValue: { preservedTracks: signal([]), totalUsage: signal(0), budget: signal(0), isPreserved: () => false } },
-      { provide: PlaylistService, useValue: { openPicker: () => {} } },
     ],
     schemas: [NO_ERRORS_SCHEMA],
   });
 
+  // No detectChanges: rendering the feed would mount <app-download-item>, whose
+  // required `item` input the JIT harness can't set (NG0950). These tests read
+  // the computed signals directly.
   const fixture = TestBed.createComponent(DownloadsComponent);
-  fixture.detectChanges();
-  return { component: fixture.componentInstance, transferService: transferStub };
+  return { component: fixture.componentInstance, wasScanned: () => scanned };
 }
 
-describe('DownloadsComponent — recent-songs selection', () => {
-  it('selects two ids via createSelection()', () => {
+function job(id: string, state: AcquireJob['state']): AcquireJob {
+  return {
+    id,
+    backend: 'ytdlp',
+    url: 'https://example.com/x',
+    label: `Job ${id}`,
+    state,
+    stage: state === 'running' ? 'downloading' : state === 'done' ? 'done' : null,
+    storage_path: null,
+    albumId: null,
+    albumArtist: null,
+    albumTitle: null,
+    destinationAlbums: [],
+    progress: null,
+    tracks: [],
+    error: null,
+    created_at: 0,
+  };
+}
+
+describe('DownloadsComponent — active feed', () => {
+  it('renders no active downloads when nothing is in flight', () => {
     const { component } = setup();
-    component.recentSongs.set(MOCK_SONGS);
-
-    component.selection.toggle('s1');
-    component.selection.toggle('s2');
-
-    expect(component.selection.ids().size).toBe(2);
-    expect(component.selection.isSelected('s1')).toBe(true);
-    expect(component.selection.isSelected('s2')).toBe(true);
+    expect(component.downloadFeed().length).toBe(0);
+    expect(component.activeFeedCount()).toBe(0);
   });
 
-  it('visibleRecent excludes a song deleted this session', () => {
-    const { component, transferService } = setup();
-    component.recentSongs.set(MOCK_SONGS);
-
-    expect(component.visibleRecent().map((s) => s.id)).toEqual(['s1', 's2', 's3']);
-
-    transferService.addDeletedIds(['s2']);
-
-    expect(component.visibleRecent().map((s) => s.id)).toEqual(['s1', 's3']);
+  it('counts in-progress vs clearable acquire jobs', () => {
+    const { component } = setup({
+      acquireJobs: [job('a', 'running'), job('b', 'done'), job('c', 'failed')],
+    });
+    // running → in progress; done/failed → clearable.
+    expect(component.activeFeedCount()).toBe(1);
+    expect(component.clearableFeedCount()).toBe(2);
   });
 
-  it('offline selection is independent of the recent-songs selection', () => {
-    const { component } = setup();
-    component.recentSongs.set(MOCK_SONGS);
-
-    component.selection.toggle('s1');
-    component.offlineSelection.toggle('s1');
-
-    expect(component.selection.ids().size).toBe(1);
-    expect(component.offlineSelection.ids().size).toBe(1);
-
-    component.selection.exit();
-
-    expect(component.selection.ids().size).toBe(0);
-    expect(component.offlineSelection.ids().size).toBe(1);
+  it('triggerScan calls the system API', async () => {
+    const { component, wasScanned } = setup();
+    await component.triggerScan();
+    expect(wasScanned()).toBe(true);
+    expect(component.scanning()).toBe(false);
   });
 });

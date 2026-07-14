@@ -1,0 +1,145 @@
+@if (offline()) {
+  <!-- ─── Offline: on-device downloaded songs ─────────────────────── -->
+  <div data-testid="library-songs-offline">
+    <!-- Storage usage -->
+    <div class="mb-4">
+      <div class="flex items-center justify-between text-sm mb-1">
+        <span class="text-theme-secondary">
+          {{ formatSize(preserve.totalUsage()) }} used
+          @if (preserve.budget() < 9e15) {
+            <span class="text-theme-muted">/ {{ formatSize(preserve.budget()) }}</span>
+          }
+        </span>
+        @if (preserve.preservedTracks().length > 0) {
+          <button (click)="clearAllOffline()"
+            class="text-xs px-3 py-1.5 rounded-lg text-status-error hover:bg-theme-hover transition border border-theme">
+            Clear all
+          </button>
+        }
+      </div>
+      @if (preserve.budget() < 9e15) {
+        <div class="h-1.5 rounded-full bg-theme-surface-2 overflow-hidden">
+          <div class="h-full bg-[var(--theme-accent)] transition-all" [style.width.%]="storagePercent()"></div>
+        </div>
+      }
+    </div>
+
+    @if (preserve.preservedTracks().length > 0) {
+      <app-list-toolbar
+        [searchText]="offlineControls.searchText()"
+        [sortField]="offlineControls.sortField()"
+        [sortDirection]="offlineControls.sortDirection()"
+        [sortOptions]="offlineSortOptions"
+        [resultCount]="offlineControls.filtered().length"
+        (searchChange)="offlineControls.setSearchText($event)"
+        (sortFieldChange)="offlineControls.setSortField($event)"
+        (toggleDirection)="offlineControls.toggleSortDirection()"
+      />
+
+      <div class="space-y-0.5" data-testid="library-songs-offline-list">
+        @for (t of offlineControls.filtered(); track t.id; let i = $index) {
+          <app-track-row
+            [track]="metaToTrack(t)"
+            [indexLabel]="i + 1"
+            [subtitle]="t.album || t.artist"
+            [duration]="t.duration"
+            [offline]="true"
+            [actions]="offlineActions(t)"
+            (play)="playOffline(i)"
+          />
+        }
+      </div>
+    } @else {
+      <p class="text-center text-theme-muted py-16">No downloaded songs yet.</p>
+    }
+  </div>
+} @else {
+  <!-- ─── Online: whole-library songs ─────────────────────────────── -->
+  <div data-testid="library-songs">
+    <div class="flex items-center gap-2 mb-3">
+      <select data-testid="library-songs-sort"
+        [value]="songSort()"
+        (change)="setSongSort($any($event.target).value)"
+        class="px-3 py-1.5 text-sm rounded-lg bg-theme-surface-2 text-theme-primary focus:outline-none focus:ring-1 focus:ring-[var(--theme-accent)]">
+        @for (opt of sortOptions; track opt.value) {
+          <option [value]="opt.value">{{ opt.label }}</option>
+        }
+      </select>
+
+      <app-library-filter-panel
+        testIdPrefix="library-songs"
+        [filter]="filter()"
+        [genres]="genres()"
+        (filterChange)="onFilterChange($event)"
+        (panelOpened)="ensureGenres.emit()" />
+
+      @if (!selection.active() && visibleSongs().length > 0) {
+        <button (click)="selection.enter()"
+          class="px-3 py-1.5 text-sm rounded-lg bg-theme-surface-2 text-theme-muted hover:bg-theme-hover transition">
+          Select
+        </button>
+      }
+    </div>
+
+    @if (selection.active()) {
+      <app-selection-bar
+        [count]="selection.count()"
+        [total]="visibleSongs().length"
+        [canPlay]="true"
+        [canQueue]="true"
+        [canDownload]="true"
+        [canDelete]="auth.role() === 'admin'"
+        (selectAll)="selectAllSongs()"
+        (play)="playSelected()"
+        (queue)="queueSelected()"
+        (add)="addSelectedToPlaylist()"
+        (download)="downloadSelected()"
+        (deleteSelected)="deleteSelectedSongs()"
+        (cancel)="selection.exit()"
+      />
+    }
+
+    @if (deleteError()) {
+      <p class="text-sm text-status-error mb-2">{{ deleteError() }}</p>
+    }
+
+    <div class="space-y-0.5" data-testid="library-songs-list">
+      @for (song of visibleSongs(); track song.id; let i = $index) {
+        <app-track-row
+          [track]="toTrack(song)"
+          [indexLabel]="i + 1"
+          [subtitle]="songSubtitle(song)"
+          [artists]="song.artists"
+          [duration]="song.duration"
+          [offline]="preserve.isPreserved(song.id)"
+          [selectable]="selection.active()"
+          [selected]="selection.isSelected(song.id)"
+          [actions]="songMenu.build(song, { removable: true })"
+          (play)="playSong(i)"
+          (selectedChange)="selection.toggleRange(song.id, songOrderedIds(), $event.shiftKey)"
+        />
+      }
+    </div>
+
+    @if (songsLoadingMore()) {
+      <div class="flex justify-center py-6">
+        <span class="inline-block w-5 h-5 border-2 border-theme border-t-zinc-300 rounded-full animate-spin"></span>
+      </div>
+    }
+    @if (songsLoaded() && visibleSongs().length === 0 && !songsLoadingMore()) {
+      <p class="text-center text-theme-muted py-16">
+        {{ hasActiveFilter() ? 'No songs match the filters.' : 'No songs found.' }}
+      </p>
+    }
+    <div #songsSentinel class="h-px" aria-hidden="true"></div>
+  </div>
+}
+
+@if (showConfirm()) {
+  <app-confirm-dialog
+    [message]="confirmMessage()"
+    confirmLabel="Remove"
+    (confirm)="onConfirm()"
+    (cancel)="onCancelConfirm()"
+  />
+}

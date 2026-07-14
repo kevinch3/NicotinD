@@ -1720,6 +1720,35 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     return c.json(songs);
   });
 
+  // Whole-library flat songs listing — powers the Library "Songs" tab. Mirrors
+  // /artists/:id/songs (same LibraryFilter grammar + sort whitelist) but without
+  // the artist predicate, so it filters/sorts/paginates the entire landed library.
+  app.get('/songs', (c) => {
+    const size = Math.min(Number(c.req.query('size') ?? 60), 200);
+    const offset = Math.max(Number(c.req.query('offset') ?? 0), 0);
+    const sort = c.req.query('sort') ?? 'newest';
+    const db = getDatabase();
+    const wheres = [
+      's.hidden = 0',
+      // Quarantined songs aren't in the library yet — exclude, same as the artist tab.
+      's.landed_at IS NOT NULL',
+      '(a.hidden IS NULL OR a.hidden = 0)',
+    ];
+    const params: Array<string | number> = [];
+    const frag = songFilterWheres(parseLibraryFilter(c.req.queries()), 's');
+    wheres.push(...frag.wheres);
+    params.push(...frag.params);
+    const rows = db
+      .query<SongRow, (string | number)[]>(
+        `${SONG_SELECT} WHERE ${wheres.join(' AND ')}
+         ORDER BY ${songOrderBy(sort)} LIMIT ? OFFSET ?`,
+      )
+      .all(...params, size, offset);
+    const songs = rows.map(rowToSong);
+    attachSongArtists(db, songs);
+    return c.json(songs);
+  });
+
   // Recently added — uses completed_downloads history to surface user's most-recent imports.
   app.get('/recent-songs', (c) => {
     const size = Math.min(Number(c.req.query('size') ?? 50), 200);
