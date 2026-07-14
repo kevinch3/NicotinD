@@ -15,6 +15,7 @@ import {
   recomputeStage,
   transferKeyFor,
 } from './acquisition-job-store.js';
+import { applyJobMetadataPrefill } from './job-metadata-prefill.js';
 
 const log = createLogger('download-watcher');
 
@@ -259,7 +260,7 @@ export class DownloadWatcher {
     } catch (err) {
       log.error({ err }, 'Library scan after download failed');
     }
-    this.markJobItemsScanned(relPaths, files);
+    await this.markJobItemsScanned(relPaths, files);
   }
 
   /**
@@ -268,7 +269,10 @@ export class DownloadWatcher {
    * (scanning → processing/done). Best-effort: job bookkeeping must never
    * break the scan that already happened.
    */
-  private markJobItemsScanned(relPaths: string[], files: CompletedDownloadFile[]): void {
+  private async markJobItemsScanned(
+    relPaths: string[],
+    files: CompletedDownloadFile[],
+  ): Promise<void> {
     try {
       const db = this.getDb();
       const pathToSongId = new Map<string, string>();
@@ -279,6 +283,11 @@ export class DownloadWatcher {
         if (row) pathToSongId.set(relPath, row.id);
       }
       if (pathToSongId.size) markItemsScanned(db, pathToSongId);
+      // Pre-fill genre/year from the job's hunt-time Lidarr metadata so the
+      // enrichment queue never re-derives what the hunt already knew.
+      if (this.musicDir) {
+        await applyJobMetadataPrefill(db, files, { musicDir: this.musicDir });
+      }
       const jobIds = new Set(
         files.map((f) => f.jobMeta?.jobId).filter((id): id is string => Boolean(id)),
       );

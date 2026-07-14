@@ -365,7 +365,14 @@ describe('DownloadWatcher', () => {
     const organizer = makeLibraryOrganizerMock();
     const dwWatcher = new DownloadWatcher(
       slskdMock as unknown as ConstructorParameters<typeof DownloadWatcher>[0],
-      { intervalMs: 10, scanDebounceMs: 10, libraryOrganizer: organizer, scan, db },
+      {
+        intervalMs: 10,
+        scanDebounceMs: 10,
+        musicDir: '/music',
+        libraryOrganizer: organizer,
+        scan,
+        db,
+      },
     );
     try {
       const jobId = createJob(db, {
@@ -373,6 +380,8 @@ describe('DownloadWatcher', () => {
         method: 'slskd',
         artistName: 'Artist',
         albumTitle: 'Album',
+        genres: ['Rock', 'Art Rock'],
+        year: 2002,
         username: 'peer42',
         files: [{ filename: 'song1.mp3', trackTitle: 'Song' }],
       });
@@ -409,6 +418,15 @@ describe('DownloadWatcher', () => {
       expect(job.items[0].songId).toBe('s-song1');
       // Scanned but not landed → the job is in the processing stage.
       expect(job.stage).toBe('processing');
+
+      // Metadata pre-fill: the hunt's Lidarr genres/year applied at scan time,
+      // so the genre enrichment task has nothing left to derive for this song.
+      const songMeta = db
+        .query<{ genre: string | null; year: number | null }, [string]>(
+          'SELECT genre, year FROM library_songs WHERE id = ?',
+        )
+        .get('s-song1');
+      expect(songMeta).toEqual({ genre: 'Rock', year: 2002 });
     } finally {
       dwWatcher.stop();
       db.close();
