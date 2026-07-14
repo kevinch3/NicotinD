@@ -408,7 +408,28 @@
                 <p class="text-sm font-medium text-white/90 truncate">{{ track.title }}</p>
                 <p class="text-xs text-white/50 truncate">{{ track.artist }}</p>
               </div>
-              <div class="w-10"></div> <!-- spacer for centering -->
+              <button
+                (click)="player.toggleVocalMute()"
+                class="w-10 h-10 flex items-center justify-center transition rounded-full hover:bg-white/10"
+                [class]="player.vocalsMuted() ? 'text-red-400' : 'text-white/60 hover:text-white'"
+                [attr.aria-label]="player.vocalsMuted() ? 'Unmute vocals' : 'Mute vocals'"
+                data-testid="vocal-mute-toggle"
+              >
+                @if (player.vocalsMuted()) {
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                    <line x1="12" y1="19" x2="12" y2="22" />
+                    <line x1="2" y1="2" x2="22" y2="22" />
+                  </svg>
+                } @else {
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                    <line x1="12" y1="19" x2="12" y2="22" />
+                  </svg>
+                }
+              </button>
             </div>
 
             <!-- Lyrics body -->
