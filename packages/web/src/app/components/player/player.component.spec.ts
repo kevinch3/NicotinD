@@ -605,59 +605,87 @@ describe('PlayerComponent', () => {
   // ─── Vocal mute toggle (karaoke) ──────────────────────────────────────────
 
   describe('vocal mute toggle', () => {
-    it('preserves playback position across the toggle via restoredTime', () => {
+    it('pauses before src change, then seeks + plays on loadedmetadata', () => {
       // Load a track first (Effect 1) without any vocal mute.
       playerService.currentTrack.set(TRACK);
       playerService.isPlaying.set(true);
       fixture.detectChanges();
+      mockPlay.mockClear();
+      mockPause.mockClear();
 
-      // Mock the audio element's currentTime + duration so Effect 6b sees them.
-      Object.defineProperty(fakeAudio, 'currentTime', { value: 30, configurable: true });
+      // Pre-set readyState >= 1 so the effect takes the synchronous path;
+      // the e2e test covers the async loadedmetadata path in a real browser.
+      Object.defineProperty(fakeAudio, 'readyState', { value: 1, configurable: true });
       Object.defineProperty(fakeAudio, 'duration', { value: 180, configurable: true });
+      // currentTime is read-only on HTMLMediaElement unless HAVE_METADATA, and
+      // assignment requires the descriptor to be writable.
+      Object.defineProperty(fakeAudio, 'currentTime', {
+        value: 30,
+        writable: true,
+        configurable: true,
+      });
       fakeAudio.removeAttribute('src');
 
-      // Toggle vocal mute ON. Effect 6b fires: sees lastVocalsMuted=false,
-      // vocalsMuted=true → they differ → stash 30 on restoredTime + reload.
       playerService.toggleVocalMute();
       fixture.detectChanges();
 
-      expect(playerService.restoredTime).toBe(30);
+      // Effect 6b must have paused before the src change (prevents the
+      // browser from auto-playing the new media from position 0).
+      expect(mockPause).toHaveBeenCalled();
+      // The new src includes the vocals=off flag.
       expect(fakeAudio.src).toContain('/api/stream/t1');
       expect(fakeAudio.src).toContain('vocals=off');
+      // readyState >= 1 takes the sync path: seek + play happen immediately.
+      expect(fakeAudio.currentTime).toBe(30);
       expect(mockPlay).toHaveBeenCalled();
     });
 
-    it('onDuration restores currentTime from restoredTime after the new audio loads', () => {
-      // Simulate the toggle reload sequence: restoredTime is set, then
-      // loadedmetadata fires on the new audio, onDuration runs and seeks.
-      playerService.restoredTime = 42;
-      Object.defineProperty(fakeAudio, 'duration', { value: 200, configurable: true });
-      Object.defineProperty(fakeAudio, 'currentTime', { value: 0, writable: true, configurable: true });
-
-      fakeAudio.dispatchEvent(new Event('loadedmetadata'));
-
-      expect(fakeAudio.currentTime).toBe(42);
-      expect(playerService.restoredTime).toBeNull();
-    });
-
-    it('does not stash restoredTime when currentTime is near the start', () => {
-      // Don't bother restoring within the first second of a track — the brief
-      // rebuffer is invisible at the start.
+    it('does not seek when currentTime is near the start (no point seeking)', () => {
       playerService.currentTrack.set(TRACK);
       playerService.isPlaying.set(true);
       fixture.detectChanges();
+      mockPlay.mockClear();
+      mockPause.mockClear();
 
-      Object.defineProperty(fakeAudio, 'currentTime', { value: 0.5, configurable: true });
+      Object.defineProperty(fakeAudio, 'readyState', { value: 1, configurable: true });
       Object.defineProperty(fakeAudio, 'duration', { value: 180, configurable: true });
+      Object.defineProperty(fakeAudio, 'currentTime', {
+        value: 0.5,
+        writable: true,
+        configurable: true,
+      });
       fakeAudio.removeAttribute('src');
-      playerService.restoredTime = null;
 
       playerService.toggleVocalMute();
       fixture.detectChanges();
 
-      // Within the first second, restoredTime stays null — the toggle reloads
-      // but there's no position to restore.
-      expect(playerService.restoredTime).toBeNull();
+      // Within the first second, no seek needed — playback continues from 0.5.
+      expect(mockPlay).toHaveBeenCalled();
+    });
+
+    it('seek guard skips the seek when currentTime is within 1s of duration', () => {
+      // If resumeAt is near the end of the track, seeking to it would
+      // immediately end playback. The guard skips the seek in that case.
+      playerService.currentTrack.set(TRACK);
+      playerService.isPlaying.set(true);
+      fixture.detectChanges();
+      mockPlay.mockClear();
+
+      Object.defineProperty(fakeAudio, 'readyState', { value: 1, configurable: true });
+      Object.defineProperty(fakeAudio, 'duration', { value: 100, configurable: true });
+      // currentTime is 99s — within 1s of duration (100s).
+      Object.defineProperty(fakeAudio, 'currentTime', {
+        value: 99,
+        writable: true,
+        configurable: true,
+      });
+      fakeAudio.removeAttribute('src');
+
+      playerService.toggleVocalMute();
+      fixture.detectChanges();
+
+      // currentTime should NOT have been overwritten to 99 (the seek is skipped).
+      expect(mockPlay).toHaveBeenCalled();
     });
   });
 });

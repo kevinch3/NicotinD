@@ -305,8 +305,10 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
     });
 
     // Effect 6b: Vocal mute toggle — reloads the stream with/without the
-    // ?vocals=off param. Position is preserved via restoredTime (set before
-    // the src change, applied in onDuration once loadedmetadata fires).
+    // ?vocals=off param. The toggle requires a fresh audio src because the
+    // server-side filter produces a different file. Pause before changing src
+    // (otherwise the browser may auto-play the new media from position 0
+    // before loadedmetadata fires), then seek + resume on loadedmetadata.
     effect(() => {
       const vocalsMuted = this.player.vocalsMuted();
       const track = this.player.currentTrack();
@@ -323,13 +325,24 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
       this.lastVocalsMuted = vocalsMuted;
 
       const resumeAt = audio.currentTime;
-      if (resumeAt > 1) this.player.restoredTime = resumeAt;
+      const wasPlaying = this.player.isPlaying();
+      audio.pause();
       audio.src = this.server.streamUrl(track.id, token, { vocalsOff: vocalsMuted });
-      if (this.player.isPlaying()) {
-        audio.play().catch((err) => {
-          if (err.name === 'NotAllowedError') this.handlePlayRejection();
-        });
-      }
+
+      const onLoaded = () => {
+        if (resumeAt > 1 && Number.isFinite(audio.duration) && resumeAt < audio.duration - 1) {
+          audio.currentTime = resumeAt;
+        }
+        if (wasPlaying) {
+          audio.play().catch((err) => {
+            if (err.name === 'NotAllowedError') this.handlePlayRejection();
+          });
+        }
+      };
+      // readyState >= 1 (HAVE_METADATA) means we can seek immediately;
+      // otherwise wait for loadedmetadata (cache hits fire this synchronously).
+      if (audio.readyState >= 1) onLoaded();
+      else audio.addEventListener('loadedmetadata', onLoaded, { once: true });
     });
 
     // Effect 7: Progress reporting interval
