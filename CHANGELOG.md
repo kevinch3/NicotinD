@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.200](https://github.com/kevinch3/NicotinD/compare/v0.1.199...v0.1.200) (2026-07-14)
+
+
+### Bug Fixes
+
+* **web:** preserve playback position on vocal mute toggle via restoredTime ([49fc466](https://github.com/kevinch3/NicotinD/commit/49fc4660ed8c02c5826aad41f796cd4fb6a6eb9e))
+
 ## [0.1.199](https://github.com/kevinch3/NicotinD/compare/v0.1.198...v0.1.199) (2026-07-14)
 
 
