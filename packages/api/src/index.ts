@@ -2,7 +2,7 @@ import { OpenAPIHono } from '@hono/zod-openapi';
 import { swaggerUI } from '@hono/swagger-ui';
 import { serveStatic, createBunWebSocket } from 'hono/bun';
 import { nativeAppCors } from './middleware/cors.js';
-import type { NicotinDConfig } from '@nicotind/core';
+import type { NicotinDConfig, TrackStatus } from '@nicotind/core';
 import type { Slskd } from '@nicotind/slskd-client';
 import type { Lidarr } from '@nicotind/lidarr-client';
 import type { ServiceManager } from '@nicotind/service-manager';
@@ -42,6 +42,7 @@ import { acquireRoutes } from './routes/acquire.js';
 import { pluginRoutes } from './routes/plugins.js';
 import { radioRoutes } from './routes/radio.js';
 import { PluginRegistry } from './services/plugins/registry.js';
+import { upsertTrackStatus } from './services/plugins/host-context.js';
 import { SlskdPlugin } from './services/plugins/slskd/index.js';
 import { YtdlpPlugin } from './services/plugins/ytdlp/index.js';
 import { SpotdlPlugin } from './services/plugins/spotdl/index.js';
@@ -381,6 +382,32 @@ export function createApp({
         db.run(`UPDATE acquire_jobs SET label = ? WHERE id = ?`, [label, jobId]);
       } catch {
         // Non-fatal — label is best-effort.
+      }
+    },
+    // Upsert one track's status into the job's tracks_json by title match —
+    // fires once per track (many times per job), unlike the single-shot label.
+    emitTrack: (jobId, track) => {
+      try {
+        const row = db
+          .query<{ tracks_json: string | null }, [string]>(
+            `SELECT tracks_json FROM acquire_jobs WHERE id = ?`,
+          )
+          .get(jobId);
+        if (!row) return;
+        let tracks: { title: string; status: TrackStatus }[] = [];
+        if (row.tracks_json) {
+          try {
+            tracks = JSON.parse(row.tracks_json);
+          } catch {
+            tracks = [];
+          }
+        }
+        db.run(`UPDATE acquire_jobs SET tracks_json = ? WHERE id = ?`, [
+          JSON.stringify(upsertTrackStatus(tracks, track)),
+          jobId,
+        ]);
+      } catch {
+        // Non-fatal — track status is best-effort.
       }
     },
   });

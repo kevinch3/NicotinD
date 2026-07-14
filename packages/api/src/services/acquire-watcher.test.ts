@@ -255,6 +255,21 @@ describe('AcquireWatcher (registry-driven)', () => {
     expect(job.albumId).toBeNull();
   });
 
+  it('mapRow exposes tracks, falling back to [] for a null tracks_json column', () => {
+    h.db.run(
+      `INSERT INTO acquire_jobs (id, backend, url, state) VALUES ('no-tracks', 'fake', 'u', 'queued')`,
+    );
+    expect(h.watcher.getJob('no-tracks')!.tracks).toEqual([]);
+
+    h.db.run(
+      `INSERT INTO acquire_jobs (id, backend, url, state, tracks_json) VALUES ('with-tracks', 'fake', 'u', 'queued', ?)`,
+      [JSON.stringify([{ title: 'Song A', status: 'downloading' }])],
+    );
+    expect(h.watcher.getJob('with-tracks')!.tracks).toEqual([
+      { title: 'Song A', status: 'downloading' },
+    ]);
+  });
+
   it('maps known backend ids to their acquisition method', async () => {
     const ytPlugin = fakePlugin();
     ytPlugin.manifest.id = 'ytdlp';

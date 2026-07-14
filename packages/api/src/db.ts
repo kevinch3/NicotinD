@@ -396,6 +396,16 @@ export function applySchema(db: Database): void {
   } catch {
     // Column already exists — ignore
   }
+  // Per-track download state (JSON array of {title, status}), in playlist
+  // order where known. spotdl/archive know the full track list upfront;
+  // yt-dlp/spotdl discover titles incrementally, so the array is
+  // appended-to / status-updated in place by title match rather than fully
+  // known ahead of time. Powers the "Now downloading: X / Next: Y, Z" UI.
+  try {
+    db.run(`ALTER TABLE acquire_jobs ADD COLUMN tracks_json TEXT`);
+  } catch {
+    // Column already exists — ignore
+  }
 
   // Acquisition provenance, keyed on the final on-disk path (== library_songs.path)
   // — the same join the rest of the system already uses. Records HOW (method),

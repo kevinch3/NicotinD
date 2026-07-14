@@ -61,6 +61,7 @@ interface AcquireJobRow {
   storage_path: string | null;
   dest_albums_json: string | null;
   progress: string | null;
+  tracks_json: string | null;
   error: string | null;
   created_at: number;
 }
@@ -430,6 +431,14 @@ export class AcquireWatcher {
     // (or a pre-migration/not-yet-ingested row with an empty set) degrades
     // safely to null here rather than pointing at a possibly-wrong album.
     const single = destinationAlbums.length === 1 ? destinationAlbums[0]! : null;
+    let tracks: AcquireJob['tracks'] = [];
+    if (row.tracks_json) {
+      try {
+        tracks = JSON.parse(row.tracks_json);
+      } catch {
+        /* ignore */
+      }
+    }
     return {
       id: row.id,
       backend: row.backend as AcquireJob['backend'],
@@ -443,6 +452,7 @@ export class AcquireWatcher {
       albumTitle: single?.albumTitle ?? null,
       destinationAlbums,
       progress,
+      tracks,
       error: row.error,
       created_at: row.created_at,
     };

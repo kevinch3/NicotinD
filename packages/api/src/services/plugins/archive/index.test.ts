@@ -36,6 +36,7 @@ function fakeCtx(): PluginHostContext {
       progress.push(p);
     },
     emitLabel() {},
+    emitTrack() {},
     storage: { get: () => null, set() {}, delete() {} },
   };
 }

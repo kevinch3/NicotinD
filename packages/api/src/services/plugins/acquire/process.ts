@@ -26,6 +26,14 @@ export interface AcquireProgress {
   total: number;
 }
 
+/** Per-track download status, as reported by a track-event parser. */
+export type TrackEventStatus = 'downloading' | 'done' | 'skipped';
+
+export interface TrackEvent {
+  title: string;
+  status: TrackEventStatus;
+}
+
 /** Cached binary availability check results (keyed by binary path). */
 const binaryCache = new Map<string, boolean>();
 
@@ -79,12 +87,47 @@ export function parseSpotdlProgress(line: string, current: AcquireProgress): Acq
 }
 
 /**
+ * Extract a per-track download event from a spotdl output line, if present:
+ * `Downloaded "Title"` → done, `Skipping "Title"` → skipped (already present
+ * locally). Companion to `parseSpotdlProgress`'s aggregate counting.
+ */
+export function parseSpotdlTrackEvent(line: string): TrackEvent | null {
+  const downloaded = /Downloaded "([^"]+)"/i.exec(line);
+  if (downloaded) return { title: downloaded[1]!, status: 'done' };
+  const skipping = /Skipping "([^"]+)"/i.exec(line);
+  if (skipping) return { title: skipping[1]!, status: 'skipped' };
+  return null;
+}
+
+/**
  * Extract a playlist title from a yt-dlp output line, if present.
  * yt-dlp emits: `[download] Downloading playlist: My Playlist Title`
  */
 export function parseYtdlpPlaylistTitle(line: string): string | null {
   const m = /\[download\] Downloading playlist:\s+(.+)/.exec(line);
   return m ? m[1]!.trim() : null;
+}
+
+/**
+ * Extract a playlist title from a spotdl output line, if present:
+ * `Found N songs in playlist: My Playlist Title`.
+ */
+export function parseSpotdlPlaylistTitle(line: string): string | null {
+  const m = /\bFound \d+ songs? in playlist:\s*(.+)/i.exec(line);
+  return m ? m[1]!.trim() : null;
+}
+
+/**
+ * Parse yt-dlp per-track markers emitted by our `--exec`/postprocessor
+ * wrapper (Task 5 wires the emitter side): `TRACK_START::<title>` when a
+ * track begins downloading, `TRACK_DONE::<title>` when it finishes.
+ */
+export function parseYtdlpTrackEvent(line: string): TrackEvent | null {
+  const start = /^TRACK_START::(.+)/.exec(line);
+  if (start) return { title: start[1]!.trim(), status: 'downloading' };
+  const done = /^TRACK_DONE::(.+)/.exec(line);
+  if (done) return { title: done[1]!.trim(), status: 'done' };
+  return null;
 }
 
 /** Walk a directory tree and collect absolute paths of audio files. */
@@ -122,6 +165,12 @@ export interface RunAcquireOptions {
   onProgress?: (progress: AcquireProgress) => void;
   /** Called at most once when a playlist title is detected in output. */
   onLabel?: (label: string) => void;
+  /**
+   * Called once per track-status transition detected in output (NOT
+   * single-shot, unlike `onLabel` — fires many times over a job's life as
+   * spotdl/yt-dlp report each track starting, finishing, or being skipped).
+   */
+  onTrack?: (title: string, status: TrackEventStatus) => void;
   /** Injectable spawner (tests pass a fake to avoid process-global module mocks). */
   spawn?: typeof spawn;
 }
@@ -158,11 +207,17 @@ export function runAcquireProcess(opts: RunAcquireOptions): RunningAcquire {
       progress = parseProgress(line, progress);
       if (line.startsWith('ERROR:')) errorLines.push(line.trim());
       if (!labelEmitted && opts.onLabel) {
-        const title = parseYtdlpPlaylistTitle(line);
+        const title = parseYtdlpPlaylistTitle(line) ?? parseSpotdlPlaylistTitle(line);
         if (title) {
           labelEmitted = true;
           opts.onLabel(title);
         }
+      }
+      if (opts.onTrack) {
+        // Not single-shot — every matching line fires a callback, unlike
+        // the label above.
+        const event = parseSpotdlTrackEvent(line) ?? parseYtdlpTrackEvent(line);
+        if (event) opts.onTrack(event.title, event.status);
       }
     }
     opts.onProgress?.(progress);

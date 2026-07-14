@@ -2,6 +2,9 @@
 export type AcquireBackend = 'ytdlp' | 'spotdl';
 export type AcquireJobState = 'queued' | 'running' | 'done' | 'failed';
 
+/** Per-track download state within an acquire job, keyed by title. */
+export type TrackStatus = 'pending' | 'downloading' | 'done' | 'skipped' | 'failed';
+
 /**
  * Where a track came from. Mirrors the acquisition plugin id for URL jobs
  * (`ytdlp` / `spotdl` / `archive`), plus `slskd` for Soulseek and `unknown`
@@ -92,6 +95,13 @@ export interface AcquireJob {
    */
   destinationAlbums: AcquireAlbumDestination[];
   progress: { done: number; total: number } | null;
+  /**
+   * Per-track download state, in playlist order where known. Appended-to /
+   * status-updated in place by title match as tracks are discovered
+   * (spotdl/yt-dlp) or known upfront (archive). Always present (empty for
+   * pre-migration rows or jobs without per-track granularity).
+   */
+  tracks: { title: string; status: TrackStatus }[];
   error: string | null;
   created_at: number;
 }
