@@ -90,4 +90,52 @@ test.describe('player controls', () => {
     await expect(page.getByTestId('player-playpause')).toHaveAttribute('data-playing', 'true');
     await expect.poll(() => anyAudioPaused(page)).toBe(false);
   });
+
+  test('vocal mute toggle preserves playback position (regression: previously reset to 0)', async ({
+    page,
+  }) => {
+    // Setup pre-warms the vocal-removed transcode for the first fixture track
+    // and seeds lyrics on it (see auth.setup.ts), so the toggle is a cache hit
+    // and the lyrics panel renders immediately.
+    await startAlbum(page);
+
+    // Open the Now Playing sheet — clicking the mini-player title expands it.
+    await page.getByTestId('player-title').click();
+    await expect(page.getByText('Now Playing')).toBeVisible();
+
+    // Seek to ~15s into the 30s fixture track by setting currentTime
+    // directly on the active audio element (the Now Playing sheet covers
+    // the mini-player seek bar, and the sheet's own seek bar has no
+    // data-testid yet).
+    await page.evaluate(() => {
+      const a = Array.from(document.querySelectorAll('audio')).find(
+        (el) => !el.paused && el.duration > 0,
+      );
+      if (a) a.currentTime = 15;
+    });
+    await expect.poll(() => audioTime(page), { timeout: 5_000 }).toBeGreaterThan(10);
+    const posBefore = await audioTime(page);
+
+    // Open the karaoke overlay: lyrics toggle → karaoke fullscreen.
+    await page.getByTestId('now-playing-lyrics-toggle').click();
+    await expect(page.getByTestId('now-playing-lyrics')).toBeVisible();
+    await page.getByTestId('now-playing-karaoke-toggle').click();
+    await expect(page.getByTestId('karaoke-overlay')).toBeVisible();
+
+    // Click the vocal mute toggle.
+    await page.getByTestId('vocal-mute-toggle').click();
+
+    // Position must be preserved across the toggle. Allow a small window for
+    // the audio reload + seek — the bug being regression-tested reset to 0,
+    // so the key assertion is that playback continues at the saved position.
+    await expect
+      .poll(
+        async () => {
+          const t = await audioTime(page);
+          return t >= posBefore - 2 && t < posBefore + 10;
+        },
+        { timeout: 10_000 },
+      )
+      .toBe(true);
+  });
 });
