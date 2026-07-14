@@ -6,6 +6,7 @@ import {
   DOWNLOAD_ITEM_TITLE_CLASS,
   canOpenInLibrary,
   hasMultipleDestinationAlbums,
+  canShowNowNext,
   DownloadItemComponent,
 } from './download-item.component';
 import { resolveAlbumRoute } from '../../lib/route-utils';
@@ -130,6 +131,24 @@ describe('download-item "View N albums" menu gating', () => {
   });
 });
 
+// The JIT harness can't drive a required input() into a render, so the
+// "Now: / Next:" gate is asserted through its exported gating helper first
+// (this is the direct regression test for Task 6's flagged limitation: a
+// stuck 'downloading' track entry must not keep showing "Now:" once the
+// job's overall stage has left the in-flight state).
+describe('download-item "Now: / Next:" gating', () => {
+  it('is gated on the in-flight stage, not on the tracks array', () => {
+    expect(canShowNowNext(item({ stage: 'downloading' }))).toBe(true);
+    // Terminal stages: gated off regardless of a stale 'downloading' track.
+    expect(canShowNowNext(item({ stage: 'done' }))).toBe(false);
+    expect(canShowNowNext(item({ stage: 'error' }))).toBe(false);
+    expect(canShowNowNext(item({ stage: 'queued' }))).toBe(false);
+    expect(canShowNowNext(item({ stage: 'organizing' }))).toBe(false);
+    expect(canShowNowNext(item({ stage: 'scanning' }))).toBe(false);
+    expect(canShowNowNext(item({ stage: 'processing' }))).toBe(false);
+  });
+});
+
 /**
  * Straight write to the signal node behind `ɵSIGNAL`, matching the pattern
  * already sanctioned in track-row.component.spec.ts for driving a required
@@ -200,5 +219,79 @@ describe('download-item "View N albums" menu — rendered rows', () => {
     );
     expect(fixture.nativeElement.querySelector('[data-testid="download-view-albums"]')).toBeNull();
     expect(fixture.nativeElement.querySelector('[data-testid="download-open-album"]')).not.toBeNull();
+  });
+});
+
+// Renders the real "Now: / Next:" block (not just the gating helper) so the
+// currentAndNextTracks wiring is exercised end to end.
+describe('download-item "Now: / Next:" — rendered', () => {
+  function setup(nowNextItem: DownloadItem) {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [DownloadItemComponent],
+      providers: [provideRouter([])],
+    });
+    TestBed.overrideComponent(DownloadItemComponent, {
+      set: { imports: [RouterLink, MenuPanelComponent, StubPipelineStageBadgeComponent] },
+    });
+    const fixture = TestBed.createComponent(DownloadItemComponent);
+    setInputValue(fixture.componentInstance.item, nowNextItem);
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  it('shows "Now:" and "Next:" while in flight with a current track', () => {
+    const fixture = setup(
+      item({
+        stage: 'downloading',
+        tracks: [
+          { title: 'Track One', status: 'done' },
+          { title: 'Track Two', status: 'downloading' },
+          { title: 'Track Three', status: 'pending' },
+          { title: 'Track Four', status: 'pending' },
+        ],
+      }),
+    );
+    const now = fixture.nativeElement.querySelector('[data-testid="download-now"]') as HTMLElement;
+    const next = fixture.nativeElement.querySelector(
+      '[data-testid="download-next"]',
+    ) as HTMLElement;
+    expect(now.textContent).toContain('Now: Track Two');
+    expect(next.textContent).toContain('Next: Track Three, Track Four');
+  });
+
+  it('hides the block once the job leaves the in-flight stage, even with a stale downloading entry', () => {
+    // Regression for Task 6's flagged limitation: an archive.org track can be
+    // stuck at 'downloading' forever with no 'failed' transition, but once the
+    // job's own stage has moved on the block must not show a stale "Now:".
+    const fixture = setup(
+      item({
+        stage: 'done',
+        tracks: [{ title: 'Stuck Track', status: 'downloading' }],
+      }),
+    );
+    expect(fixture.nativeElement.querySelector('[data-testid="download-now"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="download-next"]')).toBeNull();
+  });
+
+  it('renders nothing when tracks is empty or absent, matching today\'s behavior', () => {
+    const fixtureAbsent = setup(item({ stage: 'downloading' }));
+    expect(fixtureAbsent.nativeElement.querySelector('[data-testid="download-now"]')).toBeNull();
+
+    const fixtureEmpty = setup(item({ stage: 'downloading', tracks: [] }));
+    expect(fixtureEmpty.nativeElement.querySelector('[data-testid="download-now"]')).toBeNull();
+  });
+
+  it('hides "Next:" when there are no pending tracks after the current one', () => {
+    const fixture = setup(
+      item({
+        stage: 'downloading',
+        tracks: [{ title: 'Only Track', status: 'downloading' }],
+      }),
+    );
+    expect(fixture.nativeElement.querySelector('[data-testid="download-now"]')?.textContent).toContain(
+      'Now: Only Track',
+    );
+    expect(fixture.nativeElement.querySelector('[data-testid="download-next"]')).toBeNull();
   });
 });

@@ -3,6 +3,7 @@ import { RouterLink } from '@angular/router';
 import type { DownloadItem } from '../../lib/download-groups';
 import { methodBadge } from '../../lib/acquisition-method';
 import { resolveAlbumRoute } from '../../lib/route-utils';
+import { currentAndNextTracks } from '../../lib/track-status';
 import { PipelineStageBadgeComponent } from '../pipeline-stage-badge/pipeline-stage-badge.component';
 import { MenuPanelComponent } from '../menu-panel/menu-panel.component';
 
@@ -54,6 +55,22 @@ export function hasMultipleDestinationAlbums(item: DownloadItem): boolean {
 }
 
 /**
+ * Whether the row should show the "Now: / Next:" track lines: gated on the
+ * job's overall `stage` being the active-downloading one, not merely on
+ * `tracks` having a 'downloading' entry. Task 6 flagged that an archive.org
+ * download failing mid-file can leave a track stuck at `status:
+ * 'downloading'` forever (no 'failed' transition emitted), which would make
+ * `currentAndNextTracks` report a stale "Now" even after the job's `stage`
+ * moved to a terminal one — gating on `stage` here makes the block disappear
+ * the moment the job leaves the in-flight state, regardless of what a stale
+ * per-track array still says. Exported so it's unit-testable without
+ * rendering, matching the convention of the gating helpers above.
+ */
+export function canShowNowNext(item: DownloadItem): boolean {
+  return item.stage === 'downloading';
+}
+
+/**
  * One row in the unified Downloads feed. Renders the four facets the user asked
  * for — how (method badge), what stage, when (started), where (storage path,
  * tucked behind a toggle) — plus, once complete, an "Open in Library" deep-link
@@ -90,6 +107,13 @@ export class DownloadItemComponent {
   readonly destinationAlbums = computed(() => this.item().destinationAlbums ?? []);
   /** Whether to show the "View N albums" menu on this row. */
   readonly showAlbumsMenu = computed(() => hasMultipleDestinationAlbums(this.item()));
+
+  /** "Now: / Next:" track titles derived from this job's per-track statuses. */
+  readonly nowNext = computed(() => currentAndNextTracks(this.item().tracks));
+  /** Whether to render the "Now: / Next:" block on this row. */
+  readonly showNowNext = computed(
+    () => canShowNowNext(this.item()) && !!this.nowNext().current,
+  );
 
   startedAgo(): string {
     const at = this.item().startedAt;
