@@ -196,6 +196,9 @@ export class ArchivePlugin implements Plugin {
       const title = safeSegment(meta.metadata?.title || id);
       const albumDir = join(stagingDir, creator, title);
 
+      // Emit label once, now that we know the title and have chosen files.
+      this.ctx.emitLabel(jobId, title);
+
       const staged: string[] = [];
       for (let i = 0; i < chosen.length; i++) {
         const file = chosen[i]!;
@@ -204,8 +207,10 @@ export class ArchivePlugin implements Plugin {
           .split('/')
           .map(encodeURIComponent)
           .join('/')}`;
+        this.ctx.emitTrack(jobId, { title: safeSegment(file.name), status: 'downloading' });
         await this.downloadFile(fileUrl, dest, { signal: controller.signal });
         staged.push(dest);
+        this.ctx.emitTrack(jobId, { title: safeSegment(file.name), status: 'done' });
         this.ctx.emitProgress(jobId, { done: i + 1, total: chosen.length });
       }
       return staged;
