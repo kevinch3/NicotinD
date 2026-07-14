@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.198](https://github.com/kevinch3/NicotinD/compare/v0.1.197...v0.1.198) (2026-07-14)
+
+
+### Features
+
+* **web:** add VocalFilterService for client-side vocal removal ([eda30f1](https://github.com/kevinch3/NicotinD/commit/eda30f16f4ab16f418029d5d070a05e0748481ac))
+
 ## [0.1.197](https://github.com/kevinch3/NicotinD/compare/v0.1.196...v0.1.197) (2026-07-14)
 
 
