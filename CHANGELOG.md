@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.196](https://github.com/kevinch3/NicotinD/compare/v0.1.195...v0.1.196) (2026-07-14)
+
+
+### Bug Fixes
+
+* **api:** use pan=c0-c1 (the only ffmpeg filter that actually cancels vocals) ([390cdb6](https://github.com/kevinch3/NicotinD/commit/390cdb63e6a7c055eed88a307a6892bf94802215))
+
 ## [0.1.195](https://github.com/kevinch3/NicotinD/compare/v0.1.194...v0.1.195) (2026-07-14)
 
 
