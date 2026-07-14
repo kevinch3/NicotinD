@@ -69,9 +69,13 @@ export function transcodeContentType(format: TranscodeFmt): string {
  * work on transcoded streams (the iOS/Firefox "far seek does nothing" bug).
  * Resolves on exit code 0, rejects (and cleans up the temp) otherwise.
  *
- * When `vocalRemoval` is true, injects a center-channel cancellation filter
- * (`pan=stereo|c0=c0-c1|c1=c1-c0`) that subtracts L from R and vice versa,
- * removing most center-panned vocals for karaoke use.
+ * When `vocalRemoval` is true, applies a two-step mid/side transform via
+ * `stereotools`: convert L/R to M/S, heavily attenuate the middle channel
+ * (where center-panned vocals sit, `mlev=0.015625` is the filter's minimum),
+ * then convert back. This is more effective than the raw `pan=c0-c1` trick
+ * because it preserves the stereo side image (reverb, panned instruments)
+ * while removing the center, instead of subtracting channels from each other
+ * (which can thin out the instrumental).
  */
 export function transcodeToFile(
   absPath: string,
@@ -83,8 +87,10 @@ export function transcodeToFile(
   return new Promise((resolve, reject) => {
     const spec = FORMAT_ARGS[format];
     const tmp = `${outPath}.tmp-${process.pid}-${Date.now()}`;
+    // stereotools does lr→ms, sets mid level to the minimum (0.015625 is the
+    // filter's floor — 0 is rejected), then ms→lr in a single instance.
     const filterArgs = vocalRemoval
-      ? ['-af', 'pan=stereo|c0=c0-c1|c1=c1-c0']
+      ? ['-af', 'stereotools=mode=lr>ms:mlev=0.015625:mode=ms>lr']
       : [];
     const args = [
       '-hide_banner',
