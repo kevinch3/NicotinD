@@ -21,6 +21,7 @@ import { DeviceSwitcherComponent } from '../device-switcher/device-switcher.comp
 import { PreserveService } from '../../services/preserve.service';
 import { ServerConfigService } from '../../services/server-config.service';
 import { MediaControlsService } from '../../services/media-controls.service';
+import { VocalFilterService } from '../../services/vocal-filter.service';
 import { buildMediaMetadata } from '../../lib/media-metadata';
 import * as db from '../../lib/preserve-store';
 import { createPointerDrag } from '../../lib/pointer-drag';
@@ -48,6 +49,7 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
   private preserve = inject(PreserveService);
   private server = inject(ServerConfigService);
   private mediaControls = inject(MediaControlsService);
+  private vocalFilter = inject(VocalFilterService);
 
   private audioElA = viewChild<ElementRef<HTMLAudioElement>>('audioElA');
   private audioElB = viewChild<ElementRef<HTMLAudioElement>>('audioElB');
@@ -74,8 +76,6 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
   private lastManualObjectUrl: string | null = null;
   // Track id that has been pre-buffered into the standby element.
   private preloadedTrackId: string | null = null;
-  // Tracks the last vocalsMuted value so Effect 6b skips its initial run.
-  private lastVocalsMuted: boolean | null = null;
 
   // Playback progress interpolation
   private interpolatedTime = signal(0);
@@ -169,9 +169,7 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
               db.updateLastAccessed(track.id);
             } else {
               // Metadata exists but blob missing — fall back to stream
-              audio.src = this.server.streamUrl(track.id, token, {
-                vocalsOff: this.player.vocalsMuted(),
-              });
+              audio.src = this.server.streamUrl(track.id, token);
             }
             // Don't autoplay on a fresh track load: the user must have pressed
             // play (or have autoplay_on_load + restored session — which routes
@@ -184,9 +182,7 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
             }
           })();
         } else {
-          audio.src = this.server.streamUrl(track.id, token, {
-            vocalsOff: this.player.vocalsMuted(),
-          });
+          audio.src = this.server.streamUrl(track.id, token);
           // See the preserve branch above for why play() is gated here.
           if (untracked(() => this.player.isPlaying())) {
             audio.play().catch((err) => {
@@ -304,45 +300,23 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
       this.player.clearSeek();
     });
 
-    // Effect 6b: Vocal mute toggle — reloads the stream with/without the
-    // ?vocals=off param. The toggle requires a fresh audio src because the
-    // server-side filter produces a different file. Pause before changing src
-    // (otherwise the browser may auto-play the new media from position 0
-    // before loadedmetadata fires), then seek + resume on loadedmetadata.
+    // Effect 6b: Vocal mute toggle — flips the Web Audio filter graph on/off
+    // via VocalFilterService. The <audio> element's src and currentTime are
+    // never touched, so playback continues seamlessly across the toggle (no
+    // position reset, no audible gap beyond the filter chain latency).
     effect(() => {
-      const vocalsMuted = this.player.vocalsMuted();
-      const track = this.player.currentTrack();
-      const token = this.auth.token();
-      const audio = this.audioEl()?.nativeElement;
-      if (!audio || !track) return;
+      this.vocalFilter.setEnabled(this.player.vocalsMuted());
+    });
 
-      // Skip the initial run (track load is handled by Effect 1).
-      if (this.lastVocalsMuted === null) {
-        this.lastVocalsMuted = vocalsMuted;
-        return;
-      }
-      if (vocalsMuted === this.lastVocalsMuted) return;
-      this.lastVocalsMuted = vocalsMuted;
-
-      const resumeAt = audio.currentTime;
-      const wasPlaying = this.player.isPlaying();
-      audio.pause();
-      audio.src = this.server.streamUrl(track.id, token, { vocalsOff: vocalsMuted });
-
-      const onLoaded = () => {
-        if (resumeAt > 1 && Number.isFinite(audio.duration) && resumeAt < audio.duration - 1) {
-          audio.currentTime = resumeAt;
-        }
-        if (wasPlaying) {
-          audio.play().catch((err) => {
-            if (err.name === 'NotAllowedError') this.handlePlayRejection();
-          });
-        }
-      };
-      // readyState >= 1 (HAVE_METADATA) means we can seek immediately;
-      // otherwise wait for loadedmetadata (cache hits fire this synchronously).
-      if (audio.readyState >= 1) onLoaded();
-      else audio.addEventListener('loadedmetadata', onLoaded, { once: true });
+    // Wire each <audio> element through the vocal-filter graph as soon as the
+    // viewChild signal resolves. createMediaElementSource() can only be called
+    // once per element — the service dedups via a dataset flag so re-runs
+    // (e.g. if the effect re-fires on track swaps) are safe no-ops.
+    effect(() => {
+      const a = this.audioElA()?.nativeElement;
+      if (a) this.vocalFilter.attach(a);
+      const b = this.audioElB()?.nativeElement;
+      if (b) this.vocalFilter.attach(b);
     });
 
     // Effect 7: Progress reporting interval
@@ -492,9 +466,7 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
               const standby = this.standbyNativeEl;
               if (standby) {
                 this.preloadedTrackId = nextTrack.id;
-                standby.src = this.server.streamUrl(nextTrack.id, this.auth.token(), {
-                  vocalsOff: untracked(() => this.player.vocalsMuted()),
-                });
+                standby.src = this.server.streamUrl(nextTrack.id, this.auth.token());
                 standby.preload = 'auto';
                 // load() without play() — just buffer the initial bytes
                 standby.load();
@@ -584,16 +556,12 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
                   this.lastManualObjectUrl = url;
                   audio.src = url;
                 } else {
-                  audio.src = this.server.streamUrl(nextTrack.id, token, {
-                    vocalsOff: untracked(() => this.player.vocalsMuted()),
-                  });
+                  audio.src = this.server.streamUrl(nextTrack.id, token);
                 }
                 playNext();
               });
             } else {
-              audio.src = this.server.streamUrl(nextTrack.id, token, {
-                vocalsOff: untracked(() => this.player.vocalsMuted()),
-              });
+              audio.src = this.server.streamUrl(nextTrack.id, token);
               playNext();
             }
           }
@@ -695,6 +663,7 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
     if (this.progressReportInterval) clearInterval(this.progressReportInterval);
     if (this.rafId) cancelAnimationFrame(this.rafId);
     this.releaseWakeLock();
+    this.vocalFilter.destroy();
     if (this.visibilityChangeHandler) {
       document.removeEventListener('visibilitychange', this.visibilityChangeHandler);
     }

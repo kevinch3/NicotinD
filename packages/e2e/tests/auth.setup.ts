@@ -32,28 +32,17 @@ setup('seed admin + library', async ({ page, request }) => {
   await request.post('/api/system/scan', { headers: bearer(token) });
   await waitForLibrary(request, token);
 
-  // Pre-warm the vocal-removed transcode + seed lyrics so the karaoke toggle
-  // e2e test is deterministic. Without this, the first toggle would pay the
-  // cold-transcode penalty (~1-2s on cache miss, longer on slow CI) and the
-  // lyrics panel would be empty for fixture tracks (silent FLAC, no LRCLIB
-  // match). Both pre-warms are idempotent — re-runs reuse the cached transcode
-  // and overwrite the lyrics row.
+  // Seed lyrics on the first fixture track so the karaoke overlay can render
+  // (fixture tracks are silent FLAC with no LRCLIB match, so the panel would
+  // be empty without pre-seeded text).
   const albums = (await (
     await request.get('/api/library/albums', { headers: bearer(token) })
   ).json()) as Array<{ id: string; title: string; song: Array<{ id: string }> }>;
   const fixtureAlbum = albums.find((a) => a.title === FIXTURE.album.title);
   if (fixtureAlbum?.song[0]) {
-    const firstSong = fixtureAlbum.song[0];
-    // Seed lyrics on the first track so the karaoke overlay can render.
-    await request.put(`/api/library/songs/${firstSong.id}/lyrics`, {
+    await request.put(`/api/library/songs/${fixtureAlbum.song[0].id}/lyrics`, {
       headers: bearer(token),
       data: { plain: 'karaoke warmup line\nsecond warmup line' },
-    });
-    // Pre-warm the vocal-removed transcode for the first track. This
-    // populates <dataDir>/transcode-cache/<sha1>.opus so the e2e toggle
-    // is a cache hit, not a 1-2s transcode.
-    await request.get(`/api/stream/${firstSong.id}?vocals=off`, {
-      headers: bearer(token),
     });
   }
 

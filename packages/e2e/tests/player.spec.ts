@@ -91,29 +91,29 @@ test.describe('player controls', () => {
     await expect.poll(() => anyAudioPaused(page)).toBe(false);
   });
 
-  test('vocal mute toggle preserves playback position (regression: previously reset to 0)', async ({
+  test('vocal mute toggle preserves playback position (client-side Web Audio filter)', async ({
     page,
   }) => {
-    // Setup pre-warms the vocal-removed transcode for the first fixture track
-    // and seeds lyrics on it (see auth.setup.ts), so the toggle is a cache hit
-    // and the lyrics panel renders immediately.
+    // Vocal removal is now client-side via Web Audio API: the <audio> element's
+    // src and currentTime are never touched on toggle, so position is
+    // structurally preserved (no reload, no seek). The setup seeds lyrics
+    // on the first track so the karaoke overlay renders.
     await startAlbum(page);
 
-    // Open the Now Playing sheet — clicking the mini-player title expands it.
+    // Open the Now Playing sheet so the karaoke overlay can be reached.
     await page.getByTestId('player-title').click();
     await expect(page.getByText('Now Playing')).toBeVisible();
 
-    // Seek to ~15s into the 30s fixture track by setting currentTime
-    // directly on the active audio element (the Now Playing sheet covers
-    // the mini-player seek bar, and the sheet's own seek bar has no
-    // data-testid yet).
+    // Seek to ~8s into the 30s fixture track. With the client-side filter
+    // there is no reload, so the position is stable; we just need a
+    // starting point that's clearly past 0 for the assertion.
     await page.evaluate(() => {
       const a = Array.from(document.querySelectorAll('audio')).find(
         (el) => !el.paused && el.duration > 0,
       );
-      if (a) a.currentTime = 15;
+      if (a) a.currentTime = 8;
     });
-    await expect.poll(() => audioTime(page), { timeout: 5_000 }).toBeGreaterThan(10);
+    await expect.poll(() => audioTime(page), { timeout: 5_000 }).toBeGreaterThan(5);
     const posBefore = await audioTime(page);
 
     // Open the karaoke overlay: lyrics toggle → karaoke fullscreen.
@@ -122,20 +122,29 @@ test.describe('player controls', () => {
     await page.getByTestId('now-playing-karaoke-toggle').click();
     await expect(page.getByTestId('karaoke-overlay')).toBeVisible();
 
-    // Click the vocal mute toggle.
-    await page.getByTestId('vocal-mute-toggle').click();
+    // Toggle vocal mute on, then off. Both should be position-stable.
+    const toggle = page.getByTestId('vocal-mute-toggle');
+    await toggle.click();
+    // The aria-label toggles between "Mute vocals" and "Unmute vocals".
+    await expect(toggle).toHaveAttribute('aria-label', /Unmute vocals/);
 
-    // Position must be preserved across the toggle. Allow a small window for
-    // the audio reload + seek — the bug being regression-tested reset to 0,
-    // so the key assertion is that playback continues at the saved position.
+    // Position should not have reset — the client-side filter swap is
+    // inaudible. Allow a small advance for the audio continuing to play.
     await expect
-      .poll(
-        async () => {
-          const t = await audioTime(page);
-          return t >= posBefore - 2 && t < posBefore + 10;
-        },
-        { timeout: 10_000 },
-      )
+      .poll(async () => {
+        const t = await audioTime(page);
+        return t >= posBefore - 1 && t < posBefore + 5;
+      }, { timeout: 5_000 })
+      .toBe(true);
+
+    // Toggle off again — still no position reset.
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-label', /Mute vocals/);
+    await expect
+      .poll(async () => {
+        const t = await audioTime(page);
+        return t >= posBefore - 1 && t < posBefore + 5;
+      }, { timeout: 5_000 })
       .toBe(true);
   });
 });

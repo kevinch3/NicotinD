@@ -66,29 +66,18 @@ export function transcodeContentType(format: TranscodeFmt): string {
  * Writes to a sibling temp file then atomically renames, so a reader never sees
  * a half-written cache entry. The on-disk file enables HTTP **range** support,
  * which is what makes seeking work on transcoded streams.
- *
- * When `vocalRemoval` is true, applies ffmpeg's `pan` filter to subtract
- * the stereo channels (L-R, R-L). Anything panned to center — vocals and
- * bass — cancels mathematically. This is the classic karaoke/OOPS technique.
- * Why `pan` and not `stereotools=mlev=...`: we verified empirically that
- * `stereotools=mlev=0.015625` (its minimum value) does NOT actually cancel
- * the center channel — the output RMS is identical to the input. The `pan`
- * subtraction is the only ffmpeg-native approach that reliably achieves
- * the ~70 dB center rejection needed for karaoke.
  */
 export function transcodeToFile(
   absPath: string,
   outPath: string,
   format: TranscodeFmt,
   kbps: number,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   vocalRemoval = false,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const spec = FORMAT_ARGS[format];
     const tmp = `${outPath}.tmp-${process.pid}-${Date.now()}`;
-    const filterArgs = vocalRemoval
-      ? ['-af', 'pan=stereo|c0=c0-c1|c1=c1-c0']
-      : [];
     const args = [
       '-hide_banner',
       '-loglevel',
@@ -97,7 +86,6 @@ export function transcodeToFile(
       '-i',
       absPath,
       '-vn',
-      ...filterArgs,
       ...spec.args(kbps),
       tmp,
     ];

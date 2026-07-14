@@ -96,23 +96,6 @@ describe('transcode cache', () => {
     expect(k1).not.toBe(k3);
   });
 
-  it('produces different cache keys for vocal-removed vs normal transcodes', () => {
-    const normal = transcodeCacheKey('/m/a.flac', 1000, 'opus', 128, false);
-    const vocalRemoved = transcodeCacheKey('/m/a.flac', 1000, 'opus', 128, true);
-    expect(normal).not.toBe(vocalRemoved);
-  });
-
-  it('caches vocal-removed variants separately from normal transcodes', async () => {
-    const t = makeTranscoder();
-    const normal = await getTranscodedFile(cacheDir, srcPath, 'opus', 128, { transcoder: t.fn });
-    const vocalRemoved = await getTranscodedFile(cacheDir, srcPath, 'opus', 128, {
-      transcoder: t.fn,
-      vocalRemoval: true,
-    });
-    expect(vocalRemoved).not.toBe(normal);
-    expect(t.calls()).toBe(2);
-  });
-
   it('evicts oldest files when over the disk budget', async () => {
     // Three 100-byte entries, budget 250 → oldest one evicted.
     const names = ['a', 'b', 'c'];
