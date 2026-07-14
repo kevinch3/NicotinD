@@ -68,6 +68,12 @@ export interface AcquisitionJobView {
    * some renders as an honest partial ("11 of 13 · 2 unavailable").
    */
   progress: { expected: number; delivered: number; unavailable: number; failed: number };
+  /**
+   * Per-track status, uniform across every acquisition backend (slskd hunts
+   * expose this from `acquisition_job_items`; URL acquires expose it from
+   * `acquire_jobs.tracks_json` — see `AcquireJob.tracks`).
+   */
+  items: { title: string; status: TrackStatus }[];
 }
 
 export interface AcquireJob {

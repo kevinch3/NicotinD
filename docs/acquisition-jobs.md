@@ -130,8 +130,14 @@ after they last moved (`updated_at`, so a just-closed job stays visible).
   match kept one release as fallback for pre-migration active downloads.
 - **`GET /api/downloads/jobs`**: unified job feed (`listJobFeed`), newest
   first, with per-state progress
-  (`{ expected, delivered, unavailable, failed }`) and a deep-linkable
-  `albumId`.
+  (`{ expected, delivered, unavailable, failed }`), a deep-linkable
+  `albumId`, and per-track `items: { title, status: TrackStatus }[]` — each
+  `acquisition_job_items.state` (`downloading|completed|organized|scanned|
+  failed|unavailable`) is mapped onto the shared `TrackStatus` union
+  (`completed|organized|scanned → done`, `unavailable → skipped`,
+  `failed → failed`, `downloading → downloading`, anything else → `pending`),
+  so the frontend renders slskd hunts' per-track status the same way it
+  already does for URL-acquisition jobs' `AcquireJob.tracks`.
 - Core type `AcquisitionJobView` (+ `AcquisitionJobKind`) in
   `packages/core/src/types/acquire.ts`, re-exported through the web shim.
   `PipelineStage` gained **`processing`** (scanned but quarantined behind
