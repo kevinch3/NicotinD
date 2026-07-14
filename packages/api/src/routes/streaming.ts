@@ -91,12 +91,33 @@ export function streamingRoutes(musicDir: string, db: Database, dataDir: string)
     const settings = getStreamingSettings(db);
     const reqFormat = c.req.query('format');
     const reqBitRate = c.req.query('maxBitRate') ? Number(c.req.query('maxBitRate')) : undefined;
+    const range = c.req.header('range');
+
+    // Vocal removal is checked FIRST: an explicit `?vocals=off` request must
+    // win over the general transcode setting (incl. `forceTranscode`). Otherwise
+    // the normal transcode branch would return a plain Opus/MP3 file with no
+    // vocal filter and the karaoke toggle would be silently ignored for any
+    // admin who enabled `forceTranscode` server-wide.
+    const wantsVocalRemoval = c.req.query('vocals') === 'off';
+    if (wantsVocalRemoval) {
+      if (!ffmpegAvailable()) {
+        return c.json({ error: 'vocal removal requires ffmpeg' }, 501);
+      }
+      try {
+        const cached = await getTranscodedFile(transcodeCacheDir, abs, 'opus', 128, {
+          vocalRemoval: true,
+        });
+        return serveFileWithRange(cached, range, transcodeContentType('opus'));
+      } catch (err) {
+        log.error({ err, abs }, 'vocal removal failed; falling back to original');
+        // fall through to passthrough
+      }
+    }
+
     const wantsTranscode =
       settings.transcodeEnabled &&
       ffmpegAvailable() &&
       (settings.forceTranscode || (reqFormat && reqFormat !== 'raw') || reqBitRate != null);
-
-    const range = c.req.header('range');
 
     if (wantsTranscode) {
       const format =
@@ -113,24 +134,6 @@ export function streamingRoutes(musicDir: string, db: Database, dataDir: string)
         return serveFileWithRange(cached, range, transcodeContentType(format));
       } catch (err) {
         log.error({ err, abs }, 'transcode failed; falling back to original');
-        // fall through to passthrough
-      }
-    }
-
-    // Vocal removal: a separate branch that runs regardless of transcodeEnabled.
-    // Only gated on ffmpeg availability since it's an explicit user request.
-    const wantsVocalRemoval = c.req.query('vocals') === 'off';
-    if (wantsVocalRemoval) {
-      if (!ffmpegAvailable()) {
-        return c.json({ error: 'vocal removal requires ffmpeg' }, 501);
-      }
-      try {
-        const cached = await getTranscodedFile(transcodeCacheDir, abs, 'opus', 128, {
-          vocalRemoval: true,
-        });
-        return serveFileWithRange(cached, range, transcodeContentType('opus'));
-      } catch (err) {
-        log.error({ err, abs }, 'vocal removal failed; falling back to original');
         // fall through to passthrough
       }
     }
