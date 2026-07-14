@@ -86,6 +86,8 @@ export class SpotdlPlugin implements Plugin {
       stagingDir,
       parseProgress: parseSpotdlProgress,
       onProgress: (p) => this.ctx!.emitProgress(jobId, p),
+      onLabel: (label) => this.ctx!.emitLabel(jobId, label),
+      onTrack: (title, status) => this.ctx!.emitTrack(jobId, { title, status }),
       spawn: this.spawn,
     });
     this.activeRuns.set(jobId, run);

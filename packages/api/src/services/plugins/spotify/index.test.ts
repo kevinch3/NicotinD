@@ -16,6 +16,7 @@ function fakeCtx(config: Record<string, unknown>): PluginHostContext {
     allocStagingDir: (id) => id,
     emitProgress() {},
     emitLabel() {},
+    emitTrack() {},
     storage: { get: () => null, set() {}, delete() {} },
   };
 }

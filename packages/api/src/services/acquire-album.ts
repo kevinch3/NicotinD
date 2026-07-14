@@ -1,10 +1,7 @@
+import type { AcquireAlbumDestination } from '@nicotind/core';
 import { albumIdFor } from './library-scanner.js';
 
-export interface AcquireAlbumDestination {
-  albumArtist: string;
-  albumTitle: string;
-  albumId: string;
-}
+export type { AcquireAlbumDestination } from '@nicotind/core';
 
 /**
  * Derive the destination album (artist, title, deterministic library album id)

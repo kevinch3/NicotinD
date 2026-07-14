@@ -18,6 +18,8 @@ const cfg = (over: Partial<ArchivePluginConfig> = {}): ArchivePluginConfig => ({
 
 let staging: string;
 const progress: Array<{ done: number; total: number }> = [];
+const labels: Array<{ jobId: string; label: string }> = [];
+const tracks: Array<{ jobId: string; title: string; status: string }> = [];
 function fakeCtx(): PluginHostContext {
   return {
     logger: {
@@ -35,7 +37,12 @@ function fakeCtx(): PluginHostContext {
     emitProgress(_jobId, p) {
       progress.push(p);
     },
-    emitLabel() {},
+    emitLabel(jobId, label) {
+      labels.push({ jobId, label });
+    },
+    emitTrack(jobId, track) {
+      tracks.push({ jobId, title: track.title, status: track.status });
+    },
     storage: { get: () => null, set() {}, delete() {} },
   };
 }
@@ -109,6 +116,8 @@ describe('selectArchiveFiles', () => {
 describe('ArchivePlugin', () => {
   beforeEach(() => {
     progress.length = 0;
+    labels.length = 0;
+    tracks.length = 0;
     mkdirSync(tmpdir(), { recursive: true });
     staging = mkdtempSync(join(tmpdir(), 'nd-archive-'));
   });
@@ -157,6 +166,59 @@ describe('ArchivePlugin', () => {
       { done: 1, total: 2 },
       { done: 2, total: 2 },
     ]);
+  });
+
+  it('emits label once with the item title', async () => {
+    const downloadFile = mock(async () => {});
+    const p = new ArchivePlugin(cfg(), {
+      fetchFn: metadataFetch(SAMPLE_META),
+      downloadFile,
+    });
+    await p.init(fakeCtx());
+
+    await p.resolve.resolve('https://archive.org/details/rafaga-una-cerveza', 'j-label');
+
+    expect(labels).toHaveLength(1);
+    expect(labels[0]).toEqual({ jobId: 'j-label', label: 'Una Cerveza' });
+  });
+
+  it('emits track events: downloading then done for each file', async () => {
+    const downloadFile = mock(async () => {});
+    const p = new ArchivePlugin(cfg(), {
+      fetchFn: metadataFetch(SAMPLE_META),
+      downloadFile,
+    });
+    await p.init(fakeCtx());
+
+    await p.resolve.resolve('https://archive.org/details/rafaga-una-cerveza', 'j-tracks');
+
+    // Two files (MP3s): track01.mp3 and track02.mp3 → 2 files × 2 events = 4 events
+    expect(tracks).toHaveLength(4);
+    // First file: downloading, then done — extension stripped from the title.
+    expect(tracks[0]).toEqual({ jobId: 'j-tracks', title: 'track01', status: 'downloading' });
+    expect(tracks[1]).toEqual({ jobId: 'j-tracks', title: 'track01', status: 'done' });
+    // Second file: downloading, then done
+    expect(tracks[2]).toEqual({ jobId: 'j-tracks', title: 'track02', status: 'downloading' });
+    expect(tracks[3]).toEqual({ jobId: 'j-tracks', title: 'track02', status: 'done' });
+  });
+
+  it('strips the file extension from the emitted track title', async () => {
+    // Regression: the raw archive.org filename (incl. extension) used to leak
+    // into the "Now:" line as e.g. "Now: track01.mp3" — poor UX for the one
+    // backend where "Now:" reliably fires.
+    const downloadFile = mock(async () => {});
+    const p = new ArchivePlugin(cfg(), {
+      fetchFn: metadataFetch(SAMPLE_META),
+      downloadFile,
+    });
+    await p.init(fakeCtx());
+
+    await p.resolve.resolve('https://archive.org/details/rafaga-una-cerveza', 'j-ext');
+
+    expect(tracks.length).toBeGreaterThan(0);
+    for (const t of tracks) {
+      expect(t.title).not.toMatch(/\.[a-zA-Z0-9]+$/);
+    }
   });
 
   it('rejects when metadata lookup 404s', async () => {

@@ -3,7 +3,9 @@ import { RouterLink } from '@angular/router';
 import type { DownloadItem } from '../../lib/download-groups';
 import { methodBadge } from '../../lib/acquisition-method';
 import { resolveAlbumRoute } from '../../lib/route-utils';
+import { currentAndNextTracks } from '../../lib/track-status';
 import { PipelineStageBadgeComponent } from '../pipeline-stage-badge/pipeline-stage-badge.component';
+import { MenuPanelComponent } from '../menu-panel/menu-panel.component';
 
 /** Relative "Xm ago" from a ms timestamp. */
 function timeAgo(ms: number): string {
@@ -43,6 +45,42 @@ export function canOpenInLibrary(item: DownloadItem): boolean {
 }
 
 /**
+ * Whether the row should offer a "View N albums" menu instead: a completed
+ * job whose files landed in more than one album (Task 1's `destinationAlbums`
+ * — `albumId` is null in this case, so `canOpenInLibrary` is already false).
+ * Exported so the gating contract is unit-testable without rendering.
+ */
+export function hasMultipleDestinationAlbums(item: DownloadItem): boolean {
+  return item.stage === 'done' && (item.destinationAlbums?.length ?? 0) > 1;
+}
+
+/**
+ * Whether the row should show the "Now: / Next:" track lines: gated on the
+ * job's overall `stage` being the active-downloading one, not merely on
+ * `tracks` having a 'downloading' entry. Task 6 flagged that an archive.org
+ * download failing mid-file can leave a track stuck at `status:
+ * 'downloading'` forever (no 'failed' transition emitted), which would make
+ * `currentAndNextTracks` report a stale "Now" even after the job's `stage`
+ * moved to a terminal one — gating on `stage` here makes the block disappear
+ * the moment the job leaves the in-flight state, regardless of what a stale
+ * per-track array still says.
+ *
+ * Also requires `kind === 'acquire'`: slskd hunts download several tracks in
+ * parallel from different peers, so multiple `tracks` entries can be
+ * 'downloading' at once. `currentAndNextTracks` picks the LAST one as "Now",
+ * which for slskd is an arbitrary, jumpy title rather than a meaningful
+ * "current track" — so the block is suppressed for slskd-sourced rows even
+ * though the field is still populated (harmless to keep threading it
+ * through). URL-acquire backends (spotdl/yt-dlp/archive) download one track
+ * at a time, so "last downloading" is meaningful there. Exported so it's
+ * unit-testable without rendering, matching the convention of the gating
+ * helpers above.
+ */
+export function canShowNowNext(item: DownloadItem): boolean {
+  return item.kind === 'acquire' && item.stage === 'downloading';
+}
+
+/**
  * One row in the unified Downloads feed. Renders the four facets the user asked
  * for — how (method badge), what stage, when (started), where (storage path,
  * tucked behind a toggle) — plus, once complete, an "Open in Library" deep-link
@@ -52,7 +90,7 @@ export function canOpenInLibrary(item: DownloadItem): boolean {
 @Component({
   selector: 'app-download-item',
   standalone: true,
-  imports: [PipelineStageBadgeComponent, RouterLink],
+  imports: [PipelineStageBadgeComponent, RouterLink, MenuPanelComponent],
   host: { '[class]': 'hostClass' },
   templateUrl: './download-item.component.html',
 })
@@ -75,8 +113,25 @@ export class DownloadItemComponent {
   /** Deep-link target for the completed album ('/library' when the id is unknown). */
   readonly albumRoute = computed(() => resolveAlbumRoute(this.item().albumId));
 
+  /** The destination albums to list in the "View N albums" menu, when shown. */
+  readonly destinationAlbums = computed(() => this.item().destinationAlbums ?? []);
+  /** Whether to show the "View N albums" menu on this row. */
+  readonly showAlbumsMenu = computed(() => hasMultipleDestinationAlbums(this.item()));
+
+  /** "Now: / Next:" track titles derived from this job's per-track statuses. */
+  readonly nowNext = computed(() => currentAndNextTracks(this.item().tracks));
+  /** Whether to render the "Now: / Next:" block on this row. */
+  readonly showNowNext = computed(
+    () => canShowNowNext(this.item()) && !!this.nowNext().current,
+  );
+
   startedAgo(): string {
     const at = this.item().startedAt;
     return at ? timeAgo(at) : '';
+  }
+
+  /** Deep-link target for one destination album row in the "View N albums" menu. */
+  albumRouteFor(albumId: string): string[] {
+    return resolveAlbumRoute(albumId);
   }
 }

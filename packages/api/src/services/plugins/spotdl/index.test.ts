@@ -44,8 +44,12 @@ describe('SpotdlPlugin', () => {
     });
     afterEach(() => rmSync(tmp, { recursive: true, force: true }));
 
-    /** Minimal host context: resolve() only uses allocStagingDir + emitProgress. */
-    function fakeCtx(progress: Array<{ done: number; total: number }>): PluginHostContext {
+    /** Minimal host context: resolve() uses allocStagingDir, emitProgress, emitLabel, emitTrack. */
+    function fakeCtx(
+      progress: Array<{ done: number; total: number }>,
+      labels: string[] = [],
+      tracks: Array<{ title: string; status: string }> = [],
+    ): PluginHostContext {
       return {
         allocStagingDir: (jobId: string) => {
           stagingDir = join(tmp, jobId);
@@ -53,6 +57,8 @@ describe('SpotdlPlugin', () => {
           return stagingDir;
         },
         emitProgress: (_jobId: string, p: { done: number; total: number }) => progress.push(p),
+        emitLabel: (_jobId: string, label: string) => labels.push(label),
+        emitTrack: (_jobId: string, evt: { title: string; status: string }) => tracks.push(evt),
       } as unknown as PluginHostContext;
     }
 
@@ -177,6 +183,31 @@ describe('SpotdlPlugin', () => {
       expect(plugin.resolve.resolve('https://open.spotify.com/track/x', 'job-4')).rejects.toThrow(
         'not initialized',
       );
+    });
+
+    it('fires onLabel and onTrack callbacks from spotdl output', async () => {
+      const progress: Array<{ done: number; total: number }> = [];
+      const labels: string[] = [];
+      const tracks: Array<{ title: string; status: string }> = [];
+      const { spawn, child } = fakeSpawn();
+      const plugin = new SpotdlPlugin({ enabled: true, binaryPath: 'spotdl' }, { spawn });
+      await plugin.init(fakeCtx(progress, labels, tracks));
+
+      const done = plugin.resolve.resolve('https://open.spotify.com/playlist/abc', 'job-label-track');
+      // Simulate spotdl output: playlist title, then track downloads and skips
+      child.stdout.emit('data', Buffer.from('Found 3 songs in playlist: My Mix\n'));
+      child.stdout.emit('data', Buffer.from('Downloaded "Song A"\n'));
+      child.stdout.emit('data', Buffer.from('Skipping "Song B"\n'));
+      const file = join(stagingDir, 'song.mp3');
+      writeFileSync(file, 'x');
+      child.emit('close', 0);
+
+      await done;
+      expect(labels).toEqual(['My Mix']);
+      expect(tracks).toEqual([
+        { title: 'Song A', status: 'done' },
+        { title: 'Song B', status: 'skipped' },
+      ]);
     });
   });
 });

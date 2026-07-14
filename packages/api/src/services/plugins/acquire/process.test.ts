@@ -7,7 +7,10 @@ import {
   runAcquireProcess,
   parseYtdlpProgress,
   parseYtdlpPlaylistTitle,
+  parseYtdlpTrackEvent,
   parseSpotdlProgress,
+  parseSpotdlTrackEvent,
+  parseSpotdlPlaylistTitle,
   collectAudioPaths,
   type RunAcquireOptions,
 } from './process.js';
@@ -130,6 +133,80 @@ describe('parseSpotdlProgress', () => {
   });
 });
 
+describe('parseSpotdlTrackEvent', () => {
+  it('returns {title, status: done} for a Downloaded line', () => {
+    expect(parseSpotdlTrackEvent('Downloaded "Song Name"')).toEqual({
+      title: 'Song Name',
+      status: 'done',
+    });
+  });
+
+  it('returns {title, status: skipped} for a Skipping line', () => {
+    expect(parseSpotdlTrackEvent('Skipping "Existing Song"')).toEqual({
+      title: 'Existing Song',
+      status: 'skipped',
+    });
+  });
+
+  it('is case-insensitive', () => {
+    expect(parseSpotdlTrackEvent('downloaded "lowercase"')).toEqual({
+      title: 'lowercase',
+      status: 'done',
+    });
+  });
+
+  it('returns null for unrelated lines', () => {
+    expect(parseSpotdlTrackEvent('Found 5 songs')).toBeNull();
+    expect(parseSpotdlTrackEvent('')).toBeNull();
+  });
+});
+
+describe('parseSpotdlPlaylistTitle', () => {
+  it('extracts the playlist title from a "Found N songs in playlist" line', () => {
+    expect(parseSpotdlPlaylistTitle('Found 42 songs in playlist: My Mix')).toBe('My Mix');
+  });
+
+  it('is case-insensitive', () => {
+    expect(parseSpotdlPlaylistTitle('found 3 songs in playlist: lowercase mix')).toBe(
+      'lowercase mix',
+    );
+  });
+
+  it('returns null when there is no playlist name', () => {
+    expect(parseSpotdlPlaylistTitle('Found 42 songs')).toBeNull();
+    expect(parseSpotdlPlaylistTitle('Downloaded "Song Name"')).toBeNull();
+  });
+});
+
+describe('parseYtdlpTrackEvent', () => {
+  it('returns {title, status: downloading} for a TRACK_START marker', () => {
+    expect(parseYtdlpTrackEvent('TRACK_START::My Song Title')).toEqual({
+      title: 'My Song Title',
+      status: 'downloading',
+    });
+  });
+
+  it('returns {title, status: done} for a TRACK_DONE marker', () => {
+    expect(parseYtdlpTrackEvent('TRACK_DONE::My Song Title')).toEqual({
+      title: 'My Song Title',
+      status: 'done',
+    });
+  });
+
+  it('trims surrounding whitespace from the title', () => {
+    expect(parseYtdlpTrackEvent('TRACK_START::  Padded Title  ')).toEqual({
+      title: 'Padded Title',
+      status: 'downloading',
+    });
+  });
+
+  it('returns null for non-marker lines', () => {
+    expect(parseYtdlpTrackEvent('[download]  45.2% of 5MiB')).toBeNull();
+    expect(parseYtdlpTrackEvent('some TRACK_START::mid-line text')).toBeNull();
+    expect(parseYtdlpTrackEvent('')).toBeNull();
+  });
+});
+
 describe('runAcquireProcess', () => {
   beforeEach(() => {
     spawnMock.mockClear();
@@ -173,6 +250,43 @@ describe('runAcquireProcess', () => {
     fakeProc.finish(0);
     await r.done;
     expect(labels).toEqual(['My Mix']);
+  });
+
+  it('calls onTrack for every track event line, unlike the single-shot onLabel', async () => {
+    const events: Array<[string, string]> = [];
+    const r = run({ onTrack: (title, status) => events.push([title, status]) });
+    fakeProc.emitData('Downloaded "Song A"\n');
+    fakeProc.emitData('Skipping "Song B"\n');
+    fakeProc.emitData('Downloaded "Song A"\n'); // re-download/retag: fires again, not suppressed
+    fakeProc.finish(0);
+    await r.done;
+    expect(events).toEqual([
+      ['Song A', 'done'],
+      ['Song B', 'skipped'],
+      ['Song A', 'done'],
+    ]);
+  });
+
+  it('calls onTrack for yt-dlp TRACK_START::/TRACK_DONE:: marker lines', async () => {
+    const events: Array<[string, string]> = [];
+    const r = run({ onTrack: (title, status) => events.push([title, status]) });
+    fakeProc.emitData('TRACK_START::My Song\n');
+    fakeProc.emitData('TRACK_DONE::My Song\n');
+    fakeProc.finish(0);
+    await r.done;
+    expect(events).toEqual([
+      ['My Song', 'downloading'],
+      ['My Song', 'done'],
+    ]);
+  });
+
+  it('does not call onTrack for unrelated lines', async () => {
+    const events: Array<[string, string]> = [];
+    const r = run({ onTrack: (title, status) => events.push([title, status]) });
+    fakeProc.emitData('[download]  42.0% of 1MiB\n');
+    fakeProc.finish(0);
+    await r.done;
+    expect(events).toEqual([]);
   });
 
   it('rejects with stderr tail on a non-zero exit', async () => {

@@ -1,4 +1,5 @@
 import type { Logger } from '../utils/logger.js';
+import type { TrackStatus } from '../types/acquire.js';
 
 /** Plugin-scoped persistent key/value store (sqlite-backed by the host). */
 export interface PluginStorage {
@@ -29,6 +30,12 @@ export interface PluginHostContext {
   emitProgress(jobId: string, progress: PluginProgress): void;
   /** Update the human-readable label for an in-flight job (e.g. playlist title). */
   emitLabel(jobId: string, label: string): void;
+  /**
+   * Upsert one track's status into the job's per-track list, matched by
+   * title. Unlike emitLabel this is NOT single-shot — it fires once per
+   * track, many times over the life of a job.
+   */
+  emitTrack(jobId: string, track: { title: string; status: TrackStatus }): void;
   /** Plugin-scoped persistent storage. */
   storage: PluginStorage;
 }

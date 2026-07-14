@@ -2,6 +2,9 @@
 export type AcquireBackend = 'ytdlp' | 'spotdl';
 export type AcquireJobState = 'queued' | 'running' | 'done' | 'failed';
 
+/** Per-track download state within an acquire job, keyed by title. */
+export type TrackStatus = 'pending' | 'downloading' | 'done' | 'skipped' | 'failed';
+
 /**
  * Where a track came from. Mirrors the acquisition plugin id for URL jobs
  * (`ytdlp` / `spotdl` / `archive`), plus `slskd` for Soulseek and `unknown`
@@ -23,6 +26,17 @@ export type PipelineStage =
   | 'processing'
   | 'done'
   | 'error';
+
+/**
+ * A single destination album an acquire job's files landed in — artist,
+ * title, and the deterministic library album id, derived from the
+ * `<Artist>/<Album>` tail of an organized path (see `deriveAcquireAlbum`).
+ */
+export interface AcquireAlbumDestination {
+  albumArtist: string;
+  albumTitle: string;
+  albumId: string;
+}
 
 /** How a unified acquisition job was initiated. */
 export type AcquisitionJobKind = 'album-hunt' | 'auto-acquire' | 'direct' | 'track-search' | 'url';
@@ -54,6 +68,12 @@ export interface AcquisitionJobView {
    * some renders as an honest partial ("11 of 13 · 2 unavailable").
    */
   progress: { expected: number; delivered: number; unavailable: number; failed: number };
+  /**
+   * Per-track status, uniform across every acquisition backend (slskd hunts
+   * expose this from `acquisition_job_items`; URL acquires expose it from
+   * `acquire_jobs.tracks_json` — see `AcquireJob.tracks`).
+   */
+  items: { title: string; status: TrackStatus }[];
 }
 
 export interface AcquireJob {
@@ -73,7 +93,21 @@ export interface AcquireJob {
   albumArtist: string | null;
   /** Destination album title, derived from storage_path. */
   albumTitle: string | null;
+  /**
+   * The full, distinct set of destination albums the job's files landed in.
+   * Always present (may be empty pre-ingest / on rows predating this field).
+   * `albumId`/`albumArtist`/`albumTitle` above are only populated when this
+   * has exactly one entry — the single-album convenience case.
+   */
+  destinationAlbums: AcquireAlbumDestination[];
   progress: { done: number; total: number } | null;
+  /**
+   * Per-track download state, in playlist order where known. Appended-to /
+   * status-updated in place by title match as tracks are discovered
+   * (spotdl/yt-dlp) or known upfront (archive). Always present (empty for
+   * pre-migration rows or jobs without per-track granularity).
+   */
+  tracks: { title: string; status: TrackStatus }[];
   error: string | null;
   created_at: number;
 }
