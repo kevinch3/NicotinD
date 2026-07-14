@@ -24,6 +24,17 @@ export type PipelineStage =
   | 'done'
   | 'error';
 
+/**
+ * A single destination album an acquire job's files landed in — artist,
+ * title, and the deterministic library album id, derived from the
+ * `<Artist>/<Album>` tail of an organized path (see `deriveAcquireAlbum`).
+ */
+export interface AcquireAlbumDestination {
+  albumArtist: string;
+  albumTitle: string;
+  albumId: string;
+}
+
 /** How a unified acquisition job was initiated. */
 export type AcquisitionJobKind = 'album-hunt' | 'auto-acquire' | 'direct' | 'track-search' | 'url';
 
@@ -73,6 +84,13 @@ export interface AcquireJob {
   albumArtist: string | null;
   /** Destination album title, derived from storage_path. */
   albumTitle: string | null;
+  /**
+   * The full, distinct set of destination albums the job's files landed in.
+   * Always present (may be empty pre-ingest / on rows predating this field).
+   * `albumId`/`albumArtist`/`albumTitle` above are only populated when this
+   * has exactly one entry — the single-album convenience case.
+   */
+  destinationAlbums: AcquireAlbumDestination[];
   progress: { done: number; total: number } | null;
   error: string | null;
   created_at: number;

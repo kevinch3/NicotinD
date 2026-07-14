@@ -8,7 +8,7 @@ import { pluginStagingDir } from './plugins/host-context.js';
 import type { CompletedDownloadFile } from './path-inference.js';
 import { createJob } from './acquisition-job-store.js';
 import { recordAcquisition } from './acquisition-store.js';
-import { deriveAcquireAlbum } from './acquire-album.js';
+import { deriveAcquireAlbum, type AcquireAlbumDestination } from './acquire-album.js';
 
 /** Map an acquisition plugin id to an AcquisitionMethod; unknown ids → 'unknown'. */
 function methodForBackend(backend: string): AcquisitionMethod {
@@ -59,6 +59,7 @@ interface AcquireJobRow {
   state: string;
   stage: string | null;
   storage_path: string | null;
+  dest_albums_json: string | null;
   progress: string | null;
   error: string | null;
   created_at: number;
@@ -235,6 +236,15 @@ export class AcquireWatcher {
       }
       if (relPaths.length > 0) {
         this.setStoragePath(id, dirname(relPaths[0]!));
+        // Distinct destination albums across every file the job landed, not
+        // just the first — a job (e.g. a large spotdl playlist) can span many
+        // albums, and only tracking the first meant every other album's
+        // "Open in Library" link silently pointed at the wrong place.
+        const destDirs = [...new Set(relPaths.map((p) => dirname(p)))];
+        const destAlbums = destDirs
+          .map((dir) => deriveAcquireAlbum(dir))
+          .filter((d): d is AcquireAlbumDestination => d !== null);
+        this.setDestAlbums(id, destAlbums);
         this.setStage(id, 'scanning');
         await this.options.scanIncremental(relPaths);
         if (this.options.enrichSingles) await this.options.enrichSingles(relPaths);
@@ -301,7 +311,7 @@ export class AcquireWatcher {
     if (!plugin?.resolve) throw new NoAcquisitionPluginError(row.url);
     if (!(await plugin.isAvailable())) throw new PluginUnavailableError(plugin.manifest.id);
     this.db.run(
-      `UPDATE acquire_jobs SET backend = ?, state = 'queued', stage = 'queued', error = NULL, progress = NULL, storage_path = NULL WHERE id = ?`,
+      `UPDATE acquire_jobs SET backend = ?, state = 'queued', stage = 'queued', error = NULL, progress = NULL, storage_path = NULL, dest_albums_json = NULL WHERE id = ?`,
       [plugin.manifest.id, jobId],
     );
     void this.run(plugin, jobId, row.url);
@@ -387,6 +397,18 @@ export class AcquireWatcher {
     }
   }
 
+  /** Record the distinct set of destination albums the job's files landed in. */
+  private setDestAlbums(jobId: string, albums: AcquireAlbumDestination[]): void {
+    try {
+      this.db.run(`UPDATE acquire_jobs SET dest_albums_json = ? WHERE id = ?`, [
+        JSON.stringify(albums),
+        jobId,
+      ]);
+    } catch (err) {
+      log.warn({ jobId, err }, 'Failed to update acquire_jobs dest_albums_json');
+    }
+  }
+
   private mapRow(row: AcquireJobRow): AcquireJob {
     let progress: { done: number; total: number } | null = null;
     if (row.progress) {
@@ -396,7 +418,18 @@ export class AcquireWatcher {
         /* ignore */
       }
     }
-    const dest = deriveAcquireAlbum(row.storage_path);
+    let destinationAlbums: AcquireAlbumDestination[] = [];
+    if (row.dest_albums_json) {
+      try {
+        destinationAlbums = JSON.parse(row.dest_albums_json);
+      } catch {
+        /* ignore */
+      }
+    }
+    // Singular fields are the single-album convenience case; a multi-album job
+    // (or a pre-migration/not-yet-ingested row with an empty set) degrades
+    // safely to null here rather than pointing at a possibly-wrong album.
+    const single = destinationAlbums.length === 1 ? destinationAlbums[0]! : null;
     return {
       id: row.id,
       backend: row.backend as AcquireJob['backend'],
@@ -405,9 +438,10 @@ export class AcquireWatcher {
       state: row.state as AcquireJob['state'],
       stage: (row.stage as AcquireJob['stage']) ?? null,
       storage_path: row.storage_path ?? null,
-      albumId: dest?.albumId ?? null,
-      albumArtist: dest?.albumArtist ?? null,
-      albumTitle: dest?.albumTitle ?? null,
+      albumId: single?.albumId ?? null,
+      albumArtist: single?.albumArtist ?? null,
+      albumTitle: single?.albumTitle ?? null,
+      destinationAlbums,
       progress,
       error: row.error,
       created_at: row.created_at,
