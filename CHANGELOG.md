@@ -2,6 +2,34 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.199](https://github.com/kevinch3/NicotinD/compare/v0.1.198...v0.1.199) (2026-07-14)
+
+
+### Features
+
+* **acquire:** add emitTrack host-context method and shared track-event parsing ([56a8178](https://github.com/kevinch3/NicotinD/commit/56a8178fab15226a9492cbb32639ddbde4b3d679))
+* **acquire:** add yt-dlp track markers and wire onTrack ([1fc191c](https://github.com/kevinch3/NicotinD/commit/1fc191c6eb15446dabf3666cd80e3540a2a88a4b))
+* **acquire:** emit label and track events from archive plugin ([02557eb](https://github.com/kevinch3/NicotinD/commit/02557eb95fdfc89713567aee38b3b283808e7435))
+* **acquire:** expose per-track status for slskd hunts through the job feed ([95f51bd](https://github.com/kevinch3/NicotinD/commit/95f51bd05af7c6e670954a238a784112916bfd02))
+* **acquire:** wire spotdl onLabel and onTrack callbacks ([9dc3fe2](https://github.com/kevinch3/NicotinD/commit/9dc3fe21dd3acc85ae68925d273192101c61006b))
+* **web:** show current/next track on download job cards ([4aef6fe](https://github.com/kevinch3/NicotinD/commit/4aef6fe5aa36bb97150538d27ec9055bd7dfc7a4))
+* **web:** show View N albums for multi-album download jobs ([087aa8a](https://github.com/kevinch3/NicotinD/commit/087aa8a2d93048766b9ae15022df79c9fa822ee7))
+* **web:** unify per-track status onto DownloadItem.tracks ([f211d74](https://github.com/kevinch3/NicotinD/commit/f211d747aa0c8fdb188542d3541c98700969d7c1))
+
+
+### Bug Fixes
+
+* **acquire:** strip file extension from archive track titles ([c249477](https://github.com/kevinch3/NicotinD/commit/c24947779bfc25f22f3ba8c4958ecd6fc327b56b))
+* **acquire:** track distinct destination albums per job ([bb82b99](https://github.com/kevinch3/NicotinD/commit/bb82b9918c45b9389840af98d892e3462caf5a74))
+* **web:** suppress misleading Now/Next display for slskd hunts ([5897bb0](https://github.com/kevinch3/NicotinD/commit/5897bb05c302ccebeee0ad462dd4ad53309e11ee))
+
+## [0.1.198](https://github.com/kevinch3/NicotinD/compare/v0.1.197...v0.1.198) (2026-07-14)
+
+
+### Features
+
+* **web:** add VocalFilterService for client-side vocal removal ([eda30f1](https://github.com/kevinch3/NicotinD/commit/eda30f16f4ab16f418029d5d070a05e0748481ac))
+
 ## [0.1.197](https://github.com/kevinch3/NicotinD/compare/v0.1.196...v0.1.197) (2026-07-14)
 
 

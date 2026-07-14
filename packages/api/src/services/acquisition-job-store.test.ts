@@ -5,6 +5,7 @@ import {
   createJob,
   getJob,
   jobMetaForTransfer,
+  listJobFeed,
   markItemCompleted,
   markItemOrganized,
   markItemsScanned,
@@ -156,6 +157,70 @@ describe('item lifecycle', () => {
     const afterScan = getJob(db, id)!.items[0];
     expect(afterScan.state).toBe('scanned');
     expect(afterScan.songId).toBe('s1');
+  });
+});
+
+describe('listJobFeed', () => {
+  it('maps every acquisition_job_items state onto the shared TrackStatus union', () => {
+    const id = createJob(db, {
+      kind: 'album-hunt',
+      method: 'slskd',
+      artistName: 'Bowie',
+      albumTitle: 'Heathen',
+      username: 'peer1',
+      files: [
+        { filename: 'a\\01.flac', trackTitle: 'Downloading Track' },
+        { filename: 'a\\02.flac', trackTitle: 'Completed Track' },
+        { filename: 'a\\03.flac', trackTitle: 'Organized Track' },
+        { filename: 'a\\04.flac', trackTitle: 'Scanned Track' },
+        { filename: 'a\\05.flac', trackTitle: 'Failed Track' },
+        { filename: 'a\\06.flac', trackTitle: 'Unavailable Track' },
+      ],
+    });
+    // 'downloading' is already the state createJob leaves items in; drive the
+    // rest directly via SQL — these states are otherwise only reachable
+    // through multi-step lifecycle calls this test doesn't need.
+    db.run(`UPDATE acquisition_job_items SET state = 'completed' WHERE track_title = ?`, [
+      'Completed Track',
+    ]);
+    db.run(`UPDATE acquisition_job_items SET state = 'organized' WHERE track_title = ?`, [
+      'Organized Track',
+    ]);
+    db.run(`UPDATE acquisition_job_items SET state = 'scanned' WHERE track_title = ?`, [
+      'Scanned Track',
+    ]);
+    db.run(`UPDATE acquisition_job_items SET state = 'failed' WHERE track_title = ?`, [
+      'Failed Track',
+    ]);
+    db.run(`UPDATE acquisition_job_items SET state = 'unavailable' WHERE track_title = ?`, [
+      'Unavailable Track',
+    ]);
+
+    const feed = listJobFeed(db);
+    const job = feed.find((j) => j.id === id);
+    expect(job).toBeDefined();
+    const items = job!.items;
+    expect(items).toHaveLength(6);
+    expect(items.find((i) => i.title === 'Downloading Track')?.status).toBe('downloading');
+    expect(items.find((i) => i.title === 'Completed Track')?.status).toBe('done');
+    expect(items.find((i) => i.title === 'Organized Track')?.status).toBe('done');
+    expect(items.find((i) => i.title === 'Scanned Track')?.status).toBe('done');
+    expect(items.find((i) => i.title === 'Failed Track')?.status).toBe('failed');
+    expect(items.find((i) => i.title === 'Unavailable Track')?.status).toBe('skipped');
+  });
+
+  it('falls back to pending for an unrecognized/legacy state value', () => {
+    const id = createJob(db, {
+      kind: 'direct',
+      method: 'slskd',
+      username: 'peer1',
+      files: [{ filename: 'a\\01.flac', trackTitle: 'Mystery Track' }],
+    });
+    db.run(`UPDATE acquisition_job_items SET state = 'queued' WHERE track_title = ?`, [
+      'Mystery Track',
+    ]);
+    const job = listJobFeed(db).find((j) => j.id === id);
+    expect(job!.items[0].status).toBe('pending');
   });
 });
 

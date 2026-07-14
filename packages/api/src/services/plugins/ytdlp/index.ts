@@ -80,6 +80,7 @@ export class YtdlpPlugin implements Plugin {
       stagingDir,
       onProgress: (p) => this.ctx!.emitProgress(jobId, p),
       onLabel: (label) => this.ctx!.emitLabel(jobId, label),
+      onTrack: (title, status) => this.ctx!.emitTrack(jobId, { title, status }),
       spawn: this.spawn,
     });
     this.activeRuns.set(jobId, run);
@@ -114,6 +115,14 @@ export class YtdlpPlugin implements Plugin {
       '',
       '--embed-metadata',
       '--embed-thumbnail',
+      // Per-track lifecycle markers for the acquire process parser
+      // (parseYtdlpTrackEvent): before_dl fires once a video is selected for
+      // download, after_move fires once the postprocessed file lands in its
+      // final location. Distinct prefixes avoid colliding with other stdout.
+      '--print',
+      'before_dl:TRACK_START::%(artist)s - %(title)s',
+      '--print',
+      'after_move:TRACK_DONE::%(artist)s - %(title)s',
       '--output',
       outputTemplate,
       '--newline',

@@ -9,6 +9,7 @@ import { RemotePlaybackService } from '../../services/remote-playback.service';
 import { PlaybackWsService } from '../../services/playback-ws.service';
 import { PreserveService } from '../../services/preserve.service';
 import { MediaControlsService } from '../../services/media-controls.service';
+import { VocalFilterService } from '../../services/vocal-filter.service';
 import type { Track } from '../../services/player.service';
 
 // Note: preserve-store (IndexedDB) is never reached in these tests because
@@ -101,6 +102,15 @@ describe('PlayerComponent', () => {
             setPlaybackState: vi.fn(),
             setPositionState: vi.fn(),
             setActionHandler: vi.fn(),
+          },
+        },
+        // Mocked so jsdom (no Web Audio API) doesn't crash the component init.
+        {
+          provide: VocalFilterService,
+          useValue: {
+            attach: vi.fn(),
+            setEnabled: vi.fn(),
+            destroy: vi.fn(),
           },
         },
       ],

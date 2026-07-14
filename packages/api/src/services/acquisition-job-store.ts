@@ -1,4 +1,5 @@
 import type { Database } from 'bun:sqlite';
+import type { TrackStatus } from '@nicotind/core';
 import { normalizeTitle, titlesOverlap } from './album-hunter.service.js';
 
 /**
@@ -521,6 +522,36 @@ export interface AcquisitionJobFeedItem {
   createdAt: number;
   updatedAt: number;
   progress: { expected: number; delivered: number; unavailable: number; failed: number };
+  /**
+   * Per-track status, mirroring URL-acquisition jobs' `tracks` field so the
+   * frontend can render both uniformly. Mapped from `acquisition_job_items`
+   * onto the shared `TrackStatus` union (see `itemStateToTrackStatus`).
+   */
+  items: { title: string; status: TrackStatus }[];
+}
+
+/**
+ * Map a slskd `acquisition_job_items.state` onto the shared `TrackStatus`
+ * union used by every acquisition backend. `AcquisitionJobItemState` is
+ * exhaustively `downloading | completed | organized | scanned | failed |
+ * unavailable`; the `default` branch exists only to stay safe against a
+ * malformed/legacy row, never as an expected fallthrough.
+ */
+function itemStateToTrackStatus(state: string): TrackStatus {
+  switch (state) {
+    case 'completed':
+    case 'organized':
+    case 'scanned':
+      return 'done';
+    case 'unavailable':
+      return 'skipped';
+    case 'failed':
+      return 'failed';
+    case 'downloading':
+      return 'downloading';
+    default:
+      return 'pending';
+  }
 }
 
 /**
@@ -546,6 +577,12 @@ export function listJobFeed(db: Database, limit = 50): AcquisitionJobFeedItem[] 
     const expected = [...counts.values()].reduce((a, b) => a + b, 0);
     const delivered =
       (counts.get('completed') ?? 0) + (counts.get('organized') ?? 0) + (counts.get('scanned') ?? 0);
+    const itemRows = db
+      .query<
+        { track_title: string | null; state: string },
+        [string]
+      >(`SELECT track_title, state FROM acquisition_job_items WHERE job_id = ? ORDER BY id`)
+      .all(row.id);
     return {
       id: row.id,
       kind: row.kind,
@@ -565,6 +602,10 @@ export function listJobFeed(db: Database, limit = 50): AcquisitionJobFeedItem[] 
         unavailable: counts.get('unavailable') ?? 0,
         failed: counts.get('failed') ?? 0,
       },
+      items: itemRows.map((r) => ({
+        title: r.track_title ?? '',
+        status: itemStateToTrackStatus(r.state),
+      })),
     };
   });
 }

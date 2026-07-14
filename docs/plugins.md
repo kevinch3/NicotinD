@@ -46,9 +46,21 @@ worked example.
   **proposed** for the `auth` kind — not yet implemented; see [oauth-auth.md](oauth-auth.md).
 - **`context.ts`** — `PluginHostContext`: the **only** surface a plugin may use to affect the
   system (scoped logger, resolved config, `allocStagingDir(jobId)`, `emitProgress(jobId, …)`,
-  scoped `storage`). A plugin **cannot** touch the library DB or the organizer. It produces files
-  in a staging dir; the host owns ingest (`organize → scan → enrich`). This boundary is the
-  decoupling guarantee and the safety story.
+  `emitLabel(jobId, label)`, `emitTrack(jobId, {title, status})`, scoped `storage`). A plugin
+  **cannot** touch the library DB or the organizer. It produces files in a staging dir; the host
+  owns ingest (`organize → scan → enrich`). This boundary is the decoupling guarantee and the
+  safety story.
+  - **`emitTrack`** upserts one track's `{title, status: TrackStatus}` into `acquire_jobs.tracks_json`
+    by title match (update in place, not append-and-duplicate) — the DB-facing merge is the pure
+    `upsertTrackStatus` in `host-context.ts`, wrapped by a SELECT/UPDATE in `index.ts`'s
+    `createPluginHostContext` wiring (mirrors `emitLabel`'s pattern). Unlike `emitLabel` (single-shot
+    per job, gated by a `labelEmitted` flag in `runAcquireProcess`), `emitTrack` fires **once per
+    track, many times per job** — infra landed in the schema/types/host-context/shared parsers only;
+    no plugin calls it yet (spotdl/yt-dlp/archive wiring is a follow-up). The shared parsing lives in
+    `acquire/process.ts`: `parseSpotdlTrackEvent` (Downloaded/Skipping → done/skipped),
+    `parseYtdlpTrackEvent` (`TRACK_START::`/`TRACK_DONE::` marker lines a future yt-dlp wrapper will
+    emit), and `RunAcquireOptions.onTrack` in `runAcquireProcess`'s `onData` loop, kept as a separate
+    non-single-shot callback from `onLabel`.
 - **`index.ts`** — the `Plugin` interface (`init` / `isAvailable` / `dispose` + capability
   accessors) and re-exports.
 

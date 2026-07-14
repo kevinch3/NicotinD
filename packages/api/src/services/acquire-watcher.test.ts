@@ -188,6 +188,88 @@ describe('AcquireWatcher (registry-driven)', () => {
     });
   });
 
+  it('a single-album job populates destinationAlbums with one entry and the singular album fields', async () => {
+    await h.registry.enable('fake', 'admin');
+    const id = await h.watcher.submit('https://example.com/x');
+    await waitForStage(h.watcher, id, 'done');
+
+    const job = h.watcher.getJob(id)!;
+    expect(job.destinationAlbums).toHaveLength(1);
+    expect(job.destinationAlbums[0]).toMatchObject({
+      albumArtist: 'Artist',
+      albumTitle: 'Album',
+    });
+    expect(job.albumId).not.toBeNull();
+    expect(job.albumArtist).toBe('Artist');
+    expect(job.albumTitle).toBe('Album');
+  });
+
+  it('a job whose files land in 3 distinct album dirs exposes all 3 in destinationAlbums, with albumId null', async () => {
+    const plugin = fakePlugin();
+    plugin.resolve!.resolve = async (_url, jobId) => [
+      join(pluginStagingDir(DATA_DIR, 'fake', jobId), 'Artist A', 'Album One', 't1.mp3'),
+      join(pluginStagingDir(DATA_DIR, 'fake', jobId), 'Artist B', 'Album Two', 't2.mp3'),
+      join(pluginStagingDir(DATA_DIR, 'fake', jobId), 'Artist C', 'Album Three', 't3.mp3'),
+    ];
+    const db = new Database(':memory:');
+    applySchema(db);
+    const registry = new PluginRegistry({ db, dataDir: DATA_DIR });
+    registry.register(plugin);
+    let call = 0;
+    const relPaths = [
+      'Artist A/Album One/t1.mp3',
+      'Artist B/Album Two/t2.mp3',
+      'Artist C/Album Three/t3.mp3',
+    ];
+    const organize = mock(async (files: CompletedDownloadFile[]) => {
+      for (const f of files) f.relativePath = relPaths[call++];
+    });
+    const scan = mock(async () => {});
+    const watcher = new AcquireWatcher({
+      db,
+      dataDir: DATA_DIR,
+      registry,
+      organizeBatch: organize,
+      scanIncremental: scan,
+    });
+    await registry.enable('fake', 'admin');
+    const id = await watcher.submit('https://example.com/x');
+    await waitForStage(watcher, id, 'done');
+
+    const job = watcher.getJob(id)!;
+    expect(job.destinationAlbums).toHaveLength(3);
+    expect(new Set(job.destinationAlbums.map((a) => a.albumTitle))).toEqual(
+      new Set(['Album One', 'Album Two', 'Album Three']),
+    );
+    expect(job.albumId).toBeNull();
+    expect(job.albumArtist).toBeNull();
+    expect(job.albumTitle).toBeNull();
+  });
+
+  it('mapRow round-trips a null dest_albums_json (pre-migration / not-yet-ingested row) as an empty array', () => {
+    h.db.run(
+      `INSERT INTO acquire_jobs (id, backend, url, state) VALUES ('no-dest', 'fake', 'u', 'queued')`,
+    );
+    const job = h.watcher.getJob('no-dest')!;
+    expect(job.destinationAlbums).toEqual([]);
+    expect(job.albumId).toBeNull();
+  });
+
+  it('mapRow exposes tracks, falling back to [] for a null tracks_json column', () => {
+    h.db.run(
+      `INSERT INTO acquire_jobs (id, backend, url, state) VALUES ('no-tracks', 'fake', 'u', 'queued')`,
+    );
+    expect(h.watcher.getJob('no-tracks')!.tracks).toEqual([]);
+
+    h.db.run(
+      `INSERT INTO acquire_jobs (id, backend, url, state, tracks_json) VALUES ('with-tracks', 'fake', 'u', 'queued', ?)`,
+      [JSON.stringify([{ title: 'Song A', status: 'downloading' }])],
+    );
+    expect(h.watcher.getJob('with-tracks')!.tracks).toEqual([
+      { title: 'Song A', status: 'downloading' },
+    ]);
+  });
+
   it('maps known backend ids to their acquisition method', async () => {
     const ytPlugin = fakePlugin();
     ytPlugin.manifest.id = 'ytdlp';

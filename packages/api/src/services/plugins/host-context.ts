@@ -1,7 +1,12 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Database } from 'bun:sqlite';
-import { createLogger, type PluginHostContext, type PluginStorage } from '@nicotind/core';
+import {
+  createLogger,
+  type PluginHostContext,
+  type PluginStorage,
+  type TrackStatus,
+} from '@nicotind/core';
 
 export interface HostContextDeps {
   db: Database;
@@ -14,6 +19,8 @@ export interface HostContextDeps {
   emitProgress?: (jobId: string, progress: { done: number; total: number }) => void;
   /** Update the label column for an in-flight job (e.g. playlist title). */
   emitLabel?: (jobId: string, label: string) => void;
+  /** Upsert one track's status into an in-flight job's per-track list. */
+  emitTrack?: (jobId: string, track: { title: string; status: TrackStatus }) => void;
 }
 
 /**
@@ -23,6 +30,23 @@ export interface HostContextDeps {
  */
 export function pluginStagingDir(dataDir: string, pluginId: string, jobId: string): string {
   return join(dataDir, 'staging', 'plugins', pluginId, jobId);
+}
+
+/**
+ * Upsert one track's status into a job's track list by title match: update
+ * the existing entry's status in place, or append a new entry. Pure/testable
+ * in isolation from the DB read/write that wraps it in `index.ts`'s
+ * `emitTrack` implementation.
+ */
+export function upsertTrackStatus(
+  tracks: { title: string; status: TrackStatus }[],
+  track: { title: string; status: TrackStatus },
+): { title: string; status: TrackStatus }[] {
+  const idx = tracks.findIndex((t) => t.title === track.title);
+  if (idx === -1) return [...tracks, track];
+  const next = tracks.slice();
+  next[idx] = { ...next[idx]!, status: track.status };
+  return next;
 }
 
 /** Plugin-scoped kv backed by the `plugin_kv` table (namespaced by plugin id). */
@@ -73,6 +97,9 @@ export function createPluginHostContext(
     },
     emitLabel(jobId, label) {
       deps.emitLabel?.(jobId, label);
+    },
+    emitTrack(jobId, track) {
+      deps.emitTrack?.(jobId, track);
     },
     storage: createPluginStorage(deps.db, pluginId),
   };

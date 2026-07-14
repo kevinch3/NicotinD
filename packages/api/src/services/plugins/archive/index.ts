@@ -1,7 +1,7 @@
 import { createWriteStream, mkdirSync } from 'node:fs';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
-import { dirname, extname, join } from 'node:path';
+import { basename, dirname, extname, join } from 'node:path';
 import { z } from 'zod';
 import type { Plugin, PluginManifest, PluginHostContext, ResolveCapability } from '@nicotind/core';
 import { AUDIO_EXTENSIONS } from '../acquire/process.js';
@@ -51,6 +51,16 @@ function safeSegment(value: string): string {
     .replace(/^\.+$/, '') // neutralise "." / ".." traversal
     .trim();
   return cleaned || 'Unknown';
+}
+
+/**
+ * Title to show for a file's "Now:" track event: the filename with its
+ * extension stripped (e.g. `track01.mp3` → `track01`) and sanitized via
+ * `safeSegment` — otherwise the raw filename (incl. extension) leaks into the
+ * UI, which is the one backend where "Now:" reliably renders.
+ */
+function trackTitleFor(fileName: string): string {
+  return safeSegment(basename(fileName, extname(fileName)));
 }
 
 /** Parse the item identifier from any archive.org item URL. */
@@ -196,6 +206,9 @@ export class ArchivePlugin implements Plugin {
       const title = safeSegment(meta.metadata?.title || id);
       const albumDir = join(stagingDir, creator, title);
 
+      // Emit label once, now that we know the title and have chosen files.
+      this.ctx.emitLabel(jobId, title);
+
       const staged: string[] = [];
       for (let i = 0; i < chosen.length; i++) {
         const file = chosen[i]!;
@@ -204,8 +217,10 @@ export class ArchivePlugin implements Plugin {
           .split('/')
           .map(encodeURIComponent)
           .join('/')}`;
+        this.ctx.emitTrack(jobId, { title: trackTitleFor(file.name), status: 'downloading' });
         await this.downloadFile(fileUrl, dest, { signal: controller.signal });
         staged.push(dest);
+        this.ctx.emitTrack(jobId, { title: trackTitleFor(file.name), status: 'done' });
         this.ctx.emitProgress(jobId, { done: i + 1, total: chosen.length });
       }
       return staged;

@@ -44,6 +44,33 @@
           Open in Library
         </a>
       }
+      @if (showAlbumsMenu()) {
+        <app-menu-panel align="end" panelTestId="download-albums-menu">
+          <button
+            menuTrigger
+            type="button"
+            class="px-2 py-0.5 rounded text-xs font-semibold transition"
+            style="background: var(--theme-status-done-bg); color: var(--theme-status-done-text)"
+            data-testid="download-view-albums"
+          >
+            View {{ destinationAlbums().length }} albums
+          </button>
+          <div
+            menuPanel
+            class="w-56 p-1.5 rounded-lg bg-theme-surface border border-theme shadow-xl flex flex-col"
+          >
+            @for (album of destinationAlbums(); track album.albumId) {
+              <a
+                [routerLink]="albumRouteFor(album.albumId)"
+                class="text-left px-3 py-2 text-sm rounded-md text-theme-secondary hover:bg-theme-surface-2 transition truncate"
+                data-testid="download-album-row"
+              >
+                {{ album.albumTitle }}
+              </a>
+            }
+          </div>
+        </app-menu-panel>
+      }
       @if (item().storagePath) {
         <button
           type="button"
@@ -54,6 +81,16 @@
         </button>
       }
     </div>
+    @if (showNowNext()) {
+      <p class="text-xs text-theme-muted mt-1 truncate" data-testid="download-now">
+        Now: {{ nowNext().current }}
+      </p>
+      @if (nowNext().next.length) {
+        <p class="text-xs text-theme-muted truncate" data-testid="download-next">
+          Next: {{ nowNext().next.join(', ') }}
+        </p>
+      }
+    }
     @if (showPath() && item().storagePath) {
       <p class="text-xs text-theme-muted mt-1 break-all max-w-full" data-testid="storage-path">
         {{ item().storagePath }}

@@ -1,10 +1,33 @@
+import { Component, Input, ɵSIGNAL as SIGNAL } from '@angular/core';
+import { RouterLink, provideRouter } from '@angular/router';
+import { TestBed } from '@angular/core/testing';
 import {
   DOWNLOAD_ITEM_HOST_CLASS,
   DOWNLOAD_ITEM_TITLE_CLASS,
   canOpenInLibrary,
+  hasMultipleDestinationAlbums,
+  canShowNowNext,
+  DownloadItemComponent,
 } from './download-item.component';
 import { resolveAlbumRoute } from '../../lib/route-utils';
 import type { DownloadItem } from '../../lib/download-groups';
+import { MenuPanelComponent } from '../menu-panel/menu-panel.component';
+
+/**
+ * `app-pipeline-stage-badge` declares its `stage` input via the signal
+ * `input.required()` API, which the JIT vitest harness can't statically
+ * register as a bindable template property (no ngtsc transform — see
+ * track-row.component.spec.ts's comment and project memory "Web JIT vitest
+ * can't drive input() signals"). Rendering the real `<app-download-item>`
+ * template therefore needs a stand-in for that one child so the rest of the
+ * template (the "View N albums" menu under test) can render for real; a
+ * decorator-based `@Input()` *is* picked up by the JIT compiler, unlike the
+ * signal API, so this stub is bindable where the real badge isn't.
+ */
+@Component({ selector: 'app-pipeline-stage-badge', standalone: true, template: '' })
+class StubPipelineStageBadgeComponent {
+  @Input() stage: unknown;
+}
 
 function item(over: Partial<DownloadItem> = {}): DownloadItem {
   return {
@@ -57,5 +80,250 @@ describe('download-item "Open in Library" deep-link', () => {
 
   it('resolves the album id to the /library/albums/:id route', () => {
     expect(resolveAlbumRoute('a1')).toEqual(['/library', 'albums', 'a1']);
+  });
+});
+
+// The JIT harness can't drive a required input() into a render, so the
+// "View N albums" menu's gating is asserted through its exported gating
+// helper, matching the "Open in Library" convention above.
+describe('download-item "View N albums" menu gating', () => {
+  it('offers the menu only when complete with more than one destination album', () => {
+    expect(
+      hasMultipleDestinationAlbums(
+        item({
+          stage: 'done',
+          albumId: null,
+          destinationAlbums: [
+            { albumArtist: 'A', albumTitle: 'One', albumId: 'a1' },
+            { albumArtist: 'B', albumTitle: 'Two', albumId: 'a2' },
+          ],
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it('does not offer the menu for a single-album job (the plain link covers it)', () => {
+    expect(
+      hasMultipleDestinationAlbums(
+        item({ stage: 'done', albumId: 'a1', destinationAlbums: [{ albumArtist: 'A', albumTitle: 'One', albumId: 'a1' }] }),
+      ),
+    ).toBe(false);
+    expect(canOpenInLibrary(item({ stage: 'done', albumId: 'a1' }))).toBe(true);
+  });
+
+  it('does not offer the menu while still in flight, even with multiple destination albums', () => {
+    expect(
+      hasMultipleDestinationAlbums(
+        item({
+          stage: 'downloading',
+          destinationAlbums: [
+            { albumArtist: 'A', albumTitle: 'One', albumId: 'a1' },
+            { albumArtist: 'B', albumTitle: 'Two', albumId: 'a2' },
+          ],
+        }),
+      ),
+    ).toBe(false);
+  });
+
+  it('is false when destinationAlbums is absent or empty', () => {
+    expect(hasMultipleDestinationAlbums(item({ stage: 'done' }))).toBe(false);
+    expect(hasMultipleDestinationAlbums(item({ stage: 'done', destinationAlbums: [] }))).toBe(false);
+  });
+});
+
+// The JIT harness can't drive a required input() into a render, so the
+// "Now: / Next:" gate is asserted through its exported gating helper first
+// (this is the direct regression test for Task 6's flagged limitation: a
+// stuck 'downloading' track entry must not keep showing "Now:" once the
+// job's overall stage has left the in-flight state).
+describe('download-item "Now: / Next:" gating', () => {
+  it('is gated on the in-flight stage, not on the tracks array (acquire jobs)', () => {
+    expect(canShowNowNext(item({ kind: 'acquire', stage: 'downloading' }))).toBe(true);
+    // Terminal stages: gated off regardless of a stale 'downloading' track.
+    expect(canShowNowNext(item({ kind: 'acquire', stage: 'done' }))).toBe(false);
+    expect(canShowNowNext(item({ kind: 'acquire', stage: 'error' }))).toBe(false);
+    expect(canShowNowNext(item({ kind: 'acquire', stage: 'queued' }))).toBe(false);
+    expect(canShowNowNext(item({ kind: 'acquire', stage: 'organizing' }))).toBe(false);
+    expect(canShowNowNext(item({ kind: 'acquire', stage: 'scanning' }))).toBe(false);
+    expect(canShowNowNext(item({ kind: 'acquire', stage: 'processing' }))).toBe(false);
+  });
+
+  // Finding 2: slskd hunts download several tracks in parallel, so the "last
+  // downloading" entry `currentAndNextTracks` picks is an arbitrary, jumpy
+  // title, not a meaningful "current track" — suppress the block for every
+  // slskd-sourced row regardless of stage, while leaving it working for the
+  // otherwise-identical acquire-sourced row.
+  it('is suppressed for slskd-sourced rows even while downloading', () => {
+    expect(canShowNowNext(item({ kind: 'slskd', stage: 'downloading' }))).toBe(false);
+  });
+
+  it('is shown for an otherwise-identical acquire-sourced row', () => {
+    expect(canShowNowNext(item({ kind: 'acquire', stage: 'downloading' }))).toBe(true);
+  });
+});
+
+/**
+ * Straight write to the signal node behind `ɵSIGNAL`, matching the pattern
+ * already sanctioned in track-row.component.spec.ts for driving a required
+ * `input()` in the JIT vitest harness (no ngtsc, no input-transform support).
+ * Call only before the fixture's first `detectChanges()`.
+ */
+function setInputValue<T>(inputSignal: () => T, value: T): void {
+  (inputSignal as unknown as Record<typeof SIGNAL, { value: T }>)[SIGNAL].value = value;
+}
+
+// The real "View N albums" menu row is rendered here (rather than only
+// asserted through the gating helper above) so the album-id → route wiring
+// is exercised end to end, not just the show/hide condition.
+describe('download-item "View N albums" menu — rendered rows', () => {
+  function setup(multiItem: DownloadItem) {
+    TestBed.configureTestingModule({
+      imports: [DownloadItemComponent],
+      providers: [provideRouter([])],
+    });
+    // Swap the required-input child for the JIT-friendly stub above; leave
+    // everything else (the real template, MenuPanelComponent, RouterLink)
+    // untouched so the menu under test is exercised for real.
+    TestBed.overrideComponent(DownloadItemComponent, {
+      set: { imports: [RouterLink, MenuPanelComponent, StubPipelineStageBadgeComponent] },
+    });
+    const fixture = TestBed.createComponent(DownloadItemComponent);
+    setInputValue(fixture.componentInstance.item, multiItem);
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  it('renders a row per destination album, linking to its own album route', () => {
+    const fixture = setup(
+      item({
+        stage: 'done',
+        albumId: null,
+        destinationAlbums: [
+          { albumArtist: 'Artist A', albumTitle: 'Album A', albumId: 'alb-a' },
+          { albumArtist: 'Artist B', albumTitle: 'Album B', albumId: 'alb-b' },
+        ],
+      }),
+    );
+    const trigger = fixture.nativeElement.querySelector(
+      '[data-testid="download-view-albums"]',
+    ) as HTMLElement;
+    expect(trigger.textContent).toContain('View 2 albums');
+
+    trigger.click();
+    fixture.detectChanges();
+
+    const rows = fixture.nativeElement.querySelectorAll(
+      '[data-testid="download-album-row"]',
+    ) as NodeListOf<HTMLAnchorElement>;
+    expect(rows.length).toBe(2);
+    expect(rows[0].textContent).toContain('Album A');
+    expect(rows[0].getAttribute('href')).toBe('/library/albums/alb-a');
+    expect(rows[1].textContent).toContain('Album B');
+    expect(rows[1].getAttribute('href')).toBe('/library/albums/alb-b');
+  });
+
+  it('does not render the menu trigger for a single-album job', () => {
+    const fixture = setup(
+      item({
+        stage: 'done',
+        albumId: 'a1',
+        destinationAlbums: [{ albumArtist: 'A', albumTitle: 'One', albumId: 'a1' }],
+      }),
+    );
+    expect(fixture.nativeElement.querySelector('[data-testid="download-view-albums"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="download-open-album"]')).not.toBeNull();
+  });
+});
+
+// Renders the real "Now: / Next:" block (not just the gating helper) so the
+// currentAndNextTracks wiring is exercised end to end.
+describe('download-item "Now: / Next:" — rendered', () => {
+  function setup(nowNextItem: DownloadItem) {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [DownloadItemComponent],
+      providers: [provideRouter([])],
+    });
+    TestBed.overrideComponent(DownloadItemComponent, {
+      set: { imports: [RouterLink, MenuPanelComponent, StubPipelineStageBadgeComponent] },
+    });
+    const fixture = TestBed.createComponent(DownloadItemComponent);
+    setInputValue(fixture.componentInstance.item, nowNextItem);
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  it('shows "Now:" and "Next:" while in flight with a current track (acquire job)', () => {
+    const fixture = setup(
+      item({
+        kind: 'acquire',
+        stage: 'downloading',
+        tracks: [
+          { title: 'Track One', status: 'done' },
+          { title: 'Track Two', status: 'downloading' },
+          { title: 'Track Three', status: 'pending' },
+          { title: 'Track Four', status: 'pending' },
+        ],
+      }),
+    );
+    const now = fixture.nativeElement.querySelector('[data-testid="download-now"]') as HTMLElement;
+    const next = fixture.nativeElement.querySelector(
+      '[data-testid="download-next"]',
+    ) as HTMLElement;
+    expect(now.textContent).toContain('Now: Track Two');
+    expect(next.textContent).toContain('Next: Track Three, Track Four');
+  });
+
+  it('hides the block once the job leaves the in-flight stage, even with a stale downloading entry', () => {
+    // Regression for Task 6's flagged limitation: an archive.org track can be
+    // stuck at 'downloading' forever with no 'failed' transition, but once the
+    // job's own stage has moved on the block must not show a stale "Now:".
+    const fixture = setup(
+      item({
+        kind: 'acquire',
+        stage: 'done',
+        tracks: [{ title: 'Stuck Track', status: 'downloading' }],
+      }),
+    );
+    expect(fixture.nativeElement.querySelector('[data-testid="download-now"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="download-next"]')).toBeNull();
+  });
+
+  it('renders nothing when tracks is empty or absent, matching today\'s behavior', () => {
+    const fixtureAbsent = setup(item({ kind: 'acquire', stage: 'downloading' }));
+    expect(fixtureAbsent.nativeElement.querySelector('[data-testid="download-now"]')).toBeNull();
+
+    const fixtureEmpty = setup(item({ kind: 'acquire', stage: 'downloading', tracks: [] }));
+    expect(fixtureEmpty.nativeElement.querySelector('[data-testid="download-now"]')).toBeNull();
+  });
+
+  it('hides "Next:" when there are no pending tracks after the current one', () => {
+    const fixture = setup(
+      item({
+        kind: 'acquire',
+        stage: 'downloading',
+        tracks: [{ title: 'Only Track', status: 'downloading' }],
+      }),
+    );
+    expect(fixture.nativeElement.querySelector('[data-testid="download-now"]')?.textContent).toContain(
+      'Now: Only Track',
+    );
+    expect(fixture.nativeElement.querySelector('[data-testid="download-next"]')).toBeNull();
+  });
+
+  // Finding 2 regression: a slskd hunt with a 'downloading' track entry must
+  // NOT show the Now/Next block (parallel per-peer downloads make "last
+  // downloading" meaningless), while an otherwise-identical acquire-kind item
+  // does show it.
+  it('does not render the block for a slskd-kind item, even with a downloading track', () => {
+    const fixture = setup(
+      item({
+        kind: 'slskd',
+        stage: 'downloading',
+        tracks: [{ title: 'Some Track', status: 'downloading' }],
+      }),
+    );
+    expect(fixture.nativeElement.querySelector('[data-testid="download-now"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="download-next"]')).toBeNull();
   });
 });
