@@ -62,6 +62,33 @@ test.describe('library', () => {
     await expect(page.getByTestId('artist-songs-filter-panel')).toBeVisible();
   });
 
+  test('the Songs tab lists the whole library newest-first with filter + actions', async ({
+    page,
+  }) => {
+    await page.goto('/library');
+    await expect(page.getByTestId('album-card').first()).toBeVisible();
+
+    // Switch to the Songs tab (appended to the mode switcher).
+    await page.getByRole('button', { name: 'Songs', exact: true }).click();
+    const list = page.getByTestId('library-songs-list');
+    await expect(list).toBeVisible();
+
+    // Flat whole-library listing includes fixture album tracks.
+    await expect(page.getByText('Opening Static')).toBeVisible();
+
+    // Newest-first by default.
+    await expect(page.getByTestId('library-songs-sort')).toHaveValue('newest');
+
+    // The shared LibraryFilter panel is available here too.
+    await page.getByTestId('library-songs-filters').click();
+    await expect(page.getByTestId('library-songs-filter-panel')).toBeVisible();
+    await page.keyboard.press('Escape');
+
+    // Multi-select is available (Select → bar with add-to-playlist).
+    await page.getByRole('button', { name: 'Select', exact: true }).click();
+    await expect(page.getByTestId('selection-add')).toBeVisible();
+  });
+
   test('metadata filters narrow the grid, live in the URL, and survive reload', async ({
     page,
   }) => {

@@ -21,6 +21,8 @@ import { ListControlsService, type SortOption } from '../../services/list-contro
 import { ListToolbarComponent } from '../../components/list-toolbar/list-toolbar.component';
 import { CoverArtComponent } from '../../components/cover-art/cover-art.component';
 import { LibraryFilterPanelComponent } from '../../components/library-filter-panel/library-filter-panel.component';
+import { LibrarySongsComponent } from './library-songs.component';
+import { SetupService } from '../../services/setup.service';
 import { resolveAlbumRoute, resolveGenreRoute, resolveArtistRoute } from '../../lib/route-utils';
 import { appendUnique } from '../../lib/append-unique';
 import { createRenderWindow } from '../../lib/render-window';
@@ -41,7 +43,14 @@ import {
 
 export type { AlbumListType };
 
-type LibraryMode = 'albums' | 'compilations' | 'singles' | 'artists' | 'genre' | 'playlists';
+type LibraryMode =
+  | 'albums'
+  | 'compilations'
+  | 'singles'
+  | 'artists'
+  | 'genre'
+  | 'songs'
+  | 'playlists';
 
 interface AlbumTypeOption {
   value: AlbumListType;
@@ -102,6 +111,7 @@ function writePersistedState(state: PersistedLibraryState): void {
     CoverArtComponent,
     FormsModule,
     LibraryFilterPanelComponent,
+    LibrarySongsComponent,
   ],
   templateUrl: './library.component.html',
 })
@@ -111,6 +121,7 @@ export class LibraryComponent implements OnInit, OnDestroy {
   readonly playlistService = inject(PlaylistService);
   private transferService = inject(TransferService);
   private listControls = inject(ListControlsService);
+  readonly setup = inject(SetupService);
   private route = inject(ActivatedRoute);
   private router = inject(Router);
 
@@ -121,11 +132,19 @@ export class LibraryComponent implements OnInit, OnDestroy {
     { value: 'singles' as LibraryMode, label: 'Singles' },
     { value: 'artists' as LibraryMode, label: 'Artists' },
     { value: 'genre' as LibraryMode, label: 'Genre' },
+    { value: 'songs' as LibraryMode, label: 'Songs' },
     { value: 'playlists' as LibraryMode, label: 'Playlists' },
   ];
 
   readonly libraryMode = signal<LibraryMode>(
     (localStorage.getItem('nicotind-library-mode') as LibraryMode) ?? 'albums',
+  );
+
+  // Offline (backend unreachable): only the Songs tab works — it reads the
+  // on-device preserved tracks. Hide the server-backed tabs so the library page
+  // stays usable as the offline browse surface.
+  readonly visibleModes = computed(() =>
+    this.setup.isOffline() ? this.modes.filter((m) => m.value === 'songs') : this.modes,
   );
 
   setMode(mode: LibraryMode): void {
@@ -365,6 +384,9 @@ export class LibraryComponent implements OnInit, OnDestroy {
   });
 
   async ngOnInit(): Promise<void> {
+    // Offline: the only usable tab is Songs (on-device preserved tracks).
+    if (this.setup.isOffline()) this.libraryMode.set('songs');
+
     // Shared filter from the URL; a legacy `type=starred` (URL or persisted
     // state) folds into it as the starred filter with a `newest` ordering.
     const qp = this.route.snapshot.queryParamMap;

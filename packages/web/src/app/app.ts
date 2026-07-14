@@ -25,11 +25,12 @@ export class App {
     // Start presence heartbeats (admin-only visibility of who is active)
     this.presence.initialize();
 
-    // Redirect to setup if needed, or to downloads if offline (runs after APP_INITIALIZER completes)
+    // Redirect to setup if needed, or to the library (Songs → offline downloads)
+    // when offline (runs after APP_INITIALIZER completes).
     effect(() => {
       if (!this.setup.checked()) return;
       if (this.setup.isOffline() && this.auth.token()) {
-        this.router.navigate(['/downloads']);
+        this.router.navigate(['/library']);
       } else if (this.setup.status()?.needsSetup) {
         this.router.navigate(['/setup']);
       }

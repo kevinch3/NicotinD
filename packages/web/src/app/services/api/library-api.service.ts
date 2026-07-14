@@ -251,8 +251,18 @@ export class LibraryApiService {
     return this.http.get<Song[]>('/api/library/genres/songs', { params: { genre, count } });
   }
 
-  getRecentSongs(size = 50) {
-    return this.http.get<Song[]>('/api/library/recent-songs', { params: { size } });
+  // Paginated flat listing of every landed song (the Library "Songs" tab).
+  // Mirrors getArtistSongs but spans the whole library.
+  getAllSongs(
+    size = 60,
+    offset = 0,
+    opts: { sort?: 'newest' | 'title' | 'album'; filter?: LibraryFilter } = {},
+  ) {
+    const params: QueryParams = { size, offset };
+    if (opts.sort) params['sort'] = opts.sort;
+    return this.http.get<Song[]>('/api/library/songs', {
+      params: withFilter(params, opts.filter),
+    });
   }
 
   getRadioNext(seedId: string, exclude: string[], count = 10) {

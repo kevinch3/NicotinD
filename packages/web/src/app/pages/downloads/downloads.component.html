@@ -1,400 +1,52 @@
 
     <div class="max-w-5xl mx-auto px-4 py-5 md:px-6 md:py-8">
       <!-- Header -->
-      <div class="flex items-center justify-between gap-3 mb-4 flex-wrap">
+      <div class="flex items-center justify-between gap-3 mb-6 flex-wrap">
         <h1 class="text-lg font-semibold text-theme-primary">Downloads</h1>
-        <div class="flex items-center gap-2">
-          <button (click)="triggerScan()" [disabled]="scanning()"
-            class="inline-flex items-center gap-2 rounded-full border border-theme bg-theme-base/40 px-3 py-1.5 text-xs font-medium text-theme-muted transition hover:border-theme hover:text-theme-secondary disabled:cursor-wait disabled:opacity-50"
-            title="Trigger a library rescan">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-              [class]="scanning() ? 'animate-spin' : ''">
-              <path d="M21 12a9 9 0 1 1-3-6.7" /><polyline points="21 3 21 9 15 9" />
-            </svg>
-            <span>{{ scanning() ? 'Scanning' : 'Scan library' }}</span>
-          </button>
-          @if (activeTab() === 'recent' && recentSongs().length > 0) {
-            <button (click)="handlePlayAll()"
-              class="px-4 py-1.5 rounded-lg bg-theme-surface-2 text-theme-secondary text-sm font-medium hover:bg-theme-hover transition">
-              {{ selection.count() > 0 ? 'Play ' + selection.count() + ' selected' : 'Play all' }}
-            </button>
-          }
-        </div>
-      </div>
-
-      <!-- Tab bar -->
-      <div class="flex gap-1 mb-6 border-b border-theme">
-        <button (click)="activeTab.set('active')"
-          data-testid="downloads-tab-active"
-          class="px-4 py-2 text-sm font-medium transition border-b-2 -mb-px"
-          [class]="activeTab() === 'active' ? 'border-theme-accent text-theme-primary' : 'border-transparent text-theme-muted hover:text-theme-secondary'">
-          Active
-          @if (activeFeedCount() > 0) {
-            <span class="ml-1.5 text-xs text-status-progress">{{ activeFeedCount() }}</span>
-          }
-        </button>
-        <button (click)="activeTab.set('offline')"
-          data-testid="downloads-tab-offline"
-          class="px-4 py-2 text-sm font-medium transition border-b-2 -mb-px"
-          [class]="activeTab() === 'offline' ? 'border-theme-accent text-theme-primary' : 'border-transparent text-theme-muted hover:text-theme-secondary'">
-          Saved Offline
-          @if (preserve.preservedTracks().length > 0) {
-            <span class="ml-1.5 text-xs text-theme-muted">{{ preserve.preservedTracks().length }}</span>
-          }
-        </button>
-        <button (click)="activeTab.set('recent')"
-          data-testid="downloads-tab-recent"
-          class="px-4 py-2 text-sm font-medium transition border-b-2 -mb-px"
-          [class]="activeTab() === 'recent' ? 'border-theme-accent text-theme-primary' : 'border-transparent text-theme-muted hover:text-theme-secondary'">
-          Recently Added
-          @if (recentSongs().length > 0) {
-            <span class="ml-1.5 text-xs text-theme-muted">{{ recentSongs().length }}</span>
-          }
+        <button (click)="triggerScan()" [disabled]="scanning()"
+          class="inline-flex items-center gap-2 rounded-full border border-theme bg-theme-base/40 px-3 py-1.5 text-xs font-medium text-theme-muted transition hover:border-theme hover:text-theme-secondary disabled:cursor-wait disabled:opacity-50"
+          title="Trigger a library rescan">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+            [class]="scanning() ? 'animate-spin' : ''">
+            <path d="M21 12a9 9 0 1 1-3-6.7" /><polyline points="21 3 21 9 15 9" />
+          </svg>
+          <span>{{ scanning() ? 'Scanning' : 'Scan library' }}</span>
         </button>
       </div>
 
       <!-- Active Downloads — unified feed (slskd + URL acquisitions) -->
-      @if (activeTab() === 'active') {
-        @if (downloadFeed().length > 0) {
-          <section class="mb-8">
-            <div class="flex items-center justify-between mb-3">
-              <h2 class="text-xs font-semibold uppercase tracking-wider text-theme-muted">
-                Downloads
-                @if (activeFeedCount() > 0) {
-                  <span class="ml-2 text-status-progress normal-case font-normal">{{ activeFeedCount() }} in progress</span>
-                }
-              </h2>
-              <div class="flex items-center gap-3">
-                @if (activeFeedCount() > 0) {
-                  <button (click)="cancelAll()" class="text-xs text-status-error hover:text-status-error transition">Cancel all</button>
-                }
-                @if (clearableFeedCount() > 0) {
-                  <button (click)="clearAllFinished()" class="text-xs text-theme-muted hover:text-theme-secondary transition">Clear finished</button>
-                }
-              </div>
-            </div>
-            <div class="grid gap-2">
-              @for (item of downloadFeed(); track item.key) {
-                <app-download-item
-                  [item]="item"
-                  [retrying]="retrying().has(item.key)"
-                  (retry)="onItemRetry(item)"
-                  (cancel)="onItemCancel(item)"
-                  (remove)="onItemRemove(item)"
-                />
-              }
-            </div>
-          </section>
-        } @else {
-          <p class="text-center text-theme-muted text-sm py-20">No active downloads.</p>
-        }
-      } <!-- end activeTab === 'active' -->
-
-      <!-- Saved Offline tab -->
-      @if (activeTab() === 'offline') {
-        @if (preserve.preservedTracks().length > 0) {
-          <section class="mb-8">
-            <!-- Header -->
-            <div class="flex items-center justify-between mb-3">
-              <h2 class="text-xs font-semibold uppercase tracking-wider text-theme-muted">
-                Saved Offline
-                <span class="font-normal normal-case ml-1.5 text-theme-muted">
-                  ({{ offlineControls.filtered().length }})
-                </span>
-              </h2>
-              <div class="flex items-center gap-2">
-                @if (offlineControls.filtered().length > 0) {
-                  <button (click)="handleOfflinePlayAll()"
-                    class="px-3 py-1 rounded-lg bg-theme-surface-2 text-theme-secondary text-xs font-medium hover:bg-theme-hover transition">
-                    Play all
-                  </button>
-                }
-                <button (click)="selectAllOffline()" class="text-xs text-theme-muted hover:text-theme-secondary transition">
-                  {{ offlineControls.filtered().every(t => offlineSelection.isSelected(t.id)) ? 'Deselect all' : 'Select all' }}
-                </button>
-              </div>
-            </div>
-
-            <!-- Storage bar -->
-            <div class="mb-4 flex items-center gap-3" data-testid="offline-storage-bar">
-              <div class="flex-1 h-1.5 bg-theme-surface-2 rounded-full overflow-hidden">
-                <div class="h-full bg-emerald-500 rounded-full transition-all duration-500"
-                  [style.width.%]="storagePercent()"></div>
-              </div>
-              <span class="text-xs text-theme-muted flex-shrink-0">
-                {{ formatSize(preserve.totalUsage()) }} / {{ formatSize(preserve.budget()) }}
-              </span>
-            </div>
-
-            <!-- Filter/sort toolbar -->
-            <app-list-toolbar
-              [searchText]="offlineControls.searchText()"
-              [sortField]="offlineControls.sortField()"
-              [sortDirection]="offlineControls.sortDirection()"
-              [sortOptions]="offlineSortOptions"
-              [resultCount]="offlineControls.filtered().length"
-              (searchChange)="offlineControls.setSearchText($event)"
-              (sortFieldChange)="offlineControls.setSortField($event)"
-              (toggleDirection)="offlineControls.toggleSortDirection()"
-            />
-
-            <!-- Bulk action bar -->
-            @if (offlineSelection.count() > 0) {
-              <div class="flex flex-wrap items-center gap-2 md:gap-3 px-3 md:px-4 py-2.5 mb-3 rounded-lg bg-theme-surface-2/60 border border-theme">
-                <span class="text-sm text-theme-secondary font-medium">{{ offlineSelection.count() }} selected</span>
-                <div class="flex-1 min-w-0"></div>
-
-                <button (click)="removeOfflineTracks(offlineSelectedArray())"
-                  class="text-xs px-3 py-1.5 rounded-lg text-status-error hover:bg-theme-hover transition border border-theme">
-                  Remove from device
-                </button>
-              </div>
-            }
-
-            <!-- Track list -->
-            <div class="space-y-0.5">
-              @for (track of offlineControls.filtered(); track track.id) {
-                <div class="flex items-center gap-3 px-1.5 md:px-4 py-2.5 rounded-lg hover:bg-theme-surface-2/30 transition group">
-                  <!-- Checkbox -->
-                  <input type="checkbox"
-                    [checked]="offlineSelection.isSelected(track.id)"
-                    (change)="toggleOfflineSelect(track.id)"
-                    class="w-4 h-4 rounded flex-shrink-0 cursor-pointer accent-emerald-500" />
-                  <!-- Track info -->
-                  <div class="flex-1 min-w-0">
-                    <p class="text-sm text-theme-primary truncate">{{ track.title }}</p>
-                    <p class="text-xs text-theme-muted truncate">{{ track.artist }} · {{ track.album }}</p>
-                  </div>
-                  <!-- Bitrate -->
-                  <span class="hidden md:inline text-xs text-theme-muted flex-shrink-0 w-12 text-right">
-                    {{ track.bitRate ? track.bitRate + 'k' : '' }}
-                  </span>
-                  <!-- Duration -->
-                  <span class="text-xs text-theme-muted flex-shrink-0 w-10 text-right">
-                    {{ formatDuration(track.duration) }}
-                  </span>
-                  <!-- Saved date -->
-                  <span class="hidden lg:inline text-xs text-theme-muted flex-shrink-0 w-20 text-right">
-                    {{ timeAgo(track.preservedAt) }}
-                  </span>
-                  <!-- Play button (hover) -->
-                  <button (click)="handleOfflinePlay($index)"
-                    class="p-1.5 text-theme-muted hover:text-theme-secondary transition flex-shrink-0 md:opacity-0 md:group-hover:opacity-100"
-                    title="Play">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                      <polygon points="5 3 19 12 5 21 5 3"/>
-                    </svg>
-                  </button>
-                  <!-- Remove button (hover) -->
-                  <button (click)="removeOfflineTracks([track.id])"
-                    class="p-1.5 text-theme-muted hover:text-status-error transition flex-shrink-0 md:opacity-0 md:group-hover:opacity-100"
-                    title="Remove from device">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <polyline points="3 6 5 6 21 6" />
-                      <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
-                    </svg>
-                  </button>
-                  <!-- Context menu -->
-                  <div class="relative flex-shrink-0">
-                    <button
-                      class="p-1.5 text-theme-muted hover:text-theme-secondary transition md:opacity-0 md:group-hover:opacity-100"
-                      title="More options"
-                      (click)="$event.stopPropagation(); offlineMenuId.set(offlineMenuId() === track.id ? null : track.id)">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                        <circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/>
-                      </svg>
-                    </button>
-                    @if (offlineMenuId() === track.id) {
-                      <div class="absolute right-0 top-7 z-50 bg-theme-surface border border-theme rounded-xl shadow-xl py-1 min-w-40"
-                           (click)="$event.stopPropagation()">
-                        <button class="w-full text-left px-4 py-2 text-sm text-status-error hover:bg-theme-hover transition-colors"
-                          (click)="offlineMenuId.set(null); removeOfflineTracks([track.id])">
-                          Remove from device
-                        </button>
-                      </div>
-                    }
-                  </div>
-                </div>
-              }
-            </div>
-
-            <!-- Clear all -->
-            <div class="mt-3 flex justify-end">
-              <button (click)="clearAllPreserved()"
-                class="text-xs text-theme-muted hover:text-status-error transition">
-                Clear all
-              </button>
-            </div>
-          </section>
-        }
-        @if (preserve.preservedTracks().length === 0) {
-          <p class="text-center text-theme-muted py-20">No tracks saved offline yet.</p>
-        }
-      }
-
-      <!-- Recently Added -->
-      @if (activeTab() === 'recent') {
-      <section>
-        <div class="flex items-center justify-between mb-3">
-          <div class="flex items-center gap-2">
-            <h2 data-testid="recent-heading" class="text-xs font-semibold uppercase tracking-wider text-theme-muted">
-              Recently Added
-              @if (visibleRecent().length > 0) {
-                <span class="font-normal normal-case ml-1.5 text-theme-muted">({{ visibleRecent().length }})</span>
+      @if (downloadFeed().length > 0) {
+        <section class="mb-8" data-testid="downloads-active">
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="text-xs font-semibold uppercase tracking-wider text-theme-muted">
+              Downloads
+              @if (activeFeedCount() > 0) {
+                <span class="ml-2 text-status-progress normal-case font-normal">{{ activeFeedCount() }} in progress</span>
               }
             </h2>
-          </div>
-          @if (visibleRecent().length > 0) {
-            <button (click)="selectAll()" class="text-xs text-theme-muted hover:text-theme-secondary transition">
-              {{ selection.count() === recentOrderedIds().length ? 'Deselect all' : 'Select all' }}
-            </button>
-          }
-        </div>
-
-        <app-list-toolbar
-          [searchText]="recentControls.searchText()"
-          [sortField]="recentControls.sortField()"
-          [sortDirection]="recentControls.sortDirection()"
-          [sortOptions]="recentSortOptions"
-          [resultCount]="recentControls.filtered().length"
-          (searchChange)="recentControls.setSearchText($event)"
-          (sortFieldChange)="recentControls.setSortField($event)"
-          (toggleDirection)="recentControls.toggleSortDirection()"
-        />
-
-        <!-- Bulk action bar -->
-        @if (selection.count() > 0) {
-          <app-selection-bar
-            [count]="selection.count()"
-            [total]="recentOrderedIds().length"
-            [canDelete]="auth.role() === 'admin'"
-            [canPlay]="true"
-            [canQueue]="true"
-            [canPreserve]="true"
-            (selectAll)="selectAll()"
-            (play)="playSelectedRecent()"
-            (queue)="queueSelectedRecent()"
-            (add)="addSelectedRecentToPlaylist()"
-            (preserve)="preserveSelectedRecent()"
-            (deleteSelected)="confirmDeleteSelected()"
-            (cancel)="selection.exit()"
-          />
-        }
-
-        <!-- Song list -->
-        @if (visibleRecent().length === 0 && groups().length === 0) {
-          <p class="text-center text-theme-muted text-sm py-20">
-            No recent downloads. Search for music and start downloading!
-          </p>
-        }
-        @if (visibleRecent().length === 0 && groups().length > 0) {
-          <p class="text-center text-theme-muted text-sm py-12">
-            New songs will appear here after downloads complete and library rescans.
-          </p>
-        }
-        @if (recentSongs().length > 0) {
-          <div class="space-y-4">
-            @if (showDateGroups()) {
-              @for (group of dateGroups(); track group.label) {
-                <div>
-                  <div class="px-1.5 md:px-0 mb-1">
-                    <span class="text-xs font-semibold uppercase tracking-wider text-theme-muted">{{ group.label }}</span>
-                  </div>
-                  <div class="space-y-0.5">
-                    @for (song of group.songs; track song.id) {
-                      <ng-container *ngTemplateOutlet="songRow; context: { $implicit: song }"></ng-container>
-                    }
-                  </div>
-                </div>
+            <div class="flex items-center gap-3">
+              @if (activeFeedCount() > 0) {
+                <button (click)="cancelAll()" class="text-xs text-status-error hover:text-status-error transition">Cancel all</button>
               }
-            } @else {
-              <div class="space-y-0.5">
-                @for (song of recentControls.filtered(); track song.id) {
-                  <ng-container *ngTemplateOutlet="songRow; context: { $implicit: song }"></ng-container>
-                }
-              </div>
-            }
-          </div>
-        }
-
-        <!-- Song row template -->
-        <ng-template #songRow let-song>
-          <div [class]="'flex items-center gap-1.5 md:gap-3 px-1.5 md:px-4 py-2.5 rounded-lg transition group '
-            + (selection.isSelected(song.id) ? 'bg-theme-surface-2/60 border border-theme' : 'hover:bg-theme-surface-2/30 border border-transparent')
-            + (deleting().has(song.id) ? ' opacity-40 pointer-events-none' : '')">
-            <!-- Checkbox -->
-            <button (click)="selection.toggleRange(song.id, recentOrderedIds(), $event.shiftKey)"
-              [class]="'w-4.5 h-4.5 rounded border flex-shrink-0 flex items-center justify-center transition '
-                + (selection.isSelected(song.id) ? 'bg-theme-accent border-theme-accent' : 'border-theme hover:border-theme-secondary')">
-              @if (selection.isSelected(song.id)) {
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-              }
-            </button>
-
-            <!-- Song info -->
-            <div class="flex-1 min-w-0">
-              <p class="text-sm text-theme-primary truncate">{{ song.title }}</p>
-              <p class="text-xs text-theme-muted truncate">
-                <span class="cursor-pointer hover:underline hover:text-theme-secondary transition" (click)="navigateToArtist(song)">{{ song.artist }}</span>
-                &middot; {{ song.album }}
-              </p>
-            </div>
-
-            <!-- Metadata -->
-            <span class="hidden md:inline text-xs text-theme-muted flex-shrink-0 w-12 text-right">{{ song.bitRate ? song.bitRate + 'k' : '' }}</span>
-            <span class="hidden md:inline text-xs text-theme-muted flex-shrink-0 w-14 text-right">{{ formatSize(song.size) }}</span>
-            <span class="text-xs text-theme-muted flex-shrink-0 w-12 text-right">{{ formatDuration(song.duration) }}</span>
-            <span class="hidden lg:inline text-xs text-theme-muted flex-shrink-0 w-20 text-right">{{ timeAgo(song.created) }}</span>
-
-            <!-- Play -->
-            <button (click)="handlePlay(song)" class="p-1.5 text-theme-muted hover:text-theme-secondary transition flex-shrink-0 md:opacity-0 md:group-hover:opacity-100" title="Play">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21" /></svg>
-            </button>
-
-            <!-- Delete (admin only) -->
-            @if (auth.role() === 'admin') {
-              <button (click)="handleDelete([song.id])" class="p-1.5 text-theme-muted hover:text-status-error transition flex-shrink-0 md:opacity-0 md:group-hover:opacity-100" title="Delete from library">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
-                </svg>
-              </button>
-            }
-
-            <!-- "..." context menu -->
-            <div class="relative flex-shrink-0">
-              <button (click)="songMenuId.set(songMenuId() === song.id ? null : song.id); $event.stopPropagation()"
-                class="p-1.5 text-theme-muted hover:text-theme-secondary transition flex-shrink-0 md:opacity-0 md:group-hover:opacity-100"
-                title="More options">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                  <circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/>
-                </svg>
-              </button>
-              @if (songMenuId() === song.id) {
-                <div class="absolute right-0 top-7 z-50 bg-theme-surface border border-theme rounded-xl shadow-xl py-1 min-w-40"
-                     (click)="$event.stopPropagation()">
-                  @for (action of songMenu.build(song, { removable: true }); track action.label) {
-                    <button type="button"
-                      class="w-full text-left px-4 py-2 text-sm transition-colors hover:bg-theme-hover"
-                      [class.text-status-error]="action.destructive"
-                      [class.text-theme-secondary]="!action.destructive"
-                      (click)="action.action(); songMenuId.set(null)">
-                      {{ action.label }}
-                    </button>
-                  }
-                </div>
+              @if (clearableFeedCount() > 0) {
+                <button (click)="clearAllFinished()" class="text-xs text-theme-muted hover:text-theme-secondary transition">Clear finished</button>
               }
             </div>
           </div>
-        </ng-template>
-      </section>
-      } <!-- end activeTab === 'recent' -->
-
-      @if (deleteError()) {
-        <div class="mx-4 mb-2 px-4 py-2 rounded-lg status-error text-sm">
-          {{ deleteError() }}
-        </div>
+          <div class="grid gap-2">
+            @for (item of downloadFeed(); track item.key) {
+              <app-download-item
+                [item]="item"
+                [retrying]="retrying().has(item.key)"
+                (retry)="onItemRetry(item)"
+                (cancel)="onItemCancel(item)"
+                (remove)="onItemRemove(item)"
+              />
+            }
+          </div>
+        </section>
+      } @else {
+        <p class="text-center text-theme-muted text-sm py-20">No active downloads.</p>
       }
 
       @if (showConfirm()) {

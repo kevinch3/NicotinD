@@ -33,8 +33,9 @@ const BASE_NAV: NavItem[] = [
   { to: '/library', label: 'Library' },
   { to: '/settings', label: 'Settings' },
 ];
-// Nav items that require the backend to be available
-const ONLINE_ONLY_ROUTES = new Set(['/', '/library']);
+// Nav items that require the backend to be available. Library stays enabled
+// offline: its Songs tab serves the on-device downloaded songs.
+const ONLINE_ONLY_ROUTES = new Set(['/']);
 
 @Component({
   selector: 'app-layout',
@@ -126,7 +127,7 @@ export class LayoutComponent implements OnInit, OnDestroy {
     // musically similar tracks. Falls back to shuffled recent songs when no seed.
     this.player.setRadioProvider(async (seed) => {
       if (!seed.currentTrack) {
-        const songs = await firstValueFrom(this.api.getRecentSongs(200));
+        const songs = await firstValueFrom(this.api.getAllSongs(200, 0, { sort: 'newest' }));
         return shuffleArray(songs.map((s) => toTrack(s)));
       }
       const exclude = [

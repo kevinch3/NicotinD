@@ -133,8 +133,7 @@ test.describe('mobile UX', () => {
   // out. Guard that no element pushes a horizontal scroll at phone width.
   test('downloads page does not overflow horizontally', async ({ page }) => {
     await page.goto('/downloads');
-    await page.getByTestId('downloads-tab-recent').click();
-    await expect(page.getByTestId('downloads-tab-recent')).toBeVisible();
+    await expect(page.getByText('No active downloads.')).toBeVisible();
     const overflow = await page.evaluate(() => {
       const el = document.scrollingElement ?? document.documentElement;
       return el.scrollWidth - el.clientWidth;

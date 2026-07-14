@@ -4,16 +4,15 @@ import { appeared, firstPresent } from '../playground/screens-ui';
 
 /**
  * Live mobile flow — Downloads & acquire. Walks the acquisition affordances on
- * the search page (Get-from-a-link box, watchlist star, archive.org lane) and
- * the three Downloads tabs (Active feed, Saved Offline storage bar, Recently
- * Added), capturing a screenshot per state under
+ * the search page (Get-from-a-link box, watchlist star, archive.org lane), the
+ * Active-feed Downloads page, and the Library Songs tab (the promoted "recently
+ * added" listing), capturing a screenshot per state under
  * screenshots/mobile/downloads-acquire/ and recording gated-state observations.
  *
  * Resilient by design: the SPA renders the acquire box only after `/api/plugins`
  * resolves and the lanes only after a search settles, so the flow WAITS on those
  * anchors before probing — a bare `count()` races the async render and yields
- * false "hidden/off" conclusions. The Downloads tab + storage-bar testids are
- * new (this branch); it falls back to the visible tab labels on older deploys.
+ * false "hidden/off" conclusions.
  *
  * Read-mostly: the watchlist star is toggled on for the shot then reverted, so
  * no watchlist entry persists. The only persisting mutation — actually pasting a
@@ -98,13 +97,9 @@ test('downloads & acquire — mobile screens', async ({ page, obs }) => {
     });
   }
 
-  // 4) Downloads → Active feed. Tab testids are new; fall back to the label.
+  // 4) Downloads → Active feed (the page is now Active-feed-only).
   await page.goto('/downloads');
-  const activeTab = await firstPresent(
-    page.getByTestId('downloads-tab-active'),
-    page.getByRole('button', { name: /^Active/ }),
-  );
-  if (activeTab) await appeared(activeTab, 8000);
+  await appeared(page.getByText(/no active downloads|Downloads/i), 8000);
   await shot(page, FLOW, 4, 'downloads active', { settleMs: 500 });
   const item = await firstPresent(page.getByTestId('download-item'));
   if (item) {
@@ -119,28 +114,15 @@ test('downloads & acquire — mobile screens', async ({ page, obs }) => {
     });
   }
 
-  // 5) Saved Offline — storage bar + list (or empty state).
-  const offlineTab = await firstPresent(
-    page.getByTestId('downloads-tab-offline'),
-    page.getByRole('button', { name: /Saved Offline/ }),
-  );
-  if (offlineTab) {
-    await offlineTab.click();
-    await page.waitForTimeout(400);
-    const storage = await firstPresent(page.getByTestId('offline-storage-bar'));
-    if (storage) await storage.scrollIntoViewIfNeeded();
-    await shot(page, FLOW, 6, 'offline saved', { settleMs: 300 });
-  }
-
-  // 6) Recently Added.
-  const recentTab = await firstPresent(
-    page.getByTestId('downloads-tab-recent'),
-    page.getByRole('button', { name: /Recently Added/ }),
-  );
-  if (recentTab) {
-    await recentTab.click();
-    await page.waitForTimeout(400);
-    await shot(page, FLOW, 7, 'recently added', { settleMs: 300 });
+  // 5) Library → Songs tab (the promoted "recently added" listing; also the
+  //    offline browse surface). Newest-first flat listing of the whole library.
+  await page.goto('/library');
+  const songsTab = await firstPresent(page.getByRole('button', { name: 'Songs', exact: true }));
+  if (songsTab) {
+    await songsTab.click();
+    const list = page.getByTestId('library-songs-list');
+    await appeared(list, 8000);
+    await shot(page, FLOW, 6, 'library songs', { settleMs: 300 });
   }
 
   // 7) Optional: paste a URL, click Get on the link-intent card, and capture
