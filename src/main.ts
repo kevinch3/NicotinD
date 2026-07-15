@@ -145,13 +145,17 @@ async function main() {
   if (retryRef.current) retryRef.current.start();
   if (processingRef.current) processingRef.current.start();
 
-  log.info({ port: config.port }, 'NicotinD is ready');
-
-  Bun.serve({
-    port: config.port,
+  const server = Bun.serve({
+    port: config.port, // 0 => OS-assigned ephemeral port
+    // Default preserves today's behavior (0.0.0.0, reachable via Docker port mapping).
+    // The desktop sidecar sets NICOTIND_BIND_HOST=127.0.0.1 to bind loopback-only.
+    hostname: process.env.NICOTIND_BIND_HOST || undefined,
     fetch: app.fetch,
     websocket,
   });
+  // Machine-readable handshake for the desktop supervisor. Keep the exact prefix.
+  log.info({ port: server.port }, 'NicotinD is ready');
+  console.log(`NICOTIND_LISTENING ${server.port}`);
 
   // Graceful shutdown
   process.on('SIGTERM', async () => {
@@ -239,7 +243,10 @@ function loadConfig() {
   // Merge: file config < persisted secrets < env vars
   const merged = {
     ...fileConfig,
-    port: Number(process.env.NICOTIND_PORT) || (fileConfig as Record<string, unknown>).port,
+    port:
+      process.env.NICOTIND_PORT !== undefined
+        ? Number(process.env.NICOTIND_PORT)
+        : (fileConfig as Record<string, unknown>).port,
     dataDir: process.env.NICOTIND_DATA_DIR || (fileConfig as Record<string, unknown>).dataDir,
     musicDir: process.env.NICOTIND_MUSIC_DIR || (fileConfig as Record<string, unknown>).musicDir,
     mode: process.env.NICOTIND_MODE || (fileConfig as Record<string, unknown>).mode,
