@@ -6,6 +6,8 @@ import { SystemApiService } from '../../services/api/system-api.service';
 import type { SetupStatus, SetupBody } from '../../services/api/api-types';
 import { SetupService } from '../../services/setup.service';
 import { PasswordFieldComponent } from '../../components/password-field/password-field.component';
+import { isElectron } from '../../lib/platform';
+import { pickDirectory } from '../../services/native/native-capabilities';
 
 type Step = 'admin' | 'library' | 'quality' | 'soulseek' | 'done';
 
@@ -40,6 +42,17 @@ export class SetupComponent {
 
   private adminData: { username: string; password: string } | null = null;
   private slskData: { username: string; password: string } | null = null;
+
+  /** Exposed for the template — Electron desktop shell shows a native folder picker. */
+  readonly isElectron = isElectron;
+
+  /** Opens the OS directory dialog (Electron only) and fills musicDir on a real pick. */
+  async chooseFolder(): Promise<void> {
+    const path = await pickDirectory();
+    if (path) {
+      this.musicDir = path;
+    }
+  }
 
   private get musicDirDefault(): string {
     return this.musicDir || '~/Music';
