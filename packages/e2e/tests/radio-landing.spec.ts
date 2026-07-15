@@ -7,27 +7,18 @@ import { FIXTURE } from '../helpers';
  * from the landing's search doorway. Acquisition stays default-off in e2e.
  */
 test.describe('radio landing', () => {
-  test('renders vibe presets and a search doorway', async ({ page }) => {
+  test('renders vibe presets, a custom builder, and a search doorway', async ({ page }) => {
     await page.goto('/');
     await expect(page.getByTestId('radio-landing')).toBeVisible();
     await expect(page.getByTestId('radio-preset').first()).toBeVisible();
+    // The custom builder is wired (its Start-gating logic is unit-tested in
+    // radio-landing.component.spec.ts).
+    await expect(page.getByTestId('radio-custom-toggle')).toBeVisible();
 
     // Search now lives at /search; the landing links to it.
     await page.getByTestId('radio-search-link').click();
     await expect(page).toHaveURL(/\/search$/);
     await expect(page.getByTestId('search-input')).toBeVisible();
-  });
-
-  test('the custom builder gates Start until a criterion is picked', async ({ page }) => {
-    await page.goto('/');
-    await page.getByTestId('radio-custom-toggle').click();
-
-    const start = page.getByTestId('radio-custom-start');
-    await expect(start).toBeDisabled();
-
-    // Picking a mood enables Start.
-    await page.getByTestId('radio-custom').getByText('happy', { exact: true }).click();
-    await expect(start).toBeEnabled();
   });
 
   test('resume-from-last-track appears after playback and disappears on tap', async ({ page }) => {
