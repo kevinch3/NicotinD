@@ -3,7 +3,7 @@ import { buildBackendPackageJson, isLikelyBunBinary } from './prepare-resources.
 
 describe('buildBackendPackageJson', () => {
   it('turns workspace package names into workspace:* deps', () => {
-    const pkg = buildBackendPackageJson({}, ['@nicotind/core', '@nicotind/api']);
+    const pkg = buildBackendPackageJson({}, ['@nicotind/core', '@nicotind/api'], '0.1.0');
     expect(pkg.dependencies).toEqual({
       '@nicotind/core': 'workspace:*',
       '@nicotind/api': 'workspace:*',
@@ -11,7 +11,7 @@ describe('buildBackendPackageJson', () => {
   });
 
   it('keeps external root dependencies verbatim', () => {
-    const pkg = buildBackendPackageJson({ yaml: '^2.9.0' }, []);
+    const pkg = buildBackendPackageJson({ yaml: '^2.9.0' }, [], '0.1.0');
     expect(pkg.dependencies).toEqual({ yaml: '^2.9.0' });
   });
 
@@ -19,22 +19,33 @@ describe('buildBackendPackageJson', () => {
     const pkg = buildBackendPackageJson(
       { '@nicotind/api': 'workspace:*', yaml: '^2.9.0' },
       ['@nicotind/api'],
+      '0.1.0',
     );
     // Only one @nicotind/api entry, not duplicated/conflicting.
     expect(pkg.dependencies).toEqual({ yaml: '^2.9.0', '@nicotind/api': 'workspace:*' });
   });
 
   it('handles undefined root dependencies', () => {
-    const pkg = buildBackendPackageJson(undefined, ['@nicotind/core']);
+    const pkg = buildBackendPackageJson(undefined, ['@nicotind/core'], '0.1.0');
     expect(pkg.dependencies).toEqual({ '@nicotind/core': 'workspace:*' });
   });
 
   it('always points workspaces at packages/* and marks the tree private', () => {
-    const pkg = buildBackendPackageJson({}, []);
+    const pkg = buildBackendPackageJson({}, [], '0.1.0');
     expect(pkg.workspaces).toEqual(['packages/*']);
     expect(pkg.private).toBe(true);
     expect(pkg.type).toBe('module');
     expect(pkg.name).toBe('nicotind-backend');
+  });
+
+  it('uses the provided version in the synthesized backend package.json', () => {
+    const pkg = buildBackendPackageJson({}, [], '1.2.3');
+    expect(pkg.version).toBe('1.2.3');
+  });
+
+  it('passes through the real version from the repo root (not 0.0.0)', () => {
+    const pkg = buildBackendPackageJson({}, ['@nicotind/api'], '0.1.204');
+    expect(pkg.version).toBe('0.1.204');
   });
 });
 

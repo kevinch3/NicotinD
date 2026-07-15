@@ -74,11 +74,12 @@ export interface BackendPackageJson {
 export function buildBackendPackageJson(
   rootDependencies: Record<string, string> | undefined,
   workspacePackageNames: readonly string[],
+  version: string,
 ): BackendPackageJson {
   const externalDeps: Record<string, string> = {};
-  for (const [name, version] of Object.entries(rootDependencies ?? {})) {
+  for (const [name, ver] of Object.entries(rootDependencies ?? {})) {
     if (!name.startsWith('@nicotind/')) {
-      externalDeps[name] = version;
+      externalDeps[name] = ver;
     }
   }
   const workspaceDeps: Record<string, string> = {};
@@ -87,7 +88,7 @@ export function buildBackendPackageJson(
   }
   return {
     name: 'nicotind-backend',
-    version: '0.0.0',
+    version,
     private: true,
     type: 'module',
     workspaces: ['packages/*'],
@@ -161,8 +162,8 @@ function stageBackend(): void {
     workspacePackageNames.push(pkgJson.name);
   }
 
-  const rootPkg = readJson<{ dependencies?: Record<string, string> }>(path.join(repoRoot, 'package.json'));
-  const backendPkg = buildBackendPackageJson(rootPkg.dependencies, workspacePackageNames);
+  const rootPkg = readJson<{ version: string; dependencies?: Record<string, string> }>(path.join(repoRoot, 'package.json'));
+  const backendPkg = buildBackendPackageJson(rootPkg.dependencies, workspacePackageNames, rootPkg.version);
   writeFileSync(path.join(backendDir, 'package.json'), JSON.stringify(backendPkg, null, 2) + '\n');
 
   // Production install: resolves the external deps above (hono, zod,
