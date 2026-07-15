@@ -71,13 +71,28 @@ function registerIpcHandlers(): void {
   });
 
   // Settings "Change music folder" (restart: true) and onboarding's
-  // `chooseFolder()` (restart: false) both funnel through here. A restart
-  // emits the sidecar's 'restart' event (handled below), which reloads the
-  // window against the new URL — no separate reload call needed here.
+  // `chooseFolder()` (restart: false) both funnel through here. A successful
+  // restart emits the sidecar's 'restart' event (handled below), which
+  // reloads the window against the new URL — no separate reload call needed
+  // here. A failed restart (e.g. the backend errors booting against the new
+  // dir) rejects `sidecar.setMusicDir()`; caught here and reported back as a
+  // structured `{ ok: false, error }` result instead of an unhandled IPC
+  // rejection, so the renderer can surface it to the user (the sidecar
+  // itself is left in a clean no-child state — see `Sidecar.setMusicDir`).
   ipcMain.handle(
     CH.setMusicDir,
-    async (_event, dir: string, opts?: { restart?: boolean }): Promise<void> => {
-      await sidecar.setMusicDir(dir, opts);
+    async (
+      _event,
+      dir: string,
+      opts?: { restart?: boolean },
+    ): Promise<{ ok: boolean; error?: string }> => {
+      try {
+        await sidecar.setMusicDir(dir, opts);
+        return { ok: true };
+      } catch (err) {
+        console.error('Failed to change music folder', err);
+        return { ok: false, error: err instanceof Error ? err.message : String(err) };
+      }
     },
   );
 }

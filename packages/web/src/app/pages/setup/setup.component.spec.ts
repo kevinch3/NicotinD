@@ -15,7 +15,7 @@ vi.mock('../../lib/platform', () => ({
 
 vi.mock('../../services/native/native-capabilities', () => ({
   pickDirectory: vi.fn(),
-  setMusicDir: vi.fn().mockResolvedValue(undefined),
+  setMusicDir: vi.fn().mockResolvedValue({ ok: true }),
 }));
 
 describe('SetupComponent', () => {
@@ -62,7 +62,7 @@ describe('SetupComponent', () => {
     vi.mocked(isElectron).mockReturnValue(false);
     vi.mocked(pickDirectory).mockReset();
     vi.mocked(setMusicDir).mockClear();
-    vi.mocked(setMusicDir).mockResolvedValue(undefined);
+    vi.mocked(setMusicDir).mockResolvedValue({ ok: true });
   });
 
   it('shows admin step by default', () => {

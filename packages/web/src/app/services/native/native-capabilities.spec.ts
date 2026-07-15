@@ -37,16 +37,27 @@ describe('native-capabilities', () => {
   });
 
   it('routes setMusicDir to the electron bridge', async () => {
-    const setMusicDirMock = vi.fn().mockResolvedValue(undefined);
+    const setMusicDirMock = vi.fn().mockResolvedValue({ ok: true });
     (globalThis as { window?: unknown }).window = {
       nicotind: { platform: 'electron', pickDirectory: async () => null, setMusicDir: setMusicDirMock },
     };
-    await setMusicDir('/music', { restart: true });
+    await expect(setMusicDir('/music', { restart: true })).resolves.toEqual({ ok: true });
     expect(setMusicDirMock).toHaveBeenCalledWith('/music', { restart: true });
+  });
+
+  it('propagates a failed restart result from the electron bridge', async () => {
+    const setMusicDirMock = vi.fn().mockResolvedValue({ ok: false, error: 'boom' });
+    (globalThis as { window?: unknown }).window = {
+      nicotind: { platform: 'electron', pickDirectory: async () => null, setMusicDir: setMusicDirMock },
+    };
+    await expect(setMusicDir('/music', { restart: true })).resolves.toEqual({
+      ok: false,
+      error: 'boom',
+    });
   });
 
   it('setMusicDir is a no-op off-Electron', async () => {
     (globalThis as { window?: unknown }).window = {};
-    await expect(setMusicDir('/music')).resolves.toBeUndefined();
+    await expect(setMusicDir('/music')).resolves.toEqual({ ok: true });
   });
 });

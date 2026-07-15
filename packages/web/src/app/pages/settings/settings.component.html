@@ -180,6 +180,9 @@
           @if (musicDirChosen()) {
             <p class="text-sm text-theme-muted mb-4">Music folder: <span class="text-theme-primary font-medium">{{ musicDirChosen() }}</span></p>
           }
+          @if (musicDirError()) {
+            <p class="text-sm text-status-error mb-4" data-testid="settings-change-folder-error">{{ musicDirError() }}</p>
+          }
           <button
             type="button"
             (click)="changeMusicFolder()"

@@ -177,6 +177,15 @@ export class Sidecar extends EventEmitter {
    * backend hasn't started serving yet / a restart would be disruptive
    * mid-wizard), the value is persisted only — it takes effect on the next
    * `start()`.
+   *
+   * If the respawn rejects (handshake/health timeout, spawn error, or the
+   * child exiting before becoming healthy — e.g. the backend fails to boot
+   * against the new dir), this instance is reset to a clean no-child state
+   * (`this.child`/`this.currentUrl` nulled) instead of being left holding a
+   * dead child reference, and the error is re-thrown so the caller
+   * (`main.ts`) learns the restart failed. `this.stopping` is left `false`
+   * on this path, so a later unexpected exit of some future child is still
+   * supervised normally.
    */
   async setMusicDir(dir: string, opts: { restart?: boolean } = {}): Promise<void> {
     writeDesktopConfig({ musicDir: dir });
@@ -192,10 +201,23 @@ export class Sidecar extends EventEmitter {
     this.stopping = false;
     this.restartAttempts = 0;
     this.everHealthy = false;
-    const url = await this.spawnAndWaitForHandshake();
-    this.currentUrl = url;
-    this.everHealthy = true;
-    this.emit('restart', url);
+    try {
+      const url = await this.spawnAndWaitForHandshake();
+      this.currentUrl = url;
+      this.everHealthy = true;
+      this.emit('restart', url);
+    } catch (err) {
+      // `spawnAndWaitForHandshake`'s own 'exit' handler already nulls
+      // `this.child`/`this.currentUrl` on its "rejected, not yet everHealthy"
+      // branch when the child itself is what exited — but timeout/spawn-error
+      // rejections don't always route through that branch synchronously
+      // before this catch runs, so make the reset explicit and idempotent
+      // here too: never leave this instance pointed at a dead child with no
+      // supervised retry.
+      this.child = null;
+      this.currentUrl = null;
+      throw err;
+    }
   }
 
   private openLogStream(): WriteStream {

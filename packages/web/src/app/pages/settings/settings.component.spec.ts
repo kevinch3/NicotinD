@@ -20,7 +20,7 @@ vi.mock('../../lib/platform', async (importOriginal) => {
 
 vi.mock('../../services/native/native-capabilities', () => ({
   pickDirectory: vi.fn(),
-  setMusicDir: vi.fn().mockResolvedValue(undefined),
+  setMusicDir: vi.fn().mockResolvedValue({ ok: true }),
 }));
 
 /**
@@ -138,7 +138,7 @@ describe('SettingsComponent (universal prefs only)', () => {
 describe('SettingsComponent (desktop music folder, Electron-gated)', () => {
   beforeEach(() => {
     vi.mocked(pickDirectory).mockReset();
-    vi.mocked(setMusicDir).mockReset().mockResolvedValue(undefined);
+    vi.mocked(setMusicDir).mockReset().mockResolvedValue({ ok: true });
   });
 
   it('does not render the change-folder control off-Electron', async () => {
@@ -188,6 +188,28 @@ describe('SettingsComponent (desktop music folder, Electron-gated)', () => {
 
     expect(setMusicDir).not.toHaveBeenCalled();
     expect(fixture.componentInstance.musicDirChosen()).toBeNull();
+    fixture.destroy();
+  });
+
+  it('surfaces an error and clears the spinner when the sidecar restart fails', async () => {
+    vi.mocked(isElectron).mockReturnValue(true);
+    vi.mocked(pickDirectory).mockResolvedValue('/new/music');
+    vi.mocked(setMusicDir).mockResolvedValue({ ok: false, error: 'Sidecar exited before becoming healthy' });
+    await TestBed.configureTestingModule({
+      imports: [SettingsComponent],
+      providers: providers('user'),
+    }).compileComponents();
+    const fixture = TestBed.createComponent(SettingsComponent);
+    fixture.detectChanges();
+
+    await fixture.componentInstance.changeMusicFolder();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.musicDirChosen()).toBeNull();
+    expect(fixture.componentInstance.musicDirChanging()).toBe(false);
+    expect(fixture.componentInstance.musicDirError()).toBe('Sidecar exited before becoming healthy');
+    const errorEl = fixture.nativeElement.querySelector('[data-testid="settings-change-folder-error"]');
+    expect(errorEl?.textContent).toContain('Sidecar exited before becoming healthy');
     fixture.destroy();
   });
 });

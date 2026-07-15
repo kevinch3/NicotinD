@@ -15,13 +15,16 @@
  * The shape exposed on `window.nicotind` here must match the web layer's
  * `NativeBridge` type (Task 4, extended by Task 10): `{ platform:
  * 'electron', pickDirectory(): Promise<string | null>, setMusicDir(path,
- * opts?): Promise<void> }`.
+ * opts?): Promise<{ ok: boolean; error?: string }> }`. `setMusicDir` resolves
+ * with a structured result rather than rejecting so a failed sidecar restart
+ * (e.g. the backend can't boot against the new dir) is reportable to the
+ * user instead of surfacing as an unhandled IPC rejection.
  */
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('nicotind', {
   platform: 'electron',
   pickDirectory: (): Promise<string | null> => ipcRenderer.invoke('nicotind:pickDirectory'),
-  setMusicDir: (path: string, opts?: { restart?: boolean }): Promise<void> =>
+  setMusicDir: (path: string, opts?: { restart?: boolean }): Promise<{ ok: boolean; error?: string }> =>
     ipcRenderer.invoke('nicotind:setMusicDir', path, opts),
 });

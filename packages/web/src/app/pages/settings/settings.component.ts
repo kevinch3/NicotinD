@@ -57,6 +57,8 @@ export class SettingsComponent {
   readonly musicDirChanging = signal(false);
   /** Set once a folder is picked this session; the backend doesn't expose its current musicDir at runtime. */
   readonly musicDirChosen = signal<string | null>(null);
+  /** Set when `setMusicDir` resolves `{ ok: false }` (e.g. the backend failed to boot against the new dir). */
+  readonly musicDirError = signal<string | null>(null);
 
   readonly budgetOptions = BUDGET_OPTIONS;
   readonly themePresets = THEME_PRESETS;
@@ -149,9 +151,16 @@ export class SettingsComponent {
     const path = await pickDirectory();
     if (!path) return;
     this.musicDirChanging.set(true);
+    this.musicDirError.set(null);
     try {
-      await setMusicDir(path, { restart: true });
-      this.musicDirChosen.set(path);
+      const result = await setMusicDir(path, { restart: true });
+      if (result.ok) {
+        this.musicDirChosen.set(path);
+      } else {
+        this.musicDirError.set(
+          result.error ?? 'Failed to restart with the new music folder. The previous folder is still in use.',
+        );
+      }
     } finally {
       this.musicDirChanging.set(false);
     }

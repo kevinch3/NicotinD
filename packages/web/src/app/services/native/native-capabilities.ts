@@ -11,9 +11,14 @@ export interface NativeBridge {
    * `musicDir` in memory, so the Electron shell is the durable owner) and,
    * with `opts.restart: true`, restarts the sidecar so the backend re-boots
    * scanning the new dir. Optional so older preload builds / non-Electron
-   * bridges don't need to implement it.
+   * bridges don't need to implement it. Resolves `{ ok: false, error }`
+   * rather than rejecting when the restart fails (e.g. the backend can't
+   * boot against the new dir), so callers can surface it to the user.
    */
-  setMusicDir?(path: string, opts?: { restart?: boolean }): Promise<void>;
+  setMusicDir?(
+    path: string,
+    opts?: { restart?: boolean },
+  ): Promise<{ ok: boolean; error?: string }>;
 }
 
 function electronBridge(): NativeBridge | undefined {
@@ -35,11 +40,17 @@ export async function pickDirectory(): Promise<string | null> {
 /**
  * Persists a new music directory via the Electron bridge; a no-op resolve
  * everywhere else (Capacitor/web have no desktop-owned sidecar to restart).
+ * Always resolves (never rejects) with `{ ok, error? }` so a failed sidecar
+ * restart is reportable to the caller instead of throwing.
  */
-export async function setMusicDir(path: string, opts?: { restart?: boolean }): Promise<void> {
+export async function setMusicDir(
+  path: string,
+  opts?: { restart?: boolean },
+): Promise<{ ok: boolean; error?: string }> {
   if (isElectron()) {
-    await electronBridge()?.setMusicDir?.(path, opts);
+    return (await electronBridge()?.setMusicDir?.(path, opts)) ?? { ok: true };
   }
+  return { ok: true };
 }
 
 /** Electron first (desktop), else the existing Capacitor/web platform id. */
