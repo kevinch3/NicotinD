@@ -4,6 +4,7 @@ import { extname } from 'node:path';
 import { createLogger } from '@nicotind/core';
 import { isLossless } from './library-track-select.js';
 import { getMusicMetadata } from './music-metadata-loader.js';
+import { ffmpegBinary } from './ffmpeg-path.js';
 
 const log = createLogger('post-download-transcode');
 
@@ -74,7 +75,7 @@ export function transcodeToOpus(absPath: string, bitRate = 128): Promise<string>
     tmpPath,
   ];
   return new Promise<string>((resolve, reject) => {
-    const proc = spawn('ffmpeg', args, { stdio: 'ignore' });
+    const proc = spawn(ffmpegBinary(), args, { stdio: 'ignore' });
     proc.on('error', (err) => {
       cleanup(tmpPath);
       reject(err);
