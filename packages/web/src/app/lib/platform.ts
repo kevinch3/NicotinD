@@ -50,3 +50,14 @@ export function isElectron(): boolean {
 export function isNativeShell(): boolean {
   return isNativePlatform() || isElectron();
 }
+
+/**
+ * Pure decision for whether the Angular service worker should register.
+ * Disabled in dev and inside any native shell (Capacitor or Electron) — the
+ * Electron renderer loads the backend over real http and isn't caught by
+ * `isNativePlatform()`, but we still don't want SW cross-update cache
+ * surprises there, matching the mobile shells.
+ */
+export function serviceWorkerEnabled(devMode: boolean, nativeShell: boolean): boolean {
+  return !devMode && !nativeShell;
+}

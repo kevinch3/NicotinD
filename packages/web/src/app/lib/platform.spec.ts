@@ -6,6 +6,7 @@ import {
   getCapacitorPlugin,
   isElectron,
   isNativeShell,
+  serviceWorkerEnabled,
 } from './platform';
 
 type CapStub = {
@@ -76,5 +77,11 @@ describe('platform helpers', () => {
     (globalThis as { window?: unknown }).window = {};
     setCapacitor(undefined);
     expect(isNativeShell()).toBe(false);
+  });
+
+  it('serviceWorkerEnabled: on in prod browser, off in dev, off in any native shell', () => {
+    expect(serviceWorkerEnabled(false, false)).toBe(true);
+    expect(serviceWorkerEnabled(false, true)).toBe(false);
+    expect(serviceWorkerEnabled(true, false)).toBe(false);
   });
 });
