@@ -7,9 +7,13 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "bun test"
+    "test": "bun test",
+    "prepare-resources": "bun run scripts/prepare-resources.ts",
+    "dist": "bun run build && bun run prepare-resources && electron-builder"
   },
   "devDependencies": {
-    "electron": "^33.4.11"
+    "electron": "^33.4.11",
+    "electron-builder": "^25.1.8",
+    "ffmpeg-static": "^5.2.0"
   }
 }

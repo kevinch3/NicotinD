@@ -49,7 +49,7 @@ jobs:
         run: bun run lint
 
       - name: Test (API + slskd-client + lidarr-client + core + service-manager + mobile)
-        run: bun test packages/api/src packages/slskd-client/src packages/lidarr-client/src packages/core/src packages/service-manager/src packages/mobile/src packages/desktop/electron
+        run: bun test packages/api/src packages/slskd-client/src packages/lidarr-client/src packages/core/src packages/service-manager/src packages/mobile/src packages/desktop/electron packages/desktop/scripts
 
       - name: Test (e2e playground helpers)
         run: bun test packages/e2e/playground
