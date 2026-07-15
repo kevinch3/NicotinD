@@ -4,7 +4,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { parse } from 'yaml';
 import pkg from '../package.json';
-import { NicotinDConfigSchema, createLogger, generateSecret } from '@nicotind/core';
+import { NicotinDConfigSchema, createLogger, generateSecret, resolvePort } from '@nicotind/core';
 import { ServiceManager, NativeProcessStrategy } from '@nicotind/service-manager';
 import { Slskd } from '@nicotind/slskd-client';
 import { Lidarr } from '@nicotind/lidarr-client';
@@ -243,10 +243,7 @@ function loadConfig() {
   // Merge: file config < persisted secrets < env vars
   const merged = {
     ...fileConfig,
-    port:
-      process.env.NICOTIND_PORT !== undefined
-        ? Number(process.env.NICOTIND_PORT)
-        : (fileConfig as Record<string, unknown>).port,
+    port: resolvePort(process.env.NICOTIND_PORT, (fileConfig as Record<string, unknown>).port as number),
     dataDir: process.env.NICOTIND_DATA_DIR || (fileConfig as Record<string, unknown>).dataDir,
     musicDir: process.env.NICOTIND_MUSIC_DIR || (fileConfig as Record<string, unknown>).musicDir,
     mode: process.env.NICOTIND_MODE || (fileConfig as Record<string, unknown>).mode,
