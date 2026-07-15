@@ -24,8 +24,8 @@ test.describe('auth', () => {
     await page.getByTestId('login-password').fill(ADMIN.password);
     await page.getByTestId('login-submit').click();
 
-    // The root route is the authenticated search page.
-    await expect(page.getByTestId('search-input')).toBeVisible();
+    // The root route is the authenticated radio landing.
+    await expect(page.getByTestId('radio-landing')).toBeVisible();
     await expect(page).not.toHaveURL(/\/login/);
 
     await page.getByTestId('logout').click();

@@ -271,6 +271,13 @@ export class LibraryApiService {
     });
   }
 
+  /** Filter-seeded radio (no seed song): start a "vibe" from a LibraryFilter. */
+  getFilterRadio(filter: LibraryFilter, exclude: string[], count = 20) {
+    return this.http.get<Song[]>('/api/radio/next', {
+      params: withFilter({ exclude: exclude.join(','), count }, filter),
+    });
+  }
+
   /** Fetch a single song (incl. stored bpm/genre) by id; 404 → null. */
   getSong(id: string) {
     return this.http.get<Song>(`/api/library/songs/${id}`);

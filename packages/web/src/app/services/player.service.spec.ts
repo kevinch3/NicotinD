@@ -604,4 +604,56 @@ describe('PlayerService', () => {
       expect(service.vocalsMuted()).toBe(false);
     });
   });
+
+  describe('filter radio (radioFilter)', () => {
+    const STORAGE_KEY = 'nicotind_player_state';
+
+    beforeEach(() => localStorage.clear());
+    afterEach(() => localStorage.clear());
+
+    it('startRadioWithFilter plays first, queues rest, and remembers the filter', () => {
+      service.startRadioWithFilter([track1, track2, track3], { moods: ['happy'] });
+      expect(service.currentTrack()).toEqual(track1);
+      expect(service.queue()).toEqual([track2, track3]);
+      expect(service.radio()).toBe(true);
+      expect(service.radioFilter()).toEqual({ moods: ['happy'] });
+    });
+
+    it('startRadioWithFilter is a no-op for an empty track list', () => {
+      service.startRadioWithFilter([], { bpmMin: 120 });
+      expect(service.currentTrack()).toBeNull();
+      expect(service.radioFilter()).toBeNull();
+    });
+
+    it('seed radio (startRadio) clears any active filter vibe', () => {
+      service.startRadioWithFilter([track1], { moods: ['happy'] });
+      expect(service.radioFilter()).toEqual({ moods: ['happy'] });
+      service.startRadio(track2);
+      expect(service.radioFilter()).toBeNull();
+    });
+
+    it('turning radio off clears the filter vibe', () => {
+      service.startRadioWithFilter([track1], { genres: ['Rock'] });
+      expect(service.radio()).toBe(true);
+      service.toggleRadio();
+      expect(service.radio()).toBe(false);
+      expect(service.radioFilter()).toBeNull();
+    });
+
+    it('persists radioFilter and restoreState() restores it', () => {
+      service.startRadioWithFilter([track1], { bpmMin: 120 });
+      TestBed.flushEffects();
+      const state = JSON.parse(localStorage.getItem(STORAGE_KEY)!);
+      expect(state.radioFilter).toEqual({ bpmMin: 120 });
+
+      service.clear();
+      service.radioFilter.set(null);
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({ currentTrack: track1, radio: true, radioFilter: { bpmMin: 120 } }),
+      );
+      service.restoreState();
+      expect(service.radioFilter()).toEqual({ bpmMin: 120 });
+    });
+  });
 });

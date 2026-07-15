@@ -48,8 +48,8 @@ test.describe('onboarding', () => {
     await expect(page.getByTestId('setup-done')).toBeVisible({ timeout: 30000 });
     await page.getByTestId('setup-done').click();
 
-    // Reloads authenticated and lands in the app.
-    await expect(page.getByTestId('search-input')).toBeVisible({ timeout: 10000 });
+    // Reloads authenticated and lands in the app (radio landing at root).
+    await expect(page.getByTestId('radio-landing')).toBeVisible({ timeout: 10000 });
 
     if (errors.length) console.log('Browser errors:', errors);
   });

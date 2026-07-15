@@ -154,6 +154,50 @@ describe('radio /next', () => {
     expect(ids.indexOf('variant')).toBeLessThan(ids.indexOf('unrelated'));
   });
 
+  // --- Filter-seeded radio (no seed song, a LibraryFilter "vibe") ---
+
+  it('filter radio: returns only songs matching a bpm floor', async () => {
+    seedSong(testDb, { id: 'fast1', title: 'Fast 1', artist: 'A', albumId: 'a1', album: 'A1', genre: 'Rock', bpm: 128 });
+    seedSong(testDb, { id: 'fast2', title: 'Fast 2', artist: 'B', artistId: 'B', albumId: 'a2', album: 'A2', genre: 'Rock', bpm: 140 });
+    seedSong(testDb, { id: 'slow', title: 'Slow', artist: 'C', artistId: 'C', albumId: 'a3', album: 'A3', genre: 'Rock', bpm: 90 });
+
+    const res = await app.request('/radio/next?bpmMin=120');
+    expect(res.status).toBe(200);
+    const ids = (await res.json()).map((s: { id: string }) => s.id);
+    expect(ids).toContain('fast1');
+    expect(ids).toContain('fast2');
+    expect(ids).not.toContain('slow');
+  });
+
+  it('filter radio: returns only songs matching a genre', async () => {
+    seedSong(testDb, { id: 'rock', title: 'Rock', artist: 'A', albumId: 'a1', album: 'A1', genre: 'Rock' });
+    seedSong(testDb, { id: 'jazz', title: 'Jazz', artist: 'B', artistId: 'B', albumId: 'a2', album: 'A2', genre: 'Jazz' });
+
+    const res = await app.request('/radio/next?genre=Rock');
+    expect(res.status).toBe(200);
+    const ids = (await res.json()).map((s: { id: string }) => s.id);
+    expect(ids).toContain('rock');
+    expect(ids).not.toContain('jazz');
+  });
+
+  it('filter radio: honors count and excludes ids', async () => {
+    for (let i = 0; i < 6; i++) {
+      seedSong(testDb, { id: `p${i}`, title: `P${i}`, artist: `Ar${i}`, artistId: `ar${i}`, albumId: `al${i}`, album: `Al${i}`, genre: 'Pop' });
+    }
+    const res = await app.request('/radio/next?genre=Pop&count=2&exclude=p0');
+    expect(res.status).toBe(200);
+    const ids = (await res.json()).map((s: { id: string }) => s.id);
+    expect(ids.length).toBe(2);
+    expect(ids).not.toContain('p0');
+  });
+
+  it('filter radio: returns [] (200) when nothing matches', async () => {
+    seedSong(testDb, { id: 'only', title: 'Only', artist: 'A', albumId: 'a1', album: 'A1', genre: 'Rock', bpm: 90 });
+    const res = await app.request('/radio/next?bpmMin=999');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual([]);
+  });
+
   it('still returns results when embeddings are present for some songs', async () => {
     seedSong(testDb, { id: 'seed', title: 'Seed', artist: 'A', albumId: 'alb1', album: 'Alb 1', genre: 'Rock', bpm: 120 });
     seedSong(testDb, { id: 'aligned', title: 'Aligned', artist: 'B', artistId: 'B', albumId: 'alb2', album: 'Alb 2', genre: 'Rock', bpm: 120 });

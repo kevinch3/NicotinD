@@ -27,7 +27,7 @@ test.describe('plugin capability gating', () => {
     };
 
     // Baseline: no resolve plugin -> pasting a URL just searches, no card.
-    await page.goto('/');
+    await page.goto('/search');
     await expect(page.getByTestId('search-input')).toBeVisible();
     await pasteUrl();
     await expect(page.getByTestId('link-intent-card')).toHaveCount(0);
@@ -41,7 +41,7 @@ test.describe('plugin capability gating', () => {
     await expect(card.getByTestId('plugin-toggle')).toHaveText('Disable');
 
     // Now pasting a URL renders the link-intent card instead of searching.
-    await page.goto('/');
+    await page.goto('/search');
     await pasteUrl();
     await expect(page.getByTestId('link-intent-card')).toBeVisible();
 
@@ -49,7 +49,7 @@ test.describe('plugin capability gating', () => {
     await page.goto('/settings/plugins');
     await card.getByTestId('plugin-toggle').click();
     await expect(card.getByTestId('plugin-toggle')).toHaveText('Enable');
-    await page.goto('/');
+    await page.goto('/search');
     await pasteUrl();
     await expect(page.getByTestId('link-intent-card')).toHaveCount(0);
   });
@@ -94,7 +94,7 @@ test.describe('plugin capability gating', () => {
   });
 
   test('the From Spotify lane stays hidden while the plugin is disabled', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/search');
     await page.getByTestId('search-input').fill('nina simone');
     await page.getByTestId('search-input').press('Enter');
     // Gated on the spotify plugin (default-off), so the lane never appears.

@@ -2,29 +2,16 @@ import { Hono } from 'hono';
 import type { AuthEnv } from '../middleware/auth.js';
 import { getDatabase } from '../db.js';
 import { PlaylistService } from '../services/playlist.service.js';
-import { RADIO_SONG_SELECT, toFeatures, longestGenreToken, type RadioSongRow } from './radio.js';
+import {
+  RADIO_SONG_SELECT,
+  toFeatures,
+  toOrderable,
+  longestGenreToken,
+  type RadioSongRow,
+} from './radio.js';
 import { rankCandidates, type SongFeatures } from '../services/radio.service.js';
 import { embeddingModelFor, loadEmbeddings } from '../services/embedding-store.js';
-import { orderTracks, seedCentroid, type OrderableRow } from '../services/playlist-recipe.js';
-
-/** RadioSongRow → the row shape the ordering/centroid helpers consume. */
-function toOrderable(r: RadioSongRow): OrderableRow {
-  return {
-    id: r.id,
-    artist: r.artist,
-    artistId: r.artist_id,
-    bpm: r.bpm ?? undefined,
-    key: r.key ?? undefined,
-    year: r.year ?? undefined,
-    duration: r.duration,
-    energy: r.energy ?? undefined,
-    valence: r.valence ?? undefined,
-    danceability: r.danceability ?? undefined,
-    instrumental: r.instrumental ?? undefined,
-    acousticness: r.acousticness ?? undefined,
-    addedAt: r.created ? Date.parse(r.created) : undefined,
-  };
-}
+import { orderTracks, seedCentroid } from '../services/playlist-recipe.js';
 
 /** Component-wise mean of equal-length embeddings; undefined for an empty set.
  *  Vectors of a different length than the first are skipped (can't average). */

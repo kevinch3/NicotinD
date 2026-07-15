@@ -9,7 +9,7 @@ import { test, expect } from '@playwright/test';
  */
 test.describe('search', () => {
   test('raw peer browsing is framed as Advanced, not a primary Soulseek lane', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/search');
     await page.getByTestId('search-input').fill('nonexistent test query xyz');
     await page.getByTestId('search-submit').click();
 
@@ -21,7 +21,7 @@ test.describe('search', () => {
   });
 
   test('source status is neutral, not "Soulseek network available"', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/search');
     // The status line reframes from a Soulseek-centric label to a neutral
     // "Sources: …" / "No acquisition sources enabled" line.
     await expect(page.getByText('Soulseek network available')).toHaveCount(0);

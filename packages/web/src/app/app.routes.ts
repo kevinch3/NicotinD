@@ -30,6 +30,13 @@ export const routes: Routes = [
       {
         path: '',
         loadComponent: () =>
+          import('./pages/radio-landing/radio-landing.component').then(
+            (m) => m.RadioLandingComponent,
+          ),
+      },
+      {
+        path: 'search',
+        loadComponent: () =>
           import('./pages/search/search.component').then((m) => m.SearchComponent),
       },
       {

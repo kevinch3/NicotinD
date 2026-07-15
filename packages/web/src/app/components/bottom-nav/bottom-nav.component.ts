@@ -14,7 +14,7 @@ interface BottomNavItem {
 // Curated mobile tab order (Admin intentionally stays desktop-only to keep the
 // bar to four thumb-reachable targets).
 const TABS: BottomNavItem[] = [
-  { to: '/', label: 'Search', onlineOnly: true },
+  { to: '/', label: 'Home', onlineOnly: true },
   { to: '/library', label: 'Library', onlineOnly: false },
   { to: '/downloads', label: 'Downloads', onlineOnly: false },
   { to: '/settings', label: 'Settings', onlineOnly: false },

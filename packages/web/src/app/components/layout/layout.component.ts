@@ -28,14 +28,16 @@ interface NavItem {
 }
 
 const BASE_NAV: NavItem[] = [
-  { to: '/', label: 'Search' },
+  { to: '/', label: 'Home' },
+  { to: '/search', label: 'Search' },
   { to: '/downloads', label: 'Downloads' },
   { to: '/library', label: 'Library' },
   { to: '/settings', label: 'Settings' },
 ];
 // Nav items that require the backend to be available. Library stays enabled
-// offline: its Songs tab serves the on-device downloaded songs.
-const ONLINE_ONLY_ROUTES = new Set(['/']);
+// offline: its Songs tab serves the on-device downloaded songs. The radio
+// landing (/) and search need the backend, so both are online-only.
+const ONLINE_ONLY_ROUTES = new Set(['/', '/search']);
 
 @Component({
   selector: 'app-layout',
@@ -126,15 +128,24 @@ export class LayoutComponent implements OnInit, OnDestroy {
     // Radio source: metadata-aware track selection so playback continues with
     // musically similar tracks. Falls back to shuffled recent songs when no seed.
     this.player.setRadioProvider(async (seed) => {
+      const exclude = [
+        seed.currentTrack?.id,
+        ...this.player.queue().map((t) => t.id),
+        ...this.player.history().slice(-20).map((t) => t.id),
+      ].filter((id): id is string => !!id);
+
+      // Filter "vibe" radio: keep pulling in-filter tracks so the mood holds.
+      const filter = this.player.radioFilter();
+      if (filter) {
+        const songs = await firstValueFrom(this.api.getFilterRadio(filter, exclude, 10));
+        if (songs.length) return songs.map((s) => toTrack(s));
+        // Filter exhausted → fall through to seed/shuffle so playback continues.
+      }
+
       if (!seed.currentTrack) {
         const songs = await firstValueFrom(this.api.getAllSongs(200, 0, { sort: 'newest' }));
         return shuffleArray(songs.map((s) => toTrack(s)));
       }
-      const exclude = [
-        seed.currentTrack.id,
-        ...this.player.queue().map((t) => t.id),
-        ...this.player.history().slice(-20).map((t) => t.id),
-      ];
       const songs = await firstValueFrom(
         this.api.getRadioNext(seed.currentTrack.id, exclude, 10),
       );
