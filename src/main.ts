@@ -111,7 +111,12 @@ async function main() {
   }
 
   // 4. Create and start API server
-  const webDistPath = resolve(import.meta.dir, '../packages/web/dist');
+  // NICOTIND_WEB_DIST override: in a packaged desktop build the SPA is staged under
+  // the app's resources dir, and a `bun --compile`/relocated entry can't resolve
+  // `import.meta.dir` to the repo layout (it points at /$bunfs/root). Falls back to the
+  // repo-relative path for normal `bun run` / server / Docker.
+  const webDistPath =
+    process.env.NICOTIND_WEB_DIST ?? resolve(import.meta.dir, '../packages/web/dist');
 
   const { app, watcherRef, retryRef, processingRef, websocket } = createApp({
     config,
