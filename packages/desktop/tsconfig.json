@@ -5,7 +5,7 @@
     "moduleResolution": "nodenext",
     "outDir": "dist",
     "rootDir": "electron",
-    "types": ["electron"]
+    "types": ["electron", "bun"]
   },
   "include": ["electron"]
 }

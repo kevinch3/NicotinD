@@ -38,7 +38,9 @@ export function createMainWindow(url: string): BrowserWindow {
     win.show();
   });
 
-  void win.loadURL(url);
+  win.loadURL(url).catch((err: unknown) => {
+    console.error('Failed to load window URL', url, err);
+  });
 
   return win;
 }
