@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.204](https://github.com/kevinch3/NicotinD/compare/v0.1.203...v0.1.204) (2026-07-15)
+
+
+### Features
+
+* **radio:** mood/last-track radio landing + filter-seeded radio ([5d85b6f](https://github.com/kevinch3/NicotinD/commit/5d85b6faa8c5eaad5e4a65d1cdd890dfa1046734))
+
 ## [0.1.203](https://github.com/kevinch3/NicotinD/compare/v0.1.202...v0.1.203) (2026-07-14)
 
 
