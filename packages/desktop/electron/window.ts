@@ -5,11 +5,13 @@ import path from 'node:path';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /**
- * Path to the preload script. The preload bundle itself is authored in
- * Task 8 (`electron/preload.ts` -> `dist/preload.js`); this module only
- * needs to know where it will live on disk once built.
+ * Path to the preload script. The preload is authored as CommonJS
+ * (`electron/preload.cts` -> `dist/preload.cjs`) because Electron sandboxed
+ * preloads (`sandbox: true`, set below) must be a single self-contained
+ * CommonJS file; this module only needs to know where it will live on disk
+ * once built.
  */
-export const PRELOAD_PATH = path.join(__dirname, 'preload.js');
+export const PRELOAD_PATH = path.join(__dirname, 'preload.cjs');
 
 /**
  * Creates the app's single main window and loads `url` into it.

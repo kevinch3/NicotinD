@@ -1,6 +1,7 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import { createMainWindow } from './window.js';
 import { hardenWindow } from './security.js';
+import { CH } from './ipc-channels.js';
 
 // Placeholder shown until Task 9 wires up the Bun sidecar supervisor and
 // swaps this for the sidecar's real 127.0.0.1 URL.
@@ -24,6 +25,22 @@ function focusMainWindow(): void {
   mainWindow.focus();
 }
 
+/**
+ * Registers the main-process side of the folder-picker IPC channel invoked
+ * by the sandboxed preload (`preload.cts`). Handler is registered once,
+ * ahead of window creation, so it's available for the renderer's very first
+ * invoke call.
+ */
+function registerIpcHandlers(): void {
+  ipcMain.handle(CH.pickDirectory, async (): Promise<string | null> => {
+    const options: Electron.OpenDialogOptions = { properties: ['openDirectory'] };
+    const res = mainWindow
+      ? await dialog.showOpenDialog(mainWindow, options)
+      : await dialog.showOpenDialog(options);
+    return res.canceled || res.filePaths.length === 0 ? null : res.filePaths[0];
+  });
+}
+
 async function createWindow(): Promise<void> {
   // TODO(Task 9): await sidecar.start() then load its 127.0.0.1 URL instead
   // of the placeholder below.
@@ -44,6 +61,7 @@ if (!gotSingleInstanceLock) {
   });
 
   app.whenReady().then(() => {
+    registerIpcHandlers();
     void createWindow();
 
     app.on('activate', () => {
