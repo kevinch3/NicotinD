@@ -37,3 +37,4 @@ docker-compose.override*.yml
 packages/desktop/resources/
 packages/desktop/release/
 packages/desktop/dist-scripts/
+packages/desktop/dist-test/

@@ -73,6 +73,7 @@
         "electron-updater": "^6.3.9",
       },
       "devDependencies": {
+        "@playwright/test": "^1.61.1",
         "electron": "^33.4.11",
         "electron-builder": "^25.1.8",
         "ffmpeg-static": "^5.2.0",
