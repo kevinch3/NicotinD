@@ -28,7 +28,7 @@
     "download-deps": "bun run ./scripts/download-deps.ts",
     "test": "bun test packages src --path-ignore-patterns='**/dist/**' --path-ignore-patterns='**/dist-test/**' --path-ignore-patterns='**/.worktrees/**' --path-ignore-patterns='**/web/src/**' --path-ignore-patterns='**/e2e/**' --path-ignore-patterns='**/desktop/test/**'",
     "test:tdd": "bun --watch test packages src --bail 1 --path-ignore-patterns='**/dist/**' --path-ignore-patterns='**/dist-test/**' --path-ignore-patterns='**/.worktrees/**' --path-ignore-patterns='**/web/src/**' --path-ignore-patterns='**/e2e/**' --path-ignore-patterns='**/desktop/test/**'",
-    "test:coverage": "bun test packages src --coverage --coverage-reporter=text --coverage-reporter=lcov --path-ignore-patterns='**/dist/**' --path-ignore-patterns='**/.worktrees/**' --path-ignore-patterns='**/web/src/**' --path-ignore-patterns='**/e2e/**'",
+    "test:coverage": "bun test packages src --coverage --coverage-reporter=text --coverage-reporter=lcov --path-ignore-patterns='**/dist/**' --path-ignore-patterns='**/dist-test/**' --path-ignore-patterns='**/.worktrees/**' --path-ignore-patterns='**/web/src/**' --path-ignore-patterns='**/e2e/**' --path-ignore-patterns='**/desktop/test/**'",
     "e2e": "bun run --filter @nicotind/e2e test",
     "test:api": "bun test packages/api/src --path-ignore-patterns='**/dist/**'",
     "test:web": "bun run --cwd packages/web ng test",
