@@ -34,3 +34,19 @@ export function isIosNative(): boolean {
 export function getCapacitorPlugin<T>(name: string): T | null {
   return (capacitor()?.Plugins?.[name] as T | undefined) ?? null;
 }
+
+// The Electron desktop shell's preload script injects `window.nicotind` (see
+// services/native/native-capabilities.ts for the shared NativeBridge type).
+// Detected the same way as Capacitor above — via the global, no electron
+// import — so the same built `dist/` ships to the browser and the desktop shell.
+export function isElectron(): boolean {
+  return (
+    (globalThis as { window?: { nicotind?: { platform?: string } } }).window?.nicotind
+      ?.platform === 'electron'
+  );
+}
+
+/** True inside any native shell: Capacitor (iOS/Android) or Electron (desktop). */
+export function isNativeShell(): boolean {
+  return isNativePlatform() || isElectron();
+}
