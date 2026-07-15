@@ -11,6 +11,9 @@
     "prepare-resources": "bun run scripts/prepare-resources.ts",
     "dist": "bun run build && bun run prepare-resources && electron-builder"
   },
+  "dependencies": {
+    "electron-updater": "^6.3.9"
+  },
   "devDependencies": {
     "electron": "^33.4.11",
     "electron-builder": "^25.1.8",

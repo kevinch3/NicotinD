@@ -4,6 +4,7 @@ import { hardenWindow } from './security.js';
 import { CH } from './ipc-channels.js';
 import { Sidecar, type SidecarExitInfo } from './sidecar.js';
 import { pickDirectoryResult } from './dialog-result.js';
+import { initAutoUpdate } from './updater.js';
 
 function htmlDataUrl(bodyHtml: string): string {
   return 'data:text/html,' + encodeURIComponent(`<html><body>${bodyHtml}</body></html>`);
@@ -129,6 +130,12 @@ async function createWindow(): Promise<void> {
     console.error('Sidecar failed to start', err);
     reloadWindow(errorPageUrl(err instanceof Error ? err.message : String(err)));
   }
+
+  // After the window is up and the sidecar has (attempted to) start —
+  // update-checking must never block or delay startup. `initAutoUpdate`
+  // itself no-ops in dev (`!app.isPackaged`), so no extra guard is needed
+  // here.
+  initAutoUpdate();
 }
 
 // A supervised restart (after an unexpected sidecar exit) reloads the window
