@@ -10,6 +10,18 @@ import { PlaybackWsService } from '../../services/playback-ws.service';
 import { PreserveService } from '../../services/preserve.service';
 import { MediaControlsService } from '../../services/media-controls.service';
 import { APP_VERSION } from '../../app.config';
+import { isElectron } from '../../lib/platform';
+import { pickDirectory, setMusicDir } from '../../services/native/native-capabilities';
+
+vi.mock('../../lib/platform', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../lib/platform')>();
+  return { ...actual, isElectron: vi.fn().mockReturnValue(false) };
+});
+
+vi.mock('../../services/native/native-capabilities', () => ({
+  pickDirectory: vi.fn(),
+  setMusicDir: vi.fn().mockResolvedValue(undefined),
+}));
 
 /**
  * Guards the post-refactor Settings page: it renders only universal prefs and
@@ -119,6 +131,63 @@ describe('SettingsComponent (universal prefs only)', () => {
       setAutoplayOnLoad: ReturnType<typeof vi.fn>;
     };
     expect(auth.setAutoplayOnLoad).toHaveBeenCalledWith(true);
+    fixture.destroy();
+  });
+});
+
+describe('SettingsComponent (desktop music folder, Electron-gated)', () => {
+  beforeEach(() => {
+    vi.mocked(pickDirectory).mockReset();
+    vi.mocked(setMusicDir).mockReset().mockResolvedValue(undefined);
+  });
+
+  it('does not render the change-folder control off-Electron', async () => {
+    vi.mocked(isElectron).mockReturnValue(false);
+    await TestBed.configureTestingModule({
+      imports: [SettingsComponent],
+      providers: providers('user'),
+    }).compileComponents();
+    const fixture = TestBed.createComponent(SettingsComponent);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-testid="settings-change-folder"]')).toBeNull();
+    fixture.destroy();
+  });
+
+  it('renders the change-folder control in Electron and restarts on pick', async () => {
+    vi.mocked(isElectron).mockReturnValue(true);
+    vi.mocked(pickDirectory).mockResolvedValue('/new/music');
+    await TestBed.configureTestingModule({
+      imports: [SettingsComponent],
+      providers: providers('user'),
+    }).compileComponents();
+    const fixture = TestBed.createComponent(SettingsComponent);
+    fixture.detectChanges();
+    const btn = fixture.nativeElement.querySelector(
+      '[data-testid="settings-change-folder"]',
+    ) as HTMLButtonElement;
+    expect(btn).toBeTruthy();
+
+    await fixture.componentInstance.changeMusicFolder();
+
+    expect(setMusicDir).toHaveBeenCalledWith('/new/music', { restart: true });
+    expect(fixture.componentInstance.musicDirChosen()).toBe('/new/music');
+    fixture.destroy();
+  });
+
+  it('leaves musicDirChosen unset when the picker is canceled', async () => {
+    vi.mocked(isElectron).mockReturnValue(true);
+    vi.mocked(pickDirectory).mockResolvedValue(null);
+    await TestBed.configureTestingModule({
+      imports: [SettingsComponent],
+      providers: providers('user'),
+    }).compileComponents();
+    const fixture = TestBed.createComponent(SettingsComponent);
+    fixture.detectChanges();
+
+    await fixture.componentInstance.changeMusicFolder();
+
+    expect(setMusicDir).not.toHaveBeenCalled();
+    expect(fixture.componentInstance.musicDirChosen()).toBeNull();
     fixture.destroy();
   });
 });

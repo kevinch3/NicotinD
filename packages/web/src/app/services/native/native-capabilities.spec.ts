@@ -1,5 +1,5 @@
-import { describe, it, expect, afterEach } from 'vitest';
-import { pickDirectory, platformId } from './native-capabilities';
+import { describe, it, expect, afterEach, vi } from 'vitest';
+import { pickDirectory, platformId, setMusicDir } from './native-capabilities';
 
 describe('native-capabilities', () => {
   afterEach(() => {
@@ -34,5 +34,19 @@ describe('native-capabilities', () => {
   it('reports web platformId when neither Electron nor Capacitor is present', () => {
     (globalThis as { window?: unknown }).window = {};
     expect(platformId()).toBe('web');
+  });
+
+  it('routes setMusicDir to the electron bridge', async () => {
+    const setMusicDirMock = vi.fn().mockResolvedValue(undefined);
+    (globalThis as { window?: unknown }).window = {
+      nicotind: { platform: 'electron', pickDirectory: async () => null, setMusicDir: setMusicDirMock },
+    };
+    await setMusicDir('/music', { restart: true });
+    expect(setMusicDirMock).toHaveBeenCalledWith('/music', { restart: true });
+  });
+
+  it('setMusicDir is a no-op off-Electron', async () => {
+    (globalThis as { window?: unknown }).window = {};
+    await expect(setMusicDir('/music')).resolves.toBeUndefined();
   });
 });

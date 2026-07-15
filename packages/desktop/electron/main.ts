@@ -69,6 +69,17 @@ function registerIpcHandlers(): void {
   ipcMain.handle(CH.revealLogs, (): void => {
     shell.showItemInFolder(sidecar.logFilePath());
   });
+
+  // Settings "Change music folder" (restart: true) and onboarding's
+  // `chooseFolder()` (restart: false) both funnel through here. A restart
+  // emits the sidecar's 'restart' event (handled below), which reloads the
+  // window against the new URL — no separate reload call needed here.
+  ipcMain.handle(
+    CH.setMusicDir,
+    async (_event, dir: string, opts?: { restart?: boolean }): Promise<void> => {
+      await sidecar.setMusicDir(dir, opts);
+    },
+  );
 }
 
 /** Application menu with a "Reveal Logs" item pointed at the sidecar's log file. */

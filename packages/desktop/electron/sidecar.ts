@@ -5,6 +5,7 @@ import path from 'node:path';
 import readline from 'node:readline';
 import type { Readable } from 'node:stream';
 import { backendEntry, bunBinary, ffmpegBinaryPath, logsDir, userDataDir, webDistPath } from './paths.js';
+import { readDesktopConfig, writeDesktopConfig } from './desktop-config.js';
 
 /** The shape of the child process spawned below: no stdin, piped stdout/stderr. */
 type SidecarChildProcess = ChildProcessByStdio<null, Readable, Readable>;
@@ -77,7 +78,11 @@ export interface SidecarExitInfo {
  * exhausting all attempts emits `'exit'` with the failure info.
  */
 export class Sidecar extends EventEmitter {
-  private readonly musicDir: string | undefined;
+  /**
+   * Not `readonly`: `setMusicDir()` (Settings "Change music folder") updates
+   * this in place so a later restart's `buildEnv()` picks up the new value.
+   */
+  private musicDir: string | undefined;
   private child: SidecarChildProcess | null = null;
   private stopping = false;
   private restartAttempts = 0;
@@ -157,6 +162,42 @@ export class Sidecar extends EventEmitter {
     this.closeLogStream();
   }
 
+  /**
+   * Persists a new music directory desktop-side (survives the next app
+   * launch, since the backend itself only holds `musicDir` in memory) and
+   * updates this instance's in-memory value so the next `buildEnv()` picks
+   * it up.
+   *
+   * With `opts.restart: true` (Settings "Change music folder", where the
+   * backend is already running against the old dir), also stops and
+   * restarts the child so it re-boots scanning the new directory; this goes
+   * through the same `spawnAndWaitForHandshake()` path a supervised restart
+   * uses and emits `'restart'` on success so `main.ts` reloads the window
+   * against the new URL. Without `opts.restart` (onboarding, where the
+   * backend hasn't started serving yet / a restart would be disruptive
+   * mid-wizard), the value is persisted only — it takes effect on the next
+   * `start()`.
+   */
+  async setMusicDir(dir: string, opts: { restart?: boolean } = {}): Promise<void> {
+    writeDesktopConfig({ musicDir: dir });
+    this.musicDir = dir;
+    if (!opts.restart) {
+      return;
+    }
+    await this.stop();
+    // `stop()` leaves `this.stopping` true (it never resets it — a normal
+    // process lifetime ends there); clear it before respawning, same as
+    // `start()` does, so the restarted child's exit handler doesn't
+    // misread it as a `stop()`-caused exit.
+    this.stopping = false;
+    this.restartAttempts = 0;
+    this.everHealthy = false;
+    const url = await this.spawnAndWaitForHandshake();
+    this.currentUrl = url;
+    this.everHealthy = true;
+    this.emit('restart', url);
+  }
+
   private openLogStream(): WriteStream {
     const file = this.logFilePath();
     this.rotateLogIfNeeded(file);
@@ -207,8 +248,14 @@ export class Sidecar extends EventEmitter {
     if (ffmpeg) {
       env.NICOTIND_FFMPEG_PATH = ffmpeg;
     }
-    if (this.musicDir) {
-      env.NICOTIND_MUSIC_DIR = this.musicDir;
+    // No explicit musicDir on this instance (fresh boot, onboarding not yet
+    // run this session): fall back to whatever was persisted desktop-side by
+    // a prior `setMusicDir()` call — the backend itself never persists it
+    // (`packages/api/src/routes/setup.ts` sets `config.musicDir` in-memory
+    // only), so the desktop shell is the durable owner of this preference.
+    const musicDir = this.musicDir ?? readDesktopConfig().musicDir;
+    if (musicDir) {
+      env.NICOTIND_MUSIC_DIR = musicDir;
     }
     return env;
   }

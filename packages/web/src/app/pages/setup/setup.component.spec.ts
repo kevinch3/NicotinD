@@ -7,7 +7,7 @@ import { SystemApiService } from '../../services/api/system-api.service';
 import { AuthService } from '../../services/auth.service';
 import { SetupService } from '../../services/setup.service';
 import { isElectron } from '../../lib/platform';
-import { pickDirectory } from '../../services/native/native-capabilities';
+import { pickDirectory, setMusicDir } from '../../services/native/native-capabilities';
 
 vi.mock('../../lib/platform', () => ({
   isElectron: vi.fn().mockReturnValue(false),
@@ -15,6 +15,7 @@ vi.mock('../../lib/platform', () => ({
 
 vi.mock('../../services/native/native-capabilities', () => ({
   pickDirectory: vi.fn(),
+  setMusicDir: vi.fn().mockResolvedValue(undefined),
 }));
 
 describe('SetupComponent', () => {
@@ -60,6 +61,8 @@ describe('SetupComponent', () => {
     mockMarkComplete.mockClear();
     vi.mocked(isElectron).mockReturnValue(false);
     vi.mocked(pickDirectory).mockReset();
+    vi.mocked(setMusicDir).mockClear();
+    vi.mocked(setMusicDir).mockResolvedValue(undefined);
   });
 
   it('shows admin step by default', () => {
@@ -188,6 +191,7 @@ describe('SetupComponent', () => {
     await comp.chooseFolder();
 
     expect(comp.musicDir).toBe('/native/music');
+    expect(setMusicDir).toHaveBeenCalledWith('/native/music', { restart: false });
   });
 
   it('chooseFolder leaves musicDir unchanged when pickDirectory resolves null', async () => {
@@ -199,6 +203,7 @@ describe('SetupComponent', () => {
     await comp.chooseFolder();
 
     expect(comp.musicDir).toBe('/existing');
+    expect(setMusicDir).not.toHaveBeenCalled();
   });
 
   it('enterApp marks setup complete and navigates into the app', () => {

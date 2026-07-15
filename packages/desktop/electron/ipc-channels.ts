@@ -11,4 +11,5 @@
 export const CH = {
   pickDirectory: 'nicotind:pickDirectory',
   revealLogs: 'nicotind:revealLogs',
+  setMusicDir: 'nicotind:setMusicDir',
 } as const;

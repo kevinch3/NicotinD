@@ -9,16 +9,19 @@
  * `.cjs`) and inlines the IPC channel-name literal below instead of
  * importing it from `./ipc-channels`.
  *
- * IMPORTANT: 'nicotind:pickDirectory' must stay in sync with
- * `CH.pickDirectory` in `ipc-channels.ts`.
+ * IMPORTANT: 'nicotind:pickDirectory' and 'nicotind:setMusicDir' must stay in
+ * sync with `CH.pickDirectory` / `CH.setMusicDir` in `ipc-channels.ts`.
  *
  * The shape exposed on `window.nicotind` here must match the web layer's
- * `NativeBridge` type (Task 4): `{ platform: 'electron', pickDirectory():
- * Promise<string | null> }`.
+ * `NativeBridge` type (Task 4, extended by Task 10): `{ platform:
+ * 'electron', pickDirectory(): Promise<string | null>, setMusicDir(path,
+ * opts?): Promise<void> }`.
  */
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('nicotind', {
   platform: 'electron',
   pickDirectory: (): Promise<string | null> => ipcRenderer.invoke('nicotind:pickDirectory'),
+  setMusicDir: (path: string, opts?: { restart?: boolean }): Promise<void> =>
+    ipcRenderer.invoke('nicotind:setMusicDir', path, opts),
 });

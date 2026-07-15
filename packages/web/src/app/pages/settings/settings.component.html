@@ -173,6 +173,25 @@
         </button>
       </section>
 
+      <!-- Desktop (Electron only) -->
+      @if (isElectron) {
+        <section class="rounded-xl border border-theme bg-theme-surface/50 p-6 mb-6" data-testid="settings-desktop-section">
+          <h2 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary mb-5">Desktop</h2>
+          @if (musicDirChosen()) {
+            <p class="text-sm text-theme-muted mb-4">Music folder: <span class="text-theme-primary font-medium">{{ musicDirChosen() }}</span></p>
+          }
+          <button
+            type="button"
+            (click)="changeMusicFolder()"
+            [disabled]="musicDirChanging()"
+            data-testid="settings-change-folder"
+            class="text-sm text-theme-secondary hover:text-theme-primary transition disabled:opacity-50"
+          >
+            {{ musicDirChanging() ? 'Restarting…' : 'Change music folder…' }}
+          </button>
+        </section>
+      }
+
       <!-- iOS Now Playing diagnostics (native iOS only) — confirms the lock-screen
            plugin is registered, owns the audio session, and has metadata set. -->
       @if (isNativeIos) {

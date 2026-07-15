@@ -6,6 +6,14 @@ import { getPlatform, isElectron } from '../../lib/platform';
 export interface NativeBridge {
   platform: 'electron';
   pickDirectory(): Promise<string | null>;
+  /**
+   * Persists a music directory desktop-side (the backend only holds
+   * `musicDir` in memory, so the Electron shell is the durable owner) and,
+   * with `opts.restart: true`, restarts the sidecar so the backend re-boots
+   * scanning the new dir. Optional so older preload builds / non-Electron
+   * bridges don't need to implement it.
+   */
+  setMusicDir?(path: string, opts?: { restart?: boolean }): Promise<void>;
 }
 
 function electronBridge(): NativeBridge | undefined {
@@ -22,6 +30,16 @@ export async function pickDirectory(): Promise<string | null> {
     return (await electronBridge()?.pickDirectory()) ?? null;
   }
   return null;
+}
+
+/**
+ * Persists a new music directory via the Electron bridge; a no-op resolve
+ * everywhere else (Capacitor/web have no desktop-owned sidecar to restart).
+ */
+export async function setMusicDir(path: string, opts?: { restart?: boolean }): Promise<void> {
+  if (isElectron()) {
+    await electronBridge()?.setMusicDir?.(path, opts);
+  }
 }
 
 /** Electron first (desktop), else the existing Capacitor/web platform id. */
