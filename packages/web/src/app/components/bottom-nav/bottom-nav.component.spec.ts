@@ -28,13 +28,13 @@ describe('BottomNavComponent', () => {
     const { fixture } = setup();
     const links = fixture.nativeElement.querySelectorAll('a, span') as NodeListOf<HTMLElement>;
     const labels = Array.from(links).map((el) => el.textContent?.trim());
-    expect(labels).toEqual(['Search', 'Library', 'Downloads', 'Settings']);
+    expect(labels).toEqual(['Home', 'Library', 'Downloads', 'Settings']);
   });
 
   it('renders online-only tabs as disabled spans when offline', () => {
     const { fixture } = setup({ offline: true });
-    // Only Search is online-only → span; Library (offline Songs), Downloads,
-    // and Settings stay links.
+    // Only Home (radio landing) is online-only → span; Library (offline Songs),
+    // Downloads, and Settings stay links.
     const anchors = fixture.nativeElement.querySelectorAll('a');
     const spans = fixture.nativeElement.querySelectorAll('nav span');
     expect(anchors.length).toBe(3);

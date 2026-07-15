@@ -99,11 +99,42 @@ seed with no embedding skips the axis entirely. The `rankCandidates` function
 scores all candidates, sorts by score, and applies a per-artist cap (default 2)
 to prevent any single artist from dominating the radio queue.
 
+## Filter-seeded radio (a "vibe" instead of a seed song)
+
+The same endpoint also starts radio from a **`LibraryFilter`** — a mood/genre/bpm
+"vibe" (e.g. "happy rock", "120bpm+ danceable") — with **no seed song**. This
+powers the radio/mood landing (see [web-ui.md](web-ui.md) → "Radio landing").
+
+When `GET /api/radio/next` is called **without** `seedId` but **with** filter
+query params (the shared `serializeLibraryFilter` grammar — `mood`, `genre`
+(repeated), `bpmMin`, per-axis buckets, …), the route:
+
+1. Parses a `LibraryFilter` via `parseLibraryFilter` (`genre` is read with
+   `c.req.queries('genre')` since it's a repeated param). No filter and no seed
+   → `400`.
+2. Builds the candidate pool as **exactly the set of songs matching the filter**
+   — `songFilterWheres(filter, 's')` (from `library-filter-sql.ts`, the same SQL
+   builder the library list routes use) spliced into `RADIO_SONG_SELECT`, landed +
+   non-hidden, `RANDOM() LIMIT 300`. Unlike seed radio there is **no** cross-genre
+   widening: the vibe stays inside the filter.
+3. Seeds the scorer with the pool's **centroid** (`seedCentroid`, reused from
+   `playlist-recipe.ts`) so ranking keeps the set coherent while the per-artist
+   cap diversifies.
+4. Runs the identical `rankCandidates`; returns `Song[]` (`[]` when nothing
+   matches — the client surfaces a neutral "no tracks yet" notice, never an error).
+
+Client side, `PlayerService.radioFilter` remembers the active vibe so
+**auto-replenish stays in-vibe**: the layout `RadioProvider` calls
+`getFilterRadio(filter, …)` while `radioFilter` is set, falling back to
+seed/shuffle only if the filter is exhausted. `startRadioWithFilter(tracks, filter)`
+plays the first track, queues the rest, sets `radio` on, and stores the filter;
+starting seed radio or turning radio off clears it.
+
 ## API
 
 | Method | Path | Params | Returns |
 |--------|------|--------|---------|
-| GET | `/api/radio/next` | `seedId` (required), `exclude` (comma-separated IDs), `count` (1–50, default 10) | `Song[]` |
+| GET | `/api/radio/next` | **either** `seedId` (seed radio) **or** a serialized `LibraryFilter` (filter radio — `mood`, `genre`, `bpmMin`, axis buckets, …); plus `exclude` (comma-separated IDs), `count` (1–50, default 10) | `Song[]` (`[]` if a filter matches nothing) |
 
 ## Perceptual features (shipped)
 
@@ -131,8 +162,10 @@ scoring engine benefits both features.
 | `packages/api/src/services/radio.service.ts` | Pure scoring: `scoreSimilarity` (weight-normalized), `genreCloseness`, `cosineSim`, `camelotCompatibility`, `rankCandidates`, types |
 | `packages/api/src/services/radio.service.test.ts` | Unit tests for scoring logic |
 | `packages/api/src/services/embedding-store.ts` | `loadEmbeddings` / `embeddingModelFor` — pooled read of cached Essentia vectors |
-| `packages/api/src/routes/radio.ts` | `/api/radio/next` route + candidate pool queries (incl. `longestGenreToken`) |
-| `packages/api/src/routes/radio.test.ts` | Route tests |
+| `packages/api/src/routes/radio.ts` | `/api/radio/next` route (seed **and** filter paths) + candidate pool queries; exports `toOrderable`, `filterRadioSongs` (via `songFilterWheres` + `seedCentroid`) |
+| `packages/api/src/routes/radio.test.ts` | Route tests (incl. filter-radio cases) |
 | `packages/api/src/routes/library.ts` | `/songs/:id/similar` refactored to use shared scorer |
-| `packages/web/src/app/services/api/library-api.service.ts` | `getRadioNext()` API method |
-| `packages/web/src/app/components/layout/layout.component.ts` | Smart RadioProvider registration |
+| `packages/web/src/app/services/api/library-api.service.ts` | `getRadioNext()` + `getFilterRadio()` API methods |
+| `packages/web/src/app/services/player.service.ts` | `radioFilter` signal + `startRadioWithFilter()` (persisted vibe) |
+| `packages/web/src/app/components/layout/layout.component.ts` | Smart RadioProvider registration (filter-aware) |
+| `packages/web/src/app/pages/radio-landing/radio-landing.component.ts` | Radio/mood landing: resume shortcut + vibe presets/custom builder |

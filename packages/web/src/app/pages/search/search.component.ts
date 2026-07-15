@@ -482,7 +482,7 @@ export class SearchComponent implements OnInit, OnDestroy {
   navigateAndSearch(query: string): void {
     this.search.setQuery(query);
     this.search.setAutoSearch(true);
-    this.router.navigate(['/']);
+    this.router.navigate(['/search']);
   }
 
   // ─── Catalog (metadata) results ─────────────────────────────────

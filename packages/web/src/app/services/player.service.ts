@@ -1,4 +1,5 @@
 import { Injectable, signal, computed, effect, untracked } from '@angular/core';
+import type { LibraryFilter } from '@nicotind/core';
 import type { BufferedRange } from '../lib/buffered-ranges';
 
 export interface Track {
@@ -69,6 +70,11 @@ export class PlayerService {
   // Radio: when the queue runs low (and repeat is off), auto-append more tracks
   // from the library so playback never stops. Persisted across sessions.
   readonly radio = signal(false);
+  // When radio was started from a filter ("happy rock", "120bpm+ danceable")
+  // rather than a seed song, this holds that filter so auto-replenish keeps
+  // pulling in-vibe tracks (via the radio provider) instead of re-seeding off
+  // the current song. Null for seed radio / radio off. Persisted with `radio`.
+  readonly radioFilter = signal<LibraryFilter | null>(null);
   readonly context = signal<PlayContext | null>(null);
   readonly nowPlayingOpen = signal(false);
   readonly currentTime = signal(0);
@@ -108,6 +114,7 @@ export class PlayerService {
         shuffle: this.shuffle(),
         repeat: this.repeat(),
         radio: this.radio(),
+        radioFilter: this.radioFilter(),
         context: this.context(),
         currentTime: untracked(() => this.currentTime()),
         wasPlaying: this.isPlaying(),
@@ -142,6 +149,8 @@ export class PlayerService {
           history: this.history().slice(-50),
           shuffle: this.shuffle(),
           repeat: this.repeat(),
+          radio: this.radio(),
+          radioFilter: this.radioFilter(),
           context: this.context(),
           currentTime: this.currentTime(),
           wasPlaying: this.isPlaying(),
@@ -177,6 +186,8 @@ export class PlayerService {
       if (state['shuffle'] != null) this.shuffle.set(Boolean(state['shuffle']));
       if (state['repeat'] != null) this.repeat.set(state['repeat'] as 'off' | 'all' | 'one');
       if (state['radio'] != null) this.radio.set(Boolean(state['radio']));
+      const rf = state['radioFilter'];
+      this.radioFilter.set(rf && typeof rf === 'object' ? (rf as LibraryFilter) : null);
       if (isPlayContext(state['context'])) this.context.set(state['context']);
       if (typeof state['currentTime'] === 'number' && state['currentTime'] > 1) {
         this.restoredTime = state['currentTime'];
@@ -223,10 +234,26 @@ export class PlayerService {
   }
 
   /** Start radio seeded on a specific song: play it, then enable radio (which
-   * replenishes from the current track). */
+   * replenishes from the current track). Clears any filter "vibe". */
   startRadio(track: Track): void {
+    this.radioFilter.set(null);
     this.play(track);
     if (!this.radio()) this.toggleRadio();
+  }
+
+  /** Start radio from a filter "vibe" (mood/genre/bpm): play the first track,
+   * queue the rest, and remember the filter so auto-replenish stays in-vibe.
+   * `tracks` are already filter-scored by the caller (LibraryApiService). */
+  startRadioWithFilter(tracks: Track[], filter: LibraryFilter): void {
+    if (tracks.length === 0) return;
+    const [first, ...rest] = tracks;
+    this.radioFilter.set(filter);
+    this.context.set(null);
+    this.play(first);
+    this.queue.set(rest);
+    // Set directly (not toggleRadio) — we already loaded a queue, so an eager
+    // replenish would be wasteful; the drain effect handles later top-ups.
+    this.radio.set(true);
   }
 
   playNext(): void {
@@ -355,6 +382,7 @@ export class PlayerService {
     this.radio.update((r) => !r);
     // Turning it on with a low queue should fill immediately, not wait for a drain.
     if (this.radio()) untracked(() => void this.replenishRadio());
+    else this.radioFilter.set(null); // turning radio off ends the filter "vibe"
   }
 
   toggleVocalMute(): void {

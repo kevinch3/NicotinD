@@ -1,9 +1,11 @@
 import { Hono } from 'hono';
 import type { AuthEnv } from '../middleware/auth.js';
-import type { Song } from '@nicotind/core';
+import { parseLibraryFilter, type LibraryFilter, type Song } from '@nicotind/core';
 import { getDatabase } from '../db.js';
 import { rankCandidates, type SongFeatures } from '../services/radio.service.js';
 import { embeddingModelFor, loadEmbeddings } from '../services/embedding-store.js';
+import { songFilterWheres } from '../services/library-filter-sql.js';
+import { seedCentroid, type OrderableRow } from '../services/playlist-recipe.js';
 
 /** Longest alphanumeric token in a genre string, for the LIKE-widened pool.
  *  Returns null for genres whose longest token is too short to be selective. */
@@ -119,19 +121,85 @@ export function toFeatures(r: RadioSongRow): SongFeatures {
   };
 }
 
+/** RadioSongRow → the row shape the ordering/centroid helpers consume. */
+export function toOrderable(r: RadioSongRow): OrderableRow {
+  return {
+    id: r.id,
+    artist: r.artist,
+    artistId: r.artist_id,
+    bpm: r.bpm ?? undefined,
+    key: r.key ?? undefined,
+    year: r.year ?? undefined,
+    duration: r.duration,
+    energy: r.energy ?? undefined,
+    valence: r.valence ?? undefined,
+    danceability: r.danceability ?? undefined,
+    instrumental: r.instrumental ?? undefined,
+    acousticness: r.acousticness ?? undefined,
+    addedAt: r.created ? Date.parse(r.created) : undefined,
+  };
+}
+
+/**
+ * Filter-seeded radio: instead of a single seed song, the pool IS the set of
+ * songs matching a `LibraryFilter` (e.g. "happy rock", "120bpm+ danceable"),
+ * and the seed is that set's centroid — so ranking keeps the vibe coherent
+ * while `maxPerArtist` diversifies. Reuses the same scorer as seed radio.
+ * Returns [] when nothing matches (client surfaces a neutral "no tracks yet").
+ */
+function filterRadioSongs(
+  db: ReturnType<typeof getDatabase>,
+  filter: LibraryFilter,
+  count: number,
+  excludeIds: Set<string>,
+): Song[] {
+  const { wheres, params } = songFilterWheres(filter, 's');
+  const filterSql = wheres.length ? `${wheres.join(' AND ')} AND ` : '';
+  const rows = db
+    .query<RadioSongRow, (string | number)[]>(
+      `${RADIO_SONG_SELECT} WHERE ${filterSql} s.hidden = 0 AND s.landed_at IS NOT NULL
+       ORDER BY RANDOM() LIMIT 300`,
+    )
+    .all(...params);
+
+  const pool = rows.filter((r) => !excludeIds.has(r.id));
+  if (pool.length === 0) return [];
+  const seed = seedCentroid(pool.map(toOrderable));
+  if (!seed) return [];
+
+  const ranked = rankCandidates(
+    seed,
+    pool.map((r) => ({ ...toFeatures(r), _row: r })),
+    { count, maxPerArtist: 2 },
+  );
+  return ranked.map((e) => rowToSong((e.song as SongFeatures & { _row: RadioSongRow })._row));
+}
+
 export function radioRoutes() {
   const app = new Hono<AuthEnv>();
 
   app.get('/next', (c) => {
     const seedId = c.req.query('seedId');
-    if (!seedId) return c.json({ error: '"seedId" is required' }, 400);
-
     const count = Math.min(Math.max(Number(c.req.query('count') ?? 10), 1), 50);
     const excludeRaw = c.req.query('exclude') ?? '';
     const excludeIds = new Set(excludeRaw.split(',').filter(Boolean));
-    excludeIds.add(seedId);
 
     const db = getDatabase();
+
+    // No seed song → filter-seeded radio (a mood/genre/bpm vibe). `genre` is a
+    // repeated param, so pull the full array before parsing the rest.
+    if (!seedId) {
+      const q: Record<string, string | string[] | undefined> = { ...c.req.query() };
+      const genres = c.req.queries('genre');
+      if (genres && genres.length) q['genre'] = genres;
+      const filter = parseLibraryFilter(q);
+      if (Object.keys(filter).length === 0) {
+        return c.json({ error: '"seedId" or a filter is required' }, 400);
+      }
+      return c.json(filterRadioSongs(db, filter, count, excludeIds));
+    }
+
+    excludeIds.add(seedId);
 
     const seedRow = db
       .query<RadioSongRow, [string]>(`${RADIO_SONG_SELECT} WHERE s.id = ?`)

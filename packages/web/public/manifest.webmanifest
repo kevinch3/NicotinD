@@ -8,7 +8,7 @@
   "theme_color": "#6366f1",
   "background_color": "#09090b",
   "share_target": {
-    "action": "/",
+    "action": "/search",
     "method": "GET",
     "params": {
       "title": "title",
