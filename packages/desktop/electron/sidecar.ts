@@ -38,6 +38,17 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * Pure restart-decision helper. A child exit should only trigger a
+ * supervised restart if the sidecar had previously become healthy
+ * (`everHealthy`) — a rejected `start()` (timeout or spawn error) must
+ * never schedule a hidden background restart — and `stop()` wasn't the
+ * cause of the exit.
+ */
+export function shouldRestart(everHealthy: boolean, stopping: boolean): boolean {
+  return everHealthy && !stopping;
+}
+
 export interface SidecarOptions {
   /** Optional music directory to hand the backend (onboarding sets this later; omit to let the backend use its default/config). */
   musicDir?: string;
@@ -72,6 +83,9 @@ export class Sidecar extends EventEmitter {
   private restartAttempts = 0;
   private logStream: WriteStream | null = null;
   private currentUrl: string | null = null;
+  /** True only once the sidecar has actually passed the health check at least once. Gates whether a later exit is restart-worthy. */
+  private everHealthy = false;
+  private restartTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(options: SidecarOptions = {}) {
     super();
@@ -88,12 +102,26 @@ export class Sidecar extends EventEmitter {
     return this.currentUrl;
   }
 
-  /** Spawns the backend and resolves with its base URL once confirmed healthy. */
+  /**
+   * Spawns the backend and resolves with its base URL once confirmed healthy.
+   *
+   * Re-entrancy guard: if a child is already running and has a known URL
+   * (e.g. macOS `activate` recreating the window while the app+sidecar are
+   * still alive after the last window closed), returns the existing URL
+   * instead of spawning a second backend against the same data dir/DB.
+   * The restart path (`handleUnexpectedExit`) always clears `this.child`
+   * before respawning, so it never hits this early return.
+   */
   async start(): Promise<string> {
+    if (this.child && this.currentUrl) {
+      return this.currentUrl;
+    }
     this.stopping = false;
     this.restartAttempts = 0;
+    this.everHealthy = false;
     const url = await this.spawnAndWaitForHandshake();
     this.currentUrl = url;
+    this.everHealthy = true;
     return url;
   }
 
@@ -105,6 +133,10 @@ export class Sidecar extends EventEmitter {
    */
   async stop(): Promise<void> {
     this.stopping = true;
+    if (this.restartTimer) {
+      clearTimeout(this.restartTimer);
+      this.restartTimer = null;
+    }
     const child = this.child;
     if (!child || child.exitCode !== null || child.signalCode !== null) {
       this.closeLogStream();
@@ -272,7 +304,17 @@ export class Sidecar extends EventEmitter {
           );
           return;
         }
-        this.handleUnexpectedExit(code, signal);
+        // `settled` is also true for timeout/spawn-error rejections, so gate on
+        // `everHealthy` (set only by the success branch below / start()) — a
+        // rejected start() must never trigger a hidden background restart.
+        if (shouldRestart(this.everHealthy, this.stopping)) {
+          this.handleUnexpectedExit(code, signal);
+        } else if (this.child === child) {
+          // Rejected start() (timeout/error) — drop the dead child reference
+          // without treating this as a restart-worthy exit.
+          this.child = null;
+          this.currentUrl = null;
+        }
       });
     });
   }
@@ -293,12 +335,14 @@ export class Sidecar extends EventEmitter {
     const attempt = this.restartAttempts;
     this.restartAttempts += 1;
     const backoffMs = Math.min(BASE_BACKOFF_MS * 2 ** attempt, MAX_BACKOFF_MS);
-    setTimeout(() => {
+    this.restartTimer = setTimeout(() => {
+      this.restartTimer = null;
       if (this.stopping) return;
       this.spawnAndWaitForHandshake()
         .then((url) => {
           this.restartAttempts = 0;
           this.currentUrl = url;
+          this.everHealthy = true;
           this.emit('restart', url);
         })
         .catch(() => {
