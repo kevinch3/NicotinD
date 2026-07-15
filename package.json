@@ -56,5 +56,8 @@
     "husky": "^9.1.7",
     "prettier": "^3.9.4",
     "typescript": "^6.0.3"
+  },
+  "overrides": {
+    "@types/node": "25.5.0"
   }
 }
