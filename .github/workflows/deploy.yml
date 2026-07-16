@@ -14,6 +14,49 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  # Detect which app artifacts a release actually needs to rebuild, so a trivial
+  # backend/core change doesn't fire the expensive per-platform builds (the two
+  # macOS jobs bill at ~10x ubuntu). GitHub `paths:` filters don't work for tag
+  # pushes, so we diff against the previous release tag ourselves and emit
+  # per-area booleans consumed by the app jobs' `if:` below. The server `deploy`
+  # job is intentionally NOT gated — it stays cheap and always runs.
+  #   mobile  (android/ios): wrap packages/web/dist only — NOT the backend.
+  #   desktop (desktop-*):   bundle the backend source + web + shell (Variant B).
+  changes:
+    runs-on: ubuntu-latest
+    if: github.ref_type == 'tag'
+    outputs:
+      mobile: ${{ steps.f.outputs.mobile }}
+      desktop: ${{ steps.f.outputs.desktop }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history + tags for the diff base
+      - id: f
+        name: Detect changed areas since the previous release tag
+        run: |
+          set -euo pipefail
+          # Previous release by ancestry (robust to version-sort quirks / re-tags).
+          prev="$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)"
+          if [ -z "$prev" ]; then
+            echo "No previous tag — building all apps (safe default)."
+            echo "mobile=true"  >> "$GITHUB_OUTPUT"
+            echo "desktop=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          files="$(git diff --name-only "$prev"..HEAD)"
+          echo "Changed since $prev:"; echo "$files"
+          mob=false; desk=false
+          if echo "$files" | grep -qE '^(packages/(web|mobile|capacitor-now-playing)/|package\.json$|bun\.lock$|\.nvmrc$|tsconfig.*\.json$|\.github/workflows/deploy\.yml$)'; then
+            mob=true
+          fi
+          if echo "$files" | grep -qE '^(packages/(web|desktop|api|core|slskd-client|service-manager|lidarr-client)/|src/|config/|package\.json$|bun\.lock$|\.nvmrc$|tsconfig.*\.json$|\.github/workflows/deploy\.yml$)'; then
+            desk=true
+          fi
+          echo "Result: mobile=$mob desktop=$desk"
+          echo "mobile=$mob"   >> "$GITHUB_OUTPUT"
+          echo "desktop=$desk" >> "$GITHUB_OUTPUT"
+
   # Build and sign the Android APK and attach it to the GitHub Release. Runs in
   # parallel with `deploy`; a failure here (e.g. missing signing secrets) does not 
   # block the server deploy. Requires repo secrets: ANDROID_KEYSTORE_BASE64, 
@@ -24,7 +67,9 @@ jobs:
     # Only on a tag push: these jobs attach assets to the tag's GitHub Release (none
     # exists for a manual dispatch). Best-effort — a flaky/unsigned mobile build must
     # not mark the run red when the server `deploy` job below succeeded.
-    if: github.ref_type == 'tag'
+    # Skipped when the mobile inputs didn't change this release (see `changes`).
+    needs: [changes]
+    if: github.ref_type == 'tag' && needs.changes.outputs.mobile == 'true'
     continue-on-error: true
     permissions:
       contents: write
@@ -98,7 +143,9 @@ jobs:
   ios:
     runs-on: macos-14
     # Tag-only + best-effort, same rationale as the `android` job above.
-    if: github.ref_type == 'tag'
+    # Skipped when the mobile inputs didn't change this release (see `changes`).
+    needs: [changes]
+    if: github.ref_type == 'tag' && needs.changes.outputs.mobile == 'true'
     continue-on-error: true
     permissions:
       contents: write
@@ -174,7 +221,9 @@ jobs:
   # as android/ios above — a packaging failure here must not block `deploy`.
   desktop-linux:
     runs-on: ubuntu-latest
-    if: github.ref_type == 'tag'
+    # Skipped when the desktop inputs didn't change this release (see `changes`).
+    needs: [changes]
+    if: github.ref_type == 'tag' && needs.changes.outputs.desktop == 'true'
     continue-on-error: true
     permissions:
       contents: write
@@ -218,7 +267,9 @@ jobs:
   # runner's keychain for a signing identity to auto-use.
   desktop-mac:
     runs-on: macos-14
-    if: github.ref_type == 'tag'
+    # Skipped when the desktop inputs didn't change this release (see `changes`).
+    needs: [changes]
+    if: github.ref_type == 'tag' && needs.changes.outputs.desktop == 'true'
     continue-on-error: true
     permissions:
       contents: write
