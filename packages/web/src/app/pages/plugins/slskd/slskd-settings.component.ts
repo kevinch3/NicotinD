@@ -43,6 +43,15 @@ export class SlskdSettingsComponent implements OnInit, OnDestroy {
   readonly toggling = signal(false);
   readonly toggleMessage = signal<{ type: 'success' | 'error'; text: string } | null>(null);
 
+  /**
+   * False when the slskd service itself can't be reached (e.g. the desktop
+   * app's external mode with no slskd running) — the connection + shares
+   * forms are pointless then, so the template swaps them for a notice.
+   * Permission errors (401/403) keep it true: slskd is up, the user isn't
+   * an admin.
+   */
+  readonly slskdReachable = signal(true);
+
   // Shared folders (moved from the old Settings "Shared Folders" section)
   readonly shares = signal<string[]>([]);
   readonly newSharePath = signal('');
@@ -217,8 +226,10 @@ export class SlskdSettingsComponent implements OnInit, OnDestroy {
     try {
       const data = await firstValueFrom(this.api.getShares());
       this.shares.set(data.directories);
-    } catch {
-      /* ignore */
+      this.slskdReachable.set(true);
+    } catch (err) {
+      const status = (err as { status?: number }).status;
+      if (status !== 401 && status !== 403) this.slskdReachable.set(false);
     }
   }
 
