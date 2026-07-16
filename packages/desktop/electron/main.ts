@@ -29,6 +29,13 @@ function errorPageUrl(message: string): string {
 
 let mainWindow: BrowserWindow | null = null;
 
+// CI-only lifecycle tracing for the packaged-boot smoke test (surfaced via the
+// test's Electron-output tee). No-op in production (CI unset).
+const dbg = (...a: unknown[]): void => {
+  if (process.env.CI) console.log('[main]', ...a);
+};
+dbg('module loaded; CI=', process.env.CI, 'disableSI=', process.env.NICOTIND_DISABLE_SINGLE_INSTANCE);
+
 // Constructed once at module load; `musicDir` isn't known yet (onboarding
 // sets it later), so it starts unset and the backend uses its own config.
 const sidecar = new Sidecar({});
@@ -117,7 +124,9 @@ function buildMenu(): void {
 }
 
 async function createWindow(): Promise<void> {
+  dbg('createWindow: creating main window');
   mainWindow = createMainWindow(STARTING_URL);
+  dbg('createWindow: main window created');
   hardenWindow(mainWindow);
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -125,6 +134,7 @@ async function createWindow(): Promise<void> {
 
   try {
     const url = await sidecar.start();
+    dbg('createWindow: sidecar started at', url);
     reloadWindow(url);
   } catch (err) {
     console.error('Sidecar failed to start', err);
@@ -159,8 +169,10 @@ sidecar.on('exit', (info: SidecarExitInfo) => {
 // the real single-instance behavior.
 const gotSingleInstanceLock =
   process.env.NICOTIND_DISABLE_SINGLE_INSTANCE === '1' || app.requestSingleInstanceLock();
+dbg('single-instance lock =', gotSingleInstanceLock);
 
 if (!gotSingleInstanceLock) {
+  dbg('single-instance lock not acquired — quitting');
   app.quit();
 } else {
   app.on('second-instance', () => {
@@ -168,6 +180,7 @@ if (!gotSingleInstanceLock) {
   });
 
   app.whenReady().then(() => {
+    dbg('app ready');
     registerIpcHandlers();
     buildMenu();
     void createWindow();
