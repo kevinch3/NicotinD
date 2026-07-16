@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.208](https://github.com/kevinch3/NicotinD/compare/v0.1.207...v0.1.208) (2026-07-16)
+
+
+### Bug Fixes
+
+* **desktop:** version electron-builder from release tag + add deb metadata ([ab6dcc5](https://github.com/kevinch3/NicotinD/commit/ab6dcc57e19b8d6991faf96db1b3da2421667854))
+
 ## [0.1.207](https://github.com/kevinch3/NicotinD/compare/v0.1.206...v0.1.207) (2026-07-16)
 
 
