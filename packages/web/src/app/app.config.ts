@@ -20,6 +20,7 @@ import { PreserveService } from './services/preserve.service';
 import { PlayerService } from './services/player.service';
 import { AuthService } from './services/auth.service';
 import { AuthApiService } from './services/api/auth-api.service';
+import { AutoPreserveCoordinator } from './services/auto-preserve-coordinator';
 import pkg from '../../../../package.json';
 import { switchMap } from 'rxjs/operators';
 
@@ -69,6 +70,13 @@ export const appConfig: ApplicationConfig = {
         });
       }
       const traceService = inject(Sentry.TraceService);
+      // AutoPreserveCoordinator is web-only: native already runs a foreground
+      // service (Android @jofr) or owns the audio session natively (iOS Swift
+      // plugin), so the locked-screen failure mode this guards against doesn't
+      // exist there. Same gating as the service worker — dev + native shell skip.
+      if (!serviceWorkerEnabled(isDevMode(), isNativeShell())) {
+        inject(AutoPreserveCoordinator);
+      }
       return setup.check();
     }),
     provideServiceWorker('ngsw-worker.js', {

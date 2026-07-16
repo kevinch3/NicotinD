@@ -25,6 +25,114 @@ async function startAlbum(page: Page): Promise<void> {
   await expect.poll(() => audioTime(page), { timeout: 10_000 }).toBeGreaterThan(0);
 }
 
+test.describe('auto-preserve queue (PWA lock-screen resilience)', () => {
+  /** Open the IndexedDB nicotind-preserve / tracks store as a flat id list. */
+  const idsInPreserveStore = (page: Page) =>
+    page.evaluate(
+      () =>
+        new Promise<string[]>((resolve, reject) => {
+          const req = indexedDB.open('nicotind-preserve');
+          req.onerror = () => reject(req.error);
+          req.onsuccess = () => {
+            const db = req.result;
+            if (!db.objectStoreNames.contains('tracks')) {
+              db.close();
+              resolve([]);
+              return;
+            }
+            const tx = db.transaction('tracks', 'readonly');
+            const getAll = tx.objectStore('tracks').getAll();
+            getAll.onsuccess = () => {
+              const rows = (getAll.result as Array<{ id: string; source?: string }>) ?? [];
+              resolve(rows.map((r) => r.id));
+            };
+            getAll.onerror = () => reject(getAll.error);
+          };
+        }),
+    );
+
+  test('Settings exposes the four auto-preserve modes and the explainer', async ({ page }) => {
+    await page.goto('/settings');
+    await expect(page.getByTestId('auto-preserve-off')).toBeVisible();
+    await expect(page.getByTestId('auto-preserve-5')).toBeVisible();
+    await expect(page.getByTestId('auto-preserve-20')).toBeVisible();
+    await expect(page.getByTestId('auto-preserve-full')).toBeVisible();
+    await expect(page.getByTestId('auto-preserve-explain')).toBeVisible();
+  });
+
+  test('enabling "Next 5" and playing an album auto-preserves the first 5 tracks', async ({
+    page,
+  }) => {
+    // Wipe any leftover IndexedDB from prior tests so the count is deterministic.
+    await page.goto('/');
+    await page.evaluate(() => indexedDB.deleteDatabase('nicotind-preserve'));
+    await page.goto('/settings');
+    await page.getByTestId('auto-preserve-5').click();
+    await expect(page.getByTestId('auto-preserve-5')).toHaveAttribute('aria-pressed', 'true');
+
+    // Start the album so the player queue contains the 7 fixture tracks.
+    await startAlbum(page);
+
+    // The coordinator watches the queue + currentTrack; preserve happens async.
+    // Poll IndexedDB until at least 5 rows land (cap = 5).
+    await expect
+      .poll(() => idsInPreserveStore(page), { timeout: 30_000 })
+      .toHaveLength(5);
+  });
+
+  test('turning auto-preserve off while tracks are auto-saved prompts to confirm', async ({
+    page,
+  }) => {
+    await page.goto('/');
+    await page.evaluate(() => indexedDB.deleteDatabase('nicotind-preserve'));
+
+    // Seed auto-preserve rows directly (avoids re-running the album wait).
+    await page.evaluate(async () => {
+      const open = indexedDB.open('nicotind-preserve', 3);
+      await new Promise<void>((resolve, reject) => {
+        open.onupgradeneeded = () => {
+          const db = open.result;
+          if (!db.objectStoreNames.contains('tracks')) db.createObjectStore('tracks', { keyPath: 'id' });
+          if (!db.objectStoreNames.contains('blobs')) db.createObjectStore('blobs', { keyPath: 'id' });
+        };
+        open.onsuccess = () => resolve();
+        open.onerror = () => reject(open.error);
+      });
+      const db = open.result;
+      const tx = db.transaction(['tracks', 'blobs'], 'readwrite');
+      tx.objectStore('tracks').put({
+        id: 'a',
+        title: 'A',
+        artist: 'Artist',
+        album: 'Album',
+        size: 100,
+        format: 'audio/mpeg',
+        preservedAt: 0,
+        lastAccessedAt: 0,
+        source: 'auto',
+      });
+      tx.objectStore('blobs').put({ id: 'a', audio: new Blob([new Uint8Array(100)]), cover: null });
+      await new Promise<void>((res) => (tx.oncomplete = () => res()));
+      db.close();
+    });
+
+    await page.goto('/settings');
+    await page.getByTestId('auto-preserve-off').click();
+
+    // Confirm dialog from ConfirmService appears with the count baked into the message.
+    const dialog = page.getByTestId('confirm-dialog');
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText('1 auto-saved track');
+
+    // Confirm → tracks removed, mode persisted.
+    await page.getByTestId('confirm-ok').click();
+    await expect
+      .poll(() => idsInPreserveStore(page), { timeout: 5_000 })
+      .toHaveLength(0);
+    await expect(page.getByTestId('auto-preserve-off')).toHaveAttribute('aria-pressed', 'true');
+  });
+});
+
 test.describe('player controls', () => {
   test('pause and resume toggle playback', async ({ page }) => {
     await startAlbum(page);
