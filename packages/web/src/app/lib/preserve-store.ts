@@ -2,16 +2,28 @@
  * IndexedDB wrapper for preserved tracks — handles CRUD, LRU eviction, and storage budget.
  *
  * Two object stores:
- *   - `tracks`  — metadata (id, title, artist, size, timestamps…)
+ *   - `tracks`  — metadata (id, title, artist, size, timestamps, source…)
  *   - `blobs`   — audio + cover binary data keyed by track id
+ *
+ * Schema versions:
+ *   v1 — initial (tracks, blobs)
+ *   v2 — cover thumbnails stored alongside audio
+ *   v3 — `tracks.source: 'user' | 'auto'` distinguishes user-initiated preserves
+ *         (saved via the track-row menu / collection buttons) from automatic
+ *         queue-preserves (driven by the AutoPreserveCoordinator for PWA
+ *         lock-screen resilience). Migration backfills every existing row
+ *         with `source: 'user'` so eviction policy treats them as user-owned.
  */
 
 const DB_NAME = 'nicotind-preserve';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const TRACKS_STORE = 'tracks';
 const BLOBS_STORE = 'blobs';
 
 export const DEFAULT_BUDGET = 2 * 1024 * 1024 * 1024; // 2 GB
+
+/** Where a preserve came from — drives the auto-first LRU eviction policy. */
+export type PreserveSource = 'user' | 'auto';
 
 export interface PreservedTrackMeta {
   id: string;
@@ -25,6 +37,7 @@ export interface PreservedTrackMeta {
   format: string;
   preservedAt: number;
   lastAccessedAt: number;
+  source: PreserveSource;
 }
 
 export interface PreservedBlob {
@@ -43,6 +56,22 @@ function open(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains(BLOBS_STORE)) {
         db.createObjectStore(BLOBS_STORE, { keyPath: 'id' });
+      }
+      // v3: backfill source='user' on every existing track row. Old rows have
+      // no field; writing them with the default keeps the eviction policy
+      // conservative (they're treated as user-owned, never auto-evicted).
+      if (db.objectStoreNames.contains(TRACKS_STORE)) {
+        const tx = req.transaction!;
+        const store = tx.objectStore(TRACKS_STORE);
+        store.openCursor().onsuccess = (e) => {
+          const cursor = (e.target as IDBRequest<IDBCursorWithValue | null>).result;
+          if (!cursor) return;
+          const value = cursor.value as PreservedTrackMeta;
+          if (value.source !== 'user' && value.source !== 'auto') {
+            cursor.update({ ...value, source: 'user' });
+          }
+          cursor.continue();
+        };
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -119,6 +148,11 @@ export async function getAll(): Promise<PreservedTrackMeta[]> {
   return result;
 }
 
+export async function getAutoPreserved(): Promise<PreservedTrackMeta[]> {
+  const all = await getAll();
+  return all.filter((t) => t.source === 'auto');
+}
+
 export async function updateLastAccessed(id: string): Promise<void> {
   const db = await open();
   const meta = await tx<PreservedTrackMeta | undefined>(db, TRACKS_STORE, 'readonly', (t) =>
@@ -131,14 +165,25 @@ export async function updateLastAccessed(id: string): Promise<void> {
   db.close();
 }
 
-export async function evictLRU(bytesNeeded: number, budget: number): Promise<string[]> {
+/**
+ * Evict least-recently-played `source === 'auto'` rows until `bytesNeeded` is
+ * free (or the budget cap is met). Never touches user-owned tracks. Used by
+ * the auto-preserve path before each save so radio churn can't evict the
+ * user's intentional offline collection.
+ */
+export async function evictAutoLRU(bytesNeeded: number, budget: number): Promise<string[]> {
   const all = await getAll();
-  const currentUsage = all.reduce((sum, t) => sum + t.size, 0);
-  if (currentUsage + bytesNeeded <= budget) return [];
+  const auto = all.filter((t) => t.source === 'auto');
+  const autoUsage = auto.reduce((sum, t) => sum + t.size, 0);
+  const userUsage = all.reduce((sum, t) => sum + t.size, 0) - autoUsage;
+  // Projected usage if we add `bytesNeeded` of new auto content.
+  const projected = userUsage + autoUsage + bytesNeeded;
+  if (projected <= budget) return [];
 
-  const sorted = [...all].sort((a, b) => a.lastAccessedAt - b.lastAccessedAt);
+  // We need to free `target` bytes from auto rows (so the new row fits under cap).
+  const target = projected - budget;
+  const sorted = [...auto].sort((a, b) => a.lastAccessedAt - b.lastAccessedAt);
   let freed = 0;
-  const target = currentUsage + bytesNeeded - budget;
   const evicted: string[] = [];
 
   for (const track of sorted) {
@@ -149,6 +194,46 @@ export async function evictLRU(bytesNeeded: number, budget: number): Promise<str
   }
 
   return evicted;
+}
+
+/**
+ * Mixed-source LRU eviction. Preferentially evicts auto rows first; if that
+ * doesn't free enough, falls through to user rows. Used by single-track user
+ * preserves and the toggle-off removeAllAutoPreserved path when budget is
+ * tight.
+ */
+export async function evictLRU(bytesNeeded: number, budget: number): Promise<string[]> {
+  const all = await getAll();
+  const currentUsage = all.reduce((sum, t) => sum + t.size, 0);
+  if (currentUsage + bytesNeeded <= budget) return [];
+
+  const target = currentUsage + bytesNeeded - budget;
+  // Auto first (cheap to lose), then user (only if auto exhausted).
+  const autoSorted = [...all]
+    .filter((t) => t.source === 'auto')
+    .sort((a, b) => a.lastAccessedAt - b.lastAccessedAt);
+  const userSorted = [...all]
+    .filter((t) => t.source === 'user')
+    .sort((a, b) => a.lastAccessedAt - b.lastAccessedAt);
+
+  let freed = 0;
+  const evicted: string[] = [];
+
+  for (const track of [...autoSorted, ...userSorted]) {
+    if (freed >= target) break;
+    await remove(track.id);
+    freed += track.size;
+    evicted.push(track.id);
+  }
+
+  return evicted;
+}
+
+/** Remove every `source === 'auto'` row. Returns the count removed. */
+export async function removeAllAutoPreserved(): Promise<number> {
+  const auto = await getAutoPreserved();
+  for (const t of auto) await remove(t.id);
+  return auto.length;
 }
 
 export async function clearAll(): Promise<void> {

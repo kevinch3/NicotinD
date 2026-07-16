@@ -114,6 +114,12 @@ when the app is backgrounded**. Both are solved with **`@jofr/capacitor-media-se
 implements a native `MediaSession` **and runs a media-playback foreground service** (keeping audio alive
 backgrounded); on web/iOS it's a thin wrapper over the Web API, so one code path serves all platforms.
 
+> The web build also has an **Auto-preserve queue** toggle in Settings → Offline storage that pre-buffers
+> the next-N queued tracks into IndexedDB so the browser's locked-screen network throttle (Android Chrome,
+> iOS Web) can't stall streaming playback. Native shells (Capacitor iOS/Android, Electron) **skip** the
+> coordinator entirely — they already run a foreground service / own the audio session natively, so the
+> failure mode this guards against doesn't apply. See `docs/web-ui.md` §Auto-preserve queue.
+
 Wiring (so it stays maintainable and testable):
 - **`MediaControlsService`** (`packages/web/src/app/services/media-controls.service.ts`) wraps the plugin
   with guarded, best-effort calls (`setMetadata` / `setPlaybackState` / `setActionHandler` /

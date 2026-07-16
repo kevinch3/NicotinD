@@ -9,7 +9,7 @@ import type { Track } from './player.service';
 // In-memory fake of the IndexedDB store, injected via PRESERVE_STORE. The
 // Angular unit-test system forbids `vi.mock` on relative imports, so the store
 // is swapped through DI instead of module mocking.
-type StoredMeta = { id: string; size: number; lastAccessedAt: number };
+type StoredMeta = { id: string; size: number; lastAccessedAt: number; source: 'user' | 'auto' };
 
 function makeStoreFake() {
   const tracks = new Map<string, StoredMeta>();
@@ -23,6 +23,17 @@ function makeStoreFake() {
     getAll: vi.fn(async () => [...tracks.values()]),
     getBlob: vi.fn(async () => undefined),
     evictLRU: vi.fn(async () => [] as string[]),
+    evictAutoLRU: vi.fn(async () => [] as string[]),
+    removeAllAutoPreserved: vi.fn(async () => {
+      let n = 0;
+      for (const [id, t] of tracks) {
+        if (t.source === 'auto') {
+          tracks.delete(id);
+          n++;
+        }
+      }
+      return n;
+    }),
     clearAll: vi.fn(async () => {
       tracks.clear();
     }),
@@ -191,6 +202,152 @@ describe('PreserveService', () => {
       expect(svc.preserving().size).toBe(0);
       expect(svc.batches().size).toBe(0);
       expect(store.clearAll).toHaveBeenCalled();
+    });
+  });
+
+  describe('autoPreserve', () => {
+    it('tags the row with source="auto" (not "user")', async () => {
+      await svc.autoPreserve(track('a'));
+
+      expect(store.preserve).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'a', source: 'auto' }),
+        expect.anything(),
+        null,
+      );
+      expect(svc.autoPreservedCount()).toBe(1);
+    });
+
+    it('routes eviction through evictAutoLRU (not evictLRU)', async () => {
+      await svc.autoPreserve(track('a'));
+
+      expect(store.evictAutoLRU).toHaveBeenCalledWith(BLOB_SIZE, svc.budget());
+      expect(store.evictLRU).not.toHaveBeenCalled();
+    });
+
+    it('user preserve routes through evictLRU (not evictAutoLRU)', async () => {
+      await svc.preserve(track('a'));
+
+      expect(store.evictLRU).toHaveBeenCalledWith(BLOB_SIZE, svc.budget());
+      expect(store.evictAutoLRU).not.toHaveBeenCalled();
+      expect(svc.autoPreservedCount()).toBe(0);
+    });
+
+    it('is idempotent — already-preserved tracks are no-op', async () => {
+      await svc.autoPreserve(track('a'));
+      const callsAfterFirst = vi.mocked(store.preserve).mock.calls.length;
+
+      await svc.autoPreserve(track('a'));
+
+      expect(vi.mocked(store.preserve).mock.calls.length).toBe(callsAfterFirst);
+    });
+  });
+
+  describe('ensureAutoPreservedFor', () => {
+    it('skips already-preserved and in-flight tracks', async () => {
+      svc.setAutoPreserveMode('full');
+      await svc.autoPreserve(track('a'));
+      svc.preserving.update((s) => new Set(s).add('b'));
+
+      await svc.ensureAutoPreservedFor([track('a'), track('b'), track('c')]);
+
+      // Only `c` triggers a fetch; `a` is preserved and `b` is in flight.
+      expect(store.preserve).toHaveBeenCalledTimes(2); // 'a' (auto) + 'c' (auto)
+      expect(svc.preservedIds().has('a')).toBe(true);
+      expect(svc.preservedIds().has('c')).toBe(true);
+    });
+
+    it('no-ops when autoPreserveMode is "off"', async () => {
+      svc.setAutoPreserveMode('off');
+      await svc.ensureAutoPreservedFor([track('a'), track('b')]);
+      expect(store.preserve).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('removeAllAutoPreserved', () => {
+    it('removes only auto-source rows, leaves user-source rows intact', async () => {
+      // Seed mixed-source rows directly via the store fake.
+      store.preserve({ id: 'u1', size: 100, lastAccessedAt: 0, source: 'user' } as never);
+      store.preserve({ id: 'a1', size: 100, lastAccessedAt: 0, source: 'auto' } as never);
+      store.preserve({ id: 'a2', size: 100, lastAccessedAt: 0, source: 'auto' } as never);
+      await svc.refreshList();
+
+      const removed = await svc.removeAllAutoPreserved();
+
+      expect(removed).toBe(2);
+      expect(svc.preservedIds().has('u1')).toBe(true);
+      expect(svc.preservedIds().has('a1')).toBe(false);
+      expect(svc.preservedIds().has('a2')).toBe(false);
+      expect(svc.autoPreservedCount()).toBe(0);
+    });
+  });
+
+  describe('windowSize', () => {
+    beforeEach(() => svc.setAutoPreserveMode('off'));
+
+    it('returns 0 when mode is off (regardless of length)', () => {
+      svc.setAutoPreserveMode('off');
+      expect(svc.windowSize(0)).toBe(0);
+      expect(svc.windowSize(100)).toBe(0);
+    });
+
+    it('caps at 5 when mode is "5"', () => {
+      svc.setAutoPreserveMode('5');
+      expect(svc.windowSize(3)).toBe(3);
+      expect(svc.windowSize(20)).toBe(5);
+    });
+
+    it('caps at 20 when mode is "20"', () => {
+      svc.setAutoPreserveMode('20');
+      expect(svc.windowSize(3)).toBe(3);
+      expect(svc.windowSize(20)).toBe(20);
+      expect(svc.windowSize(100)).toBe(20);
+    });
+
+    it('caps at 200 when mode is "full" (hard cap for radio safety)', () => {
+      svc.setAutoPreserveMode('full');
+      expect(svc.windowSize(3)).toBe(3);
+      expect(svc.windowSize(500)).toBe(200);
+    });
+
+    it('returns 0 for empty queue', () => {
+      svc.setAutoPreserveMode('full');
+      expect(svc.windowSize(0)).toBe(0);
+    });
+  });
+
+  describe('autoPreserveMode persistence', () => {
+    it('setAutoPreserveMode writes through to localStorage', () => {
+      svc.setAutoPreserveMode('5');
+      expect(localStorage.getItem('nicotind-auto-preserve')).toBe('5');
+      expect(svc.autoPreserveMode()).toBe('5');
+    });
+
+    it('rehydrates from localStorage on construction', () => {
+      localStorage.setItem('nicotind-auto-preserve', '20');
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({
+        providers: [
+          PreserveService,
+          { provide: AuthService, useValue: { token: signal('tok') } },
+          { provide: PRESERVE_STORE, useValue: store },
+        ],
+      });
+      const fresh = TestBed.inject(PreserveService);
+      expect(fresh.autoPreserveMode()).toBe('20');
+    });
+
+    it('falls back to "off" on corrupt localStorage', () => {
+      localStorage.setItem('nicotind-auto-preserve', 'not-a-mode');
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({
+        providers: [
+          PreserveService,
+          { provide: AuthService, useValue: { token: signal('tok') } },
+          { provide: PRESERVE_STORE, useValue: store },
+        ],
+      });
+      const fresh = TestBed.inject(PreserveService);
+      expect(fresh.autoPreserveMode()).toBe('off');
     });
   });
 });

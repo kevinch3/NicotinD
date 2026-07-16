@@ -64,6 +64,28 @@
           {{ formatStorage(preserve.totalUsage()) }} of {{ formatStorage(preserve.budget()) }} used
           · {{ preserve.preservedTracks().length }} track{{ preserve.preservedTracks().length === 1 ? '' : 's' }} saved
         </p>
+
+        <!-- Auto-preserve queue: keep the next N queued tracks on disk so playback
+             keeps going when the screen is locked or the network drops (web/PWA). -->
+        <div class="mt-6 pt-6 border-t border-theme">
+          <h3 class="text-sm font-semibold text-theme-primary mb-1">Auto-preserve queue</h3>
+          <p class="text-xs text-theme-muted mb-3">
+            Keep upcoming queue tracks saved on this device so playback continues even when the screen is locked or the network drops.
+          </p>
+          <div class="grid grid-cols-4 gap-2" role="radiogroup" aria-label="Auto-preserve window">
+            @for (opt of autoPreserveOptions; track opt.value) {
+              <button type="button" (click)="onAutoPreserveClick(opt.value)"
+                [attr.data-testid]="'auto-preserve-' + opt.value"
+                [attr.aria-pressed]="preserve.autoPreserveMode() === opt.value"
+                [class]="'rounded-lg border-2 py-2 text-sm transition-all ' + (preserve.autoPreserveMode() === opt.value ? 'border-theme-accent text-theme-primary' : 'border-transparent bg-theme-surface-2 text-theme-muted hover:border-theme')">
+                {{ opt.label }}
+              </button>
+            }
+          </div>
+          <p class="text-xs text-theme-muted mt-2" data-testid="auto-preserve-explain">
+            {{ autoPreserveExplain() }}
+          </p>
+        </div>
       </section>
 
       <!-- Playback -->
