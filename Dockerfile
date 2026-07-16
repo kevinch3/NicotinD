@@ -16,6 +16,9 @@ COPY packages/e2e/package.json packages/e2e/
 # mobile depends on capacitor-now-playing so its manifest must be present).
 COPY packages/mobile/package.json packages/mobile/
 COPY packages/capacitor-now-playing/package.json packages/capacitor-now-playing/
+# desktop (Electron) is never built in the image, but it's a workspace member,
+# so its manifest must be present for the frozen lockfile to resolve.
+COPY packages/desktop/package.json packages/desktop/
 # Skip postinstall scripts — sharp's binary download fails in this stage and
 # generate-icons is never run in Docker (outputs are committed).
 RUN bun install --frozen-lockfile --ignore-scripts
@@ -65,6 +68,7 @@ COPY packages/web/package.json packages/web/
 COPY packages/e2e/package.json packages/e2e/
 COPY packages/mobile/package.json packages/mobile/
 COPY packages/capacitor-now-playing/package.json packages/capacitor-now-playing/
+COPY packages/desktop/package.json packages/desktop/
 COPY src/ src/
 
 RUN bun install --frozen-lockfile

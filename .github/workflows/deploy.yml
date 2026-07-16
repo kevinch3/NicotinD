@@ -207,7 +207,9 @@ jobs:
         working-directory: packages/desktop
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bunx --bun electron-builder --linux --publish always
+        # electron-builder is a Node CLI and crashes under Bun's runtime
+        # (`--bun`) via source-map-support; run it under Node (setup-node above).
+        run: bunx electron-builder --linux --publish always
 
   # Build the macOS desktop app (dmg, x64+arm64) and publish it the same way
   # (electron-updater reads `latest-mac.yml`). Unsigned — no Apple Developer
@@ -245,7 +247,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
-        run: bunx --bun electron-builder --mac --publish always
+        # Run electron-builder under Node, not Bun (`--bun` crashes it).
+        run: bunx electron-builder --mac --publish always
 
   deploy:
     runs-on: ubuntu-latest
