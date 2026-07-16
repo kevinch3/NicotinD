@@ -2,6 +2,32 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.205](https://github.com/kevinch3/NicotinD/compare/v0.1.204...v0.1.205) (2026-07-16)
+
+
+### Features
+
+* **api:** allow NICOTIND_WEB_DIST override for packaged builds ([257838c](https://github.com/kevinch3/NicotinD/commit/257838cd23e76a4a3c2e6454774dd4320a570226))
+* **api:** bind loopback + emit port handshake line for desktop sidecar ([5ddf75a](https://github.com/kevinch3/NicotinD/commit/5ddf75ad0a496963027a5216e328114641bf0b5a))
+* **api:** resolve ffmpeg via NICOTIND_FFMPEG_PATH for packaged builds ([bac8d10](https://github.com/kevinch3/NicotinD/commit/bac8d109d8b8809e953e08871a327786750e0540))
+* **desktop:** change music folder from settings + persist musicDir desktop-side ([f9e519b](https://github.com/kevinch3/NicotinD/commit/f9e519b6b99e939e22704704a12669f86fadfaaa))
+* **desktop:** electron package scaffold + hardened main window ([addafda](https://github.com/kevinch3/NicotinD/commit/addafda751524a3c3921b828f684a0d17ae5b656))
+* **desktop:** electron-builder packaging (AppImage/deb/dmg) with bundled ffmpeg + bun sidecar ([a3eb1a1](https://github.com/kevinch3/NicotinD/commit/a3eb1a1ea7c50adc67872d300c323511038a0f32))
+* **desktop:** github-release auto-update (apply on linux, notify on unsigned macos) ([9eb418c](https://github.com/kevinch3/NicotinD/commit/9eb418c4437cc9196bd8d427855d2e22614d1f7d))
+* **desktop:** preload native-capabilities bridge + folder-picker IPC ([feed768](https://github.com/kevinch3/NicotinD/commit/feed768ce60bccde91222236c8f1480c0c0b568c))
+* **desktop:** supervised Bun sidecar with port handshake + logs ([28ab6c8](https://github.com/kevinch3/NicotinD/commit/28ab6c81d391fe708adfc45ae1c5a6fea5430ea1))
+* **web:** disable service worker inside the Electron shell ([7e2af31](https://github.com/kevinch3/NicotinD/commit/7e2af310232bd78b29aef66fee0f44e9214c4f64))
+* **web:** native folder picker in onboarding on Electron ([5498d5b](https://github.com/kevinch3/NicotinD/commit/5498d5b3c9fe4c29fe6ec5f204b2098e13d1775d))
+* **web:** shared native-capabilities interface + Electron detection ([3d567e7](https://github.com/kevinch3/NicotinD/commit/3d567e79377d076b1180b618a527776c346fb30b))
+
+
+### Bug Fixes
+
+* **desktop:** guard sidecar restart on health, run desktop tests in CI ([7da1cc8](https://github.com/kevinch3/NicotinD/commit/7da1cc854e582fd1b6722afb66fddc734328f0c0))
+* **desktop:** handle sidecar restart failure on music-folder change ([c966bfc](https://github.com/kevinch3/NicotinD/commit/c966bfc28ed4090abfcfd962a727abc4582e1a66))
+* **desktop:** pin @types/node override so electron dep doesn't break workspace typecheck ([908d05c](https://github.com/kevinch3/NicotinD/commit/908d05c6452a0f017227ae198aee83e4de4db567))
+* **desktop:** stage real version into backend package.json (not 0.0.0) ([d3a44c6](https://github.com/kevinch3/NicotinD/commit/d3a44c6c6cb8ba921567c8df9e08483c85282609))
+
 ## [0.1.204](https://github.com/kevinch3/NicotinD/compare/v0.1.203...v0.1.204) (2026-07-15)
 
 
