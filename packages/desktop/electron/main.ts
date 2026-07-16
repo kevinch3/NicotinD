@@ -29,15 +29,6 @@ function errorPageUrl(message: string): string {
 
 let mainWindow: BrowserWindow | null = null;
 
-// CI-only lifecycle tracing for the packaged-boot smoke test. Uses stderr
-// (console.error): Playwright's `_electron` tee only surfaces the main
-// process's stderr, not stdout. No-op in production (CI unset).
-const dbg = (...a: unknown[]): void => {
-  if (process.env.CI) console.error('[main]', ...a);
-};
-// Unconditional, so we can confirm main.ts even executes under the harness.
-console.error('[main] boot: CI=', process.env.CI, 'disableSI=', process.env.NICOTIND_DISABLE_SINGLE_INSTANCE);
-
 // Constructed once at module load; `musicDir` isn't known yet (onboarding
 // sets it later), so it starts unset and the backend uses its own config.
 const sidecar = new Sidecar({});
@@ -126,9 +117,7 @@ function buildMenu(): void {
 }
 
 async function createWindow(): Promise<void> {
-  dbg('createWindow: creating main window');
   mainWindow = createMainWindow(STARTING_URL);
-  dbg('createWindow: main window created');
   hardenWindow(mainWindow);
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -136,7 +125,6 @@ async function createWindow(): Promise<void> {
 
   try {
     const url = await sidecar.start();
-    dbg('createWindow: sidecar started at', url);
     reloadWindow(url);
   } catch (err) {
     console.error('Sidecar failed to start', err);
@@ -164,17 +152,9 @@ sidecar.on('exit', (info: SidecarExitInfo) => {
   );
 });
 
-// The single-instance lock is bypassed when NICOTIND_DISABLE_SINGLE_INSTANCE=1.
-// Under Playwright's `_electron` launcher (the packaged-boot smoke test)
-// `requestSingleInstanceLock()` returns false, which would `app.quit()` before
-// a window ever opens; the flag is set only by that test, so production keeps
-// the real single-instance behavior.
-const gotSingleInstanceLock =
-  process.env.NICOTIND_DISABLE_SINGLE_INSTANCE === '1' || app.requestSingleInstanceLock();
-dbg('single-instance lock =', gotSingleInstanceLock);
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
 
 if (!gotSingleInstanceLock) {
-  dbg('single-instance lock not acquired — quitting');
   app.quit();
 } else {
   app.on('second-instance', () => {
@@ -182,7 +162,6 @@ if (!gotSingleInstanceLock) {
   });
 
   app.whenReady().then(() => {
-    dbg('app ready');
     registerIpcHandlers();
     buildMenu();
     void createWindow();
