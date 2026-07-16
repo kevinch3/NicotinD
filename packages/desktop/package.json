@@ -4,7 +4,11 @@
   "private": true,
   "type": "module",
   "description": "NicotinD desktop app — local music library, streaming, and radio (Electron)",
-  "author": "Kevin Chavarria",
+  "author": {
+    "name": "Kevin Chavarria",
+    "email": "kevinch3@users.noreply.github.com"
+  },
+  "homepage": "https://github.com/kevinch3/NicotinD",
   "main": "dist/main.js",
   "scripts": {
     "build": "tsc -b tsconfig.json",
