@@ -2,6 +2,7 @@ import { spawn, execFileSync } from 'node:child_process';
 import { existsSync, renameSync, unlinkSync } from 'node:fs';
 import { createLogger } from '@nicotind/core';
 import type { TranscodeFormat } from './streaming-settings.js';
+import { ffmpegBinary } from './ffmpeg-path.js';
 
 const log = createLogger('transcode');
 
@@ -13,7 +14,7 @@ export function ffmpegAvailable(): boolean {
   if (ffmpegChecked) return ffmpegPresent;
   ffmpegChecked = true;
   try {
-    execFileSync('ffmpeg', ['-version'], { stdio: 'ignore' });
+    execFileSync(ffmpegBinary(), ['-version'], { stdio: 'ignore' });
     ffmpegPresent = true;
   } catch {
     ffmpegPresent = false;
@@ -100,7 +101,7 @@ export function transcodeToFile(
       ...spec.args(kbps),
       tmp,
     ];
-    const proc = spawn('ffmpeg', args);
+    const proc = spawn(ffmpegBinary(), args);
     let stderr = '';
     proc.stderr.on('data', (d: Buffer) => {
       stderr += d.toString();

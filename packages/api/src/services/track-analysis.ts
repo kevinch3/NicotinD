@@ -3,6 +3,7 @@ import { createLogger, type GenreSuggestion } from '@nicotind/core';
 import type { Lidarr } from '@nicotind/lidarr-client';
 import { normalizeForGrouping } from './album-grouping.js';
 import { detectKey } from './key-detection.js';
+import { ffmpegBinary } from './ffmpeg-path.js';
 
 const log = createLogger('track-analysis');
 
@@ -78,7 +79,7 @@ function decodePcm(absPath: string): Promise<Float32Array> {
     'pipe:1',
   ];
   return new Promise<Float32Array>((resolve, reject) => {
-    const proc = spawn('ffmpeg', args);
+    const proc = spawn(ffmpegBinary(), args);
     const chunks: Buffer[] = [];
     // Capture stderr so a non-zero exit reports *why* ffmpeg failed instead of a
     // bare exit code — the difference between "codec not found" (build problem)

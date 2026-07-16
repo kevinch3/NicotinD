@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { createLogger } from '@nicotind/core';
 import { summarizeFfmpegStderr } from './track-analysis.js';
+import { ffmpegBinary } from './ffmpeg-path.js';
 
 const log = createLogger('loudness-analysis');
 
@@ -102,7 +103,7 @@ export async function analyzeLoudness(
   // it. why: bug where every ebur128 run failed opaquely and the reason was lost.
   const result = await new Promise<{ code: number | null; stderr: string; timedOut: boolean }>(
     (resolve) => {
-      const proc = spawn('ffmpeg', args, { stdio: ['ignore', 'ignore', 'pipe'] });
+      const proc = spawn(ffmpegBinary(), args, { stdio: ['ignore', 'ignore', 'pipe'] });
       const chunks: Buffer[] = [];
       let timedOut = false;
       const timer = setTimeout(() => {

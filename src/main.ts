@@ -4,7 +4,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { parse } from 'yaml';
 import pkg from '../package.json';
-import { NicotinDConfigSchema, createLogger, generateSecret } from '@nicotind/core';
+import { NicotinDConfigSchema, createLogger, generateSecret, resolvePort } from '@nicotind/core';
 import { ServiceManager, NativeProcessStrategy } from '@nicotind/service-manager';
 import { Slskd } from '@nicotind/slskd-client';
 import { Lidarr } from '@nicotind/lidarr-client';
@@ -111,7 +111,12 @@ async function main() {
   }
 
   // 4. Create and start API server
-  const webDistPath = resolve(import.meta.dir, '../packages/web/dist');
+  // NICOTIND_WEB_DIST override: in a packaged desktop build the SPA is staged under
+  // the app's resources dir, and a `bun --compile`/relocated entry can't resolve
+  // `import.meta.dir` to the repo layout (it points at /$bunfs/root). Falls back to the
+  // repo-relative path for normal `bun run` / server / Docker.
+  const webDistPath =
+    process.env.NICOTIND_WEB_DIST ?? resolve(import.meta.dir, '../packages/web/dist');
 
   const { app, watcherRef, retryRef, processingRef, websocket } = createApp({
     config,
@@ -145,13 +150,17 @@ async function main() {
   if (retryRef.current) retryRef.current.start();
   if (processingRef.current) processingRef.current.start();
 
-  log.info({ port: config.port }, 'NicotinD is ready');
-
-  Bun.serve({
-    port: config.port,
+  const server = Bun.serve({
+    port: config.port, // 0 => OS-assigned ephemeral port
+    // Default preserves today's behavior (0.0.0.0, reachable via Docker port mapping).
+    // The desktop sidecar sets NICOTIND_BIND_HOST=127.0.0.1 to bind loopback-only.
+    hostname: process.env.NICOTIND_BIND_HOST || undefined,
     fetch: app.fetch,
     websocket,
   });
+  // Machine-readable handshake for the desktop supervisor. Keep the exact prefix.
+  log.info({ port: server.port }, 'NicotinD is ready');
+  console.log(`NICOTIND_LISTENING ${server.port}`);
 
   // Graceful shutdown
   process.on('SIGTERM', async () => {
@@ -239,7 +248,7 @@ function loadConfig() {
   // Merge: file config < persisted secrets < env vars
   const merged = {
     ...fileConfig,
-    port: Number(process.env.NICOTIND_PORT) || (fileConfig as Record<string, unknown>).port,
+    port: resolvePort(process.env.NICOTIND_PORT, (fileConfig as Record<string, unknown>).port as number),
     dataDir: process.env.NICOTIND_DATA_DIR || (fileConfig as Record<string, unknown>).dataDir,
     musicDir: process.env.NICOTIND_MUSIC_DIR || (fileConfig as Record<string, unknown>).musicDir,
     mode: process.env.NICOTIND_MODE || (fileConfig as Record<string, unknown>).mode,

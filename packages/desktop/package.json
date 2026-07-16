@@ -1,0 +1,24 @@
+{
+  "name": "@nicotind/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "bun test --path-ignore-patterns 'test/**' --path-ignore-patterns 'dist-test/**'",
+    "test:smoke": "playwright test",
+    "prepare-resources": "bun run scripts/prepare-resources.ts",
+    "dist": "bun run build && bun run prepare-resources && electron-builder"
+  },
+  "dependencies": {
+    "electron-updater": "^6.3.9"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1",
+    "electron": "^33.4.11",
+    "electron-builder": "^25.1.8",
+    "ffmpeg-static": "^5.2.0"
+  }
+}

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=NicotinD
+Comment=Unified music acquisition + streaming
+Exec=nicotind %U
+Terminal=false
+Type=Application
+Icon=nicotind
+Categories=Audio;Music;Player;AudioVideo;
+StartupWMClass=NicotinD
+MimeType=x-scheme-handler/nicotind;

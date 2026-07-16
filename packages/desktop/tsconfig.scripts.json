@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "outDir": "dist-scripts",
+    "rootDir": "scripts",
+    "types": ["bun"]
+  },
+  "include": ["scripts"]
+}

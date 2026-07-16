@@ -3,6 +3,20 @@ import { z } from 'zod';
 export const ServiceModeSchema = z.enum(['embedded', 'external']);
 export type ServiceMode = z.infer<typeof ServiceModeSchema>;
 
+/**
+ * Resolve port from environment variable or file config.
+ * Handles the falsy-0 case: `NICOTIND_PORT=0` (ephemeral port) must survive.
+ * @param envValue - the NICOTIND_PORT environment variable (undefined if unset)
+ * @param fileValue - the port from the config file
+ * @returns the resolved port number
+ */
+export function resolvePort(envValue: string | undefined, fileValue: number): number {
+  if (envValue === undefined) {
+    return fileValue;
+  }
+  return Number(envValue);
+}
+
 export const NicotinDConfigSchema = z.object({
   port: z.number().default(8484),
   dataDir: z.string().default('~/.nicotind'),

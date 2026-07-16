@@ -13,7 +13,7 @@ import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { provideServiceWorker } from '@angular/service-worker';
 import { routes } from './app.routes';
 import { authInterceptor } from './interceptors/auth.interceptor';
-import { isNativePlatform } from './lib/platform';
+import { isNativeShell, serviceWorkerEnabled } from './lib/platform';
 import { SetupService } from './services/setup.service';
 import { ThemeService } from './services/theme.service';
 import { PreserveService } from './services/preserve.service';
@@ -72,7 +72,7 @@ export const appConfig: ApplicationConfig = {
       return setup.check();
     }),
     provideServiceWorker('ngsw-worker.js', {
-      enabled: !isDevMode() && !isNativePlatform(),
+      enabled: serviceWorkerEnabled(isDevMode(), isNativeShell()),
       registrationStrategy: 'registerWhenStable:30000',
     }),
   ],

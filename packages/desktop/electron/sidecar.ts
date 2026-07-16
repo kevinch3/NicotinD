@@ -1,0 +1,422 @@
+import { spawn, type ChildProcessByStdio } from 'node:child_process';
+import { EventEmitter } from 'node:events';
+import { createWriteStream, existsSync, renameSync, statSync, type WriteStream } from 'node:fs';
+import path from 'node:path';
+import readline from 'node:readline';
+import type { Readable } from 'node:stream';
+import { backendEntry, bunBinary, ffmpegBinaryPath, logsDir, userDataDir, webDistPath } from './paths.js';
+import { readDesktopConfig, writeDesktopConfig } from './desktop-config.js';
+
+/** The shape of the child process spawned below: no stdin, piped stdout/stderr. */
+type SidecarChildProcess = ChildProcessByStdio<null, Readable, Readable>;
+
+const HANDSHAKE_RE = /^NICOTIND_LISTENING\s+(\d+)\s*$/;
+
+/**
+ * Parses the backend's stdout handshake line (`src/main.ts`: `console.log(
+ * \`NICOTIND_LISTENING ${server.port}\`)`) into the bound port number.
+ * Returns `null` for any other line (log noise, unrelated stdout, etc).
+ * Pure — this is the primary unit-tested surface of this module.
+ */
+export function parseListeningPort(line: string): number | null {
+  const match = HANDSHAKE_RE.exec(line.trim());
+  if (!match) {
+    return null;
+  }
+  const port = Number(match[1]);
+  return Number.isFinite(port) && port > 0 ? port : null;
+}
+
+const HEALTH_POLL_INTERVAL_MS = 250;
+const HANDSHAKE_TIMEOUT_MS = 30_000;
+const MAX_LOG_BYTES = 5 * 1024 * 1024; // 5 MiB per generation
+const BASE_BACKOFF_MS = 500;
+const MAX_BACKOFF_MS = 10_000;
+const MAX_RESTART_ATTEMPTS = 8;
+const KILL_GRACE_MS = 5_000;
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Pure restart-decision helper. A child exit should only trigger a
+ * supervised restart if the sidecar had previously become healthy
+ * (`everHealthy`) — a rejected `start()` (timeout or spawn error) must
+ * never schedule a hidden background restart — and `stop()` wasn't the
+ * cause of the exit.
+ */
+export function shouldRestart(everHealthy: boolean, stopping: boolean): boolean {
+  return everHealthy && !stopping;
+}
+
+export interface SidecarOptions {
+  /** Optional music directory to hand the backend (onboarding sets this later; omit to let the backend use its default/config). */
+  musicDir?: string;
+}
+
+export interface SidecarExitInfo {
+  code: number | null;
+  signal: NodeJS.Signals | null;
+  attempts: number;
+}
+
+/**
+ * Supervises the Bun backend as a child process ("sidecar").
+ *
+ * `start()` spawns `bun run <backendEntry>` (Variant B — no compiled
+ * binary), tees its stdout/stderr to a rotating log file, and resolves with
+ * the sidecar's base URL once BOTH (a) the `NICOTIND_LISTENING <port>`
+ * stdout handshake has been seen, AND (b) `GET /api/health` on that port
+ * returns `{ ok: true }`. If the child exits or the handshake+health gate
+ * times out before that, `start()` rejects.
+ *
+ * Once started, an unexpected exit (i.e. not initiated by `stop()`)
+ * triggers a supervised restart with capped exponential backoff
+ * (500ms → 10s), up to `MAX_RESTART_ATTEMPTS` attempts; a successful
+ * restart emits `'restart'` with the new URL (attempts counter resets),
+ * exhausting all attempts emits `'exit'` with the failure info.
+ */
+export class Sidecar extends EventEmitter {
+  /**
+   * Not `readonly`: `setMusicDir()` (Settings "Change music folder") updates
+   * this in place so a later restart's `buildEnv()` picks up the new value.
+   */
+  private musicDir: string | undefined;
+  private child: SidecarChildProcess | null = null;
+  private stopping = false;
+  private restartAttempts = 0;
+  private logStream: WriteStream | null = null;
+  private currentUrl: string | null = null;
+  /** True only once the sidecar has actually passed the health check at least once. Gates whether a later exit is restart-worthy. */
+  private everHealthy = false;
+  private restartTimer: ReturnType<typeof setTimeout> | null = null;
+
+  constructor(options: SidecarOptions = {}) {
+    super();
+    this.musicDir = options.musicDir;
+  }
+
+  /** Absolute path to the (active) sidecar log file. */
+  logFilePath(): string {
+    return path.join(logsDir(), 'sidecar.log');
+  }
+
+  /** The base URL of the currently-running sidecar, if any. */
+  url(): string | null {
+    return this.currentUrl;
+  }
+
+  /**
+   * Spawns the backend and resolves with its base URL once confirmed healthy.
+   *
+   * Re-entrancy guard: if a child is already running and has a known URL
+   * (e.g. macOS `activate` recreating the window while the app+sidecar are
+   * still alive after the last window closed), returns the existing URL
+   * instead of spawning a second backend against the same data dir/DB.
+   * The restart path (`handleUnexpectedExit`) always clears `this.child`
+   * before respawning, so it never hits this early return.
+   */
+  async start(): Promise<string> {
+    if (this.child && this.currentUrl) {
+      return this.currentUrl;
+    }
+    this.stopping = false;
+    this.restartAttempts = 0;
+    this.everHealthy = false;
+    const url = await this.spawnAndWaitForHandshake();
+    this.currentUrl = url;
+    this.everHealthy = true;
+    return url;
+  }
+
+  /**
+   * Stops the sidecar. Sets a flag first so the exit handler doesn't treat
+   * this as an unexpected exit and try to restart it. SIGTERM first (the
+   * backend handles it gracefully — `src/main.ts`), SIGKILL if it hasn't
+   * exited within `KILL_GRACE_MS`.
+   */
+  async stop(): Promise<void> {
+    this.stopping = true;
+    if (this.restartTimer) {
+      clearTimeout(this.restartTimer);
+      this.restartTimer = null;
+    }
+    const child = this.child;
+    if (!child || child.exitCode !== null || child.signalCode !== null) {
+      this.closeLogStream();
+      return;
+    }
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(() => {
+        if (child.exitCode === null && child.signalCode === null) {
+          child.kill('SIGKILL');
+        }
+      }, KILL_GRACE_MS);
+      child.once('exit', () => {
+        clearTimeout(timer);
+        resolve();
+      });
+      child.kill('SIGTERM');
+    });
+    this.closeLogStream();
+  }
+
+  /**
+   * Persists a new music directory desktop-side (survives the next app
+   * launch, since the backend itself only holds `musicDir` in memory) and
+   * updates this instance's in-memory value so the next `buildEnv()` picks
+   * it up.
+   *
+   * With `opts.restart: true` (Settings "Change music folder", where the
+   * backend is already running against the old dir), also stops and
+   * restarts the child so it re-boots scanning the new directory; this goes
+   * through the same `spawnAndWaitForHandshake()` path a supervised restart
+   * uses and emits `'restart'` on success so `main.ts` reloads the window
+   * against the new URL. Without `opts.restart` (onboarding, where the
+   * backend hasn't started serving yet / a restart would be disruptive
+   * mid-wizard), the value is persisted only — it takes effect on the next
+   * `start()`.
+   *
+   * If the respawn rejects (handshake/health timeout, spawn error, or the
+   * child exiting before becoming healthy — e.g. the backend fails to boot
+   * against the new dir), this instance is reset to a clean no-child state
+   * (`this.child`/`this.currentUrl` nulled) instead of being left holding a
+   * dead child reference, and the error is re-thrown so the caller
+   * (`main.ts`) learns the restart failed. `this.stopping` is left `false`
+   * on this path, so a later unexpected exit of some future child is still
+   * supervised normally.
+   */
+  async setMusicDir(dir: string, opts: { restart?: boolean } = {}): Promise<void> {
+    writeDesktopConfig({ musicDir: dir });
+    this.musicDir = dir;
+    if (!opts.restart) {
+      return;
+    }
+    await this.stop();
+    // `stop()` leaves `this.stopping` true (it never resets it — a normal
+    // process lifetime ends there); clear it before respawning, same as
+    // `start()` does, so the restarted child's exit handler doesn't
+    // misread it as a `stop()`-caused exit.
+    this.stopping = false;
+    this.restartAttempts = 0;
+    this.everHealthy = false;
+    try {
+      const url = await this.spawnAndWaitForHandshake();
+      this.currentUrl = url;
+      this.everHealthy = true;
+      this.emit('restart', url);
+    } catch (err) {
+      // `spawnAndWaitForHandshake`'s own 'exit' handler already nulls
+      // `this.child`/`this.currentUrl` on its "rejected, not yet everHealthy"
+      // branch when the child itself is what exited — but timeout/spawn-error
+      // rejections don't always route through that branch synchronously
+      // before this catch runs, so make the reset explicit and idempotent
+      // here too: never leave this instance pointed at a dead child with no
+      // supervised retry.
+      this.child = null;
+      this.currentUrl = null;
+      throw err;
+    }
+  }
+
+  private openLogStream(): WriteStream {
+    const file = this.logFilePath();
+    this.rotateLogIfNeeded(file);
+    const stream = createWriteStream(file, { flags: 'a' });
+    this.logStream = stream;
+    return stream;
+  }
+
+  private closeLogStream(): void {
+    if (this.logStream) {
+      this.logStream.end();
+      this.logStream = null;
+    }
+  }
+
+  /** Size-based rotation: keeps the active file plus up to two backup generations. */
+  private rotateLogIfNeeded(file: string): void {
+    if (!existsSync(file)) {
+      return;
+    }
+    try {
+      const { size } = statSync(file);
+      if (size <= MAX_LOG_BYTES) {
+        return;
+      }
+      const gen1 = `${file}.1`;
+      const gen2 = `${file}.2`;
+      if (existsSync(gen1)) {
+        renameSync(gen1, gen2);
+      }
+      renameSync(file, gen1);
+    } catch {
+      // Rotation is best-effort; a logging hiccup must never take down the sidecar.
+    }
+  }
+
+  private buildEnv(): NodeJS.ProcessEnv {
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      NICOTIND_PORT: '0',
+      NICOTIND_BIND_HOST: '127.0.0.1',
+      // v1 is local-library only — don't let the backend try to download/spawn slskd+Lidarr.
+      NICOTIND_MODE: 'external',
+      NICOTIND_DATA_DIR: userDataDir(),
+      NICOTIND_WEB_DIST: webDistPath(),
+    };
+    const ffmpeg = ffmpegBinaryPath();
+    if (ffmpeg) {
+      env.NICOTIND_FFMPEG_PATH = ffmpeg;
+    }
+    // No explicit musicDir on this instance (fresh boot, onboarding not yet
+    // run this session): fall back to whatever was persisted desktop-side by
+    // a prior `setMusicDir()` call — the backend itself never persists it
+    // (`packages/api/src/routes/setup.ts` sets `config.musicDir` in-memory
+    // only), so the desktop shell is the durable owner of this preference.
+    const musicDir = this.musicDir ?? readDesktopConfig().musicDir;
+    if (musicDir) {
+      env.NICOTIND_MUSIC_DIR = musicDir;
+    }
+    return env;
+  }
+
+  private async waitForHealthy(port: number): Promise<string> {
+    const url = `http://127.0.0.1:${port}`;
+    const deadline = Date.now() + HANDSHAKE_TIMEOUT_MS;
+    while (Date.now() < deadline) {
+      try {
+        const res = await fetch(`${url}/api/health`);
+        if (res.ok) {
+          const body = (await res.json()) as { ok?: boolean };
+          if (body?.ok) {
+            return url;
+          }
+        }
+      } catch {
+        // Backend isn't accepting connections yet — keep polling.
+      }
+      await delay(HEALTH_POLL_INTERVAL_MS);
+    }
+    throw new Error(`Sidecar health check did not pass within ${HANDSHAKE_TIMEOUT_MS}ms`);
+  }
+
+  private spawnAndWaitForHandshake(): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const logStream = this.openLogStream();
+      const child = spawn(bunBinary(), ['run', backendEntry()], {
+        env: this.buildEnv(),
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      this.child = child;
+
+      let settled = false;
+      const rl = readline.createInterface({ input: child.stdout });
+
+      const cleanupListeners = (): void => {
+        rl.removeListener('line', onLine);
+        rl.close();
+      };
+
+      const timeoutTimer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        cleanupListeners();
+        child.kill('SIGTERM');
+        reject(new Error(`Sidecar did not become healthy within ${HANDSHAKE_TIMEOUT_MS}ms`));
+      }, HANDSHAKE_TIMEOUT_MS);
+
+      const onLine = (line: string): void => {
+        logStream.write(line + '\n');
+        if (settled) return;
+        const port = parseListeningPort(line);
+        if (port === null) return;
+        this.waitForHealthy(port).then(
+          (url) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timeoutTimer);
+            resolve(url);
+          },
+          (err: unknown) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timeoutTimer);
+            cleanupListeners();
+            child.kill('SIGTERM');
+            reject(err instanceof Error ? err : new Error(String(err)));
+          },
+        );
+      };
+      rl.on('line', onLine);
+
+      child.stderr.on('data', (chunk: Buffer) => {
+        logStream.write(chunk);
+      });
+
+      child.once('error', (err) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeoutTimer);
+        cleanupListeners();
+        reject(err);
+      });
+
+      child.once('exit', (code, signal) => {
+        cleanupListeners();
+        if (!settled) {
+          settled = true;
+          clearTimeout(timeoutTimer);
+          reject(
+            new Error(`Sidecar exited before becoming healthy (code=${code}, signal=${signal})`),
+          );
+          return;
+        }
+        // `settled` is also true for timeout/spawn-error rejections, so gate on
+        // `everHealthy` (set only by the success branch below / start()) — a
+        // rejected start() must never trigger a hidden background restart.
+        if (shouldRestart(this.everHealthy, this.stopping)) {
+          this.handleUnexpectedExit(code, signal);
+        } else if (this.child === child) {
+          // Rejected start() (timeout/error) — drop the dead child reference
+          // without treating this as a restart-worthy exit.
+          this.child = null;
+          this.currentUrl = null;
+        }
+      });
+    });
+  }
+
+  /** Called when an already-healthy sidecar's child process exits. Restarts with backoff unless `stop()` was called. */
+  private handleUnexpectedExit(code: number | null, signal: NodeJS.Signals | null): void {
+    this.closeLogStream();
+    this.child = null;
+    this.currentUrl = null;
+    if (this.stopping) {
+      return;
+    }
+    if (this.restartAttempts >= MAX_RESTART_ATTEMPTS) {
+      const info: SidecarExitInfo = { code, signal, attempts: this.restartAttempts };
+      this.emit('exit', info);
+      return;
+    }
+    const attempt = this.restartAttempts;
+    this.restartAttempts += 1;
+    const backoffMs = Math.min(BASE_BACKOFF_MS * 2 ** attempt, MAX_BACKOFF_MS);
+    this.restartTimer = setTimeout(() => {
+      this.restartTimer = null;
+      if (this.stopping) return;
+      this.spawnAndWaitForHandshake()
+        .then((url) => {
+          this.restartAttempts = 0;
+          this.currentUrl = url;
+          this.everHealthy = true;
+          this.emit('restart', url);
+        })
+        .catch(() => {
+          this.handleUnexpectedExit(null, null);
+        });
+    }, backoffMs);
+  }
+}

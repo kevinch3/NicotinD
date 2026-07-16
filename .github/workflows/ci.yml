@@ -49,7 +49,7 @@ jobs:
         run: bun run lint
 
       - name: Test (API + slskd-client + lidarr-client + core + service-manager + mobile)
-        run: bun test packages/api/src packages/slskd-client/src packages/lidarr-client/src packages/core/src packages/service-manager/src packages/mobile/src
+        run: bun test packages/api/src packages/slskd-client/src packages/lidarr-client/src packages/core/src packages/service-manager/src packages/mobile/src packages/desktop/electron packages/desktop/scripts
 
       - name: Test (e2e playground helpers)
         run: bun test packages/e2e/playground
@@ -115,6 +115,61 @@ jobs:
         with:
           name: playwright-report
           path: packages/e2e/playwright-report/
+          retention-days: 7
+
+  # Packaged-boot smoke test (Task 13): launches the real Electron app via
+  # Playwright's `_electron` and asserts the window loads + the sidecar
+  # backend answers. Best-effort — `_electron` + a headless Linux display is
+  # heavier/flakier than the browser-driven `e2e` job above, so it must not
+  # block `release`. NOT in `needs` below for the same reason.
+  desktop-smoke:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: Install dependencies
+        run: bun install
+
+      # The smoke test's sidecar boots in dev mode straight off
+      # packages/web/dist (see electron/paths.ts) — no packaged resources/
+      # staging needed, just the raw web build.
+      - name: Build web
+        run: bun run --filter @nicotind/web build
+
+      - name: Build desktop main/preload
+        run: bun run --filter @nicotind/desktop build
+
+      # Playwright's `--with-deps` pulls the OS shared libraries Electron's
+      # bundled Chromium also needs (libnss3, libatk, …). We deliberately do
+      # NOT probe with `electron --version`: that *launches* the Electron
+      # binary, which aborts on a GitHub runner because Chromium's SUID
+      # sandbox helper isn't root-owned. The binary itself is already present
+      # (electron's postinstall ran during `bun install`); the smoke test
+      # launches it with `--no-sandbox` in CI (see smoke.spec.ts).
+      - name: Install Playwright OS deps
+        run: bunx playwright install --with-deps chromium
+        working-directory: packages/desktop
+
+      - name: Run desktop smoke test
+        run: xvfb-run -a bun run --filter @nicotind/desktop test:smoke
+        env:
+          CI: '1'
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-smoke-report
+          path: packages/desktop/playwright-report/
           retention-days: 7
 
   release:

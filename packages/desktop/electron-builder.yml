@@ -1,0 +1,122 @@
+# electron-builder config for the NicotinD desktop shell (Task 11).
+#
+# Staging contract with `scripts/prepare-resources.ts` (Variant B — see its
+# header comment and `electron/paths.ts`): that script assembles
+# `packages/desktop/resources/` BEFORE electron-builder runs (wired as the
+# `dist` script in package.json: `build` -> `prepare-resources` ->
+# `electron-builder`). `extraResources` below stages that tree verbatim into
+# the packaged app's `process.resourcesPath`:
+#
+#   resources/bin/bun              -> paths.ts bunBinary()
+#   resources/bin/ffmpeg           -> paths.ts ffmpegBinaryPath()
+#   resources/backend/src/main.ts  -> paths.ts backendEntry()
+#   resources/web                  -> paths.ts webDistPath()
+#
+# `files` only needs the *compiled electron main/preload* (`dist/**`, built
+# by `tsconfig.electron.json` — see tsconfig.json) since `resources/**`
+# travels separately via extraResources, not through the asar-packed app
+# bundle.
+appId: ar.kevinroberts.nicotind.desktop
+productName: NicotinD
+copyright: Copyright © Kevin Chavarria
+
+directories:
+  output: release
+  buildResources: build
+
+files:
+  - dist/**
+  - package.json
+  - '!**/*.map'
+
+extraResources:
+  - from: resources
+    to: .
+    filter:
+      - '**/*'
+
+# The backend (spawned via `bun run <entry>`) and the `bin/bun` / `bin/ffmpeg`
+# executables must exist as real files on disk — asar can't be exec()'d or
+# `bun run`-imported from. extraResources above already lands outside the
+# asar (it's copied to the app's resources dir as plain files, not into
+# app.asar), so nothing here strictly needs unpacking today; asarUnpack is
+# kept as a defensive backstop in case any of these ever end up referenced
+# from inside `files`/the asar in a future change.
+asarUnpack:
+  - resources/backend/**
+  - resources/bin/**
+
+# NicotinD talks to its own sidecar over http://127.0.0.1:<port>, never a
+# public host — nothing here needs remote code execution properties, so the
+# default `compression: normal` / no notarization applies.
+compression: normal
+
+linux:
+  target:
+    - AppImage
+    - deb
+  category: Audio
+  icon: build/icon.png
+  desktop:
+    entry:
+      Name: NicotinD
+      Comment: Unified music acquisition + streaming
+      Categories: Audio;Music;Player;AudioVideo;
+      StartupWMClass: NicotinD
+
+deb:
+  depends:
+    - libgtk-3-0
+    - libnotify4
+    - libnss3
+    - libxss1
+    - libxtst6
+    - xdg-utils
+    - libatspi2.0-0
+    - libuuid1
+    - libsecret-1-0
+
+mac:
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+  category: public.app-category.music
+  icon: build/icon.png
+  # UNSIGNED per project decision (no Apple Developer ID in scope for v1) —
+  # see docs/desktop-app.md. `identity: null` tells electron-builder not to
+  # attempt code signing at all (rather than failing when no cert is found).
+  identity: null
+  hardenedRuntime: false
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  extendInfo:
+    # The renderer loads the sidecar's http://127.0.0.1:<port> — ATS blocks
+    # plaintext HTTP by default. Loopback-only exception (not a blanket
+    # NSAllowsArbitraryLoads) since the sidecar never leaves localhost.
+    NSAppTransportSecurity:
+      NSExceptionDomains:
+        localhost:
+          NSExceptionAllowsInsecureHTTPLoads: true
+          NSIncludesSubdomains: false
+        127.0.0.1:
+          NSExceptionAllowsInsecureHTTPLoads: true
+          NSIncludesSubdomains: false
+
+dmg:
+  contents:
+    - x: 130
+      y: 220
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications
+
+# Publishes to the same GitHub Releases the auto-updater (Task 12,
+# electron-updater) reads from.
+publish:
+  provider: github
+  owner: kevinch3
+  repo: NicotinD

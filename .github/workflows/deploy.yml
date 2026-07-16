@@ -165,6 +165,88 @@ jobs:
           files: packages/mobile/ios/App/NicotinD-unsigned.ipa
           fail_on_unmatched_files: true
 
+  # Build the Linux desktop app (AppImage + deb) via electron-builder and
+  # publish it — together with electron-updater's `latest-linux.yml` feed
+  # metadata — to the tag's GitHub Release. `--publish always` is required
+  # (not a manual softprops upload of just the AppImage/deb): electron-updater
+  # (Task 12) polls `latest-linux.yml`, which only electron-builder's own
+  # publish step generates and uploads. Same tag-only + best-effort rationale
+  # as android/ios above — a packaging failure here must not block `deploy`.
+  desktop-linux:
+    runs-on: ubuntu-latest
+    if: github.ref_type == 'tag'
+    continue-on-error: true
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      # electron-builder itself (and ng build for the web bundle it stages)
+      # wants Node >= 22.22.3; pin from .nvmrc, same as android/ios.
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build desktop main/preload
+        run: bun run --filter @nicotind/desktop build
+
+      # Stages the web build, bun/ffmpeg binaries, and backend entry into
+      # packages/desktop/resources/ per electron-builder.yml's extraResources
+      # contract (see that file's header comment).
+      - name: Stage desktop resources
+        run: bun run --filter @nicotind/desktop prepare-resources
+
+      - name: Package + publish Linux desktop app
+        working-directory: packages/desktop
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bunx --bun electron-builder --linux --publish always
+
+  # Build the macOS desktop app (dmg, x64+arm64) and publish it the same way
+  # (electron-updater reads `latest-mac.yml`). Unsigned — no Apple Developer
+  # ID in scope for v1 (electron-builder.yml already sets `identity: null`);
+  # CSC_IDENTITY_AUTO_DISCOVERY=false stops electron-builder from probing the
+  # runner's keychain for a signing identity to auto-use.
+  desktop-mac:
+    runs-on: macos-14
+    if: github.ref_type == 'tag'
+    continue-on-error: true
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build desktop main/preload
+        run: bun run --filter @nicotind/desktop build
+
+      - name: Stage desktop resources
+        run: bun run --filter @nicotind/desktop prepare-resources
+
+      - name: Package + publish macOS desktop app
+        working-directory: packages/desktop
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+        run: bunx --bun electron-builder --mac --publish always
+
   deploy:
     runs-on: ubuntu-latest
     steps:

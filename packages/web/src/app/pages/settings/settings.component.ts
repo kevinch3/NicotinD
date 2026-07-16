@@ -12,7 +12,8 @@ import {
   MediaControlsService,
   type NowPlayingDiagnostics,
 } from '../../services/media-controls.service';
-import { isIosNative } from '../../lib/platform';
+import { isIosNative, isElectron } from '../../lib/platform';
+import { pickDirectory, setMusicDir } from '../../services/native/native-capabilities';
 
 const GB = 1024 * 1024 * 1024;
 
@@ -50,6 +51,14 @@ export class SettingsComponent {
   readonly isNativeIos = isIosNative();
   readonly nowPlayingDiag = signal<NowPlayingDiagnostics | null>(null);
   readonly nowPlayingDiagLoading = signal(false);
+
+  /** "Change music folder" only exists in the Electron desktop shell. */
+  readonly isElectron = isElectron();
+  readonly musicDirChanging = signal(false);
+  /** Set once a folder is picked this session; the backend doesn't expose its current musicDir at runtime. */
+  readonly musicDirChosen = signal<string | null>(null);
+  /** Set when `setMusicDir` resolves `{ ok: false }` (e.g. the backend failed to boot against the new dir). */
+  readonly musicDirError = signal<string | null>(null);
 
   readonly budgetOptions = BUDGET_OPTIONS;
   readonly themePresets = THEME_PRESETS;
@@ -130,6 +139,31 @@ export class SettingsComponent {
     if (!this.deviceName().trim()) return;
     this.ws.setDeviceName(this.deviceName().trim());
     this.deviceNameSaved.set(true);
+  }
+
+  /**
+   * Opens the native folder picker and, on a real pick, persists it
+   * desktop-side and restarts the sidecar so the backend re-boots scanning
+   * the new directory (it's already running against the old one, unlike the
+   * onboarding pick which persists without restarting).
+   */
+  async changeMusicFolder(): Promise<void> {
+    const path = await pickDirectory();
+    if (!path) return;
+    this.musicDirChanging.set(true);
+    this.musicDirError.set(null);
+    try {
+      const result = await setMusicDir(path, { restart: true });
+      if (result.ok) {
+        this.musicDirChosen.set(path);
+      } else {
+        this.musicDirError.set(
+          result.error ?? 'Failed to restart with the new music folder. The previous folder is still in use.',
+        );
+      }
+    } finally {
+      this.musicDirChanging.set(false);
+    }
   }
 
   getDeviceEmoji(device: { type: string; name: string }): string {

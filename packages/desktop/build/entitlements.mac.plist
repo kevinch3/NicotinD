@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Minimal entitlements for an UNSIGNED build (electron-builder.yml sets
+  `mac.identity: null` / `hardenedRuntime: false` — see docs/desktop-app.md).
+  App Sandbox is intentionally OFF (no com.apple.security.app-sandbox key):
+  the sidecar spawns `bun` as a child process and reads/writes an
+  admin-chosen music directory anywhere on disk, both of which the sandbox
+  would block. Kept minimal now so it's ready to tighten if/when the app is
+  signed + notarized later.
+-->
+<plist version="1.0">
+  <dict>
+    <key>com.apple.security.network.client</key>
+    <true/>
+    <key>com.apple.security.network.server</key>
+    <true/>
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+  </dict>
+</plist>

@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process';
 import { cleanFolderName, createLogger, parseYearFromFolder } from '@nicotind/core';
 import { extractAlbumName, inferMetadataFromPath } from './path-inference.js';
 import type { CompletedDownloadFile } from './path-inference.js';
+import { ffmpegBinary } from './ffmpeg-path.js';
 
 const log = createLogger('compilation-tagger');
 
@@ -415,7 +416,7 @@ export class CompilationTagger {
     const args = ['-y', '-i', filepath, '-map_metadata', '0', ...metaArgs, '-c', 'copy', tmpPath];
 
     return new Promise<boolean>((resolve) => {
-      const proc = spawn('ffmpeg', args, { stdio: 'ignore' });
+      const proc = spawn(ffmpegBinary(), args, { stdio: 'ignore' });
       proc.on('error', () => {
         try {
           unlinkSync(tmpPath);

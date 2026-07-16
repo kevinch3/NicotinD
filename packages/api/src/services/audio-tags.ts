@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { extname } from 'node:path';
 import { renameSync, unlinkSync } from 'node:fs';
 import { createLogger, MOOD_VOCAB, type MoodLabel } from '@nicotind/core';
+import { ffmpegBinary } from './ffmpeg-path.js';
 
 const log = createLogger('audio-tags');
 
@@ -423,7 +424,7 @@ function writeFfmpegTags(filepath: string, tags: AudioTags): Promise<boolean> {
     tmpPath,
   ];
   return new Promise<boolean>((resolve) => {
-    const proc = spawn('ffmpeg', args, { stdio: 'ignore' });
+    const proc = spawn(ffmpegBinary(), args, { stdio: 'ignore' });
     proc.on('error', () => {
       try {
         unlinkSync(tmpPath);

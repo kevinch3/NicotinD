@@ -6,6 +6,17 @@ import { SetupComponent } from './setup.component';
 import { SystemApiService } from '../../services/api/system-api.service';
 import { AuthService } from '../../services/auth.service';
 import { SetupService } from '../../services/setup.service';
+import { isElectron } from '../../lib/platform';
+import { pickDirectory, setMusicDir } from '../../services/native/native-capabilities';
+
+vi.mock('../../lib/platform', () => ({
+  isElectron: vi.fn().mockReturnValue(false),
+}));
+
+vi.mock('../../services/native/native-capabilities', () => ({
+  pickDirectory: vi.fn(),
+  setMusicDir: vi.fn().mockResolvedValue({ ok: true }),
+}));
 
 describe('SetupComponent', () => {
   const mockCompleteSetup = vi.fn();
@@ -48,6 +59,10 @@ describe('SetupComponent', () => {
     mockCompleteSetup.mockClear();
     mockLogin.mockClear();
     mockMarkComplete.mockClear();
+    vi.mocked(isElectron).mockReturnValue(false);
+    vi.mocked(pickDirectory).mockReset();
+    vi.mocked(setMusicDir).mockClear();
+    vi.mocked(setMusicDir).mockResolvedValue({ ok: true });
   });
 
   it('shows admin step by default', () => {
@@ -146,6 +161,49 @@ describe('SetupComponent', () => {
   it('has 4 step dots', () => {
     const comp = TestBed.createComponent(SetupComponent).componentInstance;
     expect(comp.stepDots()).toEqual([1, 2, 3, 4]);
+  });
+
+  it('does not render the pick-folder button when not in Electron', () => {
+    vi.mocked(isElectron).mockReturnValue(false);
+    const fixture = setup();
+    fixture.componentInstance.step.set('library');
+    fixture.detectChanges();
+    const btn = fixture.nativeElement.querySelector('[data-testid="onboarding-pick-folder"]');
+    const input = fixture.nativeElement.querySelector('[data-testid="setup-music-dir"]');
+    expect(btn).toBeNull();
+    expect(input).not.toBeNull();
+  });
+
+  it('renders the pick-folder button when in Electron', () => {
+    vi.mocked(isElectron).mockReturnValue(true);
+    const fixture = setup();
+    fixture.componentInstance.step.set('library');
+    fixture.detectChanges();
+    const btn = fixture.nativeElement.querySelector('[data-testid="onboarding-pick-folder"]');
+    expect(btn).not.toBeNull();
+  });
+
+  it('chooseFolder sets musicDir from pickDirectory result', async () => {
+    vi.mocked(isElectron).mockReturnValue(true);
+    vi.mocked(pickDirectory).mockResolvedValue('/native/music');
+    const comp = TestBed.createComponent(SetupComponent).componentInstance;
+
+    await comp.chooseFolder();
+
+    expect(comp.musicDir).toBe('/native/music');
+    expect(setMusicDir).toHaveBeenCalledWith('/native/music', { restart: false });
+  });
+
+  it('chooseFolder leaves musicDir unchanged when pickDirectory resolves null', async () => {
+    vi.mocked(isElectron).mockReturnValue(true);
+    vi.mocked(pickDirectory).mockResolvedValue(null);
+    const comp = TestBed.createComponent(SetupComponent).componentInstance;
+    comp.musicDir = '/existing';
+
+    await comp.chooseFolder();
+
+    expect(comp.musicDir).toBe('/existing');
+    expect(setMusicDir).not.toHaveBeenCalled();
   });
 
   it('enterApp marks setup complete and navigates into the app', () => {

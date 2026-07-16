@@ -1,5 +1,13 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { isNativePlatform, getPlatform, isIosNative, getCapacitorPlugin } from './platform';
+import {
+  isNativePlatform,
+  getPlatform,
+  isIosNative,
+  getCapacitorPlugin,
+  isElectron,
+  isNativeShell,
+  serviceWorkerEnabled,
+} from './platform';
 
 type CapStub = {
   isNativePlatform?: () => boolean;
@@ -13,6 +21,7 @@ function setCapacitor(stub: CapStub | undefined): void {
 
 afterEach(() => {
   delete (globalThis as { Capacitor?: CapStub }).Capacitor;
+  delete (globalThis as { window?: unknown }).window;
 });
 
 describe('platform helpers', () => {
@@ -43,5 +52,36 @@ describe('platform helpers', () => {
     setCapacitor({ Plugins: { NicotindNowPlaying: plugin } });
     expect(getCapacitorPlugin('NicotindNowPlaying')).toBe(plugin);
     expect(getCapacitorPlugin('Missing')).toBeNull();
+  });
+
+  it('detects Electron via the injected window.nicotind bridge', () => {
+    (globalThis as { window?: unknown }).window = {
+      nicotind: { platform: 'electron', pickDirectory: async () => null },
+    };
+    expect(isElectron()).toBe(true);
+    expect(isNativeShell()).toBe(true);
+  });
+
+  it('is not Electron when window.nicotind is absent', () => {
+    (globalThis as { window?: unknown }).window = {};
+    expect(isElectron()).toBe(false);
+  });
+
+  it('isNativeShell is true for Capacitor native without Electron', () => {
+    (globalThis as { window?: unknown }).window = {};
+    setCapacitor({ isNativePlatform: () => true, getPlatform: () => 'android' });
+    expect(isNativeShell()).toBe(true);
+  });
+
+  it('isNativeShell is false on plain web', () => {
+    (globalThis as { window?: unknown }).window = {};
+    setCapacitor(undefined);
+    expect(isNativeShell()).toBe(false);
+  });
+
+  it('serviceWorkerEnabled: on in prod browser, off in dev, off in any native shell', () => {
+    expect(serviceWorkerEnabled(false, false)).toBe(true);
+    expect(serviceWorkerEnabled(false, true)).toBe(false);
+    expect(serviceWorkerEnabled(true, false)).toBe(false);
   });
 });
