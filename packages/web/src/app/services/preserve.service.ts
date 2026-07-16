@@ -1,6 +1,10 @@
 import { Injectable, InjectionToken, inject, signal } from '@angular/core';
 import * as db from '../lib/preserve-store';
-import { DEFAULT_BUDGET, type PreservedTrackMeta } from '../lib/preserve-store';
+import {
+  DEFAULT_BUDGET,
+  type PreservedTrackMeta,
+  type PreserveSource,
+} from '../lib/preserve-store';
 import type { Track } from './player.service';
 import { AuthService } from './auth.service';
 import { ServerConfigService } from './server-config.service';
@@ -16,6 +20,8 @@ export interface PreserveStore {
   getBlob: typeof db.getBlob;
   getAll: typeof db.getAll;
   evictLRU: typeof db.evictLRU;
+  evictAutoLRU: typeof db.evictAutoLRU;
+  removeAllAutoPreserved: typeof db.removeAllAutoPreserved;
   clearAll: typeof db.clearAll;
 }
 
@@ -28,6 +34,15 @@ export const PRESERVE_STORE = new InjectionToken<PreserveStore>('PRESERVE_STORE'
 export const UNLIMITED_BUDGET = Number.MAX_SAFE_INTEGER;
 
 const BUDGET_STORAGE_KEY = 'nicotind-preserve-budget';
+const AUTO_PRESERVE_STORAGE_KEY = 'nicotind-auto-preserve';
+
+/** Auto-preserve window — how far ahead of the playhead to keep on disk. */
+export type AutoPreserveMode = 'off' | '5' | '20' | 'full';
+
+/** Hard cap on the "full" window so a runaway radio can't fill 50 GB. */
+const AUTO_PRESERVE_FULL_CAP = 200;
+/** Concurrency limit for auto-preserve fetches — bounds memory + parallel network. */
+const AUTO_PRESERVE_CONCURRENCY = 3;
 
 /** Live progress for an in-flight collection ("Download album/playlist/genre") preserve. */
 export interface PreserveBatch {
@@ -38,6 +53,8 @@ export interface PreserveBatch {
   /** True when the batch stopped because the storage budget filled up. */
   stoppedAtCap: boolean;
 }
+
+const VALID_AUTO_MODES = new Set<AutoPreserveMode>(['off', '5', '20', 'full']);
 
 @Injectable({ providedIn: 'root' })
 export class PreserveService {
@@ -57,6 +74,14 @@ export class PreserveService {
    */
   readonly batches = signal<Map<string, PreserveBatch>>(new Map());
 
+  /**
+   * Auto-preserve window. Per-device localStorage so the user can enable it
+   * on a phone without affecting a shared desktop. Default 'off' — the
+   * lock-screen resilience is opt-in so we don't surprise anyone with
+   * background network usage.
+   */
+  readonly autoPreserveMode = signal<AutoPreserveMode>(loadAutoPreserveMode());
+
   async init(): Promise<void> {
     await this.refreshList();
   }
@@ -71,7 +96,57 @@ export class PreserveService {
     }
   }
 
+  /** Persist the auto-preserve window (per-device localStorage). */
+  setAutoPreserveMode(mode: AutoPreserveMode): void {
+    this.autoPreserveMode.set(mode);
+    try {
+      localStorage.setItem(AUTO_PRESERVE_STORAGE_KEY, mode);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  /**
+   * Pure helper — how many tracks to keep given current mode + window length.
+   * 'off' disables auto-preserve. '5'/'20' cap at the window size or queue
+   * length, whichever is smaller. 'full' is bounded by AUTO_PRESERVE_FULL_CAP
+   * so a runaway radio never fills tens of GB.
+   */
+  windowSize(trackCount: number): number {
+    if (trackCount <= 0) return 0;
+    switch (this.autoPreserveMode()) {
+      case 'off':
+        return 0;
+      case '5':
+        return Math.min(5, trackCount);
+      case '20':
+        return Math.min(20, trackCount);
+      case 'full':
+        return Math.min(AUTO_PRESERVE_FULL_CAP, trackCount);
+    }
+  }
+
+  /** Count of preserved tracks tagged `source === 'auto'`. */
+  autoPreservedCount(): number {
+    let n = 0;
+    for (const t of this.preservedTracks()) if (t.source === 'auto') n++;
+    return n;
+  }
+
   async preserve(track: Track): Promise<void> {
+    await this.preserveWithSource(track, 'user');
+  }
+
+  /**
+   * Auto-preserve variant — same fetch + store path but tags the row as
+   * `source: 'auto'` so the eviction policy treats it as cheap-to-lose.
+   * Idempotent: re-entry and already-preserved guards mirror `preserve()`.
+   */
+  async autoPreserve(track: Track): Promise<void> {
+    await this.preserveWithSource(track, 'auto');
+  }
+
+  private async preserveWithSource(track: Track, source: PreserveSource): Promise<void> {
     const token = this.auth.token();
     if (!token || this.preserving().has(track.id) || this.preservedIds().has(track.id)) return;
 
@@ -80,14 +155,50 @@ export class PreserveService {
       const blobs = await this.fetchTrackBlobs(track, token);
       if (!blobs) return;
       // Single-track save evicts least-recently-played tracks to make room (LRU).
-      await this.db.evictLRU(blobs.audioBlob.size, this.budget());
-      await this.storeTrack(track, blobs);
+      // Auto paths route through evictAutoLRU first (never touches user rows);
+      // user paths route through evictLRU (auto-first, user fallback).
+      if (source === 'auto') {
+        await this.db.evictAutoLRU(blobs.audioBlob.size, this.budget());
+      } else {
+        await this.db.evictLRU(blobs.audioBlob.size, this.budget());
+      }
+      await this.storeTrack(track, blobs, source);
       await this.refreshList();
     } catch {
       /* swallow — failure leaves the track un-preserved */
     } finally {
       this.clearPreserving(track.id);
     }
+  }
+
+  /**
+   * Idempotent batch entry point for the auto-preserve coordinator. Walks
+   * `tracks`, skipping any already-preserved or in-flight. Caps concurrency
+   * at AUTO_PRESERVE_CONCURRENCY so a long radio queue can't spike memory or
+   * saturate the network on a slow device.
+   */
+  async ensureAutoPreservedFor(tracks: Track[]): Promise<void> {
+    if (this.autoPreserveMode() === 'off') return;
+    const token = this.auth.token();
+    if (!token) return;
+
+    const todo = tracks.filter(
+      (t) => t && !this.preservedIds().has(t.id) && !this.preserving().has(t.id),
+    );
+    if (todo.length === 0) return;
+
+    // Bounded-concurrency queue — process AUTO_PRESERVE_CONCURRENCY at a time.
+    let cursor = 0;
+    const workers = Array.from(
+      { length: Math.min(AUTO_PRESERVE_CONCURRENCY, todo.length) },
+      async () => {
+        while (cursor < todo.length) {
+          const idx = cursor++;
+          await this.autoPreserve(todo[idx]);
+        }
+      },
+    );
+    await Promise.all(workers);
   }
 
   /**
@@ -125,7 +236,7 @@ export class PreserveService {
             this.updateBatch(key, (b) => ({ ...b, stoppedAtCap: true }));
             break;
           }
-          await this.storeTrack(track, blobs);
+          await this.storeTrack(track, blobs, 'user');
           this.totalUsage.update((u) => u + blobs.audioBlob.size);
           this.bumpBatch(key);
         } finally {
@@ -168,6 +279,17 @@ export class PreserveService {
       return n;
     });
     await this.refreshList();
+  }
+
+  /**
+   * Remove every preserved track tagged `source === 'auto'`. User-saved
+   * tracks are untouched. Used by the Settings "Auto-preserve queue" toggle
+   * when the user turns the feature off.
+   */
+  async removeAllAutoPreserved(): Promise<number> {
+    const count = await this.db.removeAllAutoPreserved();
+    await this.refreshList();
+    return count;
   }
 
   async clearAll(): Promise<void> {
@@ -243,6 +365,7 @@ export class PreserveService {
   private async storeTrack(
     track: Track,
     blobs: { audioBlob: Blob; coverBlob: Blob | null; format: string },
+    source: PreserveSource,
   ): Promise<void> {
     const now = Date.now();
     const meta: PreservedTrackMeta = {
@@ -257,6 +380,7 @@ export class PreserveService {
       format: blobs.format,
       preservedAt: now,
       lastAccessedAt: now,
+      source,
     };
     await this.db.preserve(meta, blobs.audioBlob, blobs.coverBlob);
     this.preservedIds.update((s) => new Set(s).add(track.id));
@@ -305,4 +429,14 @@ function loadBudget(): number {
     /* ignore */
   }
   return DEFAULT_BUDGET;
+}
+
+function loadAutoPreserveMode(): AutoPreserveMode {
+  try {
+    const raw = localStorage.getItem(AUTO_PRESERVE_STORAGE_KEY);
+    if (raw && VALID_AUTO_MODES.has(raw as AutoPreserveMode)) return raw as AutoPreserveMode;
+  } catch {
+    /* ignore */
+  }
+  return 'off';
 }

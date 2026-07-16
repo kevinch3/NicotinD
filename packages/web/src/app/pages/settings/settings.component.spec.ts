@@ -9,6 +9,7 @@ import { RemotePlaybackService } from '../../services/remote-playback.service';
 import { PlaybackWsService } from '../../services/playback-ws.service';
 import { PreserveService } from '../../services/preserve.service';
 import { MediaControlsService } from '../../services/media-controls.service';
+import { ConfirmService } from '../../services/confirm.service';
 import { APP_VERSION } from '../../app.config';
 import { isElectron } from '../../lib/platform';
 import { pickDirectory, setMusicDir } from '../../services/native/native-capabilities';
@@ -70,9 +71,14 @@ function providers(role: 'admin' | 'user') {
         setBudget: vi.fn(),
         totalUsage: signal(0),
         preservedTracks: signal([]),
+        autoPreserveMode: signal('off'),
+        setAutoPreserveMode: vi.fn(),
+        autoPreservedCount: vi.fn().mockReturnValue(0),
+        removeAllAutoPreserved: vi.fn().mockResolvedValue(0),
         clearAll: vi.fn(),
       },
     },
+    { provide: ConfirmService, useValue: { ask: vi.fn().mockResolvedValue(true) } },
     { provide: MediaControlsService, useValue: { getDiagnostics: vi.fn() } },
   ];
 }
@@ -210,6 +216,139 @@ describe('SettingsComponent (desktop music folder, Electron-gated)', () => {
     expect(fixture.componentInstance.musicDirError()).toBe('Sidecar exited before becoming healthy');
     const errorEl = fixture.nativeElement.querySelector('[data-testid="settings-change-folder-error"]');
     expect(errorEl?.textContent).toContain('Sidecar exited before becoming healthy');
+    fixture.destroy();
+  });
+});
+
+describe('SettingsComponent (auto-preserve queue toggle)', () => {
+  let confirmAsk: ReturnType<typeof vi.fn>;
+  let setAutoPreserveMode: ReturnType<typeof vi.fn>;
+  let removeAllAutoPreserved: ReturnType<typeof vi.fn>;
+  let autoPreserveMode: ReturnType<typeof signal<string>>;
+
+  async function makeFixture(role: 'admin' | 'user' = 'user') {
+    await TestBed.configureTestingModule({
+      imports: [SettingsComponent],
+      providers: providers(role),
+    }).compileComponents();
+    return TestBed.createComponent(SettingsComponent);
+  }
+
+  beforeEach(() => {
+    confirmAsk = vi.fn().mockResolvedValue(true);
+    setAutoPreserveMode = vi.fn();
+    removeAllAutoPreserved = vi.fn().mockResolvedValue(0);
+    autoPreserveMode = signal('off');
+  });
+
+  function patchPreserve(): void {
+    const preserve = TestBed.inject(PreserveService) as unknown as Record<string, unknown>;
+    preserve['autoPreserveMode'] = autoPreserveMode;
+    preserve['setAutoPreserveMode'] = setAutoPreserveMode;
+    preserve['autoPreservedCount'] = vi.fn().mockReturnValue(0);
+    preserve['removeAllAutoPreserved'] = removeAllAutoPreserved;
+    TestBed.inject(ConfirmService); // ensure token is wired
+  }
+
+  function patchConfirm(): void {
+    const confirm = TestBed.inject(ConfirmService) as unknown as { ask: typeof confirmAsk };
+    confirm.ask = confirmAsk;
+  }
+
+  it('renders the auto-preserve selector with all four modes', async () => {
+    const fixture = await makeFixture();
+    patchPreserve();
+    fixture.detectChanges();
+    const buttons = Array.from(
+      fixture.nativeElement.querySelectorAll(
+        'button[data-testid^="auto-preserve-"]',
+      ),
+    ) as HTMLButtonElement[];
+    const ids = buttons.map((b) => b.getAttribute('data-testid'));
+    expect(ids).toEqual(['auto-preserve-off', 'auto-preserve-5', 'auto-preserve-20', 'auto-preserve-full']);
+    const labels = buttons.map((b) => b.textContent?.trim());
+    expect(labels).toEqual(['Off', 'Next 5', 'Next 20', 'Whole queue']);
+    fixture.destroy();
+  });
+
+  it('clicking a non-off mode persists the choice without prompting', async () => {
+    const fixture = await makeFixture();
+    patchPreserve();
+    patchConfirm();
+    fixture.detectChanges();
+    const btn = fixture.nativeElement.querySelector(
+      '[data-testid="auto-preserve-5"]',
+    ) as HTMLButtonElement;
+    btn.click();
+    await fixture.whenStable();
+    expect(setAutoPreserveMode).toHaveBeenCalledWith('5');
+    expect(confirmAsk).not.toHaveBeenCalled();
+    expect(removeAllAutoPreserved).not.toHaveBeenCalled();
+    fixture.destroy();
+  });
+
+  it('clicking "off" with no auto-preserved tracks: instant toggle, no prompt', async () => {
+    autoPreserveMode.set('5');
+    const fixture = await makeFixture();
+    patchPreserve();
+    patchConfirm();
+    fixture.detectChanges();
+    const offBtn = fixture.nativeElement.querySelector(
+      '[data-testid="auto-preserve-off"]',
+    ) as HTMLButtonElement;
+    offBtn.click();
+    await fixture.whenStable();
+    expect(confirmAsk).not.toHaveBeenCalled();
+    expect(setAutoPreserveMode).toHaveBeenCalledWith('off');
+    fixture.destroy();
+  });
+
+  it('clicking "off" with auto-preserved tracks: confirms then removes', async () => {
+    autoPreserveMode.set('20');
+    const fixture = await makeFixture();
+    patchPreserve();
+    patchConfirm();
+    (fixture.componentInstance.preserve as unknown as { autoPreservedCount: () => number }).autoPreservedCount = () => 7;
+    fixture.detectChanges();
+    const offBtn = fixture.nativeElement.querySelector(
+      '[data-testid="auto-preserve-off"]',
+    ) as HTMLButtonElement;
+    offBtn.click();
+    await fixture.whenStable();
+    expect(confirmAsk).toHaveBeenCalledOnce();
+    expect(confirmAsk.mock.calls[0]?.[0]).toContain('7');
+    expect(removeAllAutoPreserved).toHaveBeenCalled();
+    expect(setAutoPreserveMode).toHaveBeenCalledWith('off');
+    fixture.destroy();
+  });
+
+  it('canceling the confirm leaves the mode unchanged', async () => {
+    confirmAsk.mockResolvedValue(false);
+    autoPreserveMode.set('5');
+    const fixture = await makeFixture();
+    patchPreserve();
+    patchConfirm();
+    (fixture.componentInstance.preserve as unknown as { autoPreservedCount: () => number }).autoPreservedCount = () => 3;
+    fixture.detectChanges();
+    const offBtn = fixture.nativeElement.querySelector(
+      '[data-testid="auto-preserve-off"]',
+    ) as HTMLButtonElement;
+    offBtn.click();
+    await fixture.whenStable();
+    expect(removeAllAutoPreserved).not.toHaveBeenCalled();
+    expect(setAutoPreserveMode).not.toHaveBeenCalled();
+    fixture.destroy();
+  });
+
+  it('explain line updates with the selected mode', async () => {
+    autoPreserveMode.set('full');
+    const fixture = await makeFixture();
+    patchPreserve();
+    fixture.detectChanges();
+    const explain = fixture.nativeElement.querySelector(
+      '[data-testid="auto-preserve-explain"]',
+    ) as HTMLElement;
+    expect(explain.textContent).toContain('200');
     fixture.destroy();
   });
 });

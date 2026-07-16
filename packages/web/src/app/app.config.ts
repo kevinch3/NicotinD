@@ -20,6 +20,7 @@ import { PreserveService } from './services/preserve.service';
 import { PlayerService } from './services/player.service';
 import { AuthService } from './services/auth.service';
 import { AuthApiService } from './services/api/auth-api.service';
+import { AutoPreserveCoordinator } from './services/auto-preserve-coordinator';
 import pkg from '../../../../package.json';
 import { switchMap } from 'rxjs/operators';
 
@@ -69,6 +70,13 @@ export const appConfig: ApplicationConfig = {
         });
       }
       const traceService = inject(Sentry.TraceService);
+      // AutoPreserveCoordinator wires the player queue → IndexedDB. Cheap while
+      // autoPreserveMode is "off" (default — returns immediately on every effect
+      // tick), so it ships in dev too: the gate originally mirrored the SW's
+      // (which is dev/native-skip to avoid stale-cache issues) but the
+      // coordinator has no equivalent concern. Native apps default to "off" and
+      // the only effect cost is reading two signals.
+      inject(AutoPreserveCoordinator);
       return setup.check();
     }),
     provideServiceWorker('ngsw-worker.js', {

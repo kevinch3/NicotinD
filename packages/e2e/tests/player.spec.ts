@@ -25,6 +25,91 @@ async function startAlbum(page: Page): Promise<void> {
   await expect.poll(() => audioTime(page), { timeout: 10_000 }).toBeGreaterThan(0);
 }
 
+test.describe('auto-preserve queue (PWA lock-screen resilience)', () => {
+  /** Reset the IndexedDB nicotind-preserve database (awaits deletion). */
+  const deletePreserveDb = (page: Page) =>
+    page.evaluate(
+      () =>
+        new Promise<void>((res, rej) => {
+          const req = indexedDB.deleteDatabase('nicotind-preserve');
+          req.onsuccess = () => res();
+          req.onerror = () => rej(req.error);
+          req.onblocked = () => res();
+        }),
+    );
+
+  /** Count `source === 'auto'` rows in IndexedDB — the user's intact offline
+   *  collection stays put; only auto-source rows are counted. */
+  const autoPreservedCount = (page: Page) =>
+    page.evaluate(
+      () =>
+        new Promise<number>((resolve, reject) => {
+          const req = indexedDB.open('nicotind-preserve');
+          req.onerror = () => reject(req.error);
+          req.onsuccess = () => {
+            const db = req.result;
+            if (!db.objectStoreNames.contains('tracks')) {
+              db.close();
+              resolve(0);
+              return;
+            }
+            const tx = db.transaction('tracks', 'readonly');
+            const getAll = tx.objectStore('tracks').getAll();
+            getAll.onsuccess = () => {
+              const rows = (getAll.result as Array<{ source?: string }>) ?? [];
+              db.close();
+              resolve(rows.filter((r) => r.source === 'auto').length);
+            };
+            getAll.onerror = () => reject(getAll.error);
+          };
+        }),
+    );
+
+  test('Settings exposes the four auto-preserve modes and the explainer', async ({ page }) => {
+    await page.goto('/settings');
+    await expect(page.getByTestId('auto-preserve-off')).toBeVisible();
+    await expect(page.getByTestId('auto-preserve-5')).toBeVisible();
+    await expect(page.getByTestId('auto-preserve-20')).toBeVisible();
+    await expect(page.getByTestId('auto-preserve-full')).toBeVisible();
+    await expect(page.getByTestId('auto-preserve-explain')).toBeVisible();
+  });
+
+  test('enabling "Next 5" auto-saves queued tracks; toggle-off confirms and clears', async ({
+    page,
+  }) => {
+    // Reset both stores for a deterministic count.
+    await page.goto('/');
+    await deletePreserveDb(page);
+    await page.evaluate(() => localStorage.removeItem('nicotind-auto-preserve'));
+    await page.reload();
+
+    // Enable auto-preserve on the next 5 tracks.
+    await page.goto('/settings');
+    await page.getByTestId('auto-preserve-5').click();
+    await expect(page.getByTestId('auto-preserve-5')).toHaveAttribute('aria-pressed', 'true');
+
+    // Play the album so the queue holds the 7 fixture tracks; the coordinator
+    // keeps the current track + next 4 (cap = 5).
+    await startAlbum(page);
+
+    // Wait for the coordinator to save exactly 5 auto-source rows.
+    await expect.poll(() => autoPreservedCount(page), { timeout: 30_000 }).toBe(5);
+
+    // Toggle off — should prompt a confirm dialog with the count baked in.
+    await page.goto('/settings');
+    const dialog = page.getByTestId('confirm-dialog');
+    await page.getByTestId('auto-preserve-off').click();
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText('5 auto-saved track');
+
+    await page.getByTestId('confirm-ok').click();
+
+    // After confirm: auto-source rows are gone, mode persisted.
+    await expect.poll(() => autoPreservedCount(page), { timeout: 5_000 }).toBe(0);
+    await expect(page.getByTestId('auto-preserve-off')).toHaveAttribute('aria-pressed', 'true');
+  });
+});
+
 test.describe('player controls', () => {
   test('pause and resume toggle playback', async ({ page }) => {
     await startAlbum(page);
