@@ -258,7 +258,11 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         # electron-builder is a Node CLI and crashes under Bun's runtime
         # (`--bun`) via source-map-support; run it under Node (setup-node above).
-        run: bunx electron-builder --linux --publish always
+        # Override the desktop package version (static 0.1.0) with the release
+        # version from the tag (v0.1.207 -> 0.1.207) so artifacts are versioned
+        # correctly AND electron-builder publishes to THIS release instead of
+        # creating a stray `v0.1.0` one.
+        run: bunx electron-builder --linux --publish always -c.extraMetadata.version="${GITHUB_REF_NAME#v}"
 
   # Build the macOS desktop app (dmg, x64+arm64) and publish it the same way
   # (electron-updater reads `latest-mac.yml`). Unsigned — no Apple Developer
@@ -299,7 +303,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
         # Run electron-builder under Node, not Bun (`--bun` crashes it).
-        run: bunx electron-builder --mac --publish always
+        # extraMetadata.version: use the release tag's version (see desktop-linux).
+        run: bunx electron-builder --mac --publish always -c.extraMetadata.version="${GITHUB_REF_NAME#v}"
 
   deploy:
     runs-on: ubuntu-latest
