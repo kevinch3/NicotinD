@@ -160,8 +160,22 @@ export class SetupComponent {
    * Leave the finished wizard and enter the app. `/setup` has no guard, so a bare
    * reload would just re-render the wizard; and the boot-time setup status is now
    * stale, so we mark it resolved to stop the root redirect bouncing us back here.
+   *
+   * On Electron with a picked folder, restart the sidecar first: the backend
+   * booted before onboarding with the default musicDir, and its organizer/
+   * scanner capture that value at boot — without a restart the whole first
+   * session acquires into and scans the wrong directory. A failed restart
+   * still enters the app (Settings → "Change music folder" is the retry path).
    */
-  enterApp(): void {
+  async enterApp(): Promise<void> {
+    if (this.isElectron() && this.musicDir.trim()) {
+      this.loading.set(true);
+      try {
+        await setMusicDir(this.musicDir.trim(), { restart: true });
+      } finally {
+        this.loading.set(false);
+      }
+    }
     this.setupService.markComplete();
     this.router.navigate(['/']);
   }

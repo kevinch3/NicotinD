@@ -110,6 +110,9 @@ export function pluginRoutes(registry: PluginRegistry, slskdRef: SlskdRef) {
     }
     try {
       const config = registry.setConfig(id, body);
+      // Wait for the config-triggered re-init so the caller's next read
+      // (e.g. the Extensions page refreshing availability) sees the new state.
+      await registry.flushReinit();
       return c.json({ ok: true, config });
     } catch (err) {
       return c.json({ error: err instanceof Error ? err.message : 'Invalid config' }, 400);

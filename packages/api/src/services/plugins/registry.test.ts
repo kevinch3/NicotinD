@@ -214,6 +214,44 @@ describe('PluginRegistry', () => {
     expect(registry.getConfig('spotify')).toEqual({ clientId: 'id2', clientSecret: 'secret' });
   });
 
+  it('setConfig re-initializes an enabled plugin so new config takes effect live', async () => {
+    const plugin = makePlugin(
+      acquisitionManifest({
+        id: 'spotify',
+        capabilities: ['search'],
+        configSchema: z.object({ clientId: z.string().optional() }).partial(),
+        compliance: { disclaimer: 'x', requiresConsent: false },
+      }),
+    );
+    registry.register(plugin);
+    await registry.enable('spotify', 'admin');
+    expect(plugin.initCalls).toHaveLength(1);
+
+    registry.setConfig('spotify', { clientId: 'abc' });
+    await registry.flushReinit();
+
+    expect(plugin.disposeCalls).toBe(1);
+    expect(plugin.initCalls).toHaveLength(2);
+    expect(plugin.initCalls[1]!.config).toEqual({ clientId: 'abc' });
+  });
+
+  it('setConfig does not initialize a disabled plugin', async () => {
+    const plugin = makePlugin(
+      acquisitionManifest({
+        id: 'spotify',
+        capabilities: ['search'],
+        configSchema: z.object({ clientId: z.string().optional() }).partial(),
+        compliance: { disclaimer: 'x', requiresConsent: false },
+      }),
+    );
+    registry.register(plugin);
+
+    registry.setConfig('spotify', { clientId: 'abc' });
+    await registry.flushReinit();
+
+    expect(plugin.initCalls).toHaveLength(0);
+  });
+
   it('list() echoes configFields + configured flags but redacts password values', async () => {
     registry.register(
       makePlugin(

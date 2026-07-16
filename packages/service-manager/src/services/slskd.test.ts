@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
-import { mkdtempSync, readFileSync, rmSync, existsSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, existsSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { parse } from 'yaml';
+import { parse, stringify } from 'yaml';
 import { NicotinDConfigSchema, type NicotinDConfig } from '@nicotind/core';
 import { buildSlskdDefinition } from './slskd.js';
 
@@ -52,6 +52,47 @@ describe('buildSlskdDefinition', () => {
     expect(existsSync(join(dataDir, 'slskd'))).toBe(true);
     expect(existsSync(join(dataDir, 'music'))).toBe(true);
     expect(existsSync(join(dataDir, 'slskd', 'downloads'))).toBe(true);
+  });
+
+  it('seeds the music dir as the default shared folder on a fresh config', () => {
+    buildSlskdDefinition(makeConfig(dataDir));
+    const yml = parse(readFileSync(join(dataDir, 'slskd', 'slskd.yml'), 'utf-8')) as {
+      shares: { directories: string[] };
+    };
+    expect(yml.shares.directories).toEqual([join(dataDir, 'music')]);
+  });
+
+  it('preserves user-configured shares from an existing slskd.yml', () => {
+    // First boot seeds the default share; slskd's own API edits this same
+    // file when the user adds shares in the extension page.
+    buildSlskdDefinition(makeConfig(dataDir));
+    const ymlPath = join(dataDir, 'slskd', 'slskd.yml');
+    const existing = parse(readFileSync(ymlPath, 'utf-8')) as Record<string, unknown>;
+    (existing as { shares: { directories: string[] } }).shares = {
+      directories: ['/srv/extra-share'],
+    };
+    writeFileSync(ymlPath, stringify(existing), 'utf-8');
+
+    // A later boot regenerates the managed keys but must not clobber shares.
+    buildSlskdDefinition(makeConfig(dataDir));
+    const yml = parse(readFileSync(ymlPath, 'utf-8')) as {
+      shares: { directories: string[] };
+      soulseek: { username: string };
+    };
+    expect(yml.shares.directories).toEqual(['/srv/extra-share']);
+    expect(yml.soulseek.username).toBe('sl-user');
+  });
+
+  it('re-seeds the default share when an existing config has an empty shares list', () => {
+    buildSlskdDefinition(makeConfig(dataDir));
+    const ymlPath = join(dataDir, 'slskd', 'slskd.yml');
+    const existing = parse(readFileSync(ymlPath, 'utf-8')) as Record<string, unknown>;
+    (existing as { shares: { directories: string[] } }).shares = { directories: [] };
+    writeFileSync(ymlPath, stringify(existing), 'utf-8');
+
+    buildSlskdDefinition(makeConfig(dataDir));
+    const yml = parse(readFileSync(ymlPath, 'utf-8')) as { shares: { directories: string[] } };
+    expect(yml.shares.directories).toEqual([join(dataDir, 'music')]);
   });
 
   it('returns a ServiceDefinition with the config path, http port, and app-dir env', () => {

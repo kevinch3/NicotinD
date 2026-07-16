@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { validatePluginManifest, type PluginHostContext } from '@nicotind/core';
-import { _resetBinaryCache } from '../acquire/process.js';
+import { _resetBinaryCache, isBinaryAvailable } from '../acquire/process.js';
 import { YtdlpPlugin, type YtdlpPluginConfig } from './index.js';
 
 class FakeProc extends EventEmitter {
@@ -174,5 +174,36 @@ describe('YtdlpPlugin', () => {
 
     const [, args] = spawnMock.mock.calls[0] as [string, string[]];
     expect(args).not.toContain('--cookies');
+  });
+});
+
+describe('YtdlpPlugin binaryPath config', () => {
+  beforeEach(() => _resetBinaryCache());
+
+  it('exposes binaryPath as an editable config field', () => {
+    const p = new YtdlpPlugin(cfg());
+    expect(p.manifest.configFields?.some((f) => f.key === 'binaryPath')).toBe(true);
+    const parsed = p.manifest.configSchema!.safeParse({ binaryPath: '/opt/homebrew/bin/yt-dlp' });
+    expect(parsed.success).toBe(true);
+  });
+
+  it('init clears a stale cached negative for the configured binary', async () => {
+    // Seed the cache with "not installed" for a custom path, as if probed
+    // before the user installed the binary.
+    const failing = (() => {
+      throw new Error('not found');
+    }) as unknown as Parameters<typeof isBinaryAvailable>[1];
+    expect(isBinaryAvailable('yt-dlp-custom', failing)).toBe(false);
+
+    const p = new YtdlpPlugin(cfg());
+    const ctx = fakeCtx();
+    (ctx as { config: Record<string, unknown> }).config = { binaryPath: 'yt-dlp-custom' };
+    await p.init(ctx);
+
+    // Cache was invalidated by init — a fresh probe now runs (and succeeds).
+    const succeeding = (() => Buffer.from('')) as unknown as Parameters<
+      typeof isBinaryAvailable
+    >[1];
+    expect(isBinaryAvailable('yt-dlp-custom', succeeding)).toBe(true);
   });
 });

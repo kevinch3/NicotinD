@@ -1,6 +1,6 @@
 import { spawn, execFileSync } from 'node:child_process';
 import { readdirSync, statSync } from 'node:fs';
-import { join, extname } from 'node:path';
+import { join, extname, dirname } from 'node:path';
 import { createLogger } from '@nicotind/core';
 
 const log = createLogger('acquire-process');
@@ -34,19 +34,51 @@ export interface TrackEvent {
   status: TrackEventStatus;
 }
 
+/**
+ * Environment for probing/spawning the external downloaders. A GUI-launched
+ * desktop app (Electron) inherits a minimal PATH — macOS apps get
+ * `/usr/bin:/bin:...` without `/opt/homebrew/bin`, and Linux launchers often
+ * miss `~/.local/bin` — exactly where brew/pip put yt-dlp and spotdl. The
+ * bundled ffmpeg's dir goes FIRST so the downloaders' own ffmpeg lookup finds
+ * it even when no system ffmpeg exists.
+ */
+export function acquireEnv(base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const existing = (base.PATH ?? '').split(':').filter(Boolean);
+  const prepend: string[] = [];
+  const ffmpeg = base.NICOTIND_FFMPEG_PATH?.trim();
+  if (ffmpeg) prepend.push(dirname(ffmpeg));
+  prepend.push('/opt/homebrew/bin', '/usr/local/bin');
+  if (base.HOME) prepend.push(join(base.HOME, '.local/bin'));
+  const missing = prepend.filter((dir) => !existing.includes(dir));
+  return { ...base, PATH: [...missing, ...existing].join(':') };
+}
+
 /** Cached binary availability check results (keyed by binary path). */
 const binaryCache = new Map<string, boolean>();
 
-export function isBinaryAvailable(binaryPath: string): boolean {
+export function isBinaryAvailable(
+  binaryPath: string,
+  exec: typeof execFileSync = execFileSync,
+): boolean {
   if (binaryCache.has(binaryPath)) return binaryCache.get(binaryPath)!;
   try {
-    execFileSync(binaryPath, ['--version'], { stdio: 'ignore' });
+    exec(binaryPath, ['--version'], { stdio: 'ignore', env: acquireEnv() });
     binaryCache.set(binaryPath, true);
     return true;
   } catch {
     binaryCache.set(binaryPath, false);
     return false;
   }
+}
+
+/**
+ * Drop a cached availability result. Called when a plugin (re)initializes so
+ * a binary installed or a path reconfigured while the app runs is re-probed
+ * instead of staying "unavailable" for the process lifetime.
+ */
+export function invalidateBinaryCache(binaryPath?: string): void {
+  if (binaryPath === undefined) binaryCache.clear();
+  else binaryCache.delete(binaryPath);
 }
 
 /** Reset binary availability cache (tests only). */
@@ -191,7 +223,10 @@ export interface RunningAcquire {
 export function runAcquireProcess(opts: RunAcquireOptions): RunningAcquire {
   const spawnFn = opts.spawn ?? spawn;
   const parseProgress = opts.parseProgress ?? parseYtdlpProgress;
-  const proc = spawnFn(opts.binaryPath, opts.args, { stdio: ['ignore', 'pipe', 'pipe'] });
+  const proc = spawnFn(opts.binaryPath, opts.args, {
+    stdio: ['ignore', 'pipe', 'pipe'],
+    env: acquireEnv(),
+  });
 
   let progress: AcquireProgress = { done: 0, total: 100 };
   let stderrBuf = '';
