@@ -29,12 +29,14 @@ function errorPageUrl(message: string): string {
 
 let mainWindow: BrowserWindow | null = null;
 
-// CI-only lifecycle tracing for the packaged-boot smoke test (surfaced via the
-// test's Electron-output tee). No-op in production (CI unset).
+// CI-only lifecycle tracing for the packaged-boot smoke test. Uses stderr
+// (console.error): Playwright's `_electron` tee only surfaces the main
+// process's stderr, not stdout. No-op in production (CI unset).
 const dbg = (...a: unknown[]): void => {
-  if (process.env.CI) console.log('[main]', ...a);
+  if (process.env.CI) console.error('[main]', ...a);
 };
-dbg('module loaded; CI=', process.env.CI, 'disableSI=', process.env.NICOTIND_DISABLE_SINGLE_INSTANCE);
+// Unconditional, so we can confirm main.ts even executes under the harness.
+console.error('[main] boot: CI=', process.env.CI, 'disableSI=', process.env.NICOTIND_DISABLE_SINGLE_INSTANCE);
 
 // Constructed once at module load; `musicDir` isn't known yet (onboarding
 // sets it later), so it starts unset and the backend uses its own config.
