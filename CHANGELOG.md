@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.206](https://github.com/kevinch3/NicotinD/compare/v0.1.205...v0.1.206) (2026-07-16)
+
+
+### Bug Fixes
+
+* **deploy:** stage desktop manifest for frozen install + run electron-builder under node ([a365936](https://github.com/kevinch3/NicotinD/commit/a365936d0270c7d1171a34d18bb7b9519b9c7981))
+
 ## [0.1.205](https://github.com/kevinch3/NicotinD/compare/v0.1.204...v0.1.205) (2026-07-16)
 
 
