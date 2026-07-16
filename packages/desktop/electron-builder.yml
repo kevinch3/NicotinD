@@ -84,10 +84,15 @@ mac:
         - arm64
   category: public.app-category.music
   icon: build/icon.png
-  # UNSIGNED per project decision (no Apple Developer ID in scope for v1) —
-  # see docs/desktop-app.md. `identity: null` tells electron-builder not to
-  # attempt code signing at all (rather than failing when no cert is found).
-  identity: null
+  # No Apple Developer ID in scope for v1 (see docs/desktop-app.md), but the
+  # build must NOT be fully unsigned: Apple Silicon refuses to execute any
+  # unsigned arm64 binary, so a downloaded unsigned dmg reports as
+  # "NicotinD is damaged and can't be opened". With no `identity` set (and
+  # CSC_IDENTITY_AUTO_DISCOVERY=false in deploy.yml), electron-builder falls
+  # back to AD-HOC signing — the app launches, with the normal un-notarized
+  # friction (macOS 14: right-click → Open; macOS 15: Privacy & Security →
+  # "Open Anyway"). Never set `identity: null` here: that disables even the
+  # ad-hoc pass and re-breaks arm64.
   hardenedRuntime: false
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
