@@ -1,6 +1,11 @@
 import { app, dialog, shell } from 'electron';
-import { autoUpdater } from 'electron-updater';
+// electron-updater is a CommonJS module; under our ESM build a named import
+// (`import { autoUpdater }`) fails at runtime ("Named export not found"), so
+// import the default (the CJS module.exports) and destructure.
+import electronUpdater from 'electron-updater';
 import { updateMode } from './update-mode.js';
+
+const { autoUpdater } = electronUpdater;
 
 export { updateMode } from './update-mode.js';
 
