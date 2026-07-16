@@ -101,7 +101,16 @@ The backend takes `musicDir` at boot and — critically — `setup.ts` mutates i
 - **Onboarding:** the existing Angular setup wizard's music-dir step shows a native "Choose folder…"
   button on Electron (`data-testid="onboarding-pick-folder"`) → `window.nicotind.pickDirectory()` →
   `dialog.showOpenDialog({ properties: ['openDirectory'] })`. The pick is persisted desktop-side
-  (`setMusicDir(path, { restart: false })` — no disruptive mid-onboarding reload).
+  (`setMusicDir(path, { restart: false })` — no disruptive mid-onboarding reload). Then, on the
+  wizard's final **"Get Started"** action, `enterApp()` calls
+  `setMusicDir(dir, { restart: true })` to **restart the sidecar before entering the app**. This is
+  load-bearing, not polish: the backend booted *before* onboarding with the default `~/Music`, and
+  `createApp()` captures `config.musicDir` **by value** into the `LibraryOrganizer`, scanner, and
+  library routes — `POST /api/setup/complete` only mutates the config object in memory, so without
+  the restart the entire first session would organize acquisitions into and scan `~/Music` instead
+  of the selected folder. A failed restart still enters the app (Settings → "Change music folder"
+  is the retry path). Refactoring those boot-time captures to use-time reads is deliberately out of
+  scope — the restart is the contract.
 - **Settings → "Change music folder"** (`data-testid="settings-change-folder"`, Electron-gated):
   re-picks, then `setMusicDir(path, { restart: true })` persists + **restarts the sidecar** so the
   backend re-boots scanning the new dir; the window reloads at the new URL. A failed restart surfaces
@@ -143,11 +152,19 @@ keep the backend/bun/ffmpeg as real executables outside the asar; **linux** → 
 (`packages/web/public/icons/icon-512.png` → `build/icon.png`; a dedicated desktop icon is a
 follow-up). `publish: github (kevinch3/NicotinD)`.
 
-### macOS is unsigned (v1)
+### macOS is ad-hoc signed (v1 — no Developer ID)
 
-The dmg is **unsigned** (`identity: null`, `hardenedRuntime: false`, `CSC_IDENTITY_AUTO_DISCOVERY:
-false` in CI). On first launch users must **right-click → Open** once (or clear the quarantine
-attribute: `xattr -dr com.apple.quarantine /Applications/NicotinD.app`). App Sandbox is **off**
+The dmg carries an **ad-hoc signature**: no `identity` key in `electron-builder.yml` plus
+`CSC_IDENTITY_AUTO_DISCOVERY: false` in CI makes electron-builder fall back to ad-hoc signing.
+**Never set `identity: null`** — that disables even the ad-hoc pass, and Apple Silicon refuses to
+execute unsigned arm64 code entirely: the first v0.1.210-era arm64 dmg reported *"NicotinD is
+damaged and can't be opened"* on every M-series Mac for exactly this reason. Ad-hoc signed, the
+app launches with the normal un-notarized friction: **macOS 14 and earlier**: right-click → Open
+once; **macOS 15 (Sequoia)**: System Settings → Privacy & Security → "Open Anyway" (or clear
+quarantine: `xattr -dr com.apple.quarantine /Applications/NicotinD.app`). On-device check for the
+next release tag: the arm64 app launches AND the bundled `resources/bin/bun` / `ffmpeg` execute —
+if extraResources aren't covered by the ad-hoc pass, add an `afterSign` hook that
+`codesign -s -` signs them. App Sandbox is **off**
 (`build/entitlements.mac.plist`), so reading an arbitrary user-picked music volume needs no
 security-scoped bookmarks. `mac.extendInfo.NSAppTransportSecurity` carries a **loopback-only** ATS
 exception (not a blanket `NSAllowsArbitraryLoads`). Signing + notarization are a later release.
@@ -158,9 +175,10 @@ exception (not a blanket `NSAllowsArbitraryLoads`). Signing + notarization are a
 signed)` gates behavior (pure, unit-tested in the electron-free `update-mode.ts`):
 
 - **Linux (AppImage):** full download + apply (`quitAndInstall` on user confirm).
-- **macOS (unsigned):** **notify-only** — Squirrel.Mac cannot apply updates to an unsigned app, so
-  the app shows a "new version available" prompt that opens the Releases page; it never calls
-  `quitAndInstall`. (Flips to apply once mac signing lands — `updateMode('darwin', true) → 'apply'`.)
+- **macOS (ad-hoc signed, no Developer ID):** **notify-only** — Squirrel.Mac can only apply
+  updates to a Developer-ID-signed app (ad-hoc doesn't qualify), so the app shows a "new version
+  available" prompt that opens the Releases page; it never calls `quitAndInstall`. (Flips to apply
+  once real mac signing lands — `updateMode('darwin', true) → 'apply'`.)
 
 Auto-update is a no-op in dev (`!app.isPackaged`) and wrapped so a failed/offline check never crashes
 the app. This is why the packaging jobs use electron-builder's **`--publish always`**: only its own
