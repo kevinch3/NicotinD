@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.210](https://github.com/kevinch3/NicotinD/compare/v0.1.209...v0.1.210) (2026-07-16)
+
+
+### Features
+
+* **web:** auto-preserve queue for PWA lock-screen resilience ([4565e33](https://github.com/kevinch3/NicotinD/commit/4565e3337ce66957673f0efc9f1f5ee56e22dc91))
+
 ## [0.1.209](https://github.com/kevinch3/NicotinD/compare/v0.1.208...v0.1.209) (2026-07-16)
 
 
