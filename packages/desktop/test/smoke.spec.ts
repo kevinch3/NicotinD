@@ -98,6 +98,10 @@ test.describe('packaged boot smoke test', () => {
         // is set (never true for a fresh --user-data-dir), so this passes
         // straight through.
         NICOTIND_MUSIC_DIR: fixturesMusicDir,
+        // Playwright's `_electron` launcher makes `requestSingleInstanceLock()`
+        // return false, which would quit the app before a window opens — bypass
+        // it for the test (production keeps the real single-instance behavior).
+        NICOTIND_DISABLE_SINGLE_INSTANCE: '1',
       },
     });
 

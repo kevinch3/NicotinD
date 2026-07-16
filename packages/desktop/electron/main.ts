@@ -152,7 +152,13 @@ sidecar.on('exit', (info: SidecarExitInfo) => {
   );
 });
 
-const gotSingleInstanceLock = app.requestSingleInstanceLock();
+// The single-instance lock is bypassed when NICOTIND_DISABLE_SINGLE_INSTANCE=1.
+// Under Playwright's `_electron` launcher (the packaged-boot smoke test)
+// `requestSingleInstanceLock()` returns false, which would `app.quit()` before
+// a window ever opens; the flag is set only by that test, so production keeps
+// the real single-instance behavior.
+const gotSingleInstanceLock =
+  process.env.NICOTIND_DISABLE_SINGLE_INSTANCE === '1' || app.requestSingleInstanceLock();
 
 if (!gotSingleInstanceLock) {
   app.quit();
