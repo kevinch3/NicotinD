@@ -47,8 +47,12 @@ jobs:
           files="$(git diff --name-only "$prev"..HEAD)"
           echo "Changed since $prev:"; echo "$files"
           mob=false; desk=false
-          echo "$files" | grep -qE '^(packages/(web|mobile|capacitor-now-playing)/|package\.json$|bun\.lock$|\.nvmrc$|tsconfig.*\.json$|\.github/workflows/deploy\.yml$)' && mob=true  || true
-          echo "$files" | grep -qE '^(packages/(web|desktop|api|core|slskd-client|service-manager|lidarr-client)/|src/|config/|package\.json$|bun\.lock$|\.nvmrc$|tsconfig.*\.json$|\.github/workflows/deploy\.yml$)' && desk=true || true
+          if echo "$files" | grep -qE '^(packages/(web|mobile|capacitor-now-playing)/|package\.json$|bun\.lock$|\.nvmrc$|tsconfig.*\.json$|\.github/workflows/deploy\.yml$)'; then
+            mob=true
+          fi
+          if echo "$files" | grep -qE '^(packages/(web|desktop|api|core|slskd-client|service-manager|lidarr-client)/|src/|config/|package\.json$|bun\.lock$|\.nvmrc$|tsconfig.*\.json$|\.github/workflows/deploy\.yml$)'; then
+            desk=true
+          fi
           echo "Result: mobile=$mob desktop=$desk"
           echo "mobile=$mob"   >> "$GITHUB_OUTPUT"
           echo "desktop=$desk" >> "$GITHUB_OUTPUT"
