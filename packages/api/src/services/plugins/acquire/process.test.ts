@@ -5,6 +5,10 @@ import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
   runAcquireProcess,
+  acquireEnv,
+  isBinaryAvailable,
+  invalidateBinaryCache,
+  _resetBinaryCache,
   parseYtdlpProgress,
   parseYtdlpPlaylistTitle,
   parseYtdlpTrackEvent,
@@ -343,5 +347,86 @@ describe('collectAudioPaths', () => {
     expect(paths.some((p) => p.endsWith('track.flac'))).toBe(true);
     expect(paths.some((p) => p.endsWith('song.mp3'))).toBe(true);
     expect(paths.some((p) => p.endsWith('cover.jpg'))).toBe(false);
+  });
+});
+
+describe('acquireEnv', () => {
+  it('prepends well-known user bin dirs missing from PATH', () => {
+    const env = acquireEnv({ PATH: '/usr/bin:/bin', HOME: '/home/u' });
+    const parts = env.PATH!.split(':');
+    expect(parts).toContain('/opt/homebrew/bin');
+    expect(parts).toContain('/usr/local/bin');
+    expect(parts).toContain('/home/u/.local/bin');
+    // Original entries preserved, extras prepended (so an explicit PATH
+    // install still wins over nothing, and existing resolution is unchanged).
+    expect(env.PATH!.endsWith('/usr/bin:/bin')).toBe(true);
+  });
+
+  it('does not duplicate dirs already on PATH', () => {
+    const env = acquireEnv({ PATH: '/usr/local/bin:/usr/bin', HOME: '/home/u' });
+    const occurrences = env.PATH!.split(':').filter((p) => p === '/usr/local/bin');
+    expect(occurrences).toHaveLength(1);
+  });
+
+  it('prepends the bundled ffmpeg dir first when NICOTIND_FFMPEG_PATH is set', () => {
+    const env = acquireEnv({
+      PATH: '/usr/bin',
+      HOME: '/home/u',
+      NICOTIND_FFMPEG_PATH: '/opt/app/resources/bin/ffmpeg',
+    });
+    expect(env.PATH!.split(':')[0]).toBe('/opt/app/resources/bin');
+  });
+
+  it('keeps unrelated env vars intact', () => {
+    const env = acquireEnv({ PATH: '/usr/bin', HOME: '/home/u', FOO: 'bar' });
+    expect(env.FOO).toBe('bar');
+  });
+});
+
+describe('runAcquireProcess env', () => {
+  beforeEach(() => {
+    stagingBase = mkdtempSync(join(tmpdir(), 'nd-acq-'));
+  });
+  afterEach(() => rmSync(stagingBase, { recursive: true, force: true }));
+
+  it('spawns the downloader with the augmented PATH env', async () => {
+    const r = run();
+    const call = spawnMock.mock.calls[spawnMock.mock.calls.length - 1] as unknown[];
+    const options = call[2] as { env?: NodeJS.ProcessEnv };
+    expect(options.env?.PATH).toBeDefined();
+    expect(options.env!.PATH!.split(':')).toContain('/usr/local/bin');
+    fakeProc.finish(0);
+    await r.done.catch(() => {});
+  });
+});
+
+describe('isBinaryAvailable', () => {
+  beforeEach(() => _resetBinaryCache());
+
+  it('probes with the augmented env and caches the result', () => {
+    const execCalls: Array<{ env?: NodeJS.ProcessEnv }> = [];
+    const exec = ((_bin: string, _args: string[], opts: { env?: NodeJS.ProcessEnv }) => {
+      execCalls.push(opts);
+      return Buffer.from('');
+    }) as unknown as Parameters<typeof isBinaryAvailable>[1];
+
+    expect(isBinaryAvailable('fake-dl', exec)).toBe(true);
+    expect(isBinaryAvailable('fake-dl', exec)).toBe(true);
+    expect(execCalls).toHaveLength(1);
+    expect(execCalls[0]!.env?.PATH?.split(':')).toContain('/usr/local/bin');
+  });
+
+  it('invalidateBinaryCache clears a cached negative so a new install is seen', () => {
+    let installed = false;
+    const exec = ((_bin: string) => {
+      if (!installed) throw new Error('not found');
+      return Buffer.from('');
+    }) as unknown as Parameters<typeof isBinaryAvailable>[1];
+
+    expect(isBinaryAvailable('fake-dl', exec)).toBe(false);
+    installed = true;
+    expect(isBinaryAvailable('fake-dl', exec)).toBe(false); // still cached
+    invalidateBinaryCache('fake-dl');
+    expect(isBinaryAvailable('fake-dl', exec)).toBe(true);
   });
 });

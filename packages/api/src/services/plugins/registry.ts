@@ -172,7 +172,31 @@ export class PluginRegistry {
        ON CONFLICT(id) DO UPDATE SET config_json = excluded.config_json`,
       [id, JSON.stringify(merged)],
     );
+    // A running plugin holds the config it was init'd with — re-init so the
+    // change takes effect live instead of after a disable/enable cycle.
+    // Chained (not parallel) so rapid successive updates re-init in order.
+    if (this.initialized.has(id) && this.isEnabled(id)) {
+      this.reinitChain = this.reinitChain.then(() => this.reinitPlugin(plugin));
+    }
     return merged;
+  }
+
+  /** Await any pending config-triggered re-initializations (route + tests). */
+  flushReinit(): Promise<void> {
+    return this.reinitChain;
+  }
+
+  private reinitChain: Promise<void> = Promise.resolve();
+
+  private async reinitPlugin(plugin: Plugin): Promise<void> {
+    const id = plugin.manifest.id;
+    try {
+      await plugin.dispose?.();
+    } catch (err) {
+      log.warn({ id, err }, 'plugin dispose failed during config re-init');
+    }
+    this.initialized.delete(id);
+    await this.initPlugin(plugin);
   }
 
   get(id: string): Plugin | undefined {
