@@ -148,13 +148,15 @@ jobs:
       - name: Build desktop main/preload
         run: bun run --filter @nicotind/desktop build
 
-      # Installs the Electron binary devDependency `electron` needs (bun
-      # install alone does not always trigger its postinstall download) plus
-      # Playwright's own browser/OS deps; xvfb-run below gives it a display.
-      - name: Install Playwright + Electron runtime deps
-        run: |
-          bunx playwright install --with-deps chromium
-          bunx electron --version
+      # Playwright's `--with-deps` pulls the OS shared libraries Electron's
+      # bundled Chromium also needs (libnss3, libatk, …). We deliberately do
+      # NOT probe with `electron --version`: that *launches* the Electron
+      # binary, which aborts on a GitHub runner because Chromium's SUID
+      # sandbox helper isn't root-owned. The binary itself is already present
+      # (electron's postinstall ran during `bun install`); the smoke test
+      # launches it with `--no-sandbox` in CI (see smoke.spec.ts).
+      - name: Install Playwright OS deps
+        run: bunx playwright install --with-deps chromium
         working-directory: packages/desktop
 
       - name: Run desktop smoke test

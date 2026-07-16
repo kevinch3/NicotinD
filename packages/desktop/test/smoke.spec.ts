@@ -68,7 +68,11 @@ test.describe('packaged boot smoke test', () => {
 
   test('boots the sidecar and renders the SPA shell', async () => {
     electronApp = await electron.launch({
-      args: [mainJs, `--user-data-dir=${userDataDir}`],
+      // `--no-sandbox` only in CI: GitHub runners don't ship a root-owned
+      // Chromium SUID sandbox helper, so Electron aborts on launch otherwise.
+      // Local/on-device runs keep the real OS sandbox (matching the shipped
+      // `sandbox: true` config). The CJS preload works either way.
+      args: [...(process.env.CI ? ['--no-sandbox'] : []), mainJs, `--user-data-dir=${userDataDir}`],
       env: {
         ...process.env,
         // Points the sidecar's dev-mode `bun run src/main.ts` at the e2e
