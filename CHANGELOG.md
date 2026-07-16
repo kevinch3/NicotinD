@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.207](https://github.com/kevinch3/NicotinD/compare/v0.1.206...v0.1.207) (2026-07-16)
+
+
+### Bug Fixes
+
+* **desktop:** build with tsc -b so electron-builder finds dist/main.js ([b3de9c3](https://github.com/kevinch3/NicotinD/commit/b3de9c30ffcd6ff04c890a90a16000570ba670af))
+
 ## [0.1.206](https://github.com/kevinch3/NicotinD/compare/v0.1.205...v0.1.206) (2026-07-16)
 
 
