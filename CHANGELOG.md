@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.211](https://github.com/kevinch3/NicotinD/compare/v0.1.210...v0.1.211) (2026-07-16)
+
+
+### Bug Fixes
+
+* **api:** make yt-dlp/spotdl usable from the desktop app ([5015484](https://github.com/kevinch3/NicotinD/commit/5015484c5f2876920cc671d26c7c75d485190ad9))
+* **desktop:** ad-hoc sign the mac build so the arm64 app launches ([0db55c4](https://github.com/kevinch3/NicotinD/commit/0db55c472bd4862fca5853a3873b4552e9b703e0))
+* **desktop:** restart sidecar after onboarding folder pick so the first session uses it ([31f496e](https://github.com/kevinch3/NicotinD/commit/31f496ea9c45b496c4a6ce5e8d3c7bee81a27575))
+* **slskd:** auto-share the music dir and show a not-reachable notice ([3ea9681](https://github.com/kevinch3/NicotinD/commit/3ea9681b23077d604582917014fa66ee5bc40ac3))
+
 ## [0.1.210](https://github.com/kevinch3/NicotinD/compare/v0.1.209...v0.1.210) (2026-07-16)
 
 
