@@ -206,12 +206,58 @@ describe('SetupComponent', () => {
     expect(setMusicDir).not.toHaveBeenCalled();
   });
 
-  it('enterApp marks setup complete and navigates into the app', () => {
+  it('enterApp marks setup complete and navigates into the app', async () => {
     const comp = TestBed.createComponent(SetupComponent).componentInstance;
     const markSpy = vi.spyOn(TestBed.inject(SetupService), 'markComplete');
     const navSpy = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
 
-    comp.enterApp();
+    await comp.enterApp();
+
+    expect(markSpy).toHaveBeenCalled();
+    expect(navSpy).toHaveBeenCalledWith(['/']);
+  });
+
+  it('enterApp restarts the sidecar with the picked folder on Electron', async () => {
+    vi.mocked(isElectron).mockReturnValue(true);
+    const comp = TestBed.createComponent(SetupComponent).componentInstance;
+    comp.musicDir = '/native/music';
+    const navSpy = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+
+    await comp.enterApp();
+
+    expect(setMusicDir).toHaveBeenCalledWith('/native/music', { restart: true });
+    expect(navSpy).toHaveBeenCalledWith(['/']);
+  });
+
+  it('enterApp does not restart when no folder was picked', async () => {
+    vi.mocked(isElectron).mockReturnValue(true);
+    const comp = TestBed.createComponent(SetupComponent).componentInstance;
+    comp.musicDir = '';
+
+    await comp.enterApp();
+
+    expect(setMusicDir).not.toHaveBeenCalled();
+  });
+
+  it('enterApp does not restart outside Electron', async () => {
+    vi.mocked(isElectron).mockReturnValue(false);
+    const comp = TestBed.createComponent(SetupComponent).componentInstance;
+    comp.musicDir = '/mnt/music';
+
+    await comp.enterApp();
+
+    expect(setMusicDir).not.toHaveBeenCalled();
+  });
+
+  it('enterApp still enters the app when the sidecar restart fails', async () => {
+    vi.mocked(isElectron).mockReturnValue(true);
+    vi.mocked(setMusicDir).mockResolvedValue({ ok: false, error: 'boot failed' });
+    const comp = TestBed.createComponent(SetupComponent).componentInstance;
+    comp.musicDir = '/native/music';
+    const markSpy = vi.spyOn(TestBed.inject(SetupService), 'markComplete');
+    const navSpy = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+
+    await comp.enterApp();
 
     expect(markSpy).toHaveBeenCalled();
     expect(navSpy).toHaveBeenCalledWith(['/']);
