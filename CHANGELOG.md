@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.209](https://github.com/kevinch3/NicotinD/compare/v0.1.208...v0.1.209) (2026-07-16)
+
+
+### Bug Fixes
+
+* **desktop:** default-import electron-updater (cjs) so packaged esm app boots ([2fff777](https://github.com/kevinch3/NicotinD/commit/2fff777b689c4e1a462f1bf63995c65d2899c487))
+
 ## [0.1.208](https://github.com/kevinch3/NicotinD/compare/v0.1.207...v0.1.208) (2026-07-16)
 
 
