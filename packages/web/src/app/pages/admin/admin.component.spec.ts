@@ -5,7 +5,7 @@ import { AdminComponent } from './admin.component';
 import { DownloadsApiService } from '../../services/api/downloads-api.service';
 import { SystemApiService } from '../../services/api/system-api.service';
 import { LibraryApiService } from '../../services/api/library-api.service';
-import type { AlbumJob, UntrackedDownload } from '../../services/api/api-types';
+import type { AdminUser, AlbumJob, UntrackedDownload } from '../../services/api/api-types';
 import { AuthService } from '../../services/auth.service';
 import { TransferService } from '../../services/transfer.service';
 
@@ -192,6 +192,32 @@ describe('AdminComponent (moved admin panels render)', () => {
     expect(el.querySelector('[data-testid="processing-panel"]')).toBeTruthy();
     expect(el.querySelector('[data-testid="duplicates-panel"]')).toBeTruthy();
     expect(el.querySelector('[data-testid="processing-run-now"]')).toBeTruthy();
+    fixture.destroy();
+  });
+
+  it('reflects each user\'s current role in the role select (not the first option)', async () => {
+    const mkUser = (id: string, username: string, role: string): AdminUser => ({
+      id,
+      username,
+      role,
+      status: 'active',
+      created_at: '',
+      isConnected: false,
+      amountOfDevices: 0,
+      amountOfSessions: 0,
+    });
+    systemApi.getUsers.mockReturnValueOnce(
+      of([mkUser('u1', 'alice', 'user'), mkUser('u2', 'bob', 'refiner')]),
+    );
+    const fixture = TestBed.createComponent(AdminComponent);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const selects = fixture.nativeElement.querySelectorAll(
+      '[data-testid="user-role-select"]',
+    ) as NodeListOf<HTMLSelectElement>;
+    // Before the [selected] fix these all fell back to the first option ('listener').
+    expect(Array.from(selects).map((s) => s.value)).toEqual(['user', 'refiner']);
     fixture.destroy();
   });
 });

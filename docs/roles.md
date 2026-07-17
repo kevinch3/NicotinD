@@ -54,6 +54,22 @@ library provider always runs; the slskd/plugin providers are skipped.
 The admin role-update route (`PUT /api/admin/users/:id/role`) validates the incoming role against
 the four-value `ROLES` set.
 
+## Role-change propagation
+
+A role change must reach the user without waiting for them to happen to log in again (a demotion
+that doesn't revoke access promptly would be a security gap). The JWT carries the role, so:
+
+- `POST /api/auth/refresh` **re-reads the role from the DB** when it mints the sliding-session
+  token (it no longer copies the old token's role). On every app boot the web calls `refresh` →
+  `getMe`, then `AuthService.setRole(profile.role)` updates the cached role. Net effect: an admin's
+  change takes effect on the user's **next load**, not only on a full re-login.
+- Missing/disabled accounts are already bounced by `authMiddleware` (403) before `refresh` runs, so
+  a disable also takes effect on next request.
+
+`packages/e2e/tests/roles.spec.ts` proves the whole loop end-to-end: a fresh `user` sees Downloads;
+an admin demotes them to `listener` via the role `<select>`; after the user reloads, Downloads is
+gone from their nav and `/downloads` bounces to the radio landing.
+
 ## Web gating
 
 `AuthService` exposes `canAcquire()` / `canCurate()` / `isAdmin()` computeds (off the `role`
