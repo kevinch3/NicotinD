@@ -375,3 +375,39 @@ export interface QuarantineAlbum {
   albumArtist: string;
   songs: QuarantineSong[];
 }
+
+// ── Device pairing (QR link) + remote access ─────────────────────────────────
+
+/** Guided remote-access state machine (Tailscale Funnel), mirrored from the
+ *  API's tailscale.ts RemoteAccessState. */
+export type RemoteAccessState =
+  | { kind: 'not-installed' }
+  | { kind: 'needs-login'; authUrl?: string }
+  | { kind: 'funnel-not-enabled'; enableUrl?: string }
+  | { kind: 'inactive'; publicUrl?: string }
+  | { kind: 'active'; publicUrl: string }
+  | { kind: 'error'; detail: string };
+
+export interface RemoteAccessStatus {
+  enabled: boolean;
+  state: RemoteAccessState;
+}
+
+export interface PairingMintResponse {
+  token: string;
+  code: string;
+  expiresAt: number;
+  name: string;
+  /** Candidate server URLs the phone probes in order (funnel first). */
+  urls: string[];
+  remoteAccess: RemoteAccessStatus | null;
+}
+
+export interface PairedDevice {
+  id: string;
+  name: string;
+  platform: string;
+  createdAt: number;
+  lastSeenAt: number | null;
+  current: boolean;
+}

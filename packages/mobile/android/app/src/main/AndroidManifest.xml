@@ -47,4 +47,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- QR device pairing: @capacitor/barcode-scanner opens the camera to scan
+         the desktop's Link-a-device QR. See docs/device-pairing.md. -->
+    <uses-permission android:name="android.permission.CAMERA" />
 </manifest>

@@ -118,7 +118,7 @@ async function main() {
   const webDistPath =
     process.env.NICOTIND_WEB_DIST ?? resolve(import.meta.dir, '../packages/web/dist');
 
-  const { app, watcherRef, retryRef, processingRef, websocket } = createApp({
+  const { app, watcherRef, retryRef, processingRef, websocket, remoteAccess } = createApp({
     config,
     slskdRef,
     lidarr,
@@ -161,6 +161,10 @@ async function main() {
   // Machine-readable handshake for the desktop supervisor. Keep the exact prefix.
   log.info({ port: server.port }, 'NicotinD is ready');
   console.log(`NICOTIND_LISTENING ${server.port}`);
+
+  // Remote access (Tailscale Funnel): the funnel target port is only known now,
+  // so arm here — non-fatal on failure, state surfaced via the admin route.
+  if (server.port !== undefined) void remoteAccess.onServerStarted(server.port);
 
   // Graceful shutdown
   process.on('SIGTERM', async () => {

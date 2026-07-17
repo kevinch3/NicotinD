@@ -25,19 +25,21 @@
     "@angular/service-worker": "^22.0.5",
     "@jofr/capacitor-media-session": "^4.0.0",
     "@sentry/angular": "^10.62.0",
+    "qrcode": "^1.5.4",
     "rxjs": "~7.8.2",
     "tslib": "^2.8.1"
   },
   "devDependencies": {
     "@angular/build": "^22.0.5",
-    "sharp": "^0.35.3",
     "@angular/cli": "^22.0.5",
     "@angular/compiler-cli": "^22.0.5",
-    "jsdom": "^29.1.1",
-    "prettier": "^3.9.4",
-    "tailwindcss": "^4.3.2",
     "@tailwindcss/postcss": "^4.3.2",
+    "@types/qrcode": "^1.5.6",
+    "jsdom": "^29.1.1",
     "postcss": "^8.5.16",
+    "prettier": "^3.9.4",
+    "sharp": "^0.35.3",
+    "tailwindcss": "^4.3.2",
     "typescript": "~6.0.3",
     "vitest": "^4.1.9"
   }

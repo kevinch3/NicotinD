@@ -93,6 +93,14 @@ native:
   `GET /api/health`, persists, routes to `/login`. **`serverGuard`** (`guards/auth.guard.ts`) forces it on
   native first launch (`needsConfiguration()`); on web `needsConfiguration()` is always false, so the
   picker **never appears** and the existing e2e suite is unaffected.
+- **QR device pairing** (see [device-pairing.md](device-pairing.md)): the picker's native-only
+  **Scan QR** button (`@capacitor/barcode-scanner`, reached through the `Capacitor.Plugins` global via
+  `scanBarcode()` in `services/native/native-capabilities.ts` so `@capacitor/*` stays out of the web
+  bundle; requires the `CAMERA` permission added to the Android manifest) reads the server's
+  Link-a-device QR, probes its candidate URLs, claims the one-time token, and lands **connected and
+  signed in** in one scan. A **pairing code** field is the manual fallback (URL + 6-char code typed
+  from the server's Devices page). No cleartext config is needed — the pairing URLs are HTTPS
+  (Tailscale Funnel or a reverse-proxied deployment).
 - **Service worker disabled on native** (`app.config.ts`): the WebView serves assets locally, so ngsw
   caching is redundant and can fight Capacitor / cross-origin API calls. IndexedDB offline still works.
 

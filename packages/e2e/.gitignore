@@ -5,3 +5,4 @@ playwright-report/
 playground-report/
 screenshots/
 node_modules/
+.tmp-data-onboarding/

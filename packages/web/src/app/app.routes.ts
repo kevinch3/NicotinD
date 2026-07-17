@@ -78,6 +78,11 @@ export const routes: Routes = [
           import('./pages/settings/settings.component').then((m) => m.SettingsComponent),
       },
       {
+        path: 'settings/devices',
+        loadComponent: () =>
+          import('./pages/settings/devices/devices.component').then((m) => m.DevicesComponent),
+      },
+      {
         path: 'settings/plugins',
         loadComponent: () =>
           import('./pages/plugins/plugins.component').then((m) => m.PluginsComponent),

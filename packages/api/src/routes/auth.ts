@@ -255,8 +255,28 @@ export function authRoutes(jwtSecret: string, jwtExpiresIn: string, registration
         .query<{ role: string }, [string]>('SELECT role FROM users WHERE id = ?')
         .get(user.sub);
 
+      // QR-paired sessions carry a deviceId; a deleted paired_devices row is
+      // the revocation signal, enforced here (JWTs are otherwise stateless).
+      if (user.deviceId) {
+        const device = db
+          .query<{ id: string }, [string]>('SELECT id FROM paired_devices WHERE id = ?')
+          .get(user.deviceId);
+        if (!device) {
+          return c.json({ error: 'Device revoked' }, 403);
+        }
+        db.query('UPDATE paired_devices SET last_seen_at = ? WHERE id = ?').run(
+          Date.now(),
+          user.deviceId,
+        );
+      }
+
       const token = await signJwt(
-        { sub: user.sub, username: user.username, role: asRole(row?.role ?? user.role) },
+        {
+          sub: user.sub,
+          username: user.username,
+          role: asRole(row?.role ?? user.role),
+          ...(user.deviceId ? { deviceId: user.deviceId } : {}),
+        },
         jwtSecret,
         jwtExpiresIn,
       );

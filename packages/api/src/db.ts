@@ -464,6 +464,34 @@ export function applySchema(db: Database): void {
     )
   `);
 
+  // Device pairing (QR link): short-lived single-use tokens minted by a logged-in
+  // user and exchanged (unauthenticated claim) for a normal JWT bound to a
+  // paired_devices row. Deleting the device row is the revocation mechanism —
+  // the JWT dies at its next refresh.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS pairing_tokens (
+      token      TEXT    PRIMARY KEY,
+      code       TEXT    NOT NULL,
+      user_id    TEXT    NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      created_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL,
+      claimed_at INTEGER
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_pairing_tokens_code ON pairing_tokens (code)`);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS paired_devices (
+      id           TEXT    PRIMARY KEY,
+      user_id      TEXT    NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      name         TEXT    NOT NULL,
+      platform     TEXT    NOT NULL,
+      created_at   INTEGER NOT NULL,
+      last_seen_at INTEGER
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_paired_devices_user ON paired_devices (user_id)`);
+
   // Canonical library tables — populated by the native LibraryScanner. The UI
   // reads exclusively from these; the scanner mints stable ids and groups
   // editions at scan time, so hide/classify/group all happen here.
