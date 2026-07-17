@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.220](https://github.com/kevinch3/NicotinD/compare/v0.1.219...v0.1.220) (2026-07-17)
+
+
+### Bug Fixes
+
+* **web:** keep mobile track-row context menu clear of the player/tab bar ([679463e](https://github.com/kevinch3/NicotinD/commit/679463ebf357834544dcd6404eb271c701f589b5))
+* **web:** wrap the Library Songs tab toolbar so it doesn't overflow on mobile ([3ae4557](https://github.com/kevinch3/NicotinD/commit/3ae45579467b18ee8b695cdc18aa058d1b3d0f8d))
+
 ## [0.1.219](https://github.com/kevinch3/NicotinD/compare/v0.1.218...v0.1.219) (2026-07-17)
 
 
