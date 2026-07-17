@@ -19,6 +19,7 @@
     "@capacitor/android": "^6.2.0",
     "@capacitor/core": "^6.2.0",
     "@capacitor/ios": "^6.2.0",
+    "@capacitor/network": "^6.0.3",
     "@capacitor/preferences": "^6.0.3",
     "@jofr/capacitor-media-session": "^4.0.0",
     "@nicotind/capacitor-now-playing": "workspace:*"

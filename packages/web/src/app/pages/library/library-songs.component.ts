@@ -195,6 +195,23 @@ export class LibrarySongsComponent implements OnInit, OnDestroy {
     this.songsObserver.observe(sentinel.nativeElement);
   });
 
+  // Source selection reacts to the live `offline` input flipping mid-session:
+  // losing/regaining connectivity swaps between the server listing and the
+  // on-device preserved tracks without a reload. The initial load is done in
+  // ngOnInit (with the filter applied), so this only handles genuine changes.
+  private lastOffline: boolean | null = null;
+  private offlineSourceEffect = effect(() => {
+    const offline = this.offline();
+    if (this.lastOffline === null) {
+      this.lastOffline = offline;
+      return;
+    }
+    if (offline === this.lastOffline) return;
+    this.lastOffline = offline;
+    if (offline) void this.preserve.refreshList();
+    else void this.loadSongs(true);
+  });
+
   ngOnInit(): void {
     this.activeFilter.set(this.filter());
     if (this.offline()) void this.preserve.refreshList();

@@ -21,6 +21,8 @@ import { DeviceSwitcherComponent } from '../device-switcher/device-switcher.comp
 import { PreserveService } from '../../services/preserve.service';
 import { ServerConfigService } from '../../services/server-config.service';
 import { MediaControlsService } from '../../services/media-controls.service';
+import { NetworkStatusService } from '../../services/network-status.service';
+import { ToastService } from '../../services/toast.service';
 import { buildMediaMetadata } from '../../lib/media-metadata';
 import * as db from '../../lib/preserve-store';
 import { createPointerDrag } from '../../lib/pointer-drag';
@@ -48,6 +50,8 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
   private preserve = inject(PreserveService);
   private server = inject(ServerConfigService);
   private mediaControls = inject(MediaControlsService);
+  private network = inject(NetworkStatusService);
+  private toast = inject(ToastService);
 
   private audioElA = viewChild<ElementRef<HTMLAudioElement>>('audioElA');
   private audioElB = viewChild<ElementRef<HTMLAudioElement>>('audioElB');
@@ -181,6 +185,14 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
               });
             }
           })();
+        } else if (untracked(() => !this.network.online())) {
+          // Offline and this track isn't downloaded — don't point <audio> at an
+          // unreachable stream. Left unguarded, the element stalls on a spinner
+          // that never resolves (`onError` only clears buffering). Bail cleanly.
+          audio.src = '';
+          this.player.setBuffering(false);
+          this.player.setBufferedRanges([]);
+          this.toast.show({ message: `"${track.title}" isn't available offline`, kind: 'error' });
         } else {
           audio.src = this.server.streamUrl(track.id, token);
           // See the preserve branch above for why play() is gated here.
@@ -401,6 +413,21 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
     }
   }
 
+  /**
+   * Stop playback cleanly when the current/next track can't be sourced offline
+   * (not downloaded, or its blob is missing). Avoids the silent, infinite
+   * buffering spinner that a doomed network `<audio>` load would produce.
+   */
+  private stopForOffline(audio: HTMLAudioElement, title: string): void {
+    this.pausingByStore = true;
+    audio.pause();
+    this.pausingByStore = false;
+    audio.src = '';
+    this.player.setBuffering(false);
+    this.player.setBufferedRanges([]);
+    this.toast.show({ message: `"${title}" isn't available offline`, kind: 'error' });
+  }
+
   private async acquireWakeLock(): Promise<void> {
     if (!('wakeLock' in navigator)) return;
     if (this.wakeLock && !this.wakeLock.released) return;
@@ -574,11 +601,20 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
                   const url = URL.createObjectURL(blob.audio);
                   this.lastManualObjectUrl = url;
                   audio.src = url;
+                  playNext();
+                } else if (untracked(() => !this.network.online())) {
+                  // Metadata preserved but blob missing, and offline — don't
+                  // stall on an unreachable stream.
+                  this.stopForOffline(audio, nextTrack.title);
                 } else {
                   audio.src = this.server.streamUrl(nextTrack.id, token);
+                  playNext();
                 }
-                playNext();
               });
+            } else if (untracked(() => !this.network.online())) {
+              // Offline and the next track isn't downloaded — stop instead of
+              // pointing <audio> at a stream that will only spin forever.
+              this.stopForOffline(audio, nextTrack.title);
             } else {
               audio.src = this.server.streamUrl(nextTrack.id, token);
               playNext();

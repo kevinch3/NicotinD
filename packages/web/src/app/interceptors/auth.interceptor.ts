@@ -1,9 +1,17 @@
 import { inject } from '@angular/core';
 import { HttpInterceptorFn, HttpErrorResponse } from '@angular/common/http';
 import { Router } from '@angular/router';
-import { catchError, throwError } from 'rxjs';
+import { catchError, throwError, timeout } from 'rxjs';
 import { AuthService } from '../services/auth.service';
 import { ServerConfigService } from '../services/server-config.service';
+
+// Read requests that hang against an unreachable host (common in the native
+// WebView when connectivity drops) are bounded so they fail fast instead of
+// lingering until the OS socket timeout. Scoped to GET only — mutating calls
+// (rescans, bulk Lidarr re-fetches, uploads) can legitimately run much longer,
+// so we must not abort those. HttpClient aborts the underlying XHR on the
+// unsubscribe that `timeout` triggers, so there's no leaked request.
+const GET_TIMEOUT_MS = 30_000;
 
 export const authInterceptor: HttpInterceptorFn = (req, next) => {
   const auth = inject(AuthService);
@@ -19,7 +27,10 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
     outgoing = outgoing.clone({ setHeaders: { Authorization: `Bearer ${token}` } });
   }
 
-  return next(outgoing).pipe(
+  const bounded =
+    outgoing.method === 'GET' ? next(outgoing).pipe(timeout(GET_TIMEOUT_MS)) : next(outgoing);
+
+  return bounded.pipe(
     catchError((err: HttpErrorResponse) => {
       if (err.status === 401) {
         auth.logout();
