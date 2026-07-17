@@ -3,7 +3,12 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
 import type { Plugin, PluginManifest, PluginHostContext, ResolveCapability } from '@nicotind/core';
-import { isBinaryAvailable, runAcquireProcess, type RunningAcquire } from '../acquire/process.js';
+import {
+  invalidateBinaryCache,
+  isBinaryAvailable,
+  runAcquireProcess,
+  type RunningAcquire,
+} from '../acquire/process.js';
 
 export interface YtdlpPluginConfig {
   enabled: boolean;
@@ -34,11 +39,21 @@ export class YtdlpPlugin implements Plugin {
     requirements: { binaries: ['yt-dlp'] },
     configSchema: z
       .object({
+        binaryPath: z.string().optional(),
         format: z.enum(['mp3', 'opus', 'bestaudio']).optional(),
         extraArgs: z.array(z.string()).optional(),
         cookiesFile: z.string().optional(),
       })
       .partial(),
+    configFields: [
+      {
+        key: 'binaryPath',
+        label: 'yt-dlp binary path',
+        type: 'text',
+        placeholder: 'yt-dlp',
+        help: 'Full path to the yt-dlp executable if it is not on PATH (e.g. /opt/homebrew/bin/yt-dlp).',
+      },
+    ],
     compliance: { disclaimer: DISCLAIMER, requiresConsent: true },
     defaultEnabled: false,
   };
@@ -65,6 +80,9 @@ export class YtdlpPlugin implements Plugin {
     this.ctx = ctx;
     // Admin-set config (from the plugins table) overrides the seeded defaults.
     this.cfg = { ...this.cfg, ...(ctx.config as Partial<YtdlpPluginConfig>) };
+    // Re-probe on (re)init: a binary installed or a path reconfigured while
+    // the app runs must not stay "unavailable" behind a stale cached negative.
+    invalidateBinaryCache(this.cfg.binaryPath);
   }
 
   async isAvailable(): Promise<boolean> {

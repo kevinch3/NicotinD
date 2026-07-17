@@ -52,10 +52,25 @@ export interface DownloadCapability {
  * files it staged (the host then ingests them: organize → scan → enrich);
  * rejects on failure.
  */
+/**
+ * What a `resolve` hands back: the absolute paths of the files it staged, plus
+ * the canonical artist/album the source already knows. Most sources embed
+ * artist/album into the files themselves (yt-dlp/spotdl), so the host can file
+ * them from tags — those may return a bare `string[]` (paths only). But some
+ * sources stage files with **no embedded tags** (archive.org streams raw
+ * bytes), so the organizer has nothing to file them by and drops them in the
+ * unsorted bucket. `meta` lets such a plugin pass the artist/album it read from
+ * the source's own metadata straight to the organizer (via jobMeta).
+ */
+export interface ResolveResult {
+  paths: string[];
+  meta?: { artist?: string | null; album?: string | null };
+}
+
 export interface ResolveCapability {
   /** Cheap, synchronous URL ownership test used to route an incoming URL. */
   canHandle(url: string): boolean;
-  resolve(url: string, jobId: string): Promise<string[]>;
+  resolve(url: string, jobId: string): Promise<string[] | ResolveResult>;
   /** Best-effort cancel of an in-flight job. */
   cancel?(jobId: string): boolean;
 }

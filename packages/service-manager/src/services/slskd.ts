@@ -1,5 +1,5 @@
-import { stringify } from 'yaml';
-import { writeFileSync, mkdirSync } from 'node:fs';
+import { parse, stringify } from 'yaml';
+import { writeFileSync, mkdirSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { NicotinDConfig } from '@nicotind/core';
 import type { ServiceDefinition } from '../strategies/strategy.js';
@@ -14,7 +14,25 @@ export function buildSlskdDefinition(config: NicotinDConfig): ServiceDefinition 
   mkdirSync(musicDir, { recursive: true });
   mkdirSync(stagingDir, { recursive: true });
 
+  const configPath = join(configDir, 'slskd.yml');
+
+  // slskd's own remote-config API edits this same file (user-added shares from
+  // the extension page live there), so regeneration must merge, not replace:
+  // NicotinD owns the managed keys below; everything else is preserved.
+  let existing: Record<string, unknown> = {};
+  if (existsSync(configPath)) {
+    try {
+      existing = (parse(readFileSync(configPath, 'utf-8')) as Record<string, unknown>) ?? {};
+    } catch {
+      // Unreadable/corrupt yml: fall back to a clean regenerate.
+    }
+  }
+
+  const existingShares = (existing.shares as { directories?: string[] } | undefined)
+    ?.directories;
+
   const slskdConfig = {
+    ...existing,
     soulseek: {
       username: config.soulseek.username,
       password: config.soulseek.password,
@@ -26,6 +44,12 @@ export function buildSlskdDefinition(config: NicotinDConfig): ServiceDefinition 
       // a clean <Artist>/<Album>/<NN - Title>.<ext> layout.
       downloads: stagingDir,
     },
+    shares: {
+      // Soulseek etiquette (and many peers) expect sharing — default to the
+      // music library so a fresh install shares out of the box; user-added
+      // shares (edited via slskd's API into this file) always win.
+      directories: existingShares?.length ? existingShares : [musicDir],
+    },
     web: {
       authentication: {
         username: config.slskd.username,
@@ -34,7 +58,6 @@ export function buildSlskdDefinition(config: NicotinDConfig): ServiceDefinition 
     },
   };
 
-  const configPath = join(configDir, 'slskd.yml');
   writeFileSync(configPath, stringify(slskdConfig), 'utf-8');
 
   return {

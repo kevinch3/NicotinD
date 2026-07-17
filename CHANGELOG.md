@@ -2,6 +2,39 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.213](https://github.com/kevinch3/NicotinD/compare/v0.1.212...v0.1.213) (2026-07-17)
+
+
+### Bug Fixes
+
+* **acquire:** file tagless archive.org downloads instead of silently losing them ([13af34b](https://github.com/kevinch3/NicotinD/commit/13af34bb6fa74c8430df7e13bf8a85cf25f5a7fb))
+
+## [0.1.212](https://github.com/kevinch3/NicotinD/compare/v0.1.211...v0.1.212) (2026-07-16)
+
+## [0.1.211](https://github.com/kevinch3/NicotinD/compare/v0.1.210...v0.1.211) (2026-07-16)
+
+
+### Bug Fixes
+
+* **api:** make yt-dlp/spotdl usable from the desktop app ([5015484](https://github.com/kevinch3/NicotinD/commit/5015484c5f2876920cc671d26c7c75d485190ad9))
+* **desktop:** ad-hoc sign the mac build so the arm64 app launches ([0db55c4](https://github.com/kevinch3/NicotinD/commit/0db55c472bd4862fca5853a3873b4552e9b703e0))
+* **desktop:** restart sidecar after onboarding folder pick so the first session uses it ([31f496e](https://github.com/kevinch3/NicotinD/commit/31f496ea9c45b496c4a6ce5e8d3c7bee81a27575))
+* **slskd:** auto-share the music dir and show a not-reachable notice ([3ea9681](https://github.com/kevinch3/NicotinD/commit/3ea9681b23077d604582917014fa66ee5bc40ac3))
+
+## [0.1.210](https://github.com/kevinch3/NicotinD/compare/v0.1.209...v0.1.210) (2026-07-16)
+
+
+### Features
+
+* **web:** auto-preserve queue for PWA lock-screen resilience ([4565e33](https://github.com/kevinch3/NicotinD/commit/4565e3337ce66957673f0efc9f1f5ee56e22dc91))
+
+## [0.1.209](https://github.com/kevinch3/NicotinD/compare/v0.1.208...v0.1.209) (2026-07-16)
+
+
+### Bug Fixes
+
+* **desktop:** default-import electron-updater (cjs) so packaged esm app boots ([2fff777](https://github.com/kevinch3/NicotinD/commit/2fff777b689c4e1a462f1bf63995c65d2899c487))
+
 ## [0.1.208](https://github.com/kevinch3/NicotinD/compare/v0.1.207...v0.1.208) (2026-07-16)
 
 

@@ -77,4 +77,56 @@ describe('LibraryApiService', () => {
     service.getGenres().subscribe();
     http.expectOne('/api/library/genres').flush([]);
   });
+
+  describe('getAllSongs', () => {
+    const matchSongs = (r: { url: string }) => r.url === '/api/library/songs';
+
+    it('GETs /api/library/songs with size + offset', () => {
+      service.getAllSongs(60, 0).subscribe();
+      const req = http.expectOne(matchSongs);
+      expect(req.request.method).toBe('GET');
+      expect(req.request.params.get('size')).toBe('60');
+      expect(req.request.params.get('offset')).toBe('0');
+      req.flush([]);
+    });
+
+    it('forwards `q` as a query param when provided', () => {
+      service.getAllSongs(60, 0, { q: 'alpha house' }).subscribe();
+      const req = http.expectOne(matchSongs);
+      expect(req.request.params.get('q')).toBe('alpha house');
+      req.flush([]);
+    });
+
+    it('trims `q` and omits the param when the trimmed value is empty', () => {
+      service.getAllSongs(60, 0, { q: '   ' }).subscribe();
+      const req = http.expectOne(matchSongs);
+      // HttpParams.toString() drops empty values, so the param is absent.
+      expect(req.request.params.has('q')).toBe(false);
+      req.flush([]);
+    });
+
+    it('omits `q` entirely when not provided (no empty-string param leaks)', () => {
+      service.getAllSongs(60, 0).subscribe();
+      const req = http.expectOne(matchSongs);
+      expect(req.request.params.has('q')).toBe(false);
+      req.flush([]);
+    });
+
+    it('combines `q` + `sort` + `filter` into one request', () => {
+      service
+        .getAllSongs(20, 40, {
+          sort: 'title',
+          filter: { bpmMin: 120, genres: ['House'] },
+          q: 'alpha',
+        })
+        .subscribe();
+      const req = http.expectOne(matchSongs);
+      expect(req.request.params.get('q')).toBe('alpha');
+      expect(req.request.params.get('sort')).toBe('title');
+      expect(req.request.params.get('bpmMin')).toBe('120');
+      // LibraryFilter.genres serializes as repeated `genre` query params.
+      expect(req.request.params.getAll('genre')).toEqual(['House']);
+      req.flush([]);
+    });
+  });
 });

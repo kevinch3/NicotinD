@@ -187,7 +187,7 @@
                 <p class="text-xs text-amber-400 mt-2">Lidarr will be available after restarting NicotinD.</p>
               }
             </div>
-            <button type="button" (click)="enterApp()" data-testid="setup-done" class="w-full py-3 rounded-lg bg-zinc-100 text-zinc-900 font-semibold hover:bg-zinc-200 transition">Get Started</button>
+            <button type="button" (click)="enterApp()" [disabled]="loading()" data-testid="setup-done" class="w-full py-3 rounded-lg bg-zinc-100 text-zinc-900 font-semibold hover:bg-zinc-200 transition disabled:opacity-60">{{ loading() ? 'Restarting…' : 'Get Started' }}</button>
           </div>
         }
       </div>

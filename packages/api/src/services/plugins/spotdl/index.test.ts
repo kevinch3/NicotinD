@@ -211,3 +211,14 @@ describe('SpotdlPlugin', () => {
     });
   });
 });
+
+describe('SpotdlPlugin binaryPath config', () => {
+  beforeEach(() => _resetBinaryCache());
+
+  it('exposes binaryPath as an editable config field', () => {
+    const p = new SpotdlPlugin({ enabled: true, binaryPath: 'spotdl' });
+    expect(p.manifest.configFields?.some((f) => f.key === 'binaryPath')).toBe(true);
+    const parsed = p.manifest.configSchema!.safeParse({ binaryPath: '/usr/local/bin/spotdl' });
+    expect(parsed.success).toBe(true);
+  });
+});

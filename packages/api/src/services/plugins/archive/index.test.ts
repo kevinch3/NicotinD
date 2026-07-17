@@ -154,11 +154,16 @@ describe('ArchivePlugin', () => {
     });
     await p.init(fakeCtx());
 
-    const paths = await p.resolve.resolve('https://archive.org/details/rafaga-una-cerveza', 'j1');
+    const result = await p.resolve.resolve('https://archive.org/details/rafaga-una-cerveza', 'j1');
+    // Not a bare string[]: archive files carry no embedded tags, so the item's
+    // creator/title ride along as `meta` for the organizer to file them by
+    // (otherwise they land in the unsorted bucket and vanish from the library).
+    if (Array.isArray(result)) throw new Error('expected a ResolveResult with meta');
 
-    expect(paths).toHaveLength(2);
+    expect(result.paths).toHaveLength(2);
     // Staged under <staging>/<creator>/<title>/<file>.
-    expect(paths[0]).toContain(join('Ráfaga', 'Una Cerveza', 'track01.mp3'));
+    expect(result.paths[0]).toContain(join('Ráfaga', 'Una Cerveza', 'track01.mp3'));
+    expect(result.meta).toEqual({ artist: 'Ráfaga', album: 'Una Cerveza' });
     // Download URLs point at archive.org/download/<id>/<name>.
     expect(calls[0]!.url).toBe('https://archive.org/download/rafaga-una-cerveza/track01.mp3');
     // Progress reported per file.

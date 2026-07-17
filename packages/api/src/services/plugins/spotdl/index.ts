@@ -3,7 +3,13 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
 import type { Plugin, PluginManifest, PluginHostContext, ResolveCapability } from '@nicotind/core';
-import { isBinaryAvailable, runAcquireProcess, parseSpotdlProgress, type RunningAcquire } from '../acquire/process.js';
+import {
+  invalidateBinaryCache,
+  isBinaryAvailable,
+  runAcquireProcess,
+  parseSpotdlProgress,
+  type RunningAcquire,
+} from '../acquire/process.js';
 
 export interface SpotdlPluginConfig {
   enabled: boolean;
@@ -30,7 +36,18 @@ export class SpotdlPlugin implements Plugin {
     kind: 'acquisition',
     capabilities: ['resolve'],
     requirements: { binaries: ['spotdl'] },
-    configSchema: z.object({ cookiesFile: z.string().optional() }).partial(),
+    configSchema: z
+      .object({ binaryPath: z.string().optional(), cookiesFile: z.string().optional() })
+      .partial(),
+    configFields: [
+      {
+        key: 'binaryPath',
+        label: 'spotdl binary path',
+        type: 'text',
+        placeholder: 'spotdl',
+        help: 'Full path to the spotdl executable if it is not on PATH (e.g. ~/.local/bin/spotdl).',
+      },
+    ],
     compliance: { disclaimer: DISCLAIMER, requiresConsent: true },
     defaultEnabled: false,
   };
@@ -55,6 +72,9 @@ export class SpotdlPlugin implements Plugin {
   async init(ctx: PluginHostContext): Promise<void> {
     this.ctx = ctx;
     this.cfg = { ...this.cfg, ...(ctx.config as Partial<SpotdlPluginConfig>) };
+    // Re-probe on (re)init: a binary installed or a path reconfigured while
+    // the app runs must not stay "unavailable" behind a stale cached negative.
+    invalidateBinaryCache(this.cfg.binaryPath);
   }
 
   async isAvailable(): Promise<boolean> {

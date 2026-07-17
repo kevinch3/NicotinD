@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { signal } from '@angular/core';
 import { vi } from 'vitest';
-import { of } from 'rxjs';
+import { of, throwError } from 'rxjs';
 import type { SlskdStatus } from '@nicotind/core';
 import { SlskdSettingsComponent } from './slskd-settings.component';
 import { SystemApiService } from '../../../services/api/system-api.service';
@@ -81,5 +81,29 @@ describe('SlskdSettingsComponent', () => {
     expect(c.formatLimit(undefined)).toBe('—');
     expect(c.formatLimit(0)).toBe('Unlimited');
     expect(c.formatLimit(500)).toBe('500 KB/s');
+  });
+
+  it('shows a not-running notice instead of the forms when slskd is unreachable', async () => {
+    systemApi.getShares.mockReturnValueOnce(throwError(() => ({ status: 500 })) as never);
+    const fixture = TestBed.createComponent(SlskdSettingsComponent);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="slskd-unreachable-notice"]')).toBeTruthy();
+    expect(fixture.nativeElement.textContent).not.toContain('Shared Folders');
+    fixture.destroy();
+  });
+
+  it('keeps the forms visible when getShares fails with a permission error', async () => {
+    systemApi.getShares.mockReturnValueOnce(throwError(() => ({ status: 403 })) as never);
+    const fixture = TestBed.createComponent(SlskdSettingsComponent);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="slskd-unreachable-notice"]')).toBeNull();
+    expect(fixture.nativeElement.textContent).toContain('Shared Folders');
+    fixture.destroy();
   });
 });

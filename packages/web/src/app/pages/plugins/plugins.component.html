@@ -85,7 +85,8 @@
           </div>
           @if (p.enabled && !p.available && p.requirements?.binaries?.length) {
             <p class="text-xs text-status-warn mt-2">
-              Requires on PATH: {{ p.requirements.binaries.join(', ') }}
+              Not found: {{ p.requirements.binaries.join(', ') }} — install it, or set its full
+              path in the settings below and save.
             </p>
           }
         </div>

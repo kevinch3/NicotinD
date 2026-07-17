@@ -70,13 +70,13 @@ export const appConfig: ApplicationConfig = {
         });
       }
       const traceService = inject(Sentry.TraceService);
-      // AutoPreserveCoordinator is web-only: native already runs a foreground
-      // service (Android @jofr) or owns the audio session natively (iOS Swift
-      // plugin), so the locked-screen failure mode this guards against doesn't
-      // exist there. Same gating as the service worker — dev + native shell skip.
-      if (!serviceWorkerEnabled(isDevMode(), isNativeShell())) {
-        inject(AutoPreserveCoordinator);
-      }
+      // AutoPreserveCoordinator wires the player queue → IndexedDB. Cheap while
+      // autoPreserveMode is "off" (default — returns immediately on every effect
+      // tick), so it ships in dev too: the gate originally mirrored the SW's
+      // (which is dev/native-skip to avoid stale-cache issues) but the
+      // coordinator has no equivalent concern. Native apps default to "off" and
+      // the only effect cost is reading two signals.
+      inject(AutoPreserveCoordinator);
       return setup.check();
     }),
     provideServiceWorker('ngsw-worker.js', {

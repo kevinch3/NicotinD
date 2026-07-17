@@ -6,7 +6,7 @@ import type { Database } from 'bun:sqlite';
 import type { PluginRegistry } from './plugins/registry.js';
 import { pluginStagingDir } from './plugins/host-context.js';
 import type { CompletedDownloadFile } from './path-inference.js';
-import { createJob } from './acquisition-job-store.js';
+import { createJob, type TransferJobMeta } from './acquisition-job-store.js';
 import { recordAcquisition } from './acquisition-store.js';
 import { deriveAcquireAlbum, type AcquireAlbumDestination } from './acquire-album.js';
 
@@ -167,7 +167,12 @@ export class AcquireWatcher {
     this.setStage(id, 'downloading');
     log.info({ id, plugin: plugin.manifest.id, url }, 'Starting acquire job');
     try {
-      const paths = await plugin.resolve!.resolve(url, id);
+      // A plugin may return bare paths (files carry embedded tags) or a
+      // { paths, meta } result (source knows the canonical artist/album but the
+      // staged files are untagged, e.g. archive.org). Normalize both here.
+      const resolved = await plugin.resolve!.resolve(url, id);
+      const paths = Array.isArray(resolved) ? resolved : resolved.paths;
+      const resolveMeta = Array.isArray(resolved) ? undefined : resolved.meta;
       // With --ignore-errors a partly-unavailable playlist still resolves; only
       // a download that produced nothing at all is a real failure.
       if (paths.length === 0) {
@@ -187,7 +192,7 @@ export class AcquireWatcher {
           : undefined;
       // Keep state='running' through ingest — only mark done once the full
       // pipeline (organize → scan → enrich) completes.
-      await this.ingest(id, plugin.manifest.id, url, paths, partialWarning);
+      await this.ingest(id, plugin.manifest.id, url, paths, partialWarning, resolveMeta);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       log.warn({ id, err: msg }, 'Acquire job failed');
@@ -204,12 +209,31 @@ export class AcquireWatcher {
     url: string,
     paths: string[],
     partialWarning?: string,
+    resolveMeta?: { artist?: string | null; album?: string | null },
   ): Promise<void> {
     if (paths.length === 0) {
       log.warn({ id }, 'Acquire job produced no audio files');
       return;
     }
     const stagingDir = pluginStagingDir(this.options.dataDir, pluginId, id);
+    // Sources whose staged files carry no embedded tags (archive.org) hand us
+    // the canonical artist/album via `resolveMeta`; pass it to the organizer as
+    // jobMeta so it files them into <musicDir>/<artist>/<album> instead of the
+    // unsorted bucket (applyJobCanonicalName in library-organizer.ts). Tagged
+    // sources (yt-dlp/spotdl) send no meta and keep tag-based filing.
+    const jobMeta: TransferJobMeta | null =
+      resolveMeta && (resolveMeta.artist || resolveMeta.album)
+        ? {
+            jobId: id,
+            kind: 'url',
+            artistName: resolveMeta.artist ?? null,
+            albumTitle: resolveMeta.album ?? null,
+            lidarrAlbumId: null,
+            genres: null,
+            year: null,
+            canonicalTracks: null,
+          }
+        : null;
     // Map staged absolute paths to the organizer's contract: `directory` is the
     // path relative to the job staging dir so LibraryOrganizer can infer
     // artist/album from the downloader's output template.
@@ -217,6 +241,7 @@ export class AcquireWatcher {
       username: `acquire:${id}`,
       directory: relative(stagingDir, dirname(p)) || '.',
       filename: p,
+      jobMeta,
     }));
     try {
       this.setStage(id, 'organizing');
@@ -251,11 +276,20 @@ export class AcquireWatcher {
         if (this.options.enrichSingles) await this.options.enrichSingles(relPaths);
       }
       this.setStage(id, 'done');
+      // Files were downloaded (paths.length > 0) but none were filed into the
+      // library (all landed in the unsorted bucket for lack of artist/album
+      // metadata, or were dup-skipped). Without this the job reads as a clean
+      // green "Done" while nothing actually reached the library — the exact
+      // "succeeds but vanishes" report. Surface it instead of swallowing it.
+      const unfiledWarning =
+        relPaths.length === 0
+          ? 'Downloaded, but no tracks were added to your library — they may already exist or lack the artist/album metadata needed to file them.'
+          : undefined;
       // A partial-download warning rides in the (state='done') job's `error`
       // field — it's still a success worth keeping (files did land), but the
       // user needs to see *why* the track count is short instead of it
       // reading as a clean, unqualified "Done".
-      this.updateState(id, 'done', partialWarning);
+      this.updateState(id, 'done', partialWarning ?? unfiledWarning);
       // Only a fully-succeeded job's staging dir is disposable — a failed one
       // is left in place so Retry can resume it (see retryJob()).
       this.cleanupStaging(stagingDir);

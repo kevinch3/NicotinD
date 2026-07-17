@@ -90,7 +90,10 @@ worked example.
   `{ consent: true }`, else `412` with the manifest's `disclaimer`. Records the acting admin.
 - `POST /api/plugins/:id/disable` — admin-only.
 - `PUT /api/plugins/:id/config` — admin-only; validates the body against the manifest's
-  `configSchema` (`400` on failure).
+  `configSchema` (`400` on failure). When the plugin is enabled and initialized, the registry
+  **re-initializes it** (dispose → init with the merged config, serialized via an internal chain +
+  `flushReinit()` awaited by the route) so the change takes effect live — previously the running
+  instance kept its init-time config until a disable/enable cycle or restart.
 
 ## First-party plugins
 
@@ -99,6 +102,14 @@ worked example.
   **(de)registers it in the legacy `ProviderRegistry` on `init`/`dispose`** — so the unified-search
   network lane, the downloads enqueue route, and user-browse all light up only while the plugin is
   enabled, with **no changes to those routes**. Its `isAvailable()` reflects `slskdRef.current`.
+  **Auto-shared music dir (embedded mode):** `buildSlskdDefinition`
+  (`packages/service-manager/src/services/slskd.ts`) seeds `shares.directories: [musicDir]` into
+  the generated `slskd.yml` whenever no shares are configured — a fresh install shares its library
+  out of the box (Soulseek etiquette; many peers refuse no-share leechers, which quietly degrades
+  search results). Regeneration **merges** with the existing `slskd.yml` rather than replacing it:
+  slskd's own remote-config API writes user-added shares into that same file, so NicotinD owns only
+  its managed keys (`soulseek`/`directories`/`web`/default share) and preserves everything else. An
+  emptied shares list re-seeds the default on next boot.
   The richer **album-hunt / fallback / retry / watchlist** engine still uses the slskd client
   directly; instead of rewiring it, those features are **request-gated** by
   `requireAcquisitionMiddleware` (`services/plugins/gate.ts`, 503 when no enabled plugin has the
@@ -115,6 +126,19 @@ process.ts` — `runAcquireProcess` + progress parsing + audio collection; the i
   routes each URL via `registry.getEnabledForUrl(url)` — there is no more `detectBackend` enum
   switch. `acquire_jobs.backend` is now an open plugin id (the legacy `CHECK IN ('ytdlp','spotdl')`
   is rebuilt away by a `db.ts` migration).
+
+  **Binary discovery (`acquireEnv`, `process.ts`):** every probe (`isBinaryAvailable`) and spawn
+  (`runAcquireProcess`) runs with an augmented environment — PATH is prepended with the dir of
+  `NICOTIND_FFMPEG_PATH` (so the desktop app's bundled ffmpeg is what yt-dlp/spotdl find for
+  post-processing, even with no system ffmpeg), then `/opt/homebrew/bin`, `/usr/local/bin`, and
+  `~/.local/bin`. Rationale: a GUI-launched Electron app inherits a minimal PATH (macOS apps get
+  `/usr/bin:/bin:...` without Homebrew; Linux launchers often miss `~/.local/bin`) — exactly where
+  brew/pip install these tools — so without this, an installed yt-dlp shows "not found" on
+  desktop. Both plugins also expose **`binaryPath` as an admin-editable config field**
+  (`configFields`) for anything the augmented PATH still misses. `isBinaryAvailable`'s
+  per-path cache is **invalidated on plugin (re)init** (`invalidateBinaryCache`), so a binary
+  installed or a path reconfigured while the app runs is re-probed instead of staying
+  "unavailable" for the process lifetime.
 - **archive.org** (`services/plugins/archive/index.ts`) — a third URL-acquisition plugin
   (`resolve`, consent-gated) but **pure JS**: `requirements.binaries: []`, no shared process runner.
   `canHandle(url)` matches any `archive.org` item URL (`/details`, `/download`, `/compress`,
@@ -201,7 +225,13 @@ process.ts` — `runAcquireProcess` + progress parsing + audio collection; the i
   `adminGuard`). That page owns the Soulseek **connection** form (creds/port/UPnP + connect/
   disconnect), **shared folders**, and a live **status panel** — all moved out of the old core
   Settings page. It gates its own body on `PluginService.hasSlskd()` (shows an enable-first notice
-  when the extension is off). *Backend credential storage is unchanged* — it still uses the
+  when the extension is off), and additionally on **reachability** (`slskdReachable` signal): when
+  `GET /api/settings/shares` fails with anything other than 401/403, slskd itself is down/absent
+  (e.g. the desktop app's external mode with no slskd running), so the connection + shares forms —
+  which could only error — are replaced with a "slskd is not reachable" notice
+  (`data-testid="slskd-unreachable-notice"`). The shares section clarifies that **the music
+  library folder is shared automatically** (see below); manual entries are for extra folders.
+  *Backend credential storage is unchanged* — it still uses the
   admin-gated `/api/settings/soulseek*` + `/api/settings/shares*` routes (`secrets.json`, wired to
   embedded-mode via `slskd-config.ts`); only the UI relocated, to avoid destabilizing the
   embedded-mode credential wiring.
