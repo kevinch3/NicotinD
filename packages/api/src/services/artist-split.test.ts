@@ -41,6 +41,25 @@ describe('splitArtists', () => {
       expect(primaries(result)).toEqual(['Charly Garcia', 'Spinetta']);
     });
 
+    it('splits on ";" (a known acquisition divider) when both parts confirmed', () => {
+      // confirmed() names are de-accented, matching normalizeArtistForGrouping.
+      const result = splitArtists(
+        'C. Tangana; Andrés Calamaro',
+        confirmed('c. tangana', 'andres calamaro'),
+      );
+      expect(primaries(result)).toEqual(['C. Tangana', 'Andrés Calamaro']);
+    });
+
+    it('splits on ";" with no surrounding spaces', () => {
+      const result = splitArtists('Artist A;Artist B', confirmed('artist a', 'artist b'));
+      expect(primaries(result)).toEqual(['Artist A', 'Artist B']);
+    });
+
+    it('keeps a ";"-joined compound whole when a part is unconfirmed', () => {
+      const result = splitArtists('C. Tangana; Andrés Calamaro', confirmed('c. tangana'));
+      expect(primaries(result)).toEqual(['C. Tangana; Andrés Calamaro']);
+    });
+
     it('splits on " y " (Spanish and) when both parts confirmed', () => {
       const result = splitArtists(
         'Charly García y Luis Alberto Spinetta',
@@ -229,6 +248,7 @@ describe('isAtomicArtist', () => {
     expect(isAtomicArtist('Bob Marley, Peter Tosh')).toBe(false);
     expect(isAtomicArtist('Wisin & Yandel')).toBe(false);
     expect(isAtomicArtist('Charly García y Luis Alberto Spinetta')).toBe(false);
+    expect(isAtomicArtist('C. Tangana; Andrés Calamaro')).toBe(false);
   });
 
   it('treats a name with a featuring credit as NOT atomic', () => {

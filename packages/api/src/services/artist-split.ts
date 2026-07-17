@@ -26,7 +26,10 @@ export interface KnownArtistSets {
 const FEAT_BRACKET = /\s*[([]\s*(?:feat\.?|ft\.?|featuring|with|w\/)\s+([^)\]]+)[)\]]/gi;
 const FEAT_BARE = /\s+(?:feat\.?|ft\.?|featuring|with|w\/)\s+(.+)$/i;
 
-const DELIMITERS = [/ & /i, / and /i, /\s*,\s+/, / \/ /, / \+ /, / vs\.? /i];
+// `;` is a known artist divider in our acquisition sources (mirrors genre-split's
+// separators). Like the others, it only *splits* when every part is a confirmed
+// artist — see the gate in splitArtists — so a stray semicolon never mangles a name.
+const DELIMITERS = [/\s*;\s*/, / & /i, / and /i, /\s*,\s+/, / \/ /, / \+ /, / vs\.? /i];
 
 const WORD_BOUNDARY_DELIMITERS = [
   { pattern: /\bx\b/i, text: ' x ' },

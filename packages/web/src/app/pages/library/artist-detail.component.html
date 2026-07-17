@@ -87,10 +87,13 @@
           </div>
         </div>
 
-        @if (albums().length === 0 && singlesAndEps().length === 0 && activeTab() !== 'songs') {
+        <!-- Only collapse to the "no releases" slate for release tabs; Songs and
+             Appears On are valid destinations that must keep the tab bar rendered
+             (an artist with only compilation appearances has no albums/singles). -->
+        @if (albums().length === 0 && singlesAndEps().length === 0 && activeTab() !== 'songs' && activeTab() !== 'appears-on') {
           <p class="text-center text-theme-muted py-20">No releases found for this artist.</p>
         } @else {
-          <!-- Tabs: Albums | Singles & EPs | Songs -->
+          <!-- Tabs: Albums | Singles & EPs | Appears On | Songs -->
           <div class="flex items-center gap-1 border-b border-theme-surface-2 mb-5" role="tablist">
             @for (tab of visibleTabs(); track tab) {
               <button type="button" role="tab"
@@ -122,6 +125,8 @@
                     <p class="text-sm text-theme-primary truncate">{{ album.name }}</p>
                     <p class="text-xs text-theme-muted">{{ album.year ?? '' }}</p>
                   </a>
+                } @empty {
+                  <p class="col-span-full text-center text-theme-muted py-16">Nothing here yet.</p>
                 }
               </div>
             }
@@ -143,6 +148,8 @@
                       {{ album.classification === 'ep' ? 'EP' : 'Single' }}{{ album.year ? ' · ' + album.year : '' }}
                     </p>
                   </a>
+                } @empty {
+                  <p class="col-span-full text-center text-theme-muted py-16">Nothing here yet.</p>
                 }
               </div>
             }
@@ -162,6 +169,8 @@
                     <p class="text-sm text-theme-primary truncate">{{ album.name }}</p>
                     <p class="text-xs text-theme-muted">{{ album.year ?? '' }}</p>
                   </a>
+                } @empty {
+                  <p class="col-span-full text-center text-theme-muted py-16">Nothing here yet.</p>
                 }
               </div>
             }
@@ -380,6 +389,7 @@
       <app-artist-identity-modal
         [rawName]="artist()!.name"
         (closed)="identityOpen.set(false)"
+        (saved)="onIdentitySaved()"
       />
     }
 

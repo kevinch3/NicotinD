@@ -38,7 +38,7 @@ import {
 import { clearCoverNegativeCache, extractCover, fetchRemoteCover } from './streaming.js';
 import { upsertArtistIdentity, upsertArtistAlias } from '../services/artist-identity-store.js';
 import { artistIdFor } from '../services/library-scanner.js';
-import { loadGenreSets, setSongGenres } from '../services/genre-split.js';
+import { appendSongGenres, loadGenreSets } from '../services/genre-split.js';
 import { resizeCover } from '../services/cover-thumbnail.js';
 import {
   dedupeCoverUrls,
@@ -1261,6 +1261,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
   //   { rawName, decision: 'single' }                  → keep the compound as one act
   //   { rawName, decision: 'split', members: [...] }   → split into the given artists
   //   { rawName, mergeInto }                           → spelling alias onto another artist
+  //   { rawName, rename }                              → fix this artist's own spelling/name
   app.post('/artists/identity', async (c) => {
     requireCurator(c);
     const body = await c.req
@@ -1269,13 +1270,29 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
         decision?: 'single' | 'split';
         members?: string[];
         mergeInto?: string;
+        rename?: string;
       }>()
       .catch(() => null);
     const rawName = body?.rawName?.trim();
     if (!rawName) return c.json({ error: 'rawName required' }, 400);
     const db = getDatabase();
 
-    if (body?.mergeInto != null) {
+    if (body?.rename != null) {
+      // Rename this one artist to a corrected spelling/name. Unlike `mergeInto`
+      // this deliberately ALLOWS an equal-normalized target — a diacritic/case fix
+      // ("Los Áutenticos Decadentes" → "Los Auténticos Decadentes") keeps the same
+      // artist id and just corrects the display name via `aliasFix` on rescan. A
+      // different-normalized rename mints a new id (a full rename). Same alias write.
+      const rename = body.rename.trim();
+      if (!rename || rename === rawName) {
+        return c.json({ error: 'rename must be a non-empty, different name' }, 400);
+      }
+      upsertArtistAlias(db, {
+        aliasNorm: normalizeArtistForGrouping(rawName),
+        canonicalName: rename,
+        source: 'user',
+      });
+    } else if (body?.mergeInto != null) {
       const mergeInto = body.mergeInto.trim();
       if (
         !mergeInto ||
@@ -1308,12 +1325,14 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
         source: 'user',
       });
     } else {
-      return c.json({ error: 'decision (single|split) or mergeInto required' }, 400);
+      return c.json({ error: 'decision (single|split), mergeInto, or rename required' }, 400);
     }
 
-    // Re-bucket asynchronously; the caller gets an immediate ack.
-    if (runSync) void runSync();
-    return c.json({ ok: true, resyncing: Boolean(runSync) }, 202);
+    // Re-bucket synchronously so the caller sees the change immediately (the UI
+    // shows a spinner meanwhile). scan-cache skips unchanged files, so a no-op
+    // rescan is cheap; the same await pattern backs POST /sync below.
+    if (runSync) await runSync();
+    return c.json({ ok: true, resynced: Boolean(runSync) });
   });
 
   app.post('/sync', async (c) => {
@@ -1465,14 +1484,17 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       .get(id);
     if (!song) return c.json({ error: 'Song not found' }, 404);
 
+    // Append to the existing set (not replace) — a detected genre adds to, never
+    // clobbers, the song's other genres. The merged set is mirrored to the file tag
+    // so the next full scan (which rebuilds from tags) preserves the addition.
+    const merged = appendSongGenres(db, id, genres);
     if (musicDir) {
       const abs = resolveSongPath(expandDir(musicDir), song.path);
       if (isUnderMusicDir(expandDir(musicDir), abs) && existsSync(abs)) {
-        await writeAudioTags(abs, { genre: genres.join('; ') }).catch(() => false);
+        await writeAudioTags(abs, { genre: merged.join('; ') }).catch(() => false);
       }
     }
-    setSongGenres(db, id, genres);
-    return c.json({ ok: true, genre: genres[0], genres });
+    return c.json({ ok: true, genre: merged[0], genres: merged });
   });
 
   // Stored lyrics for a song (any user — the library is shared). Returns the

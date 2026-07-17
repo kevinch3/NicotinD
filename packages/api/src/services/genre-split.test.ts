@@ -254,3 +254,45 @@ describe('setSongGenres', () => {
     expect(loadGenreSets(db, ['s1']).get('s1')).toBeUndefined();
   });
 });
+
+describe('appendSongGenres', () => {
+  async function seed() {
+    const { Database } = await import('bun:sqlite');
+    const { applySchema } = await import('../db.js');
+    const mod = await import('./genre-split.js');
+    const db = new Database(':memory:');
+    applySchema(db);
+    db.run(
+      `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, genre, path, size, suffix, content_type, synced_at)
+       VALUES ('s1', 'al1', 'T', 'A', 'ar1', 200, NULL, 'p1', 1, 'mp3', 'audio/mpeg', 0)`,
+    );
+    return { db, ...mod };
+  }
+
+  it('appends new genres, preserving the existing set and primary', async () => {
+    const { db, appendSongGenres, loadGenreSets } = await seed();
+    appendSongGenres(db, 's1', ['House', 'Techno']);
+    const merged = appendSongGenres(db, 's1', ['Deep House']);
+    expect(merged).toEqual(['House', 'Techno', 'Deep House']);
+    expect(loadGenreSets(db, ['s1']).get('s1')).toEqual(['House', 'Techno', 'Deep House']);
+    // Primary (position 0) is unchanged by an append.
+    expect(
+      db.query<{ genre: string | null }, [string]>(`SELECT genre FROM library_songs WHERE id = ?`).get('s1')
+        ?.genre,
+    ).toBe('House');
+  });
+
+  it('dedups case-insensitively and never clobbers existing genres', async () => {
+    const { db, appendSongGenres } = await seed();
+    appendSongGenres(db, 's1', ['House']);
+    const merged = appendSongGenres(db, 's1', ['house', 'HOUSE', 'Techno']);
+    expect(merged).toEqual(['House', 'Techno']);
+  });
+
+  it('appending onto an empty set behaves like setSongGenres', async () => {
+    const { db, appendSongGenres, loadGenreSets } = await seed();
+    const merged = appendSongGenres(db, 's1', ['Jazz', 'Jazz', ' Jazz ']);
+    expect(merged).toEqual(['Jazz']);
+    expect(loadGenreSets(db, ['s1']).get('s1')).toEqual(['Jazz']);
+  });
+});

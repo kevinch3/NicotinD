@@ -259,6 +259,30 @@ export function loadGenreSets(db: Database, songIds: string[]): Map<string, stri
  * for the touched names so search/grouping reflect the change immediately.
  * The next full scan rebuilds the aggregate wholesale anyway.
  */
+/**
+ * Append genres to a song's existing set (track-info "detect genre", enrichment,
+ * backfill) instead of replacing it. The existing set is kept first — so the current
+ * primary (position 0) is preserved — and only genuinely new names are added, deduped
+ * case-insensitively. Returns the merged, ordered list so callers can mirror it into
+ * the file tag (else the next full scan, which rebuilds from tags, would drop the
+ * appended genres). Appending onto an empty set is exactly {@link setSongGenres}.
+ */
+export function appendSongGenres(db: Database, songId: string, newGenres: string[]): string[] {
+  const existing = loadGenreSets(db, [songId]).get(songId) ?? [];
+  const seen = new Set(existing.map((g) => g.toLowerCase()));
+  const merged = [...existing];
+  for (const g of newGenres) {
+    const trimmed = g.trim().replace(/\s+/g, ' ');
+    if (!trimmed) continue;
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(trimmed);
+  }
+  setSongGenres(db, songId, merged);
+  return merged;
+}
+
 export function setSongGenres(db: Database, songId: string, genres: string[]): void {
   const touched = new Set<string>(genres);
   for (const r of db

@@ -524,6 +524,27 @@ describe('ArtistDetailComponent — visibleSongs filters deletedSongIds', () => 
   });
 });
 
+describe('ArtistDetailComponent — Appears On tab never collapses the tab bar', () => {
+  it('keeps appears-on navigable when the artist has no own albums or singles', async () => {
+    const { component } = setup();
+    await fixture_stable();
+
+    // An artist who only appears on compilations: no own releases, non-empty appears-on.
+    component.albums.set([]);
+    component.singlesAndEps.set([]);
+    component.appearsOn.set([{ id: 'c1', name: 'VA Comp', artist: 'Various Artists' } as never]);
+
+    // The tab is listed (so the bar renders it) alongside the always-present Songs tab.
+    expect(component.visibleTabs()).toContain('appears-on');
+    expect(component.visibleTabs()).toContain('songs');
+
+    // Switching to it keeps it listed — the old guard used to drop the whole bar here.
+    component.setTab('appears-on');
+    expect(component.activeTab()).toBe('appears-on');
+    expect(component.visibleTabs()).toContain('appears-on');
+  });
+});
+
 // Helper: lets Angular settle the ngOnInit promise (of() resolves synchronously as a microtask)
 async function fixture_stable() {
   await Promise.resolve();

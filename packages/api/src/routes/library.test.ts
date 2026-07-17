@@ -96,7 +96,7 @@ describe('library routes', () => {
     expect(fsState.has('/home/kevinch3/Music/Artist/Album/song.mp3')).toBe(false);
   });
 
-  it('POST /artists/identity writes a user split decision and 202s', async () => {
+  it('POST /artists/identity writes a user split decision and 200s', async () => {
     const res = await app.request('/artists/identity', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -106,7 +106,7 @@ describe('library routes', () => {
         members: ['Bob Marley', 'Peter Tosh'],
       }),
     });
-    expect(res.status).toBe(202);
+    expect(res.status).toBe(200);
     const row = sharedDb
       .query<{ decision: string; source: string; members: string }, [string]>(
         `SELECT decision, source, members FROM library_artist_identity WHERE raw_name = ?`,
@@ -125,13 +125,51 @@ describe('library routes', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ rawName: 'Snoop Dog', mergeInto: 'Snoop Dogg' }),
     });
-    expect(res.status).toBe(202);
+    expect(res.status).toBe(200);
     const row = sharedDb
       .query<{ canonical_name: string; source: string }, [string]>(
         `SELECT canonical_name, source FROM library_artist_aliases WHERE alias_norm = ?`,
       )
       .get('snoop dog');
     expect(row).toEqual({ canonical_name: 'Snoop Dogg', source: 'user' });
+  });
+
+  it('POST /artists/identity renames an artist via an alias, allowing an equal-normalized diacritic fix', async () => {
+    const res = await app.request('/artists/identity', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      // Both spellings normalize to the same key — the merge guard would reject
+      // this, but a rename must allow it (accent-only display correction).
+      body: JSON.stringify({
+        rawName: 'Los Áutenticos Decadentes',
+        rename: 'Los Auténticos Decadentes',
+      }),
+    });
+    expect(res.status).toBe(200);
+    const row = sharedDb
+      .query<{ canonical_name: string; source: string }, [string]>(
+        `SELECT canonical_name, source FROM library_artist_aliases WHERE alias_norm = ?`,
+      )
+      .get('los autenticos decadentes');
+    expect(row).toEqual({ canonical_name: 'Los Auténticos Decadentes', source: 'user' });
+  });
+
+  it('POST /artists/identity awaits the resync and reports it', async () => {
+    const runSync = mock(() => Promise.resolve());
+    const localApp = new Hono<AuthEnv>();
+    localApp.use('*', (c, next) => {
+      c.set('user', { sub: 'u', role: 'admin', iat: 0, exp: 9999999999 });
+      return next();
+    });
+    localApp.route('/', libraryRoutes('/home/kevinch3/Music', { runSync }));
+    const res = await localApp.request('/artists/identity', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ rawName: 'X', decision: 'single' }),
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, resynced: true });
+    expect(runSync).toHaveBeenCalledTimes(1);
   });
 
   it('POST /artists/identity validates its shapes', async () => {
@@ -145,6 +183,8 @@ describe('library routes', () => {
     expect((await post({ rawName: 'X' })).status).toBe(400); // no decision/mergeInto
     expect((await post({ rawName: 'A & B', decision: 'split', members: ['A'] })).status).toBe(400); // <2 members
     expect((await post({ rawName: 'Same', mergeInto: 'same' })).status).toBe(400); // self-merge
+    expect((await post({ rawName: 'X', rename: '' })).status).toBe(400); // empty rename
+    expect((await post({ rawName: 'X', rename: 'X' })).status).toBe(400); // no-op rename
   });
 
   it('POST /artists/identity is admin-only', async () => {
@@ -160,6 +200,34 @@ describe('library routes', () => {
       body: JSON.stringify({ rawName: 'X', decision: 'single' }),
     });
     expect(res.status).toBe(403);
+  });
+
+  it('POST /songs/:id/genre appends to the existing set instead of replacing it', async () => {
+    seedSong('gsong', '/home/kevinch3/Music/A/B/g.mp3');
+    // Existing multi-genre set (primary first).
+    sharedDb.run(`DELETE FROM library_song_genres WHERE song_id = 'gsong'`);
+    sharedDb.run(
+      `INSERT INTO library_song_genres (song_id, genre, position) VALUES ('gsong','House',0),('gsong','Techno',1)`,
+    );
+    sharedDb.run(`UPDATE library_songs SET genre = 'House' WHERE id = 'gsong'`);
+
+    const res = await app.request('/songs/gsong/genre', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ genre: 'Deep House' }),
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      ok: true,
+      genre: 'House',
+      genres: ['House', 'Techno', 'Deep House'],
+    });
+    const rows = sharedDb
+      .query<{ genre: string }, [string]>(
+        `SELECT genre FROM library_song_genres WHERE song_id = ? ORDER BY position`,
+      )
+      .all('gsong');
+    expect(rows.map((r) => r.genre)).toEqual(['House', 'Techno', 'Deep House']);
   });
 
   it('GET /untracked lists completed downloads with no relative_path', async () => {
