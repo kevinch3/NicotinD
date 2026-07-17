@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.216](https://github.com/kevinch3/NicotinD/compare/v0.1.215...v0.1.216) (2026-07-17)
+
+
+### Features
+
+* **auth:** add listener + refiner user roles (capability ladder) ([56dad7c](https://github.com/kevinch3/NicotinD/commit/56dad7ccbbf8083eb90552268f194487a9a20838))
+
 ## [0.1.215](https://github.com/kevinch3/NicotinD/compare/v0.1.214...v0.1.215) (2026-07-17)
 
 
