@@ -1540,8 +1540,15 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       album: song.album ?? undefined,
       durationSec: song.duration || undefined,
     };
+    // Track whether a source *failed* (threw) vs cleanly reported "no match", so
+    // a transient LRCLIB error (rate-limit / 5xx / timeout) doesn't masquerade as
+    // a confident "no lyrics" — the client shows a retry instead of a false empty.
+    let sourceErrored = false;
     for (const plugin of pluginRegistry.getEnabledWithCapability('lyrics')) {
-      const result = await plugin.lyrics?.fetchLyrics(query).catch(() => null);
+      const result = await plugin.lyrics?.fetchLyrics(query).catch(() => {
+        sourceErrored = true;
+        return null;
+      });
       if (!result) continue;
       const saved = setLyrics(db, id, {
         plain: result.plain,
@@ -1556,6 +1563,11 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
         }
       }
       return c.json(saved);
+    }
+    // No match anywhere. Distinguish an authoritative miss (null) from a source
+    // failure (502) so the UI can offer "try again" rather than "no lyrics".
+    if (sourceErrored) {
+      return c.json({ error: 'Lyrics source unavailable' }, 502);
     }
     return c.json(null);
   });

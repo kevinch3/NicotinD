@@ -42,7 +42,11 @@ function seedSong(db: Database, id: string): void {
 }
 
 /** A registry stub exposing only what the lyrics routes call. */
-function makeRegistry(opts: { result?: LyricsResult | null; enabled?: boolean }): {
+function makeRegistry(opts: {
+  result?: LyricsResult | null;
+  enabled?: boolean;
+  throws?: boolean;
+}): {
   registry: PluginRegistry;
   calls: () => number;
 } {
@@ -52,6 +56,7 @@ function makeRegistry(opts: { result?: LyricsResult | null; enabled?: boolean })
     lyrics: {
       fetchLyrics: async () => {
         calls++;
+        if (opts.throws) throw new Error('LRCLIB unavailable');
         return opts.result ?? null;
       },
     },
@@ -148,6 +153,19 @@ describe('POST /songs/:id/lyrics/fetch', () => {
     });
     expect(res.status).toBe(200);
     expect(await res.json()).toBeNull();
+  });
+
+  it('returns 502 (not a false null) when the source errors', async () => {
+    // A transient LRCLIB failure must surface as an error the client can retry,
+    // not masquerade as a confident "no lyrics found".
+    seedSong(testDb, 'song-1');
+    const { registry } = makeRegistry({ throws: true });
+    const res = await makeApp('user', registry).request('/songs/song-1/lyrics/fetch', {
+      method: 'POST',
+    });
+    expect(res.status).toBe(502);
+    // Nothing persisted — a later fetch can still succeed.
+    expect(getLyrics(testDb, 'song-1')).toBeNull();
   });
 
   it('recovers lyrics from the file tag before reaching a source', async () => {
