@@ -1,7 +1,7 @@
 <nav
   class="md:hidden fixed bottom-0 left-0 right-0 z-50 grid grid-cols-5 h-[calc(3.5rem+env(safe-area-inset-bottom))] bg-theme-surface border-t border-theme pb-[env(safe-area-inset-bottom)]"
 >
-  @for (tab of tabs; track tab.to) {
+  @for (tab of tabs(); track tab.to) {
     @if (isDisabled(tab)) {
       <span
         class="flex flex-col items-center justify-center gap-0.5 text-[10px] font-medium text-theme-muted opacity-40 select-none"

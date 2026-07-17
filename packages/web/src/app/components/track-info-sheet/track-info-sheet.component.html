@@ -41,7 +41,7 @@
         @if (headerArtist()) {
           <p class="text-xs text-theme-secondary truncate">
             {{ headerArtist() }}
-            @if (isAdmin()) {
+            @if (canCurate()) {
               <button type="button" data-testid="track-artist-identity-fix"
                 (click)="identityOpen.set(true)"
                 title="Fix artist credit (one act / split / merge)"
@@ -179,7 +179,7 @@
             <div class="flex gap-2 items-center pl-16" data-testid="genre-suggestion">
               <span class="text-theme-muted text-xs">Suggested</span>
               <span class="text-theme-secondary">{{ g.suggested }}</span>
-              @if (isAdmin()) {
+              @if (canCurate()) {
                 <button
                   class="ml-auto px-2 py-0.5 rounded bg-theme-accent text-theme-on-accent hover:opacity-90 text-xs
                          disabled:opacity-50"
@@ -219,7 +219,7 @@
         <p class="text-xs text-theme-muted uppercase tracking-wider">Lyrics</p>
         @if (!editingLyrics()) {
           <div class="flex gap-2">
-            @if (isAdmin()) {
+            @if (canCurate()) {
               <button
                 class="px-2 py-0.5 rounded bg-theme-surface-2 hover:bg-theme-hover text-xs"
                 (click)="startEditLyrics()"

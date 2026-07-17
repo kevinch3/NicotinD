@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { Hono } from 'hono';
+import type { Role } from '@nicotind/core';
+import type { AuthEnv } from '../middleware/auth.js';
 import { searchRoutes } from './search.js';
 import { ProviderRegistry } from '../services/provider-registry.js';
 import { LibrarySearchProvider } from '../services/providers/library-provider.js';
@@ -60,6 +62,52 @@ describe('search routes', () => {
     expect(file.title).toBe('A Song for You');
     expect(file.artist).toBe('Luke Evans');
     expect(file.album).toBeUndefined();
+  });
+
+  it('suppresses the network fan-out for a listener (library-only search)', async () => {
+    const libraryDb = new Database(':memory:');
+    applySchema(libraryDb);
+
+    let networkCreated = false;
+    const slskdRef = {
+      current: {
+        searches: {
+          create: async () => {
+            networkCreated = true;
+            return { id: 'slskd-search-1' };
+          },
+          get: async () => ({ state: 'InProgress', responseCount: 0 }),
+          getResponses: async () => [],
+          list: async () => [],
+          delete: async () => undefined,
+          cancel: async () => undefined,
+        },
+      },
+    } as unknown as ConstructorParameters<typeof SlskdSearchProvider>[0];
+
+    const registry = new ProviderRegistry();
+    registry.register(new LibrarySearchProvider(libraryDb));
+    registry.register(new SlskdSearchProvider(slskdRef));
+
+    const appFor = (role: Role) => {
+      const a = new Hono<AuthEnv>();
+      a.use('*', (c, next) => {
+        c.set('user', { sub: 'u', role, iat: 0, exp: 9999999999 });
+        return next();
+      });
+      a.route('/', searchRoutes(registry));
+      return a;
+    };
+
+    const listenerRes = await appFor('listener').request('/?q=test');
+    expect(listenerRes.status).toBe(200);
+    const listenerBody = await listenerRes.json();
+    expect(listenerBody.networkAvailable).toBe(false);
+    expect(networkCreated).toBe(false);
+
+    // A user triggers the network provider.
+    await appFor('user').request('/?q=test');
+    expect(networkCreated).toBe(true);
   });
 
   it('poll response includes canBrowse: true when provider supports browsing', async () => {

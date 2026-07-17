@@ -74,7 +74,8 @@ export class TrackInfoSheetComponent implements OnInit {
   readonly genreSuggestion = signal<GenreSuggestion | null>(null);
   readonly verifyingGenre = signal(false);
   readonly applyingGenre = signal(false);
-  readonly isAdmin = computed(() => this.auth.role() === 'admin');
+  // Curation actions (artist-identity fix, apply genre, edit lyrics) — refiner+admin.
+  readonly canCurate = computed(() => this.auth.canCurate());
 
   // Admin fix for a wrong artist-credit decision, acting on the song's RAW tag
   // artist string (covers compounds that no longer have their own artist page).

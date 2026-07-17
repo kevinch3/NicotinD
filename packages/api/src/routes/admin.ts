@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
-import { hashPassword } from '@nicotind/core';
-import type { ProcessingSettings, ProcessingStatus } from '@nicotind/core';
+import { hashPassword, ROLES } from '@nicotind/core';
+import type { ProcessingSettings, ProcessingStatus, Role } from '@nicotind/core';
 import type { Lidarr } from '@nicotind/lidarr-client';
 import type { AuthEnv } from '../middleware/auth.js';
 import { getDatabase } from '../db.js';
@@ -104,15 +104,15 @@ export function adminRoutes(deps: AdminRoutesDeps) {
   // Toggle user role
   app.put('/users/:id/role', async (c) => {
     const { id } = c.req.param();
-    const { role } = await c.req.json<{ role: 'admin' | 'user' }>();
+    const { role } = await c.req.json<{ role: Role }>();
     const currentUser = c.get('user');
 
     if (id === currentUser.sub) {
       return c.json({ error: 'Cannot change your own role' }, 400);
     }
 
-    if (role !== 'admin' && role !== 'user') {
-      return c.json({ error: 'Role must be "admin" or "user"' }, 400);
+    if (!ROLES.includes(role)) {
+      return c.json({ error: `Role must be one of: ${ROLES.join(', ')}` }, 400);
     }
 
     const db = getDatabase();

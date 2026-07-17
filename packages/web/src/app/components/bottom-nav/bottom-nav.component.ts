@@ -1,6 +1,7 @@
-import { Component, inject } from '@angular/core';
+import { Component, computed, inject } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
 import { RouterLink, RouterLinkActive } from '@angular/router';
+import { AuthService } from '../../services/auth.service';
 import { SetupService } from '../../services/setup.service';
 import { TransferService } from '../../services/transfer.service';
 
@@ -46,8 +47,12 @@ const TABS: BottomNavItem[] = [
 export class BottomNavComponent {
   readonly setup = inject(SetupService);
   private transfers = inject(TransferService);
+  private auth = inject(AuthService);
 
-  readonly tabs = TABS;
+  // Downloads is an acquisition surface — hidden from listeners (declutter).
+  readonly tabs = computed(() =>
+    this.auth.canAcquire() ? TABS : TABS.filter((t) => t.to !== '/downloads'),
+  );
   readonly activeDownloads = this.transfers.activeDownloadCount;
 
   isDisabled(tab: BottomNavItem): boolean {

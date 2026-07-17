@@ -1,6 +1,8 @@
 import { describe, expect, it, beforeEach, mock } from 'bun:test';
 import { Hono } from 'hono';
+import type { Role } from '@nicotind/core';
 import type { AuthEnv } from '../middleware/auth.js';
+import { errorHandler } from '../middleware/error-handler.js';
 import { acquireRoutes } from './acquire.js';
 import {
   NoAcquisitionPluginError,
@@ -81,10 +83,11 @@ function makeMockWatcher() {
   };
 }
 
-function makeApp(watcher: ReturnType<typeof makeMockWatcher>) {
+function makeApp(watcher: ReturnType<typeof makeMockWatcher>, role: Role = 'user') {
   const app = new Hono<AuthEnv>();
+  app.onError(errorHandler);
   app.use('*', (c, next) => {
-    c.set('user', { sub: 'user1', role: 'user', iat: 0, exp: 9999999999 });
+    c.set('user', { sub: 'user1', role, iat: 0, exp: 9999999999 });
     return next();
   });
   app.route('/', acquireRoutes(watcher as unknown as AcquireWatcher));
@@ -106,6 +109,16 @@ describe('acquire routes', () => {
   beforeEach(() => {
     watcher = makeMockWatcher();
     app = makeApp(watcher);
+  });
+
+  describe('listener gating', () => {
+    it('403s every acquisition route for a listener', async () => {
+      const listenerApp = makeApp(watcher, 'listener');
+      const submit = await post(listenerApp, 'https://www.youtube.com/watch?v=abc');
+      expect(submit.status).toBe(403);
+      expect((await listenerApp.request('/jobs')).status).toBe(403);
+      expect(watcher.submitMock).not.toHaveBeenCalled();
+    });
   });
 
   describe('POST /', () => {

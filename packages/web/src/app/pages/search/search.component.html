@@ -49,8 +49,9 @@
   </form>
 
   <!-- Source availability — neutral across every enabled source (no "the network"
-       framing). Lists what will contribute to the blended results. -->
-  @if (networkConnected() !== null) {
+       framing). Lists what will contribute to the blended results. Acquisition
+       surfaces are hidden from listeners (declutter). -->
+  @if (auth.canAcquire() && networkConnected() !== null) {
     <div class="flex items-center gap-2 mb-6">
       <span
         [class]="
@@ -127,7 +128,7 @@
        runs for a URL). The card itself carries the job lifecycle — no
        separate job list (replaces the old bottom "Get from a link" section).
        See docs/source-agnostic-acquisition.md. -->
-  @if (linkIntent(); as intent) {
+  @if (auth.canAcquire() && linkIntent(); as intent) {
     <section class="mb-6" data-testid="link-intent-section">
       <ul class="divide-y divide-zinc-800 rounded-lg border border-zinc-800 overflow-hidden">
         <li
@@ -232,8 +233,9 @@
     </div>
   }
 
-  <!-- Metadata (catalog) results — the primary, MusicBrainz/Lidarr-backed path -->
-  @if (hasCatalog() && !loading()) {
+  <!-- Metadata (catalog) results — the primary, MusicBrainz/Lidarr-backed path.
+       Acquisition-oriented (cards lead to album hunt), so hidden from listeners. -->
+  @if (auth.canAcquire() && hasCatalog() && !loading()) {
     <section class="space-y-6 mb-8">
       @if (catalog()!.albums.length > 0) {
         <div>
@@ -366,7 +368,7 @@
   <!-- Source-agnostic blended results: one ranked list across every enabled
        source (Soulseek peer files + archive.org + Spotify), each row chip-labelled
        with a single Get action. No "primary network" / "Also on…" hierarchy. -->
-  @if (!loading() && search.query().trim() && hasBlendedResults()) {
+  @if (auth.canAcquire() && !loading() && search.query().trim() && hasBlendedResults()) {
     <section class="mt-4" data-testid="results">
       <h2 class="text-xs font-semibold uppercase tracking-wide text-zinc-500 mb-2">Results</h2>
       @if (plugins.hasSpotify() && !plugins.hasSpotdl() && search.spotify().length > 0) {
@@ -435,7 +437,7 @@
   <!-- Advanced: raw network search — a power-user escape hatch, demoted below the
        guided catalog/song results. Peer stats + the folder-tree browser live only
        inside this collapsed disclosure so normal users never see them. -->
-  @if (!loading() && search.query().trim() && search.networkState() !== 'idle') {
+  @if (auth.canAcquire() && !loading() && search.query().trim() && search.networkState() !== 'idle') {
     <section class="mt-2" data-testid="advanced-network-search">
       <button
         (click)="toggleDirectSearch()"

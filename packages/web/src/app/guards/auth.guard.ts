@@ -21,5 +21,13 @@ export const authGuard: CanActivateFn = () => {
 export const adminGuard: CanActivateFn = () => {
   const auth = inject(AuthService);
   const router = inject(Router);
-  return auth.role() === 'admin' || router.createUrlTree(['/']);
+  return auth.isAdmin() || router.createUrlTree(['/']);
+};
+
+// Acquisition surfaces (e.g. /downloads) are hidden from listeners; bounce them
+// home so a bookmarked/deep-linked URL can't reach the acquisition UI.
+export const acquireGuard: CanActivateFn = () => {
+  const auth = inject(AuthService);
+  const router = inject(Router);
+  return auth.canAcquire() || router.createUrlTree(['/']);
 };

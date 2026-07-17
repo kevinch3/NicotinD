@@ -1,5 +1,7 @@
 import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
+import { asRole, canAcquire } from '@nicotind/core';
 import type { AuthEnv } from '../middleware/auth.js';
+import { getCurrentUser } from '../middleware/current-user.js';
 import type { ProviderRegistry } from '../services/provider-registry.js';
 
 const UnifiedSearchResponseSchema = z
@@ -95,10 +97,12 @@ export function searchRoutes(registry: ProviderRegistry) {
           }
         }
 
-        // 2. Fire all network providers
+        // 2. Fire all network providers — but only for users who can acquire.
+        //    Listeners get a library-only search (no network lane surfaced).
         let searchId: string = crypto.randomUUID();
         let networkAvailable = false;
-        for (const provider of registry.getByType('network')) {
+        const acquirer = canAcquire(asRole(getCurrentUser(c)?.role));
+        for (const provider of acquirer ? registry.getByType('network') : []) {
           try {
             const { searchId: providerSearchId } = await provider.search(query);
             if (providerSearchId) {

@@ -1,12 +1,19 @@
 import { Hono } from 'hono';
 import { createLogger } from '@nicotind/core';
 import type { AuthEnv } from '../middleware/auth.js';
+import { requireAcquirer } from '../middleware/current-user.js';
 import type { WatchlistService } from '../services/watchlist.service.js';
 
 const log = createLogger('watchlist-routes');
 
 export function watchlistRoutes(watchlist: WatchlistService) {
   const app = new Hono<AuthEnv>();
+
+  // Watchlist auto-hunt is acquisition — hidden from listeners, gated server-side.
+  app.use('*', async (c, next) => {
+    requireAcquirer(c);
+    await next();
+  });
 
   // GET /api/watchlist — list every watched album (newest first).
   app.get('/', (c) => c.json({ items: watchlist.list() }));

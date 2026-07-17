@@ -7,6 +7,7 @@ import { vi } from 'vitest';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import type { Song } from '../../services/api/api-types';
 import { AuthService } from '../../services/auth.service';
+import { asRole, canCurate as canCurateRole } from '../../../types/core';
 import { PlayerService } from '../../services/player.service';
 import { PreserveService } from '../../services/preserve.service';
 import { PlaylistService } from '../../services/playlist.service';
@@ -70,7 +71,7 @@ function setup(opts: { role?: 'admin' | 'user'; deleteSongs?: ReturnType<typeof 
           deleteSongs,
         },
       },
-      { provide: AuthService, useValue: { token: signal('tok'), role: () => opts.role ?? 'user' } },
+      { provide: AuthService, useValue: { token: signal('tok'), role: () => opts.role ?? 'user', canCurate: () => canCurateRole(asRole(opts.role ?? 'user')) } },
       { provide: PlayerService, useValue: playerStub },
       { provide: PlaylistService, useValue: { openPicker } },
     ],

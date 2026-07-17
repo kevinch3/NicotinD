@@ -1,5 +1,6 @@
 import { describe, expect, it, beforeEach, mock } from 'bun:test';
 import { Hono } from 'hono';
+import type { AuthEnv } from '../middleware/auth.js';
 import { Database } from 'bun:sqlite';
 import { downloadRoutes, enrichWithAlbumJobs } from './downloads.js';
 import { albumIdFor } from '../services/library-scanner.js';
@@ -47,7 +48,7 @@ function makeSlskdMock() {
 
 describe('downloads routes', () => {
   let slskdMock: ReturnType<typeof makeSlskdMock>;
-  let app: Hono;
+  let app: Hono<AuthEnv>;
 
   beforeEach(() => {
     testDb.run('DELETE FROM hidden_transfers');
@@ -58,7 +59,12 @@ describe('downloads routes', () => {
     slskdMock = makeSlskdMock();
 
     const slskdRef = { current: slskdMock } as unknown as SlskdRef;
-    app = new Hono();
+    app = new Hono<AuthEnv>();
+    // Downloads is acquisition-gated; inject an acquiring user (not a listener).
+    app.use('*', (c, next) => {
+      c.set('user', { sub: 'u', role: 'user', iat: 0, exp: 9999999999 });
+      return next();
+    });
     const registry = new ProviderRegistry();
     registry.register(new SlskdSearchProvider(slskdRef));
     app.route('/', downloadRoutes(registry, slskdRef));

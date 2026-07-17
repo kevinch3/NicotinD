@@ -1,5 +1,5 @@
 import { Routes } from '@angular/router';
-import { authGuard, adminGuard, serverGuard } from './guards/auth.guard';
+import { authGuard, adminGuard, acquireGuard, serverGuard } from './guards/auth.guard';
 
 export const routes: Routes = [
   {
@@ -41,6 +41,7 @@ export const routes: Routes = [
       },
       {
         path: 'downloads',
+        canActivate: [acquireGuard],
         loadComponent: () =>
           import('./pages/downloads/downloads.component').then((m) => m.DownloadsComponent),
       },

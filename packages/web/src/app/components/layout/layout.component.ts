@@ -69,9 +69,13 @@ export class LayoutComponent implements OnInit, OnDestroy {
   private acquire = inject(AcquireService);
   private api = inject(LibraryApiService);
 
-  readonly navItems = computed<NavItem[]>(() =>
-    this.auth.role() === 'admin' ? [...BASE_NAV, { to: '/admin', label: 'Admin' }] : BASE_NAV,
-  );
+  readonly navItems = computed<NavItem[]>(() => {
+    // Downloads is an acquisition surface — hidden from listeners (declutter).
+    const base = this.auth.canAcquire()
+      ? BASE_NAV
+      : BASE_NAV.filter((n) => n.to !== '/downloads');
+    return this.auth.isAdmin() ? [...base, { to: '/admin', label: 'Admin' }] : base;
+  });
 
   isNavDisabled(route: string): boolean {
     return this.setup.isOffline() && ONLINE_ONLY_ROUTES.has(route);

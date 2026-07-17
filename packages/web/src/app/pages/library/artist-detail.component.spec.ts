@@ -7,6 +7,7 @@ import { ArtistDetailComponent } from './artist-detail.component';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import { DownloadsApiService } from '../../services/api/downloads-api.service';
 import { AuthService } from '../../services/auth.service';
+import { asRole, canCurate as canCurateRole } from '../../../types/core';
 import { PlayerService } from '../../services/player.service';
 import { TransferService } from '../../services/transfer.service';
 
@@ -134,7 +135,7 @@ function setup(role = 'admin', deleteSongs = vi.fn(() => of({ ok: true, deletedC
           deleteSongs,
         },
       },
-      { provide: AuthService, useValue: { token: signal('tok'), role: signal(role) } },
+      { provide: AuthService, useValue: { token: signal('tok'), role: signal(role), canCurate: () => canCurateRole(asRole(role)) } },
       {
         provide: PlayerService,
         useValue: {

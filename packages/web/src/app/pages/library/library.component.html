@@ -66,7 +66,7 @@
             }
           </select>
         </label>
-        @if (auth.role() === 'admin') {
+        @if (auth.canCurate()) {
           <label class="flex items-center justify-between gap-3 text-sm text-theme-secondary cursor-pointer">
             <span>Show hidden</span>
             <input type="checkbox" data-testid="library-filter-hidden"
@@ -107,7 +107,7 @@
           <p class="text-xs text-theme-muted truncate">
             {{ album.artist }}{{ album.year ? ' · ' + album.year : '' }}
           </p>
-          @if (auth.role() === 'admin') {
+          @if (auth.canCurate()) {
             @if (album.hidden) {
               <button
                 type="button"

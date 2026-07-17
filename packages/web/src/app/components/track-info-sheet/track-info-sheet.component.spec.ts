@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
-import { signal } from '@angular/core';
+import { computed, signal } from '@angular/core';
 import { vi } from 'vitest';
+import { asRole, canCurate as canCurateRole } from '../../../types/core';
 import { of, throwError } from 'rxjs';
 import { TrackInfoSheetComponent } from './track-info-sheet.component';
 import { LibraryApiService } from '../../services/api/library-api.service';
@@ -44,7 +45,7 @@ describe('TrackInfoSheetComponent (analysis)', () => {
             getLyrics: vi.fn(() => of(null)),
           },
         },
-        { provide: AuthService, useValue: { role } },
+        { provide: AuthService, useValue: { role, canCurate: computed(() => canCurateRole(asRole(role()))) } },
       ],
     }).compileComponents();
   });
@@ -98,11 +99,15 @@ describe('TrackInfoSheetComponent (analysis)', () => {
     expect(c.currentGenre()).toBe('Latin');
   });
 
-  it('isAdmin() reflects the auth role', () => {
+  it('canCurate() reflects the auth role (admin/refiner yes, user/listener no)', () => {
     const c = create();
-    expect(c.isAdmin()).toBe(true);
+    expect(c.canCurate()).toBe(true);
+    role.set('refiner');
+    expect(c.canCurate()).toBe(true);
     role.set('user');
-    expect(c.isAdmin()).toBe(false);
+    expect(c.canCurate()).toBe(false);
+    role.set('listener');
+    expect(c.canCurate()).toBe(false);
   });
 
   it('featureRows() renders percentages, key and capitalized mood from the loaded song', () => {
@@ -158,7 +163,7 @@ describe('TrackInfoSheetComponent (multi-genre chips)', () => {
             getLyrics: vi.fn(() => of(null)),
           },
         },
-        { provide: AuthService, useValue: { role } },
+        { provide: AuthService, useValue: { role, canCurate: computed(() => canCurateRole(asRole(role()))) } },
       ],
     }).compileComponents();
   });
