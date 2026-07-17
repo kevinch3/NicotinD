@@ -6,10 +6,12 @@ import {
   effect,
   ElementRef,
   viewChild,
+  DestroyRef,
   OnInit,
   OnDestroy,
 } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { firstValueFrom } from 'rxjs';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import { DownloadsApiService } from '../../services/api/downloads-api.service';
@@ -72,6 +74,7 @@ const SONGS_PAGE_SIZE = 60;
 export class ArtistDetailComponent implements OnInit, OnDestroy {
   private route = inject(ActivatedRoute);
   private router = inject(Router);
+  private destroyRef = inject(DestroyRef);
   private api = inject(LibraryApiService);
   private downloadsApi = inject(DownloadsApiService);
   readonly auth = inject(AuthService);
@@ -450,9 +453,38 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
     this.songsObserver.observe(sentinel.nativeElement);
   });
 
-  async ngOnInit(): Promise<void> {
-    const id = this.route.snapshot.paramMap.get('id') ?? '';
+  ngOnInit(): void {
+    // React to :id changes (not just the first snapshot) so navigating
+    // artist→artist while this component is already mounted reloads instead of
+    // showing the previous artist — Angular reuses the instance across the same
+    // route config, so ngOnInit alone never re-runs.
+    this.route.paramMap.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((params) => {
+      const id = params.get('id') ?? '';
+      if (!id || id === this.artistId) return;
+      void this.loadArtist(id);
+    });
+  }
+
+  /** Load (or reload) an artist, resetting all per-artist state first. */
+  private async loadArtist(id: string): Promise<void> {
     this.artistId = id;
+    // Reset per-artist state so a stale artist never bleeds through on reuse.
+    this.loading.set(true);
+    this.artist.set(null);
+    this.albums.set([]);
+    this.singlesAndEps.set([]);
+    this.appearsOn.set([]);
+    this.discography.set(null);
+    this.identityOpen.set(false);
+    this.imageVersion.set(0);
+    // Reset the Songs tab (lazy list + observer rewire happens via the effect).
+    this.songs.set([]);
+    this.songsOffset = 0;
+    this.songsDone.set(false);
+    this.songsLoaded.set(false);
+    this.selection.exit();
+    this.activeTab.set('albums');
+
     // Restore the Songs-tab filter from the URL (shareable, refresh-proof).
     const qp = this.route.snapshot.queryParamMap;
     this.songFilter.set(
@@ -460,6 +492,8 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
     );
     try {
       const data = await firstValueFrom(this.api.getArtist(id));
+      // Guard against an out-of-order response after a rapid re-navigation.
+      if (this.artistId !== id) return;
       this.artist.set(data.artist);
       this.albums.set(data.albums);
       this.singlesAndEps.set(data.singlesAndEps ?? []);
@@ -468,7 +502,7 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
     } catch {
       /* ignore */
     } finally {
-      this.loading.set(false);
+      if (this.artistId === id) this.loading.set(false);
     }
 
     // Load "appears on" compilations and discography in background
@@ -483,7 +517,7 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
   private async loadAppearsOn(artistId: string): Promise<void> {
     try {
       const data = await firstValueFrom(this.api.getArtistAppearsOn(artistId));
-      this.appearsOn.set(data);
+      if (this.artistId === artistId) this.appearsOn.set(data);
     } catch {
       /* no-op — compilations may not exist for this artist */
     }
@@ -493,11 +527,11 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
     this.discographyLoading.set(true);
     try {
       const result = await firstValueFrom(this.downloadsApi.getArtistDiscography(artistId));
-      this.discography.set(result);
+      if (this.artistId === artistId) this.discography.set(result);
     } catch {
       // Lidarr not configured or artist not found — no discography shown
     } finally {
-      this.discographyLoading.set(false);
+      if (this.artistId === artistId) this.discographyLoading.set(false);
     }
   }
 
