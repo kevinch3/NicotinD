@@ -60,6 +60,9 @@ export const appConfig: ApplicationConfig = {
           }),
         ).subscribe({
           next: (profile) => {
+            // Sync role from the (DB-backed) refreshed session so a role change
+            // an admin made takes effect on this load, not only on re-login.
+            auth.setRole(profile.role);
             auth.welcomeDismissed.set(profile.welcomeDismissed);
             auth.autoplayOnLoad.set(profile.autoplayOnLoad);
             // Resume a previously playing session if the user opted in to

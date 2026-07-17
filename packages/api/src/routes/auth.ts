@@ -1,5 +1,5 @@
 import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
-import { hashPassword, verifyPassword } from '@nicotind/core';
+import { asRole, hashPassword, verifyPassword } from '@nicotind/core';
 import { getDatabase } from '../db.js';
 import { authMiddleware, signJwt } from '../middleware/auth.js';
 import type { AuthEnv } from '../middleware/auth.js';
@@ -245,8 +245,18 @@ export function authRoutes(jwtSecret: string, jwtExpiresIn: string, registration
         return c.json({ error: 'Share sessions cannot be refreshed' }, 403);
       }
 
+      // Re-read the role from the DB (not the old token) so an admin's role change
+      // takes effect on the user's next boot instead of waiting for a full
+      // re-login. (Missing/disabled accounts are already bounced by authMiddleware
+      // before we get here, so a null row only happens in a race — keep the old
+      // role in that case rather than dropping them.)
+      const db = getDatabase();
+      const row = db
+        .query<{ role: string }, [string]>('SELECT role FROM users WHERE id = ?')
+        .get(user.sub);
+
       const token = await signJwt(
-        { sub: user.sub, username: user.username, role: user.role },
+        { sub: user.sub, username: user.username, role: asRole(row?.role ?? user.role) },
         jwtSecret,
         jwtExpiresIn,
       );
