@@ -1,0 +1,27 @@
+<span
+  class="relative inline-flex items-center gap-1.5 overflow-hidden rounded-full border border-theme px-3 py-1 text-xs font-medium text-theme-secondary"
+  data-testid="disk-pill"
+  [attr.title]="'Storage used'"
+>
+  <!-- Green→red fill up to the used ratio, painted behind the label. -->
+  <span
+    class="absolute inset-y-0 left-0 opacity-25"
+    [style.width.%]="fillPercent()"
+    [style.background]="fillColor()"
+    aria-hidden="true"
+  ></span>
+  <svg
+    class="relative w-3.5 h-3.5 shrink-0 opacity-70"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="2"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  >
+    <ellipse cx="12" cy="5" rx="9" ry="3" />
+    <path d="M3 5v14a9 3 0 0 0 18 0V5" />
+    <path d="M3 12a9 3 0 0 0 18 0" />
+  </svg>
+  <span class="relative tabular-nums" data-testid="disk-pill-label">{{ label() }}</span>
+</span>

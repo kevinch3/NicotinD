@@ -3,7 +3,7 @@
     <a
       [routerLink]="['/library', 'artists', seg.id]"
       class="hover:underline cursor-pointer"
-      (click)="$event.stopPropagation()"
+      (click)="$event.stopPropagation(); linkFollowed.emit()"
     >{{ seg.text }}</a>
   } @else {
     <span>{{ seg.text }}</span>

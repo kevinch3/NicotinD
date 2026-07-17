@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, statfsSync } from 'node:fs';
 import type { NicotinDConfig } from '@nicotind/core';
 import type { ServiceManager } from '@nicotind/service-manager';
 import type { AuthEnv } from '../middleware/auth.js';
@@ -9,14 +9,30 @@ import type { SlskdRef } from '../index.js';
 
 const startTime = Date.now();
 
+/** Subset of node:fs statfs result we need; injected so tests skip the real FS. */
+export type StatfsFn = (path: string) => {
+  bsize: number;
+  blocks: number;
+  bavail: number;
+};
+
 export function systemRoutes(
   slskdRef: SlskdRef,
   serviceManager: ServiceManager,
   config: NicotinDConfig,
-  opts: { triggerScan?: () => Promise<void> | void; version?: string } = {},
+  opts: {
+    triggerScan?: () => Promise<void> | void;
+    version?: string;
+    /** Expanded music dir to report disk usage for (defaults to config.musicDir). */
+    musicDir?: string;
+    /** Injected for tests; defaults to node:fs statfsSync. */
+    statfs?: StatfsFn;
+  } = {},
 ) {
   const app = new Hono<AuthEnv>();
   let scanning = false;
+  const statfs = opts.statfs ?? (statfsSync as unknown as StatfsFn);
+  const diskPath = opts.musicDir ?? config.musicDir;
 
   app.get('/status', async (c) => {
     let slskdHealthy = false;
@@ -73,6 +89,19 @@ export function systemRoutes(
 
   app.get('/scan/status', (c) => {
     return c.json({ scanning, count: 0 });
+  });
+
+  // GET /api/system/disk — free/used/total bytes of the filesystem holding the
+  // music dir (where downloads land), for the Downloads storage pill.
+  app.get('/disk', (c) => {
+    try {
+      const { bsize, blocks, bavail } = statfs(diskPath);
+      const total = blocks * bsize;
+      const free = bavail * bsize;
+      return c.json({ total, free, used: Math.max(0, total - free) });
+    } catch {
+      return c.json({ error: 'Unable to read disk usage' }, 500);
+    }
   });
 
   app.post('/restart/:service', async (c) => {

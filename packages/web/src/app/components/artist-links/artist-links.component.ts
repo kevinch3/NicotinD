@@ -1,4 +1,4 @@
-import { Component, input, computed } from '@angular/core';
+import { Component, input, output, computed } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import type { ArtistCredit } from '../../services/api/api-types';
 
@@ -18,6 +18,8 @@ export class ArtistLinksComponent {
   readonly artists = input<ArtistCredit[]>();
   readonly fallbackArtist = input<string>();
   readonly fallbackArtistId = input<string>();
+  /** Emitted when an artist link is followed — lets the now-playing sheet collapse. */
+  readonly linkFollowed = output<void>();
 
   readonly segments = computed<Segment[]>(() => {
     const list = this.artists();

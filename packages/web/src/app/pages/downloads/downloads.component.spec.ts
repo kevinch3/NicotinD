@@ -31,6 +31,7 @@ function setup(opts: { acquireJobs?: AcquireJob[] } = {}) {
             scanned = true;
             return of({});
           },
+          getDiskUsage: () => of({ total: 1000, free: 400, used: 600 }),
         },
       },
       { provide: TransferService, useValue: transferStub },
@@ -86,5 +87,11 @@ describe('DownloadsComponent — active feed', () => {
     await component.triggerScan();
     expect(wasScanned()).toBe(true);
     expect(component.scanning()).toBe(false);
+  });
+
+  it('loads disk usage into the header pill signal', async () => {
+    const { component } = setup();
+    await Promise.resolve();
+    expect(component.diskUsage()).toEqual({ total: 1000, free: 400, used: 600 });
   });
 });

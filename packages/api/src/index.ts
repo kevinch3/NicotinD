@@ -555,6 +555,7 @@ export function createApp({
     systemRoutes(slskdRef, serviceManager, config, {
       triggerScan: runSyncAndCurate,
       version,
+      musicDir: expandedMusicDir,
     }),
   );
   app.route(

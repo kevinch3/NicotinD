@@ -14,6 +14,8 @@ export interface LrclibPluginConfig {
 /** Injected so tests run without network and without mocking node builtins. */
 export interface LrclibPluginDeps {
   fetchFn?: typeof fetch;
+  /** Base retry backoff (ms). Overridable so tests don't wait on real delays. */
+  retryBackoffMs?: number;
 }
 
 /** One track record as returned by LRCLIB's /get and /search endpoints. */
@@ -32,6 +34,12 @@ const API_BASE = 'https://lrclib.net/api';
 // LRCLIB asks clients to identify themselves; see https://lrclib.net/docs.
 const USER_AGENT = 'NicotinD (https://github.com/nicotind)';
 const REQUEST_TIMEOUT_MS = 8000;
+// Transient failures (rate-limit / 5xx / network / timeout) are retried a couple
+// of times with a short backoff. Without this, a cold first request that gets
+// throttled or times out surfaced as a false "no lyrics found", and the user had
+// to click "Fetch lyrics" 2-3 times before a warm request succeeded.
+const MAX_ATTEMPTS = 3;
+const RETRY_BACKOFF_MS = 400;
 
 /** Map a LRCLIB record to a LyricsResult, treating empty strings as "none". */
 function toResult(track: LrclibTrack): LyricsResult | null {
@@ -67,10 +75,12 @@ export class LrclibPlugin implements Plugin {
 
   private cfg: LrclibPluginConfig;
   private readonly fetchFn: typeof fetch;
+  private readonly retryBackoffMs: number;
 
   constructor(config: LrclibPluginConfig = { enabled: true }, deps: LrclibPluginDeps = {}) {
     this.cfg = config;
     this.fetchFn = deps.fetchFn ?? fetch;
+    this.retryBackoffMs = deps.retryBackoffMs ?? RETRY_BACKOFF_MS;
   }
 
   readonly lyrics: LyricsCapability = {
@@ -121,8 +131,25 @@ export class LrclibPlugin implements Plugin {
   /**
    * GET a LRCLIB endpoint. Returns the parsed JSON on 200, null on 404 (no
    * match), and throws on any other non-OK status or network/timeout failure.
+   * Transient failures (429/5xx/network/timeout) are retried with a short
+   * backoff; a 404 short-circuits without retrying (it's an authoritative "no
+   * match", not a fluke).
    */
   private async request<T>(path: string): Promise<T | null> {
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      try {
+        return await this.requestOnce<T>(path);
+      } catch (err) {
+        lastError = err;
+        if (attempt < MAX_ATTEMPTS) await delay(this.retryBackoffMs * attempt);
+      }
+    }
+    throw lastError;
+  }
+
+  /** A single GET attempt (no retry). 404 → null; other non-OK / errors throw. */
+  private async requestOnce<T>(path: string): Promise<T | null> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     try {
@@ -137,4 +164,8 @@ export class LrclibPlugin implements Plugin {
       clearTimeout(timer);
     }
   }
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

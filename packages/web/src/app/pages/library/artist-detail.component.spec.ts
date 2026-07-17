@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
-import { provideRouter, ActivatedRoute } from '@angular/router';
-import { of } from 'rxjs';
+import { provideRouter, ActivatedRoute, convertToParamMap } from '@angular/router';
+import { of, BehaviorSubject } from 'rxjs';
 import { vi } from 'vitest';
 import { ArtistDetailComponent } from './artist-detail.component';
 import { LibraryApiService } from '../../services/api/library-api.service';
@@ -68,11 +68,15 @@ function setup(role = 'admin', deleteSongs = vi.fn(() => of({ ok: true, deletedC
   const addToQueueCalls: unknown[] = [];
   const getAlbumCalls: string[] = [];
   const getArtistSongsCalls: GetSongsCall[] = [];
+  const getArtistCalls: string[] = [];
   const imageCalls = {
     upload: [] as Array<{ id: string; file: File }>,
     fromAlbum: [] as Array<{ id: string; albumId: string }>,
     reset: [] as string[],
   };
+
+  // Drives the :id param so tests can exercise the artist→artist reaction.
+  const paramMap = new BehaviorSubject(convertToParamMap({ id: 'ar1' }));
 
   TestBed.configureTestingModule({
     imports: [ArtistDetailComponent],
@@ -81,8 +85,9 @@ function setup(role = 'admin', deleteSongs = vi.fn(() => of({ ok: true, deletedC
       {
         provide: ActivatedRoute,
         useValue: {
+          paramMap,
           snapshot: {
-            paramMap: { get: () => 'ar1' },
+            paramMap: { get: (k: string) => (k === 'id' ? paramMap.value.get('id') : null) },
             queryParamMap: { get: () => null, getAll: () => [], keys: [] as string[] },
           },
         },
@@ -96,7 +101,10 @@ function setup(role = 'admin', deleteSongs = vi.fn(() => of({ ok: true, deletedC
       {
         provide: LibraryApiService,
         useValue: {
-          getArtist: () => of({ artist: ARTIST, albums: ALBUMS, singlesAndEps: [] }),
+          getArtist: (id: string) => {
+            getArtistCalls.push(id);
+            return of({ artist: { ...ARTIST, id }, albums: ALBUMS, singlesAndEps: [] });
+          },
           getAlbum: (id: string) => {
             getAlbumCalls.push(id);
             return of(ALBUM_DETAILS[id]);
@@ -150,8 +158,10 @@ function setup(role = 'admin', deleteSongs = vi.fn(() => of({ ok: true, deletedC
     addToQueueCalls,
     getAlbumCalls,
     getArtistSongsCalls,
+    getArtistCalls,
     imageCalls,
     deleteSongs,
+    paramMap,
   };
 }
 
@@ -451,6 +461,50 @@ describe('ArtistDetailComponent — delete (admin only)', () => {
 
     expect(component.confirmCallback()).toBeNull();
     expect(deleteSongs).not.toHaveBeenCalled();
+  });
+});
+
+describe('ArtistDetailComponent — reacts to :id changes', () => {
+  it('reloads the artist when navigating artist→artist (same component instance)', async () => {
+    const { component, getArtistCalls, paramMap } = setup();
+    await fixture_stable();
+    expect(getArtistCalls).toEqual(['ar1']);
+    expect(component.artist()?.id).toBe('ar1');
+
+    // Simulate router param change to a different artist without remounting.
+    paramMap.next(convertToParamMap({ id: 'ar2' }));
+    await flush();
+
+    expect(getArtistCalls).toEqual(['ar1', 'ar2']);
+    expect(component.artist()?.id).toBe('ar2');
+    expect(component.loading()).toBe(false);
+  });
+
+  it('does not reload when the same id re-emits', async () => {
+    const { getArtistCalls, paramMap } = setup();
+    await fixture_stable();
+    expect(getArtistCalls).toEqual(['ar1']);
+
+    paramMap.next(convertToParamMap({ id: 'ar1' }));
+    await flush();
+
+    expect(getArtistCalls).toEqual(['ar1']);
+  });
+
+  it('resets per-artist Songs-tab state on navigation', async () => {
+    const { component, paramMap } = setup();
+    await fixture_stable();
+    component.setTab('songs');
+    await flush();
+    expect(component.songs().length).toBe(2);
+    expect(component.songsLoaded()).toBe(true);
+
+    paramMap.next(convertToParamMap({ id: 'ar2' }));
+    await flush();
+
+    expect(component.songs()).toEqual([]);
+    expect(component.songsLoaded()).toBe(false);
+    expect(component.activeTab()).toBe('albums');
   });
 });
 

@@ -94,4 +94,50 @@ describe('system routes', () => {
     expect(res.status).toBe(200);
     expect(data.slskd.healthy).toBe(false);
   });
+
+  it('GET /disk reports total/free/used bytes for the music dir', async () => {
+    app = new Hono();
+    app.route(
+      '/',
+      systemRoutes(
+        { current: null } as unknown as Parameters<typeof systemRoutes>[0],
+        serviceManagerMock as unknown as Parameters<typeof systemRoutes>[1],
+        configMock as unknown as Parameters<typeof systemRoutes>[2],
+        {
+          musicDir: '/music',
+          // 1000 blocks * 1024 = ~1 MiB total, 400 avail => 600 used.
+          statfs: () => ({ bsize: 1024, blocks: 1000, bavail: 400 }),
+        },
+      ),
+    );
+
+    const res = await app.request('/disk');
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(data.total).toBe(1000 * 1024);
+    expect(data.free).toBe(400 * 1024);
+    expect(data.used).toBe(600 * 1024);
+  });
+
+  it('GET /disk returns 500 when statfs throws', async () => {
+    app = new Hono();
+    app.route(
+      '/',
+      systemRoutes(
+        { current: null } as unknown as Parameters<typeof systemRoutes>[0],
+        serviceManagerMock as unknown as Parameters<typeof systemRoutes>[1],
+        configMock as unknown as Parameters<typeof systemRoutes>[2],
+        {
+          musicDir: '/nonexistent',
+          statfs: () => {
+            throw new Error('ENOENT');
+          },
+        },
+      ),
+    );
+
+    const res = await app.request('/disk');
+    expect(res.status).toBe(500);
+  });
 });

@@ -72,4 +72,56 @@ describe('LrclibPlugin.fetchLyrics', () => {
     const plugin = new LrclibPlugin({ enabled: true }, { fetchFn });
     expect(await plugin.lyrics.fetchLyrics(query)).toBeNull();
   });
+
+  it('retries a transient failure and succeeds on a later attempt (1-click reliability)', async () => {
+    let getCalls = 0;
+    // /get returns 429 (rate-limited) the first time, then the real lyrics.
+    const fetchFn = mock(async (url: string) => {
+      if (url.includes('/get')) {
+        getCalls += 1;
+        if (getCalls === 1) return { ok: false, status: 429, json: async () => ({}) };
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ plainLyrics: 'recovered lyrics' }),
+        };
+      }
+      return { ok: false, status: 500, json: async () => ({}) };
+    }) as unknown as typeof fetch;
+
+    const plugin = new LrclibPlugin({ enabled: true }, { fetchFn, retryBackoffMs: 0 });
+    const result = await plugin.lyrics.fetchLyrics(query);
+    expect(result?.plain).toBe('recovered lyrics');
+    expect(getCalls).toBe(2);
+  });
+
+  it('throws after exhausting retries on a persistent 5xx (not a false "no lyrics")', async () => {
+    let getCalls = 0;
+    const fetchFn = mock(async (url: string) => {
+      if (url.includes('/get')) {
+        getCalls += 1;
+        return { ok: false, status: 503, json: async () => ({}) };
+      }
+      return { ok: false, status: 503, json: async () => ({}) };
+    }) as unknown as typeof fetch;
+
+    const plugin = new LrclibPlugin({ enabled: true }, { fetchFn, retryBackoffMs: 0 });
+    await expect(plugin.lyrics.fetchLyrics(query)).rejects.toThrow(/LRCLIB request failed/);
+    expect(getCalls).toBe(3); // MAX_ATTEMPTS
+  });
+
+  it('does not retry a 404 (authoritative no-match) before falling back to /search', async () => {
+    let getCalls = 0;
+    const fetchFn = mock(async (url: string) => {
+      if (url.includes('/get')) {
+        getCalls += 1;
+        return { ok: false, status: 404, json: async () => ({ code: 404 }) };
+      }
+      return { ok: true, status: 200, json: async () => [] };
+    }) as unknown as typeof fetch;
+
+    const plugin = new LrclibPlugin({ enabled: true }, { fetchFn, retryBackoffMs: 0 });
+    expect(await plugin.lyrics.fetchLyrics(query)).toBeNull();
+    expect(getCalls).toBe(1); // 404 short-circuits — no retry
+  });
 });

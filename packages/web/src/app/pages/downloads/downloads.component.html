@@ -3,7 +3,11 @@
       <!-- Header -->
       <div class="flex items-center justify-between gap-3 mb-6 flex-wrap">
         <h1 class="text-lg font-semibold text-theme-primary">Downloads</h1>
-        <button (click)="triggerScan()" [disabled]="scanning()"
+        <div class="flex items-center gap-3 flex-wrap">
+          @if (diskUsage(); as disk) {
+            <app-disk-pill [used]="disk.used" [total]="disk.total" />
+          }
+          <button (click)="triggerScan()" [disabled]="scanning()"
           class="inline-flex items-center gap-2 rounded-full border border-theme bg-theme-base/40 px-3 py-1.5 text-xs font-medium text-theme-muted transition hover:border-theme hover:text-theme-secondary disabled:cursor-wait disabled:opacity-50"
           title="Trigger a library rescan">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
@@ -12,6 +16,7 @@
           </svg>
           <span>{{ scanning() ? 'Scanning' : 'Scan library' }}</span>
         </button>
+        </div>
       </div>
 
       <!-- Active Downloads — unified feed (slskd + URL acquisitions) -->
