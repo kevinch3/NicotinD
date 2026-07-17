@@ -56,7 +56,10 @@
 } @else {
   <!-- ─── Online: whole-library songs ─────────────────────────────── -->
   <div data-testid="library-songs">
-    <div class="flex items-center gap-2 mb-3">
+    <!-- flex-wrap so the search + sort + Filters + Select controls stack onto a
+         second row on a narrow phone instead of overflowing the viewport width
+         (which shifted the whole page horizontally) — matches the Albums tab. -->
+    <div class="flex flex-wrap items-center gap-2 mb-3">
       <div class="relative flex-1 min-w-[10rem]">
         <svg class="absolute left-2.5 top-1/2 -translate-y-1/2 text-theme-muted pointer-events-none"
           width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

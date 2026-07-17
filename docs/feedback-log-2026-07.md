@@ -14,6 +14,8 @@
 | 1 | ✅ | High | Player (Firefox) | Tracks intermittently never play — third distinct root cause (self-aborting load-effect loop) after the Content-Length and ngsw-bypass fixes |
 | 2 | ✅ | High | Download pipeline / Player | ALAC-in-.m4a bypassed the lossless→Opus standardization (extension-based detection) — undecodable in any browser when transcoding is off |
 | 3 | ◑ | Medium | Library metadata / filters | BPM values wrong by an octave (half/double) on ~50% of a spot-check sample — music-tempo detector; fix shipped (Essentia sidecar-first), prod backfill pending |
+| 4 | ✅ | Medium | Song lists (mobile) | Track-row `⋯` context menu near the end of a list opened *under* the mini-player/tab bar — only partially visible/tappable |
+| 5 | ✅ | Medium | Library Songs tab (mobile) | Toolbar (search + sort + Filters + Select) didn't wrap; its combined width forced a horizontal scroll that shifted/clipped the whole page |
 
 ---
 
@@ -34,6 +36,12 @@
 ### 2026-07-14
 
 - **(Medium) One album hunt still shows as 5 separate download cards.** *Use:* right after the unified acquisition-jobs deploy (PR #132), a "Los Chalchaleros" hunt rendered five Active-feed entries — the user expected one card with all the queues. *Root cause:* the jobs shipped stored transfer↔job linkage and per-row stage upgrades, but the web feed still built **one row per slskd peer folder** (`groupByAlbum` keys on `username:directory`); multi-peer hunts, CD1/CD2 subfolders and alternate-peer fallback pulls each got their own row, and the merge only upgraded a single matching row's stage. **✅ Fixed:** `collapseAlbumMembers` in `mergeAcquisitionJobs` folds every folder group sharing an `albumId` into one card (progress from the job's item tallies, most-active member's stage, actions fan out via `memberKeys`). Pre-deploy transfers have no job rows and stay per-folder until cleared (one-time). → `docs/acquisition-jobs.md`.
+
+### 2026-07-17
+
+- **(Medium) Mobile: track-row context menu hidden behind the player.** *Use:* on Android, opening the `⋯` menu on one of the lower track rows (a long Tangerine Dream list) showed the menu clipped under the mini-player + bottom tab bar — the bottom actions weren't visible or tappable. *Root cause:* `TrackRowComponent`'s menu was a hand-rolled `absolute right-0 top-7` panel — it always opened downward and neither clamped to the viewport nor reserved the fixed bottom chrome, so a low-on-list trigger dropped the menu straight behind the player. *Fix:* routed the row menu through the existing `MenuPanelComponent` (fixed-position, flip-above, viewport-clamp) and taught that positioner about the bottom chrome — a `bottomInset` in `computeMenuPosition`/`clampMenuPosition`, measured at open time from the live rects of the two `data-bottom-chrome` layers via the pure `bottomChromeInset` (`lib/player-chrome.ts`). The panel now flips up / clamps above the player instead of behind it, and every `MenuPanelComponent` popup (filters, "View N albums") gets the same guard for free. **✅ Fixed:** pure-math unit tests + a `mobile-ux` e2e asserting the opened menu's box clears the chrome. → `docs/design-patterns.md` ("Viewport-safe dropdown menus", "Bottom-chrome stacking").
+
+- **(Medium) Mobile: Library Songs tab toolbar overflowed and broke the page in both axes.** *Use:* on the Songs tab the controls row (search + "Recently added" sort + Filters + Select) ran off the right edge; the overflow pushed a horizontal scroll that shifted the header ("NicotinD" clipped to "D") and the mode tabs. *Root cause:* the Songs toolbar was `flex items-center gap-2` with no `flex-wrap`, so search (`min-w-[10rem]`) + three controls exceeded the phone width — every other library tab's toolbar already wraps (`flex flex-wrap`). *Fix:* added `flex-wrap` so the controls stack onto a second row instead of overflowing. **✅ Fixed:** `mobile-ux` e2e asserting no horizontal page overflow on the Songs tab at phone width. → `docs/web-ui.md` (Library "Songs" tab).
 
 ---
 

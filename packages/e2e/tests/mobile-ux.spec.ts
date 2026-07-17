@@ -38,6 +38,42 @@ test.describe('mobile UX', () => {
     expect(box.x + box.width, 'right edge within viewport').toBeLessThanOrEqual(PHONE.width);
   });
 
+  // A track-row `⋯` menu opened low on the list must not be hidden behind the
+  // fixed mini-player + tab bar (the mobile context-menu-under-the-player bug).
+  // With a track playing, open the LAST row's menu and assert its box clears the
+  // bottom chrome — MenuPanelComponent reserves the chrome via `bottomChromeInset`
+  // and flips the panel up instead of opening it downward under the player.
+  test('track-row context menu stays clear of the mini-player + tab bar', async ({ page }) => {
+    await openAlbum(page);
+    await page.getByTestId('play-album').click();
+    await expect(page.getByTestId('player-title')).toBeVisible();
+
+    const last = page.getByTestId('track-row').last();
+    await last.scrollIntoViewIfNeeded();
+    await last.getByTestId('track-row-menu-toggle').click();
+
+    const menu = page.getByTestId('track-row-menu');
+    await expect(menu).toBeVisible();
+    const menuBox = (await menu.boundingBox())!;
+
+    // Highest top edge among the visible fixed bottom-chrome layers = where the
+    // player/tab bar begins (mirrors bottomChromeInset's measurement).
+    const chromeTop = await page.evaluate(() => {
+      const tops = Array.from(document.querySelectorAll('[data-bottom-chrome]'))
+        .map((el) => el.getBoundingClientRect())
+        .filter((r) => r.height > 0 && r.top < window.innerHeight)
+        .map((r) => r.top);
+      return tops.length ? Math.min(...tops) : window.innerHeight;
+    });
+
+    expect(chromeTop, 'the mini-player chrome is present').toBeLessThan(PHONE.height);
+    expect(menuBox.y, 'menu top on-screen').toBeGreaterThanOrEqual(0);
+    expect(
+      menuBox.y + menuBox.height,
+      'menu bottom clears the mini-player/tab bar',
+    ).toBeLessThanOrEqual(chromeTop + 1);
+  });
+
   // G2 — Now Playing renders covers via app-cover-art, so a missing/404 cover
   // degrades to the gradient fallback (no broken-image glyph). The fixtures have
   // no embedded art, so the hero cover must show the fallback initial and have
@@ -150,6 +186,24 @@ test.describe('mobile UX', () => {
     await page.goto('/admin');
     // Admin-only processing panel with the offending time inputs.
     await expect(page.getByTestId('processing-panel')).toBeVisible();
+    const overflow = await page.evaluate(() => {
+      const el = document.scrollingElement ?? document.documentElement;
+      return el.scrollWidth - el.clientWidth;
+    });
+    expect(overflow, 'no horizontal page overflow at phone width').toBeLessThanOrEqual(1);
+  });
+
+  // The Library Songs tab toolbar (search + sort + Filters + Select) used a
+  // non-wrapping flex row whose combined min-width exceeded the phone, pushing a
+  // horizontal scroll that shifted the whole page (header/tabs clipped). It now
+  // wraps like the other tabs; guard there's no horizontal page overflow.
+  test('library Songs tab toolbar does not overflow horizontally', async ({ page }) => {
+    await page.goto('/library');
+    await page.getByRole('button', { name: 'Songs', exact: true }).click();
+    await expect(page.getByTestId('library-songs')).toBeVisible();
+    // The Select button (last control) only renders once songs are listed — wait
+    // for it so the full toolbar is measured, not a partial one.
+    await expect(page.getByRole('button', { name: 'Select' })).toBeVisible();
     const overflow = await page.evaluate(() => {
       const el = document.scrollingElement ?? document.documentElement;
       return el.scrollWidth - el.clientWidth;
