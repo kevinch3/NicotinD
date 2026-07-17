@@ -13,6 +13,31 @@ by every library list view and by the API's SQL builder. The rule of thumb it im
 | Singles & EPs tab | `GET /api/library/singles` | |
 | Artists tab | `GET /api/library/artists` | with no filter params the query is unchanged (back-compat for existing clients) |
 | Artist page → Songs tab | `GET /api/library/artists/:id/songs` | filters apply to the songs directly |
+| Library Songs tab | `GET /api/library/songs` | also accepts a transient `q` query param (free-text — see below) |
+
+## Free-text search (`q`) on the songs endpoints
+
+In addition to the `LibraryFilter` grammar above, the songs routes accept a
+single separate `q` query parameter for free-text matching:
+
+```
+GET /api/library/songs?q=alpha&sort=title&genre=House
+```
+
+- **Scope**: server-side `LIKE '%q%' COLLATE NOCASE` across `s.title`,
+  `s.artist`, and `a.name` (album title). Empty / whitespace-only `q` is dropped.
+- **Escaping**: `%`, `_`, and `\` are escaped in the user's query so a literal
+  `%` is a literal match, not a wildcard.
+- **Not a `LibraryFilter` field**: `q` is intentionally outside the structured
+  filter grammar — it's transient text (a typing burst), not URL-mirrored
+  metadata, so it lives only on the request and isn't serialized by
+  `serializeLibraryFilter`/`parseLibraryFilter`. The web client wires it
+  through `LibraryApiService.getAllSongs(..., { q })` and the Library Songs
+  tab's debounced search input (`data-testid="library-songs-search"`).
+- Same applies to `/api/library/artists/:id/songs`, where the `Songs` tab on
+  artist pages can use the same client-side search.
+
+## Properties & query-param grammar
 
 ## Properties & query-param grammar
 

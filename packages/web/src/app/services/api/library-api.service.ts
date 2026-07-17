@@ -170,9 +170,7 @@ export class LibraryApiService {
   // Cached (shared + replayed) so tab-switching / re-navigation doesn't re-hit
   // the network; invalidated on library changes via invalidateLibraryReads().
   private artistsCache = createCachedObservable(() =>
-    this.http.get<Array<{ id: string; name: string; albumCount?: number }>>(
-      '/api/library/artists',
-    ),
+    this.http.get<Array<{ id: string; name: string; albumCount?: number }>>('/api/library/artists'),
   );
   private genresCache = createCachedObservable(() =>
     this.http.get<Array<{ value: string; songCount: number; albumCount: number }>>(
@@ -256,10 +254,16 @@ export class LibraryApiService {
   getAllSongs(
     size = 60,
     offset = 0,
-    opts: { sort?: 'newest' | 'title' | 'album'; filter?: LibraryFilter } = {},
+    opts: {
+      sort?: 'newest' | 'title' | 'album';
+      filter?: LibraryFilter;
+      q?: string;
+    } = {},
   ) {
     const params: QueryParams = { size, offset };
     if (opts.sort) params['sort'] = opts.sort;
+    const q = opts.q?.trim();
+    if (q) params['q'] = q;
     return this.http.get<Song[]>('/api/library/songs', {
       params: withFilter(params, opts.filter),
     });

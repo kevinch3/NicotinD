@@ -20,7 +20,10 @@ import { PlaylistService } from '../../services/playlist.service';
 import { PreserveService } from '../../services/preserve.service';
 import { TransferService } from '../../services/transfer.service';
 import { SongMenuService } from '../../services/song-menu.service';
-import { TrackRowComponent, type TrackAction } from '../../components/track-row/track-row.component';
+import {
+  TrackRowComponent,
+  type TrackAction,
+} from '../../components/track-row/track-row.component';
 import { SelectionBarComponent } from '../../components/selection-bar/selection-bar.component';
 import { LibraryFilterPanelComponent } from '../../components/library-filter-panel/library-filter-panel.component';
 import { ConfirmDialogComponent } from '../../components/confirm-dialog/confirm-dialog.component';
@@ -112,6 +115,14 @@ export class LibrarySongsComponent implements OnInit, OnDestroy {
   private readonly activeFilter = signal<LibraryFilter>({});
   readonly hasActiveFilter = computed(() => !isEmptyLibraryFilter(this.activeFilter()));
 
+  // Free-text search input. Updates `searchText` immediately on every keystroke
+  // for the input binding, but the actual fetch is debounced (250 ms) so a
+  // typing burst collapses into a single refetch + pagination reset. `q` is
+  // transient — not URL-mirrored through `LibraryFilter` — so it intentionally
+  // lives only in this component.
+  readonly searchText = signal('');
+  private searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
   readonly sortOptions: { value: SongSort; label: string }[] = [
     { value: 'newest', label: 'Recently added' },
     { value: 'title', label: 'Title' },
@@ -192,6 +203,10 @@ export class LibrarySongsComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.songsObserver?.disconnect();
+    if (this.searchDebounceTimer !== null) {
+      clearTimeout(this.searchDebounceTimer);
+      this.searchDebounceTimer = null;
+    }
   }
 
   // ─── Online fetching ──────────────────────────────────────────────
@@ -199,6 +214,16 @@ export class LibrarySongsComponent implements OnInit, OnDestroy {
     if (sort === this.songSort()) return;
     this.songSort.set(sort);
     void this.loadSongs(true);
+  }
+
+  /** Search input: bind immediately, refetch after 250 ms idle (debounced). */
+  setSearchText(text: string): void {
+    this.searchText.set(text);
+    if (this.searchDebounceTimer !== null) clearTimeout(this.searchDebounceTimer);
+    this.searchDebounceTimer = setTimeout(() => {
+      this.searchDebounceTimer = null;
+      void this.loadSongs(true);
+    }, 250);
   }
 
   /** Filter panel change: bubble up (parent mirrors to URL) and refetch. */
@@ -218,10 +243,12 @@ export class LibrarySongsComponent implements OnInit, OnDestroy {
     if (this.songsLoadingMore() || (this.songsDone() && !reset)) return;
     this.songsLoadingMore.set(true);
     try {
+      const q = this.searchText().trim();
       const page = await firstValueFrom(
         this.api.getAllSongs(SONGS_PAGE_SIZE, this.songsOffset, {
           sort: this.songSort(),
           filter: this.activeFilter(),
+          q: q || undefined,
         }),
       );
       this.songs.update((existing) => appendUnique(existing, page));

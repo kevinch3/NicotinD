@@ -1,5 +1,4 @@
 import { Component, inject, signal, computed, OnInit } from '@angular/core';
-import { RouterLink } from '@angular/router';
 import { firstValueFrom, catchError, of } from 'rxjs';
 import { MOOD_VOCAB, type LibraryFilter, type MoodLabel } from '@nicotind/core';
 import { PlayerService } from '../../services/player.service';
@@ -57,7 +56,7 @@ const BPM_CHOICES = [
 @Component({
   selector: 'app-radio-landing',
   standalone: true,
-  imports: [RouterLink, CoverArtComponent],
+  imports: [CoverArtComponent],
   templateUrl: './radio-landing.component.html',
 })
 export class RadioLandingComponent implements OnInit {

@@ -12,11 +12,13 @@ interface BottomNavItem {
 }
 
 // Curated mobile tab order (Admin intentionally stays desktop-only to keep the
-// bar to four thumb-reachable targets).
+// bar to thumb-reachable targets). Search is online-only because /search needs
+// the backend (network browse + URL acquire).
 const TABS: BottomNavItem[] = [
   { to: '/', label: 'Home', onlineOnly: true },
   { to: '/library', label: 'Library', onlineOnly: false },
   { to: '/downloads', label: 'Downloads', onlineOnly: false },
+  { to: '/search', label: 'Search', onlineOnly: true },
   { to: '/settings', label: 'Settings', onlineOnly: false },
 ];
 

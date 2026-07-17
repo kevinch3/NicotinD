@@ -3,22 +3,18 @@ import { FIXTURE } from '../helpers';
 
 /**
  * The post-login landing (route '') is the radio/mood starter: a resume shortcut
- * for the last track plus one-tap vibe presets. Search moved to /search, reached
- * from the landing's search doorway. Acquisition stays default-off in e2e.
+ * for the last track plus one-tap vibe presets. The /search page is reachable
+ * from the desktop top-nav Search link and the mobile bottom-nav Search tab.
+ * Acquisition stays default-off in e2e.
  */
 test.describe('radio landing', () => {
-  test('renders vibe presets, a custom builder, and a search doorway', async ({ page }) => {
+  test('renders vibe presets and a custom builder', async ({ page }) => {
     await page.goto('/');
     await expect(page.getByTestId('radio-landing')).toBeVisible();
     await expect(page.getByTestId('radio-preset').first()).toBeVisible();
     // The custom builder is wired (its Start-gating logic is unit-tested in
     // radio-landing.component.spec.ts).
     await expect(page.getByTestId('radio-custom-toggle')).toBeVisible();
-
-    // Search now lives at /search; the landing links to it.
-    await page.getByTestId('radio-search-link').click();
-    await expect(page).toHaveURL(/\/search$/);
-    await expect(page.getByTestId('search-input')).toBeVisible();
   });
 
   test('resume-from-last-track appears after playback and disappears on tap', async ({ page }) => {

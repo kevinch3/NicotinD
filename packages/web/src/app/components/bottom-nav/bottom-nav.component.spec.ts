@@ -24,21 +24,29 @@ function setup(opts: { offline?: boolean; active?: number } = {}) {
 }
 
 describe('BottomNavComponent', () => {
-  it('renders the four curated tabs (Admin excluded)', () => {
+  it('renders the five curated tabs (Admin excluded)', () => {
     const { fixture } = setup();
     const links = fixture.nativeElement.querySelectorAll('a, span') as NodeListOf<HTMLElement>;
     const labels = Array.from(links).map((el) => el.textContent?.trim());
-    expect(labels).toEqual(['Home', 'Library', 'Downloads', 'Settings']);
+    expect(labels).toEqual(['Home', 'Library', 'Downloads', 'Search', 'Settings']);
+  });
+
+  it('includes Search as an online-only tab in the TABS list', () => {
+    const { fixture } = setup();
+    const searchTab = fixture.componentInstance.tabs.find((t) => t.to === '/search');
+    expect(searchTab).toBeDefined();
+    expect(searchTab?.label).toBe('Search');
+    expect(searchTab?.onlineOnly).toBe(true);
   });
 
   it('renders online-only tabs as disabled spans when offline', () => {
     const { fixture } = setup({ offline: true });
-    // Only Home (radio landing) is online-only → span; Library (offline Songs),
-    // Downloads, and Settings stay links.
+    // Home (radio landing) + Search are online-only → 2 spans; Library (offline
+    // Songs), Downloads, and Settings stay links.
     const anchors = fixture.nativeElement.querySelectorAll('a');
     const spans = fixture.nativeElement.querySelectorAll('nav span');
     expect(anchors.length).toBe(3);
-    expect(spans.length).toBe(1);
+    expect(spans.length).toBe(2);
   });
 
   it('shows a badge on Downloads when transfers are active', () => {
