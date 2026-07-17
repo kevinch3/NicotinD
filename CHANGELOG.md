@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.214](https://github.com/kevinch3/NicotinD/compare/v0.1.213...v0.1.214) (2026-07-17)
+
+
+### Features
+
+* **web:** auto-preserve queue for PWA lock-screen resilience ([8857f2e](https://github.com/kevinch3/NicotinD/commit/8857f2ee35ac4a5aa4e6eff714c2a05d69d2deb2))
+* **web:** songs search plus nav rationalisation ([d082507](https://github.com/kevinch3/NicotinD/commit/d082507a98a5b4cc224ce5daf51bd9f18a3903fe))
+
 ## [0.1.213](https://github.com/kevinch3/NicotinD/compare/v0.1.212...v0.1.213) (2026-07-17)
 
 
