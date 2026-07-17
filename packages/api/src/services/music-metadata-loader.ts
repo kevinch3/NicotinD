@@ -30,6 +30,12 @@ export interface MMFormat {
   codec?: string;
   /** True when the audio codec is lossless (e.g. FLAC, ALAC) — codec-derived, not extension-derived. */
   lossless?: boolean;
+  /** Sample rate in Hz (e.g. 44100). */
+  sampleRate?: number;
+  /** Bit depth in bits/sample (e.g. 16/24) — reported by lossless formats. */
+  bitsPerSample?: number;
+  /** Channel count (1 = mono, 2 = stereo, …). */
+  numberOfChannels?: number;
 }
 
 export interface MMResult {

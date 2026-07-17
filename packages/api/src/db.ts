@@ -561,6 +561,9 @@ export function applySchema(db: Database): void {
       path          TEXT NOT NULL,
       size          INTEGER,
       bit_rate      INTEGER,
+      sample_rate   INTEGER,
+      bit_depth     INTEGER,
+      channels      INTEGER,
       suffix        TEXT,
       content_type  TEXT,
       created       TEXT,
@@ -611,6 +614,17 @@ export function applySchema(db: Database): void {
     'instrumental REAL',
     'mood TEXT',
   ]) {
+    try {
+      db.run(`ALTER TABLE library_songs ADD COLUMN ${col}`);
+    } catch {
+      // Column already exists — ignore
+    }
+  }
+  // Container technical details — sample rate (Hz), bit depth (bits/sample,
+  // lossless-only), channel count. Read from music-metadata's format at scan
+  // time (no DSP), same additive pattern as bit_rate; purely file-derived so a
+  // rescan always overwrites them (no COALESCE preservation).
+  for (const col of ['sample_rate INTEGER', 'bit_depth INTEGER', 'channels INTEGER']) {
     try {
       db.run(`ALTER TABLE library_songs ADD COLUMN ${col}`);
     } catch {

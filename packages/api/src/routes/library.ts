@@ -314,6 +314,9 @@ interface SongRow {
   path: string;
   size: number | null;
   bit_rate: number | null;
+  sample_rate: number | null;
+  bit_depth: number | null;
+  channels: number | null;
   suffix: string | null;
   content_type: string | null;
   created: string | null;
@@ -347,7 +350,8 @@ const SONG_SELECT = `
   SELECT s.id, s.album_id, a.name AS album_name, a.cover_art AS album_cover_art,
          s.title, s.artist, s.artist_id, s.album_artist, s.album_artist_id,
          s.track, s.duration, s.year, s.genre,
-         s.cover_art, s.path, s.size, s.bit_rate, s.suffix, s.content_type,
+         s.cover_art, s.path, s.size, s.bit_rate, s.sample_rate, s.bit_depth, s.channels,
+         s.suffix, s.content_type,
          s.created, s.starred, s.bpm, s.key,
          s.energy, s.loudness, s.valence, s.danceability, s.acousticness,
          s.instrumental, s.mood
@@ -397,6 +401,9 @@ function rowToSong(r: SongRow): Song {
     suffix: r.suffix ?? '',
     duration: r.duration,
     bitRate: r.bit_rate ?? 0,
+    sampleRate: r.sample_rate ?? undefined,
+    bitDepth: r.bit_depth ?? undefined,
+    channels: r.channels ?? undefined,
     path: r.path,
     created: r.created ?? '',
     starred: r.starred ?? undefined,

@@ -3,6 +3,7 @@
 **Status: the deterministic core is shipped** (see
 [automated-playlists.md](automated-playlists.md) for the code map). Two lanes now
 exist, both reusing the Radio scorer + curated selection engines:
+
 1. **Automated system shelves** — recipe → weekly-refreshed `kind='curated'`
    playlists (§2a), refreshed in-process once per ISO week.
 2. **User-driven seed generator** — `POST /api/playlists/generate` fills an
@@ -14,7 +15,7 @@ exist, both reusing the Radio scorer + curated selection engines:
 The remainder is the original design note. It explains how NicotinD's **existing
 per-track metadata** — plus the enrichment we fill in the background (BPM, genre,
 musical key) — generates Spotify-style playlists using light, deterministic
-algorithms, and where an LLM helps (and where it must *not* be trusted). The
+algorithms, and where an LLM helps (and where it must _not_ be trusted). The
 **LLM concept layer (§3) is not yet built** — it remains the documented
 follow-up.
 
@@ -27,17 +28,17 @@ and order tracks that already exist.** Nothing here should invent track IDs.
 
 Already in `library_songs` / side-tables today:
 
-| Field | Source | Notes |
-| --- | --- | --- |
-| `genre` | tag / Lidarr (windowed genre task) | categorical, sometimes multi |
-| `bpm` | tag / `analyzeBpm` (windowed bpm task) | numeric |
-| `key` | tag / `analyzeKey` (windowed key task) | "C major" → Camelot via `keyToCamelot` |
-| `year` | tag / Lidarr | era bucketing |
-| `artist`, `album`, `artist_id`, `album_id` | scanner | dedup / per-artist caps |
-| `duration` | scanner (`format.duration`) | playlist length budgeting |
-| `starred` (per user) | user action | personalization signal |
-| `classification` (album/ep/single/…) | `LibraryCurator` | filter scope |
-| acquisition method / date | `acquisitions` | "recently added" |
+| Field                                      | Source                                 | Notes                                  |
+| ------------------------------------------ | -------------------------------------- | -------------------------------------- |
+| `genre`                                    | tag / Lidarr (windowed genre task)     | categorical, sometimes multi           |
+| `bpm`                                      | tag / `analyzeBpm` (windowed bpm task) | numeric                                |
+| `key`                                      | tag / `analyzeKey` (windowed key task) | "C major" → Camelot via `keyToCamelot` |
+| `year`                                     | tag / Lidarr                           | era bucketing                          |
+| `artist`, `album`, `artist_id`, `album_id` | scanner                                | dedup / per-artist caps                |
+| `duration`                                 | scanner (`format.duration`)            | playlist length budgeting              |
+| `starred` (per user)                       | user action                            | personalization signal                 |
+| `classification` (album/ep/single/…)       | `LibraryCurator`                       | filter scope                           |
+| acquisition method / date                  | `acquisitions`                         | "recently added"                       |
 
 All of it is **cheap to read** and already indexed. The windowed processor
 (`library-processing.service.ts`) is what keeps `bpm`/`genre`/`key` filled for new
@@ -85,7 +86,7 @@ scalar blend:
 
 - **Weight-normalized blend, not a raw sum.** Each factor counts only when both
   tracks carry it; the score is `Σ(factorScore×weight) / Σ(weight of comparable
-  factors)` → `0..1`. So a mid-backfill library isn't biased toward the
+factors)` → `0..1`. So a mid-backfill library isn't biased toward the
   already-enriched slice (un-analyzed tracks compete on the factors they have).
 - **The cached Essentia embedding is now a real similarity axis.** `cosineSim`
   over `library_embeddings` vectors (loaded per-pool by `loadEmbeddings`) is added
@@ -99,9 +100,9 @@ A seed track (or a starred set's / artist's centroid — `seedCentroid`, plus a
 mean seed embedding) → a coherent playlist. Pure, unit-tested, in-memory over the
 candidate pool.
 
-### 2c. Harmonic / energy *ordering* (DJ-style sequencing)
+### 2c. Harmonic / energy _ordering_ (DJ-style sequencing)
 
-Independent of *selection*: once you have a track set, **order** it so adjacent
+Independent of _selection_: once you have a track set, **order** it so adjacent
 tracks mix well — the payoff of the new `key` data:
 
 - **Camelot adjacency**: `keyToCamelot` gives "8A/8B" codes; compatible moves are
@@ -114,11 +115,11 @@ tracks mix well — the payoff of the new `key` data:
 This turns a flat list into a set that flows like a DJ mix — a real differentiator
 over genre-only playlists.
 
-### 2d. Clustering (themes the library *actually* has)
+### 2d. Clustering (themes the library _actually_ has)
 
 Run simple k-means (or even just group-by super-genre × era × bpm-band) over the
-feature vectors to discover the natural clusters in *this* library, then name the
-biggest ones. No LLM needed to *form* the groups — only (optionally) to name them.
+feature vectors to discover the natural clusters in _this_ library, then name the
+biggest ones. No LLM needed to _form_ the groups — only (optionally) to name them.
 
 ---
 
@@ -126,11 +127,11 @@ biggest ones. No LLM needed to *form* the groups — only (optionally) to name t
 
 Use the LLM where it's genuinely better and **cheap/safe**, run weekly and cached:
 
-- **Theme/concept generation (grounded)**: feed the LLM a *summary* of the library
+- **Theme/concept generation (grounded)**: feed the LLM a _summary_ of the library
   (top genres, era histogram, bpm distribution, notable artists) and ask for a list
   of playlist **concepts as structured selection criteria** — `{name, description,
-  filter, target_bpm_range, era, vibe}` — **not** track lists. The deterministic
-  engine in §2 then *fills* each concept. The LLM proposes the idea; the catalogue
+filter, target_bpm_range, era, vibe}` — **not** track lists. The deterministic
+  engine in §2 then _fills_ each concept. The LLM proposes the idea; the catalogue
   guarantees the tracks exist. This is the key pattern: **LLM emits filters, code
   picks tracks** → no hallucinated songs, tiny token cost.
 - **Naming & blurbs**: titles, one-line descriptions, and cover-gradient prompts for
@@ -150,21 +151,28 @@ the rest of the app). Use the latest Claude model for these calls.
 
 The richer the per-track metadata, the better §2/§3 get. Everything below is just
 **another `EnrichmentTask`** appended to `ENRICHMENT_TASKS` (same column + scan-read
-+ windowed-fill pattern as bpm/genre/key — see docs/library-processing.md). Grouped
-by how we'd get it:
+
+- windowed-fill pattern as bpm/genre/key — see docs/library-processing.md). Grouped
+  by how we'd get it:
 
 **Tag-readable (cheap, no analysis)** — surface from `music-metadata`/ffprobe at scan
-time. *Status today:* the scanner (`MMFormat`) captures only **duration, bitrate,
-container, codec** (stored as `duration`/`bit_rate`/`suffix`/`content_type`) plus the
-embedded text tags (title/artist/album/year/track + the enriched genre/bpm/key). The
+time. _Status today:_ the scanner (`MMFormat`) captures **duration, bitrate,
+container, codec, sample rate, bit depth, channel count** (stored as
+`duration`/`bit_rate`/`suffix`/`content_type`/`sample_rate`/`bit_depth`/`channels`) plus
+the embedded text tags (title/artist/album/year/track + the enriched genre/bpm/key). The
 rest below are **readable but not yet captured/stored** — each needs a column + a
 scan-read line (the cheapest items on this roadmap, no DSP):
-- **Not captured yet**: sample rate, bit depth, channel count (extend `MMFormat` +
-  `library_songs`), comment field.
+
+- **✅ Captured**: sample rate, bit depth, channel count — read from `MMFormat`
+  (`sampleRate`/`bitsPerSample`/`numberOfChannels`) into `library_songs.sample_rate`/
+  `bit_depth`/`channels`, surfaced on `Song`. Purely file-derived, so a rescan
+  overwrites them (no COALESCE preservation, unlike bpm/key/perceptual features).
+- **Not captured yet**: comment field.
 - **Not captured yet**: loudness-normalization data (ReplayGain tags), time signature
   (`TIME`/tag) when present.
 
 **Offline DSP (ffmpeg decode + pure JS, like bpm/key)** — no external service:
+
 - **Key / harmonic key** — ✅ shipped (`key-detection.ts`).
 - **Loudness + energy** — ✅ shipped (`loudness-analysis.ts`): integrated LUFS +
   loudness range via ffmpeg `ebur128`, energy derived from both; the `energy`
@@ -175,6 +183,7 @@ scan-read line (the cheapest items on this roadmap, no DSP):
 
 **Model-assisted (local audio models — no LLM, per the dropped-scope decision in
 [audio-ml-enrichment.md](audio-ml-enrichment.md))**:
+
 - **Valence / danceability / mood / acousticness / instrumentation** — ✅ shipped:
   the `audio-features` task calls the Essentia analysis sidecar
   (`packages/analysis/`), stores columns + `VALENCE`/`DANCEABILITY`/`MOOD`/…

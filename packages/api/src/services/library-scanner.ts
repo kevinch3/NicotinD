@@ -94,6 +94,12 @@ export interface ScannedTrack {
   contentType: string;
   duration: number;
   bitRate: number;
+  /** Sample rate in Hz (e.g. 44100), from the container format. Absent when unknown. */
+  sampleRate?: number;
+  /** Bit depth in bits/sample (e.g. 16/24). Lossless-only; absent for lossy/unknown. */
+  bitDepth?: number;
+  /** Channel count (1 = mono, 2 = stereo, …). Absent when unknown. */
+  channels?: number;
   title?: string;
   artist?: string;
   albumArtist?: string;
@@ -144,6 +150,9 @@ export interface SongRow {
   path: string;
   size: number;
   bitRate: number;
+  sampleRate: number | null;
+  bitDepth: number | null;
+  channels: number | null;
   suffix: string;
   contentType: string;
   created: string;
@@ -484,6 +493,9 @@ export function buildLibrary(
       path: t.relPath,
       size: t.size,
       bitRate: t.bitRate,
+      sampleRate: t.sampleRate ?? null,
+      bitDepth: t.bitDepth ?? null,
+      channels: t.channels ?? null,
       suffix: t.suffix,
       contentType: t.contentType,
       created,
@@ -801,6 +813,16 @@ export class LibraryScanner {
       contentType: contentTypeFor(suffix),
       duration: format?.duration ? Math.round(format.duration) : 0,
       bitRate: format?.bitrate ? Math.round(format.bitrate / 1000) : 0,
+      // Container technical details (no DSP — straight off the format header).
+      // Some lossy formats report no bitsPerSample; a 0/absent value stores NULL.
+      sampleRate:
+        format?.sampleRate && format.sampleRate > 0 ? Math.round(format.sampleRate) : undefined,
+      bitDepth:
+        format?.bitsPerSample && format.bitsPerSample > 0 ? format.bitsPerSample : undefined,
+      channels:
+        format?.numberOfChannels && format.numberOfChannels > 0
+          ? format.numberOfChannels
+          : undefined,
       title: common?.title,
       artist: common?.artist,
       albumArtist: common?.albumartist,
@@ -847,9 +869,9 @@ export class LibraryScanner {
         track, disc, duration,
         year, genre, bpm, key,
         energy, loudness, danceability, valence, acousticness, instrumental, mood,
-        cover_art, path, size, bit_rate, suffix, content_type,
+        cover_art, path, size, bit_rate, sample_rate, bit_depth, channels, suffix, content_type,
         created, synced_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         album_id = excluded.album_id,
         title = excluded.title,
@@ -885,6 +907,11 @@ export class LibraryScanner {
         path = excluded.path,
         size = excluded.size,
         bit_rate = excluded.bit_rate,
+        -- Purely file-derived technical details — always re-read from the parse,
+        -- no COALESCE preservation needed (unlike bpm/key/perceptual features).
+        sample_rate = excluded.sample_rate,
+        bit_depth = excluded.bit_depth,
+        channels = excluded.channels,
         suffix = excluded.suffix,
         content_type = excluded.content_type,
         created = excluded.created,
@@ -978,6 +1005,9 @@ export class LibraryScanner {
           s.path,
           s.size,
           s.bitRate,
+          s.sampleRate,
+          s.bitDepth,
+          s.channels,
           s.suffix,
           s.contentType,
           s.created,

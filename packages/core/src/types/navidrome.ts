@@ -65,6 +65,12 @@ export interface Song {
   suffix: string;
   duration: number;
   bitRate: number;
+  /** Sample rate in Hz (e.g. 44100), from the container. Absent when unknown. */
+  sampleRate?: number;
+  /** Bit depth in bits/sample (e.g. 16/24). Lossless-only; absent for lossy/unknown. */
+  bitDepth?: number;
+  /** Channel count (1 = mono, 2 = stereo). Absent when unknown. */
+  channels?: number;
   path: string;
   created: string;
   starred?: string;
