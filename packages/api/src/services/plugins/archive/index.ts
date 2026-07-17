@@ -3,7 +3,13 @@ import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { basename, dirname, extname, join } from 'node:path';
 import { z } from 'zod';
-import type { Plugin, PluginManifest, PluginHostContext, ResolveCapability } from '@nicotind/core';
+import type {
+  Plugin,
+  PluginManifest,
+  PluginHostContext,
+  ResolveCapability,
+  ResolveResult,
+} from '@nicotind/core';
 import { AUDIO_EXTENSIONS } from '../acquire/process.js';
 
 export interface ArchivePluginConfig {
@@ -187,7 +193,7 @@ export class ArchivePlugin implements Plugin {
     return this.cfg.enabled;
   }
 
-  private async run(url: string, jobId: string): Promise<string[]> {
+  private async run(url: string, jobId: string): Promise<ResolveResult> {
     if (!this.ctx) throw new Error('archive.org plugin not initialized');
     const id = parseArchiveIdentifier(url);
     if (!id) throw new Error(`Not an archive.org item URL: ${url}`);
@@ -202,8 +208,13 @@ export class ArchivePlugin implements Plugin {
       }
 
       const stagingDir = this.ctx.allocStagingDir(jobId);
-      const creator = safeSegment(coerceCreator(meta.metadata?.creator) || 'Unknown Artist');
-      const title = safeSegment(meta.metadata?.title || id);
+      // Raw values feed the returned `meta` (the organizer sanitizes them for
+      // the folder + stores them as the album/artist tags); the safeSegment'd
+      // copies only name the staging path segments.
+      const creatorRaw = coerceCreator(meta.metadata?.creator) || 'Unknown Artist';
+      const titleRaw = meta.metadata?.title || id;
+      const creator = safeSegment(creatorRaw);
+      const title = safeSegment(titleRaw);
       const albumDir = join(stagingDir, creator, title);
 
       // Emit label once, now that we know the title and have chosen files.
@@ -223,7 +234,11 @@ export class ArchivePlugin implements Plugin {
         this.ctx.emitTrack(jobId, { title: trackTitleFor(file.name), status: 'done' });
         this.ctx.emitProgress(jobId, { done: i + 1, total: chosen.length });
       }
-      return staged;
+      // archive.org files carry no embedded tags, so hand the organizer the
+      // item's own artist/album — otherwise it can't file them and drops them
+      // in the unsorted bucket (a "downloaded but vanished" report). See the
+      // jobMeta wiring in acquire-watcher.ts.
+      return { paths: staged, meta: { artist: creatorRaw, album: titleRaw } };
     } finally {
       this.activeRuns.delete(jobId);
     }

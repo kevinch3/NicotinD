@@ -679,4 +679,59 @@ describe('AcquireWatcher (registry-driven)', () => {
 
     await waitForState(watcher, id, 'done');
   });
+
+  it('threads a plugin’s { paths, meta } onto the organizer’s jobMeta (untagged sources)', async () => {
+    const plugin = fakePlugin();
+    plugin.resolve!.resolve = async (_url, jobId) => ({
+      paths: [join(pluginStagingDir(DATA_DIR, 'fake', jobId), 'Ignored', 'Ignored', 'track.mp3')],
+      meta: { artist: 'The Grateful Dead', album: 'Live at the Fillmore' },
+    });
+    h = makeHarness(plugin);
+    await h.registry.enable('fake', 'admin');
+    const id = await h.watcher.submit('https://example.com/x');
+    await waitForState(h.watcher, id, 'done');
+
+    const files = h.organize.mock.calls[0]![0] as CompletedDownloadFile[];
+    expect(files[0]!.jobMeta).toMatchObject({
+      kind: 'url',
+      artistName: 'The Grateful Dead',
+      albumTitle: 'Live at the Fillmore',
+    });
+  });
+
+  it('leaves jobMeta null for a bare string[] return (tagged sources file from tags)', async () => {
+    await h.registry.enable('fake', 'admin');
+    const id = await h.watcher.submit('https://example.com/x');
+    await waitForState(h.watcher, id, 'done');
+
+    const files = h.organize.mock.calls[0]![0] as CompletedDownloadFile[];
+    expect(files[0]!.jobMeta).toBeNull();
+  });
+
+  it('marks the job done with a warning (and skips scan) when nothing was filed into the library', async () => {
+    // organize that files nothing — every track landed unsorted / was dup-skipped,
+    // so relativePath is never set. Without the honest-status guard this would
+    // read as a clean green "Done" while the library got nothing.
+    const organize = mock(async () => {});
+    const scan = mock(async () => {});
+    const db = new Database(':memory:');
+    applySchema(db);
+    const registry = new PluginRegistry({ db, dataDir: DATA_DIR });
+    registry.register(fakePlugin());
+    await registry.enable('fake', 'admin');
+    const watcher = new AcquireWatcher({
+      db,
+      dataDir: DATA_DIR,
+      registry,
+      organizeBatch: organize,
+      scanIncremental: scan,
+    });
+    const id = await watcher.submit('https://example.com/x');
+    await waitForState(watcher, id, 'done');
+
+    const job = watcher.getJob(id)!;
+    expect(job.state).toBe('done');
+    expect(job.error).toContain('no tracks were added to your library');
+    expect(scan).not.toHaveBeenCalled();
+  });
 });
