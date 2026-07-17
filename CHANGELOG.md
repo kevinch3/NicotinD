@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.213](https://github.com/kevinch3/NicotinD/compare/v0.1.212...v0.1.213) (2026-07-17)
+
+
+### Bug Fixes
+
+* **acquire:** file tagless archive.org downloads instead of silently losing them ([13af34b](https://github.com/kevinch3/NicotinD/commit/13af34bb6fa74c8430df7e13bf8a85cf25f5a7fb))
+
 ## [0.1.212](https://github.com/kevinch3/NicotinD/compare/v0.1.211...v0.1.212) (2026-07-16)
 
 ## [0.1.211](https://github.com/kevinch3/NicotinD/compare/v0.1.210...v0.1.211) (2026-07-16)
