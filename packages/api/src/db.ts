@@ -686,6 +686,9 @@ export function applySchema(db: Database): void {
       path          TEXT NOT NULL,
       size          INTEGER,
       bit_rate      INTEGER,
+      sample_rate   INTEGER,
+      bit_depth     INTEGER,
+      channels      INTEGER,
       suffix        TEXT,
       content_type  TEXT,
       created       TEXT,
@@ -752,6 +755,14 @@ export function applySchema(db: Database): void {
   }
   db.run(`CREATE INDEX IF NOT EXISTS idx_library_songs_licence ON library_songs(licence)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_library_songs_popularity ON library_songs(popularity)`);
+
+  // Container technical details — sample rate (Hz), bit depth (bits/sample,
+  // lossless-only), channel count. Read from music-metadata's format at scan
+  // time (no DSP), same additive pattern as bit_rate; purely file-derived so a
+  // rescan always overwrites them (no COALESCE preservation).
+  addColumnIfMissing(db, 'library_songs', 'sample_rate', 'INTEGER');
+  addColumnIfMissing(db, 'library_songs', 'bit_depth', 'INTEGER');
+  addColumnIfMissing(db, 'library_songs', 'channels', 'INTEGER');
   // "Landed" timestamp (epoch ms) — NULL means the song is *quarantined*: it has
   // been scanned into the DB (so the windowed enrichment tasks can operate on it)
   // but is hidden from every library listing until its required processing steps
