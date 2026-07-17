@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.218](https://github.com/kevinch3/NicotinD/compare/v0.1.217...v0.1.218) (2026-07-17)
+
+
+### Bug Fixes
+
+* **docker:** skip lifecycle scripts in the production install ([dc2888f](https://github.com/kevinch3/NicotinD/commit/dc2888fb44c9edf094423b157091689c1dd86cf3))
+
 ## [0.1.217](https://github.com/kevinch3/NicotinD/compare/v0.1.216...v0.1.217) (2026-07-17)
 
 
