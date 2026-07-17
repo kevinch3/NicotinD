@@ -1,10 +1,12 @@
 import { TestBed } from '@angular/core/testing';
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { vi } from 'vitest';
+import { of, throwError, Subject } from 'rxjs';
 import { provideRouter } from '@angular/router';
 import { NowPlayingComponent } from './now-playing.component';
 import { PlayerService } from '../../services/player.service';
 import { AuthService } from '../../services/auth.service';
+import { LibraryApiService } from '../../services/api/library-api.service';
 import { RemotePlaybackService } from '../../services/remote-playback.service';
 import { PlaybackWsService } from '../../services/playback-ws.service';
 
@@ -49,9 +51,17 @@ function makeRemoteStub() {
   };
 }
 
+function makeLibraryStub() {
+  return {
+    getLyrics: vi.fn(() => of(null)),
+    fetchLyrics: vi.fn(() => of(null)),
+  };
+}
+
 function setup() {
   const playerStub = makePlayerStub();
   const remoteStub = makeRemoteStub();
+  const libraryStub = makeLibraryStub();
 
   TestBed.configureTestingModule({
     imports: [NowPlayingComponent],
@@ -59,6 +69,7 @@ function setup() {
       provideRouter([]),
       { provide: PlayerService, useValue: playerStub },
       { provide: AuthService, useValue: { token: signal('tok') } },
+      { provide: LibraryApiService, useValue: libraryStub },
       { provide: RemotePlaybackService, useValue: remoteStub },
       {
         provide: PlaybackWsService,
@@ -74,7 +85,7 @@ function setup() {
 
   const fixture = TestBed.createComponent(NowPlayingComponent);
   fixture.detectChanges();
-  return { fixture, playerStub, remoteStub };
+  return { fixture, playerStub, remoteStub, libraryStub };
 }
 
 describe('NowPlayingComponent', () => {
@@ -96,6 +107,99 @@ describe('NowPlayingComponent', () => {
 
       const el: HTMLElement = fixture.nativeElement;
       expect(el.querySelector('app-device-switcher')).toBeNull();
+    });
+  });
+
+  describe('lyrics manual fetch (empty state)', () => {
+    it('force-fetches and populates lyrics on success', () => {
+      const { fixture, playerStub, libraryStub } = setup();
+      const component = fixture.componentInstance;
+      playerStub.currentTrack.set({ id: 's1', title: 'Song', artist: 'Artist' });
+      libraryStub.fetchLyrics.mockReturnValue(
+        of({ plain: 'la la', synced: null, source: 'lrclib', customized: false }),
+      );
+
+      component.fetchLyricsManually();
+
+      expect(libraryStub.fetchLyrics).toHaveBeenCalledWith('s1', true);
+      expect(component.lyrics()?.plain).toBe('la la');
+      expect(component.fetchingLyrics()).toBe(false);
+      expect(component.lyricsError()).toBe(false);
+    });
+
+    it('flags an error (for a retry) when the source fails', () => {
+      const { fixture, playerStub, libraryStub } = setup();
+      const component = fixture.componentInstance;
+      playerStub.currentTrack.set({ id: 's1', title: 'Song', artist: 'Artist' });
+      libraryStub.fetchLyrics.mockReturnValue(throwError(() => new Error('502')));
+
+      component.fetchLyricsManually();
+
+      expect(component.lyricsError()).toBe(true);
+      expect(component.fetchingLyrics()).toBe(false);
+      expect(component.lyrics()).toBeNull();
+    });
+
+    it('ignores a second click while a fetch is in flight', () => {
+      const { fixture, playerStub, libraryStub } = setup();
+      const component = fixture.componentInstance;
+      playerStub.currentTrack.set({ id: 's1', title: 'Song', artist: 'Artist' });
+      // A never-completing observable keeps fetchingLyrics true.
+      libraryStub.fetchLyrics.mockReturnValue(new Subject());
+
+      component.fetchLyricsManually();
+      component.fetchLyricsManually();
+
+      expect(libraryStub.fetchLyrics).toHaveBeenCalledTimes(1);
+      expect(component.fetchingLyrics()).toBe(true);
+    });
+  });
+
+  describe('queue resize (drag handle)', () => {
+    const pointer = (type: string, clientY: number, button = 0) =>
+      new MouseEvent(type, { clientY, button }) as unknown as PointerEvent;
+
+    beforeEach(() => localStorage.clear());
+
+    it('grows the queue (shrinks the cover) when dragged up, and clamps', () => {
+      const { fixture } = setup();
+      const component = fixture.componentInstance;
+      expect(component.queueExtraHeightPx()).toBe(0);
+      expect(component.coverMaxPx()).toBe(320);
+
+      component.onQueueResizeStart(pointer('pointerdown', 300));
+      document.dispatchEvent(pointer('pointermove', 200)); // up 100px
+      expect(component.queueExtraHeightPx()).toBe(100);
+      expect(component.coverMaxPx()).toBe(220);
+
+      // Drag far past the max — clamps to COVER_MAX - COVER_MIN (200).
+      document.dispatchEvent(pointer('pointermove', 0)); // up 300px from start
+      expect(component.queueExtraHeightPx()).toBe(200);
+      expect(component.coverMaxPx()).toBe(120);
+
+      document.dispatchEvent(pointer('pointerup', 0));
+    });
+
+    it('clamps a downward drag back to zero', () => {
+      const { fixture } = setup();
+      const component = fixture.componentInstance;
+      component.onQueueResizeStart(pointer('pointerdown', 100));
+      document.dispatchEvent(pointer('pointermove', 260)); // down 160
+      expect(component.queueExtraHeightPx()).toBe(0);
+      document.dispatchEvent(pointer('pointerup', 260));
+    });
+
+    it('persists the chosen size across a fresh mount (per-device)', () => {
+      const first = setup();
+      first.fixture.componentInstance.onQueueResizeStart(pointer('pointerdown', 300));
+      document.dispatchEvent(pointer('pointermove', 220)); // up 80
+      document.dispatchEvent(pointer('pointerup', 220));
+      expect(first.fixture.componentInstance.queueExtraHeightPx()).toBe(80);
+
+      // A new component instance reads the persisted value on construction.
+      TestBed.resetTestingModule();
+      const second = setup();
+      expect(second.fixture.componentInstance.queueExtraHeightPx()).toBe(80);
     });
   });
 

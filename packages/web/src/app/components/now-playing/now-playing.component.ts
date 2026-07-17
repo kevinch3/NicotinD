@@ -68,6 +68,10 @@ export class NowPlayingComponent {
   readonly lyricsOpen = signal(false);
   readonly lyrics = signal<LyricsDto | null>(null);
   readonly lyricsLoading = signal(false);
+  /** True after a source *failed* (vs a confident no-match) — offer a retry. */
+  readonly lyricsError = signal(false);
+  /** True while a manual (button-triggered) fetch is in flight. */
+  readonly fetchingLyrics = signal(false);
   private lyricsLoadedForId = signal<string | null>(null);
   /** Parsed synced LRC lines (empty when the lyrics are plain-only). */
   readonly lyricLines = computed(() => parseLrc(this.lyrics()?.synced));
@@ -132,6 +136,59 @@ export class NowPlayingComponent {
     },
   });
   readonly dragging = this.sheetDrag.dragging;
+
+  // Manual queue resize: dragging the handle up shrinks the cover art and gives
+  // the Now-Playing queue more room (the queue is flex-1, so shrinking the cover
+  // grows it). `queueExtraHeightPx` is how many px the cover has shrunk from its
+  // max; persisted per-device so the chosen size survives reload.
+  private static readonly COVER_MAX_PX = 320; // matches Tailwind max-w-80 (20rem)
+  private static readonly COVER_MIN_PX = 120;
+  private static readonly QUEUE_EXTRA_MAX_PX =
+    NowPlayingComponent.COVER_MAX_PX - NowPlayingComponent.COVER_MIN_PX;
+  private static readonly QUEUE_EXTRA_STORAGE_KEY = 'nicotind:np-queue-extra';
+  readonly queueExtraHeightPx = signal(this.readStoredQueueExtra());
+  /** Cover art max-width (px), shrinking as the queue is dragged taller. */
+  readonly coverMaxPx = computed(
+    () => NowPlayingComponent.COVER_MAX_PX - this.queueExtraHeightPx(),
+  );
+  private queueResizeStartExtra = 0;
+  private readonly queueResizeDrag = createPointerDrag({
+    onStart: () => {
+      this.queueResizeStartExtra = this.queueExtraHeightPx();
+    },
+    // Drag up (clientY decreases) → grow the queue / shrink the cover.
+    onMove: (event, start) => {
+      const delta = start.clientY - event.clientY;
+      this.queueExtraHeightPx.set(this.clampQueueExtra(this.queueResizeStartExtra + delta));
+    },
+    onEnd: () => this.persistQueueExtra(this.queueExtraHeightPx()),
+  });
+  readonly resizingQueue = this.queueResizeDrag.dragging;
+
+  onQueueResizeStart(event: PointerEvent): void {
+    this.queueResizeDrag.start(event);
+  }
+
+  private clampQueueExtra(px: number): number {
+    return Math.min(NowPlayingComponent.QUEUE_EXTRA_MAX_PX, Math.max(0, Math.round(px)));
+  }
+
+  private readStoredQueueExtra(): number {
+    try {
+      const raw = localStorage.getItem(NowPlayingComponent.QUEUE_EXTRA_STORAGE_KEY);
+      return raw ? this.clampQueueExtra(Number(raw)) : 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  private persistQueueExtra(px: number): void {
+    try {
+      localStorage.setItem(NowPlayingComponent.QUEUE_EXTRA_STORAGE_KEY, String(px));
+    } catch {
+      /* storage unavailable — the size just won't persist */
+    }
+  }
 
   constructor() {
     // Remote playback interpolation (rAF loop)
@@ -263,6 +320,7 @@ export class NowPlayingComponent {
 
   private loadLyrics(id: string): void {
     this.lyrics.set(null);
+    this.lyricsError.set(false);
     this.lyricsLoading.set(true);
     this.api.getLyrics(id).subscribe({
       next: (l) => {
@@ -279,11 +337,38 @@ export class NowPlayingComponent {
               if (f) this.lyricsLoadedForId.set(id);
               this.lyricsLoading.set(false);
             },
-            error: () => this.lyricsLoading.set(false),
+            // A source failure (502) is distinct from a confident no-match —
+            // flag it so the empty state offers a retry instead of "none".
+            error: () => {
+              this.lyricsError.set(true);
+              this.lyricsLoading.set(false);
+            },
           });
         }
       },
       error: () => this.lyricsLoading.set(false),
+    });
+  }
+
+  /**
+   * Manual "Fetch lyrics" from the empty state. Forces a re-fetch (so a prior
+   * miss/error is retried) and surfaces success/empty/error distinctly.
+   */
+  fetchLyricsManually(): void {
+    const id = this.player.currentTrack()?.id;
+    if (!id || this.fetchingLyrics()) return;
+    this.fetchingLyrics.set(true);
+    this.lyricsError.set(false);
+    this.api.fetchLyrics(id, true).subscribe({
+      next: (f) => {
+        this.lyrics.set(f);
+        if (f) this.lyricsLoadedForId.set(id);
+        this.fetchingLyrics.set(false);
+      },
+      error: () => {
+        this.lyricsError.set(true);
+        this.fetchingLyrics.set(false);
+      },
     });
   }
 
