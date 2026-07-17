@@ -68,6 +68,25 @@ describe('POST /refresh', () => {
     expect(payload.username).toBe('testuser');
   });
 
+  it('re-reads role from the DB (a promoted user gets the new role in the token)', async () => {
+    testDb.run(
+      "INSERT INTO users (id, username, password_hash, role) VALUES ('promote-me', 'promoted', 'hash', 'user')",
+    );
+    // Token was minted while they were a plain user…
+    const token = await signJwt({ sub: 'promote-me', username: 'promoted', role: 'user' }, SECRET, '1h');
+    // …then an admin promoted them.
+    testDb.run("UPDATE users SET role = 'refiner' WHERE id = 'promote-me'");
+
+    const res = await app.request('/refresh', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(res.status).toBe(200);
+    const { token: fresh } = (await res.json()) as { token: string };
+    const { payload } = await jose.jwtVerify(fresh, new TextEncoder().encode(SECRET));
+    expect(payload.role).toBe('refiner');
+  });
+
   it('refuses to refresh a share token (403)', async () => {
     const shareToken = await signJwt(
       { sub: 'user-123', username: 'testuser', role: 'user', share: true, scope: 'read' },

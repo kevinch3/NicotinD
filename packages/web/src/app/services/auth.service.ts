@@ -69,6 +69,16 @@ export class AuthService {
   }
 
   /**
+   * Update the cached role (signal + localStorage) from the authoritative server
+   * profile on boot. The refresh re-reads role from the DB, so an admin's role
+   * change takes effect on the user's next load — not only on a full re-login.
+   */
+  setRole(role: string): void {
+    localStorage.setItem('nicotind_role', role);
+    this.role.set(role);
+  }
+
+  /**
    * Persist the per-user "autoplay on page load" preference server-side and
    * mirror it in the local signal. Optimistic: the toggle reflects instantly
    * while the request is in flight; errors roll it back to the previous value.

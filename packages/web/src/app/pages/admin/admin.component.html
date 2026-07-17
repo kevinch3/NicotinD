@@ -69,13 +69,13 @@
                     </td>
                     <td class="px-4 py-3 text-right">
                       <div class="flex items-center justify-end gap-1">
-                        <select [value]="user.role" [disabled]="user.id === currentUserId()"
+                        <select [disabled]="user.id === currentUserId()"
                           (change)="setRole(user, $any($event.target).value)"
                           [title]="user.id === currentUserId() ? 'Cannot change your own role' : 'Change role'"
                           data-testid="user-role-select"
                           class="px-2 py-1 rounded text-xs bg-theme-surface-2 text-theme-secondary border border-theme hover:text-theme-primary transition disabled:opacity-30 disabled:cursor-not-allowed">
                           @for (r of roles; track r) {
-                            <option [value]="r">{{ r }}</option>
+                            <option [value]="r" [selected]="r === user.role">{{ r }}</option>
                           }
                         </select>
                         <button (click)="toggleStatus(user)" [disabled]="user.id === currentUserId()"
