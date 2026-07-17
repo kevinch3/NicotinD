@@ -7,6 +7,11 @@ export interface Point {
  * Clamp a popup/menu's top-left so it stays fully within the viewport. A context
  * menu opened at a tap's raw coordinates otherwise overflows the right/bottom
  * edge on mobile (§G6). Keeps a small margin from every edge.
+ *
+ * `bottomInset` reserves space at the viewport bottom for fixed chrome (the
+ * mini-player + mobile tab bar): the menu's bottom edge is clamped above it, so
+ * a row menu near the end of a scrolled list never opens *under* the player/tab
+ * bar where it'd be only partially visible.
  */
 export function clampMenuPosition(
   pos: Point,
@@ -15,9 +20,10 @@ export function clampMenuPosition(
   menuWidth = 200,
   menuHeight = 96,
   margin = 8,
+  bottomInset = 0,
 ): Point {
   const maxX = Math.max(margin, viewportWidth - menuWidth - margin);
-  const maxY = Math.max(margin, viewportHeight - menuHeight - margin);
+  const maxY = Math.max(margin, viewportHeight - bottomInset - menuHeight - margin);
   return {
     x: Math.min(Math.max(margin, pos.x), maxX),
     y: Math.min(Math.max(margin, pos.y), maxY),
@@ -44,6 +50,9 @@ export interface TriggerRect {
  *   there is above.
  * - Always finishes by clamping with `clampMenuPosition`, so even a panel wider
  *   than the viewport is pinned to the edge margin instead of overflowing.
+ * - `bottomInset` reserves fixed bottom chrome (mini-player + tab bar) height:
+ *   it shrinks the room-below calc (so a low trigger flips up sooner) and the
+ *   bottom clamp (so the panel never lands under the player/tab bar).
  */
 export function computeMenuPosition(
   trigger: TriggerRect,
@@ -54,15 +63,26 @@ export function computeMenuPosition(
   align: 'start' | 'end' = 'end',
   gap = 4,
   margin = 8,
+  bottomInset = 0,
 ): Point {
   const x = align === 'end' ? trigger.right - panelWidth : trigger.left;
 
   const below = trigger.bottom + gap;
   const above = trigger.top - gap - panelHeight;
-  const roomBelow = viewportHeight - below;
+  // Usable bottom excludes the fixed chrome, so a panel that would only fit by
+  // overlapping the player/tab bar counts as "no room below" and flips up.
+  const roomBelow = viewportHeight - bottomInset - below;
   // Flip up only when below can't fit the panel AND above has more room.
   const flipUp = roomBelow < panelHeight && trigger.top - gap > roomBelow;
   const y = flipUp ? above : below;
 
-  return clampMenuPosition({ x, y }, viewportWidth, viewportHeight, panelWidth, panelHeight, margin);
+  return clampMenuPosition(
+    { x, y },
+    viewportWidth,
+    viewportHeight,
+    panelWidth,
+    panelHeight,
+    margin,
+    bottomInset,
+  );
 }

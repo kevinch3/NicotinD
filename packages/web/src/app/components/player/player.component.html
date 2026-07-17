@@ -3,7 +3,7 @@
     <audio #audioElB></audio>
     <!-- Mobile: floats above the fixed bottom tab bar (h-14 + safe-area inset); desktop: bottom-0 (no tab bar).
          Show/hide geometry lives in lib/player-chrome.ts — the hidden state must clear the tab bar too. -->
-    <div [class]="'fixed bottom-[calc(3.5rem+env(safe-area-inset-bottom))] md:bottom-0 left-0 right-0 bg-theme-surface border-t border-theme z-50 transition-transform duration-300 ease-out ' +
+    <div data-bottom-chrome [class]="'fixed bottom-[calc(3.5rem+env(safe-area-inset-bottom))] md:bottom-0 left-0 right-0 bg-theme-surface border-t border-theme z-50 transition-transform duration-300 ease-out ' +
       slideClass()">
 
       <!-- Autoplay blocked banner -->

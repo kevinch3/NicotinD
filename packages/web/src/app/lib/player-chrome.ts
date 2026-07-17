@@ -32,3 +32,28 @@ export function mainBottomPadClass(hasTrack: boolean): string {
     ? 'pb-[calc(8rem+env(safe-area-inset-bottom))] md:pb-20'
     : 'pb-[calc(3.5rem+env(safe-area-inset-bottom))] md:pb-0';
 }
+
+/** A fixed chrome layer's viewport rect (the subset a popup needs to avoid it). */
+export interface ChromeRect {
+  top: number;
+  height: number;
+}
+
+/**
+ * Height of the fixed bottom chrome (mini-player + mobile tab bar) that actually
+ * overlaps the bottom of the viewport, so a popup can reserve that space and
+ * never open *under* it (the mobile "track menu hidden behind the player" bug).
+ *
+ * Fed the measured rects of the chrome layers (tagged `data-bottom-chrome`), it
+ * ignores layers that are hidden (`height` 0 — e.g. the desktop-only-absent tab
+ * bar) or slid off-screen (`top` at/below the viewport bottom — the mini-player
+ * when no track is loaded), then returns the distance from the highest
+ * still-overlapping chrome edge down to the viewport bottom. Measuring rather
+ * than recomputing the rem/safe-area/breakpoint math keeps this in lockstep with
+ * whatever the chrome actually renders.
+ */
+export function bottomChromeInset(rects: ChromeRect[], viewportHeight: number): number {
+  const tops = rects.filter((r) => r.height > 0 && r.top < viewportHeight).map((r) => r.top);
+  if (!tops.length) return 0;
+  return Math.max(0, viewportHeight - Math.min(...tops));
+}
