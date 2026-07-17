@@ -71,7 +71,14 @@ COPY packages/capacitor-now-playing/package.json packages/capacitor-now-playing/
 COPY packages/desktop/package.json packages/desktop/
 COPY src/ src/
 
-RUN bun install --frozen-lockfile
+# --ignore-scripts (matching the web-builder stage): a transitive sharp@0.32.6
+# — pulled in only by @capacitor/assets, a mobile-icon dev tool never run in this
+# server image — has an `install` script that downloads a libvips binary, and that
+# download fails in this stage. The runtime's own image work uses sharp@0.35
+# (native binary ships as the `@img/sharp-linux-*` packages, resolved from the
+# lockfile — no postinstall), so skipping scripts here is safe. Lifecycle scripts
+# (incl. the root `prepare: husky` hook) have no place in a runtime image anyway.
+RUN bun install --frozen-lockfile --ignore-scripts
 
 # Copy pre-built web UI
 COPY --from=web-builder /app/packages/web/dist packages/web/dist
