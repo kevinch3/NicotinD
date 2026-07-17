@@ -191,6 +191,13 @@ export interface UserDir {
   files: Array<{ filename: string; size: number; bitRate?: number; length?: number }>;
 }
 
+/** Filesystem usage (bytes) for the disk holding the music dir. */
+export interface DiskUsage {
+  total: number;
+  free: number;
+  used: number;
+}
+
 export type BrowseJobResult =
   | { state: 'pending' }
   | { state: 'complete'; dirs: UserDir[] }

@@ -13,6 +13,8 @@ import {
   mergeAcquisitionJobs,
 } from '../../lib/download-groups';
 import { DownloadItemComponent } from '../../components/download-item/download-item.component';
+import { DiskPillComponent } from '../../components/disk-pill/disk-pill.component';
+import type { DiskUsage } from '../../services/api/api-types';
 
 const ACQUIRE_STATE_ORDER: Record<AcquireJob['state'], number> = {
   running: 0,
@@ -32,7 +34,7 @@ function sortAcquireJobs(jobs: AcquireJob[]): AcquireJob[] {
 
 @Component({
   selector: 'app-downloads',
-  imports: [ConfirmDialogComponent, DownloadItemComponent],
+  imports: [ConfirmDialogComponent, DownloadItemComponent, DiskPillComponent],
   templateUrl: './downloads.component.html',
 })
 export class DownloadsComponent {
@@ -42,6 +44,17 @@ export class DownloadsComponent {
 
   readonly retrying = signal(new Set<string>());
   readonly scanning = signal(false);
+
+  // Storage pill for the header — best-effort; hidden if the disk read fails.
+  readonly diskUsage = signal<DiskUsage | null>(null);
+
+  constructor() {
+    firstValueFrom(this.systemApi.getDiskUsage())
+      .then((d) => this.diskUsage.set(d))
+      .catch(() => {
+        /* disk usage is non-essential; leave the pill hidden */
+      });
+  }
 
   // Confirm dialog
   readonly confirmMessage = signal('');

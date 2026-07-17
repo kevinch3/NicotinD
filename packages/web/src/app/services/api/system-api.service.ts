@@ -8,6 +8,7 @@ import type {
   SetupBody,
   AdminUser,
   QuarantineAlbum,
+  DiskUsage,
 } from './api-types';
 
 /** System surface: status/scan/logs, settings (soulseek/shares/streaming/
@@ -27,6 +28,11 @@ export class SystemApiService {
 
   getScanStatus() {
     return this.http.get<{ scanning: boolean; count: number }>('/api/system/scan/status');
+  }
+
+  // Free/used/total bytes of the filesystem holding the music dir (downloads land here).
+  getDiskUsage() {
+    return this.http.get<DiskUsage>('/api/system/disk');
   }
 
   restartService(service: 'slskd') {
