@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.221](https://github.com/kevinch3/NicotinD/compare/v0.1.220...v0.1.221) (2026-07-17)
+
+
+### Bug Fixes
+
+* **mobile:** prevent offline Android launch crash + detect network live ([c66827f](https://github.com/kevinch3/NicotinD/commit/c66827f4f172f6160d1af892fe5ce87423f094d9))
+
 ## [0.1.220](https://github.com/kevinch3/NicotinD/compare/v0.1.219...v0.1.220) (2026-07-17)
 
 
