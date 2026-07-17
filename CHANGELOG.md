@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.215](https://github.com/kevinch3/NicotinD/compare/v0.1.214...v0.1.215) (2026-07-17)
+
+
+### Features
+
+* **downloads:** show disk availability pill in Downloads header ([0b1e29c](https://github.com/kevinch3/NicotinD/commit/0b1e29c6ee72feed97eaebd0bf040396cc3c09df))
+* **player:** resizable now-playing queue + styled lyrics empty state ([b497691](https://github.com/kevinch3/NicotinD/commit/b497691ea64a3ffd308b4e654a977f8341be2dd6))
+
+
+### Bug Fixes
+
+* **library:** reload artist view when navigating artist-to-artist ([4ddda45](https://github.com/kevinch3/NicotinD/commit/4ddda458462d2476cfcd2353007fb7cdbf3e4093))
+* **lyrics:** make the first fetch reliable instead of a false empty ([128f93f](https://github.com/kevinch3/NicotinD/commit/128f93fae8e6cf1ed336f9d18d35de7728505be0))
+
 ## [0.1.214](https://github.com/kevinch3/NicotinD/compare/v0.1.213...v0.1.214) (2026-07-17)
 
 
