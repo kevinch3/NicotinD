@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.217](https://github.com/kevinch3/NicotinD/compare/v0.1.216...v0.1.217) (2026-07-17)
+
+
+### Bug Fixes
+
+* **auth:** reflect current role in admin select + propagate role changes on reload ([adab39c](https://github.com/kevinch3/NicotinD/commit/adab39cbddcfdc8fd07e654f09b3da18999dfc65))
+
 ## [0.1.216](https://github.com/kevinch3/NicotinD/compare/v0.1.215...v0.1.216) (2026-07-17)
 
 
