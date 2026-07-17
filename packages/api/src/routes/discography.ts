@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { createLogger } from '@nicotind/core';
 import type { Database } from 'bun:sqlite';
 import type { AuthEnv } from '../middleware/auth.js';
+import { requireAcquirer } from '../middleware/current-user.js';
 import type { SlskdRef } from '../index.js';
 import type { DiscographyService } from '../services/discography.service.js';
 import type { AlbumHunterService } from '../services/album-hunter.service.js';
@@ -48,6 +49,12 @@ export function discographyRoutes({
 }: DiscographyRoutesOptions) {
   const app = new Hono<AuthEnv>();
   const coverCacheDir = dataDir ? join(dataDir, 'cover-cache') : undefined;
+
+  // Discography hunt is acquisition — hidden from listeners, gated server-side.
+  app.use('*', async (c, next) => {
+    requireAcquirer(c);
+    await next();
+  });
 
   // GET /api/discography/artists/:id
   // Returns complete discography for a local library artist, diffed against Lidarr

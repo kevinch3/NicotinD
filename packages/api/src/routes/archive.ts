@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { createLogger, NicotinDError } from '@nicotind/core';
 import type { AuthEnv } from '../middleware/auth.js';
+import { requireAcquirer } from '../middleware/current-user.js';
 import type { ArchiveSearchService } from '../services/archive-search.service.js';
 import type { PluginRegistry } from '../services/plugins/registry.js';
 
@@ -17,6 +18,12 @@ const ARCHIVE_PLUGIN_ID = 'archive';
 
 export function archiveRoutes({ search, plugins }: ArchiveRoutesOptions) {
   const app = new Hono<AuthEnv>();
+
+  // Archive.org acquisition — hidden from listeners, gated server-side.
+  app.use('*', async (c, next) => {
+    requireAcquirer(c);
+    await next();
+  });
 
   // GET /api/archive/search?q=          (free text — unified search)
   // GET /api/archive/search?artist=&album=   (targeted — album-hunt modal)

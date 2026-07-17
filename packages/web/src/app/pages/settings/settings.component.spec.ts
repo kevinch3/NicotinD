@@ -36,6 +36,7 @@ function providers(role: 'admin' | 'user') {
     { provide: AuthService, useValue: {
         username: signal('kev'),
         role: signal(role),
+        isAdmin: () => role === 'admin',
         welcomeDismissed: signal(false),
         autoplayOnLoad: signal(false),
         setAutoplayOnLoad: vi.fn(),

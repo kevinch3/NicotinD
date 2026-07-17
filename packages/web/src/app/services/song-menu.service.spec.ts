@@ -9,15 +9,16 @@ import { LibraryApiService } from './api/library-api.service';
 import { TransferService } from './transfer.service';
 import { TrackInfoService } from './track-info.service';
 import { ConfirmService } from './confirm.service';
+import { asRole, canCurate as canCurateRole, type Role } from '../../types/core';
 import type { BaseSong } from '../lib/track-utils';
 
 const song = (over: Partial<BaseSong> = {}): BaseSong => ({
   id: 's1', title: 'Toxic', artist: 'Britney', ...over,
 });
 
-function setup(role: 'admin' | 'user' = 'user') {
+function setup(role: Role = 'user') {
   const router = { navigate: vi.fn() };
-  const auth = { role: () => role };
+  const auth = { role: () => role, canCurate: () => canCurateRole(asRole(role)) };
   // Some tests call setup() twice within one `it` (comparing user vs admin) —
   // reset so the second TestBed.configureTestingModule doesn't error on an
   // already-instantiated module.
@@ -70,8 +71,10 @@ describe('SongMenuService.build', () => {
     expect(out).not.toContain('Go to album');
   });
 
-  it('adds Remove from library only for admin + removable', () => {
+  it('adds Remove from library only for curators (refiner/admin) + removable', () => {
+    expect(labels(song(), setup('listener').svc, { removable: true })).not.toContain('Remove from library');
     expect(labels(song(), setup('user').svc, { removable: true })).not.toContain('Remove from library');
+    expect(labels(song(), setup('refiner').svc, { removable: true })).toContain('Remove from library');
     expect(labels(song(), setup('admin').svc, { removable: true })).toContain('Remove from library');
   });
 

@@ -6,6 +6,7 @@ import type { Database } from 'bun:sqlite';
 import type { SlskdUserTransferGroup } from '@nicotind/core';
 import { createLogger } from '@nicotind/core';
 import { getDatabase } from '../db.js';
+import { requireAcquirer } from '../middleware/current-user.js';
 import { albumIdFor } from '../services/library-scanner.js';
 import {
   createJob,
@@ -137,6 +138,12 @@ const SimpleSuccessSchema = z
 
 export function downloadRoutes(registry: ProviderRegistry, slskdRef: SlskdRef) {
   const app = new OpenAPIHono<AuthEnv>();
+
+  // The Downloads feed is acquisition — hidden from listeners, gated server-side.
+  app.use('*', async (c, next) => {
+    requireAcquirer(c);
+    await next();
+  });
 
   // Guard: if no network provider is available, downloads are unavailable
   app.use('*', async (c, next) => {

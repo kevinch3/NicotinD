@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import type { ProcessingSettings, ProcessingStatus } from '@nicotind/core';
+import type { Role } from '../../../types/core';
 import type {
   StreamingSettings,
   SetupStatus,
@@ -153,7 +154,7 @@ export class SystemApiService {
     return this.http.post<AdminUser>('/api/admin/users', { username, password });
   }
 
-  updateUserRole(id: string, role: 'admin' | 'user') {
+  updateUserRole(id: string, role: Role) {
     return this.http.put<{ ok: boolean }>(`/api/admin/users/${id}/role`, { role });
   }
 

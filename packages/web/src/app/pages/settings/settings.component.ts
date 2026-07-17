@@ -88,7 +88,7 @@ export class SettingsComponent {
   readonly deviceNameSaved = signal(false);
 
   isAdmin(): boolean {
-    return this.auth.role() === 'admin';
+    return this.auth.isAdmin();
   }
 
   async refreshNowPlayingDiagnostics(): Promise<void> {

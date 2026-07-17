@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { createLogger, NicotinDError } from '@nicotind/core';
 import type { AuthEnv } from '../middleware/auth.js';
+import { requireAcquirer } from '../middleware/current-user.js';
 import type { SpotifySearchService } from '../services/spotify-search.service.js';
 import type { PluginRegistry } from '../services/plugins/registry.js';
 
@@ -17,6 +18,12 @@ const SPOTIFY_PLUGIN_ID = 'spotify';
 
 export function spotifyRoutes({ search, plugins }: SpotifyRoutesOptions) {
   const app = new Hono<AuthEnv>();
+
+  // Spotify metadata-fallback acquisition — hidden from listeners, gated server-side.
+  app.use('*', async (c, next) => {
+    requireAcquirer(c);
+    await next();
+  });
 
   // GET /api/spotify/search?q=               (free text — unified search)
   // GET /api/spotify/search?artist=&album=   (targeted — album-hunt modal)

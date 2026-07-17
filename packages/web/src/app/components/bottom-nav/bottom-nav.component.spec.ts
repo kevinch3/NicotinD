@@ -2,17 +2,20 @@ import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { signal } from '@angular/core';
 import { BottomNavComponent } from './bottom-nav.component';
+import { AuthService } from '../../services/auth.service';
 import { SetupService } from '../../services/setup.service';
 import { TransferService } from '../../services/transfer.service';
 
-function setup(opts: { offline?: boolean; active?: number } = {}) {
+function setup(opts: { offline?: boolean; active?: number; canAcquire?: boolean } = {}) {
   const isOffline = signal(opts.offline ?? false);
   const activeDownloadCount = signal(opts.active ?? 0);
+  const canAcquire = signal(opts.canAcquire ?? true);
 
   TestBed.configureTestingModule({
     imports: [BottomNavComponent],
     providers: [
       provideRouter([]),
+      { provide: AuthService, useValue: { canAcquire } },
       { provide: SetupService, useValue: { isOffline } },
       { provide: TransferService, useValue: { activeDownloadCount } },
     ],
@@ -33,10 +36,19 @@ describe('BottomNavComponent', () => {
 
   it('includes Search as an online-only tab in the TABS list', () => {
     const { fixture } = setup();
-    const searchTab = fixture.componentInstance.tabs.find((t) => t.to === '/search');
+    const searchTab = fixture.componentInstance.tabs().find((t) => t.to === '/search');
     expect(searchTab).toBeDefined();
     expect(searchTab?.label).toBe('Search');
     expect(searchTab?.onlineOnly).toBe(true);
+  });
+
+  it('hides the Downloads tab for a listener (cannot acquire)', () => {
+    const { fixture } = setup({ canAcquire: false });
+    const labels = Array.from(
+      fixture.nativeElement.querySelectorAll('a, span') as NodeListOf<HTMLElement>,
+    ).map((el) => el.textContent?.trim());
+    expect(labels).toEqual(['Home', 'Library', 'Search', 'Settings']);
+    expect(fixture.componentInstance.tabs().some((t) => t.to === '/downloads')).toBe(false);
   });
 
   it('renders online-only tabs as disabled spans when offline', () => {

@@ -16,6 +16,7 @@ import { SearchService, type NetworkResult } from '../../services/search.service
 import { TransferService } from '../../services/transfer.service';
 import { AcquireService, type AcquireJob } from '../../services/acquire.service';
 import { WatchlistService } from '../../services/watchlist.service';
+import { AuthService } from '../../services/auth.service';
 import { PluginService } from '../../services/plugin.service';
 import { PlayerService } from '../../services/player.service';
 import { AutoHuntService } from '../../services/auto-hunt.service';
@@ -220,6 +221,7 @@ export class SearchComponent implements OnInit, OnDestroy {
   readonly acquire = inject(AcquireService);
   readonly watchlist = inject(WatchlistService);
   readonly plugins = inject(PluginService);
+  readonly auth = inject(AuthService);
   private player = inject(PlayerService);
   private autoHunt = inject(AutoHuntService);
   readonly songMenu = inject(SongMenuService);

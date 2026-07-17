@@ -21,7 +21,7 @@
               [size]="80"
               rounded="rounded-full"
             />
-            @if (auth.role() === 'admin') {
+            @if (auth.canCurate()) {
               <div class="absolute bottom-0 right-0">
                 <app-menu-panel align="start" panelTestId="artist-image-menu">
                   <button menuTrigger type="button" data-testid="artist-image-edit"
@@ -58,7 +58,7 @@
           <div>
             <div class="flex items-center gap-2">
               <h1 class="text-2xl font-bold text-theme-primary">{{ artist()!.name }}</h1>
-              @if (auth.role() === 'admin') {
+              @if (auth.canCurate()) {
                 <button type="button" data-testid="artist-identity-fix"
                   (click)="identityOpen.set(true)"
                   aria-label="Fix artist identity" title="Fix artist identity (one act / split / merge)"
@@ -199,7 +199,7 @@
                   [canPlay]="true"
                   [canQueue]="true"
                   [canDownload]="true"
-                  [canDelete]="auth.role() === 'admin'"
+                  [canDelete]="auth.canCurate()"
                   (selectAll)="selectAllSongs()"
                   (play)="playSelected()"
                   (queue)="queueSelected()"

@@ -66,7 +66,7 @@
               : 'bg-theme-surface-2 text-theme-muted hover:bg-theme-hover')">
             <app-icon name="share" />
           </button>
-          @if (auth.role() === 'admin') {
+          @if (auth.canCurate()) {
             <button (click)="openMetadataFix()"
               data-testid="optimize-metadata"
               class="px-4 py-2 rounded-lg text-sm bg-theme-surface-2 text-theme-muted hover:bg-theme-hover transition disabled:opacity-50">
@@ -111,7 +111,7 @@
       <app-selection-bar
         [count]="selection.count()"
         [total]="detailControls.filtered().length"
-        [canDelete]="auth.role() === 'admin'"
+        [canDelete]="auth.canCurate()"
         (selectAll)="selectAllSongs()"
         (add)="addSelectedToPlaylist()"
         (deleteSelected)="deleteSelectedSongs()"

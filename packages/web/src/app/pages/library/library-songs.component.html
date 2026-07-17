@@ -101,7 +101,7 @@
         [canPlay]="true"
         [canQueue]="true"
         [canDownload]="true"
-        [canDelete]="auth.role() === 'admin'"
+        [canDelete]="auth.canCurate()"
         (selectAll)="selectAllSongs()"
         (play)="playSelected()"
         (queue)="queueSelected()"

@@ -1,5 +1,5 @@
 import type { Context } from 'hono';
-import { ForbiddenError, type JwtPayload } from '@nicotind/core';
+import { ForbiddenError, asRole, canAcquire, canCurate, type JwtPayload } from '@nicotind/core';
 import type { AuthEnv } from './auth.js';
 
 /** The authenticated user attached by `authMiddleware`. Every route runs behind
@@ -17,5 +17,21 @@ export function getCurrentUser(c: Context<AuthEnv>): JwtPayload {
 export function requireAdmin(c: Context<AuthEnv>): JwtPayload {
   const user = c.get('user');
   if (user.role !== 'admin') throw new ForbiddenError('Admin only');
+  return user;
+}
+
+/** Return the current user, or throw a 403 unless they can curate the library
+ * (refiner or admin). Backs the library edit/merge/delete/metadata routes. */
+export function requireCurator(c: Context<AuthEnv>): JwtPayload {
+  const user = c.get('user');
+  if (!canCurate(asRole(user.role))) throw new ForbiddenError('Requires curator role');
+  return user;
+}
+
+/** Return the current user, or throw a 403 unless they can acquire (anyone but a
+ * listener). Backs the acquisition route groups (hunt/download/URL/Downloads). */
+export function requireAcquirer(c: Context<AuthEnv>): JwtPayload {
+  const user = c.get('user');
+  if (!canAcquire(asRole(user.role))) throw new ForbiddenError('Requires acquisition access');
   return user;
 }

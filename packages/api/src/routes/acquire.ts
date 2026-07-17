@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import type { AuthEnv } from '../middleware/auth.js';
+import { requireAcquirer } from '../middleware/current-user.js';
 import {
   AcquireWatcher,
   NoAcquisitionPluginError,
@@ -18,6 +19,12 @@ interface SubmitBody {
  */
 export function acquireRoutes(watcher: AcquireWatcher) {
   const app = new Hono<AuthEnv>();
+
+  // Acquisition is hidden from listeners — gate the whole group server-side.
+  app.use('*', async (c, next) => {
+    requireAcquirer(c);
+    await next();
+  });
 
   app.post('/', async (c) => {
     let body: SubmitBody;

@@ -1,8 +1,10 @@
+import type { Role } from '../roles.js';
+
 export interface User {
   id: string;
   username: string;
   passwordHash: string;
-  role: 'admin' | 'user';
+  role: Role;
   status: 'active' | 'disabled';
   createdAt: string;
 }
@@ -64,7 +66,7 @@ export interface SystemStatus {
 export interface JwtPayload {
   sub: string;
   username?: string;
-  role?: 'admin' | 'user';
+  role?: Role;
   share?: boolean;
   scope?: string;
   iat: number;

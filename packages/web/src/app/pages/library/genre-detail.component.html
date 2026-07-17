@@ -49,7 +49,7 @@
       <app-selection-bar
         [count]="selection.count()"
         [total]="filteredGenreSongs().length"
-        [canDelete]="auth.role() === 'admin'"
+        [canDelete]="auth.canCurate()"
         (selectAll)="selectAllSongs()"
         (add)="addSelectedToPlaylist()"
         (deleteSelected)="deleteSelectedSongs()"

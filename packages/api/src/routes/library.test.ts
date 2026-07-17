@@ -748,6 +748,34 @@ describe('album deletion', () => {
     expect(albumRowExists('del-nosync')).toBe(false);
   });
 
+  it('gates album delete on the curator role (listener/user 403, refiner 200)', async () => {
+    const appFor = (role: 'listener' | 'user' | 'refiner') => {
+      const a = new Hono<AuthEnv>();
+      a.use('*', (c, next) => {
+        c.set('user', { sub: 'u', role, iat: 0, exp: 9999999999 });
+        return next();
+      });
+      a.route('/', libraryRoutes('/home/kevinch3/Music'));
+      return a;
+    };
+
+    // listener + user cannot curate → 403 before the album is touched.
+    seedAlbum('del-gate', [{ id: 'gate-1', path: '/home/kevinch3/Music/G/A/01.mp3' }]);
+    for (const role of ['listener', 'user'] as const) {
+      const res = await appFor(role).request('/albums/del-gate', { method: 'DELETE' });
+      expect(res.status).toBe(403);
+      expect(albumRowExists('del-gate')).toBe(true);
+    }
+
+    // refiner can curate → the delete goes through.
+    const dir = '/home/kevinch3/Music/G/A';
+    fsState.set(`${dir}/01.mp3`, true);
+    dirEntries.set(dir, [{ name: '01.mp3', isFile: true, isDirectory: false }]);
+    const ok = await appFor('refiner').request('/albums/del-gate', { method: 'DELETE' });
+    expect(ok.status).toBe(200);
+    expect(albumRowExists('del-gate')).toBe(false);
+  });
+
   it('removes the now-orphaned artist + artwork when its only release is deleted', async () => {
     const dir = '/home/kevinch3/Music/Orphan Artist/Only Album';
     seedAlbum('del-orphan', [{ id: 'orph-1', path: `${dir}/01.mp3` }]);

@@ -12,6 +12,12 @@ import { ToastService } from './toast.service';
 import { ListControlsService } from './list-controls.service';
 import { LibraryApiService } from './api/library-api.service';
 import { AuthApiService } from './api/auth-api.service';
+import {
+  asRole,
+  canAcquire as canAcquireRole,
+  canCurate as canCurateRole,
+  isAdmin as isAdminRole,
+} from '../../types/core';
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
@@ -33,6 +39,14 @@ export class AuthService {
   readonly username = signal<string | null>(localStorage.getItem('nicotind_username'));
   readonly role = signal<string | null>(localStorage.getItem('nicotind_role') ?? 'user');
   readonly isAuthenticated = computed(() => !!this.token());
+
+  /** Capability computeds — the single source of truth for role-gated UI. Mirror
+   * the server-side guards (requireAcquirer / requireCurator / requireAdmin). */
+  readonly isAdmin = computed(() => isAdminRole(asRole(this.role())));
+  /** Can use acquisition surfaces (Downloads, hunt, URL acquire, network search). */
+  readonly canAcquire = computed(() => canAcquireRole(asRole(this.role())));
+  /** Can curate the library (edit/merge/delete albums, metadata, identity). */
+  readonly canCurate = computed(() => canCurateRole(asRole(this.role())));
   readonly welcomeDismissed = signal<boolean>(false);
   readonly autoplayOnLoad = signal<boolean>(false);
 

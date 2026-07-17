@@ -2,6 +2,7 @@ import { Component, inject, signal, effect, OnInit, OnDestroy } from '@angular/c
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import type { ProcessingSettings, ProcessingStatus, ProcessingTaskId } from '../../../types/core';
+import { ROLES, type Role } from '../../../types/core';
 import { SystemApiService } from '../../services/api/system-api.service';
 import { DownloadsApiService } from '../../services/api/downloads-api.service';
 import { LibraryApiService } from '../../services/api/library-api.service';
@@ -562,14 +563,19 @@ export class AdminComponent implements OnInit, OnDestroy {
     return connected ? 'Connected' : health.healthy ? 'Disconnected' : 'Unreachable';
   }
 
-  async toggleRole(user: AdminUser): Promise<void> {
-    const newRole = user.role === 'admin' ? 'user' : 'admin';
+  readonly roles = ROLES;
+
+  async setRole(user: AdminUser, newRole: Role): Promise<void> {
+    if (newRole === user.role) return;
+    const prevRole = user.role;
+    // Optimistic — reflect instantly, roll back on error.
+    this.users.update((prev) => prev.map((u) => (u.id === user.id ? { ...u, role: newRole } : u)));
     try {
-      await firstValueFrom(this.api.updateUserRole(user.id, newRole as 'admin' | 'user'));
-      this.users.update((prev) =>
-        prev.map((u) => (u.id === user.id ? { ...u, role: newRole } : u)),
-      );
+      await firstValueFrom(this.api.updateUserRole(user.id, newRole));
     } catch (err) {
+      this.users.update((prev) =>
+        prev.map((u) => (u.id === user.id ? { ...u, role: prevRole } : u)),
+      );
       this.error.set(err instanceof Error ? err.message : 'Failed to update role');
     }
   }

@@ -78,7 +78,7 @@ export class SongMenuService {
         }),
     });
 
-    if (ctx.removable && this.auth.role() === 'admin') {
+    if (ctx.removable && this.auth.canCurate()) {
       actions.push({
         label: 'Remove from library',
         destructive: true,
