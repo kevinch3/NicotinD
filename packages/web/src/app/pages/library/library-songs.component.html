@@ -57,6 +57,19 @@
   <!-- ─── Online: whole-library songs ─────────────────────────────── -->
   <div data-testid="library-songs">
     <div class="flex items-center gap-2 mb-3">
+      <div class="relative flex-1 min-w-[10rem]">
+        <svg class="absolute left-2.5 top-1/2 -translate-y-1/2 text-theme-muted pointer-events-none"
+          width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" />
+        </svg>
+        <input type="search" data-testid="library-songs-search"
+          [value]="searchText()"
+          (input)="setSearchText($any($event.target).value)"
+          placeholder="Search title, artist, or album…"
+          aria-label="Search songs"
+          class="w-full pl-9 pr-3 py-1.5 text-sm rounded-lg bg-theme-surface-2 text-theme-primary placeholder:text-theme-muted focus:outline-none focus:ring-1 focus:ring-[var(--theme-accent)]" />
+      </div>
+
       <select data-testid="library-songs-sort"
         [value]="songSort()"
         (change)="setSongSort($any($event.target).value)"

@@ -1,20 +1,4 @@
 <div class="max-w-3xl mx-auto px-4 py-5 space-y-8" data-testid="radio-landing">
-  <!-- Search entry (Search lives at /search now; this is its mobile doorway) -->
-  <a
-    routerLink="/search"
-    data-testid="radio-search-link"
-    class="flex items-center gap-2 w-full px-4 py-2.5 rounded-full bg-theme-surface-2/60 text-theme-muted text-sm hover:bg-theme-surface-2 transition"
-  >
-    <svg
-      width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-      stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-    >
-      <circle cx="11" cy="11" r="7" />
-      <line x1="21" y1="21" x2="16.5" y2="16.5" />
-    </svg>
-    Search for songs, albums, artists…
-  </a>
-
   <!-- Block 1 — Resume your vibe (disappears once tapped) -->
   @if (showResume()) {
     <section data-testid="radio-resume">

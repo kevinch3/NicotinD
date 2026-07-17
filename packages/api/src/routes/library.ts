@@ -1277,7 +1277,10 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
 
     if (body?.mergeInto != null) {
       const mergeInto = body.mergeInto.trim();
-      if (!mergeInto || normalizeArtistForGrouping(mergeInto) === normalizeArtistForGrouping(rawName)) {
+      if (
+        !mergeInto ||
+        normalizeArtistForGrouping(mergeInto) === normalizeArtistForGrouping(rawName)
+      ) {
         return c.json({ error: 'mergeInto must be a different artist name' }, 400);
       }
       upsertArtistAlias(db, {
@@ -1651,7 +1654,10 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       : new Map<string, Float32Array>();
     seed.embedding = embeddings.get(id);
 
-    const candidateGenres = loadGenreSets(db, candidateRows.map((r) => r.id));
+    const candidateGenres = loadGenreSets(
+      db,
+      candidateRows.map((r) => r.id),
+    );
     const candidates = candidateRows.map((r) => ({
       ...songRowFeatures(r),
       genres: candidateGenres.get(r.id),
@@ -1727,6 +1733,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     const size = Math.min(Number(c.req.query('size') ?? 60), 200);
     const offset = Math.max(Number(c.req.query('offset') ?? 0), 0);
     const sort = c.req.query('sort') ?? 'newest';
+    const q = String(c.req.query('q') ?? '').trim();
     const db = getDatabase();
     const wheres = [
       's.hidden = 0',
@@ -1735,6 +1742,18 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       '(a.hidden IS NULL OR a.hidden = 0)',
     ];
     const params: Array<string | number> = [];
+    if (q) {
+      // Free-text search across song title, song artist, and album name. LIKE
+      // special characters are escaped so a query like "50%" is a literal
+      // search, not a wildcard — the matching `%` we wrap with for partial
+      // matching is unrelated.
+      const escaped = q.replace(/[\\%_]/g, (m) => '\\' + m);
+      const like = `%${escaped}%`;
+      wheres.push(
+        `(s.title LIKE ? ESCAPE '\\' OR s.artist LIKE ? ESCAPE '\\' OR a.name LIKE ? ESCAPE '\\') COLLATE NOCASE`,
+      );
+      params.push(like, like, like);
+    }
     const frag = songFilterWheres(parseLibraryFilter(c.req.queries()), 's');
     wheres.push(...frag.wheres);
     params.push(...frag.params);

@@ -63,10 +63,10 @@ function seedSong(
     ],
   );
   if (s.genre) {
-    db.run(
-      `INSERT INTO library_song_genres (song_id, genre, position) VALUES (?, ?, 0)`,
-      [s.id, s.genre],
-    );
+    db.run(`INSERT INTO library_song_genres (song_id, genre, position) VALUES (?, ?, 0)`, [
+      s.id,
+      s.genre,
+    ]);
   }
 }
 
@@ -188,5 +188,127 @@ describe('library /songs (whole-library listing)', () => {
     expect(ids).not.toContain('song-quarantined');
     expect(ids).not.toContain('song-album-hidden');
     expect(ids).toContain('song-1');
+  });
+});
+
+describe('library /songs free-text `q` parameter', () => {
+  let app: Hono;
+
+  beforeEach(() => {
+    testDb = createTestDb();
+    seedSong(testDb, {
+      id: 'song-1',
+      title: 'Alpha',
+      artist: 'Artist A',
+      album: 'One',
+      albumId: 'album-1',
+      path: 'Artist A/One/01 - Alpha.mp3',
+      created: '2026-03-20T10:00:00.000Z',
+    });
+    seedSong(testDb, {
+      id: 'song-2',
+      title: 'Bravo',
+      artist: 'Bravo the Singer',
+      album: 'Two',
+      albumId: 'album-2',
+      path: 'Bravo/Two/01 - Bravo.mp3',
+      created: '2026-03-20T09:00:00.000Z',
+    });
+    seedSong(testDb, {
+      id: 'song-3',
+      title: 'Charlie',
+      artist: 'Artist C',
+      album: 'Bravo Two',
+      albumId: 'album-3',
+      path: 'Artist C/Bravo Two/01 - Charlie.mp3',
+      created: '2026-03-20T08:00:00.000Z',
+    });
+
+    app = new Hono();
+    app.route('/', libraryRoutes('/music'));
+  });
+
+  afterEach(() => {
+    testDb.close();
+  });
+
+  it('matches song title (partial, case-insensitive)', async () => {
+    const res = await app.request('/songs?q=ALPH');
+    const data = (await res.json()) as Array<{ id: string }>;
+    expect(data.map((s) => s.id)).toEqual(['song-1']);
+  });
+
+  it('matches song artist (partial, case-insensitive)', async () => {
+    const res = await app.request('/songs?q=bravo%20the');
+    const data = (await res.json()) as Array<{ id: string }>;
+    expect(data.map((s) => s.id)).toEqual(['song-2']);
+  });
+
+  it('matches album name (partial, case-insensitive)', async () => {
+    const res = await app.request('/songs?q=bravo%20two');
+    const data = (await res.json()) as Array<{ id: string }>;
+    expect(data.map((s) => s.id)).toEqual(['song-3']);
+  });
+
+  it('escapes LIKE wildcards in the query so % / _ are literal', async () => {
+    seedSong(testDb, {
+      id: 'song-with-percent',
+      title: '100%Pure',
+      artist: 'Artist P',
+      album: 'Promos',
+      albumId: 'album-p',
+      path: 'Artist P/Promos/01.mp3',
+      created: '2026-03-20T07:00:00.000Z',
+    });
+    seedSong(testDb, {
+      id: 'song-without-percent',
+      title: 'A regular title',
+      artist: 'Artist R',
+      album: 'Regulars',
+      albumId: 'album-r',
+      path: 'Artist R/Regulars/01.mp3',
+      created: '2026-03-20T07:30:00.000Z',
+    });
+    // A bare `%` query, un-escaped, would build `LIKE '%%%'` and match every
+    // song; with the escape, `LIKE '%\%%'` only matches titles that literally
+    // contain a `%` character.
+    const res = await app.request('/songs?q=%25');
+    const data = (await res.json()) as Array<{ id: string }>;
+    expect(data.map((s) => s.id)).toEqual(['song-with-percent']);
+  });
+
+  it('combines with LibraryFilter (bpm range) and sort', async () => {
+    // The base `song-1` ("Alpha") is seeded without bpm (defaults to null),
+    // so it must fail the bpmMin floor; we seed a BPM-bearing Alpha to prove
+    // AND-with-songFilterWheres keeps both predicates active.
+    seedSong(testDb, {
+      id: 'song-alpha-128',
+      title: 'Alpha 128',
+      artist: 'Artist A',
+      album: 'One',
+      albumId: 'album-1',
+      path: 'Artist A/One/02 - Alpha 128.mp3',
+      created: '2026-03-20T11:00:00.000Z',
+      bpm: 128,
+    });
+    seedSong(testDb, {
+      id: 'song-alpha-70',
+      title: 'Alpha 70',
+      artist: 'Artist A',
+      album: 'One',
+      albumId: 'album-1',
+      path: 'Artist A/One/03 - Alpha 70.mp3',
+      created: '2026-03-20T11:30:00.000Z',
+      bpm: 70,
+    });
+    const res = await app.request('/songs?q=alpha&bpmMin=120&sort=title');
+    const data = (await res.json()) as Array<{ id: string }>;
+    expect(data.map((s) => s.id)).toEqual(['song-alpha-128']);
+  });
+
+  it('returns an empty page when no songs match', async () => {
+    const res = await app.request('/songs?q=zzznotreal');
+    const data = (await res.json()) as Array<{ id: string }>;
+    expect(data).toEqual([]);
   });
 });
