@@ -26,6 +26,11 @@ describe('clampMenuPosition', () => {
   it('respects a custom menu size', () => {
     expect(clampMenuPosition({ x: 400, y: 100 }, VW, VH, 100).x).toBe(412 - 100 - 8);
   });
+
+  it('clamps above the reserved bottom chrome (mini-player + tab bar)', () => {
+    // bottomInset 128 → usable bottom = 915-128 = 787; maxY = 787-96-8 = 683
+    expect(clampMenuPosition({ x: 50, y: 900 }, VW, VH, 200, 96, 8, 128).y).toBe(683);
+  });
 });
 
 describe('computeMenuPosition (anchored dropdown, viewport-safe)', () => {
@@ -63,5 +68,16 @@ describe('computeMenuPosition (anchored dropdown, viewport-safe)', () => {
     const pos = computeMenuPosition(lowTrigger, 240, 200, VW, VH, 'end');
     // above = top - gap - panelH = 720 - 4 - 200 = 516 (fits, opens upward)
     expect(pos.y).toBe(516);
+  });
+
+  it('flips above once the bottom chrome eats the room a downward panel needed', () => {
+    // A trigger that WOULD fit below in a bare viewport: below = 604, room = 196,
+    // panelH = 180 → opens downward at 604.
+    const trigger: TriggerRect = { top: 560, bottom: 600, left: 100, right: 200 };
+    expect(computeMenuPosition(trigger, 240, 180, VW, VH, 'end').y).toBe(604);
+    // With a 128px mini-player + tab bar reserved, room below is only 68 → flips
+    // up so the panel clears the player instead of hiding under it.
+    const flipped = computeMenuPosition(trigger, 240, 180, VW, VH, 'end', undefined, undefined, 128);
+    expect(flipped.y).toBe(560 - 4 - 180); // above = 376
   });
 });

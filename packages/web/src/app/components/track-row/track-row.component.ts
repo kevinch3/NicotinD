@@ -1,7 +1,8 @@
-import { Component, HostListener, computed, inject, input, output, signal } from '@angular/core';
+import { Component, computed, inject, input, output } from '@angular/core';
 import { AuthService } from '../../services/auth.service';
 import { CoverArtComponent } from '../cover-art/cover-art.component';
 import { ArtistLinksComponent } from '../artist-links/artist-links.component';
+import { MenuPanelComponent } from '../menu-panel/menu-panel.component';
 import { PlayerService, type Track } from '../../services/player.service';
 import { rowPlaybackState } from '../../lib/row-playback-state';
 import type { ArtistCredit } from '../../services/api/api-types';
@@ -22,7 +23,7 @@ function formatDuration(seconds?: number): string {
 
 @Component({
   selector: 'app-track-row',
-  imports: [CoverArtComponent, ArtistLinksComponent],
+  imports: [CoverArtComponent, ArtistLinksComponent, MenuPanelComponent],
   templateUrl: './track-row.component.html',
 })
 export class TrackRowComponent {
@@ -66,25 +67,10 @@ export class TrackRowComponent {
   );
   readonly isCurrent = computed(() => this.playbackState() !== null);
 
-  readonly menuOpen = signal(false);
-
-  @HostListener('document:click')
-  closeMenu() {
-    this.menuOpen.set(false);
-  }
-
-  @HostListener('document:keydown.escape')
-  closeMenuEscape() {
-    this.menuOpen.set(false);
-  }
-
-  toggleMenu(event: MouseEvent) {
-    event.stopPropagation();
-    this.menuOpen.update((v) => !v);
-  }
-
+  // Menu open/close/positioning is delegated to MenuPanelComponent (viewport-safe
+  // + bottom-chrome aware); the row only runs the chosen action. The template
+  // closes the panel via its template ref before invoking this.
   runAction(action: TrackAction) {
-    this.menuOpen.set(false);
     action.action();
   }
 
