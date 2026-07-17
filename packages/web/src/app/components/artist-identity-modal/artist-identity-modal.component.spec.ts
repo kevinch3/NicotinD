@@ -21,6 +21,11 @@ describe('splitArtistParts (client mirror of splitOnDelimiters)', () => {
     ]);
     expect(splitArtistParts('Bob Marley, Peter Tosh')).toEqual(['Bob Marley', 'Peter Tosh']);
     expect(splitArtistParts('Wisin & Yandel')).toEqual(['Wisin', 'Yandel']);
+    // Semicolon is a known acquisition divider (mirrors the server delimiter set).
+    expect(splitArtistParts('C. Tangana; Andrés Calamaro')).toEqual([
+      'C. Tangana',
+      'Andrés Calamaro',
+    ]);
   });
 
   it('keeps an atomic name whole', () => {
@@ -67,6 +72,27 @@ describe('ArtistIdentityModalComponent', () => {
     expect(c.canSave()).toBe(false); // empty target
     c.mergeTarget.set('Bob Marley & The Wailers');
     expect(c.canSave()).toBe(true);
+
+    c.mode.set('rename');
+    c.renameTarget.set('Bob Marley, Peter Tosh'); // unchanged from rawName
+    expect(c.canSave()).toBe(false);
+    c.renameTarget.set('Bob Marley & Peter Tosh');
+    expect(c.canSave()).toBe(true);
+  });
+
+  it('posts the rename payload (trimmed)', () => {
+    const c = make();
+    let saved = false;
+    c.saved.subscribe(() => (saved = true));
+    c.mode.set('rename');
+    c.renameTarget.set('  Los Auténticos Decadentes  ');
+
+    c.save();
+
+    expect(fixCalls).toEqual([
+      { rawName: 'Bob Marley, Peter Tosh', rename: 'Los Auténticos Decadentes' },
+    ]);
+    expect(saved).toBe(true);
   });
 
   it('posts the split payload with trimmed, non-empty members', () => {

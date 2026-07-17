@@ -71,12 +71,24 @@ Launch tasks:
   historical octave errors: `scripts/analyze-bpm.ts --recheck` (below).
 - **genre** — `WHERE genre IS NULL OR genre = ''`, available only with Lidarr. Uses
   `planGenreBackfill` so an artist is looked up **once** and fanned out to all their
-  pending songs. Writes the **full Lidarr genre list** (best-first): the whole set
-  goes to `library_song_genres` + the mirrored `library_songs.genre` primary via
-  `setSongGenres`, and the file tag gets the `"; "`-joined list. Songs whose artist
-  Lidarr can't resolve are `recordAnalysisFailure`d (not tallied — see the exclusion
-  section below) so they drop out of the pending set after the attempt cap instead of
-  being re-queried every batch forever.
+  pending songs. Writes the **full Lidarr genre list** (best-first) by **appending**,
+  not replacing: `appendSongGenres` unions Lidarr's set into whatever the song already
+  has (existing first, so the current primary is preserved; case-insensitive dedup),
+  writing the merged set to `library_song_genres` + the mirrored `library_songs.genre`
+  primary and the `"; "`-joined merged list to the file tag. The pending filter is
+  still empty-genre songs, so in practice this appends onto nothing — but the union is
+  the invariant everywhere genre is detected (see below), and means a genre step never
+  clobbers tag genres. Songs whose artist Lidarr can't resolve are
+  `recordAnalysisFailure`d (not tallied — see the exclusion section below) so they drop
+  out of the pending set after the attempt cap instead of being re-queried every batch
+  forever.
+
+  Genre detection **always appends** (`appendSongGenres`), never overrides: the
+  track-info sheet's "detect genre" apply (`POST /api/library/songs/:id/genre`), this
+  task, and the on-demand `scripts/append-genre-backfill.ts` (dry-run unless `--apply`,
+  optional `--limit`; runs over the **whole** library, not just empty-genre songs, and
+  is idempotent via the dedup) all add rather than replace. Distinct from
+  `backfill-genre.ts`, which only *fills* empty-genre songs and *replaces* their set.
 - **key** — `WHERE key IS NULL OR key = ''`, ffmpeg-gated, **offline**. Reads a tag
   key if present, else `analyzeKey()` → the pure Krumhansl–Schmuckler estimator in
   `services/key-detection.ts` (chromagram via per-semitone Goertzel filters → KS

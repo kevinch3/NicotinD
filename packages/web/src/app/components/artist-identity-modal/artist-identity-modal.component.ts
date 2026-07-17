@@ -21,7 +21,18 @@ import { IconComponent } from '../icon/icon.component';
  * as lib/hunt-queries.ts.
  */
 export function splitArtistParts(raw: string): string[] {
-  const delimiters = [/ & /i, / and /i, /\s*,\s+/, / \/ /, / \+ /, / vs\.? /i, / x /i, / y /i, / con /i];
+  const delimiters = [
+    /\s*;\s*/,
+    / & /i,
+    / and /i,
+    /\s*,\s+/,
+    / \/ /,
+    / \+ /,
+    / vs\.? /i,
+    / x /i,
+    / y /i,
+    / con /i,
+  ];
   for (const delim of delimiters) {
     const parts = raw
       .split(delim)
@@ -32,13 +43,14 @@ export function splitArtistParts(raw: string): string[] {
   return [raw];
 }
 
-export type IdentityMode = 'single' | 'split' | 'merge';
+export type IdentityMode = 'single' | 'split' | 'merge' | 'rename';
 
 /**
  * Admin fix for a wrong artist-identity decision (docs/library-scanner.md): mark a
- * compound as ONE act, force-split it into member artists, or merge a spelling
- * variant into another artist. Writes the permanent `source='user'` authority row via
- * POST /api/library/artists/identity, which kicks a rescan to re-bucket.
+ * compound as ONE act, force-split it into member artists, merge a spelling variant
+ * into another artist, or rename this artist to a corrected spelling/name. Writes the
+ * permanent `source='user'` authority row via POST /api/library/artists/identity,
+ * which runs the rescan synchronously so the change is applied before it returns.
  */
 @Component({
   selector: 'app-artist-identity-modal',
@@ -53,20 +65,24 @@ export class ArtistIdentityModalComponent {
   /** The raw artist string the decision applies to (tag spelling, not a display name). */
   readonly rawName = input.required<string>();
   readonly closed = output<void>();
-  /** Emitted after the server accepted the fix (a rescan is under way). */
+  /** Emitted after the server applied the fix and its rescan has completed. */
   readonly saved = output<void>();
 
   readonly mode = signal<IdentityMode>('single');
   readonly members = signal<string[]>([]);
   readonly mergeTarget = signal('');
+  readonly renameTarget = signal('');
   readonly busy = signal(false);
   readonly error = signal<string | null>(null);
 
   constructor() {
-    // Prefill the member chips whenever a new raw name opens the modal.
+    // Prefill the member chips + the rename field whenever a new raw name opens.
     effect(() => {
       const raw = this.rawName();
-      untracked(() => this.members.set(splitArtistParts(raw)));
+      untracked(() => {
+        this.members.set(splitArtistParts(raw));
+        this.renameTarget.set(raw);
+      });
     });
   }
 
@@ -78,9 +94,17 @@ export class ArtistIdentityModalComponent {
       case 'single':
         return true;
       case 'split':
-        return this.memberList().map((m) => m.trim()).filter(Boolean).length >= 2;
+        return (
+          this.memberList()
+            .map((m) => m.trim())
+            .filter(Boolean).length >= 2
+        );
       case 'merge':
         return this.mergeTarget().trim().length > 0;
+      case 'rename': {
+        const next = this.renameTarget().trim();
+        return next.length > 0 && next !== this.rawName();
+      }
     }
   });
 
@@ -102,25 +126,24 @@ export class ArtistIdentityModalComponent {
     const payload =
       mode === 'merge'
         ? { rawName: this.rawName(), mergeInto: this.mergeTarget().trim() }
-        : mode === 'split'
-          ? {
-              rawName: this.rawName(),
-              decision: 'split' as const,
-              members: this.memberList()
-                .map((m) => m.trim())
-                .filter(Boolean),
-            }
-          : { rawName: this.rawName(), decision: 'single' as const };
+        : mode === 'rename'
+          ? { rawName: this.rawName(), rename: this.renameTarget().trim() }
+          : mode === 'split'
+            ? {
+                rawName: this.rawName(),
+                decision: 'split' as const,
+                members: this.memberList()
+                  .map((m) => m.trim())
+                  .filter(Boolean),
+              }
+            : { rawName: this.rawName(), decision: 'single' as const };
 
     this.busy.set(true);
     this.error.set(null);
     this.api.fixArtistIdentity(payload).subscribe({
       next: () => {
         this.busy.set(false);
-        this.toasts.show({
-          kind: 'success',
-          message: 'Artist identity saved — the library is re-bucketing.',
-        });
+        this.toasts.show({ kind: 'success', message: 'Artist identity updated.' });
         this.saved.emit();
         this.closed.emit();
       },

@@ -147,16 +147,18 @@ export class LibraryApiService {
   }
   /**
    * User-corrected artist identity (admin): mark a compound one act, force-split it,
-   * or merge a spelling variant into another artist. Permanent source='user' authority;
-   * the server kicks a rescan (202).
+   * merge a spelling variant into another artist, or rename this artist to a
+   * corrected spelling/name. Permanent source='user' authority; the server runs the
+   * rescan synchronously and returns 200 once the change has landed.
    */
   fixArtistIdentity(
     body:
       | { rawName: string; decision: 'single' }
       | { rawName: string; decision: 'split'; members: string[] }
-      | { rawName: string; mergeInto: string },
+      | { rawName: string; mergeInto: string }
+      | { rawName: string; rename: string },
   ) {
-    return this.http.post<{ ok: boolean; resyncing: boolean }>(
+    return this.http.post<{ ok: boolean; resynced: boolean }>(
       `/api/library/artists/identity`,
       body,
     );

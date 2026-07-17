@@ -19,7 +19,7 @@ import type {
 import { AudioFileRejectedError } from '../audio-features-client.js';
 import { ffmpegAvailable as realFfmpegAvailable } from '../transcode.js';
 import { resolveSongAbsPath, planGenreBackfill } from '../track-backfill.js';
-import { setSongGenres } from '../genre-split.js';
+import { appendSongGenres } from '../genre-split.js';
 import { setArtwork } from '../artwork-store.js';
 import { isPlaceholderArtist } from '../artwork-backfill.js';
 import { indexLidarrArtists, resolveArtistImageUrl } from '../artist-image.js';
@@ -381,12 +381,15 @@ const genreTask: EnrichmentTask = {
         .split(/[;,|]/)
         .map((g) => g.trim().replace(/\s+/g, ' '))
         .filter(Boolean);
-      setSongGenres(db, a.song.id, genres);
+      // Append, never override — a song that already carries tag genres keeps them
+      // and gains Lidarr's. (The pending set is empty-genre songs, so in practice
+      // this appends onto nothing; the union still guards against clobbering.)
+      const merged = appendSongGenres(db, a.song.id, genres);
       const abs = resolveSongAbsPath(ctx.musicDir, a.song.path);
       if (ctx.fileExists(abs))
-        await ctx.writeTags(abs, { genre: genres.join('; ') }).catch(() => false);
+        await ctx.writeTags(abs, { genre: merged.join('; ') }).catch(() => false);
       applied++;
-      labels.push(`${a.song.artist} — ${a.song.title} → ${genres.join('; ')}`);
+      labels.push(`${a.song.artist} — ${a.song.title} → ${merged.join('; ')}`);
     }
     return { applied, labels, failed: 0, errorSample: null };
   },

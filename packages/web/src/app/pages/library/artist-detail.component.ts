@@ -103,8 +103,19 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
   readonly singlesAndEps = signal<Album[]>([]);
   readonly appearsOn = signal<Album[]>([]);
 
-  // ─── Artist identity fix (admin: one act / split / merge-variant) ──────────
+  // ─── Artist identity fix (admin: one act / split / merge-variant / rename) ──
   readonly identityOpen = signal(false);
+
+  /**
+   * The server ran the rescan synchronously, so the change is already applied. A
+   * split hides the compound (split_compound=1) and a different-normalized rename
+   * mints a new artist id, so this artist page may no longer resolve — route to the
+   * artists grid where the member tiles / corrected name are immediately visible.
+   */
+  onIdentitySaved(): void {
+    this.identityOpen.set(false);
+    void this.router.navigate(['/library'], { queryParams: { type: 'artists' } });
+  }
 
   // ─── Artist image override (admin: upload / pick-from-album / reset) ───────
   readonly imageBusy = signal(false);
