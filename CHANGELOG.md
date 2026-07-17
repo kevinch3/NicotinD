@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.219](https://github.com/kevinch3/NicotinD/compare/v0.1.218...v0.1.219) (2026-07-17)
+
+
+### Bug Fixes
+
+* **library:** appendable genres + artist rename, split & appears-on fixes ([17deedd](https://github.com/kevinch3/NicotinD/commit/17deedde32e073addd9103f51516cf5a16bfc119))
+
 ## [0.1.218](https://github.com/kevinch3/NicotinD/compare/v0.1.217...v0.1.218) (2026-07-17)
 
 
