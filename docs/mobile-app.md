@@ -96,6 +96,43 @@ native:
 - **Service worker disabled on native** (`app.config.ts`): the WebView serves assets locally, so ngsw
   caching is redundant and can fight Capacitor / cross-origin API calls. IndexedDB offline still works.
 
+## Network / offline detection (fixes the offline-launch ANR)
+
+Offline used to be inferred **once**, at boot, from the startup setup probe failing — with **no**
+`navigator.onLine`, no window online/offline listeners, and no `@capacitor/network`. On an offline
+**launch** the native default server (`DEFAULT_SERVER_URL`) is unreachable, so bootstrap blocked on the
+`SetupService.check()` probe for its full ~3 s timeout on a blank WebView, which on slower devices read
+as **"app not responding" (ANR) → close-after-a-blink**. The offline state also never updated at
+runtime, so dropping the network mid-session never re-routed the UI to on-device tracks.
+
+The fix has four parts:
+
+- **`NetworkStatusService`** (`services/network-status.service.ts`) is the single live connectivity
+  source: a `online` signal seeded from **`@capacitor/network`** `getStatus()` and kept current via its
+  `networkStatusChange` listener on native (reached through `getCapacitorPlugin('Network')` — **no
+  `@capacitor/network` import in the web bundle**, same convention as the rest of the shell), and from
+  `navigator.onLine` + window `online`/`offline` events on web/Electron. The Android WebView's
+  `navigator.onLine` is unreliable (often stuck `true`), which is why native must use the plugin.
+  `@capacitor/network` is a `packages/mobile` dependency (ships in the APK, self-registers).
+- **`SetupService.isOffline` is now a `computed`** (`!network.online() || serverUnreachable`) instead of
+  a boot-only writable signal, so every existing consumer (library source swap, nav gating, redirects,
+  the new banner) reacts to connectivity flips in **both** directions with no reload. `check()` **skips
+  the HTTP probe entirely when the device already reports offline** — the fast path that removes the
+  blank-screen boot wait (and the flurry of failing offline requests) behind the ANR.
+- **Native Sentry is trimmed** (`observability/sentry.ts` `nativeShell` arg, passed from `main.ts`,
+  which also wraps `initSentry` in try/catch): Session Replay (rrweb DOM recording) + browser tracing
+  (wrapping every fetch/XHR) ran on the WebView main thread **before** bootstrap and churned on the
+  failing offline requests — the prime ANR suspect, active only in the release build. Error reporting is
+  kept; replay/tracing are dropped on Capacitor/Electron.
+- **Mid-use hardening**: the player skips a doomed network stream for a non-preserved track while offline
+  (was a silent infinite spinner) and toasts instead (`player.component.ts` `stopForOffline`);
+  `preserveCollection` swallows per-track offline fetch rejections (was an unhandled rejection that
+  aborted the batch); GET requests get a 30 s interceptor timeout so a read can't hang forever in the
+  WebView. The existing **offline banner** in the app shell (`layout.component.html`, now carrying
+  `data-testid="offline-banner"`) is driven by the reactive `isOffline()` signal, so it now
+  appears/hides live on a mid-session connectivity change rather than only at boot. See `docs/web-ui.md`
+  §Offline / network detection.
+
 ## CORS (cross-origin from the WebView)
 
 The native shell runs from `https://localhost` and calls the server cross-origin. Auth is a **Bearer

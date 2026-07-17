@@ -9,9 +9,13 @@ import { SetupService } from '../../services/setup.service';
 import { isElectron } from '../../lib/platform';
 import { pickDirectory, setMusicDir } from '../../services/native/native-capabilities';
 
-vi.mock('../../lib/platform', () => ({
-  isElectron: vi.fn().mockReturnValue(false),
-}));
+vi.mock('../../lib/platform', async (importOriginal) => {
+  // Preserve the real exports (isNativePlatform / getCapacitorPlugin are used by
+  // NetworkStatusService, pulled in transitively via SetupService) and only stub
+  // isElectron — matching the settings spec's pattern.
+  const actual = await importOriginal<typeof import('../../lib/platform')>();
+  return { ...actual, isElectron: vi.fn().mockReturnValue(false) };
+});
 
 vi.mock('../../services/native/native-capabilities', () => ({
   pickDirectory: vi.fn(),

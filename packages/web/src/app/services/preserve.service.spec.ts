@@ -151,6 +151,24 @@ describe('PreserveService', () => {
       expect(svc.totalUsage()).toBe(2 * BLOB_SIZE);
     });
 
+    it('resolves without rejecting (and preserves nothing) when fetch fails offline', async () => {
+      // Callers invoke this fire-and-forget (`void preserveCollection(...)`), so a
+      // rejecting fetch (offline → raw fetch throws a TypeError) must be swallowed
+      // per-track rather than aborting the batch or surfacing an unhandled reject.
+      globalThis.fetch = vi.fn(async () => {
+        throw new TypeError('Failed to fetch');
+      }) as unknown as typeof fetch;
+
+      await expect(
+        svc.preserveCollection('offline', 'Offline', [track('a'), track('b')]),
+      ).resolves.toBeUndefined();
+
+      expect(svc.preservedIds().size).toBe(0);
+      expect(svc.preserving().size).toBe(0);
+      // Batch cleared (not stopped at cap) since nothing was stored.
+      expect(svc.batchFor('offline')).toBeNull();
+    });
+
     it('dismissBatch clears the lingering cap notice for its key', async () => {
       svc.setBudget(150);
       await svc.preserveCollection('big', 'Big', [track('a'), track('b')]);

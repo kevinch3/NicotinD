@@ -5,14 +5,22 @@ surfaces** and inert when unconfigured.
 
 ## Web (Angular)
 
-- `initSentry(environment, release)` (`app/observability/sentry.ts`) is called from
-  `main.ts` before bootstrap. It **no-ops when `sentryDsn` is empty**, so dev
-  (`environment.ts`, empty DSN) sends nothing; prod (`environment.prod.ts`) is on.
+- `initSentry(environment, release, nativeShell?)` (`app/observability/sentry.ts`) is
+  called from `main.ts` before bootstrap, **wrapped in try/catch** so an init failure
+  can never block the app from bootstrapping. It **no-ops when `sentryDsn` is empty**, so
+  dev (`environment.ts`, empty DSN) sends nothing; prod (`environment.prod.ts`) is on.
 - A Sentry DSN is a **public ingest key** by design — the prod DSN is committed in
   `environment.prod.ts`; it is not a secret and does not belong in a runtime channel.
-- Prod config: `tracesSampleRate: 0.1`, session replay `0.1` / on-error `1.0`,
-  `sendDefaultPii: false`, and every issue tagged with `release` (app version) +
+- Prod config (web/browser): `tracesSampleRate: 0.1`, session replay `0.1` / on-error
+  `1.0`, `sendDefaultPii: false`, and every issue tagged with `release` (app version) +
   `environment`.
+- **Native shells (Capacitor / Electron) drop Session Replay + browser tracing**
+  (`nativeShell=true`, passed via `isNativeShell()` from `main.ts`): both instrument the
+  WebView main thread heavily (rrweb DOM recording, wrapping every fetch/XHR) and ran
+  before bootstrap — the prime suspect for the Android **release** ANR on an offline
+  launch, where they also churned on the failing offline requests. Error reporting is
+  kept; only replay/tracing (and their sample rates → 0) are removed. See
+  [docs/mobile-app.md](mobile-app.md) §Network / offline detection.
 
 ## API (Bun/Hono)
 

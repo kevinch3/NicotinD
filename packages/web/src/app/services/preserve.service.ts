@@ -239,6 +239,11 @@ export class PreserveService {
           await this.storeTrack(track, blobs, 'user');
           this.totalUsage.update((u) => u + blobs.audioBlob.size);
           this.bumpBatch(key);
+        } catch {
+          // `fetchTrackBlobs` rejects with a TypeError when offline (raw `fetch`).
+          // Callers invoke this fire-and-forget (`void preserveCollection(...)`),
+          // so an uncaught reject here would surface as an unhandled promise
+          // rejection AND abort the rest of the batch. Skip this track instead.
         } finally {
           this.clearPreserving(track.id);
         }
