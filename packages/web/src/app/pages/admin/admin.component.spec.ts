@@ -153,11 +153,12 @@ describe('AdminComponent (incomplete albums + untracked)', () => {
         hiddenByClassification: [
           {
             albumId: 'h1',
-            name: 'Hidden',
-            artist: 'X',
+            name: 'Future Nostalgia',
+            artist: 'Dua Lipa',
             classification: 'single',
             hidden: false,
-            reason: 'classification',
+            songCount: 18,
+            reason: 'oversized',
           },
         ],
         misSplitAlbums: [],

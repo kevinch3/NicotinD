@@ -436,7 +436,8 @@ export interface LibraryHiddenByClassification {
   artist: string;
   classification: string;
   hidden: boolean;
-  reason: 'hidden' | 'classification';
+  songCount: number;
+  reason: 'hidden' | 'unknown' | 'oversized';
 }
 
 export interface LibraryFragmentFinding {

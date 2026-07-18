@@ -49,6 +49,7 @@ import { FolderBrowserComponent } from '../../components/folder-browser/folder-b
 import { AlbumHuntModalComponent } from '../../components/album-hunt-modal/album-hunt-modal.component';
 import { TrackRowComponent } from '../../components/track-row/track-row.component';
 import { SourceChipComponent } from '../../components/source-chip/source-chip.component';
+import { CoverArtComponent } from '../../components/cover-art/cover-art.component';
 import { toTrack } from '../../lib/track-utils';
 import { extractSharedUrl } from '../../lib/share-url';
 import { httpErrorMessage, httpErrorCode } from '../../lib/http-error';
@@ -223,6 +224,7 @@ function escapeHtml(text: string): string {
     AlbumHuntModalComponent,
     TrackRowComponent,
     SourceChipComponent,
+    CoverArtComponent,
   ],
   templateUrl: './search.component.html',
 })

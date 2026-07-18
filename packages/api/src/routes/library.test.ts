@@ -1472,10 +1472,12 @@ describe('GET /fragments (library fragmentation diagnostic)', () => {
   });
 
   it('detects an album split across artist spellings', async () => {
-    seedArtist('a1', 'C. Tangana');
-    seedArtist('a2', 'C. Tangana, Nathy Peluso');
-    seedAlbum('al1', 'Ídolo', 'C. Tangana', 'a1', { songCount: 4 });
-    seedAlbum('al2', 'Idolo', 'C. Tangana, Nathy Peluso', 'a2', { songCount: 5 });
+    // Real prod case: same release, artist tagged with a different apostrophe.
+    // Both fold to "lakonga" but the scanner keeps the punctuation distinct.
+    seedArtist('a1', 'La Konga');
+    seedArtist('a2', "La K'onga");
+    seedAlbum('al1', 'Universo Paralelo', 'La Konga', 'a1', { songCount: 4 });
+    seedAlbum('al2', 'Universo Paralelo', "La K'onga", 'a2', { songCount: 5 });
     const app = new Hono<AuthEnv>();
     app.use('*', (c, next) => {
       c.set('user', { sub: 'u', role: 'admin', iat: 0, exp: 9999999999 });
@@ -1496,7 +1498,7 @@ describe('GET /fragments (library fragmentation diagnostic)', () => {
     };
     expect(body.ok).toBe(false);
     expect(body.totals.duplicateAlbums).toBe(1);
-    expect(body.duplicateAlbums[0]!.normalizedTitle).toBe('idolo');
+    expect(body.duplicateAlbums[0]!.normalizedTitle).toBe('universo paralelo');
     expect(body.duplicateAlbums[0]!.memberIds.sort()).toEqual(['al1', 'al2']);
     expect(body.duplicateAlbums[0]!.totalSongs).toBe(9);
     expect(body.duplicateAlbums[0]!.artistSpellings).toHaveLength(2);

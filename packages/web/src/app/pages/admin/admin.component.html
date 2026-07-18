@@ -213,7 +213,7 @@
                   @if (r.hiddenByClassification.length > 0) {
                     <div>
                       <p class="text-xs font-semibold text-theme-primary">
-                        Albums hidden from the grid ({{ r.hiddenByClassification.length }})
+                        Albums wrongly hidden from the grid ({{ r.hiddenByClassification.length }})
                       </p>
                       <ul class="mt-1 ml-4 list-disc text-xs text-theme-secondary space-y-0.5">
                         @for (h of r.hiddenByClassification; track h.albumId) {
@@ -221,7 +221,17 @@
                             <span class="text-theme-primary">"{{ h.name }}"</span> —
                             {{ h.artist }}
                             <span class="text-theme-muted">
-                              ({{ h.reason === 'hidden' ? 'hidden' : 'classification=' + h.classification }})
+                              @switch (h.reason) {
+                                @case ('oversized') {
+                                  ({{ h.songCount }} tracks, tagged {{ h.classification }} — looks like a full album)
+                                }
+                                @case ('unknown') {
+                                  (classification never resolved)
+                                }
+                                @default {
+                                  (hidden by curator)
+                                }
+                              }
                             </span>
                           </li>
                         }

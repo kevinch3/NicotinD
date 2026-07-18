@@ -84,14 +84,15 @@ function renderReport(r: FragmentReport): string {
   }
 
   if (r.hiddenByClassification.length > 0) {
-    lines.push('--- Hidden by classification ---');
+    lines.push('--- Wrongly hidden from the grid ---');
     lines.push(
-      "Rows the default Albums grid (`classification = 'album'`) suppresses. Reclassification or unhiding puts them back.",
+      'Album rows the default grid suppresses that look like real defects (a full album mis-tagged',
     );
+    lines.push('as a single/EP, an unresolved classification, or a curator-hidden row). Reclassify or unhide.');
     lines.push('');
     for (const h of r.hiddenByClassification) {
       lines.push(
-        `  • [${h.reason}] "${h.name}" — ${h.artist}  (classification=${h.classification}, hidden=${h.hidden})`,
+        `  • [${h.reason}] "${h.name}" — ${h.artist}  (classification=${h.classification}, ${h.songCount} tracks, hidden=${h.hidden})`,
       );
     }
     lines.push('');
