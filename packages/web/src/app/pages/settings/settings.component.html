@@ -188,6 +188,17 @@
              class="block text-sm text-theme-secondary hover:text-theme-primary transition mb-4">Extensions →</a>
         }
         <button (click)="logout()" class="text-sm text-status-error hover:text-status-error transition">Sign out</button>
+        @if (update.checkAvailable()) {
+          <button
+            type="button"
+            (click)="searchForUpdates()"
+            [disabled]="update.searching()"
+            data-testid="settings-check-update"
+            class="text-xs text-theme-secondary hover:text-theme-primary transition cursor-pointer block mt-4 disabled:opacity-50 disabled:cursor-wait"
+          >
+            {{ update.searching() ? 'Checking for updates…' : 'Check for updates' }}
+          </button>
+        }
         <button
           (click)="showChangelog.set(true)"
           data-testid="version-changelog-settings"
