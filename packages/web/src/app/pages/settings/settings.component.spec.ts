@@ -13,7 +13,7 @@ import { MediaControlsService } from '../../services/media-controls.service';
 import { ConfirmService } from '../../services/confirm.service';
 import { APP_VERSION } from '../../app.config';
 import { isElectron } from '../../lib/platform';
-import { pickDirectory, setMusicDir } from '../../services/native/native-capabilities';
+import { pickDirectory, setMusicDir, revealLogs } from '../../services/native/native-capabilities';
 import { ToastService } from '../../services/toast.service';
 import { UpdateService } from '../../services/update.service';
 
@@ -25,6 +25,7 @@ vi.mock('../../lib/platform', async (importOriginal) => {
 vi.mock('../../services/native/native-capabilities', () => ({
   pickDirectory: vi.fn(),
   setMusicDir: vi.fn().mockResolvedValue({ ok: true }),
+  revealLogs: vi.fn().mockResolvedValue(undefined),
 }));
 
 function makeToastService() {
@@ -187,6 +188,7 @@ describe('SettingsComponent (desktop music folder, Electron-gated)', () => {
   beforeEach(() => {
     vi.mocked(pickDirectory).mockReset();
     vi.mocked(setMusicDir).mockReset().mockResolvedValue({ ok: true });
+    vi.mocked(revealLogs).mockReset().mockResolvedValue(undefined);
   });
 
   it('does not render the change-folder control off-Electron', async () => {
@@ -196,6 +198,31 @@ describe('SettingsComponent (desktop music folder, Electron-gated)', () => {
     const fixture = TestBed.createComponent(SettingsComponent);
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('[data-testid="settings-change-folder"]')).toBeNull();
+    fixture.destroy();
+  });
+
+  it('does not render the reveal-logs control off-Electron', async () => {
+    vi.mocked(isElectron).mockReturnValue(false);
+    const { list } = makeProviders('user');
+    await TestBed.configureTestingModule({ imports: [SettingsComponent], providers: list }).compileComponents();
+    const fixture = TestBed.createComponent(SettingsComponent);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-testid="settings-reveal-logs"]')).toBeNull();
+    fixture.destroy();
+  });
+
+  it('reveals logs via the preload bridge in Electron', async () => {
+    vi.mocked(isElectron).mockReturnValue(true);
+    const { list } = makeProviders('user');
+    await TestBed.configureTestingModule({ imports: [SettingsComponent], providers: list }).compileComponents();
+    const fixture = TestBed.createComponent(SettingsComponent);
+    fixture.detectChanges();
+    const btn = fixture.nativeElement.querySelector(
+      '[data-testid="settings-reveal-logs"]',
+    ) as HTMLButtonElement;
+    expect(btn).toBeTruthy();
+    await fixture.componentInstance.revealLogs();
+    expect(revealLogs).toHaveBeenCalledTimes(1);
     fixture.destroy();
   });
 

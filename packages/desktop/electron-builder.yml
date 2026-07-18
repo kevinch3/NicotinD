@@ -3,14 +3,15 @@
 # Staging contract with `scripts/prepare-resources.ts` (Variant B — see its
 # header comment and `electron/paths.ts`): that script assembles
 # `packages/desktop/resources/` BEFORE electron-builder runs (wired as the
-# `dist` script in package.json: `build` -> `prepare-resources` ->
-# `electron-builder`). `extraResources` below stages that tree verbatim into
-# the packaged app's `process.resourcesPath`:
+# `dist` script in package.json: `build` -> `stage-icons` ->
+# `prepare-resources` -> `electron-builder`). `extraResources` below stages
+# that tree verbatim into the packaged app's `process.resourcesPath`:
 #
 #   resources/bin/bun              -> paths.ts bunBinary()
 #   resources/bin/ffmpeg           -> paths.ts ffmpegBinaryPath()
 #   resources/backend/src/main.ts  -> paths.ts backendEntry()
 #   resources/web                  -> paths.ts webDistPath()
+#   resources/icons/<N>x<N>.png    -> paths.ts app/tray iconPath() (from build/icons/)
 #
 # `files` only needs the *compiled electron main/preload* (`dist/**`, built
 # by `tsconfig.electron.json` — see tsconfig.json) since `resources/**`
@@ -23,6 +24,14 @@ copyright: Copyright © Kevin Chavarria
 directories:
   output: release
   buildResources: build
+
+# Multi-size icon pack generated from the PWA source by
+# `scripts/stage-icons.mjs`. electron-builder picks up `<N>x<N>.png` files
+# automatically — Linux `.deb` install hooks stage them under
+# `/usr/share/icons/hicolor/<N>x<N>/apps/nicotind.png`, the macOS dmg uses
+# `512x512` (and `1024x1024` for retina), and the window-level icon falls
+# through to `paths.ts appIconPath(platform)` (256x256 typically).
+icon: build/icons
 
 files:
   - dist/**
@@ -56,12 +65,13 @@ linux:
     - AppImage
     - deb
   category: Audio
-  icon: build/icon.png
+  icon: build/icons
   desktop:
     entry:
       Name: NicotinD
       Comment: Unified music acquisition + streaming
       Categories: Audio;Music;Player;AudioVideo;
+      StartupNotify: true
       StartupWMClass: NicotinD
 
 deb:
@@ -91,7 +101,7 @@ mac:
         - x64
         - arm64
   category: public.app-category.music
-  icon: build/icon.png
+  icon: build/icons
   # No Apple Developer ID in scope for v1 (see docs/desktop-app.md), but the
   # build must NOT be fully unsigned: Apple Silicon refuses to execute any
   # unsigned arm64 binary, so a downloaded unsigned dmg reports as

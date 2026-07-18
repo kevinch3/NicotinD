@@ -21,6 +21,7 @@ import { AddToPlaylistComponent } from '../add-to-playlist/add-to-playlist.compo
 import { ConfirmHostComponent } from '../confirm-host/confirm-host.component';
 import { TrackInfoHostComponent } from '../track-info-host/track-info-host.component';
 import { ChangelogModalComponent } from '../changelog-modal/changelog-modal.component';
+import { electronOS, isElectron } from '../../lib/platform';
 
 interface NavItem {
   to: string;
@@ -38,6 +39,12 @@ const BASE_NAV: NavItem[] = [
 // offline: its Songs tab serves the on-device downloaded songs. The radio
 // landing (/) and search need the backend, so both are online-only.
 const ONLINE_ONLY_ROUTES = new Set(['/', '/search']);
+
+/** Shared header layout — same pixels everywhere so the brand/title row
+ *  doesn't shift between platform states (only the chrome integration
+ *  bits change). */
+const HEADER_BASE_CLASSES =
+  'flex items-center justify-between px-4 md:px-6 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))] border-b border-theme bg-theme-base/80 backdrop-blur-sm';
 
 @Component({
   selector: 'app-layout',
@@ -68,6 +75,39 @@ export class LayoutComponent implements OnInit, OnDestroy {
   private transfers = inject(TransferService);
   private acquire = inject(AcquireService);
   private api = inject(LibraryApiService);
+
+  /**
+   * True only inside the desktop shell on Linux (and Windows, when a Win
+   * target is added). Drives the in-app window-control buttons and the
+   * `-webkit-app-region: drag` style on the header — see
+   * [docs/desktop-app.md]. macOS keeps `titleBarStyle: 'hiddenInset'`
+   * (native traffic lights in the standard top-left slot) and is excluded
+   * here.
+   */
+  readonly isElectronLinux = computed(() => {
+    return isElectron() && electronOS() !== null && electronOS() !== 'darwin';
+  });
+
+  /** Maximize state mirror — flipped by the `window:maximize-changed`
+   *  IPC push from main, used by the maximize-toggle button to swap its
+   *  icon between "expand" and "shrink". */
+  readonly isMaximized = signal(false);
+  private unsubscribeMaximize: (() => void) | null = null;
+
+  /** Header classes. On Linux Electron with `frame: false` the same
+   *  sticky-top positioning as web/capacitor/mac is kept — sticky is
+   *  in-flow at scroll-top and pinned at scroll position, with no need
+   *  to shift content or repaint padding. The `[-webkit-app-region:drag]`
+   *  class is the only thing that changes on the Linux path; it turns
+   *  the entire bar into a drag handle for the frameless window — see
+   *  `electron/window.ts` for the matching shape. */
+  readonly headerClass = computed(() => {
+    const base = `${HEADER_BASE_CLASSES} sticky top-0 z-40`;
+    if (!this.isElectronLinux()) {
+      return base;
+    }
+    return `${base} [-webkit-app-region:drag]`;
+  });
 
   readonly navItems = computed<NavItem[]>(() => {
     // Downloads is an acquisition surface — hidden from listeners (declutter).
@@ -114,6 +154,36 @@ export class LayoutComponent implements OnInit, OnDestroy {
     }
   }
 
+  // ----- Desktop chrome-bar window controls (Linux only) -----
+
+  /** Toggles OS maximize via the preload bridge; safe to call outside
+   *  Electron (no-op when `window.nicotind` is absent). The maximize
+   *  state change comes back via `onMaximizeChange` and updates
+   *  `isMaximized`. */
+  toggleMaximize(): void {
+    if (!this.isElectronLinux()) return;
+    const bridge = (globalThis as { window?: { nicotind?: { maximizeToggle?: () => void } } })
+      .window?.nicotind;
+    bridge?.maximizeToggle?.();
+  }
+
+  minimize(): void {
+    if (!this.isElectronLinux()) return;
+    (globalThis as { window?: { nicotind?: { minimize?: () => void } } }).window?.nicotind?.minimize?.();
+  }
+
+  closeWindow(): void {
+    if (!this.isElectronLinux()) return;
+    (globalThis as { window?: { nicotind?: { close?: () => void } } }).window?.nicotind?.close?.();
+  }
+
+  /** Header dbl-click toggles maximize (matches the GTK/Linux convention
+   *  used by GNOME Files, Nautilus, etc.). Bound in the template. */
+  onHeaderDoubleClick(): void {
+    if (!this.isElectronLinux()) return;
+    this.toggleMaximize();
+  }
+
   async confirmLogout(): Promise<void> {
     if (this.cleanPreserveOnLogout()) {
       await this.preserve.clearAll();
@@ -125,6 +195,17 @@ export class LayoutComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.transfers.startPolling();
+    // Maximize-state mirror — only wired on Linux Electron since macOS
+    // never renders the in-app buttons. Defense against a missing bridge
+    // (older preload / pre-bridge window) keeps it a no-op.
+    if (this.isElectronLinux()) {
+      const bridge = (globalThis as { window?: { nicotind?: {
+        onMaximizeChange?: (cb: (s: { isMaximized: boolean }) => void) => () => void;
+      } } }).window?.nicotind;
+      this.unsubscribeMaximize = bridge?.onMaximizeChange?.((s) => {
+        this.isMaximized.set(!!s?.isMaximized);
+      }) ?? null;
+    }
     // Load any in-flight URL acquisitions so the header badge reflects them
     // app-wide (AcquireService self-polls while jobs are active).
     void this.acquire.refresh();
@@ -159,5 +240,6 @@ export class LayoutComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.transfers.stopPolling();
+    this.unsubscribeMaximize?.();
   }
 }

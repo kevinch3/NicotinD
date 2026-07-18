@@ -46,6 +46,26 @@ export function isElectron(): boolean {
   );
 }
 
+/**
+ * Host OS the Electron shell is running on, as captured by the preload's
+ * synchronous `process.platform` snapshot and surfaced on
+ * `window.nicotind.os`. Returns `null` outside Electron (web, Capacitor)
+ * so callers can branch safely.
+ *
+ * Used by the layout header to render the in-app window-control buttons
+ * only on Linux/Win — macOS keeps the native traffic lights and there's
+ * nothing to add to the chrome bar.
+ */
+export function electronOS(): NodeJS.Platform | null {
+  const os = (
+    globalThis as { window?: { nicotind?: { os?: unknown } } }
+  ).window?.nicotind?.os;
+  if (os === 'darwin' || os === 'linux' || os === 'win32') {
+    return os;
+  }
+  return null;
+}
+
 /** True inside any native shell: Capacitor (iOS/Android) or Electron (desktop). */
 export function isNativeShell(): boolean {
   return isNativePlatform() || isElectron();
