@@ -180,6 +180,8 @@
       <section class="rounded-xl border border-theme bg-theme-surface/50 p-6 mb-6">
         <h2 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary mb-5">Account</h2>
         <p class="text-sm text-theme-muted mb-4">Signed in as <span class="text-theme-primary font-medium">{{ auth.username() }}</span></p>
+        <a routerLink="/settings/devices" data-testid="settings-devices-link"
+           class="block text-sm text-theme-secondary hover:text-theme-primary transition mb-2">Devices →</a>
         @if (isAdmin()) {
           <a routerLink="/admin" class="block text-sm text-theme-secondary hover:text-theme-primary transition mb-2">Admin panel →</a>
           <a routerLink="/settings/plugins" data-testid="settings-extensions-link"

@@ -9,6 +9,15 @@ describe('buildPlistBuddyCommands', () => {
     expect(cmds).toContain('Add :UIBackgroundModes:0 string audio');
   });
 
+  it('always sets NSCameraUsageDescription for the pairing QR scanner', () => {
+    const cmds = buildPlistBuddyCommands({});
+    const add = cmds.find((c) => c.startsWith('Add :NSCameraUsageDescription string '));
+    const set = cmds.find((c) => c.startsWith('Set :NSCameraUsageDescription '));
+    expect(add).toBeDefined();
+    expect(set).toBeDefined();
+    expect(cmds.indexOf(add!)).toBeLessThan(cmds.indexOf(set!));
+  });
+
   it('deletes the array before re-adding it so re-runs stay idempotent', () => {
     const cmds = buildPlistBuddyCommands({});
     expect(cmds.indexOf('Delete :UIBackgroundModes')).toBeLessThan(

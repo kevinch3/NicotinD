@@ -69,6 +69,9 @@ export interface JwtPayload {
   role?: Role;
   share?: boolean;
   scope?: string;
+  /** Set on QR-paired sessions — points at a paired_devices row; the refresh
+   * endpoint rejects tokens whose row was revoked (deleted). */
+  deviceId?: string;
   iat: number;
   exp: number;
 }

@@ -21,6 +21,9 @@ import { adminRoutes } from './routes/admin.js';
 import { presenceRoutes } from './routes/presence.js';
 import { usersRoutes } from './routes/users.js';
 import { shareRoutes } from './routes/share.js';
+import { devicesRoutes } from './routes/devices.js';
+import { remoteAccessRoutes } from './routes/remote-access.js';
+import { RemoteAccess } from './services/tailscale.js';
 import { shareMetaHandler } from './routes/share-meta.js';
 import { discographyRoutes } from './routes/discography.js';
 import { catalogRoutes } from './routes/catalog.js';
@@ -563,6 +566,20 @@ export function createApp({
     settingsRoutes(config, slskdRef, makeWatcher, serviceManager, watcherRef),
   );
   app.route('/api/share', shareRoutes(config.jwt.secret, auth));
+  // Device pairing (QR link): claim is public (the pairing token is the
+  // credential), so /api/devices is deliberately NOT in the blanket-auth list —
+  // pair/list/revoke apply auth per-route.
+  const remoteAccess = new RemoteAccess(db);
+  app.route(
+    '/api/devices',
+    devicesRoutes({
+      jwtSecret: config.jwt.secret,
+      jwtExpiresIn: config.jwt.expiresIn,
+      auth,
+      remoteAccess,
+    }),
+  );
+  app.route('/api/admin/remote-access', remoteAccessRoutes(remoteAccess));
   app.route('/api/users', usersRoutes(registry));
   app.route('/api/playlists', playlistRoutes());
   app.route('/api/radio', radioRoutes());
@@ -709,7 +726,7 @@ export function createApp({
     });
   }
 
-  return { app, watcherRef, retryRef, processingRef, websocket };
+  return { app, watcherRef, retryRef, processingRef, websocket, remoteAccess };
 }
 
 export { DownloadWatcher } from './services/download-watcher.js';

@@ -100,6 +100,50 @@ describe('POST /refresh', () => {
 
     expect(res.status).toBe(403);
   });
+
+  it('rejects a revoked device token (403) — row deletion is the revocation', async () => {
+    const token = await signJwt(
+      { sub: 'user-123', username: 'testuser', role: 'user', deviceId: 'dev-gone' },
+      SECRET,
+      '1h',
+    );
+    const res = await app.request('/refresh', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(res.status).toBe(403);
+    expect(((await res.json()) as { error: string }).error).toBe('Device revoked');
+  });
+
+  it('preserves deviceId across refresh and bumps last_seen_at', async () => {
+    testDb.run(
+      "INSERT INTO paired_devices (id, user_id, name, platform, created_at, last_seen_at) VALUES ('dev-1', 'user-123', 'Phone', 'android', 1, 1)",
+    );
+    try {
+      const token = await signJwt(
+        { sub: 'user-123', username: 'testuser', role: 'user', deviceId: 'dev-1' },
+        SECRET,
+        '1h',
+      );
+      const res = await app.request('/refresh', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      expect(res.status).toBe(200);
+      const { token: fresh } = (await res.json()) as { token: string };
+      const { payload } = await jose.jwtVerify(fresh, new TextEncoder().encode(SECRET));
+      expect(payload.deviceId).toBe('dev-1');
+
+      const row = testDb
+        .query<{ last_seen_at: number }, []>(
+          "SELECT last_seen_at FROM paired_devices WHERE id = 'dev-1'",
+        )
+        .get();
+      expect(row!.last_seen_at).toBeGreaterThan(1);
+    } finally {
+      testDb.run("DELETE FROM paired_devices WHERE id = 'dev-1'");
+    }
+  });
 });
 
 describe('POST /dismiss-welcome', () => {

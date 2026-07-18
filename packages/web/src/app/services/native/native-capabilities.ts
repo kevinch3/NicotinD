@@ -1,4 +1,4 @@
-import { getPlatform, isElectron } from '../../lib/platform';
+import { getCapacitorPlugin, getPlatform, isElectron, isNativePlatform } from '../../lib/platform';
 
 // Injected by the Electron desktop shell's preload script onto `window.nicotind`
 // (see docs for Task 8). Kept web-local (not re-exported from @nicotind/core)
@@ -56,4 +56,35 @@ export async function setMusicDir(
 /** Electron first (desktop), else the existing Capacitor/web platform id. */
 export function platformId(): 'electron' | 'ios' | 'android' | 'web' {
   return isElectron() ? 'electron' : getPlatform();
+}
+
+// @capacitor/barcode-scanner's native plugin (reached through the Capacitor
+// global like every native plugin here, so @capacitor/* stays out of the web
+// bundle). `hint` selects the barcode format; 0 = QR_CODE.
+interface BarcodeScannerPlugin {
+  scanBarcode(options: { hint: number }): Promise<{ ScanResult?: string }>;
+}
+
+/** True when the running shell can open a camera QR scanner (Capacitor with the
+ * barcode plugin installed). Electron and plain web have no scanner. */
+export function canScanBarcode(): boolean {
+  return isNativePlatform() && getCapacitorPlugin('CapacitorBarcodeScanner') !== null;
+}
+
+/**
+ * Opens the native full-screen QR scanner and resolves the scanned string, or
+ * null when unavailable, cancelled, or camera permission was denied — callers
+ * treat null as "nothing happened", never as an error.
+ */
+export async function scanBarcode(): Promise<string | null> {
+  const plugin = isNativePlatform()
+    ? getCapacitorPlugin<BarcodeScannerPlugin>('CapacitorBarcodeScanner')
+    : null;
+  if (!plugin) return null;
+  try {
+    const result = await plugin.scanBarcode({ hint: 0 });
+    return result?.ScanResult || null;
+  } catch {
+    return null;
+  }
 }

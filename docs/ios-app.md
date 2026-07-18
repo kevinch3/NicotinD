@@ -49,6 +49,11 @@ platform-agnostic and works on iOS with no change:
 - **`UIBackgroundModes: [audio]` in `Info.plist`** for background playback.
   Because the `ios/` project is generated ephemerally (below), this is injected
   by `scripts/ios-plist.ts` rather than hand-edited in a committed plist.
+- **`NSCameraUsageDescription` in `Info.plist`** for the QR device-pairing
+  scanner (`@capacitor/barcode-scanner` — see
+  [device-pairing.md](./device-pairing.md)); injected by the same
+  `scripts/ios-plist.ts` patch. Without it iOS terminates the app on first
+  camera access.
 - **App Transport Security (ATS)**: iOS blocks plain-`http://` requests by
   default. We expect users to point the app at an **HTTPS** self-hosted server
   (the default is HTTPS). Only add an `NSAppTransportSecurity` exception if a

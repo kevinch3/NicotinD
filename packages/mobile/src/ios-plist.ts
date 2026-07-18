@@ -6,6 +6,9 @@
  *
  * - `UIBackgroundModes: [audio]` — required for the WebView to keep audio alive
  *   when backgrounded (the iOS analogue of Android's media foreground service).
+ * - `NSCameraUsageDescription` — required by @capacitor/barcode-scanner for the
+ *   QR device-pairing scan (see docs/device-pairing.md); iOS kills the app on
+ *   camera access without it.
  * - `CFBundleShortVersionString` / `CFBundleVersion` — the marketing + build
  *   numbers derived from the monorepo version (see {@link iosVersion}).
  *
@@ -17,10 +20,13 @@ export function buildPlistBuddyCommands(opts: {
   shortVersion?: string;
   build?: number | string;
 }): string[] {
+  const CAMERA_USAGE = 'NicotinD uses the camera to scan a server pairing QR code.';
   const cmds: string[] = [
     'Delete :UIBackgroundModes',
     'Add :UIBackgroundModes array',
     'Add :UIBackgroundModes:0 string audio',
+    `Add :NSCameraUsageDescription string ${CAMERA_USAGE}`,
+    `Set :NSCameraUsageDescription ${CAMERA_USAGE}`,
   ];
   if (opts.shortVersion) {
     cmds.push(`Add :CFBundleShortVersionString string ${opts.shortVersion}`);
