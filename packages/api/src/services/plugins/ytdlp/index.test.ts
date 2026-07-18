@@ -114,13 +114,13 @@ describe('YtdlpPlugin', () => {
     await done;
 
     const [, args] = spawnMock.mock.calls[0] as [string, string[]];
-    expect(args).toContain('before_dl:TRACK_START::%(artist)s - %(title)s');
-    expect(args).toContain('after_move:TRACK_DONE::%(artist)s - %(title)s');
+    expect(args).toContain('before_dl:TRACK_START::%(title)s::%(filename)s');
+    expect(args).toContain('after_move:TRACK_DONE::%(title)s::%(filename)s');
     // Both come after their own --print flag.
-    expect(args[args.indexOf('before_dl:TRACK_START::%(artist)s - %(title)s') - 1]).toBe(
+    expect(args[args.indexOf('before_dl:TRACK_START::%(title)s::%(filename)s') - 1]).toBe(
       '--print',
     );
-    expect(args[args.indexOf('after_move:TRACK_DONE::%(artist)s - %(title)s') - 1]).toBe(
+    expect(args[args.indexOf('after_move:TRACK_DONE::%(title)s::%(filename)s') - 1]).toBe(
       '--print',
     );
   });

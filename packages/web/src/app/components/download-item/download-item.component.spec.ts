@@ -5,11 +5,12 @@ import {
   DOWNLOAD_ITEM_HOST_CLASS,
   DOWNLOAD_ITEM_TITLE_CLASS,
   canOpenInLibrary,
+  canOpenPlaylist,
   hasMultipleDestinationAlbums,
   canShowNowNext,
   DownloadItemComponent,
 } from './download-item.component';
-import { resolveAlbumRoute } from '../../lib/route-utils';
+import { resolveAlbumRoute, resolvePlaylistRoute } from '../../lib/route-utils';
 import type { DownloadItem } from '../../lib/download-groups';
 import { MenuPanelComponent } from '../menu-panel/menu-panel.component';
 
@@ -80,6 +81,43 @@ describe('download-item "Open in Library" deep-link', () => {
 
   it('resolves the album id to the /library/albums/:id route', () => {
     expect(resolveAlbumRoute('a1')).toEqual(['/library', 'albums', 'a1']);
+  });
+});
+
+// A playlist-classified acquire job (Spotify playlist, YouTube playlist,
+// archive.org with `as=playlist`) that completed generates a native playlist
+// — the row should deep-link straight to /library/playlists/:id instead of
+// the album/multi-album openers, since a playlist spans many albums and the
+// playlist id is the more useful destination.
+describe('download-item "Open playlist" deep-link', () => {
+  it('offers the link only when complete and a playlist id is set', () => {
+    expect(canOpenPlaylist(item({ stage: 'done', playlistId: 'p1' }))).toBe(true);
+    expect(canOpenPlaylist(item({ stage: 'downloading', playlistId: 'p1' }))).toBe(false);
+    expect(canOpenPlaylist(item({ stage: 'done', playlistId: undefined }))).toBe(false);
+  });
+
+  it('resolves the playlist id to the /library/playlists/:id route', () => {
+    expect(resolvePlaylistRoute('p1')).toEqual(['/library', 'playlists', 'p1']);
+    expect(resolvePlaylistRoute(undefined)).toEqual(['/library']);
+  });
+
+  it('wins over "Open in Library" when both are set (playlist spans albums)', () => {
+    // A playlist job will usually have neither a single albumId nor a single
+    // destination album, but in the unusual case the gating should still pick
+    // the playlist link so the user lands on the more useful destination.
+    const both = item({ stage: 'done', albumId: 'a1', playlistId: 'p1' });
+    expect(canOpenPlaylist(both)).toBe(true);
+    expect(canOpenInLibrary(both)).toBe(true);
+    // The template branches playlist-first via @if/@else if — verify the
+    // ordering by reading the source rather than re-rendering.
+    const html = require('fs').readFileSync(
+      require('path').join(__dirname, 'download-item.component.html'),
+      'utf8',
+    );
+    const playlistIdx = html.indexOf('download-open-playlist');
+    const albumIdx = html.indexOf('download-open-album');
+    expect(playlistIdx).toBeGreaterThan(0);
+    expect(albumIdx).toBeGreaterThan(playlistIdx);
   });
 });
 

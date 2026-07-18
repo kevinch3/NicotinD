@@ -2,7 +2,7 @@ import { Component, input, output, signal, computed } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import type { DownloadItem } from '../../lib/download-groups';
 import { methodBadge } from '../../lib/acquisition-method';
-import { resolveAlbumRoute } from '../../lib/route-utils';
+import { resolveAlbumRoute, resolvePlaylistRoute } from '../../lib/route-utils';
 import { currentAndNextTracks } from '../../lib/track-status';
 import { PipelineStageBadgeComponent } from '../pipeline-stage-badge/pipeline-stage-badge.component';
 import { MenuPanelComponent } from '../menu-panel/menu-panel.component';
@@ -42,6 +42,19 @@ export const DOWNLOAD_ITEM_TITLE_CLASS = 'text-sm text-theme-primary truncate mi
  */
 export function canOpenInLibrary(item: DownloadItem): boolean {
   return item.stage === 'done' && !!item.albumId;
+}
+
+/**
+ * Whether the row should offer an "Open playlist" deep-link: a playlist-
+ * classified acquire job (Spotify playlist, YouTube playlist, archive.org
+ * with `as=playlist`) that completed and generated a native playlist. Wins
+ * over the album / multi-album openers when set — a playlist acquisition
+ * almost always spans many albums, so the playlist id is the more useful
+ * destination than any single album. Exported so the gating contract is
+ * unit-testable without rendering the component.
+ */
+export function canOpenPlaylist(item: DownloadItem): boolean {
+  return item.stage === 'done' && !!item.playlistId;
 }
 
 /**
@@ -110,8 +123,12 @@ export class DownloadItemComponent {
   readonly badge = computed(() => methodBadge(this.item().method));
   /** Whether to show the "Open in Library" deep-link on this row. */
   readonly canOpen = computed(() => canOpenInLibrary(this.item()));
+  /** Whether to show the "Open playlist" deep-link (playlist-classified job). */
+  readonly canOpenPlaylist = computed(() => canOpenPlaylist(this.item()));
   /** Deep-link target for the completed album ('/library' when the id is unknown). */
   readonly albumRoute = computed(() => resolveAlbumRoute(this.item().albumId));
+  /** Deep-link target for the generated native playlist. */
+  readonly playlistRoute = computed(() => resolvePlaylistRoute(this.item().playlistId));
 
   /** The destination albums to list in the "View N albums" menu, when shown. */
   readonly destinationAlbums = computed(() => this.item().destinationAlbums ?? []);

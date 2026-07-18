@@ -32,6 +32,12 @@ export type TrackEventStatus = 'downloading' | 'done' | 'skipped';
 export interface TrackEvent {
   title: string;
   status: TrackEventStatus;
+  /**
+   * The file basename the plugin is about to write / just wrote. Optional —
+   * older parsers don't carry it, and the host falls back to a title-only
+   * match within the job's `acquisitions` rows when missing.
+   */
+  path?: string;
 }
 
 /**
@@ -153,12 +159,24 @@ export function parseSpotdlPlaylistTitle(line: string): string | null {
  * Parse yt-dlp per-track markers emitted by our `--exec`/postprocessor
  * wrapper (Task 5 wires the emitter side): `TRACK_START::<title>` when a
  * track begins downloading, `TRACK_DONE::<title>` when it finishes.
+ *
+ * Newer markers also carry the destination filename after a second `::`
+ * (`TRACK_START::artist - title::track01.mp3`); the host uses that to
+ * resolve the post-scan library_song without title-collision guessing
+ * when materializing a native playlist. Older single-`::` lines (no
+ * filename) still parse — `path` is just omitted.
  */
 export function parseYtdlpTrackEvent(line: string): TrackEvent | null {
   const start = /^TRACK_START::(.+)/.exec(line);
-  if (start) return { title: start[1]!.trim(), status: 'downloading' };
+  if (start) {
+    const parts = start[1]!.split('::');
+    return { title: (parts[0] ?? '').trim(), status: 'downloading', path: parts[1]?.trim() };
+  }
   const done = /^TRACK_DONE::(.+)/.exec(line);
-  if (done) return { title: done[1]!.trim(), status: 'done' };
+  if (done) {
+    const parts = done[1]!.split('::');
+    return { title: (parts[0] ?? '').trim(), status: 'done', path: parts[1]?.trim() };
+  }
   return null;
 }
 

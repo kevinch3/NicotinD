@@ -1,6 +1,6 @@
 import { rmSync } from 'node:fs';
 import { dirname, relative } from 'node:path';
-import { createLogger } from '@nicotind/core';
+import { classifyAcquireUrl, createLogger } from '@nicotind/core';
 import type { AcquireJob, AcquisitionMethod, Plugin } from '@nicotind/core';
 import type { Database } from 'bun:sqlite';
 import type { PluginRegistry } from './plugins/registry.js';
@@ -9,6 +9,11 @@ import type { CompletedDownloadFile } from './path-inference.js';
 import { createJob, type TransferJobMeta } from './acquisition-job-store.js';
 import { recordAcquisition } from './acquisition-store.js';
 import { deriveAcquireAlbum, type AcquireAlbumDestination } from './acquire-album.js';
+import { PlaylistService } from './playlist.service.js';
+import {
+  resolveAcquireJobTracks,
+  type AcquireJobTrackRow,
+} from './acquire-playlist.js';
 
 /** Map an acquisition plugin id to an AcquisitionMethod; unknown ids → 'unknown'. */
 function methodForBackend(backend: string): AcquisitionMethod {
@@ -51,6 +56,19 @@ export interface AcquireWatcherOptions {
 
 export type { AcquireJob } from '@nicotind/core';
 
+export interface AcquireJobSubmitOptions {
+  /** Optional user id of the submitter — required when the URL is a playlist. */
+  userId?: string;
+  /**
+   * Override the URL classifier. Only honored for archive.org items (which
+   * don't expose a playlist signal at the URL level); other sources use the
+   * classifier's verdict directly. `'album'` forces the legacy single-item
+   * acquire flow even for archive items the user would have liked as a
+   * playlist.
+   */
+  as?: 'playlist' | 'album';
+}
+
 interface AcquireJobRow {
   id: string;
   backend: string;
@@ -62,6 +80,8 @@ interface AcquireJobRow {
   dest_albums_json: string | null;
   progress: string | null;
   tracks_json: string | null;
+  is_playlist: number | null;
+  playlist_id: string | null;
   error: string | null;
   created_at: number;
 }
@@ -120,8 +140,12 @@ export class AcquireWatcher {
    * Create + start an acquire job. Throws `NoAcquisitionPluginError` when no
    * enabled plugin handles the URL, or `PluginUnavailableError` when the chosen
    * plugin's binary is missing.
+   *
+   * `opts.userId` is the submitter — required for playlist generation to fire
+   * (the generated playlist is owned by this user). `opts.as` lets archive.org
+   * callers force `playlist` since the URL pattern doesn't carry that signal.
    */
-  async submit(url: string, label?: string): Promise<string> {
+  async submit(url: string, label?: string, opts: AcquireJobSubmitOptions = {}): Promise<string> {
     // Idempotency guard mirroring the slskd hunt path's "one album = one
     // download": without this, every re-paste/re-click of a URL whose job is
     // still in flight queues a brand-new row, so the list grows unbounded for
@@ -137,10 +161,30 @@ export class AcquireWatcher {
     if (!plugin?.resolve) throw new NoAcquisitionPluginError(url);
     if (!(await plugin.isAvailable())) throw new PluginUnavailableError(plugin.manifest.id);
 
+    // Classifier-driven playlist flag. Spotify / YouTube playlist URLs
+    // auto-detect. Archive items default to 'album' (the submitter can opt
+    // into 'playlist' via the link-intent toggle on the web); the `as`
+    // override is honored for archive items AND for any URL the classifier
+    // doesn't recognize (a custom share link the user knows is a playlist).
+    // `as: 'album'` explicitly downgrades a Spotify/YouTube playlist URL
+    // to a single-item acquire — edge case, but consistent.
+    const cls = classifyAcquireUrl(url);
+    let isPlaylist = cls.kind === 'playlist';
+    if (cls.kind !== 'playlist' && opts.as === 'playlist') isPlaylist = true;
+    if (cls.kind === 'playlist' && opts.as === 'album') isPlaylist = false;
+    if (isPlaylist && !opts.userId) {
+      // Server-side guard: a playlist URL without a submitter can't be owned.
+      // The web always sends userId (it's the auth subject); this branch
+      // catches direct / scripted callers that forgot the field.
+      log.warn({ url }, 'Playlist URL submitted without a userId; skipping playlist generation');
+      isPlaylist = false;
+    }
+
     const id = crypto.randomUUID();
     this.db.run(
-      `INSERT INTO acquire_jobs (id, backend, url, label, state, stage) VALUES (?, ?, ?, ?, 'queued', 'queued')`,
-      [id, plugin.manifest.id, url, label ?? null],
+      `INSERT INTO acquire_jobs (id, backend, url, label, state, stage, is_playlist)
+       VALUES (?, ?, ?, ?, 'queued', 'queued', ?)`,
+      [id, plugin.manifest.id, url, label ?? null, isPlaylist ? 1 : 0],
     );
     // Mirror into the unified acquisition_jobs table (same uuid; acquire_jobs
     // stays authoritative for the URL engine). Best-effort.
@@ -157,11 +201,16 @@ export class AcquireWatcher {
       log.warn({ id, err }, 'Failed to mirror acquire job into acquisition_jobs');
     }
 
-    void this.run(plugin, id, url);
+    void this.run(plugin, id, url, opts.userId);
     return id;
   }
 
-  private async run(plugin: Plugin, id: string, url: string): Promise<void> {
+  private async run(
+    plugin: Plugin,
+    id: string,
+    url: string,
+    userId: string | undefined,
+  ): Promise<void> {
     this.active.set(id, plugin);
     this.updateState(id, 'running');
     this.setStage(id, 'downloading');
@@ -192,7 +241,7 @@ export class AcquireWatcher {
           : undefined;
       // Keep state='running' through ingest — only mark done once the full
       // pipeline (organize → scan → enrich) completes.
-      await this.ingest(id, plugin.manifest.id, url, paths, partialWarning, resolveMeta);
+      await this.ingest(id, plugin.manifest.id, url, paths, partialWarning, resolveMeta, userId);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       log.warn({ id, err: msg }, 'Acquire job failed');
@@ -208,8 +257,9 @@ export class AcquireWatcher {
     pluginId: string,
     url: string,
     paths: string[],
-    partialWarning?: string,
-    resolveMeta?: { artist?: string | null; album?: string | null },
+    partialWarning: string | undefined,
+    resolveMeta: { artist?: string | null; album?: string | null } | undefined,
+    userId: string | undefined,
   ): Promise<void> {
     if (paths.length === 0) {
       log.warn({ id }, 'Acquire job produced no audio files');
@@ -293,12 +343,63 @@ export class AcquireWatcher {
       // Only a fully-succeeded job's staging dir is disposable — a failed one
       // is left in place so Retry can resume it (see retryJob()).
       this.cleanupStaging(stagingDir);
+      // Playlist generation: a successful playlist-classified job materializes
+      // a per-user native playlist from the `acquire_job_tracks` rows in
+      // download order. Runs after the scan so `acquisitions`/`library_songs`
+      // joins can resolve every emitted track. Failures here never break the
+      // job — the files are already in the library.
+      if (this.getIsPlaylist(id) && userId) {
+        try {
+          await this.materializePlaylist(id, url, userId);
+        } catch (err) {
+          log.warn({ id, err }, 'Playlist materialization failed (job still succeeded)');
+        }
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       log.error({ id, err: msg }, 'Organize/scan after acquire failed');
       this.setStage(id, 'error');
       this.updateState(id, 'failed', msg);
     }
+  }
+
+  /**
+   * Build the per-user native playlist for a playlist-classified job. Reads
+   * `acquire_job_tracks` in position order, joins each entry against the
+   * post-scan library via `acquisitions` (so only landed tracks make it in),
+   * and persists the result. The job's `playlist_id` column carries the new
+   * playlist id so the Downloads card can deep-link straight to it.
+   */
+  private async materializePlaylist(jobId: string, jobUrl: string, userId: string): Promise<void> {
+    const rows = this.db
+      .query<AcquireJobTrackRow, [string]>(
+        `SELECT position, title, status, path FROM acquire_job_tracks WHERE job_id = ? ORDER BY position ASC`,
+      )
+      .all(jobId);
+    const songIds = resolveAcquireJobTracks(this.db, jobId, jobUrl, rows);
+    if (songIds.length === 0) {
+      log.info({ jobId }, 'No landed tracks — skipping playlist materialization');
+      return;
+    }
+    const labelRow = this.db
+      .query<{ label: string | null }, [string]>(`SELECT label FROM acquire_jobs WHERE id = ?`)
+      .get(jobId);
+    const name = labelRow?.label?.trim() || 'Imported playlist';
+    const playlist = new PlaylistService(this.db).create(userId, { name, songIds });
+    this.db.run(`UPDATE acquire_jobs SET playlist_id = ? WHERE id = ?`, [playlist.id, jobId]);
+    log.info(
+      { jobId, playlistId: playlist.id, songs: songIds.length },
+      'Generated playlist from acquire job',
+    );
+  }
+
+  private getIsPlaylist(jobId: string): boolean {
+    const row = this.db
+      .query<{ is_playlist: number | null }, [string]>(
+        `SELECT is_playlist FROM acquire_jobs WHERE id = ?`,
+      )
+      .get(jobId);
+    return Boolean(row?.is_playlist);
   }
 
   cancel(jobId: string): boolean {
@@ -335,7 +436,7 @@ export class AcquireWatcher {
    * the plugin resolves into the same directory and can pick up where it
    * left off instead of re-downloading everything.
    */
-  async retryJob(jobId: string): Promise<string | null> {
+  async retryJob(jobId: string, opts: AcquireJobSubmitOptions = {}): Promise<string | null> {
     const row = this.db
       .query<AcquireJobRow, [string]>(`SELECT * FROM acquire_jobs WHERE id = ?`)
       .get(jobId);
@@ -349,7 +450,12 @@ export class AcquireWatcher {
       `UPDATE acquire_jobs SET backend = ?, state = 'queued', stage = 'queued', error = NULL, progress = NULL, storage_path = NULL, dest_albums_json = NULL WHERE id = ?`,
       [plugin.manifest.id, jobId],
     );
-    void this.run(plugin, jobId, row.url);
+    // Retry reuses the existing userId when the original submitter is still
+    // known — the playlist (if any) was owned by that user, and we want
+    // ownership to stay consistent across retries. Falls back to a fresh
+    // submitter id when the caller didn't pass one (e.g. a CLI retry that
+    // forgot the field); the new playlist is then owned by that caller.
+    void this.run(plugin, jobId, row.url, opts.userId);
     return jobId;
   }
 
@@ -487,6 +593,8 @@ export class AcquireWatcher {
       destinationAlbums,
       progress,
       tracks,
+      isPlaylist: Boolean(row.is_playlist),
+      playlistId: row.playlist_id ?? null,
       error: row.error,
       created_at: row.created_at,
     };

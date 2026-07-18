@@ -24,24 +24,35 @@ interface MockJob {
 // Submit routes by URL now: special hosts simulate the watcher's 503 errors.
 function makeMockWatcher() {
   const jobs: MockJob[] = [];
+  let lastOpts: { userId?: string; as?: 'playlist' | 'album' } | undefined;
   return {
     jobs,
-    submitMock: mock(async (url: string): Promise<string> => {
-      if (url.includes('unhandled')) throw new NoAcquisitionPluginError(url);
-      if (url.includes('unavailable')) throw new PluginUnavailableError('ytdlp');
-      const id = `job-${jobs.length + 1}`;
-      jobs.push({
-        id,
-        backend: 'ytdlp',
-        url,
-        label: null,
-        state: 'queued',
-        progress: null,
-        error: null,
-        created_at: Date.now(),
-      });
-      return id;
-    }),
+    lastOpts: () => lastOpts,
+    submitMock: mock(
+      async (
+        url: string,
+        _label?: string,
+        opts?: { userId?: string; as?: 'playlist' | 'album' },
+      ): Promise<string> => {
+        if (url.includes('unhandled')) throw new NoAcquisitionPluginError(url);
+        if (url.includes('unavailable')) throw new PluginUnavailableError('ytdlp');
+        const id = `job-${jobs.length + 1}`;
+        jobs.push({
+          id,
+          backend: 'ytdlp',
+          url,
+          label: null,
+          state: 'queued',
+          progress: null,
+          error: null,
+          created_at: Date.now(),
+        });
+        // Record the last opts so the playlist tests can assert they were
+        // forwarded by the route handler.
+        lastOpts = opts;
+        return id;
+      },
+    ),
     cancelMock: mock((jobId: string): boolean => {
       const job = jobs.find((j) => j.id === jobId);
       return job !== undefined && (job.state === 'queued' || job.state === 'running');
@@ -54,16 +65,18 @@ function makeMockWatcher() {
       jobs.splice(idx, 1);
       return true;
     }),
-    retryJobMock: mock(async (jobId: string): Promise<string | null> => {
-      const job = jobs.find((j) => j.id === jobId);
-      if (!job) return null;
-      const newId = `${jobId}-retry`;
-      jobs.push({ ...job, id: newId, state: 'queued' });
-      jobs.splice(jobs.indexOf(job), 1);
-      return newId;
-    }),
-    submit(url: string) {
-      return this.submitMock(url);
+    retryJobMock: mock(
+      async (jobId: string, _opts?: { userId?: string }): Promise<string | null> => {
+        const job = jobs.find((j) => j.id === jobId);
+        if (!job) return null;
+        const newId = `${jobId}-retry`;
+        jobs.push({ ...job, id: newId, state: 'queued' });
+        jobs.splice(jobs.indexOf(job), 1);
+        return newId;
+      },
+    ),
+    submit(url: string, label?: string, opts?: { userId?: string; as?: 'playlist' | 'album' }) {
+      return this.submitMock(url, label, opts);
     },
     cancel(id: string) {
       return this.cancelMock(id);
@@ -71,8 +84,8 @@ function makeMockWatcher() {
     deleteJob(id: string) {
       return this.deleteJobMock(id);
     },
-    retryJob(id: string) {
-      return this.retryJobMock(id);
+    retryJob(id: string, opts?: { userId?: string }) {
+      return this.retryJobMock(id, opts);
     },
     getJob(id: string) {
       return jobs.find((j) => j.id === id) ?? null;
@@ -109,6 +122,42 @@ describe('acquire routes', () => {
   beforeEach(() => {
     watcher = makeMockWatcher();
     app = makeApp(watcher);
+  });
+
+  describe('playlist submission wiring', () => {
+    it('forwards the authenticated user id and `as` to the watcher on POST /', async () => {
+      const res = await app.request('/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url: 'https://archive.org/details/foo',
+          as: 'playlist',
+        }),
+      });
+      expect(res.status).toBe(201);
+      const opts = watcher.lastOpts();
+      expect(opts?.userId).toBe('user1');
+      expect(opts?.as).toBe('playlist');
+    });
+
+    it('forwards the authenticated user id on retry so ownership stays consistent', async () => {
+      watcher.jobs.push({
+        id: 'failed-job',
+        backend: 'ytdlp',
+        url: 'https://www.youtube.com/playlist?list=PLx',
+        label: null,
+        state: 'failed',
+        progress: null,
+        error: 'oops',
+        created_at: Date.now(),
+      });
+      const res = await app.request('/jobs/failed-job/retry', { method: 'POST' });
+      expect(res.status).toBe(201);
+      expect(watcher.retryJobMock).toHaveBeenCalledWith(
+        'failed-job',
+        expect.objectContaining({ userId: 'user1' }),
+      );
+    });
   });
 
   describe('listener gating', () => {
@@ -237,7 +286,10 @@ describe('acquire routes', () => {
       expect(res.status).toBe(201);
       const json = (await res.json()) as { jobId: string };
       expect(json.jobId).not.toBe('failed-job');
-      expect(watcher.retryJobMock).toHaveBeenCalledWith('failed-job');
+      expect(watcher.retryJobMock).toHaveBeenCalledWith(
+        'failed-job',
+        expect.objectContaining({ userId: 'user1' }),
+      );
     });
   });
 });

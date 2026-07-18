@@ -328,7 +328,13 @@ describe('SearchComponent — link-intent card (merged URL acquisition)', () => 
 
     await component.submitLinkIntent();
 
-    expect(acquireSubmit).toHaveBeenCalledWith('https://youtu.be/dQw4w9WgXcQ');
+    // YouTube single-watch URLs (no `&list=`) don't carry a playlist signal
+    // and aren't archive.org, so `as` is undefined here.
+    expect(acquireSubmit).toHaveBeenCalledWith(
+      'https://youtu.be/dQw4w9WgXcQ',
+      undefined,
+      { as: undefined },
+    );
   });
 
   it('surfaces a submit failure on the card instead of throwing', async () => {
@@ -461,7 +467,11 @@ describe('SearchComponent — link-intent card (merged URL acquisition)', () => 
     expect(component.linkIntent()).toEqual(
       expect.objectContaining({ url: 'https://youtu.be/dQw4w9WgXcQ', source: 'youtube' }),
     );
-    expect(acquireSubmit).toHaveBeenCalledWith('https://youtu.be/dQw4w9WgXcQ');
+    expect(acquireSubmit).toHaveBeenCalledWith(
+      'https://youtu.be/dQw4w9WgXcQ',
+      undefined,
+      { as: undefined },
+    );
   });
 
   it('dismissLinkIntent clears the card and any error', () => {

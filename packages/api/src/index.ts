@@ -389,6 +389,9 @@ export function createApp({
     },
     // Upsert one track's status into the job's tracks_json by title match —
     // fires once per track (many times per job), unlike the single-shot label.
+    // Also appends a row to acquire_job_tracks (PK (job_id, position)) with
+    // the optional `path` so the post-ingest playlist step can resolve each
+    // track to its post-scan library_song without title-collision guessing.
     emitTrack: (jobId, track) => {
       try {
         const row = db
@@ -397,7 +400,7 @@ export function createApp({
           )
           .get(jobId);
         if (!row) return;
-        let tracks: { title: string; status: TrackStatus }[] = [];
+        let tracks: { title: string; status: TrackStatus; path?: string }[] = [];
         if (row.tracks_json) {
           try {
             tracks = JSON.parse(row.tracks_json);
@@ -409,6 +412,21 @@ export function createApp({
           JSON.stringify(upsertTrackStatus(tracks, track)),
           jobId,
         ]);
+        // `path` is optional — a plugin that can't supply it (none today) just
+        // gets a title-only JSON row, with no acquire_job_tracks insert. The
+        // post-ingest step falls back to title-only matching in that case.
+        if (track.path) {
+          const next = db
+            .query<{ next: number | null }, [string]>(
+              `SELECT COALESCE(MAX(position), -1) + 1 AS next FROM acquire_job_tracks WHERE job_id = ?`,
+            )
+            .get(jobId)?.next;
+          db.run(
+            `INSERT OR REPLACE INTO acquire_job_tracks (job_id, position, title, status, path)
+             VALUES (?, ?, ?, ?, ?)`,
+            [jobId, next ?? 0, track.title, track.status, track.path],
+          );
+        }
       } catch {
         // Non-fatal — track status is best-effort.
       }

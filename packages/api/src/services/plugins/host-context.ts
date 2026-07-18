@@ -5,6 +5,7 @@ import {
   createLogger,
   type PluginHostContext,
   type PluginStorage,
+  type PluginTrackEvent,
   type TrackStatus,
 } from '@nicotind/core';
 
@@ -20,7 +21,7 @@ export interface HostContextDeps {
   /** Update the label column for an in-flight job (e.g. playlist title). */
   emitLabel?: (jobId: string, label: string) => void;
   /** Upsert one track's status into an in-flight job's per-track list. */
-  emitTrack?: (jobId: string, track: { title: string; status: TrackStatus }) => void;
+  emitTrack?: (jobId: string, track: PluginTrackEvent) => void;
 }
 
 /**
@@ -36,16 +37,17 @@ export function pluginStagingDir(dataDir: string, pluginId: string, jobId: strin
  * Upsert one track's status into a job's track list by title match: update
  * the existing entry's status in place, or append a new entry. Pure/testable
  * in isolation from the DB read/write that wraps it in `index.ts`'s
- * `emitTrack` implementation.
+ * `emitTrack` implementation. The optional `path` round-trips untouched so
+ * the post-ingest playlist step can disambiguate title collisions.
  */
 export function upsertTrackStatus(
-  tracks: { title: string; status: TrackStatus }[],
-  track: { title: string; status: TrackStatus },
-): { title: string; status: TrackStatus }[] {
+  tracks: { title: string; status: TrackStatus; path?: string }[],
+  track: { title: string; status: TrackStatus; path?: string },
+): { title: string; status: TrackStatus; path?: string }[] {
   const idx = tracks.findIndex((t) => t.title === track.title);
-  if (idx === -1) return [...tracks, track];
+  if (idx === -1) return [...tracks, { ...track }];
   const next = tracks.slice();
-  next[idx] = { ...next[idx]!, status: track.status };
+  next[idx] = { ...next[idx]!, status: track.status, path: track.path ?? next[idx]!.path };
   return next;
 }
 

@@ -136,9 +136,27 @@
           data-testid="link-intent-card"
         >
           <div class="min-w-0 flex-1">
-            <div class="flex items-center gap-2">
+            <div class="flex items-center gap-2 flex-wrap">
               <app-source-chip [source]="intent.source" [label]="intent.sourceLabel" />
               <p class="truncate text-sm text-zinc-200">{{ intent.url }}</p>
+              <!-- Archive items don't expose a playlist signal at the URL level
+                   (they're by-creator/multi-track by default), so the user has
+                   to opt in. Spotify/YouTube playlists auto-detect via the
+                   server-side classifier and skip this toggle. -->
+              @if (intent.source === 'archive' && !linkJob()) {
+                <label
+                  class="inline-flex items-center gap-1 text-[10px] uppercase tracking-wide text-theme-muted cursor-pointer"
+                  data-testid="link-intent-as-playlist"
+                >
+                  <input
+                    type="checkbox"
+                    class="accent-current"
+                    [checked]="treatAsPlaylist()"
+                    (change)="toggleTreatAsPlaylist()"
+                  />
+                  Treat as playlist
+                </label>
+              }
             </div>
             @if (linkJob()?.state === 'failed') {
               <p class="truncate text-xs text-red-400 mt-0.5">
@@ -157,14 +175,15 @@
             @switch (job.state) {
               @case ('done') {
                 <a
-                  routerLink="/library"
+                  [routerLink]="job.playlistId ? ['/library', 'playlists', job.playlistId] : '/library'"
                   class="shrink-0 px-3 py-1.5 rounded-md text-xs font-semibold"
                   style="
                     background: var(--theme-status-done-bg);
                     color: var(--theme-status-done-text);
                   "
+                  data-testid="link-intent-open"
                 >
-                  Added to library ✓ · Open
+                  {{ job.playlistId ? 'Open playlist' : 'Added to library ✓ · Open' }}
                 </a>
                 @if (job.error) {
                   <button

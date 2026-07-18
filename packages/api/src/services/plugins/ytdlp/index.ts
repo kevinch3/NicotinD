@@ -137,10 +137,14 @@ export class YtdlpPlugin implements Plugin {
       // (parseYtdlpTrackEvent): before_dl fires once a video is selected for
       // download, after_move fires once the postprocessed file lands in its
       // final location. Distinct prefixes avoid colliding with other stdout.
+      // The filename is appended (after `::`) so the post-ingest playlist
+      // step can disambiguate title collisions when the same title appears
+      // twice in one playlist (the file basenames are unique per yt-dlp
+      // run).
       '--print',
-      'before_dl:TRACK_START::%(artist)s - %(title)s',
+      'before_dl:TRACK_START::%(title)s::%(filename)s',
       '--print',
-      'after_move:TRACK_DONE::%(artist)s - %(title)s',
+      'after_move:TRACK_DONE::%(title)s::%(filename)s',
       '--output',
       outputTemplate,
       '--newline',

@@ -735,3 +735,224 @@ describe('AcquireWatcher (registry-driven)', () => {
     expect(scan).not.toHaveBeenCalled();
   });
 });
+
+// Playlist-from-acquisition flow: a Spotify/YouTube playlist URL submission
+// marks the job as `is_playlist=1` at submit time, the per-track rows land in
+// `acquire_job_tracks` (simulated here via the host context's emitTrack), and
+// the post-ingest playlist step materializes a per-user native playlist
+// containing the landed songs in download order. See
+// docs/playlist-from-acquisition.md.
+//
+// The shared fakePlugin above only handles example.com URLs and stages one
+// file. The playlist tests need a plugin that handles Spotify URLs and
+// stages 3 files (one per playlist track) at the expected staging paths so
+// the organizer's per-album move produces the right library_songs rows.
+function playlistPlugin(): Plugin {
+  return {
+    manifest: {
+      id: 'fake',
+      name: 'fake',
+      description: 'test',
+      kind: 'acquisition',
+      capabilities: ['resolve'],
+      defaultEnabled: false,
+    },
+    async init() {},
+    async isAvailable() {
+      return true;
+    },
+    resolve: {
+      // Handles Spotify URLs (playlist + album) and the example.com URL the
+      // `as: playlist` test uses — the playlist suite is small enough that
+      // one fake plugin is simpler than two.
+      canHandle: (url: string) => url.includes('spotify.com') || url.includes('example.com'),
+      resolve: async (_url: string, jobId: string) => {
+        const dir = pluginStagingDir(DATA_DIR, 'fake', jobId);
+        mkdirSync(dir, { recursive: true });
+        // Emit one file per "playlist track" so the playlist-generation
+        // tests have something to resolve. Each file lands in the
+        // staging/<artist>/<album>/<title>.<ext> shape so the organizer
+        // moves it cleanly.
+        return [
+          join(dir, 'Artist1', 'Album1', 'Song A.mp3'),
+          join(dir, 'Artist1', 'Album1', 'Song B.mp3'),
+          join(dir, 'Artist1', 'Album1', 'Song C.mp3'),
+        ];
+      },
+    },
+  };
+}
+
+describe('AcquireWatcher (playlist generation)', () => {
+  // Need a fresh users row because `playlists.user_id` has a FK.
+  function dbWithUser(db: Database, userId: string): void {
+    db.run(
+      `INSERT INTO users (id, username, password_hash, role, created_at) VALUES (?, ?, 'x', 'admin', 1)`,
+      [userId, userId],
+    );
+  }
+
+  function makePlaylistHarness(): Harness {
+    const db = new Database(':memory:');
+    applySchema(db);
+    dbWithUser(db, 'user-1');
+    const registry = new PluginRegistry({ db, dataDir: DATA_DIR });
+    const plugin = playlistPlugin();
+    registry.register(plugin);
+    // organizeBatch simulates what LibraryOrganizer would do for a playlist:
+    // set the relativePath on each file and (via the scan callback) insert a
+    // library_songs row so the post-ingest playlist step can join it. It
+    // also writes acquire_job_tracks rows — what a real plugin's
+    // `emitTrack(jobId, { title, status, path })` would produce in production.
+    const organize = mock(async (files: CompletedDownloadFile[]) => {
+      const titles = ['Song A', 'Song B', 'Song C'];
+      files.forEach((f, i) => {
+        f.relativePath = `Artist1/Album1/${titles[i] ?? `track${i + 1}`}.mp3`;
+      });
+    });
+    const scan = mock(async (relPaths: string[]) => {
+      const titles = ['Song A', 'Song B', 'Song C'];
+      // The fake plugin doesn't go through runAcquireProcess (it just returns
+      // paths), so the host-context emitTrack wiring never fires. Simulate it
+      // here by writing acquire_job_tracks rows in the order the files were
+      // submitted — that's the only thing the real host emits.
+      // (We need the jobId; in a test it's whatever the watcher assigned.
+      // Read it from the only 'running'/'queued'/'done' job — the watcher
+      // uses a uuid per submit so this works because there's only one job.)
+      const jobRow = db
+        .query<{ id: string }, []>(`SELECT id FROM acquire_jobs ORDER BY created_at DESC LIMIT 1`)
+        .get();
+      const jobId = jobRow?.id;
+      for (let i = 0; i < relPaths.length; i++) {
+        const path = relPaths[i]!;
+        db.run(
+          `INSERT INTO library_songs (id, album_id, title, artist, artist_id, path, duration, landed_at, synced_at)
+           VALUES (?, 'alb', ?, 'Artist1', 'art', ?, 100, 1, 1)`,
+          [`s${i + 1}`, titles[i] ?? `track${i + 1}`, path],
+        );
+        if (jobId) {
+          db.run(
+            `INSERT INTO acquire_job_tracks (job_id, position, title, status, path)
+             VALUES (?, ?, ?, 'done', ?)`,
+            [jobId, i, titles[i] ?? `track${i + 1}`, path.split('/').pop() ?? path],
+          );
+        }
+      }
+    });
+    const watcher = new AcquireWatcher({
+      db,
+      dataDir: DATA_DIR,
+      registry,
+      organizeBatch: organize,
+      scanIncremental: scan,
+    });
+    return { watcher, db, registry, organize, scan };
+  }
+
+  it('marks a Spotify playlist URL as is_playlist at submit time', async () => {
+    const h = makePlaylistHarness();
+    await h.registry.enable('fake', 'admin');
+    const id = await h.watcher.submit(
+      'https://open.spotify.com/playlist/abc',
+      undefined,
+      { userId: 'user-1' },
+    );
+    await waitForState(h.watcher, id, 'done');
+    expect(h.watcher.getJob(id)?.isPlaylist).toBe(true);
+  });
+
+  it('does NOT mark a Spotify album URL as is_playlist', async () => {
+    const h = makePlaylistHarness();
+    await h.registry.enable('fake', 'admin');
+    const id = await h.watcher.submit(
+      'https://open.spotify.com/album/abc',
+      undefined,
+      { userId: 'user-1' },
+    );
+    await waitForState(h.watcher, id, 'done');
+    expect(h.watcher.getJob(id)?.isPlaylist).toBe(false);
+  });
+
+  it('forces is_playlist when the caller passes `as: playlist` for an archive item', async () => {
+    const h = makePlaylistHarness();
+    await h.registry.enable('fake', 'admin');
+    const id = await h.watcher.submit(
+      'https://example.com/x',
+      undefined,
+      { userId: 'user-1', as: 'playlist' },
+    );
+    await waitForState(h.watcher, id, 'done');
+    expect(h.watcher.getJob(id)?.isPlaylist).toBe(true);
+  });
+
+  it('skips playlist generation when is_playlist but no userId (server-side guard)', async () => {
+    const h = makePlaylistHarness();
+    await h.registry.enable('fake', 'admin');
+    // Spotify playlist URL but no userId → classification would set
+    // is_playlist but the submit() guard downgrades to false.
+    const id = await h.watcher.submit('https://open.spotify.com/playlist/abc');
+    await waitForState(h.watcher, id, 'done');
+    expect(h.watcher.getJob(id)?.isPlaylist).toBe(false);
+    expect(h.watcher.getJob(id)?.playlistId).toBeNull();
+  });
+
+  it('materializes a per-user native playlist after a playlist URL completes', async () => {
+    const h = makePlaylistHarness();
+    await h.registry.enable('fake', 'admin');
+    const id = await h.watcher.submit(
+      'https://open.spotify.com/playlist/abc',
+      'My Mix',
+      { userId: 'user-1' },
+    );
+    await waitForState(h.watcher, id, 'done');
+
+    const job = h.watcher.getJob(id)!;
+    expect(job.isPlaylist).toBe(true);
+    expect(job.playlistId).toBeTruthy();
+    // The playlist was created with the user's id and the label as name.
+    const pl = h.db
+      .query<
+        { id: string; name: string; user_id: string; kind: string },
+        [string]
+      >(`SELECT id, name, user_id, kind FROM playlists WHERE id = ?`)
+      .get(job.playlistId!);
+    expect(pl?.user_id).toBe('user-1');
+    expect(pl?.name).toBe('My Mix');
+    expect(pl?.kind).toBe('user');
+    // The playlist contains the 3 landed songs in download order.
+    const songIds = h.db
+      .query<{ song_id: string }, [string]>(
+        `SELECT song_id FROM playlist_songs WHERE playlist_id = ? ORDER BY position ASC`,
+      )
+      .all(job.playlistId!)
+      .map((r) => r.song_id);
+    expect(songIds).toEqual(['s1', 's2', 's3']);
+  });
+
+  it('does not create a playlist when no tracks landed (acquisitions empty)', async () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    dbWithUser(db, 'user-1');
+    const registry = new PluginRegistry({ db, dataDir: DATA_DIR });
+    registry.register(playlistPlugin());
+    // organize that drops everything to unsorted (no relativePath set).
+    const organize = mock(async (_files: CompletedDownloadFile[]) => {});
+    const scan = mock(async () => {});
+    const watcher = new AcquireWatcher({
+      db,
+      dataDir: DATA_DIR,
+      registry,
+      organizeBatch: organize,
+      scanIncremental: scan,
+    });
+    await registry.enable('fake', 'admin');
+    const id = await watcher.submit('https://open.spotify.com/playlist/abc', 'Empty Mix', {
+      userId: 'user-1',
+    });
+    await waitForState(watcher, id, 'done');
+    expect(watcher.getJob(id)?.isPlaylist).toBe(true);
+    expect(watcher.getJob(id)?.playlistId).toBeNull();
+    const rows = db.query<{ c: number }, []>(`SELECT COUNT(*) AS c FROM playlists`).get();
+    expect(rows?.c).toBe(0);
+  });
+});

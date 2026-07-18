@@ -24,6 +24,11 @@ are deliberately undoing.
      Spotify→spotDL, yt-dlp, …).
    - `{ via: 'enqueue', sourceRef, files }` → the source's download capability
      (slskd: peer username + folder files).
+   - The URL classifier (`classifyAcquireUrl`) decides whether a `via: 'url'`
+     intent points at a **playlist** (Spotify/YouTube playlist URL, or
+     archive.org with `as: 'playlist'`) — when true, the post-ingest step
+     generates a per-user native playlist from the landed tracks.
+     See [docs/playlist-from-acquisition.md](playlist-from-acquisition.md).
 
 2. **No primary source in the UI.** Search/hunt results render as **one blended,
    ranked list**. Sources are distinguished only by a neutral chip

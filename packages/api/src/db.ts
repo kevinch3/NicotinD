@@ -406,6 +406,45 @@ export function applySchema(db: Database): void {
   } catch {
     // Column already exists — ignore
   }
+  // Marks a URL acquire job whose source URL was a *playlist* (Spotify playlist,
+  // YouTube playlist, archive.org item flagged as playlist via `as=playlist`).
+  // When 1, AcquireWatcher's post-ingest step materializes a per-user native
+  // playlist from the landed tracks in playlist order. See
+  // docs/playlist-from-acquisition.md.
+  try {
+    db.run(`ALTER TABLE acquire_jobs ADD COLUMN is_playlist INTEGER NOT NULL DEFAULT 0`);
+  } catch {
+    // Column already exists — ignore
+  }
+  // Set after the generated playlist is created; lets the Downloads card link
+  // straight to the playlist detail page. ON DELETE SET NULL so a user who
+  // removes the playlist doesn't leave a dangling reference on the job row.
+  try {
+    db.run(`ALTER TABLE acquire_jobs ADD COLUMN playlist_id TEXT REFERENCES playlists(id) ON DELETE SET NULL`);
+  } catch {
+    // Column already exists — ignore
+  }
+
+  // Per-track plugin output for URL acquire jobs, in download order. Separate
+  // from acquire_jobs.tracks_json because the post-ingest playlist step needs
+  // (title, path) in row order — the JSON column is title-only and powers the
+  // "Now:" / "Next:" card UI, which doesn't need paths. PK is (job_id,
+  // position) so retries that re-emit the same position update in place.
+  // `path` is the file basename the plugin knows it's about to write — used to
+  // resolve the post-scan library_song via basename of the organized relative
+  // path, so two tracks with identical titles in the same playlist still map
+  // to distinct song ids.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS acquire_job_tracks (
+      job_id   TEXT NOT NULL REFERENCES acquire_jobs(id) ON DELETE CASCADE,
+      position INTEGER NOT NULL,
+      title    TEXT NOT NULL,
+      status   TEXT NOT NULL,
+      path     TEXT NOT NULL,
+      PRIMARY KEY (job_id, position)
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_acquire_job_tracks_job ON acquire_job_tracks(job_id)`);
 
   // Acquisition provenance, keyed on the final on-disk path (== library_songs.path)
   // — the same join the rest of the system already uses. Records HOW (method),

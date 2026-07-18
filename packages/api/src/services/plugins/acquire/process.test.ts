@@ -187,6 +187,7 @@ describe('parseYtdlpTrackEvent', () => {
     expect(parseYtdlpTrackEvent('TRACK_START::My Song Title')).toEqual({
       title: 'My Song Title',
       status: 'downloading',
+      path: undefined,
     });
   });
 
@@ -194,6 +195,7 @@ describe('parseYtdlpTrackEvent', () => {
     expect(parseYtdlpTrackEvent('TRACK_DONE::My Song Title')).toEqual({
       title: 'My Song Title',
       status: 'done',
+      path: undefined,
     });
   });
 
@@ -201,6 +203,20 @@ describe('parseYtdlpTrackEvent', () => {
     expect(parseYtdlpTrackEvent('TRACK_START::  Padded Title  ')).toEqual({
       title: 'Padded Title',
       status: 'downloading',
+      path: undefined,
+    });
+  });
+
+  it('extracts the filename when present after a second "::" separator', () => {
+    expect(parseYtdlpTrackEvent('TRACK_START::My Song Title::track01.opus')).toEqual({
+      title: 'My Song Title',
+      status: 'downloading',
+      path: 'track01.opus',
+    });
+    expect(parseYtdlpTrackEvent('TRACK_DONE::My Song Title::track01.opus')).toEqual({
+      title: 'My Song Title',
+      status: 'done',
+      path: 'track01.opus',
     });
   });
 

@@ -27,6 +27,16 @@ export function resolveAlbumRoute(albumId: string | undefined): string[] {
   return ['/library', 'albums', albumId];
 }
 
+/**
+ * Deep-link target for a native playlist generated from a playlist-classified
+ * acquire job (Spotify playlist, YouTube playlist, archive.org with
+ * `as=playlist`). See docs/playlist-from-acquisition.md.
+ */
+export function resolvePlaylistRoute(playlistId: string | undefined): string[] {
+  if (!playlistId) return ['/library'];
+  return ['/library', 'playlists', playlistId];
+}
+
 export function resolveGenreRoute(genreSlug: string | undefined): string[] {
   if (!genreSlug) return ['/library'];
   return ['/library', 'genres', genreSlug];
