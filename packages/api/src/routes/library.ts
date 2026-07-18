@@ -47,6 +47,7 @@ import {
   writeFolderCover,
 } from '../services/cover-sources.js';
 import { pruneOrphanArtist } from '../services/library-aggregates.js';
+import { checkFragments } from '../services/library-fragments.js';
 import { songOrderBy } from '../services/song-sort.js';
 import { attachSongArtists, attachAlbumArtists } from '../services/artist-attach.js';
 import type {
@@ -1340,6 +1341,17 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     if (!runSync) return c.json({ error: 'Sync not available' }, 503);
     await runSync();
     return c.json({ ok: true });
+  });
+
+  // Library fragmentation diagnostic. The detector runs over `library_albums`
+  // and surfaces three classes of defects that turn "all my tracks are present"
+  // into "but I can't find the album": same-release rows split across artist
+  // spellings, rows hidden from the grid by `hidden`/`classification`, and
+  // one-track-per-release mis-splits. The web's Admin panel and the CLI
+  // `scripts/check-fragments.ts` both consume this — see `docs/library-scanner.md`.
+  app.get('/fragments', (c) => {
+    requireAdmin(c);
+    return c.json(checkFragments(getDatabase()));
   });
 
   // --- Songs --------------------------------------------------------------------

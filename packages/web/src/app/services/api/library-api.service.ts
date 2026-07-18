@@ -15,6 +15,7 @@ import type {
 } from '@nicotind/core';
 import { serializeLibraryFilter, isEmptyLibraryFilter } from '@nicotind/core';
 import type { Album, AlbumDetail, Song, ProvenanceRecord } from './api-types';
+import type { LibraryFragmentReport } from './api-types';
 
 type QueryParams = Record<string, string | number | boolean | string[]>;
 
@@ -144,6 +145,18 @@ export class LibraryApiService {
   }
   resyncLibrary() {
     return this.http.post<{ ok: boolean }>(`/api/library/sync`, {});
+  }
+  /**
+   * Library fragmentation report (admin). Three classes of defects that turn
+   * "all tracks are present" into "album never surfaces":
+   *  1. duplicate-albums (same release, distinct artist spellings → alias fix);
+   *  2. hidden-by-classification (rows the default Albums grid omits);
+   *  3. mis-split (one-track-per-title clusters; existing audit re-emitted).
+   * Consumed by the Admin → Library panel and the `scripts/check-fragments.ts`
+   * CLI gate. → `docs/library-scanner.md` "Fragmentation diagnostic".
+   */
+  getFragments(): Observable<LibraryFragmentReport> {
+    return this.http.get<LibraryFragmentReport>(`/api/library/fragments`);
   }
   /**
    * User-corrected artist identity (admin): mark a compound one act, force-split it,

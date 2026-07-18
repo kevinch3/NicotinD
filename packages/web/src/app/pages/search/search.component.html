@@ -346,6 +346,43 @@
     </section>
   }
 
+  <!-- In your library — local library albums the search matched on the user's
+       own library. Visible to every role (incl. listener) so "album is in my
+       library" always answers itself, independent of Lidarr availability. Click
+       an album card → existing /library/albums/:id detail page (same anchor as
+       the album grid, so muscle memory carries over). -->
+  @if (!loading() && libraryAlbums().length > 0) {
+    <section class="mt-2" data-testid="library-albums">
+      <h2 class="text-xs font-semibold uppercase tracking-wide text-zinc-500 mb-3">
+        In your library
+      </h2>
+      <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+        @for (album of libraryAlbums(); track album.id) {
+          <a
+            [routerLink]="['/library/albums', album.id]"
+            [attr.data-album-id]="album.id"
+            class="group p-2 rounded-lg bg-theme-surface/30 hover:bg-theme-surface-2/50 transition text-left break-inside-avoid"
+          >
+            <app-cover-art
+              [src]="album.coverArt ? '/api/cover/' + album.coverArt + '?size=300&token=' + auth.token() : undefined"
+              [artist]="album.artist"
+              [album]="album.name"
+              [fill]="true"
+              rounded="rounded"
+              className="mb-2"
+            />
+            <p class="text-sm truncate" style="color: var(--theme-text-primary)">
+              {{ album.name }}
+            </p>
+            <p class="text-xs truncate" style="color: var(--theme-text-muted)">
+              {{ album.artist }}{{ album.year ? ' · ' + album.year : '' }}{{ album.classification && album.classification !== 'album' ? ' · ' + album.classification : '' }}{{ album.songCount != null ? ' · ' + album.songCount + ' ' + (album.songCount === 1 ? 'track' : 'tracks') : '' }}
+            </p>
+          </a>
+        }
+      </div>
+    </section>
+  }
+
   <!-- Songs — library-only track results (the track finder) -->
   @if (!loading() && librarySongs().length > 0) {
     <section class="mt-2">

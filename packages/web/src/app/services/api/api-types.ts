@@ -43,6 +43,8 @@ export interface SearchResult {
       coverArt?: string;
       songCount?: number;
       year?: number;
+      classification?: 'album' | 'ep' | 'single' | 'compilation' | 'unknown';
+      artists?: ArtistCredit[];
     }>;
     songs: Array<{
       id: string;
@@ -199,9 +201,7 @@ export interface DiskUsage {
 }
 
 export type BrowseJobResult =
-  | { state: 'pending' }
-  | { state: 'complete'; dirs: UserDir[] }
-  | { state: 'error'; error: string };
+  { state: 'pending' } | { state: 'complete'; dirs: UserDir[] } | { state: 'error'; error: string };
 
 export interface AdminUser {
   id: string;
@@ -411,4 +411,45 @@ export interface PairedDevice {
   createdAt: number;
   lastSeenAt: number | null;
   current: boolean;
+}
+
+// ── Library fragmentation diagnostic (admin) ──────────────────────────────
+//
+// `GET /api/library/fragments` reports the three defect classes that turn
+// "all tracks are present in the library" into "the album card never
+// surfaces" — same-release rows split across album-artist spellings, rows
+// hidden from the grid by `hidden`/`classification`, and one-track-per-title
+// mis-splits. The Admin panel + `scripts/check-fragments.ts` CLI both render
+// this shape. → `docs/library-scanner.md` "Fragmentation diagnostic".
+
+export interface LibraryDuplicateAlbumCluster {
+  normalizedTitle: string;
+  displayTitle: string;
+  memberIds: string[];
+  artistSpellings: Array<{ name: string; occurrences: number }>;
+  totalSongs: number;
+}
+
+export interface LibraryHiddenByClassification {
+  albumId: string;
+  name: string;
+  artist: string;
+  classification: string;
+  hidden: boolean;
+  reason: 'hidden' | 'classification';
+}
+
+export interface LibraryFragmentFinding {
+  rule: string;
+  severity: 'high' | 'medium' | 'low';
+  subject: string;
+  message: string;
+}
+
+export interface LibraryFragmentReport {
+  duplicateAlbums: LibraryDuplicateAlbumCluster[];
+  hiddenByClassification: LibraryHiddenByClassification[];
+  misSplitAlbums: LibraryFragmentFinding[];
+  totals: { duplicateAlbums: number; hiddenByClassification: number; misSplitAlbums: number };
+  ok: boolean;
 }

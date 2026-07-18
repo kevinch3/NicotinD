@@ -5,7 +5,12 @@ import { AdminComponent } from './admin.component';
 import { DownloadsApiService } from '../../services/api/downloads-api.service';
 import { SystemApiService } from '../../services/api/system-api.service';
 import { LibraryApiService } from '../../services/api/library-api.service';
-import type { AdminUser, AlbumJob, UntrackedDownload } from '../../services/api/api-types';
+import type {
+  AdminUser,
+  AlbumJob,
+  UntrackedDownload,
+  LibraryFragmentReport,
+} from '../../services/api/api-types';
 import { AuthService } from '../../services/auth.service';
 import { TransferService } from '../../services/transfer.service';
 
@@ -28,21 +33,31 @@ describe('AdminComponent (incomplete albums + untracked)', () => {
   const listAlbumJobs = vi.fn(() => of({ jobs: [] as AlbumJob[] }));
   const getUntrackedDownloads = vi.fn(() => of({ total: 0, rows: [] as UntrackedDownload[] }));
   const resyncLibrary = vi.fn(() => of({ ok: true }));
+  const emptyFragments: LibraryFragmentReport = {
+    duplicateAlbums: [],
+    hiddenByClassification: [],
+    misSplitAlbums: [],
+    totals: { duplicateAlbums: 0, hiddenByClassification: 0, misSplitAlbums: 0 },
+    ok: true,
+  };
+  const getFragments = vi.fn(() => of(emptyFragments));
 
   beforeEach(async () => {
     listAlbumJobs.mockClear();
     getUntrackedDownloads.mockClear();
     resyncLibrary.mockClear();
+    getFragments.mockClear();
     listAlbumJobs.mockReturnValue(of({ jobs: [] }));
     getUntrackedDownloads.mockReturnValue(of({ total: 0, rows: [] }));
     resyncLibrary.mockReturnValue(of({ ok: true }));
+    getFragments.mockReturnValue(of(emptyFragments));
 
     await TestBed.configureTestingModule({
       imports: [AdminComponent],
       providers: [
         { provide: DownloadsApiService, useValue: { listAlbumJobs, getUntrackedDownloads } },
         { provide: SystemApiService, useValue: {} },
-        { provide: LibraryApiService, useValue: { resyncLibrary } },
+        { provide: LibraryApiService, useValue: { resyncLibrary, getFragments } },
         { provide: AuthService, useValue: { token: () => null } },
         { provide: TransferService, useValue: { poll: vi.fn() } },
       ],
@@ -122,6 +137,50 @@ describe('AdminComponent (incomplete albums + untracked)', () => {
     expect(c.syncing()).toBe(false);
     expect(c.syncMsg()).toBe('boom');
   });
+
+  it('loadFragments populates the report signal on success', async () => {
+    getFragments.mockReturnValueOnce(
+      of({
+        duplicateAlbums: [
+          {
+            normalizedTitle: 'idolo',
+            displayTitle: 'Ídolo',
+            memberIds: ['a', 'b'],
+            artistSpellings: [{ name: 'C. Tangana', occurrences: 1 }],
+            totalSongs: 7,
+          },
+        ],
+        hiddenByClassification: [
+          {
+            albumId: 'h1',
+            name: 'Hidden',
+            artist: 'X',
+            classification: 'single',
+            hidden: false,
+            reason: 'classification',
+          },
+        ],
+        misSplitAlbums: [],
+        totals: { duplicateAlbums: 1, hiddenByClassification: 1, misSplitAlbums: 0 },
+        ok: false,
+      }),
+    );
+    const c = create();
+    await c.loadFragments();
+    expect(getFragments).toHaveBeenCalled();
+    expect(c.fragments()?.ok).toBe(false);
+    expect(c.fragments()?.duplicateAlbums).toHaveLength(1);
+    expect(c.loadingFragments()).toBe(false);
+  });
+
+  it('loadFragments surfaces an error message on failure', async () => {
+    getFragments.mockReturnValueOnce(throwError(() => new Error('boom')));
+    const c = create();
+    await c.loadFragments();
+    expect(c.loadingFragments()).toBe(false);
+    expect(c.fragmentsError()).toBe('boom');
+    expect(c.fragments()).toBeNull();
+  });
 });
 
 // Full render pass validating the sections moved in from Settings (streaming,
@@ -195,7 +254,7 @@ describe('AdminComponent (moved admin panels render)', () => {
     fixture.destroy();
   });
 
-  it('reflects each user\'s current role in the role select (not the first option)', async () => {
+  it("reflects each user's current role in the role select (not the first option)", async () => {
     const mkUser = (id: string, username: string, role: string): AdminUser => ({
       id,
       username,

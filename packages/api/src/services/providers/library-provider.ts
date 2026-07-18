@@ -35,14 +35,29 @@ export class LibrarySearchProvider implements ISearchProvider {
 
     const albums = this.db
       .query<
-        { id: string; name: string; artist: string; year: number | null; cover_art: string | null },
+        {
+          id: string;
+          name: string;
+          artist: string;
+          year: number | null;
+          cover_art: string | null;
+          song_count: number;
+          classification: string;
+        },
         [string, string]
       >(
-        // Exclude quarantined albums (any un-landed track) — not in the library yet.
-        `SELECT id, name, artist, year, cover_art FROM library_albums
+        // Surface every visible, non-quarantined album whose title OR
+        // album-artist matches the query — including the EPs/singles/compilations
+        // the default Albums grid omits (the search page has its own section
+        // rendering, so classification != 'album' is fine). Higher LIMIT than
+        // songs because albums are smaller units of intent and users come here
+        // to navigate; the web can paginate/scroll. Quarantined albums (any
+        // un-landed track) are excluded — not "in your library" yet.
+        `SELECT id, name, artist, year, cover_art, song_count, classification
+         FROM library_albums
          WHERE hidden = 0 AND (name LIKE ? ESCAPE '\\' OR artist LIKE ? ESCAPE '\\') COLLATE NOCASE
            AND id NOT IN (SELECT DISTINCT album_id FROM library_songs WHERE landed_at IS NULL)
-         ORDER BY name COLLATE NOCASE LIMIT 10`,
+         ORDER BY name COLLATE NOCASE LIMIT 20`,
       )
       .all(like, like)
       .map((r) => ({
@@ -51,6 +66,8 @@ export class LibrarySearchProvider implements ISearchProvider {
         artist: r.artist,
         year: r.year ?? undefined,
         coverArt: r.cover_art ?? undefined,
+        songCount: r.song_count,
+        classification: r.classification as 'album' | 'ep' | 'single' | 'compilation' | 'unknown',
       }));
 
     const songs = this.db
