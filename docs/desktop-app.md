@@ -160,6 +160,17 @@ keep the backend/bun/ffmpeg as real executables outside the asar; **linux** → 
 (`packages/web/public/icons/icon-512.png` → `build/icon.png`; a dedicated desktop icon is a
 follow-up). `publish: github (kevinch3/NicotinD)`.
 
+> **The deb target needs an explicit `artifactName`.** electron-builder's default deb
+> filename is `${name}_${version}_${arch}.${ext}`, and our package `name` is the *scoped*
+> `@nicotind/desktop` — fpm reads the `/` as a path separator and dies with
+> *"Parent directory does not exist: release/@nicotind"*, failing the whole `desktop-linux`
+> job (silently, since it's `continue-on-error`). Fixed by `deb.artifactName:
+> ${productName}_${version}_${arch}.${ext}` (→ `NicotinD_<v>_amd64.deb`). AppImage was
+> unaffected because its default already uses `${productName}`. Verified end-to-end on a
+> real Linux desktop: `bunx electron-builder --linux` produces both AppImage + deb, and the
+> **packaged** AppImage boots the full Variant-B sidecar chain (bundled `bun` runs the
+> staged backend, binds a loopback port, `/api/health` answers, the SPA renders).
+
 ### macOS is ad-hoc signed (v1 — no Developer ID)
 
 The dmg carries an **ad-hoc signature**: no `identity` key in `electron-builder.yml` plus
