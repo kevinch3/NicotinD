@@ -906,10 +906,9 @@ describe('album deletion', () => {
     expect(res.status).toBe(200);
 
     const artist = sharedDb
-      .query<
-        { album_count: number },
-        []
-      >(`SELECT album_count FROM library_artists WHERE id = 'art-multi'`)
+      .query<{ album_count: number }, []>(
+        `SELECT album_count FROM library_artists WHERE id = 'art-multi'`,
+      )
       .get();
     expect(artist).not.toBeNull();
     expect(artist?.album_count).toBe(1);
@@ -1275,9 +1274,7 @@ describe('library metadata filters', () => {
     seedSong('s1', { albumId: 'a-hit', bpm: 125, genre: 'House', year: 1995 });
     seedSong('s2', { albumId: 'a-miss', bpm: 125, genre: 'House', year: 2005 });
 
-    expect(await ids('/albums?bpmMin=120&bpmMax=130&genre=House&yearMax=1999')).toEqual([
-      'a-hit',
-    ]);
+    expect(await ids('/albums?bpmMin=120&bpmMax=130&genre=House&yearMax=1999')).toEqual(['a-hit']);
   });
 
   it('GET /singles and /compilations accept the same filter params', async () => {
@@ -1408,5 +1405,115 @@ describe('library metadata filters', () => {
 
       expect(await ids('/artists')).toEqual(['real']);
     });
+  });
+});
+
+describe('GET /fragments (library fragmentation diagnostic)', () => {
+  const testDb = new Database(':memory:');
+  applySchema(testDb);
+
+  beforeEach(() => {
+    testDb.run('DELETE FROM library_song_genres');
+    testDb.run('DELETE FROM library_album_artists');
+    testDb.run('DELETE FROM library_song_artists');
+    testDb.run('DELETE FROM library_albums');
+    testDb.run('DELETE FROM library_artists');
+    mock.module('../db.js', () => ({ getDatabase: () => testDb, applySchema }));
+  });
+
+  afterEach(() => {
+    mock.module('../db.js', () => ({ getDatabase: () => sharedDb, applySchema }));
+  });
+
+  function seedArtist(id: string, name: string, albumCount = 1): void {
+    testDb.run(
+      `INSERT INTO library_artists (id, name, album_count, synced_at) VALUES (?, ?, ?, 1)`,
+      [id, name, albumCount],
+    );
+  }
+
+  function seedAlbum(
+    id: string,
+    name: string,
+    artist: string,
+    artistId: string,
+    options: { songCount?: number; classification?: string; hidden?: number } = {},
+  ): void {
+    testDb.run(
+      `INSERT INTO library_albums
+        (id, name, artist, artist_id, song_count, classification, hidden, synced_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 1)`,
+      [
+        id,
+        name,
+        artist,
+        artistId,
+        options.songCount ?? 5,
+        options.classification ?? 'album',
+        options.hidden ?? 0,
+      ],
+    );
+  }
+
+  it('reports ok:true when the library is clean', async () => {
+    seedArtist('a1', 'Soda Stereo');
+    seedAlbum('al1', 'Dynamo', 'Soda Stereo', 'a1', { songCount: 9, classification: 'album' });
+    const app = new Hono<AuthEnv>();
+    app.use('*', (c, next) => {
+      c.set('user', { sub: 'u', role: 'admin', iat: 0, exp: 9999999999 });
+      return next();
+    });
+    app.route('/', libraryRoutes());
+    const res = await app.request('/fragments');
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: boolean; totals: { duplicateAlbums: number } };
+    expect(body.ok).toBe(true);
+    expect(body.totals.duplicateAlbums).toBe(0);
+  });
+
+  it('detects an album split across artist spellings', async () => {
+    // Real prod case: same release, artist tagged with a different apostrophe.
+    // Both fold to "lakonga" but the scanner keeps the punctuation distinct.
+    seedArtist('a1', 'La Konga');
+    seedArtist('a2', "La K'onga");
+    seedAlbum('al1', 'Universo Paralelo', 'La Konga', 'a1', { songCount: 4 });
+    seedAlbum('al2', 'Universo Paralelo', "La K'onga", 'a2', { songCount: 5 });
+    const app = new Hono<AuthEnv>();
+    app.use('*', (c, next) => {
+      c.set('user', { sub: 'u', role: 'admin', iat: 0, exp: 9999999999 });
+      return next();
+    });
+    app.route('/', libraryRoutes());
+    const res = await app.request('/fragments');
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      ok: boolean;
+      duplicateAlbums: Array<{
+        normalizedTitle: string;
+        memberIds: string[];
+        artistSpellings: Array<{ name: string; occurrences: number }>;
+        totalSongs: number;
+      }>;
+      totals: { duplicateAlbums: number };
+    };
+    expect(body.ok).toBe(false);
+    expect(body.totals.duplicateAlbums).toBe(1);
+    expect(body.duplicateAlbums[0]!.normalizedTitle).toBe('universo paralelo');
+    expect(body.duplicateAlbums[0]!.memberIds.sort()).toEqual(['al1', 'al2']);
+    expect(body.duplicateAlbums[0]!.totalSongs).toBe(9);
+    expect(body.duplicateAlbums[0]!.artistSpellings).toHaveLength(2);
+  });
+
+  it('403s for a non-admin caller', async () => {
+    seedArtist('a1', 'Soda Stereo');
+    seedAlbum('al1', 'Dynamo', 'Soda Stereo', 'a1', { songCount: 9, classification: 'album' });
+    const app = new Hono<AuthEnv>();
+    app.use('*', (c, next) => {
+      c.set('user', { sub: 'u', role: 'user', iat: 0, exp: 9999999999 });
+      return next();
+    });
+    app.route('/', libraryRoutes());
+    const res = await app.request('/fragments');
+    expect(res.status).toBe(403);
   });
 });

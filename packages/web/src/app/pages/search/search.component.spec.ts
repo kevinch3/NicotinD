@@ -238,6 +238,43 @@ describe('SearchComponent — metadata-driven search', () => {
     expect(component.hasBlendedResults()).toBe(true);
   });
 
+  it('populates libraryAlbums from the unified-search payload so own-library matches surface as cards', async () => {
+    const localAlbum = {
+      id: 'loc-album-1',
+      name: 'Ídolo',
+      artist: 'C. Tangana',
+      year: 2021,
+      coverArt: 'loc-album-1',
+      songCount: 11,
+      classification: 'album',
+    };
+    const { component, search } = setup({
+      search: () =>
+        of({
+          searchId: '11111111-1111-1111-1111-111111111111',
+          errors: [],
+          networkAvailable: false,
+          local: { artists: [], albums: [localAlbum], songs: [] },
+        }),
+    });
+    search.setQuery('C. Tangana Ídolo');
+
+    component.handleSearch(new Event('submit'));
+    await flush();
+
+    expect(component.libraryAlbums()).toEqual([localAlbum]);
+  });
+
+  it('falls back to an empty libraryAlbums set when the search payload omits it', async () => {
+    const { component, search } = setup();
+    search.setQuery('c. tangana');
+
+    component.handleSearch(new Event('submit'));
+    await flush();
+
+    expect(component.libraryAlbums()).toEqual([]);
+  });
+
   it('getBlended submits a url candidate through the acquire pipeline and marks it added to library', async () => {
     const { component, acquireSubmit } = setup();
     const candidate = {

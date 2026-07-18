@@ -14,6 +14,7 @@ import type {
   StreamingSettings,
   QuarantineAlbum,
   SongSteps,
+  LibraryFragmentReport,
 } from '../../services/api/api-types';
 import { AuthService } from '../../services/auth.service';
 import { ServerConfigService } from '../../services/server-config.service';
@@ -119,6 +120,32 @@ export class AdminComponent implements OnInit, OnDestroy {
     }
   }
 
+  // Library fragmentation diagnostic (`GET /api/library/fragments`) — surfaces
+  // "tracks are present but no album card surfaces" defects: same-release rows
+  // split across album-artist spellings (alias fix + rescan), rows hidden from
+  // the grid by `classification`/`hidden` (reclassify or unhide), and one-track
+  // mis-splits (existing audit re-emitted). See docs/library-scanner.md
+  // "Fragmentation diagnostic".
+  readonly loadingFragments = signal(false);
+  readonly fragments = signal<LibraryFragmentReport | null>(null);
+  readonly fragmentsError = signal<string | null>(null);
+
+  async loadFragments(): Promise<void> {
+    if (this.loadingFragments()) return;
+    this.loadingFragments.set(true);
+    this.fragmentsError.set(null);
+    try {
+      this.fragments.set(await firstValueFrom(this.libraryApi.getFragments()));
+    } catch (err) {
+      this.fragmentsError.set(
+        err instanceof Error ? err.message : 'Failed to load fragmentation report.',
+      );
+      this.fragments.set(null);
+    } finally {
+      this.loadingFragments.set(false);
+    }
+  }
+
   // --- Streaming / transcoding (moved from Settings) ---
   readonly streaming = signal<StreamingSettings | null>(null);
   readonly streamingSaving = signal(false);
@@ -137,7 +164,13 @@ export class AdminComponent implements OnInit, OnDestroy {
   readonly quarantineQueue = signal<QuarantineAlbum[]>([]);
   /** The processing steps shown as per-track badges, typed as `keyof SongSteps`
    *  so the template can index `song.steps[step]` without an `$any` cast. */
-  readonly stepKeys = ['bpm', 'key', 'energy', 'genre', 'mood'] as const satisfies (keyof SongSteps)[];
+  readonly stepKeys = [
+    'bpm',
+    'key',
+    'energy',
+    'genre',
+    'mood',
+  ] as const satisfies (keyof SongSteps)[];
   // A user pressed "Run now" and we're waiting for the run to settle so we can
   // toast its outcome. `sawRunning` guards against toasting a no-op/priming frame.
   private awaitingRun = false;
@@ -544,7 +577,11 @@ export class AdminComponent implements OnInit, OnDestroy {
     if (!status) return 'text-theme-muted';
     const health = status[svc];
     const connected = health.connected;
-    return connected ? 'text-status-done' : health.healthy ? 'text-status-warn' : 'text-status-error';
+    return connected
+      ? 'text-status-done'
+      : health.healthy
+        ? 'text-status-warn'
+        : 'text-status-error';
   }
 
   getDotColor(svc: 'slskd'): string {

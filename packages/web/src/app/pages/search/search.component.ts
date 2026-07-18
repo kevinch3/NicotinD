@@ -49,6 +49,7 @@ import { FolderBrowserComponent } from '../../components/folder-browser/folder-b
 import { AlbumHuntModalComponent } from '../../components/album-hunt-modal/album-hunt-modal.component';
 import { TrackRowComponent } from '../../components/track-row/track-row.component';
 import { SourceChipComponent } from '../../components/source-chip/source-chip.component';
+import { CoverArtComponent } from '../../components/cover-art/cover-art.component';
 import { toTrack } from '../../lib/track-utils';
 import { extractSharedUrl } from '../../lib/share-url';
 import { httpErrorMessage, httpErrorCode } from '../../lib/http-error';
@@ -70,6 +71,23 @@ interface LibrarySong {
   duration?: number;
   coverArt?: string;
   track?: number;
+}
+
+/**
+ * Lighter album shape returned by the unified search's local results. The API
+ * surface comes from `LibrarySearchProvider` (library-provider.ts); rendering
+ * these directly navigates to the existing `/library/albums/:id` detail page
+ * (matches the album-card click in `/library`, so muscle memory carries over).
+ */
+interface LibraryAlbumHit {
+  id: string;
+  name: string;
+  artist: string;
+  year?: number;
+  coverArt?: string;
+  songCount?: number;
+  classification?: 'album' | 'ep' | 'single' | 'compilation' | 'unknown';
+  artists?: Array<{ id: string; name: string; role: 'primary' | 'featuring' }>;
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────
@@ -206,6 +224,7 @@ function escapeHtml(text: string): string {
     AlbumHuntModalComponent,
     TrackRowComponent,
     SourceChipComponent,
+    CoverArtComponent,
   ],
   templateUrl: './search.component.html',
 })
@@ -248,6 +267,18 @@ export class SearchComponent implements OnInit, OnDestroy {
   readonly catalogUnavailable = signal(false); // Lidarr not configured / lookup failed
   // Local library songs (the "Songs" section) from the unified search.
   readonly librarySongs = signal<LibrarySong[]>([]);
+  /**
+   * Local library albums (the "In your library" section) from the same
+   * unified-search payload. The API already returns these (`LibrarySearchProvider`
+   * queries `library_albums`); previously the web read only `.songs` and let
+   * the catalog lane own the "Albums" surface. Surfacing local hits here too
+   * means a search for an album that's already downloaded returns as an album
+   * card, even when Lidarr is unreachable or has no metadata match — fixes the
+   * "tracks are present but the album card never appears" gap.
+   * Visible to every role (incl. listener) — the local library is the source
+   * of truth for everything you've acquired, regardless of acquisition source.
+   */
+  readonly libraryAlbums = signal<LibraryAlbumHit[]>([]);
   readonly resolvingAlbum = signal<string | null>(null); // foreignAlbumId being resolved
   readonly resolveError = signal<string | null>(null);
   readonly directSearchOpen = signal(false);
@@ -864,6 +895,7 @@ export class SearchComponent implements OnInit, OnDestroy {
     this.catalog.set(null);
     this.catalogUnavailable.set(false);
     this.librarySongs.set([]);
+    this.libraryAlbums.set([]);
   }
 
   private async executeSearch(opts?: { forceDirectOpen?: boolean }): Promise<void> {
@@ -895,6 +927,7 @@ export class SearchComponent implements OnInit, OnDestroy {
       const res = await firstValueFrom(this.api.search(query));
       this.searchId.set(res.searchId);
       this.librarySongs.set(res.local?.songs ?? []);
+      this.libraryAlbums.set(res.local?.albums ?? []);
       this.errors.set(res.errors ?? []);
       this.networkAvailable.set(res.networkAvailable ?? false);
       this.search.setNetworkState(res.networkAvailable ? 'searching' : 'complete');
