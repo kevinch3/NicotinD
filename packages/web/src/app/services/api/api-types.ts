@@ -383,6 +383,7 @@ export interface QuarantineAlbum {
 export type RemoteAccessState =
   | { kind: 'not-installed' }
   | { kind: 'needs-login'; authUrl?: string }
+  | { kind: 'needs-operator'; command: string }
   | { kind: 'funnel-not-enabled'; enableUrl?: string }
   | { kind: 'inactive'; publicUrl?: string }
   | { kind: 'active'; publicUrl: string }

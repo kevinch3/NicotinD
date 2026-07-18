@@ -32,8 +32,10 @@ export class DevicesComponent implements OnInit, OnDestroy {
   readonly remote = signal<RemoteAccessStatus | null>(null);
   readonly busy = signal(false);
   readonly error = signal('');
+  readonly copied = signal(false);
 
   private countdown: ReturnType<typeof setInterval> | null = null;
+  private copiedTimer: ReturnType<typeof setTimeout> | null = null;
 
   ngOnInit(): void {
     this.regenerate();
@@ -48,6 +50,7 @@ export class DevicesComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     if (this.countdown) clearInterval(this.countdown);
+    if (this.copiedTimer) clearTimeout(this.copiedTimer);
   }
 
   regenerate(): void {
@@ -104,8 +107,19 @@ export class DevicesComponent implements OnInit, OnDestroy {
   toggleRemoteAccess(): void {
     const current = this.remote();
     if (!current || this.busy()) return;
+    this.setRemoteAccess(!current.enabled);
+  }
+
+  /** Re-arm after the user completed a guided step (operator/login/funnel
+   * approval) without making them toggle Off and On. */
+  retryRemoteAccess(): void {
+    if (this.busy()) return;
+    this.setRemoteAccess(true);
+  }
+
+  private setRemoteAccess(enabled: boolean): void {
     this.busy.set(true);
-    this.api.setRemoteAccess(!current.enabled).subscribe({
+    this.api.setRemoteAccess(enabled).subscribe({
       next: (status) => {
         this.remote.set(status);
         this.busy.set(false);
@@ -116,6 +130,14 @@ export class DevicesComponent implements OnInit, OnDestroy {
         this.busy.set(false);
         this.error.set('Could not update remote access');
       },
+    });
+  }
+
+  copyCommand(command: string): void {
+    void navigator.clipboard?.writeText(command).then(() => {
+      this.copied.set(true);
+      if (this.copiedTimer) clearTimeout(this.copiedTimer);
+      this.copiedTimer = setTimeout(() => this.copied.set(false), 1500);
     });
   }
 

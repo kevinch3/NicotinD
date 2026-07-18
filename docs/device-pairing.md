@@ -60,10 +60,26 @@ admin-only):
 |---|---|---|
 | `not-installed` | no tailscale CLI found | link to tailscale.com/download |
 | `needs-login` | installed, logged out | "Sign in to Tailscale" (authUrl from `status --json` when present) |
+| `needs-operator` | Linux: serve/funnel config is root-only until the one-time operator grant | shows the exact `sudo tailscale set --operator=<user>` command + Copy + Retry |
 | `funnel-not-enabled` | funnel node attribute unapproved | "Approve Funnel" (enable URL parsed from CLI stderr) |
 | `inactive` | logged in, remote access off | — |
 | `active` | funnel armed | shows the public URL |
 | `error` | anything else | raw CLI detail surfaced |
+
+### Linux: one-time operator setup (`needs-operator`)
+
+On Linux, tailscaled's control socket is root-owned and it refuses serve/funnel
+config changes from a non-root, non-operator user ("Access denied: serve config
+denied … use 'sudo tailscale set --operator=$USER' once"). That single sudo is
+unavoidable — it's tailscaled's own security policy — but it is genuinely
+one-time: after it, NicotinD arms/disarms the funnel sudo-free forever.
+`parseOperatorDenied` promotes this exact failure into the `needs-operator`
+state; the server resolves the username itself (`os.userInfo().username` — the
+user the backend, and hence the CLI, runs as) so the UI shows a copy-pasteable
+one-liner plus a **Retry** that re-arms (`setEnabled(true)` is idempotent)
+without toggling Off/On. macOS's GUI Tailscale runs per-user and doesn't hit
+this. Possible future auto-fix: a desktop-only `pkexec` (polkit) prompt that
+runs the grant for the user.
 
 Parsers (`parseTailscaleStatus`, `parseFunnelEnableUrl`) are pure and
 version-tolerant — CLI output drift degrades to `error {detail}`, never a
