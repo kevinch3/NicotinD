@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.222](https://github.com/kevinch3/NicotinD/compare/v0.1.221...v0.1.222) (2026-07-18)
+
+
+### Features
+
+* link a phone by QR + remote access via Tailscale Funnel ([76b5bc7](https://github.com/kevinch3/NicotinD/commit/76b5bc7f0578f5217b409c0e7db796a1efede003))
+
 ## [0.1.221](https://github.com/kevinch3/NicotinD/compare/v0.1.220...v0.1.221) (2026-07-17)
 
 
