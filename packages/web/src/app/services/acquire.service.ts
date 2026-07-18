@@ -7,13 +7,29 @@ export type AcquireBackend = 'ytdlp' | 'spotdl';
 
 export interface AcquireJob {
   id: string;
-  backend: AcquireBackend;
+  backend: AcquireBackend | string;
   url: string;
   label: string | null;
   state: 'queued' | 'running' | 'done' | 'failed';
   progress: { done: number; total: number } | null;
   error: string | null;
   created_at: number;
+  /** True when the URL was classified as a playlist (Spotify/YouTube playlist,
+   * archive.org with `as=playlist`). Set by the server at submit time. */
+  isPlaylist?: boolean;
+  /** Native playlist id generated from a playlist-classified acquire job, set
+   * after the post-ingest playlist step runs. Lets the link-intent card
+   * deep-link straight to the playlist detail page. */
+  playlistId?: string | null;
+}
+
+export interface AcquireSubmitOptions {
+  /**
+   * Archive.org override: the URL alone doesn't carry a playlist signal, so
+   * the link-intent card exposes a "Treat as playlist" toggle. Only honored
+   * for archive.org items; other sources ignore it.
+   */
+  as?: 'playlist' | 'album';
 }
 
 @Injectable({ providedIn: 'root' })
@@ -33,9 +49,9 @@ export class AcquireService {
   // (no toast). Matches TransferService.hasPolled.
   private hasRefreshed = false;
 
-  async submit(url: string, backend?: AcquireBackend): Promise<string> {
+  async submit(url: string, backend?: AcquireBackend, opts: AcquireSubmitOptions = {}): Promise<string> {
     const res = await firstValueFrom(
-      this.http.post<{ jobId: string }>('/api/acquire', { url, backend }),
+      this.http.post<{ jobId: string }>('/api/acquire', { url, backend, as: opts.as }),
     );
     void this.refresh();
     this.ensurePolling();

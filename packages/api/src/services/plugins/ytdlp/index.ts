@@ -98,7 +98,9 @@ export class YtdlpPlugin implements Plugin {
       stagingDir,
       onProgress: (p) => this.ctx!.emitProgress(jobId, p),
       onLabel: (label) => this.ctx!.emitLabel(jobId, label),
-      onTrack: (title, status) => this.ctx!.emitTrack(jobId, { title, status }),
+      // Forward the WHOLE event — `path` is what lets the host write an
+      // acquire_job_tracks row, which playlist materialization runs off.
+      onTrack: (event) => this.ctx!.emitTrack(jobId, event),
       spawn: this.spawn,
     });
     this.activeRuns.set(jobId, run);
@@ -137,10 +139,16 @@ export class YtdlpPlugin implements Plugin {
       // (parseYtdlpTrackEvent): before_dl fires once a video is selected for
       // download, after_move fires once the postprocessed file lands in its
       // final location. Distinct prefixes avoid colliding with other stdout.
+      // The filename is appended after a TAB (not a second `::` — the
+      // filename derives from the title, so a `::` in the title would poison
+      // a `::`-delimited split) so the post-ingest playlist step can
+      // disambiguate title collisions when the same title appears twice in
+      // one playlist. The display title keeps the `artist - title` shape the
+      // Now:/Next: card renders.
       '--print',
-      'before_dl:TRACK_START::%(artist)s - %(title)s',
+      'before_dl:TRACK_START::%(artist)s - %(title)s\t%(filename)s',
       '--print',
-      'after_move:TRACK_DONE::%(artist)s - %(title)s',
+      'after_move:TRACK_DONE::%(artist)s - %(title)s\t%(filename)s',
       '--output',
       outputTemplate,
       '--newline',

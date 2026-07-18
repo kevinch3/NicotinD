@@ -46,6 +46,7 @@ import { pluginRoutes } from './routes/plugins.js';
 import { radioRoutes } from './routes/radio.js';
 import { PluginRegistry } from './services/plugins/registry.js';
 import { upsertTrackStatus } from './services/plugins/host-context.js';
+import { recordAcquireJobTrack } from './services/acquire-playlist.js';
 import { SlskdPlugin } from './services/plugins/slskd/index.js';
 import { YtdlpPlugin } from './services/plugins/ytdlp/index.js';
 import { SpotdlPlugin } from './services/plugins/spotdl/index.js';
@@ -389,6 +390,10 @@ export function createApp({
     },
     // Upsert one track's status into the job's tracks_json by title match —
     // fires once per track (many times per job), unlike the single-shot label.
+    // Also upserts the acquire_job_tracks row (keyed job_id+title, position =
+    // first-appearance order) that the post-ingest playlist step resolves
+    // against — for EVERY event, path or not; title-only sources (spotdl)
+    // rely on the title-fallback resolution of these rows.
     emitTrack: (jobId, track) => {
       try {
         const row = db
@@ -397,7 +402,7 @@ export function createApp({
           )
           .get(jobId);
         if (!row) return;
-        let tracks: { title: string; status: TrackStatus }[] = [];
+        let tracks: { title: string; status: TrackStatus; path?: string }[] = [];
         if (row.tracks_json) {
           try {
             tracks = JSON.parse(row.tracks_json);
@@ -409,6 +414,7 @@ export function createApp({
           JSON.stringify(upsertTrackStatus(tracks, track)),
           jobId,
         ]);
+        recordAcquireJobTrack(db, jobId, track);
       } catch {
         // Non-fatal — track status is best-effort.
       }

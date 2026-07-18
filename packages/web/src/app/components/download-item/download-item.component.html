@@ -34,7 +34,16 @@
       @if (item().startedAt) {
         <span class="text-xs text-theme-muted">· {{ startedAgo() }}</span>
       }
-      @if (canOpen()) {
+      @if (canOpenPlaylist()) {
+        <a
+          [routerLink]="playlistRoute()"
+          class="px-2 py-0.5 rounded text-xs font-semibold transition"
+          style="background: var(--theme-status-done-bg); color: var(--theme-status-done-text)"
+          data-testid="download-open-playlist"
+        >
+          Open playlist
+        </a>
+      } @else if (canOpen()) {
         <a
           [routerLink]="albumRoute()"
           class="px-2 py-0.5 rounded text-xs font-semibold transition"

@@ -108,6 +108,22 @@ export interface AcquireJob {
    * pre-migration rows or jobs without per-track granularity).
    */
   tracks: { title: string; status: TrackStatus }[];
+  /**
+   * True when the URL was classified as a playlist (Spotify playlist,
+   * YouTube playlist, archive.org item with `as=playlist`). When true, the
+   * post-ingest step materializes a per-user native playlist from the
+   * `acquire_job_tracks` rows. Always present (defaults to false for
+   * pre-feature jobs). See docs/playlist-from-acquisition.md.
+   */
+  isPlaylist: boolean;
+  /**
+   * Set after the generated playlist is created; lets the Downloads card link
+   * straight to the playlist detail page. Null while the post-ingest step
+   * hasn't run yet, when the URL wasn't a playlist, or when no tracks
+   * landed. ON DELETE SET NULL on the FK so a user who removes the playlist
+   * doesn't leave a dangling reference.
+   */
+  playlistId: string | null;
   error: string | null;
   created_at: number;
 }

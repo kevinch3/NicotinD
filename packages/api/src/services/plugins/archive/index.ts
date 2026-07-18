@@ -228,10 +228,21 @@ export class ArchivePlugin implements Plugin {
           .split('/')
           .map(encodeURIComponent)
           .join('/')}`;
-        this.ctx.emitTrack(jobId, { title: trackTitleFor(file.name), status: 'downloading' });
+        // The basename is what survives the organizer's per-album move — the
+        // post-ingest playlist step joins it against library_songs.path so a
+        // multi-file archive item becomes an ordered track list.
+        this.ctx.emitTrack(jobId, {
+          title: trackTitleFor(file.name),
+          status: 'downloading',
+          path: basename(file.name),
+        });
         await this.downloadFile(fileUrl, dest, { signal: controller.signal });
         staged.push(dest);
-        this.ctx.emitTrack(jobId, { title: trackTitleFor(file.name), status: 'done' });
+        this.ctx.emitTrack(jobId, {
+          title: trackTitleFor(file.name),
+          status: 'done',
+          path: basename(file.name),
+        });
         this.ctx.emitProgress(jobId, { done: i + 1, total: chosen.length });
       }
       // archive.org files carry no embedded tags, so hand the organizer the

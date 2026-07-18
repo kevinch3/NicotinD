@@ -142,6 +142,14 @@ export interface DownloadItem {
    */
   destinationAlbums?: { albumArtist: string; albumTitle: string; albumId: string }[];
   /**
+   * Native playlist generated from a playlist-classified acquire job (Spotify
+   * playlist, YouTube playlist, archive.org item with `as=playlist`). When
+   * set, the row offers an "Open playlist" deep-link to /library/playlists/:id.
+   * Null for non-playlist jobs, for jobs whose post-ingest step hadn't run
+   * yet, and for pre-feature rows. See docs/playlist-from-acquisition.md.
+   */
+  playlistId?: string;
+  /**
    * Per-track status, uniform across every acquisition backend (slskd hunts
    * via the matched `AcquisitionJobView.items`, URL acquires via
    * `AcquireJob.tracks`) — the frontend doesn't need to know which backend a
@@ -236,6 +244,7 @@ export function acquireJobToDownloadItem(job: AcquireJob): DownloadItem {
     storagePath: job.storage_path ?? undefined,
     albumId: job.albumId ?? undefined,
     destinationAlbums: job.destinationAlbums,
+    playlistId: job.playlistId ?? undefined,
     tracks: job.tracks,
     progress,
     percent:

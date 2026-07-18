@@ -107,7 +107,10 @@ export class SpotdlPlugin implements Plugin {
       parseProgress: parseSpotdlProgress,
       onProgress: (p) => this.ctx!.emitProgress(jobId, p),
       onLabel: (label) => this.ctx!.emitLabel(jobId, label),
-      onTrack: (title, status) => this.ctx!.emitTrack(jobId, { title, status }),
+      // spotdl only logs titles (`Downloaded "Artist - Title"`) — no filename.
+      // Forward the event as-is; the host stores a title-only track row and
+      // the playlist resolver falls back to title matching for these.
+      onTrack: (event) => this.ctx!.emitTrack(jobId, event),
       spawn: this.spawn,
     });
     this.activeRuns.set(jobId, run);

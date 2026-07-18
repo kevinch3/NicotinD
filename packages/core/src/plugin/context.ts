@@ -14,8 +14,23 @@ export interface PluginProgress {
 }
 
 /**
+ * One track's status, as the plugin emits it. `path` is the file basename the
+ * plugin is about to write (or just wrote) in staging — recorded so the
+ * post-ingest playlist step can resolve the post-scan library_song without
+ * title collisions (two tracks with identical titles in the same playlist
+ * still map to distinct song ids via their file basenames). Optional for
+ * backwards-compat with older plugins; the post-ingest step falls back to a
+ * title-only match within the job's `acquisitions` rows when path is missing.
+ */
+export interface PluginTrackEvent {
+  title: string;
+  status: TrackStatus;
+  path?: string;
+}
+
+/**
  * The ONLY surface a plugin may use to affect the system. A plugin cannot reach
- * the library DB or the organizer directly — it produces files in the staging
+ * the library DB or the organizer directly — it produces files in a staging
  * dir and emits progress; the host owns ingest (organize → scan → enrich). This
  * boundary is the decoupling guarantee and the safety story.
  */
@@ -31,11 +46,12 @@ export interface PluginHostContext {
   /** Update the human-readable label for an in-flight job (e.g. playlist title). */
   emitLabel(jobId: string, label: string): void;
   /**
-   * Upsert one track's status into the job's per-track list, matched by
-   * title. Unlike emitLabel this is NOT single-shot — it fires once per
-   * track, many times over the life of a job.
+   * Upsert one track's status into the job's per-track list. Fires once per
+   * track, many times over the life of a job (unlike the single-shot label).
+   * Optional `path` disambiguates title collisions for the post-ingest
+   * playlist step — see `PluginTrackEvent.path`.
    */
-  emitTrack(jobId: string, track: { title: string; status: TrackStatus }): void;
+  emitTrack(jobId: string, track: PluginTrackEvent): void;
   /** Plugin-scoped persistent storage. */
   storage: PluginStorage;
 }

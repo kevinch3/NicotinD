@@ -114,15 +114,13 @@ describe('YtdlpPlugin', () => {
     await done;
 
     const [, args] = spawnMock.mock.calls[0] as [string, string[]];
-    expect(args).toContain('before_dl:TRACK_START::%(artist)s - %(title)s');
-    expect(args).toContain('after_move:TRACK_DONE::%(artist)s - %(title)s');
+    const startTemplate = 'before_dl:TRACK_START::%(artist)s - %(title)s\t%(filename)s';
+    const doneTemplate = 'after_move:TRACK_DONE::%(artist)s - %(title)s\t%(filename)s';
+    expect(args).toContain(startTemplate);
+    expect(args).toContain(doneTemplate);
     // Both come after their own --print flag.
-    expect(args[args.indexOf('before_dl:TRACK_START::%(artist)s - %(title)s') - 1]).toBe(
-      '--print',
-    );
-    expect(args[args.indexOf('after_move:TRACK_DONE::%(artist)s - %(title)s') - 1]).toBe(
-      '--print',
-    );
+    expect(args[args.indexOf(startTemplate) - 1]).toBe('--print');
+    expect(args[args.indexOf(doneTemplate) - 1]).toBe('--print');
   });
 
   it('fires onTrack via ctx.emitTrack on TRACK_START/TRACK_DONE stdout lines', async () => {
@@ -134,19 +132,35 @@ describe('YtdlpPlugin', () => {
     // yt-dlp's --print WHEN:TEMPLATE syntax only controls *when* the line is
     // printed — the printed stdout line is just TEMPLATE evaluated, with no
     // "before_dl:"/"after_move:" prefix. Mirror that exactly here.
-    fakeProc.stdout.emit('data', Buffer.from('TRACK_START::Some Artist - Some Title\n'));
-    fakeProc.stdout.emit('data', Buffer.from('TRACK_DONE::Some Artist - Some Title\n'));
+    fakeProc.stdout.emit(
+      'data',
+      Buffer.from('TRACK_START::Some Artist - Some Title\tSome Artist - Some Title.opus\n'),
+    );
+    fakeProc.stdout.emit(
+      'data',
+      Buffer.from('TRACK_DONE::Some Artist - Some Title\tSome Artist - Some Title.opus\n'),
+    );
     fakeProc.finish(0);
     await done;
 
+    // The `path` must reach emitTrack intact — the host's acquire_job_tracks
+    // insert (and thus playlist materialization) depends on it.
     expect(emitTrack).toHaveBeenCalledTimes(2);
     expect(emitTrack.mock.calls[0]).toEqual([
       'j-track',
-      { title: 'Some Artist - Some Title', status: 'downloading' },
+      {
+        title: 'Some Artist - Some Title',
+        status: 'downloading',
+        path: 'Some Artist - Some Title.opus',
+      },
     ]);
     expect(emitTrack.mock.calls[1]).toEqual([
       'j-track',
-      { title: 'Some Artist - Some Title', status: 'done' },
+      {
+        title: 'Some Artist - Some Title',
+        status: 'done',
+        path: 'Some Artist - Some Title.opus',
+      },
     ]);
   });
 

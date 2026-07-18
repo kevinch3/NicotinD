@@ -9,6 +9,14 @@ import {
 
 interface SubmitBody {
   url: string;
+  /**
+   * Classifier override. `'playlist'` is honored for any URL the classifier
+   * did NOT already recognize as a playlist (archive.org items — the web's
+   * "Treat as playlist" toggle — and unrecognized custom links alike);
+   * `'album'` downgrades a recognized playlist URL to a single-item acquire.
+   * Spotify/YouTube playlist URLs auto-detect and need no override.
+   */
+  as?: 'playlist' | 'album';
 }
 
 /**
@@ -46,7 +54,15 @@ export function acquireRoutes(watcher: AcquireWatcher) {
     }
 
     try {
-      const jobId = await watcher.submit(url.href);
+      // Thread the authenticated user id through to the watcher so a playlist
+      // URL (Spotify playlist, YouTube playlist, archive.org with as=playlist)
+      // can generate a per-user native playlist on completion. The playlist is
+      // `kind='user'` and lives under this user's account, matching the
+      // existing private-playlists model.
+      const jobId = await watcher.submit(url.href, undefined, {
+        userId: c.var.user.sub,
+        as: body.as,
+      });
       return c.json({ jobId }, 201);
     } catch (err) {
       if (err instanceof NoAcquisitionPluginError || err instanceof PluginUnavailableError) {
@@ -77,7 +93,9 @@ export function acquireRoutes(watcher: AcquireWatcher) {
 
   app.post('/jobs/:id/retry', async (c) => {
     try {
-      const newJobId = await watcher.retryJob(c.req.param('id'));
+      const newJobId = await watcher.retryJob(c.req.param('id'), {
+        userId: c.var.user.sub,
+      });
       if (!newJobId) return c.json({ error: 'Job not found' }, 404);
       return c.json({ jobId: newJobId }, 201);
     } catch (err) {

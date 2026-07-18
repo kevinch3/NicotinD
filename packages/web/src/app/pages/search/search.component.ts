@@ -294,6 +294,12 @@ export class SearchComponent implements OnInit, OnDestroy {
   // docs/source-agnostic-acquisition.md.
   readonly linkIntent = signal<LinkIntent | null>(null);
   readonly linkSubmitError = signal<string | null>(null);
+  // Archive.org items don't expose a playlist signal at the URL level, so the
+  // link-intent card surfaces a "Treat as playlist" toggle. Spotify/YouTube
+  // playlist URLs auto-detect via the server-side classifier and ignore this
+  // state. Reset whenever the link intent changes so a new URL starts with
+  // the album default.
+  readonly treatAsPlaylist = signal(false);
 
   readonly hasCatalog = computed(() => {
     const c = this.catalog();
@@ -358,6 +364,11 @@ export class SearchComponent implements OnInit, OnDestroy {
     return this.acquire.jobs().find((j) => j.url === intent.url) ?? null;
   });
 
+  /** Toggle handler for the archive.org "Treat as playlist" affordance. */
+  toggleTreatAsPlaylist(): void {
+    this.treatAsPlaylist.update((v) => !v);
+  }
+
   private pollInterval: ReturnType<typeof setInterval> | null = null;
 
   private autoSearchEffect = effect(() => {
@@ -383,6 +394,7 @@ export class SearchComponent implements OnInit, OnDestroy {
     const shared = extractSharedUrl(qp.get('url'), qp.get('text'), qp.get('title'));
     const sharedIntent = shared ? parseLinkIntent(shared) : null;
     if (sharedIntent) {
+      this.treatAsPlaylist.set(false);
       this.linkIntent.set(sharedIntent);
       void this.submitLinkIntent();
       // Drop the share params so a refresh doesn't re-submit.
@@ -425,6 +437,10 @@ export class SearchComponent implements OnInit, OnDestroy {
     const intent = this.plugins.hasResolve() ? parseLinkIntent(this.search.query()) : null;
     if (intent) {
       this.linkSubmitError.set(null);
+      // Reset the playlist-toggle every time a new URL is recognized as a link
+      // intent, so a fresh archive.org URL starts on the safe "album" default
+      // and the user opts in only when they want.
+      this.treatAsPlaylist.set(false);
       this.linkIntent.set(intent);
       this.resetResultSurfaces();
       return;
@@ -656,7 +672,12 @@ export class SearchComponent implements OnInit, OnDestroy {
     }
     this.linkSubmitError.set(null);
     try {
-      await this.acquire.submit(intent.url);
+      // Archive items only — pass `as: 'playlist'` when the user opted in via
+      // the toggle. Other sources carry the playlist signal in the URL and
+      // ignore the field; we still send `undefined` so the server skips the
+      // override branch entirely.
+      const as = intent.source === 'archive' && this.treatAsPlaylist() ? 'playlist' : undefined;
+      await this.acquire.submit(intent.url, undefined, { as });
     } catch (err: unknown) {
       this.linkSubmitError.set(err instanceof Error ? err.message : 'Failed to start download');
     }
@@ -683,6 +704,7 @@ export class SearchComponent implements OnInit, OnDestroy {
   dismissLinkIntent(): void {
     this.linkIntent.set(null);
     this.linkSubmitError.set(null);
+    this.treatAsPlaylist.set(false);
   }
 
   // archive.org search lane — fired in parallel with the network search. Gated on
