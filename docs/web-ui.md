@@ -235,7 +235,7 @@ The Angular service worker (`provideServiceWorker('ngsw-worker.js')`, registered
 - `packages/web/src/app/services/update.service.spec.ts` — 11 tests: enable/disable, search guard, available/up-to-date/error outcomes, reentrant safety, `applyUpdate` activation.
 - `packages/web/src/app/pages/settings/settings.component.ts` + `.html` — `searchForUpdates()` + `reloadToUpdate()` handlers; new `@if` button above the version chip.
 - `packages/web/src/app/pages/settings/settings.component.spec.ts` — 8 new tests (visibility: enabled/disabled/staged; outcomes: up-to-date/available/error; re-entrancy via toast dismiss; pending-state UI).
-- `packages/e2e/tests/pwa-update.spec.ts` — chromium-only assertion that the button is hidden on the dev e2e server (the SW gate proves the `@if` works); the toast outcomes are covered by the unit tests because `SwUpdate` cannot be stubbed from outside the bundle.
+- `packages/e2e/tests/pwa-update.spec.ts` — chromium-only assertion that the button **is visible** on the e2e server. The harness serves the **production** `@nicotind/web` bundle (`ng build` defaults to the production configuration with `serviceWorker: ngsw-config.json`) over http://localhost, where Chromium permits service workers — so `sw.isEnabled` is true and `checkAvailable()` resolves true, proving the `@if` gate renders the control in a real PWA build. The toast outcomes are covered by the unit tests because `SwUpdate` cannot be stubbed from outside the bundle, and driving the live SW round-trip through Playwright would hinge on flaky service-worker registration timing.
 - `CLAUDE.md` (one-line index pointer) + this section.
 
 ### Gotchas
