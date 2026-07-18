@@ -190,3 +190,58 @@ Clicking the version string in the **desktop header** (`layout.component`, `data
 - **Docker build context (gotcha)**: because the generator reads repo-root `CHANGELOG.md` at build time, the file **must reach the Docker build context**. `.dockerignore` excludes all `*.md`, so it carries an explicit `!CHANGELOG.md` un-ignore, and the `web-builder` stage `COPY CHANGELOG.md ./` before `bun run build`. Miss either and `build-changelog.ts` silently writes `[]` (`existsSync` fallback), so the modal opens **empty in the browser webapp** while the locally-built Capacitor app (full repo present) still works. Guarded by `packages/web/src/app/lib/docker-changelog-context.spec.ts`, which emulates the `.dockerignore` filtering + asserts the `COPY`. (Fixed after the initial changelog-modal ship; the first Docker fix only silenced the crash, not the empty output.)
 - **Stale `CHANGELOG.md` in dev**: `CHANGELOG.md` only updates on `bun run release` (CI release job). Between releases the embedded JSON reflects the last release's changelog; the `package.json` version (shown as `v{version}`) advances independently via the release commit. This is the same build-time-bake pattern as `APP_VERSION` (which imports `package.json` at build time).
 - **API version**: `GET /api/system/status` `nicotind.version` is read from `package.json` at server startup (`src/main.ts` → `createApp({ version: pkg.version })` → `systemRoutes`), replacing the previous hardcoded `'0.1.0'`.
+
+## Manual PWA update check
+
+The Angular service worker (`provideServiceWorker('ngsw-worker.js')`, registered via `registerWhenStable:30000`) ships in every production browser build. It only re-checks `/ngsw.json` on initialization and on navigation requests — Chromium self-schedules around 24 h, so a user who keeps the tab open for the whole weekend between NicotinD releases sees the new **Reload to update** banner only when they navigate or open a new tab. The first symptom reported in real use was "I deployed a new version and my browser kept showing the old one", then "I had to reload manually to even see the toast". The fix is `UpdateService.checkForUpdate()`, wired into a Settings → Account **Check for updates** button (`data-testid="settings-check-update"`).
+
+### Design
+
+- **Service**: `UpdateService` (`packages/web/src/app/services/update.service.ts`) bridges Angular's `SwUpdate` to signals. Exposes:
+  - `enabled: Signal<boolean>` — `SwUpdate.isEnabled` (false in dev, Capacitor, Electron, browsers without SW support).
+  - `updateAvailable: Signal<boolean>` — sticky `true` once `VERSION_READY` fires (existing).
+  - `searching: Signal<boolean>` — gates duplicate clicks while a check is in flight.
+  - `checkAvailable: Signal<boolean>` — `enabled && !updateAvailable`; the manual control only renders when this is true (the banner already owns the CTA once an update is staged).
+  - `checkForUpdate(): Promise<'available' | 'up-to-date' | 'unavailable'>` — short-circuits to `'unavailable'` when `!enabled` or already `searching`; otherwise calls `sw.checkForUpdate()` (resolves `true` if the new version is downloaded & ready, `false` otherwise; rejects on a network/SW error) and returns the result.
+  - `applyUpdate(): Promise<void>` — `sw.activateUpdate()` then `document.location.reload()` (unchanged; jsdom doesn't allow redefining `location.reload`, so the test asserts the call against the stub).
+
+- **UI** (`packages/web/src/app/pages/settings/settings.component.{ts,html}`): the Account section grows a `@if (update.checkAvailable()) { … }` button, gated on the same `isNativeShell()` gate that disables `provideServiceWorker` (`lib/platform.ts:50-52`). It shows **Check for updates** by default and **Checking for updates…** + `disabled` while the check is in flight.
+
+- **Outcomes → toasts** (existing `ToastService`, no new component):
+  - `'up-to-date'` → green `"You're on v{version}"` toast (3 s).
+  - `'available'` → blue toast (8 s) with **Reload** and **Later** actions; **Reload** dismisses the toast and calls `applyUpdate()`. The sticky banner appears once `VERSION_READY` fires anyway — the toast is the immediate feedback, the banner is the universal CTA.
+  - error → red `"Couldn't check for updates — try again later."` toast.
+  - Stale toast from a previous check is dismissed on a new click.
+
+- **Parity matrix across releases**:
+
+  | Surface | Update mechanism | "Manual check" affordance | PWA fallback path |
+  |---|---|---|---|
+  | **PWA (web)** | Angular service worker + `SwUpdate` | `Check for updates` button → `UpdateService.checkForUpdate()` | Banner (`UpdateBannerComponent`) owns `applyUpdate` once `VERSION_READY` |
+  | **Electron** (`packages/desktop/electron/updater.ts`) | `electron-updater` polling GitHub Releases (`updateMode(platform, signed)`: Linux AppImage = apply, macOS = notify-only) | Native `dialog.showMessageBox` on `update-downloaded` / `update-available`; auto-downloaded by electron-builder's `--publish always` | User opens **Releases page** link |
+  | **Capacitor** (iOS / Android) | **No OTA** — users must install a new APK/IPA from GitHub Releases | None — the Settings button is hidden because `isNativeShell()` is true | In-app copy "Updates are managed by your app store" is the planned placeholder; today the button is hidden entirely |
+
+  The reason the manual check is a *button* rather than a *timer*: Angular's docs explicitly warn that long-running `setInterval` polling (the canonical "check every 6 h" snippet) **prevents the app from stabilizing and delays SW registration up to 30 s** (`ngsw-config.json` + `provideServiceWorker`). A user-triggered click is both the cheapest and the safest fix. Every NicotinD release already triggers a `chore(release):` commit and pushes a `vX.Y.Z` tag, so the SW's natural polling cadence is fine when the user actually opens the tab — the bug only surfaces for users who stay parked on the same tab for hours.
+
+### Alternatives considered (and rejected)
+
+1. **Background interval polling** (`interval(6h)` → `checkForUpdate()` from the Angular docs). Rejected: blocks SW registration (the registration *forces* at 30 s when there's a polling task alive) and costs N requests/day per open tab for a payload that almost always says "no update". Manual click is on demand.
+2. **Compare `/api/system/status` `nicotind.version` vs `APP_VERSION` client-side and toast on mismatch.** Rejected: the server version advances with the Docker image, not the deployed PWA assets. A fresh image with the old `dist/` would toast "new version" even though the SW has nothing to swap to. `SwUpdate.checkForUpdate()` is the authoritative "new app shell available" signal.
+3. **`sw.unrecoverable` event → reload prompt.** Out of scope for this fix (would need a recovery UI + a "wipe cache" CTA); left as a follow-up if/when a real "stuck cache" report lands.
+
+### Files touched
+
+- `packages/web/src/app/services/update.service.ts` — added `enabled`, `searching`, `checkAvailable`, `checkForUpdate`.
+- `packages/web/src/app/services/update.service.spec.ts` — 11 tests: enable/disable, search guard, available/up-to-date/error outcomes, reentrant safety, `applyUpdate` activation.
+- `packages/web/src/app/pages/settings/settings.component.ts` + `.html` — `searchForUpdates()` + `reloadToUpdate()` handlers; new `@if` button above the version chip.
+- `packages/web/src/app/pages/settings/settings.component.spec.ts` — 8 new tests (visibility: enabled/disabled/staged; outcomes: up-to-date/available/error; re-entrancy via toast dismiss; pending-state UI).
+- `packages/e2e/tests/pwa-update.spec.ts` — chromium-only assertion that the button **is visible** on the e2e server. The harness serves the **production** `@nicotind/web` bundle (`ng build` defaults to the production configuration with `serviceWorker: ngsw-config.json`) over http://localhost, where Chromium permits service workers — so `sw.isEnabled` is true and `checkAvailable()` resolves true, proving the `@if` gate renders the control in a real PWA build. The toast outcomes are covered by the unit tests because `SwUpdate` cannot be stubbed from outside the bundle, and driving the live SW round-trip through Playwright would hinge on flaky service-worker registration timing.
+- `CLAUDE.md` (one-line index pointer) + this section.
+
+### Gotchas
+
+- **jsdom doesn't let you redefine `window.location.reload`**, so the `applyUpdate` test asserts against the stub's `activateUpdate` instead of intercepting the navigation (`update.service.spec.ts`); production behaviour is unchanged.
+- **Don't poll**: a `setInterval` (or `interval(...)`) keeps the app from stabilizing and the SW registration would force at 30 s (`registerWhenStable:30000`). The Angular docs' canonical example waits for `ApplicationRef.isStable` before starting the timer; for now the click handler is the entire solution.
+- **`ngsw-bypass` still applies**: the stream URL helper (`ServerConfigService.streamUrl`) appends `ngsw-bypass=1` so `/api/stream/*` never hits the worker — orthogonal to this change but worth keeping in mind when reasoning about "the SW isn't picking up the new version".
+
+## Service worker fire-and-forget

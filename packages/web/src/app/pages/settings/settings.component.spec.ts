@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { signal } from '@angular/core';
 import { vi } from 'vitest';
+import { SwUpdate } from '@angular/service-worker';
 import { SettingsComponent } from './settings.component';
 import { AuthService } from '../../services/auth.service';
 import { ThemeService } from '../../services/theme.service';
@@ -13,6 +14,8 @@ import { ConfirmService } from '../../services/confirm.service';
 import { APP_VERSION } from '../../app.config';
 import { isElectron } from '../../lib/platform';
 import { pickDirectory, setMusicDir } from '../../services/native/native-capabilities';
+import { ToastService } from '../../services/toast.service';
+import { UpdateService } from '../../services/update.service';
 
 vi.mock('../../lib/platform', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../lib/platform')>();
@@ -24,95 +27,135 @@ vi.mock('../../services/native/native-capabilities', () => ({
   setMusicDir: vi.fn().mockResolvedValue({ ok: true }),
 }));
 
+function makeToastService() {
+  return {
+    show: vi.fn().mockImplementation(() => 'toast-1'),
+    dismiss: vi.fn(),
+    toasts: signal([]),
+  };
+}
+
+function makeUpdateService(overrides: Partial<{
+  enabled: boolean;
+  updateAvailable: boolean;
+  searching: boolean;
+  checkForUpdate: ReturnType<typeof vi.fn>;
+  applyUpdate: ReturnType<typeof vi.fn>;
+}> = {}) {
+  const check = overrides.checkForUpdate ?? vi.fn().mockResolvedValue('up-to-date');
+  const apply = overrides.applyUpdate ?? vi.fn();
+  return {
+    enabled: signal(overrides.enabled ?? false),
+    updateAvailable: signal(overrides.updateAvailable ?? false),
+    searching: signal(overrides.searching ?? false),
+    checkAvailable: signal(
+      (overrides.enabled ?? false) && !(overrides.updateAvailable ?? false) && !(overrides.searching ?? false),
+    ),
+    checkForUpdate: check,
+    applyUpdate: apply,
+  } satisfies Partial<UpdateService> & { [k: string]: unknown };
+}
+
 /**
  * Guards the post-refactor Settings page: it renders only universal prefs and
  * must NOT surface admin/extension coupling (Soulseek/streaming/processing/
  * shares/duplicates). The Extensions/Admin links appear for admins only.
  */
-function providers(role: 'admin' | 'user') {
-  return [
-    provideRouter([]),
-    { provide: APP_VERSION, useValue: '9.9.9' },
-    { provide: AuthService, useValue: {
-        username: signal('kev'),
-        role: signal(role),
-        isAdmin: () => role === 'admin',
-        welcomeDismissed: signal(false),
-        autoplayOnLoad: signal(false),
-        setAutoplayOnLoad: vi.fn(),
-        logout: vi.fn(),
-      } },
-    {
-      provide: ThemeService,
-      useValue: {
-        systemTheme: signal(false),
-        theme: signal('dark'),
-        setSystemTheme: vi.fn(),
-        setTheme: vi.fn(),
+function makeProviders(role: 'admin' | 'user', updateOverrides = {}) {
+  const toast = makeToastService();
+  const update = makeUpdateService(updateOverrides);
+  return {
+    list: [
+      provideRouter([]),
+      { provide: APP_VERSION, useValue: '9.9.9' },
+      {
+        provide: SwUpdate,
+        useValue: {
+          isEnabled: updateOverrides.enabled ?? false,
+          versionUpdates: { subscribe: vi.fn() },
+          activateUpdate: vi.fn(),
+          checkForUpdate: update.checkForUpdate,
+        },
       },
-    },
-    {
-      provide: RemotePlaybackService,
-      useValue: {
-        remoteEnabled: signal(false),
-        disabledReason: signal(null),
-        devices: signal([]),
-        activeDeviceId: signal(null),
-        setRemoteEnabled: vi.fn(),
+      { provide: AuthService, useValue: {
+          username: signal('kev'),
+          role: signal(role),
+          isAdmin: () => role === 'admin',
+          welcomeDismissed: signal(false),
+          autoplayOnLoad: signal(false),
+          setAutoplayOnLoad: vi.fn(),
+          logout: vi.fn(),
+        } },
+      {
+        provide: ThemeService,
+        useValue: {
+          systemTheme: signal(false),
+          theme: signal('dark'),
+          setSystemTheme: vi.fn(),
+          setTheme: vi.fn(),
+        },
       },
-    },
-    {
-      provide: PlaybackWsService,
-      useValue: { getDeviceId: () => 'dev1', getDeviceName: () => 'Web', setDeviceName: vi.fn() },
-    },
-    {
-      provide: PreserveService,
-      useValue: {
-        budget: signal(2 * 1024 * 1024 * 1024),
-        setBudget: vi.fn(),
-        totalUsage: signal(0),
-        preservedTracks: signal([]),
-        autoPreserveMode: signal('off'),
-        setAutoPreserveMode: vi.fn(),
-        autoPreservedCount: vi.fn().mockReturnValue(0),
-        removeAllAutoPreserved: vi.fn().mockResolvedValue(0),
-        clearAll: vi.fn(),
+      {
+        provide: RemotePlaybackService,
+        useValue: {
+          remoteEnabled: signal(false),
+          disabledReason: signal(null),
+          devices: signal([]),
+          activeDeviceId: signal(null),
+          setRemoteEnabled: vi.fn(),
+        },
       },
-    },
-    { provide: ConfirmService, useValue: { ask: vi.fn().mockResolvedValue(true) } },
-    { provide: MediaControlsService, useValue: { getDiagnostics: vi.fn() } },
-  ];
+      {
+        provide: PlaybackWsService,
+        useValue: { getDeviceId: () => 'dev1', getDeviceName: () => 'Web', setDeviceName: vi.fn() },
+      },
+      {
+        provide: PreserveService,
+        useValue: {
+          budget: signal(2 * 1024 * 1024 * 1024),
+          setBudget: vi.fn(),
+          totalUsage: signal(0),
+          preservedTracks: signal([]),
+          autoPreserveMode: signal('off'),
+          setAutoPreserveMode: vi.fn(),
+          autoPreservedCount: vi.fn().mockReturnValue(0),
+          removeAllAutoPreserved: vi.fn().mockResolvedValue(0),
+          clearAll: vi.fn(),
+        },
+      },
+      { provide: ConfirmService, useValue: { ask: vi.fn().mockResolvedValue(true) } },
+      { provide: MediaControlsService, useValue: { getDiagnostics: vi.fn() } },
+      { provide: ToastService, useValue: toast },
+      { provide: UpdateService, useValue: update },
+    ],
+    toast,
+    update,
+  };
 }
 
 describe('SettingsComponent (universal prefs only)', () => {
   it('renders universal sections without any admin/extension coupling', async () => {
-    await TestBed.configureTestingModule({
-      imports: [SettingsComponent],
-      providers: providers('user'),
-    }).compileComponents();
+    const { list } = makeProviders('user');
+    await TestBed.configureTestingModule({ imports: [SettingsComponent], providers: list }).compileComponents();
     const fixture = TestBed.createComponent(SettingsComponent);
     fixture.detectChanges();
     const text = fixture.nativeElement.textContent as string;
     expect(text).toContain('Appearance');
     expect(text).toContain('Offline storage');
     expect(text).toContain('Remote Playback');
-    // The new per-user Playback section containing the autoplay-on-load toggle.
     expect(text).toContain('Resume playback when opening the app');
-    // Extension/admin surfaces must be gone from Settings.
     expect(text).not.toContain('Soulseek');
     expect(text).not.toContain('Shared Folders');
     expect(text).not.toContain('Library processing');
     expect(text).not.toContain('Find Duplicates');
-    // Non-admin sees no Extensions/Admin links.
     expect(fixture.nativeElement.querySelector('[data-testid="settings-extensions-link"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="settings-check-update"]')).toBeNull();
     fixture.destroy();
   });
 
   it('shows Admin + Extensions links for admins', async () => {
-    await TestBed.configureTestingModule({
-      imports: [SettingsComponent],
-      providers: providers('admin'),
-    }).compileComponents();
+    const { list } = makeProviders('admin');
+    await TestBed.configureTestingModule({ imports: [SettingsComponent], providers: list }).compileComponents();
     const fixture = TestBed.createComponent(SettingsComponent);
     fixture.detectChanges();
     expect(
@@ -123,10 +166,8 @@ describe('SettingsComponent (universal prefs only)', () => {
   });
 
   it('autoplay toggle routes through AuthService.setAutoplayOnLoad', async () => {
-    await TestBed.configureTestingModule({
-      imports: [SettingsComponent],
-      providers: providers('user'),
-    }).compileComponents();
+    const { list } = makeProviders('user');
+    await TestBed.configureTestingModule({ imports: [SettingsComponent], providers: list }).compileComponents();
     const fixture = TestBed.createComponent(SettingsComponent);
     fixture.detectChanges();
     const toggle = fixture.nativeElement.querySelector(
@@ -150,10 +191,8 @@ describe('SettingsComponent (desktop music folder, Electron-gated)', () => {
 
   it('does not render the change-folder control off-Electron', async () => {
     vi.mocked(isElectron).mockReturnValue(false);
-    await TestBed.configureTestingModule({
-      imports: [SettingsComponent],
-      providers: providers('user'),
-    }).compileComponents();
+    const { list } = makeProviders('user');
+    await TestBed.configureTestingModule({ imports: [SettingsComponent], providers: list }).compileComponents();
     const fixture = TestBed.createComponent(SettingsComponent);
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('[data-testid="settings-change-folder"]')).toBeNull();
@@ -163,10 +202,8 @@ describe('SettingsComponent (desktop music folder, Electron-gated)', () => {
   it('renders the change-folder control in Electron and restarts on pick', async () => {
     vi.mocked(isElectron).mockReturnValue(true);
     vi.mocked(pickDirectory).mockResolvedValue('/new/music');
-    await TestBed.configureTestingModule({
-      imports: [SettingsComponent],
-      providers: providers('user'),
-    }).compileComponents();
+    const { list } = makeProviders('user');
+    await TestBed.configureTestingModule({ imports: [SettingsComponent], providers: list }).compileComponents();
     const fixture = TestBed.createComponent(SettingsComponent);
     fixture.detectChanges();
     const btn = fixture.nativeElement.querySelector(
@@ -184,10 +221,8 @@ describe('SettingsComponent (desktop music folder, Electron-gated)', () => {
   it('leaves musicDirChosen unset when the picker is canceled', async () => {
     vi.mocked(isElectron).mockReturnValue(true);
     vi.mocked(pickDirectory).mockResolvedValue(null);
-    await TestBed.configureTestingModule({
-      imports: [SettingsComponent],
-      providers: providers('user'),
-    }).compileComponents();
+    const { list } = makeProviders('user');
+    await TestBed.configureTestingModule({ imports: [SettingsComponent], providers: list }).compileComponents();
     const fixture = TestBed.createComponent(SettingsComponent);
     fixture.detectChanges();
 
@@ -202,10 +237,8 @@ describe('SettingsComponent (desktop music folder, Electron-gated)', () => {
     vi.mocked(isElectron).mockReturnValue(true);
     vi.mocked(pickDirectory).mockResolvedValue('/new/music');
     vi.mocked(setMusicDir).mockResolvedValue({ ok: false, error: 'Sidecar exited before becoming healthy' });
-    await TestBed.configureTestingModule({
-      imports: [SettingsComponent],
-      providers: providers('user'),
-    }).compileComponents();
+    const { list } = makeProviders('user');
+    await TestBed.configureTestingModule({ imports: [SettingsComponent], providers: list }).compileComponents();
     const fixture = TestBed.createComponent(SettingsComponent);
     fixture.detectChanges();
 
@@ -228,10 +261,8 @@ describe('SettingsComponent (auto-preserve queue toggle)', () => {
   let autoPreserveMode: ReturnType<typeof signal<string>>;
 
   async function makeFixture(role: 'admin' | 'user' = 'user') {
-    await TestBed.configureTestingModule({
-      imports: [SettingsComponent],
-      providers: providers(role),
-    }).compileComponents();
+    const { list } = makeProviders(role);
+    await TestBed.configureTestingModule({ imports: [SettingsComponent], providers: list }).compileComponents();
     return TestBed.createComponent(SettingsComponent);
   }
 
@@ -248,7 +279,7 @@ describe('SettingsComponent (auto-preserve queue toggle)', () => {
     preserve['setAutoPreserveMode'] = setAutoPreserveMode;
     preserve['autoPreservedCount'] = vi.fn().mockReturnValue(0);
     preserve['removeAllAutoPreserved'] = removeAllAutoPreserved;
-    TestBed.inject(ConfirmService); // ensure token is wired
+    TestBed.inject(ConfirmService);
   }
 
   function patchConfirm(): void {
@@ -350,6 +381,125 @@ describe('SettingsComponent (auto-preserve queue toggle)', () => {
       '[data-testid="auto-preserve-explain"]',
     ) as HTMLElement;
     expect(explain.textContent).toContain('200');
+    fixture.destroy();
+  });
+});
+
+describe('SettingsComponent (manual PWA update check)', () => {
+  it('hides the control when the service worker is disabled', async () => {
+    const { list } = makeProviders('user', { enabled: false });
+    await TestBed.configureTestingModule({ imports: [SettingsComponent], providers: list }).compileComponents();
+    const fixture = TestBed.createComponent(SettingsComponent);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-testid="settings-check-update"]')).toBeNull();
+    fixture.destroy();
+  });
+
+  it('renders the control when the service worker is enabled', async () => {
+    const { list } = makeProviders('user', { enabled: true });
+    await TestBed.configureTestingModule({ imports: [SettingsComponent], providers: list }).compileComponents();
+    const fixture = TestBed.createComponent(SettingsComponent);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-testid="settings-check-update"]')).toBeTruthy();
+    fixture.destroy();
+  });
+
+  it('hides the control when an update is already staged (banner owns the CTA)', async () => {
+    const { list, update } = makeProviders('user', { enabled: true, updateAvailable: true });
+    update.checkAvailable.set(false);
+    await TestBed.configureTestingModule({ imports: [SettingsComponent], providers: list }).compileComponents();
+    const fixture = TestBed.createComponent(SettingsComponent);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-testid="settings-check-update"]')).toBeNull();
+    fixture.destroy();
+  });
+
+  it('clicking toasts success when the SW reports no update', async () => {
+    const { list, toast, update } = makeProviders('user', { enabled: true });
+    update.checkForUpdate.mockResolvedValueOnce('up-to-date');
+    await TestBed.configureTestingModule({ imports: [SettingsComponent], providers: list }).compileComponents();
+    const fixture = TestBed.createComponent(SettingsComponent);
+    fixture.detectChanges();
+    const btn = fixture.nativeElement.querySelector(
+      '[data-testid="settings-check-update"]',
+    ) as HTMLButtonElement;
+    await fixture.componentInstance.searchForUpdates();
+    expect(update.checkForUpdate).toHaveBeenCalledTimes(1);
+    expect(toast.show).toHaveBeenCalledTimes(1);
+    expect(toast.show.mock.calls[0][0].kind).toBe('success');
+    expect(toast.show.mock.calls[0][0].message).toContain('9.9.9');
+    btn.textContent = 'Check for updates';
+    fixture.destroy();
+  });
+
+  it('clicking toasts an info + Reload/Later when an update is available', async () => {
+    const { list, toast, update } = makeProviders('user', { enabled: true });
+    update.checkForUpdate.mockResolvedValueOnce('available');
+    await TestBed.configureTestingModule({ imports: [SettingsComponent], providers: list }).compileComponents();
+    const fixture = TestBed.createComponent(SettingsComponent);
+    fixture.detectChanges();
+    await fixture.componentInstance.searchForUpdates();
+    expect(toast.show).toHaveBeenCalledTimes(1);
+    expect(toast.show.mock.calls[0][0].kind).toBe('info');
+    expect(toast.show.mock.calls[0][0].actions?.map((a: { label: string }) => a.label)).toEqual([
+      'Reload',
+      'Later',
+    ]);
+    toast.show.mock.calls[0][0].actions![0].callback();
+    expect(update.applyUpdate).toHaveBeenCalledTimes(1);
+    fixture.destroy();
+  });
+
+  it('replaces a stale toast on a new check', async () => {
+    const { list, toast, update } = makeProviders('user', { enabled: true });
+    update.checkForUpdate.mockResolvedValueOnce('up-to-date').mockResolvedValueOnce('up-to-date');
+    await TestBed.configureTestingModule({ imports: [SettingsComponent], providers: list }).compileComponents();
+    const fixture = TestBed.createComponent(SettingsComponent);
+    fixture.detectChanges();
+    await fixture.componentInstance.searchForUpdates();
+    await fixture.componentInstance.searchForUpdates();
+    expect(toast.dismiss).toHaveBeenCalledWith('toast-1');
+    expect(toast.show).toHaveBeenCalledTimes(2);
+    fixture.destroy();
+  });
+
+  it('toasts an error when the SW check rejects', async () => {
+    const { list, toast, update } = makeProviders('user', { enabled: true });
+    update.checkForUpdate.mockRejectedValueOnce(new Error('network'));
+    await TestBed.configureTestingModule({ imports: [SettingsComponent], providers: list }).compileComponents();
+    const fixture = TestBed.createComponent(SettingsComponent);
+    fixture.detectChanges();
+    await fixture.componentInstance.searchForUpdates();
+    expect(toast.show.mock.calls[0][0].kind).toBe('error');
+    expect(toast.show.mock.calls[0][0].message).toContain("Couldn't check");
+    fixture.destroy();
+  });
+
+  it('disables the button while a check is in flight', async () => {
+    const { list, update } = makeProviders('user', { enabled: true });
+    update.searching.set(true);
+    let resolveCheck!: (v: 'up-to-date' | 'available') => void;
+    update.checkForUpdate.mockImplementationOnce(
+      () => new Promise((resolve) => {
+        resolveCheck = resolve as unknown as (v: 'up-to-date' | 'available') => void;
+      }),
+    );
+    await TestBed.configureTestingModule({ imports: [SettingsComponent], providers: list }).compileComponents();
+    const fixture = TestBed.createComponent(SettingsComponent);
+    fixture.detectChanges();
+    const inFlight = fixture.componentInstance.searchForUpdates();
+    fixture.detectChanges();
+    const btn = fixture.nativeElement.querySelector(
+      '[data-testid="settings-check-update"]',
+    ) as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
+    expect(btn.textContent?.trim()).toBe('Checking for updates…');
+    update.searching.set(false);
+    resolveCheck('up-to-date');
+    await inFlight;
+    fixture.detectChanges();
+    expect(btn.disabled).toBe(false);
+    expect(btn.textContent?.trim()).toBe('Check for updates');
     fixture.destroy();
   });
 });
