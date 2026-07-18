@@ -164,7 +164,8 @@ follow-up). `publish: github (kevinch3/NicotinD)`.
 > filename is `${name}_${version}_${arch}.${ext}`, and our package `name` is the *scoped*
 > `@nicotind/desktop` — fpm reads the `/` as a path separator and dies with
 > *"Parent directory does not exist: release/@nicotind"*, failing the whole `desktop-linux`
-> job (silently, since it's `continue-on-error`). Fixed by `deb.artifactName:
+> job (which used to fail *silently* under `continue-on-error` — since dropped, see Build & CI).
+> Fixed by `deb.artifactName:
 > ${productName}_${version}_${arch}.${ext}` (→ `NicotinD_<v>_amd64.deb`). AppImage was
 > unaffected because its default already uses `${productName}`. Verified end-to-end on a
 > real Linux desktop: `bunx electron-builder --linux` produces both AppImage + deb, and the
@@ -205,9 +206,11 @@ publish uploads the `latest-*.yml` metadata the updater polls.
 
 ## Build & CI
 
-Best-effort, tag-triggered jobs in `.github/workflows/deploy.yml` (mirroring the Android/iOS jobs,
-`if: github.ref_type == 'tag'` + `continue-on-error: true`, so a packaging failure never blocks the
-server deploy):
+Tag-triggered jobs in `.github/workflows/deploy.yml` (mirroring the Android/iOS jobs,
+`if: github.ref_type == 'tag'`). They are **not** `continue-on-error` — a packaging failure turns
+the release run **red** so a broken release is caught, instead of silently shipping a tag with no
+artifacts (as the scoped-name deb bug did). They still never block the server `deploy` job: it runs
+in parallel with no `needs` linkage, so its success is independent of packaging.
 
 - `desktop-linux` (ubuntu) → `electron-builder --linux --publish always` (AppImage/deb + `latest-linux.yml`).
 - `desktop-mac` (macos-14) → `electron-builder --mac --publish always` (dmg + `latest-mac.yml`).
