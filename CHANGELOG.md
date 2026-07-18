@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.225](https://github.com/kevinch3/NicotinD/compare/v0.1.224...v0.1.225) (2026-07-18)
+
+
+### Features
+
+* **web:** manual PWA update check for frequent releases ([3716432](https://github.com/kevinch3/NicotinD/commit/3716432fcf985d35c078bf6b975d217dd99f596a))
+
 ## [0.1.224](https://github.com/kevinch3/NicotinD/compare/v0.1.223...v0.1.224) (2026-07-18)
 
 
