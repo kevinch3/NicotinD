@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.227](https://github.com/kevinch3/NicotinD/compare/v0.1.226...v0.1.227) (2026-07-18)
+
+
+### Features
+
+* **acquire:** auto-generate native playlists from playlist acquisitions ([8103157](https://github.com/kevinch3/NicotinD/commit/81031579c2eb882781fc59400d798284c9ccc95c))
+
+
+### Bug Fixes
+
+* **acquire:** make playlist generation actually fire for yt-dlp/spotdl + reuse playlist on retry ([36c7c0e](https://github.com/kevinch3/NicotinD/commit/36c7c0ede4d3cee9fa190c4adad516e632db95d2))
+
 ## [0.1.226](https://github.com/kevinch3/NicotinD/compare/v0.1.225...v0.1.226) (2026-07-18)
 
 
