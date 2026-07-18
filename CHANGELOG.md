@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.226](https://github.com/kevinch3/NicotinD/compare/v0.1.225...v0.1.226) (2026-07-18)
+
+
+### Features
+
+* **library:** surface local-album search hits + fragmentation diagnostic ([efb81e2](https://github.com/kevinch3/NicotinD/commit/efb81e240dbf30229d75ef136d071504ba2f2fad))
+
+
+### Bug Fixes
+
+* **search:** tokenized accent-insensitive matching + calibrate fragment diagnostic ([1e5783e](https://github.com/kevinch3/NicotinD/commit/1e5783e563ea5da5ef401acb12ca709e2fedfe78)), closes [#168](https://github.com/kevinch3/NicotinD/issues/168)
+
 ## [0.1.225](https://github.com/kevinch3/NicotinD/compare/v0.1.224...v0.1.225) (2026-07-18)
 
 
