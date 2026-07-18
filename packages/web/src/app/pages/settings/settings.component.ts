@@ -19,6 +19,8 @@ import {
 import { isIosNative, isElectron } from '../../lib/platform';
 import { pickDirectory, setMusicDir } from '../../services/native/native-capabilities';
 import { ConfirmService } from '../../services/confirm.service';
+import { UpdateService } from '../../services/update.service';
+import { ToastService } from '../../services/toast.service';
 
 const GB = 1024 * 1024 * 1024;
 
@@ -61,6 +63,8 @@ export class SettingsComponent {
   private ws = inject(PlaybackWsService);
   private mediaControls = inject(MediaControlsService);
   private confirm = inject(ConfirmService);
+  readonly update = inject(UpdateService);
+  private toast = inject(ToastService);
 
   /** The Now Playing diagnostics panel only exists in the native iOS shell. */
   readonly isNativeIos = isIosNative();
@@ -83,12 +87,57 @@ export class SettingsComponent {
   readonly showChangelog = signal(false);
   readonly showLogoutDialog = signal(false);
   readonly cleanPreserveOnLogout = signal(false);
+  readonly updateToastId = signal<string | null>(null);
 
   readonly deviceName = signal(this.ws.getDeviceName());
   readonly deviceNameSaved = signal(false);
 
   isAdmin(): boolean {
     return this.auth.isAdmin();
+  }
+
+  async searchForUpdates(): Promise<void> {
+    if (!this.update.checkAvailable()) return;
+    try {
+      const outcome = await this.update.checkForUpdate();
+      if (outcome === 'unavailable') return;
+      if (this.updateToastId()) this.toast.dismiss(this.updateToastId()!);
+      const id = this.showUpdateToast(outcome);
+      this.updateToastId.set(id);
+    } catch {
+      if (this.updateToastId()) this.toast.dismiss(this.updateToastId()!);
+      const id = this.toast.show({
+        message: "Couldn't check for updates — try again later.",
+        kind: 'error',
+        duration: 4,
+      });
+      this.updateToastId.set(id);
+    }
+  }
+
+  reloadToUpdate(): void {
+    if (this.updateToastId()) this.toast.dismiss(this.updateToastId()!);
+    void this.update.applyUpdate();
+  }
+
+  private showUpdateToast(outcome: 'available' | 'up-to-date'): string {
+    if (outcome === 'available') {
+      const id = this.toast.show({
+        message: 'A new version is downloading — reload when it\u2019s ready.',
+        kind: 'info',
+        duration: 8,
+        actions: [
+          { label: 'Reload', callback: () => this.reloadToUpdate() },
+          { label: 'Later', callback: () => this.toast.dismiss(id) },
+        ],
+      });
+      return id;
+    }
+    return this.toast.show({
+      message: `You\u2019re on v${this.version}.`,
+      kind: 'success',
+      duration: 3,
+    });
   }
 
   async refreshNowPlayingDiagnostics(): Promise<void> {
