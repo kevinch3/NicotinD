@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import { userInfo } from 'node:os';
 import { join } from 'node:path';
 import { createLogger } from '@nicotind/core';
 import type { Database } from 'bun:sqlite';
@@ -16,6 +17,7 @@ const log = createLogger('remote-access');
 export type RemoteAccessState =
   | { kind: 'not-installed' }
   | { kind: 'needs-login'; authUrl?: string }
+  | { kind: 'needs-operator'; command: string }
   | { kind: 'funnel-not-enabled'; enableUrl?: string }
   | { kind: 'inactive'; publicUrl?: string }
   | { kind: 'active'; publicUrl: string }
@@ -122,6 +124,14 @@ export function parseFunnelEnableUrl(output: string): string | null {
   return match ? match[0].replace(/[.,)]+$/, '') : null;
 }
 
+/** Pure parser for tailscaled's Linux operator restriction: serve/funnel config
+ * changes are root-only until `sudo tailscale set --operator=<user>` is run
+ * once. The CLI error carries the `--operator=` hint — detect it so the UI can
+ * guide that one-time command instead of dumping the raw sudo error. */
+export function parseOperatorDenied(output: string): boolean {
+  return /access denied/i.test(output) && /--operator=/.test(output);
+}
+
 export class RemoteAccess {
   private port: number | null = null;
   private lastError: string | null = null;
@@ -189,6 +199,14 @@ export class RemoteAccess {
     if (!status.loggedIn) return { kind: 'needs-login', authUrl: status.authUrl ?? undefined };
     const publicUrl = status.magicDnsName ? `https://${status.magicDnsName}` : undefined;
     if (this.lastError) {
+      if (parseOperatorDenied(this.lastError)) {
+        // The username the backend runs as is exactly who must become the
+        // tailscaled operator — it's the user invoking the CLI.
+        return {
+          kind: 'needs-operator',
+          command: `sudo tailscale set --operator=${userInfo().username}`,
+        };
+      }
       const enableUrl = parseFunnelEnableUrl(this.lastError);
       if (enableUrl) return { kind: 'funnel-not-enabled', enableUrl };
       return { kind: 'error', detail: this.lastError };

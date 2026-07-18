@@ -57,6 +57,35 @@
                 }
               </p>
             }
+            @case ('needs-operator') {
+              <div class="text-theme-muted">
+                <p>
+                  One-time setup: Tailscale needs your permission to let NicotinD manage it
+                  without root. Run this once in a terminal, then retry:
+                </p>
+                <div class="mt-2 flex items-center gap-2 flex-wrap">
+                  <code
+                    class="px-2 py-1 rounded bg-theme-elevated text-theme-primary font-mono text-xs break-all"
+                    data-testid="operator-command"
+                  >{{ r.state.command }}</code>
+                  <button
+                    (click)="copyCommand(r.state.command)"
+                    class="text-theme-accent hover:underline text-xs"
+                    data-testid="operator-copy"
+                  >
+                    {{ copied() ? 'Copied' : 'Copy' }}
+                  </button>
+                  <button
+                    (click)="retryRemoteAccess()"
+                    [disabled]="busy()"
+                    class="text-theme-accent hover:underline text-xs disabled:opacity-50"
+                    data-testid="remote-access-retry"
+                  >
+                    Retry
+                  </button>
+                </div>
+              </div>
+            }
             @case ('funnel-not-enabled') {
               <p class="text-theme-muted">
                 One more step: Tailscale needs your approval to publish this server.
