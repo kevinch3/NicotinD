@@ -1,5 +1,463 @@
 [
   {
+    "version": "0.1.223",
+    "date": "2026-07-18",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.222...v0.1.223",
+    "sections": [
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "repair broken Linux deb + Android APK release builds ([f7235ea](https://github.com/kevinch3/NicotinD/commit/f7235ead88858d5051f0821b54de496e18891397)), closes [#150](https://github.com/kevinch3/NicotinD/issues/150) [#3](https://github.com/kevinch3/NicotinD/issues/3)"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.1.222",
+    "date": "2026-07-18",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.221...v0.1.222",
+    "sections": [
+      {
+        "title": "Features",
+        "items": [
+          "link a phone by QR + remote access via Tailscale Funnel ([76b5bc7](https://github.com/kevinch3/NicotinD/commit/76b5bc7f0578f5217b409c0e7db796a1efede003))"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.1.221",
+    "date": "2026-07-17",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.220...v0.1.221",
+    "sections": [
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**mobile:** prevent offline Android launch crash + detect network live ([c66827f](https://github.com/kevinch3/NicotinD/commit/c66827f4f172f6160d1af892fe5ce87423f094d9))"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.1.220",
+    "date": "2026-07-17",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.219...v0.1.220",
+    "sections": [
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**web:** keep mobile track-row context menu clear of the player/tab bar ([679463e](https://github.com/kevinch3/NicotinD/commit/679463ebf357834544dcd6404eb271c701f589b5))",
+          "**web:** wrap the Library Songs tab toolbar so it doesn't overflow on mobile ([3ae4557](https://github.com/kevinch3/NicotinD/commit/3ae45579467b18ee8b695cdc18aa058d1b3d0f8d))"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.1.219",
+    "date": "2026-07-17",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.218...v0.1.219",
+    "sections": [
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**library:** appendable genres + artist rename, split & appears-on fixes ([17deedd](https://github.com/kevinch3/NicotinD/commit/17deedde32e073addd9103f51516cf5a16bfc119))"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.1.218",
+    "date": "2026-07-17",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.217...v0.1.218",
+    "sections": [
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**docker:** skip lifecycle scripts in the production install ([dc2888f](https://github.com/kevinch3/NicotinD/commit/dc2888fb44c9edf094423b157091689c1dd86cf3))"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.1.217",
+    "date": "2026-07-17",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.216...v0.1.217",
+    "sections": [
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**auth:** reflect current role in admin select + propagate role changes on reload ([adab39c](https://github.com/kevinch3/NicotinD/commit/adab39cbddcfdc8fd07e654f09b3da18999dfc65))"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.1.216",
+    "date": "2026-07-17",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.215...v0.1.216",
+    "sections": [
+      {
+        "title": "Features",
+        "items": [
+          "**auth:** add listener + refiner user roles (capability ladder) ([56dad7c](https://github.com/kevinch3/NicotinD/commit/56dad7ccbbf8083eb90552268f194487a9a20838))"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.1.215",
+    "date": "2026-07-17",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.214...v0.1.215",
+    "sections": [
+      {
+        "title": "Features",
+        "items": [
+          "**downloads:** show disk availability pill in Downloads header ([0b1e29c](https://github.com/kevinch3/NicotinD/commit/0b1e29c6ee72feed97eaebd0bf040396cc3c09df))",
+          "**player:** resizable now-playing queue + styled lyrics empty state ([b497691](https://github.com/kevinch3/NicotinD/commit/b497691ea64a3ffd308b4e654a977f8341be2dd6))"
+        ]
+      },
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**library:** reload artist view when navigating artist-to-artist ([4ddda45](https://github.com/kevinch3/NicotinD/commit/4ddda458462d2476cfcd2353007fb7cdbf3e4093))",
+          "**lyrics:** make the first fetch reliable instead of a false empty ([128f93f](https://github.com/kevinch3/NicotinD/commit/128f93fae8e6cf1ed336f9d18d35de7728505be0))"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.1.214",
+    "date": "2026-07-17",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.213...v0.1.214",
+    "sections": [
+      {
+        "title": "Features",
+        "items": [
+          "**web:** auto-preserve queue for PWA lock-screen resilience ([8857f2e](https://github.com/kevinch3/NicotinD/commit/8857f2ee35ac4a5aa4e6eff714c2a05d69d2deb2))",
+          "**web:** songs search plus nav rationalisation ([d082507](https://github.com/kevinch3/NicotinD/commit/d082507a98a5b4cc224ce5daf51bd9f18a3903fe))"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.1.213",
+    "date": "2026-07-17",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.212...v0.1.213",
+    "sections": [
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**acquire:** file tagless archive.org downloads instead of silently losing them ([13af34b](https://github.com/kevinch3/NicotinD/commit/13af34bb6fa74c8430df7e13bf8a85cf25f5a7fb))"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.1.212",
+    "date": "2026-07-16",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.211...v0.1.212",
+    "sections": []
+  },
+  {
+    "version": "0.1.211",
+    "date": "2026-07-16",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.210...v0.1.211",
+    "sections": [
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**api:** make yt-dlp/spotdl usable from the desktop app ([5015484](https://github.com/kevinch3/NicotinD/commit/5015484c5f2876920cc671d26c7c75d485190ad9))",
+          "**desktop:** ad-hoc sign the mac build so the arm64 app launches ([0db55c4](https://github.com/kevinch3/NicotinD/commit/0db55c472bd4862fca5853a3873b4552e9b703e0))",
+          "**desktop:** restart sidecar after onboarding folder pick so the first session uses it ([31f496e](https://github.com/kevinch3/NicotinD/commit/31f496ea9c45b496c4a6ce5e8d3c7bee81a27575))",
+          "**slskd:** auto-share the music dir and show a not-reachable notice ([3ea9681](https://github.com/kevinch3/NicotinD/commit/3ea9681b23077d604582917014fa66ee5bc40ac3))"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.1.210",
+    "date": "2026-07-16",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.209...v0.1.210",
+    "sections": [
+      {
+        "title": "Features",
+        "items": [
+          "**web:** auto-preserve queue for PWA lock-screen resilience ([4565e33](https://github.com/kevinch3/NicotinD/commit/4565e3337ce66957673f0efc9f1f5ee56e22dc91))"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.1.209",
+    "date": "2026-07-16",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.208...v0.1.209",
+    "sections": [
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**desktop:** default-import electron-updater (cjs) so packaged esm app boots ([2fff777](https://github.com/kevinch3/NicotinD/commit/2fff777b689c4e1a462f1bf63995c65d2899c487))"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.1.208",
+    "date": "2026-07-16",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.207...v0.1.208",
+    "sections": [
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**desktop:** version electron-builder from release tag + add deb metadata ([ab6dcc5](https://github.com/kevinch3/NicotinD/commit/ab6dcc57e19b8d6991faf96db1b3da2421667854))"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.1.207",
+    "date": "2026-07-16",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.206...v0.1.207",
+    "sections": [
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**desktop:** build with tsc -b so electron-builder finds dist/main.js ([b3de9c3](https://github.com/kevinch3/NicotinD/commit/b3de9c30ffcd6ff04c890a90a16000570ba670af))"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.1.206",
+    "date": "2026-07-16",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.205...v0.1.206",
+    "sections": [
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**deploy:** stage desktop manifest for frozen install + run electron-builder under node ([a365936](https://github.com/kevinch3/NicotinD/commit/a365936d0270c7d1171a34d18bb7b9519b9c7981))"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.1.205",
+    "date": "2026-07-16",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.204...v0.1.205",
+    "sections": [
+      {
+        "title": "Features",
+        "items": [
+          "**api:** allow NICOTIND_WEB_DIST override for packaged builds ([257838c](https://github.com/kevinch3/NicotinD/commit/257838cd23e76a4a3c2e6454774dd4320a570226))",
+          "**api:** bind loopback + emit port handshake line for desktop sidecar ([5ddf75a](https://github.com/kevinch3/NicotinD/commit/5ddf75ad0a496963027a5216e328114641bf0b5a))",
+          "**api:** resolve ffmpeg via NICOTIND_FFMPEG_PATH for packaged builds ([bac8d10](https://github.com/kevinch3/NicotinD/commit/bac8d109d8b8809e953e08871a327786750e0540))",
+          "**desktop:** change music folder from settings + persist musicDir desktop-side ([f9e519b](https://github.com/kevinch3/NicotinD/commit/f9e519b6b99e939e22704704a12669f86fadfaaa))",
+          "**desktop:** electron package scaffold + hardened main window ([addafda](https://github.com/kevinch3/NicotinD/commit/addafda751524a3c3921b828f684a0d17ae5b656))",
+          "**desktop:** electron-builder packaging (AppImage/deb/dmg) with bundled ffmpeg + bun sidecar ([a3eb1a1](https://github.com/kevinch3/NicotinD/commit/a3eb1a1ea7c50adc67872d300c323511038a0f32))",
+          "**desktop:** github-release auto-update (apply on linux, notify on unsigned macos) ([9eb418c](https://github.com/kevinch3/NicotinD/commit/9eb418c4437cc9196bd8d427855d2e22614d1f7d))",
+          "**desktop:** preload native-capabilities bridge + folder-picker IPC ([feed768](https://github.com/kevinch3/NicotinD/commit/feed768ce60bccde91222236c8f1480c0c0b568c))",
+          "**desktop:** supervised Bun sidecar with port handshake + logs ([28ab6c8](https://github.com/kevinch3/NicotinD/commit/28ab6c81d391fe708adfc45ae1c5a6fea5430ea1))",
+          "**web:** disable service worker inside the Electron shell ([7e2af31](https://github.com/kevinch3/NicotinD/commit/7e2af310232bd78b29aef66fee0f44e9214c4f64))",
+          "**web:** native folder picker in onboarding on Electron ([5498d5b](https://github.com/kevinch3/NicotinD/commit/5498d5b3c9fe4c29fe6ec5f204b2098e13d1775d))",
+          "**web:** shared native-capabilities interface + Electron detection ([3d567e7](https://github.com/kevinch3/NicotinD/commit/3d567e79377d076b1180b618a527776c346fb30b))"
+        ]
+      },
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**desktop:** guard sidecar restart on health, run desktop tests in CI ([7da1cc8](https://github.com/kevinch3/NicotinD/commit/7da1cc854e582fd1b6722afb66fddc734328f0c0))",
+          "**desktop:** handle sidecar restart failure on music-folder change ([c966bfc](https://github.com/kevinch3/NicotinD/commit/c966bfc28ed4090abfcfd962a727abc4582e1a66))",
+          "**desktop:** pin @types/node override so electron dep doesn't break workspace typecheck ([908d05c](https://github.com/kevinch3/NicotinD/commit/908d05c6452a0f017227ae198aee83e4de4db567))",
+          "**desktop:** stage real version into backend package.json (not 0.0.0) ([d3a44c6](https://github.com/kevinch3/NicotinD/commit/d3a44c6c6cb8ba921567c8df9e08483c85282609))"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.1.204",
+    "date": "2026-07-15",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.203...v0.1.204",
+    "sections": [
+      {
+        "title": "Features",
+        "items": [
+          "**radio:** mood/last-track radio landing + filter-seeded radio ([5d85b6f](https://github.com/kevinch3/NicotinD/commit/5d85b6faa8c5eaad5e4a65d1cdd890dfa1046734))"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.1.203",
+    "date": "2026-07-14",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.202...v0.1.203",
+    "sections": [
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**stream:** actually apply the vocal-mute filter server-side ([08a8a32](https://github.com/kevinch3/NicotinD/commit/08a8a32cb27fb453a37edafb144ecabc22df8da8)), closes [#134](https://github.com/kevinch3/NicotinD/issues/134) [-#141](https://github.com/kevinch3/-/issues/141)"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.1.202",
+    "date": "2026-07-14",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.201...v0.1.202",
+    "sections": [
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**web:** remove client-side vocal filter, keep backend-only vocal mute ([ec6cb08](https://github.com/kevinch3/NicotinD/commit/ec6cb0847f3324d3cf36d5008644a52d44d48441))"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.1.201",
+    "date": "2026-07-14",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.199...v0.1.201",
+    "sections": [
+      {
+        "title": "Features",
+        "items": [
+          "**web:** promote recently-added to a Library Songs tab; simplify Offline ([a7a7abc](https://github.com/kevinch3/NicotinD/commit/a7a7abcb5d9879ab4c8f649654cc82efcdaebbca))"
+        ]
+      },
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**web:** preserve playback position on vocal mute toggle via restoredTime ([49fc466](https://github.com/kevinch3/NicotinD/commit/49fc4660ed8c02c5826aad41f796cd4fb6a6eb9e))"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.1.199",
+    "date": "2026-07-14",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.198...v0.1.199",
+    "sections": [
+      {
+        "title": "Features",
+        "items": [
+          "**acquire:** add emitTrack host-context method and shared track-event parsing ([56a8178](https://github.com/kevinch3/NicotinD/commit/56a8178fab15226a9492cbb32639ddbde4b3d679))",
+          "**acquire:** add yt-dlp track markers and wire onTrack ([1fc191c](https://github.com/kevinch3/NicotinD/commit/1fc191c6eb15446dabf3666cd80e3540a2a88a4b))",
+          "**acquire:** emit label and track events from archive plugin ([02557eb](https://github.com/kevinch3/NicotinD/commit/02557eb95fdfc89713567aee38b3b283808e7435))",
+          "**acquire:** expose per-track status for slskd hunts through the job feed ([95f51bd](https://github.com/kevinch3/NicotinD/commit/95f51bd05af7c6e670954a238a784112916bfd02))",
+          "**acquire:** wire spotdl onLabel and onTrack callbacks ([9dc3fe2](https://github.com/kevinch3/NicotinD/commit/9dc3fe21dd3acc85ae68925d273192101c61006b))",
+          "**web:** show current/next track on download job cards ([4aef6fe](https://github.com/kevinch3/NicotinD/commit/4aef6fe5aa36bb97150538d27ec9055bd7dfc7a4))",
+          "**web:** show View N albums for multi-album download jobs ([087aa8a](https://github.com/kevinch3/NicotinD/commit/087aa8a2d93048766b9ae15022df79c9fa822ee7))",
+          "**web:** unify per-track status onto DownloadItem.tracks ([f211d74](https://github.com/kevinch3/NicotinD/commit/f211d747aa0c8fdb188542d3541c98700969d7c1))"
+        ]
+      },
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**acquire:** strip file extension from archive track titles ([c249477](https://github.com/kevinch3/NicotinD/commit/c24947779bfc25f22f3ba8c4958ecd6fc327b56b))",
+          "**acquire:** track distinct destination albums per job ([bb82b99](https://github.com/kevinch3/NicotinD/commit/bb82b9918c45b9389840af98d892e3462caf5a74))",
+          "**web:** suppress misleading Now/Next display for slskd hunts ([5897bb0](https://github.com/kevinch3/NicotinD/commit/5897bb05c302ccebeee0ad462dd4ad53309e11ee))"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.1.198",
+    "date": "2026-07-14",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.197...v0.1.198",
+    "sections": [
+      {
+        "title": "Features",
+        "items": [
+          "**web:** add VocalFilterService for client-side vocal removal ([eda30f1](https://github.com/kevinch3/NicotinD/commit/eda30f16f4ab16f418029d5d070a05e0748481ac))"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.1.197",
+    "date": "2026-07-14",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.196...v0.1.197",
+    "sections": [
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**web:** preserve playback position across vocal-mute toggle ([53cd51a](https://github.com/kevinch3/NicotinD/commit/53cd51a3d7f62532b59c7460f9fe60573c61cd35))"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.1.196",
+    "date": "2026-07-14",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.195...v0.1.196",
+    "sections": [
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**api:** use pan=c0-c1 (the only ffmpeg filter that actually cancels vocals) ([390cdb6](https://github.com/kevinch3/NicotinD/commit/390cdb63e6a7c055eed88a307a6892bf94802215))"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.1.195",
+    "date": "2026-07-14",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.194...v0.1.195",
+    "sections": [
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**api:** embed filter version in transcode cache key ([34752b3](https://github.com/kevinch3/NicotinD/commit/34752b336d4f79380c37ca76dbf897585d585523))",
+          "**api:** run vocal-removal branch before general transcode ([39d3e35](https://github.com/kevinch3/NicotinD/commit/39d3e359ba42c88bd147238232929574ea5e34a5))",
+          "**web:** preserve playback position across vocal-mute toggle ([a8363e6](https://github.com/kevinch3/NicotinD/commit/a8363e60c5f0880f62dd7746d5689a9aa56c3ca1))"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.1.194",
+    "date": "2026-07-14",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.193...v0.1.194",
+    "sections": [
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**api:** switch vocal removal to stereotools mid/side filter ([d3e101d](https://github.com/kevinch3/NicotinD/commit/d3e101d92fd7bb294443a6fdd0fbcac422981cc3))"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.1.193",
+    "date": "2026-07-14",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.192...v0.1.193",
+    "sections": [
+      {
+        "title": "Features",
+        "items": [
+          "**api:** add ?vocals=off stream route param for karaoke ([630daa9](https://github.com/kevinch3/NicotinD/commit/630daa966ec32f997b94cf2de099b8aab8db9c79))",
+          "**api:** add vocal removal filter to transcode pipeline ([242eff2](https://github.com/kevinch3/NicotinD/commit/242eff22ef0f383e66b5b8a0fc5d91ac0df293ad))",
+          "**api:** include vocalRemoval flag in transcode cache key ([a4d7ec4](https://github.com/kevinch3/NicotinD/commit/a4d7ec4bd8050723baf3707bf9ce8d3f421403e6))",
+          "**web:** add vocal mute mic toggle in karaoke overlay ([54b3638](https://github.com/kevinch3/NicotinD/commit/54b3638ca4b3e499f8c053c697b5b04090dad515))",
+          "**web:** add vocalsMuted signal to PlayerService ([6692591](https://github.com/kevinch3/NicotinD/commit/66925918245b8e812cae7aad5e719cae1589c6ad))",
+          "**web:** pass vocalsOff option through streamUrl ([2f7f504](https://github.com/kevinch3/NicotinD/commit/2f7f504ae88bad7fd16380a7249147a6f3b2bfa4))",
+          "**web:** wire vocalsMuted to audio element src and add reload effect ([60c367a](https://github.com/kevinch3/NicotinD/commit/60c367a358033653731966244122502c318ae93d))"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.1.192",
+    "date": "2026-07-14",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.191...v0.1.192",
+    "sections": [
+      {
+        "title": "Features",
+        "items": [
+          "**web:** collapse every peer folder of one album into a single download card ([2e68adf](https://github.com/kevinch3/NicotinD/commit/2e68adf581ad373e075d3b238af732c26e6472aa))"
+        ]
+      }
+    ]
+  },
+  {
     "version": "0.1.191",
     "date": "2026-07-14",
     "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.190...v0.1.191",
@@ -267,453 +725,6 @@
           "**web:** downloads recent count/empty-state track the deletedSongIds-filtered list ([dfd80d0](https://github.com/kevinch3/NicotinD/commit/dfd80d0e1137903a31002f470360d06abceb1004))",
           "**web:** generate missing covers for perceptual-shelf curated playlists ([7589ad3](https://github.com/kevinch3/NicotinD/commit/7589ad300b75ea11cc18746c0e65fce616c5da07))",
           "**web:** restore ConfirmDialogComponent, put global confirm under app-confirm-host ([0a2f8f7](https://github.com/kevinch3/NicotinD/commit/0a2f8f7510896ac9b0e7824086a61bb4b974c76e))"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.1.172",
-    "date": "2026-07-09",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.171...v0.1.172",
-    "sections": [
-      {
-        "title": "Features",
-        "items": [
-          "**api:** standardized library metadata filters on all list routes ([7aec2f2](https://github.com/kevinch3/NicotinD/commit/7aec2f22edcc28664b06ee46a528e19fe32cd4af))",
-          "**web:** metadata filters on the artist Songs tab + e2e filter flow ([f70ca64](https://github.com/kevinch3/NicotinD/commit/f70ca64718cb975817851b720be47c092cfc8eb3))",
-          "**web:** standardized metadata filter panel on the four library tabs ([05321c1](https://github.com/kevinch3/NicotinD/commit/05321c11100b6c9b4299bdeccc19646bdc666e9f))"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.1.171",
-    "date": "2026-07-09",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.170...v0.1.171",
-    "sections": [
-      {
-        "title": "Bug Fixes",
-        "items": [
-          "**api:** demote compilation reissues in catalog album ranking ([d91f9a4](https://github.com/kevinch3/NicotinD/commit/d91f9a4f202ad623097416c686b525207a73afb5))"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.1.170",
-    "date": "2026-07-09",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.169...v0.1.170",
-    "sections": [
-      {
-        "title": "Features",
-        "items": [
-          "**web:** add Sims-style track stats bars to track info sheet ([c0cde91](https://github.com/kevinch3/NicotinD/commit/c0cde91a3401d33d74c7bd5af14f3fabbcfe78ec))"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.1.169",
-    "date": "2026-07-09",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.168...v0.1.169",
-    "sections": [
-      {
-        "title": "Features",
-        "items": [
-          "**web:** add parseLinkIntent to classify pasted URLs by host ([d27282d](https://github.com/kevinch3/NicotinD/commit/d27282d68107606bbdab865936a4b9056c73321e))",
-          "**web:** let the source chip render link-intent hosts ([3661ffe](https://github.com/kevinch3/NicotinD/commit/3661ffe1eba0f71346be963c4c65d36fbbb23d95))",
-          "**web:** merge the URL acquire box into the search omnibox ([ac028de](https://github.com/kevinch3/NicotinD/commit/ac028de496fa99c8a4f1b9a59f5691ecbd5e6985))"
-        ]
-      },
-      {
-        "title": "Bug Fixes",
-        "items": [
-          "**web:** clear stale results under the link-intent card ([263cc90](https://github.com/kevinch3/NicotinD/commit/263cc9037ac52631f38254c53ed03eec48963a44))"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.1.168",
-    "date": "2026-07-08",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.167...v0.1.168",
-    "sections": [
-      {
-        "title": "Features",
-        "items": [
-          "**library:** upload a custom album cover image ([cf29fca](https://github.com/kevinch3/NicotinD/commit/cf29fca51bd56ebf63cc501d1b095605a209c76c))",
-          "**web:** upload a custom album cover image from the Fix-metadata modal ([103707b](https://github.com/kevinch3/NicotinD/commit/103707b0bfc5e98f12e352c07e79f42748c1e574))"
-        ]
-      },
-      {
-        "title": "Bug Fixes",
-        "items": [
-          "**library:** clear cover negative-cache after album artwork writes ([b74b288](https://github.com/kevinch3/NicotinD/commit/b74b288208d848d68e9acabe39c2fd920ce2756a))"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.1.167",
-    "date": "2026-07-08",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.166...v0.1.167",
-    "sections": [
-      {
-        "title": "Features",
-        "items": [
-          "**lyrics:** merge lyrics and karaoke into a single feature ([ad1aee4](https://github.com/kevinch3/NicotinD/commit/ad1aee47b8181dafae346c0c6401564075e13acb))"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.1.166",
-    "date": "2026-07-08",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.165...v0.1.166",
-    "sections": [
-      {
-        "title": "Bug Fixes",
-        "items": [
-          "**library-scanner:** strip glued track-number prefix from inferred artist ([a68d131](https://github.com/kevinch3/NicotinD/commit/a68d13184ab489b4417bc2d3aa9294df6e3b1f86))"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.1.165",
-    "date": "2026-07-08",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.164...v0.1.165",
-    "sections": [
-      {
-        "title": "Features",
-        "items": [
-          "**downloads:** deep-link completed downloads to their album ([50db5dc](https://github.com/kevinch3/NicotinD/commit/50db5dca3d96e6464c0322459fab932ac4f0ff8c))"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.1.164",
-    "date": "2026-07-08",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.163...v0.1.164",
-    "sections": [
-      {
-        "title": "Features",
-        "items": [
-          "**settings:** decouple Admin/Settings/Extensions and add slskd status panel ([8447f99](https://github.com/kevinch3/NicotinD/commit/8447f99afeb0b1c31aaaa15b73f1c4137de51af7))"
-        ]
-      },
-      {
-        "title": "Bug Fixes",
-        "items": [
-          "**web:** repair AOT build — decorator placement + slskd type re-exports ([ef58a27](https://github.com/kevinch3/NicotinD/commit/ef58a278ea0a21ab30f4e917aac59bf512ef6121))"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.1.163",
-    "date": "2026-07-08",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.162...v0.1.163",
-    "sections": [
-      {
-        "title": "Performance",
-        "items": [
-          "**radio:** weight-normalized scoring + embeddings for better matchmaking ([83c2c75](https://github.com/kevinch3/NicotinD/commit/83c2c758b36a6df37d6604eeba3da0b0235ce803))"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.1.162",
-    "date": "2026-07-08",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.161...v0.1.162",
-    "sections": [
-      {
-        "title": "Features",
-        "items": [
-          "**analysis:** optional GPU inference via --build-arg GPU=1, with inherent CPU fallback ([dee93da](https://github.com/kevinch3/NicotinD/commit/dee93da24e4688a3619c077f1783a749bad083bf))"
-        ]
-      },
-      {
-        "title": "Bug Fixes",
-        "items": [
-          "**library-processing:** treat a process restart as a failure-tally session boundary ([6a8ea23](https://github.com/kevinch3/NicotinD/commit/6a8ea23f124b77aa2f8867e3b8f65ea093ca9cf8))"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.1.161",
-    "date": "2026-07-08",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.160...v0.1.161",
-    "sections": [
-      {
-        "title": "Bug Fixes",
-        "items": [
-          "**library-processing:** unwedge stuck enrichment backlog + stop stale failure banner ([845f63a](https://github.com/kevinch3/NicotinD/commit/845f63a3ac1950b5bc31d0cf98c2e0790b29c819))"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.1.160",
-    "date": "2026-07-07",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.159...v0.1.160",
-    "sections": [
-      {
-        "title": "Features",
-        "items": [
-          "**library-processing:** exclude permanently-broken files + harden the analysis runtime ([520805d](https://github.com/kevinch3/NicotinD/commit/520805d558e916813a6d77b79e24e7b39dae587d))"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.1.159",
-    "date": "2026-07-07",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.158...v0.1.159",
-    "sections": [
-      {
-        "title": "Features",
-        "items": [
-          "**library-processing:** diagnose enrichment failures, surface them, report to Sentry ([d3a60b3](https://github.com/kevinch3/NicotinD/commit/d3a60b36bebd8d649e9ffdb952c8aa6ebf3524fa))"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.1.158",
-    "date": "2026-07-07",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.157...v0.1.158",
-    "sections": [
-      {
-        "title": "Bug Fixes",
-        "items": [
-          "**api:** detect ALAC hiding in .m4a so it gets standardized to Opus ([b23d2b2](https://github.com/kevinch3/NicotinD/commit/b23d2b220cbcc9b8d64209001284e3fc9294e506))"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.1.157",
-    "date": "2026-07-07",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.156...v0.1.157",
-    "sections": [
-      {
-        "title": "Bug Fixes",
-        "items": [
-          "**web:** stop the track-load effect from aborting its own stream loads ([7fc96d1](https://github.com/kevinch3/NicotinD/commit/7fc96d1e5e9d283aee3391e350665b5a1d0b9c3f))"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.1.156",
-    "date": "2026-07-07",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.155...v0.1.156",
-    "sections": [
-      {
-        "title": "Features",
-        "items": [
-          "**web:** show success toast when URL acquire job completes ([071a8bf](https://github.com/kevinch3/NicotinD/commit/071a8bf2a6fe693d2127fe6206f2fb5f6eb49584)), closes [#85](https://github.com/kevinch3/NicotinD/issues/85)"
-        ]
-      },
-      {
-        "title": "Bug Fixes",
-        "items": [
-          "**web:** bypass the Angular service worker for audio stream requests ([034cfab](https://github.com/kevinch3/NicotinD/commit/034cfabe3e15b32e2414dca2d589f01bbad0d5e0)), closes [#87](https://github.com/kevinch3/NicotinD/issues/87)",
-          "**web:** route the standby-preload stream URL through streamUrl too ([7ad07d3](https://github.com/kevinch3/NicotinD/commit/7ad07d377af46e434bb7102014403a8d2e575374))"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.1.155",
-    "date": "2026-07-07",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.154...v0.1.155",
-    "sections": [
-      {
-        "title": "Bug Fixes",
-        "items": [
-          "**api:** stop Firefox <audio> from stalling forever on stream requests ([0f1d0b7](https://github.com/kevinch3/NicotinD/commit/0f1d0b7622057bb8427d1100fd29473cfd7fee97))"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.1.154",
-    "date": "2026-07-07",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.153...v0.1.154",
-    "sections": [
-      {
-        "title": "Features",
-        "items": [
-          "**web:** add buffered-range segment + gradient helpers ([8923c94](https://github.com/kevinch3/NicotinD/commit/8923c947afd34b50cf35752ed023cf802406fce7))",
-          "**web:** add buffering + bufferedRanges state to PlayerService ([4820888](https://github.com/kevinch3/NicotinD/commit/4820888ec415bae16995d08dd880331961040ddc))",
-          "**web:** current-track indicator with instant click acknowledgment on track rows ([2966053](https://github.com/kevinch3/NicotinD/commit/29660538f28c6a642491f658b4ee5acd2f650b6c))",
-          "**web:** drive buffering state from native audio events ([6f2b728](https://github.com/kevinch3/NicotinD/commit/6f2b728069ee12ae2dc78100c98f5a8dfb3da957))",
-          "**web:** paint buffered ranges band on the seek bar ([29ca727](https://github.com/kevinch3/NicotinD/commit/29ca7275acc162f9679afe281a96cd943ba26322))",
-          "**web:** show buffering spinner on play/pause buttons ([1f96c36](https://github.com/kevinch3/NicotinD/commit/1f96c36c334a704bb2aafb94b04f93effab41254))"
-        ]
-      },
-      {
-        "title": "Bug Fixes",
-        "items": [
-          "**web:** clear buffering on seeked when the target is already buffered ([c00642c](https://github.com/kevinch3/NicotinD/commit/c00642c6e35a55301f6834915c0485d9bff18918))"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.1.153",
-    "date": "2026-07-06",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.152...v0.1.153",
-    "sections": [
-      {
-        "title": "Bug Fixes",
-        "items": [
-          "**web:** pad now-playing sheet header with safe-area-inset-top ([2a46d72](https://github.com/kevinch3/NicotinD/commit/2a46d725227c071f4f39a5dc68820323b8d42aa0))"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.1.152",
-    "date": "2026-07-06",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.151...v0.1.152",
-    "sections": [
-      {
-        "title": "Features",
-        "items": [
-          "**api:** opt-in server-side Sentry init helper ([10dd129](https://github.com/kevinch3/NicotinD/commit/10dd129155c45b3173ddc13565bf41b45190ae54))",
-          "**api:** report unknown 500 errors to Sentry ([9ef78b0](https://github.com/kevinch3/NicotinD/commit/9ef78b0d0c3afcac13bed8224e1f41eff3a909c6))",
-          "initialize server Sentry at boot (opt-in via env) ([5414bdc](https://github.com/kevinch3/NicotinD/commit/5414bdc7173e9929edbccccdab4df8c2483cbe70))",
-          "integrate Sentry error tracking and session replay with custom CTA event directive ([6f59143](https://github.com/kevinch3/NicotinD/commit/6f591439ead38be3c279932bd692e007c915ffd6))",
-          "**web:** testable opt-in Sentry init, disabled in dev ([4de7b67](https://github.com/kevinch3/NicotinD/commit/4de7b670fa287c9cf626db65490e69cb4b5093d0))"
-        ]
-      },
-      {
-        "title": "Bug Fixes",
-        "items": [
-          "preload server Sentry before Hono; drop unused CTA directive ([8a6d3d0](https://github.com/kevinch3/NicotinD/commit/8a6d3d0b5ddce49ae1f9eefe800191a68c30b9c6))"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.1.151",
-    "date": "2026-07-06",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.150...v0.1.151",
-    "sections": [
-      {
-        "title": "Bug Fixes",
-        "items": [
-          "resolve circular dependency in AuthService logout ([460aa1a](https://github.com/kevinch3/NicotinD/commit/460aa1af7bdaf6228af48bb8e347e0fdf209d1a1))",
-          "**search:** don't clear query in reset() to preserve advanced toggle ([caa7d87](https://github.com/kevinch3/NicotinD/commit/caa7d87373c663e7f58a469d04564afca1d0f1a7))",
-          "**search:** set networkState to complete on API failure ([315c3a7](https://github.com/kevinch3/NicotinD/commit/315c3a76d79c48f4f451f59245f5786a09dd97c6))",
-          "**web:** clear all user state on logout to prevent data leaks ([abc4f23](https://github.com/kevinch3/NicotinD/commit/abc4f2348605bb96f9d5e5c2a054d007255abc4a))"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.1.150",
-    "date": "2026-07-06",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.149...v0.1.150",
-    "sections": []
-  },
-  {
-    "version": "0.1.149",
-    "date": "2026-07-06",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.148...v0.1.149",
-    "sections": [
-      {
-        "title": "Bug Fixes",
-        "items": [
-          "**web:** migrate dark-island components to themed tokens ([982cc01](https://github.com/kevinch3/NicotinD/commit/982cc018afb23d9693e1cdf089a29971a4c660fc))",
-          "**web:** register unregistered theme utilities (silent no-op classes) ([ea86e51](https://github.com/kevinch3/NicotinD/commit/ea86e511296f525d032d754671c6e5f01ca8ecff))",
-          "**web:** themed status colours for warnings/pills (light-theme contrast) ([b488844](https://github.com/kevinch3/NicotinD/commit/b488844d16476702b38f1b695143e45a7212ec0c))",
-          "**web:** use text-theme-on-accent for text on accent fills ([f6a7d9b](https://github.com/kevinch3/NicotinD/commit/f6a7d9bc9ac8856dbfe4d678ba682e164a621b99))"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.1.148",
-    "date": "2026-07-06",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.147...v0.1.148",
-    "sections": [
-      {
-        "title": "Bug Fixes",
-        "items": [
-          "**web:** resolve lyrics overflow, badge contrast, and settings mobile overflow ([d883bbb](https://github.com/kevinch3/NicotinD/commit/d883bbb0a854a8b5d6fd88bf8e1a8255d522b639))"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.1.147",
-    "date": "2026-07-05",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.146...v0.1.147",
-    "sections": []
-  },
-  {
-    "version": "0.1.146",
-    "date": "2026-07-04",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.145...v0.1.146",
-    "sections": []
-  },
-  {
-    "version": "0.1.145",
-    "date": "2026-07-04",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.144...v0.1.145",
-    "sections": [
-      {
-        "title": "Performance",
-        "items": [
-          "**web:** cache whole-library reads (artists, genres) ([0ebf753](https://github.com/kevinch3/NicotinD/commit/0ebf7533d26faf1c5b8d5bdd38689af85cd73f10))"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.1.144",
-    "date": "2026-07-04",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.143...v0.1.144",
-    "sections": [
-      {
-        "title": "Performance",
-        "items": [
-          "**db:** tune SQLite pragmas, add grid index, cache suppression scan ([26545f6](https://github.com/kevinch3/NicotinD/commit/26545f68655e46d3123a7475b710fbd4e1221112))",
-          "**scanner:** incremental tag cache skips re-parsing unchanged files ([03646ea](https://github.com/kevinch3/NicotinD/commit/03646ea618f2d4efb82870ebf7938eafe5624479))",
-          "**web:** render-window large lists + debounce list search ([2edbe59](https://github.com/kevinch3/NicotinD/commit/2edbe5962301fac173b583fa968f71a904a22cb7))"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.1.143",
-    "date": "2026-07-04",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.142...v0.1.143",
-    "sections": [
-      {
-        "title": "Bug Fixes",
-        "items": [
-          "**web:** provision CHANGELOG.md into Docker build so changelog modal isn't empty ([ac269ef](https://github.com/kevinch3/NicotinD/commit/ac269ef4ad7fa1959f779a6d03babad177d5d50b))"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.1.142",
-    "date": "2026-07-03",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.141...v0.1.142",
-    "sections": [
-      {
-        "title": "Features",
-        "items": [
-          "**presence:** admin-only presence tracking via HTTP heartbeats ([abe9cd2](https://github.com/kevinch3/NicotinD/commit/abe9cd243177c91f0a1f20df5779c2f6caefeb26))"
         ]
       }
     ]
