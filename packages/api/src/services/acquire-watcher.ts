@@ -10,16 +10,11 @@ import { createJob, type TransferJobMeta } from './acquisition-job-store.js';
 import { recordAcquisition } from './acquisition-store.js';
 import { deriveAcquireAlbum, type AcquireAlbumDestination } from './acquire-album.js';
 import { PlaylistService } from './playlist.service.js';
-import {
-  resolveAcquireJobTracks,
-  type AcquireJobTrackRow,
-} from './acquire-playlist.js';
+import { resolveAcquireJobTracks, type AcquireJobTrackRow } from './acquire-playlist.js';
 
 /** Map an acquisition plugin id to an AcquisitionMethod; unknown ids → 'unknown'. */
 function methodForBackend(backend: string): AcquisitionMethod {
-  return backend === 'ytdlp' || backend === 'spotdl' || backend === 'archive'
-    ? backend
-    : 'unknown';
+  return backend === 'ytdlp' || backend === 'spotdl' || backend === 'archive' ? backend : 'unknown';
 }
 
 const log = createLogger('acquire-watcher');
@@ -60,11 +55,10 @@ export interface AcquireJobSubmitOptions {
   /** Optional user id of the submitter — required when the URL is a playlist. */
   userId?: string;
   /**
-   * Override the URL classifier. Only honored for archive.org items (which
-   * don't expose a playlist signal at the URL level); other sources use the
-   * classifier's verdict directly. `'album'` forces the legacy single-item
-   * acquire flow even for archive items the user would have liked as a
-   * playlist.
+   * Override the URL classifier. `'playlist'` upgrades any URL the classifier
+   * did NOT already recognize as a playlist (archive.org items — no playlist
+   * signal at the URL level — and unrecognized custom links alike);
+   * `'album'` downgrades a recognized playlist URL to the single-item flow.
    */
   as?: 'playlist' | 'album';
 }
@@ -118,10 +112,9 @@ export class AcquireWatcher {
     // sweep their staging dirs too — they now survive failed jobs (see run()),
     // so nothing else will ever clean them up once the row is gone.
     const stale = this.db
-      .query<
-        { id: string; backend: string },
-        []
-      >(`SELECT id, backend FROM acquire_jobs WHERE state IN ('done', 'failed') AND created_at < unixepoch() - 604800`)
+      .query<{ id: string; backend: string }, []>(
+        `SELECT id, backend FROM acquire_jobs WHERE state IN ('done', 'failed') AND created_at < unixepoch() - 604800`,
+      )
       .all();
     this.db.run(
       `DELETE FROM acquire_jobs WHERE state IN ('done', 'failed') AND created_at < unixepoch() - 604800`,
@@ -381,11 +374,29 @@ export class AcquireWatcher {
       log.info({ jobId }, 'No landed tracks — skipping playlist materialization');
       return;
     }
-    const labelRow = this.db
-      .query<{ label: string | null }, [string]>(`SELECT label FROM acquire_jobs WHERE id = ?`)
+    const jobRow = this.db
+      .query<{ label: string | null; playlist_id: string | null }, [string]>(
+        `SELECT label, playlist_id FROM acquire_jobs WHERE id = ?`,
+      )
       .get(jobId);
-    const name = labelRow?.label?.trim() || 'Imported playlist';
-    const playlist = new PlaylistService(this.db).create(userId, { name, songIds });
+    const name = jobRow?.label?.trim() || 'Imported playlist';
+    const service = new PlaylistService(this.db);
+    // Retry contract: a job that already generated a playlist updates it in
+    // place (same id, replaced contents) instead of minting a duplicate on
+    // every retry. `update` returns false when the playlist is gone (user
+    // deleted it — the FK sets playlist_id NULL, but belt-and-braces) or
+    // owned by someone else (a different user retried); both fall through to
+    // a fresh create owned by the retrying user.
+    if (jobRow?.playlist_id && service.update(userId, jobRow.playlist_id, { name })) {
+      this.db.run(`DELETE FROM playlist_songs WHERE playlist_id = ?`, [jobRow.playlist_id]);
+      service.update(userId, jobRow.playlist_id, { add: songIds });
+      log.info(
+        { jobId, playlistId: jobRow.playlist_id, songs: songIds.length },
+        'Refreshed existing playlist from acquire job retry',
+      );
+      return;
+    }
+    const playlist = service.create(userId, { name, songIds });
     this.db.run(`UPDATE acquire_jobs SET playlist_id = ? WHERE id = ?`, [playlist.id, jobId]);
     log.info(
       { jobId, playlistId: playlist.id, songs: songIds.length },
@@ -491,10 +502,12 @@ export class AcquireWatcher {
       // Mirror into acquisition_jobs: the URL engine's queued/running collapse
       // to the unified 'active'.
       const mirrored = state === 'queued' || state === 'running' ? 'active' : state;
-      this.db.run(
-        `UPDATE acquisition_jobs SET state = ?, error = ?, updated_at = ? WHERE id = ?`,
-        [mirrored, error ?? null, Date.now(), jobId],
-      );
+      this.db.run(`UPDATE acquisition_jobs SET state = ?, error = ?, updated_at = ? WHERE id = ?`, [
+        mirrored,
+        error ?? null,
+        Date.now(),
+        jobId,
+      ]);
     } catch (err) {
       log.warn({ jobId, err }, 'Failed to update acquire_jobs state');
     }

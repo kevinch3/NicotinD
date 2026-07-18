@@ -10,10 +10,11 @@ import {
 interface SubmitBody {
   url: string;
   /**
-   * Archive.org override: the URL alone doesn't carry a playlist signal, so
-   * the link-intent card on the web exposes a "Treat as playlist" toggle.
-   * Only honored for archive.org items — other sources use the classifier
-   * (Spotify/YouTube) and ignore this field.
+   * Classifier override. `'playlist'` is honored for any URL the classifier
+   * did NOT already recognize as a playlist (archive.org items — the web's
+   * "Treat as playlist" toggle — and unrecognized custom links alike);
+   * `'album'` downgrades a recognized playlist URL to a single-item acquire.
+   * Spotify/YouTube playlist URLs auto-detect and need no override.
    */
   as?: 'playlist' | 'album';
 }

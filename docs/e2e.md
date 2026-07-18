@@ -8,17 +8,17 @@ unit can: boot → auth → scan → stream → playback → plugin gating.
 
 ## What it covers
 
-| Spec | Asserts |
-|------|---------|
-| `tests/auth.setup.ts` | (setup project) seeds the admin via `/api/setup/complete`, kicks `/api/system/scan`, waits for the fixture album, saves an authenticated `storageState` reused by every other spec |
-| `tests/auth.spec.ts` | login (valid) lands in the app + logout; invalid creds bounce back to `/login` (the 401 interceptor) and stay unauthenticated |
-| `tests/library.spec.ts` | the 7-track fixture album shows in the Albums grid and its tracklist renders; the loose single is **not** in the grid |
-| `tests/playback.spec.ts` | Play Album fires a `206`/`200` on `/api/stream/...` and an `<audio>` element advances |
-| `tests/player.spec.ts` | pause/resume, next-track, seek (click the progress bar → position jumps), shuffle toggle |
-| `tests/plugins.spec.ts` | the compliance contract: the URL-acquire box is absent until an admin enables the consent-gated yt-dlp `resolve` plugin, and reappears/disappears with enable/disable |
-| `tests/onboarding.spec.ts` | (**`onboarding` project**, own fresh server) drives the 4-step setup wizard end-to-end incl. the Advanced/Lidarr panel, then confirms it lands authenticated in the app |
-| `tests/welcome-banner.spec.ts` | an admin-provisioned user sees the first-login welcome banner and can dismiss it (seeded server) |
-| `tests/song-menu.spec.ts` | on an album detail page: the unified `⋯` row menu's common actions + "Go to album" suppression, "Song info" opens the track-info sheet, admin "Remove from library" → global `ConfirmHost` → row removal (see `docs/song-actions.md#testing`) |
+| Spec                           | Asserts                                                                                                                                                                                                                                       |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tests/auth.setup.ts`          | (setup project) seeds the admin via `/api/setup/complete`, kicks `/api/system/scan`, waits for the fixture album, saves an authenticated `storageState` reused by every other spec                                                            |
+| `tests/auth.spec.ts`           | login (valid) lands in the app + logout; invalid creds bounce back to `/login` (the 401 interceptor) and stay unauthenticated                                                                                                                 |
+| `tests/library.spec.ts`        | the 7-track fixture album shows in the Albums grid and its tracklist renders; the loose single is **not** in the grid                                                                                                                         |
+| `tests/playback.spec.ts`       | Play Album fires a `206`/`200` on `/api/stream/...` and an `<audio>` element advances                                                                                                                                                         |
+| `tests/player.spec.ts`         | pause/resume, next-track, seek (click the progress bar → position jumps), shuffle toggle                                                                                                                                                      |
+| `tests/plugins.spec.ts`        | the compliance contract: the URL-acquire box is absent until an admin enables the consent-gated yt-dlp `resolve` plugin, and reappears/disappears with enable/disable                                                                         |
+| `tests/onboarding.spec.ts`     | (**`onboarding` project**, own fresh server) drives the 4-step setup wizard end-to-end incl. the Advanced/Lidarr panel, then confirms it lands authenticated in the app                                                                       |
+| `tests/welcome-banner.spec.ts` | an admin-provisioned user sees the first-login welcome banner and can dismiss it (seeded server)                                                                                                                                              |
+| `tests/song-menu.spec.ts`      | on an album detail page: the unified `⋯` row menu's common actions + "Go to album" suppression, "Song info" opens the track-info sheet, admin "Remove from library" → global `ConfirmHost` → row removal (see `docs/song-actions.md#testing`) |
 
 ## How it runs
 
@@ -50,6 +50,53 @@ unit can: boot → auth → scan → stream → playback → plugin gating.
   doesn't auto-advance mid-assertion. Regenerate only when the desired fixture library
   changes (`bun run --filter @nicotind/e2e make-fixtures`) and **commit the output** —
   CI has no ffmpeg.
+
+## What the e2e environment does NOT give you (write specs against this list)
+
+Recurring wrong assumptions that have shipped red CI. Check every new spec
+against these before pushing; if you discover a new one, add it here in the
+same PR that hit it.
+
+- **The `request` fixture is NOT authenticated.** The setup project's
+  `storageState` only persists **localStorage** (the app keeps its JWT in
+  `nicotind_token` — there is no auth cookie), and Playwright's `request`
+  fixture sends cookies, not localStorage. Any direct API call must log in
+  and attach the header explicitly:
+
+  ```ts
+  import { ADMIN, bearer } from '../helpers';
+  const { token } = await (
+    await request.post('/api/auth/login', {
+      data: { username: ADMIN.username, password: ADMIN.password },
+    })
+  ).json();
+  const res = await request.get('/api/playlists', { headers: bearer(token) });
+  ```
+
+  `page`-driven navigation IS authenticated (the browser context restores
+  localStorage); only out-of-band `request`/`page.request` calls need the
+  explicit header. Assuming otherwise yields 401s that read like route bugs
+  (this bit `playlist-from-acquire.spec.ts` on first landing).
+
+- **No resolve/acquisition plugin is enabled on a fresh server.** Acquisition
+  is default-off, so every capability-gated surface — the link-intent card,
+  acquire buttons, `POST /api/acquire` succeeding — is absent until a spec
+  enables a plugin itself. The archive.org plugin is the one that works
+  without a binary (fetch-based); enable it through the UI like
+  `plugins.spec.ts` does, and **disable it again in `afterEach`** so the
+  plugin-gating suite's "fresh install enables nothing" assertion stays true
+  in any order.
+
+- **No slskd, no Lidarr, no network egress assumptions.** Both URLs point at
+  `http://127.0.0.1:1` (dead on purpose); anything that fans out to them
+  fails soft. A spec can't exercise a real download/hunt — cover that logic
+  at the unit/integration level and test the _surface_ (gating, forwarding,
+  rendering) in e2e.
+
+- **The fixture library is minimal.** Silent FLACs from `fixtures/music/**`,
+  no acquire jobs, no user playlists, no curated content beyond what boot
+  seeds. Don't assert on content existing unless the setup project or your
+  spec created it.
 
 ## Running locally
 
@@ -87,7 +134,7 @@ and uploads the Playwright HTML report on failure. `release` and `deploy` depend
 
 The CI `ci` job also runs `bun test packages/e2e/playground` — the **pure logic**
 of the playground harness below (observation model, report rendering, the response +
-console classifiers, the friction/journey model). The playground *flows* need a live
+console classifiers, the friction/journey model). The playground _flows_ need a live
 backend and stay out of CI; their helpers are unit-tested so regressions in the
 feedback machinery are still caught.
 
@@ -117,18 +164,18 @@ PLAYGROUND=1 E2E_BASE_URL=https://your-stack \
 bun run --filter @nicotind/e2e playground
 ```
 
-| Flow (spec) | Gathers |
-|-------------|---------|
-| `tests/song-acquisition.playground.ts` (§F) | Reachability of a single song ("Toxic"): catalog is album-only, count of network files to sift, absence of a song-first affordance |
-| `tests/catalog-quality.playground.ts` (§A) | For a non-distinctive artist, the share of album cards that actually belong to the matched artist (own-album ratio) |
-| `tests/album-hunt.playground.ts` (§C) | Base/skew hunt latency + candidate count / dead-end. **Opt-in** via `PLAYGROUND_HUNT=1` (resolve adds a monitored artist to Lidarr); never triggers a download |
-| `tests/network-search.playground.ts` (§C2) | Time-to-first-result vs time-to-complete for a niche query |
-| `tests/metadata-fix.playground.ts` (§G) | For an album (first in the library, or `PLAYGROUND_FIX_ALBUM`), candidate count + top-candidate confidence the fix modal would surface for a query; flags a 0-candidate gap |
-| `tests/downloads.playground.ts` | Downloads feed (read-only): Active/Offline/Recent tab friction, feed-item count, retry/cancel/remove affordance presence |
-| `tests/playlists.playground.ts` | **Self-cleaning** create → render → delete round-trip (local feature, safe on prod); counts steps to build a playlist |
-| `tests/sharing.playground.ts` | Mints a share link, opens `/share/:token` in a fresh **unauthenticated** context, verifies the read-only view (and that auth chrome doesn't leak); tokens self-expire |
-| `tests/admin-plugins.playground.ts` | `/settings/plugins` + `/admin` read-only: enabled-plugin count, slskd status, console health. A single toggle is gated behind `PLAYGROUND_PLUGIN_TOGGLE=<id>` and reverted |
-| `tests/remote-playback.playground.ts` | **Two-context** cast/device-control: a controller tab + a target speaker tab (distinct `nicotind_device_id` seeded per context) opt in, the controller discovers + casts to the target, then relays a remote PAUSE. Records device-discovery / cast-to-playback / PAUSE-round-trip latencies + opt-in friction. Mutates only **ephemeral** per-session playback state (self-resets when the target disconnects at teardown) |
+| Flow (spec)                                 | Gathers                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tests/song-acquisition.playground.ts` (§F) | Reachability of a single song ("Toxic"): catalog is album-only, count of network files to sift, absence of a song-first affordance                                                                                                                                                                                                                                                                                          |
+| `tests/catalog-quality.playground.ts` (§A)  | For a non-distinctive artist, the share of album cards that actually belong to the matched artist (own-album ratio)                                                                                                                                                                                                                                                                                                         |
+| `tests/album-hunt.playground.ts` (§C)       | Base/skew hunt latency + candidate count / dead-end. **Opt-in** via `PLAYGROUND_HUNT=1` (resolve adds a monitored artist to Lidarr); never triggers a download                                                                                                                                                                                                                                                              |
+| `tests/network-search.playground.ts` (§C2)  | Time-to-first-result vs time-to-complete for a niche query                                                                                                                                                                                                                                                                                                                                                                  |
+| `tests/metadata-fix.playground.ts` (§G)     | For an album (first in the library, or `PLAYGROUND_FIX_ALBUM`), candidate count + top-candidate confidence the fix modal would surface for a query; flags a 0-candidate gap                                                                                                                                                                                                                                                 |
+| `tests/downloads.playground.ts`             | Downloads feed (read-only): Active/Offline/Recent tab friction, feed-item count, retry/cancel/remove affordance presence                                                                                                                                                                                                                                                                                                    |
+| `tests/playlists.playground.ts`             | **Self-cleaning** create → render → delete round-trip (local feature, safe on prod); counts steps to build a playlist                                                                                                                                                                                                                                                                                                       |
+| `tests/sharing.playground.ts`               | Mints a share link, opens `/share/:token` in a fresh **unauthenticated** context, verifies the read-only view (and that auth chrome doesn't leak); tokens self-expire                                                                                                                                                                                                                                                       |
+| `tests/admin-plugins.playground.ts`         | `/settings/plugins` + `/admin` read-only: enabled-plugin count, slskd status, console health. A single toggle is gated behind `PLAYGROUND_PLUGIN_TOGGLE=<id>` and reverted                                                                                                                                                                                                                                                  |
+| `tests/remote-playback.playground.ts`       | **Two-context** cast/device-control: a controller tab + a target speaker tab (distinct `nicotind_device_id` seeded per context) opt in, the controller discovers + casts to the target, then relays a remote PAUSE. Records device-discovery / cast-to-playback / PAUSE-round-trip latencies + opt-in friction. Mutates only **ephemeral** per-session playback state (self-resets when the target disconnects at teardown) |
 
 - **Structure**: pure logic in `playground/{observe,report,net-monitor,console-monitor,journey}.ts`
   (unit-tested, CI-covered); the Playwright fixture (`playground/fixtures.ts`) auto-
@@ -182,11 +229,11 @@ under a dedicated `--config` and stay out of CI, like the playground flows. Shot
 under `screenshots/mobile/<flow>/NN-label.png` via the pure `playground/shot.ts`
 helper (`shotPath`/`shot`, unit-tested in the `ci` job alongside `observe`/`report`).
 
-| Config | Backend | Flows |
-|--------|---------|-------|
-| `playwright.screenshots.config.ts` | managed server + fixtures (Pixel 7) | `mobile-screenshots.screens.ts` — library / album / player / now-playing / song-details |
-| `playwright.hunt.config.ts` | **live** (`E2E_BASE_URL`, Pixel 7) | `hunt-mobile` + `network-album-download` — **mutates prod** (real downloads) |
-| `playwright.live-screens.config.ts` | **live** (`E2E_BASE_URL`, Pixel 7) | `player-analysis` + `downloads-acquire` — read-mostly; mutating sub-steps env-gated |
+| Config                              | Backend                             | Flows                                                                                   |
+| ----------------------------------- | ----------------------------------- | --------------------------------------------------------------------------------------- |
+| `playwright.screenshots.config.ts`  | managed server + fixtures (Pixel 7) | `mobile-screenshots.screens.ts` — library / album / player / now-playing / song-details |
+| `playwright.hunt.config.ts`         | **live** (`E2E_BASE_URL`, Pixel 7)  | `hunt-mobile` + `network-album-download` — **mutates prod** (real downloads)            |
+| `playwright.live-screens.config.ts` | **live** (`E2E_BASE_URL`, Pixel 7)  | `player-analysis` + `downloads-acquire` — read-mostly; mutating sub-steps env-gated     |
 
 The **live-screens** config doubles as a findings run: its two flows use the playground
 `obs` fixture, so the config also wires `playground/reporter.ts` and a single run emits

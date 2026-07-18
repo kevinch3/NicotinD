@@ -113,7 +113,8 @@ export function parseYtdlpProgress(line: string, current: AcquireProgress): Acqu
  * `Downloaded "Title"` / `Skipping "Title"` per song.
  */
 export function parseSpotdlProgress(line: string, current: AcquireProgress): AcquireProgress {
-  const totalMatch = /\bFound (\d+) songs?\b/i.exec(line) ?? /\bDownloading (\d+) songs? to\b/i.exec(line);
+  const totalMatch =
+    /\bFound (\d+) songs?\b/i.exec(line) ?? /\bDownloading (\d+) songs? to\b/i.exec(line);
   if (totalMatch) {
     const total = parseInt(totalMatch[1]!, 10);
     if (total > 0) return { done: current.done, total };
@@ -160,24 +161,27 @@ export function parseSpotdlPlaylistTitle(line: string): string | null {
  * wrapper (Task 5 wires the emitter side): `TRACK_START::<title>` when a
  * track begins downloading, `TRACK_DONE::<title>` when it finishes.
  *
- * Newer markers also carry the destination filename after a second `::`
- * (`TRACK_START::artist - title::track01.mp3`); the host uses that to
+ * Newer markers also carry the destination filename after a tab
+ * (`TRACK_START::artist - title\ttrack01.mp3`); the host uses that to
  * resolve the post-scan library_song without title-collision guessing
- * when materializing a native playlist. Older single-`::` lines (no
- * filename) still parse — `path` is just omitted.
+ * when materializing a native playlist. The delimiter is a tab — not a
+ * second `::` — because yt-dlp derives the filename from the title, so a
+ * title containing `::` would poison both fields of a `::`-delimited
+ * marker. We split at the LAST tab; tab-free lines (older markers) still
+ * parse with `path` omitted.
  */
 export function parseYtdlpTrackEvent(line: string): TrackEvent | null {
   const start = /^TRACK_START::(.+)/.exec(line);
-  if (start) {
-    const parts = start[1]!.split('::');
-    return { title: (parts[0] ?? '').trim(), status: 'downloading', path: parts[1]?.trim() };
-  }
+  if (start) return splitMarkerPayload(start[1]!, 'downloading');
   const done = /^TRACK_DONE::(.+)/.exec(line);
-  if (done) {
-    const parts = done[1]!.split('::');
-    return { title: (parts[0] ?? '').trim(), status: 'done', path: parts[1]?.trim() };
-  }
+  if (done) return splitMarkerPayload(done[1]!, 'done');
   return null;
+}
+
+function splitMarkerPayload(payload: string, status: TrackEventStatus): TrackEvent {
+  const tab = payload.lastIndexOf('\t');
+  if (tab === -1) return { title: payload.trim(), status };
+  return { title: payload.slice(0, tab).trim(), status, path: payload.slice(tab + 1).trim() };
 }
 
 /** Walk a directory tree and collect absolute paths of audio files. */
@@ -220,7 +224,13 @@ export interface RunAcquireOptions {
    * single-shot, unlike `onLabel` — fires many times over a job's life as
    * spotdl/yt-dlp report each track starting, finishing, or being skipped).
    */
-  onTrack?: (title: string, status: TrackEventStatus) => void;
+  /**
+   * Fires once per parsed track-event line, with the FULL event — `path`
+   * included when the marker carried one. Callers must forward the whole
+   * event to `emitTrack`; dropping `path` at this seam disables playlist
+   * materialization downstream (the acquire_job_tracks insert needs it).
+   */
+  onTrack?: (event: TrackEvent) => void;
   /** Injectable spawner (tests pass a fake to avoid process-global module mocks). */
   spawn?: typeof spawn;
 }
@@ -270,7 +280,7 @@ export function runAcquireProcess(opts: RunAcquireOptions): RunningAcquire {
         // Not single-shot — every matching line fires a callback, unlike
         // the label above.
         const event = parseSpotdlTrackEvent(line) ?? parseYtdlpTrackEvent(line);
-        if (event) opts.onTrack(event.title, event.status);
+        if (event) opts.onTrack(event);
       }
     }
     opts.onProgress?.(progress);

@@ -207,16 +207,31 @@ describe('parseYtdlpTrackEvent', () => {
     });
   });
 
-  it('extracts the filename when present after a second "::" separator', () => {
-    expect(parseYtdlpTrackEvent('TRACK_START::My Song Title::track01.opus')).toEqual({
-      title: 'My Song Title',
+  it('extracts the filename when present after a tab separator', () => {
+    expect(parseYtdlpTrackEvent('TRACK_START::Artist - My Song\ttrack01.opus')).toEqual({
+      title: 'Artist - My Song',
       status: 'downloading',
       path: 'track01.opus',
     });
-    expect(parseYtdlpTrackEvent('TRACK_DONE::My Song Title::track01.opus')).toEqual({
-      title: 'My Song Title',
+    expect(parseYtdlpTrackEvent('TRACK_DONE::Artist - My Song\ttrack01.opus')).toEqual({
+      title: 'Artist - My Song',
       status: 'done',
       path: 'track01.opus',
+    });
+  });
+
+  it('keeps "::" inside a title intact (tab, not "::", delimits the filename)', () => {
+    // A title containing "::" propagates into the yt-dlp filename too — a
+    // "::"-based delimiter would mis-split both fields. The tab separator
+    // splits at the LAST tab so the title keeps its "::" verbatim.
+    expect(
+      parseYtdlpTrackEvent(
+        'TRACK_START::Nujabes - Aruarian :: Dance\tNujabes - Aruarian :: Dance.opus',
+      ),
+    ).toEqual({
+      title: 'Nujabes - Aruarian :: Dance',
+      status: 'downloading',
+      path: 'Nujabes - Aruarian :: Dance.opus',
     });
   });
 
@@ -273,36 +288,39 @@ describe('runAcquireProcess', () => {
   });
 
   it('calls onTrack for every track event line, unlike the single-shot onLabel', async () => {
-    const events: Array<[string, string]> = [];
-    const r = run({ onTrack: (title, status) => events.push([title, status]) });
+    const events: Array<{ title: string; status: string; path?: string }> = [];
+    const r = run({ onTrack: (event) => events.push(event) });
     fakeProc.emitData('Downloaded "Song A"\n');
     fakeProc.emitData('Skipping "Song B"\n');
     fakeProc.emitData('Downloaded "Song A"\n'); // re-download/retag: fires again, not suppressed
     fakeProc.finish(0);
     await r.done;
     expect(events).toEqual([
-      ['Song A', 'done'],
-      ['Song B', 'skipped'],
-      ['Song A', 'done'],
+      { title: 'Song A', status: 'done' },
+      { title: 'Song B', status: 'skipped' },
+      { title: 'Song A', status: 'done' },
     ]);
   });
 
-  it('calls onTrack for yt-dlp TRACK_START::/TRACK_DONE:: marker lines', async () => {
-    const events: Array<[string, string]> = [];
-    const r = run({ onTrack: (title, status) => events.push([title, status]) });
-    fakeProc.emitData('TRACK_START::My Song\n');
-    fakeProc.emitData('TRACK_DONE::My Song\n');
+  it('forwards the full TrackEvent (path included) for yt-dlp marker lines', async () => {
+    // The `path` must survive this seam: the host's emitTrack keys the
+    // acquire_job_tracks row on it, and dropping it here (the original bug)
+    // silently disabled playlist materialization for every yt-dlp/spotdl job.
+    const events: Array<{ title: string; status: string; path?: string }> = [];
+    const r = run({ onTrack: (event) => events.push(event) });
+    fakeProc.emitData('TRACK_START::My Song\ttrack01.opus\n');
+    fakeProc.emitData('TRACK_DONE::My Song\ttrack01.opus\n');
     fakeProc.finish(0);
     await r.done;
     expect(events).toEqual([
-      ['My Song', 'downloading'],
-      ['My Song', 'done'],
+      { title: 'My Song', status: 'downloading', path: 'track01.opus' },
+      { title: 'My Song', status: 'done', path: 'track01.opus' },
     ]);
   });
 
   it('does not call onTrack for unrelated lines', async () => {
-    const events: Array<[string, string]> = [];
-    const r = run({ onTrack: (title, status) => events.push([title, status]) });
+    const events: unknown[] = [];
+    const r = run({ onTrack: (event) => events.push(event) });
     fakeProc.emitData('[download]  42.0% of 1MiB\n');
     fakeProc.finish(0);
     await r.done;

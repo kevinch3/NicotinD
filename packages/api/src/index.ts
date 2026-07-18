@@ -46,6 +46,7 @@ import { pluginRoutes } from './routes/plugins.js';
 import { radioRoutes } from './routes/radio.js';
 import { PluginRegistry } from './services/plugins/registry.js';
 import { upsertTrackStatus } from './services/plugins/host-context.js';
+import { recordAcquireJobTrack } from './services/acquire-playlist.js';
 import { SlskdPlugin } from './services/plugins/slskd/index.js';
 import { YtdlpPlugin } from './services/plugins/ytdlp/index.js';
 import { SpotdlPlugin } from './services/plugins/spotdl/index.js';
@@ -389,9 +390,10 @@ export function createApp({
     },
     // Upsert one track's status into the job's tracks_json by title match —
     // fires once per track (many times per job), unlike the single-shot label.
-    // Also appends a row to acquire_job_tracks (PK (job_id, position)) with
-    // the optional `path` so the post-ingest playlist step can resolve each
-    // track to its post-scan library_song without title-collision guessing.
+    // Also upserts the acquire_job_tracks row (keyed job_id+title, position =
+    // first-appearance order) that the post-ingest playlist step resolves
+    // against — for EVERY event, path or not; title-only sources (spotdl)
+    // rely on the title-fallback resolution of these rows.
     emitTrack: (jobId, track) => {
       try {
         const row = db
@@ -412,21 +414,7 @@ export function createApp({
           JSON.stringify(upsertTrackStatus(tracks, track)),
           jobId,
         ]);
-        // `path` is optional — a plugin that can't supply it (none today) just
-        // gets a title-only JSON row, with no acquire_job_tracks insert. The
-        // post-ingest step falls back to title-only matching in that case.
-        if (track.path) {
-          const next = db
-            .query<{ next: number | null }, [string]>(
-              `SELECT COALESCE(MAX(position), -1) + 1 AS next FROM acquire_job_tracks WHERE job_id = ?`,
-            )
-            .get(jobId)?.next;
-          db.run(
-            `INSERT OR REPLACE INTO acquire_job_tracks (job_id, position, title, status, path)
-             VALUES (?, ?, ?, ?, ?)`,
-            [jobId, next ?? 0, track.title, track.status, track.path],
-          );
-        }
+        recordAcquireJobTrack(db, jobId, track);
       } catch {
         // Non-fatal — track status is best-effort.
       }

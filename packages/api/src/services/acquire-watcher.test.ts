@@ -125,10 +125,9 @@ describe('AcquireWatcher (registry-driven)', () => {
     const id = await h.watcher.submit('https://example.com/x');
 
     const mirror = h.db
-      .query<
-        { kind: string; method: string; source_ref: string },
-        [string]
-      >(`SELECT kind, method, source_ref FROM acquisition_jobs WHERE id = ?`)
+      .query<{ kind: string; method: string; source_ref: string }, [string]>(
+        `SELECT kind, method, source_ref FROM acquisition_jobs WHERE id = ?`,
+      )
       .get(id);
     expect(mirror).toEqual({ kind: 'url', method: 'fake', source_ref: 'https://example.com/x' });
 
@@ -175,10 +174,9 @@ describe('AcquireWatcher (registry-driven)', () => {
     expect(job.storage_path).toBe('Artist/Album');
 
     const acq = h.db
-      .query<
-        { method: string; source_ref: string; stage: string },
-        [string]
-      >('SELECT method, source_ref, stage FROM acquisitions WHERE relative_path = ?')
+      .query<{ method: string; source_ref: string; stage: string }, [string]>(
+        'SELECT method, source_ref, stage FROM acquisitions WHERE relative_path = ?',
+      )
       .get('Artist/Album/track.mp3');
     // 'fake' is not a known method id, so it maps to 'unknown'.
     expect(acq).toEqual({
@@ -282,10 +280,9 @@ describe('AcquireWatcher (registry-driven)', () => {
     await waitForStage(h.watcher, id, 'done');
 
     const method = h.db
-      .query<
-        { method: string },
-        [string]
-      >('SELECT method FROM acquisitions WHERE relative_path = ?')
+      .query<{ method: string }, [string]>(
+        'SELECT method FROM acquisitions WHERE relative_path = ?',
+      )
       .get('Artist/Album/track.mp3')?.method;
     expect(method).toBe('ytdlp');
   });
@@ -362,7 +359,13 @@ describe('AcquireWatcher (registry-driven)', () => {
     const registry = new PluginRegistry({ db, dataDir: DATA_DIR });
     registry.register(fakePlugin());
     await registry.enable('fake', 'admin');
-    const watcher = new AcquireWatcher({ db, dataDir: DATA_DIR, registry, organizeBatch: organize, scanIncremental: scan });
+    const watcher = new AcquireWatcher({
+      db,
+      dataDir: DATA_DIR,
+      registry,
+      organizeBatch: organize,
+      scanIncremental: scan,
+    });
     const id = await watcher.submit('https://example.com/x');
     // While organize is blocked, state must still be 'running'.
     await new Promise((r) => setTimeout(r, 20));
@@ -434,7 +437,9 @@ describe('AcquireWatcher (registry-driven)', () => {
     const dir = pluginStagingDir(DATA_DIR, 'fake', 'd');
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, 'leftover.mp3'), 'x');
-    h.db.run(`INSERT INTO acquire_jobs (id, backend, url, state) VALUES ('d', 'fake', 'u', 'failed')`);
+    h.db.run(
+      `INSERT INTO acquire_jobs (id, backend, url, state) VALUES ('d', 'fake', 'u', 'failed')`,
+    );
     expect(h.watcher.deleteJob('d')).toBe(true);
     expect(existsSync(dir)).toBe(false);
   });
@@ -527,7 +532,9 @@ describe('AcquireWatcher (registry-driven)', () => {
     plugin.resolve!.resolve = (_url, jobId) =>
       new Promise((resolve) => {
         releaseResolve = () =>
-          resolve([join(pluginStagingDir(DATA_DIR, 'fake', jobId), 'Artist', 'Album', 'track.mp3')]);
+          resolve([
+            join(pluginStagingDir(DATA_DIR, 'fake', jobId), 'Artist', 'Album', 'track.mp3'),
+          ]);
       });
     h = makeHarness(plugin);
     await h.registry.enable('fake', 'admin');
@@ -825,14 +832,16 @@ describe('AcquireWatcher (playlist generation)', () => {
       const jobId = jobRow?.id;
       for (let i = 0; i < relPaths.length; i++) {
         const path = relPaths[i]!;
+        // OR IGNORE / OR REPLACE so a retryJob() re-run of the same job (which
+        // re-organizes + re-scans the same files) doesn't blow up the mock.
         db.run(
-          `INSERT INTO library_songs (id, album_id, title, artist, artist_id, path, duration, landed_at, synced_at)
+          `INSERT OR IGNORE INTO library_songs (id, album_id, title, artist, artist_id, path, duration, landed_at, synced_at)
            VALUES (?, 'alb', ?, 'Artist1', 'art', ?, 100, 1, 1)`,
           [`s${i + 1}`, titles[i] ?? `track${i + 1}`, path],
         );
         if (jobId) {
           db.run(
-            `INSERT INTO acquire_job_tracks (job_id, position, title, status, path)
+            `INSERT OR REPLACE INTO acquire_job_tracks (job_id, position, title, status, path)
              VALUES (?, ?, ?, 'done', ?)`,
             [jobId, i, titles[i] ?? `track${i + 1}`, path.split('/').pop() ?? path],
           );
@@ -852,11 +861,9 @@ describe('AcquireWatcher (playlist generation)', () => {
   it('marks a Spotify playlist URL as is_playlist at submit time', async () => {
     const h = makePlaylistHarness();
     await h.registry.enable('fake', 'admin');
-    const id = await h.watcher.submit(
-      'https://open.spotify.com/playlist/abc',
-      undefined,
-      { userId: 'user-1' },
-    );
+    const id = await h.watcher.submit('https://open.spotify.com/playlist/abc', undefined, {
+      userId: 'user-1',
+    });
     await waitForState(h.watcher, id, 'done');
     expect(h.watcher.getJob(id)?.isPlaylist).toBe(true);
   });
@@ -864,11 +871,9 @@ describe('AcquireWatcher (playlist generation)', () => {
   it('does NOT mark a Spotify album URL as is_playlist', async () => {
     const h = makePlaylistHarness();
     await h.registry.enable('fake', 'admin');
-    const id = await h.watcher.submit(
-      'https://open.spotify.com/album/abc',
-      undefined,
-      { userId: 'user-1' },
-    );
+    const id = await h.watcher.submit('https://open.spotify.com/album/abc', undefined, {
+      userId: 'user-1',
+    });
     await waitForState(h.watcher, id, 'done');
     expect(h.watcher.getJob(id)?.isPlaylist).toBe(false);
   });
@@ -876,11 +881,10 @@ describe('AcquireWatcher (playlist generation)', () => {
   it('forces is_playlist when the caller passes `as: playlist` for an archive item', async () => {
     const h = makePlaylistHarness();
     await h.registry.enable('fake', 'admin');
-    const id = await h.watcher.submit(
-      'https://example.com/x',
-      undefined,
-      { userId: 'user-1', as: 'playlist' },
-    );
+    const id = await h.watcher.submit('https://example.com/x', undefined, {
+      userId: 'user-1',
+      as: 'playlist',
+    });
     await waitForState(h.watcher, id, 'done');
     expect(h.watcher.getJob(id)?.isPlaylist).toBe(true);
   });
@@ -899,11 +903,9 @@ describe('AcquireWatcher (playlist generation)', () => {
   it('materializes a per-user native playlist after a playlist URL completes', async () => {
     const h = makePlaylistHarness();
     await h.registry.enable('fake', 'admin');
-    const id = await h.watcher.submit(
-      'https://open.spotify.com/playlist/abc',
-      'My Mix',
-      { userId: 'user-1' },
-    );
+    const id = await h.watcher.submit('https://open.spotify.com/playlist/abc', 'My Mix', {
+      userId: 'user-1',
+    });
     await waitForState(h.watcher, id, 'done');
 
     const job = h.watcher.getJob(id)!;
@@ -911,10 +913,9 @@ describe('AcquireWatcher (playlist generation)', () => {
     expect(job.playlistId).toBeTruthy();
     // The playlist was created with the user's id and the label as name.
     const pl = h.db
-      .query<
-        { id: string; name: string; user_id: string; kind: string },
-        [string]
-      >(`SELECT id, name, user_id, kind FROM playlists WHERE id = ?`)
+      .query<{ id: string; name: string; user_id: string; kind: string }, [string]>(
+        `SELECT id, name, user_id, kind FROM playlists WHERE id = ?`,
+      )
       .get(job.playlistId!);
     expect(pl?.user_id).toBe('user-1');
     expect(pl?.name).toBe('My Mix');
@@ -927,6 +928,52 @@ describe('AcquireWatcher (playlist generation)', () => {
       .all(job.playlistId!)
       .map((r) => r.song_id);
     expect(songIds).toEqual(['s1', 's2', 's3']);
+  });
+
+  it('reuses the existing playlist on retry instead of creating a duplicate', async () => {
+    const h = makePlaylistHarness();
+    await h.registry.enable('fake', 'admin');
+    const id = await h.watcher.submit('https://open.spotify.com/playlist/abc', 'My Mix', {
+      userId: 'user-1',
+    });
+    await waitForState(h.watcher, id, 'done');
+    const firstPlaylistId = h.watcher.getJob(id)!.playlistId;
+    expect(firstPlaylistId).toBeTruthy();
+
+    await h.watcher.retryJob(id, { userId: 'user-1' });
+    await waitForState(h.watcher, id, 'done');
+
+    // Same playlist id, exactly one playlist row, songs still in order.
+    expect(h.watcher.getJob(id)!.playlistId).toBe(firstPlaylistId);
+    const count = h.db.query<{ c: number }, []>(`SELECT COUNT(*) AS c FROM playlists`).get();
+    expect(count?.c).toBe(1);
+    const songIds = h.db
+      .query<{ song_id: string }, [string]>(
+        `SELECT song_id FROM playlist_songs WHERE playlist_id = ? ORDER BY position ASC`,
+      )
+      .all(firstPlaylistId!)
+      .map((r) => r.song_id);
+    expect(songIds).toEqual(['s1', 's2', 's3']);
+  });
+
+  it('creates a fresh playlist on retry when the user deleted the original', async () => {
+    const h = makePlaylistHarness();
+    await h.registry.enable('fake', 'admin');
+    const id = await h.watcher.submit('https://open.spotify.com/playlist/abc', 'My Mix', {
+      userId: 'user-1',
+    });
+    await waitForState(h.watcher, id, 'done');
+    const firstPlaylistId = h.watcher.getJob(id)!.playlistId!;
+    h.db.run(`DELETE FROM playlists WHERE id = ?`, [firstPlaylistId]);
+
+    await h.watcher.retryJob(id, { userId: 'user-1' });
+    await waitForState(h.watcher, id, 'done');
+
+    const newPlaylistId = h.watcher.getJob(id)!.playlistId;
+    expect(newPlaylistId).toBeTruthy();
+    expect(newPlaylistId).not.toBe(firstPlaylistId);
+    const count = h.db.query<{ c: number }, []>(`SELECT COUNT(*) AS c FROM playlists`).get();
+    expect(count?.c).toBe(1);
   });
 
   it('does not create a playlist when no tracks landed (acquisitions empty)', async () => {

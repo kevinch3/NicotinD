@@ -420,7 +420,9 @@ export function applySchema(db: Database): void {
   // straight to the playlist detail page. ON DELETE SET NULL so a user who
   // removes the playlist doesn't leave a dangling reference on the job row.
   try {
-    db.run(`ALTER TABLE acquire_jobs ADD COLUMN playlist_id TEXT REFERENCES playlists(id) ON DELETE SET NULL`);
+    db.run(
+      `ALTER TABLE acquire_jobs ADD COLUMN playlist_id TEXT REFERENCES playlists(id) ON DELETE SET NULL`,
+    );
   } catch {
     // Column already exists — ignore
   }
@@ -428,12 +430,15 @@ export function applySchema(db: Database): void {
   // Per-track plugin output for URL acquire jobs, in download order. Separate
   // from acquire_jobs.tracks_json because the post-ingest playlist step needs
   // (title, path) in row order — the JSON column is title-only and powers the
-  // "Now:" / "Next:" card UI, which doesn't need paths. PK is (job_id,
-  // position) so retries that re-emit the same position update in place.
-  // `path` is the file basename the plugin knows it's about to write — used to
-  // resolve the post-scan library_song via basename of the organized relative
-  // path, so two tracks with identical titles in the same playlist still map
-  // to distinct song ids.
+  // "Now:" / "Next:" card UI, which doesn't need paths. Rows are written by
+  // recordAcquireJobTrack (acquire-playlist.ts), which upserts keyed on
+  // (job_id, title): re-emits for the same title (downloading → done, or a
+  // retry replaying the list) update in place, new titles append at
+  // MAX(position)+1 — so `position` is first-appearance (= playlist) order.
+  // `path` is the file basename the plugin knows it's about to write ('' for
+  // title-only sources like spotdl) — used to resolve the post-scan
+  // library_song via the basename stem of the organized relative path, so two
+  // tracks with identical titles in one playlist still map to distinct songs.
   db.run(`
     CREATE TABLE IF NOT EXISTS acquire_job_tracks (
       job_id   TEXT NOT NULL REFERENCES acquire_jobs(id) ON DELETE CASCADE,
