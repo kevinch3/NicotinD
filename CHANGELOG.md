@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.224](https://github.com/kevinch3/NicotinD/compare/v0.1.223...v0.1.224) (2026-07-18)
+
+
+### Bug Fixes
+
+* guide through tailscale operator setup instead of raw sudo error ([a12ca7f](https://github.com/kevinch3/NicotinD/commit/a12ca7fd43e25ce712eb9f6bb47d4d2a70cc8eb3))
+
 ## [0.1.223](https://github.com/kevinch3/NicotinD/compare/v0.1.222...v0.1.223) (2026-07-18)
 
 
