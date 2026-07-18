@@ -65,12 +65,14 @@ jobs:
   android:
     runs-on: ubuntu-latest
     # Only on a tag push: these jobs attach assets to the tag's GitHub Release (none
-    # exists for a manual dispatch). Best-effort — a flaky/unsigned mobile build must
-    # not mark the run red when the server `deploy` job below succeeded.
+    # exists for a manual dispatch). NOT continue-on-error: a genuine packaging break
+    # (unresolved dependency/repo, manifest-merge failure, bad signing) must turn the
+    # release run RED so it's caught — not silently ship a release with no APK, as the
+    # osbarcode-repo + minSdk breakage did across v0.1.222. It still never blocks the
+    # server `deploy` job, which runs in parallel with no `needs` linkage to this one.
     # Skipped when the mobile inputs didn't change this release (see `changes`).
     needs: [changes]
     if: github.ref_type == 'tag' && needs.changes.outputs.mobile == 'true'
-    continue-on-error: true
     permissions:
       contents: write
     steps:
@@ -142,11 +144,11 @@ jobs:
   # A failure here does not block the server deploy. See docs/ios-app.md.
   ios:
     runs-on: macos-14
-    # Tag-only + best-effort, same rationale as the `android` job above.
+    # Tag-only; NOT continue-on-error — same fail-loud rationale as the `android`
+    # job above (parallel with `deploy`, no `needs` linkage, so it never blocks it).
     # Skipped when the mobile inputs didn't change this release (see `changes`).
     needs: [changes]
     if: github.ref_type == 'tag' && needs.changes.outputs.mobile == 'true'
-    continue-on-error: true
     permissions:
       contents: write
     steps:
@@ -217,14 +219,15 @@ jobs:
   # metadata — to the tag's GitHub Release. `--publish always` is required
   # (not a manual softprops upload of just the AppImage/deb): electron-updater
   # (Task 12) polls `latest-linux.yml`, which only electron-builder's own
-  # publish step generates and uploads. Same tag-only + best-effort rationale
-  # as android/ios above — a packaging failure here must not block `deploy`.
+  # publish step generates and uploads. Tag-only; NOT continue-on-error — same
+  # fail-loud rationale as android/ios above: a broken deb/AppImage must turn the
+  # run red (e.g. the scoped-name deb bug that silently shipped no Linux artifacts),
+  # yet it still never blocks `deploy`, which runs in parallel with no `needs` link.
   desktop-linux:
     runs-on: ubuntu-latest
     # Skipped when the desktop inputs didn't change this release (see `changes`).
     needs: [changes]
     if: github.ref_type == 'tag' && needs.changes.outputs.desktop == 'true'
-    continue-on-error: true
     permissions:
       contents: write
     steps:
@@ -272,9 +275,9 @@ jobs:
   desktop-mac:
     runs-on: macos-14
     # Skipped when the desktop inputs didn't change this release (see `changes`).
+    # NOT continue-on-error — see desktop-linux above for the fail-loud rationale.
     needs: [changes]
     if: github.ref_type == 'tag' && needs.changes.outputs.desktop == 'true'
-    continue-on-error: true
     permissions:
       contents: write
     steps:

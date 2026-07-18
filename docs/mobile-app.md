@@ -239,10 +239,32 @@ browse → play.
   the release build is left unsigned so contributors can `assembleRelease` without secrets.
 - **CI** (`.github/workflows/deploy.yml`, `android` job): gated like `deploy` (the `chore(release):`
   commit or a manual run) and runs in parallel with it — a failure here does **not** block the server
-  deploy. It builds the web, `cap sync`s, decodes the keystore, runs `./gradlew assembleRelease`, and
+  deploy (no `needs` linkage), but it is **not** `continue-on-error`: a genuine build break turns the
+  release run red so it can't ship a tag with no APK. It builds the web, `cap sync`s, decodes the
+  keystore, runs `./gradlew assembleRelease`, and
   attaches the APK to the GitHub Release for the version tag. Required repo secrets:
   `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`
   (until they're set, the job builds an unsigned APK / fails loudly — it never ships a broken keystore).
+
+### `@capacitor/barcode-scanner` build requirements (root `build.gradle` + `variables.gradle`)
+
+The QR device-pairing plugin (`@capacitor/barcode-scanner`) pulls its native lib
+`com.github.outsystems:osbarcode-android` — and building it needs two things that broke the
+`android` release job when the plugin first landed (v0.1.222):
+
+- **An extra Maven repo.** Despite the `com.github.*` group name, osbarcode is **not** on JitPack,
+  Google, or Maven Central — it lives on OutSystems' **Azure Artifacts** public feed. The plugin
+  declares that repo in *its own* `build.gradle`, but a subproject's repositories are **not**
+  consulted when `:app` resolves its transitive runtime classpath — only the root `allprojects`
+  repos are. So `android/build.gradle`'s `allprojects.repositories` must mirror it (scoped with
+  `content { includeGroup 'com.github.outsystems' }` so nothing else routes through Azure).
+- **`minSdkVersion = 26`.** osbarcode declares `minSdk 26`; with the Capacitor default of 22 the
+  manifest merger fails (*"minSdkVersion 22 cannot be smaller than version 26"*). Bumped in
+  `variables.gradle` (drops Android < 8.0, forced by the merged QR feature).
+
+Both were verified locally by `./gradlew :app:assembleDebug` (unsigned; exercises the same
+dependency resolution + manifest merge as `assembleRelease`) producing a working APK. CI only
+surfaced the repo error first because it fails at dependency resolution before the manifest merge.
 
 ## Tests (quality gates)
 

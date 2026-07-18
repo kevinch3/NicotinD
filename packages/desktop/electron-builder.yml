@@ -65,6 +65,14 @@ linux:
       StartupWMClass: NicotinD
 
 deb:
+  # electron-builder's default deb artifactName is `${name}_${version}_${arch}.${ext}`,
+  # but our package `name` is the scoped `@nicotind/desktop` — fpm reads the `/` as a
+  # path separator and tries to write `release/@nicotind/desktop_<v>_amd64.deb`, whose
+  # parent dir never exists → `cannot execute … Parent directory does not exist` (the
+  # deb step failed the whole desktop-linux release job on v0.1.221/0.1.222). Interpolate
+  # `${productName}` (NicotinD) instead so the filename has no slash. The AppImage target
+  # already uses `${productName}` by default, so it was unaffected; this matches it.
+  artifactName: ${productName}_${version}_${arch}.${ext}
   depends:
     - libgtk-3-0
     - libnotify4
