@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.223](https://github.com/kevinch3/NicotinD/compare/v0.1.222...v0.1.223) (2026-07-18)
+
+
+### Bug Fixes
+
+* repair broken Linux deb + Android APK release builds ([f7235ea](https://github.com/kevinch3/NicotinD/commit/f7235ead88858d5051f0821b54de496e18891397)), closes [#150](https://github.com/kevinch3/NicotinD/issues/150) [#3](https://github.com/kevinch3/NicotinD/issues/3)
+
 ## [0.1.222](https://github.com/kevinch3/NicotinD/compare/v0.1.221...v0.1.222) (2026-07-18)
 
 
