@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.229](https://github.com/kevinch3/NicotinD/compare/v0.1.228...v0.1.229) (2026-07-19)
+
+
+### Features
+
+* **pairing:** camera-scannable pairing links, working in-app QR scan, multi-server support ([8305b6a](https://github.com/kevinch3/NicotinD/commit/8305b6ad238898411d93f2d8c7afd0d1f622bca0))
+
 ## [0.1.228](https://github.com/kevinch3/NicotinD/compare/v0.1.227...v0.1.228) (2026-07-19)
 
 
