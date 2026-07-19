@@ -104,10 +104,38 @@ export function platformId(): 'electron' | 'ios' | 'android' | 'web' {
 
 // @capacitor/barcode-scanner's native plugin (reached through the Capacitor
 // global like every native plugin here, so @capacitor/* stays out of the web
-// bundle). `hint` selects the barcode format; 0 = QR_CODE.
+// bundle). We call the raw bridge method, which BYPASSES the package's JS
+// wrapper — so every option the wrapper would default must be supplied here:
+// the iOS implementation JSON-decodes scanInstructions/scanButton/scanText/
+// cameraDirection/scanOrientation as REQUIRED fields and rejects the whole
+// call ("Error decoding scan arguments") when any is missing. `hint` follows
+// html5-qrcode numbering (0 = QR_CODE); Android reads scanOrientation from a
+// nested `native` object, iOS from the top level — send both.
 interface BarcodeScannerPlugin {
-  scanBarcode(options: { hint: number }): Promise<{ ScanResult?: string }>;
+  scanBarcode(options: {
+    hint: number;
+    scanInstructions: string;
+    scanButton: boolean;
+    scanText: string;
+    cameraDirection: number;
+    scanOrientation: number;
+    native?: { scanOrientation?: number };
+  }): Promise<{ ScanResult?: string }>;
 }
+
+const QR_CODE_HINT = 0; // Html5QrcodeSupportedFormats.QR_CODE
+const CAMERA_BACK = 1;
+const ORIENTATION_ADAPTIVE = 3;
+
+/** Outcome of a scan attempt. Callers show nothing for 'cancelled' and
+ * 'unavailable', and a specific message for 'denied'/'error' — a swallowed
+ * failure used to read as "the QR is invalid" to the user. */
+export type ScanOutcome =
+  | { status: 'ok'; value: string }
+  | { status: 'cancelled' }
+  | { status: 'unavailable' }
+  | { status: 'denied' }
+  | { status: 'error'; message: string };
 
 /** True when the running shell can open a camera QR scanner (Capacitor with the
  * barcode plugin installed). Electron and plain web have no scanner. */
@@ -115,20 +143,35 @@ export function canScanBarcode(): boolean {
   return isNativePlatform() && getCapacitorPlugin('CapacitorBarcodeScanner') !== null;
 }
 
+/** Map a plugin rejection to a user-meaningful outcome (pure, unit-tested). */
+export function classifyScanError(message: string): ScanOutcome {
+  if (/cancel/i.test(message)) return { status: 'cancelled' };
+  if (/denied|permission/i.test(message)) return { status: 'denied' };
+  return { status: 'error', message };
+}
+
 /**
- * Opens the native full-screen QR scanner and resolves the scanned string, or
- * null when unavailable, cancelled, or camera permission was denied — callers
- * treat null as "nothing happened", never as an error.
+ * Opens the native full-screen QR scanner and resolves a typed outcome. Never
+ * rejects — cancellation and missing hardware degrade to their own statuses.
  */
-export async function scanBarcode(): Promise<string | null> {
+export async function scanBarcode(): Promise<ScanOutcome> {
   const plugin = isNativePlatform()
     ? getCapacitorPlugin<BarcodeScannerPlugin>('CapacitorBarcodeScanner')
     : null;
-  if (!plugin) return null;
+  if (!plugin) return { status: 'unavailable' };
   try {
-    const result = await plugin.scanBarcode({ hint: 0 });
-    return result?.ScanResult || null;
-  } catch {
-    return null;
+    const result = await plugin.scanBarcode({
+      hint: QR_CODE_HINT,
+      scanInstructions: ' ',
+      scanButton: false,
+      scanText: ' ',
+      cameraDirection: CAMERA_BACK,
+      scanOrientation: ORIENTATION_ADAPTIVE,
+      native: { scanOrientation: ORIENTATION_ADAPTIVE },
+    });
+    const value = result?.ScanResult;
+    return value ? { status: 'ok', value } : { status: 'cancelled' };
+  } catch (e) {
+    return classifyScanError(e instanceof Error ? e.message : String(e));
   }
 }

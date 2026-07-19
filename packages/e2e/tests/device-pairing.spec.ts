@@ -32,6 +32,39 @@ test.describe('device pairing', () => {
     expect(claim.status()).toBe(404);
   });
 
+  test('camera-app path: /pair link claims the token and signs the browser in', async ({
+    page,
+    request,
+  }) => {
+    // The QR encodes `<server>/pair#t=<token>` — simulate a camera-app scan by
+    // navigating straight to it. Mint via the API (the page's token is never
+    // shown in the UI); the request fixture is unauthenticated, so log in first.
+    const login = await request.post('/api/auth/login', { data: ADMIN });
+    expect(login.ok()).toBeTruthy();
+    const { token: jwt } = (await login.json()) as { token: string };
+    const mint = await request.post('/api/devices/pair', { headers: bearer(jwt) });
+    expect(mint.ok()).toBeTruthy();
+    const { token: pairingToken } = (await mint.json()) as { token: string };
+
+    await page.goto(`/pair#t=${pairingToken}`);
+    await expect(page.getByTestId('pair-done')).toContainText(ADMIN.username);
+    await page.waitForURL('/');
+
+    // The browser now holds a device-bound session: the device row exists.
+    await page.goto('/settings/devices');
+    await expect(page.getByTestId('device-row')).toContainText('browser', { ignoreCase: true });
+    // Clean up so the other tests' device-list assertions stay isolated.
+    await page.getByTestId('device-revoke').click();
+    await expect(page.getByTestId('devices-empty')).toBeVisible();
+  });
+
+  test('a used or stale /pair link fails soft with guidance', async ({ page }) => {
+    await page.goto('/pair#t=not-a-real-token');
+    await expect(page.getByTestId('pair-error')).toBeVisible();
+    await page.goto('/pair');
+    await expect(page.getByTestId('pair-error')).toContainText('incomplete');
+  });
+
   test('claim → device listed → revoke → refresh 403s', async ({ page, request }) => {
     await page.goto('/settings/devices');
     const code = await page.getByTestId('pairing-code').textContent();

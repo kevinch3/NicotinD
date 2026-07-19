@@ -16,7 +16,8 @@ import {
   MediaControlsService,
   type NowPlayingDiagnostics,
 } from '../../services/media-controls.service';
-import { isIosNative, isElectron } from '../../lib/platform';
+import { isIosNative, isElectron, isNativePlatform } from '../../lib/platform';
+import { ServerConfigService } from '../../services/server-config.service';
 import {
   pickDirectory,
   setMusicDir,
@@ -69,6 +70,12 @@ export class SettingsComponent {
   private confirm = inject(ConfirmService);
   readonly update = inject(UpdateService);
   private toast = inject(ToastService);
+
+  readonly serverConfig = inject(ServerConfigService);
+
+  /** The Server section (current server + switch) only exists in the native
+   * mobile shell — web is same-origin and desktop is its own server. */
+  readonly isNativeApp = isNativePlatform();
 
   /** The Now Playing diagnostics panel only exists in the native iOS shell. */
   readonly isNativeIos = isIosNative();

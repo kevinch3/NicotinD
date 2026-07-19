@@ -98,29 +98,53 @@ the request-origin candidate (below).
    (256-bit) + a 6-char human code (alphabet `A-Z2-9` minus `0/O/1/I` —
    ~1.07e9 combos), TTL **5 minutes**, single-use, one live token per user
    (reminting deletes the previous unclaimed one). Stored in `pairing_tokens`.
-2. **QR** — the Devices page renders the payload with the `qrcode` package:
+2. **QR** — the Devices page renders a **pairing link** with the `qrcode`
+   package (`buildPairingLink`, `lib/pairing.ts`):
 
-   ```json
-   { "v": 1, "kind": "nicotind-pair", "name": "<hostname>",
-     "urls": ["https://desk.tail1234.ts.net", "https://music.example.com"],
-     "token": "…" }
+   ```
+   https://desk.tail1234.ts.net/pair#t=<token>&u=https%3A%2F%2Fmusic.example.com&n=desk
    ```
 
-   `urls` comes from `candidateUrls()` (`services/pairing-urls.ts`): funnel URL
-   first, then the **request origin** (what the admin's browser reached the
-   server on — covers reverse-proxied/Docker deployments with no Tailscale);
-   loopback origins are filtered (the desktop renderer hits `127.0.0.1`, which
-   no phone can use). No usable URL → the page shows an "enable remote access"
-   prompt instead of a dead QR. The manual fallback line (first URL + code) is
-   always shown when a URL exists.
-3. **Scan** — the phone's server-picker gains a native-only **Scan QR** button
-   (`@capacitor/barcode-scanner` via the `Capacitor.Plugins` global —
-   `scanBarcode()` in `services/native/native-capabilities.ts`, so `@capacitor/*`
-   stays out of the web bundle; Electron/web return null and hide the button).
-   `lib/pairing.ts` parses the payload (foreign QR content fails soft), probes
-   the candidates in order against `/api/health`, and claims against the first
-   one that answers. A **pairing code** field next to the URL input is the
-   manual path: URL + code typed from the server's screen.
+   A URL — not the original raw-JSON payload (`buildPairingPayload`, still
+   parsed for QRs minted by older servers) — because the phone's **built-in
+   camera app** is the first thing most users point at a QR, and raw JSON
+   reads as "nothing usable / not valid" there. The link opens the server's
+   own public **`/pair` page** (below) in a browser and signs it in; the
+   NicotinD app's in-app scanner parses the same link without ever loading the
+   page. The token rides in the **fragment**, so it never reaches server,
+   proxy, or Funnel logs.
+   Candidate URLs come from `candidateUrls()` (`services/pairing-urls.ts`):
+   funnel URL first (the link's base), then the **request origin** (what the
+   admin's browser reached the server on — covers reverse-proxied/Docker
+   deployments with no Tailscale) as repeated `u` params; loopback origins are
+   filtered (the desktop renderer hits `127.0.0.1`, which no phone can use).
+   No usable URL → the page shows an "enable remote access" prompt instead of
+   a dead QR. The manual fallback line (first URL + code) is always shown when
+   a URL exists. An **expired** code dims the QR under a "Code expired —
+   Generate a new one" overlay so a stale QR never looks scannable. On the
+   **native shell** the whole panel is a collapsed "Link another device"
+   expander that mints only when opened — the phone app's job is to *scan*
+   QRs, not to lead with one.
+3. **Scan** — two equally supported paths:
+   - **Camera app**: scanning opens `/pair` on the server; done.
+   - **In-app**: the phone's server-picker native-only **Scan QR** button
+     (`@capacitor/barcode-scanner` via the `Capacitor.Plugins` global —
+     `scanBarcode()` in `services/native/native-capabilities.ts`, so
+     `@capacitor/*` stays out of the web bundle; Electron/web report
+     unavailable and hide the button). **Gotcha, learned the hard way:**
+     calling the raw bridge bypasses the package's JS wrapper, and the iOS
+     native side JSON-decodes `scanInstructions`/`scanButton`/`scanText`/
+     `cameraDirection`/`scanOrientation` as *required* fields — a
+     `{ hint }`-only call rejects "Error decoding scan arguments" before the
+     camera even opens. `scanBarcode()` therefore passes every wrapper-default
+     option (and `hint: 0` = QR_CODE in html5-qrcode numbering, *not* zxing's
+     ordinals) and returns a typed `ScanOutcome` so cancel stays silent while
+     denied-camera/plugin errors surface as actionable messages instead of
+     reading as "the QR is invalid". `lib/pairing.ts` parses the payload
+     (foreign QR content fails soft), probes the candidates in order against
+     `/api/health`, and claims against the first one that answers. A **pairing
+     code** field next to the URL input is the manual path: URL + code typed
+     from the server's screen.
 4. **Claim** — `POST /api/devices/claim` (public, `{ token? | code?, deviceName?,
    platform? }`): single-use check (410 expired/claimed, 404 unknown), then
    mints a **normal 30-day sliding JWT** for the minting user with a `deviceId`
@@ -129,6 +153,47 @@ the request-origin candidate (below).
    session. An unauthenticated claim endpoint is OK for the same reason
    `share/activate` is: the token *is* the credential, minted seconds earlier
    by a logged-in user.
+
+### The `/pair` page (camera-app landing)
+
+`pages/pair/pair.component.ts`, public top-level route. Reads `t` from the
+fragment (query accepted as a fallback), claims same-origin (`claimPairing('')`
+— the page is served by the target server itself), stores the session via
+`AuthService.login`, and redirects home. The claimed device row is named from
+the user agent (`describeBrowser` in `lib/pairing.ts` — "Chrome browser" etc.,
+platform `web`) and is revocable like any paired device. Failure states
+(expired/claimed/rate-limited/no-token) render guidance — regenerate on the
+server, or fall through to password login — instead of a dead end. This page
+also makes the QR useful beyond the phone app: it's the cheapest way to link a
+laptop browser or another PWA install.
+
+## Multi-server (saved servers, switching, per-server sessions)
+
+The native app can know several self-hosted servers (`lib/server-registry.ts`,
+pure localStorage helpers surfaced through `ServerConfigService`):
+
+- **Registry**: `nicotind_servers` — `{ url, name, lastUsedAt }`, most recently
+  used first. Names come from the pairing payload's hostname (else the URL
+  host). Entries are added by every successful connect/pair and removable from
+  the picker (removing also drops the server's stashed session).
+- **Per-server session stash**: `nicotind_session::<url>` — switching away
+  stashes the active `{ token, username, role }`; switching back restores it,
+  so hopping between servers needs no retyping. **No passwords are ever
+  stored** — the stash holds the same 30-day device-bound JWT the app already
+  keeps, per server, revocable server-side via the paired-devices list.
+  Explicit sign-out (`AuthService.logout`) clears the *current* server's
+  stash; a server **switch** instead runs `AuthService.resetSession()` — the
+  same full client-state reset (player queue, caches, search) *without*
+  touching stashes, so the old server's data never leaks into the new one but
+  the way back stays seamless.
+- **Entry points** (the v1 dead-end was: logout always returned to the same
+  server's login, with no way to point the app elsewhere): the login page's
+  "Use a different server" link (native only), Settings → Server → "Switch
+  server", and the `/server` picker itself, which now lists saved servers
+  (with a "Signed in as …" hint when a stash exists, a Current badge, and
+  per-row remove) above Scan QR / manual entry. The picker shows a Back button
+  when opened from a configured, signed-in app; re-selecting the active
+  signed-in server is a plain navigation home.
 
 ### Rate limiting (claim)
 
@@ -162,7 +227,11 @@ platform / linked / last-seen and a Revoke button.
   binds a public interface. Login/JWT is the gate — docs and UI copy advise a
   strong password. Remote access is **off by default**.
 - The QR payload contains no secrets beyond the 5-minute token; a stale
-  screenshot of the QR is useless after expiry/claim.
+  screenshot of the QR is useless after expiry/claim. The `/pair` link carries
+  the token in the URL **fragment**, which browsers never send over the wire —
+  it can't land in server, reverse-proxy, or Funnel logs.
+- Per-server session stashes hold only the JWTs the app already stores (never
+  passwords); each is device-bound and dies server-side on revocation.
 
 ## Tests
 
@@ -170,8 +239,14 @@ platform / linked / last-seen and a Revoke button.
   revoke/ownership), `routes/auth.test.ts` (refresh: revoked-device 403,
   deviceId passthrough + last_seen bump), `services/pairing-urls.test.ts`
   (candidates + tailscale parsers).
-- Web: `lib/pairing.spec.ts` (payload round-trip, foreign-QR rejection, probe
-  order, claim errors), `services/api/devices-api.service.spec.ts`.
+- Web: `lib/pairing.spec.ts` (link + legacy-JSON round-trips, fragment-only
+  token, foreign-QR rejection, probe order, claim errors),
+  `lib/server-registry.spec.ts` (registry MRU/forget, stash round-trip,
+  corrupt-storage tolerance), `native-capabilities.spec.ts` (scan options
+  passed in full — the iOS raw-bridge regression — and `ScanOutcome` mapping),
+  `services/api/devices-api.service.spec.ts`.
 - e2e: `tests/device-pairing.spec.ts` — mints on the real server, claims by
   code via direct fetch (no camera in CI), asserts the device row, revoke, and
-  the 403 refresh; also asserts the CI-degraded (no tailscale) guidance renders.
+  the 403 refresh; asserts the CI-degraded (no tailscale) guidance renders;
+  drives the **`/pair` camera-app path** end-to-end (mint via API → navigate
+  `/pair#t=…` → signed in + device row) and its fail-soft states.

@@ -82,5 +82,24 @@
             {{ isRegister() ? 'Already have an account? Sign in' : "Don't have an account? Register" }}
           </button>
         }
+
+        @if (showServerLink) {
+          <a
+            routerLink="/server"
+            data-testid="login-switch-server"
+            class="mt-5 flex items-center justify-center gap-1.5 text-xs text-white/40 transition hover:text-white/70"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="2" y="3" width="20" height="7" rx="2"/><rect x="2" y="14" width="20" height="7" rx="2"/>
+              <line x1="6" y1="6.5" x2="6.01" y2="6.5"/><line x1="6" y1="17.5" x2="6.01" y2="17.5"/>
+            </svg>
+            @if (serverHost) {
+              {{ serverHost }} · Use a different server
+            } @else {
+              Use a different server
+            }
+          </a>
+        }
       </div>
     </div>

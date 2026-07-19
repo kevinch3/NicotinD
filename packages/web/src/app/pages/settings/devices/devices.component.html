@@ -116,19 +116,49 @@
   }
 
   <section class="mb-10">
-    <h2 class="text-sm font-semibold text-theme-secondary uppercase tracking-wider mb-3">
-      Link a device
+    <h2 class="text-sm font-semibold text-theme-secondary uppercase tracking-wider mb-3 flex items-center gap-2">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="3" y="3" width="7" height="7" rx="1"/>
+        <rect x="14" y="3" width="7" height="7" rx="1"/>
+        <rect x="3" y="14" width="7" height="7" rx="1"/>
+        <path d="M14 14h3v3h-3zM21 14v.01M14 21v.01M17.5 17.5h3.5v3.5"/>
+      </svg>
+      {{ onNativeApp ? 'Link another device' : 'Link a device' }}
     </h2>
+    @if (!linkPanelOpen()) {
+      <button
+        (click)="openLinkPanel()"
+        data-testid="link-device-expand"
+        class="w-full p-4 rounded-xl bg-theme-surface border border-theme text-left text-sm text-theme-secondary hover:border-zinc-500 transition"
+      >
+        Show a QR code here for another phone or browser to scan.
+      </button>
+    } @else {
     <div class="p-4 rounded-xl bg-theme-surface border border-theme">
       @if (pairing(); as p) {
         <div class="flex flex-col sm:flex-row gap-6 items-start">
           @if (qrDataUrl(); as qr) {
-            <img
-              [src]="qr"
-              alt="Pairing QR code"
-              data-testid="link-device-qr"
-              class="w-60 h-60 rounded-lg bg-white p-2 shrink-0"
-            />
+            <div class="relative shrink-0">
+              <img
+                [src]="qr"
+                alt="Pairing QR code"
+                data-testid="link-device-qr"
+                class="w-60 h-60 rounded-lg bg-white p-2"
+                [class.opacity-20]="secondsLeft() === 0"
+              />
+              <!-- An expired QR must not look scannable — dim it and offer the refresh in place. -->
+              @if (secondsLeft() === 0) {
+                <button
+                  (click)="regenerate()"
+                  data-testid="link-device-qr-expired"
+                  class="absolute inset-0 flex flex-col items-center justify-center gap-1 rounded-lg text-sm font-medium text-theme-primary"
+                >
+                  <span>Code expired</span>
+                  <span class="text-theme-accent underline">Generate a new one</span>
+                </button>
+              }
+            </div>
           } @else {
             <div class="w-60 h-60 rounded-lg bg-theme-elevated flex items-center justify-center text-center text-sm text-theme-muted p-6 shrink-0"
                  data-testid="link-device-qr-unavailable">
@@ -137,8 +167,10 @@
           }
           <div class="min-w-0 text-sm">
             <p class="text-theme-secondary mb-2">
-              On your phone, open NicotinD and tap <span class="font-medium">Scan QR</span> on the
-              server screen.
+              Scan with {{ onNativeApp ? "the other phone's" : "your phone's" }}
+              <span class="font-medium">camera</span> — or in the NicotinD app via
+              <span class="font-medium">Scan QR</span> on the server screen. Either way it connects
+              and signs in as you in one step.
             </p>
             <p class="text-theme-muted mb-1">Or enter manually:</p>
             @if (p.urls.length > 0) {
@@ -163,6 +195,7 @@
         <p class="text-sm text-theme-muted">Creating pairing code…</p>
       }
     </div>
+    }
   </section>
 
   <section>

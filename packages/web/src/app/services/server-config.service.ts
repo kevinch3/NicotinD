@@ -1,6 +1,16 @@
 import { Injectable, signal } from '@angular/core';
 import { DEFAULT_SERVER_URL, normalizeServerUrl, buildApiUrl, buildWsUrl } from '../lib/server-url';
 import { isNativePlatform } from '../lib/platform';
+import {
+  loadServers,
+  rememberServer,
+  forgetServer,
+  stashSession,
+  readStashedSession,
+  clearStashedSession,
+  type SavedServer,
+  type StashedSession,
+} from '../lib/server-registry';
 
 const STORAGE_KEY = 'nicotind_server_url';
 
@@ -20,6 +30,9 @@ export class ServerConfigService {
     localStorage.getItem(STORAGE_KEY) ?? (this.native ? DEFAULT_SERVER_URL : ''),
   );
 
+  /** Known servers, most recently used first (native server-picker list). */
+  readonly servers = signal<SavedServer[]>(loadServers(localStorage));
+
   /** True when a server still needs to be chosen (native, nothing stored yet). */
   needsConfiguration(): boolean {
     return this.native && localStorage.getItem(STORAGE_KEY) === null;
@@ -30,6 +43,31 @@ export class ServerConfigService {
     localStorage.setItem(STORAGE_KEY, normalized);
     this.baseUrl.set(normalized);
     return normalized;
+  }
+
+  /** Add/refresh a server in the saved list (name from pairing payload or host). */
+  remember(url: string, name?: string): void {
+    this.servers.set(rememberServer(localStorage, { url, name }));
+  }
+
+  /** Drop a saved server and its stashed session. */
+  forget(url: string): void {
+    this.servers.set(forgetServer(localStorage, url));
+  }
+
+  /** Stash the given session under a server URL so switching back restores it. */
+  stashSessionFor(url: string, session: StashedSession): void {
+    stashSession(localStorage, url, session);
+  }
+
+  /** The stashed session for a server, if one was kept. */
+  stashedSessionFor(url: string): StashedSession | null {
+    return readStashedSession(localStorage, url);
+  }
+
+  /** Forget the stashed session for a server (explicit sign-out). */
+  clearStashedSessionFor(url: string): void {
+    clearStashedSession(localStorage, url);
   }
 
   /** Absolute URL for an `/api`/`/rest` path (no-op on web). */
