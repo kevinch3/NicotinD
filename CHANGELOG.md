@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.228](https://github.com/kevinch3/NicotinD/compare/v0.1.227...v0.1.228) (2026-07-19)
+
+
+### Features
+
+* **desktop:** per-platform chrome + tray icon ([71ecccd](https://github.com/kevinch3/NicotinD/commit/71ecccd7ebea02b206bccd856e624b0a2b458fff))
+
+
+### Bug Fixes
+
+* **desktop:** pre-auth title-bar overlay, prod icon staging, use shouldHideOnClose ([bcbdf2f](https://github.com/kevinch3/NicotinD/commit/bcbdf2f4601cc464e60c061bfd6c4f3a4fc03145))
+
 ## [0.1.227](https://github.com/kevinch3/NicotinD/compare/v0.1.226...v0.1.227) (2026-07-18)
 
 
