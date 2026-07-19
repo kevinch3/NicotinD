@@ -155,8 +155,8 @@ function platformIconFileName(platform: NodeJS.Platform): string {
   return '256x256';
 }
 
-/** Per-platform preferred tray-icon filename from the staged icon pack. */
-function platformTrayFileName(platform: NodeJS.Platform): string {
-  if (platform === 'darwin') return '32x32';
+/** Preferred tray-icon filename from the staged icon pack (~32 px is the
+ *  canonical tray size on every platform we target). */
+function platformTrayFileName(_platform: NodeJS.Platform): string {
   return '32x32';
 }

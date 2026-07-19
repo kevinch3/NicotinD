@@ -66,6 +66,18 @@ export function electronOS(): NodeJS.Platform | null {
   return null;
 }
 
+/**
+ * True only inside the desktop shell on a platform that draws its own
+ * window chrome (`frame: false` — Linux today, Windows when a target is
+ * added). Drives the in-app window-control buttons + the
+ * `-webkit-app-region: drag` regions; macOS keeps `titleBarStyle:
+ * 'hiddenInset'` (native traffic lights) and is excluded here.
+ */
+export function isElectronLinux(): boolean {
+  const os = electronOS();
+  return isElectron() && os !== null && os !== 'darwin';
+}
+
 /** True inside any native shell: Capacitor (iOS/Android) or Electron (desktop). */
 export function isNativeShell(): boolean {
   return isNativePlatform() || isElectron();

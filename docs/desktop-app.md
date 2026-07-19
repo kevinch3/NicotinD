@@ -113,10 +113,22 @@ chromeless **without any controls**. The alternatives considered:
 - Per-platform native chrome via `Menu.setApplicationMenu(null)` only — leaves the Linux window unable to close.
 - The renderer's three-button bar (chosen) — same DOM as macOS's hidden-inset, just painted explicitly. Buttons are themed through `bg-theme-*` tokens so they follow light/dark.
 
-The renderer-side bar is gated by `isElectron() && electronOS() !== 'darwin'`,
-gated by the synchronous `process.platform` snapshot the preload exposes
+The renderer-side bar is gated by `isElectronLinux()` (`lib/platform.ts`),
+driven by the synchronous `process.platform` snapshot the preload exposes
 on `window.nicotind.os`. macOS keeps its native traffic lights (no
-visual duplication).
+visual duplication). The buttons themselves are one shared, self-gating
+`DesktopWindowControlsComponent`, embedded in two hosts:
+
+- the app-shell header (`components/layout/`), which doubles as the drag
+  region for every authed route; and
+- `DesktopTitleBarOverlayComponent` (mounted once in the app root) — a
+  transparent fixed strip that covers the routes rendered **outside** the
+  shell (`/setup`, `/login`, `/server`, `/share/:token`). Without it the
+  first-run window (which lands on `/setup`) would have no drag region
+  and no way to minimize/close at all. `DesktopChromeService.
+  shellHeaderActive` (set by `LayoutComponent` on init/destroy) keeps the
+  overlay and the shell header mutually exclusive, so the two never
+  double-render.
 
 ### Hide-to-tray on close (Linux only) + tray menu
 
@@ -153,7 +165,9 @@ it's interactive, tag it with `[-webkit-app-region: no-drag]`. The
 smoke test (`packages/desktop/test/smoke.spec.ts`) asserts the Linux
 shape rendered and the `data-electron-title-bar` attribute on the
 header so a regression fails CI immediately rather than silently
-shipping an undraggable / unloseable window.
+shipping an undraggable / unloseable window. (It lands on `/setup`
+against a fresh data dir, so the element it actually exercises is the
+pre-auth overlay title bar, which carries the same testids/attribute.)
 
 - **Startup handshake:** the backend prints exactly one line `NICOTIND_LISTENING <port>` after it
   binds (`src/main.ts`). The supervisor reads stdout **line-buffered** (`readline`, so the log tee
@@ -212,6 +226,7 @@ table is a hard contract — they must always agree):
 | `ffmpegBinaryPath()` → `<resourcesPath>/bin/ffmpeg`      | `resources/bin/ffmpeg`   |
 | `backendEntry()` → `<resourcesPath>/backend/src/main.ts` | `resources/backend/...`  |
 | `webDistPath()` → `<resourcesPath>/web`                  | `resources/web`          |
+| `appIconPath()`/`trayIconPath()` → `<resourcesPath>/icons/<N>x<N>.png` | `resources/icons` |
 
 The staged backend gets a **synthesized** `package.json` (not a copy of the repo root's — that one
 carries dev-only tooling like husky's `prepare` script, which would fail outside a git checkout)
@@ -226,8 +241,13 @@ keep the backend/bun/ffmpeg as real executables outside the asar; **linux** → 
 (category Audio); **macOS** → dmg (x64 + arm64). The icon pack is the multi-size PWA set
 (`packages/web/public/icons/`) staged into `build/icons/{16,24,32,48,64,128,256,512,1024}x{N}.png`
 by `scripts/stage-icons.mjs` (regenerated on every `dist`; uses `ffmpeg` `scale=…:flags=lanczos`
-since the desktop app already ships `ffmpeg-static` for the sidecar's transcode — no new
-runtime deps). electron-builder picks the directory up automatically; the deb install hook
+— system ffmpeg first, falling back to the `ffmpeg-static` devDependency already present for the
+sidecar's transcode, so no new runtime deps). The same pack is consumed twice: electron-builder's
+`icon: build/icons` covers **packaging-time** icons (dock/dmg, deb install hooks under
+`/usr/share/icons/hicolor/`), while `prepare-resources.ts stageIcons()` copies it to
+`resources/icons/` for the **runtime** lookups (`appIconPath()`/`trayIconPath()` — without that
+copy the packaged tray has no icon and silently never installs, stranding Linux hide-on-close
+with no way back). electron-builder picks the directory up automatically; the deb install hook
 stages icons to `/usr/share/icons/hicolor/<N>x<N>/apps/nicotind.png` and the dock icon uses
 `512x512`/`1024x1024`. `publish: github (kevinch3/NicotinD)`.
 

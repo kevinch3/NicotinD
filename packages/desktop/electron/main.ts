@@ -6,6 +6,7 @@ import { Sidecar, type SidecarExitInfo } from './sidecar.js';
 import { pickDirectoryResult } from './dialog-result.js';
 import { initAutoUpdate } from './updater.js';
 import { installTray } from './tray.js';
+import { shouldHideOnClose } from './should-hide-on-close.js';
 
 function htmlDataUrl(bodyHtml: string): string {
   return 'data:text/html,' + encodeURIComponent(`<html><body>${bodyHtml}</body></html>`);
@@ -132,8 +133,8 @@ function registerIpcHandlers(): void {
 /**
  * Wires the `maximize` / `unmaximize` events on `win` so the renderer's
  * chrome-bar buttons can flip their maximize ↔ restore icons via the
- * `window:maximize-changed` IPC channel. Listener detached via
- * `mainWindow.on('closed', ...)` so we don't leak after shutdown.
+ * `window:maximize-changed` IPC channel. Listeners live on `win` itself,
+ * so they're released with the window — no explicit detach needed.
  */
 function relayMaximizeState(win: BrowserWindow): void {
   const broadcast = (): void => {
@@ -156,14 +157,14 @@ async function createWindow(): Promise<void> {
     mainWindow = null;
   });
 
-  // Linux-only hide-on-close: when the user closes the window we hide it
-  // to the tray instead of quitting, so playback (and the backend) keep
-  // running. macOS keeps the standard click-to-dock behavior. The shared
-  // module-level `quitting` flag gates this — tray "Quit" and the
-  // `app.before-quit` handler set it before the next close fires.
+  // Linux/Windows hide-on-close: when the user closes the window we hide
+  // it to the tray instead of quitting, so playback (and the backend) keep
+  // running. macOS keeps the standard click-to-dock behavior. The decision
+  // is the pure, unit-tested `shouldHideOnClose`; the shared module-level
+  // `quitting` flag gates it — tray "Quit" and the `app.before-quit`
+  // handler set it before the next close fires.
   mainWindow.on('close', (event) => {
-    if (quitting) return;
-    if (process.platform === 'darwin') return;
+    if (!shouldHideOnClose(process.platform, quitting)) return;
     if (!mainWindow) return;
     event.preventDefault();
     mainWindow.hide();

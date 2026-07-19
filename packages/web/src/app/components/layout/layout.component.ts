@@ -21,7 +21,9 @@ import { AddToPlaylistComponent } from '../add-to-playlist/add-to-playlist.compo
 import { ConfirmHostComponent } from '../confirm-host/confirm-host.component';
 import { TrackInfoHostComponent } from '../track-info-host/track-info-host.component';
 import { ChangelogModalComponent } from '../changelog-modal/changelog-modal.component';
-import { electronOS, isElectron } from '../../lib/platform';
+import { DesktopWindowControlsComponent } from '../desktop-window-controls/desktop-window-controls.component';
+import { DesktopChromeService } from '../../services/desktop-chrome.service';
+import { isElectronLinux } from '../../lib/platform';
 
 interface NavItem {
   to: string;
@@ -62,6 +64,7 @@ const HEADER_BASE_CLASSES =
     ConfirmHostComponent,
     ChangelogModalComponent,
     TrackInfoHostComponent,
+    DesktopWindowControlsComponent,
   ],
   templateUrl: './layout.component.html',
 })
@@ -76,23 +79,17 @@ export class LayoutComponent implements OnInit, OnDestroy {
   private acquire = inject(AcquireService);
   private api = inject(LibraryApiService);
 
+  private desktopChrome = inject(DesktopChromeService);
+
   /**
    * True only inside the desktop shell on Linux (and Windows, when a Win
-   * target is added). Drives the in-app window-control buttons and the
-   * `-webkit-app-region: drag` style on the header — see
+   * target is added). Drives the `-webkit-app-region: drag` style on the
+   * header + the embedded `<app-desktop-window-controls />` — see
    * [docs/desktop-app.md]. macOS keeps `titleBarStyle: 'hiddenInset'`
    * (native traffic lights in the standard top-left slot) and is excluded
    * here.
    */
-  readonly isElectronLinux = computed(() => {
-    return isElectron() && electronOS() !== null && electronOS() !== 'darwin';
-  });
-
-  /** Maximize state mirror — flipped by the `window:maximize-changed`
-   *  IPC push from main, used by the maximize-toggle button to swap its
-   *  icon between "expand" and "shrink". */
-  readonly isMaximized = signal(false);
-  private unsubscribeMaximize: (() => void) | null = null;
+  readonly isElectronLinux = computed(() => isElectronLinux());
 
   /** Header classes. On Linux Electron with `frame: false` the same
    *  sticky-top positioning as web/capacitor/mac is kept — sticky is
@@ -154,34 +151,13 @@ export class LayoutComponent implements OnInit, OnDestroy {
     }
   }
 
-  // ----- Desktop chrome-bar window controls (Linux only) -----
-
-  /** Toggles OS maximize via the preload bridge; safe to call outside
-   *  Electron (no-op when `window.nicotind` is absent). The maximize
-   *  state change comes back via `onMaximizeChange` and updates
-   *  `isMaximized`. */
-  toggleMaximize(): void {
-    if (!this.isElectronLinux()) return;
-    const bridge = (globalThis as { window?: { nicotind?: { maximizeToggle?: () => void } } })
-      .window?.nicotind;
-    bridge?.maximizeToggle?.();
-  }
-
-  minimize(): void {
-    if (!this.isElectronLinux()) return;
-    (globalThis as { window?: { nicotind?: { minimize?: () => void } } }).window?.nicotind?.minimize?.();
-  }
-
-  closeWindow(): void {
-    if (!this.isElectronLinux()) return;
-    (globalThis as { window?: { nicotind?: { close?: () => void } } }).window?.nicotind?.close?.();
-  }
-
   /** Header dbl-click toggles maximize (matches the GTK/Linux convention
-   *  used by GNOME Files, Nautilus, etc.). Bound in the template. */
+   *  used by GNOME Files, Nautilus, etc.). Bound in the template; the
+   *  buttons themselves live in `<app-desktop-window-controls />`. */
   onHeaderDoubleClick(): void {
     if (!this.isElectronLinux()) return;
-    this.toggleMaximize();
+    (globalThis as { window?: { nicotind?: { maximizeToggle?: () => void } } })
+      .window?.nicotind?.maximizeToggle?.();
   }
 
   async confirmLogout(): Promise<void> {
@@ -195,17 +171,9 @@ export class LayoutComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.transfers.startPolling();
-    // Maximize-state mirror — only wired on Linux Electron since macOS
-    // never renders the in-app buttons. Defense against a missing bridge
-    // (older preload / pre-bridge window) keeps it a no-op.
-    if (this.isElectronLinux()) {
-      const bridge = (globalThis as { window?: { nicotind?: {
-        onMaximizeChange?: (cb: (s: { isMaximized: boolean }) => void) => () => void;
-      } } }).window?.nicotind;
-      this.unsubscribeMaximize = bridge?.onMaximizeChange?.((s) => {
-        this.isMaximized.set(!!s?.isMaximized);
-      }) ?? null;
-    }
+    // Tell the desktop-chrome overlay the shell header (which doubles as
+    // the frameless window's drag/controls bar) is now on screen.
+    this.desktopChrome.shellHeaderActive.set(true);
     // Load any in-flight URL acquisitions so the header badge reflects them
     // app-wide (AcquireService self-polls while jobs are active).
     void this.acquire.refresh();
@@ -240,6 +208,6 @@ export class LayoutComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.transfers.stopPolling();
-    this.unsubscribeMaximize?.();
+    this.desktopChrome.shellHeaderActive.set(false);
   }
 }

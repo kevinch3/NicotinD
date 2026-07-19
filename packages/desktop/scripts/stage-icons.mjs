@@ -25,6 +25,7 @@
  */
 import { existsSync, mkdirSync, readdirSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -36,11 +37,21 @@ const outDir = path.join(__dirname, '..', 'build', 'icons');
 const SIZES = [16, 24, 32, 48, 64, 128, 256, 512, 1024];
 
 function findFfmpeg() {
-  // Mirrors `bun` resolution for the dev sidecar; falls through to PATH.
-  // CI runners already have ffmpeg on PATH (we use it elsewhere); local
-  // dev runs do too via `ffmpeg-static`.
+  // System ffmpeg first (CI runners have it on PATH), then the desktop
+  // package's own `ffmpeg-static` devDependency (its export is the path
+  // to a bundled binary), so a local dev machine without system ffmpeg
+  // still stages icons instead of silently skipping.
   const probe = spawnSync('ffmpeg', ['-version'], { stdio: 'ignore' });
-  return probe.status === 0 ? 'ffmpeg' : null;
+  if (probe.status === 0) return 'ffmpeg';
+  try {
+    const ffmpegStatic = createRequire(import.meta.url)('ffmpeg-static');
+    if (typeof ffmpegStatic === 'string' && existsSync(ffmpegStatic)) {
+      return ffmpegStatic;
+    }
+  } catch {
+    // ffmpeg-static not installed — fall through to the skip warning.
+  }
+  return null;
 }
 
 function stageSize(ffmpeg, size) {

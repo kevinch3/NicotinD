@@ -48,8 +48,8 @@ export interface NativeBridge {
   /**
    * Subscribes to maximize-state-change pushes from main (used by the
    * chrome-bar maximize button to flip its icon between maximize ↔
-   // restore). Returns an unsubscribe function. Optional for the same
-   // reason as the window controls above.
+   * restore). Returns an unsubscribe function. Optional for the same
+   * reason as the window controls above.
    */
   onMaximizeChange?(cb: (state: { isMaximized: boolean }) => void): () => void;
 }

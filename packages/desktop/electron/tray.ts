@@ -1,9 +1,6 @@
 import { BrowserWindow, Menu, Tray, app, shell } from 'electron';
 import type { Sidecar } from './sidecar.js';
 import { trayIconPath } from './paths.js';
-import { shouldHideOnClose } from './should-hide-on-close.js';
-
-export { shouldHideOnClose };
 
 export interface InstallTrayOptions {
   /** Returns the current main `BrowserWindow`, or `null` if it's been destroyed. */

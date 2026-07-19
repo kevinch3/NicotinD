@@ -7,6 +7,7 @@ import { AuthService } from '../../services/auth.service';
 import { PlayerService } from '../../services/player.service';
 import { TransferService } from '../../services/transfer.service';
 import { AcquireService } from '../../services/acquire.service';
+import { DesktopChromeService } from '../../services/desktop-chrome.service';
 import { APP_VERSION } from '../../app.config';
 
 vi.mock('../../lib/platform', async (importOriginal) => {
@@ -15,6 +16,10 @@ vi.mock('../../lib/platform', async (importOriginal) => {
     ...actual,
     isElectron: vi.fn().mockReturnValue(false),
     electronOS: vi.fn().mockReturnValue(null),
+    // The composite the component actually calls — must be mocked directly:
+    // the real one closes over the un-mocked module-internal isElectron/
+    // electronOS bindings, so flipping those two alone wouldn't reach it.
+    isElectronLinux: vi.fn().mockReturnValue(false),
   };
 });
 
@@ -133,14 +138,14 @@ describe('LayoutComponent — desktop downloads badge', () => {
 describe('LayoutComponent — desktop chrome bar (Electron)', () => {
   /**
    * Re-imports the mocked `platform` module so each test can flip the
-   * `electronOS` return value without leaking into the next test. The
-   * top-of-file mock provides the default (`null` + `isElectron: false`).
+   * `isElectronLinux` return value without leaking into the next test.
+   * The top-of-file mock provides the default (`false`).
    */
   async function importPlatformMock() {
     return await import('../../lib/platform');
   }
 
-  function makeHeaderFixture({ isElectron, os }: { isElectron: boolean; os: NodeJS.Platform | null }) {
+  function makeHeaderFixture() {
     TestBed.configureTestingModule({
       imports: [LayoutComponent],
       providers: [
@@ -161,45 +166,29 @@ describe('LayoutComponent — desktop chrome bar (Electron)', () => {
     return { fixture };
   }
 
-  it('isElectronLinux is false on plain web', async () => {
-    const { fixture } = makeHeaderFixture({ isElectron: false, os: null });
+  it('isElectronLinux is false on plain web / macOS Electron (no drag handle, no marker attr)', async () => {
+    const { fixture } = makeHeaderFixture();
     fixture.detectChanges();
     expect(fixture.componentInstance.isElectronLinux()).toBe(false);
     expect(fixture.componentInstance.headerClass()).not.toContain('[-webkit-app-region:drag]');
     expect(fixture.nativeElement.querySelector('header').getAttribute('data-electron-title-bar')).toBeNull();
-    fixture.destroy();
-  });
-
-  it('isElectronLinux is false on macOS Electron (mac keeps native traffic lights)', async () => {
-    const platform = await importPlatformMock();
-    vi.mocked(platform.isElectron).mockReturnValue(true);
-    vi.mocked(platform.electronOS).mockReturnValue('darwin');
-    const { fixture } = makeHeaderFixture({ isElectron: true, os: 'darwin' });
-    fixture.detectChanges();
-    expect(fixture.componentInstance.isElectronLinux()).toBe(false);
-    expect(fixture.componentInstance.headerClass()).not.toContain('[-webkit-app-region:drag]');
-    expect(fixture.nativeElement.querySelector('header').getAttribute('data-electron-title-bar')).toBeNull();
-    vi.mocked(platform.isElectron).mockReturnValue(false);
-    vi.mocked(platform.electronOS).mockReturnValue(null);
     fixture.destroy();
   });
 
   it('isElectronLinux is true on Linux Electron (header turns into the drag handle)', async () => {
     const platform = await importPlatformMock();
-    vi.mocked(platform.isElectron).mockReturnValue(true);
-    vi.mocked(platform.electronOS).mockReturnValue('linux');
-    const { fixture } = makeHeaderFixture({ isElectron: true, os: 'linux' });
+    vi.mocked(platform.isElectronLinux).mockReturnValue(true);
+    const { fixture } = makeHeaderFixture();
     fixture.detectChanges();
     expect(fixture.componentInstance.isElectronLinux()).toBe(true);
     expect(fixture.componentInstance.headerClass()).toContain('[-webkit-app-region:drag]');
     expect(fixture.nativeElement.querySelector('header').getAttribute('data-electron-title-bar')).toBe('');
-    vi.mocked(platform.isElectron).mockReturnValue(false);
-    vi.mocked(platform.electronOS).mockReturnValue(null);
+    vi.mocked(platform.isElectronLinux).mockReturnValue(false);
     fixture.destroy();
   });
 
-  it('toggleMaximize is a no-op outside the desktop shell', () => {
-    const { fixture } = makeHeaderFixture({ isElectron: false, os: null });
+  it('onHeaderDoubleClick is a no-op outside the desktop shell', () => {
+    const { fixture } = makeHeaderFixture();
     fixture.detectChanges();
     const bridge = vi.fn();
     const win = (globalThis as { window?: { nicotind?: unknown } }).window;
@@ -207,33 +196,37 @@ describe('LayoutComponent — desktop chrome bar (Electron)', () => {
     if (win) {
       win.nicotind = { platform: 'electron', os: 'linux', maximizeToggle: bridge } as never;
     }
-    fixture.componentInstance.toggleMaximize();
+    fixture.componentInstance.onHeaderDoubleClick();
     expect(bridge).not.toHaveBeenCalled();
     if (win) win.nicotind = savedNic;
     fixture.destroy();
   });
 
-  it('toggleMaximize forwards to the preload bridge on Linux Electron', async () => {
+  it('onHeaderDoubleClick toggles maximize via the preload bridge on Linux Electron', async () => {
     const platform = await importPlatformMock();
-    vi.mocked(platform.isElectron).mockReturnValue(true);
-    vi.mocked(platform.electronOS).mockReturnValue('linux');
-    const bridge = { minimize: vi.fn(), maximizeToggle: vi.fn(), close: vi.fn() };
+    vi.mocked(platform.isElectronLinux).mockReturnValue(true);
+    const bridge = { maximizeToggle: vi.fn() };
     const win = (globalThis as { window?: { nicotind?: unknown } }).window;
     const savedNic = win?.nicotind;
     if (win) {
       win.nicotind = { platform: 'electron', os: 'linux', ...bridge } as never;
     }
-    const { fixture } = makeHeaderFixture({ isElectron: true, os: 'linux' });
+    const { fixture } = makeHeaderFixture();
     fixture.detectChanges();
-    fixture.componentInstance.minimize();
-    fixture.componentInstance.toggleMaximize();
-    fixture.componentInstance.closeWindow();
-    expect(bridge.minimize).toHaveBeenCalledTimes(1);
+    fixture.componentInstance.onHeaderDoubleClick();
     expect(bridge.maximizeToggle).toHaveBeenCalledTimes(1);
-    expect(bridge.close).toHaveBeenCalledTimes(1);
-    vi.mocked(platform.isElectron).mockReturnValue(false);
-    vi.mocked(platform.electronOS).mockReturnValue(null);
+    vi.mocked(platform.isElectronLinux).mockReturnValue(false);
     if (win) win.nicotind = savedNic;
     fixture.destroy();
+  });
+
+  it('flags the shell header active for the pre-auth overlay while mounted', () => {
+    const { fixture } = makeHeaderFixture();
+    const chrome = TestBed.inject(DesktopChromeService);
+    expect(chrome.shellHeaderActive()).toBe(false);
+    fixture.detectChanges(); // runs ngOnInit
+    expect(chrome.shellHeaderActive()).toBe(true);
+    fixture.destroy();
+    expect(chrome.shellHeaderActive()).toBe(false);
   });
 });
