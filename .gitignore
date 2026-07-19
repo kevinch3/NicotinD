@@ -38,3 +38,6 @@ packages/desktop/resources/
 packages/desktop/release/
 packages/desktop/dist-scripts/
 packages/desktop/dist-test/
+# Multi-size app icon pack — regenerated from packages/web/public/icons/
+# on every `bun run --filter @nicotind/desktop dist` by scripts/stage-icons.mjs
+packages/desktop/build/icons/

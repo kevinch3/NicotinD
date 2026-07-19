@@ -107,5 +107,18 @@ test.describe('packaged boot smoke test', () => {
     expect(health.ok).toBe(true);
     const body = (await health.json()) as { ok?: boolean };
     expect(body.ok).toBe(true);
+
+    // Per-platform chrome bar renders in-app window controls on Linux
+    // (Ubuntu runner below), hidden-inset traffic lights on macOS.
+    // CI runs this on `ubuntu-latest` (see desktop-smoke job), so the
+    // in-app minimize/maximize/close buttons must be present. A future
+    // regression that loses the Linux title-bar implementation would
+    // fail this assertion cleanly without flaking the SPA boot.
+    if (process.platform === 'linux') {
+      await expect(window.locator('[data-testid="desktop-window-minimize"]')).toBeVisible();
+      await expect(window.locator('[data-testid="desktop-window-maximize"]')).toBeVisible();
+      await expect(window.locator('[data-testid="desktop-window-close"]')).toBeVisible();
+      await expect(window.locator('header[data-electron-title-bar]')).toBeAttached();
+    }
   });
 });

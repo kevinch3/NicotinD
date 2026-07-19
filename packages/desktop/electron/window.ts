@@ -1,38 +1,22 @@
 import { BrowserWindow } from 'electron';
-import { fileURLToPath } from 'node:url';
-import path from 'node:path';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-/**
- * Path to the preload script. The preload is authored as CommonJS
- * (`electron/preload.cts` -> `dist/preload.cjs`) because Electron sandboxed
- * preloads (`sandbox: true`, set below) must be a single self-contained
- * CommonJS file; this module only needs to know where it will live on disk
- * once built.
- */
-export const PRELOAD_PATH = path.join(__dirname, 'preload.cjs');
+import { windowOptionsForPlatform } from './window-options.js';
+import { appIconPath } from './paths.js';
 
 /**
  * Creates the app's single main window and loads `url` into it.
  *
- * Security-relevant `webPreferences` are pinned here (context isolation on,
- * node integration off, sandboxed renderer). Further hardening (navigation
- * pinning, CSP, popup handling) is applied separately via `hardenWindow`
- * so the two concerns stay easy to reason about independently.
+ * Per-platform chrome shape lives in `window-options.ts` (pure /
+ * unit-testable); this module is the runtime wiring that constructs an
+ * actual `BrowserWindow` and starts loading the renderer.
+ *
+ * Security-relevant `webPreferences` are pinned in `windowOptionsForPlatform`
+ * (context isolation on, node integration off, sandboxed renderer).
+ * Further hardening (navigation pinning, CSP, popup handling) is applied
+ * separately via `hardenWindow` so the two concerns stay easy to reason
+ * about independently.
  */
 export function createMainWindow(url: string): BrowserWindow {
-  const win = new BrowserWindow({
-    width: 1280,
-    height: 800,
-    show: false,
-    webPreferences: {
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: true,
-      preload: PRELOAD_PATH,
-    },
-  });
+  const win = new BrowserWindow(windowOptionsForPlatform(process.platform, appIconPath(process.platform)));
 
   win.once('ready-to-show', () => {
     win.show();
@@ -44,3 +28,5 @@ export function createMainWindow(url: string): BrowserWindow {
 
   return win;
 }
+
+export { windowOptionsForPlatform };

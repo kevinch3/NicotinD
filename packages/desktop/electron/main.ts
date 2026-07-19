@@ -1,10 +1,12 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import { createMainWindow } from './window.js';
 import { hardenWindow } from './security.js';
 import { CH } from './ipc-channels.js';
 import { Sidecar, type SidecarExitInfo } from './sidecar.js';
 import { pickDirectoryResult } from './dialog-result.js';
 import { initAutoUpdate } from './updater.js';
+import { installTray } from './tray.js';
+import { shouldHideOnClose } from './should-hide-on-close.js';
 
 function htmlDataUrl(bodyHtml: string): string {
   return 'data:text/html,' + encodeURIComponent(`<html><body>${bodyHtml}</body></html>`);
@@ -33,6 +35,13 @@ let mainWindow: BrowserWindow | null = null;
 // sets it later), so it starts unset and the backend uses its own config.
 const sidecar = new Sidecar({});
 
+// Single source of truth for "is the app shutting down for real?" — flipped
+// to `true` by the tray "Quit" item and by `app.before-quit` (the only two
+// paths that should actually terminate the process). The window `close`
+// handler installed in `createWindow()` reads it to decide between
+// hide-to-tray (Linux) vs. real-close (when this flag is set).
+let quitting = false;
+
 function focusMainWindow(): void {
   if (!mainWindow) {
     return;
@@ -53,10 +62,14 @@ function reloadWindow(url: string): void {
 }
 
 /**
- * Registers the main-process side of the folder-picker and reveal-logs IPC
- * channels invoked by the sandboxed preload (`preload.cts`). Handlers are
- * registered once, ahead of window creation, so they're available for the
- * renderer's very first invoke call.
+ * Registers the main-process side of the renderer-invoked IPC channels
+ * (`preload.cts`). Handlers are registered once, ahead of window creation,
+ * so they're available for the renderer's very first invoke call.
+ *
+ * The window-control channels (`window:minimize` / `window:maximize-toggle`
+ * / `window:close`) use `ipcMain.on` — they're fire-and-forget from the
+ * renderer side, so there's no value to promise-return and `invoke` would
+ * just add an unneeded round-trip.
  */
 function registerIpcHandlers(): void {
   ipcMain.handle(CH.pickDirectory, async (): Promise<string | null> => {
@@ -96,31 +109,65 @@ function registerIpcHandlers(): void {
       }
     },
   );
+
+  // Window controls dispatched from the renderer's in-app chrome bar (the
+  // `data-electron-title-bar` element on Linux). Fire-and-forget.
+  ipcMain.on(CH.windowMinimize, () => {
+    mainWindow?.minimize();
+  });
+
+  ipcMain.on(CH.windowMaximizeToggle, () => {
+    if (!mainWindow) return;
+    if (mainWindow.isMaximized()) {
+      mainWindow.unmaximize();
+    } else {
+      mainWindow.maximize();
+    }
+  });
+
+  ipcMain.on(CH.windowClose, () => {
+    mainWindow?.close();
+  });
 }
 
-/** Application menu with a "Reveal Logs" item pointed at the sidecar's log file. */
-function buildMenu(): void {
-  const template: Electron.MenuItemConstructorOptions[] = [
-    {
-      label: 'File',
-      submenu: [
-        {
-          label: 'Reveal Logs',
-          click: () => shell.showItemInFolder(sidecar.logFilePath()),
-        },
-        { type: 'separator' },
-        { role: 'quit' },
-      ],
-    },
-  ];
-  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+/**
+ * Wires the `maximize` / `unmaximize` events on `win` so the renderer's
+ * chrome-bar buttons can flip their maximize ↔ restore icons via the
+ * `window:maximize-changed` IPC channel. Listeners live on `win` itself,
+ * so they're released with the window — no explicit detach needed.
+ */
+function relayMaximizeState(win: BrowserWindow): void {
+  const broadcast = (): void => {
+    if (win.isDestroyed()) return;
+    win.webContents.send(CH.windowMaximizeChanged, { isMaximized: win.isMaximized() });
+  };
+  win.on('maximize', broadcast);
+  win.on('unmaximize', broadcast);
+  // Initial state (window may already be maximized when listeners attach
+  // — e.g. a previous session was restored maximized by the OS).
+  broadcast();
 }
 
 async function createWindow(): Promise<void> {
   mainWindow = createMainWindow(STARTING_URL);
   hardenWindow(mainWindow);
+  relayMaximizeState(mainWindow);
+
   mainWindow.on('closed', () => {
     mainWindow = null;
+  });
+
+  // Linux/Windows hide-on-close: when the user closes the window we hide
+  // it to the tray instead of quitting, so playback (and the backend) keep
+  // running. macOS keeps the standard click-to-dock behavior. The decision
+  // is the pure, unit-tested `shouldHideOnClose`; the shared module-level
+  // `quitting` flag gates it — tray "Quit" and the `app.before-quit`
+  // handler set it before the next close fires.
+  mainWindow.on('close', (event) => {
+    if (!shouldHideOnClose(process.platform, quitting)) return;
+    if (!mainWindow) return;
+    event.preventDefault();
+    mainWindow.hide();
   });
 
   try {
@@ -130,6 +177,24 @@ async function createWindow(): Promise<void> {
     console.error('Sidecar failed to start', err);
     reloadWindow(errorPageUrl(err instanceof Error ? err.message : String(err)));
   }
+
+  // Tray icon (installed after the window exists so its "Open" item can
+  // show/focus the live window). On macOS the tray is a no-op helper that
+  // still installs the menu items; the dock + Cmd-Q remain the primary
+  // lifecycle surface there. The shared `quitting` flag keeps tray Quit
+  // and `app.before-quit` on the same code path.
+  installTray({
+    getMainWindow: () => mainWindow,
+    // Wrapper shape matches `InstallTrayOptions.createMainWindow`'s
+    // `(url?: string)` — the tray passes a placeholder URL when
+    // re-creating a destroyed window.
+    createMainWindow: (url?: string) => createMainWindow(url ?? ''),
+    sidecar,
+    isQuitting: () => quitting,
+    setQuitting: (value: boolean) => {
+      quitting = value;
+    },
+  });
 
   // After the window is up and the sidecar has (attempted to) start —
   // update-checking must never block or delay startup. `initAutoUpdate`
@@ -163,7 +228,6 @@ if (!gotSingleInstanceLock) {
 
   app.whenReady().then(() => {
     registerIpcHandlers();
-    buildMenu();
     void createWindow();
 
     app.on('activate', () => {
@@ -174,6 +238,10 @@ if (!gotSingleInstanceLock) {
   });
 
   app.on('window-all-closed', () => {
+    // Linux with hide-on-close: the window hides instead of closing, so
+    // this event usually never fires there. The tray "Quit" path is the
+    // real escape route (sets `quitting` then calls `app.quit()` below).
+    // macOS keeps the standard click-to-dock convention by NOT quitting.
     if (process.platform !== 'darwin') {
       app.quit();
     }
@@ -182,8 +250,7 @@ if (!gotSingleInstanceLock) {
   // Ensure the sidecar is stopped (SIGTERM, graceful) before the app actually
   // exits. `before-quit` can fire more than once (e.g. `app.quit()` called
   // again below); the `quitting` guard makes the async stop-then-quit
-  // sequence re-entrant-safe instead of looping or racing.
-  let quitting = false;
+  // sequence re-entrancy-safe instead of looping or racing.
   app.on('before-quit', (event) => {
     if (quitting) {
       return;

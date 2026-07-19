@@ -6,5 +6,6 @@ Terminal=false
 Type=Application
 Icon=nicotind
 Categories=Audio;Music;Player;AudioVideo;
+StartupNotify=true
 StartupWMClass=NicotinD
 MimeType=x-scheme-handler/nicotind;

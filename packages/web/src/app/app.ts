@@ -5,11 +5,14 @@ import { AuthService } from './services/auth.service';
 import { RemotePlaybackService } from './services/remote-playback.service';
 import { PresenceService } from './services/presence.service';
 import { ToastOutletComponent } from './components/toast-outlet/toast-outlet.component';
+import { DesktopTitleBarOverlayComponent } from './components/desktop-title-bar-overlay/desktop-title-bar-overlay.component';
 
 @Component({
   selector: 'app-root',
-  imports: [RouterOutlet, ToastOutletComponent],
-  template: `<router-outlet /><app-toast-outlet />`,
+  imports: [RouterOutlet, ToastOutletComponent, DesktopTitleBarOverlayComponent],
+  // The overlay self-gates (Linux/Win Electron + no shell header active),
+  // so it's a no-op everywhere else — see desktop-title-bar-overlay.
+  template: `<app-desktop-title-bar-overlay /><router-outlet /><app-toast-outlet />`,
 })
 export class App {
   private setup = inject(SetupService);

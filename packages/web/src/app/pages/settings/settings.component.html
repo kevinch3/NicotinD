@@ -218,15 +218,29 @@
           @if (musicDirError()) {
             <p class="text-sm text-status-error mb-4" data-testid="settings-change-folder-error">{{ musicDirError() }}</p>
           }
-          <button
-            type="button"
-            (click)="changeMusicFolder()"
-            [disabled]="musicDirChanging()"
-            data-testid="settings-change-folder"
-            class="text-sm text-theme-secondary hover:text-theme-primary transition disabled:opacity-50"
-          >
-            {{ musicDirChanging() ? 'Restarting…' : 'Change music folder…' }}
-          </button>
+          <div class="flex flex-wrap gap-4">
+            <button
+              type="button"
+              (click)="changeMusicFolder()"
+              [disabled]="musicDirChanging()"
+              data-testid="settings-change-folder"
+              class="text-sm text-theme-secondary hover:text-theme-primary transition disabled:opacity-50"
+            >
+              {{ musicDirChanging() ? 'Restarting…' : 'Change music folder…' }}
+            </button>
+            <!-- Mirrors the tray icon's "Reveal Logs" entry; without this
+                 the global app menu is gone (dropped with `buildMenu`),
+                 and a stuck acquisition / failed sidecar restart is otherwise
+                 hard to diagnose from inside the app. -->
+            <button
+              type="button"
+              (click)="revealLogs()"
+              data-testid="settings-reveal-logs"
+              class="text-sm text-theme-secondary hover:text-theme-primary transition"
+            >
+              Reveal logs…
+            </button>
+          </div>
         </section>
       }
 

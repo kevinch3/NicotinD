@@ -88,6 +88,87 @@ local-library only), `NICOTIND_DATA_DIR=<userData>`, `NICOTIND_WEB_DIST=<resourc
 > `setWindowOpenHandler` → `shell.openExternal` path. See
 > [device-pairing.md](./device-pairing.md).
 
+## Per-platform window chrome + tray
+
+The renderer is the same Angular build on every shell; only the chrome
+around it changes. Behavior lives in two cooperating modules:
+`electron/window-options.ts` (the per-platform `BrowserWindow` shape,
+extracted from `createMainWindow` for unit testing) and
+`electron/tray.ts` (the OS tray icon + menu), plus the matching renderer
+chrome bar in `packages/web/src/app/components/layout/`.
+
+| Platform | `frame` | `titleBarStyle` | Result |
+|----------|---------|-----------------|--------|
+| `darwin` | (default) | `'hiddenInset'` | Native traffic lights stay at top-left (`trafficLightPosition: { x: 14, y: 14 }` so they clear the brand mark). Title bar text gone, height shrinks to 28 px so the Angular `<header>` paints right under them — looks like Spotify / Apple Music. |
+| `linux` | `false` | `'hidden'` | Fully chromeless. The renderer draws the entire title bar. The existing `<header>` gets `[-webkit-app-region: drag]` and adds three SVG icon buttons (minimize / maximize-toggle / close) on the right; each child element that needs to be clickable also gets `[-webkit-app-region: no-drag]`. Double-click on the header toggles maximize (GTK convention). |
+| future `win32` | `false` | `'hidden'` | Symmetric to Linux. No Windows target in `electron-builder.yml` yet, but the code path falls through to the same shape. |
+
+### Why Linux gets an in-app chrome bar (macOS doesn't)
+
+GNOME / KDE don't synthesize native close/min/max buttons for
+`frame: false, titleBarStyle: 'hidden'` — the window would otherwise be
+chromeless **without any controls**. The alternatives considered:
+
+- `titleBarStyle: 'default'` everywhere — only partially fixed the File-menu complaint, still leaves the default icon and traditional title bar, not what a media player wants.
+- Per-platform native chrome via `Menu.setApplicationMenu(null)` only — leaves the Linux window unable to close.
+- The renderer's three-button bar (chosen) — same DOM as macOS's hidden-inset, just painted explicitly. Buttons are themed through `bg-theme-*` tokens so they follow light/dark.
+
+The renderer-side bar is gated by `isElectronLinux()` (`lib/platform.ts`),
+driven by the synchronous `process.platform` snapshot the preload exposes
+on `window.nicotind.os`. macOS keeps its native traffic lights (no
+visual duplication). The buttons themselves are one shared, self-gating
+`DesktopWindowControlsComponent`, embedded in two hosts:
+
+- the app-shell header (`components/layout/`), which doubles as the drag
+  region for every authed route; and
+- `DesktopTitleBarOverlayComponent` (mounted once in the app root) — a
+  transparent fixed strip that covers the routes rendered **outside** the
+  shell (`/setup`, `/login`, `/server`, `/share/:token`). Without it the
+  first-run window (which lands on `/setup`) would have no drag region
+  and no way to minimize/close at all. `DesktopChromeService.
+  shellHeaderActive` (set by `LayoutComponent` on init/destroy) keeps the
+  overlay and the shell header mutually exclusive, so the two never
+  double-render.
+
+### Hide-to-tray on close (Linux only) + tray menu
+
+`main.ts` installs a `close` listener on `BrowserWindow` that calls
+`shouldHideOnClose(platform, isQuitting)` from
+`electron/should-hide-on-close.ts` (pure helper, unit-tested). It hides
+on Linux/Windows when no quit is in progress; macOS is never intercepted
+(Apple's "click-to-dock" convention preserves the running app when the
+last window closes — the tray would be a second dismissal path that
+confuses users). The `quitting` flag is module-level in `main.ts`,
+shared with the tray "Quit" item and `app.before-quit`, so all three
+paths agree on whether the next close is real or just a hide.
+
+The tray itself (`electron/tray.ts`) installs at end of `createWindow()`
+and exposes three items:
+
+- **Open NicotinD** — show/restore/focus the existing window, or recreate it if a previous quit-on-Linux cleared all windows.
+- **Reveal Logs** — calls `shell.showItemInFolder(sidecar.logFilePath())`. Mirrors the new Settings → "Reveal logs…" button (Electron-gated) so the entry is reachable both from the tray and from the in-app Settings page.
+- **Quit NicotinD** — sets the shared `quitting` flag and calls `app.quit()`, which routes through `before-quit` → `sidecar.stop().finally(app.quit())`.
+
+This shares one source of truth for the quit flow with the global
+`app.before-quit` handler, so double-clicking "Quit" or invoking it via
+the tray + then by `before-quit` in any combination can't loop or
+wedge.
+
+### Drag region contract
+
+The `[-webkit-app-region: drag]` class on the header makes the **whole**
+header a drag handle. To keep clicks reachable, every interactive child
+(brand link, nav, version anchor, signout button, the new window
+control buttons) explicitly opts back into `no-drag`. The pattern is
+documented here so a future add to the header keeps the contract: if
+it's interactive, tag it with `[-webkit-app-region: no-drag]`. The
+smoke test (`packages/desktop/test/smoke.spec.ts`) asserts the Linux
+shape rendered and the `data-electron-title-bar` attribute on the
+header so a regression fails CI immediately rather than silently
+shipping an undraggable / unloseable window. (It lands on `/setup`
+against a fresh data dir, so the element it actually exercises is the
+pre-auth overlay title bar, which carries the same testids/attribute.)
+
 - **Startup handshake:** the backend prints exactly one line `NICOTIND_LISTENING <port>` after it
   binds (`src/main.ts`). The supervisor reads stdout **line-buffered** (`readline`, so the log tee
   can't split/eat the handshake) and resolves `start()` with `http://127.0.0.1:<port>` only after
@@ -135,7 +216,7 @@ isNativeShell())`) to avoid cross-update cache surprises.
 
 ## Packaging (electron-builder)
 
-`bun run --filter @nicotind/desktop dist` = `build` (tsc) → `prepare-resources` → `electron-builder`.
+`bun run --filter @nicotind/desktop dist` = `build` (tsc) → `stage-icons` → `prepare-resources` → `electron-builder`.
 `prepare-resources.ts` stages, at the paths `paths.ts` expects under `process.resourcesPath` (this
 table is a hard contract — they must always agree):
 
@@ -145,6 +226,7 @@ table is a hard contract — they must always agree):
 | `ffmpegBinaryPath()` → `<resourcesPath>/bin/ffmpeg`      | `resources/bin/ffmpeg`   |
 | `backendEntry()` → `<resourcesPath>/backend/src/main.ts` | `resources/backend/...`  |
 | `webDistPath()` → `<resourcesPath>/web`                  | `resources/web`          |
+| `appIconPath()`/`trayIconPath()` → `<resourcesPath>/icons/<N>x<N>.png` | `resources/icons` |
 
 The staged backend gets a **synthesized** `package.json` (not a copy of the repo root's — that one
 carries dev-only tooling like husky's `prepare` script, which would fail outside a git checkout)
@@ -156,9 +238,18 @@ version, not `0.0.0`. This was verified end-to-end locally (stage → `bun insta
 
 `electron-builder.yml`: `appId: ar.kevinroberts.nicotind.desktop`; `asarUnpack` + `extraResources`
 keep the backend/bun/ffmpeg as real executables outside the asar; **linux** → AppImage + deb
-(category Audio); **macOS** → dmg (x64 + arm64). The icon reuses the PWA brand mark
-(`packages/web/public/icons/icon-512.png` → `build/icon.png`; a dedicated desktop icon is a
-follow-up). `publish: github (kevinch3/NicotinD)`.
+(category Audio); **macOS** → dmg (x64 + arm64). The icon pack is the multi-size PWA set
+(`packages/web/public/icons/`) staged into `build/icons/{16,24,32,48,64,128,256,512,1024}x{N}.png`
+by `scripts/stage-icons.mjs` (regenerated on every `dist`; uses `ffmpeg` `scale=…:flags=lanczos`
+— system ffmpeg first, falling back to the `ffmpeg-static` devDependency already present for the
+sidecar's transcode, so no new runtime deps). The same pack is consumed twice: electron-builder's
+`icon: build/icons` covers **packaging-time** icons (dock/dmg, deb install hooks under
+`/usr/share/icons/hicolor/`), while `prepare-resources.ts stageIcons()` copies it to
+`resources/icons/` for the **runtime** lookups (`appIconPath()`/`trayIconPath()` — without that
+copy the packaged tray has no icon and silently never installs, stranding Linux hide-on-close
+with no way back). electron-builder picks the directory up automatically; the deb install hook
+stages icons to `/usr/share/icons/hicolor/<N>x<N>/apps/nicotind.png` and the dock icon uses
+`512x512`/`1024x1024`. `publish: github (kevinch3/NicotinD)`.
 
 > **The deb target needs an explicit `artifactName`.** electron-builder's default deb
 > filename is `${name}_${version}_${arch}.${ext}`, and our package `name` is the *scoped*

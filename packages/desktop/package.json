@@ -16,7 +16,8 @@
     "test": "bun test --path-ignore-patterns 'test/**' --path-ignore-patterns 'dist-test/**'",
     "test:smoke": "playwright test",
     "prepare-resources": "bun run scripts/prepare-resources.ts",
-    "dist": "bun run build && bun run prepare-resources && electron-builder"
+    "stage-icons": "bun run scripts/stage-icons.mjs",
+    "dist": "bun run build && bun run stage-icons && bun run prepare-resources && electron-builder"
   },
   "dependencies": {
     "electron-updater": "^6.3.9"

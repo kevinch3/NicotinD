@@ -21,6 +21,9 @@ import { AddToPlaylistComponent } from '../add-to-playlist/add-to-playlist.compo
 import { ConfirmHostComponent } from '../confirm-host/confirm-host.component';
 import { TrackInfoHostComponent } from '../track-info-host/track-info-host.component';
 import { ChangelogModalComponent } from '../changelog-modal/changelog-modal.component';
+import { DesktopWindowControlsComponent } from '../desktop-window-controls/desktop-window-controls.component';
+import { DesktopChromeService } from '../../services/desktop-chrome.service';
+import { isElectronLinux } from '../../lib/platform';
 
 interface NavItem {
   to: string;
@@ -39,6 +42,12 @@ const BASE_NAV: NavItem[] = [
 // landing (/) and search need the backend, so both are online-only.
 const ONLINE_ONLY_ROUTES = new Set(['/', '/search']);
 
+/** Shared header layout — same pixels everywhere so the brand/title row
+ *  doesn't shift between platform states (only the chrome integration
+ *  bits change). */
+const HEADER_BASE_CLASSES =
+  'flex items-center justify-between px-4 md:px-6 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))] border-b border-theme bg-theme-base/80 backdrop-blur-sm';
+
 @Component({
   selector: 'app-layout',
   imports: [
@@ -55,6 +64,7 @@ const ONLINE_ONLY_ROUTES = new Set(['/', '/search']);
     ConfirmHostComponent,
     ChangelogModalComponent,
     TrackInfoHostComponent,
+    DesktopWindowControlsComponent,
   ],
   templateUrl: './layout.component.html',
 })
@@ -68,6 +78,33 @@ export class LayoutComponent implements OnInit, OnDestroy {
   private transfers = inject(TransferService);
   private acquire = inject(AcquireService);
   private api = inject(LibraryApiService);
+
+  private desktopChrome = inject(DesktopChromeService);
+
+  /**
+   * True only inside the desktop shell on Linux (and Windows, when a Win
+   * target is added). Drives the `-webkit-app-region: drag` style on the
+   * header + the embedded `<app-desktop-window-controls />` — see
+   * [docs/desktop-app.md]. macOS keeps `titleBarStyle: 'hiddenInset'`
+   * (native traffic lights in the standard top-left slot) and is excluded
+   * here.
+   */
+  readonly isElectronLinux = computed(() => isElectronLinux());
+
+  /** Header classes. On Linux Electron with `frame: false` the same
+   *  sticky-top positioning as web/capacitor/mac is kept — sticky is
+   *  in-flow at scroll-top and pinned at scroll position, with no need
+   *  to shift content or repaint padding. The `[-webkit-app-region:drag]`
+   *  class is the only thing that changes on the Linux path; it turns
+   *  the entire bar into a drag handle for the frameless window — see
+   *  `electron/window.ts` for the matching shape. */
+  readonly headerClass = computed(() => {
+    const base = `${HEADER_BASE_CLASSES} sticky top-0 z-40`;
+    if (!this.isElectronLinux()) {
+      return base;
+    }
+    return `${base} [-webkit-app-region:drag]`;
+  });
 
   readonly navItems = computed<NavItem[]>(() => {
     // Downloads is an acquisition surface — hidden from listeners (declutter).
@@ -114,6 +151,15 @@ export class LayoutComponent implements OnInit, OnDestroy {
     }
   }
 
+  /** Header dbl-click toggles maximize (matches the GTK/Linux convention
+   *  used by GNOME Files, Nautilus, etc.). Bound in the template; the
+   *  buttons themselves live in `<app-desktop-window-controls />`. */
+  onHeaderDoubleClick(): void {
+    if (!this.isElectronLinux()) return;
+    (globalThis as { window?: { nicotind?: { maximizeToggle?: () => void } } })
+      .window?.nicotind?.maximizeToggle?.();
+  }
+
   async confirmLogout(): Promise<void> {
     if (this.cleanPreserveOnLogout()) {
       await this.preserve.clearAll();
@@ -125,6 +171,9 @@ export class LayoutComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.transfers.startPolling();
+    // Tell the desktop-chrome overlay the shell header (which doubles as
+    // the frameless window's drag/controls bar) is now on screen.
+    this.desktopChrome.shellHeaderActive.set(true);
     // Load any in-flight URL acquisitions so the header badge reflects them
     // app-wide (AcquireService self-polls while jobs are active).
     void this.acquire.refresh();
@@ -159,5 +208,6 @@ export class LayoutComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.transfers.stopPolling();
+    this.desktopChrome.shellHeaderActive.set(false);
   }
 }

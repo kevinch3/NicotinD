@@ -17,7 +17,11 @@ import {
   type NowPlayingDiagnostics,
 } from '../../services/media-controls.service';
 import { isIosNative, isElectron } from '../../lib/platform';
-import { pickDirectory, setMusicDir } from '../../services/native/native-capabilities';
+import {
+  pickDirectory,
+  setMusicDir,
+  revealLogs,
+} from '../../services/native/native-capabilities';
 import { ConfirmService } from '../../services/confirm.service';
 import { UpdateService } from '../../services/update.service';
 import { ToastService } from '../../services/toast.service';
@@ -262,6 +266,12 @@ export class SettingsComponent {
     } finally {
       this.musicDirChanging.set(false);
     }
+  }
+
+  /** Opens the OS file manager at the active sidecar log. No-op outside
+   *  Electron — the button is Electron-gated in the template. */
+  async revealLogs(): Promise<void> {
+    await revealLogs();
   }
 
   getDeviceEmoji(device: { type: string; name: string }): string {

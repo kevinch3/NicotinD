@@ -1,10 +1,19 @@
 
     <div class="min-h-screen flex flex-col bg-theme-base">
-      <!-- Top nav -->
-      <!-- pt folds in env(safe-area-inset-top) so the sticky header clears the iOS
-           notch/status bar (was sitting under it); = py-3 on web (inset resolves to 0). -->
-      <header class="flex items-center justify-between px-4 md:px-6 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))] border-b border-theme bg-theme-base/80 backdrop-blur-sm sticky top-0 z-40">
-        <div class="flex items-center gap-4 md:gap-6">
+      <!-- Top nav. On Linux/Windows Electron with `frame: false` this header
+           is the window's drag region (`-webkit-app-region: drag` baked into
+           `headerClass()`); every interactive child below opts back into
+           `no-drag` so clicks still reach links/buttons. On macOS the
+           traffic lights sit in the standard top-left under
+           `titleBarStyle: 'hiddenInset'` and the header stays sticky.
+           Double-click on the header toggles maximize (matches the Linux
+           GTK convention). -->
+      <header
+        [class]="headerClass()"
+        [attr.data-electron-title-bar]="isElectronLinux() ? '' : null"
+        (dblclick)="onHeaderDoubleClick()"
+      >
+        <div class="flex items-center gap-4 md:gap-6 [-webkit-app-region:no-drag]">
           <a routerLink="/" class="text-lg font-bold text-theme-primary hover:opacity-80 transition">NicotinD</a>
           <!-- Desktop nav -->
           <nav class="hidden md:flex gap-1">
@@ -29,7 +38,7 @@
           </nav>
         </div>
 
-        <div class="flex items-center gap-3">
+        <div class="flex items-center gap-3 [-webkit-app-region:no-drag]">
           <button
             (click)="showChangelog.set(true)"
             data-testid="version-changelog"
@@ -39,6 +48,10 @@
           </button>
           <span class="hidden md:inline text-sm text-theme-muted">{{ auth.username() }}</span>
           <button (click)="logout()" data-testid="logout" class="hidden md:inline text-sm text-theme-muted hover:text-theme-secondary transition">Sign out</button>
+          <!-- In-app window controls (Linux/Windows Electron only — the
+               component self-gates and renders nothing elsewhere). macOS
+               keeps its native traffic lights under hiddenInset. -->
+          <app-desktop-window-controls />
         </div>
       </header>
 
