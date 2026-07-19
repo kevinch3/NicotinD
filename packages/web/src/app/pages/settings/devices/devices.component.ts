@@ -8,7 +8,8 @@ import type {
   PairingMintResponse,
   RemoteAccessStatus,
 } from '../../../services/api/api-types';
-import { buildPairingPayload } from '../../../lib/pairing';
+import { buildPairingLink } from '../../../lib/pairing';
+import { isNativePlatform } from '../../../lib/platform';
 
 /**
  * "Link a device" — pair a phone to this server by QR (or manual URL + code)
@@ -37,8 +38,17 @@ export class DevicesComponent implements OnInit, OnDestroy {
   private countdown: ReturnType<typeof setInterval> | null = null;
   private copiedTimer: ReturnType<typeof setTimeout> | null = null;
 
+  /**
+   * On the phone app the QR exists to be scanned BY a phone, so auto-minting
+   * and showing it front-and-center is noise (you can't scan your own screen).
+   * It stays available behind a "Link another device" expander for the
+   * second-phone case; desktop/web keep the always-open auto-minting panel.
+   */
+  readonly onNativeApp = isNativePlatform();
+  readonly linkPanelOpen = signal(!isNativePlatform());
+
   ngOnInit(): void {
-    this.regenerate();
+    if (this.linkPanelOpen()) this.regenerate();
     this.loadDevices();
     if (this.auth.isAdmin()) {
       this.api.getRemoteAccess().subscribe({
@@ -66,12 +76,21 @@ export class DevicesComponent implements OnInit, OnDestroy {
     });
   }
 
+  /** Expand the mobile "Link another device" panel, minting on first open. */
+  openLinkPanel(): void {
+    if (this.linkPanelOpen()) return;
+    this.linkPanelOpen.set(true);
+    this.regenerate();
+  }
+
   private async renderQr(mint: PairingMintResponse): Promise<void> {
     if (mint.urls.length === 0) {
       this.qrDataUrl.set(null);
       return;
     }
-    const payload = buildPairingPayload({ name: mint.name, urls: mint.urls, token: mint.token });
+    // The QR encodes a `/pair#t=…` link (not raw JSON) so a plain camera app
+    // can act on it too — it opens the server's own pairing page in a browser.
+    const payload = buildPairingLink({ name: mint.name, urls: mint.urls, token: mint.token });
     try {
       this.qrDataUrl.set(await toDataURL(payload, { margin: 1, width: 240 }));
     } catch {

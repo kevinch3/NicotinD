@@ -18,6 +18,7 @@ import {
   canCurate as canCurateRole,
   isAdmin as isAdminRole,
 } from '../../types/core';
+import { clearStashedSession } from '../lib/server-registry';
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
@@ -91,7 +92,22 @@ export class AuthService {
     });
   }
 
+  /** Explicit sign-out: also forgets the per-server stashed session for the
+   * current server — otherwise switching servers and back would silently
+   * restore the session the user just ended. */
   logout(): void {
+    clearStashedSession(localStorage, localStorage.getItem('nicotind_server_url') ?? '');
+    this.resetSession();
+  }
+
+  /**
+   * Clear the active session + all per-server client state (player queue,
+   * search, transfers, caches…). Used by logout above and by the native
+   * server-picker when switching servers — a switch must not leak the old
+   * server's queue/covers/caches into the new one, but must keep the stashed
+   * sessions that make switching back seamless.
+   */
+  resetSession(): void {
     this.player.clear();
     this.search.reset();
     this.transfers.reset();

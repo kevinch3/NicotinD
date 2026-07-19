@@ -176,6 +176,19 @@
         </div>
       </section>
 
+      <!-- Server (native mobile app only) -->
+      @if (isNativeApp) {
+        <section class="rounded-xl border border-theme bg-theme-surface/50 p-6 mb-6" data-testid="settings-server-section">
+          <h2 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary mb-5">Server</h2>
+          <p class="text-sm text-theme-muted mb-4">
+            Connected to
+            <span class="text-theme-primary font-medium break-all">{{ serverConfig.baseUrl() }}</span>
+          </p>
+          <a routerLink="/server" data-testid="settings-switch-server"
+             class="block text-sm text-theme-secondary hover:text-theme-primary transition">Switch server →</a>
+        </section>
+      }
+
       <!-- Account -->
       <section class="rounded-xl border border-theme bg-theme-surface/50 p-6 mb-6">
         <h2 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary mb-5">Account</h2>

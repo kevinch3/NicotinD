@@ -1,5 +1,11 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { pickDirectory, platformId, setMusicDir } from './native-capabilities';
+import {
+  classifyScanError,
+  pickDirectory,
+  platformId,
+  scanBarcode,
+  setMusicDir,
+} from './native-capabilities';
 
 describe('native-capabilities', () => {
   afterEach(() => {
@@ -59,5 +65,56 @@ describe('native-capabilities', () => {
   it('setMusicDir is a no-op off-Electron', async () => {
     (globalThis as { window?: unknown }).window = {};
     await expect(setMusicDir('/music')).resolves.toEqual({ ok: true });
+  });
+});
+
+describe('scanBarcode', () => {
+  afterEach(() => {
+    delete (globalThis as { Capacitor?: unknown }).Capacitor;
+  });
+
+  function withScannerPlugin(impl: (options: unknown) => Promise<{ ScanResult?: string }>) {
+    const scanMock = vi.fn(impl);
+    (globalThis as { Capacitor?: unknown }).Capacitor = {
+      isNativePlatform: () => true,
+      getPlatform: () => 'android',
+      Plugins: { CapacitorBarcodeScanner: { scanBarcode: scanMock } },
+    };
+    return scanMock;
+  }
+
+  it('passes every option the raw bridge requires (iOS rejects sparse calls)', async () => {
+    const scanMock = withScannerPlugin(async () => ({ ScanResult: 'payload' }));
+    await expect(scanBarcode()).resolves.toEqual({ status: 'ok', value: 'payload' });
+    expect(scanMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        hint: 0,
+        scanInstructions: expect.any(String),
+        scanButton: false,
+        scanText: expect.any(String),
+        cameraDirection: 1,
+        scanOrientation: 3,
+      }),
+    );
+  });
+
+  it('is unavailable off-native', async () => {
+    await expect(scanBarcode()).resolves.toEqual({ status: 'unavailable' });
+  });
+
+  it('maps an empty result to cancelled and rejections to typed outcomes', async () => {
+    withScannerPlugin(async () => ({}));
+    await expect(scanBarcode()).resolves.toEqual({ status: 'cancelled' });
+    withScannerPlugin(async () => Promise.reject(new Error('Scanning cancelled')));
+    await expect(scanBarcode()).resolves.toEqual({ status: 'cancelled' });
+    withScannerPlugin(async () => Promise.reject(new Error('Camera access denied')));
+    await expect(scanBarcode()).resolves.toEqual({ status: 'denied' });
+  });
+
+  it('classifyScanError falls through to error with the message', () => {
+    expect(classifyScanError('boom')).toEqual({ status: 'error', message: 'boom' });
+    expect(classifyScanError('OS-PLUG-BARC-0007 permission missing')).toEqual({
+      status: 'denied',
+    });
   });
 });

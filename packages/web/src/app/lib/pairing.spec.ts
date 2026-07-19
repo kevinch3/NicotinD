@@ -1,10 +1,65 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
   buildPairingPayload,
+  buildPairingLink,
+  parsePairingParams,
   parsePairingPayload,
   probeCandidates,
   claimPairing,
 } from './pairing';
+
+describe('buildPairingLink / parsePairingPayload (URL form)', () => {
+  it('round-trips a link through the scanner parse path', () => {
+    const link = buildPairingLink({
+      name: 'desk',
+      urls: ['https://desk.tail1234.ts.net', 'https://music.example.com'],
+      token: 'tok123',
+    });
+    expect(link).toBe(
+      'https://desk.tail1234.ts.net/pair#t=tok123&u=https%3A%2F%2Fmusic.example.com&n=desk',
+    );
+    expect(parsePairingPayload(link)).toEqual({
+      v: 1,
+      kind: 'nicotind-pair',
+      name: 'desk',
+      urls: ['https://desk.tail1234.ts.net', 'https://music.example.com'],
+      token: 'tok123',
+    });
+  });
+
+  it('keeps the token in the fragment, never the query', () => {
+    const link = buildPairingLink({ urls: ['https://a.example'], token: 'secret' });
+    expect(new URL(link).search).toBe('');
+    expect(new URL(link).hash).toContain('t=secret');
+  });
+
+  it('rejects a URL that is not a /pair link', () => {
+    expect(parsePairingPayload('https://a.example/?t=tok')).toBeNull();
+    expect(parsePairingPayload('https://a.example/pair')).toBeNull(); // no token
+  });
+});
+
+describe('parsePairingParams', () => {
+  it('parses a fragment string with origin as the primary candidate', () => {
+    expect(parsePairingParams('#t=tok&u=https%3A%2F%2Fb.example', 'https://a.example')).toEqual({
+      token: 'tok',
+      urls: ['https://a.example', 'https://b.example'],
+      name: undefined,
+    });
+  });
+
+  it('parses query form and returns null without a token', () => {
+    expect(parsePairingParams('?t=tok&n=desk')?.name).toBe('desk');
+    expect(parsePairingParams('#n=desk')).toBeNull();
+    expect(parsePairingParams('')).toBeNull();
+  });
+
+  it('drops non-http extra candidates', () => {
+    expect(parsePairingParams('#t=tok&u=javascript%3Aalert(1)', 'https://a.example')?.urls).toEqual([
+      'https://a.example',
+    ]);
+  });
+});
 
 describe('buildPairingPayload / parsePairingPayload', () => {
   it('round-trips a payload', () => {

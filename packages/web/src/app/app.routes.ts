@@ -13,6 +13,12 @@ export const routes: Routes = [
     loadComponent: () => import('./pages/login/login.component').then((m) => m.LoginComponent),
   },
   {
+    // Public pairing landing page — the QR's `/pair#t=…` link opens here when
+    // scanned with a plain camera app; claims the token and signs the browser in.
+    path: 'pair',
+    loadComponent: () => import('./pages/pair/pair.component').then((m) => m.PairComponent),
+  },
+  {
     path: 'setup',
     loadComponent: () => import('./pages/setup/setup.component').then((m) => m.SetupComponent),
   },

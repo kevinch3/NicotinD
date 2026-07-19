@@ -23,4 +23,19 @@ describe('ServerConfigService', () => {
     const url = svc.streamUrl('track-id', 'jwt');
     expect(url).toContain('ngsw-bypass=1');
   });
+
+  it('remembers, lists and forgets servers through the registry', () => {
+    svc.remember('https://a.example', 'Home');
+    svc.remember('https://b.example');
+    expect(svc.servers().map((s) => s.url)).toEqual(['https://b.example', 'https://a.example']);
+    svc.forget('https://b.example');
+    expect(svc.servers().map((s) => s.url)).toEqual(['https://a.example']);
+  });
+
+  it('stashes and restores per-server sessions', () => {
+    svc.stashSessionFor('https://a.example', { token: 'jwt', username: 'kev', role: 'admin' });
+    expect(svc.stashedSessionFor('https://a.example')?.username).toBe('kev');
+    svc.clearStashedSessionFor('https://a.example');
+    expect(svc.stashedSessionFor('https://a.example')).toBeNull();
+  });
 });

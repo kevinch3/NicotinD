@@ -1,19 +1,21 @@
 import { Component, inject, signal, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { AuthService } from '../../services/auth.service';
 import { AuthApiService } from '../../services/api/auth-api.service';
 import { PasswordFieldComponent } from '../../components/password-field/password-field.component';
+import { ServerConfigService } from '../../services/server-config.service';
 
 @Component({
   selector: 'app-login',
-  imports: [FormsModule, PasswordFieldComponent],
+  imports: [FormsModule, RouterLink, PasswordFieldComponent],
   templateUrl: './login.component.html',
 })
 export class LoginComponent implements OnInit {
   private auth = inject(AuthService);
   private api = inject(AuthApiService);
   private router = inject(Router);
+  private server = inject(ServerConfigService);
 
   username = '';
   password = '';
@@ -21,6 +23,10 @@ export class LoginComponent implements OnInit {
   readonly error = signal('');
   readonly loading = signal(false);
   readonly registrationEnabled = signal(true);
+  /** Native shell only: login is per-server, so offer the way out to the
+   * server-picker — before this link, "log out" trapped you on one server. */
+  readonly showServerLink = this.server.native;
+  readonly serverHost = hostOf(this.server.baseUrl());
 
   ngOnInit(): void {
     this.api.getRegistrationStatus().subscribe({
@@ -53,5 +59,13 @@ export class LoginComponent implements OnInit {
         this.loading.set(false);
       },
     });
+  }
+}
+
+function hostOf(url: string): string {
+  try {
+    return url ? new URL(url).host : '';
+  } catch {
+    return url;
   }
 }
