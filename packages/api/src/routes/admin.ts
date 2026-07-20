@@ -6,6 +6,12 @@ import type { Lidarr } from '@nicotind/lidarr-client';
 import type { AuthEnv } from '../middleware/auth.js';
 import { getDatabase } from '../db.js';
 import { listBackups, runBackup } from '../services/backup.js';
+import {
+  checkForUpdateNow,
+  compareVersions,
+  getStoredUpdateCheck,
+  listVersionHistory,
+} from '../services/update-check.js';
 import { transcodeLibraryToOpus } from '../services/library-transcode.js';
 import { optimizeAllAlbums } from '../services/metadata-optimize.js';
 import { setProcessingSettings } from '../services/processing-settings.js';
@@ -24,6 +30,8 @@ export interface AdminRoutesDeps {
   lidarr?: Lidarr | null;
   /** Windowed library-processing scheduler; null when not wired (503s). */
   processing?: LibraryProcessingService | null;
+  /** Running server version (package.json), for the update-check route. */
+  version?: string;
 }
 
 export function adminRoutes(deps: AdminRoutesDeps) {
@@ -209,6 +217,28 @@ export function adminRoutes(deps: AdminRoutesDeps) {
       onlyMissingOrPoor,
     });
     return c.json({ ok: true, dryRun, ...result });
+  });
+
+  // --- Update check + version history (services/update-check.ts) -----------
+
+  // Cached update-check result vs the running version, plus every version this
+  // server has ever booted. `?refresh=1` forces a GitHub poll (the "Check now"
+  // button); the plain GET never phones home.
+  app.get('/update-check', async (c) => {
+    const db = getDatabase();
+    if (c.req.query('refresh') === '1') await checkForUpdateNow(db);
+    const stored = getStoredUpdateCheck(db);
+    const current = deps.version ?? 'unknown';
+    const latest = stored?.latestVersion ?? null;
+    return c.json({
+      currentVersion: current,
+      latestVersion: latest,
+      updateAvailable:
+        latest !== null && current !== 'unknown' && compareVersions(latest, current) > 0,
+      checkedAt: stored?.checkedAt ?? null,
+      releaseUrl: stored?.releaseUrl ?? null,
+      versionHistory: listVersionHistory(db),
+    });
   });
 
   // --- Backups (see services/backup.ts + docs/backup-restore.md) -----------

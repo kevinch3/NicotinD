@@ -128,6 +128,19 @@ the desktop sidecar handshake, and the e2e web server wait. `version` is
 informational (verify what a deploy shipped with one `curl`); clients must only
 rely on `ok`.
 
+## Update check + version history
+
+The server polls the GitHub releases API at most once per 24h (1h backoff on
+failure, `NICOTIND_UPDATE_CHECK=off` to disable — the poll sends nothing but
+the request itself) and caches the newest release in the DB
+(`services/update-check.ts`). `GET /api/admin/update-check` serves the cache —
+current vs latest version, `updateAvailable`, release URL — plus the
+`version_history` table (every version this server has ever booted, recorded
+at startup; Immich's version-history pattern, invaluable for support). Admin →
+System shows the row ("Server: vX — up to date / Update available") with a
+"Check now" button (`?refresh=1` forces a poll). Applying an update stays
+`docker compose pull && up -d` (above) — the server never updates itself.
+
 ## Data layout & backups
 
 Everything stateful lives in the `nicotind-data` volume (`/data/nicotind` in

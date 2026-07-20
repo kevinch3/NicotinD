@@ -16,6 +16,7 @@ import { uploadRoutes } from './routes/uploads.js';
 import { libraryRoutes } from './routes/library.js';
 import { streamingRoutes } from './routes/streaming.js';
 import { healthRoutes } from './routes/health.js';
+import { recordBootVersion } from './services/update-check.js';
 import { systemRoutes } from './routes/system.js';
 import { settingsRoutes } from './routes/settings.js';
 import { adminRoutes } from './routes/admin.js';
@@ -118,6 +119,10 @@ export function createApp({
     : config.dataDir;
 
   const db = initDatabase(expandedDataDir);
+
+  // Version-history ledger: record every version this server has ever booted
+  // (support: "did this DB ever run 0.1.180?"). One INSERT OR IGNORE per boot.
+  if (version) recordBootVersion(db, version);
 
   // Startup hygiene for the unified acquisition jobs: fail items idle past the
   // 24h valve (a restart must never strand a job "downloading") and prune
@@ -542,6 +547,7 @@ export function createApp({
       lidarr,
       coverCacheDir: `${expandedDataDir}/cover-cache`,
       processing: processingRef.current,
+      version,
     }),
   );
   app.route('/api/presence', presenceRoutes());
@@ -741,6 +747,7 @@ export { DownloadWatcher } from './services/download-watcher.js';
 export { DownloadRetryService } from './services/download-retry.service.js';
 export { AutoAcquireService } from './services/auto-acquire.service.js';
 export { initDatabase, getDatabase } from './db.js';
+export { maybeCheckForUpdate } from './services/update-check.js';
 // initServerSentry is intentionally NOT re-exported from the barrel: it must be
 // imported via the isolated `@nicotind/api/instrument` subpath so Sentry inits
 // before Hono/http modules load. See src/instrument.ts.

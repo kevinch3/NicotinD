@@ -1091,6 +1091,32 @@ export function applySchema(db: Database): void {
     )
   `);
 
+  // Every version this server has ever booted (Immich's version-history
+  // pattern) — invaluable for support ("did this DB ever run 0.1.180?").
+  // Written once per version by recordBootVersion (services/update-check.ts).
+  db.run(`
+    CREATE TABLE IF NOT EXISTS version_history (
+      version       TEXT PRIMARY KEY,
+      first_seen_at INTEGER NOT NULL
+    )
+  `);
+
+  // Admin audit log: who did which destructive/curation action to what, when.
+  // Written by recordAudit (services/audit-log.ts) from curator/admin routes.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS audit_log (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      at          INTEGER NOT NULL,
+      user_id     TEXT NOT NULL,
+      username    TEXT,
+      action      TEXT NOT NULL,
+      target_kind TEXT,
+      target_id   TEXT,
+      detail      TEXT
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_audit_log_at ON audit_log (at DESC)`);
+
   // One-time landing backfill. The landed_at column defaults to NULL (quarantined)
   // for every row, so an upgrade of an existing library would otherwise hide the
   // entire catalogue behind the new processing gate. Land every pre-existing song

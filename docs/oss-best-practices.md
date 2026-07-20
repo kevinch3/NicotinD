@@ -85,18 +85,13 @@ live re-init.
 
 ## 3. Server management (P2)
 
-- **Update check + in-app "update available"** — Immich's
-  `GET /server/version-check` (periodic poll of GitHub releases, admin-set
-  channel) and HA's first-class update entities. NicotinD: a daily poll of
-  `https://api.github.com/repos/kevinch3/NicotinD/releases/latest`, surfaced as
-  a Settings/Admin badge + toast with the changelog modal already in place.
-  Opt-out (`NICOTIND_UPDATE_CHECK=off`) for the phone-home-averse. The PWA
-  side already has manual "Check for updates"; this is the server-image
-  equivalent. (S/M)
-- **`version_history` table** — Immich records every version a server has run
-  and shows it at login. One tiny table written on boot when
-  `pkg.version` differs from the last row; invaluable for support ("did this
-  DB ever run 0.1.180?"). (S)
+- ~~**Update check + in-app "update available"**~~ — **done** (v1): daily
+  cached GitHub-releases poll (`NICOTIND_UPDATE_CHECK=off` opt-out, 1h failure
+  backoff), `GET /api/admin/update-check`, Admin → System row with "Check
+  now". Open extensions: release-channel setting, non-admin toast. See
+  [deployment.md](deployment.md) "Update check".
+- ~~**`version_history` table**~~ — **done**: written on boot
+  (`recordBootVersion`), served by the update-check route.
 - **Release-notes discipline: a Breaking changes section** — both projects
   surface backward-incompatible changes as a dedicated, mandatory release-note
   section. NicotinD: `.versionrc.json` already routes `feat!`/`BREAKING

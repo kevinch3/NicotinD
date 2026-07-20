@@ -16,6 +16,7 @@ import type {
   SongSteps,
   LibraryFragmentReport,
   BackupInfo,
+  UpdateCheck,
 } from '../../services/api/api-types';
 import { AuthService } from '../../services/auth.service';
 import { ServerConfigService } from '../../services/server-config.service';
@@ -118,6 +119,23 @@ export class AdminComponent implements OnInit, OnDestroy {
       );
     } finally {
       this.syncing.set(false);
+    }
+  }
+
+  // Server update check: the API polls GitHub releases daily and caches the
+  // result; this only reads the cache unless "Check now" forces a refresh.
+  readonly updateCheck = signal<UpdateCheck | null>(null);
+  readonly checkingUpdate = signal(false);
+
+  async loadUpdateCheck(refresh = false): Promise<void> {
+    if (this.checkingUpdate()) return;
+    this.checkingUpdate.set(true);
+    try {
+      this.updateCheck.set(await firstValueFrom(this.api.getUpdateCheck(refresh)));
+    } catch {
+      // Non-fatal (older server): the row just doesn't render.
+    } finally {
+      this.checkingUpdate.set(false);
     }
   }
 
@@ -267,6 +285,7 @@ export class AdminComponent implements OnInit, OnDestroy {
     this.loadProcessing();
     void this.loadQuarantineQueue();
     void this.loadBackups();
+    void this.loadUpdateCheck();
     this.connectProcessingStream();
   }
 

@@ -11,6 +11,7 @@ import type {
   QuarantineAlbum,
   DiskUsage,
   BackupInfo,
+  UpdateCheck,
 } from './api-types';
 
 /** System surface: status/scan/logs, settings (soulseek/shares/streaming/
@@ -130,6 +131,13 @@ export class SystemApiService {
   // they're added to the library, grouped by album with per-step badges.
   getProcessingQueue() {
     return this.http.get<{ albums: QuarantineAlbum[] }>('/api/admin/processing/queue');
+  }
+
+  // Server update check (cached GitHub-releases poll) — admin only.
+  getUpdateCheck(refresh = false) {
+    return this.http.get<UpdateCheck>(
+      `/api/admin/update-check${refresh ? '?refresh=1' : ''}`,
+    );
   }
 
   // Backups (DB snapshot + secrets) — admin only. See docs/backup-restore.md.

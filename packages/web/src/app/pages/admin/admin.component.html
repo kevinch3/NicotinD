@@ -121,6 +121,27 @@
             }
           </div>
 
+          <!-- Server version + update check (cached daily GitHub poll). -->
+          @if (updateCheck(); as uc) {
+            <div class="flex items-center gap-3 mb-8 text-sm flex-wrap" data-testid="update-check">
+              <span class="text-theme-muted">Server:</span>
+              <span class="text-theme-secondary">v{{ uc.currentVersion }}</span>
+              @if (uc.updateAvailable) {
+                <a [href]="uc.releaseUrl" target="_blank" rel="noopener"
+                  class="text-status-progress underline" data-testid="update-available">
+                  Update available: v{{ uc.latestVersion }}
+                </a>
+              } @else if (uc.checkedAt) {
+                <span class="text-theme-muted">up to date</span>
+              }
+              <button (click)="loadUpdateCheck(true)" [disabled]="checkingUpdate()"
+                data-testid="update-check-now"
+                class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition disabled:opacity-50">
+                {{ checkingUpdate() ? 'Checking…' : 'Check now' }}
+              </button>
+            </div>
+          }
+
           @if (scanStatus()) {
             <div class="flex items-center gap-3 mb-8 text-sm">
               <span class="text-theme-muted">Library scan:</span>

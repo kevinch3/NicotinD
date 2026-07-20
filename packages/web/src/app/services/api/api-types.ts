@@ -447,6 +447,16 @@ export interface LibraryFragmentFinding {
   message: string;
 }
 
+/** Cached server update-check vs the running version (admin). */
+export interface UpdateCheck {
+  currentVersion: string;
+  latestVersion: string | null;
+  updateAvailable: boolean;
+  checkedAt: number | null;
+  releaseUrl: string | null;
+  versionHistory: { version: string; firstSeenAt: number }[];
+}
+
 /** One backup under `<dataDir>/backups` (DB snapshot + secrets). */
 export interface BackupInfo {
   name: string;
