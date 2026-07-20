@@ -59,8 +59,10 @@ RUN curl -fsSL https://deno.land/install.sh | DENO_INSTALL=/usr/local sh
 # --upgrade keeps yt-dlp at the latest release each image build — YouTube
 # breaks older versions continuously. bgutil-ytdlp-pot-provider is the yt-dlp
 # plugin that fetches PO tokens from the bgutil companion service (see
-# docker-compose.yml); it applies to spotdl too (same python env).
-RUN pip3 install --no-cache-dir --break-system-packages --upgrade yt-dlp spotdl bgutil-ytdlp-pot-provider
+# docker-compose.yml); it applies to spotdl too (same python env). The plugin
+# is PINNED to match the bgutil-provider image tag in docker-compose.yml —
+# plugin and provider must stay in step; bump both together.
+RUN pip3 install --no-cache-dir --break-system-packages --upgrade yt-dlp spotdl 'bgutil-ytdlp-pot-provider==1.3.1'
 
 # Copy all packages (web needs package.json for workspace resolution)
 COPY package.json bun.lock bunfig.toml tsconfig.json ./

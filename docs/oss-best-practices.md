@@ -26,23 +26,27 @@ live re-init.
 
 ## 1. Deployment (P1)
 
-- **Publish the `analysis` sidecar image** — the last thing compose builds from
-  source. Publishing it makes the install a true "download compose + .env"
-  flow, no git clone (Immich's install: two files, three variables). Also lets
-  the GPU variant become an image tag instead of a local `--build-arg`. (M)
+- ~~**Publish the `analysis` sidecar image**~~ — **done**: published as
+  `ghcr.io/kevinch3/nicotind-analysis` (amd64 only — essentia-tensorflow has
+  x86_64-only wheels; arm64 hosts disable the service). GPU stays a source
+  build (`--build-arg GPU=1`) via override.
+- ~~**Pin infra images**~~ — **done**: `lidarr` pinned to a version tag,
+  `bgutil` provider image pinned in step with the pip plugin pin in the
+  Dockerfile (bump together). Digest-pinning + a Renovate-style bump flow
+  remains open. (S)
+- **Inline the slskd entrypoint** — the last reason the install needs a git
+  clone is the `scripts/slskd-entrypoint.sh` bind mount; inlining it (compose
+  `command`/config or baking a tiny image) makes the install a true
+  "download compose + .env" flow, two files like Immich. (S)
 - **ffmpeg hardware-acceleration compose overlay** — Immich ships
   `hwaccel.transcoding.yml` with named profiles (`nvenc`, `qsv`, `vaapi`, …)
   that users `extends:` into the main file; the base install stays identical
   for everyone. NicotinD's transcode paths (lossless→Opus, vocal-mute, disk
   transcode cache) are ffmpeg-only today; an overlay + codec flag gets
   low-power boxes (N100s, NAS) real headroom. (M)
-- **Pin infra images** — Immich digest-pins the images the app doesn't own
-  (their Postgres/Valkey) so users can't drift on risky components. NicotinD:
-  pin `lidarr` to a version tag (currently `:latest` — a silent Lidarr major
-  can break the client) and consider digest-pinning `slskd` + `bgutil`. (S)
-- **arm64 status**: shipped in the first pass via native `ubuntu-24.04-arm`
-  runners. If a base-image/deno gap surfaces on arm64, drop the leg from the
-  matrix and track the fix here rather than blocking releases.
+- **arm64 status**: shipped for the server image via native
+  `ubuntu-24.04-arm` runners (proven green on v0.1.230). The analysis sidecar
+  is amd64-only by upstream constraint (see above).
 
 ## 2. Runtime robustness (P1)
 

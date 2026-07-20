@@ -14,11 +14,11 @@ docker compose up -d
 # open http://localhost:8484 → setup wizard
 ```
 
-The clone is still needed because the compose stack references in-repo files
-(`scripts/slskd-entrypoint.sh`, the `packages/analysis` sidecar build). The
-**server itself is not built locally** — compose pulls the published image.
-Publishing the analysis sidecar image too (making the install a pure
-"download 2 files" flow, no clone) is a roadmap item — see
+The clone is still needed because the compose stack bind-mounts one in-repo
+file (`scripts/slskd-entrypoint.sh`). **Nothing is built locally** — compose
+pulls the published server image and the published analysis sidecar image.
+Inlining the slskd entrypoint (making the install a pure "download 2 files"
+flow, no clone) is the remaining gap — see
 [oss-best-practices.md](oss-best-practices.md).
 
 ## The published image
@@ -45,6 +45,25 @@ There is deliberately **no `latest` tag**. `release` is the explicit
 equivalent, and it can only ever point at a tagged release (Immich's
 `release`/`vN` metatag convention; their docs likewise steer users away from
 `:latest`).
+
+### The analysis sidecar image
+
+`ghcr.io/kevinch3/nicotind-analysis`, same tag semantics, published by the
+`docker-analysis` job. **amd64 only** — essentia-tensorflow ships x86_64-only
+wheels, so this sidecar has never been runnable on arm64; on an arm64 host
+remove/disable the `analysis` service (everything degrades gracefully — only
+the audio-features enrichment task pauses). GPU inference still builds from
+source via an override (`--build-arg GPU=1`, see
+`docker-compose.override.example.yml` + [audio-ml-enrichment.md](audio-ml-enrichment.md)).
+
+### Infra image pins
+
+Images the app doesn't own are version-pinned so users can't drift on risky
+components (Immich digest-pins theirs): `slskd` (already pinned),
+`linuxserver/lidarr` (was `:latest` — a silent Lidarr major can break the API
+client), and `brainicism/bgutil-ytdlp-pot-provider`, which must stay **in
+step with the pip-installed plugin pinned in the Dockerfile** — bump both
+together.
 
 ### Pinning a version
 

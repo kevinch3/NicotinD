@@ -212,9 +212,14 @@ jobs:
           else
             echo "build=false" >> "$GITHUB_OUTPUT"
           fi
+          if echo "$files" | grep -qE '^(packages/analysis/(Dockerfile|pyproject\.toml)|\.github/workflows/(ci|deploy)\.yml)$'; then
+            echo "analysis=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "analysis=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - uses: docker/setup-buildx-action@v3
-        if: steps.f.outputs.build == 'true'
+        if: steps.f.outputs.build == 'true' || steps.f.outputs.analysis == 'true'
 
       - name: Build image (amd64, no push)
         if: steps.f.outputs.build == 'true'
@@ -225,6 +230,19 @@ jobs:
           push: false
           cache-from: type=gha,scope=docker-linux-amd64
           cache-to: type=gha,mode=max,scope=docker-linux-amd64
+
+      # Same idea for the analysis sidecar image published by deploy.yml's
+      # docker-analysis job (its Python deps/tests are covered by the
+      # `analysis` job above — this checks the image still builds).
+      - name: Build analysis image (amd64, no push)
+        if: steps.f.outputs.analysis == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: packages/analysis
+          platforms: linux/amd64
+          push: false
+          cache-from: type=gha,scope=analysis-linux-amd64
+          cache-to: type=gha,mode=max,scope=analysis-linux-amd64
 
   release:
     runs-on: ubuntu-latest
