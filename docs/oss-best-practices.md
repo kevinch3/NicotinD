@@ -111,11 +111,11 @@ live re-init.
 NicotinD's four-role ladder already exceeds Immich (admin/user). Gaps worth
 closing:
 
-- **Admin audit log** — who deleted/merged/renamed/acquired what, when. The
-  curator role (`refiner`) makes destructive actions multi-user; today they're
-  only in server logs. One `audit_log` table written by the `requireCurator`/
-  `requireAdmin` mutation routes + a read-only Admin page. Pairs with the
-  existing `ConfirmService` destructive-action flow. (M)
+- ~~**Admin audit log**~~ — **done** (v1): `audit_log` table written explicitly
+  at the destructive mutation sites (album/bulk-song delete, artist identity,
+  user management), `GET /api/admin/audit` + Admin "Audit log" table — see
+  [roles.md](roles.md) "Audit log". Open extensions: acquisition/metadata-fix
+  actions, retention cap.
 - **User-facing roles doc** — [roles.md](roles.md) is engineering-facing;
   admins provisioning accounts need a capability matrix ("what does `refiner`
   let my roommate do?"). Short table in README or the docs site later. (S)

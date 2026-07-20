@@ -12,6 +12,7 @@ import type {
   DiskUsage,
   BackupInfo,
   UpdateCheck,
+  AuditEntry,
 } from './api-types';
 
 /** System surface: status/scan/logs, settings (soulseek/shares/streaming/
@@ -131,6 +132,11 @@ export class SystemApiService {
   // they're added to the library, grouped by album with per-step badges.
   getProcessingQueue() {
     return this.http.get<{ albums: QuarantineAlbum[] }>('/api/admin/processing/queue');
+  }
+
+  // Audit log (destructive/curation actions) — admin only.
+  getAuditLog(limit = 50, offset = 0) {
+    return this.http.get<AuditEntry[]>(`/api/admin/audit?limit=${limit}&offset=${offset}`);
   }
 
   // Server update check (cached GitHub-releases poll) — admin only.

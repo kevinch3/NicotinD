@@ -99,6 +99,35 @@
           </section>
         </div>
 
+        <!-- Audit log: recent destructive/curation actions with the acting user. -->
+        @if (auditLoaded() && auditLog().length > 0) {
+          <div data-testid="audit-log">
+            <h2 class="text-xl font-bold text-theme-primary mb-8">Audit log</h2>
+            <section class="rounded-xl border border-theme bg-theme-surface overflow-x-auto">
+              <table class="w-full text-sm">
+                <thead>
+                  <tr class="border-b border-theme">
+                    <th class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted">When</th>
+                    <th class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted">User</th>
+                    <th class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted">Action</th>
+                    <th class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted">Target</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (e of auditLog(); track e.id) {
+                    <tr class="border-b border-theme last:border-0">
+                      <td class="px-4 py-2.5 text-theme-muted whitespace-nowrap">{{ formatAuditTime(e.at) }}</td>
+                      <td class="px-4 py-2.5 text-theme-secondary">{{ e.username ?? e.userId }}</td>
+                      <td class="px-4 py-2.5 text-theme-secondary">{{ e.action }}</td>
+                      <td class="px-4 py-2.5 text-theme-muted">{{ e.detail ?? e.targetId ?? '—' }}</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </section>
+          </div>
+        }
+
         <!-- System Panel -->
         <div>
           <h2 class="text-xl font-bold text-theme-primary mb-8">System</h2>

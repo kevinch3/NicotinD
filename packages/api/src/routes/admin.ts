@@ -5,6 +5,7 @@ import type { ProcessingSettings, ProcessingStatus, Role } from '@nicotind/core'
 import type { Lidarr } from '@nicotind/lidarr-client';
 import type { AuthEnv } from '../middleware/auth.js';
 import { getDatabase } from '../db.js';
+import { listAudit, recordAudit } from '../services/audit-log.js';
 import { listBackups, runBackup } from '../services/backup.js';
 import {
   checkForUpdateNow,
@@ -72,6 +73,7 @@ export function adminRoutes(deps: AdminRoutesDeps) {
       'user',
     );
     db.query('INSERT INTO user_settings (user_id) VALUES (?)').run(id);
+    recordAudit(db, c.get('user'), 'user.create', { targetKind: 'user', targetId: id, detail: username });
 
     return c.json(
       {
@@ -131,6 +133,7 @@ export function adminRoutes(deps: AdminRoutesDeps) {
     if (result.changes === 0) {
       return c.json({ error: 'User not found' }, 404);
     }
+    recordAudit(db, currentUser, 'user.role', { targetKind: 'user', targetId: id, detail: role });
     return c.json({ ok: true });
   });
 
@@ -153,6 +156,7 @@ export function adminRoutes(deps: AdminRoutesDeps) {
     if (result.changes === 0) {
       return c.json({ error: 'User not found' }, 404);
     }
+    recordAudit(db, currentUser, 'user.status', { targetKind: 'user', targetId: id, detail: status });
     return c.json({ ok: true });
   });
 
@@ -171,6 +175,7 @@ export function adminRoutes(deps: AdminRoutesDeps) {
     if (result.changes === 0) {
       return c.json({ error: 'User not found' }, 404);
     }
+    recordAudit(db, c.get('user'), 'user.password-reset', { targetKind: 'user', targetId: id });
     return c.json({ ok: true });
   });
 
@@ -188,6 +193,7 @@ export function adminRoutes(deps: AdminRoutesDeps) {
     if (result.changes === 0) {
       return c.json({ error: 'User not found' }, 404);
     }
+    recordAudit(db, currentUser, 'user.delete', { targetKind: 'user', targetId: id });
     return c.json({ ok: true });
   });
 
@@ -217,6 +223,20 @@ export function adminRoutes(deps: AdminRoutesDeps) {
       onlyMissingOrPoor,
     });
     return c.json({ ok: true, dryRun, ...result });
+  });
+
+  // --- Audit log (services/audit-log.ts) ------------------------------------
+
+  // Recent destructive/curation actions, newest first. ?limit=&offset= paginate.
+  app.get('/audit', (c) => {
+    const limit = Number(c.req.query('limit') ?? 50);
+    const offset = Number(c.req.query('offset') ?? 0);
+    return c.json(
+      listAudit(getDatabase(), {
+        limit: Number.isFinite(limit) ? limit : 50,
+        offset: Number.isFinite(offset) ? offset : 0,
+      }),
+    );
   });
 
   // --- Update check + version history (services/update-check.ts) -----------

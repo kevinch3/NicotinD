@@ -17,6 +17,7 @@ import type {
   LibraryFragmentReport,
   BackupInfo,
   UpdateCheck,
+  AuditEntry,
 } from '../../services/api/api-types';
 import { AuthService } from '../../services/auth.service';
 import { ServerConfigService } from '../../services/server-config.service';
@@ -120,6 +121,24 @@ export class AdminComponent implements OnInit, OnDestroy {
     } finally {
       this.syncing.set(false);
     }
+  }
+
+  // Audit log: recent destructive/curation actions (album/song deletes, artist
+  // identity fixes, user management) with the acting user attached.
+  readonly auditLog = signal<AuditEntry[]>([]);
+  readonly auditLoaded = signal(false);
+
+  async loadAuditLog(): Promise<void> {
+    try {
+      this.auditLog.set(await firstValueFrom(this.api.getAuditLog(50)));
+      this.auditLoaded.set(true);
+    } catch {
+      // Non-fatal (older server): the section just stays empty.
+    }
+  }
+
+  formatAuditTime(ms: number): string {
+    return new Date(ms).toLocaleString();
   }
 
   // Server update check: the API polls GitHub releases daily and caches the
@@ -286,6 +305,7 @@ export class AdminComponent implements OnInit, OnDestroy {
     void this.loadQuarantineQueue();
     void this.loadBackups();
     void this.loadUpdateCheck();
+    void this.loadAuditLog();
     this.connectProcessingStream();
   }
 

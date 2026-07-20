@@ -447,6 +447,18 @@ export interface LibraryFragmentFinding {
   message: string;
 }
 
+/** One admin audit-log entry (destructive/curation action record). */
+export interface AuditEntry {
+  id: number;
+  at: number;
+  userId: string;
+  username: string | null;
+  action: string;
+  targetKind: string | null;
+  targetId: string | null;
+  detail: string | null;
+}
+
 /** Cached server update-check vs the running version (admin). */
 export interface UpdateCheck {
   currentVersion: string;
