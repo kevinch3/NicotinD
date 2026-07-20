@@ -18,8 +18,9 @@ jobs:
   # backend/core change doesn't fire the expensive per-platform builds (the two
   # macOS jobs bill at ~10x ubuntu). GitHub `paths:` filters don't work for tag
   # pushes, so we diff against the previous release tag ourselves and emit
-  # per-area booleans consumed by the app jobs' `if:` below. The server `deploy`
-  # job is intentionally NOT gated — it stays cheap and always runs.
+  # per-area booleans consumed by the app jobs' `if:` below. The server image
+  # (`docker`) + `deploy` are NOT gated here — every release publishes a server
+  # image and redeploys (deploy waits on docker-merge for the pull).
   #   mobile  (android/ios): wrap packages/web/dist only — NOT the backend.
   #   desktop (desktop-*):   bundle the backend source + web + shell (Variant B).
   changes:
@@ -309,8 +310,122 @@ jobs:
         # extraMetadata.version: use the release tag's version (see desktop-linux).
         run: bunx electron-builder --mac --publish always -c.extraMetadata.version="${GITHUB_REF_NAME#v}"
 
+  # Build + publish the multi-arch server image to GHCR (Immich-style): one
+  # native-runner build per arch pushed by digest, then `docker-merge` stitches
+  # the digests into a single tagged manifest. Native arm64 runners (free for
+  # public repos) instead of QEMU — Bun's JIT is unreliable under emulation.
+  # Tag-only: a workflow_dispatch deploy reuses the last published `release`
+  # image rather than publishing from an untagged master tip.
+  docker:
+    runs-on: ${{ matrix.runner }}
+    if: github.ref_type == 'tag'
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    env:
+      IMAGE: ghcr.io/kevinch3/nicotind
+    steps:
+      - uses: actions/checkout@v4
+
+      # linux/amd64 -> linux-amd64, for artifact names + cache scopes.
+      - name: Prepare platform slug
+        run: |
+          platform="${{ matrix.platform }}"
+          echo "PLATFORM_PAIR=${platform//\//-}" >> "$GITHUB_ENV"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Push by digest (no tag): tagging happens once in docker-merge, so a
+      # half-published release can never move the `release`/version tags.
+      - name: Build + push by digest
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=docker-${{ env.PLATFORM_PAIR }}
+          cache-to: type=gha,mode=max,scope=docker-${{ env.PLATFORM_PAIR }}
+
+      - name: Export digest
+        run: |
+          mkdir -p "${{ runner.temp }}/digests"
+          digest="${{ steps.build.outputs.digest }}"
+          touch "${{ runner.temp }}/digests/${digest#sha256:}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ env.PLATFORM_PAIR }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  # Merge the per-arch digests into one multi-arch manifest, tagged:
+  #   vX.Y.Z  — exact release (pin this to hold/rollback a version)
+  #   vX      — major metatag (Immich-style; excludes nothing today at v0)
+  #   release — stable metatag, the docker-compose.yml default
+  # Deliberately NO `latest` tag: `release` is the explicit equivalent, and it
+  # never points at an untagged build.
+  docker-merge:
+    runs-on: ubuntu-latest
+    needs: [docker]
+    if: github.ref_type == 'tag'
+    permissions:
+      packages: write
+    env:
+      IMAGE: ghcr.io/kevinch3/nicotind
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digests-*
+          merge-multiple: true
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create + push multi-arch manifest
+        working-directory: ${{ runner.temp }}/digests
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME}" # vX.Y.Z
+          major="${version%%.*}"       # vX
+          refs=()
+          for d in *; do refs+=("$IMAGE@sha256:$d"); done
+          docker buildx imagetools create \
+            -t "$IMAGE:$version" -t "$IMAGE:$major" -t "$IMAGE:release" \
+            "${refs[@]}"
+
+      - name: Inspect published manifest
+        run: docker buildx imagetools inspect "$IMAGE:${GITHUB_REF_NAME}"
+
   deploy:
     runs-on: ubuntu-latest
+    # On a tag push the host pulls the image docker-merge just published, so
+    # deploy must wait for it. On workflow_dispatch both docker jobs are
+    # skipped and the host redeploys the current `release` image (NOT master
+    # source — the compose file's `image:` default; build-from-source now
+    # lives in an override file).
+    needs: [docker-merge]
+    if: ${{ !cancelled() && (needs.docker-merge.result == 'success' || needs.docker-merge.result == 'skipped') }}
     steps:
       # Resolve exactly what the server should check out. On a tag push (the normal
       # release path) deploy that exact tag; on a manual workflow_dispatch deploy the
@@ -360,5 +475,11 @@ jobs:
             # origin so a stale local tag can never block a release again.
             git fetch --force --tags origin master &&
             git reset --hard ${{ steps.ref.outputs.ref }} &&
+            # Pull the published server image (docker-merge just moved `release`
+            # to this tag); --build still builds services that kept a `build:`
+            # key (the analysis sidecar). Requires the GHCR package to be
+            # public (one-time setting after the first publish) or a
+            # `docker login ghcr.io` on the host — see docs/deployment.md.
+            docker compose pull nicotind &&
             docker compose up --build -d
           '

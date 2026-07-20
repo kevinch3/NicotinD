@@ -4,15 +4,21 @@
 # your machine. Docker Compose auto-meres this file with docker-compose.yml
 # on `docker compose up`.
 #
-# This template shows the three common dev customizations:
+# This template shows the four common dev customizations:
 #   1. Bind-mount your existing music library instead of the named volume
 #   2. Bind-mount the NicotinD data dir (secrets, DB) for persistence
-#   3. Enable GPU passthrough for the analysis sidecar
+#   3. Build the server image from source instead of pulling from GHCR
+#   4. Enable GPU passthrough for the analysis sidecar
 #
 # See docker-compose.yml for the full service definitions this overrides.
 
 services:
   nicotind:
+    # Build from the working tree instead of pulling the published image
+    # (development, or a fork with no registry). With both `image:` and
+    # `build:` set, `docker compose up --build` builds and tags the result
+    # under the image name.
+    build: .
     volumes:
       - ~/.nicotind:/data/nicotind
       - /path/to/your/music:/data/music
