@@ -15,6 +15,7 @@ import { downloadRoutes } from './routes/downloads.js';
 import { uploadRoutes } from './routes/uploads.js';
 import { libraryRoutes } from './routes/library.js';
 import { streamingRoutes } from './routes/streaming.js';
+import { healthRoutes } from './routes/health.js';
 import { systemRoutes } from './routes/system.js';
 import { settingsRoutes } from './routes/settings.js';
 import { adminRoutes } from './routes/admin.js';
@@ -185,7 +186,7 @@ export function createApp({
   // Cross-origin support for the native (Capacitor) app — see middleware/cors.ts.
   app.use('/api/*', nativeAppCors());
 
-  app.get('/api/health', (c) => c.json({ ok: true }));
+  app.route('/api/health', healthRoutes(version));
 
   // Documentation
   app.doc('/openapi.json', {

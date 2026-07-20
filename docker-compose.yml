@@ -1,6 +1,11 @@
 services:
   nicotind:
-    build: .
+    # Published multi-arch image (see docs/deployment.md). `release` is the
+    # stable metatag (latest tagged release, Immich-style); pin `NICOTIND_VERSION`
+    # (e.g. v0.1.230) in a `.env` file to hold/rollback a version. To build from
+    # source instead, add a `build: .` override — see
+    # docker-compose.override.example.yml.
+    image: ghcr.io/kevinch3/nicotind:${NICOTIND_VERSION:-release}
     user: "1000:1000"
     group_add:
       - "981"

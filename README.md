@@ -15,7 +15,7 @@ Open `http://localhost:8484`. The setup wizard walks you through:
 1. **Create admin account**
 2. **Soulseek credentials** (optional, skip and configure later)
 
-No `.env` file or manual config needed. The Docker Compose stack wires NicotinD and the bundled slskd container to the same web credentials by default (`slskd` / `slskd`). If you change those, set `SLSKD_USERNAME` and `SLSKD_PASSWORD` for both services.
+No `.env` file or manual config needed. The server runs from the **published multi-arch image** (`ghcr.io/kevinch3/nicotind`, amd64 + arm64) — nothing compiles locally except the small analysis sidecar. The Docker Compose stack wires NicotinD and the bundled slskd container to the same web credentials by default (`slskd` / `slskd`). If you change those, set `SLSKD_USERNAME` and `SLSKD_PASSWORD` for both services. Full install/upgrade/rollback detail: [docs/deployment.md](docs/deployment.md).
 
 ## How it works
 
@@ -124,6 +124,18 @@ Per-user `playlists`/`playlist_songs` with create/rename/delete/share; visible t
 
 ## Docker Compose Details
 
+### Docker images
+
+The server ships as a multi-arch (amd64 + arm64) image on GHCR, published by CI on every release tag:
+
+| Tag | Meaning | Use when |
+|---|---|---|
+| `release` | latest tagged release (compose default) | you just want current stable |
+| `vX` | latest release of major `X` | you want upgrades without major bumps |
+| `vX.Y.Z` | exact release | pinning / rollback |
+
+There is deliberately **no `latest` tag** — `release` is the explicit equivalent and never points at an untagged build. Pin a version by setting `NICOTIND_VERSION=vX.Y.Z` in a `.env` file next to the compose file. Upgrade with `docker compose pull && docker compose up -d`; roll back by pinning the previous version (data is forward-migrated on boot — treat downgrades as best-effort and keep backups). To build from source instead (development, forks), add a `build: .` override — see `docker-compose.override.example.yml`. Details: [docs/deployment.md](docs/deployment.md).
+
 ### Volumes
 
 | Volume | Purpose |
@@ -207,7 +219,7 @@ One release = one `vX.Y.Z` git tag. Everything ships from that tag: the producti
 4. **Verify** (takes a minute):
    - Actions: `ci.yml` → release job pushed the tag; `deploy.yml` run for the tag is green.
    - The tag's **GitHub Release page** carries the expected artifacts.
-   - The production server reports the new version (Settings footer / `GET /api/system/status`), and the in-app changelog modal (click the version string) shows the new entry.
+   - The production server reports the new version (`GET /api/health` → `{ ok, version }`, Settings footer, or `GET /api/system/status`), and the in-app changelog modal (click the version string) shows the new entry.
 
 If a merge contained only non-bumping types, no release is cut — that's by design, not a failure. The release job is also **idempotent**: it skips itself on `chore(release)` pushes and exits early if the computed tag already exists, so re-runs are always safe.
 
@@ -215,7 +227,8 @@ If a merge contained only non-bumping types, no release is cut — that's by des
 
 | Artifact | Built when | How it reaches users |
 |---|---|---|
-| **Server** | every tag | auto-deployed to the production host over Tailscale SSH — nothing to do |
+| **Server image** | every tag | multi-arch image published to `ghcr.io/kevinch3/nicotind` (`vX.Y.Z` + `vX` + `release` tags); self-hosters `docker compose pull` |
+| **Server (production host)** | every tag | auto-deployed over Tailscale SSH: pulls the just-published image — nothing to do |
 | **Android APK** | mobile/web inputs changed | download from the GitHub Release and sideload ([details](#android-app)); signed when `ANDROID_KEYSTORE_*` secrets are present |
 | **iOS IPA** (unsigned) | mobile/web inputs changed | re-sign + install via AltStore/Sideloadly ([details](#ios-app)) |
 | **Desktop** Linux AppImage/deb + macOS dmg | desktop inputs changed | GitHub Release download; **existing installs auto-update** via electron-updater — Linux applies updates itself, macOS only notifies (ad-hoc signing) |
@@ -223,7 +236,7 @@ If a merge contained only non-bumping types, no release is cut — that's by des
 ### When you need more than the default
 
 - **Force a bigger bump** (e.g. a milestone minor with only fixes landed): on a clean, up-to-date `master` checkout run `bun run release:minor` (or `release:major`), then `git push --follow-tags origin master`. This is the same tool CI runs (`bun run release` = auto-detected bump), so the tag flows through `deploy.yml` identically.
-- **Re-deploy the server without a new version** (e.g. after a deploy-host hiccup): Actions → `deploy.yml` → *Run workflow* — a manual dispatch deploys the tip of `master` and skips the app builds.
+- **Re-deploy the server without a new version** (e.g. after a deploy-host hiccup): Actions → `deploy.yml` → *Run workflow* — a manual dispatch checks out the tip of `master` on the host (compose files, scripts) but re-runs the current **`release` image** (no image is published from an untagged tip) and skips the app builds.
 - **A deploy job failed but the tag exists**: fix the cause, then re-run the failed `deploy.yml` jobs from the Actions UI — don't re-tag.
 - **Never hand-edit** `CHANGELOG.md` or the `package.json` version — both are generated; hand edits get overwritten by the next release and can break the version detection.
 
@@ -232,7 +245,7 @@ If a merge contained only non-bumping types, no release is cut — that's by des
 ## Distribution
 
 ### Server
-`docker compose up -d` on any Linux host. CI (`.github/workflows/deploy.yml` → `deploy` job) ships the latest tag via Tailscale SSH on every `v*` tag push.
+`docker compose up -d` on any Linux host — pulls `ghcr.io/kevinch3/nicotind:release` (amd64/arm64). CI (`.github/workflows/deploy.yml`) publishes the image on every `v*` tag (`docker` + `docker-merge` jobs) and then ships the production host via Tailscale SSH (`deploy` job). See [docs/deployment.md](docs/deployment.md).
 
 ### Android app
 - CI builds the signed APK on every tag push (uses `ANDROID_KEYSTORE_*` secrets when present, otherwise an unsigned APK).
