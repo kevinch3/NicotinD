@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.230](https://github.com/kevinch3/NicotinD/compare/v0.1.229...v0.1.230) (2026-07-20)
+
+
+### Features
+
+* **api:** report the running version from /api/health ([6330539](https://github.com/kevinch3/NicotinD/commit/633053984486043165bb1184ba0f33c00df76adb))
+* **deploy:** publish a multi-arch server image to GHCR; compose + deploy pull it ([dda3b78](https://github.com/kevinch3/NicotinD/commit/dda3b78c654adefa71c69229cae7a37978c05e01))
+
+
+### Bug Fixes
+
+* **docker:** probe /api/health in the image HEALTHCHECK ([e89c16a](https://github.com/kevinch3/NicotinD/commit/e89c16a86a6a7bbe1ed62e5ef60edd51c7141866))
+
 ## [0.1.229](https://github.com/kevinch3/NicotinD/compare/v0.1.228...v0.1.229) (2026-07-19)
 
 
