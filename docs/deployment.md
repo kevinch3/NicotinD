@@ -135,11 +135,12 @@ the container): `nicotind.db` (SQLite, WAL mode), `secrets.json`
 (auto-generated, mode 0600), `cover-cache/`, `artist-overrides/`. Music lives
 in the `music` volume.
 
-Minimal backup today: stop the container (or accept WAL-copy caveats) and copy
-the data volume; the music dir is plain files. A proper scheduled backup
-(`VACUUM INTO` snapshot + pruning, admin-triggered restore — the Home
-Assistant backup model) is a roadmap item in
-[oss-best-practices.md](oss-best-practices.md).
+Backups are automatic: a daily `VACUUM INTO` snapshot of the DB + secrets
+lands under `<dataDir>/backups`, pruned to the newest 7, with an Admin
+"Back up now" trigger — see [backup-restore.md](backup-restore.md) for the
+schedule, configuration (`NICOTIND_BACKUP*`), and the manual restore steps.
+Copy the backups directory off-host for disaster protection; the music dir is
+plain files (rsync it).
 
 ## Resource notes
 

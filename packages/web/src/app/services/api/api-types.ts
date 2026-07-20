@@ -447,6 +447,14 @@ export interface LibraryFragmentFinding {
   message: string;
 }
 
+/** One backup under `<dataDir>/backups` (DB snapshot + secrets). */
+export interface BackupInfo {
+  name: string;
+  createdAt: number;
+  sizeBytes: number;
+  files: string[];
+}
+
 export interface LibraryFragmentReport {
   duplicateAlbums: LibraryDuplicateAlbumCluster[];
   hiddenByClassification: LibraryHiddenByClassification[];

@@ -15,6 +15,7 @@ import type {
   QuarantineAlbum,
   SongSteps,
   LibraryFragmentReport,
+  BackupInfo,
 } from '../../services/api/api-types';
 import { AuthService } from '../../services/auth.service';
 import { ServerConfigService } from '../../services/server-config.service';
@@ -118,6 +119,46 @@ export class AdminComponent implements OnInit, OnDestroy {
     } finally {
       this.syncing.set(false);
     }
+  }
+
+  // Backups (nightly automatic DB snapshot + secrets under <dataDir>/backups,
+  // pruned to the newest N) with a manual trigger here. Restore is manual by
+  // design — see docs/backup-restore.md.
+  readonly backups = signal<BackupInfo[]>([]);
+  readonly backingUp = signal(false);
+  readonly backupMsg = signal<string | null>(null);
+
+  async loadBackups(): Promise<void> {
+    try {
+      this.backups.set(await firstValueFrom(this.api.getBackups()));
+    } catch {
+      // Non-fatal (backups unavailable): the panel just shows no rows.
+    }
+  }
+
+  async runBackup(): Promise<void> {
+    if (this.backingUp()) return;
+    this.backingUp.set(true);
+    this.backupMsg.set(null);
+    try {
+      const info = await firstValueFrom(this.api.runBackup());
+      this.backupMsg.set(`Backup ${info.name} created (${this.formatBackupSize(info.sizeBytes)}).`);
+      await this.loadBackups();
+    } catch {
+      this.backupMsg.set('Backup failed — see server logs.');
+    } finally {
+      this.backingUp.set(false);
+    }
+  }
+
+  formatBackupSize(bytes: number): string {
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+  }
+
+  formatBackupDate(ms: number): string {
+    return new Date(ms).toLocaleString();
   }
 
   // Library fragmentation diagnostic (`GET /api/library/fragments`) — surfaces
@@ -225,6 +266,7 @@ export class AdminComponent implements OnInit, OnDestroy {
     this.loadStreaming();
     this.loadProcessing();
     void this.loadQuarantineQueue();
+    void this.loadBackups();
     this.connectProcessingStream();
   }
 

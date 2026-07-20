@@ -165,6 +165,35 @@
             }
           </div>
 
+          <!-- Maintenance: backups. Nightly automatic (DB snapshot + secrets,
+               pruned to the newest N) with a manual trigger; restore is manual
+               by design — see docs/backup-restore.md. -->
+          <div class="flex flex-col gap-2 mb-8" data-testid="backups-panel">
+            <div class="flex items-center gap-3">
+              <button (click)="runBackup()" [disabled]="backingUp()"
+                data-testid="backup-now"
+                class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition disabled:opacity-50">
+                {{ backingUp() ? 'Backing up…' : 'Back up now' }}
+              </button>
+              <span class="text-xs text-theme-muted">
+                Snapshot the database + secrets into the data dir (runs nightly automatically).
+              </span>
+            </div>
+            @if (backupMsg(); as msg) {
+              <p class="text-xs text-theme-secondary" data-testid="backup-msg">{{ msg }}</p>
+            }
+            @if (backups().length > 0) {
+              <ul class="text-xs text-theme-muted flex flex-col gap-0.5" data-testid="backups-list">
+                @for (b of backups(); track b.name) {
+                  <li>
+                    <span class="text-theme-secondary">{{ b.name }}</span>
+                    — {{ formatBackupSize(b.sizeBytes) }}, {{ formatBackupDate(b.createdAt) }}
+                  </li>
+                }
+              </ul>
+            }
+          </div>
+
           <!-- Maintenance: library fragmentation diagnostic. Surfaces "tracks
                are present but the album doesn't show" defects (same-release
                rows split across artist spellings, rows hidden by

@@ -538,6 +538,7 @@ export function createApp({
     '/api/admin',
     adminRoutes({
       musicDir: expandedMusicDir,
+      dataDir: expandedDataDir,
       lidarr,
       coverCacheDir: `${expandedDataDir}/cover-cache`,
       processing: processingRef.current,

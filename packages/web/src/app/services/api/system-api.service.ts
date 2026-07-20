@@ -10,6 +10,7 @@ import type {
   AdminUser,
   QuarantineAlbum,
   DiskUsage,
+  BackupInfo,
 } from './api-types';
 
 /** System surface: status/scan/logs, settings (soulseek/shares/streaming/
@@ -129,6 +130,15 @@ export class SystemApiService {
   // they're added to the library, grouped by album with per-step badges.
   getProcessingQueue() {
     return this.http.get<{ albums: QuarantineAlbum[] }>('/api/admin/processing/queue');
+  }
+
+  // Backups (DB snapshot + secrets) — admin only. See docs/backup-restore.md.
+  getBackups() {
+    return this.http.get<BackupInfo[]>('/api/admin/backups');
+  }
+
+  runBackup() {
+    return this.http.post<BackupInfo>('/api/admin/backups', {});
   }
 
   // Setup (public — no auth token)

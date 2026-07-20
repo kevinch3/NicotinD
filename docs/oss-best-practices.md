@@ -59,13 +59,12 @@ live re-init.
   library (streaming keeps working) with acquisition/plugins disabled instead
   of crash-looping; honor a `<dataDir>/safe-mode` sentinel that skips plugin
   init and background loops for troubleshooting. (M)
-- **Backup & restore, first-class** — HA's backup integration: scheduled
-  automatic backups, pruning, full vs partial, selective restore. NicotinD
-  proposal: nightly `VACUUM INTO <dataDir>/backups/nicotind-<date>.db` (safe
-  online SQLite snapshot) + `secrets.json`/settings export, keep-N pruning,
-  Admin panel trigger + download, documented restore path. Music files are
-  excluded (plain files; users rsync). This also de-risks the
-  forward-migration rollback caveat in [deployment.md](deployment.md). (M)
+- ~~**Backup & restore, first-class**~~ — **done** (v1): nightly marker-guarded
+  `VACUUM INTO` snapshot + secrets copy under `<dataDir>/backups`, keep-N
+  pruning, admin list/trigger routes + Admin "Back up now" block, documented
+  manual restore — see [backup-restore.md](backup-restore.md). Open
+  extensions: downloadable archive, artist-overrides inclusion,
+  backup-before-update hook. (M)
 - **Retention/purge policy (bounded detail, unbounded aggregates)** — HA's
   recorder purges detailed history nightly (`purge_keep_days`, default 10) but
   keeps downsampled statistics forever, and VACUUMs on a schedule. NicotinD

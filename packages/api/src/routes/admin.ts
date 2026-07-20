@@ -5,6 +5,7 @@ import type { ProcessingSettings, ProcessingStatus, Role } from '@nicotind/core'
 import type { Lidarr } from '@nicotind/lidarr-client';
 import type { AuthEnv } from '../middleware/auth.js';
 import { getDatabase } from '../db.js';
+import { listBackups, runBackup } from '../services/backup.js';
 import { transcodeLibraryToOpus } from '../services/library-transcode.js';
 import { optimizeAllAlbums } from '../services/metadata-optimize.js';
 import { setProcessingSettings } from '../services/processing-settings.js';
@@ -15,6 +16,8 @@ import type { LibraryProcessingService } from '../services/library-processing.se
 
 export interface AdminRoutesDeps {
   musicDir: string;
+  /** Expanded data dir (backups live under `<dataDir>/backups`); backup routes 503 without it. */
+  dataDir?: string;
   /** Cover-cache dir for metadata-optimize (purged when a canonical URL changes). */
   coverCacheDir?: string;
   /** Lidarr client; null when unconfigured (metadata-optimize then 503s). */
@@ -206,6 +209,25 @@ export function adminRoutes(deps: AdminRoutesDeps) {
       onlyMissingOrPoor,
     });
     return c.json({ ok: true, dryRun, ...result });
+  });
+
+  // --- Backups (see services/backup.ts + docs/backup-restore.md) -----------
+
+  // List existing backups, newest first.
+  app.get('/backups', (c) => {
+    if (!deps.dataDir) return c.json({ error: 'Backups not available' }, 503);
+    return c.json(listBackups(deps.dataDir));
+  });
+
+  // Take a backup now (also prunes to the keep count).
+  app.post('/backups', (c) => {
+    if (!deps.dataDir) return c.json({ error: 'Backups not available' }, 503);
+    try {
+      const info = runBackup(getDatabase(), { dataDir: deps.dataDir });
+      return c.json(info, 201);
+    } catch (err) {
+      return c.json({ error: `Backup failed: ${err instanceof Error ? err.message : err}` }, 500);
+    }
   });
 
   // --- Windowed library processing (BPM / genre enrichment) ----------------
