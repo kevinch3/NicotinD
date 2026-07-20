@@ -24,7 +24,7 @@ unit can: boot → auth → scan → stream → playback → plugin gating.
 
 - **Server**: Playwright's `webServer` runs `bun run src/main.ts` from the repo root
   on port **8585** (`E2E_PORT` to override) so it never collides with a developer's
-  instance on 8484. It waits on `GET /api/health` (`{ ok: true }`).
+  instance on 8484. It waits on `GET /api/health` (`{ ok: true, version }`).
 - **Isolation / determinism**: `playwright.config.ts` wipes `packages/e2e/.tmp-data`
   at config-eval time (before the server boots), so every run starts at
   `needsSetup: true` and the setup project's admin is always the first user.

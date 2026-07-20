@@ -59,7 +59,8 @@ export function buildWsUrl(
   return `${wsProto}://${fallback.host}${path}`;
 }
 
-/** Validate a `GET /api/health` body — the server returns `{ ok: true }`. */
+/** Validate a `GET /api/health` body — the server returns `{ ok: true, version }`;
+ * only `ok` is contractual (version is informational and may be 'unknown'). */
 export function isHealthyResponse(body: unknown): boolean {
   return typeof body === 'object' && body !== null && (body as { ok?: unknown }).ok === true;
 }
