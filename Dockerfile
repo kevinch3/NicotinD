@@ -35,6 +35,12 @@ RUN cd packages/web && bun run build
 FROM oven/bun:1.3.14 AS production
 WORKDIR /app
 
+# OCI labels: `source` links the GHCR package to this repo (auto-connects the
+# package page + inherits repo visibility/README on ghcr.io).
+LABEL org.opencontainers.image.source="https://github.com/kevinch3/NicotinD" \
+      org.opencontainers.image.description="NicotinD — self-hosted music acquisition + streaming server" \
+      org.opencontainers.image.licenses="AGPL-3.0-only"
+
 # Install curl (healthchecks), ffmpeg, docker CLI (log streaming via mounted
 # socket), python3/pip (for yt-dlp + spotdl URL acquisition), and unzip (for
 # the Deno installer below).
@@ -85,7 +91,9 @@ COPY --from=web-builder /app/packages/web/dist packages/web/dist
 
 EXPOSE 8484
 
+# /api/health is the real unauthenticated liveness probe (same target the
+# compose healthcheck uses); /api/auth/login was a stale pre-health-route probe.
 HEALTHCHECK --interval=10s --timeout=5s --retries=5 \
-  CMD curl -f http://localhost:8484/api/auth/login || exit 1
+  CMD curl -f http://localhost:8484/api/health || exit 1
 
 CMD ["bun", "run", "src/main.ts"]
