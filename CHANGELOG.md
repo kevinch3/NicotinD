@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.231](https://github.com/kevinch3/NicotinD/compare/v0.1.230...v0.1.231) (2026-07-21)
+
+
+### Features
+
+* **api:** admin audit log for destructive actions ([17969cd](https://github.com/kevinch3/NicotinD/commit/17969cd4aa4d7ddcb6b7de80668dd8482e58fc31))
+* **api:** daily backups (DB snapshot + secrets) with admin trigger ([f3e0d3a](https://github.com/kevinch3/NicotinD/commit/f3e0d3af9b2dcac8fea68eb9cb723d435db90f20))
+* **api:** server update check + version-history ledger ([913b27b](https://github.com/kevinch3/NicotinD/commit/913b27b21c260c5b0d4f1462195d7e60ea976524))
+* **deploy:** publish the analysis sidecar image; pin infra images ([459c627](https://github.com/kevinch3/NicotinD/commit/459c6271fb0330d7e07cb9dc7c2e5830494d2622))
+
 ## [0.1.230](https://github.com/kevinch3/NicotinD/compare/v0.1.229...v0.1.230) (2026-07-20)
 
 
