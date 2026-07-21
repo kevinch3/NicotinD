@@ -49,7 +49,15 @@ const FRESH_SEARCH_TIMEOUT_MS = 20_000;
 export interface AlternateCandidate {
   username: string;
   directory: string;
-  files: Array<{ filename: string; size: number }>;
+  /**
+   * Files for the alternate folder. The hunt heuristic `detectFormat` runs at
+   * the folder level, so a single `audioFormat` per folder is sufficient —
+   * we don't carry a per-file format here. Bitrate is per-file (slskd's search
+   * response reports it per file).
+   */
+  files: Array<{ filename: string; size: number; bitRate?: number }>;
+  /** Folder-level codec (FLAC/MP3/Opus/etc.), shared by every file above. */
+  audioFormat?: string;
 }
 
 export interface RecordJobInput {
@@ -252,8 +260,9 @@ export class AlbumFallbackService {
         this.repointAcquisitionItems(
           job.id,
           picked.alternate.username,
-          picked.files.map((f) => f.filename),
+          picked.files.map((f) => ({ filename: f.filename, bitRate: f.bitRate })),
           missing,
+          picked.alternate.audioFormat,
         );
 
         // Consume the used alternate and bump the attempt counter.
@@ -311,7 +320,7 @@ export class AlbumFallbackService {
 
     // Group the chosen files by peer, de-duping identical filenames. Keep the
     // missing title each file recovers so the unified job item can be repointed.
-    const byPeer = new Map<string, Array<{ filename: string; size: number }>>();
+    const byPeer = new Map<string, Array<{ filename: string; size: number; bitRate?: number }>>();
     const titleForFilename = new Map<string, string>();
     for (const [i, pick] of picks.entries()) {
       if (!pick) continue;
@@ -333,7 +342,7 @@ export class AlbumFallbackService {
       this.repointAcquisitionItems(
         albumJobId,
         username,
-        files.map((f) => f.filename),
+        files.map((f) => ({ filename: f.filename, bitRate: f.bitRate })),
         files.map((f) => titleForFilename.get(f.filename) ?? normalizeBasename(f.filename)),
       );
     }
@@ -343,25 +352,29 @@ export class AlbumFallbackService {
   /**
    * Point the unified acquisition job's items at the transfers a fallback wave
    * just enqueued. Each filename is matched to the missing title it recovers
-   * (fuzzy, same titlesOverlap the wave selection used). Best-effort: a repoint
+   * (fuzzy, same titlesOverlap the wave selection used). `audioFormat` is the
+   * folder-level codec (FLAC/MP3/…) carried by the alternate; per-file bitrates
+   * come in alongside each filename so the repointed item's quality info
+   * reflects the alternate peer, not the original. Best-effort: a repoint
    * failure must never break the recovery that already succeeded.
    */
   private repointAcquisitionItems(
     albumJobId: number,
     username: string,
-    filenames: string[],
+    files: Array<{ filename: string; bitRate?: number }>,
     missingTitles: string[],
+    audioFormat?: string,
   ): void {
     try {
       const acqJobId = acquisitionJobIdForAlbumJob(this.db, albumJobId);
       if (!acqJobId) return;
-      for (const filename of filenames) {
+      for (const { filename, bitRate } of files) {
         const base = normalizeBasename(filename);
         const title =
           missingTitles.find((t) => titlesOverlap(t, base)) ??
           missingTitles.find((t) => titlesOverlap(normalizeTitle(t), base)) ??
           base;
-        repointOrAttachItem(this.db, acqJobId, title, username, filename);
+        repointOrAttachItem(this.db, acqJobId, title, username, filename, bitRate, audioFormat);
       }
     } catch (err) {
       log.warn({ albumJobId, err }, 'Failed to repoint acquisition job items');
@@ -372,7 +385,10 @@ export class AlbumFallbackService {
   private async searchBestForTrack(
     artistName: string,
     title: string,
-  ): Promise<{ username: string; file: { filename: string; size: number } } | null> {
+  ): Promise<{
+    username: string;
+    file: { filename: string; size: number; bitRate?: number };
+  } | null> {
     let search: { id: string } | null = null;
     try {
       search = await this.slskd.searches.create(`${artistName} ${title}`);
@@ -394,7 +410,7 @@ export class AlbumFallbackService {
 
       let best: {
         username: string;
-        file: { filename: string; size: number };
+        file: { filename: string; size: number; bitRate?: number };
         extras: number;
         score: number;
       } | null = null;
@@ -416,7 +432,7 @@ export class AlbumFallbackService {
           if (!best || extras < best.extras || (extras === best.extras && score > best.score)) {
             best = {
               username: response.username,
-              file: { filename: file.filename, size: file.size },
+              file: { filename: file.filename, size: file.size, bitRate: file.bitRate },
               extras,
               score,
             };
@@ -584,7 +600,10 @@ function extraTokenCount(canonicalNorm: string, fileNorm: string): number {
 function pickAlternate(
   alternates: AlternateCandidate[],
   missing: string[],
-): { alternate: AlternateCandidate; files: Array<{ filename: string; size: number }> } | null {
+): {
+  alternate: AlternateCandidate;
+  files: Array<{ filename: string; size: number; bitRate?: number }>;
+} | null {
   const normalizedMissing = missing.map(normalizeTitle);
   for (const alternate of alternates) {
     const files = alternate.files.filter((f) => {

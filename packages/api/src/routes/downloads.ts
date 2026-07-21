@@ -8,7 +8,12 @@ import { createLogger } from '@nicotind/core';
 import { getDatabase } from '../db.js';
 import { requireAcquirer } from '../middleware/current-user.js';
 import { albumIdFor } from '../services/library-scanner.js';
-import { createJob, jobMetaForTransfer, listJobFeed } from '../services/acquisition-job-store.js';
+import {
+  createJob,
+  jobMetaForTransfer,
+  listJobFeed,
+  transferKeyFor,
+} from '../services/acquisition-job-store.js';
 
 const log = createLogger('downloads');
 
@@ -41,6 +46,99 @@ export function enrichWithAcquisitionJobs(
         };
       }
       return dir;
+    }),
+  }));
+}
+
+/**
+ * Attach `bitrateKbps` + `audioFormat` to every transfer directory whose
+ * files map to an `acquisition_job_items` row (looked up by the stored
+ * `${username}::${filename}` transfer key). Items that the scanner has
+ * landed are upgraded through a `library_songs` LEFT JOIN on `path =
+ * relative_path` — `library_songs.bit_rate` / `library_songs.suffix` is the
+ * authoritative, post-transcode value (e.g. a downloaded FLAC rendered to
+ * 192 kbps Opus shows 192, not the enqueue-time 1411).
+ *
+ * Rollup rules — same as `listJobFeed` and `formatQuality`:
+ *   - mode across the directory's files wins
+ *   - ties broken by max kbps (so two "320 / 256" candidates → 320)
+ *   - missing in all candidates → `bitrateKbps`/`audioFormat` left undefined
+ *     (`formatQuality()` then hides the chip)
+ *
+ * Directories with zero acquisition-job-item matches pass through unchanged
+ * — legacy direct grabs pre-acquisition-job stay out of the chip pipeline
+ * rather than guessing from SlskdFile (which isn't on the transfer record).
+ */
+export function enrichWithBitrate(
+  db: Database,
+  groups: SlskdUserTransferGroup[],
+): SlskdUserTransferGroup[] {
+  // Collect every (transferKey) we need so it's one query, not per-file.
+  const keys = new Set<string>();
+  for (const g of groups) {
+    for (const d of g.directories) {
+      for (const f of d.files) keys.add(transferKeyFor(g.username, f.filename));
+    }
+  }
+  if (keys.size === 0) return groups;
+
+  const placeholders = Array(keys.size).fill('?').join(',');
+  const keyList = Array.from(keys);
+  // Bun SQLite's typed-query API expects a tuple-shaped parameter list; a
+  // dynamic-length `IN (?, ?, ?)` can't be expressed that way, so we run
+  // through `db.prepare` once per call (the key set per request is small —
+  // bounded by the slskd page size, typically tens not thousands). Bun's
+  // `prepare(...).all(...args)` accepts the rest form without a type tuple.
+  const rows = db
+    .prepare<{ transfer_key: string; bit_rate: number | null; format: string | null }, string[]>(
+      `SELECT
+         i.transfer_key,
+         COALESCE(s.bit_rate, i.bit_rate_kbps) AS bit_rate,
+         COALESCE(LOWER(s.suffix), i.audio_format) AS format
+       FROM acquisition_job_items i
+       LEFT JOIN library_songs s ON s.path = i.relative_path
+       WHERE i.transfer_key IN (${placeholders})
+         AND COALESCE(s.bit_rate, i.bit_rate_kbps) IS NOT NULL`,
+    )
+    .all(...keyList);
+
+  const byKey = new Map<string, { bitRate: number; format: string }>();
+  for (const r of rows) {
+    if (r.bit_rate == null || r.format == null) continue;
+    byKey.set(r.transfer_key, { bitRate: r.bit_rate, format: r.format });
+  }
+
+  return groups.map((group) => ({
+    ...group,
+    directories: group.directories.map((dir) => {
+      // Roll up across files in the directory (mode with max-kbps tie-break).
+      const counts = new Map<number, { c: number; format: string }>();
+      let any = false;
+      for (const file of dir.files) {
+        const q = byKey.get(transferKeyFor(group.username, file.filename));
+        if (!q) continue;
+        const cur = counts.get(q.bitRate);
+        if (cur) cur.c += 1;
+        else counts.set(q.bitRate, { c: 1, format: q.format });
+        any = true;
+      }
+      if (!any) return dir;
+      // mode-wins, ties → max kbps (the Map iterator is already ascending
+      // for kbps, so picking the last entry gives us max kbps on ties).
+      let bestKbps = 0;
+      let best: { c: number; format: string } | null = null;
+      for (const [k, v] of counts) {
+        if (!best || v.c > best.c || (v.c === best.c && k > bestKbps)) {
+          best = v;
+          bestKbps = k;
+        }
+      }
+      if (!best) return dir;
+      return {
+        ...dir,
+        bitrateKbps: bestKbps,
+        audioFormat: best.format,
+      };
     }),
   }));
 }
@@ -334,7 +432,10 @@ export function downloadRoutes(registry: ProviderRegistry, slskdRef: SlskdRef) {
       // fallback). The legacy `(username, directory)` folder-string match is gone:
       // every NicotinD-initiated album download now writes those keys, and truly
       // external transfers fall back to folder-name parsing on the web.
-      return c.json(enrichWithAcquisitionJobs(db, visible), 200);
+      // Bitrate upgrade goes second so it can also see the album-job-resolved
+      // directory state (no dependency, but ordered for clarity).
+      const withJobs = enrichWithAcquisitionJobs(db, visible);
+      return c.json(enrichWithBitrate(db, withJobs), 200);
     },
   );
 

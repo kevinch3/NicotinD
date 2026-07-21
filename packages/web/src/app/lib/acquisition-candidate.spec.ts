@@ -36,7 +36,9 @@ describe('songResultToCandidate', () => {
 
   it('scores FLAC + free slot above lossy + no slot', () => {
     const flac = songResultToCandidate(song({ filename: 'a.flac', freeUploadSlots: 1 }));
-    const mp3 = songResultToCandidate(song({ filename: 'a.mp3', bitRate: 192, freeUploadSlots: 0 }));
+    const mp3 = songResultToCandidate(
+      song({ filename: 'a.mp3', bitRate: 192, freeUploadSlots: 0 }),
+    );
     expect(flac.score).toBeGreaterThan(mp3.score);
   });
 });

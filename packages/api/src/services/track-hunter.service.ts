@@ -18,7 +18,14 @@ export interface TrackHuntResult {
   /** Titles no peer offered a clean match for. */
   misses: string[];
   /** The transfers actually enqueued, so the caller can record an acquisition job. */
-  downloads: Array<{ username: string; filename: string; size: number; title: string }>;
+  downloads: Array<{
+    username: string;
+    filename: string;
+    size: number;
+    title: string;
+    /** Source bitrate (kbps) from the slskd search response. Optional. */
+    bitRate?: number;
+  }>;
 }
 
 /**
@@ -50,7 +57,7 @@ export class TrackHunterService {
 
     // Group the chosen files by peer, de-duping identical filenames. Keep the
     // hunted title per filename so the acquisition job can itemise transfers.
-    const byPeer = new Map<string, Array<{ filename: string; size: number }>>();
+    const byPeer = new Map<string, Array<{ filename: string; size: number; bitRate?: number }>>();
     const titleForFilename = new Map<string, string>();
     for (const { title, pick } of picks) {
       if (!pick) continue;
@@ -72,6 +79,7 @@ export class TrackHunterService {
             filename: file.filename,
             size: file.size,
             title: titleForFilename.get(file.filename) ?? file.filename,
+            bitRate: file.bitRate,
           });
         }
       } catch (err) {

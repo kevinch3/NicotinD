@@ -121,6 +121,16 @@
           class="mt-4 pt-4 border-t border-theme space-y-3"
           data-testid="plugin-config-form"
         >
+          @if (p.id === 'spotdl') {
+            <p
+              class="text-xs text-theme-muted"
+              data-testid="spotdl-uses-spotify-credentials"
+            >
+              Uses the credentials from the <strong>Spotify</strong> card above to authenticate
+              Spotify metadata calls. Without them, spotDL falls back to its built-in shared
+              client.
+            </p>
+          }
           @for (f of p.configFields; track f.key) {
             <label class="block">
               <span class="text-xs text-theme-secondary">

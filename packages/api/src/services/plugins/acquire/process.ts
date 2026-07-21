@@ -231,6 +231,13 @@ export interface RunAcquireOptions {
    * materialization downstream (the acquire_job_tracks insert needs it).
    */
   onTrack?: (event: TrackEvent) => void;
+  /**
+   * Extra env-var layer to merge into the spawn env. Used by spotDL to
+   * forward SPOTIPY_CLIENT_ID / SPOTIPY_CLIENT_SECRET (from the spotify
+   * plugin's stored config) so its Spotify metadata calls use the user's
+   * own rate limits. Undefined → only `acquireEnv()` augmentation applies.
+   */
+  extraEnv?: NodeJS.ProcessEnv;
   /** Injectable spawner (tests pass a fake to avoid process-global module mocks). */
   spawn?: typeof spawn;
 }
@@ -251,9 +258,13 @@ export interface RunningAcquire {
 export function runAcquireProcess(opts: RunAcquireOptions): RunningAcquire {
   const spawnFn = opts.spawn ?? spawn;
   const parseProgress = opts.parseProgress ?? parseYtdlpProgress;
+  // Build the env in layers: PATH augmentation first (acquireEnv), then any
+  // plugin-supplied extras on top (Spotify creds, …). The last write of a
+  // given key wins, matching POSIX `env -e` semantics.
+  const env = opts.extraEnv ? { ...acquireEnv(), ...opts.extraEnv } : acquireEnv();
   const proc = spawnFn(opts.binaryPath, opts.args, {
     stdio: ['ignore', 'pipe', 'pipe'],
-    env: acquireEnv(),
+    env,
   });
 
   let progress: AcquireProgress = { done: 0, total: 100 };

@@ -108,6 +108,15 @@ export interface CreateJobInput {
     trackTitle?: string | null;
     /** Multi-peer jobs (track search) enqueue different files from different peers. */
     username?: string;
+    /**
+     * Enqueue-time quality from the slskd search response (`SlskdFile.bitRate`).
+     * nil when the peer response didn't carry a bitrate (older slskd, unknown
+     * codec). Stored on `acquisition_job_items.bit_rate_kbps` / `audio_format`
+     * and rolled up by `listJobFeed`. Upgraded post-scan via the same item's
+     * `library_songs.bit_rate` once `markItemsScanned` lands.
+     */
+    bitRate?: number | null;
+    audioFormat?: string | null;
   }>;
   /** Share an existing id (URL jobs mirror acquire_jobs.id). */
   id?: string;
@@ -123,6 +132,10 @@ export interface AcquisitionJobItem {
   state: AcquisitionJobItemState;
   relativePath: string | null;
   songId: string | null;
+  /** Enqueue-time bitrate (kbps) from the slskd `bitRate` search field; nil when unknown. */
+  bitRate: number | null;
+  /** Enqueue-time codec label from the slskd search response; nil when unknown. */
+  audioFormat: string | null;
 }
 
 export interface AcquisitionJob {
@@ -205,14 +218,16 @@ export function createJob(db: Database, input: CreateJobInput): string {
           : null);
       db.run(
         `INSERT INTO acquisition_job_items
-           (job_id, track_title, username, filename, transfer_key, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+           (job_id, track_title, username, filename, transfer_key, bit_rate_kbps, audio_format, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           id,
           trackTitle,
           username,
           file.filename,
           username ? transferKeyFor(username, file.filename) : null,
+          file.bitRate ?? null,
+          file.audioFormat ?? null,
           now,
         ],
       );
@@ -253,6 +268,8 @@ interface ItemRow {
   state: AcquisitionJobItemState;
   relative_path: string | null;
   song_id: string | null;
+  bit_rate_kbps: number | null;
+  audio_format: string | null;
 }
 
 function parseJsonArray(json: string | null): string[] | null {
@@ -276,6 +293,8 @@ function mapItem(row: ItemRow): AcquisitionJobItem {
     state: row.state,
     relativePath: row.relative_path,
     songId: row.song_id,
+    bitRate: row.bit_rate_kbps,
+    audioFormat: row.audio_format,
   };
 }
 
@@ -365,6 +384,11 @@ export function markItemsScanned(db: Database, pathToSongId: Map<string, string>
  * Fallback re-enqueue: point the matching still-missing item at a new peer.
  * Restricted to non-completed items so an overlapping title can never
  * mislabel a delivered file. Returns false when nothing safe matched.
+ *
+ * `bitRate` and `audioFormat` are optional and refresh-on-known only:
+ * passing a value upgrades the existing row, omitting them preserves the
+ * previously-known quality (so an unknown-quality alternate-peer pull never
+ * downgrades a card from "320 kbps" to "no info").
  */
 export function repointItem(
   db: Database,
@@ -372,6 +396,8 @@ export function repointItem(
   trackTitle: string,
   username: string,
   filename: string,
+  bitRate?: number | null,
+  audioFormat?: string | null,
 ): boolean {
   const candidates = db
     .query<{ id: number; track_title: string | null }, [string]>(
@@ -384,6 +410,9 @@ export function repointItem(
     (c) => c.track_title && titlesOverlap(normalizeTitle(c.track_title), wanted),
   );
   if (!match) return false;
+  // Two parallel updates: peer identity (always) + quality (refresh-on-known).
+  // Splitting keeps the non-quality path zero-cost for fallback waves that
+  // already have nothing new to add (the dominant case).
   db.run(
     `UPDATE acquisition_job_items
      SET username = ?, filename = ?, transfer_key = ?, state = 'downloading',
@@ -391,6 +420,15 @@ export function repointItem(
      WHERE id = ?`,
     [username, filename, transferKeyFor(username, filename), Date.now(), match.id],
   );
+  if (bitRate != null || audioFormat != null) {
+    db.run(
+      `UPDATE acquisition_job_items
+       SET bit_rate_kbps = COALESCE(?, bit_rate_kbps),
+           audio_format  = COALESCE(?, audio_format)
+       WHERE id = ?`,
+      [bitRate ?? null, audioFormat ?? null, match.id],
+    );
+  }
   return true;
 }
 
@@ -407,7 +445,8 @@ export function acquisitionJobIdForAlbumJob(db: Database, albumJobId: number): s
 /**
  * Repoint the matching item, or attach a fresh one when no safe match exists
  * (defensive: a fallback wave for a track the job never itemised must still
- * be linked, not lost).
+ * be linked, not lost). `bitRate`/`audioFormat` thread through to both branches
+ * (repoint uses refresh-on-known; attach records them as the seed quality).
  */
 export function repointOrAttachItem(
   db: Database,
@@ -415,13 +454,24 @@ export function repointOrAttachItem(
   trackTitle: string,
   username: string,
   filename: string,
+  bitRate?: number | null,
+  audioFormat?: string | null,
 ): void {
-  if (repointItem(db, jobId, trackTitle, username, filename)) return;
+  if (repointItem(db, jobId, trackTitle, username, filename, bitRate, audioFormat)) return;
   db.run(
     `INSERT INTO acquisition_job_items
-       (job_id, track_title, username, filename, transfer_key, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    [jobId, trackTitle, username, filename, transferKeyFor(username, filename), Date.now()],
+       (job_id, track_title, username, filename, transfer_key, bit_rate_kbps, audio_format, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      jobId,
+      trackTitle,
+      username,
+      filename,
+      transferKeyFor(username, filename),
+      bitRate ?? null,
+      audioFormat ?? null,
+      Date.now(),
+    ],
   );
 }
 
@@ -580,6 +630,16 @@ export interface AcquisitionJobFeedItem {
   updatedAt: number;
   progress: { expected: number; delivered: number; unavailable: number; failed: number };
   /**
+   * Dominant enqueue-time bitrate + codec across the job's items (mode wins;
+   * ties broken by max kbps), upgraded post-scan via the items' matching
+   * `library_songs.bit_rate` / `library_songs.suffix` rows (the authoritative
+   * post-transcode value). Powers the "· 320 kbps" chip in the download card
+   * (`formatQuality()` in `lib/download-status.ts`). undefined when no item
+   * carries a quality signature — `formatQuality` then hides the chip.
+   */
+  bitRate?: number;
+  audioFormat?: string;
+  /**
    * Per-track status, mirroring URL-acquisition jobs' `tracks` field so the
    * frontend can render both uniformly. Mapped from `acquisition_job_items`
    * onto the shared `TrackStatus` union (see `itemStateToTrackStatus`).
@@ -612,6 +672,58 @@ function itemStateToTrackStatus(state: string): TrackStatus {
 }
 
 /**
+ * Compute the dominant (bitRate, audioFormat) signature across one job's items.
+ * Items that have been scanned are looked up in `library_songs` first; once the
+ * scanner ran for a track, `library_songs.bit_rate` / `library_songs.suffix` is
+ * the authoritative, post-transcode value and wins over the enqueue-time guess.
+ * Mode across items (ties → max kbps) gives the "what's the dominant quality on
+ * this card" number `formatQuality()` renders. Returns undefined when no item
+ * carries a quality signature (legacy direct enqueue with no peer `bitRate`,
+ * no scan row) so the UI can hide the chip cleanly.
+ */
+function rollupJobQuality(
+  db: Database,
+  jobId: string,
+): { bitRate: number; audioFormat: string } | undefined {
+  // Single GROUP BY over the resolved quality — COUNT(*) is the mode count.
+  // ORDER BY mode-count DESC, kbps DESC resolves the tie-break to max kbps
+  // (so 320/320/256 → 320, and 320/320/320 stays 320).
+  let rows: Array<{ bit_rate: number; format: string; c: number }>;
+  try {
+    rows = db
+      .query<{ bit_rate: number; format: string; c: number }, [string]>(
+        `SELECT
+           COALESCE(s.bit_rate, i.bit_rate_kbps) AS bit_rate,
+           COALESCE(LOWER(s.suffix), i.audio_format) AS format,
+           COUNT(*) AS c
+         FROM acquisition_job_items i
+         LEFT JOIN library_songs s ON s.path = i.relative_path
+         WHERE i.job_id = ?
+           AND COALESCE(s.bit_rate, i.bit_rate_kbps) IS NOT NULL
+         GROUP BY bit_rate, format
+         ORDER BY c DESC, bit_rate DESC
+         LIMIT 1`,
+      )
+      .all(jobId);
+  } catch {
+    // library_songs may not exist in a minimal test DB; fall back to a simpler
+    // GROUP BY that doesn't need the join.
+    rows = db
+      .query<{ bit_rate: number; format: string; c: number }, [string]>(
+        `SELECT bit_rate_kbps AS bit_rate, audio_format AS format, COUNT(*) AS c
+         FROM acquisition_job_items
+         WHERE job_id = ? AND bit_rate_kbps IS NOT NULL
+         GROUP BY bit_rate, format
+         ORDER BY c DESC, bit_rate DESC
+         LIMIT 1`,
+      )
+      .all(jobId);
+  }
+  if (rows.length === 0) return undefined;
+  return { bitRate: rows[0].bit_rate, audioFormat: rows[0].format };
+}
+
+/**
  * Downloads-feed read model: jobs newest-first with per-state item progress.
  * `delivered` counts every item that made it onto disk (completed, organized
  * or scanned); `unavailable`/`failed` make an honest partial renderable
@@ -640,6 +752,7 @@ export function listJobFeed(db: Database, limit = 50): AcquisitionJobFeedItem[] 
         `SELECT track_title, state FROM acquisition_job_items WHERE job_id = ? ORDER BY id`,
       )
       .all(row.id);
+    const quality = rollupJobQuality(db, row.id);
     return {
       id: row.id,
       kind: row.kind,
@@ -659,6 +772,7 @@ export function listJobFeed(db: Database, limit = 50): AcquisitionJobFeedItem[] 
         unavailable: counts.get('unavailable') ?? 0,
         failed: counts.get('failed') ?? 0,
       },
+      ...(quality ? { bitRate: quality.bitRate, audioFormat: quality.audioFormat } : {}),
       items: itemRows.map((r) => ({
         title: r.track_title ?? '',
         status: itemStateToTrackStatus(r.state),

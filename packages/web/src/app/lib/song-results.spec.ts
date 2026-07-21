@@ -48,9 +48,10 @@ describe('compareVersions (best first)', () => {
   });
 
   it('prefers higher bitrate within the same format', () => {
-    const [best] = [v({ filename: 'a.mp3', bitRate: 128 }), v({ filename: 'b.mp3', bitRate: 320 })].sort(
-      compareVersions,
-    );
+    const [best] = [
+      v({ filename: 'a.mp3', bitRate: 128 }),
+      v({ filename: 'b.mp3', bitRate: 320 }),
+    ].sort(compareVersions);
     expect(best.bitRate).toBe(320);
   });
 
@@ -66,9 +67,21 @@ describe('compareVersions (best first)', () => {
 describe('groupBySong', () => {
   it('dedupes the same song across peers and picks the best copy', () => {
     const results = groupBySong([
-      v({ username: 'p1', filename: 'Britney - Toxic.mp3', artist: 'Britney', title: 'Toxic', bitRate: 192 }),
+      v({
+        username: 'p1',
+        filename: 'Britney - Toxic.mp3',
+        artist: 'Britney',
+        title: 'Toxic',
+        bitRate: 192,
+      }),
       v({ username: 'p2', filename: 'Britney - Toxic.flac', artist: 'Britney', title: 'Toxic' }),
-      v({ username: 'p3', filename: 'Britney - Toxic.mp3', artist: 'Britney', title: 'Toxic', bitRate: 320 }),
+      v({
+        username: 'p3',
+        filename: 'Britney - Toxic.mp3',
+        artist: 'Britney',
+        title: 'Toxic',
+        bitRate: 320,
+      }),
     ]);
     expect(results).toHaveLength(1);
     expect(results[0].versions).toHaveLength(3);

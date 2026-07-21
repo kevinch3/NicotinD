@@ -6,7 +6,10 @@ import { join } from 'node:path';
 import type { spawn as nodeSpawn } from 'node:child_process';
 import { validatePluginManifest, type PluginHostContext } from '@nicotind/core';
 import { _resetBinaryCache } from '../acquire/process.js';
-import { SpotdlPlugin } from './index.js';
+import { SpotdlPlugin, spotifyEnvFor } from './index.js';
+import { PluginRegistry } from '../registry.js';
+import { Database } from 'bun:sqlite';
+import { applySchema } from '../../../db.js';
 
 describe('SpotdlPlugin', () => {
   beforeEach(() => _resetBinaryCache());
@@ -71,9 +74,9 @@ describe('SpotdlPlugin', () => {
       child.stdout = new EventEmitter();
       child.stderr = new EventEmitter();
       child.kill = mock(() => true);
-      const calls: Array<{ bin: string; args: string[] }> = [];
-      const spawn = mock((bin: string, args: string[]) => {
-        calls.push({ bin, args });
+      const calls: Array<{ bin: string; args: string[]; env?: NodeJS.ProcessEnv }> = [];
+      const spawn = mock((bin: string, args: string[], opts?: { env?: NodeJS.ProcessEnv }) => {
+        calls.push({ bin, args, env: opts?.env });
         return child;
       });
       return { spawn: spawn as unknown as typeof nodeSpawn, child, calls };
@@ -111,6 +114,19 @@ describe('SpotdlPlugin', () => {
 
       const args = calls[0]!.args;
       expect(args[args.indexOf('--overwrite') + 1]).toBe('skip');
+    });
+
+    it('passes --bitrate disable so the source stream is copied without a lossy re-encode', async () => {
+      const { spawn, child, calls } = fakeSpawn();
+      const plugin = new SpotdlPlugin({ enabled: true, binaryPath: 'spotdl' }, { spawn });
+      await plugin.init(fakeCtx([]));
+
+      const done = plugin.resolve.resolve('https://open.spotify.com/album/abc', 'job-bitrate');
+      child.emit('close', 0);
+      await done;
+
+      const args = calls[0]!.args;
+      expect(args[args.indexOf('--bitrate') + 1]).toBe('disable');
     });
 
     it('resolves with staged audio paths and forwards progress', async () => {
@@ -193,7 +209,10 @@ describe('SpotdlPlugin', () => {
       const plugin = new SpotdlPlugin({ enabled: true, binaryPath: 'spotdl' }, { spawn });
       await plugin.init(fakeCtx(progress, labels, tracks));
 
-      const done = plugin.resolve.resolve('https://open.spotify.com/playlist/abc', 'job-label-track');
+      const done = plugin.resolve.resolve(
+        'https://open.spotify.com/playlist/abc',
+        'job-label-track',
+      );
       // Simulate spotdl output: playlist title, then track downloads and skips
       child.stdout.emit('data', Buffer.from('Found 3 songs in playlist: My Mix\n'));
       child.stdout.emit('data', Buffer.from('Downloaded "Song A"\n'));
@@ -220,5 +239,114 @@ describe('SpotdlPlugin binaryPath config', () => {
     expect(p.manifest.configFields?.some((f) => f.key === 'binaryPath')).toBe(true);
     const parsed = p.manifest.configSchema!.safeParse({ binaryPath: '/usr/local/bin/spotdl' });
     expect(parsed.success).toBe(true);
+  });
+});
+
+describe('Spotify credentials wiring', () => {
+  function fakeSpawn() {
+    const child = new EventEmitter() as EventEmitter & {
+      stdout: EventEmitter;
+      stderr: EventEmitter;
+      kill: () => boolean;
+    };
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    child.kill = mock(() => true);
+    const calls: Array<{ bin: string; args: string[]; env?: NodeJS.ProcessEnv }> = [];
+    const spawn = mock((bin: string, args: string[], opts?: { env?: NodeJS.ProcessEnv }) => {
+      calls.push({ bin, args, env: opts?.env });
+      return child;
+    });
+    return { spawn: spawn as unknown as typeof nodeSpawn, child, calls };
+  }
+
+  /** Helper: a registry backed by an in-memory DB with the spotify row pre-seeded. */
+  function registryWithCreds(creds: { clientId: string; clientSecret: string }): PluginRegistry {
+    const db = new Database(':memory:');
+    applySchema(db);
+    db.run(`INSERT INTO plugins (id, enabled, config_json) VALUES ('spotify', 1, ?)`, [
+      JSON.stringify(creds),
+    ]);
+    return new PluginRegistry({ db, dataDir: '/tmp' });
+  }
+
+  it('spotifyEnvFor returns null when creds are absent', () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    const r = new PluginRegistry({ db, dataDir: '/tmp' });
+    expect(spotifyEnvFor(r)).toBeNull();
+  });
+
+  it('spotifyEnvFor returns null when only one of the two creds is set', () => {
+    const r = registryWithCreds({ clientId: 'id', clientSecret: '' });
+    expect(spotifyEnvFor(r)).toBeNull();
+  });
+
+  it('spotifyEnvFor returns the SPOTIPY_* env vars when both creds are present', () => {
+    const r = registryWithCreds({ clientId: 'abc', clientSecret: 'xyz' });
+    expect(spotifyEnvFor(r)).toEqual({
+      SPOTIPY_CLIENT_ID: 'abc',
+      SPOTIPY_CLIENT_SECRET: 'xyz',
+    });
+  });
+
+  it('forwards SPOTIPY_CLIENT_ID / SECRET in the spawn env when the spotify plugin is configured', async () => {
+    const r = registryWithCreds({ clientId: 'my-id', clientSecret: 'my-secret' });
+    const tmp = mkdtempSync(join(tmpdir(), 'nicotind-spotdl-env-'));
+    let stagingDir = '';
+    const ctx: PluginHostContext = {
+      allocStagingDir: (jobId: string) => {
+        stagingDir = join(tmp, jobId);
+        mkdirSync(stagingDir, { recursive: true });
+        return stagingDir;
+      },
+      emitProgress: () => {},
+      emitLabel: () => {},
+      emitTrack: () => {},
+    } as unknown as PluginHostContext;
+    const { spawn, child, calls } = fakeSpawn();
+    const plugin = new SpotdlPlugin(
+      { enabled: true, binaryPath: 'spotdl' },
+      { spawn, registry: r },
+    );
+    await plugin.init(ctx);
+    const done = plugin.resolve.resolve('https://open.spotify.com/album/x', 'job-env');
+    writeFileSync(join(stagingDir, 'song.mp3'), 'x');
+    child.emit('close', 0);
+    await done;
+    rmSync(tmp, { recursive: true, force: true });
+    expect(calls[0]!.env?.SPOTIPY_CLIENT_ID).toBe('my-id');
+    expect(calls[0]!.env?.SPOTIPY_CLIENT_SECRET).toBe('my-secret');
+  });
+
+  it('does NOT add SPOTIPY_* env vars when the spotify plugin has no creds configured', async () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    const r = new PluginRegistry({ db, dataDir: '/tmp' });
+    const tmp = mkdtempSync(join(tmpdir(), 'nicotind-spotdl-env2-'));
+    let stagingDir = '';
+    const ctx: PluginHostContext = {
+      allocStagingDir: (jobId: string) => {
+        stagingDir = join(tmp, jobId);
+        mkdirSync(stagingDir, { recursive: true });
+        return stagingDir;
+      },
+      emitProgress: () => {},
+      emitLabel: () => {},
+      emitTrack: () => {},
+    } as unknown as PluginHostContext;
+    const { spawn, child, calls } = fakeSpawn();
+    const plugin = new SpotdlPlugin(
+      { enabled: true, binaryPath: 'spotdl' },
+      { spawn, registry: r },
+    );
+    await plugin.init(ctx);
+    const done = plugin.resolve.resolve('https://open.spotify.com/album/x', 'job-noenv');
+    writeFileSync(join(stagingDir, 'song.mp3'), 'x');
+    child.emit('close', 0);
+    await done;
+    rmSync(tmp, { recursive: true, force: true });
+    expect(calls[0]!.env?.SPOTIPY_CLIENT_ID).toBeUndefined();
+    expect(calls[0]!.env?.SPOTIPY_CLIENT_SECRET).toBeUndefined();
   });
 });

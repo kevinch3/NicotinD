@@ -11,6 +11,7 @@ import { recordAcquisition } from './acquisition-store.js';
 import { deriveAcquireAlbum, type AcquireAlbumDestination } from './acquire-album.js';
 import { PlaylistService } from './playlist.service.js';
 import { resolveAcquireJobTracks, type AcquireJobTrackRow } from './acquire-playlist.js';
+import { probeAudioFile } from './transcode.js';
 
 /** Map an acquisition plugin id to an AcquisitionMethod; unknown ids → 'unknown'. */
 function methodForBackend(backend: string): AcquisitionMethod {
@@ -78,6 +79,8 @@ interface AcquireJobRow {
   playlist_id: string | null;
   error: string | null;
   created_at: number;
+  bit_rate_kbps: number | null;
+  audio_format: string | null;
 }
 
 /**
@@ -286,6 +289,27 @@ export class AcquireWatcher {
       filename: p,
       jobMeta,
     }));
+    // Probe the staged files for the download card's "· 320 kbps" chip
+    // (see docs/download-pipeline.md → "Bitrate on download cards"). Runs
+    // before organize so we always have a value even if the post-organize
+    // path can't be resolved (ffprobe on a path we already know exists).
+    // Best-effort: ffprobe failure on any single file is swallowed; the
+    // dominant value is computed across what probed successfully.
+    const probeResults = paths
+      .map((p) => {
+        try {
+          return probeAudioFile(p);
+        } catch {
+          return null;
+        }
+      })
+      .filter((r): r is NonNullable<typeof r> => r !== null);
+    if (probeResults.length > 0) {
+      const { bitRateKbps, codec } = dominantProbe(probeResults);
+      if (bitRateKbps > 0) {
+        this.setBitRate(id, bitRateKbps, codec);
+      }
+    }
     try {
       this.setStage(id, 'organizing');
       await this.options.organizeBatch(files);
@@ -563,6 +587,25 @@ export class AcquireWatcher {
     }
   }
 
+  /**
+   * Record the dominant bitrate (kbps) + codec for the URL-acquire job. The
+   * `enrichWithBitrate` route also upgrades this with `library_songs.bit_rate`
+   * after the scan, so a transcoded FLAC shows its post-transcode bitrate
+   * (192 kbps Opus) once the library knows, while this seeded value covers
+   * the organizing/scanning phase.
+   */
+  private setBitRate(jobId: string, bitRateKbps: number, codec: string): void {
+    try {
+      this.db.run(`UPDATE acquire_jobs SET bit_rate_kbps = ?, audio_format = ? WHERE id = ?`, [
+        bitRateKbps,
+        codec,
+        jobId,
+      ]);
+    } catch (err) {
+      log.warn({ jobId, err }, 'Failed to update acquire_jobs bit_rate_kbps');
+    }
+  }
+
   private mapRow(row: AcquireJobRow): AcquireJob {
     let progress: { done: number; total: number } | null = null;
     if (row.progress) {
@@ -610,6 +653,35 @@ export class AcquireWatcher {
       playlistId: row.playlist_id ?? null,
       error: row.error,
       created_at: row.created_at,
+      bitRate: row.bit_rate_kbps,
+      audioFormat: row.audio_format,
     };
   }
+}
+
+/**
+ * Pick the dominant (mode) bitrate + codec from a list of probed files.
+ * A folder that lands as 12 × 320 kbps MP3 + 1 × 256 kbps MP3 reports 320 kbps.
+ * Ties are broken by the higher kbps (lossless / higher-bitrate lossy wins).
+ * Exported so it can be reused by the route's library_songs re-join path.
+ */
+export function dominantProbe(results: Array<{ bitRateKbps: number; codec: string }>): {
+  bitRateKbps: number;
+  codec: string;
+} {
+  const counts = new Map<number, number>();
+  for (const r of results) {
+    counts.set(r.bitRateKbps, (counts.get(r.bitRateKbps) ?? 0) + 1);
+  }
+  let dominantKbps = results[0]!.bitRateKbps;
+  let bestCount = 0;
+  for (const [kbps, c] of counts) {
+    if (c > bestCount || (c === bestCount && kbps > dominantKbps)) {
+      dominantKbps = kbps;
+      bestCount = c;
+    }
+  }
+  const dominantCodec =
+    results.find((r) => r.bitRateKbps === dominantKbps)?.codec ?? results[0]!.codec;
+  return { bitRateKbps: dominantKbps, codec: dominantCodec };
 }

@@ -107,6 +107,8 @@ function job(over: Partial<AcquireJob> = {}): AcquireJob {
     progress: { done: 2, total: 5 },
     error: null,
     created_at: 1_000,
+    bitRate: null,
+    audioFormat: null,
     ...over,
   };
 }
@@ -125,7 +127,9 @@ describe('acquireJobLabel', () => {
     expect(acquireJobLabel(job({ label: 'My Playlist' }))).toBe('My Playlist');
   });
   it('shortens the URL when no label', () => {
-    expect(acquireJobLabel(job({ url: 'https://archive.org/details/foo' }))).toContain('archive.org');
+    expect(acquireJobLabel(job({ url: 'https://archive.org/details/foo' }))).toContain(
+      'archive.org',
+    );
   });
 });
 
@@ -160,6 +164,26 @@ describe('groupToDownloadItem', () => {
     expect(item.canCancel).toBe(true);
     expect(item.canRetry).toBe(false);
   });
+
+  it('surfaces the dominant bitrate + format from the directory', () => {
+    const [g] = groupByAlbum([
+      {
+        username: 'peer',
+        directories: [
+          {
+            directory: 'M\\Album',
+            fileCount: 1,
+            files: [file({ id: 'a' })],
+            bitrateKbps: 320,
+            audioFormat: 'MP3',
+          },
+        ],
+      },
+    ]);
+    const item = groupToDownloadItem(g);
+    expect(item.bitrateKbps).toBe(320);
+    expect(item.audioFormat).toBe('MP3');
+  });
 });
 
 describe('acquireJobToDownloadItem', () => {
@@ -174,9 +198,9 @@ describe('acquireJobToDownloadItem', () => {
   });
 
   it('falls back to deriving stage from state when stage is null', () => {
-    expect(acquireJobToDownloadItem(job({ stage: null, state: 'failed', error: 'boom' })).stage).toBe(
-      'error',
-    );
+    expect(
+      acquireJobToDownloadItem(job({ stage: null, state: 'failed', error: 'boom' })).stage,
+    ).toBe('error');
     expect(acquireJobToDownloadItem(job({ stage: null, state: 'done' })).stage).toBe('done');
     expect(acquireJobToDownloadItem(job({ stage: null, state: 'queued' })).stage).toBe('queued');
   });
@@ -190,14 +214,19 @@ describe('acquireJobToDownloadItem', () => {
 
   it('carries the deep-link album id when the job resolved one, else undefined', () => {
     expect(
-      acquireJobToDownloadItem(job({ state: 'done', stage: 'done', albumId: 'acq-album-1' })).albumId,
+      acquireJobToDownloadItem(job({ state: 'done', stage: 'done', albumId: 'acq-album-1' }))
+        .albumId,
     ).toBe('acq-album-1');
     expect(acquireJobToDownloadItem(job({ albumId: null })).albumId).toBeUndefined();
   });
 
   it('a done job with a partial-download warning can be retried, not just removed', () => {
     const item = acquireJobToDownloadItem(
-      job({ state: 'done', stage: 'done', error: 'Downloaded 1 of 16 tracks — the rest failed or were skipped.' }),
+      job({
+        state: 'done',
+        stage: 'done',
+        error: 'Downloaded 1 of 16 tracks — the rest failed or were skipped.',
+      }),
     );
     expect(item.canRetry).toBe(true);
     expect(item.canRemove).toBe(true);
@@ -231,6 +260,12 @@ describe('acquireJobToDownloadItem', () => {
     ];
     const item = acquireJobToDownloadItem(job({ tracks }));
     expect(item.tracks).toEqual(tracks);
+  });
+
+  it('surfaces bitRate + audioFormat from the acquire job for the quality chip', () => {
+    const item = acquireJobToDownloadItem(job({ bitRate: 192, audioFormat: 'opus' }));
+    expect(item.bitrateKbps).toBe(192);
+    expect(item.audioFormat).toBe('opus');
   });
 });
 
@@ -495,7 +530,10 @@ describe('buildDownloadFeed', () => {
     ]);
     const feed = buildDownloadFeed(
       [done],
-      [job({ id: 'running', stage: 'downloading' }), job({ id: 'failed', state: 'failed', stage: 'error' })],
+      [
+        job({ id: 'running', stage: 'downloading' }),
+        job({ id: 'failed', state: 'failed', stage: 'error' }),
+      ],
     );
     expect(feed.map((i) => i.stage)).toEqual(['downloading', 'error', 'done']);
   });

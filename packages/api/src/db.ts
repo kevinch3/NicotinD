@@ -237,6 +237,19 @@ export function applySchema(db: Database): void {
   db.run(
     `CREATE INDEX IF NOT EXISTS idx_acq_items_transfer ON acquisition_job_items (transfer_key)`,
   );
+  // Per-file quality captured at enqueue time (slskd search response bitRate)
+  // or upgraded post-organize (library scan populates library_songs.bit_rate).
+  // Optional so legacy rows survive untouched; null renders as "no quality info".
+  try {
+    db.run(`ALTER TABLE acquisition_job_items ADD COLUMN bit_rate_kbps INTEGER`);
+  } catch {
+    // Column already exists — ignore
+  }
+  try {
+    db.run(`ALTER TABLE acquisition_job_items ADD COLUMN audio_format TEXT`);
+  } catch {
+    // Column already exists — ignore
+  }
 
   db.run(`
     CREATE TABLE IF NOT EXISTS completed_downloads (
@@ -423,6 +436,21 @@ export function applySchema(db: Database): void {
     db.run(
       `ALTER TABLE acquire_jobs ADD COLUMN playlist_id TEXT REFERENCES playlists(id) ON DELETE SET NULL`,
     );
+  } catch {
+    // Column already exists — ignore
+  }
+  // Dominant bitrate (kbps) and codec for the URL-acquire job's landed files,
+  // populated by AcquireWatcher.ingest via ffprobe AFTER the lossless→opus
+  // transcode so the value matches what landed in the library. Powers the
+  // "· 320 kbps" chip on the download card. Nullable: legacy / pre-feature
+  // rows survive untouched, and the chip is hidden when both are null.
+  try {
+    db.run(`ALTER TABLE acquire_jobs ADD COLUMN bit_rate_kbps INTEGER`);
+  } catch {
+    // Column already exists — ignore
+  }
+  try {
+    db.run(`ALTER TABLE acquire_jobs ADD COLUMN audio_format TEXT`);
   } catch {
     // Column already exists — ignore
   }

@@ -203,6 +203,15 @@ The frontend unifies both onto `DownloadItem.tracks` (`lib/download-groups.ts`).
 
 **Current limitation:** no shipped backend or the slskd item store ever actually emits a `'pending'` status today — `acquisition_job_items.state` defaults to `'downloading'` at insert time and no plugin parser produces `'pending'` either — so `currentAndNextTracks`'s `next` array is exercised in unit tests with synthetic data but is effectively always empty against real jobs; only "Now:" renders in practice until a data source starts pre-listing not-yet-started tracks.
 
+#### Quality chip ("· 320 kbps" / "FLAC · 1411 kbps")
+
+Every download card surfaces the dominant bitrate + codec as a small inline chip next to the method badge (`data-testid="download-bitrate"`). Two source paths feed the chip:
+
+- **slskd** — captured at enqueue time from `SlskdFile.bitRate` (already on the search response), threaded through every `createJob({ files: [{ ..., bitRate, audioFormat }] })` call site: `album-acquire.ts` (auto-acquire), `track-hunter` callers, and `album-fallback.service.ts` (the cross-peer fallback's `repointOrAttachItem` updates the row when a track gets repulled from an alternate peer). Stored on `acquisition_job_items.bit_rate_kbps` / `audio_format`. **Upgraded post-scan** by `enrichWithBitrate` (`routes/downloads.ts`) which `LEFT JOIN library_songs ON path = relative_path` — once the scanner ran, the `library_songs.bit_rate` value wins (the authoritative, post-transcode bitrate, e.g. 192 kbps Opus on a downloaded FLAC after lossless→opus).
+- **URL-acquire (spotdl / yt-dlp / archive)** — `AcquireWatcher.ingest` runs `probeAudioFile()` (ffprobe-based helper in `services/transcode.ts`) on the staged files once the plugin finishes downloading, computes the mode (`dominantProbe`), and writes `acquire_jobs.bit_rate_kbps` / `audio_format`. ffprobe is gated on `ffmpegAvailable()` — if ffmpeg isn't on PATH, no probe runs and the chip stays hidden for that card (the rest of the pipeline is also no-op in that case). The route's `enrichWithBitrate` upgrade path doesn't apply (URL-acquire jobs don't have `acquisition_job_items`).
+
+The pure `formatQuality(bitrateKbps, audioFormat)` helper in `lib/download-status.ts` decides the chip's display: `"FLAC · 1411 kbps"` for lossless codecs (always show the codec since lossless without kbps is ambiguous), `"320 kbps"` for lossy. Missing both → empty string → chip hidden. The dominant rollup logic lives in `acquisition-job-store.ts listJobFeed` (for the unified feed) and `routes/downloads.ts enrichWithBitrate` (for the slskd live feed); `lib/download-groups.ts collapseAlbumMembers` collapses multi-peer album jobs to one chip via the unified-job rollup, falling back to mode-across-members when no job-level value is known yet.
+
 ---
 
 ## Download list metadata (`AlbumJobMeta`)
