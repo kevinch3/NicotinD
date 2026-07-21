@@ -181,7 +181,10 @@ full rescan re-reads the value from the tag instead of wiping it.
    `album_jobs` row) are covered too: download suppression
    (`getDownloadingGroupKeys`, `routes/library.ts`), the curator's protected
    keys (`loadProtectedKeys`, `library-curator.ts`), and the scanner's
-   canonical-tracklist map (`canonicalByAlbum`, `library-scanner.ts`).
-   `transfer-group-keys.ts` remains the permanent safety net for transfers
-   with no job at all (enqueued outside NicotinD). `enrichWithAlbumJobs`
+   canonical-tracklist map (`canonicalByAlbum`, `library-scanner.ts`). The UNION
+   itself is no longer hand-written three times: all three call the shared
+   **`jobAlbumPairs(db, {activeOnly?})`** / **`jobCanonicalTracklists(db)`**
+   helpers in `acquisition-job-store.ts` (one source, resilient to missing
+   tables). `transfer-group-keys.ts` remains the permanent safety net for
+   transfers with no job at all (enqueued outside NicotinD). `enrichWithAlbumJobs`
    remains one release as the legacy feed-label fallback.

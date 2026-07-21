@@ -4,6 +4,8 @@ import { applySchema } from '../db.js';
 import {
   createJob,
   getJob,
+  jobAlbumPairs,
+  jobCanonicalTracklists,
   jobMetaForTransfer,
   listJobFeed,
   markItemCompleted,
@@ -22,6 +24,56 @@ let db: Database;
 beforeEach(() => {
   db = new Database(':memory:');
   applySchema(db);
+});
+
+describe('jobAlbumPairs / jobCanonicalTracklists (shared album_jobs ∪ acquisition_jobs readers)', () => {
+  function insertAlbumJob(artist: string, album: string, state: string, canonical: string[]) {
+    // album_jobs.canonical_tracks_json is NOT NULL, so an "excluded from canonical"
+    // row uses an empty array (valid, but length-0 → skipped by the helper).
+    db.run(
+      `INSERT INTO album_jobs
+         (lidarr_album_id, username, directory, canonical_tracks_json, alternates_json,
+          created_at, artist_name, album_title, state)
+       VALUES (1, 'peer', 'dir', ?, '[]', 0, ?, ?, ?)`,
+      [JSON.stringify(canonical), artist, album, state],
+    );
+  }
+
+  it('unions both tables and filters to active jobs on request', () => {
+    // acquisition_jobs row (active) via the store.
+    createJob(db, {
+      kind: 'track-search',
+      method: 'slskd',
+      artistName: 'David Bowie',
+      albumTitle: 'Heathen',
+      canonicalTracks: ['Sunday', 'Slip Away'],
+      username: 'peer1',
+      files: [{ filename: 'x\\01 Sunday.flac', size: 1, trackTitle: 'Sunday' }],
+    });
+    insertAlbumJob('Radiohead', 'Kid A', 'active', ['Everything', 'Idioteque']);
+    insertAlbumJob('Muse', 'Drones', 'done', []); // done + empty canonical
+
+    const all = jobAlbumPairs(db)
+      .map((p) => `${p.artistName} — ${p.albumTitle}`)
+      .sort();
+    expect(all).toEqual(['David Bowie — Heathen', 'Muse — Drones', 'Radiohead — Kid A']);
+
+    const active = jobAlbumPairs(db, { activeOnly: true })
+      .map((p) => p.albumTitle)
+      .sort();
+    expect(active).toEqual(['Heathen', 'Kid A']); // Drones (done) excluded
+
+    const canon = jobCanonicalTracklists(db)
+      .map((r) => `${r.albumTitle}:${r.canonicalTracks.length}`)
+      .sort();
+    expect(canon).toEqual(['Heathen:2', 'Kid A:2']); // Drones (null canonical) excluded
+  });
+
+  it('degrades to empty on a schema-less DB (missing tables)', () => {
+    const bare = new Database(':memory:');
+    expect(jobAlbumPairs(bare)).toEqual([]);
+    expect(jobCanonicalTracklists(bare)).toEqual([]);
+  });
 });
 
 describe('createJob', () => {
@@ -320,9 +372,10 @@ describe('reconcileOnBoot', () => {
   it('leaves fresh active jobs alone and prunes old finished jobs', () => {
     const fresh = seedJob();
     const old = seedJob();
-    db.run(`UPDATE acquisition_jobs SET state = 'done', created_at = 1, updated_at = 1 WHERE id = ?`, [
-      old,
-    ]);
+    db.run(
+      `UPDATE acquisition_jobs SET state = 'done', created_at = 1, updated_at = 1 WHERE id = ?`,
+      [old],
+    );
     reconcileOnBoot(db);
     expect(getJob(db, fresh)?.state).toBe('active');
     expect(getJob(db, old)).toBeNull();

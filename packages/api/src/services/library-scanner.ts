@@ -6,6 +6,7 @@ import { readdir, stat } from 'node:fs/promises';
 import { createLogger } from '@nicotind/core';
 import type { Database } from 'bun:sqlite';
 import { albumGroupKey, normalizeArtistForGrouping } from './album-grouping.js';
+import { jobCanonicalTracklists } from './acquisition-job-store.js';
 import { isVariousArtists } from './compilation-tagger.js';
 import { inferFolderAlbum, inferMetadataFromPath, hasUsableValue } from './path-inference.js';
 import { getMusicMetadata } from './music-metadata-loader.js';
@@ -669,34 +670,13 @@ export class LibraryScanner {
    */
   private canonicalByAlbum(): Map<string, string[]> {
     const map = new Map<string, string[]>();
-    let rows: Array<{ artist_name: string; album_title: string; canonical_tracks_json: string }>;
-    try {
-      // album_jobs UNION acquisition_jobs: the unified job table also carries
-      // canonical tracklists for acquisitions that never record an album_jobs
-      // row (track-search grabs).
-      rows = this.db
-        .query<{ artist_name: string; album_title: string; canonical_tracks_json: string }, []>(
-          `SELECT artist_name, album_title, canonical_tracks_json FROM album_jobs
-           WHERE artist_name IS NOT NULL AND album_title IS NOT NULL AND canonical_tracks_json IS NOT NULL
-           UNION
-           SELECT artist_name, album_title, canonical_tracks_json FROM acquisition_jobs
-           WHERE artist_name IS NOT NULL AND album_title IS NOT NULL AND canonical_tracks_json IS NOT NULL`,
-        )
-        .all();
-    } catch {
-      return map; // album_jobs absent (e.g. slskd unconfigured) — no canonical data
-    }
-    for (const r of rows) {
-      let titles: unknown;
-      try {
-        titles = JSON.parse(r.canonical_tracks_json);
-      } catch {
-        continue;
-      }
-      if (!Array.isArray(titles) || titles.length === 0) continue;
-      const id = albumIdFor(r.artist_name, r.album_title);
+    // `album_jobs` UNION the unified `acquisition_jobs` (also carries canonical
+    // tracklists for track-search grabs) via the shared job-store helper — it
+    // parses the JSON and degrades to [] when the tables are absent.
+    for (const { artistName, albumTitle, canonicalTracks } of jobCanonicalTracklists(this.db)) {
+      const id = albumIdFor(artistName, albumTitle);
       const prev = map.get(id);
-      if (!prev || titles.length > prev.length) map.set(id, titles as string[]);
+      if (!prev || canonicalTracks.length > prev.length) map.set(id, canonicalTracks);
     }
     return map;
   }
