@@ -45,6 +45,21 @@ docker compose up
 
 ---
 
+## Screenshots
+
+<p align="center">
+  <img src="docs/images/library.png" alt="Library grid" width="24%" />
+  <img src="docs/images/album.png" alt="Album detail" width="24%" />
+  <img src="docs/images/now-playing.png" alt="Now Playing queue" width="24%" />
+  <img src="docs/images/search.png" alt="Unified search &amp; acquisition" width="24%" />
+</p>
+
+<p align="center"><sub>Library grid · album detail · Now Playing queue · unified search — local library blended with the acquisition sources, with raw peer browsing demoted behind an “Advanced” disclosure.</sub></p>
+
+> Captured on the mobile UI via the Playwright screenshot flow (`packages/e2e`, `mobile-screenshots.screens.ts`) against the test fixtures. Live acquisition results (Soulseek folder candidates, the lossless→Opus reminder) require a connected slskd/Lidarr and aren't shown here.
+
+---
+
 ## Key features
 
 ### 🎵 Source-agnostic acquisition
