@@ -4,6 +4,7 @@ import type { ProcessingSettings, ProcessingStatus } from '@nicotind/core';
 import type { Role } from '../../../types/core';
 import type {
   StreamingSettings,
+  DownloadSettings,
   SetupStatus,
   SetupResult,
   SetupBody,
@@ -106,6 +107,11 @@ export class SystemApiService {
     return this.http.put<StreamingSettings>('/api/settings/streaming', patch);
   }
 
+  // Download-pipeline prefs (lossless→Opus standardization) — read-only, any user.
+  getDownloadSettings() {
+    return this.http.get<DownloadSettings>('/api/settings/downloads');
+  }
+
   // Windowed library processing (BPM / genre enrichment) — admin only.
   getProcessing() {
     return this.http.get<{ settings: ProcessingSettings; status: ProcessingStatus }>(
@@ -141,9 +147,7 @@ export class SystemApiService {
 
   // Server update check (cached GitHub-releases poll) — admin only.
   getUpdateCheck(refresh = false) {
-    return this.http.get<UpdateCheck>(
-      `/api/admin/update-check${refresh ? '?refresh=1' : ''}`,
-    );
+    return this.http.get<UpdateCheck>(`/api/admin/update-check${refresh ? '?refresh=1' : ''}`);
   }
 
   // Backups (DB snapshot + secrets) — admin only. See docs/backup-restore.md.

@@ -64,7 +64,17 @@ function setup(
     providers: [
       provideRouter([]),
       { provide: SearchApiService, useValue: searchApi },
-      { provide: SystemApiService, useValue: { getSoulseekStatus: () => of({ connected: true }) } },
+      {
+        provide: SystemApiService,
+        useValue: {
+          getSoulseekStatus: () => of({ connected: true }),
+          getDownloadSettings: () =>
+            of({
+              transcodeLossless: { enabled: true, format: 'opus', bitRate: 192 },
+              ffmpegAvailable: true,
+            }),
+        },
+      },
       {
         provide: DownloadsApiService,
         useValue: { enqueueDownload: () => of({ ok: true }), retryAcquireJob },
@@ -367,11 +377,9 @@ describe('SearchComponent — link-intent card (merged URL acquisition)', () => 
 
     // YouTube single-watch URLs (no `&list=`) don't carry a playlist signal
     // and aren't archive.org, so `as` is undefined here.
-    expect(acquireSubmit).toHaveBeenCalledWith(
-      'https://youtu.be/dQw4w9WgXcQ',
-      undefined,
-      { as: undefined },
-    );
+    expect(acquireSubmit).toHaveBeenCalledWith('https://youtu.be/dQw4w9WgXcQ', undefined, {
+      as: undefined,
+    });
   });
 
   it('surfaces a submit failure on the card instead of throwing', async () => {
@@ -504,11 +512,9 @@ describe('SearchComponent — link-intent card (merged URL acquisition)', () => 
     expect(component.linkIntent()).toEqual(
       expect.objectContaining({ url: 'https://youtu.be/dQw4w9WgXcQ', source: 'youtube' }),
     );
-    expect(acquireSubmit).toHaveBeenCalledWith(
-      'https://youtu.be/dQw4w9WgXcQ',
-      undefined,
-      { as: undefined },
-    );
+    expect(acquireSubmit).toHaveBeenCalledWith('https://youtu.be/dQw4w9WgXcQ', undefined, {
+      as: undefined,
+    });
   });
 
   it('dismissLinkIntent clears the card and any error', () => {
@@ -525,5 +531,55 @@ describe('SearchComponent — link-intent card (merged URL acquisition)', () => 
 
     expect(component.linkIntent()).toBeNull();
     expect(component.linkSubmitError()).toBeNull();
+  });
+});
+
+describe('SearchComponent — transcode reminder', () => {
+  it('transcodeActive only when the setting is enabled AND ffmpeg is present', () => {
+    const { component } = setup();
+
+    component.downloadSettings.set({
+      transcodeLossless: { enabled: true, format: 'opus', bitRate: 192 },
+      ffmpegAvailable: true,
+    });
+    expect(component.transcodeActive()).toBe(true);
+    expect(component.transcodeBitRate()).toBe(192);
+
+    component.downloadSettings.set({
+      transcodeLossless: { enabled: false, format: 'opus', bitRate: 192 },
+      ffmpegAvailable: true,
+    });
+    expect(component.transcodeActive()).toBe(false);
+
+    component.downloadSettings.set({
+      transcodeLossless: { enabled: true, format: 'opus', bitRate: 192 },
+      ffmpegAvailable: false,
+    });
+    expect(component.transcodeActive()).toBe(false);
+  });
+
+  it('isLosslessCandidate is true only for a lossless enqueue pick', () => {
+    const { component } = setup();
+    const base = {
+      id: 'x',
+      source: 'soulseek' as const,
+      sourceLabel: 'Soulseek',
+      title: 't',
+      subtitle: '',
+      score: 1,
+    };
+    const flac = {
+      ...base,
+      acquire: { via: 'enqueue' as const, username: 'u', file: { filename: 'song.flac', size: 1 } },
+    };
+    const mp3 = {
+      ...base,
+      acquire: { via: 'enqueue' as const, username: 'u', file: { filename: 'song.mp3', size: 1 } },
+    };
+    const url = { ...base, acquire: { via: 'url' as const, url: 'http://x' } };
+
+    expect(component.isLosslessCandidate(flac)).toBe(true);
+    expect(component.isLosslessCandidate(mp3)).toBe(false);
+    expect(component.isLosslessCandidate(url)).toBe(false);
   });
 });

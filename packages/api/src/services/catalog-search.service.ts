@@ -116,7 +116,12 @@ export class CatalogService {
       // Artist named, but the lookup surfaced none of their albums (e.g. Zara
       // Larsson). Suppress the mashup/tribute junk and flag so the UI promotes
       // the network lane instead of rendering cards that all 404 on resolve. §A6.
-      return { artists, albums: [], scopedArtist: matchedArtist.name, discographyUnavailable: true };
+      return {
+        artists,
+        albums: [],
+        scopedArtist: matchedArtist.name,
+        discographyUnavailable: true,
+      };
     }
     // No artist named (pure album-title search). Lidarr's free-text `album.lookup`
     // ranks anything whose title *fuzzily* matches, so for a multi-word query with

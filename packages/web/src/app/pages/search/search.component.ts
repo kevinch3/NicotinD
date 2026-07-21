@@ -11,6 +11,7 @@ import type {
   CatalogArtist,
   CatalogSearchResult,
   DiscographyAlbum,
+  DownloadSettings,
 } from '../../services/api/api-types';
 import { SearchService, type NetworkResult } from '../../services/search.service';
 import { TransferService } from '../../services/transfer.service';
@@ -36,7 +37,7 @@ import {
   fileQualityLabel,
   type FolderGroup,
 } from '../../lib/folder-utils';
-import { groupBySong, formatBadge, type SongResult } from '../../lib/song-results';
+import { groupBySong, formatBadge, isLossless, type SongResult } from '../../lib/song-results';
 import {
   songResultToCandidate,
   archiveToCandidate,
@@ -346,6 +347,30 @@ export class SearchComponent implements OnInit, OnDestroy {
     ),
   );
   readonly hasBlendedResults = computed(() => this.blendedResults().length > 0);
+
+  // Download-pipeline transcode reminder. `downloads.transcodeLossless` is
+  // env/YAML-only (no runtime toggle), so we read it once for an accurate hint:
+  // a lossless pick (FLAC/…) is stored as Opus to save space — but only when the
+  // setting is on AND ffmpeg is present. Never claims a transcode that won't run.
+  readonly downloadSettings = signal<DownloadSettings | null>(null);
+  readonly transcodeActive = computed(() => {
+    const d = this.downloadSettings();
+    return !!d && d.transcodeLossless.enabled && d.ffmpegAvailable;
+  });
+  readonly transcodeBitRate = computed(
+    () => this.downloadSettings()?.transcodeLossless.bitRate ?? 0,
+  );
+  /** True for a blended candidate whose best copy is a lossless format (so it
+   *  will actually be transcoded on download). Lossy picks are left untouched. */
+  isLosslessCandidate(c: BlendedCandidate): boolean {
+    return c.acquire.via === 'enqueue' && isLossless(c.acquire.file.filename);
+  }
+  /** Any lossless result in view → the transcode reminder is relevant to show. */
+  readonly hasLosslessInView = computed(
+    () =>
+      this.blendedResults().some((c) => this.isLosslessCandidate(c)) ||
+      this.folderGroups().some((g) => folderFormat(g)?.lossless),
+  );
   // Sources that contributed (or are still searching) — drives the neutral
   // "Soulseek · Internet Archive · Spotify" availability line.
   readonly availableSources = computed(() => {
@@ -385,6 +410,13 @@ export class SearchComponent implements OnInit, OnDestroy {
     void this.acquire.refresh();
     void this.watchlist.refresh();
     void this.plugins.refresh();
+    // Load the lossless→Opus reminder config once (acquirers only — it only shows
+    // in the acquire flow). Best-effort: a failure just hides the hint.
+    if (this.auth.canAcquire()) {
+      firstValueFrom(this.systemApi.getDownloadSettings())
+        .then((d) => this.downloadSettings.set(d))
+        .catch(() => this.downloadSettings.set(null));
+    }
 
     // PWA share-target: a link shared from another app lands here as ?url=/?text=.
     // Sharing is an explicit intent, so this submits regardless of the

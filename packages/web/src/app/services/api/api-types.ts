@@ -187,6 +187,13 @@ export interface StreamingSettings {
   ffmpegAvailable?: boolean;
 }
 
+/** Read-only download-pipeline prefs the acquire UI reads to show an accurate
+ *  "lossless → Opus" reminder. `enabled && ffmpegAvailable` gates the hint. */
+export interface DownloadSettings {
+  transcodeLossless: { enabled: boolean; format: 'opus'; bitRate: number };
+  ffmpegAvailable: boolean;
+}
+
 export interface UserDir {
   name: string;
   fileCount: number;
