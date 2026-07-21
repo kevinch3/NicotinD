@@ -25,6 +25,7 @@ import { usersRoutes } from './routes/users.js';
 import { shareRoutes } from './routes/share.js';
 import { devicesRoutes } from './routes/devices.js';
 import { remoteAccessRoutes } from './routes/remote-access.js';
+import { reviewRoutes } from './routes/review.js';
 import { RemoteAccess } from './services/tailscale.js';
 import { shareMetaHandler } from './routes/share-meta.js';
 import { discographyRoutes } from './routes/discography.js';
@@ -594,6 +595,18 @@ export function createApp({
     }),
   );
   app.route('/api/admin/remote-access', remoteAccessRoutes(remoteAccess));
+  // ServiceReview: one read-only snapshot aggregating the running service's
+  // telemetry (hardware metrics, slskd state, library scan, update check,
+  // backups, processing summary, jobs, audit tail, …). Admin-only; the
+  // /api/admin/* blanket auth + the route's own admin check both apply.
+  app.route(
+    '/api/admin/review',
+    reviewRoutes(slskdRef, {
+      version,
+      dataDir: expandedDataDir,
+      processing: processingRef.current,
+    }),
+  );
   app.route('/api/users', usersRoutes(registry));
   app.route('/api/playlists', playlistRoutes());
   app.route('/api/radio', radioRoutes());

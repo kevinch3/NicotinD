@@ -99,8 +99,8 @@
           </section>
         </div>
 
-        <!-- Audit log: recent destructive/curation actions with the acting user. -->
-        @if (auditLoaded() && auditLog().length > 0) {
+        <!-- Audit log: recent destructive/curation actions. -->
+        @if (auditTail().length > 0) {
           <div data-testid="audit-log">
             <h2 class="text-xl font-bold text-theme-primary mb-8">Audit log</h2>
             <section class="rounded-xl border border-theme bg-theme-surface overflow-x-auto">
@@ -114,7 +114,7 @@
                   </tr>
                 </thead>
                 <tbody>
-                  @for (e of auditLog(); track e.id) {
+                  @for (e of auditTail(); track e.id) {
                     <tr class="border-b border-theme last:border-0">
                       <td class="px-4 py-2.5 text-theme-muted whitespace-nowrap">{{ formatAuditTime(e.at) }}</td>
                       <td class="px-4 py-2.5 text-theme-secondary">{{ e.username ?? e.userId }}</td>
@@ -131,6 +131,17 @@
         <!-- System Panel -->
         <div>
           <h2 class="text-xl font-bold text-theme-primary mb-8">System</h2>
+
+          <!-- Live metric pills: CPU, RAM, GPU. Drained from ServiceReviewService
+               (single polled snapshot — no per-pill fetcher). GPU hides itself when
+               no vendor CLI returns a utilisation. -->
+          <div class="mb-6 flex flex-wrap gap-2" data-testid="metrics-pills">
+            <app-metric-pill
+              [cpu]="cpu() ?? null"
+              [memory]="memory() ?? null"
+              [gpu]="gpu() ?? null">
+            </app-metric-pill>
+          </div>
 
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
             @for (svc of services; track svc) {
@@ -150,7 +161,8 @@
             }
           </div>
 
-          <!-- Server version + update check (cached daily GitHub poll). -->
+          <!-- Server version + update check (cached daily GitHub poll, drained
+               from ServiceReview; "Check now" forces a fresh poll). -->
           @if (updateCheck(); as uc) {
             <div class="flex items-center gap-3 mb-8 text-sm flex-wrap" data-testid="update-check">
               <span class="text-theme-muted">Server:</span>
@@ -171,16 +183,16 @@
             </div>
           }
 
-          @if (scanStatus()) {
+          @if (libraryState(); as lib) {
             <div class="flex items-center gap-3 mb-8 text-sm">
               <span class="text-theme-muted">Library scan:</span>
-              @if (scanStatus()!.scanning) {
+              @if (lib.scanning) {
                 <span class="flex items-center gap-2 text-status-progress">
                   <span class="inline-block w-3 h-3 border-2 border-theme border-t-transparent rounded-full animate-spin"></span>
-                  Scanning — {{ scanStatus()!.count.toLocaleString() }} songs indexed
+                  Scanning — {{ lib.indexedSongCount.toLocaleString() }} songs indexed
                 </span>
               } @else {
-                <span class="text-theme-secondary">Idle — {{ scanStatus()!.count.toLocaleString() }} songs</span>
+                <span class="text-theme-secondary">Idle — {{ lib.indexedSongCount.toLocaleString() }} songs</span>
               }
             </div>
           }
@@ -215,9 +227,7 @@
             }
           </div>
 
-          <!-- Maintenance: backups. Nightly automatic (DB snapshot + secrets,
-               pruned to the newest N) with a manual trigger; restore is manual
-               by design — see docs/backup-restore.md. -->
+          <!-- Maintenance: backups. -->
           <div class="flex flex-col gap-2 mb-8" data-testid="backups-panel">
             <div class="flex items-center gap-3">
               <button (click)="runBackup()" [disabled]="backingUp()"
@@ -244,11 +254,7 @@
             }
           </div>
 
-          <!-- Maintenance: library fragmentation diagnostic. Surfaces "tracks
-               are present but the album doesn't show" defects (same-release
-               rows split across artist spellings, rows hidden by
-               classification, one-track-per-title mis-splits). See
-               docs/library-scanner.md "Fragmentation diagnostic". -->
+          <!-- Maintenance: library fragmentation diagnostic (manual action). -->
           <div class="flex flex-col gap-2 mb-8" data-testid="library-fragments">
             <div class="flex items-center gap-3">
               <button (click)="loadFragments()" [disabled]="loadingFragments()"
@@ -284,9 +290,6 @@
                           </li>
                         }
                       </ul>
-                      <p class="text-[11px] text-theme-muted mt-1">
-                        Fix: alias the spellings under Admin → Library → Artist identity, then rescan.
-                      </p>
                     </div>
                   }
                   @if (r.hiddenByClassification.length > 0) {
@@ -315,24 +318,6 @@
                           </li>
                         }
                       </ul>
-                      <p class="text-[11px] text-theme-muted mt-1">
-                        Fix: reclassify or unhide via the album row menu.
-                      </p>
-                    </div>
-                  }
-                  @if (r.misSplitAlbums.length > 0) {
-                    <div>
-                      <p class="text-xs font-semibold text-theme-primary">
-                        Mis-split clusters ({{ r.misSplitAlbums.length }})
-                      </p>
-                      <ul class="mt-1 ml-4 list-disc text-xs text-theme-secondary space-y-0.5">
-                        @for (m of r.misSplitAlbums; track m.subject) {
-                          <li class="text-theme-secondary">{{ m.message }}</li>
-                        }
-                      </ul>
-                      <p class="text-[11px] text-theme-muted mt-1">
-                        Fix: see docs/library-audit.md (mis-split repair).
-                      </p>
                     </div>
                   }
                 </div>
@@ -343,7 +328,7 @@
             }
           </div>
 
-          <!-- Streaming / transcoding (moved from Settings) -->
+          <!-- Streaming / transcoding -->
           <section class="rounded-xl border border-theme bg-theme-surface p-6 mb-8" data-testid="streaming-panel">
             <h3 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary mb-5">Streaming</h3>
             @if (streaming(); as s) {
@@ -407,13 +392,12 @@
             }
           </section>
 
-          <!-- Library processing (BPM / genre enrichment; moved from Settings) -->
+          <!-- Library processing (settings + SSE live progress) -->
           <section class="rounded-xl border border-theme bg-theme-surface p-6 mb-8" data-testid="processing-panel">
             <h3 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary mb-2">Library processing</h3>
             <p class="text-xs text-theme-muted mb-5">Analyze BPM and fill genres for tracks that are missing them. Runs in the background only during the time window below.</p>
             @if (processing(); as p) {
               <div class="space-y-4">
-                <!-- Master enable -->
                 <label class="flex items-center justify-between gap-4">
                   <span class="text-sm text-theme-primary">Enable background processing</span>
                   <input type="checkbox" [checked]="p.enabled" [disabled]="processingSaving()"
@@ -422,7 +406,6 @@
                     class="w-4 h-4 rounded accent-emerald-500" />
                 </label>
 
-                <!-- Window -->
                 <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
                   <span class="min-w-0 text-sm text-theme-primary">Processing window
                     <span class="block text-xs text-theme-muted">Local server time</span>
@@ -440,8 +423,6 @@
                   </div>
                 </div>
 
-                <!-- Tasks: per-task "Run" (background enrichment) + "Gate"
-                     (require before a download is added to the library). -->
                 <div class="space-y-2">
                   <div class="flex items-center justify-between gap-4 pb-1 border-b border-theme">
                     <span class="text-xs uppercase tracking-wider text-theme-muted">Step</span>
@@ -477,8 +458,7 @@
                   </p>
                 </div>
 
-                <!-- Progress -->
-                @if (processingStatus(); as st) {
+                @if (processingStatusReadonly(); as st) {
                   <div class="pt-2 border-t border-theme" data-testid="processing-progress">
                     <div class="flex items-center justify-between mb-1">
                       <span class="text-xs text-theme-secondary">{{ processingPhaseLabel() }}</span>
@@ -507,7 +487,6 @@
                   </div>
                 }
 
-                <!-- Actions -->
                 <div class="flex items-center gap-3 pt-1">
                   <button type="button" (click)="runProcessingNow()"
                     [disabled]="runNowDisabled()"
@@ -524,43 +503,6 @@
                 @if (processingMessage(); as m) {
                   <p class="text-xs" [class.text-status-done]="m.type === 'success'" [class.text-status-error]="m.type === 'error'">{{ m.text }}</p>
                 }
-
-                <!-- Quarantine queue: downloads awaiting their required steps -->
-                @if (quarantineQueue().length > 0) {
-                  <div class="pt-3 border-t border-theme" data-testid="processing-queue">
-                    <div class="flex items-center justify-between mb-2">
-                      <span class="text-xs font-semibold uppercase tracking-wider text-theme-secondary">Awaiting processing</span>
-                      <span class="text-xs text-theme-muted">{{ processingQuarantined() }} track{{ processingQuarantined() === 1 ? '' : 's' }} not yet in library</span>
-                    </div>
-                    <div class="space-y-3">
-                      @for (al of quarantineQueue(); track al.albumId) {
-                        <div data-testid="processing-queue-album">
-                          <p class="text-sm text-theme-primary truncate">{{ al.albumTitle || 'Unknown album' }}
-                            <span class="text-theme-muted">— {{ al.albumArtist }}</span>
-                          </p>
-                          <ul class="mt-1 space-y-1">
-                            @for (song of al.songs; track song.id) {
-                              <li class="flex items-center justify-between gap-3 text-xs">
-                                <span class="min-w-0 truncate text-theme-secondary">{{ song.title }}</span>
-                                <span class="flex items-center gap-2 shrink-0">
-                                  @for (step of stepKeys; track step) {
-                                    <span class="inline-flex items-center gap-1"
-                                      [class.text-status-done]="song.steps[step] === 'done'"
-                                      [class.text-status-warn]="song.steps[step] === 'skipped'"
-                                      [class.text-theme-muted]="song.steps[step] === 'pending'">
-                                      {{ step }}
-                                      {{ song.steps[step] === 'done' ? '✓' : song.steps[step] === 'skipped' ? '⤫' : '⏳' }}
-                                    </span>
-                                  }
-                                </span>
-                              </li>
-                            }
-                          </ul>
-                        </div>
-                      }
-                    </div>
-                  </div>
-                }
               </div>
             }
           </section>
@@ -569,7 +511,6 @@
           <div>
             <span class="text-xs font-semibold uppercase tracking-wider text-theme-muted">Logs</span>
 
-            <!-- Service selector -->
             <div class="flex gap-2 mb-3 flex-wrap mt-3">
               @for (svc of logServiceOptions; track svc) {
                 <button
@@ -581,7 +522,6 @@
               }
             </div>
 
-            <!-- Status indicator -->
             <div class="text-xs mb-2">
               @if (logStreamStatus() === 'connecting') {
                 <span class="text-status-warn">Reconnecting…</span>
@@ -592,13 +532,13 @@
               }
             </div>
 
-            <!-- Log output -->
             <div class="log-scroll-container bg-theme-surface rounded p-3 h-80 overflow-y-auto font-mono text-xs text-theme-muted">
               @if (logLines().length === 0) {
                 <div class="text-theme-muted/50">Waiting for log output…</div>
-              }
-              @for (line of logLines(); track $index) {
-                <div class="whitespace-pre-wrap break-all leading-relaxed">{{ line }}</div>
+              } @else {
+                @for (line of logLines(); track $index) {
+                  <div class="whitespace-pre-wrap break-all leading-relaxed">{{ line }}</div>
+                }
               }
             </div>
           </div>
@@ -661,20 +601,20 @@
           </section>
         </div>
 
-        <!-- Incomplete Albums (3A) -->
+        <!-- Incomplete Albums (snapshot-based via ServiceReview). -->
         <div>
           <div class="flex items-center justify-between mb-8">
             <h2 class="text-xl font-bold text-theme-primary">Incomplete Albums</h2>
-            <button (click)="loadIncompleteJobs()"
+            <button (click)="reviewSvc.refresh()"
               class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition">
               Refresh
             </button>
           </div>
 
-          @if (jobsLoading()) {
-            <p class="text-theme-muted text-sm">Loading album jobs…</p>
-          } @else if (incompleteJobs().length === 0) {
+          @if (incompleteJobsCount() === 0 && incompleteJobs().length === 0) {
             <p class="text-theme-muted text-sm">No incomplete album hunts. 🎉</p>
+          } @else if (incompleteJobs().length === 0) {
+            <p class="text-theme-muted text-sm">Loading album jobs…</p>
           } @else {
             <section class="rounded-xl border border-theme bg-theme-surface overflow-x-auto">
               <table class="w-full text-sm">
@@ -714,14 +654,14 @@
           }
         </div>
 
-        <!-- Untracked Downloads (3E) -->
+        <!-- Untracked Downloads (snapshot-based via ServiceReview). -->
         <div>
           <div class="flex items-center justify-between mb-8">
             <h2 class="text-xl font-bold text-theme-primary">
               Untracked Downloads
-              @if (untrackedTotal() > 0) { <span class="ml-2 text-sm font-normal text-theme-muted">{{ untrackedTotal() }} total</span> }
+              @if (untrackedCount() > 0) { <span class="ml-2 text-sm font-normal text-theme-muted">{{ untrackedCount() }} total</span> }
             </h2>
-            <button (click)="loadUntracked()"
+            <button (click)="reviewSvc.refresh()"
               class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition">
               Refresh
             </button>
@@ -733,10 +673,10 @@
             to resolve the ones still on disk.
           </p>
 
-          @if (untrackedLoading()) {
-            <p class="text-theme-muted text-sm">Loading…</p>
-          } @else if (untracked().length === 0) {
+          @if (untracked().length === 0 && untrackedCount() === 0) {
             <p class="text-theme-muted text-sm">No untracked downloads. 🎉</p>
+          } @else if (untracked().length === 0) {
+            <p class="text-theme-muted text-sm">Loading…</p>
           } @else {
             <section class="rounded-xl border border-theme bg-theme-surface overflow-x-auto">
               <table class="w-full text-sm">
@@ -834,4 +774,3 @@
         }
       </div>
     }
-  

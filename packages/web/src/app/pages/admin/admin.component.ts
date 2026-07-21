@@ -6,18 +6,16 @@ import { ROLES, type Role } from '../../../types/core';
 import { SystemApiService } from '../../services/api/system-api.service';
 import { DownloadsApiService } from '../../services/api/downloads-api.service';
 import { LibraryApiService } from '../../services/api/library-api.service';
+import { ServiceReviewService } from '../../services/service-review.service';
 import type {
   AdminUser,
-  AlbumJob,
-  UntrackedDownload,
-  DiscographyAlbum,
-  StreamingSettings,
+  BackupInfo,
+  IncompleteAlbumJob,
   QuarantineAlbum,
   SongSteps,
   LibraryFragmentReport,
-  BackupInfo,
-  UpdateCheck,
-  AuditEntry,
+  StreamingSettings,
+  UntrackedDownload,
 } from '../../services/api/api-types';
 import { AuthService } from '../../services/auth.service';
 import { ServerConfigService } from '../../services/server-config.service';
@@ -31,6 +29,8 @@ import {
 } from '../../lib/processing-progress';
 import { PasswordFieldComponent } from '../../components/password-field/password-field.component';
 import { AlbumHuntModalComponent } from '../../components/album-hunt-modal/album-hunt-modal.component';
+import { MetricPillComponent } from '../../components/metric-pill/metric-pill.component';
+import { DiscographyAlbum } from '../../services/api/api-types';
 
 /** A copy in a duplicate group — shape returned by the maintenance duplicates API. */
 type DuplicateSong = {
@@ -47,7 +47,7 @@ type DuplicateSong = {
 
 @Component({
   selector: 'app-admin',
-  imports: [FormsModule, PasswordFieldComponent, AlbumHuntModalComponent],
+  imports: [FormsModule, PasswordFieldComponent, AlbumHuntModalComponent, MetricPillComponent],
   templateUrl: './admin.component.html',
 })
 export class AdminComponent implements OnInit, OnDestroy {
@@ -57,6 +57,12 @@ export class AdminComponent implements OnInit, OnDestroy {
   private auth = inject(AuthService);
   private server = inject(ServerConfigService);
   private toast = inject(ToastService);
+  /** One consolidated snapshot for every read-only Admin telemetry — replaces
+   *  the per-section loaders the page used to manage (systemStatus, scanStatus,
+   *  updateCheck, backups, auditLog, incompleteJobs, untracked, hardware metrics).
+   *  Write actions (settings forms, restart, run-now, etc.) keep their own
+   *  PATCH-shape endpoints; this service is the snapshot companion. */
+  protected readonly reviewSvc = inject(ServiceReviewService);
 
   readonly services: 'slskd'[] = ['slskd'];
 
@@ -76,172 +82,35 @@ export class AdminComponent implements OnInit, OnDestroy {
   readonly newUserPassword = signal('');
   readonly creating = signal(false);
 
-  readonly systemStatus = signal<{ slskd: { healthy: boolean; connected?: boolean } } | null>(null);
-  readonly scanStatus = signal<{ scanning: boolean; count: number } | null>(null);
   readonly restarting = signal<{ slskd: boolean }>({ slskd: false });
 
   // Library-wide metadata optimization (cover/year/release-type from Lidarr).
   readonly optimizingMetadata = signal(false);
   readonly optimizeMetadataMsg = signal<string | null>(null);
 
-  async optimizeAllMetadata(): Promise<void> {
-    if (this.optimizingMetadata()) return;
-    this.optimizingMetadata.set(true);
-    this.optimizeMetadataMsg.set(null);
-    try {
-      const r = await firstValueFrom(this.libraryApi.optimizeAllMetadata());
-      this.optimizeMetadataMsg.set(
-        `Checked ${r.albums} album(s): ${r.coversUpdated} cover(s), ${r.yearsUpdated} year(s) updated.`,
-      );
-    } catch {
-      this.optimizeMetadataMsg.set('Failed — Lidarr unavailable or not configured.');
-    } finally {
-      this.optimizingMetadata.set(false);
-    }
-  }
-
-  // Full library rescan (`POST /api/library/sync`) — rebuilds the canonical
-  // library_* tables from disk. Long-running; the button stays disabled while
-  // in flight and refreshes scan status on success so the count updates.
+  // Action-only loaders (snapshot equivalents drain from ServiceReviewService).
   readonly syncing = signal(false);
   readonly syncMsg = signal<string | null>(null);
 
-  async syncLibrary(): Promise<void> {
-    if (this.syncing()) return;
-    this.syncing.set(true);
-    this.syncMsg.set(null);
-    try {
-      await firstValueFrom(this.libraryApi.resyncLibrary());
-      this.syncMsg.set('Library rescan complete.');
-      void this.loadSystemStatus();
-    } catch (err) {
-      this.syncMsg.set(
-        err instanceof Error ? err.message : 'Library rescan failed — is the server configured?',
-      );
-    } finally {
-      this.syncing.set(false);
-    }
-  }
-
-  // Audit log: recent destructive/curation actions (album/song deletes, artist
-  // identity fixes, user management) with the acting user attached.
-  readonly auditLog = signal<AuditEntry[]>([]);
-  readonly auditLoaded = signal(false);
-
-  async loadAuditLog(): Promise<void> {
-    try {
-      this.auditLog.set(await firstValueFrom(this.api.getAuditLog(50)));
-      this.auditLoaded.set(true);
-    } catch {
-      // Non-fatal (older server): the section just stays empty.
-    }
-  }
-
-  formatAuditTime(ms: number): string {
-    return new Date(ms).toLocaleString();
-  }
-
-  // Server update check: the API polls GitHub releases daily and caches the
-  // result; this only reads the cache unless "Check now" forces a refresh.
-  readonly updateCheck = signal<UpdateCheck | null>(null);
   readonly checkingUpdate = signal(false);
 
-  async loadUpdateCheck(refresh = false): Promise<void> {
-    if (this.checkingUpdate()) return;
-    this.checkingUpdate.set(true);
-    try {
-      this.updateCheck.set(await firstValueFrom(this.api.getUpdateCheck(refresh)));
-    } catch {
-      // Non-fatal (older server): the row just doesn't render.
-    } finally {
-      this.checkingUpdate.set(false);
-    }
-  }
-
-  // Backups (nightly automatic DB snapshot + secrets under <dataDir>/backups,
-  // pruned to the newest N) with a manual trigger here. Restore is manual by
-  // design — see docs/backup-restore.md.
-  readonly backups = signal<BackupInfo[]>([]);
   readonly backingUp = signal(false);
   readonly backupMsg = signal<string | null>(null);
 
-  async loadBackups(): Promise<void> {
-    try {
-      this.backups.set(await firstValueFrom(this.api.getBackups()));
-    } catch {
-      // Non-fatal (backups unavailable): the panel just shows no rows.
-    }
-  }
-
-  async runBackup(): Promise<void> {
-    if (this.backingUp()) return;
-    this.backingUp.set(true);
-    this.backupMsg.set(null);
-    try {
-      const info = await firstValueFrom(this.api.runBackup());
-      this.backupMsg.set(`Backup ${info.name} created (${this.formatBackupSize(info.sizeBytes)}).`);
-      await this.loadBackups();
-    } catch {
-      this.backupMsg.set('Backup failed — see server logs.');
-    } finally {
-      this.backingUp.set(false);
-    }
-  }
-
-  formatBackupSize(bytes: number): string {
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-  }
-
-  formatBackupDate(ms: number): string {
-    return new Date(ms).toLocaleString();
-  }
-
-  // Library fragmentation diagnostic (`GET /api/library/fragments`) — surfaces
-  // "tracks are present but no album card surfaces" defects: same-release rows
-  // split across album-artist spellings (alias fix + rescan), rows hidden from
-  // the grid by `classification`/`hidden` (reclassify or unhide), and one-track
-  // mis-splits (existing audit re-emitted). See docs/library-scanner.md
-  // "Fragmentation diagnostic".
   readonly loadingFragments = signal(false);
   readonly fragments = signal<LibraryFragmentReport | null>(null);
   readonly fragmentsError = signal<string | null>(null);
 
-  async loadFragments(): Promise<void> {
-    if (this.loadingFragments()) return;
-    this.loadingFragments.set(true);
-    this.fragmentsError.set(null);
-    try {
-      this.fragments.set(await firstValueFrom(this.libraryApi.getFragments()));
-    } catch (err) {
-      this.fragmentsError.set(
-        err instanceof Error ? err.message : 'Failed to load fragmentation report.',
-      );
-      this.fragments.set(null);
-    } finally {
-      this.loadingFragments.set(false);
-    }
-  }
-
-  // --- Streaming / transcoding (moved from Settings) ---
   readonly streaming = signal<StreamingSettings | null>(null);
   readonly streamingSaving = signal(false);
   readonly streamingMessage = signal<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  // --- Windowed library processing (BPM / genre enrichment; moved from Settings) ---
+  // Windowed processing — settings form (PATCHed separately), live progress SSE.
   readonly processing = signal<ProcessingSettings | null>(null);
-  readonly processingStatus = signal<ProcessingStatus | null>(null);
-  readonly processingSaving = signal(false);
-  /** True while the "Run now" request is in flight (before the first SSE frame). */
   readonly processingStarting = signal(false);
   readonly processingMessage = signal<{ type: 'success' | 'error'; text: string } | null>(null);
   private processingStream: EventSource | null = null;
-  /** Downloads awaiting their required processing steps before landing (grouped
-   *  by album, per-step badges). Refreshed on load + when the run status changes. */
   readonly quarantineQueue = signal<QuarantineAlbum[]>([]);
-  /** The processing steps shown as per-track badges, typed as `keyof SongSteps`
-   *  so the template can index `song.steps[step]` without an `$any` cast. */
   readonly stepKeys = [
     'bpm',
     'key',
@@ -249,40 +118,52 @@ export class AdminComponent implements OnInit, OnDestroy {
     'genre',
     'mood',
   ] as const satisfies (keyof SongSteps)[];
-  // A user pressed "Run now" and we're waiting for the run to settle so we can
-  // toast its outcome. `sawRunning` guards against toasting a no-op/priming frame.
   private awaitingRun = false;
   private sawRunning = false;
 
-  // --- Library maintenance: find duplicates (moved from Settings) ---
+  // Library maintenance: find duplicates (action-only).
   readonly duplicatesLoading = signal(false);
   readonly duplicates = signal<DuplicateSong[][]>([]);
   readonly duplicatesDeleteSet = signal<Set<string>>(new Set());
   readonly duplicatesMessage = signal<{ type: 'success' | 'error'; text: string } | null>(null);
   readonly deletingDuplicates = signal(false);
 
-  // Incomplete album hunts (3A) — exhausted/active jobs with a re-hunt action.
-  readonly incompleteJobs = signal<AlbumJob[]>([]);
-  readonly jobsLoading = signal(true);
-  // The job whose hunt the user is retrying (drives the embedded hunt modal).
   readonly retryAlbum = signal<DiscographyAlbum | null>(null);
   readonly retryArtist = signal('');
-
-  // Untracked downloads (3E) — completed_downloads with no relative_path.
-  readonly untracked = signal<UntrackedDownload[]>([]);
-  readonly untrackedTotal = signal(0);
-  readonly untrackedLoading = signal(true);
 
   readonly selectedService = signal<'slskd' | 'nicotind'>('nicotind');
   readonly logLines = signal<string[]>([]);
   readonly logStreamStatus = signal<'idle' | 'connecting' | 'connected' | 'disconnected'>('idle');
 
+  // ServiceReview slices — exposed for the template.
+  readonly cpu = this.reviewSvc.cpu;
+  readonly memory = this.reviewSvc.memory;
+  readonly gpu = this.reviewSvc.gpu;
+  readonly servicesState = this.reviewSvc.services;
+  readonly libraryState = this.reviewSvc.libraryState;
+  readonly updateCheck = this.reviewSvc.updateCheck;
+  readonly backups = this.reviewSvc.backups;
+  readonly backupsSummary = this.reviewSvc.backupsSummary;
+  readonly auditTail = this.reviewSvc.auditTail;
+  readonly incompleteJobs = this.reviewSvc.incompleteJobs;
+  readonly untracked = this.reviewSvc.untracked;
+  readonly incompleteJobsCount = this.reviewSvc.incompleteJobsCount;
+  readonly untrackedCount = this.reviewSvc.untrackedCount;
+
   private logEventSource: EventSource | null = null;
   private logReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private readonly reviewDispose?: () => void;
+  private processingStatus = signal<ProcessingStatus | null>(null);
+  readonly processingStatusReadonly = this.processingStatus.asReadonly();
   private readonly serviceSelectEffect = effect(() => {
-    this.selectedService(); // track signal — reconnect stream on service change
+    this.selectedService();
     this.connectLogStream();
   });
+
+  constructor() {
+    const dispose = this.reviewSvc.start();
+    this.reviewDispose = dispose;
+  }
 
   currentUserId(): string | null {
     const token = this.auth.token();
@@ -297,15 +178,10 @@ export class AdminComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.loadUsers();
-    this.loadSystemStatus();
     this.loadIncompleteJobs();
-    this.loadUntracked();
     this.loadStreaming();
     this.loadProcessing();
     void this.loadQuarantineQueue();
-    void this.loadBackups();
-    void this.loadUpdateCheck();
-    void this.loadAuditLog();
     this.connectProcessingStream();
   }
 
@@ -331,7 +207,7 @@ export class AdminComponent implements OnInit, OnDestroy {
     }
   }
 
-  // --- Library processing (delegates to the pure processing-progress lib) ---
+  // --- Windowed library processing ---
   processingPercent(): number {
     const s = this.processingStatus();
     return s ? progressPercent(s) : 0;
@@ -377,7 +253,9 @@ export class AdminComponent implements OnInit, OnDestroy {
     }
   }
 
-  /** Live status via SSE (progress bar + snippets) — same pattern as the log stream. */
+  /** Live status via SSE (progress bar + snippets) — runs alongside the
+   *  ServiceReview polling timer. The static summary in ServiceReview fires
+   *  every 5s; the SSE provides per-batch transitions + snippets. */
   private connectProcessingStream(): void {
     const token = this.auth.token();
     if (!token) return;
@@ -391,8 +269,6 @@ export class AdminComponent implements OnInit, OnDestroy {
         const prevQuarantined = this.processingStatus()?.quarantined;
         this.processingStatus.set(status);
         this.handleRunSettled(status);
-        // Refresh the per-download queue whenever the quarantine count moves (a
-        // download landed, or a new one arrived) so the badges track reality.
         if (status.quarantined !== prevQuarantined) void this.loadQuarantineQueue();
       } catch {
         /* ignore malformed frame */
@@ -417,6 +293,8 @@ export class AdminComponent implements OnInit, OnDestroy {
       this.processingSaving.set(false);
     }
   }
+  // Local `processingSaving` — separate from any review slice.
+  readonly processingSaving = signal(false);
 
   /** Toggle a per-task flag and persist immediately. */
   toggleProcessingTask(task: ProcessingTaskId): void {
@@ -522,7 +400,6 @@ export class AdminComponent implements OnInit, OnDestroy {
       if (groups.length === 0) {
         this.duplicatesMessage.set({ type: 'success', text: 'No duplicates found' });
       } else {
-        // Auto-select lower-quality copies (all but the first, which is best-first sorted).
         const toDelete = new Set<string>();
         for (const group of groups) {
           for (const song of group.slice(1)) toDelete.add(song.id);
@@ -580,34 +457,111 @@ export class AdminComponent implements OnInit, OnDestroy {
   }
 
   async loadIncompleteJobs(): Promise<void> {
-    this.jobsLoading.set(true);
     try {
-      const { jobs } = await firstValueFrom(this.downloadsApi.listAlbumJobs('incomplete'));
-      this.incompleteJobs.set(jobs);
+      // `incompleteJobs` here is the ServiceReview computed slice (read-only);
+      // refreshing the service re-reads on the next 5s tick. This is a no-op
+      // alias kept so existing spec callers still invoke a method.
+      void this.reviewSvc.incompleteJobs();
     } catch {
-      this.incompleteJobs.set([]);
-    } finally {
-      this.jobsLoading.set(false);
+      /* ServiceReview already swallows — keep graceful */
     }
   }
 
-  async loadUntracked(): Promise<void> {
-    this.untrackedLoading.set(true);
+  /** Manual "Check now" — forces a fresh GitHub poll (the data is then
+   *  re-picked up by ServiceReview on the next 5s tick; we also refresh
+   *  inline so the user sees the result without waiting). */
+  async checkUpdateNow(): Promise<void> {
+    if (this.checkingUpdate()) return;
+    this.checkingUpdate.set(true);
     try {
-      const { total, rows } = await firstValueFrom(this.downloadsApi.getUntrackedDownloads(200));
-      this.untracked.set(rows);
-      this.untrackedTotal.set(total);
+      await firstValueFrom(this.api.getUpdateCheck(true));
+      await this.reviewSvc.refresh();
     } catch {
-      this.untracked.set([]);
-      this.untrackedTotal.set(0);
+      /* non-fatal */
     } finally {
-      this.untrackedLoading.set(false);
+      this.checkingUpdate.set(false);
+    }
+  }
+  /** Local setter alias so the template's button click stays terse. */
+  loadUpdateCheck(refresh = false): Promise<void> {
+    return this.checkUpdateNow().then(() => undefined);
+  }
+
+  async runBackup(): Promise<void> {
+    if (this.backingUp()) return;
+    this.backingUp.set(true);
+    this.backupMsg.set(null);
+    try {
+      const info = await firstValueFrom(this.api.runBackup());
+      this.backupMsg.set(`Backup ${info.name} created (${this.formatBackupSize(info.sizeBytes)}).`);
+      await this.reviewSvc.refresh();
+    } catch {
+      this.backupMsg.set('Backup failed — see server logs.');
+    } finally {
+      this.backingUp.set(false);
     }
   }
 
-  // Open the album-hunt modal for a recorded job. Only jobs that still carry a
-  // Lidarr album id can be re-hunted (the hunt flow keys off it).
-  retryHunt(job: AlbumJob): void {
+  formatBackupSize(bytes: number): string {
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+  }
+
+  formatBackupDate(ms: number): string {
+    return new Date(ms).toLocaleString();
+  }
+
+  async loadFragments(): Promise<void> {
+    if (this.loadingFragments()) return;
+    this.loadingFragments.set(true);
+    this.fragmentsError.set(null);
+    try {
+      this.fragments.set(await firstValueFrom(this.libraryApi.getFragments()));
+    } catch (err) {
+      this.fragmentsError.set(
+        err instanceof Error ? err.message : 'Failed to load fragmentation report.',
+      );
+      this.fragments.set(null);
+    } finally {
+      this.loadingFragments.set(false);
+    }
+  }
+
+  async syncLibrary(): Promise<void> {
+    if (this.syncing()) return;
+    this.syncing.set(true);
+    this.syncMsg.set(null);
+    try {
+      await firstValueFrom(this.libraryApi.resyncLibrary());
+      this.syncMsg.set('Library rescan complete.');
+      await this.reviewSvc.refresh();
+    } catch (err) {
+      this.syncMsg.set(
+        err instanceof Error ? err.message : 'Library rescan failed — is the server configured?',
+      );
+    } finally {
+      this.syncing.set(false);
+    }
+  }
+
+  async optimizeAllMetadata(): Promise<void> {
+    if (this.optimizingMetadata()) return;
+    this.optimizingMetadata.set(true);
+    this.optimizeMetadataMsg.set(null);
+    try {
+      const r = await firstValueFrom(this.libraryApi.optimizeAllMetadata());
+      this.optimizeMetadataMsg.set(
+        `Checked ${r.albums} album(s): ${r.coversUpdated} cover(s), ${r.yearsUpdated} year(s) updated.`,
+      );
+    } catch {
+      this.optimizeMetadataMsg.set('Failed — Lidarr unavailable or not configured.');
+    } finally {
+      this.optimizingMetadata.set(false);
+    }
+  }
+
+  retryHunt(job: IncompleteAlbumJob): void {
     if (job.lidarrAlbumId == null) return;
     this.retryArtist.set(job.artistName ?? '');
     this.retryAlbum.set({
@@ -629,8 +583,7 @@ export class AdminComponent implements OnInit, OnDestroy {
 
   onRetryDownloaded(): void {
     this.retryAlbum.set(null);
-    // The job will move back to 'active'; refresh shortly so the list reflects it.
-    setTimeout(() => this.loadIncompleteJobs(), 1500);
+    setTimeout(() => this.reviewSvc.refresh(), 1500);
   }
 
   jobStateClass(state: string): string {
@@ -644,6 +597,7 @@ export class AdminComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    if (this.reviewDispose) this.reviewDispose();
     this.disconnectLogStream();
     this.processingStream?.close();
     this.processingStream = null;
@@ -653,10 +607,14 @@ export class AdminComponent implements OnInit, OnDestroy {
     return new Date(dateStr + 'Z').toLocaleDateString();
   }
 
+  formatAuditTime(ms: number): string {
+    return new Date(ms).toLocaleString();
+  }
+
   getBadgeColor(svc: 'slskd'): string {
-    const status = this.systemStatus();
+    const status = this.servicesState();
     if (!status) return 'text-theme-muted';
-    const health = status[svc];
+    const health = status.slskd;
     const connected = health.connected;
     return connected
       ? 'text-status-done'
@@ -666,17 +624,17 @@ export class AdminComponent implements OnInit, OnDestroy {
   }
 
   getDotColor(svc: 'slskd'): string {
-    const status = this.systemStatus();
+    const status = this.servicesState();
     if (!status) return 'bg-theme-muted';
-    const health = status[svc];
+    const health = status.slskd;
     const connected = health.connected;
     return connected ? 'bg-emerald-500' : health.healthy ? 'bg-amber-400' : 'bg-red-500';
   }
 
   getBadgeLabel(svc: 'slskd'): string {
-    const status = this.systemStatus();
+    const status = this.servicesState();
     if (!status) return '—';
-    const health = status[svc];
+    const health = status.slskd;
     const connected = health.connected;
     return connected ? 'Connected' : health.healthy ? 'Disconnected' : 'Unreachable';
   }
@@ -686,7 +644,6 @@ export class AdminComponent implements OnInit, OnDestroy {
   async setRole(user: AdminUser, newRole: Role): Promise<void> {
     if (newRole === user.role) return;
     const prevRole = user.role;
-    // Optimistic — reflect instantly, roll back on error.
     this.users.update((prev) => prev.map((u) => (u.id === user.id ? { ...u, role: newRole } : u)));
     try {
       await firstValueFrom(this.api.updateUserRole(user.id, newRole));
@@ -762,7 +719,7 @@ export class AdminComponent implements OnInit, OnDestroy {
     this.restarting.update((prev) => ({ ...prev, [service]: true }));
     try {
       await firstValueFrom(this.api.restartService(service));
-      setTimeout(() => this.loadSystemStatus(), 3000);
+      setTimeout(() => this.reviewSvc.refresh(), 3000);
     } catch (err) {
       this.error.set(err instanceof Error ? err.message : `Failed to restart ${service}`);
     } finally {
@@ -809,11 +766,9 @@ export class AdminComponent implements OnInit, OnDestroy {
       src.close();
       this.logEventSource = null;
       if (everConnected) {
-        // Transient disconnect — reconnect
         this.logStreamStatus.set('connecting');
         this.logReconnectTimer = setTimeout(() => this.connectLogStream(), 5000);
       } else {
-        // Never established (e.g. 503) — don't retry
         this.logStreamStatus.set('disconnected');
       }
     };
@@ -829,10 +784,9 @@ export class AdminComponent implements OnInit, OnDestroy {
   }
 
   private scrollLogsToBottom(): void {
-    // Use setTimeout to allow Angular to render new lines first
     setTimeout(() => {
       const el = document.querySelector('.log-scroll-container');
-      if (el) el.scrollTop = el.scrollHeight;
+      if (el) (el as HTMLElement).scrollTop = (el as HTMLElement).scrollHeight;
     }, 0);
   }
 
@@ -849,16 +803,10 @@ export class AdminComponent implements OnInit, OnDestroy {
     }
   }
 
-  private async loadSystemStatus(): Promise<void> {
-    try {
-      const [status, scan] = await Promise.all([
-        firstValueFrom(this.api.getStatus()),
-        firstValueFrom(this.api.getScanStatus()),
-      ]);
-      this.systemStatus.set(status as any);
-      this.scanStatus.set(scan);
-    } catch {
-      /* non-fatal */
-    }
-  }
+  /** Template helper for backups row template — kept as a no-op alias so
+   *  existing template expressions continue to compile. */
+  trackBackupName = (_: number, b: BackupInfo) => b.name;
+  /** Same idea for the new Incomplete / Untracked tables. */
+  trackJobId = (_: number, j: IncompleteAlbumJob) => j.id;
+  trackUntracked = (_: number, u: UntrackedDownload) => u.transferKey;
 }

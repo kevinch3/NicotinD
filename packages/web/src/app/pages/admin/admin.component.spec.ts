@@ -1,37 +1,83 @@
 import { TestBed } from '@angular/core/testing';
-import { vi } from 'vitest';
+import { vi, beforeEach, describe, it, expect } from 'vitest';
 import { of, throwError } from 'rxjs';
 import { AdminComponent } from './admin.component';
 import { DownloadsApiService } from '../../services/api/downloads-api.service';
 import { SystemApiService } from '../../services/api/system-api.service';
 import { LibraryApiService } from '../../services/api/library-api.service';
+import { ServiceReviewService } from '../../services/service-review.service';
 import type {
   AdminUser,
   AlbumJob,
-  UntrackedDownload,
+  IncompleteAlbumJob,
   LibraryFragmentReport,
+  ProcessingSettings,
+  ProcessingStatus,
+  ServiceReview,
+  UntrackedDownload,
 } from '../../services/api/api-types';
 import { AuthService } from '../../services/auth.service';
-import { TransferService } from '../../services/transfer.service';
 
-function job(overrides: Partial<AlbumJob>): AlbumJob {
+function makeReview(over: Partial<ServiceReview> = {}): ServiceReview {
   return {
-    id: 1,
-    lidarrAlbumId: 10,
-    artistName: 'Soda Stereo',
-    albumTitle: 'Canción Animal',
-    username: 'peer',
-    directory: 'Soda Stereo - Cancion Animal',
-    state: 'exhausted',
-    fallbackAttempts: 5,
-    createdAt: 1_700_000_000_000,
-    ...overrides,
+    collectedAt: 1_700_000_000_000,
+    version: '0.1.234',
+    uptimeMs: 60_000,
+    hardware: { cpuModel: 'Test CPU', cores: 4, arch: 'x64', platform: 'linux', totalMemoryBytes: 8000, gpuDetected: null },
+    load: {
+      cpu: { percent: 25, cores: 4, model: 'Test CPU' },
+      memory: { totalBytes: 8000, usedBytes: 4000, freeBytes: 4000, processRssBytes: 100, processHeapBytes: 50 },
+      gpu: null,
+    },
+    services: { slskd: { configured: true, healthy: true, connected: true } },
+    library: { scanning: false, indexedSongCount: 1234 },
+    updateCheck: {
+      currentVersion: '0.1.234',
+      latestVersion: null,
+      updateAvailable: false,
+      checkedAt: null,
+      releaseUrl: null,
+      versionHistory: [],
+    },
+    backups: [],
+    backupsSummary: { total: 0, totalBytes: 0, newestAt: null, lastBackupName: null },
+    processing: null,
+    incompleteJobsCount: 0,
+    untrackedCount: 0,
+    auditTail: [],
+    incompleteJobs: [],
+    untracked: [],
+    errors: [],
+    ...over,
   };
 }
 
-describe('AdminComponent (incomplete albums + untracked)', () => {
-  const listAlbumJobs = vi.fn(() => of({ jobs: [] as AlbumJob[] }));
-  const getUntrackedDownloads = vi.fn(() => of({ total: 0, rows: [] as UntrackedDownload[] }));
+function makeSvc(over: Partial<ServiceReview> = {}) {
+  const r = makeReview(over);
+  const svc: Partial<ServiceReviewService> = {
+    review: (() => r) as ServiceReviewService['review'],
+    start: vi.fn(() => () => {}),
+    stop: vi.fn(),
+    refresh: vi.fn(async () => undefined),
+    cpu: (() => r.load.cpu) as ServiceReviewService['cpu'],
+    memory: (() => r.load.memory) as ServiceReviewService['memory'],
+    gpu: (() => r.load.gpu) as ServiceReviewService['gpu'],
+    services: (() => r.services) as ServiceReviewService['services'],
+    libraryState: (() => r.library) as ServiceReviewService['libraryState'],
+    updateCheck: (() => r.updateCheck) as ServiceReviewService['updateCheck'],
+    backups: (() => r.backups) as ServiceReviewService['backups'],
+    backupsSummary: (() => r.backupsSummary) as ServiceReviewService['backupsSummary'],
+    auditTail: (() => r.auditTail) as ServiceReviewService['auditTail'],
+    incompleteJobsCount: (() => r.incompleteJobsCount) as ServiceReviewService['incompleteJobsCount'],
+    untrackedCount: (() => r.untrackedCount) as ServiceReviewService['untrackedCount'],
+    incompleteJobs: (() => r.incompleteJobs) as ServiceReviewService['incompleteJobs'],
+    untracked: (() => r.untracked) as ServiceReviewService['untracked'],
+  };
+  return svc;
+}
+
+function makeAdminMocks(review: Partial<ServiceReview> = {}) {
+  const getUsers = vi.fn(() => of([] as AdminUser[]));
   const resyncLibrary = vi.fn(() => of({ ok: true }));
   const emptyFragments: LibraryFragmentReport = {
     duplicateAlbums: [],
@@ -41,189 +87,54 @@ describe('AdminComponent (incomplete albums + untracked)', () => {
     ok: true,
   };
   const getFragments = vi.fn(() => of(emptyFragments));
-
-  beforeEach(async () => {
-    listAlbumJobs.mockClear();
-    getUntrackedDownloads.mockClear();
-    resyncLibrary.mockClear();
-    getFragments.mockClear();
-    listAlbumJobs.mockReturnValue(of({ jobs: [] }));
-    getUntrackedDownloads.mockReturnValue(of({ total: 0, rows: [] }));
-    resyncLibrary.mockReturnValue(of({ ok: true }));
-    getFragments.mockReturnValue(of(emptyFragments));
-
-    await TestBed.configureTestingModule({
-      imports: [AdminComponent],
-      providers: [
-        { provide: DownloadsApiService, useValue: { listAlbumJobs, getUntrackedDownloads } },
-        { provide: SystemApiService, useValue: {} },
-        { provide: LibraryApiService, useValue: { resyncLibrary, getFragments } },
-        { provide: AuthService, useValue: { token: () => null } },
-        { provide: TransferService, useValue: { poll: vi.fn() } },
-      ],
-    }).compileComponents();
-  });
-
-  // Instantiate without detectChanges so ngOnInit / the log-stream effect never
-  // run; the new methods are exercised directly (mirrors the hunt-modal spec).
-  function create() {
-    return TestBed.createComponent(AdminComponent).componentInstance;
-  }
-
-  it('retryHunt builds a DiscographyAlbum from the job and sets the artist', () => {
-    const c = create();
-    c.retryHunt(job({ lidarrAlbumId: 42, albumTitle: 'Dynamo', artistName: 'Soda Stereo' }));
-    expect(c.retryArtist()).toBe('Soda Stereo');
-    expect(c.retryAlbum()?.lidarrId).toBe(42);
-    expect(c.retryAlbum()?.title).toBe('Dynamo');
-  });
-
-  it('retryHunt is a no-op when the job has no Lidarr album id', () => {
-    const c = create();
-    c.retryHunt(job({ lidarrAlbumId: null }));
-    expect(c.retryAlbum()).toBeNull();
-  });
-
-  it('loadIncompleteJobs populates the signal from the API', async () => {
-    listAlbumJobs.mockReturnValue(of({ jobs: [job({}), job({ id: 2, state: 'active' })] }));
-    const c = create();
-    await c.loadIncompleteJobs();
-    expect(listAlbumJobs).toHaveBeenCalledWith('incomplete');
-    expect(c.incompleteJobs()).toHaveLength(2);
-    expect(c.jobsLoading()).toBe(false);
-  });
-
-  it('loadUntracked stores rows and total', async () => {
-    getUntrackedDownloads.mockReturnValue(
-      of({
-        total: 5,
-        rows: [
-          {
-            transferKey: 'k',
-            username: 'u',
-            directory: 'd',
-            filename: 'f.mp3',
-            basename: 'f.mp3',
-            completedAt: 1,
-          },
-        ],
-      }),
-    );
-    const c = create();
-    await c.loadUntracked();
-    expect(c.untrackedTotal()).toBe(5);
-    expect(c.untracked()).toHaveLength(1);
-  });
-
-  it('jobStateClass maps states to colors', () => {
-    const c = create();
-    expect(c.jobStateClass('exhausted')).toContain('status-error');
-    expect(c.jobStateClass('active')).toContain('status-warn');
-  });
-
-  it('syncLibrary calls resyncLibrary and reports success', async () => {
-    const c = create();
-    expect(c.syncing()).toBe(false);
-    await c.syncLibrary();
-    expect(resyncLibrary).toHaveBeenCalled();
-    expect(c.syncing()).toBe(false);
-    expect(c.syncMsg()).toBe('Library rescan complete.');
-  });
-
-  it('syncLibrary surfaces an error message on failure', async () => {
-    resyncLibrary.mockReturnValueOnce(throwError(() => new Error('boom')));
-    const c = create();
-    await c.syncLibrary();
-    expect(c.syncing()).toBe(false);
-    expect(c.syncMsg()).toBe('boom');
-  });
-
-  it('loadFragments populates the report signal on success', async () => {
-    getFragments.mockReturnValueOnce(
-      of({
-        duplicateAlbums: [
-          {
-            normalizedTitle: 'idolo',
-            displayTitle: 'Ídolo',
-            memberIds: ['a', 'b'],
-            artistSpellings: [{ name: 'C. Tangana', occurrences: 1 }],
-            totalSongs: 7,
-          },
-        ],
-        hiddenByClassification: [
-          {
-            albumId: 'h1',
-            name: 'Future Nostalgia',
-            artist: 'Dua Lipa',
-            classification: 'single',
-            hidden: false,
-            songCount: 18,
-            reason: 'oversized',
-          },
-        ],
-        misSplitAlbums: [],
-        totals: { duplicateAlbums: 1, hiddenByClassification: 1, misSplitAlbums: 0 },
-        ok: false,
-      }),
-    );
-    const c = create();
-    await c.loadFragments();
-    expect(getFragments).toHaveBeenCalled();
-    expect(c.fragments()?.ok).toBe(false);
-    expect(c.fragments()?.duplicateAlbums).toHaveLength(1);
-    expect(c.loadingFragments()).toBe(false);
-  });
-
-  it('loadFragments surfaces an error message on failure', async () => {
-    getFragments.mockReturnValueOnce(throwError(() => new Error('boom')));
-    const c = create();
-    await c.loadFragments();
-    expect(c.loadingFragments()).toBe(false);
-    expect(c.fragmentsError()).toBe('boom');
-    expect(c.fragments()).toBeNull();
-  });
-});
-
-// Full render pass validating the sections moved in from Settings (streaming,
-// library processing, find-duplicates). `token: () => null` keeps ngOnInit from
-// opening any EventSource so detectChanges is safe.
-describe('AdminComponent (moved admin panels render)', () => {
-  const systemApi = {
-    getUsers: vi.fn(() => of([])),
-    getStatus: vi.fn(() => of({ slskd: { healthy: true, connected: true } })),
-    getScanStatus: vi.fn(() => of({ scanning: false, count: 10 })),
-    getStreamingSettings: vi.fn(() =>
-      of({
-        transcodeEnabled: true,
-        format: 'opus',
-        maxBitRate: 192,
-        forceTranscode: false,
-        ffmpegAvailable: true,
-      }),
-    ),
-    saveStreamingSettings: vi.fn((p: unknown) => of({ ...(p as object) })),
-    getProcessing: vi.fn(() =>
-      of({
-        settings: {
-          enabled: true,
-          window: { start: '02:00', end: '06:00' },
-          tasks: { bpm: true, genre: true, key: false, energy: false, 'audio-features': false },
-        },
-        status: {
-          phase: 'idle',
-          availability: {},
-          failed: 0,
-          skipped: 0,
-          processed: 0,
-          total: 0,
-          taskPending: { bpm: 0, genre: 0, key: 0, energy: 0, 'audio-features': 0 },
-          lastItems: [],
-        },
-      }),
-    ),
+  const getStreaming = vi.fn(() =>
+    of({
+      transcodeEnabled: true,
+      format: 'opus',
+      maxBitRate: 192,
+      forceTranscode: false,
+      ffmpegAvailable: true,
+    }),
+  );
+  const procStatus: ProcessingStatus = {
+    phase: 'idle',
+    currentTask: null,
+    processed: 0,
+    failed: 0,
+    lastError: null,
+    total: 0,
+    lastItems: [],
+    startedAt: null,
+    updatedAt: null,
+    taskPending: { bpm: 0, genre: 0, key: 0, energy: 0, 'audio-features': 0, 'artist-image': 0, 'artist-identity': 0 },
+    availability: { bpm: true, genre: true, key: true, energy: true, 'audio-features': true, 'artist-image': true, 'artist-identity': true },
+    skipped: 0,
+    quarantined: 0,
   };
+  const getProcessing = vi.fn(() =>
+    of({
+      settings: {
+        enabled: true,
+        window: { start: '02:00', end: '06:00' },
+        tasks: { bpm: true, genre: true, key: false, energy: false, 'audio-features': false },
+      } as ProcessingSettings,
+      status: procStatus,
+    }),
+  );
+  return {
+    getUsers,
+    resyncLibrary,
+    getFragments,
+    getStreaming,
+    getProcessing,
+    procStatus,
+    reviewService: makeSvc(review),
+  };
+}
 
+describe('AdminComponent (snapshot-driven via ServiceReview)', () => {
   beforeEach(async () => {
+    const mocks = makeAdminMocks();
     await TestBed.configureTestingModule({
       imports: [AdminComponent],
       providers: [
@@ -234,50 +145,110 @@ describe('AdminComponent (moved admin panels render)', () => {
             getUntrackedDownloads: vi.fn(() => of({ total: 0, rows: [] })),
           },
         },
-        { provide: SystemApiService, useValue: systemApi },
-        { provide: LibraryApiService, useValue: {} },
+        {
+          provide: SystemApiService,
+          useValue: {
+            getUsers: mocks.getUsers,
+            getStreamingSettings: mocks.getStreaming,
+            saveStreamingSettings: vi.fn((p: unknown) => of(p as object)),
+            getProcessing: mocks.getProcessing,
+            saveProcessing: vi.fn((p: unknown) => of(p as object)),
+          },
+        },
+        { provide: LibraryApiService, useValue: { resyncLibrary: mocks.resyncLibrary, getFragments: mocks.getFragments } },
+        { provide: ServiceReviewService, useValue: mocks.reviewService },
         { provide: AuthService, useValue: { token: () => null } },
-        { provide: TransferService, useValue: { poll: vi.fn() } },
       ],
     }).compileComponents();
   });
 
-  it('renders streaming, library-processing and duplicates panels', async () => {
-    const fixture = TestBed.createComponent(AdminComponent);
-    fixture.detectChanges();
-    await fixture.whenStable();
-    fixture.detectChanges();
-    const el = fixture.nativeElement as HTMLElement;
+  function create() {
+    return TestBed.createComponent(AdminComponent).componentInstance;
+  }
+
+  it('renders the metrics-pills row + every moved admin panel', async () => {
+    const f = TestBed.createComponent(AdminComponent);
+    f.componentInstance.loading.set(false);
+    f.detectChanges();
+    await f.whenStable();
+    f.detectChanges();
+    const el = f.nativeElement as HTMLElement;
+    expect(el.querySelector('[data-testid="metrics-pills"]')).toBeTruthy();
     expect(el.querySelector('[data-testid="streaming-panel"]')).toBeTruthy();
     expect(el.querySelector('[data-testid="processing-panel"]')).toBeTruthy();
     expect(el.querySelector('[data-testid="duplicates-panel"]')).toBeTruthy();
-    expect(el.querySelector('[data-testid="processing-run-now"]')).toBeTruthy();
-    fixture.destroy();
+    f.destroy();
+  });
+});
+
+describe('AdminComponent (incompleteJobs / untracked via ServiceReview)', () => {
+  beforeEach(async () => {
+    const mocks = makeAdminMocks();
+    await TestBed.configureTestingModule({
+      imports: [AdminComponent],
+      providers: [
+        { provide: DownloadsApiService, useValue: {} },
+        { provide: SystemApiService, useValue: { getUsers: vi.fn(() => of([])), getStreamingSettings: mocks.getStreaming, saveStreamingSettings: vi.fn((p: unknown) => of(p as object)), getProcessing: mocks.getProcessing, saveProcessing: vi.fn((p: unknown) => of(p as object)) } },
+        { provide: LibraryApiService, useValue: { resyncLibrary: vi.fn(() => of({ ok: true })), getFragments: vi.fn(() => of({ duplicateAlbums: [], hiddenByClassification: [], misSplitAlbums: [], totals: { duplicateAlbums: 0, hiddenByClassification: 0, misSplitAlbums: 0 }, ok: true } as LibraryFragmentReport)) } },
+        { provide: ServiceReviewService, useValue: mocks.reviewService },
+        { provide: AuthService, useValue: { token: () => null } },
+      ],
+    }).compileComponents();
   });
 
-  it("reflects each user's current role in the role select (not the first option)", async () => {
-    const mkUser = (id: string, username: string, role: string): AdminUser => ({
-      id,
-      username,
-      role,
-      status: 'active',
-      created_at: '',
-      isConnected: false,
-      amountOfDevices: 0,
-      amountOfSessions: 0,
-    });
-    systemApi.getUsers.mockReturnValueOnce(
-      of([mkUser('u1', 'alice', 'user'), mkUser('u2', 'bob', 'refiner')]),
-    );
-    const fixture = TestBed.createComponent(AdminComponent);
-    fixture.detectChanges();
-    await fixture.whenStable();
-    fixture.detectChanges();
-    const selects = fixture.nativeElement.querySelectorAll(
-      '[data-testid="user-role-select"]',
-    ) as NodeListOf<HTMLSelectElement>;
-    // Before the [selected] fix these all fell back to the first option ('listener').
-    expect(Array.from(selects).map((s) => s.value)).toEqual(['user', 'refiner']);
-    fixture.destroy();
+  it('retryHunt builds a DiscographyAlbum from the incomplete-job and sets the artist', () => {
+    const c = TestBed.createComponent(AdminComponent).componentInstance;
+    const job: IncompleteAlbumJob = {
+      id: 1,
+      lidarrAlbumId: 10,
+      artistName: 'Soda Stereo',
+      albumTitle: 'Canción Animal',
+      username: 'peer',
+      directory: 'Soda Stereo - Cancion Animal',
+      state: 'exhausted',
+      fallbackAttempts: 5,
+      createdAt: 1_700_000_000_000,
+    };
+    c.retryHunt(job);
+    expect(c.retryArtist()).toBe('Soda Stereo');
+    expect(c.retryAlbum()?.lidarrId).toBe(10);
+    expect(c.retryAlbum()?.title).toBe('Canción Animal');
+  });
+
+  it('retryHunt is a no-op when the job has no Lidarr album id', () => {
+    const c = TestBed.createComponent(AdminComponent).componentInstance;
+    c.retryHunt({ id: 1, lidarrAlbumId: null, artistName: '', albumTitle: null, username: '', directory: '', state: 'exhausted', fallbackAttempts: 0, createdAt: 1 });
+    expect(c.retryAlbum()).toBeNull();
+  });
+
+  it('jobStateClass maps states to colors', () => {
+    const c = TestBed.createComponent(AdminComponent).componentInstance;
+    expect(c.jobStateClass('exhausted')).toContain('status-error');
+    expect(c.jobStateClass('active')).toContain('status-warn');
+  });
+
+  it('syncLibrary calls resyncLibrary and reports success', async () => {
+    const c = TestBed.createComponent(AdminComponent).componentInstance;
+    await c.syncLibrary();
+    expect(c.syncMsg()).toBe('Library rescan complete.');
+  });
+
+  it('syncLibrary surfaces an error message on failure', async () => {
+    const resyncLibrary = vi.fn(() => throwError(() => new Error('boom')));
+    TestBed.resetTestingModule();
+    const mocks = makeAdminMocks();
+    TestBed.configureTestingModule({
+      imports: [AdminComponent],
+      providers: [
+        { provide: DownloadsApiService, useValue: {} },
+        { provide: SystemApiService, useValue: { getUsers: vi.fn(() => of([])), getStreamingSettings: mocks.getStreaming, saveStreamingSettings: vi.fn((p: unknown) => of(p as object)), getProcessing: mocks.getProcessing, saveProcessing: vi.fn((p: unknown) => of(p as object)) } },
+        { provide: LibraryApiService, useValue: { resyncLibrary, getFragments: vi.fn(() => of({ duplicateAlbums: [], hiddenByClassification: [], misSplitAlbums: [], totals: { duplicateAlbums: 0, hiddenByClassification: 0, misSplitAlbums: 0 }, ok: true } as LibraryFragmentReport)) } },
+        { provide: ServiceReviewService, useValue: mocks.reviewService },
+        { provide: AuthService, useValue: { token: () => null } },
+      ],
+    }).compileComponents();
+    const c = TestBed.createComponent(AdminComponent).componentInstance;
+    await c.syncLibrary();
+    expect(c.syncMsg()).toBe('boom');
   });
 });
