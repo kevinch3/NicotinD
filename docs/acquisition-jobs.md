@@ -192,3 +192,15 @@ full rescan re-reads the value from the tag instead of wiping it.
    (`enrichWithAcquisitionJobs`), since every NicotinD-initiated album download
    writes those keys and the fallback repoints them; external transfers fall
    back to folder-name parsing on the web.
+6. **Downloads feed 3→2 endpoints** (deferred follow-up) — the downloads page
+   still merges three sources: slskd `/downloads`, the unified `/downloads/jobs`,
+   and `/acquire/jobs` for URL jobs. Collapsing the URL lane into the unified feed
+   is **not just a fetch removal**: `/acquire/jobs` (via `TransferService`) is the
+   source of truth for every URL-job *action* — the "Clear finished" buckets and
+   the retry/cancel/open-playlist handlers (`downloads.component.ts`) — and the
+   unified `AcquisitionJobView` deliberately skips URL jobs (they carry
+   url/playlist/dest-album/track fields the `acquisition_jobs` mirror lacks). Doing
+   it means `LEFT JOIN acquire_jobs` into `listJobFeed` for `kind='url'` **and**
+   rewiring those web handlers onto the enriched feed. Left as a follow-up: higher
+   regression risk on the URL-download UX for a one-endpoint gain. `/acquire/jobs`
+   stays regardless (the search page's link-intent card polls it).
