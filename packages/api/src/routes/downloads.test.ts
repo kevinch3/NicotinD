@@ -2,10 +2,9 @@ import { describe, expect, it, beforeEach, mock } from 'bun:test';
 import { Hono } from 'hono';
 import type { AuthEnv } from '../middleware/auth.js';
 import { Database } from 'bun:sqlite';
-import { downloadRoutes, enrichWithAlbumJobs } from './downloads.js';
+import { downloadRoutes } from './downloads.js';
 import { albumIdFor } from '../services/library-scanner.js';
 import { createJob } from '../services/acquisition-job-store.js';
-import type { SlskdUserTransferGroup } from '@nicotind/core';
 import { ProviderRegistry } from '../services/provider-registry.js';
 import { SlskdSearchProvider } from '../services/providers/slskd-provider.js';
 import type { SlskdRef } from '../index.js';
@@ -108,44 +107,6 @@ describe('downloads routes', () => {
     const data = await res.json();
     expect(res.status).toBe(200);
     expect(data[0].directories[0].files).toHaveLength(2);
-  });
-
-  it('GET / enriches a folder that matches an active album job with canonical metadata', async () => {
-    testDb.run(
-      `INSERT INTO album_jobs
-        (lidarr_album_id, username, directory, canonical_tracks_json, alternates_json,
-         artist_name, album_title, state, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?)`,
-      [
-        1,
-        'user1',
-        'dir1',
-        JSON.stringify(['a', 'b', 'c', 'd']),
-        '[]',
-        'Patricio Rey',
-        'Oktubre',
-        Date.now(),
-      ],
-    );
-
-    const res = await app.request('/');
-    const data = (await res.json()) as Array<{
-      directories: Array<{
-        albumJob?: {
-          artistName: string;
-          albumTitle: string;
-          canonicalTrackCount: number;
-          albumId: string;
-        };
-      }>;
-    }>;
-
-    expect(data[0].directories[0].albumJob).toEqual({
-      artistName: 'Patricio Rey',
-      albumTitle: 'Oktubre',
-      canonicalTrackCount: 4,
-      albumId: albumIdFor('Patricio Rey', 'Oktubre'),
-    });
   });
 
   it('GET / enriches via stored acquisition-job transfer keys (no album_jobs row needed)', async () => {
@@ -281,39 +242,5 @@ describe('downloads routes', () => {
     const hidden = testDb.query('SELECT id FROM hidden_transfers').all() as Array<{ id: string }>;
     const hiddenIds = hidden.map((h) => h.id);
     expect(hiddenIds).toContain('guid3');
-  });
-});
-
-describe('enrichWithAlbumJobs', () => {
-  beforeEach(() => {
-    testDb.run('DELETE FROM album_jobs');
-  });
-
-  it('attaches a resolved albumId matching the destination album', () => {
-    testDb.run(
-      `INSERT INTO album_jobs
-        (username, directory, artist_name, album_title, canonical_tracks_json, alternates_json,
-         state, created_at)
-       VALUES (?, ?, ?, ?, ?, '[]', 'active', ?)`,
-      [
-        'peer1',
-        'wave1',
-        'Lenny Kravitz',
-        'Circus',
-        JSON.stringify(['Circus', 'Believe']),
-        Date.now(),
-      ],
-    );
-    const groups: SlskdUserTransferGroup[] = [
-      {
-        username: 'peer1',
-        directories: [{ directory: 'wave1', fileCount: 1, files: [] }],
-      } as unknown as SlskdUserTransferGroup,
-    ];
-    const [group] = enrichWithAlbumJobs(testDb, groups);
-    const meta = group!.directories[0]!.albumJob;
-    expect(meta).toBeDefined();
-    expect(meta!.albumId).toBe(albumIdFor('Lenny Kravitz', 'Circus'));
-    expect(meta!.canonicalTrackCount).toBe(2);
   });
 });

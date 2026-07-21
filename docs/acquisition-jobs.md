@@ -186,5 +186,9 @@ full rescan re-reads the value from the tag instead of wiping it.
    **`jobAlbumPairs(db, {activeOnly?})`** / **`jobCanonicalTracklists(db)`**
    helpers in `acquisition-job-store.ts` (one source, resilient to missing
    tables). `transfer-group-keys.ts` remains the permanent safety net for
-   transfers with no job at all (enqueued outside NicotinD). `enrichWithAlbumJobs`
-   remains one release as the legacy feed-label fallback.
+   transfers with no job at all (enqueued outside NicotinD). The legacy
+   folder-string **`enrichWithAlbumJobs` feed-label fallback is retired** — the
+   feed now labels download folders purely by the stored per-file transfer key
+   (`enrichWithAcquisitionJobs`), since every NicotinD-initiated album download
+   writes those keys and the fallback repoints them; external transfers fall
+   back to folder-name parsing on the web.

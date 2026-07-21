@@ -8,11 +8,7 @@ import { createLogger } from '@nicotind/core';
 import { getDatabase } from '../db.js';
 import { requireAcquirer } from '../middleware/current-user.js';
 import { albumIdFor } from '../services/library-scanner.js';
-import {
-  createJob,
-  jobMetaForTransfer,
-  listJobFeed,
-} from '../services/acquisition-job-store.js';
+import { createJob, jobMetaForTransfer, listJobFeed } from '../services/acquisition-job-store.js';
 
 const log = createLogger('downloads');
 
@@ -45,64 +41,6 @@ export function enrichWithAcquisitionJobs(
         };
       }
       return dir;
-    }),
-  }));
-}
-
-interface ActiveJobRow {
-  username: string;
-  directory: string;
-  artist_name: string | null;
-  album_title: string | null;
-  canonical_tracks_json: string;
-}
-
-/**
- * Attach `albumJob` (canonical artist/album/track-count) to every download
- * directory whose (username, peer directory) matches an active album-hunt job.
- * Pure given the rows — only reads the DB once up front. Direct (non-hunt)
- * downloads are returned unchanged so the UI falls back to folder-name parsing.
- */
-export function enrichWithAlbumJobs(
-  db: Database,
-  groups: SlskdUserTransferGroup[],
-): SlskdUserTransferGroup[] {
-  const rows = db
-    .query<ActiveJobRow, []>(
-      `SELECT username, directory, artist_name, album_title, canonical_tracks_json
-       FROM album_jobs WHERE state = 'active'`,
-    )
-    .all();
-
-  const byKey = new Map<
-    string,
-    { artistName: string; albumTitle: string; canonicalTrackCount: number; albumId: string }
-  >();
-  for (const r of rows) {
-    if (!r.artist_name || !r.album_title) continue;
-    let trackCount = 0;
-    try {
-      const tracks = JSON.parse(r.canonical_tracks_json) as unknown[];
-      trackCount = Array.isArray(tracks) ? tracks.length : 0;
-    } catch {
-      trackCount = 0;
-    }
-    byKey.set(`${r.username}::${r.directory}`, {
-      artistName: r.artist_name,
-      albumTitle: r.album_title,
-      canonicalTrackCount: trackCount,
-      albumId: albumIdFor(r.artist_name, r.album_title),
-    });
-  }
-
-  if (byKey.size === 0) return groups;
-
-  return groups.map((group) => ({
-    ...group,
-    directories: group.directories.map((dir) => {
-      if (dir.albumJob) return dir; // stored-key enrichment already labelled it
-      const meta = byKey.get(`${group.username}::${dir.directory}`);
-      return meta ? { ...dir, albumJob: meta } : dir;
     }),
   }));
 }
@@ -391,10 +329,12 @@ export function downloadRoutes(registry: ProviderRegistry, slskdRef: SlskdRef) {
 
       // Annotate folders that came from the album-hunt flow with their canonical
       // artist/album/track-count so the UI can show real metadata instead of the
-      // peer's noisy folder name. Matched by (username, peer directory).
-      // Stored transfer-key enrichment first; the legacy album_jobs folder
-      // match remains as fallback for pre-migration active downloads only.
-      return c.json(enrichWithAlbumJobs(db, enrichWithAcquisitionJobs(db, visible)), 200);
+      // peer's noisy folder name — matched by the stored per-file transfer key
+      // (`acquisition_job_items.transfer_key`, set at enqueue and repointed by the
+      // fallback). The legacy `(username, directory)` folder-string match is gone:
+      // every NicotinD-initiated album download now writes those keys, and truly
+      // external transfers fall back to folder-name parsing on the web.
+      return c.json(enrichWithAcquisitionJobs(db, visible), 200);
     },
   );
 
@@ -405,8 +345,7 @@ export function downloadRoutes(registry: ProviderRegistry, slskdRef: SlskdRef) {
     const db = getDatabase();
     const jobs = listJobFeed(db).map((job) => ({
       ...job,
-      albumId:
-        job.artistName && job.albumTitle ? albumIdFor(job.artistName, job.albumTitle) : null,
+      albumId: job.artistName && job.albumTitle ? albumIdFor(job.artistName, job.albumTitle) : null,
     }));
     return c.json(jobs, 200);
   });
