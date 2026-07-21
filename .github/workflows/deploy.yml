@@ -131,6 +131,13 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: ./gradlew assembleRelease
 
+      # Gradle emits a bare `app-release.apk`; rename it to the versioned,
+      # product-named scheme the other release assets use (NicotinD-<version>.apk)
+      # via $NICOTIND_VERSION_NAME (already in $GITHUB_ENV from "Derive Android version").
+      - name: Rename APK with version
+        working-directory: packages/mobile/android/app/build/outputs/apk/release
+        run: mv app-release.apk "NicotinD-${NICOTIND_VERSION_NAME}.apk"
+
       - name: Attach APK to the GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -205,13 +212,16 @@ jobs:
             -derivedDataPath build CODE_SIGNING_ALLOWED=NO build
           mkdir -p Payload
           cp -R build/Build/Products/Release-iphoneos/App.app Payload/
-          zip -r NicotinD-unsigned.ipa Payload
+          # Versioned, product-named scheme matching the other release assets
+          # (NicotinD-<version>-unsigned.ipa); $NICOTIND_IOS_SHORT_VERSION is
+          # already in $GITHUB_ENV from the "Derive iOS version" step above.
+          zip -r "NicotinD-${NICOTIND_IOS_SHORT_VERSION}-unsigned.ipa" Payload
 
       - name: Attach unsigned IPA to the GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          files: packages/mobile/ios/App/NicotinD-unsigned.ipa
+          files: packages/mobile/ios/App/NicotinD-*-unsigned.ipa
           fail_on_unmatched_files: true
 
   # Build the Linux desktop app (AppImage + deb) via electron-builder and
@@ -267,9 +277,10 @@ jobs:
         # creating a stray `v0.1.0` one.
         run: bunx electron-builder --linux --publish always -c.extraMetadata.version="${GITHUB_REF_NAME#v}"
 
-  # Build the macOS desktop app (dmg, x64+arm64) and publish it the same way
-  # (electron-updater reads `latest-mac.yml`). Unsigned — no Apple Developer
-  # ID in scope for v1 (electron-builder.yml already sets `identity: null`);
+  # Build the macOS desktop app (dmg, arm64 only — Intel/x64 dropped) and publish
+  # it the same way (electron-updater reads `latest-mac.yml`). Ad-hoc signed — no
+  # Apple Developer ID in scope for v1, so electron-builder.yml leaves `identity`
+  # UNSET (never `identity: null`, which would re-break arm64);
   # CSC_IDENTITY_AUTO_DISCOVERY=false stops electron-builder from probing the
   # runner's keychain for a signing identity to auto-use.
   desktop-mac:
