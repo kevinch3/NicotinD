@@ -555,7 +555,11 @@
        guided catalog/song results. Peer stats + the folder-tree browser live only
        inside this collapsed disclosure so normal users never see them. -->
   @if (
-    auth.canAcquire() && !loading() && search.query().trim() && search.networkState() !== 'idle'
+    auth.canAcquire() &&
+    !loading() &&
+    search.query().trim() &&
+    search.networkState() !== 'idle' &&
+    (networkAvailable() || hasNetwork())
   ) {
     <section class="mt-2" data-testid="advanced-network-search">
       <button
