@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.235](https://github.com/kevinch3/NicotinD/compare/v0.1.234...v0.1.235) (2026-07-21)
+
+### Features
+
+* quality chip on download cards + spotDL credential/quality wiring ([0d5982a](https://github.com/kevinch3/NicotinD/commit/0d5982a805541ebeed0419594f0a0312b1728345))
 ## [0.1.234](https://github.com/kevinch3/NicotinD/compare/v0.1.233...v0.1.234) (2026-07-21)
 ## [0.1.233](https://github.com/kevinch3/NicotinD/compare/v0.1.232...v0.1.233) (2026-07-21)
 
