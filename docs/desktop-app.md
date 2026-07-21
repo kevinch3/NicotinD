@@ -238,7 +238,11 @@ version, not `0.0.0`. This was verified end-to-end locally (stage → `bun insta
 
 `electron-builder.yml`: `appId: ar.kevinroberts.nicotind.desktop`; `asarUnpack` + `extraResources`
 keep the backend/bun/ffmpeg as real executables outside the asar; **linux** → AppImage + deb
-(category Audio); **macOS** → dmg (x64 + arm64). The icon pack is the multi-size PWA set
+(category Audio); **macOS** → dmg (**arm64 only** — the Intel/x64 target was dropped: current
+Apple hardware is all Apple Silicon, and building both doubled the ~10×-billed macOS CI time and
+release size; Intel-Mac users build from source). The `dmg.artifactName` is pinned to
+`${productName}-${version}-${arch}.${ext}` (→ `NicotinD-<v>-arm64.dmg`) for naming cohesion with
+the AppImage/deb. The icon pack is the multi-size PWA set
 (`packages/web/public/icons/`) staged into `build/icons/{16,24,32,48,64,128,256,512,1024}x{N}.png`
 by `scripts/stage-icons.mjs` (regenerated on every `dist`; uses `ffmpeg` `scale=…:flags=lanczos`
 — system ffmpeg first, falling back to the `ffmpeg-static` devDependency already present for the

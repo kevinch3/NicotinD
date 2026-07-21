@@ -241,7 +241,9 @@ browse → play.
   commit or a manual run) and runs in parallel with it — a failure here does **not** block the server
   deploy (no `needs` linkage), but it is **not** `continue-on-error`: a genuine build break turns the
   release run red so it can't ship a tag with no APK. It builds the web, `cap sync`s, decodes the
-  keystore, runs `./gradlew assembleRelease`, and
+  keystore, runs `./gradlew assembleRelease`, renames Gradle's bare `app-release.apk` to the
+  versioned `NicotinD-<version>.apk` (via `$NICOTIND_VERSION_NAME`, for naming cohesion with the
+  desktop assets), and
   attaches the APK to the GitHub Release for the version tag. Required repo secrets:
   `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`
   (until they're set, the job builds an unsigned APK / fails loudly — it never ships a broken keystore).

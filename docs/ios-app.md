@@ -274,8 +274,9 @@ generate the branded AppIcon (`bunx @capacitor/assets generate --ios`, from the
 committed `assets/` sources) → derive version (`scripts/ios-env.ts` →
 `$GITHUB_ENV`) → patch Info.plist (`scripts/ios-plist.ts`) → `xcodebuild …
 CODE_SIGNING_ALLOWED=NO build` →
-package `Payload/App.app` into `NicotinD-unsigned.ipa` → attach to the Release.
-A failure here does **not** block the server deploy.
+package `Payload/App.app` into the versioned `NicotinD-<version>-unsigned.ipa`
+(via `$NICOTIND_IOS_SHORT_VERSION`, for naming cohesion with the desktop/Android assets) → attach
+to the Release. A failure here does **not** block the server deploy.
 
 > **Cost:** GitHub-hosted `macos-*` runners bill at ~10× the Linux minute rate.
 > The job is bounded to releases (same gate as `deploy`), but it is a real new

@@ -95,10 +95,12 @@ deb:
     - libsecret-1-0
 
 mac:
+  # arm64 (Apple Silicon) only — the Intel (x64) dmg target was dropped: current
+  # Apple hardware is all arm64, and building both doubled macOS CI time (billed
+  # at ~10× the Linux rate) and release size. Intel-Mac users build from source.
   target:
     - target: dmg
       arch:
-        - x64
         - arm64
   category: public.app-category.music
   icon: build/icons
@@ -129,6 +131,10 @@ mac:
           NSIncludesSubdomains: false
 
 dmg:
+  # Pin the naming pattern explicitly so it stays cohesive with the AppImage
+  # (`${productName}-${version}.${ext}`) and the deb (`${productName}_${version}_${arch}`)
+  # rather than relying on electron-builder's implicit default. → NicotinD-<v>-arm64.dmg.
+  artifactName: ${productName}-${version}-${arch}.${ext}
   contents:
     - x: 130
       y: 220
