@@ -8,15 +8,22 @@ import { test, expect } from '@playwright/test';
  * Lidarr/slskd unreachable in e2e the catalog is empty so these are reachable.
  */
 test.describe('search', () => {
-  test('raw peer browsing is framed as Advanced, not a primary Soulseek lane', async ({ page }) => {
+  test('the Soulseek peer lane is hidden when Soulseek is not an available source', async ({
+    page,
+  }) => {
+    // The e2e server has no Soulseek creds (the network provider is disabled), so a
+    // user without the slskd extension must never see the raw peer-browsing lane —
+    // nor a nonsensical "No Soulseek results" empty state for a source they don't have.
     await page.goto('/search');
     await page.getByTestId('search-input').fill('nonexistent test query xyz');
     await page.getByTestId('search-submit').click();
 
-    const toggle = page.getByTestId('advanced-toggle');
-    await expect(toggle).toBeVisible();
-    await expect(toggle).toContainText('Advanced');
-    // The old raw-first framing must be gone.
+    // The status line confirms we're in the no-sources state (search has settled).
+    await expect(page.getByTestId('source-status')).toContainText('No acquisition sources enabled');
+
+    await expect(page.getByTestId('advanced-network-search')).toHaveCount(0);
+    await expect(page.getByText(/No Soulseek results/)).toHaveCount(0);
+    // The old raw-first framing must also be gone.
     await expect(page.getByText('Search Soulseek directly')).toHaveCount(0);
   });
 

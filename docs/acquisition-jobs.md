@@ -181,7 +181,26 @@ full rescan re-reads the value from the tag instead of wiping it.
    `album_jobs` row) are covered too: download suppression
    (`getDownloadingGroupKeys`, `routes/library.ts`), the curator's protected
    keys (`loadProtectedKeys`, `library-curator.ts`), and the scanner's
-   canonical-tracklist map (`canonicalByAlbum`, `library-scanner.ts`).
-   `transfer-group-keys.ts` remains the permanent safety net for transfers
-   with no job at all (enqueued outside NicotinD). `enrichWithAlbumJobs`
-   remains one release as the legacy feed-label fallback.
+   canonical-tracklist map (`canonicalByAlbum`, `library-scanner.ts`). The UNION
+   itself is no longer hand-written three times: all three call the shared
+   **`jobAlbumPairs(db, {activeOnly?})`** / **`jobCanonicalTracklists(db)`**
+   helpers in `acquisition-job-store.ts` (one source, resilient to missing
+   tables). `transfer-group-keys.ts` remains the permanent safety net for
+   transfers with no job at all (enqueued outside NicotinD). The legacy
+   folder-string **`enrichWithAlbumJobs` feed-label fallback is retired** — the
+   feed now labels download folders purely by the stored per-file transfer key
+   (`enrichWithAcquisitionJobs`), since every NicotinD-initiated album download
+   writes those keys and the fallback repoints them; external transfers fall
+   back to folder-name parsing on the web.
+6. **Downloads feed 3→2 endpoints** (deferred follow-up) — the downloads page
+   still merges three sources: slskd `/downloads`, the unified `/downloads/jobs`,
+   and `/acquire/jobs` for URL jobs. Collapsing the URL lane into the unified feed
+   is **not just a fetch removal**: `/acquire/jobs` (via `TransferService`) is the
+   source of truth for every URL-job *action* — the "Clear finished" buckets and
+   the retry/cancel/open-playlist handlers (`downloads.component.ts`) — and the
+   unified `AcquisitionJobView` deliberately skips URL jobs (they carry
+   url/playlist/dest-album/track fields the `acquisition_jobs` mirror lacks). Doing
+   it means `LEFT JOIN acquire_jobs` into `listJobFeed` for `kind='url'` **and**
+   rewiring those web handlers onto the enriched feed. Left as a follow-up: higher
+   regression risk on the URL-download UX for a one-endpoint gain. `/acquire/jobs`
+   stays regardless (the search page's link-intent card polls it).

@@ -64,7 +64,17 @@ function setup(
     providers: [
       provideRouter([]),
       { provide: SearchApiService, useValue: searchApi },
-      { provide: SystemApiService, useValue: { getSoulseekStatus: () => of({ connected: true }) } },
+      {
+        provide: SystemApiService,
+        useValue: {
+          getSoulseekStatus: () => of({ connected: true }),
+          getDownloadSettings: () =>
+            of({
+              transcodeLossless: { enabled: true, format: 'opus', bitRate: 192 },
+              ffmpegAvailable: true,
+            }),
+        },
+      },
       {
         provide: DownloadsApiService,
         useValue: { enqueueDownload: () => of({ ok: true }), retryAcquireJob },
@@ -367,11 +377,9 @@ describe('SearchComponent — link-intent card (merged URL acquisition)', () => 
 
     // YouTube single-watch URLs (no `&list=`) don't carry a playlist signal
     // and aren't archive.org, so `as` is undefined here.
-    expect(acquireSubmit).toHaveBeenCalledWith(
-      'https://youtu.be/dQw4w9WgXcQ',
-      undefined,
-      { as: undefined },
-    );
+    expect(acquireSubmit).toHaveBeenCalledWith('https://youtu.be/dQw4w9WgXcQ', undefined, {
+      as: undefined,
+    });
   });
 
   it('surfaces a submit failure on the card instead of throwing', async () => {
@@ -504,11 +512,9 @@ describe('SearchComponent — link-intent card (merged URL acquisition)', () => 
     expect(component.linkIntent()).toEqual(
       expect.objectContaining({ url: 'https://youtu.be/dQw4w9WgXcQ', source: 'youtube' }),
     );
-    expect(acquireSubmit).toHaveBeenCalledWith(
-      'https://youtu.be/dQw4w9WgXcQ',
-      undefined,
-      { as: undefined },
-    );
+    expect(acquireSubmit).toHaveBeenCalledWith('https://youtu.be/dQw4w9WgXcQ', undefined, {
+      as: undefined,
+    });
   });
 
   it('dismissLinkIntent clears the card and any error', () => {
@@ -525,5 +531,107 @@ describe('SearchComponent — link-intent card (merged URL acquisition)', () => 
 
     expect(component.linkIntent()).toBeNull();
     expect(component.linkSubmitError()).toBeNull();
+  });
+});
+
+describe('SearchComponent — transcode reminder', () => {
+  it('transcodeActive only when the setting is enabled AND ffmpeg is present', () => {
+    const { component } = setup();
+
+    component.downloadSettings.set({
+      transcodeLossless: { enabled: true, format: 'opus', bitRate: 192 },
+      ffmpegAvailable: true,
+    });
+    expect(component.transcodeActive()).toBe(true);
+    expect(component.transcodeBitRate()).toBe(192);
+
+    component.downloadSettings.set({
+      transcodeLossless: { enabled: false, format: 'opus', bitRate: 192 },
+      ffmpegAvailable: true,
+    });
+    expect(component.transcodeActive()).toBe(false);
+
+    component.downloadSettings.set({
+      transcodeLossless: { enabled: true, format: 'opus', bitRate: 192 },
+      ffmpegAvailable: false,
+    });
+    expect(component.transcodeActive()).toBe(false);
+  });
+
+  it('isLosslessCandidate is true only for a lossless enqueue pick', () => {
+    const { component } = setup();
+    const base = {
+      id: 'x',
+      source: 'soulseek' as const,
+      sourceLabel: 'Soulseek',
+      title: 't',
+      subtitle: '',
+      score: 1,
+    };
+    const flac = {
+      ...base,
+      acquire: { via: 'enqueue' as const, username: 'u', file: { filename: 'song.flac', size: 1 } },
+    };
+    const mp3 = {
+      ...base,
+      acquire: { via: 'enqueue' as const, username: 'u', file: { filename: 'song.mp3', size: 1 } },
+    };
+    const url = { ...base, acquire: { via: 'url' as const, url: 'http://x' } };
+
+    expect(component.isLosslessCandidate(flac)).toBe(true);
+    expect(component.isLosslessCandidate(mp3)).toBe(false);
+    expect(component.isLosslessCandidate(url)).toBe(false);
+  });
+});
+
+describe('SearchComponent — catalog-miss fallback', () => {
+  // httpErrorCode reads err.error.code; this shape triggers the raw fallback.
+  const notInLidarr = () => throwError(() => ({ error: { code: 'ALBUM_NOT_IN_LIDARR' } }));
+
+  it('opens the network lane for the clicked album without auto-loading the discography', async () => {
+    const catalogDiscography = vi.fn(() => of({ artists: [], albums: [] }));
+    const { component } = setup({ catalogResolve: notInLidarr, catalogDiscography });
+
+    await component.huntCatalogAlbum(CATALOG_ALBUM);
+    await flush();
+
+    expect(component.rawFallbackAlbum()?.title).toBe(CATALOG_ALBUM.title);
+    expect(component.rawFallbackNote()).toMatch(/isn't in/);
+    expect(component.directSearchOpen()).toBe(true);
+    // Discography load auto-adds the artist to Lidarr — must be opt-in now.
+    expect(catalogDiscography).not.toHaveBeenCalled();
+  });
+
+  it('browseFallbackDiscography loads the discography only on demand', async () => {
+    const catalogDiscography = vi.fn(() =>
+      of({ artists: [], albums: [CATALOG_ALBUM], scopedArtist: 'Pink Floyd' }),
+    );
+    const { component } = setup({ catalogResolve: notInLidarr, catalogDiscography });
+
+    await component.huntCatalogAlbum(CATALOG_ALBUM);
+    await flush();
+    await component.browseFallbackDiscography();
+
+    expect(catalogDiscography).toHaveBeenCalled();
+  });
+});
+
+describe('SearchComponent — results cap', () => {
+  it('caps the long blended Results list and expands on demand', () => {
+    const { component, search } = setup();
+    const files = Array.from({ length: 12 }, (_, i) => ({
+      filename: `Artist/${i}-Title${i}.flac`,
+      size: 1000,
+      artist: 'Artist',
+      title: `Title ${i}`,
+    }));
+    search.setNetwork([{ username: 'peer', freeUploadSlots: 1, uploadSpeed: 100, files }]);
+
+    expect(component.blendedResults().length).toBe(12);
+    expect(component.visibleBlendedResults().length).toBe(8); // RESULTS_CAP
+    expect(component.hiddenResultCount()).toBe(4);
+
+    component.resultsExpanded.set(true);
+    expect(component.visibleBlendedResults().length).toBe(12);
   });
 });

@@ -325,14 +325,21 @@ describe('AlbumHunterService', () => {
       expect(skewed).toContain('Stay');
     });
 
-    it('produces reorder / album-only / truncation variants and excludes the base queries', () => {
+    it('produces only faithful variants for plain input (no last-char truncation)', () => {
       const base = ['Artist Album', 'Artist - Album'];
       const skewed = buildSkewedQueries('Artist', 'Album', base);
-      // "drop the" and "artist + first word" both collapse to "Artist Album"
-      // which is a base query, so only the genuinely-distinct variants survive.
-      // Truncation adds "Artis Album" and "Artis - Album" (drop last char of artist).
-      expect(skewed).toEqual(['Album Artist', 'Album', 'Artis Album', 'Artis - Album']);
+      // For plain ASCII input the fold / punctuation / drop-the / distinctive
+      // variants all collapse to a base query, so only reorder + album-only
+      // survive. The old "Artis Album"/"Artis - Album" char-drop hack is gone.
+      expect(skewed).toEqual(['Album Artist', 'Album']);
+      expect(skewed).not.toContain('Artis Album');
       for (const q of skewed) expect(base).not.toContain(q);
+    });
+
+    it('adds an accent-folded variant for an accented artist/album', () => {
+      const base = ['Beyoncé Lemonade', 'Beyoncé - Lemonade'];
+      const skewed = buildSkewedQueries('Beyoncé', 'Lemonade', base);
+      expect(skewed).toContain('beyonce lemonade');
     });
 
     it('drops the leading "the" from artist and album', () => {

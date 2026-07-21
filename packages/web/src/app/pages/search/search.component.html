@@ -103,13 +103,27 @@
   }
   @if (rawFallbackNote()) {
     <div
-      class="mb-6 px-4 py-3 rounded-lg bg-blue-950/40 border border-blue-900/50 flex items-center justify-between"
+      class="mb-6 px-4 py-3 rounded-lg bg-blue-950/40 border border-blue-900/50 flex items-center gap-3"
       data-testid="raw-fallback-note"
     >
-      <p class="text-sm text-blue-300">{{ rawFallbackNote() }}</p>
+      <p class="flex-1 text-sm text-blue-300">{{ rawFallbackNote() }}</p>
+      @if (rawFallbackAlbum()?.artistMbid) {
+        <button
+          (click)="browseFallbackDiscography()"
+          [disabled]="loadingDiscography()"
+          data-testid="raw-fallback-discography"
+          class="shrink-0 px-3 py-1.5 rounded-md text-xs font-semibold bg-blue-900/60 hover:bg-blue-800/70 text-blue-100 disabled:opacity-50"
+        >
+          {{
+            loadingDiscography()
+              ? 'Loading…'
+              : 'Browse ' + rawFallbackAlbum()!.artistName + "'s discography"
+          }}
+        </button>
+      }
       <button
         (click)="rawFallbackNote.set(null)"
-        class="text-blue-400 hover:text-blue-200 text-lg font-medium"
+        class="shrink-0 text-blue-400 hover:text-blue-200 text-lg font-medium"
       >
         ×
       </button>
@@ -175,7 +189,9 @@
             @switch (job.state) {
               @case ('done') {
                 <a
-                  [routerLink]="job.playlistId ? ['/library', 'playlists', job.playlistId] : '/library'"
+                  [routerLink]="
+                    job.playlistId ? ['/library', 'playlists', job.playlistId] : '/library'
+                  "
                   class="shrink-0 px-3 py-1.5 rounded-md text-xs font-semibold"
                   style="
                     background: var(--theme-status-done-bg);
@@ -227,7 +243,9 @@
               {{ intent.source === 'spotify' && !plugins.hasSpotdl() ? 'Open in Spotify' : 'Get' }}
             </button>
           }
-          @if (linkJob() === null || (linkJob()!.state !== 'queued' && linkJob()!.state !== 'running')) {
+          @if (
+            linkJob() === null || (linkJob()!.state !== 'queued' && linkJob()!.state !== 'running')
+          ) {
             <button
               (click)="dismissLinkIntent()"
               data-testid="link-intent-dismiss"
@@ -383,7 +401,11 @@
             class="group p-2 rounded-lg bg-theme-surface/30 hover:bg-theme-surface-2/50 transition text-left break-inside-avoid"
           >
             <app-cover-art
-              [src]="album.coverArt ? '/api/cover/' + album.coverArt + '?size=300&token=' + auth.token() : undefined"
+              [src]="
+                album.coverArt
+                  ? '/api/cover/' + album.coverArt + '?size=300&token=' + auth.token()
+                  : undefined
+              "
               [artist]="album.artist"
               [album]="album.name"
               [fill]="true"
@@ -394,7 +416,16 @@
               {{ album.name }}
             </p>
             <p class="text-xs truncate" style="color: var(--theme-text-muted)">
-              {{ album.artist }}{{ album.year ? ' · ' + album.year : '' }}{{ album.classification && album.classification !== 'album' ? ' · ' + album.classification : '' }}{{ album.songCount != null ? ' · ' + album.songCount + ' ' + (album.songCount === 1 ? 'track' : 'tracks') : '' }}
+              {{ album.artist }}{{ album.year ? ' · ' + album.year : ''
+              }}{{
+                album.classification && album.classification !== 'album'
+                  ? ' · ' + album.classification
+                  : ''
+              }}{{
+                album.songCount != null
+                  ? ' · ' + album.songCount + ' ' + (album.songCount === 1 ? 'track' : 'tracks')
+                  : ''
+              }}
             </p>
           </a>
         }
@@ -411,7 +442,11 @@
           <app-track-row
             [track]="toTrack(song)"
             [artists]="song.artists"
-            [subtitle]="song.artists?.length ? song.album : (song.artist + (song.album ? ' · ' + song.album : ''))"
+            [subtitle]="
+              song.artists?.length
+                ? song.album
+                : song.artist + (song.album ? ' · ' + song.album : '')
+            "
             [duration]="song.duration ?? 0"
             [actions]="songMenu.build(song)"
             (play)="playLibrarySong(i)"
@@ -432,8 +467,16 @@
           Spotify matches open in Spotify — enable the spotDL plugin to download them.
         </p>
       }
+      <!-- Transcode reminder: only when the lossless→Opus standardization is on
+           (ffmpeg present) AND there's a lossless pick in view — so it never
+           claims a conversion that won't happen for a 320k MP3 pick. -->
+      @if (transcodeActive() && hasLosslessInView()) {
+        <p class="text-xs text-zinc-500 mb-2" data-testid="transcode-note">
+          Lossless picks are stored as Opus {{ transcodeBitRate() }}k to save space.
+        </p>
+      }
       <ul class="divide-y divide-zinc-800 rounded-lg border border-zinc-800 overflow-hidden">
-        @for (c of blendedResults(); track c.id) {
+        @for (c of visibleBlendedResults(); track c.id) {
           <li
             class="flex items-center gap-3 px-3 py-2.5 bg-zinc-900/40"
             data-testid="acquire-result"
@@ -443,6 +486,15 @@
               <div class="flex items-center gap-2">
                 <app-source-chip [source]="c.source" [label]="c.sourceLabel" />
                 <p class="truncate text-sm text-zinc-200">{{ c.title }}</p>
+                @if (transcodeActive() && isLosslessCandidate(c)) {
+                  <span
+                    class="shrink-0 text-[10px] uppercase tracking-wide text-emerald-500/80"
+                    title="Lossless — stored as Opus to save space"
+                    data-testid="transcode-chip"
+                  >
+                    → Opus {{ transcodeBitRate() }}k
+                  </span>
+                }
               </div>
               @if (c.subtitle) {
                 <p class="truncate text-xs text-zinc-500 mt-0.5">{{ c.subtitle }}</p>
@@ -467,6 +519,15 @@
           </li>
         }
       </ul>
+      @if (hiddenResultCount() > 0 && !resultsExpanded()) {
+        <button
+          (click)="resultsExpanded.set(true)"
+          data-testid="results-show-all"
+          class="mt-2 text-xs font-medium text-[var(--theme-accent)] hover:underline"
+        >
+          Show all {{ blendedResults().length }} results
+        </button>
+      }
     </section>
   }
 
@@ -493,7 +554,13 @@
   <!-- Advanced: raw network search — a power-user escape hatch, demoted below the
        guided catalog/song results. Peer stats + the folder-tree browser live only
        inside this collapsed disclosure so normal users never see them. -->
-  @if (auth.canAcquire() && !loading() && search.query().trim() && search.networkState() !== 'idle') {
+  @if (
+    auth.canAcquire() &&
+    !loading() &&
+    search.query().trim() &&
+    search.networkState() !== 'idle' &&
+    (networkAvailable() || hasNetwork())
+  ) {
     <section class="mt-2" data-testid="advanced-network-search">
       <button
         (click)="toggleDirectSearch()"
@@ -676,6 +743,17 @@
                             "
                             >{{ fmt.label }}</span
                           >
+                          <!-- Lossless folder → will be stored as Opus. Same gate as the
+                               Results hint: only when transcoding is on + ffmpeg present. -->
+                          @if (fmt.lossless && transcodeActive()) {
+                            <span
+                              class="shrink-0 text-[10px] uppercase tracking-wide text-emerald-500/70"
+                              title="Lossless — stored as Opus to save space"
+                              data-testid="transcode-chip-folder"
+                            >
+                              → Opus {{ transcodeBitRate() }}k
+                            </span>
+                          }
                         }
                         <span
                           class="truncate cursor-pointer hover:underline transition"
@@ -854,5 +932,4 @@
       (downloaded)="closeHunt()"
     />
   }
-
 </div>

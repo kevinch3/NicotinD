@@ -58,17 +58,17 @@ describe('pickBestTrackFile', () => {
   });
 
   it('matches across a leading track number and folder path', () => {
-    const pick = pickBestTrackFile([resp('a', ['Music\\Album\\07 Closing Time.flac'])], 'Closing Time');
+    const pick = pickBestTrackFile(
+      [resp('a', ['Music\\Album\\07 Closing Time.flac'])],
+      'Closing Time',
+    );
     expect(pick?.file.filename).toContain('Closing Time.flac');
   });
 
-  it('matches a peer file that drops the title\'s (feat …) qualifier', () => {
+  it("matches a peer file that drops the title's (feat …) qualifier", () => {
     // Lidarr title carries "(feat. Drake)"; the peer's filename omits it. Matching
     // on the qualifier-stripped core rescues the near-hit.
-    const pick = pickBestTrackFile(
-      [resp('a', ['x\\Work.flac'])],
-      'Work (feat. Drake)',
-    );
+    const pick = pickBestTrackFile([resp('a', ['x\\Work.flac'])], 'Work (feat. Drake)');
     expect(pick?.file.filename).toContain('Work.flac');
   });
 
@@ -79,17 +79,16 @@ describe('pickBestTrackFile', () => {
 });
 
 describe('buildTrackQueries', () => {
-  it('emits exact, title-only, truncated-artist, and qualifier-stripped variants', () => {
-    expect(buildTrackQueries('Bahiano', 'Cuando reina el Amor (feat. X)')).toEqual([
-      'Bahiano Cuando reina el Amor (feat. X)',
-      'Cuando reina el Amor (feat. X)',
-      'Bahian Cuando reina el Amor (feat. X)',
-      'Bahiano Cuando reina el Amor',
-    ]);
+  it('emits exact, punctuation-stripped, title-only, and qualifier-stripped variants', () => {
+    const out = buildTrackQueries('Bahiano', 'Cuando reina el Amor (feat. X)');
+    expect(out[0]).toBe('Bahiano Cuando reina el Amor (feat. X)'); // exact leads
+    expect(out).toContain('Cuando reina el Amor (feat. X)'); // title only
+    expect(out).toContain('Bahiano Cuando reina el Amor'); // qualifier stripped
+    expect(out).toContain('Bahiano Cuando reina el Amor feat X'); // punctuation stripped
+    expect(out).not.toContain('Bahian Cuando reina el Amor (feat. X)'); // no char-drop
   });
 
-  it('de-dupes and skips empty variants for a short artist / bare title', () => {
-    // Short artist (<=3 chars) → no truncation; bare title → no qualifier variant.
+  it('de-dupes and skips empty variants for a bare title', () => {
     expect(buildTrackQueries('U2', 'One')).toEqual(['U2 One', 'One']);
   });
 });

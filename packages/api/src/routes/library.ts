@@ -6,6 +6,7 @@ import type { Song, Album, Artist } from '@nicotind/core';
 import type { Lidarr } from '@nicotind/lidarr-client';
 import type { AuthEnv } from '../middleware/auth.js';
 import { requireAdmin, requireCurator } from '../middleware/current-user.js';
+import { jobAlbumPairs } from '../services/acquisition-job-store.js';
 import { errorHandler } from '../middleware/error-handler.js';
 import type { Database } from 'bun:sqlite';
 import { getDatabase } from '../db.js';
@@ -83,20 +84,11 @@ const SINGLE_EP_CLASSIFICATION_SQL = `classification IN ('single','ep')`;
  * from library listings so the user never sees an incomplete album.
  */
 function getDownloadingGroupKeys(db: Database, extraKeys?: Set<string>): Set<string> {
-  // Legacy album_jobs UNION the unified acquisition_jobs: the latter also
-  // covers track-search/direct jobs that never create an album_jobs row.
-  const jobs = db
-    .query<{ artist_name: string; album_title: string }, []>(
-      `SELECT artist_name, album_title FROM album_jobs
-       WHERE state = 'active' AND artist_name IS NOT NULL AND album_title IS NOT NULL
-       UNION
-       SELECT artist_name, album_title FROM acquisition_jobs
-       WHERE state = 'active' AND artist_name IS NOT NULL AND album_title IS NOT NULL`,
-    )
-    .all();
   const keys = new Set(extraKeys);
-  for (const j of jobs) {
-    keys.add(`${normalizeArtistForGrouping(j.artist_name)} ${normalizeForGrouping(j.album_title)}`);
+  // `album_jobs` UNION the unified `acquisition_jobs` (active only) via the shared
+  // job-store helper — the latter also covers track-search/direct jobs.
+  for (const { artistName, albumTitle } of jobAlbumPairs(db, { activeOnly: true })) {
+    keys.add(`${normalizeArtistForGrouping(artistName)} ${normalizeForGrouping(albumTitle)}`);
   }
   return keys;
 }

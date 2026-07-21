@@ -14,14 +14,78 @@ import { normalizeTitle, titlesOverlap } from './album-hunter.service.js';
  * (the mirror row shares its uuid).
  */
 
+/**
+ * Artist/album pairs of every recorded acquisition — `album_jobs` UNION the
+ * unified `acquisition_jobs` (the latter also covers track-search/direct grabs
+ * that never create an album_jobs row). ONE home for the UNION the download-
+ * suppression, curator-protection, and scanner-canonical readers each hand-wrote.
+ * `activeOnly` restricts to in-flight jobs (`state='active'`). Missing tables
+ * (minimal test DBs / slskd unconfigured) degrade to an empty list.
+ */
+export function jobAlbumPairs(
+  db: Database,
+  opts: { activeOnly?: boolean } = {},
+): Array<{ artistName: string; albumTitle: string }> {
+  const stateFilter = opts.activeOnly ? "state = 'active' AND " : '';
+  try {
+    return db
+      .query<{ artist_name: string; album_title: string }, []>(
+        `SELECT artist_name, album_title FROM album_jobs
+         WHERE ${stateFilter}artist_name IS NOT NULL AND album_title IS NOT NULL
+         UNION
+         SELECT artist_name, album_title FROM acquisition_jobs
+         WHERE ${stateFilter}artist_name IS NOT NULL AND album_title IS NOT NULL`,
+      )
+      .all()
+      .map((r) => ({ artistName: r.artist_name, albumTitle: r.album_title }));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Canonical Lidarr tracklists per recorded acquisition — the same `album_jobs`
+ * UNION `acquisition_jobs`, restricted to rows carrying a `canonical_tracks_json`.
+ * Parsed to string[]; unparseable/empty rows are skipped. Missing tables → [].
+ */
+export function jobCanonicalTracklists(
+  db: Database,
+): Array<{ artistName: string; albumTitle: string; canonicalTracks: string[] }> {
+  let rows: Array<{ artist_name: string; album_title: string; canonical_tracks_json: string }>;
+  try {
+    rows = db
+      .query<{ artist_name: string; album_title: string; canonical_tracks_json: string }, []>(
+        `SELECT artist_name, album_title, canonical_tracks_json FROM album_jobs
+         WHERE artist_name IS NOT NULL AND album_title IS NOT NULL AND canonical_tracks_json IS NOT NULL
+         UNION
+         SELECT artist_name, album_title, canonical_tracks_json FROM acquisition_jobs
+         WHERE artist_name IS NOT NULL AND album_title IS NOT NULL AND canonical_tracks_json IS NOT NULL`,
+      )
+      .all();
+  } catch {
+    return [];
+  }
+  const out: Array<{ artistName: string; albumTitle: string; canonicalTracks: string[] }> = [];
+  for (const r of rows) {
+    let titles: unknown;
+    try {
+      titles = JSON.parse(r.canonical_tracks_json);
+    } catch {
+      continue;
+    }
+    if (!Array.isArray(titles) || titles.length === 0) continue;
+    out.push({
+      artistName: r.artist_name,
+      albumTitle: r.album_title,
+      canonicalTracks: titles as string[],
+    });
+  }
+  return out;
+}
+
 export type AcquisitionJobKind = 'album-hunt' | 'auto-acquire' | 'direct' | 'track-search' | 'url';
 export type AcquisitionJobItemState =
-  | 'downloading'
-  | 'completed'
-  | 'organized'
-  | 'scanned'
-  | 'failed'
-  | 'unavailable';
+  'downloading' | 'completed' | 'organized' | 'scanned' | 'failed' | 'unavailable';
 
 export interface CreateJobInput {
   kind: AcquisitionJobKind;
@@ -310,11 +374,10 @@ export function repointItem(
   filename: string,
 ): boolean {
   const candidates = db
-    .query<
-      { id: number; track_title: string | null },
-      [string]
-    >(`SELECT id, track_title FROM acquisition_job_items
-       WHERE job_id = ? AND state IN ${REPOINTABLE_STATES}`)
+    .query<{ id: number; track_title: string | null }, [string]>(
+      `SELECT id, track_title FROM acquisition_job_items
+       WHERE job_id = ? AND state IN ${REPOINTABLE_STATES}`,
+    )
     .all(jobId);
   const wanted = normalizeTitle(trackTitle);
   const match = candidates.find(
@@ -334,10 +397,9 @@ export function repointItem(
 /** The unified job that owns a fallback `album_jobs` row, if one was recorded. */
 export function acquisitionJobIdForAlbumJob(db: Database, albumJobId: number): string | null {
   const row = db
-    .query<
-      { id: string },
-      [number]
-    >(`SELECT id FROM acquisition_jobs WHERE album_job_id = ? ORDER BY created_at DESC LIMIT 1`)
+    .query<{ id: string }, [number]>(
+      `SELECT id FROM acquisition_jobs WHERE album_job_id = ? ORDER BY created_at DESC LIMIT 1`,
+    )
     .get(albumJobId);
   return row?.id ?? null;
 }
@@ -383,10 +445,9 @@ export function markMissingItemsUnavailable(db: Database, jobId: string): void {
  */
 export function recomputeStage(db: Database, jobId: string): string | null {
   const job = db
-    .query<
-      { state: string; stage: string },
-      [string]
-    >(`SELECT state, stage FROM acquisition_jobs WHERE id = ?`)
+    .query<{ state: string; stage: string }, [string]>(
+      `SELECT state, stage FROM acquisition_jobs WHERE id = ?`,
+    )
     .get(jobId);
   if (!job) return null;
   // Terminal job states are never reopened by a recompute.
@@ -394,10 +455,9 @@ export function recomputeStage(db: Database, jobId: string): string | null {
 
   const counts = new Map<string, number>();
   for (const row of db
-    .query<
-      { state: string; c: number },
-      [string]
-    >(`SELECT state, COUNT(*) c FROM acquisition_job_items WHERE job_id = ? GROUP BY state`)
+    .query<{ state: string; c: number }, [string]>(
+      `SELECT state, COUNT(*) c FROM acquisition_job_items WHERE job_id = ? GROUP BY state`,
+    )
     .all(jobId)) {
     counts.set(row.state, row.c);
   }
@@ -455,10 +515,7 @@ export function recomputeActiveJobStages(db: Database): void {
 }
 
 /** Mirror of the hunt route's `?replace=true`: retire prior active jobs for the album. */
-export function supersedeActiveJobs(
-  db: Database,
-  target: { lidarrAlbumId: number },
-): void {
+export function supersedeActiveJobs(db: Database, target: { lidarrAlbumId: number }): void {
   db.run(
     `UPDATE acquisition_jobs SET state = 'superseded', updated_at = ?
      WHERE state = 'active' AND lidarr_album_id = ?`,
@@ -567,21 +624,21 @@ export function listJobFeed(db: Database, limit = 50): AcquisitionJobFeedItem[] 
   return jobs.map((row) => {
     const counts = new Map<string, number>();
     for (const r of db
-      .query<
-        { state: string; c: number },
-        [string]
-      >(`SELECT state, COUNT(*) c FROM acquisition_job_items WHERE job_id = ? GROUP BY state`)
+      .query<{ state: string; c: number }, [string]>(
+        `SELECT state, COUNT(*) c FROM acquisition_job_items WHERE job_id = ? GROUP BY state`,
+      )
       .all(row.id)) {
       counts.set(r.state, r.c);
     }
     const expected = [...counts.values()].reduce((a, b) => a + b, 0);
     const delivered =
-      (counts.get('completed') ?? 0) + (counts.get('organized') ?? 0) + (counts.get('scanned') ?? 0);
+      (counts.get('completed') ?? 0) +
+      (counts.get('organized') ?? 0) +
+      (counts.get('scanned') ?? 0);
     const itemRows = db
-      .query<
-        { track_title: string | null; state: string },
-        [string]
-      >(`SELECT track_title, state FROM acquisition_job_items WHERE job_id = ? ORDER BY id`)
+      .query<{ track_title: string | null; state: string }, [string]>(
+        `SELECT track_title, state FROM acquisition_job_items WHERE job_id = ? ORDER BY id`,
+      )
       .all(row.id);
     return {
       id: row.id,
@@ -620,11 +677,10 @@ export function jobMetaForTransfer(
   filename: string,
 ): TransferJobMeta | null {
   const row = db
-    .query<
-      JobRow,
-      [string]
-    >(`SELECT j.* FROM acquisition_job_items i JOIN acquisition_jobs j ON j.id = i.job_id
-       WHERE i.transfer_key = ? ORDER BY i.updated_at DESC LIMIT 1`)
+    .query<JobRow, [string]>(
+      `SELECT j.* FROM acquisition_job_items i JOIN acquisition_jobs j ON j.id = i.job_id
+       WHERE i.transfer_key = ? ORDER BY i.updated_at DESC LIMIT 1`,
+    )
     .get(transferKeyFor(username, filename));
   if (!row) return null;
   return {

@@ -4,6 +4,7 @@ import { isUnknownLike } from './audio-tags.js';
 import { looksLikeSourceWatermark, isNumericLikeName } from './library-quality.js';
 import { normalizeArtistForGrouping, normalizeForGrouping } from './album-grouping.js';
 import { loadReleaseTypes, type ReleaseType } from './release-meta-store.js';
+import { jobAlbumPairs } from './acquisition-job-store.js';
 
 const log = createLogger('library-curator');
 
@@ -42,10 +43,9 @@ export class LibraryCurator {
   reclassifyAll(): CuratorResult {
     const startedAt = Date.now();
     const rows = this.db
-      .query<
-        AlbumRow,
-        []
-      >(`SELECT id, name, artist, song_count, manual_override FROM library_albums`)
+      .query<AlbumRow, []>(
+        `SELECT id, name, artist, song_count, manual_override FROM library_albums`,
+      )
       .all();
 
     // Releases the user deliberately hunted must never be auto-hidden, even if a
@@ -123,24 +123,11 @@ export class LibraryCurator {
   // Normalized artist+title keys of every album the user hunted (any job state).
   private loadProtectedKeys(): Set<string> {
     const keys = new Set<string>();
-    try {
-      // album_jobs UNION acquisition_jobs: the unified table also covers
-      // track-search/direct acquisitions that never create an album_jobs row.
-      const jobs = this.db
-        .query<{ artist_name: string | null; album_title: string | null }, []>(
-          `SELECT artist_name, album_title FROM album_jobs
-           WHERE artist_name IS NOT NULL AND album_title IS NOT NULL
-           UNION
-           SELECT artist_name, album_title FROM acquisition_jobs
-           WHERE artist_name IS NOT NULL AND album_title IS NOT NULL`,
-        )
-        .all();
-      for (const j of jobs) {
-        if (j.artist_name && j.album_title) keys.add(albumKey(j.artist_name, j.album_title));
-      }
-    } catch (err) {
-      // album_jobs may not exist in minimal test DBs; degrade to "nothing protected".
-      log.debug({ err }, 'loadProtectedKeys: album_jobs unavailable');
+    // `album_jobs` UNION the unified `acquisition_jobs` via the shared job-store
+    // helper (also covers track-search/direct grabs); it degrades to [] when the
+    // tables are absent (minimal test DBs) → "nothing protected".
+    for (const { artistName, albumTitle } of jobAlbumPairs(this.db)) {
+      keys.add(albumKey(artistName, albumTitle));
     }
     return keys;
   }

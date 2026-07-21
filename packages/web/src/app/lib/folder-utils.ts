@@ -40,7 +40,19 @@ export interface FolderGroup {
 // free slot, complete) and make the format legible. See §A7.
 
 const AUDIO_EXT = new Set([
-  'flac', 'wav', 'aiff', 'aif', 'ape', 'wv', 'alac', 'mp3', 'm4a', 'aac', 'ogg', 'opus', 'wma',
+  'flac',
+  'wav',
+  'aiff',
+  'aif',
+  'ape',
+  'wv',
+  'alac',
+  'mp3',
+  'm4a',
+  'aac',
+  'ogg',
+  'opus',
+  'wma',
 ]);
 
 export interface FolderFormat {
@@ -89,13 +101,31 @@ export function rankFolders(groups: FolderGroup[]): FolderGroup[] {
   });
 }
 
+/**
+ * Default network view for a query. Folders (a whole album's worth of files per
+ * peer directory) are the useful unit for an album search — "in case of albums
+ * there's normally something available" — while the deduped song list is better
+ * for a bare single-track hunt. Pick **folders** when the catalog surfaced album
+ * cards (album-intent) or the query is multi-word ("artist title"); otherwise a
+ * one-word query is likely a song/artist name → **songs**. The user can still
+ * toggle. Pure — unit-tested.
+ */
+export function pickNetworkView(query: string, hasCatalogAlbums: boolean): 'songs' | 'folders' {
+  if (hasCatalogAlbums) return 'folders';
+  const words = query.trim().split(/\s+/).filter(Boolean);
+  return words.length >= 2 ? 'folders' : 'songs';
+}
+
 /** Last path segment of a folder, e.g. "…\Zara Larsson\Poster Girl" → "Poster Girl". */
 export function folderBasename(directory: string): string {
   return directory.split(/[\\/]/).filter(Boolean).at(-1) ?? directory;
 }
 
 function normalizeBasename(name: string): string {
-  return name.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
 }
 
 /**

@@ -101,6 +101,10 @@ is left untouched. Both the ingest hook and the existing-library migration use
 
 The hook fires in `LibraryOrganizer.placeFile()` **after the move and before the incremental scan**. Because the scanner only ever sees the final `.opus` path, the song's path-derived `songId` is computed once — no orphaned curation, and format-preference dedup keeps working (all kept files are opus). A transcode failure is best-effort: it logs and leaves the original in place.
 
+### Acquire-flow reminder (UI surface)
+
+`downloads.transcodeLossless` is **env/YAML-only** (captured into `LibraryOrganizer` at boot; no runtime toggle). Users never saw it, so a lossless pick silently became Opus. `GET /api/settings/downloads` (`routes/settings.ts`, any authenticated user, read-only) exposes `{ transcodeLossless: {enabled, format, bitRate}, ffmpegAvailable }` so the search/acquire page can show an **accurate** reminder: a "Lossless picks are stored as Opus Nk to save space" note under the Results header plus a per-row `→ Opus Nk` chip on lossless candidates. The web gate is `transcodeActive = enabled && ffmpegAvailable` **and** a lossless item actually in view (`isLosslessCandidate` checks the pick's extension) — so it never promises a conversion that won't happen for a 320k MP3 pick, and it disappears entirely when transcoding is off or ffmpeg is missing.
+
 ### Existing library (`transcodeLibraryToOpus`, the careful part)
 
 `services/library-transcode.ts` converts the lossless files already in the library — via `scripts/convert-library.ts` (`--apply`, optional `--bitrate`; dry-run reports candidates) or admin `POST /api/admin/transcode-library` (`?dryRun=1`). Re-encoding changes a file's extension → its relative path → its derived `songId` **and** its `acquisitions` key. Album-keyed data (`library_artwork`, `library_release_meta`, classification, all keyed on the tag-derived `albumId`) is unaffected and survives; song-keyed data does not, so **per file** the job:
@@ -207,7 +211,7 @@ The frontend unifies both onto `DownloadItem.tracks` (`lib/download-groups.ts`).
 
 The web groups transfers via the pure `lib/download-groups.ts` (`groupByAlbum`/`albumGroupTitle`/`albumGroupTotal`), which prefers the hunt metadata and falls back to the peer folder name + file count for **direct (non-hunt)** downloads that have no job.
 
-> **Unified acquisition jobs** ([docs/acquisition-jobs.md](acquisition-jobs.md)): every enqueue path now also records an `acquisition_jobs` + `acquisition_job_items` row pair storing the exact `username::filename` transfer keys and the hunt's Lidarr metadata at enqueue time. This is the stored replacement for the string matching described above; the read paths (`enrichWithAlbumJobs`, organizer `jobLookup`) migrate to it phase by phase.
+> **Unified acquisition jobs** ([docs/acquisition-jobs.md](acquisition-jobs.md)): every enqueue path now also records an `acquisition_jobs` + `acquisition_job_items` row pair storing the exact `username::filename` transfer keys and the hunt's Lidarr metadata at enqueue time. This is the stored replacement for the string matching described above; the downloads feed's legacy `enrichWithAlbumJobs` `(username, directory)` match has been **retired** in favor of the stored-key `enrichWithAcquisitionJobs`.
 
 ---
 

@@ -49,7 +49,11 @@ function makeSlskdMock() {
 
 function buildApp(
   slskd: ReturnType<typeof makeSlskdMock> | null,
-  overrides: { dataDir?: string; soulseek?: { username: string; password: string } } = {},
+  overrides: {
+    dataDir?: string;
+    soulseek?: { username: string; password: string };
+    downloads?: { transcodeLossless: { enabled: boolean; format: 'opus'; bitRate: number } };
+  } = {},
 ) {
   const app = new Hono<AuthEnv>();
   const auth = authMiddleware(SECRET);
@@ -57,6 +61,9 @@ function buildApp(
     soulseek: overrides.soulseek ?? { username: 'u', password: 'p' },
     dataDir: overrides.dataDir ?? '/tmp/nicotind-test',
     mode: 'external',
+    downloads: overrides.downloads ?? {
+      transcodeLossless: { enabled: true, format: 'opus', bitRate: 192 },
+    },
   } as unknown as Parameters<typeof settingsRoutes>[0];
   const routes = settingsRoutes(
     config,
@@ -73,6 +80,38 @@ function buildApp(
   app.route('/', routes);
   return app;
 }
+
+describe('GET /downloads', () => {
+  it('returns the lossless transcode config + ffmpeg availability for any user', async () => {
+    const app = buildApp(null);
+    const token = await userToken(); // informational — not admin-gated
+    const res = await app.request('/downloads', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as {
+      transcodeLossless: { enabled: boolean; format: string; bitRate: number };
+      ffmpegAvailable: boolean;
+    };
+    expect(data.transcodeLossless).toMatchObject({ enabled: true, format: 'opus', bitRate: 192 });
+    expect(typeof data.ffmpegAvailable).toBe('boolean');
+  });
+
+  it('reflects a disabled / re-bitrated transcode setting', async () => {
+    const app = buildApp(null, {
+      downloads: { transcodeLossless: { enabled: false, format: 'opus', bitRate: 256 } },
+    });
+    const token = await userToken();
+    const res = await app.request('/downloads', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = (await res.json()) as {
+      transcodeLossless: { enabled: boolean; bitRate: number };
+    };
+    expect(data.transcodeLossless.enabled).toBe(false);
+    expect(data.transcodeLossless.bitRate).toBe(256);
+  });
+});
 
 describe('GET /soulseek', () => {
   it('returns 200 with empty config (not 500) when secrets.json is absent', async () => {

@@ -11,6 +11,7 @@ import type {
   CatalogArtist,
   CatalogSearchResult,
   DiscographyAlbum,
+  DownloadSettings,
 } from '../../services/api/api-types';
 import { SearchService, type NetworkResult } from '../../services/search.service';
 import { TransferService } from '../../services/transfer.service';
@@ -34,9 +35,10 @@ import {
   dedupeFolders,
   folderFormat,
   fileQualityLabel,
+  pickNetworkView,
   type FolderGroup,
 } from '../../lib/folder-utils';
-import { groupBySong, formatBadge, type SongResult } from '../../lib/song-results';
+import { groupBySong, formatBadge, isLossless, type SongResult } from '../../lib/song-results';
 import {
   songResultToCandidate,
   archiveToCandidate,
@@ -285,6 +287,11 @@ export class SearchComponent implements OnInit, OnDestroy {
   // Set when a catalog album can't be resolved (not in Lidarr) and we fall back to
   // a raw network search — explains why the results switched to the network lane.
   readonly rawFallbackNote = signal<string | null>(null);
+  // The album that triggered the catalog-miss fallback, so the banner can offer an
+  // opt-in "Browse discography" CTA (loading the full discography auto-adds the
+  // artist to Lidarr, so we no longer do it unprompted — the folder results below
+  // are the primary "get this album" path). Null when not in a fallback.
+  readonly rawFallbackAlbum = signal<CatalogAlbum | null>(null);
   readonly huntingAlbum = signal<DiscographyAlbum | null>(null);
   readonly huntingArtistName = signal('');
 
@@ -346,6 +353,44 @@ export class SearchComponent implements OnInit, OnDestroy {
     ),
   );
   readonly hasBlendedResults = computed(() => this.blendedResults().length > 0);
+  // The blended song-first list can run to hundreds of near-duplicate peer rows
+  // ("amazingly long and useless" for an album search — the Folders view is the
+  // useful unit there). Cap it to a scannable head with a "show all" escape so it
+  // never dominates the page; folder-mode carries whole-album grabs.
+  private static readonly RESULTS_CAP = 8;
+  readonly resultsExpanded = signal(false);
+  readonly visibleBlendedResults = computed(() =>
+    this.resultsExpanded()
+      ? this.blendedResults()
+      : this.blendedResults().slice(0, SearchComponent.RESULTS_CAP),
+  );
+  readonly hiddenResultCount = computed(() =>
+    Math.max(0, this.blendedResults().length - SearchComponent.RESULTS_CAP),
+  );
+
+  // Download-pipeline transcode reminder. `downloads.transcodeLossless` is
+  // env/YAML-only (no runtime toggle), so we read it once for an accurate hint:
+  // a lossless pick (FLAC/…) is stored as Opus to save space — but only when the
+  // setting is on AND ffmpeg is present. Never claims a transcode that won't run.
+  readonly downloadSettings = signal<DownloadSettings | null>(null);
+  readonly transcodeActive = computed(() => {
+    const d = this.downloadSettings();
+    return !!d && d.transcodeLossless.enabled && d.ffmpegAvailable;
+  });
+  readonly transcodeBitRate = computed(
+    () => this.downloadSettings()?.transcodeLossless.bitRate ?? 0,
+  );
+  /** True for a blended candidate whose best copy is a lossless format (so it
+   *  will actually be transcoded on download). Lossy picks are left untouched. */
+  isLosslessCandidate(c: BlendedCandidate): boolean {
+    return c.acquire.via === 'enqueue' && isLossless(c.acquire.file.filename);
+  }
+  /** Any lossless result in view → the transcode reminder is relevant to show. */
+  readonly hasLosslessInView = computed(
+    () =>
+      this.blendedResults().some((c) => this.isLosslessCandidate(c)) ||
+      this.folderGroups().some((g) => folderFormat(g)?.lossless),
+  );
   // Sources that contributed (or are still searching) — drives the neutral
   // "Soulseek · Internet Archive · Spotify" availability line.
   readonly availableSources = computed(() => {
@@ -385,6 +430,13 @@ export class SearchComponent implements OnInit, OnDestroy {
     void this.acquire.refresh();
     void this.watchlist.refresh();
     void this.plugins.refresh();
+    // Load the lossless→Opus reminder config once (acquirers only — it only shows
+    // in the acquire flow). Best-effort: a failure just hides the hint.
+    if (this.auth.canAcquire()) {
+      firstValueFrom(this.systemApi.getDownloadSettings())
+        .then((d) => this.downloadSettings.set(d))
+        .catch(() => this.downloadSettings.set(null));
+    }
 
     // PWA share-target: a link shared from another app lands here as ?url=/?text=.
     // Sharing is an explicit intent, so this submits regardless of the
@@ -623,23 +675,31 @@ export class SearchComponent implements OnInit, OnDestroy {
     }
   }
 
-  // Raw-string network fallback for an album missing from Lidarr's discography:
-  // search Soulseek for "<artist> <album>" and open the network lane so the user
-  // gets folder candidates to download. Also loads the artist's full discography
-  // so real album cards reappear alongside the network results.
+  // Raw-string network fallback for an album missing from Lidarr's discography
+  // (compilations/singles Lidarr doesn't track as an album). Rather than dead-end
+  // on the resolve 404, search Soulseek for "<artist> <album>" and open the
+  // network lane — folder-first for this album-intent query — so the user gets
+  // downloadable folder candidates for the exact album they clicked. The full
+  // discography is **opt-in** now (the banner CTA), because loading it auto-adds
+  // the artist to Lidarr and buries the thing they actually wanted under a grid.
   private rawHuntFallback(album: CatalogAlbum): void {
     this.resolvingAlbum.set(null);
     this.search.setQuery(`${album.artistName} ${album.title}`.trim());
-    // executeSearch runs its synchronous reset (clearing the note) before its first
-    // await, so set the note *after* kicking it off and it survives the run.
-    // After the search settles, reload the artist's full discography so album cards
-    // appear alongside the network results.
-    void this.executeSearch({ forceDirectOpen: true }).then(() => {
-      void this.doLoadDiscography(album.artistMbid, album.artistName);
-    });
+    // executeSearch runs its synchronous reset (clearing note + fallback album)
+    // before its first await, so set them *after* kicking it off — they survive.
+    void this.executeSearch({ forceDirectOpen: true });
+    this.rawFallbackAlbum.set(album);
     this.rawFallbackNote.set(
-      `"${album.title}" isn't in ${album.artistName}'s Lidarr catalog — showing network results and their full discography below.`,
+      `"${album.title}" isn't in ${album.artistName}'s Lidarr catalog — download it from the Soulseek folders below.`,
     );
+  }
+
+  // Opt-in from the catalog-miss banner: load the artist's real discography (adds
+  // them to Lidarr) so their resolvable album cards appear. Reuses the §A6 path.
+  async browseFallbackDiscography(): Promise<void> {
+    const album = this.rawFallbackAlbum();
+    if (!album?.artistMbid) return;
+    await this.doLoadDiscography(album.artistMbid, album.artistName);
   }
 
   closeHunt(): void {
@@ -911,13 +971,15 @@ export class SearchComponent implements OnInit, OnDestroy {
     this.searchError.set(null);
     this.downloadError.set(null);
     this.resolveError.set(null);
-    // A raw fallback re-sets this note right after kicking off the search; a normal
-    // user-initiated search clears it here so it never lingers.
+    // A raw fallback re-sets this note + album right after kicking off the search;
+    // a normal user-initiated search clears them here so they never linger.
     this.rawFallbackNote.set(null);
+    this.rawFallbackAlbum.set(null);
     this.catalog.set(null);
     this.catalogUnavailable.set(false);
     this.librarySongs.set([]);
     this.libraryAlbums.set([]);
+    this.resultsExpanded.set(false);
   }
 
   private async executeSearch(opts?: { forceDirectOpen?: boolean }): Promise<void> {
@@ -963,6 +1025,10 @@ export class SearchComponent implements OnInit, OnDestroy {
       // album cards — no catalog, or an artist matched but their discography
       // wasn't available (§A6). Artist pills alone don't keep it closed.
       this.directSearchOpen.set(opts?.forceDirectOpen || shouldOpenDirectSearch(this.catalog()));
+      // Default the raw-network view to folders for an album-intent query (the
+      // useful unit for "get this album"); a bare one-word song hunt stays on the
+      // deduped song list. The user can still toggle.
+      this.networkView.set(pickNetworkView(query, (this.catalog()?.albums.length ?? 0) > 0));
       this.loading.set(false);
     }
   }
