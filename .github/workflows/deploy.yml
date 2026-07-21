@@ -57,6 +57,45 @@ jobs:
           echo "mobile=$mob"   >> "$GITHUB_OUTPUT"
           echo "desktop=$desk" >> "$GITHUB_OUTPUT"
 
+  # Set the GitHub Release description to this version's CHANGELOG.md section.
+  # NOT gated by `changes` (unlike the app jobs): the release notes must be set
+  # for every tagged release, including backend-only ones where mobile/desktop
+  # are skipped. softprops/action-gh-release MERGES into the tag's release —
+  # setting only `body` here, so it neither clobbers nor is clobbered by the
+  # asset-upload steps (which pass no `body`), regardless of job ordering.
+  release-notes:
+    runs-on: ubuntu-latest
+    if: github.ref_type == 'tag'
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      # Extract the `## [<version>] …` section (up to the next version heading)
+      # from CHANGELOG.md — the file commit-and-tag-version regenerates on each
+      # `bun run release`, checked out here at the tag so it includes this version.
+      - name: Extract changelog section
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          awk -v v="$version" '
+            $0 ~ "^## \\[" v "\\]" { capture=1; print; next }
+            capture && /^## \[/ { exit }
+            capture { print }
+          ' CHANGELOG.md > release-notes.md
+          # Fallback for a release with no changelog-visible commits (chore/refactor
+          # only): an empty body would read as a broken release page.
+          if [ ! -s release-notes.md ] || ! grep -q '[^[:space:]]' release-notes.md; then
+            printf 'Maintenance release. See the commit history for details.\n' > release-notes.md
+          fi
+          echo "----- release notes -----"; cat release-notes.md
+
+      - name: Set the GitHub Release description
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          body_path: release-notes.md
+
   # Build and sign the Android APK and attach it to the GitHub Release. Runs in
   # parallel with `deploy`; a failure here (e.g. missing signing secrets) does not 
   # block the server deploy. Requires repo secrets: ANDROID_KEYSTORE_BASE64, 
