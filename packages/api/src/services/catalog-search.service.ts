@@ -2,6 +2,7 @@ import type { Lidarr, LidarrAlbum, LidarrArtist } from '@nicotind/lidarr-client'
 import { createLogger, NicotinDError } from '@nicotind/core';
 import { addArtistFromLookup } from './lidarr-provision.js';
 import { normalizeTitle } from './album-hunter.service.js';
+import { tokenize, matchesAllTokens } from './search-tokens.js';
 
 const log = createLogger('catalog');
 
@@ -117,9 +118,14 @@ export class CatalogService {
       // the network lane instead of rendering cards that all 404 on resolve. §A6.
       return { artists, albums: [], scopedArtist: matchedArtist.name, discographyUnavailable: true };
     }
-    // No artist named (pure album-title search) — keep the title matches so the
-    // lane never goes empty. See §A1.
-    return { artists, albums: allAlbums };
+    // No artist named (pure album-title search). Lidarr's free-text `album.lookup`
+    // ranks anything whose title *fuzzily* matches, so for a multi-word query with
+    // a rare second word ("La bifurcada") it collapses to the common first token
+    // and floods the grid with unrelated "La"/"Là" albums — the second word looks
+    // "stripped". Keep only albums that actually contain every query token
+    // (accent-insensitive, over title + artist) so the grid is relevant instead of
+    // first-token noise; the network/folder lane still carries anything we drop.
+    return { artists, albums: filterAlbumsByRelevance(allAlbums, query) };
   }
 
   /**
@@ -196,6 +202,19 @@ export class CatalogService {
     const added = await addArtistFromLookup(this.lidarr, best, this.musicDir);
     return added.id;
   }
+}
+
+/**
+ * Keep only albums whose title + artist contains **every** query token
+ * (accent-insensitive, AND semantics — the same matcher the local library lane
+ * uses). Applied to the pure-title-search fall-through so Lidarr's fuzzy
+ * `album.lookup` can't degrade a multi-word query to its first token. An empty
+ * query (no tokens) keeps everything. Exported for direct unit testing.
+ */
+export function filterAlbumsByRelevance(albums: CatalogAlbum[], query: string): CatalogAlbum[] {
+  const tokens = tokenize(query);
+  if (tokens.length === 0) return albums;
+  return albums.filter((a) => matchesAllTokens(`${a.title} ${a.artistName}`, tokens));
 }
 
 /** Album-type display priority for an artist's own discography. */

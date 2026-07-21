@@ -1,7 +1,11 @@
 import { describe, it, expect, mock } from 'bun:test';
 import { NicotinDError } from '@nicotind/core';
 import type { Lidarr, LidarrAlbum, LidarrArtist } from '@nicotind/lidarr-client';
-import { CatalogService } from './catalog-search.service';
+import {
+  CatalogService,
+  filterAlbumsByRelevance,
+  type CatalogAlbum,
+} from './catalog-search.service';
 
 function makeArtist(over: Partial<LidarrArtist> & { id: number }): LidarrArtist {
   return {
@@ -285,6 +289,35 @@ describe('CatalogService.search', () => {
     expect(result.albums).toHaveLength(1);
   });
 
+  // Regression for the "La bifurcada" bug: a multi-word title search where the
+  // rare second word makes Lidarr's fuzzy album.lookup collapse to the common
+  // first token, flooding the grid with unrelated "La"/"Là" albums (the second
+  // word looks stripped). None belong to a matched artist, so we hit the pure-
+  // title fall-through — which must now drop the first-token junk.
+  it('filters first-token fuzzy junk from a multi-word album-title search', async () => {
+    const lidarr = {
+      artist: {
+        lookup: mock(async () => [makeArtist({ id: 1, artistName: 'La Oreja de Van Gogh' })]),
+      },
+      album: {
+        lookup: mock(async () => [
+          // The real match — its title contains both query tokens.
+          makeAlbum({
+            id: 1,
+            title: 'La Bifurcada',
+            artist: makeArtist({ id: 5, artistName: 'Bajofondo' }),
+          }),
+          // First-token junk Lidarr surfaces for the rare second word.
+          makeAlbum({ id: 2, title: 'LA', artist: makeArtist({ id: 6, artistName: 'Teddy Thompson' }) }),
+          makeAlbum({ id: 3, title: 'Là', artist: makeArtist({ id: 7, artistName: 'São Paris' }) }),
+        ]),
+      },
+    } as unknown as Lidarr;
+
+    const result = await new CatalogService(lidarr).search('La bifurcada');
+    expect(result.albums.map((a) => a.title)).toEqual(['La Bifurcada']);
+  });
+
   it('dedupes artist pills with the same normalized name', async () => {
     const lidarr = {
       artist: {
@@ -441,5 +474,34 @@ describe('CatalogService.resolveAlbum', () => {
       .catch((e: unknown) => e);
     expect(err).toBeInstanceOf(NicotinDError);
     expect((err as NicotinDError).statusCode).toBe(404);
+  });
+});
+
+describe('filterAlbumsByRelevance', () => {
+  const album = (title: string, artistName = 'X'): CatalogAlbum => ({
+    foreignAlbumId: `rg-${title}`,
+    title,
+    artistName,
+    artistMbid: '',
+    albumType: 'Album',
+    secondaryTypes: [],
+    trackCount: 0,
+  });
+
+  it('keeps only albums containing every query token', () => {
+    const albums = [album('La Bifurcada'), album('LA'), album('Là')];
+    expect(filterAlbumsByRelevance(albums, 'La bifurcada').map((a) => a.title)).toEqual([
+      'La Bifurcada',
+    ]);
+  });
+
+  it('matches accent-insensitively across title and artist', () => {
+    const albums = [album('Ídolo', 'C. Tangana'), album('Random', 'Nobody')];
+    expect(filterAlbumsByRelevance(albums, 'tangana idolo').map((a) => a.title)).toEqual(['Ídolo']);
+  });
+
+  it('returns everything for an empty/whitespace query', () => {
+    const albums = [album('Anything'), album('Else')];
+    expect(filterAlbumsByRelevance(albums, '   ')).toHaveLength(2);
   });
 });

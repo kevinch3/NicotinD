@@ -1,6 +1,7 @@
 import type { ISearchProvider, ProviderType, SearchProviderResult } from '@nicotind/core';
 import type { Database } from 'bun:sqlite';
 import { attachSongArtists, attachAlbumArtists } from '../artist-attach.js';
+import { fold, tokenize, matchesAllTokens } from '../search-tokens.js';
 
 /**
  * Local search over the canonical library tables (library_artists/albums/songs)
@@ -137,36 +138,6 @@ export class LibrarySearchProvider implements ISearchProvider {
   async isAvailable(): Promise<boolean> {
     return true;
   }
-}
-
-/**
- * Fold text for accent-insensitive matching: NFD-decompose, drop combining
- * marks (diacritics — "Ídolo" → "idolo", "niño" → "nino"), lowercase. Base
- * letters (incl. non-Latin scripts) are preserved so Cyrillic/etc. queries
- * still match.
- */
-function fold(s: string): string {
-  return s
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase();
-}
-
-/**
- * Split a query into folded tokens on any non-alphanumeric boundary (Unicode
- * aware, so "C. Tangana Ídolo" → ["c", "tangana", "idolo"]). Every token must
- * match for a row to qualify (AND semantics).
- */
-export function tokenize(q: string): string[] {
-  return fold(q)
-    .split(/[^\p{L}\p{N}]+/u)
-    .filter(Boolean);
-}
-
-/** True when every query token is a substring of the folded haystack. */
-export function matchesAllTokens(haystack: string, tokens: string[]): boolean {
-  const h = fold(haystack);
-  return tokens.every((t) => h.includes(t));
 }
 
 /**
