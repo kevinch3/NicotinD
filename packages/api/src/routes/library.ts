@@ -37,6 +37,7 @@ import {
 } from '../services/artist-image-override.js';
 import { clearCoverNegativeCache, extractCover, fetchRemoteCover } from './streaming.js';
 import { upsertArtistIdentity, upsertArtistAlias } from '../services/artist-identity-store.js';
+import { recordAudit } from '../services/audit-log.js';
 import { artistIdFor } from '../services/library-scanner.js';
 import { appendSongGenres, loadGenreSets } from '../services/genre-split.js';
 import { resizeCover } from '../services/cover-thumbnail.js';
@@ -852,6 +853,11 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       { albumId, deletedCount, failedCount: failed.length, folderDeleted },
       'Album deletion complete',
     );
+    recordAudit(db, c.get('user'), 'album.delete', {
+      targetKind: 'album',
+      targetId: albumId,
+      detail: `${albumRow ? `${albumRow.artist} — ${albumRow.name}, ` : ''}${deletedCount} song(s) deleted`,
+    });
     return c.json({ ok: failed.length === 0, deletedCount, failedCount: failed.length, failed });
   });
 
@@ -1333,6 +1339,15 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     // shows a spinner meanwhile). scan-cache skips unchanged files, so a no-op
     // rescan is cheap; the same await pattern backs POST /sync below.
     if (runSync) await runSync();
+    recordAudit(db, c.get('user'), 'artist.identity', {
+      targetKind: 'artist',
+      targetId: rawName,
+      detail: body?.rename
+        ? `rename → ${body.rename.trim()}`
+        : body?.mergeInto
+          ? `merge → ${body.mergeInto.trim()}`
+          : (body?.decision ?? ''),
+    });
     return c.json({ ok: true, resynced: Boolean(runSync) });
   });
 
@@ -2047,6 +2062,10 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
 
     if (runSync) void runSync();
 
+    recordAudit(getDatabase(), c.get('user'), 'songs.bulk-delete', {
+      targetKind: 'songs',
+      detail: `${ids.length - failed.length}/${ids.length} deleted`,
+    });
     return c.json({ ok: true, deletedCount: ids.length - failed.length });
   });
 

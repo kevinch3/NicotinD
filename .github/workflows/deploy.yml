@@ -417,15 +417,56 @@ jobs:
       - name: Inspect published manifest
         run: docker buildx imagetools inspect "$IMAGE:${GITHUB_REF_NAME}"
 
+  # Publish the analysis sidecar image (amd64 only: essentia-tensorflow ships
+  # x86_64-only wheels, so an arm64 build has never been possible). Single-arch
+  # → no digest/merge dance, tags pushed directly. Same tag semantics as the
+  # server image.
+  docker-analysis:
+    runs-on: ubuntu-latest
+    if: github.ref_type == 'tag'
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: ghcr.io/kevinch3/nicotind-analysis
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute tags
+        id: tags
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME}" # vX.Y.Z
+          major="${version%%.*}"       # vX
+          echo "tags=${IMAGE}:${version},${IMAGE}:${major},${IMAGE}:release" >> "$GITHUB_OUTPUT"
+
+      - name: Build + push
+        uses: docker/build-push-action@v6
+        with:
+          context: packages/analysis
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
+          cache-from: type=gha,scope=analysis-linux-amd64
+          cache-to: type=gha,mode=max,scope=analysis-linux-amd64
+
   deploy:
     runs-on: ubuntu-latest
-    # On a tag push the host pulls the image docker-merge just published, so
-    # deploy must wait for it. On workflow_dispatch both docker jobs are
-    # skipped and the host redeploys the current `release` image (NOT master
-    # source — the compose file's `image:` default; build-from-source now
+    # On a tag push the host pulls the images the docker jobs just published,
+    # so deploy must wait for them. On workflow_dispatch the docker jobs are
+    # skipped and the host redeploys the current `release` images (NOT master
+    # source — the compose file's `image:` defaults; build-from-source now
     # lives in an override file).
-    needs: [docker-merge]
-    if: ${{ !cancelled() && (needs.docker-merge.result == 'success' || needs.docker-merge.result == 'skipped') }}
+    needs: [docker-merge, docker-analysis]
+    if: ${{ !cancelled() && (needs.docker-merge.result == 'success' || needs.docker-merge.result == 'skipped') && (needs.docker-analysis.result == 'success' || needs.docker-analysis.result == 'skipped') }}
     steps:
       # Resolve exactly what the server should check out. On a tag push (the normal
       # release path) deploy that exact tag; on a manual workflow_dispatch deploy the
@@ -475,11 +516,11 @@ jobs:
             # origin so a stale local tag can never block a release again.
             git fetch --force --tags origin master &&
             git reset --hard ${{ steps.ref.outputs.ref }} &&
-            # Pull the published server image (docker-merge just moved `release`
-            # to this tag); --build still builds services that kept a `build:`
-            # key (the analysis sidecar). Requires the GHCR package to be
-            # public (one-time setting after the first publish) or a
-            # `docker login ghcr.io` on the host — see docs/deployment.md.
-            docker compose pull nicotind &&
+            # Pull the published images (the docker jobs just moved `release`
+            # to this tag). --build is kept for any host-local override that
+            # still carries a `build:` key (no-op otherwise). Requires the
+            # GHCR packages to be public or a `docker login ghcr.io` on the
+            # host — see docs/deployment.md.
+            docker compose pull nicotind analysis &&
             docker compose up --build -d
           '

@@ -84,3 +84,15 @@ signal). UI surfaces gate on these:
   track-info sheet's artist-identity / genre / lyrics editors.
 - **Admin unchanged** (`isAdmin()`): the Admin nav link/routes, Extensions, and admin-only
   Settings sections. User management uses a four-value role `<select>`.
+
+## Audit log (admin)
+
+With refiners, destructive actions are multi-user — the `audit_log` table gives admins a durable
+"who did what, when" record instead of grepping server logs (`services/audit-log.ts`).
+`recordAudit` is called **explicitly at the mutation sites** with meaningful action names — not a
+blanket mutation middleware, which would drown the log in per-listener noise (stars, lyric edits).
+Instrumented today: `album.delete`, `songs.bulk-delete`, `artist.identity` (rename/merge/split
+detail), and the admin user-management routes (`user.create/role/status/password-reset/delete`).
+A failed ledger write never breaks the audited action. `GET /api/admin/audit?limit=&offset=`
+(admin-gated) serves entries newest-first; the Admin page renders the recent 50 as an "Audit log"
+table (`data-testid="audit-log"`). Add new destructive routes to the ledger when you add them.

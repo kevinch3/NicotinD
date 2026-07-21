@@ -14,11 +14,11 @@ docker compose up -d
 # open http://localhost:8484 → setup wizard
 ```
 
-The clone is still needed because the compose stack references in-repo files
-(`scripts/slskd-entrypoint.sh`, the `packages/analysis` sidecar build). The
-**server itself is not built locally** — compose pulls the published image.
-Publishing the analysis sidecar image too (making the install a pure
-"download 2 files" flow, no clone) is a roadmap item — see
+The clone is still needed because the compose stack bind-mounts one in-repo
+file (`scripts/slskd-entrypoint.sh`). **Nothing is built locally** — compose
+pulls the published server image and the published analysis sidecar image.
+Inlining the slskd entrypoint (making the install a pure "download 2 files"
+flow, no clone) is the remaining gap — see
 [oss-best-practices.md](oss-best-practices.md).
 
 ## The published image
@@ -45,6 +45,25 @@ There is deliberately **no `latest` tag**. `release` is the explicit
 equivalent, and it can only ever point at a tagged release (Immich's
 `release`/`vN` metatag convention; their docs likewise steer users away from
 `:latest`).
+
+### The analysis sidecar image
+
+`ghcr.io/kevinch3/nicotind-analysis`, same tag semantics, published by the
+`docker-analysis` job. **amd64 only** — essentia-tensorflow ships x86_64-only
+wheels, so this sidecar has never been runnable on arm64; on an arm64 host
+remove/disable the `analysis` service (everything degrades gracefully — only
+the audio-features enrichment task pauses). GPU inference still builds from
+source via an override (`--build-arg GPU=1`, see
+`docker-compose.override.example.yml` + [audio-ml-enrichment.md](audio-ml-enrichment.md)).
+
+### Infra image pins
+
+Images the app doesn't own are version-pinned so users can't drift on risky
+components (Immich digest-pins theirs): `slskd` (already pinned),
+`linuxserver/lidarr` (was `:latest` — a silent Lidarr major can break the API
+client), and `brainicism/bgutil-ytdlp-pot-provider`, which must stay **in
+step with the pip-installed plugin pinned in the Dockerfile** — bump both
+together.
 
 ### Pinning a version
 
@@ -109,6 +128,19 @@ the desktop sidecar handshake, and the e2e web server wait. `version` is
 informational (verify what a deploy shipped with one `curl`); clients must only
 rely on `ok`.
 
+## Update check + version history
+
+The server polls the GitHub releases API at most once per 24h (1h backoff on
+failure, `NICOTIND_UPDATE_CHECK=off` to disable — the poll sends nothing but
+the request itself) and caches the newest release in the DB
+(`services/update-check.ts`). `GET /api/admin/update-check` serves the cache —
+current vs latest version, `updateAvailable`, release URL — plus the
+`version_history` table (every version this server has ever booted, recorded
+at startup; Immich's version-history pattern, invaluable for support). Admin →
+System shows the row ("Server: vX — up to date / Update available") with a
+"Check now" button (`?refresh=1` forces a poll). Applying an update stays
+`docker compose pull && up -d` (above) — the server never updates itself.
+
 ## Data layout & backups
 
 Everything stateful lives in the `nicotind-data` volume (`/data/nicotind` in
@@ -116,11 +148,12 @@ the container): `nicotind.db` (SQLite, WAL mode), `secrets.json`
 (auto-generated, mode 0600), `cover-cache/`, `artist-overrides/`. Music lives
 in the `music` volume.
 
-Minimal backup today: stop the container (or accept WAL-copy caveats) and copy
-the data volume; the music dir is plain files. A proper scheduled backup
-(`VACUUM INTO` snapshot + pruning, admin-triggered restore — the Home
-Assistant backup model) is a roadmap item in
-[oss-best-practices.md](oss-best-practices.md).
+Backups are automatic: a daily `VACUUM INTO` snapshot of the DB + secrets
+lands under `<dataDir>/backups`, pruned to the newest 7, with an Admin
+"Back up now" trigger — see [backup-restore.md](backup-restore.md) for the
+schedule, configuration (`NICOTIND_BACKUP*`), and the manual restore steps.
+Copy the backups directory off-host for disaster protection; the music dir is
+plain files (rsync it).
 
 ## Resource notes
 

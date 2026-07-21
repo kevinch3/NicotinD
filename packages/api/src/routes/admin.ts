@@ -5,6 +5,14 @@ import type { ProcessingSettings, ProcessingStatus, Role } from '@nicotind/core'
 import type { Lidarr } from '@nicotind/lidarr-client';
 import type { AuthEnv } from '../middleware/auth.js';
 import { getDatabase } from '../db.js';
+import { listAudit, recordAudit } from '../services/audit-log.js';
+import { listBackups, runBackup } from '../services/backup.js';
+import {
+  checkForUpdateNow,
+  compareVersions,
+  getStoredUpdateCheck,
+  listVersionHistory,
+} from '../services/update-check.js';
 import { transcodeLibraryToOpus } from '../services/library-transcode.js';
 import { optimizeAllAlbums } from '../services/metadata-optimize.js';
 import { setProcessingSettings } from '../services/processing-settings.js';
@@ -15,12 +23,16 @@ import type { LibraryProcessingService } from '../services/library-processing.se
 
 export interface AdminRoutesDeps {
   musicDir: string;
+  /** Expanded data dir (backups live under `<dataDir>/backups`); backup routes 503 without it. */
+  dataDir?: string;
   /** Cover-cache dir for metadata-optimize (purged when a canonical URL changes). */
   coverCacheDir?: string;
   /** Lidarr client; null when unconfigured (metadata-optimize then 503s). */
   lidarr?: Lidarr | null;
   /** Windowed library-processing scheduler; null when not wired (503s). */
   processing?: LibraryProcessingService | null;
+  /** Running server version (package.json), for the update-check route. */
+  version?: string;
 }
 
 export function adminRoutes(deps: AdminRoutesDeps) {
@@ -61,6 +73,7 @@ export function adminRoutes(deps: AdminRoutesDeps) {
       'user',
     );
     db.query('INSERT INTO user_settings (user_id) VALUES (?)').run(id);
+    recordAudit(db, c.get('user'), 'user.create', { targetKind: 'user', targetId: id, detail: username });
 
     return c.json(
       {
@@ -120,6 +133,7 @@ export function adminRoutes(deps: AdminRoutesDeps) {
     if (result.changes === 0) {
       return c.json({ error: 'User not found' }, 404);
     }
+    recordAudit(db, currentUser, 'user.role', { targetKind: 'user', targetId: id, detail: role });
     return c.json({ ok: true });
   });
 
@@ -142,6 +156,7 @@ export function adminRoutes(deps: AdminRoutesDeps) {
     if (result.changes === 0) {
       return c.json({ error: 'User not found' }, 404);
     }
+    recordAudit(db, currentUser, 'user.status', { targetKind: 'user', targetId: id, detail: status });
     return c.json({ ok: true });
   });
 
@@ -160,6 +175,7 @@ export function adminRoutes(deps: AdminRoutesDeps) {
     if (result.changes === 0) {
       return c.json({ error: 'User not found' }, 404);
     }
+    recordAudit(db, c.get('user'), 'user.password-reset', { targetKind: 'user', targetId: id });
     return c.json({ ok: true });
   });
 
@@ -177,6 +193,7 @@ export function adminRoutes(deps: AdminRoutesDeps) {
     if (result.changes === 0) {
       return c.json({ error: 'User not found' }, 404);
     }
+    recordAudit(db, currentUser, 'user.delete', { targetKind: 'user', targetId: id });
     return c.json({ ok: true });
   });
 
@@ -206,6 +223,61 @@ export function adminRoutes(deps: AdminRoutesDeps) {
       onlyMissingOrPoor,
     });
     return c.json({ ok: true, dryRun, ...result });
+  });
+
+  // --- Audit log (services/audit-log.ts) ------------------------------------
+
+  // Recent destructive/curation actions, newest first. ?limit=&offset= paginate.
+  app.get('/audit', (c) => {
+    const limit = Number(c.req.query('limit') ?? 50);
+    const offset = Number(c.req.query('offset') ?? 0);
+    return c.json(
+      listAudit(getDatabase(), {
+        limit: Number.isFinite(limit) ? limit : 50,
+        offset: Number.isFinite(offset) ? offset : 0,
+      }),
+    );
+  });
+
+  // --- Update check + version history (services/update-check.ts) -----------
+
+  // Cached update-check result vs the running version, plus every version this
+  // server has ever booted. `?refresh=1` forces a GitHub poll (the "Check now"
+  // button); the plain GET never phones home.
+  app.get('/update-check', async (c) => {
+    const db = getDatabase();
+    if (c.req.query('refresh') === '1') await checkForUpdateNow(db);
+    const stored = getStoredUpdateCheck(db);
+    const current = deps.version ?? 'unknown';
+    const latest = stored?.latestVersion ?? null;
+    return c.json({
+      currentVersion: current,
+      latestVersion: latest,
+      updateAvailable:
+        latest !== null && current !== 'unknown' && compareVersions(latest, current) > 0,
+      checkedAt: stored?.checkedAt ?? null,
+      releaseUrl: stored?.releaseUrl ?? null,
+      versionHistory: listVersionHistory(db),
+    });
+  });
+
+  // --- Backups (see services/backup.ts + docs/backup-restore.md) -----------
+
+  // List existing backups, newest first.
+  app.get('/backups', (c) => {
+    if (!deps.dataDir) return c.json({ error: 'Backups not available' }, 503);
+    return c.json(listBackups(deps.dataDir));
+  });
+
+  // Take a backup now (also prunes to the keep count).
+  app.post('/backups', (c) => {
+    if (!deps.dataDir) return c.json({ error: 'Backups not available' }, 503);
+    try {
+      const info = runBackup(getDatabase(), { dataDir: deps.dataDir });
+      return c.json(info, 201);
+    } catch (err) {
+      return c.json({ error: `Backup failed: ${err instanceof Error ? err.message : err}` }, 500);
+    }
   });
 
   // --- Windowed library processing (BPM / genre enrichment) ----------------

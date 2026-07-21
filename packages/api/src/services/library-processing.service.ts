@@ -8,6 +8,7 @@ import type { ProcessingSettings, ProcessingStatus, ProcessingTaskId } from '@ni
 import { getProcessingSettings } from './processing-settings.js';
 import { isWithinWindow } from './processing-window.js';
 import { maybeRefreshAutoPlaylists } from './auto-playlists.service.js';
+import { maybeRunDailyBackup } from './backup.js';
 import {
   ENRICHMENT_TASKS,
   createEnrichmentContext,
@@ -181,6 +182,9 @@ export class LibraryProcessingService extends EventEmitter {
   /** Periodic tick: one batch when enabled and inside the window. */
   async tick(): Promise<void> {
     if (this.busy) return;
+    // Daily data backup (marker-guarded, ≥04:00 local). Deliberately BEFORE the
+    // enabled/window checks: backups must not depend on enrichment being on.
+    maybeRunDailyBackup(this.db, { dataDir: this.dataDir, now: this.now().getTime() });
     const settings = getProcessingSettings(this.db);
     if (!settings.enabled) {
       this.publish(settings, 'disabled');

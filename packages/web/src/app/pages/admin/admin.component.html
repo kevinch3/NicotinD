@@ -99,6 +99,35 @@
           </section>
         </div>
 
+        <!-- Audit log: recent destructive/curation actions with the acting user. -->
+        @if (auditLoaded() && auditLog().length > 0) {
+          <div data-testid="audit-log">
+            <h2 class="text-xl font-bold text-theme-primary mb-8">Audit log</h2>
+            <section class="rounded-xl border border-theme bg-theme-surface overflow-x-auto">
+              <table class="w-full text-sm">
+                <thead>
+                  <tr class="border-b border-theme">
+                    <th class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted">When</th>
+                    <th class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted">User</th>
+                    <th class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted">Action</th>
+                    <th class="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-theme-muted">Target</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (e of auditLog(); track e.id) {
+                    <tr class="border-b border-theme last:border-0">
+                      <td class="px-4 py-2.5 text-theme-muted whitespace-nowrap">{{ formatAuditTime(e.at) }}</td>
+                      <td class="px-4 py-2.5 text-theme-secondary">{{ e.username ?? e.userId }}</td>
+                      <td class="px-4 py-2.5 text-theme-secondary">{{ e.action }}</td>
+                      <td class="px-4 py-2.5 text-theme-muted">{{ e.detail ?? e.targetId ?? '—' }}</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </section>
+          </div>
+        }
+
         <!-- System Panel -->
         <div>
           <h2 class="text-xl font-bold text-theme-primary mb-8">System</h2>
@@ -120,6 +149,27 @@
               </div>
             }
           </div>
+
+          <!-- Server version + update check (cached daily GitHub poll). -->
+          @if (updateCheck(); as uc) {
+            <div class="flex items-center gap-3 mb-8 text-sm flex-wrap" data-testid="update-check">
+              <span class="text-theme-muted">Server:</span>
+              <span class="text-theme-secondary">v{{ uc.currentVersion }}</span>
+              @if (uc.updateAvailable) {
+                <a [href]="uc.releaseUrl" target="_blank" rel="noopener"
+                  class="text-status-progress underline" data-testid="update-available">
+                  Update available: v{{ uc.latestVersion }}
+                </a>
+              } @else if (uc.checkedAt) {
+                <span class="text-theme-muted">up to date</span>
+              }
+              <button (click)="loadUpdateCheck(true)" [disabled]="checkingUpdate()"
+                data-testid="update-check-now"
+                class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition disabled:opacity-50">
+                {{ checkingUpdate() ? 'Checking…' : 'Check now' }}
+              </button>
+            </div>
+          }
 
           @if (scanStatus()) {
             <div class="flex items-center gap-3 mb-8 text-sm">
@@ -162,6 +212,35 @@
             </div>
             @if (syncMsg(); as msg) {
               <p class="text-xs text-theme-secondary" data-testid="sync-library-msg">{{ msg }}</p>
+            }
+          </div>
+
+          <!-- Maintenance: backups. Nightly automatic (DB snapshot + secrets,
+               pruned to the newest N) with a manual trigger; restore is manual
+               by design — see docs/backup-restore.md. -->
+          <div class="flex flex-col gap-2 mb-8" data-testid="backups-panel">
+            <div class="flex items-center gap-3">
+              <button (click)="runBackup()" [disabled]="backingUp()"
+                data-testid="backup-now"
+                class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition disabled:opacity-50">
+                {{ backingUp() ? 'Backing up…' : 'Back up now' }}
+              </button>
+              <span class="text-xs text-theme-muted">
+                Snapshot the database + secrets into the data dir (runs nightly automatically).
+              </span>
+            </div>
+            @if (backupMsg(); as msg) {
+              <p class="text-xs text-theme-secondary" data-testid="backup-msg">{{ msg }}</p>
+            }
+            @if (backups().length > 0) {
+              <ul class="text-xs text-theme-muted flex flex-col gap-0.5" data-testid="backups-list">
+                @for (b of backups(); track b.name) {
+                  <li>
+                    <span class="text-theme-secondary">{{ b.name }}</span>
+                    — {{ formatBackupSize(b.sizeBytes) }}, {{ formatBackupDate(b.createdAt) }}
+                  </li>
+                }
+              </ul>
             }
           </div>
 

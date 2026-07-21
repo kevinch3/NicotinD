@@ -26,23 +26,27 @@ live re-init.
 
 ## 1. Deployment (P1)
 
-- **Publish the `analysis` sidecar image** — the last thing compose builds from
-  source. Publishing it makes the install a true "download compose + .env"
-  flow, no git clone (Immich's install: two files, three variables). Also lets
-  the GPU variant become an image tag instead of a local `--build-arg`. (M)
+- ~~**Publish the `analysis` sidecar image**~~ — **done**: published as
+  `ghcr.io/kevinch3/nicotind-analysis` (amd64 only — essentia-tensorflow has
+  x86_64-only wheels; arm64 hosts disable the service). GPU stays a source
+  build (`--build-arg GPU=1`) via override.
+- ~~**Pin infra images**~~ — **done**: `lidarr` pinned to a version tag,
+  `bgutil` provider image pinned in step with the pip plugin pin in the
+  Dockerfile (bump together). Digest-pinning + a Renovate-style bump flow
+  remains open. (S)
+- **Inline the slskd entrypoint** — the last reason the install needs a git
+  clone is the `scripts/slskd-entrypoint.sh` bind mount; inlining it (compose
+  `command`/config or baking a tiny image) makes the install a true
+  "download compose + .env" flow, two files like Immich. (S)
 - **ffmpeg hardware-acceleration compose overlay** — Immich ships
   `hwaccel.transcoding.yml` with named profiles (`nvenc`, `qsv`, `vaapi`, …)
   that users `extends:` into the main file; the base install stays identical
   for everyone. NicotinD's transcode paths (lossless→Opus, vocal-mute, disk
   transcode cache) are ffmpeg-only today; an overlay + codec flag gets
   low-power boxes (N100s, NAS) real headroom. (M)
-- **Pin infra images** — Immich digest-pins the images the app doesn't own
-  (their Postgres/Valkey) so users can't drift on risky components. NicotinD:
-  pin `lidarr` to a version tag (currently `:latest` — a silent Lidarr major
-  can break the client) and consider digest-pinning `slskd` + `bgutil`. (S)
-- **arm64 status**: shipped in the first pass via native `ubuntu-24.04-arm`
-  runners. If a base-image/deno gap surfaces on arm64, drop the leg from the
-  matrix and track the fix here rather than blocking releases.
+- **arm64 status**: shipped for the server image via native
+  `ubuntu-24.04-arm` runners (proven green on v0.1.230). The analysis sidecar
+  is amd64-only by upstream constraint (see above).
 
 ## 2. Runtime robustness (P1)
 
@@ -55,13 +59,12 @@ live re-init.
   library (streaming keeps working) with acquisition/plugins disabled instead
   of crash-looping; honor a `<dataDir>/safe-mode` sentinel that skips plugin
   init and background loops for troubleshooting. (M)
-- **Backup & restore, first-class** — HA's backup integration: scheduled
-  automatic backups, pruning, full vs partial, selective restore. NicotinD
-  proposal: nightly `VACUUM INTO <dataDir>/backups/nicotind-<date>.db` (safe
-  online SQLite snapshot) + `secrets.json`/settings export, keep-N pruning,
-  Admin panel trigger + download, documented restore path. Music files are
-  excluded (plain files; users rsync). This also de-risks the
-  forward-migration rollback caveat in [deployment.md](deployment.md). (M)
+- ~~**Backup & restore, first-class**~~ — **done** (v1): nightly marker-guarded
+  `VACUUM INTO` snapshot + secrets copy under `<dataDir>/backups`, keep-N
+  pruning, admin list/trigger routes + Admin "Back up now" block, documented
+  manual restore — see [backup-restore.md](backup-restore.md). Open
+  extensions: downloadable archive, artist-overrides inclusion,
+  backup-before-update hook. (M)
 - **Retention/purge policy (bounded detail, unbounded aggregates)** — HA's
   recorder purges detailed history nightly (`purge_keep_days`, default 10) but
   keeps downsampled statistics forever, and VACUUMs on a schedule. NicotinD
@@ -82,18 +85,13 @@ live re-init.
 
 ## 3. Server management (P2)
 
-- **Update check + in-app "update available"** — Immich's
-  `GET /server/version-check` (periodic poll of GitHub releases, admin-set
-  channel) and HA's first-class update entities. NicotinD: a daily poll of
-  `https://api.github.com/repos/kevinch3/NicotinD/releases/latest`, surfaced as
-  a Settings/Admin badge + toast with the changelog modal already in place.
-  Opt-out (`NICOTIND_UPDATE_CHECK=off`) for the phone-home-averse. The PWA
-  side already has manual "Check for updates"; this is the server-image
-  equivalent. (S/M)
-- **`version_history` table** — Immich records every version a server has run
-  and shows it at login. One tiny table written on boot when
-  `pkg.version` differs from the last row; invaluable for support ("did this
-  DB ever run 0.1.180?"). (S)
+- ~~**Update check + in-app "update available"**~~ — **done** (v1): daily
+  cached GitHub-releases poll (`NICOTIND_UPDATE_CHECK=off` opt-out, 1h failure
+  backoff), `GET /api/admin/update-check`, Admin → System row with "Check
+  now". Open extensions: release-channel setting, non-admin toast. See
+  [deployment.md](deployment.md) "Update check".
+- ~~**`version_history` table**~~ — **done**: written on boot
+  (`recordBootVersion`), served by the update-check route.
 - **Release-notes discipline: a Breaking changes section** — both projects
   surface backward-incompatible changes as a dedicated, mandatory release-note
   section. NicotinD: `.versionrc.json` already routes `feat!`/`BREAKING
@@ -113,11 +111,11 @@ live re-init.
 NicotinD's four-role ladder already exceeds Immich (admin/user). Gaps worth
 closing:
 
-- **Admin audit log** — who deleted/merged/renamed/acquired what, when. The
-  curator role (`refiner`) makes destructive actions multi-user; today they're
-  only in server logs. One `audit_log` table written by the `requireCurator`/
-  `requireAdmin` mutation routes + a read-only Admin page. Pairs with the
-  existing `ConfirmService` destructive-action flow. (M)
+- ~~**Admin audit log**~~ — **done** (v1): `audit_log` table written explicitly
+  at the destructive mutation sites (album/bulk-song delete, artist identity,
+  user management), `GET /api/admin/audit` + Admin "Audit log" table — see
+  [roles.md](roles.md) "Audit log". Open extensions: acquisition/metadata-fix
+  actions, retention cap.
 - **User-facing roles doc** — [roles.md](roles.md) is engineering-facing;
   admins provisioning accounts need a capability matrix ("what does `refiner`
   let my roommate do?"). Short table in README or the docs site later. (S)

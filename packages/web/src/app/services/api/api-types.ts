@@ -447,6 +447,36 @@ export interface LibraryFragmentFinding {
   message: string;
 }
 
+/** One admin audit-log entry (destructive/curation action record). */
+export interface AuditEntry {
+  id: number;
+  at: number;
+  userId: string;
+  username: string | null;
+  action: string;
+  targetKind: string | null;
+  targetId: string | null;
+  detail: string | null;
+}
+
+/** Cached server update-check vs the running version (admin). */
+export interface UpdateCheck {
+  currentVersion: string;
+  latestVersion: string | null;
+  updateAvailable: boolean;
+  checkedAt: number | null;
+  releaseUrl: string | null;
+  versionHistory: { version: string; firstSeenAt: number }[];
+}
+
+/** One backup under `<dataDir>/backups` (DB snapshot + secrets). */
+export interface BackupInfo {
+  name: string;
+  createdAt: number;
+  sizeBytes: number;
+  files: string[];
+}
+
 export interface LibraryFragmentReport {
   duplicateAlbums: LibraryDuplicateAlbumCluster[];
   hiddenByClassification: LibraryHiddenByClassification[];

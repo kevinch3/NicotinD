@@ -8,7 +8,7 @@ import { NicotinDConfigSchema, createLogger, generateSecret, resolvePort } from 
 import { ServiceManager, NativeProcessStrategy } from '@nicotind/service-manager';
 import { Slskd } from '@nicotind/slskd-client';
 import { Lidarr } from '@nicotind/lidarr-client';
-import { createApp } from '@nicotind/api';
+import { createApp, getDatabase, maybeCheckForUpdate } from '@nicotind/api';
 
 const log = createLogger('nicotind');
 
@@ -165,6 +165,14 @@ async function main() {
   // Remote access (Tailscale Funnel): the funnel target port is only known now,
   // so arm here — non-fatal on failure, state surfaced via the admin route.
   if (server.port !== undefined) void remoteAccess.onServerStarted(server.port);
+
+  // Daily update check (GitHub releases poll, cached in the DB; the admin
+  // route serves the cache). The guard self-limits to one poll per 24h with a
+  // 1h failure backoff, so an hourly kick is just a scheduler. Opt-out via
+  // NICOTIND_UPDATE_CHECK=off. Lives here (not the processor tick) so route/
+  // service unit tests can never trigger a network call.
+  void maybeCheckForUpdate(getDatabase());
+  setInterval(() => void maybeCheckForUpdate(getDatabase()), 3_600_000).unref();
 
   // Graceful shutdown
   process.on('SIGTERM', async () => {
