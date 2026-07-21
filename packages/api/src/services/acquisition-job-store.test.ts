@@ -135,6 +135,48 @@ describe('createJob', () => {
     expect(row?.transfer_key).toBe(`PeerCase::${filename}`);
     expect(row?.transfer_key).toBe(transferKeyFor('PeerCase', filename));
   });
+
+  it('persists per-file bitRate + audioFormat and surfaces them on getJob', () => {
+    const id = createJob(db, {
+      kind: 'album-hunt',
+      method: 'slskd',
+      username: 'peer1',
+      canonicalTracks: ['A', 'B'],
+      files: [
+        {
+          filename: '@@p\\Album\\A.flac',
+          size: 1,
+          trackTitle: 'A',
+          bitRate: 1411,
+          audioFormat: 'FLAC',
+        },
+        {
+          filename: '@@p\\Album\\B.mp3',
+          size: 2,
+          trackTitle: 'B',
+          bitRate: 320,
+          audioFormat: 'MP3',
+        },
+      ],
+    });
+    const items = getJob(db, id)!.items;
+    expect(items[0]?.bitRate).toBe(1411);
+    expect(items[0]?.audioFormat).toBe('FLAC');
+    expect(items[1]?.bitRate).toBe(320);
+    expect(items[1]?.audioFormat).toBe('MP3');
+  });
+
+  it('null bitRate / audioFormat are stored as null (not 0 / empty string)', () => {
+    const id = createJob(db, {
+      kind: 'direct',
+      method: 'slskd',
+      username: 'peer1',
+      files: [{ filename: '@@p\\Album\\A.flac', size: 1 }],
+    });
+    const item = getJob(db, id)!.items[0]!;
+    expect(item.bitRate).toBeNull();
+    expect(item.audioFormat).toBeNull();
+  });
 });
 
 describe('jobMetaForTransfer', () => {
@@ -274,6 +316,64 @@ describe('listJobFeed', () => {
     const job = listJobFeed(db).find((j) => j.id === id);
     expect(job!.items[0].status).toBe('pending');
   });
+
+  it('rolls up the dominant bitrate across items (mode wins; ties → max kbps)', () => {
+    const id = createJob(db, {
+      kind: 'album-hunt',
+      method: 'slskd',
+      username: 'peer1',
+      files: [
+        { filename: 'a\\01.flac', trackTitle: 'A', bitRate: 320, audioFormat: 'MP3' },
+        { filename: 'a\\02.flac', trackTitle: 'B', bitRate: 320, audioFormat: 'MP3' },
+        { filename: 'a\\03.flac', trackTitle: 'C', bitRate: 256, audioFormat: 'MP3' },
+      ],
+    });
+    const job = listJobFeed(db).find((j) => j.id === id);
+    expect(job!.bitRate).toBe(320);
+    expect(job!.audioFormat).toBe('MP3');
+  });
+
+  it('upgrades the rollup to library_songs.bit_rate when the item has a relative_path', () => {
+    const id = createJob(db, {
+      kind: 'album-hunt',
+      method: 'slskd',
+      username: 'peer1',
+      files: [
+        // Enqueue-time bitrate (peer's MP3); relative_path connects it to the
+        // scanned library row.
+        { filename: 'a\\01.flac', trackTitle: 'A', bitRate: 320, audioFormat: 'MP3' },
+      ],
+    });
+    db.run(
+      `UPDATE acquisition_job_items SET relative_path = ?, state = 'scanned' WHERE track_title = 'A'`,
+      ['Bowie/Heathen/01.flac'],
+    );
+    db.run(
+      `INSERT INTO library_albums (id, name, artist, artist_id, song_count, duration, synced_at)
+       VALUES ('alb1', 'Heathen', 'Bowie', 'art', 1, 0, 1)`,
+    );
+    db.run(
+      `INSERT INTO library_songs (id, album_id, artist_id, path, artist, title, duration, bit_rate, suffix, synced_at, created, landed_at)
+       VALUES ('song1', 'alb1', 'art', 'Bowie/Heathen/01.flac', 'Bowie', 'A', 200, 192, 'opus', 1, 1, 1)`,
+    );
+    const job = listJobFeed(db).find((j) => j.id === id);
+    // Scanned (library) value wins over enqueue-time value — the lossless→opus
+    // case: 320 kbps MP3 peer → 192 kbps Opus in the library.
+    expect(job!.bitRate).toBe(192);
+  });
+
+  it('reports bitRate undefined when no item has a quality signature', () => {
+    const id = createJob(db, {
+      kind: 'direct',
+      method: 'slskd',
+      username: 'peer1',
+      // No bitRate on any file — legacy direct enqueue.
+      files: [{ filename: 'a\\01.flac', trackTitle: 'A' }],
+    });
+    const job = listJobFeed(db).find((j) => j.id === id);
+    expect(job!.bitRate).toBeUndefined();
+    expect(job!.audioFormat).toBeUndefined();
+  });
 });
 
 describe('repointItem', () => {
@@ -296,6 +396,33 @@ describe('repointItem', () => {
     const ok = repointItem(db, id, 'Sunday', 'peer2', 'x\\Sunday.mp3');
     expect(ok).toBe(false);
     expect(getJob(db, id)!.items[0].username).toBe('peer1');
+  });
+
+  it('upgrades bit_rate_kbps + audio_format when the alternate peer offers a known quality', () => {
+    const id = seedJob();
+    const ok = repointItem(db, id, 'Sunday', 'peer2', 'x\\Sunday.flac', 1411, 'FLAC');
+    expect(ok).toBe(true);
+    const item = getJob(db, id)!.items.find((i) => i.trackTitle === 'Sunday')!;
+    expect(item.bitRate).toBe(1411);
+    expect(item.audioFormat).toBe('FLAC');
+  });
+
+  it('preserves the original bitRate when the repoint carries none (partial fallback info)', () => {
+    const id = createJob(db, {
+      kind: 'album-hunt',
+      method: 'slskd',
+      username: 'peer1',
+      canonicalTracks: ['Sunday'],
+      files: [
+        { filename: 'a\\01 Sunday.flac', trackTitle: 'Sunday', bitRate: 320, audioFormat: 'MP3' },
+      ],
+    });
+    // No bitRate passed — the alternate is unknown quality; the existing
+    // 320 kbps MP3 stays so the card doesn't downgrade to "no info".
+    repointItem(db, id, 'Sunday', 'peer2', 'x\\Sunday.flac');
+    const item = getJob(db, id)!.items[0]!;
+    expect(item.bitRate).toBe(320);
+    expect(item.audioFormat).toBe('MP3');
   });
 });
 

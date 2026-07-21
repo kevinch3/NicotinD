@@ -16,6 +16,19 @@
       <p [class]="titleClass" data-testid="download-title">
         {{ item().title }}
       </p>
+      @if (showQuality()) {
+        <span
+          class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wide bg-theme-surface-2 text-theme-secondary flex-shrink-0"
+          data-testid="download-bitrate"
+          [title]="
+            item().audioFormat && item().audioFormat?.toUpperCase() === 'FLAC'
+              ? 'Lossless source — quality chip upgrades to the post-transcode bitrate once the library scan lands'
+              : 'Quality reported by the source / library scan'
+          "
+        >
+          {{ qualityLabel() }}
+        </span>
+      }
     </div>
     @if (item().subtitle) {
       <p class="text-xs text-theme-secondary truncate mt-0.5">{{ item().subtitle }}</p>

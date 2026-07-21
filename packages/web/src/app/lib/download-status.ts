@@ -89,3 +89,27 @@ export function isPathEffectivelyQueued(
   }
   return false;
 }
+
+/**
+ * Render the dominant bitrate + format as a compact pill for the download
+ * card. Pure: missing inputs return '' so callers can drop the chip with
+ * `@if (formatQuality(item.bitrateKbps, item.audioFormat))`.
+ *
+ *   formatQuality(320, 'MP3')   → '320 kbps'
+ *   formatQuality(1411, 'FLAC') → 'FLAC · 1411 kbps'   (lossless → show codec)
+ *   formatQuality(192, 'opus')  → '192 kbps'           (lowercase from ffprobe
+ *                                                      — UI surfaces the kbps)
+ *   formatQuality(undefined, 'FLAC') → 'FLAC'          (lossless without kbps)
+ *   formatQuality(null, null)   → ''                   (chip hidden)
+ */
+export function formatQuality(bitrateKbps?: number | null, format?: string | null): string {
+  const fmt = (format ?? '').trim();
+  const upper = fmt.toUpperCase();
+  const isLossless = upper === 'FLAC' || upper === 'WAV' || upper === 'ALAC' || upper === 'APE';
+  const kbps = typeof bitrateKbps === 'number' && bitrateKbps > 0 ? bitrateKbps : null;
+  if (kbps != null && isLossless) return `${upper} · ${kbps} kbps`;
+  if (kbps != null && fmt) return `${kbps} kbps`;
+  if (kbps != null) return `${kbps} kbps`;
+  if (fmt) return upper;
+  return '';
+}

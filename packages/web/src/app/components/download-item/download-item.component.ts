@@ -4,6 +4,7 @@ import type { DownloadItem } from '../../lib/download-groups';
 import { methodBadge } from '../../lib/acquisition-method';
 import { resolveAlbumRoute, resolvePlaylistRoute } from '../../lib/route-utils';
 import { currentAndNextTracks } from '../../lib/track-status';
+import { formatQuality } from '../../lib/download-status';
 import { PipelineStageBadgeComponent } from '../pipeline-stage-badge/pipeline-stage-badge.component';
 import { MenuPanelComponent } from '../menu-panel/menu-panel.component';
 
@@ -121,6 +122,13 @@ export class DownloadItemComponent {
   readonly showPath = signal(false);
 
   readonly badge = computed(() => methodBadge(this.item().method));
+  /** Compact "· FLAC · 1411 kbps" / "· 320 kbps" chip text, '' when unknown. */
+  readonly qualityLabel = computed(() => {
+    const it = this.item();
+    return formatQuality(it.bitrateKbps, it.audioFormat);
+  });
+  /** Whether to show the bitrate chip — empty string hides it. */
+  readonly showQuality = computed(() => this.qualityLabel().length > 0);
   /** Whether to show the "Open in Library" deep-link on this row. */
   readonly canOpen = computed(() => canOpenInLibrary(this.item()));
   /** Whether to show the "Open playlist" deep-link (playlist-classified job). */
@@ -138,9 +146,7 @@ export class DownloadItemComponent {
   /** "Now: / Next:" track titles derived from this job's per-track statuses. */
   readonly nowNext = computed(() => currentAndNextTracks(this.item().tracks));
   /** Whether to render the "Now: / Next:" block on this row. */
-  readonly showNowNext = computed(
-    () => canShowNowNext(this.item()) && !!this.nowNext().current,
-  );
+  readonly showNowNext = computed(() => canShowNowNext(this.item()) && !!this.nowNext().current);
 
   startedAgo(): string {
     const at = this.item().startedAt;

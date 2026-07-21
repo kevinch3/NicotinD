@@ -6,7 +6,10 @@ import { join } from 'node:path';
 import { chooseFolderKeepers, readFolderTracks, type ReconcileFile } from './album-reconcile.js';
 
 const f = (name: string, title: string, suffix: string, bitRate: number): ReconcileFile => ({
-  name, title, suffix, bitRate,
+  name,
+  title,
+  suffix,
+  bitRate,
 });
 
 describe('chooseFolderKeepers', () => {
@@ -51,7 +54,11 @@ describe('readFolderTracks', () => {
   writeFileSync(join(tmp, 'track.flac'), '');
 
   afterAll(() => {
-    try { rmSync(tmp, { recursive: true }); } catch { /* ignore */ }
+    try {
+      rmSync(tmp, { recursive: true });
+    } catch {
+      /* ignore */
+    }
   });
 
   it('excludes non-audio files (extension filter)', async () => {

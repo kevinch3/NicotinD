@@ -27,6 +27,14 @@ export interface AlbumGroup {
   /** Earliest file start time (ms), when slskd reports one. */
   startedAt?: number;
   state: 'downloading' | 'queued' | 'done' | 'error';
+  /**
+   * Dominant bitrate (kbps) across the folder's transfers, attached by the
+   * server's `enrichWithBitrate` pass. Drives the "· 320 kbps" chip on the
+   * download card. Optional: absent for direct enqueues / pre-feature rows.
+   */
+  bitrateKbps?: number;
+  /** Codec/format string ("FLAC", "MP3", …). Optional. */
+  audioFormat?: string;
 }
 
 /** Last path segment of a backslash-separated peer directory. */
@@ -105,6 +113,8 @@ export function groupByAlbum(downloads: SlskdUserTransferGroup[]): AlbumGroup[] 
         overallPercent,
         startedAt,
         state,
+        bitrateKbps: dir.bitrateKbps,
+        audioFormat: dir.audioFormat,
       });
     }
   }
@@ -169,6 +179,16 @@ export interface DownloadItem {
    * keys — actions (cancel/retry/remove) must fan out to every one of them.
    */
   memberKeys?: string[];
+  /**
+   * Dominant bitrate (kbps) of the card's downloads. For slskd, this is
+   * rolled up from `enrichWithBitrate` (server joins acquisition_job_items +
+   * library_songs.bit_rate per the "actual quality" path). For URL acquires,
+   * it mirrors `AcquireJob.bitRate` (probed at ingest). Drives the "· 320
+   * kbps" chip. Optional: absent when no item has a quality signature yet.
+   */
+  bitrateKbps?: number;
+  /** Codec/format string ("FLAC", "MP3", …) attached alongside the bitrate. */
+  audioFormat?: string;
   canRetry: boolean;
   canCancel: boolean;
   canRemove: boolean;
@@ -212,6 +232,8 @@ export function groupToDownloadItem(g: AlbumGroup): DownloadItem {
     startedAt: g.startedAt,
     progress: { done: g.completedFiles, total: albumGroupTotal(g) },
     percent: g.state === 'downloading' ? g.overallPercent : undefined,
+    bitrateKbps: g.bitrateKbps,
+    audioFormat: g.audioFormat,
     canRetry: g.state === 'error' && g.erroredFileIds.length > 0,
     canCancel: g.state === 'downloading' || g.state === 'queued',
     canRemove: true,
@@ -252,6 +274,8 @@ export function acquireJobToDownloadItem(job: AcquireJob): DownloadItem {
         ? Math.round((progress.done / progress.total) * 100)
         : undefined,
     error: job.error ?? undefined,
+    bitrateKbps: job.bitRate ?? undefined,
+    audioFormat: job.audioFormat ?? undefined,
     // A 'done' job can still carry an error: a partial-download warning (e.g.
     // "1 of 16 tracks") rides in the same field as a hard failure so the row
     // can offer Retry instead of reading as an unqualified success.
@@ -286,6 +310,10 @@ const POST_DOWNLOAD_STAGES: ReadonlySet<PipelineStage> = new Set([
  * the job's item tallies ("9 of 13") over per-folder file counts. The card
  * stays on the most-active member's stage while anything is still moving, and
  * only adopts the job's post-download stage once every folder finished.
+ *
+ * `bitRate` / `audioFormat` come from the acquisition job when present (the
+ * authoritative rollup across every item across every member), falling back to
+ * the mode of the members when no job-level value is known yet.
  */
 function collapseAlbumMembers(
   albumId: string,
@@ -294,7 +322,9 @@ function collapseAlbumMembers(
 ): DownloadItem {
   const base = members[0];
   const single = members.length === 1;
-  const mostActive = members.reduce((a, b) => (STAGE_ORDER[b.stage] < STAGE_ORDER[a.stage] ? b : a));
+  const mostActive = members.reduce((a, b) =>
+    STAGE_ORDER[b.stage] < STAGE_ORDER[a.stage] ? b : a,
+  );
   const allDone = members.every((m) => m.stage === 'done');
   const stage =
     allDone && job && POST_DOWNLOAD_STAGES.has(job.stage) ? job.stage : mostActive.stage;
@@ -308,6 +338,32 @@ function collapseAlbumMembers(
   const percents = members.map((m) => m.percent).filter((p): p is number => p !== undefined);
   const startTimes = members.map((m) => m.startedAt).filter((t): t is number => t !== undefined);
   const unavailable = job && job.progress.unavailable > 0 ? job.progress.unavailable : undefined;
+  // Authoritative source: the unified job (rolled up by listJobFeed including
+  // library_songs upgrades). Fallback: mode across members.
+  let collapsedBitrate: number | undefined;
+  let collapsedFormat: string | undefined;
+  if (job?.bitRate != null) {
+    collapsedBitrate = job.bitRate;
+    collapsedFormat = job.audioFormat;
+  } else {
+    const memberBitrates = members.map((m) => m.bitrateKbps).filter((b): b is number => !!b);
+    if (memberBitrates.length > 0) {
+      const counts = new Map<number, number>();
+      for (const b of memberBitrates) counts.set(b, (counts.get(b) ?? 0) + 1);
+      let best = 0;
+      let bestCount = 0;
+      for (const [kbps, c] of counts) {
+        if (c > bestCount || (c === bestCount && kbps > best)) {
+          best = kbps;
+          bestCount = c;
+        }
+      }
+      collapsedBitrate = best;
+      collapsedFormat =
+        members.find((m) => m.bitrateKbps === best)?.audioFormat ??
+        members.find((m) => m.audioFormat)?.audioFormat;
+    }
+  }
 
   return {
     ...base,
@@ -320,9 +376,14 @@ function collapseAlbumMembers(
     // per-track granularity of their own to conflict with.
     tracks: job?.items,
     progress,
-    percent: stage === 'downloading' && percents.length ? Math.round(percents.reduce((a, b) => a + b, 0) / percents.length) : undefined,
+    percent:
+      stage === 'downloading' && percents.length
+        ? Math.round(percents.reduce((a, b) => a + b, 0) / percents.length)
+        : undefined,
     startedAt: startTimes.length ? Math.min(...startTimes) : undefined,
     unavailable: unavailable ?? base.unavailable,
+    bitrateKbps: collapsedBitrate ?? base.bitrateKbps,
+    audioFormat: collapsedFormat ?? base.audioFormat,
     memberKeys: members.map((m) => m.key),
     canRetry: members.some((m) => m.canRetry),
     canCancel: members.some((m) => m.canCancel),

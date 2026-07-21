@@ -145,7 +145,9 @@ export function discographyRoutes({
     if (Number.isNaN(albumId)) return c.json({ error: 'Invalid album ID' }, 400);
     if (!slskdRef.current) return c.json({ error: 'Soulseek is not available' }, 503);
 
-    const body = await c.req.json<{ artistName?: string }>().catch(() => ({}) as { artistName?: string });
+    const body = await c.req
+      .json<{ artistName?: string }>()
+      .catch(() => ({}) as { artistName?: string });
 
     try {
       const [album, tracks] = await Promise.all([
@@ -179,6 +181,7 @@ export function discographyRoutes({
               size: d.size,
               trackTitle: d.title,
               username: d.username,
+              bitRate: d.bitRate,
             })),
           });
         } catch (err) {
@@ -319,10 +322,9 @@ export function discographyRoutes({
 
     // Guard 1: an active job means a download for this album is already in flight.
     const activeJob = db
-      .query<
-        { id: number },
-        [number]
-      >(`SELECT id FROM album_jobs WHERE lidarr_album_id = ? AND state = 'active' LIMIT 1`)
+      .query<{ id: number }, [number]>(
+        `SELECT id FROM album_jobs WHERE lidarr_album_id = ? AND state = 'active' LIMIT 1`,
+      )
       .get(albumId);
     if (activeJob && !replace) {
       return c.json({ error: 'already-downloading', jobId: activeJob.id }, 409);

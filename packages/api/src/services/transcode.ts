@@ -134,3 +134,75 @@ function cleanupTmp(tmp: string): void {
     /* best-effort */
   }
 }
+
+/**
+ * Probe an audio file's bitrate (kbps) + codec via ffprobe. Used by
+ * AcquireWatcher to fill the `· 320 kbps` chip on URL-acquire download cards
+ * (see docs/download-pipeline.md → "Bitrate on download cards"). The probe
+ * runs AFTER LibraryOrganizer's lossless→opus transcode, so the returned
+ * values reflect what landed in the library (a downloaded FLAC shows as
+ * 192 kbps Opus when transcoding is enabled, not the source bitrate).
+ *
+ * Returns `null` when:
+ *   - ffmpeg/ffprobe is not on PATH (the rest of the pipeline gates on this);
+ *   - the file is missing or not decodable (ffprobe exits non-zero).
+ *
+ * ffprobe is invoked via the same `ffmpegBinary()` helper `transcodeToFile`
+ * uses, so a desktop-packaged ffmpeg is found too.
+ *
+ * Exported separately from `transcodeToFile` so the watcher can probe without
+ * paying the cost of an actual transcode pass — only the first audio stream's
+ * bit_rate + codec_name are read, no decode.
+ */
+export interface ProbeResult {
+  bitRateKbps: number;
+  /** Lowercase codec name reported by ffprobe (mp3, opus, flac, vorbis, aac). */
+  codec: string;
+}
+
+export function probeAudioFile(absPath: string): ProbeResult | null {
+  if (!ffmpegChecked) {
+    ffmpegAvailable();
+  }
+  if (!ffmpegPresent) return null;
+  try {
+    // `ffprobe` ships with the same ffmpeg distribution we use for transcoding.
+    const ffprobe = ffmpegBinary().replace(/ffmpeg$/, 'ffprobe');
+    const out = execFileSync(
+      ffprobe,
+      [
+        '-v',
+        'error',
+        '-select_streams',
+        'a:0',
+        '-show_entries',
+        'stream=bit_rate,codec_name',
+        '-of',
+        'default=noprint_wrappers=1',
+        absPath,
+      ],
+      { stdio: ['ignore', 'pipe', 'ignore'], timeout: 10_000 },
+    )
+      .toString()
+      .trim();
+    if (!out) return null;
+    let bitRate: number | null = null;
+    let codec: string | null = null;
+    for (const line of out.split('\n')) {
+      const eq = line.indexOf('=');
+      if (eq < 0) continue;
+      const key = line.slice(0, eq).trim();
+      const value = line.slice(eq + 1).trim();
+      if (key === 'bit_rate' && value && value !== 'N/A') {
+        const parsed = parseInt(value, 10);
+        if (Number.isFinite(parsed) && parsed > 0) bitRate = Math.round(parsed / 1000);
+      } else if (key === 'codec_name' && value) {
+        codec = value.toLowerCase();
+      }
+    }
+    if (bitRate == null || codec == null) return null;
+    return { bitRateKbps: bitRate, codec };
+  } catch {
+    return null;
+  }
+}

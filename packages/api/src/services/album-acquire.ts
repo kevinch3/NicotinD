@@ -75,10 +75,9 @@ export async function acquireAlbum(
   // A download for this album is already in flight (e.g. user hunted it manually,
   // or a prior sweep enqueued it) → consider it handled; don't enqueue a duplicate.
   const active = db
-    .query<
-      { id: number },
-      [number]
-    >(`SELECT id FROM album_jobs WHERE lidarr_album_id = ? AND state = 'active' LIMIT 1`)
+    .query<{ id: number }, [number]>(
+      `SELECT id FROM album_jobs WHERE lidarr_album_id = ? AND state = 'active' LIMIT 1`,
+    )
     .get(lidarrAlbumId);
   if (active) return 'in-flight';
 
@@ -107,7 +106,13 @@ export async function acquireAlbum(
     return 'enqueue-failed';
   }
 
-  const toFiles = (c: FolderCandidate) => c.files.map((f) => ({ filename: f.filename, size: f.size }));
+  const toFiles = (c: FolderCandidate) =>
+    c.files.map((f) => ({
+      filename: f.filename,
+      size: f.size,
+      bitRate: f.bitRate,
+      audioFormat: c.format,
+    }));
   const alternates = candidates
     .filter((c) => c !== best)
     .map((c) => ({ username: c.username, directory: c.directory, files: toFiles(c) }));
@@ -153,7 +158,12 @@ export async function acquireAlbum(
       albumJobId,
       sourceRef: best.username,
       username: best.username,
-      files: filesToDownload,
+      files: filesToDownload.map((f) => ({
+        filename: f.filename,
+        size: f.size,
+        bitRate: f.bitRate,
+        audioFormat: best.format,
+      })),
     });
   } catch (err) {
     log.warn({ lidarrAlbumId, err }, 'Failed to record acquisition job');

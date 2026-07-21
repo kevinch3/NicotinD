@@ -45,13 +45,8 @@ mock.module('node:fs', () => ({
 }));
 
 // Import the SUT AFTER the mocks are registered.
-const {
-  ffmpegAvailable,
-  _resetFfmpegProbe,
-  transcodeToFile,
-  transcodeExt,
-  transcodeContentType,
-} = await import('./transcode.js');
+const { ffmpegAvailable, _resetFfmpegProbe, transcodeToFile, transcodeExt, transcodeContentType } =
+  await import('./transcode.js');
 
 afterAll(() => {
   mock.module('node:child_process', () => realCp);
@@ -138,5 +133,31 @@ describe('transcodeToFile', () => {
     // Center cancellation: each output channel is the L/R difference, so anything
     // panned dead-center (typically lead vocals) cancels out.
     expect(lastSpawnArgs![af + 1]).toBe('pan=stereo|c0=c0-c1|c1=c1-c0');
+  });
+});
+
+describe('probeAudioFile', () => {
+  // Gated on ffmpeg being on PATH (the function probes the binary on first call).
+  // CI installs ffmpeg via Playwright's --with-deps, but on a clean dev box this
+  // is a no-op and the function returns null.
+  const ffmpegOk = (() => {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { execFileSync } = require('node:child_process') as typeof import('node:child_process');
+      execFileSync('ffmpeg', ['-version'], { stdio: 'ignore' });
+      return true;
+    } catch {
+      return false;
+    }
+  })();
+  const itIf = (cond: boolean) => (cond ? it : it.skip);
+
+  itIf(ffmpegOk)('returns null for a non-existent file (no codec / bitrate parseable)', () => {
+    // Probe is best-effort and must never throw.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { probeAudioFile } = require('./transcode.js') as typeof import('./transcode.js');
+    const r = probeAudioFile('/no/such/file-xyz.mp3');
+    // Either null (ffprobe missing / failure) or { bitRateKbps, codec } (success).
+    expect(r === null || typeof r.bitRateKbps === 'number').toBe(true);
   });
 });

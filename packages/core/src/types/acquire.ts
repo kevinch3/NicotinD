@@ -74,6 +74,20 @@ export interface AcquisitionJobView {
    * `acquire_jobs.tracks_json` — see `AcquireJob.tracks`).
    */
   items: { title: string; status: TrackStatus }[];
+  /**
+   * Dominant bitrate (kbps) of the job's files. For slskd hunts, this is the
+   * enqueue-time bitrate (what the peer advertised); it upgrades to the
+   * library-scanned value once the scan lands (see downloads.ts enrichWithBitrate
+   * + library_songs join). For URL acquires, this mirrors `AcquireJob.bitRate`.
+   * Optional: undefined when no quality info is available.
+   */
+  bitRate?: number;
+  /**
+   * Codec/format string ("FLAC", "MP3", "opus", …). Sourced from `detectFormat`
+   * for slskd hunts (extension + bitrate heuristic) and from ffprobe for URL
+   * acquires. Optional: undefined when no quality info is available.
+   */
+  audioFormat?: string;
 }
 
 export interface AcquireJob {
@@ -126,6 +140,19 @@ export interface AcquireJob {
   playlistId: string | null;
   error: string | null;
   created_at: number;
+  /**
+   * Dominant bitrate (kbps) of the landed files, populated by AcquireWatcher
+   * via ffprobe after the lossless→opus transcode so the value matches what
+   * landed in the library. Powers the "· 320 kbps" chip on the download card.
+   * Optional: null while the job is still in-flight, and for pre-feature rows.
+   */
+  bitRate?: number | null;
+  /**
+   * Codec/format string for the landed files, e.g. "mp3", "opus", "flac". Sourced
+   * from `ffprobe -show_entries stream=codec_name`. Always shown alongside the
+   * bitrate for lossless codecs (flac), optional for lossy.
+   */
+  audioFormat?: string | null;
 }
 
 /** Acquisition provenance for a single library song (see `acquisitions` table). */

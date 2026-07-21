@@ -1,4 +1,5 @@
 import { getSingleDownloadLabel, getFolderDownloadLabel, BUTTON_CLASSES } from './download-status';
+import { formatQuality } from './download-status';
 import type { TransferEntry } from './transfer-types';
 
 const entry = (state: TransferEntry['state'], percent = 0): TransferEntry => ({ state, percent });
@@ -162,5 +163,42 @@ describe('BUTTON_CLASSES', () => {
       expect(typeof BUTTON_CLASSES[v]).toBe('string');
       expect(BUTTON_CLASSES[v].length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe('formatQuality', () => {
+  it('renders "FLAC · 1411 kbps" for a lossless codec with a bitrate', () => {
+    expect(formatQuality(1411, 'FLAC')).toBe('FLAC · 1411 kbps');
+  });
+
+  it('uppercases the format token (ffprobe returns lowercase)', () => {
+    expect(formatQuality(192, 'opus')).toBe('192 kbps');
+  });
+
+  it('renders "320 kbps" alone for lossy codecs without showing the codec', () => {
+    expect(formatQuality(320, 'MP3')).toBe('320 kbps');
+  });
+
+  it('renders "320 kbps" when only the bitrate is known', () => {
+    expect(formatQuality(320, undefined)).toBe('320 kbps');
+  });
+
+  it('renders just the codec when only the format is known', () => {
+    expect(formatQuality(null, 'FLAC')).toBe('FLAC');
+  });
+
+  it('returns "" when neither bitrate nor format is known (hides the chip)', () => {
+    expect(formatQuality(null, null)).toBe('');
+    expect(formatQuality(undefined, undefined)).toBe('');
+  });
+
+  it('treats 0 / negative kbps as unknown', () => {
+    expect(formatQuality(0, 'MP3')).toBe('MP3');
+    expect(formatQuality(-1, 'FLAC')).toBe('FLAC');
+  });
+
+  it('renders lossless-like codecs (WAV / ALAC / APE) with the codec prefix', () => {
+    expect(formatQuality(1411, 'wav')).toBe('WAV · 1411 kbps');
+    expect(formatQuality(undefined, 'ALAC')).toBe('ALAC');
   });
 });

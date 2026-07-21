@@ -72,6 +72,48 @@ For headless/Docker, `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` (or
 The service reads the **current** stored creds live (accessor in `index.ts`), so
 an edit takes effect without a restart.
 
+## spotDL inherits these credentials at spawn time
+
+spotDL itself reads its Spotify credentials from the `SPOTIPY_CLIENT_ID` /
+`SPOTIPY_CLIENT_SECRET` env vars (the standard spotipy convention). Without
+them, spotDL falls back to its built-in shared (rate-limited) client — every
+NicotinD install used to land there, and the rate limit surfaces as lower-quality
+YouTube matches because spotDL's metadata lookup times out and gives up on the
+best audio candidate.
+
+`SpotdlPlugin` (`packages/api/src/services/plugins/spotdl/index.ts`) reads the
+spotify plugin's stored config live via `PluginRegistry.getConfig('spotify')`
+and forwards the pair as `SPOTIPY_CLIENT_ID` / `SPOTIPY_CLIENT_SECRET` on the
+spawn env. The forward is **opt-out by absence**: when the user hasn't filled in
+the spotify card, the layer is omitted entirely and spotDL keeps the default
+behavior. Reading live (no cache) means an admin editing the spotify card
+takes effect on the next `run()` call — no re-init required.
+
+**One source of truth.** The user enters their Client ID/Secret in the spotify
+card once. That single input gates both lanes: the metadata search lane and the
+spotDL download lane. The spotdl card itself stays minimal (binary path +
+cookies file); a one-line hint under the spotdl card points at the spotify card
+(`data-testid="spotdl-uses-spotify-credentials"`).
+
+## Better audio quality: `--bitrate disable`
+
+The Spotify credentials above improve the **metadata match** (which YouTube
+candidate spotDL picks), not the bytes it writes. The audio-quality lever is the
+encode step. With no `--bitrate` flag, spotDL re-encodes every track to
+auto-bitrate MP3 — a second lossy pass over an already-lossy YouTube stream that
+throws away audio for nothing. `SpotdlPlugin.run()` therefore always passes
+**`--bitrate disable`**, which skips ffmpeg's bitrate conversion and copies the
+source stream through untouched: YouTube Music matches keep their native ~256
+kbps AAC, plain-YouTube matches keep their Opus. The download pipeline's own
+lossless→Opus standardization (`docs/download-pipeline.md` → "Lossless → Opus
+standardization") then re-encodes at one known, controlled bitrate when needed,
+instead of stacking two uncontrolled lossy encodes.
+
+Further quality levers, deliberately **not** wired yet (single-purpose PR):
+`--format`/`--audio` provider ordering (e.g. prefer `youtube-music` for its
+higher-bitrate AAC, then fall back), and surfacing `--bitrate` as an
+admin-editable field on the spotdl card. These are additive and can follow.
+
 ## Notes / limits
 
 - **Metadata only** — Spotify provides no audio; the lane is useless without

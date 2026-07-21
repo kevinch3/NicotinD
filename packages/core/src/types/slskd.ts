@@ -77,6 +77,20 @@ export interface SlskdTransferDirectory {
   fileCount: number;
   files: SlskdTransfer[];
   albumJob?: AlbumJobMeta;
+  /**
+   * Dominant bitrate (kbps) of the files in this directory, sourced from the
+   * slskd search response at enqueue time (`SlskdFile.bitRate`). Aggregated
+   * server-side by `enrichWithBitrate` so the download card can render
+   * "· 320 kbps" without each transfer having to carry it. Optional: legacy
+   * rows without bitrate data stay undefined and the chip is hidden.
+   */
+  bitrateKbps?: number;
+  /**
+   * Codec/format string for the directory, e.g. "FLAC", "MP3", "Opus". Sourced
+   * from `detectFormat` in album-hunter.service.ts. Always shown alongside
+   * the bitrate for lossless codecs (FLAC, WAV), optional for lossy.
+   */
+  audioFormat?: string;
 }
 
 export interface SlskdUserTransferGroup {
