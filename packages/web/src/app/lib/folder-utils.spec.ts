@@ -9,6 +9,7 @@ import {
   folderFormat,
   fileQualityLabel,
   folderBasename,
+  pickNetworkView,
   type FolderGroup,
 } from './folder-utils';
 
@@ -151,7 +152,9 @@ describe('folderFormat', () => {
   });
 
   it('ignores non-audio files and returns null when there is no audio', () => {
-    expect(folderFormat(folder({ directory: 'd', files: [f('cover.jpg'), f('info.nfo')] }))).toBeNull();
+    expect(
+      folderFormat(folder({ directory: 'd', files: [f('cover.jpg'), f('info.nfo')] })),
+    ).toBeNull();
   });
 });
 
@@ -196,9 +199,28 @@ describe('folderBasename', () => {
   });
 });
 
+describe('pickNetworkView', () => {
+  it('picks folders when the catalog surfaced album cards (album-intent)', () => {
+    expect(pickNetworkView('muse', true)).toBe('folders');
+  });
+
+  it('picks folders for a multi-word "artist title" query', () => {
+    expect(pickNetworkView('la bifurcada', false)).toBe('folders');
+  });
+
+  it('picks songs for a bare one-word query with no album cards', () => {
+    expect(pickNetworkView('toxic', false)).toBe('songs');
+    expect(pickNetworkView('  toxic  ', false)).toBe('songs');
+  });
+});
+
 describe('dedupeFolders', () => {
   const flacPosterGirl = (user: string) =>
-    folder({ username: user, directory: `x\\Poster Girl (2021)`, files: [f('01.flac'), f('02.flac')] });
+    folder({
+      username: user,
+      directory: `x\\Poster Girl (2021)`,
+      files: [f('01.flac'), f('02.flac')],
+    });
 
   it('collapses identical copies across peers and counts the extras', () => {
     const out = dedupeFolders([flacPosterGirl('p1'), flacPosterGirl('p2'), flacPosterGirl('p3')]);
@@ -208,9 +230,21 @@ describe('dedupeFolders', () => {
   });
 
   it('keeps distinct editions (different track count) and formats apart', () => {
-    const standard = folder({ username: 'a', directory: 'x\\Poster Girl', files: [f('1.flac'), f('2.flac')] });
-    const deluxe = folder({ username: 'b', directory: 'x\\Poster Girl', files: [f('1.flac'), f('2.flac'), f('3.flac')] });
-    const mp3 = folder({ username: 'c', directory: 'x\\Poster Girl', files: [f('1.mp3', 320), f('2.mp3', 320)] });
+    const standard = folder({
+      username: 'a',
+      directory: 'x\\Poster Girl',
+      files: [f('1.flac'), f('2.flac')],
+    });
+    const deluxe = folder({
+      username: 'b',
+      directory: 'x\\Poster Girl',
+      files: [f('1.flac'), f('2.flac'), f('3.flac')],
+    });
+    const mp3 = folder({
+      username: 'c',
+      directory: 'x\\Poster Girl',
+      files: [f('1.mp3', 320), f('2.mp3', 320)],
+    });
     const out = dedupeFolders([standard, deluxe, mp3]);
     expect(out).toHaveLength(3); // none merged — different track count / format
   });

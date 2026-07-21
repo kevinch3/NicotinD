@@ -103,13 +103,27 @@
   }
   @if (rawFallbackNote()) {
     <div
-      class="mb-6 px-4 py-3 rounded-lg bg-blue-950/40 border border-blue-900/50 flex items-center justify-between"
+      class="mb-6 px-4 py-3 rounded-lg bg-blue-950/40 border border-blue-900/50 flex items-center gap-3"
       data-testid="raw-fallback-note"
     >
-      <p class="text-sm text-blue-300">{{ rawFallbackNote() }}</p>
+      <p class="flex-1 text-sm text-blue-300">{{ rawFallbackNote() }}</p>
+      @if (rawFallbackAlbum()?.artistMbid) {
+        <button
+          (click)="browseFallbackDiscography()"
+          [disabled]="loadingDiscography()"
+          data-testid="raw-fallback-discography"
+          class="shrink-0 px-3 py-1.5 rounded-md text-xs font-semibold bg-blue-900/60 hover:bg-blue-800/70 text-blue-100 disabled:opacity-50"
+        >
+          {{
+            loadingDiscography()
+              ? 'Loading…'
+              : 'Browse ' + rawFallbackAlbum()!.artistName + "'s discography"
+          }}
+        </button>
+      }
       <button
         (click)="rawFallbackNote.set(null)"
-        class="text-blue-400 hover:text-blue-200 text-lg font-medium"
+        class="shrink-0 text-blue-400 hover:text-blue-200 text-lg font-medium"
       >
         ×
       </button>
@@ -462,7 +476,7 @@
         </p>
       }
       <ul class="divide-y divide-zinc-800 rounded-lg border border-zinc-800 overflow-hidden">
-        @for (c of blendedResults(); track c.id) {
+        @for (c of visibleBlendedResults(); track c.id) {
           <li
             class="flex items-center gap-3 px-3 py-2.5 bg-zinc-900/40"
             data-testid="acquire-result"
@@ -505,6 +519,15 @@
           </li>
         }
       </ul>
+      @if (hiddenResultCount() > 0 && !resultsExpanded()) {
+        <button
+          (click)="resultsExpanded.set(true)"
+          data-testid="results-show-all"
+          class="mt-2 text-xs font-medium text-[var(--theme-accent)] hover:underline"
+        >
+          Show all {{ blendedResults().length }} results
+        </button>
+      }
     </section>
   }
 
@@ -716,6 +739,17 @@
                             "
                             >{{ fmt.label }}</span
                           >
+                          <!-- Lossless folder → will be stored as Opus. Same gate as the
+                               Results hint: only when transcoding is on + ffmpeg present. -->
+                          @if (fmt.lossless && transcodeActive()) {
+                            <span
+                              class="shrink-0 text-[10px] uppercase tracking-wide text-emerald-500/70"
+                              title="Lossless — stored as Opus to save space"
+                              data-testid="transcode-chip-folder"
+                            >
+                              → Opus {{ transcodeBitRate() }}k
+                            </span>
+                          }
                         }
                         <span
                           class="truncate cursor-pointer hover:underline transition"

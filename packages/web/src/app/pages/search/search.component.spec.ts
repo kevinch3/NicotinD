@@ -583,3 +583,55 @@ describe('SearchComponent — transcode reminder', () => {
     expect(component.isLosslessCandidate(url)).toBe(false);
   });
 });
+
+describe('SearchComponent — catalog-miss fallback', () => {
+  // httpErrorCode reads err.error.code; this shape triggers the raw fallback.
+  const notInLidarr = () => throwError(() => ({ error: { code: 'ALBUM_NOT_IN_LIDARR' } }));
+
+  it('opens the network lane for the clicked album without auto-loading the discography', async () => {
+    const catalogDiscography = vi.fn(() => of({ artists: [], albums: [] }));
+    const { component } = setup({ catalogResolve: notInLidarr, catalogDiscography });
+
+    await component.huntCatalogAlbum(CATALOG_ALBUM);
+    await flush();
+
+    expect(component.rawFallbackAlbum()?.title).toBe(CATALOG_ALBUM.title);
+    expect(component.rawFallbackNote()).toMatch(/isn't in/);
+    expect(component.directSearchOpen()).toBe(true);
+    // Discography load auto-adds the artist to Lidarr — must be opt-in now.
+    expect(catalogDiscography).not.toHaveBeenCalled();
+  });
+
+  it('browseFallbackDiscography loads the discography only on demand', async () => {
+    const catalogDiscography = vi.fn(() =>
+      of({ artists: [], albums: [CATALOG_ALBUM], scopedArtist: 'Pink Floyd' }),
+    );
+    const { component } = setup({ catalogResolve: notInLidarr, catalogDiscography });
+
+    await component.huntCatalogAlbum(CATALOG_ALBUM);
+    await flush();
+    await component.browseFallbackDiscography();
+
+    expect(catalogDiscography).toHaveBeenCalled();
+  });
+});
+
+describe('SearchComponent — results cap', () => {
+  it('caps the long blended Results list and expands on demand', () => {
+    const { component, search } = setup();
+    const files = Array.from({ length: 12 }, (_, i) => ({
+      filename: `Artist/${i}-Title${i}.flac`,
+      size: 1000,
+      artist: 'Artist',
+      title: `Title ${i}`,
+    }));
+    search.setNetwork([{ username: 'peer', freeUploadSlots: 1, uploadSpeed: 100, files }]);
+
+    expect(component.blendedResults().length).toBe(12);
+    expect(component.visibleBlendedResults().length).toBe(8); // RESULTS_CAP
+    expect(component.hiddenResultCount()).toBe(4);
+
+    component.resultsExpanded.set(true);
+    expect(component.visibleBlendedResults().length).toBe(12);
+  });
+});
