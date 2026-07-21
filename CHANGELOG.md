@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.233](https://github.com/kevinch3/NicotinD/compare/v0.1.232...v0.1.233) (2026-07-21)
+
+
+### Features
+
+* **acquire:** folder-first results + intuitive catalog-miss flow ([5e13dae](https://github.com/kevinch3/NicotinD/commit/5e13dae032175fd2bbe35610943b42c72892d42a))
+* **acquire:** remind users lossless picks are stored as Opus ([fbe3c06](https://github.com/kevinch3/NicotinD/commit/fbe3c06df307cbd80248d72bf237469ed459e3fc))
+* **hunt:** precise skew queries + shared core query builder ([a8ff991](https://github.com/kevinch3/NicotinD/commit/a8ff991c743970c6ebcca39e6920ac1a93dc1e68))
+
+
+### Bug Fixes
+
+* **search:** filter fuzzy first-token junk from catalog title search ([bbb888f](https://github.com/kevinch3/NicotinD/commit/bbb888f000c03e4efdda2d311eccca19a43956ef))
+* **search:** hide the Soulseek peer lane when it isn't an available source ([d8f0458](https://github.com/kevinch3/NicotinD/commit/d8f0458805d1615614371e256defdf049345ef20))
+
 ## [0.1.232](https://github.com/kevinch3/NicotinD/compare/v0.1.231...v0.1.232) (2026-07-21)
 
 ## [0.1.231](https://github.com/kevinch3/NicotinD/compare/v0.1.230...v0.1.231) (2026-07-21)
