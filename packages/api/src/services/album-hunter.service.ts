@@ -1,6 +1,17 @@
 import type { Slskd } from '@nicotind/slskd-client';
 import type { LidarrTrack } from '@nicotind/lidarr-client';
-import { createLogger } from '@nicotind/core';
+import {
+  createLogger,
+  fold,
+  baseQueries,
+  buildSkewedQueries,
+  stripTitleQualifiers,
+} from '@nicotind/core';
+
+// Re-export the shared query builders so existing importers (track-pick, tests,
+// callers) keep their `./album-hunter.service` import path — the canonical source
+// is now @nicotind/core/hunt-queries.
+export { buildSkewedQueries, stripTitleQualifiers, baseQueries } from '@nicotind/core';
 
 const log = createLogger('album-hunter');
 
@@ -111,7 +122,7 @@ export class AlbumHunterService {
     canonicalTracks: LidarrTrack[],
     opts: { skewSearch?: boolean } = {},
   ): Promise<FolderCandidate[]> {
-    const baseQs = [`${artistName} ${albumTitle}`, `${artistName} - ${albumTitle}`];
+    const baseQs = baseQueries(artistName, albumTitle);
 
     const base = await this.searchAndScore(baseQs, canonicalTracks);
 
@@ -142,7 +153,7 @@ export class AlbumHunterService {
     canonicalTracks: LidarrTrack[],
     opts: { skewSearch?: boolean } = {},
   ): Promise<{ candidates: FolderCandidate[]; skewNeeded: boolean }> {
-    const baseQs = [`${artistName} ${albumTitle}`, `${artistName} - ${albumTitle}`];
+    const baseQs = baseQueries(artistName, albumTitle);
     const candidates = await this.searchAndScore(baseQs, canonicalTracks);
     const bestBasePct = candidates.length ? candidates[0].matchPct : 0;
     const skewNeeded = opts.skewSearch !== false && bestBasePct < SKEW_TRIGGER_PCT;
@@ -156,7 +167,7 @@ export class AlbumHunterService {
     albumTitle: string,
     canonicalTracks: LidarrTrack[],
   ): Promise<FolderCandidate[]> {
-    const baseQs = [`${artistName} ${albumTitle}`, `${artistName} - ${albumTitle}`];
+    const baseQs = baseQueries(artistName, albumTitle);
     const skewed = buildSkewedQueries(artistName, albumTitle, baseQs);
     if (!skewed.length) return [];
     return this.searchAndScore(skewed, canonicalTracks);
@@ -338,51 +349,6 @@ export class AlbumHunterService {
   }
 }
 
-// Build textually-skewed query variants to bypass slskd's soft phrase ban.
-// why: the ban keys on the *exact* normalized phrase, so variants that reorder
-// tokens, drop a leading "the", or trim to a subset still surface the same
-// files while no longer matching the blocked string. Variants equal to a base
-// query (or to each other) are dropped so we never re-run an already-banned one.
-export function buildSkewedQueries(
-  artistName: string,
-  albumTitle: string,
-  baseQueries: string[],
-): string[] {
-  const stripThe = (s: string) => s.replace(/^the\s+/i, '').trim();
-  const firstWord = (s: string) => s.trim().split(/\s+/)[0] ?? '';
-  // Title without "(feat …)"/"(Remix)"/bracketed qualifiers — critical for
-  // singles, whose Lidarr title often carries a suffix the peer's file omits.
-  const core = stripTitleQualifiers(albumTitle);
-
-  // Artist-name truncation: drop the trailing character so Soulseek's phrase
-  // matcher sees a partial token rather than the exact banned name. Effective
-  // for Spanish/Portuguese names ending in -o/-a/-e (e.g. "Bahiano" → "Bahian").
-  const truncArtist = artistName.slice(0, -1);
-
-  const variants = [
-    `${albumTitle} ${artistName}`, // reorder
-    albumTitle, // album only
-    `${stripThe(artistName)} ${stripThe(albumTitle)}`, // drop leading "the"
-    `${artistName} ${firstWord(albumTitle)}`, // artist + first album word
-    `${artistName} ${core}`, // artist + qualifier-stripped title
-    core, // qualifier-stripped title only
-    ...(truncArtist.length >= 3
-      ? [`${truncArtist} ${albumTitle}`, `${truncArtist} - ${albumTitle}`]
-      : []),
-  ];
-
-  const seen = new Set(baseQueries.map((q) => q.toLowerCase().trim()));
-  const out: string[] = [];
-  for (const raw of variants) {
-    const v = raw.trim();
-    const key = v.toLowerCase();
-    if (!v || seen.has(key)) continue;
-    seen.add(key);
-    out.push(v);
-  }
-  return out;
-}
-
 // Merge two candidate lists (base + skewed), de-duplicating by the unique
 // folder key (username::directory) and keeping the higher-scoring instance, then
 // re-rank with the shared comparator. why: the same peer folder can surface from
@@ -405,23 +371,15 @@ function extractDirectory(filename: string): string {
 }
 
 export function normalizeTitle(title: string): string {
-  return (
-    title
-      .toLowerCase()
-      // why: fold diacritics to their base letter *before* the punctuation strip.
-      // JS `\w` is ASCII-only, so `[^\w\s]` would otherwise *delete* accented
-      // letters ("canción" → "cancin") while a peer who typed the unaccented
-      // "cancion" normalizes to "cancion" — the two would never match. NFD
-      // decomposes "ó" → "o" + combining mark, which we then drop, so both
-      // accented and unaccented spellings fold to the same string. Critical for
-      // this Latin-American-heavy library.
-      .normalize('NFD')
-      .replace(/[̀-ͯ]/g, '') // strip combining diacritical marks
-      .replace(/^\d+[\s.\-]+/, '') // strip leading track numbers
-      .replace(/[^\w\s]/g, '')
-      .replace(/\s+/g, ' ')
-      .trim()
-  );
+  // Diacritics are folded (via the shared `fold`) *before* the ASCII-only
+  // `[^\w\s]` strip, so an accented "canción" and a peer's unaccented "cancion"
+  // both reduce to the same string — critical for this Latin-American-heavy
+  // library. `fold` already lowercases + NFD-strips combining marks.
+  return fold(title)
+    .replace(/^\d+[\s.\-]+/, '') // strip leading track numbers
+    .replace(/[^\w\s]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 export function titlesOverlap(canonical: string, filename: string): boolean {
@@ -431,19 +389,6 @@ export function titlesOverlap(canonical: string, filename: string): boolean {
   const fWords = new Set(filename.split(' ').filter(Boolean));
   const overlap = cWords.filter((w) => fWords.has(w)).length;
   return cWords.length > 0 && overlap / cWords.length >= 0.7;
-}
-
-// Strip trailing parenthetical/bracketed qualifiers and "feat./ft./with" clauses
-// from a raw track title, leaving its "core". why: Soulseek peers routinely name a
-// single's file without the "(feat …)"/"(Remix)"/"(2024 Remaster)" suffix that the
-// Lidarr title carries, so the full titles never overlap; matching on the cores
-// rescues those near hits. Used only for single (1-track) hunts.
-export function stripTitleQualifiers(title: string): string {
-  return title
-    .replace(/[([{][^)\]}]*[)\]}]/g, ' ')
-    .replace(/\b(feat\.?|ft\.?|featuring|with)\b.*$/i, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
 }
 
 // Strength of a single (1-track) hunt match: 100 when the full normalized titles

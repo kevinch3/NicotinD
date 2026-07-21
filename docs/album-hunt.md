@@ -22,16 +22,15 @@ Trade-off accepted: every hunted album becomes a monitored Lidarr artist — con
 
 `AlbumHunterService.hunt` (`packages/api/src/services/album-hunter.service.ts`) normally fires `Artist Album` / `Artist - Album` against slskd. slskd/Soulseek silently returns **zero** responses for some exact phrases (a server-side soft ban) even when the files exist.
 
-When `skewSearch` is set on the `POST .../hunt` body (the album-hunt modal's "Skew search" checkbox, **on by default**) **and** no base candidate is confidently complete (best `matchPct < SKEW_TRIGGER_PCT`, ~67%), `hunt` also runs textually-skewed variants from the exported pure `buildSkewedQueries`:
+When `skewSearch` is set on the `POST .../hunt` body (the album-hunt modal's "Skew search" checkbox, **on by default**) **and** no base candidate is confidently complete (best `matchPct < SKEW_TRIGGER_PCT`, ~67%), `hunt` also runs textually-skewed variants from `buildSkewedQueries` (now in **`@nicotind/core` `hunt-queries.ts`**, the single source shared with the web). The goal is a *faithful* set: each variant is a different **literal string for the same release**, so it dodges slskd's exact-phrase soft ban / cache **and** stays precise (unlike a fuzzy match). Because slskd matches the search text against peer filenames, literal variation also **improves recall** against peers who share files with unaccented / differently-punctuated names — the outgoing query, not just the scorer, now folds. Variants (ranked most-precise first):
 
-- Reorder artist/album
-- Album-only
-- Drop leading "the"
-- Artist + first album word
-- **Artist-name truncation** — drop the last character (e.g. `"Bahiano"` → `"Bahian"`), bypasses per-name phrase bans common for Spanish/Portuguese artists
-- Qualifier-stripped variants (`stripTitleQualifiers` removes `(feat …)`/`(Remix)`/bracketed suffixes) — mainly for singles whose Lidarr title carries a suffix the peer's filename omits
+- **Accent-folded** — `fold("<artist> <album>")` (`"Beyoncé Lemonade"` → `"beyonce lemonade"`); reaches unaccented shares + a distinct cache key. Dropped when the input is already plain ASCII.
+- **Punctuation-stripped** — `"AC/DC Back in Black"` → `"AC DC Back in Black"`, `&`→"and", apostrophes vanish.
+- **Reorder** artist/album.
+- **Distinctive tokens** — drop filler words (the/of/and/de/la…), keep the identifying ones (`"Pink Floyd The Dark Side of the Moon"` → `"Pink Floyd Dark Side Moon"`); replaces the old too-generic "first album word".
+- Qualifier-stripped (`stripTitleQualifiers` removes `(feat …)`/`(Remix)`/bracketed suffixes — for singles), artist+core / core-only, album-only (broad), drop-leading-"the".
 
-De-duped and never re-running a base query. Results merged via `mergeCandidates` (de-duped by `username::directory`, higher score wins). A confidently-complete base adds zero extra searches.
+The old **artist-name last-char truncation** (`"Bahiano"` → `"Bahian"`) is **removed** — it was imprecise (a partial-token query returns junk); the fold/punctuation/reorder/distinctive variants already vary the literal phrase enough to bypass the ban while staying faithful. De-duped and never re-running a base query. Results merged via `mergeCandidates` (de-duped by `username::directory`, higher score wins). A confidently-complete base adds zero extra searches. The per-track hunt (`buildTrackQueries`, also in core, used by `TrackHunterService`) applies the same primitives.
 
 **Singles (1 canonical track)** aren't scored all-or-nothing: `singleMatchStrength` returns 100 when full normalized titles overlap, `SINGLE_PARTIAL_PCT` (50) when only qualifier-stripped cores overlap — so a peer that drops a `(feat …)` suffix still surfaces. EPs (2–6 tracks) keep the proportional formula.
 
@@ -41,7 +40,7 @@ The `LibraryCurator` won't auto-hide a deliberately-hunted release (its normaliz
 
 **Two-phase hunt for live progress**: the hunt modal uses two separate requests — `POST .../hunt/base` (base queries only, returns `{ candidates, skewNeeded }`) followed by `POST .../hunt/skew` (skew queries only, if needed) — so the UI can highlight each query row in real time (idle → searching → done/skipped). The single-shot `POST .../hunt` endpoint is preserved for watchlist/catalog callers.
 
-**Transparency**: the album-hunt modal's loading screen lists the exact query strings it fires via the web helper `lib/hunt-queries.ts`, which **mirrors** `buildSkewedQueries`/`stripTitleQualifiers` (the web bundle can't import the server module — it pulls in pino/node deps). The two are kept in sync by matching unit tests on both sides.
+**Transparency**: the album-hunt modal's loading screen lists the exact query strings it fires via the web helper `lib/hunt-queries.ts`, which now **re-exports** `baseQueries`/`skewedQueries`/`stripTitleQualifiers` from **`@nicotind/core`** — one shared source, not a hand-synced copy (the pure `hunt-queries.ts` module carries no pino/node deps, so the web bundle can import it; it's surfaced through the browser-safe `web/src/types/core.ts` shim like the roles ladder). The old two-copy sync risk is gone.
 
 ---
 

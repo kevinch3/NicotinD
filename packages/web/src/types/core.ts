@@ -67,3 +67,7 @@ export * from '../../../core/src/types/library-filter';
 
 // Value re-export: role ladder helpers (pure, browser-safe) shared with the API.
 export * from '../../../core/src/roles';
+
+// Value re-export: slskd hunt query builders (pure, browser-safe) — the single
+// source the album-hunt modal shows and the API hunter fires. See hunt-queries.ts.
+export * from '../../../core/src/hunt-queries';

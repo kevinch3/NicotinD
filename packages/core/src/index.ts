@@ -18,6 +18,9 @@ export * from './types/library-filter.js';
 // Role ladder (capability helpers shared by API guards + web gating)
 export * from './roles.js';
 
+// slskd hunt query builders (shared by the API hunter + web hunt modal)
+export * from './hunt-queries.js';
+
 // Plugin SDK (capability contracts + manifest)
 export * from './plugin/index.js';
 

@@ -6,44 +6,23 @@ import { normalizeTitle, stripTitleQualifiers, titlesOverlap } from './album-hun
  * free of slskd/IO so it's unit-testable in isolation.
  */
 
-/**
- * Ordered, de-duped slskd query variants for a single track. why: a single
- * `"<artist> <title>"` search is silently soft-banned for many phrases (the same
- * server-side ban the album hunter's skew-search bypasses), so a lone query loses
- * most tracks. We try progressively skewed forms until one returns a hit:
- *   1. `"<artist> <title>"`            — the exact phrase.
- *   2. `"<title>"`                     — drop the artist (bypasses artist-phrase bans).
- *   3. `"<artist-truncated> <title>"`  — drop the artist's last char (the documented
- *                                        Spanish/Portuguese per-name ban bypass).
- *   4. `"<artist> <stripped-title>"`   — drop `(feat…)`/`(Remaster…)` qualifiers the
- *                                        peer's filename usually omits.
- * Empty/duplicate variants are dropped, so a single-word artist or a qualifier-free
- * title simply yields fewer queries.
- */
-export function buildTrackQueries(artist: string, title: string): string[] {
-  const a = artist.trim();
-  const t = title.trim();
-  const truncated = a.length > 3 ? a.slice(0, -1) : '';
-  const stripped = stripTitleQualifiers(t);
-  const variants = [
-    `${a} ${t}`,
-    t,
-    truncated ? `${truncated} ${t}` : '',
-    stripped && stripped !== t ? `${a} ${stripped}` : '',
-  ];
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const v of variants) {
-    const q = v.trim().replace(/\s+/g, ' ');
-    if (!q || seen.has(q)) continue;
-    seen.add(q);
-    out.push(q);
-  }
-  return out;
-}
+// `buildTrackQueries` moved to @nicotind/core (shared with the album skew builder,
+// improved to accent-fold / punctuation-strip / distinctive-token variants). Re-
+// exported so track-hunter + tests keep their `./track-pick` import path.
+export { buildTrackQueries } from '@nicotind/core';
 
 const AUDIO_EXTENSIONS = new Set([
-  '.mp3', '.flac', '.ogg', '.opus', '.m4a', '.aac', '.wav', '.aiff', '.wma', '.ape', '.wv',
+  '.mp3',
+  '.flac',
+  '.ogg',
+  '.opus',
+  '.m4a',
+  '.aac',
+  '.wav',
+  '.aiff',
+  '.wma',
+  '.ape',
+  '.wv',
 ]);
 
 export interface SearchResponseLike {
@@ -111,8 +90,12 @@ export function pickBestTrackFile(
   // nothing, so we never loosen matching for already-bare titles.
   const core = stripTitleQualifiers(title);
   const normCore = core && core !== title ? normalizeTitle(core) : null;
-  let best: { username: string; file: { filename: string; size: number }; extras: number; score: number } | null =
-    null;
+  let best: {
+    username: string;
+    file: { filename: string; size: number };
+    extras: number;
+    score: number;
+  } | null = null;
 
   for (const response of responses) {
     const peerScore = healthScore(response);
