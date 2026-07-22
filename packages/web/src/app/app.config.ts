@@ -65,6 +65,7 @@ export const appConfig: ApplicationConfig = {
             auth.setRole(profile.role);
             auth.welcomeDismissed.set(profile.welcomeDismissed);
             auth.autoplayOnLoad.set(profile.autoplayOnLoad);
+            auth.feedbackCapture.set(profile.feedbackCapture);
             // Resume a previously playing session if the user opted in to
             // autoplay-on-load. See PlayerService.maybeResumeAutoplay.
             player.maybeResumeAutoplay(profile.autoplayOnLoad);

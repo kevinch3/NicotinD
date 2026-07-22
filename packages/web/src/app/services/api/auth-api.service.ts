@@ -8,6 +8,8 @@ export interface UserProfile {
   role: string;
   welcomeDismissed: boolean;
   autoplayOnLoad: boolean;
+  /** Admin dev-mode: capture generated results as gradeable feedback. */
+  feedbackCapture: boolean;
 }
 
 /** Auth endpoints: login, registration, and sliding-session refresh. */
@@ -38,6 +40,10 @@ export class AuthApiService {
 
   setAutoplayOnLoad(enabled: boolean) {
     return this.http.post<{ ok: boolean }>('/api/auth/autoplay', { enabled });
+  }
+
+  setFeedbackCapture(enabled: boolean) {
+    return this.http.post<{ ok: boolean }>('/api/auth/feedback-capture', { enabled });
   }
 
   getMe() {

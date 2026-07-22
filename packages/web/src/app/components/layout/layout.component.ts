@@ -20,6 +20,7 @@ import { BottomNavComponent } from '../bottom-nav/bottom-nav.component';
 import { AddToPlaylistComponent } from '../add-to-playlist/add-to-playlist.component';
 import { ConfirmHostComponent } from '../confirm-host/confirm-host.component';
 import { TrackInfoHostComponent } from '../track-info-host/track-info-host.component';
+import { FeedbackDetailSheetComponent } from '../feedback-detail-sheet/feedback-detail-sheet.component';
 import { ChangelogModalComponent } from '../changelog-modal/changelog-modal.component';
 import { DesktopWindowControlsComponent } from '../desktop-window-controls/desktop-window-controls.component';
 import { DesktopChromeService } from '../../services/desktop-chrome.service';
@@ -64,6 +65,7 @@ const HEADER_BASE_CLASSES =
     ConfirmHostComponent,
     ChangelogModalComponent,
     TrackInfoHostComponent,
+    FeedbackDetailSheetComponent,
     DesktopWindowControlsComponent,
   ],
   templateUrl: './layout.component.html',

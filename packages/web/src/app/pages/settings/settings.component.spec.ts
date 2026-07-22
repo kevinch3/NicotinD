@@ -84,7 +84,9 @@ function makeProviders(role: 'admin' | 'user', updateOverrides = {}) {
           isAdmin: () => role === 'admin',
           welcomeDismissed: signal(false),
           autoplayOnLoad: signal(false),
+          feedbackCapture: signal(false),
           setAutoplayOnLoad: vi.fn(),
+          setFeedbackCapture: vi.fn(),
           logout: vi.fn(),
         } },
       {

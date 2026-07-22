@@ -323,6 +323,9 @@ export interface HuntResult {
   candidates: FolderCandidate[];
   totalTracks: number;
   skewNeeded?: boolean;
+  /** Present only for an admin with feedback-capture on: the pending
+   * generation_feedback row id to grade via the capture toast. */
+  feedbackId?: number;
 }
 
 export interface CatalogArtist {

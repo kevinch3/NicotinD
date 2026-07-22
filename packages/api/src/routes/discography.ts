@@ -17,6 +17,8 @@ import { albumAlreadyComplete, filesMissingOnDisk } from '../services/library-co
 import { setArtwork, pickAlbumCover, pickArtistImage } from '../services/artwork-store.js';
 import { recordAcquiredArtistIdentity } from '../services/artist-identity-store.js';
 import { createJob, supersedeActiveJobs } from '../services/acquisition-job-store.js';
+import { captureHuntMatchFeedback } from '../services/generation-feedback.js';
+import type { HuntMatchInput } from '@nicotind/core';
 import { join } from 'node:path';
 import type { Lidarr } from '@nicotind/lidarr-client';
 
@@ -36,6 +38,8 @@ export interface DiscographyRoutesOptions {
   slskdRef: SlskdRef;
   /** App data dir — used to purge stale canonical-cover cache when artwork changes. */
   dataDir?: string;
+  /** App version, stamped on captured feedback so replay can spot scorer drift. */
+  version?: string;
 }
 
 export function discographyRoutes({
@@ -46,6 +50,7 @@ export function discographyRoutes({
   db,
   slskdRef,
   dataDir,
+  version,
 }: DiscographyRoutesOptions) {
   const app = new Hono<AuthEnv>();
   const coverCacheDir = dataDir ? join(dataDir, 'cover-cache') : undefined;
@@ -217,11 +222,41 @@ export function discographyRoutes({
       const artistName = body.artistName ?? album.artist?.artistName ?? '';
       const albumTitle = body.albumTitle ?? album.title;
 
-      const { candidates, skewNeeded } = await hunter.huntBase(artistName, albumTitle, tracks, {
-        skewSearch: body.skewSearch,
+      const { candidates, skewNeeded, responses } = await hunter.huntBase(
+        artistName,
+        albumTitle,
+        tracks,
+        { skewSearch: body.skewSearch },
+      );
+
+      // Feedback capture (admin dev-mode only): snapshot the MB/Lidarr proposal
+      // vs the raw Soulseek responses + scored candidates so the recognizer can
+      // be graded and replayed. Returns a feedbackId only when gated in; the
+      // client shows the grading toast when present. See docs/generation-feedback.md.
+      const proposal: HuntMatchInput = {
+        artistName,
+        albumTitle,
+        lidarrAlbumId: albumId,
+        releaseGroupMbid: album.foreignAlbumId ?? undefined,
+        artistMbid: album.artist?.foreignArtistId ?? undefined,
+        canonicalTracks: tracks.map((t) => ({
+          trackNumber: t.trackNumber ? Number(t.trackNumber) : undefined,
+          title: t.title,
+        })),
+      };
+      const feedbackId = captureHuntMatchFeedback(db, c.get('user'), {
+        input: proposal,
+        rawResponses: responses,
+        candidates,
+        engineVersion: version ?? null,
       });
 
-      return c.json({ candidates, totalTracks: tracks.length, skewNeeded });
+      return c.json({
+        candidates,
+        totalTracks: tracks.length,
+        skewNeeded,
+        feedbackId: feedbackId || undefined,
+      });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       log.warn({ albumId, err: msg }, 'Album hunt (base phase) failed');

@@ -8,6 +8,10 @@ import type { DiscographyAlbum, FolderCandidate } from '../../services/api/api-t
 import { TransferService } from '../../services/transfer.service';
 import { AcquireService } from '../../services/acquire.service';
 import { PluginService } from '../../services/plugin.service';
+import { AuthService } from '../../services/auth.service';
+import { FeedbackService } from '../../services/feedback.service';
+import { FeedbackSheetService } from '../../services/feedback-sheet.service';
+import { ToastService } from '../../services/toast.service';
 import { baseQueries, skewedQueries } from '../../lib/hunt-queries';
 import { mergeCandidates } from '../../lib/merge-candidates';
 import {
@@ -46,6 +50,10 @@ export class AlbumHuntModalComponent implements OnInit {
   private transfer = inject(TransferService);
   private acquire = inject(AcquireService);
   private plugins = inject(PluginService);
+  private auth = inject(AuthService);
+  private feedback = inject(FeedbackService);
+  private feedbackSheet = inject(FeedbackSheetService);
+  private toast = inject(ToastService);
 
   readonly album = input.required<DiscographyAlbum>();
   readonly artistName = input.required<string>();
@@ -268,10 +276,56 @@ export class AlbumHuntModalComponent implements OnInit {
       }
 
       this.state.set('results');
+      this.maybePromptFeedback(baseResult.feedbackId);
     } catch (err) {
       this.errorMsg.set(err instanceof Error ? err.message : 'Hunt failed');
       this.state.set('error');
     }
+  }
+
+  /**
+   * Admin dev-mode capture: when the server tagged this hunt with a pending
+   * feedback id (admin + feedback-capture on), surface a one-tap grading toast.
+   * 👍 = the recognizer's top pick was right; 👎 opens the detail sheet to mark
+   * the actually-correct folder. Throttled to one prompt per hunt event.
+   * See docs/generation-feedback.md.
+   */
+  private maybePromptFeedback(feedbackId?: number): void {
+    if (!this.auth.isAdmin() || !this.auth.feedbackCapture()) return;
+    if (!this.feedback.shouldPrompt(feedbackId)) return;
+    const id = feedbackId as number;
+
+    const toastId = this.toast.show({
+      message: 'Did the hunt pick the right release?',
+      kind: 'info',
+      duration: 12,
+      actions: [
+        {
+          label: '👍',
+          callback: () => {
+            this.feedback.resolve(id, 'good').subscribe();
+            this.toast.dismiss(toastId);
+          },
+        },
+        {
+          label: '👎',
+          callback: () => {
+            this.feedbackSheet.open({
+              feedbackId: id,
+              artistName: this.artistName(),
+              albumTitle: this.album().title,
+              candidates: this.candidates().map((c) => ({
+                username: c.username,
+                directory: c.directory,
+                matchPct: c.matchPct,
+                format: c.format,
+              })),
+            });
+            this.toast.dismiss(toastId);
+          },
+        },
+      ],
+    });
   }
 
   private _setPhaseState(queries: string[], st: QueryPhaseState): void {
