@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.240](https://github.com/kevinch3/NicotinD/compare/v0.1.239...v0.1.240) (2026-07-22)
+
+### Features
+
+* **feedback:** capture album-hunt recognition feedback → replayable TDD fixtures ([65d2caf](https://github.com/kevinch3/NicotinD/commit/65d2caf1c6a08ee5684a088a0055b9136519af9c)), references [#1](https://github.com/kevinch3/NicotinD/issues/1)
 ## [0.1.239](https://github.com/kevinch3/NicotinD/compare/v0.1.238...v0.1.239) (2026-07-22)
 ## [0.1.238](https://github.com/kevinch3/NicotinD/compare/v0.1.237...v0.1.238) (2026-07-22)
 
