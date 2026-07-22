@@ -50,6 +50,24 @@ describe('songFilterWheres', () => {
     });
   });
 
+  it('filters licences with an IN list', () => {
+    expect(songFilterWheres({ licences: ['public-domain', 'cc-by'] })).toEqual({
+      wheres: ['s.licence IN (?, ?)'],
+      params: ['public-domain', 'cc-by'],
+    });
+  });
+
+  it("maps the 'unknown' licence bucket to IS NULL and ORs it with positive codes", () => {
+    expect(songFilterWheres({ licences: ['unknown'] })).toEqual({
+      wheres: ['s.licence IS NULL'],
+      params: [],
+    });
+    expect(songFilterWheres({ licences: ['public-domain', 'unknown'] })).toEqual({
+      wheres: ['(s.licence IN (?) OR s.licence IS NULL)'],
+      params: ['public-domain'],
+    });
+  });
+
   it('maps perceptual buckets to threshold ranges, OR within an axis', () => {
     expect(songFilterWheres({ buckets: { energy: ['low'] } }).wheres).toEqual([
       's.energy <= 0.35',
@@ -101,6 +119,27 @@ describe('albumFilterWheres', () => {
       params: [],
     });
   });
+
+  it('filters licence on the album aggregate column directly (not the any-track EXISTS)', () => {
+    expect(albumFilterWheres({ licences: ['public-domain'] })).toEqual({
+      wheres: ['library_albums.licence IN (?)'],
+      params: ['public-domain'],
+    });
+    // 'unknown' bucket = the album is not uniformly one licence.
+    expect(albumFilterWheres({ licences: ['unknown'] })).toEqual({
+      wheres: ['library_albums.licence IS NULL'],
+      params: [],
+    });
+  });
+
+  it('combines album-level licence with an any-track song condition', () => {
+    const frag = albumFilterWheres({ licences: ['public-domain'], bpmMin: 120 });
+    expect(frag.wheres[0]).toBe('library_albums.licence IN (?)');
+    expect(frag.wheres[1]).toBe(
+      'EXISTS (SELECT 1 FROM library_songs ls WHERE ls.album_id = library_albums.id AND ls.hidden = 0 AND ls.bpm >= ?)',
+    );
+    expect(frag.params).toEqual(['public-domain', 120]);
+  });
 });
 
 describe('artistFilterWheres', () => {
@@ -113,6 +152,13 @@ describe('artistFilterWheres', () => {
         'AND ls.hidden = 0 AND ls.energy >= 0.65)',
     );
     expect(frag.params).toEqual([]);
+  });
+
+  it('keeps licence as an any-track match (artists have no aggregate licence column)', () => {
+    const frag = artistFilterWheres({ licences: ['public-domain'] });
+    expect(frag.wheres[0]).toContain('EXISTS');
+    expect(frag.wheres[0]).toContain('ls.licence IN (?)');
+    expect(frag.params).toEqual(['public-domain']);
   });
 });
 

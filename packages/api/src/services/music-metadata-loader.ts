@@ -20,6 +20,8 @@ export interface MMCommon {
   key?: string;
   /** Mood label from tags (Vorbis `MOOD` / ID3 TMOO), when present. */
   mood?: string;
+  /** Copyright text/URL (music-metadata folds TCOP/COPYRIGHT/©cpy), when present. */
+  copyright?: string;
   picture?: Array<{ format?: string; data: Uint8Array }>;
 }
 

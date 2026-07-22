@@ -3,9 +3,12 @@ import { CommonModule } from '@angular/common';
 import type {
   AcquisitionMethod,
   GenreSuggestion,
+  LicenceSuggestion,
+  LicenceCode,
   LyricsDto,
   SongAcquisition,
 } from '@nicotind/core';
+import { LICENCE_VOCAB, LICENCE_LABELS } from '@nicotind/core';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import type { ProvenanceRecord, Song } from '../../services/api/api-types';
 import { AuthService } from '../../services/auth.service';
@@ -74,6 +77,20 @@ export class TrackInfoSheetComponent implements OnInit {
   readonly genreSuggestion = signal<GenreSuggestion | null>(null);
   readonly verifyingGenre = signal(false);
   readonly applyingGenre = signal(false);
+
+  // Licence / rights state
+  readonly licenceOptions = LICENCE_VOCAB;
+  readonly licenceOverride = signal<string | null>(null);
+  readonly licenceSuggestion = signal<LicenceSuggestion | null>(null);
+  readonly detectingLicence = signal(false);
+  readonly applyingLicence = signal(false);
+  /** Current licence code — an applied override wins over the song's stored value. */
+  readonly currentLicence = computed(
+    () => this.licenceOverride() ?? this.effectiveSong()?.licence ?? 'unknown',
+  );
+  readonly currentLicenceLabel = computed(
+    () => LICENCE_LABELS[this.currentLicence() as LicenceCode] ?? 'Unknown',
+  );
   // Curation actions (artist-identity fix, apply genre, edit lyrics) — refiner+admin.
   readonly canCurate = computed(() => this.auth.canCurate());
 
@@ -259,6 +276,41 @@ export class TrackInfoSheetComponent implements OnInit {
       },
       error: () => this.applyingGenre.set(false),
     });
+  }
+
+  labelForLicence(code: string): string {
+    return LICENCE_LABELS[code as LicenceCode] ?? code;
+  }
+
+  /** Detect a licence from the file tag / MusicBrainz (read-only). */
+  detectLicenceNow(): void {
+    if (this.detectingLicence()) return;
+    this.detectingLicence.set(true);
+    this.api.getLicenceSuggestion(this.songId()).subscribe({
+      next: (s) => {
+        this.licenceSuggestion.set(s);
+        this.detectingLicence.set(false);
+      },
+      error: () => this.detectingLicence.set(false),
+    });
+  }
+
+  /** Set the licence (curator). Reflects the stored value immediately. */
+  applyLicence(code: string): void {
+    if (this.applyingLicence()) return;
+    this.applyingLicence.set(true);
+    this.api.setLicence(this.songId(), code).subscribe({
+      next: (r) => {
+        this.licenceOverride.set(r.licence ?? 'unknown');
+        this.licenceSuggestion.set(null);
+        this.applyingLicence.set(false);
+      },
+      error: () => this.applyingLicence.set(false),
+    });
+  }
+
+  onLicenceSelect(event: Event): void {
+    this.applyLicence((event.target as HTMLSelectElement).value);
   }
 
   methodLabel(method: AcquisitionMethod): string {

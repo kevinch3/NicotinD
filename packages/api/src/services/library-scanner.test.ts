@@ -7,6 +7,7 @@ import {
   albumIdFor,
   artistIdFor,
   isLooseSinglesBucket,
+  unanimousLicence,
   LibraryScanner,
   type ScannedTrack,
 } from './library-scanner.js';
@@ -51,6 +52,36 @@ describe('buildLibrary (pure aggregation)', () => {
     expect(built.songs[0]!.id).toBe(songId('Daft Punk/Discovery/01.mp3'));
     expect(built.songs[0]!.albumId).toBe(built.albums[0]!.id);
     expect(built.artists[0]!.albumCount).toBe(1);
+  });
+
+  it('aggregates an album licence only when every track shares one code', () => {
+    const allPd = buildLibrary([
+      track({ relPath: 'A/Alb/01.mp3', artist: 'A', album: 'Alb', title: 'T1', licence: 'public-domain' }),
+      track({ relPath: 'A/Alb/02.mp3', artist: 'A', album: 'Alb', title: 'T2', licence: 'public-domain' }),
+    ]);
+    expect(allPd.albums[0]!.licence).toBe('public-domain');
+
+    const mixed = buildLibrary([
+      track({ relPath: 'B/Alb/01.mp3', artist: 'B', album: 'Alb', title: 'T1', licence: 'public-domain' }),
+      track({ relPath: 'B/Alb/02.mp3', artist: 'B', album: 'Alb', title: 'T2', licence: 'cc-by' }),
+    ]);
+    expect(mixed.albums[0]!.licence).toBeNull();
+
+    // A single un-licenced track makes the album non-unanimous (not "entirely PD").
+    const oneUnknown = buildLibrary([
+      track({ relPath: 'C/Alb/01.mp3', artist: 'C', album: 'Alb', title: 'T1', licence: 'public-domain' }),
+      track({ relPath: 'C/Alb/02.mp3', artist: 'C', album: 'Alb', title: 'T2' }),
+    ]);
+    expect(oneUnknown.albums[0]!.licence).toBeNull();
+  });
+
+  it('unanimousLicence: unanimous code, else null (empty/single/mixed/any-null)', () => {
+    expect(unanimousLicence([])).toBeNull();
+    expect(unanimousLicence([null])).toBeNull();
+    expect(unanimousLicence(['cc0'])).toBe('cc0');
+    expect(unanimousLicence(['cc0', 'cc0'])).toBe('cc0');
+    expect(unanimousLicence(['cc0', 'cc-by'])).toBeNull();
+    expect(unanimousLicence(['public-domain', null])).toBeNull();
   });
 
   it('keys album/artist cover ids on the group id so canonical artwork resolves', () => {

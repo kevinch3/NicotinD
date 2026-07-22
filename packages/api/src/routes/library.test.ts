@@ -316,6 +316,34 @@ describe('library routes', () => {
     sharedDb.run(`DELETE FROM library_albums WHERE id = 'uv'`);
   });
 
+  it('filters /albums by the album-level licence aggregate and ships it in the DTO', async () => {
+    sharedDb.run(
+      `INSERT INTO library_albums (id, name, artist, artist_id, song_count, duration, classification, licence, synced_at)
+       VALUES ('pd1', 'Free Sounds', 'VA', 'va', 5, 500, 'album', 'public-domain', 1),
+              ('mix1', 'Mixed Rights', 'VA', 'va', 5, 500, 'album', NULL, 1)`,
+    );
+
+    __resetDownloadSuppressionCache();
+    const pd = (await (await app.request('/albums?licence=public-domain')).json()) as Array<{
+      id: string;
+      licence?: string;
+    }>;
+    expect(pd.map((a) => a.id).sort()).toEqual(['pd1']);
+    expect(pd[0]!.licence).toBe('public-domain');
+
+    __resetDownloadSuppressionCache();
+    const all = (await (await app.request('/albums')).json()) as Array<{
+      id: string;
+      licence?: string;
+    }>;
+    const mix = all.find((a) => a.id === 'mix1');
+    expect(mix).toBeDefined();
+    // A NULL aggregate (mixed/unknown) is absent from the DTO.
+    expect(mix!.licence).toBeUndefined();
+
+    sharedDb.run(`DELETE FROM library_albums WHERE id IN ('pd1', 'mix1')`);
+  });
+
   it('bulk deletes multiple songs', async () => {
     seedSong('s1', '/home/kevinch3/Music/A/a.mp3');
     seedSong('s2', '/home/kevinch3/Music/B/b.mp3');

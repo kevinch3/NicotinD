@@ -82,6 +82,14 @@ Launch tasks:
   `recordAnalysisFailure`d (not tallied — see the exclusion section below) so they drop
   out of the pending set after the attempt cap instead of being re-queried every batch
   forever.
+- **licence** — `WHERE licence IS NULL`, always available. Resolves a rights code via
+  `ctx.lookupLicence` (the file's own `LICENSE`/`COPYRIGHT` tag first, then a MusicBrainz
+  `license` url-relation), writes `library_songs.licence` + `licence_source` and mirrors
+  the `LICENSE` file tag. A confident "no licence found" is ledgered via
+  `NoConfidentResultError` (drops from the pending set, **not** tallied — MB simply has no
+  data), like unresolvable genre. **Never a landing gate** (default-on in `tasks`, absent
+  from `gates`): an optional/network source must not strand a fresh download. Full design
+  in [music-licence.md](music-licence.md).
 
   Genre detection **always appends** (`appendSongGenres`), never overrides: the
   track-info sheet's "detect genre" apply (`POST /api/library/songs/:id/genre`), this

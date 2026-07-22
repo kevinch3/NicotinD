@@ -21,6 +21,7 @@ const fullFilter: LibraryFilter = {
   yearMin: 1990,
   yearMax: 1999,
   genres: ['Rock', 'Hip-Hop, Rap'],
+  licences: ['public-domain', 'cc-by'],
   starred: true,
   durationMin: 120,
   durationMax: 360,
@@ -40,8 +41,16 @@ describe('serializeLibraryFilter / parseLibraryFilter', () => {
     expect(q.valence).toBe('mid');
     // genre is a repeated param (free text may contain commas)
     expect(q.genre).toEqual(['Rock', 'Hip-Hop, Rap']);
+    expect(q.licence).toBe('public-domain,cc-by');
     expect(q.starred).toBe('true');
     expect(q.durMin).toBe('120');
+  });
+
+  it('parses licences and drops unknown codes leniently', () => {
+    expect(parseLibraryFilter({ licence: 'public-domain,bogus,cc-by-nc' })).toEqual({
+      licences: ['public-domain', 'cc-by-nc'],
+    });
+    expect(parseLibraryFilter({ licence: 'UNKNOWN' })).toEqual({ licences: ['unknown'] });
   });
 
   it('serializes an empty filter to no params', () => {
@@ -93,8 +102,8 @@ describe('isEmptyLibraryFilter / activeLibraryFilterCount', () => {
 
   it('counts one per property group, one per perceptual axis', () => {
     expect(activeLibraryFilterCount({})).toBe(0);
-    // bpm(1) + keys(1) + moods(1) + energy(1) + valence(1) + year(1) + genres(1) + starred(1) + duration(1)
-    expect(activeLibraryFilterCount(fullFilter)).toBe(9);
+    // bpm(1) + keys(1) + moods(1) + energy(1) + valence(1) + year(1) + genres(1) + licences(1) + starred(1) + duration(1)
+    expect(activeLibraryFilterCount(fullFilter)).toBe(10);
     expect(activeLibraryFilterCount({ bpmMin: 100, bpmMax: 120 })).toBe(1);
   });
 });

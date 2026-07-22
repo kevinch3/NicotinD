@@ -39,6 +39,8 @@ export interface Album {
   duration: number;
   year?: number;
   genre?: string;
+  /** Unanimous licence code across all tracks (present only when the whole album shares one). */
+  licence?: string;
   created: string;
   starred?: string;
 }
@@ -86,6 +88,12 @@ export interface Song {
   instrumental?: number;
   /** Dominant mood label (happy|sad|aggressive|relaxed|party). Absent when unknown. */
   mood?: string;
+  /**
+   * Rights/licence code from `LICENCE_VOCAB` (e.g. 'public-domain', 'cc-by',
+   * 'all-rights-reserved'). Absent when unknown (no confident source). Set by
+   * tag reads at scan time, MusicBrainz enrichment, or a manual curator edit.
+   */
+  licence?: string;
 }
 
 export interface SearchResult3 {

@@ -168,3 +168,80 @@ describe('POST /songs/:id/genre', () => {
     expect(res.status).toBe(403);
   });
 });
+
+describe('POST /songs/:id/licence', () => {
+  beforeEach(() => {
+    testDb = new Database(':memory:');
+    applySchema(testDb);
+  });
+  afterEach(() => testDb.close());
+
+  const setLicence = (role: 'admin' | 'user', id: string, licence: string) =>
+    makeApp(role).request(`/songs/${id}/licence`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ licence }),
+    });
+
+  it('sets a licence for a curator and marks the source user', async () => {
+    seedSong(testDb, { id: 'song-1' });
+    const res = await setLicence('admin', 'song-1', 'public-domain');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, licence: 'public-domain' });
+    const row = testDb
+      .query<
+        { licence: string | null; licence_source: string | null },
+        [string]
+      >('SELECT licence, licence_source FROM library_songs WHERE id = ?')
+      .get('song-1');
+    expect(row?.licence).toBe('public-domain');
+    expect(row?.licence_source).toBe('user');
+  });
+
+  it("clears the licence to NULL on 'unknown'", async () => {
+    seedSong(testDb, { id: 'song-1' });
+    testDb.run("UPDATE library_songs SET licence = 'cc-by' WHERE id = 'song-1'");
+    const res = await setLicence('admin', 'song-1', 'unknown');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, licence: null });
+    const row = testDb
+      .query<{ licence: string | null }, [string]>('SELECT licence FROM library_songs WHERE id = ?')
+      .get('song-1');
+    expect(row?.licence).toBeNull();
+  });
+
+  it('rejects an invalid licence code with 400', async () => {
+    seedSong(testDb, { id: 'song-1' });
+    expect((await setLicence('admin', 'song-1', 'gpl-3')).status).toBe(400);
+  });
+
+  it('rejects a non-curator with 403', async () => {
+    seedSong(testDb, { id: 'song-1' });
+    expect((await setLicence('user', 'song-1', 'public-domain')).status).toBe(403);
+  });
+
+  it('404s for an unknown song', async () => {
+    expect((await setLicence('admin', 'nope', 'public-domain')).status).toBe(404);
+  });
+});
+
+describe('GET /songs/:id/licence-suggestion', () => {
+  beforeEach(() => {
+    testDb = new Database(':memory:');
+    applySchema(testDb);
+  });
+  afterEach(() => testDb.close());
+
+  it('returns the stored licence as current with no suggestion when the file is absent', async () => {
+    seedSong(testDb, { id: 'song-1' });
+    testDb.run("UPDATE library_songs SET licence = 'cc-by' WHERE id = 'song-1'");
+    const res = await makeApp('admin').request('/songs/song-1/licence-suggestion');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ current: 'cc-by', suggested: null, source: null });
+  });
+
+  it('404s for an unknown song', async () => {
+    const res = await makeApp('admin').request('/songs/nope/licence-suggestion');
+    expect(res.status).toBe(404);
+  });
+});

@@ -1,7 +1,10 @@
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
-import { createLogger } from '@nicotind/core';
+import { createLogger, normalizeLicence } from '@nicotind/core';
 
 const log = createLogger('musicbrainz-client');
+
+/** Shared MusicBrainz User-Agent (their API requires an identifying one). */
+export const MB_USER_AGENT = 'NicotinD (+https://github.com/kevinch3/nicotind)';
 
 export interface MBArtist {
   id: string;
@@ -36,7 +39,8 @@ export interface MBReleaseGroup {
 type CacheEntry =
   | { type: 'artist'; result: MBArtist | null }
   | { type: 'recording'; result: MBRecording | null }
-  | { type: 'release-group'; result: MBReleaseGroup | null };
+  | { type: 'release-group'; result: MBReleaseGroup | null }
+  | { type: 'licence'; result: string | null };
 
 const MB_BASE = 'https://musicbrainz.org/ws/2';
 const MIN_INTERVAL_MS = 1050; // MusicBrainz allows 1 req/sec; add 50ms buffer
@@ -167,6 +171,53 @@ export class MusicBrainzClient {
 
     this.setCached(key, { type: 'release-group', result });
     return result;
+  }
+
+  /**
+   * Resolve a Creative-Commons / public-domain licence via MusicBrainz `license`
+   * url-relations, most-specific first (recording → release). Returns a canonical
+   * LICENCE_VOCAB code, or null when MB has no license relationship (the common
+   * case — coverage is sparse, mostly CC-flavoured releases). When only
+   * artist+title are known, a recording is resolved via searchRecording first.
+   */
+  async getLicence(q: {
+    mbRecordingId?: string;
+    mbReleaseId?: string;
+    artist?: string;
+    title?: string;
+  }): Promise<string | null> {
+    let recordingId = q.mbRecordingId;
+    if (!recordingId && q.artist && q.title) {
+      recordingId = (await this.searchRecording(q.artist, q.title))?.id;
+    }
+    if (!recordingId && !q.mbReleaseId) return null;
+
+    const key = `licence:${recordingId ?? ''}|${q.mbReleaseId ?? ''}`;
+    const cached = this.cache.get(key);
+    if (cached?.type === 'licence') return cached.result;
+
+    let code: string | null = null;
+    if (recordingId) code = await this.licenceFromEntity('recording', recordingId);
+    if (!code && q.mbReleaseId) code = await this.licenceFromEntity('release', q.mbReleaseId);
+    this.setCached(key, { type: 'licence', result: code });
+    return code;
+  }
+
+  private async licenceFromEntity(
+    kind: 'recording' | 'release',
+    id: string,
+  ): Promise<string | null> {
+    const url = `${MB_BASE}/${kind}/${encodeURIComponent(id)}?fmt=json&inc=url-rels`;
+    const data = await this.fetch<{
+      relations?: Array<{ type?: string; url?: { resource?: string } }>;
+    }>(url);
+    for (const rel of data?.relations ?? []) {
+      if (rel.type === 'license') {
+        const code = normalizeLicence(rel.url?.resource);
+        if (code) return code;
+      }
+    }
+    return null;
   }
 
   private async fetch<T>(url: string): Promise<T | null> {

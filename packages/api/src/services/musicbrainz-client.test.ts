@@ -71,3 +71,51 @@ describe('MusicBrainzClient cache', () => {
     expect(() => new MusicBrainzClient(cacheFile, 'test/1.0')).not.toThrow();
   });
 });
+
+describe('MusicBrainzClient getLicence', () => {
+  function mockFetch(body: unknown): string[] {
+    const calls: string[] = [];
+    globalThis.fetch = (async (url: string) => {
+      calls.push(url);
+      return { ok: true, status: 200, json: async () => body } as unknown as Response;
+    }) as unknown as typeof fetch;
+    return calls;
+  }
+
+  it('parses a license url-relation on a recording into a canonical code', async () => {
+    const calls = mockFetch({
+      relations: [
+        { type: 'producer', url: { resource: 'https://example.com/x' } },
+        { type: 'license', url: { resource: 'https://creativecommons.org/licenses/by-sa/4.0/' } },
+      ],
+    });
+    const client = new MusicBrainzClient(cacheFile, 'test/1.0');
+    expect(await client.getLicence({ mbRecordingId: 'rec-1' })).toBe('cc-by-sa');
+    expect(calls[0]).toContain('/recording/rec-1');
+    expect(calls[0]).toContain('inc=url-rels');
+  });
+
+  it('returns null when there is no license relation', async () => {
+    mockFetch({ relations: [{ type: 'stream', url: { resource: 'https://x' } }] });
+    const client = new MusicBrainzClient(cacheFile, 'test/1.0');
+    expect(await client.getLicence({ mbRecordingId: 'rec-2' })).toBeNull();
+  });
+
+  it('returns null (no network) when neither id nor artist+title is given', async () => {
+    // fetch stays the throwing default from beforeEach — it must not be called.
+    const client = new MusicBrainzClient(cacheFile, 'test/1.0');
+    expect(await client.getLicence({})).toBeNull();
+  });
+
+  it('caches the result so a repeat lookup does not re-query', async () => {
+    const calls = mockFetch({
+      relations: [
+        { type: 'license', url: { resource: 'https://creativecommons.org/publicdomain/zero/1.0/' } },
+      ],
+    });
+    const client = new MusicBrainzClient(cacheFile, 'test/1.0');
+    expect(await client.getLicence({ mbReleaseId: 'rel-9' })).toBe('cc0');
+    expect(await client.getLicence({ mbReleaseId: 'rel-9' })).toBe('cc0');
+    expect(calls).toHaveLength(1);
+  });
+});

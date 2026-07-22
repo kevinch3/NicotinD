@@ -109,6 +109,15 @@ describe('AlbumDetailComponent — deletedSongIds filter', () => {
   });
 });
 
+describe('AlbumDetailComponent — licence label', () => {
+  it('maps a licence code to its human label, passing unknowns through', () => {
+    const { component } = setup();
+    expect(component.licenceLabel('public-domain')).toBe('Public Domain');
+    expect(component.licenceLabel('cc-by-sa')).toBe('CC BY-SA');
+    expect(component.licenceLabel('mystery')).toBe('mystery');
+  });
+});
+
 describe('AlbumDetailComponent — fix metadata', () => {
   it('opens the fix modal only when an album is loaded', () => {
     const { component } = setup();

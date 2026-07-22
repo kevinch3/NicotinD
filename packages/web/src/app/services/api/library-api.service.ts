@@ -6,6 +6,7 @@ import type {
   SongAcquisition,
   BpmAnalysisResult,
   GenreSuggestion,
+  LicenceSuggestion,
   LyricsDto,
   MetadataCandidate,
   ApplyMetadataRequest,
@@ -326,6 +327,19 @@ export class LibraryApiService {
     return this.http.post<{ ok: boolean; genre: string }>(`/api/library/songs/${id}/genre`, {
       genre,
     });
+  }
+
+  /** Detect a licence (read-only): file tag first, then MusicBrainz. */
+  getLicenceSuggestion(id: string) {
+    return this.http.get<LicenceSuggestion>(`/api/library/songs/${id}/licence-suggestion`);
+  }
+
+  /** Set (or clear, via '' / 'unknown') a song's licence (curator). */
+  setLicence(id: string, licence: string) {
+    return this.http.post<{ ok: boolean; licence: string | null }>(
+      `/api/library/songs/${id}/licence`,
+      { licence },
+    );
   }
 
   /** Stored lyrics for a song; null when none have been fetched yet. */

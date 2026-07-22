@@ -17,6 +17,10 @@ describe('TrackInfoSheetComponent (analysis)', () => {
     of({ current: 'IDM', suggested: 'Electronic', candidates: ['Electronic', 'IDM'], source: 'lidarr' as const }),
   );
   const applyGenre = vi.fn(() => of({ ok: true, genre: 'Electronic' }));
+  const getLicenceSuggestion = vi.fn(() =>
+    of({ current: null, suggested: 'cc-by', source: 'musicbrainz' as const }),
+  );
+  const setLicence = vi.fn(() => of({ ok: true, licence: 'cc-by' as string | null }));
   const getSong = vi.fn(() => of({ id: 'song-1', bpm: 128, genre: 'Latin' } as never));
   const role = signal<string | null>('admin');
 
@@ -26,6 +30,9 @@ describe('TrackInfoSheetComponent (analysis)', () => {
     getGenreSuggestion.mockClear();
     applyGenre.mockClear();
     applyGenre.mockReturnValue(of({ ok: true, genre: 'Electronic' }));
+    getLicenceSuggestion.mockClear();
+    setLicence.mockClear();
+    setLicence.mockReturnValue(of({ ok: true, licence: 'cc-by' as string | null }));
     getSong.mockClear();
     getSong.mockReturnValue(of({ id: 'song-1', bpm: 128, genre: 'Latin' } as never));
     role.set('admin');
@@ -39,6 +46,8 @@ describe('TrackInfoSheetComponent (analysis)', () => {
             analyzeSong,
             getGenreSuggestion,
             applyGenre,
+            getLicenceSuggestion,
+            setLicence,
             getSong,
             getSongProvenance: vi.fn(() => of([])),
             getSongAcquisition: vi.fn(() => of(null)),
@@ -86,6 +95,31 @@ describe('TrackInfoSheetComponent (analysis)', () => {
     c.applySuggestedGenre('Electronic');
     expect(applyGenre).toHaveBeenCalledWith('song-1', 'Electronic');
     expect(c.currentGenre()).toBe('Electronic');
+  });
+
+  it('detectLicenceNow() loads the licence suggestion', () => {
+    const c = create();
+    c.detectLicenceNow();
+    expect(getLicenceSuggestion).toHaveBeenCalledWith('song-1');
+    expect(c.licenceSuggestion()?.suggested).toBe('cc-by');
+    expect(c.detectingLicence()).toBe(false);
+  });
+
+  it('applyLicence() sets the current licence code + label on success', () => {
+    const c = create();
+    expect(c.currentLicence()).toBe('unknown');
+    c.applyLicence('cc-by');
+    expect(setLicence).toHaveBeenCalledWith('song-1', 'cc-by');
+    expect(c.currentLicence()).toBe('cc-by');
+    expect(c.currentLicenceLabel()).toBe('CC BY');
+  });
+
+  it('applyLicence() reflects a cleared (null) licence as unknown', () => {
+    setLicence.mockReturnValueOnce(of({ ok: true, licence: null }));
+    const c = create();
+    c.applyLicence('unknown');
+    expect(c.currentLicence()).toBe('unknown');
+    expect(c.currentLicenceLabel()).toBe('Unknown');
   });
 
   it('ngOnInit fetches the song by id and shows its stored bpm + genre', () => {

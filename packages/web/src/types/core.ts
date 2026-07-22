@@ -38,7 +38,11 @@ export type {
 
 export type { SpotifyCandidate } from '../../../core/src/types/spotify';
 
-export type { BpmAnalysisResult, GenreSuggestion } from '../../../core/src/types/track-analysis';
+export type {
+  BpmAnalysisResult,
+  GenreSuggestion,
+  LicenceSuggestion,
+} from '../../../core/src/types/track-analysis';
 
 export type {
   ProcessingTaskId,
@@ -64,6 +68,10 @@ export type { LyricsDto } from '../../../core/src/types/lyrics';
 // Value re-export (not just types): library-filter is a pure, browser-safe
 // module (model + serialization + Camelot/mood vocab) shared with the API.
 export * from '../../../core/src/types/library-filter';
+
+// Value re-export: licence vocabulary (codes/labels/badges + normalizeLicence),
+// a pure, browser-safe module shared with the API scanner + filter.
+export * from '../../../core/src/types/licence';
 
 // Value re-export: role ladder helpers (pure, browser-safe) shared with the API.
 export * from '../../../core/src/roles';

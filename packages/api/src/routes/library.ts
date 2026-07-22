@@ -58,16 +58,29 @@ import type {
   CoverCandidatesResponse,
   ApplyCoverRequest,
 } from '@nicotind/core';
-import { parseLibraryFilter } from '@nicotind/core';
+import { parseLibraryFilter, isLicenceCode } from '@nicotind/core';
 import {
   albumFilterWheres,
   artistFilterWheres,
   songFilterWheres,
 } from '../services/library-filter-sql.js';
+import { MusicBrainzClient, MB_USER_AGENT } from '../services/musicbrainz-client.js';
 
 const log = createLogger('library');
 
 const VALID_CLASSIFICATIONS = new Set(['album', 'ep', 'single', 'compilation', 'unknown']);
+
+// Lazily-built, per-dataDir MusicBrainz client for on-demand licence detection.
+// Reuses the on-disk cache file so repeated lookups don't re-hit MB.
+let mbLicenceClient: { key: string; client: MusicBrainzClient } | null = null;
+function getMbLicenceClient(dataDir?: string): MusicBrainzClient | null {
+  if (!dataDir) return null;
+  const cacheFile = join(dataDir, 'musicbrainz-cache.json');
+  if (mbLicenceClient?.key !== cacheFile) {
+    mbLicenceClient = { key: cacheFile, client: new MusicBrainzClient(cacheFile, MB_USER_AGENT) };
+  }
+  return mbLicenceClient.client;
+}
 
 // The only release types shown in the main Albums grid. Singles & EPs are
 // surfaced on the artist page and the dedicated /singles view instead, so the
@@ -283,6 +296,7 @@ interface AlbumRow {
   duration: number;
   year: number | null;
   genre: string | null;
+  licence: string | null;
   created: string | null;
   starred: string | null;
   classification: string;
@@ -321,6 +335,7 @@ interface SongRow {
   acousticness: number | null;
   instrumental: number | null;
   mood: string | null;
+  licence: string | null;
 }
 
 interface ArtistRow {
@@ -333,7 +348,7 @@ interface ArtistRow {
 
 const ALBUM_SELECT = `
   SELECT id, name, artist, artist_id, cover_art, song_count, duration,
-         year, genre, created, starred, classification, hidden, manual_override
+         year, genre, licence, created, starred, classification, hidden, manual_override
   FROM library_albums
 `;
 
@@ -344,7 +359,7 @@ const SONG_SELECT = `
          s.cover_art, s.path, s.size, s.bit_rate, s.suffix, s.content_type,
          s.created, s.starred, s.bpm, s.key,
          s.energy, s.loudness, s.valence, s.danceability, s.acousticness,
-         s.instrumental, s.mood
+         s.instrumental, s.mood, s.licence
   FROM library_songs s
   LEFT JOIN library_albums a ON a.id = s.album_id
 `;
@@ -365,6 +380,7 @@ function rowToAlbum(r: AlbumRow): Album & { classification: string; hidden: bool
     duration: r.duration,
     year: r.year ?? undefined,
     genre: r.genre ?? undefined,
+    licence: r.licence ?? undefined,
     created: r.created ?? '',
     starred: r.starred ?? undefined,
     classification: r.classification,
@@ -403,6 +419,7 @@ function rowToSong(r: SongRow): Song {
     acousticness: r.acousticness ?? undefined,
     instrumental: r.instrumental ?? undefined,
     mood: r.mood ?? undefined,
+    licence: r.licence ?? undefined,
   };
 }
 
@@ -1514,6 +1531,91 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       }
     }
     return c.json({ ok: true, genre: merged[0], genres: merged });
+  });
+
+  // Detect a licence for a song (read-only). The file's own LICENSE/COPYRIGHT tag
+  // wins (source 'tag', zero network); otherwise a MusicBrainz `license`
+  // url-relation lookup (source 'musicbrainz'). `suggested` is null when nothing
+  // is confidently found — MB licence coverage is sparse, so this is expected.
+  app.get('/songs/:id/licence-suggestion', async (c) => {
+    const id = c.req.param('id');
+    const db = getDatabase();
+    const song = db
+      .query<{ path: string; artist: string; title: string; licence: string | null }, [string]>(
+        `SELECT path, artist, title, licence FROM library_songs WHERE id = ?`,
+      )
+      .get(id);
+    if (!song) return c.json({ error: 'Song not found' }, 404);
+
+    let suggested: string | null = null;
+    let source: 'tag' | 'musicbrainz' | null = null;
+    if (musicDir) {
+      const abs = resolveSongPath(expandDir(musicDir), song.path);
+      if (isUnderMusicDir(expandDir(musicDir), abs) && existsSync(abs)) {
+        const tags = await readAudioTags(abs).catch(() => ({}) as Awaited<ReturnType<typeof readAudioTags>>);
+        if (tags.licence) {
+          suggested = tags.licence;
+          source = 'tag';
+        } else {
+          const mb = getMbLicenceClient(dataDir);
+          if (mb) {
+            const code = await mb
+              .getLicence({
+                mbRecordingId: tags.mbRecordingId,
+                mbReleaseId: tags.mbReleaseId,
+                artist: song.artist,
+                title: song.title,
+              })
+              .catch(() => null);
+            if (code) {
+              suggested = code;
+              source = 'musicbrainz';
+            }
+          }
+        }
+      }
+    }
+    return c.json({ current: song.licence, suggested, source });
+  });
+
+  // Set (or clear) a song's licence (curator). An empty value or 'unknown' clears
+  // it (stores SQL NULL so the background task can re-resolve); a valid
+  // LICENCE_VOCAB code is stored, marked licence_source='user' (so the task never
+  // overrides it), and mirrored to the file's LICENSE tag so a rescan preserves it.
+  app.post('/songs/:id/licence', async (c) => {
+    requireCurator(c);
+    const id = c.req.param('id');
+    const body = await c.req
+      .json<{ licence?: string }>()
+      .catch(() => ({}) as { licence?: string });
+    const raw = (body.licence ?? '').trim().toLowerCase();
+    const clear = raw === '' || raw === 'unknown';
+    if (!clear && !isLicenceCode(raw)) return c.json({ error: 'invalid licence' }, 400);
+
+    const db = getDatabase();
+    const song = db
+      .query<{ path: string }, [string]>(`SELECT path FROM library_songs WHERE id = ?`)
+      .get(id);
+    if (!song) return c.json({ error: 'Song not found' }, 404);
+
+    const value = clear ? null : raw;
+    db.run('UPDATE library_songs SET licence = ?, licence_source = ? WHERE id = ?', [
+      value,
+      value ? 'user' : null,
+      id,
+    ]);
+    if (value && musicDir) {
+      const abs = resolveSongPath(expandDir(musicDir), song.path);
+      if (isUnderMusicDir(expandDir(musicDir), abs) && existsSync(abs)) {
+        await writeAudioTags(abs, { licence: value }).catch(() => false);
+      }
+    }
+    recordAudit(db, c.get('user'), 'song.licence', {
+      targetKind: 'song',
+      targetId: id,
+      detail: value ?? 'cleared',
+    });
+    return c.json({ ok: true, licence: value });
   });
 
   // Stored lyrics for a song (any user — the library is shared). Returns the
