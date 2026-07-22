@@ -1166,6 +1166,42 @@ export function applySchema(db: Database): void {
   `);
   db.run(`CREATE INDEX IF NOT EXISTS idx_audit_log_at ON audit_log (at DESC)`);
 
+  // Generation-feedback: a dev golden-dataset. Every "generated"/inferred output
+  // (v1: album-hunt recognition) captured as an (input, output, verdict) snapshot
+  // that scripts/feedback-to-fixtures.ts exports into replayable TDD fixtures.
+  // verdict NULL = pending (captured at hunt time, not yet graded). input_json /
+  // output_json hold the full snapshot so a fixture replays the pure recognizer
+  // offline. Written by services/generation-feedback.ts. See docs/generation-feedback.md.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS generation_feedback (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      at              INTEGER NOT NULL,
+      user_id         TEXT NOT NULL,
+      username        TEXT,
+      resource_type   TEXT NOT NULL,
+      resource_ref    TEXT,
+      verdict         TEXT,
+      note            TEXT,
+      input_json      TEXT NOT NULL,
+      output_json     TEXT NOT NULL,
+      item_flags_json TEXT,
+      engine_version  TEXT
+    )
+  `);
+  db.run(
+    `CREATE INDEX IF NOT EXISTS idx_generation_feedback_type_at
+       ON generation_feedback (resource_type, at DESC)`,
+  );
+
+  // Admin dev-mode toggle: when on, generated results surface a capture toast so
+  // the admin can grade them (see generation_feedback above). Per-user, default
+  // off — invisible to non-admins.
+  try {
+    db.run(`ALTER TABLE user_settings ADD COLUMN feedback_capture INTEGER NOT NULL DEFAULT 0`);
+  } catch {
+    // Column already exists — ignore
+  }
+
   // One-time landing backfill. The landed_at column defaults to NULL (quarantined)
   // for every row, so an upgrade of an existing library would otherwise hide the
   // entire catalogue behind the new processing gate. Land every pre-existing song

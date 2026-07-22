@@ -20,6 +20,7 @@ import { recordBootVersion } from './services/update-check.js';
 import { systemRoutes } from './routes/system.js';
 import { settingsRoutes } from './routes/settings.js';
 import { adminRoutes } from './routes/admin.js';
+import { feedbackRoutes } from './routes/feedback.js';
 import { presenceRoutes } from './routes/presence.js';
 import { usersRoutes } from './routes/users.js';
 import { shareRoutes } from './routes/share.js';
@@ -530,6 +531,7 @@ export function createApp({
   app.use('/api/archive/*', auth);
   app.use('/api/spotify/*', auth);
   app.use('/api/sources/*', auth);
+  app.use('/api/feedback/*', auth);
 
   app.get(
     '/api/ws/playback',
@@ -551,6 +553,7 @@ export function createApp({
       version,
     }),
   );
+  app.route('/api/feedback', feedbackRoutes());
   app.route('/api/presence', presenceRoutes());
   app.route('/api/downloads', downloadRoutes(registry, slskdRef));
   app.route('/api/uploads', uploadRoutes(slskdRef));
@@ -685,6 +688,7 @@ export function createApp({
         db,
         slskdRef,
         dataDir: expandedDataDir,
+        version,
       }),
     );
     app.route('/api/catalog', catalogRoutes({ catalog: catalogSvc }));

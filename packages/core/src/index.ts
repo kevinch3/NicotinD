@@ -15,6 +15,7 @@ export * from './types/metadata-fix.js';
 export * from './types/lyrics.js';
 export * from './types/library-filter.js';
 export * from './types/licence.js';
+export * from './types/generation-feedback.js';
 
 // Role ladder (capability helpers shared by API guards + web gating)
 export * from './roles.js';

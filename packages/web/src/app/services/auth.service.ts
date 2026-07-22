@@ -50,6 +50,9 @@ export class AuthService {
   readonly canCurate = computed(() => canCurateRole(asRole(this.role())));
   readonly welcomeDismissed = signal<boolean>(false);
   readonly autoplayOnLoad = signal<boolean>(false);
+  /** Admin dev-mode: when on (and the user is admin), generated results surface a
+   * capture toast to grade them into the feedback golden-dataset. */
+  readonly feedbackCapture = signal<boolean>(false);
 
   login(token: string, username: string, role: string): void {
     localStorage.setItem('nicotind_token', token);
@@ -89,6 +92,15 @@ export class AuthService {
     this.autoplayOnLoad.set(enabled);
     this.authApi.setAutoplayOnLoad(enabled).subscribe({
       error: () => this.autoplayOnLoad.set(prev),
+    });
+  }
+
+  /** Persist the admin dev-mode feedback-capture toggle. Optimistic like above. */
+  setFeedbackCapture(enabled: boolean): void {
+    const prev = this.feedbackCapture();
+    this.feedbackCapture.set(enabled);
+    this.authApi.setFeedbackCapture(enabled).subscribe({
+      error: () => this.feedbackCapture.set(prev),
     });
   }
 
@@ -137,5 +149,6 @@ export class AuthService {
     this.role.set(null);
     this.welcomeDismissed.set(false);
     this.autoplayOnLoad.set(false);
+    this.feedbackCapture.set(false);
   }
 }

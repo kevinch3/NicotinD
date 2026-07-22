@@ -106,6 +106,28 @@
         </div>
       </section>
 
+      <!-- Developer (admin-only): feedback capture -->
+      @if (auth.isAdmin()) {
+        <section class="rounded-xl border border-theme bg-theme-surface/50 p-6 mb-6" data-testid="developer-section">
+          <h2 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary mb-5">Developer</h2>
+
+          <div class="flex items-start gap-3">
+            <button role="switch" [attr.aria-checked]="auth.feedbackCapture()"
+              (click)="toggleFeedbackCapture()"
+              data-testid="feedback-capture-toggle"
+              [class]="'relative mt-0.5 w-9 h-5 rounded-full transition-colors flex-shrink-0 ' + (auth.feedbackCapture() ? 'bg-emerald-600' : 'bg-theme-hover')">
+              <span [class]="'absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ' + (auth.feedbackCapture() ? 'translate-x-4' : 'translate-x-0')"></span>
+            </button>
+            <div>
+              <p class="text-sm text-theme-primary">Capture generation feedback</p>
+              <p class="text-xs text-theme-muted mt-1">
+                After an album hunt, show a 👍/👎 toast to grade whether the recognizer picked the right release. Graded results become replayable test fixtures. Off by default.
+              </p>
+            </div>
+          </div>
+        </section>
+      }
+
       <!-- Remote Playback -->
       <section class="rounded-xl border border-theme bg-theme-surface/50 p-6 mb-6">
         <div class="flex items-center gap-3 mb-6">

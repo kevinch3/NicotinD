@@ -113,6 +113,140 @@ export interface FolderCandidate {
   uploadSpeed: number;
 }
 
+// Minimal structural shape of a slskd search response the recognizer needs. A
+// full `SlskdSearchResponse` (extra fileCount/lockedFileCount fields) satisfies
+// it, so captured raw responses can be replayed through `scoreFolders` verbatim.
+export interface ScoreResponse {
+  username: string;
+  freeUploadSlots?: number;
+  queueLength?: number;
+  uploadSpeed?: number;
+  files: Array<{ filename: string; size: number; bitRate?: number }>;
+}
+
+// The pure, IO-free recognizer core: group raw slskd responses into folders,
+// score each against the canonical tracklist, rank best-first, cap at 20. why:
+// extracted out of `searchAndScore` (which owns the network I/O) so a captured
+// feedback fixture — canonical tracklist + raw responses — can replay the exact
+// ranking offline in a test and assert the human-correct folder ranks #1.
+export function scoreFolders(
+  canonicalTracks: Array<{ title: string }>,
+  responses: ScoreResponse[],
+): FolderCandidate[] {
+  // Group files by directory+username (a unique "folder")
+  const folderMap = new Map<string, { username: string; files: HuntFile[] }>();
+
+  // Per-peer health, merged across responses. A peer's free-slot count
+  // fluctuates between responses; keep the best-seen so a momentarily-busy
+  // snapshot doesn't permanently sink an otherwise-good peer.
+  const peerHealth = new Map<string, PeerHealth>();
+
+  for (const response of responses) {
+    const prev = peerHealth.get(response.username);
+    peerHealth.set(response.username, {
+      freeUploadSlots: Math.max(prev?.freeUploadSlots ?? 0, response.freeUploadSlots ?? 0),
+      queueLength: Math.min(prev?.queueLength ?? Infinity, response.queueLength ?? 0),
+      uploadSpeed: Math.max(prev?.uploadSpeed ?? 0, response.uploadSpeed ?? 0),
+    });
+
+    for (const file of response.files) {
+      const ext = file.filename.slice(file.filename.lastIndexOf('.')).toLowerCase();
+      if (!AUDIO_EXTENSIONS.has(ext)) continue;
+
+      const dir = extractDirectory(file.filename);
+      const key = `${response.username}::${dir}`;
+
+      if (!folderMap.has(key)) {
+        folderMap.set(key, { username: response.username, files: [] });
+      }
+      const folder = folderMap.get(key)!;
+      // Dedupe: parallel queries frequently surface the same file from one peer.
+      if (folder.files.some((existing) => existing.filename === file.filename)) {
+        continue;
+      }
+      folder.files.push({ filename: file.filename, size: file.size, bitRate: file.bitRate });
+    }
+  }
+
+  // Score each folder against canonical tracklist
+  const normalizedCanonical = canonicalTracks.map((t) => normalizeTitle(t.title));
+  // A single (exactly 1 canonical track) is scored with the qualifier-aware
+  // strength (see SINGLE_PARTIAL_PCT) instead of the all-or-nothing matched/1
+  // formula, keeping both the full and the qualifier-stripped "core" form.
+  const single =
+    canonicalTracks.length === 1
+      ? {
+          full: normalizeTitle(canonicalTracks[0].title),
+          core: normalizeTitle(stripTitleQualifiers(canonicalTracks[0].title)),
+        }
+      : null;
+
+  const candidates: FolderCandidate[] = [];
+
+  for (const [key, { username, files }] of folderMap) {
+    const dir = key.slice(username.length + 2); // strip "username::"
+    const baseNames = files.map((f) => {
+      const basename = f.filename.replace(/\\/g, '/').split('/').pop() ?? f.filename;
+      return basename.slice(0, basename.lastIndexOf('.') || basename.length);
+    });
+
+    let matched: number;
+    let matchPct: number;
+    if (single) {
+      const strength = baseNames.reduce(
+        (best, n) =>
+          Math.max(
+            best,
+            singleMatchStrength(
+              single.full,
+              single.core,
+              normalizeTitle(n),
+              normalizeTitle(stripTitleQualifiers(n)),
+            ),
+          ),
+        0,
+      );
+      matched = strength > 0 ? 1 : 0;
+      matchPct = strength;
+    } else {
+      const normalizedFiles = baseNames.map(normalizeTitle);
+      let m = 0;
+      for (const canonicalTrack of normalizedCanonical) {
+        if (normalizedFiles.some((fn) => titlesOverlap(canonicalTrack, fn))) {
+          m++;
+        }
+      }
+      matched = m;
+      matchPct = Math.round((m / (canonicalTracks.length || 1)) * 100);
+    }
+    if (matchPct < MIN_FLOOR_PCT) continue;
+
+    const totalTracks = canonicalTracks.length || 1;
+    const format = detectFormat(files);
+    const estimatedSizeMb = files.reduce((acc, f) => acc + f.size, 0) / (1024 * 1024);
+    const health = peerHealth.get(username);
+
+    candidates.push({
+      directory: dir,
+      username,
+      files,
+      matchedTracks: matched,
+      totalTracks,
+      matchPct,
+      format,
+      estimatedSizeMb: Math.round(estimatedSizeMb * 10) / 10,
+      isLive: isLiveFolder(dir),
+      freeUploadSlots: health?.freeUploadSlots ?? 0,
+      queueLength: Number.isFinite(health?.queueLength) ? health!.queueLength : 0,
+      uploadSpeed: health?.uploadSpeed ?? 0,
+    });
+  }
+
+  candidates.sort(compareCandidates);
+
+  return candidates.slice(0, 20);
+}
+
 export class AlbumHunterService {
   constructor(private slskd: Slskd) {}
 
@@ -152,12 +286,16 @@ export class AlbumHunterService {
     albumTitle: string,
     canonicalTracks: LidarrTrack[],
     opts: { skewSearch?: boolean } = {},
-  ): Promise<{ candidates: FolderCandidate[]; skewNeeded: boolean }> {
+  ): Promise<{ candidates: FolderCandidate[]; skewNeeded: boolean; responses: ScoreResponse[] }> {
     const baseQs = baseQueries(artistName, albumTitle);
-    const candidates = await this.searchAndScore(baseQs, canonicalTracks);
+    // Keep the raw responses (not just the scored candidates): feedback capture
+    // snapshots them so a replay fixture can re-run scoreFolders offline —
+    // including sub-floor folders the recognizer wrongly dropped.
+    const responses = await this.search(baseQs);
+    const candidates = scoreFolders(canonicalTracks, responses);
     const bestBasePct = candidates.length ? candidates[0].matchPct : 0;
     const skewNeeded = opts.skewSearch !== false && bestBasePct < SKEW_TRIGGER_PCT;
-    return { candidates, skewNeeded };
+    return { candidates, skewNeeded, responses };
   }
 
   // Phase-2 of a two-phase hunt: run skew-variant queries and return their
@@ -177,6 +315,14 @@ export class AlbumHunterService {
     queries: string[],
     canonicalTracks: LidarrTrack[],
   ): Promise<FolderCandidate[]> {
+    return scoreFolders(canonicalTracks, await this.search(queries));
+  }
+
+  // The I/O half of a hunt: create the searches, poll to completion, clean up,
+  // and return the raw slskd responses. Kept separate from `scoreFolders` (the
+  // pure recognizer) so a hunt can surface its raw responses for feedback
+  // capture without re-running the network.
+  private async search(queries: string[]): Promise<ScoreResponse[]> {
     // Fire all searches in parallel
     const searches = await Promise.all(
       queries.map((q) =>
@@ -191,127 +337,7 @@ export class AlbumHunterService {
     if (!searchIds.length) return [];
 
     try {
-      // Poll until all searches complete or timeout
-      const allResponses = await this.pollUntilDone(searchIds);
-
-      // Group files by directory+username (a unique "folder")
-      const folderMap = new Map<string, { username: string; files: HuntFile[] }>();
-
-      // Per-peer health, merged across the two parallel searches. A peer's
-      // free-slot count fluctuates between responses; keep the best-seen so a
-      // momentarily-busy snapshot doesn't permanently sink an otherwise-good peer.
-      const peerHealth = new Map<string, PeerHealth>();
-
-      for (const response of allResponses) {
-        const prev = peerHealth.get(response.username);
-        peerHealth.set(response.username, {
-          freeUploadSlots: Math.max(prev?.freeUploadSlots ?? 0, response.freeUploadSlots ?? 0),
-          // Queue length: keep the smallest (most favorable) seen.
-          queueLength: Math.min(prev?.queueLength ?? Infinity, response.queueLength ?? 0),
-          uploadSpeed: Math.max(prev?.uploadSpeed ?? 0, response.uploadSpeed ?? 0),
-        });
-
-        for (const file of response.files) {
-          const ext = file.filename.slice(file.filename.lastIndexOf('.')).toLowerCase();
-          if (!AUDIO_EXTENSIONS.has(ext)) continue;
-
-          const dir = extractDirectory(file.filename);
-          const key = `${response.username}::${dir}`;
-
-          if (!folderMap.has(key)) {
-            folderMap.set(key, { username: response.username, files: [] });
-          }
-          const folder = folderMap.get(key)!;
-          // Dedupe: the two parallel queries ("Artist Album" / "Artist - Album")
-          // frequently surface the same file from the same peer.
-          if (folder.files.some((existing) => existing.filename === file.filename)) {
-            continue;
-          }
-          folder.files.push({
-            filename: file.filename,
-            size: file.size,
-            bitRate: file.bitRate,
-          });
-        }
-      }
-
-      // Score each folder against canonical tracklist
-      const normalizedCanonical = canonicalTracks.map((t) => normalizeTitle(t.title));
-      // A single (exactly 1 canonical track) is scored with the qualifier-aware
-      // strength (see SINGLE_PARTIAL_PCT) instead of the all-or-nothing matched/1
-      // formula, keeping both the full and the qualifier-stripped "core" form.
-      const single =
-        canonicalTracks.length === 1
-          ? {
-              full: normalizeTitle(canonicalTracks[0].title),
-              core: normalizeTitle(stripTitleQualifiers(canonicalTracks[0].title)),
-            }
-          : null;
-
-      const candidates: FolderCandidate[] = [];
-
-      for (const [key, { username, files }] of folderMap) {
-        const dir = key.slice(username.length + 2); // strip "username::"
-        const baseNames = files.map((f) => {
-          const basename = f.filename.replace(/\\/g, '/').split('/').pop() ?? f.filename;
-          return basename.slice(0, basename.lastIndexOf('.') || basename.length);
-        });
-
-        let matched: number;
-        let matchPct: number;
-        if (single) {
-          const strength = baseNames.reduce(
-            (best, n) =>
-              Math.max(
-                best,
-                singleMatchStrength(
-                  single.full,
-                  single.core,
-                  normalizeTitle(n),
-                  normalizeTitle(stripTitleQualifiers(n)),
-                ),
-              ),
-            0,
-          );
-          matched = strength > 0 ? 1 : 0;
-          matchPct = strength;
-        } else {
-          const normalizedFiles = baseNames.map(normalizeTitle);
-          let m = 0;
-          for (const canonicalTrack of normalizedCanonical) {
-            if (normalizedFiles.some((fn) => titlesOverlap(canonicalTrack, fn))) {
-              m++;
-            }
-          }
-          matched = m;
-          matchPct = Math.round((m / (canonicalTracks.length || 1)) * 100);
-        }
-        if (matchPct < MIN_FLOOR_PCT) continue;
-
-        const totalTracks = canonicalTracks.length || 1;
-        const format = detectFormat(files);
-        const estimatedSizeMb = files.reduce((acc, f) => acc + f.size, 0) / (1024 * 1024);
-        const health = peerHealth.get(username);
-
-        candidates.push({
-          directory: dir,
-          username,
-          files,
-          matchedTracks: matched,
-          totalTracks,
-          matchPct,
-          format,
-          estimatedSizeMb: Math.round(estimatedSizeMb * 10) / 10,
-          isLive: isLiveFolder(dir),
-          freeUploadSlots: health?.freeUploadSlots ?? 0,
-          queueLength: Number.isFinite(health?.queueLength) ? health!.queueLength : 0,
-          uploadSpeed: health?.uploadSpeed ?? 0,
-        });
-      }
-
-      candidates.sort(compareCandidates);
-
-      return candidates.slice(0, 20);
+      return await this.pollUntilDone(searchIds);
     } finally {
       // Clean up searches
       await Promise.all(searchIds.map((id) => this.slskd.searches.delete(id).catch(() => {})));

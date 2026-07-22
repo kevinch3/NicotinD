@@ -1,0 +1,74 @@
+@if (payload(); as p) {
+  <div
+    class="fixed inset-0 z-[60] flex items-end justify-center bg-black/60 sm:items-center"
+    data-testid="feedback-detail-sheet"
+    (click)="cancel()"
+  >
+    <div
+      class="w-full max-w-lg rounded-t-2xl bg-neutral-900 p-5 text-neutral-100 shadow-xl sm:rounded-2xl"
+      (click)="$event.stopPropagation()"
+    >
+      <h2 class="text-lg font-semibold">Which release was actually correct?</h2>
+      <p class="mt-1 text-sm text-neutral-400">
+        {{ p.artistName }} — {{ p.albumTitle }}. Your pick trains the album-hunt recognizer.
+      </p>
+
+      <div class="mt-4 max-h-64 space-y-2 overflow-y-auto">
+        @for (c of p.candidates; track trackByDir($index, c)) {
+          <button
+            type="button"
+            class="flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left text-sm"
+            [class.border-emerald-500]="selected() === c.directory"
+            [class.border-neutral-700]="selected() !== c.directory"
+            data-testid="feedback-candidate"
+            (click)="select(c.directory)"
+          >
+            <span class="min-w-0 flex-1 truncate">
+              <span class="font-medium">{{ c.username }}</span>
+              <span class="text-neutral-400"> · {{ c.directory }}</span>
+            </span>
+            <span class="ml-2 shrink-0 text-neutral-400">{{ c.format }} · {{ c.matchPct }}%</span>
+          </button>
+        }
+
+        <button
+          type="button"
+          class="flex w-full items-center rounded-lg border px-3 py-2 text-left text-sm"
+          [class.border-emerald-500]="selected() === 'none'"
+          [class.border-neutral-700]="selected() !== 'none'"
+          data-testid="feedback-none"
+          (click)="select('none')"
+        >
+          None of these were right
+        </button>
+      </div>
+
+      <textarea
+        class="mt-4 w-full rounded-lg bg-neutral-800 p-2 text-sm"
+        rows="2"
+        placeholder="Optional note (what went wrong?)"
+        [ngModel]="note()"
+        (ngModelChange)="note.set($event)"
+      ></textarea>
+
+      <div class="mt-4 flex justify-end gap-2">
+        <button
+          type="button"
+          class="rounded-lg px-4 py-2 text-sm text-neutral-300 hover:bg-neutral-800"
+          (click)="cancel()"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+          data-testid="feedback-confirm"
+          [disabled]="!canConfirm()"
+          (click)="confirm()"
+        >
+          Save feedback
+        </button>
+      </div>
+    </div>
+  </div>
+}

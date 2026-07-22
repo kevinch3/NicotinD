@@ -1,0 +1,35 @@
+{
+  "canonicalTracks": [
+    { "title": "Canción Animal" },
+    { "title": "De Música Ligera" },
+    { "title": "Un Millón de Años Luz" }
+  ],
+  "rawResponses": [
+    {
+      "username": "collector",
+      "fileCount": 3,
+      "lockedFileCount": 0,
+      "freeUploadSlots": 2,
+      "uploadSpeed": 500000,
+      "queueLength": 0,
+      "files": [
+        { "filename": "Soda Stereo\\Cancion Animal\\01 Cancion Animal.flac", "size": 30000000, "code": "1" },
+        { "filename": "Soda Stereo\\Cancion Animal\\02 De Musica Ligera.flac", "size": 28000000, "code": "1" },
+        { "filename": "Soda Stereo\\Cancion Animal\\03 Un Millon de Anos Luz.flac", "size": 26000000, "code": "1" }
+      ]
+    },
+    {
+      "username": "bootlegger",
+      "fileCount": 1,
+      "lockedFileCount": 0,
+      "freeUploadSlots": 0,
+      "uploadSpeed": 1000,
+      "queueLength": 40,
+      "files": [
+        { "filename": "Various\\Live in Buenos Aires\\De Musica Ligera (Live).mp3", "size": 5000000, "bitRate": 192, "code": "1" }
+      ]
+    }
+  ],
+  "expected": { "correctFolder": { "username": "collector", "directory": "Soda Stereo/Cancion Animal" } },
+  "meta": { "id": 0, "verdict": "good", "artistName": "Soda Stereo", "albumTitle": "Canción Animal" }
+}

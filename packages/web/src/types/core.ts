@@ -65,6 +65,20 @@ export type {
 
 export type { LyricsDto } from '../../../core/src/types/lyrics';
 
+export type {
+  GenerationFeedbackResourceType,
+  GenerationVerdict,
+  FolderRef,
+  HuntMatchItemFlags,
+  HuntMatchInput,
+  SnapshotFolderCandidate,
+  HuntMatchOutput,
+  HuntMatchSnapshot,
+  GenerationFeedbackRecord,
+  ResolveFeedbackBody,
+  HuntMatchFixture,
+} from '../../../core/src/types/generation-feedback';
+
 // Value re-export (not just types): library-filter is a pure, browser-safe
 // module (model + serialization + Camelot/mood vocab) shared with the API.
 export * from '../../../core/src/types/library-filter';

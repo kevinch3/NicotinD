@@ -5,6 +5,7 @@ import {
   AlbumHunterService,
   buildSkewedQueries,
   normalizeTitle,
+  scoreFolders,
   singleMatchStrength,
   stripTitleQualifiers,
 } from './album-hunter.service';
@@ -273,6 +274,94 @@ describe('AlbumHunterService', () => {
       const [candidate] = await hunter.hunt('Artist', 'EP', ep);
       expect(candidate.matchedTracks).toBe(2);
       expect(candidate.matchPct).toBe(67);
+    });
+  });
+
+  // scoreFolders is the pure, IO-free recognizer core extracted from
+  // searchAndScore. It takes the canonical tracklist + raw slskd responses and
+  // returns the ranked FolderCandidate[] — the exact seam a captured feedback
+  // fixture replays offline to assert the human-correct folder ranks #1.
+  describe('scoreFolders (pure recognizer)', () => {
+    it('groups files by folder and scores match % against the tracklist', () => {
+      const candidates = scoreFolders(TRACKS, [
+        {
+          username: 'alice',
+          files: [
+            { filename: 'Music\\Artist\\Album\\01 Song One.flac', size: 1_000_000 },
+            { filename: 'Music\\Artist\\Album\\02 Song Two.flac', size: 1_000_000 },
+            { filename: 'Music\\Artist\\Album\\03 Song Three.flac', size: 1_000_000 },
+          ],
+        },
+        {
+          username: 'bob',
+          files: [{ filename: 'shared/random/Song One.mp3', size: 500_000, bitRate: 320 }],
+        },
+      ]);
+
+      expect(candidates).toHaveLength(2);
+      const full = candidates.find((c) => c.username === 'alice')!;
+      expect(full.matchedTracks).toBe(3);
+      expect(full.matchPct).toBe(100);
+      expect(full.format).toBe('FLAC');
+      expect(candidates[0].username).toBe('alice');
+    });
+
+    it('drops folders below the low match floor', () => {
+      const candidates = scoreFolders(TRACKS, [
+        { username: 'erin', files: [{ filename: 'Junk/Unrelated/totally different.mp3', size: 1 }] },
+      ]);
+      expect(candidates).toHaveLength(0);
+    });
+
+    it('scores a single (1 track) with qualifier-aware strength', () => {
+      const candidates = scoreFolders([track(1, 'Stay (feat. Justin Bieber)')], [
+        { username: 'kygo', files: [{ filename: 'Kygo/Stay/01 Stay.mp3', size: 1, bitRate: 320 }] },
+      ]);
+      expect(candidates).toHaveLength(1);
+      expect(candidates[0].matchPct).toBe(50);
+    });
+
+    it('is deterministic: identical input yields identical ranking', () => {
+      const responses = [
+        {
+          username: 'zoe',
+          files: [
+            { filename: 'A/Album/01 Song One.flac', size: 1 },
+            { filename: 'A/Album/02 Song Two.flac', size: 1 },
+          ],
+        },
+      ];
+      expect(scoreFolders(TRACKS, responses)).toEqual(scoreFolders(TRACKS, responses));
+    });
+  });
+
+  describe('huntBase returns raw responses (for feedback capture)', () => {
+    it('surfaces the raw slskd responses alongside candidates', async () => {
+      const slskd = makeSlskdStub([
+        {
+          username: 'alice',
+          files: [
+            { filename: 'A/Album/01 Song One.flac', size: 1 },
+            { filename: 'A/Album/02 Song Two.flac', size: 1 },
+          ],
+        },
+        // A sub-floor junk folder that never becomes a candidate but IS a raw
+        // response — exactly the recognition signal a replay fixture needs.
+        {
+          username: 'bob',
+          files: [{ filename: 'Junk/x/totally unrelated.mp3', size: 1 }],
+        },
+      ]);
+      const hunter = new AlbumHunterService(slskd);
+      const { candidates, responses } = await hunter.huntBase('Artist', 'Album', TRACKS);
+
+      // Candidates dropped the sub-floor junk…
+      expect(candidates.map((c) => c.username)).toEqual(['alice']);
+      // …but the raw responses retain both peers verbatim (the base fires two
+      // queries, so each peer's response appears per-query — dedup is scoreFolders'
+      // job, not the raw snapshot's).
+      expect(new Set(responses.map((r) => r.username))).toEqual(new Set(['alice', 'bob']));
+      expect(responses.find((r) => r.username === 'bob')!.files).toHaveLength(1);
     });
   });
 
