@@ -27,7 +27,6 @@ import {
 import { SelectionBarComponent } from '../../components/selection-bar/selection-bar.component';
 import { LibraryFilterPanelComponent } from '../../components/library-filter-panel/library-filter-panel.component';
 import { ConfirmDialogComponent } from '../../components/confirm-dialog/confirm-dialog.component';
-import { ListToolbarComponent } from '../../components/list-toolbar/list-toolbar.component';
 import { ListControlsService, type SortOption } from '../../services/list-controls.service';
 import { isEmptyLibraryFilter, type LibraryFilter } from '@nicotind/core';
 import { createSelection } from '../../lib/selection';
@@ -70,7 +69,6 @@ function metaToTrack(t: PreservedTrackMeta): Track {
     SelectionBarComponent,
     LibraryFilterPanelComponent,
     ConfirmDialogComponent,
-    ListToolbarComponent,
   ],
   templateUrl: './library-songs.component.html',
 })

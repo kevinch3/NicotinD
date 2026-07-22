@@ -105,16 +105,48 @@
       }
     }
 
-    <app-list-toolbar
-      [searchText]="detailControls.searchText()"
-      [sortField]="detailControls.sortField()"
-      [sortDirection]="detailControls.sortDirection()"
-      [sortOptions]="detailSortOptions"
-      [resultCount]="detailControls.filtered().length"
-      (searchChange)="detailControls.setSearchText($event)"
-      (sortFieldChange)="detailControls.setSortField($event)"
-      (toggleDirection)="detailControls.toggleSortDirection()"
-    />
+    <div class="flex flex-wrap items-center gap-2 mb-4">
+      <div class="relative flex-1 min-w-[12rem]">
+        <svg class="absolute left-2.5 top-1/2 -translate-y-1/2 text-theme-muted pointer-events-none"
+          width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" />
+        </svg>
+        <input type="search" data-testid="album-detail-search"
+          [value]="detailControls.searchText()"
+          (input)="detailControls.setSearchText($any($event.target).value)"
+          placeholder="Filter tracks…"
+          aria-label="Filter album tracks"
+          class="w-full pl-9 pr-3 py-1.5 text-sm rounded-lg bg-theme-surface-2 text-theme-primary placeholder:text-theme-muted focus:outline-none focus:ring-1 focus:ring-[var(--theme-accent)]" />
+      </div>
+
+      <label class="sr-only" for="album-detail-sort">Sort tracks</label>
+      <select id="album-detail-sort" data-testid="album-detail-sort"
+        [value]="detailControls.sortField()"
+        (change)="detailControls.setSortField($any($event.target).value)"
+        class="px-3 py-1.5 text-sm rounded-lg bg-theme-surface-2 text-theme-primary focus:outline-none focus:ring-1 focus:ring-[var(--theme-accent)]">
+        @for (opt of detailSortOptions; track opt.field) {
+          <option [value]="opt.field">{{ opt.label }}</option>
+        }
+      </select>
+
+      <button type="button" data-testid="album-detail-sort-direction"
+        (click)="detailControls.toggleSortDirection()"
+        class="px-3 py-1.5 text-sm rounded-lg bg-theme-surface-2 text-theme-muted hover:text-theme-secondary hover:bg-theme-hover focus:outline-none focus:ring-1 focus:ring-[var(--theme-accent)] transition flex items-center"
+        [title]="detailControls.sortDirection() === 'asc' ? 'Ascending' : 'Descending'">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round"
+          [class.rotate-180]="detailControls.sortDirection() === 'desc'">
+          <line x1="12" y1="19" x2="12" y2="5" /><polyline points="5 12 12 5 19 12" />
+        </svg>
+      </button>
+
+      @if (detailControls.searchText()) {
+        <span class="text-xs text-theme-muted ml-auto sm:ml-1">
+          {{ detailControls.filtered().length }} match{{ detailControls.filtered().length === 1 ? '' : 'es' }}
+        </span>
+      }
+    </div>
 
     @if (selection.active()) {
       <app-selection-bar

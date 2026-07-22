@@ -11,7 +11,6 @@ import { PlaylistService } from '../../services/playlist.service';
 import { TransferService } from '../../services/transfer.service';
 import { SongMenuService } from '../../services/song-menu.service';
 import { ListControlsService, type SortOption } from '../../services/list-controls.service';
-import { ListToolbarComponent } from '../../components/list-toolbar/list-toolbar.component';
 import { TrackRowComponent } from '../../components/track-row/track-row.component';
 import { ConfirmDialogComponent } from '../../components/confirm-dialog/confirm-dialog.component';
 import { CoverArtComponent } from '../../components/cover-art/cover-art.component';
@@ -28,7 +27,6 @@ import { PreserveService } from '../../services/preserve.service';
 @Component({
   selector: 'app-album-detail',
   imports: [
-    ListToolbarComponent,
     TrackRowComponent,
     ConfirmDialogComponent,
     RouterLink,

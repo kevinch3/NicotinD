@@ -13,7 +13,7 @@ Every task on this project must satisfy all three gates before being considered 
 
 1. **Every change must be tested.** New features get new tests. Bug fixes get regression tests. Refactors must not reduce coverage. If a change can't reasonably be unit-tested, add an integration or e2e test instead — untested code is not shippable.
 
-2. **Every test must run in CI.** Adding a test locally is not enough. Verify the relevant GitHub Actions workflow actually executes the new test on push. If a new test file or package is added, confirm it's picked up by `.github/workflows/`. Don't close out a task until CI covers the new test.
+2. **Every test must run in CI.** Adding a test locally is not enough. Verify the relevant GitHub Actions workflow actually executes the new test on push. If a new test file or package is added, confirm it's picked up by `.github/workflows/`. Don't close out a task until CI covers the new test. **Before declaring a feature ready, also run `bun run e2e` (or the targeted `tests/<surface>.spec.ts`) locally** — any UI change that adds/removes a `data-testid`, changes a popover trigger, or alters a route's DOM surface can break e2e selectors, and a green CI run from a previous commit isn't proof the new code didn't regress them. Pre-existing flakes are allowed (note them), but anything you caused is a blocker.
 
 3. **Documentation must be updated in the same change as the code.** This is not optional and not a follow-up task: **every time you add or modify behavior, update the docs in the same commit/PR.** Significant decisions — new patterns, new services, why an approach was chosen over alternatives, trade-offs accepted — must be captured. If a change makes an existing doc statement wrong, fix that statement; stale docs are treated as a bug. **Where docs live (CLAUDE.md is an index, not the detail store):**
    - **The detail goes in `docs/`** — either the relevant existing `docs/<feature>.md`, or [docs/design-patterns.md](docs/design-patterns.md) for patterns without a dedicated file. Write the full rationale/implementation notes there, not inline in this file. These files are _not_ loaded into every request, so detail here is cheap.
@@ -33,6 +33,9 @@ bun install              # Install all workspace dependencies
 bun run typecheck        # TypeScript type checking (tsc --build)
 bun run lint             # ESLint across all packages
 bun run format           # Prettier formatting
+bun run test             # Vitest across packages/ + src/ (excludes web/, e2e/, desktop/test/)
+bun run test:web         # Angular component tests (vitest under ng test)
+bun run e2e              # Playwright e2e suite (packages/e2e) — always run before declaring a feature done
 bun run src/main.ts      # Start NicotinD (requires .env or config/default.yml)
 bun run release          # Bump version (auto-detected), generate CHANGELOG, tag
 bun run release:minor    # Force a minor version bump
