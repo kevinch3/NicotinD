@@ -20,6 +20,12 @@
 appId: ar.kevinroberts.nicotind.desktop
 productName: NicotinD
 copyright: Copyright © Kevin Chavarria
+# electron-builder >=26 derives the packaged Linux binary's filename from the
+# scoped package.json `name` (`@nicotind/desktop`) when this is unset, then
+# rejects the sanitized result (`@nicotinddesktop`) for containing `@` — the
+# same scoped-name pitfall as `deb.artifactName` below, now hit one level
+# lower and fatal instead of silently wrong. Pin it explicitly.
+executableName: NicotinD
 
 directories:
   output: release
