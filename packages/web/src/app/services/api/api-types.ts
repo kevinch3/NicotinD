@@ -94,6 +94,8 @@ export interface Album {
   songCount?: number;
   year?: number;
   genre?: string;
+  /** Unanimous licence code across all tracks (present only when the album is uniform). */
+  licence?: string;
   duration?: number;
   created?: string;
   /** ISO timestamp when starred, absent otherwise. */
@@ -110,6 +112,8 @@ export interface AlbumDetail {
   artists?: ArtistCredit[];
   coverArt?: string;
   year?: number;
+  /** Unanimous licence code across all tracks (present only when the album is uniform). */
+  licence?: string;
   song: Array<{
     id: string;
     title: string;

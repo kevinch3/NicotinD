@@ -39,6 +39,8 @@ export interface Album {
   duration: number;
   year?: number;
   genre?: string;
+  /** Unanimous licence code across all tracks (present only when the whole album shares one). */
+  licence?: string;
   created: string;
   starred?: string;
 }

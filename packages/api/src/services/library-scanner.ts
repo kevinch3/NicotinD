@@ -163,6 +163,8 @@ export interface AlbumRow {
   duration: number;
   year: number | null;
   genre: string | null;
+  /** Unanimous licence code across all tracks (else null = mixed/unknown). */
+  licence: string | null;
   created: string;
 }
 
@@ -206,6 +208,20 @@ export interface BuiltLibrary {
 
 const UNKNOWN_ARTIST = 'Unknown Artist';
 const UNKNOWN_ALBUM = 'Unknown Album';
+
+/**
+ * The album-level licence: the single code every track shares, else null. A null
+ * (un-licenced) track makes the album non-unanimous, so an album only reads as
+ * "Public Domain" when *every* track is PD — the semantics the PD-albums filter
+ * needs. Recomputed from tag state each scan (like the album genre), so an
+ * enrichment fill is reflected on the next full rescan.
+ */
+export function unanimousLicence(licences: (string | null)[]): string | null {
+  if (licences.length === 0) return null;
+  const first = licences[0];
+  if (first == null) return null;
+  return licences.every((l) => l === first) ? first : null;
+}
 
 function sha1(input: string): string {
   return createHash('sha1').update(input).digest('hex');
@@ -437,6 +453,8 @@ export function buildLibrary(
       duration: number;
       years: number[];
       genres: string[];
+      /** Per-track licence codes (null for un-licenced) — reduced to a unanimous album code. */
+      licences: (string | null)[];
       createdMs: number;
       coverArt: string;
       splitCredits: ArtistCredit[];
@@ -511,6 +529,7 @@ export function buildLibrary(
       acc.duration += t.duration;
       if (year != null) acc.years.push(year);
       acc.genres.push(...genres);
+      acc.licences.push(t.licence ?? null);
       if (t.mtimeMs > acc.createdMs) acc.createdMs = t.mtimeMs;
     } else {
       albumAcc.set(albId, {
@@ -522,6 +541,7 @@ export function buildLibrary(
         duration: t.duration,
         years: year != null ? [year] : [],
         genres: [...genres],
+        licences: [t.licence ?? null],
         createdMs: t.mtimeMs,
         coverArt: albId,
         splitCredits: splitCredits(albumArtist),
@@ -561,6 +581,7 @@ export function buildLibrary(
       duration: a.duration,
       year: a.years.length ? Math.min(...a.years) : null,
       genre: a.genres[0] ?? null,
+      licence: unanimousLicence(a.licences),
       created: new Date(a.createdMs).toISOString(),
     });
 
@@ -815,8 +836,8 @@ export class LibraryScanner {
     const albumStmt = this.db.prepare(`
       INSERT INTO library_albums (
         id, name, artist, artist_id, cover_art, song_count, duration,
-        year, genre, created, synced_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        year, genre, licence, created, synced_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         name = excluded.name,
         artist = excluded.artist,
@@ -826,6 +847,9 @@ export class LibraryScanner {
         duration = excluded.duration,
         year = excluded.year,
         genre = excluded.genre,
+        -- Recomputed from all tracks each scan (a full aggregate), so overwrite
+        -- rather than COALESCE — matches how the album genre/year are handled.
+        licence = excluded.licence,
         created = excluded.created,
         synced_at = excluded.synced_at
     `);
@@ -941,6 +965,7 @@ export class LibraryScanner {
           a.duration,
           a.year,
           a.genre,
+          a.licence,
           a.created,
           syncedAt,
         );

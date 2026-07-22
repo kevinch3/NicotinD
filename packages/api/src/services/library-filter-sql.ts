@@ -40,6 +40,25 @@ function placeholders(n: number): string {
 }
 
 /**
+ * Licence conditions on a column `col`: positive codes → `col IN (…)`, the
+ * `unknown` bucket → `col IS NULL` (un-licenced), ORed into a single where.
+ * Shared by the per-song filter (`s.licence`) and the album-level aggregate
+ * filter (`library_albums.licence`), so both read identically.
+ */
+function licenceWheres(licences: string[], col: string): FilterSqlFragment {
+  const positive = licences.filter((l) => l !== 'unknown');
+  const parts: string[] = [];
+  const params: Array<string | number> = [];
+  if (positive.length) {
+    parts.push(`${col} IN (${placeholders(positive.length)})`);
+    params.push(...positive);
+  }
+  if (licences.includes('unknown')) parts.push(`${col} IS NULL`);
+  if (parts.length === 0) return { wheres: [], params: [] };
+  return { wheres: [parts.length === 1 ? parts[0]! : `(${parts.join(' OR ')})`], params };
+}
+
+/**
  * Song-level conditions against `alias` (a library_songs row). Includes
  * song-level starred — the entity-EXISTS builders below strip it out.
  */
@@ -89,16 +108,9 @@ export function songFilterWheres(f: LibraryFilter, alias = 's'): FilterSqlFragme
     params.push(...f.genres, ...f.genres);
   }
   if (f.licences?.length) {
-    // 'unknown' is a UI bucket that maps to SQL NULL (un-licenced rows); the
-    // positive codes match the stored value directly. Both OR together.
-    const positive = f.licences.filter((l) => l !== 'unknown');
-    const parts: string[] = [];
-    if (positive.length) {
-      parts.push(`${alias}.licence IN (${placeholders(positive.length)})`);
-      params.push(...positive);
-    }
-    if (f.licences.includes('unknown')) parts.push(`${alias}.licence IS NULL`);
-    if (parts.length) wheres.push(parts.length === 1 ? parts[0]! : `(${parts.join(' OR ')})`);
+    const lic = licenceWheres(f.licences, `${alias}.licence`);
+    wheres.push(...lic.wheres);
+    params.push(...lic.params);
   }
   if (f.durationMin !== undefined) {
     wheres.push(`${alias}.duration >= ?`);
@@ -111,25 +123,45 @@ export function songFilterWheres(f: LibraryFilter, alias = 's'): FilterSqlFragme
   return { wheres, params };
 }
 
-/** Any-track EXISTS over an entity, plus entity-level starred. */
+/**
+ * Any-track EXISTS over an entity, plus entity-level starred. When
+ * `licenceColumn` is given (albums), the licence filter is applied to that
+ * *stored aggregate* column directly — "the album is entirely this licence" —
+ * and removed from the any-track EXISTS. Without it (artists, which have no
+ * licence column) licence stays in the EXISTS as an any-track match.
+ */
 function entityFilterWheres(
   f: LibraryFilter,
   entityRef: string,
   correlation: string,
+  opts: { licenceColumn?: string } = {},
 ): FilterSqlFragment {
   const wheres: string[] = [];
+  const params: Array<string | number> = [];
   if (f.starred) wheres.push(`${entityRef}.starred IS NOT NULL`);
-  const song = songFilterWheres({ ...f, starred: undefined }, 'ls');
-  if (song.wheres.length === 0) return { wheres, params: [] };
+
+  let inner: LibraryFilter = { ...f, starred: undefined };
+  if (opts.licenceColumn && f.licences?.length) {
+    const lic = licenceWheres(f.licences, opts.licenceColumn);
+    wheres.push(...lic.wheres);
+    params.push(...lic.params);
+    inner = { ...inner, licences: undefined };
+  }
+
+  const song = songFilterWheres(inner, 'ls');
+  if (song.wheres.length === 0) return { wheres, params };
   wheres.push(
     `EXISTS (SELECT 1 FROM library_songs ls WHERE ${correlation} AND ls.hidden = 0 AND ${song.wheres.join(' AND ')})`,
   );
-  return { wheres, params: song.params };
+  params.push(...song.params);
+  return { wheres, params };
 }
 
 /** Fragment for the album list routes (/albums, /singles, /compilations). */
 export function albumFilterWheres(f: LibraryFilter): FilterSqlFragment {
-  return entityFilterWheres(f, 'library_albums', 'ls.album_id = library_albums.id');
+  return entityFilterWheres(f, 'library_albums', 'ls.album_id = library_albums.id', {
+    licenceColumn: 'library_albums.licence',
+  });
 }
 
 /** Fragment for /artists, honoring multi-artist credits via the join table. */

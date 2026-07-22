@@ -31,6 +31,15 @@
         @if (selectedAlbum()!.year) {
           <p class="text-theme-muted text-sm mt-1">{{ selectedAlbum()!.year }}</p>
         }
+        @if (selectedAlbum()!.licence; as lic) {
+          <p class="mt-1">
+            <span
+              class="inline-block rounded-full px-2 py-0.5 text-xs bg-theme-accent/15 text-theme-accent font-medium"
+              data-testid="album-licence-badge"
+              >{{ licenceLabel(lic) }}</span
+            >
+          </p>
+        }
         <!-- flex-wrap so the 4–6 actions never overflow/clip the primary Play
              button off a narrow (mobile) viewport. Play is the accent-filled
              primary action; the rest stay neutral-secondary. -->

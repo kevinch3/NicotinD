@@ -296,6 +296,7 @@ interface AlbumRow {
   duration: number;
   year: number | null;
   genre: string | null;
+  licence: string | null;
   created: string | null;
   starred: string | null;
   classification: string;
@@ -347,7 +348,7 @@ interface ArtistRow {
 
 const ALBUM_SELECT = `
   SELECT id, name, artist, artist_id, cover_art, song_count, duration,
-         year, genre, created, starred, classification, hidden, manual_override
+         year, genre, licence, created, starred, classification, hidden, manual_override
   FROM library_albums
 `;
 
@@ -379,6 +380,7 @@ function rowToAlbum(r: AlbumRow): Album & { classification: string; hidden: bool
     duration: r.duration,
     year: r.year ?? undefined,
     genre: r.genre ?? undefined,
+    licence: r.licence ?? undefined,
     created: r.created ?? '',
     starred: r.starred ?? undefined,
     classification: r.classification,

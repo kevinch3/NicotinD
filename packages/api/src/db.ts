@@ -644,6 +644,18 @@ export function applySchema(db: Database): void {
   db.run(
     `CREATE INDEX IF NOT EXISTS idx_library_albums_grid ON library_albums(hidden, classification, created DESC)`,
   );
+  // Album-level licence aggregate: the unanimous licence code across all the
+  // album's tracks (else NULL = mixed/unknown), so "entirely Public Domain"
+  // albums/compilations are filterable + badgeable. ALTER-only (like the song
+  // enrichment columns), NOT added to either CREATE block above — that keeps a
+  // single column order across fresh + migrated DBs and, crucially, keeps the
+  // 'ep'-migration rebuild's `INSERT ... SELECT *` column counts matched.
+  try {
+    db.run(`ALTER TABLE library_albums ADD COLUMN licence TEXT`);
+  } catch {
+    // Column already exists — ignore
+  }
+  db.run(`CREATE INDEX IF NOT EXISTS idx_library_albums_licence ON library_albums(licence)`);
 
   db.run(`
     CREATE TABLE IF NOT EXISTS library_songs (

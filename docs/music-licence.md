@@ -102,12 +102,17 @@ writes DB + tag, `--no-mb` for a fast tags-only pass. Same shape as
 ## Filtering
 
 `LibraryFilter` gains `licences?: string[]` (`library-filter.ts`, with
-serialize/parse/param-keys/count). `songFilterWheres` (`library-filter-sql.ts`)
-emits `licence IN (…)` for positive codes and `licence IS NULL` for the
-`unknown` bucket (ORed together). Because the album/artist filters wrap
-`songFilterWheres` in an any-track `EXISTS`, "albums with a Public-Domain track"
-works for free. (Whole-album "entirely PD" aggregation is the deferred Phase 2 —
-a stored `library_albums.licence` scalar aggregated at scan time.)
+serialize/parse/param-keys/count). The shared `licenceWheres(codes, col)`
+(`library-filter-sql.ts`) emits `col IN (…)` for positive codes and
+`col IS NULL` for the `unknown` bucket (ORed together), used two ways:
+
+- **Songs** (`songFilterWheres`, `s.licence`): filter tracks by their own licence.
+- **Albums / Compilations** (`albumFilterWheres`): filter the **stored album
+  aggregate** `library_albums.licence` directly — "the album is *entirely* this
+  licence" — so the `unknown` bucket = a mixed/un-licenced album. Licence is
+  removed from the any-track EXISTS here so it isn't double-applied.
+- **Artists** (`artistFilterWheres`): no album-style aggregate exists, so licence
+  stays an any-track match ("artist has a track with this licence").
 
 ## Web UI
 
@@ -153,10 +158,26 @@ Both live in `routes/library.ts` next to the genre routes.
 - `library.analyze.test.ts` — the set/clear/validation/role-gating + suggestion
   routes.
 
-## Deferred (Phase 2) — album / compilation "Public Domain"
+## Album / compilation "Public Domain" (the aggregate)
 
-Add `library_albums.licence`, aggregated in the scanner reduce (PD only when
-**all** tracks are PD, else `unknown`), surfaced through `ALBUM_SELECT` /
-`rowToAlbum` / the `Album` DTO, and filterable on the album row directly (like
-`classification`). Track-level album filtering ("has a PD track") already works
-via the existing any-track EXISTS.
+`library_albums.licence` (ALTER-only column, indexed) holds the **unanimous**
+licence code across an album's tracks — `unanimousLicence(codes)` in
+`library-scanner.ts`: the single code every track shares, else `null`. A single
+un-licenced track makes the album non-unanimous, so an album reads as "Public
+Domain" only when **every** track is PD — exactly the semantics the PD-albums
+filter needs.
+
+- **Aggregation** happens in the `buildLibrary` reduce from the tracks' scanned
+  (tag-state) licences — like the album genre/year — so an enrichment fill is
+  reflected on the **next full rescan**. Persisted with `licence = excluded.licence`
+  (overwrite, since it's a full recompute each scan).
+- **Surfaced** through `ALBUM_SELECT` → `rowToAlbum` → the `Album` / `AlbumDetail`
+  DTOs (absent when `null`).
+- **Filtered** on the album row directly (see Filtering above), so the Albums and
+  Compilations tabs can show "Public Domain only".
+- **Badged** on the album page header (`album-detail` `licenceLabel` + a chip),
+  `data-testid="album-licence-badge"`.
+
+Because it's tag-state-derived at scan time, an album's aggregate can lag behind
+per-track enrichment until the next full rescan — an accepted trade-off matching
+the album genre's behaviour.
