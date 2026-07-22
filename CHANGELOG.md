@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.237](https://github.com/kevinch3/NicotinD/compare/v0.1.236...v0.1.237) (2026-07-22)
+
+### Bug Fixes
+
+* **desktop:** pin executableName to fix electron-builder 26 Linux packaging failure ([ea5e63d](https://github.com/kevinch3/NicotinD/commit/ea5e63db6adefbb7de255ad7d36d4d2355febd44))
 ## [0.1.236](https://github.com/kevinch3/NicotinD/compare/v0.1.235...v0.1.236) (2026-07-22)
 
 ### Features
