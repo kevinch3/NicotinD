@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.242](https://github.com/kevinch3/NicotinD/compare/v0.1.241...v0.1.242) (2026-07-22)
+
+### Features
+
+* **radio:** developer diagnostic dump + explainSimilarity breakdown ([72210c0](https://github.com/kevinch3/NicotinD/commit/72210c0b7f8ea35d8e39173ce9553884b5b2ae08))
 ## [0.1.241](https://github.com/kevinch3/NicotinD/compare/v0.1.240...v0.1.241) (2026-07-22)
 ## [0.1.240](https://github.com/kevinch3/NicotinD/compare/v0.1.239...v0.1.240) (2026-07-22)
 
