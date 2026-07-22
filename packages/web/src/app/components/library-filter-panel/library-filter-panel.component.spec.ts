@@ -134,4 +134,55 @@ describe('LibraryFilterPanelComponent', () => {
     fixture.componentInstance.clearAll();
     expect(emitted()).toEqual({});
   });
+
+  // Visual-contract assertions: pin the panel's outer/idle styling so a refactor
+  // can't silently regress the toolbar-height unification (see plan §B).
+  describe('visual contract', () => {
+    function cls(el: { nativeElement: { className: string } } | null): string {
+      return el?.nativeElement.className ?? '';
+    }
+
+    /** Open the popover so the [menuPanel] content actually renders. */
+    function openPanel(fixture: ReturnType<typeof setup>): void {
+      const menuPanel = fixture.debugElement.children[0]?.componentInstance as {
+        open: { set: (v: boolean) => void };
+      } | null;
+      menuPanel?.open.set(true);
+      fixture.detectChanges();
+    }
+
+    it('outer Filters trigger uses the shared focus ring', () => {
+      const fixture = setup();
+      const trigger = fixture.debugElement.query(By.css('[data-testid="library-filters"]'));
+      expect(cls(trigger)).toContain('focus:ring-[var(--theme-accent)]');
+      expect(cls(trigger)).toContain('bg-theme-surface-2');
+    });
+
+    it('a Camelot cell matches the mood/licence chip shape (rounded-full, px-2)', () => {
+      const fixture = setup();
+      openPanel(fixture);
+      const keyBtn = fixture.debugElement.query(By.css('[data-testid="library-filter-key-8A"]'));
+      const moodBtn = fixture.debugElement.query(By.css('[data-testid="library-filter-mood-happy"]'));
+      expect(cls(keyBtn)).toContain('rounded-full');
+      expect(cls(keyBtn)).toContain('px-2');
+      // Mood chips are the established baseline.
+      expect(cls(moodBtn)).toContain('rounded-full');
+      expect(cls(moodBtn)).toContain('px-2');
+    });
+
+    it('checkboxes are themed (accent-theme rounded) so they match every other checkbox in the app', () => {
+      const fixture = setup({ starred: true }, 0);
+      openPanel(fixture);
+      const starred = fixture.debugElement.query(By.css('[data-testid="library-filter-starred"]'));
+      expect(cls(starred)).toContain('accent-theme');
+      expect(cls(starred)).toContain('rounded');
+    });
+
+    it('badge uses the tightened leading-4 line height', () => {
+      const fixture = setup({ starred: true });
+      const badge = fixture.debugElement.query(By.css('[data-testid="library-filter-count"]'));
+      expect(cls(badge)).toContain('leading-4');
+      expect(cls(badge)).not.toContain('leading-5');
+    });
+  });
 });

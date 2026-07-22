@@ -25,16 +25,48 @@
     </div>
 
     @if (preserve.preservedTracks().length > 0) {
-      <app-list-toolbar
-        [searchText]="offlineControls.searchText()"
-        [sortField]="offlineControls.sortField()"
-        [sortDirection]="offlineControls.sortDirection()"
-        [sortOptions]="offlineSortOptions"
-        [resultCount]="offlineControls.filtered().length"
-        (searchChange)="offlineControls.setSearchText($event)"
-        (sortFieldChange)="offlineControls.setSortField($event)"
-        (toggleDirection)="offlineControls.toggleSortDirection()"
-      />
+      <div class="flex flex-wrap items-center gap-2 mb-4">
+        <div class="relative flex-1 min-w-[12rem]">
+          <svg class="absolute left-2.5 top-1/2 -translate-y-1/2 text-theme-muted pointer-events-none"
+            width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" />
+          </svg>
+          <input type="search" data-testid="library-songs-offline-search"
+            [value]="offlineControls.searchText()"
+            (input)="offlineControls.setSearchText($any($event.target).value)"
+            placeholder="Filter downloaded songs…"
+            aria-label="Filter offline songs"
+            class="w-full pl-9 pr-3 py-1.5 text-sm rounded-lg bg-theme-surface-2 text-theme-primary placeholder:text-theme-muted focus:outline-none focus:ring-1 focus:ring-[var(--theme-accent)]" />
+        </div>
+
+        <label class="sr-only" for="library-songs-offline-sort">Sort offline songs</label>
+        <select id="library-songs-offline-sort" data-testid="library-songs-offline-sort"
+          [value]="offlineControls.sortField()"
+          (change)="offlineControls.setSortField($any($event.target).value)"
+          class="px-3 py-1.5 text-sm rounded-lg bg-theme-surface-2 text-theme-primary focus:outline-none focus:ring-1 focus:ring-[var(--theme-accent)]">
+          @for (opt of offlineSortOptions; track opt.field) {
+            <option [value]="opt.field">{{ opt.label }}</option>
+          }
+        </select>
+
+        <button type="button" data-testid="library-songs-offline-sort-direction"
+          (click)="offlineControls.toggleSortDirection()"
+          class="px-3 py-1.5 text-sm rounded-lg bg-theme-surface-2 text-theme-muted hover:text-theme-secondary hover:bg-theme-hover focus:outline-none focus:ring-1 focus:ring-[var(--theme-accent)] transition flex items-center"
+          [title]="offlineControls.sortDirection() === 'asc' ? 'Ascending' : 'Descending'">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round"
+            [class.rotate-180]="offlineControls.sortDirection() === 'desc'">
+            <line x1="12" y1="19" x2="12" y2="5" /><polyline points="5 12 12 5 19 12" />
+          </svg>
+        </button>
+
+        @if (offlineControls.searchText()) {
+          <span class="text-xs text-theme-muted ml-auto sm:ml-1">
+            {{ offlineControls.filtered().length }} match{{ offlineControls.filtered().length === 1 ? '' : 'es' }}
+          </span>
+        }
+      </div>
 
       <div class="space-y-0.5" data-testid="library-songs-offline-list">
         @for (t of offlineControls.filtered(); track t.id; let i = $index) {
@@ -59,8 +91,8 @@
     <!-- flex-wrap so the search + sort + Filters + Select controls stack onto a
          second row on a narrow phone instead of overflowing the viewport width
          (which shifted the whole page horizontally) — matches the Albums tab. -->
-    <div class="flex flex-wrap items-center gap-2 mb-3">
-      <div class="relative flex-1 min-w-[10rem]">
+    <div class="flex flex-wrap items-center gap-2 mb-4">
+      <div class="relative flex-1 min-w-[12rem]">
         <svg class="absolute left-2.5 top-1/2 -translate-y-1/2 text-theme-muted pointer-events-none"
           width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" />

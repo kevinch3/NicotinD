@@ -55,21 +55,21 @@
         (filterChange)="onFilterChange($event)"
         (panelOpened)="ensureGenresLoaded()">
         <!-- Albums-tab-specific extras (client-side / admin) -->
-        <label class="flex items-center justify-between gap-3 text-sm text-theme-secondary">
+        <label class="flex items-center justify-between gap-2 text-sm text-theme-secondary">
           <span>Min tracks</span>
           <select data-testid="library-filter-mintracks"
             [value]="minSongCount() ?? ''"
             (change)="setMinTracksFromSelect($any($event.target).value)"
-            class="px-2 py-1 rounded bg-theme-surface-2 text-theme-primary text-sm focus:outline-none">
+            class="px-3 py-1.5 text-sm rounded-lg bg-theme-surface-2 text-theme-primary focus:outline-none focus:ring-1 focus:ring-[var(--theme-accent)]">
             @for (opt of trackCountOptions; track opt.label) {
               <option [value]="opt.value ?? ''">{{ opt.label }}</option>
             }
           </select>
         </label>
         @if (auth.canCurate()) {
-          <label class="flex items-center justify-between gap-3 text-sm text-theme-secondary cursor-pointer">
+          <label class="flex items-center justify-between gap-2 text-sm text-theme-secondary cursor-pointer">
             <span>Show hidden</span>
-            <input type="checkbox" data-testid="library-filter-hidden"
+            <input type="checkbox" class="accent-theme rounded" data-testid="library-filter-hidden"
               [checked]="showHidden()" (change)="toggleShowHidden()" />
           </label>
         }
@@ -147,25 +147,54 @@
 
   <!-- ═══ COMPILATIONS MODE ═══ -->
   @if (libraryMode() === 'compilations') {
-    <div class="flex items-start gap-2">
-      <div class="flex-1 min-w-0">
-        <app-list-toolbar
-          [searchText]="compilationsControls.searchText()"
-          [sortField]="compilationsControls.sortField()"
-          [sortDirection]="compilationsControls.sortDirection()"
-          [sortOptions]="gridSortOptions"
-          [resultCount]="compilationsControls.filtered().length"
-          (searchChange)="compilationsControls.setSearchText($event)"
-          (sortFieldChange)="compilationsControls.setSortField($event)"
-          (toggleDirection)="compilationsControls.toggleSortDirection()"
-        />
+    <div class="flex flex-wrap items-center gap-2 mb-4">
+      <div class="relative flex-1 min-w-[12rem]">
+        <svg class="absolute left-2.5 top-1/2 -translate-y-1/2 text-theme-muted pointer-events-none"
+          width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" />
+        </svg>
+        <input type="search" data-testid="library-compilations-search"
+          [value]="compilationsControls.searchText()"
+          (input)="compilationsControls.setSearchText($any($event.target).value)"
+          placeholder="Filter…"
+          aria-label="Filter compilations"
+          class="w-full pl-9 pr-3 py-1.5 text-sm rounded-lg bg-theme-surface-2 text-theme-primary placeholder:text-theme-muted focus:outline-none focus:ring-1 focus:ring-[var(--theme-accent)]" />
       </div>
+
+      <label class="sr-only" for="library-compilations-sort">Sort compilations</label>
+      <select id="library-compilations-sort" data-testid="library-compilations-sort"
+        [value]="compilationsControls.sortField()"
+        (change)="compilationsControls.setSortField($any($event.target).value)"
+        class="px-3 py-1.5 text-sm rounded-lg bg-theme-surface-2 text-theme-primary focus:outline-none focus:ring-1 focus:ring-[var(--theme-accent)]">
+        @for (opt of gridSortOptions; track opt.field) {
+          <option [value]="opt.field">{{ opt.label }}</option>
+        }
+      </select>
+
+      <button type="button" data-testid="library-compilations-sort-direction"
+        (click)="compilationsControls.toggleSortDirection()"
+        class="px-3 py-1.5 text-sm rounded-lg bg-theme-surface-2 text-theme-muted hover:text-theme-secondary hover:bg-theme-hover focus:outline-none focus:ring-1 focus:ring-[var(--theme-accent)] transition flex items-center"
+        [title]="compilationsControls.sortDirection() === 'asc' ? 'Ascending' : 'Descending'">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round"
+          [class.rotate-180]="compilationsControls.sortDirection() === 'desc'">
+          <line x1="12" y1="19" x2="12" y2="5" /><polyline points="5 12 12 5 19 12" />
+        </svg>
+      </button>
+
       <app-library-filter-panel
         testIdPrefix="library-compilations"
         [filter]="libFilter()"
         [genres]="genreOptions()"
         (filterChange)="onFilterChange($event)"
         (panelOpened)="ensureGenresLoaded()" />
+
+      @if (compilationsControls.searchText()) {
+        <span class="text-xs text-theme-muted ml-auto sm:ml-1">
+          {{ compilationsControls.filtered().length }} match{{ compilationsControls.filtered().length === 1 ? '' : 'es' }}
+        </span>
+      }
     </div>
 
     @if (loadingCompilations()) {
@@ -201,25 +230,54 @@
 
   <!-- ═══ SINGLES & EPs MODE ═══ -->
   @if (libraryMode() === 'singles') {
-    <div class="flex items-start gap-2">
-      <div class="flex-1 min-w-0">
-        <app-list-toolbar
-          [searchText]="singlesControls.searchText()"
-          [sortField]="singlesControls.sortField()"
-          [sortDirection]="singlesControls.sortDirection()"
-          [sortOptions]="gridSortOptions"
-          [resultCount]="singlesControls.filtered().length"
-          (searchChange)="singlesControls.setSearchText($event)"
-          (sortFieldChange)="singlesControls.setSortField($event)"
-          (toggleDirection)="singlesControls.toggleSortDirection()"
-        />
+    <div class="flex flex-wrap items-center gap-2 mb-4">
+      <div class="relative flex-1 min-w-[12rem]">
+        <svg class="absolute left-2.5 top-1/2 -translate-y-1/2 text-theme-muted pointer-events-none"
+          width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" />
+        </svg>
+        <input type="search" data-testid="library-singles-search"
+          [value]="singlesControls.searchText()"
+          (input)="singlesControls.setSearchText($any($event.target).value)"
+          placeholder="Filter…"
+          aria-label="Filter singles & EPs"
+          class="w-full pl-9 pr-3 py-1.5 text-sm rounded-lg bg-theme-surface-2 text-theme-primary placeholder:text-theme-muted focus:outline-none focus:ring-1 focus:ring-[var(--theme-accent)]" />
       </div>
+
+      <label class="sr-only" for="library-singles-sort">Sort singles & EPs</label>
+      <select id="library-singles-sort" data-testid="library-singles-sort"
+        [value]="singlesControls.sortField()"
+        (change)="singlesControls.setSortField($any($event.target).value)"
+        class="px-3 py-1.5 text-sm rounded-lg bg-theme-surface-2 text-theme-primary focus:outline-none focus:ring-1 focus:ring-[var(--theme-accent)]">
+        @for (opt of gridSortOptions; track opt.field) {
+          <option [value]="opt.field">{{ opt.label }}</option>
+        }
+      </select>
+
+      <button type="button" data-testid="library-singles-sort-direction"
+        (click)="singlesControls.toggleSortDirection()"
+        class="px-3 py-1.5 text-sm rounded-lg bg-theme-surface-2 text-theme-muted hover:text-theme-secondary hover:bg-theme-hover focus:outline-none focus:ring-1 focus:ring-[var(--theme-accent)] transition flex items-center"
+        [title]="singlesControls.sortDirection() === 'asc' ? 'Ascending' : 'Descending'">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round"
+          [class.rotate-180]="singlesControls.sortDirection() === 'desc'">
+          <line x1="12" y1="19" x2="12" y2="5" /><polyline points="5 12 12 5 19 12" />
+        </svg>
+      </button>
+
       <app-library-filter-panel
         testIdPrefix="library-singles"
         [filter]="libFilter()"
         [genres]="genreOptions()"
         (filterChange)="onFilterChange($event)"
         (panelOpened)="ensureGenresLoaded()" />
+
+      @if (singlesControls.searchText()) {
+        <span class="text-xs text-theme-muted ml-auto sm:ml-1">
+          {{ singlesControls.filtered().length }} match{{ singlesControls.filtered().length === 1 ? '' : 'es' }}
+        </span>
+      }
     </div>
 
     @if (loadingSingles()) {
@@ -257,25 +315,54 @@
 
   <!-- ═══ ARTISTS MODE ═══ -->
   @if (libraryMode() === 'artists') {
-    <div class="flex items-start gap-2">
-      <div class="flex-1 min-w-0">
-        <app-list-toolbar
-          [searchText]="artistControls.searchText()"
-          [sortField]="artistControls.sortField()"
-          [sortDirection]="artistControls.sortDirection()"
-          [sortOptions]="artistSortOptions"
-          [resultCount]="artistControls.filtered().length"
-          (searchChange)="artistControls.setSearchText($event)"
-          (sortFieldChange)="artistControls.setSortField($event)"
-          (toggleDirection)="artistControls.toggleSortDirection()"
-        />
+    <div class="flex flex-wrap items-center gap-2 mb-4">
+      <div class="relative flex-1 min-w-[12rem]">
+        <svg class="absolute left-2.5 top-1/2 -translate-y-1/2 text-theme-muted pointer-events-none"
+          width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" />
+        </svg>
+        <input type="search" data-testid="library-artists-search"
+          [value]="artistControls.searchText()"
+          (input)="artistControls.setSearchText($any($event.target).value)"
+          placeholder="Filter…"
+          aria-label="Filter artists"
+          class="w-full pl-9 pr-3 py-1.5 text-sm rounded-lg bg-theme-surface-2 text-theme-primary placeholder:text-theme-muted focus:outline-none focus:ring-1 focus:ring-[var(--theme-accent)]" />
       </div>
+
+      <label class="sr-only" for="library-artists-sort">Sort artists</label>
+      <select id="library-artists-sort" data-testid="library-artists-sort"
+        [value]="artistControls.sortField()"
+        (change)="artistControls.setSortField($any($event.target).value)"
+        class="px-3 py-1.5 text-sm rounded-lg bg-theme-surface-2 text-theme-primary focus:outline-none focus:ring-1 focus:ring-[var(--theme-accent)]">
+        @for (opt of artistSortOptions; track opt.field) {
+          <option [value]="opt.field">{{ opt.label }}</option>
+        }
+      </select>
+
+      <button type="button" data-testid="library-artists-sort-direction"
+        (click)="artistControls.toggleSortDirection()"
+        class="px-3 py-1.5 text-sm rounded-lg bg-theme-surface-2 text-theme-muted hover:text-theme-secondary hover:bg-theme-hover focus:outline-none focus:ring-1 focus:ring-[var(--theme-accent)] transition flex items-center"
+        [title]="artistControls.sortDirection() === 'asc' ? 'Ascending' : 'Descending'">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round"
+          [class.rotate-180]="artistControls.sortDirection() === 'desc'">
+          <line x1="12" y1="19" x2="12" y2="5" /><polyline points="5 12 12 5 19 12" />
+        </svg>
+      </button>
+
       <app-library-filter-panel
         testIdPrefix="library-artists"
         [filter]="libFilter()"
         [genres]="genreOptions()"
         (filterChange)="onFilterChange($event)"
         (panelOpened)="ensureGenresLoaded()" />
+
+      @if (artistControls.searchText()) {
+        <span class="text-xs text-theme-muted ml-auto sm:ml-1">
+          {{ artistControls.filtered().length }} match{{ artistControls.filtered().length === 1 ? '' : 'es' }}
+        </span>
+      }
     </div>
 
     @if (loadingArtists()) {

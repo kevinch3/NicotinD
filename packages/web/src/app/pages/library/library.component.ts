@@ -18,7 +18,6 @@ import { AuthService } from '../../services/auth.service';
 import { PlaylistService } from '../../services/playlist.service';
 import { TransferService } from '../../services/transfer.service';
 import { ListControlsService, type SortOption } from '../../services/list-controls.service';
-import { ListToolbarComponent } from '../../components/list-toolbar/list-toolbar.component';
 import { CoverArtComponent } from '../../components/cover-art/cover-art.component';
 import { LibraryFilterPanelComponent } from '../../components/library-filter-panel/library-filter-panel.component';
 import { LibrarySongsComponent } from './library-songs.component';
@@ -106,7 +105,6 @@ function writePersistedState(state: PersistedLibraryState): void {
 @Component({
   selector: 'app-library',
   imports: [
-    ListToolbarComponent,
     RouterLink,
     CoverArtComponent,
     FormsModule,

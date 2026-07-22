@@ -176,7 +176,7 @@
             }
             @case ('songs') {
               <!-- Sort + filter controls -->
-              <div class="flex items-center gap-2 mb-3">
+              <div class="flex items-center gap-2 mb-4">
                 <select data-testid="artist-songs-sort"
                   [value]="songSort()"
                   (change)="setSongSort($any($event.target).value)"
