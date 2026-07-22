@@ -361,3 +361,64 @@ describe('scoreSimilarity — multi-genre axis', () => {
     expect(multi).toBeGreaterThan(single);
   });
 });
+
+describe('explainSimilarity (per-axis breakdown — the diagnostic seam)', () => {
+  it('reports a genre mismatch as an axis scored 0 (weighting problem), NOT skipped', async () => {
+    const { explainSimilarity, DEFAULT_WEIGHTS } = await import('./radio.service.js');
+    // Both sides carry genre but they are disjoint (Folk vs Pop) — the axis is
+    // comparable, it just scores 0. This is the "genre lost on weight" case.
+    const seed = makeSeed({ genre: 'Folk', genres: ['Folk'] });
+    const cand = makeCandidate({ genre: 'Pop', genres: ['Pop'] });
+    const ex = explainSimilarity(seed, cand, DEFAULT_WEIGHTS);
+    const genre = ex.axes.find((a) => a.axis === 'genre');
+    expect(genre).toBeDefined();
+    expect(genre!.value).toBe(0);
+    expect(genre!.weight).toBe(DEFAULT_WEIGHTS.genre);
+    expect(genre!.contribution).toBe(0);
+    expect(ex.skipped).not.toContain('genre');
+  });
+
+  it('reports a missing genre as skipped (data problem — the José Larralde hypothesis)', async () => {
+    const { explainSimilarity, DEFAULT_WEIGHTS } = await import('./radio.service.js');
+    const seed = makeSeed({ genre: 'Folk', genres: ['Folk'] });
+    const cand = makeCandidate({ genre: undefined, genres: undefined });
+    const ex = explainSimilarity(seed, cand, DEFAULT_WEIGHTS);
+    expect(ex.skipped).toContain('genre');
+    expect(ex.axes.find((a) => a.axis === 'genre')).toBeUndefined();
+  });
+
+  it('flags the same-artist penalty', async () => {
+    const { explainSimilarity, DEFAULT_WEIGHTS } = await import('./radio.service.js');
+    const seed = makeSeed({ artistId: 'same' });
+    const same = explainSimilarity(seed, makeCandidate({ artistId: 'same' }), DEFAULT_WEIGHTS);
+    const diff = explainSimilarity(seed, makeCandidate({ artistId: 'other' }), DEFAULT_WEIGHTS);
+    expect(same.artistPenaltyApplied).toBe(true);
+    expect(diff.artistPenaltyApplied).toBe(false);
+  });
+
+  it('.score is identical to scoreSimilarity across a table of cases (delegation invariant)', async () => {
+    const { explainSimilarity, scoreSimilarity, DEFAULT_WEIGHTS } = await import('./radio.service.js');
+    const cases: Array<[SongFeatures, SongFeatures]> = [
+      [makeSeed(), makeCandidate()],
+      [makeSeed({ genre: 'Folk', genres: ['Folk'] }), makeCandidate({ genre: 'Pop', genres: ['Pop'] })],
+      [makeSeed({ artistId: 'same' }), makeCandidate({ artistId: 'same' })],
+      [makeSeed({ bpm: undefined, key: undefined }), makeCandidate({ energy: 0.9 })],
+      [
+        makeSeed({ energy: 0.3, valence: 0.7 }),
+        makeCandidate({ energy: 0.35, valence: 0.65, genre: undefined, genres: undefined }),
+      ],
+    ];
+    for (const [s, c] of cases) {
+      expect(explainSimilarity(s, c, DEFAULT_WEIGHTS).score).toBe(scoreSimilarity(s, c, DEFAULT_WEIGHTS));
+    }
+  });
+
+  it('contribution equals value × weight for every reported axis', async () => {
+    const { explainSimilarity, DEFAULT_WEIGHTS } = await import('./radio.service.js');
+    const ex = explainSimilarity(makeSeed(), makeCandidate(), DEFAULT_WEIGHTS);
+    expect(ex.axes.length).toBeGreaterThan(0);
+    for (const a of ex.axes) {
+      expect(a.contribution).toBeCloseTo(a.value * a.weight, 10);
+    }
+  });
+});

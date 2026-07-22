@@ -167,68 +167,128 @@ export function camelotCompatibility(a: string | null, b: string | null): number
   return 0;
 }
 
-export function scoreSimilarity(
+/** One comparable axis in a similarity breakdown: its 0..1 closeness `value`,
+ *  the `weight` it carried, and `contribution = value × weight`. */
+export interface AxisContribution {
+  axis: string;
+  value: number;
+  weight: number;
+  contribution: number;
+}
+
+/** Per-axis explanation of a similarity score — the diagnostic seam behind
+ *  `dump-radio.ts`. `axes` are the axes BOTH sides carried (so they counted);
+ *  `skipped` names the axes dropped because one side lacked the feature. The
+ *  distinction is the whole point: a genre in `axes` with value 0 is a *weighting*
+ *  loss (disjoint tags), whereas `"genre"` in `skipped` is a *data* gap (untagged
+ *  track) — two very different fixes. */
+export interface SimilarityExplanation {
+  score: number;
+  axes: AxisContribution[];
+  skipped: string[];
+  artistPenaltyApplied: boolean;
+}
+
+/**
+ * Pure, IO-free per-axis breakdown of `scoreSimilarity`. `scoreSimilarity`
+ * delegates to this (single source of truth for the axis math); the extra
+ * `axes`/`skipped` detail it records is what the radio diagnostic dump reads to
+ * tell genre-mismatch (weight problem) apart from missing-genre (data problem).
+ * See docs/radio.md "Diagnostic dump".
+ */
+export function explainSimilarity(
   seed: SongFeatures,
   candidate: SongFeatures,
   weights: ScoringWeights = DEFAULT_WEIGHTS,
-): number {
+): SimilarityExplanation {
   // Accumulate a weighted numerator and the weight of the axes that are
   // actually comparable (both sides present), then normalize. An axis missing
   // on either side is skipped entirely, so an un-analyzed candidate competes on
   // the axes it has rather than being dragged down by un-measured features.
   let scoreAcc = 0;
   let weightAcc = 0;
-  const add = (value: number | null, weight: number): void => {
-    if (value === null || weight === 0) return;
+  const axes: AxisContribution[] = [];
+  const skipped: string[] = [];
+  const add = (axis: string, value: number | null, weight: number): void => {
+    if (value === null) {
+      skipped.push(axis);
+      return;
+    }
+    if (weight === 0) return;
     scoreAcc += value * weight;
     weightAcc += weight;
+    axes.push({ axis, value, weight, contribution: value * weight });
   };
 
   // Genre: best pairwise lexical closeness across the two genre sets (falls
   // back to the single primary when a side has no set).
   add(
+    'genre',
     genreSetCloseness(seed.genres ?? seed.genre, candidate.genres ?? candidate.genre),
     weights.genre,
   );
 
   // BPM proximity: ±5% ≈ near-full score, scaled linearly.
-  if (seed.bpm && candidate.bpm && seed.bpm > 0) {
-    const ratio = Math.abs(seed.bpm - candidate.bpm) / seed.bpm;
-    add(clamp01(1 - ratio * 5), weights.bpm);
-  }
+  add(
+    'bpm',
+    seed.bpm && candidate.bpm && seed.bpm > 0
+      ? clamp01(1 - (Math.abs(seed.bpm - candidate.bpm) / seed.bpm) * 5)
+      : null,
+    weights.bpm,
+  );
 
   // Harmonic key compatibility via Camelot wheel.
-  if (seed.key && candidate.key) {
-    add(camelotCompatibility(keyToCamelot(seed.key), keyToCamelot(candidate.key)), weights.key);
-  }
+  add(
+    'key',
+    seed.key && candidate.key
+      ? camelotCompatibility(keyToCamelot(seed.key), keyToCamelot(candidate.key))
+      : null,
+    weights.key,
+  );
 
   // Year proximity: ±20 years scaled.
-  if (seed.year && candidate.year) {
-    add(clamp01(1 - Math.abs(seed.year - candidate.year) / 20), weights.year);
-  }
+  add(
+    'year',
+    seed.year && candidate.year ? clamp01(1 - Math.abs(seed.year - candidate.year) / 20) : null,
+    weights.year,
+  );
 
   // Duration similarity: scaled against seed duration.
-  if (seed.duration > 0 && candidate.duration > 0) {
-    const ratio = Math.abs(seed.duration - candidate.duration) / seed.duration;
-    add(clamp01(1 - ratio), weights.duration);
-  }
+  add(
+    'duration',
+    seed.duration > 0 && candidate.duration > 0
+      ? clamp01(1 - Math.abs(seed.duration - candidate.duration) / seed.duration)
+      : null,
+    weights.duration,
+  );
 
   // Perceptual axes (0..1 domains) — only when BOTH sides carry the feature.
-  add(unitCloseness(seed.energy, candidate.energy), weights.energy);
-  add(unitCloseness(seed.valence, candidate.valence), weights.valence);
-  add(unitCloseness(seed.danceability, candidate.danceability), weights.danceability);
-  add(unitCloseness(seed.instrumental, candidate.instrumental), weights.instrumental);
-  add(unitCloseness(seed.acousticness, candidate.acousticness), weights.acousticness);
+  add('energy', unitCloseness(seed.energy, candidate.energy), weights.energy);
+  add('valence', unitCloseness(seed.valence, candidate.valence), weights.valence);
+  add('danceability', unitCloseness(seed.danceability, candidate.danceability), weights.danceability);
+  add('instrumental', unitCloseness(seed.instrumental, candidate.instrumental), weights.instrumental);
+  add('acousticness', unitCloseness(seed.acousticness, candidate.acousticness), weights.acousticness);
 
   // Cached embedding cosine, mapped from [−1,1] to [0,1] closeness.
   const cos = cosineSim(seed.embedding, candidate.embedding);
-  add(cos === null ? null : (cos + 1) / 2, weights.embedding);
+  add('embedding', cos === null ? null : (cos + 1) / 2, weights.embedding);
 
   const base = weightAcc > 0 ? scoreAcc / weightAcc : 0;
 
   // Same-artist adjustment in normalized space (penalty for radio, boost for
   // "similar"). The per-artist cap in rankCandidates remains the main lever.
-  return seed.artistId === candidate.artistId ? base - weights.artistPenalty : base;
+  const artistPenaltyApplied = seed.artistId === candidate.artistId;
+  const score = artistPenaltyApplied ? base - weights.artistPenalty : base;
+
+  return { score, axes, skipped, artistPenaltyApplied };
+}
+
+export function scoreSimilarity(
+  seed: SongFeatures,
+  candidate: SongFeatures,
+  weights: ScoringWeights = DEFAULT_WEIGHTS,
+): number {
+  return explainSimilarity(seed, candidate, weights).score;
 }
 
 export interface ScoredSong<T> {
