@@ -147,6 +147,46 @@ load. Sequencing on top of selection lives in `playlist-recipe.ts`:
 `orderTracks('energy-arc')` (ramp-up → peak → ramp-down) and the energy term
 inside `harmonicChain`.
 
+## Diagnostic dump (developer tool)
+
+`scripts/dump-radio.ts` generates a radio the **exact** way `GET /api/radio/next`
+does and writes a markdown (`--json` optional) report Claude/you can read — no DB
+row, no toast, no UI. It exists to answer "why is this radio incoherent?" with
+data instead of guesswork (the driving case: a José Larralde **Folk/Chamamé**
+seed pulling in pop). Read-only; opens `<dataDir>/nicotind.db` directly.
+
+```bash
+bun run packages/api/src/scripts/dump-radio.ts --seed <songId>
+bun run packages/api/src/scripts/dump-radio.ts --artist "José Larralde" --count 12
+bun run packages/api/src/scripts/dump-radio.ts --random          # random-sample a seed
+bun run packages/api/src/scripts/dump-radio.ts --bpm-min 115 --bpm-max 125   # filter vibe
+```
+
+The route and the dump share **one** implementation: `buildSeedRadio` /
+`buildFilterRadio` (exported from `routes/radio.ts`) build the pool + rank; the
+route maps to Songs via `radioSongs`, the dump additionally re-runs the scorer's
+breakdown per candidate. That breakdown is the new **`explainSimilarity`**
+(`radio.service.ts`) — a pure per-axis decomposition of `scoreSimilarity` (which
+now delegates to it). Each axis reports `{value, weight, contribution}`; `skipped`
+names axes dropped because a side lacked the feature. The distinction is the whole
+point: **genre in `axes` with value 0** = disjoint tags lost on *weight*; **`"genre"`
+in `skipped`** = the track has no genre *data*. Two different fixes.
+
+The dump's "Detection & algorithm — improvement targets" section auto-flags, from
+the actual run: (1) *missing-genre-rewarded* — `scoreSimilarity` normalizes over
+present axes, so a genre-less candidate drops the weight-10 genre axis and can
+out-score a genre-matched neighbor (fix: soft-floor or gate missing genre, don't
+skip it); (2) *genre-lost-on-weight* — `DEFAULT_WEIGHTS.genre` (10/~44 ≈ 23%) too
+low to keep a wrong-genre track down; (3) *genre-detection miss* — un-split
+concatenated tags (`LatinWorld`, `EuropopPopSoftRock…`) that `splitGenres` didn't
+break, so genre closeness sees one giant token (`looksConcatenatedGenre` flags
+them); (4) *key-detection instability* — a one-artist set spanning many keys with
+key axes scoring 0. Also surfaced: filter radio seeds on the pool **centroid**,
+which carries **no genre** (and a near-constant `C major` key), so the genre axis
+is skipped for every candidate — a bpm-only vibe has no genre cohesion by design.
+Acting on any of these is a separate, evidence-driven change (tests in
+`radio.service.test.ts`); this tool only produces the evidence.
+
 ## Shared scoring with `/songs/:id/similar`
 
 The `/songs/:id/similar` endpoint reuses the same `rankCandidates` and
@@ -159,10 +199,11 @@ scoring engine benefits both features.
 
 | File | Role |
 |------|------|
-| `packages/api/src/services/radio.service.ts` | Pure scoring: `scoreSimilarity` (weight-normalized), `genreCloseness`, `cosineSim`, `camelotCompatibility`, `rankCandidates`, types |
-| `packages/api/src/services/radio.service.test.ts` | Unit tests for scoring logic |
+| `packages/api/src/services/radio.service.ts` | Pure scoring: `scoreSimilarity` (delegates to) `explainSimilarity` (per-axis breakdown), `genreCloseness`, `cosineSim`, `camelotCompatibility`, `rankCandidates`, types |
+| `packages/api/src/services/radio.service.test.ts` | Unit tests for scoring logic + `explainSimilarity` breakdown/delegation |
 | `packages/api/src/services/embedding-store.ts` | `loadEmbeddings` / `embeddingModelFor` — pooled read of cached Essentia vectors |
-| `packages/api/src/routes/radio.ts` | `/api/radio/next` route (seed **and** filter paths) + candidate pool queries; exports `toOrderable`, `filterRadioSongs` (via `songFilterWheres` + `seedCentroid`) |
+| `packages/api/src/routes/radio.ts` | `/api/radio/next` route (seed **and** filter paths); exports the shared generators `buildSeedRadio` / `buildFilterRadio` / `radioSongs` (pool build + rank), `toOrderable` (via `songFilterWheres` + `seedCentroid`) |
+| `packages/api/src/scripts/dump-radio.ts` | Developer diagnostic dump (read-only) — see "Diagnostic dump" above; `looksConcatenatedGenre` flags un-split genre tags |
 | `packages/api/src/routes/radio.test.ts` | Route tests (incl. filter-radio cases) |
 | `packages/api/src/routes/library.ts` | `/songs/:id/similar` refactored to use shared scorer |
 | `packages/web/src/app/services/api/library-api.service.ts` | `getRadioNext()` + `getFilterRadio()` API methods |
