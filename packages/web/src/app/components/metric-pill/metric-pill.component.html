@@ -1,0 +1,86 @@
+<span
+  class="inline-flex items-center gap-2 max-w-full"
+  data-testid="metric-pills"
+>
+  @if (cpu(); as c) {
+    <span
+      class="relative inline-flex items-center gap-1.5 overflow-hidden rounded-full border border-theme px-3 py-1 text-xs font-medium text-theme-secondary"
+      data-testid="metric-pill-cpu"
+      [attr.title]="'CPU usage'"
+    >
+      <span
+        class="absolute inset-y-0 left-0 opacity-25"
+        [style.width.%]="cpuRatio() * 100"
+        [style.background]="cpuFill()"
+        aria-hidden="true"
+      ></span>
+      <svg class="relative w-3.5 h-3.5 shrink-0 opacity-70" viewBox="0 0 24 24" fill="none"
+           stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="4" y="4" width="16" height="16" rx="2" />
+        <rect x="9" y="9" width="6" height="6" />
+        <path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 14h3M1 9h3M1 14h3" />
+      </svg>
+      <span class="relative tabular-nums">CPU {{ cpuLabel() }}</span>
+    </span>
+  }
+
+  @if (memory(); as m) {
+    <span
+      class="relative inline-flex items-center gap-1.5 overflow-hidden rounded-full border border-theme px-3 py-1 text-xs font-medium text-theme-secondary"
+      data-testid="metric-pill-memory"
+      [attr.title]="'RAM used'"
+    >
+      <span
+        class="absolute inset-y-0 left-0 opacity-25"
+        [style.width.%]="memoryRatio() * 100"
+        [style.background]="memoryFill()"
+        aria-hidden="true"
+      ></span>
+      <svg class="relative w-3.5 h-3.5 shrink-0 opacity-70" viewBox="0 0 24 24" fill="none"
+           stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="2" y="6" width="20" height="12" rx="2" />
+        <path d="M6 10v4M10 10v4M14 10v4M18 10v4" />
+      </svg>
+      <span class="relative inline-flex items-baseline gap-1.5 tabular-nums">
+        <span>RAM {{ memoryLabel() }}</span>
+        @if (memoryProcessLabel(); as lbl) {
+          <span class="text-[10px] text-theme-muted">{{ lbl }}</span>
+        }
+      </span>
+    </span>
+  }
+
+  @if (gpu(); as g) {
+    <span
+      class="relative inline-flex items-center gap-1.5 overflow-hidden rounded-full border border-theme px-3 py-1 text-xs font-medium text-theme-secondary"
+      data-testid="metric-pill-gpu"
+      [attr.title]="'GPU usage'"
+    >
+      @if (!gpuNeutral()) {
+        <span
+          class="absolute inset-y-0 left-0 opacity-25"
+          [style.width.%]="gpuRatio() * 100"
+          [style.background]="gpuFill()"
+          aria-hidden="true"
+        ></span>
+      } @else {
+        <span
+          class="absolute inset-y-0 left-0 opacity-10 bg-theme-muted"
+          aria-hidden="true"
+        ></span>
+      }
+      <svg class="relative w-3.5 h-3.5 shrink-0 opacity-70" viewBox="0 0 24 24" fill="none"
+           stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="2" y="5" width="20" height="14" rx="2" />
+        <path d="M6 9h12v6H6z" />
+        <path d="M7 19h10" />
+      </svg>
+      <span class="relative inline-flex items-baseline gap-1.5 tabular-nums">
+        <span>GPU {{ gpuLabel() }}</span>
+        @if (gpuSublabel(); as sl) {
+          <span class="text-[10px] text-theme-muted truncate max-w-[12rem]">{{ sl }}</span>
+        }
+      </span>
+    </span>
+  }
+</span>

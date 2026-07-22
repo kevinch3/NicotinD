@@ -484,6 +484,139 @@ export interface BackupInfo {
   files: string[];
 }
 
+// ── ServiceReview (admin) ────────────────────────────────────────────────────
+//
+// `GET /api/admin/review` returns one consolidated snapshot of everything the
+// Admin page needs to glance at: hardware metrics (CPU/GPU/mem), slskd state,
+// library scan, update check, backups, processing summary, incomplete-job +
+// untracked counts, and the recent audit tail. The Admin page renders this as
+// its single source of truth — every section reads from one signal — and the
+// service singleton polls it on a 5s tick with Page-Visibility pause. → See
+// `docs/design-patterns.md` "ServiceReview".
+
+/** GPU vendor string (vendor CLI identifier we successfully parsed). */
+export type GpuVendor = 'nvidia' | 'amd' | 'apple' | 'intel' | 'unknown';
+
+export interface CpuSnapshot {
+  /** 0..100 system-wide utilisation since the previous snapshot. */
+  percent: number;
+  /** Total logical cores (incl. hyperthreads). */
+  cores: number;
+  /** CPU model string, trimmed. */
+  model: string;
+}
+
+export interface MemorySnapshot {
+  totalBytes: number;
+  usedBytes: number;
+  freeBytes: number;
+  /** NicotinD process RSS — what the server is actually holding. */
+  processRssBytes: number;
+  /** NicotinD process V8 heap-used — distinct from RSS. */
+  processHeapBytes: number;
+}
+
+export interface GpuSnapshot {
+  vendor: GpuVendor;
+  /** 0..100, undefined when the vendor CLI doesn't expose utilisation (Apple). */
+  percent?: number;
+  /** Display name from the vendor tool. */
+  name?: string;
+  /** Bytes, undefined when not exposed. */
+  memoryUsedBytes?: number;
+  memoryTotalBytes?: number;
+}
+
+export interface HardwareSnapshot {
+  cpuModel: string;
+  cores: number;
+  arch: 'x64' | 'arm64' | 'arm';
+  platform: 'linux' | 'darwin' | 'win32';
+  totalMemoryBytes: number;
+  gpuDetected: { vendor: GpuVendor; name?: string } | null;
+}
+
+export interface BackupsSummary {
+  total: number;
+  totalBytes: number;
+  newestAt: number | null;
+  lastBackupName: string | null;
+}
+
+/** Same shape the SSE stream publishes; reduced to a static snapshot here. */
+export interface ProcessingSummary {
+  phase: 'idle' | 'running' | 'outside-window' | 'disabled';
+  currentTask: string | null;
+  processed: number;
+  failed: number;
+  total: number;
+  skipped: number;
+  quarantined: number;
+  taskPending: Record<string, number>;
+  availability: Record<string, true | string>;
+  startedAt: string | null;
+  updatedAt: string | null;
+}
+
+/** Compact album-job row for the Admin Incomplete-Albums table. */
+export interface IncompleteAlbumJob {
+  id: number;
+  lidarrAlbumId: number | null;
+  artistName: string | null;
+  albumTitle: string | null;
+  username: string;
+  directory: string;
+  state: string;
+  fallbackAttempts: number;
+  createdAt: number;
+}
+
+/** Compact untracked-download row for the Admin Untracked-Downloads table. */
+export interface UntrackedDownload {
+  transferKey: string;
+  username: string;
+  directory: string;
+  filename: string;
+  basename: string;
+  completedAt: number;
+}
+
+export interface ServiceReview {
+  collectedAt: number;
+  version: string;
+  uptimeMs: number;
+  hardware: HardwareSnapshot;
+  load: {
+    cpu: CpuSnapshot;
+    memory: MemorySnapshot;
+    gpu: GpuSnapshot | null;
+  };
+  services: {
+    slskd: {
+      configured: boolean;
+      healthy: boolean;
+      connected: boolean;
+      username?: string;
+      version?: string;
+      uptime?: number;
+    };
+  };
+  library: { scanning: boolean; indexedSongCount: number };
+  updateCheck: UpdateCheck | null;
+  /** Full backup list (newest first) — drives the Admin backups table. */
+  backups: BackupInfo[];
+  /** Compact summary for the collapsed header chip. */
+  backupsSummary: BackupsSummary;
+  processing: ProcessingSummary | null;
+  incompleteJobsCount: number;
+  untrackedCount: number;
+  auditTail: AuditEntry[];
+  incompleteJobs: IncompleteAlbumJob[];
+  untracked: UntrackedDownload[];
+  /** Human-readable sub-fetch errors the snapshot degraded around. */
+  errors: string[];
+}
+
 export interface LibraryFragmentReport {
   duplicateAlbums: LibraryDuplicateAlbumCluster[];
   hiddenByClassification: LibraryHiddenByClassification[];

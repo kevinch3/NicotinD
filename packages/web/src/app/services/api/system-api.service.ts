@@ -14,6 +14,7 @@ import type {
   BackupInfo,
   UpdateCheck,
   AuditEntry,
+  ServiceReview,
 } from './api-types';
 
 /** System surface: status/scan/logs, settings (soulseek/shares/streaming/
@@ -38,6 +39,18 @@ export class SystemApiService {
   // Free/used/total bytes of the filesystem holding the music dir (downloads land here).
   getDiskUsage() {
     return this.http.get<DiskUsage>('/api/system/disk');
+  }
+
+  /**
+   * ServiceReview — the one resource the Admin page reads. Replaces the
+   * page's prior N independent fetchers (`getStatus`, `getScanStatus`,
+   * `getUpdateCheck`, `getBackups`, `getAuditLog`, `processing` summary,
+   * `incompleteJobs`, `untracked`, plus the new hardware metrics) with one
+   * round-trip. Admin-only; the route 403s for non-admins. See
+   * `docs/design-patterns.md` "ServiceReview".
+   */
+  getServiceReview() {
+    return this.http.get<ServiceReview>('/api/admin/review');
   }
 
   restartService(service: 'slskd') {
