@@ -266,6 +266,17 @@ stages icons to `/usr/share/icons/hicolor/<N>x<N>/apps/nicotind.png` and the doc
 > real Linux desktop: `bunx electron-builder --linux` produces both AppImage + deb, and the
 > **packaged** AppImage boots the full Variant-B sidecar chain (bundled `bun` runs the
 > staged backend, binds a loopback port, `/api/health` answers, the SPA renders).
+>
+> **electron-builder 26 hit the same scoped-name pitfall one level lower.** Bumping
+> `electron-builder` 25→26 (alongside Electron 33→43) changed the Linux packager's
+> `executableName` fallback from the sanitized `productName` to the sanitized package
+> **name** (`app-builder-lib`'s `linuxPackager.js`), and 26 added a hard validation that
+> rejects any `@`/`/` left in it — so every `desktop-linux` release job from v0.1.234
+> onward failed at `building target=AppImage` with *"executableName contains characters
+> that cannot be safely used in file paths: @nicotinddesktop"* before a single artifact
+> was produced. Fixed the same way as the deb name: pin `executableName: NicotinD` at the
+> top level of `electron-builder.yml` so both platforms resolve it from the explicit value
+> instead of the scoped `@nicotind/desktop` package name.
 
 ### macOS is ad-hoc signed (v1 — no Developer ID)
 
