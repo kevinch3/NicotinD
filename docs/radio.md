@@ -168,4 +168,4 @@ scoring engine benefits both features.
 | `packages/web/src/app/services/api/library-api.service.ts` | `getRadioNext()` + `getFilterRadio()` API methods |
 | `packages/web/src/app/services/player.service.ts` | `radioFilter` signal + `startRadioWithFilter()` (persisted vibe) |
 | `packages/web/src/app/components/layout/layout.component.ts` | Smart RadioProvider registration (filter-aware) |
-| `packages/web/src/app/pages/radio-landing/radio-landing.component.ts` | Radio/mood landing: resume shortcut + vibe presets/custom builder |
+| `packages/web/src/app/pages/radio-landing/radio-landing.component.ts` | Radio/mood landing: resume shortcut + vibe presets + genre chips |

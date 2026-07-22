@@ -8,13 +8,10 @@ import { FIXTURE } from '../helpers';
  * Acquisition stays default-off in e2e.
  */
 test.describe('radio landing', () => {
-  test('renders vibe presets and a custom builder', async ({ page }) => {
+  test('renders vibe presets', async ({ page }) => {
     await page.goto('/');
     await expect(page.getByTestId('radio-landing')).toBeVisible();
     await expect(page.getByTestId('radio-preset').first()).toBeVisible();
-    // The custom builder is wired (its Start-gating logic is unit-tested in
-    // radio-landing.component.spec.ts).
-    await expect(page.getByTestId('radio-custom-toggle')).toBeVisible();
   });
 
   test('resume-from-last-track appears after playback and disappears on tap', async ({ page }) => {

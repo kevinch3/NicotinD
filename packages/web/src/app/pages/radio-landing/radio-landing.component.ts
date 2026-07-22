@@ -1,6 +1,6 @@
 import { Component, inject, signal, computed, OnInit } from '@angular/core';
 import { firstValueFrom, catchError, of } from 'rxjs';
-import { MOOD_VOCAB, type LibraryFilter, type MoodLabel } from '@nicotind/core';
+import type { LibraryFilter } from '@nicotind/core';
 import { PlayerService } from '../../services/player.service';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import { ToastService } from '../../services/toast.service';
@@ -38,18 +38,11 @@ const VIBE_PRESETS: readonly VibePreset[] = [
   },
 ];
 
-// Quick BPM floors offered in the custom builder.
-const BPM_CHOICES = [
-  { label: 'Any', value: undefined },
-  { label: '120+', value: 120 },
-  { label: '140+', value: 140 },
-] as const;
-
 /**
  * The app's landing surface: start listening in one tap. Two blocks:
  *  1. Resume — radio seeded from your last-played track (disappears once tapped).
- *  2. New mood — one-tap vibe presets + a compact custom builder (mood + genre +
- *     bpm), each of which starts filter-seeded radio immediately.
+ *  2. New mood — one-tap vibe presets + top-genre chips, each of which starts
+ *     filter-seeded radio immediately.
  * Mobile-first (thumb-reachable chips, no manual bottom padding — inherited from
  * <main>). Search moved to /search; a search bar here links to it.
  */
@@ -65,8 +58,6 @@ export class RadioLandingComponent implements OnInit {
   private toast = inject(ToastService);
 
   readonly presets = VIBE_PRESETS;
-  readonly moods = MOOD_VOCAB;
-  readonly bpmChoices = BPM_CHOICES;
 
   // The last-played track (persisted across sessions) seeds the resume shortcut;
   // it's dismissed the moment it's tapped so the block disappears.
@@ -74,16 +65,10 @@ export class RadioLandingComponent implements OnInit {
   readonly resumeDismissed = signal(false);
   readonly showResume = computed(() => !this.resumeDismissed() && this.lastTrack() !== null);
 
-  // Top genres (by song count) surfaced as one-tap genre chips + custom-builder options.
+  // Top genres (by song count) surfaced as one-tap genre chips.
   readonly genres = signal<string[]>([]);
 
-  // Custom builder state.
-  readonly customOpen = signal(false);
-  readonly customMood = signal<MoodLabel | null>(null);
-  readonly customGenre = signal<string | null>(null);
-  readonly customBpm = signal<number | undefined>(undefined);
-
-  // The vibe currently being loaded (preset id / 'custom' / 'resume'), for spinners.
+  // The vibe currently being loaded (preset id / genre key / 'resume'), for spinners.
   readonly starting = signal<string | null>(null);
 
   ngOnInit(): void {
@@ -111,36 +96,6 @@ export class RadioLandingComponent implements OnInit {
 
   startGenre(genre: string): void {
     void this.startVibe({ genres: [genre] }, `genre:${genre}`);
-  }
-
-  toggleMood(mood: MoodLabel): void {
-    this.customMood.update((m) => (m === mood ? null : mood));
-  }
-
-  toggleGenre(genre: string): void {
-    this.customGenre.update((g) => (g === genre ? null : genre));
-  }
-
-  setBpm(value: number | undefined): void {
-    this.customBpm.set(value);
-  }
-
-  /** Whether the custom builder has at least one criterion selected. */
-  readonly customFilter = computed<LibraryFilter | null>(() => {
-    const filter: LibraryFilter = {};
-    const mood = this.customMood();
-    const genre = this.customGenre();
-    const bpm = this.customBpm();
-    if (mood) filter.moods = [mood];
-    if (genre) filter.genres = [genre];
-    if (bpm !== undefined) filter.bpmMin = bpm;
-    return Object.keys(filter).length > 0 ? filter : null;
-  });
-
-  startCustom(): void {
-    const filter = this.customFilter();
-    if (!filter) return;
-    void this.startVibe(filter, 'custom');
   }
 
   /** Fetch filter-scored tracks and hand them to the player as filter radio. */

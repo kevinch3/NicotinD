@@ -84,13 +84,4 @@ describe('RadioLandingComponent', () => {
     expect(start).not.toHaveBeenCalled();
     expect(toastShow).toHaveBeenCalled();
   });
-
-  it('customFilter combines mood + genre + bpm, and is null when empty', () => {
-    const { component } = setup();
-    expect(component.customFilter()).toBeNull();
-    component.toggleMood('happy');
-    component.toggleGenre('Rock');
-    component.setBpm(120);
-    expect(component.customFilter()).toEqual({ moods: ['happy'], genres: ['Rock'], bpmMin: 120 });
-  });
 });
