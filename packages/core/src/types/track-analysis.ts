@@ -19,3 +19,16 @@ export interface GenreSuggestion {
   /** Where the suggestion came from, or null when unavailable. */
   source: 'lidarr' | null;
 }
+
+/**
+ * On-demand licence detection for a single song. `current` is the stored value;
+ * `suggested` is a canonical LICENCE_VOCAB code resolved from the file's own
+ * LICENSE/COPYRIGHT tag or a MusicBrainz `license` relation (null when nothing
+ * confident was found).
+ */
+export interface LicenceSuggestion {
+  current: string | null;
+  suggested: string | null;
+  /** Where the suggestion came from, or null when nothing was found. */
+  source: 'tag' | 'musicbrainz' | null;
+}

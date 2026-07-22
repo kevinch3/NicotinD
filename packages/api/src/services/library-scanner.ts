@@ -10,7 +10,7 @@ import { jobCanonicalTracklists } from './acquisition-job-store.js';
 import { isVariousArtists } from './compilation-tagger.js';
 import { inferFolderAlbum, inferMetadataFromPath, hasUsableValue } from './path-inference.js';
 import { getMusicMetadata } from './music-metadata-loader.js';
-import { featureTagsFromNative } from './audio-tags.js';
+import { featureTagsFromNative, licenceFromTags } from './audio-tags.js';
 import { selectAlbumTracks } from './library-track-select.js';
 import { loadOverrides, type MetadataOverrideValue } from './metadata-override-store.js';
 import { splitArtists, isAtomicArtist, type ArtistCredit } from './artist-split.js';
@@ -117,6 +117,8 @@ export interface ScannedTrack {
   acousticness?: number;
   instrumental?: number;
   mood?: string;
+  /** Canonical licence code read from the file's LICENSE/COPYRIGHT/WCOP frames. */
+  licence?: string;
 }
 
 export interface SongRow {
@@ -141,6 +143,7 @@ export interface SongRow {
   acousticness: number | null;
   instrumental: number | null;
   mood: string | null;
+  licence: string | null;
   coverArt: string;
   path: string;
   size: number;
@@ -481,6 +484,7 @@ export function buildLibrary(
       acousticness: t.acousticness ?? null,
       instrumental: t.instrumental ?? null,
       mood: t.mood ?? null,
+      licence: t.licence ?? null,
       coverArt: id,
       path: t.relPath,
       size: t.size,
@@ -795,6 +799,10 @@ export class LibraryScanner {
       // Perceptual features live in custom Vorbis/TXXX frames — parse them from
       // the native tag map so pre-tagged files are dense from the first scan.
       ...featureTagsFromNative(meta?.native, common?.mood),
+      // Rights/licence from LICENSE/COPYRIGHT/WCOP frames (+ the copyright fold),
+      // normalised to a canonical code so PD/CC downloads are licence-tagged on
+      // the first scan with zero network calls.
+      licence: licenceFromTags(meta?.native, common?.copyright),
     };
   }
 
@@ -827,9 +835,10 @@ export class LibraryScanner {
         track, disc, duration,
         year, genre, bpm, key,
         energy, loudness, danceability, valence, acousticness, instrumental, mood,
+        licence,
         cover_art, path, size, bit_rate, suffix, content_type,
         created, synced_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         album_id = excluded.album_id,
         title = excluded.title,
@@ -861,6 +870,11 @@ export class LibraryScanner {
         acousticness = COALESCE(excluded.acousticness, library_songs.acousticness),
         instrumental = COALESCE(excluded.instrumental, library_songs.instrumental),
         mood = COALESCE(excluded.mood, library_songs.mood),
+        -- Licence: same durability contract. A rescan that reads a LICENSE tag
+        -- refreshes it; a tag-less rescan keeps a licence the enrichment task or a
+        -- curator wrote. licence_source is deliberately NOT written here (it stays
+        -- NULL for scan/tag provenance) so a manual 'user' source survives rescans.
+        licence = COALESCE(excluded.licence, library_songs.licence),
         cover_art = excluded.cover_art,
         path = excluded.path,
         size = excluded.size,
@@ -954,6 +968,7 @@ export class LibraryScanner {
           s.acousticness,
           s.instrumental,
           s.mood,
+          s.licence,
           s.coverArt,
           s.path,
           s.size,

@@ -88,6 +88,18 @@ export function songFilterWheres(f: LibraryFilter, alias = 's'): FilterSqlFragme
     );
     params.push(...f.genres, ...f.genres);
   }
+  if (f.licences?.length) {
+    // 'unknown' is a UI bucket that maps to SQL NULL (un-licenced rows); the
+    // positive codes match the stored value directly. Both OR together.
+    const positive = f.licences.filter((l) => l !== 'unknown');
+    const parts: string[] = [];
+    if (positive.length) {
+      parts.push(`${alias}.licence IN (${placeholders(positive.length)})`);
+      params.push(...positive);
+    }
+    if (f.licences.includes('unknown')) parts.push(`${alias}.licence IS NULL`);
+    if (parts.length) wheres.push(parts.length === 1 ? parts[0]! : `(${parts.join(' OR ')})`);
+  }
   if (f.durationMin !== undefined) {
     wheres.push(`${alias}.duration >= ?`);
     params.push(f.durationMin);

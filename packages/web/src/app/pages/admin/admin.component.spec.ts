@@ -106,8 +106,8 @@ function makeAdminMocks(review: Partial<ServiceReview> = {}) {
     lastItems: [],
     startedAt: null,
     updatedAt: null,
-    taskPending: { bpm: 0, genre: 0, key: 0, energy: 0, 'audio-features': 0, 'artist-image': 0, 'artist-identity': 0 },
-    availability: { bpm: true, genre: true, key: true, energy: true, 'audio-features': true, 'artist-image': true, 'artist-identity': true },
+    taskPending: { bpm: 0, genre: 0, key: 0, energy: 0, 'audio-features': 0, 'artist-image': 0, 'artist-identity': 0, licence: 0 },
+    availability: { bpm: true, genre: true, key: true, energy: true, 'audio-features': true, 'artist-image': true, 'artist-identity': true, licence: true },
     skipped: 0,
     quarantined: 0,
   };

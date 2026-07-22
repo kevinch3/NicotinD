@@ -53,6 +53,7 @@ so hand-edited URLs degrade gracefully).
 | Perceptual axes | axis name = comma list of buckets | `energy=low,high&valence=mid` |
 | Year range | `yearMin`, `yearMax` | `yearMin=1990&yearMax=1999` |
 | Genre | `genre` (repeated param — free text may contain commas). Matches the **full multi-genre set**: the predicate is `(s.genre IN (…) OR EXISTS(… library_song_genres …))`, so a track filed under "Electronic; House" matches a House filter; the primary-column IN keeps pre-first-rescan rows filterable. | `genre=Rock&genre=Hip-Hop` |
+| Licence | `licence` (comma list from `LICENCE_VOCAB`). Positive codes → `licence IN (…)`; the `unknown` bucket → `licence IS NULL` (un-licenced), ORed together. See [music-licence.md](music-licence.md). | `licence=public-domain,cc-by` |
 | Starred | `starred=true` | entity-level, see below |
 | Duration range (s) | `durMin`, `durMax` | `durMin=120&durMax=360` |
 

@@ -10,6 +10,8 @@
  * gracefully.
  */
 
+import { LICENCE_VOCAB } from './licence.js';
+
 /** Perceptual 0–1 axes filterable via three fixed buckets. */
 export const PERCEPTUAL_AXES = [
   'energy',
@@ -41,6 +43,8 @@ export interface LibraryFilter {
   yearMin?: number;
   yearMax?: number;
   genres?: string[];
+  /** Licence codes from LICENCE_VOCAB; 'unknown' matches SQL-NULL (un-licenced) rows. */
+  licences?: string[];
   /** Entity-level starred (album/artist/song starred, not any-track). */
   starred?: boolean;
   /** Track duration bounds in seconds. */
@@ -125,6 +129,7 @@ export function serializeLibraryFilter(f: LibraryFilter): Record<string, string 
   if (f.yearMin !== undefined) q['yearMin'] = String(f.yearMin);
   if (f.yearMax !== undefined) q['yearMax'] = String(f.yearMax);
   if (f.genres?.length) q['genre'] = [...f.genres];
+  if (f.licences?.length) q['licence'] = f.licences.join(',');
   if (f.starred) q['starred'] = 'true';
   if (f.durationMin !== undefined) q['durMin'] = String(f.durationMin);
   if (f.durationMax !== undefined) q['durMax'] = String(f.durationMax);
@@ -192,6 +197,11 @@ export function parseLibraryFilter(
     .filter(Boolean);
   if (genres.length) f.genres = [...new Set(genres)];
 
+  const licences = list(query['licence'])
+    .map((l) => l.toLowerCase())
+    .filter((l) => (LICENCE_VOCAB as readonly string[]).includes(l));
+  if (licences.length) f.licences = [...new Set(licences)];
+
   if (first(query['starred']) === 'true') f.starred = true;
 
   const durMin = num(query['durMin']);
@@ -214,6 +224,7 @@ export const LIBRARY_FILTER_PARAM_KEYS: readonly string[] = [
   'yearMin',
   'yearMax',
   'genre',
+  'licence',
   'starred',
   'durMin',
   'durMax',
@@ -230,6 +241,7 @@ export function activeLibraryFilterCount(f: LibraryFilter): number {
   for (const axis of PERCEPTUAL_AXES) if (f.buckets?.[axis]?.length) n++;
   if (f.yearMin !== undefined || f.yearMax !== undefined) n++;
   if (f.genres?.length) n++;
+  if (f.licences?.length) n++;
   if (f.starred) n++;
   if (f.durationMin !== undefined || f.durationMax !== undefined) n++;
   return n;

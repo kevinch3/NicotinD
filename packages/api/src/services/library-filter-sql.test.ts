@@ -50,6 +50,24 @@ describe('songFilterWheres', () => {
     });
   });
 
+  it('filters licences with an IN list', () => {
+    expect(songFilterWheres({ licences: ['public-domain', 'cc-by'] })).toEqual({
+      wheres: ['s.licence IN (?, ?)'],
+      params: ['public-domain', 'cc-by'],
+    });
+  });
+
+  it("maps the 'unknown' licence bucket to IS NULL and ORs it with positive codes", () => {
+    expect(songFilterWheres({ licences: ['unknown'] })).toEqual({
+      wheres: ['s.licence IS NULL'],
+      params: [],
+    });
+    expect(songFilterWheres({ licences: ['public-domain', 'unknown'] })).toEqual({
+      wheres: ['(s.licence IN (?) OR s.licence IS NULL)'],
+      params: ['public-domain'],
+    });
+  });
+
   it('maps perceptual buckets to threshold ranges, OR within an axis', () => {
     expect(songFilterWheres({ buckets: { energy: ['low'] } }).wheres).toEqual([
       's.energy <= 0.35',

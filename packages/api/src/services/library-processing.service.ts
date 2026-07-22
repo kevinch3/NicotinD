@@ -146,6 +146,7 @@ export class LibraryProcessingService extends EventEmitter {
           concurrency: settings.concurrency,
           lookupArtistImageSpotify: this.lookupArtistImageSpotify,
           audioFeaturesClient: this.audioFeaturesClient,
+          dataDir: this.dataDir,
         }));
     this.logToFile = deps.logToFile ?? true;
     this.reportFailure = deps.reportFailure ?? captureProcessingFailure;
@@ -555,6 +556,7 @@ export class LibraryProcessingService extends EventEmitter {
         energy: 0,
         'audio-features': 0,
         'artist-identity': 0,
+        licence: 0,
       },
       availability: {
         bpm: 'unknown',
@@ -564,6 +566,7 @@ export class LibraryProcessingService extends EventEmitter {
         energy: 'unknown',
         'audio-features': 'unknown',
         'artist-identity': 'unknown',
+        licence: 'unknown',
       },
       skipped: 0,
       quarantined: 0,

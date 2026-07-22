@@ -710,6 +710,14 @@ export function applySchema(db: Database): void {
     'acousticness REAL',
     'instrumental REAL',
     'mood TEXT',
+    // Rights/licence code (LICENCE_VOCAB, e.g. 'public-domain'/'cc-by') + its
+    // provenance. Same additive/COALESCE-preserved contract as bpm/key: read from
+    // file tags (LICENSE/COPYRIGHT/WCOP) at scan time, filled by the `licence`
+    // enrichment task (tag → MusicBrainz), or set by a curator. `licence_source`
+    // ∈ {tag, musicbrainz, user}; a NULL `licence` means unknown, so the
+    // enrichment task (WHERE licence IS NULL) keeps trying to resolve it.
+    'licence TEXT',
+    'licence_source TEXT',
   ]) {
     try {
       db.run(`ALTER TABLE library_songs ADD COLUMN ${col}`);
@@ -717,6 +725,7 @@ export function applySchema(db: Database): void {
       // Column already exists — ignore
     }
   }
+  db.run(`CREATE INDEX IF NOT EXISTS idx_library_songs_licence ON library_songs(licence)`);
   // "Landed" timestamp (epoch ms) — NULL means the song is *quarantined*: it has
   // been scanned into the DB (so the windowed enrichment tasks can operate on it)
   // but is hidden from every library listing until its required processing steps

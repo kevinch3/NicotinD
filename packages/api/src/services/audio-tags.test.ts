@@ -11,6 +11,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
   featureTagsFromNative,
+  licenceFromTags,
   readAudioTags,
   writeAudioTags,
 } from './audio-tags.js';
@@ -41,6 +42,44 @@ describe('audio-tags lyrics (ID3 USLT)', () => {
     await writeAudioTags(mp3, { genre: 'Rock' });
     const tags = await readAudioTags(mp3);
     expect(tags.lyrics).toBe('keep me');
+  });
+});
+
+describe('audio-tags licence (ID3 LICENSE TXXX)', () => {
+  it('round-trips a canonical licence code', async () => {
+    expect(await writeAudioTags(mp3, { licence: 'cc-by-sa' })).toBe(true);
+    const tags = await readAudioTags(mp3);
+    expect(tags.licence).toBe('cc-by-sa');
+  });
+
+  it('folds a raw CC URL written into the LICENSE frame to a canonical code on read', async () => {
+    await writeAudioTags(mp3, { licence: 'https://creativecommons.org/licenses/by/4.0/' });
+    const tags = await readAudioTags(mp3);
+    expect(tags.licence).toBe('cc-by');
+  });
+});
+
+describe('licenceFromTags (pure)', () => {
+  it('prefers the LICENSE frame over a copyright frame', () => {
+    expect(
+      licenceFromTags({
+        vorbis: [
+          { id: 'COPYRIGHT', value: '© 2020 Some Label' },
+          { id: 'LICENSE', value: 'CC BY-NC' },
+        ],
+      }),
+    ).toBe('cc-by-nc');
+  });
+
+  it('falls back to a recognisable copyright text', () => {
+    expect(licenceFromTags({ vorbis: [{ id: 'COPYRIGHT', value: 'Public Domain' }] })).toBe(
+      'public-domain',
+    );
+  });
+
+  it('returns undefined for no tags or an unrecognised copyright notice', () => {
+    expect(licenceFromTags(undefined)).toBeUndefined();
+    expect(licenceFromTags({ vorbis: [{ id: 'COPYRIGHT', value: '© 2020 Artist' }] })).toBeUndefined();
   });
 });
 

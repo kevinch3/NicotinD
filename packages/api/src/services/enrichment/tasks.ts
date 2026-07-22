@@ -1,5 +1,6 @@
 import type { Database } from 'bun:sqlite';
 import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import type { Lidarr, LidarrArtist } from '@nicotind/lidarr-client';
 import type { ProcessingTaskId } from '@nicotind/core';
 import {
@@ -28,11 +29,18 @@ import { normalizeArtistForGrouping } from '../album-grouping.js';
 import { splitOnDelimiters } from '../artist-split.js';
 import { upsertArtistIdentity } from '../artist-identity-store.js';
 import { artistIdFor } from '../library-scanner.js';
+import { MusicBrainzClient, MB_USER_AGENT } from '../musicbrainz-client.js';
 import {
   recordAnalysisFailure,
   clearAnalysisFailure,
   notPermanentlyFailedClause,
 } from './analysis-failures.js';
+
+/** A licence resolved for one song, with its provenance. */
+export interface LicenceLookupResult {
+  code: string;
+  source: 'tag' | 'musicbrainz';
+}
 
 /**
  * Enrichment task registry — the single extension point for the windowed library
@@ -64,10 +72,12 @@ export interface EnrichmentContext {
   /** Worker-pool size for parallelisable tasks (BPM). */
   concurrency: number;
   ffmpegAvailable: () => boolean;
-  readTags: (abs: string) => Promise<{ bpm?: number; genre?: string; key?: string } & FeatureTags>;
+  readTags: (
+    abs: string,
+  ) => Promise<{ bpm?: number; genre?: string; key?: string; licence?: string } & FeatureTags>;
   writeTags: (
     abs: string,
-    tags: { bpm?: number; genre?: string; key?: string } & FeatureTags,
+    tags: { bpm?: number; genre?: string; key?: string; licence?: string } & FeatureTags,
   ) => Promise<boolean>;
   analyzeBpm: (abs: string, onError?: (err: unknown) => void) => Promise<number | null>;
   /** Sidecar tempo detection (library-relative path) — preferred over the local
@@ -89,6 +99,17 @@ export interface EnrichmentContext {
   audioFeaturesAvailable: () => boolean;
   /** Returns the suggested genre for an artist, or null when unavailable. */
   lookupGenre: (artist: string) => Promise<string | null>;
+  /**
+   * Resolve a rights/licence code for one song — the file's own LICENSE/COPYRIGHT
+   * tag first (zero network), then a MusicBrainz `license` url-relation. Returns
+   * null when nothing is confidently found (the common case; MB coverage is
+   * sparse). Never throws — a lookup blip degrades to null.
+   */
+  lookupLicence: (song: {
+    abs: string;
+    artist: string;
+    title: string;
+  }) => Promise<LicenceLookupResult | null>;
   /** Returns a Spotify portrait url for an artist name, or null. Null when Spotify
    *  isn't configured — the artist-image task then relies on Lidarr alone. */
   lookupArtistImageSpotify: ((name: string) => Promise<string | null>) | null;
@@ -223,6 +244,8 @@ export function createEnrichmentContext(deps: {
   lookupArtistImageSpotify?: ((name: string) => Promise<string | null>) | null;
   /** Sidecar client, or null when NICOTIND_ANALYSIS_URL isn't configured. */
   audioFeaturesClient?: AudioFeaturesClient | null;
+  /** Data dir — locates the MusicBrainz cache file for licence lookups. */
+  dataDir?: string;
 }): EnrichmentContext {
   const featuresClient = deps.audioFeaturesClient ?? null;
   return {
@@ -247,7 +270,36 @@ export function createEnrichmentContext(deps: {
     },
     lookupArtistImageSpotify: deps.lookupArtistImageSpotify ?? null,
     resolveArtistIdentity: deps.lidarr ? makeLidarrArtistIdentityResolver(deps.lidarr) : null,
+    lookupLicence: makeLicenceLookup(deps.dataDir ?? null),
     fileExists: (abs) => existsSync(abs),
+  };
+}
+
+/**
+ * Build a licence resolver: the file's own LICENSE/COPYRIGHT tag first (zero
+ * network), then a MusicBrainz `license` url-relation (best-effort, only when a
+ * dataDir is available to cache MB responses). The MB client is created once per
+ * context so its 1-req/sec rate limit + on-disk cache are shared across a run.
+ */
+function makeLicenceLookup(
+  dataDir: string | null,
+): (song: { abs: string; artist: string; title: string }) => Promise<LicenceLookupResult | null> {
+  const mb = dataDir
+    ? new MusicBrainzClient(join(dataDir, 'musicbrainz-cache.json'), MB_USER_AGENT)
+    : null;
+  return async (song) => {
+    const tags = await readAudioTags(song.abs).catch(() => null);
+    if (tags?.licence) return { code: tags.licence, source: 'tag' };
+    if (!mb) return null;
+    const code = await mb
+      .getLicence({
+        mbRecordingId: tags?.mbRecordingId,
+        mbReleaseId: tags?.mbReleaseId,
+        artist: song.artist,
+        title: song.title,
+      })
+      .catch(() => null);
+    return code ? { code, source: 'musicbrainz' } : null;
   };
 }
 
@@ -845,6 +897,71 @@ const artistIdentityTask: EnrichmentTask = {
   },
 };
 
+/**
+ * Rights/licence fill: the file's own LICENSE/COPYRIGHT tag first (zero network),
+ * then a MusicBrainz `license` url-relation. Always available (tag reads need
+ * nothing; MB is a bonus). Never a landing gate — an optional/uncertain source
+ * must not strand a fresh download. A confident "no licence found" is ledgered
+ * via NoConfidentResultError (drops out of the queue, NOT tallied as a failure —
+ * nothing is broken, MB simply has no data), exactly like unresolvable genre.
+ */
+const licenceTask: EnrichmentTask = {
+  id: 'licence',
+  label: 'Licence / rights',
+  satisfiedColumnSql: 'licence IS NOT NULL',
+  available: () => true,
+  countPending: (db) =>
+    Number(
+      (
+        db
+          .query<{ n: number }, []>(
+            `SELECT COUNT(*) AS n FROM library_songs WHERE licence IS NULL${notPermanentlyFailedClause(
+              'licence',
+            )}`,
+          )
+          .get() ?? { n: 0 }
+      ).n,
+    ),
+  run: async (db, ctx, limit) => {
+    const rows = db
+      .query<SongRow, [number]>(
+        `SELECT id, path, artist, title, size FROM library_songs WHERE licence IS NULL${notPermanentlyFailedClause(
+          'licence',
+        )} ORDER BY created DESC LIMIT ?`,
+      )
+      .all(limit);
+
+    const labels: string[] = [];
+    const tally: FailureTally = { failed: 0, sample: null };
+    let applied = 0;
+    for (const song of rows) {
+      const abs = resolveSongAbsPath(ctx.musicDir, song.path);
+      if (!ctx.fileExists(abs)) continue;
+      try {
+        const res = await ctx.lookupLicence({ abs, artist: song.artist, title: song.title });
+        if (!res) {
+          noteItemFailure(db, tally, song, 'licence', new NoConfidentResultError('no licence found'));
+          continue;
+        }
+        db.run('UPDATE library_songs SET licence = ?, licence_source = ? WHERE id = ?', [
+          res.code,
+          res.source,
+          song.id,
+        ]);
+        // Mirror to the file tag so a rescan reads it back. A 'tag' source already
+        // carries it, but the write is idempotent; an 'musicbrainz' source needs it.
+        await ctx.writeTags(abs, { licence: res.code }).catch(() => false);
+        clearAnalysisFailure(db, song.id, 'licence');
+        applied++;
+        labels.push(`${song.artist} — ${song.title} → ${res.code}`);
+      } catch (err) {
+        noteItemFailure(db, tally, song, 'licence', err);
+      }
+    }
+    return { applied, labels, failed: tally.failed, errorSample: tally.sample };
+  },
+};
+
 /** All registered enrichment tasks, in run order. */
 export const ENRICHMENT_TASKS: readonly EnrichmentTask[] = [
   bpmTask,
@@ -854,6 +971,7 @@ export const ENRICHMENT_TASKS: readonly EnrichmentTask[] = [
   audioFeaturesTask,
   artistImageTask,
   artistIdentityTask,
+  licenceTask,
 ];
 
 export function getTask(id: ProcessingTaskId): EnrichmentTask | undefined {

@@ -313,6 +313,7 @@ export class AdminComponent implements OnInit, OnDestroy {
     { id: 'key', label: 'Musical key' },
     { id: 'energy', label: 'Energy & loudness' },
     { id: 'audio-features', label: 'Audio features (mood, valence, danceability)' },
+    { id: 'licence', label: 'Licence / rights (tags → MusicBrainz)' },
   ];
 
   /** Whether a task is required to finish before a download lands in the library. */

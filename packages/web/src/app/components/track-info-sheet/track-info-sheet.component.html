@@ -196,6 +196,75 @@
           }
         }
 
+        <!-- Licence / rights: current value + detect (tag→MB) + curator set -->
+        <div class="flex gap-2 items-center">
+          <span class="text-theme-muted w-16 flex-shrink-0">Licence</span>
+          <span
+            class="rounded-full px-2 py-0.5 text-xs"
+            [class]="
+              currentLicence() === 'unknown'
+                ? 'bg-theme-surface-2 text-theme-muted'
+                : 'bg-theme-accent/15 text-theme-accent font-medium'
+            "
+            data-testid="licence-value"
+            >{{ currentLicenceLabel() }}</span
+          >
+          <button
+            class="ml-auto px-2 py-0.5 rounded bg-theme-surface-2 hover:bg-theme-hover text-xs
+                   disabled:opacity-50"
+            [disabled]="detectingLicence()"
+            (click)="detectLicenceNow()"
+            data-testid="detect-licence-button"
+          >
+            {{ detectingLicence() ? 'Detecting...' : 'Detect' }}
+          </button>
+        </div>
+        @if (canCurate()) {
+          <div class="flex gap-2 items-center pl-16">
+            <label class="text-theme-muted text-xs" for="licence-select">Set</label>
+            <select
+              id="licence-select"
+              class="px-2 py-0.5 rounded bg-theme-surface-2 text-xs disabled:opacity-50"
+              [disabled]="applyingLicence()"
+              (change)="onLicenceSelect($event)"
+              data-testid="licence-select"
+            >
+              @for (code of licenceOptions; track code) {
+                <option [value]="code" [selected]="code === currentLicence()">
+                  {{ labelForLicence(code) }}
+                </option>
+              }
+            </select>
+            @if (applyingLicence()) {
+              <span class="text-theme-muted text-xs">Saving...</span>
+            }
+          </div>
+        }
+        @if (licenceSuggestion(); as l) {
+          @if (l.suggested && l.suggested !== currentLicence()) {
+            <div class="flex gap-2 items-center pl-16" data-testid="licence-suggestion">
+              <span class="text-theme-muted text-xs">Detected</span>
+              <span class="text-theme-secondary">{{ labelForLicence(l.suggested) }}</span>
+              <span class="text-theme-muted text-xs">({{ l.source }})</span>
+              @if (canCurate()) {
+                <button
+                  class="ml-auto px-2 py-0.5 rounded bg-theme-accent text-theme-on-accent
+                         hover:opacity-90 text-xs disabled:opacity-50"
+                  [disabled]="applyingLicence()"
+                  (click)="applyLicence(l.suggested!)"
+                  data-testid="apply-licence-button"
+                >
+                  {{ applyingLicence() ? 'Applying...' : 'Apply' }}
+                </button>
+              }
+            </div>
+          } @else if (l.suggested) {
+            <p class="text-xs text-theme-muted pl-16">Detected licence matches the current value.</p>
+          } @else {
+            <p class="text-xs text-theme-muted pl-16">No licence found in tags or MusicBrainz.</p>
+          }
+        }
+
         <!-- Perceptual/harmonic features (Sims-style bars) -->
         @if (effectiveSong(); as s) {
           <app-track-stats-bars

@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { extname } from 'node:path';
 import { renameSync, unlinkSync } from 'node:fs';
-import { createLogger, MOOD_VOCAB, type MoodLabel } from '@nicotind/core';
+import { createLogger, MOOD_VOCAB, normalizeLicence, type MoodLabel } from '@nicotind/core';
 import { ffmpegBinary } from './ffmpeg-path.js';
 
 const log = createLogger('audio-tags');
@@ -46,6 +46,13 @@ export interface AudioTags {
   instrumental?: number;
   /** Dominant mood label (TXXX/Vorbis `MOOD`), from MOOD_VOCAB. */
   mood?: string;
+  /**
+   * Rights/licence code from LICENCE_VOCAB (ID3 `TXXX:LICENSE` / Vorbis
+   * `LICENSE`). Read from LICENSE → WCOP → COPYRIGHT frames, normalised to a
+   * canonical code; written to the LICENSE frame only (never clobbers an
+   * existing copyright notice).
+   */
+  licence?: string;
   compilation?: boolean;
   /** AcoustID track UUID. Doubles as a "we've already fingerprinted this" marker. */
   acoustIdId?: string;
@@ -74,6 +81,8 @@ type MusicMetadataApi = {
       year?: number;
       key?: string;
       mood?: string;
+      /** Normalised copyright text/URL (music-metadata folds TCOP/COPYRIGHT/©cpy). */
+      copyright?: string;
       acoustid_id?: string;
       musicbrainz_recordingid?: string;
       musicbrainz_albumid?: string;
@@ -196,6 +205,29 @@ export function featureTagsFromNative(
   return out;
 }
 
+// Rights/licence frames checked in priority order: the explicit LICENSE frame
+// (Vorbis `LICENSE` / ID3 `TXXX:LICENSE`) first, then the copyright-URL (WCOP)
+// and copyright-text (TCOP / Vorbis COPYRIGHT) frames.
+const LICENCE_NATIVE_KEYS = ['LICENSE', 'WCOP', 'TCOP', 'COPYRIGHT'] as const;
+
+/**
+ * Resolve a canonical licence code from a file's native tag frames plus the
+ * music-metadata `common.copyright` fold. Positive identifications only (null →
+ * undefined when nothing recognisable) — see normalizeLicence. Shared by
+ * readAudioTags and the library scanner so tagged files are licence-dense from
+ * the first scan.
+ */
+export function licenceFromTags(
+  native: NativeTagMap | undefined,
+  commonCopyright?: string,
+): string | undefined {
+  for (const key of LICENCE_NATIVE_KEYS) {
+    const code = normalizeLicence(pickString(readNativeValue(native, key) as string | undefined));
+    if (code) return code;
+  }
+  return normalizeLicence(commonCopyright) ?? undefined;
+}
+
 function readUserText(raw: Record<string, unknown>, description: string): string | undefined {
   const list = raw.userDefinedText as NodeId3UserText[] | undefined;
   if (!Array.isArray(list)) return undefined;
@@ -293,6 +325,10 @@ export async function readAudioTags(filepath: string): Promise<AudioTags> {
         acousticness: parseUnit(readUserText(d, FEATURE_TAG_KEYS.acousticness)),
         instrumental: parseUnit(readUserText(d, FEATURE_TAG_KEYS.instrumental)),
         mood: parseMood(readUserText(d, FEATURE_TAG_KEYS.mood)),
+        licence:
+          normalizeLicence(
+            readUserText(d, 'LICENSE') ?? pickString(d.copyright) ?? pickString(d.copyrightUrl),
+          ) ?? undefined,
         acoustIdId: readUserText(d, TXXX_ACOUSTID),
         mbRecordingId: readUserText(d, TXXX_MB_RECORDING),
         mbReleaseId: readUserText(d, TXXX_MB_RELEASE),
@@ -317,6 +353,7 @@ export async function readAudioTags(filepath: string): Promise<AudioTags> {
         key: pickString(c.key),
         lyrics: readVorbisLyrics(c.lyrics),
         ...featureTagsFromNative(parsed.native, c.mood),
+        licence: licenceFromTags(parsed.native, pickString(c.copyright)),
         acoustIdId: pickString(c.acoustid_id),
         mbRecordingId: pickString(c.musicbrainz_recordingid),
         mbReleaseId: pickString(c.musicbrainz_albumid),
@@ -358,6 +395,9 @@ async function writeId3Tags(filepath: string, tags: AudioTags): Promise<boolean>
     if (v !== undefined) userText.push({ description: key, value: formatFeature(field, v) });
   }
   if (tags.mood !== undefined) userText.push({ description: FEATURE_TAG_KEYS.mood, value: tags.mood });
+  // Written to a LICENSE TXXX frame only — never the native copyright frame, so
+  // an existing "© …" notice on the file is preserved.
+  if (tags.licence !== undefined) userText.push({ description: 'LICENSE', value: tags.licence });
   if (tags.acoustIdId) userText.push({ description: TXXX_ACOUSTID, value: tags.acoustIdId });
   if (tags.mbRecordingId)
     userText.push({ description: TXXX_MB_RECORDING, value: tags.mbRecordingId });
@@ -404,6 +444,7 @@ function writeFfmpegTags(filepath: string, tags: AudioTags): Promise<boolean> {
   }
   if (tags.mood !== undefined)
     metaArgs.push('-metadata', `${FEATURE_TAG_KEYS.mood}=${tags.mood}`);
+  if (tags.licence !== undefined) metaArgs.push('-metadata', `LICENSE=${tags.licence}`);
   if (tags.compilation) metaArgs.push('-metadata', 'COMPILATION=1');
   if (tags.acoustIdId) metaArgs.push('-metadata', `ACOUSTID_ID=${tags.acoustIdId}`);
   if (tags.mbRecordingId) metaArgs.push('-metadata', `MUSICBRAINZ_TRACKID=${tags.mbRecordingId}`);

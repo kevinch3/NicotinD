@@ -177,6 +177,8 @@ export interface Song {
   instrumental?: number;
   /** Dominant mood label (happy|sad|aggressive|relaxed|party). */
   mood?: string;
+  /** Rights/licence code (LICENCE_VOCAB, e.g. 'public-domain'/'cc-by'). Absent = unknown. */
+  licence?: string;
 }
 
 export interface StreamingSettings {

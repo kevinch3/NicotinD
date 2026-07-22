@@ -86,6 +86,22 @@ describe('LibraryFilterPanelComponent', () => {
     expect(emitted()?.genres).toEqual(['Rock']);
   });
 
+  it('toggles licences immutably from the input, dropping the key when it empties', () => {
+    const fixture = setup({ licences: ['public-domain'] });
+    const emitted = lastEmitted(fixture);
+    fixture.componentInstance.toggleLicence('cc-by');
+    expect(emitted()?.licences).toEqual(['public-domain', 'cc-by']);
+    // Same input each time (the host owns it): toggling the existing code removes it.
+    fixture.componentInstance.toggleLicence('public-domain');
+    expect(emitted()).toEqual({});
+  });
+
+  it('counts an active licence group in the badge', () => {
+    const fixture = setup({ licences: ['public-domain'] });
+    const badge = fixture.debugElement.query(By.css('[data-testid="library-filter-count"]'));
+    expect(badge.nativeElement.textContent.trim()).toBe('1');
+  });
+
   it('parses numeric range inputs, dropping empty/garbage values', () => {
     const fixture = setup();
     const emitted = lastEmitted(fixture);

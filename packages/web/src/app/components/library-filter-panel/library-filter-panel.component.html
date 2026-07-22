@@ -91,6 +91,24 @@
       </div>
     </div>
 
+    <!-- Licence / rights -->
+    <div>
+      <p class="text-theme-muted text-xs mb-1.5">Licence</p>
+      <div class="flex flex-wrap gap-1">
+        @for (code of licenceOptions; track code) {
+          <button type="button" [attr.data-testid]="testIdPrefix() + '-filter-licence-' + code"
+            (click)="toggleLicence(code)"
+            class="px-2 py-0.5 text-xs rounded-full transition"
+            [class.bg-theme-accent]="isLicenceActive(code)"
+            [class.text-theme-on-accent]="isLicenceActive(code)"
+            [class.bg-theme-surface-2]="!isLicenceActive(code)"
+            [class.text-theme-secondary]="!isLicenceActive(code)">
+            {{ licenceLabel(code) }}
+          </button>
+        }
+      </div>
+    </div>
+
     <!-- Perceptual axes -->
     @for (row of axisOptions; track row.axis) {
       <div class="flex items-center justify-between gap-2">
