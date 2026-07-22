@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.238](https://github.com/kevinch3/NicotinD/compare/v0.1.237...v0.1.238) (2026-07-22)
+
+### Features
+
+* **library:** album/compilation licence rollup (entirely-Public-Domain) ([5f20492](https://github.com/kevinch3/NicotinD/commit/5f20492612a8fe3c2f1688d124fd20087359e14d))
+* **library:** music licence/rights per track (set, auto-retrieve, filter) ([b0de7e5](https://github.com/kevinch3/NicotinD/commit/b0de7e52158c658d27887445c402b22a24f0725c))
 ## [0.1.237](https://github.com/kevinch3/NicotinD/compare/v0.1.236...v0.1.237) (2026-07-22)
 
 ### Bug Fixes
