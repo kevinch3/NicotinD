@@ -110,3 +110,14 @@ as albums/artists") and lives in the URL query string — shareable and refresh-
 Legacy `type=starred` URLs map to `{ starred: true }` + newest ordering; starred is now a
 real WHERE filter, independent of sort. Page-specific extras (Albums' min-tracks /
 show-hidden) stay client-side, projected into the panel through its content slot.
+
+Every library surface (Albums, Compilations, Singles & EPs, Artists, Library Songs,
+Artist-page Songs, Album detail, offline Songs) shares **one inline toolbar pattern**:
+`search · sort · direction · filters`, all rendered as bare
+`py-1.5 text-sm rounded-lg bg-theme-surface-2` controls with `focus:ring-1
+focus:ring-[var(--theme-accent)]`. The previous `app-list-toolbar` component (a bordered
+bar with internal layout) was retired because it sat at a different height than the
+inline controls, breaking the unified toolbar row. Inside the popover the same idiom is
+applied uniformly — number inputs, the min-tracks select, all checkboxes
+(`accent-theme rounded`), and the chip rows (mood / licence / perceptual axes / Camelot
+key) share one shape (`px-2 py-0.5 text-xs rounded-full`).
