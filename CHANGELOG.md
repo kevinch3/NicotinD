@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.236](https://github.com/kevinch3/NicotinD/compare/v0.1.235...v0.1.236) (2026-07-22)
+
+### Features
+
+* **admin:** consolidate admin telemetry into one polled resource ([8b62e93](https://github.com/kevinch3/NicotinD/commit/8b62e93556c607580b7d7d6a74445987e7f7f416))
 ## [0.1.235](https://github.com/kevinch3/NicotinD/compare/v0.1.234...v0.1.235) (2026-07-21)
 
 ### Features
