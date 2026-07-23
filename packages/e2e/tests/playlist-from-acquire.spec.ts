@@ -43,6 +43,11 @@ test.describe('Playlist-from-acquire (web surface)', () => {
     // plugin-gating suite asserts a fresh server enables nothing).
     await page.goto('/settings/plugins');
     const card = page.locator('[data-testid="plugin-card"][data-plugin-id="archive"]');
+    // Wait for the card to render before reading it — `textContent()` does not
+    // wait, so on a slow plugin-list load this read raced the mount and returned
+    // null, silently skipping the cleanup and leaking an enabled plugin into the
+    // next spec (the same class of bug as the consent race below).
+    await expect(card.getByTestId('plugin-toggle')).toBeVisible();
     if ((await card.getByTestId('plugin-toggle').textContent())?.trim() === 'Disable') {
       await card.getByTestId('plugin-toggle').click();
       await expect(card.getByTestId('plugin-toggle')).toHaveText('Enable');
@@ -58,8 +63,13 @@ test.describe('Playlist-from-acquire (web surface)', () => {
     const card = page.locator('[data-testid="plugin-card"][data-plugin-id="archive"]');
     await expect(card.getByTestId('plugin-toggle')).toHaveText('Enable');
     await card.getByTestId('plugin-toggle').click();
-    const consent = page.getByTestId('confirm-ok');
-    if (await consent.isVisible().catch(() => false)) await consent.click();
+    // The archive plugin declares `requiresConsent: true`, so this dialog ALWAYS
+    // renders — it is a required step, not an optional one. The previous bare
+    // `isVisible()` probe does not wait, so it resolved before the dialog mounted,
+    // silently skipped the click, and left the plugin disabled. That made this
+    // spec flaky; CI only stayed green because `retries: 1` re-ran it.
+    await expect(page.getByTestId('confirm-ok')).toBeVisible();
+    await page.getByTestId('confirm-ok').click();
     await expect(card.getByTestId('plugin-toggle')).toHaveText('Disable');
 
     // An archive.org URL renders the card WITH the playlist toggle.

@@ -15,8 +15,16 @@ test.describe('device pairing', () => {
     // Browser origin is 127.0.0.1 (loopback) and no funnel exists in CI — the
     // QR placeholder prompts enabling remote access instead of a dead QR.
     await expect(page.getByTestId('link-device-qr-unavailable')).toBeVisible();
-    // Admin remote-access panel renders the guided (not-installed) state.
-    await expect(page.getByTestId('remote-access-state')).toContainText('Tailscale');
+    // Admin remote-access panel renders a guided state. Which one depends on the
+    // HOST, not on the app: CI has no tailscale binary ('not-installed'), while a
+    // developer machine with Tailscale installed but no funnel renders the
+    // ready-but-off state. Asserting the not-installed copy coupled this spec to
+    // the *absence* of a host binary, so it passed in CI and failed on any dev box
+    // with Tailscale installed — and gave zero coverage of the state most
+    // self-hosters actually see.
+    await expect(page.getByTestId('remote-access-state')).toHaveText(
+      /Tailscale|Remote access is off/,
+    );
     await expect(page.getByTestId('devices-empty')).toBeVisible();
   });
 
