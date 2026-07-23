@@ -84,4 +84,41 @@ describe('RadioLandingComponent', () => {
     expect(start).not.toHaveBeenCalled();
     expect(toastShow).toHaveBeenCalled();
   });
+
+  // Visual-contract assertions: pin chip hover utility classes so a refactor
+  // can't silently regress the light-theme legibility (Daylight #6366f1 +
+  // text-theme-on-accent ~ #ffffff ≈ 4.5:1 — borderline AA). The fix moves
+  // hover to a tinted overlay + accent text so every theme reads cleanly.
+  describe('visual contract', () => {
+    it('preset chips use the accent-tinted hover (not a solid accent fill)', () => {
+      const { fixture } = setup();
+      const preset = fixture.nativeElement.querySelector(
+        '[data-testid="radio-preset"]',
+      ) as HTMLButtonElement;
+      expect(preset).toBeTruthy();
+      const cls = preset.className;
+      expect(cls).toContain('hover:bg-theme-accent/15');
+      expect(cls).toContain('hover:text-theme-accent');
+      expect(cls).not.toContain('hover:bg-theme-accent ');
+      expect(cls).not.toContain('hover:text-theme-on-accent');
+    });
+
+    it('genre chips match the preset-chip hover treatment', async () => {
+      const { fixture } = setup();
+      // ngOnInit fires loadGenres() which awaits firstValueFrom; let the
+      // promise microtask settle so the @for renders the chips.
+      await Promise.resolve();
+      await Promise.resolve();
+      fixture.detectChanges();
+      const genre = fixture.nativeElement.querySelector(
+        '[data-testid="radio-genre"]',
+      ) as HTMLButtonElement;
+      expect(genre).toBeTruthy();
+      const cls = genre.className;
+      expect(cls).toContain('hover:bg-theme-accent/15');
+      expect(cls).toContain('hover:text-theme-accent');
+      expect(cls).not.toContain('hover:bg-theme-accent ');
+      expect(cls).not.toContain('hover:text-theme-on-accent');
+    });
+  });
 });

@@ -1,10 +1,13 @@
 import { TestBed } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
-import { signal } from '@angular/core';
+import { provideRouter, Router } from '@angular/router';
+import { Component, signal } from '@angular/core';
 import { BottomNavComponent } from './bottom-nav.component';
 import { AuthService } from '../../services/auth.service';
 import { SetupService } from '../../services/setup.service';
 import { TransferService } from '../../services/transfer.service';
+
+@Component({ standalone: true, template: '' })
+class _Stub {}
 
 function setup(opts: { offline?: boolean; active?: number; canAcquire?: boolean } = {}) {
   const isOffline = signal(opts.offline ?? false);
@@ -14,7 +17,13 @@ function setup(opts: { offline?: boolean; active?: number; canAcquire?: boolean 
   TestBed.configureTestingModule({
     imports: [BottomNavComponent],
     providers: [
-      provideRouter([]),
+      provideRouter([
+        { path: '', component: _Stub },
+        { path: 'library', component: _Stub },
+        { path: 'downloads', component: _Stub },
+        { path: 'search', component: _Stub },
+        { path: 'settings', component: _Stub },
+      ]),
       { provide: AuthService, useValue: { canAcquire } },
       { provide: SetupService, useValue: { isOffline } },
       { provide: TransferService, useValue: { activeDownloadCount } },
@@ -22,8 +31,14 @@ function setup(opts: { offline?: boolean; active?: number; canAcquire?: boolean 
   });
 
   const fixture = TestBed.createComponent(BottomNavComponent);
+  const router = TestBed.inject(Router);
   fixture.detectChanges();
-  return { fixture, isOffline, activeDownloadCount };
+  return { fixture, isOffline, activeDownloadCount, router };
+}
+
+function linkFor(fixture: { nativeElement: Document | HTMLElement }, to: string): HTMLAnchorElement | null {
+  const anchors = Array.from(fixture.nativeElement.querySelectorAll('a')) as HTMLAnchorElement[];
+  return anchors.find((a) => a.getAttribute('href') === to) ?? null;
 }
 
 describe('BottomNavComponent', () => {
@@ -88,5 +103,47 @@ describe('BottomNavComponent', () => {
     isOffline.set(true);
     expect(c.isDisabled({ to: '/', label: 'Search', onlineOnly: true })).toBe(true);
     expect(c.isDisabled({ to: '/downloads', label: 'Downloads', onlineOnly: false })).toBe(false);
+  });
+
+  describe('active tab', () => {
+    it('marks the current route as active and the others as inactive', async () => {
+      const { fixture, router } = setup();
+      await router.navigateByUrl('/library');
+      fixture.detectChanges();
+
+      const library = linkFor(fixture, '/library');
+      const settings = linkFor(fixture, '/settings');
+      expect(library, 'library link present').toBeTruthy();
+      expect(settings, 'settings link present').toBeTruthy();
+      expect(library!.classList.contains('is-active')).toBe(true);
+      expect(settings!.classList.contains('is-active')).toBe(false);
+    });
+
+    it('Home only matches on exact "/" so children do not light it up', async () => {
+      const { fixture, router } = setup();
+      await router.navigateByUrl('/library');
+      fixture.detectChanges();
+      expect(linkFor(fixture, '/')!.classList.contains('is-active')).toBe(false);
+
+      await router.navigateByUrl('/');
+      fixture.detectChanges();
+      expect(linkFor(fixture, '/')!.classList.contains('is-active')).toBe(true);
+    });
+
+    it('loads a stylesheet that paints the active tab with --theme-accent', async () => {
+      const { fixture, router } = setup();
+      await router.navigateByUrl('/library');
+      fixture.detectChanges();
+
+      // jsdom doesn't honor `[data-theme]` token swap, so we can't read the
+      // resolved `--theme-accent` here; instead we assert the component's
+      // stylesheet was attached and references --theme-accent (full color
+      // resolution is e2e-tested in mobile-ux.spec.ts).
+      const styles = Array.from(document.querySelectorAll('style')).map((s) => s.textContent ?? '');
+      const painted = styles.some(
+        (s) => s.includes('.is-active') && s.includes('--theme-accent'),
+      );
+      expect(painted, 'is-active uses --theme-accent').toBe(true);
+    });
   });
 });
