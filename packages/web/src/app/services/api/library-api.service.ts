@@ -432,4 +432,9 @@ export class LibraryApiService {
       >
     >('/api/library/duplicates');
   }
+
+  /** Tokenized, accent-insensitive song search for pickers (e.g. playlist "add song"). */
+  searchSongsAutocomplete(q: string, limit = 8) {
+    return this.http.get<Song[]>('/api/library/songs/autocomplete', { params: { q, limit } });
+  }
 }

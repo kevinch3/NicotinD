@@ -97,63 +97,146 @@ describe('playlist routes', () => {
     expect(res.status).toBe(404);
   });
 
-  // ─── Seed generator (POST /generate) ───────────────────────────────
-  function seedLibrary(): void {
-    db.run('DELETE FROM library_songs');
-    for (let i = 0; i < 20; i++) {
+  // ─── GET /:id/proposals (token-overlap song suggestions) ─────────────────
+  describe('GET /:id/proposals', () => {
+    beforeEach(() => {
+      db.run('DELETE FROM library_songs');
+      db.run('DELETE FROM library_albums');
+    });
+
+    function seedAlbum(id: string, name: string): void {
       db.run(
-        `INSERT INTO library_songs
-           (id, album_id, title, artist, artist_id, duration, year, genre, path, bpm, key, starred, hidden, landed_at, synced_at)
-         VALUES (?, 'al', ?, ?, ?, 200, 2015, 'Rock', ?, ?, 'C major', ?, 0, 1, 0)`,
-        [
-          `s${i}`,
-          `Song ${i}`,
-          `Artist ${i % 5}`,
-          `art${i % 5}`,
-          `/m/${i}.flac`,
-          120 + i,
-          i < 3 ? '2020-01-01' : null,
-        ],
+        `INSERT INTO library_albums (id, name, artist, artist_id, song_count, duration, classification, hidden, synced_at)
+         VALUES (?, ?, 'A', 'art', 1, 60, 'album', 0, 1)`,
+        [id, name],
       );
     }
-  }
 
-  async function generate(user: string, body: unknown) {
-    return appAs(user).request('/generate', { method: 'POST', body: JSON.stringify(body) });
-  }
+    function seedSong(id: string, title: string, artist: string): void {
+      db.run(
+        `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, size, bit_rate, suffix, content_type, created, hidden, landed_at, synced_at)
+         VALUES (?, 'alb', ?, ?, 'art', 0, ?, 1000, 320, 'mp3', 'audio/mpeg', '2024-01-01', 0, 1, 1)`,
+        [id, title, artist, `Artist/Album/${id}.mp3`],
+      );
+    }
 
-  it('rejects a generate with no seed', async () => {
-    const res = await generate('u1', {});
-    expect(res.status).toBe(400);
-  });
+    it('empty playlist proposes songs matching its own name, excludes non-matches', async () => {
+      seedAlbum('alb', 'Album');
+      // Every token in the playlist name ("rock", "anthems") must appear as a
+      // substring somewhere in title+artist — AND semantics, per matchesAllTokens.
+      seedSong('rock1', 'Ultimate Rock Anthems Collection', 'Some Band');
+      seedSong('unrelated', 'Quiet Ballad', 'Other Band');
 
-  it('404s when the seed matches no songs', async () => {
-    seedLibrary();
-    const res = await generate('u1', { seed: { songId: 'nope' } });
-    expect(res.status).toBe(404);
-  });
+      const { playlist } = (await (
+        await appAs('u1').request('/', {
+          method: 'POST',
+          body: JSON.stringify({ name: 'Rock Anthems' }),
+        })
+      ).json()) as { playlist: { id: string } };
 
-  it('generates an editable user playlist from a song seed', async () => {
-    seedLibrary();
-    const res = await generate('u1', { seed: { songId: 's0' }, size: 8 });
-    expect(res.status).toBe(201);
-    const { playlist } = (await res.json()) as { playlist: { id: string; kind: string } };
-    expect(playlist.kind).toBe('user');
+      const res = await appAs('u1').request(`/${playlist.id}/proposals`);
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as Array<{ id: string }>;
+      expect(body.map((s) => s.id)).toEqual(['rock1']);
+    });
 
-    const detail = (await (await appAs('u1').request(`/${playlist.id}`)).json()) as {
-      songs: unknown[];
-    };
-    expect(detail.songs.length).toBeGreaterThan(0);
-    expect(detail.songs.length).toBeLessThanOrEqual(8);
-    // seed song itself is excluded from its own generated list
-    expect((detail.songs as Array<{ id: string }>).some((s) => s.id === 's0')).toBe(false);
-  });
+    it('non-empty playlist scores off its tracks, ignoring a rename', async () => {
+      seedAlbum('alb', 'Album');
+      seedSong('seed', 'Bohemian Rhapsody', 'Queen');
+      seedSong('match', 'Bohemian Rhapsody (Live)', 'Queen');
+      seedSong('unrelated', 'My Mix Song', 'Nobody');
 
-  it('generates from an artist seed and the starred set', async () => {
-    seedLibrary();
-    const byArtist = await generate('u1', { seed: { artistId: 'art0' } });
-    expect(byArtist.status).toBe(201);
-    const byStarred = await generate('u1', { seed: { starred: true } });
-    expect(byStarred.status).toBe(201);
+      const { playlist } = (await (
+        await appAs('u1').request('/', {
+          method: 'POST',
+          body: JSON.stringify({ name: 'My Mix', songIds: ['seed'] }),
+        })
+      ).json()) as { playlist: { id: string } };
+
+      // Rename to something wholly unrelated to the seed track's tokens.
+      await appAs('u1').request(`/${playlist.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ name: 'Totally Unrelated Title Zzz' }),
+      });
+
+      const body = (await (
+        await appAs('u1').request(`/${playlist.id}/proposals`)
+      ).json()) as Array<{ id: string }>;
+      // Still scored off "Bohemian Rhapsody"/"Queen" — not the new name, and
+      // not the empty-playlist "seed"-name branch either.
+      expect(body.map((s) => s.id)).toEqual(['match']);
+    });
+
+    it('a song already in the playlist never appears in its own proposals', async () => {
+      seedAlbum('alb', 'Album');
+      seedSong('seed', 'Bohemian Rhapsody', 'Queen');
+      seedSong('match', 'Bohemian Rhapsody (Live)', 'Queen');
+
+      const { playlist } = (await (
+        await appAs('u1').request('/', {
+          method: 'POST',
+          body: JSON.stringify({ name: 'Mix', songIds: ['seed'] }),
+        })
+      ).json()) as { playlist: { id: string } };
+
+      const body = (await (
+        await appAs('u1').request(`/${playlist.id}/proposals`)
+      ).json()) as Array<{ id: string }>;
+      expect(body.map((s) => s.id)).not.toContain('seed');
+      expect(body.map((s) => s.id)).toEqual(['match']);
+    });
+
+    it('adding then removing a track changes the proposal set on the next call', async () => {
+      seedAlbum('alb', 'Album');
+      seedSong('queen1', 'Bohemian Rhapsody', 'Queen'); // added first
+      seedSong('queen_match', 'Bohemian Rhapsody Remix', 'Queen'); // matches queen1's tokens
+      seedSong('rock1', 'Rock Anthem', 'Rock Band'); // added after the swap
+      seedSong('rock_match', 'Epic Rock Anthem', 'Rock Band'); // matches rock1's tokens
+
+      const { playlist } = (await (
+        await appAs('u1').request('/', {
+          method: 'POST',
+          body: JSON.stringify({ name: 'Mix', songIds: ['queen1'] }),
+        })
+      ).json()) as { playlist: { id: string } };
+
+      const withQueen = (await (
+        await appAs('u1').request(`/${playlist.id}/proposals`)
+      ).json()) as Array<{ id: string }>;
+      expect(withQueen.map((s) => s.id)).toEqual(['queen_match']);
+
+      await appAs('u1').request(`/${playlist.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ remove: ['queen1'], add: ['rock1'] }),
+      });
+
+      const afterSwap = (await (
+        await appAs('u1').request(`/${playlist.id}/proposals`)
+      ).json()) as Array<{ id: string }>;
+      expect(afterSwap.map((s) => s.id)).toEqual(['rock_match']);
+    });
+
+    it("returns 404 for another user's playlist", async () => {
+      const { playlist } = (await (
+        await appAs('u1').request('/', {
+          method: 'POST',
+          body: JSON.stringify({ name: 'Mine' }),
+        })
+      ).json()) as { playlist: { id: string } };
+
+      const res = await appAs('u2').request(`/${playlist.id}/proposals`);
+      expect(res.status).toBe(404);
+    });
+
+    it('responds for a curated playlist (read-only GET, no write guard)', async () => {
+      seedCurated('c1', 'Latin Beats');
+      seedAlbum('alb', 'Album');
+      seedSong('latin1', 'Latin Beats Anthem', 'DJ Someone');
+
+      const res = await appAs('u2').request('/c1/proposals');
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as Array<{ id: string }>;
+      expect(body.map((s) => s.id)).toEqual(['latin1']);
+    });
   });
 });

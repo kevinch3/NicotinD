@@ -431,41 +431,10 @@
 
   <!-- ═══ PLAYLISTS MODE ═══ -->
   @if (libraryMode() === 'playlists') {
-    <!-- Curated (system) shelf — "Made for you" -->
-    @if (curatedPlaylists().length > 0) {
-      <section class="mb-8" data-testid="curated-playlists">
-        <h2 class="text-lg font-bold text-theme-primary mb-3">Made for you</h2>
-        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-          @for (pl of curatedPlaylists(); track pl.id) {
-            <a [routerLink]="['/library/playlists', pl.id]" data-testid="curated-playlist-tile"
-              class="group rounded-xl overflow-hidden bg-theme-surface/30 hover:bg-theme-surface-2/50 transition">
-              <div class="relative aspect-square">
-                @if (pl.coverArt) {
-                  <img [src]="pl.coverArt" [alt]="pl.name" loading="lazy"
-                    class="w-full h-full object-cover" />
-                } @else {
-                  <div class="w-full h-full bg-theme-surface-2"></div>
-                }
-                <span class="absolute top-2 left-2 px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide bg-black/50 text-white">
-                  Curated
-                </span>
-              </div>
-              <div class="p-2">
-                <p class="text-sm font-semibold text-theme-primary truncate">{{ pl.name }}</p>
-                <p class="text-xs text-theme-muted">{{ pl.songCount }} song{{ pl.songCount !== 1 ? 's' : '' }}</p>
-              </div>
-            </a>
-          }
-        </div>
-      </section>
-    }
-
-    <!-- The user's own playlists -->
-    <section data-testid="user-playlists">
-      <h2 class="text-lg font-bold text-theme-primary mb-3">Your playlists</h2>
+    <section data-testid="playlists-list">
+      <h2 class="text-lg font-bold text-theme-primary mb-3">Playlists</h2>
       <form class="flex gap-2 mb-5 max-w-md" (submit)="$event.preventDefault(); createPlaylist()">
-        <input
-          class="flex-1 px-3 py-2 rounded-lg bg-theme-surface-2 text-theme-primary text-sm outline-none"
+        <input class="flex-1 px-3 py-2 rounded-lg bg-theme-surface-2 text-theme-primary text-sm outline-none"
           placeholder="New playlist name"
           [ngModel]="newPlaylistName()" (ngModelChange)="newPlaylistName.set($event)" name="newPlaylistName" />
         <button type="submit" [disabled]="creatingPlaylist() || !newPlaylistName().trim()"
@@ -474,21 +443,42 @@
         </button>
       </form>
 
-      <button type="button" data-testid="generate-from-favorites"
-        [disabled]="generating()" (click)="generateFromFavorites()"
-        class="mb-5 px-4 py-2 rounded-lg bg-theme-surface-2 text-theme-primary text-sm font-medium disabled:opacity-50 hover:bg-theme-surface-2/70 transition">
-        {{ generating() ? 'Generating…' : '✨ Generate from your favorites' }}
-      </button>
-
       <div class="space-y-1">
-        @for (pl of userPlaylists(); track pl.id) {
-          <a [routerLink]="['/library/playlists', pl.id]"
-            class="flex items-center justify-between px-4 py-3 rounded-lg bg-theme-surface/30 hover:bg-theme-surface-2/50 transition cursor-pointer">
-            <span class="text-sm text-theme-primary truncate">{{ pl.name }}</span>
+        @for (pl of playlistService.playlists(); track pl.id) {
+          <div data-testid="playlist-row"
+            class="flex items-center justify-between px-4 py-3 rounded-lg bg-theme-surface/30 hover:bg-theme-surface-2/50 transition gap-3">
+            @if (editingPlaylistId() === pl.id) {
+              <input class="flex-1 min-w-0 px-2 py-1 rounded bg-theme-surface-2 text-theme-primary text-sm outline-none"
+                [ngModel]="renameDraft()" (ngModelChange)="renameDraft.set($event)" name="renameDraft"
+                (keydown.enter)="commitRename(pl.id)" (keydown.escape)="cancelRename()"
+                (blur)="commitRename(pl.id)" autofocus />
+            } @else {
+              <a [routerLink]="['/library/playlists', pl.id]" class="flex-1 min-w-0 flex items-center gap-2 cursor-pointer">
+                @if (pl.kind === 'curated') {
+                  <span data-testid="curated-badge-inline"
+                    class="px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide bg-theme-surface-2 text-theme-muted flex-shrink-0">
+                    Curated
+                  </span>
+                }
+                <span class="text-sm text-theme-primary truncate">{{ pl.name }}</span>
+              </a>
+            }
             <span class="text-xs text-theme-muted flex-shrink-0">{{ pl.songCount }} song{{ pl.songCount !== 1 ? 's' : '' }}</span>
-          </a>
+            @if (pl.kind !== 'curated') {
+              <button type="button" data-testid="rename-playlist" aria-label="Rename playlist" title="Rename"
+                (click)="startRename(pl)"
+                class="w-8 h-8 flex items-center justify-center rounded-lg text-theme-muted hover:text-theme-secondary hover:bg-theme-surface-2 transition flex-shrink-0">
+                <app-icon name="edit" />
+              </button>
+              <button type="button" data-testid="delete-playlist" aria-label="Delete playlist" title="Delete"
+                (click)="deletePlaylistRow(pl)"
+                class="w-8 h-8 flex items-center justify-center rounded-lg text-theme-muted hover:text-status-error hover:bg-theme-surface-2 transition flex-shrink-0">
+                <app-icon name="delete" />
+              </button>
+            }
+          </div>
         }
-        @if (playlistService.loaded() && userPlaylists().length === 0) {
+        @if (playlistService.loaded() && playlistService.playlists().length === 0) {
           <p class="text-center text-theme-muted py-12">No playlists yet. Create one above.</p>
         }
       </div>

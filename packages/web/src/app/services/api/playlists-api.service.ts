@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import type { PlaylistSummary, PlaylistDetail } from './api-types';
+import type { PlaylistSummary, PlaylistDetail, Song } from './api-types';
 
 /** Playlist CRUD (per-user). */
 @Injectable({ providedIn: 'root' })
@@ -13,6 +13,11 @@ export class PlaylistsApiService {
 
   getPlaylist(id: string) {
     return this.http.get<PlaylistDetail>(`/api/playlists/${id}`);
+  }
+
+  /** Cheap token-overlap suggestions for what to add next to this playlist. */
+  getProposals(id: string, limit = 20) {
+    return this.http.get<Song[]>(`/api/playlists/${id}/proposals`, { params: { limit } });
   }
 
   createPlaylist(name: string, songIds?: string[], description?: string) {
@@ -38,21 +43,5 @@ export class PlaylistsApiService {
 
   deletePlaylist(id: string) {
     return this.http.delete<{ ok: boolean }>(`/api/playlists/${id}`);
-  }
-
-  /**
-   * Generate a playlist from a seed (a song, an artist, or the starred set),
-   * scored by the same engine that powers Radio. Returns the created, editable
-   * user playlist.
-   */
-  generatePlaylist(
-    seed: { songId?: string; artistId?: string; starred?: boolean },
-    opts?: { name?: string; size?: number },
-  ) {
-    return this.http.post<{ playlist: PlaylistSummary }>('/api/playlists/generate', {
-      seed,
-      name: opts?.name,
-      size: opts?.size,
-    });
   }
 }

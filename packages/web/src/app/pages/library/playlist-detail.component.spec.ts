@@ -37,6 +37,9 @@ const PLAYLIST: PlaylistDetail = {
 
 function setup(playlist: PlaylistDetail = PLAYLIST) {
   const removeSong = vi.fn(() => Promise.resolve());
+  const addSongs = vi.fn(() => Promise.resolve());
+  const getProposals = vi.fn(() => Promise.resolve<Song[]>([]));
+  const get = vi.fn(() => Promise.resolve({ ...playlist, songs: [...playlist.songs] }));
 
   TestBed.configureTestingModule({
     imports: [PlaylistDetailComponent],
@@ -50,8 +53,10 @@ function setup(playlist: PlaylistDetail = PLAYLIST) {
       {
         provide: PlaylistService,
         useValue: {
-          get: () => Promise.resolve({ ...playlist, songs: [...playlist.songs] }),
+          get,
           removeSong,
+          addSongs,
+          getProposals,
           openPicker: vi.fn(),
         },
       },
@@ -62,7 +67,7 @@ function setup(playlist: PlaylistDetail = PLAYLIST) {
   const fixture = TestBed.createComponent(PlaylistDetailComponent);
   fixture.detectChanges();
   const httpMock = TestBed.inject(HttpTestingController);
-  return { component: fixture.componentInstance, removeSong, httpMock };
+  return { component: fixture.componentInstance, removeSong, addSongs, getProposals, get, httpMock };
 }
 
 describe('PlaylistDetailComponent — bulk remove from playlist', () => {
@@ -91,6 +96,66 @@ describe('PlaylistDetailComponent — bulk remove from playlist', () => {
     await component.removeSelectedFromPlaylist();
 
     expect(removeSong).not.toHaveBeenCalled();
+  });
+});
+
+describe('PlaylistDetailComponent — song picker / proposals', () => {
+  it('addSong adds the picked song via the bulk-add method, then reloads', async () => {
+    const { component, addSongs, get } = setup();
+    await Promise.resolve(); // ngOnInit get()
+    get.mockClear();
+
+    await component.addSong(SONG('s5'));
+
+    expect(addSongs).toHaveBeenCalledWith('pl1', ['s5']);
+    expect(get).toHaveBeenCalledTimes(1); // reload() re-fetched the playlist
+  });
+
+  it('refreshes proposals (getProposals called again) after addSong', async () => {
+    const { component, getProposals } = setup();
+    await Promise.resolve();
+    getProposals.mockClear();
+
+    await component.addSong(SONG('s5'));
+
+    expect(getProposals).toHaveBeenCalledTimes(1);
+  });
+
+  it('refreshes proposals after removeSong', async () => {
+    const { component, getProposals } = setup();
+    await Promise.resolve();
+    getProposals.mockClear();
+
+    await component.removeSong('s2');
+
+    expect(getProposals).toHaveBeenCalledTimes(1);
+  });
+
+  it('refreshes proposals after removeSelectedFromPlaylist', async () => {
+    const { component, getProposals } = setup();
+    await Promise.resolve();
+    getProposals.mockClear();
+
+    component.selection.enter();
+    component.selection.toggle('s2');
+    await component.removeSelectedFromPlaylist();
+
+    expect(getProposals).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not refresh proposals merely from sharing (not a mutation)', async () => {
+    Object.assign(navigator, { clipboard: { writeText: () => Promise.resolve() } });
+    const { component, getProposals, httpMock } = setup();
+    await Promise.resolve();
+    getProposals.mockClear();
+
+    component.sharePlaylist();
+    const req = httpMock.expectOne('/api/share');
+    req.flush({ url: 'http://x/share/tok' });
+    await Promise.resolve();
+
+    expect(getProposals).not.toHaveBeenCalled();
+    httpMock.verify();
   });
 });
 

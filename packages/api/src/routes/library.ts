@@ -62,6 +62,7 @@ import { pruneOrphanArtist } from '../services/library-aggregates.js';
 import { checkFragments } from '../services/library-fragments.js';
 import { songOrderBy } from '../services/song-sort.js';
 import { attachSongArtists, attachAlbumArtists } from '../services/artist-attach.js';
+import { tokenize, matchesAllTokens, rankBy } from '../services/search-tokens.js';
 import type {
   ApplyMetadataRequest,
   AlbumCoverCandidate,
@@ -1495,6 +1496,29 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
   });
 
   // --- Songs --------------------------------------------------------------------
+
+  // Tokenized, accent-insensitive song autocomplete for pickers (e.g. the
+  // playlist "add song" search box). Registered ahead of /songs/:id so the
+  // literal "autocomplete" segment isn't ever shadowed by the param route.
+  app.get('/songs/autocomplete', (c) => {
+    const q = String(c.req.query('q') ?? '').trim();
+    const limit = Math.min(Number(c.req.query('limit') ?? 8), 25);
+    if (!q) return c.json([]);
+    const tokens = tokenize(q);
+    if (!tokens.length) return c.json([]);
+    const db = getDatabase();
+    const rows = db
+      .query<SongRow, []>(`${SONG_SELECT} WHERE s.hidden = 0 AND s.landed_at IS NOT NULL`)
+      .all();
+    const songs = rows
+      .filter((r) => matchesAllTokens(`${r.title} ${r.artist} ${r.album_name ?? ''}`, tokens))
+      .sort(rankBy(tokens, (r) => r.title))
+      .slice(0, limit)
+      .map(rowToSong);
+    attachSongArtists(db, songs);
+    return c.json(songs);
+  });
+
   app.get('/songs/:id', (c) => {
     const id = c.req.param('id');
     const db = getDatabase();

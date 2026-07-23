@@ -39,4 +39,19 @@ describe('PlaylistsApiService', () => {
     expect(req.request.body).toEqual({ reorder: ['s2', 's1'] });
     req.flush({ ok: true });
   });
+
+  it('GETs proposals for a playlist with a limit param', () => {
+    service.getProposals('pl1', 10).subscribe();
+    const req = http.expectOne((r) => r.url === '/api/playlists/pl1/proposals');
+    expect(req.request.method).toBe('GET');
+    expect(req.request.params.get('limit')).toBe('10');
+    req.flush([]);
+  });
+
+  it('defaults the proposals limit to 20', () => {
+    service.getProposals('pl1').subscribe();
+    const req = http.expectOne((r) => r.url === '/api/playlists/pl1/proposals');
+    expect(req.request.params.get('limit')).toBe('20');
+    req.flush([]);
+  });
 });

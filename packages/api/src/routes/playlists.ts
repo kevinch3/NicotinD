@@ -2,33 +2,6 @@ import { Hono } from 'hono';
 import type { AuthEnv } from '../middleware/auth.js';
 import { getDatabase } from '../db.js';
 import { PlaylistService } from '../services/playlist.service.js';
-import {
-  RADIO_SONG_SELECT,
-  toFeatures,
-  toOrderable,
-  longestGenreToken,
-  type RadioSongRow,
-} from './radio.js';
-import { rankCandidates, type SongFeatures } from '../services/radio.service.js';
-import { embeddingModelFor, loadEmbeddings } from '../services/embedding-store.js';
-import { orderTracks, seedCentroid } from '../services/playlist-recipe.js';
-
-/** Component-wise mean of equal-length embeddings; undefined for an empty set.
- *  Vectors of a different length than the first are skipped (can't average). */
-function meanEmbedding(vecs: readonly Float32Array[]): Float32Array | undefined {
-  const first = vecs[0];
-  if (!first) return undefined;
-  const acc = new Float32Array(first.length);
-  let n = 0;
-  for (const v of vecs) {
-    if (v.length !== first.length) continue;
-    for (let i = 0; i < first.length; i++) acc[i]! += v[i]!;
-    n++;
-  }
-  if (n === 0) return undefined;
-  for (let i = 0; i < acc.length; i++) acc[i]! /= n;
-  return acc;
-}
 
 /**
  * Native per-user playlists. Every handler scopes to the authenticated user
@@ -45,6 +18,14 @@ export function playlistRoutes() {
     return detail ? c.json(detail) : c.json({ error: 'Not found' }, 404);
   });
 
+  // Cheap token-overlap suggestions for what to add next (see
+  // PlaylistService.proposals for the empty-vs-non-empty token-source rule).
+  app.get('/:id/proposals', (c) => {
+    const limit = Math.min(Number(c.req.query('limit') ?? 20), 50);
+    const proposals = svc().proposals(c.var.user.sub, c.req.param('id'), limit);
+    return proposals ? c.json(proposals) : c.json({ error: 'Not found' }, 404);
+  });
+
   app.post('/', async (c) => {
     type Body = { name?: string; description?: string; songIds?: string[] };
     const body = await c.req.json<Body>().catch(() => ({}) as Body);
@@ -56,144 +37,6 @@ export function playlistRoutes() {
       description: body.description,
       songIds: body.songIds,
     });
-    return c.json({ playlist }, 201);
-  });
-
-  /**
-   * Generate a playlist from a seed and persist it as a normal editable user
-   * playlist. Seeds: a single song, an artist's catalogue, or the starred set.
-   * Reuses the Radio scorer (`rankCandidates`) over the same query shape, then
-   * harmonically orders the result. The catalogue is the source of truth — only
-   * existing songs are selected (no invented ids).
-   */
-  app.post('/generate', async (c) => {
-    type Seed = { songId?: string; artistId?: string; starred?: boolean };
-    type Body = { seed?: Seed; name?: string; size?: number };
-    const body = await c.req.json<Body>().catch(() => ({}) as Body);
-    const seedSpec = body.seed ?? {};
-    const size = Math.min(Math.max(Number(body.size ?? 30), 1), 100);
-    const db = getDatabase();
-
-    // Resolve the seed songs + the SongFeatures to score against.
-    let seedRows: RadioSongRow[] = [];
-    let defaultName = 'Generated playlist';
-    if (seedSpec.songId) {
-      const row = db
-        .query<RadioSongRow, [string]>(`${RADIO_SONG_SELECT} WHERE s.id = ?`)
-        .get(seedSpec.songId);
-      if (row) {
-        seedRows = [row];
-        defaultName = `Like "${row.title}"`;
-      }
-    } else if (seedSpec.artistId) {
-      seedRows = db
-        .query<RadioSongRow, [string]>(
-          `${RADIO_SONG_SELECT} WHERE s.artist_id = ? AND s.hidden = 0 AND s.landed_at IS NOT NULL`,
-        )
-        .all(seedSpec.artistId);
-      if (seedRows.length) defaultName = `Inspired by ${seedRows[0].artist}`;
-    } else if (seedSpec.starred) {
-      seedRows = db
-        .query<RadioSongRow, []>(
-          `${RADIO_SONG_SELECT} WHERE s.starred IS NOT NULL AND s.hidden = 0 AND s.landed_at IS NOT NULL`,
-        )
-        .all();
-      defaultName = 'From your favorites';
-    } else {
-      return c.json({ error: 'seed must specify songId, artistId, or starred' }, 400);
-    }
-
-    if (seedRows.length === 0) return c.json({ error: 'Seed matched no songs' }, 404);
-
-    const seedFeatures: SongFeatures | null =
-      seedRows.length === 1
-        ? toFeatures(seedRows[0])
-        : seedCentroid(seedRows.map(toOrderable));
-    if (!seedFeatures) return c.json({ error: 'Seed matched no songs' }, 404);
-
-    // Candidate pool: same genre + a random cross-genre sample for diversity.
-    const exclude = new Set(seedRows.map((r) => r.id));
-    const seen = new Set(exclude);
-    const candidates: RadioSongRow[] = [];
-    const addRows = (rows: RadioSongRow[]) => {
-      for (const r of rows)
-        if (!seen.has(r.id)) {
-          seen.add(r.id);
-          candidates.push(r);
-        }
-    };
-    // Pool on ANY genre in the seed's full set via the join table, so a shared
-    // secondary genre pools candidates just like a primary match.
-    const seedGenres = seedFeatures.genres ?? (seedFeatures.genre ? [seedFeatures.genre] : []);
-    if (seedGenres.length > 0) {
-      const marks = seedGenres.map(() => '?').join(', ');
-      addRows(
-        db
-          .query<RadioSongRow, string[]>(
-            `${RADIO_SONG_SELECT}
-             WHERE (s.genre IN (${marks}) OR EXISTS (
-               SELECT 1 FROM library_song_genres g WHERE g.song_id = s.id AND g.genre IN (${marks})
-             )) AND s.hidden = 0 AND s.landed_at IS NOT NULL ORDER BY RANDOM() LIMIT 300`,
-          )
-          .all(...seedGenres, ...seedGenres),
-      );
-    }
-    // Genre-variant match via the seed's longest token so lexical genre
-    // closeness has variants ("Deep House" ↔ "House") to score, not just exact.
-    const genreToken = longestGenreToken(seedFeatures.genre);
-    if (genreToken) {
-      addRows(
-        db
-          .query<RadioSongRow, [string]>(
-            `${RADIO_SONG_SELECT} WHERE LOWER(s.genre) LIKE '%' || ? || '%' AND s.hidden = 0 AND s.landed_at IS NOT NULL
-             ORDER BY RANDOM() LIMIT 150`,
-          )
-          .all(genreToken),
-      );
-    }
-    // Un-analyzed tracks get a guaranteed seat so a mid-backfill library stays
-    // discoverable to the generator.
-    addRows(
-      db
-        .query<RadioSongRow, []>(
-          `${RADIO_SONG_SELECT} WHERE (s.bpm IS NULL OR s.energy IS NULL) AND s.hidden = 0 AND s.landed_at IS NOT NULL
-           ORDER BY RANDOM() LIMIT 60`,
-        )
-        .all(),
-    );
-    addRows(
-      db
-        .query<RadioSongRow, []>(
-          `${RADIO_SONG_SELECT} WHERE s.hidden = 0 AND s.landed_at IS NOT NULL ORDER BY RANDOM() LIMIT 300`,
-        )
-        .all(),
-    );
-
-    // Attach cached embeddings (seed + pool) so the scorer's cosine axis
-    // engages when present. For a multi-song seed (artist/starred) the seed
-    // embedding is the mean over the seed rows that carry one — the vector
-    // analogue of seedCentroid's mean-of-fields.
-    const model = seedRows[0] ? embeddingModelFor(db, seedRows[0].id) : null;
-    const embeddings = model
-      ? loadEmbeddings(db, [...seedRows.map((r) => r.id), ...candidates.map((r) => r.id)], model)
-      : new Map<string, Float32Array>();
-    const seedVecs = seedRows.map((r) => embeddings.get(r.id)).filter((v): v is Float32Array => !!v);
-    seedFeatures.embedding = meanEmbedding(seedVecs);
-
-    const ranked = rankCandidates(
-      seedFeatures,
-      candidates.map((r) => ({ ...toFeatures(r), embedding: embeddings.get(r.id), _row: r })),
-      { count: size, maxPerArtist: 2 },
-    );
-    const orderedRows = orderTracks(
-      ranked.map((e) => toOrderable((e.song as SongFeatures & { _row: RadioSongRow })._row)),
-      'harmonic',
-    );
-    const songIds = orderedRows.map((r) => r.id);
-    if (songIds.length === 0) return c.json({ error: 'No matching songs to generate from' }, 404);
-
-    const name = body.name?.trim() || defaultName;
-    const playlist = svc().create(c.var.user.sub, { name, songIds });
     return c.json({ playlist }, 201);
   });
 

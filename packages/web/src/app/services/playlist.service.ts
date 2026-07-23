@@ -1,7 +1,7 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { PlaylistsApiService } from './api/playlists-api.service';
-import type { PlaylistSummary, PlaylistDetail } from './api/api-types';
+import type { PlaylistSummary, PlaylistDetail, Song } from './api/api-types';
 
 /**
  * Per-user playlists (web). Holds the summary list as a signal and drives the
@@ -33,21 +33,13 @@ export class PlaylistService {
     return firstValueFrom(this.api.getPlaylist(id));
   }
 
-  async create(name: string, songIds?: string[]): Promise<PlaylistSummary> {
-    const res = await firstValueFrom(this.api.createPlaylist(name, songIds));
-    this.playlists.update((list) => [res.playlist, ...list]);
-    return res.playlist;
+  /** Thin passthrough — no caching; the detail page owns refresh timing. */
+  getProposals(id: string, limit = 20): Promise<Song[]> {
+    return firstValueFrom(this.api.getProposals(id, limit));
   }
 
-  /**
-   * Generate a playlist from a seed (song / artist / starred set) via the Radio
-   * scorer and prepend it to the list. Returns the created playlist.
-   */
-  async generate(
-    seed: { songId?: string; artistId?: string; starred?: boolean },
-    opts?: { name?: string; size?: number },
-  ): Promise<PlaylistSummary> {
-    const res = await firstValueFrom(this.api.generatePlaylist(seed, opts));
+  async create(name: string, songIds?: string[]): Promise<PlaylistSummary> {
+    const res = await firstValueFrom(this.api.createPlaylist(name, songIds));
     this.playlists.update((list) => [res.playlist, ...list]);
     return res.playlist;
   }

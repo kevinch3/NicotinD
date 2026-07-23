@@ -80,6 +80,32 @@
       }
     }
 
+    @if (!isCurated()) {
+      <div class="mb-4">
+        <app-song-picker [excludeIds]="playlistTrackIds()" (add)="addSong($event)" />
+      </div>
+      @if (loadingProposals() && proposals().length === 0) {
+        <p data-testid="playlist-proposals-loading" class="text-xs text-theme-muted mb-6">Loading suggestions…</p>
+      } @else if (proposals().length > 0) {
+        <section data-testid="playlist-proposals" class="mb-6">
+          <h2 class="text-sm font-semibold text-theme-muted mb-2">Suggested for this playlist</h2>
+          <div class="space-y-0.5">
+            @for (song of proposals(); track song.id) {
+              <div class="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-theme-surface-2">
+                <span class="min-w-0 truncate text-sm text-theme-primary">
+                  {{ song.title }} <span class="text-theme-muted">— {{ song.artist }}</span>
+                </span>
+                <button type="button" data-testid="proposal-add" (click)="addSong(song)"
+                  class="text-xs px-2 py-1 rounded bg-theme-surface hover:bg-theme-hover flex-shrink-0 transition">
+                  Add
+                </button>
+              </div>
+            }
+          </div>
+        </section>
+      }
+    }
+
     @if (visibleSongs().length === 0) {
       <p class="text-center text-theme-muted py-20">This playlist is empty. Add songs from any track menu.</p>
     } @else {
