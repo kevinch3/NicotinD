@@ -18,6 +18,14 @@ export function playlistRoutes() {
     return detail ? c.json(detail) : c.json({ error: 'Not found' }, 404);
   });
 
+  // Cheap token-overlap suggestions for what to add next (see
+  // PlaylistService.proposals for the empty-vs-non-empty token-source rule).
+  app.get('/:id/proposals', (c) => {
+    const limit = Math.min(Number(c.req.query('limit') ?? 20), 50);
+    const proposals = svc().proposals(c.var.user.sub, c.req.param('id'), limit);
+    return proposals ? c.json(proposals) : c.json({ error: 'Not found' }, 404);
+  });
+
   app.post('/', async (c) => {
     type Body = { name?: string; description?: string; songIds?: string[] };
     const body = await c.req.json<Body>().catch(() => ({}) as Body);

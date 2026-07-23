@@ -1,6 +1,7 @@
 import type { Database } from 'bun:sqlite';
 import type { Song } from '@nicotind/core';
 import { attachSongArtists } from './artist-attach.js';
+import { tokenize, matchesAllTokens, rankBy } from './search-tokens.js';
 
 /** `user` = created by a user (private). `curated` = system-seeded, global, read-only. */
 export type PlaylistKind = 'user' | 'curated';
@@ -146,6 +147,69 @@ export class PlaylistService {
     attachSongArtists(this.db, songs);
 
     return { ...this.summary(row, songs.length), songs };
+  }
+
+  /**
+   * Suggests songs to add to a playlist via cheap token-overlap matching (no
+   * embeddings/ML — same spirit as the tokenized search matcher). Uses the
+   * same visibility guard as `get()`: a curated playlist is readable by any
+   * user, a user playlist only by its owner (returns `null` otherwise).
+   *
+   * Token source is a strict branch, not a blend: an **empty** playlist is
+   * seeded from its own name (e.g. "90s Rock Anthems" → "rock"/"anthems"),
+   * but once it holds even one track the name is never read again — tokens
+   * come only from the titles/artists already in it. This is deliberate: a
+   * playlist's name can drift out of sync with its contents (renamed after
+   * the fact), while its tracks are ground truth for what it's actually about.
+   */
+  proposals(userId: string, id: string, limit = 20): Song[] | null {
+    const row = this.db
+      .query<PlaylistRow, [string, string]>(
+        `SELECT id, name, description, cover_art, kind, created_at, modified_at
+         FROM playlists WHERE id = ? AND (user_id = ? OR kind = 'curated')`,
+      )
+      .get(id, userId);
+    if (!row) return null;
+
+    const existing = this.db
+      .query<
+        { song_id: string; title: string; artist: string },
+        [string]
+      >(
+        `SELECT ps.song_id, s.title, s.artist
+         FROM playlist_songs ps
+         JOIN library_songs s ON s.id = ps.song_id
+         WHERE ps.playlist_id = ?`,
+      )
+      .all(id);
+
+    const tokens = existing.length
+      ? tokenize([...new Set(existing.map((s) => `${s.title} ${s.artist}`))].join(' '))
+      : tokenize(row.name);
+    if (!tokens.length) return [];
+
+    const excludeIds = existing.map((s) => s.song_id);
+    const placeholders = excludeIds.length ? excludeIds.map(() => '?').join(',') : null;
+    const candidates = this.db
+      .query<SongRow, string[]>(
+        `SELECT s.id, s.album_id, a.name AS album_name, a.cover_art AS album_cover_art,
+                s.title, s.artist, s.artist_id, s.track, s.duration, s.year, s.genre,
+                s.cover_art, s.path, s.size, s.bit_rate, s.suffix, s.content_type,
+                s.created, s.starred
+         FROM library_songs s
+         LEFT JOIN library_albums a ON a.id = s.album_id
+         WHERE s.hidden = 0 AND s.landed_at IS NOT NULL
+           ${placeholders ? `AND s.id NOT IN (${placeholders})` : ''}`,
+      )
+      .all(...excludeIds);
+
+    const songs = candidates
+      .filter((r) => matchesAllTokens(`${r.title} ${r.artist}`, tokens))
+      .sort(rankBy(tokens, (r) => r.title))
+      .slice(0, limit)
+      .map(rowToSong);
+    attachSongArtists(this.db, songs);
+    return songs;
   }
 
   create(userId: string, input: CreatePlaylistInput): PlaylistSummary {

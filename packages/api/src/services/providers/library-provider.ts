@@ -1,7 +1,7 @@
 import type { ISearchProvider, ProviderType, SearchProviderResult } from '@nicotind/core';
 import type { Database } from 'bun:sqlite';
 import { attachSongArtists, attachAlbumArtists } from '../artist-attach.js';
-import { fold, tokenize, matchesAllTokens } from '../search-tokens.js';
+import { tokenize, matchesAllTokens, rankBy } from '../search-tokens.js';
 
 /**
  * Local search over the canonical library tables (library_artists/albums/songs)
@@ -138,22 +138,4 @@ export class LibrarySearchProvider implements ISearchProvider {
   async isAvailable(): Promise<boolean> {
     return true;
   }
-}
-
-/**
- * Comparator that ranks matched rows: an exact folded-name match first, then a
- * name that starts with the whole folded query, then a name starting with the
- * first token, then alphabetical. Keeps the most-relevant hit at the top of
- * each capped section without a heavy scorer.
- */
-function rankBy<T>(tokens: string[], nameOf: (row: T) => string): (a: T, b: T) => number {
-  const joined = tokens.join(' ');
-  const score = (row: T): number => {
-    const n = fold(nameOf(row));
-    if (n === joined) return 0;
-    if (n.startsWith(joined)) return 1;
-    if (n.startsWith(tokens[0]!)) return 2;
-    return 3;
-  };
-  return (a, b) => score(a) - score(b) || nameOf(a).localeCompare(nameOf(b));
 }

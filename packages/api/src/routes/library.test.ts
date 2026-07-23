@@ -1230,6 +1230,99 @@ describe('GET /artists/:id/songs (Songs tab)', () => {
   });
 });
 
+describe('GET /songs/autocomplete', () => {
+  const testDb = new Database(':memory:');
+  applySchema(testDb);
+
+  beforeEach(() => {
+    testDb.run('DELETE FROM library_songs');
+    testDb.run('DELETE FROM library_albums');
+    mock.module('../db.js', () => ({ getDatabase: () => testDb, applySchema }));
+  });
+
+  afterEach(() => {
+    mock.module('../db.js', () => ({ getDatabase: () => sharedDb, applySchema }));
+  });
+
+  function seedAlbum(id: string, name: string): void {
+    testDb.run(
+      `INSERT INTO library_albums (id, name, artist, artist_id, song_count, duration, classification, hidden, synced_at)
+       VALUES (?, ?, 'A', 'art', 1, 60, 'album', 0, 1)`,
+      [id, name],
+    );
+  }
+
+  function seedSong(
+    id: string,
+    opts: { title: string; artist: string; albumId?: string; hidden?: number; landed?: boolean },
+  ): void {
+    testDb.run(
+      `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, size, bit_rate, suffix, content_type, created, hidden, landed_at, synced_at)
+       VALUES (?, ?, ?, ?, 'art', 0, ?, 1000, 320, 'mp3', 'audio/mpeg', '2024-01-01', ?, ?, 1)`,
+      [
+        id,
+        opts.albumId ?? 'alb',
+        opts.title,
+        opts.artist,
+        `Artist/Album/${id}.mp3`,
+        opts.hidden ?? 0,
+        opts.landed === false ? null : 1,
+      ],
+    );
+  }
+
+  function makeApp(): Hono<AuthEnv> {
+    const testApp = new Hono<AuthEnv>();
+    testApp.use('*', (c, next) => {
+      c.set('user', { sub: 'u', role: 'user', iat: 0, exp: 9999999999 });
+      return next();
+    });
+    testApp.route('/', libraryRoutes());
+    return testApp;
+  }
+
+  it('AND-matches every token across title + artist + album', async () => {
+    seedAlbum('alb', 'Let It Be');
+    seedSong('s1', { title: 'Let It Be', artist: 'The Beatles' });
+    seedSong('s2', { title: 'The Wall', artist: 'Pink Floyd' }); // contains "the" only
+
+    const body = (await (
+      await makeApp().request('/songs/autocomplete?q=the+beatles')
+    ).json()) as Array<{ id: string }>;
+    expect(body.map((s) => s.id)).toEqual(['s1']);
+  });
+
+  it('caps limit at 25', async () => {
+    seedAlbum('alb', 'Album');
+    for (let i = 0; i < 30; i++) {
+      seedSong(`s${i}`, { title: `Rock Song ${i}`, artist: 'Rock Band' });
+    }
+    const body = (await (
+      await makeApp().request('/songs/autocomplete?q=rock&limit=100')
+    ).json()) as Array<{ id: string }>;
+    expect(body.length).toBe(25);
+  });
+
+  it('returns [] for an empty query', async () => {
+    seedAlbum('alb', 'Album');
+    seedSong('s1', { title: 'Alpha', artist: 'A' });
+    const body = await (await makeApp().request('/songs/autocomplete?q=')).json();
+    expect(body).toEqual([]);
+  });
+
+  it('excludes hidden and quarantined (un-landed) songs', async () => {
+    seedAlbum('alb', 'Album');
+    seedSong('hidden', { title: 'Rock Anthem', artist: 'A', hidden: 1 });
+    seedSong('quarantined', { title: 'Rock Anthem', artist: 'A', landed: false });
+    seedSong('visible', { title: 'Rock Anthem', artist: 'A' });
+
+    const body = (await (
+      await makeApp().request('/songs/autocomplete?q=rock')
+    ).json()) as Array<{ id: string }>;
+    expect(body.map((s) => s.id)).toEqual(['visible']);
+  });
+});
+
 describe('library metadata filters', () => {
   const testDb = new Database(':memory:');
   applySchema(testDb);
