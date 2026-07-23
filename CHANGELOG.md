@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.247](https://github.com/kevinch3/NicotinD/compare/v0.1.246...v0.1.247) (2026-07-23)
+
+### Features
+
+* **playlists:** add song autocomplete + playlist proposals endpoints ([de6b45a](https://github.com/kevinch3/NicotinD/commit/de6b45aaf7a21bac3ec9cc2a9c184fcbda1f7dc8))
+* **playlists:** add song picker + suggested-songs list to playlist detail ([b4197e4](https://github.com/kevinch3/NicotinD/commit/b4197e4f6514ec73d253e2428e120df2d9dc3e4e))
+* **playlists:** merge playlist list into one + remove generate-from-favorites ([3482782](https://github.com/kevinch3/NicotinD/commit/348278270ee8dd43144d3b3289c1af18815789a8))
+
+### Bug Fixes
+
+* **playlists:** rank autocomplete results before slicing ([49ef6c1](https://github.com/kevinch3/NicotinD/commit/49ef6c168816bf3e5ea86463ce677da982626373))
 ## [0.1.246](https://github.com/kevinch3/NicotinD/compare/v0.1.245...v0.1.246) (2026-07-23)
 
 ### Bug Fixes
