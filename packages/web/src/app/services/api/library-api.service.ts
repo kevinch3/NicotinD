@@ -165,6 +165,29 @@ export class LibraryApiService {
    * corrected spelling/name. Permanent source='user' authority; the server runs the
    * rescan synchronously and returns 200 once the change has landed.
    */
+  /** Current effective genres for an artist + any user override (issue #187 A3). */
+  artistGenre(id: string) {
+    return this.http.get<{
+      artist: string;
+      current: string[];
+      override: { genres: string[]; source: string; note: string | null } | null;
+    }>(`/api/library/artists/${encodeURIComponent(id)}/genre`);
+  }
+
+  /** Replace the primary genre for every track by this artist. Runs a sync rescan. */
+  setArtistGenre(id: string, genres: string, note?: string) {
+    return this.http.post<{ ok: boolean; genres: string[]; resynced: boolean }>(
+      `/api/library/artists/${encodeURIComponent(id)}/genre`,
+      { genres, note },
+    );
+  }
+
+  clearArtistGenre(id: string) {
+    return this.http.delete<{ ok: boolean; removed: boolean }>(
+      `/api/library/artists/${encodeURIComponent(id)}/genre`,
+    );
+  }
+
   fixArtistIdentity(
     body:
       | { rawName: string; decision: 'single' }

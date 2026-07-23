@@ -1,404 +1,550 @@
+<div class="max-w-6xl mx-auto px-4 py-5 md:px-6 md:py-8">
+  <!-- Back -->
+  <button
+    type="button"
+    (click)="goBack()"
+    aria-label="Back"
+    title="Back"
+    class="inline-flex items-center justify-center w-9 h-9 rounded-lg text-theme-muted hover:text-theme-secondary hover:bg-theme-surface-2 transition mb-6"
+  >
+    <app-icon name="back" />
+  </button>
 
-    <div class="max-w-6xl mx-auto px-4 py-5 md:px-6 md:py-8">
-
-      <!-- Back -->
-      <button type="button" (click)="goBack()" aria-label="Back" title="Back"
-        class="inline-flex items-center justify-center w-9 h-9 rounded-lg text-theme-muted hover:text-theme-secondary hover:bg-theme-surface-2 transition mb-6">
-        <app-icon name="back" />
-      </button>
-
-      @if (loading()) {
-        <div class="text-center py-20">
-          <span class="inline-block w-5 h-5 border-2 border-theme border-t-zinc-300 rounded-full animate-spin"></span>
-        </div>
-      } @else if (artist()) {
-        <!-- Artist header -->
-        <div class="flex items-center gap-5 mb-8">
-          <div class="relative flex-shrink-0 group">
-            <app-cover-art
-              [src]="artistImageSrc()"
-              [artist]="artist()!.name"
-              [size]="80"
-              rounded="rounded-full"
-            />
-            @if (auth.canCurate()) {
-              <div class="absolute bottom-0 right-0">
-                <app-menu-panel align="start" panelTestId="artist-image-menu">
-                  <button menuTrigger type="button" data-testid="artist-image-edit"
-                    [disabled]="imageBusy()"
-                    aria-label="Change artist image" title="Change artist image"
-                    class="w-7 h-7 flex items-center justify-center rounded-full bg-theme-inverse text-theme-inverse shadow-lg ring-2 ring-theme-bg hover:opacity-90 transition disabled:opacity-50">
-                    @if (imageBusy()) {
-                      <span class="inline-block w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin"></span>
-                    } @else {
-                      <app-icon name="edit" />
-                    }
-                  </button>
-                  <div menuPanel class="w-52 p-1.5 rounded-lg bg-theme-surface border border-theme shadow-xl flex flex-col">
-                    <button type="button" data-testid="artist-image-upload" (click)="triggerImageUpload()"
-                      class="text-left px-3 py-2 text-sm rounded-md text-theme-secondary hover:bg-theme-surface-2 transition">
-                      Upload image…
-                    </button>
-                    <button type="button" data-testid="artist-image-from-album" (click)="openAlbumPicker()"
-                      [disabled]="pickableAlbums().length === 0"
-                      class="text-left px-3 py-2 text-sm rounded-md text-theme-secondary hover:bg-theme-surface-2 transition disabled:opacity-40">
-                      Choose from album…
-                    </button>
-                    <button type="button" data-testid="artist-image-reset" (click)="resetImage()"
-                      class="text-left px-3 py-2 text-sm rounded-md text-theme-secondary hover:bg-theme-surface-2 transition">
-                      Reset to default
-                    </button>
-                  </div>
-                </app-menu-panel>
-              </div>
-              <input #imageFileInput type="file" accept="image/jpeg,image/png,image/webp" class="hidden"
-                data-testid="artist-image-file" (change)="onImageFileSelected($event)" />
-            }
-          </div>
-          <div>
-            <div class="flex items-center gap-2">
-              <h1 class="text-2xl font-bold text-theme-primary">{{ artist()!.name }}</h1>
-              @if (auth.canCurate()) {
-                <button type="button" data-testid="artist-identity-fix"
-                  (click)="identityOpen.set(true)"
-                  aria-label="Fix artist identity" title="Fix artist identity (one act / split / merge)"
-                  class="w-7 h-7 flex items-center justify-center rounded-lg text-theme-muted hover:text-theme-secondary hover:bg-theme-surface-2 transition">
-                  <app-icon name="edit" />
-                </button>
-              }
-            </div>
-            <p class="text-theme-muted text-sm mt-0.5">{{ albums().length }} album{{ albums().length !== 1 ? 's' : '' }}</p>
-            @if (albums().length > 0) {
-              <div class="mt-3 flex items-center gap-2">
-                <button (click)="playAll()" [disabled]="playingAll()"
-                  [attr.aria-label]="playingAll() ? 'Loading…' : 'Play all'"
-                  [attr.title]="playingAll() ? 'Loading…' : 'Play all'"
-                  class="w-10 h-10 flex items-center justify-center rounded-lg bg-theme-inverse text-theme-inverse hover:opacity-90 transition disabled:opacity-50">
-                  <app-icon name="play" />
-                </button>
-                <button type="button" data-testid="artist-generate-playlist"
-                  (click)="generatePlaylist()" [disabled]="generating()"
-                  title="Generate a playlist inspired by this artist"
-                  class="h-10 px-4 flex items-center rounded-lg bg-theme-surface-2 text-theme-primary text-sm font-medium hover:bg-theme-surface-2/70 transition disabled:opacity-50">
-                  {{ generating() ? 'Generating…' : '✨ Generate playlist' }}
-                </button>
-              </div>
-            }
-          </div>
-        </div>
-
-        <!-- Only collapse to the "no releases" slate for release tabs; Songs and
-             Appears On are valid destinations that must keep the tab bar rendered
-             (an artist with only compilation appearances has no albums/singles). -->
-        @if (albums().length === 0 && singlesAndEps().length === 0 && activeTab() !== 'songs' && activeTab() !== 'appears-on') {
-          <p class="text-center text-theme-muted py-20">No releases found for this artist.</p>
-        } @else {
-          <!-- Tabs: Albums | Singles & EPs | Appears On | Songs -->
-          <div class="flex items-center gap-1 border-b border-theme-surface-2 mb-5" role="tablist">
-            @for (tab of visibleTabs(); track tab) {
-              <button type="button" role="tab"
-                [attr.data-testid]="'artist-tab-' + tab"
-                [attr.aria-selected]="activeTab() === tab"
-                (click)="setTab(tab)"
-                [class]="'px-3 py-2 text-sm font-medium border-b-2 -mb-px transition ' + (activeTab() === tab
-                  ? 'border-[var(--theme-accent)] text-theme-primary'
-                  : 'border-transparent text-theme-muted hover:text-theme-secondary')">
-                {{ tab === 'albums' ? 'Albums' : tab === 'singles' ? 'Singles & EPs' : tab === 'appears-on' ? 'Appears On' : 'Songs' }}
-              </button>
-            }
-          </div>
-
-          @switch (activeTab()) {
-            @case ('albums') {
-              <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                @for (album of albums(); track album.id) {
-                  <a [routerLink]="getAlbumLink(album.id)"
-                    class="p-3 rounded-lg bg-theme-surface/30 hover:bg-theme-surface-2/50 transition text-left cursor-pointer block">
-                    <app-cover-art
-                      [src]="album.coverArt ? '/api/cover/' + album.coverArt + '?size=300&token=' + auth.token() : undefined"
-                      [artist]="artist()!.name"
-                      [album]="album.name"
-                      [fill]="true"
-                      rounded="rounded"
-                      className="mb-2"
-                    />
-                    <p class="text-sm text-theme-primary truncate">{{ album.name }}</p>
-                    <p class="text-xs text-theme-muted">{{ album.year ?? '' }}</p>
-                  </a>
-                } @empty {
-                  <p class="col-span-full text-center text-theme-muted py-16">Nothing here yet.</p>
-                }
-              </div>
-            }
-            @case ('singles') {
-              <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                @for (album of singlesAndEps(); track album.id) {
-                  <a [routerLink]="getAlbumLink(album.id)"
-                    class="p-3 rounded-lg bg-theme-surface/30 hover:bg-theme-surface-2/50 transition text-left cursor-pointer block">
-                    <app-cover-art
-                      [src]="album.coverArt ? '/api/cover/' + album.coverArt + '?size=300&token=' + auth.token() : undefined"
-                      [artist]="artist()!.name"
-                      [album]="album.name"
-                      [fill]="true"
-                      rounded="rounded"
-                      className="mb-2"
-                    />
-                    <p class="text-sm text-theme-primary truncate">{{ album.name }}</p>
-                    <p class="text-xs text-theme-muted">
-                      {{ album.classification === 'ep' ? 'EP' : 'Single' }}{{ album.year ? ' · ' + album.year : '' }}
-                    </p>
-                  </a>
-                } @empty {
-                  <p class="col-span-full text-center text-theme-muted py-16">Nothing here yet.</p>
-                }
-              </div>
-            }
-            @case ('appears-on') {
-              <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                @for (album of appearsOn(); track album.id) {
-                  <a [routerLink]="getAlbumLink(album.id)"
-                    class="p-3 rounded-lg bg-theme-surface/30 hover:bg-theme-surface-2/50 transition text-left cursor-pointer block">
-                    <app-cover-art
-                      [src]="album.coverArt ? '/api/cover/' + album.coverArt + '?size=300&token=' + auth.token() : undefined"
-                      [artist]="'Various Artists'"
-                      [album]="album.name"
-                      [fill]="true"
-                      rounded="rounded"
-                      className="mb-2"
-                    />
-                    <p class="text-sm text-theme-primary truncate">{{ album.name }}</p>
-                    <p class="text-xs text-theme-muted">{{ album.year ?? '' }}</p>
-                  </a>
-                } @empty {
-                  <p class="col-span-full text-center text-theme-muted py-16">Nothing here yet.</p>
-                }
-              </div>
-            }
-            @case ('songs') {
-              <!-- Sort + filter controls -->
-              <div class="flex items-center gap-2 mb-4">
-                <select data-testid="artist-songs-sort"
-                  [value]="songSort()"
-                  (change)="setSongSort($any($event.target).value)"
-                  class="px-3 py-1.5 text-sm rounded-lg bg-theme-surface-2 text-theme-primary focus:outline-none focus:ring-1 focus:ring-[var(--theme-accent)]">
-                  @for (opt of sortOptions; track opt.value) {
-                    <option [value]="opt.value">{{ opt.label }}</option>
-                  }
-                </select>
-
-                <app-library-filter-panel
-                  testIdPrefix="artist-songs"
-                  [filter]="songFilter()"
-                  [genres]="genreOptions()"
-                  (filterChange)="onSongFilterChange($event)"
-                  (panelOpened)="ensureGenresLoaded()" />
-
-                @if (!selection.active() && visibleSongs().length > 0) {
-                  <button (click)="selection.enter()"
-                    class="px-3 py-1.5 text-sm rounded-lg bg-theme-surface-2 text-theme-muted hover:bg-theme-hover transition">
-                    Select
-                  </button>
-                }
-              </div>
-
-              @if (selection.active()) {
-                <app-selection-bar
-                  [count]="selection.count()"
-                  [total]="visibleSongs().length"
-                  [canPlay]="true"
-                  [canQueue]="true"
-                  [canDownload]="true"
-                  [canDelete]="auth.canCurate()"
-                  (selectAll)="selectAllSongs()"
-                  (play)="playSelected()"
-                  (queue)="queueSelected()"
-                  (add)="addSelectedToPlaylist()"
-                  (download)="downloadSelected()"
-                  (deleteSelected)="deleteSelectedSongs()"
-                  (cancel)="selection.exit()"
-                />
-              }
-
-              <div class="space-y-0.5" data-testid="artist-songs-list">
-                @for (song of visibleSongs(); track song.id; let i = $index) {
-                  <app-track-row
-                    [track]="toTrack(song)"
-                    [indexLabel]="i + 1"
-                    [subtitle]="songSubtitle(song)"
-                    [artists]="song.artists"
-                    [duration]="song.duration"
-                    [offline]="preserve.isPreserved(song.id)"
-                    [selectable]="selection.active()"
-                    [selected]="selection.isSelected(song.id)"
-                    [actions]="songMenu.build(song, { hideGoToArtist: true, removable: true })"
-                    (play)="playSong(i)"
-                    (selectedChange)="selection.toggleRange(song.id, songOrderedIds(), $event.shiftKey)"
-                  />
-                }
-              </div>
-
-              @if (songsLoadingMore()) {
-                <div class="flex justify-center py-6">
-                  <span class="inline-block w-5 h-5 border-2 border-theme border-t-zinc-300 rounded-full animate-spin"></span>
-                </div>
-              }
-              @if (songsLoaded() && visibleSongs().length === 0 && !songsLoadingMore()) {
-                <p class="text-center text-theme-muted py-16">
-                  {{ hasActiveSongFilter() ? 'No songs match the filters.' : 'No songs found.' }}
-                </p>
-              }
-              <div #songsSentinel class="h-px" aria-hidden="true"></div>
-            }
-          }
-        }
-
-        <!-- Discography section (requires Lidarr) -->
-        @if (discographyLoading()) {
-          <div class="mt-10 flex items-center gap-2 text-theme-muted text-sm">
-            <span class="inline-block w-4 h-4 border-2 border-theme border-t-zinc-300 rounded-full animate-spin"></span>
-            Loading full discography…
-          </div>
-        }
-
-        @if (discography(); as disc) {
-          <div class="mt-10">
-            <div class="flex items-center gap-3 mb-4">
-              <h2 class="text-base font-semibold text-theme-primary">Full Discography</h2>
-              <span class="text-xs text-theme-muted">via MusicBrainz</span>
-              <span class="ml-auto text-xs text-theme-muted">
-                {{ disc.albums.length }} releases ·
-                {{ countByStatus(disc.albums, 'present') }} complete ·
-                {{ countByStatus(disc.albums, 'partial') }} partial ·
-                {{ countByStatus(disc.albums, 'missing') }} missing
-              </span>
-            </div>
-
-            @for (group of discographyGroups(); track group.label) {
-              <div class="mb-6">
-                <h3 class="text-xs font-semibold uppercase tracking-wide text-theme-muted mb-3">
-                  {{ group.label }} <span class="text-theme-muted/60">({{ group.albums.length }})</span>
-                </h3>
-                <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                  @for (album of group.albums; track album.lidarrId) {
-                    <div class="relative flex flex-col p-3 rounded-lg bg-theme-surface/30 border border-transparent"
-                         [class.border-theme-surface-2]="album.status !== 'present'">
-
-                      <!-- Status badge -->
-                      <div class="absolute top-2 right-2 text-xs font-bold leading-none drop-shadow"
-                           [class]="statusClass(album.status)">
-                        {{ statusIcon(album.status) }}
-                      </div>
-
-                      <!-- Cover art (Lidarr/MusicBrainz) with gradient placeholder -->
-                      <app-cover-art
-                        [src]="album.coverArtUrl"
-                        [artist]="artist()!.name"
-                        [album]="album.title"
-                        [fill]="true"
-                        className="mb-2" />
-
-                      <p class="text-sm text-theme-primary truncate font-medium">{{ album.title }}</p>
-                      <p class="text-xs text-theme-muted mt-0.5">{{ album.releaseDate?.slice(0, 4) ?? '' }}</p>
-
-                      @if (album.status !== 'missing') {
-                        <p class="text-xs text-theme-muted mt-1">
-                          {{ album.localTrackCount }}/{{ album.totalTracks }} tracks
-                        </p>
-                      }
-
-                      <!-- Hunt button for missing / partial -->
-                      @if (album.status !== 'present') {
-                        <button
-                          (click)="openHunt(album)"
-                          [disabled]="autoHunt.isHunting(album.lidarrId)"
-                          class="mt-2 w-full px-2 py-1.5 rounded-md text-xs font-semibold
-                                 bg-theme-surface-2 text-theme-secondary
-                                 hover:bg-theme-surface-2/80 transition
-                                 disabled:opacity-50 disabled:cursor-not-allowed
-                                 flex items-center justify-center gap-1.5">
-                          @if (autoHunt.isHunting(album.lidarrId)) {
-                            <svg class="animate-spin h-3 w-3" viewBox="0 0 24 24">
-                              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none" />
-                              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                            </svg>
-                            <span>Finding…</span>
-                          } @else {
-                            {{ album.status === 'partial' ? 'Complete Album' : 'Find Album' }}
-                          }
-                        </button>
-                      }
-                    </div>
-                  }
-                </div>
-              </div>
-            }
-          </div>
-        }
-      }
+  @if (loading()) {
+    <div class="text-center py-20">
+      <span
+        class="inline-block w-5 h-5 border-2 border-theme border-t-zinc-300 rounded-full animate-spin"
+      ></span>
     </div>
-
-    <!-- AlbumHunt Modal -->
-    @if (huntingAlbum() && artist()) {
-      <app-album-hunt-modal
-        [album]="huntingAlbum()!"
-        [artistName]="artist()!.name"
-        (closed)="closeHunt()"
-        (downloaded)="closeHunt()" />
-    }
-
-    <!-- Choose-from-album picker: tap an album to use its cover as the portrait -->
-    @if (albumPickerOpen()) {
-      <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60"
-        data-testid="artist-image-album-picker" (click)="closeAlbumPicker()">
-        <div class="w-full max-w-lg max-h-[80vh] overflow-y-auto rounded-xl bg-theme-surface border border-theme p-4 shadow-2xl"
-          (click)="$event.stopPropagation()">
-          <div class="flex items-center justify-between mb-4">
-            <h2 class="text-base font-semibold text-theme-primary">Use an album cover</h2>
-            <button type="button" (click)="closeAlbumPicker()" aria-label="Close"
-              class="w-8 h-8 flex items-center justify-center rounded-lg text-theme-muted hover:bg-theme-surface-2 transition">
-              <app-icon name="close" />
+  } @else if (artist()) {
+    <!-- Artist header -->
+    <div class="flex items-center gap-5 mb-8">
+      <div class="relative flex-shrink-0 group">
+        <app-cover-art
+          [src]="artistImageSrc()"
+          [artist]="artist()!.name"
+          [size]="80"
+          rounded="rounded-full"
+        />
+        @if (auth.canCurate()) {
+          <div class="absolute bottom-0 right-0">
+            <app-menu-panel align="start" panelTestId="artist-image-menu">
+              <button
+                menuTrigger
+                type="button"
+                data-testid="artist-image-edit"
+                [disabled]="imageBusy()"
+                aria-label="Change artist image"
+                title="Change artist image"
+                class="w-7 h-7 flex items-center justify-center rounded-full bg-theme-inverse text-theme-inverse shadow-lg ring-2 ring-theme-bg hover:opacity-90 transition disabled:opacity-50"
+              >
+                @if (imageBusy()) {
+                  <span
+                    class="inline-block w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin"
+                  ></span>
+                } @else {
+                  <app-icon name="edit" />
+                }
+              </button>
+              <div
+                menuPanel
+                class="w-52 p-1.5 rounded-lg bg-theme-surface border border-theme shadow-xl flex flex-col"
+              >
+                <button
+                  type="button"
+                  data-testid="artist-image-upload"
+                  (click)="triggerImageUpload()"
+                  class="text-left px-3 py-2 text-sm rounded-md text-theme-secondary hover:bg-theme-surface-2 transition"
+                >
+                  Upload image…
+                </button>
+                <button
+                  type="button"
+                  data-testid="artist-image-from-album"
+                  (click)="openAlbumPicker()"
+                  [disabled]="pickableAlbums().length === 0"
+                  class="text-left px-3 py-2 text-sm rounded-md text-theme-secondary hover:bg-theme-surface-2 transition disabled:opacity-40"
+                >
+                  Choose from album…
+                </button>
+                <button
+                  type="button"
+                  data-testid="artist-image-reset"
+                  (click)="resetImage()"
+                  class="text-left px-3 py-2 text-sm rounded-md text-theme-secondary hover:bg-theme-surface-2 transition"
+                >
+                  Reset to default
+                </button>
+              </div>
+            </app-menu-panel>
+          </div>
+          <input
+            #imageFileInput
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            class="hidden"
+            data-testid="artist-image-file"
+            (change)="onImageFileSelected($event)"
+          />
+        }
+      </div>
+      <div>
+        <div class="flex items-center gap-2">
+          <h1 class="text-2xl font-bold text-theme-primary">{{ artist()!.name }}</h1>
+          @if (auth.canCurate()) {
+            <button
+              type="button"
+              data-testid="artist-identity-fix"
+              (click)="identityOpen.set(true)"
+              aria-label="Fix artist identity"
+              title="Fix artist identity (one act / split / merge)"
+              class="w-7 h-7 flex items-center justify-center rounded-lg text-theme-muted hover:text-theme-secondary hover:bg-theme-surface-2 transition"
+            >
+              <app-icon name="edit" />
+            </button>
+            <button
+              type="button"
+              data-testid="artist-genre-fix"
+              (click)="genreOpen.set(true)"
+              aria-label="Fix artist genre"
+              title="Fix artist genre (sets the primary for every track)"
+              class="w-7 h-7 flex items-center justify-center rounded-lg text-theme-muted hover:text-theme-secondary hover:bg-theme-surface-2 transition"
+            >
+              <app-icon name="tag" />
+            </button>
+          }
+        </div>
+        <p class="text-theme-muted text-sm mt-0.5">
+          {{ albums().length }} album{{ albums().length !== 1 ? 's' : '' }}
+        </p>
+        @if (albums().length > 0) {
+          <div class="mt-3 flex items-center gap-2">
+            <button
+              (click)="playAll()"
+              [disabled]="playingAll()"
+              [attr.aria-label]="playingAll() ? 'Loading…' : 'Play all'"
+              [attr.title]="playingAll() ? 'Loading…' : 'Play all'"
+              class="w-10 h-10 flex items-center justify-center rounded-lg bg-theme-inverse text-theme-inverse hover:opacity-90 transition disabled:opacity-50"
+            >
+              <app-icon name="play" />
+            </button>
+            <button
+              type="button"
+              data-testid="artist-generate-playlist"
+              (click)="generatePlaylist()"
+              [disabled]="generating()"
+              title="Generate a playlist inspired by this artist"
+              class="h-10 px-4 flex items-center rounded-lg bg-theme-surface-2 text-theme-primary text-sm font-medium hover:bg-theme-surface-2/70 transition disabled:opacity-50"
+            >
+              {{ generating() ? 'Generating…' : '✨ Generate playlist' }}
             </button>
           </div>
-          <div class="grid grid-cols-3 sm:grid-cols-4 gap-3">
-            @for (album of pickableAlbums(); track album.id) {
-              <button type="button" [attr.data-testid]="'artist-image-album-' + album.id"
-                [disabled]="imageBusy()" (click)="pickAlbumCover(album.id)"
-                class="flex flex-col gap-1 text-left disabled:opacity-50 hover:opacity-90 transition">
+        }
+      </div>
+    </div>
+
+    <!-- Only collapse to the "no releases" slate for release tabs; Songs and
+             Appears On are valid destinations that must keep the tab bar rendered
+             (an artist with only compilation appearances has no albums/singles). -->
+    @if (
+      albums().length === 0 &&
+      singlesAndEps().length === 0 &&
+      activeTab() !== 'songs' &&
+      activeTab() !== 'appears-on'
+    ) {
+      <p class="text-center text-theme-muted py-20">No releases found for this artist.</p>
+    } @else {
+      <!-- Tabs: Albums | Singles & EPs | Appears On | Songs -->
+      <div class="flex items-center gap-1 border-b border-theme-surface-2 mb-5" role="tablist">
+        @for (tab of visibleTabs(); track tab) {
+          <button
+            type="button"
+            role="tab"
+            [attr.data-testid]="'artist-tab-' + tab"
+            [attr.aria-selected]="activeTab() === tab"
+            (click)="setTab(tab)"
+            [class]="
+              'px-3 py-2 text-sm font-medium border-b-2 -mb-px transition ' +
+              (activeTab() === tab
+                ? 'border-[var(--theme-accent)] text-theme-primary'
+                : 'border-transparent text-theme-muted hover:text-theme-secondary')
+            "
+          >
+            {{
+              tab === 'albums'
+                ? 'Albums'
+                : tab === 'singles'
+                  ? 'Singles & EPs'
+                  : tab === 'appears-on'
+                    ? 'Appears On'
+                    : 'Songs'
+            }}
+          </button>
+        }
+      </div>
+
+      @switch (activeTab()) {
+        @case ('albums') {
+          <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+            @for (album of albums(); track album.id) {
+              <a
+                [routerLink]="getAlbumLink(album.id)"
+                class="p-3 rounded-lg bg-theme-surface/30 hover:bg-theme-surface-2/50 transition text-left cursor-pointer block"
+              >
                 <app-cover-art
-                  [src]="album.coverArt ? '/api/cover/' + album.coverArt + '?size=160&token=' + auth.token() : undefined"
+                  [src]="
+                    album.coverArt
+                      ? '/api/cover/' + album.coverArt + '?size=300&token=' + auth.token()
+                      : undefined
+                  "
+                  [artist]="artist()!.name"
                   [album]="album.name"
-                  [artist]="artist()?.name ?? ''"
-                  [size]="120"
-                  rounded="rounded-md" />
-                <span class="text-xs text-theme-secondary truncate">{{ album.name }}</span>
+                  [fill]="true"
+                  rounded="rounded"
+                  className="mb-2"
+                />
+                <p class="text-sm text-theme-primary truncate">{{ album.name }}</p>
+                <p class="text-xs text-theme-muted">{{ album.year ?? '' }}</p>
+              </a>
+            } @empty {
+              <p class="col-span-full text-center text-theme-muted py-16">Nothing here yet.</p>
+            }
+          </div>
+        }
+        @case ('singles') {
+          <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+            @for (album of singlesAndEps(); track album.id) {
+              <a
+                [routerLink]="getAlbumLink(album.id)"
+                class="p-3 rounded-lg bg-theme-surface/30 hover:bg-theme-surface-2/50 transition text-left cursor-pointer block"
+              >
+                <app-cover-art
+                  [src]="
+                    album.coverArt
+                      ? '/api/cover/' + album.coverArt + '?size=300&token=' + auth.token()
+                      : undefined
+                  "
+                  [artist]="artist()!.name"
+                  [album]="album.name"
+                  [fill]="true"
+                  rounded="rounded"
+                  className="mb-2"
+                />
+                <p class="text-sm text-theme-primary truncate">{{ album.name }}</p>
+                <p class="text-xs text-theme-muted">
+                  {{ album.classification === 'ep' ? 'EP' : 'Single'
+                  }}{{ album.year ? ' · ' + album.year : '' }}
+                </p>
+              </a>
+            } @empty {
+              <p class="col-span-full text-center text-theme-muted py-16">Nothing here yet.</p>
+            }
+          </div>
+        }
+        @case ('appears-on') {
+          <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+            @for (album of appearsOn(); track album.id) {
+              <a
+                [routerLink]="getAlbumLink(album.id)"
+                class="p-3 rounded-lg bg-theme-surface/30 hover:bg-theme-surface-2/50 transition text-left cursor-pointer block"
+              >
+                <app-cover-art
+                  [src]="
+                    album.coverArt
+                      ? '/api/cover/' + album.coverArt + '?size=300&token=' + auth.token()
+                      : undefined
+                  "
+                  [artist]="'Various Artists'"
+                  [album]="album.name"
+                  [fill]="true"
+                  rounded="rounded"
+                  className="mb-2"
+                />
+                <p class="text-sm text-theme-primary truncate">{{ album.name }}</p>
+                <p class="text-xs text-theme-muted">{{ album.year ?? '' }}</p>
+              </a>
+            } @empty {
+              <p class="col-span-full text-center text-theme-muted py-16">Nothing here yet.</p>
+            }
+          </div>
+        }
+        @case ('songs') {
+          <!-- Sort + filter controls -->
+          <div class="flex items-center gap-2 mb-4">
+            <select
+              data-testid="artist-songs-sort"
+              [value]="songSort()"
+              (change)="setSongSort($any($event.target).value)"
+              class="px-3 py-1.5 text-sm rounded-lg bg-theme-surface-2 text-theme-primary focus:outline-none focus:ring-1 focus:ring-[var(--theme-accent)]"
+            >
+              @for (opt of sortOptions; track opt.value) {
+                <option [value]="opt.value">{{ opt.label }}</option>
+              }
+            </select>
+
+            <app-library-filter-panel
+              testIdPrefix="artist-songs"
+              [filter]="songFilter()"
+              [genres]="genreOptions()"
+              (filterChange)="onSongFilterChange($event)"
+              (panelOpened)="ensureGenresLoaded()"
+            />
+
+            @if (!selection.active() && visibleSongs().length > 0) {
+              <button
+                (click)="selection.enter()"
+                class="px-3 py-1.5 text-sm rounded-lg bg-theme-surface-2 text-theme-muted hover:bg-theme-hover transition"
+              >
+                Select
               </button>
             }
           </div>
+
+          @if (selection.active()) {
+            <app-selection-bar
+              [count]="selection.count()"
+              [total]="visibleSongs().length"
+              [canPlay]="true"
+              [canQueue]="true"
+              [canDownload]="true"
+              [canDelete]="auth.canCurate()"
+              (selectAll)="selectAllSongs()"
+              (play)="playSelected()"
+              (queue)="queueSelected()"
+              (add)="addSelectedToPlaylist()"
+              (download)="downloadSelected()"
+              (deleteSelected)="deleteSelectedSongs()"
+              (cancel)="selection.exit()"
+            />
+          }
+
+          <div class="space-y-0.5" data-testid="artist-songs-list">
+            @for (song of visibleSongs(); track song.id; let i = $index) {
+              <app-track-row
+                [track]="toTrack(song)"
+                [indexLabel]="i + 1"
+                [subtitle]="songSubtitle(song)"
+                [artists]="song.artists"
+                [duration]="song.duration"
+                [offline]="preserve.isPreserved(song.id)"
+                [selectable]="selection.active()"
+                [selected]="selection.isSelected(song.id)"
+                [actions]="songMenu.build(song, { hideGoToArtist: true, removable: true })"
+                (play)="playSong(i)"
+                (selectedChange)="selection.toggleRange(song.id, songOrderedIds(), $event.shiftKey)"
+              />
+            }
+          </div>
+
+          @if (songsLoadingMore()) {
+            <div class="flex justify-center py-6">
+              <span
+                class="inline-block w-5 h-5 border-2 border-theme border-t-zinc-300 rounded-full animate-spin"
+              ></span>
+            </div>
+          }
+          @if (songsLoaded() && visibleSongs().length === 0 && !songsLoadingMore()) {
+            <p class="text-center text-theme-muted py-16">
+              {{ hasActiveSongFilter() ? 'No songs match the filters.' : 'No songs found.' }}
+            </p>
+          }
+          <div #songsSentinel class="h-px" aria-hidden="true"></div>
+        }
+      }
+    }
+
+    <!-- Discography section (requires Lidarr) -->
+    @if (discographyLoading()) {
+      <div class="mt-10 flex items-center gap-2 text-theme-muted text-sm">
+        <span
+          class="inline-block w-4 h-4 border-2 border-theme border-t-zinc-300 rounded-full animate-spin"
+        ></span>
+        Loading full discography…
+      </div>
+    }
+
+    @if (discography(); as disc) {
+      <div class="mt-10">
+        <div class="flex items-center gap-3 mb-4">
+          <h2 class="text-base font-semibold text-theme-primary">Full Discography</h2>
+          <span class="text-xs text-theme-muted">via MusicBrainz</span>
+          <span class="ml-auto text-xs text-theme-muted">
+            {{ disc.albums.length }} releases · {{ countByStatus(disc.albums, 'present') }} complete
+            · {{ countByStatus(disc.albums, 'partial') }} partial ·
+            {{ countByStatus(disc.albums, 'missing') }} missing
+          </span>
         </div>
+
+        @for (group of discographyGroups(); track group.label) {
+          <div class="mb-6">
+            <h3 class="text-xs font-semibold uppercase tracking-wide text-theme-muted mb-3">
+              {{ group.label }} <span class="text-theme-muted/60">({{ group.albums.length }})</span>
+            </h3>
+            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+              @for (album of group.albums; track album.lidarrId) {
+                <div
+                  class="relative flex flex-col p-3 rounded-lg bg-theme-surface/30 border border-transparent"
+                  [class.border-theme-surface-2]="album.status !== 'present'"
+                >
+                  <!-- Status badge -->
+                  <div
+                    class="absolute top-2 right-2 text-xs font-bold leading-none drop-shadow"
+                    [class]="statusClass(album.status)"
+                  >
+                    {{ statusIcon(album.status) }}
+                  </div>
+
+                  <!-- Cover art (Lidarr/MusicBrainz) with gradient placeholder -->
+                  <app-cover-art
+                    [src]="album.coverArtUrl"
+                    [artist]="artist()!.name"
+                    [album]="album.title"
+                    [fill]="true"
+                    className="mb-2"
+                  />
+
+                  <p class="text-sm text-theme-primary truncate font-medium">{{ album.title }}</p>
+                  <p class="text-xs text-theme-muted mt-0.5">
+                    {{ album.releaseDate?.slice(0, 4) ?? '' }}
+                  </p>
+
+                  @if (album.status !== 'missing') {
+                    <p class="text-xs text-theme-muted mt-1">
+                      {{ album.localTrackCount }}/{{ album.totalTracks }} tracks
+                    </p>
+                  }
+
+                  <!-- Hunt button for missing / partial -->
+                  @if (album.status !== 'present') {
+                    <button
+                      (click)="openHunt(album)"
+                      [disabled]="autoHunt.isHunting(album.lidarrId)"
+                      class="mt-2 w-full px-2 py-1.5 rounded-md text-xs font-semibold bg-theme-surface-2 text-theme-secondary hover:bg-theme-surface-2/80 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+                    >
+                      @if (autoHunt.isHunting(album.lidarrId)) {
+                        <svg class="animate-spin h-3 w-3" viewBox="0 0 24 24">
+                          <circle
+                            class="opacity-25"
+                            cx="12"
+                            cy="12"
+                            r="10"
+                            stroke="currentColor"
+                            stroke-width="4"
+                            fill="none"
+                          />
+                          <path
+                            class="opacity-75"
+                            fill="currentColor"
+                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                          />
+                        </svg>
+                        <span>Finding…</span>
+                      } @else {
+                        {{ album.status === 'partial' ? 'Complete Album' : 'Find Album' }}
+                      }
+                    </button>
+                  }
+                </div>
+              }
+            </div>
+          </div>
+        }
       </div>
     }
+  }
+</div>
 
-    @if (deleteError()) {
-      <div class="mt-4 px-4 py-2 rounded-lg status-error text-sm">
-        {{ deleteError() }}
+<!-- AlbumHunt Modal -->
+@if (huntingAlbum() && artist()) {
+  <app-album-hunt-modal
+    [album]="huntingAlbum()!"
+    [artistName]="artist()!.name"
+    (closed)="closeHunt()"
+    (downloaded)="closeHunt()"
+  />
+}
+
+<!-- Choose-from-album picker: tap an album to use its cover as the portrait -->
+@if (albumPickerOpen()) {
+  <div
+    class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60"
+    data-testid="artist-image-album-picker"
+    (click)="closeAlbumPicker()"
+  >
+    <div
+      class="w-full max-w-lg max-h-[80vh] overflow-y-auto rounded-xl bg-theme-surface border border-theme p-4 shadow-2xl"
+      (click)="$event.stopPropagation()"
+    >
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-base font-semibold text-theme-primary">Use an album cover</h2>
+        <button
+          type="button"
+          (click)="closeAlbumPicker()"
+          aria-label="Close"
+          class="w-8 h-8 flex items-center justify-center rounded-lg text-theme-muted hover:bg-theme-surface-2 transition"
+        >
+          <app-icon name="close" />
+        </button>
       </div>
-    }
+      <div class="grid grid-cols-3 sm:grid-cols-4 gap-3">
+        @for (album of pickableAlbums(); track album.id) {
+          <button
+            type="button"
+            [attr.data-testid]="'artist-image-album-' + album.id"
+            [disabled]="imageBusy()"
+            (click)="pickAlbumCover(album.id)"
+            class="flex flex-col gap-1 text-left disabled:opacity-50 hover:opacity-90 transition"
+          >
+            <app-cover-art
+              [src]="
+                album.coverArt
+                  ? '/api/cover/' + album.coverArt + '?size=160&token=' + auth.token()
+                  : undefined
+              "
+              [album]="album.name"
+              [artist]="artist()?.name ?? ''"
+              [size]="120"
+              rounded="rounded-md"
+            />
+            <span class="text-xs text-theme-secondary truncate">{{ album.name }}</span>
+          </button>
+        }
+      </div>
+    </div>
+  </div>
+}
 
-    <!-- Fix artist identity (admin: one act / split / merge-variant) -->
-    @if (identityOpen() && artist()) {
-      <app-artist-identity-modal
-        [rawName]="artist()!.name"
-        (closed)="identityOpen.set(false)"
-        (saved)="onIdentitySaved()"
-      />
-    }
+@if (deleteError()) {
+  <div class="mt-4 px-4 py-2 rounded-lg status-error text-sm">
+    {{ deleteError() }}
+  </div>
+}
 
-    <!-- Confirm dialog (admin delete) -->
-    @if (showConfirm()) {
-      <app-confirm-dialog
-        [message]="confirmMessage()"
-        confirmLabel="Remove"
-        (confirm)="onConfirm()"
-        (cancel)="onCancelConfirm()"
-      />
-    }
+<!-- Fix artist identity (admin: one act / split / merge-variant) -->
+@if (identityOpen() && artist()) {
+  <app-artist-identity-modal
+    [rawName]="artist()!.name"
+    (closed)="identityOpen.set(false)"
+    (saved)="onIdentitySaved()"
+  />
+}
+
+<!-- Fix artist genre (curator: replaces the primary genre for every track) -->
+@if (genreOpen() && artist()) {
+  <app-artist-genre-modal
+    [artistId]="artist()!.id"
+    [artistName]="artist()!.name"
+    (closed)="genreOpen.set(false)"
+    (saved)="onIdentitySaved()"
+  />
+}
+
+<!-- Confirm dialog (admin delete) -->
+@if (showConfirm()) {
+  <app-confirm-dialog
+    [message]="confirmMessage()"
+    confirmLabel="Remove"
+    (confirm)="onConfirm()"
+    (cancel)="onCancelConfirm()"
+  />
+}

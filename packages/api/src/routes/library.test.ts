@@ -119,6 +119,60 @@ describe('library routes', () => {
     });
   });
 
+  it('POST /artists/:id/genre writes a user artist override and 200s', async () => {
+    sharedDb.run(
+      `INSERT OR REPLACE INTO library_artists (id, name, album_count, synced_at) VALUES ('art-lar', 'Jos\u00e9 Larralde', 1, 1)`,
+    );
+    const res = await app.request('/artists/art-lar/genre', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ genres: 'Folclore;Chacarera', note: 'MB has nothing for him' }),
+    });
+    expect(res.status).toBe(200);
+    const row = sharedDb
+      .query<{ genres: string; source: string; status: string }, [string]>(
+        `SELECT genres, source, status FROM library_genre_overrides WHERE scope = 'artist' AND key = ?`,
+      )
+      .get('jose larralde');
+    expect(row).toEqual({ genres: 'Folclore;Chacarera', source: 'user', status: 'applied' });
+  });
+
+  it('DELETE /artists/:id/genre removes the override', async () => {
+    sharedDb.run(
+      `INSERT OR REPLACE INTO library_artists (id, name, album_count, synced_at) VALUES ('art-del', 'Delible', 1, 1)`,
+    );
+    await app.request('/artists/art-del/genre', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ genres: 'Rock' }),
+    });
+    const res = await app.request('/artists/art-del/genre', { method: 'DELETE' });
+    expect(res.status).toBe(200);
+    expect(
+      sharedDb
+        .query(`SELECT 1 FROM library_genre_overrides WHERE scope = 'artist' AND key = 'delible'`)
+        .all(),
+    ).toEqual([]);
+  });
+
+  it('POST /artists/:id/genre 400s on an empty genre list and 404s on an unknown artist', async () => {
+    sharedDb.run(
+      `INSERT OR REPLACE INTO library_artists (id, name, album_count, synced_at) VALUES ('art-e', 'Empty', 1, 1)`,
+    );
+    const bad = await app.request('/artists/art-e/genre', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ genres: '  ;  ' }),
+    });
+    expect(bad.status).toBe(400);
+    const missing = await app.request('/artists/nope/genre', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ genres: 'Rock' }),
+    });
+    expect(missing.status).toBe(404);
+  });
+
   it('POST /artists/identity writes a user merge alias', async () => {
     const res = await app.request('/artists/identity', {
       method: 'POST',

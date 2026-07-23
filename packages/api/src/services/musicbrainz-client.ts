@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { createLogger, normalizeLicence } from '@nicotind/core';
+import type { MbGenre } from './genre-resolve.js';
 
 const log = createLogger('musicbrainz-client');
 
@@ -171,6 +172,46 @@ export class MusicBrainzClient {
 
     this.setCached(key, { type: 'release-group', result });
     return result;
+  }
+
+  /**
+   * Genres for one artist, BY MBID — never by name. Genre lookups must not go
+   * through a fuzzy search step (see genre-resolve.ts for the false pair this
+   * avoids). Returns the raw voted genres; `pickGenres` decides what's usable.
+   *
+   * Expect this to be empty far more often than not: measured 2/25 on the prod
+   * library, because MB genre data is crowd-sourced and thin outside Anglo
+   * mainstream repertoire. Callers should treat [] as "no proposal", not as an
+   * error, and fall back to release-group genres which cover ~6x more.
+   */
+  async getArtistGenres(mbid: string): Promise<MbGenre[]> {
+    const data = await this.fetch<{ genres?: MbGenre[] }>(
+      `${MB_BASE}/artist/${encodeURIComponent(mbid)}?inc=genres&fmt=json`,
+    );
+    return data?.genres ?? [];
+  }
+
+  /**
+   * Every release group for an artist MBID with its voted genres, in one call.
+   * This is the highest-yield genre source measured for #187 (8/12 artists vs
+   * 2/25 at artist level) and also the most specific — `chacarera`, `cumbia`,
+   * `progressive house` rather than a flat `Latin`.
+   *
+   * The titles double as the corroboration signal `gateArtistResolution` needs
+   * to reject a same-name-different-artist match, so this is fetched even when
+   * only an artist-level genre is wanted.
+   */
+  async getArtistReleaseGroups(
+    mbid: string,
+  ): Promise<Array<{ id: string; title: string; genres: MbGenre[] }>> {
+    const data = await this.fetch<{
+      'release-groups'?: Array<{ id: string; title: string; genres?: MbGenre[] }>;
+    }>(`${MB_BASE}/release-group?artist=${encodeURIComponent(mbid)}&inc=genres&fmt=json&limit=100`);
+    return (data?.['release-groups'] ?? []).map((rg) => ({
+      id: rg.id,
+      title: rg.title,
+      genres: rg.genres ?? [],
+    }));
   }
 
   /**

@@ -1,0 +1,92 @@
+<div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60"
+  data-testid="artist-genre-modal" (click)="closed.emit()">
+  <div class="w-full max-w-md rounded-xl bg-theme-surface border border-theme p-4 shadow-2xl"
+    (click)="$event.stopPropagation()">
+    <div class="flex items-center justify-between mb-1">
+      <h2 class="text-base font-semibold text-theme-primary">Fix artist genre</h2>
+      <button type="button" (click)="closed.emit()" aria-label="Close"
+        class="w-8 h-8 flex items-center justify-center rounded-lg text-theme-muted hover:bg-theme-surface-2 transition">
+        <app-icon name="close" />
+      </button>
+    </div>
+    <p class="text-sm text-theme-muted mb-4 break-words">“{{ artistName() }}”</p>
+
+    @if (loading()) {
+      <p class="text-sm text-theme-muted py-6 text-center" data-testid="artist-genre-loading">Loading…</p>
+    } @else {
+      <!-- Current genres + where they came from. This is the part that makes the
+           feature self-explanatory: seeing "Latin — from file tags" next to a
+           folk record is what prompts the correction. -->
+      <div class="mb-4">
+        <p class="text-xs uppercase tracking-wide text-theme-muted mb-1.5">Currently</p>
+        @if (current().length) {
+          <div class="flex flex-wrap gap-1 items-center" data-testid="artist-genre-current">
+            @for (g of current(); track g) {
+              <span class="px-2 py-0.5 rounded-full text-xs bg-theme-surface-2 text-theme-secondary">{{ g }}</span>
+            }
+            <span class="text-xs text-theme-muted ml-1">— {{ provenance() }}</span>
+          </div>
+        } @else {
+          <p class="text-sm text-theme-muted" data-testid="artist-genre-empty">
+            No genre at all. Radio can’t match this artist to anything until one is set.
+          </p>
+        }
+      </div>
+
+      <label class="block text-xs uppercase tracking-wide text-theme-muted mb-1.5" for="artist-genre-input">
+        Genres
+      </label>
+      <input id="artist-genre-input" type="text" [ngModel]="draft()" (ngModelChange)="draft.set($event)"
+        data-testid="artist-genre-input" placeholder="Folclore; Chacarera"
+        class="w-full rounded-lg bg-theme-surface-2 border border-theme px-3 py-2 text-sm text-theme-primary
+               placeholder:text-theme-muted focus:outline-none focus:ring-2 focus:ring-accent" />
+      <p class="text-xs text-theme-muted mt-1.5">
+        Separate with <span class="font-mono">;</span>. <span class="text-theme-secondary">The first one is the
+        primary</span> — it’s what radio and genre matching use.
+      </p>
+
+      @if (parsed().length) {
+        <div class="flex flex-wrap gap-1 mt-2" data-testid="artist-genre-preview">
+          @for (g of parsed(); track g; let first = $first) {
+            <span class="px-2 py-0.5 rounded-full text-xs"
+              [class]="first ? 'bg-accent/20 text-accent font-medium' : 'bg-theme-surface-2 text-theme-secondary'">
+              {{ g }}@if (first) { <span class="opacity-70">· primary</span> }
+            </span>
+          }
+        </div>
+      }
+
+      <p class="text-xs text-theme-muted mt-4 leading-relaxed" data-testid="artist-genre-explainer">
+        This becomes the genre list for <span class="text-theme-secondary">every track by this artist</span>,
+        including ones you download later — it replaces what’s in the files rather than adding to it,
+        so leave out anything too broad to be useful. Applies right away, survives future library scans,
+        and “Reset to file tags” undoes it at any time.
+      </p>
+
+      @if (error()) {
+        <p class="text-sm text-red-400 mt-3" data-testid="artist-genre-error">{{ error() }}</p>
+      }
+
+      <div class="flex items-center justify-between gap-2 mt-4">
+        @if (override()) {
+          <button type="button" (click)="reset()" [disabled]="busy()" data-testid="artist-genre-reset"
+            class="text-xs text-theme-muted hover:text-theme-secondary transition disabled:opacity-50">
+            Reset to file tags
+          </button>
+        } @else {
+          <span></span>
+        }
+        <div class="flex gap-2">
+          <button type="button" (click)="closed.emit()"
+            class="px-3 py-1.5 rounded-lg text-sm text-theme-secondary hover:bg-theme-surface-2 transition">
+            Cancel
+          </button>
+          <button type="button" (click)="save()" [disabled]="!canSave()" data-testid="artist-genre-save"
+            class="px-3 py-1.5 rounded-lg text-sm font-medium bg-accent text-white disabled:opacity-50 transition">
+            {{ busy() ? 'Saving…' : 'Apply' }}
+          </button>
+        </div>
+      </div>
+    }
+  </div>
+</div>

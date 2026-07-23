@@ -36,6 +36,7 @@ import { MenuPanelComponent } from '../../components/menu-panel/menu-panel.compo
 import { LibraryFilterPanelComponent } from '../../components/library-filter-panel/library-filter-panel.component';
 import { ConfirmDialogComponent } from '../../components/confirm-dialog/confirm-dialog.component';
 import { ArtistIdentityModalComponent } from '../../components/artist-identity-modal/artist-identity-modal.component';
+import { ArtistGenreModalComponent } from '../../components/artist-genre-modal/artist-genre-modal.component';
 import {
   LIBRARY_FILTER_PARAM_KEYS,
   isEmptyLibraryFilter,
@@ -68,6 +69,7 @@ const SONGS_PAGE_SIZE = 60;
     LibraryFilterPanelComponent,
     ConfirmDialogComponent,
     ArtistIdentityModalComponent,
+    ArtistGenreModalComponent,
   ],
   templateUrl: './artist-detail.component.html',
 })
@@ -105,6 +107,7 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
 
   // ─── Artist identity fix (admin: one act / split / merge-variant / rename) ──
   readonly identityOpen = signal(false);
+  readonly genreOpen = signal(false);
 
   /**
    * The server ran the rescan synchronously, so the change is already applied. A
@@ -152,7 +155,9 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
     const file = input.files?.[0];
     input.value = ''; // allow re-selecting the same file later
     if (!file) return;
-    await this.runImageChange(() => firstValueFrom(this.api.uploadArtistImage(this.artistId, file)));
+    await this.runImageChange(() =>
+      firstValueFrom(this.api.uploadArtistImage(this.artistId, file)),
+    );
   }
 
   openAlbumPicker(): void {
@@ -487,6 +492,7 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
     this.appearsOn.set([]);
     this.discography.set(null);
     this.identityOpen.set(false);
+    this.genreOpen.set(false);
     this.imageVersion.set(0);
     // Reset the Songs tab (lazy list + observer rewire happens via the effect).
     this.songs.set([]);

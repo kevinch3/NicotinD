@@ -11,6 +11,8 @@ import {
   LibraryScanner,
   type ScannedTrack,
 } from './library-scanner.js';
+import { normalizeArtistForGrouping } from './album-grouping.js';
+import { loadGenreOverrides, upsertGenreOverride } from './genre-overrides.js';
 
 function track(p: Partial<ScannedTrack> & { relPath: string }): ScannedTrack {
   return {
@@ -56,20 +58,44 @@ describe('buildLibrary (pure aggregation)', () => {
 
   it('aggregates an album licence only when every track shares one code', () => {
     const allPd = buildLibrary([
-      track({ relPath: 'A/Alb/01.mp3', artist: 'A', album: 'Alb', title: 'T1', licence: 'public-domain' }),
-      track({ relPath: 'A/Alb/02.mp3', artist: 'A', album: 'Alb', title: 'T2', licence: 'public-domain' }),
+      track({
+        relPath: 'A/Alb/01.mp3',
+        artist: 'A',
+        album: 'Alb',
+        title: 'T1',
+        licence: 'public-domain',
+      }),
+      track({
+        relPath: 'A/Alb/02.mp3',
+        artist: 'A',
+        album: 'Alb',
+        title: 'T2',
+        licence: 'public-domain',
+      }),
     ]);
     expect(allPd.albums[0]!.licence).toBe('public-domain');
 
     const mixed = buildLibrary([
-      track({ relPath: 'B/Alb/01.mp3', artist: 'B', album: 'Alb', title: 'T1', licence: 'public-domain' }),
+      track({
+        relPath: 'B/Alb/01.mp3',
+        artist: 'B',
+        album: 'Alb',
+        title: 'T1',
+        licence: 'public-domain',
+      }),
       track({ relPath: 'B/Alb/02.mp3', artist: 'B', album: 'Alb', title: 'T2', licence: 'cc-by' }),
     ]);
     expect(mixed.albums[0]!.licence).toBeNull();
 
     // A single un-licenced track makes the album non-unanimous (not "entirely PD").
     const oneUnknown = buildLibrary([
-      track({ relPath: 'C/Alb/01.mp3', artist: 'C', album: 'Alb', title: 'T1', licence: 'public-domain' }),
+      track({
+        relPath: 'C/Alb/01.mp3',
+        artist: 'C',
+        album: 'Alb',
+        title: 'T1',
+        licence: 'public-domain',
+      }),
       track({ relPath: 'C/Alb/02.mp3', artist: 'C', album: 'Alb', title: 'T2' }),
     ]);
     expect(oneUnknown.albums[0]!.licence).toBeNull();
@@ -578,7 +604,13 @@ describe('buildLibrary — multi-genre', () => {
         title: 'T1',
         genre: 'Latin Rock;Latin Music',
       }),
-      track({ relPath: 'A/Alb/02.mp3', artist: 'A', album: 'Alb', title: 'T2', genre: 'Latin Rock' }),
+      track({
+        relPath: 'A/Alb/02.mp3',
+        artist: 'A',
+        album: 'Alb',
+        title: 'T2',
+        genre: 'Latin Rock',
+      }),
     ]);
     expect(built.songs[0]!.genre).toBe('Latin Rock');
     const g1 = built.songGenres.filter((g) => g.songId === built.songs[0]!.id);
@@ -618,7 +650,13 @@ describe('buildLibrary — multi-genre', () => {
     const built = buildLibrary(
       [
         track({ relPath: 'A/Alb/01.mp3', artist: 'A', album: 'Alb', title: 'T1', genre: 'Other' }),
-        track({ relPath: 'A/Alb/02.mp3', artist: 'A', album: 'Alb', title: 'T2', genre: 'RockPunk' }),
+        track({
+          relPath: 'A/Alb/02.mp3',
+          artist: 'A',
+          album: 'Alb',
+          title: 'T2',
+          genre: 'RockPunk',
+        }),
       ],
       undefined,
       undefined,
@@ -635,9 +673,27 @@ describe('buildLibrary — multi-genre', () => {
 
   it('normalizes casing variants to one genre via the in-batch vocabulary', () => {
     const built = buildLibrary([
-      track({ relPath: 'A/Alb/01.mp3', artist: 'A', album: 'Alb', title: 'T1', genre: 'Deep House' }),
-      track({ relPath: 'A/Alb/02.mp3', artist: 'A', album: 'Alb', title: 'T2', genre: 'Deep House' }),
-      track({ relPath: 'A/Alb/03.mp3', artist: 'A', album: 'Alb', title: 'T3', genre: 'deep house' }),
+      track({
+        relPath: 'A/Alb/01.mp3',
+        artist: 'A',
+        album: 'Alb',
+        title: 'T1',
+        genre: 'Deep House',
+      }),
+      track({
+        relPath: 'A/Alb/02.mp3',
+        artist: 'A',
+        album: 'Alb',
+        title: 'T2',
+        genre: 'Deep House',
+      }),
+      track({
+        relPath: 'A/Alb/03.mp3',
+        artist: 'A',
+        album: 'Alb',
+        title: 'T3',
+        genre: 'deep house',
+      }),
     ]);
     expect(built.genres).toHaveLength(1);
     expect(built.genres[0]!.name).toBe('Deep House');
@@ -690,10 +746,113 @@ describe('LibraryScanner.persist — multi-genre join table', () => {
     ]);
     scanner.persist(built, Date.now(), true);
     scanner.persist(
-      { songs: [], albums: [], artists: [], genres: [], songArtists: [], albumArtists: [], songGenres: [] },
+      {
+        songs: [],
+        albums: [],
+        artists: [],
+        genres: [],
+        songArtists: [],
+        albumArtists: [],
+        songGenres: [],
+      },
       Date.now() + 1,
       true,
     );
     expect(db.query('SELECT COUNT(*) AS c FROM library_song_genres').get()).toEqual({ c: 0 });
+  });
+});
+
+describe('genre overrides (issue #187 A3)', () => {
+  const larralde = (relPath: string): ScannedTrack =>
+    track({
+      relPath,
+      artist: 'José Larralde',
+      album: 'Herencia',
+      title: relPath,
+      genre: 'Latin;World',
+    });
+
+  const artistKey = normalizeArtistForGrouping('José Larralde');
+
+  it('replaces the whole genre set for a user override', () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    upsertGenreOverride(db, {
+      scope: 'artist',
+      key: artistKey,
+      genres: ['Folclore', 'Chacarera'],
+      source: 'user',
+      mbid: null,
+      confidence: null,
+      status: 'applied',
+      note: null,
+    });
+
+    const built = buildLibrary(
+      [larralde('L/H/01.mp3')],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      loadGenreOverrides(db),
+    );
+    expect(built.songs[0]!.genre).toBe('Folclore');
+    // User overrides replace outright — see applyGenreOverride on why a merge
+    // would be masked by genreSetCloseness's position-blind max.
+    expect(built.songGenres.map((g) => g.genre)).toEqual(['Folclore', 'Chacarera']);
+  });
+
+  it('survives a full rescan that rebuilds library_song_genres from tags', () => {
+    // The exact failure mode this design exists to prevent: persist() deletes
+    // and re-inserts every rescanned song's genre rows from the tag-derived set.
+    const db = new Database(':memory:');
+    applySchema(db);
+    upsertGenreOverride(db, {
+      scope: 'artist',
+      key: artistKey,
+      genres: ['Folclore'],
+      source: 'user',
+      mbid: null,
+      confidence: null,
+      status: 'applied',
+      note: null,
+    });
+
+    const scan = () =>
+      buildLibrary(
+        [larralde('L/H/01.mp3')],
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        loadGenreOverrides(db),
+      );
+    expect(scan().songs[0]!.genre).toBe('Folclore');
+    // A second scan reads the same untouched tags — the override must still win.
+    expect(scan().songs[0]!.genre).toBe('Folclore');
+  });
+
+  it('leaves the library untouched for pending rows', () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    upsertGenreOverride(db, {
+      scope: 'artist',
+      key: artistKey,
+      genres: ['Folclore'],
+      source: 'musicbrainz',
+      mbid: null,
+      confidence: 0.5,
+      status: 'pending',
+      note: null,
+    });
+    const built = buildLibrary(
+      [larralde('L/H/01.mp3')],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      loadGenreOverrides(db),
+    );
+    expect(built.songs[0]!.genre).toBe('Latin');
   });
 });

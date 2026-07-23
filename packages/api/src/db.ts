@@ -1098,6 +1098,56 @@ export function applySchema(db: Database): void {
     )
   `);
 
+  // Genre overrides (issue #187 A3): the one genre write that can REPLACE a
+  // song's primary rather than append to it. Keyed at the granularity the
+  // SOURCE provides — MusicBrainz gives genres per release-group (album),
+  // Lidarr per artist, a future Essentia head per track — so one row fixes
+  // every song it covers and is inherited by tracks downloaded later.
+  // `key` is normalizeArtistForGrouping(name) / albumGroupKey(artist, album) /
+  // the song id, matching what buildLibrary computes. `genres` is a ';'-joined
+  // ordered list, primary first; '' suppresses every genre (junk drop).
+  // status='pending' is the review queue — a column rather than reclassify-
+  // genres.ts's review FILE because a file has no memory of rejection, so
+  // re-running --propose over 2,474 artists would re-propose everything the
+  // curator already declined. Side table: survives rescans/prunes.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS library_genre_overrides (
+      scope       TEXT NOT NULL,   -- 'artist' | 'album' | 'song'
+      key         TEXT NOT NULL,
+      genres      TEXT NOT NULL,
+      source      TEXT NOT NULL,   -- 'musicbrainz' | 'lidarr' | 'user' | 'essentia'
+      mbid        TEXT,
+      confidence  REAL,
+      status      TEXT NOT NULL,   -- 'applied' | 'pending' | 'rejected'
+      note        TEXT,
+      created_at  INTEGER NOT NULL,
+      updated_at  INTEGER NOT NULL,
+      PRIMARY KEY (scope, key)
+    )
+  `);
+  db.run(
+    `CREATE INDEX IF NOT EXISTS idx_genre_overrides_status ON library_genre_overrides(status)`,
+  );
+
+  // Persisted MusicBrainz ids, so genre (and any future MB) lookups can query
+  // BY ID instead of fuzzy-by-name — the hazard docs/library-scanner.md warns
+  // about, which reproduced immediately during #187 measurement ("Emilia" the
+  // Argentine artist exact-name-matched a Swedish Emilia). A side table rather
+  // than library_albums.mbid / library_artists.mbid columns because those rows
+  // are pruned by synced_at, which would drop a resolved id whenever an album
+  // temporarily disappeared.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS library_mbids (
+      scope      TEXT NOT NULL,   -- 'artist' | 'album'
+      key        TEXT NOT NULL,
+      mbid       TEXT NOT NULL,
+      source     TEXT NOT NULL,   -- 'tag' | 'lidarr' | 'mb-search' | 'user'
+      confidence REAL NOT NULL,
+      checked_at INTEGER NOT NULL,
+      PRIMARY KEY (scope, key)
+    )
+  `);
+
   // Audit trail written by normalize-library.ts and future automation.
   // navidrome_id is null until NavidromeSyncer backfills it via path join.
   db.run(`
