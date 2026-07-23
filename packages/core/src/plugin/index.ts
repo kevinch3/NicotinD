@@ -6,6 +6,7 @@ import type {
   ResolveCapability,
   DownloadCapability,
   LyricsCapability,
+  GenreCapability,
   ConnectivityCapability,
 } from './capabilities.js';
 
@@ -31,6 +32,7 @@ export interface Plugin {
   readonly resolve?: ResolveCapability;
   readonly download?: DownloadCapability;
   readonly lyrics?: LyricsCapability;
+  readonly genre?: GenreCapability;
   readonly connectivity?: ConnectivityCapability;
 }
 

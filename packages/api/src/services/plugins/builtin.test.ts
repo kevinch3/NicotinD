@@ -45,7 +45,7 @@ describe('registerBuiltinPlugins', () => {
         .getAll()
         .map((p) => p.manifest.id)
         .sort(),
-    ).toEqual(['archive', 'lrclib', 'slskd', 'spotdl', 'spotify', 'ytdlp']);
+    ).toEqual(['archive', 'discogs', 'lrclib', 'slskd', 'spotdl', 'spotify', 'ytdlp']);
   });
 
   // Regression: spotdl was constructed without `{ registry }`, so its live read

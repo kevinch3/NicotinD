@@ -148,6 +148,7 @@ process.ts` — `runAcquireProcess` + progress parsing + audio collection; the i
   per-path cache is **invalidated on plugin (re)init** (`invalidateBinaryCache`), so a binary
   installed or a path reconfigured while the app runs is re-probed instead of staying
   "unavailable" for the process lifetime.
+
 - **archive.org** (`services/plugins/archive/index.ts`) — a third URL-acquisition plugin
   (`resolve`, consent-gated) but **pure JS**: `requirements.binaries: []`, no shared process runner.
   `canHandle(url)` matches any `archive.org` item URL (`/details`, `/download`, `/compress`,
@@ -184,6 +185,16 @@ process.ts` — `runAcquireProcess` + progress parsing + audio collection; the i
   routes in `routes/library.ts`) owns persistence (`library_lyrics` side-table + file-tag write-back)
   and the user-edit/`customized` protection — the plugin only resolves text. → see the "Lyrics"
   bullet in [CLAUDE.md](../CLAUDE.md).
+- **discogs** (`services/plugins/discogs/`) — a **`metadata`-kind** plugin (capability `genre`),
+  **default-off + consent-gated** (Discogs API ToU). The **shell**: manifest + HTTP client (auth,
+  on-disk cache, 55/min token-bucket rate limiter) + pure matching primitives + a `GenreCapability`
+  (`fetchGenres(GenreQuery) → GenreResult|null`), registered so it's manageable in Extensions. **No
+  enrichment task consumes it yet** — wiring it into the windowed processor + `library_genre_overrides`
+  write path is deferred to the per-capability issue, gated by the #191 coverage spike. Auth is a
+  free **Consumer Key + Secret** (60/min, image rights, shared — not a per-user token); the admin
+  registers an app at `discogs.com/settings/developers`. `client.ts`/`matching.ts` follow the
+  Lrclib/MusicBrainz injected-deps posture (`fetchFn`, `clock`/`sleep`) so tests need no network.
+  → **canonical reference: [docs/discogs-plugin.md](discogs-plugin.md).**
 - **oauth-google** + **oauth-microsoft** (`services/plugins/oauth-google/index.ts`,
   `services/plugins/oauth-microsoft/index.ts`) — **proposed `auth`-kind** plugins (capability
   `oauth`), **not yet implemented.** Each wraps its provider's authorize/token/userinfo endpoints,
@@ -223,7 +234,7 @@ process.ts` — `runAcquireProcess` + progress parsing + audio collection; the i
   binary present). UI surfaces gate on these. Its `PluginKind` union **mirrors the core one** and
   must stay in sync: a kind missing here has no group computed and no template section, so its
   plugins render **nowhere** — which is exactly how LRCLIB shipped live-but-unmanageable (registered
-  *and* `seedEnabled`, yet absent from Extensions because the union was `acquisition | connectivity`).
+  _and_ `seedEnabled`, yet absent from Extensions because the union was `acquisition | connectivity`).
 - `pages/plugins/plugins.component.ts` — admin-only page (route `/settings/plugins`, `adminGuard`),
   labelled **Extensions** in the UI (linked from Settings → Extensions; identifiers stay `plugin*`).
   Cards grouped by kind — **Acquisition**, **Metadata** (lrclib today), and a generic
@@ -236,7 +247,7 @@ process.ts` — `runAcquireProcess` + progress parsing + audio collection; the i
   bespoke for the generic config-field form own a dedicated page. `plugins.component.ts` maps
   `plugin id → detail route` and renders a **Configure →** link on the card when an entry exists;
   otherwise the inline `configFields` form is the whole story (spotify/ytdlp). This keeps
-  extension-specific UI *with the extension* instead of leaking into core Settings. First consumer:
+  extension-specific UI _with the extension_ instead of leaking into core Settings. First consumer:
   **slskd** → `/settings/plugins/slskd` (`pages/plugins/slskd/slskd-settings.component.ts`,
   `adminGuard`). That page owns the Soulseek **connection** form (creds/port/UPnP + connect/
   disconnect), **shared folders**, and a live **status panel** — all moved out of the old core
@@ -247,7 +258,7 @@ process.ts` — `runAcquireProcess` + progress parsing + audio collection; the i
   which could only error — are replaced with a "slskd is not reachable" notice
   (`data-testid="slskd-unreachable-notice"`). The shares section clarifies that **the music
   library folder is shared automatically** (see below); manual entries are for extra folders.
-  *Backend credential storage is unchanged* — it still uses the
+  _Backend credential storage is unchanged_ — it still uses the
   admin-gated `/api/settings/soulseek*` + `/api/settings/shares*` routes (`secrets.json`, wired to
   embedded-mode via `slskd-config.ts`); only the UI relocated, to avoid destabilizing the
   embedded-mode credential wiring.
@@ -255,7 +266,7 @@ process.ts` — `runAcquireProcess` + progress parsing + audio collection; the i
   the plugin being enabled + a reachable client) returns a typed `SlskdStatus` — current up/down
   speeds, active/queued transfer counts, configured limits (upload/download speed + slots), share
   size, and connection/version/uptime. It aggregates `server.getState()`, `transfers.getDownloads/
-  Uploads()`, `options.get()` (new JSON options accessor), and `application.getInfo()` via the
+Uploads()`, `options.get()` (new JSON options accessor), and `application.getInfo()` via the
   DI-free, unit-tested `services/slskd-status.ts` (`buildSlskdStatus` + `extractSlskdLimits` — the
   limit extractor is defensive because slskd's options JSON shape varies by version). Each probe is
   fetched independently (`Promise.all` + `.catch`) so one failure degrades to zeros, never a 500.
