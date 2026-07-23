@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.246](https://github.com/kevinch3/NicotinD/compare/v0.1.245...v0.1.246) (2026-07-23)
+
+### Bug Fixes
+
+* **discogs:** don't fail the whole config save on a blank cacheTtlDays ([4f07a15](https://github.com/kevinch3/NicotinD/commit/4f07a15d05eba583b6b02cc8a09422ffc85b18a9))
+* **library:** rescan slskd shares after deleting library files ([bf89744](https://github.com/kevinch3/NicotinD/commit/bf8974479f5a1e701a9a43597f85554efffbc507))
+* **spotify:** stop artist-image enrichment from calling Spotify while the plugin is disabled ([00ae98a](https://github.com/kevinch3/NicotinD/commit/00ae98ab355514633ad5159d860f46e830e8c244))
 ## [0.1.245](https://github.com/kevinch3/NicotinD/compare/v0.1.244...v0.1.245) (2026-07-23)
 
 ### Features
