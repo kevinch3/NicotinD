@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.245](https://github.com/kevinch3/NicotinD/compare/v0.1.244...v0.1.245) (2026-07-23)
+
+### Features
+
+* **plugins:** Discogs metadata plugin shell — manifest, client, auth, rate limiting ([2ec9849](https://github.com/kevinch3/NicotinD/commit/2ec9849f8f52365d10f71be2f5d3378b0e1f4fb7)), references [#191](https://github.com/kevinch3/NicotinD/issues/191) [#187](https://github.com/kevinch3/NicotinD/issues/187) [#193](https://github.com/kevinch3/NicotinD/issues/193)
 ## [0.1.244](https://github.com/kevinch3/NicotinD/compare/v0.1.243...v0.1.244) (2026-07-23)
 
 ### Features
