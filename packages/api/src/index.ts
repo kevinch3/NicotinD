@@ -34,7 +34,10 @@ import { catalogRoutes } from './routes/catalog.js';
 import { archiveRoutes } from './routes/archive.js';
 import { ArchiveSearchService } from './services/archive-search.service.js';
 import { spotifyRoutes } from './routes/spotify.js';
-import { SpotifySearchService } from './services/spotify-search.service.js';
+import {
+  SpotifySearchService,
+  gatedSpotifyArtistImageLookup,
+} from './services/spotify-search.service.js';
 import { sourcesRoutes } from './routes/sources.js';
 import { CandidateSearchAggregator } from './services/candidate-search.js';
 import {
@@ -586,8 +589,12 @@ export function createApp({
     };
   });
   // Now that the Spotify search service exists, let the artist-image enrichment
-  // task reach it (no-ops gracefully when creds aren't configured).
-  spotifyArtistImageRef.lookup = (name) => spotifySearch.searchArtistImage(name);
+  // task reach it — gated on the plugin being enabled (see
+  // `gatedSpotifyArtistImageLookup`), since this background task has no route
+  // to gate it the way /api/spotify/search does.
+  spotifyArtistImageRef.lookup = gatedSpotifyArtistImageLookup(spotifySearch, () =>
+    plugins.isEnabled('spotify'),
+  );
   // archive.org metadata search lane — always mounted (no Lidarr/slskd dep); the
   // route itself 503s unless the `archive` plugin is enabled.
   app.route('/api/archive', archiveRoutes({ search: archiveSearch, plugins }));

@@ -56,6 +56,14 @@ false; see the `// why` in `index.ts`).
 Config fields: `consumerKey` (text), `consumerSecret` (password), optional
 `userAgent` (text), `cacheTtlDays` (text → int). `configSchema` validates + the
 registry merges partial updates, so leaving the secret blank keeps the stored one.
+`cacheTtlDays` is the only numeric field among the config schemas — its
+`z.coerce.number()` is wrapped in a `z.preprocess` that maps `''` → `undefined`
+first. Without it, the web form's "always send every text field, blank = no
+override" behavior (`buildPluginConfigPayload`) coerced a blank cache-TTL to
+`0`, which then failed `.positive()` and threw — and because `setConfig`
+parses the whole payload atomically, that rejected the entire save, including
+`consumerKey`/`consumerSecret`. Symptom in prod: the card stayed enabled +
+credentials appeared to never persist ("Unavailable" forever).
 
 ## Rate limiting — one shared 55/min bucket
 
