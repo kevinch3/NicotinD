@@ -177,3 +177,36 @@ workflows) changes — so a broken image build fails the PR, not the release.
 Its GHA cache scope matches the release build's amd64 scope, so master-push
 builds warm the release cache. The `release` job in `ci.yml` requires the
 `docker` job, so a red image build blocks tagging.
+
+## The release job (orphan-tag-proof tagging)
+
+`ci.yml`'s `release` job cuts the `vX.Y.Z` tag whose push fires this whole
+`deploy.yml` pipeline. It bumps via `commit-and-tag-version` and pushes the
+`chore(release)` commit + tag to master. Two properties make it safe to re-run
+and impossible to wedge:
+
+- **Atomic push.** The commit + tag go up with `git push --atomic
+  --follow-tags origin HEAD:refs/heads/master`. If a concurrent merge advanced
+  master, the branch update is rejected _and the tag is rejected with it_ — so
+  a half-failed push can never leave a tag on the remote without its commit on
+  master.
+- **Self-healing orphan detection.** Before releasing, the job resolves the
+  next version and, if that tag already exists, checks whether its commit is an
+  **ancestor of master**. Reachable ⇒ genuinely published ⇒ skip. _Not_
+  reachable ⇒ it's an orphan from an old half-failed push ⇒ delete it (remote +
+  local) and re-cut the release from real master. A bounded retry re-syncs to
+  the true tip so a merge racing the release is retried, never orphaned.
+
+### Why this exists (2026-07-23 incident)
+
+The predecessor pushed with a **non-atomic** `git push --follow-tags`. During
+PR #188's release a concurrent advance rejected the `master` update
+`non-fast-forward`, but the `v0.1.244` tag still landed — pointing at a
+`chore(release)` commit that never reached master (an "orphan tag"). The old
+idempotency guard was `tag exists → skip`, so from that moment every master
+push resolved the next version to the still-uncreated `0.1.244`, saw the orphan
+tag, and **silently exited green** without tagging. No tag ⇒ no `deploy.yml`
+run: releases froze for a day (PRs #189/#196/#197 merged with green CI but shipped
+nothing) while every CI run looked healthy. Because `softprops/action-gh-release`
+merges into a tag's release and the `docker` job overwrites by tag, re-cutting
+a version is safe — so the self-heal simply deletes the orphan and re-releases.
