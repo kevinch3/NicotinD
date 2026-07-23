@@ -62,7 +62,7 @@ import { pruneOrphanArtist } from '../services/library-aggregates.js';
 import { checkFragments } from '../services/library-fragments.js';
 import { songOrderBy } from '../services/song-sort.js';
 import { attachSongArtists, attachAlbumArtists } from '../services/artist-attach.js';
-import { tokenize, matchesAllTokens } from '../services/search-tokens.js';
+import { tokenize, matchesAllTokens, rankBy } from '../services/search-tokens.js';
 import type {
   ApplyMetadataRequest,
   AlbumCoverCandidate,
@@ -1512,6 +1512,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       .all();
     const songs = rows
       .filter((r) => matchesAllTokens(`${r.title} ${r.artist} ${r.album_name ?? ''}`, tokens))
+      .sort(rankBy(tokens, (r) => r.title))
       .slice(0, limit)
       .map(rowToSong);
     attachSongArtists(db, songs);

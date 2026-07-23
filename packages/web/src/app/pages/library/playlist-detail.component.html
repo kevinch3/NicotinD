@@ -84,7 +84,9 @@
       <div class="mb-4">
         <app-song-picker [excludeIds]="playlistTrackIds()" (add)="addSong($event)" />
       </div>
-      @if (proposals().length > 0) {
+      @if (loadingProposals() && proposals().length === 0) {
+        <p data-testid="playlist-proposals-loading" class="text-xs text-theme-muted mb-6">Loading suggestions…</p>
+      } @else if (proposals().length > 0) {
         <section data-testid="playlist-proposals" class="mb-6">
           <h2 class="text-sm font-semibold text-theme-muted mb-2">Suggested for this playlist</h2>
           <div class="space-y-0.5">

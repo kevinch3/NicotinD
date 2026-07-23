@@ -445,6 +445,10 @@ export class LibraryComponent implements OnInit, OnDestroy {
   }
 
   async commitRename(id: string): Promise<void> {
+    // Enter clears editingPlaylistId before the input unmounts, which fires a
+    // second blur-triggered call for the same already-committed draft — make
+    // that a no-op instead of an extra PUT.
+    if (this.editingPlaylistId() !== id) return;
     const name = this.renameDraft().trim();
     if (!name || this.renaming()) return;
     this.renaming.set(true);

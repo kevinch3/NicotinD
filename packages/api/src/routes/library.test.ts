@@ -1310,6 +1310,20 @@ describe('GET /songs/autocomplete', () => {
     expect(body).toEqual([]);
   });
 
+  it('ranks an exact title match ahead of a mere token match when capped by limit', async () => {
+    seedAlbum('alb', 'Album');
+    // Inserted first (and alphabetically first) so it would win an unsorted
+    // slice — it only matches via its artist name, not its title.
+    seedSong('artist-match', { title: 'Anthem', artist: 'Let It Be Tribute Band' });
+    // Inserted second, but is the exact title match and must rank #1.
+    seedSong('exact-match', { title: 'Let It Be', artist: 'The Beatles' });
+
+    const body = (await (
+      await makeApp().request('/songs/autocomplete?q=let+it+be&limit=1')
+    ).json()) as Array<{ id: string }>;
+    expect(body.map((s) => s.id)).toEqual(['exact-match']);
+  });
+
   it('excludes hidden and quarantined (un-landed) songs', async () => {
     seedAlbum('alb', 'Album');
     seedSong('hidden', { title: 'Rock Anthem', artist: 'A', hidden: 1 });
