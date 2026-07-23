@@ -1,15 +1,30 @@
 # Metadata-driven playlist generation (weekly, with or without an LLM)
 
 **Status: the deterministic core is shipped** (see
-[automated-playlists.md](automated-playlists.md) for the code map). Two lanes now
-exist, both reusing the Radio scorer + curated selection engines:
+[automated-playlists.md](automated-playlists.md) for the code map). One lane is
+live today, reusing the Radio scorer + curated selection engines:
 1. **Automated system shelves** — recipe → weekly-refreshed `kind='curated'`
    playlists (§2a), refreshed in-process once per ISO week.
-2. **User-driven seed generator** — `POST /api/playlists/generate` fills an
-   editable `kind='user'` playlist from a song / artist / starred-set seed using
-   `rankCandidates` (the Radio scorer) + harmonic ordering (§2b/§2c). Surfaced in
-   the web via "✨ Generate playlist" on the artist page and "Generate from your
-   favorites" in the playlists tab.
+
+**The user-driven seed generator described below no longer exists.**
+`POST /api/playlists/generate` (fill an editable `kind='user'` playlist from a
+song/artist/starred-set seed via `rankCandidates` + harmonic ordering), the
+artist-page "✨ Generate playlist" button, and the playlists-tab "Generate from
+your favorites" button were all removed — the manual, search-driven path
+below replaced them as the way a user builds up a playlist's contents. The
+underlying `rankCandidates`/`orderTracks` engines were **not** deleted; they're
+still live shared infra behind `/api/radio/*` (§2b/§2c below still describes
+real, current behavior) and `playlist-recipe.ts`'s recipe/ordering functions
+still back §2a's automated shelves.
+
+**What replaced it — search + suggest, not auto-fill.** A playlist's detail
+page now offers a debounced song-search picker (`SongPickerComponent` over
+`GET /api/library/songs/autocomplete`) to add specific tracks by hand, plus a
+"Suggested for this playlist" list (`GET /api/playlists/:id/proposals`) of
+cheap token-overlap candidates the user can add with one click. Full design in §0 "Manual playlist building — search + proposals" below; this
+is deliberately not a "generate the whole playlist for me" feature
+— it never invents a full tracklist from one seed, only makes finding
+individual tracks fast.
 
 The remainder is the original design note. It explains how NicotinD's **existing
 per-track metadata** — plus the enrichment we fill in the background (BPM, genre,
@@ -20,6 +35,83 @@ follow-up.
 
 The north star: **the catalogue is the source of truth; algorithms only select
 and order tracks that already exist.** Nothing here should invent track IDs.
+
+---
+
+## 0. Manual playlist building — search + proposals
+
+The current, live way a user fills a playlist's contents (replaces the removed
+seed generator above). Two backend endpoints in
+`packages/api/src/services/playlist.service.ts` /
+`packages/api/src/routes/playlists.ts` and `routes/library.ts`; one shared web
+component:
+
+- **`GET /api/library/songs/autocomplete?q=&limit=`** (`routes/library.ts`,
+  registered ahead of `/songs/:id` so the literal `autocomplete` path segment
+  is never shadowed by the param route) — tokenizes the query with
+  `tokenize()` from **`search-tokens.ts`** (the same accent-folding,
+  multi-token AND matcher used by the main library search — see
+  [library-scanner.md](library-scanner.md) "Search matching") and filters
+  landed, non-hidden songs whose `title + artist + album` matches every
+  token. Capped at `limit` (default 8, max 25). Backs the web
+  `SongPickerComponent` (`components/song-picker/`), a reusable,
+  playlist-agnostic picker (songs + an `excludeIds` filter) that debounces
+  input 250ms (`setTimeout`/`clearTimeout`, matching the Library Songs tab's
+  own convention rather than an rxjs debounce operator) before calling
+  `LibraryApiService.searchSongsAutocomplete`. The playlist detail page feeds
+  it `playlistTrackIds()` as `excludeIds` so already-added tracks never show
+  as a duplicate pick, and emits `add` back up to `PlaylistDetailComponent`.
+
+- **`GET /api/playlists/:id/proposals?limit=`** (`PlaylistService.proposals`)
+  — cheap, non-ML "suggested for this playlist" candidates, using the same
+  `search-tokens.ts` primitive (`tokenize`/`matchesAllTokens`/`rankBy`) as the
+  autocomplete above. The visibility guard matches `get()`: a curated
+  playlist is readable by any user, a user playlist only by its owner (`null`
+  otherwise → route 404s). **Token source is a strict two-branch choice, not
+  a blend**:
+  - **Empty playlist** → tokens come from the playlist's own **name** (e.g.
+    "90s Rock Anthems" → `rock`/`anthems`).
+  - **Non-empty playlist** (≥1 track) → tokens come only from the
+    **titles/artists already in it**; the playlist's name is never read
+    again once it holds a track.
+
+  This is deliberate, not an oversight: a playlist's name can drift out of
+  sync with its contents once it's been renamed after the fact (see the
+  merged-list rename UI below), while its actual tracks are ground truth for
+  what it's about — so track-derived tokens win the moment there's any
+  ground truth to derive them from. Matching candidates (excluding songs
+  already in the playlist) are ranked by `rankBy(tokens, title)` and capped
+  at `limit` (default 20). `PlaylistDetailComponent.refreshProposals()`
+  re-fetches after every membership-changing mutation (`addSong`,
+  `removeSong`, bulk remove, and the initial load) via
+  `PlaylistService.getProposals` (thin passthrough, no client-side caching),
+  so the list stays current without a dedicated poll.
+
+This is intentionally **not** an auto-fill feature — it never invents a whole
+tracklist from one seed the way the removed generator did. It only makes
+finding and adding individual matching tracks fast, and nudges the user
+toward tracks that already look like they belong.
+
+## 0a. Merged playlist list (single list, inline rename/delete)
+
+The Library page's Playlists mode (`library.component.ts`/`.html`,
+`data-testid="playlists-list"`) shows **one** list rather than separate
+"yours" / "curated" sections — `PlaylistService.list()` already returns the
+user's own playlists plus every global `kind='curated'` playlist sorted
+server-side (curated first, then by `modified_at` — see
+`PlaylistService.list` in `playlist.service.ts`), so the client renders it
+verbatim with no re-sort/split. Each row (`data-testid="playlist-row"`)
+shows a small inline **"Curated"** badge (`data-testid="curated-badge-inline"`)
+for `kind === 'curated'` rows instead of a separate shelf. Only `kind ===
+'user'` rows get the per-row **Rename** (`data-testid="rename-playlist"`,
+inline text input, commit on Enter/blur, cancel on Escape) and **Delete**
+(`data-testid="delete-playlist"`, confirm dialog, `kind='curated'` guarded
+server-side too) icon buttons — a curated row is read-only by `kind`, not by
+ownership, matching [curated-playlists.md](curated-playlists.md)'s "read-only
+by kind" convention. Creating a playlist (name input + submit) navigates
+straight to the new playlist's detail route (`create()` → `router.navigate`)
+rather than staying on the list, since the next thing a user does after
+creating one is almost always add songs to it via §0 above.
 
 ---
 
@@ -79,9 +171,10 @@ playlists via the existing idempotent `seed-curated-playlists.ts` path.
 ### 2b. Similarity ("more like this") via a feature vector — ✅ realized
 
 Shipped as the shared Radio scorer (`scoreSimilarity` / `rankCandidates` in
-`radio.service.ts`), used by `/api/radio/next`, `/songs/:id/similar`, and
-`POST /api/playlists/generate`. Two refinements landed on top of the original
-scalar blend:
+`radio.service.ts`), used by `/api/radio/next` and `/songs/:id/similar` (the
+now-removed `POST /api/playlists/generate` was a third consumer of this same
+engine — see §0 above for what replaced it). Two refinements landed on top of
+the original scalar blend:
 
 - **Weight-normalized blend, not a raw sum.** Each factor counts only when both
   tracks carry it; the score is `Σ(factorScore×weight) / Σ(weight of comparable
