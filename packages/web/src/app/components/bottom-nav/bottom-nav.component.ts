@@ -43,6 +43,7 @@ const TABS: BottomNavItem[] = [
   standalone: true,
   imports: [RouterLink, RouterLinkActive, NgTemplateOutlet],
   templateUrl: './bottom-nav.component.html',
+  styleUrl: './bottom-nav.component.css',
 })
 export class BottomNavComponent {
   readonly setup = inject(SetupService);

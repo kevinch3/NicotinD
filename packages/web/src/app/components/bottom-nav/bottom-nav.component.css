@@ -1,0 +1,20 @@
+/* Active tab: accent text + 2px accent bar at the top.
+   The bar+color combination reads as the "selected" state across all 7 themes
+   (Midnight, Daylight, Warm Paper, OLED, Twilight, Forest, E-Ink) because every
+   theme defines --theme-accent (and E-Ink's black accent keeps it legible). The
+   2px line is painted via a pseudo-element anchored to the existing `relative`
+   wrapper, so it doesn't consume any grid geometry. */
+a.is-active {
+  color: var(--theme-accent);
+}
+
+a.is-active::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 25%;
+  right: 25%;
+  height: 2px;
+  background: var(--theme-accent);
+  border-radius: 2px;
+}

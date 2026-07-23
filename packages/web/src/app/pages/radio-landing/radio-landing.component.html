@@ -46,7 +46,7 @@
           [disabled]="starting() !== null"
           data-testid="radio-preset"
           [attr.data-preset-id]="preset.id"
-          class="flex items-center gap-2 px-4 py-2.5 rounded-full bg-theme-surface-2 text-sm font-medium text-theme-primary hover:bg-theme-accent hover:text-theme-on-accent transition active:scale-95 disabled:opacity-50"
+          class="flex items-center gap-2 px-4 py-2.5 rounded-full bg-theme-surface-2 text-sm font-medium text-theme-primary hover:bg-theme-accent/15 hover:text-theme-accent transition active:scale-95 disabled:opacity-50"
         >
           <span aria-hidden="true">{{ preset.emoji }}</span>
           {{ preset.label }}
@@ -67,7 +67,7 @@
             (click)="startGenre(genre)"
             [disabled]="starting() !== null"
             data-testid="radio-genre"
-            class="px-4 py-2 rounded-full bg-theme-surface-2/70 text-sm text-theme-secondary hover:bg-theme-accent hover:text-theme-on-accent transition active:scale-95 disabled:opacity-50"
+            class="px-4 py-2 rounded-full bg-theme-surface-2/70 text-sm text-theme-secondary hover:bg-theme-accent/15 hover:text-theme-accent transition active:scale-95 disabled:opacity-50"
           >
             {{ genre }}
           </button>
