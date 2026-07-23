@@ -101,6 +101,47 @@ export interface LyricsCapability {
   fetchLyrics(query: LyricsQuery): Promise<LyricsResult | null>;
 }
 
+/**
+ * What the host knows about a **release** when asking a source for its genres.
+ * Release-scoped by design: there is deliberately no artist-level genre query —
+ * artist-level coverage measured ~4x worse than release-level (issue #187
+ * finding 3), so not offering the option is safer than documenting "don't use
+ * it". MBIDs are the only provider-specific ids carried; the matcher resolves
+ * them to the source's own id internally, keeping the contract source-agnostic.
+ */
+export interface GenreQuery {
+  artist: string;
+  album: string;
+  /** MusicBrainz ids for this release, when known (most-specific wins). */
+  mbid?: { releaseGroup?: string; release?: string };
+}
+
+/** Genres a source resolved for a release. */
+export interface GenreResult {
+  /** Resolved genres/styles, most-general first, de-duplicated. */
+  genres: string[];
+  /** Plugin id that produced this (e.g. 'discogs'). */
+  source: string;
+  /**
+   * Match confidence in [0, 1] — always a real, computed number. There is no
+   * `1.0` "it came from a tag, trust it" shortcut here; that belongs to the tag
+   * layer, not a network source that had to *match* a release first.
+   */
+  confidence: number;
+}
+
+/**
+ * Metadata source that resolves genres for a release on demand (Discogs, …).
+ * The host decides whether/how to persist the result (the enrichment wiring +
+ * `library_genre_overrides` write path land in the per-capability issues, gated
+ * by the #191 coverage spike); this contract is just "given a release, what
+ * genres does the source have?".
+ */
+export interface GenreCapability {
+  /** Returns genres for the release, or null when the source has no confident match. */
+  fetchGenres(query: GenreQuery): Promise<GenreResult | null>;
+}
+
 /** Connectivity plugins (tailscale/wireguard) — scaffold; none shipped yet. */
 export interface ConnectivityCapability {
   up(): Promise<void>;

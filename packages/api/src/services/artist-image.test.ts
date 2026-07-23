@@ -7,7 +7,13 @@ import {
   findLidarrArtist,
   resolveArtistImageUrl,
   type ArtistImageLidarr,
+  type ArtistImageProvider,
 } from './artist-image.js';
+
+/** A stub provider that always returns `url` (or null) for its named source. */
+function stubProvider(source: string, url: string | null): ArtistImageProvider {
+  return { source, lookup: async () => url };
+}
 
 const poster = (url: string) => [{ coverType: 'poster', url }];
 
@@ -31,10 +37,15 @@ describe('findLidarrArtist', () => {
     const lidarr = lidarrMock({
       list: [{ id: 7, artistName: 'Radiohead', images: poster('https://x/p.jpg') } as LidarrArtist],
     });
-    const found = await findLidarrArtist(db, lidarr, indexLidarrArtists(await lidarr.artist.list()), {
-      id: 'a1',
-      name: 'Radiohead',
-    });
+    const found = await findLidarrArtist(
+      db,
+      lidarr,
+      indexLidarrArtists(await lidarr.artist.list()),
+      {
+        id: 'a1',
+        name: 'Radiohead',
+      },
+    );
     expect(found?.id).toBe(7);
   });
 
@@ -44,12 +55,23 @@ describe('findLidarrArtist', () => {
       ['a1', 7, 'mbid'],
     );
     const lidarr = lidarrMock({
-      list: [{ id: 7, artistName: 'Stored Differently', images: poster('https://x/p.jpg') } as LidarrArtist],
+      list: [
+        {
+          id: 7,
+          artistName: 'Stored Differently',
+          images: poster('https://x/p.jpg'),
+        } as LidarrArtist,
+      ],
     });
-    const found = await findLidarrArtist(db, lidarr, indexLidarrArtists(await lidarr.artist.list()), {
-      id: 'a1',
-      name: 'Anything Else',
-    });
+    const found = await findLidarrArtist(
+      db,
+      lidarr,
+      indexLidarrArtists(await lidarr.artist.list()),
+      {
+        id: 'a1',
+        name: 'Anything Else',
+      },
+    );
     expect(found?.id).toBe(7);
   });
 
@@ -65,61 +87,68 @@ describe('findLidarrArtist', () => {
       },
     } as unknown as ArtistImageLidarr;
     const idx = indexLidarrArtists([]);
-    expect(await findLidarrArtist(db, lidarr, idx, { id: 'a1', name: 'Aphex Twin' })).toBeUndefined();
+    expect(
+      await findLidarrArtist(db, lidarr, idx, { id: 'a1', name: 'Aphex Twin' }),
+    ).toBeUndefined();
     expect(calls).toBe(0);
-    const found = await findLidarrArtist(db, lidarr, idx, { id: 'a1', name: 'Aphex Twin' }, {
-      lookupMissing: true,
-    });
+    const found = await findLidarrArtist(
+      db,
+      lidarr,
+      idx,
+      { id: 'a1', name: 'Aphex Twin' },
+      {
+        lookupMissing: true,
+      },
+    );
     expect(found?.artistName).toBe('Aphex Twin');
     expect(calls).toBe(1);
   });
 });
 
-describe('resolveArtistImageUrl', () => {
+describe('resolveArtistImageUrl (generic provider walk)', () => {
   const artist = { id: 'a1', name: 'Radiohead' };
 
-  it('returns the Lidarr poster first', async () => {
-    const lidarr = lidarrMock({
-      list: [{ id: 7, artistName: 'Radiohead', images: poster('https://x/lidarr.jpg') } as LidarrArtist],
-    });
-    const spotify = async () => 'https://x/spotify.jpg';
+  it('returns the first non-null provider hit, with its source', async () => {
     const r = await resolveArtistImageUrl(
-      db,
-      { lidarr, index: indexLidarrArtists(await lidarr.artist.list()), spotifyLookup: spotify },
+      [
+        stubProvider('lidarr', 'https://x/lidarr.jpg'),
+        stubProvider('spotify', 'https://x/spotify.jpg'),
+      ],
       artist,
     );
     expect(r).toEqual({ url: 'https://x/lidarr.jpg', source: 'lidarr' });
   });
 
-  it('falls back to Spotify when Lidarr has no image', async () => {
-    const lidarr = lidarrMock({ list: [] });
+  it('falls through a null provider to the next one', async () => {
     const r = await resolveArtistImageUrl(
-      db,
-      {
-        lidarr,
-        index: indexLidarrArtists([]),
-        spotifyLookup: async () => 'https://x/spotify.jpg',
-      },
+      [stubProvider('lidarr', null), stubProvider('spotify', 'https://x/spotify.jpg')],
       artist,
     );
     expect(r).toEqual({ url: 'https://x/spotify.jpg', source: 'spotify' });
   });
 
-  it('returns null when neither source has an image', async () => {
+  it('returns null when every provider comes up empty (no-match fallthrough)', async () => {
     const r = await resolveArtistImageUrl(
-      db,
-      { lidarr: lidarrMock({ list: [] }), index: indexLidarrArtists([]), spotifyLookup: async () => null },
+      [stubProvider('lidarr', null), stubProvider('spotify', null)],
       artist,
     );
     expect(r).toBeNull();
   });
 
-  it('works with only Spotify configured (no Lidarr)', async () => {
-    const r = await resolveArtistImageUrl(
-      db,
-      { lidarr: null, index: null, spotifyLookup: async () => 'https://x/s.jpg' },
-      artist,
-    );
-    expect(r).toEqual({ url: 'https://x/s.jpg', source: 'spotify' });
+  it('returns null for an empty chain', async () => {
+    expect(await resolveArtistImageUrl([], artist)).toBeNull();
+  });
+
+  it('does not consult a later provider once an earlier one resolves', async () => {
+    let spotifyCalls = 0;
+    const spotify: ArtistImageProvider = {
+      source: 'spotify',
+      lookup: async () => {
+        spotifyCalls += 1;
+        return 'https://x/spotify.jpg';
+      },
+    };
+    await resolveArtistImageUrl([stubProvider('lidarr', 'https://x/lidarr.jpg'), spotify], artist);
+    expect(spotifyCalls).toBe(0);
   });
 });

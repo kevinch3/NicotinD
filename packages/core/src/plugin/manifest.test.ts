@@ -40,6 +40,14 @@ describe('validatePluginManifest', () => {
     ).toEqual([]);
   });
 
+  it('accepts a metadata genre manifest (Discogs shell)', () => {
+    expect(
+      validatePluginManifest(
+        base({ id: 'discogs', kind: 'metadata', capabilities: ['genre'], defaultEnabled: false }),
+      ),
+    ).toEqual([]);
+  });
+
   it('rejects a metadata capability not in the metadata kind', () => {
     const errs = validatePluginManifest(
       base({ id: 'lrclib', kind: 'metadata', capabilities: ['search'] }),

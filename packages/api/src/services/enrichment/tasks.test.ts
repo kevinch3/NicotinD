@@ -478,11 +478,11 @@ describe('key task', () => {
 describe('artist-image task', () => {
   const artistImage = getTask('artist-image')!;
 
-  it('is available with Lidarr or Spotify, unavailable with neither', () => {
+  it('is available when any provider in the chain is configured, unavailable with none', () => {
     expect(artistImage.available(ctx())).toBe(true);
     expect(artistImage.available(ctx({ lidarr: null }))).toBe(true); // Spotify present
     expect(artistImage.available(ctx({ lidarr: null, lookupArtistImageSpotify: null }))).toBe(
-      'Lidarr/Spotify not configured',
+      'No artist-image provider configured',
     );
   });
 

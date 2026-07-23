@@ -9,6 +9,7 @@ import { ArchivePlugin } from './archive/index.js';
 import { SpotifyPlugin } from './spotify/index.js';
 import { YtdlpPlugin } from './ytdlp/index.js';
 import { LrclibPlugin } from './lrclib/index.js';
+import { DiscogsPlugin } from './discogs/index.js';
 
 export interface BuiltinPluginDeps {
   config: NicotinDConfig;
@@ -87,4 +88,16 @@ export function registerBuiltinPlugins(plugins: PluginRegistry, deps: BuiltinPlu
   // Metadata source — lyrics from LRCLIB. Default-on (keyless, benign); seeded
   // enabled on first boot only, so an admin's later disable is preserved.
   plugins.register(new LrclibPlugin());
+  // Metadata source — release genres/styles from Discogs. Default-off + consent-
+  // gated (Discogs API ToU); the admin enters a Consumer Key + Secret on its
+  // extension card. The on-disk response cache lives under the data dir. The
+  // shell is registered so it's manageable in Extensions; no enrichment task
+  // consumes its `genre` capability yet (that lands gated by the #191 spike).
+  plugins.register(
+    new DiscogsPlugin({
+      consumerKey: '',
+      consumerSecret: '',
+      cacheFile: join(dataDir, 'discogs-cache.json'),
+    }),
+  );
 }
