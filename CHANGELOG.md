@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.249](https://github.com/kevinch3/NicotinD/compare/v0.1.248...v0.1.249) (2026-07-23)
+
+### Features
+
+* **library:** add genre-audio fallback task (issue [#187](https://github.com/kevinch3/NicotinD/issues/187) A2) ([2b31810](https://github.com/kevinch3/NicotinD/commit/2b31810c0710d769301442b2a133612f11e94be2)), references [#202](https://github.com/kevinch3/NicotinD/issues/202)
 ## [0.1.248](https://github.com/kevinch3/NicotinD/compare/v0.1.247...v0.1.248) (2026-07-23)
 
 ### Features
