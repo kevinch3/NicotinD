@@ -40,7 +40,16 @@ import { clearCoverNegativeCache, extractCover, fetchRemoteCover } from './strea
 import { upsertArtistIdentity, upsertArtistAlias } from '../services/artist-identity-store.js';
 import { recordAudit } from '../services/audit-log.js';
 import { artistIdFor } from '../services/library-scanner.js';
-import { appendSongGenres, loadGenreSets } from '../services/genre-split.js';
+import { appendSongGenres, loadGenreSets, setSongGenres } from '../services/genre-split.js';
+import {
+  applyGenreOverride,
+  backfillGenreOverrides,
+  buildOverrideIndex,
+  deleteGenreOverride,
+  getGenreOverride,
+  splitStored,
+  upsertGenreOverride,
+} from '../services/genre-overrides.js';
 import { resizeCover } from '../services/cover-thumbnail.js';
 import {
   dedupeCoverUrls,
@@ -1360,6 +1369,95 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     return c.json({ ok: true, resynced: Boolean(runSync) });
   });
 
+  // Artist-level genre override (issue #187 A3). This is the highest-leverage
+  // correction surface in the library: one row fixes every track by an artist,
+  // including ones downloaded later, and it is the only thing that actually
+  // resolves cases MusicBrainz has no data for — measured 2/25 artists, so the
+  // manual path is the primary path here, not a fallback.
+  app.get('/artists/:id/genre', (c) => {
+    const db = getDatabase();
+    const artist = db
+      .query<{ name: string }, [string]>(`SELECT name FROM library_artists WHERE id = ?`)
+      .get(c.req.param('id'));
+    if (!artist) return c.json({ error: 'Artist not found' }, 404);
+    const key = normalizeArtistForGrouping(artist.name);
+    const row = getGenreOverride(db, 'artist', key);
+    // The genres actually in effect right now, so the modal can show provenance
+    // ("from file tags" vs "set by you") rather than an unexplained list.
+    const current = db
+      .query<{ genre: string }, [string, string]>(
+        `SELECT DISTINCT sg.genre FROM library_song_genres sg
+           JOIN library_songs s ON s.id = sg.song_id
+          WHERE s.artist_id = ? OR s.album_artist_id = ?
+          ORDER BY sg.position`,
+      )
+      .all(c.req.param('id'), c.req.param('id'))
+      .map((r) => r.genre);
+    return c.json({
+      artist: artist.name,
+      current,
+      override: row ? { genres: row.genres, source: row.source, note: row.note } : null,
+    });
+  });
+
+  app.post('/artists/:id/genre', async (c) => {
+    requireCurator(c);
+    const db = getDatabase();
+    const artist = db
+      .query<{ name: string }, [string]>(`SELECT name FROM library_artists WHERE id = ?`)
+      .get(c.req.param('id'));
+    if (!artist) return c.json({ error: 'Artist not found' }, 404);
+
+    const body = await c.req
+      .json<{ genres?: string; note?: string }>()
+      .catch(() => ({}) as { genres?: string; note?: string });
+    const genres = splitStored(body.genres ?? '');
+    if (genres.length === 0) return c.json({ error: 'genres is required' }, 400);
+
+    upsertGenreOverride(db, {
+      scope: 'artist',
+      key: normalizeArtistForGrouping(artist.name),
+      genres,
+      source: 'user',
+      mbid: null,
+      confidence: null,
+      status: 'applied',
+      note: body.note?.trim() || null,
+    });
+    // Apply to the stored sets right away, then rescan synchronously — same
+    // choice as the artist-identity route: the curator sees the corrected genre
+    // immediately instead of wondering whether it took. The backfill matters on
+    // its own because a scan of a large library takes minutes.
+    backfillGenreOverrides(db, setSongGenres);
+    if (runSync) await runSync();
+    recordAudit(db, c.get('user'), 'artist.genre', {
+      targetKind: 'artist',
+      targetId: artist.name,
+      detail: genres.join(';'),
+    });
+    return c.json({ ok: true, genres, resynced: Boolean(runSync) });
+  });
+
+  app.delete('/artists/:id/genre', async (c) => {
+    requireCurator(c);
+    const db = getDatabase();
+    const artist = db
+      .query<{ name: string }, [string]>(`SELECT name FROM library_artists WHERE id = ?`)
+      .get(c.req.param('id'));
+    if (!artist) return c.json({ error: 'Artist not found' }, 404);
+
+    const removed = deleteGenreOverride(db, 'artist', normalizeArtistForGrouping(artist.name));
+    // A reset needs the full rescan to rebuild the set from tags — the backfill
+    // can only add an override's effect, never undo one.
+    if (runSync) await runSync();
+    recordAudit(db, c.get('user'), 'artist.genre', {
+      targetKind: 'artist',
+      targetId: artist.name,
+      detail: 'reset',
+    });
+    return c.json({ ok: true, removed });
+  });
+
   app.post('/sync', async (c) => {
     requireAdmin(c);
     if (!runSync) return c.json({ error: 'Sync not available' }, 503);
@@ -1505,7 +1603,9 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
   app.post('/songs/:id/genre', async (c) => {
     requireCurator(c);
     const id = c.req.param('id');
-    const body = await c.req.json<{ genre?: string }>().catch(() => ({}) as { genre?: string });
+    const body = await c.req
+      .json<{ genre?: string; mode?: 'append' | 'replace' }>()
+      .catch(() => ({}) as { genre?: string; mode?: 'append' | 'replace' });
     const genres = (body.genre ?? '')
       .split(/[;,|]/)
       .map((g) => g.trim().replace(/\s+/g, ' '))
@@ -1520,10 +1620,50 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       .get(id);
     if (!song) return c.json({ error: 'Song not found' }, 404);
 
-    // Append to the existing set (not replace) — a detected genre adds to, never
-    // clobbers, the song's other genres. The merged set is mirrored to the file tag
-    // so the next full scan (which rebuilds from tags) preserves the addition.
-    const merged = appendSongGenres(db, id, genres);
+    // Default 'append': a detected genre adds to, never clobbers, the song's
+    // other genres — existing callers and behaviour are unchanged. 'replace'
+    // (issue #187 A3) writes a song-scoped user override so the set's PRIMARY
+    // becomes these genres and stays that way across rescans; the tag mirror
+    // below is then a convenience for external players, not the durability
+    // mechanism.
+    if (body.mode === 'replace') {
+      upsertGenreOverride(db, {
+        scope: 'song',
+        key: id,
+        genres,
+        source: 'user',
+        mbid: null,
+        confidence: null,
+        status: 'applied',
+        note: null,
+      });
+    }
+    let merged: string[];
+    if (body.mode === 'replace') {
+      // Mirror what buildLibrary will compute on the next scan (override first,
+      // then the tag genres it doesn't already carry) so the UI and the eventual
+      // scan agree instead of briefly disagreeing.
+      const existing = loadGenreSets(db, [id]).get(id) ?? [];
+      merged = applyGenreOverride(
+        buildOverrideIndex([
+          {
+            scope: 'song',
+            key: id,
+            genres,
+            source: 'user',
+            mbid: null,
+            confidence: null,
+            status: 'applied',
+            note: null,
+          },
+        ]),
+        { songId: id, albumKey: '', artistKey: '' },
+        existing,
+      );
+      setSongGenres(db, id, merged);
+    } else {
+      merged = appendSongGenres(db, id, genres);
+    }
     if (musicDir) {
       const abs = resolveSongPath(expandDir(musicDir), song.path);
       if (isUnderMusicDir(expandDir(musicDir), abs) && existsSync(abs)) {
@@ -1552,7 +1692,9 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     if (musicDir) {
       const abs = resolveSongPath(expandDir(musicDir), song.path);
       if (isUnderMusicDir(expandDir(musicDir), abs) && existsSync(abs)) {
-        const tags = await readAudioTags(abs).catch(() => ({}) as Awaited<ReturnType<typeof readAudioTags>>);
+        const tags = await readAudioTags(abs).catch(
+          () => ({}) as Awaited<ReturnType<typeof readAudioTags>>,
+        );
         if (tags.licence) {
           suggested = tags.licence;
           source = 'tag';
@@ -1585,9 +1727,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
   app.post('/songs/:id/licence', async (c) => {
     requireCurator(c);
     const id = c.req.param('id');
-    const body = await c.req
-      .json<{ licence?: string }>()
-      .catch(() => ({}) as { licence?: string });
+    const body = await c.req.json<{ licence?: string }>().catch(() => ({}) as { licence?: string });
     const raw = (body.licence ?? '').trim().toLowerCase();
     const clear = raw === '' || raw === 'unknown';
     if (!clear && !isLicenceCode(raw)) return c.json({ error: 'invalid licence' }, 400);

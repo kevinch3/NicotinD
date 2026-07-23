@@ -20,6 +20,12 @@ import {
   type SplitAuthority,
 } from './artist-identity-store.js';
 import { pruneOrphanArtist } from './library-aggregates.js';
+import {
+  applyGenreOverride,
+  emptyOverrideIndex,
+  loadGenreOverrides,
+  type OverrideIndex,
+} from './genre-overrides.js';
 import { partitionByCache, loadScanCache, saveScanCache, type FileStat } from './scan-cache.js';
 import {
   splitGenres,
@@ -391,6 +397,7 @@ export function buildLibrary(
   overrides?: ReadonlyMap<string, MetadataOverrideValue>,
   authority: SplitAuthority = emptyAuthority(),
   genreCtx: GenreContext = emptyGenreContext(),
+  genreOverrides: OverrideIndex = emptyOverrideIndex(),
 ): BuiltLibrary {
   tracks = selectLibraryTracks(tracks, canonicalByAlbum, overrides);
 
@@ -470,7 +477,19 @@ export function buildLibrary(
     const albId = albumIdFor(albumArtist, album);
     const id = songId(t.relPath);
     const created = new Date(t.mtimeMs).toISOString();
-    const genres = splitGenres(t.genre, gctx);
+    // Tag-derived set first, then any override REPLACES its primary (the tag
+    // genres it doesn't already carry are kept after it). Overrides are keyed
+    // on the same strings the ids above are minted from, so nothing extra has
+    // to be threaded through here.
+    const genres = applyGenreOverride(
+      genreOverrides,
+      {
+        songId: id,
+        albumKey: albumGroupKey(albumArtist, album),
+        artistKey: normalizeArtistForGrouping(albumArtist),
+      },
+      splitGenres(t.genre, gctx),
+    );
     for (let i = 0; i < genres.length; i++) {
       songGenreLinks.push({ songId: id, genre: genres[i]!, position: i });
       const key = genreKey(genres[i]!);
@@ -681,6 +700,7 @@ export class LibraryScanner {
       loadOverrides(this.db),
       loadSplitAuthority(this.db),
       loadGenreContext(this.db),
+      loadGenreOverrides(this.db),
     );
     const result = this.persist(built, startedAt, true);
     log.info({ ...result }, 'Full scan complete');
@@ -721,6 +741,7 @@ export class LibraryScanner {
       loadOverrides(this.db),
       loadSplitAuthority(this.db),
       loadGenreContext(this.db),
+      loadGenreOverrides(this.db),
     );
     this.persist(built, Date.now(), false);
     log.info({ files: tracks.length, albums: built.albums.length }, 'Incremental scan complete');
@@ -1098,6 +1119,11 @@ export class LibraryScanner {
         this.canonicalByAlbum(),
         loadOverrides(this.db),
         loadSplitAuthority(this.db),
+        // Both were previously omitted here, so an album reconcile rebuilt genre
+        // sets from raw tags — reverting reviewed aliases AND genre overrides for
+        // the touched albums until the next full scan.
+        loadGenreContext(this.db),
+        loadGenreOverrides(this.db),
       );
       this.persist(built, syncedAt, false);
       this.pruneAlbumOrphans(built.albums.map((a) => a.id));

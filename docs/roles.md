@@ -9,16 +9,16 @@ new self-registrations default to `user`; an admin assigns the other roles from 
 listener  <  user  <  refiner  <  admin
 ```
 
-| Capability | listener | user | refiner | admin |
-|---|:--:|:--:|:--:|:--:|
-| Play library, search **library**, own playlists, cast | ✅ | ✅ | ✅ | ✅ |
-| **Acquire** — hunt/download/URL, Downloads feed, network search results | ❌ | ✅ | ✅ | ✅ |
-| **Curate** — album edit/merge/delete, metadata & cover overrides, artist-identity, genre, lyrics | ❌ | ❌ | ✅ | ✅ |
-| **Server admin** — user mgmt, streaming/processing settings, find-dupes, `/sync`, extensions config | ❌ | ❌ | ❌ | ✅ |
+| Capability                                                                                          | listener | user | refiner | admin |
+| --------------------------------------------------------------------------------------------------- | :------: | :--: | :-----: | :---: |
+| Play library, search **library**, own playlists, cast                                               |    ✅    |  ✅  |   ✅    |  ✅   |
+| **Acquire** — hunt/download/URL, Downloads feed, network search results                             |    ❌    |  ✅  |   ✅    |  ✅   |
+| **Curate** — album edit/merge/delete, metadata & cover overrides, artist-identity, genre, lyrics    |    ❌    |  ❌  |   ✅    |  ✅   |
+| **Server admin** — user mgmt, streaming/processing settings, find-dupes, `/sync`, extensions config |    ❌    |  ❌  |   ❌    |  ✅   |
 
 **Why this shape.** The driver was decluttering: some users have no interest in acquisition and
-want a clean, Spotify-style listening app. `listener` is that experience — acquisition is *hidden
-and enforced server-side*, not merely hidden in the UI. `refiner` is a bonus delegation tier: it
+want a clean, Spotify-style listening app. `listener` is that experience — acquisition is _hidden
+and enforced server-side_, not merely hidden in the UI. `refiner` is a bonus delegation tier: it
 lets a trusted user curate the library without handing them full server administration. Existing
 `user` accounts are unchanged by the migration (they keep exactly today's powers), so nothing
 breaks on upgrade — there is no data migration, only new valid values.
@@ -29,10 +29,10 @@ breaks on upgrade — there is no data migration, only new valid values.
 guards and the web gating (mirrored into the web via `packages/web/src/types/core.ts`):
 
 - `canAcquire(role)` — `>= user` (anyone but a listener)
-- `canCurate(role)`  — `>= refiner`
-- `isAdmin(role)`    — `=== admin`
-- `asRole(str)`      — coerce an unknown/legacy value to a valid `Role`, defaulting to `user`
-  (never *elevating* a garbage value).
+- `canCurate(role)` — `>= refiner`
+- `isAdmin(role)` — `=== admin`
+- `asRole(str)` — coerce an unknown/legacy value to a valid `Role`, defaulting to `user`
+  (never _elevating_ a garbage value).
 
 ## Server-side enforcement
 
@@ -48,7 +48,7 @@ Three guards in `packages/api/src/middleware/current-user.ts` (all throw `Forbid
   curation).
 
 **Search is the one exception** (filter, not 403): `GET /api/search` must still return **library**
-results for a listener, so it only *suppresses the network fan-out* when `!canAcquire(role)` — the
+results for a listener, so it only _suppresses the network fan-out_ when `!canAcquire(role)` — the
 library provider always runs; the slskd/plugin providers are skipped.
 
 The admin role-update route (`PUT /api/admin/users/:id/role`) validates the incoming role against
@@ -81,7 +81,8 @@ signal). UI surfaces gate on these:
   blended "Get" results, the Advanced network lane) — the library results list stays visible.
 - **Curation gated to refiner+admin** (`canCurate()`): the `⋯` Remove action
   (`song-menu.service`), album/artist/genre/library-songs delete + edit controls, and the
-  track-info sheet's artist-identity / genre / lyrics editors.
+  track-info sheet's artist-identity / genre / lyrics editors, and the artist page's
+  genre-override modal (`POST`/`DELETE /api/library/artists/:id/genre`, `requireCurator`).
 - **Admin unchanged** (`isAdmin()`): the Admin nav link/routes, Extensions, and admin-only
   Settings sections. User management uses a four-value role `<select>`.
 
@@ -92,7 +93,9 @@ With refiners, destructive actions are multi-user — the `audit_log` table give
 `recordAudit` is called **explicitly at the mutation sites** with meaningful action names — not a
 blanket mutation middleware, which would drown the log in per-listener noise (stars, lyric edits).
 Instrumented today: `album.delete`, `songs.bulk-delete`, `artist.identity` (rename/merge/split
-detail), and the admin user-management routes (`user.create/role/status/password-reset/delete`).
+detail), `artist.genre` (the issue #187 curator genre override — detail is the applied `;`-joined
+list, or `reset`), and the admin user-management routes
+(`user.create/role/status/password-reset/delete`).
 A failed ledger write never breaks the audited action. `GET /api/admin/audit?limit=&offset=`
 (admin-gated) serves entries newest-first; the Admin page renders the recent 50 as an "Audit log"
 table (`data-testid="audit-log"`). Add new destructive routes to the ledger when you add them.

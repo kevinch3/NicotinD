@@ -14,15 +14,7 @@ const DEFAULT_ICON = 'play' as const;
  * stroke-width 2) to match the rest of the app's inline icons.
  */
 export type IconName =
-  | 'back'
-  | 'play'
-  | 'download'
-  | 'share'
-  | 'close'
-  | 'add'
-  | 'delete'
-  | 'queue'
-  | 'edit';
+  'back' | 'play' | 'download' | 'share' | 'close' | 'add' | 'delete' | 'queue' | 'edit' | 'tag';
 
 /** Play is the only filled glyph; the rest are stroked outlines. DI-free so the
  *  branch is unit-testable (the JIT harness can't drive the `name` input). */
