@@ -51,12 +51,7 @@ import { radioRoutes } from './routes/radio.js';
 import { PluginRegistry } from './services/plugins/registry.js';
 import { upsertTrackStatus } from './services/plugins/host-context.js';
 import { recordAcquireJobTrack } from './services/acquire-playlist.js';
-import { SlskdPlugin } from './services/plugins/slskd/index.js';
-import { YtdlpPlugin } from './services/plugins/ytdlp/index.js';
-import { SpotdlPlugin } from './services/plugins/spotdl/index.js';
-import { ArchivePlugin } from './services/plugins/archive/index.js';
-import { SpotifyPlugin } from './services/plugins/spotify/index.js';
-import { LrclibPlugin } from './services/plugins/lrclib/index.js';
+import { registerBuiltinPlugins } from './services/plugins/builtin.js';
 import { requireAcquisitionMiddleware } from './services/plugins/gate.js';
 import { seedLegacyAcquisitionPlugins } from './services/plugins/legacy-seed.js';
 import { AcquireWatcher } from './services/acquire-watcher.js';
@@ -428,48 +423,12 @@ export function createApp({
       }
     },
   });
-  plugins.register(new SlskdPlugin(slskdRef, registry));
-  // Zero-config cookies: drop a Netscape cookies.txt at
-  // <dataDir>/youtube-cookies.txt and both YouTube-backed downloaders pick it
-  // up (only when the file exists) — the unblock for YouTube's bot-check on
-  // flagged server IPs. An explicit config path overrides the convention.
-  const defaultCookiesFile = join(expandedDataDir, 'youtube-cookies.txt');
-  // Register specific-URL plugins before the catch-all yt-dlp so that
-  // getEnabledForUrl's find() returns the right handler.
-  // (spotdl: spotify.com only; archive: archive.org only; ytdlp: everything else)
-  plugins.register(
-    new SpotdlPlugin({
-      enabled: config.acquire.spotdl.enabled,
-      binaryPath: config.acquire.spotdl.binaryPath,
-      cookiesFile: config.acquire.spotdl.cookiesFile || defaultCookiesFile,
-    }),
-  );
-  plugins.register(
-    new ArchivePlugin({
-      enabled: config.acquire.archive.enabled,
-      preferredFormats: config.acquire.archive.preferredFormats,
-    }),
-  );
-  // Metadata-only fallback lane — no `resolve`, so it never competes for URLs.
-  plugins.register(
-    new SpotifyPlugin({
-      enabled: config.acquire.spotify.enabled,
-      clientId: config.acquire.spotify.clientId,
-      clientSecret: config.acquire.spotify.clientSecret,
-    }),
-  );
-  plugins.register(
-    new YtdlpPlugin({
-      enabled: config.acquire.ytdlp.enabled,
-      binaryPath: config.acquire.ytdlp.binaryPath,
-      format: config.acquire.ytdlp.format,
-      extraArgs: config.acquire.ytdlp.extraArgs,
-      cookiesFile: config.acquire.ytdlp.cookiesFile || defaultCookiesFile,
-    }),
-  );
-  // Metadata source — lyrics from LRCLIB. Default-on (keyless, benign); seeded
-  // enabled on first boot only, so an admin's later disable is preserved.
-  plugins.register(new LrclibPlugin());
+  registerBuiltinPlugins(plugins, {
+    config,
+    dataDir: expandedDataDir,
+    slskdRef,
+    providerRegistry: registry,
+  });
   // One-time migration: seed the previously-implicit acquisition plugins enabled
   // ONLY on an existing (pre-plugin) install, so upgrades stay seamless. Fresh
   // installs are default-off — an admin opts into acquisition in Settings →

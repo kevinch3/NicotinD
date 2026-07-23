@@ -121,8 +121,13 @@ export class SpotdlPlugin implements Plugin {
    *
    * Reads the registry live (no cache) so an admin editing the Spotify card
    * takes effect on the next `run()` without needing to re-init the plugin.
+   *
+   * Public because the interesting failure mode is the **wiring**: when this
+   * plugin is constructed without its registry the forwarding silently becomes
+   * a no-op, and every test of `spotifyEnvFor` still passes. `builtin.test.ts`
+   * asserts against this on the instance the real registration built.
    */
-  private spotifyEnv(): NodeJS.ProcessEnv | null {
+  spotifyEnv(): NodeJS.ProcessEnv | null {
     return this.registry ? spotifyEnvFor(this.registry) : null;
   }
 

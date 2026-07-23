@@ -3,8 +3,12 @@ import { HttpClient } from '@angular/common/http';
 import { firstValueFrom, type Observable } from 'rxjs';
 import type { SlskdStatus } from '@nicotind/core';
 
-export type PluginKind = 'acquisition' | 'connectivity';
-export type PluginCapability = 'search' | 'browse' | 'resolve' | 'download' | 'connectivity';
+/** Mirrors `PluginKind` in `@nicotind/core` — keep the three in sync. A kind
+ *  missing here has no group computed and no template section, so its plugins
+ *  render nowhere at all (which is exactly how LRCLIB went unmanageable). */
+export type PluginKind = 'acquisition' | 'metadata' | 'connectivity';
+export type PluginCapability =
+  'search' | 'browse' | 'resolve' | 'download' | 'lyrics' | 'connectivity';
 
 export type PluginConfigFieldType = 'text' | 'password';
 
@@ -47,6 +51,7 @@ export class PluginService {
   readonly plugins = signal<PluginInfo[]>([]);
 
   readonly acquisition = computed(() => this.plugins().filter((p) => p.kind === 'acquisition'));
+  readonly metadata = computed(() => this.plugins().filter((p) => p.kind === 'metadata'));
   readonly connectivity = computed(() => this.plugins().filter((p) => p.kind === 'connectivity'));
 
   /** Capabilities provided by currently-enabled plugins. */

@@ -79,6 +79,18 @@ test.describe('plugin capability gating', () => {
     );
   });
 
+  // Regression: the web `PluginKind` union omitted 'metadata', so LRCLIB —
+  // registered AND seeded enabled on the server — matched no group computed and
+  // no template section. It was live but unmanageable: an admin could not see
+  // it, disable it, or read what it does.
+  test('the LRCLIB metadata extension is visible and manageable', async ({ page }) => {
+    await page.goto('/settings/plugins');
+    const card = page.locator('[data-testid="plugin-card"][data-plugin-id="lrclib"]');
+    await expect(card).toBeVisible();
+    // Default-on (keyless, benign) — unlike every acquisition plugin.
+    await expect(card.getByTestId('plugin-toggle')).toHaveText('Disable');
+  });
+
   test('the slskd card links to its own extension page (disabled notice when off)', async ({
     page,
   }) => {

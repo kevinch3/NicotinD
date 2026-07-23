@@ -75,6 +75,15 @@ worked example.
 - **`host-context.ts`** — builds the `PluginHostContext`: staging under
   `<dataDir>/staging/plugins/<id>/<jobId>`, a `plugin_kv`-backed scoped store, and a progress
   emitter the host wires to its job tables.
+- **`builtin.ts`** (`registerBuiltinPlugins`) — constructs + registers every first-party plugin in
+  one covered function, called from `createApp`. It exists because **a plugin's construction
+  arguments are load-bearing and were previously untestable**: `SpotdlPlugin` needs the
+  `PluginRegistry` handed to it to read the spotify card's credentials live, that argument was
+  silently omitted at the call site, and every unit test still passed — the documented `SPOTIPY_*`
+  forwarding was dead code for the whole time. `builtin.test.ts` now asserts against the instances
+  the real registration builds. Watch the two same-named registries: `PluginRegistry` (the plugin
+  kernel) vs `ProviderRegistry` (the acquisition provider list slskd registers into) — their
+  proximity in the original call site is what made the omission easy to miss.
 
 ### Persistence (`packages/api/src/db.ts`)
 
@@ -197,7 +206,9 @@ process.ts` — `runAcquireProcess` + progress parsing + audio collection; the i
 
 1. Implement `Plugin` in `packages/api/src/services/plugins/<id>/`, declaring a manifest (kind +
    capabilities + compliance/requirements) and only the capability accessors it provides.
-2. `registry.register(new MyPlugin(...))` in `packages/api/src/index.ts`.
+2. `plugins.register(new MyPlugin(...))` in `registerBuiltinPlugins`
+   (`packages/api/src/services/plugins/builtin.ts`) — **not** inline in `index.ts`, so the
+   construction (including any cross-plugin dependency) is covered by `builtin.test.ts`.
 3. Host orchestrators automatically pick it up via `registry.getEnabledWithCapability(...)` /
    `getEnabledForUrl(...)` once an admin enables it.
 4. Add tests (manifest validity, capability behavior) and a doc bullet. The plugin's UI (toggle,
@@ -209,12 +220,17 @@ process.ts` — `runAcquireProcess` + progress parsing + audio collection; the i
   `enable(id, consent)` / `disable` / `saveConfig`, and the capability computeds `hasSearch` /
   `hasResolve` / `hasDownload` plus id-specific gates `hasArchive` / `hasSpotify` / `hasSpotdl`
   (the last requires **enabled AND available**, since one-click Spotify download needs the spotdl
-  binary present). UI surfaces gate on these.
+  binary present). UI surfaces gate on these. Its `PluginKind` union **mirrors the core one** and
+  must stay in sync: a kind missing here has no group computed and no template section, so its
+  plugins render **nowhere** — which is exactly how LRCLIB shipped live-but-unmanageable (registered
+  *and* `seedEnabled`, yet absent from Extensions because the union was `acquisition | connectivity`).
 - `pages/plugins/plugins.component.ts` — admin-only page (route `/settings/plugins`, `adminGuard`),
   labelled **Extensions** in the UI (linked from Settings → Extensions; identifiers stay `plugin*`).
-  Cards grouped by kind (**Acquisition** + a generic **Connectivity** section that currently shows
-  an empty-state — the wiring is ready for a tailscale/wireguard plugin to appear with no UI
-  changes). Enabling a consent-gated plugin opens its disclaimer via `ConfirmDialogComponent` and
+  Cards grouped by kind — **Acquisition**, **Metadata** (lrclib today), and a generic
+  **Connectivity** section that currently shows an empty-state (the wiring is ready for a
+  tailscale/wireguard plugin to appear with no UI changes). Every kind in the core union needs a
+  section here, or its plugins are invisible. Enabling a consent-gated plugin opens its disclaimer
+  via `ConfirmDialogComponent` and
   only then calls `enable(id, true)`.
 - **Per-extension settings surface (`PLUGIN_DETAIL_ROUTES`)**: extensions whose settings are too
   bespoke for the generic config-field form own a dedicated page. `plugins.component.ts` maps
