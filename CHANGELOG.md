@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.248](https://github.com/kevinch3/NicotinD/compare/v0.1.247...v0.1.248) (2026-07-23)
+
+### Features
+
+* **analysis:** add genre_discogs400 classification head ([ada5d16](https://github.com/kevinch3/NicotinD/commit/ada5d16981737c8d13200324cc5bd2201952a756)), references [#187](https://github.com/kevinch3/NicotinD/issues/187)
 ## [0.1.247](https://github.com/kevinch3/NicotinD/compare/v0.1.246...v0.1.247) (2026-07-23)
 
 ### Features
