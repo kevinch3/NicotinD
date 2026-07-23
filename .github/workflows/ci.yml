@@ -268,18 +268,75 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Release (idempotent bump, tag, push)
+      # Idempotent, self-healing, orphan-tag-proof release.
+      #
+      # The failure this guards against (seen 2026-07-23, wedged every release
+      # for a day): the old step pushed with `git push --follow-tags`, which is
+      # NON-ATOMIC. When a concurrent merge advanced master, the branch update
+      # was rejected non-fast-forward but the *tag* still landed — leaving an
+      # orphan `vX` tag pointing at a `chore(release)` commit that never reached
+      # master. From then on the dry-run kept proposing that same version, and
+      # the old `tag exists → skip` guard read the orphan as "already published"
+      # and silently exited 0 (green!) on every subsequent push. No new tag → no
+      # deploy.yml run → releases frozen, invisibly.
+      #
+      # Two independent defenses, either of which alone prevents recurrence:
+      #   1. `--atomic`: a rejected branch push no longer lets the tag through.
+      #   2. self-heal: a `vX` tag that is NOT an ancestor of master is treated
+      #      as the orphan it is — deleted and re-cut from real master, instead
+      #      of masking the freeze as a skip. (This also auto-repairs the
+      #      existing orphan on the first master run after this lands.)
+      # Plus a bounded retry that re-syncs to the real tip so a merge racing the
+      # release is retried, never orphaned.
+      - name: Release (idempotent, self-healing bump + tag + atomic push)
         run: |
           set -euo pipefail
-          version="$(bunx commit-and-tag-version --dry-run 2>&1 \
-            | grep -oP 'tagging release v\K[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
-          if [ -z "$version" ]; then
-            echo "Could not determine next version from dry-run output" >&2
-            exit 1
-          fi
-          if git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
-            echo "Tag v$version already exists — release already published, skipping."
-            exit 0
-          fi
-          bun run release
-          git push --follow-tags origin master
+
+          attempt=0
+          max=4
+          while :; do
+            attempt=$((attempt + 1))
+
+            # Always cut the release on top of the true remote tip so the push
+            # is a fast-forward; also refresh tags for the orphan check below.
+            git fetch --tags --force origin master
+            git reset --hard FETCH_HEAD # HEAD now == remote master tip
+
+            version="$(bunx commit-and-tag-version --dry-run 2>&1 \
+              | grep -oP 'tagging release v\K[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
+            if [ -z "$version" ]; then
+              echo "Could not determine next version from dry-run output" >&2
+              exit 1
+            fi
+            tag="v$version"
+
+            if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+              if git merge-base --is-ancestor "$tag^{commit}" HEAD; then
+                echo "$tag already reachable from master — genuinely published, skipping."
+                exit 0
+              fi
+              # Tag exists but is not on master: a stale orphan from a
+              # half-failed push. Delete it and re-release from real master.
+              echo "::warning::$tag is an orphan tag (not an ancestor of master); deleting and re-releasing."
+              git push --delete origin "$tag" || true
+              git tag -d "$tag" || true
+            fi
+
+            bun run release
+
+            # --atomic: if the branch update is rejected (a merge raced us) the
+            # tag is rejected too, so a failed push can never orphan a tag again.
+            if git push --atomic --follow-tags origin HEAD:refs/heads/master; then
+              echo "Published $tag."
+              exit 0
+            fi
+
+            # Roll back the local tag so the retry re-cuts cleanly on the new tip.
+            git tag -d "$tag" || true
+            if [ "$attempt" -ge "$max" ]; then
+              echo "Release push still rejected after $max attempts." >&2
+              exit 1
+            fi
+            echo "Push rejected (master advanced); re-syncing and retrying ($attempt/$max)…" >&2
+            sleep "$((attempt * 3))"
+          done
