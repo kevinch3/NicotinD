@@ -24,6 +24,10 @@ import { appendSongGenres } from '../genre-split.js';
 import { setArtwork } from '../artwork-store.js';
 import { isPlaceholderArtist } from '../artwork-backfill.js';
 import { indexLidarrArtists, resolveArtistImageUrl } from '../artist-image.js';
+import {
+  buildArtistImageProviders,
+  configuredArtistImageSources,
+} from '../artist-image-providers.js';
 import { clearCoverNegativeCache } from '../../routes/streaming.js';
 import { normalizeArtistForGrouping } from '../album-grouping.js';
 import { splitOnDelimiters } from '../artist-split.js';
@@ -759,7 +763,12 @@ const artistImageTask: EnrichmentTask = {
   id: 'artist-image',
   label: 'Artist images',
   available: (ctx) =>
-    ctx.lidarr || ctx.lookupArtistImageSpotify ? true : 'Lidarr/Spotify not configured',
+    configuredArtistImageSources({
+      lidarr: ctx.lidarr,
+      spotifyLookup: ctx.lookupArtistImageSpotify,
+    }).length > 0
+      ? true
+      : 'No artist-image provider configured',
   countPending: (db) =>
     Number(
       (
@@ -799,15 +808,20 @@ const artistImageTask: EnrichmentTask = {
       index = indexLidarrArtists(monitored);
     }
 
+    // The priority-ordered provider chain, assembled once per batch and reused
+    // across rows (Lidarr provider closes over the shared `index`).
+    const providers = buildArtistImageProviders({
+      db,
+      lidarr: ctx.lidarr,
+      index,
+      spotifyLookup: ctx.lookupArtistImageSpotify,
+    });
+
     const labels: string[] = [];
     let applied = 0;
     for (const artist of rows) {
       if (isPlaceholderArtist(artist.name)) continue;
-      const resolved = await resolveArtistImageUrl(
-        db,
-        { lidarr: ctx.lidarr, index, spotifyLookup: ctx.lookupArtistImageSpotify },
-        artist,
-      );
+      const resolved = await resolveArtistImageUrl(providers, artist);
       if (!resolved) continue;
       setArtwork(db, artist.id, 'artist', resolved.url, ctx.coverCacheDir);
       // Evict any cached 404 for this artist id so the new portrait shows at once.
@@ -940,7 +954,13 @@ const licenceTask: EnrichmentTask = {
       try {
         const res = await ctx.lookupLicence({ abs, artist: song.artist, title: song.title });
         if (!res) {
-          noteItemFailure(db, tally, song, 'licence', new NoConfidentResultError('no licence found'));
+          noteItemFailure(
+            db,
+            tally,
+            song,
+            'licence',
+            new NoConfidentResultError('no licence found'),
+          );
           continue;
         }
         db.run('UPDATE library_songs SET licence = ?, licence_source = ? WHERE id = ?', [

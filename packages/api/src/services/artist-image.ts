@@ -1,6 +1,5 @@
 import type { Database } from 'bun:sqlite';
 import type { Lidarr, LidarrArtist } from '@nicotind/lidarr-client';
-import { pickArtistImage } from './artwork-store.js';
 
 /**
  * Artist-portrait resolution shared by the manual artwork backfill
@@ -53,10 +52,9 @@ export async function findLidarrArtist(
   opts: { lookupMissing?: boolean } = {},
 ): Promise<LidarrArtist | undefined> {
   const link = db
-    .query<
-      { lidarr_id: number | null },
-      [string]
-    >('SELECT lidarr_id FROM artist_discography_links WHERE artist_id = ?')
+    .query<{ lidarr_id: number | null }, [string]>(
+      'SELECT lidarr_id FROM artist_discography_links WHERE artist_id = ?',
+    )
     .get(artist.id);
   let found =
     (link?.lidarr_id != null ? index.monitored.find((a) => a.id === link.lidarr_id) : undefined) ??
@@ -64,14 +62,18 @@ export async function findLidarrArtist(
 
   if (!found && opts.lookupMissing) {
     const hits = await lidarr.artist.lookup(artist.name).catch(() => []);
-    found =
-      hits.find((a) => normalizeName(a.artistName) === normalizeName(artist.name)) ?? hits[0];
+    found = hits.find((a) => normalizeName(a.artistName) === normalizeName(artist.name)) ?? hits[0];
   }
   return found;
 }
 
-/** Source a resolved artist image came from — surfaced in enrichment labels. */
-export type ArtistImageSource = 'lidarr' | 'spotify';
+/**
+ * Source a resolved artist image came from — surfaced in enrichment labels.
+ * Open-ended (`string`, not a closed union) so a new provider brings its own
+ * provenance without editing this type: the chain that produces it lives in
+ * {@link ./artist-image-providers}.
+ */
+export type ArtistImageSource = string;
 
 export interface ResolvedArtistImage {
   url: string;
@@ -79,31 +81,33 @@ export interface ResolvedArtistImage {
 }
 
 /**
- * Resolve a real portrait URL for one library artist: Lidarr poster first, then
- * a Spotify portrait. Returns null when neither source has an image (the artist
- * keeps the neutral placeholder). `index` is required to use the Lidarr lane;
- * pass `spotifyLookup: null` to disable the Spotify fallback.
+ * One provider in the artist-image chain: a named source that maps a library
+ * artist to a portrait URL (or null when it has none). Concrete providers
+ * (Lidarr, Spotify, …) — and the priority-ordered factory that assembles them —
+ * live in {@link ./artist-image-providers}; each contains its own deps (the
+ * Lidarr provider closes over `db` + the monitored index, so the generic
+ * resolver never sees a `db` handle).
+ */
+export interface ArtistImageProvider {
+  /** Provenance label recorded on the resolved image (e.g. 'lidarr'). */
+  source: string;
+  lookup(artist: { id: string; name: string }): Promise<string | null>;
+}
+
+/**
+ * Resolve a real portrait URL for one library artist by walking `providers` in
+ * order and returning the first non-null hit (with its source). Returns null
+ * when the whole chain comes up empty (the artist keeps the neutral
+ * placeholder). Provider-agnostic: adding a source is one entry in the factory,
+ * no change here.
  */
 export async function resolveArtistImageUrl(
-  db: Database,
-  deps: {
-    lidarr: ArtistImageLidarr | null;
-    index: LidarrArtistIndex | null;
-    spotifyLookup: ((name: string) => Promise<string | null>) | null;
-    lookupMissing?: boolean;
-  },
+  providers: readonly ArtistImageProvider[],
   artist: { id: string; name: string },
 ): Promise<ResolvedArtistImage | null> {
-  if (deps.lidarr && deps.index) {
-    const la = await findLidarrArtist(db, deps.lidarr, deps.index, artist, {
-      lookupMissing: deps.lookupMissing,
-    });
-    const img = pickArtistImage(la?.images);
-    if (img) return { url: img, source: 'lidarr' };
-  }
-  if (deps.spotifyLookup) {
-    const img = await deps.spotifyLookup(artist.name);
-    if (img) return { url: img, source: 'spotify' };
+  for (const provider of providers) {
+    const url = await provider.lookup(artist);
+    if (url) return { url, source: provider.source };
   }
   return null;
 }
