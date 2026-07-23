@@ -314,6 +314,7 @@ export class AdminComponent implements OnInit, OnDestroy {
     { id: 'energy', label: 'Energy & loudness' },
     { id: 'audio-features', label: 'Audio features (mood, valence, danceability)' },
     { id: 'licence', label: 'Licence / rights (tags → MusicBrainz)' },
+    { id: 'genre-audio', label: 'Genre (audio fallback)' },
   ];
 
   /** Whether a task is required to finish before a download lands in the library. */

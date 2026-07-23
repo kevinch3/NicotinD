@@ -123,6 +123,29 @@ Launch tasks:
   un-ledgered (environmental — see the exclusion section below). Bulk script:
   `scripts/analyze-audio-features.ts`. See
   [audio-ml-enrichment.md](audio-ml-enrichment.md).
+- **genre-audio** (issue #187 task A2, an audio-inferred genre fallback) —
+  `WHERE (genre IS NULL OR genre = '') AND EXISTS (... task = 'genre')`, gated
+  on the analysis sidecar like `audio-features` (and reuses its
+  `ctx.analyzeAudioFeatures` call — the `genre_discogs400` head rides along on
+  the same `/analyze` response). The `EXISTS` clause is load-bearing: it only
+  fires once `genre` has already tried and ledgered the song as unresolved —
+  without it, an audio-only guess could win a race against the authoritative
+  Lidarr/MusicBrainz source for a song `genre` simply hasn't reached yet
+  (writing a genre clears `library_songs.genre`, permanently removing the
+  song from `genre`'s pending set). A Lidarr-less install never populates that
+  ledger, so `genre-audio` never fires there — an accepted limitation, since
+  this is a fallback, never a primary source. A confidence below
+  `NICOTIND_GENRE_AUDIO_CONFIDENCE` (default 0.5) is ledgered via
+  `NoConfidentResultError` (not tallied — the classifier ran and found
+  nothing confident, mirroring unresolvable genre/licence); a build without
+  the head (`genre: null`) is treated the same way. A confident hit is
+  written via the provenance-tagged `library_genre_overrides` path
+  (`source: 'essentia'`, scope `song`) — never `appendSongGenres` — so it can
+  never overwrite a `user` override and combines non-destructively with any
+  existing tag genres. **Never a landing gate** (no `satisfiedColumnSql`): a
+  weak classifier must never strand a fresh download. See
+  [audio-ml-enrichment.md](audio-ml-enrichment.md) and
+  [library-scanner.md](library-scanner.md) "Multi-genre support".
 - **artist-image** — per *artist*, not per song: artists with no
   `library_artwork(kind='artist')` row, `manual_override = 0`, `hidden = 0`, and a
   non-placeholder name (`isPlaceholderArtist`), most-prolific first (`album_count DESC`).

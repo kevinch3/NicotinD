@@ -2,7 +2,8 @@ import { describe, expect, it, beforeEach } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { applySchema } from '../../db.js';
 import { ENRICHMENT_TASKS, getTask, type EnrichmentContext } from './tasks.js';
-import { MAX_ANALYSIS_ATTEMPTS } from './analysis-failures.js';
+import { MAX_ANALYSIS_ATTEMPTS, recordAnalysisFailure } from './analysis-failures.js';
+import { getGenreOverride, upsertGenreOverride } from '../genre-overrides.js';
 import { NoConfidentResultError } from '../track-analysis.js';
 import { AudioFileRejectedError } from '../audio-features-client.js';
 import { upsertArtistIdentity } from '../artist-identity-store.js';
@@ -60,6 +61,7 @@ function ctx(overrides: Partial<EnrichmentContext> = {}): EnrichmentContext {
       },
       embedding: { model: 'discogs-effnet-bs64-1', dim: 4, values: [1, 2, 3, 4] },
       modelVersions: { embedding: 'discogs-effnet-bs64-1' },
+      genre: null,
     }),
     audioFeaturesAvailable: () => true,
     lookupGenre: async () => 'Rock',
@@ -722,6 +724,7 @@ describe('audio-features task', () => {
           },
           embedding: { model: 'm', dim: 1, values: [0] },
           modelVersions: {},
+          genre: null,
         };
       },
     });
@@ -852,6 +855,165 @@ describe('audio-features task', () => {
     expect(
       db.query('SELECT COUNT(*) AS n FROM library_song_analysis_failures').get() as { n: number },
     ).toEqual({ n: 0 });
+  });
+});
+
+/** Seed a "genreTask already tried and failed" ledger row — the precondition
+ *  genre-audio's pending predicate requires (issue #187 A2: a fallback must
+ *  never win a race against genreTask for a song it hasn't tried yet). */
+function ledgerGenreFailed(id: string): void {
+  recordAnalysisFailure(db, id, 'genre', new Error('Lidarr has no genre for this artist'), null);
+}
+
+function audioGenreResult(genre: { genre: string; style: string | null; confidence: number } | null) {
+  return {
+    features: {
+      danceability: 0.6,
+      valence: 0.4,
+      acousticness: 0.2,
+      instrumental: 0.9,
+      mood: 'relaxed',
+    },
+    embedding: { model: 'discogs-effnet-bs64-1', dim: 4, values: [1, 2, 3, 4] },
+    modelVersions: { embedding: 'discogs-effnet-bs64-1' },
+    genre: genre && { label: genre.genre, style: genre.style, confidence: genre.confidence },
+  };
+}
+
+describe('genre-audio task', () => {
+  const genreAudio = getTask('genre-audio')!;
+
+  it('is unavailable without a configured sidecar, or when unreachable', () => {
+    expect(genreAudio.available(ctx({ analyzeAudioFeatures: null }))).toBe(
+      'analysis sidecar not configured',
+    );
+    expect(genreAudio.available(ctx({ audioFeaturesAvailable: () => false }))).toBe(
+      'analysis sidecar unreachable',
+    );
+    expect(genreAudio.available(ctx())).toBe(true);
+  });
+
+  it('does not count a genre-less song genreTask has not yet tried', () => {
+    seedSong('a', { artist: 'Foo' });
+    expect(genreAudio.countPending(db)).toBe(0);
+  });
+
+  it('counts a genre-less song only once genreTask has ledgered it as unresolved', () => {
+    seedSong('a', { artist: 'Foo' });
+    ledgerGenreFailed('a');
+    expect(genreAudio.countPending(db)).toBe(1);
+  });
+
+  it('does not count a song that already has a genre, even if ledgered', () => {
+    seedSong('a', { artist: 'Foo', genre: 'Rock' });
+    ledgerGenreFailed('a');
+    expect(genreAudio.countPending(db)).toBe(0);
+  });
+
+  it('writes a confident audio-inferred genre as an essentia-sourced override', async () => {
+    seedSong('a', { artist: 'Foo', title: 'Bar' });
+    ledgerGenreFailed('a');
+    const c = ctx({
+      analyzeAudioFeatures: async () =>
+        audioGenreResult({ genre: 'Rock', style: 'Alternative Rock', confidence: 0.82 }),
+    });
+    const res = await genreAudio.run(db, c, 25);
+    expect(res.applied).toBe(1);
+    expect(res.failed).toBe(0);
+    const row = db
+      .query<{ genre: string }, [string]>('SELECT genre FROM library_songs WHERE id = ?')
+      .get('a');
+    expect(row?.genre).toBe('Rock');
+    const override = getGenreOverride(db, 'song', 'a');
+    expect(override?.source).toBe('essentia');
+    expect(override?.genres).toEqual(['Rock']);
+    expect(override?.confidence).toBeCloseTo(0.82);
+    // The genre ledger clears — the song is resolved now.
+    expect(
+      db
+        .query('SELECT COUNT(*) AS n FROM library_song_analysis_failures WHERE task = ?')
+        .get('genre-audio') as { n: number },
+    ).toEqual({ n: 0 });
+  });
+
+  it('ledgers a low-confidence result without writing, and does not tally it as a failure', async () => {
+    seedSong('a', { artist: 'Foo' });
+    ledgerGenreFailed('a');
+    const c = ctx({
+      analyzeAudioFeatures: async () =>
+        audioGenreResult({ genre: 'Rock', style: null, confidence: 0.2 }),
+    });
+    const res = await genreAudio.run(db, c, 25);
+    expect(res.applied).toBe(0);
+    expect(res.failed).toBe(0); // low confidence is not a broken failure
+    expect(getGenreOverride(db, 'song', 'a')).toBeNull();
+    const ledger = db
+      .query<{ fail_count: number }, []>(
+        "SELECT fail_count FROM library_song_analysis_failures WHERE song_id = 'a' AND task = 'genre-audio'",
+      )
+      .get();
+    expect(ledger?.fail_count).toBe(1);
+  });
+
+  it('ledgers without writing when the sidecar build has no genre head (genre: null)', async () => {
+    seedSong('a', { artist: 'Foo' });
+    ledgerGenreFailed('a');
+    const c = ctx({ analyzeAudioFeatures: async () => audioGenreResult(null) });
+    const res = await genreAudio.run(db, c, 25);
+    expect(res.applied).toBe(0);
+    expect(res.failed).toBe(0);
+    expect(getGenreOverride(db, 'song', 'a')).toBeNull();
+  });
+
+  it('never overwrites an existing user-sourced override', async () => {
+    seedSong('a', { artist: 'Foo' });
+    ledgerGenreFailed('a');
+    upsertGenreOverride(db, {
+      scope: 'song',
+      key: 'a',
+      genres: ['Folclore'],
+      source: 'user',
+      mbid: null,
+      confidence: null,
+      status: 'applied',
+      note: null,
+    });
+    const c = ctx({
+      analyzeAudioFeatures: async () =>
+        audioGenreResult({ genre: 'Rock', style: null, confidence: 0.9 }),
+    });
+    await genreAudio.run(db, c, 25);
+    const override = getGenreOverride(db, 'song', 'a');
+    expect(override?.source).toBe('user');
+    expect(override?.genres).toEqual(['Folclore']);
+  });
+
+  it('ledgers a sidecar-rejected file (422) as a hard failure', async () => {
+    seedSong('a', { artist: 'Foo' });
+    ledgerGenreFailed('a');
+    const c = ctx({
+      analyzeAudioFeatures: async () => {
+        throw new AudioFileRejectedError('decoded audio too short', 422);
+      },
+    });
+    const res = await genreAudio.run(db, c, 25);
+    expect(res.failed).toBe(1);
+  });
+
+  it('stops the batch when the sidecar goes down mid-run (songs stay pending)', async () => {
+    seedSong('a', { artist: 'Foo' });
+    seedSong('b', { artist: 'Bar' });
+    ledgerGenreFailed('a');
+    ledgerGenreFailed('b');
+    const c = ctx({
+      concurrency: 1,
+      analyzeAudioFeatures: async () => null,
+      audioFeaturesAvailable: () => false,
+    });
+    const res = await genreAudio.run(db, c, 25);
+    expect(res.applied).toBe(0);
+    expect(res.failed).toBe(0);
+    expect(genreAudio.countPending(db)).toBe(2);
   });
 });
 
@@ -1032,7 +1194,7 @@ describe('licence task', () => {
 });
 
 describe('registry', () => {
-  it('exposes bpm, genre, key, energy, audio-features, artist-image, artist-identity and licence tasks', () => {
+  it('exposes bpm, genre, key, energy, audio-features, artist-image, artist-identity, licence and genre-audio tasks', () => {
     expect(ENRICHMENT_TASKS.map((t) => t.id).sort()).toEqual([
       'artist-identity',
       'artist-image',
@@ -1040,6 +1202,7 @@ describe('registry', () => {
       'bpm',
       'energy',
       'genre',
+      'genre-audio',
       'key',
       'licence',
     ]);

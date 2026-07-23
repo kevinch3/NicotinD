@@ -204,6 +204,32 @@ export function upsertGenreOverride(db: Database, row: GenreOverrideRow): boolea
 }
 
 /**
+ * Re-apply the override index to one song's stored genre set — the per-song
+ * unit `backfillGenreOverrides` loops over. Split out (issue #187 task A2) so
+ * the `genre-audio` enrichment task can apply the single row it just wrote
+ * without an O(library) table scan; callers that already have `idx` loaded
+ * (a bulk backfill) pass it in rather than reloading it per song.
+ * Returns whether the stored set actually changed.
+ */
+export function applySongGenreOverride(
+  db: Database,
+  setSongGenres: (db: Database, songId: string, genres: string[]) => void,
+  idx: OverrideIndex,
+  song: { songId: string; albumKey: string; artistKey: string },
+): boolean {
+  const existing = db
+    .query<{ genre: string }, [string]>(
+      `SELECT genre FROM library_song_genres WHERE song_id = ? ORDER BY position`,
+    )
+    .all(song.songId)
+    .map((g) => g.genre);
+  const next = applyGenreOverride(idx, song, existing);
+  if (next.length === existing.length && next.every((g, i) => g === existing[i])) return false;
+  setSongGenres(db, song.songId, next);
+  return true;
+}
+
+/**
  * Re-apply every applied override to the *stored* genre sets, so a newly-written
  * override takes effect without waiting for a scan — the same role
  * `backfillGenresFromAliases` plays for the alias table.
@@ -241,24 +267,12 @@ export function backfillGenreOverrides(
   for (const r of rows) {
     scanned++;
     const groupArtist = r.album_artist ?? r.artist;
-    const existing = db
-      .query<{ genre: string }, [string]>(
-        `SELECT genre FROM library_song_genres WHERE song_id = ? ORDER BY position`,
-      )
-      .all(r.id)
-      .map((g) => g.genre);
-    const next = applyGenreOverride(
-      idx,
-      {
-        songId: r.id,
-        albumKey: albumGroupKey(groupArtist, r.album_name ?? ''),
-        artistKey: normalizeArtistForGrouping(groupArtist),
-      },
-      existing,
-    );
-    if (next.length === existing.length && next.every((g, i) => g === existing[i])) continue;
-    setSongGenres(db, r.id, next);
-    updated++;
+    const changed = applySongGenreOverride(db, setSongGenres, idx, {
+      songId: r.id,
+      albumKey: albumGroupKey(groupArtist, r.album_name ?? ''),
+      artistKey: normalizeArtistForGrouping(groupArtist),
+    });
+    if (changed) updated++;
   }
   return { scanned, updated };
 }

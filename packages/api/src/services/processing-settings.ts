@@ -33,6 +33,10 @@ export const DEFAULT_PROCESSING_SETTINGS: ProcessingSettings = {
     // Fills the rights/licence code from file tags → MusicBrainz. Optional source,
     // never a gate (see below) — a fresh download lands without waiting on it.
     licence: true,
+    // Audio-inferred genre fallback (issue #187 task A2) — runs only when the
+    // `genre` task above has nothing; confidence-gated, never a gate itself
+    // (a weak classifier must never strand a fresh download).
+    'genre-audio': true,
   },
   // Steps that must finish before a fresh download is added to the library.
   // Fast, offline, no-sidecar analysis (bpm/key/energy) plus genre are gated by

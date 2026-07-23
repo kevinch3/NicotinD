@@ -73,14 +73,18 @@ The shipped pipeline:
   folded into `features`** — a genre-parsing bug must never null out real
   perceptual-feature data (`AnalysisResult.genre` defaults to `None` so
   older callers/tests are unaffected). The bun-side `genre-audio` fallback
-  task that consumes this (confidence-gated, provenance-tagged via
-  `library_genre_overrides.source = 'essentia'`) is a separate PR — see
-  [library-processing.md](library-processing.md) and
-  [library-scanner.md](library-scanner.md) "Multi-genre support" once it
-  lands. Below a confidence threshold the caller should ledger the result
-  rather than write it (`NoConfidentResultError`-style — this is a last
-  resort *below* MusicBrainz/Lidarr, deliberately weak on regional genres
-  like Chamamé/Argentine folclore).
+  task that consumes this (confidence-gated via `NICOTIND_GENRE_AUDIO_CONFIDENCE`,
+  default 0.5; provenance-tagged via `library_genre_overrides.source =
+  'essentia'`) shipped in a follow-up PR — see
+  [library-processing.md](library-processing.md) ("genre-audio") and
+  [library-scanner.md](library-scanner.md) "Audio-inferred genre fallback
+  (Essentia)" for the task predicate, ledger behavior, and the race-with-
+  `genreTask` fix (the fallback only fires once `genre` has already ledgered
+  the song as unresolved — a last resort strictly *below* MusicBrainz/Lidarr,
+  deliberately weak on regional genres like Chamamé/Argentine folclore).
+  `AudioFeaturesClient`'s `genre` field parses independently of `features` in
+  bun too, for the same reason: an older deployed sidecar predating this head
+  must degrade to `genre: null`, not fail the whole `/analyze` payload.
 - **`POST /rhythm {relPath}` → `{bpm, confidence, method}`** (`app/rhythm.py`,
   Essentia RhythmExtractor2013 *multifeature* over an ffmpeg-decoded 90 s
   44.1 kHz slice, ~1.3 s/track). Added because the bun-side detector

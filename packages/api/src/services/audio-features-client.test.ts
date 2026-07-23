@@ -77,7 +77,7 @@ describe('AudioFeaturesClient.analyze', () => {
     const res = await c.analyze('Artist/Album/song.opus');
     expect(calledUrl).toBe('http://analysis:8000/analyze');
     expect(JSON.parse(sentBody)).toEqual({ relPath: 'Artist/Album/song.opus' });
-    expect(res).toEqual(GOOD_PAYLOAD);
+    expect(res).toEqual({ ...GOOD_PAYLOAD, genre: null });
   });
 
   it('returns null on non-OK statuses and marks unhealthy on 503', async () => {
@@ -140,6 +140,39 @@ describe('AudioFeaturesClient.analyze', () => {
     const c = clientWith(() => jsonResponse(noisy));
     const res = await c.analyze('x.opus');
     expect(res?.features.danceability).toBe(1);
+  });
+
+  it('parses the genre field when present (issue #187 A2)', async () => {
+    const withGenre = {
+      ...GOOD_PAYLOAD,
+      genre: { genre: 'Rock', style: 'Alternative Rock', confidence: 0.82 },
+    };
+    const c = clientWith(() => jsonResponse(withGenre));
+    const res = await c.analyze('x.opus');
+    expect(res?.genre).toEqual({ label: 'Rock', style: 'Alternative Rock', confidence: 0.82 });
+  });
+
+  it('genre defaults to null when absent (older sidecar build predating the head)', async () => {
+    const c = clientWith(() => jsonResponse(GOOD_PAYLOAD));
+    const res = await c.analyze('x.opus');
+    expect(res?.genre).toBeNull();
+    // Absence of genre must never affect the required-field contract.
+    expect(res?.features.danceability).toBe(0.8);
+  });
+
+  it('a malformed genre object nulls out genre without failing the whole payload', async () => {
+    const bad = { ...GOOD_PAYLOAD, genre: { genre: 123, confidence: 'high' } };
+    const c = clientWith(() => jsonResponse(bad));
+    const res = await c.analyze('x.opus');
+    expect(res?.genre).toBeNull();
+    expect(res?.features.danceability).toBe(0.8);
+  });
+
+  it('genre with no style (bare Discogs genre) parses style as null', async () => {
+    const withGenre = { ...GOOD_PAYLOAD, genre: { genre: 'Ambient', style: null, confidence: 0.6 } };
+    const c = clientWith(() => jsonResponse(withGenre));
+    const res = await c.analyze('x.opus');
+    expect(res?.genre).toEqual({ label: 'Ambient', style: null, confidence: 0.6 });
   });
 });
 
