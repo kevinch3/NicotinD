@@ -78,6 +78,22 @@ describe('LibraryApiService', () => {
     http.expectOne('/api/library/genres').flush([]);
   });
 
+  it('GETs autocomplete song search with q/limit params', () => {
+    service.searchSongsAutocomplete('alpha', 5).subscribe();
+    const req = http.expectOne((r) => r.url === '/api/library/songs/autocomplete');
+    expect(req.request.method).toBe('GET');
+    expect(req.request.params.get('q')).toBe('alpha');
+    expect(req.request.params.get('limit')).toBe('5');
+    req.flush([]);
+  });
+
+  it('defaults the autocomplete limit to 8', () => {
+    service.searchSongsAutocomplete('alpha').subscribe();
+    const req = http.expectOne((r) => r.url === '/api/library/songs/autocomplete');
+    expect(req.request.params.get('limit')).toBe('8');
+    req.flush([]);
+  });
+
   describe('getAllSongs', () => {
     const matchSongs = (r: { url: string }) => r.url === '/api/library/songs';
 

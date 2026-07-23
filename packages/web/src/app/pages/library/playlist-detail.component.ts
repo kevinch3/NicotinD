@@ -14,12 +14,19 @@ import { NavigationService } from '../../services/navigation.service';
 import { PreserveService } from '../../services/preserve.service';
 import { TransferService } from '../../services/transfer.service';
 import { SongMenuService } from '../../services/song-menu.service';
-import type { PlaylistDetail } from '../../services/api/api-types';
+import { SongPickerComponent } from '../../components/song-picker/song-picker.component';
+import type { PlaylistDetail, Song } from '../../services/api/api-types';
 
 @Component({
   selector: 'app-playlist-detail',
   standalone: true,
-  imports: [TrackRowComponent, ConfirmDialogComponent, SelectionBarComponent, IconComponent],
+  imports: [
+    TrackRowComponent,
+    ConfirmDialogComponent,
+    SelectionBarComponent,
+    IconComponent,
+    SongPickerComponent,
+  ],
   templateUrl: './playlist-detail.component.html',
 })
 export class PlaylistDetailComponent implements OnInit {
@@ -38,6 +45,10 @@ export class PlaylistDetailComponent implements OnInit {
   readonly playlist = signal<PlaylistDetail | null>(null);
   readonly confirmingDelete = signal(false);
   readonly shareCopied = signal(false);
+
+  /** "Suggested for this playlist" — refreshed after every add/remove mutation. */
+  readonly proposals = signal<Song[]>([]);
+  readonly loadingProposals = signal(false);
 
   /** Curated (system) playlists are global + read-only: no edit/remove/delete. */
   readonly isCurated = computed(() => this.playlist()?.kind === 'curated');
@@ -64,6 +75,29 @@ export class PlaylistDetailComponent implements OnInit {
     } finally {
       this.loading.set(false);
     }
+    this.refreshProposals();
+  }
+
+  /** Re-fetches the "suggested for this playlist" list — call after any add/remove. */
+  private refreshProposals(): void {
+    const pl = this.playlist();
+    if (!pl) {
+      this.proposals.set([]);
+      return;
+    }
+    this.loadingProposals.set(true);
+    this.playlists
+      .getProposals(pl.id)
+      .then(
+        (songs) => this.proposals.set(songs),
+        () => this.proposals.set([]),
+      )
+      .finally(() => this.loadingProposals.set(false));
+  }
+
+  async addSong(song: Song): Promise<void> {
+    await this.playlists.addSongs(this.id, [song.id]);
+    await this.reload();
   }
 
   goBack(): void {
@@ -90,6 +124,7 @@ export class PlaylistDetailComponent implements OnInit {
     this.playlist.update((p) =>
       p ? { ...p, songs: p.songs.filter((s) => s.id !== songId), songCount: p.songCount - 1 } : p,
     );
+    this.refreshProposals();
   }
 
   // ─── Multi-select ─────────────────────────────────────────────────
@@ -123,6 +158,7 @@ export class PlaylistDetailComponent implements OnInit {
         : p,
     );
     this.selection.exit();
+    this.refreshProposals();
   }
 
   // ─── Offline download ─────────────────────────────────────────────

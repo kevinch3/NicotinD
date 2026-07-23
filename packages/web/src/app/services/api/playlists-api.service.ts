@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import type { PlaylistSummary, PlaylistDetail } from './api-types';
+import type { PlaylistSummary, PlaylistDetail, Song } from './api-types';
 
 /** Playlist CRUD (per-user). */
 @Injectable({ providedIn: 'root' })
@@ -13,6 +13,11 @@ export class PlaylistsApiService {
 
   getPlaylist(id: string) {
     return this.http.get<PlaylistDetail>(`/api/playlists/${id}`);
+  }
+
+  /** Cheap token-overlap suggestions for what to add next to this playlist. */
+  getProposals(id: string, limit = 20) {
+    return this.http.get<Song[]>(`/api/playlists/${id}/proposals`, { params: { limit } });
   }
 
   createPlaylist(name: string, songIds?: string[], description?: string) {

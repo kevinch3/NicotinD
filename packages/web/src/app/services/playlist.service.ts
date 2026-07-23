@@ -1,7 +1,7 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { PlaylistsApiService } from './api/playlists-api.service';
-import type { PlaylistSummary, PlaylistDetail } from './api/api-types';
+import type { PlaylistSummary, PlaylistDetail, Song } from './api/api-types';
 
 /**
  * Per-user playlists (web). Holds the summary list as a signal and drives the
@@ -31,6 +31,11 @@ export class PlaylistService {
 
   get(id: string): Promise<PlaylistDetail> {
     return firstValueFrom(this.api.getPlaylist(id));
+  }
+
+  /** Thin passthrough — no caching; the detail page owns refresh timing. */
+  getProposals(id: string, limit = 20): Promise<Song[]> {
+    return firstValueFrom(this.api.getProposals(id, limit));
   }
 
   async create(name: string, songIds?: string[]): Promise<PlaylistSummary> {

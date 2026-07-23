@@ -3,7 +3,7 @@ import { of } from 'rxjs';
 import { vi } from 'vitest';
 import { PlaylistService } from './playlist.service';
 import { PlaylistsApiService } from './api/playlists-api.service';
-import type { PlaylistSummary } from './api/api-types';
+import type { PlaylistSummary, Song } from './api/api-types';
 
 function summary(over: Partial<PlaylistSummary> = {}): PlaylistSummary {
   return {
@@ -24,6 +24,7 @@ describe('PlaylistService (web)', () => {
   const createPlaylist = vi.fn();
   const updatePlaylist = vi.fn();
   const deletePlaylist = vi.fn();
+  const getProposals = vi.fn();
   let svc: PlaylistService;
 
   beforeEach(() => {
@@ -31,13 +32,14 @@ describe('PlaylistService (web)', () => {
     createPlaylist.mockReset().mockReturnValue(of({ playlist: summary({ id: 'new' }) }));
     updatePlaylist.mockReset().mockReturnValue(of({ ok: true }));
     deletePlaylist.mockReset().mockReturnValue(of({ ok: true }));
+    getProposals.mockReset().mockReturnValue(of([]));
 
     TestBed.configureTestingModule({
       providers: [
         PlaylistService,
         {
           provide: PlaylistsApiService,
-          useValue: { getPlaylists, createPlaylist, updatePlaylist, deletePlaylist },
+          useValue: { getPlaylists, createPlaylist, updatePlaylist, deletePlaylist, getProposals },
         },
       ],
     });
@@ -63,6 +65,24 @@ describe('PlaylistService (web)', () => {
     await svc.delete('a');
     expect(deletePlaylist).toHaveBeenCalledWith('a');
     expect(svc.playlists()).toHaveLength(0);
+  });
+
+  it('getProposals passes through the id and limit and returns the songs', async () => {
+    const song: Song = {
+      id: 's1',
+      title: 'T',
+      artist: 'A',
+      album: 'Al',
+      albumId: 'al1',
+      path: '',
+      bitRate: 320,
+      size: 1000,
+      created: '2024-01-01',
+    };
+    getProposals.mockReturnValue(of([song]));
+    const result = await svc.getProposals('pl1', 5);
+    expect(getProposals).toHaveBeenCalledWith('pl1', 5);
+    expect(result).toEqual([song]);
   });
 
   it('openPicker sets pending song ids and refreshes when unloaded', () => {
