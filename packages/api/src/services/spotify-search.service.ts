@@ -55,6 +55,23 @@ interface SpotifyTokenResponse {
   expires_in: number;
 }
 
+/**
+ * Wraps `searchArtistImage` so it never fires when the Spotify plugin is
+ * disabled. This lookup backs the artist-image *background enrichment task*,
+ * which — unlike `/api/spotify/search` — has no route to gate it on
+ * `plugins.isEnabled('spotify')`; without this wrapper a disabled plugin still
+ * fires requests whenever the registry config or env-var fallback happens to
+ * hold stale/leftover credentials (the config row is never cleared on
+ * disable — see `PluginRegistry.disable`), surfacing as unexplained
+ * "Spotify returned HTTP 403" warnings for what looks like a disabled extension.
+ */
+export function gatedSpotifyArtistImageLookup(
+  search: Pick<SpotifySearchService, 'searchArtistImage'>,
+  isSpotifyEnabled: () => boolean,
+): (name: string) => Promise<string | null> {
+  return (name) => (isSpotifyEnabled() ? search.searchArtistImage(name) : Promise.resolve(null));
+}
+
 /** `single` for a 1-track release, else `album`; null when the count is unknown. */
 export function kindFromTrackCount(count: number | null | undefined): 'single' | 'album' | null {
   if (count == null) return null;

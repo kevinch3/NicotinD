@@ -2,6 +2,7 @@ import { describe, expect, it, mock } from 'bun:test';
 import {
   SpotifySearchService,
   buildAlbumQuery,
+  gatedSpotifyArtistImageLookup,
   kindFromTrackCount,
   releaseYear,
   mapSpotifyAlbum,
@@ -136,6 +137,22 @@ describe('spotify pure helpers', () => {
       },
     });
     expect(out.map((c) => c.id)).toEqual(['a', 'c']);
+  });
+});
+
+describe('gatedSpotifyArtistImageLookup', () => {
+  it('never calls through to searchArtistImage when the plugin is disabled', async () => {
+    const searchArtistImage = mock(async () => 'https://x/should-not-be-called.jpg');
+    const lookup = gatedSpotifyArtistImageLookup({ searchArtistImage }, () => false);
+    expect(await lookup('Some Artist')).toBeNull();
+    expect(searchArtistImage).not.toHaveBeenCalled();
+  });
+
+  it('delegates to searchArtistImage when the plugin is enabled', async () => {
+    const searchArtistImage = mock(async () => 'https://x/artist.jpg');
+    const lookup = gatedSpotifyArtistImageLookup({ searchArtistImage }, () => true);
+    expect(await lookup('Some Artist')).toBe('https://x/artist.jpg');
+    expect(searchArtistImage).toHaveBeenCalledWith('Some Artist');
   });
 });
 

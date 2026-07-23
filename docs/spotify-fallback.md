@@ -49,6 +49,19 @@ throws**: missing creds or an upstream blip just yields `null` and the artist ke
 its neutral placeholder. It reuses the same client-credentials token + retry as the
 album lane and reads the admin's live creds through the same `index.ts` accessor.
 
+**Gated on the plugin being enabled, unlike the credentials accessor itself.**
+`/api/spotify/search` gates on `plugins.isEnabled('spotify')` at the route; the
+artist-image lookup is a background task with no route to gate it, and the
+shared credentials accessor reads `plugins.getConfig('spotify')` regardless of
+enabled state (disabling the plugin doesn't clear its stored `config_json`).
+Without an explicit gate, a **disabled** Spotify plugin with leftover
+credentials (previously configured, then disabled — the common case) still
+fires background requests every enrichment window, surfacing as unexplained
+"Spotify returned HTTP 403" warnings for what looks like a disabled extension.
+`gatedSpotifyArtistImageLookup` (`spotify-search.service.ts`) wraps
+`searchArtistImage` with an `isSpotifyEnabled()` check before `index.ts` hands
+it to `spotifyArtistImageRef.lookup`.
+
 ## Two plugins, two responsibilities
 
 - **`spotify`** (metadata, capability `search`, pure JS, **default-off**) — finds the
