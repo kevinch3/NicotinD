@@ -92,6 +92,17 @@ tracklist from one seed the way the removed generator did. It only makes
 finding and adding individual matching tracks fast, and nudges the user
 toward tracks that already look like they belong.
 
+**e2e coverage** (`packages/e2e/tests/playlists.spec.ts`, replacing the
+deleted `playlist-generate.spec.ts`): one flow drives create → picker →
+proposals → merged-list rename → delete end to end. The proposals step needs
+a genuine token overlap, not just visually-similar fixture titles — the
+fixture set (`scripts/make-fixtures.ts`, `FIXTURE.proposalPair` in
+`helpers.ts`) adds a same-artist pair sharing a title token ("Nocturne" /
+"Nocturne Drift"): adding the first seeds proposal tokens
+`{nocturne, e2e, playlist, seed, artist}`, all of which are substrings of the
+second's `title + artist`, so `matchesAllTokens` genuinely surfaces it rather
+than the match being incidental.
+
 ## 0a. Merged playlist list (single list, inline rename/delete)
 
 The Library page's Playlists mode (`library.component.ts`/`.html`,

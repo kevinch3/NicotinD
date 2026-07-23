@@ -15,6 +15,17 @@ export const AUTH_FILE = '.auth/admin.json';
 export const FIXTURE = {
   album: { artist: 'E2E Test Artist', title: 'E2E Test Album', trackCount: 7 },
   single: { artist: 'E2E Single Artist', title: 'E2E Lonesome Single' },
+  /**
+   * Same-artist pair sharing a title token ("Nocturne" / "Nocturne Drift") —
+   * exists so playlist-proposals e2e coverage has a genuine token overlap:
+   * adding the first seeds proposal tokens that are all substrings of the
+   * second's title+artist (see `PlaylistService.proposals`).
+   */
+  proposalPair: {
+    artist: 'E2E Playlist Seed Artist',
+    seed: { title: 'Nocturne' },
+    suggested: { title: 'Nocturne Drift' },
+  },
 } as const;
 
 /** auth header for direct API calls in setup/teardown. */

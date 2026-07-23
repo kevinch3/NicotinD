@@ -90,6 +90,27 @@ async function main(): Promise<void> {
     total: 1,
   });
 
+  // A same-artist pair sharing a title token, so the playlist-proposals e2e
+  // spec has a genuine `matchesAllTokens` overlap to assert on: adding
+  // "Nocturne" seeds proposal tokens {nocturne, e2e, playlist, seed, artist},
+  // all of which are substrings of "Nocturne Drift" + its (same) artist — see
+  // `docs/playlist-generation.md` "Proposals" for the token-overlap contract.
+  console.log('Proposal pair: E2E Playlist Seed Artist / Nocturne + Nocturne Drift');
+  await writeTrack({
+    artist: 'E2E Playlist Seed Artist',
+    album: 'E2E Playlist Seed Album',
+    title: 'Nocturne',
+    track: 1,
+    total: 2,
+  });
+  await writeTrack({
+    artist: 'E2E Playlist Seed Artist',
+    album: 'E2E Playlist Seed Album',
+    title: 'Nocturne Drift',
+    track: 2,
+    total: 2,
+  });
+
   console.log('\nDone. Commit the generated files under packages/e2e/fixtures/music.');
 }
 
