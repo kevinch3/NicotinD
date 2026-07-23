@@ -20,10 +20,10 @@ class FakeCuda:
         self._count_rc = count_rc
         self._count = count
 
-    def cuInit(self, _flags: int) -> int:  # noqa: N802 - CUDA driver API name
+    def cuInit(self, _flags: int) -> int:
         return self._init_rc
 
-    def cuDeviceGetCount(self, count_ref) -> int:  # noqa: N802
+    def cuDeviceGetCount(self, count_ref) -> int:
         count_ref._obj.value = self._count
         return self._count_rc
 

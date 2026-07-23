@@ -22,7 +22,7 @@ MODELS_DIR = os.environ.get("ANALYSIS_MODELS_DIR")
 HAVE_ESSENTIA = True
 try:  # pragma: no cover - environment probe
     import essentia  # type: ignore[import-not-found]  # noqa: F401
-except Exception:  # pragma: no cover
+except Exception:  # pragma: no cover  # noqa: BLE001 - any import failure means "skip"
     HAVE_ESSENTIA = False
 
 pytestmark = pytest.mark.skipif(
