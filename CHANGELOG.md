@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.243](https://github.com/kevinch3/NicotinD/compare/v0.1.242...v0.1.243) (2026-07-23)
+
+### Bug Fixes
+
+* **radio:** split mashed genre tags and stop rewarding missing genre ([ecc50b2](https://github.com/kevinch3/NicotinD/commit/ecc50b2a4766102d980de26000478dab9f317708)), references [#184](https://github.com/kevinch3/NicotinD/issues/184) [#185](https://github.com/kevinch3/NicotinD/issues/185)
 ## [0.1.242](https://github.com/kevinch3/NicotinD/compare/v0.1.241...v0.1.242) (2026-07-22)
 
 ### Features
