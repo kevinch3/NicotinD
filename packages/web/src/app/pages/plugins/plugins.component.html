@@ -33,6 +33,18 @@
     }
   </section>
 
+  <section class="mb-10">
+    <h2 class="text-sm font-semibold text-theme-secondary uppercase tracking-wider mb-3">
+      Metadata
+    </h2>
+    @for (p of plugins.metadata(); track p.id) {
+      <ng-container [ngTemplateOutlet]="card" [ngTemplateOutletContext]="{ $implicit: p }" />
+    }
+    @if (plugins.metadata().length === 0) {
+      <p class="text-sm text-theme-muted">No metadata extensions registered.</p>
+    }
+  </section>
+
   <section>
     <h2 class="text-sm font-semibold text-theme-secondary uppercase tracking-wider mb-3">
       Connectivity
