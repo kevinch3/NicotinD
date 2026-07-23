@@ -78,7 +78,7 @@ def cuda_device_count(loader: Callable[[str], ctypes.CDLL] = ctypes.CDLL) -> int
         if cuda.cuDeviceGetCount(ctypes.byref(count)) != 0:
             return 0
         return count.value
-    except Exception:
+    except Exception:  # noqa: BLE001 - any driver-call failure means "no GPU"
         return 0
 
 
