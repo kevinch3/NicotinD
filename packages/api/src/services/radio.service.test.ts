@@ -378,13 +378,56 @@ describe('explainSimilarity (per-axis breakdown — the diagnostic seam)', () =>
     expect(ex.skipped).not.toContain('genre');
   });
 
-  it('reports a missing genre as skipped (data problem — the José Larralde hypothesis)', async () => {
-    const { explainSimilarity, DEFAULT_WEIGHTS } = await import('./radio.service.js');
+  it('floors a missing candidate genre instead of skipping it (data problem, but scored)', async () => {
+    const { explainSimilarity, DEFAULT_WEIGHTS, MISSING_GENRE_FLOOR } = await import(
+      './radio.service.js'
+    );
     const seed = makeSeed({ genre: 'Folk', genres: ['Folk'] });
     const cand = makeCandidate({ genre: undefined, genres: undefined });
     const ex = explainSimilarity(seed, cand, DEFAULT_WEIGHTS);
+    const genre = ex.axes.find((a) => a.axis === 'genre');
+    expect(genre).toBeDefined();
+    expect(genre!.value).toBe(MISSING_GENRE_FLOOR);
+    expect(ex.skipped).not.toContain('genre');
+    // Reported separately so the diagnostic can still tell a *data* gap apart
+    // from a genuine 0.2-closeness match.
+    expect(ex.floored).toContain('genre');
+  });
+
+  it('still skips genre when the SEED has none (nothing to compare against)', async () => {
+    const { explainSimilarity, DEFAULT_WEIGHTS } = await import('./radio.service.js');
+    const ex = explainSimilarity(
+      makeSeed({ genre: undefined, genres: undefined }),
+      makeCandidate({ genre: 'Pop', genres: ['Pop'] }),
+      DEFAULT_WEIGHTS,
+    );
     expect(ex.skipped).toContain('genre');
+    expect(ex.floored).not.toContain('genre');
     expect(ex.axes.find((a) => a.axis === 'genre')).toBeUndefined();
+  });
+
+  it('a genre-less candidate no longer out-scores a genre-matched neighbour (the bug)', async () => {
+    const { scoreSimilarity, DEFAULT_WEIGHTS } = await import('./radio.service.js');
+    const seed = makeSeed({ genre: 'Folk', genres: ['Folk'], bpm: 145, energy: 0.57 });
+    // The genre-matched neighbour is slightly *worse* on every other axis…
+    const matched = makeCandidate({
+      genre: 'Folk',
+      genres: ['Folk'],
+      bpm: 138,
+      energy: 0.5,
+      artistId: 'a1',
+    });
+    // …while the genre-less pop track is a perfect BPM/energy fit.
+    const genreless = makeCandidate({
+      genre: undefined,
+      genres: undefined,
+      bpm: 145,
+      energy: 0.57,
+      artistId: 'a2',
+    });
+    expect(scoreSimilarity(seed, matched, DEFAULT_WEIGHTS)).toBeGreaterThan(
+      scoreSimilarity(seed, genreless, DEFAULT_WEIGHTS),
+    );
   });
 
   it('flags the same-artist penalty', async () => {

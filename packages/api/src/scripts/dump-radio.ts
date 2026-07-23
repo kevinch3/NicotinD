@@ -14,12 +14,13 @@
  * Flags: --count N (default 12), --out <path> (default <dataDir>/radio-dump-<ts>.md),
  *        --json (emit JSON alongside the markdown path), filter flags:
  *        --genre <g> (repeatable), --bpm-min/--bpm-max, --year-min/--year-max,
- *        --key <code>, --mood <m>, --dur-min/--dur-max, --starred.
+ *        --key <code>, --mood <m>, --dur-min/--dur-max, --starred,
+ *        --weights genre=14,embedding=8 (A/B a candidate DEFAULT_WEIGHTS change).
  *
  * WHY this exists: seed radios are genre-coherent but filter ("vibe") radios pull
  * cross-genre tracks (José Larralde Folk → Katy Perry Pop). The per-axis breakdown
  * tells the two root causes apart: a genre axis SCORED 0 = disjoint tags lost on
- * weight (raise the genre weight / add a co-constraint); a genre axis SKIPPED =
+ * weight (raise the genre weight / add a co-constraint); a genre axis FLOORED =
  * the track has no genre data at all (a detection/backfill gap). No DB writes.
  *
  * Env: NICOTIND_DATA_DIR, NICOTIND_CONFIG. See docs/radio.md "Diagnostic dump".
@@ -32,6 +33,9 @@ import { Database } from 'bun:sqlite';
 import { parseLibraryFilter, type LibraryFilter } from '@nicotind/core';
 import {
   explainSimilarity,
+  DEFAULT_WEIGHTS,
+  MISSING_GENRE_FLOOR,
+  type ScoringWeights,
   type SimilarityExplanation,
   type SongFeatures,
 } from '../services/radio.service.js';
@@ -134,7 +138,8 @@ function breakdownLine(ex: SimilarityExplanation): string {
 
 /** How the genre axis fared for one candidate — the headline diagnostic. */
 function genreVerdict(ex: SimilarityExplanation): string {
-  if (ex.skipped.includes('genre')) return '⚠ genre SKIPPED (no data)';
+  if (ex.skipped.includes('genre')) return '⚠ genre SKIPPED (seed has none)';
+  if (ex.floored.includes('genre')) return '⚠ genre FLOORED (candidate has no data)';
   const g = ex.axes.find((a) => a.axis === 'genre');
   if (!g) return '';
   if (g.value === 0) return '✗ genre 0 (mismatch, lost on weight)';
@@ -199,8 +204,9 @@ function renderTrackBlock(
   cand: RadioCandidate,
   score: number,
   rank: number | null,
+  weights: ScoringWeights,
 ): string[] {
-  const ex = explainSimilarity(seed, cand);
+  const ex = explainSimilarity(seed, cand, weights);
   const r = cand._row;
   const genres = genresOf(r);
   const head = rank !== null ? `${String(rank).padStart(2)}. ` : '    ';
@@ -210,6 +216,36 @@ function renderTrackBlock(
     `      genres: ${genres?.length ? genres.join(', ') : '(none)'} · bpm ${r.bpm ?? '—'} · key ${r.key ?? '—'} · year ${r.year ?? '—'}`,
     `      ${breakdownLine(ex)}`,
   ];
+}
+
+/**
+ * Parse a `--weights genre=14,embedding=8` override onto the defaults.
+ *
+ * Weight tuning must be *measured*, not guessed: this lets one command re-rank
+ * the same seed under a candidate weight set so a proposed `DEFAULT_WEIGHTS`
+ * change can be justified against a control seed before it ships. Unknown axes
+ * and non-numeric values throw — a silent no-op would invalidate a measurement.
+ */
+export function parseWeightOverrides(
+  spec: string | undefined,
+  base: ScoringWeights = DEFAULT_WEIGHTS,
+): ScoringWeights {
+  const weights: ScoringWeights = { ...base };
+  if (!spec) return weights;
+  for (const part of spec.split(',')) {
+    if (!part.trim()) continue;
+    const [rawKey, rawValue] = part.split('=');
+    const key = rawKey?.trim() ?? '';
+    if (!(key in weights)) {
+      throw new Error(`--weights: unknown axis "${key}" (valid: ${Object.keys(weights).join(', ')})`);
+    }
+    const value = Number(rawValue?.trim());
+    if (rawValue === undefined || !Number.isFinite(value)) {
+      throw new Error(`--weights: "${key}" needs a numeric value (got "${rawValue ?? ''}")`);
+    }
+    weights[key as keyof ScoringWeights] = value;
+  }
+  return weights;
 }
 
 /** A genre string that looks like an un-split concatenation of several genres —
@@ -229,7 +265,11 @@ export function looksConcatenatedGenre(g: string): boolean {
  * so the dump is self-diagnosing (the whole point: turn a bad radio into a
  * concrete fix list). Reads the ranked output + pool.
  */
-function renderDiagnosis(seed: SongFeatures, result: RadioResult): string[] {
+function renderDiagnosis(
+  seed: SongFeatures,
+  result: RadioResult,
+  weights: ScoringWeights,
+): string[] {
   const out = result.ranked;
   const n = out.length;
   let genreSkipped = 0;
@@ -238,8 +278,8 @@ function renderDiagnosis(seed: SongFeatures, result: RadioResult): string[] {
   let keyScored = 0;
   const mashed = new Set<string>();
   const consider = (cand: RadioCandidate): void => {
-    const ex = explainSimilarity(seed, cand);
-    if (ex.skipped.includes('genre')) genreSkipped++;
+    const ex = explainSimilarity(seed, cand, weights);
+    if (ex.skipped.includes('genre') || ex.floored.includes('genre')) genreSkipped++;
     else if (ex.axes.find((a) => a.axis === 'genre')?.value === 0) genreZero++;
     const key = ex.axes.find((a) => a.axis === 'key');
     if (key) {
@@ -257,16 +297,16 @@ function renderDiagnosis(seed: SongFeatures, result: RadioResult): string[] {
 
   const lines: string[] = ['## Detection & algorithm — improvement targets', ''];
   lines.push(
-    `- **Missing genre rewarded (scoring algorithm):** ${genreSkipped}/${n} output tracks had genre **SKIPPED**.`,
+    `- **Genre-less candidates (data gap):** ${genreSkipped}/${n} output tracks had **no genre data**.`,
   );
   lines.push(
-    `  \`scoreSimilarity\` normalizes over *present* axes only, so a genre-less track drops the`,
+    `  They are no longer *rewarded* for it — the axis is scored at \`MISSING_GENRE_FLOOR\` (${MISSING_GENRE_FLOOR})`,
   );
   lines.push(
-    `  weight-10 genre axis from the denominator and can out-score a genre-matched neighbor. → treat`,
+    `  instead of being skipped out of the normalization denominator. A high count here is now a`,
   );
   lines.push(
-    `  missing genre as a soft floor (~0.2) or gate it out of the pool, don't skip it.`,
+    `  **backfill** signal (re-source the genre), not a scorer bug.`,
   );
   lines.push(
     `- **Genre lost on weight:** ${genreZero}/${n} output tracks matched nothing on genre (value 0) but still ranked.`,
@@ -283,6 +323,10 @@ function renderDiagnosis(seed: SongFeatures, result: RadioResult): string[] {
       `  parser) isn't breaking these; genre closeness sees one giant token so nothing matches:`,
     );
     for (const m of [...mashed].slice(0, 8)) lines.push(`    - \`${m}\``);
+    lines.push(
+      `  → propose splits with \`reclassify-genres.ts --propose\` (segmentConcatenatedGenre), review,`,
+    );
+    lines.push(`  \`--apply\`, then \`--backfill\` to re-mint the stored sets without a full rescan.`);
   }
   if (keyScored > 0) {
     lines.push(
@@ -304,6 +348,7 @@ function renderDump(
   seedRow: RadioSongRow | null,
   filter: LibraryFilter | null,
   result: RadioResult,
+  weights: ScoringWeights,
 ): string {
   const { seed, pool, ranked } = result;
   const lines: string[] = [];
@@ -343,11 +388,11 @@ function renderDump(
   lines.push('```');
   lines.push('');
 
-  lines.push(...renderDiagnosis(seed, result));
+  lines.push(...renderDiagnosis(seed, result, weights));
 
   lines.push(`## Output — ranked top ${ranked.length}`);
   lines.push('```');
-  ranked.forEach((e, i) => lines.push(...renderTrackBlock(seed, e.song, e.score, i + 1)));
+  ranked.forEach((e, i) => lines.push(...renderTrackBlock(seed, e.song, e.score, i + 1, weights)));
   lines.push('```');
   lines.push('');
 
@@ -357,13 +402,13 @@ function renderDump(
   const chosen = new Set(ranked.map((e) => e.song._row.id));
   const nearMisses = pool
     .filter((c) => !chosen.has(c._row.id))
-    .map((c) => ({ c, score: explainSimilarity(seed, c).score }))
+    .map((c) => ({ c, score: explainSimilarity(seed, c, weights).score }))
     .sort((a, b) => b.score - a.score)
     .slice(0, 10);
   if (nearMisses.length > 0) {
     lines.push('## Rejected near-misses (next 10 by score, not selected)');
     lines.push('```');
-    nearMisses.forEach((m) => lines.push(...renderTrackBlock(seed, m.c, m.score, null)));
+    nearMisses.forEach((m) => lines.push(...renderTrackBlock(seed, m.c, m.score, null, weights)));
     lines.push('```');
   }
   return lines.join('\n');
@@ -381,6 +426,7 @@ function main(): void {
   db.run('PRAGMA busy_timeout = 5000');
 
   const count = Math.min(Math.max(Number(firstArg(args, 'count') ?? 12), 1), 50);
+  const weights = parseWeightOverrides(firstArg(args, 'weights'));
   let kind: 'seed' | 'filter';
   let seedRow: RadioSongRow | null = null;
   let filter: LibraryFilter | null = null;
@@ -404,7 +450,7 @@ function main(): void {
         process.exit(1);
       }
       kind = 'seed';
-      result = buildSeedRadio(db, seedRow, { count });
+      result = buildSeedRadio(db, seedRow, { count, weights });
     } else if (seedId) {
       seedRow = db.query<RadioSongRow, [string]>(`${RADIO_SONG_SELECT} WHERE s.id = ?`).get(seedId);
       if (!seedRow) {
@@ -412,7 +458,7 @@ function main(): void {
         process.exit(1);
       }
       kind = 'seed';
-      result = buildSeedRadio(db, seedRow, { count });
+      result = buildSeedRadio(db, seedRow, { count, weights });
     } else if (artist) {
       // Pick a landed track for the artist, preferring one that HAS a genre so
       // the seed represents the artist's tagging (else the whole run is genre-blind).
@@ -427,7 +473,7 @@ function main(): void {
         process.exit(1);
       }
       kind = 'seed';
-      result = buildSeedRadio(db, seedRow, { count });
+      result = buildSeedRadio(db, seedRow, { count, weights });
     } else {
       filter = filterFromArgs(args);
       if (Object.keys(filter).length === 0) {
@@ -437,10 +483,10 @@ function main(): void {
         process.exit(1);
       }
       kind = 'filter';
-      result = buildFilterRadio(db, filter, { count });
+      result = buildFilterRadio(db, filter, { count, weights });
     }
 
-    const markdown = renderDump(kind, seedRow, filter, result);
+    const markdown = renderDump(kind, seedRow, filter, result, weights);
     const outPath =
       firstArg(args, 'out') ?? join(dataDir, `radio-dump-${Date.now()}.md`);
     writeFileSync(outPath, markdown + '\n');
@@ -458,7 +504,7 @@ function main(): void {
               artist: e.song._row.artist,
               title: e.song._row.title,
               score: e.score,
-              explanation: explainSimilarity(result.seed as SongFeatures, e.song),
+              explanation: explainSimilarity(result.seed as SongFeatures, e.song, weights),
             })),
           },
           null,

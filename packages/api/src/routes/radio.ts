@@ -2,7 +2,12 @@ import { Hono } from 'hono';
 import type { AuthEnv } from '../middleware/auth.js';
 import { parseLibraryFilter, type LibraryFilter, type Song } from '@nicotind/core';
 import { getDatabase } from '../db.js';
-import { rankCandidates, type ScoredSong, type SongFeatures } from '../services/radio.service.js';
+import {
+  rankCandidates,
+  type ScoredSong,
+  type ScoringWeights,
+  type SongFeatures,
+} from '../services/radio.service.js';
 import { embeddingModelFor, loadEmbeddings } from '../services/embedding-store.js';
 import { songFilterWheres } from '../services/library-filter-sql.js';
 import { seedCentroid, type OrderableRow } from '../services/playlist-recipe.js';
@@ -168,7 +173,7 @@ export function radioSongs(result: RadioResult): Song[] {
 export function buildSeedRadio(
   db: ReturnType<typeof getDatabase>,
   seedRow: RadioSongRow,
-  opts: { count?: number; excludeIds?: Set<string> } = {},
+  opts: { count?: number; excludeIds?: Set<string>; weights?: ScoringWeights } = {},
 ): RadioResult {
   const count = opts.count ?? 10;
   const excludeIds = new Set(opts.excludeIds ?? []);
@@ -283,7 +288,7 @@ export function buildSeedRadio(
     embedding: embeddings.get(r.id),
     _row: r,
   }));
-  const ranked = rankCandidates(seed, pool, { count, maxPerArtist: 2 });
+  const ranked = rankCandidates(seed, pool, { count, maxPerArtist: 2, weights: opts.weights });
   return { seed, pool, ranked };
 }
 
@@ -297,7 +302,7 @@ export function buildSeedRadio(
 export function buildFilterRadio(
   db: ReturnType<typeof getDatabase>,
   filter: LibraryFilter,
-  opts: { count?: number; excludeIds?: Set<string> } = {},
+  opts: { count?: number; excludeIds?: Set<string>; weights?: ScoringWeights } = {},
 ): RadioResult {
   const count = opts.count ?? 10;
   const excludeIds = new Set(opts.excludeIds ?? []);
@@ -316,7 +321,7 @@ export function buildFilterRadio(
   const seed = seedCentroid(poolRows.map(toOrderable));
   if (!seed) return { seed: null, pool, ranked: [] };
 
-  const ranked = rankCandidates(seed, pool, { count, maxPerArtist: 2 });
+  const ranked = rankCandidates(seed, pool, { count, maxPerArtist: 2, weights: opts.weights });
   return { seed, pool, ranked };
 }
 
