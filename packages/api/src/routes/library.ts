@@ -14,6 +14,7 @@ import type { LibraryCurator } from '../services/library-curator.js';
 import { normalizeArtistForGrouping, normalizeForGrouping } from '../services/album-grouping.js';
 import { transferGroupKeys } from '../services/transfer-group-keys.js';
 import type { SlskdRef } from '../index.js';
+import { ShareRescanScheduler } from '../services/share-rescan-scheduler.js';
 import { getAcquisitionByPath } from '../services/acquisition-store.js';
 import { analyzeBpm, verifyGenre } from '../services/track-analysis.js';
 import type { AudioFeaturesClient } from '../services/audio-features-client.js';
@@ -487,8 +488,24 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
   // router is mounted on a bare app (as the route tests do) without the global
   // onError. Mirrors the app-level handler.
   app.onError(errorHandler);
-  const { curator, runSync, lidarr, coverCacheDir, dataDir, pluginRegistry, audioFeaturesClient } =
-    options;
+  const {
+    curator,
+    runSync,
+    lidarr,
+    coverCacheDir,
+    dataDir,
+    pluginRegistry,
+    audioFeaturesClient,
+    slskdRef,
+  } = options;
+  // A deleted file's slskd share entry doesn't go away on its own — see
+  // ShareRescanScheduler. Debounced so an album/bulk delete triggers one
+  // rescan, not one per file; a no-op (never scheduled) when slskd isn't
+  // configured.
+  const shareRescan = new ShareRescanScheduler(async () => {
+    const slskd = slskdRef?.current;
+    if (slskd) await slskd.shares.rescan();
+  });
 
   app.get('/artists', (c) => {
     const db = getDatabase();
@@ -817,6 +834,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
 
     if (folderDeleted) {
       deletedCount = songIds.length;
+      shareRescan.schedule();
     } else {
       const results = await Promise.allSettled(songIds.map((id) => deleteOne(id)));
       for (let i = 0; i < results.length; i++) {
@@ -2231,6 +2249,9 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
             } catch (err) {
               log.debug({ err }, 'Failed to remove orphaned record');
             }
+            // The file was already gone from disk but slskd may not know yet —
+            // rescan so it stops advertising it.
+            shareRescan.schedule();
             return { ok: true };
           }
           return { ok: false, error: 'Song file not found on disk', status: 404 };
@@ -2239,6 +2260,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     }
 
     if (deletedPath) {
+      shareRescan.schedule();
       cleanupEmptyDirs(deletedPath, expandedMusicDir);
       const relPath = relative(expandedMusicDir, deletedPath).replace(/\\/g, '/');
 

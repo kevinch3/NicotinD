@@ -126,6 +126,8 @@ It then **synchronously** deletes the canonical rows (`library_songs`, `library_
 
 The same transaction also **prunes the now-orphaned aggregate rows** so a deleted album doesn't linger until the next *full* scan: the `library_artists` row (deleted if no releases/songs remain, else its `album_count` corrected — via the shared `pruneOrphanArtist`, `services/library-aggregates.ts`, also reused by the metadata-fix re-point), the album's `library_artwork` row, and an emptied `library_genres` row. So deleting an artist's only release also removes the artist from search and the empty artist page immediately.
 
+**Keeping slskd's share index in sync.** Deleting a file from disk doesn't tell slskd — it keeps its own share index and only rebuilds it on an explicit `shares.rescan()` (otherwise a manual-only admin action, `POST /api/settings/shares/rescan`). Found in prod (2026-07-23): deleted tracks stayed in slskd's index indefinitely, so every peer download attempt against them failed with `File not shared`, spamming ERROR-level slskd logs with no way to stop except a manual rescan or restart. `ShareRescanScheduler` (`services/share-rescan-scheduler.ts`) debounces a `schedule()` call (default 5s) so an album/bulk delete coalesces into one rescan instead of one per file; `libraryRoutes` calls `.schedule()` from every `deleteOne` success path and the folder-fast-path in album delete — a no-op when no slskd client is configured. Scoped to the live API's delete routes only; the offline maintenance scripts (`repair-pollution.ts`, `reorganize-library.ts`, etc.) that also unlink files run outside the server process and are unaffected — rerun the manual rescan after using one of those.
+
 ---
 
 ## Untracked downloads (legacy `relative_path`)
