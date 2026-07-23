@@ -13,13 +13,15 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { LibraryApiService } from '../../services/api/library-api.service';
-import type { Album } from '../../services/api/api-types';
+import type { Album, PlaylistSummary } from '../../services/api/api-types';
 import { AuthService } from '../../services/auth.service';
 import { PlaylistService } from '../../services/playlist.service';
+import { ConfirmService } from '../../services/confirm.service';
 import { TransferService } from '../../services/transfer.service';
 import { ListControlsService, type SortOption } from '../../services/list-controls.service';
 import { CoverArtComponent } from '../../components/cover-art/cover-art.component';
 import { LibraryFilterPanelComponent } from '../../components/library-filter-panel/library-filter-panel.component';
+import { IconComponent } from '../../components/icon/icon.component';
 import { LibrarySongsComponent } from './library-songs.component';
 import { SetupService } from '../../services/setup.service';
 import { resolveAlbumRoute, resolveGenreRoute, resolveArtistRoute } from '../../lib/route-utils';
@@ -110,6 +112,7 @@ function writePersistedState(state: PersistedLibraryState): void {
     FormsModule,
     LibraryFilterPanelComponent,
     LibrarySongsComponent,
+    IconComponent,
   ],
   templateUrl: './library.component.html',
 })
@@ -117,6 +120,7 @@ export class LibraryComponent implements OnInit, OnDestroy {
   private api = inject(LibraryApiService);
   readonly auth = inject(AuthService);
   readonly playlistService = inject(PlaylistService);
+  private confirm = inject(ConfirmService);
   private transferService = inject(TransferService);
   private listControls = inject(ListControlsService);
   readonly setup = inject(SetupService);
@@ -421,43 +425,53 @@ export class LibraryComponent implements OnInit, OnDestroy {
   }
 
   // ─── Playlists ────────────────────────────────────────────────────
+  // One merged list — curated (system) playlists lead, ordered server-side
+  // (`ORDER BY (kind='curated') DESC, modified_at DESC` in
+  // `PlaylistService.list()`), so no client re-sort/split is needed.
   readonly newPlaylistName = signal('');
   readonly creatingPlaylist = signal(false);
 
-  // Curated (system, global) playlists lead as a "Made for you" shelf; the
-  // user's own playlists follow. Split client-side off the one list call.
-  readonly curatedPlaylists = computed(() =>
-    this.playlistService.playlists().filter((p) => p.kind === 'curated'),
-  );
-  readonly userPlaylists = computed(() =>
-    this.playlistService.playlists().filter((p) => p.kind !== 'curated'),
-  );
+  readonly editingPlaylistId = signal<string | null>(null);
+  readonly renameDraft = signal('');
+  readonly renaming = signal(false);
+
+  startRename(pl: PlaylistSummary): void {
+    this.editingPlaylistId.set(pl.id);
+    this.renameDraft.set(pl.name);
+  }
+
+  cancelRename(): void {
+    this.editingPlaylistId.set(null);
+  }
+
+  async commitRename(id: string): Promise<void> {
+    const name = this.renameDraft().trim();
+    if (!name || this.renaming()) return;
+    this.renaming.set(true);
+    try {
+      await this.playlistService.rename(id, name);
+      this.editingPlaylistId.set(null);
+    } finally {
+      this.renaming.set(false);
+    }
+  }
+
+  async deletePlaylistRow(pl: PlaylistSummary): Promise<void> {
+    if (pl.kind === 'curated') return;
+    const ok = await this.confirm.ask(`Delete "${pl.name}"? This cannot be undone.`);
+    if (ok) await this.playlistService.delete(pl.id);
+  }
 
   async createPlaylist(): Promise<void> {
     const name = this.newPlaylistName().trim();
     if (!name || this.creatingPlaylist()) return;
     this.creatingPlaylist.set(true);
     try {
-      await this.playlistService.create(name);
+      const playlist = await this.playlistService.create(name);
       this.newPlaylistName.set('');
+      await this.router.navigate(['/library/playlists', playlist.id]);
     } finally {
       this.creatingPlaylist.set(false);
-    }
-  }
-
-  readonly generating = signal(false);
-
-  /** Build a playlist from the starred set via the Radio scorer, then open it. */
-  async generateFromFavorites(): Promise<void> {
-    if (this.generating()) return;
-    this.generating.set(true);
-    try {
-      const playlist = await this.playlistService.generate({ starred: true });
-      await this.router.navigate(['/library/playlists', playlist.id]);
-    } catch {
-      // Non-fatal (e.g. nothing starred yet) — stay on the list.
-    } finally {
-      this.generating.set(false);
     }
   }
 

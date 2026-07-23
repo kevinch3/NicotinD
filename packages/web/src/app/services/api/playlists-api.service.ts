@@ -39,20 +39,4 @@ export class PlaylistsApiService {
   deletePlaylist(id: string) {
     return this.http.delete<{ ok: boolean }>(`/api/playlists/${id}`);
   }
-
-  /**
-   * Generate a playlist from a seed (a song, an artist, or the starred set),
-   * scored by the same engine that powers Radio. Returns the created, editable
-   * user playlist.
-   */
-  generatePlaylist(
-    seed: { songId?: string; artistId?: string; starred?: boolean },
-    opts?: { name?: string; size?: number },
-  ) {
-    return this.http.post<{ playlist: PlaylistSummary }>('/api/playlists/generate', {
-      seed,
-      name: opts?.name,
-      size: opts?.size,
-    });
-  }
 }

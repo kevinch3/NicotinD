@@ -233,22 +233,6 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
   private songsOffset = 0;
   private artistId = '';
 
-  readonly generating = signal(false);
-
-  /** Generate a playlist seeded on this artist (Radio scorer), then open it. */
-  async generatePlaylist(): Promise<void> {
-    if (this.generating() || !this.artistId) return;
-    this.generating.set(true);
-    try {
-      const playlist = await this.playlists.generate({ artistId: this.artistId });
-      await this.router.navigate(['/library/playlists', playlist.id]);
-    } catch {
-      // Non-fatal — stay on the artist page.
-    } finally {
-      this.generating.set(false);
-    }
-  }
-
   readonly songsSentinel = viewChild<ElementRef<HTMLElement>>('songsSentinel');
   private songsObserver?: IntersectionObserver;
 

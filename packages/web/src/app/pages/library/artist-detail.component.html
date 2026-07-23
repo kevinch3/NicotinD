@@ -128,16 +128,6 @@
             >
               <app-icon name="play" />
             </button>
-            <button
-              type="button"
-              data-testid="artist-generate-playlist"
-              (click)="generatePlaylist()"
-              [disabled]="generating()"
-              title="Generate a playlist inspired by this artist"
-              class="h-10 px-4 flex items-center rounded-lg bg-theme-surface-2 text-theme-primary text-sm font-medium hover:bg-theme-surface-2/70 transition disabled:opacity-50"
-            >
-              {{ generating() ? 'Generating…' : '✨ Generate playlist' }}
-            </button>
           </div>
         }
       </div>
