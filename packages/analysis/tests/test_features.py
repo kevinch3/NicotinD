@@ -6,6 +6,7 @@ from app.features import (
     MOOD_HEADS,
     MOOD_VOCAB,
     derive_features,
+    derive_genre,
     head_probability,
     normalize_valence,
 )
@@ -65,3 +66,23 @@ def test_derive_features_mood_is_argmax_over_mood_heads() -> None:
 def test_derive_features_is_deterministic() -> None:
     heads = flat_heads(danceability=[0.8, 0.2])
     assert derive_features(heads, 6.3) == derive_features(heads, 6.3)
+
+
+def test_derive_genre_returns_top1_label_split_on_separator() -> None:
+    result = derive_genre([0.1, 0.9], ["Rock---Pop Rock", "Jazz---Bebop"])
+    assert result == {"genre": "Jazz", "style": "Bebop", "confidence": 0.9}
+
+
+def test_derive_genre_handles_label_with_no_separator() -> None:
+    result = derive_genre([0.9], ["Ambient"])
+    assert result == {"genre": "Ambient", "style": None, "confidence": 0.9}
+
+
+def test_derive_genre_clamps_confidence() -> None:
+    result = derive_genre([1.4], ["Rock---Metal"])
+    assert result["confidence"] == 1.0
+
+
+def test_derive_genre_rejects_mismatched_lengths() -> None:
+    with pytest.raises(ValueError):
+        derive_genre([0.5, 0.5], ["Rock---Metal"])

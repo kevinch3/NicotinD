@@ -83,6 +83,15 @@ def test_scores_in_range_and_versions_present(registry, fixtures) -> None:
     assert result.embedding_dim == 1280
     assert len(result.embedding) == 1280
     assert result.model_versions["embedding"] == "discogs-effnet-bs64-1"
+    assert result.model_versions["genre"] == "genre_discogs400-discogs-effnet-1"
+
+
+def test_genre_is_a_confident_discogs_label(registry, fixtures) -> None:
+    result = registry.analyze(str(fixtures["sine"]))
+    assert result.genre is not None
+    assert isinstance(result.genre["genre"], str) and result.genre["genre"]
+    assert result.genre["style"] is None or isinstance(result.genre["style"], str)
+    assert 0.0 <= result.genre["confidence"] <= 1.0
 
 
 def test_identical_input_identical_output(registry, fixtures) -> None:

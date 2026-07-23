@@ -6,8 +6,14 @@ Contract (consumed by @nicotind/api's AudioFeaturesClient):
   POST /analyze {relPath} -> { embedding: {model, dim, values},
                                features: {danceability, valence, acousticness,
                                           instrumental, mood},
+                               genre: {genre, style, confidence} | null,
                                modelVersions }
   POST /rhythm  {relPath} -> { bpm, confidence, method }
+
+`genre` is a sibling of `features` (issue #187 task A2, an audio-inferred
+genre fallback) — null only for a sidecar build older than the genre head;
+once loaded, every /analyze response carries it, the same as every other
+model.
 
 `relPath` is resolved against MUSIC_DIR (the same volume the API mounts), so
 the two containers never need matching absolute mount points. 404 for a file
@@ -118,6 +124,7 @@ def create_app(
                 "values": result.embedding,
             },
             "features": result.features,
+            "genre": result.genre,
             "modelVersions": result.model_versions,
         }
 

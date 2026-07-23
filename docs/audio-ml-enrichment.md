@@ -13,7 +13,7 @@ The shipped pipeline:
 1. **Essentia** extracts an embedding per track (EffNet-Discogs 1280-d, plus a
    MusiCNN 200-d for the valence head).
 2. **Tagging/classification heads** run on the embedding and produce the labels
-   (mood, danceability, valence, voice/instrumental, acousticness).
+   (mood, danceability, valence, voice/instrumental, acousticness, genre).
 3. ~~The labels + embedding feed an **LLM** for narrative descriptions~~ —
    **dropped scope**: the user chose pure audio analysis; no LLM anywhere in the
    pipeline. The catalogue + deterministic recipes (playlist-generation.md §2)
@@ -57,7 +57,30 @@ The shipped pipeline:
 - **Sidecar contract**: `POST /analyze {relPath}` resolved against the sidecar's
   own `MUSIC_DIR` (no shared absolute paths); `GET /health` reports
   `modelVersions` (the drift anchor) plus `rhythm` (tempo availability). Models
-  pinned by URL + sha256 in the Dockerfile (~25 MB total).
+  pinned by URL + sha256 in the Dockerfile (~27 MB total).
+- **D6 — `genre_discogs400` head (issue #187 task A2, an audio-inferred genre
+  fallback)**: the classifier head this section's own "recommended stack"
+  table always listed but that was never wired up, closing the gap. It's a
+  400-way **multi-label sigmoid** (`op: Sigmoid`, per the model's published
+  schema) over the *same* EffNet-Discogs frames `audio-features` already
+  computes — no second embedding pass. `app/genre_labels.py` bundles the 400
+  Discogs `"Genre---Style"` class labels (e.g. `"Rock---Alternative Rock"`)
+  as a committed JSON data file (`app/data/genre_discogs400_labels.json`),
+  fetched from the model's own published metadata rather than
+  hand-transcribed. `app/features.py`'s pure `derive_genre()` takes the
+  top-1 label, splits genre from style, and reports the sigmoid probability
+  as `confidence`. **`genre` is a sibling field on `/analyze`'s response, not
+  folded into `features`** — a genre-parsing bug must never null out real
+  perceptual-feature data (`AnalysisResult.genre` defaults to `None` so
+  older callers/tests are unaffected). The bun-side `genre-audio` fallback
+  task that consumes this (confidence-gated, provenance-tagged via
+  `library_genre_overrides.source = 'essentia'`) is a separate PR — see
+  [library-processing.md](library-processing.md) and
+  [library-scanner.md](library-scanner.md) "Multi-genre support" once it
+  lands. Below a confidence threshold the caller should ledger the result
+  rather than write it (`NoConfidentResultError`-style — this is a last
+  resort *below* MusicBrainz/Lidarr, deliberately weak on regional genres
+  like Chamamé/Argentine folclore).
 - **`POST /rhythm {relPath}` → `{bpm, confidence, method}`** (`app/rhythm.py`,
   Essentia RhythmExtractor2013 *multifeature* over an ffmpeg-decoded 90 s
   44.1 kHz slice, ~1.3 s/track). Added because the bun-side detector
