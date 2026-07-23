@@ -14,7 +14,7 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-# Pinned model set (~25 MB). URLs + SHA256 verified 2026-07; stems double as the
+# Pinned model set (~27 MB). URLs + SHA256 verified 2026-07; stems double as the
 # modelVersions reported by /health, and the golden tests anchor on them.
 RUN set -eux; \
     mkdir -p /models; cd /models; \
@@ -32,6 +32,7 @@ RUN set -eux; \
     dl "$base_ch/mood_acoustic/mood_acoustic-discogs-effnet-1.pb"          mood_acoustic-discogs-effnet-1.pb; \
     dl "$base_ch/voice_instrumental/voice_instrumental-discogs-effnet-1.pb" voice_instrumental-discogs-effnet-1.pb; \
     dl "$base_ch/emomusic/emomusic-msd-musicnn-2.pb"                       emomusic-msd-musicnn-2.pb; \
+    dl "$base_ch/genre_discogs400/genre_discogs400-discogs-effnet-1.pb"    genre_discogs400-discogs-effnet-1.pb; \
     printf '%s\n' \
       "3ed9af50d5367c0b9c795b294b00e7599e4943244f4cbd376869f3bfc87721b1  discogs-effnet-bs64-1.pb" \
       "cdea0722bcee7f731286843f2233e3aa69887bb5c3e2dce011eff55f38d04f3e  msd-musicnn-1.pb" \
@@ -44,6 +45,7 @@ RUN set -eux; \
       "96a48d403f52fe9047214437fe396dd2f46699da765c911cd6dfbd456a20f733  mood_acoustic-discogs-effnet-1.pb" \
       "c8033548e17c292874265db62e82a051247768d10375a35a769e7bf695f16acf  voice_instrumental-discogs-effnet-1.pb" \
       "fcfb486510213b35e0a691975325f58170f648ad4a02d749bce790da13ded43b  emomusic-msd-musicnn-2.pb" \
+      "3885ba078a35249af94b8e5e4247689afac40deca4401a4bc888daf5a579c01c  genre_discogs400-discogs-effnet-1.pb" \
       > SHA256SUMS; \
     sha256sum -c SHA256SUMS
 

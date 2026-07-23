@@ -61,3 +61,17 @@ def derive_features(heads: dict[str, list[float]], valence_raw: float) -> dict[s
         "instrumental": head_probability("voice_instrumental", heads["voice_instrumental"]),
         "mood": mood,
     }
+
+
+def derive_genre(probs: list[float], labels: list[str]) -> dict[str, object]:
+    """Top-1 label from the genre_discogs400 multi-label sigmoid head
+    (issue #187 task A2 — an audio-inferred fallback, below tag/MusicBrainz
+    genres). Discogs' vocabulary encodes each class as "Genre---Style" (e.g.
+    "Rock---Alternative Rock"); splitting gives a coarse parent genre plus
+    the specific style. A label with no separator is a bare genre.
+    """
+    if not probs or len(probs) != len(labels):
+        raise ValueError(f"expected {len(labels)} probs, got {len(probs)}")
+    idx = max(range(len(probs)), key=lambda i: probs[i])
+    genre, _, style = labels[idx].partition("---")
+    return {"genre": genre, "style": style or None, "confidence": clamp01(probs[idx])}

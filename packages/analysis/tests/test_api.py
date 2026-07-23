@@ -104,3 +104,27 @@ def test_analyze_422_when_inference_fails(tmp_path: Path) -> None:
 
     client = make_client(tmp_path, ExplodingRegistry())
     assert client.post("/analyze", json={"relPath": "song.opus"}).status_code == 422
+
+
+def test_analyze_includes_genre_when_present(tmp_path: Path) -> None:
+    (tmp_path / "song.opus").write_bytes(b"fake-audio")
+
+    class GenreRegistry(FakeRegistry):
+        def analyze(self, path: str) -> AnalysisResult:
+            result = super().analyze(path)
+            result.genre = {"genre": "Rock", "style": "Alternative Rock", "confidence": 0.87}
+            return result
+
+    client = make_client(tmp_path, GenreRegistry())
+    body = client.post("/analyze", json={"relPath": "song.opus"}).json()
+    assert body["genre"] == {"genre": "Rock", "style": "Alternative Rock", "confidence": 0.87}
+
+
+def test_analyze_genre_null_when_registry_has_none(tmp_path: Path) -> None:
+    # An older sidecar build predating the genre head — no genre-parsing bug
+    # should ever mask real feature data (see AnalysisResult.genre).
+    (tmp_path / "song.opus").write_bytes(b"fake-audio")
+    client = make_client(tmp_path, FakeRegistry())
+    body = client.post("/analyze", json={"relPath": "song.opus"}).json()
+    assert body["genre"] is None
+    assert 0.0 <= body["features"]["danceability"] <= 1.0

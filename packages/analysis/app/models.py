@@ -17,7 +17,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
-from .features import derive_features
+from .features import derive_features, derive_genre
+from .genre_labels import GENRE_LABELS
 
 # Both embedding models expect 16 kHz mono input.
 SAMPLE_RATE = 16000
@@ -117,6 +118,14 @@ HEAD_FILES: dict[str, str] = {
 MUSICNN_MODEL = "msd-musicnn-1"
 EMOMUSIC_MODEL = "emomusic-msd-musicnn-2"
 
+# Discogs genre/style inference (issue #187 task A2, an audio-inferred genre
+# fallback — used only when tag/MusicBrainz genre resolution has nothing).
+# A 400-way *multi-label* classifier (independent sigmoids, not a softmax —
+# its output op is "Sigmoid" per the model's published schema, unlike the
+# 2-class softmax HEAD_FILES above), run on the same EffNet embedding frames
+# already computed for `audio-features` — no extra embedding pass needed.
+GENRE_MODEL = "genre_discogs400-discogs-effnet-1"
+
 
 @dataclass
 class AnalysisResult:
@@ -125,6 +134,9 @@ class AnalysisResult:
     embedding_dim: int
     features: dict[str, float | str]
     model_versions: dict[str, str]
+    # A sibling of `features`, not folded into it: a genre-parsing issue must
+    # never null out real perceptual-feature data (issue #187 task A2).
+    genre: dict[str, object] | None = None
 
 
 class ModelRegistry(Protocol):
@@ -155,7 +167,13 @@ class EssentiaRegistry:
         base = Path(models_dir)
         missing = [
             f"{stem}.pb"
-            for stem in [EMBEDDING_MODEL, MUSICNN_MODEL, EMOMUSIC_MODEL, *HEAD_FILES.values()]
+            for stem in [
+                EMBEDDING_MODEL,
+                MUSICNN_MODEL,
+                EMOMUSIC_MODEL,
+                GENRE_MODEL,
+                *HEAD_FILES.values(),
+            ]
             if not (base / f"{stem}.pb").exists()
         ]
         if missing:
@@ -181,6 +199,14 @@ class EssentiaRegistry:
             input="model/Placeholder",
             output="model/Identity",
         )
+        # Node names per the model's published schema — differ from the
+        # 2-class heads' "model/Placeholder"/"model/Softmax" because this
+        # graph was exported through a Keras serving signature.
+        self._genre_head = TensorflowPredict2D(
+            graphFilename=str(base / f"{GENRE_MODEL}.pb"),
+            input="serving_default_model_Placeholder",
+            output="PartitionedCall:0",
+        )
 
     def device(self) -> str:
         return runtime_device()
@@ -190,6 +216,7 @@ class EssentiaRegistry:
             "embedding": EMBEDDING_MODEL,
             "musicnn": MUSICNN_MODEL,
             "valence": EMOMUSIC_MODEL,
+            "genre": GENRE_MODEL,
             **{head: stem for head, stem in HEAD_FILES.items()},
         }
 
@@ -208,10 +235,13 @@ class EssentiaRegistry:
             musicnn_frames = self._musicnn(audio)  # frames x 200
             valence_arousal = self._emomusic(musicnn_frames).mean(axis=0)  # (valence, arousal), 1..9
 
+            genre_probs = self._genre_head(effnet_frames).mean(axis=0).tolist()
+
         return AnalysisResult(
             embedding=[float(x) for x in embedding],
             embedding_model=EMBEDDING_MODEL,
             embedding_dim=int(embedding.shape[0]),
             features=derive_features(heads, float(valence_arousal[0])),
             model_versions=self.versions(),
+            genre=derive_genre(genre_probs, list(GENRE_LABELS)),
         )
