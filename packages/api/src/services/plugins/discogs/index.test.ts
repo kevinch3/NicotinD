@@ -46,6 +46,27 @@ describe('DiscogsPlugin manifest', () => {
   });
 });
 
+describe('DiscogsPlugin manifest configSchema', () => {
+  it('accepts a blank cacheTtlDays (the config form always sends every text field)', () => {
+    const plugin = makePlugin();
+    const parsed = plugin.manifest.configSchema!.parse({
+      consumerKey: 'KEY',
+      consumerSecret: 'SECRET',
+      userAgent: '',
+      cacheTtlDays: '',
+    });
+    expect(parsed).toEqual({ consumerKey: 'KEY', consumerSecret: 'SECRET', userAgent: '' });
+  });
+
+  it('still validates a non-blank cacheTtlDays', () => {
+    const plugin = makePlugin();
+    expect(plugin.manifest.configSchema!.parse({ cacheTtlDays: '14' })).toEqual({
+      cacheTtlDays: 14,
+    });
+    expect(() => plugin.manifest.configSchema!.parse({ cacheTtlDays: '-1' })).toThrow();
+  });
+});
+
 describe('DiscogsPlugin availability', () => {
   it('is unavailable without credentials, available with both', async () => {
     expect(await new DiscogsPlugin({ consumerKey: '', consumerSecret: '' }).isAvailable()).toBe(

@@ -74,7 +74,18 @@ export class DiscogsPlugin implements Plugin {
         consumerKey: z.string().optional(),
         consumerSecret: z.string().optional(),
         userAgent: z.string().optional(),
-        cacheTtlDays: z.coerce.number().int().positive().optional(),
+        // The config form always sends every `text` field, including a blank
+        // one (blank = "no override" for a string field). This is the only
+        // numeric field among the plugin config schemas, so it's the only one
+        // that needs the blank-string preprocess: `z.coerce.number()` turns
+        // `''` into `0`, which then fails `.positive()` and throws — which
+        // made `setConfig`'s atomic parse reject the *whole* payload,
+        // including consumerKey/consumerSecret, on every save that left this
+        // field blank.
+        cacheTtlDays: z.preprocess(
+          (val) => (val === '' ? undefined : val),
+          z.coerce.number().int().positive().optional(),
+        ),
       })
       .partial(),
     configFields: [
