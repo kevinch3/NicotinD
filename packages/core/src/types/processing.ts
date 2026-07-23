@@ -14,7 +14,8 @@ export type ProcessingTaskId =
   | 'energy'
   | 'audio-features'
   | 'artist-identity'
-  | 'licence';
+  | 'licence'
+  | 'genre-audio';
 
 /** Daily time window during which background enrichment may run (server-local). */
 export interface ProcessingWindow {

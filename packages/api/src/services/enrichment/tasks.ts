@@ -20,7 +20,8 @@ import type {
 import { AudioFileRejectedError } from '../audio-features-client.js';
 import { ffmpegAvailable as realFfmpegAvailable } from '../transcode.js';
 import { resolveSongAbsPath, planGenreBackfill } from '../track-backfill.js';
-import { appendSongGenres } from '../genre-split.js';
+import { appendSongGenres, setSongGenres } from '../genre-split.js';
+import { applyGenreOverride, upsertGenreOverride, type OverrideIndex } from '../genre-overrides.js';
 import { setArtwork } from '../artwork-store.js';
 import { isPlaceholderArtist } from '../artwork-backfill.js';
 import { indexLidarrArtists, resolveArtistImageUrl } from '../artist-image.js';
@@ -982,6 +983,174 @@ const licenceTask: EnrichmentTask = {
   },
 };
 
+/**
+ * Top-1 softmax probability below which a genre_discogs400 inference is
+ * ledgered-not-written (issue #187 task A2). Operator-tunable via env var
+ * (like other sidecar knobs, e.g. NICOTIND_ANALYSIS_URL) rather than a
+ * ProcessingSettings field — this is a classifier-quality knob, not a
+ * structural toggle, and the right value is genuinely an open question this
+ * PR can't fully settle until real confidence data comes in from a deployed
+ * sidecar. 0.5 is a conservative starting default for a 400-way classifier.
+ */
+export const GENRE_AUDIO_CONFIDENCE_THRESHOLD = Number(
+  process.env.NICOTIND_GENRE_AUDIO_CONFIDENCE ?? 0.5,
+);
+
+/**
+ * `genreTask` has already tried and ledgered this song as unresolved. Required
+ * so the fallback can never win a race against the authoritative MusicBrainz/
+ * Lidarr source for a song genreTask simply hasn't gotten to yet — both tasks
+ * share the same `created DESC` ordering and a `genre IS NULL` predicate, so
+ * without this an audio-only guess could permanently pre-empt a real genre
+ * (writing a genre clears `library_songs.genre`, removing the song from
+ * genreTask's pending set for good). A Lidarr-less install never populates
+ * this ledger, so genre-audio simply never fires there — an accepted
+ * limitation, since audio inference is fallback-only, not a primary source.
+ */
+const GENRE_AUDIO_LEDGER_CLAUSE =
+  ` AND EXISTS (SELECT 1 FROM library_song_analysis_failures f` +
+  ` WHERE f.song_id = library_songs.id AND f.task = 'genre')`;
+
+/**
+ * Audio-inferred genre fallback (issue #187 task A2) — the sidecar's
+ * genre_discogs400 head, strictly below tag/MusicBrainz/Lidarr genre and only
+ * ever consulted once `genreTask` has given up (see
+ * {@link GENRE_AUDIO_LEDGER_CLAUSE}). Deliberately weak on regional genres
+ * (Chamamé/Argentine folclore) — a low-confidence result is ledgered via
+ * {@link NoConfidentResultError}, never force-written. A confident hit is
+ * written via the provenance-tagged `library_genre_overrides` path
+ * (`source: 'essentia'`), never `appendSongGenres` — this is the first real
+ * writer of that reserved source. Never a landing gate (no
+ * `satisfiedColumnSql`): a weak classifier must never strand a download.
+ */
+const genreAudioTask: EnrichmentTask = {
+  id: 'genre-audio',
+  label: 'Genre (audio fallback)',
+  available: (ctx) => {
+    if (!ctx.analyzeAudioFeatures) return 'analysis sidecar not configured';
+    return ctx.audioFeaturesAvailable() ? true : 'analysis sidecar unreachable';
+  },
+  countPending: (db) =>
+    Number(
+      (
+        db
+          .query<{ n: number }, []>(
+            `SELECT COUNT(*) AS n FROM library_songs WHERE (genre IS NULL OR genre = '')${GENRE_AUDIO_LEDGER_CLAUSE}${notPermanentlyFailedClause(
+              'genre-audio',
+            )}`,
+          )
+          .get() ?? { n: 0 }
+      ).n,
+    ),
+  run: async (db, ctx, limit) => {
+    const rows = db
+      .query<SongRow, [number]>(
+        `SELECT id, path, artist, title, size FROM library_songs WHERE (genre IS NULL OR genre = '')${GENRE_AUDIO_LEDGER_CLAUSE}${notPermanentlyFailedClause(
+          'genre-audio',
+        )} ORDER BY created DESC LIMIT ?`,
+      )
+      .all(limit);
+
+    const labels: string[] = [];
+    const tally: FailureTally = { failed: 0, sample: null };
+    let applied = 0;
+    let cursor = 0;
+    // Mirrors audioFeaturesTask: the sidecar serializes inference internally,
+    // so more than 2 in flight only queues.
+    const worker = async (): Promise<void> => {
+      for (;;) {
+        const idx = cursor++;
+        if (idx >= rows.length) return;
+        const song = rows[idx]!;
+        const abs = resolveSongAbsPath(ctx.musicDir, song.path);
+        if (!ctx.fileExists(abs)) continue;
+        if (!ctx.analyzeAudioFeatures) return;
+
+        let result: AudioFeaturesResult | null = null;
+        try {
+          result = await ctx.analyzeAudioFeatures(song.path);
+        } catch (err) {
+          if (err instanceof AudioFileRejectedError) {
+            noteItemFailure(db, tally, song, 'genre-audio', err);
+          } else {
+            if (!ctx.audioFeaturesAvailable()) return;
+            recordFailure(tally, err instanceof Error ? err : new Error(String(err)));
+          }
+          continue;
+        }
+        if (!result) {
+          // Sidecar gone mid-batch — an outage, not a per-file condition.
+          if (!ctx.audioFeaturesAvailable()) return;
+          recordFailure(tally, new Error('analysis sidecar could not analyze file (see logs)'));
+          continue;
+        }
+        if (!result.genre) {
+          // Sidecar build predates the genre head — "ran, found nothing",
+          // ledgered so it isn't retried forever, but nothing is broken.
+          noteItemFailure(
+            db,
+            tally,
+            song,
+            'genre-audio',
+            new NoConfidentResultError('sidecar has no genre head'),
+          );
+          continue;
+        }
+        if (result.genre.confidence < GENRE_AUDIO_CONFIDENCE_THRESHOLD) {
+          noteItemFailure(
+            db,
+            tally,
+            song,
+            'genre-audio',
+            new NoConfidentResultError(
+              `genre confidence ${result.genre.confidence.toFixed(2)} below threshold`,
+            ),
+          );
+          continue;
+        }
+
+        const written = upsertGenreOverride(db, {
+          scope: 'song',
+          key: song.id,
+          genres: [result.genre.label],
+          source: 'essentia',
+          mbid: null,
+          confidence: result.genre.confidence,
+          status: 'applied',
+          note: result.genre.style,
+        });
+        if (!written) continue; // an existing user override is permanent — leave it alone
+
+        const existingGenres = db
+          .query<{ genre: string }, [string]>(
+            `SELECT genre FROM library_song_genres WHERE song_id = ? ORDER BY position`,
+          )
+          .all(song.id)
+          .map((g) => g.genre);
+        const overrideIdx: OverrideIndex = {
+          artist: new Map(),
+          album: new Map(),
+          song: new Map([[song.id, { genres: [result.genre.label], source: 'essentia' }]]),
+        };
+        const merged = applyGenreOverride(
+          overrideIdx,
+          { songId: song.id, albumKey: '', artistKey: '' },
+          existingGenres,
+        );
+        setSongGenres(db, song.id, merged);
+        await ctx.writeTags(abs, { genre: merged.join('; ') }).catch(() => false);
+        clearAnalysisFailure(db, song.id, 'genre-audio');
+        applied++;
+        labels.push(`${song.artist} — ${song.title} → ${result.genre.label} (audio)`);
+      }
+    };
+    await Promise.all(
+      Array.from({ length: Math.max(1, Math.min(ctx.concurrency, 2)) }, () => worker()),
+    );
+    return { applied, labels, failed: tally.failed, errorSample: tally.sample };
+  },
+};
+
 /** All registered enrichment tasks, in run order. */
 export const ENRICHMENT_TASKS: readonly EnrichmentTask[] = [
   bpmTask,
@@ -992,6 +1161,7 @@ export const ENRICHMENT_TASKS: readonly EnrichmentTask[] = [
   artistImageTask,
   artistIdentityTask,
   licenceTask,
+  genreAudioTask,
 ];
 
 export function getTask(id: ProcessingTaskId): EnrichmentTask | undefined {

@@ -129,7 +129,7 @@ The existing `artist`/`artist_id` columns on songs/albums remain as the primary 
 | `album`  | `albumGroupKey(albumArtist, album)`   | edition-collapsing; matches `albumIdFor`'s input; move-proof |
 | `song`   | the song id (`sha1("song:"+relPath)`) | **not** move-proof — the exception, not the default          |
 
-Rows are keyed **at the granularity the source provides** (MusicBrainz gives genres per release-group, Lidarr per artist, a future Essentia head per track), so one row fixes every song it covers and is inherited automatically by tracks downloaded later. `genres` is a `;`-joined ordered list, primary first; `''` suppresses every genre (junk drop, same convention as a `library_genre_aliases` empty canonical).
+Rows are keyed **at the granularity the source provides** (MusicBrainz gives genres per release-group, Lidarr per artist, the Essentia audio-inferred fallback per track — see "Audio-inferred genre fallback" below), so one row fixes every song it covers and is inherited automatically by tracks downloaded later. `genres` is a `;`-joined ordered list, primary first; `''` suppresses every genre (junk drop, same convention as a `library_genre_aliases` empty canonical).
 
 **Merge semantics differ by source, and this is load-bearing.** `applyGenreOverride` (pure, `genre-overrides.ts`) resolves `song > album > artist` — the most specific scope wins outright, scopes are never merged with each other — then:
 
@@ -174,6 +174,18 @@ So artist-level lookup buys ~3% and **Lidarr is not an independent source**; rel
 `verifyGenre`'s existing `hits[0]` fallback is exactly the uncorroborated path and must never feed an auto-applied override. **Empty MB genres produce no row at all** — not a `pending` row — or the queue fills with thousands of empty non-decisions.
 
 **What A1 cannot do.** MusicBrainz has _no_ genres for José Larralde at artist level and only 3 of 25 release groups carry any. The Larralde case is closed by a **user** override, not by A1; A1's realistic yield on this library is a few hundred songs. The remaining lever, if that disappoints, is a folksonomy source (Last.fm / Discogs) with much better Latin coverage — deliberately not built, since #187 prefers curated genres over folksonomy tags.
+
+---
+
+## Audio-inferred genre fallback (Essentia) — issue #187 task A2
+
+Fills the 13% of the library (1,946 of 14,469 landed tracks, measured 2026-07) A1 cannot touch at all — songs with **no genre from any tag/MusicBrainz/Lidarr source**. The `genre-audio` enrichment task (`services/enrichment/tasks.ts`) runs the sidecar's `genre_discogs400` classification head (`docs/audio-ml-enrichment.md` "D6") on the same EffNet embedding `audio-features` already computes, and writes a confident hit as `library_genre_overrides` `source='essentia'`, `scope='song'` — the first real writer of that source (reserved by a doc comment in `genre-overrides.ts` since PR #188/A3).
+
+**Strictly a fallback, never a primary source.** The task's pending predicate requires `genre` to have already tried and ledgered the song as unresolved (`EXISTS (... task = 'genre')`) — without that, an audio-only guess could win a race against the authoritative MusicBrainz/Lidarr source for a song `genre` simply hasn't reached yet, since writing a genre clears `library_songs.genre` and permanently removes the song from `genre`'s own pending set. See [library-processing.md](library-processing.md) for the full task predicate and ledger behavior.
+
+**Confidence-gated.** A hit below `NICOTIND_GENRE_AUDIO_CONFIDENCE` (default 0.5) is ledgered via `NoConfidentResultError`, never written — this fallback is deliberately weak on regional genres (Chamamé/Argentine folclore is exactly the case A1 can't close either), so a low-confidence guess must stay auditable-and-reversible rather than silently poisoning `genreSetCloseness`.
+
+**Combine semantics inherit the automated-source rule above** (line 137): `essentia` prepends the inferred genre and keeps whatever tag genres the song already carries — it does not replace, and per `upsertGenreOverride`'s permanence contract it can never overwrite an existing `user` override.
 
 ---
 

@@ -20,6 +20,12 @@ export interface AudioFeaturesResult {
   };
   embedding: { model: string; dim: number; values: number[] };
   modelVersions: Record<string, string>;
+  /** Discogs-genre inference riding the same /analyze call (issue #187 task
+   *  A2) — an audio-inferred fallback, strictly below tag/MusicBrainz genre.
+   *  `null` when absent (sidecar build predates the head) or malformed;
+   *  parsed independently of `features` so a genre-parsing issue can never
+   *  fail the whole payload. */
+  genre: { label: string; style: string | null; confidence: number } | null;
 }
 
 /**
@@ -221,6 +227,17 @@ export class AudioFeaturesClient {
     return { bpm, confidence };
   }
 
+  /** Genre is a bonus field (see AudioFeaturesResult.genre) — anything
+   *  missing/malformed simply resolves to null, never rejects the payload. */
+  private validateGenre(body: unknown): AudioFeaturesResult['genre'] {
+    const b = body as { genre?: { genre?: unknown; style?: unknown; confidence?: unknown } | null };
+    const g = b?.genre;
+    if (!g || typeof g.genre !== 'string' || g.genre.length === 0) return null;
+    const confidence = clamp01(g.confidence);
+    if (confidence === null) return null;
+    return { label: g.genre, style: typeof g.style === 'string' ? g.style : null, confidence };
+  }
+
   /** Validate + clamp the sidecar payload; null when structurally unusable. */
   private validate(body: unknown, relPath: string): AudioFeaturesResult | null {
     const b = body as {
@@ -258,6 +275,7 @@ export class AudioFeaturesClient {
       features: { danceability, valence, acousticness, instrumental, mood },
       embedding: { model: e.model, dim: e.dim, values: values as number[] },
       modelVersions: b.modelVersions ?? {},
+      genre: this.validateGenre(body),
     };
   }
 }

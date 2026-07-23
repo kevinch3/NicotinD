@@ -6,6 +6,7 @@ import { normalizeArtistForGrouping } from './album-grouping.js';
 import { setSongGenres } from './genre-split.js';
 import {
   applyGenreOverride,
+  applySongGenreOverride,
   backfillGenreOverrides,
   buildOverrideIndex,
   emptyOverrideIndex,
@@ -229,5 +230,74 @@ describe('backfillGenreOverrides', () => {
     const db = new Database(':memory:');
     applySchema(db);
     expect(backfillGenreOverrides(db, setSongGenres)).toEqual({ scanned: 0, updated: 0 });
+  });
+});
+
+describe('applySongGenreOverride', () => {
+  it('applies a single song-scoped essentia override without touching other songs (issue #187 A2)', () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    db.run(
+      `INSERT INTO library_albums (id, name, artist, artist_id, song_count, duration, created, synced_at)
+       VALUES ('alb', 'Album', 'A', 'art', 2, 200, '2024-01-01', 1)`,
+    );
+    db.run(
+      `INSERT INTO library_songs (id, album_id, title, artist, artist_id, album_artist, duration, path, size, bit_rate, suffix, content_type, created, synced_at, genre)
+       VALUES ('s1', 'alb', 'T1', 'A', 'art', 'A', 100, 'p1', 1, 1, 'mp3', 'audio/mpeg', '2024-01-01', 1, NULL),
+              ('s2', 'alb', 'T2', 'A', 'art', 'A', 100, 'p2', 1, 1, 'mp3', 'audio/mpeg', '2024-01-01', 1, NULL)`,
+    );
+    upsertGenreOverride(db, {
+      scope: 'song',
+      key: 's1',
+      genres: ['Rock'],
+      source: 'essentia',
+      mbid: null,
+      confidence: 0.82,
+      status: 'applied',
+      note: null,
+    });
+    const idx = loadGenreOverrides(db);
+
+    const changed = applySongGenreOverride(db, setSongGenres, idx, {
+      songId: 's1',
+      albumKey: 'unused-album',
+      artistKey: normalizeArtistForGrouping('A'),
+    });
+
+    expect(changed).toBe(true);
+    expect(
+      db
+        .query<{ genre: string }, [string]>(`SELECT genre FROM library_song_genres WHERE song_id = ?`)
+        .all('s1')
+        .map((r) => r.genre),
+    ).toEqual(['Rock']);
+    // s2 was never touched.
+    expect(
+      db
+        .query<{ genre: string }, [string]>(`SELECT genre FROM library_song_genres WHERE song_id = ?`)
+        .all('s2'),
+    ).toEqual([]);
+  });
+
+  it('returns false and writes nothing when the resolved set is unchanged', () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    db.run(
+      `INSERT INTO library_albums (id, name, artist, artist_id, song_count, duration, created, synced_at)
+       VALUES ('alb', 'Album', 'A', 'art', 1, 100, '2024-01-01', 1)`,
+    );
+    db.run(
+      `INSERT INTO library_songs (id, album_id, title, artist, artist_id, album_artist, duration, path, size, bit_rate, suffix, content_type, created, synced_at, genre)
+       VALUES ('s1', 'alb', 'T', 'A', 'art', 'A', 100, 'p', 1, 1, 'mp3', 'audio/mpeg', '2024-01-01', 1, 'Rock')`,
+    );
+    setSongGenres(db, 's1', ['Rock']);
+
+    const changed = applySongGenreOverride(db, setSongGenres, emptyOverrideIndex(), {
+      songId: 's1',
+      albumKey: 'alb',
+      artistKey: 'art',
+    });
+
+    expect(changed).toBe(false);
   });
 });

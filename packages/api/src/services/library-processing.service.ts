@@ -557,6 +557,7 @@ export class LibraryProcessingService extends EventEmitter {
         'audio-features': 0,
         'artist-identity': 0,
         licence: 0,
+        'genre-audio': 0,
       },
       availability: {
         bpm: 'unknown',
@@ -567,6 +568,7 @@ export class LibraryProcessingService extends EventEmitter {
         'audio-features': 'unknown',
         'artist-identity': 'unknown',
         licence: 'unknown',
+        'genre-audio': 'unknown',
       },
       skipped: 0,
       quarantined: 0,
