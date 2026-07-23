@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.244](https://github.com/kevinch3/NicotinD/compare/v0.1.243...v0.1.244) (2026-07-23)
+
+### Features
+
+* **library:** override-capable genre write path + trusted-metadata genre ([238b742](https://github.com/kevinch3/NicotinD/commit/238b74240414395804fc17992e5fc6aff4f8b5b4)), references [#187](https://github.com/kevinch3/NicotinD/issues/187)
+
+### Bug Fixes
+
+* **plugins:** render metadata extensions in the Extensions UI ([13c920f](https://github.com/kevinch3/NicotinD/commit/13c920f36c81d4da0996bf808831117a2ab3a961)), references [#190](https://github.com/kevinch3/NicotinD/issues/190)
+* **plugins:** wire the registry into spotdl so it forwards Spotify credentials ([01049b0](https://github.com/kevinch3/NicotinD/commit/01049b037f9750c3da7aa998ac71ee7a70d9afb8)), references [#190](https://github.com/kevinch3/NicotinD/issues/190)
+* **web:** improve mobile nav contrast, sign-in rhythm, and home chip hover ([9dee81f](https://github.com/kevinch3/NicotinD/commit/9dee81f48da8c97959a8791b2ce80cbb47a99e49))
 ## [0.1.243](https://github.com/kevinch3/NicotinD/compare/v0.1.242...v0.1.243) (2026-07-23)
 
 ### Bug Fixes
