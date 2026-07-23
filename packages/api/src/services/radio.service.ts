@@ -186,8 +186,24 @@ export interface SimilarityExplanation {
   score: number;
   axes: AxisContribution[];
   skipped: string[];
+  /** Axes scored at a floor because the *candidate* lacked the data while the
+   *  seed had it (today: `genre`). They appear in `axes` too — this list is what
+   *  lets the diagnostic still separate a data gap from a genuine weak match. */
+  floored: string[];
   artistPenaltyApplied: boolean;
 }
+
+/**
+ * Score a genre-less candidate at this floor rather than skipping the axis.
+ *
+ * Skipping dropped the weight-10 genre axis out of the normalization denominator,
+ * so an untagged track competed on BPM/energy alone and could out-rank a real
+ * genre neighbour — missing data was literally *rewarded* (13% of the library has
+ * no genre). A floor degrades gracefully instead: an untagged track is neither
+ * excluded nor treated as a match. Deliberately non-zero so a mid-backfill
+ * library stays discoverable.
+ */
+export const MISSING_GENRE_FLOOR = 0.2;
 
 /**
  * Pure, IO-free per-axis breakdown of `scoreSimilarity`. `scoreSimilarity`
@@ -209,6 +225,7 @@ export function explainSimilarity(
   let weightAcc = 0;
   const axes: AxisContribution[] = [];
   const skipped: string[] = [];
+  const floored: string[] = [];
   const add = (axis: string, value: number | null, weight: number): void => {
     if (value === null) {
       skipped.push(axis);
@@ -221,12 +238,21 @@ export function explainSimilarity(
   };
 
   // Genre: best pairwise lexical closeness across the two genre sets (falls
-  // back to the single primary when a side has no set).
-  add(
-    'genre',
-    genreSetCloseness(seed.genres ?? seed.genre, candidate.genres ?? candidate.genre),
-    weights.genre,
-  );
+  // back to the single primary when a side has no set). When the seed has genre
+  // data and the candidate does not, the axis is FLOORED rather than skipped —
+  // see MISSING_GENRE_FLOOR. A seed with no genre still skips (nothing to
+  // compare), and no other axis floors: an un-analyzed candidate must not be
+  // penalized for un-measured bpm/key/perceptual features.
+  const seedGenre = seed.genres ?? seed.genre;
+  const candGenre = candidate.genres ?? candidate.genre;
+  const genreValue = genreSetCloseness(seedGenre, candGenre);
+  const seedHasGenre = (Array.isArray(seedGenre) ? seedGenre.filter(Boolean).length > 0 : !!seedGenre);
+  if (genreValue === null && seedHasGenre) {
+    floored.push('genre');
+    add('genre', MISSING_GENRE_FLOOR, weights.genre);
+  } else {
+    add('genre', genreValue, weights.genre);
+  }
 
   // BPM proximity: ±5% ≈ near-full score, scaled linearly.
   add(
@@ -280,7 +306,7 @@ export function explainSimilarity(
   const artistPenaltyApplied = seed.artistId === candidate.artistId;
   const score = artistPenaltyApplied ? base - weights.artistPenalty : base;
 
-  return { score, axes, skipped, artistPenaltyApplied };
+  return { score, axes, skipped, floored, artistPenaltyApplied };
 }
 
 export function scoreSimilarity(

@@ -159,6 +159,98 @@ describe('loadGenreContext', () => {
   });
 });
 
+describe('segmentConcatenatedGenre', () => {
+  /** Resolver over a display-cased vocabulary, punctuation/space-insensitive. */
+  const resolver = (...names: string[]) => {
+    const squash = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '');
+    const index = new Map(names.map((n) => [squash(n), n]));
+    return (s: string): string | null => index.get(squash(s)) ?? null;
+  };
+
+  it('splits a no-separator mash when every segment is a known genre', async () => {
+    const { segmentConcatenatedGenre } = await import('./genre-split.js');
+    expect(segmentConcatenatedGenre('LatinWorld', resolver('Latin', 'World'))).toEqual([
+      'Latin',
+      'World',
+    ]);
+    expect(
+      segmentConcatenatedGenre(
+        'OperaClassicalFolkWorldCountry',
+        resolver('Opera', 'Classical', 'Folk', 'World', 'Country'),
+      ),
+    ).toEqual(['Opera', 'Classical', 'Folk', 'World', 'Country']);
+  });
+
+  it('prefers the longest known segment, so multi-word genres survive', async () => {
+    const { segmentConcatenatedGenre } = await import('./genre-split.js');
+    expect(
+      segmentConcatenatedGenre(
+        'EuropopPopSoft RockElectronicRockSchlager',
+        resolver('Europop', 'Pop', 'Soft Rock', 'Electronic', 'Rock', 'Schlager'),
+      ),
+    ).toEqual(['Europop', 'Pop', 'Soft Rock', 'Electronic', 'Rock', 'Schlager']);
+  });
+
+  it('matches punctuation/space-insensitively and emits the vocabulary spelling', async () => {
+    const { segmentConcatenatedGenre } = await import('./genre-split.js');
+    // Library spells it "Tech House"; the tag says "Tech-House".
+    expect(
+      segmentConcatenatedGenre(
+        'Tech-HouseDowntempoTechnoMinimal TechnoHouse',
+        resolver('Tech House', 'Downtempo', 'Techno', 'Minimal Techno', 'House'),
+      ),
+    ).toEqual(['Tech House', 'Downtempo', 'Techno', 'Minimal Techno', 'House']);
+  });
+
+  it('cuts on uppercase-after-uppercase boundaries the case-boundary regex misses', async () => {
+    const { segmentConcatenatedGenre } = await import('./genre-split.js');
+    expect(
+      segmentConcatenatedGenre(
+        'Contemporary R&BCountry RockJazz',
+        resolver('Contemporary R&B', 'Country Rock', 'Jazz'),
+      ),
+    ).toEqual(['Contemporary R&B', 'Country Rock', 'Jazz']);
+  });
+
+  it('backtracks when the longest-first path leaves an unknown tail', async () => {
+    const { segmentConcatenatedGenre } = await import('./genre-split.js');
+    // Greedy takes "LatinPop" → "Latin Pop", leaving unknown "Rock"; backtracking
+    // to "Latin" + "Pop Rock" is the only full cover.
+    expect(
+      segmentConcatenatedGenre('LatinPopRock', resolver('Latin Pop', 'Latin', 'Pop Rock')),
+    ).toEqual(['Latin', 'Pop Rock']);
+  });
+
+  it('never splits at a space or hyphen — real compound genres stay whole', async () => {
+    const { segmentConcatenatedGenre } = await import('./genre-split.js');
+    // The most important guard, sized from the real library: "Pop Rock" is 781
+    // songs, "Dance-Pop" 433, "Singer-Songwriter" 237. None may ever be split.
+    expect(segmentConcatenatedGenre('Pop Rock', resolver('Pop', 'Rock', 'Pop Rock'))).toBeNull();
+    expect(segmentConcatenatedGenre('Deep House', resolver('Deep', 'House'))).toBeNull();
+    expect(segmentConcatenatedGenre('Dance-Pop', resolver('Dance', 'Pop'))).toBeNull();
+    expect(
+      segmentConcatenatedGenre('Singer-Songwriter', resolver('Singer', 'Songwriter')),
+    ).toBeNull();
+    expect(segmentConcatenatedGenre('Jazz-Funk', resolver('Jazz', 'Funk'))).toBeNull();
+  });
+
+  it('returns null when any segment is unknown, or nothing splits', async () => {
+    const { segmentConcatenatedGenre } = await import('./genre-split.js');
+    expect(segmentConcatenatedGenre('BritPop', resolver('Pop', 'Rock'))).toBeNull();
+    expect(
+      segmentConcatenatedGenre('Singer-Songwriter', resolver('Singer-Songwriter', 'Rock')),
+    ).toBeNull();
+    expect(segmentConcatenatedGenre('Neo-Psychedelia', resolver('Psychedelia'))).toBeNull();
+    expect(segmentConcatenatedGenre('Moogsploitation', resolver('Rock'))).toBeNull();
+    expect(segmentConcatenatedGenre('www.electronicfresh.com', resolver('Electronic'))).toBeNull();
+  });
+
+  it('rejects sub-3-character segments (RnB-style false splits)', async () => {
+    const { segmentConcatenatedGenre } = await import('./genre-split.js');
+    expect(segmentConcatenatedGenre('RnBSwing', resolver('Rn', 'B', 'Swing'))).toBeNull();
+  });
+});
+
 describe('proposeGenreAliases', () => {
   const vocab = (entries: Array<[string, number]>) =>
     entries.map(([value, count]) => ({ value, count }));
@@ -184,14 +276,18 @@ describe('proposeGenreAliases', () => {
       vocab([['RockPunk', 3], ['LatinPopLatin Pop', 20], ['BritPop', 2], ['Rock', 800], ['Punk', 30], ['Latin', 600], ['Pop', 1200], ['Latin Pop', 111]]),
     );
     expect(out).toContainEqual({ alias: 'RockPunk', canonical: 'Rock;Punk', kind: 'concat', count: 3 });
+    // Longest-known-segment first: "LatinPop" resolves to the more specific
+    // "Latin Pop" rather than "Latin" + "Pop", and the duplicate collapses.
     expect(out).toContainEqual({
       alias: 'LatinPopLatin Pop',
-      canonical: 'Latin;Pop;Latin Pop',
+      canonical: 'Latin Pop',
       kind: 'concat',
       count: 20,
     });
     // "Brit" is not a known genre → no proposal for BritPop.
     expect(out.find((p) => p.alias === 'BritPop')).toBeUndefined();
+    // Real multi-word genres are never split apart at their space.
+    expect(out.find((p) => p.alias === 'Latin Pop')).toBeUndefined();
   });
 
   it('proposes keeping only the known sides of an unresolved "/" join', async () => {
@@ -252,6 +348,75 @@ describe('setSongGenres', () => {
         ?.genre,
     ).toBeNull();
     expect(loadGenreSets(db, ['s1']).get('s1')).toBeUndefined();
+  });
+});
+
+describe('backfillGenresFromAliases', () => {
+  async function seedLibrary() {
+    const { Database } = await import('bun:sqlite');
+    const { applySchema } = await import('../db.js');
+    const mod = await import('./genre-split.js');
+    const db = new Database(':memory:');
+    applySchema(db);
+    const insert = (id: string, genres: string[]) => {
+      db.run(
+        `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, genre, path, size, suffix, content_type, synced_at)
+         VALUES (?, 'al1', 'T', 'A', 'ar1', 200, ?, ?, 1, 'mp3', 'audio/mpeg', 0)`,
+        [id, genres[0] ?? null, `p-${id}`],
+      );
+      genres.forEach((g, i) =>
+        db.run(`INSERT INTO library_song_genres (song_id, genre, position) VALUES (?, ?, ?)`, [
+          id,
+          g,
+          i,
+        ]),
+      );
+    };
+    return { db, insert, ...mod };
+  }
+
+  it('rewrites stored genre sets through the alias table without a rescan', async () => {
+    const { db, insert, backfillGenresFromAliases, loadGenreSets } = await seedLibrary();
+    insert('s1', ['LatinWorld']);
+    insert('s2', ['Folk']);
+    db.run(
+      `INSERT INTO library_genre_aliases (alias, canonical, source, created_at) VALUES (?, ?, 'user', 0)`,
+      ['LatinWorld', 'Latin;World'],
+    );
+
+    const result = backfillGenresFromAliases(db);
+
+    expect(result.updated).toBe(1);
+    expect(loadGenreSets(db, ['s1']).get('s1')).toEqual(['Latin', 'World']);
+    // The garbage primary is REPLACED, not appended to.
+    expect(
+      db.query<{ genre: string | null }, [string]>(`SELECT genre FROM library_songs WHERE id = ?`).get('s1')
+        ?.genre,
+    ).toBe('Latin');
+    // Untouched songs are left alone (and not counted).
+    expect(loadGenreSets(db, ['s2']).get('s2')).toEqual(['Folk']);
+  });
+
+  it('is idempotent — a second run updates nothing', async () => {
+    const { db, insert, backfillGenresFromAliases } = await seedLibrary();
+    insert('s1', ['LatinWorld']);
+    db.run(
+      `INSERT INTO library_genre_aliases (alias, canonical, source, created_at) VALUES (?, ?, 'user', 0)`,
+      ['LatinWorld', 'Latin;World'],
+    );
+    backfillGenresFromAliases(db);
+    expect(backfillGenresFromAliases(db).updated).toBe(0);
+  });
+
+  it('drops a junk genre whose alias canonical is empty', async () => {
+    const { db, insert, backfillGenresFromAliases, loadGenreSets } = await seedLibrary();
+    insert('s1', ['Other', 'Rock']);
+    db.run(
+      `INSERT INTO library_genre_aliases (alias, canonical, source, created_at) VALUES (?, ?, 'user', 0)`,
+      ['Other', ''],
+    );
+    backfillGenresFromAliases(db);
+    expect(loadGenreSets(db, ['s1']).get('s1')).toEqual(['Rock']);
   });
 });
 

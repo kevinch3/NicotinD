@@ -9,6 +9,7 @@
  *   bun run packages/api/src/scripts/reclassify-genres.ts --propose            # print proposals
  *   bun run packages/api/src/scripts/reclassify-genres.ts --propose --out f.json
  *   bun run packages/api/src/scripts/reclassify-genres.ts --apply f.json       # write reviewed rows
+ *   bun run packages/api/src/scripts/reclassify-genres.ts --backfill            # re-mint stored sets now
  *
  * Env: NICOTIND_DATA_DIR (falls back to config dataDir).
  */
@@ -19,6 +20,7 @@ import { Database } from 'bun:sqlite';
 import {
   proposeGenreAliases,
   buildKnownFromRaw,
+  backfillGenresFromAliases,
   type GenreAliasProposal,
 } from '../services/genre-split.js';
 
@@ -106,11 +108,22 @@ function main(): void {
     db.transaction(() => {
       for (const p of proposals) stmt.run(p.alias, p.canonical, now);
     })();
-    console.log(`${proposals.length} alias rows written. Run a full rescan to rebuild genres.`);
+    console.log(
+      `${proposals.length} alias rows written. Run --backfill to apply them to the stored genre` +
+        ` sets immediately (a full rescan would also pick them up).`,
+    );
     return;
   }
 
-  console.error('Usage: reclassify-genres.ts --propose [--out file.json] | --apply file.json');
+  if (args.includes('--backfill')) {
+    const { scanned, updated } = backfillGenresFromAliases(db);
+    console.log(`${updated} of ${scanned} songs re-minted from the alias table.`);
+    return;
+  }
+
+  console.error(
+    'Usage: reclassify-genres.ts --propose [--out file.json] | --apply file.json | --backfill',
+  );
   process.exit(1);
 }
 

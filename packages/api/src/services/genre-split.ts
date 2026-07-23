@@ -156,6 +156,89 @@ const JUNK_GENRES = new Set([
 /** Squash key for punctuation/spacing variants: letters+digits only. */
 const squash = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]+/g, '');
 
+/** Shortest segment a concatenation split may produce — blocks "RnB" → Rn + B. */
+const MIN_SEGMENT = 3;
+
+/**
+ * Segment a no-separator genre concatenation ("LatinWorld",
+ * "Tech-HouseDowntempoTechno") into its constituent genres, or null when it
+ * can't be covered entirely by known genres.
+ *
+ * Two rules keep this safe enough to *propose* (it is still human-gated):
+ *
+ * - **Cuts only at an uppercase letter directly preceded by a letter or digit.**
+ *   That is what a mash looks like ("...WorldCountry"), and it is what stops real
+ *   compound genres from being torn apart at their own separator: "Pop Rock"
+ *   (781 songs in the real library), "Dance-Pop" (433) and "Singer-Songwriter"
+ *   (237) have no legal cut and can never be split.
+ * - **Every segment must resolve to a known genre**, all-or-nothing, mirroring the
+ *   existing `/`-split rule. `resolveKnown` matches punctuation/space-insensitively
+ *   and returns the *vocabulary* spelling, so a `Tech-House` tag lands on the
+ *   library's `Tech House`.
+ *
+ * Longest segment first (with backtracking) so multi-word genres win over their
+ * own prefixes: "…Soft RockElectronic…" yields "Soft Rock", not "Soft" + …
+ */
+export function segmentConcatenatedGenre(
+  value: string,
+  resolveKnown: (s: string) => string | null,
+): string[] | null {
+  const v = norm(value);
+  if (v.length < MIN_SEGMENT * 2) return null;
+
+  // Legal cut positions: index i splits [0,i) / [i,…) when v[i] is uppercase and
+  // v[i-1] is alphanumeric (so a space or a hyphen protects the compound).
+  const cuts: number[] = [];
+  for (let i = 1; i < v.length; i++) {
+    if (/\p{Lu}/u.test(v[i]!) && /[\p{L}\p{N}]/u.test(v[i - 1]!)) cuts.push(i);
+  }
+  if (cuts.length === 0) return null;
+
+  const ends = [...cuts, v.length];
+  const memo = new Map<number, string[] | null>();
+  const solve = (start: number): string[] | null => {
+    if (start === v.length) return [];
+    const cached = memo.get(start);
+    if (cached !== undefined) return cached;
+    memo.set(start, null); // cycle guard (unreachable — ends strictly increase)
+    // Longest candidate segment first.
+    for (let i = ends.length - 1; i >= 0; i--) {
+      const end = ends[i]!;
+      if (end <= start) continue;
+      // The whole value is trivially "known" (it is in the vocabulary itself) —
+      // a one-segment cover is not a split.
+      if (start === 0 && end === v.length) continue;
+      const piece = v.slice(start, end).trim();
+      if (piece.length < MIN_SEGMENT) continue;
+      const canonical = resolveKnown(piece);
+      if (!canonical) continue;
+      const rest = solve(end);
+      if (rest) {
+        const out = [canonical, ...rest];
+        memo.set(start, out);
+        return out;
+      }
+    }
+    memo.set(start, null);
+    return null;
+  };
+
+  const segments = solve(0);
+  if (!segments || segments.length < 2) return null;
+
+  // Collapse duplicates ("LatinPopLatin Pop" → one "Latin Pop"); a cover that
+  // reduces to the input itself is not a split.
+  const seen = new Set<string>();
+  const unique = segments.filter((s) => {
+    const k = genreKey(s);
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+  if (unique.length === 1 && genreKey(unique[0]!) === genreKey(v)) return null;
+  return unique;
+}
+
 /**
  * Deterministic alias suggestions from the library's post-split genre
  * vocabulary. Human-gated by design: the output is a reviewable list, never
@@ -168,6 +251,19 @@ export function proposeGenreAliases(
   const out: GenreAliasProposal[] = [];
   const byKey = new Map(vocabulary.map((v) => [genreKey(v.value), v]));
   const isKnown = (s: string): boolean => byKey.has(genreKey(s));
+  // Punctuation/space-insensitive resolver for the concatenation splitter: a
+  // "Tech-House" fragment must find the library's "Tech House". Longer names win
+  // a squash collision so the more specific spelling is what gets emitted.
+  // Punctuation/space collisions ("Tech-House" vs "Tech House") resolve to the
+  // most common spelling, same canonicalization rule as the `variant` kind.
+  const knownBySquash = new Map<string, { value: string; count: number }>();
+  for (const v of vocabulary) {
+    const k = squash(v.value);
+    if (!k || v.value.includes('/')) continue;
+    const cur = knownBySquash.get(k);
+    if (cur === undefined || v.count > cur.count) knownBySquash.set(k, v);
+  }
+  const resolveKnown = (s: string): string | null => knownBySquash.get(squash(s))?.value ?? null;
 
   // Group punctuation/spacing variants; the most common form is canonical.
   const bySquash = new Map<string, Array<{ value: string; count: number }>>();
@@ -215,13 +311,12 @@ export function proposeGenreAliases(
       continue;
     }
 
-    // No-separator concatenation: split on lowercase→Uppercase boundaries and
-    // propose only when EVERY segment is a known genre.
-    const segments = v.value.split(/(?<=[a-z])(?=[A-Z])/);
-    if (segments.length > 1 && segments.every(isKnown)) {
+    // No-separator concatenation — see segmentConcatenatedGenre for the rules.
+    const segments = segmentConcatenatedGenre(v.value, resolveKnown);
+    if (segments) {
       out.push({
         alias: v.value,
-        canonical: segments.map((s) => s.trim()).join(';'),
+        canonical: segments.join(';'),
         kind: 'concat',
         count: v.count,
       });
@@ -281,6 +376,38 @@ export function appendSongGenres(db: Database, songId: string, newGenres: string
   }
   setSongGenres(db, songId, merged);
   return merged;
+}
+
+/**
+ * Re-apply the (reviewed) alias table to every song's *stored* genre set, so a
+ * newly-applied alias takes effect without waiting for a full rescan.
+ *
+ * This is the one genre write that legitimately **replaces** a primary rather
+ * than appending to it — the alias table is human-gated, and re-minting
+ * "LatinWorld" → Latin/World is exactly the point. It is also idempotent (a
+ * second run finds nothing to change) and rescan-safe: `buildLibrary` applies the
+ * same aliases at scan time, so the result survives.
+ */
+export function backfillGenresFromAliases(db: Database): { scanned: number; updated: number } {
+  const ctx = loadGenreContext(db);
+  if (ctx.aliases.size === 0) return { scanned: 0, updated: 0 };
+
+  const ids = db
+    .query<{ song_id: string }, []>(`SELECT DISTINCT song_id FROM library_song_genres`)
+    .all()
+    .map((r) => r.song_id);
+  const sets = loadGenreSets(db, ids);
+
+  let updated = 0;
+  for (const [songId, genres] of sets) {
+    // splitGenres over the already-split names re-runs alias expansion (and the
+    // `/` rule) on each; joining with ';' keeps multi-word names intact.
+    const next = splitGenres(genres.join(';'), ctx);
+    if (next.length === genres.length && next.every((g, i) => g === genres[i])) continue;
+    setSongGenres(db, songId, next);
+    updated++;
+  }
+  return { scanned: sets.size, updated };
 }
 
 export function setSongGenres(db: Database, songId: string, genres: string[]): void {

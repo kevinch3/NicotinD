@@ -24,7 +24,7 @@ Each factor produces a 0–1 score; the result is a **weight-normalized** blend
 
 | Factor | Logic | Weight |
 |--------|-------|----------------|
-| Genre | `genreSetCloseness`: **max pairwise `genreCloseness` across the two full genre sets** (`SongFeatures.genres`, primary-first from `library_song_genres`; falls back to the single `genre`). Per pair: exact (case-fold) = 1.0, token-set containment (e.g. "Deep House" ⊇ "House") = 0.6, partial overlap = Jaccard×0.5, disjoint = 0. A shared *secondary* genre scores like a shared primary — a track tagged "Electronic; House" is an exact match for a "House" seed. | 10 |
+| Genre | `genreSetCloseness`: **max pairwise `genreCloseness` across the two full genre sets** (`SongFeatures.genres`, primary-first from `library_song_genres`; falls back to the single `genre`). Per pair: exact (case-fold) = 1.0, token-set containment (e.g. "Deep House" ⊇ "House") = 0.6, partial overlap = Jaccard×0.5, disjoint = 0. A shared *secondary* genre scores like a shared primary — a track tagged "Electronic; House" is an exact match for a "House" seed. **Candidate has no genre while the seed does → `MISSING_GENRE_FLOOR` (0.2), not skipped** (see below). | 10 |
 | BPM proximity | 1 − clamp(\|Δbpm\| / seedBpm × 5, 0, 1) | 8 |
 | Key compatibility | Camelot wheel: same=1.0, A↔B=0.8, ±1 same-ring=0.7, ±2 same-ring=0.4, diagonal (±1 + ring swap)=0.4, else 0 | 6 |
 | Year proximity | 1 − clamp(\|Δyear\| / 20, 0, 1) | 2 |
@@ -46,6 +46,28 @@ un-analyzed candidate competes on the factors it *has* instead of being dragged
 down by un-measured ones. This removes the old bias where a fully-analyzed
 candidate could out-score an un-analyzed one purely for carrying perceptual
 features (the reason Radio used to tunnel on whatever slice got enriched first).
+
+**Genre is the one exception: a missing candidate genre is FLOORED, not skipped**
+(`MISSING_GENRE_FLOOR = 0.2`). Skipping it inverted the intent — dropping the
+weight-10 genre axis out of the denominator meant an untagged track competed on
+BPM/energy alone and could out-rank a real genre neighbour, so *missing data was
+rewarded*. With 13% of the real library carrying no genre at all, that was half
+the José Larralde incoherence (issue #185). The floor degrades gracefully: an
+untagged track is neither excluded from the pool nor treated as a match. Two
+boundaries matter — a seed with **no** genre still *skips* the axis (there is
+nothing to compare against), and **no other axis floors**, preserving the
+un-analyzed-candidate guarantee above. `explainSimilarity` reports these in a
+separate `floored[]` list so the diagnostic can still tell a data gap apart from a
+genuine weak match.
+
+**Why the embedding weight was left at 4.** Raising it was the cheap mitigation
+proposed for genre-poor seeds (issue #185 task A4), so it was measured rather
+than assumed: re-ranking the Larralde seed at `embedding` = 4 / 6 / 8 (via
+`dump-radio --weights`) moved pool genre-coherence 55% → 56% → 57% — noise. Once
+the *data* was fixed the axis had nothing left to rescue, and every control seed
+was already at 12/12 genre matches. Fixing the genre beats reweighting the
+scorer; the flag remains so any future weight change can be justified the same
+way.
 
 Because the score is normalized to `0..1`, the **same-artist adjustment is a
 delta in that space** (`base − artistPenalty`, ~0.15 for radio) rather than a
@@ -160,7 +182,15 @@ bun run packages/api/src/scripts/dump-radio.ts --seed <songId>
 bun run packages/api/src/scripts/dump-radio.ts --artist "José Larralde" --count 12
 bun run packages/api/src/scripts/dump-radio.ts --random          # random-sample a seed
 bun run packages/api/src/scripts/dump-radio.ts --bpm-min 115 --bpm-max 125   # filter vibe
+bun run packages/api/src/scripts/dump-radio.ts --seed <id> --weights embedding=8,genre=14
 ```
+
+`--weights axis=n,…` re-ranks the same seed under a candidate `DEFAULT_WEIGHTS`
+(threaded into `buildSeedRadio`/`buildFilterRadio` via `rankCandidates`'s existing
+`weights` option), so a proposed weight change can be **measured against a control
+seed before it ships** instead of guessed. `parseWeightOverrides` throws on an
+unknown axis or a non-numeric value — a silent no-op would invalidate the
+measurement.
 
 The route and the dump share **one** implementation: `buildSeedRadio` /
 `buildFilterRadio` (exported from `routes/radio.ts`) build the pool + rank; the
@@ -168,24 +198,49 @@ route maps to Songs via `radioSongs`, the dump additionally re-runs the scorer's
 breakdown per candidate. That breakdown is the new **`explainSimilarity`**
 (`radio.service.ts`) — a pure per-axis decomposition of `scoreSimilarity` (which
 now delegates to it). Each axis reports `{value, weight, contribution}`; `skipped`
-names axes dropped because a side lacked the feature. The distinction is the whole
-point: **genre in `axes` with value 0** = disjoint tags lost on *weight*; **`"genre"`
-in `skipped`** = the track has no genre *data*. Two different fixes.
+names axes dropped because a side lacked the feature, and `floored` names axes
+scored at a floor because the *candidate* lacked data the seed had. The
+distinction is the whole point: **genre in `axes` with value 0** = disjoint tags
+lost on *weight*; **`"genre"` in `floored`** = the track has no genre *data*
+(scored at 0.2, see "Scoring algorithm"); **`"genre"` in `skipped`** = the *seed*
+has no genre. Three different fixes.
 
 The dump's "Detection & algorithm — improvement targets" section auto-flags, from
-the actual run: (1) *missing-genre-rewarded* — `scoreSimilarity` normalizes over
-present axes, so a genre-less candidate drops the weight-10 genre axis and can
-out-score a genre-matched neighbor (fix: soft-floor or gate missing genre, don't
-skip it); (2) *genre-lost-on-weight* — `DEFAULT_WEIGHTS.genre` (10/~44 ≈ 23%) too
-low to keep a wrong-genre track down; (3) *genre-detection miss* — un-split
-concatenated tags (`LatinWorld`, `EuropopPopSoftRock…`) that `splitGenres` didn't
-break, so genre closeness sees one giant token (`looksConcatenatedGenre` flags
-them); (4) *key-detection instability* — a one-artist set spanning many keys with
-key axes scoring 0. Also surfaced: filter radio seeds on the pool **centroid**,
-which carries **no genre** (and a near-constant `C major` key), so the genre axis
-is skipped for every candidate — a bpm-only vibe has no genre cohesion by design.
-Acting on any of these is a separate, evidence-driven change (tests in
-`radio.service.test.ts`); this tool only produces the evidence.
+the actual run: (1) *genre-less candidates* — how many output tracks carried no
+genre data; now a **backfill** signal (re-source the genre) rather than a scorer
+bug, since the floor stopped rewarding them; (2) *genre-lost-on-weight* —
+`DEFAULT_WEIGHTS.genre` (10/~44 ≈ 23%) too low to keep a wrong-genre track down;
+(3) *genre-detection miss* — un-split concatenated tags (`LatinWorld`,
+`EuropopPopSoftRock…`) that `splitGenres` didn't break, so genre closeness sees one
+giant token (`looksConcatenatedGenre` flags them; fix them with
+`reclassify-genres.ts --propose` → `--apply` → `--backfill`); (4) *key-detection
+instability* — a one-artist set spanning many keys with key axes scoring 0. Also
+surfaced: filter radio seeds on the pool **centroid**, which carries **no genre**
+(and a near-constant `C major` key), so the genre axis is skipped for every
+candidate — a bpm-only vibe has no genre cohesion by design.
+
+### Case study: the José Larralde fix (issue #185)
+
+The bug the tool was built for, and the shape of an evidence-driven fix. A Folk /
+Chamamé seed pulled in Katy Perry / Chris Brown / Rihanna. Measured on the real
+14,469-track library:
+
+| | pool sharing ≥1 genre token | top-12 |
+|---|---|---|
+| Before | **8%** | 6/12 genre-less, real folk pushed out |
+| After (floor only) | 8% | genre-less tracks demoted, pool still starved |
+| After (floor + tag split) | **55%** | **12/12 genre matches** |
+
+Root cause was *data*, not math: the seed's only tag was `"LatinWorld"`, one
+un-split concatenation matching nothing but other identically-mis-tagged tracks,
+so the pool starved and filled with genre-less, BPM-matched pop. Splitting it to
+`Latin` + `World` refilled the pool; the missing-genre floor kept the untagged
+tracks from winning on the axes they *did* have. Neither change alone was enough —
+and raising the embedding weight, the third hypothesis, measured as noise.
+
+Note what is *not* fixed: `Latin;World` is still not `Folk`/`Chamamé`, so the
+output is Latin-broad (Piazzolla and Goyeneche, but also Shakira). Re-sourcing the
+*real* genre from trusted metadata is tracked separately.
 
 ## Shared scoring with `/songs/:id/similar`
 
@@ -199,11 +254,12 @@ scoring engine benefits both features.
 
 | File | Role |
 |------|------|
-| `packages/api/src/services/radio.service.ts` | Pure scoring: `scoreSimilarity` (delegates to) `explainSimilarity` (per-axis breakdown), `genreCloseness`, `cosineSim`, `camelotCompatibility`, `rankCandidates`, types |
+| `packages/api/src/services/radio.service.ts` | Pure scoring: `scoreSimilarity` (delegates to) `explainSimilarity` (per-axis breakdown), `genreCloseness`, `cosineSim`, `camelotCompatibility`, `rankCandidates`, `MISSING_GENRE_FLOOR`, types |
 | `packages/api/src/services/radio.service.test.ts` | Unit tests for scoring logic + `explainSimilarity` breakdown/delegation |
 | `packages/api/src/services/embedding-store.ts` | `loadEmbeddings` / `embeddingModelFor` — pooled read of cached Essentia vectors |
-| `packages/api/src/routes/radio.ts` | `/api/radio/next` route (seed **and** filter paths); exports the shared generators `buildSeedRadio` / `buildFilterRadio` / `radioSongs` (pool build + rank), `toOrderable` (via `songFilterWheres` + `seedCentroid`) |
-| `packages/api/src/scripts/dump-radio.ts` | Developer diagnostic dump (read-only) — see "Diagnostic dump" above; `looksConcatenatedGenre` flags un-split genre tags |
+| `packages/api/src/routes/radio.ts` | `/api/radio/next` route (seed **and** filter paths); exports the shared generators `buildSeedRadio` / `buildFilterRadio` / `radioSongs` (pool build + rank, optional `weights` override for the dump), `toOrderable` (via `songFilterWheres` + `seedCentroid`) |
+| `packages/api/src/services/genre-split.ts` | `segmentConcatenatedGenre` — splits mashed genre tags feeding the genre axis (see [library-scanner.md](library-scanner.md)) |
+| `packages/api/src/scripts/dump-radio.ts` | Developer diagnostic dump (read-only) — see "Diagnostic dump" above; `looksConcatenatedGenre` flags un-split genre tags, `parseWeightOverrides` backs `--weights` |
 | `packages/api/src/routes/radio.test.ts` | Route tests (incl. filter-radio cases) |
 | `packages/api/src/routes/library.ts` | `/songs/:id/similar` refactored to use shared scorer |
 | `packages/web/src/app/services/api/library-api.service.ts` | `getRadioNext()` + `getFilterRadio()` API methods |

@@ -1,5 +1,31 @@
 import { describe, it, expect } from 'bun:test';
-import { looksConcatenatedGenre } from './dump-radio';
+import { looksConcatenatedGenre, parseWeightOverrides } from './dump-radio';
+import { DEFAULT_WEIGHTS } from '../services/radio.service';
+
+describe('parseWeightOverrides (--weights, the A/B measurement lever)', () => {
+  it('returns the defaults unchanged when no override is given', () => {
+    expect(parseWeightOverrides(undefined)).toEqual(DEFAULT_WEIGHTS);
+  });
+
+  it('overrides only the named axes', () => {
+    const w = parseWeightOverrides('genre=14,embedding=8');
+    expect(w.genre).toBe(14);
+    expect(w.embedding).toBe(8);
+    expect(w.bpm).toBe(DEFAULT_WEIGHTS.bpm);
+    // Never mutates the shared defaults.
+    expect(DEFAULT_WEIGHTS.genre).not.toBe(14);
+  });
+
+  it('accepts fractional values and surrounding whitespace', () => {
+    expect(parseWeightOverrides(' artistPenalty = 0.25 ').artistPenalty).toBe(0.25);
+  });
+
+  it('throws on an unknown axis or a non-numeric value (a typo must not silently no-op)', () => {
+    expect(() => parseWeightOverrides('genr=14')).toThrow(/unknown/i);
+    expect(() => parseWeightOverrides('genre=lots')).toThrow(/numeric/i);
+    expect(() => parseWeightOverrides('genre')).toThrow();
+  });
+});
 
 describe('looksConcatenatedGenre (genre-detection miss flag)', () => {
   it('flags un-split concatenations seen in the real library', () => {
