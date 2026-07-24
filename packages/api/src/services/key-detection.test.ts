@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'bun:test';
-import { chromaToKey, computeChroma, detectKey, keyToCamelot } from './key-detection.js';
+import {
+  chromaToKey,
+  computeChroma,
+  detectKey,
+  isConfidentKey,
+  keyToCamelot,
+  MIN_KEY_CONFIDENCE,
+} from './key-detection.js';
 
 describe('chromaToKey', () => {
   it('identifies C major from a C-E-G weighted chroma', () => {
@@ -72,5 +79,17 @@ describe('computeChroma + detectKey', () => {
 
   it('detectKey returns null on silence', () => {
     expect(detectKey(new Float32Array(sr * 6), sr)).toBeNull();
+  });
+});
+
+describe('isConfidentKey (issue #187 B5 — key-detection instability)', () => {
+  it('rejects confidence below the measured floor', () => {
+    expect(isConfidentKey(0.276)).toBe(false); // real white-noise-tier sample
+    expect(isConfidentKey(0.49)).toBe(false);
+  });
+
+  it('accepts confidence at or above the floor', () => {
+    expect(isConfidentKey(MIN_KEY_CONFIDENCE)).toBe(true);
+    expect(isConfidentKey(0.8)).toBe(true);
   });
 });
