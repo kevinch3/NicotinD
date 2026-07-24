@@ -1836,9 +1836,58 @@ describe('artist-info routes', () => {
     const artistId = seedArtistWithAlbum();
     const res = await makeApp('user').request(`/artists/${artistId}`);
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { artist: { bio: string | null; urls: string[] } };
+    const body = (await res.json()) as {
+      artist: { bio: string | null; urls: string[]; metaExists: boolean; manualOverride: boolean };
+    };
     expect(body.artist.bio).toBeNull();
     expect(body.artist.urls).toEqual([]);
+    // No library_artist_meta row → the web uses this to fire a one-shot
+    // auto-fetch on first visit (issue #213).
+    expect(body.artist.metaExists).toBe(false);
+    expect(body.artist.manualOverride).toBe(false);
+  });
+
+  it('GET /artists/:id flags a tombstoned (bio=null but row exists) row as metaExists=true', async () => {
+    // A tombstone is `bio=NULL, urls=[]`, but the *row* is present — the web
+    // must distinguish "never fetched" from "confident miss" so it doesn't
+    // re-fire the auto-fetch on every visit.
+    const artistId = seedArtistWithAlbum('art-tombstone', 'Tombstoned Artist');
+    upsertMbid(testDb, {
+      scope: 'artist',
+      key: normalizeArtistForGrouping('Tombstoned Artist'),
+      mbid: 'mbid-x',
+      source: 'tag',
+      confidence: 1,
+    });
+    const { registry } = makeRegistry({ result: null });
+    await makeApp('refiner', registry).request(`/artists/${artistId}/refresh-info`, {
+      method: 'POST',
+    });
+    const res = await makeApp('user').request(`/artists/${artistId}`);
+    const body = (await res.json()) as {
+      artist: { bio: string | null; metaExists: boolean; manualOverride: boolean };
+    };
+    expect(body.artist.bio).toBeNull();
+    expect(body.artist.metaExists).toBe(true);
+    expect(body.artist.manualOverride).toBe(false);
+  });
+
+  it('GET /artists/:id surfaces manualOverride=true so the web skips the auto-fetch', async () => {
+    const artistId = seedArtistWithAlbum('art-override', 'Override Artist');
+    upsertArtistMeta(testDb, {
+      artistId,
+      bio: 'Curator bio',
+      urls: [],
+      source: 'user',
+      manualOverride: true,
+    });
+    const res = await makeApp('user').request(`/artists/${artistId}`);
+    const body = (await res.json()) as {
+      artist: { bio: string | null; metaExists: boolean; manualOverride: boolean };
+    };
+    expect(body.artist.bio).toBe('Curator bio');
+    expect(body.artist.metaExists).toBe(true);
+    expect(body.artist.manualOverride).toBe(true);
   });
 
   it('GET /artists/:id includes a stored bio', async () => {
@@ -2016,5 +2065,132 @@ describe('artist-info routes', () => {
     expect(row?.bio).toBe('Curator wins');
     expect(row?.source).toBe('user');
     expect(row?.manualOverride).toBe(true);
+  });
+
+  // ─── Auto-fetch (issue #213) ─────────────────────────────────────────────
+  // Silent one-shot Discogs fetch fired by the web on first artist-page visit
+  // when `metaExists=false`. The route is auth-gated, NOT curator-gated, and
+  // never surfaces a 409/502 — the client only fires it when no row exists,
+  // so the post-fetch tombstone is the one-and-done guard the issue calls
+  // out ("don't spam: a tombstone still means don't refetch every load").
+
+  it('POST /artists/:id/auto-fetch-info fetches the bio and persists it for a non-curator user', async () => {
+    // Critical: a plain `user` (not curator) must be able to fire this —
+    // otherwise non-curator users would never see a bio until the background
+    // task sweeps them, and the whole point of the auto-fetch is to fill
+    // the gap on first page visit.
+    const artistId = seedArtistWithAlbum('art-auto', 'Auto Artist');
+    upsertMbid(testDb, {
+      scope: 'artist',
+      key: normalizeArtistForGrouping('Auto Artist'),
+      mbid: 'mbid-auto',
+      source: 'tag',
+      confidence: 1,
+    });
+    const { registry, calls } = makeRegistry({
+      result: {
+        bio: 'Bio via auto-fetch',
+        urls: ['https://wiki.example'],
+        source: 'discogs',
+        confidence: 0.9,
+      },
+    });
+    const res = await makeApp('user', registry).request(`/artists/${artistId}/auto-fetch-info`, {
+      method: 'POST',
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { bio: string | null; urls: string[] };
+    expect(body.bio).toBe('Bio via auto-fetch');
+    expect(body.urls).toEqual(['https://wiki.example']);
+    expect(calls()).toBe(1);
+    expect(getArtistMeta(testDb, artistId)?.bio).toBe('Bio via auto-fetch');
+  });
+
+  it('POST /artists/:id/auto-fetch-info tombstones on a confident miss (no spam on next visit)', async () => {
+    const artistId = seedArtistWithAlbum('art-auto-miss', 'Auto Miss Artist');
+    upsertMbid(testDb, {
+      scope: 'artist',
+      key: normalizeArtistForGrouping('Auto Miss Artist'),
+      mbid: 'mbid-miss',
+      source: 'tag',
+      confidence: 1,
+    });
+    const { registry, calls } = makeRegistry({ result: null });
+    const res = await makeApp('user', registry).request(`/artists/${artistId}/auto-fetch-info`, {
+      method: 'POST',
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { bio: string | null; urls: string[] };
+    expect(body.bio).toBeNull();
+    expect(body.urls).toEqual([]);
+    // Tombstone row is written so the next page load sees `metaExists=true`
+    // and skips the auto-fetch.
+    expect(getArtistMeta(testDb, artistId)?.bio).toBeNull();
+    expect(getArtistMeta(testDb, artistId)?.source).toBe('discogs');
+    expect(calls()).toBe(1);
+  });
+
+  it('POST /artists/:id/auto-fetch-info returns the existing bio and does not re-query on a manual_override row', async () => {
+    const artistId = seedArtistWithAlbum('art-auto-override', 'Override Artist');
+    upsertArtistMeta(testDb, {
+      artistId,
+      bio: 'Curator bio',
+      urls: ['https://override.example'],
+      source: 'user',
+      manualOverride: true,
+    });
+    const { registry, calls } = makeRegistry({ result: null });
+    const res = await makeApp('user', registry).request(`/artists/${artistId}/auto-fetch-info`, {
+      method: 'POST',
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { bio: string | null; urls: string[] };
+    expect(body.bio).toBe('Curator bio');
+    expect(body.urls).toEqual(['https://override.example']);
+    // Never queries the plugin when a manual override is in place.
+    expect(calls()).toBe(0);
+    expect(getArtistMeta(testDb, artistId)?.bio).toBe('Curator bio');
+  });
+
+  it('POST /artists/:id/auto-fetch-info silently degrades on a provider throw (no 502, no toast)', async () => {
+    // The explicit refresh path surfaces 502; the auto path must NOT, because
+    // the trigger is the user opening the artist page (not a deliberate
+    // request), and a transient provider blip should be invisible to them.
+    const artistId = seedArtistWithAlbum('art-auto-throw', 'Auto Throw Artist');
+    upsertMbid(testDb, {
+      scope: 'artist',
+      key: normalizeArtistForGrouping('Auto Throw Artist'),
+      mbid: 'mbid-throw',
+      source: 'tag',
+      confidence: 1,
+    });
+    const { registry, calls } = makeRegistry({ throws: true });
+    const res = await makeApp('user', registry).request(`/artists/${artistId}/auto-fetch-info`, {
+      method: 'POST',
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { bio: string | null; urls: string[] };
+    expect(body.bio).toBeNull();
+    expect(body.urls).toEqual([]);
+    expect(calls()).toBe(1);
+    // No tombstone was written (the source errored, not confidently missed) —
+    // a future auto-fetch will retry the artist.
+    expect(getArtistMeta(testDb, artistId)).toBeNull();
+  });
+
+  it('POST /artists/:id/auto-fetch-info tombstones when no MBID can be resolved', async () => {
+    // Mirrors the explicit refresh route's behavior: with no Lidarr (or no
+    // cached MBID) the artist can't be looked up, so a tombstone is written
+    // and the client gets an empty result.
+    const artistId = seedArtistWithAlbum('art-auto-no-mbid', 'No MBID Artist');
+    const { registry, calls } = makeRegistry({ result: null });
+    const res = await makeApp('user', registry).request(`/artists/${artistId}/auto-fetch-info`, {
+      method: 'POST',
+    });
+    expect(res.status).toBe(200);
+    expect(calls()).toBe(0);
+    const row = getArtistMeta(testDb, artistId);
+    expect(row?.bio).toBeNull();
+    expect(row?.source).toBe('discogs');
   });
 });

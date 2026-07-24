@@ -96,6 +96,80 @@ function getMbLicenceClient(dataDir?: string): MusicBrainzClient | null {
   return mbLicenceClient.client;
 }
 
+/**
+ * Shared core of the curator `refresh-info` and the silent `auto-fetch-info`
+ * routes (issue #213). Resolves the artist's MBID (Lidarr fallback included —
+ * issue #207), calls the artist-info provider, and persists the result. A
+ * transient provider error is reported as `{ kind: 'error' }` so the caller
+ * can decide between surfacing 502 (explicit refresh) and silent-degrade
+ * (auto-fetch). A confident miss is always tombstoned so a repeat visit
+ * never re-queries.
+ */
+async function fetchAndStoreArtistInfo(
+  db: Database,
+  lidarr: Lidarr | null | undefined,
+  pluginRegistry: PluginRegistry | undefined,
+  artist: { id: string; name: string },
+): Promise<
+  { kind: 'ok'; bio: string | null; urls: string[] } | { kind: 'error'; message: string }
+> {
+  const mbidRow = getMbid(db, 'artist', normalizeArtistForGrouping(artist.name));
+  let mbid = mbidRow?.mbid ?? null;
+  // Fallback (issue #207): library_mbids is never populated for artists
+  // automatically in production, so a cache miss is resolved live via a single
+  // exact-match Lidarr lookup and persisted — mirroring artistInfoTask. Without
+  // this the interactive refresh always tombstoned + returned null, so a bio
+  // could never be fetched for the (vast majority of) artists lacking a cached id.
+  if (!mbid && lidarr) {
+    mbid = await resolveMbidViaLidarr(lidarr, artist.name);
+    if (mbid) {
+      upsertMbid(db, {
+        scope: 'artist',
+        key: normalizeArtistForGrouping(artist.name),
+        mbid,
+        source: 'lidarr',
+        confidence: 0.8,
+      });
+    }
+  }
+  if (!mbid) {
+    upsertArtistMeta(db, { artistId: artist.id, bio: null, urls: [], source: 'discogs' });
+    return { kind: 'ok', bio: null, urls: [] };
+  }
+
+  const [provider] = pluginRegistry?.getEnabledWithCapability('artist-info') ?? [];
+  // Track whether the source *failed* (threw) vs cleanly reported "no info", so
+  // a transient Discogs error (network blip / 5xx / timeout) doesn't masquerade
+  // as a confident miss — a thrown error must NOT write a tombstone, since the
+  // artist should stay re-triable (mirrors the lyrics-fetch route's convention).
+  let sourceErrored = false;
+  const info = provider?.artistInfo
+    ? await provider.artistInfo.fetchArtistInfo({ mbid }).catch(() => {
+        sourceErrored = true;
+        return null;
+      })
+    : null;
+  if (sourceErrored) {
+    return { kind: 'error', message: 'Artist-info source unavailable' };
+  }
+  if (!info) {
+    upsertArtistMeta(db, {
+      artistId: artist.id,
+      bio: null,
+      urls: [],
+      source: 'discogs',
+    });
+    return { kind: 'ok', bio: null, urls: [] };
+  }
+  upsertArtistMeta(db, {
+    artistId: artist.id,
+    bio: info.bio,
+    urls: info.urls,
+    source: info.source,
+  });
+  return { kind: 'ok', bio: info.bio, urls: info.urls };
+}
+
 // The only release types shown in the main Albums grid. Singles & EPs are
 // surfaced on the artist page and the dedicated /singles view instead, so the
 // grid stays album-only. Defined once here so no album-listing endpoint can
@@ -608,7 +682,17 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     attachAlbumArtists(db, singlesAndEps);
     const meta = getArtistMeta(db, id);
     return c.json({
-      artist: { ...rowToArtist(artistRow), bio: meta?.bio ?? null, urls: meta?.urls ?? [] },
+      artist: {
+        ...rowToArtist(artistRow),
+        bio: meta?.bio ?? null,
+        urls: meta?.urls ?? [],
+        // Issue #213: tell the web whether a library_artist_meta row exists
+        // at all. `metaExists=false` means *never fetched* (different from a
+        // tombstoned row, which is `metaExists=true && bio=null`) — the
+        // client uses this to fire a one-shot auto-fetch on first visit.
+        metaExists: meta !== null,
+        manualOverride: meta?.manualOverride ?? false,
+      },
       albums,
       singlesAndEps,
     });
@@ -638,51 +722,46 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       );
     }
 
-    const mbidRow = getMbid(db, 'artist', normalizeArtistForGrouping(artist.name));
-    let mbid = mbidRow?.mbid ?? null;
-    // Fallback (issue #207): library_mbids is never populated for artists
-    // automatically in production, so a cache miss is resolved live via a single
-    // exact-match Lidarr lookup and persisted — mirroring artistInfoTask. Without
-    // this the interactive refresh always tombstoned + returned null, so a bio
-    // could never be fetched for the (vast majority of) artists lacking a cached id.
-    if (!mbid && lidarr) {
-      mbid = await resolveMbidViaLidarr(lidarr, artist.name);
-      if (mbid) {
-        upsertMbid(db, {
-          scope: 'artist',
-          key: normalizeArtistForGrouping(artist.name),
-          mbid,
-          source: 'lidarr',
-          confidence: 0.8,
-        });
-      }
-    }
-    if (!mbid) {
-      upsertArtistMeta(db, { artistId: id, bio: null, urls: [], source: 'discogs' });
-      return c.json({ bio: null, urls: [] });
-    }
+    const result = await fetchAndStoreArtistInfo(db, lidarr, pluginRegistry, artist);
+    if (result.kind === 'error') return c.json({ error: result.message }, 502);
+    return c.json({ bio: result.bio, urls: result.urls });
+  });
 
-    const [provider] = pluginRegistry?.getEnabledWithCapability('artist-info') ?? [];
-    // Track whether the source *failed* (threw) vs cleanly reported "no info", so
-    // a transient Discogs error (network blip / 5xx / timeout) doesn't masquerade
-    // as a confident miss — a thrown error must NOT write a tombstone, since the
-    // artist should stay re-triable (mirrors the lyrics-fetch route's convention).
-    let sourceErrored = false;
-    const info = provider?.artistInfo
-      ? await provider.artistInfo.fetchArtistInfo({ mbid }).catch(() => {
-          sourceErrored = true;
-          return null;
-        })
-      : null;
-    if (sourceErrored) {
-      return c.json({ error: 'Artist-info source unavailable' }, 502);
+  /**
+   * Silent one-shot auto-fetch (issue #213). Mirrors the curator
+   * `refresh-info` route but:
+   *  - is available to any authenticated user (not curator-gated) so a non-curator
+   *    who hits the artist page benefits too;
+   *  - never surfaces a 409/502 — a manual-override row is a no-op (returns the
+   *    current values), and a transient source error returns the existing row
+   *    rather than failing the request;
+   *  - the client only fires this when `metaExists=false`, so the post-fetch
+   *    "did the row exist yet?" check is the tombstone guard the issue calls
+   *    out: a confident miss is written once, never re-fetched on every load.
+   */
+  app.post('/artists/:id/auto-fetch-info', async (c) => {
+    const id = c.req.param('id');
+    const db = getDatabase();
+    const artist = db
+      .query<{ id: string; name: string }, [string]>(
+        `SELECT id, name FROM library_artists WHERE id = ?`,
+      )
+      .get(id);
+    if (!artist) return c.json({ bio: null, urls: [] });
+    const existing = getArtistMeta(db, id);
+    if (existing?.manualOverride) {
+      // Curator edit wins — the auto path never overwrites it. Return the
+      // current values so the client has something to display.
+      return c.json({ bio: existing.bio, urls: existing.urls });
     }
-    if (!info) {
-      upsertArtistMeta(db, { artistId: id, bio: null, urls: [], source: 'discogs' });
-      return c.json({ bio: null, urls: [] });
+    const result = await fetchAndStoreArtistInfo(db, lidarr, pluginRegistry, artist);
+    if (result.kind === 'error') {
+      // Silent degrade — return whatever we already have (likely null/[]), no
+      // 5xx surfaced to the client. The auto-trigger must never toa­st on
+      // failure; that's the explicit user Refresh's job.
+      return c.json({ bio: existing?.bio ?? null, urls: existing?.urls ?? [] });
     }
-    upsertArtistMeta(db, { artistId: id, bio: info.bio, urls: info.urls, source: info.source });
-    return c.json({ bio: info.bio, urls: info.urls });
+    return c.json({ bio: result.bio, urls: result.urls });
   });
 
   /** Curator hand-edit of an artist's bio/links — locks out the background task. */
