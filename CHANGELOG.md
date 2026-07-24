@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.255](https://github.com/kevinch3/NicotinD/compare/v0.1.254...v0.1.255) (2026-07-24)
+
+### Features
+
+* **web:** artist bio polish — auto-fetch, clean markup, Sources, overflow-based show-more ([a5d350e](https://github.com/kevinch3/NicotinD/commit/a5d350e0e958e02ce72e692636b654da4392f9aa)), closes [#213](https://github.com/kevinch3/NicotinD/issues/213), references [#195](https://github.com/kevinch3/NicotinD/issues/195) [#209](https://github.com/kevinch3/NicotinD/issues/209)
 ## [0.1.254](https://github.com/kevinch3/NicotinD/compare/v0.1.253...v0.1.254) (2026-07-24)
 
 ### Bug Fixes
