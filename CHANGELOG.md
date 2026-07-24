@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.256](https://github.com/kevinch3/NicotinD/compare/v0.1.255...v0.1.256) (2026-07-24)
+
+### Bug Fixes
+
+* **library:** widen Lidarr MBID resolution for canonical-name drift (issue [#211](https://github.com/kevinch3/NicotinD/issues/211)) ([bf617ec](https://github.com/kevinch3/NicotinD/commit/bf617eca643ea879d0e7508f97bfc4f81e3c24ed)), references [#1](https://github.com/kevinch3/NicotinD/issues/1)
 ## [0.1.255](https://github.com/kevinch3/NicotinD/compare/v0.1.254...v0.1.255) (2026-07-24)
 
 ### Features
