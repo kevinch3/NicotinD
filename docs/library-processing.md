@@ -166,6 +166,15 @@ Launch tasks:
   [library-scanner.md](library-scanner.md) "Artist images" and
   [spotify-fallback.md](spotify-fallback.md). Its context carries `coverCacheDir` +
   `lookupArtistImageSpotify` (the Spotify portrait lookup, null when unconfigured).
+- **artist-info** — per *artist*: artists with no `library_artist_meta` row,
+  `hidden = 0`, most-prolific first (`album_count DESC`). Available when an
+  artist-info-capable plugin is configured (currently Discogs). Resolves artist bios +
+  external links via MBID-first lookup (`getMbid` for a cached MusicBrainz id →
+  `ctx.lookupArtistInfo(mbid)`), writes the result to `library_artist_meta` via
+  `upsertArtistMeta`, or writes a tombstone (bio=NULL, urls=[]) on no MBID / no result.
+  Skips `manual_override = 1` rows entirely (writes never run; pending predicate excludes
+  them). **Never a landing gate** (optional enrichment, no `satisfiedColumnSql`). See
+  [library-scanner.md](library-scanner.md) "Artist bios".
 
 - **artist-identity** — per *compound artist string*, not per song. Resolves whether a
   delimited artist like "Bob Marley & The Wailers" (one act) vs "Bob Marley, Peter Tosh"
