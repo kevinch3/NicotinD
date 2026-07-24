@@ -8,7 +8,7 @@ import type { SlskdStatus } from '@nicotind/core';
  *  render nowhere at all (which is exactly how LRCLIB went unmanageable). */
 export type PluginKind = 'acquisition' | 'metadata' | 'connectivity';
 export type PluginCapability =
-  'search' | 'browse' | 'resolve' | 'download' | 'lyrics' | 'genre' | 'connectivity';
+  'search' | 'browse' | 'resolve' | 'download' | 'lyrics' | 'genre' | 'artist-info' | 'connectivity';
 
 export type PluginConfigFieldType = 'text' | 'password';
 

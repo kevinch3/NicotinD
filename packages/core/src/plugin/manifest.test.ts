@@ -48,6 +48,18 @@ describe('validatePluginManifest', () => {
     ).toEqual([]);
   });
 
+  it('accepts artist-info as a valid metadata capability', () => {
+    const errors = validatePluginManifest({
+      id: 'test-artist-info',
+      name: 'Test',
+      description: 'test',
+      kind: 'metadata',
+      capabilities: ['artist-info'],
+      defaultEnabled: false,
+    });
+    expect(errors).toEqual([]);
+  });
+
   it('rejects a metadata capability not in the metadata kind', () => {
     const errs = validatePluginManifest(
       base({ id: 'lrclib', kind: 'metadata', capabilities: ['search'] }),

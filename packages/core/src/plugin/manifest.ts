@@ -13,7 +13,7 @@ export type PluginKind = 'acquisition' | 'metadata' | 'connectivity';
 export type AcquisitionCapability = 'search' | 'browse' | 'resolve' | 'download';
 
 /** Capabilities a metadata plugin may declare + implement. */
-export type MetadataCapabilityName = 'lyrics' | 'genre';
+export type MetadataCapabilityName = 'lyrics' | 'genre' | 'artist-info';
 
 /** Capabilities a connectivity plugin may declare + implement. */
 export type ConnectivityCapabilityName = 'connectivity';
@@ -83,7 +83,7 @@ export interface PluginManifest {
 }
 
 const ACQUISITION_CAPS: AcquisitionCapability[] = ['search', 'browse', 'resolve', 'download'];
-const METADATA_CAPS: MetadataCapabilityName[] = ['lyrics', 'genre'];
+const METADATA_CAPS: MetadataCapabilityName[] = ['lyrics', 'genre', 'artist-info'];
 
 /**
  * Validate a manifest's shape + kind/capability coherence. Returns a list of
