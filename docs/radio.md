@@ -49,9 +49,9 @@ features (the reason Radio used to tunnel on whatever slice got enriched first).
 
 **Genre is the one exception: a missing candidate genre is FLOORED, not skipped**
 (`MISSING_GENRE_FLOOR = 0.2`). Skipping it inverted the intent — dropping the
-weight-10 genre axis out of the denominator meant an untagged track competed on
-BPM/energy alone and could out-rank a real genre neighbour, so _missing data was
-rewarded_. With 13% of the real library carrying no genre at all, that was half
+(heavily-weighted) genre axis out of the denominator meant an untagged track
+competed on BPM/energy alone and could out-rank a real genre neighbour, so
+_missing data was rewarded_. With 13% of the real library carrying no genre at all, that was half
 the José Larralde incoherence (issue #185). The floor degrades gracefully: an
 untagged track is neither excluded from the pool nor treated as a match. Two
 boundaries matter — a seed with **no** genre still _skips_ the axis (there is
@@ -68,6 +68,32 @@ the _data_ was fixed the axis had nothing left to rescue, and every control seed
 was already at 12/12 genre matches. Fixing the genre beats reweighting the
 scorer; the flag remains so any future weight change can be justified the same
 way.
+
+**Genre weight re-measure (task B3) — bumped 10 → 18, and the residual case was real.**
+Task B3 warned not to bump the weight blind, and that the missing-genre floor
+(above) had likely already closed most of the symptom — both true, but not the
+whole story. Measured via `dump-radio --weights genre=N` across 10 real seeds
+(the José Larralde + Mercedes Sosa control pair, 4 more well-tagged/random
+seeds, and a niche-genre stress seed): **9 of 10 seeds already showed 0/12
+"genre lost on weight" tracks at the old weight of 10** — for a typical seed
+whose pool shares a reasonable fraction of genre tokens, the floor alone was
+enough. But a genuinely sparse-pool seed (a Folktronica track whose candidate
+pool shared a genre token with only 15% of the pool, vs. 48–75% for the other
+seeds) still let up to 4/12 top tracks be wrong-genre matches that won purely
+on BPM/energy/valence fit — the original B3 symptom, alive in the one case
+where the pool itself is genre-thin. Swept `genre` at 10/14/16/18/20 against
+that seed: 18 was the smallest value that fully closed it (0/12, down from
+4/12), and every one of the other 9 seeds stayed at 0/12 across the whole
+sweep — no observed over-tunneling. A calibrated synthetic pair reproducing
+the exact failure mode (a wrong-genre candidate near-perfect on every other
+axis vs. a right-genre candidate merely decent elsewhere) is pinned as a
+regression test in `radio.service.test.ts`. One side effect worth naming: as
+`genre` rises, previously-just-below-cutoff genre-**floored** candidates (0.2)
+start displacing confirmed-wrong-genre ones (0.0) at the bottom of the ranked
+list — expected given the floor's design (better than a known-wrong guess,
+worse than a real match), and it makes the backfill signal *more* visible, not
+less; the `genre-audio` fallback task (issue #187 A2) directly shrinks that
+population over time.
 
 **Genre is now curator-correctable, and that is the highest-leverage lever.**
 Issue #187 task A3 added `library_genre_overrides` — a scan-applied side table

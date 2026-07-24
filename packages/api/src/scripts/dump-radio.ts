@@ -311,8 +311,12 @@ function renderDiagnosis(
   lines.push(
     `- **Genre lost on weight:** ${genreZero}/${n} output tracks matched nothing on genre (value 0) but still ranked.`,
   );
+  const total = Object.entries(weights)
+    .filter(([axis]) => axis !== 'artistPenalty')
+    .reduce((sum, [, w]) => sum + w, 0);
+  const pct = Math.round((weights.genre / total) * 100);
   lines.push(
-    `  → \`DEFAULT_WEIGHTS.genre\` (currently 10 of ~44 total ≈ 23%) is too low to keep a wrong-genre`,
+    `  → \`DEFAULT_WEIGHTS.genre\` (currently ${weights.genre} of ${total} total ≈ ${pct}%) is too low to keep a wrong-genre`,
   );
   lines.push(`  track down; raise it or add a genre floor/co-constraint for the pool.`);
   if (mashed.size > 0) {

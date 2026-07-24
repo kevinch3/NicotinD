@@ -430,6 +430,68 @@ describe('explainSimilarity (per-axis breakdown — the diagnostic seam)', () =>
     );
   });
 
+  it('a wrong-genre candidate that is otherwise near-perfect no longer outranks a right-genre neighbour (issue #187 B3)', async () => {
+    const { scoreSimilarity, DEFAULT_WEIGHTS } = await import('./radio.service.js');
+    // Calibrated against the real "sparse pool" regression measured via
+    // dump-radio.ts (a niche-genre seed whose pool has low genre-token
+    // overlap): at the old DEFAULT_WEIGHTS.genre (10), the wrong-genre
+    // candidate's near-perfect other-axis fit was enough to outscore a
+    // right-genre candidate that was merely decent elsewhere.
+    const seed = makeSeed({
+      genre: 'Folktronica',
+      genres: ['Folktronica'],
+      bpm: 95,
+      key: 'D# major',
+      year: 2020,
+      duration: 300,
+      energy: 0.8,
+      valence: 0.5,
+      danceability: 0.7,
+      instrumental: 0.35,
+      acousticness: 0.2,
+    });
+    const rightGenreImperfect = makeCandidate({
+      genre: 'Folktronica',
+      genres: ['Folktronica'],
+      bpm: 105,
+      key: 'F minor',
+      year: 2015,
+      duration: 260,
+      energy: 0.6,
+      valence: 0.65,
+      danceability: 0.6,
+      instrumental: 0.5,
+      acousticness: 0.35,
+      artistId: 'a1',
+    });
+    const wrongGenrePerfect = makeCandidate({
+      genre: 'Pop',
+      genres: ['Pop'],
+      bpm: 96,
+      key: 'D# major',
+      year: 2019,
+      duration: 295,
+      energy: 0.79,
+      valence: 0.51,
+      danceability: 0.71,
+      instrumental: 0.34,
+      acousticness: 0.21,
+      artistId: 'a2',
+    });
+
+    // Documents the bug this weight bump fixes: at the OLD weight, genre
+    // correctness alone wasn't enough to beat a near-perfect wrong-genre fit.
+    const oldWeights: ScoringWeights = { ...DEFAULT_WEIGHTS, genre: 10 };
+    expect(scoreSimilarity(seed, wrongGenrePerfect, oldWeights)).toBeGreaterThan(
+      scoreSimilarity(seed, rightGenreImperfect, oldWeights),
+    );
+
+    // At the current default, the right-genre candidate wins instead.
+    expect(scoreSimilarity(seed, rightGenreImperfect, DEFAULT_WEIGHTS)).toBeGreaterThan(
+      scoreSimilarity(seed, wrongGenrePerfect, DEFAULT_WEIGHTS),
+    );
+  });
+
   it('flags the same-artist penalty', async () => {
     const { explainSimilarity, DEFAULT_WEIGHTS } = await import('./radio.service.js');
     const seed = makeSeed({ artistId: 'same' });
