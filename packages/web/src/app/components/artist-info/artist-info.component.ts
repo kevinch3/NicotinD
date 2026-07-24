@@ -49,11 +49,16 @@ export class ArtistInfoComponent {
         this.shownBio.set(r.bio);
         this.shownUrls.set(r.urls);
         this.updated.emit(r);
-        this.toasts.show({ kind: 'success', message: 'Artist info refreshed.' });
+        // The bio appearing inline is its own confirmation — no success toast.
+        // A clean "no info found" response is still a user-visible failure here
+        // (they asked for a bio and got none), so surface it, don't stay silent.
+        if (!r.bio && r.urls.length === 0) {
+          this.toasts.show({ kind: 'error', message: 'No bio found for this artist.' });
+        }
       },
       error: () => {
         this.refreshing.set(false);
-        this.toasts.show({ kind: 'error', message: 'Could not refresh artist info.' });
+        this.toasts.show({ kind: 'error', message: 'Could not fetch artist info.' });
       },
     });
   }

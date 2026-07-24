@@ -194,7 +194,7 @@ export function makeLidarrArtistIdentityResolver(
  * never populated automatically for artists in production). Never throws — a
  * lookup blip degrades to null, same as the identity resolver above.
  */
-async function resolveMbidViaLidarr(lidarr: Lidarr, name: string): Promise<string | null> {
+export async function resolveMbidViaLidarr(lidarr: Lidarr, name: string): Promise<string | null> {
   let hits: LidarrArtist[];
   try {
     hits = await lidarr.artist.lookup(name);

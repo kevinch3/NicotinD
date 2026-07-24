@@ -21,7 +21,8 @@ import type { AudioFeaturesClient } from '../services/audio-features-client.js';
 import { readAudioTags, writeAudioTags } from '../services/audio-tags.js';
 import { getLyrics, setLyrics, deleteLyrics } from '../services/lyrics-store.js';
 import { getArtistMeta, upsertArtistMeta } from '../services/artist-meta-store.js';
-import { getMbid } from '../services/mbid-store.js';
+import { getMbid, upsertMbid } from '../services/mbid-store.js';
+import { resolveMbidViaLidarr } from '../services/enrichment/tasks.js';
 import type { PluginRegistry } from '../services/plugins/registry.js';
 import { optimizeAlbum } from '../services/metadata-optimize.js';
 import { rankCandidates, DEFAULT_WEIGHTS, type SongFeatures } from '../services/radio.service.js';
@@ -638,7 +639,25 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     }
 
     const mbidRow = getMbid(db, 'artist', normalizeArtistForGrouping(artist.name));
-    if (!mbidRow) {
+    let mbid = mbidRow?.mbid ?? null;
+    // Fallback (issue #207): library_mbids is never populated for artists
+    // automatically in production, so a cache miss is resolved live via a single
+    // exact-match Lidarr lookup and persisted — mirroring artistInfoTask. Without
+    // this the interactive refresh always tombstoned + returned null, so a bio
+    // could never be fetched for the (vast majority of) artists lacking a cached id.
+    if (!mbid && lidarr) {
+      mbid = await resolveMbidViaLidarr(lidarr, artist.name);
+      if (mbid) {
+        upsertMbid(db, {
+          scope: 'artist',
+          key: normalizeArtistForGrouping(artist.name),
+          mbid,
+          source: 'lidarr',
+          confidence: 0.8,
+        });
+      }
+    }
+    if (!mbid) {
       upsertArtistMeta(db, { artistId: id, bio: null, urls: [], source: 'discogs' });
       return c.json({ bio: null, urls: [] });
     }
@@ -650,7 +669,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     // artist should stay re-triable (mirrors the lyrics-fetch route's convention).
     let sourceErrored = false;
     const info = provider?.artistInfo
-      ? await provider.artistInfo.fetchArtistInfo({ mbid: mbidRow.mbid }).catch(() => {
+      ? await provider.artistInfo.fetchArtistInfo({ mbid }).catch(() => {
           sourceErrored = true;
           return null;
         })

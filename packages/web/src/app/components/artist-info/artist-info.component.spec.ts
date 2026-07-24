@@ -24,9 +24,9 @@ describe('ArtistInfoComponent', () => {
     } = {},
   ) {
     TestBed.resetTestingModule();
-    const refreshArtistInfo = vi.fn().mockReturnValue(
-      overrides.refreshResult ?? of({ bio: 'Refreshed bio', urls: [] }),
-    );
+    const refreshArtistInfo = vi
+      .fn()
+      .mockReturnValue(overrides.refreshResult ?? of({ bio: 'Refreshed bio', urls: [] }));
     const setArtistInfo = vi.fn().mockReturnValue(of({ bio: 'Edited bio', urls: [] }));
     const show = vi.fn();
     TestBed.configureTestingModule({
@@ -84,8 +84,32 @@ describe('ArtistInfoComponent', () => {
     expect(emitted).toEqual({ bio: 'Refreshed bio', urls: [] });
   });
 
+  it('shows no success toast when a bio is fetched (the inline bio is the confirmation)', () => {
+    const { fixture, show } = setup();
+    fixture.nativeElement
+      .querySelector<HTMLButtonElement>('[data-testid="artist-info-refresh"]')
+      ?.click();
+    fixture.detectChanges();
+    expect(show).not.toHaveBeenCalled();
+  });
+
+  it('surfaces an error toast when the refresh finds no bio or links', () => {
+    const { fixture, show } = setup({
+      bio: null,
+      urls: [],
+      refreshResult: of({ bio: null, urls: [] }),
+    });
+    fixture.nativeElement
+      .querySelector<HTMLButtonElement>('[data-testid="artist-info-refresh"]')
+      ?.click();
+    fixture.detectChanges();
+    expect(show).toHaveBeenCalledWith(expect.objectContaining({ kind: 'error' }));
+  });
+
   it('surfaces an error toast when refresh fails', () => {
-    const { fixture, show } = setup({ refreshResult: throwError(() => new Error('boom')) as never });
+    const { fixture, show } = setup({
+      refreshResult: throwError(() => new Error('boom')) as never,
+    });
     const el: HTMLElement = fixture.nativeElement;
     el.querySelector<HTMLButtonElement>('[data-testid="artist-info-refresh"]')?.click();
     fixture.detectChanges();
