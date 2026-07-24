@@ -117,18 +117,24 @@ async function fetchAndStoreArtistInfo(
   let mbid = mbidRow?.mbid ?? null;
   // Fallback (issue #207): library_mbids is never populated for artists
   // automatically in production, so a cache miss is resolved live via a single
-  // exact-match Lidarr lookup and persisted — mirroring artistInfoTask. Without
-  // this the interactive refresh always tombstoned + returned null, so a bio
-  // could never be fetched for the (vast majority of) artists lacking a cached id.
+  // Lidarr lookup and persisted — mirroring artistInfoTask. Without this the
+  // interactive refresh always tombstoned + returned null, so a bio could
+  // never be fetched for the (vast majority of) artists lacking a cached id.
+  // The lookup widens (issue #211) past a strict exact match when Lidarr's
+  // canonical name contains the library name as a whole-token subsequence AND
+  // the hit's `albumCount > 0` (corroboration that this is a real
+  // MusicBrainz-established artist, not a stub the same-name hazard could
+  // match). The widened path reports a lower confidence (0.5 vs 0.8).
   if (!mbid && lidarr) {
-    mbid = await resolveMbidViaLidarr(lidarr, artist.name);
-    if (mbid) {
+    const resolved = await resolveMbidViaLidarr(lidarr, artist.name);
+    if (resolved) {
+      mbid = resolved.mbid;
       upsertMbid(db, {
         scope: 'artist',
         key: normalizeArtistForGrouping(artist.name),
         mbid,
         source: 'lidarr',
-        confidence: 0.8,
+        confidence: resolved.confidence,
       });
     }
   }

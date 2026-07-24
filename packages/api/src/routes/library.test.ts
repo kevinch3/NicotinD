@@ -1818,6 +1818,35 @@ describe('artist-info routes', () => {
     return { lidarr, calls: () => calls };
   }
 
+  /** Lidarr stub modelling the real `artist.lookup` semantics: the term is the
+   *  query, the hit's `artistName` is what MusicBrainz (via Lidarr) returns
+   *  and may differ. Used to exercise the issue #211 widening — the
+   *  helper takes `query → hit` pairs so the lookup's hit can be a *superset*
+   *  of the query (the canonical-name-drift case the widening fixes). */
+  function makeLidarrLookup(
+    entries: Record<string, { artistName: string; mbid: string; albumCount: number }>,
+  ): { lidarr: Lidarr; calls: () => number } {
+    let calls = 0;
+    const lidarr = {
+      artist: {
+        lookup: async (term: string) => {
+          calls++;
+          const hit = entries[term];
+          return hit
+            ? [
+                {
+                  artistName: hit.artistName,
+                  foreignArtistId: hit.mbid,
+                  albumCount: hit.albumCount,
+                },
+              ]
+            : [];
+        },
+      },
+    } as unknown as Lidarr;
+    return { lidarr, calls: () => calls };
+  }
+
   function makeApp(
     role: 'admin' | 'user' | 'refiner',
     registry?: PluginRegistry,
@@ -1953,6 +1982,71 @@ describe('artist-info routes', () => {
       'mbid-lidarr',
     );
     expect(getArtistMeta(testDb, artistId)?.bio).toBe('Bio via Lidarr MBID');
+  });
+
+  it('POST /artists/:id/refresh-info resolves via the issue #211 widening for canonical-name drift', async () => {
+    // Real prod case (issue #211): library "Eduardo Miño" → Lidarr canonical
+    // "Luis Eduardo Miño Naranjo" (contains the library name as a whole-token
+    // subsequence, + `albumCount > 0` corroboration). The widened path reports
+    // confidence 0.5 (vs 0.8 for exact) so `library_mbids` carries the
+    // provenance forward.
+    const artistId = seedArtistWithAlbum('art-drift', 'Eduardo Miño');
+    const { registry, calls: pluginCalls } = makeRegistry({
+      result: {
+        bio: 'Bio via widened Lidarr MBID',
+        urls: [],
+        source: 'discogs',
+        confidence: 0.9,
+      },
+    });
+    const { lidarr, calls: lidarrCalls } = makeLidarrLookup({
+      'Eduardo Miño': {
+        artistName: 'Luis Eduardo Miño Naranjo',
+        mbid: 'mbid-drift',
+        albumCount: 12,
+      },
+    });
+    const res = await makeApp('refiner', registry, lidarr).request(
+      `/artists/${artistId}/refresh-info`,
+      { method: 'POST' },
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { bio: string | null; urls: string[] };
+    expect(body.bio).toBe('Bio via widened Lidarr MBID');
+    expect(lidarrCalls()).toBe(1);
+    expect(pluginCalls()).toBe(1);
+    const mbidRow = getMbid(testDb, 'artist', normalizeArtistForGrouping('Eduardo Miño'));
+    expect(mbidRow).toEqual(
+      expect.objectContaining({ mbid: 'mbid-drift', source: 'lidarr', confidence: 0.5 }),
+    );
+  });
+
+  it('POST /artists/:id/refresh-info does NOT widen when the Lidarr hit has albumCount=0', async () => {
+    // The corroboration gate: a stub artist the same-name false-positive could
+    // match never has zero albums, so `albumCount <= 0` is the safe rejection.
+    const artistId = seedArtistWithAlbum('art-stub', 'Eduardo Miño');
+    const { registry, calls: pluginCalls } = makeRegistry({
+      // Returning a non-null bio would let the test pass spuriously; null is
+      // the explicit "no bio found" surface so we can read the tombstone.
+      result: null,
+    });
+    const { lidarr } = makeLidarrLookup({
+      'Eduardo Miño': {
+        artistName: 'Luis Eduardo Miño Naranjo',
+        mbid: 'mbid-stub',
+        albumCount: 0,
+      },
+    });
+    const res = await makeApp('refiner', registry, lidarr).request(
+      `/artists/${artistId}/refresh-info`,
+      { method: 'POST' },
+    );
+    expect(res.status).toBe(200);
+    // No MBID was resolvable, so no plugin call should have happened and the
+    // route should tombstone.
+    expect(pluginCalls()).toBe(0);
+    expect(getMbid(testDb, 'artist', normalizeArtistForGrouping('Eduardo Miño'))).toBeNull();
+    expect(getArtistMeta(testDb, artistId)?.bio).toBeNull();
   });
 
   it('POST /artists/:id/refresh-info fetches and stores bio/urls when an MBID is known', async () => {

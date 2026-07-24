@@ -151,6 +151,88 @@ function exactNameMatch(hits: readonly LidarrArtist[], name: string): boolean {
 }
 
 /**
+ * Split an artist name into the same tokens `normalizeArtistForGrouping` folds
+ * over (accent-stripped, lowercased, single-spaced) — exposed so the
+ * whole-token-subsequence matcher (`isWholeTokenSubsequence`) uses the *same*
+ * tokenization the rest of the library does, eliminating a class of off-by-one
+ * bugs where one normaliser treats "Panic! at the Disco" as 4 tokens and the
+ * matcher as 3. No punctuation stripping, so the per-artist identity contract
+ * ("Miranda!" ≠ "Miranda") holds; only accent + case fold.
+ */
+function tokenizeArtistName(s: string): string[] {
+  return normalizeArtistForGrouping(s).split(' ').filter(Boolean);
+}
+
+/**
+ * True when every token of `needle` appears in `haystack` in order, contiguously
+ * (no gaps). e.g. ["eduardo", "mino"] is a whole-token subsequence of
+ * ["luis", "eduardo", "mino", "naranjo"] (positions 1..2) — the exact safe case
+ * the Lidarr canonical-name drift produces (issue #211: "Eduardo Miño" →
+ * "Luis Eduardo Miño Naranjo"). Contiguous, in-order, no-gaps is what makes
+ * this a *tight* match: a "ME" library name against an artist named "Somebody
+ * M Elsinore" fails because the tokens are non-contiguous. Pure — exposed for
+ * unit testing.
+ */
+export function isWholeTokenSubsequence(needle: string, haystack: string): boolean {
+  const n = tokenizeArtistName(needle);
+  const h = tokenizeArtistName(haystack);
+  if (n.length === 0 || n.length > h.length) return false;
+  for (let i = 0; i + n.length <= h.length; i++) {
+    let ok = true;
+    for (let j = 0; j < n.length; j++) {
+      if (h[i + j] !== n[j]) {
+        ok = false;
+        break;
+      }
+    }
+    if (ok) return true;
+  }
+  return false;
+}
+
+/** How much trust to put into an MBID the helper resolved. */
+export const MBID_CONFIDENCE_EXACT = 0.8;
+export const MBID_CONFIDENCE_SUBSEQ = 0.5;
+
+/**
+ * Pick the best Lidarr lookup hit for an MBID, or null. Two-stage (issue #211):
+ *
+ *  1. **Exact normalized-name match** — the same discipline that has always
+ *     guarded the artist-info + identity flows (avoids the documented
+ *     "Âme"/"ME" same-name false pair). Returns confidence 0.8.
+ *  2. **Whole-token subsequence + `albumCount > 0` corroboration** — accepts a
+ *     hit whose `artistName` contains the library name as a whole-token
+ *     subsequence *only when* the hit's `albumCount > 0` (MusicBrainz-known
+ *     catalog size, evidence the hit is a real, established artist — a stub
+ *     a same-name false-positive could match never has zero). Returns
+ *     confidence 0.5 to mark the looser provenance. Undefined `albumCount`
+ *     fails the gate (Lidarr's lookup payload can omit it; treating the
+ *     omission as "no catalog" is the safe read).
+ *
+ * If stage 1 finds a hit it always wins — the corroboration gate is a
+ * fallback, never an override, so a tightened library name never downgrades a
+ * clean exact match. Pure — exposed for unit testing.
+ */
+export function pickMbidHit(
+  hits: readonly LidarrArtist[],
+  name: string,
+): { mbid: string; confidence: number } | null {
+  const want = normalizeArtistForGrouping(name);
+  const exact = hits.find(
+    (a) => a.foreignArtistId && normalizeArtistForGrouping(a.artistName) === want,
+  );
+  if (exact) return { mbid: exact.foreignArtistId, confidence: MBID_CONFIDENCE_EXACT };
+  for (const hit of hits) {
+    if (!hit.foreignArtistId) continue;
+    if ((hit.albumCount ?? 0) <= 0) continue;
+    if (isWholeTokenSubsequence(name, hit.artistName)) {
+      return { mbid: hit.foreignArtistId, confidence: MBID_CONFIDENCE_SUBSEQ };
+    }
+  }
+  return null;
+}
+
+/**
  * Build a Lidarr-backed resolver for compound artist strings. Memoizes per-name
  * lookups for the lifetime of the context (one window run) so compounds sharing a
  * member don't re-query. Every Lidarr call is guarded — a blip degrades to 'unknown',
@@ -176,7 +258,16 @@ export function makeLidarrArtistIdentityResolver(
 
   return async (rawName, parts) => {
     // 1. Is the whole compound itself a canonical artist (band/duo)? Keep it whole.
-    if (exactNameMatch(await lookup(rawName), rawName)) return { decision: 'single', members: [] };
+    //    Widens to the same whole-token-subsequence + albumCount>0 corroboration
+    //    `pickMbidHit` does (issue #211: "Eduardo Miño" → "Luis Eduardo Miño
+    //    Naranjo" canonical-name drift), so the compound's `single` decision
+    //    resolves when a real MusicBrainz-established artist contains the
+    //    library's compound name. Per-part checks below STAY exact — the
+    //    `ME`-style same-name false positive is exactly the trap a widening
+    //    would re-open for collaborators.
+    if (isCompoundSingle(await lookup(rawName), rawName)) {
+      return { decision: 'single', members: [] };
+    }
     // 2. Does every part resolve to a real artist? Then it's a genuine collab.
     if (parts.length > 1) {
       for (const part of parts) {
@@ -188,22 +279,36 @@ export function makeLidarrArtistIdentityResolver(
   };
 }
 
+/** Compound-as-canonical-artist decision: exact match first, then the
+ *  same widened subsequence + `albumCount > 0` corroboration `pickMbidHit`
+ *  uses. Kept private to the resolver (the identity side doesn't need the
+ *  returned MBID — only the yes/no decision). */
+function isCompoundSingle(hits: readonly LidarrArtist[], name: string): boolean {
+  return pickMbidHit(hits, name) !== null;
+}
+
 /**
- * Resolve a name to an MBID via a single exact-match Lidarr lookup, or null
- * (issue #207 — artist-info's only prior MBID source, `library_mbids`, is
- * never populated automatically for artists in production). Never throws — a
- * lookup blip degrades to null, same as the identity resolver above.
+ * Resolve a name to an MBID via a single Lidarr lookup, or null. The picker
+ * (issue #211) first tries an exact normalized-name match (the original
+ * discipline that guards against the documented same-name false pair), then
+ * widens to a whole-token-subsequence + `albumCount > 0` corroboration match
+ * for canonical-name drift (library `Eduardo Miño` → Lidarr `Luis Eduardo
+ * Miño Naranjo`). Returns `{ mbid, confidence }` so the caller can persist the
+ * lower confidence the widened path reports — a tag/id-source write
+ * discipline, not a runtime one. Never throws — a lookup blip degrades to
+ * null, same as the identity resolver above.
  */
-export async function resolveMbidViaLidarr(lidarr: Lidarr, name: string): Promise<string | null> {
+export async function resolveMbidViaLidarr(
+  lidarr: Lidarr,
+  name: string,
+): Promise<{ mbid: string; confidence: number } | null> {
   let hits: LidarrArtist[];
   try {
     hits = await lidarr.artist.lookup(name);
   } catch {
     return null;
   }
-  const want = normalizeArtistForGrouping(name);
-  const hit = hits.find((a) => normalizeArtistForGrouping(a.artistName) === want);
-  return hit ? hit.foreignArtistId : null;
+  return pickMbidHit(hits, name);
 }
 
 export interface EnrichmentRunResult {
@@ -914,19 +1019,27 @@ const artistInfoTask: EnrichmentTask = {
     for (const artist of rows) {
       const mbidRow = getMbid(db, 'artist', normalizeArtistForGrouping(artist.name));
       let mbid = mbidRow?.mbid ?? null;
+      let mbidConfidence = mbidRow?.confidence ?? 0;
       // Fallback (issue #207): library_mbids is never populated for artists
       // automatically in production, so a cache miss is resolved live via a
-      // single exact-match Lidarr lookup and persisted, rather than tombstoned
+      // single Lidarr lookup and persisted, rather than tombstoned
       // immediately. Once written, every later window hits the cache above.
+      // The lookup widens (issue #211) past a strict exact match when Lidarr's
+      // canonical name contains the library name as a whole-token subsequence
+      // AND the hit's `albumCount > 0` (corroboration that this is a real
+      // MusicBrainz-established artist, not a stub the same-name hazard could
+      // match). The widened path reports a lower confidence (0.5 vs 0.8).
       if (!mbid && ctx.lidarr) {
-        mbid = await resolveMbidViaLidarr(ctx.lidarr, artist.name);
-        if (mbid) {
+        const resolved = await resolveMbidViaLidarr(ctx.lidarr, artist.name);
+        if (resolved) {
+          mbid = resolved.mbid;
+          mbidConfidence = resolved.confidence;
           upsertMbid(db, {
             scope: 'artist',
             key: normalizeArtistForGrouping(artist.name),
             mbid,
             source: 'lidarr',
-            confidence: 0.8,
+            confidence: mbidConfidence,
           });
         }
       }
