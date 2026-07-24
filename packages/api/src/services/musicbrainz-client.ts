@@ -41,7 +41,8 @@ type CacheEntry =
   | { type: 'artist'; result: MBArtist | null }
   | { type: 'recording'; result: MBRecording | null }
   | { type: 'release-group'; result: MBReleaseGroup | null }
-  | { type: 'licence'; result: string | null };
+  | { type: 'licence'; result: string | null }
+  | { type: 'discogs-url'; result: string | null };
 
 const MB_BASE = 'https://musicbrainz.org/ws/2';
 const MIN_INTERVAL_MS = 1050; // MusicBrainz allows 1 req/sec; add 50ms buffer
@@ -259,6 +260,31 @@ export class MusicBrainzClient {
       }
     }
     return null;
+  }
+
+  /**
+   * Resolve an artist's Discogs artist-page URL via MusicBrainz's own `discogs`
+   * url-relation (issue #195) — the same MBID-first pattern as {@link getLicence}.
+   * Returns null when MB has no such relation (the common case).
+   */
+  async getArtistDiscogsUrl(mbid: string): Promise<string | null> {
+    const key = `discogs-url:${mbid}`;
+    const cached = this.cache.get(key);
+    if (cached?.type === 'discogs-url') return cached.result;
+
+    const url = `${MB_BASE}/artist/${encodeURIComponent(mbid)}?fmt=json&inc=url-rels`;
+    const data = await this.fetch<{
+      relations?: Array<{ type?: string; url?: { resource?: string } }>;
+    }>(url);
+    let discogsUrl: string | null = null;
+    for (const rel of data?.relations ?? []) {
+      if (rel.type === 'discogs' && rel.url?.resource) {
+        discogsUrl = rel.url.resource;
+        break;
+      }
+    }
+    this.setCached(key, { type: 'discogs-url', result: discogsUrl });
+    return discogsUrl;
   }
 
   private async fetch<T>(url: string): Promise<T | null> {
