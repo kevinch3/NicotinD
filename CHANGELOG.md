@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.253](https://github.com/kevinch3/NicotinD/compare/v0.1.252...v0.1.253) (2026-07-24)
+
+### Bug Fixes
+
+* **library:** resolve MBID via Lidarr in interactive artist-info refresh ([a9d0840](https://github.com/kevinch3/NicotinD/commit/a9d084014c8e07cd344d7f38132910b219cf9700))
+* **web:** reflect artist rename/merge/split and land on the resulting artist ([2efd2f8](https://github.com/kevinch3/NicotinD/commit/2efd2f8ffefdd3be17dc6176a79d4a6644fabb27))
 ## [0.1.252](https://github.com/kevinch3/NicotinD/compare/v0.1.251...v0.1.252) (2026-07-24)
 
 ### Bug Fixes
