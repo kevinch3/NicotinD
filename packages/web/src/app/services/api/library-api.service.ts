@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { type Observable, of, map, catchError } from 'rxjs';
+import { type Observable, of, map, catchError, tap } from 'rxjs';
 import { createCachedObservable } from '../../lib/cached-observable';
 import type {
   SongAcquisition,
@@ -16,7 +16,7 @@ import type {
   ArtistInfoResponse,
 } from '@nicotind/core';
 import { serializeLibraryFilter, isEmptyLibraryFilter } from '@nicotind/core';
-import type { Album, AlbumDetail, Song, ProvenanceRecord } from './api-types';
+import type { Album, AlbumDetail, Song, ProvenanceRecord, ArtistIdentityResult } from './api-types';
 import type { LibraryFragmentReport } from './api-types';
 
 type QueryParams = Record<string, string | number | boolean | string[]>;
@@ -199,10 +199,13 @@ export class LibraryApiService {
 
   /** Hand-edit an artist's bio/links — locks the background task out (curator). */
   setArtistInfo(id: string, bio: string | null, urls: string[]) {
-    return this.http.put<ArtistInfoResponse>(`/api/library/artists/${encodeURIComponent(id)}/info`, {
-      bio,
-      urls,
-    });
+    return this.http.put<ArtistInfoResponse>(
+      `/api/library/artists/${encodeURIComponent(id)}/info`,
+      {
+        bio,
+        urls,
+      },
+    );
   }
 
   fixArtistIdentity(
@@ -211,10 +214,12 @@ export class LibraryApiService {
       | { rawName: string; decision: 'split'; members: string[] }
       | { rawName: string; mergeInto: string }
       | { rawName: string; rename: string },
-  ) {
-    return this.http.post<{ ok: boolean; resynced: boolean }>(
-      `/api/library/artists/identity`,
-      body,
+  ): Observable<ArtistIdentityResult> {
+    return this.http.post<ArtistIdentityResult>(`/api/library/artists/identity`, body).pipe(
+      // The server re-scanned synchronously, so the cached artists/genres lists
+      // are now stale — drop them or the artists grid keeps showing the old name
+      // after a rename/merge/split (the bug this whole flow exists to fix).
+      tap(() => this.invalidateLibraryReads()),
     );
   }
 
@@ -252,7 +257,14 @@ export class LibraryApiService {
 
   getArtist(id: string) {
     return this.http.get<{
-      artist: { id: string; name: string; albumCount: number; coverArt?: string; bio: string | null; urls: string[] };
+      artist: {
+        id: string;
+        name: string;
+        albumCount: number;
+        coverArt?: string;
+        bio: string | null;
+        urls: string[];
+      };
       albums: Album[];
       singlesAndEps: Album[];
     }>(`/api/library/artists/${id}`);

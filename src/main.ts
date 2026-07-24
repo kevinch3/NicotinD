@@ -155,6 +155,11 @@ async function main() {
     // Default preserves today's behavior (0.0.0.0, reachable via Docker port mapping).
     // The desktop sidecar sets NICOTIND_BIND_HOST=127.0.0.1 to bind loopback-only.
     hostname: process.env.NICOTIND_BIND_HOST || undefined,
+    // Bun's default is 10s, which is too tight for interactive routes that make a
+    // synchronous Lidarr + rate-limited Discogs round-trip (artist-info refresh,
+    // metadata optimize, discography lookups) — those were being aborted mid-flight
+    // ("request timed out after 10 seconds"), so an artist bio never came back.
+    idleTimeout: 60,
     fetch: app.fetch,
     websocket,
   });
@@ -260,7 +265,10 @@ function loadConfig() {
   // Merge: file config < persisted secrets < env vars
   const merged = {
     ...fileConfig,
-    port: resolvePort(process.env.NICOTIND_PORT, (fileConfig as Record<string, unknown>).port as number),
+    port: resolvePort(
+      process.env.NICOTIND_PORT,
+      (fileConfig as Record<string, unknown>).port as number,
+    ),
     dataDir: process.env.NICOTIND_DATA_DIR || (fileConfig as Record<string, unknown>).dataDir,
     musicDir: process.env.NICOTIND_MUSIC_DIR || (fileConfig as Record<string, unknown>).musicDir,
     mode: process.env.NICOTIND_MODE || (fileConfig as Record<string, unknown>).mode,

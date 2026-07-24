@@ -21,7 +21,8 @@ import type { AudioFeaturesClient } from '../services/audio-features-client.js';
 import { readAudioTags, writeAudioTags } from '../services/audio-tags.js';
 import { getLyrics, setLyrics, deleteLyrics } from '../services/lyrics-store.js';
 import { getArtistMeta, upsertArtistMeta } from '../services/artist-meta-store.js';
-import { getMbid } from '../services/mbid-store.js';
+import { getMbid, upsertMbid } from '../services/mbid-store.js';
+import { resolveMbidViaLidarr } from '../services/enrichment/tasks.js';
 import type { PluginRegistry } from '../services/plugins/registry.js';
 import { optimizeAlbum } from '../services/metadata-optimize.js';
 import { rankCandidates, DEFAULT_WEIGHTS, type SongFeatures } from '../services/radio.service.js';
@@ -638,7 +639,25 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     }
 
     const mbidRow = getMbid(db, 'artist', normalizeArtistForGrouping(artist.name));
-    if (!mbidRow) {
+    let mbid = mbidRow?.mbid ?? null;
+    // Fallback (issue #207): library_mbids is never populated for artists
+    // automatically in production, so a cache miss is resolved live via a single
+    // exact-match Lidarr lookup and persisted — mirroring artistInfoTask. Without
+    // this the interactive refresh always tombstoned + returned null, so a bio
+    // could never be fetched for the (vast majority of) artists lacking a cached id.
+    if (!mbid && lidarr) {
+      mbid = await resolveMbidViaLidarr(lidarr, artist.name);
+      if (mbid) {
+        upsertMbid(db, {
+          scope: 'artist',
+          key: normalizeArtistForGrouping(artist.name),
+          mbid,
+          source: 'lidarr',
+          confidence: 0.8,
+        });
+      }
+    }
+    if (!mbid) {
       upsertArtistMeta(db, { artistId: id, bio: null, urls: [], source: 'discogs' });
       return c.json({ bio: null, urls: [] });
     }
@@ -650,7 +669,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     // artist should stay re-triable (mirrors the lyrics-fetch route's convention).
     let sourceErrored = false;
     const info = provider?.artistInfo
-      ? await provider.artistInfo.fetchArtistInfo({ mbid: mbidRow.mbid }).catch(() => {
+      ? await provider.artistInfo.fetchArtistInfo({ mbid }).catch(() => {
           sourceErrored = true;
           return null;
         })
@@ -1400,6 +1419,15 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     if (!rawName) return c.json({ error: 'rawName required' }, 400);
     const db = getDatabase();
 
+    // The artist the caller should land on after the resync, and what kind of
+    // change happened — so the client can navigate deterministically instead of
+    // blindly bouncing to the grid (a rename/merge lands on the resulting artist;
+    // a split has no single destination). `artistId` is the deterministic id the
+    // scanner will mint for the resulting name, since the web bundle can't run
+    // `artistIdFor` itself. See docs/library-scanner.md "Admin identity fix".
+    let kind: 'renamed' | 'merged' | 'single' | 'split';
+    let resultArtistId: string | null;
+
     if (body?.rename != null) {
       // Rename this one artist to a corrected spelling/name. Unlike `mergeInto`
       // this deliberately ALLOWS an equal-normalized target — a diacritic/case fix
@@ -1415,6 +1443,10 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
         canonicalName: rename,
         source: 'user',
       });
+      // Whether the target is a new name or normalizes onto an existing artist
+      // (effectively a merge), the resulting page is the same: artistIdFor(rename).
+      kind = 'renamed';
+      resultArtistId = artistIdFor(rename);
     } else if (body?.mergeInto != null) {
       const mergeInto = body.mergeInto.trim();
       if (
@@ -1428,6 +1460,8 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
         canonicalName: mergeInto,
         source: 'user',
       });
+      kind = 'merged';
+      resultArtistId = artistIdFor(mergeInto);
     } else if (body?.decision === 'single') {
       upsertArtistIdentity(db, {
         artistKey: artistIdFor(rawName),
@@ -1435,6 +1469,8 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
         decision: 'single',
         source: 'user',
       });
+      kind = 'single';
+      resultArtistId = artistIdFor(rawName);
     } else if (body?.decision === 'split') {
       const members = (body.members ?? []).map((m) => m.trim()).filter(Boolean);
       if (members.length < 2) {
@@ -1447,6 +1483,9 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
         members,
         source: 'user',
       });
+      // The compound is hidden after a split; there's no single artist to land on.
+      kind = 'split';
+      resultArtistId = null;
     } else {
       return c.json({ error: 'decision (single|split), mergeInto, or rename required' }, 400);
     }
@@ -1464,7 +1503,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
           ? `merge → ${body.mergeInto.trim()}`
           : (body?.decision ?? ''),
     });
-    return c.json({ ok: true, resynced: Boolean(runSync) });
+    return c.json({ ok: true, resynced: Boolean(runSync), kind, artistId: resultArtistId });
   });
 
   // Artist-level genre override (issue #187 A3). This is the highest-leverage

@@ -11,6 +11,7 @@ import {
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { LibraryApiService } from '../../services/api/library-api.service';
+import type { ArtistIdentityResult } from '../../services/api/api-types';
 import { ToastService } from '../../services/toast.service';
 import { IconComponent } from '../icon/icon.component';
 
@@ -65,8 +66,12 @@ export class ArtistIdentityModalComponent {
   /** The raw artist string the decision applies to (tag spelling, not a display name). */
   readonly rawName = input.required<string>();
   readonly closed = output<void>();
-  /** Emitted after the server applied the fix and its rescan has completed. */
-  readonly saved = output<void>();
+  /**
+   * Emitted after the server applied the fix and its rescan completed, carrying
+   * the resulting artist to navigate to (`artistId`) and what happened (`kind`),
+   * so the host can land on the renamed/merged artist rather than guess.
+   */
+  readonly saved = output<ArtistIdentityResult>();
 
   readonly mode = signal<IdentityMode>('single');
   readonly members = signal<string[]>([]);
@@ -141,10 +146,10 @@ export class ArtistIdentityModalComponent {
     this.busy.set(true);
     this.error.set(null);
     this.api.fixArtistIdentity(payload).subscribe({
-      next: () => {
+      next: (result) => {
         this.busy.set(false);
         this.toasts.show({ kind: 'success', message: 'Artist identity updated.' });
-        this.saved.emit();
+        this.saved.emit(result);
         this.closed.emit();
       },
       error: (err: { error?: { error?: string } }) => {

@@ -9,6 +9,19 @@ export interface ArtistCredit {
   role: 'primary' | 'featuring';
 }
 
+/**
+ * Result of POST /api/library/artists/identity. `artistId` is the artist the
+ * caller should navigate to after the server's synchronous re-scan (the id the
+ * scanner minted for the resulting name); `null` for a split, which hides the
+ * compound and has no single destination.
+ */
+export interface ArtistIdentityResult {
+  ok: boolean;
+  resynced: boolean;
+  kind: 'renamed' | 'merged' | 'single' | 'split';
+  artistId: string | null;
+}
+
 export interface SetupStatus {
   needsSetup: boolean;
 }
