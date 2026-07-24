@@ -177,16 +177,28 @@ export class LibraryApiService {
 
   /** Replace the primary genre for every track by this artist. Runs a sync rescan. */
   setArtistGenre(id: string, genres: string, note?: string) {
-    return this.http.post<{ ok: boolean; genres: string[]; resynced: boolean }>(
-      `/api/library/artists/${encodeURIComponent(id)}/genre`,
-      { genres, note },
-    );
+    return this.http
+      .post<{ ok: boolean; genres: string[]; resynced: boolean }>(
+        `/api/library/artists/${encodeURIComponent(id)}/genre`,
+        { genres, note },
+      )
+      .pipe(
+        // Server ran a sync rescan — the cached artists/genres lists are stale,
+        // drop them or the Genres tab keeps showing the old aggregate counts
+        // (issue #210; mirrors the fix on fixArtistIdentity).
+        tap(() => this.invalidateLibraryReads()),
+      );
   }
 
   clearArtistGenre(id: string) {
-    return this.http.delete<{ ok: boolean; removed: boolean }>(
-      `/api/library/artists/${encodeURIComponent(id)}/genre`,
-    );
+    return this.http
+      .delete<{ ok: boolean; removed: boolean }>(
+        `/api/library/artists/${encodeURIComponent(id)}/genre`,
+      )
+      .pipe(
+        // Same as setArtistGenre: a clear also re-scans, so the cached lists are stale.
+        tap(() => this.invalidateLibraryReads()),
+      );
   }
 
   /** Force a re-fetch of this artist's bio/links from Discogs (curator; issue #195). */

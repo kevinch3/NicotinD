@@ -94,6 +94,48 @@ describe('LibraryApiService', () => {
     http.expectOne('/api/library/artists').flush([{ id: 'new', name: 'New Name' }]);
   });
 
+  it('setArtistGenre invalidates the cached artists/genres lists (issue #210)', () => {
+    // Prime both caches.
+    service.getArtists().subscribe();
+    http.expectOne('/api/library/artists').flush([{ id: 'a1', name: 'A' }]);
+    service.getGenres().subscribe();
+    http.expectOne('/api/library/genres').flush([{ value: 'Rock', songCount: 1, albumCount: 1 }]);
+
+    // Setting a curator override runs a server-side rescan; the cached lists
+    // are stale afterwards and must be dropped.
+    service.setArtistGenre('a1', 'Samba').subscribe();
+    const req = http.expectOne('/api/library/artists/a1/genre');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ genres: 'Samba', note: undefined });
+    req.flush({ ok: true, genres: ['Samba'], resynced: true });
+
+    // The next reads re-hit the network instead of replaying the stale lists.
+    service.getArtists().subscribe();
+    http.expectOne('/api/library/artists').flush([{ id: 'a1', name: 'A' }]);
+    service.getGenres().subscribe();
+    http.expectOne('/api/library/genres').flush([{ value: 'Samba', songCount: 1, albumCount: 1 }]);
+  });
+
+  it('clearArtistGenre invalidates the cached artists/genres lists (issue #210)', () => {
+    // Prime both caches.
+    service.getArtists().subscribe();
+    http.expectOne('/api/library/artists').flush([{ id: 'a1', name: 'A' }]);
+    service.getGenres().subscribe();
+    http.expectOne('/api/library/genres').flush([{ value: 'Samba', songCount: 1, albumCount: 1 }]);
+
+    // Clearing also runs a server-side rescan; same staleness risk as set.
+    service.clearArtistGenre('a1').subscribe();
+    const req = http.expectOne('/api/library/artists/a1/genre');
+    expect(req.request.method).toBe('DELETE');
+    req.flush({ ok: true, removed: true });
+
+    // The next reads re-hit the network instead of replaying the stale lists.
+    service.getArtists().subscribe();
+    http.expectOne('/api/library/artists').flush([{ id: 'a1', name: 'A' }]);
+    service.getGenres().subscribe();
+    http.expectOne('/api/library/genres').flush([{ value: 'Rock', songCount: 1, albumCount: 1 }]);
+  });
+
   it('GETs autocomplete song search with q/limit params', () => {
     service.searchSongsAutocomplete('alpha', 5).subscribe();
     const req = http.expectOne((r) => r.url === '/api/library/songs/autocomplete');
