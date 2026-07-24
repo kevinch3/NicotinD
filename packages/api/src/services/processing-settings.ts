@@ -25,6 +25,9 @@ export const DEFAULT_PROCESSING_SETTINGS: ProcessingSettings = {
     genre: true,
     key: true,
     'artist-image': true,
+    // Discogs (or future) artist bio/genre lookup for the artist-info task
+    // (issue #195). Per-artist, never a gate — same posture as artist-image.
+    'artist-info': true,
     energy: true,
     'audio-features': true,
     // Resolves compound artist strings (bands/duos vs collabs) via Lidarr/MB so the

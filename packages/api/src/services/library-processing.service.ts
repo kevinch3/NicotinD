@@ -4,7 +4,12 @@ import { join } from 'node:path';
 import { createLogger } from '@nicotind/core';
 import type { Database } from 'bun:sqlite';
 import type { Lidarr } from '@nicotind/lidarr-client';
-import type { ProcessingSettings, ProcessingStatus, ProcessingTaskId } from '@nicotind/core';
+import type {
+  ProcessingSettings,
+  ProcessingStatus,
+  ProcessingTaskId,
+  ArtistInfoResult,
+} from '@nicotind/core';
 import { getProcessingSettings } from './processing-settings.js';
 import { isWithinWindow } from './processing-window.js';
 import { maybeRefreshAutoPlaylists } from './auto-playlists.service.js';
@@ -74,6 +79,8 @@ export interface LibraryProcessingDeps {
   dataDir: string;
   /** Spotify portrait lookup for the artist-image task, or null when unconfigured. */
   lookupArtistImageSpotify?: ((name: string) => Promise<string | null>) | null;
+  /** Discogs (or future) artist-info lookup for the artist-info task, or null when unconfigured. */
+  lookupArtistInfo?: ((mbid: string) => Promise<ArtistInfoResult | null>) | null;
   /** Analysis-sidecar client for the audio-features task, or null when unconfigured. */
   audioFeaturesClient?: AudioFeaturesClient | null;
   /** Poll interval. Defaults to 60s. */
@@ -108,6 +115,7 @@ export class LibraryProcessingService extends EventEmitter {
   private readonly musicDir: string;
   private readonly dataDir: string;
   private readonly lookupArtistImageSpotify: ((name: string) => Promise<string | null>) | null;
+  private readonly lookupArtistInfo: ((mbid: string) => Promise<ArtistInfoResult | null>) | null;
   private readonly audioFeaturesClient: AudioFeaturesClient | null;
   private readonly logPath: string;
   private readonly intervalMs: number;
@@ -132,6 +140,7 @@ export class LibraryProcessingService extends EventEmitter {
     this.musicDir = deps.musicDir;
     this.dataDir = deps.dataDir;
     this.lookupArtistImageSpotify = deps.lookupArtistImageSpotify ?? null;
+    this.lookupArtistInfo = deps.lookupArtistInfo ?? null;
     this.audioFeaturesClient = deps.audioFeaturesClient ?? null;
     this.logPath = join(deps.dataDir, 'library-processing.log');
     this.intervalMs = deps.intervalMs ?? 60_000;
@@ -145,6 +154,7 @@ export class LibraryProcessingService extends EventEmitter {
           lidarr: this.lidarr,
           concurrency: settings.concurrency,
           lookupArtistImageSpotify: this.lookupArtistImageSpotify,
+          lookupArtistInfo: this.lookupArtistInfo,
           audioFeaturesClient: this.audioFeaturesClient,
           dataDir: this.dataDir,
         }));
@@ -553,6 +563,7 @@ export class LibraryProcessingService extends EventEmitter {
         genre: 0,
         key: 0,
         'artist-image': 0,
+        'artist-info': 0,
         energy: 0,
         'audio-features': 0,
         'artist-identity': 0,
@@ -564,6 +575,7 @@ export class LibraryProcessingService extends EventEmitter {
         genre: 'unknown',
         key: 'unknown',
         'artist-image': 'unknown',
+        'artist-info': 'unknown',
         energy: 'unknown',
         'audio-features': 'unknown',
         'artist-identity': 'unknown',
