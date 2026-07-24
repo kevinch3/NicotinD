@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, mock } from 'bun:test';
 import { Hono } from 'hono';
 import { Database } from 'bun:sqlite';
 import { applySchema } from '../db.js';
-import { radioRoutes } from './radio.js';
+import { radioRoutes, buildFilterRadio } from './radio.js';
 
 let testDb: Database = (() => {
   const d = new Database(':memory:');
@@ -196,6 +196,17 @@ describe('radio /next', () => {
     const res = await app.request('/radio/next?bpmMin=999');
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual([]);
+  });
+
+  it('filter radio: the centroid carries a genre for a genre-uniform pool (issue #187 B4)', () => {
+    seedSong(testDb, { id: 'r1', title: 'R1', artist: 'A', albumId: 'a1', album: 'A1', genre: 'Rock' });
+    seedSong(testDb, { id: 'r2', title: 'R2', artist: 'B', artistId: 'B', albumId: 'a2', album: 'A2', genre: 'Rock' });
+    const result = buildFilterRadio(testDb, { genres: ['Rock'] }, {});
+    // Before the fix, toOrderable never copied `genre` onto OrderableRow, so
+    // seedCentroid's mode() always saw an all-undefined array and the centroid
+    // came back genre-less — meaning genre was SKIPPED for every candidate,
+    // not merely weighted low. A genre-uniform pool's centroid must reflect it.
+    expect(result.seed?.genre).toBe('Rock');
   });
 
   it('still returns results when embeddings are present for some songs', async () => {

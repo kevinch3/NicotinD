@@ -199,6 +199,37 @@ query params (the shared `serializeLibraryFilter` grammar — `mood`, `genre`
 4. Runs the identical `rankCandidates`; returns `Song[]` (`[]` when nothing
    matches — the client surfaces a neutral "no tracks yet" notice, never an error).
 
+**Filter-radio genre-blindness fixed (issue #187 task B4).** `seedCentroid`
+consumes `OrderableRow[]`, but `toOrderable` (`routes/radio.ts`) never copied
+`genre`/`genres` onto the row at all — a straightforward missing-field bug,
+not a fragmentation problem. `seedCentroid`'s `mode()` therefore always saw an
+all-`undefined` array and the centroid came back genre-less, which meant the
+genre axis was **skipped for every candidate** in every filter-radio vibe
+(confirmed via `dump-radio.ts`: `genre: (none)` and every ranked track showing
+`[skipped: genre, …]`, regardless of how genre-coherent the filter's own pool
+actually was). Fixed by copying both fields through; `explainSimilarity`'s
+existing `seed.genres ?? seed.genre` fallback then picks up the centroid's
+modal primary genre and scores it normally — re-measured on a real `genre=
+Latin` filter, every one of the top 12 flipped from `[skipped: genre]` to `✓
+genre match`. `dump-radio.ts`'s own "carries no genre" diagnostic note and its
+seed-features display had the same singular/plural mismatch (checked
+`seed.genres` only) and are fixed to use the same fallback.
+
+**The `seedCentroid.key` "collapses to C major" investigation — a measured
+null result, not a bug.** The modal key genuinely varies with the filtered
+pool (a `Rock` filter's centroid differs from `Pop`'s or `Electronic`'s), and
+repeated draws of the *same* filter land on the same key reliably — C major
+simply has a real, if modest (~1–2 percentage point), plurality lead in this
+library's overall key distribution, and `mode()` correctly finds it. The
+resulting Camelot compatibility scores in real output are not degenerate
+(mostly 0.7–1.0, per the wheel's own adjacency rules) — key isn't dragging the
+pool down. A spot check with `--weights key=0` produced an equally coherent
+(all-genre-matched) top 12, showing no clear win from dropping it either. Per
+the embedding-weight precedent above: measured, found to be noise either way,
+left as-is — a properly-justified change would need real evidence, and the
+practical harm here does not appear to justify one. Revisit if a real
+mis-tracking case turns up.
+
 Client side, `PlayerService.radioFilter` remembers the active vibe so
 **auto-replenish stays in-vibe**: the layout `RadioProvider` calls
 `getFilterRadio(filter, …)` while `radioFilter` is set, falling back to
