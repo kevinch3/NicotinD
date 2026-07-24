@@ -21,6 +21,7 @@
 | 8 | ✅ | High | Device pairing (QR) | Scanning the Link-a-device QR said "not valid" / silently did nothing — raw-bridge scanner call missing iOS-required options, and the JSON payload was meaningless to camera apps; QR now encodes a `/pair` link (camera-app scannable) and the scanner passes full options |
 | 9 | ✅ | High | Native app / servers | No way to leave a server: logout always returned to the same server's login — added saved-server registry (add/switch/remove/remember) with per-server stashed sessions, plus "Use a different server" on login and Settings → Switch server |
 | 10 | ✅ | Low | Devices page (mobile) | Phone app auto-minted and led with a QR that exists to be scanned *by* a phone; expired QR stayed rendered full-contrast and looked scannable — collapsed behind "Link another device" on mobile, expired state now dims the QR with an in-place regenerate |
+| 11 | ✅ | High | Player (transcoded) | Track plays 1-2 s, seek bar hits 100 %, queue advances — short transcode cache file or browser mis-parsing lossy duration; fixed by cache integrity (size-in-key, size floor, ffprobe post-check, `-xerror`, in-use pin) and a frontend false-ended recovery (70 % + 5 s duration gate + 5 s safety-valve + recoveryState state machine) |
 
 ---
 
@@ -56,6 +57,48 @@
 
 ### 2026-07-19
 
+- **(High) Premature track-end on transcoded playback — track plays 1-2 s, seek bar hits 100 %, queue advances.** *Use:* with server-side transcode on, picking a track that had a freshly-built or otherwise short transcode cache file produced a 1-2 s playback followed by an automatic skip to the next track; coming back to the same track played it correctly. Seek bar showed 100 % at the skip moment, which is the giveaway that the browser believed the media timeline had reached EOF. *Root causes (defense in depth on both sides):*
+  - **Server cache integrity** (library-scanner.md "Transcode cache integrity"):
+    (1) the cache key now includes source **size** in addition to mtime, so a
+    same-mtime file replacement can't silently reuse a stale transcode;
+    (2) the hit guard is a stat-based size check (≥ 1 KiB) instead of
+    `existsSync`, so a zero-byte or pre-rename-protection file at the final
+    name is treated as a miss and re-transcoded; (3) `transcodeToFile`
+    invokes ffmpeg with `-xerror` + `-fflags +discardcorrupt` +
+    `-err_detect explode` so a damaged source fails fast instead of
+    silently producing a partial output, and after a successful exit
+    `validateTranscodeOutput` (ffprobe + music-metadata source duration,
+    1 s tolerance) rejects a too-short output before the temp file is
+    renamed into the live cache; (4) the same integrity contract is
+    applied to the **ingest-time** Opus transcode (which writes into the
+    library itself, not just a cache); (5) `pinTranscodeCacheFile` /
+    `wrapWithRelease` keep a file pinned (un-evictable) for the full
+    lifetime of the HTTP response so the fire-and-forget prune can't yank
+    a file out from under a streaming response.
+  - **Frontend false-ended guard** (web-ui.md "Plays 1-2 s then advances"
+    bug): `onDuration` rejects a browser-reported `audio.duration` that
+    fails both the 70 %-of-API relative check AND the ±5 s absolute
+    check (helper: `browserDurationIsAcceptable`); `onEnded` calls
+    `isFalseEnded` and on a true positive sets `recoveryState =
+    'awaiting-duration'`, pauses the audio, and waits for a real
+    `durationchange` (or `canplay` with a sane duration) before resuming
+    playback from the audio element's current position — with a 5 s
+    `recoveryTimeout` safety valve that seeks to 0 + plays if no sane
+    duration ever arrives. The seek bar's `safeProgress` no longer
+    falls back to `t` when the duration is unknown, so the user does
+    not see a 100 % bar during recovery.
+  **✅ Fixed:** all of the above. Regression coverage:
+  `transcode-cache.test.ts` (size floor + size-in-key + pin refcount),
+  `transcode.test.ts` (duration gate + `-xerror` flags),
+  `post-download-transcode.test.ts` (real ffmpeg round-trip),
+  `streaming.test.ts` (transcode response wire format with body wrapper
+  preserves Content-Length), `player.component.spec.ts`
+  (premature-ended + `browserDurationIsAcceptable` blocks), and an
+  e2e case in `tests/playback.spec.ts` ("force-transcoded track plays
+  its full duration") that enables force transcode, plays a 30 s
+  fixture FLAC, and asserts after 5 s of playback that the
+  browser-reported duration is still ≥ 25 s and `currentTime > 5`.
+
 - **(High) Device pairing: the QR "isn't valid" when scanned — manual URL + code was the only path that worked.** *Use:* desktop showed the Link-a-device QR; the phone reached the server fine when the URL + 6-char code were typed, but scanning the QR failed. *Root causes (two, stacked):* (a) `scanBarcode()` calls the **raw Capacitor bridge** (`Capacitor.Plugins.CapacitorBarcodeScanner`), bypassing the plugin's JS wrapper that defaults `scanInstructions`/`scanButton`/`scanText`/`cameraDirection`/`scanOrientation` — and the **iOS native side JSON-decodes those as required fields**, so a `{ hint: 0 }`-only call rejects "Error decoding scan arguments" before the camera even opens; the catch-all mapped every failure to a silent null, which read as "the QR is broken". (b) The QR encoded a **raw JSON payload**, meaningless to the phone's built-in camera app — the natural first thing users point at a QR — which reports "no usable data / not valid". **✅ Fixed:** (a) the raw call now passes every wrapper-default option and returns a typed `ScanOutcome` (cancelled/denied/error surfaced distinctly, with actionable messages in the picker); (b) the QR now encodes `https://<server>/pair#t=<token>&u=<extra-candidates>` — a real link, so the camera app opens the server's new public `/pair` page, which claims the token same-origin and signs the browser in (token in the *fragment*, so it never hits server/proxy logs); the in-app scanner parses both the link form and the legacy JSON form. e2e covers the `/pair` claim + failure-soft paths. → `docs/device-pairing.md`.
 
 - **(High) Native app: no way out of a server — logout loops back to the same server's login.** *Use:* wanting to link the app to a second server, there was no "switch server" anywhere; signing out just re-showed the same server's login form. *Root cause:* `ServerConfigService` held exactly one URL and the `/server` picker was only reachable when *nothing* was configured (serverGuard) — by design v1, but it dead-ends multi-server users. **✅ Fixed:** a saved-servers registry (`lib/server-registry.ts`, most-recent-first, per-server display name from the pairing payload's hostname) with **per-server stashed sessions** — switching away stashes the current 30-day JWT under the server's key and switching back restores it, so hopping servers needs no retyping (no passwords are ever stored; explicit sign-out clears the active server's stash). Entry points: login page "Use a different server", Settings → Server → "Switch server", and the picker itself now lists saved servers with connect/remove. A switch runs `AuthService.resetSession()` (logout minus stash-clearing) so the old server's queue/caches never leak into the new one. → `docs/device-pairing.md` "Multi-server".
@@ -69,8 +112,10 @@
 | Theme | Count | Severity | Related |
 |-------|-------|----------|---------|
 | Playback reliability (Firefox) | 2 | High | items 1–2; web-ui.md bugs #1–#3 |
+| Premature track-end (false `ended`) | 1 | High | item 11 (new); library-scanner.md "Transcode cache integrity" + web-ui.md false-ended guard |
 
 ## Next steps / watch-list
 
 - After deploy, re-test the two named tracks on Firefox for Mac *through the public URL* (the localhost path never reproduced it).
 - Watch for any further "never plays" reports — if a fourth appears, audit every `PlayerService` setter for tracked reads (the constraint is now documented in web-ui.md).
+- After deploy, watch for any "plays 1-2 s then advances" reports — both server cache integrity and the frontend false-ended guard should close the symptom; if a third report lands, instrument `audio.duration` at `loadedmetadata` and the HTTP `Content-Length` / cache file size to localize which side regressed.
