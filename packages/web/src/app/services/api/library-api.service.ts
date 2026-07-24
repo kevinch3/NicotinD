@@ -197,6 +197,21 @@ export class LibraryApiService {
     );
   }
 
+  /**
+   * Silent one-shot auto-fetch (issue #213). Fires from the web on first
+   * artist-page visit when `metaExists=false`. Auth-gated on the server (any
+   * role), not curator-gated; never surfaces a 409/502 — the response is
+   * always `{ bio, urls }` so the caller never has to branch on status.
+   * The server tombstones on a confident miss, so a repeat visit won't
+   * re-query (the auto-fetch is naturally a one-shot per artist).
+   */
+  autoFetchArtistInfo(id: string) {
+    return this.http.post<ArtistInfoResponse>(
+      `/api/library/artists/${encodeURIComponent(id)}/auto-fetch-info`,
+      {},
+    );
+  }
+
   /** Hand-edit an artist's bio/links — locks the background task out (curator). */
   setArtistInfo(id: string, bio: string | null, urls: string[]) {
     return this.http.put<ArtistInfoResponse>(
@@ -264,6 +279,12 @@ export class LibraryApiService {
         coverArt?: string;
         bio: string | null;
         urls: string[];
+        // Issue #213: `false` means *never fetched*; the web fires a one-shot
+        // auto-fetch in that case. `true && bio=null` is a tombstone (confident
+        // miss) and must NOT trigger another fetch. `manualOverride=true` means
+        // a curator edit — auto-fetch must not touch it.
+        metaExists: boolean;
+        manualOverride: boolean;
       };
       albums: Album[];
       singlesAndEps: Album[];

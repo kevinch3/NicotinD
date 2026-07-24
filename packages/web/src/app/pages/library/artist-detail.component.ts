@@ -105,6 +105,11 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
     coverArt?: string;
     bio: string | null;
     urls: string[];
+    // Issue #213: surface the meta-row presence + override flag so the
+    // `ArtistInfoComponent` can fire a one-shot auto-fetch and skip the
+    // refresh on curator-locked bios.
+    metaExists: boolean;
+    manualOverride: boolean;
   } | null>(null);
   readonly albums = signal<Album[]>([]);
   readonly singlesAndEps = signal<Album[]>([]);
@@ -145,7 +150,15 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
 
   onArtistInfoUpdated(info: { bio: string | null; urls: string[] }): void {
     const current = this.artist();
-    if (current) this.artist.set({ ...current, ...info });
+    if (current) {
+      this.artist.set({
+        ...current,
+        ...info,
+        // The row now exists (auto-fetch just wrote it). Flip the flag so a
+        // re-mount of the artist-info component doesn't re-fire the auto-fetch.
+        metaExists: true,
+      });
+    }
   }
 
   // ─── Artist image override (admin: upload / pick-from-album / reset) ───────

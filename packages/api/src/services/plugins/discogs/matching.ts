@@ -181,7 +181,16 @@ export interface DiscogsArtistEntity {
   urls?: string[];
 }
 
-/** Extract a trimmed bio + de-duplicated links from a fetched Discogs artist. */
+/** Extract a trimmed bio + de-duplicated links from a fetched Discogs artist.
+ *
+ *  The raw Discogs `profile` is BBCode-ish (`[url=…]Label[/url]`, `[a123]`,
+ *  `[l=…]`, `[m=…]`, escaped quotes, trailing bare URLs) and would render as
+ *  garbage verbatim. We store it as-is and let the web reformat on render via
+ *  `formatArtistBio` (`packages/web/src/app/lib/artist-bio.ts`) — so existing
+ *  rows reformat without a refetch, and a future markup change can't leave
+ *  rows stuck with old garbage. This function only trims whitespace and
+ *  dedupes URLs, both of which are server-side concerns (row size, dedup
+ *  dedup for storage). */
 export function mapArtistInfo(entity: DiscogsArtistEntity): {
   bio: string | null;
   urls: string[];
