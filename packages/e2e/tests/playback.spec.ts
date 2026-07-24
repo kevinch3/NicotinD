@@ -90,27 +90,46 @@ test.describe('playback', () => {
 
       // After 5 seconds of playback, the track must STILL be the same one and
       // the seek bar must NOT be at 100 %. (The bug was the track ending in
-      // ~1-2 s and the queue advancing.)
-      await expect
-        .poll(
-          () =>
-            page.evaluate(() => {
+      // ~1-2 s and the queue advancing.) The polling must wait for actual
+      // 5+ s of playback — earlier this only waited for `currentTime > 0`,
+      // so the snapshot captured currentTime ≈ 0.2 s and the test couldn't
+      // tell a 1-second "plays then ends" failure from a healthy 30-second
+      // playback. The snapshot is captured AT THE SAME instant the polling
+      // succeeds, so a race can't return a 5+ s `currentTime` from the
+      // polling read but a 0.4 s `currentTime` from a follow-up read (the
+      // audio element swap the bug actually triggers — see `false-ended`
+      // recovery in the player). If the queue advances prematurely, the
+      // polling times out at 15 s.
+      //
+      // Hand-rolled polling (not `expect.poll`) because Playwright's poll
+      // matchers (.toBe, .toMatchObject, .toBeGreaterThan, .toBeTruthy)
+      // resolve to `undefined`, so we'd lose the snapshot and have to
+      // re-evaluate and race.
+      const snap = await page.evaluate(
+        () =>
+          new Promise<{ currentTime: number; duration: number } | null>((resolve, reject) => {
+            const started = Date.now();
+            const tick = () => {
               const audios = Array.from(document.querySelectorAll('audio'));
-              const playing = audios.find((a) => !a.paused && a.currentTime > 0);
-              return playing ? { currentTime: playing.currentTime, duration: playing.duration } : null;
-            }),
-          { timeout: 10_000, intervals: [500, 1000] },
-        )
-        .toMatchObject({ currentTime: expect.any(Number) });
+              const playing = audios.find((a) => !a.paused && a.currentTime > 5);
+              if (playing) {
+                resolve({
+                  currentTime: playing.currentTime,
+                  duration: playing.duration,
+                });
+                return;
+              }
+              if (Date.now() - started > 15_000) {
+                resolve(null);
+                return;
+              }
+              setTimeout(tick, 250);
+            };
+            tick();
+          }),
+      );
 
-      const snap = await page.evaluate(() => {
-        const audios = Array.from(document.querySelectorAll('audio'));
-        const playing = audios.find((a) => !a.paused && a.currentTime > 0);
-        return playing
-          ? { currentTime: playing.currentTime, duration: playing.duration }
-          : null;
-      });
-      expect(snap).not.toBeNull();
+      expect(snap, '5+ s of playback').not.toBeNull();
       // 5+ s in, the browser-reported duration must be at least 25 s (the
       // fixture is 30 s). Anything less would be the false-short-duration
       // race that triggered the reported bug.
