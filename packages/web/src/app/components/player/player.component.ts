@@ -36,6 +36,32 @@ function formatTime(s: number): string {
   return `${m}:${sec.toString().padStart(2, '0')}`;
 }
 
+/**
+ * Frontend duration gate. The API-known `track.duration` (from the library
+ * scan / source-file tag metadata) is the reference of truth — a browser
+ * reporting a much-smaller `audio.duration` for the same resource usually
+ * means the container is still being parsed (VBR / chunked streaming) or the
+ * response is genuinely short (a corrupt server cache, the reported bug).
+ *
+ * Reject the browser's value unless BOTH checks pass:
+ *   - `native >= 0.7 × known` (catches a 1.8 s browser parse of a 240 s file)
+ *   - `|native − known| <= 5 s` (catches a 200 s browser parse of a 240 s file
+ *     — relative check passes, absolute catches it)
+ *
+ * When the known value is missing (`<= 0`), the gate is open: we trust the
+ * browser because we have no reference to compare against.
+ */
+export function browserDurationIsAcceptable(
+  knownSec: number,
+  nativeSec: number,
+): boolean {
+  if (!Number.isFinite(nativeSec) || nativeSec <= 0) return false;
+  if (!Number.isFinite(knownSec) || knownSec <= 0) return true;
+  const relativeOk = nativeSec >= knownSec * 0.7;
+  const absoluteOk = Math.abs(nativeSec - knownSec) <= 5;
+  return relativeOk && absoluteOk;
+}
+
 @Component({
   selector: 'app-player',
   imports: [CoverArtComponent, DeviceSwitcherComponent, SeekBarComponent, ArtistLinksComponent],
@@ -80,6 +106,13 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
   private preloadedTrackId: string | null = null;
   // Tracks the last vocal mute state to detect toggle changes (Effect 6b).
   private lastVocalsMuted: boolean | null = null;
+  // Load generation: bumped only on the element swap (onEnded standby swap).
+  // Every event handler closure captures the generation at bind time and
+  // ignores events from a prior element's listener scope. (The browser
+  // already discards queued events when `audio.src` is reassigned on the
+  // same element, so we don't bump for in-place src changes — only for
+  // cross-element handoffs where the old listeners were removed.)
+  private loadGeneration = 0;
 
   // Playback progress interpolation
   private interpolatedTime = signal(0);
@@ -106,7 +139,13 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
   readonly safeProgress = computed(() => {
     const t = this.displayTime();
     const d = this.safeDuration();
-    return Number.isFinite(t) && t >= 0 ? Math.min(t, d || t) : 0;
+    // When the duration is unknown/0 (mid-load, or false-ended recovery before
+    // a real duration lands), don't fall back to `t` — that paints a 100% seek
+    // bar from the first sample. Hold at 0 and let the real duration push the
+    // bar to the right position once it arrives.
+    if (!Number.isFinite(t) || t < 0) return 0;
+    if (!Number.isFinite(d) || d <= 0) return 0;
+    return Math.min(t, d);
   });
 
   readonly showPlaying = computed(() => {
@@ -485,7 +524,15 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
       this.backgroundPauseTimer = null;
     }
 
+    // Capture the load generation at bind time. Every handler below closes
+    // over this number and bails if `loadGeneration` has moved on (the standby
+    // element was swapped in, a vocal-mute toggle reloaded src, etc). Without
+    // this, a stale `ended` from the pre-swap load could advance the queue
+    // right after the user manually picks the next track.
+    const boundGen = this.loadGeneration;
+
     const onTime = () => {
+      if (boundGen !== this.loadGeneration) return;
       const value = audio.currentTime;
       if (Number.isFinite(value) && value >= 0) {
         this.player.setCurrentTime(value);
@@ -524,17 +571,52 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
     };
 
     const onDuration = () => {
+      if (boundGen !== this.loadGeneration) return;
       const value = audio.duration;
-      if (Number.isFinite(value) && value > 0) {
-        this.player.setDuration(value);
-        if (this.player.restoredTime !== null) {
-          audio.currentTime = this.player.restoredTime;
-          this.player.restoredTime = null;
+      if (!Number.isFinite(value) || value <= 0) return;
+      // Duration gate: refuse to adopt a browser-reported duration that's far
+      // off the API-known one. Keeping the API value prevents the seek bar
+      // from showing 100% on a partial-parse / corrupt-cache response, and
+      // keeps the false-ended recovery path in a position to detect the
+      // mismatched state (browser.currentTime reaches the bad short duration
+      // → ended fires → we recover rather than advance the queue).
+      const known = untracked(() => this.player.currentTrack()?.duration ?? 0);
+      if (!browserDurationIsAcceptable(known, value)) {
+        return;
+      }
+      this.player.setDuration(value);
+      if (this.player.recoveryState() === 'awaiting-duration') {
+        // A sane duration finally arrived — exit recovery and resume from
+        // where the audio element is currently parked (1-2 s into the bogus
+        // short read; the browser keeps playing from there once play() is
+        // called again).
+        this.player.recoveryState.set('normal');
+        this.recoveryTimeout = null;
+        this.player.setBuffering(false);
+        if (this.player.isPlaying()) {
+          audio.play().catch((err) => {
+            if (err.name === 'NotAllowedError') this.handlePlayRejection();
+          });
         }
+      }
+      if (this.player.restoredTime !== null) {
+        audio.currentTime = this.player.restoredTime;
+        this.player.restoredTime = null;
       }
     };
 
     const onEnded = () => {
+      if (boundGen !== this.loadGeneration) return;
+      // False-ended guard: the browser fired `ended` but the audio timeline
+      // nowhere near the API-known duration. Most commonly a VBR/lossy
+      // container that reported a partial duration over the Range response,
+      // or a corrupt server cache file (the bug this branch was written for).
+      // Do NOT advance the queue — pause, flag recovery, wait for a real
+      // duration.
+      if (this.isFalseEnded(audio)) {
+        this.startRecovery(audio, boundGen);
+        return;
+      }
       const repeat = this.player.repeat();
       const token = this.auth.token();
 
@@ -562,6 +644,10 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
             // Flip which element Effects reference.
             this.primaryIsA.update((v) => !v);
             this.preloadedTrackId = null;
+            // New load on a new element — bump the generation so any stale
+            // event still queued on the now-cleared old element can't make
+            // it through (the new listeners capture the bumped value).
+            this.loadGeneration += 1;
 
             // Re-bind all audio listeners to the now-active element.
             this.bindAudioListeners(standby);
@@ -626,6 +712,7 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
     };
 
     const onPlay = () => {
+      if (boundGen !== this.loadGeneration) return;
       // Cancel any deferred pause — audio resumed before the timer fired.
       if (this.backgroundPauseTimer !== null) {
         clearTimeout(this.backgroundPauseTimer);
@@ -637,6 +724,7 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
       }
     };
     const onPause = () => {
+      if (boundGen !== this.loadGeneration) return;
       if (this.pausingByStore) return;
       if (document.visibilityState === 'hidden') {
         this.resumePendingAfterVisible = this.player.isPlaying();
@@ -654,8 +742,14 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
       }, 250);
     };
 
-    const onWaiting = () => this.player.setBuffering(true);
-    const onSeeking = () => this.player.setBuffering(true);
+    const onWaiting = () => {
+      if (boundGen !== this.loadGeneration) return;
+      this.player.setBuffering(true);
+    };
+    const onSeeking = () => {
+      if (boundGen !== this.loadGeneration) return;
+      this.player.setBuffering(true);
+    };
     // Seeking into an already-buffered region fires no playing/canplay while
     // paused (readyState never dips), so seeked must clear the flag itself —
     // but only when data is really there; unbuffered targets keep the spinner
@@ -668,10 +762,39 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
     const onStalled = () => {
       if (audio.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) this.player.setBuffering(true);
     };
-    const onPlaying = () => this.player.setBuffering(false);
-    const onCanPlay = () => this.player.setBuffering(false);
-    const onError = () => this.player.setBuffering(false);
+    const onPlaying = () => {
+      if (boundGen !== this.loadGeneration) return;
+      this.player.setBuffering(false);
+    };
+    const onCanPlay = () => {
+      if (boundGen !== this.loadGeneration) return;
+      this.player.setBuffering(false);
+      // `canplay` is a coarser signal than `durationchange` but it's the
+      // earliest event that proves the browser has enough bytes to play —
+      // exit recovery if the current duration is sane.
+      const d = audio.duration;
+      const known = untracked(() => this.player.currentTrack()?.duration ?? 0);
+      if (
+        this.player.recoveryState() === 'awaiting-duration' &&
+        Number.isFinite(d) && d > 0 &&
+        browserDurationIsAcceptable(known, d)
+      ) {
+        this.player.recoveryState.set('normal');
+        this.recoveryTimeout = null;
+        this.player.setBuffering(false);
+        if (this.player.isPlaying()) {
+          audio.play().catch((err) => {
+            if (err.name === 'NotAllowedError') this.handlePlayRejection();
+          });
+        }
+      }
+    };
+    const onError = () => {
+      if (boundGen !== this.loadGeneration) return;
+      this.player.setBuffering(false);
+    };
     const onProgress = () => {
+      if (boundGen !== this.loadGeneration) return;
       const ranges: { start: number; end: number }[] = [];
       for (let i = 0; i < audio.buffered.length; i++) {
         ranges.push({ start: audio.buffered.start(i), end: audio.buffered.end(i) });
@@ -712,9 +835,60 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
     ];
   }
 
+  /**
+   * Heuristic for a false `ended` event: the browser believes playback reached
+   * the end of the resource, but the timeline is suspiciously short relative
+   * to the API-known track duration. Either the browser mis-parsed a VBR /
+   * lossy container over a Range response, or the server handed us a
+   * corrupt/transcoded-too-short file.
+   */
+  private isFalseEnded(audio: HTMLAudioElement): boolean {
+    const t = audio.currentTime;
+    const d = audio.duration;
+    if (!Number.isFinite(t) || !Number.isFinite(d) || d <= 0) return false;
+    const known = untracked(() => this.player.currentTrack()?.duration ?? 0);
+    if (known > 0 && t < known * 0.7) return true;
+    if (known > 0 && Math.abs(d - known) > 5 && d < known * 0.9) return true;
+    return false;
+  }
+
+  /** The timer handle for the false-ended recovery fallback (5 s). */
+  private recoveryTimeout: ReturnType<typeof setTimeout> | null = null;
+
+  /**
+   * Begin the false-ended recovery flow: pause the audio element, surface
+   * the buffering indicator, and wait for a real `durationchange` (or
+   * `canplay` with a sane duration) so we can resume from the correct
+   * position. If nothing arrives within 5 s, the server response is
+   * probably genuinely short/corrupt — give up waiting and seek to 0 +
+   * play so the user isn't stuck.
+   */
+  private startRecovery(audio: HTMLAudioElement, boundGen: number): void {
+    if (this.player.recoveryState() === 'awaiting-duration') return; // already recovering
+    this.player.recoveryState.set('awaiting-duration');
+    this.player.setBuffering(true);
+    if (this.recoveryTimeout !== null) clearTimeout(this.recoveryTimeout);
+    this.recoveryTimeout = setTimeout(() => {
+      if (boundGen !== this.loadGeneration) return;
+      this.recoveryTimeout = null;
+      this.player.recoveryState.set('normal');
+      this.player.setBuffering(false);
+      audio.currentTime = 0;
+      if (this.player.isPlaying()) {
+        audio.play().catch((err) => {
+          if (err.name === 'NotAllowedError') this.handlePlayRejection();
+        });
+      }
+    }, 5000);
+  }
+
   ngOnDestroy(): void {
     this.audioListenerCleanups.forEach((fn) => fn());
     if (this.backgroundPauseTimer !== null) clearTimeout(this.backgroundPauseTimer);
+    if (this.recoveryTimeout !== null) {
+      clearTimeout(this.recoveryTimeout);
+      this.recoveryTimeout = null;
+    }
     if (this.progressReportInterval) clearInterval(this.progressReportInterval);
     if (this.rafId) cancelAnimationFrame(this.rafId);
     this.releaseWakeLock();

@@ -93,6 +93,11 @@ export class PlayerService {
   // Snapshot of audio.buffered (seconds) for the seek bar's loaded-so-far band.
   readonly bufferedRanges = signal<BufferedRange[]>([]);
   private bufferingVisibleTimer: ReturnType<typeof setTimeout> | null = null;
+  // Recovery state: when the browser fires a `ended` event we believe is false
+  // (currentTime nowhere near the known duration), the player pauses and waits
+  // for a sane `durationchange` before resuming. `normal` = no recovery in
+  // progress; `awaiting-duration` = paused, listening for a real duration.
+  readonly recoveryState = signal<'normal' | 'awaiting-duration'>('normal');
 
   // Set by restoreState(); consumed by PlayerComponent.onDuration after audio is ready.
   restoredTime: number | null = null;

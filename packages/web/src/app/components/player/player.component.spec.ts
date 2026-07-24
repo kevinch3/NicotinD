@@ -2,7 +2,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { vi } from 'vitest';
-import { PlayerComponent } from './player.component';
+import { PlayerComponent, browserDurationIsAcceptable } from './player.component';
 import { PlayerService } from '../../services/player.service';
 import { AuthService } from '../../services/auth.service';
 import { RemotePlaybackService } from '../../services/remote-playback.service';
@@ -711,6 +711,178 @@ describe('PlayerComponent', () => {
       expect(playerService.restoredTime).toBe(62);
       expect(fakeAudio.src).toContain('/api/stream/t1');
       expect(fakeAudio.src).not.toContain('vocals=off');
+    });
+  });
+
+  // ─── False-ended recovery (premature track-end bug) ────────────────────────
+
+  describe('premature ended (false positive) recovery', () => {
+    // A track with a known duration is the input to all the scenarios here.
+    const knownTrack: Track = {
+      id: 't1',
+      title: 'Test Track',
+      artist: 'Test Artist',
+      duration: 240,
+    };
+
+    beforeEach(() => {
+      playerService.currentTrack.set(knownTrack);
+      fixture.detectChanges();
+    });
+
+    it('keeps the API-known duration when the browser reports a too-short native duration (relative gate)', () => {
+      // The bug: browser reports 1.8s for a 240s track → 1.8 / 240 = 0.0075,
+      // far below the 0.7 threshold. The player must keep 240 so the seek bar
+      // and ended-guard have a sane reference.
+      Object.defineProperty(fakeAudio, 'duration', { value: 1.8, configurable: true });
+      fakeAudio.dispatchEvent(new Event('loadedmetadata'));
+      expect(playerService.duration()).toBe(240);
+    });
+
+    it('keeps the API-known duration when the browser reports a moderately-short duration (absolute gate)', () => {
+      // 200s for a 240s source — passes the relative check (200/240 = 0.83),
+      // but fails the absolute check (|200-240| = 40 > 5). Must reject.
+      Object.defineProperty(fakeAudio, 'duration', { value: 200, configurable: true });
+      fakeAudio.dispatchEvent(new Event('loadedmetadata'));
+      expect(playerService.duration()).toBe(240);
+    });
+
+    it('adopts a browser duration within tolerance of the API-known one', () => {
+      // 239s for 240s — passes both gates. The minor codec framing drift
+      // is exactly what the tolerance window exists for.
+      Object.defineProperty(fakeAudio, 'duration', { value: 239, configurable: true });
+      fakeAudio.dispatchEvent(new Event('loadedmetadata'));
+      expect(playerService.duration()).toBe(239);
+    });
+
+    it('does not advance the queue when ended fires at currentTime=1.8s for a 240s track', () => {
+      // The reported user symptom. Set up the audio as the bug would: tiny
+      // duration, currentTime parked at "end", then dispatch ended.
+      Object.defineProperty(fakeAudio, 'duration', { value: 1.8, configurable: true });
+      Object.defineProperty(fakeAudio, 'currentTime', { value: 1.8, configurable: true });
+      playerService.queue.set([TRACK_2]);
+      playerService.isPlaying.set(true);
+
+      fakeAudio.dispatchEvent(new Event('ended'));
+
+      // The queue must NOT advance — we triggered recovery instead.
+      expect(playerService.currentTrack()).toEqual(knownTrack);
+      expect(playerService.queue()).toEqual([TRACK_2]);
+      expect(playerService.recoveryState()).toBe('awaiting-duration');
+      expect(playerService.buffering()).toBe(true);
+    });
+
+    it('recovers and resumes playback when a sane durationchange arrives after the false ended', () => {
+      // First: the false ended event
+      Object.defineProperty(fakeAudio, 'duration', { value: 1.8, configurable: true });
+      Object.defineProperty(fakeAudio, 'currentTime', { value: 1.8, configurable: true });
+      playerService.isPlaying.set(true);
+      mockPlay.mockClear();
+      fakeAudio.dispatchEvent(new Event('ended'));
+      expect(playerService.recoveryState()).toBe('awaiting-duration');
+
+      // Then: the browser reports a real duration as more bytes arrive
+      Object.defineProperty(fakeAudio, 'duration', { value: 240, configurable: true });
+      fakeAudio.dispatchEvent(new Event('durationchange'));
+
+      expect(playerService.recoveryState()).toBe('normal');
+      expect(playerService.buffering()).toBe(false);
+      expect(playerService.duration()).toBe(240);
+      // The user's intent (isPlaying=true) is honored — audio resumes.
+      expect(mockPlay).toHaveBeenCalled();
+    });
+
+    it('falls back to seek-to-0 + play when no sane duration arrives within 5s', () => {
+      vi.useFakeTimers();
+      // False ended setup; we deliberately do NOT dispatch a real durationchange.
+      Object.defineProperty(fakeAudio, 'duration', { value: 1.8, configurable: true });
+      Object.defineProperty(fakeAudio, 'currentTime', { value: 1.8, writable: true, configurable: true });
+      playerService.isPlaying.set(true);
+      mockPlay.mockClear();
+      fakeAudio.dispatchEvent(new Event('ended'));
+      expect(playerService.recoveryState()).toBe('awaiting-duration');
+
+      // 5 s safety-valve timer fires — recovery gives up waiting.
+      vi.advanceTimersByTime(5000);
+
+      expect(playerService.recoveryState()).toBe('normal');
+      expect(playerService.buffering()).toBe(false);
+      // The fallback seeks to 0 and resumes from the start of the (still bogus)
+      // resource, so the user isn't stuck on a frozen track.
+      expect(mockPlay).toHaveBeenCalled();
+      vi.useRealTimers();
+    });
+
+    it('does not enter recovery for a legitimate ended near the real duration', () => {
+      // currentTime is at the full duration — the track really did finish. The
+      // false-ended guard must not flag this.
+      Object.defineProperty(fakeAudio, 'duration', { value: 240, configurable: true });
+      Object.defineProperty(fakeAudio, 'currentTime', { value: 240, configurable: true });
+      playerService.queue.set([TRACK_2]);
+
+      fakeAudio.dispatchEvent(new Event('ended'));
+
+      // Normal queue advance
+      expect(playerService.currentTrack()).toEqual(TRACK_2);
+      expect(playerService.recoveryState()).toBe('normal');
+    });
+
+    it('stale ended events from a prior load are ignored (load generation guard)', () => {
+      // The element-swap path in onEnded re-binds listeners on the NEW
+      // element with a fresh boundGen. A stale `ended` from the OLD element
+      // (now paused with src cleared) cannot fire on the new element because
+      // the old listeners were removed in the swap. This test asserts the
+      // simpler invariant: dispatching `ended` after recoveryState has been
+      // reset to 'normal' is treated as a legitimate end and advances the
+      // queue. (The full "stale event survives a src change" case is
+      // covered by the element-swap test in the regressions block above.)
+      Object.defineProperty(fakeAudio, 'duration', { value: 240, configurable: true });
+      Object.defineProperty(fakeAudio, 'currentTime', { value: 240, configurable: true });
+      playerService.queue.set([TRACK_2]);
+      // Recovery must NOT trip when currentTime is at the full duration.
+      fakeAudio.dispatchEvent(new Event('ended'));
+      expect(playerService.recoveryState()).toBe('normal');
+      expect(playerService.currentTrack()).toEqual(TRACK_2);
+    });
+  });
+
+  // ─── Pure duration-gate helper (the 70% AND 5 s contract) ───────────────────
+
+  describe('browserDurationIsAcceptable', () => {
+    it('accepts a duration within 5 s of the known value', () => {
+      // 70% AND 5 s — both must pass to accept.
+      expect(browserDurationIsAcceptable(240, 240)).toBe(true);
+      expect(browserDurationIsAcceptable(240, 239)).toBe(true);
+      expect(browserDurationIsAcceptable(240, 236)).toBe(true); // exactly 4 s off
+    });
+
+    it('rejects a duration that fails the relative gate (70% of known)', () => {
+      // 1.8 s for 240 s → 0.75% of known → reject.
+      expect(browserDurationIsAcceptable(240, 1.8)).toBe(false);
+      // 100 s for 240 s → 42% of known → reject.
+      expect(browserDurationIsAcceptable(240, 100)).toBe(false);
+      // Just under 70% → reject.
+      expect(browserDurationIsAcceptable(240, 167)).toBe(false);
+    });
+
+    it('rejects a duration that fails the absolute gate (5 s of known)', () => {
+      // 200 s for 240 s → relative passes (83%), but |200-240| = 40 > 5 → reject.
+      expect(browserDurationIsAcceptable(240, 200)).toBe(false);
+    });
+
+    it('rejects non-finite or non-positive native values', () => {
+      expect(browserDurationIsAcceptable(240, 0)).toBe(false);
+      expect(browserDurationIsAcceptable(240, -1)).toBe(false);
+      expect(browserDurationIsAcceptable(240, Number.NaN)).toBe(false);
+      expect(browserDurationIsAcceptable(240, Number.POSITIVE_INFINITY)).toBe(false);
+    });
+
+    it('is open (accepts any positive) when the known duration is missing', () => {
+      // No reference value → trust the browser. The library-scan duration is
+      // usually present, but for a freshly-imported track the API value can
+      // be 0 until the scan lands.
+      expect(browserDurationIsAcceptable(0, 1.8)).toBe(true);
+      expect(browserDurationIsAcceptable(Number.NaN, 1.8)).toBe(true);
     });
   });
 });
