@@ -1419,6 +1419,15 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     if (!rawName) return c.json({ error: 'rawName required' }, 400);
     const db = getDatabase();
 
+    // The artist the caller should land on after the resync, and what kind of
+    // change happened — so the client can navigate deterministically instead of
+    // blindly bouncing to the grid (a rename/merge lands on the resulting artist;
+    // a split has no single destination). `artistId` is the deterministic id the
+    // scanner will mint for the resulting name, since the web bundle can't run
+    // `artistIdFor` itself. See docs/library-scanner.md "Admin identity fix".
+    let kind: 'renamed' | 'merged' | 'single' | 'split';
+    let resultArtistId: string | null;
+
     if (body?.rename != null) {
       // Rename this one artist to a corrected spelling/name. Unlike `mergeInto`
       // this deliberately ALLOWS an equal-normalized target — a diacritic/case fix
@@ -1434,6 +1443,10 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
         canonicalName: rename,
         source: 'user',
       });
+      // Whether the target is a new name or normalizes onto an existing artist
+      // (effectively a merge), the resulting page is the same: artistIdFor(rename).
+      kind = 'renamed';
+      resultArtistId = artistIdFor(rename);
     } else if (body?.mergeInto != null) {
       const mergeInto = body.mergeInto.trim();
       if (
@@ -1447,6 +1460,8 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
         canonicalName: mergeInto,
         source: 'user',
       });
+      kind = 'merged';
+      resultArtistId = artistIdFor(mergeInto);
     } else if (body?.decision === 'single') {
       upsertArtistIdentity(db, {
         artistKey: artistIdFor(rawName),
@@ -1454,6 +1469,8 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
         decision: 'single',
         source: 'user',
       });
+      kind = 'single';
+      resultArtistId = artistIdFor(rawName);
     } else if (body?.decision === 'split') {
       const members = (body.members ?? []).map((m) => m.trim()).filter(Boolean);
       if (members.length < 2) {
@@ -1466,6 +1483,9 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
         members,
         source: 'user',
       });
+      // The compound is hidden after a split; there's no single artist to land on.
+      kind = 'split';
+      resultArtistId = null;
     } else {
       return c.json({ error: 'decision (single|split), mergeInto, or rename required' }, 400);
     }
@@ -1483,7 +1503,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
           ? `merge → ${body.mergeInto.trim()}`
           : (body?.decision ?? ''),
     });
-    return c.json({ ok: true, resynced: Boolean(runSync) });
+    return c.json({ ok: true, resynced: Boolean(runSync), kind, artistId: resultArtistId });
   });
 
   // Artist-level genre override (issue #187 A3). This is the highest-leverage

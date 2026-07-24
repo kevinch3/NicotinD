@@ -1,10 +1,7 @@
 import { ɵSIGNAL as SIGNAL } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { of } from 'rxjs';
-import {
-  ArtistIdentityModalComponent,
-  splitArtistParts,
-} from './artist-identity-modal.component';
+import { ArtistIdentityModalComponent, splitArtistParts } from './artist-identity-modal.component';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import { ToastService } from '../../services/toast.service';
 
@@ -46,7 +43,7 @@ describe('ArtistIdentityModalComponent', () => {
           useValue: {
             fixArtistIdentity: (body: unknown) => {
               fixCalls.push(body);
-              return of({ ok: true, resyncing: true });
+              return of({ ok: true, resynced: true, kind: 'renamed', artistId: 'a-result' });
             },
           },
         },
@@ -80,10 +77,10 @@ describe('ArtistIdentityModalComponent', () => {
     expect(c.canSave()).toBe(true);
   });
 
-  it('posts the rename payload (trimmed)', () => {
+  it('posts the rename payload (trimmed) and emits the server result to navigate on', () => {
     const c = make();
-    let saved = false;
-    c.saved.subscribe(() => (saved = true));
+    let emitted: unknown;
+    c.saved.subscribe((r) => (emitted = r));
     c.mode.set('rename');
     c.renameTarget.set('  Los Auténticos Decadentes  ');
 
@@ -92,7 +89,8 @@ describe('ArtistIdentityModalComponent', () => {
     expect(fixCalls).toEqual([
       { rawName: 'Bob Marley, Peter Tosh', rename: 'Los Auténticos Decadentes' },
     ]);
-    expect(saved).toBe(true);
+    // The host navigates using this payload, so the modal must pass it through.
+    expect(emitted).toEqual({ ok: true, resynced: true, kind: 'renamed', artistId: 'a-result' });
   });
 
   it('posts the split payload with trimmed, non-empty members', () => {

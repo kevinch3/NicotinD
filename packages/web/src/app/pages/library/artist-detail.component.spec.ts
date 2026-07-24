@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
-import { provideRouter, ActivatedRoute, convertToParamMap } from '@angular/router';
+import { provideRouter, Router, ActivatedRoute, convertToParamMap } from '@angular/router';
 import { of, BehaviorSubject } from 'rxjs';
 import { vi } from 'vitest';
 import { ArtistDetailComponent } from './artist-detail.component';
@@ -142,7 +142,14 @@ function setup(role = 'admin', deleteSongs = vi.fn(() => of({ ok: true, deletedC
           deleteSongs,
         },
       },
-      { provide: AuthService, useValue: { token: signal('tok'), role: signal(role), canCurate: () => canCurateRole(asRole(role)) } },
+      {
+        provide: AuthService,
+        useValue: {
+          token: signal('tok'),
+          role: signal(role),
+          canCurate: () => canCurateRole(asRole(role)),
+        },
+      },
       {
         provide: PlayerService,
         useValue: {
@@ -399,8 +406,8 @@ describe('ArtistDetailComponent — delete (admin only)', () => {
     component.setTab('songs');
     await flush();
 
-    const action = component
-      .songMenu.build(component.songs()[0], { hideGoToArtist: true, removable: true })
+    const action = component.songMenu
+      .build(component.songs()[0], { hideGoToArtist: true, removable: true })
       .find((a) => a.label === 'Remove from library');
     expect(action).toBeDefined();
     expect(action!.destructive).toBe(true);
@@ -412,8 +419,8 @@ describe('ArtistDetailComponent — delete (admin only)', () => {
     component.setTab('songs');
     await flush();
 
-    const action = component
-      .songMenu.build(component.songs()[0], { hideGoToArtist: true, removable: true })
+    const action = component.songMenu
+      .build(component.songs()[0], { hideGoToArtist: true, removable: true })
       .find((a) => a.label === 'Remove from library');
     expect(action).toBeUndefined();
   });
@@ -549,6 +556,40 @@ describe('ArtistDetailComponent — Appears On tab never collapses the tab bar',
     component.setTab('appears-on');
     expect(component.activeTab()).toBe('appears-on');
     expect(component.visibleTabs()).toContain('appears-on');
+  });
+});
+
+describe('ArtistDetailComponent — onIdentitySaved navigation', () => {
+  it('navigates to a different resulting artist after a rename/merge', async () => {
+    const { component } = setup();
+    await fixture_stable();
+    const nav = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+
+    component.onIdentitySaved({ ok: true, resynced: true, kind: 'merged', artistId: 'ar2' });
+
+    expect(nav).toHaveBeenCalledWith(['/library/artists', 'ar2']);
+  });
+
+  it('reloads in place when the rename keeps the same id (accent/case fix)', async () => {
+    const { component, getArtistCalls } = setup();
+    await fixture_stable();
+    const nav = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+    getArtistCalls.length = 0; // ignore the initial load
+
+    component.onIdentitySaved({ ok: true, resynced: true, kind: 'renamed', artistId: 'ar1' });
+
+    expect(nav).not.toHaveBeenCalled();
+    expect(getArtistCalls).toEqual(['ar1']); // re-fetched in place
+  });
+
+  it('routes to the artists grid after a split (compound now hidden)', async () => {
+    const { component } = setup();
+    await fixture_stable();
+    const nav = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+
+    component.onIdentitySaved({ ok: true, resynced: true, kind: 'split', artistId: null });
+
+    expect(nav).toHaveBeenCalledWith(['/library'], { queryParams: { type: 'artists' } });
   });
 });
 

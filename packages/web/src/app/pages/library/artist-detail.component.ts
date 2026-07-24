@@ -20,6 +20,7 @@ import type {
   Song,
   DiscographyAlbum,
   DiscographyResult,
+  ArtistIdentityResult,
 } from '../../services/api/api-types';
 import { AuthService } from '../../services/auth.service';
 import { PlayerService } from '../../services/player.service';
@@ -114,14 +115,32 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
   readonly genreOpen = signal(false);
 
   /**
-   * The server ran the rescan synchronously, so the change is already applied. A
-   * split hides the compound (split_compound=1) and a different-normalized rename
-   * mints a new artist id, so this artist page may no longer resolve — route to the
-   * artists grid where the member tiles / corrected name are immediately visible.
+   * The server ran the rescan synchronously and told us where the change landed.
+   * Navigate to the resulting artist so the corrected/merged state is visible:
+   * - split → the compound is now hidden (no single destination) → artists grid.
+   * - rename/merge/single onto a *different* id → that artist's page.
+   * - onto the *same* id (an equal-normalized accent/case fix) → reload in place,
+   *   since Angular won't re-run the route for an unchanged URL and the name/state
+   *   would otherwise stay stale.
    */
-  onIdentitySaved(): void {
+  onIdentitySaved(result: ArtistIdentityResult): void {
     this.identityOpen.set(false);
-    void this.router.navigate(['/library'], { queryParams: { type: 'artists' } });
+    if (result.kind === 'split' || !result.artistId) {
+      void this.router.navigate(['/library'], { queryParams: { type: 'artists' } });
+    } else if (result.artistId === this.artistId) {
+      void this.loadArtist(result.artistId);
+    } else {
+      void this.router.navigate(['/library/artists', result.artistId]);
+    }
+  }
+
+  /**
+   * A genre override keeps the same artist id (it only rewrites the primary genre
+   * for the artist's tracks), so reload this page in place rather than navigating.
+   */
+  onGenreSaved(): void {
+    this.genreOpen.set(false);
+    void this.loadArtist(this.artistId);
   }
 
   onArtistInfoUpdated(info: { bio: string | null; urls: string[] }): void {

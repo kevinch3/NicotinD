@@ -17,6 +17,7 @@ import type { PluginRegistry } from '../services/plugins/registry.js';
 import { getArtistMeta, upsertArtistMeta } from '../services/artist-meta-store.js';
 import { getMbid, upsertMbid } from '../services/mbid-store.js';
 import { normalizeArtistForGrouping } from '../services/album-grouping.js';
+import { artistIdFor } from '../services/library-scanner.js';
 
 import { applySchema } from '../db.js';
 
@@ -227,8 +228,49 @@ describe('library routes', () => {
       body: JSON.stringify({ rawName: 'X', decision: 'single' }),
     });
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true, resynced: true });
+    expect(await res.json()).toEqual({
+      ok: true,
+      resynced: true,
+      kind: 'single',
+      artistId: artistIdFor('X'),
+    });
     expect(runSync).toHaveBeenCalledTimes(1);
+  });
+
+  it('POST /artists/identity returns the resulting artist id + kind for each shape', async () => {
+    // rename → land on the renamed artist
+    const renamed = await app.request('/artists/identity', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ rawName: 'Wrong Name', rename: 'Right Name' }),
+    });
+    expect(await renamed.json()).toMatchObject({
+      kind: 'renamed',
+      artistId: artistIdFor('Right Name'),
+    });
+
+    // merge → land on the merge target
+    const merged = await app.request('/artists/identity', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ rawName: 'Snoop Doggg', mergeInto: 'Snoop Dogg' }),
+    });
+    expect(await merged.json()).toMatchObject({
+      kind: 'merged',
+      artistId: artistIdFor('Snoop Dogg'),
+    });
+
+    // split → no single destination
+    const split = await app.request('/artists/identity', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        rawName: 'A & B',
+        decision: 'split',
+        members: ['A', 'B'],
+      }),
+    });
+    expect(await split.json()).toMatchObject({ kind: 'split', artistId: null });
   });
 
   it('POST /artists/identity validates its shapes', async () => {

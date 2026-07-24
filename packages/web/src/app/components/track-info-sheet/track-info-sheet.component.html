@@ -4,8 +4,7 @@
 <!-- Sheet -->
 <div
   data-testid="track-info-sheet"
-  class="fixed bottom-0 left-0 right-0 z-[91] bg-theme-surface rounded-t-2xl shadow-2xl
-         flex flex-col max-h-[80vh] transition-transform duration-300"
+  class="fixed bottom-0 left-0 right-0 z-[91] bg-theme-surface rounded-t-2xl shadow-2xl flex flex-col max-h-[80vh] transition-transform duration-300"
   [style.transform]="dragging() ? 'translateY(' + dragOffsetPx() + 'px)' : 'translateY(0)'"
   [class.transition-none]="dragging()"
   (pointerdown)="onDragStart($event)"
@@ -42,10 +41,13 @@
           <p class="text-xs text-theme-secondary truncate">
             {{ headerArtist() }}
             @if (canCurate()) {
-              <button type="button" data-testid="track-artist-identity-fix"
+              <button
+                type="button"
+                data-testid="track-artist-identity-fix"
                 (click)="identityOpen.set(true)"
                 title="Fix artist credit (one act / split / merge)"
-                class="ml-1 text-theme-muted hover:text-theme-secondary underline decoration-dotted">
+                class="ml-1 text-theme-muted hover:text-theme-secondary underline decoration-dotted"
+              >
                 fix
               </button>
             }
@@ -133,8 +135,7 @@
             <span class="text-theme-muted">Unknown</span>
           }
           <button
-            class="ml-auto px-2 py-0.5 rounded bg-theme-surface-2 hover:bg-theme-hover text-xs
-                   disabled:opacity-50"
+            class="ml-auto px-2 py-0.5 rounded bg-theme-surface-2 hover:bg-theme-hover text-xs disabled:opacity-50"
             [disabled]="analyzing()"
             (click)="analyze()"
             data-testid="analyze-bpm-button"
@@ -163,8 +164,7 @@
             }
           </span>
           <button
-            class="ml-auto px-2 py-0.5 rounded bg-theme-surface-2 hover:bg-theme-hover text-xs
-                   disabled:opacity-50"
+            class="ml-auto px-2 py-0.5 rounded bg-theme-surface-2 hover:bg-theme-hover text-xs disabled:opacity-50"
             [disabled]="verifyingGenre()"
             (click)="verifyGenreNow()"
             data-testid="verify-genre-button"
@@ -181,8 +181,7 @@
               <span class="text-theme-secondary">{{ g.suggested }}</span>
               @if (canCurate()) {
                 <button
-                  class="ml-auto px-2 py-0.5 rounded bg-theme-accent text-theme-on-accent hover:opacity-90 text-xs
-                         disabled:opacity-50"
+                  class="ml-auto px-2 py-0.5 rounded bg-theme-accent text-theme-on-accent hover:opacity-90 text-xs disabled:opacity-50"
                   [disabled]="applyingGenre()"
                   (click)="applySuggestedGenre(g.suggested!)"
                   data-testid="apply-genre-button"
@@ -210,8 +209,7 @@
             >{{ currentLicenceLabel() }}</span
           >
           <button
-            class="ml-auto px-2 py-0.5 rounded bg-theme-surface-2 hover:bg-theme-hover text-xs
-                   disabled:opacity-50"
+            class="ml-auto px-2 py-0.5 rounded bg-theme-surface-2 hover:bg-theme-hover text-xs disabled:opacity-50"
             [disabled]="detectingLicence()"
             (click)="detectLicenceNow()"
             data-testid="detect-licence-button"
@@ -248,8 +246,7 @@
               <span class="text-theme-muted text-xs">({{ l.source }})</span>
               @if (canCurate()) {
                 <button
-                  class="ml-auto px-2 py-0.5 rounded bg-theme-accent text-theme-on-accent
-                         hover:opacity-90 text-xs disabled:opacity-50"
+                  class="ml-auto px-2 py-0.5 rounded bg-theme-accent text-theme-on-accent hover:opacity-90 text-xs disabled:opacity-50"
                   [disabled]="applyingLicence()"
                   (click)="applyLicence(l.suggested!)"
                   data-testid="apply-licence-button"
@@ -259,7 +256,9 @@
               }
             </div>
           } @else if (l.suggested) {
-            <p class="text-xs text-theme-muted pl-16">Detected licence matches the current value.</p>
+            <p class="text-xs text-theme-muted pl-16">
+              Detected licence matches the current value.
+            </p>
           } @else {
             <p class="text-xs text-theme-muted pl-16">No licence found in tags or MusicBrainz.</p>
           }
@@ -311,8 +310,7 @@
 
       @if (editingLyrics()) {
         <textarea
-          class="w-full h-48 rounded bg-theme-surface-2 text-sm text-theme-primary p-2 resize-y
-                 focus:outline-none focus:ring-1 focus:ring-theme-accent"
+          class="w-full h-48 rounded bg-theme-surface-2 text-sm text-theme-primary p-2 resize-y focus:outline-none focus:ring-1 focus:ring-theme-accent"
           [value]="lyricsDraft()"
           (input)="lyricsDraft.set($any($event.target).value)"
           data-testid="lyrics-editor"
@@ -346,8 +344,7 @@
         <pre
           class="whitespace-pre-wrap font-sans text-sm text-theme-secondary max-h-64 overflow-y-auto"
           data-testid="lyrics-text"
-          >{{ lyricsText() }}</pre
-        >
+          >{{ lyricsText() }}</pre>
         @if (lyrics()?.customized) {
           <p class="text-xs text-theme-muted mt-1">Edited by you</p>
         } @else if (lyrics()?.source) {
@@ -416,6 +413,7 @@
     <app-artist-identity-modal
       [rawName]="headerArtist()"
       (closed)="identityOpen.set(false)"
+      (saved)="onIdentitySaved($event)"
     />
   }
 </div>

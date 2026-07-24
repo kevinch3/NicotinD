@@ -524,7 +524,7 @@
   <app-artist-identity-modal
     [rawName]="artist()!.name"
     (closed)="identityOpen.set(false)"
-    (saved)="onIdentitySaved()"
+    (saved)="onIdentitySaved($event)"
   />
 }
 
@@ -534,7 +534,7 @@
     [artistId]="artist()!.id"
     [artistName]="artist()!.name"
     (closed)="genreOpen.set(false)"
-    (saved)="onIdentitySaved()"
+    (saved)="onGenreSaved()"
   />
 }
 

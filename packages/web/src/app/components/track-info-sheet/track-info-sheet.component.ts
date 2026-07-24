@@ -1,5 +1,6 @@
 import { Component, input, output, signal, computed, inject, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { Router } from '@angular/router';
 import type {
   AcquisitionMethod,
   GenreSuggestion,
@@ -10,7 +11,7 @@ import type {
 } from '@nicotind/core';
 import { LICENCE_VOCAB, LICENCE_LABELS } from '@nicotind/core';
 import { LibraryApiService } from '../../services/api/library-api.service';
-import type { ProvenanceRecord, Song } from '../../services/api/api-types';
+import type { ProvenanceRecord, Song, ArtistIdentityResult } from '../../services/api/api-types';
 import { AuthService } from '../../services/auth.service';
 import { ServerConfigService } from '../../services/server-config.service';
 import { methodBadge } from '../../lib/acquisition-method';
@@ -37,6 +38,7 @@ export class TrackInfoSheetComponent implements OnInit {
   private api = inject(LibraryApiService);
   private auth = inject(AuthService);
   private server = inject(ServerConfigService);
+  private router = inject(Router);
 
   readonly songId = input.required<string>();
   readonly song = input<Song | null>(null);
@@ -97,6 +99,21 @@ export class TrackInfoSheetComponent implements OnInit {
   // Admin fix for a wrong artist-credit decision, acting on the song's RAW tag
   // artist string (covers compounds that no longer have their own artist page).
   readonly identityOpen = signal(false);
+
+  /**
+   * After the identity fix's synchronous rescan, close the sheet and navigate to
+   * the resulting artist — the sheet has no list of its own to refresh, so without
+   * this a rename/merge from here changed nothing visible (the original bug).
+   */
+  onIdentitySaved(result: ArtistIdentityResult): void {
+    this.identityOpen.set(false);
+    this.close.emit();
+    if (result.kind === 'split' || !result.artistId) {
+      void this.router.navigate(['/library'], { queryParams: { type: 'artists' } });
+    } else {
+      void this.router.navigate(['/library/artists', result.artistId]);
+    }
+  }
   /** Current genre: an applied override wins over the song's own tag. */
   readonly currentGenre = computed(() => this.genreOverride() ?? this.effectiveSong()?.genre ?? '');
 
@@ -145,7 +162,10 @@ export class TrackInfoSheetComponent implements OnInit {
     const l = this.lyrics();
     if (!l) return '';
     if (l.plain) return l.plain;
-    if (l.synced) return parseLrc(l.synced).map((line) => line.text).join('\n');
+    if (l.synced)
+      return parseLrc(l.synced)
+        .map((line) => line.text)
+        .join('\n');
     return '';
   });
 

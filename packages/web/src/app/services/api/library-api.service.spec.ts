@@ -78,6 +78,22 @@ describe('LibraryApiService', () => {
     http.expectOne('/api/library/genres').flush([]);
   });
 
+  it('fixArtistIdentity invalidates the cached artists list so a rename shows up', () => {
+    // Prime the cache.
+    service.getArtists().subscribe();
+    http.expectOne('/api/library/artists').flush([{ id: 'old', name: 'Old Name' }]);
+
+    // A rename posts to the identity route; its success must drop the stale cache.
+    service.fixArtistIdentity({ rawName: 'Old Name', rename: 'New Name' }).subscribe();
+    http
+      .expectOne('/api/library/artists/identity')
+      .flush({ ok: true, resynced: true, kind: 'renamed', artistId: 'new' });
+
+    // The next read re-hits the network instead of replaying the stale list.
+    service.getArtists().subscribe();
+    http.expectOne('/api/library/artists').flush([{ id: 'new', name: 'New Name' }]);
+  });
+
   it('GETs autocomplete song search with q/limit params', () => {
     service.searchSongsAutocomplete('alpha', 5).subscribe();
     const req = http.expectOne((r) => r.url === '/api/library/songs/autocomplete');
