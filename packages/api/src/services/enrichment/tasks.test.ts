@@ -1,7 +1,16 @@
 import { describe, expect, it, beforeEach } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { applySchema } from '../../db.js';
-import { ENRICHMENT_TASKS, getTask, type EnrichmentContext } from './tasks.js';
+import type { LidarrArtist } from '@nicotind/lidarr-client';
+import {
+  ENRICHMENT_TASKS,
+  getTask,
+  isWholeTokenSubsequence,
+  makeLidarrArtistIdentityResolver,
+  pickMbidHit,
+  resolveMbidViaLidarr,
+  type EnrichmentContext,
+} from './tasks.js';
 import { MAX_ANALYSIS_ATTEMPTS, recordAnalysisFailure } from './analysis-failures.js';
 import { getGenreOverride, upsertGenreOverride } from '../genre-overrides.js';
 import { NoConfidentResultError } from '../track-analysis.js';
@@ -418,8 +427,9 @@ describe('genre task', () => {
     const res = await genre.run(db, c, 25);
     expect(res.applied).toBe(1);
     expect(
-      db.query<{ genre: string }, [string]>('SELECT genre FROM library_songs WHERE id = ?').get('m1')
-        ?.genre,
+      db
+        .query<{ genre: string }, [string]>('SELECT genre FROM library_songs WHERE id = ?')
+        .get('m1')?.genre,
     ).toBe('Latin Pop');
     const set = db
       .query<{ genre: string }, [string]>(
@@ -648,7 +658,12 @@ describe('artist-info task', () => {
       lidarr: lidarrWithLookup([{ artistName: 'Artist One', foreignArtistId: 'mbid-lidarr-1' }]),
       lookupArtistInfo: async (mbid) =>
         mbid === 'mbid-lidarr-1'
-          ? { bio: 'Lidarr-resolved bio', urls: ['https://x.com'], source: 'discogs', confidence: 0.95 }
+          ? {
+              bio: 'Lidarr-resolved bio',
+              urls: ['https://x.com'],
+              source: 'discogs',
+              confidence: 0.95,
+            }
           : null,
     });
     const result = await artistInfo.run(db, c, 10);
@@ -665,7 +680,9 @@ describe('artist-info task', () => {
   it('writes a tombstone (no library_mbids write) when no Lidarr hit matches exactly', async () => {
     seedArtist('a1', { name: 'Artist One' });
     const c = ctx({
-      lidarr: lidarrWithLookup([{ artistName: 'A Totally Different Artist', foreignArtistId: 'mbid-x' }]),
+      lidarr: lidarrWithLookup([
+        { artistName: 'A Totally Different Artist', foreignArtistId: 'mbid-x' },
+      ]),
       lookupArtistInfo: async () => ({ bio: 'x', urls: [], source: 'discogs', confidence: 0.95 }),
     });
     const result = await artistInfo.run(db, c, 10);
@@ -1029,7 +1046,9 @@ function ledgerGenreFailed(id: string): void {
   recordAnalysisFailure(db, id, 'genre', new Error('Lidarr has no genre for this artist'), null);
 }
 
-function audioGenreResult(genre: { genre: string; style: string | null; confidence: number } | null) {
+function audioGenreResult(
+  genre: { genre: string; style: string | null; confidence: number } | null,
+) {
   return {
     features: {
       danceability: 0.6,
@@ -1328,10 +1347,9 @@ describe('licence task', () => {
     const res = await licence.run(db, c, 25);
     expect(res.applied).toBe(1);
     const row = db
-      .query<
-        { licence: string | null; licence_source: string | null },
-        [string]
-      >('SELECT licence, licence_source FROM library_songs WHERE id = ?')
+      .query<{ licence: string | null; licence_source: string | null }, [string]>(
+        'SELECT licence, licence_source FROM library_songs WHERE id = ?',
+      )
       .get('a');
     expect(row?.licence).toBe('cc-by');
     expect(row?.licence_source).toBe('musicbrainz');
@@ -1354,6 +1372,253 @@ describe('licence task', () => {
       .query<{ licence: string | null }, [string]>('SELECT licence FROM library_songs WHERE id = ?')
       .get('a');
     expect(row?.licence).toBeNull();
+  });
+});
+
+describe('MBID resolution helpers (issue #211)', () => {
+  // These cover the two-stage safe widening of `resolveMbidViaLidarr` /
+  // `makeLidarrArtistIdentityResolver`: an exact normalized match is always
+  // tried first, and only on a miss does a whole-token-subsequence +
+  // `albumCount > 0` corroboration widen the pick. The latter exists because
+  // Lidarr's canonical artist name can be a *superset* of the library's
+  // tag-derived name (real prod example: library "Eduardo Miño" → Lidarr
+  // "Luis Eduardo Miño Naranjo"); the deliberate exact-match guard that
+  // rejected those before produced a no-bio-ever regression.
+
+  function hit(over: Partial<LidarrArtist> = {}): LidarrArtist {
+    return {
+      id: 0,
+      foreignArtistId: 'mbid-x',
+      artistName: 'X',
+      sortName: 'X',
+      status: 'continuing',
+      images: [],
+      monitored: true,
+      albumCount: 1,
+      ...over,
+    };
+  }
+
+  describe('isWholeTokenSubsequence', () => {
+    it('matches when every needle token appears in order, contiguously, in the haystack', () => {
+      expect(isWholeTokenSubsequence('Eduardo Miño', 'Luis Eduardo Miño Naranjo')).toBe(true);
+    });
+
+    it('fails when tokens are out of order', () => {
+      expect(isWholeTokenSubsequence('Miño Eduardo', 'Luis Eduardo Miño Naranjo')).toBe(false);
+    });
+
+    it('fails when tokens are non-contiguous (gaps)', () => {
+      // The documented "ME"-style same-name false positive: a 2-char
+      // substring lurking inside an otherwise unrelated artist.
+      expect(isWholeTokenSubsequence('ME', 'Somebody M Elsinore')).toBe(false);
+    });
+
+    it('fails when the haystack is shorter than the needle', () => {
+      expect(isWholeTokenSubsequence('Eduardo Miño', 'Eduardo')).toBe(false);
+    });
+
+    it('fails on empty / same-string edge cases', () => {
+      expect(isWholeTokenSubsequence('', 'X')).toBe(false);
+      expect(isWholeTokenSubsequence('X', 'X')).toBe(true); // exact degenerate case
+    });
+
+    it('folds accents + case identically to normalizeArtistForGrouping', () => {
+      expect(isWholeTokenSubsequence('eduardo mino', 'LUIS EDUARDO MIÑO NARANJO')).toBe(true);
+    });
+  });
+
+  describe('pickMbidHit', () => {
+    it('returns the exact match first with confidence 0.8', () => {
+      const result = pickMbidHit(
+        [
+          hit({ artistName: 'Eduardo Miño', foreignArtistId: 'mbid-exact' }),
+          hit({ artistName: 'Luis Eduardo Miño Naranjo', foreignArtistId: 'mbid-wide' }),
+        ],
+        'Eduardo Miño',
+      );
+      expect(result).toEqual({ mbid: 'mbid-exact', confidence: 0.8 });
+    });
+
+    it('widens to a whole-token-subsequence + albumCount>0 hit with confidence 0.5', () => {
+      // The issue's prod case: library "Eduardo Miño" lookup hits only
+      // Lidarr's full canonical name, which contains the library name as a
+      // whole-token subsequence and is a real MusicBrainz artist.
+      const result = pickMbidHit(
+        [
+          hit({
+            artistName: 'Luis Eduardo Miño Naranjo',
+            foreignArtistId: 'mbid-wide',
+            albumCount: 12,
+          }),
+        ],
+        'Eduardo Miño',
+      );
+      expect(result).toEqual({ mbid: 'mbid-wide', confidence: 0.5 });
+    });
+
+    it('rejects a subsequence match when albumCount is 0 (no corroboration)', () => {
+      const result = pickMbidHit(
+        [
+          hit({
+            artistName: 'Luis Eduardo Miño Naranjo',
+            foreignArtistId: 'mbid-stub',
+            albumCount: 0,
+          }),
+        ],
+        'Eduardo Miño',
+      );
+      expect(result).toBeNull();
+    });
+
+    it('rejects a subsequence match when albumCount is undefined (omitted)', () => {
+      // Lidarr's lookup payload can omit `albumCount`. Treating the omission
+      // as "no catalog" is the safe read — we have no MusicBrainz-catalog
+      // corroboration either way.
+      const result = pickMbidHit(
+        [
+          hit({
+            artistName: 'Luis Eduardo Miño Naranjo',
+            foreignArtistId: 'mbid-undef',
+            albumCount: undefined,
+          }),
+        ],
+        'Eduardo Miño',
+      );
+      expect(result).toBeNull();
+    });
+
+    it('returns null when neither exact nor corroborated subsequence match exists', () => {
+      const result = pickMbidHit(
+        [
+          hit({
+            artistName: 'Totally Different Artist',
+            foreignArtistId: 'mbid-diff',
+            albumCount: 5,
+          }),
+        ],
+        'Eduardo Miño',
+      );
+      expect(result).toBeNull();
+    });
+
+    it('skips a hit with no foreignArtistId even when its name matches', () => {
+      const result = pickMbidHit(
+        [hit({ artistName: 'Eduardo Miño', foreignArtistId: '', albumCount: 1 })],
+        'Eduardo Miño',
+      );
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('resolveMbidViaLidarr (integration)', () => {
+    it('returns the wider MBID with confidence 0.5 for a canonical-name drift hit', async () => {
+      const lidarr = {
+        artist: {
+          list: async () => [],
+          lookup: async () => [
+            hit({
+              artistName: 'Luis Eduardo Miño Naranjo',
+              foreignArtistId: 'mbid-wide',
+              albumCount: 12,
+            }),
+          ],
+        },
+      } as unknown as EnrichmentContext['lidarr'];
+      const result = await resolveMbidViaLidarr(lidarr as never, 'Eduardo Miño');
+      expect(result).toEqual({ mbid: 'mbid-wide', confidence: 0.5 });
+    });
+
+    it('returns the exact match with confidence 0.8 when both exact and subsequence hits exist', async () => {
+      const lidarr = {
+        artist: {
+          list: async () => [],
+          lookup: async () => [
+            hit({ artistName: 'Eduardo Miño', foreignArtistId: 'mbid-exact', albumCount: 7 }),
+            hit({
+              artistName: 'Luis Eduardo Miño Naranjo',
+              foreignArtistId: 'mbid-wide',
+              albumCount: 12,
+            }),
+          ],
+        },
+      } as unknown as EnrichmentContext['lidarr'];
+      const result = await resolveMbidViaLidarr(lidarr as never, 'Eduardo Miño');
+      expect(result).toEqual({ mbid: 'mbid-exact', confidence: 0.8 });
+    });
+
+    it('returns null when a Lidarr blip raises (no widening on transport error)', async () => {
+      const lidarr = {
+        artist: {
+          list: async () => [],
+          lookup: async () => {
+            throw new Error('Lidarr unreachable');
+          },
+        },
+      } as unknown as EnrichmentContext['lidarr'];
+      const result = await resolveMbidViaLidarr(lidarr as never, 'Eduardo Miño');
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('makeLidarrArtistIdentityResolver (issue #211 widening on the single decision)', () => {
+    it('declares a compound single when the whole name is a whole-token subsequence of a real Lidarr artist', async () => {
+      // Real prod case: library compound "Eduardo Miño" → Lidarr canonical
+      // "Luis Eduardo Miño Naranjo" (with `albumCount > 0` corroboration).
+      // The compound is one act; the resolver should mark it `single`.
+      const lidarr = {
+        artist: {
+          lookup: async () => [
+            hit({
+              artistName: 'Luis Eduardo Miño Naranjo',
+              foreignArtistId: 'mbid-wide',
+              albumCount: 12,
+            }),
+          ],
+        },
+      } as unknown as Parameters<typeof makeLidarrArtistIdentityResolver>[0];
+      const resolve = makeLidarrArtistIdentityResolver(lidarr);
+      const decision = await resolve('Eduardo Miño', ['Eduardo Miño']);
+      expect(decision).toEqual({ decision: 'single', members: [] });
+    });
+
+    it('does NOT widen per-part checks (same-name false-positive guard stays tight)', async () => {
+      // The `ME`-style hazard: a 2-char member name against an otherwise
+      // unrelated artist. Per-part checks MUST stay exact, otherwise the
+      // "ME" library collaborator would token-subsequence-match into many
+      // longer artist names and corrupt the split authority.
+      const lidarr = {
+        artist: {
+          lookup: async () => [
+            hit({ artistName: 'ME', foreignArtistId: 'mbid-me', albumCount: 1 }),
+            hit({ artistName: 'Bob Marley', foreignArtistId: 'mbid-bm', albumCount: 50 }),
+          ],
+        },
+      } as unknown as Parameters<typeof makeLidarrArtistIdentityResolver>[0];
+      const resolve = makeLidarrArtistIdentityResolver(lidarr);
+      // "ME, Bob Marley" is a compound. "ME" exact-matches; "Bob Marley"
+      // exact-matches; so the *whole* compound is still a split — but each
+      // part had to exact-match (no subsequence widening was applied).
+      const decision = await resolve('ME, Bob Marley', ['ME', 'Bob Marley']);
+      expect(decision).toEqual({ decision: 'split', members: ['ME', 'Bob Marley'] });
+    });
+
+    it('a compound whose whole is a subsequence of an albumCount=0 hit stays unknown', async () => {
+      const lidarr = {
+        artist: {
+          lookup: async () => [
+            hit({
+              artistName: 'Luis Eduardo Miño Naranjo',
+              foreignArtistId: 'mbid-stub',
+              albumCount: 0,
+            }),
+          ],
+        },
+      } as unknown as Parameters<typeof makeLidarrArtistIdentityResolver>[0];
+      const resolve = makeLidarrArtistIdentityResolver(lidarr);
+      const decision = await resolve('Eduardo Miño', ['Eduardo Miño']);
+      expect(decision).toEqual({ decision: 'unknown', members: [] });
+    });
   });
 });
 
