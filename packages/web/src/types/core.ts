@@ -44,6 +44,8 @@ export type {
   LicenceSuggestion,
 } from '../../../core/src/types/track-analysis';
 
+export type { ArtistInfoResponse } from '../../../core/src/types/artist-info';
+
 export type {
   ProcessingTaskId,
   ProcessingWindow,
