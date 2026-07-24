@@ -6,13 +6,18 @@ import type {
   GenreCapability,
   GenreQuery,
   GenreResult,
+  ArtistInfoCapability,
+  ArtistInfoQuery,
+  ArtistInfoResult,
 } from '@nicotind/core';
 import { DiscogsClient, type DiscogsClientDeps } from './client.js';
 import {
   buildSearchParams,
   selectBestRelease,
   mapReleaseGenres,
+  mapArtistInfo,
   type DiscogsRef,
+  type DiscogsArtistEntity,
 } from './matching.js';
 
 /** Default UA when the admin leaves the field blank (one is still always sent). */
@@ -47,8 +52,16 @@ export type ResolveDiscogsRef = (mbid: {
   release?: string;
 }) => Promise<DiscogsRef | null>;
 
+/**
+ * Resolve an artist's MBID to a Discogs entity — the MBID-first path, backed in
+ * production by MusicBrainz's own `discogs` url-relation on the artist. Injected
+ * so the plugin stays self-contained and testable without MusicBrainz I/O.
+ */
+export type ResolveDiscogsArtistRef = (mbid: string) => Promise<DiscogsRef | null>;
+
 export interface DiscogsPluginDeps extends DiscogsClientDeps {
   resolveDiscogsRef?: ResolveDiscogsRef;
+  resolveDiscogsArtistRef?: ResolveDiscogsArtistRef;
 }
 
 /**
@@ -67,7 +80,7 @@ export class DiscogsPlugin implements Plugin {
       'Enrich release genres/styles from the Discogs database — strong on Latin, ' +
       'regional, pre-2000 and DJ-pool repertoire. Needs a free Consumer Key + Secret.',
     kind: 'metadata',
-    capabilities: ['genre'],
+    capabilities: ['genre', 'artist-info'],
     requirements: { binaries: [] },
     configSchema: z
       .object({
@@ -135,6 +148,10 @@ export class DiscogsPlugin implements Plugin {
     fetchGenres: (query) => this.fetchGenres(query),
   };
 
+  readonly artistInfo: ArtistInfoCapability = {
+    fetchArtistInfo: (query) => this.fetchArtistInfo(query),
+  };
+
   async init(ctx: PluginHostContext): Promise<void> {
     this.cfg = { ...this.cfg, ...(ctx.config as Partial<DiscogsPluginConfig>) };
     this.rebuildClient();
@@ -194,6 +211,20 @@ export class DiscogsPlugin implements Plugin {
     const genres = await this.genresForRef(client, match.ref);
     if (!genres.length) return null;
     return { genres, source: 'discogs', confidence: match.confidence };
+  }
+
+  private async fetchArtistInfo(query: ArtistInfoQuery): Promise<ArtistInfoResult | null> {
+    const client = this.client;
+    if (!client || !this.deps.resolveDiscogsArtistRef || !query.mbid) return null;
+
+    const ref = await this.deps.resolveDiscogsArtistRef(query.mbid);
+    if (!ref || ref.kind !== 'artist') return null;
+
+    const raw = await client.getArtist(ref.id);
+    if (!raw) return null;
+    const { bio, urls } = mapArtistInfo(raw as DiscogsArtistEntity);
+    if (!bio && urls.length === 0) return null;
+    return { bio, urls, source: 'discogs', confidence: MBID_MATCH_CONFIDENCE };
   }
 
   /** Fetch a ref's release/master and flatten genres + styles (general first). */
