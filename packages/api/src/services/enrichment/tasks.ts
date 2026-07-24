@@ -35,6 +35,9 @@ import { splitOnDelimiters } from '../artist-split.js';
 import { upsertArtistIdentity } from '../artist-identity-store.js';
 import { artistIdFor } from '../library-scanner.js';
 import { MusicBrainzClient, MB_USER_AGENT } from '../musicbrainz-client.js';
+import { getMbid } from '../mbid-store.js';
+import { upsertArtistMeta } from '../artist-meta-store.js';
+import type { ArtistInfoResult } from '@nicotind/core';
 import {
   recordAnalysisFailure,
   clearAnalysisFailure,
@@ -118,6 +121,11 @@ export interface EnrichmentContext {
   /** Returns a Spotify portrait url for an artist name, or null. Null when Spotify
    *  isn't configured — the artist-image task then relies on Lidarr alone. */
   lookupArtistImageSpotify: ((name: string) => Promise<string | null>) | null;
+  /** Resolve Discogs bio/links for an artist's MBID (issue #195), or null when
+   *  unavailable/no confident match. Null *member* (not just a null return)
+   *  when no artist-info-capable plugin is enabled+configured — the task then
+   *  reports itself unavailable. */
+  lookupArtistInfo: ((mbid: string) => Promise<ArtistInfoResult | null>) | null;
   /** Resolve a compound artist string to a split decision via Lidarr/MB. Null when
    *  Lidarr isn't configured (the `artist-identity` task is then unavailable and the
    *  scanner falls back to library-only atomic confirmation). */
@@ -247,6 +255,8 @@ export function createEnrichmentContext(deps: {
   concurrency: number;
   /** Spotify portrait lookup, or null when Spotify creds aren't configured. */
   lookupArtistImageSpotify?: ((name: string) => Promise<string | null>) | null;
+  /** Discogs artist bio/links lookup, or null when unconfigured. */
+  lookupArtistInfo?: ((mbid: string) => Promise<ArtistInfoResult | null>) | null;
   /** Sidecar client, or null when NICOTIND_ANALYSIS_URL isn't configured. */
   audioFeaturesClient?: AudioFeaturesClient | null;
   /** Data dir — locates the MusicBrainz cache file for licence lookups. */
@@ -274,6 +284,7 @@ export function createEnrichmentContext(deps: {
       return r.candidates.length > 0 ? r.candidates.join('; ') : r.suggested;
     },
     lookupArtistImageSpotify: deps.lookupArtistImageSpotify ?? null,
+    lookupArtistInfo: deps.lookupArtistInfo ?? null,
     resolveArtistIdentity: deps.lidarr ? makeLidarrArtistIdentityResolver(deps.lidarr) : null,
     lookupLicence: makeLicenceLookup(deps.dataDir ?? null),
     fileExists: (abs) => existsSync(abs),
@@ -834,6 +845,80 @@ const artistImageTask: EnrichmentTask = {
   },
 };
 
+interface ArtistNameRow {
+  id: string;
+  name: string;
+}
+
+/**
+ * Backfill artist bios + external links from Discogs (issue #195), MBID-first
+ * via MusicBrainz's `discogs` url-relation (see musicbrainz-client.ts,
+ * services/plugins/discogs/index.ts). Per-artist like {@link artistImageTask},
+ * never a landing gate. Presence of a `library_artist_meta` row — even a
+ * tombstone (bio=NULL) written for a confident miss — is what keeps the task
+ * from re-querying every window; skips `manual_override=1` rows entirely
+ * (they already have a meta row, so the NOT EXISTS predicate excludes them).
+ */
+const artistInfoTask: EnrichmentTask = {
+  id: 'artist-info',
+  label: 'Artist bios',
+  available: (ctx) => (ctx.lookupArtistInfo ? true : 'No artist-info provider configured'),
+  countPending: (db) =>
+    Number(
+      (
+        db
+          .query<{ n: number }, []>(
+            `SELECT COUNT(*) AS n FROM library_artists a
+             WHERE a.hidden = 0
+               AND NOT EXISTS (SELECT 1 FROM library_artist_meta m WHERE m.artist_id = a.id)`,
+          )
+          .get() ?? { n: 0 }
+      ).n,
+    ),
+  run: async (db, ctx, limit) => {
+    if (!ctx.lookupArtistInfo) return { applied: 0, labels: [], failed: 0, errorSample: null };
+    const rows = db
+      .query<ArtistNameRow, [number]>(
+        `SELECT id, name FROM library_artists a
+         WHERE a.hidden = 0
+           AND NOT EXISTS (SELECT 1 FROM library_artist_meta m WHERE m.artist_id = a.id)
+         ORDER BY a.album_count DESC, a.name LIMIT ?`,
+      )
+      .all(limit);
+
+    const labels: string[] = [];
+    const tally: FailureTally = { failed: 0, sample: null };
+    let applied = 0;
+    for (const artist of rows) {
+      const mbidRow = getMbid(db, 'artist', normalizeArtistForGrouping(artist.name));
+      if (!mbidRow) {
+        upsertArtistMeta(db, { artistId: artist.id, bio: null, urls: [], source: 'discogs' });
+        continue;
+      }
+      try {
+        const info = await ctx.lookupArtistInfo(mbidRow.mbid);
+        if (!info) {
+          upsertArtistMeta(db, { artistId: artist.id, bio: null, urls: [], source: 'discogs' });
+          continue;
+        }
+        upsertArtistMeta(db, {
+          artistId: artist.id,
+          bio: info.bio,
+          urls: info.urls,
+          source: info.source,
+        });
+        applied++;
+        labels.push(
+          `${artist.name} → bio${info.urls.length ? ` + ${info.urls.length} link(s)` : ''}`,
+        );
+      } catch (err) {
+        recordFailure(tally, err);
+      }
+    }
+    return { applied, labels, failed: tally.failed, errorSample: tally.sample };
+  },
+};
+
 /**
  * SQL predicate (against the alias `name`) selecting compound artist strings that
  * *might* be splittable — a cheap superset of {@link splitOnDelimiters}. False
@@ -1159,6 +1244,7 @@ export const ENRICHMENT_TASKS: readonly EnrichmentTask[] = [
   energyTask,
   audioFeaturesTask,
   artistImageTask,
+  artistInfoTask,
   artistIdentityTask,
   licenceTask,
   genreAudioTask,

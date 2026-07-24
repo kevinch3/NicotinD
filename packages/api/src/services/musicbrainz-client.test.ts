@@ -72,16 +72,16 @@ describe('MusicBrainzClient cache', () => {
   });
 });
 
-describe('MusicBrainzClient getLicence', () => {
-  function mockFetch(body: unknown): string[] {
-    const calls: string[] = [];
-    globalThis.fetch = (async (url: string) => {
-      calls.push(url);
-      return { ok: true, status: 200, json: async () => body } as unknown as Response;
-    }) as unknown as typeof fetch;
-    return calls;
-  }
+function mockFetch(body: unknown): string[] {
+  const calls: string[] = [];
+  globalThis.fetch = (async (url: string) => {
+    calls.push(url);
+    return { ok: true, status: 200, json: async () => body } as unknown as Response;
+  }) as unknown as typeof fetch;
+  return calls;
+}
 
+describe('MusicBrainzClient getLicence', () => {
   it('parses a license url-relation on a recording into a canonical code', async () => {
     const calls = mockFetch({
       relations: [
@@ -116,6 +116,39 @@ describe('MusicBrainzClient getLicence', () => {
     const client = new MusicBrainzClient(cacheFile, 'test/1.0');
     expect(await client.getLicence({ mbReleaseId: 'rel-9' })).toBe('cc0');
     expect(await client.getLicence({ mbReleaseId: 'rel-9' })).toBe('cc0');
+    expect(calls).toHaveLength(1);
+  });
+});
+
+describe('MusicBrainzClient getArtistDiscogsUrl', () => {
+  it('parses a discogs url-relation on an artist', async () => {
+    const calls = mockFetch({
+      relations: [
+        { type: 'official homepage', url: { resource: 'https://example.com' } },
+        { type: 'discogs', url: { resource: 'https://www.discogs.com/artist/72872-Aphex-Twin' } },
+      ],
+    });
+    const client = new MusicBrainzClient(cacheFile, 'test/1.0');
+    expect(await client.getArtistDiscogsUrl('mbid-1')).toBe(
+      'https://www.discogs.com/artist/72872-Aphex-Twin',
+    );
+    expect(calls[0]).toContain('/artist/mbid-1');
+    expect(calls[0]).toContain('inc=url-rels');
+  });
+
+  it('returns null when there is no discogs relation', async () => {
+    mockFetch({ relations: [{ type: 'official homepage', url: { resource: 'https://x' } }] });
+    const client = new MusicBrainzClient(cacheFile, 'test/1.0');
+    expect(await client.getArtistDiscogsUrl('mbid-2')).toBeNull();
+  });
+
+  it('caches the result so a repeat lookup does not re-query', async () => {
+    const calls = mockFetch({
+      relations: [{ type: 'discogs', url: { resource: 'https://www.discogs.com/artist/1' } }],
+    });
+    const client = new MusicBrainzClient(cacheFile, 'test/1.0');
+    expect(await client.getArtistDiscogsUrl('mbid-3')).toBe('https://www.discogs.com/artist/1');
+    expect(await client.getArtistDiscogsUrl('mbid-3')).toBe('https://www.discogs.com/artist/1');
     expect(calls).toHaveLength(1);
   });
 });

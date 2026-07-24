@@ -46,6 +46,7 @@ function fakeCtx(counters: { analyzed: number; genreLookups: number }) {
       return 'Rock';
     },
     lookupArtistImageSpotify: async () => null,
+    lookupArtistInfo: null,
     resolveArtistIdentity: null,
     lookupLicence: async () => null,
     fileExists: () => true,

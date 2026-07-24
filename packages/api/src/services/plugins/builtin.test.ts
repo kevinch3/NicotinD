@@ -1,12 +1,20 @@
 import { describe, expect, it, beforeEach } from 'bun:test';
 import { Database } from 'bun:sqlite';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join as pathJoin } from 'node:path';
 import { applySchema } from '../../db.js';
 import { PluginRegistry } from './registry.js';
-import { registerBuiltinPlugins, type BuiltinPluginDeps } from './builtin.js';
+import { registerBuiltinPlugins, makeDiscogsArtistResolver, type BuiltinPluginDeps } from './builtin.js';
 import { SpotdlPlugin } from './spotdl/index.js';
+import { MusicBrainzClient } from '../musicbrainz-client.js';
 import type { SlskdRef } from '../../index.js';
 import type { ProviderRegistry } from '../provider-registry.js';
 import type { NicotinDConfig } from '@nicotind/core';
+
+function tmpCacheFile(): string {
+  return pathJoin(mkdtempSync(pathJoin(tmpdir(), 'mb-cache-')), 'mb.json');
+}
 
 /** Minimal acquire config — only the fields the builtin registration reads. */
 function makeDeps(over: Partial<BuiltinPluginDeps> = {}): BuiltinPluginDeps {
@@ -69,5 +77,41 @@ describe('registerBuiltinPlugins', () => {
     const spotdl = plugins.get('spotdl') as SpotdlPlugin;
     plugins.setConfig('spotify', { clientId: 'id-123' });
     expect(spotdl.spotifyEnv()).toBeNull();
+  });
+});
+
+describe('makeDiscogsArtistResolver', () => {
+  it('resolves an mbid to a DiscogsRef via the artist discogs url-relation', async () => {
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      ({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          relations: [
+            { type: 'discogs', url: { resource: 'https://www.discogs.com/artist/72872' } },
+          ],
+        }),
+      }) as unknown as Response) as unknown as typeof fetch;
+    try {
+      const mb = new MusicBrainzClient(tmpCacheFile(), 'test/1.0');
+      const resolve = makeDiscogsArtistResolver(mb);
+      expect(await resolve('mbid-1')).toEqual({ kind: 'artist', id: 72872 });
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+
+  it('returns null when there is no discogs relation', async () => {
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      ({ ok: true, status: 200, json: async () => ({ relations: [] }) }) as unknown as Response) as unknown as typeof fetch;
+    try {
+      const mb = new MusicBrainzClient(tmpCacheFile(), 'test/1.0');
+      const resolve = makeDiscogsArtistResolver(mb);
+      expect(await resolve('mbid-2')).toBeNull();
+    } finally {
+      globalThis.fetch = realFetch;
+    }
   });
 });

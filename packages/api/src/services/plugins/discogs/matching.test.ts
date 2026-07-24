@@ -5,6 +5,7 @@ import {
   scoreSearchHit,
   selectBestRelease,
   mapReleaseGenres,
+  mapArtistInfo,
   foldArtist,
   foldTitle,
   type DiscogsSearchHit,
@@ -146,5 +147,27 @@ describe('mapReleaseGenres', () => {
 
   it('tolerates missing arrays', () => {
     expect(mapReleaseGenres({})).toEqual({ genres: [], styles: [] });
+  });
+});
+
+describe('mapArtistInfo', () => {
+  it('trims the profile into a bio and dedupes urls', () => {
+    expect(
+      mapArtistInfo({
+        profile: '  A great artist.  ',
+        urls: ['https://en.wikipedia.org/wiki/X', 'https://en.wikipedia.org/wiki/X', 'https://x.com'],
+      }),
+    ).toEqual({
+      bio: 'A great artist.',
+      urls: ['https://en.wikipedia.org/wiki/X', 'https://x.com'],
+    });
+  });
+
+  it('returns a null bio and empty urls when the entity has neither', () => {
+    expect(mapArtistInfo({})).toEqual({ bio: null, urls: [] });
+  });
+
+  it('treats a blank profile as no bio', () => {
+    expect(mapArtistInfo({ profile: '   ' })).toEqual({ bio: null, urls: [] });
   });
 });

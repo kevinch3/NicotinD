@@ -12,6 +12,10 @@ import { libraryRoutes, __resetDownloadSuppressionCache } from './library.js';
 import type { AuthEnv } from '../middleware/auth.js';
 import type { SlskdUserTransferGroup } from '@nicotind/core';
 import type { SlskdRef } from '../index.js';
+import type { PluginRegistry } from '../services/plugins/registry.js';
+import { getArtistMeta, upsertArtistMeta } from '../services/artist-meta-store.js';
+import { upsertMbid } from '../services/mbid-store.js';
+import { normalizeArtistForGrouping } from '../services/album-grouping.js';
 
 import { applySchema } from '../db.js';
 
@@ -1330,9 +1334,9 @@ describe('GET /songs/autocomplete', () => {
     seedSong('quarantined', { title: 'Rock Anthem', artist: 'A', landed: false });
     seedSong('visible', { title: 'Rock Anthem', artist: 'A' });
 
-    const body = (await (
-      await makeApp().request('/songs/autocomplete?q=rock')
-    ).json()) as Array<{ id: string }>;
+    const body = (await (await makeApp().request('/songs/autocomplete?q=rock')).json()) as Array<{
+      id: string;
+    }>;
     expect(body.map((s) => s.id)).toEqual(['visible']);
   });
 });
@@ -1704,5 +1708,220 @@ describe('GET /fragments (library fragmentation diagnostic)', () => {
     app.route('/', libraryRoutes());
     const res = await app.request('/fragments');
     expect(res.status).toBe(403);
+  });
+});
+
+describe('artist-info routes', () => {
+  const testDb = new Database(':memory:');
+  applySchema(testDb);
+
+  beforeEach(() => {
+    testDb.run('DELETE FROM library_artist_meta');
+    testDb.run('DELETE FROM library_mbids');
+    testDb.run('DELETE FROM library_artists');
+    mock.module('../db.js', () => ({ getDatabase: () => testDb, applySchema }));
+  });
+
+  afterEach(() => {
+    mock.module('../db.js', () => ({ getDatabase: () => sharedDb, applySchema }));
+  });
+
+  function seedArtistWithAlbum(id = 'art-info', name = 'Info Artist'): string {
+    testDb.run(
+      `INSERT INTO library_artists (id, name, album_count, synced_at) VALUES (?, ?, 1, 1)`,
+      [id, name],
+    );
+    return id;
+  }
+
+  /** A registry stub exposing only what refresh-info calls, mirroring
+   * library.lyrics.test.ts's makeRegistry helper for the lyrics capability. */
+  function makeRegistry(opts: {
+    result?: { bio: string | null; urls: string[]; source: string; confidence: number } | null;
+    enabled?: boolean;
+    throws?: boolean;
+  }): { registry: PluginRegistry; calls: () => number } {
+    let calls = 0;
+    const enabled = opts.enabled ?? true;
+    const plugin = {
+      artistInfo: {
+        fetchArtistInfo: async () => {
+          calls++;
+          if (opts.throws) throw new Error('Discogs is down');
+          return opts.result ?? null;
+        },
+      },
+    };
+    const registry = {
+      hasCapability: () => enabled,
+      getEnabledWithCapability: () => (enabled ? [plugin] : []),
+    } as unknown as PluginRegistry;
+    return { registry, calls: () => calls };
+  }
+
+  function makeApp(role: 'admin' | 'user' | 'refiner', registry?: PluginRegistry): Hono<AuthEnv> {
+    const app = new Hono<AuthEnv>();
+    app.use('*', (c, next) => {
+      c.set('user', { sub: 'u', role, iat: 0, exp: 9999999999 });
+      return next();
+    });
+    app.route('/', libraryRoutes(undefined, { pluginRegistry: registry }));
+    return app;
+  }
+
+  it('GET /artists/:id includes bio/urls as null/empty with no library_artist_meta row', async () => {
+    const artistId = seedArtistWithAlbum();
+    const res = await makeApp('user').request(`/artists/${artistId}`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { artist: { bio: string | null; urls: string[] } };
+    expect(body.artist.bio).toBeNull();
+    expect(body.artist.urls).toEqual([]);
+  });
+
+  it('GET /artists/:id includes a stored bio', async () => {
+    const artistId = seedArtistWithAlbum();
+    upsertArtistMeta(testDb, {
+      artistId,
+      bio: 'A bio',
+      urls: ['https://x.com'],
+      source: 'discogs',
+    });
+    const res = await makeApp('user').request(`/artists/${artistId}`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { artist: { bio: string | null; urls: string[] } };
+    expect(body.artist.bio).toBe('A bio');
+    expect(body.artist.urls).toEqual(['https://x.com']);
+  });
+
+  it('POST /artists/:id/refresh-info requires curator', async () => {
+    const artistId = seedArtistWithAlbum();
+    const res = await makeApp('user').request(`/artists/${artistId}/refresh-info`, {
+      method: 'POST',
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('POST /artists/:id/refresh-info writes a tombstone when there is no known MBID', async () => {
+    const artistId = seedArtistWithAlbum();
+    const { registry, calls } = makeRegistry({ result: null });
+    const res = await makeApp('refiner', registry).request(`/artists/${artistId}/refresh-info`, {
+      method: 'POST',
+    });
+    expect(res.status).toBe(200);
+    expect(getArtistMeta(testDb, artistId)?.bio).toBeNull();
+    // No MBID is known for this artist, so the plugin is never even queried.
+    expect(calls()).toBe(0);
+  });
+
+  it('POST /artists/:id/refresh-info fetches and stores bio/urls when an MBID is known', async () => {
+    const artistId = seedArtistWithAlbum('art-mbid', 'MBID Artist');
+    upsertMbid(testDb, {
+      scope: 'artist',
+      key: normalizeArtistForGrouping('MBID Artist'),
+      mbid: 'mbid-1',
+      source: 'tag',
+      confidence: 1,
+    });
+    const { registry, calls } = makeRegistry({
+      result: {
+        bio: 'Fetched bio',
+        urls: ['https://wiki.example'],
+        source: 'discogs',
+        confidence: 0.9,
+      },
+    });
+    const res = await makeApp('refiner', registry).request(`/artists/${artistId}/refresh-info`, {
+      method: 'POST',
+    });
+    expect(res.status).toBe(200);
+    expect(calls()).toBe(1);
+    const row = getArtistMeta(testDb, artistId);
+    expect(row?.bio).toBe('Fetched bio');
+    expect(row?.urls).toEqual(['https://wiki.example']);
+    expect(row?.manualOverride).toBe(false);
+  });
+
+  it('POST /artists/:id/refresh-info returns 502 and writes no tombstone when the source throws', async () => {
+    const artistId = seedArtistWithAlbum('art-mbid-2', 'Transient Fail Artist');
+    upsertMbid(testDb, {
+      scope: 'artist',
+      key: normalizeArtistForGrouping('Transient Fail Artist'),
+      mbid: 'mbid-2',
+      source: 'tag',
+      confidence: 1,
+    });
+    const { registry, calls } = makeRegistry({ throws: true });
+    const res = await makeApp('refiner', registry).request(`/artists/${artistId}/refresh-info`, {
+      method: 'POST',
+    });
+    expect(res.status).toBe(502);
+    expect(calls()).toBe(1);
+    // A transient failure is not a confident miss — no tombstone should be
+    // written, so the artist stays retriable rather than looking permanently gone.
+    expect(getArtistMeta(testDb, artistId)).toBeNull();
+  });
+
+  it('POST /artists/:id/refresh-info is rejected when the row is manually overridden', async () => {
+    const artistId = seedArtistWithAlbum();
+    upsertArtistMeta(testDb, {
+      artistId,
+      bio: 'Curator bio',
+      urls: [],
+      source: 'user',
+      manualOverride: true,
+    });
+    const { registry, calls } = makeRegistry({ result: null });
+    const res = await makeApp('refiner', registry).request(`/artists/${artistId}/refresh-info`, {
+      method: 'POST',
+    });
+    expect(res.status).toBe(409);
+    // Never even queries the plugin once a manual override is in place.
+    expect(calls()).toBe(0);
+    expect(getArtistMeta(testDb, artistId)?.bio).toBe('Curator bio');
+  });
+
+  it('PUT /artists/:id/info sets a manual override', async () => {
+    const artistId = seedArtistWithAlbum();
+    const res = await makeApp('refiner').request(`/artists/${artistId}/info`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ bio: 'My bio', urls: ['https://x.com'] }),
+    });
+    expect(res.status).toBe(200);
+    const row = getArtistMeta(testDb, artistId);
+    expect(row?.bio).toBe('My bio');
+    expect(row?.manualOverride).toBe(true);
+    expect(row?.source).toBe('user');
+  });
+
+  it('PUT /artists/:id/info requires curator', async () => {
+    const artistId = seedArtistWithAlbum();
+    const res = await makeApp('user').request(`/artists/${artistId}/info`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ bio: 'My bio', urls: [] }),
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('PUT /artists/:id/info always sets source=user/manualOverride even over a prior discogs row', async () => {
+    const artistId = seedArtistWithAlbum();
+    upsertArtistMeta(testDb, {
+      artistId,
+      bio: 'Old bio',
+      urls: [],
+      source: 'discogs',
+      manualOverride: false,
+    });
+    const res = await makeApp('refiner').request(`/artists/${artistId}/info`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ bio: 'Curator wins', urls: [] }),
+    });
+    expect(res.status).toBe(200);
+    const row = getArtistMeta(testDb, artistId);
+    expect(row?.bio).toBe('Curator wins');
+    expect(row?.source).toBe('user');
+    expect(row?.manualOverride).toBe(true);
   });
 });

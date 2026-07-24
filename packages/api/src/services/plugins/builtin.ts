@@ -10,6 +10,23 @@ import { SpotifyPlugin } from './spotify/index.js';
 import { YtdlpPlugin } from './ytdlp/index.js';
 import { LrclibPlugin } from './lrclib/index.js';
 import { DiscogsPlugin } from './discogs/index.js';
+import { parseDiscogsRef, type DiscogsRef } from './discogs/matching.js';
+import { MusicBrainzClient, MB_USER_AGENT } from '../musicbrainz-client.js';
+
+/**
+ * Build the MBID-first artist resolver the Discogs plugin's `artist-info`
+ * capability uses (issue #195): MusicBrainz's own `discogs` url-relation on the
+ * artist → parseDiscogsRef. Extracted as its own function so the resolution
+ * logic is unit-testable without constructing the whole plugin registry.
+ */
+export function makeDiscogsArtistResolver(
+  mb: MusicBrainzClient,
+): (mbid: string) => Promise<DiscogsRef | null> {
+  return async (mbid) => {
+    const url = await mb.getArtistDiscogsUrl(mbid);
+    return url ? parseDiscogsRef(url) : null;
+  };
+}
 
 export interface BuiltinPluginDeps {
   config: NicotinDConfig;
@@ -93,11 +110,21 @@ export function registerBuiltinPlugins(plugins: PluginRegistry, deps: BuiltinPlu
   // extension card. The on-disk response cache lives under the data dir. The
   // shell is registered so it's manageable in Extensions; no enrichment task
   // consumes its `genre` capability yet (that lands gated by the #191 spike).
+  // `artist-info` (issue #195) is wired: MBID-first resolution via a real
+  // MusicBrainzClient (same on-disk cache convention as makeLicenceLookup in
+  // enrichment/tasks.ts) composed through makeDiscogsArtistResolver above.
+  const mbClientForDiscogs = new MusicBrainzClient(
+    join(dataDir, 'musicbrainz-cache.json'),
+    MB_USER_AGENT,
+  );
   plugins.register(
-    new DiscogsPlugin({
-      consumerKey: '',
-      consumerSecret: '',
-      cacheFile: join(dataDir, 'discogs-cache.json'),
-    }),
+    new DiscogsPlugin(
+      {
+        consumerKey: '',
+        consumerSecret: '',
+        cacheFile: join(dataDir, 'discogs-cache.json'),
+      },
+      { resolveDiscogsArtistRef: makeDiscogsArtistResolver(mbClientForDiscogs) },
+    ),
   );
 }

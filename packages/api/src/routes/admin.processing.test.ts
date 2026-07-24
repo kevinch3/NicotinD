@@ -57,6 +57,7 @@ function makeService(): LibraryProcessingService {
       audioFeaturesAvailable: () => false,
       lookupGenre: async () => null,
       lookupArtistImageSpotify: null,
+      lookupArtistInfo: null,
       resolveArtistIdentity: null,
       lookupLicence: async () => null,
       fileExists: () => false,

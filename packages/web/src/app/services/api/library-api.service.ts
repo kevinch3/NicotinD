@@ -13,6 +13,7 @@ import type {
   CoverCandidatesResponse,
   ApplyCoverRequest,
   LibraryFilter,
+  ArtistInfoResponse,
 } from '@nicotind/core';
 import { serializeLibraryFilter, isEmptyLibraryFilter } from '@nicotind/core';
 import type { Album, AlbumDetail, Song, ProvenanceRecord } from './api-types';
@@ -188,6 +189,22 @@ export class LibraryApiService {
     );
   }
 
+  /** Force a re-fetch of this artist's bio/links from Discogs (curator; issue #195). */
+  refreshArtistInfo(id: string) {
+    return this.http.post<ArtistInfoResponse>(
+      `/api/library/artists/${encodeURIComponent(id)}/refresh-info`,
+      {},
+    );
+  }
+
+  /** Hand-edit an artist's bio/links — locks the background task out (curator). */
+  setArtistInfo(id: string, bio: string | null, urls: string[]) {
+    return this.http.put<ArtistInfoResponse>(`/api/library/artists/${encodeURIComponent(id)}/info`, {
+      bio,
+      urls,
+    });
+  }
+
   fixArtistIdentity(
     body:
       | { rawName: string; decision: 'single' }
@@ -235,7 +252,7 @@ export class LibraryApiService {
 
   getArtist(id: string) {
     return this.http.get<{
-      artist: { id: string; name: string; albumCount: number; coverArt?: string };
+      artist: { id: string; name: string; albumCount: number; coverArt?: string; bio: string | null; urls: string[] };
       albums: Album[];
       singlesAndEps: Album[];
     }>(`/api/library/artists/${id}`);

@@ -175,6 +175,24 @@ export function mapReleaseGenres(entity: DiscogsGenreEntity): {
   };
 }
 
+/** A fetched Discogs artist (only the bio-bearing fields). */
+export interface DiscogsArtistEntity {
+  profile?: string;
+  urls?: string[];
+}
+
+/** Extract a trimmed bio + de-duplicated links from a fetched Discogs artist. */
+export function mapArtistInfo(entity: DiscogsArtistEntity): {
+  bio: string | null;
+  urls: string[];
+} {
+  const bio = entity.profile?.trim();
+  return {
+    bio: bio ? bio : null,
+    urls: dedupeTrim(entity.urls),
+  };
+}
+
 function dedupeTrim(values: readonly string[] | undefined): string[] {
   const out: string[] = [];
   const seen = new Set<string>();

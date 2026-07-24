@@ -2,7 +2,7 @@ import { OpenAPIHono } from '@hono/zod-openapi';
 import { swaggerUI } from '@hono/swagger-ui';
 import { serveStatic, createBunWebSocket } from 'hono/bun';
 import { nativeAppCors } from './middleware/cors.js';
-import type { NicotinDConfig, TrackStatus } from '@nicotind/core';
+import type { NicotinDConfig, TrackStatus, ArtistInfoResult } from '@nicotind/core';
 import type { Slskd } from '@nicotind/slskd-client';
 import type { Lidarr } from '@nicotind/lidarr-client';
 import type { ServiceManager } from '@nicotind/service-manager';
@@ -343,6 +343,14 @@ export function createApp({
     lookup: null,
   };
 
+  // Discogs artist-info lookup for the artist-info enrichment task (issue #195).
+  // Same ref-bridge as spotifyArtistImageRef: LibraryProcessingService is
+  // constructed before the plugin registry exists, so the scheduler only
+  // invokes this lazily during a run, by which point the ref is populated.
+  const artistInfoRef: {
+    lookup: ((mbid: string) => Promise<ArtistInfoResult | null>) | null;
+  } = { lookup: null };
+
   // Analysis-sidecar client for the audio-features enrichment task; null when
   // no sidecar is configured (the task then reports itself unavailable).
   const audioFeaturesClient = config.analysis.url
@@ -359,6 +367,7 @@ export function createApp({
     dataDir: expandedDataDir,
     lookupArtistImageSpotify: (name) =>
       spotifyArtistImageRef.lookup?.(name) ?? Promise.resolve(null),
+    lookupArtistInfo: (mbid) => artistInfoRef.lookup?.(mbid) ?? Promise.resolve(null),
     audioFeaturesClient,
   });
 
@@ -432,6 +441,11 @@ export function createApp({
     slskdRef,
     providerRegistry: registry,
   });
+  // Populate the artist-info ref now that the plugin registry (and Discogs) exist.
+  artistInfoRef.lookup = (mbid) => {
+    const [provider] = plugins.getEnabledWithCapability('artist-info');
+    return provider?.artistInfo?.fetchArtistInfo({ mbid }) ?? Promise.resolve(null);
+  };
   // One-time migration: seed the previously-implicit acquisition plugins enabled
   // ONLY on an existing (pre-plugin) install, so upgrades stay seamless. Fresh
   // installs are default-off — an admin opts into acquisition in Settings →

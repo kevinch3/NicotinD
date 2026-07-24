@@ -11,7 +11,14 @@ import { asRole, canCurate as canCurateRole } from '../../../types/core';
 import { PlayerService } from '../../services/player.service';
 import { TransferService } from '../../services/transfer.service';
 
-const ARTIST = { id: 'ar1', name: 'Natiruts', albumCount: 2, coverArt: 'ar1' };
+const ARTIST = {
+  id: 'ar1',
+  name: 'Natiruts',
+  albumCount: 2,
+  coverArt: 'ar1',
+  bio: null,
+  urls: [],
+};
 const ALBUMS = [
   { id: 'a1', name: 'Natiruts', artist: 'Natiruts' },
   { id: 'a2', name: 'Acústico', artist: 'Natiruts' },

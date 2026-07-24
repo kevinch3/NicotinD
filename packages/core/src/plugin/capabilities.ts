@@ -142,6 +142,32 @@ export interface GenreCapability {
   fetchGenres(query: GenreQuery): Promise<GenreResult | null>;
 }
 
+/**
+ * What the host knows about an artist when asking a source for a bio + links.
+ * MBID-only, no name-search fallback — a wrong bio on a real person's page is
+ * worse than a missing one (mirrors GenreQuery's release-scoped discipline).
+ */
+export interface ArtistInfoQuery {
+  mbid: string;
+}
+
+/** Bio + external links a source resolved for an artist. */
+export interface ArtistInfoResult {
+  bio: string | null;
+  /** External links (Wikipedia, official site, …), de-duplicated. */
+  urls: string[];
+  /** Plugin id that produced this (e.g. 'discogs'). */
+  source: string;
+  /** Match confidence in [0, 1] — always a real, computed number, never a 1.0 shortcut. */
+  confidence: number;
+}
+
+/** Metadata source that resolves an artist bio + links on demand (Discogs, …). */
+export interface ArtistInfoCapability {
+  /** Returns bio/links for the artist, or null when the source has no confident match. */
+  fetchArtistInfo(query: ArtistInfoQuery): Promise<ArtistInfoResult | null>;
+}
+
 /** Connectivity plugins (tailscale/wireguard) — scaffold; none shipped yet. */
 export interface ConnectivityCapability {
   up(): Promise<void>;

@@ -8,6 +8,8 @@ import { NoConfidentResultError } from '../track-analysis.js';
 import { AudioFileRejectedError } from '../audio-features-client.js';
 import { upsertArtistIdentity } from '../artist-identity-store.js';
 import { artistIdFor } from '../library-scanner.js';
+import { upsertMbid } from '../mbid-store.js';
+import { getArtistMeta, upsertArtistMeta } from '../artist-meta-store.js';
 
 let db: Database;
 
@@ -66,6 +68,7 @@ function ctx(overrides: Partial<EnrichmentContext> = {}): EnrichmentContext {
     audioFeaturesAvailable: () => true,
     lookupGenre: async () => 'Rock',
     lookupArtistImageSpotify: async () => null,
+    lookupArtistInfo: null,
     resolveArtistIdentity: null,
     lookupLicence: async () => null,
     fileExists: () => true,
@@ -548,6 +551,85 @@ describe('artist-image task', () => {
     const c = ctx({ lidarr: lidarrWithPosters({ Radiohead: 'https://x/p.jpg' }) });
     const res = await artistImage.run(db, c, 25);
     expect(res.applied).toBe(0);
+  });
+});
+
+describe('artist-info task', () => {
+  const artistInfo = getTask('artist-info')!;
+
+  it('is unavailable when no lookupArtistInfo is configured', () => {
+    expect(artistInfo.available(ctx())).toBe('No artist-info provider configured');
+  });
+
+  it('is available when lookupArtistInfo is configured', () => {
+    expect(artistInfo.available(ctx({ lookupArtistInfo: async () => null }))).toBe(true);
+  });
+
+  it('counts artists with no library_artist_meta row as pending', () => {
+    seedArtist('a1', { name: 'Artist One' });
+    expect(artistInfo.countPending(db)).toBe(1);
+  });
+
+  it('writes a tombstone (no applied) for an artist with no known MBID', async () => {
+    seedArtist('a1', { name: 'Artist One' });
+    const c = ctx({
+      lookupArtistInfo: async () => ({ bio: 'x', urls: [], source: 'discogs', confidence: 0.95 }),
+    });
+    const result = await artistInfo.run(db, c, 10);
+    expect(result.applied).toBe(0);
+    expect(getArtistMeta(db, 'a1')?.bio).toBeNull();
+    expect(artistInfo.countPending(db)).toBe(0);
+  });
+
+  it('resolves and stores a bio for an artist with a known MBID', async () => {
+    seedArtist('a1', { name: 'Artist One' });
+    upsertMbid(db, {
+      scope: 'artist',
+      key: 'artist one',
+      mbid: 'mbid-1',
+      source: 'tag',
+      confidence: 1,
+    });
+    const c = ctx({
+      lookupArtistInfo: async (mbid) =>
+        mbid === 'mbid-1'
+          ? { bio: 'A bio', urls: ['https://x.com'], source: 'discogs', confidence: 0.95 }
+          : null,
+    });
+    const result = await artistInfo.run(db, c, 10);
+    expect(result.applied).toBe(1);
+    const row = getArtistMeta(db, 'a1');
+    expect(row?.bio).toBe('A bio');
+    expect(row?.urls).toEqual(['https://x.com']);
+    expect(artistInfo.countPending(db)).toBe(0);
+  });
+
+  it('writes a tombstone when the source has no confident match', async () => {
+    seedArtist('a1', { name: 'Artist One' });
+    upsertMbid(db, {
+      scope: 'artist',
+      key: 'artist one',
+      mbid: 'mbid-1',
+      source: 'tag',
+      confidence: 1,
+    });
+    const c = ctx({ lookupArtistInfo: async () => null });
+    const result = await artistInfo.run(db, c, 10);
+    expect(result.applied).toBe(0);
+    expect(getArtistMeta(db, 'a1')).not.toBeNull();
+    expect(artistInfo.countPending(db)).toBe(0);
+  });
+
+  it('skips a manual_override row entirely', async () => {
+    seedArtist('a1', { name: 'Artist One' });
+    upsertArtistMeta(db, {
+      artistId: 'a1',
+      bio: 'Curator bio',
+      urls: [],
+      source: 'user',
+      manualOverride: true,
+    });
+    expect(artistInfo.countPending(db)).toBe(0);
   });
 });
 
@@ -1194,10 +1276,11 @@ describe('licence task', () => {
 });
 
 describe('registry', () => {
-  it('exposes bpm, genre, key, energy, audio-features, artist-image, artist-identity, licence and genre-audio tasks', () => {
+  it('exposes bpm, genre, key, energy, audio-features, artist-image, artist-info, artist-identity, licence and genre-audio tasks', () => {
     expect(ENRICHMENT_TASKS.map((t) => t.id).sort()).toEqual([
       'artist-identity',
       'artist-image',
+      'artist-info',
       'audio-features',
       'bpm',
       'energy',

@@ -11,6 +11,7 @@ export type ProcessingTaskId =
   | 'genre'
   | 'key'
   | 'artist-image'
+  | 'artist-info'
   | 'energy'
   | 'audio-features'
   | 'artist-identity'

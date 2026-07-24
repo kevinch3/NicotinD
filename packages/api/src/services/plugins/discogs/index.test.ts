@@ -40,7 +40,7 @@ describe('DiscogsPlugin manifest', () => {
     const plugin = makePlugin();
     expect(validatePluginManifest(plugin.manifest)).toEqual([]);
     expect(plugin.manifest.kind).toBe('metadata');
-    expect(plugin.manifest.capabilities).toEqual(['genre']);
+    expect(plugin.manifest.capabilities).toEqual(['genre', 'artist-info']);
     expect(plugin.manifest.defaultEnabled).toBe(false);
     expect(plugin.manifest.compliance?.requiresConsent).toBe(true);
   });
@@ -171,5 +171,68 @@ describe('DiscogsPlugin.fetchGenres — MBID-first', () => {
     });
     expect(result?.genres).toEqual(['Pop']);
     expect(calls.some((u) => u.includes('/database/search'))).toBe(true);
+  });
+});
+
+describe('DiscogsPlugin.artistInfo', () => {
+  it('resolves bio + urls via MBID-first artist resolution', async () => {
+    const plugin = new DiscogsPlugin(
+      { consumerKey: 'k', consumerSecret: 's' },
+      {
+        resolveDiscogsArtistRef: async (mbid) =>
+          mbid === 'mbid-1' ? { kind: 'artist', id: 72872 } : null,
+        fetchFn: (async (url: string) => {
+          expect(url).toContain('/artists/72872');
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ profile: 'Bio text', urls: ['https://x.com'] }),
+          } as unknown as Response;
+        }) as unknown as typeof fetch,
+      },
+    );
+    const result = await plugin.artistInfo.fetchArtistInfo({ mbid: 'mbid-1' });
+    expect(result).toEqual({
+      bio: 'Bio text',
+      urls: ['https://x.com'],
+      source: 'discogs',
+      confidence: 0.95,
+    });
+  });
+
+  it('returns null when there is no MBID', async () => {
+    const plugin = new DiscogsPlugin(
+      { consumerKey: 'k', consumerSecret: 's' },
+      { resolveDiscogsArtistRef: async () => ({ kind: 'artist', id: 1 }) },
+    );
+    expect(await plugin.artistInfo.fetchArtistInfo({ mbid: '' })).toBeNull();
+  });
+
+  it('returns null when MusicBrainz has no discogs relation for the artist', async () => {
+    const plugin = new DiscogsPlugin(
+      { consumerKey: 'k', consumerSecret: 's' },
+      { resolveDiscogsArtistRef: async () => null },
+    );
+    expect(await plugin.artistInfo.fetchArtistInfo({ mbid: 'mbid-2' })).toBeNull();
+  });
+
+  it('returns null when Discogs has no artist at that id (404)', async () => {
+    const plugin = new DiscogsPlugin(
+      { consumerKey: 'k', consumerSecret: 's' },
+      {
+        resolveDiscogsArtistRef: async () => ({ kind: 'artist', id: 999 }),
+        fetchFn: (async () =>
+          ({ ok: false, status: 404, json: async () => ({}) }) as unknown as Response) as unknown as typeof fetch,
+      },
+    );
+    expect(await plugin.artistInfo.fetchArtistInfo({ mbid: 'mbid-3' })).toBeNull();
+  });
+
+  it('returns null when the plugin has no credentials configured', async () => {
+    const plugin = new DiscogsPlugin(
+      { consumerKey: '', consumerSecret: '' },
+      { resolveDiscogsArtistRef: async () => ({ kind: 'artist', id: 1 }) },
+    );
+    expect(await plugin.artistInfo.fetchArtistInfo({ mbid: 'mbid-4' })).toBeNull();
   });
 });

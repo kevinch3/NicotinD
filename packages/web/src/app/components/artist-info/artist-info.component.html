@@ -1,0 +1,62 @@
+@if (effectiveBio() || effectiveUrls().length > 0) {
+  <div class="mt-4 p-4 rounded-lg bg-theme-surface/30" data-testid="artist-info-section">
+    @if (effectiveBio(); as bio) {
+      <p
+        class="text-sm text-theme-secondary whitespace-pre-line"
+        [class.line-clamp-4]="!expanded()"
+      >
+        {{ bio }}
+      </p>
+      @if (bio.length > 280) {
+        <button
+          type="button"
+          class="text-xs text-theme-muted hover:text-theme-secondary mt-1"
+          (click)="toggleExpanded()"
+        >
+          {{ expanded() ? 'Show less' : 'Show more' }}
+        </button>
+      }
+    }
+    @if (effectiveUrls().length > 0) {
+      <div class="mt-2 flex flex-wrap gap-3">
+        @for (url of effectiveUrls(); track url) {
+          <a
+            [href]="url"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="text-xs text-theme-accent hover:underline"
+          >
+            {{ url }}
+          </a>
+        }
+      </div>
+    }
+    @if (auth.canCurate()) {
+      <button
+        type="button"
+        data-testid="artist-info-refresh"
+        [disabled]="refreshing()"
+        (click)="refresh()"
+        class="mt-3 text-xs text-theme-muted hover:text-theme-secondary disabled:opacity-50"
+      >
+        {{ refreshing() ? 'Refreshing…' : 'Refresh' }}
+      </button>
+    }
+  </div>
+} @else if (auth.canCurate()) {
+  <div
+    class="mt-4 p-4 rounded-lg bg-theme-surface/30 text-sm text-theme-muted"
+    data-testid="artist-info-section"
+  >
+    No bio available.
+    <button
+      type="button"
+      data-testid="artist-info-refresh"
+      [disabled]="refreshing()"
+      (click)="refresh()"
+      class="ml-1 text-theme-accent hover:underline disabled:opacity-50"
+    >
+      {{ refreshing() ? 'Refreshing…' : 'Try fetching from Discogs' }}
+    </button>
+  </div>
+}

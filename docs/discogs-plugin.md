@@ -140,6 +140,25 @@ Recorded so a later PR doesn't re-litigate them:
 `plugin/index.ts`. The web mirrors the capability string in `plugin.service.ts`'s
 hand-written `PluginCapability` union.
 
+## Artist bios — the `artist-info` capability (issue #195)
+
+`MetadataCapabilityName` also carries `'artist-info'`, backing `Plugin.artistInfo?:
+ArtistInfoCapability` (`fetchArtistInfo({ mbid }) → { bio, urls, source, confidence }
+| null`). It's wired the **same MBID-first shape as `genre`**: an injected
+`resolveDiscogsArtistRef?: (mbid: string) => Promise<DiscogsRef | null>` dep
+(production-backed by `MusicBrainzClient.getArtistDiscogsUrl` → `parseDiscogsRef`,
+same as `resolveDiscogsRef` for releases) resolves the artist's MBID to a Discogs
+artist id, then `DiscogsClient.getArtist(id)` fetches it and the pure
+`mapArtistInfo` (`matching.ts`) extracts a trimmed `profile` as `bio` + de-duplicated
+`urls`. No name-search fallback — `ArtistInfoQuery` is MBID-only by design (a wrong
+bio on a real person's page is worse than a missing one), so a query with no MBID,
+no resolver dep, no resolved ref, no Discogs artist, or an empty bio+urls result all
+return `null`. Confidence reuses the same `MBID_MATCH_CONFIDENCE` (0.95) as the
+genre capability's MBID path. This powers issue #195 (artist bios on the artist
+page); as with `genre`, the MusicBrainz-backed resolver is only wired into
+`registerBuiltinPlugins` in a later task — here the capability is tested via
+injected fakes only.
+
 ## Testing
 
 Client (`client.test.ts`): scripted 200 / 404 / 429-retry / persistent-5xx,
@@ -147,6 +166,7 @@ cache hit + on-disk roundtrip, `X-Discogs-Ratelimit-Remaining` throttling, and
 User-Agent + auth header presence on **every** request. Matching
 (`matching.test.ts`): URL parsing, folding, scoring, the Emilia rejection,
 master-over-release preference, genre/style mapping. Plugin (`index.test.ts`):
-manifest validity, credential-gated availability, init config merge, and both the
-name-search and MBID-first `fetchGenres` paths. All in `bun run test` — **no
-live-API test in CI.**
+manifest validity, credential-gated availability, init config merge, both the
+name-search and MBID-first `fetchGenres` paths, and the MBID-first `fetchArtistInfo`
+path (resolved bio+urls, and each null-guard: no MBID, no MusicBrainz relation,
+Discogs 404, no credentials). All in `bun run test` — **no live-API test in CI.**
