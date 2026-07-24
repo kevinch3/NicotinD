@@ -8,7 +8,7 @@ import { NoConfidentResultError } from '../track-analysis.js';
 import { AudioFileRejectedError } from '../audio-features-client.js';
 import { upsertArtistIdentity } from '../artist-identity-store.js';
 import { artistIdFor } from '../library-scanner.js';
-import { upsertMbid } from '../mbid-store.js';
+import { getMbid, upsertMbid } from '../mbid-store.js';
 import { getArtistMeta, upsertArtistMeta } from '../artist-meta-store.js';
 
 let db: Database;
@@ -630,6 +630,88 @@ describe('artist-info task', () => {
       manualOverride: true,
     });
     expect(artistInfo.countPending(db)).toBe(0);
+  });
+
+  /** A Lidarr stub whose lookup() resolves fixed hits regardless of the query. */
+  function lidarrWithLookup(hits: Array<{ artistName: string; foreignArtistId: string }>) {
+    return {
+      artist: {
+        list: async () => [],
+        lookup: async () => hits,
+      },
+    } as unknown as EnrichmentContext['lidarr'];
+  }
+
+  it('resolves an MBID via an exact-match Lidarr lookup, persists it, and fetches a bio', async () => {
+    seedArtist('a1', { name: 'Artist One' });
+    const c = ctx({
+      lidarr: lidarrWithLookup([{ artistName: 'Artist One', foreignArtistId: 'mbid-lidarr-1' }]),
+      lookupArtistInfo: async (mbid) =>
+        mbid === 'mbid-lidarr-1'
+          ? { bio: 'Lidarr-resolved bio', urls: ['https://x.com'], source: 'discogs', confidence: 0.95 }
+          : null,
+    });
+    const result = await artistInfo.run(db, c, 10);
+    expect(result.applied).toBe(1);
+    const row = getArtistMeta(db, 'a1');
+    expect(row?.bio).toBe('Lidarr-resolved bio');
+    expect(row?.urls).toEqual(['https://x.com']);
+    const mbidRow = getMbid(db, 'artist', 'artist one');
+    expect(mbidRow).toEqual(
+      expect.objectContaining({ mbid: 'mbid-lidarr-1', source: 'lidarr', confidence: 0.8 }),
+    );
+  });
+
+  it('writes a tombstone (no library_mbids write) when no Lidarr hit matches exactly', async () => {
+    seedArtist('a1', { name: 'Artist One' });
+    const c = ctx({
+      lidarr: lidarrWithLookup([{ artistName: 'A Totally Different Artist', foreignArtistId: 'mbid-x' }]),
+      lookupArtistInfo: async () => ({ bio: 'x', urls: [], source: 'discogs', confidence: 0.95 }),
+    });
+    const result = await artistInfo.run(db, c, 10);
+    expect(result.applied).toBe(0);
+    expect(getArtistMeta(db, 'a1')?.bio).toBeNull();
+    expect(getMbid(db, 'artist', 'artist one')).toBeNull();
+  });
+
+  it('falls through to a tombstone when Lidarr is not configured (lidarr: null)', async () => {
+    seedArtist('a1', { name: 'Artist One' });
+    const c = ctx({
+      lidarr: null,
+      lookupArtistInfo: async () => ({ bio: 'x', urls: [], source: 'discogs', confidence: 0.95 }),
+    });
+    const result = await artistInfo.run(db, c, 10);
+    expect(result.applied).toBe(0);
+    expect(getArtistMeta(db, 'a1')?.bio).toBeNull();
+  });
+
+  it('never calls Lidarr when an MBID is already cached', async () => {
+    seedArtist('a1', { name: 'Artist One' });
+    upsertMbid(db, {
+      scope: 'artist',
+      key: 'artist one',
+      mbid: 'mbid-cached',
+      source: 'tag',
+      confidence: 1,
+    });
+    const throwingLidarr = {
+      artist: {
+        list: async () => [],
+        lookup: async () => {
+          throw new Error('Lidarr should not be called when an MBID is already cached');
+        },
+      },
+    } as unknown as EnrichmentContext['lidarr'];
+    const c = ctx({
+      lidarr: throwingLidarr,
+      lookupArtistInfo: async (mbid) =>
+        mbid === 'mbid-cached'
+          ? { bio: 'Cached-MBID bio', urls: [], source: 'discogs', confidence: 0.95 }
+          : null,
+    });
+    const result = await artistInfo.run(db, c, 10);
+    expect(result.applied).toBe(1);
+    expect(getArtistMeta(db, 'a1')?.bio).toBe('Cached-MBID bio');
   });
 });
 

@@ -35,7 +35,7 @@ import { splitOnDelimiters } from '../artist-split.js';
 import { upsertArtistIdentity } from '../artist-identity-store.js';
 import { artistIdFor } from '../library-scanner.js';
 import { MusicBrainzClient, MB_USER_AGENT } from '../musicbrainz-client.js';
-import { getMbid } from '../mbid-store.js';
+import { getMbid, upsertMbid } from '../mbid-store.js';
 import { upsertArtistMeta } from '../artist-meta-store.js';
 import type { ArtistInfoResult } from '@nicotind/core';
 import {
@@ -142,6 +142,14 @@ export interface ArtistIdentityDecision {
   members: string[];
 }
 
+/** True if any Lidarr lookup hit is an exact normalized-name match for `name` —
+ *  the discipline that avoids the same-name-different-artist hazard (the real
+ *  "Emilia"/"Âme" false pairs) by never accepting a fuzzy/best-guess pick. */
+function exactNameMatch(hits: readonly LidarrArtist[], name: string): boolean {
+  const want = normalizeArtistForGrouping(name);
+  return hits.some((a) => normalizeArtistForGrouping(a.artistName) === want);
+}
+
 /**
  * Build a Lidarr-backed resolver for compound artist strings. Memoizes per-name
  * lookups for the lifetime of the context (one window run) so compounds sharing a
@@ -165,23 +173,37 @@ export function makeLidarrArtistIdentityResolver(
     memo.set(key, hits);
     return hits;
   };
-  const matches = (hits: LidarrArtist[], name: string): boolean => {
-    const want = normalizeArtistForGrouping(name);
-    return hits.some((a) => normalizeArtistForGrouping(a.artistName) === want);
-  };
 
   return async (rawName, parts) => {
     // 1. Is the whole compound itself a canonical artist (band/duo)? Keep it whole.
-    if (matches(await lookup(rawName), rawName)) return { decision: 'single', members: [] };
+    if (exactNameMatch(await lookup(rawName), rawName)) return { decision: 'single', members: [] };
     // 2. Does every part resolve to a real artist? Then it's a genuine collab.
     if (parts.length > 1) {
       for (const part of parts) {
-        if (!matches(await lookup(part), part)) return { decision: 'unknown', members: [] };
+        if (!exactNameMatch(await lookup(part), part)) return { decision: 'unknown', members: [] };
       }
       return { decision: 'split', members: parts };
     }
     return { decision: 'unknown', members: [] };
   };
+}
+
+/**
+ * Resolve a name to an MBID via a single exact-match Lidarr lookup, or null
+ * (issue #207 — artist-info's only prior MBID source, `library_mbids`, is
+ * never populated automatically for artists in production). Never throws — a
+ * lookup blip degrades to null, same as the identity resolver above.
+ */
+async function resolveMbidViaLidarr(lidarr: Lidarr, name: string): Promise<string | null> {
+  let hits: LidarrArtist[];
+  try {
+    hits = await lidarr.artist.lookup(name);
+  } catch {
+    return null;
+  }
+  const want = normalizeArtistForGrouping(name);
+  const hit = hits.find((a) => normalizeArtistForGrouping(a.artistName) === want);
+  return hit ? hit.foreignArtistId : null;
 }
 
 export interface EnrichmentRunResult {
@@ -891,12 +913,29 @@ const artistInfoTask: EnrichmentTask = {
     let applied = 0;
     for (const artist of rows) {
       const mbidRow = getMbid(db, 'artist', normalizeArtistForGrouping(artist.name));
-      if (!mbidRow) {
+      let mbid = mbidRow?.mbid ?? null;
+      // Fallback (issue #207): library_mbids is never populated for artists
+      // automatically in production, so a cache miss is resolved live via a
+      // single exact-match Lidarr lookup and persisted, rather than tombstoned
+      // immediately. Once written, every later window hits the cache above.
+      if (!mbid && ctx.lidarr) {
+        mbid = await resolveMbidViaLidarr(ctx.lidarr, artist.name);
+        if (mbid) {
+          upsertMbid(db, {
+            scope: 'artist',
+            key: normalizeArtistForGrouping(artist.name),
+            mbid,
+            source: 'lidarr',
+            confidence: 0.8,
+          });
+        }
+      }
+      if (!mbid) {
         upsertArtistMeta(db, { artistId: artist.id, bio: null, urls: [], source: 'discogs' });
         continue;
       }
       try {
-        const info = await ctx.lookupArtistInfo(mbidRow.mbid);
+        const info = await ctx.lookupArtistInfo(mbid);
         if (!info) {
           upsertArtistMeta(db, { artistId: artist.id, bio: null, urls: [], source: 'discogs' });
           continue;
