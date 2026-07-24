@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.250](https://github.com/kevinch3/NicotinD/compare/v0.1.249...v0.1.250) (2026-07-24)
+
+### Bug Fixes
+
+* **library:** confidence-gate key detection (issue [#187](https://github.com/kevinch3/NicotinD/issues/187) B5) ([b1e60a5](https://github.com/kevinch3/NicotinD/commit/b1e60a5cbf173e3be1c3594fd6e67795bda76bd3))
+* **radio:** filter-radio genre-blindness in seedCentroid (issue [#187](https://github.com/kevinch3/NicotinD/issues/187) B4) ([12a46c0](https://github.com/kevinch3/NicotinD/commit/12a46c0910ada1dcb28987cbf67aaa96a6d77be4))
+* **radio:** re-measure and raise the genre scoring weight (issue [#187](https://github.com/kevinch3/NicotinD/issues/187) B3) ([7157b2b](https://github.com/kevinch3/NicotinD/commit/7157b2b472a47c9329f598aa8638e9bb5a4fa543)), references [#186](https://github.com/kevinch3/NicotinD/issues/186)
 ## [0.1.249](https://github.com/kevinch3/NicotinD/compare/v0.1.248...v0.1.249) (2026-07-23)
 
 ### Features
