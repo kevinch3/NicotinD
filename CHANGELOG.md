@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.254](https://github.com/kevinch3/NicotinD/compare/v0.1.253...v0.1.254) (2026-07-24)
+
+### Bug Fixes
+
+* **web:** invalidate library reads on artist-genre save/clear ([#210](https://github.com/kevinch3/NicotinD/issues/210)) ([aafb074](https://github.com/kevinch3/NicotinD/commit/aafb0741ce8fa740005a52ec071eb7e2644cbb04)), closes [#209](https://github.com/kevinch3/NicotinD/issues/209)
 ## [0.1.253](https://github.com/kevinch3/NicotinD/compare/v0.1.252...v0.1.253) (2026-07-24)
 
 ### Bug Fixes
