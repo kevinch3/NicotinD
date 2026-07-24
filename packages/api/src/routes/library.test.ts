@@ -1739,6 +1739,7 @@ describe('artist-info routes', () => {
   function makeRegistry(opts: {
     result?: { bio: string | null; urls: string[]; source: string; confidence: number } | null;
     enabled?: boolean;
+    throws?: boolean;
   }): { registry: PluginRegistry; calls: () => number } {
     let calls = 0;
     const enabled = opts.enabled ?? true;
@@ -1746,6 +1747,7 @@ describe('artist-info routes', () => {
       artistInfo: {
         fetchArtistInfo: async () => {
           calls++;
+          if (opts.throws) throw new Error('Discogs is down');
           return opts.result ?? null;
         },
       },
@@ -1837,6 +1839,26 @@ describe('artist-info routes', () => {
     expect(row?.bio).toBe('Fetched bio');
     expect(row?.urls).toEqual(['https://wiki.example']);
     expect(row?.manualOverride).toBe(false);
+  });
+
+  it('POST /artists/:id/refresh-info returns 502 and writes no tombstone when the source throws', async () => {
+    const artistId = seedArtistWithAlbum('art-mbid-2', 'Transient Fail Artist');
+    upsertMbid(testDb, {
+      scope: 'artist',
+      key: normalizeArtistForGrouping('Transient Fail Artist'),
+      mbid: 'mbid-2',
+      source: 'tag',
+      confidence: 1,
+    });
+    const { registry, calls } = makeRegistry({ throws: true });
+    const res = await makeApp('refiner', registry).request(`/artists/${artistId}/refresh-info`, {
+      method: 'POST',
+    });
+    expect(res.status).toBe(502);
+    expect(calls()).toBe(1);
+    // A transient failure is not a confident miss — no tombstone should be
+    // written, so the artist stays retriable rather than looking permanently gone.
+    expect(getArtistMeta(testDb, artistId)).toBeNull();
   });
 
   it('POST /artists/:id/refresh-info is rejected when the row is manually overridden', async () => {

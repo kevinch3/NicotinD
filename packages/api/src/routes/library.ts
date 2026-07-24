@@ -644,9 +644,20 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     }
 
     const [provider] = pluginRegistry?.getEnabledWithCapability('artist-info') ?? [];
+    // Track whether the source *failed* (threw) vs cleanly reported "no info", so
+    // a transient Discogs error (network blip / 5xx / timeout) doesn't masquerade
+    // as a confident miss — a thrown error must NOT write a tombstone, since the
+    // artist should stay re-triable (mirrors the lyrics-fetch route's convention).
+    let sourceErrored = false;
     const info = provider?.artistInfo
-      ? await provider.artistInfo.fetchArtistInfo({ mbid: mbidRow.mbid })
+      ? await provider.artistInfo.fetchArtistInfo({ mbid: mbidRow.mbid }).catch(() => {
+          sourceErrored = true;
+          return null;
+        })
       : null;
+    if (sourceErrored) {
+      return c.json({ error: 'Artist-info source unavailable' }, 502);
+    }
     if (!info) {
       upsertArtistMeta(db, { artistId: id, bio: null, urls: [], source: 'discogs' });
       return c.json({ bio: null, urls: [] });
