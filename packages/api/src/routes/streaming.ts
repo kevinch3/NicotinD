@@ -7,7 +7,10 @@ import { createLogger } from '@nicotind/core';
 import type { AuthEnv } from '../middleware/auth.js';
 import { getStreamingSettings } from '../services/streaming-settings.js';
 import { ffmpegAvailable, transcodeContentType } from '../services/transcode.js';
-import { getTranscodedFile } from '../services/transcode-cache.js';
+import {
+  getTranscodedFile,
+  pinTranscodeCacheFile,
+} from '../services/transcode-cache.js';
 import { extractEmbeddedPicture } from '../services/cover-sources.js';
 import { resolveArtwork, canonicalCacheKey } from '../services/artwork-store.js';
 import { bucketCoverSize, resizeCover } from '../services/cover-thumbnail.js';
@@ -118,7 +121,11 @@ export function streamingRoutes(musicDir: string, db: Database, dataDir: string)
         const cached = await getTranscodedFile(transcodeCacheDir, abs, format, kbps, {
           vocalRemoval,
         });
-        return serveFileWithRange(cached, range, transcodeContentType(format));
+        // Pin the cache file for the lifetime of the response so a concurrent
+        // prune can't delete the file while the client is still reading it.
+        // Released when the response body stream ends or is cancelled.
+        const release = pinTranscodeCacheFile(cached);
+        return serveFileWithRange(cached, range, transcodeContentType(format), release);
       } catch (err) {
         log.error({ err, abs }, 'transcode failed; falling back to original');
         // fall through to passthrough
@@ -257,15 +264,36 @@ export function streamingRoutes(musicDir: string, db: Database, dataDir: string)
  * and advertising `Accept-Ranges` on the full 200 response. Shared by the
  * passthrough and transcode-cache paths so both are seekable. `contentTypeOverride`
  * is used for transcoded files, whose extension Bun doesn't always sniff (`.aac`).
+ *
+ * `onRelease` (when provided) is invoked exactly once when the response body
+ * stream is closed or cancelled — used by the transcode cache to keep a file
+ * pinned (un-evictable) for the full lifetime of the HTTP transfer. The status
+ * / headers of the response are unchanged, so this is wire-compatible with the
+ * previous Blob-body implementation.
  */
 function serveFileWithRange(
   absPath: string,
   range: string | undefined,
   contentTypeOverride?: string,
+  onRelease?: () => void,
 ): Response {
   const file = Bun.file(absPath);
   const size = file.size;
   const contentType = contentTypeOverride || file.type || 'application/octet-stream';
+
+  const buildResponse = (
+    body: BodyInit,
+    status: number,
+    extraHeaders: Record<string, string> = {},
+  ): Response =>
+    new Response(onRelease ? wrapWithRelease(body, onRelease) : body, {
+      status,
+      headers: {
+        'content-type': contentType,
+        ...extraHeaders,
+        'accept-ranges': 'bytes',
+      },
+    });
 
   if (range) {
     const m = /^bytes=(\d*)-(\d*)$/.exec(range.trim());
@@ -280,24 +308,63 @@ function serveFileWithRange(
           headers: { 'content-range': `bytes */${size}` },
         });
       }
-      return new Response(file.slice(start, end + 1), {
-        status: 206,
-        headers: {
-          'content-type': contentType,
+      return buildResponse(
+        file.slice(start, end + 1),
+        206,
+        {
           'content-length': String(end - start + 1),
           'content-range': `bytes ${start}-${end}/${size}`,
-          'accept-ranges': 'bytes',
         },
-      });
+      );
     }
   }
 
-  return new Response(file, {
-    status: 200,
-    headers: {
-      'content-type': contentType,
-      'content-length': String(size),
-      'accept-ranges': 'bytes',
+  return buildResponse(file, 200, {
+    'content-length': String(size),
+  });
+}
+
+/**
+ * Wrap a Blob body in a ReadableStream that invokes `onRelease` exactly once
+ * when the stream is closed (normal end) or cancelled (client disconnect /
+ * abort). Headers on the response are unchanged; the wire body is the same
+ * Blob payload. This is the only way to observe the end of a Bun response
+ * body in JS without re-architecting the route around `Bun.serve` directly.
+ */
+function wrapWithRelease(body: BodyInit, onRelease: () => void): ReadableStream<Uint8Array> {
+  // The route's current contract is Blob-only. If a non-Blob body ever lands
+  // here we release immediately so the pin never leaks, and surface the
+  // situation as a stream error rather than silently dropping the body.
+  if (!(body instanceof Blob)) {
+    onRelease();
+    return new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.error(new Error('wrapWithRelease: non-Blob body passed'));
+      },
+    });
+  }
+  return new ReadableStream<Uint8Array>({
+    async start(controller) {
+      try {
+        const reader = body.stream().getReader();
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) {
+            controller.close();
+            onRelease();
+            return;
+          }
+          controller.enqueue(value);
+        }
+      } catch (err) {
+        controller.error(err);
+        onRelease();
+      }
+    },
+    cancel() {
+      // Client disconnected / aborted; release the pin so the prune can
+      // reclaim the file if needed.
+      onRelease();
     },
   });
 }

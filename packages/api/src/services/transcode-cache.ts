@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, statSync } from 'node:fs';
+import { mkdirSync, rmSync, statSync } from 'node:fs';
 import { readdir, stat, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createLogger } from '@nicotind/core';
@@ -36,23 +36,66 @@ const DEFAULT_BUDGET_BYTES = 2 * 1024 * 1024 * 1024; // 2 GiB
 // track (or a play + its pre-buffer) don't spawn two ffmpegs for one cache entry.
 const inFlight = new Map<string, Promise<string>>();
 
+// Paths currently being served by an HTTP response. The pruner skips these so
+// a cache-eviction can't yank a file out from under an in-flight read.
+// Refcounted because the same cache entry can be served by multiple concurrent
+// requests (a play + its pre-buffered standby element).
+const inUse = new Map<string, number>();
+
+// Outputs below this size are treated as garbage (a half-written or zero-byte
+// file landed at the final name would be served verbatim otherwise — that's
+// the root cause of the "plays 1-2s then ends" bug). 1 KiB comfortably
+// accommodates the smallest valid container header for any format we emit.
+const MIN_USABLE_OUTPUT_BYTES = 1024;
+
 /**
- * Deterministic cache id: source path + mtime + target format/bitrate, plus a
- * `novox` marker for the vocal-muted variant. The marker is only appended when
- * `vocalRemoval` is true, so ordinary streams keep the exact same keys as
- * before — a deploy doesn't invalidate the whole transcode cache.
+ * Deterministic cache id: source path + mtime + size + target format/bitrate,
+ * plus a `novox` marker for the vocal-muted variant. Source size is part of
+ * the key so a file replacement with an unchanged mtime (a 1-second resolution
+ * on some filesystems) cannot silently reuse a stale transcode.
  */
 export function transcodeCacheKey(
   absPath: string,
   mtimeMs: number,
+  sizeBytes: number,
   format: TranscodeFmt,
   kbps: number,
   vocalRemoval = false,
 ): string {
   const vox = vocalRemoval ? '|novox' : '';
   return createHash('sha1')
-    .update(`${absPath}|${Math.round(mtimeMs)}|${format}|${kbps}${vox}`)
+    .update(
+      `${absPath}|${Math.round(mtimeMs)}|${sizeBytes}|${format}|${kbps}${vox}`,
+    )
     .digest('hex');
+}
+
+/**
+ * Mark a cache file as in-use so {@link pruneTranscodeCache} won't delete it
+ * while a streaming response is still reading it. Callers MUST pair each
+ * `pinTranscodeCacheFile` with exactly one `unpinTranscodeCacheFile` (the
+ * returned Release function) — usually in a `try/finally` around the response.
+ */
+export function pinTranscodeCacheFile(outPath: string): () => void {
+  inUse.set(outPath, (inUse.get(outPath) ?? 0) + 1);
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    const next = (inUse.get(outPath) ?? 1) - 1;
+    if (next <= 0) inUse.delete(outPath);
+    else inUse.set(outPath, next);
+  };
+}
+
+/** True when the file at `p` is a regular file large enough to serve. */
+function isUsableCacheFile(p: string): boolean {
+  try {
+    const s = statSync(p);
+    return s.isFile() && s.size >= MIN_USABLE_OUTPUT_BYTES;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -61,8 +104,14 @@ export function transcodeCacheKey(
  * serve it with HTTP range support — this is what makes seeking work on
  * transcoded streams. Concurrent requests for the same entry share one transcode.
  *
- * The key includes the source mtime, so re-encoding the original (e.g. the
- * lossless→Opus migration) naturally invalidates the stale transcode.
+ * The key includes the source mtime AND size, so re-encoding the original
+ * (e.g. the lossless→Opus migration) or replacing it with a same-mtime file
+ * both naturally invalidate the stale transcode.
+ *
+ * The cache hit is guarded by a size/stat check, not just `existsSync`, so a
+ * corrupt zero-byte or pre-rename-protection file at the final name is treated
+ * as a miss and re-transcoded (the user sees one slow first-play, not a short
+ * playback that fires `ended` early).
  */
 export async function getTranscodedFile(
   cacheDir: string,
@@ -76,9 +125,24 @@ export async function getTranscodedFile(
   const vocalRemoval = opts.vocalRemoval ?? false;
 
   const st = statSync(absPath);
-  const key = transcodeCacheKey(absPath, st.mtimeMs, format, kbps, vocalRemoval);
+  const key = transcodeCacheKey(
+    absPath,
+    st.mtimeMs,
+    st.size,
+    format,
+    kbps,
+    vocalRemoval,
+  );
   const outPath = join(cacheDir, `${key}.${transcodeExt(format)}`);
-  if (existsSync(outPath)) return outPath;
+  if (isUsableCacheFile(outPath)) return outPath;
+  // Unusable hit (missing, 0 bytes, or smaller than the floor) — drop it so
+  // the upcoming transcode produces a clean file instead of failing to write
+  // over a corrupt name.
+  try {
+    rmSync(outPath, { force: true });
+  } catch {
+    /* best-effort */
+  }
 
   let pending = inFlight.get(outPath);
   if (!pending) {
@@ -122,6 +186,9 @@ export async function pruneTranscodeCache(cacheDir: string, budgetBytes: number)
   files.sort((a, b) => a.mtimeMs - b.mtimeMs); // oldest first
   for (const f of files) {
     if (total <= budgetBytes) break;
+    // Skip files currently being served — eviction must not yank a file out
+    // from under a streaming response still reading from it.
+    if (inUse.has(f.path)) continue;
     try {
       await unlink(f.path);
       total -= f.size;
@@ -129,4 +196,15 @@ export async function pruneTranscodeCache(cacheDir: string, budgetBytes: number)
       /* ignore */
     }
   }
+}
+
+/** Test-only: reset all in-process state (in-flight, in-use). */
+export function _resetTranscodeCacheForTests(): void {
+  inFlight.clear();
+  inUse.clear();
+}
+
+/** Test-only: returns the current pin refcount for a path (0 = unpinned). */
+export function _pinRefcountForTests(outPath: string): number {
+  return inUse.get(outPath) ?? 0;
 }
