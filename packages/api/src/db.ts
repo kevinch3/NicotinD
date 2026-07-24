@@ -1148,6 +1148,26 @@ export function applySchema(db: Database): void {
     )
   `);
 
+  // Discogs (or a future provider) bio + external links for an artist (issue
+  // #195). Keyed on the scanner-minted artist id — like library_artist_identity
+  // / library_artist_aliases — so it survives rescans. `manual_override` mirrors
+  // library_artists.manual_override: once a curator hand-edits, the background
+  // task and the refresh route both leave the row alone. A row with bio=NULL and
+  // urls='[]' is a written TOMBSTONE (no MBID, no Discogs relation, or a fetch
+  // that came back empty) — its mere presence is what keeps a permanent miss out
+  // of the background task's pending set, the same "presence = done" model
+  // artist-image uses via library_artwork.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS library_artist_meta (
+      artist_id       TEXT PRIMARY KEY,
+      bio             TEXT,
+      urls            TEXT NOT NULL DEFAULT '[]',
+      fetched_at      INTEGER NOT NULL,
+      source          TEXT NOT NULL,   -- 'discogs' | 'user'
+      manual_override INTEGER NOT NULL DEFAULT 0
+    )
+  `);
+
   // Audit trail written by normalize-library.ts and future automation.
   // navidrome_id is null until NavidromeSyncer backfills it via path join.
   db.run(`
