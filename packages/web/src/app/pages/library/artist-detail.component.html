@@ -133,6 +133,15 @@
       </div>
     </div>
 
+    @if (artist(); as a) {
+      <app-artist-info
+        [artistId]="a.id"
+        [bio]="a.bio"
+        [urls]="a.urls"
+        (updated)="onArtistInfoUpdated($event)"
+      />
+    }
+
     <!-- Only collapse to the "no releases" slate for release tabs; Songs and
              Appears On are valid destinations that must keep the tab bar rendered
              (an artist with only compilation appearances has no albums/singles). -->
