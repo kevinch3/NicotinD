@@ -20,6 +20,8 @@ import { analyzeBpm, verifyGenre } from '../services/track-analysis.js';
 import type { AudioFeaturesClient } from '../services/audio-features-client.js';
 import { readAudioTags, writeAudioTags } from '../services/audio-tags.js';
 import { getLyrics, setLyrics, deleteLyrics } from '../services/lyrics-store.js';
+import { getArtistMeta, upsertArtistMeta } from '../services/artist-meta-store.js';
+import { getMbid } from '../services/mbid-store.js';
 import type { PluginRegistry } from '../services/plugins/registry.js';
 import { optimizeAlbum } from '../services/metadata-optimize.js';
 import { rankCandidates, DEFAULT_WEIGHTS, type SongFeatures } from '../services/radio.service.js';
@@ -603,7 +605,73 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       .map(rowToAlbum);
     attachAlbumArtists(db, albums);
     attachAlbumArtists(db, singlesAndEps);
-    return c.json({ artist: rowToArtist(artistRow), albums, singlesAndEps });
+    const meta = getArtistMeta(db, id);
+    return c.json({
+      artist: { ...rowToArtist(artistRow), bio: meta?.bio ?? null, urls: meta?.urls ?? [] },
+      albums,
+      singlesAndEps,
+    });
+  });
+
+  /**
+   * Force a re-fetch of this artist's bio/links from an artist-info-capable
+   * source (Discogs), even if a row already exists — unless it's a curator's
+   * manual override, which this never touches (issue #195).
+   */
+  app.post('/artists/:id/refresh-info', async (c) => {
+    requireCurator(c);
+    const id = c.req.param('id');
+    const db = getDatabase();
+    const artist = db
+      .query<{ id: string; name: string }, [string]>(
+        `SELECT id, name FROM library_artists WHERE id = ?`,
+      )
+      .get(id);
+    if (!artist) return c.json({ error: 'Artist not found' }, 404);
+
+    const existing = getArtistMeta(db, id);
+    if (existing?.manualOverride) {
+      return c.json(
+        { error: 'This artist has a manual bio/links override — clear it before refreshing.' },
+        409,
+      );
+    }
+
+    const mbidRow = getMbid(db, 'artist', normalizeArtistForGrouping(artist.name));
+    if (!mbidRow) {
+      upsertArtistMeta(db, { artistId: id, bio: null, urls: [], source: 'discogs' });
+      return c.json({ bio: null, urls: [] });
+    }
+
+    const [provider] = pluginRegistry?.getEnabledWithCapability('artist-info') ?? [];
+    const info = provider?.artistInfo
+      ? await provider.artistInfo.fetchArtistInfo({ mbid: mbidRow.mbid })
+      : null;
+    if (!info) {
+      upsertArtistMeta(db, { artistId: id, bio: null, urls: [], source: 'discogs' });
+      return c.json({ bio: null, urls: [] });
+    }
+    upsertArtistMeta(db, { artistId: id, bio: info.bio, urls: info.urls, source: info.source });
+    return c.json({ bio: info.bio, urls: info.urls });
+  });
+
+  /** Curator hand-edit of an artist's bio/links — locks out the background task. */
+  app.put('/artists/:id/info', async (c) => {
+    requireCurator(c);
+    const id = c.req.param('id');
+    const db = getDatabase();
+    const artist = db
+      .query<{ id: string }, [string]>(`SELECT id FROM library_artists WHERE id = ?`)
+      .get(id);
+    if (!artist) return c.json({ error: 'Artist not found' }, 404);
+
+    const body = await c.req.json<{ bio?: string | null; urls?: string[] }>().catch(() => null);
+    if (!body) return c.json({ error: 'Invalid body' }, 400);
+    const bio = body.bio?.trim() || null;
+    const urls = (body.urls ?? []).map((u) => u.trim()).filter(Boolean);
+
+    upsertArtistMeta(db, { artistId: id, bio, urls, source: 'user', manualOverride: true });
+    return c.json({ bio, urls });
   });
 
   // Paginated individual songs for one artist (the artist page's "Songs" tab —
