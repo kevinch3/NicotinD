@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.251](https://github.com/kevinch3/NicotinD/compare/v0.1.250...v0.1.251) (2026-07-24)
+
+### Features
+
+* **discogs:** add mapArtistInfo pure parser ([3005f1c](https://github.com/kevinch3/NicotinD/commit/3005f1c22a8cf21bdfd2bd5662c0923461b05641))
+* **discogs:** wire MBID-first artist resolution via MusicBrainz ([a861735](https://github.com/kevinch3/NicotinD/commit/a86173596788b81a7b900c5c6c7dba5d0cef9a99))
+* **discogs:** wire the artist-info capability ([f089737](https://github.com/kevinch3/NicotinD/commit/f089737caef6e55a4d069788186a2e996479f334)), references [#195](https://github.com/kevinch3/NicotinD/issues/195)
+* **library:** add artist bio attach + refresh-info + manual-edit routes ([013560a](https://github.com/kevinch3/NicotinD/commit/013560acdad082b229d1d6bbc4e48c134d88283e)), references [#195](https://github.com/kevinch3/NicotinD/issues/195)
+* **library:** add artist-info enrichment task ([810cca1](https://github.com/kevinch3/NicotinD/commit/810cca1f3471e5f4b33777ceccfd5b6f4d0cd147)), references [#195](https://github.com/kevinch3/NicotinD/issues/195)
+* **library:** add library_artist_meta table + store ([2e1e8e0](https://github.com/kevinch3/NicotinD/commit/2e1e8e001502e94abac5c8d4613abe51e8769c73)), references [#195](https://github.com/kevinch3/NicotinD/issues/195)
+* **library:** wire artist-info lookup into the processing scheduler ([cceb0d9](https://github.com/kevinch3/NicotinD/commit/cceb0d9ed0a4126b3d72670eb26425829df4f54a))
+* **musicbrainz:** add getArtistDiscogsUrl via artist url-rels ([41b6448](https://github.com/kevinch3/NicotinD/commit/41b6448523114bf96b88f8b281a9a08756d9ab9c)), references [#195](https://github.com/kevinch3/NicotinD/issues/195)
+* **plugins:** add artist-info metadata capability contract ([f0db680](https://github.com/kevinch3/NicotinD/commit/f0db68017144003e81f8c491407c687822b76867))
+* **web:** add artist-info API service methods + shared type ([7ff55c5](https://github.com/kevinch3/NicotinD/commit/7ff55c5e580ee69362b06178bfd5e54a4033bf5a))
+* **web:** show artist bio + links on the artist page ([a7c5a29](https://github.com/kevinch3/NicotinD/commit/a7c5a2959988a1700107be65a0ae8de3f54a0bbe)), references [#195](https://github.com/kevinch3/NicotinD/issues/195)
+
+### Bug Fixes
+
+* **library:** return 502 on transient discogs artist-info failure ([cc3cee2](https://github.com/kevinch3/NicotinD/commit/cc3cee23f8cb448e9410ed66e4f6379acb956d72))
 ## [0.1.250](https://github.com/kevinch3/NicotinD/compare/v0.1.249...v0.1.250) (2026-07-24)
 
 ### Bug Fixes
