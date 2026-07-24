@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import { createLogger, type GenreSuggestion } from '@nicotind/core';
 import type { Lidarr } from '@nicotind/lidarr-client';
 import { normalizeForGrouping } from './album-grouping.js';
-import { detectKey } from './key-detection.js';
+import { detectKey, isConfidentKey } from './key-detection.js';
 import { ffmpegBinary } from './ffmpeg-path.js';
 
 const log = createLogger('track-analysis');
@@ -178,9 +178,21 @@ export async function analyzeKey(
     onError?.(new NoConfidentResultError('audio too short to estimate a key'));
     return null;
   }
-  const key = detectKey(samples, ANALYZE_SAMPLE_RATE)?.key ?? null;
-  if (key === null) onError?.(new NoConfidentResultError('no tonal content detected'));
-  return key;
+  const result = detectKey(samples, ANALYZE_SAMPLE_RATE);
+  if (result === null) {
+    onError?.(new NoConfidentResultError('no tonal content detected'));
+    return null;
+  }
+  // chromaToKey always picks *some* key for any non-flat chroma — even noise
+  // scores a plausible-looking confidence — so a low-confidence result must be
+  // ledgered the same way, not returned as if it were reliable (issue #187 B5).
+  if (!isConfidentKey(result.confidence)) {
+    onError?.(
+      new NoConfidentResultError(`key confidence ${result.confidence.toFixed(2)} below threshold`),
+    );
+    return null;
+  }
+  return result.key;
 }
 
 /**

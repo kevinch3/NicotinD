@@ -49,9 +49,9 @@ features (the reason Radio used to tunnel on whatever slice got enriched first).
 
 **Genre is the one exception: a missing candidate genre is FLOORED, not skipped**
 (`MISSING_GENRE_FLOOR = 0.2`). Skipping it inverted the intent — dropping the
-weight-10 genre axis out of the denominator meant an untagged track competed on
-BPM/energy alone and could out-rank a real genre neighbour, so _missing data was
-rewarded_. With 13% of the real library carrying no genre at all, that was half
+(heavily-weighted) genre axis out of the denominator meant an untagged track
+competed on BPM/energy alone and could out-rank a real genre neighbour, so
+_missing data was rewarded_. With 13% of the real library carrying no genre at all, that was half
 the José Larralde incoherence (issue #185). The floor degrades gracefully: an
 untagged track is neither excluded from the pool nor treated as a match. Two
 boundaries matter — a seed with **no** genre still _skips_ the axis (there is
@@ -68,6 +68,32 @@ the _data_ was fixed the axis had nothing left to rescue, and every control seed
 was already at 12/12 genre matches. Fixing the genre beats reweighting the
 scorer; the flag remains so any future weight change can be justified the same
 way.
+
+**Genre weight re-measure (task B3) — bumped 10 → 18, and the residual case was real.**
+Task B3 warned not to bump the weight blind, and that the missing-genre floor
+(above) had likely already closed most of the symptom — both true, but not the
+whole story. Measured via `dump-radio --weights genre=N` across 10 real seeds
+(the José Larralde + Mercedes Sosa control pair, 4 more well-tagged/random
+seeds, and a niche-genre stress seed): **9 of 10 seeds already showed 0/12
+"genre lost on weight" tracks at the old weight of 10** — for a typical seed
+whose pool shares a reasonable fraction of genre tokens, the floor alone was
+enough. But a genuinely sparse-pool seed (a Folktronica track whose candidate
+pool shared a genre token with only 15% of the pool, vs. 48–75% for the other
+seeds) still let up to 4/12 top tracks be wrong-genre matches that won purely
+on BPM/energy/valence fit — the original B3 symptom, alive in the one case
+where the pool itself is genre-thin. Swept `genre` at 10/14/16/18/20 against
+that seed: 18 was the smallest value that fully closed it (0/12, down from
+4/12), and every one of the other 9 seeds stayed at 0/12 across the whole
+sweep — no observed over-tunneling. A calibrated synthetic pair reproducing
+the exact failure mode (a wrong-genre candidate near-perfect on every other
+axis vs. a right-genre candidate merely decent elsewhere) is pinned as a
+regression test in `radio.service.test.ts`. One side effect worth naming: as
+`genre` rises, previously-just-below-cutoff genre-**floored** candidates (0.2)
+start displacing confirmed-wrong-genre ones (0.0) at the bottom of the ranked
+list — expected given the floor's design (better than a known-wrong guess,
+worse than a real match), and it makes the backfill signal *more* visible, not
+less; the `genre-audio` fallback task (issue #187 A2) directly shrinks that
+population over time.
 
 **Genre is now curator-correctable, and that is the highest-leverage lever.**
 Issue #187 task A3 added `library_genre_overrides` — a scan-applied side table
@@ -172,6 +198,37 @@ query params (the shared `serializeLibraryFilter` grammar — `mood`, `genre`
    cap diversifies.
 4. Runs the identical `rankCandidates`; returns `Song[]` (`[]` when nothing
    matches — the client surfaces a neutral "no tracks yet" notice, never an error).
+
+**Filter-radio genre-blindness fixed (issue #187 task B4).** `seedCentroid`
+consumes `OrderableRow[]`, but `toOrderable` (`routes/radio.ts`) never copied
+`genre`/`genres` onto the row at all — a straightforward missing-field bug,
+not a fragmentation problem. `seedCentroid`'s `mode()` therefore always saw an
+all-`undefined` array and the centroid came back genre-less, which meant the
+genre axis was **skipped for every candidate** in every filter-radio vibe
+(confirmed via `dump-radio.ts`: `genre: (none)` and every ranked track showing
+`[skipped: genre, …]`, regardless of how genre-coherent the filter's own pool
+actually was). Fixed by copying both fields through; `explainSimilarity`'s
+existing `seed.genres ?? seed.genre` fallback then picks up the centroid's
+modal primary genre and scores it normally — re-measured on a real `genre=
+Latin` filter, every one of the top 12 flipped from `[skipped: genre]` to `✓
+genre match`. `dump-radio.ts`'s own "carries no genre" diagnostic note and its
+seed-features display had the same singular/plural mismatch (checked
+`seed.genres` only) and are fixed to use the same fallback.
+
+**The `seedCentroid.key` "collapses to C major" investigation — a measured
+null result, not a bug.** The modal key genuinely varies with the filtered
+pool (a `Rock` filter's centroid differs from `Pop`'s or `Electronic`'s), and
+repeated draws of the *same* filter land on the same key reliably — C major
+simply has a real, if modest (~1–2 percentage point), plurality lead in this
+library's overall key distribution, and `mode()` correctly finds it. The
+resulting Camelot compatibility scores in real output are not degenerate
+(mostly 0.7–1.0, per the wheel's own adjacency rules) — key isn't dragging the
+pool down. A spot check with `--weights key=0` produced an equally coherent
+(all-genre-matched) top 12, showing no clear win from dropping it either. Per
+the embedding-weight precedent above: measured, found to be noise either way,
+left as-is — a properly-justified change would need real evidence, and the
+practical harm here does not appear to justify one. Revisit if a real
+mis-tracking case turns up.
 
 Client side, `PlayerService.radioFilter` remembers the active vibe so
 **auto-replenish stays in-vibe**: the layout `RadioProvider` calls

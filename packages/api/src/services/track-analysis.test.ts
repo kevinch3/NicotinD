@@ -159,4 +159,37 @@ describe('analyzeBpm', () => {
       expect(keyErrors[0]).toBeInstanceOf(NoConfidentResultError);
     },
   );
+
+  it.skipIf(!ffmpegAvailable())(
+    'signals a NoConfidentResultError for a low-confidence (unreliable) key detection (issue #187 B5)',
+    async () => {
+      mkdirSync(tmpdir(), { recursive: true });
+      const root = mkdtempSync(join(tmpdir(), 'nicotind-key-noise-'));
+      cleanups.push(() => rmSync(root, { recursive: true, force: true }));
+      const wav = join(root, 'noise.wav');
+      // Fixed-seed white noise: no tonal content, but chromaToKey still picks
+      // *some* key for any non-flat chroma — this seed measured at confidence
+      // ≈0.477, below MIN_KEY_CONFIDENCE (0.5). A confident-sounding wrong key
+      // must not be returned as if it were reliable.
+      execFileSync(
+        'ffmpeg',
+        [
+          '-hide_banner',
+          '-loglevel',
+          'error',
+          '-f',
+          'lavfi',
+          '-i',
+          'anoisesrc=color=white:duration=6:sample_rate=44100:seed=1',
+          wav,
+        ],
+        { stdio: 'ignore' },
+      );
+      const keyErrors: unknown[] = [];
+      const key = await analyzeKey(wav, (err) => keyErrors.push(err));
+      expect(key).toBeNull();
+      expect(keyErrors).toHaveLength(1);
+      expect(keyErrors[0]).toBeInstanceOf(NoConfidentResultError);
+    },
+  );
 });

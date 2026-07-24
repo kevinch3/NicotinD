@@ -134,6 +134,12 @@ export function toOrderable(r: RadioSongRow): OrderableRow {
     artistId: r.artist_id,
     bpm: r.bpm ?? undefined,
     key: r.key ?? undefined,
+    // Issue #187 B4: this was missing entirely, so seedCentroid's mode() over
+    // an all-undefined array always came back genre-less — filter radio's
+    // centroid skipped the genre axis for every candidate, not just weighted
+    // it low.
+    genre: r.genre ?? undefined,
+    genres: genresOf(r),
     year: r.year ?? undefined,
     duration: r.duration,
     energy: r.energy ?? undefined,

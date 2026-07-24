@@ -46,7 +46,18 @@ export const DEFAULT_WEIGHTS: ScoringWeights = {
   // by the sum of weights of the axes both tracks actually share, only the
   // *ratios* matter for a single seed — an un-analyzed candidate competes on the
   // axes it has instead of being penalized for un-measured ones.
-  genre: 10,
+  //
+  // genre 10 -> 18 (issue #187 task B3): measured via dump-radio.ts --weights
+  // across 10 real seeds (well-tagged controls + random + a sparse-pool niche
+  // seed). 9/10 seeds already showed 0 "genre lost on weight" at 10 — the
+  // missing-genre floor (B2) had already closed most of the gap B3 targeted.
+  // But a niche/sparse-catalogue seed (a Folktronica pool sharing genre tokens
+  // with only 15% of the candidate pool) still let 4/12 wrong-genre tracks
+  // outrank real neighbours on other-axis strength alone; 18 was the smallest
+  // value in the tested 10/14/16/18 sweep that fully closed it (0/12), with no
+  // change on any of the other 9 seeds at any tested value — see docs/radio.md
+  // "Genre weight re-measure (task B3)".
+  genre: 18,
   bpm: 8,
   key: 6,
   year: 2,
@@ -196,7 +207,7 @@ export interface SimilarityExplanation {
 /**
  * Score a genre-less candidate at this floor rather than skipping the axis.
  *
- * Skipping dropped the weight-10 genre axis out of the normalization denominator,
+ * Skipping dropped the (heavily-weighted) genre axis out of the normalization denominator,
  * so an untagged track competed on BPM/energy alone and could out-rank a real
  * genre neighbour — missing data was literally *rewarded* (13% of the library has
  * no genre). A floor degrades gracefully instead: an untagged track is neither

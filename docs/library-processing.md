@@ -102,7 +102,16 @@ Launch tasks:
   `services/key-detection.ts` (chromagram via per-semitone Goertzel filters → KS
   major/minor profile correlation → key + Camelot code). Writes `library_songs.key`
   (e.g. "C major") and the file tag (ID3 `TKEY` / Vorbis `KEY`). Bulk script:
-  `scripts/analyze-key.ts`.
+  `scripts/analyze-key.ts`. **Confidence-gated** (issue #187 task B5):
+  `chromaToKey` always picks *some* key for any non-flat chroma — even white
+  noise correlates ~0.5–0.6 with one of the 24 profile rotations — so a raw
+  non-null result isn't reliable on its own. `isConfidentKey`
+  (`key-detection.ts`, floor `MIN_KEY_CONFIDENCE = 0.5`, measured against 60
+  real library tracks: ~33% self-consistency below the floor, climbing past
+  70–90% above it) gates the result; below it, `analyzeKey` ledgers via
+  `NoConfidentResultError` exactly like "too short"/"no tonal content" — same
+  ledgered-not-tallied treatment, so an unreliable detection drops out of the
+  pending set instead of writing a confidently-wrong key.
 - **energy** — `WHERE energy IS NULL`, ffmpeg-gated, **offline**. Reads an
   `ENERGY` tag if present, else `analyzeLoudness()` (`loudness-analysis.ts`:
   ffmpeg `ebur128` → integrated LUFS + loudness range → derived 0..1 energy).

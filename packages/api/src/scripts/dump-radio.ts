@@ -153,13 +153,21 @@ function seedLabel(row: RadioSongRow | null, seed: SongFeatures | null): string 
   return '(no seed)';
 }
 
+/** The genre set actually used for scoring (mirrors explainSimilarity's own
+ *  `seed.genres ?? seed.genre` fallback) — a filter-radio centroid only ever
+ *  carries the single modal `.genre`, never a `.genres` array (issue #187 B4). */
+function effectiveGenres(seed: SongFeatures): string[] | undefined {
+  if (seed.genres?.length) return seed.genres;
+  return seed.genre ? [seed.genre] : undefined;
+}
+
 function renderSeedFeatures(row: RadioSongRow | null, seed: SongFeatures | null): string[] {
   const lines: string[] = [];
   if (seed === null) {
     lines.push('  (filter matched nothing / no centroid — empty result)');
     return lines;
   }
-  const genres = row ? genresOf(row) : seed.genres;
+  const genres = row ? genresOf(row) : effectiveGenres(seed);
   lines.push(`  genre     : ${genres?.length ? genres.join(', ') : '(none)'}`);
   lines.push(`  bpm       : ${seed.bpm ?? '(none)'}`);
   lines.push(`  key       : ${seed.key ?? '(none)'}`);
@@ -311,8 +319,12 @@ function renderDiagnosis(
   lines.push(
     `- **Genre lost on weight:** ${genreZero}/${n} output tracks matched nothing on genre (value 0) but still ranked.`,
   );
+  const total = Object.entries(weights)
+    .filter(([axis]) => axis !== 'artistPenalty')
+    .reduce((sum, [, w]) => sum + w, 0);
+  const pct = Math.round((weights.genre / total) * 100);
   lines.push(
-    `  → \`DEFAULT_WEIGHTS.genre\` (currently 10 of ~44 total ≈ 23%) is too low to keep a wrong-genre`,
+    `  → \`DEFAULT_WEIGHTS.genre\` (currently ${weights.genre} of ${total} total ≈ ${pct}%) is too low to keep a wrong-genre`,
   );
   lines.push(`  track down; raise it or add a genre floor/co-constraint for the pool.`);
   if (mashed.size > 0) {
@@ -373,14 +385,17 @@ function renderDump(
 
   const seedTokens = seedRow ? genreTokens(seedRow) : new Set<string>();
   lines.push('## Pool health');
-  if (kind === 'filter' && (!seed.genres || seed.genres.length === 0)) {
+  if (kind === 'filter' && !effectiveGenres(seed)) {
     lines.push(
-      '> Note: filter radio seeds on the pool **centroid**, which carries no genre — so the',
+      '> Note: filter radio seeds on the pool **centroid**, which carries no genre here — so',
     );
     lines.push(
-      '> genre axis is skipped for every candidate and genre only constrains the pool via the',
+      '> the genre axis is skipped for every candidate and genre only constrains the pool via',
     );
-    lines.push('> filter `WHERE`. A bpm-only vibe therefore has no genre cohesion by design.');
+    lines.push(
+      '> the filter `WHERE`. A bpm-only vibe (or a pool with no dominant genre) therefore has',
+    );
+    lines.push('> no genre cohesion by design.');
     lines.push('');
   }
   lines.push('```');
