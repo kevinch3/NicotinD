@@ -12,9 +12,10 @@ import { libraryRoutes, __resetDownloadSuppressionCache } from './library.js';
 import type { AuthEnv } from '../middleware/auth.js';
 import type { SlskdUserTransferGroup } from '@nicotind/core';
 import type { SlskdRef } from '../index.js';
+import type { Lidarr } from '@nicotind/lidarr-client';
 import type { PluginRegistry } from '../services/plugins/registry.js';
 import { getArtistMeta, upsertArtistMeta } from '../services/artist-meta-store.js';
-import { upsertMbid } from '../services/mbid-store.js';
+import { getMbid, upsertMbid } from '../services/mbid-store.js';
 import { normalizeArtistForGrouping } from '../services/album-grouping.js';
 
 import { applySchema } from '../db.js';
@@ -1759,13 +1760,33 @@ describe('artist-info routes', () => {
     return { registry, calls: () => calls };
   }
 
-  function makeApp(role: 'admin' | 'user' | 'refiner', registry?: PluginRegistry): Hono<AuthEnv> {
+  /** A Lidarr stub exposing only `artist.lookup`, returning one hit whose
+   * normalized name matches `name` mapped to `mbid` (else an empty result). */
+  function makeLidarr(entries: Record<string, string>): { lidarr: Lidarr; calls: () => number } {
+    let calls = 0;
+    const lidarr = {
+      artist: {
+        lookup: async (term: string) => {
+          calls++;
+          const mbid = entries[term];
+          return mbid ? [{ artistName: term, foreignArtistId: mbid }] : [];
+        },
+      },
+    } as unknown as Lidarr;
+    return { lidarr, calls: () => calls };
+  }
+
+  function makeApp(
+    role: 'admin' | 'user' | 'refiner',
+    registry?: PluginRegistry,
+    lidarr?: Lidarr,
+  ): Hono<AuthEnv> {
     const app = new Hono<AuthEnv>();
     app.use('*', (c, next) => {
       c.set('user', { sub: 'u', role, iat: 0, exp: 9999999999 });
       return next();
     });
-    app.route('/', libraryRoutes(undefined, { pluginRegistry: registry }));
+    app.route('/', libraryRoutes(undefined, { pluginRegistry: registry, lidarr }));
     return app;
   }
 
@@ -1811,6 +1832,36 @@ describe('artist-info routes', () => {
     expect(getArtistMeta(testDb, artistId)?.bio).toBeNull();
     // No MBID is known for this artist, so the plugin is never even queried.
     expect(calls()).toBe(0);
+  });
+
+  it('POST /artists/:id/refresh-info resolves an MBID via Lidarr on a cache miss, then fetches the bio', async () => {
+    // Production never populates library_mbids for artists automatically, so the
+    // interactive refresh must resolve the id via Lidarr just like the background
+    // task does (issue #207) — otherwise it always tombstones + returns null.
+    const artistId = seedArtistWithAlbum('art-lidarr', 'Lidarr Artist');
+    const { registry, calls: pluginCalls } = makeRegistry({
+      result: {
+        bio: 'Bio via Lidarr MBID',
+        urls: ['https://example.org'],
+        source: 'discogs',
+        confidence: 0.9,
+      },
+    });
+    const { lidarr, calls: lidarrCalls } = makeLidarr({ 'Lidarr Artist': 'mbid-lidarr' });
+    const res = await makeApp('refiner', registry, lidarr).request(
+      `/artists/${artistId}/refresh-info`,
+      { method: 'POST' },
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { bio: string | null; urls: string[] };
+    expect(body.bio).toBe('Bio via Lidarr MBID');
+    expect(lidarrCalls()).toBe(1);
+    expect(pluginCalls()).toBe(1);
+    // The resolved MBID is persisted so future windows/refreshes hit the cache.
+    expect(getMbid(testDb, 'artist', normalizeArtistForGrouping('Lidarr Artist'))?.mbid).toBe(
+      'mbid-lidarr',
+    );
+    expect(getArtistMeta(testDb, artistId)?.bio).toBe('Bio via Lidarr MBID');
   });
 
   it('POST /artists/:id/refresh-info fetches and stores bio/urls when an MBID is known', async () => {
