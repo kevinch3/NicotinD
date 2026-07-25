@@ -66,7 +66,7 @@
         [selectable]="selection.active()"
         [selected]="selection.isSelected(song.id)"
         [actions]="songMenu.build(song, { removable: true })"
-        (play)="player.play(toTrackFn(song))"
+        (play)="playSong(song)"
         (selectedChange)="selection.toggleRange(song.id, genreTrackIds(), $event.shiftKey)"
       />
     }

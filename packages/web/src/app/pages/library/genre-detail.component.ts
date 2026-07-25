@@ -135,6 +135,23 @@ export class GenreDetailComponent implements OnInit, OnDestroy {
     this.player.playWithContext(tracks, 0, { type: 'adhoc', name: genre });
   }
 
+  /**
+   * Play a single clicked track from the genre list. Routed through
+   * playWithContext (not the bare player.play, issue #233) so the genre list
+   * becomes the queue from the clicked index — this REPLACES any stale,
+   * unrelated queue that was left in place, matching the flat "Songs" tab.
+   */
+  playSong(song: Song): void {
+    const list = this.filteredGenreSongs();
+    const index = list.findIndex((s) => s.id === song.id);
+    if (index < 0) return;
+    const tracks = list.map((s) => toTrack(s));
+    this.player.playWithContext(tracks, index, {
+      type: 'adhoc',
+      name: this.genreSlug() ?? undefined,
+    });
+  }
+
   protected toTrackFn = toTrack;
 
   // ─── Multi-select ─────────────────────────────────────────────────

@@ -62,6 +62,17 @@ export function browserDurationIsAcceptable(
   return relativeOk && absoluteOk;
 }
 
+/**
+ * Maximum consecutive false-ended recovery attempts for the SAME track before
+ * the player gives up and advances the queue. Without this bound a resource
+ * that is *persistently* short (a genuinely-corrupt cache entry the 5 s
+ * safety-valve keeps replaying) would loop forever: play 1-2 s → false ended →
+ * recover → 5 s timeout → seek-to-0 replay → play 1-2 s → … The counter resets
+ * on every real track (re)load and on a successful recovery, so it only trips
+ * for a track that is actually stuck. (issue #234)
+ */
+export const MAX_RECOVERY_ATTEMPTS = 3;
+
 @Component({
   selector: 'app-player',
   imports: [CoverArtComponent, DeviceSwitcherComponent, SeekBarComponent, ArtistLinksComponent],
@@ -113,6 +124,11 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
   // same element, so we don't bump for in-place src changes — only for
   // cross-element handoffs where the old listeners were removed.)
   private loadGeneration = 0;
+  // Consecutive false-ended recovery attempts for the current track. Bounded by
+  // MAX_RECOVERY_ATTEMPTS so a persistently-short resource advances instead of
+  // looping on the 5 s replay forever (issue #234). Reset on real track load
+  // (Effect 1) and on a successful recovery exit.
+  private recoveryAttempts = 0;
 
   // Playback progress interpolation
   private interpolatedTime = signal(0);
@@ -197,6 +213,9 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
       if (track) {
         this.player.setCurrentTime(0);
         this.player.setDuration(track.duration ?? 0);
+        // A genuinely new track load — clear the false-ended recovery budget so
+        // the next track starts with a full MAX_RECOVERY_ATTEMPTS allowance.
+        this.recoveryAttempts = 0;
         // New load beginning — flag it before any bytes move so track rows and
         // play buttons can acknowledge instantly (HDD loads take seconds).
         this.player.setBuffering(true);
@@ -590,14 +609,7 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
         // where the audio element is currently parked (1-2 s into the bogus
         // short read; the browser keeps playing from there once play() is
         // called again).
-        this.player.recoveryState.set('normal');
-        this.recoveryTimeout = null;
-        this.player.setBuffering(false);
-        if (this.player.isPlaying()) {
-          audio.play().catch((err) => {
-            if (err.name === 'NotAllowedError') this.handlePlayRejection();
-          });
-        }
+        this.exitRecovery(audio);
       }
       if (this.player.restoredTime !== null) {
         audio.currentTime = this.player.restoredTime;
@@ -612,11 +624,17 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
       // container that reported a partial duration over the Range response,
       // or a corrupt server cache file (the bug this branch was written for).
       // Do NOT advance the queue — pause, flag recovery, wait for a real
-      // duration.
-      if (this.isFalseEnded(audio)) {
+      // duration. Bounded by MAX_RECOVERY_ATTEMPTS: once a track has burned its
+      // recovery budget (a persistently-short resource that never yields a sane
+      // duration) we stop recovering and fall through to a normal advance,
+      // rather than looping on the 5 s replay forever (issue #234).
+      if (this.isFalseEnded(audio) && this.recoveryAttempts < MAX_RECOVERY_ATTEMPTS) {
         this.startRecovery(audio, boundGen);
         return;
       }
+      // Genuine end, or recovery budget exhausted — advance. Reset the budget so
+      // the next track (below) starts fresh.
+      this.recoveryAttempts = 0;
       const repeat = this.player.repeat();
       const token = this.auth.token();
 
@@ -779,14 +797,7 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
         Number.isFinite(d) && d > 0 &&
         browserDurationIsAcceptable(known, d)
       ) {
-        this.player.recoveryState.set('normal');
-        this.recoveryTimeout = null;
-        this.player.setBuffering(false);
-        if (this.player.isPlaying()) {
-          audio.play().catch((err) => {
-            if (err.name === 'NotAllowedError') this.handlePlayRejection();
-          });
-        }
+        this.exitRecovery(audio);
       }
     };
     const onError = () => {
@@ -847,6 +858,11 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
     const d = audio.duration;
     if (!Number.isFinite(t) || !Number.isFinite(d) || d <= 0) return false;
     const known = untracked(() => this.player.currentTrack()?.duration ?? 0);
+    // TODO(#234): when `known <= 0` (an un-analyzed / duration-less track) there
+    // is no reference to compare against, so a short partial read is
+    // indistinguishable from a genuinely-short track and the queue advances (as
+    // before). Closing this needs a server-authoritative duration on the
+    // stream/track payload — guessing here would loop genuine short tracks.
     if (known > 0 && t < known * 0.7) return true;
     if (known > 0 && Math.abs(d - known) > 5 && d < known * 0.9) return true;
     return false;
@@ -856,20 +872,49 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
   private recoveryTimeout: ReturnType<typeof setTimeout> | null = null;
 
   /**
+   * Leave the false-ended recovery flow after a sane duration finally landed:
+   * clear the pending safety-valve timer (so it can't later seek a happily-
+   * recovered track back to 0 — that orphaned-timer bug was the visible glitch),
+   * reset the recovery budget, drop the buffering flag, and resume playback if
+   * the user intent is still "playing". (issue #234)
+   */
+  private exitRecovery(audio: HTMLAudioElement): void {
+    this.player.recoveryState.set('normal');
+    if (this.recoveryTimeout !== null) {
+      clearTimeout(this.recoveryTimeout);
+      this.recoveryTimeout = null;
+    }
+    this.recoveryAttempts = 0;
+    this.player.setBuffering(false);
+    if (this.player.isPlaying()) {
+      audio.play().catch((err) => {
+        if (err.name === 'NotAllowedError') this.handlePlayRejection();
+      });
+    }
+  }
+
+  /**
    * Begin the false-ended recovery flow: pause the audio element, surface
    * the buffering indicator, and wait for a real `durationchange` (or
    * `canplay` with a sane duration) so we can resume from the correct
    * position. If nothing arrives within 5 s, the server response is
    * probably genuinely short/corrupt — give up waiting and seek to 0 +
-   * play so the user isn't stuck.
+   * play so the user isn't stuck. Each entry counts against
+   * MAX_RECOVERY_ATTEMPTS (checked by the caller) so a resource that never
+   * yields a sane duration can't loop on this 5 s replay forever.
    */
   private startRecovery(audio: HTMLAudioElement, boundGen: number): void {
     if (this.player.recoveryState() === 'awaiting-duration') return; // already recovering
+    this.recoveryAttempts += 1;
     this.player.recoveryState.set('awaiting-duration');
     this.player.setBuffering(true);
     if (this.recoveryTimeout !== null) clearTimeout(this.recoveryTimeout);
     this.recoveryTimeout = setTimeout(() => {
       if (boundGen !== this.loadGeneration) return;
+      // Defense-in-depth: if a successful recovery already flipped the state
+      // back to 'normal', this timer is stale (its handle should have been
+      // cleared) — do nothing rather than yank the track back to 0.
+      if (this.player.recoveryState() !== 'awaiting-duration') return;
       this.recoveryTimeout = null;
       this.player.recoveryState.set('normal');
       this.player.setBuffering(false);

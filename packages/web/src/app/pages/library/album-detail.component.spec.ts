@@ -37,6 +37,13 @@ function setup(
     vi.fn(() =>
       of({ matched: true, coverUpdated: true, yearUpdated: true, releaseTypeUpdated: false }),
     );
+  const playWithContextCalls: unknown[][] = [];
+  const playerStub = {
+    play: () => {},
+    playWithContext: (...args: unknown[]) => {
+      playWithContextCalls.push(args);
+    },
+  };
 
   TestBed.configureTestingModule({
     imports: [AlbumDetailComponent],
@@ -48,7 +55,7 @@ function setup(
         useValue: { getAlbum: () => of(ALBUM), deleteSongs, optimizeAlbumMetadata },
       },
       { provide: AuthService, useValue: { token: signal('tok'), role: () => 'admin' } },
-      { provide: PlayerService, useValue: { play: () => {}, playWithContext: () => {} } },
+      { provide: PlayerService, useValue: playerStub },
       { provide: PlaylistService, useValue: { openPicker: vi.fn() } },
       // The list-controls connect() result is only read through the (unrendered)
       // template here; a minimal stub keeps construction cheap.
@@ -61,7 +68,12 @@ function setup(
   // No detectChanges(): we drive the delete handler directly rather than render
   // the toolbar-heavy template.
   const fixture = TestBed.createComponent(AlbumDetailComponent);
-  return { component: fixture.componentInstance, deleteSongs, optimizeAlbumMetadata };
+  return {
+    component: fixture.componentInstance,
+    deleteSongs,
+    optimizeAlbumMetadata,
+    playWithContextCalls,
+  };
 }
 
 describe('AlbumDetailComponent — bulk delete', () => {
@@ -94,6 +106,36 @@ describe('AlbumDetailComponent — bulk delete', () => {
     await component.confirmCallback()!();
 
     expect(component.deleteError()).toContain('1 of 2');
+  });
+});
+
+describe('AlbumDetailComponent — playSong (issue #233)', () => {
+  it('plays a clicked track through playWithContext so the album replaces the stale queue', () => {
+    const { component, playWithContextCalls } = setup();
+    component.selectedAlbum.set(ALBUM);
+
+    // Click the middle track — it should play from that index with the whole
+    // album as the queue/context, NOT via the bare player.play (which left a
+    // stale unrelated queue in place).
+    component.playSong({ id: 's2' });
+
+    expect(playWithContextCalls).toHaveLength(1);
+    const [tracks, startIndex, context] = playWithContextCalls[0] as [
+      Array<{ id: string }>,
+      number,
+      { type: string; id?: string; name?: string },
+    ];
+    expect(tracks.map((t) => t.id)).toEqual(['s1', 's2', 's3']);
+    expect(startIndex).toBe(1);
+    expect(context.type).toBe('album');
+    expect(context.id).toBe('a1');
+  });
+
+  it('is a no-op when the clicked id is not in the current list', () => {
+    const { component, playWithContextCalls } = setup();
+    component.selectedAlbum.set(ALBUM);
+    component.playSong({ id: 'nope' });
+    expect(playWithContextCalls).toHaveLength(0);
   });
 });
 

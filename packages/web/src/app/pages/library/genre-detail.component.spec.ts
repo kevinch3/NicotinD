@@ -129,6 +129,28 @@ describe('GenreDetailComponent — Play All', () => {
     expect(playWithContextCalls).toHaveLength(0);
   });
 
+  it('playSong routes a single clicked track through playWithContext, replacing the stale queue (issue #233)', () => {
+    const { component, playWithContextCalls } = setup();
+
+    component.genreSlug.set('Reggae');
+    component.genreSongs.set(MOCK_SONGS);
+
+    // Click the middle track — plays from that index with the genre list as the
+    // queue, so any previous unrelated queue is replaced (not left to resume).
+    component.playSong(MOCK_SONGS[1]);
+
+    expect(playWithContextCalls).toHaveLength(1);
+    const [tracks, startIndex, context] = playWithContextCalls[0] as [
+      Array<{ id: string }>,
+      number,
+      { type: string; name?: string },
+    ];
+    expect(tracks.map((t) => t.id)).toEqual(['s1', 's2', 's3']);
+    expect(startIndex).toBe(1);
+    expect(context.type).toBe('adhoc');
+    expect(context.name).toBe('Reggae');
+  });
+
   it('preserves artist metadata in mapped tracks', () => {
     const { component, playWithContextCalls } = setup();
 

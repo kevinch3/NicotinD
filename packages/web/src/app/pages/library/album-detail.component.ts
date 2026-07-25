@@ -129,15 +129,22 @@ export class AlbumDetailComponent implements OnInit {
   }
 
   // ─── Albums methods ───────────────────────────────────────────────
-  playSong(song: {
-    id: string;
-    title: string;
-    artist: string;
-    duration?: number;
-    track?: number;
-    coverArt?: string;
-  }): void {
-    this.player.play(toTrack(song, this.selectedAlbum()?.name));
+  // Play a clicked album track. Routed through playWithContext (not the bare
+  // player.play, issue #233) so the album becomes the queue from the clicked
+  // index — "play from here, keep the list as queue". This REPLACES any stale,
+  // unrelated queue that a prior play had left in place, so the old queue can no
+  // longer silently resume after this track ends.
+  playSong(song: { id: string }): void {
+    const album = this.selectedAlbum();
+    const list = this.detailControls.filtered();
+    const index = list.findIndex((s) => s.id === song.id);
+    if (index < 0) return;
+    const tracks = list.map((s) => this.toTrackFromSong(s));
+    this.player.playWithContext(tracks, index, {
+      type: 'album',
+      id: album?.id,
+      name: album?.name,
+    });
   }
 
   private albumTracks(): Track[] {

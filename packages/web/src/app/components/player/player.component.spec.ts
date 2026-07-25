@@ -2,7 +2,11 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { vi } from 'vitest';
-import { PlayerComponent, browserDurationIsAcceptable } from './player.component';
+import {
+  PlayerComponent,
+  browserDurationIsAcceptable,
+  MAX_RECOVERY_ATTEMPTS,
+} from './player.component';
 import { PlayerService } from '../../services/player.service';
 import { AuthService } from '../../services/auth.service';
 import { RemotePlaybackService } from '../../services/remote-playback.service';
@@ -843,6 +847,67 @@ describe('PlayerComponent', () => {
       fakeAudio.dispatchEvent(new Event('ended'));
       expect(playerService.recoveryState()).toBe('normal');
       expect(playerService.currentTrack()).toEqual(TRACK_2);
+    });
+
+    it('cancels the 5 s safety-valve timer after a successful recovery — no orphaned seek-to-0 (issue #234)', () => {
+      vi.useFakeTimers();
+      // False ended: browser reports 1.8s for a 240s track, parked at "end".
+      Object.defineProperty(fakeAudio, 'duration', { value: 1.8, configurable: true });
+      Object.defineProperty(fakeAudio, 'currentTime', {
+        value: 1.8,
+        writable: true,
+        configurable: true,
+      });
+      playerService.isPlaying.set(true);
+      fakeAudio.dispatchEvent(new Event('ended'));
+      expect(playerService.recoveryState()).toBe('awaiting-duration');
+
+      // A sane duration arrives 2 s later; recovery succeeds and the browser
+      // keeps playing (currentTime advances to 8 s).
+      vi.advanceTimersByTime(2000);
+      Object.defineProperty(fakeAudio, 'duration', { value: 240, configurable: true });
+      fakeAudio.currentTime = 8;
+      fakeAudio.dispatchEvent(new Event('durationchange'));
+      expect(playerService.recoveryState()).toBe('normal');
+
+      // The original 5 s safety-valve timer must have been cleared on recovery
+      // exit. Before the fix it fired here and yanked the happily-playing track
+      // back to 0 (the visible glitch). Advancing past its deadline is a no-op.
+      vi.advanceTimersByTime(5000);
+      expect(fakeAudio.currentTime).toBe(8);
+      expect(playerService.recoveryState()).toBe('normal');
+      vi.useRealTimers();
+    });
+
+    it('advances the queue after MAX_RECOVERY_ATTEMPTS false-ended cycles instead of looping forever (issue #234)', () => {
+      vi.useFakeTimers();
+      // A persistently-short resource: every play produces a 1.8s media file
+      // that never yields a sane duration.
+      Object.defineProperty(fakeAudio, 'duration', { value: 1.8, configurable: true });
+      Object.defineProperty(fakeAudio, 'currentTime', {
+        value: 1.8,
+        writable: true,
+        configurable: true,
+      });
+      playerService.queue.set([TRACK_2]);
+      playerService.isPlaying.set(true);
+
+      // Each cycle burns one recovery attempt: ended → recover → 5 s safety
+      // valve replays from 0. The queue must NOT advance while budget remains.
+      for (let i = 0; i < MAX_RECOVERY_ATTEMPTS; i++) {
+        fakeAudio.dispatchEvent(new Event('ended'));
+        expect(playerService.recoveryState()).toBe('awaiting-duration');
+        expect(playerService.currentTrack()).toEqual(knownTrack);
+        vi.advanceTimersByTime(5000);
+        expect(playerService.recoveryState()).toBe('normal');
+      }
+
+      // Budget exhausted — the next false ended advances rather than recovering
+      // again, so the user isn't stuck stuttering on a dead track forever.
+      fakeAudio.dispatchEvent(new Event('ended'));
+      expect(playerService.currentTrack()).toEqual(TRACK_2);
+      expect(playerService.recoveryState()).toBe('normal');
+      vi.useRealTimers();
     });
   });
 
