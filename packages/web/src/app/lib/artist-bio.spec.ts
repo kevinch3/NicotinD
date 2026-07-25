@@ -25,6 +25,14 @@ http://www.britney.com
 http://en.wikipedia.org/wiki/Britney_Spears
 http://www.youtube.com/britneyspears`;
 
+// Real prod bios (from library_artist_meta on prod) — these exercise the token
+// forms Discogs's API actually returns that the original #213 fixtures missed:
+// named `[a=Name]` refs (whole member lists), `[b]`/`[i]` formatting tags, and
+// numeric `[lN]`/`[mN]` label/master refs (no `=`). Line endings are `\r\n`.
+const DIVIDIDOS = `Argentine Alternative Rock trio, formed in 1988 after [a=Luca Prodan]'s death and the disbanding of [a=Sumo (8)].\r\n\r\n[b]Members:[/b]\r\n[a=Ricardo Mollo] - Guitar, Lead Vocals\r\n[a=Diego Arnedo] - Bass\r\n[a=Catriel Ciavarella] - Drums (since 2004)`;
+
+const ALMENDRA = `[i]Almendra[/i] ("Almond") was one of the most important rock groups from Buenos Aires. Led by guitarist and lyricist [a1006851], between 1968 and 1971 Almendra released two albums.`;
+
 describe('formatArtistBio', () => {
   it('returns null bio + empty urls for empty/null input', () => {
     expect(formatArtistBio(null)).toEqual({ bio: null, urls: [] });
@@ -88,22 +96,60 @@ describe('formatArtistBio', () => {
     expect(bio).toContain("'Björn & Benny, Agnetha & Anni-Frid'");
   });
 
-  it('strips [l=…] and [m=…] refs (Britney fixture — the show-more-nothing-to-show bug)', () => {
-    // The label name (`Jive`) is *also* dropped — resolving it would need a
-    // rate-limited Discogs call (out of scope for the formatter). The
-    // surrounding text is preserved so the sentence still reads; the regex
-    // eats the single horizontal space that separated the ref from the next
-    // word so we don't leave a stray double-space.
+  it('strips [l=…]/[m=…] wrappers keeping the embedded name (Britney fixture)', () => {
+    // The named form embeds the display name (`Jive`) — keep it (no Discogs
+    // call needed, the name is right there). Only numeric refs (`[l12345]`)
+    // are dropped, since they carry no name. `[m=27117]` has no name → drops.
     const { bio, urls } = formatArtistBio(BRITNEY);
     expect(bio).not.toContain('[l=Jive]');
     expect(bio).not.toContain('[m=27117]');
-    expect(bio).toContain('signing with Records in 1997');
+    expect(bio).toContain('signing with Jive Records in 1997');
     expect(bio).toContain('first album');
     expect(urls).toEqual([
       'http://www.britney.com',
       'http://en.wikipedia.org/wiki/Britney_Spears',
       'http://www.youtube.com/britneyspears',
     ]);
+  });
+
+  it('keeps the name in named [a=Name] refs (Divididos member list)', () => {
+    const { bio } = formatArtistBio(DIVIDIDOS);
+    // The whole point: member lists must read as names, not `[a=Name]` garbage.
+    expect(bio).toContain('Ricardo Mollo - Guitar, Lead Vocals');
+    expect(bio).toContain('Diego Arnedo - Bass');
+    expect(bio).toContain("after Luca Prodan's death");
+    expect(bio).toContain('disbanding of Sumo (8)');
+    expect(bio).not.toContain('[a=');
+    expect(bio).not.toContain(']');
+  });
+
+  it('keeps the name in named [l=Name]/[m=Name] refs (Britney fixture)', () => {
+    // Real Discogs API returns `[l=Jive]` with the name embedded — keep it.
+    const { bio } = formatArtistBio(BRITNEY);
+    expect(bio).toContain('signing with Jive Records in 1997');
+    expect(bio).not.toContain('[l=Jive]');
+    expect(bio).not.toContain('[m=27117]');
+  });
+
+  it('strips [b]/[i]/[u] formatting tags, keeping inner text (Divididos/Almendra)', () => {
+    expect(formatArtistBio(DIVIDIDOS).bio).toContain('Members:');
+    expect(formatArtistBio(DIVIDIDOS).bio).not.toContain('[b]');
+    expect(formatArtistBio(DIVIDIDOS).bio).not.toContain('[/b]');
+    const almendra = formatArtistBio(ALMENDRA).bio;
+    expect(almendra).toContain('Almendra ("Almond")');
+    expect(almendra).not.toContain('[i]');
+    expect(almendra).not.toContain('[/i]');
+  });
+
+  it('drops numeric [aN]/[lN]/[mN]/[rN] refs without leaving brackets', () => {
+    // Numeric refs carry no display name → drop them, and don't leave a
+    // dangling space before the following punctuation.
+    const almendra = formatArtistBio(ALMENDRA).bio;
+    expect(almendra).not.toContain('[a1006851]');
+    expect(almendra).toContain('guitarist and lyricist, between');
+    const raw = 'On label [l12345] and master [m678] and release [r90].';
+    const { bio } = formatArtistBio(raw);
+    expect(bio).toBe('On label and master and release.');
   });
 
   it('preserves paragraph breaks', () => {

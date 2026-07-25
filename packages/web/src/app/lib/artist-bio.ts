@@ -9,14 +9,19 @@
  * Renderer-agnostic: returns plain text + extracted URLs. The caller
  * (the `ArtistInfoComponent` template) decides how to lay it out.
  *
- * What the formatter strips / extracts:
- *  - `[url=https://…]Label[/url]`     → `Label` (the visible label is kept)
- *  - `[a2427723]` (artist ref)        → stripped (resolving to a name would
- *                                       need a rate-limited Discogs call; out
- *                                       of scope; drop the token, don't leave
- *                                       brackets)
- *  - `[l=Jive]` (label ref)           → stripped
- *  - `[m=27117]` (master/release ref) → stripped
+ * What the formatter strips / extracts (the ref forms below are BOTH what the
+ * Discogs API actually returns — the original #213 version only handled the
+ * `=name` shape, so `[a=Name]` member lists and `[b]`/`[i]` tags leaked through
+ * as literal garbage):
+ *  - `[url=https://…]Label[/url]` / `[url]…[/url]` → the inner text (label kept)
+ *  - `[a=Ricardo Mollo]`, `[l=Jive]` (named ref) → the embedded name is KEPT
+ *                                       (no Discogs call needed — the name is
+ *                                       right there; `[a=Name] - Guitar` reads
+ *                                       as `Name - Guitar`)
+ *  - `[a1006851]`, `[l12345]`, `[m27117]`, `[r90]` (numeric id ref) → stripped
+ *                                       (no display name to show); stray spaces
+ *                                       left before punctuation are cleaned up
+ *  - `[b]`/`[i]`/`[u]` (+ closers)    → tag dropped, inner text kept
  *  - `''` / `''s` (Discogs escapes)   → `'` / `'s`
  *  - bare http(s) URLs on their own line → moved to the Sources list, removed
  *                                          from the bio
@@ -26,18 +31,22 @@
  * paragraph-separated; collapsing them would mush long bios into a wall).
  */
 
-// `[url=URL]Label[/url]` — label is kept, URL is dropped (caller doesn't need
-// it; if it appeared in the profile, the artist's `urls` field already has it).
-const URL_TAG = /\[url=[^\]]+\]([\s\S]*?)\[\/url\]/gi;
-// `[a123]`, `[a123456]`, `[a1234567]` — Discogs artist ref (id only).
-// Consume a single trailing horizontal space so the natural `[a123] word`
-// idiom doesn't leave a double space behind after the bracket is removed.
-// Newlines are *not* consumed — paragraph breaks must survive.
-const ARTIST_REF = /\[a\d+\][ \t]?/gi;
-// `[l=Label]`, `[r123]`, `[m123]` — other Discogs ref tokens
-// (label/release/master). The RHS is `[^\]]+`, not `\d+`, because Discogs
-// label refs use a name (`[l=Jive]`) while release/master refs are numeric.
-const OTHER_REF = /\[[lrm]=[^\]]+\][ \t]?/gi;
+// `[url=URL]Label[/url]` or the label-less `[url]URL[/url]` — the inner text
+// is kept, the wrapper dropped (if a real URL appeared, the artist's `urls`
+// field already has it, and bare URLs get extracted into Sources below).
+const URL_TAG = /\[url(?:=[^\]]+)?\]([\s\S]*?)\[\/url\]/gi;
+// Discogs entity refs come in TWO shapes (the API returns both — the original
+// #213 fixtures only covered the `=name` form, so the far-more-common shapes
+// leaked through as literal `[a=…]`/`[l123]` garbage):
+//   named   `[a=Ricardo Mollo]`, `[l=Jive]`  → KEEP the embedded name
+//   numeric `[a1006851]`, `[l12345]`, `[m27117]`, `[r90]` → DROP (no name to show)
+// `a`=artist `l`=label `m`=master `r`=release. A `[x=12345]` with a purely
+// numeric RHS is an id ref written in the `=` form → dropped like the numeric shape.
+const NAMED_REF = /\[[almr]=([^\]]+)\]/gi;
+const NUMERIC_REF = /\[[almr]\d+\]/gi;
+// Inline formatting tags `[b]`/`[i]`/`[u]` (+ closers) — drop the tag, keep the
+// inner text (Discogs uses these to head member lists, e.g. `[b]Members:[/b]`).
+const FORMAT_TAG = /\[\/?[biu]\]/gi;
 // Discogs escapes single quotes as `''` — unescape them. Word-boundary aware
 // so we don't touch the possessive `'s` already in plain text.
 const ESCAPED_QUOTE = /''/g;
@@ -55,10 +64,12 @@ export function formatArtistBio(raw: string | null | undefined): {
   if (!raw) return { bio: null, urls: [] };
   let text = raw;
   // Order matters: strip URL-tags first so the label is preserved before any
-  // naked `[a…]` inside it gets pulled.
+  // naked ref inside it gets pulled.
   text = text.replace(URL_TAG, (_m, label) => label ?? '');
-  text = text.replace(ARTIST_REF, '');
-  text = text.replace(OTHER_REF, '');
+  // Named refs first (keep the name unless it's a bare id), then numeric refs.
+  text = text.replace(NAMED_REF, (_m, name: string) => (/^\d+$/.test(name.trim()) ? '' : name));
+  text = text.replace(NUMERIC_REF, '');
+  text = text.replace(FORMAT_TAG, '');
   text = text.replace(ESCAPED_QUOTE, "'");
 
   // Extract bare-URL lines → urls[]. The remaining prose is what we render.
@@ -73,10 +84,14 @@ export function formatArtistBio(raw: string | null | undefined): {
       keptLines.push(line);
     }
   }
-  // Collapse 3+ consecutive blank lines down to 2 (the canonical paragraph
-  // separator) so the result reads as a tight article.
+  // Clean up whitespace artifacts left by dropped refs (`lyricist [a1006851],`
+  // → `lyricist ,` → `lyricist,`; `label [l12345] and` → `label  and` → `label and`),
+  // then collapse 3+ blank lines to the canonical 2-line paragraph break.
   const joined = keptLines
     .join('\n')
+    .replace(/[ \t]+([,.;:!?])/g, '$1') // no space before punctuation
+    .replace(/[ \t]{2,}/g, ' ') // collapse runs of spaces/tabs (not newlines)
+    .replace(/[ \t]+$/gm, '') // trim trailing spaces per line
     .replace(/\n{3,}/g, '\n\n')
     .trim();
   return {
