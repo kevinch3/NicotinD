@@ -41,3 +41,6 @@ packages/desktop/dist-test/
 # Multi-size app icon pack — regenerated from packages/web/public/icons/
 # on every `bun run --filter @nicotind/desktop dist` by scripts/stage-icons.mjs
 packages/desktop/build/icons/
+
+# Claude Code local state (agent worktrees, session scratch) — never commit
+.claude/
