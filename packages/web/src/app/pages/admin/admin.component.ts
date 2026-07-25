@@ -30,7 +30,7 @@ import {
 import { PasswordFieldComponent } from '../../components/password-field/password-field.component';
 import { AlbumHuntModalComponent } from '../../components/album-hunt-modal/album-hunt-modal.component';
 import { MetricPillComponent } from '../../components/metric-pill/metric-pill.component';
-import { DiscographyAlbum } from '../../services/api/api-types';
+import { DiscographyAlbum, ConfigImportPlan } from '../../services/api/api-types';
 
 /** A copy in a duplicate group — shape returned by the maintenance duplicates API. */
 type DuplicateSong = {
@@ -322,6 +322,13 @@ export class AdminComponent implements OnInit, OnDestroy {
     return this.processing()?.gates?.[task] ?? false;
   }
 
+  /** Persist the sidecar concurrency cap (issue #224), clamped to 1..8. */
+  saveSidecarConcurrency(raw: string): void {
+    const n = Math.round(Number(raw));
+    if (!Number.isFinite(n)) return;
+    void this.saveProcessing({ sidecarConcurrency: Math.min(8, Math.max(1, n)) });
+  }
+
   /** Toggle a per-task "require before adding to library" gate and persist. */
   toggleProcessingGate(task: ProcessingTaskId): void {
     const current = this.processing();
@@ -508,6 +515,96 @@ export class AdminComponent implements OnInit, OnDestroy {
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
     if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
     return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+  }
+
+  // --- Config export / import (portable, secrets-redacted) — issue #221 ------
+  readonly configBusy = signal(false);
+  readonly configMsg = signal<string | null>(null);
+  readonly configImportPlan = signal<ConfigImportPlan | null>(null);
+  /** The parsed artifact awaiting confirmation after a preview. */
+  private pendingImport: unknown = null;
+
+  /** Download the current config as a JSON file (secrets stripped server-side). */
+  async exportConfig(): Promise<void> {
+    if (this.configBusy()) return;
+    this.configBusy.set(true);
+    this.configMsg.set(null);
+    try {
+      const text = await firstValueFrom(this.api.exportConfig());
+      const blob = new Blob([text], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `nicotind-config-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      this.configMsg.set('Config exported. Secrets are redacted — re-enter them after import.');
+    } catch {
+      this.configMsg.set('Export failed — see server logs.');
+    } finally {
+      this.configBusy.set(false);
+    }
+  }
+
+  /** Read a chosen file, parse it, and fetch a dry-run "what will change" plan. */
+  async onConfigFileChosen(event: Event): Promise<void> {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = ''; // allow re-choosing the same file
+    if (!file) return;
+    this.configBusy.set(true);
+    this.configMsg.set(null);
+    this.configImportPlan.set(null);
+    this.pendingImport = null;
+    try {
+      const parsed = JSON.parse(await file.text());
+      const res = await firstValueFrom(this.api.previewConfigImport(parsed));
+      this.configImportPlan.set(res.plan);
+      this.pendingImport = parsed;
+    } catch (err) {
+      this.configMsg.set(
+        err instanceof SyntaxError ? 'Not valid JSON.' : this.errorText(err, 'Could not read config'),
+      );
+    } finally {
+      this.configBusy.set(false);
+    }
+  }
+
+  /** Apply the previewed import. */
+  async applyConfigImport(): Promise<void> {
+    if (this.configBusy() || this.pendingImport === null) return;
+    this.configBusy.set(true);
+    this.configMsg.set(null);
+    try {
+      const res = await firstValueFrom(this.api.applyConfigImport(this.pendingImport));
+      const r = res.result;
+      this.configMsg.set(
+        `Imported: ${r.settingsWritten} settings, ${r.pluginsConfigured} plugin config(s), ${r.pluginsEnabledChanged} enable change(s).`,
+      );
+      this.configImportPlan.set(null);
+      this.pendingImport = null;
+    } catch (err) {
+      this.configMsg.set(this.errorText(err, 'Import failed'));
+    } finally {
+      this.configBusy.set(false);
+    }
+  }
+
+  cancelConfigImport(): void {
+    this.configImportPlan.set(null);
+    this.pendingImport = null;
+    this.configMsg.set(null);
+  }
+
+  /** Count of settings keys that would actually change (create/update). */
+  configSettingsChangeCount(plan: ConfigImportPlan): number {
+    return plan.settings.filter((s) => s.action !== 'unchanged').length;
+  }
+
+  /** Extract a server error message from an HttpErrorResponse-ish object. */
+  private errorText(err: unknown, fallback: string): string {
+    const e = err as { error?: { error?: string } };
+    return e?.error?.error ?? `${fallback} — see server logs.`;
   }
 
   formatBackupDate(ms: number): string {

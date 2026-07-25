@@ -15,6 +15,8 @@ import type {
   UpdateCheck,
   AuditEntry,
   ServiceReview,
+  ConfigImportPlan,
+  ConfigImportResult,
 } from './api-types';
 
 /** System surface: status/scan/logs, settings (soulseek/shares/streaming/
@@ -170,6 +172,27 @@ export class SystemApiService {
 
   runBackup() {
     return this.http.post<BackupInfo>('/api/admin/backups', {});
+  }
+
+  // Config export/import (portable, secrets-redacted) — admin only. Issue #221.
+  // Fetch the export as text so the browser can offer it as a file download.
+  exportConfig() {
+    return this.http.get('/api/admin/config/export', { responseType: 'text' });
+  }
+
+  // Dry-run: returns a "what will change" plan without writing.
+  previewConfigImport(config: unknown) {
+    return this.http.post<{ dryRun: true; plan: ConfigImportPlan }>(
+      '/api/admin/config/import?dryRun=1',
+      { config },
+    );
+  }
+
+  applyConfigImport(config: unknown) {
+    return this.http.post<{ dryRun: false; result: ConfigImportResult }>(
+      '/api/admin/config/import',
+      { config },
+    );
   }
 
   // Setup (public — no auth token)

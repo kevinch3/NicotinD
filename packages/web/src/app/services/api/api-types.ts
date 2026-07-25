@@ -506,6 +506,31 @@ export interface BackupInfo {
   files: string[];
 }
 
+// ── Config export/import (portable, secrets-redacted) — issue #221 ───────────
+
+/** Dry-run plan returned by `POST /api/admin/config/import?dryRun=1`. */
+export interface ConfigImportPlan {
+  version: number;
+  appVersion: string | null;
+  settings: { key: string; action: 'create' | 'update' | 'unchanged' }[];
+  plugins: {
+    id: string;
+    unknown: boolean;
+    enabledChange: { from: boolean | null; to: boolean } | null;
+    configKeys: string[];
+    redactedSecrets: string[];
+  }[];
+  warnings: string[];
+}
+
+/** Result returned by an applied `POST /api/admin/config/import`. */
+export interface ConfigImportResult {
+  settingsWritten: number;
+  pluginsConfigured: number;
+  pluginsEnabledChanged: number;
+  warnings: string[];
+}
+
 // ── ServiceReview (admin) ────────────────────────────────────────────────────
 //
 // `GET /api/admin/review` returns one consolidated snapshot of everything the

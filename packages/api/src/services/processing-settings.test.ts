@@ -69,4 +69,22 @@ describe('processing-settings', () => {
     expect(merged.gates.bpm).toBe(false); // patched
     expect(merged.gates.key).toBe(DEFAULT_PROCESSING_SETTINGS.gates.key); // untouched default
   });
+
+  it('defaults + round-trips the GPU knobs (sidecarConcurrency, paused) — issue #224', () => {
+    expect(DEFAULT_PROCESSING_SETTINGS.sidecarConcurrency).toBe(2);
+    expect(DEFAULT_PROCESSING_SETTINGS.paused).toBe(false);
+    const next = setProcessingSettings(db, { sidecarConcurrency: 1, paused: true });
+    expect(next.sidecarConcurrency).toBe(1);
+    expect(next.paused).toBe(true);
+    expect(getProcessingSettings(db)).toEqual(next);
+  });
+
+  it('back-fills the GPU knobs from a legacy blob that predates them', () => {
+    db.run(`INSERT INTO app_settings (key, value) VALUES ('processing', ?)`, [
+      JSON.stringify({ enabled: true, tasks: { bpm: true } }),
+    ]);
+    const s = getProcessingSettings(db);
+    expect(s.sidecarConcurrency).toBe(DEFAULT_PROCESSING_SETTINGS.sidecarConcurrency);
+    expect(s.paused).toBe(false);
+  });
 });

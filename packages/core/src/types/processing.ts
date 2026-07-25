@@ -49,10 +49,26 @@ export interface ProcessingSettings {
   batchSize: number;
   /** Worker-pool size for parallelisable tasks (e.g. BPM ffmpeg decodes). */
   concurrency: number;
+  /**
+   * Worker-pool size for **analysis-sidecar** tasks (`audio-features`,
+   * `genre-audio`) — the GPU consumer. Governs how many concurrent inference
+   * requests hit the sidecar; keep it low (1–2) on a shared GPU so a burst
+   * can't monopolize it (issue #224). Default 2. Distinct from `concurrency`
+   * (offline ffmpeg decodes), which can be higher without touching the GPU.
+   */
+  sidecarConcurrency: number;
+  /**
+   * Temporary halt of automatic/window background enrichment (issue #224 —
+   * "pause processing now"). Unlike `enabled: false` (a persistent off switch),
+   * `paused` is a runtime throttle: fresh downloads still clear their landing
+   * gate (so nothing is stranded), but no window/background enrichment runs.
+   * An explicit admin "Run now" still overrides it.
+   */
+  paused: boolean;
 }
 
 /** Coarse phase of the processor at a point in time. */
-export type ProcessingPhase = 'idle' | 'running' | 'outside-window' | 'disabled';
+export type ProcessingPhase = 'idle' | 'running' | 'outside-window' | 'disabled' | 'paused';
 
 /** Live status snapshot for the progress UI (persisted so a restart resumes display). */
 export interface ProcessingStatus {

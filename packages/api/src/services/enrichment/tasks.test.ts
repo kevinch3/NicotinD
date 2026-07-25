@@ -856,6 +856,37 @@ describe('audio-features task', () => {
     });
   });
 
+  it('caps sidecar concurrency at ctx.sidecarConcurrency, not ctx.concurrency (issue #224)', async () => {
+    for (let i = 0; i < 6; i++) seedSong(`s${i}`);
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const c = ctx({
+      // A high offline pool must NOT widen the GPU-facing sidecar pool.
+      concurrency: 8,
+      sidecarConcurrency: 1,
+      analyzeAudioFeatures: async () => {
+        inFlight++;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        await new Promise((r) => setTimeout(r, 5));
+        inFlight--;
+        return {
+          features: {
+            danceability: 0.6,
+            valence: 0.4,
+            acousticness: 0.2,
+            instrumental: 0.9,
+            mood: 'relaxed',
+          },
+          embedding: { model: 'discogs-effnet-bs64-1', dim: 4, values: [1, 2, 3, 4] },
+          modelVersions: { embedding: 'discogs-effnet-bs64-1' },
+          genre: null,
+        };
+      },
+    });
+    await features.run(db, c, 25);
+    expect(maxInFlight).toBe(1);
+  });
+
   it('adopts fully-tagged files without calling the sidecar', async () => {
     seedSong('a');
     let sidecarCalls = 0;

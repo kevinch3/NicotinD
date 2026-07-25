@@ -526,6 +526,7 @@ export function createApp({
       lidarr,
       coverCacheDir: `${expandedDataDir}/cover-cache`,
       processing: processingRef.current,
+      plugins,
       version,
     }),
   );

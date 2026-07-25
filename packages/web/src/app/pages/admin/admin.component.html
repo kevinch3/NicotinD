@@ -254,6 +254,59 @@
             }
           </div>
 
+          <!-- Maintenance: portable config export/import (issue #221). -->
+          <div class="flex flex-col gap-2 mb-8" data-testid="config-export-panel">
+            <div class="flex items-center gap-3 flex-wrap">
+              <button (click)="exportConfig()" [disabled]="configBusy()"
+                data-testid="config-export"
+                class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition disabled:opacity-50">
+                Export config
+              </button>
+              <label
+                class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition cursor-pointer"
+                [class.opacity-50]="configBusy()">
+                Import config…
+                <input type="file" accept="application/json,.json" class="hidden"
+                  data-testid="config-import-file"
+                  [disabled]="configBusy()"
+                  (change)="onConfigFileChosen($event)" />
+              </label>
+              <span class="text-xs text-theme-muted">
+                Portable settings + plugin config (secrets redacted) for host migration — distinct from the full DB backup.
+              </span>
+            </div>
+            @if (configMsg(); as msg) {
+              <p class="text-xs text-theme-secondary break-words" data-testid="config-msg">{{ msg }}</p>
+            }
+            @if (configImportPlan(); as plan) {
+              <div class="rounded-lg border border-theme bg-theme-surface-2 p-3 space-y-2 text-xs"
+                data-testid="config-import-plan">
+                <p class="text-theme-secondary font-medium">Review import (nothing written yet):</p>
+                <p class="text-theme-muted">
+                  Settings: {{ configSettingsChangeCount(plan) }} change(s) of {{ plan.settings.length }} ·
+                  Plugins: {{ plan.plugins.length }}
+                </p>
+                @if (plan.warnings.length > 0) {
+                  <ul class="text-status-warn list-disc pl-4" data-testid="config-import-warnings">
+                    @for (w of plan.warnings; track w) { <li>{{ w }}</li> }
+                  </ul>
+                }
+                <div class="flex items-center gap-3 pt-1">
+                  <button (click)="applyConfigImport()" [disabled]="configBusy()"
+                    data-testid="config-import-apply"
+                    class="px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-600 hover:bg-emerald-500 text-white transition disabled:opacity-50">
+                    {{ configBusy() ? 'Importing…' : 'Apply import' }}
+                  </button>
+                  <button (click)="cancelConfigImport()" [disabled]="configBusy()"
+                    data-testid="config-import-cancel"
+                    class="px-3 py-1.5 rounded-lg text-xs font-medium border border-theme text-theme-primary transition disabled:opacity-50">
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            }
+          </div>
+
           <!-- Maintenance: library fragmentation diagnostic (manual action). -->
           <div class="flex flex-col gap-2 mb-8" data-testid="library-fragments">
             <div class="flex items-center gap-3">
@@ -421,6 +474,27 @@
                       (change)="saveProcessing({ window: { start: p.window.start, end: $any($event.target).value } })"
                       class="min-w-0 text-sm rounded-lg bg-theme-surface border border-theme px-2 py-1 text-theme-primary" />
                   </div>
+                </div>
+
+                <!-- GPU / load controls (issue #224): pause + sidecar concurrency cap. -->
+                <label class="flex items-center justify-between gap-4">
+                  <span class="min-w-0 text-sm text-theme-primary">Pause background processing
+                    <span class="block text-xs text-theme-muted">Temporarily halt window/background work (e.g. free the shared GPU). Fresh downloads still land; "Run now" still overrides.</span>
+                  </span>
+                  <input type="checkbox" [checked]="p.paused" [disabled]="processingSaving()"
+                    data-testid="processing-paused"
+                    (change)="saveProcessing({ paused: $any($event.target).checked })"
+                    class="w-4 h-4 rounded accent-amber-500" />
+                </label>
+
+                <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+                  <span class="min-w-0 text-sm text-theme-primary">Sidecar concurrency
+                    <span class="block text-xs text-theme-muted">Max concurrent GPU inference requests to the analysis sidecar (keep low, 1–2, on a shared GPU).</span>
+                  </span>
+                  <input type="number" min="1" max="8" [value]="p.sidecarConcurrency" [disabled]="processingSaving()"
+                    data-testid="processing-sidecar-concurrency"
+                    (change)="saveSidecarConcurrency($any($event.target).value)"
+                    class="w-20 text-sm rounded-lg bg-theme-surface border border-theme px-2 py-1 text-theme-primary" />
                 </div>
 
                 <div class="space-y-2">

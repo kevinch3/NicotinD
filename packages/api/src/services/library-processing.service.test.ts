@@ -155,6 +155,32 @@ describe('LibraryProcessingService', () => {
     expect(svc.getState().status.phase).toBe('disabled');
   });
 
+  it('tick is a no-op (background) when paused, but reports phase "paused"', async () => {
+    for (let i = 0; i < 3; i++) seedSong(`s${i}`);
+    // Inside the window, enabled, but paused — background work must not run.
+    setProcessingSettings(db, { window: { start: '05:00', end: '08:00' }, paused: true });
+    const counters = { analyzed: 0, genreLookups: 0 };
+    const svc = service({ now: new Date(2024, 0, 1, 6, 30), counters });
+
+    await svc.tick();
+
+    expect(counters.analyzed).toBe(0);
+    expect(pendingBpm()).toBe(3);
+    expect(svc.getState().status.phase).toBe('paused');
+  });
+
+  it('runNow still drains work while paused (explicit admin override)', async () => {
+    for (let i = 0; i < 3; i++) seedSong(`s${i}`);
+    setProcessingSettings(db, { paused: true, tasks: { bpm: true, genre: false, key: false } });
+    const counters = { analyzed: 0, genreLookups: 0 };
+    const svc = service({ now: new Date(2024, 0, 1, 12, 0), counters });
+
+    await svc.runNow();
+
+    expect(counters.analyzed).toBe(3);
+    expect(pendingBpm()).toBe(0);
+  });
+
   it('guards against overlapping runs', async () => {
     for (let i = 0; i < 4; i++) seedSong(`s${i}`);
     setProcessingSettings(db, { batchSize: 10, tasks: { bpm: true, genre: false, key: false } });

@@ -219,13 +219,44 @@ All IO-heavy primitives come from the injected `EnrichmentContext`
 The scheduler, settings, status, SSE, and UI pick it up generically (the per-task
 checkbox renders from `settings.tasks`/`status.availability`).
 
+## GPU / shared-resource controls (issue #224)
+
+The analysis sidecar (Essentia embeddings + tagging heads) is the single largest
+compute consumer and, on a GPU build, shares one GPU with other homelab tenants
+(Immich ML, Ollama). Two **runtime** knobs let an admin throttle it from the UI
+without a compose edit + restart (build-time `GPU=1` selection stays in compose —
+the UI can only govern runtime load):
+
+- **`sidecarConcurrency`** (`ProcessingSettings`, default 2, min 1): the
+  worker-pool cap for the GPU-facing sidecar tasks (`audio-features`,
+  `genre-audio`). It replaces the old hard-coded `Math.min(ctx.concurrency, 2)` in
+  `enrichment/tasks.ts`, so the offline ffmpeg pool (`concurrency`, which never
+  touches the GPU) can stay high while GPU inference is pinned to 1–2 concurrent
+  requests. Threaded through `EnrichmentContext.sidecarConcurrency` from the
+  service's context factory. On an 8 GB shared GPU, `sidecarConcurrency: 1` is a
+  safe "good citizen" setting.
+- **`paused`** (`ProcessingSettings`, default false): a *temporary* halt distinct
+  from `enabled: false` (a persistent off switch). When paused, `tick()` skips all
+  window/background enrichment and publishes `phase: 'paused'`, **but still clears
+  the quarantine gate** (`kickEagerInner`) so a fresh download isn't stranded
+  invisible while the GPU-heavy background work is held. An explicit admin
+  **`runNow()`** ("Run now") still overrides pause.
+
+Surfaced in the Admin → Library processing panel: a "Pause background processing"
+toggle (`data-testid="processing-paused"`) and a "Sidecar concurrency" number
+input (`data-testid="processing-sidecar-concurrency"`). **Left open:** the
+sidecar-side reduction (batch size inside `packages/analysis/`, cross-tenant
+`nvidia-smi` "pause when GPU busy" gating) is infra-dependent and out of scope
+here — see issue #224.
+
 ## Scheduler behaviour
 
 Modeled on `WatchlistService` (interval + a `busy` guard so runs never overlap):
 
-- **`tick()`** (periodic, default 60 s): no-op when disabled (`phase: disabled`) or
-  outside the window (`phase: outside-window`); otherwise runs **one bounded batch
-  per runnable task**. The short interval + guard make in-window work effectively
+- **`tick()`** (periodic, default 60 s): no-op when disabled (`phase: disabled`),
+  paused (`phase: paused` — issue #224, still clears quarantine), or outside the
+  window (`phase: outside-window`); otherwise runs **one bounded batch per
+  runnable task**. The short interval + guard make in-window work effectively
   continuous and re-evaluate the window at each batch boundary, so processing stops
   promptly when the window closes.
 - **`runNow()`** (admin "Run now"): drains batches in a loop **ignoring** the
@@ -402,7 +433,7 @@ service's `'status'` EventEmitter (the SSE source).
 | Method | Path | Purpose |
 | --- | --- | --- |
 | GET | `/api/admin/processing` | `{ settings, status }` (status has per-task pending counts + availability reasons) |
-| PUT | `/api/admin/processing` | Update settings (validates `HH:MM` window + positive `batchSize`/`concurrency`) |
+| PUT | `/api/admin/processing` | Update settings (validates `HH:MM` window + positive `batchSize`/`concurrency`/`sidecarConcurrency` + boolean `paused`) |
 | POST | `/api/admin/processing/run` | `runNow()` (ignore window) |
 | POST | `/api/admin/processing/stop` | `cancelRun()` |
 | GET | `/api/admin/processing/stream` | SSE status snapshots (progress bar + snippets) |

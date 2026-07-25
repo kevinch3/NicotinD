@@ -8,6 +8,13 @@ import { getDatabase } from '../db.js';
 import { listAudit, recordAudit } from '../services/audit-log.js';
 import { listBackups, runBackup } from '../services/backup.js';
 import {
+  applyConfigImport,
+  ConfigImportError,
+  exportConfig,
+  planConfigImport,
+} from '../services/config-export.js';
+import type { PluginRegistry } from '../services/plugins/registry.js';
+import {
   checkForUpdateNow,
   compareVersions,
   getStoredUpdateCheck,
@@ -31,6 +38,8 @@ export interface AdminRoutesDeps {
   lidarr?: Lidarr | null;
   /** Windowed library-processing scheduler; null when not wired (503s). */
   processing?: LibraryProcessingService | null;
+  /** Plugin registry — config export/import routes 503 without it. */
+  plugins?: PluginRegistry | null;
   /** Running server version (package.json), for the update-check route. */
   version?: string;
 }
@@ -280,6 +289,56 @@ export function adminRoutes(deps: AdminRoutesDeps) {
     }
   });
 
+  // --- Config export / import (see services/config-export.ts + issue #221) --
+  // Portable, human-legible *config* artifact (app_settings + plugin enabled/
+  // config, secrets redacted), distinct from the opaque full-DB backup above.
+
+  // Download the current config as a JSON artifact (secrets stripped).
+  app.get('/config/export', (c) => {
+    if (!deps.plugins) return c.json({ error: 'Config export not available' }, 503);
+    const artifact = exportConfig(getDatabase(), deps.plugins, { appVersion: deps.version ?? null });
+    recordAudit(getDatabase(), c.get('user'), 'config.export');
+    const stamp = artifact.exportedAt.replace(/[:.]/g, '-');
+    c.header('Content-Type', 'application/json');
+    c.header('Content-Disposition', `attachment; filename="nicotind-config-${stamp}.json"`);
+    return c.body(JSON.stringify(artifact, null, 2));
+  });
+
+  // Import a config artifact. `?dryRun=1` (or body `{ dryRun: true }`) returns a
+  // "what will change" plan without writing; otherwise upserts + audits.
+  app.post('/config/import', async (c) => {
+    if (!deps.plugins) return c.json({ error: 'Config import not available' }, 503);
+    const db = getDatabase();
+    let body: { config?: unknown; dryRun?: boolean };
+    try {
+      body = await c.req.json<{ config?: unknown; dryRun?: boolean }>();
+    } catch {
+      return c.json({ error: 'Invalid JSON body' }, 400);
+    }
+    // Accept either the raw artifact or `{ config: <artifact>, dryRun }`.
+    const artifact =
+      body && typeof body === 'object' && 'config' in body ? body.config : body;
+    const dryRun = c.req.query('dryRun') === '1' || body?.dryRun === true;
+    try {
+      if (dryRun) {
+        return c.json({ dryRun: true, plan: planConfigImport(db, deps.plugins, artifact) });
+      }
+      const result = await applyConfigImport(db, deps.plugins, artifact, {
+        consentUser: c.get('user').sub,
+      });
+      recordAudit(db, c.get('user'), 'config.import', {
+        detail: `settings=${result.settingsWritten} plugins=${result.pluginsConfigured}`,
+      });
+      return c.json({ dryRun: false, result });
+    } catch (err) {
+      if (err instanceof ConfigImportError) return c.json({ error: err.message }, 400);
+      return c.json(
+        { error: `Import failed: ${err instanceof Error ? err.message : String(err)}` },
+        500,
+      );
+    }
+  });
+
   // --- Windowed library processing (BPM / genre enrichment) ----------------
 
   const requireProcessing = (): LibraryProcessingService | null => deps.processing ?? null;
@@ -313,6 +372,15 @@ export function adminRoutes(deps: AdminRoutesDeps) {
       (!Number.isInteger(body.concurrency) || body.concurrency < 1)
     ) {
       return c.json({ error: 'concurrency must be a positive integer' }, 400);
+    }
+    if (
+      body.sidecarConcurrency !== undefined &&
+      (!Number.isInteger(body.sidecarConcurrency) || body.sidecarConcurrency < 1)
+    ) {
+      return c.json({ error: 'sidecarConcurrency must be a positive integer' }, 400);
+    }
+    if (body.paused !== undefined && typeof body.paused !== 'boolean') {
+      return c.json({ error: 'paused must be a boolean' }, 400);
     }
     // gates is a sparse per-task boolean map ("require before landing"); reject a
     // malformed value so a bad client can't poison the persisted JSON blob.

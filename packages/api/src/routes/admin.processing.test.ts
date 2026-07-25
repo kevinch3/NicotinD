@@ -163,6 +163,57 @@ describe('admin /processing', () => {
     expect(res.status).toBe(400);
   });
 
+  it('rejects a non-positive sidecarConcurrency (issue #224)', async () => {
+    const app = authed(
+      new Hono<AuthEnv>().route(
+        '/',
+        adminRoutes({ musicDir: '/music', processing: makeService() }),
+      ),
+      'admin',
+    );
+    const res = await app.request('/processing', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ sidecarConcurrency: 0 }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('accepts a paused flag + sidecarConcurrency via PUT (issue #224)', async () => {
+    const app = authed(
+      new Hono<AuthEnv>().route(
+        '/',
+        adminRoutes({ musicDir: '/music', processing: makeService() }),
+      ),
+      'admin',
+    );
+    const res = await app.request('/processing', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ paused: true, sidecarConcurrency: 1 }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.settings.paused).toBe(true);
+    expect(body.settings.sidecarConcurrency).toBe(1);
+  });
+
+  it('rejects a non-boolean paused (issue #224)', async () => {
+    const app = authed(
+      new Hono<AuthEnv>().route(
+        '/',
+        adminRoutes({ musicDir: '/music', processing: makeService() }),
+      ),
+      'admin',
+    );
+    const res = await app.request('/processing', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ paused: 'yes' }),
+    });
+    expect(res.status).toBe(400);
+  });
+
   it('accepts run and stop', async () => {
     const app = authed(
       new Hono<AuthEnv>().route(

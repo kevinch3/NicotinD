@@ -77,8 +77,11 @@ export interface EnrichmentContext {
    *  its stale thumbnails. */
   coverCacheDir: string;
   lidarr: Lidarr | null;
-  /** Worker-pool size for parallelisable tasks (BPM). */
+  /** Worker-pool size for parallelisable offline tasks (BPM ffmpeg decodes). */
   concurrency: number;
+  /** Worker-pool cap for GPU-facing sidecar tasks (audio-features, genre-audio);
+   *  keep low on a shared GPU (issue #224). Defaults to 2 when unset. */
+  sidecarConcurrency?: number;
   ffmpegAvailable: () => boolean;
   readTags: (
     abs: string,
@@ -380,6 +383,8 @@ export function createEnrichmentContext(deps: {
   coverCacheDir: string;
   lidarr: Lidarr | null;
   concurrency: number;
+  /** GPU-facing sidecar worker-pool cap (issue #224). Defaults to 2 when unset. */
+  sidecarConcurrency?: number;
   /** Spotify portrait lookup, or null when Spotify creds aren't configured. */
   lookupArtistImageSpotify?: ((name: string) => Promise<string | null>) | null;
   /** Discogs artist bio/links lookup, or null when unconfigured. */
@@ -395,6 +400,7 @@ export function createEnrichmentContext(deps: {
     coverCacheDir: deps.coverCacheDir,
     lidarr: deps.lidarr,
     concurrency: deps.concurrency,
+    sidecarConcurrency: deps.sidecarConcurrency,
     ffmpegAvailable: realFfmpegAvailable,
     readTags: (abs) => readAudioTags(abs),
     writeTags: (abs, tags) => writeAudioTags(abs, tags),
@@ -876,7 +882,7 @@ const audioFeaturesTask: EnrichmentTask = {
       }
     };
     await Promise.all(
-      Array.from({ length: Math.max(1, Math.min(ctx.concurrency, 2)) }, () => worker()),
+      Array.from({ length: Math.max(1, Math.min(ctx.concurrency, ctx.sidecarConcurrency ?? 2)) }, () => worker()),
     );
     return { applied, labels, failed: tally.failed, errorSample: tally.sample };
   },
@@ -1382,7 +1388,7 @@ const genreAudioTask: EnrichmentTask = {
       }
     };
     await Promise.all(
-      Array.from({ length: Math.max(1, Math.min(ctx.concurrency, 2)) }, () => worker()),
+      Array.from({ length: Math.max(1, Math.min(ctx.concurrency, ctx.sidecarConcurrency ?? 2)) }, () => worker()),
     );
     return { applied, labels, failed: tally.failed, errorSample: tally.sample };
   },

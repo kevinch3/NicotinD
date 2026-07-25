@@ -54,6 +54,11 @@ export const DEFAULT_PROCESSING_SETTINGS: ProcessingSettings = {
   },
   batchSize: 25,
   concurrency: 3,
+  // GPU-facing sidecar tasks default to 2 concurrent inferences — low enough to
+  // stay a good citizen on a shared GPU (issue #224). Admin-tunable down to 1.
+  sidecarConcurrency: 2,
+  // Not paused by default; the admin "Pause now" toggle flips this at runtime.
+  paused: false,
 };
 
 export function getProcessingSettings(db: Database): ProcessingSettings {
