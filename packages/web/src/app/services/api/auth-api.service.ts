@@ -10,6 +10,13 @@ export interface UserProfile {
   autoplayOnLoad: boolean;
   /** Admin dev-mode: capture generated results as gradeable feedback. */
   feedbackCapture: boolean;
+  /**
+   * Deployment-wide acquisition kill-switch (#235). false = the whole
+   * acquisition module is off for this install; the web hides every acquisition
+   * surface regardless of role. Optional for back-compat with an older server
+   * that predates the field (treated as enabled).
+   */
+  acquisitionEnabled?: boolean;
 }
 
 /** Auth endpoints: login, registration, and sliding-session refresh. */

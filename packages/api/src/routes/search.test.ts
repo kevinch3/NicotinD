@@ -110,6 +110,46 @@ describe('search routes', () => {
     expect(networkCreated).toBe(true);
   });
 
+  it('suppresses the network fan-out for EVERY role when acquisition is disabled deployment-wide (#235)', async () => {
+    const libraryDb = new Database(':memory:');
+    applySchema(libraryDb);
+
+    let networkCreated = false;
+    const slskdRef = {
+      current: {
+        searches: {
+          create: async () => {
+            networkCreated = true;
+            return { id: 'slskd-search-1' };
+          },
+          get: async () => ({ state: 'InProgress', responseCount: 0 }),
+          getResponses: async () => [],
+          list: async () => [],
+          delete: async () => undefined,
+          cancel: async () => undefined,
+        },
+      },
+    } as unknown as ConstructorParameters<typeof SlskdSearchProvider>[0];
+
+    const registry = new ProviderRegistry();
+    registry.register(new LibrarySearchProvider(libraryDb));
+    registry.register(new SlskdSearchProvider(slskdRef));
+
+    const a = new Hono<AuthEnv>();
+    a.use('*', (c, next) => {
+      c.set('user', { sub: 'u', role: 'admin', iat: 0, exp: 9999999999 });
+      return next();
+    });
+    // acquisitionEnabled=false — even an admin gets a library-only search.
+    a.route('/', searchRoutes(registry, false));
+
+    const res = await a.request('/?q=test');
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.networkAvailable).toBe(false);
+    expect(networkCreated).toBe(false); // never fanned out to the network
+  });
+
   it('poll response includes canBrowse: true when provider supports browsing', async () => {
     const slskdRef = {
       current: {

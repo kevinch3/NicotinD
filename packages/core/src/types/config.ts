@@ -23,6 +23,16 @@ export const NicotinDConfigSchema = z.object({
   musicDir: z.string().default('~/Music'),
   mode: ServiceModeSchema.default('embedded'),
   registrationEnabled: z.boolean().default(true),
+  // Deployment-wide acquisition kill-switch (issue #235). When false, the whole
+  // acquisition module is turned off for the entire install — every acquisition
+  // route hard-404s, the unattended pollers (watchlist / auto-acquire) never
+  // start, the unified /search skips its network fan-out, and the web hides all
+  // acquisition surfaces (Downloads nav, Search's acquire lane, …). This is the
+  // "streaming/library-only" profile: a lighter deploy with no slskd/Lidarr.
+  // Env `NICOTIND_ACQUISITION=off` sets the deploy default; default-on preserves
+  // today's behavior. Distinct from the per-user role gate (`requireAcquirer`)
+  // and the per-plugin opt-in — it removes the subsystem regardless of those.
+  acquisitionEnabled: z.boolean().default(true),
   metadataFix: z
     .object({
       enabled: z.boolean().default(true),

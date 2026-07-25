@@ -277,6 +277,46 @@ schedule, configuration (`NICOTIND_BACKUP*`), and the manual restore steps.
 Copy the backups directory off-host for disaster protection; the music dir is
 plain files (rsync it).
 
+## Streaming-only profile (deployment-wide acquisition kill-switch, #235)
+
+Acquisition is opt-in three ways that compose: per-plugin (default-off in the
+registry), per-user (the role ladder — `listener` can't acquire), and now
+**deployment-wide**. Setting `NICOTIND_ACQUISITION=off` (env, or `acquisitionEnabled: false`
+in `config/default.yml`) turns the **whole acquisition module off for the entire
+install** — a genuinely lighter "streaming/library-only" deploy with no
+slskd/Lidarr sidecars needed. The library scanner + streaming stack are untouched
+(that's the point).
+
+What "off" does — one authoritative `config.acquisitionEnabled` flag consulted on
+both sides (env default; an admin runtime toggle is a deliberate follow-up, see
+below):
+
+- **Server (hard-off, 404).** `requireAcquisitionEnabledMiddleware(config.acquisitionEnabled)`
+  (`services/plugins/gate.ts`) is mounted after auth on every acquisition route
+  group — `/api/acquire`, `/api/discography`, `/api/watchlist`, `/api/archive`,
+  `/api/spotify`, `/api/sources`, `/api/downloads` — and returns **404** ("as if
+  the routes don't exist", the cleanest lightweight posture) when off. Orthogonal
+  to the per-user `requireAcquirer` role gate and the per-plugin
+  `requireAcquisitionMiddleware`. `/api/search` is deliberately **not** 404'd (it
+  stays a library search) — instead `searchRoutes(registry, config.acquisitionEnabled)`
+  skips its network fan-out for **every** user, exactly as it already does for a
+  listener.
+- **Background services skip.** The unattended pollers never start: `watchlistSvc.start()`
+  and the auto-acquisition loop are both guarded on `config.acquisitionEnabled`
+  (and their per-sweep `isAcquisitionEnabled` callback folds it in too).
+- **Web hides everything.** `GET /api/auth/me` returns `acquisitionEnabled`;
+  `AuthService.canAcquire()` is `serverAcquisitionEnabled() && role-can-acquire`,
+  so the single flag cascades to the Downloads nav item, the `acquireGuard` on
+  `/downloads`, and every acquisition surface on the (now acquisition-only, #227)
+  Search page — which shows a "browse your Library instead" empty state when the
+  user can't acquire.
+
+**Not covered (follow-ups, tracked on #235):** an admin **runtime** toggle
+(persisted, no restart) — env-only is the confidently-safe subset because the
+background services are constructed at boot and can't be cleanly torn down live;
+hiding the Extensions → Acquisition **section** for admins; and dropping the
+slskd/Lidarr services from the shipped compose file for the off profile.
+
 ## Resource notes
 
 - The compose stack publishes only port 8484; everything else is on an

@@ -248,7 +248,11 @@ describe('SearchComponent — metadata-driven search', () => {
     expect(component.hasBlendedResults()).toBe(true);
   });
 
-  it('populates libraryAlbums from the unified-search payload so own-library matches surface as cards', async () => {
+  // Search is now acquisition-only (#227): local-library results were removed
+  // from this page. The unified-search `res.local` payload still arrives but is
+  // intentionally ignored — a search must not throw or surface owned-library rows
+  // here anymore ("find what I own" lives in Library/Radio).
+  it('ignores the unified-search local payload without error (acquisition-only Search)', async () => {
     const localAlbum = {
       id: 'loc-album-1',
       name: 'Ídolo',
@@ -272,17 +276,9 @@ describe('SearchComponent — metadata-driven search', () => {
     component.handleSearch(new Event('submit'));
     await flush();
 
-    expect(component.libraryAlbums()).toEqual([localAlbum]);
-  });
-
-  it('falls back to an empty libraryAlbums set when the search payload omits it', async () => {
-    const { component, search } = setup();
-    search.setQuery('c. tangana');
-
-    component.handleSearch(new Event('submit'));
-    await flush();
-
-    expect(component.libraryAlbums()).toEqual([]);
+    // No local-results signal remains; the search settled cleanly.
+    expect((component as unknown as { libraryAlbums?: unknown }).libraryAlbums).toBeUndefined();
+    expect(component.searchError()).toBeNull();
   });
 
   it('getBlended submits a url candidate through the acquire pipeline and marks it added to library', async () => {

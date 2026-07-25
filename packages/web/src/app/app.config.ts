@@ -66,6 +66,9 @@ export const appConfig: ApplicationConfig = {
             auth.welcomeDismissed.set(profile.welcomeDismissed);
             auth.autoplayOnLoad.set(profile.autoplayOnLoad);
             auth.feedbackCapture.set(profile.feedbackCapture);
+            // Deployment-wide acquisition kill-switch (#235): default to enabled
+            // when an older server omits the field.
+            auth.serverAcquisitionEnabled.set(profile.acquisitionEnabled ?? true);
             // Resume a previously playing session if the user opted in to
             // autoplay-on-load. See PlayerService.maybeResumeAutoplay.
             player.maybeResumeAutoplay(profile.autoplayOnLoad);

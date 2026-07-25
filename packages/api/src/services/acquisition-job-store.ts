@@ -381,6 +381,56 @@ export function markItemsScanned(db: Database, pathToSongId: Map<string, string>
 }
 
 /**
+ * Post-scan album backfill for a **direct** grab (issue #223). A raw
+ * peer-browse / single-file grab has no canonical Lidarr metadata — its
+ * enqueue-time `artist_name`/`album_title` are best-effort guesses parsed from
+ * the peer's folder segments (often noisy, sometimes absent), so the Downloads
+ * feed row and the "Open in Library" deep-link resolve to the wrong album or
+ * nothing. Once the file has actually landed we know exactly *where* it went:
+ * the scanned item's `song_id` → `library_songs.album_id` → the canonical
+ * `library_albums` row. Re-point the job's `artist_name`/`album_title` to that
+ * album's canonical artist+name so `albumIdFor(artistName, albumTitle)` (used by
+ * the feed + `enrichWithAcquisitionJobs`) reproduces the real album id.
+ *
+ * Restricted to `kind='direct'` on purpose — hunt/auto-acquire/track-search
+ * jobs carry authoritative canonical metadata that must never be overwritten by
+ * a post-scan guess. When a grab spanned several albums the dominant (mode)
+ * landed album wins, matching the one-card-per-job feed model. Best-effort: a
+ * missing `library_albums` table (minimal test DB) or no scanned item degrades
+ * to a no-op, never throwing into the watcher's scan seam.
+ */
+export function backfillDirectJobAlbum(db: Database, jobId: string): void {
+  const job = db
+    .query<{ kind: string }, [string]>(`SELECT kind FROM acquisition_jobs WHERE id = ?`)
+    .get(jobId);
+  if (!job || job.kind !== 'direct') return;
+  let dominant: { artist: string; name: string } | undefined;
+  try {
+    const row = db
+      .query<{ artist: string; name: string; c: number }, [string]>(
+        `SELECT a.artist AS artist, a.name AS name, COUNT(*) AS c
+         FROM acquisition_job_items i
+         JOIN library_songs s ON s.id = i.song_id
+         JOIN library_albums a ON a.id = s.album_id
+         WHERE i.job_id = ? AND i.state = 'scanned' AND i.song_id IS NOT NULL
+         GROUP BY a.id
+         ORDER BY c DESC, a.name ASC
+         LIMIT 1`,
+      )
+      .get(jobId);
+    if (row) dominant = { artist: row.artist, name: row.name };
+  } catch {
+    return; // library_songs / library_albums not present — nothing to backfill.
+  }
+  if (!dominant) return;
+  db.run(
+    `UPDATE acquisition_jobs SET artist_name = ?, album_title = ?, updated_at = ?
+     WHERE id = ? AND kind = 'direct'`,
+    [dominant.artist, dominant.name, Date.now(), jobId],
+  );
+}
+
+/**
  * Fallback re-enqueue: point the matching still-missing item at a new peer.
  * Restricted to non-completed items so an overlapping title can never
  * mislabel a delivered file. Returns false when nothing safe matched.

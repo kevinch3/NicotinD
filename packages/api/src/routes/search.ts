@@ -26,7 +26,13 @@ const NetworkSearchResponseSchema = z
 
 const emptyLocal = { artists: [] as unknown[], albums: [] as unknown[], songs: [] as unknown[] };
 
-export function searchRoutes(registry: ProviderRegistry) {
+/**
+ * @param acquisitionEnabled Deployment-wide acquisition kill-switch (#235).
+ *   When false the unified search stays library-only for **every** user (the
+ *   network fan-out is skipped just as it already is for listeners) — the page
+ *   still works, it just never surfaces acquirable results.
+ */
+export function searchRoutes(registry: ProviderRegistry, acquisitionEnabled = true) {
   const app = new OpenAPIHono<AuthEnv>();
 
   // Unified search: returns local results immediately + fires network search
@@ -101,7 +107,7 @@ export function searchRoutes(registry: ProviderRegistry) {
         //    Listeners get a library-only search (no network lane surfaced).
         let searchId: string = crypto.randomUUID();
         let networkAvailable = false;
-        const acquirer = canAcquire(asRole(getCurrentUser(c)?.role));
+        const acquirer = acquisitionEnabled && canAcquire(asRole(getCurrentUser(c)?.role));
         for (const provider of acquirer ? registry.getByType('network') : []) {
           try {
             const { searchId: providerSearchId } = await provider.search(query);

@@ -55,7 +55,10 @@ import { PluginRegistry } from './services/plugins/registry.js';
 import { upsertTrackStatus } from './services/plugins/host-context.js';
 import { recordAcquireJobTrack } from './services/acquire-playlist.js';
 import { registerBuiltinPlugins } from './services/plugins/builtin.js';
-import { requireAcquisitionMiddleware } from './services/plugins/gate.js';
+import {
+  requireAcquisitionEnabledMiddleware,
+  requireAcquisitionMiddleware,
+} from './services/plugins/gate.js';
 import { seedLegacyAcquisitionPlugins } from './services/plugins/legacy-seed.js';
 import { AcquireWatcher } from './services/acquire-watcher.js';
 import { DiscographyService } from './services/discography.service.js';
@@ -462,11 +465,24 @@ export function createApp({
 
   // Reusable gate for acquisition-only features (hunt, watchlist).
   const requireAcquisition = requireAcquisitionMiddleware(plugins);
+  // Deployment-wide acquisition kill-switch (#235): when off, every acquisition
+  // route group hard-404s. Zero-cost pass-through when on.
+  // TODO(#235): env-only for now (the confidently-safe subset). Left open on the
+  // issue: an admin *runtime* toggle (persisted, no restart) — the background
+  // services here are constructed at boot and can't be cleanly torn down live;
+  // hiding the Extensions → Acquisition section for admins; and dropping the
+  // slskd/Lidarr services from the shipped compose file for the off profile.
+  const requireAcquisitionEnabled = requireAcquisitionEnabledMiddleware(config.acquisitionEnabled);
 
   // Public routes
   app.route(
     '/api/auth',
-    authRoutes(config.jwt.secret, config.jwt.expiresIn, config.registrationEnabled),
+    authRoutes(
+      config.jwt.secret,
+      config.jwt.expiresIn,
+      config.registrationEnabled,
+      config.acquisitionEnabled,
+    ),
   );
   app.route(
     '/api/setup',
@@ -508,6 +524,17 @@ export function createApp({
   app.use('/api/spotify/*', auth);
   app.use('/api/sources/*', auth);
   app.use('/api/feedback/*', auth);
+  // Deployment kill-switch (#235): the whole acquisition surface hard-404s when
+  // the install disabled acquisition. Mounted after auth so 401 still precedes
+  // 404. `/api/search` is deliberately NOT here — it must keep returning library
+  // results (it self-suppresses only its network fan-out, see searchRoutes).
+  app.use('/api/discography/*', requireAcquisitionEnabled);
+  app.use('/api/watchlist/*', requireAcquisitionEnabled);
+  app.use('/api/acquire/*', requireAcquisitionEnabled);
+  app.use('/api/archive/*', requireAcquisitionEnabled);
+  app.use('/api/spotify/*', requireAcquisitionEnabled);
+  app.use('/api/sources/*', requireAcquisitionEnabled);
+  app.use('/api/downloads/*', requireAcquisitionEnabled);
 
   app.get(
     '/api/ws/playback',
@@ -517,7 +544,7 @@ export function createApp({
     }),
   );
 
-  app.route('/api/search', searchRoutes(registry));
+  app.route('/api/search', searchRoutes(registry, config.acquisitionEnabled));
   app.route(
     '/api/admin',
     adminRoutes({
@@ -685,15 +712,18 @@ export function createApp({
       intervalMs: config.watchlist.intervalMs,
       minMatchPct: config.watchlist.minMatchPct,
       enabled: config.watchlist.enabled,
-      isAcquisitionEnabled: () => plugins.hasCapability('download'),
+      // Also honor the deployment kill-switch (#235) so a disabled install never
+      // auto-acquires even if a plugin claims the download capability.
+      isAcquisitionEnabled: () => config.acquisitionEnabled && plugins.hasCapability('download'),
     });
     app.route('/api/watchlist', watchlistRoutes(watchlistSvc));
-    watchlistSvc.start();
+    // Don't even start the unattended poller when acquisition is off deployment-wide.
+    if (config.acquisitionEnabled) watchlistSvc.start();
 
     // Native auto-acquisition loop (opt-in): sweeps Lidarr's wanted/missing list
     // and auto-acquires each album through the same shared core as the watchlist
     // poller. Off by default — it initiates downloads unattended.
-    if (config.downloads.autoAcquireEnabled) {
+    if (config.acquisitionEnabled && config.downloads.autoAcquireEnabled) {
       const autoAcquireSvc = new AutoAcquireService({
         db,
         hunter: hunterSvc,
@@ -702,7 +732,7 @@ export function createApp({
         intervalMs: config.downloads.autoAcquireIntervalMs,
         maxPerSweep: config.downloads.autoAcquireMaxPerSweep,
         minMatchPct: config.watchlist.minMatchPct,
-        isAcquisitionEnabled: () => plugins.hasCapability('download'),
+        isAcquisitionEnabled: () => config.acquisitionEnabled && plugins.hasCapability('download'),
       });
       autoAcquireSvc.start();
     }

@@ -8,6 +8,7 @@ import { AcoustIdLookup } from './acoustid-lookup.js';
 import { getDatabase } from '../db.js';
 import { recordAcquisition } from './acquisition-store.js';
 import {
+  backfillDirectJobAlbum,
   jobMetaForTransfer,
   markItemCompleted,
   markItemOrganized,
@@ -291,6 +292,11 @@ export class DownloadWatcher {
       const jobIds = new Set(
         files.map((f) => f.jobMeta?.jobId).filter((id): id is string => Boolean(id)),
       );
+      // Direct grabs have no canonical metadata — now that their files landed,
+      // re-point the job's artist/album to the album they actually landed in so
+      // the feed row + "Open in Library" deep-link resolve (issue #223). No-op
+      // for every other kind (they carry authoritative hunt metadata).
+      for (const jobId of jobIds) backfillDirectJobAlbum(db, jobId);
       for (const jobId of jobIds) recomputeStage(db, jobId);
     } catch (err) {
       log.warn({ err }, 'Failed to mark acquisition job items scanned');

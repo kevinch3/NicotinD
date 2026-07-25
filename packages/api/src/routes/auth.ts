@@ -34,7 +34,16 @@ const ErrorSchema = z
   })
   .openapi('Error');
 
-export function authRoutes(jwtSecret: string, jwtExpiresIn: string, registrationEnabled: boolean) {
+export function authRoutes(
+  jwtSecret: string,
+  jwtExpiresIn: string,
+  registrationEnabled: boolean,
+  // Deployment-wide acquisition kill-switch (#235). Surfaced on `/me` so the web
+  // can hide every acquisition surface (nav, Search's acquire lane, guards) when
+  // the whole module is off — the web-side half of the shared `acquisitionEnabled`
+  // guard. Defaults on so existing callers/tests keep today's behavior.
+  acquisitionEnabled = true,
+) {
   const app = new OpenAPIHono<AuthEnv>();
 
   // Public endpoint: check if registration is open
@@ -399,6 +408,7 @@ export function authRoutes(jwtSecret: string, jwtExpiresIn: string, registration
                 welcomeDismissed: z.boolean(),
                 autoplayOnLoad: z.boolean(),
                 feedbackCapture: z.boolean(),
+                acquisitionEnabled: z.boolean(),
               }).openapi('UserProfile'),
             },
           },
@@ -428,6 +438,7 @@ export function authRoutes(jwtSecret: string, jwtExpiresIn: string, registration
         welcomeDismissed: (settings?.welcome_dismissed ?? 0) === 1,
         autoplayOnLoad: (settings?.autoplay_on_load ?? 0) === 1,
         feedbackCapture: (settings?.feedback_capture ?? 0) === 1,
+        acquisitionEnabled,
       } as {
         id: string;
         username: string;
@@ -435,6 +446,7 @@ export function authRoutes(jwtSecret: string, jwtExpiresIn: string, registration
         welcomeDismissed: boolean;
         autoplayOnLoad: boolean;
         feedbackCapture: boolean;
+        acquisitionEnabled: boolean;
       }, 200);
     },
   );

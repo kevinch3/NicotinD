@@ -272,6 +272,12 @@ function loadConfig() {
     dataDir: process.env.NICOTIND_DATA_DIR || (fileConfig as Record<string, unknown>).dataDir,
     musicDir: process.env.NICOTIND_MUSIC_DIR || (fileConfig as Record<string, unknown>).musicDir,
     mode: process.env.NICOTIND_MODE || (fileConfig as Record<string, unknown>).mode,
+    // Deployment-wide acquisition kill-switch (#235): env `NICOTIND_ACQUISITION`
+    // (off/false/0/no → disabled) overrides the file config; unset falls through
+    // to the file value / schema default (on).
+    ...(parseBooleanEnv(process.env.NICOTIND_ACQUISITION) !== undefined
+      ? { acquisitionEnabled: parseBooleanEnv(process.env.NICOTIND_ACQUISITION) }
+      : {}),
     metadataFix: {
       ...((fileConfig as Record<string, unknown>).metadataFix as Record<string, unknown>),
       ...(metadataFixEnabled !== undefined ? { enabled: metadataFixEnabled } : {}),
