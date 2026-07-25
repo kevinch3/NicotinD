@@ -189,6 +189,7 @@ jobs:
           set -euo pipefail
           docker compose -f docker-compose.yml config -q
           docker compose -f docker-compose.yml -f docker-compose.override.example.yml config -q
+          docker compose -f docker-compose.yml -f docker-compose.gpu.yml config -q
 
       # `paths:` filters can't express "job runs always, one step conditionally",
       # so diff explicitly (same approach as deploy.yml's `changes` job).

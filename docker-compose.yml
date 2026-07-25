@@ -134,20 +134,11 @@ services:
     environment:
       MUSIC_DIR: /data/music
     # GPU inference (optional, ~10x faster embeddings; needs the NVIDIA
-    # container toolkit on the host). The GPU image keeps full CPU fallback —
-    # started without a GPU it silently runs on CPU — so enabling is safe.
-    # Uncomment here or in an override file (see docs/audio-ml-enrichment.md):
-    # build:
-    #   context: packages/analysis
-    #   args:
-    #     GPU: "1"
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu]
+    # container toolkit on the host) is opt-in via the docker-compose.gpu.yml
+    # overlay — enable it with `-f docker-compose.gpu.yml` or COMPOSE_FILE
+    # (see that file's header + docs/audio-ml-enrichment.md). It lives in its
+    # own overlay rather than the local override so a host GPU / nvidia-
+    # persistenced problem can't wedge the default CPU deploy.
     networks:
       - internal
     restart: unless-stopped

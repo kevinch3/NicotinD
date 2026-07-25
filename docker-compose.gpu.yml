@@ -1,0 +1,41 @@
+# Opt-in GPU overlay for the analysis sidecar.
+#
+# This file is NOT auto-merged by `docker compose` (only docker-compose.yml and
+# docker-compose.override.yml are). Enable it explicitly, either per-command:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+#
+# or persistently by adding this line to your `.env` (next to the compose file):
+#
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.gpu.yml
+#
+# Why a separate overlay instead of the local override file: the GPU request
+# below is a *hard* device reservation — if the host's nvidia-container-runtime
+# can't satisfy the GPU injection, the analysis container fails to start (it does
+# NOT fall back to CPU at the runtime level; the image's CPU fallback only kicks
+# in for a container that actually started). Keeping this out of
+# docker-compose.override.yml means a host GPU / nvidia-persistenced problem can
+# only affect deploys that explicitly opt in here — it can never wedge the
+# default CPU deploy, and recovering never means hand-editing the override file
+# that also holds your essential bind mounts.
+#
+# Requirements on the host (see docs/deployment.md "GPU passthrough on the host —
+# nvidia-persistenced vs CDI"): the nvidia-container-runtime must be able to
+# inject the GPU — either legacy mode with `nvidia-persistenced` running, or the
+# recommended CDI mode. The published analysis image is CPU-only, so this overlay
+# also switches the service to build from source with `GPU=1`.
+services:
+  analysis:
+    build:
+      context: packages/analysis
+      args:
+        GPU: "1"
+    # The modern (Compose >= v2.20) way to opt a service into the host's
+    # nvidia-container-runtime for GPU access.
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]

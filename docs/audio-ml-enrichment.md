@@ -49,8 +49,9 @@ The shipped pipeline:
   "gpu" only when `ANALYSIS_GPU_BUILD=1` (baked by the ARG) *and* a probe of
   `libcuda.so.1` reports a device. `TF_FORCE_GPU_ALLOW_GROWTH=true` is set so
   TF doesn't grab all GPU memory (the card may be shared, e.g. with a game
-  streamer). Enable per-host via a compose override (build arg + nvidia device
-  reservation — see the commented block in docker-compose.yml).
+  streamer). Enable per-host via the opt-in `docker-compose.gpu.yml` overlay
+  (build arg + nvidia device reservation — `-f docker-compose.gpu.yml` or
+  `COMPOSE_FILE`; see docs/deployment.md "GPU passthrough").
 - **D5 — `library_embeddings` keyed `(song_id, model)`** so a second embedding
   model can coexist; the vec is a packed Float32 blob, reused later for
   similarity (playlist-generation.md §2b).

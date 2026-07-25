@@ -53,14 +53,38 @@ equivalent, and it can only ever point at a tagged release (Immich's
 wheels, so this sidecar has never been runnable on arm64; on an arm64 host
 remove/disable the `analysis` service (everything degrades gracefully — only
 the audio-features enrichment task pauses). GPU inference still builds from
-source via an override (`--build-arg GPU=1`, see
-`docker-compose.override.example.yml` + [audio-ml-enrichment.md](audio-ml-enrichment.md)).
+source with `GPU=1`, opt-in via the **`docker-compose.gpu.yml` overlay** (see
+[audio-ml-enrichment.md](audio-ml-enrichment.md)).
+
+#### GPU passthrough — the `docker-compose.gpu.yml` overlay
+
+GPU access for the analysis sidecar lives in its own opt-in overlay
+(`docker-compose.gpu.yml`), **not** in `docker-compose.override.yml`. Enable it
+per-command or persistently via `COMPOSE_FILE`:
+
+```bash
+# per-command
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+# or persistently, in .env:
+COMPOSE_FILE=docker-compose.yml:docker-compose.gpu.yml
+```
+
+**Why a separate overlay, not the override file.** The device reservation below
+is a *hard* reservation: if the host can't satisfy the GPU injection the
+`analysis` container fails to start (there is no runtime-level CPU fallback — the
+image's CPU fallback only applies to a container that actually started). Keeping
+this out of `docker-compose.override.yml` means a host GPU / `nvidia-persistenced`
+problem can only affect deploys that explicitly opt in — it can never wedge the
+default CPU deploy, and recovering never means hand-editing the override file that
+also holds your essential bind mounts. (This is exactly the failure the v0.1.257/258
+deploys hit: the override requested the GPU while the host's legacy runtime had no
+`nvidia-persistenced` socket, so the whole stack wouldn't start.)
 
 #### GPU passthrough on the host — `nvidia-persistenced` vs CDI
 
 A host with an NVIDIA GPU usually ends up with the `nvidia-container-runtime`
-registered as an extra Docker runtime, and the override file shows the modern
-way to opt a service into it:
+registered as an extra Docker runtime, and the overlay opts a service into it the
+modern way:
 
 ```yaml
 analysis:
@@ -104,15 +128,14 @@ Error response from daemon: failed to create task for container: ...
   no such file or directory
 ```
 
-This surfaces the *other* symptom NicotinD has run into in the wild: a stale
-override on the host requesting NVIDIA GPU access even though the
-`CUDA_VISIBLE_DEVICES=""` workaround later in the same override disables
-the GPU at runtime. The two are redundant; pick one. If you don't actually
-need GPU access (the API's `audio-features` task tolerates the CPU fallback
-fine), drop the `deploy.resources` block — the image still ships with the
-CUDA libs from `GPU=1` so the analysis is ready to use a GPU the moment
-the override is added back, but the container no longer asks the host for
-one and so isn't subject to the `nvidia-persistenced` runtime dance.
+This surfaces the *other* symptom NicotinD has run into in the wild: the host
+opted into the GPU overlay (or, historically, carried the device block in its
+override) while a `CUDA_VISIBLE_DEVICES=""` workaround disabled the GPU at
+runtime anyway. The two are redundant; pick one. If you don't actually need GPU
+access (the API's `audio-features` task tolerates the CPU fallback fine), simply
+**don't enable `docker-compose.gpu.yml`** — the default deploy runs the published
+CPU image and never asks the host for a GPU, so it isn't subject to the
+`nvidia-persistenced` runtime dance at all.
 
 ### Infra image pins
 
