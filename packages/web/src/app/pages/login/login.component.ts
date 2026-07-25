@@ -1,10 +1,11 @@
 import { Component, inject, signal, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { AuthService } from '../../services/auth.service';
 import { AuthApiService } from '../../services/api/auth-api.service';
 import { PasswordFieldComponent } from '../../components/password-field/password-field.component';
 import { ServerConfigService } from '../../services/server-config.service';
+import { sanitizeReturnUrl } from '../../lib/return-url';
 
 @Component({
   selector: 'app-login',
@@ -15,7 +16,11 @@ export class LoginComponent implements OnInit {
   private auth = inject(AuthService);
   private api = inject(AuthApiService);
   private router = inject(Router);
+  private route = inject(ActivatedRoute);
   private server = inject(ServerConfigService);
+
+  /** Sanitized post-login destination (issue #231), defaults to home. */
+  private returnUrl = '/';
 
   username = '';
   password = '';
@@ -29,6 +34,9 @@ export class LoginComponent implements OnInit {
   readonly serverHost = hostOf(this.server.baseUrl());
 
   ngOnInit(): void {
+    // Capture where the auth guard wanted to send us (issue #231), sanitized to
+    // an in-app path so a crafted link can't open-redirect after login.
+    this.returnUrl = sanitizeReturnUrl(this.route.snapshot.queryParamMap.get('returnUrl'));
     this.api.getRegistrationStatus().subscribe({
       next: (res) => this.registrationEnabled.set(res.enabled),
       error: () => this.registrationEnabled.set(false),
@@ -52,7 +60,7 @@ export class LoginComponent implements OnInit {
       next: (result) => {
         this.auth.login(result.token, this.username, result.user?.role ?? 'user');
         this.loading.set(false);
-        this.router.navigate(['/']);
+        void this.router.navigateByUrl(this.returnUrl);
       },
       error: (err) => {
         this.error.set(err.error?.error ?? err.message ?? 'Something went wrong');

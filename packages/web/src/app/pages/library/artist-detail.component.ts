@@ -11,6 +11,7 @@ import {
   OnDestroy,
 } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { HttpClient } from '@angular/common/http';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { firstValueFrom } from 'rxjs';
 import { LibraryApiService } from '../../services/api/library-api.service';
@@ -79,6 +80,7 @@ const SONGS_PAGE_SIZE = 60;
 export class ArtistDetailComponent implements OnInit, OnDestroy {
   private route = inject(ActivatedRoute);
   private router = inject(Router);
+  private http = inject(HttpClient);
   private destroyRef = inject(DestroyRef);
   private api = inject(LibraryApiService);
   private downloadsApi = inject(DownloadsApiService);
@@ -622,6 +624,23 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
 
   getAlbumLink(id: string) {
     return resolveAlbumRoute(id);
+  }
+
+  // ─── Share (issue #229): mint a share link + copy it, mirroring album-detail ─
+  readonly shareCopied = signal(false);
+
+  shareArtist(): void {
+    const artist = this.artist();
+    if (!artist) return;
+    this.http
+      .post<{ url: string }>('/api/share', { resourceType: 'artist', resourceId: artist.id })
+      .subscribe({
+        next: ({ url }) => {
+          navigator.clipboard.writeText(url).catch(() => {});
+          this.shareCopied.set(true);
+          setTimeout(() => this.shareCopied.set(false), 3000);
+        },
+      });
   }
 
   readonly toTrack = toTrack;

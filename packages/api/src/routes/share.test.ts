@@ -61,6 +61,84 @@ describe('POST /api/share — generate', () => {
     const body = (await res.json()) as { url: string };
     expect(body.url).toMatch(/\/share\/[A-Za-z0-9_-]{22}$/);
   });
+
+  // Issue #229: artists are a shareable resource type.
+  it('returns a share URL for a valid artist', async () => {
+    const app = buildApp();
+    const token = await signJwt({ sub: 'u1', username: 'alice', role: 'user' }, SECRET);
+    const res = await app.request('/api/share', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ resourceType: 'artist', resourceId: 'art1' }),
+    });
+    expect(res.status).toBe(200);
+    const stored = testDb
+      .query<{ resource_type: string }, []>('SELECT resource_type FROM share_tokens')
+      .get();
+    expect(stored?.resource_type).toBe('artist');
+  });
+});
+
+// Issue #230: a logged-in user resolves a share token to its resource WITHOUT
+// activating the public 5-minute window.
+describe('GET /api/share/:token/resource — resolve (no side effects)', () => {
+  it('requires auth', async () => {
+    const app = buildApp();
+    testDb.run("INSERT INTO share_tokens VALUES ('tokR', 'artist', 'art9', 'u1', ?, NULL, NULL)", [
+      Date.now(),
+    ]);
+    const res = await app.request('/api/share/tokR/resource');
+    expect(res.status).toBe(401);
+  });
+
+  it('returns the resource without setting first_accessed_at', async () => {
+    const app = buildApp();
+    const jwt = await signJwt({ sub: 'u1', username: 'alice', role: 'user' }, SECRET);
+    testDb.run("INSERT INTO share_tokens VALUES ('tokR2', 'artist', 'art9', 'u1', ?, NULL, NULL)", [
+      Date.now(),
+    ]);
+    const res = await app.request('/api/share/tokR2/resource', {
+      headers: { Authorization: `Bearer ${jwt}` },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { resourceType: string; resourceId: string };
+    expect(body.resourceType).toBe('artist');
+    expect(body.resourceId).toBe('art9');
+    // The public clock was never started.
+    const row = testDb
+      .query<
+        { first_accessed_at: number | null },
+        [string]
+      >('SELECT first_accessed_at FROM share_tokens WHERE token = ?')
+      .get('tokR2');
+    expect(row!.first_accessed_at).toBeNull();
+  });
+
+  it('resolves even after the public window expired (session governs access)', async () => {
+    const app = buildApp();
+    const jwt = await signJwt({ sub: 'u1', username: 'alice', role: 'user' }, SECRET);
+    const past = Date.now() - 1000;
+    testDb.run("INSERT INTO share_tokens VALUES ('tokR3', 'album', 'al7', 'u1', ?, ?, ?)", [
+      Date.now() - 400_000,
+      Date.now() - 400_000,
+      past,
+    ]);
+    const res = await app.request('/api/share/tokR3/resource', {
+      headers: { Authorization: `Bearer ${jwt}` },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { resourceId: string };
+    expect(body.resourceId).toBe('al7');
+  });
+
+  it('404s an unknown token', async () => {
+    const app = buildApp();
+    const jwt = await signJwt({ sub: 'u1', username: 'alice', role: 'user' }, SECRET);
+    const res = await app.request('/api/share/nope/resource', {
+      headers: { Authorization: `Bearer ${jwt}` },
+    });
+    expect(res.status).toBe(404);
+  });
 });
 
 describe('POST /api/share/activate/:token — activate', () => {

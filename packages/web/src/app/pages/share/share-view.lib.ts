@@ -24,7 +24,9 @@ export interface ShareResourceView {
   coverId: string | null;
   tracks: ShareTrack[];
   ogDescription: string;
-  ogType: 'music.album' | 'music.playlist';
+  ogType: 'music.album' | 'music.playlist' | 'profile';
+  /** Artist bio excerpt, shown above the track list on an artist share. */
+  bio?: string;
 }
 
 function toTracks(raw: any[]): ShareTrack[] {
@@ -47,6 +49,29 @@ export function mapSharedAlbum(album: any): ShareResourceView {
     tracks,
     ogDescription: album.artist,
     ogType: 'music.album',
+  };
+}
+
+/**
+ * Artist share view (issue #229): portrait + name + bio + a playable list of the
+ * artist's songs (mirroring album/playlist shares so the guest's 5-minute window
+ * is a real preview, not a dead card). `artist` is the `GET /artists/:id`
+ * `{ artist }` object; `songs` the `GET /artists/:id/songs` page.
+ */
+export function mapSharedArtist(artist: any, songs: any[]): ShareResourceView {
+  const tracks = toTracks(songs);
+  const count = artist?.albumCount ?? 0;
+  const subtitle = `${count} ${count === 1 ? 'album' : 'albums'}`;
+  const bio = typeof artist?.bio === 'string' && artist.bio.trim() ? artist.bio.trim() : undefined;
+  return {
+    name: artist?.name ?? 'Artist',
+    subtitle,
+    // Cover route is keyed on the artist id (audio files carry no artist photo).
+    coverId: artist?.id ?? artist?.coverArt ?? null,
+    tracks,
+    ogDescription: bio ?? subtitle,
+    ogType: 'profile',
+    bio,
   };
 }
 

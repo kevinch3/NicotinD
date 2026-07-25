@@ -12,10 +12,14 @@ export const serverGuard: CanActivateFn = () => {
   return !server.needsConfiguration() || router.createUrlTree(['/server']);
 };
 
-export const authGuard: CanActivateFn = () => {
+export const authGuard: CanActivateFn = (_route, state) => {
   const auth = inject(AuthService);
   const router = inject(Router);
-  return auth.isAuthenticated() || router.createUrlTree(['/login']);
+  if (auth.isAuthenticated()) return true;
+  // Issue #231: preserve the attempted URL so login can send the user back to
+  // the page they were deep-linked to (a shared artist/album/playlist link,
+  // a bookmark) instead of dumping them on the home route. Login sanitizes it.
+  return router.createUrlTree(['/login'], { queryParams: { returnUrl: state.url } });
 };
 
 export const adminGuard: CanActivateFn = () => {

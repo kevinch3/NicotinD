@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mapSharedAlbum, mapSharedPlaylist } from './share-view.lib';
+import { mapSharedAlbum, mapSharedArtist, mapSharedPlaylist } from './share-view.lib';
 
 describe('mapSharedAlbum', () => {
   it('maps name, artist and the `song` array', () => {
@@ -15,6 +15,31 @@ describe('mapSharedAlbum', () => {
     expect(view.ogType).toBe('music.album');
     expect(view.tracks).toHaveLength(1);
     expect(view.tracks[0].title).toBe('One More Time');
+  });
+});
+
+describe('mapSharedArtist', () => {
+  it('maps name, album-count subtitle, id-keyed cover and a playable song list', () => {
+    const view = mapSharedArtist(
+      { id: 'art1', name: 'Daft Punk', albumCount: 2, bio: 'French duo.' },
+      [{ id: 's1', title: 'One More Time', artist: 'Daft Punk', duration: 320 }],
+    );
+    expect(view.name).toBe('Daft Punk');
+    expect(view.subtitle).toBe('2 albums');
+    expect(view.coverId).toBe('art1');
+    expect(view.ogType).toBe('profile');
+    expect(view.bio).toBe('French duo.');
+    expect(view.ogDescription).toBe('French duo.');
+    expect(view.tracks).toHaveLength(1);
+    expect(view.tracks[0].title).toBe('One More Time');
+  });
+
+  it('singularizes a one-album artist and omits bio when absent', () => {
+    const view = mapSharedArtist({ id: 'art2', name: 'Solo', albumCount: 1 }, []);
+    expect(view.subtitle).toBe('1 album');
+    expect(view.bio).toBeUndefined();
+    expect(view.ogDescription).toBe('1 album');
+    expect(view.tracks).toEqual([]);
   });
 });
 

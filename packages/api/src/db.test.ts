@@ -172,6 +172,63 @@ describe('applySchema — acquire_jobs backend CHECK relaxation', () => {
   });
 });
 
+describe('applySchema — share_tokens artist CHECK broadening (#229)', () => {
+  it('allows an artist share row on a fresh database', () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    db.run(`INSERT INTO users (id, username, password_hash) VALUES ('u1', 'a', 'h')`);
+    expect(() =>
+      db.run(
+        `INSERT INTO share_tokens (token, resource_type, resource_id, created_by, created_at)
+         VALUES ('t', 'artist', 'art1', 'u1', 1)`,
+      ),
+    ).not.toThrow();
+  });
+
+  it('rebuilds a legacy two-value-CHECK table to allow artist while preserving rows', () => {
+    const db = new Database(':memory:');
+    db.run(`CREATE TABLE users (id TEXT PRIMARY KEY, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL)`);
+    db.run(`INSERT INTO users (id, username, password_hash) VALUES ('u1', 'a', 'h')`);
+    // Legacy schema with the old CHECK (playlist|album only).
+    db.run(`
+      CREATE TABLE share_tokens (
+        token             TEXT    PRIMARY KEY,
+        resource_type     TEXT    NOT NULL CHECK (resource_type IN ('playlist', 'album')),
+        resource_id       TEXT    NOT NULL,
+        created_by        TEXT    NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at        INTEGER NOT NULL,
+        first_accessed_at INTEGER,
+        expires_at        INTEGER
+      )
+    `);
+    db.run(
+      `INSERT INTO share_tokens (token, resource_type, resource_id, created_by, created_at)
+       VALUES ('keep', 'album', 'al1', 'u1', 5)`,
+    );
+
+    applySchema(db);
+
+    // Legacy row preserved.
+    expect(db.query('SELECT COUNT(*) AS c FROM share_tokens').get()).toEqual({ c: 1 });
+    // Artist rows now accepted.
+    expect(() =>
+      db.run(
+        `INSERT INTO share_tokens (token, resource_type, resource_id, created_by, created_at)
+         VALUES ('art', 'artist', 'art1', 'u1', 6)`,
+      ),
+    ).not.toThrow();
+    // A bogus type is still rejected.
+    expect(() =>
+      db.run(
+        `INSERT INTO share_tokens (token, resource_type, resource_id, created_by, created_at)
+         VALUES ('bad', 'song', 'x', 'u1', 7)`,
+      ),
+    ).toThrow();
+    // Idempotent.
+    expect(() => applySchema(db)).not.toThrow();
+  });
+});
+
 describe('applySchema — drops the dead tombstones table (§D2)', () => {
   it('drops a pre-existing library_album_tombstones table', () => {
     const db = new Database(':memory:');
