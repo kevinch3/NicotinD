@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.258](https://github.com/kevinch3/NicotinD/compare/v0.1.257...v0.1.258) (2026-07-25)
+
+### Bug Fixes
+
+* **deploy:** pin bgutil-provider + analysis to runtime: runc ([4944270](https://github.com/kevinch3/NicotinD/commit/494427093d9145ed357c3c3eececb11e63d3b684))
 ## [0.1.257](https://github.com/kevinch3/NicotinD/compare/v0.1.256...v0.1.257) (2026-07-25)
 
 ### Bug Fixes
