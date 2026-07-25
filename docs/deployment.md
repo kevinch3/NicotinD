@@ -56,6 +56,64 @@ the audio-features enrichment task pauses). GPU inference still builds from
 source via an override (`--build-arg GPU=1`, see
 `docker-compose.override.example.yml` + [audio-ml-enrichment.md](audio-ml-enrichment.md)).
 
+#### GPU passthrough on the host — `nvidia-persistenced` vs CDI
+
+A host with an NVIDIA GPU usually ends up with the `nvidia-container-runtime`
+registered as an extra Docker runtime, and the override file shows the modern
+way to opt a service into it:
+
+```yaml
+analysis:
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: 1
+            capabilities: [gpu]
+```
+
+Under the hood, Docker then asks the NVIDIA runtime to inject the GPU. The
+NVIDIA runtime ships in two modes (see
+[the official docs](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/cdi-support.html)):
+
+- **legacy** (`mode = "legacy"`, the default on older toolkit installs) — the
+  runtime bind-mounts `/run/nvidia-persistenced/socket` into the container. If
+  `nvidia-persistenced` is **not running on the host** (the service is enabled
+  by default but stops on host reboot, package upgrades, driver updates, etc.),
+  that mount fails and the container can't start. Two fixes:
+  1. `sudo systemctl enable --now nvidia-persistenced` on the host (the
+     legacy runtime works as soon as the service is back), or
+  2. switch to **CDI mode** (recommended): the runtime reads CDI
+     specifications from `/etc/cdi` and `/var/run/cdi` and **does not** need
+     `nvidia-persistenced`. Enable with:
+     ```bash
+     sudo nvidia-ctk config --in-place --set nvidia-container-runtime.mode=cdi
+     sudo systemctl restart docker
+     ```
+     The toolkit's `nvidia-cdi-refresh` systemd service keeps the
+     `/var/run/cdi/nvidia.yaml` spec up to date automatically.
+
+The symptom of either missing fix is a one-line failure at the very end of
+`docker compose up --build -d`:
+
+```
+Error response from daemon: failed to create task for container: ...
+  OCI runtime create failed: runc create failed: ...
+  failed to fulfil mount request: open /run/nvidia-persistenced/socket:
+  no such file or directory
+```
+
+This surfaces the *other* symptom NicotinD has run into in the wild: a stale
+override on the host requesting NVIDIA GPU access even though the
+`CUDA_VISIBLE_DEVICES=""` workaround later in the same override disables
+the GPU at runtime. The two are redundant; pick one. If you don't actually
+need GPU access (the API's `audio-features` task tolerates the CPU fallback
+fine), drop the `deploy.resources` block — the image still ships with the
+CUDA libs from `GPU=1` so the analysis is ready to use a GPU the moment
+the override is added back, but the container no longer asks the host for
+one and so isn't subject to the `nvidia-persistenced` runtime dance.
+
 ### Infra image pins
 
 Images the app doesn't own are version-pinned so users can't drift on risky

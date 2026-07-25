@@ -30,6 +30,19 @@ services:
         GPU: "1"
     volumes:
       - /path/to/your/music:/data/music:ro
+    # `deploy.resources.reservations.devices` is the modern way to ask the
+    # host's nvidia-container-runtime for GPU access. The image keeps its
+    # full CPU fallback so omitting the block still runs (just slower).
+    # Important: on hosts whose nvidia runtime is in *legacy* mode (the
+    # default on older toolkit installs) this triggers a bind-mount of
+    # /run/nvidia-persistenced/socket. If `nvidia-persistenced` is not
+    # running on the host, the container fails to start with:
+    #   failed to fulfil mount request:
+    #   open /run/nvidia-persistenced/socket: no such file or directory
+    # Fix on the host:  sudo systemctl enable --now nvidia-persistenced
+    # Or switch to CDI: sudo nvidia-ctk config --in-place \
+    #                       --set nvidia-container-runtime.mode=cdi
+    # See docs/deployment.md "GPU passthrough on the host" for details.
     deploy:
       resources:
         reservations:
