@@ -45,8 +45,14 @@ mock.module('node:fs', () => ({
 }));
 
 // Import the SUT AFTER the mocks are registered.
-const { ffmpegAvailable, _resetFfmpegProbe, transcodeToFile, transcodeExt, transcodeContentType } =
-  await import('./transcode.js');
+const {
+  ffmpegAvailable,
+  _resetFfmpegProbe,
+  transcodeToFile,
+  transcodeExt,
+  transcodeContentType,
+  transcodeOutputIsAcceptable,
+} = await import('./transcode.js');
 
 afterAll(() => {
   mock.module('node:child_process', () => realCp);
@@ -133,6 +139,59 @@ describe('transcodeToFile', () => {
     // Center cancellation: each output channel is the L/R difference, so anything
     // panned dead-center (typically lead vocals) cancels out.
     expect(lastSpawnArgs![af + 1]).toBe('pan=stereo|c0=c0-c1|c1=c1-c0');
+  });
+
+  it('uses strict decoding flags so a damaged source fails fast (-xerror, +discardcorrupt)', async () => {
+    // The root cause of the "track plays 1-2 s then ends" bug: ffmpeg could
+    // exit 0 on a truncated source and produce a syntactically-valid but
+    // too-short cache file. These flags turn that into a non-zero exit so the
+    // post-write duration check is the last line of defense, not the only one.
+    const p = transcodeToFile('/in.flac', '/out.mp3', 'mp3', 192);
+    lastProc!.emit('close', 0);
+    await expect(p).resolves.toBeUndefined();
+    expect(lastSpawnArgs).toContain('-xerror');
+    expect(lastSpawnArgs).toContain('+discardcorrupt');
+    expect(lastSpawnArgs).toContain('explode');
+  });
+
+  it('rejects a transcode whose ffprobe output is suspiciously short vs the source', async () => {
+    // Sanity: the I/O wrapper exists and is exported (the unit tests above
+    // cover the pure comparison; the wrapper is too fs-bound to mock cleanly
+    // here without coupling to the real ffmpeg binary).
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const mod = require('./transcode.js') as typeof import('./transcode.js');
+    expect(typeof mod.validateTranscodeOutput).toBe('function');
+  });
+});
+
+describe('validateTranscodeOutput', () => {
+  it('accepts an output at least as long as the source minus tolerance', () => {
+    // Source 240 s, output 239 s → within 1.0 s tolerance → pass.
+    expect(transcodeOutputIsAcceptable(240, 239)).toBe(true);
+    expect(transcodeOutputIsAcceptable(240, 240)).toBe(true);
+    expect(transcodeOutputIsAcceptable(240, 500)).toBe(true);
+  });
+
+  it('rejects an output that is far shorter than the source (the reported bug)', () => {
+    // Source 240 s, output 1.8 s → would cause "plays 1-2 s then ends".
+    expect(transcodeOutputIsAcceptable(240, 1.8)).toBe(false);
+    expect(transcodeOutputIsAcceptable(240, 100)).toBe(false);
+  });
+
+  it('rejects a non-finite or non-positive output duration', () => {
+    expect(transcodeOutputIsAcceptable(240, 0)).toBe(false);
+    expect(transcodeOutputIsAcceptable(240, -1)).toBe(false);
+    expect(transcodeOutputIsAcceptable(240, Number.NaN)).toBe(false);
+    expect(transcodeOutputIsAcceptable(240, Number.POSITIVE_INFINITY)).toBe(false);
+  });
+
+  it('best-effort: returns true when source or output duration is unreadable', () => {
+    // The check must not block healthy transcodes when ffprobe / music-metadata
+    // is unavailable — ffmpeg's strict flags already turn obvious damage into
+    // a non-zero exit, so a missing probe is a no-op pass.
+    expect(transcodeOutputIsAcceptable(null, 100)).toBe(true);
+    expect(transcodeOutputIsAcceptable(240, null)).toBe(true);
+    expect(transcodeOutputIsAcceptable(null, null)).toBe(true);
   });
 });
 

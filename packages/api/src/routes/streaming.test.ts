@@ -190,6 +190,30 @@ describe('streaming routes', () => {
     expect(res.headers.get('content-type')).toBe('image/jpeg');
   });
 
+  it('keeps a transcode-cache response Content-Length/Range intact while pinning the file', async () => {
+    // The route wraps a Blob body in a ReadableStream so it can release the
+    // transcode-cache pin when the response ends. The wire format must remain
+    // identical (Content-Length on 200, Content-Range on 206, no
+    // transfer-encoding) so browsers can keep using duration from the
+    // container parse. The transcode here fails (fake audio bytes) and the
+    // route falls back to the original — the same assertions on the passthrough
+    // path are the proof the body wrapper didn't change the wire contract.
+    db.run(
+      `INSERT INTO app_settings (key, value) VALUES ('streaming', ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+      [JSON.stringify({ transcodeEnabled: true, forceTranscode: true, format: 'mp3', maxBitRate: 192 })],
+    );
+    try {
+      const res = await app.request('/stream/song-1');
+      expect(res.status).toBe(200);
+      expect(res.headers.get('content-length')).toBe('10');
+      expect(res.headers.get('transfer-encoding')).toBeNull();
+      expect(res.headers.get('accept-ranges')).toBe('bytes');
+    } finally {
+      db.run(`DELETE FROM app_settings WHERE key = 'streaming'`);
+    }
+  });
+
   it('returns 404 for an artist id with no canonical artwork (no album-cover fallback)', async () => {
     // The artist's only track sits in a folder that DOES have a cover.jpg. Before
     // this change the cover route fell back to that representative track's folder

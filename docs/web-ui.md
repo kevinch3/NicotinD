@@ -164,6 +164,53 @@ single looping call site (the load effect) identified the dependency; verified
 by rebuilding master vs. fix behind a 900 ms first-byte delay proxy (master:
 20 src assignments, never plays; fix: 1 assignment, plays).
 
+**"Plays 1-2 s then advances" bug — false `ended` recovery.** The user reported
+a track playing for 1-2 s, the seek bar reaching 100 %, and the queue
+advancing. Returning to the track played it correctly. The browser fires
+`ended` on the audio element, the player's `onEnded` handler advances the
+queue, and the user never sees the full track. Two root-cause families
+contribute and both are defended in depth:
+
+- **Server cache integrity** (see [library-scanner.md](library-scanner.md)
+  "Transcode cache integrity"): a transcode cache file at the final name that
+  is too short — from a corrupt write predating the temp-rename protection,
+  from a successful-but-truncated ffmpeg pass, or from a pre-`600f763` cache
+  predating the disk-cache fix — is treated as garbage and re-transcoded
+  (size floor + ffprobe post-check + source-size in key + in-use pin).
+- **Frontend false-ended guard** (`PlayerComponent`):
+  - `onDuration` rejects a browser-reported `audio.duration` that fails
+    **both** the 70 %-of-API relative check AND the ±5 s absolute check
+    (helper: `browserDurationIsAcceptable`). The seek bar keeps the
+    API-known `track.duration` (from the source tag metadata) until the
+    browser proves the real value via a `canplay`-time `durationchange`.
+  - `onEnded` runs `isFalseEnded(audio)` first: if `currentTime` is < 70 % of
+    the known duration, or the browser's reported duration is far off the
+    API one, the queue does NOT advance. The track is paused, `recoveryState`
+    is set to `awaiting-duration`, and the player waits for a real
+    `durationchange` (or `canplay` with a sane duration) before resuming
+    playback from the audio element's current position.
+  - A 5 s `recoveryTimeout` is the safety valve: if no sane duration
+    arrives, the recovery gives up waiting and seeks to 0 + plays, so a
+    truly-corrupt file doesn't strand the user on a frozen track.
+  - The seek bar's `safeProgress` no longer falls back to `t` when the
+    duration is unknown — it stays at 0 — so the user does not see a
+    100 %-filled bar during recovery (the "seek bar at 100 %" part of the
+    symptom).
+  - A `loadGeneration` counter (bumped on element swap, captured at listener
+    bind time) is a defense-in-depth filter against stale events that could
+    otherwise leak into queue handling during a cross-element handoff.
+
+Regression coverage: `player.component.spec.ts` has a dedicated
+`premature ended (false positive) recovery` block — browser durations that
+fail the gate are rejected, the queue does not advance on a false `ended`,
+the 5 s recovery timeout falls back cleanly, and a `canplay`-time sane
+duration exits recovery and resumes playback. The pure `browserDurationIsAcceptable`
+helper has its own block covering the AND/OR semantics. e2e: a
+`force-transcoded track plays its full duration` case in
+`tests/playback.spec.ts` enables force transcode, plays a 30 s fixture
+FLAC, and asserts after 5 s of playback that the browser-reported duration
+is still ≥ 25 s and `currentTime > 5`.
+
 **Testing `input()`-signal components (JIT vitest limitation)**: the web unit
 suite runs on the JIT/vitest harness (`@angular/compiler`, no ngtsc build
 step), which has no compile-time transform for signal `input()`/

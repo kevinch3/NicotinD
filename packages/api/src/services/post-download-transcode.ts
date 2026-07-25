@@ -1,9 +1,10 @@
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { renameSync, rmSync } from 'node:fs';
 import { extname } from 'node:path';
 import { createLogger } from '@nicotind/core';
 import { isLossless } from './library-track-select.js';
 import { getMusicMetadata } from './music-metadata-loader.js';
+import { ffmpegAvailable, transcodeOutputIsAcceptable } from './transcode.js';
 import { ffmpegBinary } from './ffmpeg-path.js';
 
 const log = createLogger('post-download-transcode');
@@ -48,6 +49,15 @@ export async function isLosslessFile(absPath: string): Promise<boolean> {
  *
  * Returns the new absolute path (same dir + basename, `.opus` extension). On any
  * ffmpeg failure the original is left untouched and the call throws.
+ *
+ * Integrity (same contract as the streaming transcode in `./transcode.ts`):
+ *   - `-xerror` + `+discardcorrupt` so a damaged source fails fast
+ *   - post-write ffprobe vs music-metadata source duration; an obviously
+ *     truncated output is rejected without renaming, so the library never
+ *     ingests a too-short file. This file ends up IN the library (not just
+ *     in a cache) so a corrupt short file here is a worse failure mode than
+ *     the streaming equivalent — the user can't tell a single track in the
+ *     library is short without playing it.
  */
 export function transcodeToOpus(absPath: string, bitRate = 128): Promise<string> {
   const ext = extname(absPath);
@@ -61,6 +71,11 @@ export function transcodeToOpus(absPath: string, bitRate = 128): Promise<string>
     '-loglevel',
     'error',
     '-y',
+    '-fflags',
+    '+discardcorrupt',
+    '-err_detect',
+    'explode',
+    '-xerror',
     '-i',
     absPath,
     '-vn',
@@ -80,11 +95,30 @@ export function transcodeToOpus(absPath: string, bitRate = 128): Promise<string>
       cleanup(tmpPath);
       reject(err);
     });
-    proc.on('close', (code) => {
+    proc.on('close', async (code) => {
       if (code !== 0) {
         cleanup(tmpPath);
         reject(new Error(`ffmpeg exited with code ${code} transcoding ${absPath}`));
         return;
+      }
+      // Exit 0 isn't enough — ffmpeg can succeed on a truncated source and
+      // produce a valid-but-short Opus file that the browser will play for
+      // 1-2 s then "end". Validate before swapping the library file.
+      try {
+        const ok = await validateOpusOutput(absPath, tmpPath);
+        if (!ok) {
+          cleanup(tmpPath);
+          reject(
+            new Error(
+              `Opus output failed duration check: source ${absPath} produced suspiciously short output at ${tmpPath}`,
+            ),
+          );
+          return;
+        }
+      } catch (err) {
+        // Best-effort: a missing probe is a no-op pass (the strict flags above
+        // already turn obvious damage into a non-zero exit).
+        log.debug({ err, absPath }, 'post-download transcode output duration probe skipped');
       }
       try {
         // Promote temp → final, then drop the original. If dest === source path
@@ -99,6 +133,57 @@ export function transcodeToOpus(absPath: string, bitRate = 128): Promise<string>
       }
     });
   });
+}
+
+/**
+ * Source/output duration comparison for the ingest-time Opus transcode. The
+ * streaming helper (`validateTranscodeOutput` in `./transcode.ts`) does the
+ * same job but imports `music-metadata` dynamically; we re-implement the
+ * probe call here to avoid a circular import.
+ */
+async function validateOpusOutput(sourcePath: string, outputPath: string): Promise<boolean> {
+  if (!ffmpegAvailable()) return true; // ffmpeg missing → strict flags also off, trust the exit
+  const [src, out] = await Promise.all([
+    readSourceDurationSec(sourcePath),
+    readOutputDurationSec(outputPath),
+  ]);
+  return transcodeOutputIsAcceptable(src, out);
+}
+
+async function readSourceDurationSec(absPath: string): Promise<number | null> {
+  try {
+    const mm = await getMusicMetadata();
+    if (!mm) return null;
+    const meta = await mm.parseFile(absPath, { duration: true, skipCovers: true });
+    return meta.format.duration ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function readOutputDurationSec(absPath: string): Promise<number | null> {
+  try {
+    const ffprobe = ffmpegBinary().replace(/ffmpeg$/, 'ffprobe');
+    const out = execFileSync(
+      ffprobe,
+      [
+        '-v',
+        'error',
+        '-show_entries',
+        'format=duration',
+        '-of',
+        'default=noprint_wrappers=1:nokey=1',
+        absPath,
+      ],
+      { stdio: ['ignore', 'pipe', 'ignore'], timeout: 10_000 },
+    )
+      .toString()
+      .trim();
+    const sec = Number(out);
+    return Number.isFinite(sec) ? sec : null;
+  } catch {
+    return null;
+  }
 }
 
 function cleanup(p: string): void {

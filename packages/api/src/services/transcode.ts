@@ -78,6 +78,16 @@ const VOCAL_REMOVAL_FILTER = 'pan=stereo|c0=c0-c1|c1=c1-c0';
  * a half-written cache entry. The on-disk file enables HTTP **range** support,
  * which is what makes seeking work on transcoded streams. Pass `vocalRemoval`
  * to apply the center-channel cancellation filter (karaoke / `?vocals=off`).
+ *
+ * Integrity checks beyond `exit 0`:
+ *   - `-xerror` and `-fflags +discardcorrupt` so ffmpeg fails fast on a
+ *     damaged/truncated source rather than silently producing a partial output
+ *   - a post-write ffprobe of the temp file compared against the source
+ *     duration; a "successful" output shorter than the source (within tolerance)
+ *     is rejected. This is the defense against the "track plays 1-2 s, then
+ *     the seek bar hits 100 % and the queue advances" bug — the browser was
+ *     receiving a syntactically-valid but too-short media file and treating
+ *     it as the full track.
  */
 export function transcodeToFile(
   absPath: string,
@@ -94,6 +104,11 @@ export function transcodeToFile(
       '-loglevel',
       'error',
       '-y',
+      '-fflags',
+      '+discardcorrupt',
+      '-err_detect',
+      'explode',
+      '-xerror',
       '-i',
       absPath,
       '-vn',
@@ -110,21 +125,116 @@ export function transcodeToFile(
       cleanupTmp(tmp);
       reject(err);
     });
-    proc.on('close', (code) => {
-      if (code === 0) {
-        try {
-          renameSync(tmp, outPath);
-          resolve();
-        } catch (err) {
-          cleanupTmp(tmp);
-          reject(err as Error);
-        }
-      } else {
+    proc.on('close', async (code) => {
+      if (code !== 0) {
         cleanupTmp(tmp);
         reject(new Error(`ffmpeg exited ${code}: ${stderr.slice(0, 500)}`));
+        return;
+      }
+      // ffmpeg exited 0, but that's not a proof of completeness. Validate the
+      // output's duration against the source so a truncated source can never
+      // yield a too-short (but valid-container) cache entry. The check is
+      // best-effort: a missing ffprobe / unreadable source duration skips it
+      // rather than failing the transcode (the `+discardcorrupt`/`-xerror`
+      // flags above already turn obvious damage into a non-zero exit).
+      try {
+        const ok = await validateTranscodeOutput(absPath, tmp);
+        if (!ok) {
+          cleanupTmp(tmp);
+          reject(
+            new Error(
+              `transcode output failed duration check: source ${absPath} produced suspiciously short output at ${tmp}`,
+            ),
+          );
+          return;
+        }
+      } catch (err) {
+        // Probe failure (no ffprobe, unreadable file, etc.) — log but do not
+        // fail the transcode. ffmpeg's exit 0 + the strict flags are usually
+        // enough to trust the file.
+        log.debug({ err, absPath }, 'transcode output duration probe skipped');
+      }
+      try {
+        renameSync(tmp, outPath);
+        resolve();
+      } catch (err) {
+        cleanupTmp(tmp);
+        reject(err as Error);
       }
     });
   });
+}
+
+/**
+ * Source/output duration comparison. Returns `true` when the output is
+ * acceptably complete (>= source minus tolerance), `false` when it is
+ * suspiciously short and the cache entry should be discarded. Any error
+ * (probe missing, source unreadable) resolves to `true` so we don't fail
+ * healthy transcodes on a transient probe problem.
+ *
+ * Tolerance: 1.0 s. This absorbs tiny CBR/VBR framing drift between
+ * libmp3lame / libopus / aac and music-metadata's duration parse, while
+ * still flagging the "plays 1-2 s" failure (a 1.8 s output for a 240 s
+ * source is 238 s short, way outside the tolerance).
+ */
+export const TRANSCODE_DURATION_TOLERANCE_SEC = 1.0;
+
+export function transcodeOutputIsAcceptable(
+  sourceSec: number | null,
+  outputSec: number | null,
+): boolean {
+  if (sourceSec == null || outputSec == null) return true; // best-effort
+  if (!Number.isFinite(outputSec) || outputSec <= 0) return false;
+  return outputSec >= sourceSec - TRANSCODE_DURATION_TOLERANCE_SEC;
+}
+
+export async function validateTranscodeOutput(
+  sourcePath: string,
+  outputPath: string,
+): Promise<boolean> {
+  const [src, out] = await Promise.all([
+    readSourceDurationSec(sourcePath),
+    readOutputDurationSec(outputPath),
+  ]);
+  return transcodeOutputIsAcceptable(src, out);
+}
+
+async function readSourceDurationSec(absPath: string): Promise<number | null> {
+  try {
+    const { getMusicMetadata } = await import('./music-metadata-loader.js');
+    const mm = await getMusicMetadata();
+    if (!mm) return null;
+    const meta = await mm.parseFile(absPath, { duration: true, skipCovers: true });
+    return meta.format.duration ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function readOutputDurationSec(absPath: string): Promise<number | null> {
+  if (!ffmpegPresent) return null;
+  try {
+    const ffprobe = ffmpegBinary().replace(/ffmpeg$/, 'ffprobe');
+    const out = execFileSync(
+      ffprobe,
+      [
+        '-v',
+        'error',
+        '-show_entries',
+        'format=duration',
+        '-of',
+        'default=noprint_wrappers=1:nokey=1',
+        absPath,
+      ],
+      { stdio: ['ignore', 'pipe', 'ignore'], timeout: 10_000 },
+    )
+      .toString()
+      .trim();
+    const sec = Number(out);
+    return Number.isFinite(sec) ? sec : null;
+  } catch {
+    return null;
+  }
 }
 
 function cleanupTmp(tmp: string): void {
