@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.259](https://github.com/kevinch3/NicotinD/compare/v0.1.258...v0.1.259) (2026-07-25)
+
+### Bug Fixes
+
+* **deploy:** decouple analysis GPU opt-in into docker-compose.gpu.yml overlay ([18a4e84](https://github.com/kevinch3/NicotinD/commit/18a4e848fba00546091505939f71f8e1ebb01fbc))
 ## [0.1.258](https://github.com/kevinch3/NicotinD/compare/v0.1.257...v0.1.258) (2026-07-25)
 
 ### Bug Fixes
