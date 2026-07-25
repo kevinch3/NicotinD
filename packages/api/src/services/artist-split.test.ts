@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'bun:test';
-import { splitArtists, formatArtistDisplay, isAtomicArtist } from './artist-split.js';
+import {
+  splitArtists,
+  formatArtistDisplay,
+  isAtomicArtist,
+  segmentConcatenatedArtist,
+} from './artist-split.js';
 import type { ArtistCredit } from './artist-split.js';
 
 function primaries(credits: ArtistCredit[]): string[] {
@@ -146,6 +151,36 @@ describe('splitArtists', () => {
     });
   });
 
+  describe('delimiter-less mash segmentation (issue #212) — only when every segment confirmed', () => {
+    it('splits a no-delimiter mash when every segment is a confirmed artist', () => {
+      // The real prod case: three acts run together with no separator.
+      const result = splitArtists(
+        '2 MinutosTruenoDie Toten Hosen',
+        confirmed('2 minutos', 'trueno', 'die toten hosen'),
+      );
+      expect(primaries(result)).toEqual(['2 Minutos', 'Trueno', 'Die Toten Hosen']);
+    });
+
+    it('keeps the mash whole when even one segment is unconfirmed', () => {
+      const result = splitArtists(
+        '2 MinutosTruenoDie Toten Hosen',
+        confirmed('2 minutos', 'trueno'), // "Die Toten Hosen" not confirmed
+      );
+      expect(primaries(result)).toEqual(['2 MinutosTruenoDie Toten Hosen']);
+    });
+
+    it('does not carve a real single artist that has no confirmed sub-parts', () => {
+      // "DaBaby" has a legal internal cut but neither "Da" nor "Baby" is confirmed.
+      const result = splitArtists('DaBaby', confirmed('dababy'));
+      expect(primaries(result)).toEqual(['DaBaby']);
+    });
+
+    it('never splits a spaced compound (no legal cut) even if members are confirmed', () => {
+      const result = splitArtists('Die Toten Hosen', confirmed('die', 'toten', 'hosen'));
+      expect(primaries(result)).toEqual(['Die Toten Hosen']);
+    });
+  });
+
   describe('canonicalWhole protection — duos/bands kept whole even if all parts confirmed', () => {
     it('keeps a duo whole when marked canonical even though both members are confirmed', () => {
       const result = splitArtists('Wisin & Yandel', {
@@ -257,6 +292,49 @@ describe('isAtomicArtist', () => {
 
   it('keeps AC/DC atomic (no spaced slash)', () => {
     expect(isAtomicArtist('AC/DC')).toBe(true);
+  });
+});
+
+describe('segmentConcatenatedArtist', () => {
+  // Resolver mirrors the scanner: a normalized-membership check returning the piece.
+  const resolver = (...confirmed: string[]) => {
+    const set = new Set(confirmed.map((c) => c.toLowerCase()));
+    return (s: string): string | null => (set.has(s.toLowerCase()) ? s : null);
+  };
+
+  it('segments a three-act mash into its members (longest-segment-first)', () => {
+    expect(
+      segmentConcatenatedArtist(
+        '2 MinutosTruenoDie Toten Hosen',
+        resolver('2 Minutos', 'Trueno', 'Die Toten Hosen'),
+      ),
+    ).toEqual(['2 Minutos', 'Trueno', 'Die Toten Hosen']);
+  });
+
+  it('returns null when a segment cannot be resolved', () => {
+    expect(segmentConcatenatedArtist('MetallicaMysteryBand', resolver('Metallica'))).toBeNull();
+  });
+
+  it('returns null when there is no legal cut (spaced/hyphenated name)', () => {
+    expect(segmentConcatenatedArtist('Wu-Tang Clan', resolver('Wu', 'Tang', 'Clan'))).toBeNull();
+    expect(segmentConcatenatedArtist('Sam Cooke', resolver('Sam', 'Cooke'))).toBeNull();
+  });
+
+  it('does not treat a fully-confirmed whole value as a split', () => {
+    // The whole string is "confirmed" (atomic mashes confirm themselves) — still no split
+    // unless it decomposes into >=2 distinct confirmed segments.
+    expect(segmentConcatenatedArtist('DaBaby', resolver('DaBaby'))).toBeNull();
+  });
+
+  it('splits two short real artists run together', () => {
+    expect(segmentConcatenatedArtist('MetallicaU2', resolver('Metallica', 'U2'))).toEqual([
+      'Metallica',
+      'U2',
+    ]);
+  });
+
+  it('returns null for a too-short value', () => {
+    expect(segmentConcatenatedArtist('AB', resolver('A', 'B'))).toBeNull();
   });
 });
 

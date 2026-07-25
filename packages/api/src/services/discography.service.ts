@@ -78,10 +78,9 @@ export class DiscographyService {
     });
 
     const link = this.db
-      .query<
-        { mbid: string },
-        [string]
-      >('SELECT mbid FROM artist_discography_links WHERE artist_id = ?')
+      .query<{ mbid: string }, [string]>(
+        'SELECT mbid FROM artist_discography_links WHERE artist_id = ?',
+      )
       .get(artistId);
 
     return {
@@ -94,10 +93,9 @@ export class DiscographyService {
 
   private async resolveOrAddArtist(artistId: string, artistName: string): Promise<number> {
     const cached = this.db
-      .query<
-        { lidarr_id: number; checked_at: number },
-        [string]
-      >('SELECT lidarr_id, checked_at FROM artist_discography_links WHERE artist_id = ?')
+      .query<{ lidarr_id: number; checked_at: number }, [string]>(
+        'SELECT lidarr_id, checked_at FROM artist_discography_links WHERE artist_id = ?',
+      )
       .get(artistId);
 
     if (cached && Date.now() - cached.checked_at < CACHE_TTL_MS && cached.lidarr_id) {
@@ -121,6 +119,31 @@ export class DiscographyService {
     const candidates = await this.lidarr.artist.lookup(artistName);
     const best = candidates[0];
     if (!best) throw new Error(`Lidarr found no artist matching "${artistName}"`);
+
+    // ── issue #212 direction 2 — garbage-artist provision guard (LEFT COMMENTED) ──
+    // The prod bug: a delimiter-less mash ("2 MinutosTruenoDie Toten Hosen") was
+    // looked up whole and Lidarr fuzzy-returned a junk artist ("2"), which then got
+    // added, polluting the Lidarr library. The *root-cause* fix ships in this PR —
+    // `segmentConcatenatedArtist` (artist-split.ts) splits the mash at scan time so
+    // the discography lookup runs per real member, not on the mash — so this guard
+    // is only belt-and-suspenders.
+    //
+    // It is intentionally NOT enabled, because a naive "reject when the returned
+    // name doesn't match the query" check directly RE-BREAKS the #211/#217 fix: that
+    // change deliberately WIDENED matching to accept canonical-name drift (library
+    // `Eduardo Miño` → Lidarr `Luis Eduardo Miño Naranjo`). A safe version would have
+    // to reuse the same two-signal corroboration as `pickMbidHit` (whole-token
+    // subsequence + `albumCount > 0`) rather than a bare string compare — a real
+    // design decision, not a mechanical toggle. Sketch:
+    //
+    //   import { isWholeTokenSubsequence } from './enrichment/tasks.js';
+    //   const corroborated =
+    //     normalizeTitle(best.artistName) === normalizeTitle(artistName) ||
+    //     (isWholeTokenSubsequence(artistName, best.artistName) && (best.albumCount ?? 0) > 0);
+    //   if (!corroborated) {
+    //     log.warn({ artistName, candidate: best.artistName }, 'Refusing to provision unconfirmed Lidarr artist');
+    //     throw new Error(`No confident Lidarr match for "${artistName}"`);
+    //   }
 
     const added = await addArtistFromLookup(this.lidarr, best, this.musicDir);
 
@@ -158,10 +181,9 @@ export class DiscographyService {
 
   private fetchLocalAlbums(artistId: string): Array<{ id: string; name: string }> {
     return this.db
-      .query<
-        { id: string; name: string },
-        [string]
-      >('SELECT id, name FROM library_albums WHERE artist_id = ? AND hidden = 0')
+      .query<{ id: string; name: string }, [string]>(
+        'SELECT id, name FROM library_albums WHERE artist_id = ? AND hidden = 0',
+      )
       .all(artistId);
   }
 

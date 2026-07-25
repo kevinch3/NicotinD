@@ -99,6 +99,78 @@ export function isAtomicArtist(raw: string): boolean {
   return splitOnDelimiters(primary).length === 1;
 }
 
+/** Shortest artist segment a concatenation split may produce ("U2"/"M83" are real). */
+const MIN_ARTIST_SEGMENT = 2;
+
+/**
+ * Segment a delimiter-less artist mash ("2 MinutosTruenoDie Toten Hosen" — three
+ * acts run together with no separator) into its constituent artists, or null when
+ * it can't be covered entirely by confirmed real artists.
+ *
+ * Direct mirror of the scanner's `segmentConcatenatedGenre` (`genre-split.ts`), with
+ * the same two safety rules — a delimiter-less mash has the same class of defect as a
+ * mashed genre tag and the same shape of fix:
+ *
+ * - **Cuts only at an uppercase letter directly preceded by a letter or digit.** That
+ *   is what a mash looks like ("...TruenoDie..."), and it is what stops a real name
+ *   from being torn apart: "Die Toten Hosen", "Wu-Tang Clan" and "Sam & Dave" have no
+ *   legal internal cut (a space or hyphen protects the boundary), so they can never be
+ *   split by this path.
+ * - **Every segment must be a confirmed real artist** (`resolveConfirmed` returns the
+ *   confirmed spelling or null), all-or-nothing — the exact same discipline as
+ *   {@link splitArtists}' delimiter gate, so it never mints a band name into pieces.
+ *
+ * Longest segment first (with backtracking) so a multi-word member wins over its own
+ * prefix. The confirmation gate makes it safe to apply automatically at scan time.
+ */
+export function segmentConcatenatedArtist(
+  value: string,
+  resolveConfirmed: (s: string) => string | null,
+): string[] | null {
+  const v = value.trim().replace(/\s+/g, ' ');
+  if (v.length < MIN_ARTIST_SEGMENT * 2) return null;
+
+  // Legal cut positions: index i splits [0,i) / [i,…) when v[i] is uppercase and
+  // v[i-1] is alphanumeric (so a space or a hyphen protects a compound name).
+  const cuts: number[] = [];
+  for (let i = 1; i < v.length; i++) {
+    if (/\p{Lu}/u.test(v[i]!) && /[\p{L}\p{N}]/u.test(v[i - 1]!)) cuts.push(i);
+  }
+  if (cuts.length === 0) return null;
+
+  const ends = [...cuts, v.length];
+  const memo = new Map<number, string[] | null>();
+  const solve = (start: number): string[] | null => {
+    if (start === v.length) return [];
+    const cached = memo.get(start);
+    if (cached !== undefined) return cached;
+    memo.set(start, null); // cycle guard (unreachable — ends strictly increase)
+    // Longest candidate segment first.
+    for (let i = ends.length - 1; i >= 0; i--) {
+      const end = ends[i]!;
+      if (end <= start) continue;
+      // The whole value as one segment is not a split (even if it is confirmed
+      // atomic — an atomic mash confirms itself, exactly the case we want to break).
+      if (start === 0 && end === v.length) continue;
+      const piece = v.slice(start, end).trim();
+      if (piece.length < MIN_ARTIST_SEGMENT) continue;
+      const confirmed = resolveConfirmed(piece);
+      if (!confirmed) continue;
+      const rest = solve(end);
+      if (rest) {
+        const out = [confirmed, ...rest];
+        memo.set(start, out);
+        return out;
+      }
+    }
+    memo.set(start, null);
+    return null;
+  };
+
+  const segments = solve(0);
+  return segments && segments.length >= 2 ? segments : null;
+}
+
 export function splitArtists(raw: string, known: KnownArtistSets = {}): ArtistCredit[] {
   const confirmedArtists = known.confirmedArtists ?? EMPTY;
   const canonicalWhole = known.canonicalWhole ?? EMPTY;
@@ -118,7 +190,12 @@ export function splitArtists(raw: string, known: KnownArtistSets = {}): ArtistCr
     if (candidates.length > 1 && candidates.every((c) => confirmedArtists.has(normalize(c)))) {
       primaryNames = candidates;
     } else {
-      primaryNames = [primary];
+      // No delimiter split. Last resort (issue #212): a delimiter-less mash of
+      // confirmed artists ("2 MinutosTruenoDie Toten Hosen"). Same all-confirmed
+      // gate, so a real single artist is never carved up.
+      primaryNames = segmentConcatenatedArtist(primary, (s) =>
+        confirmedArtists.has(normalize(s)) ? s : null,
+      ) ?? [primary];
     }
   }
 
