@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.257](https://github.com/kevinch3/NicotinD/compare/v0.1.256...v0.1.257) (2026-07-25)
+
+### Bug Fixes
+
+* **api:** apply integrity check to ingest-time Opus transcode ([51478be](https://github.com/kevinch3/NicotinD/commit/51478be0dd90d517d67ceb7ddce26e873d4bbee6))
+* **api:** validate transcode cache integrity ([b15161c](https://github.com/kevinch3/NicotinD/commit/b15161cb59cf5854447fa2fd5ed86e94a820cdc4))
+* **web:** defend against premature track-end on transcoded playback ([6e07777](https://github.com/kevinch3/NicotinD/commit/6e07777b5288851c584db2ff616273c2f73af6b3))
 ## [0.1.256](https://github.com/kevinch3/NicotinD/compare/v0.1.255...v0.1.256) (2026-07-24)
 
 ### Bug Fixes
