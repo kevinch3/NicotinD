@@ -1388,6 +1388,87 @@ const genreAudioTask: EnrichmentTask = {
   },
 };
 
+// ---------------------------------------------------------------------------
+// popularityTask — issue #220 (popularity / hotness signal per song).
+//
+// LEFT COMMENTED OUT ON PURPOSE. The task *shape* below mirrors licenceTask
+// exactly (default-on, `WHERE popularity IS NULL`, ledgered-not-tallied on a
+// confident miss, mirrored to a file tag, satisfiedColumnSql for landing), so
+// wiring it up later is mechanical. What is *not* settled — and what a shipped
+// implementation would have to commit to — are the open questions the issue
+// itself flags, each of which changes the schema or the scoring:
+//
+//   1. Source of the number. ListenBrainz is MBID-native (we already cache MBIDs
+//      in `library_mbids`) and needs no creds, so it is the lowest-friction first
+//      source — but Spotify's 0–100 `Track.popularity` is the industry signal and
+//      would reuse the existing spotify plugin creds via an MBID→spotify-id hop.
+//      Picking one is a product call, not a mechanical one.
+//   2. Storage shape. A single normalized 0–1 `library_songs.popularity` scalar
+//      (+ `popularity_source`, COALESCE-preserved like `licence`) vs. keeping raw
+//      per-source values plus a derived blend. That is an additive migration
+//      (`db.ts`) that shouldn't land speculatively before the source is chosen.
+//   3. Whether local/global play-counts feed the SAME column or a separate
+//      `internal_popularity` axis (a no-network complementary signal).
+//   4. Radio scoring: add popularity as a weighted axis in `scoreSimilarity` /
+//      `toOrderable`, or use it only in curated-playlist recipe `where`/`sort`.
+//   5. Album/artist aggregate: max-track vs. mean (mirror `unanimousLicence`, or
+//      a numeric aggregate).
+//
+// Reference skeleton (enable once 1–5 are decided; also add `'popularity'` to the
+// core `ProcessingTaskId` union, the `library_songs.popularity` column + a
+// `notPermanentlyFailedClause('popularity')` ledger, a `lookupPopularity`
+// primitive on EnrichmentContext, and the ENRICHMENT_TASKS registry entry):
+//
+// const popularityTask: EnrichmentTask = {
+//   id: 'popularity',
+//   label: 'Popularity / hotness',
+//   satisfiedColumnSql: 'popularity IS NOT NULL',
+//   available: (ctx) => ctx.lookupPopularity ? true : 'no popularity source configured',
+//   countPending: (db) =>
+//     Number(
+//       (
+//         db
+//           .query<{ n: number }, []>(
+//             `SELECT COUNT(*) AS n FROM library_songs WHERE popularity IS NULL` +
+//               notPermanentlyFailedClause('popularity'),
+//           )
+//           .get() ?? { n: 0 }
+//       ).n,
+//     ),
+//   run: async (db, ctx, limit) => {
+//     const rows = db
+//       .query<SongRow, [number]>(
+//         `SELECT id, path, artist, title, size FROM library_songs WHERE popularity IS NULL` +
+//           notPermanentlyFailedClause('popularity') + ` ORDER BY created DESC LIMIT ?`,
+//       )
+//       .all(limit);
+//     const labels: string[] = [];
+//     const tally: FailureTally = { failed: 0, sample: null };
+//     let applied = 0;
+//     for (const song of rows) {
+//       try {
+//         const res = await ctx.lookupPopularity!(song); // MBID-first; 0–1 scalar + source
+//         if (res == null) {
+//           // A confident "no listen data" is ledgered-not-tallied, exactly like a
+//           // licence miss, so the fill retries only on new evidence (re-download).
+//           noteItemFailure(db, tally, song, 'popularity', new NoConfidentResultError('no popularity'));
+//           continue;
+//         }
+//         db.run('UPDATE library_songs SET popularity = ?, popularity_source = ? WHERE id = ?', [
+//           res.value, res.source, song.id,
+//         ]);
+//         clearAnalysisFailure(db, song.id, 'popularity');
+//         applied++;
+//         labels.push(`${song.artist} — ${song.title} → ${res.value.toFixed(2)}`);
+//       } catch (err) {
+//         noteItemFailure(db, tally, song, 'popularity', err);
+//       }
+//     }
+//     return { applied, labels, failed: tally.failed, errorSample: tally.sample };
+//   },
+// };
+// ---------------------------------------------------------------------------
+
 /** All registered enrichment tasks, in run order. */
 export const ENRICHMENT_TASKS: readonly EnrichmentTask[] = [
   bpmTask,
@@ -1400,6 +1481,7 @@ export const ENRICHMENT_TASKS: readonly EnrichmentTask[] = [
   artistIdentityTask,
   licenceTask,
   genreAudioTask,
+  // popularityTask, // issue #220 — enable once source/storage/scoring are decided (see above)
 ];
 
 export function getTask(id: ProcessingTaskId): EnrichmentTask | undefined {
