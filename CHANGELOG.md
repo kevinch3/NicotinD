@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.260](https://github.com/kevinch3/NicotinD/compare/v0.1.259...v0.1.260) (2026-07-25)
+
+### Bug Fixes
+
+* **bio:** handle Discogs [a=Name] refs + [b]/[i] tags in artist bios ([4b4a681](https://github.com/kevinch3/NicotinD/commit/4b4a68180c5702a07e76a5ff281bbcb87ccf3c1c)), references [#213](https://github.com/kevinch3/NicotinD/issues/213) [#213](https://github.com/kevinch3/NicotinD/issues/213)
 ## [0.1.259](https://github.com/kevinch3/NicotinD/compare/v0.1.258...v0.1.259) (2026-07-25)
 
 ### Bug Fixes
