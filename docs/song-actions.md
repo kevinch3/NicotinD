@@ -11,11 +11,13 @@ its menu from the same `SongMenuService`.
 
 ## Common actions (always present when the data supports them)
 
-Order: Add to queue → Play next → Start radio → Go to artist* → Go to album* →
+Order: Like/Unlike → Add to queue → Play next → Start radio → Go to artist* → Go to album* →
 Add to playlist → Save offline → Song info.
 (*artist/album links appear only when the song carries `artistId`/`albumId` and
 the context doesn't hide them.)
 
+- **Like / Unlike** (issue #225) leads the menu — a primary gesture. The label
+  reflects `LikeService.isLiked(song.id)`; the action calls `LikeService.toggle()`.
 - **Play** is not a menu item — the row title/play button already plays.
 - **Start radio** = `PlayerService.startRadio(track)` (play the seed + enable radio).
 - **Add to queue** appends; **Play next** = `PlayerService.queueNext(track)` (insert after current).
@@ -31,6 +33,36 @@ the context doesn't hide them.)
   every listing filters rendered rows through `transferService.deletedSongIds()`.
 - `onRemoveFromPlaylist` — **Remove from playlist** (playlist page).
 - `extraActions` — page-unique items, appended last.
+
+## Likes → the "Liked Songs" playlist (issue #225)
+
+"Like" is a **per-user** gesture, so it can't reuse the global scanner-derived
+`library_songs.starred` column (that's set only by the transcode/ingest path and
+is the same for every user). Rather than a dedicated `user_liked_songs` table,
+**the Liked Songs playlist itself is the store**: a new `PlaylistKind` value
+`liked` (one per user, created lazily on first like). Membership = liked. This
+maximizes reuse of the native-playlist surface (visibility, the JOIN that drops
+vanished songs, the playlists page) — no new table, no new migration (`kind`
+already exists).
+
+- **Backend** (`PlaylistService`): `likeSong` / `unlikeSong` / `likedSongIds` /
+  the private `ensureLikedPlaylist`. New likes take a strictly-decreasing
+  `position` (`min-1`) so `ORDER BY position ASC` yields newest-first without
+  same-millisecond ties. The row is `kind='liked'`, so `list()`/`get()` show it
+  (it has the owner's `user_id`, pinned first) while `owns()`/`update()`/`remove()`
+  keep their `kind='user'` guard — it's read-only through the CRUD API and
+  mutated only via the like routes.
+- **Routes** (`routes/library.ts`, auth-gated): `POST`/`DELETE /songs/:id/like`
+  and `GET /liked-ids` (one-call hydration). POST 404s an unknown song id.
+- **Web** (`LikeService`, providedIn root): holds the liked-id set as a signal;
+  `refresh()` (called from the app shell `ngOnInit`, reset on logout) hydrates it;
+  `toggle()` is optimistic (reverts on error) and refreshes the playlist list so
+  the Liked Songs count stays in sync. The heart renders in `TrackRowComponent`
+  (`data-testid="track-like"`, always-visible when liked / hover-reveal
+  otherwise; hidden via `[showLike]="false"` in the offline preserve list), the
+  track-info sheet (`track-info-like`), and the `⋯` menu. The playlists page
+  shows a heart badge (`liked-badge-inline`) and hides Rename/Delete for the
+  liked row; the detail page treats `liked` as read-only (`readOnly()` computed).
 
 ## Selection
 

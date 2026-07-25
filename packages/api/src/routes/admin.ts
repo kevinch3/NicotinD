@@ -8,6 +8,11 @@ import { getDatabase } from '../db.js';
 import { listAudit, recordAudit } from '../services/audit-log.js';
 import { listBackups, runBackup } from '../services/backup.js';
 import {
+  getAutoPlaylistStatus,
+  runAutoPlaylistsNow,
+  setAutoPlaylistCadence,
+} from '../services/auto-playlists.service.js';
+import {
   checkForUpdateNow,
   compareVersions,
   getStoredUpdateCheck,
@@ -73,7 +78,11 @@ export function adminRoutes(deps: AdminRoutesDeps) {
       'user',
     );
     db.query('INSERT INTO user_settings (user_id) VALUES (?)').run(id);
-    recordAudit(db, c.get('user'), 'user.create', { targetKind: 'user', targetId: id, detail: username });
+    recordAudit(db, c.get('user'), 'user.create', {
+      targetKind: 'user',
+      targetId: id,
+      detail: username,
+    });
 
     return c.json(
       {
@@ -98,7 +107,9 @@ export function adminRoutes(deps: AdminRoutesDeps) {
       .query<
         { id: string; username: string; role: string; status: string; created_at: string },
         []
-      >("SELECT id, username, role, COALESCE(status, 'active') as status, created_at FROM users ORDER BY created_at ASC")
+      >(
+        "SELECT id, username, role, COALESCE(status, 'active') as status, created_at FROM users ORDER BY created_at ASC",
+      )
       .all();
 
     // Merge ephemeral presence (in-memory) into each row; absent users read as offline.
@@ -156,7 +167,11 @@ export function adminRoutes(deps: AdminRoutesDeps) {
     if (result.changes === 0) {
       return c.json({ error: 'User not found' }, 404);
     }
-    recordAudit(db, currentUser, 'user.status', { targetKind: 'user', targetId: id, detail: status });
+    recordAudit(db, currentUser, 'user.status', {
+      targetKind: 'user',
+      targetId: id,
+      detail: status,
+    });
     return c.json({ ok: true });
   });
 
@@ -277,6 +292,37 @@ export function adminRoutes(deps: AdminRoutesDeps) {
       return c.json(info, 201);
     } catch (err) {
       return c.json({ error: `Backup failed: ${err instanceof Error ? err.message : err}` }, 500);
+    }
+  });
+
+  // --- Automated playlists (see services/auto-playlists.service.ts) ---------
+
+  // Current cadence + last-refresh timestamp for the Admin control.
+  app.get('/playlists/auto', (c) => c.json(getAutoPlaylistStatus(getDatabase())));
+
+  // Change the refresh cadence (off / daily / weekly). Persisted; read by the
+  // in-process guard on the next processor tick.
+  app.put('/playlists/auto', async (c) => {
+    const body = await c.req.json<{ cadence?: string }>().catch(() => ({}) as { cadence?: string });
+    const db = getDatabase();
+    if (!setAutoPlaylistCadence(db, String(body.cadence))) {
+      return c.json({ error: 'cadence must be off | daily | weekly' }, 400);
+    }
+    recordAudit(db, c.get('user'), 'auto_playlists.cadence', { detail: String(body.cadence) });
+    return c.json(getAutoPlaylistStatus(db));
+  });
+
+  // Force an immediate regeneration now, bypassing the period guard.
+  app.post('/playlists/auto/refresh', (c) => {
+    const db = getDatabase();
+    try {
+      const results = runAutoPlaylistsNow(db, Date.now());
+      recordAudit(db, c.get('user'), 'auto_playlists.refresh', {
+        detail: `${results.length} shelves`,
+      });
+      return c.json({ shelves: results, ...getAutoPlaylistStatus(db) });
+    } catch (err) {
+      return c.json({ error: `Refresh failed: ${err instanceof Error ? err.message : err}` }, 503);
     }
   });
 

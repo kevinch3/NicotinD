@@ -15,6 +15,8 @@ import type {
   UpdateCheck,
   AuditEntry,
   ServiceReview,
+  AutoPlaylistStatus,
+  AutoPlaylistCadence,
 } from './api-types';
 
 /** System surface: status/scan/logs, settings (soulseek/shares/streaming/
@@ -170,6 +172,21 @@ export class SystemApiService {
 
   runBackup() {
     return this.http.post<BackupInfo>('/api/admin/backups', {});
+  }
+
+  // Automated playlists (issue #228): cadence + manual "generate now" — admin only.
+  getAutoPlaylists() {
+    return this.http.get<AutoPlaylistStatus>('/api/admin/playlists/auto');
+  }
+
+  setAutoPlaylistCadence(cadence: AutoPlaylistCadence) {
+    return this.http.put<AutoPlaylistStatus>('/api/admin/playlists/auto', { cadence });
+  }
+
+  refreshAutoPlaylists() {
+    return this.http.post<
+      AutoPlaylistStatus & { shelves: { slug: string; name: string; count: number }[] }
+    >('/api/admin/playlists/auto/refresh', {});
   }
 
   // Setup (public — no auth token)

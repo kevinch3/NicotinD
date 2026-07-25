@@ -13,6 +13,7 @@ import { LICENCE_VOCAB, LICENCE_LABELS } from '@nicotind/core';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import type { ProvenanceRecord, Song, ArtistIdentityResult } from '../../services/api/api-types';
 import { AuthService } from '../../services/auth.service';
+import { LikeService } from '../../services/like.service';
 import { ServerConfigService } from '../../services/server-config.service';
 import { methodBadge } from '../../lib/acquisition-method';
 import { parseLrc } from '../../lib/lrc-parser';
@@ -39,6 +40,7 @@ export class TrackInfoSheetComponent implements OnInit {
   private auth = inject(AuthService);
   private server = inject(ServerConfigService);
   private router = inject(Router);
+  readonly likes = inject(LikeService);
 
   readonly songId = input.required<string>();
   readonly song = input<Song | null>(null);
@@ -175,6 +177,10 @@ export class TrackInfoSheetComponent implements OnInit {
   private dragStartY = 0;
   private onDocMove: ((e: PointerEvent) => void) | null = null;
   private onDocUp: ((e: PointerEvent) => void) | null = null;
+
+  toggleLike(): void {
+    void this.likes.toggle(this.songId());
+  }
 
   ngOnInit(): void {
     const provided = this.song();

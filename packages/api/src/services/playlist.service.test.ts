@@ -82,3 +82,65 @@ describe('PlaylistService', () => {
     expect(db.query('SELECT COUNT(*) AS c FROM playlist_songs').get()).toEqual({ c: 0 });
   });
 });
+
+describe('PlaylistService — likes / Liked Songs playlist', () => {
+  it('creates the Liked Songs playlist lazily on first like and round-trips', () => {
+    // No liked playlist until the first like.
+    expect(svc.likedSongIds('u1')).toEqual([]);
+    expect(svc.list('u1')).toHaveLength(0);
+
+    svc.likeSong('u1', 's1');
+    expect(svc.likedSongIds('u1')).toEqual(['s1']);
+
+    // It materializes as a real kind='liked' playlist pinned first.
+    const [liked] = svc.list('u1');
+    expect(liked.kind).toBe('liked');
+    expect(liked.name).toBe('Liked Songs');
+    expect(liked.songCount).toBe(1);
+
+    svc.unlikeSong('u1', 's1');
+    expect(svc.likedSongIds('u1')).toEqual([]);
+  });
+
+  it('is idempotent (a second like is a no-op) and dedupes', () => {
+    svc.likeSong('u1', 's1');
+    svc.likeSong('u1', 's1');
+    expect(svc.likedSongIds('u1')).toEqual(['s1']);
+    expect(db.query('SELECT COUNT(*) AS c FROM playlist_songs').get()).toEqual({ c: 1 });
+  });
+
+  it('orders newest-liked first', () => {
+    svc.likeSong('u1', 's1');
+    svc.likeSong('u1', 's2');
+    svc.likeSong('u1', 's3');
+    expect(svc.likedSongIds('u1')).toEqual(['s3', 's2', 's1']);
+  });
+
+  it('keeps likes per-user', () => {
+    svc.likeSong('u1', 's1');
+    expect(svc.likedSongIds('u2')).toEqual([]);
+    svc.likeSong('u2', 's2');
+    expect(svc.likedSongIds('u1')).toEqual(['s1']);
+    expect(svc.likedSongIds('u2')).toEqual(['s2']);
+  });
+
+  it('drops liked ids whose song no longer exists', () => {
+    svc.likeSong('u1', 's1');
+    svc.likeSong('u1', 's2');
+    db.run(`DELETE FROM library_songs WHERE id = 's1'`);
+    expect(svc.likedSongIds('u1')).toEqual(['s2']);
+  });
+
+  it('unlike is a no-op when nothing has been liked', () => {
+    expect(svc.unlikeSong('u1', 's1')).toBe(false);
+  });
+
+  it('keeps the Liked Songs playlist read-only through the CRUD API', () => {
+    svc.likeSong('u1', 's1');
+    const [liked] = svc.list('u1');
+    // Owner can view it, but the mutation API's kind='user' guard rejects edits.
+    expect(svc.get('u1', liked.id)?.kind).toBe('liked');
+    expect(svc.update('u1', liked.id, { name: 'Hijacked' })).toBe(false);
+    expect(svc.remove('u1', liked.id)).toBe(false);
+  });
+});

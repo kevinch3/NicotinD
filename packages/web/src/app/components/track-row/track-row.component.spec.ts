@@ -5,6 +5,7 @@ import { TrackRowComponent } from './track-row.component';
 import { PlayerService, type Track } from '../../services/player.service';
 import { AuthService } from '../../services/auth.service';
 import { ServerConfigService } from '../../services/server-config.service';
+import { LikeService } from '../../services/like.service';
 
 const ROW_TRACK: Track = { id: 't1', title: 'Song One', artist: 'Artist A' };
 const OTHER_TRACK: Track = { id: 't2', title: 'Song Two', artist: 'Artist B' };
@@ -41,6 +42,7 @@ describe('TrackRowComponent — current-track indicator', () => {
         PlayerService,
         { provide: AuthService, useValue: { token: signal('test-token') } },
         { provide: ServerConfigService, useValue: { apiUrl: (u: string) => u } },
+        { provide: LikeService, useValue: { isLiked: () => false, toggle: () => {} } },
       ],
     });
     const fixture = TestBed.createComponent(TrackRowComponent);
@@ -50,7 +52,8 @@ describe('TrackRowComponent — current-track indicator', () => {
     const player = TestBed.inject(PlayerService);
     player.clear();
     fixture.detectChanges();
-    const row = () => fixture.nativeElement.querySelector('[data-testid="track-row"]') as HTMLElement;
+    const row = () =>
+      fixture.nativeElement.querySelector('[data-testid="track-row"]') as HTMLElement;
     return { fixture, player, row };
   }
 

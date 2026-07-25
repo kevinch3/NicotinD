@@ -6,6 +6,7 @@ import { of, throwError } from 'rxjs';
 import { TrackInfoSheetComponent } from './track-info-sheet.component';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import { AuthService } from '../../services/auth.service';
+import { LikeService } from '../../services/like.service';
 
 // Instantiated without detectChanges so ngOnInit (which reads required inputs +
 // fetches provenance) never runs; the analysis methods are exercised directly.
@@ -14,7 +15,12 @@ import { AuthService } from '../../services/auth.service';
 describe('TrackInfoSheetComponent (analysis)', () => {
   const analyzeSong = vi.fn(() => of({ bpm: 122, source: 'analyzed' as const }));
   const getGenreSuggestion = vi.fn(() =>
-    of({ current: 'IDM', suggested: 'Electronic', candidates: ['Electronic', 'IDM'], source: 'lidarr' as const }),
+    of({
+      current: 'IDM',
+      suggested: 'Electronic',
+      candidates: ['Electronic', 'IDM'],
+      source: 'lidarr' as const,
+    }),
   );
   const applyGenre = vi.fn(() => of({ ok: true, genre: 'Electronic' }));
   const getLicenceSuggestion = vi.fn(() =>
@@ -54,7 +60,11 @@ describe('TrackInfoSheetComponent (analysis)', () => {
             getLyrics: vi.fn(() => of(null)),
           },
         },
-        { provide: AuthService, useValue: { role, canCurate: computed(() => canCurateRole(asRole(role()))) } },
+        {
+          provide: AuthService,
+          useValue: { role, canCurate: computed(() => canCurateRole(asRole(role()))) },
+        },
+        { provide: LikeService, useValue: { isLiked: () => false, toggle: vi.fn() } },
       ],
     }).compileComponents();
   });
@@ -197,7 +207,11 @@ describe('TrackInfoSheetComponent (multi-genre chips)', () => {
             getLyrics: vi.fn(() => of(null)),
           },
         },
-        { provide: AuthService, useValue: { role, canCurate: computed(() => canCurateRole(asRole(role()))) } },
+        {
+          provide: AuthService,
+          useValue: { role, canCurate: computed(() => canCurateRole(asRole(role()))) },
+        },
+        { provide: LikeService, useValue: { isLiked: () => false, toggle: vi.fn() } },
       ],
     }).compileComponents();
   });

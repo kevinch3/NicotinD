@@ -9,6 +9,7 @@ import { LibraryApiService } from './api/library-api.service';
 import { TransferService } from './transfer.service';
 import { TrackInfoService } from './track-info.service';
 import { ConfirmService } from './confirm.service';
+import { LikeService } from './like.service';
 import { asRole, canCurate as canCurateRole, type Role } from '../../types/core';
 import type { BaseSong } from '../lib/track-utils';
 
@@ -35,6 +36,7 @@ function setup(role: Role = 'user') {
       { provide: TransferService, useValue: { addDeletedIds: vi.fn() } },
       { provide: TrackInfoService, useValue: { open: vi.fn() } },
       { provide: ConfirmService, useValue: { ask: vi.fn(async () => true) } },
+      { provide: LikeService, useValue: { isLiked: () => false, toggle: vi.fn() } },
     ],
   });
   return { svc: TestBed.inject(SongMenuService), router, auth };
@@ -44,12 +46,35 @@ const labels = (song: BaseSong, svc: SongMenuService, ctx = {}) =>
   svc.build(song, ctx).map((a) => a.label);
 
 describe('SongMenuService.build', () => {
-  it('emits the 8 common actions in order when data allows', () => {
+  it('emits the common actions in order when data allows (Like leads)', () => {
     const { svc } = setup();
     expect(labels(song({ artistId: 'ar1', albumId: 'al1' }), svc)).toEqual([
-      'Add to queue', 'Play next', 'Start radio', 'Go to artist',
+      'Like', 'Add to queue', 'Play next', 'Start radio', 'Go to artist',
       'Go to album', 'Add to playlist', 'Save offline', 'Song info',
     ]);
+  });
+
+  it('labels the like action Unlike when already liked', () => {
+    const router = { navigate: vi.fn() };
+    getTestBed().resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        SongMenuService,
+        PlayerService,
+        { provide: Router, useValue: router },
+        { provide: AuthService, useValue: { role: () => 'user', canCurate: () => false } },
+        { provide: PlaylistService, useValue: { openPicker: vi.fn() } },
+        { provide: PreserveService, useValue: { isPreserved: () => false, isPreserving: () => false } },
+        { provide: LibraryApiService, useValue: { deleteSongs: vi.fn(() => ({ subscribe: vi.fn() })) } },
+        { provide: TransferService, useValue: { addDeletedIds: vi.fn() } },
+        { provide: TrackInfoService, useValue: { open: vi.fn() } },
+        { provide: ConfirmService, useValue: { ask: vi.fn(async () => true) } },
+        { provide: LikeService, useValue: { isLiked: () => true, toggle: vi.fn() } },
+      ],
+    });
+    const svc = TestBed.inject(SongMenuService);
+    expect(labels(song(), svc)).toContain('Unlike');
+    expect(labels(song(), svc)).not.toContain('Like');
   });
 
   it('hides Go to album without albumId', () => {

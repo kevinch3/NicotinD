@@ -392,6 +392,20 @@ export class LibraryApiService {
     return this.http.get<ProvenanceRecord[]>(`/api/library/songs/${id}/provenance`);
   }
 
+  // ─── Likes (per-user "Liked Songs" playlist) ──────────────────────
+  /** The ids of the user's liked songs — hydrates every heart's state at once. */
+  getLikedIds() {
+    return this.http.get<{ ids: string[] }>('/api/library/liked-ids');
+  }
+
+  likeSong(id: string) {
+    return this.http.post<{ liked: boolean }>(`/api/library/songs/${id}/like`, {});
+  }
+
+  unlikeSong(id: string) {
+    return this.http.delete<{ liked: boolean }>(`/api/library/songs/${id}/like`);
+  }
+
   /** Acquisition provenance (how/where-from/when); null when unrecorded. */
   getSongAcquisition(id: string) {
     return this.http.get<SongAcquisition | null>(`/api/library/songs/${id}/acquisition`);

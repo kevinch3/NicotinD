@@ -16,6 +16,7 @@ import { transferGroupKeys } from '../services/transfer-group-keys.js';
 import type { SlskdRef } from '../index.js';
 import { ShareRescanScheduler } from '../services/share-rescan-scheduler.js';
 import { getAcquisitionByPath } from '../services/acquisition-store.js';
+import { PlaylistService } from '../services/playlist.service.js';
 import { analyzeBpm, verifyGenre } from '../services/track-analysis.js';
 import type { AudioFeaturesClient } from '../services/audio-features-client.js';
 import { readAudioTags, writeAudioTags } from '../services/audio-tags.js';
@@ -1735,6 +1736,30 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       return c.json(song);
     }
     return c.json({ error: 'Song not found' }, 404);
+  });
+
+  // ─── Likes (per-user) → the auto-maintained "Liked Songs" playlist ──────
+  // Like/unlike toggle a song's membership in the user's `kind='liked'`
+  // playlist (see PlaylistService — the playlist itself is the store, no
+  // separate table). `/liked-ids` hydrates the client's heart state in one call.
+  app.get('/liked-ids', (c) => {
+    return c.json({ ids: new PlaylistService(getDatabase()).likedSongIds(c.var.user.sub) });
+  });
+
+  app.post('/songs/:id/like', (c) => {
+    const db = getDatabase();
+    const id = c.req.param('id');
+    const exists = db
+      .query<{ id: string }, [string]>('SELECT id FROM library_songs WHERE id = ?')
+      .get(id);
+    if (!exists) return c.json({ error: 'Song not found' }, 404);
+    new PlaylistService(db).likeSong(c.var.user.sub, id);
+    return c.json({ liked: true });
+  });
+
+  app.delete('/songs/:id/like', (c) => {
+    new PlaylistService(getDatabase()).unlikeSong(c.var.user.sub, c.req.param('id'));
+    return c.json({ liked: false });
   });
 
   app.get('/songs/:id/provenance', async (c) => {

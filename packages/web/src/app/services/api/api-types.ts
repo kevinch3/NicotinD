@@ -241,7 +241,7 @@ export interface AdminUser {
   amountOfSessions: number;
 }
 
-export type PlaylistKind = 'user' | 'curated';
+export type PlaylistKind = 'user' | 'curated' | 'liked';
 
 export interface PlaylistSummary {
   id: string;
@@ -250,7 +250,10 @@ export interface PlaylistSummary {
   songCount: number;
   /** Designed gradient cover URL (e.g. /playlist-covers/<slug>.svg), or null. */
   coverArt: string | null;
-  /** `curated` = system-seeded, global, read-only; `user` = the user's own. */
+  /**
+   * `curated` = system-seeded, global, read-only; `liked` = the per-user
+   * auto-maintained "Liked Songs" collection; `user` = the user's own.
+   */
   kind: PlaylistKind;
   createdAt: number;
   modifiedAt: number;
@@ -258,6 +261,15 @@ export interface PlaylistSummary {
 
 export interface PlaylistDetail extends PlaylistSummary {
   songs: Song[];
+}
+
+/** Admin control for the automated-playlist refresh cadence (issue #228). */
+export type AutoPlaylistCadence = 'off' | 'daily' | 'weekly';
+
+export interface AutoPlaylistStatus {
+  cadence: AutoPlaylistCadence;
+  /** Epoch ms of the last successful refresh, or null if never run. */
+  lastRefreshedAt: number | null;
 }
 
 export interface AlbumJob {

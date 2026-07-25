@@ -1,21 +1,39 @@
 /**
  * Automated system-shelf materialization: turn the code-defined `RECIPES` into
- * `kind='curated'` playlists and refresh them on a weekly cadence. Reuses the
- * pure selection/ordering engine (`runRecipe`) and the same idempotent upsert
- * the curated seed script uses — so automated shelves and hand-seeded curated
- * shelves share one write path and both appear in "Made for you" unchanged.
+ * `kind='curated'` playlists and refresh them on an admin-configurable cadence
+ * (issue #228: off/daily/weekly). Reuses the pure selection/ordering engine
+ * (`runRecipe`) and the same idempotent upsert the curated seed script uses — so
+ * automated shelves and hand-seeded curated shelves share one write path and
+ * both appear in "Made for you" unchanged.
  *
- * The in-process weekly guard (`maybeRefreshAutoPlaylists`) is driven from the
- * windowed processor's tick; a `library_sync_state` marker ensures at most one
- * refresh per ISO week.
+ * The in-process guard (`maybeRefreshAutoPlaylists`) is driven from the windowed
+ * processor's tick; a `library_sync_state` period marker ensures at most one
+ * refresh per cadence period. `runAutoPlaylistsNow` is the admin "generate now"
+ * override.
  */
 import type { Database } from 'bun:sqlite';
-import { RECIPES, runRecipe, weekSeedFor, type PlaylistRecipe, type OrderableRow } from './playlist-recipe.js';
+import {
+  RECIPES,
+  runRecipe,
+  weekSeedFor,
+  type PlaylistRecipe,
+  type OrderableRow,
+} from './playlist-recipe.js';
 import { expandGenreWhere } from './curated-playlists.js';
 import { createLogger } from '@nicotind/core';
 
 const log = createLogger('auto-playlists');
-const WEEK_MARKER = 'auto_playlists_week';
+// Records the last-refreshed period as `<cadence>:<n>` so a change of cadence
+// (or a new period) re-triggers, while a repeat tick within the same period is
+// a no-op. `updated_at` doubles as the "last refreshed" timestamp shown in UI.
+const PERIOD_MARKER = 'auto_playlists_period';
+// Admin-configurable cadence for the automated-shelf refresh.
+const CADENCE_MARKER = 'auto_playlists_cadence';
+
+/** How often the automated shelves regenerate. `off` disables the scheduler. */
+export type AutoPlaylistCadence = 'off' | 'daily' | 'weekly';
+const CADENCES: readonly AutoPlaylistCadence[] = ['off', 'daily', 'weekly'];
+const DEFAULT_CADENCE: AutoPlaylistCadence = 'weekly';
 
 interface CuratedMeta {
   name: string;
@@ -180,11 +198,13 @@ export function refreshAutoPlaylists(
   }));
 }
 
-function readMarker(db: Database, key: string): string | null {
+function readMarker(db: Database, key: string): { value: string; updatedAt: number } | null {
   const row = db
-    .query<{ value: string }, [string]>('SELECT value FROM library_sync_state WHERE key = ?')
+    .query<{ value: string; updated_at: number }, [string]>(
+      'SELECT value, updated_at FROM library_sync_state WHERE key = ?',
+    )
     .get(key);
-  return row?.value ?? null;
+  return row ? { value: row.value, updatedAt: row.updated_at } : null;
 }
 
 function writeMarker(db: Database, key: string, value: string, now: number): void {
@@ -195,22 +215,81 @@ function writeMarker(db: Database, key: string, value: string, now: number): voi
   );
 }
 
+/** The admin-configured cadence, defaulting to `weekly` when never set. */
+export function getAutoPlaylistCadence(db: Database): AutoPlaylistCadence {
+  const v = readMarker(db, CADENCE_MARKER)?.value;
+  return CADENCES.includes(v as AutoPlaylistCadence) ? (v as AutoPlaylistCadence) : DEFAULT_CADENCE;
+}
+
+/** Persist the cadence; an unknown value is rejected (returns false). */
+export function setAutoPlaylistCadence(
+  db: Database,
+  cadence: string,
+  now = Date.now(),
+): cadence is AutoPlaylistCadence {
+  if (!CADENCES.includes(cadence as AutoPlaylistCadence)) return false;
+  writeMarker(db, CADENCE_MARKER, cadence, now);
+  return true;
+}
+
+/** The period bucket for a cadence — the guard key that gates one refresh per bucket. */
+function periodKey(cadence: AutoPlaylistCadence, now: number): string {
+  if (cadence === 'daily') return `daily:${Math.floor(now / 86_400_000)}`;
+  return `weekly:${weekSeedFor(now)}`;
+}
+
+export interface AutoPlaylistStatus {
+  cadence: AutoPlaylistCadence;
+  /** Epoch ms of the last successful refresh, or null if never run. */
+  lastRefreshedAt: number | null;
+}
+
+export function getAutoPlaylistStatus(db: Database): AutoPlaylistStatus {
+  return {
+    cadence: getAutoPlaylistCadence(db),
+    lastRefreshedAt: readMarker(db, PERIOD_MARKER)?.updatedAt ?? null,
+  };
+}
+
 /**
- * Refresh automated shelves at most once per ISO week. No-op (returns false)
- * when the current week's marker is already set or there is no admin owner. Safe
- * to call every processor tick. Returns true when a refresh was performed.
+ * Refresh automated shelves at most once per cadence period (daily/weekly). A
+ * no-op (returns false) when the cadence is `off`, the current period's marker
+ * is already set, or there is no admin owner. Safe to call every processor tick.
+ * Returns true when a refresh was performed.
  */
 export function maybeRefreshAutoPlaylists(db: Database, now: number): boolean {
-  const week = String(weekSeedFor(now));
-  if (readMarker(db, WEEK_MARKER) === week) return false;
+  const cadence = getAutoPlaylistCadence(db);
+  if (cadence === 'off') return false;
+  const period = periodKey(cadence, now);
+  if (readMarker(db, PERIOD_MARKER)?.value === period) return false;
   if (!firstAdminId(db)) return false;
   try {
     const results = refreshAutoPlaylists(db, now, { apply: true });
-    writeMarker(db, WEEK_MARKER, week, now);
-    log.info({ week, shelves: results.length }, 'auto-playlists refreshed');
+    writeMarker(db, PERIOD_MARKER, period, now);
+    log.info({ period, shelves: results.length }, 'auto-playlists refreshed');
     return true;
   } catch (err) {
     log.error({ err }, 'auto-playlists refresh failed');
     return false;
   }
+}
+
+/**
+ * Force an immediate refresh regardless of the period guard (the admin "generate
+ * now" control). Counts as this period's refresh so it doesn't disturb the
+ * schedule — the next tick within the same period stays a no-op. Throws if there
+ * is no admin owner (surfaced as a 503 by the route).
+ */
+export function runAutoPlaylistsNow(db: Database, now = Date.now()): RefreshResult[] {
+  const results = refreshAutoPlaylists(db, now, { apply: true });
+  const cadence = getAutoPlaylistCadence(db);
+  // When a schedule is active, mark this period done so the manual run and the
+  // scheduled run don't both fire; when off, still record the timestamp.
+  writeMarker(
+    db,
+    PERIOD_MARKER,
+    cadence === 'off' ? `manual:${now}` : periodKey(cadence, now),
+    now,
+  );
+  return results;
 }
