@@ -8,7 +8,11 @@
 #   1. Bind-mount your existing music library instead of the named volume
 #   2. Bind-mount the NicotinD data dir (secrets, DB) for persistence
 #   3. Build the server image from source instead of pulling from GHCR
-#   4. Enable GPU passthrough for the analysis sidecar
+#
+# GPU passthrough for the analysis sidecar is deliberately NOT here — it lives in
+# its own opt-in overlay, docker-compose.gpu.yml, so a host GPU / nvidia-
+# persistenced problem can never wedge the deploy that also carries your essential
+# bind mounts below. See that file's header + docs/deployment.md.
 #
 # See docker-compose.yml for the full service definitions this overrides.
 
@@ -24,19 +28,12 @@ services:
       - /path/to/your/music:/data/music
 
   analysis:
-    build:
-      context: packages/analysis
-      args:
-        GPU: "1"
+    # Just a bind mount here — the published analysis image runs on CPU. For GPU
+    # inference, enable docker-compose.gpu.yml instead of adding a device
+    # reservation here (see that file's header). That overlay switches this
+    # service to build from source with GPU=1 and adds the nvidia device request.
     volumes:
       - /path/to/your/music:/data/music:ro
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
 
   slskd:
     volumes:

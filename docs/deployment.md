@@ -53,8 +53,89 @@ equivalent, and it can only ever point at a tagged release (Immich's
 wheels, so this sidecar has never been runnable on arm64; on an arm64 host
 remove/disable the `analysis` service (everything degrades gracefully — only
 the audio-features enrichment task pauses). GPU inference still builds from
-source via an override (`--build-arg GPU=1`, see
-`docker-compose.override.example.yml` + [audio-ml-enrichment.md](audio-ml-enrichment.md)).
+source with `GPU=1`, opt-in via the **`docker-compose.gpu.yml` overlay** (see
+[audio-ml-enrichment.md](audio-ml-enrichment.md)).
+
+#### GPU passthrough — the `docker-compose.gpu.yml` overlay
+
+GPU access for the analysis sidecar lives in its own opt-in overlay
+(`docker-compose.gpu.yml`), **not** in `docker-compose.override.yml`. Enable it
+per-command or persistently via `COMPOSE_FILE`:
+
+```bash
+# per-command
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+# or persistently, in .env:
+COMPOSE_FILE=docker-compose.yml:docker-compose.gpu.yml
+```
+
+**Why a separate overlay, not the override file.** The device reservation below
+is a *hard* reservation: if the host can't satisfy the GPU injection the
+`analysis` container fails to start (there is no runtime-level CPU fallback — the
+image's CPU fallback only applies to a container that actually started). Keeping
+this out of `docker-compose.override.yml` means a host GPU / `nvidia-persistenced`
+problem can only affect deploys that explicitly opt in — it can never wedge the
+default CPU deploy, and recovering never means hand-editing the override file that
+also holds your essential bind mounts. (This is exactly the failure the v0.1.257/258
+deploys hit: the override requested the GPU while the host's legacy runtime had no
+`nvidia-persistenced` socket, so the whole stack wouldn't start.)
+
+#### GPU passthrough on the host — `nvidia-persistenced` vs CDI
+
+A host with an NVIDIA GPU usually ends up with the `nvidia-container-runtime`
+registered as an extra Docker runtime, and the overlay opts a service into it the
+modern way:
+
+```yaml
+analysis:
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: 1
+            capabilities: [gpu]
+```
+
+Under the hood, Docker then asks the NVIDIA runtime to inject the GPU. The
+NVIDIA runtime ships in two modes (see
+[the official docs](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/cdi-support.html)):
+
+- **legacy** (`mode = "legacy"`, the default on older toolkit installs) — the
+  runtime bind-mounts `/run/nvidia-persistenced/socket` into the container. If
+  `nvidia-persistenced` is **not running on the host** (the service is enabled
+  by default but stops on host reboot, package upgrades, driver updates, etc.),
+  that mount fails and the container can't start. Two fixes:
+  1. `sudo systemctl enable --now nvidia-persistenced` on the host (the
+     legacy runtime works as soon as the service is back), or
+  2. switch to **CDI mode** (recommended): the runtime reads CDI
+     specifications from `/etc/cdi` and `/var/run/cdi` and **does not** need
+     `nvidia-persistenced`. Enable with:
+     ```bash
+     sudo nvidia-ctk config --in-place --set nvidia-container-runtime.mode=cdi
+     sudo systemctl restart docker
+     ```
+     The toolkit's `nvidia-cdi-refresh` systemd service keeps the
+     `/var/run/cdi/nvidia.yaml` spec up to date automatically.
+
+The symptom of either missing fix is a one-line failure at the very end of
+`docker compose up --build -d`:
+
+```
+Error response from daemon: failed to create task for container: ...
+  OCI runtime create failed: runc create failed: ...
+  failed to fulfil mount request: open /run/nvidia-persistenced/socket:
+  no such file or directory
+```
+
+This surfaces the *other* symptom NicotinD has run into in the wild: the host
+opted into the GPU overlay (or, historically, carried the device block in its
+override) while a `CUDA_VISIBLE_DEVICES=""` workaround disabled the GPU at
+runtime anyway. The two are redundant; pick one. If you don't actually need GPU
+access (the API's `audio-features` task tolerates the CPU fallback fine), simply
+**don't enable `docker-compose.gpu.yml`** — the default deploy runs the published
+CPU image and never asks the host for a GPU, so it isn't subject to the
+`nvidia-persistenced` runtime dance at all.
 
 ### Infra image pins
 
@@ -95,6 +176,47 @@ Pin the previous version in `.env` and `docker compose up -d`. Caveat: the
 SQLite schema is **forward-migrated on boot** — an older server may not
 understand a newer schema. Treat downgrades as best-effort and take a backup of
 the data volume before major upgrades (see Backups below).
+
+> **⚠️ Un-pin after you recover — a left-behind pin silently freezes every future
+> auto-deploy.** The release `deploy` job (`deploy.yml`) does `git reset --hard
+> <tag>` + `docker compose pull`, but it **never touches the gitignored `.env`**.
+> So a `NICOTIND_VERSION=<old>` pin keeps the host on `<old>` through every
+> subsequent release — the deploy looks green but the app never moves. When the
+> incident is resolved, delete the pin line and `docker compose pull nicotind &&
+> docker compose up -d nicotind` so the host follows `:release` again.
+
+### Incident runbook — the 2026-07 GPU deploy wedge
+
+**Symptom.** A release deploy on the prod host left the stack down; `docker
+compose up` ended with:
+
+```
+OCI runtime create failed: runc create failed: ...
+failed to fulfil mount request: open /run/nvidia-persistenced/socket: no such file or directory
+```
+
+**Cause.** The host's local `docker-compose.override.yml` requested the analysis
+GPU via a `deploy.resources.reservations.devices` block. That is a *hard* device
+reservation — with the host's nvidia runtime in `legacy` mode and
+`nvidia-persistenced` down (its socket gone after a driver upgrade/reboot), the
+analysis container couldn't start **at all**, wedging the stack. The nicotind
+image itself was fine.
+
+**Recovery (what actually fixes it).**
+1. Roll the app back only if you must — pin `NICOTIND_VERSION` in `.env`. (The
+   image was never the problem here, so this step was precautionary.)
+2. Stop requesting the GPU: don't enable `docker-compose.gpu.yml`, and remove any
+   GPU device block from the host override. `docker compose up -d` — the CPU
+   image runs healthy.
+3. **Un-pin** per the warning above so auto-deploys resume.
+
+**Guardrails now in place so it can't recur.**
+- GPU is opt-in via a **separate** `docker-compose.gpu.yml` overlay, never the
+  override that holds essential bind mounts. A GPU / `nvidia-persistenced`
+  problem can only affect deploys that explicitly opt in — never the default CPU
+  deploy. See "GPU passthrough — the overlay" above.
+- Before re-enabling GPU, confirm the host can inject it (`nvidia-smi` works +
+  CDI mode **or** `nvidia-persistenced` up) — see "GPU passthrough on the host".
 
 ## Build from source
 
