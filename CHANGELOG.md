@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.261](https://github.com/kevinch3/NicotinD/compare/v0.1.260...v0.1.261) (2026-07-25)
+
+### Features
+
+* **scanner:** segment delimiter-less artist mashes ([#212](https://github.com/kevinch3/NicotinD/issues/212)) ([bf86e2a](https://github.com/kevinch3/NicotinD/commit/bf86e2a3aa9a1187446ca0058418d0fd5e89b7e4)), closes [#217](https://github.com/kevinch3/NicotinD/issues/217) [#216](https://github.com/kevinch3/NicotinD/issues/216), references [211/#217](https://github.com/kevinch3/NicotinD/issues/217) [#220](https://github.com/kevinch3/NicotinD/issues/220)
 ## [0.1.260](https://github.com/kevinch3/NicotinD/compare/v0.1.259...v0.1.260) (2026-07-25)
 
 ### Bug Fixes
