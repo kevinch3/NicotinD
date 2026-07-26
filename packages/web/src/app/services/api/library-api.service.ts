@@ -86,16 +86,23 @@ export class LibraryApiService {
   }
   /** Apply a user-confirmed metadata correction (candidate or free-text; admin). */
   applyMetadata(id: string, body: ApplyMetadataRequest) {
-    return this.http.post<{
-      albumId: string;
-      artistId: string;
-      artist: string;
-      album: string;
-      year: number | null;
-      movedSongs: number;
-      coverUpdated: boolean;
-      releaseTypeUpdated: boolean;
-    }>(`/api/library/albums/${id}/metadata`, body);
+    return this.http
+      .post<{
+        albumId: string;
+        artistId: string;
+        artist: string;
+        album: string;
+        year: number | null;
+        movedSongs: number;
+        coverUpdated: boolean;
+        releaseTypeUpdated: boolean;
+      }>(`/api/library/albums/${id}/metadata`, body)
+      .pipe(
+        // A metadata fix re-points songs to a corrected artist: the server
+        // inserts the new library_artists row and prunes the orphaned old one
+        // (applyMetadataFix), so the cached artists list is stale (issue #237).
+        tap(() => this.invalidateLibraryReads()),
+      );
   }
   /**
    * Cover candidates for an album (admin): the current cover, Lidarr
@@ -146,7 +153,11 @@ export class LibraryApiService {
     }>(`/api/admin/metadata-optimize${all ? '?all=1' : ''}`, {});
   }
   resyncLibrary() {
-    return this.http.post<{ ok: boolean }>(`/api/library/sync`, {});
+    return this.http.post<{ ok: boolean }>(`/api/library/sync`, {}).pipe(
+      // A full resync rebuilds library_artists/library_genres, so the cached
+      // artists/genres lists are stale afterwards (issue #237, same shape as #210).
+      tap(() => this.invalidateLibraryReads()),
+    );
   }
   /**
    * Library fragmentation report (admin). Three classes of defects that turn
@@ -409,9 +420,16 @@ export class LibraryApiService {
 
   /** Apply a genre to a song (admin); writes the tag + updates the library. */
   applyGenre(id: string, genre: string) {
-    return this.http.post<{ ok: boolean; genre: string }>(`/api/library/songs/${id}/genre`, {
-      genre,
-    });
+    return this.http
+      .post<{ ok: boolean; genre: string }>(`/api/library/songs/${id}/genre`, {
+        genre,
+      })
+      .pipe(
+        // The server refreshes library_genres counts synchronously
+        // (setSongGenres/appendSongGenres), so the cached Genres tab is stale
+        // otherwise — the exact #210 shape for a per-song genre write (issue #237).
+        tap(() => this.invalidateLibraryReads()),
+      );
   }
 
   /** Detect a licence (read-only): file tag first, then MusicBrainz. */
@@ -463,18 +481,32 @@ export class LibraryApiService {
   }
 
   deleteSongs(ids: string[]) {
-    return this.http.post<{ ok: boolean; deletedCount: number }>('/api/library/songs/bulk-delete', {
-      ids,
-    });
+    return this.http
+      .post<{ ok: boolean; deletedCount: number }>('/api/library/songs/bulk-delete', {
+        ids,
+      })
+      .pipe(
+        // A bulk delete triggers a server-side runSync (rebuilds the aggregates),
+        // and can drop an artist's last song or empty a genre — so the cached
+        // artists/genres lists are stale afterwards (issue #237).
+        tap(() => this.invalidateLibraryReads()),
+      );
   }
 
   deleteAlbum(id: string) {
-    return this.http.delete<{
-      ok: boolean;
-      deletedCount: number;
-      failedCount: number;
-      failed: Array<{ id: string; error: string }>;
-    }>(`/api/library/albums/${id}`);
+    return this.http
+      .delete<{
+        ok: boolean;
+        deletedCount: number;
+        failedCount: number;
+        failed: Array<{ id: string; error: string }>;
+      }>(`/api/library/albums/${id}`)
+      .pipe(
+        // The delete prunes the orphaned artist row and any now-empty genre row
+        // (pruneOrphanArtist + library_genres cleanup), so the cached
+        // artists/genres lists must be dropped or they keep showing them (issue #237).
+        tap(() => this.invalidateLibraryReads()),
+      );
   }
 
   getDuplicates() {

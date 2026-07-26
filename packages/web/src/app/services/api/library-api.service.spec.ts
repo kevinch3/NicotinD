@@ -136,6 +136,96 @@ describe('LibraryApiService', () => {
     http.expectOne('/api/library/genres').flush([{ value: 'Rock', songCount: 1, albumCount: 1 }]);
   });
 
+  it('applyGenre invalidates the cached genres/artists lists (issue #237)', () => {
+    // Prime both caches.
+    service.getArtists().subscribe();
+    http.expectOne('/api/library/artists').flush([{ id: 'a1', name: 'A' }]);
+    service.getGenres().subscribe();
+    http.expectOne('/api/library/genres').flush([{ value: 'Rock', songCount: 1, albumCount: 1 }]);
+
+    // A per-song genre write refreshes library_genres counts server-side, so
+    // the cached Genres tab is stale afterwards (the #210 shape for a song write).
+    service.applyGenre('song-1', 'Reggae').subscribe();
+    http.expectOne('/api/library/songs/song-1/genre').flush({ ok: true, genre: 'Reggae' });
+
+    // The next reads re-hit the network instead of replaying the stale lists.
+    service.getArtists().subscribe();
+    http.expectOne('/api/library/artists').flush([{ id: 'a1', name: 'A' }]);
+    service.getGenres().subscribe();
+    http.expectOne('/api/library/genres').flush([{ value: 'Reggae', songCount: 1, albumCount: 1 }]);
+  });
+
+  it('applyMetadata invalidates the cached artists list (issue #237)', () => {
+    service.getArtists().subscribe();
+    http.expectOne('/api/library/artists').flush([{ id: 'old', name: 'Old' }]);
+
+    // A metadata fix re-points songs to a corrected artist (new row + orphan prune).
+    service.applyMetadata('al1', { artist: 'New Artist' }).subscribe();
+    http.expectOne('/api/library/albums/al1/metadata').flush({
+      albumId: 'al1',
+      artistId: 'new',
+      artist: 'New Artist',
+      album: 'X',
+      year: null,
+      movedSongs: 3,
+      coverUpdated: false,
+      releaseTypeUpdated: false,
+    });
+
+    service.getArtists().subscribe();
+    http.expectOne('/api/library/artists').flush([{ id: 'new', name: 'New Artist' }]);
+  });
+
+  it('deleteSongs invalidates the cached artists/genres lists (issue #237)', () => {
+    service.getArtists().subscribe();
+    http.expectOne('/api/library/artists').flush([{ id: 'a1', name: 'A' }]);
+    service.getGenres().subscribe();
+    http.expectOne('/api/library/genres').flush([{ value: 'Rock', songCount: 1, albumCount: 1 }]);
+
+    // A bulk delete runs a server-side resync and can drop the artist/genre.
+    service.deleteSongs(['s1']).subscribe();
+    http.expectOne('/api/library/songs/bulk-delete').flush({ ok: true, deletedCount: 1 });
+
+    service.getArtists().subscribe();
+    http.expectOne('/api/library/artists').flush([]);
+    service.getGenres().subscribe();
+    http.expectOne('/api/library/genres').flush([]);
+  });
+
+  it('deleteAlbum invalidates the cached artists/genres lists (issue #237)', () => {
+    service.getArtists().subscribe();
+    http.expectOne('/api/library/artists').flush([{ id: 'a1', name: 'A' }]);
+    service.getGenres().subscribe();
+    http.expectOne('/api/library/genres').flush([{ value: 'Rock', songCount: 1, albumCount: 1 }]);
+
+    // The delete prunes the orphaned artist + now-empty genre rows.
+    service.deleteAlbum('al1').subscribe();
+    const req = http.expectOne('/api/library/albums/al1');
+    expect(req.request.method).toBe('DELETE');
+    req.flush({ ok: true, deletedCount: 10, failedCount: 0, failed: [] });
+
+    service.getArtists().subscribe();
+    http.expectOne('/api/library/artists').flush([]);
+    service.getGenres().subscribe();
+    http.expectOne('/api/library/genres').flush([]);
+  });
+
+  it('resyncLibrary invalidates the cached artists/genres lists (issue #237)', () => {
+    service.getArtists().subscribe();
+    http.expectOne('/api/library/artists').flush([{ id: 'a1', name: 'A' }]);
+    service.getGenres().subscribe();
+    http.expectOne('/api/library/genres').flush([{ value: 'Rock', songCount: 1, albumCount: 1 }]);
+
+    // A full resync rebuilds the aggregates.
+    service.resyncLibrary().subscribe();
+    http.expectOne('/api/library/sync').flush({ ok: true });
+
+    service.getArtists().subscribe();
+    http.expectOne('/api/library/artists').flush([{ id: 'a1', name: 'A' }]);
+    service.getGenres().subscribe();
+    http.expectOne('/api/library/genres').flush([{ value: 'Rock', songCount: 1, albumCount: 1 }]);
+  });
+
   it('GETs autocomplete song search with q/limit params', () => {
     service.searchSongsAutocomplete('alpha', 5).subscribe();
     const req = http.expectOne((r) => r.url === '/api/library/songs/autocomplete');
