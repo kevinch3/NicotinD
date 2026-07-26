@@ -104,6 +104,8 @@ function job(over: Partial<AcquireJob> = {}): AcquireJob {
     albumTitle: null,
     destinationAlbums: [],
     tracks: [],
+    isPlaylist: false,
+    playlistId: null,
     progress: { done: 2, total: 5 },
     error: null,
     created_at: 1_000,

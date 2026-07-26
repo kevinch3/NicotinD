@@ -23,9 +23,9 @@ function setInputValue<T>(inputSignal: () => T, value: T): void {
 }
 
 const SONGS: Song[] = [
-  { id: 's1', title: 'Alpha', artist: 'A', album: 'One', path: '', created: '2026-03-03' },
-  { id: 's2', title: 'Bravo', artist: 'B', album: 'Two', path: '', created: '2026-03-02' },
-  { id: 's3', title: 'Charlie', artist: 'C', album: 'Three', path: '', created: '2026-03-01' },
+  { id: 's1', title: 'Alpha', artist: 'A', album: 'One', albumId: 'al1', path: '', bitRate: 320, size: 0, created: '2026-03-03' },
+  { id: 's2', title: 'Bravo', artist: 'B', album: 'Two', albumId: 'al2', path: '', bitRate: 320, size: 0, created: '2026-03-02' },
+  { id: 's3', title: 'Charlie', artist: 'C', album: 'Three', albumId: 'al3', path: '', bitRate: 320, size: 0, created: '2026-03-01' },
 ];
 
 const OFFLINE: PreservedTrackMeta[] = [
@@ -38,6 +38,7 @@ const OFFLINE: PreservedTrackMeta[] = [
     format: 'audio/mpeg',
     preservedAt: 2,
     lastAccessedAt: 2,
+    source: 'user',
   },
   {
     id: 'o2',
@@ -48,6 +49,7 @@ const OFFLINE: PreservedTrackMeta[] = [
     format: 'audio/mpeg',
     preservedAt: 1,
     lastAccessedAt: 1,
+    source: 'user',
   },
 ];
 

@@ -103,7 +103,7 @@ describe('SetupComponent', () => {
     comp.transcodeLosslessEnabled = true;
     comp.transcodeBitrate = 256;
 
-    const spy = vi.spyOn(comp.api, 'completeSetup').mockReturnValue(
+    const spy = vi.spyOn(comp['api'], 'completeSetup').mockReturnValue(
       of({ token: 'tok', user: { id: '1', username: 'admin', role: 'admin' }, needsRestart: false }),
     );
 
@@ -120,7 +120,7 @@ describe('SetupComponent', () => {
     const comp = TestBed.createComponent(SetupComponent).componentInstance;
     (comp as any).adminData = { username: 'admin', password: 'password' };
 
-    vi.spyOn(comp.api, 'completeSetup').mockReturnValue(
+    vi.spyOn(comp['api'], 'completeSetup').mockReturnValue(
       of({ token: 'tok', user: { id: '1', username: 'admin', role: 'admin' }, needsRestart: true }),
     );
 
@@ -134,7 +134,7 @@ describe('SetupComponent', () => {
     const comp = TestBed.createComponent(SetupComponent).componentInstance;
     (comp as any).adminData = { username: 'admin', password: 'password' };
 
-    vi.spyOn(comp.api, 'completeSetup').mockReturnValue(
+    vi.spyOn(comp['api'], 'completeSetup').mockReturnValue(
       throwError(() => ({ message: 'Server error' })),
     );
 

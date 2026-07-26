@@ -61,6 +61,8 @@ function job(id: string, state: AcquireJob['state']): AcquireJob {
     destinationAlbums: [],
     progress: null,
     tracks: [],
+    isPlaylist: false,
+    playlistId: null,
     error: null,
     created_at: 0,
   };

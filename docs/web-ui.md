@@ -273,6 +273,32 @@ two sites now share one `clearRecoveryTimeout()` helper (also used by `startReco
 `ngOnDestroy`), so the handle has a single teardown path. The two bugs compound: the stray seek-to-0
 can itself provoke another early `ended`, feeding the loop the bound is there to stop.
 
+### Web test harness — plain vitest, NOT `ng test`
+
+The suite runs on **plain vitest** via `packages/web/vitest.config.ts`, whose `angularTemplateInliner`
+plugin inlines `templateUrl`/`styleUrls` at transform time so JIT compilation works without the
+Angular CLI. `packages/web`'s own `test` script is `vitest run`, and CI has always run it
+(`ci.yml` → `bun run --filter @nicotind/web test`).
+
+`ng test` (the Angular CLI's own unit-test system) is **not** a drop-in alternative and must not be
+wired up as one: it **forbids `vi.mock` on relative imports**, which five specs rely on
+(`layout`, `settings`, `setup`, `desktop-title-bar-overlay`, `desktop-window-controls`), and it
+collects a different subset. The root `test:web` script used to point at it and failed on `master`;
+it now aliases the real harness.
+
+**Specs are type-checked separately, and this is load-bearing.** `tsconfig.app.json` excludes
+`**/*.spec.ts` and vitest transpiles without type-checking, so for a long time a spec stub could
+diverge from the interface it asserts against and every test still passed. That is exactly what
+happened: 30 accumulated type errors across 14 spec files (stale `AcquireJob`, `Song`,
+`ServiceReview`, `PreservedTrackMeta` stubs; `ProcessingSettings` imported from the wrong module;
+`taskPending` records missing task ids added later).
+
+`tsconfig.spec.json` does include the specs but couldn't run standalone — it inherited an `outDir`
+while `@nicotind/core` resolves to `src/types/core.ts`, which re-exports from `../../../core/src`,
+putting sources outside the inferred `rootDir` (48 × TS6059). Fixed with `noEmit` + an explicit
+`rootDir: "../.."`, exposed as `typecheck:web-spec` and run in CI **before** the tests. Without that
+step the fixed stubs would silently rot again.
+
 **Testing `input()`-signal components (JIT vitest limitation)**: the web unit
 suite runs on the JIT/vitest harness (`@angular/compiler`, no ngtsc build
 step), which has no compile-time transform for signal `input()`/

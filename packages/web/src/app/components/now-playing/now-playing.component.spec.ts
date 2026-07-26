@@ -2,6 +2,8 @@ import { TestBed } from '@angular/core/testing';
 import { NO_ERRORS_SCHEMA, signal } from '@angular/core';
 import { vi } from 'vitest';
 import { of, throwError, Subject } from 'rxjs';
+import type { Observable } from 'rxjs';
+import type { LyricsDto } from '@nicotind/core';
 import { provideRouter } from '@angular/router';
 import { NowPlayingComponent } from './now-playing.component';
 import { PlayerService } from '../../services/player.service';
@@ -54,7 +56,11 @@ function makeRemoteStub() {
 function makeLibraryStub() {
   return {
     getLyrics: vi.fn(() => of(null)),
-    fetchLyrics: vi.fn(() => of(null)),
+    // Typed to the real return so a test can mockReturnValue a populated DTO;
+    // a bare `of(null)` infers Observable<null> and rejects every other shape.
+    fetchLyrics: vi.fn<(id: string, force?: boolean) => Observable<LyricsDto | null>>(() =>
+      of(null),
+    ),
   };
 }
 
@@ -116,7 +122,7 @@ describe('NowPlayingComponent', () => {
       const component = fixture.componentInstance;
       playerStub.currentTrack.set({ id: 's1', title: 'Song', artist: 'Artist' });
       libraryStub.fetchLyrics.mockReturnValue(
-        of({ plain: 'la la', synced: null, source: 'lrclib', customized: false }),
+        of({ plain: 'la la', synced: null, source: 'lrclib', customized: false, updatedAt: 0 }),
       );
 
       component.fetchLyricsManually();

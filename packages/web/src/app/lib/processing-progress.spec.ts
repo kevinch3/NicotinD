@@ -8,6 +8,33 @@ import {
   runOutcomeToast,
   clampInt,
 } from './processing-progress';
+import type { ProcessingTaskId } from '../../types/core';
+
+// `taskPending` is a total Record over every ProcessingTaskId; these tests only
+// care about a couple of tasks, so fill the rest with 0 rather than restating
+// all of them at each call site (and needing an edit every time a task is added).
+function pending(counts: Partial<Record<ProcessingTaskId, number>>): {
+  taskPending: Record<ProcessingTaskId, number>;
+} {
+  const ids: ProcessingTaskId[] = [
+    'bpm',
+    'genre',
+    'key',
+    'artist-image',
+    'artist-info',
+    'energy',
+    'audio-features',
+    'artist-identity',
+    'licence',
+    'genre-audio',
+    'genre-discogs',
+  ];
+  const taskPending = Object.fromEntries(ids.map((id) => [id, counts[id] ?? 0])) as Record<
+    ProcessingTaskId,
+    number
+  >;
+  return { taskPending };
+}
 
 describe('progressPercent', () => {
   it('is 0 when nothing processed and nothing pending', () => {
@@ -40,14 +67,12 @@ describe('phaseLabel', () => {
 
 describe('totalPending / isComplete', () => {
   it('sums per-task pending counts', () => {
-    expect(totalPending({ taskPending: { bpm: 4, genre: 2, key: 0, 'artist-image': 0 } })).toBe(6);
+    expect(totalPending(pending({ bpm: 4, genre: 2 }))).toBe(6);
   });
 
   it('isComplete when all task counts are zero', () => {
-    expect(isComplete({ taskPending: { bpm: 0, genre: 0, key: 0, 'artist-image': 0 } })).toBe(true);
-    expect(isComplete({ taskPending: { bpm: 1, genre: 0, key: 0, 'artist-image': 0 } })).toBe(
-      false,
-    );
+    expect(isComplete(pending({}))).toBe(true);
+    expect(isComplete(pending({ bpm: 1 }))).toBe(false);
   });
 });
 
