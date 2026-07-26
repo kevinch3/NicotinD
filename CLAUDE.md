@@ -815,6 +815,18 @@ Add detail there, not here.
   processing enabled), pruned to newest N (`NICOTIND_BACKUP*` envs); admin list/trigger routes +
   Admin "Back up now" block; restore is a documented manual swap. →
   [docs/backup-restore.md](docs/backup-restore.md)
+- **Config export/import (portable, host migration)**: `GET`/`POST /api/admin/config/{export,import}`
+  emit + apply a JSON bundle of the **14 config tables** — a table qualifies iff its rows encode a
+  **human decision or a credential** (settings/plugins/users/playlists/watchlist/genre+artist
+  aliases+overrides+identity/metadata overrides); library rows are excluded because a rescan rebuilds
+  them. Columns **and** primary keys are read from `PRAGMA table_info` at runtime, never hardcoded —
+  five of the fourteen have a non-obvious PK (`library_genre_overrides` is `(scope,key)`,
+  `library_artist_aliases` is `alias_norm`, …). Secrets are redacted unless `?secrets=1`, and a
+  redacted bundle **skips blanked columns on update** so it can't wipe working credentials. Import is
+  **additive-merge only** (replace would delete the target's users on a wrong-bundle import),
+  always dry-run-previewed through the *same* reconciliation code as the apply, one transaction, with
+  a non-key constraint collision counted as `skip` rather than fatal. Distinct from the daily DB
+  backup (whole-DB, same-host recovery). → [docs/config-export.md](docs/config-export.md)
 - **Admin audit log**: `audit_log` table + `recordAudit` called explicitly at destructive mutation
   sites (album/bulk-song delete, artist identity, user management) — never a blanket middleware;
   `GET /api/admin/audit` + Admin "Audit log" table; ledger failures never break the audited action.

@@ -8,6 +8,13 @@ import { getDatabase } from '../db.js';
 import { listAudit, recordAudit } from '../services/audit-log.js';
 import { listBackups, runBackup } from '../services/backup.js';
 import {
+  exportConfig,
+  importConfig,
+  previewImport,
+  validateBundle,
+  type ConfigBundle,
+} from '../services/config-export.js';
+import {
   getAutoPlaylistStatus,
   runAutoPlaylistsNow,
   setAutoPlaylistCadence,
@@ -292,6 +299,51 @@ export function adminRoutes(deps: AdminRoutesDeps) {
       return c.json(info, 201);
     } catch (err) {
       return c.json({ error: `Backup failed: ${err instanceof Error ? err.message : err}` }, 500);
+    }
+  });
+
+  // --- Configuration export / import (see services/config-export.ts) --------
+
+  // Portable config artifact. Credentials are redacted unless `?secrets=1`, so
+  // the default download is safe to hand around; migrating a host needs the
+  // opt-in. Served as an attachment so a browser saves rather than renders it.
+  app.get('/config/export', (c) => {
+    const includeSecrets = c.req.query('secrets') === '1';
+    const bundle = exportConfig(getDatabase(), { includeSecrets, appVersion: deps.version });
+    recordAudit(getDatabase(), c.get('user'), 'config.export', {
+      detail: includeSecrets ? 'including secrets' : 'secrets redacted',
+    });
+    const stamp = new Date().toISOString().slice(0, 10);
+    c.header('Content-Disposition', `attachment; filename="nicotind-config-${stamp}.json"`);
+    return c.json(bundle);
+  });
+
+  // Apply a bundle, or (dryRun) report what it would change. The preview runs
+  // the same reconciliation as the apply, so the two can't disagree.
+  app.post('/config/import', async (c) => {
+    let body: { bundle?: unknown; dryRun?: boolean };
+    try {
+      body = (await c.req.json()) as typeof body;
+    } catch {
+      return c.json({ error: 'Body must be JSON' }, 400);
+    }
+
+    const invalid = validateBundle(body.bundle);
+    if (invalid) return c.json({ error: invalid }, 400);
+    const bundle = body.bundle as ConfigBundle;
+    const db = getDatabase();
+
+    if (body.dryRun) return c.json({ dryRun: true, plan: previewImport(db, bundle) });
+
+    try {
+      const plan = importConfig(db, bundle);
+      const total = plan.sections.reduce((n, s) => n + s.create + s.update, 0);
+      recordAudit(db, c.get('user'), 'config.import', {
+        detail: `${total} row(s) across ${plan.sections.length} section(s)`,
+      });
+      return c.json({ dryRun: false, plan });
+    } catch (err) {
+      return c.json({ error: `Import failed: ${err instanceof Error ? err.message : err}` }, 500);
     }
   });
 

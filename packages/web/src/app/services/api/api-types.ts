@@ -518,6 +518,37 @@ export interface BackupInfo {
   files: string[];
 }
 
+// ── Configuration export/import (issue #221) ─────────────────────────────────
+//
+// Config-only, portable between installs. Mirrors `services/config-export.ts`;
+// `sections` is deliberately opaque here — the web side moves the bundle around
+// but never interprets its rows.
+
+export interface ConfigBundle {
+  bundleVersion: number;
+  generatedAt: number;
+  appVersion?: string;
+  includesSecrets: boolean;
+  sections: Record<string, unknown[]>;
+}
+
+export interface SectionPlan {
+  section: string;
+  create: number;
+  update: number;
+  skip: number;
+  unknownColumns: string[];
+}
+
+export interface ImportPlan {
+  bundleVersion: number;
+  generatedAt: number;
+  appVersion?: string;
+  includesSecrets: boolean;
+  sections: SectionPlan[];
+  warnings: string[];
+}
+
 // ── ServiceReview (admin) ────────────────────────────────────────────────────
 //
 // `GET /api/admin/review` returns one consolidated snapshot of everything the
