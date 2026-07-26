@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.265](https://github.com/kevinch3/NicotinD/compare/v0.1.264...v0.1.265) (2026-07-26)
+
+### Features
+
+* **acquisition:** kill-switch ([#235](https://github.com/kevinch3/NicotinD/issues/235)), acquisition-only Search ([#227](https://github.com/kevinch3/NicotinD/issues/227)), direct-grab fix ([#223](https://github.com/kevinch3/NicotinD/issues/223)) ([4094cf9](https://github.com/kevinch3/NicotinD/commit/4094cf9d191abb4f5059e4ed83684c881711d033))
 ## [0.1.264](https://github.com/kevinch3/NicotinD/compare/v0.1.263...v0.1.264) (2026-07-26)
 
 ### Features
