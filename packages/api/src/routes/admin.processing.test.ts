@@ -58,7 +58,7 @@ function makeService(): LibraryProcessingService {
       lookupGenre: async () => null,
       lookupArtistImageSpotify: null,
       lookupArtistInfo: null,
-    lookupGenreForRelease: null,
+      lookupGenreForRelease: null,
       resolveArtistIdentity: null,
       lookupLicence: async () => null,
       fileExists: () => false,
@@ -207,6 +207,22 @@ describe('admin /processing', () => {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ gates: { bpm: 'yes' } }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects a non-boolean paused', async () => {
+    const app = authed(
+      new Hono<AuthEnv>().route(
+        '/',
+        adminRoutes({ musicDir: '/music', processing: makeService() }),
+      ),
+      'admin',
+    );
+    const res = await app.request('/processing', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ paused: 'yes' }),
     });
     expect(res.status).toBe(400);
   });

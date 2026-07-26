@@ -412,6 +412,9 @@ export function adminRoutes(deps: AdminRoutesDeps) {
     ) {
       return c.json({ error: 'concurrency must be a positive integer' }, 400);
     }
+    if (body.paused !== undefined && typeof body.paused !== 'boolean') {
+      return c.json({ error: 'paused must be a boolean' }, 400);
+    }
     // gates is a sparse per-task boolean map ("require before landing"); reject a
     // malformed value so a bad client can't poison the persisted JSON blob.
     if (body.gates !== undefined) {

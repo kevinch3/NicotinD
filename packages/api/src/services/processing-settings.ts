@@ -59,6 +59,8 @@ export const DEFAULT_PROCESSING_SETTINGS: ProcessingSettings = {
   },
   batchSize: 25,
   concurrency: 3,
+  // Not paused by default; the admin "Pause now" toggle flips this at runtime.
+  paused: false,
 };
 
 export function getProcessingSettings(db: Database): ProcessingSettings {

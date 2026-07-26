@@ -31,6 +31,21 @@ describe('processing-settings', () => {
     expect(getProcessingSettings(db)).toEqual(next);
   });
 
+  it('defaults paused to false and round-trips a pause', () => {
+    expect(getProcessingSettings(db).paused).toBe(false);
+    expect(setProcessingSettings(db, { paused: true }).paused).toBe(true);
+    expect(getProcessingSettings(db).paused).toBe(true);
+  });
+
+  it('backfills paused onto a persisted blob written before the field existed', () => {
+    // Old rows have no `paused` key; the merge over defaults must supply it
+    // rather than leaving the processor reading `undefined` as falsy-by-luck.
+    db.run("INSERT OR REPLACE INTO app_settings (key, value) VALUES ('processing', ?)", [
+      JSON.stringify({ enabled: true, batchSize: 25 }),
+    ]);
+    expect(getProcessingSettings(db).paused).toBe(false);
+  });
+
   it('deep-merges a partial patch over current values', () => {
     setProcessingSettings(db, { window: { start: '02:00', end: '04:00' } });
     // Patch only one task flag — the other must survive.

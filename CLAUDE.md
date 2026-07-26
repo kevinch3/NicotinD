@@ -261,7 +261,11 @@ Add detail there, not here.
   client too in case the browser mis-parses lossy duration over a Range response — **both gates fall
   back to an absolute 3 s floor (`FALSE_ENDED_ABSOLUTE_FLOOR_SEC`) when the API-known
   `track.duration` is missing/zero** (issue #234: that condition used to disable the guards
-  entirely, an uncovered path distinct from the original bug). →
+  entirely, an uncovered path distinct from the original bug). The recovery is **bounded**
+  (`MAX_RECOVERY_ATTEMPTS` 3 per load, reset only when a new resource takes over): unbounded, a
+  genuinely-short resource re-entered recovery on every `ended` and restarted every ~5 s forever
+  instead of advancing; the two recovery exits also share one `clearRecoveryTimeout()` so the valve
+  is cancelled rather than merely forgotten (a bare `= null` let it seek to 0 mid-playback). →
   [docs/library-scanner.md](docs/library-scanner.md) "Transcode cache integrity" +
   [docs/web-ui.md](docs/web-ui.md) "Plays 1-2 s then advances bug" / "Uncovered path (issue #234)"
 
@@ -377,7 +381,10 @@ Add detail there, not here.
   pure `clampInt`, and an **analysis-sidecar status** row renders from a new
   `services.analysis {configured,healthy}` slice on `GET /api/admin/review` (unconfigured is the
   default deployment, never an `errors[]` entry). CPU-vs-GPU stays build-time (`GPU=1` arg), so the
-  UI governs runtime load only. → [docs/library-processing.md](docs/library-processing.md)
+  UI governs runtime load only. A `paused` flag (+ `ProcessingPhase 'paused'`) is the temporary
+  runtime halt distinct from `enabled: false`: it skips window/background enrichment but **still
+  clears quarantine** (a pause must never leave new music invisible) and `runNow()` overrides it. →
+  [docs/library-processing.md](docs/library-processing.md)
 - **Process-before-landing (quarantine gate)**: a fresh download is scanned into `library_songs` but
   held **quarantined** (`landed_at IS NULL`, hidden from every listing) until its **required** steps
   finish; a per-task `gates` flag (distinct from `tasks`, defaults bpm/key/energy/genre on,

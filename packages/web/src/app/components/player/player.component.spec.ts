@@ -2,7 +2,11 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { vi } from 'vitest';
-import { PlayerComponent, browserDurationIsAcceptable } from './player.component';
+import {
+  PlayerComponent,
+  browserDurationIsAcceptable,
+  MAX_RECOVERY_ATTEMPTS,
+} from './player.component';
 import { PlayerService } from '../../services/player.service';
 import { AuthService } from '../../services/auth.service';
 import { RemotePlaybackService } from '../../services/remote-playback.service';
@@ -810,6 +814,60 @@ describe('PlayerComponent', () => {
       // The fallback seeks to 0 and resumes from the start of the (still bogus)
       // resource, so the user isn't stuck on a frozen track.
       expect(mockPlay).toHaveBeenCalled();
+      vi.useRealTimers();
+    });
+
+    it('advances the queue after MAX_RECOVERY_ATTEMPTS false-ended cycles instead of looping forever', () => {
+      vi.useFakeTimers();
+      // A genuinely short/corrupt resource: every recovery ends the same way,
+      // so without the bound this cycle repeats every 5 s and the queue is
+      // never reached (the unterminating-recovery bug).
+      Object.defineProperty(fakeAudio, 'duration', { value: 1.8, configurable: true });
+      Object.defineProperty(fakeAudio, 'currentTime', { value: 1.8, writable: true, configurable: true });
+      playerService.queue.set([TRACK_2]);
+      playerService.isPlaying.set(true);
+
+      for (let i = 0; i < MAX_RECOVERY_ATTEMPTS; i++) {
+        fakeAudio.dispatchEvent(new Event('ended'));
+        expect(playerService.recoveryState()).toBe('awaiting-duration');
+        // The 5 s valve gives up, seeks to 0 and replays — which is what feeds
+        // the next false `ended`.
+        vi.advanceTimersByTime(5000);
+        expect(playerService.recoveryState()).toBe('normal');
+        // Still on the same track: each cycle refused to advance.
+        expect(playerService.currentTrack()).toEqual(knownTrack);
+      }
+
+      // Allowance spent — this ended must fall through to the normal advance.
+      fakeAudio.dispatchEvent(new Event('ended'));
+
+      expect(playerService.currentTrack()).toEqual(TRACK_2);
+      expect(playerService.queue()).toEqual([]);
+      vi.useRealTimers();
+    });
+
+    it('gives a newly loaded track a fresh recovery allowance', () => {
+      vi.useFakeTimers();
+      Object.defineProperty(fakeAudio, 'duration', { value: 1.8, configurable: true });
+      Object.defineProperty(fakeAudio, 'currentTime', { value: 1.8, writable: true, configurable: true });
+      playerService.isPlaying.set(true);
+
+      // Burn the whole allowance on the current track.
+      for (let i = 0; i < MAX_RECOVERY_ATTEMPTS; i++) {
+        fakeAudio.dispatchEvent(new Event('ended'));
+        vi.advanceTimersByTime(5000);
+      }
+
+      // A different track loads — the counter resets, so the guard protects it
+      // again rather than letting the previous track's failures skip it.
+      playerService.currentTrack.set(TRACK_2);
+      fixture.detectChanges();
+      playerService.queue.set([knownTrack]);
+
+      fakeAudio.dispatchEvent(new Event('ended'));
+
+      expect(playerService.recoveryState()).toBe('awaiting-duration');
+      expect(playerService.queue()).toEqual([knownTrack]);
       vi.useRealTimers();
     });
 

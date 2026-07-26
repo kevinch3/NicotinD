@@ -33,6 +33,7 @@ describe('phaseLabel', () => {
     expect(phaseLabel('running')).toBe('Processing…');
     expect(phaseLabel('outside-window')).toBe('Waiting for window');
     expect(phaseLabel('disabled')).toBe('Disabled');
+    expect(phaseLabel('paused')).toBe('Paused');
     expect(phaseLabel('idle')).toBe('Idle');
   });
 });

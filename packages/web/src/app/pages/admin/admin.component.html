@@ -498,6 +498,16 @@
                     class="w-4 h-4 rounded accent-emerald-500" />
                 </label>
 
+                <label class="flex items-center justify-between gap-4">
+                  <span class="min-w-0 text-sm text-theme-primary">Pause processing
+                    <span class="block text-xs text-theme-muted">Temporary halt — fresh downloads still land. "Run now" overrides it.</span>
+                  </span>
+                  <input type="checkbox" [checked]="p.paused" [disabled]="processingSaving()"
+                    data-testid="processing-paused"
+                    (change)="saveProcessing({ paused: $any($event.target).checked })"
+                    class="w-4 h-4 rounded accent-amber-500" />
+                </label>
+
                 <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
                   <span class="min-w-0 text-sm text-theme-primary">Processing window
                     <span class="block text-xs text-theme-muted">Local server time</span>

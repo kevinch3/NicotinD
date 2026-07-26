@@ -32,6 +32,8 @@ function setup(
   } = {},
 ) {
   const deleteSongs = opts.deleteSongs ?? vi.fn(() => of({ ok: true, deletedCount: 0 }));
+  const playWithContext = vi.fn();
+  const playSingle = vi.fn();
   const optimizeAlbumMetadata =
     opts.optimizeAlbumMetadata ??
     vi.fn(() =>
@@ -48,11 +50,14 @@ function setup(
         useValue: { getAlbum: () => of(ALBUM), deleteSongs, optimizeAlbumMetadata },
       },
       { provide: AuthService, useValue: { token: signal('tok'), role: () => 'admin' } },
-      { provide: PlayerService, useValue: { play: () => {}, playWithContext: () => {} } },
+      { provide: PlayerService, useValue: { play: () => {}, playWithContext, playSingle } },
       { provide: PlaylistService, useValue: { openPicker: vi.fn() } },
       // The list-controls connect() result is only read through the (unrendered)
       // template here; a minimal stub keeps construction cheap.
-      { provide: ListControlsService, useValue: { connect: () => ({ filtered: () => ALBUM.song }) } },
+      {
+        provide: ListControlsService,
+        useValue: { connect: () => ({ filtered: () => ALBUM.song }) },
+      },
       { provide: HttpClient, useValue: {} },
     ],
     schemas: [NO_ERRORS_SCHEMA],
@@ -61,7 +66,13 @@ function setup(
   // No detectChanges(): we drive the delete handler directly rather than render
   // the toolbar-heavy template.
   const fixture = TestBed.createComponent(AlbumDetailComponent);
-  return { component: fixture.componentInstance, deleteSongs, optimizeAlbumMetadata };
+  return {
+    component: fixture.componentInstance,
+    deleteSongs,
+    optimizeAlbumMetadata,
+    playWithContext,
+    playSingle,
+  };
 }
 
 describe('AlbumDetailComponent — bulk delete', () => {
@@ -94,6 +105,40 @@ describe('AlbumDetailComponent — bulk delete', () => {
     await component.confirmCallback()!();
 
     expect(component.deleteError()).toContain('1 of 2');
+  });
+});
+
+describe('AlbumDetailComponent — playSong queue semantics (issue #233)', () => {
+  it('plays a clicked track through playWithContext so the album replaces the stale queue', () => {
+    const { component, playWithContext, playSingle } = setup();
+    component.selectedAlbum.set(ALBUM);
+
+    component.playSong({ id: 's2', title: 'Two', artist: 'Natiruts' });
+
+    expect(playSingle).not.toHaveBeenCalled();
+    const [tracks, index, context] = playWithContext.mock.calls[0];
+    expect(tracks.map((t: { id: string }) => t.id)).toEqual(['s1', 's2', 's3']);
+    expect(index).toBe(1);
+    expect(context).toEqual({ type: 'album', id: 'a1', name: 'Natiruts' });
+  });
+
+  it('falls back to playSingle when the clicked track is not in the album', () => {
+    const { component, playWithContext, playSingle } = setup();
+    component.selectedAlbum.set(ALBUM);
+
+    component.playSong({ id: 'orphan', title: 'Orphan', artist: 'Natiruts' });
+
+    expect(playWithContext).not.toHaveBeenCalled();
+    expect(playSingle).toHaveBeenCalledWith(expect.objectContaining({ id: 'orphan' }));
+  });
+
+  it('falls back to playSingle when no album is loaded', () => {
+    const { component, playWithContext, playSingle } = setup();
+
+    component.playSong({ id: 's1', title: 'One', artist: 'Natiruts' });
+
+    expect(playWithContext).not.toHaveBeenCalled();
+    expect(playSingle).toHaveBeenCalledWith(expect.objectContaining({ id: 's1' }));
   });
 });
 
