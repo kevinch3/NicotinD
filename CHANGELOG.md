@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.269](https://github.com/kevinch3/NicotinD/compare/v0.1.268...v0.1.269) (2026-07-26)
+
+### Features
+
+* **admin:** portable configuration export/import ([#221](https://github.com/kevinch3/NicotinD/issues/221)) ([eeff5f7](https://github.com/kevinch3/NicotinD/commit/eeff5f7854bb02b0a88544d488480f007492117a))
+
+### Bug Fixes
+
+* **player:** a track click replaces the queue it belongs to ([#233](https://github.com/kevinch3/NicotinD/issues/233)) ([37ab44c](https://github.com/kevinch3/NicotinD/commit/37ab44c64be801f78feadfcdc77716bcc376c4b1))
 ## [0.1.268](https://github.com/kevinch3/NicotinD/compare/v0.1.267...v0.1.268) (2026-07-26)
 
 ### Bug Fixes
