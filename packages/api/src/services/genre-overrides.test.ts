@@ -47,6 +47,54 @@ describe('applyGenreOverride', () => {
     expect(applyGenreOverride(ovr, keys, ['Latin', 'World'])).toEqual(['Folclore', 'Chacarera']);
   });
 
+  it('APPENDS for a user override that asked to add rather than replace', () => {
+    // The curator's call, not the source's: Ana Tijoux's tracks carry specific,
+    // correct genres worth keeping, so a fix at artist scope must add to them.
+    const ovr = buildOverrideIndex([
+      row({
+        scope: 'artist',
+        key: 'art1',
+        genres: ['Hip Hop'],
+        source: 'user',
+        mode: 'append',
+      }),
+    ]);
+    expect(applyGenreOverride(ovr, keys, ['Trip Hop', 'R&B'])).toEqual([
+      'Hip Hop',
+      'Trip Hop',
+      'R&B',
+    ]);
+  });
+
+  it('still REPLACES for a user override that asked to replace', () => {
+    const ovr = buildOverrideIndex([
+      row({
+        scope: 'artist',
+        key: 'art1',
+        genres: ['Folclore', 'Chacarera'],
+        source: 'user',
+        mode: 'replace',
+      }),
+    ]);
+    expect(applyGenreOverride(ovr, keys, ['Latin', 'World'])).toEqual(['Folclore', 'Chacarera']);
+  });
+
+  it('treats a legacy user row with no mode as replace', () => {
+    // Rows written before the mode column existed carry the semantics they were
+    // applied under; changing them retroactively would silently alter a library.
+    const ovr = buildOverrideIndex([
+      row({ scope: 'artist', key: 'art1', genres: ['Folclore'], source: 'user', mode: null }),
+    ]);
+    expect(applyGenreOverride(ovr, keys, ['Latin'])).toEqual(['Folclore']);
+  });
+
+  it('honours an explicit replace mode on an automated source', () => {
+    const ovr = buildOverrideIndex([
+      row({ scope: 'album', key: 'alb1', genres: ['Cumbia'], source: 'discogs', mode: 'replace' }),
+    ]);
+    expect(applyGenreOverride(ovr, keys, ['Latin', 'World'])).toEqual(['Cumbia']);
+  });
+
   it('prepends and keeps the tag genres for an AUTOMATED override', () => {
     // A machine picked these, so bound the damage: correct the primary without
     // destroying what the file already carried.
@@ -114,11 +162,34 @@ describe('upsertGenreOverride', () => {
       CREATE TABLE library_genre_overrides (
         scope TEXT NOT NULL, key TEXT NOT NULL, genres TEXT NOT NULL,
         source TEXT NOT NULL, mbid TEXT, confidence REAL, status TEXT NOT NULL,
-        note TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+        note TEXT, mode TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
         PRIMARY KEY (scope, key)
       )`);
     return db;
   };
+
+  it('round-trips the curator mode so a rescan reproduces the choice', () => {
+    const db = freshDb();
+    upsertGenreOverride(
+      db,
+      row({ scope: 'artist', key: 'art1', genres: ['Hip Hop'], source: 'user', mode: 'append' }),
+    );
+    const idx = loadGenreOverrides(db);
+    expect(idx.artist.get('art1')?.mode).toBe('append');
+    expect(applyGenreOverride(idx, keys, ['Trip Hop'])).toEqual(['Hip Hop', 'Trip Hop']);
+  });
+
+  it('reads a row written before the mode column as legacy replace', () => {
+    const db = freshDb();
+    db.run(
+      `INSERT INTO library_genre_overrides
+         (scope, key, genres, source, status, created_at, updated_at)
+       VALUES ('artist', 'art1', 'Folclore', 'user', 'applied', 0, 0)`,
+    );
+    const idx = loadGenreOverrides(db);
+    expect(idx.artist.get('art1')?.mode).toBeNull();
+    expect(applyGenreOverride(idx, keys, ['Latin'])).toEqual(['Folclore']);
+  });
 
   it('never lets an automated source overwrite a user decision', () => {
     const db = freshDb();
@@ -267,14 +338,18 @@ describe('applySongGenreOverride', () => {
     expect(changed).toBe(true);
     expect(
       db
-        .query<{ genre: string }, [string]>(`SELECT genre FROM library_song_genres WHERE song_id = ?`)
+        .query<{ genre: string }, [string]>(
+          `SELECT genre FROM library_song_genres WHERE song_id = ?`,
+        )
         .all('s1')
         .map((r) => r.genre),
     ).toEqual(['Rock']);
     // s2 was never touched.
     expect(
       db
-        .query<{ genre: string }, [string]>(`SELECT genre FROM library_song_genres WHERE song_id = ?`)
+        .query<{ genre: string }, [string]>(
+          `SELECT genre FROM library_song_genres WHERE song_id = ?`,
+        )
         .all('s2'),
     ).toEqual([]);
   });

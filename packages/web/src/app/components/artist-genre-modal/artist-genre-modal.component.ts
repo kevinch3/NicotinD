@@ -1,4 +1,13 @@
-import { Component, HostListener, computed, effect, inject, input, output, signal } from '@angular/core';
+import {
+  Component,
+  HostListener,
+  computed,
+  effect,
+  inject,
+  input,
+  output,
+  signal,
+} from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import { ToastService } from '../../services/toast.service';
@@ -36,7 +45,20 @@ export class ArtistGenreModalComponent {
   readonly saved = output<void>();
 
   readonly current = signal<string[]>([]);
-  readonly override = signal<{ genres: string[]; source: string; note: string | null } | null>(null);
+  readonly override = signal<{
+    genres: string[];
+    source: string;
+    note: string | null;
+    mode?: string | null;
+  } | null>(null);
+  /**
+   * Whether this fix replaces the songs' own genres or adds to them (issue #260).
+   * Defaults to 'append': most artists' tracks carry per-song genres more
+   * specific than anything an artist-scope fix can say, and replacing throws
+   * them away. 'replace' stays available for a broadly-mistagged artist, where
+   * a retained wrong genre would mask the correction in Radio.
+   */
+  readonly mode = signal<'replace' | 'append'>('append');
   readonly draft = signal('');
   readonly loading = signal(true);
   readonly busy = signal(false);
@@ -59,6 +81,11 @@ export class ArtistGenreModalComponent {
           // Prefill with whatever is in effect so the curator edits rather than
           // retypes — the override if one exists, else the current tag genres.
           this.draft.set((r.override?.genres ?? r.current).join('; '));
+          // A pre-#260 row carries no mode but did replace; show what is really
+          // in effect rather than the new default.
+          this.mode.set(
+            r.override ? (r.override.mode === 'append' ? 'append' : 'replace') : 'append',
+          );
           this.loading.set(false);
         },
         error: () => {
@@ -82,7 +109,11 @@ export class ArtistGenreModalComponent {
 
   /** Where the genres currently in effect came from — the "why is this wrong" cue. */
   readonly provenance = computed(() =>
-    this.override() ? (this.override()!.source === 'user' ? 'set by you' : `from ${this.override()!.source}`) : 'from file tags',
+    this.override()
+      ? this.override()!.source === 'user'
+        ? 'set by you'
+        : `from ${this.override()!.source}`
+      : 'from file tags',
   );
 
   readonly parsed = computed(() =>
@@ -98,7 +129,7 @@ export class ArtistGenreModalComponent {
     if (!this.canSave()) return;
     this.busy.set(true);
     this.error.set(null);
-    this.api.setArtistGenre(this.artistId(), this.parsed().join(';')).subscribe({
+    this.api.setArtistGenre(this.artistId(), this.parsed().join(';'), this.mode()).subscribe({
       next: () => {
         this.busy.set(false);
         this.toasts.show({ kind: 'success', message: 'Artist genre updated.' });

@@ -11,11 +11,16 @@ function setInputValue<T>(inputSignal: () => T, value: T): void {
 }
 
 describe('ArtistGenreModalComponent', () => {
-  let setCalls: Array<{ id: string; genres: string }>;
+  let setCalls: Array<{ id: string; genres: string; mode?: string }>;
   let clearCalls: string[];
 
   function make(
-    override: { genres: string[]; source: string; note: string | null } | null = null,
+    override: {
+      genres: string[];
+      source: string;
+      note: string | null;
+      mode?: string | null;
+    } | null = null,
     current: string[] = ['Latin', 'World'],
   ): ArtistGenreModalComponent {
     setCalls = [];
@@ -40,8 +45,8 @@ describe('ArtistGenreModalComponent', () => {
                 genreCount: current.length,
                 slices: current.map((g, i) => ({ genre: g, count: 10 - i, weight: (10 - i) / 10 })),
               }),
-            setArtistGenre: (id: string, genres: string) => {
-              setCalls.push({ id, genres });
+            setArtistGenre: (id: string, genres: string, mode?: string) => {
+              setCalls.push({ id, genres, mode });
               return of({ ok: true, genres: genres.split(';'), resynced: true });
             },
             clearArtistGenre: (id: string) => {
@@ -71,7 +76,9 @@ describe('ArtistGenreModalComponent', () => {
 
   it('labels provenance so a wrong genre is obviously wrong', () => {
     expect(make().provenance()).toBe('from file tags');
-    expect(make({ genres: ['Folclore'], source: 'user', note: null }).provenance()).toBe('set by you');
+    expect(make({ genres: ['Folclore'], source: 'user', note: null }).provenance()).toBe(
+      'set by you',
+    );
     expect(make({ genres: ['Latin'], source: 'musicbrainz', note: null }).provenance()).toBe(
       'from musicbrainz',
     );
@@ -97,8 +104,29 @@ describe('ArtistGenreModalComponent', () => {
     c.saved.subscribe(() => saved++);
     c.draft.set('Folclore; Chacarera');
     c.save();
-    expect(setCalls).toEqual([{ id: 'art-lar', genres: 'Folclore;Chacarera' }]);
+    expect(setCalls).toEqual([{ id: 'art-lar', genres: 'Folclore;Chacarera', mode: 'append' }]);
     expect(saved).toBe(1);
+  });
+
+  it('defaults to append so a fix does not destroy per-song genres (issue #260)', () => {
+    expect(make().mode()).toBe('append');
+  });
+
+  it('submits replace when the curator picks it', () => {
+    const c = make();
+    c.draft.set('Folclore; Chacarera');
+    c.mode.set('replace');
+    c.save();
+    expect(setCalls).toEqual([{ id: 'art-lar', genres: 'Folclore;Chacarera', mode: 'replace' }]);
+  });
+
+  it('prefills the mode from an existing override, legacy null reading as replace', () => {
+    // A row written before the mode column replaced; showing 'append' would
+    // misrepresent what is actually in effect for that artist right now.
+    expect(make({ genres: ['Folclore'], source: 'user', note: null }).mode()).toBe('replace');
+    expect(make({ genres: ['Hip Hop'], source: 'user', note: null, mode: 'append' }).mode()).toBe(
+      'append',
+    );
   });
 
   it('reset clears the override', () => {
@@ -123,8 +151,7 @@ describe('ArtistGenreModalComponent', () => {
         {
           provide: LibraryApiService,
           useValue: {
-            artistGenre: () =>
-              of({ artist: 'José Larralde', current: ['Latin'], override: null }),
+            artistGenre: () => of({ artist: 'José Larralde', current: ['Latin'], override: null }),
             artistGenreDistribution: () => throwError(() => new Error('sidecar down')),
             setArtistGenre: () => of({ ok: true, genres: [], resynced: true }),
             clearArtistGenre: () => of({ ok: true, removed: true }),

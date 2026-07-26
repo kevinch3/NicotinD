@@ -58,6 +58,32 @@
         primary</span> — it’s what radio and genre matching use.
       </p>
 
+      <fieldset class="mt-4" data-testid="artist-genre-mode">
+        <legend class="block text-xs uppercase tracking-wide text-theme-muted mb-1.5">
+          Apply to the tracks
+        </legend>
+        <label class="flex items-start gap-2 text-sm text-theme-primary cursor-pointer">
+          <input type="radio" name="artist-genre-mode" value="append" class="mt-1 accent-accent"
+            data-testid="artist-genre-mode-append"
+            [checked]="mode() === 'append'" (change)="mode.set('append')" />
+          <span>
+            Add to existing
+            <span class="block text-xs text-theme-muted">Keeps each track’s own genres. Best when they’re
+              already specific.</span>
+          </span>
+        </label>
+        <label class="flex items-start gap-2 text-sm text-theme-primary cursor-pointer mt-2">
+          <input type="radio" name="artist-genre-mode" value="replace" class="mt-1 accent-accent"
+            data-testid="artist-genre-mode-replace"
+            [checked]="mode() === 'replace'" (change)="mode.set('replace')" />
+          <span>
+            Replace existing
+            <span class="block text-xs text-theme-muted">Drops the tracks’ genres. Needed when they’re broad or
+              wrong — a leftover genre keeps matching in radio.</span>
+          </span>
+        </label>
+      </fieldset>
+
       @if (parsed().length) {
         <div class="flex flex-wrap gap-1 mt-2" data-testid="artist-genre-preview">
           @for (g of parsed(); track g; let first = $first) {

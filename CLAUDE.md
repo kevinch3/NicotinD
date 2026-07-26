@@ -177,10 +177,13 @@ Add detail there, not here.
   radio scores `genreSetCloseness` (max pairwise over sets), recipe `where`s pass through
   `expandGenreWhere`, track-info shows genre chips. **Curator-correctable genres (issue #187)**:
   `library_genre_overrides` (scope `artist`/`album`/`song`, keyed at the granularity the _source_
-  provides, applied by `buildLibrary`) is the one genre write that **replaces** a primary — a
+  provides, applied by `buildLibrary`) is the one genre write that can **replace** a primary — a
   `genre_source` column can't work because a rescan rebuilds `library_song_genres` wholesale from
-  tags; a `source='user'` row replaces the set outright (`genreSetCloseness` is a position-blind
-  MAX, so a retained broad genre masks the fix), automated rows prepend-and-keep — `essentia` (issue
+  tags; a curator row carries an explicit `mode` (**issue #260**, `append` by default, `replace`
+  opt-in, `NULL` = the pre-#260 source rule) because neither answer fits every artist — replace is
+  required when the tag genres are broad and wrong (`genreSetCloseness` is a position-blind MAX, so
+  a retained broad genre masks the fix), append when they're specific and right (a replace flattened
+  34 Ana Tijoux songs onto one list); automated rows prepend-and-keep — `essentia` (issue
   #187 task A2, the confidence-gated audio-inferred fallback below MusicBrainz/Lidarr) is the first
   real writer of that source. `status` is the review queue (a column, not a file — a file has no
   memory of rejection); `backfillGenreOverrides` applies without a scan; artist-page

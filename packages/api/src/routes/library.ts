@@ -1620,7 +1620,9 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     return c.json({
       artist: artist.name,
       current,
-      override: row ? { genres: row.genres, source: row.source, note: row.note } : null,
+      override: row
+        ? { genres: row.genres, source: row.source, note: row.note, mode: row.mode ?? null }
+        : null,
     });
   });
 
@@ -1643,11 +1645,15 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       .get(c.req.param('id'));
     if (!artist) return c.json({ error: 'Artist not found' }, 404);
 
-    const body = await c.req
-      .json<{ genres?: string; note?: string }>()
-      .catch(() => ({}) as { genres?: string; note?: string });
+    type Body = { genres?: string; note?: string; mode?: string };
+    const body = await c.req.json<Body>().catch(() => ({}) as Body);
     const genres = splitStored(body.genres ?? '');
     if (genres.length === 0) return c.json({ error: 'genres is required' }, 400);
+    // Default append (issue #260): replacing destroys the per-song genre sets,
+    // which for most artists are more specific than an artist-scope fix can be.
+    // Replace stays available because for a broadly-mistagged artist it is the
+    // only thing that works — see applyGenreOverride for both measurements.
+    const mode = body.mode === 'replace' ? 'replace' : 'append';
 
     upsertGenreOverride(db, {
       scope: 'artist',
@@ -1658,6 +1664,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       confidence: null,
       status: 'applied',
       note: body.note?.trim() || null,
+      mode,
     });
     // Apply to the stored sets right away, then rescan synchronously — same
     // choice as the artist-identity route: the curator sees the corrected genre
@@ -1918,6 +1925,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
         confidence: null,
         status: 'applied',
         note: null,
+        mode: 'replace',
       });
     }
     let merged: string[];

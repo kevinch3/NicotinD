@@ -143,6 +143,34 @@ describe('library routes', () => {
     expect(row).toEqual({ genres: 'Folclore;Chacarera', source: 'user', status: 'applied' });
   });
 
+  it('POST /artists/:id/genre defaults to append and honours an explicit replace', async () => {
+    sharedDb.run(
+      `INSERT OR REPLACE INTO library_artists (id, name, album_count, synced_at) VALUES ('art-tij', 'Ana Tijoux', 1, 1)`,
+    );
+    const modeOf = (): string | null =>
+      sharedDb
+        .query<{ mode: string | null }, [string]>(
+          `SELECT mode FROM library_genre_overrides WHERE scope = 'artist' AND key = ?`,
+        )
+        .get('ana tijoux')?.mode ?? null;
+
+    // No mode in the body — a fix must not destroy per-song genres by default.
+    await app.request('/artists/art-tij/genre', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ genres: 'Hip Hop' }),
+    });
+    expect(modeOf()).toBe('append');
+
+    const res = await app.request('/artists/art-tij/genre', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ genres: 'Hip Hop', mode: 'replace' }),
+    });
+    expect(res.status).toBe(200);
+    expect(modeOf()).toBe('replace');
+  });
+
   it('DELETE /artists/:id/genre removes the override', async () => {
     sharedDb.run(
       `INSERT OR REPLACE INTO library_artists (id, name, album_count, synced_at) VALUES ('art-del', 'Delible', 1, 1)`,
