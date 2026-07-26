@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.262](https://github.com/kevinch3/NicotinD/compare/v0.1.261...v0.1.262) (2026-07-26)
+
+### Bug Fixes
+
+* **web:** invalidate cached artists/genres lists after library mutations ([7e7e549](https://github.com/kevinch3/NicotinD/commit/7e7e549c1eab66bf2924766eab5059868079d507)), references [#237](https://github.com/kevinch3/NicotinD/issues/237) [#210](https://github.com/kevinch3/NicotinD/issues/210)
 ## [0.1.261](https://github.com/kevinch3/NicotinD/compare/v0.1.260...v0.1.261) (2026-07-25)
 
 ### Features
