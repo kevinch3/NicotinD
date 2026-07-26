@@ -628,6 +628,7 @@ export function createApp({
       version,
       dataDir: expandedDataDir,
       processing: processingRef.current,
+      analysisClient: audioFeaturesClient,
     }),
   );
   app.route('/api/users', usersRoutes(registry));

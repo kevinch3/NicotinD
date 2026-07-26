@@ -29,7 +29,10 @@ function makeReview(over: Partial<ServiceReview> = {}): ServiceReview {
       memory: { totalBytes: 8000, usedBytes: 4000, freeBytes: 4000, processRssBytes: 100, processHeapBytes: 50 },
       gpu: null,
     },
-    services: { slskd: { configured: true, healthy: true, connected: true } },
+    services: {
+      slskd: { configured: true, healthy: true, connected: true },
+      analysis: { configured: false, healthy: false },
+    },
     library: { scanning: false, indexedSongCount: 1234 },
     updateCheck: {
       currentVersion: '0.1.234',
@@ -63,6 +66,7 @@ function makeSvc(over: Partial<ServiceReview> = {}) {
     memory: (() => r.load.memory) as ServiceReviewService['memory'],
     gpu: (() => r.load.gpu) as ServiceReviewService['gpu'],
     services: (() => r.services) as ServiceReviewService['services'],
+    analysis: (() => r.services.analysis) as ServiceReviewService['analysis'],
     libraryState: (() => r.library) as ServiceReviewService['libraryState'],
     updateCheck: (() => r.updateCheck) as ServiceReviewService['updateCheck'],
     backups: (() => r.backups) as ServiceReviewService['backups'],

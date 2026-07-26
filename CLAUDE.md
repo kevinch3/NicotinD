@@ -358,8 +358,13 @@ Add detail there, not here.
   ledger (auto-reset on re-download/size-change, surfaced as `skipped`); a sidecar 404/503 (env
   mount mismatch / models down) stays un-ledgered so a misconfig can't exclude the whole library.
   the panel's failure tally is scoped to one window session (no eternal stale banner), and every
-  ffmpeg decode has a kill-timeout so one hung file can't wedge a run. →
-  [docs/library-processing.md](docs/library-processing.md)
+  ffmpeg decode has a kill-timeout so one hung file can't wedge a run. **Compute throttle (issue
+  #224)**: `concurrency` (the sidecar inference bound — it feeds `createEnrichmentContext`, so
+  lowering it lowers GPU pressure) + `batchSize` are now editable in the Admin panel through the
+  pure `clampInt`, and an **analysis-sidecar status** row renders from a new
+  `services.analysis {configured,healthy}` slice on `GET /api/admin/review` (unconfigured is the
+  default deployment, never an `errors[]` entry). CPU-vs-GPU stays build-time (`GPU=1` arg), so the
+  UI governs runtime load only. → [docs/library-processing.md](docs/library-processing.md)
 - **Process-before-landing (quarantine gate)**: a fresh download is scanned into `library_songs` but
   held **quarantined** (`landed_at IS NULL`, hidden from every listing) until its **required** steps
   finish; a per-task `gates` flag (distinct from `tasks`, defaults bpm/key/energy/genre on,
