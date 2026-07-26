@@ -63,6 +63,10 @@ test.describe('song row menu', () => {
     await expect(page).toHaveURL(/\/library\/albums\//);
 
     const rows = page.getByTestId('track-row');
+    // `count()` is an instant snapshot with no auto-retry, so reading it straight
+    // after navigation races the tracklist render and intermittently returns 0.
+    // Wait on a retrying assertion first.
+    await expect(rows.first()).toBeVisible();
     const countBefore = await rows.count();
     expect(countBefore).toBeGreaterThan(0);
 
