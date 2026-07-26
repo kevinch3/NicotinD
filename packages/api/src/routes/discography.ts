@@ -13,7 +13,11 @@ import {
   type AlternateCandidate,
 } from '../services/album-fallback.service.js';
 import { albumIdFor, artistIdFor } from '../services/library-scanner.js';
-import { albumAlreadyComplete, filesMissingOnDisk } from '../services/library-completeness.js';
+import {
+  albumAlreadyComplete,
+  filesForCanonicalTracks,
+  filesMissingOnDisk,
+} from '../services/library-completeness.js';
 import { setArtwork, pickAlbumCover, pickArtistImage } from '../services/artwork-store.js';
 import { recordAcquiredArtistIdentity } from '../services/artist-identity-store.js';
 import { createJob, supersedeActiveJobs } from '../services/acquisition-job-store.js';
@@ -427,10 +431,17 @@ export function discographyRoutes({
     // dedupe and lands as a duplicate version. This is the root-cause fix for
     // duplicate album versions on (re-)hunts. Falls back to the full folder when
     // the album isn't on disk yet (a fresh hunt downloads everything).
+    // Scope to the album's canonical tracks before anything else: the chosen
+    // peer folder may hold a whole discography, and enqueuing all of it pulls
+    // other albums and inflates the job tally (issue #262).
+    const albumFiles = filesForCanonicalTracks(
+      body.selected.files,
+      tracks.map((t) => t.title),
+    );
     const filesToDownload =
       artistName && albumTitle
-        ? filesMissingOnDisk(db, artistName, albumTitle, body.selected.files, body.localAlbumId)
-        : body.selected.files;
+        ? filesMissingOnDisk(db, artistName, albumTitle, albumFiles, body.localAlbumId)
+        : albumFiles;
 
     if (filesToDownload.length === 0) {
       // Every file in the chosen folder is already on disk — nothing to fetch.

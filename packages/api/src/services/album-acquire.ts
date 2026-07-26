@@ -4,7 +4,11 @@ import { createLogger } from '@nicotind/core';
 import type { SlskdRef } from '../index.js';
 import type { AlbumHunterService, FolderCandidate } from './album-hunter.service.js';
 import { AlbumFallbackService } from './album-fallback.service.js';
-import { albumAlreadyComplete, filesMissingOnDisk } from './library-completeness.js';
+import {
+  albumAlreadyComplete,
+  filesForCanonicalTracks,
+  filesMissingOnDisk,
+} from './library-completeness.js';
 import { recordAcquiredArtistIdentity } from './artist-identity-store.js';
 import { artistIdFor } from './library-scanner.js';
 import { createJob } from './acquisition-job-store.js';
@@ -90,10 +94,16 @@ export async function acquireAlbum(
   const best = candidates.find((c) => c.matchPct >= minMatchPct);
   if (!best) return 'no-candidate';
 
-  // Complete-only: enqueue only tracks not already on disk (see filesMissingOnDisk)
-  // so a partially-present album fills in cleanly instead of re-downloading
-  // duplicate versions of tracks we already have.
-  const filesToDownload = filesMissingOnDisk(db, artistName, albumTitle, best.files);
+  // Scope to the album's own tracks first: a peer folder can be a whole
+  // discography, and enqueuing all of it downloads other albums and blows up
+  // the job's tally (issue #262). Then complete-only: drop the tracks already
+  // on disk (see filesMissingOnDisk) so a partially-present album fills in
+  // cleanly instead of re-downloading duplicate versions.
+  const albumFiles = filesForCanonicalTracks(
+    best.files,
+    tracks.map((t) => t.title),
+  );
+  const filesToDownload = filesMissingOnDisk(db, artistName, albumTitle, albumFiles);
   if (filesToDownload.length === 0) {
     // The chosen folder's tracks are all on disk already — treat as complete.
     return 'already-complete';

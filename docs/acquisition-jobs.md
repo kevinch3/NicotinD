@@ -104,10 +104,49 @@ fallback gave up — `markMissingItemsUnavailable`). A job with some
 `unavailable` items finishes as an honest partial ("11 of 13 · 2 unavailable"),
 not an eternal spinner and not an error. `recomputeStage` derives
 state/stage purely from item states (+ `library_songs.landed_at` for scanned
-items) — idempotent under any watcher/scan/graduate interleaving. Safety
-valves in `reconcileOnBoot`: items idle past 24h are failed (so a restart or
-vanished transfer can't strand a job), and finished jobs are pruned 7 days
-after they last moved (`updated_at`, so a just-closed job stays visible).
+items) — idempotent under any watcher/scan/graduate interleaving.
+
+**Safety valves in `reconcileOnBoot`** (run at boot *and* on every retry sweep,
+in this order):
+
+1. **`reconcileOrganizedItems` — rescue before failing (issue #262).**
+   `markItemsScanned` only ever runs over the relative paths of the scan batch
+   that just finished, so an item organized by a *different* batch (a fallback
+   wave landing after the primary's scan, a duplicate copy deduped into an
+   existing path, a scan that errored mid-batch) is never revisited. It sits at
+   `organized` forever and `recomputeStage` correctly refuses to close a job
+   whose items are non-terminal — which is what stranded six prod jobs at
+   `state=active, stage=scanning`. The measurement that settled it: of the 28
+   stranded items, **20 already had a `library_songs` row at their exact
+   recorded path**. Nothing was ever going to look again. This pass re-resolves
+   every `organized` item against `library_songs.path` and marks it `scanned`.
+
+   Matching is `COLLATE NOCASE` here and in `markItemsScanned`: the organizer
+   records the path it wrote, the scanner mints `library_songs.path` from tags,
+   and the two disagree on casing often enough to strand items on their own
+   (prod: `01 - ¿Quién te dijo eso.opus` organized vs `01 - ¿Quién Te Dijo
+   Eso.opus` scanned). NOCASE is ASCII-only, so accent drift is not rescued
+   here — the idle valve below closes those out.
+2. **The 24h idle valve.** Items idle past 24h are failed, so a restart or a
+   vanished transfer can't strand a job. `NON_TERMINAL_STATES` already covers
+   `organized`, not just `downloading`; it runs *after* the rescue so an item
+   whose file genuinely landed is never written off.
+3. **TTL prune.** Finished jobs are pruned 7 days after they last moved
+   (`updated_at`, so a just-closed job stays visible).
+
+**Over-counted `unavailable` (issue #262).** A prod job reported "7 of 240 ·
+233 unavailable" for a 14-track album. The cause was not repeated attaches, as
+first suspected: the hunt's winning folder was the peer's entire
+`Joe Satriani\` discography — 254 files — and every one of them was enqueued
+and itemised, 227 of them matching no canonical track (`track_title IS NULL`).
+`filesForCanonicalTracks` (`library-completeness.ts`) now scopes a chosen
+folder's files to the album's canonical tracklist before `filesMissingOnDisk`,
+at both enqueue sites (`album-acquire.ts`, `routes/discography.ts`). It is
+deliberately conservative — with no tracklist, or when nothing matches it, the
+files pass through unchanged, so it can never turn a working hunt into an empty
+download. A canonical track whose filename is too divergent to match is dropped
+and recovered by the fallback's fresh-per-track search, the same path that
+handles any other missing track.
 
 ## Pipeline stage tracking (Phase 2 — shipped)
 
@@ -163,15 +202,44 @@ after they last moved (`updated_at`, so a just-closed job stays visible).
   ("11 of 13 · 2 unavailable" via the `download-unavailable` chip); active
   jobs whose transfers vanished from slskd render as their own rows; URL jobs
   are skipped (the AcquireJob lane already shows them).
-- **One card per album** (`collapseAlbumMembers`): every slskd folder group
-  sharing an `albumId` (multi-peer hunts, CD1/CD2 subfolders, alternate-peer
-  fallback pulls) collapses into a single card. Progress prefers the job's
-  item tallies ("9 of 13") over per-folder file counts; the card stays on the
-  most-active member's stage while anything is still downloading. The
-  collapsed `DownloadItem` carries `memberKeys` and the Downloads page fans
-  cancel/retry/remove out to every member folder group (`groupsForItem`).
+- **One job = one card** (`collapseJobMembers`, issue #261): every slskd folder
+  group sharing a **`jobId`** (multi-peer hunts, CD1/CD2 subfolders,
+  alternate-peer fallback pulls) collapses into a single card keyed
+  `job:<id>`. Progress prefers the job's item tallies ("9 of 13") over
+  per-folder file counts; the card stays on the most-active member's stage
+  while anything is still downloading. The collapsed `DownloadItem` carries
+  `memberKeys` and the Downloads page fans cancel/retry/remove out to every
+  member folder group (`groupsForItem`).
+
+  **Why the key changed from `albumId` to `jobId`.** The server has recorded
+  the transfer↔job link at enqueue time since Phase 1, but the client threw the
+  job id away and re-derived card identity from `albumIdFor(artist, album)`.
+  One hunt therefore split into several cards whenever that derived key failed
+  to line up — and there are many ways for it to fail, which is why the symptom
+  kept being reported and re-patched. Prod showed one Luis Fonsi hunt (one job)
+  rendering as five cards, its files in flight from five peers. Keying on the
+  job the server already recorded removes the re-derivation entirely: a new
+  acquisition path (a new source adapter, a new fallback strategy, a multi-disc
+  release) inherits correct grouping for free, because it necessarily creates a
+  job. It also fixes the converse bug — two *separate* jobs for the same album
+  are now two cards, where the `albumId` collapse wrongly merged them.
+
+  `enrichWithAcquisitionJobs` ships the id as `AlbumJobMeta.jobId`, and
+  `listJobFeed` ships a per-peer **`sources[]`** (`{username, fileCount,
+  state}`, grouped from `acquisition_job_items`, worst-state-first per peer via
+  `dominantItemState`) so the card renders a `Sources (N)` disclosure instead of
+  the feed splitting per peer.
+- **Unlinked transfers collapse into one group** (`collapseUnlinked`): slskd
+  transfers matching no job — genuinely external downloads, plus any whose
+  linkage was lost — render as a single `unlinked` row carrying every member
+  key, so they stay visible and cancellable but never appear as N loose cards.
+  `repointAcquisitionItems` (`album-fallback.service.ts`) still returns early
+  when `acquisitionJobIdForAlbumJob` misses, but now `log.warn`s first: a
+  transfer NicotinD itself enqueued should never end up unlinked, and nothing
+  re-links it after the fact, so the loss must at least be visible.
+
   Transfers enqueued before this feature deployed have no job rows, so they
-  still render per-folder until they finish/are cleared — expected, one-time.
+  land in the unlinked group until they finish/are cleared — expected, one-time.
 
 ## Metadata pre-fill (Phase 4 — shipped)
 

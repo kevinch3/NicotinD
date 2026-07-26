@@ -117,3 +117,33 @@ export function filesMissingOnDisk<T extends { filename: string }>(
     return !onDisk.some((t) => titlesOverlap(t, norm));
   });
 }
+
+/**
+ * Filter a chosen folder's files down to the ones that belong to the album we
+ * asked for, using its canonical tracklist.
+ *
+ * why: a peer folder is not necessarily one album. Prod hunted Joe Satriani's
+ * self-titled 14-track album and the winning folder was the peer's entire
+ * `Joe Satriani\` discography — 254 files. All 254 were enqueued and itemised,
+ * so the job's tally read "7 of 240 · 233 unavailable" (issue #262) and 227
+ * files of other albums were downloaded for nothing.
+ *
+ * Deliberately conservative: with no canonical tracklist (a direct grab), or
+ * when nothing matches it (filenames too divergent to trust the matcher), the
+ * files are returned unchanged. The filter can only ever *remove* files that
+ * some other file already covers the tracklist without, so it cannot turn a
+ * working hunt into an empty one. A canonical track whose filename is too
+ * divergent to match is dropped here and recovered by the fallback's
+ * fresh-per-track search, the same path that handles any other missing track.
+ */
+export function filesForCanonicalTracks<T extends { filename: string }>(
+  files: T[],
+  canonicalTracks: string[],
+): T[] {
+  if (canonicalTracks.length === 0) return files;
+  const matched = files.filter((f) => {
+    const norm = normalizeFileBasename(f.filename);
+    return canonicalTracks.some((t) => titlesOverlap(normalizeTitle(t), norm));
+  });
+  return matched.length > 0 ? matched : files;
+}

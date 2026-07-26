@@ -7,6 +7,10 @@ import type { SlskdUserTransferGroup } from '@nicotind/core';
 import { createLogger } from '@nicotind/core';
 import { getDatabase } from '../db.js';
 import { requireAcquirer } from '../middleware/current-user.js';
+import {
+  planHiddenTransferReconciliation,
+  pruneHiddenTransfers,
+} from '../services/hidden-transfers.js';
 import { albumIdFor } from '../services/library-scanner.js';
 import {
   createJob,
@@ -42,6 +46,9 @@ export function enrichWithAcquisitionJobs(
             albumTitle: meta.albumTitle,
             canonicalTrackCount: meta.canonicalTracks?.length ?? 0,
             albumId: albumIdFor(meta.artistName, meta.albumTitle),
+            // The job id is the card's identity (issue #261) — keep it rather
+            // than letting the client re-derive grouping from albumId.
+            jobId: meta.jobId,
           },
         };
       }
@@ -409,6 +416,18 @@ export function downloadRoutes(registry: ProviderRegistry, slskdRef: SlskdRef) {
       const hidden = db.query('SELECT id FROM hidden_transfers').all() as Array<{ id: string }>;
       const hiddenIds = new Set(hidden.map((h) => h.id));
 
+      // Drop hides whose transfer slskd no longer reports. Cheap (the diff runs
+      // over data already in hand, and writes only when something is actually
+      // stale) and it keeps the ledger bounded between restarts, so this list
+      // request and `download-retry.service` stop paying for dead rows.
+      if (hiddenIds.size > 0) {
+        const stale = planHiddenTransferReconciliation(hiddenIds, downloads).prune;
+        if (stale.length > 0) {
+          pruneHiddenTransfers(db, stale);
+          for (const id of stale) hiddenIds.delete(id);
+        }
+      }
+
       // Filter out hidden transfers (skip the map entirely when nothing is hidden).
       const visible =
         hiddenIds.size === 0
@@ -477,14 +496,17 @@ export function downloadRoutes(registry: ProviderRegistry, slskdRef: SlskdRef) {
       const { username, id } = c.req.valid('param');
       const db = getDatabase();
 
-      // 1. Tell slskd to cancel it (works for in-progress; may fail if already gone)
+      // 1. Cancel AND remove: without `remove` the row lives in slskd's list
+      //    forever and the local hide is the only thing keeping it off screen.
       try {
-        await slskdRef.current!.transfers.cancel(username, id);
+        await slskdRef.current!.transfers.cancel(username, id, { remove: true });
       } catch {
         // Transfer may already be gone — not fatal
       }
 
-      // 2. Mark as hidden in our DB (works for completed/cancelled history)
+      // 2. Hide locally as the fallback for the removals slskd refuses (it only
+      //    removes completed transfers, and an in-flight cancellation lands
+      //    asynchronously). Reconciliation prunes the row once it takes effect.
       db.run('INSERT OR IGNORE INTO hidden_transfers (id) VALUES (?)', [id]);
 
       return c.json({ ok: true }, 200);
@@ -535,12 +557,21 @@ export function downloadRoutes(registry: ProviderRegistry, slskdRef: SlskdRef) {
         }
       }
 
-      await Promise.all(
-        toCancel.map(({ username, id }) =>
-          slskdRef.current!.transfers.cancel(username, id).catch(() => {}),
-        ),
-      );
+      // One bulk call instead of N round trips — every id collected above is
+      // already `Completed,`, which is exactly what this endpoint drops.
+      try {
+        await slskdRef.current!.transfers.removeCompleted();
+      } catch {
+        // Fall back to per-transfer removal if the bulk endpoint is unavailable.
+        await Promise.all(
+          toCancel.map(({ username, id }) =>
+            slskdRef.current!.transfers.cancel(username, id, { remove: true }).catch(() => {}),
+          ),
+        );
+      }
 
+      // Hide as the fallback for anything slskd kept; reconciliation prunes the
+      // rows whose transfers really did go away.
       const stmt = db.prepare('INSERT OR IGNORE INTO hidden_transfers (id) VALUES (?)');
       for (const { id } of toCancel) stmt.run(id);
 
@@ -584,7 +615,9 @@ export function downloadRoutes(registry: ProviderRegistry, slskdRef: SlskdRef) {
         downloads.flatMap((group) =>
           group.directories.flatMap((dir) =>
             dir.files.map((file) =>
-              slskdRef.current!.transfers.cancel(group.username, file.id).catch(() => {}),
+              slskdRef
+                .current!.transfers.cancel(group.username, file.id, { remove: true })
+                .catch(() => {}),
             ),
           ),
         ),

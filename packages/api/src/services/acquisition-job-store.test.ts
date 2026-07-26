@@ -14,6 +14,7 @@ import {
   markItemsScanned,
   markMissingItemsUnavailable,
   reconcileOnBoot,
+  reconcileOrganizedItems,
   recomputeStage,
   repointItem,
   supersedeActiveJobs,
@@ -253,6 +254,128 @@ describe('item lifecycle', () => {
     const afterScan = getJob(db, id)!.items[0];
     expect(afterScan.state).toBe('scanned');
     expect(afterScan.songId).toBe('s1');
+  });
+
+  it('scans an item whose organized path differs only in casing (#262)', () => {
+    // The organizer records the path it wrote; the scanner mints
+    // library_songs.path from tags. Prod stranded items on that difference.
+    const id = seedJob();
+    markItemOrganized(
+      db,
+      transferKeyFor('peer1', 'a\\01 Sunday.flac'),
+      'Bowie/Heathen/01 - quien te dijo eso.opus',
+    );
+
+    markItemsScanned(db, new Map([['Bowie/Heathen/01 - Quien Te Dijo Eso.opus', 's1']]));
+
+    expect(getJob(db, id)!.items[0].state).toBe('scanned');
+  });
+});
+
+/**
+ * Issue #262: jobs stranded at `state=active, stage=scanning` with items frozen
+ * at `organized`. `markItemsScanned` only sees the paths of the scan batch that
+ * just ran, so an item organized by any other batch is never revisited.
+ */
+describe('reconcileOrganizedItems (#262)', () => {
+  it('rescues an organized item whose song is already in the library', () => {
+    const id = seedJob();
+    markItemCompleted(db, transferKeyFor('peer1', 'a\\01 Sunday.flac'));
+    markItemOrganized(db, transferKeyFor('peer1', 'a\\01 Sunday.flac'), 'Bowie/Heathen/01.opus');
+    // The song landed via a different scan batch — nothing links it back.
+    seedSong('s1', 'Bowie/Heathen/01.opus', true);
+    expect(getJob(db, id)!.items[0].state).toBe('organized');
+
+    expect(reconcileOrganizedItems(db)).toBe(1);
+
+    const item = getJob(db, id)!.items[0];
+    expect(item.state).toBe('scanned');
+    expect(item.songId).toBe('s1');
+  });
+
+  it('closes the job once the last organized item is rescued', () => {
+    const id = seedJob();
+    for (const f of ['a\\01 Sunday.flac', 'a\\02 Slip Away.flac']) {
+      markItemCompleted(db, transferKeyFor('peer1', f));
+    }
+    markItemOrganized(db, transferKeyFor('peer1', 'a\\01 Sunday.flac'), 'Bowie/Heathen/01.opus');
+    markItemOrganized(db, transferKeyFor('peer1', 'a\\02 Slip Away.flac'), 'Bowie/Heathen/02.opus');
+    seedSong('s1', 'Bowie/Heathen/01.opus', true);
+    seedSong('s2', 'Bowie/Heathen/02.opus', true);
+    recomputeStage(db, id);
+    expect(getJob(db, id)!.stage).toBe('scanning');
+
+    reconcileOrganizedItems(db);
+
+    const job = getJob(db, id)!;
+    expect(job.state).toBe('done');
+    expect(job.stage).toBe('done');
+  });
+
+  it('leaves an organized item with no library row alone', () => {
+    // A duplicate copy deduped away at ingest never gets a song row; the 24h
+    // idle valve — not this — is what eventually closes it out.
+    const id = seedJob();
+    markItemOrganized(db, transferKeyFor('peer1', 'a\\01 Sunday.flac'), 'Bowie/Heathen/01.opus');
+
+    expect(reconcileOrganizedItems(db)).toBe(0);
+    expect(getJob(db, id)!.items[0].state).toBe('organized');
+  });
+
+  it('runs as part of the boot/hygiene pass', () => {
+    const id = seedJob();
+    markItemOrganized(db, transferKeyFor('peer1', 'a\\01 Sunday.flac'), 'Bowie/Heathen/01.opus');
+    markItemOrganized(db, transferKeyFor('peer1', 'a\\02 Slip Away.flac'), 'Bowie/Heathen/02.opus');
+    seedSong('s1', 'Bowie/Heathen/01.opus', true);
+    seedSong('s2', 'Bowie/Heathen/02.opus', true);
+
+    reconcileOnBoot(db);
+
+    expect(itemStates(id)).toEqual(['scanned', 'scanned']);
+    expect(getJob(db, id)!.state).toBe('done');
+  });
+});
+
+describe('listJobFeed sources (#261)', () => {
+  it('groups items by peer so one job can render one card with N sources', () => {
+    const id = createJob(db, {
+      kind: 'album-hunt',
+      method: 'slskd',
+      artistName: 'Luis Fonsi',
+      albumTitle: 'Abrazar la vida',
+      canonicalTracks: ['One', 'Two', 'Three'],
+      files: [
+        { filename: 'a\\01.flac', trackTitle: 'One', username: 'smuks' },
+        { filename: 'a\\02.flac', trackTitle: 'Two', username: 'smuks' },
+        { filename: 'b\\03.flac', trackTitle: 'Three', username: 'dolche' },
+      ],
+    });
+
+    const job = listJobFeed(db).find((j) => j.id === id)!;
+    expect(job.sources).toEqual([
+      { username: 'smuks', fileCount: 2, state: 'downloading' },
+      { username: 'dolche', fileCount: 1, state: 'downloading' },
+    ]);
+  });
+
+  it('reports a peer worst-state-first so a partial failure is visible', () => {
+    const id = createJob(db, {
+      kind: 'album-hunt',
+      method: 'slskd',
+      username: 'peer',
+      canonicalTracks: ['One', 'Two'],
+      files: [
+        { filename: 'a\\01.flac', trackTitle: 'One' },
+        { filename: 'a\\02.flac', trackTitle: 'Two' },
+      ],
+    });
+    db.run(
+      `UPDATE acquisition_job_items SET state = 'failed' WHERE job_id = ? AND track_title = 'Two'`,
+      [id],
+    );
+
+    const job = listJobFeed(db).find((j) => j.id === id)!;
+    expect(job.sources[0]).toEqual({ username: 'peer', fileCount: 2, state: 'failed' });
   });
 });
 

@@ -18,6 +18,51 @@ Trade-off accepted: every hunted album becomes a monitored Lidarr artist — con
 
 ---
 
+### Catalog cover art is proxied, never a CDN original (issue #263)
+
+Catalog cards showed an empty box on first view and loaded instantly on a
+revisit — an HTTP cache hit masking the real cost. `mapAlbum` handed the
+browser Lidarr's `remoteUrl`, which is a **1200 px original on a third-party
+CDN**, rendered into a ~150 px grid tile. Measured against prod Lidarr: seven
+catalog covers = **878 KB** (individual files up to 251 KB). Over a phone
+connection or the Tailscale Funnel path, a grid of those simply does not finish
+before the user moves on. When `remoteUrl` was absent the value was worse than
+slow: a Lidarr-**relative** `/MediaCover/Albums/…` path, which resolves against
+NicotinD's origin and 404s unconditionally.
+
+`proxiedCoverUrl` (`services/remote-cover.ts`) now maps both shapes to
+`/api/cover/remote?u=<encoded>`, and `GET /api/cover/remote`
+(`routes/streaming.ts`) reuses the existing cover machinery — sized WebP via
+`bucketCoverSize`/`resizeCover`, disk cache, `fetchRemoteCover`'s 6 s timeout.
+That gets a ~150 px WebP instead of a 1200 px JPEG, a **server-side** cache so
+the second viewer pays nothing, no browser → `images.lidarr.audio` traffic, and
+a working answer for the relative case (the server can reach Lidarr even though
+the browser cannot — `resolveRemoteCoverUrl` resolves it against the configured
+base URL).
+
+**Why a proxy rather than a size parameter on the CDN URL:** the Lidarr image
+cache offers no resize parameter, and it would not have fixed the relative-URL
+case at all.
+
+**The `u` parameter is allowlisted, not free-form.** An open URL proxy is an
+SSRF hole, so `isProxyableCoverUrl` accepts only the art hosts Lidarr actually
+hands us (`images.lidarr.audio`, `coverartarchive.org`, archive.org) plus the
+`/MediaCover/` prefix resolved against the operator-configured Lidarr; anything
+else is rejected **before** a request is made. Cache keys are content-addressed
+on the resolved upstream URL (`remoteCoverCacheKey`, `r_` namespace), so two
+albums sharing artwork share one entry and a changed upstream URL is a natural
+miss.
+
+The three hand-rolled `<img>` call sites — catalog tiles
+(`search.component.html`), hunt-modal candidates, metadata-fix candidates — now
+use `<app-cover-art>`, so they get the gradient placeholder, the fade-in on
+`(load)` and the `imgError` fallback the rest of the app has always had. A
+confident upstream miss returns **404** (briefly negative-cached), which the
+component renders as its placeholder rather than hanging on an `<img>` that
+never resolves.
+
+---
+
 ## Album hunt — soft-ban bypass ("skew search")
 
 `AlbumHunterService.hunt` (`packages/api/src/services/album-hunter.service.ts`) normally fires `Artist Album` / `Artist - Album` against slskd. slskd/Soulseek silently returns **zero** responses for some exact phrases (a server-side soft ban) even when the files exist.
@@ -71,7 +116,20 @@ The web surfaces it in **two places**, both gated on `PluginService.hasArchive` 
 
 Why: Lidarr often returns a bloated deluxe/special-edition tracklist (e.g. "Circus" = 24 tracks incl. live/acoustic/bonus cuts) that no single Soulseek folder contains, so a canonical-targeted `missing` set is _permanently_ non-empty — the fallback then exhausts all attempts dumping near-complete duplicate rips into one `<Artist>/<Album>` folder. Targeting the manifest means a folder that downloads in full is `done` immediately; genuinely-failed primary tracks are still recovered from alternates. Legacy jobs without a stored manifest fall back to canonical titles (`parseTargets`).
 
-**Fresh per-track recovery**: when recorded alternates (a hunt-time snapshot — often offline by the time the primary fails) can't cover a missing track, `sweep` fires a _live_ slskd search per still-missing track (`"<artist> <track>"`, using the `artist_name` column captured at `hunt-download`) and enqueues the healthiest matching file from any peer. Tracks already in flight from a prior wave are skipped. Each wave counts against `fallbackMaxAttempts` (config `downloads.fallbackMaxAttempts`, default 5).
+**Fresh per-track recovery**: when recorded alternates (a hunt-time snapshot — often offline by the time the primary fails) can't cover a missing track, `sweep` fires a _live_ slskd search per still-missing track (`"<artist> <track>"`, using the `artist_name` column captured at `hunt-download`) and enqueues the healthiest matching file from any peer. Each wave counts against `fallbackMaxAttempts` (config `downloads.fallbackMaxAttempts`, default 5).
+
+### Concurrency policy — one track, one peer at a time (issue #264)
+
+`sweep` used to recompute `missing` as "not delivered and not on disk", which left tracks another peer was **already downloading** in the recovery set. `inFlight` was collected but only consulted by the fresh-search path, and `primaryStillWorking()` gated only the *primary* peer — nothing stopped reaching for a third peer while the second was mid-transfer. Each sweep consumed another alternate for the same titles, so prod had one Luis Fonsi hunt pulling from **five peers at once** and one Black Eyed Peas hunt from four, several on the very same track number. The duplicate-prevention layer (FLAC>MP3, auto-dedupe, edition-collapsing ids) cleans it up, but only after the bytes are on disk.
+
+The sweep now separates two sets:
+
+- **`missing`** — the true gap (not delivered, not on disk). Unchanged, and still what decides whether the job is `done`.
+- **`recoverable`** — `missing` minus everything currently in flight from any peer. This is the only set a fallback may act on. When it is empty the sweep `continue`s **without burning a fallback attempt**, so a slow-but-working alternate can no longer be overtaken by the next sweep until the attempt budget is spent.
+
+That is also the concurrency cap: a wave cannot start while a previous wave is still moving bytes for the same titles.
+
+**Overtaking is gated on byte progress, not sweep count.** A cap alone would let one dead peer wedge a job forever, so "in flight" means *in flight and still moving*. `isStalled(key, bytes)` keeps a per-transfer watermark (`${username}::${filename}` → `{bytes, since}`): progress resets the clock, and a transfer with no `bytesTransferred` movement for `stallThresholdMs` (default 120 s) stops counting as in-flight and may be overtaken. Watermarks are in-memory on purpose — a restart resets the clock, which only makes the service wait *longer* before overtaking, never sooner — and are dropped when a transfer leaves the active set so a re-enqueue starts fresh.
 
 The incomplete-album surface lists these jobs via `GET /api/discography/jobs?state=exhausted|active|incomplete|all` (joined to `album_title`/`artist_name`).
 

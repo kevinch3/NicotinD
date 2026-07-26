@@ -18,6 +18,13 @@ export interface AlbumGroup {
   expectedTracks?: number;
   /** Deterministic destination library album id, for deep-linking once scanned. */
   albumId?: string;
+  /**
+   * The acquisition job that enqueued this folder, when the server could link
+   * it. This — not `albumId` — is what the feed groups on (issue #261): one job
+   * is one card, however many peers it pulled from. Absent for genuinely
+   * external transfers and for any whose linkage was lost.
+   */
+  jobId?: string;
   username: string;
   fileIds: string[];
   erroredFileIds: string[];
@@ -105,6 +112,7 @@ export function groupByAlbum(downloads: SlskdUserTransferGroup[]): AlbumGroup[] 
         albumTitle: dir.albumJob?.albumTitle,
         expectedTracks: dir.albumJob?.canonicalTrackCount,
         albumId: dir.albumJob?.albumId,
+        jobId: dir.albumJob?.jobId,
         username: transfer.username,
         fileIds: files.map((f) => f.id),
         erroredFileIds: erroredFiles.map((f) => f.id),
@@ -144,6 +152,24 @@ export interface DownloadItem {
   storagePath?: string;
   /** Destination library album id, for deep-linking to the completed album. */
   albumId?: string;
+  /**
+   * The acquisition job this card *is* (issue #261). Card identity is the job
+   * the server recorded at enqueue time, not a value re-derived from album
+   * metadata at read time — so a hunt that fell back across five peers is one
+   * card, and two separate jobs for the same album stay two cards.
+   */
+  jobId?: string;
+  /**
+   * Peers this job pulled from, for the "Sources (N)" disclosure. Straight from
+   * `AcquisitionJobView.sources`; absent for non-job rows.
+   */
+  sources?: { username: string; fileCount: number; state: TrackStatus }[];
+  /**
+   * Set on the single collapsed "Unlinked transfers" row: slskd transfers
+   * matching no job (genuinely external downloads, plus any whose linkage was
+   * lost). One group, never N loose cards — but still reachable and cancellable.
+   */
+  unlinkedCount?: number;
   /**
    * The full set of albums this job's files landed in, when known (URL
    * acquire jobs only). More than one entry means `albumId` above is null
@@ -229,6 +255,7 @@ export function groupToDownloadItem(g: AlbumGroup): DownloadItem {
     method: 'slskd',
     stage: slskdStage(g.state),
     albumId: g.albumId,
+    jobId: g.jobId,
     startedAt: g.startedAt,
     progress: { done: g.completedFiles, total: albumGroupTotal(g) },
     percent: g.state === 'downloading' ? g.overallPercent : undefined,
@@ -305,23 +332,23 @@ const POST_DOWNLOAD_STAGES: ReadonlySet<PipelineStage> = new Set([
 ]);
 
 /**
- * Collapse the slskd folder groups of ONE album (multi-peer hunts, CD1/CD2
- * subfolders, alternate-peer fallback pulls) into a single card, preferring
- * the job's item tallies ("9 of 13") over per-folder file counts. The card
- * stays on the most-active member's stage while anything is still moving, and
- * only adopts the job's post-download stage once every folder finished.
+ * Collapse the slskd folder groups of ONE acquisition job (multi-peer hunts,
+ * CD1/CD2 subfolders, alternate-peer fallback pulls) into a single card,
+ * preferring the job's item tallies ("9 of 13") over per-folder file counts.
+ * The card stays on the most-active member's stage while anything is still
+ * moving, and only adopts the job's post-download stage once every folder
+ * finished.
  *
  * `bitRate` / `audioFormat` come from the acquisition job when present (the
  * authoritative rollup across every item across every member), falling back to
  * the mode of the members when no job-level value is known yet.
  */
-function collapseAlbumMembers(
-  albumId: string,
+function collapseJobMembers(
+  groupKey: string,
   members: DownloadItem[],
   job: AcquisitionJobView | undefined,
 ): DownloadItem {
   const base = members[0];
-  const single = members.length === 1;
   const mostActive = members.reduce((a, b) =>
     STAGE_ORDER[b.stage] < STAGE_ORDER[a.stage] ? b : a,
   );
@@ -367,10 +394,12 @@ function collapseAlbumMembers(
 
   return {
     ...base,
-    // A single member keeps its own key so nothing observable changes for the
-    // common one-folder case; a collapsed card gets a stable album-level key.
-    key: single ? base.key : `alb:${albumId}`,
+    // Keyed on the job, so the card is stable however many peer folders the
+    // job spans and however that set changes as fallback waves land.
+    key: groupKey,
     stage,
+    jobId: job?.id ?? base.jobId,
+    sources: job?.sources,
     // The job's per-item statuses are authoritative for a collapsed album card
     // (same source as the tallies above) — the member groups have no
     // per-track granularity of their own to conflict with.
@@ -392,15 +421,21 @@ function collapseAlbumMembers(
 }
 
 /**
- * Fold the unified acquisition jobs (`GET /api/downloads/jobs`) into the feed:
- * every slskd folder group of one album collapses into a single card (see
- * {@link collapseAlbumMembers}); a card whose transfers all succeeded adopts
- * the job's post-download stage (organizing → scanning → processing → done)
- * and its unavailable count, so it keeps reporting until the album actually
- * lands in the library. Active jobs whose transfers vanished from slskd
- * (restart, cleared list) are appended as their own rows so a job in flight
- * is never invisible. URL jobs are skipped — the AcquireJob lane already
- * renders them.
+ * Fold the unified acquisition jobs (`GET /api/downloads/jobs`) into the feed.
+ *
+ * **One job = one card.** Card identity is the `jobId` the server recorded at
+ * enqueue time and now ships on every transfer directory — not a key re-derived
+ * from album metadata at read time. That re-derivation is why one hunt kept
+ * splitting into several cards: a fallback wave pulling from a second peer
+ * produced a folder whose derived key didn't line up, and each fix only closed
+ * one of the many ways it could fail to (issue #261). Keying on the job also
+ * makes two *separate* jobs for the same album stay two cards, which the old
+ * `albumId` collapse wrongly merged.
+ *
+ * Transfers matching no job — genuinely external downloads, plus any whose
+ * linkage was lost — collapse into a single "Unlinked transfers" row rather
+ * than N loose cards, so they stay visible and cancellable without dominating
+ * the feed. URL jobs are skipped; the AcquireJob lane already renders them.
  */
 export function mergeAcquisitionJobs(
   items: DownloadItem[],
@@ -408,40 +443,44 @@ export function mergeAcquisitionJobs(
 ): DownloadItem[] {
   const merged: DownloadItem[] = [];
   const buckets = new Map<string, DownloadItem[]>();
+  const unlinked: DownloadItem[] = [];
   for (const item of items) {
-    if (item.kind === 'slskd' && item.albumId) {
-      const list = buckets.get(item.albumId) ?? [];
-      list.push(item);
-      buckets.set(item.albumId, list);
-    } else {
+    if (item.kind !== 'slskd') {
       merged.push(item);
+    } else if (item.jobId) {
+      const list = buckets.get(item.jobId) ?? [];
+      list.push(item);
+      buckets.set(item.jobId, list);
+    } else {
+      unlinked.push(item);
     }
   }
 
-  const jobByAlbumId = new Map<string, AcquisitionJobView>();
+  const jobById = new Map<string, AcquisitionJobView>();
   for (const job of jobs) {
-    if (job.kind !== 'url' && job.albumId) jobByAlbumId.set(job.albumId, job);
+    if (job.kind !== 'url') jobById.set(job.id, job);
   }
 
-  const representedAlbumIds = new Set(buckets.keys());
-  for (const [albumId, members] of buckets) {
-    merged.push(collapseAlbumMembers(albumId, members, jobByAlbumId.get(albumId)));
+  for (const [jobId, members] of buckets) {
+    merged.push(collapseJobMembers(`job:${jobId}`, members, jobById.get(jobId)));
   }
 
   for (const job of jobs) {
     if (job.kind === 'url') continue;
-    if (job.albumId && representedAlbumIds.has(job.albumId)) continue;
+    if (buckets.has(job.id)) continue;
     // No live transfers for this job: only surface it while it's still active
     // (finished jobs with no transfers are history, not feed).
     if (job.state !== 'active') continue;
     merged.push({
-      key: `acq:${job.id}`,
+      key: `job:${job.id}`,
       kind: 'slskd',
       title: job.albumTitle ?? job.artistName ?? job.sourceRef ?? job.id,
       subtitle: job.artistName ?? undefined,
       method: (job.method as AcquisitionMethod) ?? 'slskd',
       stage: job.stage,
       albumId: job.albumId ?? undefined,
+      jobId: job.id,
+      sources: job.sources,
       startedAt: job.createdAt,
       tracks: job.items,
       progress: { done: job.progress.delivered, total: job.progress.expected },
@@ -452,11 +491,49 @@ export function mergeAcquisitionJobs(
       canRemove: false,
     });
   }
+
+  if (unlinked.length > 0) merged.push(collapseUnlinked(unlinked));
+
   return merged.sort((a, b) => {
     const byStage = STAGE_ORDER[a.stage] - STAGE_ORDER[b.stage];
     if (byStage !== 0) return byStage;
     return (b.startedAt ?? 0) - (a.startedAt ?? 0);
   });
+}
+
+/**
+ * Fold every job-less slskd transfer into one row. These are downloads
+ * NicotinD did not initiate (or whose job link was lost); they must stay
+ * actionable, but a feed of loose peer-folder cards is exactly the noise the
+ * job-as-card model exists to remove.
+ */
+export function collapseUnlinked(members: DownloadItem[]): DownloadItem {
+  const mostActive = members.reduce((a, b) =>
+    STAGE_ORDER[b.stage] < STAGE_ORDER[a.stage] ? b : a,
+  );
+  const percents = members.map((m) => m.percent).filter((p): p is number => p !== undefined);
+  const startTimes = members.map((m) => m.startedAt).filter((t): t is number => t !== undefined);
+  return {
+    key: 'unlinked',
+    kind: 'slskd',
+    title: `Unlinked transfers (${members.length})`,
+    method: 'slskd',
+    stage: mostActive.stage,
+    unlinkedCount: members.length,
+    startedAt: startTimes.length ? Math.min(...startTimes) : undefined,
+    progress: {
+      done: members.reduce((s, m) => s + (m.progress?.done ?? 0), 0),
+      total: members.reduce((s, m) => s + (m.progress?.total ?? 0), 0),
+    },
+    percent:
+      mostActive.stage === 'downloading' && percents.length
+        ? Math.round(percents.reduce((a, b) => a + b, 0) / percents.length)
+        : undefined,
+    memberKeys: members.map((m) => m.key),
+    canRetry: members.some((m) => m.canRetry),
+    canCancel: members.some((m) => m.canCancel),
+    canRemove: true,
+  };
 }
 
 /**

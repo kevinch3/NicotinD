@@ -863,13 +863,16 @@ const audioFeaturesTask: EnrichmentTask = {
             [f.danceability, f.valence, f.acousticness, f.instrumental, f.mood, song.id],
           );
           db.run(
-            `INSERT OR REPLACE INTO library_embeddings (song_id, model, dim, vec, updated_at)
-             VALUES (?, ?, ?, ?, ?)`,
+            // file_size stamps the content this vector describes, so a file
+            // replaced at the same path is a cache miss (issue #258).
+            `INSERT OR REPLACE INTO library_embeddings (song_id, model, dim, vec, file_size, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?)`,
             [
               song.id,
               result.embedding.model,
               result.embedding.dim,
               Buffer.from(new Float32Array(result.embedding.values).buffer),
+              song.size ?? null,
               Date.now(),
             ],
           );

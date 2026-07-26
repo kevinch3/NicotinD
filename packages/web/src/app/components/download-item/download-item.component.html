@@ -118,6 +118,34 @@
         {{ item().storagePath }}
       </p>
     }
+    <!-- One job can pull from several peers (a fallback wave, a multi-disc
+         release). They belong inside the job's card, not as sibling cards
+         (issue #261). -->
+    @if (item().sources; as sources) {
+      @if (sources.length > 1) {
+        <details class="mt-1" data-testid="download-sources">
+          <summary
+            class="text-xs text-theme-muted cursor-pointer select-none hover:text-theme-secondary"
+          >
+            Sources ({{ sources.length }})
+          </summary>
+          <ul class="mt-1 space-y-0.5">
+            @for (s of sources; track s.username) {
+              <li
+                class="flex items-center gap-2 text-xs text-theme-muted"
+                data-testid="download-source-row"
+              >
+                <span class="truncate flex-1">{{ s.username }}</span>
+                <span class="tabular-nums"
+                  >{{ s.fileCount }} {{ s.fileCount === 1 ? 'file' : 'files' }}</span
+                >
+                <span class="opacity-70">{{ s.state }}</span>
+              </li>
+            }
+          </ul>
+        </details>
+      }
+    }
     @if (item().error) {
       <p class="text-xs text-status-error mt-1 truncate" [title]="item().error">
         {{ item().error }}

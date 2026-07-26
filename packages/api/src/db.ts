@@ -806,16 +806,31 @@ export function applySchema(db: Database): void {
   // expensive artifact — computed once per (song, model), reused for classifier
   // heads and future similarity search. Keyed (song_id, model) so a second
   // embedding model can coexist later. Survives rescans (path-derived song ids).
+  //
+  // `file_size` is the content check (issue #258): the song id is derived from
+  // the *path*, so replacing a file in place — a re-download at better quality,
+  // a repaired rip — keeps the id and silently serves an embedding describing
+  // audio that is no longer there, which the Radio scorer then matches against.
+  // Recording the size at analysis time makes that a cache miss, mirroring the
+  // reset already used by `library_song_analysis_failures`. NULL = written
+  // before this column existed; treated as "unknown, still usable" so an
+  // upgrade doesn't discard every embedding in the library at once.
   db.run(`
     CREATE TABLE IF NOT EXISTS library_embeddings (
       song_id    TEXT NOT NULL,
       model      TEXT NOT NULL,
       dim        INTEGER NOT NULL,
       vec        BLOB NOT NULL,
+      file_size  INTEGER,
       updated_at INTEGER NOT NULL,
       PRIMARY KEY (song_id, model)
     )
   `);
+  try {
+    db.run(`ALTER TABLE library_embeddings ADD COLUMN file_size INTEGER`);
+  } catch {
+    // Column already exists — ignore
+  }
 
   // Per-(song, task) analysis failure ledger. A file that hard-fails a decode/
   // sidecar analysis (e.g. a corrupt "Invalid data" mp3) is recorded here; once

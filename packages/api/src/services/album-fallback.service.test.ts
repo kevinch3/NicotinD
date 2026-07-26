@@ -11,6 +11,7 @@ interface MockFile {
   filename: string;
   size: number;
   state: string;
+  bytesTransferred?: number;
 }
 
 function makeSlskd(groups: Array<{ username: string; directory: string; files: MockFile[] }>) {
@@ -774,5 +775,254 @@ describe('AlbumFallbackService', () => {
     expect(enqueue).not.toHaveBeenCalled();
     expect(attempts(db)).toBe(0);
     expect(jobState(db)).toBe('active');
+  });
+});
+
+/**
+ * Issue #264: the sweep recomputed `missing` as "not delivered and not on
+ * disk", which left tracks that another peer was *already downloading* in the
+ * recovery set. Each sweep therefore consumed another alternate for the same
+ * titles, and prod ended up pulling one album from five peers at once.
+ */
+describe('AlbumFallbackService — concurrent-peer fan-out (#264)', () => {
+  let db: Database;
+  beforeEach(() => {
+    db = makeDb();
+  });
+
+  /** Primary gave up on tracks two and three; `alt` is mid-transfer on track two. */
+  function inFlightAlternateSetup(bytes: number) {
+    const { slskd, enqueue } = makeSlskd([
+      {
+        username: 'primary',
+        directory: 'Album',
+        files: [
+          { id: 'p1', filename: 'Album/01 Song One.flac', size: 1, state: 'Completed, Succeeded' },
+          { id: 'p2', filename: 'Album/02 Song Two.flac', size: 1, state: 'Completed, Errored' },
+          { id: 'p3', filename: 'Album/03 Song Three.flac', size: 1, state: 'Completed, Errored' },
+        ],
+      },
+      {
+        username: 'alt',
+        directory: 'AltAlbum',
+        files: [
+          {
+            id: 'a2',
+            filename: 'AltAlbum/02 Song Two.flac',
+            size: 100,
+            state: 'InProgress',
+            bytesTransferred: bytes,
+          },
+        ],
+      },
+    ]);
+    db.run(
+      `INSERT INTO transfer_retries (transfer_key, username, filename, attempts, gave_up) VALUES
+       ('primary::Album/02 Song Two.flac', 'primary', 'x', 3, 1),
+       ('primary::Album/03 Song Three.flac', 'primary', 'x', 3, 1)`,
+    );
+    return { slskd, enqueue };
+  }
+
+  it('does not re-enqueue a track another peer is already downloading', async () => {
+    const { slskd, enqueue } = inFlightAlternateSetup(50);
+    // A second alternate that could cover BOTH remaining tracks.
+    recordJob(db, [
+      {
+        username: 'alt2',
+        directory: 'Alt2Album',
+        files: [
+          { filename: 'Alt2Album/02 Song Two.flac', size: 1 },
+          { filename: 'Alt2Album/03 Song Three.flac', size: 1 },
+        ],
+      },
+    ]);
+
+    const svc = new AlbumFallbackService(slskd, { db });
+    await svc.sweep();
+
+    // Only track three — track two is on the wire from `alt`.
+    expect(enqueue).toHaveBeenCalledTimes(1);
+    const [, files] = enqueue.mock.calls[0];
+    expect((files as Array<{ filename: string }>).map((f) => f.filename)).toEqual([
+      'Alt2Album/03 Song Three.flac',
+    ]);
+  });
+
+  it('is a complete no-op when every outstanding track is already in flight', async () => {
+    // The prod shape: one hunt, the remaining gap entirely covered by live
+    // transfers from alternates. The sweep must not spend a fallback attempt.
+    const { slskd, enqueue } = makeSlskd([
+      {
+        username: 'primary',
+        directory: 'Album',
+        files: [
+          { id: 'p1', filename: 'Album/01 Song One.flac', size: 1, state: 'Completed, Succeeded' },
+          { id: 'p2', filename: 'Album/02 Song Two.flac', size: 1, state: 'Completed, Errored' },
+          { id: 'p3', filename: 'Album/03 Song Three.flac', size: 1, state: 'Completed, Errored' },
+        ],
+      },
+      {
+        username: 'alt',
+        directory: 'AltAlbum',
+        files: [
+          {
+            id: 'a2',
+            filename: 'AltAlbum/02 Song Two.flac',
+            size: 100,
+            state: 'InProgress',
+            bytesTransferred: 10,
+          },
+          {
+            id: 'a3',
+            filename: 'AltAlbum/03 Song Three.flac',
+            size: 100,
+            state: 'InProgress',
+            bytesTransferred: 10,
+          },
+        ],
+      },
+    ]);
+    db.run(
+      `INSERT INTO transfer_retries (transfer_key, username, filename, attempts, gave_up) VALUES
+       ('primary::Album/02 Song Two.flac', 'primary', 'x', 3, 1),
+       ('primary::Album/03 Song Three.flac', 'primary', 'x', 3, 1)`,
+    );
+    recordJob(db, [ALT]);
+
+    const svc = new AlbumFallbackService(slskd, { db });
+    await svc.sweep();
+    await svc.sweep();
+
+    expect(enqueue).not.toHaveBeenCalled();
+    // No attempt burned — the budget stays available for a genuine gap.
+    expect(attempts(db)).toBe(0);
+    expect(jobState(db)).toBe('active');
+  });
+
+  it('overtakes an in-flight copy that has stalled past the threshold', async () => {
+    // Same 50 bytes on every poll: the peer is alive in slskd's eyes but dead.
+    const { slskd, enqueue } = inFlightAlternateSetup(50);
+    // Two alternates: the first sweep consumes the one covering track three,
+    // leaving the second available once the stalled track two frees up.
+    recordJob(db, [
+      {
+        username: 'alt2',
+        directory: 'Alt2Album',
+        files: [{ filename: 'Alt2Album/03 Song Three.flac', size: 1 }],
+      },
+      {
+        username: 'alt3',
+        directory: 'Alt3Album',
+        files: [{ filename: 'Alt3Album/02 Song Two.flac', size: 1 }],
+      },
+    ]);
+
+    let clock = 1_000;
+    const svc = new AlbumFallbackService(slskd, {
+      db,
+      stallThresholdMs: 60_000,
+      now: () => clock,
+      maxFallbackAttempts: 5,
+    });
+
+    await svc.sweep(); // starts the stall clock; only track three recovered
+    clock += 61_000; // no byte progress since
+    await svc.sweep();
+
+    // Second sweep is allowed to overtake the dead peer for track two.
+    const enqueued = enqueue.mock.calls.flatMap(([, files]) =>
+      (files as Array<{ filename: string }>).map((f) => f.filename),
+    );
+    expect(enqueued).toContain('Alt3Album/02 Song Two.flac');
+  });
+
+  it('does not overtake while the in-flight copy is still making progress', async () => {
+    const { slskd: slskdA } = inFlightAlternateSetup(50);
+    // Rebuild the mock per sweep so bytesTransferred can advance between polls.
+    let bytes = 50;
+    (slskdA.transfers as unknown as { getDownloads: () => Promise<unknown> }).getDownloads =
+      async () => [
+        {
+          username: 'primary',
+          directories: [
+            {
+              directory: 'Album',
+              fileCount: 3,
+              files: [
+                {
+                  id: 'p1',
+                  filename: 'Album/01 Song One.flac',
+                  size: 1,
+                  state: 'Completed, Succeeded',
+                },
+                {
+                  id: 'p2',
+                  filename: 'Album/02 Song Two.flac',
+                  size: 1,
+                  state: 'Completed, Errored',
+                },
+                {
+                  id: 'p3',
+                  filename: 'Album/03 Song Three.flac',
+                  size: 1,
+                  state: 'Completed, Errored',
+                },
+              ],
+            },
+          ],
+        },
+        {
+          username: 'alt',
+          directories: [
+            {
+              directory: 'AltAlbum',
+              fileCount: 1,
+              files: [
+                {
+                  id: 'a2',
+                  filename: 'AltAlbum/02 Song Two.flac',
+                  size: 100,
+                  state: 'InProgress',
+                  bytesTransferred: (bytes += 10),
+                },
+              ],
+            },
+          ],
+        },
+      ];
+
+    const enqueue = (slskdA.transfers as unknown as { enqueue: ReturnType<typeof mock> }).enqueue;
+    // Same two alternates as the stall test — so the only thing separating the
+    // two outcomes is whether the in-flight copy moved bytes.
+    recordJob(db, [
+      {
+        username: 'alt2',
+        directory: 'Alt2Album',
+        files: [{ filename: 'Alt2Album/03 Song Three.flac', size: 1 }],
+      },
+      {
+        username: 'alt3',
+        directory: 'Alt3Album',
+        files: [{ filename: 'Alt3Album/02 Song Two.flac', size: 1 }],
+      },
+    ]);
+
+    let clock = 1_000;
+    const svc = new AlbumFallbackService(slskdA, {
+      db,
+      stallThresholdMs: 60_000,
+      now: () => clock,
+      maxFallbackAttempts: 5,
+    });
+
+    await svc.sweep();
+    clock += 61_000; // well past the threshold, but bytes kept moving
+    await svc.sweep();
+
+    const enqueued = enqueue.mock.calls.flatMap((call) =>
+      (call[1] as Array<{ filename: string }>).map((f) => f.filename),
+    );
+    expect(enqueued).not.toContain('Alt3Album/02 Song Two.flac');
   });
 });

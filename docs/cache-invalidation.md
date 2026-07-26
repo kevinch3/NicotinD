@@ -66,7 +66,7 @@ invalidation wiring at every mutation site. That trade is deliberate and documen
 | `noArtCache` (`routes/streaming.ts`)      | id → expiry, 10 min              | **explicitly evicted** — see above                |
 | `scan-cache` (`scan_cache` table)         | path + size + mtime              | content-addressed: a retag changes mtime → miss. Override tables are applied by `buildLibrary` *after* the raw tags, so an override needs no cache bust |
 | `library_song_analysis_failures`          | `file_size` at last failure      | content-addressed: a re-download changes the size → the skip resets |
-| `library_embeddings`                      | `(song_id, model)`               | song ids are path-derived, so the lossless→Opus transcode (`.flac` → `.opus`) mints a new id and a new embedding |
+| `library_embeddings`                      | `(song_id, model)` + `file_size` | content-addressed since issue #258: song ids are path-derived, so a file replaced **in place** kept its id and the Radio scorer went on matching against a vector describing audio that was no longer there — silently, indefinitely. `loadEmbeddings` joins `library_songs` and treats a size mismatch as a miss. A NULL `file_size` (written before the column) still matches, so an upgrade doesn't discard every embedding at once. The common lossless→Opus rewrite changes the *extension*, hence the path, hence the id, so it was never the exposed case |
 | `musicbrainz-client` / `discography` (7 d), `audio-features` health (30 s), `system-metrics` GPU | external data | upstream freshness, not our consistency |
 | `transcode-cache`                         | includes source size; ffprobe post-check | see [library-scanner.md](library-scanner.md) "Transcode cache integrity" |
 

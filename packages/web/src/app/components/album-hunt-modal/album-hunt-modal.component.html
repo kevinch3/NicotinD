@@ -406,14 +406,13 @@
                   [attr.data-source]="c.source"
                 >
                   <div class="flex items-center gap-3 min-w-0 flex-1">
-                    @if (c.coverUrl) {
-                      <img
-                        [src]="c.coverUrl"
-                        alt=""
-                        loading="lazy"
-                        class="w-9 h-9 rounded object-cover flex-shrink-0 bg-theme-surface-2"
-                      />
-                    }
+                    <app-cover-art
+                      [src]="c.coverUrl"
+                      [artist]="c.subtitle"
+                      [album]="c.title"
+                      [size]="36"
+                      className="flex-shrink-0"
+                    />
                     <div class="min-w-0">
                       <div class="flex items-center gap-2">
                         <app-source-chip [source]="c.source" [label]="c.sourceLabel" />

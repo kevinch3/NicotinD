@@ -50,6 +50,7 @@ import { AlbumHuntModalComponent } from '../../components/album-hunt-modal/album
 import { SourceChipComponent } from '../../components/source-chip/source-chip.component';
 import { extractSharedUrl } from '../../lib/share-url';
 import { httpErrorMessage, httpErrorCode } from '../../lib/http-error';
+import { CoverArtComponent } from '../../components/cover-art/cover-art.component';
 import {
   shouldOpenDirectSearch,
   discographyFallbackNote,
@@ -195,6 +196,7 @@ function escapeHtml(text: string): string {
     RouterLink,
     AlbumHuntModalComponent,
     SourceChipComponent,
+    CoverArtComponent,
   ],
   templateUrl: './search.component.html',
 })
