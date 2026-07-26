@@ -29,6 +29,11 @@ export type GenreOverrideScope = 'artist' | 'album' | 'song';
  *  'discogs' is the album-scoped genre enrichment from the Discogs plugin (#194). */
 export type GenreOverrideSource = 'musicbrainz' | 'lidarr' | 'user' | 'essentia' | 'discogs';
 export type GenreOverrideStatus = 'applied' | 'pending' | 'rejected';
+/**
+ * How the override combines with the song's tag genres. `null` = decide from
+ * `source` (the pre-#260 rule), which is what legacy rows carry.
+ */
+export type GenreOverrideMode = 'replace' | 'append';
 
 export interface GenreOverrideRow {
   scope: GenreOverrideScope;
@@ -40,11 +45,14 @@ export interface GenreOverrideRow {
   confidence: number | null;
   status: GenreOverrideStatus;
   note: string | null;
+  /** Curator's combine choice; omitted/null falls back to the source rule. */
+  mode?: GenreOverrideMode | null;
 }
 
 export interface OverrideEntry {
   genres: string[];
   source: GenreOverrideSource;
+  mode?: GenreOverrideMode | null;
 }
 
 export interface OverrideIndex {
@@ -62,7 +70,7 @@ export function buildOverrideIndex(rows: readonly GenreOverrideRow[]): OverrideI
   const idx = emptyOverrideIndex();
   for (const r of rows) {
     if (r.status !== 'applied') continue;
-    idx[r.scope].set(r.key, { genres: r.genres, source: r.source });
+    idx[r.scope].set(r.key, { genres: r.genres, source: r.source, mode: r.mode ?? null });
   }
   return idx;
 }
@@ -72,19 +80,25 @@ export function buildOverrideIndex(rows: readonly GenreOverrideRow[]): OverrideI
  * outright (song > album > artist — scopes are never merged with each other).
  * An override with no genres suppresses the set entirely.
  *
- * How the override combines with the tag genres depends on who wrote it, and
- * this distinction is load-bearing rather than cosmetic:
+ * How the override combines with the tag genres is the curator's call (`mode`),
+ * because neither answer is right for every artist and the code cannot tell the
+ * two cases apart (issue #260):
  *
- * - `source='user'` **replaces** the set outright. `genreSetCloseness` (the
- *   radio's genre axis) is a position-blind MAX over every pair, so leaving a
- *   broad tag genre in place keeps scoring 1.00 against everything in that broad
- *   genre and completely masks the correction. Measured: after overriding José
- *   Larralde to Folclore/Chacarera while retaining his `Latin` tag, his radio
- *   still surfaced Enrique Iglesias and Babasónicos at genre 1.00. A curator who
- *   types the exact list means that list; Reset restores the tag genres.
- * - automated sources **prepend and keep the rest**, so the primary is corrected
- *   while nothing is destroyed — the right trade-off when a machine picked the
- *   genres and might be wrong.
+ * - **replace** is needed when the tag genres are broad and wrong.
+ *   `genreSetCloseness` (the radio's genre axis) is a position-blind MAX over
+ *   every pair, so leaving one broad genre in place keeps scoring 1.00 against
+ *   everything in it and completely masks the correction. Measured: overriding
+ *   José Larralde to Folclore/Chacarera while retaining his `Latin` tag still
+ *   surfaced Enrique Iglesias and Babasónicos at genre 1.00. His library rows
+ *   carry exactly `Latin` + `World` and nothing else.
+ * - **append** is needed when the tag genres are specific and right. Ana Tijoux's
+ *   tracks carry Hip Hop / Trip Hop / R&B / Alternative Rock per song; an
+ *   artist-scope fix that replaced them flattened 34 songs onto one list and
+ *   destroyed the per-song distinction.
+ *
+ * `mode: null` (every row written before this) falls back to the original rule:
+ * `source='user'` replaces, automated sources prepend-and-keep. Legacy rows keep
+ * the semantics they were applied under rather than silently changing meaning.
  */
 export function applyGenreOverride(
   ovr: OverrideIndex,
@@ -95,9 +109,8 @@ export function applyGenreOverride(
     ovr.song.get(keys.songId) ?? ovr.album.get(keys.albumKey) ?? ovr.artist.get(keys.artistKey);
   if (!hit) return [...tagGenres];
   if (hit.genres.length === 0) return [];
-  if (hit.source === 'user') return dedupe(hit.genres);
-
-  return dedupe([...hit.genres, ...tagGenres]);
+  const replaces = hit.mode ? hit.mode === 'replace' : hit.source === 'user';
+  return replaces ? dedupe(hit.genres) : dedupe([...hit.genres, ...tagGenres]);
 }
 
 function dedupe(genres: readonly string[]): string[] {
@@ -118,6 +131,7 @@ interface OverrideDbRow {
   genres: string;
   source: string;
   status: string;
+  mode: string | null;
 }
 
 /**
@@ -130,7 +144,7 @@ export function loadGenreOverrides(db: Database): OverrideIndex {
   try {
     rows = db
       .query<OverrideDbRow, []>(
-        `SELECT scope, key, genres, source, status FROM library_genre_overrides WHERE status = 'applied'`,
+        `SELECT scope, key, genres, source, status, mode FROM library_genre_overrides WHERE status = 'applied'`,
       )
       .all();
   } catch {
@@ -142,6 +156,7 @@ export function loadGenreOverrides(db: Database): OverrideIndex {
     idx[scope].set(r.key, {
       genres: splitStored(r.genres),
       source: r.source as GenreOverrideSource,
+      mode: r.mode === 'replace' || r.mode === 'append' ? r.mode : null,
     });
   }
   return idx;
@@ -178,8 +193,8 @@ export function upsertGenreOverride(db: Database, row: GenreOverrideRow): boolea
   const now = Date.now();
   db.run(
     `INSERT INTO library_genre_overrides
-       (scope, key, genres, source, mbid, confidence, status, note, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       (scope, key, genres, source, mbid, confidence, status, note, mode, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(scope, key) DO UPDATE SET
        genres = excluded.genres,
        source = excluded.source,
@@ -187,6 +202,7 @@ export function upsertGenreOverride(db: Database, row: GenreOverrideRow): boolea
        confidence = excluded.confidence,
        status = excluded.status,
        note = excluded.note,
+       mode = excluded.mode,
        updated_at = excluded.updated_at`,
     [
       row.scope,
@@ -197,6 +213,7 @@ export function upsertGenreOverride(db: Database, row: GenreOverrideRow): boolea
       row.confidence,
       row.status,
       row.note,
+      row.mode ?? null,
       now,
       now,
     ],
@@ -305,10 +322,11 @@ export function getGenreOverride(
           confidence: number | null;
           status: string;
           note: string | null;
+          mode: string | null;
         },
         [string, string]
       >(
-        `SELECT scope, key, genres, source, mbid, confidence, status, note
+        `SELECT scope, key, genres, source, mbid, confidence, status, note, mode
            FROM library_genre_overrides WHERE scope = ? AND key = ?`,
       )
       .get(scope, key);
@@ -325,5 +343,6 @@ export function getGenreOverride(
     confidence: r.confidence,
     status: r.status as GenreOverrideStatus,
     note: r.note,
+    mode: r.mode === 'replace' || r.mode === 'append' ? r.mode : null,
   };
 }

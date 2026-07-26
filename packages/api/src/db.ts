@@ -1147,6 +1147,7 @@ export function applySchema(db: Database): void {
       confidence  REAL,
       status      TEXT NOT NULL,   -- 'applied' | 'pending' | 'rejected'
       note        TEXT,
+      mode        TEXT,           -- 'replace' | 'append'; NULL = legacy source rule
       created_at  INTEGER NOT NULL,
       updated_at  INTEGER NOT NULL,
       PRIMARY KEY (scope, key)
@@ -1155,6 +1156,14 @@ export function applySchema(db: Database): void {
   db.run(
     `CREATE INDEX IF NOT EXISTS idx_genre_overrides_status ON library_genre_overrides(status)`,
   );
+  // Issue #260. Deliberately nullable with no default: an existing row must keep
+  // the semantics it was applied under (source='user' replaced), so backfilling
+  // a value here would silently re-interpret every curator decision ever made.
+  try {
+    db.run(`ALTER TABLE library_genre_overrides ADD COLUMN mode TEXT`);
+  } catch {
+    // Column already exists — ignore
+  }
 
   // Persisted MusicBrainz ids, so genre (and any future MB) lookups can query
   // BY ID instead of fuzzy-by-name — the hazard docs/library-scanner.md warns

@@ -182,7 +182,13 @@ export class LibraryApiService {
     return this.http.get<{
       artist: string;
       current: string[];
-      override: { genres: string[]; source: string; note: string | null } | null;
+      override: {
+        genres: string[];
+        source: string;
+        note: string | null;
+        /** 'replace' | 'append'; null on rows written before issue #260. */
+        mode: string | null;
+      } | null;
     }>(`/api/library/artists/${encodeURIComponent(id)}/genre`);
   }
 
@@ -197,11 +203,11 @@ export class LibraryApiService {
   }
 
   /** Replace the primary genre for every track by this artist. Runs a sync rescan. */
-  setArtistGenre(id: string, genres: string, note?: string) {
+  setArtistGenre(id: string, genres: string, mode?: 'replace' | 'append', note?: string) {
     return this.http
       .post<{ ok: boolean; genres: string[]; resynced: boolean }>(
         `/api/library/artists/${encodeURIComponent(id)}/genre`,
-        { genres, note },
+        { genres, mode, note },
       )
       .pipe(
         // Server ran a sync rescan — the cached artists/genres lists are stale,
