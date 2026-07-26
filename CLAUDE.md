@@ -1,30 +1,56 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this
+repository.
 
-It is an **index**, kept deliberately small because it loads into every request. The full
-detail behind each pattern below lives in `docs/` (loaded only when relevant) — primarily
-[docs/design-patterns.md](docs/design-patterns.md) plus the per-feature `docs/<feature>.md`
-files linked from each entry.
+It is an **index**, kept deliberately small because it loads into every request. The full detail
+behind each pattern below lives in `docs/` (loaded only when relevant) — primarily
+[docs/design-patterns.md](docs/design-patterns.md) plus the per-feature `docs/<feature>.md` files
+linked from each entry.
 
 ## Quality Gates
 
 Every task on this project must satisfy all three gates before being considered done:
 
-1. **Every change must be tested.** New features get new tests. Bug fixes get regression tests. Refactors must not reduce coverage. If a change can't reasonably be unit-tested, add an integration or e2e test instead — untested code is not shippable.
+1. **Every change must be tested.** New features get new tests. Bug fixes get regression tests.
+   Refactors must not reduce coverage. If a change can't reasonably be unit-tested, add an
+   integration or e2e test instead — untested code is not shippable.
 
-2. **Every test must run in CI.** Adding a test locally is not enough. Verify the relevant GitHub Actions workflow actually executes the new test on push. If a new test file or package is added, confirm it's picked up by `.github/workflows/`. Don't close out a task until CI covers the new test. **Before declaring a feature ready, also run `bun run e2e` (or the targeted `tests/<surface>.spec.ts`) locally** — any UI change that adds/removes a `data-testid`, changes a popover trigger, or alters a route's DOM surface can break e2e selectors, and a green CI run from a previous commit isn't proof the new code didn't regress them. Pre-existing flakes are allowed (note them), but anything you caused is a blocker.
+2. **Every test must run in CI.** Adding a test locally is not enough. Verify the relevant GitHub
+   Actions workflow actually executes the new test on push. If a new test file or package is added,
+   confirm it's picked up by `.github/workflows/`. Don't close out a task until CI covers the new
+   test. **Before declaring a feature ready, also run `bun run e2e` (or the targeted
+   `tests/<surface>.spec.ts`) locally** — any UI change that adds/removes a `data-testid`, changes a
+   popover trigger, or alters a route's DOM surface can break e2e selectors, and a green CI run from
+   a previous commit isn't proof the new code didn't regress them. Pre-existing flakes are allowed
+   (note them), but anything you caused is a blocker.
 
-3. **Documentation must be updated in the same change as the code.** This is not optional and not a follow-up task: **every time you add or modify behavior, update the docs in the same commit/PR.** Significant decisions — new patterns, new services, why an approach was chosen over alternatives, trade-offs accepted — must be captured. If a change makes an existing doc statement wrong, fix that statement; stale docs are treated as a bug. **Where docs live (CLAUDE.md is an index, not the detail store):**
-   - **The detail goes in `docs/`** — either the relevant existing `docs/<feature>.md`, or [docs/design-patterns.md](docs/design-patterns.md) for patterns without a dedicated file. Write the full rationale/implementation notes there, not inline in this file. These files are _not_ loaded into every request, so detail here is cheap.
-   - **Update the one-line index entry in `CLAUDE.md`** (under Key Design Patterns or the relevant section) so the new/changed behavior is discoverable, and **point it at the doc** holding the detail. A reader should never have to discover a `docs/` file by accident; this file should never grow a dense multi-sentence bullet again.
-   - **A concise `// why` comment in code** for local rationale that belongs next to the implementation.
+3. **Documentation must be updated in the same change as the code.** This is not optional and not a
+   follow-up task: **every time you add or modify behavior, update the docs in the same commit/PR.**
+   Significant decisions — new patterns, new services, why an approach was chosen over alternatives,
+   trade-offs accepted — must be captured. If a change makes an existing doc statement wrong, fix
+   that statement; stale docs are treated as a bug. **Where docs live (CLAUDE.md is an index, not
+   the detail store):**
+   - **The detail goes in `docs/`** — either the relevant existing `docs/<feature>.md`, or
+     [docs/design-patterns.md](docs/design-patterns.md) for patterns without a dedicated file. Write
+     the full rationale/implementation notes there, not inline in this file. These files are _not_
+     loaded into every request, so detail here is cheap.
+   - **Update the one-line index entry in `CLAUDE.md`** (under Key Design Patterns or the relevant
+     section) so the new/changed behavior is discoverable, and **point it at the doc** holding the
+     detail. A reader should never have to discover a `docs/` file by accident; this file should
+     never grow a dense multi-sentence bullet again.
+   - **A concise `// why` comment in code** for local rationale that belongs next to the
+     implementation.
 
    A change is not "done" (gate-complete) until its documentation reflects reality.
 
 ## What is NicotinD?
 
-NicotinD is a unified music acquisition + streaming platform that orchestrates **slskd** (Soulseek P2P client) behind a single API, web UI, and CLI, and **natively scans/streams** the music library itself (Navidrome was removed — see Architecture). Downloads from Soulseek land in a shared folder; the DownloadWatcher organizes and incrementally scans completed transfers into the canonical SQLite library that the API streams from. URL-based acquisition (yt-dlp / spotdl) feeds the same pipeline.
+NicotinD is a unified music acquisition + streaming platform that orchestrates **slskd** (Soulseek
+P2P client) behind a single API, web UI, and CLI, and **natively scans/streams** the music library
+itself (Navidrome was removed — see Architecture). Downloads from Soulseek land in a shared folder;
+the DownloadWatcher organizes and incrementally scans completed transfers into the canonical SQLite
+library that the API streams from. URL-based acquisition (yt-dlp / spotdl) feeds the same pipeline.
 
 ## Commands
 
@@ -44,7 +70,8 @@ bun run release:major    # Force a major version bump
 
 ## Commit Conventions
 
-This repo uses [Conventional Commits](https://www.conventionalcommits.org/). Every commit message must follow this format:
+This repo uses [Conventional Commits](https://www.conventionalcommits.org/). Every commit message
+must follow this format:
 
 ```
 <type>(<optional scope>): <description>
@@ -70,11 +97,14 @@ This repo uses [Conventional Commits](https://www.conventionalcommits.org/). Eve
 | `ci`       | CI pipeline changes                     |
 | `build`    | Build system changes                    |
 
-**Breaking changes**: Add `BREAKING CHANGE:` in the commit body or `!` after the type (e.g. `feat!: remove legacy auth`) to trigger a major bump.
+**Breaking changes**: Add `BREAKING CHANGE:` in the commit body or `!` after the type (e.g.
+`feat!: remove legacy auth`) to trigger a major bump.
 
 **Enforcement**: A `commit-msg` hook via husky + commitlint rejects non-conforming messages.
 
-**Releasing**: When ready to release, run `bun run release`. It reads the commit history since the last tag, determines the version bump, updates `package.json`, generates/updates `CHANGELOG.md`, commits, and creates a git tag.
+**Releasing**: When ready to release, run `bun run release`. It reads the commit history since the
+last tag, determines the version bump, updates `package.json`, generates/updates `CHANGELOG.md`,
+commits, and creates a git tag.
 
 ## Architecture
 
@@ -84,12 +114,11 @@ NicotinD (Hono API :8484)  — native library scanner + streaming, all in-proces
         DownloadWatcher → LibraryOrganizer → LibraryScanner (tags → SQLite)
 ```
 
-> **Navidrome was removed.** NicotinD is now fully native: it scans the music
-> dir itself (`LibraryScanner`, `music-metadata`), serves audio bytes from disk
-> with HTTP range support (optional ffmpeg transcoding), and resolves cover art
-> from folder/embedded images. The canonical `library_*` SQLite tables are the
-> single source of truth. The **`/rest/*` Subsonic proxy and the playlist feature
-> were dropped** in the same migration (playlists to be re-added natively later).
+> **Navidrome was removed.** NicotinD is now fully native: it scans the music dir itself
+> (`LibraryScanner`, `music-metadata`), serves audio bytes from disk with HTTP range support
+> (optional ffmpeg transcoding), and resolves cover art from folder/embedded images. The canonical
+> `library_*` SQLite tables are the single source of truth. The **`/rest/*` Subsonic proxy and the
+> playlist feature were dropped** in the same migration (playlists to be re-added natively later).
 
 **Bun monorepo** with workspace packages:
 
@@ -106,115 +135,760 @@ NicotinD (Hono API :8484)  — native library scanner + streaming, all in-proces
 
 ## Key Design Patterns
 
-One-line index; **full detail for every entry is in [docs/design-patterns.md](docs/design-patterns.md)** (and the per-feature doc linked on each line). Add detail there, not here.
+One-line index; **full detail for every entry is in
+[docs/design-patterns.md](docs/design-patterns.md)** (and the per-feature doc linked on each line).
+Add detail there, not here.
 
-- **Source-agnostic acquisition (the north star)**: every acquirable result from any source maps to one `AcquisitionCandidate` rendered in one blended, ranked list with a neutral source chip + single Get; adding a source = one adapter + a pure mapper, no route/UI change. → [docs/source-agnostic-acquisition.md](docs/source-agnostic-acquisition.md)
-- **Native library scanner**: `LibraryScanner` walks the music dir, reads tags (`music-metadata`) → `library_*` tables with deterministic SHA1 IDs; `resolveTags` applies user metadata overrides before minting IDs (survives rescans). An incremental `scan_cache` (raw tags keyed by path+size+mtime, `scan-cache.ts`) + bounded-concurrency tag reads (`mapPool`) skip re-parsing unchanged files, so an unchanged restart parses ~zero files. DB tuned via `applyPerformancePragmas` (synchronous=NORMAL/cache/mmap/busy_timeout) + a composite `idx_library_albums_grid`; the download-suppression album scan is memoized per-db (`albumIdsByGroupKey`). → [docs/library-scanner.md](docs/library-scanner.md)
-- **Music licence / rights per track**: a per-song `licence` code from the closed `LICENCE_VOCAB` (`@nicotind/core` `licence.ts`: public-domain/cc0/the six CC licences/all-rights-reserved/unknown; `normalizeLicence` maps tag/URL/MB strings → a code, **positive IDs only** — never guesses ARR from a bare © notice). Retrieval is layered: file tags first (`LICENSE`/`COPYRIGHT`/`WCOP` via `licenceFromTags`, applied at scan time, zero-network), then MusicBrainz `license` url-relations (`musicbrainz-client.getLicence`, `inc=url-rels`), then a manual curator set. Stored as `library_songs.licence` (+ `licence_source` provenance) — additive column, COALESCE-preserved + tag-mirrored like `genre`/`bpm`; NULL = unknown (so the fill retries). The background `licence` enrichment task fills `WHERE licence IS NULL` (default-on, **never a gate**; a confident miss is ledgered-not-tallied); `backfill-licence.ts` is the bulk tool. Filterable via `LibraryFilter.licences` (`unknown` bucket = `licence IS NULL`); track-info sheet has a Detect + curator set editor. The album-level aggregate `library_albums.licence` = the **unanimous** track code (`unanimousLicence`, else NULL) computed in the scanner reduce, so Albums/Compilations filter to "entirely Public Domain" (artists stay any-track) + an album-page badge. → [docs/music-licence.md](docs/music-licence.md)
-- **Multi-genre support (primary + extras)**: `splitGenres` parses full tag frames (`;`/`,`/`|` split; `&` never; `/` only when every side is a known genre) into `library_song_genres` (position 0 = primary, mirrored into `library_songs.genre`); the human-gated `library_genre_aliases` side table (`reclassify-genres.ts` propose→review→apply→**`--backfill`** (`backfillGenresFromAliases`, re-mints stored sets without a rescan); one-to-many + junk-drop canonicals) fixes concatenations/variants at scan time without retagging — mashes like `"LatinWorld"` are segmented by `segmentConcatenatedGenre` (longest-known-segment first, cuts only at an uppercase letter preceded by a letter/digit so `Pop Rock`/`Dance-Pop` survive); filters match the set via EXISTS, radio scores `genreSetCloseness` (max pairwise over sets), recipe `where`s pass through `expandGenreWhere`, track-info shows genre chips. **Curator-correctable genres (issue #187)**: `library_genre_overrides` (scope `artist`/`album`/`song`, keyed at the granularity the _source_ provides, applied by `buildLibrary`) is the one genre write that **replaces** a primary — a `genre_source` column can't work because a rescan rebuilds `library_song_genres` wholesale from tags; a `source='user'` row replaces the set outright (`genreSetCloseness` is a position-blind MAX, so a retained broad genre masks the fix), automated rows prepend-and-keep — `essentia` (issue #187 task A2, the confidence-gated audio-inferred fallback below MusicBrainz/Lidarr) is the first real writer of that source. `status` is the review queue (a column, not a file — a file has no memory of rejection); `backfillGenreOverrides` applies without a scan; artist-page `ArtistGenreModalComponent` + `resolve-genres.ts` (MBID-only via `library_mbids`, album-first — MB/Lidarr artist genres measured at 3% coverage). Genre detection otherwise **appends** to the existing set, never overrides (`appendSongGenres` = read-union-dedup around `setSongGenres`, mirrored to the file tag): the track-info "detect genre" apply, the acquisition/window `genreTask`, and the on-demand `append-genre-backfill.ts` script all add rather than replace. → [docs/library-scanner.md](docs/library-scanner.md)
-- **VA / compilation handling**: `resolveTags` separates `albumArtist` (grouping) from `trackArtist` (performer); `classifyFolder` detects compilations via COMPILATION flag, VA albumArtist, or ≥3 artists sharing one album; dedicated Compilations tab, VA hidden from artists, "Appears On" on artist pages. → [docs/library-scanner.md](docs/library-scanner.md)
-- **Multi-artist support (confirmation-gated)**: `splitArtists(raw, {confirmedArtists, canonicalWhole})` splits a compound into individual artists **only when every part is a confirmed real artist** (atomic library names ∪ cached Lidarr/MB decisions), else keeps it whole — never mangling a band/duo; featuring is always extracted. The offline authority is `loadSplitAuthority` + the scan-surviving `library_artist_identity` side table, populated by the `artist-identity` enrichment task / `resolve-artist-identity.ts` seed (works Lidarr-less via library-atomic confirmation) **and at acquisition time** (`recordAcquiredArtistIdentity`: hunt-download + `acquireAlbum` persist the Lidarr canonical name as one-act + its MBID before the scan lands). Spelling variants collapse via the `library_artist_aliases` side table applied in `buildLibrary` before ID minting; alias derivation from MBID equality is **human-gated** (`resolve-artist-identity.ts --aliases` proposes, `--apply` writes — the MBID cache holds fuzzy top-hit lookups, e.g. the real "Âme"/"ME" false pair). A compound that split is flagged scanner-owned `split_compound` and hidden from the artists grid (member tiles represent it; row stays navigable). `;` (semicolon) is a recognized split delimiter (matches acquisition sources). **Delimiter-less mashes** (issue #212, e.g. `2 MinutosTruenoDie Toten Hosen`) are split at scan time by `segmentConcatenatedArtist` — a confirmation-gated mirror of the genre segmenter (`segmentConcatenatedGenre`): cut only at an uppercase letter preceded by a letter/digit (so `Die Toten Hosen`/`Wu-Tang Clan` are safe), all-or-nothing on every segment being a confirmed artist, so a real single act is never carved up; the segmenter is gated, so a mash whose members appear in no other tag stays whole and still reaches Lidarr — `resolveOrAddArtist` therefore **refuses to provision an uncorroborated hit** (direction 2) via `corroboratesLidarrHit` (`services/lidarr-confidence.ts`, the one home for Lidarr match confidence). It is **name-only by measurement** — `/artist/lookup` ships no `albumCount`/`statistics`, so an `albumCount > 0` signal degenerates to string equality and rejects 16 of prod's 365 links incl. the #211 flagship. Instead: exact clean-key → coverage floor 0.34 (kills `"2"` at 3 % coverage) → containment → Ukkonen-banded `boundedEditDistance` (O(n·k), ~1.2 M ops/s) behind an 8-char floor. **Never use Lidarr's `cleanName`** — it strips stopwords and rejects identical names. An uncorroborated hit on an artist that **already has a link keeps that link** (refresh `checked_at`, no throw), so the guard only blocks *new* provisioning and **0 prod links break**. Direction 3 (mash candidates in the fragmentation diagnostic) was **measured and not built** — on prod it yields 2 candidates, both false positives. Admins fix wrong decisions via `POST /api/library/artists/identity` (one act / split / merge-variant / **rename** — the last reuses `library_artist_aliases` and allows an equal-normalized accent/case fix; runs the rescan **synchronously**, returns 200 for immediate feedback; permanent `source='user'` rows the background task never overrides) through `ArtistIdentityModalComponent` on the artist page + track-info sheet. Credits stored in `library_song_artists`/`library_album_artists`; `attachSongArtists`/`attachAlbumArtists` surface them on every listing + search; `ArtistLinksComponent` renders clickable inline links. → [docs/library-scanner.md](docs/library-scanner.md)
-- **Native streaming + cover art**: `GET /api/stream/:id` (Range/206 + seekable disk transcode cache) and `GET /api/cover/:id` (override→canonical→folder→embedded, sized WebP thumbnails honoring `size=`); an artist id with no real photo 404s to the placeholder (no album-cover fallback). `nativeAppCors()` is hand-rolled (not `hono/cors`) so its Vary-header append can't strip `Content-Length` off Blob-bodied stream responses (the Firefox "never plays" bug). **Transcode cache integrity** (size-in-key, 1 KiB size floor, ffprobe post-check + `-xerror`/`+discardcorrupt`/`-err_detect explode`, in-use pin during pruning, body wrapper that releases the pin on response end) closes the "1 KiB / 240 s track → 1.8 s media resource → seek bar at 100 % → false `ended`" failure mode on both the streaming cache and the ingest-time Opus transcode (which writes into the library itself). **Frontend false-ended recovery** (70 % + 5 s duration gate in `browserDurationIsAcceptable`, `isFalseEnded` / `startRecovery` state machine, 5 s `recoveryTimeout` safety valve, `loadGeneration` cross-element guard) handles the symptom on the client too in case the browser mis-parses lossy duration over a Range response — **both gates fall back to an absolute 3 s floor (`FALSE_ENDED_ABSOLUTE_FLOOR_SEC`) when the API-known `track.duration` is missing/zero** (issue #234: that condition used to disable the guards entirely, an uncovered path distinct from the original bug). → [docs/library-scanner.md](docs/library-scanner.md) "Transcode cache integrity" + [docs/web-ui.md](docs/web-ui.md) "Plays 1-2 s then advances bug" / "Uncovered path (issue #234)"
+- **Source-agnostic acquisition (the north star)**: every acquirable result from any source maps to
+  one `AcquisitionCandidate` rendered in one blended, ranked list with a neutral source chip +
+  single Get; adding a source = one adapter + a pure mapper, no route/UI change. →
+  [docs/source-agnostic-acquisition.md](docs/source-agnostic-acquisition.md)
+- **Native library scanner**: `LibraryScanner` walks the music dir, reads tags (`music-metadata`) →
+  `library_*` tables with deterministic SHA1 IDs; `resolveTags` applies user metadata overrides
+  before minting IDs (survives rescans). An incremental `scan_cache` (raw tags keyed by
+  path+size+mtime, `scan-cache.ts`) + bounded-concurrency tag reads (`mapPool`) skip re-parsing
+  unchanged files, so an unchanged restart parses ~zero files. DB tuned via
+  `applyPerformancePragmas` (synchronous=NORMAL/cache/mmap/busy_timeout) + a composite
+  `idx_library_albums_grid`; the download-suppression album scan is memoized per-db
+  (`albumIdsByGroupKey`). → [docs/library-scanner.md](docs/library-scanner.md)
+- **Music licence / rights per track**: a per-song `licence` code from the closed `LICENCE_VOCAB`
+  (`@nicotind/core` `licence.ts`: public-domain/cc0/the six CC licences/all-rights-reserved/unknown;
+  `normalizeLicence` maps tag/URL/MB strings → a code, **positive IDs only** — never guesses ARR
+  from a bare © notice). Retrieval is layered: file tags first (`LICENSE`/`COPYRIGHT`/`WCOP` via
+  `licenceFromTags`, applied at scan time, zero-network), then MusicBrainz `license` url-relations
+  (`musicbrainz-client.getLicence`, `inc=url-rels`), then a manual curator set. Stored as
+  `library_songs.licence` (+ `licence_source` provenance) — additive column, COALESCE-preserved +
+  tag-mirrored like `genre`/`bpm`; NULL = unknown (so the fill retries). The background `licence`
+  enrichment task fills `WHERE licence IS NULL` (default-on, **never a gate**; a confident miss is
+  ledgered-not-tallied); `backfill-licence.ts` is the bulk tool. Filterable via
+  `LibraryFilter.licences` (`unknown` bucket = `licence IS NULL`); track-info sheet has a Detect +
+  curator set editor. The album-level aggregate `library_albums.licence` = the **unanimous** track
+  code (`unanimousLicence`, else NULL) computed in the scanner reduce, so Albums/Compilations filter
+  to "entirely Public Domain" (artists stay any-track) + an album-page badge. →
+  [docs/music-licence.md](docs/music-licence.md)
+- **Multi-genre support (primary + extras)**: `splitGenres` parses full tag frames (`;`/`,`/`|`
+  split; `&` never; `/` only when every side is a known genre) into `library_song_genres` (position
+  0 = primary, mirrored into `library_songs.genre`); the human-gated `library_genre_aliases` side
+  table (`reclassify-genres.ts` propose→review→apply→**`--backfill`** (`backfillGenresFromAliases`,
+  re-mints stored sets without a rescan); one-to-many + junk-drop canonicals) fixes
+  concatenations/variants at scan time without retagging — mashes like `"LatinWorld"` are segmented
+  by `segmentConcatenatedGenre` (longest-known-segment first, cuts only at an uppercase letter
+  preceded by a letter/digit so `Pop Rock`/`Dance-Pop` survive); filters match the set via EXISTS,
+  radio scores `genreSetCloseness` (max pairwise over sets), recipe `where`s pass through
+  `expandGenreWhere`, track-info shows genre chips. **Curator-correctable genres (issue #187)**:
+  `library_genre_overrides` (scope `artist`/`album`/`song`, keyed at the granularity the _source_
+  provides, applied by `buildLibrary`) is the one genre write that **replaces** a primary — a
+  `genre_source` column can't work because a rescan rebuilds `library_song_genres` wholesale from
+  tags; a `source='user'` row replaces the set outright (`genreSetCloseness` is a position-blind
+  MAX, so a retained broad genre masks the fix), automated rows prepend-and-keep — `essentia` (issue
+  #187 task A2, the confidence-gated audio-inferred fallback below MusicBrainz/Lidarr) is the first
+  real writer of that source. `status` is the review queue (a column, not a file — a file has no
+  memory of rejection); `backfillGenreOverrides` applies without a scan; artist-page
+  `ArtistGenreModalComponent` + `resolve-genres.ts` (MBID-only via `library_mbids`, album-first —
+  MB/Lidarr artist genres measured at 3% coverage). Genre detection otherwise **appends** to the
+  existing set, never overrides (`appendSongGenres` = read-union-dedup around `setSongGenres`,
+  mirrored to the file tag): the track-info "detect genre" apply, the acquisition/window
+  `genreTask`, and the on-demand `append-genre-backfill.ts` script all add rather than replace. →
+  [docs/library-scanner.md](docs/library-scanner.md)
+- **VA / compilation handling**: `resolveTags` separates `albumArtist` (grouping) from `trackArtist`
+  (performer); `classifyFolder` detects compilations via COMPILATION flag, VA albumArtist, or ≥3
+  artists sharing one album; dedicated Compilations tab, VA hidden from artists, "Appears On" on
+  artist pages. → [docs/library-scanner.md](docs/library-scanner.md)
+- **Multi-artist support (confirmation-gated)**:
+  `splitArtists(raw, {confirmedArtists, canonicalWhole})` splits a compound into individual artists
+  **only when every part is a confirmed real artist** (atomic library names ∪ cached Lidarr/MB
+  decisions), else keeps it whole — never mangling a band/duo; featuring is always extracted. The
+  offline authority is `loadSplitAuthority` + the scan-surviving `library_artist_identity` side
+  table, populated by the `artist-identity` enrichment task / `resolve-artist-identity.ts` seed
+  (works Lidarr-less via library-atomic confirmation) **and at acquisition time**
+  (`recordAcquiredArtistIdentity`: hunt-download + `acquireAlbum` persist the Lidarr canonical name
+  as one-act + its MBID before the scan lands). Spelling variants collapse via the
+  `library_artist_aliases` side table applied in `buildLibrary` before ID minting; alias derivation
+  from MBID equality is **human-gated** (`resolve-artist-identity.ts --aliases` proposes, `--apply`
+  writes — the MBID cache holds fuzzy top-hit lookups, e.g. the real "Âme"/"ME" false pair). A
+  compound that split is flagged scanner-owned `split_compound` and hidden from the artists grid
+  (member tiles represent it; row stays navigable). `;` (semicolon) is a recognized split delimiter
+  (matches acquisition sources). **Delimiter-less mashes** (issue #212, e.g.
+  `2 MinutosTruenoDie Toten Hosen`) are split at scan time by `segmentConcatenatedArtist` — a
+  confirmation-gated mirror of the genre segmenter (`segmentConcatenatedGenre`): cut only at an
+  uppercase letter preceded by a letter/digit (so `Die Toten Hosen`/`Wu-Tang Clan` are safe),
+  all-or-nothing on every segment being a confirmed artist, so a real single act is never carved up;
+  the segmenter is gated, so a mash whose members appear in no other tag stays whole and still
+  reaches Lidarr — `resolveOrAddArtist` therefore **refuses to provision an uncorroborated hit**
+  (direction 2) via `corroboratesLidarrHit` (`services/lidarr-confidence.ts`, the one home for
+  Lidarr match confidence). It is **name-only by measurement** — `/artist/lookup` ships no
+  `albumCount`/`statistics`, so an `albumCount > 0` signal degenerates to string equality and
+  rejects 16 of prod's 365 links incl. the #211 flagship. Instead: exact clean-key → coverage floor
+  0.34 (kills `"2"` at 3 % coverage) → containment → Ukkonen-banded `boundedEditDistance` (O(n·k),
+  ~1.2 M ops/s) behind an 8-char floor. **Never use Lidarr's `cleanName`** — it strips stopwords and
+  rejects identical names. An uncorroborated hit on an artist that **already has a link keeps that
+  link** (refresh `checked_at`, no throw), so the guard only blocks _new_ provisioning and **0 prod
+  links break**. Direction 3 (mash candidates in the fragmentation diagnostic) was **measured and
+  not built** — on prod it yields 2 candidates, both false positives. Admins fix wrong decisions via
+  `POST /api/library/artists/identity` (one act / split / merge-variant / **rename** — the last
+  reuses `library_artist_aliases` and allows an equal-normalized accent/case fix; runs the rescan
+  **synchronously**, returns 200 for immediate feedback; permanent `source='user'` rows the
+  background task never overrides) through `ArtistIdentityModalComponent` on the artist page +
+  track-info sheet. Credits stored in `library_song_artists`/`library_album_artists`;
+  `attachSongArtists`/`attachAlbumArtists` surface them on every listing + search;
+  `ArtistLinksComponent` renders clickable inline links. →
+  [docs/library-scanner.md](docs/library-scanner.md)
+- **Native streaming + cover art**: `GET /api/stream/:id` (Range/206 + seekable disk transcode
+  cache) and `GET /api/cover/:id` (override→canonical→folder→embedded, sized WebP thumbnails
+  honoring `size=`); an artist id with no real photo 404s to the placeholder (no album-cover
+  fallback). `nativeAppCors()` is hand-rolled (not `hono/cors`) so its Vary-header append can't
+  strip `Content-Length` off Blob-bodied stream responses (the Firefox "never plays" bug).
+  **Transcode cache integrity** (size-in-key, 1 KiB size floor, ffprobe post-check +
+  `-xerror`/`+discardcorrupt`/`-err_detect explode`, in-use pin during pruning, body wrapper that
+  releases the pin on response end) closes the "1 KiB / 240 s track → 1.8 s media resource → seek
+  bar at 100 % → false `ended`" failure mode on both the streaming cache and the ingest-time Opus
+  transcode (which writes into the library itself). **Frontend false-ended recovery** (70 % + 5 s
+  duration gate in `browserDurationIsAcceptable`, `isFalseEnded` / `startRecovery` state machine, 5
+  s `recoveryTimeout` safety valve, `loadGeneration` cross-element guard) handles the symptom on the
+  client too in case the browser mis-parses lossy duration over a Range response — **both gates fall
+  back to an absolute 3 s floor (`FALSE_ENDED_ABSOLUTE_FLOOR_SEC`) when the API-known
+  `track.duration` is missing/zero** (issue #234: that condition used to disable the guards
+  entirely, an uncovered path distinct from the original bug). →
+  [docs/library-scanner.md](docs/library-scanner.md) "Transcode cache integrity" +
+  [docs/web-ui.md](docs/web-ui.md) "Plays 1-2 s then advances bug" / "Uncovered path (issue #234)"
 
-- **Playback loading feedback (HDD-aware)**: one `PlayerService.buffering` signal (250 ms-delayed `bufferingVisible`) drives play-button spinners, the track-row current/buffering indicator (instant click ack), and a seek-bar buffered-ranges band; `setBuffering`'s guard reads `bufferingVisible` via `untracked()` so caller effects never subscribe to it (Firefox self-aborting load loop, bug #3). Every stream URL goes through `ServerConfigService.streamUrl()`, which appends `ngsw-bypass` so the Angular service worker (no `dataGroup` covers `/api/stream`) never intercepts it — it does in Firefox, and throws instead of passing through. **Player restore on page load is paused by default**: `restoreState()` no longer sets `isPlaying`; the autoplay decision is deferred to `maybeResumeAutoplay(autoplayOnLoad)` which runs after `GET /api/auth/me` resolves and only resumes when the per-user `user_settings.autoplay_on_load` flag is on (Settings → Playback toggle, default off). Effect 1's `audio.play()` calls are gated on `untracked(isPlaying())` so a freshly loaded track sits paused without ever hitting the gesture-less autoplay policy. → [docs/web-ui.md](docs/web-ui.md)
-- **Queue extensions (full management)**: `PlayerService` exposes `playNextTrack`, `clearQueue`, `shuffleQueue`, `moveInQueue`, `hasTrack`, `jumpToQueueIndex`; Now Playing queue UI has header toolbar (shuffle/save-as-playlist/clear), per-track remove, drag-to-reorder (`DragReorderDirective`), a **manual drag-resize handle** (pull the queue taller → cover art shrinks; `createPointerDrag`, persisted per-device), history peek, and mini-player queue badge. Reusable `playNextAction`/`addToQueueAction` in `track-utils.ts` wired into every track-row menu. → [docs/web-ui.md](docs/web-ui.md)
-- **Canonical artwork**: `library_artwork` stores canonical URLs keyed on deterministic IDs (survives rescans). → [docs/library-scanner.md](docs/library-scanner.md)
-- **Artist images (auto + override)**: real portraits resolved through a priority-ordered **provider chain** (`artist-image-providers.ts` `buildArtistImageProviders` → `lidarr → spotify → …`, each provider self-contained so the Lidarr `db` coupling never leaks; `resolveArtistImageUrl(providers, artist)` walks it, `source` is an open `string`, adding a source = one `CHAIN` entry + the task `available` gate derives from `configuredArtistImageSources`), auto-filled by the `artist-image` enrichment task; users (admin) upload or copy-from-album a per-artist override (`<dataDir>/artist-overrides`, served first, `manual_override=1`, the short-circuit staying at the call-site SQL not the chain). → [docs/library-scanner.md](docs/library-scanner.md)
-- **Artist bios (auto + override)**: biographies + external links resolved via MBID-first lookup to Discogs (plugin-sourced; MBID from file tags or `library_mbids` cache), stored in `library_artist_meta` with tombstone rows preventing re-queries of confirmed misses. Auto-filled by the `artist-info` enrichment task + a silent one-shot **auto-fetch on first artist-page visit** (`POST /artists/:id/auto-fetch-info`, auth-gated, never curator-gated, gated on `metaExists=false && !manualOverride` so it's a one-shot per artist; reuses the same `fetchAndStoreArtistInfo` core as `refresh-info`); admins edit via `ArtistInfoComponent` on artist pages (`curator`-gated, never overwrites `manual_override=1` rows). The component runs a pure `formatArtistBio` (`packages/web/src/app/lib/artist-bio.ts`) on every render to strip Discogs BBCode — **both** ref shapes the API actually returns (named `[a=Name]`/`[l=Jive]` keep the embedded name incl. whole member lists; numeric `[a123]`/`[l123]`/`[m123]`/`[r123]` id refs dropped with whitespace cleanup; the original #213 version only handled the `=name` shape so `[a=Name]` lists + `[b]`/`[i]`/`[u]` tags leaked as literal garbage), `[b]`/`[i]`/`[u]` tags dropped keeping inner text, `[url]` label kept, `''`→`'`, bare trailing URLs moved to a "Sources (N)" disclosure deduped against the API `urls`), and gates the show-more toggle on `scrollHeight`/`clientHeight` (`ResizeObserver`) rather than a char count so it never appears when expanding reveals nothing. **Lidarr MBID fallback widens for canonical-name drift (issue #211)** — `resolveMbidViaLidarr` is two-stage: exact-normalized-name first (the same discipline that has always guarded this flow against the `Âme`/`ME` false pair), then a **whole-token-subsequence** + `albumCount > 0` corroboration on miss (e.g. library `Eduardo Miño` → Lidarr `Luis Eduardo Miño Naranjo`, real prod case where the canonical name is a _superset_ of the library's tag-derived name). The widened path reports `confidence: 0.5` vs the exact `0.8` so `library_mbids` carries the provenance forward. → [docs/library-scanner.md](docs/library-scanner.md)
-- **Search matching (tokenized + accent-insensitive) + fragmentation diagnostic**: searching "C. Tangana Ídolo" returned Songs but no album card even though the release is a clean visible row — root cause was `LibrarySearchProvider` matching the _whole query as one `LIKE`_ substring with `COLLATE NOCASE` (no diacritic fold), so multi-token "artist + title" queries and un-accented queries ("Idolo"→"Ídolo") both missed. Fix: JS-side `tokenize`/`matchesAllTokens` (shared `services/search-tokens.ts`) — fold (NFD+strip marks+lowercase) + per-token AND over a `name+artist` haystack. The **catalog lane reuses the same matcher**: a pure title search (no artist matched) runs `filterAlbumsByRelevance` so Lidarr's fuzzy `album.lookup` can't collapse a multi-word query to its first token (the "La bifurcada" → "La"-albums bug). Separately (superseded by issue #227 — the Search page is now **acquisition-only**, so it no longer renders `local` results; that library search moved to the Library tabs/Radio), and a **prod-calibrated** `checkFragments` (`services/library-fragments.ts`) surfaces genuine integrity defects — same-release artist-spelling variants ("La Konga"/"La K'onga", sub-clustered by an alnum artist fold so different artists sharing a title aren't flagged) and full albums mis-classified as single/EP (track-count-vs-class, not every non-`album` row) — via `GET /api/library/fragments` (admin), the Admin "Check fragmentation" button, and `scripts/check-fragments.ts` (CLI gate). → [docs/library-scanner.md](docs/library-scanner.md) "Search matching" + "Fragmentation diagnostic"
-- **Metadata optimization**: conservative, all-or-nothing bulk Lidarr re-fetch of cover/year/release-type (`optimizeAllAlbums`); skips placeholder-artist albums. → [docs/metadata-optimize.md](docs/metadata-optimize.md)
-- **User-driven metadata fix**: interactive Lidarr candidate search + free-text + multi-source cover picker (Lidarr/URL/track-embedded/**upload**), persisted in `library_metadata_overrides` with immediate canonical re-point. → [docs/metadata-optimize.md](docs/metadata-optimize.md)
-- **On-demand track analysis (BPM + genre)**: per-track analyze/verify in the track-info drawer + bulk backfill scripts; writes DB **and** file tag. BPM detection is **sidecar-first** (Essentia `POST /rhythm` — the local music-tempo fallback makes frequent half/double-tempo octave errors); historical octave errors are repaired by `analyze-bpm.ts --recheck`. → [docs/library-scanner.md](docs/library-scanner.md), [docs/library-processing.md](docs/library-processing.md)
-- **Windowed library processing**: resumable background enrichment (bpm/genre/key/energy/audio-features/artist-image/genre-audio) via an extensible task registry, run only inside a daily window; ffmpeg/sidecar failures are diagnosed (stderr tail surfaced, not swallowed as a bare exit code), tallied into `ProcessingStatus`, toasted in the Settings panel (with Run now disabled while running), and reported to Sentry as one aggregated event per failing task. Permanently-broken files (corrupt "Invalid data" decodes; sidecar **422** un-decodable files via `AudioFileRejectedError`) _and_ persistently-undetectable/unresolvable ones (no confident BPM/key — ledgered via `NoConfidentResultError`, not tallied; Lidarr-unknown-artist genre songs — ledgered, not tallied; low-confidence `genre-audio` inferences — same ledgered-not-tallied treatment, issue #187 A2) are excluded after N attempts via a `library_song_analysis_failures` ledger (auto-reset on re-download/size-change, surfaced as `skipped`); a sidecar 404/503 (env mount mismatch / models down) stays un-ledgered so a misconfig can't exclude the whole library. the panel's failure tally is scoped to one window session (no eternal stale banner), and every ffmpeg decode has a kill-timeout so one hung file can't wedge a run. → [docs/library-processing.md](docs/library-processing.md)
-- **Process-before-landing (quarantine gate)**: a fresh download is scanned into `library_songs` but held **quarantined** (`landed_at IS NULL`, hidden from every listing) until its **required** steps finish; a per-task `gates` flag (distinct from `tasks`, defaults bpm/key/energy/genre on, sidecar/artist-image off) intersected with availability = the required set, so an off/unavailable step never strands a download; `graduatePending` lands a song once each required step is satisfied-or-permanently-failed, or after a 24h safety valve; `scanIncremental` fires an eager out-of-window `kickEager()` so it lands ASAP; per-download step badges via `GET /api/admin/processing/queue`. → [docs/library-processing.md](docs/library-processing.md), [docs/download-pipeline.md](docs/download-pipeline.md)
-- **Perceptual audio features (no LLM)**: energy/loudness measured bun-side via ffmpeg ebur128; danceability/valence/mood/vocals/acousticness + cached embeddings from the Essentia sidecar (`packages/analysis/`, `NICOTIND_ANALYSIS_URL`; CPU by default, `--build-arg GPU=1` swaps in GPU libtensorflow with inherent CPU fallback); all written to file tags + COALESCE-preserved columns, scored by the Radio engine and sequenced via `energy-arc`. → [docs/audio-ml-enrichment.md](docs/audio-ml-enrichment.md)
-- **Lyrics (on-demand, plugin-sourced, editable)**: new `metadata` plugin kind + `lyrics` capability (LRCLIB first source); stored in `library_lyrics` + file tag, user-editable. The now-playing lyrics toggle opens a karaoke-styled panel (synced line highlighting + auto-scroll) with a fullscreen expand button; a centered styled empty state carries an inline Fetch button. Fetch is **reliable 1-click**: LRCLIB retries transient failures (404 stays no-match) and the route returns `502` for a source error vs `null` for a confident miss, so the first click doesn't false-negative. **Vocal mute** (`?vocals=off` → server-side ffmpeg center-channel cancellation `pan=stereo|c0=c0-c1|c1=c1-c0`) is a mic toggle in the karaoke overlay; it forces the transcode path even when transcoding is off and is cached as a separate `novox` transcode entry. → [docs/design-patterns.md](docs/design-patterns.md)
-- **Unified search**: `GET /api/search?q=` blends local library + parallel slskd network results into the one source-agnostic results list. → [docs/source-agnostic-acquisition.md](docs/source-agnostic-acquisition.md)
-- **Search is acquisition-only (issue #227)**: the `/search` **page** no longer renders local-library results (the "In your library" album section + local "Songs" finder were removed) — Search = "find/add new music", "find what I own" = Library tabs/filters + Radio. The API still returns `local` (unchanged `LibrarySearchProvider`); a non-acquirer (listener, or #235 off) sees a "browse your Library instead" empty state (`data-testid="search-acquisition-off"`). **Left open** (product): page/nav rename + `/search` route rename. → [docs/source-agnostic-acquisition.md](docs/source-agnostic-acquisition.md) "Unified search", [docs/web-ui.md](docs/web-ui.md)
-- **Deployment-wide acquisition kill-switch (issue #235)**: one authoritative `config.acquisitionEnabled` (env `NICOTIND_ACQUISITION=off`, default on) turns the **whole** acquisition module off for a lighter streaming/library-only install — orthogonal to the per-user role gate + per-plugin opt-in. Server: `requireAcquisitionEnabledMiddleware` **hard-404s** every acquisition route group (`acquire`/`discography`/`watchlist`/`archive`/`spotify`/`sources`/`downloads`); `searchRoutes(registry, acquisitionEnabled)` skips the network fan-out for all; the watchlist + auto-acquire pollers don't start. Web: `/api/auth/me` returns `acquisitionEnabled` → `AuthService.canAcquire()` = `serverAcquisitionEnabled() && role`, cascading to nav/guards/Search. **Left open** (follow-ups): admin runtime toggle (env-only for now — boot-constructed services can't tear down live), Extensions-section hide, off-profile compose. → [docs/deployment.md](docs/deployment.md) "Streaming-only profile", [docs/roles.md](docs/roles.md)
-- **Guided acquire UX**: catalog cards are the primary path; the raw network/folder-browser lane is demoted behind an "Advanced" disclosure; the hunt modal leads with the best match. The raw lane's Songs/Folders view **defaults to Folders for an album-intent query** (`pickNetworkView`: catalog has albums, or the query is multi-word — a folder is the "get this album" unit), and the long blended song-first Results list is **capped** (`RESULTS_CAP`, "Show all N" escape) so it can't dominate the page. The Advanced Soulseek peer lane is **gated on the network actually being an available source** (`networkAvailable() || hasNetwork()`), so a user without the slskd extension never sees a nonsensical "No Soulseek results" empty state for a source they don't have. → [docs/design-patterns.md](docs/design-patterns.md), [docs/album-hunt.md](docs/album-hunt.md)
-- **Inline download lifecycle**: result cards go idle → progress % → "Open in Library", driven by `TransferService` (adaptive polling) + a `libraryDirty` signal; completed Downloads-feed rows likewise expose an **"Open in Library"** deep-link to the destination album via the deterministic `albumId` the API ships (graceful "Album not found" fallback), or, for an acquire job whose files landed in more than one album, a **"View N albums"** `MenuPanelComponent` dropdown listing each destination. → [docs/design-patterns.md](docs/design-patterns.md), [docs/download-pipeline.md](docs/download-pipeline.md)
-- **Multi-user + roles**: shared music library, per-user settings in sqlite; first registered user becomes admin. Four-role ascending ladder `listener < user < refiner < admin` (strict superset each step) shared via `@nicotind/core` `roles.ts` (`canAcquire`/`canCurate`/`isAdmin`): **listener** = play/search-library/playlists only, acquisition hidden + server-enforced (declutter); **user** adds acquire; **refiner** adds library curation (relaxes `requireAdmin`→`requireCurator` on library.ts edit/merge/delete routes); **admin** adds server admin. Guards `requireAcquirer`/`requireCurator`/`requireAdmin`; search suppresses only its network fan-out for listeners (library results always return). → [docs/roles.md](docs/roles.md)
-- **Presence tracking (admin-only, ephemeral)**: in-memory `PresenceService` tracks `isConnected` / `amountOfDevices` / `amountOfSessions` per user via 60s HTTP heartbeats + stale cleanup; merged into `GET /api/admin/users`. → [docs/presence-tracking.md](docs/presence-tracking.md)
-- **Onboarding**: expanded setup wizard for self-hosters (music dir + quality + Lidarr); first-login welcome banner for admin-provisioned app users. → [docs/onboarding.md](docs/onboarding.md)
-- **Now Playing queue — clear + drag-reorder + per-row remove**: "Next up" supports a Clear link, HTML5 drag-and-drop row reorder, and per-row remove (X) backed by `PlayerService.clearQueue()` / `moveInQueue(from,to)` / `removeFromQueue(index)`. → [docs/web-ui.md](docs/web-ui.md)
-- **Smart radio (metadata-driven queue)**: `GET /api/radio/next` scores candidates by a **weight-normalized** blend (comparable-factors-only, so un-analyzed tracks aren't out-biased mid-backfill) of BPM, Camelot key (incl. ±2/diagonal moves), multi-genre set closeness (`genreSetCloseness`, max pairwise lexical), year, duration, artist diversity, the perceptual axes, and cached-embedding cosine (`embedding-store.ts`); a widened pool (+genre-LIKE, +un-analyzed seat) feeds it; `PlayerService.radio` auto-appends when the queue drains. **Filter-seeded radio**: the same route also starts a mood/genre/bpm "vibe" with **no seed song** — a `LibraryFilter` (parsed from the shared serialize grammar) constrains the pool via `songFilterWheres`, seeded by its `seedCentroid`; `PlayerService.radioFilter` keeps auto-replenish in-vibe. `toOrderable` used to omit `genre`/`genres` entirely, so every filter-radio vibe scored genre-blind (issue #187 task B4, fixed); the centroid's modal key ("collapses to C major") was investigated and is a measured null result, not a bug — see docs/radio.md. This backs the **radio/mood landing** (the post-login home route `''`, `pages/radio-landing/`): a last-track resume shortcut (disappears on tap) + one-tap vibe presets + top-genre chips; Search moved to `/search`. Shared scoring with `/songs/:id/similar`. A **missing candidate genre is floored, not skipped** (`MISSING_GENRE_FLOOR` 0.2, reported in `explainSimilarity().floored`) — skipping dropped the genre axis out of the denominator and literally _rewarded_ untagged tracks; the genre weight itself was re-measured and raised 10→18 (issue #187 task B3) after `dump-radio.ts` found a sparse-pool seed where it still wasn't enough to keep a wrong-genre track down. **Diagnostic dump** (`scripts/dump-radio.ts`, dev-only, read-only, `--weights axis=n` to A/B a weight change before shipping it): generates a radio via the shared `buildSeedRadio`/`buildFilterRadio` (extracted from the route so no drift) and reports every track's per-axis score breakdown via the pure `explainSimilarity` (`scoreSimilarity` now delegates to it) + an auto "improvement targets" section — distinguishes genre-_skipped_ (data gap, missing-genre is wrongly _rewarded_ by present-axis normalization) from genre-_scored-0_ (weight loss), flags un-split concatenated genre tags (`looksConcatenatedGenre`) + key-detection instability + filter-radio centroid genre-blindness. → [docs/radio.md](docs/radio.md), [docs/web-ui.md](docs/web-ui.md)
-- **Remote playback (cast, Spotify-Connect-style)**: per-user `PlaybackStateManager` broadcasts state/commands over `GET /api/ws/playback`; each browser tab is a device. → [docs/remote-playback.md](docs/remote-playback.md)
-- **Hardware cast (Chromecast + DLNA, server-side controller)**: a `CastController` runs protocol adapters (`castv2`/`bonjour` for Chromecast, `node-ssdp`/`upnp-mediarenderer-client` for DLNA) server-side; any browser controls hardware via REST `/api/cast/*`; short-lived scoped `cast_tokens` authenticate the hardware's direct `GET /api/stream` fetches; the controller bridges hardware state into the existing WS `PlaybackStateManager` as a proxy device. No browser Cast SDK, no native mobile plugin, opt-in discovery with manual-IP fallback for Docker. → [docs/cast-integration.md](docs/cast-integration.md)
-- **Service modes**: `embedded` (spawn slskd as child process) or `external`; the library/streaming stack is in-process. → [docs/design-patterns.md](docs/design-patterns.md)
-- **Auth flow**: NicotinD issues its own JWTs (30-day sliding sessions, silent refresh on boot); share tokens are short-lived, read-only, non-refreshable. The `authGuard` preserves the attempted URL as a `returnUrl` param when bouncing to `/login`; login sanitizes it (pure `sanitizeReturnUrl`, in-app paths only) and redirects back after auth (issue #231). A share link opened while **already logged in** resolves token→resource via the auth-gated, side-effect-free `GET /api/share/:token/resource` and deep-links into the real in-app page under the user's own session — never burning the public 5-minute token (issue #230). Shareable resources are album/playlist/**artist** (issue #229 added artist: portrait + name + bio + playable songs in-app, plus a server-side OG/Twitter `profile` link preview mirroring albums/playlists). → [docs/design-patterns.md](docs/design-patterns.md), [docs/web-ui.md](docs/web-ui.md)
-- **Device pairing (QR link) + remote access (Tailscale Funnel)**: the server mints a 5-min single-use pairing token rendered as a QR (+ 6-char fallback code) on `/settings/devices`; the QR encodes a `/pair#t=…` **link** (token in the fragment) so a plain camera app opens the server's public `/pair` page and signs the browser in, while the app's in-app scanner (full raw-bridge options — iOS rejects sparse calls) probes candidate URLs and claims a device-bound 30-day JWT (revocable via `paired_devices` row delete, enforced at refresh); the native app keeps a **saved-servers registry with per-server stashed sessions** (switch/remove/remember, no passwords stored) reachable from login + Settings; opt-in remote access publishes the loopback-bound backend at a public HTTPS URL via `tailscale funnel` behind a guided admin state machine. → [docs/device-pairing.md](docs/device-pairing.md)
-- **Observability (Sentry, opt-in)**: web `initSentry` (empty DSN = off, prod-only, versioned + low sampling) + API `initServerSentry` (`NICOTIND_SENTRY_DSN` empty = off) reporting only unknown 500s from the Hono `errorHandler` (4xx/connectivity skipped), plus `captureProcessingFailure` for aggregated, fingerprint-grouped library-enrichment failures. → [docs/observability.md](docs/observability.md)
-- **OAuth authentication (proposed — not yet implemented)**: Google + Microsoft login as `auth` kind plugins with `oauth` capability; auto-creates users by email (no validation); auto-enables when env-set creds present; dev bypass provider gated by `OAUTH_DEV_BYPASS` env var; `NICOTIND_PUBLIC_URL` for prod redirect base; Capacitor `nicotind://` deep-link for mobile parity. → [docs/oauth-auth.md](docs/oauth-auth.md)
-- **Release-type model (singles & EPs)**: every album carries a `classification`, set metadata-first (Lidarr/MusicBrainz) with a track-count heuristic fallback. → [docs/download-pipeline.md](docs/download-pipeline.md)
-- **Native playlists (per-user)**: `playlists`/`playlist_songs` + `PlaylistService`, private per user, with sharing + server-side OG/Twitter link previews; the detail page adds a reusable `SongPickerComponent` (debounced autocomplete) + a token-overlap "suggested for this playlist" proposals list, both refreshed after every membership mutation. → [docs/web-ui.md](docs/web-ui.md)
-- **Curated playlists (system, global)**: gradient-covered Spotify-style shelves shown to all users; read-only by `kind` (not ownership). → [docs/curated-playlists.md](docs/curated-playlists.md)
-- **Automated playlists (recipe → refreshed curated shelves)**: code-defined `RECIPES` (bpm/key/year/genre `where` + sort) materialized into `kind='curated'` playlists by `refreshAutoPlaylists`; reuses `selectCuratedTracks` + the shared `upsertCuratedPlaylist`. **Admin-configurable cadence (issue #228, `off`/`daily`/`weekly`)** persisted in `library_sync_state` `auto_playlists_cadence`, guarded per-period by `auto_playlists_period` (`<cadence>:<n>`, `updated_at` = last-refreshed); `runAutoPlaylistsNow` is the guard-bypassing "Generate now"; admin routes `GET`/`PUT /api/admin/playlists/auto` + `POST /playlists/auto/refresh` (audit-logged) back an Admin panel; the detail page shows "Refreshed &lt;date&gt;" from `modified_at`. → [docs/automated-playlists.md](docs/automated-playlists.md)
-- **Likes → auto-maintained "Liked Songs" playlist (issue #225)**: a per-user heart (track row `track-like`, track-info `track-info-like`, the `SongMenuService` menu's leading Like/Unlike). "Like" is personal so it can't reuse the global `library_songs.starred`; instead a new `PlaylistKind` value `liked` (one per user, lazily created on first like) makes **the playlist itself the store** — membership = liked, newest-first via decreasing `position`, no new table (`kind` already exists). `PlaylistService.likeSong`/`unlikeSong`/`likedSongIds`; auth-gated `POST`/`DELETE /api/library/songs/:id/like` + `GET /api/library/liked-ids`; web `LikeService` (optimistic, signal-backed set hydrated in the app shell). Read-only through the CRUD API (the `kind='user'` guard), pinned first in the playlists list. → [docs/song-actions.md](docs/song-actions.md)
-- **Playlists page (merged single list)**: one list (no separate "yours"/curated shelves) sorted server-side curated-first, with an inline "Curated" badge + per-row Rename/Delete restricted to `kind='user'` rows, and create-then-redirect straight to the new playlist's detail page. → [docs/playlist-generation.md](docs/playlist-generation.md) §0a
-- **Artist page — tabbed**: Albums | Singles & EPs | Songs (lazy, paginated Songs tab with multi-select bulk actions incl. admin-gated delete — the only view that can remove albumless files). → [docs/design-patterns.md](docs/design-patterns.md)
-- **Viewport-safe dropdown menus (`MenuPanelComponent`)**: fixed-position panel that flips above / clamps into the viewport via the pure `computeMenuPosition`, reserving a `bottomInset` (measured from `data-bottom-chrome` layers via `bottomChromeInset`) so it never opens under the mini-player/tab bar; every `TrackRowComponent` `⋯` menu uses it. → [docs/design-patterns.md](docs/design-patterns.md)
-- **Bottom-chrome stacking + scroll lock**: mini-player and tab bar share one `z-50` plane; `ScrollLockService` pins the document under full-screen sheets. → [docs/design-patterns.md](docs/design-patterns.md)
-- **Catalog (metadata-driven) search**: `CatalogService` returns artist/album cards from Lidarr/MusicBrainz, scoped to the matched artist, resolving into album-hunt (typed 404 + raw-network fallback for absent compilations). On a catalog miss (`ALBUM_NOT_IN_LIDARR`), the fallback now opens the **folder-first network lane for the exact clicked album** with a clear "download from folders" CTA; loading the full discography (which auto-adds the artist to Lidarr) is **opt-in** via a banner button (`browseFallbackDiscography`), no longer an automatic dump. → [docs/album-hunt.md](docs/album-hunt.md)
-- **Album hunt**: `AlbumHunterService` skewed queries + diacritic scoring + two-phase progress; blended "Other sources" + per-track fallback when 0 folders found. The skew builder (`buildSkewedQueries`/`buildTrackQueries`, now in shared **`@nicotind/core` `hunt-queries.ts`** — one source for API + web, killing the old two-copy sync risk) emits **faithful literal variants** (accent-fold, punctuation-strip, distinctive-tokens, reorder, qualifier-strip) that bypass slskd's exact-phrase soft ban/cache while staying precise; the imprecise last-char artist truncation was dropped. → [docs/album-hunt.md](docs/album-hunt.md)
-- **Watchlist auto-hunt**: star catalog albums; a poller auto-hunts + downloads on a confident match. → [docs/album-hunt.md](docs/album-hunt.md)
-- **Generation feedback → TDD fixtures (dev golden-dataset)**: capture whether a _generated/inferred_ output was right, from real usage, and replay each graded case as a regression test. v1 targets the **album-hunt recognizer**: `searchAndScore` is split into a pure `scoreFolders(canonicalTracks, rawResponses)` (the replay seam) + `search` (I/O); `huntBase` now returns the raw slskd responses. An admin with a dev-mode toggle (`user_settings.feedback_capture`, Settings → Developer) gets a throttled 👍/👎 toast after a hunt renders (`FeedbackService.shouldPrompt`); the `hunt/base` route snapshots `{proposal(+MBIDs), rawResponses, scored candidates}` into a pending `generation_feedback` row (`captureHuntMatchFeedback`, admin+toggle-gated) and returns its `feedbackId`. 👍 = top pick correct; 👎 opens `FeedbackDetailSheetComponent` to mark the actually-correct folder (or "none") + note → `PATCH /api/feedback/:id` (admin, `resolveFeedback`). `scripts/feedback-to-fixtures.ts` exports graded rows (`huntFixtureFromRecord`) into `services/__fixtures__/hunt-match/*.json`; `album-hunter.replay.test.ts` re-runs `scoreFolders` offline and asserts the human-correct folder ranks #1 (red/green loop for recognizer "smart linking"). Generic `resourceType` reserves radio/playlist/library/search for later. → [docs/generation-feedback.md](docs/generation-feedback.md)
-- **Auto-acquisition loop (opt-in)**: a default-off poller sweeps Lidarr's `wanted/missing` list and auto-acquires each album through the shared `acquireAlbum` core (same hunt/select/enqueue/fallback guards as the watchlist poller + interactive hunt), so it's idempotent and re-entrant. → [docs/auto-acquisition-plan.md](docs/auto-acquisition-plan.md)
-- **Spotify metadata fallback (via spotDL)**: metadata-only lane that hands a `spotify.com/album` URL to `/api/acquire`; the `spotify` plugin gates it. The user's **Spotify Client ID/Secret** (entered once on the spotify extension card) is the single source of truth: `SpotdlPlugin` reads it live via `PluginRegistry.getConfig('spotify')` and forwards it as `SPOTIPY_CLIENT_ID`/`SPOTIPY_CLIENT_SECRET` on spawn (omitted when absent), so spotDL uses the user's own rate limits for better metadata matches; a hint under the spotdl card points there (`data-testid="spotdl-uses-spotify-credentials"`). For audio quality, `run()` passes `--bitrate disable` so the source stream is copied without a second lossy re-encode. → [docs/spotify-fallback.md](docs/spotify-fallback.md)
-- **Idempotent hunt — one album = one download**: 409 guards + only-missing-tracks enqueue; "already have it" outcomes surface as positive notices, not red errors. → [docs/album-hunt.md](docs/album-hunt.md)
-- **Duplicate prevention**: FLAC>MP3 + auto-dedupe + edition-collapsing album IDs + cross-edition folder consolidation at ingest. → [docs/download-pipeline.md](docs/download-pipeline.md)
-- **Lossless → Opus standardization**: lossless downloads transcoded to Opus in place (default-on 192 kbps) + a library migration path; detection is codec-aware (`isLosslessFile` probes .m4a for ALAC, which browsers can't decode); gated on ffmpeg. The env/YAML-only config is exposed read-only via `GET /api/settings/downloads` so the **acquire flow shows an accurate reminder** (Results header note + per-row "→ Opus Nk" chip on lossless picks), gated on `enabled && ffmpegAvailable` so it never claims a transcode that won't run for a lossy pick. → [docs/download-pipeline.md](docs/download-pipeline.md)
-- **Album deletion**: `DELETE /api/library/albums/:id` is folder-first `rmSync` + synchronous canonical-row delete + orphan-aggregate prune; every delete route debounce-schedules an slskd share rescan (`ShareRescanScheduler`) so a removed file stops being advertised to peers. → [docs/download-pipeline.md](docs/download-pipeline.md)
-- **Library quality auditor**: assert (audit) + clean (repair/retag) + prevent (ingest sanitize) for DJ-pool/VA-source pollution across DB + disk. → [docs/library-audit.md](docs/library-audit.md)
-- **Downloading albums suppressed from listing**: listings exclude albums with active `album_jobs` or in-flight transfers via an SQL `WHERE` exclusion. → [docs/design-patterns.md](docs/design-patterns.md)
-- **Standardized library metadata filters**: one shared `LibraryFilter` (BPM/Camelot key/mood/perceptual buckets/year/genre/starred/duration) filters the four library tabs + the library **Songs** tab + artist Songs tab server-side; song properties match albums/artists via any-track `EXISTS`, state lives in URL query params. → [docs/library-filters.md](docs/library-filters.md)
-- **Library "Songs" tab (whole-library flat listing)**: `GET /api/library/songs` (clone of `/artists/:id/songs` sans the artist predicate) backs a first-class Library tab — newest-first default, shared `LibraryFilter` + sort, `TrackRowComponent` + full `SongMenuService` menu, `createSelection()` multi-select (play/queue/playlist/save-offline/admin-delete). Replaced the Downloads "Recently Added" tab. **Offline** (`SetupService.isOffline()`) it swaps its source to `PreserveService.preservedTracks` (client-side search/sort + storage bar + Clear all, backend-free row menu), and Library is reachable offline (the removed Downloads "Saved Offline" tab's role moved here). → [docs/web-ui.md](docs/web-ui.md)
-- **Auto-preserve queue (PWA lock-screen resilience)**: `AutoPreserveCoordinator` (ships in every environment — effectively a no-op while mode is "off") watches the player queue and keeps the next-N tracks as IndexedDB blobs (configurable Off / 5 / 20 / full, per-device localStorage) so playback survives the browser's locked-screen network throttle; `source: 'user' | 'auto'` + `evictAutoLRU` ensures radio churn never evicts user-saved tracks. → [docs/web-ui.md](docs/web-ui.md)
-- **Reactive network / offline detection (fixes Android offline-launch ANR)**: `NetworkStatusService` is one live `online` signal (`@capacitor/network` on native via `getCapacitorPlugin`, `navigator.onLine` + window events on web); `SetupService.isOffline` becomes a `computed` (`!online || serverUnreachable`) so the library source swap, nav gating, redirect + the app-shell offline banner (inline in `layout.component.html`, `data-testid="offline-banner"`) all react to connectivity flips **both ways** with no reload, and `check()` skips the boot HTTP probe when already offline (kills the multi-second blank-screen boot behind the ANR). Native Sentry drops Session Replay + tracing (release-only ANR suspect; `initSentry` also try/catch-wrapped); mid-use hardening = player skips a doomed offline stream (toast, not infinite spinner), `preserveCollection` swallows offline fetch rejects, GET requests get a 30s interceptor timeout. → [docs/mobile-app.md](docs/mobile-app.md), [docs/web-ui.md](docs/web-ui.md), [docs/observability.md](docs/observability.md)
-- **Untracked downloads**: `relative_path IS NULL` rows are backfilled by a script; listed at `GET /api/library/untracked` (admin). → [docs/download-pipeline.md](docs/download-pipeline.md)
-- **URL acquisition (yt-dlp / spotdl / archive)**: `POST /api/acquire` routes a URL to an enabled `resolve`-capable plugin → the same organizer + scan pipeline; entered via a link-intent card in the search omnibox (merged with search, no separate URL box); idempotent submit reuses an in-flight job for the same URL, a truncated result (fewer files than the source reported) still finishes `done` but carries a warning + Retry instead of reading as an unqualified success, tagless sources (archive.org streams raw bytes with no ID3) return a `ResolveResult` (`{ paths, meta }`) so `ingest` threads the item's artist/album onto `jobMeta` (else the organizer drops them in `<dataDir>/unsorted` outside the music dir while the job falsely reads "done") and a job that files nothing is marked `done` **with a warning** rather than a clean success, restart-orphaned jobs are failed at boot (never stuck "running"), Retry on any truncated acquire job resumes the same job id/staging dir instead of re-downloading from scratch (spotdl additionally passes `--overwrite skip` on top of that generic mechanism), and YouTube's bot-check is mitigated by Deno + the bgutil PO-token sidecar + optional `<dataDir>/youtube-cookies.txt` cookies. → [docs/download-pipeline.md](docs/download-pipeline.md), [docs/source-agnostic-acquisition.md](docs/source-agnostic-acquisition.md)
-- **Playlist-from-acquisition**: a URL acquire job classified as a playlist (Spotify `/playlist/<id>`, YouTube `/playlist`, YouTube `watch?v=…&list=…`, archive.org with `as=playlist`) auto-generates a per-user native playlist from the landed tracks in download order after the post-ingest pipeline — the Downloads card then offers an "Open playlist" deep-link straight to `/library/playlists/<id>`. Archive items expose a UI toggle (`as= 'playlist'`); Spotify/YouTube auto-detect via `classifyAcquireUrl`. Per-track `acquire_job_tracks` rows (`recordAcquireJobTrack` upserts keyed job_id+title; the FULL `TrackEvent` incl. `path` must cross the `onTrack`→`emitTrack` seam — dropping it there silently disables generation) resolve by basename **stem** (survives the Opus transcode) with an `"Artist - "`-stripping title fallback (spotdl is title-only); only landed tracks make it in, and a retry refreshes the same playlist in place instead of duplicating. → [docs/playlist-from-acquisition.md](docs/playlist-from-acquisition.md)
-- **Download list metadata**: `GET /api/downloads` annotates in-flight folders matching `album_jobs` with album-job info; a completed acquire job's `destinationAlbums` disambiguates which album(s) it actually landed in. → [docs/download-pipeline.md](docs/download-pipeline.md) → "Multi-album acquire jobs"
-- **Unified acquisition jobs**: every download (hunt/auto-acquire/direct/track-search/URL) is wrapped in an `acquisition_jobs` row whose transfer↔job linkage (`username::filename` keys) is stored at enqueue time — never re-derived by folder-string matching; items repoint in place on fallback re-pulls, and a job closes as an honest partial when remaining tracks are unobtainable. **Direct grabs get a real "where" post-scan (issue #223)**: a raw peer/single-file grab has only noisy folder-segment artist/album guesses, so `backfillDirectJobAlbum` (watcher scan seam, `kind='direct'` only) re-points the job to the **canonical** album its file landed in (`song_id`→`library_songs.album_id`→`library_albums`), so the feed row + "Open in Library" deep-link resolve. → [docs/acquisition-jobs.md](docs/acquisition-jobs.md)
-- **Unified downloads feed**: slskd groups + URL acquire jobs both adapt into a normalized `DownloadItem` with method/stage badges, a "View N albums" menu for multi-album jobs, and a "Now: / Next:" current-track display. The Downloads header also shows a **disk-availability pill** (`used / total`, green→red fill) fed by `GET /api/system/disk` (statfs of the music dir). → [docs/download-pipeline.md](docs/download-pipeline.md) → "Now: / Next: track display", [docs/web-ui.md](docs/web-ui.md)
-- **Acquisition provenance (how/where/when)**: the `acquisitions` side-table records method/source/time at download time; surfaced per track. → [docs/download-pipeline.md](docs/download-pipeline.md)
-- **Plugin architecture (acquisition as opt-in plugins)**: kind-agnostic kernel + `PluginRegistry`; acquisition is default-off; plugins = slskd/yt-dlp/spotdl/archive/spotify/lrclib/discogs; `auth` kind planned for OAuth. Config saves re-init the running plugin live; yt-dlp/spotdl probe/spawn with an augmented PATH (`acquireEnv`: bundled-ffmpeg dir + brew/pip bins — GUI apps inherit a minimal PATH) + an admin-editable `binaryPath` field; embedded slskd auto-shares the music dir (merge-preserving `slskd.yml` regeneration). UI labelled **Extensions**, one section per kind (Acquisition / Metadata / Connectivity) — the web `PluginKind` union mirrors the core one and a kind missing from **either** renders its plugins nowhere; extensions with bespoke config own a dedicated settings page via `PLUGIN_DETAIL_ROUTES` (first: slskd, which shows a not-reachable notice when slskd is down). All first-party plugins are constructed in `registerBuiltinPlugins` (`services/plugins/builtin.ts`), not inline in `index.ts`, so cross-plugin construction deps (spotdl reading spotify's creds) are covered by a test. → [docs/plugins.md](docs/plugins.md)
-- **Discogs metadata plugin (genre + artist-info)**: `metadata`-kind, default-off + consent-gated plugin (`services/plugins/discogs/`) that resolves release genres/styles from Discogs (strong on Latin/regional/pre-2000/DJ-pool — the residual gap #187's MusicBrainz couldn't close). `client.ts` (auth via Consumer Key+Secret, on-disk cache, one shared **55/min** token bucket honoring `X-Discogs-Ratelimit-Remaining`, injected `fetchFn`/`clock`/`sleep`) + pure `matching.ts` (**MBID-first** via `parseDiscogsRef` on MusicBrainz's discogs url-relation → **corroborated name search** `selectBestRelease`, artist+album both required, rejecting the same-name "Emilia AR/SE" false match) wired into a core `genre` `GenreCapability` (`fetchGenres`, release-scoped — **no artist scope** per #187 finding 3, **MBID-only** query, **no `confidence:1.0`** shortcut). **Genre enrichment wired (#194, gate #191 PASSED at 72% of the residual gap)**: the album-scoped `genre-discogs` enrichment task (`services/genre-discogs.ts`) runs over songs the Lidarr `genre` task left genre-less, groups them by album, and writes gated `library_genre_overrides` (`source='discogs'`, applied ≥0.8 else pending) — the #187 A1 **second** provider, reusing the A1/A3 write path; a confident match is applied inline (mirrors `genre-audio`), an outage (throw) never ledgers the album, and it's never a landing gate + off by default. Discogs' comma/slash-bearing top-level vocab (`Folk, World, & Country`) is mapped to separator-free canonical genres (`discogs-genre-vocab.ts`) inside the plugin before it can shatter `splitGenres`; ids generalize into `library_external_ids` (not a third per-provider table). **Flagship Larralde case stays unresolved** (measured — Discogs had no corroborated release; remains #187 A2's to fix). → [docs/discogs-plugin.md](docs/discogs-plugin.md)
-- **spotDL inherits the Spotify plugin's credentials**: `SpotdlPlugin` reads `plugins.getConfig('spotify')` live at spawn time and forwards the Client ID/Secret as `SPOTIPY_CLIENT_ID` / `SPOTIPY_CLIENT_SECRET` env vars, raising spotDL's Spotify rate limits over its built-in shared client (better metadata matches → higher-quality YouTube audio). One source of truth — the user enters the key in the spotify card once; the spotdl card has no creds field and shows a one-line hint pointing at the spotify card. → [docs/spotify-fallback.md](docs/spotify-fallback.md)
-- **Quality chip on download cards ("· 320 kbps" / "FLAC · 1411 kbps")**: every `DownloadItem` carries an optional `bitrateKbps` + `audioFormat` rendered as a small inline chip next to the method badge (`data-testid="download-bitrate"`). slskd captures `SlskdFile.bitRate` at enqueue → `acquisition_job_items.bit_rate_kbps`; URL-acquire jobs are ffprobed post-plugin-finish via `AcquireWatcher.ingest`. Both upgrade post-scan: the route's `enrichWithBitrate` (`routes/downloads.ts`) joins `library_songs.bit_rate` so a downloaded FLAC shows 192 kbps Opus once the lossless→opus transcode has run. The pure `formatQuality()` helper (`lib/download-status.ts`) renders `"FLAC · 1411 kbps"` for lossless codecs, `"320 kbps"` for lossy; missing both → chip hidden. → [docs/download-pipeline.md](docs/download-pipeline.md) → "Quality chip"
-- **Admin/Settings/Extensions decoupling**: core Settings = universal prefs only; server-admin tools (streaming, library processing, find-duplicates) live in **Admin**; slskd owns its connection/shares + a Nicotine+-style live status panel (`GET /api/plugins/slskd/status`, `SlskdStatus`) on its extension page. Credential storage unchanged (UI relocation only). → [docs/admin-settings-decoupling.md](docs/admin-settings-decoupling.md)
-- **Changelog modal**: build-time `CHANGELOG.md` → `changelog.json` (capped at 50 versions); version string in header/settings is clickable. `CHANGELOG.md` is also the source for the **GitHub Release description** — the `release-notes` job in `deploy.yml` extracts the tag's section into the Release body. → [docs/web-ui.md](docs/web-ui.md)
-- **Manual PWA update check (frequent releases)**: a Settings → Account **"Check for updates"** button (`data-testid="settings-check-update"`) calls `SwUpdate.checkForUpdate()` via `UpdateService.checkForUpdate()` and surfaces the outcome through `ToastService` (disabled/re-entrant = `unavailable`, silent no-op — the button is hidden without a SW and can't be double-clicked; `up-to-date` = success, `available` = info with a Reload action wired to `applyUpdate()`, error = red toast). The existing **reload banner** (`UpdateBannerComponent`) keeps its job as the universal install CTA once `VERSION_READY` arrives; the manual control is just the user-trigger. `ngsw-bypass` already gates every `/api/stream/*` URL so the SW never intercepts audio; **see [docs/web-ui.md](docs/web-ui.md) "Manual PWA update check" for the design history (3 alternatives considered) + the parity matrix across PWA / Electron (`electron-updater`, apply-on-Linux / notify-on-macOS) / Capacitor (no OTA — APK/IPA reininstallation).**
-- **ServiceReview (one resource, one polling lifecycle)**: `GET /api/admin/review` (admin-only, one round-trip) replaces the Admin page's prior N independent loaders (`systemStatus`, `scanStatus`, `updateCheck`, `backups`, `auditLog`, `processing` summary, `incompleteJobs`/`untracked` tables) — `ServiceReviewService` owns one `setInterval(5s)` (Page-Visibility-paused, ref-counted) so every Admin sub-section consumes a `computed()` slice from one snapshot; the new CPU/GPU/RAM `app-metric-pill` row at the top of System drains from this same signal; sub-fetch failures degrade one field + log to `errors[]`, never drop the resource. → [docs/design-patterns.md](docs/design-patterns.md) "ServiceReview".
-- **Unified song listings**: one `TrackRowComponent` + one root `SongMenuService.build(song, ctx)` build every song's `⋯` menu (common actions guaranteed, contextual via `SongContext`); Remove routes through `ConfirmService`→`deleteSongs`→`deletedSongIds()` (no per-page prune); "Song info" opens a global `TrackInfoService` host; multiselect is one `createSelection()` + `SelectionBarComponent` everywhere (incl. the library Songs tab). → [docs/song-actions.md](docs/song-actions.md)
-- **Cache-invalidation on library mutations (issue #237 audit)**: every `LibraryApiService` write whose server handler mutates `library_artists`/`library_genres` must `tap(() => invalidateLibraryReads())` on success or the cached Artists grid / Genres tab replays the stale list for the 30 s TTL (the #210 shape). Audited all mutations; added the missing invalidation to `applyGenre`/`applyMetadata`/`deleteSongs`/`deleteAlbum`/`resyncLibrary` (joining `setArtistGenre`/`clearArtistGenre`/`fixArtistIdentity`); artist-image/cover/lyrics/licence/reclassify/optimize writes correctly don't (id-stable `coverArt` or no list impact). → [docs/web-ui.md](docs/web-ui.md) "Cached whole-library reads"
-- **Published Docker image (deployment)**: multi-arch GHCR image (`release`/`vX`/`vX.Y.Z` tags, no `latest`) published per release tag via native-runner digest builds + one manifest merge; compose pulls it (build-from-source is an override), the deploy host pulls too, `/api/health` reports the running version, and a ci.yml `docker` job (compose lint + conditional image build) gates releases. The ci.yml `release` job that cuts those tags is **orphan-tag-proof**: atomic `--follow-tags` push (a rejected branch update rejects the tag too) + self-healing orphan detection (a `vX` tag not reachable from master is deleted + re-cut, never silently skipped) — fixes the 2026-07-23 freeze where a non-atomic push orphaned `v0.1.244` and wedged every release behind a green-but-silent "already published" skip. → [docs/deployment.md](docs/deployment.md)
-- **OSS best-practices roadmap**: prioritized adoption plan of Immich/Home-Assistant practices (backup/restore, safe mode, watchdog + health taxonomy, retention, update check, audit log, community files). → [docs/oss-best-practices.md](docs/oss-best-practices.md)
-- **Daily backups (HA model, scoped)**: `VACUUM INTO` DB snapshot + secrets into `<dataDir>/backups`, once per day ≥04:00 via a marker-guarded processor-tick hook (independent of processing enabled), pruned to newest N (`NICOTIND_BACKUP*` envs); admin list/trigger routes + Admin "Back up now" block; restore is a documented manual swap. → [docs/backup-restore.md](docs/backup-restore.md)
-- **Admin audit log**: `audit_log` table + `recordAudit` called explicitly at destructive mutation sites (album/bulk-song delete, artist identity, user management) — never a blanket middleware; `GET /api/admin/audit` + Admin "Audit log" table; ledger failures never break the audited action. → [docs/roles.md](docs/roles.md) "Audit log"
-- **Server update check + version history**: daily cached GitHub-releases poll (marker-guarded, 1h failure backoff, `NICOTIND_UPDATE_CHECK=off`; scheduled from main.ts — never the processor tick, so unit tests can't hit the network) behind `GET /api/admin/update-check` (+`?refresh=1`), rendered as the Admin "Server: vX / Update available" row; `version_history` records every version ever booted. → [docs/deployment.md](docs/deployment.md) "Update check"
-- **Dependency management (updates + held majors + automation)**: `bun outdated --filter '*'` drives manual bumps; CI (typecheck/lint/test/e2e/web-build/docker/desktop-smoke) is the gate. Two majors are **deliberately held** by peer constraints — `typescript` 6→7 (Angular `compiler-cli` peers TS 6) and `@capacitor/*` 6→8 (`@jofr/capacitor-media-session` still peers `@capacitor/core@^6`); the Python sidecar's `nvidia-cu11==`/`numpy<2`/essentia pins are deliberate ABI locks. Update automation is un-configured but feasible — Renovate recommended (Bun-lockfile + monorepo grouping + custom managers for the actionlint pin / pyproject / Dockerfiles), `chore(deps)` commits don't trip the release job. → [docs/dependency-management.md](docs/dependency-management.md)
+- **Playback loading feedback (HDD-aware)**: one `PlayerService.buffering` signal (250 ms-delayed
+  `bufferingVisible`) drives play-button spinners, the track-row current/buffering indicator
+  (instant click ack), and a seek-bar buffered-ranges band; `setBuffering`'s guard reads
+  `bufferingVisible` via `untracked()` so caller effects never subscribe to it (Firefox
+  self-aborting load loop, bug #3). Every stream URL goes through `ServerConfigService.streamUrl()`,
+  which appends `ngsw-bypass` so the Angular service worker (no `dataGroup` covers `/api/stream`)
+  never intercepts it — it does in Firefox, and throws instead of passing through. **Player restore
+  on page load is paused by default**: `restoreState()` no longer sets `isPlaying`; the autoplay
+  decision is deferred to `maybeResumeAutoplay(autoplayOnLoad)` which runs after `GET /api/auth/me`
+  resolves and only resumes when the per-user `user_settings.autoplay_on_load` flag is on (Settings
+  → Playback toggle, default off). Effect 1's `audio.play()` calls are gated on
+  `untracked(isPlaying())` so a freshly loaded track sits paused without ever hitting the
+  gesture-less autoplay policy. → [docs/web-ui.md](docs/web-ui.md)
+- **Queue extensions (full management)**: `PlayerService` exposes `playNextTrack`, `clearQueue`,
+  `shuffleQueue`, `moveInQueue`, `hasTrack`, `jumpToQueueIndex`; Now Playing queue UI has header
+  toolbar (shuffle/save-as-playlist/clear), per-track remove, drag-to-reorder
+  (`DragReorderDirective`), a **manual drag-resize handle** (pull the queue taller → cover art
+  shrinks; `createPointerDrag`, persisted per-device), history peek, and mini-player queue badge.
+  Reusable `playNextAction`/`addToQueueAction` in `track-utils.ts` wired into every track-row menu.
+  → [docs/web-ui.md](docs/web-ui.md)
+- **Canonical artwork**: `library_artwork` stores canonical URLs keyed on deterministic IDs
+  (survives rescans). → [docs/library-scanner.md](docs/library-scanner.md)
+- **Artist images (auto + override)**: real portraits resolved through a priority-ordered **provider
+  chain** (`artist-image-providers.ts` `buildArtistImageProviders` → `lidarr → spotify → …`, each
+  provider self-contained so the Lidarr `db` coupling never leaks;
+  `resolveArtistImageUrl(providers, artist)` walks it, `source` is an open `string`, adding a source
+  = one `CHAIN` entry + the task `available` gate derives from `configuredArtistImageSources`),
+  auto-filled by the `artist-image` enrichment task; users (admin) upload or copy-from-album a
+  per-artist override (`<dataDir>/artist-overrides`, served first, `manual_override=1`, the
+  short-circuit staying at the call-site SQL not the chain). →
+  [docs/library-scanner.md](docs/library-scanner.md)
+- **Artist bios (auto + override)**: biographies + external links resolved via MBID-first lookup to
+  Discogs (plugin-sourced; MBID from file tags or `library_mbids` cache), stored in
+  `library_artist_meta` with tombstone rows preventing re-queries of confirmed misses. Auto-filled
+  by the `artist-info` enrichment task + a silent one-shot **auto-fetch on first artist-page visit**
+  (`POST /artists/:id/auto-fetch-info`, auth-gated, never curator-gated, gated on
+  `metaExists=false && !manualOverride` so it's a one-shot per artist; reuses the same
+  `fetchAndStoreArtistInfo` core as `refresh-info`); admins edit via `ArtistInfoComponent` on artist
+  pages (`curator`-gated, never overwrites `manual_override=1` rows). The component runs a pure
+  `formatArtistBio` (`packages/web/src/app/lib/artist-bio.ts`) on every render to strip Discogs
+  BBCode — **both** ref shapes the API actually returns (named `[a=Name]`/`[l=Jive]` keep the
+  embedded name incl. whole member lists; numeric `[a123]`/`[l123]`/`[m123]`/`[r123]` id refs
+  dropped with whitespace cleanup; the original #213 version only handled the `=name` shape so
+  `[a=Name]` lists + `[b]`/`[i]`/`[u]` tags leaked as literal garbage), `[b]`/`[i]`/`[u]` tags
+  dropped keeping inner text, `[url]` label kept, `''`→`'`, bare trailing URLs moved to a "Sources
+  (N)" disclosure deduped against the API `urls`), and gates the show-more toggle on
+  `scrollHeight`/`clientHeight` (`ResizeObserver`) rather than a char count so it never appears when
+  expanding reveals nothing. **Lidarr MBID fallback widens for canonical-name drift (issue #211)** —
+  `resolveMbidViaLidarr` is two-stage: exact-normalized-name first (the same discipline that has
+  always guarded this flow against the `Âme`/`ME` false pair), then a **whole-token-subsequence** +
+  `albumCount > 0` corroboration on miss (e.g. library `Eduardo Miño` → Lidarr
+  `Luis Eduardo Miño Naranjo`, real prod case where the canonical name is a _superset_ of the
+  library's tag-derived name). The widened path reports `confidence: 0.5` vs the exact `0.8` so
+  `library_mbids` carries the provenance forward. →
+  [docs/library-scanner.md](docs/library-scanner.md)
+- **Search matching (tokenized + accent-insensitive) + fragmentation diagnostic**: searching "C.
+  Tangana Ídolo" returned Songs but no album card even though the release is a clean visible row —
+  root cause was `LibrarySearchProvider` matching the _whole query as one `LIKE`_ substring with
+  `COLLATE NOCASE` (no diacritic fold), so multi-token "artist + title" queries and un-accented
+  queries ("Idolo"→"Ídolo") both missed. Fix: JS-side `tokenize`/`matchesAllTokens` (shared
+  `services/search-tokens.ts`) — fold (NFD+strip marks+lowercase) + per-token AND over a
+  `name+artist` haystack. The **catalog lane reuses the same matcher**: a pure title search (no
+  artist matched) runs `filterAlbumsByRelevance` so Lidarr's fuzzy `album.lookup` can't collapse a
+  multi-word query to its first token (the "La bifurcada" → "La"-albums bug). Separately (superseded
+  by issue #227 — the Search page is now **acquisition-only**, so it no longer renders `local`
+  results; that library search moved to the Library tabs/Radio), and a **prod-calibrated**
+  `checkFragments` (`services/library-fragments.ts`) surfaces genuine integrity defects —
+  same-release artist-spelling variants ("La Konga"/"La K'onga", sub-clustered by an alnum artist
+  fold so different artists sharing a title aren't flagged) and full albums mis-classified as
+  single/EP (track-count-vs-class, not every non-`album` row) — via `GET /api/library/fragments`
+  (admin), the Admin "Check fragmentation" button, and `scripts/check-fragments.ts` (CLI gate). →
+  [docs/library-scanner.md](docs/library-scanner.md) "Search matching" + "Fragmentation diagnostic"
+- **Metadata optimization**: conservative, all-or-nothing bulk Lidarr re-fetch of
+  cover/year/release-type (`optimizeAllAlbums`); skips placeholder-artist albums. →
+  [docs/metadata-optimize.md](docs/metadata-optimize.md)
+- **User-driven metadata fix**: interactive Lidarr candidate search + free-text + multi-source cover
+  picker (Lidarr/URL/track-embedded/**upload**), persisted in `library_metadata_overrides` with
+  immediate canonical re-point. → [docs/metadata-optimize.md](docs/metadata-optimize.md)
+- **On-demand track analysis (BPM + genre)**: per-track analyze/verify in the track-info drawer +
+  bulk backfill scripts; writes DB **and** file tag. BPM detection is **sidecar-first** (Essentia
+  `POST /rhythm` — the local music-tempo fallback makes frequent half/double-tempo octave errors);
+  historical octave errors are repaired by `analyze-bpm.ts --recheck`. →
+  [docs/library-scanner.md](docs/library-scanner.md),
+  [docs/library-processing.md](docs/library-processing.md)
+- **Windowed library processing**: resumable background enrichment
+  (bpm/genre/key/energy/audio-features/artist-image/genre-audio) via an extensible task registry,
+  run only inside a daily window; ffmpeg/sidecar failures are diagnosed (stderr tail surfaced, not
+  swallowed as a bare exit code), tallied into `ProcessingStatus`, toasted in the Settings panel
+  (with Run now disabled while running), and reported to Sentry as one aggregated event per failing
+  task. Permanently-broken files (corrupt "Invalid data" decodes; sidecar **422** un-decodable files
+  via `AudioFileRejectedError`) _and_ persistently-undetectable/unresolvable ones (no confident
+  BPM/key — ledgered via `NoConfidentResultError`, not tallied; Lidarr-unknown-artist genre songs —
+  ledgered, not tallied; low-confidence `genre-audio` inferences — same ledgered-not-tallied
+  treatment, issue #187 A2) are excluded after N attempts via a `library_song_analysis_failures`
+  ledger (auto-reset on re-download/size-change, surfaced as `skipped`); a sidecar 404/503 (env
+  mount mismatch / models down) stays un-ledgered so a misconfig can't exclude the whole library.
+  the panel's failure tally is scoped to one window session (no eternal stale banner), and every
+  ffmpeg decode has a kill-timeout so one hung file can't wedge a run. →
+  [docs/library-processing.md](docs/library-processing.md)
+- **Process-before-landing (quarantine gate)**: a fresh download is scanned into `library_songs` but
+  held **quarantined** (`landed_at IS NULL`, hidden from every listing) until its **required** steps
+  finish; a per-task `gates` flag (distinct from `tasks`, defaults bpm/key/energy/genre on,
+  sidecar/artist-image off) intersected with availability = the required set, so an off/unavailable
+  step never strands a download; `graduatePending` lands a song once each required step is
+  satisfied-or-permanently-failed, or after a 24h safety valve; `scanIncremental` fires an eager
+  out-of-window `kickEager()` so it lands ASAP; per-download step badges via
+  `GET /api/admin/processing/queue`. → [docs/library-processing.md](docs/library-processing.md),
+  [docs/download-pipeline.md](docs/download-pipeline.md)
+- **Perceptual audio features (no LLM)**: energy/loudness measured bun-side via ffmpeg ebur128;
+  danceability/valence/mood/vocals/acousticness + cached embeddings from the Essentia sidecar
+  (`packages/analysis/`, `NICOTIND_ANALYSIS_URL`; CPU by default, `--build-arg GPU=1` swaps in GPU
+  libtensorflow with inherent CPU fallback); all written to file tags + COALESCE-preserved columns,
+  scored by the Radio engine and sequenced via `energy-arc`. →
+  [docs/audio-ml-enrichment.md](docs/audio-ml-enrichment.md)
+- **Lyrics (on-demand, plugin-sourced, editable)**: new `metadata` plugin kind + `lyrics` capability
+  (LRCLIB first source); stored in `library_lyrics` + file tag, user-editable. The now-playing
+  lyrics toggle opens a karaoke-styled panel (synced line highlighting + auto-scroll) with a
+  fullscreen expand button; a centered styled empty state carries an inline Fetch button. Fetch is
+  **reliable 1-click**: LRCLIB retries transient failures (404 stays no-match) and the route returns
+  `502` for a source error vs `null` for a confident miss, so the first click doesn't
+  false-negative. **Vocal mute** (`?vocals=off` → server-side ffmpeg center-channel cancellation
+  `pan=stereo|c0=c0-c1|c1=c1-c0`) is a mic toggle in the karaoke overlay; it forces the transcode
+  path even when transcoding is off and is cached as a separate `novox` transcode entry. →
+  [docs/design-patterns.md](docs/design-patterns.md)
+- **Unified search**: `GET /api/search?q=` blends local library + parallel slskd network results
+  into the one source-agnostic results list. →
+  [docs/source-agnostic-acquisition.md](docs/source-agnostic-acquisition.md)
+- **Search is acquisition-only (issue #227)**: the `/search` **page** no longer renders
+  local-library results (the "In your library" album section + local "Songs" finder were removed) —
+  Search = "find/add new music", "find what I own" = Library tabs/filters + Radio. The API still
+  returns `local` (unchanged `LibrarySearchProvider`); a non-acquirer (listener, or #235 off) sees a
+  "browse your Library instead" empty state (`data-testid="search-acquisition-off"`). **Left open**
+  (product): page/nav rename + `/search` route rename. →
+  [docs/source-agnostic-acquisition.md](docs/source-agnostic-acquisition.md) "Unified search",
+  [docs/web-ui.md](docs/web-ui.md)
+- **Deployment-wide acquisition kill-switch (issue #235)**: one authoritative
+  `config.acquisitionEnabled` (env `NICOTIND_ACQUISITION=off`, default on) turns the **whole**
+  acquisition module off for a lighter streaming/library-only install — orthogonal to the per-user
+  role gate + per-plugin opt-in. Server: `requireAcquisitionEnabledMiddleware` **hard-404s** every
+  acquisition route group
+  (`acquire`/`discography`/`watchlist`/`archive`/`spotify`/`sources`/`downloads`);
+  `searchRoutes(registry, acquisitionEnabled)` skips the network fan-out for all; the watchlist +
+  auto-acquire pollers don't start. Web: `/api/auth/me` returns `acquisitionEnabled` →
+  `AuthService.canAcquire()` = `serverAcquisitionEnabled() && role`, cascading to nav/guards/Search.
+  **Left open** (follow-ups): admin runtime toggle (env-only for now — boot-constructed services
+  can't tear down live), Extensions-section hide, off-profile compose. →
+  [docs/deployment.md](docs/deployment.md) "Streaming-only profile", [docs/roles.md](docs/roles.md)
+- **Guided acquire UX**: catalog cards are the primary path; the raw network/folder-browser lane is
+  demoted behind an "Advanced" disclosure; the hunt modal leads with the best match. The raw lane's
+  Songs/Folders view **defaults to Folders for an album-intent query** (`pickNetworkView`: catalog
+  has albums, or the query is multi-word — a folder is the "get this album" unit), and the long
+  blended song-first Results list is **capped** (`RESULTS_CAP`, "Show all N" escape) so it can't
+  dominate the page. The Advanced Soulseek peer lane is **gated on the network actually being an
+  available source** (`networkAvailable() || hasNetwork()`), so a user without the slskd extension
+  never sees a nonsensical "No Soulseek results" empty state for a source they don't have. →
+  [docs/design-patterns.md](docs/design-patterns.md), [docs/album-hunt.md](docs/album-hunt.md)
+- **Inline download lifecycle**: result cards go idle → progress % → "Open in Library", driven by
+  `TransferService` (adaptive polling) + a `libraryDirty` signal; completed Downloads-feed rows
+  likewise expose an **"Open in Library"** deep-link to the destination album via the deterministic
+  `albumId` the API ships (graceful "Album not found" fallback), or, for an acquire job whose files
+  landed in more than one album, a **"View N albums"** `MenuPanelComponent` dropdown listing each
+  destination. → [docs/design-patterns.md](docs/design-patterns.md),
+  [docs/download-pipeline.md](docs/download-pipeline.md)
+- **Multi-user + roles**: shared music library, per-user settings in sqlite; first registered user
+  becomes admin. Four-role ascending ladder `listener < user < refiner < admin` (strict superset
+  each step) shared via `@nicotind/core` `roles.ts` (`canAcquire`/`canCurate`/`isAdmin`):
+  **listener** = play/search-library/playlists only, acquisition hidden + server-enforced
+  (declutter); **user** adds acquire; **refiner** adds library curation (relaxes
+  `requireAdmin`→`requireCurator` on library.ts edit/merge/delete routes); **admin** adds server
+  admin. Guards `requireAcquirer`/`requireCurator`/`requireAdmin`; search suppresses only its
+  network fan-out for listeners (library results always return). → [docs/roles.md](docs/roles.md)
+- **Presence tracking (admin-only, ephemeral)**: in-memory `PresenceService` tracks `isConnected` /
+  `amountOfDevices` / `amountOfSessions` per user via 60s HTTP heartbeats + stale cleanup; merged
+  into `GET /api/admin/users`. → [docs/presence-tracking.md](docs/presence-tracking.md)
+- **Onboarding**: expanded setup wizard for self-hosters (music dir + quality + Lidarr); first-login
+  welcome banner for admin-provisioned app users. → [docs/onboarding.md](docs/onboarding.md)
+- **Now Playing queue — clear + drag-reorder + per-row remove**: "Next up" supports a Clear link,
+  HTML5 drag-and-drop row reorder, and per-row remove (X) backed by `PlayerService.clearQueue()` /
+  `moveInQueue(from,to)` / `removeFromQueue(index)`. → [docs/web-ui.md](docs/web-ui.md)
+- **Smart radio (metadata-driven queue)**: `GET /api/radio/next` scores candidates by a
+  **weight-normalized** blend (comparable-factors-only, so un-analyzed tracks aren't out-biased
+  mid-backfill) of BPM, Camelot key (incl. ±2/diagonal moves), multi-genre set closeness
+  (`genreSetCloseness`, max pairwise lexical), year, duration, artist diversity, the perceptual
+  axes, and cached-embedding cosine (`embedding-store.ts`); a widened pool (+genre-LIKE,
+  +un-analyzed seat) feeds it; `PlayerService.radio` auto-appends when the queue drains.
+  **Filter-seeded radio**: the same route also starts a mood/genre/bpm "vibe" with **no seed song**
+  — a `LibraryFilter` (parsed from the shared serialize grammar) constrains the pool via
+  `songFilterWheres`, seeded by its `seedCentroid`; `PlayerService.radioFilter` keeps auto-replenish
+  in-vibe. `toOrderable` used to omit `genre`/`genres` entirely, so every filter-radio vibe scored
+  genre-blind (issue #187 task B4, fixed); the centroid's modal key ("collapses to C major") was
+  investigated and is a measured null result, not a bug — see docs/radio.md. This backs the
+  **radio/mood landing** (the post-login home route `''`, `pages/radio-landing/`): a last-track
+  resume shortcut (disappears on tap) + one-tap vibe presets + top-genre chips; Search moved to
+  `/search`. Shared scoring with `/songs/:id/similar`. A **missing candidate genre is floored, not
+  skipped** (`MISSING_GENRE_FLOOR` 0.2, reported in `explainSimilarity().floored`) — skipping
+  dropped the genre axis out of the denominator and literally _rewarded_ untagged tracks; the genre
+  weight itself was re-measured and raised 10→18 (issue #187 task B3) after `dump-radio.ts` found a
+  sparse-pool seed where it still wasn't enough to keep a wrong-genre track down. **Diagnostic
+  dump** (`scripts/dump-radio.ts`, dev-only, read-only, `--weights axis=n` to A/B a weight change
+  before shipping it): generates a radio via the shared `buildSeedRadio`/`buildFilterRadio`
+  (extracted from the route so no drift) and reports every track's per-axis score breakdown via the
+  pure `explainSimilarity` (`scoreSimilarity` now delegates to it) + an auto "improvement targets"
+  section — distinguishes genre-_skipped_ (data gap, missing-genre is wrongly _rewarded_ by
+  present-axis normalization) from genre-_scored-0_ (weight loss), flags un-split concatenated genre
+  tags (`looksConcatenatedGenre`) + key-detection instability + filter-radio centroid
+  genre-blindness. → [docs/radio.md](docs/radio.md), [docs/web-ui.md](docs/web-ui.md)
+- **Remote playback (cast, Spotify-Connect-style)**: per-user `PlaybackStateManager` broadcasts
+  state/commands over `GET /api/ws/playback`; each browser tab is a device. →
+  [docs/remote-playback.md](docs/remote-playback.md)
+- **Hardware cast (Chromecast + DLNA, server-side controller)**: a `CastController` runs protocol
+  adapters (`castv2`/`bonjour` for Chromecast, `node-ssdp`/`upnp-mediarenderer-client` for DLNA)
+  server-side; any browser controls hardware via REST `/api/cast/*`; short-lived scoped
+  `cast_tokens` authenticate the hardware's direct `GET /api/stream` fetches; the controller bridges
+  hardware state into the existing WS `PlaybackStateManager` as a proxy device. No browser Cast SDK,
+  no native mobile plugin, opt-in discovery with manual-IP fallback for Docker. →
+  [docs/cast-integration.md](docs/cast-integration.md)
+- **Service modes**: `embedded` (spawn slskd as child process) or `external`; the library/streaming
+  stack is in-process. → [docs/design-patterns.md](docs/design-patterns.md)
+- **Auth flow**: NicotinD issues its own JWTs (30-day sliding sessions, silent refresh on boot);
+  share tokens are short-lived, read-only, non-refreshable. The `authGuard` preserves the attempted
+  URL as a `returnUrl` param when bouncing to `/login`; login sanitizes it (pure
+  `sanitizeReturnUrl`, in-app paths only) and redirects back after auth (issue #231). A share link
+  opened while **already logged in** resolves token→resource via the auth-gated, side-effect-free
+  `GET /api/share/:token/resource` and deep-links into the real in-app page under the user's own
+  session — never burning the public 5-minute token (issue #230). Shareable resources are
+  album/playlist/**artist** (issue #229 added artist: portrait + name + bio + playable songs in-app,
+  plus a server-side OG/Twitter `profile` link preview mirroring albums/playlists). →
+  [docs/design-patterns.md](docs/design-patterns.md), [docs/web-ui.md](docs/web-ui.md)
+- **Device pairing (QR link) + remote access (Tailscale Funnel)**: the server mints a 5-min
+  single-use pairing token rendered as a QR (+ 6-char fallback code) on `/settings/devices`; the QR
+  encodes a `/pair#t=…` **link** (token in the fragment) so a plain camera app opens the server's
+  public `/pair` page and signs the browser in, while the app's in-app scanner (full raw-bridge
+  options — iOS rejects sparse calls) probes candidate URLs and claims a device-bound 30-day JWT
+  (revocable via `paired_devices` row delete, enforced at refresh); the native app keeps a
+  **saved-servers registry with per-server stashed sessions** (switch/remove/remember, no passwords
+  stored) reachable from login + Settings; opt-in remote access publishes the loopback-bound backend
+  at a public HTTPS URL via `tailscale funnel` behind a guided admin state machine. →
+  [docs/device-pairing.md](docs/device-pairing.md)
+- **Observability (Sentry, opt-in)**: web `initSentry` (empty DSN = off, prod-only, versioned + low
+  sampling) + API `initServerSentry` (`NICOTIND_SENTRY_DSN` empty = off) reporting only unknown 500s
+  from the Hono `errorHandler` (4xx/connectivity skipped), plus `captureProcessingFailure` for
+  aggregated, fingerprint-grouped library-enrichment failures. →
+  [docs/observability.md](docs/observability.md)
+- **OAuth authentication (proposed — not yet implemented)**: Google + Microsoft login as `auth` kind
+  plugins with `oauth` capability; auto-creates users by email (no validation); auto-enables when
+  env-set creds present; dev bypass provider gated by `OAUTH_DEV_BYPASS` env var;
+  `NICOTIND_PUBLIC_URL` for prod redirect base; Capacitor `nicotind://` deep-link for mobile parity.
+  → [docs/oauth-auth.md](docs/oauth-auth.md)
+- **Release-type model (singles & EPs)**: every album carries a `classification`, set metadata-first
+  (Lidarr/MusicBrainz) with a track-count heuristic fallback. →
+  [docs/download-pipeline.md](docs/download-pipeline.md)
+- **Native playlists (per-user)**: `playlists`/`playlist_songs` + `PlaylistService`, private per
+  user, with sharing + server-side OG/Twitter link previews; the detail page adds a reusable
+  `SongPickerComponent` (debounced autocomplete) + a token-overlap "suggested for this playlist"
+  proposals list, both refreshed after every membership mutation. → [docs/web-ui.md](docs/web-ui.md)
+- **Curated playlists (system, global)**: gradient-covered Spotify-style shelves shown to all users;
+  read-only by `kind` (not ownership). → [docs/curated-playlists.md](docs/curated-playlists.md)
+- **Automated playlists (recipe → refreshed curated shelves)**: code-defined `RECIPES`
+  (bpm/key/year/genre `where` + sort) materialized into `kind='curated'` playlists by
+  `refreshAutoPlaylists`; reuses `selectCuratedTracks` + the shared `upsertCuratedPlaylist`.
+  **Admin-configurable cadence (issue #228, `off`/`daily`/`weekly`)** persisted in
+  `library_sync_state` `auto_playlists_cadence`, guarded per-period by `auto_playlists_period`
+  (`<cadence>:<n>`, `updated_at` = last-refreshed); `runAutoPlaylistsNow` is the guard-bypassing
+  "Generate now"; admin routes `GET`/`PUT /api/admin/playlists/auto` +
+  `POST /playlists/auto/refresh` (audit-logged) back an Admin panel; the detail page shows
+  "Refreshed &lt;date&gt;" from `modified_at`. →
+  [docs/automated-playlists.md](docs/automated-playlists.md)
+- **Likes → auto-maintained "Liked Songs" playlist (issue #225)**: a per-user heart (track row
+  `track-like`, track-info `track-info-like`, the `SongMenuService` menu's leading Like/Unlike).
+  "Like" is personal so it can't reuse the global `library_songs.starred`; instead a new
+  `PlaylistKind` value `liked` (one per user, lazily created on first like) makes **the playlist
+  itself the store** — membership = liked, newest-first via decreasing `position`, no new table
+  (`kind` already exists). `PlaylistService.likeSong`/`unlikeSong`/`likedSongIds`; auth-gated
+  `POST`/`DELETE /api/library/songs/:id/like` + `GET /api/library/liked-ids`; web `LikeService`
+  (optimistic, signal-backed set hydrated in the app shell). Read-only through the CRUD API (the
+  `kind='user'` guard), pinned first in the playlists list. →
+  [docs/song-actions.md](docs/song-actions.md)
+- **Playlists page (merged single list)**: one list (no separate "yours"/curated shelves) sorted
+  server-side curated-first, with an inline "Curated" badge + per-row Rename/Delete restricted to
+  `kind='user'` rows, and create-then-redirect straight to the new playlist's detail page. →
+  [docs/playlist-generation.md](docs/playlist-generation.md) §0a
+- **Artist page — tabbed**: Albums | Singles & EPs | Songs (lazy, paginated Songs tab with
+  multi-select bulk actions incl. admin-gated delete — the only view that can remove albumless
+  files). → [docs/design-patterns.md](docs/design-patterns.md)
+- **Viewport-safe dropdown menus (`MenuPanelComponent`)**: fixed-position panel that flips above /
+  clamps into the viewport via the pure `computeMenuPosition`, reserving a `bottomInset` (measured
+  from `data-bottom-chrome` layers via `bottomChromeInset`) so it never opens under the
+  mini-player/tab bar; every `TrackRowComponent` `⋯` menu uses it. →
+  [docs/design-patterns.md](docs/design-patterns.md)
+- **Bottom-chrome stacking + scroll lock**: mini-player and tab bar share one `z-50` plane;
+  `ScrollLockService` pins the document under full-screen sheets. →
+  [docs/design-patterns.md](docs/design-patterns.md)
+- **Catalog (metadata-driven) search**: `CatalogService` returns artist/album cards from
+  Lidarr/MusicBrainz, scoped to the matched artist, resolving into album-hunt (typed 404 +
+  raw-network fallback for absent compilations). On a catalog miss (`ALBUM_NOT_IN_LIDARR`), the
+  fallback now opens the **folder-first network lane for the exact clicked album** with a clear
+  "download from folders" CTA; loading the full discography (which auto-adds the artist to Lidarr)
+  is **opt-in** via a banner button (`browseFallbackDiscography`), no longer an automatic dump. →
+  [docs/album-hunt.md](docs/album-hunt.md)
+- **Album hunt**: `AlbumHunterService` skewed queries + diacritic scoring + two-phase progress;
+  blended "Other sources" + per-track fallback when 0 folders found. The skew builder
+  (`buildSkewedQueries`/`buildTrackQueries`, now in shared **`@nicotind/core` `hunt-queries.ts`** —
+  one source for API + web, killing the old two-copy sync risk) emits **faithful literal variants**
+  (accent-fold, punctuation-strip, distinctive-tokens, reorder, qualifier-strip) that bypass slskd's
+  exact-phrase soft ban/cache while staying precise; the imprecise last-char artist truncation was
+  dropped. → [docs/album-hunt.md](docs/album-hunt.md)
+- **Watchlist auto-hunt**: star catalog albums; a poller auto-hunts + downloads on a confident
+  match. → [docs/album-hunt.md](docs/album-hunt.md)
+- **Generation feedback → TDD fixtures (dev golden-dataset)**: capture whether a
+  _generated/inferred_ output was right, from real usage, and replay each graded case as a
+  regression test. v1 targets the **album-hunt recognizer**: `searchAndScore` is split into a pure
+  `scoreFolders(canonicalTracks, rawResponses)` (the replay seam) + `search` (I/O); `huntBase` now
+  returns the raw slskd responses. An admin with a dev-mode toggle
+  (`user_settings.feedback_capture`, Settings → Developer) gets a throttled 👍/👎 toast after a hunt
+  renders (`FeedbackService.shouldPrompt`); the `hunt/base` route snapshots
+  `{proposal(+MBIDs), rawResponses, scored candidates}` into a pending `generation_feedback` row
+  (`captureHuntMatchFeedback`, admin+toggle-gated) and returns its `feedbackId`. 👍 = top pick
+  correct; 👎 opens `FeedbackDetailSheetComponent` to mark the actually-correct folder (or "none") +
+  note → `PATCH /api/feedback/:id` (admin, `resolveFeedback`). `scripts/feedback-to-fixtures.ts`
+  exports graded rows (`huntFixtureFromRecord`) into `services/__fixtures__/hunt-match/*.json`;
+  `album-hunter.replay.test.ts` re-runs `scoreFolders` offline and asserts the human-correct folder
+  ranks #1 (red/green loop for recognizer "smart linking"). Generic `resourceType` reserves
+  radio/playlist/library/search for later. →
+  [docs/generation-feedback.md](docs/generation-feedback.md)
+- **Auto-acquisition loop (opt-in)**: a default-off poller sweeps Lidarr's `wanted/missing` list and
+  auto-acquires each album through the shared `acquireAlbum` core (same hunt/select/enqueue/fallback
+  guards as the watchlist poller + interactive hunt), so it's idempotent and re-entrant. →
+  [docs/auto-acquisition-plan.md](docs/auto-acquisition-plan.md)
+- **Spotify metadata fallback (via spotDL)**: metadata-only lane that hands a `spotify.com/album`
+  URL to `/api/acquire`; the `spotify` plugin gates it. The user's **Spotify Client ID/Secret**
+  (entered once on the spotify extension card) is the single source of truth: `SpotdlPlugin` reads
+  it live via `PluginRegistry.getConfig('spotify')` and forwards it as
+  `SPOTIPY_CLIENT_ID`/`SPOTIPY_CLIENT_SECRET` on spawn (omitted when absent), so spotDL uses the
+  user's own rate limits for better metadata matches; a hint under the spotdl card points there
+  (`data-testid="spotdl-uses-spotify-credentials"`). For audio quality, `run()` passes
+  `--bitrate disable` so the source stream is copied without a second lossy re-encode. →
+  [docs/spotify-fallback.md](docs/spotify-fallback.md)
+- **Idempotent hunt — one album = one download**: 409 guards + only-missing-tracks enqueue; "already
+  have it" outcomes surface as positive notices, not red errors. →
+  [docs/album-hunt.md](docs/album-hunt.md)
+- **Duplicate prevention**: FLAC>MP3 + auto-dedupe + edition-collapsing album IDs + cross-edition
+  folder consolidation at ingest. → [docs/download-pipeline.md](docs/download-pipeline.md)
+- **Lossless → Opus standardization**: lossless downloads transcoded to Opus in place (default-on
+  192 kbps) + a library migration path; detection is codec-aware (`isLosslessFile` probes .m4a for
+  ALAC, which browsers can't decode); gated on ffmpeg. The env/YAML-only config is exposed read-only
+  via `GET /api/settings/downloads` so the **acquire flow shows an accurate reminder** (Results
+  header note + per-row "→ Opus Nk" chip on lossless picks), gated on `enabled && ffmpegAvailable`
+  so it never claims a transcode that won't run for a lossy pick. →
+  [docs/download-pipeline.md](docs/download-pipeline.md)
+- **Album deletion**: `DELETE /api/library/albums/:id` is folder-first `rmSync` + synchronous
+  canonical-row delete + orphan-aggregate prune; every delete route debounce-schedules an slskd
+  share rescan (`ShareRescanScheduler`) so a removed file stops being advertised to peers. →
+  [docs/download-pipeline.md](docs/download-pipeline.md)
+- **Library quality auditor**: assert (audit) + clean (repair/retag) + prevent (ingest sanitize) for
+  DJ-pool/VA-source pollution across DB + disk. → [docs/library-audit.md](docs/library-audit.md)
+- **Downloading albums suppressed from listing**: listings exclude albums with active `album_jobs`
+  or in-flight transfers via an SQL `WHERE` exclusion. →
+  [docs/design-patterns.md](docs/design-patterns.md)
+- **Standardized library metadata filters**: one shared `LibraryFilter` (BPM/Camelot
+  key/mood/perceptual buckets/year/genre/starred/duration) filters the four library tabs + the
+  library **Songs** tab + artist Songs tab server-side; song properties match albums/artists via
+  any-track `EXISTS`, state lives in URL query params. →
+  [docs/library-filters.md](docs/library-filters.md)
+- **Library "Songs" tab (whole-library flat listing)**: `GET /api/library/songs` (clone of
+  `/artists/:id/songs` sans the artist predicate) backs a first-class Library tab — newest-first
+  default, shared `LibraryFilter` + sort, `TrackRowComponent` + full `SongMenuService` menu,
+  `createSelection()` multi-select (play/queue/playlist/save-offline/admin-delete). Replaced the
+  Downloads "Recently Added" tab. **Offline** (`SetupService.isOffline()`) it swaps its source to
+  `PreserveService.preservedTracks` (client-side search/sort + storage bar + Clear all, backend-free
+  row menu), and Library is reachable offline (the removed Downloads "Saved Offline" tab's role
+  moved here). → [docs/web-ui.md](docs/web-ui.md)
+- **Auto-preserve queue (PWA lock-screen resilience)**: `AutoPreserveCoordinator` (ships in every
+  environment — effectively a no-op while mode is "off") watches the player queue and keeps the
+  next-N tracks as IndexedDB blobs (configurable Off / 5 / 20 / full, per-device localStorage) so
+  playback survives the browser's locked-screen network throttle; `source: 'user' | 'auto'` +
+  `evictAutoLRU` ensures radio churn never evicts user-saved tracks. →
+  [docs/web-ui.md](docs/web-ui.md)
+- **Reactive network / offline detection (fixes Android offline-launch ANR)**:
+  `NetworkStatusService` is one live `online` signal (`@capacitor/network` on native via
+  `getCapacitorPlugin`, `navigator.onLine` + window events on web); `SetupService.isOffline` becomes
+  a `computed` (`!online || serverUnreachable`) so the library source swap, nav gating, redirect +
+  the app-shell offline banner (inline in `layout.component.html`, `data-testid="offline-banner"`)
+  all react to connectivity flips **both ways** with no reload, and `check()` skips the boot HTTP
+  probe when already offline (kills the multi-second blank-screen boot behind the ANR). Native
+  Sentry drops Session Replay + tracing (release-only ANR suspect; `initSentry` also
+  try/catch-wrapped); mid-use hardening = player skips a doomed offline stream (toast, not infinite
+  spinner), `preserveCollection` swallows offline fetch rejects, GET requests get a 30s interceptor
+  timeout. → [docs/mobile-app.md](docs/mobile-app.md), [docs/web-ui.md](docs/web-ui.md),
+  [docs/observability.md](docs/observability.md)
+- **Untracked downloads**: `relative_path IS NULL` rows are backfilled by a script; listed at
+  `GET /api/library/untracked` (admin). → [docs/download-pipeline.md](docs/download-pipeline.md)
+- **URL acquisition (yt-dlp / spotdl / archive)**: `POST /api/acquire` routes a URL to an enabled
+  `resolve`-capable plugin → the same organizer + scan pipeline; entered via a link-intent card in
+  the search omnibox (merged with search, no separate URL box); idempotent submit reuses an
+  in-flight job for the same URL, a truncated result (fewer files than the source reported) still
+  finishes `done` but carries a warning + Retry instead of reading as an unqualified success,
+  tagless sources (archive.org streams raw bytes with no ID3) return a `ResolveResult`
+  (`{ paths, meta }`) so `ingest` threads the item's artist/album onto `jobMeta` (else the organizer
+  drops them in `<dataDir>/unsorted` outside the music dir while the job falsely reads "done") and a
+  job that files nothing is marked `done` **with a warning** rather than a clean success,
+  restart-orphaned jobs are failed at boot (never stuck "running"), Retry on any truncated acquire
+  job resumes the same job id/staging dir instead of re-downloading from scratch (spotdl
+  additionally passes `--overwrite skip` on top of that generic mechanism), and YouTube's bot-check
+  is mitigated by Deno + the bgutil PO-token sidecar + optional `<dataDir>/youtube-cookies.txt`
+  cookies. → [docs/download-pipeline.md](docs/download-pipeline.md),
+  [docs/source-agnostic-acquisition.md](docs/source-agnostic-acquisition.md)
+- **Playlist-from-acquisition**: a URL acquire job classified as a playlist (Spotify
+  `/playlist/<id>`, YouTube `/playlist`, YouTube `watch?v=…&list=…`, archive.org with `as=playlist`)
+  auto-generates a per-user native playlist from the landed tracks in download order after the
+  post-ingest pipeline — the Downloads card then offers an "Open playlist" deep-link straight to
+  `/library/playlists/<id>`. Archive items expose a UI toggle (`as= 'playlist'`); Spotify/YouTube
+  auto-detect via `classifyAcquireUrl`. Per-track `acquire_job_tracks` rows (`recordAcquireJobTrack`
+  upserts keyed job_id+title; the FULL `TrackEvent` incl. `path` must cross the
+  `onTrack`→`emitTrack` seam — dropping it there silently disables generation) resolve by basename
+  **stem** (survives the Opus transcode) with an `"Artist - "`-stripping title fallback (spotdl is
+  title-only); only landed tracks make it in, and a retry refreshes the same playlist in place
+  instead of duplicating. → [docs/playlist-from-acquisition.md](docs/playlist-from-acquisition.md)
+- **Download list metadata**: `GET /api/downloads` annotates in-flight folders matching `album_jobs`
+  with album-job info; a completed acquire job's `destinationAlbums` disambiguates which album(s) it
+  actually landed in. → [docs/download-pipeline.md](docs/download-pipeline.md) → "Multi-album
+  acquire jobs"
+- **Unified acquisition jobs**: every download (hunt/auto-acquire/direct/track-search/URL) is
+  wrapped in an `acquisition_jobs` row whose transfer↔job linkage (`username::filename` keys) is
+  stored at enqueue time — never re-derived by folder-string matching; items repoint in place on
+  fallback re-pulls, and a job closes as an honest partial when remaining tracks are unobtainable.
+  **Direct grabs get a real "where" post-scan (issue #223)**: a raw peer/single-file grab has only
+  noisy folder-segment artist/album guesses, so `backfillDirectJobAlbum` (watcher scan seam,
+  `kind='direct'` only) re-points the job to the **canonical** album its file landed in
+  (`song_id`→`library_songs.album_id`→`library_albums`), so the feed row + "Open in Library"
+  deep-link resolve. → [docs/acquisition-jobs.md](docs/acquisition-jobs.md)
+- **Unified downloads feed**: slskd groups + URL acquire jobs both adapt into a normalized
+  `DownloadItem` with method/stage badges, a "View N albums" menu for multi-album jobs, and a "Now:
+  / Next:" current-track display. The Downloads header also shows a **disk-availability pill**
+  (`used / total`, green→red fill) fed by `GET /api/system/disk` (statfs of the music dir). →
+  [docs/download-pipeline.md](docs/download-pipeline.md) → "Now: / Next: track display",
+  [docs/web-ui.md](docs/web-ui.md)
+- **Acquisition provenance (how/where/when)**: the `acquisitions` side-table records
+  method/source/time at download time; surfaced per track. →
+  [docs/download-pipeline.md](docs/download-pipeline.md)
+- **Plugin architecture (acquisition as opt-in plugins)**: kind-agnostic kernel + `PluginRegistry`;
+  acquisition is default-off; plugins = slskd/yt-dlp/spotdl/archive/spotify/lrclib/discogs; `auth`
+  kind planned for OAuth. Config saves re-init the running plugin live; yt-dlp/spotdl probe/spawn
+  with an augmented PATH (`acquireEnv`: bundled-ffmpeg dir + brew/pip bins — GUI apps inherit a
+  minimal PATH) + an admin-editable `binaryPath` field; embedded slskd auto-shares the music dir
+  (merge-preserving `slskd.yml` regeneration). UI labelled **Extensions**, one section per kind
+  (Acquisition / Metadata / Connectivity) — the web `PluginKind` union mirrors the core one and a
+  kind missing from **either** renders its plugins nowhere; extensions with bespoke config own a
+  dedicated settings page via `PLUGIN_DETAIL_ROUTES` (first: slskd, which shows a not-reachable
+  notice when slskd is down). All first-party plugins are constructed in `registerBuiltinPlugins`
+  (`services/plugins/builtin.ts`), not inline in `index.ts`, so cross-plugin construction deps
+  (spotdl reading spotify's creds) are covered by a test. → [docs/plugins.md](docs/plugins.md)
+- **Discogs metadata plugin (genre + artist-info)**: `metadata`-kind, default-off + consent-gated
+  plugin (`services/plugins/discogs/`) that resolves release genres/styles from Discogs (strong on
+  Latin/regional/pre-2000/DJ-pool — the residual gap #187's MusicBrainz couldn't close). `client.ts`
+  (auth via Consumer Key+Secret, on-disk cache, one shared **55/min** token bucket honoring
+  `X-Discogs-Ratelimit-Remaining`, injected `fetchFn`/`clock`/`sleep`) + pure `matching.ts`
+  (**MBID-first** via `parseDiscogsRef` on MusicBrainz's discogs url-relation → **corroborated name
+  search** `selectBestRelease`, artist+album both required, rejecting the same-name "Emilia AR/SE"
+  false match) wired into a core `genre` `GenreCapability` (`fetchGenres`, release-scoped — **no
+  artist scope** per #187 finding 3, **MBID-only** query, **no `confidence:1.0`** shortcut). **Genre
+  enrichment wired (#194, gate #191 PASSED at 72% of the residual gap)**: the album-scoped
+  `genre-discogs` enrichment task (`services/genre-discogs.ts`) runs over songs the Lidarr `genre`
+  task left genre-less, groups them by album, and writes gated `library_genre_overrides`
+  (`source='discogs'`, applied ≥0.8 else pending) — the #187 A1 **second** provider, reusing the
+  A1/A3 write path; a confident match is applied inline (mirrors `genre-audio`), an outage (throw)
+  never ledgers the album, and it's never a landing gate + off by default. Discogs'
+  comma/slash-bearing top-level vocab (`Folk, World, & Country`) is mapped to separator-free
+  canonical genres (`discogs-genre-vocab.ts`) inside the plugin before it can shatter `splitGenres`;
+  ids generalize into `library_external_ids` (not a third per-provider table). **Flagship Larralde
+  case stays unresolved** (measured — Discogs had no corroborated release; remains #187 A2's to
+  fix). → [docs/discogs-plugin.md](docs/discogs-plugin.md)
+- **spotDL inherits the Spotify plugin's credentials**: `SpotdlPlugin` reads
+  `plugins.getConfig('spotify')` live at spawn time and forwards the Client ID/Secret as
+  `SPOTIPY_CLIENT_ID` / `SPOTIPY_CLIENT_SECRET` env vars, raising spotDL's Spotify rate limits over
+  its built-in shared client (better metadata matches → higher-quality YouTube audio). One source of
+  truth — the user enters the key in the spotify card once; the spotdl card has no creds field and
+  shows a one-line hint pointing at the spotify card. →
+  [docs/spotify-fallback.md](docs/spotify-fallback.md)
+- **Quality chip on download cards ("· 320 kbps" / "FLAC · 1411 kbps")**: every `DownloadItem`
+  carries an optional `bitrateKbps` + `audioFormat` rendered as a small inline chip next to the
+  method badge (`data-testid="download-bitrate"`). slskd captures `SlskdFile.bitRate` at enqueue →
+  `acquisition_job_items.bit_rate_kbps`; URL-acquire jobs are ffprobed post-plugin-finish via
+  `AcquireWatcher.ingest`. Both upgrade post-scan: the route's `enrichWithBitrate`
+  (`routes/downloads.ts`) joins `library_songs.bit_rate` so a downloaded FLAC shows 192 kbps Opus
+  once the lossless→opus transcode has run. The pure `formatQuality()` helper
+  (`lib/download-status.ts`) renders `"FLAC · 1411 kbps"` for lossless codecs, `"320 kbps"` for
+  lossy; missing both → chip hidden. → [docs/download-pipeline.md](docs/download-pipeline.md) →
+  "Quality chip"
+- **Admin/Settings/Extensions decoupling**: core Settings = universal prefs only; server-admin tools
+  (streaming, library processing, find-duplicates) live in **Admin**; slskd owns its
+  connection/shares + a Nicotine+-style live status panel (`GET /api/plugins/slskd/status`,
+  `SlskdStatus`) on its extension page. Credential storage unchanged (UI relocation only). →
+  [docs/admin-settings-decoupling.md](docs/admin-settings-decoupling.md)
+- **Changelog modal**: build-time `CHANGELOG.md` → `changelog.json` (capped at 50 versions); version
+  string in header/settings is clickable. `CHANGELOG.md` is also the source for the **GitHub Release
+  description** — the `release-notes` job in `deploy.yml` extracts the tag's section into the
+  Release body. → [docs/web-ui.md](docs/web-ui.md)
+- **Manual PWA update check (frequent releases)**: a Settings → Account **"Check for updates"**
+  button (`data-testid="settings-check-update"`) calls `SwUpdate.checkForUpdate()` via
+  `UpdateService.checkForUpdate()` and surfaces the outcome through `ToastService`
+  (disabled/re-entrant = `unavailable`, silent no-op — the button is hidden without a SW and can't
+  be double-clicked; `up-to-date` = success, `available` = info with a Reload action wired to
+  `applyUpdate()`, error = red toast). The existing **reload banner** (`UpdateBannerComponent`)
+  keeps its job as the universal install CTA once `VERSION_READY` arrives; the manual control is
+  just the user-trigger. `ngsw-bypass` already gates every `/api/stream/*` URL so the SW never
+  intercepts audio; **see [docs/web-ui.md](docs/web-ui.md) "Manual PWA update check" for the design
+  history (3 alternatives considered) + the parity matrix across PWA / Electron (`electron-updater`,
+  apply-on-Linux / notify-on-macOS) / Capacitor (no OTA — APK/IPA reininstallation).**
+- **ServiceReview (one resource, one polling lifecycle)**: `GET /api/admin/review` (admin-only, one
+  round-trip) replaces the Admin page's prior N independent loaders (`systemStatus`, `scanStatus`,
+  `updateCheck`, `backups`, `auditLog`, `processing` summary, `incompleteJobs`/`untracked` tables) —
+  `ServiceReviewService` owns one `setInterval(5s)` (Page-Visibility-paused, ref-counted) so every
+  Admin sub-section consumes a `computed()` slice from one snapshot; the new CPU/GPU/RAM
+  `app-metric-pill` row at the top of System drains from this same signal; sub-fetch failures
+  degrade one field + log to `errors[]`, never drop the resource. →
+  [docs/design-patterns.md](docs/design-patterns.md) "ServiceReview".
+- **Unified song listings**: one `TrackRowComponent` + one root `SongMenuService.build(song, ctx)`
+  build every song's `⋯` menu (common actions guaranteed, contextual via `SongContext`); Remove
+  routes through `ConfirmService`→`deleteSongs`→`deletedSongIds()` (no per-page prune); "Song info"
+  opens a global `TrackInfoService` host; multiselect is one `createSelection()` +
+  `SelectionBarComponent` everywhere (incl. the library Songs tab). →
+  [docs/song-actions.md](docs/song-actions.md)
+- **Cache-invalidation on library mutations (issue #237 audit)**: every `LibraryApiService` write
+  whose server handler mutates `library_artists`/`library_genres` must
+  `tap(() => invalidateLibraryReads())` on success or the cached Artists grid / Genres tab replays
+  the stale list for the 30 s TTL (the #210 shape). Audited all mutations; added the missing
+  invalidation to `applyGenre`/`applyMetadata`/`deleteSongs`/`deleteAlbum`/`resyncLibrary` (joining
+  `setArtistGenre`/`clearArtistGenre`/`fixArtistIdentity`);
+  artist-image/cover/lyrics/licence/reclassify/optimize writes correctly don't (id-stable `coverArt`
+  or no list impact). → [docs/web-ui.md](docs/web-ui.md) "Cached whole-library reads"
+- **Published Docker image (deployment)**: multi-arch GHCR image (`release`/`vX`/`vX.Y.Z` tags, no
+  `latest`) published per release tag via native-runner digest builds + one manifest merge; compose
+  pulls it (build-from-source is an override), the deploy host pulls too, `/api/health` reports the
+  running version, and a ci.yml `docker` job (compose lint + conditional image build) gates
+  releases. The ci.yml `release` job that cuts those tags is **orphan-tag-proof**: atomic
+  `--follow-tags` push (a rejected branch update rejects the tag too) + self-healing orphan
+  detection (a `vX` tag not reachable from master is deleted + re-cut, never silently skipped) —
+  fixes the 2026-07-23 freeze where a non-atomic push orphaned `v0.1.244` and wedged every release
+  behind a green-but-silent "already published" skip. → [docs/deployment.md](docs/deployment.md)
+- **OSS best-practices roadmap**: prioritized adoption plan of Immich/Home-Assistant practices
+  (backup/restore, safe mode, watchdog + health taxonomy, retention, update check, audit log,
+  community files). → [docs/oss-best-practices.md](docs/oss-best-practices.md)
+- **Daily backups (HA model, scoped)**: `VACUUM INTO` DB snapshot + secrets into
+  `<dataDir>/backups`, once per day ≥04:00 via a marker-guarded processor-tick hook (independent of
+  processing enabled), pruned to newest N (`NICOTIND_BACKUP*` envs); admin list/trigger routes +
+  Admin "Back up now" block; restore is a documented manual swap. →
+  [docs/backup-restore.md](docs/backup-restore.md)
+- **Admin audit log**: `audit_log` table + `recordAudit` called explicitly at destructive mutation
+  sites (album/bulk-song delete, artist identity, user management) — never a blanket middleware;
+  `GET /api/admin/audit` + Admin "Audit log" table; ledger failures never break the audited action.
+  → [docs/roles.md](docs/roles.md) "Audit log"
+- **Server update check + version history**: daily cached GitHub-releases poll (marker-guarded, 1h
+  failure backoff, `NICOTIND_UPDATE_CHECK=off`; scheduled from main.ts — never the processor tick,
+  so unit tests can't hit the network) behind `GET /api/admin/update-check` (+`?refresh=1`),
+  rendered as the Admin "Server: vX / Update available" row; `version_history` records every version
+  ever booted. → [docs/deployment.md](docs/deployment.md) "Update check"
+- **Dependency management (updates + held majors + automation)**: `bun outdated --filter '*'` drives
+  manual bumps; CI (typecheck/lint/test/e2e/web-build/docker/desktop-smoke) is the gate. Two majors
+  are **deliberately held** by peer constraints — `typescript` 6→7 (Angular `compiler-cli` peers
+  TS 6) and `@capacitor/*` 6→8 (`@jofr/capacitor-media-session` still peers `@capacitor/core@^6`);
+  the Python sidecar's `nvidia-cu11==`/`numpy<2`/essentia pins are deliberate ABI locks. Update
+  automation is un-configured but feasible — Renovate recommended (Bun-lockfile + monorepo
+  grouping + custom managers for the actionlint pin / pyproject / Dockerfiles), `chore(deps)`
+  commits don't trip the release job. →
+  [docs/dependency-management.md](docs/dependency-management.md)
 
 ## Web UI
 
-Angular v22 standalone SPA with signals, `HttpClient` + interceptors, and lazy-loaded routes. Built via `ng build` (esbuild); tests via `ng test` (vitest). The HTTP surface is split into per-domain stateless services under `services/api/` (`Auth`/`Search`/`Library`/`Downloads`/`System`/`Playlists` ApiService + shared `api-types.ts`) — inject the specific one; there is no monolithic `ApiService`. → See [docs/web-ui.md](docs/web-ui.md) for theme system, Angular patterns, and component conventions.
+Angular v22 standalone SPA with signals, `HttpClient` + interceptors, and lazy-loaded routes. Built
+via `ng build` (esbuild); tests via `ng test` (vitest). The HTTP surface is split into per-domain
+stateless services under `services/api/` (`Auth`/`Search`/`Library`/`Downloads`/`System`/`Playlists`
+ApiService + shared `api-types.ts`) — inject the specific one; there is no monolithic `ApiService`.
+→ See [docs/web-ui.md](docs/web-ui.md) for theme system, Angular patterns, and component
+conventions.
 
 ## Mobile app (Capacitor Android + iOS)
 
-`packages/mobile` is a thin **Capacitor** shell that wraps the **same** `@nicotind/web` Angular build (no second UI codebase). The enabler is a runtime-configurable API base URL (`ServerConfigService` + a native-only server-picker + `nativeAppCors()`). Background audio + lock-screen controls come from `@jofr/capacitor-media-session` on Android and an iOS-only `@nicotind/capacitor-now-playing` Swift plugin (owns `MPNowPlayingInfoCenter` + `AVAudioSession` + transport). Android/iOS artifacts are built by tag-only best-effort CI jobs in `deploy.yml`. → See [docs/mobile-app.md](docs/mobile-app.md) and [docs/ios-app.md](docs/ios-app.md).
+`packages/mobile` is a thin **Capacitor** shell that wraps the **same** `@nicotind/web` Angular
+build (no second UI codebase). The enabler is a runtime-configurable API base URL
+(`ServerConfigService` + a native-only server-picker + `nativeAppCors()`). Background audio +
+lock-screen controls come from `@jofr/capacitor-media-session` on Android and an iOS-only
+`@nicotind/capacitor-now-playing` Swift plugin (owns `MPNowPlayingInfoCenter` + `AVAudioSession` +
+transport). Android/iOS artifacts are built by tag-only best-effort CI jobs in `deploy.yml`. → See
+[docs/mobile-app.md](docs/mobile-app.md) and [docs/ios-app.md](docs/ios-app.md).
 
 ## Desktop app (Electron)
 
-`packages/desktop` wraps the **same** backend (`src/main.ts` + workspace packages) and the **same** `@nicotind/web` build as everywhere else; Electron supervises the backend as a local Bun child process ("sidecar", `electron/sidecar.ts`) via handshake+health-checked spawn/restart (env `NICOTIND_MODE=external` — no slskd/Lidarr in v1), and the renderer loads `http://127.0.0.1:<port>` (same-origin, no `file://`). The user picks a local music folder via a native dialog (onboarding + Settings, through one shared `services/native/native-capabilities.ts` interface both Electron and Capacitor implement); the desktop owns the musicDir preference (`electron/desktop-config.ts`) since the backend only holds it in-memory, and the onboarding wizard's final step **restarts the sidecar** so the boot-time-captured musicDir (organizer/scanner) matches the pick — first-session acquisitions would otherwise land in `~/Music`. Packaging (`electron-builder.yml` + `scripts/prepare-resources.ts`) ships the backend as unbundled source + a production `bun install` + a standalone `bun`/`ffmpeg` binary ("Variant B" — `bun build --compile` breaks pino-pretty's `require.resolve`), staged to exactly the paths `electron/paths.ts` resolves in prod; targets AppImage/deb (Linux) + **ad-hoc-signed** dmg (macOS — never `identity: null`; unsigned arm64 = "app is damaged"), with `electron-updater` auto-update (apply on Linux, notify-only on macOS until Developer-ID signing). → [docs/desktop-app.md](docs/desktop-app.md)
+`packages/desktop` wraps the **same** backend (`src/main.ts` + workspace packages) and the **same**
+`@nicotind/web` build as everywhere else; Electron supervises the backend as a local Bun child
+process ("sidecar", `electron/sidecar.ts`) via handshake+health-checked spawn/restart (env
+`NICOTIND_MODE=external` — no slskd/Lidarr in v1), and the renderer loads `http://127.0.0.1:<port>`
+(same-origin, no `file://`). The user picks a local music folder via a native dialog (onboarding +
+Settings, through one shared `services/native/native-capabilities.ts` interface both Electron and
+Capacitor implement); the desktop owns the musicDir preference (`electron/desktop-config.ts`) since
+the backend only holds it in-memory, and the onboarding wizard's final step **restarts the sidecar**
+so the boot-time-captured musicDir (organizer/scanner) matches the pick — first-session acquisitions
+would otherwise land in `~/Music`. Packaging (`electron-builder.yml` +
+`scripts/prepare-resources.ts`) ships the backend as unbundled source + a production `bun install` +
+a standalone `bun`/`ffmpeg` binary ("Variant B" — `bun build --compile` breaks pino-pretty's
+`require.resolve`), staged to exactly the paths `electron/paths.ts` resolves in prod; targets
+AppImage/deb (Linux) + **ad-hoc-signed** dmg (macOS — never `identity: null`; unsigned arm64 = "app
+is damaged"), with `electron-updater` auto-update (apply on Linux, notify-only on macOS until
+Developer-ID signing). → [docs/desktop-app.md](docs/desktop-app.md)
 
-- **Per-platform chrome + tray (desktop only)**: macOS uses `titleBarStyle: 'hiddenInset'` (keeps native traffic lights); Linux/Win use `frame: false, titleBarStyle: 'hidden'` with the Angular `<header>` (`packages/web/src/app/components/layout/`) repurposed as the in-app window-drag region via `[-webkit-app-region: drag]`, with a shared `DesktopWindowControlsComponent` (min/max/close) on the right and a fallback overlay title bar (`DesktopTitleBarOverlayComponent`) on routes outside the shell (setup/login/server/share — else first-run is undraggable/unclosable); close → hide-to-tray on Linux via the pure `shouldHideOnClose` (music continues in the background — `electron/tray.ts`); the shared `quitting` flag in `main.ts` keeps tray Quit and `app.before-quit` on the same code path. The icon pack is the PWA set staged by `scripts/stage-icons.mjs` (`ffmpeg` resize, no new deps) into `electron-builder.yml`'s `build/icons/` **and** by `prepare-resources.ts` into `resources/icons/` for runtime window/tray lookups. → [docs/desktop-app.md](docs/desktop-app.md) "Per-platform window chrome + tray"
+- **Per-platform chrome + tray (desktop only)**: macOS uses `titleBarStyle: 'hiddenInset'` (keeps
+  native traffic lights); Linux/Win use `frame: false, titleBarStyle: 'hidden'` with the Angular
+  `<header>` (`packages/web/src/app/components/layout/`) repurposed as the in-app window-drag region
+  via `[-webkit-app-region: drag]`, with a shared `DesktopWindowControlsComponent` (min/max/close)
+  on the right and a fallback overlay title bar (`DesktopTitleBarOverlayComponent`) on routes
+  outside the shell (setup/login/server/share — else first-run is undraggable/unclosable); close →
+  hide-to-tray on Linux via the pure `shouldHideOnClose` (music continues in the background —
+  `electron/tray.ts`); the shared `quitting` flag in `main.ts` keeps tray Quit and `app.before-quit`
+  on the same code path. The icon pack is the PWA set staged by `scripts/stage-icons.mjs` (`ffmpeg`
+  resize, no new deps) into `electron-builder.yml`'s `build/icons/` **and** by
+  `prepare-resources.ts` into `resources/icons/` for runtime window/tray lookups. →
+  [docs/desktop-app.md](docs/desktop-app.md) "Per-platform window chrome + tray"
 
 ## End-to-end tests
 
-`packages/e2e` is a Playwright suite that boots the real server against a throwaway DB + silent-FLAC fixtures and drives the SPA in Chromium (auth, library, playback, player controls, plugin capability gating). Acquisition is default-off so no slskd/Lidarr is needed. Selectors are `data-testid` attributes — **adding a `data-testid` is the standard for new e2e-targeted elements**. **Before writing a spec, check docs/e2e.md "What the e2e environment does NOT give you"** (the Playwright `request` fixture is unauthenticated — log in + `bearer(token)` explicitly; no resolve plugin is enabled on a fresh server — capability-gated UI needs the spec to enable one). CI is split: `ci.yml` runs `ci` + `e2e` then a `release` job tags `vX.Y.Z`; that tag triggers `deploy.yml`. A gated **playground harness** (`PLAYGROUND=1`), the mutating **real round-trip** (`PLAYGROUND_REAL=1`), and **screenshot flows** are all out of CI. The flow catalogue + recurring routines live in [docs/testing-routines.md](docs/testing-routines.md). → See [docs/e2e.md](docs/e2e.md).
+`packages/e2e` is a Playwright suite that boots the real server against a throwaway DB + silent-FLAC
+fixtures and drives the SPA in Chromium (auth, library, playback, player controls, plugin capability
+gating). Acquisition is default-off so no slskd/Lidarr is needed. Selectors are `data-testid`
+attributes — **adding a `data-testid` is the standard for new e2e-targeted elements**. **Before
+writing a spec, check docs/e2e.md "What the e2e environment does NOT give you"** (the Playwright
+`request` fixture is unauthenticated — log in + `bearer(token)` explicitly; no resolve plugin is
+enabled on a fresh server — capability-gated UI needs the spec to enable one). CI is split: `ci.yml`
+runs `ci` + `e2e` then a `release` job tags `vX.Y.Z`; that tag triggers `deploy.yml`. A gated
+**playground harness** (`PLAYGROUND=1`), the mutating **real round-trip** (`PLAYGROUND_REAL=1`), and
+**screenshot flows** are all out of CI. The flow catalogue + recurring routines live in
+[docs/testing-routines.md](docs/testing-routines.md). → See [docs/e2e.md](docs/e2e.md).
 
-**Real-use feedback log**: [docs/feedback-log-2026-07.md](docs/feedback-log-2026-07.md) is a rolling, dated log of friction noticed while actually _using_ the app — one entry per observation with Severity/Status. Rotate monthly.
+**Real-use feedback log**: [docs/feedback-log-2026-07.md](docs/feedback-log-2026-07.md) is a
+rolling, dated log of friction noticed while actually _using_ the app — one entry per observation
+with Severity/Status. Rotate monthly.
 
 ## Configuration
 
-Config is loaded from `config/default.yml`, overridden by environment variables. See `.env.example` for all options. Key vars: `SOULSEEK_USERNAME`, `SOULSEEK_PASSWORD`, `NICOTIND_MODE`, `NICOTIND_MUSIC_DIR`.
+Config is loaded from `config/default.yml`, overridden by environment variables. See `.env.example`
+for all options. Key vars: `SOULSEEK_USERNAME`, `SOULSEEK_PASSWORD`, `NICOTIND_MODE`,
+`NICOTIND_MUSIC_DIR`.
