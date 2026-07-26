@@ -18,6 +18,7 @@ import { AudioFileRejectedError } from '../audio-features-client.js';
 import { upsertArtistIdentity } from '../artist-identity-store.js';
 import { artistIdFor } from '../library-scanner.js';
 import { getMbid, upsertMbid } from '../mbid-store.js';
+import { albumGroupKey } from '../album-grouping.js';
 import { getArtistMeta, upsertArtistMeta } from '../artist-meta-store.js';
 
 let db: Database;
@@ -78,6 +79,7 @@ function ctx(overrides: Partial<EnrichmentContext> = {}): EnrichmentContext {
     lookupGenre: async () => 'Rock',
     lookupArtistImageSpotify: async () => null,
     lookupArtistInfo: null,
+    lookupGenreForRelease: null,
     resolveArtistIdentity: null,
     lookupLicence: async () => null,
     fileExists: () => true,
@@ -1039,6 +1041,122 @@ describe('audio-features task', () => {
   });
 });
 
+describe('genre-discogs task', () => {
+  const discogs = getTask('genre-discogs')!;
+
+  function seedAlbumRow(id: string, name: string, artist: string): void {
+    db.run(
+      `INSERT INTO library_albums (id, name, artist, artist_id, synced_at) VALUES (?, ?, ?, 'art', 1)`,
+      [id, name, artist],
+    );
+  }
+
+  it('is unavailable without a genre provider, available with one', () => {
+    expect(discogs.available(ctx())).not.toBe(true);
+    expect(discogs.available(ctx({ lookupGenreForRelease: async () => null }))).toBe(true);
+  });
+
+  it('only considers songs the Lidarr genre task already gave up on', () => {
+    seedAlbumRow('alb', 'Mama Funk', 'Los Tetas');
+    seedSong('a', { artist: 'Los Tetas' });
+    expect(discogs.countPending(db)).toBe(0); // not yet ledgered by the genre task
+    ledgerGenreFailed('a');
+    expect(discogs.countPending(db)).toBe(1);
+  });
+
+  it('writes an applied album override from a confident match and drains the song', async () => {
+    seedAlbumRow('alb', 'Mama Funk', 'Los Tetas');
+    seedSong('a', { artist: 'Los Tetas' });
+    ledgerGenreFailed('a');
+
+    const res = await discogs.run(
+      db,
+      ctx({
+        lookupGenreForRelease: async () => ({
+          genres: ['Funk', 'Soul'],
+          source: 'discogs',
+          confidence: 0.95,
+        }),
+      }),
+      25,
+    );
+
+    expect(res.applied).toBe(1);
+    const ovr = getGenreOverride(db, 'album', albumGroupKey('Los Tetas', 'Mama Funk'));
+    expect(ovr?.genres).toEqual(['Funk', 'Soul']);
+    expect(ovr?.source).toBe('discogs');
+    expect(ovr?.status).toBe('applied');
+    // The song is ledgered so it drains from the queue.
+    expect(discogs.countPending(db)).toBe(0);
+  });
+
+  it('leaves a low-confidence match as a pending override for review', async () => {
+    seedAlbumRow('alb', 'X', 'Artist');
+    seedSong('a');
+    ledgerGenreFailed('a');
+    await discogs.run(
+      db,
+      ctx({
+        lookupGenreForRelease: async () => ({ genres: ['Rock'], source: 'discogs', confidence: 0.6 }),
+      }),
+      25,
+    );
+    expect(getGenreOverride(db, 'album', albumGroupKey('Artist', 'X'))?.status).toBe('pending');
+  });
+
+  it('does not write an override on a confident miss, but still drains the song', async () => {
+    seedAlbumRow('alb', 'X', 'Artist');
+    seedSong('a');
+    ledgerGenreFailed('a');
+    const res = await discogs.run(db, ctx({ lookupGenreForRelease: async () => null }), 25);
+    expect(res.applied).toBe(0);
+    expect(getGenreOverride(db, 'album', albumGroupKey('Artist', 'X'))).toBeNull();
+    // Ledgered once — it drains from the queue after MAX_ANALYSIS_ATTEMPTS misses.
+    for (let i = 1; i < MAX_ANALYSIS_ATTEMPTS; i++) {
+      await discogs.run(db, ctx({ lookupGenreForRelease: async () => null }), 25);
+    }
+    expect(discogs.countPending(db)).toBe(0);
+  });
+
+  it('does NOT drain the song when the lookup throws (a provider outage retries)', async () => {
+    seedAlbumRow('alb', 'X', 'Artist');
+    seedSong('a');
+    ledgerGenreFailed('a');
+    const res = await discogs.run(
+      db,
+      ctx({
+        lookupGenreForRelease: async () => {
+          throw new Error('Discogs 503');
+        },
+      }),
+      25,
+    );
+    expect(res.applied).toBe(0);
+    expect(discogs.countPending(db)).toBe(1); // still pending — will retry
+  });
+
+  it('fans one album lookup out across the album\'s songs', async () => {
+    seedAlbumRow('alb', 'Mama Funk', 'Los Tetas');
+    seedSong('a', { artist: 'Los Tetas' });
+    seedSong('b', { artist: 'Los Tetas' });
+    ledgerGenreFailed('a');
+    ledgerGenreFailed('b');
+    let calls = 0;
+    await discogs.run(
+      db,
+      ctx({
+        lookupGenreForRelease: async () => {
+          calls++;
+          return { genres: ['Funk'], source: 'discogs', confidence: 0.95 };
+        },
+      }),
+      25,
+    );
+    expect(calls).toBe(1); // one lookup for the whole album
+    expect(discogs.countPending(db)).toBe(0); // both songs drained
+  });
+});
+
 /** Seed a "genreTask already tried and failed" ledger row — the precondition
  *  genre-audio's pending predicate requires (issue #187 A2: a fallback must
  *  never win a race against genreTask for a song it hasn't tried yet). */
@@ -1623,7 +1741,7 @@ describe('MBID resolution helpers (issue #211)', () => {
 });
 
 describe('registry', () => {
-  it('exposes bpm, genre, key, energy, audio-features, artist-image, artist-info, artist-identity, licence and genre-audio tasks', () => {
+  it('exposes bpm, genre, key, energy, audio-features, artist-image, artist-info, artist-identity, licence, genre-audio and genre-discogs tasks', () => {
     expect(ENRICHMENT_TASKS.map((t) => t.id).sort()).toEqual([
       'artist-identity',
       'artist-image',
@@ -1633,6 +1751,7 @@ describe('registry', () => {
       'energy',
       'genre',
       'genre-audio',
+      'genre-discogs',
       'key',
       'licence',
     ]);

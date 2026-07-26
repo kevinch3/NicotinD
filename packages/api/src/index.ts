@@ -2,7 +2,13 @@ import { OpenAPIHono } from '@hono/zod-openapi';
 import { swaggerUI } from '@hono/swagger-ui';
 import { serveStatic, createBunWebSocket } from 'hono/bun';
 import { nativeAppCors } from './middleware/cors.js';
-import type { NicotinDConfig, TrackStatus, ArtistInfoResult } from '@nicotind/core';
+import type {
+  NicotinDConfig,
+  TrackStatus,
+  ArtistInfoResult,
+  GenreQuery,
+  GenreResult,
+} from '@nicotind/core';
 import type { Slskd } from '@nicotind/slskd-client';
 import type { Lidarr } from '@nicotind/lidarr-client';
 import type { ServiceManager } from '@nicotind/service-manager';
@@ -350,6 +356,10 @@ export function createApp({
   const artistInfoRef: {
     lookup: ((mbid: string) => Promise<ArtistInfoResult | null>) | null;
   } = { lookup: null };
+  // Same lazy-ref pattern for the release-scoped genre capability (#194).
+  const genreRef: {
+    lookup: ((query: GenreQuery) => Promise<GenreResult | null>) | null;
+  } = { lookup: null };
 
   // Analysis-sidecar client for the audio-features enrichment task; null when
   // no sidecar is configured (the task then reports itself unavailable).
@@ -368,6 +378,7 @@ export function createApp({
     lookupArtistImageSpotify: (name) =>
       spotifyArtistImageRef.lookup?.(name) ?? Promise.resolve(null),
     lookupArtistInfo: (mbid) => artistInfoRef.lookup?.(mbid) ?? Promise.resolve(null),
+    lookupGenreForRelease: (query) => genreRef.lookup?.(query) ?? Promise.resolve(null),
     audioFeaturesClient,
   });
 
@@ -445,6 +456,12 @@ export function createApp({
   artistInfoRef.lookup = (mbid) => {
     const [provider] = plugins.getEnabledWithCapability('artist-info');
     return provider?.artistInfo?.fetchArtistInfo({ mbid }) ?? Promise.resolve(null);
+  };
+  // Populate the genre ref (#194): the first enabled genre-capable metadata
+  // plugin (Discogs) resolves release genres for the genre-discogs task.
+  genreRef.lookup = (query) => {
+    const [provider] = plugins.getEnabledWithCapability('genre');
+    return provider?.genre?.fetchGenres(query) ?? Promise.resolve(null);
   };
   // One-time migration: seed the previously-implicit acquisition plugins enabled
   // ONLY on an existing (pre-plugin) install, so upgrades stay seamless. Fresh

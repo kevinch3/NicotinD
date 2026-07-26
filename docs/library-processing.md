@@ -155,6 +155,23 @@ Launch tasks:
   weak classifier must never strand a fresh download. See
   [audio-ml-enrichment.md](audio-ml-enrichment.md) and
   [library-scanner.md](library-scanner.md) "Multi-genre support".
+- **genre-discogs** (issue #194, the #187 A1 _second_ provider) — album-scoped,
+  same `EXISTS (... task = 'genre')` gate as `genre-audio` (runs over what the
+  Lidarr `genre` task left behind). Groups the pending songs **by album** and
+  runs one `ctx.lookupGenreForRelease` (the Discogs `genre` capability) per album
+  — release-scoped because #187 measured album coverage at ~67% vs artist ~3%, so
+  it can't ride the artist-scoped `genre` fan-out. A confident match
+  (`confidence ≥ 0.8`) is written `library_genre_overrides` (`source='discogs'`,
+  scope `album`, `status='applied'`) **and applied inline** so genres appear
+  without a rescan; a lower one is `status='pending'` for curator review.
+  Re-query is prevented by the override-existence skip + the per-song ledger; a
+  lookup that **throws** (provider outage) is separated from a confident miss
+  (`erroredAlbums` in `planDiscogsAlbumGenres`) and left unledgered so it retries.
+  **Never a landing gate**, and **off by default** (`tasks['genre-discogs'] =
+  false`) since it needs the consent-gated Discogs extension. Discogs' comma/slash
+  top-level vocab is mapped separator-free (`discogs-genre-vocab.ts`) before it
+  reaches `splitGenres`. See [discogs-plugin.md](discogs-plugin.md) "Genre
+  enrichment".
 - **artist-image** — per *artist*, not per song: artists with no
   `library_artwork(kind='artist')` row, `manual_override = 0`, `hidden = 0`, and a
   non-placeholder name (`isPlaceholderArtist`), most-prolific first (`album_count DESC`).

@@ -109,8 +109,11 @@ describe('DiscogsPlugin.fetchGenres — name search', () => {
       },
     ]);
     const plugin = makePlugin({}, { fetchFn });
+    // The comma-bearing top-level genre is mapped to canonical, separator-free
+    // genres before it leaves the plugin (#194) — never leaked as one frame that
+    // splitGenres would shatter into "Folk" / "World" / "& Country".
     expect(await plugin.genre.fetchGenres(query)).toEqual({
-      genres: ['Folk, World, & Country', 'Chamamé'],
+      genres: ['Folk', 'World', 'Country', 'Chamamé'],
       source: 'discogs',
       confidence: 1,
     });

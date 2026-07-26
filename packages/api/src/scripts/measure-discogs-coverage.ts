@@ -533,7 +533,7 @@ async function main(): Promise<void> {
     process.exit(1);
   }
   const limit = Number(argValue('--limit') ?? 25);
-  const dbPath = join(loadDataDir(), 'library.db');
+  const dbPath = join(loadDataDir(), 'nicotind.db');
   if (!existsSync(dbPath)) {
     console.error(`No library DB at ${dbPath}. Set NICOTIND_DATA_DIR/NICOTIND_CONFIG.`);
     process.exit(1);

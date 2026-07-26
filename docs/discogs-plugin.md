@@ -11,12 +11,11 @@ resolves to `Latin;World`, not `Folk`/`Chamamé`). This plugin is the **shell**
 that lets us test and, if worthwhile, ship that: manifest, HTTP client, and the
 matching primitives, wired into a `genre` metadata capability.
 
-> **Scope.** This is issue #193 — the shell only. There is **no enrichment-task
-> wiring**: nothing calls `fetchGenres` from the windowed processor, and nothing
-> writes `library_genre_overrides`, yet. Whether that wiring is built at all is
-> gated by the **#191 coverage spike** (`docs/measurements/discogs-coverage-2026-07.md`).
-> The plugin is registered (so it's manageable in Extensions) and fully
-> functional on demand, but dormant in the background.
+> **Scope.** The shell landed in #193 (manifest, client, matching, the `genre` +
+> `artist-info` capabilities). The background **genre enrichment** landed in #194
+> after the **#191 coverage spike** returned a PASS (18/25 ≈ 72% of the residual
+> post-A1 gap; `docs/measurements/discogs-coverage-2026-07.md`) — see
+> [Genre enrichment](#genre-enrichment-the-genre-discogs-task-issue-194) below.
 
 ## Layout
 
@@ -107,6 +106,74 @@ refill. `clock`/`sleep` are injected for tests.
 MBID-resolved match scores 0.95, a name-search match scores its corroboration
 score. **There is no `confidence: 1.0` shortcut** — that "trust the tag" path
 belongs to the tag layer, not a network source that had to match a release first.
+
+## Genre enrichment — the `genre-discogs` task (issue #194)
+
+The background wiring that turns the `genre` capability into filled genres. It is
+the **#187 A1 _second_ provider** (trusted metadata), reusing PR #188's
+`library_genre_overrides` write path + confidence gate unchanged — Discogs is a
+second source behind the same gate, not a replacement for MusicBrainz.
+
+- **A new task, not an extension of `genreTask`.** The Lidarr `genre` task is
+  artist-scoped end to end (`ctx.lookupGenre(artist)`, `planGenreBackfill` groups
+  per artist). Discogs' value is **release**-level (#187: artist ~3% vs
+  release-group ~67%), so `genreDiscogsTask` groups genre-less songs **by album**
+  and runs one `ctx.lookupGenreForRelease` per album. It runs over what the Lidarr
+  task left behind (same `GENRE_AUDIO_LEDGER_CLAUSE` gate as `genre-audio`).
+- **Comma-shatter fix (blocking design problem #1).** Discogs' closed top-level
+  genre list carries commas (`Folk, World, & Country`) and a slash (`Funk / Soul`);
+  ingested verbatim, `splitGenres` shatters them into polluting fragments that then
+  loosen the `/`-split heuristic for every future tag. `mapDiscogsGenres`
+  (`services/discogs-genre-vocab.ts`) maps the closed list to canonical,
+  separator-free genres **inside the plugin** (`genresForRef`), before anything
+  reaches `splitGenres`. Open-ended **styles** are not mapped — they keep the
+  existing `library_genre_aliases` path.
+
+  | Discogs genre           | Canonical           |
+  | ----------------------- | ------------------- |
+  | `Folk, World, & Country`| `Folk`, `World`, `Country` |
+  | `Funk / Soul`           | `Funk`, `Soul`      |
+  | `Hip Hop`               | `Hip-Hop`           |
+  | `Non-Music`             | _(dropped)_         |
+  | everything else         | _passed through_    |
+
+- **Genres vs styles (design problem #2).** `fetchGenres` returns genres+styles
+  combined (general first). The task writes that combined, vocab-mapped set as the
+  override. Because the target songs are genre-**less**, the automated
+  prepend-and-keep semantics reduce to "just the Discogs set" — there is no
+  existing broad genre for a specific style to mask (the #187 A3 dilution hazard
+  applies to *retained* genres, not empty songs). A `dump-radio.ts` before/after
+  on a resolved seed vs a well-tagged control remains the recommended tuning check
+  once real overrides land; if dilution shows, split styles out as a
+  styles-preferred write (the fields are separable in `mapReleaseGenres`).
+- **Cache / lock-in (design problem #3).** `library_external_ids(provider, scope,
+  key, external_id, source, fetched_at)` generalizes id caching (no third
+  single-provider table; `library_mbids` stays MB-specific). In practice the
+  match **locks in** via the override-existence skip — a resolved album is never
+  searched again — plus the per-song ledger, exactly as `resolve-genres.ts` (A1)
+  does. (The capability is MBID-only by contract, so the resolved Discogs id isn't
+  fed back through it; the table is ready for provider-id provenance.)
+- **Write + gate.** A confident match (`confidence ≥ 0.8`,
+  `DISCOGS_APPLY_THRESHOLD`) is written `status='applied'` and **applied inline**
+  (`setSongGenres` + file-tag mirror + `clearAnalysisFailure`) so genres appear
+  without waiting for a scan — mirrors `genre-audio`. A lower-confidence match
+  stays `status='pending'` for curator review. The plugin already corroborates
+  artist **and** album title (`selectBestRelease`), so its `confidence` *is* the
+  gate signal — no second name-based gate.
+- **Never a landing gate, off by default.** `genre-discogs` is not in the default
+  `gates` set (a metadata source must never strand a fresh download) and its
+  `tasks` flag defaults **false** (it needs the consent-gated Discogs extension
+  configured). A lookup that **throws** (429/503/network) leaves its album
+  *unledgered* so it retries — an outage can never ledger the library out of the
+  queue (`planDiscogsAlbumGenres` separates `erroredAlbums` from misses).
+- **Wiring.** `ctx.lookupGenreForRelease` is threaded from the first enabled
+  `genre`-capable plugin via a lazy ref in `index.ts` (mirrors `lookupArtistInfo`);
+  the pure planner is `services/genre-discogs.ts`.
+
+**Known limitation (measured, not a bug).** The flagship José Larralde case is
+**not** fixed by Discogs — it returned no corroborated release. #194 lifts the
+catalogue-wide residual gap (72%), but Larralde specifically remains for #187's
+A2 (Essentia genre head). See `docs/measurements/discogs-coverage-2026-07.md`.
 
 ## Deliberate non-features
 

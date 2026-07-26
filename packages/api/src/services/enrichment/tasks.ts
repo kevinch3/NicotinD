@@ -21,7 +21,13 @@ import { AudioFileRejectedError } from '../audio-features-client.js';
 import { ffmpegAvailable as realFfmpegAvailable } from '../transcode.js';
 import { resolveSongAbsPath, planGenreBackfill } from '../track-backfill.js';
 import { appendSongGenres, setSongGenres } from '../genre-split.js';
-import { applyGenreOverride, upsertGenreOverride, type OverrideIndex } from '../genre-overrides.js';
+import {
+  applyGenreOverride,
+  getGenreOverride,
+  upsertGenreOverride,
+  type OverrideIndex,
+} from '../genre-overrides.js';
+import { planDiscogsAlbumGenres, type DiscogsGenreAlbum } from '../genre-discogs.js';
 import { setArtwork } from '../artwork-store.js';
 import { isPlaceholderArtist } from '../artwork-backfill.js';
 import { indexLidarrArtists, resolveArtistImageUrl } from '../artist-image.js';
@@ -30,14 +36,14 @@ import {
   configuredArtistImageSources,
 } from '../artist-image-providers.js';
 import { clearCoverNegativeCache } from '../../routes/streaming.js';
-import { normalizeArtistForGrouping } from '../album-grouping.js';
+import { normalizeArtistForGrouping, albumGroupKey } from '../album-grouping.js';
 import { splitOnDelimiters } from '../artist-split.js';
 import { upsertArtistIdentity } from '../artist-identity-store.js';
 import { artistIdFor } from '../library-scanner.js';
 import { MusicBrainzClient, MB_USER_AGENT } from '../musicbrainz-client.js';
 import { getMbid, upsertMbid } from '../mbid-store.js';
 import { upsertArtistMeta } from '../artist-meta-store.js';
-import type { ArtistInfoResult } from '@nicotind/core';
+import type { ArtistInfoResult, GenreQuery, GenreResult } from '@nicotind/core';
 import {
   recordAnalysisFailure,
   clearAnalysisFailure,
@@ -126,6 +132,11 @@ export interface EnrichmentContext {
    *  when no artist-info-capable plugin is enabled+configured — the task then
    *  reports itself unavailable. */
   lookupArtistInfo: ((mbid: string) => Promise<ArtistInfoResult | null>) | null;
+  /** Resolve genres for one release via a metadata provider (Discogs, issue #194),
+   *  or null when the source has no confident match. Null *member* when no
+   *  genre-capable metadata plugin is enabled+configured — the `genre-discogs`
+   *  task then reports itself unavailable (mirrors {@link lookupArtistInfo}). */
+  lookupGenreForRelease: ((query: GenreQuery) => Promise<GenreResult | null>) | null;
   /** Resolve a compound artist string to a split decision via Lidarr/MB. Null when
    *  Lidarr isn't configured (the `artist-identity` task is then unavailable and the
    *  scanner falls back to library-only atomic confirmation). */
@@ -384,6 +395,8 @@ export function createEnrichmentContext(deps: {
   lookupArtistImageSpotify?: ((name: string) => Promise<string | null>) | null;
   /** Discogs artist bio/links lookup, or null when unconfigured. */
   lookupArtistInfo?: ((mbid: string) => Promise<ArtistInfoResult | null>) | null;
+  /** Discogs release-genre lookup (issue #194), or null when unconfigured. */
+  lookupGenreForRelease?: ((query: GenreQuery) => Promise<GenreResult | null>) | null;
   /** Sidecar client, or null when NICOTIND_ANALYSIS_URL isn't configured. */
   audioFeaturesClient?: AudioFeaturesClient | null;
   /** Data dir — locates the MusicBrainz cache file for licence lookups. */
@@ -412,6 +425,7 @@ export function createEnrichmentContext(deps: {
     },
     lookupArtistImageSpotify: deps.lookupArtistImageSpotify ?? null,
     lookupArtistInfo: deps.lookupArtistInfo ?? null,
+    lookupGenreForRelease: deps.lookupGenreForRelease ?? null,
     resolveArtistIdentity: deps.lidarr ? makeLidarrArtistIdentityResolver(deps.lidarr) : null,
     lookupLicence: makeLicenceLookup(deps.dataDir ?? null),
     fileExists: (abs) => existsSync(abs),
@@ -1248,6 +1262,159 @@ const GENRE_AUDIO_LEDGER_CLAUSE =
   ` AND EXISTS (SELECT 1 FROM library_song_analysis_failures f` +
   ` WHERE f.song_id = library_songs.id AND f.task = 'genre')`;
 
+interface AlbumGenreRow {
+  id: string;
+  size: number | null;
+  path: string;
+  artist: string;
+  title: string;
+  albumId: string;
+  albumName: string;
+  albumArtist: string;
+}
+
+/**
+ * Album-scoped Discogs genre enrichment (issue #194) — the #187 A1 *second*
+ * provider (trusted metadata), strictly above the weak audio fallback below and
+ * consulted only once the Lidarr `genreTask` has given up (same
+ * {@link GENRE_AUDIO_LEDGER_CLAUSE} gate). Genre-less songs are grouped by album
+ * and one release-scoped Discogs lookup runs per album; a confident result is
+ * written via the same conservative A1/A3 `library_genre_overrides` path
+ * (`source: 'discogs'`, `applied` above {@link DISCOGS_APPLY_THRESHOLD} else
+ * `pending` for review) — the applied set takes effect on the next scan, exactly
+ * like resolve-genres.ts. Re-query is prevented two ways: the override-existence
+ * skip below (a resolved album is never searched again) and the per-song ledger.
+ * A lookup that *throws* (provider outage) leaves its album unledgered so it
+ * retries — an outage can never exclude the library. Never a landing gate.
+ */
+const genreDiscogsTask: EnrichmentTask = {
+  id: 'genre-discogs',
+  label: 'Genre (Discogs)',
+  available: (ctx) =>
+    ctx.lookupGenreForRelease ? true : 'No genre metadata provider configured',
+  countPending: (db) =>
+    Number(
+      (
+        db
+          .query<{ n: number }, []>(
+            `SELECT COUNT(*) AS n FROM library_songs WHERE (genre IS NULL OR genre = '')${GENRE_AUDIO_LEDGER_CLAUSE}${notPermanentlyFailedClause(
+              'genre-discogs',
+            )}`,
+          )
+          .get() ?? { n: 0 }
+      ).n,
+    ),
+  run: async (db, ctx, limit) => {
+    if (!ctx.lookupGenreForRelease) return { applied: 0, labels: [], failed: 0, errorSample: null };
+    const rows = db
+      .query<AlbumGenreRow, [number]>(
+        `SELECT library_songs.id AS id, library_songs.size AS size, library_songs.path AS path,
+                library_songs.artist AS artist, library_songs.title AS title,
+                a.id AS albumId, a.name AS albumName, a.artist AS albumArtist
+         FROM library_songs JOIN library_albums a ON a.id = library_songs.album_id
+         WHERE (library_songs.genre IS NULL OR library_songs.genre = '')${GENRE_AUDIO_LEDGER_CLAUSE}${notPermanentlyFailedClause(
+           'genre-discogs',
+         )}
+         ORDER BY library_songs.created DESC LIMIT ?`,
+      )
+      .all(limit);
+
+    // Apply one album's genre set to its (genre-less) songs immediately, so the
+    // genres appear without waiting for the next scan — mirrors genre-audio.
+    const applyAlbumInline = async (albumSongs: AlbumGenreRow[], key: string, genres: string[]) => {
+      const idx: OverrideIndex = {
+        artist: new Map(),
+        album: new Map([[key, { genres, source: 'discogs' }]]),
+        song: new Map(),
+      };
+      for (const s of albumSongs) {
+        const existing = db
+          .query<{ genre: string }, [string]>(
+            `SELECT genre FROM library_song_genres WHERE song_id = ? ORDER BY position`,
+          )
+          .all(s.id)
+          .map((g) => g.genre);
+        const merged = applyGenreOverride(idx, { songId: s.id, albumKey: key, artistKey: '' }, existing);
+        setSongGenres(db, s.id, merged);
+        const abs = resolveSongAbsPath(ctx.musicDir, s.path);
+        if (ctx.fileExists(abs)) await ctx.writeTags(abs, { genre: merged.join('; ') }).catch(() => false);
+        clearAnalysisFailure(db, s.id, 'genre-discogs');
+      }
+    };
+
+    // Group pending songs by album. A song whose album already has an override
+    // is never re-searched (the match is locked in): an applied one is (re)applied
+    // inline, a pending one is ledgered so it drains while it awaits review.
+    const toResolve = new Map<string, DiscogsGenreAlbum>();
+    const rowsByAlbum = new Map<string, AlbumGenreRow[]>();
+    for (const r of rows) {
+      const key = albumGroupKey(r.albumArtist, r.albumName);
+      const existing = getGenreOverride(db, 'album', key);
+      if (existing) {
+        if (existing.status === 'applied') await applyAlbumInline([r], key, existing.genres);
+        else
+          recordAnalysisFailure(
+            db,
+            r.id,
+            'genre-discogs',
+            new NoConfidentResultError('discogs album genre pending review'),
+            r.size,
+          );
+        continue;
+      }
+      let entry = toResolve.get(r.albumId);
+      if (!entry) {
+        entry = {
+          albumId: r.albumId,
+          albumName: r.albumName,
+          albumArtist: r.albumArtist,
+          mbid: getMbid(db, 'album', key)?.mbid ?? null,
+          songs: [],
+        };
+        toResolve.set(r.albumId, entry);
+      }
+      entry.songs.push({ id: r.id, size: r.size });
+      (rowsByAlbum.get(r.albumId) ?? rowsByAlbum.set(r.albumId, []).get(r.albumId)!).push(r);
+    }
+
+    const plan = await planDiscogsAlbumGenres([...toResolve.values()], ctx.lookupGenreForRelease);
+    const proposalByKey = new Map(plan.proposals.map((p) => [p.key, p]));
+    // A definitive-answer song (hit or confident miss); an album whose lookup
+    // *threw* is absent here, so its songs are never ledgered and simply retry.
+    const processed = new Set(plan.processedSongs.map((s) => s.id));
+
+    for (const p of plan.proposals) upsertGenreOverride(db, p);
+
+    const labels: string[] = [];
+    let applied = 0;
+    for (const [albumId, entry] of toResolve) {
+      const key = albumGroupKey(entry.albumArtist, entry.albumName);
+      const albumRows = rowsByAlbum.get(albumId) ?? [];
+      const p = proposalByKey.get(key);
+      if (p && p.status === 'applied') {
+        await applyAlbumInline(albumRows, key, p.genres);
+        applied++;
+        labels.push(p.note ?? key);
+      } else {
+        // Pending override or confident miss — ledger each definitively-answered
+        // song so it drains (never tallied; nothing is broken).
+        for (const r of albumRows) {
+          if (!processed.has(r.id)) continue;
+          recordAnalysisFailure(
+            db,
+            r.id,
+            'genre-discogs',
+            new NoConfidentResultError(p ? 'discogs album genre pending review' : 'no discogs match'),
+            r.size,
+          );
+        }
+        if (p) labels.push(`${p.note ?? key} (pending review)`);
+      }
+    }
+    return { applied, labels, failed: 0, errorSample: null };
+  },
+};
+
 /**
  * Audio-inferred genre fallback (issue #187 task A2) — the sidecar's
  * genre_discogs400 head, strictly below tag/MusicBrainz/Lidarr genre and only
@@ -1480,6 +1647,7 @@ export const ENRICHMENT_TASKS: readonly EnrichmentTask[] = [
   artistInfoTask,
   artistIdentityTask,
   licenceTask,
+  genreDiscogsTask,
   genreAudioTask,
   // popularityTask, // issue #220 — enable once source/storage/scoring are decided (see above)
 ];
