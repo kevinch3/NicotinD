@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { FIXTURE } from '../helpers';
+import { FIXTURE, preserveMusicFixture } from '../helpers';
 
 /**
  * The unified `⋯` song row menu (SongMenuService.build) on an album detail
@@ -8,6 +8,11 @@ import { FIXTURE } from '../helpers';
  * ConfirmHost → deleteSongs → deletedSongIds filtering).
  */
 test.describe('song row menu', () => {
+  // The remove-from-library test below deletes this fixture from disk. Fixtures are
+  // git-tracked and never regenerated per run, so without this the file stays gone
+  // and every subsequent run fails. See preserveMusicFixture.
+  preserveMusicFixture('E2E_Test_Artist/E2E_Test_Album/04 - Quiet_Hours.flac');
+
   test('shows the common actions and hides "Go to album" on an album page', async ({ page }) => {
     await page.goto('/library');
     await page.getByTestId('album-card').filter({ hasText: FIXTURE.album.title }).first().click();

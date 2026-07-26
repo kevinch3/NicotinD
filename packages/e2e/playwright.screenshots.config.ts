@@ -38,7 +38,9 @@ export default defineConfig({
     command: 'bun run src/main.ts',
     cwd: repoRoot,
     url: `${baseURL}/api/health`,
-    reuseExistingServer: true,
+    // See playwright.config.ts: this config also wipes `dataDir` at eval time, so
+    // reusing a server that still holds the deleted DB open would serve stale data.
+    reuseExistingServer: false,
     timeout: 60_000,
     stdout: 'pipe',
     stderr: 'pipe',

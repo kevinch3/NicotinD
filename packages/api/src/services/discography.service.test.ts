@@ -204,6 +204,91 @@ describe('DiscographyService', () => {
     expect(row?.lidarr_id).toBe(7);
   });
 
+  // ── issue #212 direction 2 — garbage-artist provision guard ──────────────────
+  // Prod bug: the delimiter-less mash "2 MinutosTruenoDie Toten Hosen" was looked
+  // up whole and Lidarr fuzzy-returned "2", which was then *added*, polluting the
+  // Lidarr library. The guard must reject that without re-breaking the #211/#217
+  // canonical-name-drift widening.
+  it('refuses to provision a Lidarr artist the lookup did not corroborate', async () => {
+    insertArtist(db, 'ar1', '2 MinutosTruenoDie Toten Hosen');
+
+    const { lidarr, spies } = makeLidarrStub({
+      albums: [],
+      tracksByAlbum: {},
+      // Nothing monitored yet → falls through to lookup + add.
+      lookupArtist: {
+        id: 1695,
+        foreignArtistId: 'mbid-junk',
+        artistName: '2', // Lidarr's fuzzy junk hit
+        sortName: '2',
+        status: 'continuing',
+        images: [],
+        monitored: true,
+        albumCount: 3,
+      },
+    });
+
+    const svc = new DiscographyService(lidarr, db);
+    await expect(svc.getArtistDiscography('ar1')).rejects.toThrow(/No confident Lidarr match/);
+    expect(spies.add).not.toHaveBeenCalled();
+  });
+
+  it('still provisions across Lidarr canonical-name drift (issue #211/#217)', async () => {
+    insertArtist(db, 'ar1', 'Eduardo Miño');
+
+    const { lidarr, spies } = makeLidarrStub({
+      albums: [],
+      tracksByAlbum: {},
+      lookupArtist: {
+        id: 42,
+        foreignArtistId: 'mbid-mino',
+        artistName: 'Luis Eduardo Miño Naranjo', // canonical name is a superset
+        sortName: 'Miño, Luis Eduardo',
+        status: 'continuing',
+        images: [],
+        monitored: true,
+        albumCount: 2, // corroborating signal
+      },
+    });
+
+    const svc = new DiscographyService(lidarr, db);
+    await svc.getArtistDiscography('ar1');
+    expect(spies.add).toHaveBeenCalledTimes(1);
+  });
+
+  // An artist that already resolved must never regress to a 500 just because a
+  // later re-resolve fails corroboration (prod has 16 such links, e.g.
+  // "El Puma Rodriguez" → "José Luis Rodríguez" — correct, but unguessable by name).
+  it('keeps an existing link when a stale re-resolve is uncorroborated', async () => {
+    insertArtist(db, 'ar1', 'El Puma Rodriguez');
+    // Link resolved long ago — well outside the 7-day cache TTL.
+    db.run(
+      `INSERT INTO artist_discography_links (artist_id, lidarr_id, mbid, checked_at)
+       VALUES (?, ?, ?, ?)`,
+      ['ar1', 555, 'mbid-puma', Date.now() - 30 * 24 * 60 * 60 * 1000],
+    );
+
+    const { lidarr, spies } = makeLidarrStub({
+      albums: [],
+      tracksByAlbum: {},
+      lookupArtist: {
+        id: 999,
+        foreignArtistId: 'mbid-other',
+        artistName: 'José Luis Rodríguez',
+        sortName: 'Rodríguez, José Luis',
+        status: 'continuing',
+        images: [],
+        monitored: true,
+      },
+    });
+
+    const svc = new DiscographyService(lidarr, db);
+    const result = await svc.getArtistDiscography('ar1');
+
+    expect(result.lidarrId).toBe(555); // kept the known link
+    expect(spies.add).not.toHaveBeenCalled(); // and did not provision a new one
+  });
+
   it('falls back to album-name presence when track fetch returns empty', async () => {
     insertArtist(db, 'ar1', 'Artist');
     insertAlbum(db, 'al1', 'Mono', 'ar1');
