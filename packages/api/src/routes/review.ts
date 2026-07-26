@@ -92,6 +92,13 @@ export interface ServiceReview {
       version?: string;
       uptime?: number;
     };
+    /** Essentia analysis sidecar — the largest compute consumer (issue #224). */
+    analysis: {
+      /** NICOTIND_ANALYSIS_URL is set (the sidecar is part of this deployment). */
+      configured: boolean;
+      /** Reachable and reporting models loaded. */
+      healthy: boolean;
+    };
   };
   library: { scanning: boolean; indexedSongCount: number };
   updateCheck: UpdateCheckSnapshot | null;
@@ -120,6 +127,8 @@ export interface ReviewSubFns {
     uptime?: number;
   }>;
   scanStatus: () => Promise<{ scanning: boolean; count: number }>;
+  /** Analysis-sidecar reachability. Default reads `deps.analysisClient`. */
+  analysisStatus: () => Promise<{ configured: boolean; healthy: boolean }>;
   indexSongCount: () => number | Promise<number>;
   updateCheck: () => Promise<UpdateCheckSnapshot | null>;
   backupsList: () => BackupInfo[] | Promise<BackupInfo[]>;
@@ -144,6 +153,8 @@ export interface ReviewRoutesDeps {
    *  default `processingSummary` to return a non-null value; ignored entirely
    *  when `subFns.processingSummary` is supplied. */
   processing?: { getState: () => { status: ProcessingStatus } } | null;
+  /** Essentia sidecar client; null/absent when NICOTIND_ANALYSIS_URL is unset. */
+  analysisClient?: { healthy: () => Promise<boolean> } | null;
   /** Collects the metrics slice. Default = `collectMetrics()`. */
   collectMetrics?: () => Promise<MetricsSnapshot>;
   /** Injected OS shim — defaults to live `node:os`. */
@@ -155,6 +166,15 @@ export interface ReviewRoutesDeps {
   subFns?: Partial<ReviewSubFns>;
   /** Override for `uptimeMs` — exposed for tests. */
   now?: () => number;
+}
+
+/** Sidecar reachability. An unconfigured sidecar is not an error — it's the
+ *  default deployment, so `configured: false` must never land in `errors[]`. */
+async function defaultAnalysisStatus(
+  client?: { healthy: () => Promise<boolean> } | null,
+): Promise<{ configured: boolean; healthy: boolean }> {
+  if (!client) return { configured: false, healthy: false };
+  return { configured: true, healthy: await client.healthy() };
 }
 
 const DEFAULT_AUDIT_TAIL_LIMIT = 20;
@@ -407,7 +427,7 @@ export function reviewRoutes(slskdRef: SlskdRef, deps: ReviewRoutesDeps = {}) {
 
     // Run every sub-fetch in parallel; defer the index count to after slskd /
     // scan so the cheaper DB queries overlap the network call.
-    const [metrics, status, scan, updateCheck, backups, processing, incompleteCount, untracked, audit, incompleteList, untrackedList] =
+    const [metrics, status, scan, analysis, updateCheck, backups, processing, incompleteCount, untracked, audit, incompleteList, untrackedList] =
       await Promise.all([
         safe(errors, 'metrics', () => collectMetricsFn({ os: deps.os, probe: deps.gpuProbe }), fallbackMetrics),
         safe(errors, 'systemStatus', () => sub.systemStatus?.() ?? defaultSystemStatus(slskdRef), {
@@ -417,6 +437,10 @@ export function reviewRoutes(slskdRef: SlskdRef, deps: ReviewRoutesDeps = {}) {
         safe(errors, 'scanStatus', () => sub.scanStatus?.() ?? Promise.resolve(defaultScanStatus()), {
           scanning: false,
           count: 0,
+        }),
+        safe(errors, 'analysisStatus', () => sub.analysisStatus?.() ?? defaultAnalysisStatus(deps.analysisClient), {
+          configured: false,
+          healthy: false,
         }),
         safe(errors, 'updateCheck', () => sub.updateCheck?.() ?? Promise.resolve(defaultUpdateCheck(version)), null as UpdateCheckSnapshot | null),
         safe(errors, 'backups', () => sub.backupsList?.() ?? Promise.resolve(defaultBackups(deps.dataDir)), [] as BackupInfo[]),
@@ -445,6 +469,7 @@ export function reviewRoutes(slskdRef: SlskdRef, deps: ReviewRoutesDeps = {}) {
           version: status.version,
           uptime: status.uptime,
         },
+        analysis,
       },
       library: { scanning: scan.scanning, indexedSongCount },
       updateCheck,

@@ -208,4 +208,66 @@ describe('GET /api/admin/review', () => {
     expect(data.load.gpu).toBeNull();
     expect(data.hardware.gpuDetected).toBeNull();
   });
+
+  it('reports the analysis sidecar as unconfigured when no client is wired', async () => {
+    const app = makeApp({
+      collectMetrics: mock(async () => emptyMetrics),
+      systemStatus: mock(async () => ({ healthy: false, connected: false })),
+      scanStatus: mock(async () => ({ scanning: false, count: 0 })),
+      indexSongCount: mock(() => 0),
+      updateCheck: mock(async () => null),
+      backupsList: mock(() => [] as never),
+      processingSummary: mock(() => null),
+      incompleteJobCount: mock(() => 0),
+      untrackedCount: mock(() => 0),
+      auditTail: mock(() => []),
+      incompleteJobs: mock(() => []),
+      untracked: mock(() => []),
+    });
+    const data = (await (await app.request('/')).json()) as ServiceReview;
+
+    expect(data.services.analysis).toEqual({ configured: false, healthy: false });
+    // An absent sidecar is the default deployment, not a fault.
+    expect(data.errors).toEqual([]);
+  });
+
+  it('probes the sidecar when a client is wired', async () => {
+    const healthy = mock(async () => true);
+    const app = new Hono<AuthEnv>();
+    app.use('*', async (c, next) => {
+      c.set('user', makeAdminUser());
+      await next();
+    });
+    app.route('/', reviewRoutes({ current: null } as never, { analysisClient: { healthy } }));
+
+    const data = (await (await app.request('/')).json()) as ServiceReview;
+
+    expect(healthy).toHaveBeenCalled();
+    expect(data.services.analysis).toEqual({ configured: true, healthy: true });
+  });
+
+  it('degrades to unhealthy without dropping the snapshot when the probe throws', async () => {
+    const app = new Hono<AuthEnv>();
+    app.use('*', async (c, next) => {
+      c.set('user', makeAdminUser());
+      await next();
+    });
+    app.route(
+      '/',
+      reviewRoutes({ current: null } as never, {
+        analysisClient: {
+          healthy: async () => {
+            throw new Error('sidecar down');
+          },
+        },
+      }),
+    );
+
+    const res = await app.request('/');
+    const data = (await res.json()) as ServiceReview;
+
+    expect(res.status).toBe(200);
+    expect(data.services.analysis).toEqual({ configured: false, healthy: false });
+    expect(data.errors.join(' ')).toMatch(/analysisStatus/);
+  });
 });

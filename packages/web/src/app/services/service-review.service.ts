@@ -53,6 +53,9 @@ export class ServiceReviewService {
   // Service state
   readonly services = computed(() => this.review()?.services);
 
+  /** Analysis-sidecar reachability — the GPU/compute tenant (issue #224). */
+  readonly analysis = computed(() => this.review()?.services.analysis);
+
   // Library
   readonly libraryState = computed(() => this.review()?.library);
 
