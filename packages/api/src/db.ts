@@ -1148,6 +1148,23 @@ export function applySchema(db: Database): void {
     )
   `);
 
+  // Non-MusicBrainz external ids, generalized (issue #194). library_mbids stays
+  // MB-specific (heavily referenced); this holds provider-scoped ids so a
+  // release match "locks in" once made — the whole benefit over A1, which re-runs
+  // its fuzzy gate every window. One table for all providers rather than a
+  // migration per provider (the mistake library_artist_discogs_id would have been).
+  db.run(`
+    CREATE TABLE IF NOT EXISTS library_external_ids (
+      provider    TEXT NOT NULL,   -- 'discogs'
+      scope       TEXT NOT NULL,   -- 'release' | 'artist'
+      key         TEXT NOT NULL,
+      external_id TEXT NOT NULL,   -- provider id, stored verbatim (never re-derived)
+      source      TEXT NOT NULL,   -- 'mbid' | 'name-search'
+      fetched_at  INTEGER NOT NULL,
+      PRIMARY KEY (provider, scope, key)
+    )
+  `);
+
   // Discogs (or a future provider) bio + external links for an artist (issue
   // #195). Keyed on the scanner-minted artist id — like library_artist_identity
   // / library_artist_aliases — so it survives rescans. `manual_override` mirrors
