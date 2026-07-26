@@ -27,6 +27,74 @@ describe('PlayerService', () => {
     });
   });
 
+  describe('playSingle(track)', () => {
+    it('replaces the queue so the previous one cannot resume', () => {
+      service.playWithContext([track1, track2, track3], 0, { type: 'album', id: 'a1' });
+      expect(service.queue()).toEqual([track2, track3]);
+
+      service.playSingle(track3);
+
+      expect(service.currentTrack()).toEqual(track3);
+      expect(service.isPlaying()).toBe(true);
+      expect(service.queue()).toEqual([]);
+      expect(service.history()).toEqual([]);
+      expect(service.context()).toBeNull();
+    });
+
+    it('ends into silence rather than the stale queue', () => {
+      service.queue.set([track1, track2]);
+      service.playSingle(track3);
+      service.playNext();
+
+      expect(service.currentTrack()).toEqual(track3);
+      expect(service.isPlaying()).toBe(false);
+    });
+  });
+
+  describe('playWithContext(tracks, index)', () => {
+    it('keeps its own list as the queue — a list click is NOT a queue wipe', () => {
+      service.queue.set([track1]);
+      service.playWithContext([track1, track2, track3], 1, { type: 'album', id: 'a1' });
+      expect(service.currentTrack()).toEqual(track2);
+      expect(service.queue()).toEqual([track3]);
+      expect(service.context()?.id).toBe('a1');
+    });
+  });
+
+  describe('jumpToQueueIndex(index)', () => {
+    it('consumes the queue up to the tapped entry', () => {
+      service.play(track1);
+      service.queue.set([track2, track3]);
+
+      service.jumpToQueueIndex(1);
+
+      expect(service.currentTrack()).toEqual(track3);
+      expect(service.queue()).toEqual([]);
+
+      expect(service.history()).toEqual([track1, track2]);
+      expect(service.isPlaying()).toBe(true);
+    });
+
+    it('is a no-op for an out-of-range index', () => {
+      service.play(track1);
+      service.queue.set([track2]);
+      service.jumpToQueueIndex(5);
+      expect(service.currentTrack()).toEqual(track1);
+      expect(service.queue()).toEqual([track2]);
+    });
+  });
+
+  describe('startRadio(track)', () => {
+    it('clears the leftover queue so radio starts now, not after it drains', () => {
+      service.queue.set([track1, track2]);
+      service.radio.set(true);
+      service.startRadio(track3);
+      expect(service.currentTrack()).toEqual(track3);
+      expect(service.queue()).toEqual([]);
+      expect(service.radioFilter()).toBeNull();
+    });
+  });
+
   describe('pause()', () => {
     it('sets isPlaying = false without clearing currentTrack', () => {
       service.play(track1);

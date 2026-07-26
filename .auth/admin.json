@@ -1,0 +1,30 @@
+{
+  "cookies": [],
+  "origins": [
+    {
+      "origin": "http://localhost:8585",
+      "localStorage": [
+        {
+          "name": "nicotind_device_id",
+          "value": "c8b16018-80c8-484d-b199-2b322b594903"
+        },
+        {
+          "name": "nicotind_device_name",
+          "value": "Chrome on Linux"
+        },
+        {
+          "name": "nicotind_username",
+          "value": "e2e-admin"
+        },
+        {
+          "name": "nicotind_role",
+          "value": "admin"
+        },
+        {
+          "name": "nicotind_token",
+          "value": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI4YjllNDhkYi1mMjBiLTQyOTAtYmU4Zi0yMWMxY2QzODg0MTAiLCJ1c2VybmFtZSI6ImUyZS1hZG1pbiIsInJvbGUiOiJhZG1pbiIsImlhdCI6MTc4NTA2NzU0MiwiZXhwIjoxNzg3NjU5NTQyfQ.dIIvLYneQmUv02B0SnI5HNyFvXmm0igZg2xgriYx5FU"
+        }
+      ]
+    }
+  ]
+}

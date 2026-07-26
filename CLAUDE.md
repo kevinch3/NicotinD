@@ -265,13 +265,22 @@ Add detail there, not here.
   → Playback toggle, default off). Effect 1's `audio.play()` calls are gated on
   `untracked(isPlaying())` so a freshly loaded track sits paused without ever hitting the
   gesture-less autoplay policy. → [docs/web-ui.md](docs/web-ui.md)
-- **Queue extensions (full management)**: `PlayerService` exposes `playNextTrack`, `clearQueue`,
-  `shuffleQueue`, `moveInQueue`, `hasTrack`, `jumpToQueueIndex`; Now Playing queue UI has header
-  toolbar (shuffle/save-as-playlist/clear), per-track remove, drag-to-reorder
+- **Queue extensions (full management)**: `PlayerService` exposes `queueNext`, `addToQueue`,
+  `clearQueue`, `removeFromQueue`, `moveInQueue`, `toggleShuffle`, `jumpToQueueIndex`; Now Playing
+  queue UI has header toolbar (shuffle/save-as-playlist/clear), per-track remove, drag-to-reorder
   (`DragReorderDirective`), a **manual drag-resize handle** (pull the queue taller → cover art
   shrinks; `createPointerDrag`, persisted per-device), history peek, and mini-player queue badge.
   Reusable `playNextAction`/`addToQueueAction` in `track-utils.ts` wired into every track-row menu.
   → [docs/web-ui.md](docs/web-ui.md)
+- **Queue semantics — what a click replaces (issue #233)**: the bare `play(track)` never touched
+  `queue`, so a standalone track click left an unrelated queue in place and it resumed the moment
+  the clicked track ended. The gesture now decides: `play()` is the queue-untouched **primitive**
+  (queue-owning callers + `RemotePlaybackService` sync only), `playSingle()` **replaces** the queue
+  for a context-less click, `playWithContext()` makes *that list* the queue for every in-list row
+  click (album detail + genre detail were still on the primitive — fixed), and `jumpToQueueIndex()`
+  **consumes** the queue up to a tapped "Next up" row instead of leaving it there to replay.
+  `startRadio(track)` clears the queue too, so radio starts now rather than after the stale queue
+  drains. → [docs/web-ui.md](docs/web-ui.md) "Queue semantics"
 - **Canonical artwork**: `library_artwork` stores canonical URLs keyed on deterministic IDs
   (survives rescans). → [docs/library-scanner.md](docs/library-scanner.md)
 - **Artist images (auto + override)**: real portraits resolved through a priority-ordered **provider

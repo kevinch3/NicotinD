@@ -407,9 +407,7 @@ export class NowPlayingComponent {
 
   jumpToTrack(index: number): void {
     if (this.dragSourceIndex() !== null) return;
-    const queue = this.player.queue();
-    const track = queue[index];
-    if (track) this.player.play(track);
+    this.player.jumpToQueueIndex(index);
   }
 
   clearQueue(): void {
