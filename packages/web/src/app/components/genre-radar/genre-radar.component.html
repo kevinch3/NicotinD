@@ -1,0 +1,78 @@
+@if (slices().length > 0) {
+  <div class="flex flex-col sm:flex-row sm:items-center gap-4" data-testid="genre-radar">
+    <svg
+      [attr.viewBox]="'0 0 ' + width + ' ' + height"
+      class="w-[340px] max-w-full shrink-0"
+      role="img"
+      [attr.aria-label]="
+        'Genre distribution across ' + trackCount() + ' tracks. Exact values follow in the table.'
+      ">
+      <!-- Recessive polygonal grid: matches the plot geometry, so it can't imply
+           values exist between the spokes. -->
+      @for (ring of rings(); track $index) {
+        <polygon [attr.points]="ring" fill="none" stroke="var(--theme-border)" stroke-width="1" />
+      }
+      @for (a of axes(); track a.label) {
+        <line
+          [attr.x1]="center.cx" [attr.y1]="center.cy"
+          [attr.x2]="a.outer.x" [attr.y2]="a.outer.y"
+          stroke="var(--theme-border)" stroke-width="1" />
+      }
+
+      @if (isPolygon()) {
+        <polygon
+          [attr.points]="shape()"
+          fill="var(--theme-accent)" fill-opacity="0.18"
+          stroke="var(--theme-accent)" stroke-width="2"
+          stroke-linejoin="round" />
+      }
+
+      <!-- Markers stay ≥8px hit-size and carry a surface ring so overlapping
+           points on a dense radar remain countable. -->
+      @for (a of axes(); track a.label) {
+        <circle
+          [attr.cx]="a.x" [attr.cy]="a.y" r="3.5"
+          fill="var(--theme-accent)" stroke="var(--theme-surface)" stroke-width="2">
+          <title>{{ a.label }} — {{ percent(a.value) }} of tracks</title>
+        </circle>
+      }
+
+      @for (a of axes(); track a.label) {
+        <text
+          [attr.x]="a.labelAt.x" [attr.y]="a.labelAt.y"
+          [attr.text-anchor]="a.anchor"
+          dominant-baseline="middle"
+          class="text-[10px]"
+          fill="var(--theme-text-secondary)">{{ a.short }}<title>{{ a.label }}</title></text>
+      }
+    </svg>
+
+    <!-- The exact read. A radar's enclosed area grows with the square of the
+         radius, so the shape overstates differences; these numbers don't. -->
+    <div class="min-w-0 flex-1">
+      <table class="w-full text-xs" data-testid="genre-radar-table">
+        <caption class="sr-only">Share of tracks carrying each genre</caption>
+        <tbody>
+          @for (r of rows(); track r.genre) {
+            <tr>
+              <td class="py-0.5 pr-3 text-theme-secondary truncate">{{ r.genre }}</td>
+              <td class="py-0.5 text-right text-theme-primary tabular-nums whitespace-nowrap">
+                {{ percent(r.weight) }}
+              </td>
+              <td class="py-0.5 pl-2 text-right text-theme-muted tabular-nums whitespace-nowrap">
+                {{ r.count }}
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+      <p class="mt-2 text-xs text-theme-muted" data-testid="genre-radar-caption">
+        {{ trackCount() }} track{{ trackCount() === 1 ? '' : 's' }}. A track can carry several
+        genres, so shares add up past 100%.
+        @if (hiddenCount() > 0) {
+          {{ hiddenCount() }} smaller genre{{ hiddenCount() === 1 ? '' : 's' }} folded into Other.
+        }
+      </p>
+    </div>
+  </div>
+}

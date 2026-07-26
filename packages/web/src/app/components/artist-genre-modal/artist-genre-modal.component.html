@@ -33,6 +33,19 @@
         }
       </div>
 
+      <!-- Spread across the catalogue (issue #222). The chips above say *which*
+           genres are in effect; this says how much of the artist each covers —
+           the difference between a one-track stray tag and their real identity. -->
+      @if (distribution().length) {
+        <div class="mb-4 pb-4 border-b border-theme">
+          <p class="text-xs uppercase tracking-wide text-theme-muted mb-2">Spread across their tracks</p>
+          <app-genre-radar
+            [slices]="distribution()"
+            [trackCount]="distributionTracks()"
+            [genreCount]="distributionGenres()" />
+        </div>
+      }
+
       <label class="block text-xs uppercase tracking-wide text-theme-muted mb-1.5" for="artist-genre-input">
         Genres
       </label>

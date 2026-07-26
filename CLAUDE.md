@@ -190,6 +190,16 @@ Add detail there, not here.
   mirrored to the file tag): the track-info "detect genre" apply, the acquisition/window
   `genreTask`, and the on-demand `append-genre-backfill.ts` script all add rather than replace. →
   [docs/library-scanner.md](docs/library-scanner.md)
+- **Genre radar (issue #222)**: `artistGenreDistribution` +
+  `GET /api/library/artists/:id/genre-distribution` feed an inline-SVG radar (no chart dep) inside
+  the artist genre-fix modal — the curation review aid, the half of #222 needing no product
+  decision. `weight` = share of the artist's landed tracks carrying that genre, so weights
+  **deliberately don't sum to 1** (sets overlap; normalising would under-report every multi-genre
+  track) and it's position-blind to match `genreSetCloseness`. Top 8 axes, rest folded into a
+  capped "Other". A radar overstates differences (area ~ radius²), so the **paired value table is
+  the exact read and always ships with the chart**. Geometry is the pure `lib/radar-geometry.ts`.
+  **Left open**: the "settle the multi-genre UX" sub-goal + the before/after reclassification view.
+  → [docs/genre-radar.md](docs/genre-radar.md)
 - **VA / compilation handling**: `resolveTags` separates `albumArtist` (grouping) from `trackArtist`
   (performer); `classifyFolder` detects compilations via COMPILATION flag, VA albumArtist, or ≥3
   artists sharing one album; dedicated Compilations tab, VA hidden from artists, "Appears On" on
