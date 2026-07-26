@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.268](https://github.com/kevinch3/NicotinD/compare/v0.1.267...v0.1.268) (2026-07-26)
+
+### Bug Fixes
+
+* **discography:** name-only Lidarr corroboration, no link regressions ([#212](https://github.com/kevinch3/NicotinD/issues/212)) ([880edeb](https://github.com/kevinch3/NicotinD/commit/880edeb93a6af5e57784f06c88cb33165c9fa1f8)), references [211/#217](https://github.com/kevinch3/NicotinD/issues/217)
+* **discography:** refuse to provision uncorroborated Lidarr artists ([#212](https://github.com/kevinch3/NicotinD/issues/212)) ([dbd00a0](https://github.com/kevinch3/NicotinD/commit/dbd00a0dff32cb79625058ac4e480ae107406999)), references [211/#217](https://github.com/kevinch3/NicotinD/issues/217)
 ## [0.1.267](https://github.com/kevinch3/NicotinD/compare/v0.1.266...v0.1.267) (2026-07-26)
 
 ### Bug Fixes
