@@ -4,6 +4,7 @@ import { CoverArtComponent } from '../cover-art/cover-art.component';
 import { ArtistLinksComponent } from '../artist-links/artist-links.component';
 import { MenuPanelComponent } from '../menu-panel/menu-panel.component';
 import { PlayerService, type Track } from '../../services/player.service';
+import { LikeService } from '../../services/like.service';
 import { rowPlaybackState } from '../../lib/row-playback-state';
 import type { ArtistCredit } from '../../services/api/api-types';
 
@@ -29,8 +30,11 @@ function formatDuration(seconds?: number): string {
 export class TrackRowComponent {
   readonly auth = inject(AuthService);
   readonly player = inject(PlayerService);
+  readonly likes = inject(LikeService);
 
   readonly track = input.required<Track>();
+  /** Show the like (heart) button. Hidden in offline/preserve contexts. */
+  readonly showLike = input(true);
   readonly indexLabel = input<string | number>();
   readonly subtitle = input<string>();
   readonly duration = input<number>();
@@ -72,6 +76,10 @@ export class TrackRowComponent {
   // closes the panel via its template ref before invoking this.
   runAction(action: TrackAction) {
     action.action();
+  }
+
+  toggleLike() {
+    void this.likes.toggle(this.track().id);
   }
 
   formatDuration = formatDuration;

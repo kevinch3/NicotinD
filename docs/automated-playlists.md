@@ -21,8 +21,38 @@ analysis; recipes consume the perceptual columns directly.
 
 The `harmonic` order reuses `camelotCompatibility` from `radio.service.ts` (the
 Radio scorer) rather than duplicating wheel logic, and `runRecipe` reuses
-`selectCuratedTracks` (seeded shuffle + per-artist cap). The weekly guard stores
-its marker in `library_sync_state` under `auto_playlists_week`.
+`selectCuratedTracks` (seeded shuffle + per-artist cap).
+
+## Admin cadence + manual generation (issue #228)
+
+The refresh is no longer a fixed weekly tick. `maybeRefreshAutoPlaylists` reads an
+**admin-configurable cadence** (`off` / `daily` / `weekly`, default `weekly`) from
+`library_sync_state` key `auto_playlists_cadence`, and guards on a period marker
+`auto_playlists_period` storing `<cadence>:<n>` (`weekly:<isoWeek>` or
+`daily:<epochDay>`). One refresh per period; a cadence change flips the period key
+so it re-triggers on the next tick; `off` never runs. The marker's `updated_at`
+doubles as the **last-refreshed timestamp** (`getAutoPlaylistStatus`).
+
+- **Manual "Generate now"**: `runAutoPlaylistsNow` bypasses the guard, then writes
+  the current period into the marker so the manual run *counts as* this period —
+  the scheduled tick stays a no-op (it doesn't double-fire), and when cadence is
+  `off` it records a `manual:<now>` marker just for the timestamp.
+- **Routes** (`routes/admin.ts`, admin-gated, audit-logged): `GET /playlists/auto`
+  (`{cadence, lastRefreshedAt}`), `PUT /playlists/auto` (`{cadence}`, rejects
+  unknown values 400), `POST /playlists/auto/refresh` (503 if no admin owner).
+- **Web**: the Admin page `auto-playlists-panel` (a Generate-now button + a
+  cadence `<select>` + a "Last refreshed" line), mirroring the "Back up now"
+  control. The `SystemApiService` methods are `getAutoPlaylists` /
+  `setAutoPlaylistCadence` / `refreshAutoPlaylists`.
+
+## Creation / refresh date in the UI (issue #228)
+
+Rather than baking a "Refreshed …" string into the description (which a
+regeneration would rewrite), the **existing `playlists.modified_at`** column is
+surfaced: `upsertCuratedPlaylist` already stamps it on every materialize, and
+curated rows are never user-edited, so it is an honest freshness timestamp. The
+playlist-detail page renders `Refreshed <date>` (`data-testid="playlist-refreshed"`)
+for `kind='curated'` from `PlaylistSummary.modifiedAt`.
 
 **Zero-candidate recipes don't create shelves**: a recipe whose `where` matches
 nothing (the perceptual shelves before the enrichment backfill has run) is

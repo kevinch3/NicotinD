@@ -76,6 +76,7 @@
             [subtitle]="t.album || t.artist"
             [duration]="t.duration"
             [offline]="true"
+            [showLike]="false"
             [actions]="offlineActions(t)"
             (play)="playOffline(i)"
           />

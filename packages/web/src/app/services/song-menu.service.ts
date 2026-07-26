@@ -9,8 +9,14 @@ import { LibraryApiService } from './api/library-api.service';
 import { TransferService } from './transfer.service';
 import { TrackInfoService } from './track-info.service';
 import { ConfirmService } from './confirm.service';
+import { LikeService } from './like.service';
 import { resolveArtistRoute, resolveAlbumRoute } from '../lib/route-utils';
-import { toTrack, offlineTrackAction, addToPlaylistAction, type BaseSong } from '../lib/track-utils';
+import {
+  toTrack,
+  offlineTrackAction,
+  addToPlaylistAction,
+  type BaseSong,
+} from '../lib/track-utils';
 import type { TrackAction } from '../components/track-row/track-row.component';
 
 export interface SongContext {
@@ -42,10 +48,17 @@ export class SongMenuService {
   private readonly transfers = inject(TransferService);
   private readonly trackInfo = inject(TrackInfoService);
   private readonly confirm = inject(ConfirmService);
+  private readonly likes = inject(LikeService);
 
   build(song: BaseSong, ctx: SongContext = {}): TrackAction[] {
     const track = toTrack(song);
     const actions: TrackAction[] = [
+      // Like/Unlike leads the menu — a primary gesture (issue #225). Label
+      // reflects current state; the toggle adds/removes it from Liked Songs.
+      {
+        label: this.likes.isLiked(song.id) ? 'Unlike' : 'Like',
+        action: () => void this.likes.toggle(song.id),
+      },
       { label: 'Add to queue', action: () => this.player.addToQueue(track) },
       { label: 'Play next', action: () => this.player.queueNext(track) },
       { label: 'Start radio', action: () => this.player.startRadio(track) },

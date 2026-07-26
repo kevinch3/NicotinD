@@ -6,6 +6,7 @@ import { firstValueFrom } from 'rxjs';
 import { AuthService } from '../../services/auth.service';
 import { PlayerService, shuffleArray } from '../../services/player.service';
 import { LibraryApiService } from '../../services/api/library-api.service';
+import { LikeService } from '../../services/like.service';
 import { toTrack } from '../../lib/track-utils';
 import { mainBottomPadClass } from '../../lib/player-chrome';
 import { SetupService } from '../../services/setup.service';
@@ -80,6 +81,7 @@ export class LayoutComponent implements OnInit, OnDestroy {
   private transfers = inject(TransferService);
   private acquire = inject(AcquireService);
   private api = inject(LibraryApiService);
+  private likes = inject(LikeService);
 
   private desktopChrome = inject(DesktopChromeService);
 
@@ -179,6 +181,8 @@ export class LayoutComponent implements OnInit, OnDestroy {
     // Load any in-flight URL acquisitions so the header badge reflects them
     // app-wide (AcquireService self-polls while jobs are active).
     void this.acquire.refresh();
+    // Hydrate the per-user "like" state so hearts reflect the DB app-wide.
+    void this.likes.refresh();
 
     // Radio source: metadata-aware track selection so playback continues with
     // musically similar tracks. Falls back to shuffled recent songs when no seed.

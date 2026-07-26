@@ -1,7 +1,14 @@
 import { describe, it, expect, beforeEach } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { applySchema } from '../db.js';
-import { refreshAutoPlaylists, maybeRefreshAutoPlaylists } from './auto-playlists.service.js';
+import {
+  refreshAutoPlaylists,
+  maybeRefreshAutoPlaylists,
+  getAutoPlaylistCadence,
+  setAutoPlaylistCadence,
+  getAutoPlaylistStatus,
+  runAutoPlaylistsNow,
+} from './auto-playlists.service.js';
 import { RECIPES, weekSeedFor } from './playlist-recipe.js';
 
 const db = new Database(':memory:');
@@ -120,13 +127,14 @@ describe('refreshAutoPlaylists', () => {
   });
 });
 
-describe('maybeRefreshAutoPlaylists (weekly guard)', () => {
+describe('maybeRefreshAutoPlaylists (cadence guard)', () => {
   beforeEach(seed);
 
-  it('refreshes once per ISO week then no-ops until the next week', () => {
+  it('defaults to weekly: refreshes once per ISO week then no-ops until next week', () => {
     // Align to the start of an ISO-week bucket so the offsets stay within/next week.
     const weekMs = 7 * 86_400_000;
     const now = weekSeedFor(Date.UTC(2026, 5, 1)) * weekMs + 3_600_000; // 1h into a bucket
+    expect(getAutoPlaylistCadence(db)).toBe('weekly'); // default
     expect(maybeRefreshAutoPlaylists(db, now)).toBe(true);
     // Same week → guarded no-op.
     expect(maybeRefreshAutoPlaylists(db, now + 3 * 86_400_000)).toBe(false);
@@ -134,14 +142,67 @@ describe('maybeRefreshAutoPlaylists (weekly guard)', () => {
     expect(maybeRefreshAutoPlaylists(db, now + weekMs)).toBe(true);
     const marker = db
       .query<{ value: string }, []>(
-        "SELECT value FROM library_sync_state WHERE key='auto_playlists_week'",
+        "SELECT value FROM library_sync_state WHERE key='auto_playlists_period'",
       )
       .get();
-    expect(marker?.value).toBe(String(weekSeedFor(now + weekMs)));
+    expect(marker?.value).toBe(`weekly:${weekSeedFor(now + weekMs)}`);
+  });
+
+  it('daily cadence refreshes once per calendar day', () => {
+    setAutoPlaylistCadence(db, 'daily');
+    const day = 86_400_000;
+    const now = 20_000 * day + 3_600_000; // 1h into a day bucket
+    expect(maybeRefreshAutoPlaylists(db, now)).toBe(true);
+    expect(maybeRefreshAutoPlaylists(db, now + 3_600_000)).toBe(false); // same day
+    expect(maybeRefreshAutoPlaylists(db, now + day)).toBe(true); // next day
+  });
+
+  it('off cadence never refreshes', () => {
+    setAutoPlaylistCadence(db, 'off');
+    expect(maybeRefreshAutoPlaylists(db, Date.now())).toBe(false);
+    expect(db.query<{ n: number }, []>('SELECT COUNT(*) n FROM playlists').get()?.n).toBe(0);
+  });
+
+  it('changing cadence re-triggers on the next tick', () => {
+    setAutoPlaylistCadence(db, 'weekly');
+    const now = Date.now();
+    expect(maybeRefreshAutoPlaylists(db, now)).toBe(true);
+    expect(maybeRefreshAutoPlaylists(db, now)).toBe(false); // guarded
+    setAutoPlaylistCadence(db, 'daily'); // different period key → runs again
+    expect(maybeRefreshAutoPlaylists(db, now)).toBe(true);
+  });
+
+  it('rejects an unknown cadence value', () => {
+    expect(setAutoPlaylistCadence(db, 'hourly')).toBe(false);
+    expect(getAutoPlaylistCadence(db)).toBe('weekly'); // unchanged
   });
 
   it('no-ops when there is no admin owner', () => {
     db.run('DELETE FROM users');
     expect(maybeRefreshAutoPlaylists(db, Date.now())).toBe(false);
+  });
+});
+
+describe('runAutoPlaylistsNow (manual trigger) + status', () => {
+  beforeEach(seed);
+
+  it('forces a refresh regardless of the guard and records the timestamp', () => {
+    const now = 1_900_000_000_000;
+    const results = runAutoPlaylistsNow(db, now);
+    expect(results.length).toBe(RECIPES.length);
+    expect(db.query<{ n: number }, []>("SELECT COUNT(*) n FROM playlists WHERE kind='curated'").get()?.n)
+      .toBeGreaterThan(0);
+    const status = getAutoPlaylistStatus(db);
+    expect(status.cadence).toBe('weekly');
+    expect(status.lastRefreshedAt).toBe(now);
+    // Manual run counts as this period → the scheduled tick stays a no-op.
+    expect(maybeRefreshAutoPlaylists(db, now)).toBe(false);
+  });
+
+  it('works even when the schedule is off (records a manual marker)', () => {
+    setAutoPlaylistCadence(db, 'off');
+    const now = 1_900_000_100_000;
+    runAutoPlaylistsNow(db, now);
+    expect(getAutoPlaylistStatus(db).lastRefreshedAt).toBe(now);
   });
 });

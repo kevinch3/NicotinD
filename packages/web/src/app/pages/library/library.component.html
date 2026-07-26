@@ -459,12 +459,18 @@
                     class="px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide bg-theme-surface-2 text-theme-muted flex-shrink-0">
                     Curated
                   </span>
+                } @else if (pl.kind === 'liked') {
+                  <span data-testid="liked-badge-inline" title="Liked Songs" class="text-rose-500 flex-shrink-0">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                      <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+                    </svg>
+                  </span>
                 }
                 <span class="text-sm text-theme-primary truncate">{{ pl.name }}</span>
               </a>
             }
             <span class="text-xs text-theme-muted flex-shrink-0">{{ pl.songCount }} song{{ pl.songCount !== 1 ? 's' : '' }}</span>
-            @if (pl.kind !== 'curated') {
+            @if (pl.kind === 'user') {
               <button type="button" data-testid="rename-playlist" aria-label="Rename playlist" title="Rename"
                 (click)="startRename(pl)"
                 class="w-8 h-8 flex items-center justify-center rounded-lg text-theme-muted hover:text-theme-secondary hover:bg-theme-surface-2 transition flex-shrink-0">

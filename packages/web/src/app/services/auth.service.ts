@@ -4,6 +4,7 @@ import { SearchService } from './search.service';
 import { TransferService } from './transfer.service';
 import { AcquireService } from './acquire.service';
 import { PlaylistService } from './playlist.service';
+import { LikeService } from './like.service';
 import { WatchlistService } from './watchlist.service';
 import { RemotePlaybackService } from './remote-playback.service';
 import { ShareSessionService } from './share-session.service';
@@ -28,6 +29,7 @@ export class AuthService {
   private transfers = inject(TransferService);
   private acquire = inject(AcquireService);
   private playlists = inject(PlaylistService);
+  private likes = inject(LikeService);
   private watchlist = inject(WatchlistService);
   private shareSession = inject(ShareSessionService);
   private autoHunt = inject(AutoHuntService);
@@ -137,6 +139,7 @@ export class AuthService {
     this.transfers.reset();
     this.acquire.reset();
     this.playlists.reset();
+    this.likes.reset();
     this.watchlist.reset();
     // Lazy resolve to break circular dependency (RemotePlaybackService injects AuthService)
     this.injector.get(RemotePlaybackService).reset();

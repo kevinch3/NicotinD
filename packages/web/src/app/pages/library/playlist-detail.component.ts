@@ -52,6 +52,20 @@ export class PlaylistDetailComponent implements OnInit {
 
   /** Curated (system) playlists are global + read-only: no edit/remove/delete. */
   readonly isCurated = computed(() => this.playlist()?.kind === 'curated');
+  /** The auto-maintained "Liked Songs" playlist (per-user, system-managed). */
+  readonly isLiked = computed(() => this.playlist()?.kind === 'liked');
+  /** System playlists (curated + liked) hide every mutating control. */
+  readonly readOnly = computed(() => this.isCurated() || this.isLiked());
+  /**
+   * "Refreshed <date>" for automated/curated shelves (issue #228). `modifiedAt`
+   * is the last materialize time — curated rows are never user-edited, so it is
+   * an honest freshness timestamp. Empty for user playlists.
+   */
+  readonly refreshedLabel = computed(() => {
+    const pl = this.playlist();
+    if (!pl || pl.kind !== 'curated' || !pl.modifiedAt) return '';
+    return `Refreshed ${new Date(pl.modifiedAt).toLocaleDateString()}`;
+  });
 
   /** Rendered/rows list — excludes songs deleted (this session) elsewhere in the app. */
   readonly visibleSongs = computed(() => {
@@ -187,7 +201,7 @@ export class PlaylistDetailComponent implements OnInit {
   // hidden for them, and this guards the same.
   sharePlaylist(): void {
     const pl = this.playlist();
-    if (!pl || this.isCurated()) return;
+    if (!pl || this.readOnly()) return;
     this.http
       .post<{ url: string }>('/api/share', { resourceType: 'playlist', resourceId: pl.id })
       .subscribe({

@@ -48,6 +48,20 @@
           <p class="text-xs text-theme-muted truncate">{{ subtitle() }}</p>
         }
       </div>
+      @if (showLike()) {
+        <button type="button" data-testid="track-like" (click)="toggleLike()"
+          [attr.aria-pressed]="likes.isLiked(track().id)"
+          [class]="'p-1 transition flex-shrink-0 ' + (likes.isLiked(track().id)
+            ? 'text-rose-500 hover:text-rose-400'
+            : 'text-theme-muted opacity-0 group-hover:opacity-100 hover:!text-rose-400')"
+          [title]="likes.isLiked(track().id) ? 'Unlike' : 'Like'">
+          <svg width="15" height="15" viewBox="0 0 24 24"
+            [attr.fill]="likes.isLiked(track().id) ? 'currentColor' : 'none'"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+          </svg>
+        </button>
+      }
       <span class="text-xs text-theme-muted">{{ formatDuration(duration() ?? track().duration) }}</span>
       <button type="button" (click)="play.emit()" class="p-1 text-theme-muted group-hover:text-theme-secondary transition flex-shrink-0" title="Play">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">

@@ -3,8 +3,17 @@ import type { Song } from '@nicotind/core';
 import { attachSongArtists } from './artist-attach.js';
 import { tokenize, matchesAllTokens, rankBy } from './search-tokens.js';
 
-/** `user` = created by a user (private). `curated` = system-seeded, global, read-only. */
-export type PlaylistKind = 'user' | 'curated';
+/**
+ * `user` = created by a user (private). `curated` = system-seeded, global,
+ * read-only. `liked` = the per-user auto-maintained "Liked Songs" collection —
+ * owned by one user like `user`, but system-managed: created lazily on the
+ * first like and mutated only through the like/unlike routes, never the CRUD
+ * API (so `owns()`/`update()`/`remove()` keep their `kind='user'` guard).
+ */
+export type PlaylistKind = 'user' | 'curated' | 'liked';
+
+/** The single per-user "Liked Songs" playlist name (kind='liked'). */
+export const LIKED_PLAYLIST_NAME = 'Liked Songs';
 
 export interface PlaylistSummary {
   id: string;
@@ -113,7 +122,7 @@ export class PlaylistService {
                   WHERE ps.playlist_id = p.id) AS song_count
          FROM playlists p
          WHERE p.user_id = ? OR p.kind = 'curated'
-         ORDER BY (p.kind = 'curated') DESC, p.modified_at DESC`,
+         ORDER BY (p.kind = 'liked') DESC, (p.kind = 'curated') DESC, p.modified_at DESC`,
       )
       .all(userId)
       .map((r) => this.summary(r, r.song_count));
@@ -172,10 +181,7 @@ export class PlaylistService {
     if (!row) return null;
 
     const existing = this.db
-      .query<
-        { song_id: string; title: string; artist: string },
-        [string]
-      >(
+      .query<{ song_id: string; title: string; artist: string }, [string]>(
         `SELECT ps.song_id, s.title, s.artist
          FROM playlist_songs ps
          JOIN library_songs s ON s.id = ps.song_id
@@ -281,10 +287,9 @@ export class PlaylistService {
   private owns(userId: string, id: string): boolean {
     return Boolean(
       this.db
-        .query<
-          { id: string },
-          [string, string]
-        >(`SELECT id FROM playlists WHERE id = ? AND user_id = ? AND kind = 'user'`)
+        .query<{ id: string }, [string, string]>(
+          `SELECT id FROM playlists WHERE id = ? AND user_id = ? AND kind = 'user'`,
+        )
         .get(id, userId),
     );
   }
@@ -293,10 +298,9 @@ export class PlaylistService {
   private appendSongs(playlistId: string, songIds: string[]): void {
     const start =
       (this.db
-        .query<
-          { m: number | null },
-          [string]
-        >(`SELECT MAX(position) AS m FROM playlist_songs WHERE playlist_id = ?`)
+        .query<{ m: number | null }, [string]>(
+          `SELECT MAX(position) AS m FROM playlist_songs WHERE playlist_id = ?`,
+        )
         .get(playlistId)?.m ?? -1) + 1;
     const now = Date.now();
     let pos = start;
@@ -330,9 +334,100 @@ export class PlaylistService {
       description: r.description,
       songCount,
       coverArt: r.cover_art ?? null,
-      kind: r.kind === 'curated' ? 'curated' : 'user',
+      kind: r.kind === 'curated' ? 'curated' : r.kind === 'liked' ? 'liked' : 'user',
       createdAt: r.created_at,
       modifiedAt: r.modified_at,
     };
+  }
+
+  // ─── Liked Songs (per-user, auto-maintained) ──────────────────────
+  //
+  // "Like" is a personal gesture, so it can't reuse the global scanner-derived
+  // `library_songs.starred` column. Rather than a dedicated `user_liked_songs`
+  // table, the Liked Songs playlist *is* the store: membership = liked. This
+  // reuses the whole native-playlist surface (visibility, JOINs that drop
+  // vanished songs, the playlists page) for free. The row is `kind='liked'`
+  // (created lazily on first like) so it renders like any playlist but the
+  // mutation API's `kind='user'` guard keeps it read-only there — it changes
+  // only via like/unlike below.
+
+  /** Get-or-create the user's single `kind='liked'` playlist; returns its id. */
+  private ensureLikedPlaylist(userId: string): string {
+    const existing = this.db
+      .query<{ id: string }, [string]>(
+        "SELECT id FROM playlists WHERE user_id = ? AND kind = 'liked'",
+      )
+      .get(userId);
+    if (existing) return existing.id;
+    const id = crypto.randomUUID();
+    const now = Date.now();
+    this.db.run(
+      `INSERT INTO playlists (id, user_id, name, description, kind, created_at, modified_at)
+       VALUES (?, ?, ?, ?, 'liked', ?, ?)`,
+      [id, userId, LIKED_PLAYLIST_NAME, 'Songs you liked.', now, now],
+    );
+    return id;
+  }
+
+  /**
+   * Like a song: add it to the user's Liked Songs playlist. Idempotent (a second
+   * like is a no-op). Newest-liked sorts first — each new like takes a strictly
+   * smaller position (`min - 1`), so the existing `ORDER BY position ASC` read
+   * yields most-recent-first without reshuffling the whole list (and without the
+   * same-millisecond ties a timestamp position would produce).
+   */
+  likeSong(userId: string, songId: string): boolean {
+    const playlistId = this.ensureLikedPlaylist(userId);
+    const now = Date.now();
+    const minPos =
+      this.db
+        .query<{ m: number | null }, [string]>(
+          `SELECT MIN(position) AS m FROM playlist_songs WHERE playlist_id = ?`,
+        )
+        .get(playlistId)?.m ?? 1;
+    this.db.run(
+      `INSERT INTO playlist_songs (playlist_id, song_id, position, added_at)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(playlist_id, song_id) DO NOTHING`,
+      [playlistId, songId, minPos - 1, now],
+    );
+    this.db.run(`UPDATE playlists SET modified_at = ? WHERE id = ?`, [now, playlistId]);
+    return true;
+  }
+
+  /** Unlike a song: remove it from the Liked Songs playlist (no-op if absent). */
+  unlikeSong(userId: string, songId: string): boolean {
+    const playlist = this.db
+      .query<{ id: string }, [string]>(
+        "SELECT id FROM playlists WHERE user_id = ? AND kind = 'liked'",
+      )
+      .get(userId);
+    if (!playlist) return false;
+    const res = this.db.run(`DELETE FROM playlist_songs WHERE playlist_id = ? AND song_id = ?`, [
+      playlist.id,
+      songId,
+    ]);
+    if (Number(res.changes ?? 0) > 0) {
+      this.db.run(`UPDATE playlists SET modified_at = ? WHERE id = ?`, [Date.now(), playlist.id]);
+    }
+    return true;
+  }
+
+  /**
+   * The ids of the user's liked songs (newest-liked first), filtered to songs
+   * that still exist so the client's heart state never lights up a vanished id.
+   */
+  likedSongIds(userId: string): string[] {
+    return this.db
+      .query<{ song_id: string }, [string]>(
+        `SELECT ps.song_id
+           FROM playlist_songs ps
+           JOIN playlists p ON p.id = ps.playlist_id
+           JOIN library_songs s ON s.id = ps.song_id
+          WHERE p.user_id = ? AND p.kind = 'liked'
+          ORDER BY ps.position ASC`,
+      )
+      .all(userId)
+      .map((r) => r.song_id);
   }
 }

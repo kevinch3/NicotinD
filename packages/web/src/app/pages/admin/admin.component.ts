@@ -16,6 +16,8 @@ import type {
   LibraryFragmentReport,
   StreamingSettings,
   UntrackedDownload,
+  AutoPlaylistStatus,
+  AutoPlaylistCadence,
 } from '../../services/api/api-types';
 import { AuthService } from '../../services/auth.service';
 import { ServerConfigService } from '../../services/server-config.service';
@@ -96,6 +98,11 @@ export class AdminComponent implements OnInit, OnDestroy {
 
   readonly backingUp = signal(false);
   readonly backupMsg = signal<string | null>(null);
+
+  // Automated playlists (issue #228): cadence control + manual "generate now".
+  readonly autoPlaylists = signal<AutoPlaylistStatus | null>(null);
+  readonly autoPlaylistsBusy = signal(false);
+  readonly autoPlaylistsMsg = signal<string | null>(null);
 
   readonly loadingFragments = signal(false);
   readonly fragments = signal<LibraryFragmentReport | null>(null);
@@ -183,6 +190,45 @@ export class AdminComponent implements OnInit, OnDestroy {
     this.loadProcessing();
     void this.loadQuarantineQueue();
     this.connectProcessingStream();
+    void this.loadAutoPlaylists();
+  }
+
+  // --- Automated playlists (issue #228) ---
+  private async loadAutoPlaylists(): Promise<void> {
+    try {
+      this.autoPlaylists.set(await firstValueFrom(this.api.getAutoPlaylists()));
+    } catch {
+      // Non-fatal — the control just won't render until a reload succeeds.
+    }
+  }
+
+  async setAutoPlaylistCadence(cadence: AutoPlaylistCadence): Promise<void> {
+    this.autoPlaylistsMsg.set(null);
+    try {
+      this.autoPlaylists.set(await firstValueFrom(this.api.setAutoPlaylistCadence(cadence)));
+    } catch {
+      this.autoPlaylistsMsg.set('Could not save cadence — see server logs.');
+    }
+  }
+
+  async refreshAutoPlaylists(): Promise<void> {
+    if (this.autoPlaylistsBusy()) return;
+    this.autoPlaylistsBusy.set(true);
+    this.autoPlaylistsMsg.set(null);
+    try {
+      const res = await firstValueFrom(this.api.refreshAutoPlaylists());
+      const made = res.shelves.filter((s) => s.count > 0).length;
+      this.autoPlaylists.set({ cadence: res.cadence, lastRefreshedAt: res.lastRefreshedAt });
+      this.autoPlaylistsMsg.set(`Regenerated ${made} shelf${made === 1 ? '' : 'es'}.`);
+    } catch {
+      this.autoPlaylistsMsg.set('Refresh failed — see server logs.');
+    } finally {
+      this.autoPlaylistsBusy.set(false);
+    }
+  }
+
+  formatRefreshedAt(ms: number | null): string {
+    return ms ? new Date(ms).toLocaleString() : 'never';
   }
 
   // --- Streaming ---
