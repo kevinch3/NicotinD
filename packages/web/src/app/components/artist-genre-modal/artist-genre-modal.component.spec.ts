@@ -1,6 +1,6 @@
 import { ɵSIGNAL as SIGNAL } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { of } from 'rxjs';
+import { of, throwError } from 'rxjs';
 import { ArtistGenreModalComponent } from './artist-genre-modal.component';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import { ToastService } from '../../services/toast.service';
@@ -30,6 +30,16 @@ describe('ArtistGenreModalComponent', () => {
           provide: LibraryApiService,
           useValue: {
             artistGenre: () => of({ artist: 'José Larralde', current, override }),
+            // The modal also charts the genre spread (issue #222). It's a second,
+            // independent fetch — the correction surface must keep working even
+            // when it fails, which the "chart failure" case below asserts.
+            artistGenreDistribution: () =>
+              of({
+                artist: 'José Larralde',
+                trackCount: 10,
+                genreCount: current.length,
+                slices: current.map((g, i) => ({ genre: g, count: 10 - i, weight: (10 - i) / 10 })),
+              }),
             setArtistGenre: (id: string, genres: string) => {
               setCalls.push({ id, genres });
               return of({ ok: true, genres: genres.split(';'), resynced: true });
@@ -95,5 +105,42 @@ describe('ArtistGenreModalComponent', () => {
     const c = make({ genres: ['Folclore'], source: 'user', note: null });
     c.reset();
     expect(clearCalls).toEqual(['art-lar']);
+  });
+
+  it('loads the genre spread for the radar (issue #222)', () => {
+    const c = make(null, ['Folclore', 'Chacarera']);
+    expect(c.distribution().map((s) => s.genre)).toEqual(['Folclore', 'Chacarera']);
+    expect(c.distributionTracks()).toBe(10);
+  });
+
+  it('keeps the correction surface usable when the spread fetch fails', () => {
+    // The chart is a nice-to-have beside the edit form; an outage on that second
+    // endpoint must hide it, never block the fix the user came here to make.
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [ArtistGenreModalComponent],
+      providers: [
+        {
+          provide: LibraryApiService,
+          useValue: {
+            artistGenre: () =>
+              of({ artist: 'José Larralde', current: ['Latin'], override: null }),
+            artistGenreDistribution: () => throwError(() => new Error('sidecar down')),
+            setArtistGenre: () => of({ ok: true, genres: [], resynced: true }),
+            clearArtistGenre: () => of({ ok: true, removed: true }),
+          },
+        },
+        { provide: ToastService, useValue: { show: () => 'id' } },
+      ],
+    });
+    const c = TestBed.createComponent(ArtistGenreModalComponent).componentInstance;
+    setInputValue(c.artistId, 'art-lar');
+    setInputValue(c.artistName, 'José Larralde');
+    TestBed.flushEffects();
+
+    expect(c.distribution()).toEqual([]);
+    expect(c.draft()).toBe('Latin');
+    c.draft.set('Folclore');
+    expect(c.canSave()).toBe(true);
   });
 });

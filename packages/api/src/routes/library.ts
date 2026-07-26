@@ -42,6 +42,7 @@ import {
   ALLOWED_OVERRIDE_TYPES,
 } from '../services/artist-image-override.js';
 import { clearCoverNegativeCache, extractCover, fetchRemoteCover } from './streaming.js';
+import { artistGenreDistribution } from '../services/genre-distribution.js';
 import { upsertArtistIdentity, upsertArtistAlias } from '../services/artist-identity-store.js';
 import { recordAudit } from '../services/audit-log.js';
 import { artistIdFor } from '../services/library-scanner.js';
@@ -1621,6 +1622,17 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       current,
       override: row ? { genres: row.genres, source: row.source, note: row.note } : null,
     });
+  });
+
+  // Genre weight distribution for the radar visualization (issue #222).
+  app.get('/artists/:id/genre-distribution', (c) => {
+    const db = getDatabase();
+    const id = c.req.param('id');
+    const artist = db
+      .query<{ name: string }, [string]>(`SELECT name FROM library_artists WHERE id = ?`)
+      .get(id);
+    if (!artist) return c.json({ error: 'Artist not found' }, 404);
+    return c.json({ artist: artist.name, ...artistGenreDistribution(db, id) });
   });
 
   app.post('/artists/:id/genre', async (c) => {

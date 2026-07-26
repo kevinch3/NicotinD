@@ -665,6 +665,8 @@ export interface ServiceReview {
       version?: string;
       uptime?: number;
     };
+    /** Essentia analysis sidecar — the largest compute consumer (issue #224). */
+    analysis: { configured: boolean; healthy: boolean };
   };
   library: { scanning: boolean; indexedSongCount: number };
   updateCheck: UpdateCheck | null;

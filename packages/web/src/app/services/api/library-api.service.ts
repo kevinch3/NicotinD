@@ -186,6 +186,16 @@ export class LibraryApiService {
     }>(`/api/library/artists/${encodeURIComponent(id)}/genre`);
   }
 
+  /** Genre weight distribution for the radar visualization (issue #222). */
+  artistGenreDistribution(id: string) {
+    return this.http.get<{
+      artist: string;
+      trackCount: number;
+      genreCount: number;
+      slices: Array<{ genre: string; count: number; weight: number }>;
+    }>(`/api/library/artists/${encodeURIComponent(id)}/genre-distribution`);
+  }
+
   /** Replace the primary genre for every track by this artist. Runs a sync rescan. */
   setArtistGenre(id: string, genres: string, note?: string) {
     return this.http

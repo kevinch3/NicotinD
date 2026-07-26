@@ -443,6 +443,43 @@ When a *user-initiated* run settles, the panel toasts the outcome via `ToastServ
 `runOutcomeToast` / `isRunning` helpers in `lib/processing-progress.ts` carry that logic
 and are unit-tested.
 
+## Compute throttle + sidecar status (issue #224)
+
+Prod host `kpc` shares one **P4000 8 GB** across NicotinD analysis, Immich ML and Ollama, so
+processing load is a shared-resource concern, not just a throughput knob.
+
+`concurrency` and `batchSize` were already persisted in the settings blob and already validated
+by `PUT /api/admin/processing` (positive integers) — but the **Admin panel never exposed them**, so
+the only way to throttle a run that was starving another tenant was to edit the persisted JSON or
+the compose file and restart. That's the gap this closes; the backend needed no change.
+
+- **Concurrency is the sidecar throttle.** It flows into `createEnrichmentContext({ concurrency })`,
+  which bounds the task pool that issues sidecar inference calls — so lowering it directly lowers
+  GPU pressure. `1` is the gentlest setting.
+- **`batchSize`** is how many tracks a task claims per pass — it governs run length, not
+  parallelism.
+- Both inputs go through the pure, unit-tested `clampInt` (`lib/processing-progress.ts`) rather
+  than posting raw field values. `Number('')` is `0`, not `NaN`, so a *cleared* field would
+  otherwise clamp to the minimum instead of leaving the current value alone — and a non-positive
+  integer is a `400` from the route.
+
+**Analysis-sidecar status** (`data-testid="processing-sidecar-status"`) renders from the
+`services.analysis: { configured, healthy }` slice added to `GET /api/admin/review` — fed by
+`AudioFeaturesClient.healthy()` (30 s cached probe), so it costs the snapshot nothing extra.
+An *unconfigured* sidecar is the default deployment, not a fault: it reports
+`configured: false` and must never land in the snapshot's `errors[]`. A probe that throws degrades
+to unhealthy with an `analysisStatus` error tag rather than dropping the whole review.
+
+**What deliberately stays out of the UI:** CPU-vs-GPU selection is the `GPU=1` **build arg** on the
+sidecar image, so it cannot be flipped at runtime — the panel copy says so explicitly to stop the
+control reading as a GPU switch. The panel governs runtime load only: concurrency, batch, window,
+per-task on/off, and Stop.
+
+**Still open on #224** — the *reduction* half. Whether a concurrency cap of 1 is enough on a shared
+8 GB card, and whether we need cross-tenant awareness (gating a window on `nvidia-smi` utilization
+from Immich/Ollama) are empirical questions that need measurement on `kpc` during a real window.
+The controls above are what makes that measurement cheap to run.
+
 ## One-time prod backfill
 
 For an existing library, run the manual scripts inside the container once to fill

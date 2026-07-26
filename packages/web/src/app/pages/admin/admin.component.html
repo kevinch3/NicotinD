@@ -515,6 +515,59 @@
                   </div>
                 </div>
 
+                <!-- Compute throttle (issue #224): the runtime lever for a
+                     shared GPU/CPU, previously reachable only by editing the
+                     persisted settings blob. -->
+                <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2"
+                  data-testid="processing-throttle">
+                  <span class="min-w-0 text-sm text-theme-primary">Compute throttle
+                    <span class="block text-xs text-theme-muted">
+                      Parallel analyses and how many tracks a task claims per pass. Lower the
+                      concurrency when the GPU is shared with other apps; 1 is the gentlest.
+                    </span>
+                  </span>
+                  <div class="flex min-w-0 items-center gap-2">
+                    <label class="text-xs text-theme-muted flex items-center gap-1.5">
+                      Concurrency
+                      <input type="number" min="1" max="16" [value]="p.concurrency"
+                        [disabled]="processingSaving()" data-testid="processing-concurrency"
+                        (change)="saveConcurrency($any($event.target).value)"
+                        class="w-16 min-w-0 text-sm rounded-lg bg-theme-surface border border-theme px-2 py-1 text-theme-primary" />
+                    </label>
+                    <label class="text-xs text-theme-muted flex items-center gap-1.5">
+                      Batch
+                      <input type="number" min="1" max="500" [value]="p.batchSize"
+                        [disabled]="processingSaving()" data-testid="processing-batch-size"
+                        (change)="saveBatchSize($any($event.target).value)"
+                        class="w-16 min-w-0 text-sm rounded-lg bg-theme-surface border border-theme px-2 py-1 text-theme-primary" />
+                    </label>
+                  </div>
+                </div>
+
+                @if (analysis(); as a) {
+                  <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1"
+                    data-testid="processing-sidecar-status">
+                    <span class="min-w-0 text-sm text-theme-primary">Analysis sidecar
+                      <span class="block text-xs text-theme-muted">
+                        @if (!a.configured) {
+                          Not part of this deployment — audio-features and mood analysis are off.
+                        } @else if (a.healthy) {
+                          Reachable. CPU or GPU is fixed at build time; use the throttle above to
+                          govern how hard it runs.
+                        } @else {
+                          Configured but unreachable — sidecar tasks will skip until it returns.
+                        }
+                      </span>
+                    </span>
+                    <span class="text-xs px-2 py-0.5 rounded-full"
+                      [class]="a.configured && a.healthy
+                        ? 'bg-emerald-500/15 text-emerald-500'
+                        : a.configured ? 'bg-status-error/15 text-status-error' : 'bg-theme-surface-2 text-theme-muted'">
+                      {{ a.configured ? (a.healthy ? 'Online' : 'Unreachable') : 'Not configured' }}
+                    </span>
+                  </div>
+                }
+
                 <div class="space-y-2">
                   <div class="flex items-center justify-between gap-4 pb-1 border-b border-theme">
                     <span class="text-xs uppercase tracking-wider text-theme-muted">Step</span>

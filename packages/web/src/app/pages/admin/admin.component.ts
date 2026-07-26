@@ -30,6 +30,7 @@ import {
   totalPending,
   isRunning,
   runOutcomeToast,
+  clampInt,
 } from '../../lib/processing-progress';
 import { PasswordFieldComponent } from '../../components/password-field/password-field.component';
 import { AlbumHuntModalComponent } from '../../components/album-hunt-modal/album-hunt-modal.component';
@@ -158,6 +159,7 @@ export class AdminComponent implements OnInit, OnDestroy {
   readonly untracked = this.reviewSvc.untracked;
   readonly incompleteJobsCount = this.reviewSvc.incompleteJobsCount;
   readonly untrackedCount = this.reviewSvc.untrackedCount;
+  readonly analysis = this.reviewSvc.analysis;
 
   private logEventSource: EventSource | null = null;
   private logReconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -345,6 +347,21 @@ export class AdminComponent implements OnInit, OnDestroy {
   readonly processingSaving = signal(false);
 
   /** Toggle a per-task flag and persist immediately. */
+  /**
+   * Compute-throttle writes (issue #224). The server rejects a non-positive
+   * integer with a 400, so clamp here rather than round-tripping a value the
+   * user can trivially type — a blanked number input reads as NaN.
+   */
+  saveConcurrency(raw: string): void {
+    const n = clampInt(raw, 1, 16, this.processing()?.concurrency ?? 3);
+    if (n !== this.processing()?.concurrency) void this.saveProcessing({ concurrency: n });
+  }
+
+  saveBatchSize(raw: string): void {
+    const n = clampInt(raw, 1, 500, this.processing()?.batchSize ?? 25);
+    if (n !== this.processing()?.batchSize) void this.saveProcessing({ batchSize: n });
+  }
+
   toggleProcessingTask(task: ProcessingTaskId): void {
     const current = this.processing();
     if (!current) return;
