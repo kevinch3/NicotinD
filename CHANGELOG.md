@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.266](https://github.com/kevinch3/NicotinD/compare/v0.1.265...v0.1.266) (2026-07-26)
+
+### Features
+
+* **library:** like button + liked songs playlist; auto-playlist controls ([eaa7d30](https://github.com/kevinch3/NicotinD/commit/eaa7d30677a22a5939f3a68a6b5db96d53f6297d)), closes [#225](https://github.com/kevinch3/NicotinD/issues/225) [#228](https://github.com/kevinch3/NicotinD/issues/228), references [#225](https://github.com/kevinch3/NicotinD/issues/225) [#228](https://github.com/kevinch3/NicotinD/issues/228)
 ## [0.1.265](https://github.com/kevinch3/NicotinD/compare/v0.1.264...v0.1.265) (2026-07-26)
 
 ### Features
