@@ -790,7 +790,14 @@ Add detail there, not here.
   invalidation to `applyGenre`/`applyMetadata`/`deleteSongs`/`deleteAlbum`/`resyncLibrary` (joining
   `setArtistGenre`/`clearArtistGenre`/`fixArtistIdentity`);
   artist-image/cover/lyrics/licence/reclassify/optimize writes correctly don't (id-stable `coverArt`
-  or no list impact). → [docs/web-ui.md](docs/web-ui.md) "Cached whole-library reads"
+  or no list impact). The **full cross-layer sweep is now catalogued** in
+  [docs/cache-invalidation.md](docs/cache-invalidation.md) — every cache/memo with its writer set,
+  plus the structural findings that rule whole classes out (no `dataGroups` ⇒ the SW never caches an
+  API response; per-song side tables deliberately skip FK cascades so a rescan can't wipe curator
+  data, and dangling rows are invisible because playlist reads `INNER JOIN library_songs`;
+  `noArtCache` has a complete `clearCoverNegativeCache` writer set) and the "adding a cache"
+  checklist (content-address > short TTL > explicit invalidation). →
+  [docs/cache-invalidation.md](docs/cache-invalidation.md), [docs/web-ui.md](docs/web-ui.md)
 - **Published Docker image (deployment)**: multi-arch GHCR image (`release`/`vX`/`vX.Y.Z` tags, no
   `latest`) published per release tag via native-runner digest builds + one manifest merge; compose
   pulls it (build-from-source is an override), the deploy host pulls too, `/api/health` reports the
