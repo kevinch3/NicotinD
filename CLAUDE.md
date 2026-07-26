@@ -840,6 +840,18 @@ Add detail there, not here.
   opens a global `TrackInfoService` host; multiselect is one `createSelection()` +
   `SelectionBarComponent` everywhere (incl. the library Songs tab). →
   [docs/song-actions.md](docs/song-actions.md)
+- **Orphan side-table pruning (issue #259)**: per-song side tables deliberately have **no FK
+  cascade** (a rescan rebuilds `library_songs` wholesale, so a cascade would wipe curator data), which
+  left orphan rows accumulating forever. Measuring prod first dissolved the apparent tension: the
+  curator tables (genres/artists/overrides) have **zero** orphans — the scanner rebuilds them — while
+  the *regenerable* ones do grow (1,057 orphan embeddings = 5.16 MB; embeddings are 46% of the DB).
+  `services/orphan-prune.ts` therefore prunes only `library_embeddings` +
+  `library_song_analysis_failures` (never `library_lyrics` — network-sourced + user-editable), via
+  **mark→unmark→sweep** on an `orphaned_at` column with a 30-day grace, so a delete-then-re-download
+  still restores the cached embedding. Daily off the backup's processor-tick hook; aborts on an empty
+  library and skips any table over a 50% orphan ratio. Counts surface via `GET /api/admin/review`
+  `orphanRows` → an Admin panel row (hidden at zero). →
+  [docs/cache-invalidation.md](docs/cache-invalidation.md)
 - **Cache-invalidation on library mutations (issue #237 audit)**: every `LibraryApiService` write
   whose server handler mutates `library_artists`/`library_genres` must
   `tap(() => invalidateLibraryReads())` on success or the cached Artists grid / Genres tab replays

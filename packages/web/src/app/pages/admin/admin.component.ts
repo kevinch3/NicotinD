@@ -159,6 +159,8 @@ export class AdminComponent implements OnInit, OnDestroy {
   readonly untracked = this.reviewSvc.untracked;
   readonly incompleteJobsCount = this.reviewSvc.incompleteJobsCount;
   readonly untrackedCount = this.reviewSvc.untrackedCount;
+  readonly orphanRows = this.reviewSvc.orphanRows;
+  readonly orphanRowCount = this.reviewSvc.orphanRowCount;
   readonly analysis = this.reviewSvc.analysis;
 
   private logEventSource: EventSource | null = null;

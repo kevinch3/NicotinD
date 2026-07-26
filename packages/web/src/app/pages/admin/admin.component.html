@@ -254,6 +254,33 @@
             }
           </div>
 
+          <!-- Maintenance: orphaned side-table rows (issue #259). Reported, not
+               actionable: a daily pass marks orphans and deletes them only after
+               a 30-day grace, so a deleted-then-re-downloaded track keeps its
+               cached embedding. Shown so an admin can see the prune keeping up. -->
+          @if (orphanRowCount() > 0) {
+            <div class="flex flex-col gap-1 mb-8" data-testid="orphan-rows-panel">
+              <p class="text-xs text-theme-secondary">
+                {{ orphanRowCount() }} orphaned side-table
+                {{ orphanRowCount() === 1 ? 'row' : 'rows' }}
+                <span class="text-theme-muted"
+                  >— regenerable analysis data whose track is gone; pruned automatically after 30
+                  days.</span
+                >
+              </p>
+              <ul class="text-xs text-theme-muted flex flex-col gap-0.5" data-testid="orphan-rows-list">
+                @for (t of orphanRows(); track t.table) {
+                  @if (t.orphans > 0) {
+                    <li>
+                      <span class="text-theme-secondary">{{ t.table }}</span>
+                      — {{ t.orphans }} of {{ t.rows }}
+                    </li>
+                  }
+                }
+              </ul>
+            </div>
+          }
+
           <!-- Maintenance: portable config export/import (issue #221). -->
           <div class="flex flex-col gap-2 mb-8" data-testid="config-panel">
             <div class="flex items-center gap-3 flex-wrap">

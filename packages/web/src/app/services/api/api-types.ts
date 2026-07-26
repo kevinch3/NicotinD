@@ -677,11 +677,23 @@ export interface ServiceReview {
   processing: ProcessingSummary | null;
   incompleteJobsCount: number;
   untrackedCount: number;
+  /**
+   * Per-song side-table rows whose owning song is gone (issue #259). Reported
+   * so an admin can see whether the daily prune is keeping up.
+   */
+  orphanRows: OrphanCount[];
   auditTail: AuditEntry[];
   incompleteJobs: IncompleteAlbumJob[];
   untracked: UntrackedDownload[];
   /** Human-readable sub-fetch errors the snapshot degraded around. */
   errors: string[];
+}
+
+/** One side table's row/orphan tally (issue #259). */
+export interface OrphanCount {
+  table: string;
+  rows: number;
+  orphans: number;
 }
 
 export interface LibraryFragmentReport {
