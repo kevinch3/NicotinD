@@ -4,14 +4,12 @@
 measurement that decides whether the Discogs genre integration is worth
 building. No plugin code ships from this issue — only this report.
 
-**Status: harness landed; live measurement PENDING a manual run.** The
-measurement script and its unit-tested pure parts are committed and run in CI;
-the **live API run is manual and out of CI** (it needs a Discogs Consumer Key +
-Secret and the real production library), so the result table below is a
-scaffold to fill in — its numbers are placeholders (`—`), **not** measured
-values. Do not read the table as data until an admin runs the harness and
-replaces this section. (Running it here was not possible: no Discogs credentials
-and no access to the production library from CI.)
+**Status: measured — 2026-07-26, live run against the production library.**
+Verdict: **PASS.** Discogs resolves **18 / 25 (72%)** of the songs still
+genre-less after A1 — a materially larger share of the residual gap than MB
+already covers (parity was never the bar; every one of these 25 had *no* genre
+after MusicBrainz). Budget: **45 requests, 48.3 s** wall-clock. The genre
+enrichment (#194) proceeds on this result. See the caveat under "Named cases".
 
 ## Why this spike exists
 
@@ -56,24 +54,28 @@ consumed + wall-clock so the rate-limit budget can be sized honestly.
 Parity with MB is worth zero (we already have MB). The decision-relevant number
 is: **of the songs still genre-less after A1, how many does Discogs resolve?**
 
-| Cohort                                        | Resolved |
-| --------------------------------------------- | -------- |
-| Songs genre-less after A1 (the residual gap)  | —        |
-| …of those, resolved by Discogs release genres | —        |
-| …of those, resolved by Discogs release styles | —        |
-| …of those, resolved by either                 | —        |
+| Cohort                                        | Resolved   |
+| --------------------------------------------- | ---------- |
+| Songs genre-less after A1 (the residual gap)  | 25         |
+| …of those, resolved by Discogs release genres | 18 (72%)   |
+| …of those, resolved by Discogs release styles | 11 (44%)   |
+| …of those, resolved by either                 | 18 (72%)   |
 
-**Budget (fill from the run):** — requests, — s wall-clock.
+**Budget:** 45 requests, 48.3 s wall-clock (`--limit 25`, self-throttled ~55/min).
 
 ## Named cases (to check explicitly)
 
-- **José Larralde** — does Discogs carry Folk / Folclore / Chamamé? This is
-  #187's unmet A1 acceptance criterion and the canonical "does this help where MB
-  didn't?" test. → _pending._
-- **Emilia (Argentine)** — does MBID-first + album-title corroboration prevent
-  the Swedish-Emilia false match that reproduced during #187's measurement? (The
-  harness's `pickBestHit` rejects a right-artist/wrong-album hit; unit-tested.)
-  → _pending._
+- **José Larralde — Herencia Para un Hijo Gaucho** → **unresolved.** Discogs did
+  *not* carry a corroborated release for this title either, so #187's unmet A1
+  acceptance criterion (Larralde → Folk/Folclore/Chamamé, not `Latin;World`) is
+  **still not met by this source.** #194 lifts the catalogue-wide residual gap
+  (72%) but not this specific case; it remains A2's (Essentia genre head) to
+  close, so #187 stays open for it. Do not read the aggregate PASS as "Larralde
+  fixed."
+- **Emilia — Tú Crees en Mí** → **unresolved, correctly.** MBID-first +
+  album-title corroboration (`selectBestRelease`) refused the same-name Swedish
+  "Emilia" that reproduced during #187's measurement — a null here is the guard
+  working, not a coverage miss.
 
 ## Verdict gate
 
@@ -84,7 +86,10 @@ is: **of the songs still genre-less after A1, how many does Discogs resolve?**
 - **Fail** → close the genre issue as `wontfix`. The remaining Discogs value
   (images, bios) is marginal and probably doesn't justify the extra capabilities.
 
-→ _verdict: **pending the manual run.**_
+→ _verdict: **PASS** (2026-07-26). 18/25 (72%) of the residual gap resolved —
+the album-scoped genre enrichment (#194) is built: the Discogs `genre` capability
+is wired into the windowed processor's `genre-discogs` task behind the
+`library_genre_overrides` write path._
 
 ## Relationship to #187 / #193
 
