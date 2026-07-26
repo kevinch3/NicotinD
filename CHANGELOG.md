@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.272](https://github.com/kevinch3/NicotinD/compare/v0.1.271...v0.1.272) (2026-07-26)
+
+### Bug Fixes
+
+* **player:** bound the false-ended recovery loop + salvage [#243](https://github.com/kevinch3/NicotinD/issues/243)/[#244](https://github.com/kevinch3/NicotinD/issues/244) deltas ([245aa4e](https://github.com/kevinch3/NicotinD/commit/245aa4e47f30b1a75496b586173a600dd1aef670)), references [#221](https://github.com/kevinch3/NicotinD/issues/221) [#224](https://github.com/kevinch3/NicotinD/issues/224) [#233](https://github.com/kevinch3/NicotinD/issues/233) [#234](https://github.com/kevinch3/NicotinD/issues/234) [#233](https://github.com/kevinch3/NicotinD/issues/233) [#224](https://github.com/kevinch3/NicotinD/issues/224)
 ## [0.1.271](https://github.com/kevinch3/NicotinD/compare/v0.1.270...v0.1.271) (2026-07-26)
 
 ### Bug Fixes
