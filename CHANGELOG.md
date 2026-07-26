@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.273](https://github.com/kevinch3/NicotinD/compare/v0.1.272...v0.1.273) (2026-07-26)
+
+### Bug Fixes
+
+* **test:** type-check the web specs and repair 30 accumulated type errors ([c65d2ac](https://github.com/kevinch3/NicotinD/commit/c65d2acce0bbabd1708d9be71db5507fd3527429))
 ## [0.1.272](https://github.com/kevinch3/NicotinD/compare/v0.1.271...v0.1.272) (2026-07-26)
 
 ### Bug Fixes
