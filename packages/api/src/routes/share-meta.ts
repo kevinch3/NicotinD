@@ -23,7 +23,7 @@ import { mintShareJwt } from './share.js';
  */
 
 interface ShareTokenRow {
-  resource_type: 'playlist' | 'album';
+  resource_type: 'playlist' | 'album' | 'artist';
   resource_id: string;
   created_by: string;
   expires_at: number | null;
@@ -32,11 +32,32 @@ interface ShareTokenRow {
 export interface ShareMeta {
   title: string;
   description: string;
-  type: 'music.album' | 'music.playlist';
-  /** Cover/song/album id for `/api/cover/<id>`, or null when there's no art. */
+  // OG has no `music.artist` — `profile` is the closest standard type for an
+  // artist share (issue #229).
+  type: 'music.album' | 'music.playlist' | 'profile';
+  /** Cover/song/album/artist id for `/api/cover/<id>`, or null when there's no art. */
   coverId: string | null;
   /** JWT subject used to mint the read-only cover token. */
   creatorSub: string;
+}
+
+/**
+ * Flatten an artist bio to a short, plain-text OG/Twitter description. The stored
+ * bio may carry Discogs BBCode (`[a=Name]`, `[b]…[/b]`, bare URLs) — crawlers show
+ * `og:description` verbatim, so strip the markup and clamp the length. This is the
+ * server-side, dependency-free cousin of the web `formatArtistBio`; it only needs
+ * to be presentable, not a faithful re-render.
+ */
+export function bioToShareDescription(bio: string | null, maxLen = 180): string {
+  if (!bio) return 'Artist';
+  const stripped = bio
+    .replace(/\[[^\]]*\]/g, ' ') // drop every [..] BBCode tag (named + numeric)
+    .replace(/https?:\/\/\S+/g, ' ') // drop bare URLs
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!stripped) return 'Artist';
+  if (stripped.length <= maxLen) return stripped;
+  return stripped.slice(0, maxLen - 1).trimEnd() + '…';
 }
 
 /** Escape a string for safe interpolation into an HTML attribute value. */
@@ -111,6 +132,28 @@ export function publicOrigin(headers: Headers, requestUrl: string): string {
 
 /** Resolve a share token row to display metadata (side-effect free). */
 export function resolveShareMeta(db: Database, row: ShareTokenRow): ShareMeta | null {
+  if (row.resource_type === 'artist') {
+    const artist = db
+      .query<{ name: string }, [string]>('SELECT name FROM library_artists WHERE id = ?')
+      .get(row.resource_id);
+    if (!artist) return null;
+    const meta = db
+      .query<{ bio: string | null }, [string]>(
+        'SELECT bio FROM library_artist_meta WHERE artist_id = ?',
+      )
+      .get(row.resource_id);
+    return {
+      title: artist.name,
+      description: bioToShareDescription(meta?.bio ?? null),
+      type: 'profile',
+      // Cover route is keyed on the artist id; it 404s to the placeholder when
+      // there's no real portrait (no album-cover fallback, by design) — the
+      // crawler then just gets a card with no image, handled downstream.
+      coverId: row.resource_id,
+      creatorSub: row.created_by,
+    };
+  }
+
   if (row.resource_type === 'album') {
     const album = db
       .query<{ name: string; artist: string | null }, [string]>(

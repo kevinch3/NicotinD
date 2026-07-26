@@ -117,8 +117,8 @@
         <p class="text-theme-muted text-sm mt-0.5">
           {{ albums().length }} album{{ albums().length !== 1 ? 's' : '' }}
         </p>
-        @if (albums().length > 0) {
-          <div class="mt-3 flex items-center gap-2">
+        <div class="mt-3 flex items-center gap-2">
+          @if (albums().length > 0) {
             <button
               (click)="playAll()"
               [disabled]="playingAll()"
@@ -128,8 +128,19 @@
             >
               <app-icon name="play" />
             </button>
-          </div>
-        }
+          }
+          <button
+            (click)="shareArtist()"
+            data-testid="artist-share"
+            [attr.aria-label]="shareCopied() ? 'Link copied' : 'Share artist'"
+            [attr.title]="shareCopied() ? 'Link copied!' : 'Share'"
+            [class]="'w-10 h-10 flex items-center justify-center rounded-lg transition ' + (shareCopied()
+              ? 'status-done'
+              : 'bg-theme-surface-2 text-theme-muted hover:bg-theme-hover')"
+          >
+            <app-icon name="share" />
+          </button>
+        </div>
       </div>
     </div>
 

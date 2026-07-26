@@ -8,13 +8,31 @@ import {
   viewChild,
   ElementRef,
 } from '@angular/core';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Meta, Title } from '@angular/platform-browser';
 import { firstValueFrom } from 'rxjs';
-import { ShareSessionService } from '../../services/share-session.service';
+import { ShareSessionService, type ShareResourceType } from '../../services/share-session.service';
 import { ServerConfigService } from '../../services/server-config.service';
-import { mapSharedAlbum, mapSharedPlaylist, type ShareTrack } from './share-view.lib';
+import { AuthService } from '../../services/auth.service';
+import {
+  mapSharedAlbum,
+  mapSharedArtist,
+  mapSharedPlaylist,
+  type ShareTrack,
+} from './share-view.lib';
+
+/** Real in-app route for a shared resource (issue #230 logged-in redirect). */
+export function inAppShareRoute(type: ShareResourceType, id: string): string {
+  switch (type) {
+    case 'album':
+      return `/library/albums/${id}`;
+    case 'artist':
+      return `/library/artists/${id}`;
+    default:
+      return `/library/playlists/${id}`;
+  }
+}
 
 type PageState = 'loading' | 'active' | 'expired' | 'error';
 
@@ -25,17 +43,20 @@ type PageState = 'loading' | 'active' | 'expired' | 'error';
 })
 export class ShareViewComponent implements OnInit, OnDestroy {
   private route = inject(ActivatedRoute);
+  private router = inject(Router);
   private http = inject(HttpClient);
   private meta = inject(Meta);
   private titleService = inject(Title);
   private shareSession = inject(ShareSessionService);
   private server = inject(ServerConfigService);
+  private auth = inject(AuthService);
 
   readonly audioRef = viewChild<ElementRef<HTMLAudioElement>>('audioEl');
 
   readonly state = signal<PageState>('loading');
   readonly resourceName = signal('');
   readonly resourceSubtitle = signal('');
+  readonly resourceBio = signal('');
   readonly coverArtId = signal<string | null>(null);
   readonly tracks = signal<ShareTrack[]>([]);
   readonly currentIndex = signal(0);
@@ -61,6 +82,23 @@ export class ShareViewComponent implements OnInit, OnDestroy {
 
   async ngOnInit(): Promise<void> {
     this.shareToken = this.route.snapshot.paramMap.get('token') ?? '';
+
+    // Issue #230: an already-logged-in user should get the real in-app page under
+    // their own full session — not the time-boxed public guest view (which would
+    // also silently consume the one-time public token). Resolve the token → its
+    // resource WITHOUT activating the public window, then redirect into the app.
+    if (this.auth.isAuthenticated()) {
+      try {
+        const { resourceType, resourceId } = await this.shareSession.resolve(this.shareToken);
+        await this.router.navigateByUrl(inAppShareRoute(resourceType, resourceId));
+        return;
+      } catch {
+        // Token unknown/removed, or the authenticated resolve failed — fall
+        // through to the public activate path so the user still sees the
+        // share's own loading/error/expired states rather than a blank page.
+      }
+    }
+
     try {
       const { jwt, resourceType, resourceId } = await this.shareSession.activate(this.shareToken);
       const headers = new HttpHeaders({ Authorization: `Bearer ${jwt}` });
@@ -71,6 +109,14 @@ export class ShareViewComponent implements OnInit, OnDestroy {
           this.http.get<any>(`/api/library/albums/${resourceId}`, { headers }),
         );
         view = mapSharedAlbum(album);
+      } else if (resourceType === 'artist') {
+        const [artistRes, songs] = await Promise.all([
+          firstValueFrom(this.http.get<any>(`/api/library/artists/${resourceId}`, { headers })),
+          firstValueFrom(
+            this.http.get<any[]>(`/api/library/artists/${resourceId}/songs?limit=60`, { headers }),
+          ),
+        ]);
+        view = mapSharedArtist(artistRes.artist ?? artistRes, songs ?? []);
       } else {
         const pl = await firstValueFrom(
           this.http.get<any>(`/api/playlists/${resourceId}`, { headers }),
@@ -79,6 +125,7 @@ export class ShareViewComponent implements OnInit, OnDestroy {
       }
       this.resourceName.set(view.name);
       this.resourceSubtitle.set(view.subtitle);
+      this.resourceBio.set(view.bio ?? '');
       this.coverArtId.set(view.coverId);
       this.tracks.set(view.tracks);
       this.setOgTags(view.name, view.ogDescription, jwt, view.coverId ?? undefined, view.ogType);

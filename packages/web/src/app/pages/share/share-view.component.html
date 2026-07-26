@@ -43,9 +43,16 @@
         <div>
           <h1 class="text-2xl font-bold text-theme-primary">{{ resourceName() }}</h1>
           <p class="text-theme-muted mt-1 text-sm">{{ resourceSubtitle() }}</p>
-          <p class="text-theme-muted mt-1 text-xs">{{ tracks().length }} tracks</p>
+          @if (tracks().length) {
+            <p class="text-theme-muted mt-1 text-xs">{{ tracks().length }} tracks</p>
+          }
         </div>
       </div>
+
+      <!-- Artist bio (issue #229) -->
+      @if (resourceBio()) {
+        <p class="text-theme-secondary text-sm leading-relaxed mb-8 whitespace-pre-line">{{ resourceBio() }}</p>
+      }
 
       <!-- Track list -->
       <div class="divide-y divide-theme-border">

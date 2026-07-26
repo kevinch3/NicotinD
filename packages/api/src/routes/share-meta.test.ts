@@ -11,6 +11,7 @@ import { applySchema } from '../db.js';
 import {
   escapeHtmlAttr,
   buildShareMetaTags,
+  bioToShareDescription,
   injectShareMeta,
   publicOrigin,
   resolveShareMeta,
@@ -55,6 +56,40 @@ function seedPlaylist(): string {
   );
   return plId;
 }
+
+function seedArtist(bio: string | null): string {
+  const id = 'art-1';
+  db.run(
+    `INSERT INTO library_artists (id, name, album_count, synced_at) VALUES (?, 'Daft Punk', 2, 1)`,
+    [id],
+  );
+  if (bio !== null) {
+    db.run(
+      `INSERT INTO library_artist_meta (artist_id, bio, urls, fetched_at, source) VALUES (?, ?, '[]', 1, 'discogs')`,
+      [id, bio],
+    );
+  }
+  return id;
+}
+
+describe('bioToShareDescription', () => {
+  it('falls back to "Artist" for a null/empty bio', () => {
+    expect(bioToShareDescription(null)).toBe('Artist');
+    expect(bioToShareDescription('   ')).toBe('Artist');
+  });
+
+  it('strips BBCode + bare URLs and collapses whitespace', () => {
+    expect(bioToShareDescription('French duo [a=Thomas].  See https://ex.com now')).toBe(
+      'French duo . See now',
+    );
+  });
+
+  it('clamps long bios with an ellipsis', () => {
+    const out = bioToShareDescription('x'.repeat(400), 50);
+    expect(out.length).toBe(50);
+    expect(out.endsWith('…')).toBe(true);
+  });
+});
 
 describe('escapeHtmlAttr', () => {
   it('escapes quotes and angle brackets', () => {
@@ -144,11 +179,52 @@ describe('resolveShareMeta', () => {
     expect(meta?.type).toBe('music.playlist');
   });
 
+  it('resolves an artist with a bio excerpt as the description', () => {
+    const id = seedArtist('French electronic duo from Paris.');
+    const meta = resolveShareMeta(db, {
+      resource_type: 'artist',
+      resource_id: id,
+      created_by: 'u1',
+      expires_at: null,
+    });
+    expect(meta).toEqual({
+      title: 'Daft Punk',
+      description: 'French electronic duo from Paris.',
+      type: 'profile',
+      coverId: id,
+      creatorSub: 'u1',
+    });
+  });
+
+  it('resolves an artist with no bio to a generic description', () => {
+    const id = seedArtist(null);
+    const meta = resolveShareMeta(db, {
+      resource_type: 'artist',
+      resource_id: id,
+      created_by: 'u1',
+      expires_at: null,
+    });
+    expect(meta?.description).toBe('Artist');
+    expect(meta?.type).toBe('profile');
+    expect(meta?.coverId).toBe(id);
+  });
+
   it('returns null for a missing resource', () => {
     expect(
       resolveShareMeta(db, {
         resource_type: 'album',
         resource_id: 'nope',
+        created_by: 'u1',
+        expires_at: null,
+      }),
+    ).toBeNull();
+  });
+
+  it('returns null for a missing artist', () => {
+    expect(
+      resolveShareMeta(db, {
+        resource_type: 'artist',
+        resource_id: 'ghost',
         created_by: 'u1',
         expires_at: null,
       }),

@@ -527,7 +527,7 @@ export function applySchema(db: Database): void {
   db.run(`
     CREATE TABLE IF NOT EXISTS share_tokens (
       token             TEXT    PRIMARY KEY,
-      resource_type     TEXT    NOT NULL CHECK (resource_type IN ('playlist', 'album')),
+      resource_type     TEXT    NOT NULL CHECK (resource_type IN ('playlist', 'album', 'artist')),
       resource_id       TEXT    NOT NULL,
       created_by        TEXT    NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       created_at        INTEGER NOT NULL,
@@ -535,6 +535,33 @@ export function applySchema(db: Database): void {
       expires_at        INTEGER
     )
   `);
+  // Issue #229: 'artist' joined the shareable resource set. Legacy DBs carry the
+  // old two-value CHECK constraint which would reject an artist share row, so
+  // rebuild the table (same recreate-to-drop-a-CHECK pattern as acquire_jobs above).
+  const shareTokensSql = db
+    .query<{ sql: string }, []>(
+      `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'share_tokens'`,
+    )
+    .get();
+  if (shareTokensSql && !shareTokensSql.sql.includes("'artist'")) {
+    db.run('ALTER TABLE share_tokens RENAME TO share_tokens_old');
+    db.run(`
+      CREATE TABLE share_tokens (
+        token             TEXT    PRIMARY KEY,
+        resource_type     TEXT    NOT NULL CHECK (resource_type IN ('playlist', 'album', 'artist')),
+        resource_id       TEXT    NOT NULL,
+        created_by        TEXT    NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at        INTEGER NOT NULL,
+        first_accessed_at INTEGER,
+        expires_at        INTEGER
+      )
+    `);
+    db.run(
+      `INSERT INTO share_tokens (token, resource_type, resource_id, created_by, created_at, first_accessed_at, expires_at)
+       SELECT token, resource_type, resource_id, created_by, created_at, first_accessed_at, expires_at FROM share_tokens_old`,
+    );
+    db.run('DROP TABLE share_tokens_old');
+  }
 
   // Device pairing (QR link): short-lived single-use tokens minted by a logged-in
   // user and exchanged (unauthenticated claim) for a normal JWT bound to a

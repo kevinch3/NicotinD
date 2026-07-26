@@ -5,15 +5,19 @@ import type { MiddlewareHandler } from 'hono';
 import type { AuthEnv } from '../middleware/auth.js';
 import { getDatabase } from '../db.js';
 
+export type ShareResourceType = 'playlist' | 'album' | 'artist';
+
 interface ShareTokenRow {
   token: string;
-  resource_type: 'playlist' | 'album';
+  resource_type: ShareResourceType;
   resource_id: string;
   created_by: string;
   created_at: number;
   first_accessed_at: number | null;
   expires_at: number | null;
 }
+
+const SHAREABLE_TYPES: ReadonlySet<string> = new Set(['playlist', 'album', 'artist']);
 
 export async function mintShareJwt(
   creatorId: string,
@@ -39,8 +43,8 @@ export function shareRoutes(jwtSecret: string, auth: MiddlewareHandler) {
     if (!body.resourceType || !body.resourceId) {
       return c.json({ error: 'resourceType and resourceId are required' }, 400);
     }
-    if (body.resourceType !== 'playlist' && body.resourceType !== 'album') {
-      return c.json({ error: 'resourceType must be playlist or album' }, 400);
+    if (!SHAREABLE_TYPES.has(body.resourceType)) {
+      return c.json({ error: 'resourceType must be playlist, album or artist' }, 400);
     }
 
     const user = c.get('user');
@@ -87,6 +91,31 @@ export function shareRoutes(jwtSecret: string, auth: MiddlewareHandler) {
     const jwt = await mintShareJwt(row.created_by, expiresAtMs, jwtSecret);
 
     return c.json({ jwt, resourceType: row.resource_type, resourceId: row.resource_id });
+  });
+
+  // GET /api/share/:token/resource — auth-gated, side-effect free (issue #230).
+  // An already-logged-in user opening a share link should land on the real
+  // in-app page under their *own* full session, not burn the one-time public
+  // token and get the restricted 5-minute guest view. The web client checks its
+  // own auth first and, when logged in, calls this to map token → resource
+  // without ever calling `activate` (so `first_accessed_at`/the public clock is
+  // never touched) and redirects into the app. Auth-gating it means only a real
+  // session can resolve-without-activating — an anonymous visitor still goes
+  // through the public `activate` path. Access here is governed by the caller's
+  // own session, not the share's 5-minute window, so an expired public window
+  // does not block a logged-in user from opening the resource they can already
+  // see; an unknown token still 404s.
+  app.get('/:token/resource', auth, (c) => {
+    const row = getDatabase()
+      .query<
+        Pick<ShareTokenRow, 'resource_type' | 'resource_id'>,
+        [string]
+      >('SELECT resource_type, resource_id FROM share_tokens WHERE token = ?')
+      .get(c.req.param('token'));
+
+    if (!row) return c.json({ error: 'Not found' }, 404);
+
+    return c.json({ resourceType: row.resource_type, resourceId: row.resource_id });
   });
 
   return app;
