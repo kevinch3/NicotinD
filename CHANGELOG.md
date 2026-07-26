@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.263](https://github.com/kevinch3/NicotinD/compare/v0.1.262...v0.1.263) (2026-07-26)
+
+### Features
+
+* **db:** generalized library_external_ids cache for non-MB provider ids ([#194](https://github.com/kevinch3/NicotinD/issues/194)) ([9266132](https://github.com/kevinch3/NicotinD/commit/9266132a12e129e519ba1d364a78bdc631476216))
+* **genre:** album-scoped Discogs genre enrichment task (closes [#194](https://github.com/kevinch3/NicotinD/issues/194)) ([82517b9](https://github.com/kevinch3/NicotinD/commit/82517b92cbaa443cdee1156ca097ed371b3bae9d)), references [#187](https://github.com/kevinch3/NicotinD/issues/187)
+* **genre:** map Discogs top-level vocab before splitGenres ([#194](https://github.com/kevinch3/NicotinD/issues/194)) ([e81039c](https://github.com/kevinch3/NicotinD/commit/e81039cf525449486e6164419552d01a0c1f59d4))
+
+### Bug Fixes
+
+* **discogs:** map top-level genres before returning them ([#194](https://github.com/kevinch3/NicotinD/issues/194)) ([e4c3783](https://github.com/kevinch3/NicotinD/commit/e4c37831b32673ecadc8abf2f0b3be9026674a17))
+* **scripts:** measure-discogs-coverage opens nicotind.db not library.db ([bf094d0](https://github.com/kevinch3/NicotinD/commit/bf094d0cff28b8c80e948fa02af7c80c88a93f10)), references [#191](https://github.com/kevinch3/NicotinD/issues/191) [#191](https://github.com/kevinch3/NicotinD/issues/191)
 ## [0.1.262](https://github.com/kevinch3/NicotinD/compare/v0.1.261...v0.1.262) (2026-07-26)
 
 ### Bug Fixes
