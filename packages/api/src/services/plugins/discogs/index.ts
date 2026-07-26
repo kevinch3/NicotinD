@@ -11,6 +11,7 @@ import type {
   ArtistInfoResult,
 } from '@nicotind/core';
 import { DiscogsClient, type DiscogsClientDeps } from './client.js';
+import { mapDiscogsGenres } from '../../discogs-genre-vocab.js';
 import {
   buildSearchParams,
   selectBestRelease,
@@ -233,9 +234,14 @@ export class DiscogsPlugin implements Plugin {
       ref.kind === 'master' ? await client.getMaster(ref.id) : await client.getRelease(ref.id);
     if (!entity) return [];
     const { genres, styles } = mapReleaseGenres(entity);
+    // Map Discogs' closed top-level genres to canonical, separator-free genres
+    // before they leave the plugin (#194) — otherwise a comma-/slash-bearing
+    // entry (`Folk, World, & Country`, `Funk / Soul`) is later shattered by
+    // splitGenres into polluting fragments. Styles are open-ended and pass
+    // through untouched (the library_genre_aliases path handles those).
     const combined: string[] = [];
     const seen = new Set<string>();
-    for (const g of [...genres, ...styles]) {
+    for (const g of [...mapDiscogsGenres(genres), ...styles]) {
       const k = g.toLowerCase();
       if (seen.has(k)) continue;
       seen.add(k);
