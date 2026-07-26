@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.270](https://github.com/kevinch3/NicotinD/compare/v0.1.269...v0.1.270) (2026-07-26)
+
+### Features
+
+* **admin:** expose the compute throttle + analysis sidecar status ([#224](https://github.com/kevinch3/NicotinD/issues/224)) ([6bea80e](https://github.com/kevinch3/NicotinD/commit/6bea80e7fb92e99d6fa51c4a1cf6572969470eb8))
+* **genre:** radar visualization of an artist's genre spread ([#222](https://github.com/kevinch3/NicotinD/issues/222)) ([90e9c1d](https://github.com/kevinch3/NicotinD/commit/90e9c1d02c7d4f216257185c76957e7a87cdd96c))
+
+### Bug Fixes
+
+* **genre-radar:** make slices an optional input, not a required one ([0861995](https://github.com/kevinch3/NicotinD/commit/0861995ada3de60042b7c25b7df8e243a200bab7))
+* **test:** mock the genre-distribution fetch in the modal spec ([ff0c69f](https://github.com/kevinch3/NicotinD/commit/ff0c69f8845cdd348e6dd55945ed048a2e82fd0f))
 ## [0.1.269](https://github.com/kevinch3/NicotinD/compare/v0.1.268...v0.1.269) (2026-07-26)
 
 ### Features
