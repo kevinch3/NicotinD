@@ -9,6 +9,8 @@ import type {
   ProcessingStatus,
   ProcessingTaskId,
   ArtistInfoResult,
+  GenreQuery,
+  GenreResult,
 } from '@nicotind/core';
 import { getProcessingSettings } from './processing-settings.js';
 import { isWithinWindow } from './processing-window.js';
@@ -81,6 +83,8 @@ export interface LibraryProcessingDeps {
   lookupArtistImageSpotify?: ((name: string) => Promise<string | null>) | null;
   /** Discogs (or future) artist-info lookup for the artist-info task, or null when unconfigured. */
   lookupArtistInfo?: ((mbid: string) => Promise<ArtistInfoResult | null>) | null;
+  /** Discogs (or future) release-genre lookup for the genre-discogs task (#194), or null. */
+  lookupGenreForRelease?: ((query: GenreQuery) => Promise<GenreResult | null>) | null;
   /** Analysis-sidecar client for the audio-features task, or null when unconfigured. */
   audioFeaturesClient?: AudioFeaturesClient | null;
   /** Poll interval. Defaults to 60s. */
@@ -116,6 +120,9 @@ export class LibraryProcessingService extends EventEmitter {
   private readonly dataDir: string;
   private readonly lookupArtistImageSpotify: ((name: string) => Promise<string | null>) | null;
   private readonly lookupArtistInfo: ((mbid: string) => Promise<ArtistInfoResult | null>) | null;
+  private readonly lookupGenreForRelease:
+    | ((query: GenreQuery) => Promise<GenreResult | null>)
+    | null;
   private readonly audioFeaturesClient: AudioFeaturesClient | null;
   private readonly logPath: string;
   private readonly intervalMs: number;
@@ -141,6 +148,7 @@ export class LibraryProcessingService extends EventEmitter {
     this.dataDir = deps.dataDir;
     this.lookupArtistImageSpotify = deps.lookupArtistImageSpotify ?? null;
     this.lookupArtistInfo = deps.lookupArtistInfo ?? null;
+    this.lookupGenreForRelease = deps.lookupGenreForRelease ?? null;
     this.audioFeaturesClient = deps.audioFeaturesClient ?? null;
     this.logPath = join(deps.dataDir, 'library-processing.log');
     this.intervalMs = deps.intervalMs ?? 60_000;
@@ -155,6 +163,7 @@ export class LibraryProcessingService extends EventEmitter {
           concurrency: settings.concurrency,
           lookupArtistImageSpotify: this.lookupArtistImageSpotify,
           lookupArtistInfo: this.lookupArtistInfo,
+          lookupGenreForRelease: this.lookupGenreForRelease,
           audioFeaturesClient: this.audioFeaturesClient,
           dataDir: this.dataDir,
         }));
@@ -569,6 +578,7 @@ export class LibraryProcessingService extends EventEmitter {
         'artist-identity': 0,
         licence: 0,
         'genre-audio': 0,
+        'genre-discogs': 0,
       },
       availability: {
         bpm: 'unknown',
@@ -581,6 +591,7 @@ export class LibraryProcessingService extends EventEmitter {
         'artist-identity': 'unknown',
         licence: 'unknown',
         'genre-audio': 'unknown',
+        'genre-discogs': 'unknown',
       },
       skipped: 0,
       quarantined: 0,

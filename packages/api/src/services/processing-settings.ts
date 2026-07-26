@@ -40,6 +40,11 @@ export const DEFAULT_PROCESSING_SETTINGS: ProcessingSettings = {
     // `genre` task above has nothing; confidence-gated, never a gate itself
     // (a weak classifier must never strand a fresh download).
     'genre-audio': true,
+    // Album-scoped Discogs genre enrichment (issue #194) — runs over songs the
+    // Lidarr `genre` task left genre-less, writes gated library_genre_overrides.
+    // Off by default (needs the consent-gated Discogs extension configured) and
+    // never a gate (a metadata source must not strand a fresh download).
+    'genre-discogs': false,
   },
   // Steps that must finish before a fresh download is added to the library.
   // Fast, offline, no-sidecar analysis (bpm/key/energy) plus genre are gated by

@@ -25,8 +25,9 @@ import { albumGroupKey, normalizeArtistForGrouping } from './album-grouping.js';
 import { genreKey } from './genre-split.js';
 
 export type GenreOverrideScope = 'artist' | 'album' | 'song';
-/** 'essentia' is reserved for issue #187 task A2; nothing writes it yet. */
-export type GenreOverrideSource = 'musicbrainz' | 'lidarr' | 'user' | 'essentia';
+/** 'essentia' is reserved for issue #187 task A2; nothing writes it yet.
+ *  'discogs' is the album-scoped genre enrichment from the Discogs plugin (#194). */
+export type GenreOverrideSource = 'musicbrainz' | 'lidarr' | 'user' | 'essentia' | 'discogs';
 export type GenreOverrideStatus = 'applied' | 'pending' | 'rejected';
 
 export interface GenreOverrideRow {

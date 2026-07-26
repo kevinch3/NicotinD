@@ -56,6 +56,7 @@ function fakeCtx(opts: { bpmResult?: number | null; sidecar?: boolean } = {}) {
     lookupGenre: async () => 'Rock',
     lookupArtistImageSpotify: async () => null,
     lookupArtistInfo: null,
+    lookupGenreForRelease: null,
     resolveArtistIdentity: null,
     lookupLicence: async () => null,
     fileExists: () => true,
