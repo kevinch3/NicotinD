@@ -37,6 +37,18 @@ function formatTime(s: number): string {
 }
 
 /**
+ * Absolute floor (seconds) used by both {@link browserDurationIsAcceptable}
+ * and {@link PlayerComponent.isFalseEnded} when there is no API-known
+ * `track.duration` to compare against (the library scanner writes
+ * `duration: 0` when a file's tags carry no parseable duration — see
+ * `library-scanner.ts` — and the API ships that through as 0/undefined).
+ * Real tracks are essentially never this short, so a sub-floor native
+ * duration is treated as a truncated/corrupt server response rather than a
+ * legitimately tiny track (issue #234).
+ */
+export const FALSE_ENDED_ABSOLUTE_FLOOR_SEC = 3;
+
+/**
  * Frontend duration gate. The API-known `track.duration` (from the library
  * scan / source-file tag metadata) is the reference of truth — a browser
  * reporting a much-smaller `audio.duration` for the same resource usually
@@ -48,15 +60,19 @@ function formatTime(s: number): string {
  *   - `|native − known| <= 5 s` (catches a 200 s browser parse of a 240 s file
  *     — relative check passes, absolute catches it)
  *
- * When the known value is missing (`<= 0`), the gate is open: we trust the
- * browser because we have no reference to compare against.
+ * When the known value is missing (`<= 0`), there's no reference to compare
+ * against, but blindly trusting the browser (the old behavior) let a
+ * corrupt/truncated response for an unscanned-duration track slip past this
+ * gate entirely — issue #234. Fall back to the absolute floor instead.
  */
 export function browserDurationIsAcceptable(
   knownSec: number,
   nativeSec: number,
 ): boolean {
   if (!Number.isFinite(nativeSec) || nativeSec <= 0) return false;
-  if (!Number.isFinite(knownSec) || knownSec <= 0) return true;
+  if (!Number.isFinite(knownSec) || knownSec <= 0) {
+    return nativeSec >= FALSE_ENDED_ABSOLUTE_FLOOR_SEC;
+  }
   const relativeOk = nativeSec >= knownSec * 0.7;
   const absoluteOk = Math.abs(nativeSec - knownSec) <= 5;
   return relativeOk && absoluteOk;
@@ -847,9 +863,15 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
     const d = audio.duration;
     if (!Number.isFinite(t) || !Number.isFinite(d) || d <= 0) return false;
     const known = untracked(() => this.player.currentTrack()?.duration ?? 0);
-    if (known > 0 && t < known * 0.7) return true;
-    if (known > 0 && Math.abs(d - known) > 5 && d < known * 0.9) return true;
-    return false;
+    if (known > 0) {
+      if (t < known * 0.7) return true;
+      if (Math.abs(d - known) > 5 && d < known * 0.9) return true;
+      return false;
+    }
+    // No API-known duration to compare against (issue #234 — a scan that
+    // couldn't read tag duration, or an untagged acquisition). Fall back to
+    // the absolute floor rather than skipping the check entirely.
+    return t < FALSE_ENDED_ABSOLUTE_FLOOR_SEC && d < FALSE_ENDED_ABSOLUTE_FLOOR_SEC;
   }
 
   /** The timer handle for the false-ended recovery fallback (5 s). */

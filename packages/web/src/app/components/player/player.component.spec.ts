@@ -877,12 +877,82 @@ describe('PlayerComponent', () => {
       expect(browserDurationIsAcceptable(240, Number.POSITIVE_INFINITY)).toBe(false);
     });
 
-    it('is open (accepts any positive) when the known duration is missing', () => {
-      // No reference value → trust the browser. The library-scan duration is
-      // usually present, but for a freshly-imported track the API value can
-      // be 0 until the scan lands.
-      expect(browserDurationIsAcceptable(0, 1.8)).toBe(true);
-      expect(browserDurationIsAcceptable(Number.NaN, 1.8)).toBe(true);
+    it('falls back to an absolute floor when the known duration is missing (issue #234)', () => {
+      // No reference value (freshly-scanned track with duration:0, or an
+      // untagged acquisition) — there's no API duration to compare against,
+      // but a sub-floor native duration is still almost certainly a
+      // truncated/corrupt server response, not a legitimately tiny track.
+      // Trusting it blindly (the old behavior) is exactly how issue #234's
+      // "plays 1-2s then advances" bug slipped past every other mitigation.
+      expect(browserDurationIsAcceptable(0, 1.8)).toBe(false);
+      expect(browserDurationIsAcceptable(Number.NaN, 1.8)).toBe(false);
+    });
+
+    it('accepts a native duration at/above the absolute floor when known duration is missing', () => {
+      expect(browserDurationIsAcceptable(0, 5)).toBe(true);
+      expect(browserDurationIsAcceptable(0, 240)).toBe(true);
+    });
+  });
+
+  describe('false-ended recovery without an API-known duration (issue #234)', () => {
+    // The library scanner writes duration:0 when a file's tags carry no
+    // parseable duration; the API then ships track.duration as 0/undefined.
+    // Every existing false-ended defense keys off that value, so without an
+    // absolute-floor fallback a corrupt/truncated transcode for one of these
+    // tracks plays 1-2s, fires `ended`, and silently advances the queue.
+    const unknownDurationTrack: Track = {
+      id: 't1',
+      title: 'Untagged Track',
+      artist: 'Test Artist',
+      // duration intentionally omitted
+    };
+
+    beforeEach(() => {
+      playerService.currentTrack.set(unknownDurationTrack);
+      fixture.detectChanges();
+    });
+
+    it('does not advance the queue when ended fires at 1.8s and the API duration is unknown', () => {
+      Object.defineProperty(fakeAudio, 'duration', { value: 1.8, configurable: true });
+      Object.defineProperty(fakeAudio, 'currentTime', { value: 1.8, configurable: true });
+      playerService.queue.set([TRACK_2]);
+      playerService.isPlaying.set(true);
+
+      fakeAudio.dispatchEvent(new Event('ended'));
+
+      expect(playerService.currentTrack()).toEqual(unknownDurationTrack);
+      expect(playerService.queue()).toEqual([TRACK_2]);
+      expect(playerService.recoveryState()).toBe('awaiting-duration');
+      expect(playerService.buffering()).toBe(true);
+    });
+
+    it('recovers once a real duration arrives, even with no API reference', () => {
+      Object.defineProperty(fakeAudio, 'duration', { value: 1.8, configurable: true });
+      Object.defineProperty(fakeAudio, 'currentTime', { value: 1.8, configurable: true });
+      playerService.isPlaying.set(true);
+      mockPlay.mockClear();
+      fakeAudio.dispatchEvent(new Event('ended'));
+      expect(playerService.recoveryState()).toBe('awaiting-duration');
+
+      Object.defineProperty(fakeAudio, 'duration', { value: 240, configurable: true });
+      fakeAudio.dispatchEvent(new Event('durationchange'));
+
+      expect(playerService.recoveryState()).toBe('normal');
+      expect(playerService.duration()).toBe(240);
+      expect(mockPlay).toHaveBeenCalled();
+    });
+
+    it('does not enter recovery for a legitimately short track ending at/above the floor', () => {
+      // A real 4s track with no scanned duration must still play through
+      // normally — the floor must not misfire on genuinely tiny tracks.
+      Object.defineProperty(fakeAudio, 'duration', { value: 4, configurable: true });
+      Object.defineProperty(fakeAudio, 'currentTime', { value: 4, configurable: true });
+      playerService.queue.set([TRACK_2]);
+
+      fakeAudio.dispatchEvent(new Event('ended'));
+
+      expect(playerService.currentTrack()).toEqual(TRACK_2);
+      expect(playerService.recoveryState()).toBe('normal');
     });
   });
 });

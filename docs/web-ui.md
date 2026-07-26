@@ -214,6 +214,26 @@ helper has its own block covering the AND/OR semantics. e2e: a
 FLAC, and asserts after 5 s of playback that the browser-reported duration
 is still ≥ 25 s and `currentTime > 5`.
 
+**Uncovered path (issue #234): missing API-known duration disabled every guard above.** Both
+`browserDurationIsAcceptable` and `isFalseEnded` key off `track.duration` from
+the API; when it's `0`/missing (the library scanner writes `duration: 0` for
+a file whose tags carry no parseable duration — `library-scanner.ts`, or an
+untagged URL acquisition), the old code treated that as "no reference, trust
+the browser" and skipped both checks entirely. A track in that state hitting
+a genuinely truncated/corrupt transcode played 1-2 s, fired `ended`, and
+advanced the queue exactly like the original bug — none of the mitigations
+above ever engaged, because they all short-circuit on `known <= 0`. Fixed by
+giving both functions an **absolute-floor fallback** (`FALSE_ENDED_ABSOLUTE_FLOOR_SEC`,
+3 s) when there's no known duration to compare against: a sub-floor native
+duration is rejected/flagged regardless, since a real track essentially never
+ends that short. Regression coverage: `browserDurationIsAcceptable` gained
+floor-boundary cases for a missing known duration, and a new
+`false-ended recovery without an API-known duration (issue #234)` block
+exercises the full `onEnded`/recovery flow against a track with no
+`duration` field — asserting the queue does not advance, recovery still
+resolves once a real duration arrives, and a legitimately tiny (≥ 3 s) track
+with no known duration still plays through normally (no false positive).
+
 **Testing `input()`-signal components (JIT vitest limitation)**: the web unit
 suite runs on the JIT/vitest harness (`@angular/compiler`, no ngtsc build
 step), which has no compile-time transform for signal `input()`/
