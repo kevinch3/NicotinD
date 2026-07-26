@@ -2,7 +2,7 @@ import type { Database } from 'bun:sqlite';
 import type { Lidarr, LidarrAlbum, LidarrTrack } from '@nicotind/lidarr-client';
 import { createLogger } from '@nicotind/core';
 import { addArtistFromLookup } from './lidarr-provision.js';
-import { isWholeTokenSubsequence } from './enrichment/tasks.js';
+import { corroboratesLidarrHit } from './lidarr-confidence.js';
 
 const log = createLogger('discography');
 
@@ -133,17 +133,30 @@ export class DiscographyService {
     //
     // A bare "returned name must equal the query" check would RE-BREAK #211/#217,
     // which deliberately widened matching to accept canonical-name drift (library
-    // `Eduardo Miño` → Lidarr `Luis Eduardo Miño Naranjo`). So we reuse the same
-    // two-signal corroboration as `pickMbidHit`: the drift must be a *whole-token
-    // subsequence* (contiguous, in-order — "2" is not one of "2 MinutosTrueno…")
-    // AND the candidate must actually have albums. Both signals, or no provision.
-    const corroborated =
-      normalizeTitle(best.artistName) === normalizeTitle(artistName) ||
-      (isWholeTokenSubsequence(artistName, best.artistName) && (best.albumCount ?? 0) > 0);
+    // `Eduardo Miño` → Lidarr `Luis Eduardo Miño Naranjo`). `corroboratesLidarrHit`
+    // owns that policy — see lidarr-confidence.ts for why it is name-only (the
+    // lookup endpoint ships no albumCount/statistics to corroborate against).
+    if (!corroboratesLidarrHit(artistName, best)) {
+      // Never regress an artist that already resolved. A stale cache entry means we
+      // resolved this artist before (possibly under looser rules, possibly to a
+      // correct-but-name-unguessable canonical like "El Puma Rodríguez" → "José Luis
+      // Rodríguez"). Refusing here would turn a working discography page into a 500,
+      // so an existing link wins over a fresh uncorroborated hit — the guard only
+      // ever blocks *new* provisioning, which is the pollution #212 is about.
+      if (cached?.lidarr_id) {
+        log.warn(
+          { artistName, candidate: best.artistName, lidarrId: cached.lidarr_id },
+          'Uncorroborated Lidarr hit — keeping the existing link',
+        );
+        this.db.run('UPDATE artist_discography_links SET checked_at = ? WHERE artist_id = ?', [
+          Date.now(),
+          artistId,
+        ]);
+        return cached.lidarr_id;
+      }
 
-    if (!corroborated) {
       log.warn(
-        { artistName, candidate: best.artistName, albumCount: best.albumCount },
+        { artistName, candidate: best.artistName },
         'Refusing to provision unconfirmed Lidarr artist',
       );
       throw new Error(`No confident Lidarr match for "${artistName}"`);
