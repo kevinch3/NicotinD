@@ -27,7 +27,15 @@ const RING_FRACTIONS = [0.25, 0.5, 0.75, 1];
   templateUrl: './genre-radar.component.html',
 })
 export class GenreRadarComponent {
-  readonly slices = input.required<GenreSlice[]>();
+  /**
+   * Not `input.required`: the component's contract is "given slices, draw them;
+   * given none, render nothing" (the template's `@if` already handles empty), so
+   * a required input buys nothing and turns an unbound render into a thrown
+   * NG0950 mid-change-detection. The JIT vitest harness doesn't register signal
+   * inputs on a nested imported component (NG0303), so a required input there
+   * crashes the *host* component's whole spec — which is exactly what it did.
+   */
+  readonly slices = input<GenreSlice[]>([]);
   /** Denominator behind every weight, shown so a small sample is obvious. */
   readonly trackCount = input<number>(0);
   /** Distinct genres before the "Other" fold, to caption what was hidden. */
