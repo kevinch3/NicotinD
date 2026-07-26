@@ -3,6 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import { ToastService } from '../../services/toast.service';
 import { IconComponent } from '../icon/icon.component';
+import { GenreRadarComponent, type GenreSlice } from '../genre-radar/genre-radar.component';
 
 /**
  * Curator fix for an artist's genre (issue #187 A3).
@@ -21,7 +22,7 @@ import { IconComponent } from '../icon/icon.component';
 @Component({
   selector: 'app-artist-genre-modal',
   standalone: true,
-  imports: [FormsModule, IconComponent],
+  imports: [FormsModule, IconComponent, GenreRadarComponent],
   templateUrl: './artist-genre-modal.component.html',
 })
 export class ArtistGenreModalComponent {
@@ -41,6 +42,12 @@ export class ArtistGenreModalComponent {
   readonly busy = signal(false);
   readonly error = signal<string | null>(null);
 
+  /** Genre spread across the artist's tracks (issue #222) — shows *how much* of
+   *  their catalogue each genre covers, which a flat chip list cannot. */
+  readonly distribution = signal<GenreSlice[]>([]);
+  readonly distributionTracks = signal(0);
+  readonly distributionGenres = signal(0);
+
   constructor() {
     effect(() => {
       const id = this.artistId();
@@ -58,6 +65,17 @@ export class ArtistGenreModalComponent {
           this.error.set('Could not load this artist’s genres');
           this.loading.set(false);
         },
+      });
+
+      // Independent of the genre load: a failure here hides the chart but must
+      // never block the correction surface itself.
+      this.api.artistGenreDistribution(id).subscribe({
+        next: (d) => {
+          this.distribution.set(d.slices);
+          this.distributionTracks.set(d.trackCount);
+          this.distributionGenres.set(d.genreCount);
+        },
+        error: () => this.distribution.set([]),
       });
     });
   }
