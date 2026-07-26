@@ -11,11 +11,10 @@ import type {
   AlbumJob,
   IncompleteAlbumJob,
   LibraryFragmentReport,
-  ProcessingSettings,
-  ProcessingStatus,
   ServiceReview,
   UntrackedDownload,
 } from '../../services/api/api-types';
+import type { ProcessingSettings, ProcessingStatus } from '../../../types/core';
 import { AuthService } from '../../services/auth.service';
 
 function makeReview(over: Partial<ServiceReview> = {}): ServiceReview {
@@ -110,8 +109,8 @@ function makeAdminMocks(review: Partial<ServiceReview> = {}) {
     lastItems: [],
     startedAt: null,
     updatedAt: null,
-    taskPending: { bpm: 0, genre: 0, key: 0, energy: 0, 'audio-features': 0, 'artist-image': 0, 'artist-identity': 0, licence: 0 },
-    availability: { bpm: true, genre: true, key: true, energy: true, 'audio-features': true, 'artist-image': true, 'artist-identity': true, licence: true },
+    taskPending: { bpm: 0, genre: 0, key: 0, energy: 0, 'audio-features': 0, 'artist-image': 0, 'artist-info': 0, 'artist-identity': 0, licence: 0, 'genre-audio': 0, 'genre-discogs': 0 },
+    availability: { bpm: true, genre: true, key: true, energy: true, 'audio-features': true, 'artist-image': true, 'artist-info': true, 'artist-identity': true, licence: true, 'genre-audio': true, 'genre-discogs': true },
     skipped: 0,
     quarantined: 0,
   };

@@ -60,7 +60,8 @@ bun run typecheck        # TypeScript type checking (tsc --build)
 bun run lint             # ESLint across all packages
 bun run format           # Prettier formatting
 bun run test             # Vitest across packages/ + src/ (excludes web/, e2e/, desktop/test/)
-bun run test:web         # Angular component tests (vitest under ng test)
+bun run test:web         # Angular component tests (vitest — see docs/web-ui.md "Web test harness")
+bun run typecheck:web-spec # Type-check the web specs (vitest does NOT type-check them)
 bun run e2e              # Playwright e2e suite (packages/e2e) — always run before declaring a feature done
 bun run src/main.ts      # Start NicotinD (requires .env or config/default.yml)
 bun run release          # Bump version (auto-detected), generate CHANGELOG, tag

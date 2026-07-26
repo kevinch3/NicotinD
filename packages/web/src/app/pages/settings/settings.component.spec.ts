@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { signal } from '@angular/core';
 import { vi } from 'vitest';
+import type { Mock } from 'vitest';
 import { SwUpdate } from '@angular/service-worker';
 import { SettingsComponent } from './settings.component';
 import { AuthService } from '../../services/auth.service';
@@ -16,6 +17,7 @@ import { isElectron } from '../../lib/platform';
 import { pickDirectory, setMusicDir, revealLogs } from '../../services/native/native-capabilities';
 import { ToastService } from '../../services/toast.service';
 import { UpdateService } from '../../services/update.service';
+import type { CheckUpdateOutcome } from '../../services/update.service';
 
 vi.mock('../../lib/platform', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../lib/platform')>();
@@ -36,15 +38,23 @@ function makeToastService() {
   };
 }
 
-function makeUpdateService(overrides: Partial<{
+// The mock fns carry their real signatures: `satisfies Partial<UpdateService>`
+// below rejects the bare `ReturnType<typeof vi.fn>` these used to be typed as.
+// Mock<…>, not a bare function type: the tests call `.mockResolvedValueOnce`
+// on these, which a plain signature doesn't carry.
+type UpdateOverrides = Partial<{
   enabled: boolean;
   updateAvailable: boolean;
   searching: boolean;
-  checkForUpdate: ReturnType<typeof vi.fn>;
-  applyUpdate: ReturnType<typeof vi.fn>;
-}> = {}) {
-  const check = overrides.checkForUpdate ?? vi.fn().mockResolvedValue('up-to-date');
-  const apply = overrides.applyUpdate ?? vi.fn();
+  checkForUpdate: Mock<() => Promise<CheckUpdateOutcome>>;
+  applyUpdate: Mock<() => Promise<void>>;
+}>;
+
+function makeUpdateService(overrides: UpdateOverrides = {}) {
+  const check =
+    overrides.checkForUpdate ??
+    vi.fn<() => Promise<CheckUpdateOutcome>>().mockResolvedValue('up-to-date');
+  const apply = overrides.applyUpdate ?? vi.fn<() => Promise<void>>();
   return {
     enabled: signal(overrides.enabled ?? false),
     updateAvailable: signal(overrides.updateAvailable ?? false),
@@ -62,7 +72,7 @@ function makeUpdateService(overrides: Partial<{
  * must NOT surface admin/extension coupling (Soulseek/streaming/processing/
  * shares/duplicates). The Extensions/Admin links appear for admins only.
  */
-function makeProviders(role: 'admin' | 'user', updateOverrides = {}) {
+function makeProviders(role: 'admin' | 'user', updateOverrides: UpdateOverrides = {}) {
   const toast = makeToastService();
   const update = makeUpdateService(updateOverrides);
   return {

@@ -54,6 +54,12 @@ jobs:
       - name: Test (e2e playground helpers)
         run: bun test packages/e2e/playground
 
+      # Specs are excluded from tsconfig.app.json and vitest transpiles without
+      # type-checking, so without this step a spec stub can drift from the type
+      # it asserts against indefinitely while every test still passes.
+      - name: Typecheck (web specs)
+        run: bun run --filter @nicotind/web typecheck:spec
+
       - name: Test (web)
         run: bun run --filter @nicotind/web test
 

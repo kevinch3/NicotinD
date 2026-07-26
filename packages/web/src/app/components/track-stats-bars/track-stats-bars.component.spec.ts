@@ -155,8 +155,8 @@ describe('TrackStatsBarsComponent — bars', () => {
 
   it('renders bar labels with expected metric names', () => {
     const fixture = setup({ energy: 0.5, valence: 0.6, danceability: 0.7, acousticness: 0.1, instrumental: 0.8 });
-    const labels = fixture.nativeElement.querySelectorAll('.bar-label');
-    const names = Array.from(labels).map((l: Element) => (l as HTMLElement).textContent.trim());
+    const labels = (fixture.nativeElement as HTMLElement).querySelectorAll('.bar-label');
+    const names = Array.from(labels).map((l) => l.textContent?.trim() ?? '');
     expect(names).toEqual(['Energy', 'Valence', 'Dance', 'Acoustic', 'Instrumental']);
   });
 

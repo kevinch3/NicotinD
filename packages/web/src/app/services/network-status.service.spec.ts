@@ -49,11 +49,14 @@ describe('NetworkStatusService (native)', () => {
   });
 
   it('seeds from the Capacitor Network plugin and updates on networkStatusChange', async () => {
-    let listener: ((s: { connected: boolean }) => void) | null = null;
+    // Collected rather than held in a `let`: the only assignment is inside the
+    // addListener callback, which TS's control-flow analysis can't see, so a
+    // nullable `let` narrows to `null` and the call sites stop type-checking.
+    const listeners: Array<(s: { connected: boolean }) => void> = [];
     const plugin = {
       getStatus: vi.fn(async () => ({ connected: false })),
       addListener: vi.fn((_evt: string, cb: (s: { connected: boolean }) => void) => {
-        listener = cb;
+        listeners.push(cb);
         return { remove: () => {} };
       }),
     };
@@ -71,9 +74,9 @@ describe('NetworkStatusService (native)', () => {
     expect(plugin.addListener).toHaveBeenCalledWith('networkStatusChange', expect.any(Function));
 
     // Live updates in both directions via the registered listener.
-    listener?.({ connected: true });
+    listeners[0]?.({ connected: true });
     expect(svc.online()).toBe(true);
-    listener?.({ connected: false });
+    listeners[0]?.({ connected: false });
     expect(svc.online()).toBe(false);
   });
 

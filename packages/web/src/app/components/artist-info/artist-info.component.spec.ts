@@ -105,7 +105,7 @@ describe('ArtistInfoComponent', () => {
 
   it('shows no success toast when a bio is fetched (the inline bio is the confirmation)', () => {
     const { fixture, show } = setup();
-    fixture.nativeElement
+    (fixture.nativeElement as HTMLElement)
       .querySelector<HTMLButtonElement>('[data-testid="artist-info-refresh"]')
       ?.click();
     fixture.detectChanges();
@@ -118,7 +118,7 @@ describe('ArtistInfoComponent', () => {
       urls: [],
       refreshResult: of({ bio: null, urls: [] }),
     });
-    fixture.nativeElement
+    (fixture.nativeElement as HTMLElement)
       .querySelector<HTMLButtonElement>('[data-testid="artist-info-refresh"]')
       ?.click();
     fixture.detectChanges();
@@ -218,7 +218,7 @@ describe('ArtistInfoComponent', () => {
     const { fixture, c } = setup({ bio: 'Long bio that overflows.' });
     c.hasOverflow.set(true);
     fixture.detectChanges();
-    const btn = fixture.nativeElement.querySelector<HTMLButtonElement>(
+    const btn = (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>(
       '[data-testid="artist-info-show-more"]',
     );
     btn?.click();

@@ -284,9 +284,12 @@ describe('PreserveService', () => {
   describe('removeAllAutoPreserved', () => {
     it('removes only auto-source rows, leaves user-source rows intact', async () => {
       // Seed mixed-source rows directly via the store fake.
-      store.preserve({ id: 'u1', size: 100, lastAccessedAt: 0, source: 'user' } as never);
-      store.preserve({ id: 'a1', size: 100, lastAccessedAt: 0, source: 'auto' } as never);
-      store.preserve({ id: 'a2', size: 100, lastAccessedAt: 0, source: 'auto' } as never);
+      // The fake ignores the blob args; they're passed only to satisfy the real
+      // PreserveStore signature that `store` is typed against.
+      const blob = new Blob();
+      store.preserve({ id: 'u1', size: 100, lastAccessedAt: 0, source: 'user' } as never, blob, null);
+      store.preserve({ id: 'a1', size: 100, lastAccessedAt: 0, source: 'auto' } as never, blob, null);
+      store.preserve({ id: 'a2', size: 100, lastAccessedAt: 0, source: 'auto' } as never, blob, null);
       await svc.refreshList();
 
       const removed = await svc.removeAllAutoPreserved();

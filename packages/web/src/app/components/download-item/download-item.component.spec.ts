@@ -130,7 +130,7 @@ describe('download-item "View N albums" menu gating', () => {
       hasMultipleDestinationAlbums(
         item({
           stage: 'done',
-          albumId: null,
+          albumId: undefined,
           destinationAlbums: [
             { albumArtist: 'A', albumTitle: 'One', albumId: 'a1' },
             { albumArtist: 'B', albumTitle: 'Two', albumId: 'a2' },
@@ -235,7 +235,7 @@ describe('download-item "View N albums" menu — rendered rows', () => {
     const fixture = setup(
       item({
         stage: 'done',
-        albumId: null,
+        albumId: undefined,
         destinationAlbums: [
           { albumArtist: 'Artist A', albumTitle: 'Album A', albumId: 'alb-a' },
           { albumArtist: 'Artist B', albumTitle: 'Album B', albumId: 'alb-b' },
