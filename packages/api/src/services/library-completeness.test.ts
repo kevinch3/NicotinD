@@ -2,7 +2,11 @@ import { describe, it, expect, beforeEach } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { applySchema } from '../db.js';
 import { albumIdFor, artistIdFor } from './library-scanner.js';
-import { albumAlreadyComplete, filesMissingOnDisk } from './library-completeness.js';
+import {
+  albumAlreadyComplete,
+  filesForCanonicalTracks,
+  filesMissingOnDisk,
+} from './library-completeness.js';
 
 /** Seed a local album row plus its songs, using the real deterministic ids. */
 function seedAlbum(
@@ -111,5 +115,42 @@ describe('albumAlreadyComplete', () => {
       [artistIdFor('soda stereo')],
     );
     expect(albumAlreadyComplete(db, 'SODA STEREO', 'Cancion Animal', 9)).toBe(true);
+  });
+});
+
+/**
+ * Issue #262: prod hunted Joe Satriani's 14-track self-titled album and the
+ * winning peer folder was the peer's whole `Joe Satriani\` discography — 254
+ * files. All of them were enqueued and itemised, so the job read
+ * "7 of 240 · 233 unavailable" and 227 unrelated files came down for nothing.
+ */
+describe('filesForCanonicalTracks (#262)', () => {
+  const CANONICAL = ['Cool #9', 'If', 'Down, Down, Down', 'Luminous Flesh Giants'];
+
+  it('keeps only the files matching the album tracklist', () => {
+    const files = [
+      { filename: 'Joe Satriani\\Joe Satriani - 01 - Cool #9.flac' },
+      { filename: 'Joe Satriani\\Joe Satriani - 02 - If.flac' },
+      { filename: 'Joe Satriani\\Additional Creations (2000) - 01 - The Crush of Love.flac' },
+      { filename: 'Joe Satriani\\Additional Creations (2000) - 12 - Tumble.flac' },
+    ];
+
+    expect(filesForCanonicalTracks(files, CANONICAL).map((f) => f.filename)).toEqual([
+      'Joe Satriani\\Joe Satriani - 01 - Cool #9.flac',
+      'Joe Satriani\\Joe Satriani - 02 - If.flac',
+    ]);
+  });
+
+  it('returns every file untouched when there is no canonical tracklist', () => {
+    // A direct grab has no tracklist to scope by — must not filter to nothing.
+    const files = [{ filename: 'peer\\whatever.flac' }];
+    expect(filesForCanonicalTracks(files, [])).toEqual(files);
+  });
+
+  it('returns every file untouched when nothing matches the tracklist', () => {
+    // Filenames too divergent to trust the matcher: fall back to the old
+    // behaviour rather than turning a working hunt into an empty download.
+    const files = [{ filename: 'peer\\track01.flac' }, { filename: 'peer\\track02.flac' }];
+    expect(filesForCanonicalTracks(files, CANONICAL)).toEqual(files);
   });
 });

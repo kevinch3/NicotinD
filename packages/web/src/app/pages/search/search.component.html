@@ -285,15 +285,17 @@
                 class="group text-left rounded-lg overflow-hidden border border-zinc-800/80 transition hover:border-zinc-600 disabled:opacity-60"
                 style="background: var(--theme-surface)"
               >
-                <div class="aspect-square bg-zinc-800 relative">
-                  @if (album.coverUrl) {
-                    <img
-                      [src]="album.coverUrl"
-                      alt=""
-                      class="w-full h-full object-cover"
-                      loading="lazy"
-                    />
-                  }
+                <div class="aspect-square bg-zinc-800 relative" data-testid="catalog-album-cover">
+                  <!-- Shared cover component: gradient placeholder, fade-in on
+                       load and an error fallback, none of which the raw <img>
+                       here ever had (issue #263). -->
+                  <app-cover-art
+                    [src]="album.coverUrl"
+                    [artist]="album.artistName"
+                    [album]="album.title"
+                    [fill]="true"
+                    rounded="rounded-none"
+                  />
                   @if (resolvingAlbum() === album.foreignAlbumId) {
                     <div
                       class="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/60"

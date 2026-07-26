@@ -113,11 +113,13 @@
             data-testid="metadata-candidate"
             class="flex items-center gap-3 p-2 rounded-lg bg-theme-surface-2 border border-theme"
           >
-            @if (c.coverUrl) {
-              <img [src]="c.coverUrl" alt="" class="w-12 h-12 rounded object-cover flex-shrink-0" />
-            } @else {
-              <div class="w-12 h-12 rounded bg-theme-hover flex-shrink-0"></div>
-            }
+            <app-cover-art
+              [src]="c.coverUrl ?? undefined"
+              [artist]="c.artist"
+              [album]="c.title"
+              [size]="48"
+              className="flex-shrink-0"
+            />
             <div class="min-w-0 flex-1">
               <p class="text-theme-primary text-sm truncate">{{ c.title }}</p>
               <p class="text-theme-muted text-xs truncate">

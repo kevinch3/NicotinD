@@ -23,6 +23,7 @@ import {
   manualToRequest,
   isPlaceholderArtist,
 } from '../../lib/metadata-fix';
+import { CoverArtComponent } from '../cover-art/cover-art.component';
 import {
   flattenCoverCandidates,
   coverThumbUrl,
@@ -39,7 +40,7 @@ import {
 @Component({
   selector: 'app-metadata-fix-modal',
   standalone: true,
-  imports: [FormsModule],
+  imports: [FormsModule, CoverArtComponent],
   templateUrl: './metadata-fix-modal.component.html',
 })
 export class MetadataFixModalComponent implements OnInit {

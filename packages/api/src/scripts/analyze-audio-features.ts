@@ -61,6 +61,8 @@ interface SongRow {
   path: string;
   artist: string;
   title: string;
+  /** Stamped onto the embedding row so a same-path content swap misses (#258). */
+  size: number | null;
 }
 
 async function main(): Promise<void> {
@@ -90,7 +92,7 @@ async function main(): Promise<void> {
   if (apply) db.run('PRAGMA busy_timeout = 5000');
 
   let sql =
-    'SELECT id, path, artist, title FROM library_songs WHERE danceability IS NULL ORDER BY created DESC';
+    'SELECT id, path, artist, title, size FROM library_songs WHERE danceability IS NULL ORDER BY created DESC';
   if (limit > 0) sql += ` LIMIT ${limit}`;
   const rows = db.query<SongRow, []>(sql).all();
 
@@ -179,13 +181,15 @@ async function main(): Promise<void> {
           [f.danceability, f.valence, f.acousticness, f.instrumental, f.mood, song.id],
         );
         db.run(
-          `INSERT OR REPLACE INTO library_embeddings (song_id, model, dim, vec, updated_at)
-           VALUES (?, ?, ?, ?, ?)`,
+          // See issue #258 — file_size makes a same-path content swap a miss.
+          `INSERT OR REPLACE INTO library_embeddings (song_id, model, dim, vec, file_size, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?)`,
           [
             song.id,
             result.embedding.model,
             result.embedding.dim,
             Buffer.from(new Float32Array(result.embedding.values).buffer),
+            song.size ?? null,
             Date.now(),
           ],
         );

@@ -37,7 +37,13 @@ describe('CatalogService.search', () => {
             id: 1,
             artistName: 'Pink Floyd',
             foreignArtistId: 'pf-mbid',
-            images: [{ url: '/local.jpg', coverType: 'poster', remoteUrl: 'http://x/pf.jpg' }],
+            images: [
+              {
+                url: '/MediaCover/Artists/1/poster.jpg',
+                coverType: 'poster',
+                remoteUrl: 'https://images.lidarr.audio/pf.jpg',
+              },
+            ],
           }),
         ]),
       },
@@ -79,7 +85,13 @@ describe('CatalogService.search', () => {
                 monitored: false,
               },
             ],
-            images: [{ url: '/c.jpg', coverType: 'cover', remoteUrl: 'http://x/c.jpg' }],
+            images: [
+              {
+                url: '/MediaCover/Albums/1/cover.jpg',
+                coverType: 'cover',
+                remoteUrl: 'https://images.lidarr.audio/c.jpg',
+              },
+            ],
           }),
         ]),
       },
@@ -91,7 +103,8 @@ describe('CatalogService.search', () => {
     expect(result.artists[0]).toMatchObject({
       mbid: 'pf-mbid',
       name: 'Pink Floyd',
-      imageUrl: 'http://x/pf.jpg',
+      // Proxied through our origin rather than the CDN original (issue #263).
+      imageUrl: `/api/cover/remote?u=${encodeURIComponent('https://images.lidarr.audio/pf.jpg')}`,
     });
     expect(result.albums[0]).toMatchObject({
       foreignAlbumId: 'dsotm-rg',
@@ -100,7 +113,7 @@ describe('CatalogService.search', () => {
       artistMbid: 'pf-mbid',
       year: '1973',
       trackCount: 10, // largest release wins
-      coverUrl: 'http://x/c.jpg',
+      coverUrl: `/api/cover/remote?u=${encodeURIComponent('https://images.lidarr.audio/c.jpg')}`,
     });
   });
 

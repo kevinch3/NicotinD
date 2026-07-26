@@ -51,10 +51,18 @@ export function loadEmbeddings(
   for (let i = 0; i < ids.length; i += CHUNK) {
     const chunk = ids.slice(i, i + CHUNK);
     const placeholders = chunk.map(() => '?').join(',');
+    // Content check (issue #258): the song id comes from the path, so a file
+    // replaced in place keeps its id and would otherwise serve an embedding of
+    // audio that is no longer there. `e.file_size IS NOT ... IS NOT s.size`
+    // reads as "not a known mismatch" — a row predating the column (NULL) still
+    // matches, so an upgrade doesn't invalidate the whole library at once, and
+    // `IS` (not `=`) keeps the comparison NULL-safe on both sides.
     const rows = db
       .query<EmbeddingRow, [string, ...string[]]>(
-        `SELECT song_id, vec FROM library_embeddings
-         WHERE model = ? AND song_id IN (${placeholders})`,
+        `SELECT e.song_id, e.vec FROM library_embeddings e
+         JOIN library_songs s ON s.id = e.song_id
+         WHERE e.model = ? AND e.song_id IN (${placeholders})
+           AND (e.file_size IS NULL OR e.file_size IS s.size)`,
       )
       .all(model, ...chunk);
     for (const r of rows) out.set(r.song_id, decodeVec(r.vec));

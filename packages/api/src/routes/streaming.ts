@@ -15,6 +15,7 @@ import { extractEmbeddedPicture } from '../services/cover-sources.js';
 import { resolveArtwork, canonicalCacheKey } from '../services/artwork-store.js';
 import { bucketCoverSize, resizeCover } from '../services/cover-thumbnail.js';
 import { readArtistImageOverride } from '../services/artist-image-override.js';
+import { remoteCoverCacheKey, resolveRemoteCoverUrl } from '../services/remote-cover.js';
 
 const log = createLogger('streaming');
 
@@ -44,7 +45,13 @@ export function clearCoverNegativeCache(id?: string): void {
  * folder images or embedded tags. Optional ffmpeg transcoding is gated by the
  * admin streaming settings.
  */
-export function streamingRoutes(musicDir: string, db: Database, dataDir: string) {
+export function streamingRoutes(
+  musicDir: string,
+  db: Database,
+  dataDir: string,
+  /** Base URL of the configured Lidarr, so relative `/MediaCover/…` covers resolve. */
+  lidarrBaseUrl?: string | null,
+) {
   const app = new Hono<AuthEnv>();
   const musicRoot = resolve(musicDir);
   const coverCacheDir = join(dataDir, 'cover-cache');
@@ -160,6 +167,49 @@ export function streamingRoutes(musicDir: string, db: Database, dataDir: string)
       return coverResponse(art);
     }
   }
+
+  /**
+   * Proxy + downscale a catalog (Lidarr/MusicBrainz) cover. Catalog cards have
+   * no library id to hang art off, so they carry an upstream URL; serving it to
+   * the browser meant a 1200 px third-party JPEG per ~150 px tile (issue #263).
+   * Here it becomes a sized WebP from our own disk cache instead.
+   *
+   * Registered before `/cover/:id` so the literal `remote` segment wins over the
+   * id parameter.
+   */
+  app.get('/cover/remote', async (c) => {
+    const size = bucketCoverSize(c.req.query('size'));
+    const target = resolveRemoteCoverUrl(c.req.query('u'), lidarrBaseUrl);
+    // Rejected by the allowlist (or unparseable) — never fetch it.
+    if (!target) return new Response(null, { status: 400 });
+
+    const key = remoteCoverCacheKey(target);
+    if ((noArtCache.get(key) ?? 0) > Date.now()) {
+      return new Response(null, {
+        status: 404,
+        headers: { 'cache-control': 'public, max-age=300' },
+      });
+    }
+
+    const cached = await readCachedCover(coverCacheDir, key);
+    if (cached) return respondCover(key, cached, size);
+
+    const remote = await fetchRemoteCover(target);
+    if (!remote) {
+      // A confident miss is cached briefly so a dead upstream isn't re-fetched
+      // on every tile render; 404 is a state <app-cover-art> renders as its
+      // placeholder rather than hanging on a never-resolving <img>.
+      noArtCache.set(key, Date.now() + NO_ART_TTL_MS);
+      return new Response(null, {
+        status: 404,
+        headers: { 'cache-control': 'public, max-age=300' },
+      });
+    }
+    void cacheCover(coverCacheDir, key, remote).catch((err) =>
+      log.debug({ err, key }, 'remote cover cache write failed'),
+    );
+    return respondCover(key, remote, size);
+  });
 
   app.get('/cover/:id', async (c) => {
     const id = c.req.param('id');

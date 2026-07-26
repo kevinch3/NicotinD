@@ -47,6 +47,7 @@ describe('groupByAlbum with album-hunt metadata', () => {
             albumTitle: 'Trance Zomba',
             canonicalTrackCount: 12,
             albumId: 'album-trance-zomba',
+            jobId: 'job-tz',
           },
         },
       ],
@@ -150,6 +151,7 @@ describe('groupToDownloadItem', () => {
               albumTitle: 'Album',
               canonicalTrackCount: 10,
               albumId: 'album-id-1',
+              jobId: 'aj1',
             },
           },
         ],
@@ -288,6 +290,7 @@ function acqJob(over: Partial<AcquisitionJobView> = {}): AcquisitionJobView {
     albumId: 'album-id-1',
     progress: { expected: 2, delivered: 1, unavailable: 0, failed: 0 },
     items: [],
+    sources: [],
     ...over,
   };
 }
@@ -308,6 +311,7 @@ describe('mergeAcquisitionJobs', () => {
                 albumTitle: 'Album',
                 canonicalTrackCount: 2,
                 albumId: 'album-id-1',
+                jobId: 'aj1',
               },
             },
           ],
@@ -325,6 +329,7 @@ describe('mergeAcquisitionJobs', () => {
       albumTitle: 'Los Chalchaleros',
       canonicalTrackCount: 13,
       albumId: 'chalcha-1',
+      jobId: 'job-ch',
     };
     const items = buildDownloadFeed(
       groupByAlbum([
@@ -391,12 +396,13 @@ describe('mergeAcquisitionJobs', () => {
     expect(card.canCancel).toBe(true);
   });
 
-  it('collapses same-album folders even without a matching job row (shared albumId)', () => {
+  it('collapses folders sharing a jobId even when the job row is absent', () => {
     const meta = {
       artistName: 'A',
       albumTitle: 'B',
       canonicalTrackCount: 10,
       albumId: 'ab-1',
+      jobId: 'job-ab',
     };
     const items = buildDownloadFeed(
       groupByAlbum([
@@ -429,6 +435,144 @@ describe('mergeAcquisitionJobs', () => {
     expect(merged).toHaveLength(1);
     // No job tallies → sum member completions against the canonical total.
     expect(merged[0].progress).toEqual({ done: 2, total: 10 });
+  });
+
+  /**
+   * Issue #261: card identity used to be re-derived from `albumId` at read
+   * time, so the same album acquired twice collapsed into one card and a peer
+   * folder whose derived key didn't line up split into its own card. Identity
+   * is now the job the server recorded at enqueue time.
+   */
+  it('keeps two separate jobs for the SAME album as two cards', () => {
+    const base = { artistName: 'A', albumTitle: 'B', canonicalTrackCount: 4, albumId: 'ab-1' };
+    const items = buildDownloadFeed(
+      groupByAlbum([
+        {
+          username: 'p1',
+          directories: [
+            {
+              directory: 'x\\B',
+              fileCount: 1,
+              files: [file({ id: 'a', state: 'Completed, Succeeded' })],
+              albumJob: { ...base, jobId: 'job-1' },
+            },
+          ],
+        },
+        {
+          username: 'p2',
+          directories: [
+            {
+              directory: 'y\\B',
+              fileCount: 1,
+              files: [file({ id: 'b', state: 'Completed, Succeeded' })],
+              albumJob: { ...base, jobId: 'job-2' },
+            },
+          ],
+        },
+      ]),
+      [],
+    );
+
+    const merged = mergeAcquisitionJobs(items, []);
+    // The old albumId collapse wrongly merged these into one.
+    expect(merged).toHaveLength(2);
+    expect(merged.map((m) => m.key).sort()).toEqual(['job:job-1', 'job:job-2']);
+  });
+
+  it('collapses every unlinked transfer into ONE group, whatever the count', () => {
+    // Transfers matching no job: genuinely external downloads, plus any whose
+    // linkage was lost. They must stay reachable without becoming N cards.
+    const items = buildDownloadFeed(
+      groupByAlbum([
+        {
+          username: 'stranger',
+          directories: [1, 2, 3, 4].map((n) => ({
+            directory: `share_remote\\Folder${n}`,
+            fileCount: 1,
+            files: [file({ id: `u${n}`, state: 'InProgress' })],
+          })),
+        },
+      ]),
+      [],
+    );
+    expect(items).toHaveLength(4); // sanity: 4 loose folder groups
+
+    const merged = mergeAcquisitionJobs(items, []);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].key).toBe('unlinked');
+    expect(merged[0].unlinkedCount).toBe(4);
+    expect(merged[0].title).toBe('Unlinked transfers (4)');
+    // Still actionable — cancelling must reach every member folder.
+    expect(merged[0].memberKeys).toHaveLength(4);
+  });
+
+  it('replays the prod shape: 5 peers on one job + 2 unlinked → 1 card + 1 group', () => {
+    // The Luis Fonsi hunt from the issue: album_job 479, one job, files in
+    // flight from five peers, plus two folders with no linkage at all.
+    const meta = {
+      artistName: 'Luis Fonsi',
+      albumTitle: 'Abrazar la vida',
+      canonicalTrackCount: 12,
+      albumId: 'fonsi-1',
+      jobId: 'job-479',
+    };
+    const linked = ['smuks-aef771', 'Cose_311013', 'dolche', 'Valdor', 'Gens'].map((u, i) => ({
+      username: u,
+      directories: [
+        {
+          directory: `music\\Luis Fonsi\\Abrazar la vida`,
+          fileCount: 1,
+          files: [file({ id: `l${i}`, state: 'InProgress' })],
+          albumJob: meta,
+        },
+      ],
+    }));
+    const loose = [
+      {
+        username: 'someone',
+        directories: [
+          {
+            directory: 'share_remote\\Other',
+            fileCount: 1,
+            files: [file({ id: 'x1', state: 'InProgress' })],
+          },
+        ],
+      },
+      {
+        username: 'another',
+        directories: [
+          {
+            directory: 'share_remote\\Else',
+            fileCount: 1,
+            files: [file({ id: 'x2', state: 'InProgress' })],
+          },
+        ],
+      },
+    ];
+
+    const merged = mergeAcquisitionJobs(
+      buildDownloadFeed(groupByAlbum([...linked, ...loose]), []),
+      [acqJob({ id: 'job-479', albumId: 'fonsi-1', albumTitle: 'Abrazar la vida' })],
+    );
+
+    expect(merged).toHaveLength(2);
+    const card = merged.find((m) => m.key === 'job:job-479');
+    expect(card?.title).toBe('Abrazar la vida');
+    expect(card?.memberKeys).toHaveLength(5);
+    expect(merged.find((m) => m.key === 'unlinked')?.unlinkedCount).toBe(2);
+  });
+
+  it("exposes the job's peer breakdown on the card", () => {
+    const merged = mergeAcquisitionJobs(doneGroupItems(), [
+      acqJob({
+        sources: [
+          { username: 'smuks-aef771', fileCount: 10, state: 'done' },
+          { username: 'dolche', fileCount: 1, state: 'failed' },
+        ],
+      }),
+    ]);
+    expect(merged[0].sources).toHaveLength(2);
+    expect(merged[0].sources?.[0].username).toBe('smuks-aef771');
   });
 
   it("upgrades a finished slskd group to the job's post-download stage", () => {
@@ -464,6 +608,7 @@ describe('mergeAcquisitionJobs', () => {
                 albumTitle: 'Album',
                 canonicalTrackCount: 2,
                 albumId: 'album-id-1',
+                jobId: 'aj1',
               },
             },
           ],

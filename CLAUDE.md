@@ -249,7 +249,11 @@ Add detail there, not here.
   [docs/library-scanner.md](docs/library-scanner.md)
 - **Native streaming + cover art**: `GET /api/stream/:id` (Range/206 + seekable disk transcode
   cache) and `GET /api/cover/:id` (override→canonical→folder→embedded, sized WebP thumbnails
-  honoring `size=`); an artist id with no real photo 404s to the placeholder (no album-cover
+  honoring `size=`); **`GET /api/cover/remote?u=` proxies catalog (Lidarr/MB) covers (issue #263)**
+  through the same downscale+cache path — cards used to get 1200 px third-party CDN originals
+  (878 KB for seven ~150 px tiles, measured on prod) or an unreachable Lidarr-relative
+  `/MediaCover/…` path; `u` is host-allowlisted (SSRF) and content-addressed, and the three
+  hand-rolled `<img>` call sites moved onto `<app-cover-art>` for placeholder/fade-in/error state; an artist id with no real photo 404s to the placeholder (no album-cover
   fallback). `nativeAppCors()` is hand-rolled (not `hono/cors`) so its Vary-header append can't
   strip `Content-Length` off Blob-bodied stream responses (the Firefox "never plays" bug).
   **Transcode cache integrity** (size-in-key, 1 KiB size floor, ffprobe post-check +
@@ -396,7 +400,10 @@ Add detail there, not here.
   `GET /api/admin/processing/queue`. → [docs/library-processing.md](docs/library-processing.md),
   [docs/download-pipeline.md](docs/download-pipeline.md)
 - **Perceptual audio features (no LLM)**: energy/loudness measured bun-side via ffmpeg ebur128;
-  danceability/valence/mood/vocals/acousticness + cached embeddings from the Essentia sidecar
+  danceability/valence/mood/vocals/acousticness + cached embeddings (content-invalidated by
+  `library_embeddings.file_size` since issue #258 — a file replaced in place keeps its path-derived
+  song id, so without it Radio scored against a vector for audio that was no longer there) from the
+  Essentia sidecar
   (`packages/analysis/`, `NICOTIND_ANALYSIS_URL`; CPU by default, `--build-arg GPU=1` swaps in GPU
   libtensorflow with inherent CPU fallback); all written to file tags + COALESCE-preserved columns,
   scored by the Radio engine and sequenced via `energy-arc`. →
@@ -628,7 +635,16 @@ Add detail there, not here.
   have it" outcomes surface as positive notices, not red errors. →
   [docs/album-hunt.md](docs/album-hunt.md)
 - **Duplicate prevention**: FLAC>MP3 + auto-dedupe + edition-collapsing album IDs + cross-edition
-  folder consolidation at ingest. → [docs/download-pipeline.md](docs/download-pipeline.md)
+  folder consolidation at ingest. The **cross-peer fallback no longer creates the duplicates in the
+  first place (issue #264)**: `sweep` splits `missing` (the true gap, still what closes a job) from
+  `recoverable` (`missing` minus everything in flight from any peer), and only ever acts on the
+  latter — so a wave can't start while a previous wave is still moving bytes for the same titles,
+  and no fallback attempt is burned waiting. Overtaking a peer is gated on **byte progress**
+  (`isStalled`, `stallThresholdMs` default 120 s), not on "the next sweep happened", so a dead peer
+  is still abandoned quickly. Clearing a download now actually removes it from slskd
+  (`cancel(..., {remove:true})` + the bulk `removeCompleted()`), with `hidden_transfers` demoted to a
+  pruned fallback for the removals slskd refuses (issue #265). →
+  [docs/download-pipeline.md](docs/download-pipeline.md), [docs/album-hunt.md](docs/album-hunt.md)
 - **Lossless → Opus standardization**: lossless downloads transcoded to Opus in place (default-on
   192 kbps) + a library migration path; detection is codec-aware (`isLosslessFile` probes .m4a for
   ALAC, which browsers can't decode); gated on ffmpeg. The env/YAML-only config is exposed read-only
@@ -712,14 +728,29 @@ Add detail there, not here.
   wrapped in an `acquisition_jobs` row whose transfer↔job linkage (`username::filename` keys) is
   stored at enqueue time — never re-derived by folder-string matching; items repoint in place on
   fallback re-pulls, and a job closes as an honest partial when remaining tracks are unobtainable.
+  **Lifecycle hygiene (issue #262)**: `markItemsScanned` only sees the current scan batch's paths, so
+  an item organized by any *other* batch was never revisited and stranded its job at
+  `active/scanning` forever (prod: 20 of 28 stranded items already had a `library_songs` row at their
+  exact path). `reconcileOrganizedItems` re-resolves them on every hygiene pass, ahead of the 24h
+  idle valve so a landed file is rescued rather than written off; both it and `markItemsScanned`
+  match `COLLATE NOCASE` (organizer-recorded path vs scanner-minted casing). The nonsense
+  "7 of 240 · 233 unavailable" tally was a peer folder holding a whole discography — 254 files
+  enqueued for a 14-track album — now scoped by `filesForCanonicalTracks` at both enqueue sites
+  (conservative: no tracklist, or no match, passes files through unchanged).
   **Direct grabs get a real "where" post-scan (issue #223)**: a raw peer/single-file grab has only
   noisy folder-segment artist/album guesses, so `backfillDirectJobAlbum` (watcher scan seam,
   `kind='direct'` only) re-points the job to the **canonical** album its file landed in
   (`song_id`→`library_songs.album_id`→`library_albums`), so the feed row + "Open in Library"
   deep-link resolve. → [docs/acquisition-jobs.md](docs/acquisition-jobs.md)
-- **Unified downloads feed**: slskd groups + URL acquire jobs both adapt into a normalized
-  `DownloadItem` with method/stage badges, a "View N albums" menu for multi-album jobs, and a "Now:
-  / Next:" current-track display. The Downloads header also shows a **disk-availability pill**
+- **Unified downloads feed — one job = one card (issue #261)**: slskd groups + URL acquire jobs both
+  adapt into a normalized `DownloadItem` with method/stage badges, a "View N albums" menu for
+  multi-album jobs, and a "Now: / Next:" current-track display. Card identity is the **`jobId` the
+  server recorded at enqueue time** (shipped on `AlbumJobMeta`), not a key re-derived from `albumId`
+  at read time — the re-derivation is why one hunt kept splitting into several cards (prod: one Luis
+  Fonsi job rendering as five). `collapseJobMembers` folds a job's peer folders into one card with a
+  `Sources (N)` disclosure fed by `listJobFeed`'s new `sources[]`; transfers matching no job collapse
+  into a single `collapseUnlinked` "Unlinked transfers" row instead of N loose cards. Two *separate*
+  jobs for the same album now correctly stay two cards. The Downloads header also shows a **disk-availability pill**
   (`used / total`, green→red fill) fed by `GET /api/system/disk` (statfs of the music dir). →
   [docs/download-pipeline.md](docs/download-pipeline.md) → "Now: / Next: track display",
   [docs/web-ui.md](docs/web-ui.md)

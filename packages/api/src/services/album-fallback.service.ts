@@ -112,6 +112,15 @@ export interface AlbumFallbackOptions {
   exhaustedRetryCooldownMs?: number;
   /** Cap on revivals per job before it stays exhausted. */
   exhaustedMaxRevives?: number;
+  /**
+   * How long an in-flight transfer may make no byte progress before another
+   * peer is allowed to overtake it. Gating on byte progress rather than on
+   * "the next sweep happened" is what makes the concurrency cap safe — a
+   * genuinely dead peer is still abandoned quickly.
+   */
+  stallThresholdMs?: number;
+  /** Injectable clock for deterministic stall tests. */
+  now?: () => number;
 }
 
 /**
@@ -126,6 +135,14 @@ export class AlbumFallbackService {
   private autoRetryExhausted: boolean;
   private exhaustedRetryCooldownMs: number;
   private exhaustedMaxRevives: number;
+  private stallThresholdMs: number;
+  private now: () => number;
+  /**
+   * Per-transfer byte-progress watermarks, keyed `${username}::${filename}`.
+   * In-memory on purpose: a restart resets the stall clock, which only makes
+   * the service wait longer before overtaking — never overtake sooner.
+   */
+  private progress = new Map<string, { bytes: number; since: number }>();
 
   constructor(slskd: Slskd, options: AlbumFallbackOptions = {}) {
     this.slskd = slskd;
@@ -134,6 +151,8 @@ export class AlbumFallbackService {
     this.autoRetryExhausted = options.autoRetryExhausted ?? false;
     this.exhaustedRetryCooldownMs = options.exhaustedRetryCooldownMs ?? 3_600_000;
     this.exhaustedMaxRevives = options.exhaustedMaxRevives ?? 5;
+    this.stallThresholdMs = options.stallThresholdMs ?? 120_000;
+    this.now = options.now ?? Date.now;
   }
 
   /**
@@ -186,21 +205,33 @@ export class AlbumFallbackService {
     // Normalized basenames of every successfully-downloaded file, across all
     // peers — a track is satisfied no matter which peer ultimately delivered it.
     const succeeded: string[] = [];
-    // Normalized basenames of tracks currently downloading (any peer). Used to
-    // keep the fresh-search recovery from re-enqueueing a track that an earlier
-    // wave is already pulling.
+    // Normalized basenames of tracks currently downloading (any peer) that are
+    // still making byte progress. A track already coming down from *some* peer
+    // must not be reached for again — that is what produced the five-peer
+    // fan-out on one album (issue #264). Stalled copies are deliberately left
+    // out so a dead peer can still be overtaken.
     const inFlight: string[] = [];
     const gaveUp = this.gaveUpKeys();
+    const seenKeys = new Set<string>();
     for (const group of downloads) {
       for (const dir of group.directories) {
         for (const file of dir.files) {
           if (file.state === 'Completed, Succeeded') {
             succeeded.push(normalizeBasename(file.filename));
           } else if (ACTIVE_STATES.has(file.state)) {
-            inFlight.push(normalizeBasename(file.filename));
+            const key = `${group.username}::${file.filename}`;
+            seenKeys.add(key);
+            if (!this.isStalled(key, file.bytesTransferred ?? 0)) {
+              inFlight.push(normalizeBasename(file.filename));
+            }
           }
         }
       }
+    }
+    // Forget watermarks for transfers that are no longer active, so a later
+    // re-enqueue of the same file starts with a fresh stall clock.
+    for (const key of this.progress.keys()) {
+      if (!seenKeys.has(key)) this.progress.delete(key);
     }
 
     for (const job of jobs) {
@@ -227,6 +258,17 @@ export class AlbumFallbackService {
         continue;
       }
 
+      // A track someone is already delivering is missing but NOT recoverable
+      // right now: reaching for a further peer would download a second copy of
+      // bytes already on the wire. `missing` stays the true gap (it decides
+      // whether the job is done); `recoverable` is what a fallback may act on.
+      // This is also the concurrency cap — a wave cannot start while a previous
+      // wave is still moving bytes for the same titles.
+      const recoverable = missing.filter((m) => !inFlight.some((s) => titlesOverlap(m, s)));
+      // Everything still outstanding is in flight: wait rather than burning a
+      // fallback attempt on a duplicate pull.
+      if (!recoverable.length) continue;
+
       // Don't reach for a fallback while the primary peer is still trying.
       if (this.primaryStillWorking(downloads, job, gaveUp)) continue;
 
@@ -236,7 +278,7 @@ export class AlbumFallbackService {
       }
 
       const alternates = JSON.parse(job.alternates_json) as AlternateCandidate[];
-      const picked = pickAlternate(alternates, missing);
+      const picked = pickAlternate(alternates, recoverable);
 
       // Cheapest path first: pull from a recorded alternate folder if one covers
       // a missing track. Only when none does do we pay for a fresh network search.
@@ -261,7 +303,7 @@ export class AlbumFallbackService {
           job.id,
           picked.alternate.username,
           picked.files.map((f) => ({ filename: f.filename, bitRate: f.bitRate })),
-          missing,
+          recoverable,
           picked.alternate.audioFormat,
         );
 
@@ -281,12 +323,9 @@ export class AlbumFallbackService {
         continue;
       }
 
-      // Fresh per-track search across all peers, skipping tracks a previous wave
-      // is already downloading. If everything missing is already in flight, wait.
-      const freshTargets = missing.filter((m) => !inFlight.some((s) => titlesOverlap(m, s)));
-      if (!freshTargets.length) continue;
-
-      const enqueued = await this.recoverViaFreshSearch(job.id, job.artist_name, freshTargets);
+      // Fresh per-track search across all peers. `recoverable` already excludes
+      // tracks a previous wave is still pulling.
+      const enqueued = await this.recoverViaFreshSearch(job.id, job.artist_name, recoverable);
       // Count the wave as an attempt either way so a hopeless gap eventually
       // exhausts instead of re-searching forever.
       this.db.run('UPDATE album_jobs SET fallback_attempts = fallback_attempts + 1 WHERE id = ?', [
@@ -367,7 +406,17 @@ export class AlbumFallbackService {
   ): void {
     try {
       const acqJobId = acquisitionJobIdForAlbumJob(this.db, albumJobId);
-      if (!acqJobId) return;
+      if (!acqJobId) {
+        // A transfer NicotinD itself enqueued must never end up unlinked: the
+        // enqueue already happened, so returning here orphans it permanently
+        // and it renders as its own raw-folder card (issue #261). Nothing can
+        // re-link it later, so at minimum make the loss visible.
+        log.warn(
+          { albumJobId, username, files: files.length },
+          'No acquisition job owns this album job — enqueued transfers will be unlinked',
+        );
+        return;
+      }
       for (const { filename, bitRate } of files) {
         const base = normalizeBasename(filename);
         const title =
@@ -444,6 +493,23 @@ export class AlbumFallbackService {
     } finally {
       await this.slskd.searches.delete(search.id).catch(() => {});
     }
+  }
+
+  /**
+   * Has this transfer made no byte progress for longer than the threshold?
+   *
+   * Progress resets the clock; a first sighting starts it. A stalled copy stops
+   * counting as in-flight, which is what lets another peer overtake a dead one
+   * without reintroducing the "every sweep grabs another peer" fan-out.
+   */
+  private isStalled(key: string, bytes: number): boolean {
+    const now = this.now();
+    const prev = this.progress.get(key);
+    if (!prev || bytes > prev.bytes) {
+      this.progress.set(key, { bytes, since: now });
+      return false;
+    }
+    return now - prev.since >= this.stallThresholdMs;
   }
 
   private primaryStillWorking(

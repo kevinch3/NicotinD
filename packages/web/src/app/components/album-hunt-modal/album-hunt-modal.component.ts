@@ -25,6 +25,7 @@ import {
   classifyHuntDownloadError,
 } from '../../lib/hunt-download-outcome';
 import { SourceChipComponent } from '../source-chip/source-chip.component';
+import { CoverArtComponent } from '../cover-art/cover-art.component';
 
 type HuntState =
   | 'idle'
@@ -40,7 +41,7 @@ type ArchiveState = 'idle' | 'searching' | 'done' | 'error';
 @Component({
   selector: 'app-album-hunt-modal',
   standalone: true,
-  imports: [NgTemplateOutlet, SourceChipComponent],
+  imports: [NgTemplateOutlet, SourceChipComponent, CoverArtComponent],
   templateUrl: './album-hunt-modal.component.html',
   host: { '(document:keydown.escape)': 'close()' },
 })

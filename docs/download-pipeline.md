@@ -212,17 +212,64 @@ Every download card surfaces the dominant bitrate + codec as a small inline chip
 - **slskd** — captured at enqueue time from `SlskdFile.bitRate` (already on the search response), threaded through every `createJob({ files: [{ ..., bitRate, audioFormat }] })` call site: `album-acquire.ts` (auto-acquire), `track-hunter` callers, and `album-fallback.service.ts` (the cross-peer fallback's `repointOrAttachItem` updates the row when a track gets repulled from an alternate peer). Stored on `acquisition_job_items.bit_rate_kbps` / `audio_format`. **Upgraded post-scan** by `enrichWithBitrate` (`routes/downloads.ts`) which `LEFT JOIN library_songs ON path = relative_path` — once the scanner ran, the `library_songs.bit_rate` value wins (the authoritative, post-transcode bitrate, e.g. 192 kbps Opus on a downloaded FLAC after lossless→opus).
 - **URL-acquire (spotdl / yt-dlp / archive)** — `AcquireWatcher.ingest` runs `probeAudioFile()` (ffprobe-based helper in `services/transcode.ts`) on the staged files once the plugin finishes downloading, computes the mode (`dominantProbe`), and writes `acquire_jobs.bit_rate_kbps` / `audio_format`. ffprobe is gated on `ffmpegAvailable()` — if ffmpeg isn't on PATH, no probe runs and the chip stays hidden for that card (the rest of the pipeline is also no-op in that case). The route's `enrichWithBitrate` upgrade path doesn't apply (URL-acquire jobs don't have `acquisition_job_items`).
 
-The pure `formatQuality(bitrateKbps, audioFormat)` helper in `lib/download-status.ts` decides the chip's display: `"FLAC · 1411 kbps"` for lossless codecs (always show the codec since lossless without kbps is ambiguous), `"320 kbps"` for lossy. Missing both → empty string → chip hidden. The dominant rollup logic lives in `acquisition-job-store.ts listJobFeed` (for the unified feed) and `routes/downloads.ts enrichWithBitrate` (for the slskd live feed); `lib/download-groups.ts collapseAlbumMembers` collapses multi-peer album jobs to one chip via the unified-job rollup, falling back to mode-across-members when no job-level value is known yet.
+The pure `formatQuality(bitrateKbps, audioFormat)` helper in `lib/download-status.ts` decides the chip's display: `"FLAC · 1411 kbps"` for lossless codecs (always show the codec since lossless without kbps is ambiguous), `"320 kbps"` for lossy. Missing both → empty string → chip hidden. The dominant rollup logic lives in `acquisition-job-store.ts listJobFeed` (for the unified feed) and `routes/downloads.ts enrichWithBitrate` (for the slskd live feed); `lib/download-groups.ts collapseJobMembers` collapses a job's multi-peer folders to one chip via the unified-job rollup, falling back to mode-across-members when no job-level value is known yet.
 
 ---
 
 ## Download list metadata (`AlbumJobMeta`)
 
-`GET /api/downloads` annotates each in-flight folder whose `(username, peer directory)` matches an **active `album_jobs`** row with `albumJob: { artistName, albumTitle, canonicalTrackCount, albumId }` (`enrichWithAlbumJobs` in `routes/downloads.ts`; type in `@nicotind/core`). This lets the Downloads UI show "Artist — Album · N of M tracks" instead of the noisy peer folder name (e.g. "(1995) Toque"). `albumId` is the deterministic `albumIdFor(artistName, albumTitle)` for the destination library album, so a completed download can **deep-link straight to its album page**. The URL-acquire side mirrors this: `AcquireJob` carries `albumId`/`albumArtist`/`albumTitle` derived from the organized `storage_path`'s last two `<Artist>/<Album>` segments via the pure `deriveAcquireAlbum` (`services/acquire-album.ts`; null for loose singles with no album wrapper) — but only when the job's files landed in exactly one album; a job spanning several albums instead carries the full `destinationAlbums` array and surfaces a "View N albums" menu (see "Multi-album acquire jobs" above).
+`GET /api/downloads` annotates each in-flight folder whose `(username, peer directory)` matches an **active `album_jobs`** row with `albumJob: { artistName, albumTitle, canonicalTrackCount, albumId, jobId }` (`enrichWithAlbumJobs` in `routes/downloads.ts`; type in `@nicotind/core`). This lets the Downloads UI show "Artist — Album · N of M tracks" instead of the noisy peer folder name (e.g. "(1995) Toque"). `albumId` is the deterministic `albumIdFor(artistName, albumTitle)` for the destination library album, so a completed download can **deep-link straight to its album page**. The URL-acquire side mirrors this: `AcquireJob` carries `albumId`/`albumArtist`/`albumTitle` derived from the organized `storage_path`'s last two `<Artist>/<Album>` segments via the pure `deriveAcquireAlbum` (`services/acquire-album.ts`; null for loose singles with no album wrapper) — but only when the job's files landed in exactly one album; a job spanning several albums instead carries the full `destinationAlbums` array and surfaces a "View N albums" menu (see "Multi-album acquire jobs" above).
 
 The web groups transfers via the pure `lib/download-groups.ts` (`groupByAlbum`/`albumGroupTitle`/`albumGroupTotal`), which prefers the hunt metadata and falls back to the peer folder name + file count for **direct (non-hunt)** downloads that have no job.
 
+`jobId` is the card's identity in the feed (issue #261): the server has always known which acquisition job enqueued a folder, but the client used to discard it and re-derive grouping from `albumId`, which is why one hunt kept splitting into several cards. See [docs/acquisition-jobs.md](acquisition-jobs.md) "One job = one card".
+
 > **Unified acquisition jobs** ([docs/acquisition-jobs.md](acquisition-jobs.md)): every enqueue path now also records an `acquisition_jobs` + `acquisition_job_items` row pair storing the exact `username::filename` transfer keys and the hunt's Lidarr metadata at enqueue time. This is the stored replacement for the string matching described above; the downloads feed's legacy `enrichWithAlbumJobs` `(username, directory)` match has been **retired** in favor of the stored-key `enrichWithAcquisitionJobs`.
+
+---
+
+## Clearing a download actually removes it (issue #265)
+
+"Clear" / "Cancel" used to only *hide* a transfer: the route called slskd's
+`DELETE /transfers/downloads/{user}/{id}`, which **cancels** but leaves the row
+in slskd's list forever, then recorded the id in `hidden_transfers` so it fell
+off screen. Nothing pruned that table. Prod reached **1,682 transfer
+directories in slskd and 19,845 `hidden_transfers` rows to display 11 visible
+directories** — every `GET /api/downloads` paid for the full payload and
+filtered ~99.3 % of it away in memory.
+
+- **`TransfersApi.cancel(username, id, { remove })`** appends `?remove=true`,
+  which is what actually drops the transfer from slskd's list. All three
+  clear paths pass it (`DELETE /:username/:id`, `DELETE /finished`, cancel-all
+  `DELETE /`). The **retry** path (`downloads.ts`, `download-retry.service.ts`)
+  deliberately does *not*: that is the "stop this and re-enqueue" case, where
+  the row should stay.
+- **`TransfersApi.removeCompleted()`** wraps slskd's bulk
+  `DELETE /transfers/downloads/all/completed`, used by `DELETE /finished` — one
+  call instead of N round trips, with a per-transfer fallback if the endpoint
+  is unavailable.
+- **`hidden_transfers` survives as a fallback, not the mechanism.** slskd's
+  `Downloads.Remove` filters on `TransferStateCategories.Completed` and
+  **silently returns false** otherwise — no error — and `TryCancel` only flips
+  an in-flight transfer's state to `Completed|Cancelled` *asynchronously* (it
+  calls `cts.Cancel()` and the transition lands on the download task). So a
+  removal issued for a still-moving transfer can race and miss. Hiding locally
+  is what keeps those off screen until the removal takes.
+- **Pruning** (`services/hidden-transfers.ts`) keeps the fallback from becoming
+  a permanent ledger. The pure `planHiddenTransferReconciliation(hiddenIds,
+  groups)` diffs the ledger against slskd's live list and returns
+  `{ prune, remove }`: an id slskd no longer reports is stale (drop the row); an
+  id still reported **in a completed state** is a removal slskd can now honour
+  (re-ask); an id still in flight is left strictly alone, because removing it
+  would be a no-op and the hide is the only thing keeping it hidden.
+  `GET /api/downloads` runs the prune half inline (the diff is over data already
+  in hand, and it writes only when something is actually stale);
+  `reconcileHiddenTransfers` runs both halves at boot, which is what mops up the
+  cancellations whose removal raced. Both are best-effort — an unreachable slskd
+  never blocks startup or the list.
+
+`download-retry.service.ts` and `enrichWithAcquisitionJobs` / `enrichWithBitrate`
+all walk the same payload, so they get cheaper for free once the list is bounded.
 
 ---
 

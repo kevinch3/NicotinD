@@ -3,6 +3,7 @@ import { createLogger, NicotinDError } from '@nicotind/core';
 import { addArtistFromLookup } from './lidarr-provision.js';
 import { normalizeTitle } from './album-hunter.service.js';
 import { tokenize, matchesAllTokens } from './search-tokens.js';
+import { proxiedCoverUrl } from './remote-cover.js';
 
 const log = createLogger('catalog');
 
@@ -263,7 +264,9 @@ function mapArtist(a: LidarrArtist): CatalogArtist {
   return {
     mbid: a.foreignArtistId,
     name: a.artistName,
-    imageUrl: image?.remoteUrl ?? image?.url,
+    // Same proxy as album covers — artist pills carry the identical CDN-original
+    // / Lidarr-relative shapes (issue #263).
+    imageUrl: proxiedCoverUrl(image?.remoteUrl ?? image?.url),
     type: a.status,
   };
 }
@@ -284,7 +287,10 @@ function mapAlbum(a: LidarrAlbum): CatalogAlbum {
     year: plausibleYear(a.releaseDate),
     albumType: a.albumType,
     secondaryTypes: a.secondaryTypes ?? [],
-    coverUrl: cover?.remoteUrl ?? cover?.url,
+    // Proxied through our own origin rather than handed to the browser raw:
+    // `remoteUrl` is a 1200 px third-party CDN original and `url` is a
+    // Lidarr-relative path the browser can't reach at all (issue #263).
+    coverUrl: proxiedCoverUrl(cover?.remoteUrl ?? cover?.url),
     trackCount,
   };
 }

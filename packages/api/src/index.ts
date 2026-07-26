@@ -77,6 +77,7 @@ import { DownloadWatcher } from './services/download-watcher.js';
 import { DownloadRetryService } from './services/download-retry.service.js';
 import { AlbumFallbackService } from './services/album-fallback.service.js';
 import { reconcileOnBoot as reconcileAcquisitionJobs } from './services/acquisition-job-store.js';
+import { reconcileHiddenTransfers } from './services/hidden-transfers.js';
 import { LibraryProcessingService } from './services/library-processing.service.js';
 import { AudioFeaturesClient } from './services/audio-features-client.js';
 import { ProviderRegistry } from './services/provider-registry.js';
@@ -344,6 +345,15 @@ export function createApp({
         : null,
   };
 
+  // Clearing a download hides it locally when slskd refuses the removal (it
+  // only drops completed transfers, and an in-flight cancellation lands after
+  // the request returns). Re-ask for those on boot and prune the hides whose
+  // transfer is gone, so the ledger can't grow without bound. Fire-and-forget:
+  // an unreachable slskd must never delay startup.
+  if (slskdRef.current) {
+    void reconcileHiddenTransfers(db, slskdRef.current.transfers).catch(() => {});
+  }
+
   // Spotify portrait lookup for the artist-image enrichment task. Bridged through
   // a ref because SpotifySearchService is constructed further down (it needs the
   // plugin registry for live creds); the scheduler only invokes this lazily during
@@ -590,7 +600,10 @@ export function createApp({
       audioFeaturesClient,
     }),
   );
-  app.route('/api', streamingRoutes(expandedMusicDir, db, expandedDataDir));
+  app.route(
+    '/api',
+    streamingRoutes(expandedMusicDir, db, expandedDataDir, config.lidarr?.url ?? null),
+  );
   app.route(
     '/api/system',
     systemRoutes(slskdRef, serviceManager, config, {

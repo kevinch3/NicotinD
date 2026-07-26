@@ -88,6 +88,13 @@ export interface AcquisitionJobView {
    * acquires. Optional: undefined when no quality info is available.
    */
   audioFormat?: string;
+  /**
+   * The peers this job pulled from, grouped from `acquisition_job_items`. One
+   * hunt commonly spans several (a fallback wave, a multi-disc release); the
+   * card renders them behind a "Sources (N)" disclosure instead of the feed
+   * splitting into one card per peer folder (issue #261). Empty for URL jobs.
+   */
+  sources: { username: string; fileCount: number; state: TrackStatus }[];
 }
 
 export interface AcquireJob {

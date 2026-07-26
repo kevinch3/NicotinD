@@ -70,6 +70,17 @@ export interface AlbumJobMeta {
   canonicalTrackCount: number;
   /** Deterministic library album id for the destination album, for deep-linking. */
   albumId: string;
+  /**
+   * The acquisition job that enqueued this folder — the card's identity.
+   *
+   * why: the feed used to re-derive card identity from `albumId`, so one hunt
+   * whose fallback pulled from five peers rendered as five cards whenever the
+   * derived key failed to line up (issue #261). The server recorded the
+   * transfer↔job link at enqueue time; shipping the job id stops the client
+   * reconstructing it and makes correct grouping automatic for any future
+   * acquisition path, since every path necessarily creates a job.
+   */
+  jobId: string;
 }
 
 export interface SlskdTransferDirectory {

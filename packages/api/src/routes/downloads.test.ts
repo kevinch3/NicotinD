@@ -41,6 +41,7 @@ function makeSlskdMock() {
       enqueue: mock(() => Promise.resolve()),
       cancel: mock(() => Promise.resolve()),
       cancelAll: mock(() => Promise.resolve()),
+      removeCompleted: mock(() => Promise.resolve()),
     },
   };
 }
@@ -207,7 +208,40 @@ describe('downloads routes', () => {
 
     const hidden = testDb.query('SELECT * FROM hidden_transfers WHERE id = ?').get('guid1');
     expect(hidden).toBeDefined();
-    expect(slskdMock.transfers.cancel).toHaveBeenCalledWith('user1', 'guid1');
+    // remove=true so the transfer actually leaves slskd's list; the hide is the
+    // fallback for the removals slskd refuses (issue #265).
+    expect(slskdMock.transfers.cancel).toHaveBeenCalledWith('user1', 'guid1', { remove: true });
+  });
+
+  it('DELETE /finished uses the bulk remove-completed endpoint', async () => {
+    const res = await app.request('/finished', { method: 'DELETE' });
+    expect(res.status).toBe(200);
+
+    expect(slskdMock.transfers.removeCompleted).toHaveBeenCalled();
+    // One bulk call, not one per completed transfer.
+    expect(slskdMock.transfers.cancel).not.toHaveBeenCalled();
+  });
+
+  it('DELETE /finished falls back to per-transfer removal when the bulk call fails', async () => {
+    slskdMock.transfers.removeCompleted = mock(() => Promise.reject(new Error('404')));
+
+    const res = await app.request('/finished', { method: 'DELETE' });
+    expect(res.status).toBe(200);
+
+    // guid1 is the only 'Completed,' transfer in the fixture.
+    expect(slskdMock.transfers.cancel).toHaveBeenCalledWith('user1', 'guid1', { remove: true });
+  });
+
+  it('GET / prunes hidden ids slskd no longer reports', async () => {
+    testDb.run('INSERT INTO hidden_transfers (id) VALUES (?)', ['guid1']); // live
+    testDb.run('INSERT INTO hidden_transfers (id) VALUES (?)', ['ghost']); // gone
+
+    await app.request('/');
+
+    const left = (
+      testDb.query('SELECT id FROM hidden_transfers').all() as Array<{ id: string }>
+    ).map((r) => r.id);
+    expect(left).toEqual(['guid1']);
   });
 
   it('DELETE / cancels all transfers and hides them', async () => {
@@ -220,9 +254,9 @@ describe('downloads routes', () => {
     expect(hiddenIds).toContain('guid1');
     expect(hiddenIds).toContain('guid2');
 
-    // cancel called once per file
-    expect(slskdMock.transfers.cancel).toHaveBeenCalledWith('user1', 'guid1');
-    expect(slskdMock.transfers.cancel).toHaveBeenCalledWith('user1', 'guid2');
+    // cancel called once per file, asking slskd to drop each from its list too
+    expect(slskdMock.transfers.cancel).toHaveBeenCalledWith('user1', 'guid1', { remove: true });
+    expect(slskdMock.transfers.cancel).toHaveBeenCalledWith('user1', 'guid2', { remove: true });
   });
 
   it('GET / returns 503 when slskd throws (transient unreachable)', async () => {

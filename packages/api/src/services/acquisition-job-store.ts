@@ -368,16 +368,67 @@ export function markItemOrganized(db: Database, transferKey: string, relativePat
   );
 }
 
-/** Attach scanned song ids to items by their post-organize relative path. */
+/**
+ * Attach scanned song ids to items by their post-organize relative path.
+ *
+ * Matched `COLLATE NOCASE`: the organizer records the path it wrote, while the
+ * scanner mints `library_songs.path` from the file's tags, and the two disagree
+ * on casing often enough to strand items (prod: `01 - ¿Quién te dijo eso.opus`
+ * organized vs `01 - ¿Quién Te Dijo Eso.opus` scanned — issue #262).
+ */
 export function markItemsScanned(db: Database, pathToSongId: Map<string, string>): void {
   const now = Date.now();
   for (const [relativePath, songId] of pathToSongId) {
     db.run(
       `UPDATE acquisition_job_items SET state = 'scanned', song_id = ?, updated_at = ?
-       WHERE relative_path = ? AND state != 'scanned'`,
+       WHERE relative_path = ? COLLATE NOCASE AND state != 'scanned'`,
       [songId, now, relativePath],
     );
   }
+}
+
+/**
+ * Re-resolve items stuck at `organized` against the library.
+ *
+ * why: `markItemsScanned` only ever runs over the relative paths of the scan
+ * batch that just finished. An item organized by a *different* batch — a
+ * fallback wave landing after the primary's scan, a duplicate copy deduped into
+ * an existing path, a scan that errored mid-batch — is never revisited, so it
+ * sits at `organized` forever and `recomputeStage` correctly refuses to close a
+ * job whose items are non-terminal. That is the actual mechanism behind the
+ * jobs stranded at `state=active, stage=scanning`: on prod, 20 of the 28
+ * stranded items already had a `library_songs` row at their exact recorded
+ * path — nothing was ever going to look again.
+ *
+ * Idempotent and cheap (bounded by the number of non-terminal items), so it can
+ * run on every hygiene pass. Returns the number of items rescued.
+ */
+export function reconcileOrganizedItems(db: Database): number {
+  const rows = db
+    .query<{ id: number; job_id: string; relative_path: string }, []>(
+      `SELECT id, job_id, relative_path FROM acquisition_job_items
+       WHERE state = 'organized' AND relative_path IS NOT NULL`,
+    )
+    .all();
+  if (rows.length === 0) return 0;
+
+  const now = Date.now();
+  const touched = new Set<string>();
+  let rescued = 0;
+  for (const row of rows) {
+    const song = db
+      .query<{ id: string }, [string]>(`SELECT id FROM library_songs WHERE path = ? COLLATE NOCASE`)
+      .get(row.relative_path);
+    if (!song) continue;
+    db.run(
+      `UPDATE acquisition_job_items SET state = 'scanned', song_id = ?, updated_at = ? WHERE id = ?`,
+      [song.id, now, row.id],
+    );
+    touched.add(row.job_id);
+    rescued++;
+  }
+  for (const jobId of touched) recomputeStage(db, jobId);
+  return rescued;
 }
 
 /**
@@ -629,6 +680,10 @@ export function supersedeActiveJobs(db: Database, target: { lidarrAlbumId: numbe
  * never strand a job "downloading" forever, then prune finished jobs.
  */
 export function reconcileOnBoot(db: Database, now = Date.now()): void {
+  // Rescue first, fail second: an item whose file *did* land must reach
+  // 'scanned' rather than being written off by the idle valve below.
+  reconcileOrganizedItems(db);
+
   const staleJobIds = db
     .query<{ job_id: string }, [number]>(
       `SELECT DISTINCT job_id FROM acquisition_job_items
@@ -695,6 +750,27 @@ export interface AcquisitionJobFeedItem {
    * onto the shared `TrackStatus` union (see `itemStateToTrackStatus`).
    */
   items: { title: string; status: TrackStatus }[];
+  /**
+   * The peers this job pulled from, so one card can show "Sources (5)" instead
+   * of the feed splitting into five (issue #261). Grouped from
+   * `acquisition_job_items.username`; empty for URL-acquire jobs, which have no
+   * peer identity.
+   */
+  sources: { username: string; fileCount: number; state: TrackStatus }[];
+}
+
+/**
+ * The state to show for one peer within a job. Worst-first: a peer that failed
+ * some files is reported as failed even if others landed, because that is the
+ * thing the user may need to act on. Mirrors the ordering `recomputeStage`
+ * uses to derive a job's own stage from its items.
+ */
+export function dominantItemState(states: string[]): TrackStatus {
+  const order = ['failed', 'unavailable', 'downloading', 'completed', 'organized', 'scanned'];
+  for (const s of order) {
+    if (states.includes(s)) return itemStateToTrackStatus(s);
+  }
+  return itemStateToTrackStatus(states[0] ?? 'downloading');
 }
 
 /**
@@ -803,6 +879,22 @@ export function listJobFeed(db: Database, limit = 50): AcquisitionJobFeedItem[] 
       )
       .all(row.id);
     const quality = rollupJobQuality(db, row.id);
+    // Peer breakdown for the card's "Sources (N)" disclosure. One hunt can pull
+    // from several peers (a fallback wave, a multi-disc release); the data was
+    // always in `acquisition_job_items`, the client just had no way to see it
+    // and rendered each peer folder as its own card instead (issue #261).
+    const sources = db
+      .query<{ username: string | null; c: number; states: string }, [string]>(
+        `SELECT username, COUNT(*) c, GROUP_CONCAT(state) states
+         FROM acquisition_job_items WHERE job_id = ? GROUP BY username ORDER BY c DESC`,
+      )
+      .all(row.id)
+      .filter((r): r is { username: string; c: number; states: string } => Boolean(r.username))
+      .map((r) => ({
+        username: r.username,
+        fileCount: r.c,
+        state: dominantItemState(r.states.split(',')),
+      }));
     return {
       id: row.id,
       kind: row.kind,
@@ -823,6 +915,7 @@ export function listJobFeed(db: Database, limit = 50): AcquisitionJobFeedItem[] 
         failed: counts.get('failed') ?? 0,
       },
       ...(quality ? { bitRate: quality.bitRate, audioFormat: quality.audioFormat } : {}),
+      sources,
       items: itemRows.map((r) => ({
         title: r.track_title ?? '',
         status: itemStateToTrackStatus(r.state),
