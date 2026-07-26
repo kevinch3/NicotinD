@@ -41,3 +41,7 @@ packages/desktop/dist-test/
 # Multi-size app icon pack — regenerated from packages/web/public/icons/
 # on every `bun run --filter @nicotind/desktop dist` by scripts/stage-icons.mjs
 packages/desktop/build/icons/
+
+# Playwright storageState — written here when the suite is run from the repo root
+# instead of packages/e2e (its own .gitignore only covers packages/e2e/.auth/).
+.auth/
