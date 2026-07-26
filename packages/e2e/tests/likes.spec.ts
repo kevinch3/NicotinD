@@ -39,8 +39,11 @@ test.describe('likes', () => {
     await expect(likedRow.getByTestId('delete-playlist')).toHaveCount(0);
 
     // 4. Re-navigate to the album: the heart persists as liked (hydrated from
-    //    /liked-ids). Unliking flips it back off.
+    //    /liked-ids). Unliking flips it back off. The library remembers the last
+    //    tab (localStorage), so step 3 left it on Playlists — reselect Albums
+    //    before looking for the album card.
     await page.goto('/library');
+    await page.getByRole('button', { name: 'Albums', exact: true }).click();
     await page.getByTestId('album-card').filter({ hasText: FIXTURE.album.title }).first().click();
     const heartAgain = page.getByTestId('track-row').first().getByTestId('track-like');
     await expect(heartAgain).toHaveAttribute('aria-pressed', 'true');
