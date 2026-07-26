@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.267](https://github.com/kevinch3/NicotinD/compare/v0.1.266...v0.1.267) (2026-07-26)
+
+### Bug Fixes
+
+* **player:** close false-ended guard gap for tracks with unknown duration ([8a6c84b](https://github.com/kevinch3/NicotinD/commit/8a6c84b2981060ee09022c4420f95014b5ed4ae6)), references [#234](https://github.com/kevinch3/NicotinD/issues/234)
 ## [0.1.266](https://github.com/kevinch3/NicotinD/compare/v0.1.265...v0.1.266) (2026-07-26)
 
 ### Features
