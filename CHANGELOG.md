@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.271](https://github.com/kevinch3/NicotinD/compare/v0.1.270...v0.1.271) (2026-07-26)
+
+### Bug Fixes
+
+* **genre:** let the curator choose whether an artist genre fix appends or replaces ([27d5a85](https://github.com/kevinch3/NicotinD/commit/27d5a8584b5221eea5df7824a243a322452e9dc4)), closes [#260](https://github.com/kevinch3/NicotinD/issues/260)
 ## [0.1.270](https://github.com/kevinch3/NicotinD/compare/v0.1.269...v0.1.270) (2026-07-26)
 
 ### Features
