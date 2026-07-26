@@ -240,7 +240,8 @@ checkbox renders from `settings.tasks`/`status.availability`).
 
 Modeled on `WatchlistService` (interval + a `busy` guard so runs never overlap):
 
-- **`tick()`** (periodic, default 60 s): no-op when disabled (`phase: disabled`) or
+- **`tick()`** (periodic, default 60 s): no-op when disabled (`phase: disabled`),
+  paused (`phase: paused`, see below) or
   outside the window (`phase: outside-window`); otherwise runs **one bounded batch
   per runnable task**. The short interval + guard make in-window work effectively
   continuous and re-evaluate the window at each batch boundary, so processing stops
@@ -462,6 +463,29 @@ the compose file and restart. That's the gap this closes; the backend needed no 
   than posting raw field values. `Number('')` is `0`, not `NaN`, so a *cleared* field would
   otherwise clamp to the minimum instead of leaving the current value alone — and a non-positive
   integer is a `400` from the route.
+
+### `paused` — a runtime throttle, not an off switch
+
+`enabled: false` is a *persistent* statement ("this deployment does not do background
+enrichment"). Pausing is the different, temporary thing an admin wants when another tenant needs
+the GPU **right now**: stop the background work, but don't reconfigure the install.
+
+`ProcessingSettings.paused` (+ the `paused` member of `ProcessingPhase`) is that lever, and it is
+deliberately weaker than `enabled` in three ways:
+
+- **It never strands a download.** The paused branch in `tick()` sits *after* the `enabled` gate and
+  still runs `kickEagerInner()` whenever `hasQuarantined()` — a freshly-downloaded song clears its
+  landing gate and becomes visible even while paused. Only window/background enrichment is skipped.
+  Pausing would otherwise leave new music invisible in quarantine with no indication why.
+- **`runNow()` overrides it.** The admin override reads no pause flag, so "Run now" still drains.
+  Pause throttles the *automatic* loop, not the human pressing the button.
+- **`enabled: false` wins the label.** When both are set the phase reports `disabled`, because the
+  persistent statement is the more informative one.
+
+Persisted settings written before this field existed have no `paused` key;
+`getProcessingSettings` merges over `DEFAULT_PROCESSING_SETTINGS` so they read `false` rather than
+`undefined`. `PUT /api/admin/processing` rejects a non-boolean with a `400`, and the Admin panel
+exposes it as `data-testid="processing-paused"`.
 
 **Analysis-sidecar status** (`data-testid="processing-sidecar-status"`) renders from the
 `services.analysis: { configured, healthy }` slice added to `GET /api/admin/review` — fed by

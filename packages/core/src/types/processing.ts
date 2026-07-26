@@ -50,10 +50,18 @@ export interface ProcessingSettings {
   batchSize: number;
   /** Worker-pool size for parallelisable tasks (e.g. BPM ffmpeg decodes). */
   concurrency: number;
+  /**
+   * Temporary halt of automatic/window background enrichment (issue #224 —
+   * "pause processing now"). Unlike `enabled: false` (a persistent off switch),
+   * `paused` is a runtime throttle: fresh downloads still clear their landing
+   * gate (so nothing is stranded in quarantine), but no window/background
+   * enrichment runs. An explicit admin "Run now" still overrides it.
+   */
+  paused: boolean;
 }
 
 /** Coarse phase of the processor at a point in time. */
-export type ProcessingPhase = 'idle' | 'running' | 'outside-window' | 'disabled';
+export type ProcessingPhase = 'idle' | 'running' | 'outside-window' | 'disabled' | 'paused';
 
 /** Live status snapshot for the progress UI (persisted so a restart resumes display). */
 export interface ProcessingStatus {

@@ -71,7 +71,14 @@ function setup(opts: { role?: 'admin' | 'user'; deleteSongs?: ReturnType<typeof 
           deleteSongs,
         },
       },
-      { provide: AuthService, useValue: { token: signal('tok'), role: () => opts.role ?? 'user', canCurate: () => canCurateRole(asRole(opts.role ?? 'user')) } },
+      {
+        provide: AuthService,
+        useValue: {
+          token: signal('tok'),
+          role: () => opts.role ?? 'user',
+          canCurate: () => canCurateRole(asRole(opts.role ?? 'user')),
+        },
+      },
       { provide: PlayerService, useValue: playerStub },
       { provide: PlaylistService, useValue: { openPicker } },
     ],
@@ -81,7 +88,13 @@ function setup(opts: { role?: 'admin' | 'user'; deleteSongs?: ReturnType<typeof 
   const fixture = TestBed.createComponent(GenreDetailComponent);
   fixture.detectChanges();
   const preserve = TestBed.inject(PreserveService);
-  return { component: fixture.componentInstance, playWithContextCalls, preserve, openPicker, deleteSongs };
+  return {
+    component: fixture.componentInstance,
+    playWithContextCalls,
+    preserve,
+    openPicker,
+    deleteSongs,
+  };
 }
 
 describe('GenreDetailComponent — Play All', () => {
@@ -144,6 +157,41 @@ describe('GenreDetailComponent — Play All', () => {
     expect(tracks[0].title).toBe('Natiruts Reggae Power');
     expect(tracks[0].artist).toBe('Natiruts');
     expect(tracks[0].album).toBe('Natiruts');
+  });
+});
+
+describe('GenreDetailComponent — playSong queue semantics (issue #233)', () => {
+  it('routes a single clicked track through playWithContext, replacing the stale queue', () => {
+    const { component, playWithContextCalls } = setup();
+
+    component.genreSlug.set('Reggae');
+    component.genreSongs.set(MOCK_SONGS);
+
+    component.playSong({ id: 's2' });
+
+    expect(playWithContextCalls).toHaveLength(1);
+    const [tracks, startIndex, context] = playWithContextCalls[0] as [
+      Array<{ id: string }>,
+      number,
+      { type: string; name: string },
+    ];
+    // The whole genre list becomes the queue — not just the clicked track —
+    // so an unrelated queue can't resume when this song ends.
+    expect(tracks.map((t) => t.id)).toEqual(['s1', 's2', 's3']);
+    expect(startIndex).toBe(1);
+    expect(context.type).toBe('adhoc');
+    expect(context.name).toBe('Reggae');
+  });
+
+  it('does nothing when the clicked track is not in the filtered list', () => {
+    const { component, playWithContextCalls } = setup();
+
+    component.genreSlug.set('Reggae');
+    component.genreSongs.set(MOCK_SONGS);
+
+    component.playSong({ id: 'not-here' });
+
+    expect(playWithContextCalls).toHaveLength(0);
   });
 });
 

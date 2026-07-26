@@ -156,6 +156,42 @@ describe('LibraryProcessingService', () => {
     expect(svc.getState().status.phase).toBe('disabled');
   });
 
+  it('tick skips background enrichment when paused, inside the window', async () => {
+    for (let i = 0; i < 3; i++) seedSong(`s${i}`);
+    setProcessingSettings(db, { window: { start: '05:00', end: '08:00' }, paused: true });
+    const counters = { analyzed: 0, genreLookups: 0 };
+    const svc = service({ now: new Date(2024, 0, 1, 6, 30), counters });
+
+    await svc.tick();
+
+    expect(counters.analyzed).toBe(0);
+    expect(pendingBpm()).toBe(3);
+    expect(svc.getState().status.phase).toBe('paused');
+  });
+
+  it('runNow overrides pause — pause throttles the tick, not the admin override', async () => {
+    for (let i = 0; i < 3; i++) seedSong(`s${i}`);
+    setProcessingSettings(db, { paused: true, batchSize: 2 });
+    const counters = { analyzed: 0, genreLookups: 0 };
+    const svc = service({ now: new Date(2024, 0, 1, 12, 0), counters });
+
+    await svc.runNow();
+
+    expect(pendingBpm()).toBe(0);
+  });
+
+  it('paused still reports disabled when the master switch is also off', async () => {
+    seedSong('s0');
+    setProcessingSettings(db, { enabled: false, paused: true });
+    const counters = { analyzed: 0, genreLookups: 0 };
+    const svc = service({ now: new Date(2024, 0, 1, 6, 30), counters });
+
+    await svc.tick();
+
+    // `enabled: false` is the stronger, persistent statement — it wins the label.
+    expect(svc.getState().status.phase).toBe('disabled');
+  });
+
   it('guards against overlapping runs', async () => {
     for (let i = 0; i < 4; i++) seedSong(`s${i}`);
     setProcessingSettings(db, { batchSize: 10, tasks: { bpm: true, genre: false, key: false } });

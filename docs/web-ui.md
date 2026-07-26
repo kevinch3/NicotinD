@@ -251,6 +251,28 @@ exercises the full `onEnded`/recovery flow against a track with no
 resolves once a real duration arrives, and a legitimately tiny (≥ 3 s) track
 with no known duration still plays through normally (no false positive).
 
+**The recovery itself never terminated (bounded by `MAX_RECOVERY_ATTEMPTS`).** Both fixes above
+make `onEnded` *refuse* to advance on a false `ended` — but nothing capped how many times it could
+refuse. `onEnded` re-entered `startRecovery` on every false `ended`, and the 5 s valve resets
+`recoveryState` to `'normal'` and then seeks to 0 + plays. So a resource that is *genuinely* short
+(a truly truncated cache file, not a mis-parse) ends early again, is flagged false-ended again, and
+restarts every ~5 s — **forever, never reaching the next queue item**. The `startRecovery`
+early-return on `'awaiting-duration'` doesn't help: the valve has already cleared that state. The
+guard that was meant to stop a premature advance had become a guard against *ever* advancing.
+
+Fixed with a per-load attempt bound: `MAX_RECOVERY_ATTEMPTS` (3), counted in `recoveryAttempts`,
+incremented inside `startRecovery`. Once the allowance is spent, `onEnded` falls through to the
+normal advance path and the resource is treated as legitimately short — a corrupt file costs ~15 s
+rather than stalling the session. The counter resets when a **new resource** takes over, not when a
+recovery succeeds, so the same element can't refresh its own allowance indefinitely.
+
+Found alongside it: both recovery-exit sites assigned `this.recoveryTimeout = null` **without**
+`clearTimeout`, which only forgets the handle — the armed 5 s valve still fired after a *successful*
+recovery and ran `audio.currentTime = 0`, yanking the listener back to the start of the track. The
+two sites now share one `clearRecoveryTimeout()` helper (also used by `startRecovery` and
+`ngOnDestroy`), so the handle has a single teardown path. The two bugs compound: the stray seek-to-0
+can itself provoke another early `ended`, feeding the loop the bound is there to stop.
+
 **Testing `input()`-signal components (JIT vitest limitation)**: the web unit
 suite runs on the JIT/vitest harness (`@angular/compiler`, no ngtsc build
 step), which has no compile-time transform for signal `input()`/

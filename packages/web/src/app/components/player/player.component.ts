@@ -49,6 +49,20 @@ function formatTime(s: number): string {
 export const FALSE_ENDED_ABSOLUTE_FLOOR_SEC = 3;
 
 /**
+ * How many false-ended recoveries one track load may attempt before the
+ * player gives up and advances the queue.
+ *
+ * Without a bound the recovery is unterminating: `onEnded` re-enters
+ * {@link PlayerComponent.startRecovery} on every false `ended`, and the 5 s
+ * `recoveryTimeout` valve resets `recoveryState` to `'normal'` then seeks to 0
+ * and plays — so a genuinely short/corrupt resource ends early again and the
+ * track restarts every ~5 s, forever, never reaching the next queue item.
+ * After this many attempts the resource is treated as legitimately short and
+ * the normal advance path runs.
+ */
+export const MAX_RECOVERY_ATTEMPTS = 3;
+
+/**
  * Frontend duration gate. The API-known `track.duration` (from the library
  * scan / source-file tag metadata) is the reference of truth — a browser
  * reporting a much-smaller `audio.duration` for the same resource usually
@@ -65,10 +79,7 @@ export const FALSE_ENDED_ABSOLUTE_FLOOR_SEC = 3;
  * corrupt/truncated response for an unscanned-duration track slip past this
  * gate entirely — issue #234. Fall back to the absolute floor instead.
  */
-export function browserDurationIsAcceptable(
-  knownSec: number,
-  nativeSec: number,
-): boolean {
+export function browserDurationIsAcceptable(knownSec: number, nativeSec: number): boolean {
   if (!Number.isFinite(nativeSec) || nativeSec <= 0) return false;
   if (!Number.isFinite(knownSec) || knownSec <= 0) {
     return nativeSec >= FALSE_ENDED_ABSOLUTE_FLOOR_SEC;
@@ -211,6 +222,10 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
       }
 
       if (track) {
+        // Different audio — a fresh MAX_RECOVERY_ATTEMPTS allowance. Deliberately
+        // NOT reset when a recovery succeeds: that's the same resource, and
+        // refreshing its budget there lets a flaky one recover indefinitely.
+        this.recoveryAttempts = 0;
         this.player.setCurrentTime(0);
         this.player.setDuration(track.duration ?? 0);
         // New load beginning — flag it before any bytes move so track rows and
@@ -607,7 +622,9 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
         // short read; the browser keeps playing from there once play() is
         // called again).
         this.player.recoveryState.set('normal');
-        this.recoveryTimeout = null;
+        // Cancel the valve, don't just forget it: a bare `= null` leaves the
+        // 5 s timer armed and it seeks to 0 mid-playback after a good recovery.
+        this.clearRecoveryTimeout();
         this.player.setBuffering(false);
         if (this.player.isPlaying()) {
           audio.play().catch((err) => {
@@ -629,7 +646,10 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
       // or a corrupt server cache file (the bug this branch was written for).
       // Do NOT advance the queue — pause, flag recovery, wait for a real
       // duration.
-      if (this.isFalseEnded(audio)) {
+      // Bounded by MAX_RECOVERY_ATTEMPTS: once a track has burned its
+      // allowance the resource is genuinely short, so fall through to the
+      // normal advance path instead of recovering forever.
+      if (this.isFalseEnded(audio) && this.recoveryAttempts < MAX_RECOVERY_ATTEMPTS) {
         this.startRecovery(audio, boundGen);
         return;
       }
@@ -664,6 +684,8 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
             // event still queued on the now-cleared old element can't make
             // it through (the new listeners capture the bumped value).
             this.loadGeneration += 1;
+            // Gapless swap — the preloaded element is different audio too.
+            this.recoveryAttempts = 0;
 
             // Re-bind all audio listeners to the now-active element.
             this.bindAudioListeners(standby);
@@ -792,11 +814,12 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
       const known = untracked(() => this.player.currentTrack()?.duration ?? 0);
       if (
         this.player.recoveryState() === 'awaiting-duration' &&
-        Number.isFinite(d) && d > 0 &&
+        Number.isFinite(d) &&
+        d > 0 &&
         browserDurationIsAcceptable(known, d)
       ) {
         this.player.recoveryState.set('normal');
-        this.recoveryTimeout = null;
+        this.clearRecoveryTimeout();
         this.player.setBuffering(false);
         if (this.player.isPlaying()) {
           audio.play().catch((err) => {
@@ -877,6 +900,18 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
   /** The timer handle for the false-ended recovery fallback (5 s). */
   private recoveryTimeout: ReturnType<typeof setTimeout> | null = null;
 
+  // False-ended recoveries spent on the current resource, bounded by
+  // MAX_RECOVERY_ATTEMPTS. Reset whenever a new resource takes over.
+  private recoveryAttempts = 0;
+
+  /** Cancels the recovery valve. The one place the handle is torn down. */
+  private clearRecoveryTimeout(): void {
+    if (this.recoveryTimeout !== null) {
+      clearTimeout(this.recoveryTimeout);
+      this.recoveryTimeout = null;
+    }
+  }
+
   /**
    * Begin the false-ended recovery flow: pause the audio element, surface
    * the buffering indicator, and wait for a real `durationchange` (or
@@ -887,9 +922,10 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
    */
   private startRecovery(audio: HTMLAudioElement, boundGen: number): void {
     if (this.player.recoveryState() === 'awaiting-duration') return; // already recovering
+    this.recoveryAttempts += 1;
     this.player.recoveryState.set('awaiting-duration');
     this.player.setBuffering(true);
-    if (this.recoveryTimeout !== null) clearTimeout(this.recoveryTimeout);
+    this.clearRecoveryTimeout();
     this.recoveryTimeout = setTimeout(() => {
       if (boundGen !== this.loadGeneration) return;
       this.recoveryTimeout = null;
@@ -907,10 +943,7 @@ export class PlayerComponent implements AfterViewInit, OnDestroy {
   ngOnDestroy(): void {
     this.audioListenerCleanups.forEach((fn) => fn());
     if (this.backgroundPauseTimer !== null) clearTimeout(this.backgroundPauseTimer);
-    if (this.recoveryTimeout !== null) {
-      clearTimeout(this.recoveryTimeout);
-      this.recoveryTimeout = null;
-    }
+    this.clearRecoveryTimeout();
     if (this.progressReportInterval) clearInterval(this.progressReportInterval);
     if (this.rafId) cancelAnimationFrame(this.rafId);
     this.releaseWakeLock();

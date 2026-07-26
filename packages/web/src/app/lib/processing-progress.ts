@@ -21,6 +21,8 @@ export function phaseLabel(phase: ProcessingPhase): string {
       return 'Waiting for window';
     case 'disabled':
       return 'Disabled';
+    case 'paused':
+      return 'Paused';
     case 'idle':
     default:
       return 'Idle';

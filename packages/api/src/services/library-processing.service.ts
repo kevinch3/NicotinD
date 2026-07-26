@@ -121,8 +121,7 @@ export class LibraryProcessingService extends EventEmitter {
   private readonly lookupArtistImageSpotify: ((name: string) => Promise<string | null>) | null;
   private readonly lookupArtistInfo: ((mbid: string) => Promise<ArtistInfoResult | null>) | null;
   private readonly lookupGenreForRelease:
-    | ((query: GenreQuery) => Promise<GenreResult | null>)
-    | null;
+    ((query: GenreQuery) => Promise<GenreResult | null>) | null;
   private readonly audioFeaturesClient: AudioFeaturesClient | null;
   private readonly logPath: string;
   private readonly intervalMs: number;
@@ -208,6 +207,19 @@ export class LibraryProcessingService extends EventEmitter {
     const settings = getProcessingSettings(this.db);
     if (!settings.enabled) {
       this.publish(settings, 'disabled');
+      return;
+    }
+    // Paused (issue #224): a runtime throttle distinct from `enabled: false`.
+    // Skip all window/background enrichment, but STILL clear quarantine so a
+    // fresh download isn't stranded invisible while the admin has paused the
+    // heavy background work. An explicit `runNow()` overrides pause.
+    if (settings.paused) {
+      if (this.hasQuarantined()) {
+        await this.guarded(async () => {
+          await this.kickEagerInner();
+        });
+      }
+      this.publish(settings, 'paused');
       return;
     }
     if (!isWithinWindow(this.now(), settings.window)) {
@@ -501,6 +513,7 @@ export class LibraryProcessingService extends EventEmitter {
     let phase = this.status.phase;
     if (!this.busy) {
       if (!settings.enabled) phase = 'disabled';
+      else if (settings.paused) phase = 'paused';
       else if (!isWithinWindow(this.now(), settings.window)) phase = 'outside-window';
       else phase = 'idle';
     }
