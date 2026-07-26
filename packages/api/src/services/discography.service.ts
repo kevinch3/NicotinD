@@ -2,6 +2,7 @@ import type { Database } from 'bun:sqlite';
 import type { Lidarr, LidarrAlbum, LidarrTrack } from '@nicotind/lidarr-client';
 import { createLogger } from '@nicotind/core';
 import { addArtistFromLookup } from './lidarr-provision.js';
+import { isWholeTokenSubsequence } from './enrichment/tasks.js';
 
 const log = createLogger('discography');
 
@@ -120,30 +121,33 @@ export class DiscographyService {
     const best = candidates[0];
     if (!best) throw new Error(`Lidarr found no artist matching "${artistName}"`);
 
-    // ── issue #212 direction 2 — garbage-artist provision guard (LEFT COMMENTED) ──
-    // The prod bug: a delimiter-less mash ("2 MinutosTruenoDie Toten Hosen") was
-    // looked up whole and Lidarr fuzzy-returned a junk artist ("2"), which then got
-    // added, polluting the Lidarr library. The *root-cause* fix ships in this PR —
-    // `segmentConcatenatedArtist` (artist-split.ts) splits the mash at scan time so
-    // the discography lookup runs per real member, not on the mash — so this guard
-    // is only belt-and-suspenders.
+    // ── issue #212 direction 2 — garbage-artist provision guard ──────────────────
+    // Prod bug: a delimiter-less mash ("2 MinutosTruenoDie Toten Hosen") was looked
+    // up whole and Lidarr fuzzy-returned the junk artist "2", which was then *added*,
+    // polluting the Lidarr library and producing wrong-artist tiles/metadata.
     //
-    // It is intentionally NOT enabled, because a naive "reject when the returned
-    // name doesn't match the query" check directly RE-BREAKS the #211/#217 fix: that
-    // change deliberately WIDENED matching to accept canonical-name drift (library
-    // `Eduardo Miño` → Lidarr `Luis Eduardo Miño Naranjo`). A safe version would have
-    // to reuse the same two-signal corroboration as `pickMbidHit` (whole-token
-    // subsequence + `albumCount > 0`) rather than a bare string compare — a real
-    // design decision, not a mechanical toggle. Sketch:
+    // `segmentConcatenatedArtist` (artist-split.ts) is the root-cause fix, but it is
+    // confirmation-gated: a mash whose members appear nowhere else in the library
+    // stays whole, and that whole string still reaches this lookup. So this guard is
+    // the backstop for exactly the case the segmenter is designed to decline.
     //
-    //   import { isWholeTokenSubsequence } from './enrichment/tasks.js';
-    //   const corroborated =
-    //     normalizeTitle(best.artistName) === normalizeTitle(artistName) ||
-    //     (isWholeTokenSubsequence(artistName, best.artistName) && (best.albumCount ?? 0) > 0);
-    //   if (!corroborated) {
-    //     log.warn({ artistName, candidate: best.artistName }, 'Refusing to provision unconfirmed Lidarr artist');
-    //     throw new Error(`No confident Lidarr match for "${artistName}"`);
-    //   }
+    // A bare "returned name must equal the query" check would RE-BREAK #211/#217,
+    // which deliberately widened matching to accept canonical-name drift (library
+    // `Eduardo Miño` → Lidarr `Luis Eduardo Miño Naranjo`). So we reuse the same
+    // two-signal corroboration as `pickMbidHit`: the drift must be a *whole-token
+    // subsequence* (contiguous, in-order — "2" is not one of "2 MinutosTrueno…")
+    // AND the candidate must actually have albums. Both signals, or no provision.
+    const corroborated =
+      normalizeTitle(best.artistName) === normalizeTitle(artistName) ||
+      (isWholeTokenSubsequence(artistName, best.artistName) && (best.albumCount ?? 0) > 0);
+
+    if (!corroborated) {
+      log.warn(
+        { artistName, candidate: best.artistName, albumCount: best.albumCount },
+        'Refusing to provision unconfirmed Lidarr artist',
+      );
+      throw new Error(`No confident Lidarr match for "${artistName}"`);
+    }
 
     const added = await addArtistFromLookup(this.lidarr, best, this.musicDir);
 
