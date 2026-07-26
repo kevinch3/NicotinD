@@ -106,7 +106,13 @@ function makeServer(port: string, dir: string): NonNullable<PlaywrightTestConfig
     command: 'bun run src/main.ts',
     cwd: repoRoot,
     url: `http://localhost:${port}/api/health`,
-    reuseExistingServer: !process.env.CI,
+    // Never reuse, even locally. This config wipes `dataDir` at eval time (above),
+    // so a server left running by a previous invocation would still hold the now
+    // unlinked SQLite file open and serve stale/empty data — reuse and the wipe are
+    // mutually incoherent. That combination silently poisons a run and surfaces far
+    // from its cause (a seeded-library assertion failing in `auth.setup`, skipping
+    // the whole suite). Failing loudly on a busy port is the better trade.
+    reuseExistingServer: false,
     timeout: 60_000,
     stdout: 'pipe',
     stderr: 'pipe',
