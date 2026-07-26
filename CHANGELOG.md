@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.264](https://github.com/kevinch3/NicotinD/compare/v0.1.263...v0.1.264) (2026-07-26)
+
+### Features
+
+* **share:** artist shares, logged-in redirect, and post-login return URL ([57f98b8](https://github.com/kevinch3/NicotinD/commit/57f98b8b446451605942ea352cccc7f1cba4b11f))
 ## [0.1.263](https://github.com/kevinch3/NicotinD/compare/v0.1.262...v0.1.263) (2026-07-26)
 
 ### Features
