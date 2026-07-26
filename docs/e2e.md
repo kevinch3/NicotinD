@@ -57,6 +57,16 @@ Recurring wrong assumptions that have shipped red CI. Check every new spec
 against these before pushing; if you discover a new one, add it here in the
 same PR that hit it.
 
+- **The suite tests the last `ng build`, not your working tree.** The managed
+  `webServer` runs `bun run src/main.ts`, and Hono serves the prebuilt
+  `packages/web/dist` — there is no dev server and no watch. Editing Angular
+  source and running Playwright therefore exercises the **old bundle**, silently.
+  This fails in the most confusing possible direction: a spec written for your
+  fix reports the pre-fix behaviour as the "actual" value, which reads exactly
+  like the fix not working. Rebuild web before every e2e run that touches
+  `packages/web/src` (`bun run --filter @nicotind/web build`). Backend-only
+  changes are picked up on server boot and need no rebuild.
+
 - **The `request` fixture is NOT authenticated.** The setup project's
   `storageState` only persists **localStorage** (the app keeps its JWT in
   `nicotind_token` — there is no auth cookie), and Playwright's `request`
