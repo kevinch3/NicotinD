@@ -79,6 +79,23 @@ Effect 1 (`PlayerComponent` track-load) honours this: its two `audio.play()` cal
 
 Per-user pref lives in the `user_settings.autoplay_on_load` column (default `0`); surfaced through `GET /api/auth/me` (`autoplayOnLoad: boolean`) and mutated by `POST /api/auth/ autoplay` (body `{ enabled: boolean }`). The web toggle sits in Settings → Playback (`data-testid="autoplay-on-load-toggle"`); `AuthService.setAutoplayOnLoad()` writes optimistically and rolls back on HTTP error. Guarded by `auth.test.ts`, `player.service.spec.ts` (`maybeResumeAutoplay` one-shot/quadrant tests), `player.component.spec.ts` ("loading while paused doesn't call play"), and `e2e/tests/player.spec.ts` ("reload leaves the player paused by default").
 
+## Queue semantics — what a click replaces (issue #233)
+
+A track click used to call the bare `PlayerService.play(track)`, which sets `currentTrack` + `isPlaying` and **never touches `queue`**. So clicking one track left whatever was queued before in place, and `playNext()` pulled that unrelated queue as soon as the deliberately-clicked track ended. The fix is not "always clear the queue" — that would wipe the queue on every album-track click too. It's making the *gesture* decide, via three explicit entry points:
+
+| Method | Queue effect | Used by |
+| --- | --- | --- |
+| `play(track)` | untouched — **primitive** | only queue-owning callers (`playWithContext`, `playNext`, `jumpToQueueIndex`) and `RemotePlaybackService` state sync, which must not mutate local queue state |
+| `playSingle(track)` | replaced (queue + history emptied, `context` nulled) | a context-less click, and `startRadio(track)` |
+| `playWithContext(tracks, i, ctx)` | replaced by *that list* from `i` | every row click inside a list |
+| `jumpToQueueIndex(i)` | consumes `[0..i]`; skipped entries + the outgoing track go to `history` | the Now Playing "Next up" row tap |
+
+A row click in a list is always `playWithContext` — the list becomes the queue. Two surfaces were still on the bare primitive and are fixed: **album detail** (`playSong` now resolves the clicked song's index within `albumTracks()` and plays from there with an `album` context; falls back to `playSingle` if the song isn't in the album's track list) and **genre detail** (`playSong` plays from the clicked index through `filteredGenreSongs()`). `now-playing.jumpToTrack` moved from `play()` — which left the tapped entry *in* the queue, so it replayed the moment it ended — to `jumpToQueueIndex`.
+
+`startRadio(track)` clears the queue too: radio replenishes from the current track, so a leftover queue played out in full before the radio the user asked for ever started. `toggleRadio`'s eager fill covers the now-empty queue. `startRadioWithFilter` already set its own queue and is unchanged.
+
+Guarded by `player.service.spec.ts` (`playSingle` / `playWithContext` / `jumpToQueueIndex` / `startRadio` describe blocks).
+
 ## Playback loading feedback (HDD-aware loaders)
 
 Libraries often sit on HDDs: starting an uncached track or seeking into an

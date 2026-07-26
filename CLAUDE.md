@@ -265,13 +265,22 @@ Add detail there, not here.
   → Playback toggle, default off). Effect 1's `audio.play()` calls are gated on
   `untracked(isPlaying())` so a freshly loaded track sits paused without ever hitting the
   gesture-less autoplay policy. → [docs/web-ui.md](docs/web-ui.md)
-- **Queue extensions (full management)**: `PlayerService` exposes `playNextTrack`, `clearQueue`,
-  `shuffleQueue`, `moveInQueue`, `hasTrack`, `jumpToQueueIndex`; Now Playing queue UI has header
-  toolbar (shuffle/save-as-playlist/clear), per-track remove, drag-to-reorder
+- **Queue extensions (full management)**: `PlayerService` exposes `queueNext`, `addToQueue`,
+  `clearQueue`, `removeFromQueue`, `moveInQueue`, `toggleShuffle`, `jumpToQueueIndex`; Now Playing
+  queue UI has header toolbar (shuffle/save-as-playlist/clear), per-track remove, drag-to-reorder
   (`DragReorderDirective`), a **manual drag-resize handle** (pull the queue taller → cover art
   shrinks; `createPointerDrag`, persisted per-device), history peek, and mini-player queue badge.
   Reusable `playNextAction`/`addToQueueAction` in `track-utils.ts` wired into every track-row menu.
   → [docs/web-ui.md](docs/web-ui.md)
+- **Queue semantics — what a click replaces (issue #233)**: the bare `play(track)` never touched
+  `queue`, so a standalone track click left an unrelated queue in place and it resumed the moment
+  the clicked track ended. The gesture now decides: `play()` is the queue-untouched **primitive**
+  (queue-owning callers + `RemotePlaybackService` sync only), `playSingle()` **replaces** the queue
+  for a context-less click, `playWithContext()` makes *that list* the queue for every in-list row
+  click (album detail + genre detail were still on the primitive — fixed), and `jumpToQueueIndex()`
+  **consumes** the queue up to a tapped "Next up" row instead of leaving it there to replay.
+  `startRadio(track)` clears the queue too, so radio starts now rather than after the stale queue
+  drains. → [docs/web-ui.md](docs/web-ui.md) "Queue semantics"
 - **Canonical artwork**: `library_artwork` stores canonical URLs keyed on deterministic IDs
   (survives rescans). → [docs/library-scanner.md](docs/library-scanner.md)
 - **Artist images (auto + override)**: real portraits resolved through a priority-ordered **provider
@@ -781,7 +790,14 @@ Add detail there, not here.
   invalidation to `applyGenre`/`applyMetadata`/`deleteSongs`/`deleteAlbum`/`resyncLibrary` (joining
   `setArtistGenre`/`clearArtistGenre`/`fixArtistIdentity`);
   artist-image/cover/lyrics/licence/reclassify/optimize writes correctly don't (id-stable `coverArt`
-  or no list impact). → [docs/web-ui.md](docs/web-ui.md) "Cached whole-library reads"
+  or no list impact). The **full cross-layer sweep is now catalogued** in
+  [docs/cache-invalidation.md](docs/cache-invalidation.md) — every cache/memo with its writer set,
+  plus the structural findings that rule whole classes out (no `dataGroups` ⇒ the SW never caches an
+  API response; per-song side tables deliberately skip FK cascades so a rescan can't wipe curator
+  data, and dangling rows are invisible because playlist reads `INNER JOIN library_songs`;
+  `noArtCache` has a complete `clearCoverNegativeCache` writer set) and the "adding a cache"
+  checklist (content-address > short TTL > explicit invalidation). →
+  [docs/cache-invalidation.md](docs/cache-invalidation.md), [docs/web-ui.md](docs/web-ui.md)
 - **Published Docker image (deployment)**: multi-arch GHCR image (`release`/`vX`/`vX.Y.Z` tags, no
   `latest`) published per release tag via native-runner digest builds + one manifest merge; compose
   pulls it (build-from-source is an override), the deploy host pulls too, `/api/health` reports the
@@ -799,6 +815,18 @@ Add detail there, not here.
   processing enabled), pruned to newest N (`NICOTIND_BACKUP*` envs); admin list/trigger routes +
   Admin "Back up now" block; restore is a documented manual swap. →
   [docs/backup-restore.md](docs/backup-restore.md)
+- **Config export/import (portable, host migration)**: `GET`/`POST /api/admin/config/{export,import}`
+  emit + apply a JSON bundle of the **14 config tables** — a table qualifies iff its rows encode a
+  **human decision or a credential** (settings/plugins/users/playlists/watchlist/genre+artist
+  aliases+overrides+identity/metadata overrides); library rows are excluded because a rescan rebuilds
+  them. Columns **and** primary keys are read from `PRAGMA table_info` at runtime, never hardcoded —
+  five of the fourteen have a non-obvious PK (`library_genre_overrides` is `(scope,key)`,
+  `library_artist_aliases` is `alias_norm`, …). Secrets are redacted unless `?secrets=1`, and a
+  redacted bundle **skips blanked columns on update** so it can't wipe working credentials. Import is
+  **additive-merge only** (replace would delete the target's users on a wrong-bundle import),
+  always dry-run-previewed through the *same* reconciliation code as the apply, one transaction, with
+  a non-key constraint collision counted as `skip` rather than fatal. Distinct from the daily DB
+  backup (whole-DB, same-host recovery). → [docs/config-export.md](docs/config-export.md)
 - **Admin audit log**: `audit_log` table + `recordAudit` called explicitly at destructive mutation
   sites (album/bulk-song delete, artist identity, user management) — never a blanket middleware;
   `GET /api/admin/audit` + Admin "Audit log" table; ledger failures never break the audited action.

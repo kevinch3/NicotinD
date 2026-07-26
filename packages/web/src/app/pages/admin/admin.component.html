@@ -254,6 +254,68 @@
             }
           </div>
 
+          <!-- Maintenance: portable config export/import (issue #221). -->
+          <div class="flex flex-col gap-2 mb-8" data-testid="config-panel">
+            <div class="flex items-center gap-3 flex-wrap">
+              <button (click)="exportConfig()" [disabled]="configBusy()"
+                data-testid="config-export"
+                class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition disabled:opacity-50">
+                Export configuration
+              </button>
+              <label class="text-xs text-theme-muted flex items-center gap-1.5">
+                <input type="checkbox" data-testid="config-export-secrets"
+                  [checked]="configWithSecrets()"
+                  (change)="configWithSecrets.set($any($event.target).checked)" />
+                Include credentials
+              </label>
+              <label
+                class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface-2 text-theme-secondary hover:bg-theme-hover transition cursor-pointer">
+                Import configuration…
+                <input type="file" accept="application/json,.json" class="hidden"
+                  data-testid="config-import-file" (change)="previewImport($event)" />
+              </label>
+            </div>
+            <span class="text-xs text-theme-muted">
+              Portable settings, plugins, users and curation decisions — for moving to a new host.
+              The library itself is rebuilt by a rescan and is not included.
+            </span>
+            @if (configMsg(); as msg) {
+              <p class="text-xs text-theme-secondary" data-testid="config-msg">{{ msg }}</p>
+            }
+
+            <!-- Dry-run preview: nothing is written until this is confirmed. -->
+            @if (importPlan(); as plan) {
+              <div class="rounded-lg bg-theme-surface-2 p-3 flex flex-col gap-2"
+                data-testid="config-import-preview">
+                <p class="text-xs text-theme-secondary">
+                  This bundle would change:
+                </p>
+                <ul class="text-xs text-theme-muted flex flex-col gap-0.5">
+                  @for (s of plan.sections; track s.section) {
+                    <li>
+                      <span class="text-theme-secondary">{{ s.section }}</span>
+                      — {{ s.create }} new, {{ s.update }} updated@if (s.skip) {, {{ s.skip }} skipped}
+                    </li>
+                  }
+                </ul>
+                @for (w of plan.warnings; track w) {
+                  <p class="text-xs text-theme-muted">⚠ {{ w }}</p>
+                }
+                <div class="flex items-center gap-2">
+                  <button (click)="applyImport()" [disabled]="configBusy()"
+                    data-testid="config-import-apply"
+                    class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-accent text-theme-on-accent hover:opacity-90 transition disabled:opacity-50">
+                    Apply import
+                  </button>
+                  <button (click)="cancelImport()" data-testid="config-import-cancel"
+                    class="px-3 py-1.5 rounded-lg text-xs font-medium bg-theme-surface text-theme-secondary hover:bg-theme-hover transition">
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            }
+          </div>
+
           <!-- Automated playlists: cadence + manual generate (issue #228). -->
           @if (autoPlaylists(); as ap) {
             <div class="flex flex-col gap-2 mb-8" data-testid="auto-playlists-panel">

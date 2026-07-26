@@ -135,6 +135,18 @@ export class GenreDetailComponent implements OnInit, OnDestroy {
     this.player.playWithContext(tracks, 0, { type: 'adhoc', name: genre });
   }
 
+  /** Plays from the clicked row through the filtered genre list. */
+  playSong(song: { id: string }): void {
+    const songs = this.filteredGenreSongs();
+    const index = songs.findIndex((s) => s.id === song.id);
+    if (index < 0) return;
+    this.player.playWithContext(
+      songs.map((s) => toTrack(s)),
+      index,
+      { type: 'adhoc', name: this.genreSlug() ?? undefined },
+    );
+  }
+
   protected toTrackFn = toTrack;
 
   // ─── Multi-select ─────────────────────────────────────────────────

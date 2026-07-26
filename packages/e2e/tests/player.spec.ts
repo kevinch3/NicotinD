@@ -176,6 +176,20 @@ test.describe('player controls', () => {
     await expect.poll(() => anyAudioPaused(page)).toBe(false);
   });
 
+  test('clicking a track row replaces the queue with that list (issue #233)', async ({ page }) => {
+    // Playing the album seeds a queue of tracks 2..7. Clicking "Sixth Sense"
+    // must re-seed the queue from there — before the fix the click left the
+    // original queue intact, so Next replayed "Second Wind".
+    await startAlbum(page);
+    await expect(page.getByTestId('player-title')).toHaveText('Opening Static');
+
+    await page.getByTestId('track-row-title').filter({ hasText: 'Sixth Sense' }).click();
+    await expect(page.getByTestId('player-title')).toHaveText('Sixth Sense');
+
+    await page.getByTestId('player-next').click();
+    await expect(page.getByTestId('player-title')).toHaveText('Closing Time');
+  });
+
   test('vocal mute toggle preserves playback position (server-side transcode filter)', async ({
     page,
   }) => {

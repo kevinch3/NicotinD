@@ -17,6 +17,8 @@ import type {
   ServiceReview,
   AutoPlaylistStatus,
   AutoPlaylistCadence,
+  ConfigBundle,
+  ImportPlan,
 } from './api-types';
 
 /** System surface: status/scan/logs, settings (soulseek/shares/streaming/
@@ -172,6 +174,21 @@ export class SystemApiService {
 
   runBackup() {
     return this.http.post<BackupInfo>('/api/admin/backups', {});
+  }
+
+  // Configuration export/import (issue #221) — admin only. Distinct from the
+  // backup above: config only, portable between hosts. See docs/config-export.md.
+  exportConfig(includeSecrets: boolean) {
+    return this.http.get<ConfigBundle>(
+      `/api/admin/config/export${includeSecrets ? '?secrets=1' : ''}`,
+    );
+  }
+
+  importConfig(bundle: ConfigBundle, dryRun: boolean) {
+    return this.http.post<{ dryRun: boolean; plan: ImportPlan }>('/api/admin/config/import', {
+      bundle,
+      dryRun,
+    });
   }
 
   // Automated playlists (issue #228): cadence + manual "generate now" — admin only.

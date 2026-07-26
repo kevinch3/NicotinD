@@ -18,6 +18,8 @@ import type {
   UntrackedDownload,
   AutoPlaylistStatus,
   AutoPlaylistCadence,
+  ConfigBundle,
+  ImportPlan,
 } from '../../services/api/api-types';
 import { AuthService } from '../../services/auth.service';
 import { ServerConfigService } from '../../services/server-config.service';
@@ -549,6 +551,90 @@ export class AdminComponent implements OnInit, OnDestroy {
     } finally {
       this.backingUp.set(false);
     }
+  }
+
+  // ── Configuration export / import (issue #221) ──────────────────────────
+  readonly configBusy = signal(false);
+  readonly configMsg = signal<string | null>(null);
+  readonly configWithSecrets = signal(false);
+  readonly importPlan = signal<ImportPlan | null>(null);
+  /** Held between the dry-run preview and the user confirming the apply. */
+  private pendingBundle: ConfigBundle | null = null;
+
+  async exportConfig(): Promise<void> {
+    if (this.configBusy()) return;
+    this.configBusy.set(true);
+    this.configMsg.set(null);
+    try {
+      const bundle = await firstValueFrom(this.api.exportConfig(this.configWithSecrets()));
+      const url = URL.createObjectURL(
+        new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' }),
+      );
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `nicotind-config-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      this.configMsg.set(
+        this.configWithSecrets()
+          ? 'Exported with credentials — store it somewhere safe.'
+          : 'Exported with credentials redacted.',
+      );
+    } catch {
+      this.configMsg.set('Export failed — see server logs.');
+    } finally {
+      this.configBusy.set(false);
+    }
+  }
+
+  /** Read the picked file and dry-run it; the apply waits for confirmation. */
+  async previewImport(event: Event): Promise<void> {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file || this.configBusy()) return;
+
+    this.configBusy.set(true);
+    this.configMsg.set(null);
+    this.importPlan.set(null);
+    this.pendingBundle = null;
+    try {
+      const bundle = JSON.parse(await file.text()) as ConfigBundle;
+      const res = await firstValueFrom(this.api.importConfig(bundle, true));
+      this.importPlan.set(res.plan);
+      this.pendingBundle = bundle;
+    } catch (err) {
+      this.configMsg.set(
+        err instanceof SyntaxError
+          ? 'That file is not valid JSON.'
+          : 'This server rejected the bundle — it may be from a newer version.',
+      );
+    } finally {
+      this.configBusy.set(false);
+    }
+  }
+
+  async applyImport(): Promise<void> {
+    const bundle = this.pendingBundle;
+    if (!bundle || this.configBusy()) return;
+    this.configBusy.set(true);
+    try {
+      const res = await firstValueFrom(this.api.importConfig(bundle, false));
+      const rows = res.plan.sections.reduce((n, s) => n + s.create + s.update, 0);
+      this.configMsg.set(`Imported ${rows} row(s). Restart the server to pick up plugin changes.`);
+      this.importPlan.set(null);
+      this.pendingBundle = null;
+      await this.reviewSvc.refresh();
+    } catch {
+      this.configMsg.set('Import failed — nothing was applied.');
+    } finally {
+      this.configBusy.set(false);
+    }
+  }
+
+  cancelImport(): void {
+    this.importPlan.set(null);
+    this.pendingBundle = null;
   }
 
   formatBackupSize(bytes: number): string {

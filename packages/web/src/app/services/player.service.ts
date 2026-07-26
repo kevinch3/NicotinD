@@ -216,9 +216,28 @@ export class PlayerService {
     }
   }
 
+  /** Queue-untouched primitive — user gestures use playSingle/playWithContext. */
   play(track: Track): void {
     this.currentTrack.set(track);
     this.isPlaying.set(true);
+  }
+
+  /** Play a context-less click: replaces the queue rather than inheriting it. */
+  playSingle(track: Track): void {
+    this.queue.set([]);
+    this.history.set([]);
+    this.context.set(null);
+    this.play(track);
+  }
+
+  /** Play queue[index], consuming everything before it into history. */
+  jumpToQueueIndex(index: number): void {
+    const queue = this.queue();
+    if (index < 0 || index >= queue.length) return;
+    const current = this.currentTrack();
+    this.history.set([...this.history(), ...(current ? [current] : []), ...queue.slice(0, index)]);
+    this.queue.set(queue.slice(index + 1));
+    this.play(queue[index]);
   }
 
   pause(): void {
@@ -242,7 +261,8 @@ export class PlayerService {
    * replenishes from the current track). Clears any filter "vibe". */
   startRadio(track: Track): void {
     this.radioFilter.set(null);
-    this.play(track);
+    // A leftover queue would play out before radio ever kicked in.
+    this.playSingle(track);
     if (!this.radio()) this.toggleRadio();
   }
 

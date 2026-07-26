@@ -129,6 +129,7 @@ export class AlbumDetailComponent implements OnInit {
   }
 
   // ─── Albums methods ───────────────────────────────────────────────
+  /** Plays from the clicked row through the album — the album becomes the queue. */
   playSong(song: {
     id: string;
     title: string;
@@ -137,7 +138,14 @@ export class AlbumDetailComponent implements OnInit {
     track?: number;
     coverArt?: string;
   }): void {
-    this.player.play(toTrack(song, this.selectedAlbum()?.name));
+    const album = this.selectedAlbum();
+    const tracks = this.albumTracks();
+    const index = tracks.findIndex((t) => t.id === song.id);
+    if (!album || index < 0) {
+      this.player.playSingle(toTrack(song, album?.name));
+      return;
+    }
+    this.player.playWithContext(tracks, index, { type: 'album', id: album.id, name: album.name });
   }
 
   private albumTracks(): Track[] {
