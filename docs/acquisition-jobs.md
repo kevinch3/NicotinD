@@ -70,7 +70,21 @@ succeeded:
   core of the watchlist poller and Lidarr missing-list loop).
 - `POST /api/downloads` (`routes/downloads.ts`) — kind `direct` for raw
   folder-browser grabs; no canonical metadata, artist/album are best-effort
-  display hints parsed from the peer's folder segments.
+  display hints parsed from the peer's folder segments. **Post-scan album
+  backfill (issue #223):** those enqueue-time segment guesses are noisy (or
+  absent) and often don't match the album the file organizes into, so a direct
+  grab used to land with no resolvable "where" — no album chip, no "Open in
+  Library" deep-link, or worse `/unsorted`. Once the file has actually landed,
+  `backfillDirectJobAlbum(db, jobId)` (called from the watcher's scan seam,
+  right before `recomputeStage`) re-points the job's `artist_name`/`album_title`
+  to the **canonical** album the scanned item resolved into
+  (`acquisition_job_items.song_id` → `library_songs.album_id` → `library_albums`,
+  dominant album on a multi-album grab). Because album ids are deterministic
+  (`albumIdFor(artist,album)`), the feed's + `enrichWithAcquisitionJobs`'
+  `albumId` now reproduce the real album. **Restricted to `kind='direct'`** —
+  hunt/auto-acquire/track-search jobs carry authoritative canonical metadata that
+  a post-scan guess must never overwrite; best-effort, so a missing
+  `library_albums` (minimal test DB) or an unscanned item is a clean no-op.
 - `POST /albums/:id/hunt-tracks` (`routes/discography.ts` +
   `TrackHunterService`) — kind `track-search`; `TrackHuntResult.downloads`
   reports what was actually enqueued (possibly several peers) and the route

@@ -120,6 +120,28 @@ describe('AuthService', () => {
     expect(auth.role()).toBe('user');
   });
 
+  describe('deployment acquisition kill-switch (#235)', () => {
+    it('canAcquire requires BOTH the role capability and the deployment flag', () => {
+      auth.setRole('user'); // role can acquire
+
+      // Default (server flag unset → enabled): role decides.
+      expect(auth.serverAcquisitionEnabled()).toBe(true);
+      expect(auth.canAcquire()).toBe(true);
+
+      // Deployment-off forces canAcquire false even for an acquire-capable role.
+      auth.serverAcquisitionEnabled.set(false);
+      expect(auth.canAcquire()).toBe(false);
+
+      // Back on → role decides again.
+      auth.serverAcquisitionEnabled.set(true);
+      expect(auth.canAcquire()).toBe(true);
+
+      // A listener never acquires regardless of the flag.
+      auth.setRole('listener');
+      expect(auth.canAcquire()).toBe(false);
+    });
+  });
+
   describe('logout', () => {
     it('calls reset on all services and clears user-specific localStorage', () => {
       auth.login('token123', 'alice', 'admin');

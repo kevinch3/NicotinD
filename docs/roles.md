@@ -49,7 +49,16 @@ Three guards in `packages/api/src/middleware/current-user.ts` (all throw `Forbid
 
 **Search is the one exception** (filter, not 403): `GET /api/search` must still return **library**
 results for a listener, so it only _suppresses the network fan-out_ when `!canAcquire(role)` — the
-library provider always runs; the slskd/plugin providers are skipped.
+library provider always runs; the slskd/plugin providers are skipped. The **deployment-wide
+acquisition kill-switch** (#235, `searchRoutes(registry, acquisitionEnabled)`) rides the same seam:
+when acquisition is off for the whole install, the network fan-out is suppressed for **every** role,
+not just listeners (see [docs/deployment.md](deployment.md) "Streaming-only profile").
+
+**Deployment kill-switch vs. the role gate.** The role ladder is per-user; #235 adds an orthogonal
+install-level `acquisitionEnabled` flag that removes the acquisition subsystem entirely (all
+acquisition routes hard-404 via `requireAcquisitionEnabledMiddleware`; pollers don't start; the web
+hides every acquisition surface). When it's off, the `user`/`refiner` acquisition capability is moot,
+but the ladder still governs curation/admin exactly as before.
 
 The admin role-update route (`PUT /api/admin/users/:id/role`) validates the incoming role against
 the four-value `ROLES` set.
@@ -73,12 +82,16 @@ gone from their nav and `/downloads` bounces to the radio landing.
 ## Web gating
 
 `AuthService` exposes `canAcquire()` / `canCurate()` / `isAdmin()` computeds (off the `role`
-signal). UI surfaces gate on these:
+signal). `canAcquire()` is `serverAcquisitionEnabled() && role-can-acquire`, so the deployment
+kill-switch (#235, mirrored from `/me`'s `acquisitionEnabled`) hides the same surfaces below for
+_everyone_ when the whole module is off. UI surfaces gate on these:
 
 - **Acquisition hidden from listeners** (`canAcquire()`): the Downloads nav item (desktop
   `layout.component` + mobile `bottom-nav`), the `/downloads` route (`acquireGuard`), and the search
   page's acquisition surfaces (source-availability pill, link-intent/URL card, catalog hunt cards,
-  blended "Get" results, the Advanced network lane) — the library results list stays visible.
+  blended "Get" results, the Advanced network lane). Since Search is now acquisition-only (#227), a
+  non-acquirer sees a "browse your Library instead" empty state (`data-testid="search-acquisition-off"`)
+  rather than local results — "find what I own" lives in the Library tabs/filters + Radio.
 - **Curation gated to refiner+admin** (`canCurate()`): the `⋯` Remove action
   (`song-menu.service`), album/artist/genre/library-songs delete + edit controls, and the
   track-info sheet's artist-identity / genre / lyrics editors, and the artist page's

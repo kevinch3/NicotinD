@@ -2,6 +2,7 @@ import { describe, expect, it, beforeEach } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { applySchema } from '../db.js';
 import {
+  backfillDirectJobAlbum,
   createJob,
   getJob,
   jobAlbumPairs,
@@ -18,6 +19,7 @@ import {
   supersedeActiveJobs,
   transferKeyFor,
 } from './acquisition-job-store.js';
+import { albumIdFor, artistIdFor } from './library-scanner.js';
 
 let db: Database;
 
@@ -513,5 +515,85 @@ describe('reconcileOnBoot', () => {
       )
       .get(old);
     expect(orphans?.c).toBe(0);
+  });
+});
+
+describe('backfillDirectJobAlbum (issue #223 — direct grab lands with a real "where")', () => {
+  // Seed a canonical album + song into the library tables and return the
+  // relative path + song id the scanner would have minted.
+  function seedLandedSong(artist: string, album: string, title: string, relPath: string): string {
+    const albumId = albumIdFor(artist, album);
+    const songId = albumIdFor(relPath, title); // any stable id, uniqueness only
+    db.run(
+      `INSERT OR IGNORE INTO library_albums (id, name, artist, artist_id, synced_at)
+       VALUES (?, ?, ?, ?, 0)`,
+      [albumId, album, artist, artistIdFor(artist)],
+    );
+    db.run(
+      `INSERT INTO library_songs (id, album_id, title, artist, artist_id, path, synced_at)
+       VALUES (?, ?, ?, ?, ?, ?, 0)`,
+      [songId, albumId, title, artist, artistIdFor(artist), relPath],
+    );
+    return songId;
+  }
+
+  it('re-points a direct job to the album its file actually landed in', () => {
+    // A raw peer grab whose enqueue-time hints are a noisy folder segment.
+    const jobId = createJob(db, {
+      kind: 'direct',
+      method: 'slskd',
+      artistName: 'peer-share-2020', // wrong / raw folder segment
+      albumTitle: 'FLAC rips',
+      username: 'peer1',
+      files: [{ filename: 'peer-share-2020\\FLAC rips\\01 Sunday.flac', size: 1 }],
+    });
+    const relPath = 'David Bowie/Heathen/01 Sunday.flac';
+    const songId = seedLandedSong('David Bowie', 'Heathen', 'Sunday', relPath);
+    // Simulate the watcher's organize→scan seam.
+    markItemOrganized(db, transferKeyFor('peer1', 'peer-share-2020\\FLAC rips\\01 Sunday.flac'), relPath);
+    markItemsScanned(db, new Map([[relPath, songId]]));
+
+    backfillDirectJobAlbum(db, jobId);
+
+    const job = getJob(db, jobId)!;
+    expect(job.artistName).toBe('David Bowie');
+    expect(job.albumTitle).toBe('Heathen');
+    // The feed's deep-link albumId now resolves to the real album.
+    expect(albumIdFor(job.artistName!, job.albumTitle!)).toBe(albumIdFor('David Bowie', 'Heathen'));
+  });
+
+  it('never overwrites an album-hunt job (authoritative canonical metadata)', () => {
+    const jobId = createJob(db, {
+      kind: 'album-hunt',
+      method: 'slskd',
+      artistName: 'Radiohead',
+      albumTitle: 'Kid A',
+      username: 'peer1',
+      files: [{ filename: 'x\\01 Everything.flac', size: 1 }],
+    });
+    const relPath = 'Wrong Artist/Wrong Album/01 Everything.flac';
+    const songId = seedLandedSong('Wrong Artist', 'Wrong Album', 'Everything', relPath);
+    markItemOrganized(db, transferKeyFor('peer1', 'x\\01 Everything.flac'), relPath);
+    markItemsScanned(db, new Map([[relPath, songId]]));
+
+    backfillDirectJobAlbum(db, jobId);
+
+    const job = getJob(db, jobId)!;
+    expect(job.artistName).toBe('Radiohead'); // unchanged
+    expect(job.albumTitle).toBe('Kid A');
+  });
+
+  it('is a no-op when the direct job has no scanned items yet', () => {
+    const jobId = createJob(db, {
+      kind: 'direct',
+      method: 'slskd',
+      artistName: 'raw',
+      albumTitle: 'folder',
+      username: 'peer1',
+      files: [{ filename: 'raw\\folder\\01 x.flac', size: 1 }],
+    });
+    backfillDirectJobAlbum(db, jobId);
+    const job = getJob(db, jobId)!;
+    expect(job.artistName).toBe('raw'); // untouched — nothing landed
   });
 });

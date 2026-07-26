@@ -383,76 +383,20 @@
     </section>
   }
 
-  <!-- In your library — local library albums the search matched on the user's
-       own library. Visible to every role (incl. listener) so "album is in my
-       library" always answers itself, independent of Lidarr availability. Click
-       an album card → existing /library/albums/:id detail page (same anchor as
-       the album grid, so muscle memory carries over). -->
-  @if (!loading() && libraryAlbums().length > 0) {
-    <section class="mt-2" data-testid="library-albums">
-      <h2 class="text-xs font-semibold uppercase tracking-wide text-zinc-500 mb-3">
-        In your library
-      </h2>
-      <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-        @for (album of libraryAlbums(); track album.id) {
-          <a
-            [routerLink]="['/library/albums', album.id]"
-            [attr.data-album-id]="album.id"
-            class="group p-2 rounded-lg bg-theme-surface/30 hover:bg-theme-surface-2/50 transition text-left break-inside-avoid"
-          >
-            <app-cover-art
-              [src]="
-                album.coverArt
-                  ? '/api/cover/' + album.coverArt + '?size=300&token=' + auth.token()
-                  : undefined
-              "
-              [artist]="album.artist"
-              [album]="album.name"
-              [fill]="true"
-              rounded="rounded"
-              className="mb-2"
-            />
-            <p class="text-sm truncate" style="color: var(--theme-text-primary)">
-              {{ album.name }}
-            </p>
-            <p class="text-xs truncate" style="color: var(--theme-text-muted)">
-              {{ album.artist }}{{ album.year ? ' · ' + album.year : ''
-              }}{{
-                album.classification && album.classification !== 'album'
-                  ? ' · ' + album.classification
-                  : ''
-              }}{{
-                album.songCount != null
-                  ? ' · ' + album.songCount + ' ' + (album.songCount === 1 ? 'track' : 'tracks')
-                  : ''
-              }}
-            </p>
-          </a>
-        }
-      </div>
-    </section>
-  }
-
-  <!-- Songs — library-only track results (the track finder) -->
-  @if (!loading() && librarySongs().length > 0) {
-    <section class="mt-2">
-      <h2 class="text-xs font-semibold uppercase tracking-wide text-zinc-500 mb-2">Songs</h2>
-      <div class="space-y-0.5">
-        @for (song of librarySongs(); track song.id; let i = $index) {
-          <app-track-row
-            [track]="toTrack(song)"
-            [artists]="song.artists"
-            [subtitle]="
-              song.artists?.length
-                ? song.album
-                : song.artist + (song.album ? ' · ' + song.album : '')
-            "
-            [duration]="song.duration ?? 0"
-            [actions]="songMenu.build(song)"
-            (play)="playLibrarySong(i)"
-          />
-        }
-      </div>
+  <!-- Search is acquisition-only (issue #227): finding music you ALREADY own
+       lives in Library/Radio, not here. So when the user can't acquire — either
+       a listener, or acquisition disabled deployment-wide (#235) — the page has
+       no purpose; point them at their Library instead of showing a blank screen.
+       Acquirers fall through to the catalog/blended/advanced acquire surfaces. -->
+  @if (!auth.canAcquire()) {
+    <section class="mt-10 text-center" data-testid="search-acquisition-off">
+      <p class="text-sm" style="color: var(--theme-text-primary)">
+        Search is for finding and adding new music.
+      </p>
+      <p class="mt-1 text-sm" style="color: var(--theme-text-muted)">
+        Browse and play what you already have in your
+        <a routerLink="/library" class="underline hover:no-underline">Library</a>.
+      </p>
     </section>
   }
 

@@ -19,9 +19,7 @@ import { AcquireService, type AcquireJob } from '../../services/acquire.service'
 import { WatchlistService } from '../../services/watchlist.service';
 import { AuthService } from '../../services/auth.service';
 import { PluginService } from '../../services/plugin.service';
-import { PlayerService } from '../../services/player.service';
 import { AutoHuntService } from '../../services/auto-hunt.service';
-import { SongMenuService } from '../../services/song-menu.service';
 import {
   getSingleDownloadLabel,
   getFolderDownloadLabel,
@@ -49,10 +47,7 @@ import {
 import { parseLinkIntent, type LinkIntent } from '../../lib/link-intent';
 import { FolderBrowserComponent } from '../../components/folder-browser/folder-browser.component';
 import { AlbumHuntModalComponent } from '../../components/album-hunt-modal/album-hunt-modal.component';
-import { TrackRowComponent } from '../../components/track-row/track-row.component';
 import { SourceChipComponent } from '../../components/source-chip/source-chip.component';
-import { CoverArtComponent } from '../../components/cover-art/cover-art.component';
-import { toTrack } from '../../lib/track-utils';
 import { extractSharedUrl } from '../../lib/share-url';
 import { httpErrorMessage, httpErrorCode } from '../../lib/http-error';
 import {
@@ -61,36 +56,6 @@ import {
   scopedArtistMbid,
   applyDiscography,
 } from '../../lib/catalog-display';
-
-/** Lighter song shape returned by the unified search's local results. */
-interface LibrarySong {
-  id: string;
-  title: string;
-  artist: string;
-  artistId?: string;
-  artists?: Array<{ id: string; name: string; role: 'primary' | 'featuring' }>;
-  album: string;
-  duration?: number;
-  coverArt?: string;
-  track?: number;
-}
-
-/**
- * Lighter album shape returned by the unified search's local results. The API
- * surface comes from `LibrarySearchProvider` (library-provider.ts); rendering
- * these directly navigates to the existing `/library/albums/:id` detail page
- * (matches the album-card click in `/library`, so muscle memory carries over).
- */
-interface LibraryAlbumHit {
-  id: string;
-  name: string;
-  artist: string;
-  year?: number;
-  coverArt?: string;
-  songCount?: number;
-  classification?: 'album' | 'ep' | 'single' | 'compilation' | 'unknown';
-  artists?: Array<{ id: string; name: string; role: 'primary' | 'featuring' }>;
-}
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -217,6 +182,11 @@ function escapeHtml(text: string): string {
 
 // ─── Component ──────────────────────────────────────────────────────
 
+// TODO(#227): the safe structural subset is implemented (local-library results
+// removed; Search is acquisition-only with a Library-redirect empty state for
+// non-acquirers). Left open as product decisions on the issue: rename the page +
+// nav label ("Get music"/"Acquire") and the `/search` route path, and decide
+// whether a lightweight library-find box belongs on the Library page instead.
 @Component({
   selector: 'app-search',
   imports: [
@@ -224,9 +194,7 @@ function escapeHtml(text: string): string {
     FolderBrowserComponent,
     RouterLink,
     AlbumHuntModalComponent,
-    TrackRowComponent,
     SourceChipComponent,
-    CoverArtComponent,
   ],
   templateUrl: './search.component.html',
 })
@@ -243,9 +211,7 @@ export class SearchComponent implements OnInit, OnDestroy {
   readonly watchlist = inject(WatchlistService);
   readonly plugins = inject(PluginService);
   readonly auth = inject(AuthService);
-  private player = inject(PlayerService);
   private autoHunt = inject(AutoHuntService);
-  readonly songMenu = inject(SongMenuService);
 
   readonly btnClasses = BUTTON_CLASSES;
   readonly formatDuration = formatDuration;
@@ -267,20 +233,8 @@ export class SearchComponent implements OnInit, OnDestroy {
   // result; the raw Soulseek search below is the always-available fallback.
   readonly catalog = signal<CatalogSearchResult | null>(null);
   readonly catalogUnavailable = signal(false); // Lidarr not configured / lookup failed
-  // Local library songs (the "Songs" section) from the unified search.
-  readonly librarySongs = signal<LibrarySong[]>([]);
-  /**
-   * Local library albums (the "In your library" section) from the same
-   * unified-search payload. The API already returns these (`LibrarySearchProvider`
-   * queries `library_albums`); previously the web read only `.songs` and let
-   * the catalog lane own the "Albums" surface. Surfacing local hits here too
-   * means a search for an album that's already downloaded returns as an album
-   * card, even when Lidarr is unreachable or has no metadata match — fixes the
-   * "tracks are present but the album card never appears" gap.
-   * Visible to every role (incl. listener) — the local library is the source
-   * of truth for everything you've acquired, regardless of acquisition source.
-   */
-  readonly libraryAlbums = signal<LibraryAlbumHit[]>([]);
+  // NOTE: local-library search results were removed from this page (issue #227) —
+  // Search is now acquisition-only. "Find what I own" lives in Library/Radio.
   readonly resolvingAlbum = signal<string | null>(null); // foreignAlbumId being resolved
   readonly resolveError = signal<string | null>(null);
   readonly directSearchOpen = signal(false);
@@ -706,15 +660,6 @@ export class SearchComponent implements OnInit, OnDestroy {
     this.huntingAlbum.set(null);
   }
 
-  // Play a library song from the Songs section, queuing the rest of the results.
-  playLibrarySong(index: number): void {
-    const tracks = this.librarySongs().map((s) => toTrack(s));
-    if (!tracks.length) return;
-    this.player.playWithContext(tracks, index, { type: 'adhoc', name: 'Search' });
-  }
-
-  toTrack = toTrack;
-
   // ─── Link-intent card (merged "Get from a link") ────────────────────
   // Get dispatches through the same AcquireService.submit(url) as every
   // via:'url' blended candidate; the card then tracks its own job by URL
@@ -977,8 +922,6 @@ export class SearchComponent implements OnInit, OnDestroy {
     this.rawFallbackAlbum.set(null);
     this.catalog.set(null);
     this.catalogUnavailable.set(false);
-    this.librarySongs.set([]);
-    this.libraryAlbums.set([]);
     this.resultsExpanded.set(false);
   }
 
@@ -1010,8 +953,8 @@ export class SearchComponent implements OnInit, OnDestroy {
     try {
       const res = await firstValueFrom(this.api.search(query));
       this.searchId.set(res.searchId);
-      this.librarySongs.set(res.local?.songs ?? []);
-      this.libraryAlbums.set(res.local?.albums ?? []);
+      // Local library results are no longer rendered here (#227 — acquisition-only
+      // Search); `res.local` still arrives but is intentionally ignored.
       this.errors.set(res.errors ?? []);
       this.networkAvailable.set(res.networkAvailable ?? false);
       this.search.setNetworkState(res.networkAvailable ? 'searching' : 'complete');

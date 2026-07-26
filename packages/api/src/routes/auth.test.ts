@@ -238,6 +238,24 @@ describe('GET /me', () => {
     expect(body.autoplayOnLoad).toBe(false);
   });
 
+  it('surfaces the deployment acquisition kill-switch (#235): defaults enabled, false when off', async () => {
+    const { authRoutes } = await import('./auth.js');
+    const token = await signJwt(
+      { sub: 'user-123', username: 'testuser', role: 'user' },
+      SECRET,
+      '1h',
+    );
+    const call = async (a: ReturnType<typeof authRoutes>) =>
+      (await (
+        await a.request('/me', { method: 'GET', headers: { Authorization: `Bearer ${token}` } })
+      ).json()) as { acquisitionEnabled: boolean };
+
+    // Default (app + the three existing tests) → enabled.
+    expect((await call(authRoutes(SECRET, '30d', true))).acquisitionEnabled).toBe(true);
+    // Explicitly disabled deployment-wide.
+    expect((await call(authRoutes(SECRET, '30d', true, false))).acquisitionEnabled).toBe(false);
+  });
+
   it('returns welcomeDismissed true after dismiss-welcome is called', async () => {
     const token = await signJwt(
       { sub: 'user-123', username: 'testuser', role: 'user' },

@@ -41,11 +41,23 @@ export class AuthService {
   readonly role = signal<string | null>(localStorage.getItem('nicotind_role') ?? 'user');
   readonly isAuthenticated = computed(() => !!this.token());
 
+  /**
+   * Deployment-wide acquisition kill-switch (#235), mirrored from `GET /me`'s
+   * `acquisitionEnabled`. When false the whole acquisition module is off for
+   * this install — `canAcquire()` is forced false so every acquisition surface
+   * (Downloads nav, Search's acquire lane, hunt, URL acquire, guards) hides,
+   * regardless of role. Defaults true (matches an older server without the field).
+   */
+  readonly serverAcquisitionEnabled = signal<boolean>(true);
+
   /** Capability computeds — the single source of truth for role-gated UI. Mirror
    * the server-side guards (requireAcquirer / requireCurator / requireAdmin). */
   readonly isAdmin = computed(() => isAdminRole(asRole(this.role())));
-  /** Can use acquisition surfaces (Downloads, hunt, URL acquire, network search). */
-  readonly canAcquire = computed(() => canAcquireRole(asRole(this.role())));
+  /** Can use acquisition surfaces (Downloads, hunt, URL acquire, network search).
+   * Requires BOTH the role capability AND the deployment kill-switch being on. */
+  readonly canAcquire = computed(
+    () => this.serverAcquisitionEnabled() && canAcquireRole(asRole(this.role())),
+  );
   /** Can curate the library (edit/merge/delete albums, metadata, identity). */
   readonly canCurate = computed(() => canCurateRole(asRole(this.role())));
   readonly welcomeDismissed = signal<boolean>(false);
