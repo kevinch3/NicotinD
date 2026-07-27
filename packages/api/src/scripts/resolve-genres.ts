@@ -47,10 +47,7 @@ import {
 } from '../services/genre-resolve.js';
 import { getMbid, upsertMbid } from '../services/mbid-store.js';
 import { MusicBrainzClient, MB_USER_AGENT } from '../services/musicbrainz-client.js';
-
-function expandHome(p: string): string {
-  return p.startsWith('~') ? join(process.env.HOME ?? '/root', p.slice(1)) : p;
-}
+import { expandHome } from './lib/expand-home.js';
 
 function loadDataDir(): string {
   let fileConfig: Record<string, unknown> = {};

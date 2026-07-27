@@ -36,6 +36,7 @@ import { parse } from 'yaml';
 import { Database } from 'bun:sqlite';
 import { normalizeArtistForGrouping, albumGroupKey } from '../services/album-grouping.js';
 import { getMbid } from '../services/mbid-store.js';
+import { expandHome } from './lib/expand-home.js';
 
 export const DISCOGS_API = 'https://api.discogs.com';
 export const MB_API = 'https://musicbrainz.org/ws/2';
@@ -496,10 +497,6 @@ function describeCase(c: CaseResult): string {
 }
 
 // ─────────────────────────── I/O: main ─────────────────────────────────────
-
-function expandHome(p: string): string {
-  return p.startsWith('~') ? join(process.env.HOME ?? '/root', p.slice(1)) : p;
-}
 
 function loadDataDir(): string {
   let fileConfig: Record<string, unknown> = {};

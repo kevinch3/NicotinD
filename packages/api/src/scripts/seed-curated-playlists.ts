@@ -29,10 +29,7 @@ import {
   type CuratedPlaylistDef,
 } from '../services/curated-playlists.js';
 import { upsertCuratedPlaylist } from '../services/auto-playlists.service.js';
-
-function expandHome(p: string): string {
-  return p.startsWith('~') ? join(process.env.HOME ?? '/root', p.slice(1)) : p;
-}
+import { expandHome } from './lib/expand-home.js';
 
 function loadDataDir(): string {
   let fileConfig: Record<string, unknown> = {};

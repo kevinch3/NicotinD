@@ -25,15 +25,12 @@ import { Lidarr } from '@nicotind/lidarr-client';
 import { splitOnDelimiters } from '../services/artist-split.js';
 import { artistIdFor } from '../services/library-scanner.js';
 import { deriveMbidAliases, upsertArtistIdentity } from '../services/artist-identity-store.js';
+import { expandHome } from './lib/expand-home.js';
 import {
   makeLidarrArtistIdentityResolver,
   pendingArtistIdentityRows,
   ARTIST_IDENTITY_TTL_MS,
 } from '../services/enrichment/tasks.js';
-
-function expandHome(p: string): string {
-  return p.startsWith('~') ? join(process.env.HOME ?? '/root', p.slice(1)) : p;
-}
 
 function loadConfig(): { dataDir: string; lidarrUrl: string; lidarrApiKey: string } {
   let fileConfig: Record<string, unknown> = {};

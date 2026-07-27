@@ -21,10 +21,7 @@ import { parse } from 'yaml';
 import { LibraryOrganizer } from '../services/library-organizer.js';
 import { AcoustIdLookup } from '../services/acoustid-lookup.js';
 import { AUDIO_EXTS } from '../services/audio-tags.js';
-
-function expandHome(p: string): string {
-  return p.startsWith('~') ? join(process.env.HOME ?? '/root', p.slice(1)) : p;
-}
+import { expandHome } from './lib/expand-home.js';
 
 interface LoadedConfig {
   dataDir: string;

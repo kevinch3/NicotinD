@@ -26,6 +26,7 @@ import { resolve, join } from 'node:path';
 import { parse } from 'yaml';
 import { Database } from 'bun:sqlite';
 import { applyMetadataFix } from '../services/metadata-fix.js';
+import { expandHome } from './lib/expand-home.js';
 import {
   pickAlbumYear,
   folderYear,
@@ -33,10 +34,6 @@ import {
   mbCacheYear,
   type YearSource,
 } from '../services/year-backfill.js';
-
-function expandHome(p: string): string {
-  return p.startsWith('~') ? join(process.env.HOME ?? '/root', p.slice(1)) : p;
-}
 
 function loadDataDir(): string {
   let fileConfig: Record<string, unknown> = {};

@@ -37,10 +37,7 @@ import { inferFolderAlbum } from '../services/path-inference.js';
 import { readAudioTags, writeAudioTags, AUDIO_EXTS } from '../services/audio-tags.js';
 import { sanitizeSegment } from '../services/path-sanitize.js';
 import { normalizeTagValue } from '../services/audio-tags.js';
-
-function expandHome(p: string): string {
-  return p.startsWith('~') ? join(process.env.HOME ?? '/root', p.slice(1)) : p;
-}
+import { expandHome } from './lib/expand-home.js';
 
 interface Config {
   dataDir: string;

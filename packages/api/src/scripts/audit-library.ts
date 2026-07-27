@@ -24,10 +24,7 @@ import { parse } from 'yaml';
 import { Database } from 'bun:sqlite';
 import { auditLibrary, summarize, type AuditFinding, type AuditSeverity } from '../services/library-audit.js';
 import { scanMusicDir, diskFindings } from '../services/library-disk-audit.js';
-
-function expandHome(p: string): string {
-  return p.startsWith('~') ? join(process.env.HOME ?? '/root', p.slice(1)) : p;
-}
+import { expandHome } from './lib/expand-home.js';
 
 function loadConfig(): { dataDir: string; musicDir: string } {
   let fileConfig: Record<string, unknown> = {};

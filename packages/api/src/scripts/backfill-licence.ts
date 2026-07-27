@@ -21,10 +21,7 @@ import { LICENCE_LABELS, type LicenceCode } from '@nicotind/core';
 import { readAudioTags, writeAudioTags } from '../services/audio-tags.js';
 import { resolveSongAbsPath } from '../services/track-backfill.js';
 import { MusicBrainzClient, MB_USER_AGENT } from '../services/musicbrainz-client.js';
-
-function expandHome(p: string): string {
-  return p.startsWith('~') ? join(process.env.HOME ?? '/root', p.slice(1)) : p;
-}
+import { expandHome } from './lib/expand-home.js';
 
 function loadConfig(): { dataDir: string; musicDir: string | null } {
   let fileConfig: Record<string, unknown> = {};

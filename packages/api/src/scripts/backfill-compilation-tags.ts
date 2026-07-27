@@ -11,17 +11,14 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { resolve, join } from 'node:path';
+import { resolve } from 'node:path';
 import { parse } from 'yaml';
 import { initDatabase } from '../db.js';
 import { CompilationTagger } from '../services/compilation-tagger.js';
 import type { CompletedDownloadFile } from '../services/path-inference.js';
+import { expandHome } from './lib/expand-home.js';
 
 // ── Config loading (mirrors main.ts) ────────────────────────────────────────
-
-function expandHome(p: string): string {
-  return p.startsWith('~') ? join(process.env.HOME ?? '/root', p.slice(1)) : p;
-}
 
 function loadMinimalConfig(): { dataDir: string; musicDir: string | undefined } {
   let fileConfig: Record<string, unknown> = {};

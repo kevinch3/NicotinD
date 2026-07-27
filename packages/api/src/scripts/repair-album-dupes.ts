@@ -38,14 +38,11 @@ import { resolve, join, basename } from 'node:path';
 import { parse } from 'yaml';
 import { Database } from 'bun:sqlite';
 import { dedupeFolder, dupKey, pickKeeper, type DupFile } from '../services/album-dedupe.js';
+import { expandHome } from './lib/expand-home.js';
 
 // Re-exported so existing importers/tests keep working after the core moved to
 // the shared album-dedupe module.
 export { dupKey, pickKeeper, type DupFile };
-
-function expandHome(p: string): string {
-  return p.startsWith('~') ? join(process.env.HOME ?? '/root', p.slice(1)) : p;
-}
 
 interface Config {
   dataDir: string;

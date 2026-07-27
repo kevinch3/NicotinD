@@ -28,10 +28,7 @@ import { Database } from 'bun:sqlite';
 import { collectRetagTargets } from '../services/library-retag.js';
 import { applyMetadataFix } from '../services/metadata-fix.js';
 import { auditLibrary } from '../services/library-audit.js';
-
-function expandHome(p: string): string {
-  return p.startsWith('~') ? join(process.env.HOME ?? '/root', p.slice(1)) : p;
-}
+import { expandHome } from './lib/expand-home.js';
 
 function loadDataDir(): string {
   let fileConfig: Record<string, unknown> = {};
