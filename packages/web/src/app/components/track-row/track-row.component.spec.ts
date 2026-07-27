@@ -1,39 +1,23 @@
 import { signal } from '@angular/core';
-import { ɵSIGNAL as SIGNAL } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { TrackRowComponent } from './track-row.component';
 import { PlayerService, type Track } from '../../services/player.service';
 import { AuthService } from '../../services/auth.service';
 import { ServerConfigService } from '../../services/server-config.service';
 import { LikeService } from '../../services/like.service';
+import { setInputValue } from '../../../testing/signal-input';
 
 const ROW_TRACK: Track = { id: 't1', title: 'Song One', artist: 'Artist A' };
 const OTHER_TRACK: Track = { id: 't2', title: 'Song Two', artist: 'Artist B' };
 
 /**
- * The web JIT vitest harness (`test-setup.ts` + `@angular/compiler`, no
- * ngtsc build step) has no compile-time transform for Angular's signal
- * `input()`/`input.required()` initializer API, so an input can't be driven
- * the normal way: neither a host-template `[foo]="value"` binding nor
- * `componentRef.setInput()` reaches it — both silently fail to register
- * (`NG0303: Can't bind to 'foo'`), and reading a `.required()` input with no
- * value then throws `NG0950`. Confirmed by isolated repro against a minimal
- * component; already documented in project memory ("Web JIT vitest can't
- * drive input() signals") and in artist-detail.component.spec.ts's comment,
- * which sidesteps it by never rendering the real `<app-track-row>`. Here the
- * row itself is the unit under test, so instead we write straight to the
- * signal node behind the (Angular-exported, if internal) `ɵSIGNAL` symbol —
- * the same object Angular's own compiled setter would write to if the
- * missing transform ran. This exercises the real production template/CSS,
- * just swaps out *how* the input value gets in.
+ * Signal inputs are driven via the shared `setInputValue` helper — the JIT
+ * harness registers no signal inputs, so neither a `[foo]="…"` binding nor
+ * `componentRef.setInput()` reaches them. The full rationale, the measured
+ * no-op of the supported API, and the call-before-detectChanges rule live in
+ * `src/testing/signal-input.ts`. Here the row itself is the unit under test, so
+ * it renders the real production template rather than a stub.
  */
-// Call ONLY before the fixture's first detectChanges(): the raw .value write
-// bypasses signalSetFn, so consumers that already read the signal are never
-// notified and would keep rendering the stale value.
-function setInputValue<T>(inputSignal: () => T, value: T): void {
-  (inputSignal as unknown as Record<typeof SIGNAL, { value: T }>)[SIGNAL].value = value;
-}
-
 describe('TrackRowComponent — current-track indicator', () => {
   function setup() {
     TestBed.configureTestingModule({

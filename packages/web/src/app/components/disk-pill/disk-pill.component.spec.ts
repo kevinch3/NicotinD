@@ -1,15 +1,6 @@
-import { ɵSIGNAL as SIGNAL } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { DiskPillComponent } from './disk-pill.component';
-
-/**
- * The web JIT vitest harness can't drive Angular signal input()s the normal way
- * (see artist-links.component.spec.ts). We write straight to the signal node and
- * read the pure computeds directly, so there's no stale-notification concern.
- */
-function setInputValue<T>(inputSignal: () => T, value: T): void {
-  (inputSignal as unknown as Record<typeof SIGNAL, { value: T }>)[SIGNAL].value = value;
-}
+import { setInputValue } from '../../../testing/signal-input';
 
 function make(): DiskPillComponent {
   TestBed.configureTestingModule({ imports: [DiskPillComponent] });

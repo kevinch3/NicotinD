@@ -1,18 +1,7 @@
-import { ɵSIGNAL as SIGNAL } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { describe, it, expect } from 'vitest';
 import { GenreRadarComponent, type GenreSlice } from './genre-radar.component';
-
-/**
- * Same harness constraint as metric-pill.component.spec.ts: the web JIT vitest
- * harness can't drive Angular signal `input()`s normally, so we write the
- * underlying signal and exercise the computeds. DOM rendering is covered by
- * `e2e/tests/genre-radar.spec.ts`; the geometry itself by
- * `lib/radar-geometry.spec.ts`.
- */
-function setInput<T>(inputSignal: () => T, value: T): void {
-  (inputSignal as unknown as Record<typeof SIGNAL, { value: T }>)[SIGNAL].value = value;
-}
+import { setInputValue } from '../../../testing/signal-input';
 
 /** Reach the protected computeds the template binds to. */
 type Internals = {
@@ -25,9 +14,9 @@ type Internals = {
 
 function make(slices: GenreSlice[], trackCount = 10, genreCount = slices.length) {
   const c = TestBed.createComponent(GenreRadarComponent).componentInstance;
-  setInput(c.slices, slices);
-  setInput(c.trackCount, trackCount);
-  setInput(c.genreCount, genreCount);
+  setInputValue(c.slices, slices);
+  setInputValue(c.trackCount, trackCount);
+  setInputValue(c.genreCount, genreCount);
   return c as unknown as Internals;
 }
 
