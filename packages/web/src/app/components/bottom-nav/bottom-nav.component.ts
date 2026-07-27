@@ -4,6 +4,7 @@ import { RouterLink, RouterLinkActive } from '@angular/router';
 import { AuthService } from '../../services/auth.service';
 import { SetupService } from '../../services/setup.service';
 import { TransferService } from '../../services/transfer.service';
+import { TranslatePipe } from '../../pipes/translate.pipe';
 
 interface BottomNavItem {
   to: string;
@@ -16,11 +17,12 @@ interface BottomNavItem {
 // bar to thumb-reachable targets). Search is online-only because /search needs
 // the backend (network browse + URL acquire).
 const TABS: BottomNavItem[] = [
-  { to: '/', label: 'Home', onlineOnly: true },
-  { to: '/library', label: 'Library', onlineOnly: false },
-  { to: '/downloads', label: 'Downloads', onlineOnly: false },
-  { to: '/search', label: 'Search', onlineOnly: true },
-  { to: '/settings', label: 'Settings', onlineOnly: false },
+  // `label` is an i18n key (issue #236), rendered through the `t` pipe.
+  { to: '/', label: 'nav.home', onlineOnly: true },
+  { to: '/library', label: 'nav.library', onlineOnly: false },
+  { to: '/downloads', label: 'nav.downloads', onlineOnly: false },
+  { to: '/search', label: 'nav.search', onlineOnly: true },
+  { to: '/settings', label: 'nav.settings', onlineOnly: false },
 ];
 
 /**
@@ -41,7 +43,7 @@ const TABS: BottomNavItem[] = [
 @Component({
   selector: 'app-bottom-nav',
   standalone: true,
-  imports: [RouterLink, RouterLinkActive, NgTemplateOutlet],
+  imports: [RouterLink, RouterLinkActive, NgTemplateOutlet, TranslatePipe],
   templateUrl: './bottom-nav.component.html',
   styleUrl: './bottom-nav.component.css',
 })

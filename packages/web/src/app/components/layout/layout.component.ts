@@ -26,18 +26,20 @@ import { ChangelogModalComponent } from '../changelog-modal/changelog-modal.comp
 import { DesktopWindowControlsComponent } from '../desktop-window-controls/desktop-window-controls.component';
 import { DesktopChromeService } from '../../services/desktop-chrome.service';
 import { isElectronLinux } from '../../lib/platform';
+import { TranslatePipe } from '../../pipes/translate.pipe';
 
 interface NavItem {
   to: string;
   label: string;
 }
 
+// `label` is an i18n key (issue #236), rendered through the `t` pipe.
 const BASE_NAV: NavItem[] = [
-  { to: '/', label: 'Home' },
-  { to: '/search', label: 'Search' },
-  { to: '/downloads', label: 'Downloads' },
-  { to: '/library', label: 'Library' },
-  { to: '/settings', label: 'Settings' },
+  { to: '/', label: 'nav.home' },
+  { to: '/search', label: 'nav.search' },
+  { to: '/downloads', label: 'nav.downloads' },
+  { to: '/library', label: 'nav.library' },
+  { to: '/settings', label: 'nav.settings' },
 ];
 // Nav items that require the backend to be available. Library stays enabled
 // offline: its Songs tab serves the on-device downloaded songs. The radio
@@ -62,6 +64,7 @@ const HEADER_BASE_CLASSES =
     UpdateBannerComponent,
     WelcomeBannerComponent,
     BottomNavComponent,
+    TranslatePipe,
     AddToPlaylistComponent,
     ConfirmHostComponent,
     ChangelogModalComponent,

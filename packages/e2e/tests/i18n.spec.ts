@@ -43,4 +43,22 @@ test.describe('i18n (#236)', () => {
     await page.reload();
     await expect(page.getByTestId('login-submit')).toHaveText(/Sign In/i);
   });
+
+  test('translates the app shell nav, not just the login page', async ({ page }) => {
+    // The shell is the highest-traffic surface and its labels come from a TS
+    // array rather than the template — a conversion that type-checks but never
+    // renders would be invisible without this.
+    //
+    // `addInitScript` seeds the stored language before ANY page script runs, on
+    // every navigation. Setting it via `evaluate` after a `goto` instead makes
+    // the test depend on when the app happens to read localStorage during
+    // bootstrap, which is precisely the kind of race that makes a suite flaky.
+    await page.addInitScript(() => localStorage.setItem('nicotind-lang', 'es'));
+    await page.goto('/library');
+
+    // Desktop viewport: the top nav renders, the bottom tab bar is hidden.
+    const nav = page.getByTestId('desktop-nav');
+    await expect(nav).toContainText('Biblioteca');
+    await expect(nav).not.toContainText('nav.library'); // never a raw key
+  });
 });

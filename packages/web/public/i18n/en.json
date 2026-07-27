@@ -1,14 +1,20 @@
 {
-  "login.subtitle.signIn": "Sign in to continue",
-  "login.subtitle.register": "Create an account",
-  "login.username": "Username",
+  "lang.en": "English",
+  "lang.es": "Español",
   "login.password": "Password",
-  "login.submit.signIn": "Sign In",
   "login.submit.register": "Create Account",
-  "login.toggle.toSignIn": "Already have an account? Sign in",
+  "login.submit.signIn": "Sign In",
+  "login.subtitle.register": "Create an account",
+  "login.subtitle.signIn": "Sign in to continue",
   "login.toggle.toRegister": "Don't have an account? Register",
+  "login.toggle.toSignIn": "Already have an account? Sign in",
+  "login.username": "Username",
+  "nav.downloads": "Downloads",
+  "nav.home": "Home",
+  "nav.library": "Library",
+  "nav.search": "Search",
+  "nav.settings": "Settings",
   "settings.language": "Language",
   "settings.languageHint": "Applies immediately, and is remembered on this device.",
-  "lang.en": "English",
-  "lang.es": "Español"
+  "shell.offline": "Offline mode — showing cached content only"
 }
