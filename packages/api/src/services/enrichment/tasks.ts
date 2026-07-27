@@ -30,7 +30,11 @@ import {
 import { planDiscogsAlbumGenres, type DiscogsGenreAlbum } from '../genre-discogs.js';
 import { setArtwork } from '../artwork-store.js';
 import { isPlaceholderArtist } from '../artwork-backfill.js';
-import { indexLidarrArtists, resolveArtistImageUrl } from '../artist-image.js';
+import {
+  countArtistsNeedingPortrait,
+  fillArtistImages,
+  selectArtistsNeedingPortrait,
+} from '../artist-image-fill.js';
 import {
   buildArtistImageProviders,
   configuredArtistImageSources,
@@ -925,66 +929,21 @@ const artistImageTask: EnrichmentTask = {
     }).length > 0
       ? true
       : 'No artist-image provider configured',
-  countPending: (db) =>
-    Number(
-      (
-        db
-          .query<{ n: number }, []>(
-            `SELECT COUNT(*) AS n FROM library_artists a
-             WHERE a.hidden = 0 AND a.manual_override = 0
-               AND NOT EXISTS (
-                 SELECT 1 FROM library_artwork w WHERE w.id = a.id AND w.kind = 'artist')`,
-          )
-          .get() ?? { n: 0 }
-      ).n,
-    ),
+  countPending: (db) => countArtistsNeedingPortrait(db),
   run: async (db, ctx, limit) => {
-    const rows = db
-      .query<ArtistRow, [number]>(
-        `SELECT id, name FROM library_artists a
-         WHERE a.hidden = 0 AND a.manual_override = 0
-           AND NOT EXISTS (
-             SELECT 1 FROM library_artwork w WHERE w.id = a.id AND w.kind = 'artist')
-         ORDER BY a.album_count DESC, a.name LIMIT ?`,
-      )
-      .all(limit);
-
-    // One Lidarr `artist.list()` per batch (not per artist), reused across rows.
-    // Wrapped so a Lidarr blip (or, in tests, a partial stub) yields an empty
-    // index and the batch still runs via Spotify rather than aborting the whole run.
-    let index = null;
-    if (ctx.lidarr) {
-      const monitored = await (async () => {
-        try {
-          return await ctx.lidarr!.artist.list();
-        } catch {
-          return [];
-        }
-      })();
-      index = indexLidarrArtists(monitored);
-    }
-
-    // The priority-ordered provider chain, assembled once per batch and reused
-    // across rows (Lidarr provider closes over the shared `index`).
-    const providers = buildArtistImageProviders({
+    const rows = selectArtistsNeedingPortrait(db, limit);
+    // Shared with the on-demand route + backfill script (issue #250) so the
+    // resolve→persist sequence — provider chain, placeholder skip, setArtwork,
+    // cover negative-cache eviction — has exactly one implementation.
+    const { applied, labels } = await fillArtistImages(
       db,
-      lidarr: ctx.lidarr,
-      index,
-      spotifyLookup: ctx.lookupArtistImageSpotify,
-    });
-
-    const labels: string[] = [];
-    let applied = 0;
-    for (const artist of rows) {
-      if (isPlaceholderArtist(artist.name)) continue;
-      const resolved = await resolveArtistImageUrl(providers, artist);
-      if (!resolved) continue;
-      setArtwork(db, artist.id, 'artist', resolved.url, ctx.coverCacheDir);
-      // Evict any cached 404 for this artist id so the new portrait shows at once.
-      clearCoverNegativeCache(artist.id);
-      applied++;
-      labels.push(`${artist.name} → ${resolved.source}`);
-    }
+      {
+        lidarr: ctx.lidarr,
+        spotifyLookup: ctx.lookupArtistImageSpotify,
+        coverCacheDir: ctx.coverCacheDir,
+      },
+      rows,
+    );
     return { applied, labels, failed: 0, errorSample: null };
   },
 };

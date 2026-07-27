@@ -333,8 +333,14 @@ Add detail there, not here.
   = one `CHAIN` entry + the task `available` gate derives from `configuredArtistImageSources`),
   auto-filled by the `artist-image` enrichment task; users (admin) upload or copy-from-album a
   per-artist override (`<dataDir>/artist-overrides`, served first, `manual_override=1`, the
-  short-circuit staying at the call-site SQL not the chain). →
-  [docs/library-scanner.md](docs/library-scanner.md)
+  short-circuit staying at the call-site SQL not the chain). **The window is no longer the only
+  path (issue #250)**: that task is default-off in `gates` and window-only, so a fresh library could
+  sit placeholder-only — `POST /artists/:id/auto-fetch-image` (silent one-shot, auth- but never
+  curator-gated, gated on no-portrait-and-no-override) and `scripts/backfill-artist-images.ts`
+  (bulk, dry-run by default) now share **one** implementation with the task via
+  `services/artist-image-fill.ts` `fillArtistImages`; copying its resolve→persist sequence would
+  have risked dropping the `clearCoverNegativeCache` eviction, which stores the portrait while the
+  UI keeps showing the placeholder. → [docs/library-scanner.md](docs/library-scanner.md)
 - **Artist bios (auto + override)**: biographies + external links resolved via MBID-first lookup to
   Discogs (plugin-sourced; MBID from file tags or `library_mbids` cache), stored in
   `library_artist_meta` with tombstone rows preventing re-queries of confirmed misses. Auto-filled
