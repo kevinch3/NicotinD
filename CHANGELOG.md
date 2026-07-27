@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.276](https://github.com/kevinch3/NicotinD/compare/v0.1.275...v0.1.276) (2026-07-27)
+
+### Features
+
+* **db:** prune orphaned per-song side-table rows on a grace period ([#259](https://github.com/kevinch3/NicotinD/issues/259)) ([16c03ed](https://github.com/kevinch3/NicotinD/commit/16c03ed3b5b3086a4278f3bc925c3b28eb1589a0))
 ## [0.1.275](https://github.com/kevinch3/NicotinD/compare/v0.1.274...v0.1.275) (2026-07-27)
 
 ### Bug Fixes
