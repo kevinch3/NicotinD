@@ -222,7 +222,10 @@ Add detail there, not here.
   track) and it's position-blind to match `genreSetCloseness`. Top 8 axes, rest folded into a
   capped "Other". A radar overstates differences (area ~ radius²), so the **paired value table is
   the exact read and always ships with the chart**. Geometry is the pure `lib/radar-geometry.ts`.
-  **Left open**: the "settle the multi-genre UX" sub-goal + the before/after reclassification view.
+  The **before/after view** now ships too: the modal charts the projected spread live beside the
+  current one (pure `lib/genre-projection.ts` — no request), because the append-vs-replace choice
+  (#260) was invisible until Save; dropped genres get a named line rather than just a vanished axis.
+  **Left open**: the "settle the multi-genre UX" sub-goal (a product decision).
   → [docs/genre-radar.md](docs/genre-radar.md)
 - **VA / compilation handling**: `resolveTags` separates `albumArtist` (grouping) from `trackArtist`
   (performer); `classifyFolder` detects compilations via COMPILATION flag, VA albumArtist, or ≥3

@@ -95,3 +95,34 @@ weighted multi-genre identity in the everyday UI, how that interacts with the ge
 genre landing chips and the Genres tab, and whether weighting should become position-aware. The
 before/after view for a *proposed* reclassification (two radars, or better, a dumbbell) is the
 natural next build now that the distribution endpoint exists.
+
+## Before/after reclassification view (issue #222)
+
+The issue called the radar-as-review-aid "arguably the highest-value placement", and this is it:
+the modal now charts what the artist's spread **would become**, live, beside what it is.
+
+**What it makes visible.** The append-vs-replace choice (issue #260) is the most consequential
+control in the modal, and its effect was invisible until you pressed Save. `replace` is *required*
+when an artist's tag genres are broad and wrong — `genreSetCloseness` is a position-blind MAX, so
+one retained broad genre masks the fix — but the same setting flattened **34 Ana Tijoux songs onto
+a single genre**. The preview shows exactly that: replace collapses the radar onto the chosen
+genres; append keeps the existing shape and raises the chosen ones to full coverage.
+
+**The projection is pure and client-side** (`lib/genre-projection.ts`, `projectGenreDistribution`),
+so it tracks typing and the mode toggle with no request. It is fully determined by data the modal
+already holds — the current distribution, the parsed input, the mode, the track count. A curator
+fix writes the same genres onto *every* track, so each chosen genre lands at weight **1.0**;
+weights remain shares of landed tracks and still deliberately don't sum to 1 (see above).
+
+**Dropped genres get their own line, not just a missing axis** (`genresLostBy`,
+`data-testid="artist-genre-lost"`). Losing coverage is the outcome a curator most needs to notice,
+and a radar communicates *shape* well but absence poorly — an axis that simply disappears between
+two charts is easy to miss. The line names them and points at the append option.
+
+**An empty `replace` projects an empty spread**, rendered as "Every genre would be removed from
+this artist's tracks" rather than silently looking unchanged — clearing the field really would
+strip every genre, and the honest projection is the one that says so.
+
+**Still left open on #222**: the "settle the multi-genre UX" sub-goal — whether the everyday UI
+should surface a weighted multi-genre identity, and how that interacts with the genre filter,
+landing chips and Genres tab. That is a product decision, not a visualization gap.

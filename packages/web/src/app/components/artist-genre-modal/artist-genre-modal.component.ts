@@ -13,6 +13,7 @@ import { LibraryApiService } from '../../services/api/library-api.service';
 import { ToastService } from '../../services/toast.service';
 import { IconComponent } from '../icon/icon.component';
 import { GenreRadarComponent, type GenreSlice } from '../genre-radar/genre-radar.component';
+import { genresLostBy, projectGenreDistribution } from '../../lib/genre-projection';
 
 /**
  * Curator fix for an artist's genre (issue #187 A3).
@@ -124,6 +125,27 @@ export class ArtistGenreModalComponent {
   );
 
   readonly canSave = computed(() => !this.busy() && this.parsed().length > 0);
+
+  /**
+   * The "after" spread if this fix were applied (issue #222) — pure, so it
+   * tracks the input and the mode toggle live with no request. Its value is
+   * making the append-vs-replace consequence visible *before* Save: replace
+   * collapses the radar onto exactly the chosen genres (the issue #260 Ana
+   * Tijoux flattening), append keeps the shape and raises the chosen ones.
+   */
+  readonly projected = computed(() =>
+    projectGenreDistribution(
+      this.distribution(),
+      this.parsed(),
+      this.mode(),
+      this.distributionTracks(),
+    ),
+  );
+
+  /** Genres this fix would drop — the outcome a curator most needs to notice. */
+  readonly lostGenres = computed(() =>
+    genresLostBy(this.distribution(), this.parsed(), this.mode()),
+  );
 
   save(): void {
     if (!this.canSave()) return;

@@ -60,6 +60,49 @@ describe('ArtistGenreModalComponent', () => {
     return c;
   }
 
+  /**
+   * Before/after reclassification view (issue #222). The append-vs-replace
+   * consequence (issue #260) used to be invisible until Save — a replace
+   * flattened 34 Ana Tijoux songs onto one genre with no warning.
+   */
+  describe('after-this-change projection (#222)', () => {
+    it('replace projects only the chosen genres and names what is dropped', () => {
+      const c = make(null, ['Latin', 'World']);
+      c.draft.set('Folclore');
+      c.mode.set('replace');
+
+      expect(c.projected().map((s) => s.genre)).toEqual(['Folclore']);
+      expect(c.projected()[0].weight).toBe(1);
+      expect(c.lostGenres()).toEqual(['Latin', 'World']);
+    });
+
+    it('append keeps the existing spread and reports nothing lost', () => {
+      const c = make(null, ['Latin', 'World']);
+      c.draft.set('Folclore');
+      c.mode.set('append');
+
+      expect(c.projected().map((s) => s.genre)).toEqual(['Folclore', 'Latin', 'World']);
+      expect(c.lostGenres()).toEqual([]);
+    });
+
+    it('tracks the mode toggle without another request', () => {
+      const c = make(null, ['Latin', 'World']);
+      c.draft.set('Folclore');
+
+      c.mode.set('replace');
+      expect(c.lostGenres()).toHaveLength(2);
+      c.mode.set('append');
+      expect(c.lostGenres()).toHaveLength(0);
+    });
+
+    it('an empty replace projects an empty spread rather than "unchanged"', () => {
+      const c = make(null, ['Latin', 'World']);
+      c.draft.set('');
+      c.mode.set('replace');
+      expect(c.projected()).toEqual([]);
+    });
+  });
+
   it('prefills the editor with the genres currently in effect', () => {
     expect(make().draft()).toBe('Latin; World');
   });

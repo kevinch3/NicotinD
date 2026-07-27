@@ -37,7 +37,7 @@
            genres are in effect; this says how much of the artist each covers —
            the difference between a one-track stray tag and their real identity. -->
       @if (distribution().length) {
-        <div class="mb-4 pb-4 border-b border-theme">
+        <div class="mb-4 pb-4 border-b border-theme" data-testid="artist-genre-before">
           <p class="text-xs uppercase tracking-wide text-theme-muted mb-2">Spread across their tracks</p>
           <app-genre-radar
             [slices]="distribution()"
@@ -91,6 +91,36 @@
               [class]="first ? 'bg-accent/20 text-accent font-medium' : 'bg-theme-surface-2 text-theme-secondary'">
               {{ g }}@if (first) { <span class="opacity-70">· primary</span> }
             </span>
+          }
+        </div>
+      }
+
+      <!-- Before/after reclassification view (issue #222). The chips above say
+           *which* genres result; this says what happens to the artist's spread —
+           the append-vs-replace consequence (issue #260) was previously invisible
+           until Save. Pure + client-side, so it tracks typing and the toggle. -->
+      @if (distribution().length && parsed().length) {
+        <div class="mt-4 pt-4 border-t border-theme" data-testid="artist-genre-after">
+          <p class="text-xs uppercase tracking-wide text-theme-muted mb-2">
+            After this change
+          </p>
+          @if (projected().length) {
+            <app-genre-radar
+              [slices]="projected()"
+              [trackCount]="distributionTracks()"
+              [genreCount]="projected().length" />
+          } @else {
+            <p class="text-sm text-theme-secondary" data-testid="artist-genre-after-empty">
+              Every genre would be removed from this artist’s tracks.
+            </p>
+          }
+          @if (lostGenres().length) {
+            <p class="text-xs mt-2 status-error rounded-lg px-2.5 py-1.5"
+              data-testid="artist-genre-lost">
+              Drops {{ lostGenres().length }} existing
+              {{ lostGenres().length === 1 ? 'genre' : 'genres' }}:
+              {{ lostGenres().join(', ') }}. Choose “Add to existing” to keep them.
+            </p>
           }
         </div>
       }
