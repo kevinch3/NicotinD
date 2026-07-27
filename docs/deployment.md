@@ -143,8 +143,19 @@ Images the app doesn't own are version-pinned so users can't drift on risky
 components (Immich digest-pins theirs): `slskd` (already pinned),
 `linuxserver/lidarr` (was `:latest` — a silent Lidarr major can break the API
 client), and `brainicism/bgutil-ytdlp-pot-provider`, which must stay **in
-step with the pip-installed plugin pinned in the Dockerfile** — bump both
-together.
+step with the pip-installed plugin pinned in the Dockerfile**.
+
+**That pairing is now enforced, not just documented (issue #238).** The two
+halves live in different files built by different systems — the pip plugin in
+the `Dockerfile` (baked into our image by CI) and the companion service tag in
+`docker-compose.yml` (resolved at deploy time) — and a mismatch does not fail
+loudly: the service starts and YouTube downloads quietly stop working. Two
+changes: **`BGUTIL_VERSION` overrides both** (a build-arg in the Dockerfile, a
+`${BGUTIL_VERSION:-…}` interpolation in compose) so an operator bumps one
+value, and **`bun run check:bgutil-pin`** runs in CI and fails when the two
+baked defaults drift apart. It is a gate rather than a report because there is
+exactly one correct answer — the strings match or they don't — so there is no
+false-positive class to cry wolf with.
 
 ### Pinning a version
 
