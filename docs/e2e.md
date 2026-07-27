@@ -112,10 +112,40 @@ same PR that hit it.
 
 ```bash
 bunx playwright install chromium            # one-time, from packages/e2e
-bun run --filter @nicotind/web build        # Hono serves packages/web/dist
 bun run --filter @nicotind/e2e test         # or: bun run e2e (from repo root)
 bun run --filter @nicotind/e2e test:ui      # interactive UI mode
+E2E_SKIP_BUILD=1 bunx playwright test tests/x.spec.ts   # fast re-run, existing dist
 ```
+
+**The web build is automatic (issue #253).** It used to be a separate step you
+had to remember, and forgetting it was punishing: the managed `webServer` runs
+`bun run src/main.ts` and Hono serves the **prebuilt** `packages/web/dist` —
+there is no dev server and no watch — so editing anything under
+`packages/web/src` and running the suite silently exercised the *previous*
+bundle. It failed in the most misleading direction possible: a spec written for
+a fix you just made reports the **pre-fix** behaviour as the actual value, which
+reads exactly like your fix not working. (Real cost, paid on the #233 regression
+spec.) `ensureWebBuild()` now runs at **config-eval time** — the same timing and
+the same external-URL gate as the fresh-DB `rmSync` beside it, and for the same
+reason: it must happen before Playwright launches the webServer, so a
+`globalSetup` hook would be too late.
+
+It lives in the **config**, not in the root `e2e` script, so every entry point is
+covered by construction: `bun run e2e`, `bun run --filter @nicotind/e2e test`, a
+bare `playwright test` typed inside the package, `--ui`, `--headed`. Fixing only
+the root script would have left the form documented above still broken. Three
+gates: it no-ops under `E2E_BASE_URL` (nothing local is being served),
+under `E2E_SKIP_BUILD=1` (the fast path for re-running one spec), and inside
+Playwright **worker** processes — the config is re-evaluated in each worker, so
+without that guard a single-spec run built three times. The build is
+unconditional otherwise: an mtime staleness check would reintroduce the same
+silent-stale-bundle failure whenever `dist` is newer than `src` for an unrelated
+reason (a branch switch), and ~9 s with an explicit opt-out is the better trade.
+A failed build throws rather than falling through to the stale bundle.
+
+`playwright.screenshots.config.ts` boots the same managed server and gets the
+same call; the `hunt` / `live-screens` / `real` configs all require
+`E2E_BASE_URL`, so they never build.
 
 > The web build requires Node ≥ 22.22.3 (`@angular/build` engine check). The
 > version is pinned **once** in `.nvmrc` (`22.22.3`); local dev (`nvm use`), CI

@@ -63,6 +63,7 @@ bun run test             # Vitest across packages/ + src/ (excludes web/, e2e/, 
 bun run test:web         # Angular component tests (vitest — see docs/web-ui.md "Web test harness")
 bun run typecheck:web-spec # Type-check the web specs (vitest does NOT type-check them)
 bun run e2e              # Playwright e2e suite (packages/e2e) — always run before declaring a feature done
+                         # (builds @nicotind/web first; E2E_SKIP_BUILD=1 to reuse the existing dist)
 bun run src/main.ts      # Start NicotinD (requires .env or config/default.yml)
 bun run release          # Bump version (auto-detected), generate CHANGELOG, tag
 bun run release:minor    # Force a minor version bump
@@ -987,7 +988,11 @@ gating). Acquisition is default-off so no slskd/Lidarr is needed. Selectors are 
 attributes — **adding a `data-testid` is the standard for new e2e-targeted elements**. **Before
 writing a spec, check docs/e2e.md "What the e2e environment does NOT give you"** (the Playwright
 `request` fixture is unauthenticated — log in + `bearer(token)` explicitly; no resolve plugin is
-enabled on a fresh server — capability-gated UI needs the spec to enable one). CI is split: `ci.yml`
+enabled on a fresh server — capability-gated UI needs the spec to enable one). **The web bundle is
+built automatically** at config-eval time (`ensureWebBuild()`) — Hono serves the *prebuilt*
+`packages/web/dist` with no dev server or watch, so the suite used to silently test the previous
+bundle and report pre-fix behaviour as the actual value (issue #253); `E2E_SKIP_BUILD=1` is the
+fast path, and `E2E_BASE_URL` never builds. CI is split: `ci.yml`
 runs `ci` + `e2e` then a `release` job tags `vX.Y.Z`; that tag triggers `deploy.yml`. A gated
 **playground harness** (`PLAYGROUND=1`), the mutating **real round-trip** (`PLAYGROUND_REAL=1`), and
 **screenshot flows** are all out of CI. The flow catalogue + recurring routines live in

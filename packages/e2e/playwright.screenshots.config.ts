@@ -2,6 +2,7 @@ import { defineConfig, devices } from '@playwright/test';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { rmSync } from 'node:fs';
+import { ensureWebBuild } from './ensure-web-build.js';
 
 /**
  * One-off mobile screenshot harness (not part of CI). Boots the managed test
@@ -18,6 +19,11 @@ const baseURL = `http://localhost:${PORT}`;
 
 const dataDir = resolve(__dirname, '.tmp-data');
 rmSync(dataDir, { recursive: true, force: true });
+
+// Same managed-server/prebuilt-dist hazard as the main config (issue #253): a
+// screenshot harness silently capturing the previous bundle is the whole point
+// of the harness defeated.
+ensureWebBuild();
 
 export default defineConfig({
   testDir: './tests',

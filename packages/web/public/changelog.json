@@ -1,5 +1,57 @@
 [
   {
+    "version": "0.1.276",
+    "date": "2026-07-27",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.275...v0.1.276",
+    "sections": [
+      {
+        "title": "Features",
+        "items": [
+          "**db:** prune orphaned per-song side-table rows on a grace period ([#259](https://github.com/kevinch3/NicotinD/issues/259)) ([16c03ed](https://github.com/kevinch3/NicotinD/commit/16c03ed3b5b3086a4278f3bc925c3b28eb1589a0))"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.1.275",
+    "date": "2026-07-27",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.274...v0.1.275",
+    "sections": [
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**hunt:** rank a whole-discography dump below the album folder ([#271](https://github.com/kevinch3/NicotinD/issues/271)) ([fe420d4](https://github.com/kevinch3/NicotinD/commit/fe420d40bedf845dfa2e89d7bdfa0f0b113bc306)), references [#262](https://github.com/kevinch3/NicotinD/issues/262)"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.1.274",
+    "date": "2026-07-26",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.273...v0.1.274",
+    "sections": [
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**acquisition:** close the six open download/cover bugs ([#258](https://github.com/kevinch3/NicotinD/issues/258) [#261](https://github.com/kevinch3/NicotinD/issues/261) [#262](https://github.com/kevinch3/NicotinD/issues/262) [#263](https://github.com/kevinch3/NicotinD/issues/263) [#264](https://github.com/kevinch3/NicotinD/issues/264) [#265](https://github.com/kevinch3/NicotinD/issues/265)) ([fab2a91](https://github.com/kevinch3/NicotinD/commit/fab2a9101dc20ac1cc261f48d12106ffa46c80b0))"
+        ]
+      }
+    ]
+  },
+  {
+    "version": "0.1.273",
+    "date": "2026-07-26",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.272...v0.1.273",
+    "sections": [
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**test:** type-check the web specs and repair 30 accumulated type errors ([c65d2ac](https://github.com/kevinch3/NicotinD/commit/c65d2acce0bbabd1708d9be71db5507fd3527429))"
+        ]
+      }
+    ]
+  },
+  {
     "version": "0.1.272",
     "date": "2026-07-26",
     "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.271...v0.1.272",
@@ -660,64 +712,6 @@
         "title": "Bug Fixes",
         "items": [
           "**acquire:** make playlist generation actually fire for yt-dlp/spotdl + reuse playlist on retry ([36c7c0e](https://github.com/kevinch3/NicotinD/commit/36c7c0ede4d3cee9fa190c4adad516e632db95d2))"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.1.226",
-    "date": "2026-07-18",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.225...v0.1.226",
-    "sections": [
-      {
-        "title": "Features",
-        "items": [
-          "**library:** surface local-album search hits + fragmentation diagnostic ([efb81e2](https://github.com/kevinch3/NicotinD/commit/efb81e240dbf30229d75ef136d071504ba2f2fad))"
-        ]
-      },
-      {
-        "title": "Bug Fixes",
-        "items": [
-          "**search:** tokenized accent-insensitive matching + calibrate fragment diagnostic ([1e5783e](https://github.com/kevinch3/NicotinD/commit/1e5783e563ea5da5ef401acb12ca709e2fedfe78)), closes [#168](https://github.com/kevinch3/NicotinD/issues/168)"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.1.225",
-    "date": "2026-07-18",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.224...v0.1.225",
-    "sections": [
-      {
-        "title": "Features",
-        "items": [
-          "**web:** manual PWA update check for frequent releases ([3716432](https://github.com/kevinch3/NicotinD/commit/3716432fcf985d35c078bf6b975d217dd99f596a))"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.1.224",
-    "date": "2026-07-18",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.223...v0.1.224",
-    "sections": [
-      {
-        "title": "Bug Fixes",
-        "items": [
-          "guide through tailscale operator setup instead of raw sudo error ([a12ca7f](https://github.com/kevinch3/NicotinD/commit/a12ca7fd43e25ce712eb9f6bb47d4d2a70cc8eb3))"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.1.223",
-    "date": "2026-07-18",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.222...v0.1.223",
-    "sections": [
-      {
-        "title": "Bug Fixes",
-        "items": [
-          "repair broken Linux deb + Android APK release builds ([f7235ea](https://github.com/kevinch3/NicotinD/commit/f7235ead88858d5051f0821b54de496e18891397)), closes [#150](https://github.com/kevinch3/NicotinD/issues/150) [#3](https://github.com/kevinch3/NicotinD/issues/3)"
         ]
       }
     ]
