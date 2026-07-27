@@ -63,6 +63,7 @@ bun install              # Install all workspace dependencies
 bun run typecheck        # TypeScript type checking (tsc --build)
 bun run lint             # ESLint across all packages
 bun run check:claude-md  # fail on CLAUDE.md symbols that don't exist / broken docs links (CI gate)
+bun run check:shipped-issues # open issues a shipped commit referenced (report, not a gate)
 bun run format           # Prettier formatting
 bun run test             # Vitest across packages/ + src/ (excludes web/, e2e/, desktop/test/)
 bun run test:web         # Angular component tests (vitest — see docs/web-ui.md "Web test harness")
@@ -107,6 +108,15 @@ must follow this format:
 `feat!: remove legacy auth`) to trigger a major bump.
 
 **Enforcement**: A `commit-msg` hook via husky + commitlint rejects non-conforming messages.
+
+**Closing issues (issue #257)**: put **`Closes #N` in the PR body** — that's an *action* GitHub
+honours on merge. `(#N)` in a commit subject is only a *reference*: it links, and the issue stays
+open forever. Using the latter where the former was meant is why six issues were once found
+already-shipped but still open, and five more after them; the docs gate held while the tracker
+silently didn't. For **partial** work use `Refs #N` and comment what's left, so the issue keeps an
+accurate scope instead of overstating it. `.github/PULL_REQUEST_TEMPLATE.md` prompts for the line;
+`bun run check:shipped-issues` is the safety net that lists open issues a shipped commit referenced
+(a **report, not a gate** — a commit can reference an issue without resolving it).
 
 **Releasing**: When ready to release, run `bun run release`. It reads the commit history since the
 last tag, determines the version bump, updates `package.json`, generates/updates `CHANGELOG.md`,
