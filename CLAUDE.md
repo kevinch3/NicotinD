@@ -782,7 +782,11 @@ Add detail there, not here.
   `active/scanning` forever (prod: 20 of 28 stranded items already had a `library_songs` row at their
   exact path). `reconcileOrganizedItems` re-resolves them on every hygiene pass, ahead of the 24h
   idle valve so a landed file is rescued rather than written off; both it and `markItemsScanned`
-  match `COLLATE NOCASE` (organizer-recorded path vs scanner-minted casing). The nonsense
+  match `COLLATE NOCASE` (organizer-recorded path vs scanner-minted casing) — and because NOCASE
+  folds **ASCII case only, never diacritics**, a miss now falls back to an **accent-folded**
+  comparison (core `fold()`, built lazily only after an exact miss): prod had a job stuck 23 h with
+  four items whose files were present all along as `Auténticos` vs the recorded `Autenticos`, which
+  the idle valve would have written off as a false partial. The nonsense
   "7 of 240 · 233 unavailable" tally was a peer folder holding a whole discography — 254 files
   enqueued for a 14-track album — now scoped by `filesForCanonicalTracks` at both enqueue sites
   (conservative: no tracklist, or no match, passes files through unchanged).

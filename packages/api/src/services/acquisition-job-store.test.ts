@@ -293,6 +293,54 @@ describe('reconcileOrganizedItems (#262)', () => {
     expect(item.songId).toBe('s1');
   });
 
+  /**
+   * SQLite's `COLLATE NOCASE` folds ASCII case ONLY, never diacritics. Measured
+   * on prod: a job sat at `scanning` for 23 h with four organized items whose
+   * files had been present the whole time — the organizer had recorded
+   * `Los Autenticos Decadentes/…` while the library held
+   * `Los Auténticos Decadentes/…`.
+   */
+  it('rescues an item whose recorded path differs only by accents', () => {
+    const id = seedJob();
+    markItemCompleted(db, transferKeyFor('peer1', 'a\\01 Sunday.flac'));
+    markItemOrganized(
+      db,
+      transferKeyFor('peer1', 'a\\01 Sunday.flac'),
+      'Los Autenticos Decadentes/Hoy trasnoche/01 - Yo Puedo.mp3',
+    );
+    seedSong('s1', 'Los Auténticos Decadentes/Hoy trasnoche/01 - Yo Puedo.mp3', true);
+
+    expect(reconcileOrganizedItems(db)).toBe(1);
+    const item = getJob(db, id)!.items[0];
+    expect(item.state).toBe('scanned');
+    expect(item.songId).toBe('s1');
+  });
+
+  it('still matches on ASCII case alone, without needing the fold', () => {
+    const id = seedJob();
+    markItemCompleted(db, transferKeyFor('peer1', 'a\\01 Sunday.flac'));
+    markItemOrganized(db, transferKeyFor('peer1', 'a\\01 Sunday.flac'), 'Bowie/Heathen/01 SUNDAY.opus');
+    seedSong('s1', 'Bowie/Heathen/01 sunday.opus', true);
+
+    expect(reconcileOrganizedItems(db)).toBe(1);
+    expect(getJob(db, id)!.items[0].songId).toBe('s1');
+  });
+
+  /**
+   * The other prod job was genuinely partial — two `.opus` tracks that never
+   * landed under any spelling. Folding must not invent a match for those; the
+   * 24 h idle valve is what closes them.
+   */
+  it('leaves an item alone when no song matches under any folding', () => {
+    const id = seedJob();
+    markItemCompleted(db, transferKeyFor('peer1', 'a\\01 Sunday.flac'));
+    markItemOrganized(db, transferKeyFor('peer1', 'a\\01 Sunday.flac'), 'Fonsi/Abrazar/12 - Se Supone.opus');
+    seedSong('s1', 'Someone Else/Other/01 - Different.opus', true);
+
+    expect(reconcileOrganizedItems(db)).toBe(0);
+    expect(getJob(db, id)!.items[0].state).toBe('organized');
+  });
+
   it('closes the job once the last organized item is rescued', () => {
     const id = seedJob();
     for (const f of ['a\\01 Sunday.flac', 'a\\02 Slip Away.flac']) {
