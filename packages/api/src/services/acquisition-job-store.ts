@@ -1,5 +1,6 @@
 import type { Database } from 'bun:sqlite';
 import type { TrackStatus } from '@nicotind/core';
+import { fold } from '@nicotind/core';
 import { normalizeTitle, titlesOverlap } from './album-hunter.service.js';
 
 /**
@@ -415,14 +416,41 @@ export function reconcileOrganizedItems(db: Database): number {
   const now = Date.now();
   const touched = new Set<string>();
   let rescued = 0;
+  /**
+   * Accent-folded path → song id, built lazily and only when an exact match has
+   * already failed — see `resolveByFoldedPath`.
+   */
+  let foldedIndex: Map<string, string> | null = null;
+
+  const resolveByFoldedPath = (relativePath: string): string | null => {
+    if (!foldedIndex) {
+      foldedIndex = new Map();
+      for (const s of db
+        .query<{ id: string; path: string }, []>(`SELECT id, path FROM library_songs`)
+        .all()) {
+        // First writer wins: two paths folding alike is pathological, and
+        // picking either is better than dropping both.
+        if (!foldedIndex.has(fold(s.path))) foldedIndex.set(fold(s.path), s.id);
+      }
+    }
+    return foldedIndex.get(fold(relativePath)) ?? null;
+  };
+
   for (const row of rows) {
-    const song = db
+    const exact = db
       .query<{ id: string }, [string]>(`SELECT id FROM library_songs WHERE path = ? COLLATE NOCASE`)
       .get(row.relative_path);
-    if (!song) continue;
+    // why the fallback: SQLite's NOCASE folds ASCII case ONLY, never diacritics,
+    // so an organizer-recorded `Los Autenticos Decadentes/…` never matches the
+    // library's `Los Auténticos Decadentes/…`. Measured on prod: a job sat at
+    // `scanning` for 23 h with four organized items whose files were present the
+    // whole time under the accented spelling. Same `fold()` the search matcher
+    // and hunt scorer already use for exactly this Latin-American accent gap.
+    const songId = exact?.id ?? resolveByFoldedPath(row.relative_path);
+    if (!songId) continue;
     db.run(
       `UPDATE acquisition_job_items SET state = 'scanned', song_id = ?, updated_at = ? WHERE id = ?`,
-      [song.id, now, row.id],
+      [songId, now, row.id],
     );
     touched.add(row.job_id);
     rescued++;

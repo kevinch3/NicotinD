@@ -125,8 +125,29 @@ in this order):
    records the path it wrote, the scanner mints `library_songs.path` from tags,
    and the two disagree on casing often enough to strand items on their own
    (prod: `01 - ¿Quién te dijo eso.opus` organized vs `01 - ¿Quién Te Dijo
-   Eso.opus` scanned). NOCASE is ASCII-only, so accent drift is not rescued
-   here — the idle valve below closes those out.
+   Eso.opus` scanned).
+
+   **`COLLATE NOCASE` folds ASCII case only, never diacritics**, and leaving
+   accent drift to the idle valve turned out to be the wrong trade. Measured on
+   prod: a job sat at `state=active, stage=scanning` for **23 hours** with four
+   organized items whose files had been present the entire time — the organizer
+   had written `Los Autenticos Decadentes/…` while the library held
+   `Los Auténticos Decadentes/…`. The valve would eventually have marked those
+   items *failed*, recording a false partial for an album that downloaded
+   completely.
+
+   So an exact/NOCASE miss now falls back to an **accent-folded** comparison,
+   using the same `fold()` (`@nicotind/core`, NFD + strip combining marks) that
+   search matching and hunt scoring already use for exactly this
+   Latin-American accent gap. SQLite cannot unaccent in SQL, so the folded
+   index is built in JS — **lazily, and only once an exact match has already
+   failed**, so the common path costs nothing.
+
+   Replayed against the live prod DB: of 6 stuck `organized` items, **0**
+   resolved under the old exact/NOCASE match, **4** are rescued by the fold
+   (closing that job), and **2** stay unresolved — those are genuinely missing
+   files, and the valve is the right answer for them. Folding must not invent a
+   match, which is its own test.
 2. **The 24h idle valve.** Items idle past 24h are failed, so a restart or a
    vanished transfer can't strand a job. `NON_TERMINAL_STATES` already covers
    `organized`, not just `downloading`; it runs *after* the rescue so an item
