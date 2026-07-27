@@ -6,6 +6,7 @@ import { LibraryApiService } from '../../services/api/library-api.service';
 import { ToastService } from '../../services/toast.service';
 import { CoverArtComponent } from '../../components/cover-art/cover-art.component';
 import { toTrack } from '../../lib/track-utils';
+import { TranslatePipe } from '../../pipes/translate.pipe';
 
 /** A one-tap "vibe": a friendly label + emoji over a canonical LibraryFilter. */
 interface VibePreset {
@@ -17,22 +18,23 @@ interface VibePreset {
 
 // Simplified, human-named starters mapped onto the shared filter vocabulary
 // (moods, perceptual buckets, bpm). Each starts filter-seeded radio instantly.
+// `label` is an i18n key (issue #236), rendered through the `t` pipe.
 const VIBE_PRESETS: readonly VibePreset[] = [
-  { id: 'happy', label: 'Happy', emoji: '😊', filter: { moods: ['happy'] } },
-  { id: 'chill', label: 'Chill', emoji: '😌', filter: { moods: ['relaxed'] } },
-  { id: 'party', label: 'Party', emoji: '🎉', filter: { moods: ['party'] } },
-  { id: 'energetic', label: 'Energetic', emoji: '⚡', filter: { buckets: { energy: ['high'] } } },
+  { id: 'happy', label: 'vibe.happy', emoji: '😊', filter: { moods: ['happy'] } },
+  { id: 'chill', label: 'vibe.chill', emoji: '😌', filter: { moods: ['relaxed'] } },
+  { id: 'party', label: 'vibe.party', emoji: '🎉', filter: { moods: ['party'] } },
+  { id: 'energetic', label: 'vibe.energetic', emoji: '⚡', filter: { buckets: { energy: ['high'] } } },
   {
     id: 'danceable',
-    label: 'Danceable',
+    label: 'vibe.danceable',
     emoji: '💃',
     filter: { buckets: { danceability: ['high'] } },
   },
-  { id: 'uplifting', label: 'Uplifting', emoji: '☀️', filter: { buckets: { valence: ['high'] } } },
-  { id: 'fast', label: '120bpm+', emoji: '🏃', filter: { bpmMin: 120 } },
+  { id: 'uplifting', label: 'vibe.uplifting', emoji: '☀️', filter: { buckets: { valence: ['high'] } } },
+  { id: 'fast', label: 'vibe.fast', emoji: '🏃', filter: { bpmMin: 120 } },
   {
     id: 'acoustic',
-    label: 'Acoustic',
+    label: 'vibe.acoustic',
     emoji: '🎸',
     filter: { buckets: { acousticness: ['high'] } },
   },
@@ -49,7 +51,7 @@ const VIBE_PRESETS: readonly VibePreset[] = [
 @Component({
   selector: 'app-radio-landing',
   standalone: true,
-  imports: [CoverArtComponent],
+  imports: [CoverArtComponent, TranslatePipe],
   templateUrl: './radio-landing.component.html',
 })
 export class RadioLandingComponent implements OnInit {

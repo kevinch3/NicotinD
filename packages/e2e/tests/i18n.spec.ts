@@ -73,4 +73,20 @@ test.describe('i18n (#236)', () => {
     // A key that failed to resolve renders as its dotted key — assert none leak.
     await expect(tabs).not.toContainText('library.tab.');
   });
+
+  test('translates the home page vibe presets', async ({ page }) => {
+    // The post-login home route, and the last of the always-on-screen surfaces.
+    await page.addInitScript(() => localStorage.setItem('nicotind-lang', 'es'));
+    await page.goto('/');
+
+    // Reuse the existing section hook rather than adding a testid for the test.
+    const presets = page.getByTestId('radio-new-mood');
+    await expect(presets).toContainText('Bailable');
+    await expect(presets).not.toContainText('vibe.'); // no key leaked
+
+    // `120bpm+` is deliberately identical in both catalogs — a bpm threshold
+    // reads the same in Spanish, and dropping the key would make it fall back
+    // to English silently rather than by decision.
+    await expect(presets).toContainText('120bpm+');
+  });
 });
