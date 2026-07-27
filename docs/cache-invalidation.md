@@ -47,6 +47,42 @@ the design and the class comes back.
 - **Dangling side rows are invisible, not broken.** Every playlist read `INNER JOIN`s
   `library_songs` (including the `song_count` subquery), so a deleted song vanishes from playlists
   and their counts without a prune step.
+- **…but they accumulate, so the regenerable ones are pruned on a grace period** (issue #259,
+  `services/orphan-prune.ts`). Prod measurement before building anything:
+
+  | table                            |   rows | orphans |         |
+  | -------------------------------- | -----: | ------: | ------- |
+  | `library_embeddings`             | 15,456 |   1,057 | 5.16 MB |
+  | `library_song_analysis_failures` | 19,399 |     233 |         |
+  | `library_lyrics`                 |    839 |      35 |         |
+  | `library_song_genres`            | 31,623 |   **0** |         |
+  | `library_song_artists`           | 15,198 |   **0** |         |
+  | `library_genre_overrides` (song) |    311 |   **0** |         |
+
+  **The numbers dissolve the apparent retention tension.** The tables the no-cascade design exists
+  to protect — genres, artists, overrides — carry *zero* orphans, because the scanner rebuilds them
+  rather than accumulating. The tables that actually grow are the regenerable ones. So `ORPHAN_TABLES`
+  covers exactly `library_embeddings` (46% of the whole prod DB is embedding blobs; the sidecar can
+  recompute them) and `library_song_analysis_failures` (a ledger, meaningless without its song).
+  `library_lyrics` is **deliberately excluded** despite having orphans: a lyrics document is
+  network-sourced and user-editable — precisely the curator data the design protects — and 35 rows
+  don't justify trading that away.
+
+  The pass is **mark → unmark → sweep**, guarded to one run per calendar day off the same
+  processor-tick hook as the daily backup. `orphaned_at` (additive column) is stamped when a row is
+  first seen with no owner, **cleared when its song comes back** — that unmark is what preserves the
+  delete-then-re-download restore — and the row is deleted only once it has been orphaned longer
+  than `DEFAULT_ORPHAN_GRACE_MS` (30 days). `updated_at` cannot stand in for `orphaned_at`: an
+  embedding computed 60 days ago and orphaned today would be swept immediately, destroying exactly
+  the property the grace period exists to keep.
+
+  Two safety valves, because the cost of being wrong is deleting the whole embedding cache: an
+  **empty `library_songs` aborts the pass** (a truncated or mid-rebuild library is not a reason to
+  drop everything), and a table whose orphan ratio exceeds 50% is skipped with a warning. Neither
+  can fire today — the scanner upserts inside a transaction and prunes by stale `synced_at`, so it
+  never transiently empties `library_songs` — they're insurance against that ever changing.
+  `countOrphanRows` feeds a `orphanRows` slice on `GET /api/admin/review`, rendered in the Admin
+  panel (hidden at zero) so the prune is observable rather than silent.
 - **The cover negative-cache has a complete writer set.** `noArtCache` (10 min) short-circuits
   `extractCover()` disk IO for artless ids; every path that can give an id art calls
   `clearCoverNegativeCache(id)` — album cover set/upload, artist image upload/from-album/reset,

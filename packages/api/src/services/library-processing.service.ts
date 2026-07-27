@@ -16,6 +16,7 @@ import { getProcessingSettings } from './processing-settings.js';
 import { isWithinWindow } from './processing-window.js';
 import { maybeRefreshAutoPlaylists } from './auto-playlists.service.js';
 import { maybeRunDailyBackup } from './backup.js';
+import { maybeRunDailyOrphanPrune } from './orphan-prune.js';
 import {
   ENRICHMENT_TASKS,
   createEnrichmentContext,
@@ -204,6 +205,10 @@ export class LibraryProcessingService extends EventEmitter {
     // Daily data backup (marker-guarded, ≥04:00 local). Deliberately BEFORE the
     // enabled/window checks: backups must not depend on enrichment being on.
     maybeRunDailyBackup(this.db, { dataDir: this.dataDir, now: this.now().getTime() });
+    // Daily orphan side-table prune (issue #259). Same placement rationale as
+    // the backup: housekeeping must not depend on enrichment being enabled, and
+    // it runs before the backup's next snapshot picks the freed bytes up.
+    maybeRunDailyOrphanPrune(this.db, { now: this.now().getTime() });
     const settings = getProcessingSettings(this.db);
     if (!settings.enabled) {
       this.publish(settings, 'disabled');

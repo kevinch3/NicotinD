@@ -21,6 +21,7 @@ import { getDatabase } from '../db.js';
 import { listAudit } from '../services/audit-log.js';
 import { listBackups, type BackupInfo } from '../services/backup.js';
 import { getStoredUpdateCheck, listVersionHistory, compareVersions } from '../services/update-check.js';
+import { countOrphanRows, type OrphanCount } from '../services/orphan-prune.js';
 
 export type UpdateCheckSnapshot = {
   currentVersion: string;
@@ -109,6 +110,12 @@ export interface ServiceReview {
   processing: ProcessingSummary | null;
   incompleteJobsCount: number;
   untrackedCount: number;
+  /**
+   * Per-song side-table rows whose owning song is gone (issue #259). Reported
+   * rather than merely swept so an admin can see whether the daily prune is
+   * keeping up — same spirit as `untracked`/`incompleteJobs`.
+   */
+  orphanRows: OrphanCount[];
   auditTail: AuditEntry[];
   /** Snapshot of incomplete album hunts (active + exhausted) for the Admin panel. */
   incompleteJobs: IncompleteAlbumJob[];
@@ -135,6 +142,7 @@ export interface ReviewSubFns {
   processingSummary: () => ProcessingSummary | null;
   incompleteJobCount: () => number;
   untrackedCount: () => number;
+  orphanRows: () => OrphanCount[];
   auditTail: (limit: number) => AuditEntry[];
   incompleteJobs: () => IncompleteAlbumJob[];
   untracked: () => UntrackedDownload[];
@@ -427,7 +435,7 @@ export function reviewRoutes(slskdRef: SlskdRef, deps: ReviewRoutesDeps = {}) {
 
     // Run every sub-fetch in parallel; defer the index count to after slskd /
     // scan so the cheaper DB queries overlap the network call.
-    const [metrics, status, scan, analysis, updateCheck, backups, processing, incompleteCount, untracked, audit, incompleteList, untrackedList] =
+    const [metrics, status, scan, analysis, updateCheck, backups, processing, incompleteCount, untracked, orphanRows, audit, incompleteList, untrackedList] =
       await Promise.all([
         safe(errors, 'metrics', () => collectMetricsFn({ os: deps.os, probe: deps.gpuProbe }), fallbackMetrics),
         safe(errors, 'systemStatus', () => sub.systemStatus?.() ?? defaultSystemStatus(slskdRef), {
@@ -447,6 +455,7 @@ export function reviewRoutes(slskdRef: SlskdRef, deps: ReviewRoutesDeps = {}) {
         safe(errors, 'processing', () => sub.processingSummary?.() ?? defaultProcessing(deps.processing), null as ProcessingSummary | null),
         safe(errors, 'incompleteJobsCount', () => sub.incompleteJobCount?.() ?? defaultIncompleteJobs().length, 0),
         safe(errors, 'untrackedCount', () => sub.untrackedCount?.() ?? defaultUntracked().length, 0),
+        safe(errors, 'orphanRows', () => sub.orphanRows?.() ?? countOrphanRows(getDatabase()), [] as OrphanCount[]),
         safe(errors, 'auditTail', () => sub.auditTail?.(DEFAULT_AUDIT_TAIL_LIMIT) ?? defaultAuditTail(DEFAULT_AUDIT_TAIL_LIMIT), [] as AuditEntry[]),
         safe(errors, 'incompleteJobsList', () => sub.incompleteJobs?.() ?? defaultIncompleteJobs(), [] as IncompleteAlbumJob[]),
         safe(errors, 'untrackedList', () => sub.untracked?.() ?? defaultUntracked(), [] as UntrackedDownload[]),
@@ -478,6 +487,7 @@ export function reviewRoutes(slskdRef: SlskdRef, deps: ReviewRoutesDeps = {}) {
       processing,
       incompleteJobsCount: incompleteCount,
       untrackedCount: untracked,
+      orphanRows,
       auditTail: audit,
       incompleteJobs: incompleteList,
       untracked: untrackedList,

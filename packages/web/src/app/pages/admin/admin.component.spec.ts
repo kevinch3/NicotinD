@@ -46,6 +46,7 @@ function makeReview(over: Partial<ServiceReview> = {}): ServiceReview {
     processing: null,
     incompleteJobsCount: 0,
     untrackedCount: 0,
+    orphanRows: [],
     auditTail: [],
     incompleteJobs: [],
     untracked: [],
@@ -73,6 +74,9 @@ function makeSvc(over: Partial<ServiceReview> = {}) {
     auditTail: (() => r.auditTail) as ServiceReviewService['auditTail'],
     incompleteJobsCount: (() => r.incompleteJobsCount) as ServiceReviewService['incompleteJobsCount'],
     untrackedCount: (() => r.untrackedCount) as ServiceReviewService['untrackedCount'],
+    orphanRows: (() => r.orphanRows) as ServiceReviewService['orphanRows'],
+    orphanRowCount: (() =>
+      r.orphanRows.reduce((sum, t) => sum + t.orphans, 0)) as ServiceReviewService['orphanRowCount'],
     incompleteJobs: (() => r.incompleteJobs) as ServiceReviewService['incompleteJobs'],
     untracked: (() => r.untracked) as ServiceReviewService['untracked'],
   };
@@ -180,6 +184,45 @@ describe('AdminComponent (snapshot-driven via ServiceReview)', () => {
     expect(el.querySelector('[data-testid="streaming-panel"]')).toBeTruthy();
     expect(el.querySelector('[data-testid="processing-panel"]')).toBeTruthy();
     expect(el.querySelector('[data-testid="duplicates-panel"]')).toBeTruthy();
+    // Nothing orphaned in the default fixture — the panel stays out of the way.
+    expect(el.querySelector('[data-testid="orphan-rows-panel"]')).toBeFalsy();
+    f.destroy();
+  });
+});
+
+/** Issue #259: orphaned side-table rows are reported so an admin can see the
+ *  daily prune keeping up. Hidden entirely at zero (the steady state). */
+describe('AdminComponent (orphan side-table rows, #259)', () => {
+  it('lists each table with orphans and totals them', async () => {
+    const mocks = makeAdminMocks({
+      orphanRows: [
+        { table: 'library_embeddings', rows: 15456, orphans: 1057 },
+        { table: 'library_song_analysis_failures', rows: 19399, orphans: 233 },
+        { table: 'library_clean', rows: 10, orphans: 0 },
+      ],
+    });
+    await TestBed.configureTestingModule({
+      imports: [AdminComponent],
+      providers: [
+        { provide: DownloadsApiService, useValue: {} },
+        { provide: SystemApiService, useValue: { getUsers: vi.fn(() => of([])), getStreamingSettings: mocks.getStreaming, saveStreamingSettings: vi.fn((p: unknown) => of(p as object)), getProcessing: mocks.getProcessing, saveProcessing: vi.fn((p: unknown) => of(p as object)) } },
+        { provide: LibraryApiService, useValue: { resyncLibrary: vi.fn(() => of({ ok: true })), getFragments: vi.fn(() => of({ duplicateAlbums: [], hiddenByClassification: [], misSplitAlbums: [], totals: { duplicateAlbums: 0, hiddenByClassification: 0, misSplitAlbums: 0 }, ok: true } as LibraryFragmentReport)) } },
+        { provide: ServiceReviewService, useValue: mocks.reviewService },
+        { provide: AuthService, useValue: { token: () => null } },
+      ],
+    }).compileComponents();
+
+    const f = TestBed.createComponent(AdminComponent);
+    f.componentInstance.loading.set(false);
+    f.detectChanges();
+    await f.whenStable();
+    f.detectChanges();
+    const el = f.nativeElement as HTMLElement;
+
+    expect(el.querySelector('[data-testid="orphan-rows-panel"]')?.textContent).toContain('1290');
+    const list = el.querySelector('[data-testid="orphan-rows-list"]')!;
+    expect(list.querySelectorAll('li')).toHaveLength(2); // the zero-orphan table is skipped
+    expect(list.textContent).toContain('library_embeddings');
     f.destroy();
   });
 });

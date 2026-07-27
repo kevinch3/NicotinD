@@ -822,12 +822,22 @@ export function applySchema(db: Database): void {
       dim        INTEGER NOT NULL,
       vec        BLOB NOT NULL,
       file_size  INTEGER,
+      orphaned_at INTEGER,
       updated_at INTEGER NOT NULL,
       PRIMARY KEY (song_id, model)
     )
   `);
   try {
     db.run(`ALTER TABLE library_embeddings ADD COLUMN file_size INTEGER`);
+  } catch {
+    // Column already exists — ignore
+  }
+  // When this row was first seen with no `library_songs` owner (issue #259).
+  // NULL = currently owned. Deleting a song leaves its embedding behind by
+  // design (no FK cascade — see docs/cache-invalidation.md), so this is what
+  // bounds the growth without giving up that design. See `orphan-prune.ts`.
+  try {
+    db.run(`ALTER TABLE library_embeddings ADD COLUMN orphaned_at INTEGER`);
   } catch {
     // Column already exists — ignore
   }
@@ -846,10 +856,16 @@ export function applySchema(db: Database): void {
       fail_count   INTEGER NOT NULL DEFAULT 0,
       last_error   TEXT,
       file_size    INTEGER,
+      orphaned_at  INTEGER,
       last_attempt INTEGER NOT NULL,
       PRIMARY KEY (song_id, task)
     )
   `);
+  try {
+    db.run(`ALTER TABLE library_song_analysis_failures ADD COLUMN orphaned_at INTEGER`);
+  } catch {
+    // Column already exists — ignore
+  }
 
   db.run(`
     CREATE TABLE IF NOT EXISTS library_artists (
