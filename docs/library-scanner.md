@@ -64,6 +64,8 @@ A **separate**, less common integrity problem (the search fix above already hand
 - the **CLI script** `scripts/check-fragments.ts` (read-only; exit code 1 when any defect exists, so a scheduled run can alert),
 - and unit-tested with the in-memory sqlite (`library-fragments.test.ts`).
 
+**The CLI gate had never run in a Docker deployment.** Its local `expandHome` copy returned `''` for any path not starting with `~` instead of the path itself — one of 30 copy-pasted copies, and the only one that had drifted. With `NICOTIND_DATA_DIR=/data/nicotind` the data dir collapsed to `''` and the script exited `Database not found at nicotind.db`. It survived because local development uses the default `~/.nicotind`, which takes the other branch: the bug was reachable **only** with an absolute path, i.e. only in production. The helper now lives in `scripts/lib/expand-home.ts` with tests. First run against prod after the fix reported 4 duplicate albums, 19 hidden-by-classification and 6 mis-split — findings that had been unreachable the whole time.
+
 ## Multi-genre support
 
 **One song, many genres.** File tags are multi-valued in practice — multiple ID3 genre frames and `;`/`,`/`|`-joined strings ("Alternative Country;Alternative Pop;…"; a prod dry-run found 1,355/9,791 tagged songs with semicolon lists). The scanner keeps the FULL set: `ScannedTrack.genre` holds every frame (old single-string scan-cache rows remain valid input), `buildLibrary` runs each value through the pure `splitGenres` (`genre-split.ts`), writes the ordered set to **`library_song_genres`** (`song_id, genre, position`; position 0 = primary) and mirrors the primary into `library_songs.genre` for zero-breakage single-value reads. `library_genres` counts a song under **every** genre it has.
