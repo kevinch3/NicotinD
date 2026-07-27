@@ -64,6 +64,7 @@ bun run typecheck        # TypeScript type checking (tsc --build)
 bun run lint             # ESLint across all packages
 bun run check:claude-md  # fail on CLAUDE.md symbols that don't exist / broken docs links (CI gate)
 bun run check:shipped-issues # open issues a shipped commit referenced (report, not a gate)
+bun run check:json       # duplicate keys in JSON configs (JSON.parse keeps the last silently)
 bun run format           # Prettier formatting
 bun run test             # Vitest across packages/ + src/ (excludes web/, e2e/, desktop/test/)
 bun run test:web         # Angular component tests (vitest — see docs/web-ui.md "Web test harness")
