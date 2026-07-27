@@ -97,6 +97,31 @@ Shots land under `screenshots/mobile/<flow>/`; this run also emits the findings 
 Rotate `docs/feedback-log-YYYY-MM.md`, carry forward open items, and promote recurring
 clusters into the findings doc as workstreams.
 
+## Order-dependent specs (issue #307)
+
+CI runs the whole suite, so a spec that only passes *because another file ran first* is
+**invisible there by construction**. It bites the person running one file while iterating —
+exactly when a red-for-no-reason suite costs most.
+
+`bun run check:isolated-specs` runs every spec file on its own and reports the ones that fail.
+`--api` / `--web` scope it.
+
+**Measured across the whole repo: 1 order-dependent file out of 307.** The single case is
+`routes/review.test.ts`, where two tests assert `errors` is empty while the default `orphanRows`
+gatherer calls `countOrphanRows(getDatabase())` — which throws unless an earlier file already
+called `initDatabase`. (Fixed by stubbing `orphanRows` in those two tests; the file is 9/9 alone
+after that.) Every one of the 132 web specs already passes in isolation.
+
+**It is deliberately not a per-PR CI gate.** Re-running 307 separate test processes costs minutes,
+which is a poor trade for a defect that has occurred once. It is a tool to reach for when a spec
+behaves oddly on its own, or to run periodically — the same "report, not gate" reasoning as
+`check-shipped-issues`, and the opposite of `check-json-configs`/`check-bgutil-pin`, where there is
+exactly one right answer and no false-positive class.
+
+The usual causes are shared global state: `getDatabase()`, module-level caches (the cover
+negative-cache, the GPU probe cache), and on the web side `providedIn: 'root'` services plus
+anything persisted to `localStorage` — the i18n work hit that last one during #236.
+
 ## Conventions
 
 - **Selector standard**: `data-testid`. New playground-targeted elements get one, and its
