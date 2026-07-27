@@ -63,6 +63,7 @@ bun run test             # Vitest across packages/ + src/ (excludes web/, e2e/, 
 bun run test:web         # Angular component tests (vitest — see docs/web-ui.md "Web test harness")
 bun run typecheck:web-spec # Type-check the web specs (vitest does NOT type-check them)
 bun run e2e              # Playwright e2e suite (packages/e2e) — always run before declaring a feature done
+bun run packages/api/src/scripts/prod-probe.ts --orphans --jobs  # read-only prod/dev DB probe → docs/prod-inspection.md
 bun run src/main.ts      # Start NicotinD (requires .env or config/default.yml)
 bun run release          # Bump version (auto-detected), generate CHANGELOG, tag
 bun run release:minor    # Force a minor version bump
@@ -886,6 +887,19 @@ Add detail there, not here.
   detection (a `vX` tag not reachable from master is deleted + re-cut, never silently skipped) —
   fixes the 2026-07-23 freeze where a non-atomic push orphaned `v0.1.244` and wedged every release
   behind a green-but-silent "already published" skip. → [docs/deployment.md](docs/deployment.md)
+- **Measure prod before building (`prod-probe.ts`)**: several issues ask for a prod measurement
+  first and it repeatedly **changed** the fix rather than confirming it (#262's stated root cause was
+  wrong; #259's retention tension dissolved; #271's threshold was calibrated off 462 real jobs) — but
+  every probe was a throwaway that re-derived the same boilerplate. `packages/api/src/scripts/prod-probe.ts`
+  (dev-only, sibling of `dump-radio.ts`/`check-fragments.ts`) owns it: `--orphans`/`--jobs`/`--transfers`/`--sql`.
+  **Two independent safety layers** — the connection is `{readonly:true}` with no override (the real
+  enforcement, asserted in tests), and `assertReadOnlySql` is the legible second layer (single
+  statement, SELECT/WITH/PRAGMA only, no assigning PRAGMA). Its ordering is load-bearing: comments
+  stripped **before** the leading-keyword check (else `-- SELECT\nDELETE` reads as a SELECT) and
+  string literals blanked **before** the keyword scan (else `title = 'update me'` is refused). The
+  probe's table list is deliberately **wider** than the pruner's — measuring a table you'd never
+  prune is what validates the policy. Writes belong on a `VACUUM INTO` copy, never the live file. →
+  [docs/prod-inspection.md](docs/prod-inspection.md)
 - **OSS best-practices roadmap**: prioritized adoption plan of Immich/Home-Assistant practices
   (backup/restore, safe mode, watchdog + health taxonomy, retention, update check, audit log,
   community files). → [docs/oss-best-practices.md](docs/oss-best-practices.md)
