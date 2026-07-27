@@ -299,6 +299,30 @@ putting sources outside the inferred `rootDir` (48 × TS6059). Fixed with `noEmi
 `rootDir: "../.."`, exposed as `typecheck:web-spec` and run in CI **before** the tests. Without that
 step the fixed stubs would silently rot again.
 
+**Templates are type-checked too, by `ngc` (issue #273).** Neither `tsc --build` nor
+`typecheck:web-spec` sees an Angular **template**: binding expressions are compiled by the Angular
+compiler, not by `tsc`, so an ordinary type error inside `[src]="…"` was invisible to both fast
+gates and only surfaced at `ng build` — the *last* step of the CI `ci` job, after lint and every
+test. Two real examples, both from the #263 cover consolidation and both reproduced to verify this
+fix: `TS2322: Type 'string | null' is not assignable to type 'string | undefined'` on
+`metadata-fix-modal.component.html`, and `TS2339: Property 'artist' does not exist on type
+'BlendedCandidate'` on `album-hunt-modal.component.html`. `tsc --build` exits **0** on both.
+
+`typecheck:template` runs `ngc -p tsconfig.template.json`, the same template type-checker the build
+uses, without bundling or emit — and it is **folded into `bun run typecheck`** rather than left as a
+separate command a caller must remember. That choice is measured, not assumed: a green production
+`ng build` is **9.0 s** and `ngc` alone is **5.4 s**, so a "faster standalone check" would have won
+almost nothing; what makes the fold worth it is that `tsc --build` is incremental, so the combined
+gate costs **~5 s warm** (~11 s cold) and closes the "green locally, red at build" class outright.
+CI needs no workflow change — it already calls `bun run typecheck`, which now fails on step one
+instead of the last one.
+
+`tsconfig.template.json` exists rather than reusing `tsconfig.app.json` because of the **same
+TS6059 trap** described above: `app`'s `outDir` makes TypeScript infer a `rootDir` of
+`packages/web`, which the `src/types/core.ts` shim's `../../../core/src/*` re-exports sit outside
+of. The spec config solves it with `noEmit` + an explicit `rootDir: "../.."`; the template config
+drops `outDir` and asserts `noEmit`, which removes the inference entirely.
+
 **Testing `input()`-signal components (JIT vitest limitation)**: the web unit
 suite runs on the JIT/vitest harness (`@angular/compiler`, no ngtsc build
 step), which has no compile-time transform for signal `input()`/

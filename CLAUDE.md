@@ -56,12 +56,13 @@ library that the API streams from. URL-based acquisition (yt-dlp / spotdl) feeds
 
 ```bash
 bun install              # Install all workspace dependencies
-bun run typecheck        # TypeScript type checking (tsc --build)
+bun run typecheck        # TypeScript type checking (tsc --build + Angular template check)
 bun run lint             # ESLint across all packages
 bun run format           # Prettier formatting
 bun run test             # Vitest across packages/ + src/ (excludes web/, e2e/, desktop/test/)
 bun run test:web         # Angular component tests (vitest — see docs/web-ui.md "Web test harness")
 bun run typecheck:web-spec # Type-check the web specs (vitest does NOT type-check them)
+bun run --filter @nicotind/web typecheck:template # Angular templates alone (folded into typecheck)
 bun run e2e              # Playwright e2e suite (packages/e2e) — always run before declaring a feature done
 bun run src/main.ts      # Start NicotinD (requires .env or config/default.yml)
 bun run release          # Bump version (auto-detected), generate CHANGELOG, tag
@@ -906,7 +907,12 @@ Add detail there, not here.
 ## Web UI
 
 Angular v22 standalone SPA with signals, `HttpClient` + interceptors, and lazy-loaded routes. Built
-via `ng build` (esbuild); tests via `ng test` (vitest). The HTTP surface is split into per-domain
+via `ng build` (esbuild); tests run on **plain vitest**, never `ng test` (which forbids the
+`vi.mock` five specs rely on — see docs/web-ui.md "Web test harness"). Three type-check surfaces,
+none of which covers the others: `tsc --build` (app + packages), `typecheck:web-spec` (specs, which
+`tsconfig.app.json` excludes), and `typecheck:template` (**Angular templates** via `ngc` — `tsc`
+never sees a binding expression, so this was "green locally, red at `ng build`" until issue #273
+folded it into `bun run typecheck`). The HTTP surface is split into per-domain
 stateless services under `services/api/` (`Auth`/`Search`/`Library`/`Downloads`/`System`/`Playlists`
 ApiService + shared `api-types.ts`) — inject the specific one; there is no monolithic `ApiService`.
 → See [docs/web-ui.md](docs/web-ui.md) for theme system, Angular patterns, and component

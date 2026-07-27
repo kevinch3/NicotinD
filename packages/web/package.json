@@ -13,6 +13,7 @@
     "pretest": "bun run scripts/build-changelog.ts",
     "test": "vitest run",
     "typecheck:spec": "tsc -p tsconfig.spec.json",
+    "typecheck:template": "ngc -p tsconfig.template.json",
     "generate-icons": "bun run scripts/generate-icons.ts"
   },
   "private": true,
