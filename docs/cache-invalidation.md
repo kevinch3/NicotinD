@@ -117,3 +117,42 @@ invalidation wiring at every mutation site. That trade is deliberate and documen
    earned it, and both are the shape where a *user action* must be visible *immediately*.
 4. Key any `Database`-derived memo by the db instance (`WeakMap<Database>`), never module-global —
    a test suite spins up many throwaway databases and a global memo leaks across them.
+
+## Playlist membership survives a song-id change (scanner prune)
+
+Song ids are `sha1(path)`, so **any** move re-mints the id — a folder rename from
+an artist-alias fix, an organizer consolidation, a repair script. The scanner then
+prunes the old row (`DELETE FROM library_songs WHERE synced_at < …`) and inserts a
+new one. Every `playlist_songs` row pointing at the old id is instantly dead, and
+because there is no FK and playlist reads `INNER JOIN library_songs`, **nothing
+errors — the playlist just silently renders one song shorter.**
+
+Measured on prod: **17 dangling rows across 11 user playlists** (1-3 each), plus 62
+in curated shelves. The curated ones self-heal on the weekly refresh; the user ones
+never do.
+
+The transcode path already solved this for its own id change (`library-transcode.ts`
+re-points `playlist_songs` when lossless→opus re-mints the id). The scanner prune was
+the one id-changing path that didn't.
+
+`repointPlaylistsBeforePrune` (`services/playlist-repoint.ts`) runs **inside the prune,
+before the delete**. That ordering is not incidental: `playlist_songs` stores only
+`song_id`, so once the row is gone there is nothing left to identify what the entry
+was — no title, no path. **Recovery after the fact is impossible, which is why this
+cannot be a repair script.**
+
+**Identity is `(title, artist, duration)`, and the match must be unique.** A wrong
+re-point silently puts a *different* song in someone's playlist, which is worse than
+the dangling entry it replaces — so ambiguity is left to dangle exactly as before.
+Measured against the real library (14,580 songs):
+
+| | count | |
+| --- | --- | --- |
+| unique triples | ~96.4 % | re-pointable |
+| rows in ambiguous groups | 528 (3.6 %) | left alone, by design |
+| title+artist pairs with differing durations | 248 | what duration saves us from (live cuts, remixes) |
+
+Only songs a playlist actually references are considered, so a normal prune does no
+extra work. `UPDATE OR IGNORE` handles the case where the playlist already contains
+the survivor — `(playlist_id, song_id)` is unique, and a plain `UPDATE` would abort
+the entire scan.
