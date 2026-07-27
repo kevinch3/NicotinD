@@ -382,3 +382,52 @@ The Angular service worker (`provideServiceWorker('ngsw-worker.js')`, registered
 - **`ngsw-bypass` still applies**: the stream URL helper (`ServerConfigService.streamUrl`) appends `ngsw-bypass=1` so `/api/stream/*` never hits the worker — orthogonal to this change but worth keeping in mind when reasoning about "the SW isn't picking up the new version".
 
 ## Service worker fire-and-forget
+
+## Bundle size budget (issue #256)
+
+`packages/web/angular.json` carried the **untouched Angular CLI scaffold defaults**
+(`initial` 500 kB warning / 1 MB error), which the app has exceeded for long enough that the
+warning became part of expected build output. A warning that is always red is a warning nobody
+reads — the real cost is that the next genuine regression looks identical to the status quo.
+
+**Measured before deciding.** `ng build --stats-json`, attributing `bytesInOutput` for the
+initial chunk:
+
+| | raw | transfer |
+| --- | --- | --- |
+| initial total | 734.78 kB | **187.63 kB** |
+
+| package | initial chunk |
+| --- | --- |
+| **@sentry/\*** (replay 124 + core 85 + browser-utils 30 + browser 29 + angular 4) | **272 kB** |
+| @angular/core | 142 kB |
+| @angular/router | 77 kB |
+| **app code** | **72 kB** |
+| @angular/common | 26 kB |
+| rxjs | 21 kB |
+
+Two things that decide the question:
+
+1. **The budget measures raw bytes; users pay transfer.** 735 kB raw is 188 kB over the wire,
+   which is unremarkable for an app of this scope. "47 % over budget" was measuring the wrong
+   number against a threshold nobody chose.
+2. **42 % of the initial chunk is Sentry, and it is eager on purpose.** `main.ts` calls
+   `initSentry` *before* `bootstrapApplication` specifically to catch startup failures (the
+   Android ANR investigation), and `environment.prod.ts` ships a hardcoded DSN, so it is active
+   in every production build — not dead weight. `app.config.ts` additionally needs it
+   statically for the `ErrorHandler` and `TraceService` providers. Deferring it is a real
+   product trade (lose startup-error capture), not a cleanup, so it is **not** done here.
+
+So the budget was raised to **780 kB** — current + ~6 % headroom, tight enough that real growth
+trips it. Verified it still fires: set to 700 kB, the build correctly warns. `maximumError`
+stays at 1 MB.
+
+**`qrcode` is now lazy.** It was a static import in `devices.component.ts`; it is now
+`await import('qrcode')` inside `renderQr`, which took the devices route chunk from **38.9 kB
+to 14 kB** and moved the library into its own 24 kB chunk fetched only when a pairing QR is
+actually minted. This does **not** silence the "not ESM" warning — that is CommonJS interop and
+is unaffected by import style; a dynamic import in fact surfaced a second one (`dijkstrajs`).
+Those two are declared in `allowedCommonJsDependencies`, which is Angular's sanctioned way to
+acknowledge a known CJS dependency, so the build is now **warning-free** and the next warning
+means something. Note the trade: a broken static import fails the build, a broken dynamic
+import fails at click time — hence `devices.component.spec.ts` covers the QR path.

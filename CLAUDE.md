@@ -934,6 +934,15 @@ ApiService + shared `api-types.ts`) — inject the specific one; there is no mon
 → See [docs/web-ui.md](docs/web-ui.md) for theme system, Angular patterns, and component
 conventions.
 
+**Bundle budget**: `angular.json` carried the untouched Angular scaffold defaults (500 kB/1 MB), so
+the build warned on every run and the next real regression was invisible. Measured before deciding
+(issue #256): initial is 735 kB **raw** but **188 kB transfer**, and **42 % is Sentry** — eager on
+purpose (`main.ts` inits it before `bootstrapApplication` to catch startup failures; prod ships a
+hardcoded DSN), so deferring it is a product trade, not cleanup. Budget raised to a number the
+project stands behind (780 kB, verified it still fires), `qrcode` made lazy (devices chunk 38.9 →
+14 kB), and its CJS bailout declared via `allowedCommonJsDependencies` — the build is now
+warning-free. → [docs/web-ui.md](docs/web-ui.md) "Bundle size budget"
+
 ## Mobile app (Capacitor Android + iOS)
 
 `packages/mobile` is a thin **Capacitor** shell that wraps the **same** `@nicotind/web` Angular
