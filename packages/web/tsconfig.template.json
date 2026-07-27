@@ -1,0 +1,23 @@
+/* Template type-checking only — no emit.
+ *
+ * `tsc --build` does not see Angular templates: they are compiled by the
+ * Angular compiler, not by tsc, so a type error in a binding expression used
+ * to be invisible to every fast gate and only surfaced at `ng build` — the
+ * last step of CI's `ci` job. `ngc` against this config runs the same template
+ * type-checker the build does, without the bundling/emit cost, and is wired
+ * into the root `typecheck` script so one command covers everything.
+ *
+ * Why this exists instead of reusing tsconfig.app.json: that config sets
+ * `outDir`, which makes TypeScript infer a `rootDir` of packages/web and then
+ * reject the `src/types/core.ts` shim's `../../../core/src/*` re-exports
+ * (TS6059). Dropping `outDir` and asserting `noEmit` removes the inference.
+ */
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": []
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/**/*.spec.ts"]
+}

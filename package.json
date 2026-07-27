@@ -30,6 +30,7 @@
     "check:shipped-issues": "bun run ./scripts/check-shipped-issues.ts",
     "check:json": "bun run ./scripts/check-json-configs.ts",
     "check:isolated-specs": "bun run ./scripts/check-isolated-specs.ts",
+    "typecheck": "tsc --build && bun run --filter @nicotind/web typecheck:template",
     "download-deps": "bun run ./scripts/download-deps.ts",
     "test": "bun test packages src scripts --path-ignore-patterns='**/dist/**' --path-ignore-patterns='**/dist-test/**' --path-ignore-patterns='**/.worktrees/**' --path-ignore-patterns='**/web/src/**' --path-ignore-patterns='**/e2e/**' --path-ignore-patterns='**/desktop/test/**'",
     "test:tdd": "bun --watch test packages src scripts --bail 1 --path-ignore-patterns='**/dist/**' --path-ignore-patterns='**/dist-test/**' --path-ignore-patterns='**/.worktrees/**' --path-ignore-patterns='**/web/src/**' --path-ignore-patterns='**/e2e/**' --path-ignore-patterns='**/desktop/test/**'",
