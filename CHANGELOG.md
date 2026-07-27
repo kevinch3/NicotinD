@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.275](https://github.com/kevinch3/NicotinD/compare/v0.1.274...v0.1.275) (2026-07-27)
+
+### Bug Fixes
+
+* **hunt:** rank a whole-discography dump below the album folder ([#271](https://github.com/kevinch3/NicotinD/issues/271)) ([fe420d4](https://github.com/kevinch3/NicotinD/commit/fe420d40bedf845dfa2e89d7bdfa0f0b113bc306)), references [#262](https://github.com/kevinch3/NicotinD/issues/262)
 ## [0.1.274](https://github.com/kevinch3/NicotinD/compare/v0.1.273...v0.1.274) (2026-07-26)
 
 ### Bug Fixes
