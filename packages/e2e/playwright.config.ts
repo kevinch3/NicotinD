@@ -2,6 +2,7 @@ import { defineConfig, devices, type PlaywrightTestConfig } from '@playwright/te
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { rmSync } from 'node:fs';
+import { ensureWebBuild } from './ensure-web-build.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '../..');
@@ -31,6 +32,11 @@ if (!externalBaseUrl) {
   rmSync(dataDir, { recursive: true, force: true });
   rmSync(onboardingDataDir, { recursive: true, force: true });
 }
+
+// The managed server serves the prebuilt packages/web/dist, so build it here —
+// same config-eval timing and same external-URL gate as the wipe above. See
+// ensure-web-build.ts for why this isn't a globalSetup or a root-script change.
+ensureWebBuild();
 
 // Gated playground mode: PLAYGROUND=1 runs ONLY the `*.playground.ts` feedback
 // flows (against a live backend via E2E_BASE_URL, or the managed server in
