@@ -1,4 +1,3 @@
-import { ɵSIGNAL as SIGNAL } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { of, throwError, type Observable } from 'rxjs';
 import { vi } from 'vitest';
@@ -7,14 +6,11 @@ import { LibraryApiService } from '../../services/api/library-api.service';
 import { AuthService } from '../../services/auth.service';
 import { ToastService } from '../../services/toast.service';
 import type { ArtistInfoResponse } from '@nicotind/core';
+import { setInputValue } from '../../../testing/signal-input';
 
 // The web JIT vitest harness can't drive signal input()s via componentRef.setInput
 // (silently no-ops) — see artist-genre-modal.component.spec.ts / song-picker.component.spec.ts
 // for the same escape hatch.
-function setInputValue<T>(inputSignal: () => T, value: T): void {
-  (inputSignal as unknown as Record<typeof SIGNAL, { value: T }>)[SIGNAL].value = value;
-}
-
 describe('ArtistInfoComponent', () => {
   function setup(
     overrides: {

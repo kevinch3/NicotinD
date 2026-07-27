@@ -1,16 +1,6 @@
-import { ɵSIGNAL as SIGNAL } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { TrackStatsBarsComponent } from './track-stats-bars.component';
-
-/**
- * The web JIT vitest harness has no compile-time transform for Angular's
- * signal input() API, so we write straight to the node behind ɵSIGNAL
- * before the fixture's first detectChanges(). Same pattern as
- * seek-bar.component.spec.ts and track-row.component.spec.ts.
- */
-function setInputValue<T>(inputSignal: () => T, value: T): void {
-  (inputSignal as unknown as Record<typeof SIGNAL, { value: T }>)[SIGNAL].value = value;
-}
+import { setInputValue } from '../../../testing/signal-input';
 
 describe('TrackStatsBarsComponent — badges', () => {
   function setup(overrides: {

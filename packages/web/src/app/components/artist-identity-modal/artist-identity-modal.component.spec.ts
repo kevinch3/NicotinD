@@ -1,14 +1,9 @@
-import { ɵSIGNAL as SIGNAL } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { of } from 'rxjs';
 import { ArtistIdentityModalComponent, splitArtistParts } from './artist-identity-modal.component';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import { ToastService } from '../../services/toast.service';
-
-/** Same ɵSIGNAL escape hatch as artist-links.component.spec.ts (JIT input() limitation). */
-function setInputValue<T>(inputSignal: () => T, value: T): void {
-  (inputSignal as unknown as Record<typeof SIGNAL, { value: T }>)[SIGNAL].value = value;
-}
+import { setInputValue } from '../../../testing/signal-input';
 
 describe('splitArtistParts (client mirror of splitOnDelimiters)', () => {
   it('splits on the shared delimiter set', () => {

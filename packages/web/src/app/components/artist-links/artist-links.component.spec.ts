@@ -1,19 +1,8 @@
-import { ɵSIGNAL as SIGNAL } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { ArtistLinksComponent } from './artist-links.component';
 import type { ArtistCredit } from '../../services/api/api-types';
-
-/**
- * The web JIT vitest harness can't drive Angular signal `input()`s the normal way
- * (see track-row.component.spec.ts for the full rationale). We write straight to the
- * signal node behind the `ɵSIGNAL` symbol — the same object Angular's compiled setter
- * would write to. Safe here because we read the pure `segments` computed directly,
- * never through a rendered fixture, so there's no stale-notification concern.
- */
-function setInputValue<T>(inputSignal: () => T, value: T): void {
-  (inputSignal as unknown as Record<typeof SIGNAL, { value: T }>)[SIGNAL].value = value;
-}
+import { setInputValue } from '../../../testing/signal-input';
 
 function make(): ArtistLinksComponent {
   TestBed.configureTestingModule({

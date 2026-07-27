@@ -300,20 +300,42 @@ putting sources outside the inferred `rootDir` (48 × TS6059). Fixed with `noEmi
 step the fixed stubs would silently rot again.
 
 **Testing `input()`-signal components (JIT vitest limitation)**: the web unit
-suite runs on the JIT/vitest harness (`@angular/compiler`, no ngtsc build
-step), which has no compile-time transform for signal `input()`/
-`input.required()` — neither a template `[foo]="value"` binding nor
-`componentRef.setInput()` reaches the input (see "Web JIT vitest can't drive
-input() signals" in project memory). `track-row.component.spec.ts` and
-`seek-bar.component.spec.ts` (the specs driving the buffering/playback-state
-and buffered-band DOM output) work around this with a local `setInputValue`
-helper that writes straight to the input's underlying signal node via
-Angular's `ɵSIGNAL` symbol, called **before** the fixture's first
-`detectChanges()` (the raw write bypasses `signalSetFn`, so anything that
-already read the signal wouldn't be notified). This exercises the real
-production template/CSS — it only swaps out *how* the input value gets in —
-and is the pattern to reuse for any new component spec that needs to drive
-`input()` values directly rather than through a parent/host template.
+suite runs on the JIT/vitest harness (`@angular/compiler`, no ngtsc build step),
+which registers no signal `input()`s on the component definition — neither a
+template `[foo]="value"` binding nor `componentRef.setInput()` reaches them.
+Use the shared **`src/testing/signal-input.ts` `setInputValue`** helper, which
+writes straight to the input's underlying signal node via Angular's `ɵSIGNAL`
+symbol. It was duplicated verbatim across **14 spec files** (in two spellings)
+until issue #254 gave it one home; the constraint had been re-explained in each
+copy, in each author's own words, which is why the rules below kept getting
+rediscovered the expensive way.
+
+**`componentRef.setInput()` was measured, not assumed to be unavailable.** It is
+a silent **no-op** in this harness — with *and* without a following
+`detectChanges()`, the input keeps its default and every downstream `computed()`
+reads the default. It does not throw, which is what makes it dangerous: a spec
+written that way passes *vacuously*. Re-run that check before re-litigating; if
+a future `@analogjs/vite-plugin-angular` registers inputs properly, the helper
+can be deleted outright in favour of the supported API.
+
+Three rules, all documented on the helper itself:
+
+- **Never `input.required<T>()` on a component intended to be nested.** The
+  harness doesn't register signal inputs on a *nested imported* component, so
+  Angular reports `NG0303: Can't bind to 'x'`; the binding never lands, and the
+  required input then throws `NG0950` **during change detection**, taking down
+  the **host** spec rather than the child's. Prefer `input<T>(default)` — the
+  better contract anyway. Two consecutive CI failures on PR #252 came from not
+  knowing this.
+- **Call `setInputValue` before the fixture's first `detectChanges()`.** The raw
+  `.value` write bypasses `signalSetFn`, so anything that already read the
+  signal is never notified and keeps rendering the stale value.
+- **One fresh component per scenario.** Same mechanism: a second write to the
+  same input lands in the node but doesn't invalidate readers, so an assertion
+  after it can silently check the *first* value.
+
+This exercises the real production template/CSS — it only swaps out *how* the
+input value gets in.
 
 ## Changelog Modal
 

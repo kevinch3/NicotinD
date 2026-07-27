@@ -1,4 +1,4 @@
-import { Component, Input, ɵSIGNAL as SIGNAL } from '@angular/core';
+import { Component, Input } from '@angular/core';
 import { RouterLink, provideRouter } from '@angular/router';
 import { TestBed } from '@angular/core/testing';
 import {
@@ -13,6 +13,7 @@ import {
 import { resolveAlbumRoute, resolvePlaylistRoute } from '../../lib/route-utils';
 import type { DownloadItem } from '../../lib/download-groups';
 import { MenuPanelComponent } from '../menu-panel/menu-panel.component';
+import { setInputValue } from '../../../testing/signal-input';
 
 /**
  * `app-pipeline-stage-badge` declares its `stage` input via the signal
@@ -199,16 +200,6 @@ describe('download-item "Now: / Next:" gating', () => {
     expect(canShowNowNext(item({ kind: 'acquire', stage: 'downloading' }))).toBe(true);
   });
 });
-
-/**
- * Straight write to the signal node behind `ɵSIGNAL`, matching the pattern
- * already sanctioned in track-row.component.spec.ts for driving a required
- * `input()` in the JIT vitest harness (no ngtsc, no input-transform support).
- * Call only before the fixture's first `detectChanges()`.
- */
-function setInputValue<T>(inputSignal: () => T, value: T): void {
-  (inputSignal as unknown as Record<typeof SIGNAL, { value: T }>)[SIGNAL].value = value;
-}
 
 // The real "View N albums" menu row is rendered here (rather than only
 // asserted through the gating helper above) so the album-id → route wiring

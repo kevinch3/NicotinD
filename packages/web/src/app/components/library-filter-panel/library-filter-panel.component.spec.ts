@@ -1,13 +1,8 @@
-import { ɵSIGNAL as SIGNAL } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import type { LibraryFilter } from '@nicotind/core';
 import { LibraryFilterPanelComponent } from './library-filter-panel.component';
-
-/** Sanctioned JIT escape hatch for signal inputs (see track-row.component.spec.ts). */
-function setInputValue<T>(inputSignal: () => T, value: T): void {
-  (inputSignal as unknown as Record<typeof SIGNAL, { value: T }>)[SIGNAL].value = value;
-}
+import { setInputValue } from '../../../testing/signal-input';
 
 function setup(filter: LibraryFilter = {}, extraCount = 0) {
   // Inputs must be set before the first read: the SIGNAL escape hatch writes

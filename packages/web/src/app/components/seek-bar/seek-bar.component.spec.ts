@@ -1,6 +1,6 @@
-import { ɵSIGNAL as SIGNAL } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { SeekBarComponent } from './seek-bar.component';
+import { setInputValue } from '../../../testing/signal-input';
 
 function setup() {
   TestBed.configureTestingModule({ imports: [SeekBarComponent] });
@@ -59,14 +59,8 @@ describe('SeekBarComponent', () => {
   });
 });
 
-// The JIT harness can't drive input() signals via bindings or setInput() —
-// write straight to the node behind ɵSIGNAL instead, BEFORE the fixture's
-// first detectChanges(). Pattern + full rationale documented in
-// track-row.component.spec.ts.
-function setInputValue<T>(inputSignal: () => T, value: T): void {
-  (inputSignal as unknown as Record<typeof SIGNAL, { value: T }>)[SIGNAL].value = value;
-}
-
+// `setInputValue` must be called before the fixture's first detectChanges();
+// see src/testing/signal-input.ts for why.
 describe('SeekBarComponent — buffered band', () => {
   function setupBuffered(buffered: { start: number; end: number }[]) {
     TestBed.configureTestingModule({ imports: [SeekBarComponent] });

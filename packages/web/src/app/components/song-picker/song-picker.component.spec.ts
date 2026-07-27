@@ -1,19 +1,15 @@
-import { ɵSIGNAL as SIGNAL } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { of, throwError } from 'rxjs';
 import { vi } from 'vitest';
 import { SongPickerComponent } from './song-picker.component';
 import { LibraryApiService } from '../../services/api/library-api.service';
 import type { Song } from '../../services/api/api-types';
+import { setInputValue } from '../../../testing/signal-input';
 
 // The web JIT vitest harness can't drive signal input()s the normal way
 // (componentRef.setInput silently no-ops) — see track-row.component.spec.ts's
 // comment / project memory "Web JIT vitest can't drive input() signals".
 // Write straight to the signal node instead, before the first detectChanges().
-function setInputValue<T>(inputSignal: () => T, value: T): void {
-  (inputSignal as unknown as Record<typeof SIGNAL, { value: T }>)[SIGNAL].value = value;
-}
-
 const SONG = (id: string, title = id): Song => ({
   id,
   title,
