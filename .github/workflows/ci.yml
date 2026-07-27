@@ -48,8 +48,13 @@ jobs:
       - name: Lint
         run: bun run lint
 
+      # The pip plugin and the companion PO-token service must be the same
+      # version; a mismatch silently breaks YouTube downloads (issue #238).
+      - name: Check bgutil provider/plugin version pairing
+        run: bun run check:bgutil-pin
+
       - name: Test (API + slskd-client + lidarr-client + core + service-manager + mobile)
-        run: bun test packages/api/src packages/slskd-client/src packages/lidarr-client/src packages/core/src packages/service-manager/src packages/mobile/src packages/desktop/electron packages/desktop/scripts
+        run: bun test packages/api/src packages/slskd-client/src packages/lidarr-client/src packages/core/src packages/service-manager/src packages/mobile/src packages/desktop/electron packages/desktop/scripts scripts
 
       - name: Test (e2e playground helpers)
         run: bun test packages/e2e/playground

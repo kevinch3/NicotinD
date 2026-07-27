@@ -61,8 +61,12 @@ RUN curl -fsSL https://deno.land/install.sh | DENO_INSTALL=/usr/local sh
 # plugin that fetches PO tokens from the bgutil companion service (see
 # docker-compose.yml); it applies to spotdl too (same python env). The plugin
 # is PINNED to match the bgutil-provider image tag in docker-compose.yml —
-# plugin and provider must stay in step; bump both together.
-RUN pip3 install --no-cache-dir --break-system-packages --upgrade yt-dlp spotdl 'bgutil-ytdlp-pot-provider==1.3.1'
+# plugin and provider must stay in step; a mismatch silently breaks YouTube
+# downloads. `bun run check:bgutil-pin` (CI) fails if the two defaults drift,
+# and BGUTIL_VERSION overrides both (build-arg here, compose interpolation
+# there) so an operator bumps one value, not two. See issue #238.
+ARG BGUTIL_VERSION=1.3.1
+RUN pip3 install --no-cache-dir --break-system-packages --upgrade yt-dlp spotdl "bgutil-ytdlp-pot-provider==${BGUTIL_VERSION}"
 
 # Copy all packages (web needs package.json for workspace resolution)
 COPY package.json bun.lock bunfig.toml tsconfig.json ./
