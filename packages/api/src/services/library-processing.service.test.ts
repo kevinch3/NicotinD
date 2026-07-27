@@ -428,3 +428,108 @@ describe('LibraryProcessingService', () => {
     expect(svc2.getState().status.processed).toBe(2);
   });
 });
+
+/**
+ * Issue #224. The analysis sidecar is usually not the only tenant on the GPU —
+ * the reference deployment shares one P4000 with Immich ML and Ollama — and
+ * enrichment is the tenant that can always wait. `gpuBusyPercent` yields the
+ * window automatically (unlike `paused`, which is a manual halt) and re-tries
+ * on the next tick.
+ */
+describe('shared-GPU courtesy yield (#224)', () => {
+  const IN_WINDOW = new Date('2026-07-27T06:00:00');
+
+  function gpuService(gpu: () => Promise<number | null>, counters = { analyzed: 0, genreLookups: 0 }) {
+    return {
+      counters,
+      svc: new LibraryProcessingService({
+        db,
+        lidarr: {} as never,
+        musicDir: '/music',
+        dataDir,
+        now: () => IN_WINDOW,
+        contextFactory: fakeCtx(counters),
+        readGpuPercent: gpu,
+      }),
+    };
+  }
+
+  it('yields the window when the GPU is at or above the threshold', async () => {
+    seedSong('s1');
+    setProcessingSettings(db, { window: { start: '05:00', end: '08:00' }, gpuBusyPercent: 70 });
+
+    const { svc, counters } = gpuService(async () => 85);
+    await svc.tick();
+
+    expect(counters.analyzed).toBe(0);
+    expect(svc.getState().status.phase).toBe('gpu-busy');
+  });
+
+  it('runs normally when the GPU is below the threshold', async () => {
+    seedSong('s1');
+    setProcessingSettings(db, { window: { start: '05:00', end: '08:00' }, gpuBusyPercent: 70 });
+
+    const { svc, counters } = gpuService(async () => 12);
+    await svc.tick();
+
+    expect(counters.analyzed).toBeGreaterThan(0);
+    expect(svc.getState().status.phase).not.toBe('gpu-busy');
+  });
+
+  it('never probes at all when the threshold is 0 (the default = off)', async () => {
+    seedSong('s1');
+    setProcessingSettings(db, { window: { start: '05:00', end: '08:00' }, gpuBusyPercent: 0 });
+
+    let probes = 0;
+    const { svc, counters } = gpuService(async () => {
+      probes += 1;
+      return 99;
+    });
+    await svc.tick();
+
+    expect(probes).toBe(0);
+    expect(counters.analyzed).toBeGreaterThan(0);
+  });
+
+  /**
+   * A box with no vendor tool reads null. Yielding on that would stop
+   * enrichment entirely the moment an operator set a threshold — the opposite
+   * of the intent.
+   */
+  it('does NOT yield when utilisation is unknown', async () => {
+    seedSong('s1');
+    setProcessingSettings(db, { window: { start: '05:00', end: '08:00' }, gpuBusyPercent: 50 });
+
+    const { svc, counters } = gpuService(async () => null);
+    await svc.tick();
+
+    expect(counters.analyzed).toBeGreaterThan(0);
+  });
+
+  it('does NOT yield when the probe throws', async () => {
+    seedSong('s1');
+    setProcessingSettings(db, { window: { start: '05:00', end: '08:00' }, gpuBusyPercent: 50 });
+
+    const { svc, counters } = gpuService(async () => {
+      throw new Error('nvidia-smi exploded');
+    });
+    await svc.tick();
+
+    expect(counters.analyzed).toBeGreaterThan(0);
+  });
+
+  it('re-runs on a later tick once the GPU frees up', async () => {
+    seedSong('s1');
+    setProcessingSettings(db, { window: { start: '05:00', end: '08:00' }, gpuBusyPercent: 70 });
+
+    let load = 90;
+    const { svc, counters } = gpuService(async () => load);
+
+    await svc.tick();
+    expect(counters.analyzed).toBe(0);
+
+    load = 10; // the neighbour finished
+    await svc.tick();
+    expect(counters.analyzed).toBeGreaterThan(0);
+  });
+});

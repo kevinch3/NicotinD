@@ -61,6 +61,10 @@ export const DEFAULT_PROCESSING_SETTINGS: ProcessingSettings = {
   concurrency: 3,
   // Not paused by default; the admin "Pause now" toggle flips this at runtime.
   paused: false,
+  // Off by default (issue #224): most deployments have no GPU, or don't share
+  // one, and a default threshold would silently delay enrichment for them. The
+  // shared-card operator opts in.
+  gpuBusyPercent: 0,
 };
 
 export function getProcessingSettings(db: Database): ProcessingSettings {

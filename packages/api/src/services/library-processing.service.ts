@@ -14,6 +14,7 @@ import type {
 } from '@nicotind/core';
 import { getProcessingSettings } from './processing-settings.js';
 import { isWithinWindow } from './processing-window.js';
+import { readGpu } from './system-metrics.js';
 import { maybeRefreshAutoPlaylists } from './auto-playlists.service.js';
 import { maybeRunDailyBackup } from './backup.js';
 import { maybeRunDailyOrphanPrune } from './orphan-prune.js';
@@ -92,6 +93,13 @@ export interface LibraryProcessingDeps {
   intervalMs?: number;
   /** Injectable clock for window tests. */
   now?: () => Date;
+  /**
+   * Current GPU utilisation (0-100), or null when no vendor tool exposes it.
+   * Defaults to the shared cached `readGpu` probe, so a 60 s tick never shells
+   * out more than its 5 s cache allows. Injectable so the yield logic is
+   * testable without `nvidia-smi` on the box.
+   */
+  readGpuPercent?: () => Promise<number | null>;
   /** Injectable context factory for unit tests (fakes ffmpeg/Lidarr primitives). */
   contextFactory?: (settings: ProcessingSettings) => EnrichmentContext;
   /** Disable file logging (tests). Default true. */
@@ -127,6 +135,15 @@ export class LibraryProcessingService extends EventEmitter {
   private readonly logPath: string;
   private readonly intervalMs: number;
   private readonly now: () => Date;
+  /** Current GPU utilisation 0-100, or null when unknown. See gpuBusyPercent. */
+  private readonly readGpuPercent: () => Promise<number | null>;
+  /**
+   * Whether the last in-window tick yielded to a busy GPU. `snapshot()`
+   * recomputes the phase from settings, but this one isn't derivable from
+   * settings — it depends on a live probe — so it has to be remembered or the
+   * panel would report "idle" while nothing is running.
+   */
+  private gpuBusy = false;
   private readonly contextFactory: (settings: ProcessingSettings) => EnrichmentContext;
   private readonly logToFile: boolean;
   private readonly reportFailure: (report: ProcessingFailureReport) => void;
@@ -153,6 +170,8 @@ export class LibraryProcessingService extends EventEmitter {
     this.logPath = join(deps.dataDir, 'library-processing.log');
     this.intervalMs = deps.intervalMs ?? 60_000;
     this.now = deps.now ?? (() => new Date());
+    this.readGpuPercent =
+      deps.readGpuPercent ?? (async () => (await readGpu(Date.now()))?.percent ?? null);
     this.contextFactory =
       deps.contextFactory ??
       ((settings) =>
@@ -240,6 +259,31 @@ export class LibraryProcessingService extends EventEmitter {
       this.publish(settings, 'outside-window');
       return;
     }
+    // Shared-GPU courtesy yield (issue #224). The sidecar is usually not the
+    // only tenant on the card — the reference deployment shares one P4000 with
+    // Immich ML and Ollama — and enrichment is the tenant that can always wait.
+    // Placed AFTER the window check so it only ever costs a probe inside the
+    // window, and it clears quarantine first for the same reason `paused` does:
+    // a fresh download must never stay invisible because another application is
+    // busy. Unlike `paused` this is automatic and re-tries on the next tick.
+    if (settings.gpuBusyPercent <= 0) this.gpuBusy = false;
+    if (settings.gpuBusyPercent > 0) {
+      // A probe failure (no vendor tool, nvidia-smi missing) reads as null and
+      // must NOT yield — otherwise a box with no GPU tooling would stop
+      // enriching entirely the moment an operator set a threshold.
+      const gpu = await this.readGpuPercent().catch(() => null);
+      this.gpuBusy = gpu !== null && gpu >= settings.gpuBusyPercent;
+      if (this.gpuBusy) {
+        if (this.hasQuarantined()) {
+          await this.guarded(async () => {
+            await this.kickEagerInner();
+          });
+        }
+        this.publish(settings, 'gpu-busy');
+        return;
+      }
+    }
+
     await this.guarded(async () => {
       // Once per ISO week, inside the maintenance window, refresh the automated
       // recipe-driven shelves (idempotent; guarded by a library_sync_state marker).
@@ -520,6 +564,7 @@ export class LibraryProcessingService extends EventEmitter {
       if (!settings.enabled) phase = 'disabled';
       else if (settings.paused) phase = 'paused';
       else if (!isWithinWindow(this.now(), settings.window)) phase = 'outside-window';
+      else if (this.gpuBusy) phase = 'gpu-busy';
       else phase = 'idle';
     }
     return {

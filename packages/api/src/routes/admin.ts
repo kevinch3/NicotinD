@@ -415,6 +415,16 @@ export function adminRoutes(deps: AdminRoutesDeps) {
     if (body.paused !== undefined && typeof body.paused !== 'boolean') {
       return c.json({ error: 'paused must be a boolean' }, 400);
     }
+    // 0 disables the shared-GPU yield; above 100 could never trigger, which
+    // would read as "enabled" while doing nothing (issue #224).
+    if (
+      body.gpuBusyPercent !== undefined &&
+      (!Number.isInteger(body.gpuBusyPercent) ||
+        body.gpuBusyPercent < 0 ||
+        body.gpuBusyPercent > 100)
+    ) {
+      return c.json({ error: 'gpuBusyPercent must be an integer 0-100' }, 400);
+    }
     // gates is a sparse per-task boolean map ("require before landing"); reject a
     // malformed value so a bad client can't poison the persisted JSON blob.
     if (body.gates !== undefined) {
