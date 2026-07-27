@@ -341,6 +341,13 @@ Add detail there, not here.
   `services/artist-image-fill.ts` `fillArtistImages`; copying its resolve→persist sequence would
   have risked dropping the `clearCoverNegativeCache` eviction, which stores the portrait while the
   UI keeps showing the placeholder. → [docs/library-scanner.md](docs/library-scanner.md)
+  short-circuit staying at the call-site SQL not the chain). **An identity fix carries curation
+  forward (issue #305)**: a rename/merge re-mints the artist id, silently orphaning the portrait,
+  the uploaded file and the bio (prod: 88 dead artwork rows of 1011, 2 dead uploads of 140) —
+  `carryArtistCuration` moves them at the fix site (the only place that knows the old→new mapping),
+  never clobbering the destination's own, and moves the **genre override by normalized name** since
+  that table keys on the name, not the id. →
+  [docs/library-scanner.md](docs/library-scanner.md)
 - **Artist bios (auto + override)**: biographies + external links resolved via MBID-first lookup to
   Discogs (plugin-sourced; MBID from file tags or `library_mbids` cache), stored in
   `library_artist_meta` with tombstone rows preventing re-queries of confirmed misses. Auto-filled

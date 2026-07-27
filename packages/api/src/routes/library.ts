@@ -82,6 +82,7 @@ import {
   songFilterWheres,
 } from '../services/library-filter-sql.js';
 import { MusicBrainzClient, MB_USER_AGENT } from '../services/musicbrainz-client.js';
+import { carryArtistCuration } from '../services/artist-curation-carry.js';
 
 const log = createLogger('library');
 
@@ -1625,6 +1626,22 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       resultArtistId = null;
     } else {
       return c.json({ error: 'decision (single|split), mergeInto, or rename required' }, 400);
+    }
+
+    // A rename/merge re-mints the artist id, and every artist-scoped side table
+    // is keyed on the old one with no FK to notice — so the curator's portrait,
+    // uploaded image, bio and genre decision were silently detached by the very
+    // action meant to tidy their library (issue #305; prod had 88 dead artwork
+    // rows and 2 orphaned uploads). Carry them BEFORE the rescan re-buckets, and
+    // never clobber whatever the destination artist already has.
+    if (resultArtistId) {
+      const fromId = artistIdFor(rawName);
+      carryArtistCuration(db, dataDir, {
+        fromId,
+        toId: resultArtistId,
+        fromKey: normalizeArtistForGrouping(rawName),
+        toKey: normalizeArtistForGrouping(body?.rename ?? body?.mergeInto ?? rawName),
+      });
     }
 
     // Re-bucket synchronously so the caller sees the change immediately (the UI
