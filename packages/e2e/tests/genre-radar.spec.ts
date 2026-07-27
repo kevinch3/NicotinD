@@ -40,14 +40,14 @@ test.describe('genre radar', () => {
     await page.goto(`/library/artists/${artist.id}`);
     await page.getByTestId('artist-genre-fix').click();
 
-    const radar = page.getByTestId('genre-radar');
+    const radar = page.getByTestId('artist-genre-before').getByTestId('genre-radar');
     await expect(radar).toBeVisible();
 
     // Chart and its exact-value table always ship together: a radar distorts
     // magnitude, so the numbers must be readable beside it.
-    await expect(page.getByTestId('genre-radar-table')).toBeVisible();
+    await expect(radar.getByTestId('genre-radar-table')).toBeVisible();
     await expect(radar.locator('svg')).toHaveAttribute('role', 'img');
-    await expect(page.getByTestId('genre-radar-caption')).toContainText('past 100%');
+    await expect(radar.getByTestId('genre-radar-caption')).toContainText('past 100%');
 
     // One marker per genre axis, plus the value polygon over the ring grid.
     await expect(radar.locator('svg circle')).toHaveCount(3);
@@ -60,5 +60,22 @@ test.describe('genre radar', () => {
 
     // The correction surface it sits inside still works.
     await expect(page.getByTestId('artist-genre-input')).toBeVisible();
+
+    // --- Before/after projection (issue #222) -----------------------------
+    // The append-vs-replace consequence (issue #260) must be visible BEFORE
+    // Save: replace collapses the spread, append preserves it.
+    const after = page.getByTestId('artist-genre-after');
+    await page.getByTestId('artist-genre-input').fill('Folclore');
+
+    await page.getByTestId('artist-genre-mode-replace').check();
+    await expect(after).toBeVisible();
+    // Exactly one axis survives a replace, and the drop is named outright.
+    await expect(after.locator('svg circle')).toHaveCount(1);
+    await expect(page.getByTestId('artist-genre-lost')).toContainText('Chacarera');
+
+    await page.getByTestId('artist-genre-mode-append').check();
+    // Append keeps all three and adds nothing to the lost list.
+    await expect(after.locator('svg circle')).toHaveCount(3);
+    await expect(page.getByTestId('artist-genre-lost')).toHaveCount(0);
   });
 });
