@@ -205,3 +205,92 @@ describe('DELETE /artists/:id/image (reset)', () => {
     expect(cover.status).toBe(404);
   });
 });
+
+/**
+ * Issue #250. The windowed `artist-image` task is default-off in the `gates`
+ * set and only runs inside the daily window, so a fresh library could sit
+ * placeholder-only indefinitely. This route is the one-shot on-demand fill,
+ * mirroring `auto-fetch-info`: auth-gated but never curator-gated, and gated on
+ * "no portrait and not a curator override" so it can't thrash or overwrite.
+ */
+describe('POST /artists/:id/auto-fetch-image (#250)', () => {
+  function appWithLookup(lookup: (name: string) => Promise<string | null>): Hono<AuthEnv> {
+    const app = new Hono<AuthEnv>();
+    app.use('*', async (c, next) => {
+      c.set('user', { sub: 'u1', role: 'user', iat: 0, exp: 0 } as JwtPayload);
+      await next();
+    });
+    app.route(
+      '/',
+      libraryRoutes('/music', {
+        dataDir,
+        coverCacheDir: join(dataDir, 'cover-cache'),
+        lookupArtistImageSpotify: lookup,
+      }),
+    );
+    return app;
+  }
+
+  it('fills a portrait for a plain (non-curator) user', async () => {
+    const res = await appWithLookup(async () => 'https://cdn/aphex.jpg').request(
+      '/artists/artist-1/auto-fetch-image',
+      { method: 'POST' },
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ filled: true });
+    expect(
+      testDb.query(`SELECT cover_url FROM library_artwork WHERE id = 'artist-1'`).get(),
+    ).toEqual({ cover_url: 'https://cdn/aphex.jpg' });
+  });
+
+  it('is a one-shot: does not re-query once a portrait exists', async () => {
+    testDb.run(
+      `INSERT INTO library_artwork (id, kind, cover_url, updated_at)
+       VALUES ('artist-1', 'artist', 'https://cdn/existing.jpg', 1)`,
+    );
+    const lookup = mock(async () => 'https://cdn/other.jpg');
+
+    const res = await appWithLookup(lookup).request('/artists/artist-1/auto-fetch-image', {
+      method: 'POST',
+    });
+
+    expect(await res.json()).toEqual({ filled: false });
+    expect(lookup).not.toHaveBeenCalled();
+    // The existing portrait is untouched.
+    expect(
+      testDb.query(`SELECT cover_url FROM library_artwork WHERE id = 'artist-1'`).get(),
+    ).toEqual({ cover_url: 'https://cdn/existing.jpg' });
+  });
+
+  it('never overwrites a curator override', async () => {
+    testDb.run(`UPDATE library_artists SET manual_override = 1 WHERE id = 'artist-1'`);
+    const lookup = mock(async () => 'https://cdn/auto.jpg');
+
+    expect(
+      await (
+        await appWithLookup(lookup).request('/artists/artist-1/auto-fetch-image', {
+          method: 'POST',
+        })
+      ).json(),
+    ).toEqual({ filled: false });
+    expect(lookup).not.toHaveBeenCalled();
+  });
+
+  it('degrades silently when no provider can resolve one (an auto-trigger must not toast)', async () => {
+    const res = await appWithLookup(async () => null).request(
+      '/artists/artist-1/auto-fetch-image',
+      { method: 'POST' },
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ filled: false });
+  });
+
+  it('returns filled:false for an unknown artist rather than 404ing the auto-trigger', async () => {
+    const res = await appWithLookup(async () => 'https://cdn/x.jpg').request(
+      '/artists/nope/auto-fetch-image',
+      { method: 'POST' },
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ filled: false });
+  });
+});

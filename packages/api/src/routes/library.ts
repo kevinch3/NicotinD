@@ -23,6 +23,7 @@ import { readAudioTags, writeAudioTags } from '../services/audio-tags.js';
 import { getLyrics, setLyrics, deleteLyrics } from '../services/lyrics-store.js';
 import { getArtistMeta, upsertArtistMeta } from '../services/artist-meta-store.js';
 import { getMbid, upsertMbid } from '../services/mbid-store.js';
+import { fillArtistImages } from '../services/artist-image-fill.js';
 import { resolveMbidViaLidarr } from '../services/enrichment/tasks.js';
 import type { PluginRegistry } from '../services/plugins/registry.js';
 import { optimizeAlbum } from '../services/metadata-optimize.js';
@@ -376,6 +377,10 @@ interface LibraryRoutesOptions {
   pluginRegistry?: PluginRegistry;
   /** slskd handle, used to suppress albums with an in-flight (non-job) transfer. */
   slskdRef?: SlskdRef;
+  /** Spotify portrait lookup, when the spotify plugin is configured. Lets the
+   *  on-demand artist-image fill reuse the same provider chain as the windowed
+   *  enrichment task instead of a Lidarr-only shortcut (issue #250). */
+  lookupArtistImageSpotify?: ((name: string) => Promise<string | null>) | null;
   /** Analysis-sidecar client: preferred BPM detector for on-demand analysis
    *  (Essentia — the local music-tempo fallback makes frequent octave errors).
    *  Null when no sidecar is configured. */
@@ -583,6 +588,7 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
     pluginRegistry,
     audioFeaturesClient,
     slskdRef,
+    lookupArtistImageSpotify,
   } = options;
   // A deleted file's slskd share entry doesn't go away on its own — see
   // ShareRescanScheduler. Debounced so an album/bulk delete triggers one
@@ -1392,6 +1398,50 @@ export function libraryRoutes(musicDir?: string, options: LibraryRoutesOptions =
       .query<{ id: string }, [string]>('SELECT id FROM library_artists WHERE id = ?')
       .get(id);
   }
+
+  /**
+   * On-demand portrait fill for one artist (issue #250). Mirrors the silent
+   * one-shot `auto-fetch-info`: auth-gated but **never curator-gated**, so a
+   * first visit to a portrait-less artist can resolve one without waiting for
+   * the daily processing window (which is also default-off in the `gates` set,
+   * so a fresh library could otherwise sit placeholder-only indefinitely).
+   *
+   * Gated on "no portrait and not a curator override" so it is one-shot per
+   * artist and can never thrash the provider chain or overwrite a manual pick.
+   * Degrades silently to `{ filled: false }` — an auto-trigger must not toast.
+   */
+  app.post('/artists/:id/auto-fetch-image', async (c) => {
+    const id = c.req.param('id');
+    const db = getDatabase();
+    const artist = db
+      .query<{ id: string; name: string; manual_override: number }, [string]>(
+        `SELECT id, name, manual_override FROM library_artists WHERE id = ?`,
+      )
+      .get(id);
+    if (!artist || artist.manual_override) return c.json({ filled: false });
+
+    const hasPortrait = db
+      .query<{ id: string }, [string]>(
+        `SELECT id FROM library_artwork WHERE id = ? AND kind = 'artist'`,
+      )
+      .get(id);
+    if (hasPortrait) return c.json({ filled: false });
+    if (!coverCacheDir) return c.json({ filled: false });
+
+    try {
+      const { applied } = await fillArtistImages(
+        db,
+        { lidarr, spotifyLookup: lookupArtistImageSpotify ?? null, coverCacheDir },
+        [{ id: artist.id, name: artist.name }],
+      );
+      // A bulk fill changes what the Artists grid renders, but a single
+      // portrait is cover-id-stable (#237 audit) — the grid re-reads
+      // /api/cover/<id>, whose negative cache fillArtistImages already evicted.
+      return c.json({ filled: applied > 0 });
+    } catch {
+      return c.json({ filled: false });
+    }
+  });
 
   // Upload a custom portrait (multipart form-data, field "image"). Admin only.
   app.put('/artists/:id/image', async (c) => {

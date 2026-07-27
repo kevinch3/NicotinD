@@ -598,6 +598,10 @@ export function createApp({
       pluginRegistry: plugins,
       slskdRef,
       audioFeaturesClient,
+      // Same provider chain the windowed artist-image task uses, so the
+      // on-demand fill isn't a Lidarr-only shortcut (issue #250).
+      lookupArtistImageSpotify: (name) =>
+        spotifyArtistImageRef.lookup?.(name) ?? Promise.resolve(null),
     }),
   );
   app.route(
