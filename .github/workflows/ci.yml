@@ -48,8 +48,13 @@ jobs:
       - name: Lint
         run: bun run lint
 
+      # JSON.parse keeps the LAST duplicate key silently, so a merge resolved by
+      # keeping both sides of a conflict can discard a script outright.
+      - name: Check JSON configs for duplicate keys
+        run: bun run check:json
+
       - name: Test (API + slskd-client + lidarr-client + core + service-manager + mobile)
-        run: bun test packages/api/src packages/slskd-client/src packages/lidarr-client/src packages/core/src packages/service-manager/src packages/mobile/src packages/desktop/electron packages/desktop/scripts
+        run: bun test packages/api/src packages/slskd-client/src packages/lidarr-client/src packages/core/src packages/service-manager/src packages/mobile/src packages/desktop/electron packages/desktop/scripts scripts
 
       - name: Test (e2e playground helpers)
         run: bun test packages/e2e/playground
