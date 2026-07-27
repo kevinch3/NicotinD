@@ -359,6 +359,12 @@ export class AdminComponent implements OnInit, OnDestroy {
     if (n !== this.processing()?.concurrency) void this.saveProcessing({ concurrency: n });
   }
 
+  /** 0 disables the yield; >100 could never fire, which would read as "on". */
+  saveGpuBusyPercent(raw: string): void {
+    const n = clampInt(raw, 0, 100, this.processing()?.gpuBusyPercent ?? 0);
+    if (n !== this.processing()?.gpuBusyPercent) void this.saveProcessing({ gpuBusyPercent: n });
+  }
+
   saveBatchSize(raw: string): void {
     const n = clampInt(raw, 1, 500, this.processing()?.batchSize ?? 25);
     if (n !== this.processing()?.batchSize) void this.saveProcessing({ batchSize: n });

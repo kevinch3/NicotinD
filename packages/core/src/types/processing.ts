@@ -51,6 +51,20 @@ export interface ProcessingSettings {
   /** Worker-pool size for parallelisable tasks (e.g. BPM ffmpeg decodes). */
   concurrency: number;
   /**
+   * Yield the window when the GPU is already this busy, in percent utilisation
+   * (issue #224). `0` disables the check.
+   *
+   * why: the analysis sidecar is typically not the only tenant on the card —
+   * the reference deployment shares one P4000 with Immich ML and Ollama — and
+   * enrichment is the tenant that can always wait. Unlike `paused` (a manual
+   * halt) this yields automatically and re-tries on the next tick, so a busy
+   * neighbour delays enrichment instead of contending with it.
+   *
+   * Quarantine still clears while yielding: a fresh download must never stay
+   * invisible because some other application is using the GPU.
+   */
+  gpuBusyPercent: number;
+  /**
    * Temporary halt of automatic/window background enrichment (issue #224 —
    * "pause processing now"). Unlike `enabled: false` (a persistent off switch),
    * `paused` is a runtime throttle: fresh downloads still clear their landing
@@ -61,7 +75,14 @@ export interface ProcessingSettings {
 }
 
 /** Coarse phase of the processor at a point in time. */
-export type ProcessingPhase = 'idle' | 'running' | 'outside-window' | 'disabled' | 'paused';
+export type ProcessingPhase =
+  | 'idle'
+  | 'running'
+  | 'outside-window'
+  | 'disabled'
+  | 'paused'
+  /** Inside the window, but the shared GPU is busy — see `gpuBusyPercent`. */
+  | 'gpu-busy';
 
 /** Live status snapshot for the progress UI (persisted so a restart resumes display). */
 export interface ProcessingStatus {

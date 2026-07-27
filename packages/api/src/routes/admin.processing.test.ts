@@ -164,6 +164,43 @@ describe('admin /processing', () => {
     expect(res.status).toBe(400);
   });
 
+  // Issue #224: the shared-GPU yield threshold. 0 disables it; >100 could never
+  // fire, which would read as "enabled" while doing nothing.
+  it.each([[-1], [101], [50.5]])('rejects an out-of-range gpuBusyPercent (%p)', async (value) => {
+    const app = authed(
+      new Hono<AuthEnv>().route(
+        '/',
+        adminRoutes({ musicDir: '/music', processing: makeService() }),
+      ),
+      'admin',
+    );
+    const res = await app.request('/processing', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ gpuBusyPercent: value }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('accepts a valid gpuBusyPercent, including 0 (off)', async () => {
+    const app = authed(
+      new Hono<AuthEnv>().route(
+        '/',
+        adminRoutes({ musicDir: '/music', processing: makeService() }),
+      ),
+      'admin',
+    );
+    for (const value of [0, 70, 100]) {
+      const res = await app.request('/processing', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ gpuBusyPercent: value }),
+      });
+      expect(res.status, `gpuBusyPercent=${value}`).toBe(200);
+      expect((await res.json()).settings.gpuBusyPercent).toBe(value);
+    }
+  });
+
   it('accepts run and stop', async () => {
     const app = authed(
       new Hono<AuthEnv>().route(

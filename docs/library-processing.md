@@ -487,6 +487,42 @@ Persisted settings written before this field existed have no `paused` key;
 `undefined`. `PUT /api/admin/processing` rejects a non-boolean with a `400`, and the Admin panel
 exposes it as `data-testid="processing-paused"`.
 
+### `gpuBusyPercent` — yield to a busy neighbour, don't contend with it
+
+`paused` is a *manual* halt; the shared-GPU problem needs an *automatic* one. The reference
+deployment runs the analysis sidecar on one P4000 alongside **Immich ML and Ollama**, and of those
+tenants enrichment is the one that can always wait — it is background backfill with no user
+waiting on it.
+
+`ProcessingSettings.gpuBusyPercent` (0-100, **0 = off**) makes `tick()` read current GPU
+utilisation and skip the pass when the card is at or above the threshold, reporting the new
+`ProcessingPhase` value `gpu-busy`. It re-tries on the next tick, so a busy neighbour *delays*
+enrichment rather than competing with it.
+
+Four decisions worth keeping:
+
+- **The probe is the existing one.** `readGpu` from `services/system-metrics.ts` — already written
+  for the Admin metric pills, and already cached (5 s), so a 60 s tick can never hammer
+  `nvidia-smi`. It is injected (`deps.readGpuPercent`) so the yield logic is testable on a box with
+  no GPU tooling.
+- **Unknown utilisation does NOT yield.** A host with no vendor tool reads `null`, as does a
+  throwing probe. Yielding on either would stop enrichment outright the moment an operator set a
+  threshold — the exact opposite of the intent. Both cases have a test.
+- **It never strands a download**, for the same reason `paused` doesn't: the branch clears
+  quarantine via `kickEagerInner()` before returning, so a fresh download lands even while the GPU
+  is busy with someone else's work.
+- **The phase has to be remembered.** `snapshot()` recomputes the phase from settings, but
+  `gpu-busy` isn't derivable from settings — it depends on a live probe — so the service holds a
+  `gpuBusy` flag. Without it the panel reported `idle` while nothing was running; that was caught
+  by a test, not by review.
+
+Placed *after* the window check, so it only ever costs a probe inside the window. `PUT
+/api/admin/processing` rejects a non-integer or out-of-range value with a `400`; the Admin panel
+exposes it beside the concurrency/batch inputs as `data-testid="processing-gpu-busy"`.
+
+Note the deliberate boundary from the issue: **CPU-vs-GPU selection stays build-time** (the `GPU=1`
+build arg), so the UI governs runtime *load* only.
+
 **Analysis-sidecar status** (`data-testid="processing-sidecar-status"`) renders from the
 `services.analysis: { configured, healthy }` slice added to `GET /api/admin/review` — fed by
 `AudioFeaturesClient.healthy()` (30 s cached probe), so it costs the snapshot nothing extra.

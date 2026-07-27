@@ -388,7 +388,13 @@ Add detail there, not here.
   default deployment, never an `errors[]` entry). CPU-vs-GPU stays build-time (`GPU=1` arg), so the
   UI governs runtime load only. A `paused` flag (+ `ProcessingPhase 'paused'`) is the temporary
   runtime halt distinct from `enabled: false`: it skips window/background enrichment but **still
-  clears quarantine** (a pause must never leave new music invisible) and `runNow()` overrides it. →
+  clears quarantine** (a pause must never leave new music invisible) and `runNow()` overrides it.
+  **`gpuBusyPercent` (0 = off) is the *automatic* counterpart**: `tick()` reads the existing cached
+  `readGpu` probe and yields the pass (`ProcessingPhase 'gpu-busy'`) while another tenant is using
+  the card — the reference host shares one P4000 with Immich ML + Ollama, and enrichment is the
+  tenant that can always wait. Unknown/throwing utilisation **never** yields (else a box without
+  `nvidia-smi` would stop enriching entirely), quarantine still clears, and the flag is remembered
+  because `snapshot()` recomputes phase from settings and would otherwise report `idle`. →
   [docs/library-processing.md](docs/library-processing.md)
 - **Process-before-landing (quarantine gate)**: a fresh download is scanned into `library_songs` but
   held **quarantined** (`landed_at IS NULL`, hidden from every listing) until its **required** steps

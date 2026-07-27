@@ -561,9 +561,11 @@
                     <span class="block text-xs text-theme-muted">
                       Parallel analyses and how many tracks a task claims per pass. Lower the
                       concurrency when the GPU is shared with other apps; 1 is the gentlest.
+                      "Yield above N% GPU" skips a pass while another tenant is using the card
+                      (0 = never yield); fresh downloads still land.
                     </span>
                   </span>
-                  <div class="flex min-w-0 items-center gap-2">
+                  <div class="flex min-w-0 flex-wrap items-center justify-end gap-2">
                     <label class="text-xs text-theme-muted flex items-center gap-1.5">
                       Concurrency
                       <input type="number" min="1" max="16" [value]="p.concurrency"
@@ -577,6 +579,14 @@
                         [disabled]="processingSaving()" data-testid="processing-batch-size"
                         (change)="saveBatchSize($any($event.target).value)"
                         class="w-16 min-w-0 text-sm rounded-lg bg-theme-surface border border-theme px-2 py-1 text-theme-primary" />
+                    </label>
+                    <label class="text-xs text-theme-muted flex items-center gap-1.5">
+                      Yield above
+                      <input type="number" min="0" max="100" [value]="p.gpuBusyPercent"
+                        [disabled]="processingSaving()" data-testid="processing-gpu-busy"
+                        (change)="saveGpuBusyPercent($any($event.target).value)"
+                        class="w-16 min-w-0 text-sm rounded-lg bg-theme-surface border border-theme px-2 py-1 text-theme-primary" />
+                      % GPU
                     </label>
                   </div>
                 </div>
