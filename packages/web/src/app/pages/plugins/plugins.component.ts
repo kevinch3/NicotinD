@@ -3,6 +3,7 @@ import { NgTemplateOutlet } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { ConfirmDialogComponent } from '../../components/confirm-dialog/confirm-dialog.component';
+import { AuthService } from '../../services/auth.service';
 import { PluginService, type PluginInfo } from '../../services/plugin.service';
 import { buildPluginConfigPayload, initialPluginConfigValues } from '../../lib/plugin-config';
 
@@ -31,6 +32,14 @@ const PLUGIN_DETAIL_ROUTES: Record<string, string> = {
 })
 export class PluginsComponent implements OnInit {
   readonly plugins = inject(PluginService);
+  /**
+   * Deployment-wide acquisition kill-switch (issue #235). When off, every
+   * acquisition route hard-404s and the pollers never start — so listing
+   * acquisition extensions here offers a switch that cannot do anything, and
+   * the page's "nothing is downloaded until you enable an extension" framing
+   * is actively wrong. Read from the server (`/api/auth/me`), not the role.
+   */
+  readonly acquisitionEnabled = inject(AuthService).serverAcquisitionEnabled;
   readonly busy = signal(false);
   readonly message = signal<{ type: 'success' | 'error'; text: string } | null>(null);
   readonly consentTarget = signal<PluginInfo | null>(null);

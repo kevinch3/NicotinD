@@ -311,11 +311,44 @@ below):
   Search page — which shows a "browse your Library instead" empty state when the
   user can't acquire.
 
-**Not covered (follow-ups, tracked on #235):** an admin **runtime** toggle
-(persisted, no restart) — env-only is the confidently-safe subset because the
-background services are constructed at boot and can't be cleanly torn down live;
-hiding the Extensions → Acquisition **section** for admins; and dropping the
-slskd/Lidarr services from the shipped compose file for the off profile.
+- **Extensions hides its Acquisition section.** With the switch off, listing
+  acquisition extensions would offer a toggle that cannot do anything (every
+  route 404s, the pollers never start), and the page's "nothing is downloaded
+  until you enable an extension here" framing is actively wrong. The section is
+  hidden and replaced by a note naming the env var
+  (`data-testid="extensions-acquisition-off"`). Metadata + connectivity
+  extensions still render — they are unrelated to acquisition.
+
+### Actually running lighter: `docker-compose.streaming-only.yml`
+
+The env var turns the module off; this file stops *paying* for the sidecars that
+exist only to serve it:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.streaming-only.yml up -d
+```
+
+Resolves to **`nicotind` + `analysis` only** — slskd, Lidarr and the bgutil
+PO-token provider are dropped, saving their RAM, disk and attack surface. The
+`analysis` sidecar deliberately stays: audio enrichment is a *library* feature,
+not an acquisition one.
+
+Two coupled mechanics, and either alone is broken — both learned by running it:
+
+- The acquisition sidecars get `profiles: ["acquisition"]`, a profile this file
+  never activates, so they are simply not started.
+- `nicotind`'s `depends_on` must be dropped, or compose refuses the whole
+  project (*"service nicotind depends on undefined service slskd"*). Compose
+  **merges** `depends_on` across files rather than replacing it, so
+  `depends_on: []` silently keeps the base entries — it needs
+  **`depends_on: !reset null`** (compose v2.24+).
+
+CI lints this combination alongside the other compose files.
+
+**Still not covered (follow-up on #235):** an admin **runtime** toggle
+(persisted, no restart) — env-only remains the confidently-safe subset, because
+the background services are constructed at boot and can't be cleanly torn down
+live.
 
 ## Resource notes
 
