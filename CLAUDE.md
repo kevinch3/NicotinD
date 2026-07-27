@@ -886,6 +886,14 @@ Add detail there, not here.
   detection (a `vX` tag not reachable from master is deleted + re-cut, never silently skipped) —
   fixes the 2026-07-23 freeze where a non-atomic push orphaned `v0.1.244` and wedged every release
   behind a green-but-silent "already published" skip. → [docs/deployment.md](docs/deployment.md)
+- **Additive schema migrations (`addColumnIfMissing`)**: `applySchema` runs every boot, so it must
+  be idempotent — but the 38 `try { ALTER … ADD COLUMN } catch {}` blocks that said so swallowed a
+  **genuine** migration error (typo'd type, bad default) exactly as silently as the expected
+  duplicate-column case. The helper checks `PRAGMA table_info`, making "already there" a *condition*
+  so a real bug throws loudly at boot (issue #275); it **returns whether it added**, so the two
+  one-time backfills stay gated on the add rather than re-scanning the table every boot. Additive
+  columns only — the 3 table-`RENAME` rebuilds are deliberately untouched, and there is no
+  down-migration path by design. → [docs/design-patterns.md](docs/design-patterns.md)
 - **OSS best-practices roadmap**: prioritized adoption plan of Immich/Home-Assistant practices
   (backup/restore, safe mode, watchdog + health taxonomy, retention, update check, audit log,
   community files). → [docs/oss-best-practices.md](docs/oss-best-practices.md)
