@@ -28,6 +28,7 @@ import type { AudioFeaturesClient } from './audio-features-client.js';
 import { captureProcessingFailure, type ProcessingFailureReport } from '../observability/sentry.js';
 import { countSkippedFiles, permanentlyFailedClause } from './enrichment/analysis-failures.js';
 import { recomputeActiveJobStages } from './acquisition-job-store.js';
+import { maybeRunDailyCoverCachePrune } from './cover-cache-prune.js';
 
 const log = createLogger('library-processing');
 
@@ -228,6 +229,13 @@ export class LibraryProcessingService extends EventEmitter {
     // the backup: housekeeping must not depend on enrichment being enabled, and
     // it runs before the backup's next snapshot picks the freed bytes up.
     maybeRunDailyOrphanPrune(this.db, { now: this.now().getTime() });
+    // Daily cover-cache sweep (issue #311): the cache had no eviction at all —
+    // prod measured 3.6 GB, 1.6 GB of it belonging to rows that are gone. Same
+    // placement + marker-guard as the two above.
+    const swept = maybeRunDailyCoverCachePrune(this.db, join(this.dataDir, 'cover-cache'), {
+      now: this.now().getTime(),
+    });
+    if (swept?.deleted) log.info(swept, 'cover-cache prune');
     const settings = getProcessingSettings(this.db);
     if (!settings.enabled) {
       this.publish(settings, 'disabled');
