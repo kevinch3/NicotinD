@@ -79,6 +79,64 @@ The old **artist-name last-char truncation** (`"Bahiano"` → `"Bahian"`) is **r
 
 **Singles (1 canonical track)** aren't scored all-or-nothing: `singleMatchStrength` returns 100 when full normalized titles overlap, `SINGLE_PARTIAL_PCT` (50) when only qualifier-stripped cores overlap — so a peer that drops a `(feat …)` suffix still surfaces. EPs (2–6 tracks) keep the proportional formula.
 
+### Recall-only `matchPct` needs a bloat guard (issue #271)
+
+`matchPct` is **recall**: `matched / canonicalTracks`. That is the right definition for
+its three consumers — it gates `acquireAlbum` (`minMatchPct`) and the watchlist
+`AUTO_THRESHOLD`, and renders to the user as `14/14 (100%)`, all of which ask "is the whole
+album here?". But recall alone cannot tell a clean rip from a peer folder holding a whole
+discography that happens to contain every album track: **both score a perfect 100%**, land in
+the same `MATCH_BUCKET`, and then tie all the way down to the final tiebreaker — which was
+total folder size and therefore **actively preferred the dump**. Measured on prod as
+`album_job` 463: 254 files enqueued for a 14-track album (227 of the resulting job items had a
+`NULL` track title, which is what surfaced as the nonsense "7 of 240 · 233 unavailable" tally
+in issue #262).
+
+Two changes in `compareCandidates`, both leaving `matchPct` untouched:
+
+- **Bloat demotion.** `isBloatedFolder` flags a folder holding more than `BLOAT_RATIO` (2)
+  times the album's track count in **audio** files, and such folders rank below every
+  non-bloated candidate in the same match bucket. Bloat is judged immediately after the match
+  bucket and **ahead of peer health** because it is a property of the *match*, not of the peer
+  — a correction to what `matchPct` structurally cannot see. Counting audio files only means
+  cue/log/scans never trip it, and the ratio deliberately leaves deluxe editions and 2-CD sets
+  alone; for a **single** (1 canonical track) nearly every folder is bloated, so the signal is
+  uniform and correctly falls through to the existing tiebreakers.
+- **Per-track size, not total.** The final tiebreaker is now average file size. Its intent was
+  always "the better rip", and total size conflated that with "the folder has more files in
+  it" — the precise mechanism by which the dump won.
+
+**`BLOAT_RATIO` is calibrated against prod, not guessed.** Across all 462 `album_jobs` carrying
+both a tracklist and a target-file list, the files-per-track ratio has a clean gap exactly at 2:
+
+| ratio | jobs | what they are |
+| ----- | ---- | ------------- |
+| > 4   | 3    | `463` Joe Satriani 254/14 (18.1×), `158`+`418` Los Chalchaleros 81/10 (8.1×) |
+| > 2   | 4    | …plus `339` Chayanne 32/10 (3.2×) |
+| 1.5–2 | 3    | genuine 2-disc/deluxe sets (`307` Soul Almighty 47/24 = 1.96×, `304` Chet Baker Sings 62/40) |
+| > 1   | 26   | ordinary bonus tracks |
+
+So the threshold separates the four real dumps from the highest legitimate edition (1.96×)
+without clipping it — 0.9% of jobs flagged.
+
+**Why these four and not others: they are all self-titled albums.** `album_title ===
+artist_name` for every one, and job 463's folder is the peer's own
+`@@uxqvr/Lidarr/Joe Satriani/Joe Satriani`. When the album shares the artist's name, the
+peer's *artist* directory and its *album* directory are textually indistinguishable, so no
+amount of query or title matching can separate them — the file count is the only available
+discriminator. (`158`/`418` are the same album hunted twice, so the failure recurs rather than
+being a one-off; `158`'s folder is a `50 Años De Leyenda` box set, the other flavour of dump.)
+
+Demotion, never a filter: a dump may be the only source, so it must stay selectable. It is
+also safe to select, because `filesForCanonicalTracks` (issue #262) scopes the *enqueue* to
+the album's tracks at both sites — `album-acquire.ts` and the interactive
+`hunt-download` route.
+
+**Client caveat.** `mergeCandidates` (web) re-sorts merged base+skew results by `matchPct`
+alone, so the server's ordering among equal-scoring candidates survives only because
+`Array#sort` is stable (ES2019+). A spec in `merge-candidates.spec.ts` pins that; making the
+comparator non-trivial there would silently re-open this bug on the client.
+
 The `LibraryCurator` won't auto-hide a deliberately-hunted release (its normalized artist+title matches an `album_jobs` row), so a thin hunted single/EP can't vanish from the grid.
 
 **Matching is diacritic-insensitive**: `normalizeTitle` NFD-decomposes then strips combining marks (`"canción"` → `"cancion"`) so accented Latin-American titles match peers' unaccented spellings — used by both hunt scoring and the fallback. `HUNT_TIMEOUT_MS` is 45s.

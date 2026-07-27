@@ -599,7 +599,17 @@ Add detail there, not here.
   one source for API + web, killing the old two-copy sync risk) emits **faithful literal variants**
   (accent-fold, punctuation-strip, distinctive-tokens, reorder, qualifier-strip) that bypass slskd's
   exact-phrase soft ban/cache while staying precise; the imprecise last-char artist truncation was
-  dropped. → [docs/album-hunt.md](docs/album-hunt.md)
+  dropped. **`matchPct` is recall-only by design** (its three consumers — `acquireAlbum`'s
+  `minMatchPct`, the watchlist `AUTO_THRESHOLD`, the user-facing `14/14`— all ask "is the whole album
+  here?"), so it can't distinguish a clean rip from a whole-discography dump containing every track:
+  both score 100%, and the final tiebreaker (total folder size) **actively preferred the dump**
+  (issue #271, prod `album_job` 463 = 254 files enqueued for a 14-track album; the source of #262's
+  "233 unavailable"). `compareCandidates` now demotes `isBloatedFolder` candidates (>`BLOAT_RATIO`×
+  track count in *audio* files — cue/scans and deluxe editions untouched) right after the match
+  bucket and **ahead of peer health** (bloat is a property of the match, not the peer), and
+  tiebreaks on **per-track** rather than total size ("better rip" was always the intent).
+  Demotion never a filter — a dump may be the only source, and is safe to pick because #262's
+  `filesForCanonicalTracks` scopes the enqueue. → [docs/album-hunt.md](docs/album-hunt.md)
 - **Watchlist auto-hunt**: star catalog albums; a poller auto-hunts + downloads on a confident
   match. → [docs/album-hunt.md](docs/album-hunt.md)
 - **Generation feedback → TDD fixtures (dev golden-dataset)**: capture whether a
