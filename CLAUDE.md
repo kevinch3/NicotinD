@@ -908,6 +908,15 @@ Add detail there, not here.
   library and skips any table over a 50% orphan ratio. Counts surface via `GET /api/admin/review`
   `orphanRows` → an Admin panel row (hidden at zero). →
   [docs/cache-invalidation.md](docs/cache-invalidation.md)
+- **Playlist membership survives a song-id change**: ids are `sha1(path)`, so any move re-mints one
+  and the scanner's prune deleted the row out from under every playlist referencing it — silently,
+  since reads `INNER JOIN library_songs` (prod: 17 dangling rows across 11 user playlists).
+  `repointPlaylistsBeforePrune` runs **inside the prune, before the delete** — `playlist_songs`
+  stores only `song_id`, so after the delete nothing identifies the entry and repair is impossible.
+  Matches on a **unique** `(title, artist, duration)`; ambiguity is left to dangle because a wrong
+  re-point puts the wrong song in someone's playlist (measured: ~96% unique, 3.6% ambiguous, 248
+  title+artist pairs where duration is the discriminator). →
+  [docs/cache-invalidation.md](docs/cache-invalidation.md)
 - **Cache-invalidation on library mutations (issue #237 audit)**: every `LibraryApiService` write
   whose server handler mutates `library_artists`/`library_genres` must
   `tap(() => invalidateLibraryReads())` on success or the cached Artists grid / Genres tab replays

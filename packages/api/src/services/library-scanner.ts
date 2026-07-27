@@ -27,6 +27,7 @@ import {
   type OverrideIndex,
 } from './genre-overrides.js';
 import { partitionByCache, loadScanCache, saveScanCache, type FileStat } from './scan-cache.js';
+import { repointPlaylistsBeforePrune } from './playlist-repoint.js';
 import {
   splitGenres,
   buildKnownFromRaw,
@@ -1050,6 +1051,15 @@ export class LibraryScanner {
     let removedAlbums = 0;
     let removedSongs = 0;
     if (prune) {
+      // Song ids are sha1(path), so any move re-mints the id and the row below
+      // is deleted out from under every playlist referencing it — silently,
+      // because playlist reads INNER JOIN library_songs. Carry membership over
+      // to the surviving row FIRST: playlist_songs stores only song_id, so once
+      // the delete lands there is nothing left to identify the entry.
+      const repointed = repointPlaylistsBeforePrune(this.db, syncedAt);
+      if (repointed.repointed > 0 || repointed.unmatched > 0) {
+        log.info(repointed, 'playlist references carried across a song-id change');
+      }
       removedSongs = Number(
         this.db.run('DELETE FROM library_songs WHERE synced_at < ?', [syncedAt]).changes ?? 0,
       );
