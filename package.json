@@ -22,6 +22,7 @@
   "scripts": {
     "dev": "bun run ./scripts/dev.ts",
     "build": "bun run ./scripts/build.ts",
+    "check:claude-md": "bun run ./scripts/check-claude-md.ts",
     "lint": "eslint --no-warn-ignored packages/*/src/**/*.ts src/**/*.ts",
     "format": "prettier --write 'packages/*/src/**/*.ts' 'src/**/*.ts'",
     "typecheck": "tsc --build",

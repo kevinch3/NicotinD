@@ -29,7 +29,11 @@ Every task on this project must satisfy all three gates before being considered 
    follow-up task: **every time you add or modify behavior, update the docs in the same commit/PR.**
    Significant decisions — new patterns, new services, why an approach was chosen over alternatives,
    trade-offs accepted — must be captured. If a change makes an existing doc statement wrong, fix
-   that statement; stale docs are treated as a bug. **Where docs live (CLAUDE.md is an index, not
+   that statement; stale docs are treated as a bug. **This gate is partly enforced now**: CI runs
+   `bun run check:claude-md`, which fails if this file names a code symbol that exists nowhere in
+   the repo, or links to a `docs/*.md` that doesn't exist — renames are the main source of drift,
+   and this file is read as ground truth on every request (issue #255). **Where docs live (CLAUDE.md
+   is an index, not
    the detail store):**
    - **The detail goes in `docs/`** — either the relevant existing `docs/<feature>.md`, or
      [docs/design-patterns.md](docs/design-patterns.md) for patterns without a dedicated file. Write
@@ -58,6 +62,7 @@ library that the API streams from. URL-based acquisition (yt-dlp / spotdl) feeds
 bun install              # Install all workspace dependencies
 bun run typecheck        # TypeScript type checking (tsc --build)
 bun run lint             # ESLint across all packages
+bun run check:claude-md  # fail on CLAUDE.md symbols that don't exist / broken docs links (CI gate)
 bun run format           # Prettier formatting
 bun run test             # Vitest across packages/ + src/ (excludes web/, e2e/, desktop/test/)
 bun run test:web         # Angular component tests (vitest — see docs/web-ui.md "Web test harness")
@@ -290,10 +295,12 @@ Add detail there, not here.
 - **Queue extensions (full management)**: `PlayerService` exposes `queueNext`, `addToQueue`,
   `clearQueue`, `removeFromQueue`, `moveInQueue`, `toggleShuffle`, `jumpToQueueIndex`; Now Playing
   queue UI has header toolbar (shuffle/save-as-playlist/clear), per-track remove, drag-to-reorder
-  (`DragReorderDirective`), a **manual drag-resize handle** (pull the queue taller → cover art
+  (native HTML5 drag handlers — `onQueueDragStart`/`onQueueDrop` in `now-playing.component`, not a
+  directive), a **manual drag-resize handle** (pull the queue taller → cover art
   shrinks; `createPointerDrag`, persisted per-device), history peek, and mini-player queue badge.
-  Reusable `playNextAction`/`addToQueueAction` in `track-utils.ts` wired into every track-row menu.
-  → [docs/web-ui.md](docs/web-ui.md)
+  The Play next / Add to queue entries are built inline by `SongMenuService.build` (calling
+  `queueNext`/`addToQueue`), so every track-row menu gets them. →
+  [docs/web-ui.md](docs/web-ui.md)
 - **Queue semantics — what a click replaces (issue #233)**: the bare `play(track)` never touched
   `queue`, so a standalone track click left an unrelated queue in place and it resumed the moment
   the clicked track ended. The gesture now decides: `play()` is the queue-untouched **primitive**

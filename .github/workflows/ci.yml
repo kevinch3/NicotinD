@@ -53,6 +53,12 @@ jobs:
       - name: Check bgutil provider/plugin version pairing
         run: bun run check:bgutil-pin
 
+      # CLAUDE.md loads into every request, so a symbol it names that no longer
+      # exists is read as ground truth and sends work down a path that isn't
+      # there. Renames are the usual source (issue #255).
+      - name: Check CLAUDE.md for identifier drift
+        run: bun run check:claude-md
+
       - name: Test (API + slskd-client + lidarr-client + core + service-manager + mobile)
         run: bun test packages/api/src packages/slskd-client/src packages/lidarr-client/src packages/core/src packages/service-manager/src packages/mobile/src packages/desktop/electron packages/desktop/scripts scripts
 
