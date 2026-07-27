@@ -1,14 +1,20 @@
 {
-  "login.subtitle.signIn": "Iniciá sesión para continuar",
-  "login.subtitle.register": "Creá una cuenta",
-  "login.username": "Usuario",
+  "lang.en": "English",
+  "lang.es": "Español",
   "login.password": "Contraseña",
-  "login.submit.signIn": "Iniciar sesión",
   "login.submit.register": "Crear cuenta",
-  "login.toggle.toSignIn": "¿Ya tenés una cuenta? Iniciá sesión",
+  "login.submit.signIn": "Iniciar sesión",
+  "login.subtitle.register": "Creá una cuenta",
+  "login.subtitle.signIn": "Iniciá sesión para continuar",
   "login.toggle.toRegister": "¿No tenés cuenta? Registrate",
+  "login.toggle.toSignIn": "¿Ya tenés una cuenta? Iniciá sesión",
+  "login.username": "Usuario",
+  "nav.downloads": "Descargas",
+  "nav.home": "Inicio",
+  "nav.library": "Biblioteca",
+  "nav.search": "Buscar",
+  "nav.settings": "Ajustes",
   "settings.language": "Idioma",
   "settings.languageHint": "Se aplica de inmediato y se recuerda en este dispositivo.",
-  "lang.en": "English",
-  "lang.es": "Español"
+  "shell.offline": "Modo sin conexión — mostrando solo contenido en caché"
 }

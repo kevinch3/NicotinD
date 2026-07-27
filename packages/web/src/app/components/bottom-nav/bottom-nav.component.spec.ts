@@ -5,6 +5,7 @@ import { BottomNavComponent } from './bottom-nav.component';
 import { AuthService } from '../../services/auth.service';
 import { SetupService } from '../../services/setup.service';
 import { TransferService } from '../../services/transfer.service';
+import BASE_CATALOG from '../../../../public/i18n/en.json';
 
 @Component({ standalone: true, template: '' })
 class _Stub {}
@@ -46,14 +47,25 @@ describe('BottomNavComponent', () => {
     const { fixture } = setup();
     const links = fixture.nativeElement.querySelectorAll('a, span') as NodeListOf<HTMLElement>;
     const labels = Array.from(links).map((el) => el.textContent?.trim());
-    expect(labels).toEqual(['Home', 'Library', 'Downloads', 'Search', 'Settings']);
+    expect(labels).toEqual([
+      'nav.home',
+      'nav.library',
+      'nav.downloads',
+      'nav.search',
+      'nav.settings',
+    ]);
+    // `label` is an i18n key now (issue #236), so assert the keys resolve —
+    // otherwise a typo would render the raw key and still pass the list check.
+    for (const key of labels) {
+      expect(BASE_CATALOG, `missing catalog key: ${key}`).toHaveProperty([key]);
+    }
   });
 
   it('includes Search as an online-only tab in the TABS list', () => {
     const { fixture } = setup();
     const searchTab = fixture.componentInstance.tabs().find((t) => t.to === '/search');
     expect(searchTab).toBeDefined();
-    expect(searchTab?.label).toBe('Search');
+    expect(searchTab?.label).toBe('nav.search');
     expect(searchTab?.onlineOnly).toBe(true);
   });
 
@@ -62,7 +74,7 @@ describe('BottomNavComponent', () => {
     const labels = Array.from(
       fixture.nativeElement.querySelectorAll('a, span') as NodeListOf<HTMLElement>,
     ).map((el) => el.textContent?.trim());
-    expect(labels).toEqual(['Home', 'Library', 'Search', 'Settings']);
+    expect(labels).toEqual(['nav.home', 'nav.library', 'nav.search', 'nav.settings']);
     expect(fixture.componentInstance.tabs().some((t) => t.to === '/downloads')).toBe(false);
   });
 
@@ -98,10 +110,10 @@ describe('BottomNavComponent', () => {
   it('isDisabled is true only for online-only tabs while offline', () => {
     const { fixture, isOffline } = setup();
     const c = fixture.componentInstance;
-    expect(c.isDisabled({ to: '/', label: 'Search', onlineOnly: true })).toBe(false);
+    expect(c.isDisabled({ to: '/', label: 'nav.search', onlineOnly: true })).toBe(false);
 
     isOffline.set(true);
-    expect(c.isDisabled({ to: '/', label: 'Search', onlineOnly: true })).toBe(true);
+    expect(c.isDisabled({ to: '/', label: 'nav.search', onlineOnly: true })).toBe(true);
     expect(c.isDisabled({ to: '/downloads', label: 'Downloads', onlineOnly: false })).toBe(false);
   });
 
