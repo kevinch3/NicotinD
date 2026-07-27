@@ -45,6 +45,20 @@ describe('mergeCandidates', () => {
     expect(result.map((r) => r.matchPct)).toEqual([95, 70, 50]);
   });
 
+  /**
+   * Issue #271. The server ranks equal-matchPct candidates against each other
+   * (bloat, then peer health, then format/speed/per-track size) — a
+   * whole-discography dump and a clean rip both score 100%, and only the
+   * server's ordering tells them apart. This sort compares matchPct alone, so
+   * that ordering survives purely because Array#sort is stable (ES2019+).
+   * Pinned here: making this comparator non-trivial would silently discard the
+   * server's ranking and re-open #271 on the client.
+   */
+  it('preserves the server ranking among equal-matchPct candidates', () => {
+    const base = [c('clean', '/Artist/Album', 100), c('dump', '/Artist/Discography', 100)];
+    expect(mergeCandidates(base, []).map((r) => r.username)).toEqual(['clean', 'dump']);
+  });
+
   it('handles disjoint sets with no duplicates', () => {
     const base = [c('u1', '/A', 80)];
     const extra = [c('u2', '/B', 90)];

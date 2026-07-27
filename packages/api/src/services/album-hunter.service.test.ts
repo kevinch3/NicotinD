@@ -5,6 +5,7 @@ import {
   AlbumHunterService,
   buildSkewedQueries,
   normalizeTitle,
+  isBloatedFolder,
   scoreFolders,
   singleMatchStrength,
   stripTitleQualifiers,
@@ -319,6 +320,110 @@ describe('AlbumHunterService', () => {
       ]);
       expect(candidates).toHaveLength(1);
       expect(candidates[0].matchPct).toBe(50);
+    });
+
+    /**
+     * Issue #271. `matchPct` is recall-only (`matched / canonicalTracks`), so a
+     * peer folder holding a whole discography that happens to contain every
+     * album track scores a perfect 100% — identical to a clean rip. They then
+     * tie all the way down to the final tiebreaker, which used to be total
+     * folder size and therefore *actively preferred* the dump. Measured on prod
+     * as album_job 463: 254 files enqueued for a 14-track album.
+     */
+    it('ranks a clean album folder above a whole-discography dump (#271)', () => {
+      const dumpFiles = [
+        { filename: 'peer/Artist Discography/01 Song One.mp3', size: 5_000_000 },
+        { filename: 'peer/Artist Discography/02 Song Two.mp3', size: 5_000_000 },
+        { filename: 'peer/Artist Discography/03 Song Three.mp3', size: 5_000_000 },
+        ...Array.from({ length: 40 }, (_, i) => ({
+          filename: `peer/Artist Discography/other ${i}.mp3`,
+          size: 5_000_000,
+        })),
+      ];
+
+      const candidates = scoreFolders(TRACKS, [
+        { username: 'dump', files: dumpFiles },
+        {
+          username: 'clean',
+          files: [
+            { filename: 'peer/Artist/Album/01 Song One.mp3', size: 5_000_000 },
+            { filename: 'peer/Artist/Album/02 Song Two.mp3', size: 5_000_000 },
+            { filename: 'peer/Artist/Album/03 Song Three.mp3', size: 5_000_000 },
+          ],
+        },
+      ]);
+
+      // Both genuinely contain the whole album, so recall stays 100% for each —
+      // that figure gates auto-acquire and is shown to the user as "3/3".
+      expect(candidates.map((c) => c.matchPct)).toEqual([100, 100]);
+      expect(candidates[0].username).toBe('clean');
+    });
+
+    it('keeps a deluxe/bonus-track edition ranked as a normal candidate (#271)', () => {
+      // The bloat signal must not fire on legitimately-larger editions, or we
+      // would down-rank exactly the folders users often want.
+      const candidates = scoreFolders(TRACKS, [
+        {
+          username: 'deluxe',
+          files: [
+            { filename: 'p/Artist/Album (Deluxe)/01 Song One.flac', size: 30_000_000 },
+            { filename: 'p/Artist/Album (Deluxe)/02 Song Two.flac', size: 30_000_000 },
+            { filename: 'p/Artist/Album (Deluxe)/03 Song Three.flac', size: 30_000_000 },
+            { filename: 'p/Artist/Album (Deluxe)/04 Bonus.flac', size: 30_000_000 },
+            { filename: 'p/Artist/Album (Deluxe)/05 Demo.flac', size: 30_000_000 },
+          ],
+        },
+        {
+          username: 'lossy',
+          files: [
+            { filename: 'p/Artist/Album/01 Song One.mp3', size: 3_000_000 },
+            { filename: 'p/Artist/Album/02 Song Two.mp3', size: 3_000_000 },
+            { filename: 'p/Artist/Album/03 Song Three.mp3', size: 3_000_000 },
+          ],
+        },
+      ]);
+
+      // FLAC still wins on the existing format tiebreaker — the deluxe edition
+      // was not penalised on its way there.
+      expect(candidates[0].username).toBe('deluxe');
+    });
+
+    it('prefers the higher-quality rip, not merely the bigger folder (#271)', () => {
+      // The old final tiebreaker was total folder size, which conflates "better
+      // rip" with "more files". Average file size expresses the actual intent.
+      const candidates = scoreFolders(TRACKS, [
+        {
+          username: 'padded',
+          files: [
+            { filename: 'p/A/Padded/01 Song One.mp3', size: 2_000_000 },
+            { filename: 'p/A/Padded/02 Song Two.mp3', size: 2_000_000 },
+            { filename: 'p/A/Padded/03 Song Three.mp3', size: 2_000_000 },
+            { filename: 'p/A/Padded/04 Interlude.mp3', size: 2_000_000 },
+          ],
+        },
+        {
+          username: 'hifi',
+          files: [
+            { filename: 'p/A/HiFi/01 Song One.mp3', size: 7_000_000 },
+            { filename: 'p/A/HiFi/02 Song Two.mp3', size: 7_000_000 },
+            { filename: 'p/A/HiFi/03 Song Three.mp3', size: 7_000_000 },
+          ],
+        },
+      ]);
+
+      // padded is 8 MB total vs hifi's 21 MB — but even had it been larger in
+      // total, the higher per-track size is what indicates the better rip.
+      expect(candidates[0].username).toBe('hifi');
+    });
+
+    it('treats exactly 2x the track count as legitimate, not bloat (#271)', () => {
+      // The boundary is calibrated against prod: the largest legitimate edition
+      // measured is 1.96x (Soul Almighty, 47 files / 24 tracks) and the
+      // smallest real dump is 3.2x, so `>` (not `>=`) keeps 2-disc sets safe.
+      const files = (n: number) =>
+        Array.from({ length: n }, () => ({ filename: 'x.mp3', size: 1 }));
+      expect(isBloatedFolder({ files: files(6), totalTracks: 3 })).toBe(false);
+      expect(isBloatedFolder({ files: files(7), totalTracks: 3 })).toBe(true);
     });
 
     it('is deterministic: identical input yields identical ranking', () => {

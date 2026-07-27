@@ -73,14 +73,33 @@ interface PeerHealth {
 // marginally-higher match doesn't force us onto a dead peer — e.g. a healthy
 // 90%-match peer with free slots out-ranks a dead 100%-match peer (both land in
 // the same bucket). Auto-retry + cross-peer fallback backstop the missing
-// tracks. Within a bucket we prefer a peer with free upload slots, then a
-// shorter queue, then FLAC, then faster upload speed, then a larger total size.
+// tracks. Within a bucket we demote bloated folders, then prefer a peer with
+// free upload slots, then a shorter queue, then FLAC, then faster upload speed,
+// then a better per-track size.
 const MATCH_BUCKET = 20;
+
+// A folder holding more than this multiple of the album's track count is a
+// dump (a whole discography, a genre pack) that merely happens to contain the
+// album. why: `matchPct` is recall-only, so such a folder scores a perfect
+// 100% — identical to a clean rip — and nothing downstream could tell them
+// apart. Bloat is a property of the *match*, not of the peer, so it is judged
+// immediately after the match bucket and ahead of peer health. Only audio
+// files are counted, so cue/log/scans never trip it, and the ratio leaves
+// deluxe editions and 2-CD sets alone. See docs/album-hunt.md.
+const BLOAT_RATIO = 2;
+
+export function isBloatedFolder(c: Pick<FolderCandidate, 'files' | 'totalTracks'>): boolean {
+  return c.files.length > c.totalTracks * BLOAT_RATIO;
+}
 
 function compareCandidates(a: FolderCandidate, b: FolderCandidate): number {
   const aBucket = Math.round(a.matchPct / MATCH_BUCKET);
   const bBucket = Math.round(b.matchPct / MATCH_BUCKET);
   if (aBucket !== bBucket) return bBucket - aBucket;
+
+  const aBloated = isBloatedFolder(a) ? 1 : 0;
+  const bBloated = isBloatedFolder(b) ? 1 : 0;
+  if (aBloated !== bBloated) return aBloated - bBloated;
 
   const aHasSlot = a.freeUploadSlots > 0 ? 1 : 0;
   const bHasSlot = b.freeUploadSlots > 0 ? 1 : 0;
@@ -93,7 +112,14 @@ function compareCandidates(a: FolderCandidate, b: FolderCandidate): number {
 
   if (a.uploadSpeed !== b.uploadSpeed) return b.uploadSpeed - a.uploadSpeed;
 
-  return b.estimatedSizeMb - a.estimatedSizeMb;
+  // Per-file rather than total size: the point of this tiebreaker is "the
+  // better rip", and total size conflates that with "the folder has more files
+  // in it" — which is how a dump used to win outright.
+  return avgFileSizeMb(b) - avgFileSizeMb(a);
+}
+
+function avgFileSizeMb(c: FolderCandidate): number {
+  return c.files.length ? c.estimatedSizeMb / c.files.length : 0;
 }
 
 export interface FolderCandidate {
