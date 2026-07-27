@@ -1038,6 +1038,14 @@ args, so a language switch never re-invokes `transform` and the UI keeps the old
 spec asserts the switch reaches the DOM. Language is **per-device** (localStorage), because login /
 setup / share render before any user exists. Converted so far: login page + the Settings picker;
 extraction is a phased pass. → [docs/i18n.md](docs/i18n.md)
+**Bundle budget**: `angular.json` carried the untouched Angular scaffold defaults (500 kB/1 MB), so
+the build warned on every run and the next real regression was invisible. Measured before deciding
+(issue #256): initial is 735 kB **raw** but **188 kB transfer**, and **42 % is Sentry** — eager on
+purpose (`main.ts` inits it before `bootstrapApplication` to catch startup failures; prod ships a
+hardcoded DSN), so deferring it is a product trade, not cleanup. Budget raised to a number the
+project stands behind (780 kB, verified it still fires), `qrcode` made lazy (devices chunk 38.9 →
+14 kB), and its CJS bailout declared via `allowedCommonJsDependencies` — the build is now
+warning-free. → [docs/web-ui.md](docs/web-ui.md) "Bundle size budget"
 
 ## Mobile app (Capacitor Android + iOS)
 

@@ -1,6 +1,5 @@
 import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { toDataURL } from 'qrcode';
 import { AuthService } from '../../../services/auth.service';
 import { DevicesApiService } from '../../../services/api/devices-api.service';
 import type {
@@ -92,6 +91,11 @@ export class DevicesComponent implements OnInit, OnDestroy {
     // can act on it too — it opens the server's own pairing page in a browser.
     const payload = buildPairingLink({ name: mint.name, urls: mint.urls, token: mint.token });
     try {
+      // Dynamic import: `qrcode` is CommonJS, which esbuild reports as an
+      // optimization bailout ("Module 'qrcode' … is not ESM") when statically
+      // imported. Loading it here also keeps it out of this route's chunk until
+      // a pairing QR is actually requested — it is needed once, on one click.
+      const { toDataURL } = await import('qrcode');
       this.qrDataUrl.set(await toDataURL(payload, { margin: 1, width: 240 }));
     } catch {
       this.qrDataUrl.set(null);

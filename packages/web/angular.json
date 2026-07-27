@@ -39,10 +39,11 @@
                   "with": "src/environments/environment.prod.ts"
                 }
               ],
+              "allowedCommonJsDependencies": ["qrcode", "dijkstrajs"],
               "budgets": [
                 {
                   "type": "initial",
-                  "maximumWarning": "500kB",
+                  "maximumWarning": "780kB",
                   "maximumError": "1MB"
                 },
                 {
