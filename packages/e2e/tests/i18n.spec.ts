@@ -61,4 +61,16 @@ test.describe('i18n (#236)', () => {
     await expect(nav).toContainText('Biblioteca');
     await expect(nav).not.toContainText('nav.library'); // never a raw key
   });
+
+  test('translates the library tabs and sort options', async ({ page }) => {
+    // Same TS-array-holds-a-key shape as the nav, on the main content surface.
+    await page.addInitScript(() => localStorage.setItem('nicotind-lang', 'es'));
+    await page.goto('/library');
+
+    const tabs = page.getByTestId('library-tabs');
+    await expect(tabs).toContainText('Álbumes');
+    await expect(tabs).toContainText('Artistas');
+    // A key that failed to resolve renders as its dotted key — assert none leak.
+    await expect(tabs).not.toContainText('library.tab.');
+  });
 });

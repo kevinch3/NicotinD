@@ -4,7 +4,7 @@
   <div class="flex items-center justify-between mb-6">
     <!-- G7: tighter padding on mobile + horizontal scroll so the 5 tabs don't
          crowd/clip the edges on a narrow phone. -->
-    <div class="flex gap-1 p-1 bg-theme-surface-2 rounded-xl max-w-full overflow-x-auto">
+    <div class="flex gap-1 p-1 bg-theme-surface-2 rounded-xl max-w-full overflow-x-auto" data-testid="library-tabs">
       @for (m of visibleModes(); track m.value) {
         <button
           class="shrink-0 whitespace-nowrap px-3 sm:px-4 py-1.5 text-sm rounded-lg transition-colors"
@@ -12,7 +12,7 @@
           [class.text-theme-primary]="libraryMode() === m.value"
           [class.text-theme-muted]="libraryMode() !== m.value"
           (click)="setMode(m.value)">
-          {{ m.label }}
+          {{ m.label | t }}
         </button>
       }
     </div>
@@ -168,7 +168,7 @@
         (change)="compilationsControls.setSortField($any($event.target).value)"
         class="px-3 py-1.5 text-sm rounded-lg bg-theme-surface-2 text-theme-primary focus:outline-none focus:ring-1 focus:ring-[var(--theme-accent)]">
         @for (opt of gridSortOptions; track opt.field) {
-          <option [value]="opt.field">{{ opt.label }}</option>
+          <option [value]="opt.field">{{ opt.label | t }}</option>
         }
       </select>
 
@@ -251,7 +251,7 @@
         (change)="singlesControls.setSortField($any($event.target).value)"
         class="px-3 py-1.5 text-sm rounded-lg bg-theme-surface-2 text-theme-primary focus:outline-none focus:ring-1 focus:ring-[var(--theme-accent)]">
         @for (opt of gridSortOptions; track opt.field) {
-          <option [value]="opt.field">{{ opt.label }}</option>
+          <option [value]="opt.field">{{ opt.label | t }}</option>
         }
       </select>
 
@@ -336,7 +336,7 @@
         (change)="artistControls.setSortField($any($event.target).value)"
         class="px-3 py-1.5 text-sm rounded-lg bg-theme-surface-2 text-theme-primary focus:outline-none focus:ring-1 focus:ring-[var(--theme-accent)]">
         @for (opt of artistSortOptions; track opt.field) {
-          <option [value]="opt.field">{{ opt.label }}</option>
+          <option [value]="opt.field">{{ opt.label | t }}</option>
         }
       </select>
 
