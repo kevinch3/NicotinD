@@ -1,0 +1,14 @@
+{
+  "login.subtitle.signIn": "Sign in to continue",
+  "login.subtitle.register": "Create an account",
+  "login.username": "Username",
+  "login.password": "Password",
+  "login.submit.signIn": "Sign In",
+  "login.submit.register": "Create Account",
+  "login.toggle.toSignIn": "Already have an account? Sign in",
+  "login.toggle.toRegister": "Don't have an account? Register",
+  "settings.language": "Language",
+  "settings.languageHint": "Applies immediately, and is remembered on this device.",
+  "lang.en": "English",
+  "lang.es": "Español"
+}

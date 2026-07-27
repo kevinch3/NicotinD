@@ -36,13 +36,13 @@
 
         <h1 class="text-center text-3xl font-bold tracking-tight text-white">NicotinD</h1>
         <p class="mb-8 mt-1 text-center text-sm text-white/50">
-          {{ isRegister() ? 'Create an account' : 'Sign in to continue' }}
+          {{ (isRegister() ? 'login.subtitle.register' : 'login.subtitle.signIn') | t }}
         </p>
 
         <form (ngSubmit)="handleSubmit()" class="space-y-5">
           <input
             type="text"
-            placeholder="Username"
+            [placeholder]="'login.username' | t"
             [(ngModel)]="username"
             name="username"
             required
@@ -52,7 +52,7 @@
           <app-password-field
             [(ngModel)]="password"
             name="password"
-            [placeholder]="'Password'"
+            [placeholder]="'login.password' | t"
             [autocomplete]="'current-password'"
             [required]="true"
             [testId]="'login-password'"
@@ -69,7 +69,11 @@
             data-testid="login-submit"
             class="w-full rounded-lg bg-gradient-to-r from-indigo-500 to-fuchsia-500 py-3 font-semibold text-white shadow-lg shadow-indigo-500/30 transition hover:from-indigo-400 hover:to-fuchsia-400 disabled:opacity-50"
           >
-            {{ loading() ? '...' : isRegister() ? 'Create Account' : 'Sign In' }}
+            {{
+              loading()
+                ? '...'
+                : ((isRegister() ? 'login.submit.register' : 'login.submit.signIn') | t)
+            }}
           </button>
         </form>
 
@@ -79,7 +83,7 @@
             data-testid="login-toggle"
             class="mt-5 w-full text-sm text-white/50 transition hover:text-white/80"
           >
-            {{ isRegister() ? 'Already have an account? Sign in' : "Don't have an account? Register" }}
+            {{ (isRegister() ? 'login.toggle.toSignIn' : 'login.toggle.toRegister') | t }}
           </button>
         }
 

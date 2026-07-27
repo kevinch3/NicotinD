@@ -6,10 +6,11 @@ import { AuthApiService } from '../../services/api/auth-api.service';
 import { PasswordFieldComponent } from '../../components/password-field/password-field.component';
 import { ServerConfigService } from '../../services/server-config.service';
 import { sanitizeReturnUrl } from '../../lib/return-url';
+import { TranslatePipe } from '../../pipes/translate.pipe';
 
 @Component({
   selector: 'app-login',
-  imports: [FormsModule, RouterLink, PasswordFieldComponent],
+  imports: [FormsModule, RouterLink, PasswordFieldComponent, TranslatePipe],
   templateUrl: './login.component.html',
 })
 export class LoginComponent implements OnInit {

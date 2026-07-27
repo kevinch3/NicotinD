@@ -940,6 +940,16 @@ ApiService + shared `api-types.ts`) — inject the specific one; there is no mon
 → See [docs/web-ui.md](docs/web-ui.md) for theme system, Angular patterns, and component
 conventions.
 
+**i18n (issue #236)**: runtime JSON, one build — `public/i18n/<lang>.json` (`en` is the base +
+source of truth), `TranslateService` + `{{ 'key' | t }}`, lookup falling through active → base →
+the key itself so a partial translation shows English rather than raw keys. Chosen over
+`@angular/localize` because that is compile-time (N builds/locale) and this build is shared by PWA
++ Capacitor + Electron. **The pipe is `pure: false` by measurement**: a pure pipe memoizes on its
+args, so a language switch never re-invokes `transform` and the UI keeps the old language — the
+spec asserts the switch reaches the DOM. Language is **per-device** (localStorage), because login /
+setup / share render before any user exists. Converted so far: login page + the Settings picker;
+extraction is a phased pass. → [docs/i18n.md](docs/i18n.md)
+
 ## Mobile app (Capacitor Android + iOS)
 
 `packages/mobile` is a thin **Capacitor** shell that wraps the **same** `@nicotind/web` Angular

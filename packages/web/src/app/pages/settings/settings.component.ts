@@ -26,6 +26,8 @@ import {
 import { ConfirmService } from '../../services/confirm.service';
 import { UpdateService } from '../../services/update.service';
 import { ToastService } from '../../services/toast.service';
+import { TranslateService } from '../../services/translate.service';
+import { TranslatePipe } from '../../pipes/translate.pipe';
 
 const GB = 1024 * 1024 * 1024;
 
@@ -56,10 +58,17 @@ export const AUTO_PRESERVE_OPTIONS: { value: AutoPreserveMode; label: string }[]
  */
 @Component({
   selector: 'app-settings',
-  imports: [FormsModule, RouterLink, ChangelogModalComponent],
+  imports: [FormsModule, RouterLink, ChangelogModalComponent, TranslatePipe],
   templateUrl: './settings.component.html',
 })
 export class SettingsComponent {
+  readonly i18n = inject(TranslateService);
+
+  /** Switch UI language. Persisted per-device by the service. */
+  setLanguage(lang: string): void {
+    void this.i18n.use(lang);
+  }
+
   readonly auth = inject(AuthService);
   readonly themeService = inject(ThemeService);
   private router = inject(Router);

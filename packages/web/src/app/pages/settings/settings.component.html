@@ -6,6 +6,22 @@
       <section class="rounded-xl border border-theme bg-theme-surface/50 p-6 mb-6">
         <h2 class="text-sm font-semibold uppercase tracking-wider text-theme-secondary mb-5">Appearance</h2>
 
+        <!-- Language (issue #236). Per-device, not per-user: login/setup/share
+             pages render before any user exists, and a per-user setting would
+             leave exactly those untranslatable. -->
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+          <span class="min-w-0 text-sm text-theme-primary">{{ 'settings.language' | t }}
+            <span class="block text-xs text-theme-muted">{{ 'settings.languageHint' | t }}</span>
+          </span>
+          <select data-testid="settings-language"
+            [value]="i18n.lang()" (change)="setLanguage($any($event.target).value)"
+            class="rounded-lg bg-theme-surface border border-theme px-2 py-1 text-sm text-theme-primary">
+            @for (l of i18n.available; track l) {
+              <option [value]="l" [selected]="l === i18n.lang()">{{ 'lang.' + l | t }}</option>
+            }
+          </select>
+        </div>
+
         <div class="flex items-start gap-3 mb-5">
           <button role="switch" [attr.aria-checked]="themeService.systemTheme()"
             (click)="themeService.setSystemTheme(!themeService.systemTheme())"
