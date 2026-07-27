@@ -75,6 +75,9 @@ describe('GET /api/admin/review', () => {
       })),
       incompleteJobCount: mock(() => 0),
       untrackedCount: mock(() => 0),
+      // Default gatherer needs the global DB (initDatabase); stub it so this
+      // file is green standalone, not only inside the full suite.
+      orphanRows: mock(() => []),
       auditTail: mock(() => []),
       incompleteJobs: mock(() => []),
       untracked: mock(() => []),
@@ -220,6 +223,9 @@ describe('GET /api/admin/review', () => {
       processingSummary: mock(() => null),
       incompleteJobCount: mock(() => 0),
       untrackedCount: mock(() => 0),
+      // Default gatherer needs the global DB (initDatabase); stub it so this
+      // file is green standalone, not only inside the full suite.
+      orphanRows: mock(() => []),
       auditTail: mock(() => []),
       incompleteJobs: mock(() => []),
       untracked: mock(() => []),
@@ -269,5 +275,43 @@ describe('GET /api/admin/review', () => {
     expect(res.status).toBe(200);
     expect(data.services.analysis).toEqual({ configured: false, healthy: false });
     expect(data.errors.join(' ')).toMatch(/analysisStatus/);
+  });
+});
+
+/**
+ * Issue #274. The slices used to be destructured positionally out of one
+ * `Promise.all`, so adding one meant editing the name list and the array in
+ * exact lockstep. A mismatch is invisible to the type-checker where slices
+ * share a type — `incompleteJobsCount`/`untrackedCount` are both `number`, and
+ * `incompleteJobs`/`untracked` are both arrays of objects — so a swap would
+ * type-check cleanly and just produce a wrong Admin panel.
+ *
+ * Distinct sentinels per gatherer make that impossible to introduce silently.
+ */
+describe('GET /api/admin/review — every slice lands in its own field (#274)', () => {
+  it('does not cross-wire the same-typed slices', async () => {
+    const subFns = {
+      collectMetrics: mock(async () => emptyMetrics),
+      // The two `number` slices: distinct values, so a swap flips them.
+      incompleteJobCount: mock(() => 11),
+      untrackedCount: mock(() => 22),
+      // The two object-array slices: distinguishable by shape AND content.
+      incompleteJobs: mock(() => [{ id: 'incomplete-sentinel' }]),
+      untracked: mock(() => [{ id: 'untracked-sentinel' }]),
+      orphanRows: mock(() => [{ table: 'orphan-sentinel', rows: 1, orphans: 1 }]),
+      auditTail: mock(() => [{ id: 'audit-sentinel' }]),
+      backupsList: mock(async () => [{ name: 'backup-sentinel' }]),
+    } as never;
+
+    const res = await makeApp(subFns).request('/');
+    const body = (await res.json()) as ServiceReview;
+
+    expect(body.incompleteJobsCount).toBe(11);
+    expect(body.untrackedCount).toBe(22);
+    expect(body.incompleteJobs[0]).toMatchObject({ id: 'incomplete-sentinel' });
+    expect(body.untracked[0]).toMatchObject({ id: 'untracked-sentinel' });
+    expect(body.orphanRows[0]).toMatchObject({ table: 'orphan-sentinel' });
+    expect(body.auditTail[0]).toMatchObject({ id: 'audit-sentinel' });
+    expect(body.backups[0]).toMatchObject({ name: 'backup-sentinel' });
   });
 });
