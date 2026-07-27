@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.277](https://github.com/kevinch3/NicotinD/compare/v0.1.276...v0.1.277) (2026-07-27)
+
+### Features
+
+* **artists:** on-demand + bulk artist-portrait fill ([#250](https://github.com/kevinch3/NicotinD/issues/250)) ([925646c](https://github.com/kevinch3/NicotinD/commit/925646c6ad0f8ad9a20cb6d13fd934fa138966cc)), references [#281](https://github.com/kevinch3/NicotinD/issues/281)
+* **deploy:** streaming-only compose profile + hide Extensions acquisition ([#235](https://github.com/kevinch3/NicotinD/issues/235)) ([559410f](https://github.com/kevinch3/NicotinD/commit/559410f185a0055de8e0b1a579a9bd59c0e1e09a))
+* **genre:** before/after view for artist genre reclassification ([#222](https://github.com/kevinch3/NicotinD/issues/222)) ([fa0ffc6](https://github.com/kevinch3/NicotinD/commit/fa0ffc6e326d99c8f3bf881fa852a3a17850cc56)), references [#260](https://github.com/kevinch3/NicotinD/issues/260)
+* **i18n:** runtime JSON translation foundation + login surface ([#236](https://github.com/kevinch3/NicotinD/issues/236)) ([634e667](https://github.com/kevinch3/NicotinD/commit/634e6678a992d592336d15cdbbd001651b62a6bc)), references [#256](https://github.com/kevinch3/NicotinD/issues/256)
+* **i18n:** translate the app shell — both navs + offline banner ([#236](https://github.com/kevinch3/NicotinD/issues/236)) ([f4a2ea5](https://github.com/kevinch3/NicotinD/commit/f4a2ea5a0ff3e543b1e101aba15b7b0c18f25787)), references [#293](https://github.com/kevinch3/NicotinD/issues/293)
+* **i18n:** translate the home page vibe presets + headings ([#236](https://github.com/kevinch3/NicotinD/issues/236)) ([4d654a7](https://github.com/kevinch3/NicotinD/commit/4d654a70e5dc59c387eac7c8fd131785b4df11d2)), references [#295](https://github.com/kevinch3/NicotinD/issues/295)
+* **i18n:** translate the library tabs + sort options ([#236](https://github.com/kevinch3/NicotinD/issues/236)) ([d646d12](https://github.com/kevinch3/NicotinD/commit/d646d12f01ea70c1333cf89054cc10d9deabce40)), references [#294](https://github.com/kevinch3/NicotinD/issues/294)
+* **processing:** yield the window while the shared GPU is busy ([#224](https://github.com/kevinch3/NicotinD/issues/224)) ([94b2e08](https://github.com/kevinch3/NicotinD/commit/94b2e0847b4923567ffb59e70c286b0a68a0a449))
+* **storage:** evict orphaned cover-cache files on a grace period ([#311](https://github.com/kevinch3/NicotinD/issues/311)) ([698b670](https://github.com/kevinch3/NicotinD/commit/698b670f636683ee53c94656e61d979f45a101af)), references [#259](https://github.com/kevinch3/NicotinD/issues/259)
+
+### Bug Fixes
+
+* **acquisition:** rescue organized items whose path differs only by accents ([81a8200](https://github.com/kevinch3/NicotinD/commit/81a8200738917b2dbb97dfce24998b5f9f931336)), references [#262](https://github.com/kevinch3/NicotinD/issues/262)
+* **artists:** carry curation across an identity fix ([#305](https://github.com/kevinch3/NicotinD/issues/305)) ([88b12f9](https://github.com/kevinch3/NicotinD/commit/88b12f9df814c889dd2679816888102facaf5403))
+* **build:** collapse the duplicate typecheck script from the [#278](https://github.com/kevinch3/NicotinD/issues/278) merge ([07c2731](https://github.com/kevinch3/NicotinD/commit/07c2731fd628fd4f97ca6c44a4140ac0622d28b8))
+* **e2e:** build web before the suite so it can't test a stale bundle ([#253](https://github.com/kevinch3/NicotinD/issues/253)) ([40948ca](https://github.com/kevinch3/NicotinD/commit/40948ca63a8ce7e673792ba21a05294937e50cea))
+* **playlists:** carry membership across a song-id change on prune ([919d069](https://github.com/kevinch3/NicotinD/commit/919d06984e847a6d09df756ec9aa7c416aacd82d))
+* **scripts:** check-fragments never ran in Docker (expandHome returned '') ([e71049d](https://github.com/kevinch3/NicotinD/commit/e71049de2ec0784e094d5c671317dddce750e07d))
 ## [0.1.276](https://github.com/kevinch3/NicotinD/compare/v0.1.275...v0.1.276) (2026-07-27)
 
 ### Features
