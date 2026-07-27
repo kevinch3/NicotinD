@@ -58,6 +58,7 @@ library that the API streams from. URL-based acquisition (yt-dlp / spotdl) feeds
 bun install              # Install all workspace dependencies
 bun run typecheck        # TypeScript type checking (tsc --build)
 bun run lint             # ESLint across all packages
+bun run check:isolated-specs # find specs that only pass inside the full suite (slow; not a CI gate)
 bun run format           # Prettier formatting
 bun run test             # Vitest across packages/ + src/ (excludes web/, e2e/, desktop/test/)
 bun run test:web         # Angular component tests (vitest — see docs/web-ui.md "Web test harness")
