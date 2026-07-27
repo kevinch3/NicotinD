@@ -464,8 +464,13 @@ Add detail there, not here.
   `searchRoutes(registry, acquisitionEnabled)` skips the network fan-out for all; the watchlist +
   auto-acquire pollers don't start. Web: `/api/auth/me` returns `acquisitionEnabled` →
   `AuthService.canAcquire()` = `serverAcquisitionEnabled() && role`, cascading to nav/guards/Search.
-  **Left open** (follow-ups): admin runtime toggle (env-only for now — boot-constructed services
-  can't tear down live), Extensions-section hide, off-profile compose. →
+  Extensions **hides its Acquisition section** when off (a toggle that can't do anything, and the
+  "nothing is downloaded until you enable one" framing is wrong), and
+  **`docker-compose.streaming-only.yml`** actually runs lighter — it resolves to `nicotind` +
+  `analysis` only, dropping slskd/Lidarr/bgutil; it needs *both* `profiles:` on those services and
+  `depends_on: !reset null` on nicotind, because compose **merges** `depends_on` rather than
+  replacing it (`[]` silently keeps the base entries). **Left open**: admin runtime toggle
+  (env-only for now — boot-constructed services can't tear down live). →
   [docs/deployment.md](docs/deployment.md) "Streaming-only profile", [docs/roles.md](docs/roles.md)
 - **Guided acquire UX**: catalog cards are the primary path; the raw network/folder-browser lane is
   demoted behind an "Advanced" disclosure; the hunt modal leads with the best match. The raw lane's

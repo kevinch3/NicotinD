@@ -3,10 +3,18 @@
     <a routerLink="/settings" class="text-theme-muted hover:text-theme-secondary text-sm">&larr; Settings</a>
   </div>
   <h1 class="text-2xl font-bold text-theme-primary mb-1">Extensions</h1>
-  <p class="text-sm text-theme-muted mb-8">
-    Acquisition is opt-in. Nothing is downloaded until you enable an extension here — you are
-    responsible for ensuring its use is lawful where you are.
-  </p>
+  @if (acquisitionEnabled()) {
+    <p class="text-sm text-theme-muted mb-8">
+      Acquisition is opt-in. Nothing is downloaded until you enable an extension here — you are
+      responsible for ensuring its use is lawful where you are.
+    </p>
+  } @else {
+    <p class="text-sm text-theme-muted mb-8" data-testid="extensions-acquisition-off">
+      Acquisition is disabled for this whole server (<code>NICOTIND_ACQUISITION=off</code>), so
+      acquisition extensions are hidden — enabling one here could not do anything. Metadata and
+      connectivity extensions still apply. Restart with the setting unset to re-enable.
+    </p>
+  }
 
   @if (message()) {
     <div
@@ -21,17 +29,19 @@
     </div>
   }
 
-  <section class="mb-10">
-    <h2 class="text-sm font-semibold text-theme-secondary uppercase tracking-wider mb-3">
-      Acquisition
-    </h2>
-    @for (p of plugins.acquisition(); track p.id) {
-      <ng-container [ngTemplateOutlet]="card" [ngTemplateOutletContext]="{ $implicit: p }" />
-    }
-    @if (plugins.acquisition().length === 0) {
-      <p class="text-sm text-theme-muted">No acquisition plugins registered.</p>
-    }
-  </section>
+  @if (acquisitionEnabled()) {
+    <section class="mb-10" data-testid="extensions-acquisition-section">
+      <h2 class="text-sm font-semibold text-theme-secondary uppercase tracking-wider mb-3">
+        Acquisition
+      </h2>
+      @for (p of plugins.acquisition(); track p.id) {
+        <ng-container [ngTemplateOutlet]="card" [ngTemplateOutletContext]="{ $implicit: p }" />
+      }
+      @if (plugins.acquisition().length === 0) {
+        <p class="text-sm text-theme-muted">No acquisition plugins registered.</p>
+      }
+    </section>
+  }
 
   <section class="mb-10">
     <h2 class="text-sm font-semibold text-theme-secondary uppercase tracking-wider mb-3">

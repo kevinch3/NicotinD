@@ -1,0 +1,43 @@
+# Streaming-only profile — the deployment-wide acquisition kill-switch (#235)
+# as an actual compose profile, not just an env var.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.streaming-only.yml up -d
+#
+# `NICOTIND_ACQUISITION=off` already turns the whole acquisition module off
+# server-side (every acquisition route 404s, the pollers never start, the web UI
+# hides its surfaces). This file completes the picture by not *running* the
+# sidecars that exist only to serve acquisition — so a library/streaming install
+# stops paying for slskd, Lidarr and the YouTube PO-token provider in RAM, disk
+# and attack surface.
+#
+# Two coupled changes are needed, and either alone is broken:
+#
+#   1. Move the acquisition sidecars behind a profile that is never activated
+#      here. A service carrying an inactive profile is simply not started.
+#   2. Drop nicotind's `depends_on` on them. Compose refuses to start a service
+#      that depends on one disabled by profiles ("service nicotind depends on
+#      undefined service"), so leaving the base file's depends_on in place makes
+#      the whole stack fail to come up.
+#
+# The library scanner + streaming stack are untouched; that is the point. The
+# `analysis` sidecar is also untouched — audio enrichment is a library feature,
+# not an acquisition one.
+services:
+  nicotind:
+    environment:
+      NICOTIND_ACQUISITION: "off"
+    # Compose MERGES `depends_on` across files rather than replacing it, so a
+    # plain empty value leaves the base file's slskd/lidarr entries in place and
+    # the project fails to load. `!reset` (compose v2.24+) is the documented way
+    # to drop an inherited key outright.
+    depends_on: !reset null
+
+  slskd:
+    profiles: ["acquisition"]
+
+  lidarr:
+    profiles: ["acquisition"]
+
+  # Only exists to mint YouTube PO tokens for yt-dlp/spotdl, i.e. acquisition.
+  bgutil-provider:
+    profiles: ["acquisition"]
