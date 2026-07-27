@@ -40,6 +40,34 @@ export function applyPerformancePragmas(db: Database): void {
  * Applies the canonical schema to a database. Extracted so tests can build
  * in-memory databases without the disk-side `initDatabase` setup.
  */
+/**
+ * Additive column migration, idempotent across boots.
+ *
+ * `applySchema` runs on every start, so a column that already exists is the
+ * normal case — but this checks `PRAGMA table_info` rather than catching,
+ * which is the point: the `try { ALTER } catch {}` this replaced swallowed a
+ * genuine migration bug (a typo'd type, a bad default) exactly as silently as
+ * an already-applied column, and the damage only surfaced much later as a
+ * missing column. Making "already there" a *condition* lets a real failure
+ * throw loudly at boot.
+ *
+ * Returns whether the column was added, so a one-time backfill can be gated on
+ * it instead of re-running a full table scan on every boot.
+ *
+ * Additive only — never a destructive migration. See docs/design-patterns.md.
+ */
+export function addColumnIfMissing(
+  db: Database,
+  table: string,
+  column: string,
+  decl: string,
+): boolean {
+  const cols = db.query(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+  if (cols.some((c) => c.name === column)) return false;
+  db.run(`ALTER TABLE ${table} ADD COLUMN ${column} ${decl}`);
+  return true;
+}
+
 export function applySchema(db: Database): void {
   db.run(`
     CREATE TABLE IF NOT EXISTS users (
@@ -63,26 +91,14 @@ export function applySchema(db: Database): void {
   `);
 
   // Add status column to existing users table (safe if column already exists)
-  try {
-    db.run(`ALTER TABLE users ADD COLUMN status TEXT NOT NULL DEFAULT 'active'`);
-  } catch {
-    // Column already exists — ignore
-  }
+  addColumnIfMissing(db, 'users', 'status', "TEXT NOT NULL DEFAULT 'active'");
 
   // Add welcome_dismissed column to existing user_settings table
-  try {
-    db.run(`ALTER TABLE user_settings ADD COLUMN welcome_dismissed INTEGER NOT NULL DEFAULT 0`);
-  } catch {
-    // Column already exists — ignore
-  }
+  addColumnIfMissing(db, 'user_settings', 'welcome_dismissed', 'INTEGER NOT NULL DEFAULT 0');
 
   // Add autoplay_on_load column to existing user_settings table (opt-in
   // resume-on-page-load; default off — see PlayerService.maybeResumeAutoplay).
-  try {
-    db.run(`ALTER TABLE user_settings ADD COLUMN autoplay_on_load INTEGER NOT NULL DEFAULT 0`);
-  } catch {
-    // Column already exists — ignore
-  }
+  addColumnIfMissing(db, 'user_settings', 'autoplay_on_load', 'INTEGER NOT NULL DEFAULT 0');
 
   // Generic key/value app settings (JSON values). Used for streaming/transcode
   // preferences; not user-scoped.
@@ -140,45 +156,25 @@ export function applySchema(db: Database): void {
   // bloated deluxe/special edition whose bonus/live cuts no single Soulseek
   // folder contains, leaving the fallback permanently "incomplete" and dumping
   // duplicate rips into the album folder. Nullable for pre-existing rows.
-  try {
-    db.run(`ALTER TABLE album_jobs ADD COLUMN target_files_json TEXT`);
-  } catch {
-    // Column already exists — ignore
-  }
+  addColumnIfMissing(db, 'album_jobs', 'target_files_json', 'TEXT');
 
   // Artist name, captured at hunt-download time. Lets the cross-peer fallback
   // fire a *fresh* slskd search ("<artist> <track>") for tracks no recorded
   // alternate can supply, instead of giving up the moment the stale alternates
   // are exhausted. Nullable for pre-existing rows (those skip the fresh-search
   // step and behave exactly as before).
-  try {
-    db.run(`ALTER TABLE album_jobs ADD COLUMN artist_name TEXT`);
-  } catch {
-    // Column already exists — ignore
-  }
+  addColumnIfMissing(db, 'album_jobs', 'artist_name', 'TEXT');
 
   // Album title, for the "incomplete albums" UI surface (so a user can see which
   // hunts ended exhausted and re-trigger them). Nullable for pre-existing rows.
-  try {
-    db.run(`ALTER TABLE album_jobs ADD COLUMN album_title TEXT`);
-  } catch {
-    // Column already exists — ignore
-  }
+  addColumnIfMissing(db, 'album_jobs', 'album_title', 'TEXT');
 
   // Auto-retry of exhausted jobs: how many times a job has been revived for
   // another fallback wave, and when it was last revived (cooldown gate). Lets
   // the fallback periodically re-attempt albums whose peers were offline at
   // hunt time without churning — bounded by exhaustedMaxRevives + cooldown.
-  try {
-    db.run(`ALTER TABLE album_jobs ADD COLUMN revive_count INTEGER NOT NULL DEFAULT 0`);
-  } catch {
-    // Column already exists — ignore
-  }
-  try {
-    db.run(`ALTER TABLE album_jobs ADD COLUMN last_revived_at INTEGER`);
-  } catch {
-    // Column already exists — ignore
-  }
+  addColumnIfMissing(db, 'album_jobs', 'revive_count', 'INTEGER NOT NULL DEFAULT 0');
+  addColumnIfMissing(db, 'album_jobs', 'last_revived_at', 'INTEGER');
 
   // Unified acquisition jobs: every download (slskd hunt, fallback recovery,
   // direct grab, track search, URL acquire) belongs to one job whose
@@ -240,16 +236,8 @@ export function applySchema(db: Database): void {
   // Per-file quality captured at enqueue time (slskd search response bitRate)
   // or upgraded post-organize (library scan populates library_songs.bit_rate).
   // Optional so legacy rows survive untouched; null renders as "no quality info".
-  try {
-    db.run(`ALTER TABLE acquisition_job_items ADD COLUMN bit_rate_kbps INTEGER`);
-  } catch {
-    // Column already exists — ignore
-  }
-  try {
-    db.run(`ALTER TABLE acquisition_job_items ADD COLUMN audio_format TEXT`);
-  } catch {
-    // Column already exists — ignore
-  }
+  addColumnIfMissing(db, 'acquisition_job_items', 'bit_rate_kbps', 'INTEGER');
+  addColumnIfMissing(db, 'acquisition_job_items', 'audio_format', 'TEXT');
 
   db.run(`
     CREATE TABLE IF NOT EXISTS completed_downloads (
@@ -278,11 +266,7 @@ export function applySchema(db: Database): void {
     ON completed_downloads (basename, completed_at DESC)
   `);
 
-  try {
-    db.run(`ALTER TABLE completed_downloads ADD COLUMN navidrome_id TEXT`);
-  } catch {
-    // Column already exists — ignore
-  }
+  addColumnIfMissing(db, 'completed_downloads', 'navidrome_id', 'TEXT');
 
   db.run(`
     CREATE INDEX IF NOT EXISTS idx_completed_downloads_navidrome_id
@@ -299,26 +283,10 @@ export function applySchema(db: Database): void {
   `);
 
   // visibility column is retained but unused; all playlists are shared.
-  try {
-    db.run(`ALTER TABLE playlist_visibility ADD COLUMN created_by TEXT REFERENCES users(id)`);
-  } catch {
-    /* column exists */
-  }
-  try {
-    db.run(`ALTER TABLE playlist_visibility ADD COLUMN created_at TEXT`);
-  } catch {
-    /* column exists */
-  }
-  try {
-    db.run(`ALTER TABLE playlist_visibility ADD COLUMN modified_by TEXT REFERENCES users(id)`);
-  } catch {
-    /* column exists */
-  }
-  try {
-    db.run(`ALTER TABLE playlist_visibility ADD COLUMN modified_at TEXT`);
-  } catch {
-    /* column exists */
-  }
+  addColumnIfMissing(db, 'playlist_visibility', 'created_by', 'TEXT REFERENCES users(id)');
+  addColumnIfMissing(db, 'playlist_visibility', 'created_at', 'TEXT');
+  addColumnIfMissing(db, 'playlist_visibility', 'modified_by', 'TEXT REFERENCES users(id)');
+  addColumnIfMissing(db, 'playlist_visibility', 'modified_at', 'TEXT');
 
   try {
     db.run(`
@@ -390,70 +358,41 @@ export function applySchema(db: Database): void {
   // Fine-grained pipeline stage + the canonical album dir the job landed in, so
   // the downloads feed can show queued → downloading → organizing → scanning →
   // done and where the files ended up. Added after the original schema shipped.
-  try {
-    db.run(`ALTER TABLE acquire_jobs ADD COLUMN stage TEXT`);
-  } catch {
-    // Column already exists — ignore
-  }
-  try {
-    db.run(`ALTER TABLE acquire_jobs ADD COLUMN storage_path TEXT`);
-  } catch {
-    // Column already exists — ignore
-  }
+  addColumnIfMissing(db, 'acquire_jobs', 'stage', 'TEXT');
+  addColumnIfMissing(db, 'acquire_jobs', 'storage_path', 'TEXT');
   // The distinct set of destination albums the job's files landed in (JSON
   // array of {albumArtist, albumTitle, albumId}) — a job whose files span
   // multiple albums (e.g. a large playlist) needs more than the single
   // first-landed storage_path to link every album, not just the first one.
-  try {
-    db.run(`ALTER TABLE acquire_jobs ADD COLUMN dest_albums_json TEXT`);
-  } catch {
-    // Column already exists — ignore
-  }
+  addColumnIfMissing(db, 'acquire_jobs', 'dest_albums_json', 'TEXT');
   // Per-track download state (JSON array of {title, status}), in playlist
   // order where known. spotdl/archive know the full track list upfront;
   // yt-dlp/spotdl discover titles incrementally, so the array is
   // appended-to / status-updated in place by title match rather than fully
   // known ahead of time. Powers the "Now downloading: X / Next: Y, Z" UI.
-  try {
-    db.run(`ALTER TABLE acquire_jobs ADD COLUMN tracks_json TEXT`);
-  } catch {
-    // Column already exists — ignore
-  }
+  addColumnIfMissing(db, 'acquire_jobs', 'tracks_json', 'TEXT');
   // Marks a URL acquire job whose source URL was a *playlist* (Spotify playlist,
   // YouTube playlist, archive.org item flagged as playlist via `as=playlist`).
   // When 1, AcquireWatcher's post-ingest step materializes a per-user native
   // playlist from the landed tracks in playlist order. See
   // docs/playlist-from-acquisition.md.
-  try {
-    db.run(`ALTER TABLE acquire_jobs ADD COLUMN is_playlist INTEGER NOT NULL DEFAULT 0`);
-  } catch {
-    // Column already exists — ignore
-  }
+  addColumnIfMissing(db, 'acquire_jobs', 'is_playlist', 'INTEGER NOT NULL DEFAULT 0');
   // Set after the generated playlist is created; lets the Downloads card link
   // straight to the playlist detail page. ON DELETE SET NULL so a user who
   // removes the playlist doesn't leave a dangling reference on the job row.
-  try {
-    db.run(
-      `ALTER TABLE acquire_jobs ADD COLUMN playlist_id TEXT REFERENCES playlists(id) ON DELETE SET NULL`,
-    );
-  } catch {
-    // Column already exists — ignore
-  }
+  addColumnIfMissing(
+    db,
+    'acquire_jobs',
+    'playlist_id',
+    'TEXT REFERENCES playlists(id) ON DELETE SET NULL',
+  );
   // Dominant bitrate (kbps) and codec for the URL-acquire job's landed files,
   // populated by AcquireWatcher.ingest via ffprobe AFTER the lossless→opus
   // transcode so the value matches what landed in the library. Powers the
   // "· 320 kbps" chip on the download card. Nullable: legacy / pre-feature
   // rows survive untouched, and the chip is hidden when both are null.
-  try {
-    db.run(`ALTER TABLE acquire_jobs ADD COLUMN bit_rate_kbps INTEGER`);
-  } catch {
-    // Column already exists — ignore
-  }
-  try {
-    db.run(`ALTER TABLE acquire_jobs ADD COLUMN audio_format TEXT`);
-  } catch {
-    // Column already exists — ignore
-  }
+  addColumnIfMissing(db, 'acquire_jobs', 'bit_rate_kbps', 'INTEGER');
+  addColumnIfMissing(db, 'acquire_jobs', 'audio_format', 'TEXT');
 
   // Per-track plugin output for URL acquire jobs, in download order. Separate
   // from acquire_jobs.tracks_json because the post-ingest playlist step needs
@@ -677,11 +616,7 @@ export function applySchema(db: Database): void {
   // enrichment columns), NOT added to either CREATE block above — that keeps a
   // single column order across fresh + migrated DBs and, crucially, keeps the
   // 'ep'-migration rebuild's `INSERT ... SELECT *` column counts matched.
-  try {
-    db.run(`ALTER TABLE library_albums ADD COLUMN licence TEXT`);
-  } catch {
-    // Column already exists — ignore
-  }
+  addColumnIfMissing(db, 'library_albums', 'licence', 'TEXT');
   db.run(`CREATE INDEX IF NOT EXISTS idx_library_albums_licence ON library_albums(licence)`);
 
   db.run(`
@@ -724,18 +659,10 @@ export function applySchema(db: Database): void {
   `);
   // Add bpm to existing library_songs tables (safe if it already exists). Set by
   // tag reads at scan time and by on-demand track analysis.
-  try {
-    db.run(`ALTER TABLE library_songs ADD COLUMN bpm INTEGER`);
-  } catch {
-    // Column already exists — ignore
-  }
+  addColumnIfMissing(db, 'library_songs', 'bpm', 'INTEGER');
   // Musical key (e.g. "C major" / "A minor"), same additive pattern as bpm — read
   // from tags at scan time, filled by on-demand/windowed key analysis.
-  try {
-    db.run(`ALTER TABLE library_songs ADD COLUMN key TEXT`);
-  } catch {
-    // Column already exists — ignore
-  }
+  addColumnIfMissing(db, 'library_songs', 'key', 'TEXT');
   // Perceptual audio features. energy/loudness come from ffmpeg ebur128 (works
   // without the analysis sidecar); danceability/valence/acousticness/instrumental/
   // mood come from the Essentia analysis sidecar. Same additive contract as
@@ -758,11 +685,8 @@ export function applySchema(db: Database): void {
     'licence TEXT',
     'licence_source TEXT',
   ]) {
-    try {
-      db.run(`ALTER TABLE library_songs ADD COLUMN ${col}`);
-    } catch {
-      // Column already exists — ignore
-    }
+    const [name, ...decl] = col.split(' ');
+    addColumnIfMissing(db, 'library_songs', name, decl.join(' '));
   }
   db.run(`CREATE INDEX IF NOT EXISTS idx_library_songs_licence ON library_songs(licence)`);
   // "Landed" timestamp (epoch ms) — NULL means the song is *quarantined*: it has
@@ -773,24 +697,17 @@ export function applySchema(db: Database): void {
   // this column on insert or rescan, so a fresh scan mints NULL (quarantined) and
   // a rescan of an already-landed song preserves its value. A one-time backfill
   // below lands every pre-existing row so upgrades never retroactively hide music.
-  try {
-    db.run(`ALTER TABLE library_songs ADD COLUMN landed_at INTEGER`);
-  } catch {
-    // Column already exists — ignore
-  }
+  addColumnIfMissing(db, 'library_songs', 'landed_at', 'INTEGER');
   // Album-level artist (e.g. "Various Artists" on compilations) vs track-level
   // artist. Existing rows backfill from the current artist column.
-  try {
-    db.run(`ALTER TABLE library_songs ADD COLUMN album_artist TEXT NOT NULL DEFAULT ''`);
+  // The backfill is gated on the column having just been added, matching the
+  // old try-block semantics: on every later boot the ALTER threw and the
+  // UPDATE was skipped with it, so it never re-scanned the whole table.
+  if (addColumnIfMissing(db, 'library_songs', 'album_artist', `TEXT NOT NULL DEFAULT ''`)) {
     db.run(`UPDATE library_songs SET album_artist = artist WHERE album_artist = ''`);
-  } catch {
-    // Column already exists — ignore
   }
-  try {
-    db.run(`ALTER TABLE library_songs ADD COLUMN album_artist_id TEXT NOT NULL DEFAULT ''`);
+  if (addColumnIfMissing(db, 'library_songs', 'album_artist_id', `TEXT NOT NULL DEFAULT ''`)) {
     db.run(`UPDATE library_songs SET album_artist_id = artist_id WHERE album_artist_id = ''`);
-  } catch {
-    // Column already exists — ignore
   }
   db.run(`CREATE INDEX IF NOT EXISTS idx_library_songs_album_id ON library_songs(album_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_library_songs_artist_id ON library_songs(artist_id)`);
@@ -827,20 +744,12 @@ export function applySchema(db: Database): void {
       PRIMARY KEY (song_id, model)
     )
   `);
-  try {
-    db.run(`ALTER TABLE library_embeddings ADD COLUMN file_size INTEGER`);
-  } catch {
-    // Column already exists — ignore
-  }
+  addColumnIfMissing(db, 'library_embeddings', 'file_size', 'INTEGER');
   // When this row was first seen with no `library_songs` owner (issue #259).
   // NULL = currently owned. Deleting a song leaves its embedding behind by
   // design (no FK cascade — see docs/cache-invalidation.md), so this is what
   // bounds the growth without giving up that design. See `orphan-prune.ts`.
-  try {
-    db.run(`ALTER TABLE library_embeddings ADD COLUMN orphaned_at INTEGER`);
-  } catch {
-    // Column already exists — ignore
-  }
+  addColumnIfMissing(db, 'library_embeddings', 'orphaned_at', 'INTEGER');
 
   // Per-(song, task) analysis failure ledger. A file that hard-fails a decode/
   // sidecar analysis (e.g. a corrupt "Invalid data" mp3) is recorded here; once
@@ -861,11 +770,7 @@ export function applySchema(db: Database): void {
       PRIMARY KEY (song_id, task)
     )
   `);
-  try {
-    db.run(`ALTER TABLE library_song_analysis_failures ADD COLUMN orphaned_at INTEGER`);
-  } catch {
-    // Column already exists — ignore
-  }
+  addColumnIfMissing(db, 'library_song_analysis_failures', 'orphaned_at', 'INTEGER');
 
   db.run(`
     CREATE TABLE IF NOT EXISTS library_artists (
@@ -886,11 +791,7 @@ export function applySchema(db: Database): void {
   // only the member artists show as tiles — while the row stays functional for
   // direct navigation/search. Recomputed on every scan, so it self-corrects
   // when the split authority changes.
-  try {
-    db.run(`ALTER TABLE library_artists ADD COLUMN split_compound INTEGER NOT NULL DEFAULT 0`);
-  } catch {
-    // Column already exists — ignore
-  }
+  addColumnIfMissing(db, 'library_artists', 'split_compound', 'INTEGER NOT NULL DEFAULT 0');
   db.run(
     `CREATE INDEX IF NOT EXISTS idx_library_artists_name ON library_artists(name COLLATE NOCASE)`,
   );
@@ -1048,16 +949,8 @@ export function applySchema(db: Database): void {
   // are globally visible (any user sees them) and read-only through the API —
   // they're managed by scripts/seed-curated-playlists.ts, not user mutations.
   // `cover_art` holds a designed gradient cover URL (e.g. /playlist-covers/<slug>.svg).
-  try {
-    db.run(`ALTER TABLE playlists ADD COLUMN cover_art TEXT`);
-  } catch {
-    // Column already exists — ignore.
-  }
-  try {
-    db.run(`ALTER TABLE playlists ADD COLUMN kind TEXT NOT NULL DEFAULT 'user'`);
-  } catch {
-    // Column already exists — ignore.
-  }
+  addColumnIfMissing(db, 'playlists', 'cover_art', 'TEXT');
+  addColumnIfMissing(db, 'playlists', 'kind', "TEXT NOT NULL DEFAULT 'user'");
 
   db.run(`
     CREATE TABLE IF NOT EXISTS playlist_songs (
@@ -1190,11 +1083,7 @@ export function applySchema(db: Database): void {
   // Issue #260. Deliberately nullable with no default: an existing row must keep
   // the semantics it was applied under (source='user' replaced), so backfilling
   // a value here would silently re-interpret every curator decision ever made.
-  try {
-    db.run(`ALTER TABLE library_genre_overrides ADD COLUMN mode TEXT`);
-  } catch {
-    // Column already exists — ignore
-  }
+  addColumnIfMissing(db, 'library_genre_overrides', 'mode', 'TEXT');
 
   // Persisted MusicBrainz ids, so genre (and any future MB) lookups can query
   // BY ID instead of fuzzy-by-name — the hazard docs/library-scanner.md warns
@@ -1350,11 +1239,7 @@ export function applySchema(db: Database): void {
   // Admin dev-mode toggle: when on, generated results surface a capture toast so
   // the admin can grade them (see generation_feedback above). Per-user, default
   // off — invisible to non-admins.
-  try {
-    db.run(`ALTER TABLE user_settings ADD COLUMN feedback_capture INTEGER NOT NULL DEFAULT 0`);
-  } catch {
-    // Column already exists — ignore
-  }
+  addColumnIfMissing(db, 'user_settings', 'feedback_capture', 'INTEGER NOT NULL DEFAULT 0');
 
   // One-time landing backfill. The landed_at column defaults to NULL (quarantined)
   // for every row, so an upgrade of an existing library would otherwise hide the

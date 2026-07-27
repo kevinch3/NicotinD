@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { Database } from 'bun:sqlite';
-import { applySchema } from './db.js';
+import { addColumnIfMissing, applySchema } from './db.js';
 
 describe('applySchema — classification ep migration', () => {
   it('allows ep on a fresh database', () => {
@@ -361,3 +361,81 @@ function landed(db: Database, id: string): number | null {
       .get(id)?.landed_at ?? null
   );
 }
+
+describe('addColumnIfMissing (#275)', () => {
+  function seed(): Database {
+    const db = new Database(':memory:');
+    db.run(`CREATE TABLE t (id TEXT PRIMARY KEY)`);
+    return db;
+  }
+
+  it('adds a missing column and reports that it did', () => {
+    const db = seed();
+    expect(addColumnIfMissing(db, 't', 'note', 'TEXT')).toBe(true);
+    const cols = (db.query(`PRAGMA table_info(t)`).all() as Array<{ name: string }>).map(
+      (c) => c.name,
+    );
+    expect(cols).toContain('note');
+  });
+
+  it('is a no-op on an existing column, so boots stay idempotent', () => {
+    const db = seed();
+    addColumnIfMissing(db, 't', 'note', 'TEXT');
+    db.run(`INSERT INTO t (id, note) VALUES ('a', 'kept')`);
+
+    expect(addColumnIfMissing(db, 't', 'note', 'TEXT')).toBe(false);
+    // The second call must not have rebuilt or cleared anything.
+    expect(db.query(`SELECT note FROM t WHERE id = 'a'`).get()).toEqual({ note: 'kept' });
+  });
+
+  /**
+   * The behaviour change worth having. The `try { ALTER } catch {}` this
+   * replaced swallowed a malformed declaration exactly as silently as an
+   * already-applied column, so a real migration bug surfaced much later as a
+   * mysteriously missing column.
+   */
+  it('throws on a malformed declaration instead of swallowing it', () => {
+    const db = seed();
+    expect(() => addColumnIfMissing(db, 't', 'bad', 'NOT_A_TYPE DEFAULT )(')).toThrow();
+    // And the bogus column really is absent, rather than half-created.
+    const cols = (db.query(`PRAGMA table_info(t)`).all() as Array<{ name: string }>).map(
+      (c) => c.name,
+    );
+    expect(cols).not.toContain('bad');
+  });
+
+  it('throws on an unknown table rather than silently skipping the migration', () => {
+    const db = seed();
+    expect(() => addColumnIfMissing(db, 'no_such_table', 'x', 'TEXT')).toThrow();
+  });
+});
+
+describe('applySchema — idempotency (the whole contract)', () => {
+  it('is a no-op when run twice, preserving rows', () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    db.run(
+      `INSERT INTO library_albums (id, name, artist, artist_id, song_count, duration, synced_at)
+       VALUES ('al', 'Album', 'Artist', 'art', 1, 0, 1)`,
+    );
+
+    expect(() => applySchema(db)).not.toThrow();
+    expect(db.query(`SELECT name FROM library_albums WHERE id = 'al'`).get()).toEqual({
+      name: 'Album',
+    });
+  });
+
+  it('produces an identical column set on the second run', () => {
+    const once = new Database(':memory:');
+    applySchema(once);
+    const twice = new Database(':memory:');
+    applySchema(twice);
+    applySchema(twice);
+
+    const cols = (db: Database, t: string) =>
+      (db.query(`PRAGMA table_info(${t})`).all() as Array<{ name: string }>).map((c) => c.name);
+    for (const t of ['library_songs', 'library_albums', 'user_settings']) {
+      expect(cols(twice, t)).toEqual(cols(once, t));
+    }
+  });
+});
