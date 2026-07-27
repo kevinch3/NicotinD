@@ -23,6 +23,7 @@ import { AuthApiService } from './services/api/auth-api.service';
 import { AutoPreserveCoordinator } from './services/auto-preserve-coordinator';
 import pkg from '../../../../package.json';
 import { switchMap } from 'rxjs/operators';
+import { TranslateService } from './services/translate.service';
 
 export const APP_VERSION = new InjectionToken<string>('APP_VERSION');
 
@@ -49,6 +50,11 @@ export const appConfig: ApplicationConfig = {
       const player = inject(PlayerService);
       const auth = inject(AuthService);
       const api = inject(AuthApiService);
+      // Load the i18n catalogs before first paint (issue #236). Deliberately
+      // not awaited: a slow/failed catalog fetch must never delay or block
+      // bootstrap — the UI renders English (or raw keys) and swaps in when it
+      // lands, which the impure translate pipe picks up.
+      void inject(TranslateService).init();
       theme.apply();
       preserve.init();
       player.restoreState();
