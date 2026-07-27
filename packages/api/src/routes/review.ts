@@ -410,6 +410,33 @@ function defaultUntracked(): UntrackedDownload[] {
   }
 }
 
+/**
+ * `Promise.all` over an object rather than an array, so slices are addressed by
+ * **name** instead of by position.
+ *
+ * why: the gather used to destructure 13 names positionally out of one
+ * `Promise.all([...])`, so adding a slice meant editing the name list and the
+ * array in exact lockstep — and a mismatch was invisible to the type-checker
+ * wherever two slices share a type (`incompleteJobsCount`/`untrackedCount` are
+ * both `number`; `incompleteJobs`/`untracked` are both object arrays). A swap
+ * type-checked cleanly and produced a wrong Admin panel. Keyed, a mismatch is a
+ * compile error instead.
+ *
+ * Parallelism is unchanged: every `safe(...)` call runs while the object
+ * literal is built, i.e. before the first await. Keeping them inside one
+ * expression also means a later edit can't accidentally serialise them by
+ * slipping an `await` between declarations.
+ */
+async function allNamed<T extends Record<string, Promise<unknown>>>(
+  gatherers: T,
+): Promise<{ [K in keyof T]: Awaited<T[K]> }> {
+  const keys = Object.keys(gatherers) as Array<keyof T>;
+  const values = await Promise.all(keys.map((k) => gatherers[k]));
+  return Object.fromEntries(keys.map((k, i) => [k, values[i]])) as {
+    [K in keyof T]: Awaited<T[K]>;
+  };
+}
+
 // ─── route factory + handler ─────────────────────────────────────────────────
 
 export function reviewRoutes(slskdRef: SlskdRef, deps: ReviewRoutesDeps = {}) {
@@ -435,31 +462,101 @@ export function reviewRoutes(slskdRef: SlskdRef, deps: ReviewRoutesDeps = {}) {
 
     // Run every sub-fetch in parallel; defer the index count to after slskd /
     // scan so the cheaper DB queries overlap the network call.
-    const [metrics, status, scan, analysis, updateCheck, backups, processing, incompleteCount, untracked, orphanRows, audit, incompleteList, untrackedList] =
-      await Promise.all([
-        safe(errors, 'metrics', () => collectMetricsFn({ os: deps.os, probe: deps.gpuProbe }), fallbackMetrics),
-        safe(errors, 'systemStatus', () => sub.systemStatus?.() ?? defaultSystemStatus(slskdRef), {
-          healthy: false,
-          connected: false,
-        } as Awaited<ReturnType<typeof defaultSystemStatus>>),
-        safe(errors, 'scanStatus', () => sub.scanStatus?.() ?? Promise.resolve(defaultScanStatus()), {
-          scanning: false,
-          count: 0,
-        }),
-        safe(errors, 'analysisStatus', () => sub.analysisStatus?.() ?? defaultAnalysisStatus(deps.analysisClient), {
-          configured: false,
-          healthy: false,
-        }),
-        safe(errors, 'updateCheck', () => sub.updateCheck?.() ?? Promise.resolve(defaultUpdateCheck(version)), null as UpdateCheckSnapshot | null),
-        safe(errors, 'backups', () => sub.backupsList?.() ?? Promise.resolve(defaultBackups(deps.dataDir)), [] as BackupInfo[]),
-        safe(errors, 'processing', () => sub.processingSummary?.() ?? defaultProcessing(deps.processing), null as ProcessingSummary | null),
-        safe(errors, 'incompleteJobsCount', () => sub.incompleteJobCount?.() ?? defaultIncompleteJobs().length, 0),
-        safe(errors, 'untrackedCount', () => sub.untrackedCount?.() ?? defaultUntracked().length, 0),
-        safe(errors, 'orphanRows', () => sub.orphanRows?.() ?? countOrphanRows(getDatabase()), [] as OrphanCount[]),
-        safe(errors, 'auditTail', () => sub.auditTail?.(DEFAULT_AUDIT_TAIL_LIMIT) ?? defaultAuditTail(DEFAULT_AUDIT_TAIL_LIMIT), [] as AuditEntry[]),
-        safe(errors, 'incompleteJobsList', () => sub.incompleteJobs?.() ?? defaultIncompleteJobs(), [] as IncompleteAlbumJob[]),
-        safe(errors, 'untrackedList', () => sub.untracked?.() ?? defaultUntracked(), [] as UntrackedDownload[]),
-      ]);
+    const {
+      metrics,
+      status,
+      scan,
+      analysis,
+      updateCheck,
+      backups,
+      processing,
+      incompleteCount,
+      untracked,
+      orphanRows,
+      audit,
+      incompleteList,
+      untrackedList,
+    } = await allNamed({
+      metrics: safe(
+        errors,
+        'metrics',
+        () => collectMetricsFn({ os: deps.os, probe: deps.gpuProbe }),
+        fallbackMetrics,
+      ),
+      status: safe(
+        errors,
+        'systemStatus',
+        () => sub.systemStatus?.() ?? defaultSystemStatus(slskdRef),
+        { healthy: false, connected: false } as Awaited<ReturnType<typeof defaultSystemStatus>>,
+      ),
+      scan: safe(
+        errors,
+        'scanStatus',
+        () => sub.scanStatus?.() ?? Promise.resolve(defaultScanStatus()),
+        { scanning: false, count: 0 },
+      ),
+      analysis: safe(
+        errors,
+        'analysisStatus',
+        () => sub.analysisStatus?.() ?? defaultAnalysisStatus(deps.analysisClient),
+        { configured: false, healthy: false },
+      ),
+      updateCheck: safe(
+        errors,
+        'updateCheck',
+        () => sub.updateCheck?.() ?? Promise.resolve(defaultUpdateCheck(version)),
+        null as UpdateCheckSnapshot | null,
+      ),
+      backups: safe(
+        errors,
+        'backups',
+        () => sub.backupsList?.() ?? Promise.resolve(defaultBackups(deps.dataDir)),
+        [] as BackupInfo[],
+      ),
+      processing: safe(
+        errors,
+        'processing',
+        () => sub.processingSummary?.() ?? defaultProcessing(deps.processing),
+        null as ProcessingSummary | null,
+      ),
+      incompleteCount: safe(
+        errors,
+        'incompleteJobsCount',
+        () => sub.incompleteJobCount?.() ?? defaultIncompleteJobs().length,
+        0,
+      ),
+      untracked: safe(
+        errors,
+        'untrackedCount',
+        () => sub.untrackedCount?.() ?? defaultUntracked().length,
+        0,
+      ),
+      orphanRows: safe(
+        errors,
+        'orphanRows',
+        () => sub.orphanRows?.() ?? countOrphanRows(getDatabase()),
+        [] as OrphanCount[],
+      ),
+      audit: safe(
+        errors,
+        'auditTail',
+        () =>
+          sub.auditTail?.(DEFAULT_AUDIT_TAIL_LIMIT) ?? defaultAuditTail(DEFAULT_AUDIT_TAIL_LIMIT),
+        [] as AuditEntry[],
+      ),
+      incompleteList: safe(
+        errors,
+        'incompleteJobsList',
+        () => sub.incompleteJobs?.() ?? defaultIncompleteJobs(),
+        [] as IncompleteAlbumJob[],
+      ),
+      untrackedList: safe(
+        errors,
+        'untrackedList',
+        () => sub.untracked?.() ?? defaultUntracked(),
+        [] as UntrackedDownload[],
+      ),
+    });
 
     const indexedSongCount = await safe(errors, 'indexSongCount', () => sub.indexSongCount?.() ?? defaultIndexSongCount(), 0);
 

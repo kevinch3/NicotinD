@@ -842,7 +842,10 @@ Add detail there, not here.
   `ServiceReviewService` owns one `setInterval(5s)` (Page-Visibility-paused, ref-counted) so every
   Admin sub-section consumes a `computed()` slice from one snapshot; the new CPU/GPU/RAM
   `app-metric-pill` row at the top of System drains from this same signal; sub-fetch failures
-  degrade one field + log to `errors[]`, never drop the resource. →
+  degrade one field + log to `errors[]`, never drop the resource. Slices are gathered **by name**
+  via `allNamed()` (`Promise.all` over an object), never destructured positionally — a same-typed
+  swap (`incompleteJobsCount`/`untrackedCount` are both `number`) used to type-check cleanly and
+  yield a wrong panel, and adding a slice is now two edits rather than three in lockstep (#274). →
   [docs/design-patterns.md](docs/design-patterns.md) "ServiceReview".
 - **Unified song listings**: one `TrackRowComponent` + one root `SongMenuService.build(song, ctx)`
   build every song's `⋯` menu (common actions guaranteed, contextual via `SongContext`); Remove
