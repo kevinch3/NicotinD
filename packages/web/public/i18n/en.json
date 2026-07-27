@@ -1,4 +1,8 @@
 {
+  "home.genres": "Genres",
+  "home.resume": "Resume radio",
+  "home.resumeTitle": "Pick up where you left off",
+  "home.start": "Start a radio",
   "lang.en": "English",
   "lang.es": "Español",
   "library.sort.alphabetical": "A–Z",
@@ -29,5 +33,13 @@
   "nav.settings": "Settings",
   "settings.language": "Language",
   "settings.languageHint": "Applies immediately, and is remembered on this device.",
-  "shell.offline": "Offline mode — showing cached content only"
+  "shell.offline": "Offline mode — showing cached content only",
+  "vibe.acoustic": "Acoustic",
+  "vibe.chill": "Chill",
+  "vibe.danceable": "Danceable",
+  "vibe.energetic": "Energetic",
+  "vibe.fast": "120bpm+",
+  "vibe.happy": "Happy",
+  "vibe.party": "Party",
+  "vibe.uplifting": "Uplifting"
 }

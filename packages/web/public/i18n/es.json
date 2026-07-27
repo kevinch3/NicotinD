@@ -1,4 +1,8 @@
 {
+  "home.genres": "Géneros",
+  "home.resume": "Reanudar radio",
+  "home.resumeTitle": "Seguí donde lo dejaste",
+  "home.start": "Empezar una radio",
   "lang.en": "English",
   "lang.es": "Español",
   "library.sort.alphabetical": "A–Z",
@@ -29,5 +33,13 @@
   "nav.settings": "Ajustes",
   "settings.language": "Idioma",
   "settings.languageHint": "Se aplica de inmediato y se recuerda en este dispositivo.",
-  "shell.offline": "Modo sin conexión — mostrando solo contenido en caché"
+  "shell.offline": "Modo sin conexión — mostrando solo contenido en caché",
+  "vibe.acoustic": "Acústico",
+  "vibe.chill": "Tranquilo",
+  "vibe.danceable": "Bailable",
+  "vibe.energetic": "Enérgico",
+  "vibe.fast": "120bpm+",
+  "vibe.happy": "Alegre",
+  "vibe.party": "Fiesta",
+  "vibe.uplifting": "Optimista"
 }
