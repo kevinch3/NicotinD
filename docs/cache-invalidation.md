@@ -117,3 +117,38 @@ invalidation wiring at every mutation site. That trade is deliberate and documen
    earned it, and both are the shape where a *user action* must be visible *immediately*.
 4. Key any `Database`-derived memo by the db instance (`WeakMap<Database>`), never module-global —
    a test suite spins up many throwaway databases and a global memo leaks across them.
+
+
+## Cover cache eviction (issue #311)
+
+`<dataDir>/cover-cache` had **no eviction at all**. The only removal was
+`artwork-store.ts`'s targeted purge when one album's canonical URL changes — no size or age policy,
+unlike the transcode cache which does prune. Measured on prod: **3.6 GB**, the largest consumer in
+the data dir.
+
+`pruneCoverCache` sweeps entity-keyed files whose owning album/artist/song is gone, from the daily
+processor-tick hook alongside the backup and the #259 row prune (`NICOTIND_COVER_CACHE_PRUNE=off`
+disables it).
+
+**Only entity-keyed files are touched, and that distinction is the whole trap.** Keys come in two
+shapes: `<sha1>`/`<sha1>@<size>` keyed on a row id, and `c_<hash>`/`r_<hash>` which are
+**content-addressed** (the source image or remote URL, the latter from issue #263). The second kind
+has no owning row, so it can never be judged orphaned by an id lookup. A first measurement that
+missed this reported **51 % / 2.3 GB** orphaned by counting all 9,455 content-addressed files as
+orphans; deleting on that basis would have thrown away live entries. The corrected entity-keyed
+figure is **28 % / 1.6 GB**.
+
+**Grace period, for the same reason as #259**: ids are deterministic, so deleting a song and
+re-downloading the same file reuses its id — and should reuse its cached cover rather than
+re-fetching and re-encoding. The orphan clock is the file's **mtime**, which the cache already
+maintains.
+
+**Two sanity valves.** An empty library refuses the sweep outright. Above a minimum sample the
+sweep also refuses when >90 % of entity-keyed files look orphaned (a mid-rebuild library). The
+minimum sample matters: over a handful of files the ratio is noise, and a cache holding one orphan
+is 100 % orphaned — without it a small cache would trip the valve forever and never reclaim
+anything. That was found by a test, not by review.
+
+Dry-run against the live prod cache: 19,733 entity-keyed + 9,455 content-addressed, 5,530 orphaned,
+**4,803 past grace → 1,566 MB reclaimed**, 727 recent orphans spared, valve correctly silent at a
+0.28 ratio.

@@ -862,6 +862,12 @@ Add detail there, not here.
   library and skips any table over a 50% orphan ratio. Counts surface via `GET /api/admin/review`
   `orphanRows` → an Admin panel row (hidden at zero). →
   [docs/cache-invalidation.md](docs/cache-invalidation.md)
+- **Cover-cache eviction (issue #311)**: the cache had **none** — prod measured 3.6 GB, the largest
+  data-dir consumer. `pruneCoverCache` (daily tick, `NICOTIND_COVER_CACHE_PRUNE=off`) sweeps
+  entity-keyed files whose row is gone, with #259's grace period so a delete-then-re-download keeps
+  its cover. **Only entity-keyed keys**: `c_`/`r_` keys are content-addressed with no owning row, and
+  counting them as orphans inflated a first measurement to 51 %/2.3 GB (real figure: 28 %/1.6 GB).
+  Prod dry-run reclaims 1,566 MB. → [docs/cache-invalidation.md](docs/cache-invalidation.md)
 - **Cache-invalidation on library mutations (issue #237 audit)**: every `LibraryApiService` write
   whose server handler mutates `library_artists`/`library_genres` must
   `tap(() => invalidateLibraryReads())` on success or the cached Artists grid / Genres tab replays
