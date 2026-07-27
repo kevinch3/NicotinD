@@ -34,6 +34,7 @@ import {
   parseMinTracks,
   activeExtraFilterCount,
 } from '../../lib/library-filters';
+import { TranslatePipe } from '../../pipes/translate.pipe';
 import {
   LIBRARY_FILTER_PARAM_KEYS,
   isEmptyLibraryFilter,
@@ -59,12 +60,13 @@ interface AlbumTypeOption {
 }
 
 const ALBUM_TYPE_OPTIONS: AlbumTypeOption[] = [
-  { value: 'newest', label: 'Newest' },
-  { value: 'frequent', label: 'Most Played' },
-  { value: 'recent', label: 'Recently Played' },
-  { value: 'alphabeticalByName', label: 'A–Z' },
-  { value: 'starred', label: 'Starred' },
-  { value: 'random', label: 'Random' },
+  // `label` is an i18n key (issue #236), rendered through the `t` pipe.
+  { value: 'newest', label: 'library.sort.newest' },
+  { value: 'frequent', label: 'library.sort.frequent' },
+  { value: 'recent', label: 'library.sort.recent' },
+  { value: 'alphabeticalByName', label: 'library.sort.alphabetical' },
+  { value: 'starred', label: 'library.sort.starred' },
+  { value: 'random', label: 'library.sort.random' },
 ];
 
 const PAGE_SIZE = 40;
@@ -113,6 +115,7 @@ function writePersistedState(state: PersistedLibraryState): void {
     LibraryFilterPanelComponent,
     LibrarySongsComponent,
     IconComponent,
+    TranslatePipe,
   ],
   templateUrl: './library.component.html',
 })
@@ -129,13 +132,14 @@ export class LibraryComponent implements OnInit, OnDestroy {
 
   // ─── Mode ─────────────────────────────────────────────────────────
   readonly modes = [
-    { value: 'albums' as LibraryMode, label: 'Albums' },
-    { value: 'compilations' as LibraryMode, label: 'Compilations' },
-    { value: 'singles' as LibraryMode, label: 'Singles' },
-    { value: 'artists' as LibraryMode, label: 'Artists' },
-    { value: 'genre' as LibraryMode, label: 'Genre' },
-    { value: 'songs' as LibraryMode, label: 'Songs' },
-    { value: 'playlists' as LibraryMode, label: 'Playlists' },
+    // `label` is an i18n key (issue #236), rendered through the `t` pipe.
+    { value: 'albums' as LibraryMode, label: 'library.tab.albums' },
+    { value: 'compilations' as LibraryMode, label: 'library.tab.compilations' },
+    { value: 'singles' as LibraryMode, label: 'library.tab.singles' },
+    { value: 'artists' as LibraryMode, label: 'library.tab.artists' },
+    { value: 'genre' as LibraryMode, label: 'library.tab.genre' },
+    { value: 'songs' as LibraryMode, label: 'library.tab.songs' },
+    { value: 'playlists' as LibraryMode, label: 'library.tab.playlists' },
   ];
 
   readonly libraryMode = signal<LibraryMode>(
