@@ -51,6 +51,7 @@ import { readAudioTags, writeAudioTags, AUDIO_EXTS } from '../services/audio-tag
 import { sanitizeSegment } from '../services/path-sanitize.js';
 import { normalizeTagValue } from '../services/audio-tags.js';
 import { MusicBrainzClient } from '../services/musicbrainz-client.js';
+import { expandHome } from './lib/expand-home.js';
 
 // ─── CLI flags ────────────────────────────────────────────────────────────────
 
@@ -65,10 +66,6 @@ const RUN_A = PHASE_ARG === 'A' || PHASE_ARG === 'all';
 const RUN_B = PHASE_ARG === 'B' || PHASE_ARG === 'all';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
-
-function expandHome(p: string): string {
-  return p.startsWith('~') ? join(process.env.HOME ?? '/root', p.slice(1)) : p;
-}
 
 function loadConfig() {
   let fileConfig: Record<string, unknown> = {};

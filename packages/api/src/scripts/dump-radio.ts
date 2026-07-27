@@ -31,6 +31,7 @@ import { resolve, join } from 'node:path';
 import { parse } from 'yaml';
 import { Database } from 'bun:sqlite';
 import { parseLibraryFilter, type LibraryFilter } from '@nicotind/core';
+import { expandHome } from './lib/expand-home.js';
 import {
   explainSimilarity,
   DEFAULT_WEIGHTS,
@@ -48,10 +49,6 @@ import {
   type RadioCandidate,
   type RadioResult,
 } from '../routes/radio.js';
-
-function expandHome(p: string): string {
-  return p.startsWith('~') ? join(process.env.HOME ?? '/root', p.slice(1)) : p;
-}
 
 function loadConfig(): { dataDir: string } {
   let fileConfig: Record<string, unknown> = {};

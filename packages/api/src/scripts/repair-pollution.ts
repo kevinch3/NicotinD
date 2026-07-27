@@ -34,16 +34,13 @@ import { parse } from 'yaml';
 import { Database } from 'bun:sqlite';
 import { pruneOrphanArtist } from '../services/library-aggregates.js';
 import { scanMusicDir } from '../services/library-disk-audit.js';
+import { expandHome } from './lib/expand-home.js';
 import {
   auditLibrary,
   selectPollutionTargets,
   DELETABLE_RULES,
   type DeletableRule,
 } from '../services/library-audit.js';
-
-function expandHome(p: string): string {
-  return p.startsWith('~') ? join(process.env.HOME ?? '/root', p.slice(1)) : p;
-}
 
 function loadConfig(): { dataDir: string; musicDir: string } {
   let fileConfig: Record<string, unknown> = {};

@@ -28,10 +28,7 @@ import { verifyGenre } from '../services/track-analysis.js';
 import { writeAudioTags } from '../services/audio-tags.js';
 import { planGenreBackfill, resolveSongAbsPath } from '../services/track-backfill.js';
 import { appendSongGenres, loadGenreSets } from '../services/genre-split.js';
-
-function expandHome(p: string): string {
-  return p.startsWith('~') ? join(process.env.HOME ?? '/root', p.slice(1)) : p;
-}
+import { expandHome } from './lib/expand-home.js';
 
 function loadConfig(): {
   dataDir: string;

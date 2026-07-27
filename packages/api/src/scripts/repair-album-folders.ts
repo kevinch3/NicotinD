@@ -52,6 +52,7 @@ import { dupKey, pickKeeper, type DupFile } from '../services/album-dedupe.js';
 import { AUDIO_EXTS } from '../services/audio-tags.js';
 import { albumGroupKey, normalizeForGrouping } from '../services/album-grouping.js';
 import { normalizeTitle, titlesOverlap } from '../services/album-hunter.service.js';
+import { expandHome } from './lib/expand-home.js';
 
 export interface FolderEntry {
   artist: string;
@@ -142,10 +143,6 @@ export function planTrackKeepers<T extends DupFile>(
 }
 
 // ----- CLI plumbing (not exercised by unit tests) -----
-
-function expandHome(p: string): string {
-  return p.startsWith('~') ? join(process.env.HOME ?? '/root', p.slice(1)) : p;
-}
 
 function loadConfig(): { dataDir: string; musicDir: string } {
   let fileConfig: Record<string, unknown> = {};

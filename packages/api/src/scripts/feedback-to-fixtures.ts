@@ -20,15 +20,12 @@ import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
 import { Database } from 'bun:sqlite';
 import { listFeedback, huntFixtureFromRecord } from '../services/generation-feedback.js';
+import { expandHome } from './lib/expand-home.js';
 
 export const FIXTURE_DIR = resolve(
   dirname(fileURLToPath(import.meta.url)),
   '../services/__fixtures__/hunt-match',
 );
-
-function expandHome(p: string): string {
-  return p.startsWith('~') ? join(process.env.HOME ?? '/root', p.slice(1)) : p;
-}
 
 function loadDataDir(): string {
   let fileConfig: Record<string, unknown> = {};

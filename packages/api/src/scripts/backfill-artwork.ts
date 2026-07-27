@@ -25,10 +25,7 @@ import { parse } from 'yaml';
 import { Database } from 'bun:sqlite';
 import { Lidarr } from '@nicotind/lidarr-client';
 import { backfillArtwork } from '../services/artwork-backfill.js';
-
-function expandHome(p: string): string {
-  return p.startsWith('~') ? join(process.env.HOME ?? '/root', p.slice(1)) : p;
-}
+import { expandHome } from './lib/expand-home.js';
 
 function loadConfig(): { dataDir: string; lidarrUrl: string; lidarrApiKey: string } {
   let fileConfig: Record<string, unknown> = {};
