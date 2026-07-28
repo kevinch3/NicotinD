@@ -20,7 +20,7 @@ import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
 import { Database } from 'bun:sqlite';
 import { listFeedback, huntFixtureFromRecord } from '../services/generation-feedback.js';
-import { expandHome } from './lib/expand-home.js';
+import { expandHome } from '@nicotind/core';
 
 export const FIXTURE_DIR = resolve(
   dirname(fileURLToPath(import.meta.url)),

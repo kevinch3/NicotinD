@@ -24,7 +24,7 @@ import { analyzeKey } from '../services/track-analysis.js';
 import { readAudioTags, writeAudioTags } from '../services/audio-tags.js';
 import { ffmpegAvailable } from '../services/transcode.js';
 import { resolveSongAbsPath } from '../services/track-backfill.js';
-import { expandHome } from './lib/expand-home.js';
+import { expandHome } from '@nicotind/core';
 
 function loadConfig(): { dataDir: string; musicDir: string } {
   let fileConfig: Record<string, unknown> = {};

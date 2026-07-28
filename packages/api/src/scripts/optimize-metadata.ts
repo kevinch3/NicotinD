@@ -18,7 +18,7 @@ import { parse } from 'yaml';
 import { Database } from 'bun:sqlite';
 import { Lidarr } from '@nicotind/lidarr-client';
 import { optimizeAllAlbums } from '../services/metadata-optimize.js';
-import { expandHome } from './lib/expand-home.js';
+import { expandHome } from '@nicotind/core';
 
 function loadConfig(): { dataDir: string; lidarrUrl: string; lidarrApiKey: string } {
   let fileConfig: Record<string, unknown> = {};

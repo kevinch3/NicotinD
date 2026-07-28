@@ -64,6 +64,11 @@ jobs:
       - name: Check JSON configs for duplicate keys
         run: bun run check:json
 
+      # A copy-pasted helper drifts silently: one expandHome copy returned '' for
+      # every absolute path, so a documented CLI gate never ran in Docker (#301).
+      - name: Check for locally re-implemented shared helpers
+        run: bun run check:shared-helpers
+
       - name: Test (API + slskd-client + lidarr-client + core + service-manager + mobile)
         run: bun test packages/api/src packages/slskd-client/src packages/lidarr-client/src packages/core/src packages/service-manager/src packages/mobile/src packages/desktop/electron packages/desktop/scripts scripts
 

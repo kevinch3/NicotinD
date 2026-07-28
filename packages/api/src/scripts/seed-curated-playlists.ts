@@ -29,7 +29,7 @@ import {
   type CuratedPlaylistDef,
 } from '../services/curated-playlists.js';
 import { upsertCuratedPlaylist } from '../services/auto-playlists.service.js';
-import { expandHome } from './lib/expand-home.js';
+import { expandHome } from '@nicotind/core';
 
 function loadDataDir(): string {
   let fileConfig: Record<string, unknown> = {};

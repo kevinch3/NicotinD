@@ -27,7 +27,7 @@ import { verifyGenre } from '../services/track-analysis.js';
 import { writeAudioTags } from '../services/audio-tags.js';
 import { planGenreBackfill, resolveSongAbsPath } from '../services/track-backfill.js';
 import { setSongGenres } from '../services/genre-split.js';
-import { expandHome } from './lib/expand-home.js';
+import { expandHome } from '@nicotind/core';
 
 function loadConfig(): {
   dataDir: string;

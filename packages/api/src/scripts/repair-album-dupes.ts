@@ -38,7 +38,7 @@ import { resolve, join, basename } from 'node:path';
 import { parse } from 'yaml';
 import { Database } from 'bun:sqlite';
 import { dedupeFolder, dupKey, pickKeeper, type DupFile } from '../services/album-dedupe.js';
-import { expandHome } from './lib/expand-home.js';
+import { expandHome } from '@nicotind/core';
 
 // Re-exported so existing importers/tests keep working after the core moved to
 // the shared album-dedupe module.

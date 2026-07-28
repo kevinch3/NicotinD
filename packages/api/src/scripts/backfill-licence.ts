@@ -21,7 +21,7 @@ import { LICENCE_LABELS, type LicenceCode } from '@nicotind/core';
 import { readAudioTags, writeAudioTags } from '../services/audio-tags.js';
 import { resolveSongAbsPath } from '../services/track-backfill.js';
 import { MusicBrainzClient, MB_USER_AGENT } from '../services/musicbrainz-client.js';
-import { expandHome } from './lib/expand-home.js';
+import { expandHome } from '@nicotind/core';
 
 function loadConfig(): { dataDir: string; musicDir: string | null } {
   let fileConfig: Record<string, unknown> = {};

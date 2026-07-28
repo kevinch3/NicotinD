@@ -47,7 +47,7 @@ import {
 } from '../services/genre-resolve.js';
 import { getMbid, upsertMbid } from '../services/mbid-store.js';
 import { MusicBrainzClient, MB_USER_AGENT } from '../services/musicbrainz-client.js';
-import { expandHome } from './lib/expand-home.js';
+import { expandHome } from '@nicotind/core';
 
 function loadDataDir(): string {
   let fileConfig: Record<string, unknown> = {};

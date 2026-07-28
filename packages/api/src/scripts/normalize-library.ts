@@ -51,7 +51,7 @@ import { readAudioTags, writeAudioTags, AUDIO_EXTS } from '../services/audio-tag
 import { sanitizeSegment } from '../services/path-sanitize.js';
 import { normalizeTagValue } from '../services/audio-tags.js';
 import { MusicBrainzClient } from '../services/musicbrainz-client.js';
-import { expandHome } from './lib/expand-home.js';
+import { expandHome } from '@nicotind/core';
 
 // ─── CLI flags ────────────────────────────────────────────────────────────────
 

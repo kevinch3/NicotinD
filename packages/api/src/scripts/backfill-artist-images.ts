@@ -29,15 +29,12 @@ import { join, resolve } from 'node:path';
 import { parse } from 'yaml';
 import { Database } from 'bun:sqlite';
 import { Lidarr } from '@nicotind/lidarr-client';
+import { expandHome } from '@nicotind/core';
 import {
   countArtistsNeedingPortrait,
   fillArtistImages,
   selectArtistsNeedingPortrait,
 } from '../services/artist-image-fill.js';
-
-function expandHome(p: string): string {
-  return p.startsWith('~') ? join(process.env.HOME ?? '/root', p.slice(1)) : p;
-}
 
 function loadConfig(): { dataDir: string; lidarrUrl: string | null; lidarrKey: string | null } {
   let fileConfig: Record<string, unknown> = {};

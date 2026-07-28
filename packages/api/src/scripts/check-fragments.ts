@@ -30,7 +30,7 @@ import { resolve, join } from 'node:path';
 import { parse } from 'yaml';
 import { Database } from 'bun:sqlite';
 import { checkFragments, type FragmentReport } from '../services/library-fragments.js';
-import { expandHome } from './lib/expand-home.js';
+import { expandHome } from '@nicotind/core';
 
 function loadConfig(): { dataDir: string } {
   let fileConfig: Record<string, unknown> = {};

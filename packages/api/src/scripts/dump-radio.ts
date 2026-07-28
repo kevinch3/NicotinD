@@ -31,7 +31,7 @@ import { resolve, join } from 'node:path';
 import { parse } from 'yaml';
 import { Database } from 'bun:sqlite';
 import { parseLibraryFilter, type LibraryFilter } from '@nicotind/core';
-import { expandHome } from './lib/expand-home.js';
+import { expandHome } from '@nicotind/core';
 import {
   explainSimilarity,
   DEFAULT_WEIGHTS,

@@ -10,7 +10,7 @@ import {
   unlinkSync,
 } from 'node:fs';
 import { basename, dirname, extname, join, relative, sep } from 'node:path';
-import { cleanFolderName, createLogger, parseYearFromFolder } from '@nicotind/core';
+import { cleanFolderName, createLogger, expandHome, parseYearFromFolder } from '@nicotind/core';
 import { classifyFolder, type Classification } from './compilation-tagger.js';
 import { extractAlbumName, inferFolderAlbum, inferMetadataFromPath } from './path-inference.js';
 import type { CompletedDownloadFile } from './path-inference.js';
@@ -818,10 +818,6 @@ function pruneEmptyAncestors(dir: string, stopAt: string): void {
     }
     cur = norm(dirname(cur));
   }
-}
-
-function expandHome(p: string): string {
-  return p.startsWith('~') ? join(process.env.HOME ?? '/root', p.slice(1)) : p;
 }
 
 function stripAccents(s: string): string {

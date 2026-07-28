@@ -16,7 +16,7 @@ import { parse } from 'yaml';
 import { initDatabase } from '../db.js';
 import { CompilationTagger } from '../services/compilation-tagger.js';
 import type { CompletedDownloadFile } from '../services/path-inference.js';
-import { expandHome } from './lib/expand-home.js';
+import { expandHome } from '@nicotind/core';
 
 // ── Config loading (mirrors main.ts) ────────────────────────────────────────
 
