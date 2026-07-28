@@ -32,7 +32,14 @@ const emptyLocal = { artists: [] as unknown[], albums: [] as unknown[], songs: [
  *   network fan-out is skipped just as it already is for listeners) — the page
  *   still works, it just never surfaces acquirable results.
  */
-export function searchRoutes(registry: ProviderRegistry, acquisitionEnabled = true) {
+export function searchRoutes(
+  registry: ProviderRegistry,
+  acquisitionEnabled: boolean | (() => boolean) = true,
+) {
+  // Getter, not a captured boolean, so the admin runtime toggle takes effect
+  // without a restart (issue #235).
+  const acquisitionOn =
+    typeof acquisitionEnabled === 'function' ? acquisitionEnabled : () => acquisitionEnabled;
   const app = new OpenAPIHono<AuthEnv>();
 
   // Unified search: returns local results immediately + fires network search
@@ -107,7 +114,7 @@ export function searchRoutes(registry: ProviderRegistry, acquisitionEnabled = tr
         //    Listeners get a library-only search (no network lane surfaced).
         let searchId: string = crypto.randomUUID();
         let networkAvailable = false;
-        const acquirer = acquisitionEnabled && canAcquire(asRole(getCurrentUser(c)?.role));
+        const acquirer = acquisitionOn() && canAcquire(asRole(getCurrentUser(c)?.role));
         for (const provider of acquirer ? registry.getByType('network') : []) {
           try {
             const { searchId: providerSearchId } = await provider.search(query);

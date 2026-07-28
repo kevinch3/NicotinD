@@ -137,6 +137,33 @@ access (the API's `audio-features` task tolerates the CPU fallback fine), simply
 CPU image and never asks the host for a GPU, so it isn't subject to the
 `nvidia-persistenced` runtime dance at all.
 
+### Acquisition runtime toggle (issue #235)
+
+`config.acquisitionEnabled` shipped **env-only**, read once at boot, so turning
+acquisition off meant editing the environment and restarting. The issue left this
+open with the note that *"boot-constructed services can't tear down live"* —
+which overstated the problem:
+
+- The two unattended pollers (watchlist, auto-acquire) **already re-check
+  `isAcquisitionEnabled()` every tick**, so they self-disable the moment the value
+  changes. Nothing needs tearing down. They only had to be *started* whenever the
+  **environment** permits, rather than when the runtime flag is on, so a runtime
+  *enable* has something to wake up.
+- What genuinely had to change is three capture sites, from `boolean` to
+  `() => boolean`: the gate middleware, `searchRoutes`, and `authRoutes` (`/me`).
+  Each still accepts a plain boolean, so existing callers and tests are unaffected.
+
+`AcquisitionToggle` (`services/acquisition-toggle.ts`) reads `app_settings` per
+call and is deliberately **not memoized** — a stale cache here means an admin
+turns acquisition off and the routes carry on serving it.
+
+**The environment is a hard floor, not a default.** `NICOTIND_ACQUISITION=off`
+cannot be lifted from the UI: a deployment shipped without slskd (the
+streaming-only compose profile) must not be re-enablable by whoever happens to
+hold an admin account. `GET`/`PUT /api/admin/acquisition` return `configurable:
+false` in that case so the UI can render the control read-only instead of
+offering something that silently does nothing. Flips are audit-logged.
+
 ### Infra image pins
 
 Images the app doesn't own are version-pinned so users can't drift on risky

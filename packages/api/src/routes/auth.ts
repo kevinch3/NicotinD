@@ -42,8 +42,12 @@ export function authRoutes(
   // can hide every acquisition surface (nav, Search's acquire lane, guards) when
   // the whole module is off — the web-side half of the shared `acquisitionEnabled`
   // guard. Defaults on so existing callers/tests keep today's behavior.
-  acquisitionEnabled = true,
+  acquisitionEnabled: boolean | (() => boolean) = true,
 ) {
+  // Getter, not a captured boolean, so `/me` reflects the admin runtime toggle
+  // immediately rather than at the next restart (issue #235).
+  const acquisitionOn =
+    typeof acquisitionEnabled === 'function' ? acquisitionEnabled : () => acquisitionEnabled;
   const app = new OpenAPIHono<AuthEnv>();
 
   // Public endpoint: check if registration is open
@@ -438,7 +442,7 @@ export function authRoutes(
         welcomeDismissed: (settings?.welcome_dismissed ?? 0) === 1,
         autoplayOnLoad: (settings?.autoplay_on_load ?? 0) === 1,
         feedbackCapture: (settings?.feedback_capture ?? 0) === 1,
-        acquisitionEnabled,
+        acquisitionEnabled: acquisitionOn(),
       } as {
         id: string;
         username: string;

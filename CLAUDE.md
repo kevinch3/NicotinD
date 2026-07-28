@@ -488,8 +488,14 @@ Add detail there, not here.
   **`docker-compose.streaming-only.yml`** actually runs lighter — it resolves to `nicotind` +
   `analysis` only, dropping slskd/Lidarr/bgutil; it needs *both* `profiles:` on those services and
   `depends_on: !reset null` on nicotind, because compose **merges** `depends_on` rather than
-  replacing it (`[]` silently keeps the base entries). **Left open**: admin runtime toggle
-  (env-only for now — boot-constructed services can't tear down live). →
+  replacing it (`[]` silently keeps the base entries). **Now runtime-togglable**: `AcquisitionToggle` +
+  `GET`/`PUT /api/admin/acquisition` (audit-logged). The "can't tear down live"
+  worry was overstated — the pollers already re-check `isAcquisitionEnabled()` per tick, so they
+  self-disable; they just needed starting whenever the *env* permits. The real change was three
+  capture sites going `boolean` → `() => boolean` (gate middleware, `searchRoutes`, `/me`). The env
+  var is a **hard floor an admin cannot lift** (`configurable: false`), so a streaming-only install
+  can't be re-enabled by an admin account; the read is un-memoized because a stale cache means the
+  routes keep serving after an admin turns it off. →
   [docs/deployment.md](docs/deployment.md) "Streaming-only profile", [docs/roles.md](docs/roles.md)
 - **Guided acquire UX**: catalog cards are the primary path; the raw network/folder-browser lane is
   demoted behind an "Advanced" disclosure; the hunt modal leads with the best match. The raw lane's
