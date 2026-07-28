@@ -495,7 +495,8 @@ Add detail there, not here.
   capture sites going `boolean` → `() => boolean` (gate middleware, `searchRoutes`, `/me`). The env
   var is a **hard floor an admin cannot lift** (`configurable: false`), so a streaming-only install
   can't be re-enabled by an admin account; the read is un-memoized because a stale cache means the
-  routes keep serving after an admin turns it off. →
+  routes keep serving after an admin turns it off. The Admin panel exposes it as one switch —
+  read-only with an explanation when env-locked, and hidden entirely when the route is absent. →
   [docs/deployment.md](docs/deployment.md) "Streaming-only profile", [docs/roles.md](docs/roles.md)
 - **Guided acquire UX**: catalog cards are the primary path; the raw network/folder-browser lane is
   demoted behind an "Advanced" disclosure; the hunt modal leads with the best match. The raw lane's
