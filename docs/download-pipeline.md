@@ -53,6 +53,25 @@ The organizer **no longer force-writes `album="Singles"`** for the bucket fallba
 2. **Authoritative metadata** — the Lidarr/MusicBrainz `albumType` from the `library_release_meta` side table (`release-meta-store.ts`, keyed on `albumId`, off the scanner-managed rows so it survives prunes). A known catalog release is never hidden.
 3. **Heuristic fallback** — `1 → single`, `2–6 → ep`, `7+ → album`; the `[Unknown Album]/[Unknown Artist]` mega-bucket and unknown-identity single rows are hidden.
 
+**Metadata wins — except when the folder flatly contradicts it (issue #315).** Release titles collide
+across types: Dua Lipa has both an album *and* a single called "Future Nostalgia", so the catalog
+lookup can attach the single's type to the album's folder. Nothing re-evaluates that as the
+remaining tracks land, and because the grid filters on classification, an **18-track album vanished
+from Albums** and showed up under Singles & EPs. `contradictsTrackCount` overrides a catalog
+`single`/`ep` claim once the album holds **≥ 10 tracks**.
+
+The threshold is deliberately well clear of the `ep` band (6) rather than adjacent to it, and it was
+picked from the data rather than by taste: a maxi-single with remixes genuinely **is** a single, and
+prod has real 7–8-track examples ("Alejandro", "Paparazzi" — Lady Gaga) that must keep their catalog
+type. Measured against the live library, ≥ 10 flips **9** rows that are unambiguously albums
+(Waterloo 20, Future Nostalgia 18, She Wolf 18, Space Oddity 16, Ready For The Weekend 14, Teenage
+Dream 13, The Plot 13, Evanescence 12, Una Última Vez 11) and keeps all **3** genuine maxi-singles.
+
+The guard is **one-directional** — only an implausibly *short* claim is doubted. A catalog `album`
+or `compilation` is never second-guessed, whatever the track count. It is a backstop against a
+mismatched lookup, not general distrust of metadata; the deeper fix is re-evaluating classification
+when an album gains tracks after its first scan (noted on #315).
+
 ### Grid exclusion (centralized) & where singles surface
 
 The main Albums grid stays album-only via a **single** definition, `GRID_CLASSIFICATION_SQL = classification IN ('album','compilation')` in `routes/library.ts`, applied by `GET /api/library/albums` (so no listing endpoint can re-pollute the grid by forgetting the filter). Singles & EPs surface elsewhere:
