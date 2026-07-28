@@ -184,3 +184,82 @@ describe('LibraryCurator', () => {
     });
   });
 });
+
+/**
+ * Issue #315. Release titles collide across types — Dua Lipa has both an album
+ * and a single called "Future Nostalgia" — so the catalog lookup can attach the
+ * single's type to the album's folder. Nothing re-evaluates it as the remaining
+ * tracks land, and the Albums grid filters on `classification = 'album'`, so an
+ * 18-track album silently disappears from Albums.
+ */
+describe('metadata vs track-count contradiction (#315)', () => {
+  it('overrides a catalog "single" whose folder holds a full album', () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    seedAlbum(db, { id: 'fn', name: 'Future Nostalgia', artist: 'Dua Lipa', songCount: 18 });
+    setReleaseType(db, 'fn', 'single', { source: 'lidarr' });
+
+    new LibraryCurator(db).reclassifyAll();
+
+    const row = db.query(`SELECT classification, hidden FROM library_albums WHERE id='fn'`).get();
+    expect(row).toEqual({ classification: 'album', hidden: 0 });
+  });
+
+  it('overrides a catalog "ep" the same way', () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    seedAlbum(db, { id: 'ev', name: 'Evanescence', artist: 'Evanescence', songCount: 12 });
+    setReleaseType(db, 'ev', 'ep', { source: 'lidarr' });
+
+    new LibraryCurator(db).reclassifyAll();
+
+    expect(
+      db.query(`SELECT classification FROM library_albums WHERE id='ev'`).get(),
+    ).toEqual({ classification: 'album' });
+  });
+
+  /**
+   * The case the threshold exists to protect. A maxi-single with remixes really
+   * IS a single — prod has real 7- and 8-track examples ("Alejandro",
+   * "Paparazzi") that must keep their catalog type.
+   */
+  it('keeps a remix maxi-single as a single', () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    seedAlbum(db, { id: 'al', name: 'Alejandro', artist: 'Lady Gaga', songCount: 8 });
+    setReleaseType(db, 'al', 'single', { source: 'lidarr' });
+
+    new LibraryCurator(db).reclassifyAll();
+
+    expect(
+      db.query(`SELECT classification FROM library_albums WHERE id='al'`).get(),
+    ).toEqual({ classification: 'single' });
+  });
+
+  it('leaves an ordinary 1-track single alone', () => {
+    const db = new Database(':memory:');
+    applySchema(db);
+    seedAlbum(db, { id: 's1', name: 'Levitating', artist: 'Dua Lipa', songCount: 1 });
+    setReleaseType(db, 's1', 'single', { source: 'lidarr' });
+
+    new LibraryCurator(db).reclassifyAll();
+
+    expect(
+      db.query(`SELECT classification FROM library_albums WHERE id='s1'`).get(),
+    ).toEqual({ classification: 'single' });
+  });
+
+  it('never second-guesses a catalog "album" or "compilation"', () => {
+    // The guard is one-directional: only an implausibly SHORT type is doubted.
+    const db = new Database(':memory:');
+    applySchema(db);
+    seedAlbum(db, { id: 'c1', name: 'Now 100', artist: 'Various Artists', songCount: 40 });
+    setReleaseType(db, 'c1', 'compilation', { source: 'lidarr' });
+
+    new LibraryCurator(db).reclassifyAll();
+
+    expect(
+      db.query(`SELECT classification FROM library_albums WHERE id='c1'`).get(),
+    ).toEqual({ classification: 'compilation' });
+  });
+});

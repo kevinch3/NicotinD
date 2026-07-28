@@ -145,6 +145,24 @@ type Classification = 'album' | 'ep' | 'single' | 'compilation' | 'unknown';
  * back to a track-count heuristic otherwise. Pure: the metadata lookup happens
  * in the caller so this stays unit-testable.
  */
+/**
+ * Track count above which a `single`/`ep` claim is not credible.
+ *
+ * Deliberately well clear of `EP_MAX_TRACKS` (6) rather than adjacent to it: a
+ * maxi-single with remixes genuinely *is* a single, and prod has real 7- and
+ * 8-track examples ("Alejandro", "Paparazzi" — Lady Gaga) that must keep their
+ * catalog type. Only a gross contradiction overrides the catalog — the 12/14/18
+ * track cases — so this stays a backstop against a mismatched lookup, not a
+ * general distrust of metadata.
+ */
+const IMPLAUSIBLE_SHORT_RELEASE_TRACKS = 10;
+
+/** True when a catalog `single`/`ep` claim is contradicted by the folder. */
+export function contradictsTrackCount(metaType: ReleaseType, songCount: number): boolean {
+  if (metaType !== 'single' && metaType !== 'ep') return false;
+  return songCount >= IMPLAUSIBLE_SHORT_RELEASE_TRACKS;
+}
+
 function classify(
   row: AlbumRow,
   metaType?: ReleaseType,
@@ -171,8 +189,17 @@ function classify(
     return { classification: 'unknown', hidden: true };
   }
 
-  // Authoritative metadata type wins: a known catalog release is never hidden.
+  // Authoritative metadata type wins: a known catalog release is never hidden —
+  // EXCEPT when the folder's own track count flatly contradicts it (issue #315).
+  // Titles collide across release types (Dua Lipa has both an album and a single
+  // called "Future Nostalgia"), so the catalog lookup can attach the single's
+  // type to the album's folder; nothing re-evaluates it as the remaining tracks
+  // land, and the Albums grid — which filters on `classification = 'album'` —
+  // then omits an 18-track album entirely.
   if (metaType) {
+    if (contradictsTrackCount(metaType, row.song_count)) {
+      return { classification: 'album', hidden: false };
+    }
     return { classification: metaType, hidden: false };
   }
 
