@@ -281,7 +281,11 @@ Add detail there, not here.
   strip `Content-Length` off Blob-bodied stream responses (the Firefox "never plays" bug).
   **Transcode cache integrity** (size-in-key, 1 KiB size floor, ffprobe post-check +
   `-xerror`/`+discardcorrupt`/`-err_detect explode`, in-use pin during pruning, body wrapper that
-  releases the pin on response end) closes the "1 KiB / 240 s track → 1.8 s media resource → seek
+  releases the pin on response end, plus a **negative cache** for permanently-unusable sources —
+  issue #317: the rejection was right but unremembered, so a damaged file re-ran its doomed ffmpeg
+  pass on every play; only the typed deterministic `TranscodeOutputRejectedError` is cached, never a
+  transient ffmpeg crash/ENOSPC, keyed `path+size+mtime` so a repaired re-download transcodes again
+  with no manual eviction) closes the "1 KiB / 240 s track → 1.8 s media resource → seek
   bar at 100 % → false `ended`" failure mode on both the streaming cache and the ingest-time Opus
   transcode (which writes into the library itself). **Frontend false-ended recovery** (70 % + 5 s
   duration gate in `browserDurationIsAcceptable`, `isFalseEnded` / `startRecovery` state machine, 5
