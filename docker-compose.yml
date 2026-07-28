@@ -58,7 +58,12 @@ services:
     # Dockerfile) — a mismatch silently breaks YouTube downloads. Set
     # BGUTIL_VERSION in `.env` to move both at once; `bun run check:bgutil-pin`
     # (CI) fails if the two baked defaults ever drift apart. See issue #238.
-    image: brainicism/bgutil-ytdlp-pot-provider:${BGUTIL_VERSION:-1.3.1}
+    # Our own build of the same upstream source (issue #238) — GPL-3.0, built by
+    # the `docker-pot-provider` job in deploy.yml from the BGUTIL_VERSION pin
+    # below, so the provider tracks our release cadence instead of a third
+    # party's. Override to `brainicism/bgutil-ytdlp-pot-provider:${BGUTIL_VERSION}`
+    # to fall back to upstream's image.
+    image: ghcr.io/kevinch3/nicotind-pot-provider:${NICOTIND_IMAGE_TAG:-release}
     # why explicit `runtime: runc`: a host whose Docker daemon's default
     # runtime is the NVIDIA container runtime (e.g. after `nvidia-ctk runtime
     # configure --runtime=nvidia --set-as-default`) will try to bind-mount

@@ -142,20 +142,59 @@ CPU image and never asks the host for a GPU, so it isn't subject to the
 Images the app doesn't own are version-pinned so users can't drift on risky
 components (Immich digest-pins theirs): `slskd` (already pinned),
 `linuxserver/lidarr` (was `:latest` — a silent Lidarr major can break the API
-client), and `brainicism/bgutil-ytdlp-pot-provider`, which must stay **in
-step with the pip-installed plugin pinned in the Dockerfile**.
+client). The PO-token provider **is no longer one of them**: we build it (below).
 
 **That pairing is now enforced, not just documented (issue #238).** The two
 halves live in different files built by different systems — the pip plugin in
 the `Dockerfile` (baked into our image by CI) and the companion service tag in
 `docker-compose.yml` (resolved at deploy time) — and a mismatch does not fail
 loudly: the service starts and YouTube downloads quietly stop working. Two
-changes: **`BGUTIL_VERSION` overrides both** (a build-arg in the Dockerfile, a
-`${BGUTIL_VERSION:-…}` interpolation in compose) so an operator bumps one
-value, and **`bun run check:bgutil-pin`** runs in CI and fails when the two
-baked defaults drift apart. It is a gate rather than a report because there is
-exactly one correct answer — the strings match or they don't — so there is no
-false-positive class to cry wolf with.
+changes: **`BGUTIL_VERSION` overrides both** (a build-arg on each side) so an
+operator bumps one value, and **`bun run check:bgutil-pin`** runs in CI and
+fails when the two baked defaults drift apart. It is a gate rather than a report
+because there is exactly one correct answer — the strings match or they don't —
+so there is no false-positive class to cry wolf with.
+
+### We build the PO-token provider ourselves (issue #238)
+
+The companion service was `brainicism/bgutil-ytdlp-pot-provider:X`, a
+third-party image whose tag had to be kept in lockstep by hand with the pip
+plugin baked into ours. It is now **our own image**,
+`ghcr.io/kevinch3/nicotind-pot-provider`, built by the `docker-pot-provider` job
+in `deploy.yml` — same tag scheme and cache scoping as `docker-analysis`, so
+there is one shape to learn for our side-car images.
+
+- **Built from pinned upstream source, not vendored.** `packages/pot-provider/Dockerfile`
+  fetches the tagged tarball and mirrors upstream's own `server/Dockerfile` (node
+  target), so a version bump is a tag change rather than a rewrite. Vendoring a
+  whole Node service into this monorepo would make its dependency updates ours.
+  Upstream is **GPL-3.0**, compatible with this project's AGPL-3.0-only.
+- **The drift gate got better, not weaker.** `check:bgutil-pin` used to compare
+  the pip pin against a *third-party image tag*; both halves are now files in
+  this repo (`Dockerfile` vs `packages/pot-provider/Dockerfile`), so the thing
+  being compared is something we control.
+- **Two deviations from upstream's Dockerfile**, both because ours must also
+  build on a daemon without buildx: `/app` is chowned before dropping to the
+  `node` user (upstream's BuildKit cache mount side-steps the ordering, so
+  `npm ci` fails with EACCES without it), and `NPM_CONFIG_CACHE` points at a
+  writable path instead of relying on that mount.
+- **Verified end-to-end, not just "it builds"** — the failure mode this issue
+  exists to prevent is a provider that *starts* while minting invalid tokens.
+  Our image was run locally and asked for a real PO token against YouTube's live
+  attestation endpoint; it returned a valid token with the same shape and
+  `version: 1.3.1` as the upstream image did in the same test. To repeat it:
+
+  ```bash
+  docker build -t pot-test packages/pot-provider
+  docker run -d --name pot-test -p 14417:4416 pot-test
+  curl -s http://127.0.0.1:14417/ping
+  curl -s -X POST http://127.0.0.1:14417/get_pot \
+    -H 'content-type: application/json' -d '{"content_binding":"dQw4w9WgXcQ"}'
+  ```
+
+  A `poToken` + `expiresAt` in the response means the provider is genuinely
+  talking to YouTube. Falling back to upstream's image is a one-line compose
+  override if ours ever regresses.
 
 ### Pinning a version
 
