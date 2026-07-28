@@ -78,6 +78,7 @@ describe('GET /api/admin/review', () => {
       // Default gatherer needs the global DB (initDatabase); stub it so this
       // file is green standalone, not only inside the full suite.
       orphanRows: mock(() => []),
+      artistImages: mock(() => ({ visible: 0, withPortrait: 0, missing: 0, manualOverride: 0 })),
       auditTail: mock(() => []),
       incompleteJobs: mock(() => []),
       untracked: mock(() => []),
@@ -226,6 +227,7 @@ describe('GET /api/admin/review', () => {
       // Default gatherer needs the global DB (initDatabase); stub it so this
       // file is green standalone, not only inside the full suite.
       orphanRows: mock(() => []),
+      artistImages: mock(() => ({ visible: 0, withPortrait: 0, missing: 0, manualOverride: 0 })),
       auditTail: mock(() => []),
       incompleteJobs: mock(() => []),
       untracked: mock(() => []),
@@ -299,6 +301,7 @@ describe('GET /api/admin/review — every slice lands in its own field (#274)', 
       incompleteJobs: mock(() => [{ id: 'incomplete-sentinel' }]),
       untracked: mock(() => [{ id: 'untracked-sentinel' }]),
       orphanRows: mock(() => [{ table: 'orphan-sentinel', rows: 1, orphans: 1 }]),
+      artistImages: mock(() => ({ visible: 0, withPortrait: 0, missing: 0, manualOverride: 0 })),
       auditTail: mock(() => [{ id: 'audit-sentinel' }]),
       backupsList: mock(async () => [{ name: 'backup-sentinel' }]),
     } as never;
