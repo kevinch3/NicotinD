@@ -344,7 +344,12 @@ Add detail there, not here.
   (bulk, dry-run by default) now share **one** implementation with the task via
   `services/artist-image-fill.ts` `fillArtistImages`; copying its resolve→persist sequence would
   have risked dropping the `clearCoverNegativeCache` eviction, which stores the portrait while the
-  UI keeps showing the placeholder. → [docs/library-scanner.md](docs/library-scanner.md)
+  UI keeps showing the placeholder. **Gap 4**: the upload/from-album control is now the shared
+  `ArtistImageMenuComponent`, used by the artist page *and* each Artists-grid tile (curator-gated) —
+  one component, not a copy, because a second one drifts on the busy-guard and the cache-bust (the
+  portrait URL is byte-identical after a change); `albums` is passed on the page but **lazily
+  fetched** on a tile, and a "Fetch automatically" entry finally gives that auto-fetch route a web
+  caller. → [docs/library-scanner.md](docs/library-scanner.md)
   short-circuit staying at the call-site SQL not the chain). **An identity fix carries curation
   forward (issue #305)**: a rename/merge re-mints the artist id, silently orphaning the portrait,
   the uploaded file and the bio (prod: 88 dead artwork rows of 1011, 2 dead uploads of 140) —

@@ -137,6 +137,17 @@ export class LibraryApiService {
       albumId,
     });
   }
+  /**
+   * Resolve a portrait from the provider chain on demand (issue #250 gap 1).
+   * Silent one-shot: gated server-side on "no portrait and not a manual
+   * override", so it can't thrash or clobber a curator upload.
+   */
+  autoFetchArtistImage(id: string) {
+    return this.http.post<{ filled: boolean }>(
+      `/api/library/artists/${id}/auto-fetch-image`,
+      {},
+    );
+  }
   /** Remove the manual artist-image override → revert to auto/placeholder (admin). */
   resetArtistImage(id: string) {
     return this.http.delete<{ ok: boolean }>(`/api/library/artists/${id}/image`);
