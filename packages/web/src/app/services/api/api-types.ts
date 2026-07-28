@@ -682,11 +682,24 @@ export interface ServiceReview {
    * so an admin can see whether the daily prune is keeping up.
    */
   orphanRows: OrphanCount[];
+  /** Artist-portrait coverage (issue #250). */
+  artistImages: ArtistImageCoverage;
   auditTail: AuditEntry[];
   incompleteJobs: IncompleteAlbumJob[];
   untracked: UntrackedDownload[];
   /** Human-readable sub-fetch errors the snapshot degraded around. */
   errors: string[];
+}
+
+/**
+ * Artist-portrait coverage (issue #250). `withPortrait + missing === visible`;
+ * `manualOverride` is the subset of `withPortrait` a bulk fill won't touch.
+ */
+export interface ArtistImageCoverage {
+  visible: number;
+  withPortrait: number;
+  missing: number;
+  manualOverride: number;
 }
 
 /** One side table's row/orphan tally (issue #259). */

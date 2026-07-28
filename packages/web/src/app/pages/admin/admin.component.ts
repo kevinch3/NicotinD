@@ -160,6 +160,8 @@ export class AdminComponent implements OnInit, OnDestroy {
   readonly incompleteJobsCount = this.reviewSvc.incompleteJobsCount;
   readonly untrackedCount = this.reviewSvc.untrackedCount;
   readonly orphanRows = this.reviewSvc.orphanRows;
+  readonly artistImages = this.reviewSvc.artistImages;
+  readonly artistImageCoverageRatio = this.reviewSvc.artistImageCoverageRatio;
   readonly orphanRowCount = this.reviewSvc.orphanRowCount;
   readonly analysis = this.reviewSvc.analysis;
 

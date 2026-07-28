@@ -281,6 +281,44 @@
             </div>
           }
 
+          <!-- Artist portraits: the single biggest visual signal in the Artists
+               grid, and a library can sit half-placeholder indefinitely with no
+               in-app way to see it (issue #250). Read-only overview; the fill
+               itself is the enrichment task / backfill script. Hidden once every
+               visible artist has one, so a healthy install shows nothing. -->
+          @if (artistImages().missing > 0) {
+            <div class="flex flex-col gap-1 mb-8" data-testid="artist-images-panel">
+              <p class="text-xs text-theme-secondary">
+                {{ artistImages().withPortrait }} of {{ artistImages().visible }} artists have a
+                portrait
+                <span class="text-theme-muted"
+                  >— {{ artistImages().missing }} still
+                  {{ artistImages().missing === 1 ? 'needs' : 'need' }} one.</span
+                >
+              </p>
+              <div
+                class="h-1.5 w-full max-w-xs rounded-full bg-theme-elevated overflow-hidden"
+                role="progressbar"
+                [attr.aria-valuenow]="artistImages().withPortrait"
+                [attr.aria-valuemin]="0"
+                [attr.aria-valuemax]="artistImages().visible"
+                aria-label="Artist portrait coverage"
+              >
+                <div
+                  class="h-full bg-theme-accent"
+                  data-testid="artist-images-bar"
+                  [style.width.%]="artistImageCoverageRatio() * 100"
+                ></div>
+              </div>
+              @if (artistImages().manualOverride > 0) {
+                <p class="text-xs text-theme-muted" data-testid="artist-images-overrides">
+                  {{ artistImages().manualOverride }} uploaded by a curator — a fill never
+                  overwrites those.
+                </p>
+              }
+            </div>
+          }
+
           <!-- Maintenance: portable config export/import (issue #221). -->
           <div class="flex flex-col gap-2 mb-8" data-testid="config-panel">
             <div class="flex items-center gap-3 flex-wrap">

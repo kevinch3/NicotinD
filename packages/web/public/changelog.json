@@ -1,5 +1,18 @@
 [
   {
+    "version": "0.1.278",
+    "date": "2026-07-28",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.277...v0.1.278",
+    "sections": [
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**library:** don't let a catalog \"single\" outrank an 18-track folder ([#315](https://github.com/kevinch3/NicotinD/issues/315)) ([30c5a76](https://github.com/kevinch3/NicotinD/commit/30c5a762684cbc751edd7f46cece743177559102)), references [#301](https://github.com/kevinch3/NicotinD/issues/301)"
+        ]
+      }
+    ]
+  },
+  {
     "version": "0.1.277",
     "date": "2026-07-27",
     "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.276...v0.1.277",
@@ -706,25 +719,6 @@
         "title": "Features",
         "items": [
           "**pairing:** camera-scannable pairing links, working in-app QR scan, multi-server support ([8305b6a](https://github.com/kevinch3/NicotinD/commit/8305b6ad238898411d93f2d8c7afd0d1f622bca0))"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.1.228",
-    "date": "2026-07-19",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.227...v0.1.228",
-    "sections": [
-      {
-        "title": "Features",
-        "items": [
-          "**desktop:** per-platform chrome + tray icon ([71ecccd](https://github.com/kevinch3/NicotinD/commit/71ecccd7ebea02b206bccd856e624b0a2b458fff))"
-        ]
-      },
-      {
-        "title": "Bug Fixes",
-        "items": [
-          "**desktop:** pre-auth title-bar overlay, prod icon staging, use shouldHideOnClose ([bcbdf2f](https://github.com/kevinch3/NicotinD/commit/bcbdf2f4601cc464e60c061bfd6c4f3a4fc03145))"
         ]
       }
     ]

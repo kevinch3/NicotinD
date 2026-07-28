@@ -28,6 +28,7 @@ function makeReview(over: Partial<ServiceReview> = {}): ServiceReview {
     incompleteJobsCount: 0,
     untrackedCount: 0,
     orphanRows: [],
+    artistImages: { visible: 0, withPortrait: 0, missing: 0, manualOverride: 0 },
     auditTail: [],
     incompleteJobs: [],
     untracked: [],

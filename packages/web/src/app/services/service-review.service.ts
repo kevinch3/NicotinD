@@ -77,6 +77,16 @@ export class ServiceReviewService {
   readonly orphanRowCount = computed(() =>
     this.orphanRows().reduce((sum, t) => sum + t.orphans, 0),
   );
+  /** Artist-portrait coverage (issue #250). */
+  readonly artistImages = computed(
+    () =>
+      this.review()?.artistImages ?? { visible: 0, withPortrait: 0, missing: 0, manualOverride: 0 },
+  );
+  /** Share of visible artists that have a portrait, 0-1. Empty library reads as complete. */
+  readonly artistImageCoverageRatio = computed(() => {
+    const c = this.artistImages();
+    return c.visible > 0 ? c.withPortrait / c.visible : 1;
+  });
   readonly auditTail = computed(() => this.review()?.auditTail ?? []);
   /** Snapshots of the Admin tables — drained from ServiceReview instead of polled per-table. */
   readonly incompleteJobs = computed(() => this.review()?.incompleteJobs ?? []);

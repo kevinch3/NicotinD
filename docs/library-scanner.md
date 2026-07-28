@@ -250,6 +250,32 @@ The album/EP **detail track list omits the per-track thumbnail** (every row shar
 
 ---
 
+### Portrait coverage in Admin (issue #250 gap 3)
+
+Portraits are the biggest visual signal in the Artists grid, and a library could sit
+half-placeholder indefinitely with **no in-app way to see it** — prod measured **980 of 2,472**
+visible artists with a portrait (39.6 %). `artistImageCoverage` (`services/artist-image-fill.ts`)
+feeds an `artistImages` slice on `GET /api/admin/review` — added **by name** through `allNamed`, per
+the #274 ServiceReview convention, so it's one polling lifecycle and not an Nth loader — rendered as
+an Admin row plus a coverage bar, hidden entirely once nothing is missing.
+
+Two decisions worth keeping:
+
+- **`missing` reuses `NEEDS_PORTRAIT_SQL`** rather than restating the predicate, so the number an
+  admin reads is by construction the number a fill would act on. Restating it is how the fragment
+  reporter and the curator ended up disagreeing (issue #314).
+- **`withPortrait` is computed directly, never as `visible - missing`.** A curator upload is served
+  from `<dataDir>/artist-overrides` and has **no `library_artwork` row at all**, so subtraction
+  reports 138 real prod portraits as missing. "Has a portrait" is `manual_override = 1` **or** an
+  artwork row; the two buckets partition `visible` exactly, which a test asserts (and which holds on
+  prod data).
+
+Hidden artists (`split_compound` rows whose members represent them) are excluded from every bucket —
+the grid doesn't render them, so counting them would make coverage look permanently incomplete.
+
+**Still open on #250**: gap 4 (an Add-photo affordance on the Artists grid itself; today upload /
+copy-from-album is reachable only from an individual artist page).
+
 ## Canonical artwork
 
 Soulseek rips often carry missing/low-res/wrong embedded art; audio files carry no artist photo at all. Fix: the `library_artwork(id, kind, cover_url, updated_at)` table stores canonical URLs keyed on the **same deterministic ids the scanner mints** (`albumIdFor`/`artistIdFor`) — kept off the scanner-managed tables on purpose, so it survives full rescans/prunes untouched and can be written at hunt time _before_ the album is scanned onto disk.
