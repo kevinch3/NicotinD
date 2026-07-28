@@ -425,7 +425,13 @@ Add detail there, not here.
   pure `clampInt`, and an **analysis-sidecar status** row renders from a new
   `services.analysis {configured,healthy}` slice on `GET /api/admin/review` (unconfigured is the
   default deployment, never an `errors[]` entry). CPU-vs-GPU stays build-time (`GPU=1` arg), so the
-  UI governs runtime load only. A `paused` flag (+ `ProcessingPhase 'paused'`) is the temporary
+  UI governs runtime load only — and **measurement showed `concurrency` is a CPU/queueing knob, not
+  a GPU one** (issue #224): throughput is flat within 1 % from concurrency 1→8 because the sidecar
+  serialises inference, and peak GPU memory is identical too. The real pressure is that TF **never
+  releases** grown memory, so the sidecar ratchets from ~85 MiB to **7,631 MiB of an 8,192 MiB card
+  after the first inference and holds it while idle** — `gpuBusyPercent` gates on *utilisation*, so
+  it can't protect a co-tenant from that *allocation*. →
+  [docs/audio-ml-enrichment.md](docs/audio-ml-enrichment.md) "Measured GPU behaviour". A `paused` flag (+ `ProcessingPhase 'paused'`) is the temporary
   runtime halt distinct from `enabled: false`: it skips window/background enrichment but **still
   clears quarantine** (a pause must never leave new music invisible) and `runNow()` overrides it.
   **`gpuBusyPercent` (0 = off) is the *automatic* counterpart**: `tick()` reads the existing cached
