@@ -68,7 +68,11 @@ export function saveScanCache(db: Database, tracks: ScannedTrack[]): void {
      ON CONFLICT(path) DO UPDATE SET
        size = excluded.size,
        mtime_ms = excluded.mtime_ms,
-       track_json = excluded.track_json`,
+       track_json = excluded.track_json,
+       -- Writing an entry is proof the file is live, so it can't be a pending
+       -- orphan (issue #313). The pruner's unmark pass would clear this anyway;
+       -- doing it here too means correctness doesn't depend on that ordering.
+       orphaned_at = NULL`,
   );
   const tx = db.transaction((ts: ScannedTrack[]) => {
     for (const t of ts) stmt.run(t.relPath, t.size, t.mtimeMs, JSON.stringify(t));
