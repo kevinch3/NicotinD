@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.278](https://github.com/kevinch3/NicotinD/compare/v0.1.277...v0.1.278) (2026-07-28)
+
+### Bug Fixes
+
+* **library:** don't let a catalog "single" outrank an 18-track folder ([#315](https://github.com/kevinch3/NicotinD/issues/315)) ([30c5a76](https://github.com/kevinch3/NicotinD/commit/30c5a762684cbc751edd7f46cece743177559102)), references [#301](https://github.com/kevinch3/NicotinD/issues/301)
 ## [0.1.277](https://github.com/kevinch3/NicotinD/compare/v0.1.276...v0.1.277) (2026-07-27)
 
 ### Features
