@@ -158,7 +158,7 @@ describe('AdminComponent (snapshot-driven via ServiceReview)', () => {
             getUsers: mocks.getUsers,
             getStreamingSettings: mocks.getStreaming,
             saveStreamingSettings: vi.fn((p: unknown) => of(p as object)),
-            getProcessing: mocks.getProcessing,
+            getProcessing: mocks.getProcessing, getAcquisition: vi.fn(() => of({ enabled: true, configurable: true })), setAcquisition: vi.fn((e: boolean) => of({ enabled: e, configurable: true })),
             saveProcessing: vi.fn((p: unknown) => of(p as object)),
           },
         },
@@ -205,7 +205,7 @@ describe('AdminComponent (orphan side-table rows, #259)', () => {
       imports: [AdminComponent],
       providers: [
         { provide: DownloadsApiService, useValue: {} },
-        { provide: SystemApiService, useValue: { getUsers: vi.fn(() => of([])), getStreamingSettings: mocks.getStreaming, saveStreamingSettings: vi.fn((p: unknown) => of(p as object)), getProcessing: mocks.getProcessing, saveProcessing: vi.fn((p: unknown) => of(p as object)) } },
+        { provide: SystemApiService, useValue: { getUsers: vi.fn(() => of([])), getStreamingSettings: mocks.getStreaming, saveStreamingSettings: vi.fn((p: unknown) => of(p as object)), getProcessing: mocks.getProcessing, getAcquisition: vi.fn(() => of({ enabled: true, configurable: true })), setAcquisition: vi.fn((e: boolean) => of({ enabled: e, configurable: true })), saveProcessing: vi.fn((p: unknown) => of(p as object)) } },
         { provide: LibraryApiService, useValue: { resyncLibrary: vi.fn(() => of({ ok: true })), getFragments: vi.fn(() => of({ duplicateAlbums: [], hiddenByClassification: [], misSplitAlbums: [], totals: { duplicateAlbums: 0, hiddenByClassification: 0, misSplitAlbums: 0 }, ok: true } as LibraryFragmentReport)) } },
         { provide: ServiceReviewService, useValue: mocks.reviewService },
         { provide: AuthService, useValue: { token: () => null } },
@@ -227,6 +227,80 @@ describe('AdminComponent (orphan side-table rows, #259)', () => {
   });
 });
 
+/** Issue #235: the runtime acquisition kill-switch. The env-disabled case is
+ *  the one that matters — an operator's decision must not be liftable here. */
+describe('AdminComponent (acquisition kill-switch, #235)', () => {
+  async function mount(acq: { enabled: boolean; configurable: boolean } | 'unavailable') {
+    TestBed.resetTestingModule();
+    const mocks = makeAdminMocks();
+    const getAcquisition =
+      acq === 'unavailable'
+        ? vi.fn(() => throwError(() => new Error('503')))
+        : vi.fn(() => of(acq));
+    const setAcquisition = vi.fn((enabled: boolean) =>
+      of({ enabled, configurable: acq === 'unavailable' ? true : acq.configurable }),
+    );
+    await TestBed.configureTestingModule({
+      imports: [AdminComponent],
+      providers: [
+        { provide: DownloadsApiService, useValue: {} },
+        { provide: SystemApiService, useValue: { getUsers: vi.fn(() => of([])), getStreamingSettings: mocks.getStreaming, saveStreamingSettings: vi.fn((p: unknown) => of(p as object)), getProcessing: mocks.getProcessing, saveProcessing: vi.fn((p: unknown) => of(p as object)), getAcquisition, setAcquisition } },
+        { provide: LibraryApiService, useValue: { resyncLibrary: vi.fn(() => of({ ok: true })), getFragments: vi.fn(() => of({ duplicateAlbums: [], hiddenByClassification: [], misSplitAlbums: [], totals: { duplicateAlbums: 0, hiddenByClassification: 0, misSplitAlbums: 0 }, ok: true } as LibraryFragmentReport)) } },
+        { provide: ServiceReviewService, useValue: mocks.reviewService },
+        { provide: AuthService, useValue: { token: () => null } },
+      ],
+    }).compileComponents();
+    const f = TestBed.createComponent(AdminComponent);
+    f.componentInstance.loading.set(false);
+    f.detectChanges();
+    await f.whenStable();
+    f.detectChanges();
+    return { f, setAcquisition };
+  }
+
+  const toggle = (f: { nativeElement: unknown }) =>
+    (f.nativeElement as HTMLElement).querySelector(
+      '[data-testid="acquisition-toggle"]',
+    ) as HTMLInputElement | null;
+
+  it('reflects the current state and can turn it off', async () => {
+    const { f, setAcquisition } = await mount({ enabled: true, configurable: true });
+    const box = toggle(f)!;
+    expect(box.checked).toBe(true);
+    expect(box.disabled).toBe(false);
+
+    box.checked = false;
+    box.dispatchEvent(new Event('change'));
+    expect(setAcquisition).toHaveBeenCalledWith(false);
+    f.destroy();
+  });
+
+  // The asymmetry: an operator disabled it deployment-wide, so the control is
+  // read-only and says why rather than silently doing nothing.
+  it('renders read-only with an explanation when the environment disabled it', async () => {
+    const { f, setAcquisition } = await mount({ enabled: false, configurable: false });
+    const box = toggle(f)!;
+    expect(box.checked).toBe(false);
+    expect(box.disabled).toBe(true);
+    expect(
+      (f.nativeElement as HTMLElement).querySelector('[data-testid="acquisition-env-locked"]')
+        ?.textContent,
+    ).toContain('NICOTIND_ACQUISITION');
+
+    box.dispatchEvent(new Event('change'));
+    expect(setAcquisition).not.toHaveBeenCalled();
+    f.destroy();
+  });
+
+  it('hides the panel entirely when the server does not expose the toggle', async () => {
+    const { f } = await mount('unavailable');
+    expect(
+      (f.nativeElement as HTMLElement).querySelector('[data-testid="acquisition-panel"]'),
+    ).toBeFalsy();
+    f.destroy();
+  });
+});
+
 describe('AdminComponent (incompleteJobs / untracked via ServiceReview)', () => {
   beforeEach(async () => {
     const mocks = makeAdminMocks();
@@ -234,7 +308,7 @@ describe('AdminComponent (incompleteJobs / untracked via ServiceReview)', () => 
       imports: [AdminComponent],
       providers: [
         { provide: DownloadsApiService, useValue: {} },
-        { provide: SystemApiService, useValue: { getUsers: vi.fn(() => of([])), getStreamingSettings: mocks.getStreaming, saveStreamingSettings: vi.fn((p: unknown) => of(p as object)), getProcessing: mocks.getProcessing, saveProcessing: vi.fn((p: unknown) => of(p as object)) } },
+        { provide: SystemApiService, useValue: { getUsers: vi.fn(() => of([])), getStreamingSettings: mocks.getStreaming, saveStreamingSettings: vi.fn((p: unknown) => of(p as object)), getProcessing: mocks.getProcessing, getAcquisition: vi.fn(() => of({ enabled: true, configurable: true })), setAcquisition: vi.fn((e: boolean) => of({ enabled: e, configurable: true })), saveProcessing: vi.fn((p: unknown) => of(p as object)) } },
         { provide: LibraryApiService, useValue: { resyncLibrary: vi.fn(() => of({ ok: true })), getFragments: vi.fn(() => of({ duplicateAlbums: [], hiddenByClassification: [], misSplitAlbums: [], totals: { duplicateAlbums: 0, hiddenByClassification: 0, misSplitAlbums: 0 }, ok: true } as LibraryFragmentReport)) } },
         { provide: ServiceReviewService, useValue: mocks.reviewService },
         { provide: AuthService, useValue: { token: () => null } },
@@ -287,7 +361,7 @@ describe('AdminComponent (incompleteJobs / untracked via ServiceReview)', () => 
       imports: [AdminComponent],
       providers: [
         { provide: DownloadsApiService, useValue: {} },
-        { provide: SystemApiService, useValue: { getUsers: vi.fn(() => of([])), getStreamingSettings: mocks.getStreaming, saveStreamingSettings: vi.fn((p: unknown) => of(p as object)), getProcessing: mocks.getProcessing, saveProcessing: vi.fn((p: unknown) => of(p as object)) } },
+        { provide: SystemApiService, useValue: { getUsers: vi.fn(() => of([])), getStreamingSettings: mocks.getStreaming, saveStreamingSettings: vi.fn((p: unknown) => of(p as object)), getProcessing: mocks.getProcessing, getAcquisition: vi.fn(() => of({ enabled: true, configurable: true })), setAcquisition: vi.fn((e: boolean) => of({ enabled: e, configurable: true })), saveProcessing: vi.fn((p: unknown) => of(p as object)) } },
         { provide: LibraryApiService, useValue: { resyncLibrary, getFragments: vi.fn(() => of({ duplicateAlbums: [], hiddenByClassification: [], misSplitAlbums: [], totals: { duplicateAlbums: 0, hiddenByClassification: 0, misSplitAlbums: 0 }, ok: true } as LibraryFragmentReport)) } },
         { provide: ServiceReviewService, useValue: mocks.reviewService },
         { provide: AuthService, useValue: { token: () => null } },

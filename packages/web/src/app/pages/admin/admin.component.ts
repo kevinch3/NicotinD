@@ -111,6 +111,11 @@ export class AdminComponent implements OnInit, OnDestroy {
   readonly fragments = signal<LibraryFragmentReport | null>(null);
   readonly fragmentsError = signal<string | null>(null);
 
+  // Acquisition kill-switch (issue #235). `configurable` false = the env
+  // disabled it, a floor an admin cannot lift, so the control goes read-only.
+  readonly acquisition = signal<{ enabled: boolean; configurable: boolean } | null>(null);
+  readonly acquisitionSaving = signal(false);
+
   readonly streaming = signal<StreamingSettings | null>(null);
   readonly streamingSaving = signal(false);
   readonly streamingMessage = signal<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -197,6 +202,7 @@ export class AdminComponent implements OnInit, OnDestroy {
     void this.loadQuarantineQueue();
     this.connectProcessingStream();
     void this.loadAutoPlaylists();
+    this.loadAcquisition();
   }
 
   // --- Automated playlists (issue #228) ---
@@ -238,6 +244,31 @@ export class AdminComponent implements OnInit, OnDestroy {
   }
 
   // --- Streaming ---
+  private loadAcquisition(): void {
+    this.api.getAcquisition().subscribe({
+      next: (a) => this.acquisition.set(a),
+      // 503 = toggle not wired (an older server); hide the control rather than
+      // rendering one that can't work.
+      error: () => this.acquisition.set(null),
+    });
+  }
+
+  setAcquisition(enabled: boolean): void {
+    if (this.acquisitionSaving()) return;
+    // Don't call the API when the environment forbids acquisition. `disabled` on
+    // the input only stops *user* interaction; the server would refuse anyway,
+    // but there is no reason to ask it a question we already know the answer to.
+    if (!this.acquisition()?.configurable) return;
+    this.acquisitionSaving.set(true);
+    this.api.setAcquisition(enabled).subscribe({
+      next: (a) => {
+        this.acquisition.set(a);
+        this.acquisitionSaving.set(false);
+      },
+      error: () => this.acquisitionSaving.set(false),
+    });
+  }
+
   private async loadStreaming(): Promise<void> {
     try {
       this.streaming.set(await firstValueFrom(this.api.getStreamingSettings()));
