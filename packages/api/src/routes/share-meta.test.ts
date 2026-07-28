@@ -259,7 +259,9 @@ describe('shareMetaHandler', () => {
     const body = await res.text();
     expect(body).toContain('property="og:title" content="Discovery"');
     // `&` is HTML-escaped to `&amp;` inside the attribute (crawlers decode it back).
-    expect(body).toMatch(/og:image" content="http:\/\/host\/api\/cover\/alb-1\?size=600&amp;token=/);
+    expect(body).toMatch(
+      /og:image" content="http:\/\/host\/api\/cover\/alb-1\?size=600&amp;token=/,
+    );
   });
 
   it('falls through to the SPA for an unknown token', async () => {

@@ -1097,7 +1097,11 @@ describe('genre-discogs task', () => {
     await discogs.run(
       db,
       ctx({
-        lookupGenreForRelease: async () => ({ genres: ['Rock'], source: 'discogs', confidence: 0.6 }),
+        lookupGenreForRelease: async () => ({
+          genres: ['Rock'],
+          source: 'discogs',
+          confidence: 0.6,
+        }),
       }),
       25,
     );
@@ -1135,7 +1139,7 @@ describe('genre-discogs task', () => {
     expect(discogs.countPending(db)).toBe(1); // still pending — will retry
   });
 
-  it('fans one album lookup out across the album\'s songs', async () => {
+  it("fans one album lookup out across the album's songs", async () => {
     seedAlbumRow('alb', 'Mama Funk', 'Los Tetas');
     seedSong('a', { artist: 'Los Tetas' });
     seedSong('b', { artist: 'Los Tetas' });

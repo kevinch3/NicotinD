@@ -12,9 +12,7 @@ describe('sourceChipToneClass', () => {
   });
 
   it('falls back to neutral theme tokens for an unknown source', () => {
-    expect(sourceChipToneClass('mystery' as never)).toBe(
-      'bg-theme-surface-2 text-theme-muted',
-    );
+    expect(sourceChipToneClass('mystery' as never)).toBe('bg-theme-surface-2 text-theme-muted');
   });
 
   it('never emits raw Tailwind palette tints (theme-blind colours)', () => {

@@ -36,7 +36,9 @@ describe('DesktopTitleBarOverlayComponent', () => {
     const bar = fixture.nativeElement.querySelector('header[data-electron-title-bar]');
     expect(bar).toBeTruthy();
     expect(bar.className).toContain('[-webkit-app-region:drag]');
-    expect(fixture.nativeElement.querySelector('[data-testid="desktop-window-controls"]')).toBeTruthy();
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="desktop-window-controls"]'),
+    ).toBeTruthy();
     vi.mocked(platform.isElectronLinux).mockReturnValue(false);
     fixture.destroy();
   });

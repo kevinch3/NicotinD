@@ -117,9 +117,7 @@ export class SetupComponent {
     this.submitSetup(this.slskData);
   }
 
-  private submitSetup(
-    soulseek: { username: string; password: string } | null,
-  ): void {
+  private submitSetup(soulseek: { username: string; password: string } | null): void {
     if (!this.adminData) return;
     this.loading.set(true);
     this.error.set('');

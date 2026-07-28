@@ -4,13 +4,7 @@ import { getCapacitorPlugin, isIosNative } from '../lib/platform';
 import { toNativeMetadata, type NativeNowPlayingMetadata } from '../lib/now-playing';
 
 export type MediaAction =
-  | 'play'
-  | 'pause'
-  | 'nexttrack'
-  | 'previoustrack'
-  | 'seekto'
-  | 'seekforward'
-  | 'seekbackward';
+  'play' | 'pause' | 'nexttrack' | 'previoustrack' | 'seekto' | 'seekforward' | 'seekbackward';
 
 /** Called when the OS dispatches a media action; `seekTime` is set only for `seekto`. */
 export type MediaActionHandler = (seekTime: number | null) => void;

@@ -55,9 +55,9 @@ describe('parsePairingParams', () => {
   });
 
   it('drops non-http extra candidates', () => {
-    expect(parsePairingParams('#t=tok&u=javascript%3Aalert(1)', 'https://a.example')?.urls).toEqual([
-      'https://a.example',
-    ]);
+    expect(parsePairingParams('#t=tok&u=javascript%3Aalert(1)', 'https://a.example')?.urls).toEqual(
+      ['https://a.example'],
+    );
   });
 });
 
@@ -81,7 +81,9 @@ describe('buildPairingPayload / parsePairingPayload', () => {
     expect(parsePairingPayload('https://some-random-site.example')).toBeNull();
     expect(parsePairingPayload('not json at all')).toBeNull();
     expect(parsePairingPayload(JSON.stringify({ kind: 'other', v: 1, token: 'x' }))).toBeNull();
-    expect(parsePairingPayload(JSON.stringify({ kind: 'nicotind-pair', v: 2, token: 'x' }))).toBeNull();
+    expect(
+      parsePairingPayload(JSON.stringify({ kind: 'nicotind-pair', v: 2, token: 'x' })),
+    ).toBeNull();
     expect(parsePairingPayload(JSON.stringify({ kind: 'nicotind-pair', v: 1 }))).toBeNull();
   });
 
@@ -150,8 +152,8 @@ describe('claimPairing', () => {
       ok: false,
       json: () => Promise.resolve({ error: 'Pairing code has expired' }),
     } as Response);
-    await expect(claimPairing('https://desk.example', { code: 'ABC234' }, fetchImpl)).rejects.toThrow(
-      'Pairing code has expired',
-    );
+    await expect(
+      claimPairing('https://desk.example', { code: 'ABC234' }, fetchImpl),
+    ).rejects.toThrow('Pairing code has expired');
   });
 });

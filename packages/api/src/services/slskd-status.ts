@@ -67,7 +67,9 @@ function num(obj: unknown, ...path: string[]): number | undefined {
  * couple of plausible shapes and leave anything unresolved `undefined` (the UI
  * renders "—"). Speed limits are KiB/s in slskd's model; 0 = unlimited.
  */
-export function extractSlskdLimits(options: Record<string, unknown> | null | undefined): SlskdLimits {
+export function extractSlskdLimits(
+  options: Record<string, unknown> | null | undefined,
+): SlskdLimits {
   if (!options) return {};
   return {
     uploadSlots: num(options, 'global', 'upload', 'slots') ?? num(options, 'uploads', 'slots'),

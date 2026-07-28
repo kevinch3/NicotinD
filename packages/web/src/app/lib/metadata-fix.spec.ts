@@ -1,6 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import type { MetadataCandidate } from '../../types/core';
-import { defaultQuery, candidateToRequest, manualToRequest, isPlaceholderArtist } from './metadata-fix';
+import {
+  defaultQuery,
+  candidateToRequest,
+  manualToRequest,
+  isPlaceholderArtist,
+} from './metadata-fix';
 
 describe('defaultQuery', () => {
   it('joins artist and album', () => {

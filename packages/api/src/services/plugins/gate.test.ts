@@ -5,10 +5,7 @@ import type { Plugin } from '@nicotind/core';
 import type { AuthEnv } from '../../middleware/auth.js';
 import { applySchema } from '../../db.js';
 import { PluginRegistry } from './registry.js';
-import {
-  requireAcquisitionEnabledMiddleware,
-  requireAcquisitionMiddleware,
-} from './gate.js';
+import { requireAcquisitionEnabledMiddleware, requireAcquisitionMiddleware } from './gate.js';
 
 function downloadPlugin(): Plugin {
   return {
@@ -102,7 +99,12 @@ describe('requireAcquisitionEnabledMiddleware (deployment kill-switch #235)', ()
   function killSwitchApp(enabled: boolean) {
     const app = new Hono<AuthEnv>();
     app.use('*', (c, next) => {
-      c.set('user', { sub: 'u', role: 'admin', iat: 0, exp: 9999999999 } as AuthEnv['Variables']['user']);
+      c.set('user', {
+        sub: 'u',
+        role: 'admin',
+        iat: 0,
+        exp: 9999999999,
+      } as AuthEnv['Variables']['user']);
       return next();
     });
     app.use('/acquire/*', requireAcquisitionEnabledMiddleware(enabled));

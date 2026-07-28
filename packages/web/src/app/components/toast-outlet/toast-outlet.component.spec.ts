@@ -56,12 +56,12 @@ describe('ToastOutletComponent', () => {
 
   it('renders action buttons and calls their callbacks on click', () => {
     const cb = vi.fn();
-    toastsSignal.set([
-      makeToast({ actions: [{ label: 'Do it', callback: cb }] }),
-    ]);
+    toastsSignal.set([makeToast({ actions: [{ label: 'Do it', callback: cb }] })]);
     const fixture = setup();
     fixture.detectChanges();
-    const btn = fixture.nativeElement.querySelector('[data-testid="toast-action-0"]') as HTMLButtonElement;
+    const btn = fixture.nativeElement.querySelector(
+      '[data-testid="toast-action-0"]',
+    ) as HTMLButtonElement;
     btn.click();
     expect(cb).toHaveBeenCalledTimes(1);
   });

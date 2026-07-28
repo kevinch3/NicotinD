@@ -58,9 +58,7 @@ import { expandHome } from './lib/expand-home.js';
 const args = process.argv.slice(2);
 const DRY_RUN = args.includes('--dry-run');
 const PHASE_ARG = (args.find((a) => a.startsWith('--phase='))?.split('=')[1] ?? 'all') as
-  | 'A'
-  | 'B'
-  | 'all';
+  'A' | 'B' | 'all';
 const CACHE_ARG = args.find((a) => a.startsWith('--cache='))?.split('=')[1];
 const RUN_A = PHASE_ARG === 'A' || PHASE_ARG === 'all';
 const RUN_B = PHASE_ARG === 'B' || PHASE_ARG === 'all';

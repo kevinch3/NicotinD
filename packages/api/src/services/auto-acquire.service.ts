@@ -109,9 +109,15 @@ export class AutoAcquireService {
               artistMbid: album.artist?.foreignArtistId ?? null,
             },
           );
-          log.debug({ albumId: album.id, album: album.title, outcome }, 'Auto-acquire sweep result');
+          log.debug(
+            { albumId: album.id, album: album.title, outcome },
+            'Auto-acquire sweep result',
+          );
         } catch (err) {
-          log.debug({ albumId: album.id, err }, 'Auto-acquire attempt failed; will retry next sweep');
+          log.debug(
+            { albumId: album.id, err },
+            'Auto-acquire attempt failed; will retry next sweep',
+          );
         }
       }
     } finally {

@@ -6,7 +6,9 @@ import { artistGenreDistribution, MAX_AXES } from './genre-distribution.js';
 function db(): Database {
   const d = new Database(':memory:');
   applySchema(d);
-  d.run(`INSERT INTO library_artists (id, name, album_count, synced_at) VALUES ('a1', 'Test', 1, 1)`);
+  d.run(
+    `INSERT INTO library_artists (id, name, album_count, synced_at) VALUES ('a1', 'Test', 1, 1)`,
+  );
   return d;
 }
 
@@ -18,7 +20,11 @@ function song(d: Database, id: string, genres: string[], landed = 1): void {
     [id, id, `/m/${id}.flac`, landed],
   );
   genres.forEach((g, i) =>
-    d.run(`INSERT INTO library_song_genres (song_id, genre, position) VALUES (?, ?, ?)`, [id, g, i]),
+    d.run(`INSERT INTO library_song_genres (song_id, genre, position) VALUES (?, ?, ?)`, [
+      id,
+      g,
+      i,
+    ]),
   );
 }
 

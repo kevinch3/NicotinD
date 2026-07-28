@@ -20,7 +20,12 @@ describe('audit log', () => {
       detail: 'X — Y, 10 song(s) deleted',
       now: 100,
     });
-    recordAudit(db, actor, 'user.role', { targetKind: 'user', targetId: 'u2', detail: 'refiner', now: 200 });
+    recordAudit(db, actor, 'user.role', {
+      targetKind: 'user',
+      targetId: 'u2',
+      detail: 'refiner',
+      now: 200,
+    });
 
     const rows = listAudit(db);
     expect(rows).toHaveLength(2);

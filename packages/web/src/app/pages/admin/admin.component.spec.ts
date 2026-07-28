@@ -22,10 +22,23 @@ function makeReview(over: Partial<ServiceReview> = {}): ServiceReview {
     collectedAt: 1_700_000_000_000,
     version: '0.1.234',
     uptimeMs: 60_000,
-    hardware: { cpuModel: 'Test CPU', cores: 4, arch: 'x64', platform: 'linux', totalMemoryBytes: 8000, gpuDetected: null },
+    hardware: {
+      cpuModel: 'Test CPU',
+      cores: 4,
+      arch: 'x64',
+      platform: 'linux',
+      totalMemoryBytes: 8000,
+      gpuDetected: null,
+    },
     load: {
       cpu: { percent: 25, cores: 4, model: 'Test CPU' },
-      memory: { totalBytes: 8000, usedBytes: 4000, freeBytes: 4000, processRssBytes: 100, processHeapBytes: 50 },
+      memory: {
+        totalBytes: 8000,
+        usedBytes: 4000,
+        freeBytes: 4000,
+        processRssBytes: 100,
+        processHeapBytes: 50,
+      },
       gpu: null,
     },
     services: {
@@ -72,11 +85,15 @@ function makeSvc(over: Partial<ServiceReview> = {}) {
     backups: (() => r.backups) as ServiceReviewService['backups'],
     backupsSummary: (() => r.backupsSummary) as ServiceReviewService['backupsSummary'],
     auditTail: (() => r.auditTail) as ServiceReviewService['auditTail'],
-    incompleteJobsCount: (() => r.incompleteJobsCount) as ServiceReviewService['incompleteJobsCount'],
+    incompleteJobsCount: (() =>
+      r.incompleteJobsCount) as ServiceReviewService['incompleteJobsCount'],
     untrackedCount: (() => r.untrackedCount) as ServiceReviewService['untrackedCount'],
     orphanRows: (() => r.orphanRows) as ServiceReviewService['orphanRows'],
     orphanRowCount: (() =>
-      r.orphanRows.reduce((sum, t) => sum + t.orphans, 0)) as ServiceReviewService['orphanRowCount'],
+      r.orphanRows.reduce(
+        (sum, t) => sum + t.orphans,
+        0,
+      )) as ServiceReviewService['orphanRowCount'],
     incompleteJobs: (() => r.incompleteJobs) as ServiceReviewService['incompleteJobs'],
     untracked: (() => r.untracked) as ServiceReviewService['untracked'],
   };
@@ -113,8 +130,32 @@ function makeAdminMocks(review: Partial<ServiceReview> = {}) {
     lastItems: [],
     startedAt: null,
     updatedAt: null,
-    taskPending: { bpm: 0, genre: 0, key: 0, energy: 0, 'audio-features': 0, 'artist-image': 0, 'artist-info': 0, 'artist-identity': 0, licence: 0, 'genre-audio': 0, 'genre-discogs': 0 },
-    availability: { bpm: true, genre: true, key: true, energy: true, 'audio-features': true, 'artist-image': true, 'artist-info': true, 'artist-identity': true, licence: true, 'genre-audio': true, 'genre-discogs': true },
+    taskPending: {
+      bpm: 0,
+      genre: 0,
+      key: 0,
+      energy: 0,
+      'audio-features': 0,
+      'artist-image': 0,
+      'artist-info': 0,
+      'artist-identity': 0,
+      licence: 0,
+      'genre-audio': 0,
+      'genre-discogs': 0,
+    },
+    availability: {
+      bpm: true,
+      genre: true,
+      key: true,
+      energy: true,
+      'audio-features': true,
+      'artist-image': true,
+      'artist-info': true,
+      'artist-identity': true,
+      licence: true,
+      'genre-audio': true,
+      'genre-discogs': true,
+    },
     skipped: 0,
     quarantined: 0,
   };
@@ -162,7 +203,10 @@ describe('AdminComponent (snapshot-driven via ServiceReview)', () => {
             saveProcessing: vi.fn((p: unknown) => of(p as object)),
           },
         },
-        { provide: LibraryApiService, useValue: { resyncLibrary: mocks.resyncLibrary, getFragments: mocks.getFragments } },
+        {
+          provide: LibraryApiService,
+          useValue: { resyncLibrary: mocks.resyncLibrary, getFragments: mocks.getFragments },
+        },
         { provide: ServiceReviewService, useValue: mocks.reviewService },
         { provide: AuthService, useValue: { token: () => null } },
       ],
@@ -205,8 +249,31 @@ describe('AdminComponent (orphan side-table rows, #259)', () => {
       imports: [AdminComponent],
       providers: [
         { provide: DownloadsApiService, useValue: {} },
-        { provide: SystemApiService, useValue: { getUsers: vi.fn(() => of([])), getStreamingSettings: mocks.getStreaming, saveStreamingSettings: vi.fn((p: unknown) => of(p as object)), getProcessing: mocks.getProcessing, saveProcessing: vi.fn((p: unknown) => of(p as object)) } },
-        { provide: LibraryApiService, useValue: { resyncLibrary: vi.fn(() => of({ ok: true })), getFragments: vi.fn(() => of({ duplicateAlbums: [], hiddenByClassification: [], misSplitAlbums: [], totals: { duplicateAlbums: 0, hiddenByClassification: 0, misSplitAlbums: 0 }, ok: true } as LibraryFragmentReport)) } },
+        {
+          provide: SystemApiService,
+          useValue: {
+            getUsers: vi.fn(() => of([])),
+            getStreamingSettings: mocks.getStreaming,
+            saveStreamingSettings: vi.fn((p: unknown) => of(p as object)),
+            getProcessing: mocks.getProcessing,
+            saveProcessing: vi.fn((p: unknown) => of(p as object)),
+          },
+        },
+        {
+          provide: LibraryApiService,
+          useValue: {
+            resyncLibrary: vi.fn(() => of({ ok: true })),
+            getFragments: vi.fn(() =>
+              of({
+                duplicateAlbums: [],
+                hiddenByClassification: [],
+                misSplitAlbums: [],
+                totals: { duplicateAlbums: 0, hiddenByClassification: 0, misSplitAlbums: 0 },
+                ok: true,
+              } as LibraryFragmentReport),
+            ),
+          },
+        },
         { provide: ServiceReviewService, useValue: mocks.reviewService },
         { provide: AuthService, useValue: { token: () => null } },
       ],
@@ -234,8 +301,31 @@ describe('AdminComponent (incompleteJobs / untracked via ServiceReview)', () => 
       imports: [AdminComponent],
       providers: [
         { provide: DownloadsApiService, useValue: {} },
-        { provide: SystemApiService, useValue: { getUsers: vi.fn(() => of([])), getStreamingSettings: mocks.getStreaming, saveStreamingSettings: vi.fn((p: unknown) => of(p as object)), getProcessing: mocks.getProcessing, saveProcessing: vi.fn((p: unknown) => of(p as object)) } },
-        { provide: LibraryApiService, useValue: { resyncLibrary: vi.fn(() => of({ ok: true })), getFragments: vi.fn(() => of({ duplicateAlbums: [], hiddenByClassification: [], misSplitAlbums: [], totals: { duplicateAlbums: 0, hiddenByClassification: 0, misSplitAlbums: 0 }, ok: true } as LibraryFragmentReport)) } },
+        {
+          provide: SystemApiService,
+          useValue: {
+            getUsers: vi.fn(() => of([])),
+            getStreamingSettings: mocks.getStreaming,
+            saveStreamingSettings: vi.fn((p: unknown) => of(p as object)),
+            getProcessing: mocks.getProcessing,
+            saveProcessing: vi.fn((p: unknown) => of(p as object)),
+          },
+        },
+        {
+          provide: LibraryApiService,
+          useValue: {
+            resyncLibrary: vi.fn(() => of({ ok: true })),
+            getFragments: vi.fn(() =>
+              of({
+                duplicateAlbums: [],
+                hiddenByClassification: [],
+                misSplitAlbums: [],
+                totals: { duplicateAlbums: 0, hiddenByClassification: 0, misSplitAlbums: 0 },
+                ok: true,
+              } as LibraryFragmentReport),
+            ),
+          },
+        },
         { provide: ServiceReviewService, useValue: mocks.reviewService },
         { provide: AuthService, useValue: { token: () => null } },
       ],
@@ -263,7 +353,17 @@ describe('AdminComponent (incompleteJobs / untracked via ServiceReview)', () => 
 
   it('retryHunt is a no-op when the job has no Lidarr album id', () => {
     const c = TestBed.createComponent(AdminComponent).componentInstance;
-    c.retryHunt({ id: 1, lidarrAlbumId: null, artistName: '', albumTitle: null, username: '', directory: '', state: 'exhausted', fallbackAttempts: 0, createdAt: 1 });
+    c.retryHunt({
+      id: 1,
+      lidarrAlbumId: null,
+      artistName: '',
+      albumTitle: null,
+      username: '',
+      directory: '',
+      state: 'exhausted',
+      fallbackAttempts: 0,
+      createdAt: 1,
+    });
     expect(c.retryAlbum()).toBeNull();
   });
 
@@ -287,8 +387,31 @@ describe('AdminComponent (incompleteJobs / untracked via ServiceReview)', () => 
       imports: [AdminComponent],
       providers: [
         { provide: DownloadsApiService, useValue: {} },
-        { provide: SystemApiService, useValue: { getUsers: vi.fn(() => of([])), getStreamingSettings: mocks.getStreaming, saveStreamingSettings: vi.fn((p: unknown) => of(p as object)), getProcessing: mocks.getProcessing, saveProcessing: vi.fn((p: unknown) => of(p as object)) } },
-        { provide: LibraryApiService, useValue: { resyncLibrary, getFragments: vi.fn(() => of({ duplicateAlbums: [], hiddenByClassification: [], misSplitAlbums: [], totals: { duplicateAlbums: 0, hiddenByClassification: 0, misSplitAlbums: 0 }, ok: true } as LibraryFragmentReport)) } },
+        {
+          provide: SystemApiService,
+          useValue: {
+            getUsers: vi.fn(() => of([])),
+            getStreamingSettings: mocks.getStreaming,
+            saveStreamingSettings: vi.fn((p: unknown) => of(p as object)),
+            getProcessing: mocks.getProcessing,
+            saveProcessing: vi.fn((p: unknown) => of(p as object)),
+          },
+        },
+        {
+          provide: LibraryApiService,
+          useValue: {
+            resyncLibrary,
+            getFragments: vi.fn(() =>
+              of({
+                duplicateAlbums: [],
+                hiddenByClassification: [],
+                misSplitAlbums: [],
+                totals: { duplicateAlbums: 0, hiddenByClassification: 0, misSplitAlbums: 0 },
+                ok: true,
+              } as LibraryFragmentReport),
+            ),
+          },
+        },
         { provide: ServiceReviewService, useValue: mocks.reviewService },
         { provide: AuthService, useValue: { token: () => null } },
       ],

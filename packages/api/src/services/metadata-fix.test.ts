@@ -69,7 +69,12 @@ describe('scoreCandidate', () => {
 describe('rankCandidates', () => {
   it('maps fields, sorts best-first and caps the list', () => {
     const hits: Partial<LidarrAlbum>[] = [
-      { foreignAlbumId: 'mb-2', title: 'Other', albumType: 'Album', artist: { artistName: 'Nope' } as never },
+      {
+        foreignAlbumId: 'mb-2',
+        title: 'Other',
+        albumType: 'Album',
+        artist: { artistName: 'Nope' } as never,
+      },
       {
         foreignAlbumId: 'mb-1',
         title: 'Selva',
@@ -102,7 +107,9 @@ describe('searchCandidates', () => {
     const { albumId } = seedAlbum({ artist: 'La Portuaria', album: 'Selva' });
     const res = await searchCandidates(
       db,
-      fakeLidarr([{ foreignAlbumId: 'mb', title: 'Selva', artist: { artistName: 'La Portuaria' } as never }]),
+      fakeLidarr([
+        { foreignAlbumId: 'mb', title: 'Selva', artist: { artistName: 'La Portuaria' } as never },
+      ]),
       albumId,
     );
     expect(res?.query).toBe('La Portuaria Selva');
@@ -113,7 +120,9 @@ describe('searchCandidates', () => {
     const { albumId } = seedAlbum({ artist: '<Desconocido>', album: 'Selva' });
     const res = await searchCandidates(
       db,
-      fakeLidarr([{ foreignAlbumId: 'mb', title: 'Selva', artist: { artistName: 'La Portuaria' } as never }]),
+      fakeLidarr([
+        { foreignAlbumId: 'mb', title: 'Selva', artist: { artistName: 'La Portuaria' } as never },
+      ]),
       albumId,
     );
     expect(res?.query).toBe('Selva');
@@ -151,13 +160,24 @@ describe('applyMetadataFix', () => {
     const result = applyMetadataFix(
       db,
       albumId,
-      { artist: 'La Portuaria', album: 'Selva', year: 1996, releaseType: 'album', source: 'manual' },
+      {
+        artist: 'La Portuaria',
+        album: 'Selva',
+        year: 1996,
+        releaseType: 'album',
+        source: 'manual',
+      },
       {},
     );
 
     const newArtistId = artistIdFor('La Portuaria');
     const newAlbumId = albumIdFor('La Portuaria', 'Selva');
-    expect(result).toMatchObject({ albumId: newAlbumId, artistId: newArtistId, artist: 'La Portuaria', movedSongs: 1 });
+    expect(result).toMatchObject({
+      albumId: newAlbumId,
+      artistId: newArtistId,
+      artist: 'La Portuaria',
+      movedSongs: 1,
+    });
 
     // Song moved in place: same id, new artist/album, curation + playlist intact.
     const song = db
@@ -197,13 +217,20 @@ describe('applyMetadataFix', () => {
     expect(getReleaseType(db, newAlbumId)).toBe('album');
 
     // Durable override keyed on the raw albumId.
-    expect(getOverride(db, albumId)).toEqual({ artist: 'La Portuaria', album: 'Selva', year: 1996 });
+    expect(getOverride(db, albumId)).toEqual({
+      artist: 'La Portuaria',
+      album: 'Selva',
+      year: 1996,
+    });
   });
 
   it('overwrites the cover when a candidate cover is confirmed', () => {
     const { albumId } = seedAlbum({ artist: 'X', album: 'A' });
     setArtwork(db, albumId, 'album', 'http://img/OLD.jpg');
-    const result = applyMetadataFix(db, albumId, { coverUrl: 'http://img/NEW.jpg', source: 'lidarr' });
+    const result = applyMetadataFix(db, albumId, {
+      coverUrl: 'http://img/NEW.jpg',
+      source: 'lidarr',
+    });
     const art = db
       .query<{ cover_url: string }, [string]>('SELECT cover_url FROM library_artwork WHERE id = ?')
       .get(result!.albumId);

@@ -46,7 +46,17 @@ function seedSong(
   db.run(
     `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, size, bit_rate, suffix, content_type, created, genre, bpm, key, year, landed_at, synced_at)
      VALUES (?, ?, ?, ?, ?, 240, '/music/test.mp3', 0, 320, 'mp3', 'audio/mpeg', '2024-01-01', ?, ?, ?, ?, 1, 0)`,
-    [s.id, s.albumId, s.title, s.artist, artistId, s.genre ?? null, s.bpm ?? null, s.key ?? null, s.year ?? null],
+    [
+      s.id,
+      s.albumId,
+      s.title,
+      s.artist,
+      artistId,
+      s.genre ?? null,
+      s.bpm ?? null,
+      s.key ?? null,
+      s.year ?? null,
+    ],
   );
 }
 
@@ -70,9 +80,41 @@ describe('radio /next', () => {
   });
 
   it('returns songs ranked by similarity to the seed', async () => {
-    seedSong(testDb, { id: 'seed', title: 'Seed', artist: 'A', albumId: 'alb1', album: 'Alb 1', genre: 'Rock', bpm: 120, key: 'C major', year: 2020 });
-    seedSong(testDb, { id: 'similar', title: 'Similar', artist: 'B', artistId: 'B', albumId: 'alb2', album: 'Alb 2', genre: 'Rock', bpm: 122, key: 'G major', year: 2019 });
-    seedSong(testDb, { id: 'distant', title: 'Distant', artist: 'C', artistId: 'C', albumId: 'alb3', album: 'Alb 3', genre: 'Classical', bpm: 60, key: 'F# minor', year: 1970 });
+    seedSong(testDb, {
+      id: 'seed',
+      title: 'Seed',
+      artist: 'A',
+      albumId: 'alb1',
+      album: 'Alb 1',
+      genre: 'Rock',
+      bpm: 120,
+      key: 'C major',
+      year: 2020,
+    });
+    seedSong(testDb, {
+      id: 'similar',
+      title: 'Similar',
+      artist: 'B',
+      artistId: 'B',
+      albumId: 'alb2',
+      album: 'Alb 2',
+      genre: 'Rock',
+      bpm: 122,
+      key: 'G major',
+      year: 2019,
+    });
+    seedSong(testDb, {
+      id: 'distant',
+      title: 'Distant',
+      artist: 'C',
+      artistId: 'C',
+      albumId: 'alb3',
+      album: 'Alb 3',
+      genre: 'Classical',
+      bpm: 60,
+      key: 'F# minor',
+      year: 1970,
+    });
 
     const res = await app.request('/radio/next?seedId=seed&count=10');
     expect(res.status).toBe(200);
@@ -82,9 +124,35 @@ describe('radio /next', () => {
   });
 
   it('excludes specified song IDs', async () => {
-    seedSong(testDb, { id: 'seed', title: 'Seed', artist: 'A', albumId: 'alb1', album: 'Alb 1', genre: 'Rock', bpm: 120 });
-    seedSong(testDb, { id: 'excluded', title: 'Excluded', artist: 'B', artistId: 'B', albumId: 'alb2', album: 'Alb 2', genre: 'Rock', bpm: 120 });
-    seedSong(testDb, { id: 'kept', title: 'Kept', artist: 'C', artistId: 'C', albumId: 'alb3', album: 'Alb 3', genre: 'Rock', bpm: 120 });
+    seedSong(testDb, {
+      id: 'seed',
+      title: 'Seed',
+      artist: 'A',
+      albumId: 'alb1',
+      album: 'Alb 1',
+      genre: 'Rock',
+      bpm: 120,
+    });
+    seedSong(testDb, {
+      id: 'excluded',
+      title: 'Excluded',
+      artist: 'B',
+      artistId: 'B',
+      albumId: 'alb2',
+      album: 'Alb 2',
+      genre: 'Rock',
+      bpm: 120,
+    });
+    seedSong(testDb, {
+      id: 'kept',
+      title: 'Kept',
+      artist: 'C',
+      artistId: 'C',
+      albumId: 'alb3',
+      album: 'Alb 3',
+      genre: 'Rock',
+      bpm: 120,
+    });
 
     const res = await app.request('/radio/next?seedId=seed&exclude=excluded');
     const songs = await res.json();
@@ -94,8 +162,25 @@ describe('radio /next', () => {
   });
 
   it('never includes the seed song in results', async () => {
-    seedSong(testDb, { id: 'seed', title: 'Seed', artist: 'A', albumId: 'alb1', album: 'Alb 1', genre: 'Rock', bpm: 120 });
-    seedSong(testDb, { id: 'other', title: 'Other', artist: 'B', artistId: 'B', albumId: 'alb2', album: 'Alb 2', genre: 'Rock', bpm: 120 });
+    seedSong(testDb, {
+      id: 'seed',
+      title: 'Seed',
+      artist: 'A',
+      albumId: 'alb1',
+      album: 'Alb 1',
+      genre: 'Rock',
+      bpm: 120,
+    });
+    seedSong(testDb, {
+      id: 'other',
+      title: 'Other',
+      artist: 'B',
+      artistId: 'B',
+      albumId: 'alb2',
+      album: 'Alb 2',
+      genre: 'Rock',
+      bpm: 120,
+    });
 
     const res = await app.request('/radio/next?seedId=seed');
     const songs = await res.json();
@@ -104,8 +189,27 @@ describe('radio /next', () => {
   });
 
   it('returns songs with key field when available', async () => {
-    seedSong(testDb, { id: 'seed', title: 'Seed', artist: 'A', albumId: 'alb1', album: 'Alb 1', genre: 'Rock', bpm: 120, key: 'C major' });
-    seedSong(testDb, { id: 'match', title: 'Match', artist: 'B', artistId: 'B', albumId: 'alb2', album: 'Alb 2', genre: 'Rock', bpm: 120, key: 'G major' });
+    seedSong(testDb, {
+      id: 'seed',
+      title: 'Seed',
+      artist: 'A',
+      albumId: 'alb1',
+      album: 'Alb 1',
+      genre: 'Rock',
+      bpm: 120,
+      key: 'C major',
+    });
+    seedSong(testDb, {
+      id: 'match',
+      title: 'Match',
+      artist: 'B',
+      artistId: 'B',
+      albumId: 'alb2',
+      album: 'Alb 2',
+      genre: 'Rock',
+      bpm: 120,
+      key: 'G major',
+    });
 
     const res = await app.request('/radio/next?seedId=seed');
     const songs = await res.json();
@@ -114,9 +218,24 @@ describe('radio /next', () => {
   });
 
   it('respects count parameter', async () => {
-    seedSong(testDb, { id: 'seed', title: 'Seed', artist: 'A', albumId: 'alb1', album: 'Alb 1', genre: 'Pop' });
+    seedSong(testDb, {
+      id: 'seed',
+      title: 'Seed',
+      artist: 'A',
+      albumId: 'alb1',
+      album: 'Alb 1',
+      genre: 'Pop',
+    });
     for (let i = 0; i < 10; i++) {
-      seedSong(testDb, { id: `s${i}`, title: `Song ${i}`, artist: `Art${i}`, artistId: `art${i}`, albumId: `alb${i + 10}`, album: `Alb ${i}`, genre: 'Pop' });
+      seedSong(testDb, {
+        id: `s${i}`,
+        title: `Song ${i}`,
+        artist: `Art${i}`,
+        artistId: `art${i}`,
+        albumId: `alb${i + 10}`,
+        album: `Alb ${i}`,
+        genre: 'Pop',
+      });
     }
 
     const res = await app.request('/radio/next?seedId=seed&count=3');
@@ -126,7 +245,14 @@ describe('radio /next', () => {
 
   it('falls back to random pool when no genre/bpm match', async () => {
     seedSong(testDb, { id: 'seed', title: 'Seed', artist: 'A', albumId: 'alb1', album: 'Alb 1' });
-    seedSong(testDb, { id: 'random', title: 'Random', artist: 'B', artistId: 'B', albumId: 'alb2', album: 'Alb 2' });
+    seedSong(testDb, {
+      id: 'random',
+      title: 'Random',
+      artist: 'B',
+      artistId: 'B',
+      albumId: 'alb2',
+      album: 'Alb 2',
+    });
 
     const res = await app.request('/radio/next?seedId=seed');
     const songs = await res.json();
@@ -134,9 +260,24 @@ describe('radio /next', () => {
   });
 
   it('surfaces un-analyzed (bpm-less) tracks via the dedicated pool', async () => {
-    seedSong(testDb, { id: 'seed', title: 'Seed', artist: 'A', albumId: 'alb1', album: 'Alb 1', genre: 'Rock', bpm: 120 });
+    seedSong(testDb, {
+      id: 'seed',
+      title: 'Seed',
+      artist: 'A',
+      albumId: 'alb1',
+      album: 'Alb 1',
+      genre: 'Rock',
+      bpm: 120,
+    });
     // No genre and no bpm: only reachable through the un-analyzed pool pass.
-    seedSong(testDb, { id: 'raw', title: 'Raw', artist: 'B', artistId: 'B', albumId: 'alb2', album: 'Alb 2' });
+    seedSong(testDb, {
+      id: 'raw',
+      title: 'Raw',
+      artist: 'B',
+      artistId: 'B',
+      albumId: 'alb2',
+      album: 'Alb 2',
+    });
 
     const res = await app.request('/radio/next?seedId=seed');
     const ids = (await res.json()).map((s: { id: string }) => s.id);
@@ -144,9 +285,35 @@ describe('radio /next', () => {
   });
 
   it('matches genre variants (Deep House ↔ House) and ranks them above disjoint genres', async () => {
-    seedSong(testDb, { id: 'seed', title: 'Seed', artist: 'A', albumId: 'alb1', album: 'Alb 1', genre: 'Deep House', bpm: 120 });
-    seedSong(testDb, { id: 'variant', title: 'Variant', artist: 'B', artistId: 'B', albumId: 'alb2', album: 'Alb 2', genre: 'House', bpm: 121 });
-    seedSong(testDb, { id: 'unrelated', title: 'Unrelated', artist: 'C', artistId: 'C', albumId: 'alb3', album: 'Alb 3', genre: 'Death Metal', bpm: 121 });
+    seedSong(testDb, {
+      id: 'seed',
+      title: 'Seed',
+      artist: 'A',
+      albumId: 'alb1',
+      album: 'Alb 1',
+      genre: 'Deep House',
+      bpm: 120,
+    });
+    seedSong(testDb, {
+      id: 'variant',
+      title: 'Variant',
+      artist: 'B',
+      artistId: 'B',
+      albumId: 'alb2',
+      album: 'Alb 2',
+      genre: 'House',
+      bpm: 121,
+    });
+    seedSong(testDb, {
+      id: 'unrelated',
+      title: 'Unrelated',
+      artist: 'C',
+      artistId: 'C',
+      albumId: 'alb3',
+      album: 'Alb 3',
+      genre: 'Death Metal',
+      bpm: 121,
+    });
 
     const res = await app.request('/radio/next?seedId=seed');
     const ids = (await res.json()).map((s: { id: string }) => s.id);
@@ -157,9 +324,35 @@ describe('radio /next', () => {
   // --- Filter-seeded radio (no seed song, a LibraryFilter "vibe") ---
 
   it('filter radio: returns only songs matching a bpm floor', async () => {
-    seedSong(testDb, { id: 'fast1', title: 'Fast 1', artist: 'A', albumId: 'a1', album: 'A1', genre: 'Rock', bpm: 128 });
-    seedSong(testDb, { id: 'fast2', title: 'Fast 2', artist: 'B', artistId: 'B', albumId: 'a2', album: 'A2', genre: 'Rock', bpm: 140 });
-    seedSong(testDb, { id: 'slow', title: 'Slow', artist: 'C', artistId: 'C', albumId: 'a3', album: 'A3', genre: 'Rock', bpm: 90 });
+    seedSong(testDb, {
+      id: 'fast1',
+      title: 'Fast 1',
+      artist: 'A',
+      albumId: 'a1',
+      album: 'A1',
+      genre: 'Rock',
+      bpm: 128,
+    });
+    seedSong(testDb, {
+      id: 'fast2',
+      title: 'Fast 2',
+      artist: 'B',
+      artistId: 'B',
+      albumId: 'a2',
+      album: 'A2',
+      genre: 'Rock',
+      bpm: 140,
+    });
+    seedSong(testDb, {
+      id: 'slow',
+      title: 'Slow',
+      artist: 'C',
+      artistId: 'C',
+      albumId: 'a3',
+      album: 'A3',
+      genre: 'Rock',
+      bpm: 90,
+    });
 
     const res = await app.request('/radio/next?bpmMin=120');
     expect(res.status).toBe(200);
@@ -170,8 +363,23 @@ describe('radio /next', () => {
   });
 
   it('filter radio: returns only songs matching a genre', async () => {
-    seedSong(testDb, { id: 'rock', title: 'Rock', artist: 'A', albumId: 'a1', album: 'A1', genre: 'Rock' });
-    seedSong(testDb, { id: 'jazz', title: 'Jazz', artist: 'B', artistId: 'B', albumId: 'a2', album: 'A2', genre: 'Jazz' });
+    seedSong(testDb, {
+      id: 'rock',
+      title: 'Rock',
+      artist: 'A',
+      albumId: 'a1',
+      album: 'A1',
+      genre: 'Rock',
+    });
+    seedSong(testDb, {
+      id: 'jazz',
+      title: 'Jazz',
+      artist: 'B',
+      artistId: 'B',
+      albumId: 'a2',
+      album: 'A2',
+      genre: 'Jazz',
+    });
 
     const res = await app.request('/radio/next?genre=Rock');
     expect(res.status).toBe(200);
@@ -182,7 +390,15 @@ describe('radio /next', () => {
 
   it('filter radio: honors count and excludes ids', async () => {
     for (let i = 0; i < 6; i++) {
-      seedSong(testDb, { id: `p${i}`, title: `P${i}`, artist: `Ar${i}`, artistId: `ar${i}`, albumId: `al${i}`, album: `Al${i}`, genre: 'Pop' });
+      seedSong(testDb, {
+        id: `p${i}`,
+        title: `P${i}`,
+        artist: `Ar${i}`,
+        artistId: `ar${i}`,
+        albumId: `al${i}`,
+        album: `Al${i}`,
+        genre: 'Pop',
+      });
     }
     const res = await app.request('/radio/next?genre=Pop&count=2&exclude=p0');
     expect(res.status).toBe(200);
@@ -192,15 +408,38 @@ describe('radio /next', () => {
   });
 
   it('filter radio: returns [] (200) when nothing matches', async () => {
-    seedSong(testDb, { id: 'only', title: 'Only', artist: 'A', albumId: 'a1', album: 'A1', genre: 'Rock', bpm: 90 });
+    seedSong(testDb, {
+      id: 'only',
+      title: 'Only',
+      artist: 'A',
+      albumId: 'a1',
+      album: 'A1',
+      genre: 'Rock',
+      bpm: 90,
+    });
     const res = await app.request('/radio/next?bpmMin=999');
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual([]);
   });
 
   it('filter radio: the centroid carries a genre for a genre-uniform pool (issue #187 B4)', () => {
-    seedSong(testDb, { id: 'r1', title: 'R1', artist: 'A', albumId: 'a1', album: 'A1', genre: 'Rock' });
-    seedSong(testDb, { id: 'r2', title: 'R2', artist: 'B', artistId: 'B', albumId: 'a2', album: 'A2', genre: 'Rock' });
+    seedSong(testDb, {
+      id: 'r1',
+      title: 'R1',
+      artist: 'A',
+      albumId: 'a1',
+      album: 'A1',
+      genre: 'Rock',
+    });
+    seedSong(testDb, {
+      id: 'r2',
+      title: 'R2',
+      artist: 'B',
+      artistId: 'B',
+      albumId: 'a2',
+      album: 'A2',
+      genre: 'Rock',
+    });
     const result = buildFilterRadio(testDb, { genres: ['Rock'] }, {});
     // Before the fix, toOrderable never copied `genre` onto OrderableRow, so
     // seedCentroid's mode() always saw an all-undefined array and the centroid
@@ -210,9 +449,35 @@ describe('radio /next', () => {
   });
 
   it('still returns results when embeddings are present for some songs', async () => {
-    seedSong(testDb, { id: 'seed', title: 'Seed', artist: 'A', albumId: 'alb1', album: 'Alb 1', genre: 'Rock', bpm: 120 });
-    seedSong(testDb, { id: 'aligned', title: 'Aligned', artist: 'B', artistId: 'B', albumId: 'alb2', album: 'Alb 2', genre: 'Rock', bpm: 120 });
-    seedSong(testDb, { id: 'opposed', title: 'Opposed', artist: 'C', artistId: 'C', albumId: 'alb3', album: 'Alb 3', genre: 'Rock', bpm: 120 });
+    seedSong(testDb, {
+      id: 'seed',
+      title: 'Seed',
+      artist: 'A',
+      albumId: 'alb1',
+      album: 'Alb 1',
+      genre: 'Rock',
+      bpm: 120,
+    });
+    seedSong(testDb, {
+      id: 'aligned',
+      title: 'Aligned',
+      artist: 'B',
+      artistId: 'B',
+      albumId: 'alb2',
+      album: 'Alb 2',
+      genre: 'Rock',
+      bpm: 120,
+    });
+    seedSong(testDb, {
+      id: 'opposed',
+      title: 'Opposed',
+      artist: 'C',
+      artistId: 'C',
+      albumId: 'alb3',
+      album: 'Alb 3',
+      genre: 'Rock',
+      bpm: 120,
+    });
     const embed = (id: string, v: number[]) =>
       testDb.run(
         `INSERT INTO library_embeddings (song_id, model, dim, vec, updated_at) VALUES (?, 'test', ?, ?, 0)`,

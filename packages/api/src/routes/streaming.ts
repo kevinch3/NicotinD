@@ -7,10 +7,7 @@ import { createLogger } from '@nicotind/core';
 import type { AuthEnv } from '../middleware/auth.js';
 import { getStreamingSettings } from '../services/streaming-settings.js';
 import { ffmpegAvailable, transcodeContentType } from '../services/transcode.js';
-import {
-  getTranscodedFile,
-  pinTranscodeCacheFile,
-} from '../services/transcode-cache.js';
+import { getTranscodedFile, pinTranscodeCacheFile } from '../services/transcode-cache.js';
 import { extractEmbeddedPicture } from '../services/cover-sources.js';
 import { resolveArtwork, canonicalCacheKey } from '../services/artwork-store.js';
 import { bucketCoverSize, resizeCover } from '../services/cover-thumbnail.js';
@@ -358,14 +355,10 @@ function serveFileWithRange(
           headers: { 'content-range': `bytes */${size}` },
         });
       }
-      return buildResponse(
-        file.slice(start, end + 1),
-        206,
-        {
-          'content-length': String(end - start + 1),
-          'content-range': `bytes ${start}-${end}/${size}`,
-        },
-      );
+      return buildResponse(file.slice(start, end + 1), 206, {
+        'content-length': String(end - start + 1),
+        'content-range': `bytes ${start}-${end}/${size}`,
+      });
     }
   }
 

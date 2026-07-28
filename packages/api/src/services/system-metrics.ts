@@ -122,7 +122,11 @@ export function readCpu(opts: { os?: OsShim } = {}): CpuSnapshot {
   if (prevSample && prevSample.cores === cores.length && prevSample.total > 0) {
     const idleDelta = idle - prevSample.idle;
     const totalDelta = total - prevSample.total;
-    if (totalDelta > 0) percent = Math.min(100, Math.max(0, Math.round(((1 - idleDelta / totalDelta) * 100) * 10) / 10));
+    if (totalDelta > 0)
+      percent = Math.min(
+        100,
+        Math.max(0, Math.round((1 - idleDelta / totalDelta) * 100 * 10) / 10),
+      );
   }
   prevSample = { idle, total, cores: cores.length };
   return { percent, cores: cores.length, model };
@@ -144,7 +148,10 @@ export function readMemory(opts: { os?: OsShim } = {}): MemorySnapshot {
 }
 
 /** Cheap, stable hardware description — included in every snapshot, doesn't tick. */
-export function readHardware(gpu: GpuSnapshot | null, opts: { os?: OsShim } = {}): HardwareSnapshot {
+export function readHardware(
+  gpu: GpuSnapshot | null,
+  opts: { os?: OsShim } = {},
+): HardwareSnapshot {
   if (opts.os) currentOs = opts.os;
   const cores = currentOs.cpus();
   return {
@@ -158,7 +165,11 @@ export function readHardware(gpu: GpuSnapshot | null, opts: { os?: OsShim } = {}
 }
 
 /** Run a shell process with a hard kill timeout; returns stdout or null. */
-function runProbe(cmd: string, args: string[], timeoutMs = PROBE_TIMEOUT_MS): Promise<string | null> {
+function runProbe(
+  cmd: string,
+  args: string[],
+  timeoutMs = PROBE_TIMEOUT_MS,
+): Promise<string | null> {
   return new Promise((resolve) => {
     let out = '';
     try {
@@ -227,7 +238,14 @@ async function probeMac(): Promise<ProbeResult> {
   const raw = await runProbe('system_profiler', ['SPDisplaysDataType', '-json']);
   if (!raw) return null;
   try {
-    const json = JSON.parse(raw) as { SPDisplaysDataType?: Array<{ spdisplays_vendor?: string; spdisplays_vendor_id?: string; spdisplays_device_name?: string; _name?: string }> };
+    const json = JSON.parse(raw) as {
+      SPDisplaysDataType?: Array<{
+        spdisplays_vendor?: string;
+        spdisplays_vendor_id?: string;
+        spdisplays_device_name?: string;
+        _name?: string;
+      }>;
+    };
     const gpu = json.SPDisplaysDataType?.[0];
     if (!gpu) return null;
     const vendor = mapMacVendor(gpu.spdisplays_vendor, gpu.spdisplays_vendor_id);
@@ -265,7 +283,10 @@ function toMb(s: string): number | undefined {
  * Returns `null` when no vendor tool exposes utilisation (and the UI hides the
  * pill — see the design rationale in docs/design-patterns.md "ServiceReview").
  */
-export async function readGpu(now: number = Date.now(), opts: { os?: OsShim; probe?: GpuProbe } = {}): Promise<ProbeResult> {
+export async function readGpu(
+  now: number = Date.now(),
+  opts: { os?: OsShim; probe?: GpuProbe } = {},
+): Promise<ProbeResult> {
   if (opts.os) currentOs = opts.os;
   const probe = opts.probe ?? defaultProbe;
   if (gpuCache && now - gpuCache.ts < GPU_CACHE_MS) return gpuCache.value;
@@ -294,7 +315,9 @@ export interface GpuProbe {
 const defaultProbe: GpuProbe = { nvidia: probeNvidia, rocm: probeRocm, mac: probeMac };
 
 /** Collect everything in one call, with a graceful degrade for any failing piece. */
-export async function collectMetrics(opts: { os?: OsShim; probe?: GpuProbe; gpuCacheTtlMs?: number } = {}): Promise<MetricsSnapshot> {
+export async function collectMetrics(
+  opts: { os?: OsShim; probe?: GpuProbe; gpuCacheTtlMs?: number } = {},
+): Promise<MetricsSnapshot> {
   if (opts.os) currentOs = opts.os;
   let gpu: GpuSnapshot | null = null;
   try {

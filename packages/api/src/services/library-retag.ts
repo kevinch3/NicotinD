@@ -99,19 +99,17 @@ export interface RetagTarget {
  */
 export function collectRetagTargets(db: Database): RetagTarget[] {
   const albums = db
-    .query<
-      { id: string; name: string; artist: string; song_count: number },
-      []
-    >('SELECT id, name, artist, song_count FROM library_albums')
+    .query<{ id: string; name: string; artist: string; song_count: number }, []>(
+      'SELECT id, name, artist, song_count FROM library_albums',
+    )
     .all();
   const out: RetagTarget[] = [];
   for (const al of albums) {
     const songTitle =
       db
-        .query<
-          { title: string },
-          [string]
-        >('SELECT title FROM library_songs WHERE album_id = ? LIMIT 1')
+        .query<{ title: string }, [string]>(
+          'SELECT title FROM library_songs WHERE album_id = ? LIMIT 1',
+        )
         .get(al.id)?.title ?? undefined;
     const plan = planRetag({
       artist: al.artist,

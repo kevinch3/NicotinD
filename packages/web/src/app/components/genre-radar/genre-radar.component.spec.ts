@@ -28,7 +28,11 @@ const THREE: GenreSlice[] = [
 
 describe('GenreRadarComponent', () => {
   it('builds one axis per genre, preserving the given order', () => {
-    expect(make(THREE).axes().map((a) => a.label)).toEqual(['Cumbia', 'Folclore', 'Rock']);
+    expect(
+      make(THREE)
+        .axes()
+        .map((a) => a.label),
+    ).toEqual(['Cumbia', 'Folclore', 'Rock']);
   });
 
   it('sorts the value table by share, highest first', () => {

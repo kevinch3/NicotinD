@@ -133,7 +133,10 @@ describe('AutoHuntService', () => {
 
     expect(kickPoll).toHaveBeenCalled();
     expect(show).toHaveBeenCalledWith(
-      expect.objectContaining({ kind: 'success', message: expect.stringContaining('Wish You Were Here') }),
+      expect.objectContaining({
+        kind: 'success',
+        message: expect.stringContaining('Wish You Were Here'),
+      }),
     );
   });
 
@@ -175,9 +178,7 @@ describe('AutoHuntService', () => {
   });
 
   it('shows error toast when no candidates are found', async () => {
-    huntAlbumBase.mockReturnValue(
-      of({ candidates: [], totalTracks: 10, skewNeeded: false }),
-    );
+    huntAlbumBase.mockReturnValue(of({ candidates: [], totalTracks: 10, skewNeeded: false }));
 
     svc().hunt(ALBUM, 'Pink Floyd', vi.fn());
     await Promise.resolve();
@@ -198,9 +199,7 @@ describe('AutoHuntService', () => {
     huntAlbumBase.mockReturnValue(
       of({ candidates: [candidate(85)], totalTracks: 10, skewNeeded: false }),
     );
-    huntDownload.mockReturnValue(
-      throwError(() => ({ error: { error: 'already-downloading' } })),
-    );
+    huntDownload.mockReturnValue(throwError(() => ({ error: { error: 'already-downloading' } })));
 
     let downloadCb: (() => void) | undefined;
     show.mockImplementation((config) => {
@@ -253,9 +252,7 @@ describe('AutoHuntService', () => {
   });
 
   it('Dismiss action on no-match error toast calls dismiss()', async () => {
-    huntAlbumBase.mockReturnValue(
-      of({ candidates: [], totalTracks: 10, skewNeeded: false }),
-    );
+    huntAlbumBase.mockReturnValue(of({ candidates: [], totalTracks: 10, skewNeeded: false }));
     let dismissCb: (() => void) | undefined;
     show.mockImplementation((config) => {
       // Dismiss is the first action on error toasts
@@ -271,9 +268,7 @@ describe('AutoHuntService', () => {
   });
 
   it('runs skew phase when base reports skewNeeded', async () => {
-    huntAlbumBase.mockReturnValue(
-      of({ candidates: [], totalTracks: 10, skewNeeded: true }),
-    );
+    huntAlbumBase.mockReturnValue(of({ candidates: [], totalTracks: 10, skewNeeded: true }));
     huntAlbumSkew.mockReturnValue(of({ candidates: [candidate(75)] }));
     huntDownload.mockReturnValue(of({ queued: 1 }));
 

@@ -41,7 +41,8 @@ export class DesktopTitleBarOverlayComponent {
   /** Double-click on the bar toggles maximize (GTK convention), matching
    *  the shell header's behavior. */
   onDoubleClick(): void {
-    (globalThis as { window?: { nicotind?: { maximizeToggle?: () => void } } })
-      .window?.nicotind?.maximizeToggle?.();
+    (
+      globalThis as { window?: { nicotind?: { maximizeToggle?: () => void } } }
+    ).window?.nicotind?.maximizeToggle?.();
   }
 }

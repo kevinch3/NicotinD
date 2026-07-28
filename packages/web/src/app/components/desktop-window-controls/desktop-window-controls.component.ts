@@ -21,7 +21,10 @@ import { isElectronLinux } from '../../lib/platform';
   host: { class: 'contents' },
   template: `
     @if (isElectronLinux()) {
-      <div class="flex items-center [-webkit-app-region:no-drag]" data-testid="desktop-window-controls">
+      <div
+        class="flex items-center [-webkit-app-region:no-drag]"
+        data-testid="desktop-window-controls"
+      >
         <button
           type="button"
           (click)="minimize()"
@@ -29,7 +32,15 @@ import { isElectronLinux } from '../../lib/platform';
           aria-label="Minimize window"
           class="w-9 h-9 flex items-center justify-center rounded-md text-theme-muted hover:text-theme-primary hover:bg-theme-surface-2/60 transition"
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+          >
             <path d="M5 19h14" />
           </svg>
         </button>
@@ -41,12 +52,30 @@ import { isElectronLinux } from '../../lib/platform';
           class="w-9 h-9 flex items-center justify-center rounded-md text-theme-muted hover:text-theme-primary hover:bg-theme-surface-2/60 transition"
         >
           @if (isMaximized()) {
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
               <path d="M4 8h6v6H4z" />
               <path d="M9 16l4-4h7v7h-7" />
             </svg>
           } @else {
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
               <rect x="5" y="5" width="14" height="14" rx="1" />
             </svg>
           }
@@ -58,7 +87,15 @@ import { isElectronLinux } from '../../lib/platform';
           aria-label="Close window"
           class="w-9 h-9 flex items-center justify-center rounded-md text-theme-muted hover:text-status-error hover:bg-status-error/10 transition"
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+          >
             <path d="M6 6l12 12M18 6L6 18" />
           </svg>
         </button>
@@ -81,13 +118,16 @@ export class DesktopWindowControlsComponent implements OnInit, OnDestroy {
    *  `isMaximized`. */
   toggleMaximize(): void {
     if (!this.isElectronLinux()) return;
-    (globalThis as { window?: { nicotind?: { maximizeToggle?: () => void } } })
-      .window?.nicotind?.maximizeToggle?.();
+    (
+      globalThis as { window?: { nicotind?: { maximizeToggle?: () => void } } }
+    ).window?.nicotind?.maximizeToggle?.();
   }
 
   minimize(): void {
     if (!this.isElectronLinux()) return;
-    (globalThis as { window?: { nicotind?: { minimize?: () => void } } }).window?.nicotind?.minimize?.();
+    (
+      globalThis as { window?: { nicotind?: { minimize?: () => void } } }
+    ).window?.nicotind?.minimize?.();
   }
 
   closeWindow(): void {
@@ -100,12 +140,19 @@ export class DesktopWindowControlsComponent implements OnInit, OnDestroy {
     // never renders the buttons. Defense against a missing bridge (older
     // preload / pre-bridge window) keeps it a no-op.
     if (this.isElectronLinux()) {
-      const bridge = (globalThis as { window?: { nicotind?: {
-        onMaximizeChange?: (cb: (s: { isMaximized: boolean }) => void) => () => void;
-      } } }).window?.nicotind;
-      this.unsubscribeMaximize = bridge?.onMaximizeChange?.((s) => {
-        this.isMaximized.set(!!s?.isMaximized);
-      }) ?? null;
+      const bridge = (
+        globalThis as {
+          window?: {
+            nicotind?: {
+              onMaximizeChange?: (cb: (s: { isMaximized: boolean }) => void) => () => void;
+            };
+          };
+        }
+      ).window?.nicotind;
+      this.unsubscribeMaximize =
+        bridge?.onMaximizeChange?.((s) => {
+          this.isMaximized.set(!!s?.isMaximized);
+        }) ?? null;
     }
   }
 

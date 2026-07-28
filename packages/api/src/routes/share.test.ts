@@ -106,10 +106,9 @@ describe('GET /api/share/:token/resource — resolve (no side effects)', () => {
     expect(body.resourceId).toBe('art9');
     // The public clock was never started.
     const row = testDb
-      .query<
-        { first_accessed_at: number | null },
-        [string]
-      >('SELECT first_accessed_at FROM share_tokens WHERE token = ?')
+      .query<{ first_accessed_at: number | null }, [string]>(
+        'SELECT first_accessed_at FROM share_tokens WHERE token = ?',
+      )
       .get('tokR2');
     expect(row!.first_accessed_at).toBeNull();
   });
@@ -162,10 +161,9 @@ describe('POST /api/share/activate/:token — activate', () => {
     expect(typeof body.jwt).toBe('string');
     // first_accessed_at is now set
     const row = testDb
-      .query<
-        { first_accessed_at: number | null },
-        [string]
-      >('SELECT * FROM share_tokens WHERE token = ?')
+      .query<{ first_accessed_at: number | null }, [string]>(
+        'SELECT * FROM share_tokens WHERE token = ?',
+      )
       .get('tok1');
     expect(row!.first_accessed_at).not.toBeNull();
   });

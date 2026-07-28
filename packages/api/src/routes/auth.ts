@@ -198,7 +198,9 @@ export function authRoutes(
         .query<
           { id: string; username: string; password_hash: string; role: string; status: string },
           [string]
-        >("SELECT id, username, password_hash, role, COALESCE(status, 'active') as status FROM users WHERE username = ?")
+        >(
+          "SELECT id, username, password_hash, role, COALESCE(status, 'active') as status FROM users WHERE username = ?",
+        )
         .get(username);
 
       if (!user || !(await verifyPassword(password, user.password_hash))) {
@@ -431,23 +433,26 @@ export function authRoutes(
           'SELECT COALESCE(welcome_dismissed, 0) as welcome_dismissed, COALESCE(autoplay_on_load, 0) as autoplay_on_load, COALESCE(feedback_capture, 0) as feedback_capture FROM user_settings WHERE user_id = ?',
         )
         .get(user.sub);
-      return c.json({
-        id: user.sub,
-        username: user.username ?? '',
-        role: user.role ?? 'user',
-        welcomeDismissed: (settings?.welcome_dismissed ?? 0) === 1,
-        autoplayOnLoad: (settings?.autoplay_on_load ?? 0) === 1,
-        feedbackCapture: (settings?.feedback_capture ?? 0) === 1,
-        acquisitionEnabled,
-      } as {
-        id: string;
-        username: string;
-        role: string;
-        welcomeDismissed: boolean;
-        autoplayOnLoad: boolean;
-        feedbackCapture: boolean;
-        acquisitionEnabled: boolean;
-      }, 200);
+      return c.json(
+        {
+          id: user.sub,
+          username: user.username ?? '',
+          role: user.role ?? 'user',
+          welcomeDismissed: (settings?.welcome_dismissed ?? 0) === 1,
+          autoplayOnLoad: (settings?.autoplay_on_load ?? 0) === 1,
+          feedbackCapture: (settings?.feedback_capture ?? 0) === 1,
+          acquisitionEnabled,
+        } as {
+          id: string;
+          username: string;
+          role: string;
+          welcomeDismissed: boolean;
+          autoplayOnLoad: boolean;
+          feedbackCapture: boolean;
+          acquisitionEnabled: boolean;
+        },
+        200,
+      );
     },
   );
 

@@ -95,7 +95,9 @@ function main(): void {
 
   const applyIdx = args.indexOf('--apply');
   if (applyIdx >= 0 && args[applyIdx + 1]) {
-    const proposals = JSON.parse(readFileSync(args[applyIdx + 1]!, 'utf-8')) as GenreAliasProposal[];
+    const proposals = JSON.parse(
+      readFileSync(args[applyIdx + 1]!, 'utf-8'),
+    ) as GenreAliasProposal[];
     const stmt = db.prepare(
       `INSERT INTO library_genre_aliases (alias, canonical, source, created_at)
        VALUES (?, ?, 'user', ?)

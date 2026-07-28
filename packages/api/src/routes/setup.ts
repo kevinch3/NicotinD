@@ -112,7 +112,10 @@ export function setupRoutes({
       } else {
         try {
           const { LidarrClient } = await import('@nicotind/lidarr-client');
-          const lidarrClient = new LidarrClient({ baseUrl: config.lidarr.url, apiKey: config.lidarr.apiKey });
+          const lidarrClient = new LidarrClient({
+            baseUrl: config.lidarr.url,
+            apiKey: config.lidarr.apiKey,
+          });
           await updateExternalLidarrCredentials(lidarrClient, config.lidarr.apiKey);
         } catch (err) {
           console.warn('Failed to update external Lidarr credentials:', err);

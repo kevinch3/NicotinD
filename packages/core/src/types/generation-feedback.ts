@@ -10,11 +10,7 @@ import type { SlskdSearchResponse } from './slskd.js';
  * wire in later with no DB change.
  */
 export type GenerationFeedbackResourceType =
-  | 'hunt-match'
-  | 'radio'
-  | 'playlist'
-  | 'library'
-  | 'search';
+  'hunt-match' | 'radio' | 'playlist' | 'library' | 'search';
 
 /** The human's overall grade of a generated result. */
 export type GenerationVerdict = 'good' | 'bad';

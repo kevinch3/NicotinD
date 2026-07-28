@@ -61,20 +61,30 @@ describe('maybeCheckForUpdate', () => {
   it('polls once per 24h', async () => {
     const t0 = day; // far enough from 0 that backoff math has room
     expect(await maybeCheckForUpdate(db, { now: t0, fetchImpl: fakeRelease('v1.0.0') })).toBe(true);
-    expect(await maybeCheckForUpdate(db, { now: t0 + 3_600_000, fetchImpl: fakeRelease('v2.0.0') })).toBe(false);
-    expect(await maybeCheckForUpdate(db, { now: t0 + day, fetchImpl: fakeRelease('v2.0.0') })).toBe(true);
+    expect(
+      await maybeCheckForUpdate(db, { now: t0 + 3_600_000, fetchImpl: fakeRelease('v2.0.0') }),
+    ).toBe(false);
+    expect(await maybeCheckForUpdate(db, { now: t0 + day, fetchImpl: fakeRelease('v2.0.0') })).toBe(
+      true,
+    );
     expect(getStoredUpdateCheck(db)?.latestVersion).toBe('2.0.0');
   });
 
   it('backs off 1h between failed attempts', async () => {
     const t0 = day;
     expect(await maybeCheckForUpdate(db, { now: t0, fetchImpl: failing })).toBe(true);
-    expect(await maybeCheckForUpdate(db, { now: t0 + 60_000, fetchImpl: fakeRelease('v1.0.0') })).toBe(false);
-    expect(await maybeCheckForUpdate(db, { now: t0 + 3_700_000, fetchImpl: fakeRelease('v1.0.0') })).toBe(true);
+    expect(
+      await maybeCheckForUpdate(db, { now: t0 + 60_000, fetchImpl: fakeRelease('v1.0.0') }),
+    ).toBe(false);
+    expect(
+      await maybeCheckForUpdate(db, { now: t0 + 3_700_000, fetchImpl: fakeRelease('v1.0.0') }),
+    ).toBe(true);
   });
 
   it('is a no-op when disabled', async () => {
-    expect(await maybeCheckForUpdate(db, { now: day, fetchImpl: fakeRelease('v1.0.0'), enabled: false })).toBe(false);
+    expect(
+      await maybeCheckForUpdate(db, { now: day, fetchImpl: fakeRelease('v1.0.0'), enabled: false }),
+    ).toBe(false);
   });
 });
 

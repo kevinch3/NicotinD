@@ -113,7 +113,10 @@ describe('LayoutComponent — desktop downloads badge', () => {
       providers: [
         provideRouter([]),
         { provide: PlayerService, useValue: playerStub },
-        { provide: AuthService, useValue: { username: signal('u'), role: signal('user'), logout: () => {} } },
+        {
+          provide: AuthService,
+          useValue: { username: signal('u'), role: signal('user'), logout: () => {} },
+        },
         { provide: TransferService, useValue: transfersStub },
         { provide: AcquireService, useValue: acquireStub },
         { provide: APP_VERSION, useValue: '0.0.0-test' },
@@ -150,8 +153,14 @@ describe('LayoutComponent — desktop chrome bar (Electron)', () => {
       imports: [LayoutComponent],
       providers: [
         provideRouter([]),
-        { provide: PlayerService, useValue: { currentTrack: signal(null), setRadioProvider: () => {} } },
-        { provide: AuthService, useValue: { username: signal('u'), role: signal('user'), logout: () => {} } },
+        {
+          provide: PlayerService,
+          useValue: { currentTrack: signal(null), setRadioProvider: () => {} },
+        },
+        {
+          provide: AuthService,
+          useValue: { username: signal('u'), role: signal('user'), logout: () => {} },
+        },
         { provide: APP_VERSION, useValue: '0.0.0-test' },
       ],
       schemas: [NO_ERRORS_SCHEMA],
@@ -171,7 +180,9 @@ describe('LayoutComponent — desktop chrome bar (Electron)', () => {
     fixture.detectChanges();
     expect(fixture.componentInstance.isElectronLinux()).toBe(false);
     expect(fixture.componentInstance.headerClass()).not.toContain('[-webkit-app-region:drag]');
-    expect(fixture.nativeElement.querySelector('header').getAttribute('data-electron-title-bar')).toBeNull();
+    expect(
+      fixture.nativeElement.querySelector('header').getAttribute('data-electron-title-bar'),
+    ).toBeNull();
     fixture.destroy();
   });
 
@@ -182,7 +193,9 @@ describe('LayoutComponent — desktop chrome bar (Electron)', () => {
     fixture.detectChanges();
     expect(fixture.componentInstance.isElectronLinux()).toBe(true);
     expect(fixture.componentInstance.headerClass()).toContain('[-webkit-app-region:drag]');
-    expect(fixture.nativeElement.querySelector('header').getAttribute('data-electron-title-bar')).toBe('');
+    expect(
+      fixture.nativeElement.querySelector('header').getAttribute('data-electron-title-bar'),
+    ).toBe('');
     vi.mocked(platform.isElectronLinux).mockReturnValue(false);
     fixture.destroy();
   });

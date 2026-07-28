@@ -46,7 +46,10 @@ export function buildKnownFromRaw(
   const counts = new Map<string, Map<string, number>>();
   for (const raw of rawValues) {
     const frames = raw == null ? [] : Array.isArray(raw) ? raw : [raw];
-    for (const part of frames.flatMap((f) => f.split(SEPARATORS)).map(norm).filter(Boolean)) {
+    for (const part of frames
+      .flatMap((f) => f.split(SEPARATORS))
+      .map(norm)
+      .filter(Boolean)) {
       const k = genreKey(part);
       const variants = counts.get(k) ?? new Map<string, number>();
       variants.set(part, (variants.get(part) ?? 0) + 1);
@@ -62,7 +65,10 @@ export function buildKnownFromRaw(
 
 export function splitGenres(raw: string | string[] | undefined, ctx: GenreContext): string[] {
   const frames = raw == null ? [] : Array.isArray(raw) ? raw : [raw];
-  let parts = frames.flatMap((f) => f.split(SEPARATORS)).map(norm).filter(Boolean);
+  let parts = frames
+    .flatMap((f) => f.split(SEPARATORS))
+    .map(norm)
+    .filter(Boolean);
 
   // Alias expansion: canonical may be a list (re-split) or '' (drop). Applied
   // twice so an alias produced by another alias's expansion still resolves.
@@ -298,7 +304,10 @@ export function proposeGenreAliases(
 
     // Unresolved "/" join: keep only the sides that are real genres.
     if (v.value.includes('/')) {
-      const sides = v.value.split('/').map((s) => s.trim().replace(/\s+/g, ' ')).filter(Boolean);
+      const sides = v.value
+        .split('/')
+        .map((s) => s.trim().replace(/\s+/g, ' '))
+        .filter(Boolean);
       const knownSides = sides.filter(isKnown);
       if (sides.length > 1 && knownSides.length > 0 && knownSides.length < sides.length) {
         out.push({
@@ -413,9 +422,7 @@ export function backfillGenresFromAliases(db: Database): { scanned: number; upda
 export function setSongGenres(db: Database, songId: string, genres: string[]): void {
   const touched = new Set<string>(genres);
   for (const r of db
-    .query<{ genre: string }, [string]>(
-      `SELECT genre FROM library_song_genres WHERE song_id = ?`,
-    )
+    .query<{ genre: string }, [string]>(`SELECT genre FROM library_song_genres WHERE song_id = ?`)
     .all(songId)) {
     touched.add(r.genre);
   }

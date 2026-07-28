@@ -51,7 +51,12 @@ function setup(
       {
         provide: LibraryApiService,
         useValue: {
-          getAlbums: (type: string, _size: number, _offset: number, opts: Record<string, unknown>) => {
+          getAlbums: (
+            type: string,
+            _size: number,
+            _offset: number,
+            opts: Record<string, unknown>,
+          ) => {
             albumCalls.push({ type, opts });
             return of([]);
           },

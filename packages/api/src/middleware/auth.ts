@@ -27,10 +27,9 @@ export function authMiddleware(jwtSecret: string) {
       // Check if user account is disabled
       const db = getDatabase();
       const user = db
-        .query<
-          { status: string },
-          [string]
-        >("SELECT COALESCE(status, 'active') as status FROM users WHERE id = ?")
+        .query<{ status: string }, [string]>(
+          "SELECT COALESCE(status, 'active') as status FROM users WHERE id = ?",
+        )
         .get(jwtPayload.sub);
 
       if (!user || user.status === 'disabled') {

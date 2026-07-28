@@ -319,7 +319,11 @@ describe('reconcileOrganizedItems (#262)', () => {
   it('still matches on ASCII case alone, without needing the fold', () => {
     const id = seedJob();
     markItemCompleted(db, transferKeyFor('peer1', 'a\\01 Sunday.flac'));
-    markItemOrganized(db, transferKeyFor('peer1', 'a\\01 Sunday.flac'), 'Bowie/Heathen/01 SUNDAY.opus');
+    markItemOrganized(
+      db,
+      transferKeyFor('peer1', 'a\\01 Sunday.flac'),
+      'Bowie/Heathen/01 SUNDAY.opus',
+    );
     seedSong('s1', 'Bowie/Heathen/01 sunday.opus', true);
 
     expect(reconcileOrganizedItems(db)).toBe(1);
@@ -334,7 +338,11 @@ describe('reconcileOrganizedItems (#262)', () => {
   it('leaves an item alone when no song matches under any folding', () => {
     const id = seedJob();
     markItemCompleted(db, transferKeyFor('peer1', 'a\\01 Sunday.flac'));
-    markItemOrganized(db, transferKeyFor('peer1', 'a\\01 Sunday.flac'), 'Fonsi/Abrazar/12 - Se Supone.opus');
+    markItemOrganized(
+      db,
+      transferKeyFor('peer1', 'a\\01 Sunday.flac'),
+      'Fonsi/Abrazar/12 - Se Supone.opus',
+    );
     seedSong('s1', 'Someone Else/Other/01 - Different.opus', true);
 
     expect(reconcileOrganizedItems(db)).toBe(0);
@@ -721,7 +729,11 @@ describe('backfillDirectJobAlbum (issue #223 — direct grab lands with a real "
     const relPath = 'David Bowie/Heathen/01 Sunday.flac';
     const songId = seedLandedSong('David Bowie', 'Heathen', 'Sunday', relPath);
     // Simulate the watcher's organize→scan seam.
-    markItemOrganized(db, transferKeyFor('peer1', 'peer-share-2020\\FLAC rips\\01 Sunday.flac'), relPath);
+    markItemOrganized(
+      db,
+      transferKeyFor('peer1', 'peer-share-2020\\FLAC rips\\01 Sunday.flac'),
+      relPath,
+    );
     markItemsScanned(db, new Map([[relPath, songId]]));
 
     backfillDirectJobAlbum(db, jobId);

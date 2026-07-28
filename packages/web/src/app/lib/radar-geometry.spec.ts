@@ -1,11 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  axisAngle,
-  radarAxes,
-  polygonPoints,
-  ringPoints,
-  truncateLabel,
-} from './radar-geometry';
+import { axisAngle, radarAxes, polygonPoints, ringPoints, truncateLabel } from './radar-geometry';
 
 const CENTER = { cx: 100, cy: 100, radius: 50 };
 

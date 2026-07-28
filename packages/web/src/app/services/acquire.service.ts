@@ -49,7 +49,11 @@ export class AcquireService {
   // (no toast). Matches TransferService.hasPolled.
   private hasRefreshed = false;
 
-  async submit(url: string, backend?: AcquireBackend, opts: AcquireSubmitOptions = {}): Promise<string> {
+  async submit(
+    url: string,
+    backend?: AcquireBackend,
+    opts: AcquireSubmitOptions = {},
+  ): Promise<string> {
     const res = await firstValueFrom(
       this.http.post<{ jobId: string }>('/api/acquire', { url, backend, as: opts.as }),
     );

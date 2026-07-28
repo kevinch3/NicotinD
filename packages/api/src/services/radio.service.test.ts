@@ -191,7 +191,11 @@ describe('scoreSimilarity', () => {
       duration: 0,
       artistPenalty: 0,
     };
-    const match = scoreSimilarity(makeSeed({ genre: 'Rock' }), makeCandidate({ genre: 'Rock' }), weights);
+    const match = scoreSimilarity(
+      makeSeed({ genre: 'Rock' }),
+      makeCandidate({ genre: 'Rock' }),
+      weights,
+    );
     const mismatch = scoreSimilarity(
       makeSeed({ genre: 'Rock' }),
       makeCandidate({ genre: 'Jazz' }),
@@ -237,9 +241,7 @@ describe('rankCandidates', () => {
 
   it('enforces per-artist cap', () => {
     const seed = makeSeed();
-    const candidates = Array.from({ length: 10 }, () =>
-      makeCandidate({ artistId: 'artist-same' }),
-    );
+    const candidates = Array.from({ length: 10 }, () => makeCandidate({ artistId: 'artist-same' }));
     const result = rankCandidates(seed, candidates, { count: 10, maxPerArtist: 2 });
     expect(result.length).toBe(2);
   });
@@ -357,7 +359,11 @@ describe('scoreSimilarity — multi-genre axis', () => {
       { ...base, genre: 'House' },
       DEFAULT_WEIGHTS,
     );
-    const multi = scoreSimilarity(seed, { ...base, genres: ['House'], genre: 'House' }, DEFAULT_WEIGHTS);
+    const multi = scoreSimilarity(
+      seed,
+      { ...base, genres: ['House'], genre: 'House' },
+      DEFAULT_WEIGHTS,
+    );
     expect(multi).toBeGreaterThan(single);
   });
 });
@@ -379,9 +385,8 @@ describe('explainSimilarity (per-axis breakdown — the diagnostic seam)', () =>
   });
 
   it('floors a missing candidate genre instead of skipping it (data problem, but scored)', async () => {
-    const { explainSimilarity, DEFAULT_WEIGHTS, MISSING_GENRE_FLOOR } = await import(
-      './radio.service.js'
-    );
+    const { explainSimilarity, DEFAULT_WEIGHTS, MISSING_GENRE_FLOOR } =
+      await import('./radio.service.js');
     const seed = makeSeed({ genre: 'Folk', genres: ['Folk'] });
     const cand = makeCandidate({ genre: undefined, genres: undefined });
     const ex = explainSimilarity(seed, cand, DEFAULT_WEIGHTS);
@@ -502,10 +507,14 @@ describe('explainSimilarity (per-axis breakdown — the diagnostic seam)', () =>
   });
 
   it('.score is identical to scoreSimilarity across a table of cases (delegation invariant)', async () => {
-    const { explainSimilarity, scoreSimilarity, DEFAULT_WEIGHTS } = await import('./radio.service.js');
+    const { explainSimilarity, scoreSimilarity, DEFAULT_WEIGHTS } =
+      await import('./radio.service.js');
     const cases: Array<[SongFeatures, SongFeatures]> = [
       [makeSeed(), makeCandidate()],
-      [makeSeed({ genre: 'Folk', genres: ['Folk'] }), makeCandidate({ genre: 'Pop', genres: ['Pop'] })],
+      [
+        makeSeed({ genre: 'Folk', genres: ['Folk'] }),
+        makeCandidate({ genre: 'Pop', genres: ['Pop'] }),
+      ],
       [makeSeed({ artistId: 'same' }), makeCandidate({ artistId: 'same' })],
       [makeSeed({ bpm: undefined, key: undefined }), makeCandidate({ energy: 0.9 })],
       [
@@ -514,7 +523,9 @@ describe('explainSimilarity (per-axis breakdown — the diagnostic seam)', () =>
       ],
     ];
     for (const [s, c] of cases) {
-      expect(explainSimilarity(s, c, DEFAULT_WEIGHTS).score).toBe(scoreSimilarity(s, c, DEFAULT_WEIGHTS));
+      expect(explainSimilarity(s, c, DEFAULT_WEIGHTS).score).toBe(
+        scoreSimilarity(s, c, DEFAULT_WEIGHTS),
+      );
     }
   });
 

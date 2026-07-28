@@ -110,7 +110,10 @@ describe('MusicBrainzClient getLicence', () => {
   it('caches the result so a repeat lookup does not re-query', async () => {
     const calls = mockFetch({
       relations: [
-        { type: 'license', url: { resource: 'https://creativecommons.org/publicdomain/zero/1.0/' } },
+        {
+          type: 'license',
+          url: { resource: 'https://creativecommons.org/publicdomain/zero/1.0/' },
+        },
       ],
     });
     const client = new MusicBrainzClient(cacheFile, 'test/1.0');

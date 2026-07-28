@@ -11,7 +11,12 @@ const cfg = (over: Partial<SpotifyPluginConfig> = {}): SpotifyPluginConfig => ({
 
 function fakeCtx(config: Record<string, unknown>): PluginHostContext {
   return {
-    logger: { info() {}, warn() {}, error() {}, debug() {} } as unknown as PluginHostContext['logger'],
+    logger: {
+      info() {},
+      warn() {},
+      error() {},
+      debug() {},
+    } as unknown as PluginHostContext['logger'],
     config,
     allocStagingDir: (id) => id,
     emitProgress() {},

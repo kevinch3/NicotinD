@@ -32,7 +32,9 @@ describe('updateExternalSoulseekCredentials', () => {
   });
 
   it('preserves other soulseek keys while overwriting credentials', async () => {
-    const { slskd, read } = fakeSlskd(stringify({ soulseek: { listening_port: 50000, username: 'old' } }));
+    const { slskd, read } = fakeSlskd(
+      stringify({ soulseek: { listening_port: 50000, username: 'old' } }),
+    );
     await updateExternalSoulseekCredentials(slskd, 'u', 'p');
 
     const written = parse(read()) as { soulseek: Record<string, unknown> };

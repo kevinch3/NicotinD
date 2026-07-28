@@ -45,10 +45,9 @@ function seedJob(db: Database, artistName: string, albumTitle: string): void {
 
 function readRow(db: Database, id: string): { hidden: number; classification: string } {
   return db
-    .query<
-      { hidden: number; classification: string },
-      [string]
-    >('SELECT hidden, classification FROM library_albums WHERE id = ?')
+    .query<{ hidden: number; classification: string }, [string]>(
+      'SELECT hidden, classification FROM library_albums WHERE id = ?',
+    )
     .get(id)!;
 }
 
@@ -213,9 +212,9 @@ describe('metadata vs track-count contradiction (#315)', () => {
 
     new LibraryCurator(db).reclassifyAll();
 
-    expect(
-      db.query(`SELECT classification FROM library_albums WHERE id='ev'`).get(),
-    ).toEqual({ classification: 'album' });
+    expect(db.query(`SELECT classification FROM library_albums WHERE id='ev'`).get()).toEqual({
+      classification: 'album',
+    });
   });
 
   /**
@@ -231,9 +230,9 @@ describe('metadata vs track-count contradiction (#315)', () => {
 
     new LibraryCurator(db).reclassifyAll();
 
-    expect(
-      db.query(`SELECT classification FROM library_albums WHERE id='al'`).get(),
-    ).toEqual({ classification: 'single' });
+    expect(db.query(`SELECT classification FROM library_albums WHERE id='al'`).get()).toEqual({
+      classification: 'single',
+    });
   });
 
   it('leaves an ordinary 1-track single alone', () => {
@@ -244,9 +243,9 @@ describe('metadata vs track-count contradiction (#315)', () => {
 
     new LibraryCurator(db).reclassifyAll();
 
-    expect(
-      db.query(`SELECT classification FROM library_albums WHERE id='s1'`).get(),
-    ).toEqual({ classification: 'single' });
+    expect(db.query(`SELECT classification FROM library_albums WHERE id='s1'`).get()).toEqual({
+      classification: 'single',
+    });
   });
 
   it('never second-guesses a catalog "album" or "compilation"', () => {
@@ -258,8 +257,8 @@ describe('metadata vs track-count contradiction (#315)', () => {
 
     new LibraryCurator(db).reclassifyAll();
 
-    expect(
-      db.query(`SELECT classification FROM library_albums WHERE id='c1'`).get(),
-    ).toEqual({ classification: 'compilation' });
+    expect(db.query(`SELECT classification FROM library_albums WHERE id='c1'`).get()).toEqual({
+      classification: 'compilation',
+    });
   });
 });

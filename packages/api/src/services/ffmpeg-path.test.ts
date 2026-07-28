@@ -2,7 +2,9 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { ffmpegBinary } from './ffmpeg-path.js';
 
 describe('ffmpegBinary', () => {
-  afterEach(() => { delete process.env.NICOTIND_FFMPEG_PATH; });
+  afterEach(() => {
+    delete process.env.NICOTIND_FFMPEG_PATH;
+  });
   it('defaults to bare ffmpeg (PATH lookup)', () => {
     delete process.env.NICOTIND_FFMPEG_PATH;
     expect(ffmpegBinary()).toBe('ffmpeg');

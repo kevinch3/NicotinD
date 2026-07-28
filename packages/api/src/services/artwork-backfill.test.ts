@@ -7,7 +7,15 @@ import { resolveArtwork } from './artwork-store.js';
 
 describe('isPlaceholderArtist', () => {
   it('matches bracketed / unknown placeholders (diacritic & punctuation tolerant)', () => {
-    for (const name of ['<Desconocido>', 'Desconocido', '[Unknown]', 'Unknown Artist', 'Various Artists', 'VA', '']) {
+    for (const name of [
+      '<Desconocido>',
+      'Desconocido',
+      '[Unknown]',
+      'Unknown Artist',
+      'Various Artists',
+      'VA',
+      '',
+    ]) {
       expect(isPlaceholderArtist(name)).toBe(true);
     }
   });

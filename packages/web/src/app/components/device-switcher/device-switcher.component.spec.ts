@@ -54,7 +54,12 @@ describe('DeviceSwitcherComponent', () => {
   });
 
   it('lists other remote devices with a data-device-id and marks the active one NOW PLAYING', () => {
-    const other: RemoteDevice = { id: 'target-device', name: 'Living Room', type: 'web', lastSeen: Date.now() };
+    const other: RemoteDevice = {
+      id: 'target-device',
+      name: 'Living Room',
+      type: 'web',
+      lastSeen: Date.now(),
+    };
     const { fixture } = setup(
       [{ id: MY_ID, name: 'Self', type: 'web', lastSeen: Date.now() }, other],
       other.id,

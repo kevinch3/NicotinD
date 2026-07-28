@@ -12,7 +12,12 @@ describe('planRetag', () => {
       songCount: 1,
     });
     expect(plan).toEqual({
-      request: { artist: 'Astor Piazzolla', album: 'MARÍA DE BUENOS AIRES', year: 1968, source: 'manual' },
+      request: {
+        artist: 'Astor Piazzolla',
+        album: 'MARÍA DE BUENOS AIRES',
+        year: 1968,
+        source: 'manual',
+      },
       reason: 'numeric-artist-embedded',
     });
   });
@@ -43,7 +48,9 @@ describe('planRetag', () => {
   });
 
   it('skips a numeric artist whose album title is not parseable', () => {
-    expect(planRetag({ artist: '101', album: 'Some Mixtape', songTitle: 'x', songCount: 1 })).toBeNull();
+    expect(
+      planRetag({ artist: '101', album: 'Some Mixtape', songTitle: 'x', songCount: 1 }),
+    ).toBeNull();
   });
 
   it('skips the inverted mis-tag where the song title is itself a watermark (no-op, non-converging)', () => {

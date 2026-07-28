@@ -59,28 +59,31 @@ export const appConfig: ApplicationConfig = {
       preserve.init();
       player.restoreState();
       if (auth.isAuthenticated()) {
-        api.refreshToken().pipe(
-          switchMap((res) => {
-            auth.setToken(res.token);
-            return api.getMe();
-          }),
-        ).subscribe({
-          next: (profile) => {
-            // Sync role from the (DB-backed) refreshed session so a role change
-            // an admin made takes effect on this load, not only on re-login.
-            auth.setRole(profile.role);
-            auth.welcomeDismissed.set(profile.welcomeDismissed);
-            auth.autoplayOnLoad.set(profile.autoplayOnLoad);
-            auth.feedbackCapture.set(profile.feedbackCapture);
-            // Deployment-wide acquisition kill-switch (#235): default to enabled
-            // when an older server omits the field.
-            auth.serverAcquisitionEnabled.set(profile.acquisitionEnabled ?? true);
-            // Resume a previously playing session if the user opted in to
-            // autoplay-on-load. See PlayerService.maybeResumeAutoplay.
-            player.maybeResumeAutoplay(profile.autoplayOnLoad);
-          },
-          error: () => {},
-        });
+        api
+          .refreshToken()
+          .pipe(
+            switchMap((res) => {
+              auth.setToken(res.token);
+              return api.getMe();
+            }),
+          )
+          .subscribe({
+            next: (profile) => {
+              // Sync role from the (DB-backed) refreshed session so a role change
+              // an admin made takes effect on this load, not only on re-login.
+              auth.setRole(profile.role);
+              auth.welcomeDismissed.set(profile.welcomeDismissed);
+              auth.autoplayOnLoad.set(profile.autoplayOnLoad);
+              auth.feedbackCapture.set(profile.feedbackCapture);
+              // Deployment-wide acquisition kill-switch (#235): default to enabled
+              // when an older server omits the field.
+              auth.serverAcquisitionEnabled.set(profile.acquisitionEnabled ?? true);
+              // Resume a previously playing session if the user opted in to
+              // autoplay-on-load. See PlayerService.maybeResumeAutoplay.
+              player.maybeResumeAutoplay(profile.autoplayOnLoad);
+            },
+            error: () => {},
+          });
       }
       const traceService = inject(Sentry.TraceService);
       // AutoPreserveCoordinator wires the player queue → IndexedDB. Cheap while

@@ -18,7 +18,11 @@ beforeEach(() => {
 describe('metadata-override-store', () => {
   it('upserts and reads a correction by raw albumId', () => {
     setOverride(db, 'raw-1', { artist: 'La Portuaria', album: 'Selva', year: 1996 });
-    expect(getOverride(db, 'raw-1')).toEqual({ artist: 'La Portuaria', album: 'Selva', year: 1996 });
+    expect(getOverride(db, 'raw-1')).toEqual({
+      artist: 'La Portuaria',
+      album: 'Selva',
+      year: 1996,
+    });
 
     // Upsert replaces.
     setOverride(db, 'raw-1', { artist: 'La Portuaria', album: 'Huija' });

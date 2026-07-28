@@ -31,12 +31,10 @@ function seed(db: Database): void {
     'clientSecret',
     'super-secret',
   ]);
-  db.run(`INSERT INTO library_genre_aliases (alias, canonical, source, created_at) VALUES (?, ?, ?, ?)`, [
-    'latinworld',
-    'Latin',
-    'user',
-    1,
-  ]);
+  db.run(
+    `INSERT INTO library_genre_aliases (alias, canonical, source, created_at) VALUES (?, ?, ?, ?)`,
+    ['latinworld', 'Latin', 'user', 1],
+  );
 }
 
 describe('exportConfig', () => {
@@ -112,7 +110,10 @@ describe('previewImport', () => {
     seed(target);
 
     const plan = previewImport(target, exportConfig(source, { includeSecrets: true }));
-    expect(plan.sections.find((s) => s.section === 'users')).toMatchObject({ create: 0, update: 1 });
+    expect(plan.sections.find((s) => s.section === 'users')).toMatchObject({
+      create: 0,
+      update: 1,
+    });
   });
 
   it('drops columns this install does not have and says so', () => {
@@ -219,13 +220,10 @@ describe('importConfig', () => {
     const target = freshDb();
     // Same username, different id — collides on the users.username UNIQUE index,
     // not on the `id` conflict target the upsert uses.
-    target.run(`INSERT INTO users (id, username, password_hash, role, created_at) VALUES (?,?,?,?,?)`, [
-      'other-id',
-      'admin',
-      'other-hash',
-      'admin',
-      1,
-    ]);
+    target.run(
+      `INSERT INTO users (id, username, password_hash, role, created_at) VALUES (?,?,?,?,?)`,
+      ['other-id', 'admin', 'other-hash', 'admin', 1],
+    );
 
     const plan = importConfig(target, exportConfig(source, { includeSecrets: true }));
 
@@ -241,7 +239,10 @@ describe('importConfig', () => {
     for (const name of Object.keys(CONFIG_SECTIONS)) {
       const info = db.query<{ name: string; pk: number }, []>(`PRAGMA table_info(${name})`).all();
       expect(info.length, `${name} must exist`).toBeGreaterThan(0);
-      expect(info.some((r) => r.pk > 0), `${name} needs a primary key`).toBe(true);
+      expect(
+        info.some((r) => r.pk > 0),
+        `${name} needs a primary key`,
+      ).toBe(true);
     }
   });
 });

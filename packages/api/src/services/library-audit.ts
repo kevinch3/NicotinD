@@ -62,7 +62,9 @@ interface AlbumRow {
 /** Artist.album_count drift + artists orphaned with zero releases & songs. */
 export function checkArtistIntegrity(db: Database): AuditFinding[] {
   const out: AuditFinding[] = [];
-  const artists = db.query<ArtistRow, []>('SELECT id, name, album_count FROM library_artists').all();
+  const artists = db
+    .query<ArtistRow, []>('SELECT id, name, album_count FROM library_artists')
+    .all();
   for (const a of artists) {
     const albums =
       db
@@ -97,10 +99,9 @@ export function checkArtistIntegrity(db: Database): AuditFinding[] {
 export function checkAlbumIntegrity(db: Database): AuditFinding[] {
   const out: AuditFinding[] = [];
   const albums = db
-    .query<
-      { id: string; name: string; song_count: number; artist_id: string },
-      []
-    >('SELECT id, name, song_count, artist_id FROM library_albums')
+    .query<{ id: string; name: string; song_count: number; artist_id: string }, []>(
+      'SELECT id, name, song_count, artist_id FROM library_albums',
+    )
     .all();
   for (const al of albums) {
     const songs =
@@ -130,10 +131,7 @@ export function checkAlbumIntegrity(db: Database): AuditFinding[] {
   }
   // Songs whose album_id has no album row.
   const orphanSongs = db
-    .query<
-      { id: string; title: string; album_id: string },
-      []
-    >(
+    .query<{ id: string; title: string; album_id: string }, []>(
       `SELECT s.id, s.title, s.album_id FROM library_songs s
        WHERE NOT EXISTS (SELECT 1 FROM library_albums a WHERE a.id = s.album_id)`,
     )
@@ -156,7 +154,9 @@ export function checkAlbumIntegrity(db: Database): AuditFinding[] {
 /** Artists whose name is a DJ-pool/VA-source watermark or a bare number. */
 export function checkPollutedArtists(db: Database): AuditFinding[] {
   const out: AuditFinding[] = [];
-  const artists = db.query<ArtistRow, []>('SELECT id, name, album_count FROM library_artists').all();
+  const artists = db
+    .query<ArtistRow, []>('SELECT id, name, album_count FROM library_artists')
+    .all();
   for (const a of artists) {
     if (looksLikeSourceWatermark(a.name)) {
       out.push({
@@ -207,7 +207,10 @@ export function checkPollutedAlbums(db: Database): AuditFinding[] {
       });
       continue;
     }
-    if (al.classification === 'single' && (isPlaceholderArtist(al.artist) || isUnknownLike(al.name))) {
+    if (
+      al.classification === 'single' &&
+      (isPlaceholderArtist(al.artist) || isUnknownLike(al.name))
+    ) {
       out.push({
         rule: 'placeholder_single',
         severity: 'medium',
@@ -318,10 +321,9 @@ export function summarize(db: Database, findings: AuditFinding[]): AuditReport {
     songs: db.query<{ c: number }, []>('SELECT COUNT(*) c FROM library_songs').get()?.c ?? 0,
     visibleSingles:
       db
-        .query<
-          { c: number },
-          []
-        >(`SELECT COUNT(*) c FROM library_albums WHERE classification='single' AND hidden=0`)
+        .query<{ c: number }, []>(
+          `SELECT COUNT(*) c FROM library_albums WHERE classification='single' AND hidden=0`,
+        )
         .get()?.c ?? 0,
   };
   return { findings, summary, totals, highSeverityCount, ok: highSeverityCount === 0 };
@@ -343,10 +345,7 @@ function severityRank(s: AuditSeverity): number {
  * music, so they are protected and routed to manual re-tagging instead.
  */
 export type DeletableRule =
-  | 'watermark_artist'
-  | 'watermark_album'
-  | 'numeric_single'
-  | 'placeholder_single';
+  'watermark_artist' | 'watermark_album' | 'numeric_single' | 'placeholder_single';
 
 export const DELETABLE_RULES: DeletableRule[] = [
   'watermark_artist',

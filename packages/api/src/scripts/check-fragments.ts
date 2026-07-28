@@ -85,7 +85,9 @@ function renderReport(r: FragmentReport): string {
     lines.push(
       'Album rows the default grid suppresses that look like real defects (a full album mis-tagged',
     );
-    lines.push('as a single/EP, an unresolved classification, or a curator-hidden row). Reclassify or unhide.');
+    lines.push(
+      'as a single/EP, an unresolved classification, or a curator-hidden row). Reclassify or unhide.',
+    );
     lines.push('');
     for (const h of r.hiddenByClassification) {
       lines.push(

@@ -59,7 +59,10 @@ describe('CandidateSearchAggregator', () => {
   });
 
   it('returns empty when no sources are enabled', async () => {
-    const agg = new CandidateSearchAggregator([source('archive', [cand('archive', 'A', 50, 'u1')])], () => false);
+    const agg = new CandidateSearchAggregator(
+      [source('archive', [cand('archive', 'A', 50, 'u1')])],
+      () => false,
+    );
     expect(await agg.search('q')).toEqual([]);
     expect(agg.enabledSourceIds()).toEqual([]);
   });

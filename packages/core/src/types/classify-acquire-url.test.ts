@@ -3,10 +3,7 @@ import { classifyAcquireUrl, urlPathSegments } from './classify-acquire-url';
 
 describe('urlPathSegments', () => {
   it('splits a path into non-empty segments', () => {
-    expect(urlPathSegments('https://open.spotify.com/playlist/abc')).toEqual([
-      'playlist',
-      'abc',
-    ]);
+    expect(urlPathSegments('https://open.spotify.com/playlist/abc')).toEqual(['playlist', 'abc']);
   });
   it('returns [] for an invalid URL', () => {
     expect(urlPathSegments('not a url')).toEqual([]);

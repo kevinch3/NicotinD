@@ -1252,8 +1252,7 @@ interface AlbumGenreRow {
 const genreDiscogsTask: EnrichmentTask = {
   id: 'genre-discogs',
   label: 'Genre (Discogs)',
-  available: (ctx) =>
-    ctx.lookupGenreForRelease ? true : 'No genre metadata provider configured',
+  available: (ctx) => (ctx.lookupGenreForRelease ? true : 'No genre metadata provider configured'),
   countPending: (db) =>
     Number(
       (
@@ -1296,10 +1295,15 @@ const genreDiscogsTask: EnrichmentTask = {
           )
           .all(s.id)
           .map((g) => g.genre);
-        const merged = applyGenreOverride(idx, { songId: s.id, albumKey: key, artistKey: '' }, existing);
+        const merged = applyGenreOverride(
+          idx,
+          { songId: s.id, albumKey: key, artistKey: '' },
+          existing,
+        );
         setSongGenres(db, s.id, merged);
         const abs = resolveSongAbsPath(ctx.musicDir, s.path);
-        if (ctx.fileExists(abs)) await ctx.writeTags(abs, { genre: merged.join('; ') }).catch(() => false);
+        if (ctx.fileExists(abs))
+          await ctx.writeTags(abs, { genre: merged.join('; ') }).catch(() => false);
         clearAnalysisFailure(db, s.id, 'genre-discogs');
       }
     };
@@ -1366,7 +1370,9 @@ const genreDiscogsTask: EnrichmentTask = {
             db,
             r.id,
             'genre-discogs',
-            new NoConfidentResultError(p ? 'discogs album genre pending review' : 'no discogs match'),
+            new NoConfidentResultError(
+              p ? 'discogs album genre pending review' : 'no discogs match',
+            ),
             r.size,
           );
         }

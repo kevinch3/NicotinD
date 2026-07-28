@@ -4,7 +4,10 @@ import { vi } from 'vitest';
 import { SwUpdate, VersionEvent, VersionReadyEvent } from '@angular/service-worker';
 import { UpdateService } from './update.service';
 
-function makeSwStub(isEnabled: boolean, checkForUpdateResult: 'true' | 'false' | 'reject' = 'false') {
+function makeSwStub(
+  isEnabled: boolean,
+  checkForUpdateResult: 'true' | 'false' | 'reject' = 'false',
+) {
   const stub = {
     isEnabled,
     versionUpdates: new Subject<VersionEvent>(),
@@ -121,7 +124,10 @@ describe('UpdateService', () => {
     let resolveCheck!: (found: boolean) => void;
     const sw = makeSwStub(true);
     sw.checkForUpdate.mockImplementation(
-      () => new Promise<boolean>((resolve) => { resolveCheck = resolve; }),
+      () =>
+        new Promise<boolean>((resolve) => {
+          resolveCheck = resolve;
+        }),
     );
     const service = provide(sw);
 

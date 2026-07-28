@@ -26,10 +26,7 @@ export function isInFlight(state: string): boolean {
 
 /** Last two path segments of a backslash/forward-slash path → {artist, album}. */
 function lastTwoSegments(path: string): { artist: string; album: string } | null {
-  const segments = path
-    .replace(/\\/g, '/')
-    .split('/')
-    .filter(Boolean);
+  const segments = path.replace(/\\/g, '/').split('/').filter(Boolean);
   if (segments.length < 2) return null;
   return { artist: segments[segments.length - 2]!, album: segments[segments.length - 1]! };
 }

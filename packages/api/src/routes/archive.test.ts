@@ -201,8 +201,14 @@ describe('ArchiveSearchService', () => {
       ], // album
     });
     const out = await new ArchiveSearchService(fn).search('foo');
-    expect(out.find((c) => c.identifier === 'foo-123')).toMatchObject({ trackCount: 1, kind: 'single' });
-    expect(out.find((c) => c.identifier === 'baz-456')).toMatchObject({ trackCount: 2, kind: 'album' });
+    expect(out.find((c) => c.identifier === 'foo-123')).toMatchObject({
+      trackCount: 1,
+      kind: 'single',
+    });
+    expect(out.find((c) => c.identifier === 'baz-456')).toMatchObject({
+      trackCount: 2,
+      kind: 'album',
+    });
   });
 
   it('drops items whose metadata proves they have no audio files', async () => {

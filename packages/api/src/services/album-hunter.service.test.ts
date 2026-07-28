@@ -309,15 +309,24 @@ describe('AlbumHunterService', () => {
 
     it('drops folders below the low match floor', () => {
       const candidates = scoreFolders(TRACKS, [
-        { username: 'erin', files: [{ filename: 'Junk/Unrelated/totally different.mp3', size: 1 }] },
+        {
+          username: 'erin',
+          files: [{ filename: 'Junk/Unrelated/totally different.mp3', size: 1 }],
+        },
       ]);
       expect(candidates).toHaveLength(0);
     });
 
     it('scores a single (1 track) with qualifier-aware strength', () => {
-      const candidates = scoreFolders([track(1, 'Stay (feat. Justin Bieber)')], [
-        { username: 'kygo', files: [{ filename: 'Kygo/Stay/01 Stay.mp3', size: 1, bitRate: 320 }] },
-      ]);
+      const candidates = scoreFolders(
+        [track(1, 'Stay (feat. Justin Bieber)')],
+        [
+          {
+            username: 'kygo',
+            files: [{ filename: 'Kygo/Stay/01 Stay.mp3', size: 1, bitRate: 320 }],
+          },
+        ],
+      );
       expect(candidates).toHaveLength(1);
       expect(candidates[0].matchPct).toBe(50);
     });

@@ -34,7 +34,9 @@ function authedAdmin(): Hono<AuthEnv> {
 
 function seedUser(id: string, username: string, role = 'user') {
   testDb
-    .query('INSERT INTO users (id, username, password_hash, role, created_at) VALUES (?, ?, ?, ?, ?)')
+    .query(
+      'INSERT INTO users (id, username, password_hash, role, created_at) VALUES (?, ?, ?, ?, ?)',
+    )
     .run(id, username, 'x', role, new Date().toISOString());
 }
 

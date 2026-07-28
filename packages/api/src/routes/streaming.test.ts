@@ -78,7 +78,14 @@ describe('streaming routes', () => {
     db.run(
       `INSERT INTO app_settings (key, value) VALUES ('streaming', ?)
        ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-      [JSON.stringify({ transcodeEnabled: true, forceTranscode: true, format: 'mp3', maxBitRate: 192 })],
+      [
+        JSON.stringify({
+          transcodeEnabled: true,
+          forceTranscode: true,
+          format: 'mp3',
+          maxBitRate: 192,
+        }),
+      ],
     );
     try {
       const res = await app.request('/stream/song-1', { headers: { range: 'bytes=2-5' } });
@@ -97,10 +104,19 @@ describe('streaming routes', () => {
     db.run(
       `INSERT INTO app_settings (key, value) VALUES ('streaming', ?)
        ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-      [JSON.stringify({ transcodeEnabled: false, forceTranscode: false, format: 'mp3', maxBitRate: 192 })],
+      [
+        JSON.stringify({
+          transcodeEnabled: false,
+          forceTranscode: false,
+          format: 'mp3',
+          maxBitRate: 192,
+        }),
+      ],
     );
     try {
-      const res = await app.request('/stream/song-1?vocals=off', { headers: { range: 'bytes=2-5' } });
+      const res = await app.request('/stream/song-1?vocals=off', {
+        headers: { range: 'bytes=2-5' },
+      });
       expect(res.status).toBe(206);
       expect(res.headers.get('content-range')).toBe('bytes 2-5/10');
     } finally {
@@ -201,7 +217,14 @@ describe('streaming routes', () => {
     db.run(
       `INSERT INTO app_settings (key, value) VALUES ('streaming', ?)
        ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-      [JSON.stringify({ transcodeEnabled: true, forceTranscode: true, format: 'mp3', maxBitRate: 192 })],
+      [
+        JSON.stringify({
+          transcodeEnabled: true,
+          forceTranscode: true,
+          format: 'mp3',
+          maxBitRate: 192,
+        }),
+      ],
     );
     try {
       const res = await app.request('/stream/song-1');

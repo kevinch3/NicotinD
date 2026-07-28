@@ -189,10 +189,9 @@ describe('POST /songs/:id/licence', () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, licence: 'public-domain' });
     const row = testDb
-      .query<
-        { licence: string | null; licence_source: string | null },
-        [string]
-      >('SELECT licence, licence_source FROM library_songs WHERE id = ?')
+      .query<{ licence: string | null; licence_source: string | null }, [string]>(
+        'SELECT licence, licence_source FROM library_songs WHERE id = ?',
+      )
       .get('song-1');
     expect(row?.licence).toBe('public-domain');
     expect(row?.licence_source).toBe('user');

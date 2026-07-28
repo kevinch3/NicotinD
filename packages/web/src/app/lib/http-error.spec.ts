@@ -6,11 +6,11 @@ describe('httpErrorMessage', () => {
     // HttpErrorResponse is NOT an instanceof Error — the regression this guards.
     const err = new HttpErrorResponse({
       status: 404,
-      error: { error: "\"Cómo estás\" isn't in Ke Personajes's Lidarr discography yet" },
+      error: { error: '"Cómo estás" isn\'t in Ke Personajes\'s Lidarr discography yet' },
     });
     expect(err instanceof Error).toBe(false);
     expect(httpErrorMessage(err, 'Failed to prepare album')).toBe(
-      "\"Cómo estás\" isn't in Ke Personajes's Lidarr discography yet",
+      '"Cómo estás" isn\'t in Ke Personajes\'s Lidarr discography yet',
     );
   });
 

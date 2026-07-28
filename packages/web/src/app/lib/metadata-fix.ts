@@ -55,7 +55,11 @@ export function manualToRequest(fields: {
   const album = fields.album?.trim();
   const yearRaw = typeof fields.year === 'string' ? fields.year.trim() : fields.year;
   const year =
-    yearRaw === '' || yearRaw == null ? undefined : Number.isFinite(Number(yearRaw)) ? Number(yearRaw) : undefined;
+    yearRaw === '' || yearRaw == null
+      ? undefined
+      : Number.isFinite(Number(yearRaw))
+        ? Number(yearRaw)
+        : undefined;
   if (!artist && !album && year == null) return null;
   return {
     artist: artist || undefined,

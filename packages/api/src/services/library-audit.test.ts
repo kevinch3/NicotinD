@@ -9,10 +9,11 @@ import {
 } from './library-audit.js';
 
 function addArtist(db: Database, id: string, name: string, albumCount = 0): void {
-  db.run(
-    `INSERT INTO library_artists (id, name, album_count, synced_at) VALUES (?, ?, ?, 1)`,
-    [id, name, albumCount],
-  );
+  db.run(`INSERT INTO library_artists (id, name, album_count, synced_at) VALUES (?, ?, ?, 1)`, [
+    id,
+    name,
+    albumCount,
+  ]);
 }
 
 function addAlbum(
@@ -70,7 +71,9 @@ function seedClean(db: Database): void {
   addSong(db, 's1', 'al1', 'ar1');
   addSong(db, 's2', 'al1', 'ar1');
   // Mirror library_artwork so render checks pass.
-  db.run(`INSERT INTO library_artwork (id, kind, cover_url, updated_at) VALUES ('al1','album','u',1)`);
+  db.run(
+    `INSERT INTO library_artwork (id, kind, cover_url, updated_at) VALUES ('al1','album','u',1)`,
+  );
 }
 
 describe('auditLibrary', () => {
@@ -99,7 +102,14 @@ describe('auditLibrary', () => {
 
   it('flags a numeric artist (101) without flagging the real album title', () => {
     addArtist(db, 'arn', '101', 1);
-    addAlbum(db, { id: 'aln', name: '1989', artist: '101', artistId: 'arn', songCount: 10, classification: 'album' });
+    addAlbum(db, {
+      id: 'aln',
+      name: '1989',
+      artist: '101',
+      artistId: 'arn',
+      songCount: 10,
+      classification: 'album',
+    });
     for (let i = 0; i < 10; i++) addSong(db, `sn${i}`, 'aln', 'arn');
     const rules = auditLibrary(db).findings.map((f) => f.rule);
     expect(rules).toContain('numeric_artist');
@@ -135,7 +145,14 @@ describe('auditLibrary', () => {
 
   it('flags integrity drift: album_count + song_count mismatch', () => {
     addArtist(db, 'ar1', 'Soda Stereo', 5); // claims 5 albums, has 1
-    addAlbum(db, { id: 'al1', name: 'Dynamo', artist: 'Soda Stereo', artistId: 'ar1', songCount: 9, classification: 'album' });
+    addAlbum(db, {
+      id: 'al1',
+      name: 'Dynamo',
+      artist: 'Soda Stereo',
+      artistId: 'ar1',
+      songCount: 9,
+      classification: 'album',
+    });
     addSong(db, 's1', 'al1', 'ar1'); // only 1 song, claims 9
     const rules = auditLibrary(db).findings.map((f) => f.rule);
     expect(rules).toContain('album_count_mismatch');
