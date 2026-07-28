@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { applySchema } from '../db.js';
+import { contradictsTrackCount } from './library-curator.js';
 import {
   checkFragments,
   detectDuplicateAlbums,
@@ -244,6 +245,69 @@ describe('detectHiddenByClassification', () => {
     expect(findings.map((f) => f.albumId).sort()).toEqual(['al1', 'al2']);
     expect(findings.every((f) => f.reason === 'oversized')).toBe(true);
     expect(findings.find((f) => f.albumId === 'al1')!.songCount).toBe(18);
+  });
+
+  // Issue #314: the reporter used to flag any `single` over 2 tracks, while the
+  // curator (#315) deliberately trusts a catalog `single`/`ep` below 10 —
+  // naming these exact prod rows. The gap was a permanent false-positive class:
+  // reported forever, correctly never fixed.
+  it('does NOT flag a maxi-single the curator deliberately keeps (prod: Alejandro, 8 tracks)', () => {
+    addArtist(db, 'a1', 'Lady Gaga');
+    addAlbum(db, {
+      id: 'al1',
+      name: 'Alejandro',
+      artist: 'Lady Gaga',
+      artistId: 'a1',
+      classification: 'single',
+      songCount: 8,
+    });
+    addAlbum(db, {
+      id: 'al2',
+      name: 'Paparazzi',
+      artist: 'Lady Gaga',
+      artistId: 'a1',
+      classification: 'single',
+      songCount: 7,
+    });
+    expect(detectHiddenByClassification(db)).toHaveLength(0);
+  });
+
+  it('agrees with contradictsTrackCount exactly at the boundary', () => {
+    addArtist(db, 'a1', 'X');
+    addAlbum(db, {
+      id: 'below',
+      name: 'Nine',
+      artist: 'X',
+      artistId: 'a1',
+      classification: 'single',
+      songCount: 9,
+    });
+    addAlbum(db, {
+      id: 'at',
+      name: 'Ten',
+      artist: 'X',
+      artistId: 'a1',
+      classification: 'single',
+      songCount: 10,
+    });
+    const flagged = detectHiddenByClassification(db).map((f) => f.albumId);
+    expect(flagged).toEqual(['at']);
+    // Stated as the shared predicate, so this fails if the two ever diverge.
+    expect(contradictsTrackCount('single', 9)).toBe(false);
+    expect(contradictsTrackCount('single', 10)).toBe(true);
+  });
+
+  it('never flags an `album` classification however long', () => {
+    addArtist(db, 'a1', 'X');
+    addAlbum(db, {
+      id: 'al1',
+      name: 'Long One',
+      artist: 'X',
+      artistId: 'a1',
+      classification: 'album',
+      songCount: 40,
+    });
+    expect(detectHiddenByClassification(db)).toHaveLength(0);
   });
 
   it('flags an unresolved (unknown) classification', () => {

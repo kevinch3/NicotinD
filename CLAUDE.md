@@ -390,7 +390,9 @@ Add detail there, not here.
   `checkFragments` (`services/library-fragments.ts`) surfaces genuine integrity defects —
   same-release artist-spelling variants ("La Konga"/"La K'onga", sub-clustered by an alnum artist
   fold so different artists sharing a title aren't flagged) and full albums mis-classified as
-  single/EP (track-count-vs-class, not every non-`album` row) — via `GET /api/library/fragments`
+  single/EP (track-count-vs-class via the **curator's own `contradictsTrackCount`** — issue #314:
+  keeping a second, stricter opinion here reported prod's real 7-/8-track maxi-singles as defects
+  forever while the corrector correctly never fixed them) — via `GET /api/library/fragments`
   (admin), the Admin "Check fragmentation" button, and `scripts/check-fragments.ts` (CLI gate — its `expandHome` copy returned `''` for absolute
   paths, so it had **never** run in Docker; helper now shared + tested in `scripts/lib/expand-home.ts`). →
   [docs/library-scanner.md](docs/library-scanner.md) "Search matching" + "Fragmentation diagnostic"
