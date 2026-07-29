@@ -101,10 +101,9 @@ describe('PluginRegistry', () => {
     expect(registry.getEnabledWithCapability('search')).toHaveLength(1);
 
     const row = db
-      .query<
-        { consent_user: string; consent_at: number },
-        [string]
-      >(`SELECT consent_user, consent_at FROM plugins WHERE id = ?`)
+      .query<{ consent_user: string; consent_at: number }, [string]>(
+        `SELECT consent_user, consent_at FROM plugins WHERE id = ?`,
+      )
       .get('slskd');
     expect(row?.consent_user).toBe('admin-user-id');
     expect(row?.consent_at).toBeGreaterThan(0);
@@ -126,10 +125,9 @@ describe('PluginRegistry', () => {
     );
     await registry.enable('ytdlp', 'admin');
     const row = db
-      .query<
-        { consent_user: string | null },
-        [string]
-      >(`SELECT consent_user FROM plugins WHERE id = ?`)
+      .query<{ consent_user: string | null }, [string]>(
+        `SELECT consent_user FROM plugins WHERE id = ?`,
+      )
       .get('ytdlp');
     expect(row?.consent_user).toBeNull();
   });

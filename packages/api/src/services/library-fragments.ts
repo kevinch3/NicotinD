@@ -43,12 +43,8 @@
 import type { Database } from 'bun:sqlite';
 import { normalizeForGrouping } from './album-grouping.js';
 import { checkMisSplitAlbums, type AuditFinding } from './library-audit.js';
-
-// A `single` with this many tracks or more is almost certainly a full album (or
-// EP) mis-tagged — a real single is 1–2 tracks (A-side + B-side / radio edit).
-const SINGLE_MAX_TRACKS = 2;
-// An `ep` this long or longer reads as a full album — an EP is ~3–6 tracks.
-const EP_MAX_TRACKS = 7;
+import { contradictsTrackCount } from './library-curator.js';
+import type { ReleaseType } from './release-meta-store.js';
 
 /**
  * Alnum-only, diacritic-stripped, lowercased artist key. Collapses the
@@ -94,8 +90,9 @@ export interface HiddenByClassification {
    * Why it's flagged:
    *  - `hidden`      — `hidden = 1` (curator hid it).
    *  - `unknown`     — classification never resolved past `'unknown'`.
-   *  - `oversized`   — a `single`/`ep` with an album-sized tracklist (looks like
-   *                    a full album mis-classified, so the grid wrongly hides it).
+   *  - `oversized`   — a `single`/`ep` whose track count flatly contradicts it
+   *                    (`contradictsTrackCount`, shared with the curator so the
+   *                    report can't flag rows the corrector deliberately keeps).
    */
   reason: 'hidden' | 'unknown' | 'oversized';
 }
@@ -242,10 +239,15 @@ export function detectHiddenByClassification(db: Database): HiddenByClassificati
       out.push({ ...base, reason: 'unknown' });
       continue;
     }
-    if (
-      (r.classification === 'single' && r.song_count > SINGLE_MAX_TRACKS) ||
-      (r.classification === 'ep' && r.song_count > EP_MAX_TRACKS)
-    ) {
+    // Share the corrector's judgment rather than keeping a second opinion here
+    // (issue #314). The scanner's own heuristic only ever mints a `single` at
+    // <=1 track and an `ep` at <=6, so a longer one is always metadata-sourced —
+    // and issue #315 decided deliberately that a catalog `single`/`ep` is
+    // trusted below `IMPLAUSIBLE_SHORT_RELEASE_TRACKS`, naming real 7- and
+    // 8-track maxi-singles ("Alejandro", "Paparazzi"). A stricter rule here just
+    // reports rows the system will never fix, which is how a diagnostic loses
+    // its operator.
+    if (contradictsTrackCount(r.classification as ReleaseType, r.song_count)) {
       out.push({ ...base, reason: 'oversized' });
     }
   }

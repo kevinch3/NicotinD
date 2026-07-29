@@ -34,13 +34,18 @@ describe('buildPluginConfigPayload', () => {
 
 describe('initialPluginConfigValues', () => {
   it('prefills text fields from config and starts password fields blank', () => {
-    expect(initialPluginConfigValues(FIELDS, { clientId: 'stored-id', clientSecret: 'leaked' })).toEqual({
+    expect(
+      initialPluginConfigValues(FIELDS, { clientId: 'stored-id', clientSecret: 'leaked' }),
+    ).toEqual({
       clientId: 'stored-id',
       clientSecret: '',
     });
   });
 
   it('defaults to empty strings when config is undefined', () => {
-    expect(initialPluginConfigValues(FIELDS, undefined)).toEqual({ clientId: '', clientSecret: '' });
+    expect(initialPluginConfigValues(FIELDS, undefined)).toEqual({
+      clientId: '',
+      clientSecret: '',
+    });
   });
 });

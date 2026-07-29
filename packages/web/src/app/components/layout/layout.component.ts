@@ -115,9 +115,7 @@ export class LayoutComponent implements OnInit, OnDestroy {
 
   readonly navItems = computed<NavItem[]>(() => {
     // Downloads is an acquisition surface — hidden from listeners (declutter).
-    const base = this.auth.canAcquire()
-      ? BASE_NAV
-      : BASE_NAV.filter((n) => n.to !== '/downloads');
+    const base = this.auth.canAcquire() ? BASE_NAV : BASE_NAV.filter((n) => n.to !== '/downloads');
     return this.auth.isAdmin() ? [...base, { to: '/admin', label: 'Admin' }] : base;
   });
 
@@ -163,8 +161,9 @@ export class LayoutComponent implements OnInit, OnDestroy {
    *  buttons themselves live in `<app-desktop-window-controls />`. */
   onHeaderDoubleClick(): void {
     if (!this.isElectronLinux()) return;
-    (globalThis as { window?: { nicotind?: { maximizeToggle?: () => void } } })
-      .window?.nicotind?.maximizeToggle?.();
+    (
+      globalThis as { window?: { nicotind?: { maximizeToggle?: () => void } } }
+    ).window?.nicotind?.maximizeToggle?.();
   }
 
   async confirmLogout(): Promise<void> {
@@ -193,7 +192,10 @@ export class LayoutComponent implements OnInit, OnDestroy {
       const exclude = [
         seed.currentTrack?.id,
         ...this.player.queue().map((t) => t.id),
-        ...this.player.history().slice(-20).map((t) => t.id),
+        ...this.player
+          .history()
+          .slice(-20)
+          .map((t) => t.id),
       ].filter((id): id is string => !!id);
 
       // Filter "vibe" radio: keep pulling in-filter tracks so the mood holds.
@@ -208,9 +210,7 @@ export class LayoutComponent implements OnInit, OnDestroy {
         const songs = await firstValueFrom(this.api.getAllSongs(200, 0, { sort: 'newest' }));
         return shuffleArray(songs.map((s) => toTrack(s)));
       }
-      const songs = await firstValueFrom(
-        this.api.getRadioNext(seed.currentTrack.id, exclude, 10),
-      );
+      const songs = await firstValueFrom(this.api.getRadioNext(seed.currentTrack.id, exclude, 10));
       return songs.map((s) => toTrack(s));
     });
   }

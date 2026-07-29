@@ -48,6 +48,13 @@ jobs:
       - name: Lint
         run: bun run lint
 
+      # Formatting drift is normally harmless; here it wasn't. The repo had
+      # drifted to 218 files, so the documented `bun run format` produced a
+      # 218-file diff on top of any real change and could not safely be run
+      # (#272). A gate keeps it that way. Fix locally with `bun run format`.
+      - name: Format check
+        run: bun run format:check
+
       # The pip plugin and the companion PO-token service must be the same
       # version; a mismatch silently breaks YouTube downloads (issue #238).
       - name: Check bgutil provider/plugin version pairing
@@ -63,6 +70,11 @@ jobs:
       # keeping both sides of a conflict can discard a script outright.
       - name: Check JSON configs for duplicate keys
         run: bun run check:json
+
+      # A copy-pasted helper drifts silently: one expandHome copy returned '' for
+      # every absolute path, so a documented CLI gate never ran in Docker (#301).
+      - name: Check for locally re-implemented shared helpers
+        run: bun run check:shared-helpers
 
       - name: Test (API + slskd-client + lidarr-client + core + service-manager + mobile)
         run: bun test packages/api/src packages/slskd-client/src packages/lidarr-client/src packages/core/src packages/service-manager/src packages/mobile/src packages/desktop/electron packages/desktop/scripts scripts

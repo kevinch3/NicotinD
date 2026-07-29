@@ -69,7 +69,7 @@ describe('refreshAutoPlaylists', () => {
   it('dry run computes counts without writing playlists', () => {
     const results = refreshAutoPlaylists(db, Date.now(), { apply: false });
     expect(results).toHaveLength(RECIPES.length);
-    const count = db.query<{ n: number }, []>("SELECT COUNT(*) n FROM playlists").get();
+    const count = db.query<{ n: number }, []>('SELECT COUNT(*) n FROM playlists').get();
     expect(count?.n).toBe(0);
   });
 
@@ -100,9 +100,10 @@ describe('refreshAutoPlaylists', () => {
   it('creates a feature shelf once enrichment fills the columns', () => {
     // Analyzed library: high valence + danceability satisfies 'feel-good'.
     for (let i = 0; i < 10; i++) {
-      db.run('UPDATE library_songs SET valence = 0.8, danceability = 0.7, energy = 0.6 WHERE id = ?', [
-        `s${i}`,
-      ]);
+      db.run(
+        'UPDATE library_songs SET valence = 0.8, danceability = 0.7, energy = 0.6 WHERE id = ?',
+        [`s${i}`],
+      );
     }
     const results = refreshAutoPlaylists(db, Date.now(), { apply: true });
     const feelGood = results.find((r) => r.slug === 'feel-good');
@@ -190,8 +191,9 @@ describe('runAutoPlaylistsNow (manual trigger) + status', () => {
     const now = 1_900_000_000_000;
     const results = runAutoPlaylistsNow(db, now);
     expect(results.length).toBe(RECIPES.length);
-    expect(db.query<{ n: number }, []>("SELECT COUNT(*) n FROM playlists WHERE kind='curated'").get()?.n)
-      .toBeGreaterThan(0);
+    expect(
+      db.query<{ n: number }, []>("SELECT COUNT(*) n FROM playlists WHERE kind='curated'").get()?.n,
+    ).toBeGreaterThan(0);
     const status = getAutoPlaylistStatus(db);
     expect(status.cadence).toBe('weekly');
     expect(status.lastRefreshedAt).toBe(now);

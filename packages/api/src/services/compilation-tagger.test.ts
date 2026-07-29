@@ -9,8 +9,18 @@ type FileSignal = {
   filename: string;
 };
 
-function file(artist: string | undefined, album: string | undefined, extra?: { albumArtist?: string; compilation?: boolean }): FileSignal {
-  return { artist, album, albumArtist: extra?.albumArtist, compilation: extra?.compilation, filename: '' };
+function file(
+  artist: string | undefined,
+  album: string | undefined,
+  extra?: { albumArtist?: string; compilation?: boolean },
+): FileSignal {
+  return {
+    artist,
+    album,
+    albumArtist: extra?.albumArtist,
+    compilation: extra?.compilation,
+    filename: '',
+  };
 }
 
 function repeat<T>(n: number, fn: () => T): T[] {

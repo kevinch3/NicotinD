@@ -42,8 +42,12 @@ export function authRoutes(
   // can hide every acquisition surface (nav, Search's acquire lane, guards) when
   // the whole module is off — the web-side half of the shared `acquisitionEnabled`
   // guard. Defaults on so existing callers/tests keep today's behavior.
-  acquisitionEnabled = true,
+  acquisitionEnabled: boolean | (() => boolean) = true,
 ) {
+  // Getter, not a captured boolean, so `/me` reflects the admin runtime toggle
+  // immediately rather than at the next restart (issue #235).
+  const acquisitionOn =
+    typeof acquisitionEnabled === 'function' ? acquisitionEnabled : () => acquisitionEnabled;
   const app = new OpenAPIHono<AuthEnv>();
 
   // Public endpoint: check if registration is open
@@ -198,7 +202,9 @@ export function authRoutes(
         .query<
           { id: string; username: string; password_hash: string; role: string; status: string },
           [string]
-        >("SELECT id, username, password_hash, role, COALESCE(status, 'active') as status FROM users WHERE username = ?")
+        >(
+          "SELECT id, username, password_hash, role, COALESCE(status, 'active') as status FROM users WHERE username = ?",
+        )
         .get(username);
 
       if (!user || !(await verifyPassword(password, user.password_hash))) {
@@ -431,23 +437,26 @@ export function authRoutes(
           'SELECT COALESCE(welcome_dismissed, 0) as welcome_dismissed, COALESCE(autoplay_on_load, 0) as autoplay_on_load, COALESCE(feedback_capture, 0) as feedback_capture FROM user_settings WHERE user_id = ?',
         )
         .get(user.sub);
-      return c.json({
-        id: user.sub,
-        username: user.username ?? '',
-        role: user.role ?? 'user',
-        welcomeDismissed: (settings?.welcome_dismissed ?? 0) === 1,
-        autoplayOnLoad: (settings?.autoplay_on_load ?? 0) === 1,
-        feedbackCapture: (settings?.feedback_capture ?? 0) === 1,
-        acquisitionEnabled,
-      } as {
-        id: string;
-        username: string;
-        role: string;
-        welcomeDismissed: boolean;
-        autoplayOnLoad: boolean;
-        feedbackCapture: boolean;
-        acquisitionEnabled: boolean;
-      }, 200);
+      return c.json(
+        {
+          id: user.sub,
+          username: user.username ?? '',
+          role: user.role ?? 'user',
+          welcomeDismissed: (settings?.welcome_dismissed ?? 0) === 1,
+          autoplayOnLoad: (settings?.autoplay_on_load ?? 0) === 1,
+          feedbackCapture: (settings?.feedback_capture ?? 0) === 1,
+          acquisitionEnabled: acquisitionOn(),
+        } as {
+          id: string;
+          username: string;
+          role: string;
+          welcomeDismissed: boolean;
+          autoplayOnLoad: boolean;
+          feedbackCapture: boolean;
+          acquisitionEnabled: boolean;
+        },
+        200,
+      );
     },
   );
 

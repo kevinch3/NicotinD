@@ -508,6 +508,50 @@ jobs:
           cache-from: type=gha,scope=analysis-linux-amd64
           cache-to: type=gha,mode=max,scope=analysis-linux-amd64
 
+  # The YouTube PO-token provider, built from pinned upstream source so it ships
+  # under our GHCR and our release cadence instead of a third-party image
+  # (issue #238). Mirrors docker-analysis exactly — same tag scheme, same cache
+  # scoping — so there's one shape to learn for our side-car images.
+  docker-pot-provider:
+    runs-on: ubuntu-latest
+    if: github.ref_type == 'tag'
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: ghcr.io/kevinch3/nicotind-pot-provider
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute tags
+        id: tags
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME}" # vX.Y.Z
+          major="${version%%.*}"       # vX
+          echo "tags=${IMAGE}:${version},${IMAGE}:${major},${IMAGE}:release" >> "$GITHUB_OUTPUT"
+
+      - name: Build + push
+        uses: docker/build-push-action@v6
+        with:
+          context: packages/pot-provider
+          platforms: linux/amd64
+          push: true
+          # No build-args: the pin is the Dockerfile's own ARG default, which
+          # `check:bgutil-pin` holds equal to the pip plugin's. Passing it here
+          # too would create a third place to forget.
+          tags: ${{ steps.tags.outputs.tags }}
+          cache-from: type=gha,scope=pot-provider-linux-amd64
+          cache-to: type=gha,mode=max,scope=pot-provider-linux-amd64
+
   deploy:
     runs-on: ubuntu-latest
     # On a tag push the host pulls the images the docker jobs just published,
@@ -515,8 +559,8 @@ jobs:
     # skipped and the host redeploys the current `release` images (NOT master
     # source — the compose file's `image:` defaults; build-from-source now
     # lives in an override file).
-    needs: [docker-merge, docker-analysis]
-    if: ${{ !cancelled() && (needs.docker-merge.result == 'success' || needs.docker-merge.result == 'skipped') && (needs.docker-analysis.result == 'success' || needs.docker-analysis.result == 'skipped') }}
+    needs: [docker-merge, docker-analysis, docker-pot-provider]
+    if: ${{ !cancelled() && (needs.docker-merge.result == 'success' || needs.docker-merge.result == 'skipped') && (needs.docker-analysis.result == 'success' || needs.docker-analysis.result == 'skipped') && (needs.docker-pot-provider.result == 'success' || needs.docker-pot-provider.result == 'skipped') }}
     steps:
       # Resolve exactly what the server should check out. On a tag push (the normal
       # release path) deploy that exact tag; on a manual workflow_dispatch deploy the

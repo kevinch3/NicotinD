@@ -190,3 +190,59 @@ anything. That was found by a test, not by review.
 Dry-run against the live prod cache: 19,733 entity-keyed + 9,455 content-addressed, 5,530 orphaned,
 **4,803 past grace → 1,566 MB reclaimed**, 727 recent orphans spared, valve correctly silent at a
 0.28 ratio.
+
+## Path-keyed orphans: `scan_cache` and `acquisitions` (issue #313)
+
+Two side tables key on **path**, not on `library_songs.id`, and so were invisible to the #259
+pruner. Measured on prod (14,580 live songs):
+
+| table          |   rows | orphaned | share |
+| -------------- | -----: | -------: | ----: |
+| `scan_cache`   | 17,549 |    2,969 |  17 % |
+| `acquisitions` | 15,470 |    4,586 |  30 % |
+
+### `scan_cache` is pruned
+
+It stores raw tag JSON keyed on `path + size + mtime` purely to skip re-parsing an unchanged file.
+An entry whose path is gone can never be hit again, because the lookup *is* by path — this is the
+one table where an orphan is provably unreachable rather than merely unused. The only pre-existing
+`DELETE FROM scan_cache` is a full wipe on a schema-version bump, so orphans otherwise accumulate
+until that happens to fire. Footprint is small (1.16 MB of the 1.7 GB DB), so this is housekeeping,
+not a space fix.
+
+It joins `ORPHAN_TABLES` with the same mark → grace → sweep pass. Supporting it required
+generalizing `OrphanTable` with a `references: 'id' | 'path'` field (defaulting to `id`), since every
+prior entry compared against `library_songs.id`. `saveScanCache` also clears `orphaned_at` on upsert:
+writing an entry is itself proof the file is live, so correctness no longer depends on the pruner's
+unmark pass running before its sweep.
+
+### `acquisitions` is **not** pruned — and measuring it changed the work
+
+The provenance side-table (method / source / time per download) is surfaced *per track*, so an
+orphaned row has no UI surface. Pruning looks obviously right, and that is the trap. Of the 4,586
+orphans:
+
+- **435** share a path *stem* with a live song — the file was replaced by a different-format copy
+  (dominated by `opus → mp3`, 331), not deleted.
+- **418** of those are superseded history: the live file already carries its own, newer row.
+- **17** are the **only surviving provenance for a still-live song**.
+
+A blind prune would have destroyed real data for those 17 while reporting reclaimed space.
+`acquisition-repoint.ts` `repointOrphanedAcquisitions` therefore *recovers* rather than deletes,
+running at the head of the daily pass. It re-points an orphan onto the live file for the same
+recording under two guards, both required — a wrong re-point attributes one track's download to a
+different file, which is worse than the missing provenance it replaces:
+
+- the stem must map to **exactly one** live song (two live files sharing a stem give no basis to
+  choose), and
+- that song must have **no provenance row of its own** (otherwise the orphan is superseded history,
+  and overwriting would replace a true record with an older one).
+
+`library-transcode.ts` already does exactly this when lossless→opus changes the path; the gap was
+that nothing covered a *replacement* that wasn't a transcode.
+
+**Left open (a product call, not a technical one):** whether download provenance should outlive the
+file at all. Nothing reads an orphaned row today, but "you downloaded this from X in March, then
+deleted it" is a history someone may want. The repoint above is the prerequisite either way — it is
+what makes a future `acquisitions` sweep safe. For scale, 3,696 of 14,580 live songs already carry no
+provenance row at all, so the surface already tolerates absence.

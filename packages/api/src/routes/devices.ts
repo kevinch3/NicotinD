@@ -151,10 +151,9 @@ export function devicesRoutes(options: DevicesRoutesOptions) {
     }
 
     const user = db
-      .query<
-        { id: string; username: string; role: string; status: string },
-        [string]
-      >("SELECT id, username, role, COALESCE(status, 'active') as status FROM users WHERE id = ?")
+      .query<{ id: string; username: string; role: string; status: string }, [string]>(
+        "SELECT id, username, role, COALESCE(status, 'active') as status FROM users WHERE id = ?",
+      )
       .get(row.user_id);
     if (!user || user.status === 'disabled') {
       return c.json({ error: 'Account disabled' }, 403);

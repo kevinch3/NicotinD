@@ -7,9 +7,7 @@ describe('computeBufferedSegments', () => {
   });
 
   it('converts ranges to percent segments', () => {
-    expect(computeBufferedSegments([{ start: 0, end: 50 }], 200)).toEqual([
-      { left: 0, width: 25 },
-    ]);
+    expect(computeBufferedSegments([{ start: 0, end: 50 }], 200)).toEqual([{ left: 0, width: 25 }]);
   });
 
   it('handles multiple ranges and keeps them sorted by start', () => {

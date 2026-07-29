@@ -4,9 +4,10 @@ import { ServiceManager } from './manager.js';
 import type { IServiceStrategy, ServiceDefinition, ServiceHandle } from './strategies/strategy.js';
 
 function fakeStrategy() {
-  const start = mock(
-    async (s: ServiceDefinition): Promise<ServiceHandle> => ({ name: s.name, pid: 1 }),
-  );
+  const start = mock(async (s: ServiceDefinition): Promise<ServiceHandle> => ({
+    name: s.name,
+    pid: 1,
+  }));
   const stop = mock(async () => undefined);
   const restart = mock(async (_h: ServiceHandle, s: ServiceDefinition) => ({ name: s.name }));
   const strategy = {

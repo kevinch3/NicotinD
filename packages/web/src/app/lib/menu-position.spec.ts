@@ -77,7 +77,17 @@ describe('computeMenuPosition (anchored dropdown, viewport-safe)', () => {
     expect(computeMenuPosition(trigger, 240, 180, VW, VH, 'end').y).toBe(604);
     // With a 128px mini-player + tab bar reserved, room below is only 68 → flips
     // up so the panel clears the player instead of hiding under it.
-    const flipped = computeMenuPosition(trigger, 240, 180, VW, VH, 'end', undefined, undefined, 128);
+    const flipped = computeMenuPosition(
+      trigger,
+      240,
+      180,
+      VW,
+      VH,
+      'end',
+      undefined,
+      undefined,
+      128,
+    );
     expect(flipped.y).toBe(560 - 4 - 180); // above = 376
   });
 });

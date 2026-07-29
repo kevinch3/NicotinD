@@ -7,12 +7,7 @@
  * without the component.
  */
 export type AlbumListType =
-  | 'newest'
-  | 'frequent'
-  | 'recent'
-  | 'starred'
-  | 'alphabeticalByName'
-  | 'random';
+  'newest' | 'frequent' | 'recent' | 'starred' | 'alphabeticalByName' | 'random';
 
 export const ALBUM_LIST_TYPES: AlbumListType[] = [
   'newest',

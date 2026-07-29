@@ -150,7 +150,13 @@ export function groupBySong(files: SongVersion[], query?: string): SongResult[] 
   for (const [key, versions] of map) {
     versions.sort(compareVersions);
     const best = versions[0];
-    results.push({ key, title: songTitle(best), artist: best.artist?.trim() ?? '', best, versions });
+    results.push({
+      key,
+      title: songTitle(best),
+      artist: best.artist?.trim() ?? '',
+      best,
+      versions,
+    });
   }
 
   const terms = queryTerms(query);

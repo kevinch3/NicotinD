@@ -67,7 +67,14 @@ function setup(playlist: PlaylistDetail = PLAYLIST) {
   const fixture = TestBed.createComponent(PlaylistDetailComponent);
   fixture.detectChanges();
   const httpMock = TestBed.inject(HttpTestingController);
-  return { component: fixture.componentInstance, removeSong, addSongs, getProposals, get, httpMock };
+  return {
+    component: fixture.componentInstance,
+    removeSong,
+    addSongs,
+    getProposals,
+    get,
+    httpMock,
+  };
 }
 
 describe('PlaylistDetailComponent — bulk remove from playlist', () => {

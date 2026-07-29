@@ -28,7 +28,7 @@ import { Database } from 'bun:sqlite';
 import { collectRetagTargets } from '../services/library-retag.js';
 import { applyMetadataFix } from '../services/metadata-fix.js';
 import { auditLibrary } from '../services/library-audit.js';
-import { expandHome } from './lib/expand-home.js';
+import { expandHome } from '@nicotind/core';
 
 function loadDataDir(): string {
   let fileConfig: Record<string, unknown> = {};
@@ -55,7 +55,9 @@ function main(): void {
   const logPath = join(dataDir, 'retag-pollution.log');
 
   const targets = collectRetagTargets(db);
-  console.log(`\nretag-pollution ${apply ? '(APPLY)' : '(dry run)'} — ${targets.length} albums to re-tag\n`);
+  console.log(
+    `\nretag-pollution ${apply ? '(APPLY)' : '(dry run)'} — ${targets.length} albums to re-tag\n`,
+  );
 
   const byReason = new Map<string, number>();
   for (const t of targets) byReason.set(t.plan.reason, (byReason.get(t.plan.reason) ?? 0) + 1);
@@ -64,7 +66,11 @@ function main(): void {
   console.log('\nPlanned corrections (first 25):');
   for (const t of targets.slice(0, 25)) {
     const req = t.plan.request;
-    const to = [req.artist && `artist=“${req.artist}”`, req.album && `album=“${req.album}”`, req.year && `year=${req.year}`]
+    const to = [
+      req.artist && `artist=“${req.artist}”`,
+      req.album && `album=“${req.album}”`,
+      req.year && `year=${req.year}`,
+    ]
       .filter(Boolean)
       .join(', ');
     console.log(`  • [${t.artist} — ${t.album}]  →  ${to}`);

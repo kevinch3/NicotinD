@@ -151,16 +151,14 @@ export class AlbumDetailComponent implements OnInit {
   private albumTracks(): Track[] {
     const album = this.selectedAlbum();
     if (!album?.song?.length) return [];
-    return album.song.map(
-      (s): Track => ({
-        id: s.id,
-        title: s.title,
-        artist: s.artist,
-        album: album.name,
-        coverArt: s.coverArt,
-        duration: s.duration,
-      }),
-    );
+    return album.song.map((s): Track => ({
+      id: s.id,
+      title: s.title,
+      artist: s.artist,
+      album: album.name,
+      coverArt: s.coverArt,
+      duration: s.duration,
+    }));
   }
 
   playAlbum(): void {
@@ -189,24 +187,27 @@ export class AlbumDetailComponent implements OnInit {
   deleteSelectedSongs(): void {
     const ids = [...this.selection.ids()];
     if (ids.length === 0) return;
-    this.askConfirm(`Remove ${ids.length} song${ids.length !== 1 ? 's' : ''} from library?`, async () => {
-      this.deleteError.set(null);
-      try {
-        const result = await firstValueFrom(this.api.deleteSongs(ids));
-        this.transferService.addDeletedIds(ids);
-        this.selectedAlbum.update((a) =>
-          a ? { ...a, song: a.song.filter((s) => !ids.includes(s.id)) } : null,
-        );
-        this.selection.exit();
-        if (result.deletedCount < ids.length) {
-          this.deleteError.set(
-            `Removed ${result.deletedCount} of ${ids.length} songs. ${ids.length - result.deletedCount} could not be removed.`,
+    this.askConfirm(
+      `Remove ${ids.length} song${ids.length !== 1 ? 's' : ''} from library?`,
+      async () => {
+        this.deleteError.set(null);
+        try {
+          const result = await firstValueFrom(this.api.deleteSongs(ids));
+          this.transferService.addDeletedIds(ids);
+          this.selectedAlbum.update((a) =>
+            a ? { ...a, song: a.song.filter((s) => !ids.includes(s.id)) } : null,
           );
+          this.selection.exit();
+          if (result.deletedCount < ids.length) {
+            this.deleteError.set(
+              `Removed ${result.deletedCount} of ${ids.length} songs. ${ids.length - result.deletedCount} could not be removed.`,
+            );
+          }
+        } catch {
+          this.deleteError.set('Failed to remove the selected songs.');
         }
-      } catch {
-        this.deleteError.set('Failed to remove the selected songs.');
-      }
-    });
+      },
+    );
   }
 
   // ─── Offline download ─────────────────────────────────────────────

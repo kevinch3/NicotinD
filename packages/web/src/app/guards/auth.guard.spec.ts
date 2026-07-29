@@ -26,9 +26,8 @@ describe('authGuard (returnUrl capture)', () => {
 
   function run(url: string): boolean | UrlTree {
     const state = { url } as RouterStateSnapshot;
-    return TestBed.runInInjectionContext(() =>
-      authGuard({} as ActivatedRouteSnapshot, state),
-    ) as boolean | UrlTree;
+    return TestBed.runInInjectionContext(() => authGuard({} as ActivatedRouteSnapshot, state)) as
+      boolean | UrlTree;
   }
 
   it('passes through when authenticated', () => {

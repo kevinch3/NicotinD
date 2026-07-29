@@ -144,7 +144,11 @@ describe('download-item "View N albums" menu gating', () => {
   it('does not offer the menu for a single-album job (the plain link covers it)', () => {
     expect(
       hasMultipleDestinationAlbums(
-        item({ stage: 'done', albumId: 'a1', destinationAlbums: [{ albumArtist: 'A', albumTitle: 'One', albumId: 'a1' }] }),
+        item({
+          stage: 'done',
+          albumId: 'a1',
+          destinationAlbums: [{ albumArtist: 'A', albumTitle: 'One', albumId: 'a1' }],
+        }),
       ),
     ).toBe(false);
     expect(canOpenInLibrary(item({ stage: 'done', albumId: 'a1' }))).toBe(true);
@@ -166,7 +170,9 @@ describe('download-item "View N albums" menu gating', () => {
 
   it('is false when destinationAlbums is absent or empty', () => {
     expect(hasMultipleDestinationAlbums(item({ stage: 'done' }))).toBe(false);
-    expect(hasMultipleDestinationAlbums(item({ stage: 'done', destinationAlbums: [] }))).toBe(false);
+    expect(hasMultipleDestinationAlbums(item({ stage: 'done', destinationAlbums: [] }))).toBe(
+      false,
+    );
   });
 });
 
@@ -260,7 +266,9 @@ describe('download-item "View N albums" menu — rendered rows', () => {
       }),
     );
     expect(fixture.nativeElement.querySelector('[data-testid="download-view-albums"]')).toBeNull();
-    expect(fixture.nativeElement.querySelector('[data-testid="download-open-album"]')).not.toBeNull();
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="download-open-album"]'),
+    ).not.toBeNull();
   });
 });
 
@@ -318,7 +326,7 @@ describe('download-item "Now: / Next:" — rendered', () => {
     expect(fixture.nativeElement.querySelector('[data-testid="download-next"]')).toBeNull();
   });
 
-  it('renders nothing when tracks is empty or absent, matching today\'s behavior', () => {
+  it("renders nothing when tracks is empty or absent, matching today's behavior", () => {
     const fixtureAbsent = setup(item({ kind: 'acquire', stage: 'downloading' }));
     expect(fixtureAbsent.nativeElement.querySelector('[data-testid="download-now"]')).toBeNull();
 
@@ -334,9 +342,9 @@ describe('download-item "Now: / Next:" — rendered', () => {
         tracks: [{ title: 'Only Track', status: 'downloading' }],
       }),
     );
-    expect(fixture.nativeElement.querySelector('[data-testid="download-now"]')?.textContent).toContain(
-      'Now: Only Track',
-    );
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="download-now"]')?.textContent,
+    ).toContain('Now: Only Track');
     expect(fixture.nativeElement.querySelector('[data-testid="download-next"]')).toBeNull();
   });
 

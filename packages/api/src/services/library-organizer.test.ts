@@ -695,33 +695,36 @@ describe('LibraryOrganizer (real fs)', () => {
       },
     );
 
-    it.skipIf(!ffmpegAvailable())('leaves lossless untouched when the hook is disabled', async () => {
-      const root = tmpRoot();
-      const staging = join(root, '_staging');
-      seedFlac(staging, 'Boards of Canada - Geogaddi/01 - Music Is Math.flac', {
-        artist: 'Boards of Canada',
-        album: 'Geogaddi',
-        title: 'Music Is Math',
-        trackNumber: 1,
-      });
-      const org = new LibraryOrganizer({ musicDir: root, stagingDir: staging });
-      const result = await org.organizeBatch([
-        {
-          username: 'u',
-          directory: 'Boards of Canada - Geogaddi',
-          filename: '01 - Music Is Math.flac',
-          directoryFileCount: 1,
-        },
-      ]);
+    it.skipIf(!ffmpegAvailable())(
+      'leaves lossless untouched when the hook is disabled',
+      async () => {
+        const root = tmpRoot();
+        const staging = join(root, '_staging');
+        seedFlac(staging, 'Boards of Canada - Geogaddi/01 - Music Is Math.flac', {
+          artist: 'Boards of Canada',
+          album: 'Geogaddi',
+          title: 'Music Is Math',
+          trackNumber: 1,
+        });
+        const org = new LibraryOrganizer({ musicDir: root, stagingDir: staging });
+        const result = await org.organizeBatch([
+          {
+            username: 'u',
+            directory: 'Boards of Canada - Geogaddi',
+            filename: '01 - Music Is Math.flac',
+            directoryFileCount: 1,
+          },
+        ]);
 
-      expect(result.moved).toBe(1);
-      expect(
-        existsSync(join(root, 'Boards of Canada', 'Geogaddi', '01 - Music Is Math.flac')),
-      ).toBe(true);
-      expect(
-        existsSync(join(root, 'Boards of Canada', 'Geogaddi', '01 - Music Is Math.opus')),
-      ).toBe(false);
-    });
+        expect(result.moved).toBe(1);
+        expect(
+          existsSync(join(root, 'Boards of Canada', 'Geogaddi', '01 - Music Is Math.flac')),
+        ).toBe(true);
+        expect(
+          existsSync(join(root, 'Boards of Canada', 'Geogaddi', '01 - Music Is Math.opus')),
+        ).toBe(false);
+      },
+    );
 
     it.skipIf(!ffmpegAvailable())(
       'transcodes ALAC hiding in an .m4a — extension checks miss it',

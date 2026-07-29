@@ -53,7 +53,10 @@ export function recordPendingFeedback(db: Database, input: RecordPendingInput): 
       now - PENDING_TTL_MS,
     ]);
     const row = db
-      .query<{ id: number }, [number, string, string | null, string, string | null, string, string, string | null]>(
+      .query<
+        { id: number },
+        [number, string, string | null, string, string | null, string, string, string | null]
+      >(
         `INSERT INTO generation_feedback
            (at, user_id, username, resource_type, resource_ref, input_json, output_json, engine_version)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)

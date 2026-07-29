@@ -3,9 +3,9 @@ import { spotifyMetaParts, spotifySubtitle } from './spotify-display';
 
 describe('spotify-display', () => {
   it('joins artist, year, track count and kind', () => {
-    expect(
-      spotifySubtitle({ artist: 'Shaggy', year: '2000', trackCount: 14, kind: 'album' }),
-    ).toBe('Shaggy · 2000 · 14 tracks · album');
+    expect(spotifySubtitle({ artist: 'Shaggy', year: '2000', trackCount: 14, kind: 'album' })).toBe(
+      'Shaggy · 2000 · 14 tracks · album',
+    );
   });
 
   it('uses the singular "track" for a single', () => {

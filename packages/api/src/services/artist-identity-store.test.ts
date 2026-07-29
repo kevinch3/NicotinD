@@ -114,10 +114,11 @@ describe('deriveMbidAliases', () => {
   /** Seed one library artist with `songs` songs and a cached MBID link. */
   function seedArtist(name: string, mbid: string, songs: number, albums = 0): void {
     const id = artistIdFor(name);
-    db.run(
-      `INSERT INTO library_artists (id, name, album_count, synced_at) VALUES (?, ?, ?, 1)`,
-      [id, name, albums],
-    );
+    db.run(`INSERT INTO library_artists (id, name, album_count, synced_at) VALUES (?, ?, ?, 1)`, [
+      id,
+      name,
+      albums,
+    ]);
     db.run(
       `INSERT INTO artist_discography_links (artist_id, lidarr_id, mbid, checked_at) VALUES (?, NULL, ?, 1)`,
       [id, mbid],
@@ -229,10 +230,9 @@ describe('recordAcquiredArtistIdentity', () => {
     expect(link).toBeNull();
     expect(
       db
-        .query<
-          { 1: number },
-          [string]
-        >('SELECT 1 FROM library_artist_identity WHERE artist_key = ?')
+        .query<{ 1: number }, [string]>(
+          'SELECT 1 FROM library_artist_identity WHERE artist_key = ?',
+        )
         .get(key),
     ).not.toBeNull();
   });

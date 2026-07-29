@@ -800,7 +800,11 @@ describe('PlayerComponent', () => {
       vi.useFakeTimers();
       // False ended setup; we deliberately do NOT dispatch a real durationchange.
       Object.defineProperty(fakeAudio, 'duration', { value: 1.8, configurable: true });
-      Object.defineProperty(fakeAudio, 'currentTime', { value: 1.8, writable: true, configurable: true });
+      Object.defineProperty(fakeAudio, 'currentTime', {
+        value: 1.8,
+        writable: true,
+        configurable: true,
+      });
       playerService.isPlaying.set(true);
       mockPlay.mockClear();
       fakeAudio.dispatchEvent(new Event('ended'));
@@ -823,7 +827,11 @@ describe('PlayerComponent', () => {
       // so without the bound this cycle repeats every 5 s and the queue is
       // never reached (the unterminating-recovery bug).
       Object.defineProperty(fakeAudio, 'duration', { value: 1.8, configurable: true });
-      Object.defineProperty(fakeAudio, 'currentTime', { value: 1.8, writable: true, configurable: true });
+      Object.defineProperty(fakeAudio, 'currentTime', {
+        value: 1.8,
+        writable: true,
+        configurable: true,
+      });
       playerService.queue.set([TRACK_2]);
       playerService.isPlaying.set(true);
 
@@ -849,7 +857,11 @@ describe('PlayerComponent', () => {
     it('gives a newly loaded track a fresh recovery allowance', () => {
       vi.useFakeTimers();
       Object.defineProperty(fakeAudio, 'duration', { value: 1.8, configurable: true });
-      Object.defineProperty(fakeAudio, 'currentTime', { value: 1.8, writable: true, configurable: true });
+      Object.defineProperty(fakeAudio, 'currentTime', {
+        value: 1.8,
+        writable: true,
+        configurable: true,
+      });
       playerService.isPlaying.set(true);
 
       // Burn the whole allowance on the current track.

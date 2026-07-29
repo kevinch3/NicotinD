@@ -35,6 +35,7 @@ import {
   activeExtraFilterCount,
 } from '../../lib/library-filters';
 import { TranslatePipe } from '../../pipes/translate.pipe';
+import { ArtistImageMenuComponent } from '../../components/artist-image-menu/artist-image-menu.component';
 import {
   LIBRARY_FILTER_PARAM_KEYS,
   isEmptyLibraryFilter,
@@ -46,13 +47,7 @@ import {
 export type { AlbumListType };
 
 type LibraryMode =
-  | 'albums'
-  | 'compilations'
-  | 'singles'
-  | 'artists'
-  | 'genre'
-  | 'songs'
-  | 'playlists';
+  'albums' | 'compilations' | 'singles' | 'artists' | 'genre' | 'songs' | 'playlists';
 
 interface AlbumTypeOption {
   value: AlbumListType;
@@ -109,6 +104,7 @@ function writePersistedState(state: PersistedLibraryState): void {
 @Component({
   selector: 'app-library',
   imports: [
+    ArtistImageMenuComponent,
     RouterLink,
     CoverArtComponent,
     FormsModule,
@@ -141,6 +137,13 @@ export class LibraryComponent implements OnInit, OnDestroy {
     { value: 'songs' as LibraryMode, label: 'library.tab.songs' },
     { value: 'playlists' as LibraryMode, label: 'library.tab.playlists' },
   ];
+
+  /** Bumped after a portrait change so the grid's cover URLs re-fetch (#250). */
+  readonly artistImageVersion = signal(0);
+
+  onArtistImageChanged(): void {
+    this.artistImageVersion.update((v) => v + 1);
+  }
 
   readonly libraryMode = signal<LibraryMode>(
     (localStorage.getItem('nicotind-library-mode') as LibraryMode) ?? 'albums',
@@ -396,9 +399,7 @@ export class LibraryComponent implements OnInit, OnDestroy {
     // Shared filter from the URL; a legacy `type=starred` (URL or persisted
     // state) folds into it as the starred filter with a `newest` ordering.
     const qp = this.route.snapshot.queryParamMap;
-    const urlFilter = parseLibraryFilter(
-      Object.fromEntries(qp.keys.map((k) => [k, qp.getAll(k)])),
-    );
+    const urlFilter = parseLibraryFilter(Object.fromEntries(qp.keys.map((k) => [k, qp.getAll(k)])));
     const initialType = this.resolveInitialType();
     const split = splitAlbumListType(initialType);
     this.albumSort.set(split.sort);

@@ -16,13 +16,7 @@
  * Post-fix (reconcileAlbums): walks the dir, prunes the ghost → 1 row, file present.
  */
 import { describe, it, expect, afterEach } from 'bun:test';
-import {
-  mkdtempSync,
-  mkdirSync,
-  copyFileSync,
-  rmSync,
-  existsSync,
-} from 'node:fs';
+import { mkdtempSync, mkdirSync, copyFileSync, rmSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -93,9 +87,7 @@ describe('two-wave hunt lands one clean album (regression)', () => {
     const res1 = await organizer.organizeBatch([completed1]);
     await scanner.reconcileAlbums(res1.affectedAlbumDirs);
 
-    const afterWave1 = db
-      .query<{ path: string }, []>('SELECT path FROM library_songs')
-      .all();
+    const afterWave1 = db.query<{ path: string }, []>('SELECT path FROM library_songs').all();
     // Sanity: one row after wave 1.
     expect(afterWave1).toHaveLength(1);
     expect(existsSync(join(music, afterWave1[0]!.path))).toBe(true);

@@ -110,8 +110,11 @@ export function normalizeLicence(raw: string | undefined | null): LicenceCode | 
   if (/creativecommons\.org\/publicdomain\/mark/.test(low)) return 'public-domain';
 
   // 2. CC0 / public-domain dedication (text).
-  if (/\bcc0\b/.test(low) || spaced.includes('creative commons zero') ||
-      spaced.includes('public domain dedication')) {
+  if (
+    /\bcc0\b/.test(low) ||
+    spaced.includes('creative commons zero') ||
+    spaced.includes('public domain dedication')
+  ) {
     return 'cc0';
   }
 
@@ -127,10 +130,18 @@ export function normalizeLicence(raw: string | undefined | null): LicenceCode | 
     if (/\bby\b/.test(spaced) || spaced.includes('attribution')) tokens.push('by');
     if (/\bsa\b/.test(spaced) || spaced.includes('sharealike') || spaced.includes('share alike'))
       tokens.push('sa');
-    if (/\bnc\b/.test(spaced) || spaced.includes('noncommercial') || spaced.includes('non commercial'))
+    if (
+      /\bnc\b/.test(spaced) ||
+      spaced.includes('noncommercial') ||
+      spaced.includes('non commercial')
+    )
       tokens.push('nc');
-    if (/\bnd\b/.test(spaced) || spaced.includes('noderivs') || spaced.includes('no derivatives') ||
-        spaced.includes('noderivatives'))
+    if (
+      /\bnd\b/.test(spaced) ||
+      spaced.includes('noderivs') ||
+      spaced.includes('no derivatives') ||
+      spaced.includes('noderivatives')
+    )
       tokens.push('nd');
     const code = ccClausesToCode(tokens);
     if (code) return code;

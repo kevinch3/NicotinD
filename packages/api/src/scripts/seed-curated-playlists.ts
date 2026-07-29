@@ -29,7 +29,7 @@ import {
   type CuratedPlaylistDef,
 } from '../services/curated-playlists.js';
 import { upsertCuratedPlaylist } from '../services/auto-playlists.service.js';
-import { expandHome } from './lib/expand-home.js';
+import { expandHome } from '@nicotind/core';
 
 function loadDataDir(): string {
   let fileConfig: Record<string, unknown> = {};
@@ -76,10 +76,9 @@ function main(): void {
   if (apply) applySchema(db);
 
   const admin = db
-    .query<
-      { id: string },
-      []
-    >("SELECT id FROM users WHERE role = 'admin' ORDER BY created_at ASC LIMIT 1")
+    .query<{ id: string }, []>(
+      "SELECT id FROM users WHERE role = 'admin' ORDER BY created_at ASC LIMIT 1",
+    )
     .get();
   if (!admin) {
     console.error('No admin user found — cannot seed curated playlists.');

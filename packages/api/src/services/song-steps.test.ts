@@ -16,11 +16,23 @@ beforeEach(() => {
 });
 
 /** Insert a quarantined song with the given analysis columns. */
-function seed(id: string, cols: { bpm?: number; key?: string; energy?: number; genre?: string; danceability?: number } = {}): void {
+function seed(
+  id: string,
+  cols: { bpm?: number; key?: string; energy?: number; genre?: string; danceability?: number } = {},
+): void {
   db.run(
     `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, path, size, created, bpm, key, energy, genre, danceability, synced_at)
      VALUES (?, 'al', ?, 'Artist', 'art', 0, ?, 10, '2024-01-01', ?, ?, ?, ?, ?, 1)`,
-    [id, `T-${id}`, `${id}.opus`, cols.bpm ?? null, cols.key ?? null, cols.energy ?? null, cols.genre ?? null, cols.danceability ?? null],
+    [
+      id,
+      `T-${id}`,
+      `${id}.opus`,
+      cols.bpm ?? null,
+      cols.key ?? null,
+      cols.energy ?? null,
+      cols.genre ?? null,
+      cols.danceability ?? null,
+    ],
   );
 }
 

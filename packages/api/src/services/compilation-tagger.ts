@@ -126,8 +126,7 @@ export function classifyFolder(files: FileSignal[], folderName: string): Classif
     (f) => f.albumArtist !== undefined && isVariousArtists(f.albumArtist),
   );
   if (hasCompilationFlag || hasVaAlbumArtist) {
-    const album =
-      distinctAlbums === 1 ? nonEmptyAlbums[0]! : cleanFolderName(folderName);
+    const album = distinctAlbums === 1 ? nonEmptyAlbums[0]! : cleanFolderName(folderName);
     return { type: 'compilation', album, year };
   }
 
@@ -342,8 +341,7 @@ export class CompilationTagger {
         return {
           artist: typeof data.artist === 'string' ? data.artist : undefined,
           album: typeof data.album === 'string' ? data.album : undefined,
-          albumArtist:
-            typeof data.performerInfo === 'string' ? data.performerInfo : undefined,
+          albumArtist: typeof data.performerInfo === 'string' ? data.performerInfo : undefined,
           compilation:
             Array.isArray(data.userDefinedText) &&
             (data.userDefinedText as Array<Record<string, string>>).some(
@@ -365,7 +363,8 @@ export class CompilationTagger {
           artist: parsed.common.artist,
           album: parsed.common.album,
           albumArtist: parsed.common.albumartist,
-          compilation: (parsed.common as Record<string, unknown>).compilation === true ? true : undefined,
+          compilation:
+            (parsed.common as Record<string, unknown>).compilation === true ? true : undefined,
         };
       } catch {
         return {};

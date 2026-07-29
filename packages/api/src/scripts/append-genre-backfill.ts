@@ -28,7 +28,7 @@ import { verifyGenre } from '../services/track-analysis.js';
 import { writeAudioTags } from '../services/audio-tags.js';
 import { planGenreBackfill, resolveSongAbsPath } from '../services/track-backfill.js';
 import { appendSongGenres, loadGenreSets } from '../services/genre-split.js';
-import { expandHome } from './lib/expand-home.js';
+import { expandHome } from '@nicotind/core';
 
 function loadConfig(): {
   dataDir: string;
@@ -171,7 +171,8 @@ async function main(): Promise<void> {
     if (merged.length === before) continue; // nothing new — skip tag rewrite
     if (musicDir) {
       const abs = resolveSongAbsPath(musicDir, a.song.path);
-      if (existsSync(abs)) await writeAudioTags(abs, { genre: merged.join('; ') }).catch(() => false);
+      if (existsSync(abs))
+        await writeAudioTags(abs, { genre: merged.join('; ') }).catch(() => false);
     }
     appendFileSync(
       logPath,

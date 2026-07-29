@@ -56,7 +56,7 @@ A **separate**, less common integrity problem (the search fix above already hand
 
 **Detector 1 — same release, artist-spelling variants (`detectDuplicateAlbums`).** The scanner already auto-merges rows whose artist _normalizes identically_ (`albumGroupKey` uses `normalizeArtistForGrouping`, which strips diacritics/case but **preserves punctuation/spacing**), so the only fragments that survive are punctuation/spacing variants: "La Konga" / "La K'onga", "Mr Gato" / "Mr. Gato". Detection groups by `normalizeForGrouping(title)`, **sub-clusters by an alnum-only artist fold** (`artistFold`), and flags a sub-cluster only when its rows share that fold but differ in raw spelling or artist id. Sub-clustering by folded artist is what keeps genuinely-different same-title albums apart — "Off the Wall" (Michael Jackson vs Pink Floyd), "Greatest Hits" (six artists) — which the old title-only grouping wrongly flagged. **Fix:** alias the spellings via Admin → Library → Artist identity ("merge into"), then rescan (`POST /api/library/sync`).
 
-**Detector 2 — full album wrongly hidden from the grid (`detectHiddenByClassification`).** The grid's `classification = 'album'` filter drops singles/EPs _by design_, so flagging every non-`album` row is noise. A real defect is a row whose track count contradicts its class — a `single` with >2 tracks or an `ep` with >7 tracks reads as a full album the grid wrongly hides (e.g. "Future Nostalgia" tagged `single`, 18 tracks). Also flagged: `classification = 'unknown'` and `hidden = 1` rows (both low-volume). Legitimately-short singles/EPs and compilations are **not** flagged. Each finding carries `songCount` so the UI shows the tell ("18 tracks, tagged single"). **Fix:** reclassify or unhide via the album row menu.
+**Detector 2 — full album wrongly hidden from the grid (`detectHiddenByClassification`).** The grid's `classification = 'album'` filter drops singles/EPs _by design_, so flagging every non-`album` row is noise. A real defect is a row whose track count contradicts its class — decided by `contradictsTrackCount`, the **same predicate the curator uses** (`library-curator.ts`), so the report can never flag a row the corrector deliberately keeps (e.g. "Future Nostalgia" tagged `single`, 18 tracks). Also flagged: `classification = 'unknown'` and `hidden = 1` rows (both low-volume). Legitimately-short singles/EPs and compilations are **not** flagged. Each finding carries `songCount` so the UI shows the tell ("18 tracks, tagged single"). **Fix:** reclassify or unhide via the album row menu.
 
 **Combined detector:** `checkFragments(db)` runs both detectors (plus the orthogonal one-track-per-title `checkMisSplitAlbums` from `library-audit.ts`) into one report shape consumed by:
 
@@ -64,7 +64,15 @@ A **separate**, less common integrity problem (the search fix above already hand
 - the **CLI script** `scripts/check-fragments.ts` (read-only; exit code 1 when any defect exists, so a scheduled run can alert),
 - and unit-tested with the in-memory sqlite (`library-fragments.test.ts`).
 
-**The CLI gate had never run in a Docker deployment.** Its local `expandHome` copy returned `''` for any path not starting with `~` instead of the path itself — one of 30 copy-pasted copies, and the only one that had drifted. With `NICOTIND_DATA_DIR=/data/nicotind` the data dir collapsed to `''` and the script exited `Database not found at nicotind.db`. It survived because local development uses the default `~/.nicotind`, which takes the other branch: the bug was reachable **only** with an absolute path, i.e. only in production. The helper now lives in `scripts/lib/expand-home.ts` with tests, and **all 30 scripts import it** — the 29 correct copies were migrated too (issue #306), since the drift that caused this had no way of being prevented while every script carried its own copy. First run against prod after the fix reported 4 duplicate albums, 19 hidden-by-classification and 6 mis-split — findings that had been unreachable the whole time.
+**The CLI gate had never run in a Docker deployment.** Its local `expandHome` copy returned `''` for any path not starting with `~` instead of the path itself — one of 30 copy-pasted copies, and the only one that had drifted. With `NICOTIND_DATA_DIR=/data/nicotind` the data dir collapsed to `''` and the script exited `Database not found at nicotind.db`. It survived because local development uses the default `~/.nicotind`, which takes the other branch: the bug was reachable **only** with an absolute path, i.e. only in production. The helper now lives in `@nicotind/core` `utils/expand-home.ts` with tests and every script imports it (issue #306) — plus a `check:shared-helpers` CI gate, since the drift had no way of being prevented while each script carried its own copy. First run against prod after the fix reported 4 duplicate albums, 19 hidden-by-classification and 6 mis-split — findings that had been unreachable the whole time.
+
+### The two thresholds had to be made one (issue #314)
+
+That first prod run is also what exposed a **permanent false-positive class**. The reporter flagged a `single` with >2 tracks; the curator's `contradictsTrackCount` (issue #315) deliberately trusts a catalog `single`/`ep` below **10** tracks, naming real maxi-singles by name — prod's "Alejandro" (8) and "Paparazzi" (7), which genuinely *are* singles with remixes. So three rows were reported as defects forever and correctly never fixed, which is how a diagnostic loses its operator.
+
+The reporter now calls `contradictsTrackCount` instead of keeping a second opinion, and the two agree by construction. This is safe precisely because of what can *produce* a long single: the scanner's own heuristic only ever mints a `single` at <=1 track and an `ep` at <=6, so anything longer is **always** metadata-sourced — the exact case #315 decided to trust. Note the two files had also drifted to two constants both named `EP_MAX_TRACKS` with **different values** (6 in the curator, 7 in the reporter); only the curator's survives.
+
+Measured on prod: hidden-by-classification **19 → 10** once #315's guard had rescanned, then **10 → 7** with this change. The remaining 7 are all genuine — DJ-pool watermark pollution (`djdownloadme.com`, `LOSERPOWER.ORG`, `ElectronicFresh.com`) and unresolved `unknown` rows.
 
 ## Multi-genre support
 
@@ -244,11 +252,61 @@ The album/EP **detail track list omits the per-track thumbnail** (every row shar
 - **In-use pin during pruning** (`pinTranscodeCacheFile` + `inUse` map, same file). The streaming route pins the cache file before serving and releases when the response body stream closes or is cancelled (the wire-format-preserving `wrapWithRelease` body wrapper in `routes/streaming.ts` is the only JS hook into the Bun response lifecycle). The pruner skips pinned entries, so a fire-and-forget eviction can't yank a file out from under a streaming response.
 - **ffprobe post-check + strict ffmpeg flags** (`validateTranscodeOutput` in `transcode.ts`). After ffmpeg exits 0, the output's ffprobe-reported duration is compared to the source's `music-metadata` duration; a successful-but-short output (within a 1 s tolerance) is rejected and the temp is cleaned up. The ffmpeg command is invoked with `-xerror` + `-fflags +discardcorrupt` + `-err_detect explode` so a damaged source fails fast instead of silently producing a partial output.
 - **Same integrity contract in the ingest-time Opus transcode** (`post-download-transcode.ts`): strict ffmpeg flags, ffprobe post-check vs source duration, original file left untouched on rejection. Without this, a short lossless→Opus file would land **in the library itself** (not just in a cache) and the user would have no easy way to tell one track in their library is short without playing it.
+- **Negative cache for permanently-unusable sources** (`transcode-failures.ts`, issue #317). The rejection above is correct, but nothing remembered it, so a damaged file re-ran its doomed ffmpeg pass and logged a fresh ERROR on **every** play (prod: `04 Desesperada 2004…mp3`, 227.1 s source → 219.4 s output, 4 plays in a week). The route now consults `isKnownUntranscodable(abs)` before attempting a transcode and falls straight through to the original. Three decisions carry the design:
+  - **Only a deterministic verdict is cached.** `validateTranscodeOutput`'s rejection throws a typed `TranscodeOutputRejectedError`; every other throw (ffmpeg exit != 0, an OOM kill, a failed rename, a full disk) stays a bare `Error` and remains retryable. Caching those would turn a recoverable outage into a permanent no-transcode until restart — the cache's blast radius must equal its evidence.
+  - **Keyed on `path + size + mtime`, not path.** The whole point of a corrupt file is that someone eventually replaces it; a repaired re-download then transcodes normally with no manual eviction. Same content-identity discipline as `scan_cache` and the transcode cache key itself.
+  - **In-memory, not a table.** Mirrors the `noArtCache` negative cache already living beside it in `routes/streaming.ts`. A persistent table plus migration plus prune wiring is disproportionate for a handful of damaged files, and a restart re-testing one is harmless — it fails once more and re-learns. Bounded at 500 entries, oldest-first.
 - **Frontend false-ended guard** (`PlayerComponent.isFalseEnded` + `startRecovery`): if the browser fires `ended` while `currentTime` is < 70 % of the API-known `track.duration` — or the browser's reported duration is far off the API one (the 5 s / 70 % gate in `browserDurationIsAcceptable`) — the queue does NOT advance. The track is paused, `recoveryState` is set to `awaiting-duration`, and the player waits for a real `durationchange` (or `canplay` with a sane duration) before resuming playback from the audio element's current position. A 5 s safety-valve timer is the fallback if no sane duration ever arrives.
 
 **Firefox "never plays" bug — `nativeAppCors()` was silently stripping `Content-Length` off every stream response.** `serveFileWithRange` always sets an explicit `content-length` header, but `hono/cors`'s built-in middleware appends its post-request `Vary: Origin` header via `c.header()` — which, once a route has already returned a `Response` (`Context#finalized`), rebuilds that `Response` from `res.body`. Reading `.body` on a `Bun.file()`/Blob-backed `Response` converts it into a generic `ReadableStream`, and Bun writes an unknown-length stream as `Transfer-Encoding: chunked`, dropping the declared `Content-Length` — for **every** `/api/stream` response, 200 or 206, verified live with `curl -D -`. Chrome's `<audio>` tolerates a chunked, length-less 206 range read; Firefox's does not, and gets stuck endlessly re-requesting/stalling — which the buffering-spinner UI (see [web-ui.md](web-ui.md) "Playback loading feedback") then faithfully renders as a spinner that never resolves and a track that never actually plays. Fixed by hand-rolling `nativeAppCors()` (`packages/api/src/middleware/cors.ts`) to mutate `c.res.headers` directly instead of calling `c.header()` after `next()`, so the Blob body — and its real `Content-Length` — reaches Bun untouched. Pinned by a wire-level regression test (`cors.test.ts`, real `Bun.serve` + `fetch()`, since Hono's in-process `app.request()` doesn't reproduce it) that fails on the old `hono/cors`-based implementation.
 
 ---
+
+### Portrait coverage in Admin (issue #250 gap 3)
+
+Portraits are the biggest visual signal in the Artists grid, and a library could sit
+half-placeholder indefinitely with **no in-app way to see it** — prod measured **980 of 2,472**
+visible artists with a portrait (39.6 %). `artistImageCoverage` (`services/artist-image-fill.ts`)
+feeds an `artistImages` slice on `GET /api/admin/review` — added **by name** through `allNamed`, per
+the #274 ServiceReview convention, so it's one polling lifecycle and not an Nth loader — rendered as
+an Admin row plus a coverage bar, hidden entirely once nothing is missing.
+
+Two decisions worth keeping:
+
+- **`missing` reuses `NEEDS_PORTRAIT_SQL`** rather than restating the predicate, so the number an
+  admin reads is by construction the number a fill would act on. Restating it is how the fragment
+  reporter and the curator ended up disagreeing (issue #314).
+- **`withPortrait` is computed directly, never as `visible - missing`.** A curator upload is served
+  from `<dataDir>/artist-overrides` and has **no `library_artwork` row at all**, so subtraction
+  reports 138 real prod portraits as missing. "Has a portrait" is `manual_override = 1` **or** an
+  artwork row; the two buckets partition `visible` exactly, which a test asserts (and which holds on
+  prod data).
+
+Hidden artists (`split_compound` rows whose members represent them) are excluded from every bucket —
+the grid doesn't render them, so counting them would make coverage look permanently incomplete.
+
+**Still open on #250**: gap 4 (an Add-photo affordance on the Artists grid itself; today upload /
+copy-from-album is reachable only from an individual artist page).
+
+### Add-photo from the Artists grid (issue #250 gap 4)
+
+Upload / copy-from-album lived **inline in `artist-detail.component`**, so the only way to give an
+artist a photo was to open that artist's page — with prod at 60 % placeholder that is a lot of
+navigation. The control is now `ArtistImageMenuComponent`
+(`components/artist-image-menu/`), used by **both** the artist page and each Artists-grid tile
+(curator-gated), which is what the issue asks for: *one component, not a copy*. A second
+implementation would have drifted on the two easy things to get wrong here — the busy-guard and the
+cache-bust (the portrait URL is byte-identical after a change, so without a version bump the browser
+serves the old image).
+
+It also adds **Fetch automatically**, which calls the already-existing
+`POST /artists/:id/auto-fetch-image`. That route shipped with gap 1 but **no web client ever called
+it** — it was reachable only from the enrichment window or the backfill script.
+
+`albums` is an optional input, and the asymmetry is deliberate: the artist page already has its
+albums loaded and passes them (no extra request), while a grid tile has nothing, so the component
+fetches them **lazily on first open** of the picker. Eagerly loading albums per tile would mean N
+requests for a menu almost nobody opens.
 
 ## Canonical artwork
 

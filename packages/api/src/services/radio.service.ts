@@ -257,7 +257,9 @@ export function explainSimilarity(
   const seedGenre = seed.genres ?? seed.genre;
   const candGenre = candidate.genres ?? candidate.genre;
   const genreValue = genreSetCloseness(seedGenre, candGenre);
-  const seedHasGenre = (Array.isArray(seedGenre) ? seedGenre.filter(Boolean).length > 0 : !!seedGenre);
+  const seedHasGenre = Array.isArray(seedGenre)
+    ? seedGenre.filter(Boolean).length > 0
+    : !!seedGenre;
   if (genreValue === null && seedHasGenre) {
     floored.push('genre');
     add('genre', MISSING_GENRE_FLOOR, weights.genre);
@@ -302,9 +304,21 @@ export function explainSimilarity(
   // Perceptual axes (0..1 domains) — only when BOTH sides carry the feature.
   add('energy', unitCloseness(seed.energy, candidate.energy), weights.energy);
   add('valence', unitCloseness(seed.valence, candidate.valence), weights.valence);
-  add('danceability', unitCloseness(seed.danceability, candidate.danceability), weights.danceability);
-  add('instrumental', unitCloseness(seed.instrumental, candidate.instrumental), weights.instrumental);
-  add('acousticness', unitCloseness(seed.acousticness, candidate.acousticness), weights.acousticness);
+  add(
+    'danceability',
+    unitCloseness(seed.danceability, candidate.danceability),
+    weights.danceability,
+  );
+  add(
+    'instrumental',
+    unitCloseness(seed.instrumental, candidate.instrumental),
+    weights.instrumental,
+  );
+  add(
+    'acousticness',
+    unitCloseness(seed.acousticness, candidate.acousticness),
+    weights.acousticness,
+  );
 
   // Cached embedding cosine, mapped from [−1,1] to [0,1] closeness.
   const cos = cosineSim(seed.embedding, candidate.embedding);

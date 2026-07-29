@@ -17,7 +17,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { parse } from 'yaml';
 import { Database } from 'bun:sqlite';
-import { expandHome } from './lib/expand-home.js';
+import { expandHome } from '@nicotind/core';
 import {
   proposeGenreAliases,
   buildKnownFromRaw,
@@ -95,7 +95,9 @@ function main(): void {
 
   const applyIdx = args.indexOf('--apply');
   if (applyIdx >= 0 && args[applyIdx + 1]) {
-    const proposals = JSON.parse(readFileSync(args[applyIdx + 1]!, 'utf-8')) as GenreAliasProposal[];
+    const proposals = JSON.parse(
+      readFileSync(args[applyIdx + 1]!, 'utf-8'),
+    ) as GenreAliasProposal[];
     const stmt = db.prepare(
       `INSERT INTO library_genre_aliases (alias, canonical, source, created_at)
        VALUES (?, ?, 'user', ?)

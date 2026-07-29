@@ -31,7 +31,12 @@ function makeFlac(musicDir: string, rel: string, title: string): void {
   makeAudio(musicDir, rel, title, 'flac');
 }
 
-function makeAudio(musicDir: string, rel: string, title: string, codec: 'flac' | 'alac' | 'aac'): void {
+function makeAudio(
+  musicDir: string,
+  rel: string,
+  title: string,
+  codec: 'flac' | 'alac' | 'aac',
+): void {
   const dest = join(musicDir, rel);
   mkdirSync(dirname(dest), { recursive: true });
   execFileSync(
@@ -122,10 +127,9 @@ describe('transcodeLibraryToOpus', () => {
       // Old row gone, new opus row present with carried curation.
       expect(db.query('SELECT id FROM library_songs WHERE id = ?').get(oldId)).toBeNull();
       const newRow = db
-        .query<
-          { suffix: string; starred: string | null; hidden: number; path: string },
-          [string]
-        >('SELECT suffix, starred, hidden, path FROM library_songs WHERE id = ?')
+        .query<{ suffix: string; starred: string | null; hidden: number; path: string }, [string]>(
+          'SELECT suffix, starred, hidden, path FROM library_songs WHERE id = ?',
+        )
         .get(newId);
       expect(newRow?.suffix).toBe('opus');
       expect(newRow?.path).toBe(newRel);
@@ -173,10 +177,9 @@ describe('transcodeLibraryToOpus', () => {
       // one is kept, the stale lossless row dropped.
       expect(db.query('SELECT id FROM library_songs WHERE id = ?').get(oldId)).toBeNull();
       const acqs = db
-        .query<
-          { relative_path: string; source_ref: string },
-          []
-        >('SELECT relative_path, source_ref FROM acquisitions')
+        .query<{ relative_path: string; source_ref: string }, []>(
+          'SELECT relative_path, source_ref FROM acquisitions',
+        )
         .all();
       expect(acqs).toHaveLength(1);
       expect(acqs[0]?.relative_path).toBe(newRel);

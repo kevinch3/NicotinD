@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import {
-  CURATED_PLAYLISTS,
-  selectCuratedTracks,
-  type CandidateRow,
-} from './curated-playlists.js';
+import { CURATED_PLAYLISTS, selectCuratedTracks, type CandidateRow } from './curated-playlists.js';
 
 function rows(spec: Array<[artist: string, count: number]>): CandidateRow[] {
   const out: CandidateRow[] = [];
@@ -32,10 +28,17 @@ describe('CURATED_PLAYLISTS', () => {
 
 describe('selectCuratedTracks', () => {
   it('never exceeds maxPerArtist for any artist', () => {
-    const picked = selectCuratedTracks(rows([['A', 50], ['B', 50], ['C', 50]]), {
-      targetSize: 40,
-      maxPerArtist: 2,
-    });
+    const picked = selectCuratedTracks(
+      rows([
+        ['A', 50],
+        ['B', 50],
+        ['C', 50],
+      ]),
+      {
+        targetSize: 40,
+        maxPerArtist: 2,
+      },
+    );
     const perArtist = new Map<string, number>();
     for (const id of picked) {
       const artist = id.split('-')[0];
@@ -53,23 +56,40 @@ describe('selectCuratedTracks', () => {
 
   it('returns a shorter list when the per-artist cap exhausts the supply', () => {
     // 3 artists × cap 2 = at most 6, even though targetSize is 30.
-    const picked = selectCuratedTracks(rows([['A', 20], ['B', 20], ['C', 20]]), {
-      targetSize: 30,
-      maxPerArtist: 2,
-    });
+    const picked = selectCuratedTracks(
+      rows([
+        ['A', 20],
+        ['B', 20],
+        ['C', 20],
+      ]),
+      {
+        targetSize: 30,
+        maxPerArtist: 2,
+      },
+    );
     expect(picked).toHaveLength(6);
   });
 
   it('produces no duplicate ids', () => {
-    const picked = selectCuratedTracks(rows([['A', 30], ['B', 30]]), {
-      targetSize: 40,
-      maxPerArtist: 5,
-    });
+    const picked = selectCuratedTracks(
+      rows([
+        ['A', 30],
+        ['B', 30],
+      ]),
+      {
+        targetSize: 40,
+        maxPerArtist: 5,
+      },
+    );
     expect(new Set(picked).size).toBe(picked.length);
   });
 
   it('is deterministic for a given seed and varies across seeds', () => {
-    const input = rows([['A', 50], ['B', 50], ['C', 50]]);
+    const input = rows([
+      ['A', 50],
+      ['B', 50],
+      ['C', 50],
+    ]);
     const a1 = selectCuratedTracks(input, { targetSize: 20, maxPerArtist: 5, seed: 7 });
     const a2 = selectCuratedTracks(input, { targetSize: 20, maxPerArtist: 5, seed: 7 });
     const b = selectCuratedTracks(input, { targetSize: 20, maxPerArtist: 5, seed: 99 });
@@ -98,7 +118,9 @@ describe('expandGenreWhere (multi-genre recipe predicates)', () => {
       `INSERT INTO library_songs (id, album_id, title, artist, artist_id, duration, genre, path, size, suffix, content_type, synced_at, hidden)
        VALUES ('s1', 'al1', 'T', 'A', 'ar1', 200, 'Electronic', 'p1', 1, 'mp3', 'audio/mpeg', 0, 0)`,
     );
-    db.run(`INSERT INTO library_song_genres (song_id, genre, position) VALUES ('s1', 'Electronic', 0)`);
+    db.run(
+      `INSERT INTO library_song_genres (song_id, genre, position) VALUES ('s1', 'Electronic', 0)`,
+    );
     db.run(`INSERT INTO library_song_genres (song_id, genre, position) VALUES ('s1', 'House', 1)`);
     const rows = db
       .query<{ id: string }, []>(

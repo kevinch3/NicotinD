@@ -88,10 +88,9 @@ interface AcquisitionRow {
 /** Read acquisition provenance for a final on-disk path, or null if unrecorded. */
 export function getAcquisitionByPath(db: Database, relativePath: string): SongAcquisition | null {
   const row = db
-    .query<
-      AcquisitionRow,
-      [string]
-    >('SELECT relative_path, method, source_ref, completed_at FROM acquisitions WHERE relative_path = ?')
+    .query<AcquisitionRow, [string]>(
+      'SELECT relative_path, method, source_ref, completed_at FROM acquisitions WHERE relative_path = ?',
+    )
     .get(relativePath);
   if (!row) return null;
   return {

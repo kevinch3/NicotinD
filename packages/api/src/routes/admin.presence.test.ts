@@ -35,7 +35,9 @@ function authedAdmin(app: Hono<AuthEnv>): Hono<AuthEnv> {
 
 function seedUser(id: string, username: string, role = 'user') {
   testDb
-    .query('INSERT INTO users (id, username, password_hash, role, created_at) VALUES (?, ?, ?, ?, ?)')
+    .query(
+      'INSERT INTO users (id, username, password_hash, role, created_at) VALUES (?, ?, ?, ?, ?)',
+    )
     .run(id, username, 'x', role, new Date().toISOString());
 }
 
@@ -67,9 +69,7 @@ describe('admin /users presence merge', () => {
     presenceService.heartbeat('online1', 'phone', 'tab-1');
     presenceService.heartbeat('online1', 'laptop', 'tab-2');
 
-    const app = authedAdmin(
-      new Hono<AuthEnv>().route('/', adminRoutes({ musicDir: '/music' })),
-    );
+    const app = authedAdmin(new Hono<AuthEnv>().route('/', adminRoutes({ musicDir: '/music' })));
     const res = await app.request('/users');
     expect(res.status).toBe(200);
 

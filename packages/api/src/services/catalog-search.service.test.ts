@@ -243,12 +243,7 @@ describe('CatalogService.search', () => {
   // Lidarr `album.lookup` ordering for "Deep Purple" (comps newest-first,
   // real albums oldest-last).
   it('demotes compilations behind the artist real releases, even when the comps are newer', async () => {
-    const own = (
-      id: number,
-      title: string,
-      releaseDate: string,
-      secondaryTypes: string[] = [],
-    ) =>
+    const own = (id: number, title: string, releaseDate: string, secondaryTypes: string[] = []) =>
       makeAlbum({
         id,
         title,
@@ -321,7 +316,11 @@ describe('CatalogService.search', () => {
             artist: makeArtist({ id: 5, artistName: 'Bajofondo' }),
           }),
           // First-token junk Lidarr surfaces for the rare second word.
-          makeAlbum({ id: 2, title: 'LA', artist: makeArtist({ id: 6, artistName: 'Teddy Thompson' }) }),
+          makeAlbum({
+            id: 2,
+            title: 'LA',
+            artist: makeArtist({ id: 6, artistName: 'Teddy Thompson' }),
+          }),
           makeAlbum({ id: 3, title: 'Là', artist: makeArtist({ id: 7, artistName: 'São Paris' }) }),
         ]),
       },

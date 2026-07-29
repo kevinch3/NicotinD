@@ -64,9 +64,7 @@ export function transcodeCacheKey(
 ): string {
   const vox = vocalRemoval ? '|novox' : '';
   return createHash('sha1')
-    .update(
-      `${absPath}|${Math.round(mtimeMs)}|${sizeBytes}|${format}|${kbps}${vox}`,
-    )
+    .update(`${absPath}|${Math.round(mtimeMs)}|${sizeBytes}|${format}|${kbps}${vox}`)
     .digest('hex');
 }
 
@@ -125,14 +123,7 @@ export async function getTranscodedFile(
   const vocalRemoval = opts.vocalRemoval ?? false;
 
   const st = statSync(absPath);
-  const key = transcodeCacheKey(
-    absPath,
-    st.mtimeMs,
-    st.size,
-    format,
-    kbps,
-    vocalRemoval,
-  );
+  const key = transcodeCacheKey(absPath, st.mtimeMs, st.size, format, kbps, vocalRemoval);
   const outPath = join(cacheDir, `${key}.${transcodeExt(format)}`);
   if (isUsableCacheFile(outPath)) return outPath;
   // Unusable hit (missing, 0 bytes, or smaller than the floor) — drop it so

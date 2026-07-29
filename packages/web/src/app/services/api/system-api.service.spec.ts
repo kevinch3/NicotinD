@@ -25,7 +25,9 @@ describe('SystemApiService', () => {
   });
 
   it('PUTs merged soulseek credentials + network options', () => {
-    service.saveSoulseekSettings('user', 'pass', { listeningPort: 50000, enableUPnP: false }).subscribe();
+    service
+      .saveSoulseekSettings('user', 'pass', { listeningPort: 50000, enableUPnP: false })
+      .subscribe();
     const req = http.expectOne('/api/settings/soulseek');
     expect(req.request.method).toBe('PUT');
     expect(req.request.body).toEqual({

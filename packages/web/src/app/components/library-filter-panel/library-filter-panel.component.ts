@@ -43,9 +43,7 @@ export class LibraryFilterPanelComponent {
   /** Fires on trigger clicks — hosts lazy-load genre options on first open. */
   readonly panelOpened = output<void>();
 
-  readonly badgeCount = computed(
-    () => activeLibraryFilterCount(this.filter()) + this.extraCount(),
-  );
+  readonly badgeCount = computed(() => activeLibraryFilterCount(this.filter()) + this.extraCount());
 
   // Template vocab
   readonly camelotWheel = CAMELOT_WHEEL;
@@ -78,9 +76,7 @@ export class LibraryFilterPanelComponent {
   toggleMood(mood: MoodLabel): void {
     const f = this.filter();
     const current = f.moods ?? [];
-    const next = current.includes(mood)
-      ? current.filter((m) => m !== mood)
-      : [...current, mood];
+    const next = current.includes(mood) ? current.filter((m) => m !== mood) : [...current, mood];
     this.emitFilter(next.length ? { ...f, moods: next } : this.without(f, 'moods'));
   }
 
@@ -91,9 +87,7 @@ export class LibraryFilterPanelComponent {
   toggleKey(code: string): void {
     const f = this.filter();
     const current = f.keys ?? [];
-    const next = current.includes(code)
-      ? current.filter((k) => k !== code)
-      : [...current, code];
+    const next = current.includes(code) ? current.filter((k) => k !== code) : [...current, code];
     this.emitFilter(next.length ? { ...f, keys: next } : this.without(f, 'keys'));
   }
 
@@ -104,9 +98,7 @@ export class LibraryFilterPanelComponent {
   toggleGenre(genre: string): void {
     const f = this.filter();
     const current = f.genres ?? [];
-    const next = current.includes(genre)
-      ? current.filter((g) => g !== genre)
-      : [...current, genre];
+    const next = current.includes(genre) ? current.filter((g) => g !== genre) : [...current, genre];
     this.emitFilter(next.length ? { ...f, genres: next } : this.without(f, 'genres'));
   }
 
@@ -121,9 +113,7 @@ export class LibraryFilterPanelComponent {
   toggleLicence(code: string): void {
     const f = this.filter();
     const current = f.licences ?? [];
-    const next = current.includes(code)
-      ? current.filter((l) => l !== code)
-      : [...current, code];
+    const next = current.includes(code) ? current.filter((l) => l !== code) : [...current, code];
     this.emitFilter(next.length ? { ...f, licences: next } : this.without(f, 'licences'));
   }
 
@@ -140,9 +130,7 @@ export class LibraryFilterPanelComponent {
       : [...current, bucket];
     if (next.length) buckets[axis] = next;
     else delete buckets[axis];
-    this.emitFilter(
-      Object.keys(buckets).length ? { ...f, buckets } : this.without(f, 'buckets'),
-    );
+    this.emitFilter(Object.keys(buckets).length ? { ...f, buckets } : this.without(f, 'buckets'));
   }
 
   isBucketActive(axis: PerceptualAxis, bucket: PerceptualBucket): boolean {

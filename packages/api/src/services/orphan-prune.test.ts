@@ -229,3 +229,79 @@ describe('maybeRunDailyOrphanPrune', () => {
     expect(DEFAULT_ORPHAN_GRACE_MS).toBe(30 * DAY);
   });
 });
+
+/**
+ * `scan_cache` is the first **path-keyed** entry in ORPHAN_TABLES — every other
+ * table references `library_songs.id`. These cover the reference-column
+ * generalization specifically (issue #313).
+ */
+describe('scan_cache orphan pruning (path-keyed)', () => {
+  function makeDb(): Database {
+    const db = new Database(':memory:');
+    db.run('CREATE TABLE library_songs (id TEXT PRIMARY KEY, path TEXT)');
+    db.run(`CREATE TABLE scan_cache (
+      path TEXT PRIMARY KEY, size INTEGER, mtime_ms REAL,
+      track_json TEXT, orphaned_at INTEGER)`);
+    return db;
+  }
+  const addSong = (db: Database, p: string) =>
+    db.run('INSERT INTO library_songs (id, path) VALUES (?, ?)', [`id:${p}`, p]);
+  const addCache = (db: Database, p: string) =>
+    db.run('INSERT INTO scan_cache (path, size, mtime_ms, track_json) VALUES (?, 1, 1, ?)', [
+      p,
+      '{}',
+    ]);
+  const cachePaths = (db: Database) =>
+    (db.query('SELECT path p FROM scan_cache ORDER BY path').all() as Array<{ p: string }>).map(
+      (r) => r.p,
+    );
+
+  it('matches on path, not id — a live file is never marked', () => {
+    const db = makeDb();
+    addSong(db, 'A/live.mp3');
+    addCache(db, 'A/live.mp3');
+
+    const r = pruneOrphanRows(db, { now: 1_000 });
+    expect(r.marked).toBe(0);
+    expect(cachePaths(db)).toEqual(['A/live.mp3']);
+  });
+
+  it('marks then sweeps an entry whose file is gone, only after the grace period', () => {
+    const db = makeDb();
+    addSong(db, 'A/live.mp3');
+    addCache(db, 'A/live.mp3');
+    addCache(db, 'A/deleted.mp3');
+
+    expect(pruneOrphanRows(db, { now: 1_000, graceMs: 100 }).marked).toBe(1);
+    // Still inside the grace window: marked, not swept.
+    expect(pruneOrphanRows(db, { now: 1_050, graceMs: 100 }).deleted).toBe(0);
+    expect(cachePaths(db)).toEqual(['A/deleted.mp3', 'A/live.mp3']);
+
+    expect(pruneOrphanRows(db, { now: 2_000, graceMs: 100 }).deleted).toBe(1);
+    expect(cachePaths(db)).toEqual(['A/live.mp3']);
+  });
+
+  it('unmarks when the file comes back, preserving the re-download restore property', () => {
+    const db = makeDb();
+    addSong(db, 'A/keep.mp3');
+    addCache(db, 'A/keep.mp3');
+    addCache(db, 'A/gone.mp3');
+    expect(pruneOrphanRows(db, { now: 1_000, graceMs: 100 }).marked).toBe(1);
+
+    addSong(db, 'A/gone.mp3'); // re-downloaded
+    expect(pruneOrphanRows(db, { now: 1_100, graceMs: 100 }).unmarked).toBe(1);
+    // Past the grace window it is still here, because it is no longer an orphan.
+    expect(pruneOrphanRows(db, { now: 9_000, graceMs: 100 }).deleted).toBe(0);
+    expect(cachePaths(db)).toEqual(['A/gone.mp3', 'A/keep.mp3']);
+  });
+
+  it('reports scan_cache in the admin orphan counts', () => {
+    const db = makeDb();
+    addSong(db, 'A/live.mp3');
+    addCache(db, 'A/live.mp3');
+    addCache(db, 'A/dead.mp3');
+
+    const row = countOrphanRows(db).find((c) => c.table === 'scan_cache');
+    expect(row).toEqual({ table: 'scan_cache', rows: 2, orphans: 1 });
+  });
+});

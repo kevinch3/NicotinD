@@ -7,16 +7,19 @@
  * halves cooperate to supply them, and they live in different files built by
  * different systems:
  *
- *   Dockerfile         pip `bgutil-ytdlp-pot-provider==X`  (baked into our image)
- *   docker-compose.yml `brainicism/bgutil-ytdlp-pot-provider:X` (companion service)
+ *   Dockerfile                      pip `bgutil-ytdlp-pot-provider==X`  (baked into our image)
+ *   packages/pot-provider/Dockerfile the server source tag we build from
  *
  * They must stay in step. A mismatch doesn't fail loudly — it silently breaks
  * YouTube acquisition, which is the exact hazard issue #238 opens with. Nothing
  * enforced the pairing; it was two literals kept together by comments.
  *
- * `BGUTIL_VERSION` now overrides both at deploy time (a build-arg in the
- * Dockerfile, compose interpolation in the service), so an operator moves one
- * value. This checks the remaining risk: that the two *baked defaults* drift.
+ * Since issue #238 the companion service is **our own image** built from pinned
+ * upstream source, so the second half moved from a third-party compose tag into
+ * `packages/pot-provider/Dockerfile`. That is strictly better for this gate: both
+ * halves are now files in this repo, rather than one being an image tag whose
+ * contents nobody here controls. `BGUTIL_VERSION` is a build-arg on both, so an
+ * operator still moves one value; this checks that the two *baked defaults* agree.
  *
  * A gate rather than a report (unlike check-shipped-issues.ts): there is exactly
  * one correct answer — the two strings are equal or they are not — so there is
@@ -32,13 +35,9 @@ export function dockerfilePin(dockerfile: string): string | null {
   return dockerfile.match(/^ARG\s+BGUTIL_VERSION=(\S+)/m)?.[1] ?? null;
 }
 
-/** The compose image tag's fallback: `…provider:${BGUTIL_VERSION:-1.3.1}`. */
-export function composePin(compose: string): string | null {
-  return (
-    compose.match(
-      /image:\s*brainicism\/bgutil-ytdlp-pot-provider:\$\{BGUTIL_VERSION:-([^}]+)\}/,
-    )?.[1] ?? null
-  );
+/** The server build's default: `ARG BGUTIL_VERSION=1.3.1` in the provider image. */
+export function composePin(providerDockerfile: string): string | null {
+  return providerDockerfile.match(/^ARG\s+BGUTIL_VERSION=(\S+)/m)?.[1] ?? null;
 }
 
 /** Both defaults, and whether they agree. */
@@ -55,17 +54,17 @@ export function comparePins(
 function main(): void {
   const { docker, compose, ok } = comparePins(
     readFileSync(join(repoRoot, 'Dockerfile'), 'utf8'),
-    readFileSync(join(repoRoot, 'docker-compose.yml'), 'utf8'),
+    readFileSync(join(repoRoot, 'packages/pot-provider/Dockerfile'), 'utf8'),
   );
 
   if (ok) {
-    console.log(`bgutil pin: Dockerfile and docker-compose.yml agree on ${docker}.`);
+    console.log(`bgutil pin: pip plugin and provider image agree on ${docker}.`);
     return;
   }
 
   console.error('bgutil PO-token provider/plugin versions disagree:\n');
   console.error(`  Dockerfile  ARG BGUTIL_VERSION = ${docker ?? '(not found)'}`);
-  console.error(`  compose     image tag default  = ${compose ?? '(not found)'}`);
+  console.error(`  pot-provider ARG BGUTIL_VERSION = ${compose ?? '(not found)'}`);
   console.error(
     '\nThe pip plugin and the companion service must be the same version — a\n' +
       'mismatch silently breaks YouTube downloads. Bump both, or set BGUTIL_VERSION.',

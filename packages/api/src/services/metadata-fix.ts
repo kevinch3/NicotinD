@@ -188,13 +188,10 @@ export function applyMetadataFix(
         // Corrected names collapse onto an album that already exists → merge: drop
         // the old row and keep the target (its aggregates are recomputed below).
         db.run('DELETE FROM library_albums WHERE id = ?', [albumId]);
-        db.run('UPDATE library_albums SET name = ?, artist = ?, artist_id = ?, year = ? WHERE id = ?', [
-          album,
-          artist,
-          newArtistId,
-          year,
-          newAlbumId,
-        ]);
+        db.run(
+          'UPDATE library_albums SET name = ?, artist = ?, artist_id = ?, year = ? WHERE id = ?',
+          [album, artist, newArtistId, year, newAlbumId],
+        );
       } else {
         // Move the row to the corrected id, preserving curation columns
         // (classification/hidden/starred/manual_override/created). cover_art = id
@@ -206,21 +203,17 @@ export function applyMetadataFix(
       }
       repointAlbumKeyed(db, albumId, newAlbumId);
     } else {
-      db.run('UPDATE library_albums SET name = ?, artist = ?, artist_id = ?, year = ? WHERE id = ?', [
-        album,
-        artist,
-        newArtistId,
-        year,
-        albumId,
-      ]);
+      db.run(
+        'UPDATE library_albums SET name = ?, artist = ?, artist_id = ?, year = ? WHERE id = ?',
+        [album, artist, newArtistId, year, albumId],
+      );
     }
 
     // Recompute the (possibly merged) album's aggregates from its songs.
     const agg = db
-      .query<
-        { c: number; d: number },
-        [string]
-      >('SELECT COUNT(*) AS c, COALESCE(SUM(duration), 0) AS d FROM library_songs WHERE album_id = ?')
+      .query<{ c: number; d: number }, [string]>(
+        'SELECT COUNT(*) AS c, COALESCE(SUM(duration), 0) AS d FROM library_songs WHERE album_id = ?',
+      )
       .get(newAlbumId);
     db.run('UPDATE library_albums SET song_count = ?, duration = ? WHERE id = ?', [
       agg?.c ?? 0,
@@ -238,7 +231,9 @@ export function applyMetadataFix(
     );
     const artistAlbums =
       db
-        .query<{ c: number }, [string]>('SELECT COUNT(*) AS c FROM library_albums WHERE artist_id = ?')
+        .query<{ c: number }, [string]>(
+          'SELECT COUNT(*) AS c FROM library_albums WHERE artist_id = ?',
+        )
         .get(newArtistId)?.c ?? 0;
     db.run('UPDATE library_artists SET album_count = ? WHERE id = ?', [artistAlbums, newArtistId]);
     if (oldArtistId && oldArtistId !== newArtistId) pruneOrphanArtist(db, oldArtistId);
@@ -255,7 +250,16 @@ export function applyMetadataFix(
   })();
 
   log.info({ albumId, newAlbumId, artist, album, movedSongs }, 'metadata fix applied');
-  return { albumId: newAlbumId, artistId: newArtistId, artist, album, year, movedSongs, coverUpdated, releaseTypeUpdated };
+  return {
+    albumId: newAlbumId,
+    artistId: newArtistId,
+    artist,
+    album,
+    year,
+    movedSongs,
+    coverUpdated,
+    releaseTypeUpdated,
+  };
 }
 
 /**
@@ -264,7 +268,8 @@ export function applyMetadataFix(
  * row (a confirmed cover/type below overwrites it anyway).
  */
 function repointAlbumKeyed(db: Database, oldId: string, newId: string): void {
-  const artworkAtTarget = db.query('SELECT 1 FROM library_artwork WHERE id = ?').get(newId) !== null;
+  const artworkAtTarget =
+    db.query('SELECT 1 FROM library_artwork WHERE id = ?').get(newId) !== null;
   if (artworkAtTarget) db.run('DELETE FROM library_artwork WHERE id = ?', [oldId]);
   else db.run('UPDATE library_artwork SET id = ? WHERE id = ?', [newId, oldId]);
 

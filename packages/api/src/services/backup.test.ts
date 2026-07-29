@@ -8,7 +8,9 @@ import { listBackups, maybeRunDailyBackup, pruneBackups, runBackup } from './bac
 
 const db = new Database(':memory:');
 applySchema(db);
-db.run("INSERT INTO users (id, username, password_hash, role, created_at) VALUES ('u1', 'admin', 'x', 'admin', '2020-01-01')");
+db.run(
+  "INSERT INTO users (id, username, password_hash, role, created_at) VALUES ('u1', 'admin', 'x', 'admin', '2020-01-01')",
+);
 
 const dataDir = mkdtempSync(join(tmpdir(), 'nicotind-backup-'));
 afterAll(() => rmSync(dataDir, { recursive: true, force: true }));

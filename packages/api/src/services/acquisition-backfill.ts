@@ -29,9 +29,7 @@ export interface AcquisitionBackfillResult {
 }
 
 function methodForBackend(backend: string): AcquisitionMethod {
-  return backend === 'ytdlp' || backend === 'spotdl' || backend === 'archive'
-    ? backend
-    : 'unknown';
+  return backend === 'ytdlp' || backend === 'spotdl' || backend === 'archive' ? backend : 'unknown';
 }
 
 interface JoinRow {
@@ -105,10 +103,10 @@ export function backfillAcquisitions(
     .get();
   result.unresolved = unresolved?.n ?? 0;
 
-  db.run(
-    `INSERT OR REPLACE INTO library_sync_state (key, value, updated_at) VALUES (?, '1', ?)`,
-    [FLAG_KEY, Date.now()],
-  );
+  db.run(`INSERT OR REPLACE INTO library_sync_state (key, value, updated_at) VALUES (?, '1', ?)`, [
+    FLAG_KEY,
+    Date.now(),
+  ]);
   log.info(result, 'Acquisition backfill complete');
   return result;
 }

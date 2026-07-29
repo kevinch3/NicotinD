@@ -69,7 +69,13 @@ export function parsePairingPayload(raw: string): PairingPayload | null {
       if (!url.pathname.endsWith('/pair')) return null;
       const parsed = parsePairingParams(url.hash || url.search, url.origin);
       if (!parsed) return null;
-      return { v: 1, kind: 'nicotind-pair', name: parsed.name, urls: parsed.urls, token: parsed.token };
+      return {
+        v: 1,
+        kind: 'nicotind-pair',
+        name: parsed.name,
+        urls: parsed.urls,
+        token: parsed.token,
+      };
     } catch {
       return null;
     }
@@ -133,9 +139,7 @@ export async function claimPairing(
     headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
     body: JSON.stringify(body),
   });
-  const parsed = (await res.json().catch(() => null)) as
-    | (ClaimResult & { error?: string })
-    | null;
+  const parsed = (await res.json().catch(() => null)) as (ClaimResult & { error?: string }) | null;
   if (!res.ok || !parsed?.token) {
     throw new Error(parsed?.error ?? 'Pairing failed');
   }

@@ -16,7 +16,7 @@ import { parse } from 'yaml';
 import { initDatabase } from '../db.js';
 import { CompilationTagger } from '../services/compilation-tagger.js';
 import type { CompletedDownloadFile } from '../services/path-inference.js';
-import { expandHome } from './lib/expand-home.js';
+import { expandHome } from '@nicotind/core';
 
 // ── Config loading (mirrors main.ts) ────────────────────────────────────────
 
@@ -59,7 +59,9 @@ async function main(): Promise<void> {
     .query<
       { username: string; directory: string; filename: string; relative_path: string | null },
       []
-    >('SELECT username, directory, filename, relative_path FROM completed_downloads ORDER BY directory')
+    >(
+      'SELECT username, directory, filename, relative_path FROM completed_downloads ORDER BY directory',
+    )
     .all();
 
   if (rows.length === 0) {

@@ -27,7 +27,7 @@ import { verifyGenre } from '../services/track-analysis.js';
 import { writeAudioTags } from '../services/audio-tags.js';
 import { planGenreBackfill, resolveSongAbsPath } from '../services/track-backfill.js';
 import { setSongGenres } from '../services/genre-split.js';
-import { expandHome } from './lib/expand-home.js';
+import { expandHome } from '@nicotind/core';
 
 function loadConfig(): {
   dataDir: string;
@@ -93,15 +93,16 @@ async function main(): Promise<void> {
     process.exit(2);
   }
 
-  const db = apply ? new Database(dbPath, { readwrite: true }) : new Database(dbPath, { readonly: true });
+  const db = apply
+    ? new Database(dbPath, { readwrite: true })
+    : new Database(dbPath, { readonly: true });
   if (apply) db.run('PRAGMA busy_timeout = 5000');
   const lidarr = new Lidarr({ baseUrl: lidarrUrl, apiKey: lidarrApiKey });
 
   const rows = db
-    .query<
-      SongRow,
-      []
-    >("SELECT id, path, artist, genre FROM library_songs WHERE genre IS NULL OR genre = ''")
+    .query<SongRow, []>(
+      "SELECT id, path, artist, genre FROM library_songs WHERE genre IS NULL OR genre = ''",
+    )
     .all();
 
   console.log(`Mode      : ${apply ? 'APPLY (writing)' : 'DRY RUN (no changes)'}`);

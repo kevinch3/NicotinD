@@ -24,7 +24,8 @@ type Bridge = Partial<{
 function withBridge(bridge: Bridge | undefined, run: () => void) {
   const win = (globalThis as { window?: { nicotind?: unknown } }).window;
   const saved = win?.nicotind;
-  if (win) win.nicotind = bridge ? ({ platform: 'electron', os: 'linux', ...bridge } as never) : undefined;
+  if (win)
+    win.nicotind = bridge ? ({ platform: 'electron', os: 'linux', ...bridge } as never) : undefined;
   try {
     run();
   } finally {
@@ -41,7 +42,9 @@ describe('DesktopWindowControlsComponent', () => {
   it('renders nothing outside Linux/Windows Electron', () => {
     const fixture = makeFixture();
     fixture.detectChanges();
-    expect(fixture.nativeElement.querySelector('[data-testid="desktop-window-controls"]')).toBeNull();
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="desktop-window-controls"]'),
+    ).toBeNull();
     fixture.destroy();
   });
 
@@ -50,7 +53,11 @@ describe('DesktopWindowControlsComponent', () => {
     vi.mocked(platform.isElectronLinux).mockReturnValue(true);
     const fixture = makeFixture();
     fixture.detectChanges();
-    for (const id of ['desktop-window-minimize', 'desktop-window-maximize', 'desktop-window-close']) {
+    for (const id of [
+      'desktop-window-minimize',
+      'desktop-window-maximize',
+      'desktop-window-close',
+    ]) {
       expect(fixture.nativeElement.querySelector(`[data-testid="${id}"]`)).toBeTruthy();
     }
     vi.mocked(platform.isElectronLinux).mockReturnValue(false);

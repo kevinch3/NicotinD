@@ -19,9 +19,39 @@ import { setInputValue } from '../../../testing/signal-input';
 // See track-row.component.spec.ts: the JIT harness can't drive input() signals,
 // so write straight to the signal node (only before the first detectChanges()).
 const SONGS: Song[] = [
-  { id: 's1', title: 'Alpha', artist: 'A', album: 'One', albumId: 'al1', path: '', bitRate: 320, size: 0, created: '2026-03-03' },
-  { id: 's2', title: 'Bravo', artist: 'B', album: 'Two', albumId: 'al2', path: '', bitRate: 320, size: 0, created: '2026-03-02' },
-  { id: 's3', title: 'Charlie', artist: 'C', album: 'Three', albumId: 'al3', path: '', bitRate: 320, size: 0, created: '2026-03-01' },
+  {
+    id: 's1',
+    title: 'Alpha',
+    artist: 'A',
+    album: 'One',
+    albumId: 'al1',
+    path: '',
+    bitRate: 320,
+    size: 0,
+    created: '2026-03-03',
+  },
+  {
+    id: 's2',
+    title: 'Bravo',
+    artist: 'B',
+    album: 'Two',
+    albumId: 'al2',
+    path: '',
+    bitRate: 320,
+    size: 0,
+    created: '2026-03-02',
+  },
+  {
+    id: 's3',
+    title: 'Charlie',
+    artist: 'C',
+    album: 'Three',
+    albumId: 'al3',
+    path: '',
+    bitRate: 320,
+    size: 0,
+    created: '2026-03-01',
+  },
 ];
 
 const OFFLINE: PreservedTrackMeta[] = [

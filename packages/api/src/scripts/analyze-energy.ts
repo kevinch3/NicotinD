@@ -24,7 +24,7 @@ import { analyzeLoudness } from '../services/loudness-analysis.js';
 import { readAudioTags, writeAudioTags } from '../services/audio-tags.js';
 import { ffmpegAvailable } from '../services/transcode.js';
 import { resolveSongAbsPath } from '../services/track-backfill.js';
-import { expandHome } from './lib/expand-home.js';
+import { expandHome } from '@nicotind/core';
 
 function loadConfig(): { dataDir: string; musicDir: string } {
   let fileConfig: Record<string, unknown> = {};
@@ -144,9 +144,7 @@ async function main(): Promise<void> {
           song.id,
         ]);
         if (source === 'analyzed')
-          await writeAudioTags(abs, { energy, loudness: loudness ?? undefined }).catch(
-            () => false,
-          );
+          await writeAudioTags(abs, { energy, loudness: loudness ?? undefined }).catch(() => false);
         appendFileSync(
           logPath,
           `${new Date().toISOString()}\t${source}\t${energy}\t${loudness}\t${label}\n`,

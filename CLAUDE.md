@@ -65,8 +65,10 @@ bun run lint             # ESLint across all packages
 bun run check:claude-md  # fail on CLAUDE.md symbols that don't exist / broken docs links (CI gate)
 bun run check:shipped-issues # open issues a shipped commit referenced (report, not a gate)
 bun run check:json       # duplicate keys in JSON configs (JSON.parse keeps the last silently)
+bun run check:shared-helpers # a shared helper re-implemented locally instead of imported (CI gate)
 bun run check:isolated-specs # find specs that only pass inside the full suite (slow; not a CI gate)
-bun run format           # Prettier formatting
+bun run format           # Prettier — safe to run repo-wide (see docs/design-patterns.md)
+bun run format:check     # CI gate: fails on any unformatted file
 bun run test             # Vitest across packages/ + src/ (excludes web/, e2e/, desktop/test/)
 bun run test:web         # Angular component tests (vitest — see docs/web-ui.md "Web test harness")
 bun run typecheck:web-spec # Type-check the web specs (vitest does NOT type-check them)
@@ -281,7 +283,11 @@ Add detail there, not here.
   strip `Content-Length` off Blob-bodied stream responses (the Firefox "never plays" bug).
   **Transcode cache integrity** (size-in-key, 1 KiB size floor, ffprobe post-check +
   `-xerror`/`+discardcorrupt`/`-err_detect explode`, in-use pin during pruning, body wrapper that
-  releases the pin on response end) closes the "1 KiB / 240 s track → 1.8 s media resource → seek
+  releases the pin on response end, plus a **negative cache** for permanently-unusable sources —
+  issue #317: the rejection was right but unremembered, so a damaged file re-ran its doomed ffmpeg
+  pass on every play; only the typed deterministic `TranscodeOutputRejectedError` is cached, never a
+  transient ffmpeg crash/ENOSPC, keyed `path+size+mtime` so a repaired re-download transcodes again
+  with no manual eviction) closes the "1 KiB / 240 s track → 1.8 s media resource → seek
   bar at 100 % → false `ended`" failure mode on both the streaming cache and the ingest-time Opus
   transcode (which writes into the library itself). **Frontend false-ended recovery** (70 % + 5 s
   duration gate in `browserDurationIsAcceptable`, `isFalseEnded` / `startRecovery` state machine, 5
@@ -344,8 +350,19 @@ Add detail there, not here.
   (bulk, dry-run by default) now share **one** implementation with the task via
   `services/artist-image-fill.ts` `fillArtistImages`; copying its resolve→persist sequence would
   have risked dropping the `clearCoverNegativeCache` eviction, which stores the portrait while the
-  UI keeps showing the placeholder. → [docs/library-scanner.md](docs/library-scanner.md)
-  short-circuit staying at the call-site SQL not the chain). **An identity fix carries curation
+  UI keeps showing the placeholder. **Gap 4**: the upload/from-album control is now the shared
+  `ArtistImageMenuComponent`, used by the artist page *and* each Artists-grid tile (curator-gated) —
+  one component, not a copy, because a second one drifts on the busy-guard and the cache-bust (the
+  portrait URL is byte-identical after a change); `albums` is passed on the page but **lazily
+  fetched** on a tile, and a "Fetch automatically" entry finally gives that auto-fetch route a web
+  caller. → [docs/library-scanner.md](docs/library-scanner.md)
+  short-circuit staying at the call-site SQL not the chain). **Coverage is visible (issue #250 gap
+  3)**: `artistImageCoverage` → the `artistImages` slice on `GET /api/admin/review` → an Admin row
+  ("N of M artists have a portrait" + bar), hidden at full coverage; `missing` **reuses**
+  `NEEDS_PORTRAIT_SQL` so the number an admin reads is by construction the number a fill acts on,
+  and `withPortrait` is computed directly rather than by subtraction because a curator upload lives
+  on disk with **no `library_artwork` row**. Prod was 980 of 2,472 (60 % placeholder) with no
+  in-app way to see it. **An identity fix carries curation
   forward (issue #305)**: a rename/merge re-mints the artist id, silently orphaning the portrait,
   the uploaded file and the bio (prod: 88 dead artwork rows of 1011, 2 dead uploads of 140) —
   `carryArtistCuration` moves them at the fix site (the only place that knows the old→new mapping),
@@ -390,7 +407,9 @@ Add detail there, not here.
   `checkFragments` (`services/library-fragments.ts`) surfaces genuine integrity defects —
   same-release artist-spelling variants ("La Konga"/"La K'onga", sub-clustered by an alnum artist
   fold so different artists sharing a title aren't flagged) and full albums mis-classified as
-  single/EP (track-count-vs-class, not every non-`album` row) — via `GET /api/library/fragments`
+  single/EP (track-count-vs-class via the **curator's own `contradictsTrackCount`** — issue #314:
+  keeping a second, stricter opinion here reported prod's real 7-/8-track maxi-singles as defects
+  forever while the corrector correctly never fixed them) — via `GET /api/library/fragments`
   (admin), the Admin "Check fragmentation" button, and `scripts/check-fragments.ts` (CLI gate — its `expandHome` copy returned `''` for absolute
   paths, so it had **never** run in Docker; helper now shared + tested in `scripts/lib/expand-home.ts`). →
   [docs/library-scanner.md](docs/library-scanner.md) "Search matching" + "Fragmentation diagnostic"
@@ -425,7 +444,13 @@ Add detail there, not here.
   pure `clampInt`, and an **analysis-sidecar status** row renders from a new
   `services.analysis {configured,healthy}` slice on `GET /api/admin/review` (unconfigured is the
   default deployment, never an `errors[]` entry). CPU-vs-GPU stays build-time (`GPU=1` arg), so the
-  UI governs runtime load only. A `paused` flag (+ `ProcessingPhase 'paused'`) is the temporary
+  UI governs runtime load only — and **measurement showed `concurrency` is a CPU/queueing knob, not
+  a GPU one** (issue #224): throughput is flat within 1 % from concurrency 1→8 because the sidecar
+  serialises inference, and peak GPU memory is identical too. The real pressure is that TF **never
+  releases** grown memory, so the sidecar ratchets from ~85 MiB to **7,631 MiB of an 8,192 MiB card
+  after the first inference and holds it while idle** — `gpuBusyPercent` gates on *utilisation*, so
+  it can't protect a co-tenant from that *allocation*. →
+  [docs/audio-ml-enrichment.md](docs/audio-ml-enrichment.md) "Measured GPU behaviour". A `paused` flag (+ `ProcessingPhase 'paused'`) is the temporary
   runtime halt distinct from `enabled: false`: it skips window/background enrichment but **still
   clears quarantine** (a pause must never leave new music invisible) and `runNow()` overrides it.
   **`gpuBusyPercent` (0 = off) is the *automatic* counterpart**: `tick()` reads the existing cached
@@ -488,8 +513,15 @@ Add detail there, not here.
   **`docker-compose.streaming-only.yml`** actually runs lighter — it resolves to `nicotind` +
   `analysis` only, dropping slskd/Lidarr/bgutil; it needs *both* `profiles:` on those services and
   `depends_on: !reset null` on nicotind, because compose **merges** `depends_on` rather than
-  replacing it (`[]` silently keeps the base entries). **Left open**: admin runtime toggle
-  (env-only for now — boot-constructed services can't tear down live). →
+  replacing it (`[]` silently keeps the base entries). **Now runtime-togglable**: `AcquisitionToggle` +
+  `GET`/`PUT /api/admin/acquisition` (audit-logged). The "can't tear down live"
+  worry was overstated — the pollers already re-check `isAcquisitionEnabled()` per tick, so they
+  self-disable; they just needed starting whenever the *env* permits. The real change was three
+  capture sites going `boolean` → `() => boolean` (gate middleware, `searchRoutes`, `/me`). The env
+  var is a **hard floor an admin cannot lift** (`configurable: false`), so a streaming-only install
+  can't be re-enabled by an admin account; the read is un-memoized because a stale cache means the
+  routes keep serving after an admin turns it off. The Admin panel exposes it as one switch —
+  read-only with an explanation when env-locked, and hidden entirely when the route is absent. →
   [docs/deployment.md](docs/deployment.md) "Streaming-only profile", [docs/roles.md](docs/roles.md)
 - **Guided acquire UX**: catalog cards are the primary path; the raw network/folder-browser lane is
   demoted behind an "Advanced" disclosure; the hunt modal leads with the best match. The raw lane's
@@ -917,7 +949,15 @@ Add detail there, not here.
   **mark→unmark→sweep** on an `orphaned_at` column with a 30-day grace, so a delete-then-re-download
   still restores the cached embedding. Daily off the backup's processor-tick hook; aborts on an empty
   library and skips any table over a 50% orphan ratio. Counts surface via `GET /api/admin/review`
-  `orphanRows` → an Admin panel row (hidden at zero). →
+  `orphanRows` → an Admin panel row (hidden at zero). **`scan_cache` joins them (issue #313)** — the
+  first **path**-keyed entry (`OrphanTable.references`), and the one table where an orphan is
+  *provably* unreachable since the lookup is by path; `saveScanCache` also clears `orphaned_at` on
+  upsert so correctness doesn't depend on unmark-before-sweep. **`acquisitions` deliberately is
+  not**: measuring it found 17 of its 4,586 orphans are the **only** surviving provenance for a
+  still-live song (the file was replaced by a different-format copy, `opus → mp3` dominating), so
+  `repointOrphanedAcquisitions` *recovers* them at the head of the daily pass — stem-unique **and**
+  target-has-no-row, since a wrong re-point is worse than missing provenance — and whether provenance
+  should outlive the file stays an open product call. →
   [docs/cache-invalidation.md](docs/cache-invalidation.md)
 - **Playlist membership survives a song-id change**: ids are `sha1(path)`, so any move re-mints one
   and the scanner's prune deleted the row out from under every playlist referencing it — silently,
@@ -949,6 +989,15 @@ Add detail there, not here.
   `noArtCache` has a complete `clearCoverNegativeCache` writer set) and the "adding a cache"
   checklist (content-address > short TTL > explicit invalidation). →
   [docs/cache-invalidation.md](docs/cache-invalidation.md), [docs/web-ui.md](docs/web-ui.md)
+- **We build the YouTube PO-token provider (issue #238)**: the `bgutil-provider` companion was a
+  third-party image whose tag had to be hand-synced with the pip plugin baked into ours; it is now
+  `ghcr.io/kevinch3/nicotind-pot-provider`, built by a `docker-pot-provider` job mirroring
+  `docker-analysis`, from **pinned upstream source** (`packages/pot-provider/Dockerfile`, GPL-3.0 ⊂
+  AGPL-3.0-only) rather than vendored. `check:bgutil-pin` now compares two files **we** control
+  instead of one third-party tag. Verified end-to-end — a "starts but mints invalid tokens" provider
+  is the exact silent failure the issue exists to prevent — by minting a real PO token against
+  YouTube's live attestation endpoint. →
+  [docs/deployment.md](docs/deployment.md) "We build the PO-token provider ourselves"
 - **Published Docker image (deployment)**: multi-arch GHCR image (`release`/`vX`/`vX.Y.Z` tags, no
   `latest`) published per release tag via native-runner digest builds + one manifest merge; compose
   pulls it (build-from-source is an override), the deploy host pulls too, `/api/health` reports the

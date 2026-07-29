@@ -657,6 +657,9 @@ export function applySchema(db: Database): void {
       track_json TEXT NOT NULL
     )
   `);
+  // Grace-period stamp for the orphan pruner (issue #313). Additive, so an
+  // existing cache keeps every entry and simply starts being swept.
+  addColumnIfMissing(db, 'scan_cache', 'orphaned_at', 'INTEGER');
   // Add bpm to existing library_songs tables (safe if it already exists). Set by
   // tag reads at scan time and by on-demand track analysis.
   addColumnIfMissing(db, 'library_songs', 'bpm', 'INTEGER');

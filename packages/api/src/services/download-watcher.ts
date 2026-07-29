@@ -199,8 +199,7 @@ export class DownloadWatcher {
       if (newCompletions) {
         try {
           const orgResult = (await this.libraryOrganizer.organizeBatch(completedFiles)) as
-            | { dedupedBasenames?: string[] }
-            | undefined;
+            { dedupedBasenames?: string[] } | undefined;
           // Drop completed_downloads rows for files auto-dedupe removed from disk,
           // so the canonical tables don't reference vanished duplicates.
           for (const basename of orgResult?.dedupedBasenames ?? []) {

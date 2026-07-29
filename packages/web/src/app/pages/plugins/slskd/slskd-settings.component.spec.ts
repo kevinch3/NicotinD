@@ -28,11 +28,19 @@ describe('SlskdSettingsComponent', () => {
   const getSlskdStatus = vi.fn(() => of(status()));
   const systemApi = {
     getSoulseekSettings: vi.fn(() =>
-      of({ username: 'me', configured: true, connected: true, listeningPort: 50000, enableUPnP: true }),
+      of({
+        username: 'me',
+        configured: true,
+        connected: true,
+        listeningPort: 50000,
+        enableUPnP: true,
+      }),
     ),
     getShares: vi.fn(() => of({ directories: ['/music'] })),
     getSoulseekStatus: vi.fn(() => of({ configured: true, connected: true, username: 'me' })),
-    saveSoulseekSettings: vi.fn(() => of({ ok: true, message: 'ok', connected: true, username: 'me' })),
+    saveSoulseekSettings: vi.fn(() =>
+      of({ ok: true, message: 'ok', connected: true, username: 'me' }),
+    ),
     toggleSoulseekConnection: vi.fn(() => of({ connected: false })),
     addShare: vi.fn(() => of({ ok: true })),
     removeShare: vi.fn(() => of({ ok: true })),
@@ -60,9 +68,9 @@ describe('SlskdSettingsComponent', () => {
     expect(html).toContain('Status');
     expect(html).toContain('Connection');
     // Download speed tile formatted from bytes/sec.
-    expect(fixture.nativeElement.querySelector('[data-testid="slskd-download-speed"]')?.textContent).toContain(
-      'KB/s',
-    );
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="slskd-download-speed"]')?.textContent,
+    ).toContain('KB/s');
     fixture.destroy();
   });
 
@@ -70,7 +78,9 @@ describe('SlskdSettingsComponent', () => {
     hasSlskd.set(false);
     const fixture = TestBed.createComponent(SlskdSettingsComponent);
     fixture.detectChanges();
-    expect(fixture.nativeElement.querySelector('[data-testid="slskd-disabled-notice"]')).toBeTruthy();
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="slskd-disabled-notice"]'),
+    ).toBeTruthy();
     fixture.destroy();
   });
 
@@ -90,7 +100,9 @@ describe('SlskdSettingsComponent', () => {
     await fixture.whenStable();
     fixture.detectChanges();
 
-    expect(fixture.nativeElement.querySelector('[data-testid="slskd-unreachable-notice"]')).toBeTruthy();
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="slskd-unreachable-notice"]'),
+    ).toBeTruthy();
     expect(fixture.nativeElement.textContent).not.toContain('Shared Folders');
     fixture.destroy();
   });
@@ -102,7 +114,9 @@ describe('SlskdSettingsComponent', () => {
     await fixture.whenStable();
     fixture.detectChanges();
 
-    expect(fixture.nativeElement.querySelector('[data-testid="slskd-unreachable-notice"]')).toBeNull();
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="slskd-unreachable-notice"]'),
+    ).toBeNull();
     expect(fixture.nativeElement.textContent).toContain('Shared Folders');
     fixture.destroy();
   });

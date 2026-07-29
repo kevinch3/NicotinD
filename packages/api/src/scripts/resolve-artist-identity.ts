@@ -25,7 +25,7 @@ import { Lidarr } from '@nicotind/lidarr-client';
 import { splitOnDelimiters } from '../services/artist-split.js';
 import { artistIdFor } from '../services/library-scanner.js';
 import { deriveMbidAliases, upsertArtistIdentity } from '../services/artist-identity-store.js';
-import { expandHome } from './lib/expand-home.js';
+import { expandHome } from '@nicotind/core';
 import {
   makeLidarrArtistIdentityResolver,
   pendingArtistIdentityRows,

@@ -75,9 +75,7 @@ export function catalogRoutes({ catalog }: CatalogRoutesOptions) {
   // artist to Lidarr if absent — same mutation as resolve — so this is a POST,
   // user-initiated only. Body: { artistMbid?, artistName }
   app.post('/discography', async (c) => {
-    const body = await c.req
-      .json<{ artistMbid?: string; artistName?: string }>()
-      .catch(() => null);
+    const body = await c.req.json<{ artistMbid?: string; artistName?: string }>().catch(() => null);
 
     if (!body?.artistName) return c.json({ error: 'Missing artistName' }, 400);
 

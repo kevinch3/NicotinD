@@ -61,6 +61,7 @@ import { PluginRegistry } from './services/plugins/registry.js';
 import { upsertTrackStatus } from './services/plugins/host-context.js';
 import { recordAcquireJobTrack } from './services/acquire-playlist.js';
 import { registerBuiltinPlugins } from './services/plugins/builtin.js';
+import { AcquisitionToggle } from './services/acquisition-toggle.js';
 import {
   requireAcquisitionEnabledMiddleware,
   requireAcquisitionMiddleware,
@@ -499,17 +500,16 @@ export function createApp({
   // services here are constructed at boot and can't be cleanly torn down live;
   // hiding the Extensions → Acquisition section for admins; and dropping the
   // slskd/Lidarr services from the shipped compose file for the off profile.
-  const requireAcquisitionEnabled = requireAcquisitionEnabledMiddleware(config.acquisitionEnabled);
+  // Runtime kill-switch (issue #235). `NICOTIND_ACQUISITION=off` stays a hard
+  // floor an admin cannot lift; within that, the toggle is live.
+  const acquisitionToggle = new AcquisitionToggle(db, config.acquisitionEnabled);
+  const acquisitionOn = () => acquisitionToggle.enabled();
+  const requireAcquisitionEnabled = requireAcquisitionEnabledMiddleware(acquisitionOn);
 
   // Public routes
   app.route(
     '/api/auth',
-    authRoutes(
-      config.jwt.secret,
-      config.jwt.expiresIn,
-      config.registrationEnabled,
-      config.acquisitionEnabled,
-    ),
+    authRoutes(config.jwt.secret, config.jwt.expiresIn, config.registrationEnabled, acquisitionOn),
   );
   app.route(
     '/api/setup',
@@ -571,10 +571,11 @@ export function createApp({
     }),
   );
 
-  app.route('/api/search', searchRoutes(registry, config.acquisitionEnabled));
+  app.route('/api/search', searchRoutes(registry, acquisitionOn));
   app.route(
     '/api/admin',
     adminRoutes({
+      acquisition: acquisitionToggle,
       musicDir: expandedMusicDir,
       dataDir: expandedDataDir,
       lidarr,
@@ -749,10 +750,13 @@ export function createApp({
       enabled: config.watchlist.enabled,
       // Also honor the deployment kill-switch (#235) so a disabled install never
       // auto-acquires even if a plugin claims the download capability.
-      isAcquisitionEnabled: () => config.acquisitionEnabled && plugins.hasCapability('download'),
+      isAcquisitionEnabled: () => acquisitionOn() && plugins.hasCapability('download'),
     });
     app.route('/api/watchlist', watchlistRoutes(watchlistSvc));
-    // Don't even start the unattended poller when acquisition is off deployment-wide.
+    // Start whenever the ENVIRONMENT permits, not the runtime toggle: the poller
+    // re-checks `isAcquisitionEnabled()` every tick and no-ops while it's off, so
+    // starting it is what makes a runtime *enable* take effect without a restart
+    // (issue #235). An env-disabled install still never starts it.
     if (config.acquisitionEnabled) watchlistSvc.start();
 
     // Native auto-acquisition loop (opt-in): sweeps Lidarr's wanted/missing list
@@ -767,7 +771,7 @@ export function createApp({
         intervalMs: config.downloads.autoAcquireIntervalMs,
         maxPerSweep: config.downloads.autoAcquireMaxPerSweep,
         minMatchPct: config.watchlist.minMatchPct,
-        isAcquisitionEnabled: () => config.acquisitionEnabled && plugins.hasCapability('download'),
+        isAcquisitionEnabled: () => acquisitionOn() && plugins.hasCapability('download'),
       });
       autoAcquireSvc.start();
     }

@@ -48,10 +48,9 @@ describe('applySchema — classification ep migration', () => {
     // Row preserved (incl. curation columns) and 'ep' now accepted.
     expect(
       db
-        .query<
-          { classification: string; hidden: number; manual_override: number },
-          [string]
-        >('SELECT classification, hidden, manual_override FROM library_albums WHERE id = ?')
+        .query<{ classification: string; hidden: number; manual_override: number }, [string]>(
+          'SELECT classification, hidden, manual_override FROM library_albums WHERE id = ?',
+        )
         .get('keep'),
     ).toEqual({ classification: 'album', hidden: 1, manual_override: 1 });
 
@@ -187,7 +186,9 @@ describe('applySchema — share_tokens artist CHECK broadening (#229)', () => {
 
   it('rebuilds a legacy two-value-CHECK table to allow artist while preserving rows', () => {
     const db = new Database(':memory:');
-    db.run(`CREATE TABLE users (id TEXT PRIMARY KEY, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL)`);
+    db.run(
+      `CREATE TABLE users (id TEXT PRIMARY KEY, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL)`,
+    );
     db.run(`INSERT INTO users (id, username, password_hash) VALUES ('u1', 'a', 'h')`);
     // Legacy schema with the old CHECK (playlist|album only).
     db.run(`
@@ -238,7 +239,9 @@ describe('applySchema — drops the dead tombstones table (§D2)', () => {
     applySchema(db);
 
     const row = db
-      .query(`SELECT name FROM sqlite_master WHERE type='table' AND name='library_album_tombstones'`)
+      .query(
+        `SELECT name FROM sqlite_master WHERE type='table' AND name='library_album_tombstones'`,
+      )
       .get();
     expect(row).toBeNull();
   });
@@ -247,7 +250,9 @@ describe('applySchema — drops the dead tombstones table (§D2)', () => {
     const db = new Database(':memory:');
     expect(() => applySchema(db)).not.toThrow();
     const row = db
-      .query(`SELECT name FROM sqlite_master WHERE type='table' AND name='library_album_tombstones'`)
+      .query(
+        `SELECT name FROM sqlite_master WHERE type='table' AND name='library_album_tombstones'`,
+      )
       .get();
     expect(row).toBeNull();
   });

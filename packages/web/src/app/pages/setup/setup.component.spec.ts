@@ -104,7 +104,11 @@ describe('SetupComponent', () => {
     comp.transcodeBitrate = 256;
 
     const spy = vi.spyOn(comp['api'], 'completeSetup').mockReturnValue(
-      of({ token: 'tok', user: { id: '1', username: 'admin', role: 'admin' }, needsRestart: false }),
+      of({
+        token: 'tok',
+        user: { id: '1', username: 'admin', role: 'admin' },
+        needsRestart: false,
+      }),
     );
 
     comp.handleSoulseekNext();

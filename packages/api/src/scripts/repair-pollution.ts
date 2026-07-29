@@ -28,13 +28,21 @@
  * Env: NICOTIND_DATA_DIR, NICOTIND_MUSIC_DIR, NICOTIND_CONFIG.
  */
 
-import { readFileSync, existsSync, statSync, unlinkSync, rmdirSync, appendFileSync, readdirSync } from 'node:fs';
+import {
+  readFileSync,
+  existsSync,
+  statSync,
+  unlinkSync,
+  rmdirSync,
+  appendFileSync,
+  readdirSync,
+} from 'node:fs';
 import { resolve, join, dirname } from 'node:path';
 import { parse } from 'yaml';
 import { Database } from 'bun:sqlite';
 import { pruneOrphanArtist } from '../services/library-aggregates.js';
 import { scanMusicDir } from '../services/library-disk-audit.js';
-import { expandHome } from './lib/expand-home.js';
+import { expandHome } from '@nicotind/core';
 import {
   auditLibrary,
   selectPollutionTargets,
@@ -132,7 +140,12 @@ function main(): void {
     totalBytes += size;
     for (const r of t.rules) perRule.set(r, (perRule.get(r) ?? 0) + 1);
     artistIds.add(t.artistId);
-    albumFiles.push({ albumId: t.albumId, artistId: t.artistId, label: `${t.artist} — ${t.name}`, paths });
+    albumFiles.push({
+      albumId: t.albumId,
+      artistId: t.artistId,
+      label: `${t.artist} — ${t.name}`,
+      paths,
+    });
   }
 
   console.log(`Targets: ${targets.length} albums · ${totalFiles} files · ${bytes(totalBytes)}`);
@@ -140,7 +153,9 @@ function main(): void {
     console.log(`  ${String(n).padStart(5)}  ${r}`);
   }
   if (protectedMisSplit > 0) {
-    console.log(`\n  🛡️  ${protectedMisSplit} album(s) protected as mis-split real releases (NOT deleted).`);
+    console.log(
+      `\n  🛡️  ${protectedMisSplit} album(s) protected as mis-split real releases (NOT deleted).`,
+    );
     console.log('     Re-merge those with normalize-library / repair-album-folders.');
   }
 
@@ -157,7 +172,10 @@ function main(): void {
           } catch {
             /* already gone */
           }
-          db.run('DELETE FROM playlist_songs WHERE song_id IN (SELECT id FROM library_songs WHERE path = ?)', [p]);
+          db.run(
+            'DELETE FROM playlist_songs WHERE song_id IN (SELECT id FROM library_songs WHERE path = ?)',
+            [p],
+          );
           db.run('DELETE FROM acquisitions WHERE relative_path = ?', [p]);
           db.run('DELETE FROM completed_downloads WHERE relative_path = ?', [p]);
           log(`file\t${p}`);
@@ -166,10 +184,10 @@ function main(): void {
         db.run('DELETE FROM library_albums WHERE id = ?', [a.albumId]);
         db.run('DELETE FROM library_artwork WHERE id = ?', [a.albumId]);
         db.run('DELETE FROM library_release_meta WHERE album_id = ?', [a.albumId]);
-        db.run('DELETE FROM library_metadata_overrides WHERE raw_album_id = ? OR corrected_album_id = ?', [
-          a.albumId,
-          a.albumId,
-        ]);
+        db.run(
+          'DELETE FROM library_metadata_overrides WHERE raw_album_id = ? OR corrected_album_id = ?',
+          [a.albumId, a.albumId],
+        );
         log(`album\t${a.albumId}\t${a.label}`);
       }
       for (const id of artistIds) pruneOrphanArtist(db, id);
@@ -177,9 +195,13 @@ function main(): void {
     tx();
     // Prune now-empty folders left by the deletions.
     pruneEmptyDirsFor(albumFiles.map((a) => a.paths).flat(), musicDir, log);
-    console.log(`\n✅ Applied. Deleted ${albumFiles.length} albums / ${totalFiles} files. Log: ${logPath}`);
+    console.log(
+      `\n✅ Applied. Deleted ${albumFiles.length} albums / ${totalFiles} files. Log: ${logPath}`,
+    );
   } else {
-    console.log(`\nDry run only. Re-run with --apply to delete. (Add --empty-dirs to also sweep empties.)`);
+    console.log(
+      `\nDry run only. Re-run with --apply to delete. (Add --empty-dirs to also sweep empties.)`,
+    );
   }
 
   // Empty-dir sweep (independent of the pollution deletes).

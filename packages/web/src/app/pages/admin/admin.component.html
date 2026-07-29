@@ -281,6 +281,71 @@
             </div>
           }
 
+          <!-- Artist portraits: the single biggest visual signal in the Artists
+               grid, and a library can sit half-placeholder indefinitely with no
+               in-app way to see it (issue #250). Read-only overview; the fill
+               itself is the enrichment task / backfill script. Hidden once every
+               visible artist has one, so a healthy install shows nothing. -->
+          @if (artistImages().missing > 0) {
+            <div class="flex flex-col gap-1 mb-8" data-testid="artist-images-panel">
+              <p class="text-xs text-theme-secondary">
+                {{ artistImages().withPortrait }} of {{ artistImages().visible }} artists have a
+                portrait
+                <span class="text-theme-muted"
+                  >— {{ artistImages().missing }} still
+                  {{ artistImages().missing === 1 ? 'needs' : 'need' }} one.</span
+                >
+              </p>
+              <div
+                class="h-1.5 w-full max-w-xs rounded-full bg-theme-elevated overflow-hidden"
+                role="progressbar"
+                [attr.aria-valuenow]="artistImages().withPortrait"
+                [attr.aria-valuemin]="0"
+                [attr.aria-valuemax]="artistImages().visible"
+                aria-label="Artist portrait coverage"
+              >
+                <div
+                  class="h-full bg-theme-accent"
+                  data-testid="artist-images-bar"
+                  [style.width.%]="artistImageCoverageRatio() * 100"
+                ></div>
+              </div>
+              @if (artistImages().manualOverride > 0) {
+                <p class="text-xs text-theme-muted" data-testid="artist-images-overrides">
+                  {{ artistImages().manualOverride }} uploaded by a curator — a fill never
+                  overwrites those.
+                </p>
+              }
+            </div>
+          }
+
+          <!-- Deployment-wide acquisition kill-switch (issue #235). Hidden
+               entirely when the server doesn't expose the toggle. -->
+          @if (acquisition(); as acq) {
+            <div class="flex flex-col gap-2 mb-8" data-testid="acquisition-panel">
+              <label class="flex items-center justify-between gap-4">
+                <span class="text-sm text-theme-primary">Acquisition
+                  @if (!acq.configurable) {
+                    <span class="block text-xs text-status-warn" data-testid="acquisition-env-locked">
+                      Disabled for this deployment by NICOTIND_ACQUISITION — this cannot be changed
+                      from here.
+                    </span>
+                  } @else {
+                    <span class="block text-xs text-theme-muted">
+                      Downloading, search's network lane and the unattended pollers. Turning this off
+                      leaves streaming and the library untouched.
+                    </span>
+                  }
+                </span>
+                <input type="checkbox" [checked]="acq.enabled"
+                  data-testid="acquisition-toggle"
+                  [disabled]="acquisitionSaving() || !acq.configurable"
+                  (change)="setAcquisition($any($event.target).checked)"
+                  class="w-4 h-4 rounded accent-emerald-500" />
+              </label>
+            </div>
+          }
+
           <!-- Maintenance: portable config export/import (issue #221). -->
           <div class="flex flex-col gap-2 mb-8" data-testid="config-panel">
             <div class="flex items-center gap-3 flex-wrap">
@@ -559,8 +624,9 @@
                   data-testid="processing-throttle">
                   <span class="min-w-0 text-sm text-theme-primary">Compute throttle
                     <span class="block text-xs text-theme-muted">
-                      Parallel analyses and how many tracks a task claims per pass. Lower the
-                      concurrency when the GPU is shared with other apps; 1 is the gentlest.
+                      Parallel analyses and how many tracks a task claims per pass. Concurrency
+                      bounds CPU and queueing — measured against a shared GPU it changed neither
+                      throughput nor GPU memory, so it is not a GPU throttle (issue #224).
                       "Yield above N% GPU" skips a pass while another tenant is using the card
                       (0 = never yield); fresh downloads still land.
                     </span>

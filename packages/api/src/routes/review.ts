@@ -16,11 +16,21 @@ import { Hono } from 'hono';
 import type { ProcessingStatus } from '@nicotind/core';
 import type { SlskdRef } from '../index.js';
 import type { AuthEnv } from '../middleware/auth.js';
-import { collectMetrics, type MetricsSnapshot, type GpuProbe, type OsShim } from '../services/system-metrics.js';
+import {
+  collectMetrics,
+  type MetricsSnapshot,
+  type GpuProbe,
+  type OsShim,
+} from '../services/system-metrics.js';
 import { getDatabase } from '../db.js';
 import { listAudit } from '../services/audit-log.js';
 import { listBackups, type BackupInfo } from '../services/backup.js';
-import { getStoredUpdateCheck, listVersionHistory, compareVersions } from '../services/update-check.js';
+import {
+  getStoredUpdateCheck,
+  listVersionHistory,
+  compareVersions,
+} from '../services/update-check.js';
+import { artistImageCoverage, type ArtistImageCoverage } from '../services/artist-image-fill.js';
 import { countOrphanRows, type OrphanCount } from '../services/orphan-prune.js';
 
 export type UpdateCheckSnapshot = {
@@ -34,7 +44,17 @@ export type UpdateCheckSnapshot = {
 
 export type ProcessingSummary = Pick<
   ProcessingStatus,
-  'phase' | 'currentTask' | 'processed' | 'failed' | 'total' | 'skipped' | 'quarantined' | 'taskPending' | 'availability' | 'startedAt' | 'updatedAt'
+  | 'phase'
+  | 'currentTask'
+  | 'processed'
+  | 'failed'
+  | 'total'
+  | 'skipped'
+  | 'quarantined'
+  | 'taskPending'
+  | 'availability'
+  | 'startedAt'
+  | 'updatedAt'
 >;
 
 export interface BackupsSummary {
@@ -116,6 +136,8 @@ export interface ServiceReview {
    * keeping up — same spirit as `untracked`/`incompleteJobs`.
    */
   orphanRows: OrphanCount[];
+  /** Artist-portrait coverage for the Admin overview (issue #250). */
+  artistImages: ArtistImageCoverage;
   auditTail: AuditEntry[];
   /** Snapshot of incomplete album hunts (active + exhausted) for the Admin panel. */
   incompleteJobs: IncompleteAlbumJob[];
@@ -143,6 +165,7 @@ export interface ReviewSubFns {
   incompleteJobCount: () => number;
   untrackedCount: () => number;
   orphanRows: () => OrphanCount[];
+  artistImages: () => ArtistImageCoverage;
   auditTail: (limit: number) => AuditEntry[];
   incompleteJobs: () => IncompleteAlbumJob[];
   untracked: () => UntrackedDownload[];
@@ -281,7 +304,8 @@ function defaultUpdateCheck(version: string): UpdateCheckSnapshot {
     return {
       currentVersion: version,
       latestVersion: latest,
-      updateAvailable: latest !== null && version !== 'unknown' && compareVersions(latest, version) > 0,
+      updateAvailable:
+        latest !== null && version !== 'unknown' && compareVersions(latest, version) > 0,
       checkedAt: stored.checkedAt,
       releaseUrl: stored.releaseUrl,
       versionHistory: history,
@@ -317,7 +341,9 @@ function summarizeBackups(list: BackupInfo[]): BackupsSummary {
   };
 }
 
-function defaultProcessing(proc?: { getState: () => { status: ProcessingStatus } } | null): ProcessingSummary | null {
+function defaultProcessing(
+  proc?: { getState: () => { status: ProcessingStatus } } | null,
+): ProcessingSummary | null {
   if (!proc) return null;
   try {
     const s = proc.getState().status;
@@ -443,7 +469,14 @@ export function reviewRoutes(slskdRef: SlskdRef, deps: ReviewRoutesDeps = {}) {
   const sub = deps.subFns ?? {};
   const version = deps.version ?? 'unknown';
   const fallbackMetrics: MetricsSnapshot = {
-    hardware: { cpuModel: 'unknown', cores: 0, arch: 'x64', platform: 'linux', totalMemoryBytes: 0, gpuDetected: null },
+    hardware: {
+      cpuModel: 'unknown',
+      cores: 0,
+      arch: 'x64',
+      platform: 'linux',
+      totalMemoryBytes: 0,
+      gpuDetected: null,
+    },
     cpu: { percent: 0, cores: 0, model: 'unknown' },
     memory: { totalBytes: 0, usedBytes: 0, freeBytes: 0, processRssBytes: 0, processHeapBytes: 0 },
     gpu: null,
@@ -473,6 +506,7 @@ export function reviewRoutes(slskdRef: SlskdRef, deps: ReviewRoutesDeps = {}) {
       incompleteCount,
       untracked,
       orphanRows,
+      artistImages,
       audit,
       incompleteList,
       untrackedList,
@@ -537,6 +571,12 @@ export function reviewRoutes(slskdRef: SlskdRef, deps: ReviewRoutesDeps = {}) {
         () => sub.orphanRows?.() ?? countOrphanRows(getDatabase()),
         [] as OrphanCount[],
       ),
+      artistImages: safe(
+        errors,
+        'artistImages',
+        () => sub.artistImages?.() ?? artistImageCoverage(getDatabase()),
+        { visible: 0, withPortrait: 0, missing: 0, manualOverride: 0 } as ArtistImageCoverage,
+      ),
       audit: safe(
         errors,
         'auditTail',
@@ -558,7 +598,12 @@ export function reviewRoutes(slskdRef: SlskdRef, deps: ReviewRoutesDeps = {}) {
       ),
     });
 
-    const indexedSongCount = await safe(errors, 'indexSongCount', () => sub.indexSongCount?.() ?? defaultIndexSongCount(), 0);
+    const indexedSongCount = await safe(
+      errors,
+      'indexSongCount',
+      () => sub.indexSongCount?.() ?? defaultIndexSongCount(),
+      0,
+    );
 
     const review: ServiceReview = {
       collectedAt: Date.now(),
@@ -585,6 +630,7 @@ export function reviewRoutes(slskdRef: SlskdRef, deps: ReviewRoutesDeps = {}) {
       incompleteJobsCount: incompleteCount,
       untrackedCount: untracked,
       orphanRows,
+      artistImages,
       auditTail: audit,
       incompleteJobs: incompleteList,
       untracked: untrackedList,

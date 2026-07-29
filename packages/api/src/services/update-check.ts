@@ -111,8 +111,7 @@ export async function maybeCheckForUpdate(
   db: Database,
   opts: { now?: number; fetchImpl?: FetchLike; enabled?: boolean } = {},
 ): Promise<boolean> {
-  const enabled =
-    opts.enabled ?? process.env.NICOTIND_UPDATE_CHECK?.trim().toLowerCase() !== 'off';
+  const enabled = opts.enabled ?? process.env.NICOTIND_UPDATE_CHECK?.trim().toLowerCase() !== 'off';
   if (!enabled) return false;
   const now = opts.now ?? Date.now();
   const stored = getStoredUpdateCheck(db);

@@ -45,7 +45,11 @@ describe('native-capabilities', () => {
   it('routes setMusicDir to the electron bridge', async () => {
     const setMusicDirMock = vi.fn().mockResolvedValue({ ok: true });
     (globalThis as { window?: unknown }).window = {
-      nicotind: { platform: 'electron', pickDirectory: async () => null, setMusicDir: setMusicDirMock },
+      nicotind: {
+        platform: 'electron',
+        pickDirectory: async () => null,
+        setMusicDir: setMusicDirMock,
+      },
     };
     await expect(setMusicDir('/music', { restart: true })).resolves.toEqual({ ok: true });
     expect(setMusicDirMock).toHaveBeenCalledWith('/music', { restart: true });
@@ -54,7 +58,11 @@ describe('native-capabilities', () => {
   it('propagates a failed restart result from the electron bridge', async () => {
     const setMusicDirMock = vi.fn().mockResolvedValue({ ok: false, error: 'boom' });
     (globalThis as { window?: unknown }).window = {
-      nicotind: { platform: 'electron', pickDirectory: async () => null, setMusicDir: setMusicDirMock },
+      nicotind: {
+        platform: 'electron',
+        pickDirectory: async () => null,
+        setMusicDir: setMusicDirMock,
+      },
     };
     await expect(setMusicDir('/music', { restart: true })).resolves.toEqual({
       ok: false,

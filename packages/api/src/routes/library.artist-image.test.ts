@@ -51,10 +51,7 @@ function makeApp(role: 'admin' | 'user' = 'admin'): Hono<AuthEnv> {
     c.set('user', { sub: 'u1', role, iat: 0, exp: 0 } as JwtPayload);
     await next();
   });
-  app.route(
-    '/',
-    libraryRoutes('/music', { dataDir, coverCacheDir: join(dataDir, 'cover-cache') }),
-  );
+  app.route('/', libraryRoutes('/music', { dataDir, coverCacheDir: join(dataDir, 'cover-cache') }));
   app.route('/api', streamingRoutes('/music', testDb, dataDir));
   return app;
 }

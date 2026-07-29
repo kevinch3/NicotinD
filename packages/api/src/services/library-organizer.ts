@@ -10,7 +10,7 @@ import {
   unlinkSync,
 } from 'node:fs';
 import { basename, dirname, extname, join, relative, sep } from 'node:path';
-import { cleanFolderName, createLogger, parseYearFromFolder } from '@nicotind/core';
+import { cleanFolderName, createLogger, expandHome, parseYearFromFolder } from '@nicotind/core';
 import { classifyFolder, type Classification } from './compilation-tagger.js';
 import { extractAlbumName, inferFolderAlbum, inferMetadataFromPath } from './path-inference.js';
 import type { CompletedDownloadFile } from './path-inference.js';
@@ -137,10 +137,7 @@ export class LibraryOrganizer {
    * count), so cross-edition consolidation is one disk read per artist and dirs
    * created mid-batch are visible to later files. Cleared at each batch start.
    */
-  private albumFolderCache = new Map<
-    string,
-    Array<{ name: string; key: string; count: number }>
-  >();
+  private albumFolderCache = new Map<string, Array<{ name: string; key: string; count: number }>>();
 
   constructor(opts: LibraryOrganizerOptions) {
     this.musicDir = expandHome(opts.musicDir);
@@ -356,9 +353,7 @@ export class LibraryOrganizer {
   }
 
   /** Cached (per batch) list of an artist's album folders with group keys + counts. */
-  private artistAlbumFolders(
-    artist: string,
-  ): Array<{ name: string; key: string; count: number }> {
+  private artistAlbumFolders(artist: string): Array<{ name: string; key: string; count: number }> {
     const artistDir = join(this.musicDir, artist);
     const cached = this.albumFolderCache.get(artistDir);
     if (cached) return cached;
@@ -547,7 +542,8 @@ export class LibraryOrganizer {
       // Reuse an existing same-album folder (edition-collapsed) so deluxe/remaster/
       // JP editions converge into one dir instead of spawning siblings the
       // per-folder dedupe can't reach. Falls back to this edition's own name.
-      const canonicalFolder = this.findCanonicalAlbumFolder(folderArtist, folderAlbum) ?? folderAlbum;
+      const canonicalFolder =
+        this.findCanonicalAlbumFolder(folderArtist, folderAlbum) ?? folderAlbum;
       destDir = join(this.musicDir, folderArtist, canonicalFolder);
       // Only real <Artist>/<Album> dirs are dedupe targets — never Singles (many
       // distinct tracks) or the unsorted bucket.
@@ -818,10 +814,6 @@ function pruneEmptyAncestors(dir: string, stopAt: string): void {
     }
     cur = norm(dirname(cur));
   }
-}
-
-function expandHome(p: string): string {
-  return p.startsWith('~') ? join(process.env.HOME ?? '/root', p.slice(1)) : p;
 }
 
 function stripAccents(s: string): string {

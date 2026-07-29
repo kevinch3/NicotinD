@@ -70,10 +70,7 @@ export function playlistCoverSvg({ title, palette }: PlaylistCoverInput): string
   const bottomPad = 56;
   const startY = COVER_SIZE - bottomPad - (lines.length - 1) * lineHeight;
   const tspans = lines
-    .map(
-      (ln, i) =>
-        `<tspan x="48" y="${startY + i * lineHeight}">${escapeXml(ln)}</tspan>`,
-    )
+    .map((ln, i) => `<tspan x="48" y="${startY + i * lineHeight}">${escapeXml(ln)}</tspan>`)
     .join('');
 
   return (

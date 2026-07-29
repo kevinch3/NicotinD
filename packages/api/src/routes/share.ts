@@ -107,10 +107,9 @@ export function shareRoutes(jwtSecret: string, auth: MiddlewareHandler) {
   // see; an unknown token still 404s.
   app.get('/:token/resource', auth, (c) => {
     const row = getDatabase()
-      .query<
-        Pick<ShareTokenRow, 'resource_type' | 'resource_id'>,
-        [string]
-      >('SELECT resource_type, resource_id FROM share_tokens WHERE token = ?')
+      .query<Pick<ShareTokenRow, 'resource_type' | 'resource_id'>, [string]>(
+        'SELECT resource_type, resource_id FROM share_tokens WHERE token = ?',
+      )
       .get(c.req.param('token'));
 
     if (!row) return c.json({ error: 'Not found' }, 404);

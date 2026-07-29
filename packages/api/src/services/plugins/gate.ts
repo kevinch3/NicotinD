@@ -15,7 +15,9 @@ export function requireAcquisitionMiddleware(plugins: PluginRegistry) {
   return createMiddleware<AuthEnv>(async (c, next) => {
     if (!plugins.hasAnyAcquisitionEnabled()) {
       return c.json(
-        { error: 'Acquisition is disabled — enable an acquisition plugin in Settings → Extensions' },
+        {
+          error: 'Acquisition is disabled — enable an acquisition plugin in Settings → Extensions',
+        },
         503,
       );
     }
@@ -35,9 +37,13 @@ export function requireAcquisitionMiddleware(plugins: PluginRegistry) {
  * so the acquisition surface behaves exactly as before. Mount after auth so an
  * unauthenticated caller still gets 401, matching `requireAcquisitionMiddleware`.
  */
-export function requireAcquisitionEnabledMiddleware(enabled: boolean) {
+export function requireAcquisitionEnabledMiddleware(enabled: boolean | (() => boolean)) {
+  // A getter, not a captured boolean, so an admin can flip the switch without a
+  // restart (issue #235). A plain boolean is still accepted for callers that
+  // genuinely have a fixed value (tests, and the streaming-only profile).
+  const isEnabled = typeof enabled === 'function' ? enabled : () => enabled;
   return createMiddleware<AuthEnv>(async (c, next) => {
-    if (!enabled) {
+    if (!isEnabled()) {
       return c.json({ error: 'Acquisition is disabled on this deployment' }, 404);
     }
     await next();

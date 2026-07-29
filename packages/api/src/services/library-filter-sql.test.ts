@@ -1,11 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { CAMELOT_WHEEL } from '@nicotind/core';
 import { keyToCamelot } from './key-detection.js';
-import {
-  albumFilterWheres,
-  artistFilterWheres,
-  songFilterWheres,
-} from './library-filter-sql.js';
+import { albumFilterWheres, artistFilterWheres, songFilterWheres } from './library-filter-sql.js';
 
 describe('songFilterWheres', () => {
   it('returns an empty fragment for an empty filter', () => {
@@ -69,9 +65,7 @@ describe('songFilterWheres', () => {
   });
 
   it('maps perceptual buckets to threshold ranges, OR within an axis', () => {
-    expect(songFilterWheres({ buckets: { energy: ['low'] } }).wheres).toEqual([
-      's.energy <= 0.35',
-    ]);
+    expect(songFilterWheres({ buckets: { energy: ['low'] } }).wheres).toEqual(['s.energy <= 0.35']);
     expect(songFilterWheres({ buckets: { energy: ['mid'] } }).wheres).toEqual([
       '(s.energy > 0.35 AND s.energy < 0.65)',
     ]);
@@ -79,9 +73,10 @@ describe('songFilterWheres', () => {
       '(s.energy <= 0.35 OR s.energy >= 0.65)',
     ]);
     // Axes AND (separate where entries)
-    expect(
-      songFilterWheres({ buckets: { energy: ['high'], valence: ['low'] } }).wheres,
-    ).toEqual(['s.energy >= 0.65', 's.valence <= 0.35']);
+    expect(songFilterWheres({ buckets: { energy: ['high'], valence: ['low'] } }).wheres).toEqual([
+      's.energy >= 0.65',
+      's.valence <= 0.35',
+    ]);
   });
 
   it('collapses all three buckets to IS NOT NULL (still excludes un-analyzed tracks)', () => {

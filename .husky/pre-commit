@@ -1,0 +1,3 @@
+# Format only the files being committed. Never the whole repo: a repo-wide
+# `prettier --write` reflows untouched lines and buries the real change (#272).
+bunx lint-staged

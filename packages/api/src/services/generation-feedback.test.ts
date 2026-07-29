@@ -10,11 +10,7 @@ import {
   PENDING_TTL_MS,
 } from './generation-feedback.js';
 import { huntFixtureFromRecord } from './generation-feedback.js';
-import type {
-  HuntMatchInput,
-  HuntMatchOutput,
-  GenerationFeedbackRecord,
-} from '@nicotind/core';
+import type { HuntMatchInput, HuntMatchOutput, GenerationFeedbackRecord } from '@nicotind/core';
 
 let db: Database;
 
@@ -177,7 +173,10 @@ describe('captureHuntMatchFeedback (admin + toggle gate)', () => {
   });
 
   function withToggle(on: boolean) {
-    db.run('INSERT INTO user_settings (user_id, feedback_capture) VALUES (?, ?)', ['u1', on ? 1 : 0]);
+    db.run('INSERT INTO user_settings (user_id, feedback_capture) VALUES (?, ?)', [
+      'u1',
+      on ? 1 : 0,
+    ]);
   }
 
   it('returns 0 and records nothing for a non-admin', () => {

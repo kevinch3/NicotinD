@@ -60,7 +60,9 @@ function makeUpdateService(overrides: UpdateOverrides = {}) {
     updateAvailable: signal(overrides.updateAvailable ?? false),
     searching: signal(overrides.searching ?? false),
     checkAvailable: signal(
-      (overrides.enabled ?? false) && !(overrides.updateAvailable ?? false) && !(overrides.searching ?? false),
+      (overrides.enabled ?? false) &&
+        !(overrides.updateAvailable ?? false) &&
+        !(overrides.searching ?? false),
     ),
     checkForUpdate: check,
     applyUpdate: apply,
@@ -88,7 +90,9 @@ function makeProviders(role: 'admin' | 'user', updateOverrides: UpdateOverrides 
           checkForUpdate: update.checkForUpdate,
         },
       },
-      { provide: AuthService, useValue: {
+      {
+        provide: AuthService,
+        useValue: {
           username: signal('kev'),
           role: signal(role),
           isAdmin: () => role === 'admin',
@@ -98,7 +102,8 @@ function makeProviders(role: 'admin' | 'user', updateOverrides: UpdateOverrides 
           setAutoplayOnLoad: vi.fn(),
           setFeedbackCapture: vi.fn(),
           logout: vi.fn(),
-        } },
+        },
+      },
       {
         provide: ThemeService,
         useValue: {
@@ -149,7 +154,10 @@ function makeProviders(role: 'admin' | 'user', updateOverrides: UpdateOverrides 
 describe('SettingsComponent (universal prefs only)', () => {
   it('renders universal sections without any admin/extension coupling', async () => {
     const { list } = makeProviders('user');
-    await TestBed.configureTestingModule({ imports: [SettingsComponent], providers: list }).compileComponents();
+    await TestBed.configureTestingModule({
+      imports: [SettingsComponent],
+      providers: list,
+    }).compileComponents();
     const fixture = TestBed.createComponent(SettingsComponent);
     fixture.detectChanges();
     const text = fixture.nativeElement.textContent as string;
@@ -161,14 +169,19 @@ describe('SettingsComponent (universal prefs only)', () => {
     expect(text).not.toContain('Shared Folders');
     expect(text).not.toContain('Library processing');
     expect(text).not.toContain('Find Duplicates');
-    expect(fixture.nativeElement.querySelector('[data-testid="settings-extensions-link"]')).toBeNull();
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="settings-extensions-link"]'),
+    ).toBeNull();
     expect(fixture.nativeElement.querySelector('[data-testid="settings-check-update"]')).toBeNull();
     fixture.destroy();
   });
 
   it('shows Admin + Extensions links for admins', async () => {
     const { list } = makeProviders('admin');
-    await TestBed.configureTestingModule({ imports: [SettingsComponent], providers: list }).compileComponents();
+    await TestBed.configureTestingModule({
+      imports: [SettingsComponent],
+      providers: list,
+    }).compileComponents();
     const fixture = TestBed.createComponent(SettingsComponent);
     fixture.detectChanges();
     expect(
@@ -180,7 +193,10 @@ describe('SettingsComponent (universal prefs only)', () => {
 
   it('autoplay toggle routes through AuthService.setAutoplayOnLoad', async () => {
     const { list } = makeProviders('user');
-    await TestBed.configureTestingModule({ imports: [SettingsComponent], providers: list }).compileComponents();
+    await TestBed.configureTestingModule({
+      imports: [SettingsComponent],
+      providers: list,
+    }).compileComponents();
     const fixture = TestBed.createComponent(SettingsComponent);
     fixture.detectChanges();
     const toggle = fixture.nativeElement.querySelector(
@@ -206,17 +222,25 @@ describe('SettingsComponent (desktop music folder, Electron-gated)', () => {
   it('does not render the change-folder control off-Electron', async () => {
     vi.mocked(isElectron).mockReturnValue(false);
     const { list } = makeProviders('user');
-    await TestBed.configureTestingModule({ imports: [SettingsComponent], providers: list }).compileComponents();
+    await TestBed.configureTestingModule({
+      imports: [SettingsComponent],
+      providers: list,
+    }).compileComponents();
     const fixture = TestBed.createComponent(SettingsComponent);
     fixture.detectChanges();
-    expect(fixture.nativeElement.querySelector('[data-testid="settings-change-folder"]')).toBeNull();
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="settings-change-folder"]'),
+    ).toBeNull();
     fixture.destroy();
   });
 
   it('does not render the reveal-logs control off-Electron', async () => {
     vi.mocked(isElectron).mockReturnValue(false);
     const { list } = makeProviders('user');
-    await TestBed.configureTestingModule({ imports: [SettingsComponent], providers: list }).compileComponents();
+    await TestBed.configureTestingModule({
+      imports: [SettingsComponent],
+      providers: list,
+    }).compileComponents();
     const fixture = TestBed.createComponent(SettingsComponent);
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('[data-testid="settings-reveal-logs"]')).toBeNull();
@@ -226,7 +250,10 @@ describe('SettingsComponent (desktop music folder, Electron-gated)', () => {
   it('reveals logs via the preload bridge in Electron', async () => {
     vi.mocked(isElectron).mockReturnValue(true);
     const { list } = makeProviders('user');
-    await TestBed.configureTestingModule({ imports: [SettingsComponent], providers: list }).compileComponents();
+    await TestBed.configureTestingModule({
+      imports: [SettingsComponent],
+      providers: list,
+    }).compileComponents();
     const fixture = TestBed.createComponent(SettingsComponent);
     fixture.detectChanges();
     const btn = fixture.nativeElement.querySelector(
@@ -242,7 +269,10 @@ describe('SettingsComponent (desktop music folder, Electron-gated)', () => {
     vi.mocked(isElectron).mockReturnValue(true);
     vi.mocked(pickDirectory).mockResolvedValue('/new/music');
     const { list } = makeProviders('user');
-    await TestBed.configureTestingModule({ imports: [SettingsComponent], providers: list }).compileComponents();
+    await TestBed.configureTestingModule({
+      imports: [SettingsComponent],
+      providers: list,
+    }).compileComponents();
     const fixture = TestBed.createComponent(SettingsComponent);
     fixture.detectChanges();
     const btn = fixture.nativeElement.querySelector(
@@ -261,7 +291,10 @@ describe('SettingsComponent (desktop music folder, Electron-gated)', () => {
     vi.mocked(isElectron).mockReturnValue(true);
     vi.mocked(pickDirectory).mockResolvedValue(null);
     const { list } = makeProviders('user');
-    await TestBed.configureTestingModule({ imports: [SettingsComponent], providers: list }).compileComponents();
+    await TestBed.configureTestingModule({
+      imports: [SettingsComponent],
+      providers: list,
+    }).compileComponents();
     const fixture = TestBed.createComponent(SettingsComponent);
     fixture.detectChanges();
 
@@ -275,9 +308,15 @@ describe('SettingsComponent (desktop music folder, Electron-gated)', () => {
   it('surfaces an error and clears the spinner when the sidecar restart fails', async () => {
     vi.mocked(isElectron).mockReturnValue(true);
     vi.mocked(pickDirectory).mockResolvedValue('/new/music');
-    vi.mocked(setMusicDir).mockResolvedValue({ ok: false, error: 'Sidecar exited before becoming healthy' });
+    vi.mocked(setMusicDir).mockResolvedValue({
+      ok: false,
+      error: 'Sidecar exited before becoming healthy',
+    });
     const { list } = makeProviders('user');
-    await TestBed.configureTestingModule({ imports: [SettingsComponent], providers: list }).compileComponents();
+    await TestBed.configureTestingModule({
+      imports: [SettingsComponent],
+      providers: list,
+    }).compileComponents();
     const fixture = TestBed.createComponent(SettingsComponent);
     fixture.detectChanges();
 
@@ -286,8 +325,12 @@ describe('SettingsComponent (desktop music folder, Electron-gated)', () => {
 
     expect(fixture.componentInstance.musicDirChosen()).toBeNull();
     expect(fixture.componentInstance.musicDirChanging()).toBe(false);
-    expect(fixture.componentInstance.musicDirError()).toBe('Sidecar exited before becoming healthy');
-    const errorEl = fixture.nativeElement.querySelector('[data-testid="settings-change-folder-error"]');
+    expect(fixture.componentInstance.musicDirError()).toBe(
+      'Sidecar exited before becoming healthy',
+    );
+    const errorEl = fixture.nativeElement.querySelector(
+      '[data-testid="settings-change-folder-error"]',
+    );
     expect(errorEl?.textContent).toContain('Sidecar exited before becoming healthy');
     fixture.destroy();
   });
@@ -301,7 +344,10 @@ describe('SettingsComponent (auto-preserve queue toggle)', () => {
 
   async function makeFixture(role: 'admin' | 'user' = 'user') {
     const { list } = makeProviders(role);
-    await TestBed.configureTestingModule({ imports: [SettingsComponent], providers: list }).compileComponents();
+    await TestBed.configureTestingModule({
+      imports: [SettingsComponent],
+      providers: list,
+    }).compileComponents();
     return TestBed.createComponent(SettingsComponent);
   }
 
@@ -331,12 +377,15 @@ describe('SettingsComponent (auto-preserve queue toggle)', () => {
     patchPreserve();
     fixture.detectChanges();
     const buttons = Array.from(
-      fixture.nativeElement.querySelectorAll(
-        'button[data-testid^="auto-preserve-"]',
-      ),
+      fixture.nativeElement.querySelectorAll('button[data-testid^="auto-preserve-"]'),
     ) as HTMLButtonElement[];
     const ids = buttons.map((b) => b.getAttribute('data-testid'));
-    expect(ids).toEqual(['auto-preserve-off', 'auto-preserve-5', 'auto-preserve-20', 'auto-preserve-full']);
+    expect(ids).toEqual([
+      'auto-preserve-off',
+      'auto-preserve-5',
+      'auto-preserve-20',
+      'auto-preserve-full',
+    ]);
     const labels = buttons.map((b) => b.textContent?.trim());
     expect(labels).toEqual(['Off', 'Next 5', 'Next 20', 'Whole queue']);
     fixture.destroy();
@@ -379,7 +428,9 @@ describe('SettingsComponent (auto-preserve queue toggle)', () => {
     const fixture = await makeFixture();
     patchPreserve();
     patchConfirm();
-    (fixture.componentInstance.preserve as unknown as { autoPreservedCount: () => number }).autoPreservedCount = () => 7;
+    (
+      fixture.componentInstance.preserve as unknown as { autoPreservedCount: () => number }
+    ).autoPreservedCount = () => 7;
     fixture.detectChanges();
     const offBtn = fixture.nativeElement.querySelector(
       '[data-testid="auto-preserve-off"]',
@@ -399,7 +450,9 @@ describe('SettingsComponent (auto-preserve queue toggle)', () => {
     const fixture = await makeFixture();
     patchPreserve();
     patchConfirm();
-    (fixture.componentInstance.preserve as unknown as { autoPreservedCount: () => number }).autoPreservedCount = () => 3;
+    (
+      fixture.componentInstance.preserve as unknown as { autoPreservedCount: () => number }
+    ).autoPreservedCount = () => 3;
     fixture.detectChanges();
     const offBtn = fixture.nativeElement.querySelector(
       '[data-testid="auto-preserve-off"]',
@@ -427,7 +480,10 @@ describe('SettingsComponent (auto-preserve queue toggle)', () => {
 describe('SettingsComponent (manual PWA update check)', () => {
   it('hides the control when the service worker is disabled', async () => {
     const { list } = makeProviders('user', { enabled: false });
-    await TestBed.configureTestingModule({ imports: [SettingsComponent], providers: list }).compileComponents();
+    await TestBed.configureTestingModule({
+      imports: [SettingsComponent],
+      providers: list,
+    }).compileComponents();
     const fixture = TestBed.createComponent(SettingsComponent);
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('[data-testid="settings-check-update"]')).toBeNull();
@@ -436,17 +492,25 @@ describe('SettingsComponent (manual PWA update check)', () => {
 
   it('renders the control when the service worker is enabled', async () => {
     const { list } = makeProviders('user', { enabled: true });
-    await TestBed.configureTestingModule({ imports: [SettingsComponent], providers: list }).compileComponents();
+    await TestBed.configureTestingModule({
+      imports: [SettingsComponent],
+      providers: list,
+    }).compileComponents();
     const fixture = TestBed.createComponent(SettingsComponent);
     fixture.detectChanges();
-    expect(fixture.nativeElement.querySelector('[data-testid="settings-check-update"]')).toBeTruthy();
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="settings-check-update"]'),
+    ).toBeTruthy();
     fixture.destroy();
   });
 
   it('hides the control when an update is already staged (banner owns the CTA)', async () => {
     const { list, update } = makeProviders('user', { enabled: true, updateAvailable: true });
     update.checkAvailable.set(false);
-    await TestBed.configureTestingModule({ imports: [SettingsComponent], providers: list }).compileComponents();
+    await TestBed.configureTestingModule({
+      imports: [SettingsComponent],
+      providers: list,
+    }).compileComponents();
     const fixture = TestBed.createComponent(SettingsComponent);
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('[data-testid="settings-check-update"]')).toBeNull();
@@ -456,7 +520,10 @@ describe('SettingsComponent (manual PWA update check)', () => {
   it('clicking toasts success when the SW reports no update', async () => {
     const { list, toast, update } = makeProviders('user', { enabled: true });
     update.checkForUpdate.mockResolvedValueOnce('up-to-date');
-    await TestBed.configureTestingModule({ imports: [SettingsComponent], providers: list }).compileComponents();
+    await TestBed.configureTestingModule({
+      imports: [SettingsComponent],
+      providers: list,
+    }).compileComponents();
     const fixture = TestBed.createComponent(SettingsComponent);
     fixture.detectChanges();
     const btn = fixture.nativeElement.querySelector(
@@ -474,7 +541,10 @@ describe('SettingsComponent (manual PWA update check)', () => {
   it('clicking toasts an info + Reload/Later when an update is available', async () => {
     const { list, toast, update } = makeProviders('user', { enabled: true });
     update.checkForUpdate.mockResolvedValueOnce('available');
-    await TestBed.configureTestingModule({ imports: [SettingsComponent], providers: list }).compileComponents();
+    await TestBed.configureTestingModule({
+      imports: [SettingsComponent],
+      providers: list,
+    }).compileComponents();
     const fixture = TestBed.createComponent(SettingsComponent);
     fixture.detectChanges();
     await fixture.componentInstance.searchForUpdates();
@@ -492,7 +562,10 @@ describe('SettingsComponent (manual PWA update check)', () => {
   it('replaces a stale toast on a new check', async () => {
     const { list, toast, update } = makeProviders('user', { enabled: true });
     update.checkForUpdate.mockResolvedValueOnce('up-to-date').mockResolvedValueOnce('up-to-date');
-    await TestBed.configureTestingModule({ imports: [SettingsComponent], providers: list }).compileComponents();
+    await TestBed.configureTestingModule({
+      imports: [SettingsComponent],
+      providers: list,
+    }).compileComponents();
     const fixture = TestBed.createComponent(SettingsComponent);
     fixture.detectChanges();
     await fixture.componentInstance.searchForUpdates();
@@ -505,7 +578,10 @@ describe('SettingsComponent (manual PWA update check)', () => {
   it('toasts an error when the SW check rejects', async () => {
     const { list, toast, update } = makeProviders('user', { enabled: true });
     update.checkForUpdate.mockRejectedValueOnce(new Error('network'));
-    await TestBed.configureTestingModule({ imports: [SettingsComponent], providers: list }).compileComponents();
+    await TestBed.configureTestingModule({
+      imports: [SettingsComponent],
+      providers: list,
+    }).compileComponents();
     const fixture = TestBed.createComponent(SettingsComponent);
     fixture.detectChanges();
     await fixture.componentInstance.searchForUpdates();
@@ -519,11 +595,15 @@ describe('SettingsComponent (manual PWA update check)', () => {
     update.searching.set(true);
     let resolveCheck!: (v: 'up-to-date' | 'available') => void;
     update.checkForUpdate.mockImplementationOnce(
-      () => new Promise((resolve) => {
-        resolveCheck = resolve as unknown as (v: 'up-to-date' | 'available') => void;
-      }),
+      () =>
+        new Promise((resolve) => {
+          resolveCheck = resolve as unknown as (v: 'up-to-date' | 'available') => void;
+        }),
     );
-    await TestBed.configureTestingModule({ imports: [SettingsComponent], providers: list }).compileComponents();
+    await TestBed.configureTestingModule({
+      imports: [SettingsComponent],
+      providers: list,
+    }).compileComponents();
     const fixture = TestBed.createComponent(SettingsComponent);
     fixture.detectChanges();
     const inFlight = fixture.componentInstance.searchForUpdates();

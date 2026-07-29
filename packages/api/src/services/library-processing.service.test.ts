@@ -439,7 +439,10 @@ describe('LibraryProcessingService', () => {
 describe('shared-GPU courtesy yield (#224)', () => {
   const IN_WINDOW = new Date('2026-07-27T06:00:00');
 
-  function gpuService(gpu: () => Promise<number | null>, counters = { analyzed: 0, genreLookups: 0 }) {
+  function gpuService(
+    gpu: () => Promise<number | null>,
+    counters = { analyzed: 0, genreLookups: 0 },
+  ) {
     return {
       counters,
       svc: new LibraryProcessingService({

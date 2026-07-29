@@ -32,7 +32,12 @@ describe('lyrics-store', () => {
   });
 
   it('marks a user edit as customized and clears synced', () => {
-    setLyrics(db, 'song-1', { plain: 'auto', synced: '[00:01]auto', source: 'lrclib', customized: false });
+    setLyrics(db, 'song-1', {
+      plain: 'auto',
+      synced: '[00:01]auto',
+      source: 'lrclib',
+      customized: false,
+    });
     setLyrics(db, 'song-1', { plain: 'my edit', synced: null, source: 'user', customized: true });
     const read = getLyrics(db, 'song-1');
     expect(read?.plain).toBe('my edit');

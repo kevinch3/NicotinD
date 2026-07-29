@@ -31,7 +31,7 @@ import { resolve, join } from 'node:path';
 import { parse } from 'yaml';
 import { Database } from 'bun:sqlite';
 import { parseLibraryFilter, type LibraryFilter } from '@nicotind/core';
-import { expandHome } from './lib/expand-home.js';
+import { expandHome } from '@nicotind/core';
 import {
   explainSimilarity,
   DEFAULT_WEIGHTS,
@@ -242,7 +242,9 @@ export function parseWeightOverrides(
     const [rawKey, rawValue] = part.split('=');
     const key = rawKey?.trim() ?? '';
     if (!(key in weights)) {
-      throw new Error(`--weights: unknown axis "${key}" (valid: ${Object.keys(weights).join(', ')})`);
+      throw new Error(
+        `--weights: unknown axis "${key}" (valid: ${Object.keys(weights).join(', ')})`,
+      );
     }
     const value = Number(rawValue?.trim());
     if (rawValue === undefined || !Number.isFinite(value)) {
@@ -310,9 +312,7 @@ function renderDiagnosis(
   lines.push(
     `  instead of being skipped out of the normalization denominator. A high count here is now a`,
   );
-  lines.push(
-    `  **backfill** signal (re-source the genre), not a scorer bug.`,
-  );
+  lines.push(`  **backfill** signal (re-source the genre), not a scorer bug.`);
   lines.push(
     `- **Genre lost on weight:** ${genreZero}/${n} output tracks matched nothing on genre (value 0) but still ranked.`,
   );
@@ -335,7 +335,9 @@ function renderDiagnosis(
     lines.push(
       `  → propose splits with \`reclassify-genres.ts --propose\` (segmentConcatenatedGenre), review,`,
     );
-    lines.push(`  \`--apply\`, then \`--backfill\` to re-mint the stored sets without a full rescan.`);
+    lines.push(
+      `  \`--apply\`, then \`--backfill\` to re-mint the stored sets without a full rescan.`,
+    );
   }
   if (keyScored > 0) {
     lines.push(
@@ -499,8 +501,7 @@ function main(): void {
     }
 
     const markdown = renderDump(kind, seedRow, filter, result, weights);
-    const outPath =
-      firstArg(args, 'out') ?? join(dataDir, `radio-dump-${Date.now()}.md`);
+    const outPath = firstArg(args, 'out') ?? join(dataDir, `radio-dump-${Date.now()}.md`);
     writeFileSync(outPath, markdown + '\n');
     if (args['json'] === true) {
       const jsonPath = outPath.replace(/\.md$/, '') + '.json';

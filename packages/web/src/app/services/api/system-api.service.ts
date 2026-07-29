@@ -143,6 +143,22 @@ export class SystemApiService {
     );
   }
 
+  /**
+   * Deployment-wide acquisition kill-switch (issue #235). `configurable` is
+   * false when the *environment* disabled acquisition — a hard floor an admin
+   * cannot lift — so the UI renders the control read-only rather than offering
+   * something that silently does nothing.
+   */
+  getAcquisition() {
+    return this.http.get<{ enabled: boolean; configurable: boolean }>('/api/admin/acquisition');
+  }
+
+  setAcquisition(enabled: boolean) {
+    return this.http.put<{ enabled: boolean; configurable: boolean }>('/api/admin/acquisition', {
+      enabled,
+    });
+  }
+
   runProcessing() {
     return this.http.post<{ ok: boolean }>('/api/admin/processing/run', {});
   }

@@ -263,7 +263,13 @@ describe('DownloadWatcher', () => {
     };
     const dw = new DownloadWatcher(
       slskdMock as unknown as ConstructorParameters<typeof DownloadWatcher>[0],
-      { intervalMs: 10, scanDebounceMs: 10, libraryOrganizer: dedupingOrganizer, scan: scanMock, db },
+      {
+        intervalMs: 10,
+        scanDebounceMs: 10,
+        libraryOrganizer: dedupingOrganizer,
+        scan: scanMock,
+        db,
+      },
     );
     try {
       slskdMock.transfers.getDownloads.mockReturnValue(
@@ -331,10 +337,9 @@ describe('DownloadWatcher', () => {
       await new Promise((r) => setTimeout(r, 50));
 
       const row = db
-        .query<
-          { method: string; source_ref: string; stage: string },
-          [string]
-        >('SELECT method, source_ref, stage FROM acquisitions WHERE relative_path = ?')
+        .query<{ method: string; source_ref: string; stage: string }, [string]>(
+          'SELECT method, source_ref, stage FROM acquisitions WHERE relative_path = ?',
+        )
         .get('Artist/Album/song1.mp3');
       expect(row).toEqual({ method: 'slskd', source_ref: 'peer42', stage: 'done' });
     } finally {

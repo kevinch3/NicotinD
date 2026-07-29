@@ -28,8 +28,7 @@ export function buildSlskdDefinition(config: NicotinDConfig): ServiceDefinition 
     }
   }
 
-  const existingShares = (existing.shares as { directories?: string[] } | undefined)
-    ?.directories;
+  const existingShares = (existing.shares as { directories?: string[] } | undefined)?.directories;
 
   const slskdConfig = {
     ...existing,

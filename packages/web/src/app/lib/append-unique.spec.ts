@@ -22,9 +22,15 @@ describe('appendUnique', () => {
 
   it('preserves the existing array reference contents and keeps first occurrence', () => {
     const existing = [{ id: 'a', n: 1 }];
-    const page = [{ id: 'a', n: 2 }, { id: 'b', n: 3 }];
+    const page = [
+      { id: 'a', n: 2 },
+      { id: 'b', n: 3 },
+    ];
     const result = appendUnique(existing, page);
-    expect(result).toEqual([{ id: 'a', n: 1 }, { id: 'b', n: 3 }]);
+    expect(result).toEqual([
+      { id: 'a', n: 1 },
+      { id: 'b', n: 3 },
+    ]);
   });
 
   it('handles empty inputs', () => {

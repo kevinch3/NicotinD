@@ -4,7 +4,9 @@ import type { GenreQuery, GenreResult } from '@nicotind/core';
 import { albumGroupKey } from './album-grouping.js';
 import { planDiscogsAlbumGenres, type DiscogsGenreAlbum } from './genre-discogs.js';
 
-const album = (p: Partial<DiscogsGenreAlbum> & Pick<DiscogsGenreAlbum, 'albumName'>): DiscogsGenreAlbum => ({
+const album = (
+  p: Partial<DiscogsGenreAlbum> & Pick<DiscogsGenreAlbum, 'albumName'>,
+): DiscogsGenreAlbum => ({
   albumId: 'a1',
   albumArtist: 'Los Tetas',
   mbid: null,
@@ -31,8 +33,16 @@ describe('planDiscogsAlbumGenres', () => {
   });
 
   it('auto-applies a high-confidence match and leaves a low-confidence one pending', async () => {
-    const high = async (): Promise<GenreResult> => ({ genres: ['Rock'], source: 'discogs', confidence: 0.9 });
-    const low = async (): Promise<GenreResult> => ({ genres: ['Rock'], source: 'discogs', confidence: 0.6 });
+    const high = async (): Promise<GenreResult> => ({
+      genres: ['Rock'],
+      source: 'discogs',
+      confidence: 0.9,
+    });
+    const low = async (): Promise<GenreResult> => ({
+      genres: ['Rock'],
+      source: 'discogs',
+      confidence: 0.6,
+    });
     const a = await planDiscogsAlbumGenres([album({ albumName: 'A' })], high);
     const b = await planDiscogsAlbumGenres([album({ albumName: 'B' })], low);
     expect(a.proposals[0]!.status).toBe('applied');
@@ -54,7 +64,15 @@ describe('planDiscogsAlbumGenres', () => {
   it('makes no proposal on a confident miss but still reports the songs as processed', async () => {
     const resolve = async (): Promise<GenreResult | null> => null;
     const plan = await planDiscogsAlbumGenres(
-      [album({ albumName: 'Unknown', songs: [{ id: 's1', size: 1 }, { id: 's2', size: 2 }] })],
+      [
+        album({
+          albumName: 'Unknown',
+          songs: [
+            { id: 's1', size: 1 },
+            { id: 's2', size: 2 },
+          ],
+        }),
+      ],
       resolve,
     );
     expect(plan.proposals).toHaveLength(0);
@@ -62,13 +80,17 @@ describe('planDiscogsAlbumGenres', () => {
   });
 
   it('makes no proposal when the source returns an empty genre set', async () => {
-    const resolve = async (): Promise<GenreResult> => ({ genres: [], source: 'discogs', confidence: 0.9 });
+    const resolve = async (): Promise<GenreResult> => ({
+      genres: [],
+      source: 'discogs',
+      confidence: 0.9,
+    });
     const plan = await planDiscogsAlbumGenres([album({ albumName: 'Empty' })], resolve);
     expect(plan.proposals).toHaveLength(0);
     expect(plan.processedSongs).toHaveLength(1);
   });
 
-  it('does NOT report an album\'s songs as processed when the lookup throws (retry later, never ledger an outage)', async () => {
+  it("does NOT report an album's songs as processed when the lookup throws (retry later, never ledger an outage)", async () => {
     const resolve = async (): Promise<GenreResult> => {
       throw new Error('Discogs 503');
     };
@@ -79,11 +101,22 @@ describe('planDiscogsAlbumGenres', () => {
   });
 
   it('reports every processed song across all albums (for the ledger)', async () => {
-    const resolve = async (): Promise<GenreResult> => ({ genres: ['Pop'], source: 'discogs', confidence: 0.9 });
+    const resolve = async (): Promise<GenreResult> => ({
+      genres: ['Pop'],
+      source: 'discogs',
+      confidence: 0.9,
+    });
     const plan = await planDiscogsAlbumGenres(
       [
         album({ albumName: 'One', albumId: 'a1', songs: [{ id: 's1', size: 1 }] }),
-        album({ albumName: 'Two', albumId: 'a2', songs: [{ id: 's2', size: 2 }, { id: 's3', size: 3 }] }),
+        album({
+          albumName: 'Two',
+          albumId: 'a2',
+          songs: [
+            { id: 's2', size: 2 },
+            { id: 's3', size: 3 },
+          ],
+        }),
       ],
       resolve,
     );

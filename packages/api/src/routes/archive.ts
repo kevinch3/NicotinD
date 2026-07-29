@@ -34,7 +34,9 @@ export function archiveRoutes({ search, plugins }: ArchiveRoutesOptions) {
   app.get('/search', async (c) => {
     if (!plugins.isEnabled(ARCHIVE_PLUGIN_ID)) {
       return c.json(
-        { error: 'archive.org is disabled — enable the archive.org plugin in Settings → Extensions' },
+        {
+          error: 'archive.org is disabled — enable the archive.org plugin in Settings → Extensions',
+        },
         503,
       );
     }

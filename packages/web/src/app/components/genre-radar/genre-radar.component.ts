@@ -63,9 +63,7 @@ export class GenreRadarComponent {
   );
 
   /** Rows for the paired table, highest share first. */
-  protected readonly rows = computed(() =>
-    [...this.slices()].sort((a, b) => b.weight - a.weight),
-  );
+  protected readonly rows = computed(() => [...this.slices()].sort((a, b) => b.weight - a.weight));
 
   protected readonly hiddenCount = computed(() =>
     Math.max(0, this.genreCount() - this.slices().filter((s) => s.genre !== 'Other').length),

@@ -30,7 +30,7 @@ import { resolve, join } from 'node:path';
 import { parse } from 'yaml';
 import { Database } from 'bun:sqlite';
 import { checkFragments, type FragmentReport } from '../services/library-fragments.js';
-import { expandHome } from './lib/expand-home.js';
+import { expandHome } from '@nicotind/core';
 
 function loadConfig(): { dataDir: string } {
   let fileConfig: Record<string, unknown> = {};
@@ -85,7 +85,9 @@ function renderReport(r: FragmentReport): string {
     lines.push(
       'Album rows the default grid suppresses that look like real defects (a full album mis-tagged',
     );
-    lines.push('as a single/EP, an unresolved classification, or a curator-hidden row). Reclassify or unhide.');
+    lines.push(
+      'as a single/EP, an unresolved classification, or a curator-hidden row). Reclassify or unhide.',
+    );
     lines.push('');
     for (const h of r.hiddenByClassification) {
       lines.push(

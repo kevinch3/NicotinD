@@ -5,7 +5,13 @@
  * processes or touching the kernel.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
-import { arch, cpus as osCpus, freemem as osFreemem, platform as osPlatform, totalmem as osTotalmem } from 'node:os';
+import {
+  arch,
+  cpus as osCpus,
+  freemem as osFreemem,
+  platform as osPlatform,
+  totalmem as osTotalmem,
+} from 'node:os';
 
 import {
   collectMetrics,
@@ -18,7 +24,10 @@ import {
   type GpuProbe,
 } from './system-metrics.js';
 
-function makeCores(count: number, times: { idle: number; user?: number; nice?: number; sys?: number; irq?: number }) {
+function makeCores(
+  count: number,
+  times: { idle: number; user?: number; nice?: number; sys?: number; irq?: number },
+) {
   return Array.from({ length: count }, () => ({
     model: 'Test CPU',
     speed: 3000,
@@ -37,7 +46,11 @@ function makeOs(overrides: Partial<OsShim> = {}): OsShim {
   };
 }
 
-const alwaysNullProbe: GpuProbe = { nvidia: async () => null, rocm: async () => null, mac: async () => null };
+const alwaysNullProbe: GpuProbe = {
+  nvidia: async () => null,
+  rocm: async () => null,
+  mac: async () => null,
+};
 
 afterEach(() => {
   _resetMetricsState();
@@ -49,7 +62,9 @@ describe('readCpu', () => {
   });
 
   it('returns 0 % on the first call (no baseline)', () => {
-    const os = makeOs({ cpus: () => makeCores(4, { idle: 1000 }) as unknown as ReturnType<typeof osCpus> });
+    const os = makeOs({
+      cpus: () => makeCores(4, { idle: 1000 }) as unknown as ReturnType<typeof osCpus>,
+    });
     const r = readCpu({ os });
     expect(r.percent).toBe(0);
     expect(r.cores).toBe(4);
@@ -60,7 +75,9 @@ describe('readCpu', () => {
     const coresA = makeCores(4, { user: 200, idle: 1000 });
     readCpu({ os: makeOs({ cpus: () => coresA as unknown as ReturnType<typeof osCpus> }) });
     const coresB = makeCores(4, { user: 700, idle: 1200 });
-    const r = readCpu({ os: makeOs({ cpus: () => coresB as unknown as ReturnType<typeof osCpus> }) });
+    const r = readCpu({
+      os: makeOs({ cpus: () => coresB as unknown as ReturnType<typeof osCpus> }),
+    });
     // Delta: user +500, idle +200 → busy 500/700 ≈ 71 %.
     expect(r.percent).toBeGreaterThan(60);
     expect(r.percent).toBeLessThanOrEqual(100);
@@ -70,7 +87,9 @@ describe('readCpu', () => {
     const coresA = makeCores(2, { user: 0, idle: 1000 });
     readCpu({ os: makeOs({ cpus: () => coresA as unknown as ReturnType<typeof osCpus> }) });
     const coresB = makeCores(2, { user: 0, idle: 5000 });
-    const r = readCpu({ os: makeOs({ cpus: () => coresB as unknown as ReturnType<typeof osCpus> }) });
+    const r = readCpu({
+      os: makeOs({ cpus: () => coresB as unknown as ReturnType<typeof osCpus> }),
+    });
     expect(r.percent).toBeGreaterThanOrEqual(0);
     expect(r.percent).toBeLessThanOrEqual(100);
   });
@@ -94,7 +113,11 @@ describe('readMemory', () => {
 
 describe('readHardware', () => {
   it('surfaces the detected GPU vendor + name', () => {
-    const os = makeOs({ arch: () => 'x64', platform: () => 'linux', cpus: () => makeCores(4, { idle: 1 }) as unknown as ReturnType<typeof osCpus> });
+    const os = makeOs({
+      arch: () => 'x64',
+      platform: () => 'linux',
+      cpus: () => makeCores(4, { idle: 1 }) as unknown as ReturnType<typeof osCpus>,
+    });
     const h = readHardware({ vendor: 'nvidia', name: 'GeForce RTX 4090', percent: 12 }, { os });
     expect(h.gpuDetected?.vendor).toBe('nvidia');
     expect(h.gpuDetected?.name).toBe('GeForce RTX 4090');

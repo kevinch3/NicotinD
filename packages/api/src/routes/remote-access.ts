@@ -15,7 +15,9 @@ export function remoteAccessRoutes(remoteAccess: RemoteAccess) {
 
   app.post('/', async (c) => {
     requireAdmin(c);
-    const body = await c.req.json<{ enabled?: boolean }>().catch(() => ({}) as { enabled?: boolean });
+    const body = await c.req
+      .json<{ enabled?: boolean }>()
+      .catch(() => ({}) as { enabled?: boolean });
     if (typeof body.enabled !== 'boolean') {
       return c.json({ error: 'enabled must be a boolean' }, 400);
     }

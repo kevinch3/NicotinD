@@ -22,9 +22,14 @@ import { readFileSync, existsSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { parse } from 'yaml';
 import { Database } from 'bun:sqlite';
-import { auditLibrary, summarize, type AuditFinding, type AuditSeverity } from '../services/library-audit.js';
+import {
+  auditLibrary,
+  summarize,
+  type AuditFinding,
+  type AuditSeverity,
+} from '../services/library-audit.js';
 import { scanMusicDir, diskFindings } from '../services/library-disk-audit.js';
-import { expandHome } from './lib/expand-home.js';
+import { expandHome } from '@nicotind/core';
 
 function loadConfig(): { dataDir: string; musicDir: string } {
   let fileConfig: Record<string, unknown> = {};
@@ -62,7 +67,10 @@ function main(): void {
   let findings: AuditFinding[] = auditLibrary(db).findings;
   if (existsSync(musicDir)) {
     const scan = scanMusicDir(musicDir);
-    const dbPaths = db.query<{ path: string }, []>('SELECT path FROM library_songs').all().map((r) => r.path);
+    const dbPaths = db
+      .query<{ path: string }, []>('SELECT path FROM library_songs')
+      .all()
+      .map((r) => r.path);
     findings = [...findings, ...diskFindings(scan, dbPaths)];
   } else {
     console.warn(`⚠️  musicDir ${musicDir} not found — skipping disk checks.`);
@@ -91,12 +99,16 @@ function main(): void {
   } else {
     console.log('Findings by rule (worst first):');
     for (const s of report.summary) {
-      console.log(`  ${SEV_ICON[s.severity]} ${s.severity.padEnd(6)} ${String(s.count).padStart(5)}  ${s.rule}`);
+      console.log(
+        `  ${SEV_ICON[s.severity]} ${s.severity.padEnd(6)} ${String(s.count).padStart(5)}  ${s.rule}`,
+      );
     }
     console.log(
       `\n  ${report.highSeverityCount} high-severity finding(s). Use --rule=<id> to list, --json for detail.`,
     );
-    console.log('  Cleanup: bun run packages/api/src/scripts/repair-pollution.ts  (dry-run; --apply to act)\n');
+    console.log(
+      '  Cleanup: bun run packages/api/src/scripts/repair-pollution.ts  (dry-run; --apply to act)\n',
+    );
   }
 
   process.exit(noFail || report.ok ? 0 : 1);

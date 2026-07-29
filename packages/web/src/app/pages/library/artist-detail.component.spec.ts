@@ -338,51 +338,10 @@ describe('ArtistDetailComponent — Songs tab', () => {
 });
 
 describe('ArtistDetailComponent — image override', () => {
-  it('uploads a selected file and bumps the cache-bust version', async () => {
-    const { component, imageCalls } = setup();
-    await fixture_stable();
-    expect(component.imageVersion()).toBe(0);
-
-    const file = new File([new Uint8Array([1, 2, 3])], 'p.png', { type: 'image/png' });
-    const event = { target: { files: [file], value: 'x' } } as unknown as Event;
-    await component.onImageFileSelected(event);
-
-    expect(imageCalls.upload).toHaveLength(1);
-    expect(imageCalls.upload[0].id).toBe('ar1');
-    expect(component.imageVersion()).toBe(1);
-    expect(component.imageBusy()).toBe(false);
-  });
-
-  it('does nothing when no file is selected', async () => {
-    const { component, imageCalls } = setup();
-    await fixture_stable();
-    const event = { target: { files: [], value: '' } } as unknown as Event;
-    await component.onImageFileSelected(event);
-    expect(imageCalls.upload).toHaveLength(0);
-    expect(component.imageVersion()).toBe(0);
-  });
-
-  it('copies a chosen album cover and closes the picker', async () => {
-    const { component, imageCalls } = setup();
-    await fixture_stable();
-    component.openAlbumPicker();
-    expect(component.albumPickerOpen()).toBe(true);
-
-    await component.pickAlbumCover('a2');
-
-    expect(imageCalls.fromAlbum).toEqual([{ id: 'ar1', albumId: 'a2' }]);
-    expect(component.albumPickerOpen()).toBe(false);
-    expect(component.imageVersion()).toBe(1);
-  });
-
-  it('resets the image override', async () => {
-    const { component, imageCalls } = setup();
-    await fixture_stable();
-    await component.resetImage();
-    expect(imageCalls.reset).toEqual(['ar1']);
-    expect(component.imageVersion()).toBe(1);
-  });
-
+  // Upload / from-album / auto-fetch / reset moved to ArtistImageMenuComponent
+  // (issue #250 gap 4) so the Artists grid can reuse them; see that component's
+  // spec. What stays here is the page's own job: the cache-bust, because the
+  // portrait URL is otherwise identical after a change.
   it('exposes the artist albums + singles as pickable covers', async () => {
     const { component } = setup();
     await fixture_stable();
@@ -394,7 +353,7 @@ describe('ArtistDetailComponent — image override', () => {
     const { component } = setup();
     await fixture_stable();
     expect(component.artistImageSrc()).toBe('/api/cover/ar1?size=200&token=tok');
-    await component.resetImage();
+    component.onArtistImageChanged();
     expect(component.artistImageSrc()).toBe('/api/cover/ar1?size=200&token=tok&v=1');
   });
 });

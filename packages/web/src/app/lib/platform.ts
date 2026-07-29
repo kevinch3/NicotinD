@@ -41,8 +41,8 @@ export function getCapacitorPlugin<T>(name: string): T | null {
 // import — so the same built `dist/` ships to the browser and the desktop shell.
 export function isElectron(): boolean {
   return (
-    (globalThis as { window?: { nicotind?: { platform?: string } } }).window?.nicotind
-      ?.platform === 'electron'
+    (globalThis as { window?: { nicotind?: { platform?: string } } }).window?.nicotind?.platform ===
+    'electron'
   );
 }
 
@@ -57,9 +57,7 @@ export function isElectron(): boolean {
  * nothing to add to the chrome bar.
  */
 export function electronOS(): NodeJS.Platform | null {
-  const os = (
-    globalThis as { window?: { nicotind?: { os?: unknown } } }
-  ).window?.nicotind?.os;
+  const os = (globalThis as { window?: { nicotind?: { os?: unknown } } }).window?.nicotind?.os;
   if (os === 'darwin' || os === 'linux' || os === 'win32') {
     return os;
   }

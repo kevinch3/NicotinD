@@ -52,7 +52,9 @@ describe('GET /api/admin/config/export', () => {
   it('redacts credentials by default and offers the file as a download', async () => {
     const res = await authed().request('/config/export');
     expect(res.status).toBe(200);
-    expect(res.headers.get('Content-Disposition')).toMatch(/attachment; filename="nicotind-config-/);
+    expect(res.headers.get('Content-Disposition')).toMatch(
+      /attachment; filename="nicotind-config-/,
+    );
 
     const bundle = (await res.json()) as ConfigBundle;
     expect(bundle.includesSecrets).toBe(false);
@@ -96,9 +98,9 @@ describe('POST /api/admin/config/import', () => {
 
   it('rejects a structurally invalid bundle with 400', async () => {
     expect((await post({ bundle: 'nonsense' })).status).toBe(400);
-    expect((await post({ bundle: { bundleVersion: 1, sections: { library_songs: [] } } })).status).toBe(
-      400,
-    );
+    expect(
+      (await post({ bundle: { bundleVersion: 1, sections: { library_songs: [] } } })).status,
+    ).toBe(400);
   });
 
   it('refuses a bundle from a newer server', async () => {
@@ -118,9 +120,9 @@ describe('POST /api/admin/config/import', () => {
     expect(body.dryRun).toBe(true);
     expect(body.plan.sections.length).toBeGreaterThan(0);
     expect(testDb.query(`SELECT COUNT(*) AS n FROM plugin_kv`).get()).toMatchObject({ n: 0 });
-    expect(testDb.query(`SELECT COUNT(*) AS n FROM audit_log WHERE action = 'config.import'`).get()).toMatchObject(
-      { n: 0 },
-    );
+    expect(
+      testDb.query(`SELECT COUNT(*) AS n FROM audit_log WHERE action = 'config.import'`).get(),
+    ).toMatchObject({ n: 0 });
   });
 
   it('applies the bundle and ledgers it', async () => {

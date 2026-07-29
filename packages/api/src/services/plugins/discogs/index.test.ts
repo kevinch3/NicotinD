@@ -225,7 +225,11 @@ describe('DiscogsPlugin.artistInfo', () => {
       {
         resolveDiscogsArtistRef: async () => ({ kind: 'artist', id: 999 }),
         fetchFn: (async () =>
-          ({ ok: false, status: 404, json: async () => ({}) }) as unknown as Response) as unknown as typeof fetch,
+          ({
+            ok: false,
+            status: 404,
+            json: async () => ({}),
+          }) as unknown as Response) as unknown as typeof fetch,
       },
     );
     expect(await plugin.artistInfo.fetchArtistInfo({ mbid: 'mbid-3' })).toBeNull();

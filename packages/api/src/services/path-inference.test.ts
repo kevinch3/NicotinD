@@ -83,7 +83,10 @@ describe('inferMetadataFromPath', () => {
   });
 
   it('strips a glued track-number prefix from the artist regardless of separator style', () => {
-    const parsed = inferMetadataFromPath('12) Los Tekis - Seleccion De Carnavalitos.mp3', 'Los Tekis');
+    const parsed = inferMetadataFromPath(
+      '12) Los Tekis - Seleccion De Carnavalitos.mp3',
+      'Los Tekis',
+    );
     expect(parsed.artist).toBe('Los Tekis');
     expect(parsed.trackNumber).toBe('12');
     expect(parsed.title).toBe('Seleccion De Carnavalitos');

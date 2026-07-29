@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { applySchema } from '../db.js';
 import {
+  artistImageCoverage,
   countArtistsNeedingPortrait,
   fillArtistImages,
   selectArtistsNeedingPortrait,
@@ -168,3 +169,85 @@ describe('backfill-artist-images --limit', () => {
 });
 
 afterEach(() => rmSync(coverCacheDir, { recursive: true, force: true }));
+
+/**
+ * Issue #250 gap 3. The number an admin reads must be the number a fill would
+ * act on, so `missing` reuses NEEDS_PORTRAIT_SQL rather than restating it.
+ */
+describe('artistImageCoverage', () => {
+  function seedHidden(id: string, name: string) {
+    db.run(
+      `INSERT INTO library_artists (id, name, album_count, manual_override, hidden, synced_at)
+       VALUES (?, ?, 1, 0, 1, 1)`,
+      [id, name],
+    );
+  }
+
+  it('is all-zero on an empty library', () => {
+    expect(artistImageCoverage(db)).toEqual({
+      visible: 0,
+      withPortrait: 0,
+      missing: 0,
+      manualOverride: 0,
+    });
+  });
+
+  it('counts a resolved portrait as covered', () => {
+    seedArtist('a1', 'With');
+    seedPortrait('a1');
+    seedArtist('a2', 'Without');
+
+    expect(artistImageCoverage(db)).toEqual({
+      visible: 2,
+      withPortrait: 1,
+      missing: 1,
+      manualOverride: 0,
+    });
+  });
+
+  // A curator upload lives in <dataDir>/artist-overrides with NO library_artwork
+  // row, so a subtraction-based count would report it as missing.
+  it('counts a curator upload as covered even with no artwork row', () => {
+    seedArtist('a1', 'Uploaded', { override: true });
+
+    expect(artistImageCoverage(db)).toEqual({
+      visible: 1,
+      withPortrait: 1,
+      missing: 0,
+      manualOverride: 1,
+    });
+  });
+
+  it('excludes hidden artists from every bucket', () => {
+    seedArtist('a1', 'Visible');
+    seedHidden('h1', 'Split Compound');
+
+    const c = artistImageCoverage(db);
+    expect(c.visible).toBe(1);
+    expect(c.missing).toBe(1);
+  });
+
+  // The invariant the Admin row renders as "N of M".
+  it('partitions visible exactly: withPortrait + missing === visible', () => {
+    seedArtist('a1', 'Resolved');
+    seedPortrait('a1');
+    seedArtist('a2', 'Uploaded', { override: true });
+    seedArtist('a3', 'Bare');
+    seedArtist('a4', 'AlsoBare');
+    seedHidden('h1', 'Hidden');
+
+    const c = artistImageCoverage(db);
+    expect(c.withPortrait + c.missing).toBe(c.visible);
+    expect(c).toEqual({ visible: 4, withPortrait: 2, missing: 2, manualOverride: 1 });
+  });
+
+  it('agrees with countArtistsNeedingPortrait, the number a fill acts on', () => {
+    seedArtist('a1', 'One');
+    seedArtist('a2', 'Two', { override: true });
+    seedArtist('a3', 'Three');
+    seedPortrait('a3');
+    seedArtist('a4', 'Four');
+
+    expect(artistImageCoverage(db).missing).toBe(countArtistsNeedingPortrait(db));
+  });
+});

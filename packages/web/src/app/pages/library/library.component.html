@@ -373,13 +373,27 @@
       <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
         @for (artist of artistsWindow.visible(); track artist.id) {
           <a [routerLink]="getArtistLink(artist.id)"
-            class="flex flex-col items-center gap-2 p-3 rounded-xl hover:bg-theme-hover transition-colors text-center cursor-pointer">
-            <app-cover-art
-              [src]="artist.coverArt ? '/api/cover/' + artist.coverArt + '?size=160&token=' + auth.token() : undefined"
-              [artist]="artist.name"
-              [size]="80"
-              rounded="rounded-full"
-            />
+            class="relative flex flex-col items-center gap-2 p-3 rounded-xl hover:bg-theme-hover transition-colors text-center cursor-pointer">
+            <div class="relative">
+              <app-cover-art
+                [src]="artist.coverArt ? '/api/cover/' + artist.coverArt + '?size=160&token=' + auth.token() + (artistImageVersion() ? '&v=' + artistImageVersion() : '') : undefined"
+                [artist]="artist.name"
+                [size]="80"
+                rounded="rounded-full"
+              />
+              <!-- Add-photo affordance (issue #250 gap 4): the same component the
+                   artist page uses, so upload / from-album / auto-fetch / reset
+                   can't drift between the two surfaces. Curator-gated. -->
+              @if (auth.canCurate()) {
+                <div class="absolute -bottom-1 -right-1">
+                  <app-artist-image-menu
+                    [artistId]="artist.id"
+                    [compact]="true"
+                    (changed)="onArtistImageChanged()"
+                  />
+                </div>
+              }
+            </div>
             <div class="min-w-0 w-full">
               <div class="text-sm text-theme-primary truncate">{{ artist.name }}</div>
               <div class="text-xs text-theme-muted">{{ artist.albumCount }} album{{ artist.albumCount !== 1 ? 's' : '' }}</div>
