@@ -251,6 +251,70 @@ outputs are numerically identical (embedding max |Δ| ≈ 2e-7, features equal).
 > precisely because it can't use the GPU. Moving heavy DSP/inference to the GPU
 > sidecar is the structural fix — and a candidate to *also* offload key/bpm later.
 
+## 4a. Measured GPU behaviour on prod (issue #224)
+
+Issue #224 asks to *reduce* GPU usage, and proposed concurrency caps as the lever. Measured on the
+reference host `kpc` (Quadro P4000, 8 GiB, shared with Immich ML + Ollama) against the live sidecar,
+**the concurrency lever does nothing on either axis** — the pressure is somewhere else entirely.
+
+### Method
+
+`POST /analyze` is idempotent and writes nothing, so it can be driven directly as a pure compute
+probe with no DB mutation. A **fixed** set of 12 landed songs (150–300 s duration, `ORDER BY id` so
+every run analyses the same audio), one warm-up pass to exclude model load, then two timed passes per
+concurrency. The probe runs as a Bun script *inside* the API container to avoid shell escaping.
+
+Two earlier harnesses produced garbage and are worth recording so nobody repeats them:
+
+1. **Randomising the file set per run** made runs incomparable — track duration dominates cost, so
+   concurrency 1 measured 11 s in one run and 38 s in another.
+2. **Shell/`xargs` escaping mangled the paths** into fast 404s, which read as "all concurrencies are
+   equally fast (~4 s)". Verifying HTTP status (`200`, ~27 KB, `embedding.dim === 1280`) is what
+   caught it — always assert the probe *succeeded* before timing it.
+
+### Result: throughput is flat
+
+| concurrency | run 1 | run 2 | succeeded |
+| ----------: | ----: | ----: | --------: |
+|           1 | 26.4 s | 26.4 s | 12/12 |
+|           2 | 26.3 s | 26.3 s | 12/12 |
+|           4 | 26.2 s | 26.2 s | 12/12 |
+|           8 | 26.3 s | 26.1 s | 12/12 |
+
+Under 1 % spread. ~2.2 s per track either way. The sidecar serialises inference regardless of how
+many requests arrive concurrently — `/analyze` is a sync `def` handler and Essentia/TF inference does
+not overlap — so **raising `concurrency` buys nothing, and lowering it to 1 costs nothing.**
+
+### Result: memory is flat too — and that's the actual problem
+
+Peak GPU memory during the runs was **7,631 MiB at concurrency 1 and 7,631 MiB at concurrency 8** —
+identical, because it isn't a function of the workload at all. A freshly recreated container reports
+**~85 MiB**; after the first inference the sidecar ratchets to 7,631 MiB of the 8,192 MiB card and
+**holds it while idle**, until restarted.
+
+`TF_FORCE_GPU_ALLOW_GROWTH=true` is already set (Dockerfile) and is working as documented — it stops
+TF grabbing everything *up front*. It does not make TF ever **release** grown memory, which is the
+behaviour that matters on a shared card.
+
+So NicotinD occupies **93 % of the shared GPU permanently after one analysis**, whether or not a
+processing window is running. That is the GPU-citizenship problem, not concurrency.
+
+### Consequences for the existing controls
+
+- The `concurrency` Admin knob (#224's shipped half) is a **CPU/queueing** control, not a GPU one.
+  The panel copy should not imply otherwise.
+- `gpuBusyPercent` gates a window on *utilisation*, so it protects other tenants from our compute —
+  but not from our **allocation**, which is what would make an Immich ML or Ollama model load fail.
+  A co-tenant can be starved while `nvidia-smi` reports 0 % utilisation.
+
+### What would actually reduce it (not yet implemented)
+
+A hard cap rather than allow-growth — TF's `memory_limit` logical-device configuration. Essentia
+drives TF through its own C++ API rather than the Python `tf.config` surface, so this needs
+experimentation inside the GPU image and cannot be verified without building it; it is deliberately
+**not** guessed at here. Restarting the sidecar releases the memory, so a pragmatic interim is
+restarting it after a processing window.
+
 ## 5. Rollout phases
 
 1. **Sidecar skeleton** — ✅ built (`packages/analysis/`): FastAPI + Essentia-TF,

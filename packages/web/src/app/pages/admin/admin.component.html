@@ -597,8 +597,9 @@
                   data-testid="processing-throttle">
                   <span class="min-w-0 text-sm text-theme-primary">Compute throttle
                     <span class="block text-xs text-theme-muted">
-                      Parallel analyses and how many tracks a task claims per pass. Lower the
-                      concurrency when the GPU is shared with other apps; 1 is the gentlest.
+                      Parallel analyses and how many tracks a task claims per pass. Concurrency
+                      bounds CPU and queueing — measured against a shared GPU it changed neither
+                      throughput nor GPU memory, so it is not a GPU throttle (issue #224).
                       "Yield above N% GPU" skips a pass while another tenant is using the card
                       (0 = never yield); fresh downloads still land.
                     </span>
