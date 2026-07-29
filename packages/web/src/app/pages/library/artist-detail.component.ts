@@ -30,6 +30,7 @@ import { PreserveService } from '../../services/preserve.service';
 import { TransferService } from '../../services/transfer.service';
 import { SongMenuService } from '../../services/song-menu.service';
 import { AlbumHuntModalComponent } from '../../components/album-hunt-modal/album-hunt-modal.component';
+import { ArtistImageMenuComponent } from '../../components/artist-image-menu/artist-image-menu.component';
 import { CoverArtComponent } from '../../components/cover-art/cover-art.component';
 import { IconComponent } from '../../components/icon/icon.component';
 import { TrackRowComponent } from '../../components/track-row/track-row.component';
@@ -62,13 +63,13 @@ const SONGS_PAGE_SIZE = 60;
   selector: 'app-artist-detail',
   standalone: true,
   imports: [
+    ArtistImageMenuComponent,
     RouterLink,
     AlbumHuntModalComponent,
     CoverArtComponent,
     IconComponent,
     TrackRowComponent,
     SelectionBarComponent,
-    MenuPanelComponent,
     LibraryFilterPanelComponent,
     ConfirmDialogComponent,
     ArtistIdentityModalComponent,
@@ -163,14 +164,11 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
     }
   }
 
-  // ─── Artist image override (admin: upload / pick-from-album / reset) ───────
-  readonly imageBusy = signal(false);
-  // Bumped after any image change to bust the browser cache for the (otherwise
-  // identical) cover URL so the new portrait shows without a hard refresh.
+  // ─── Artist image override ────────────────────────────────────────
+  // The control itself is `ArtistImageMenuComponent`, shared with the Artists
+  // grid (issue #250 gap 4). This page keeps only the cache-bust, because the
+  // portrait URL is otherwise identical after a change.
   readonly imageVersion = signal(0);
-  readonly albumPickerOpen = signal(false);
-  readonly imageMenu = viewChild<MenuPanelComponent>('imageMenu');
-  readonly imageFileInput = viewChild<ElementRef<HTMLInputElement>>('imageFileInput');
 
   /** The portrait src, cache-busted after an override change. */
   readonly artistImageSrc = computed<string | undefined>(() => {
@@ -183,59 +181,8 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
   /** Albums the user can copy a cover from (regular albums + singles/EPs). */
   readonly pickableAlbums = computed<Album[]>(() => [...this.albums(), ...this.singlesAndEps()]);
 
-  private closeImageMenu(): void {
-    this.imageMenu()?.open.set(false);
-  }
-
-  /** Open the OS file picker (wired to the hidden input). */
-  triggerImageUpload(): void {
-    this.closeImageMenu();
-    this.imageFileInput()?.nativeElement.click();
-  }
-
-  async onImageFileSelected(event: Event): Promise<void> {
-    const input = event.target as HTMLInputElement;
-    const file = input.files?.[0];
-    input.value = ''; // allow re-selecting the same file later
-    if (!file) return;
-    await this.runImageChange(() =>
-      firstValueFrom(this.api.uploadArtistImage(this.artistId, file)),
-    );
-  }
-
-  openAlbumPicker(): void {
-    this.closeImageMenu();
-    this.albumPickerOpen.set(true);
-  }
-
-  closeAlbumPicker(): void {
-    this.albumPickerOpen.set(false);
-  }
-
-  async pickAlbumCover(albumId: string): Promise<void> {
-    this.albumPickerOpen.set(false);
-    await this.runImageChange(() =>
-      firstValueFrom(this.api.setArtistImageFromAlbum(this.artistId, albumId)),
-    );
-  }
-
-  async resetImage(): Promise<void> {
-    this.closeImageMenu();
-    await this.runImageChange(() => firstValueFrom(this.api.resetArtistImage(this.artistId)));
-  }
-
-  /** Shared busy-guard + cache-bust for the three image-change actions. */
-  private async runImageChange(action: () => Promise<unknown>): Promise<void> {
-    if (this.imageBusy()) return;
-    this.imageBusy.set(true);
-    try {
-      await action();
-      this.imageVersion.update((v) => v + 1);
-    } catch {
-      /* best-effort; the tile simply keeps its prior image */
-    } finally {
-      this.imageBusy.set(false);
-    }
+  onArtistImageChanged(): void {
+    this.imageVersion.update((v) => v + 1);
   }
 
   // ─── Tabs ─────────────────────────────────────────────────────────
@@ -274,7 +221,8 @@ export class ArtistDetailComponent implements OnInit, OnDestroy {
   readonly hasActiveSongFilter = computed(() => !isEmptyLibraryFilter(this.songFilter()));
   readonly genreOptions = signal<string[]>([]);
   private songsOffset = 0;
-  private artistId = '';
+  // Public: bound by the template into <app-artist-image-menu> (#250 gap 4).
+  artistId = '';
 
   readonly songsSentinel = viewChild<ElementRef<HTMLElement>>('songsSentinel');
   private songsObserver?: IntersectionObserver;

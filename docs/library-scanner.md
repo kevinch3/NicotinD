@@ -288,6 +288,26 @@ the grid doesn't render them, so counting them would make coverage look permanen
 **Still open on #250**: gap 4 (an Add-photo affordance on the Artists grid itself; today upload /
 copy-from-album is reachable only from an individual artist page).
 
+### Add-photo from the Artists grid (issue #250 gap 4)
+
+Upload / copy-from-album lived **inline in `artist-detail.component`**, so the only way to give an
+artist a photo was to open that artist's page — with prod at 60 % placeholder that is a lot of
+navigation. The control is now `ArtistImageMenuComponent`
+(`components/artist-image-menu/`), used by **both** the artist page and each Artists-grid tile
+(curator-gated), which is what the issue asks for: *one component, not a copy*. A second
+implementation would have drifted on the two easy things to get wrong here — the busy-guard and the
+cache-bust (the portrait URL is byte-identical after a change, so without a version bump the browser
+serves the old image).
+
+It also adds **Fetch automatically**, which calls the already-existing
+`POST /artists/:id/auto-fetch-image`. That route shipped with gap 1 but **no web client ever called
+it** — it was reachable only from the enrichment window or the backfill script.
+
+`albums` is an optional input, and the asymmetry is deliberate: the artist page already has its
+albums loaded and passes them (no extra request), while a grid tile has nothing, so the component
+fetches them **lazily on first open** of the picker. Eagerly loading albums per tile would mean N
+requests for a menu almost nobody opens.
+
 ## Canonical artwork
 
 Soulseek rips often carry missing/low-res/wrong embedded art; audio files carry no artist photo at all. Fix: the `library_artwork(id, kind, cover_url, updated_at)` table stores canonical URLs keyed on the **same deterministic ids the scanner mints** (`albumIdFor`/`artistIdFor`) — kept off the scanner-managed tables on purpose, so it survives full rescans/prunes untouched and can be written at hunt time _before_ the album is scanned onto disk.
