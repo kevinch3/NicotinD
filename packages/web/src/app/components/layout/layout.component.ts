@@ -36,15 +36,15 @@ interface NavItem {
 // `label` is an i18n key (issue #236), rendered through the `t` pipe.
 const BASE_NAV: NavItem[] = [
   { to: '/', label: 'nav.home' },
-  { to: '/search', label: 'nav.search' },
+  { to: '/acquire', label: 'nav.acquire' },
   { to: '/downloads', label: 'nav.downloads' },
   { to: '/library', label: 'nav.library' },
   { to: '/settings', label: 'nav.settings' },
 ];
 // Nav items that require the backend to be available. Library stays enabled
 // offline: its Songs tab serves the on-device downloaded songs. The radio
-// landing (/) and search need the backend, so both are online-only.
-const ONLINE_ONLY_ROUTES = new Set(['/', '/search']);
+// landing (/) and acquire need the backend, so both are online-only.
+const ONLINE_ONLY_ROUTES = new Set(['/', '/acquire']);
 
 /** Shared header layout — same pixels everywhere so the brand/title row
  *  doesn't shift between platform states (only the chrome integration

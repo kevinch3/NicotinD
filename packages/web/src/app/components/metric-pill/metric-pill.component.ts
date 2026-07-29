@@ -53,8 +53,11 @@ export class MetricPillComponent {
 
   readonly gpuRatio = computed(() => {
     const g = this.gpu();
-    if (!g || g.percent === undefined) return 0;
-    return Math.min(1, Math.max(0, g.percent / 100));
+    if (!g) return 0;
+    if (g.percent !== undefined) return Math.min(1, Math.max(0, g.percent / 100));
+    // No utilisation % (Apple, or a driver that only reports VRAM) — fall back to
+    // the memory ratio so the bar still means something (issue #224).
+    return this.gpuMemoryRatio();
   });
   readonly gpuFill = computed(() => diskFillColor(this.gpuRatio()));
   readonly gpuLabel = computed(() => {
@@ -63,9 +66,26 @@ export class MetricPillComponent {
     return g.percent !== undefined ? `${Math.round(g.percent)}%` : '—';
   });
   readonly gpuSublabel = computed(() => this.gpu()?.name ?? '');
-  /** GPU has no exposed % (Apple) → render the fill as neutral grey. */
+  /**
+   * GPU **memory** used / total (issue #224). Distinct from utilisation on
+   * purpose: a co-tenant (e.g. an ML sidecar whose framework never releases
+   * grown VRAM) can hold ~all of the card while `percent` reads near-zero, so
+   * memory is the number that actually predicts an out-of-memory neighbour.
+   * Empty when the vendor CLI doesn't report VRAM.
+   */
+  readonly gpuMemoryLabel = computed(() => {
+    const g = this.gpu();
+    if (!g || g.memoryUsedBytes === undefined || g.memoryTotalBytes === undefined) return '';
+    return `${formatBytes(g.memoryUsedBytes)} / ${formatBytes(g.memoryTotalBytes)}`;
+  });
+  readonly gpuMemoryRatio = computed(() => {
+    const g = this.gpu();
+    if (!g || !g.memoryTotalBytes || g.memoryUsedBytes === undefined) return 0;
+    return Math.min(1, Math.max(0, g.memoryUsedBytes / g.memoryTotalBytes));
+  });
+  /** Neutral grey fill only when NEITHER utilisation nor VRAM is available. */
   readonly gpuNeutral = computed(() => {
     const g = this.gpu();
-    return !!g && g.percent === undefined;
+    return !!g && g.percent === undefined && this.gpuMemoryLabel() === '';
   });
 }

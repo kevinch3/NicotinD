@@ -44,7 +44,7 @@ import { normalizeArtistForGrouping, albumGroupKey } from '../album-grouping.js'
 import { splitOnDelimiters } from '../artist-split.js';
 import { upsertArtistIdentity } from '../artist-identity-store.js';
 import { artistIdFor } from '../library-scanner.js';
-import { MusicBrainzClient, MB_USER_AGENT } from '../musicbrainz-client.js';
+import { ListenBrainzClient, normalizePopularity } from '../listenbrainz-client.js';
 import { getMbid, upsertMbid } from '../mbid-store.js';
 import { upsertArtistMeta } from '../artist-meta-store.js';
 import type { ArtistInfoResult, GenreQuery, GenreResult } from '@nicotind/core';
@@ -54,7 +54,11 @@ import {
   notPermanentlyFailedClause,
 } from './analysis-failures.js';
 
-/** A licence resolved for one song, with its provenance. */
+/** A licence resolved for one song, with its provenance.
+ *
+ * `'musicbrainz'` is retained in the union for backward compatibility — it was a
+ * historical `licence_source` value before the MB lookup was removed (issue
+ * #329) — but the resolver no longer produces it; only `'tag'` is minted here. */
 export interface LicenceLookupResult {
   code: string;
   source: 'tag' | 'musicbrainz';
@@ -92,7 +96,17 @@ export interface EnrichmentContext {
   ffmpegAvailable: () => boolean;
   readTags: (
     abs: string,
-  ) => Promise<{ bpm?: number; genre?: string; key?: string; licence?: string } & FeatureTags>;
+    // `mbRecordingId` is read-only here (the popularity task keys ListenBrainz on
+    // it, issue #220); it is not part of the writeTags shape below.
+  ) => Promise<
+    {
+      bpm?: number;
+      genre?: string;
+      key?: string;
+      licence?: string;
+      mbRecordingId?: string;
+    } & FeatureTags
+  >;
   writeTags: (
     abs: string,
     tags: { bpm?: number; genre?: string; key?: string; licence?: string } & FeatureTags,
@@ -118,16 +132,24 @@ export interface EnrichmentContext {
   /** Returns the suggested genre for an artist, or null when unavailable. */
   lookupGenre: (artist: string) => Promise<string | null>;
   /**
-   * Resolve a rights/licence code for one song — the file's own LICENSE/COPYRIGHT
-   * tag first (zero network), then a MusicBrainz `license` url-relation. Returns
-   * null when nothing is confidently found (the common case; MB coverage is
-   * sparse). Never throws — a lookup blip degrades to null.
+   * Resolve a rights/licence code for one song from the file's own
+   * LICENSE/COPYRIGHT tag (zero network). Returns null when the file carries no
+   * licence tag (the common case). Never throws — a read blip degrades to null.
+   *
+   * The MusicBrainz `license` url-relation lookup that used to follow the tag
+   * read was removed in issue #329: a read-only prod sweep found it had
+   * succeeded 0 times across 14.5k songs while spending the shared 1-req/sec MB
+   * budget on every new download's 3 attempts. Every real licence value comes
+   * from tags or the manual curator set.
    */
-  lookupLicence: (song: {
-    abs: string;
-    artist: string;
-    title: string;
-  }) => Promise<LicenceLookupResult | null>;
+  lookupLicence: (song: { abs: string }) => Promise<LicenceLookupResult | null>;
+  /**
+   * Batched ListenBrainz listen-count lookup for the popularity signal (issue
+   * #220). Keyed by recording MBID; a `null` value means ListenBrainz confirmed
+   * it has no data (a confident miss, ledgered), an **absent** key means the
+   * request failed transiently (retry next window, do not ledger). Never throws.
+   */
+  lookupPopularity: (recordingMbids: string[]) => Promise<Map<string, number | null>>;
   /** Returns a Spotify portrait url for an artist name, or null. Null when Spotify
    *  isn't configured — the artist-image task then relies on Lidarr alone. */
   lookupArtistImageSpotify: ((name: string) => Promise<string | null>) | null;
@@ -403,7 +425,7 @@ export function createEnrichmentContext(deps: {
   lookupGenreForRelease?: ((query: GenreQuery) => Promise<GenreResult | null>) | null;
   /** Sidecar client, or null when NICOTIND_ANALYSIS_URL isn't configured. */
   audioFeaturesClient?: AudioFeaturesClient | null;
-  /** Data dir — locates the MusicBrainz cache file for licence lookups. */
+  /** Data dir — locates the ListenBrainz popularity cache (issue #220). */
   dataDir?: string;
 }): EnrichmentContext {
   const featuresClient = deps.audioFeaturesClient ?? null;
@@ -431,37 +453,47 @@ export function createEnrichmentContext(deps: {
     lookupArtistInfo: deps.lookupArtistInfo ?? null,
     lookupGenreForRelease: deps.lookupGenreForRelease ?? null,
     resolveArtistIdentity: deps.lidarr ? makeLidarrArtistIdentityResolver(deps.lidarr) : null,
-    lookupLicence: makeLicenceLookup(deps.dataDir ?? null),
+    lookupLicence: makeLicenceLookup(),
+    lookupPopularity: makePopularityLookup(deps.dataDir ?? null),
     fileExists: (abs) => existsSync(abs),
   };
 }
 
 /**
- * Build a licence resolver: the file's own LICENSE/COPYRIGHT tag first (zero
- * network), then a MusicBrainz `license` url-relation (best-effort, only when a
- * dataDir is available to cache MB responses). The MB client is created once per
- * context so its 1-req/sec rate limit + on-disk cache are shared across a run.
+ * Build a licence resolver: the file's own LICENSE/COPYRIGHT tag (zero network).
+ *
+ * The MusicBrainz `license` url-relation lookup that used to follow the tag read
+ * was removed in issue #329 — a read-only prod sweep found it had succeeded 0
+ * times across 14.5k songs (every real value came from tags applied at scan
+ * time or the manual curator set) while spending the shared 1-req/sec MB budget
+ * on up to 3 attempts per new download. Dropping it keeps the tag path (which
+ * produced the data) and reclaims that budget for the lookups that do work
+ * (`library_mbids` resolution, artist-info).
  */
-function makeLicenceLookup(
-  dataDir: string | null,
-): (song: { abs: string; artist: string; title: string }) => Promise<LicenceLookupResult | null> {
-  const mb = dataDir
-    ? new MusicBrainzClient(join(dataDir, 'musicbrainz-cache.json'), MB_USER_AGENT)
-    : null;
+export function makeLicenceLookup(): (song: {
+  abs: string;
+}) => Promise<LicenceLookupResult | null> {
   return async (song) => {
     const tags = await readAudioTags(song.abs).catch(() => null);
     if (tags?.licence) return { code: tags.licence, source: 'tag' };
-    if (!mb) return null;
-    const code = await mb
-      .getLicence({
-        mbRecordingId: tags?.mbRecordingId,
-        mbReleaseId: tags?.mbReleaseId,
-        artist: song.artist,
-        title: song.title,
-      })
-      .catch(() => null);
-    return code ? { code, source: 'musicbrainz' } : null;
+    return null;
   };
+}
+
+/**
+ * Build a batched ListenBrainz popularity lookup (issue #220). The client is
+ * created once per context so its on-disk cache + 1-req/sec rate limit are
+ * shared across a run. Needs no credentials — ListenBrainz is MBID-native and
+ * open. Never throws: a lookup blip degrades to an empty map, which the task
+ * reads as "transient, retry next window" rather than a confident miss.
+ */
+export function makePopularityLookup(
+  dataDir: string | null,
+): (recordingMbids: string[]) => Promise<Map<string, number | null>> {
+  const client = new ListenBrainzClient({
+    cacheFile: dataDir ? join(dataDir, 'listenbrainz-cache.json') : undefined,
+  });
+  return (mbids) => client.getListenCounts(mbids).catch(() => new Map<string, number | null>());
 }
 
 const bpmTask: EnrichmentTask = {
@@ -1166,7 +1198,7 @@ const licenceTask: EnrichmentTask = {
       const abs = resolveSongAbsPath(ctx.musicDir, song.path);
       if (!ctx.fileExists(abs)) continue;
       try {
-        const res = await ctx.lookupLicence({ abs, artist: song.artist, title: song.title });
+        const res = await ctx.lookupLicence({ abs });
         if (!res) {
           noteItemFailure(
             db,
@@ -1183,7 +1215,7 @@ const licenceTask: EnrichmentTask = {
           song.id,
         ]);
         // Mirror to the file tag so a rescan reads it back. A 'tag' source already
-        // carries it, but the write is idempotent; an 'musicbrainz' source needs it.
+        // carries it, but the write is idempotent (and future non-tag sources need it).
         await ctx.writeTags(abs, { licence: res.code }).catch(() => false);
         clearAnalysisFailure(db, song.id, 'licence');
         applied++;
@@ -1524,85 +1556,127 @@ const genreAudioTask: EnrichmentTask = {
 };
 
 // ---------------------------------------------------------------------------
-// popularityTask — issue #220 (popularity / hotness signal per song).
-//
-// LEFT COMMENTED OUT ON PURPOSE. The task *shape* below mirrors licenceTask
-// exactly (default-on, `WHERE popularity IS NULL`, ledgered-not-tallied on a
-// confident miss, mirrored to a file tag, satisfiedColumnSql for landing), so
-// wiring it up later is mechanical. What is *not* settled — and what a shipped
-// implementation would have to commit to — are the open questions the issue
-// itself flags, each of which changes the schema or the scoring:
-//
-//   1. Source of the number. ListenBrainz is MBID-native (we already cache MBIDs
-//      in `library_mbids`) and needs no creds, so it is the lowest-friction first
-//      source — but Spotify's 0–100 `Track.popularity` is the industry signal and
-//      would reuse the existing spotify plugin creds via an MBID→spotify-id hop.
-//      Picking one is a product call, not a mechanical one.
-//   2. Storage shape. A single normalized 0–1 `library_songs.popularity` scalar
-//      (+ `popularity_source`, COALESCE-preserved like `licence`) vs. keeping raw
-//      per-source values plus a derived blend. That is an additive migration
-//      (`db.ts`) that shouldn't land speculatively before the source is chosen.
-//   3. Whether local/global play-counts feed the SAME column or a separate
-//      `internal_popularity` axis (a no-network complementary signal).
-//   4. Radio scoring: add popularity as a weighted axis in `scoreSimilarity` /
-//      `toOrderable`, or use it only in curated-playlist recipe `where`/`sort`.
-//   5. Album/artist aggregate: max-track vs. mean (mirror `unanimousLicence`, or
-//      a numeric aggregate).
-//
-// Reference skeleton (enable once 1–5 are decided; also add `'popularity'` to the
-// core `ProcessingTaskId` union, the `library_songs.popularity` column + a
-// `notPermanentlyFailedClause('popularity')` ledger, a `lookupPopularity`
-// primitive on EnrichmentContext, and the ENRICHMENT_TASKS registry entry):
-//
-// const popularityTask: EnrichmentTask = {
-//   id: 'popularity',
-//   label: 'Popularity / hotness',
-//   satisfiedColumnSql: 'popularity IS NOT NULL',
-//   available: (ctx) => ctx.lookupPopularity ? true : 'no popularity source configured',
-//   countPending: (db) =>
-//     Number(
-//       (
-//         db
-//           .query<{ n: number }, []>(
-//             `SELECT COUNT(*) AS n FROM library_songs WHERE popularity IS NULL` +
-//               notPermanentlyFailedClause('popularity'),
-//           )
-//           .get() ?? { n: 0 }
-//       ).n,
-//     ),
-//   run: async (db, ctx, limit) => {
-//     const rows = db
-//       .query<SongRow, [number]>(
-//         `SELECT id, path, artist, title, size FROM library_songs WHERE popularity IS NULL` +
-//           notPermanentlyFailedClause('popularity') + ` ORDER BY created DESC LIMIT ?`,
-//       )
-//       .all(limit);
-//     const labels: string[] = [];
-//     const tally: FailureTally = { failed: 0, sample: null };
-//     let applied = 0;
-//     for (const song of rows) {
-//       try {
-//         const res = await ctx.lookupPopularity!(song); // MBID-first; 0–1 scalar + source
-//         if (res == null) {
-//           // A confident "no listen data" is ledgered-not-tallied, exactly like a
-//           // licence miss, so the fill retries only on new evidence (re-download).
-//           noteItemFailure(db, tally, song, 'popularity', new NoConfidentResultError('no popularity'));
-//           continue;
-//         }
-//         db.run('UPDATE library_songs SET popularity = ?, popularity_source = ? WHERE id = ?', [
-//           res.value, res.source, song.id,
-//         ]);
-//         clearAnalysisFailure(db, song.id, 'popularity');
-//         applied++;
-//         labels.push(`${song.artist} — ${song.title} → ${res.value.toFixed(2)}`);
-//       } catch (err) {
-//         noteItemFailure(db, tally, song, 'popularity', err);
-//       }
-//     }
-//     return { applied, labels, failed: tally.failed, errorSample: tally.sample };
-//   },
-// };
-// ---------------------------------------------------------------------------
+/**
+ * Popularity / hotness (issue #220) — an *extrinsic* signal, unlike every other
+ * task's intrinsic audio/tag data. Sourced from **ListenBrainz** (MBID-native,
+ * no credentials — chosen over Spotify's 0–100 `Track.popularity`, which would
+ * need an MBID→spotify-id hop and the spotify plugin's creds). The number is a
+ * global listen count mapped to a 0–1 scalar by `normalizePopularity`.
+ *
+ * Discipline mirrors `licenceTask`: default-on, `WHERE popularity IS NULL`,
+ * ledgered-not-tallied on a confident miss, never a landing gate. The recording
+ * MBID comes from the file's own tag (`mbRecordingId`) — the same tags-first
+ * rule the rest of the scanner follows, and the reason a song with no MBID tag
+ * is a confident miss rather than a fuzzy name-search (which the codebase
+ * deliberately avoids). Batched: all the pending songs' MBIDs go out in one
+ * `getListenCounts` call, so a large backlog costs a handful of requests, not one
+ * per song.
+ *
+ * **Not mirrored to a file tag** (unlike genre/bpm/licence): popularity is
+ * extrinsic and drifts over time, so it lives only in the DB column and is
+ * preserved across rescans by being absent from the scanner's upsert. Radio
+ * scoring / curated-recipe / album-aggregate consumers are deliberately left as
+ * follow-ups (see docs/popularity.md) — this task ships the signal itself.
+ */
+const popularityTask: EnrichmentTask = {
+  id: 'popularity',
+  label: 'Popularity',
+  satisfiedColumnSql: 'popularity IS NOT NULL',
+  // ListenBrainz needs no credentials, so the source is always "available"; a
+  // song with no recording MBID simply resolves to a confident miss.
+  available: () => true,
+  countPending: (db) =>
+    Number(
+      (
+        db
+          .query<{ n: number }, []>(
+            `SELECT COUNT(*) AS n FROM library_songs WHERE popularity IS NULL${notPermanentlyFailedClause(
+              'popularity',
+            )}`,
+          )
+          .get() ?? { n: 0 }
+      ).n,
+    ),
+  run: async (db, ctx, limit) => {
+    const rows = db
+      .query<SongRow, [number]>(
+        `SELECT id, path, artist, title, size FROM library_songs WHERE popularity IS NULL${notPermanentlyFailedClause(
+          'popularity',
+        )} ORDER BY created DESC LIMIT ?`,
+      )
+      .all(limit);
+
+    const labels: string[] = [];
+    const tally: FailureTally = { failed: 0, sample: null };
+    let applied = 0;
+
+    // Resolve each pending song's recording MBID from its tags, grouping songs
+    // that share one (duplicates / same recording) so the batch stays minimal.
+    const songsByMbid = new Map<string, SongRow[]>();
+    for (const song of rows) {
+      const abs = resolveSongAbsPath(ctx.musicDir, song.path);
+      if (!ctx.fileExists(abs)) continue;
+      const tags = await ctx.readTags(abs).catch(() => null);
+      const mbid = tags?.mbRecordingId;
+      if (!mbid) {
+        // No recording MBID → nothing to look up. A confident miss, ledgered
+        // (not tallied): the file must be re-tagged/re-downloaded to change this,
+        // which resets the ledger. Retrying every window would just re-read tags.
+        noteItemFailure(
+          db,
+          tally,
+          song,
+          'popularity',
+          new NoConfidentResultError('no recording MBID'),
+        );
+        continue;
+      }
+      const group = songsByMbid.get(mbid);
+      if (group) group.push(song);
+      else songsByMbid.set(mbid, [song]);
+    }
+
+    const mbids = [...songsByMbid.keys()];
+    const counts = mbids.length > 0 ? await ctx.lookupPopularity(mbids) : new Map();
+    for (const [mbid, songs] of songsByMbid) {
+      const count = counts.get(mbid);
+      for (const song of songs) {
+        try {
+          if (count === undefined) {
+            // Transient failure (429 / outage): NOT ledgered, so a misconfig or a
+            // ListenBrainz hiccup can't permanently exclude the song — it retries
+            // next window (mirrors the sidecar 404/503 un-ledgered rule).
+            continue;
+          }
+          if (count === null) {
+            // ListenBrainz confirmed it has no data for this recording — a
+            // confident miss, ledgered-not-tallied like a licence miss.
+            noteItemFailure(
+              db,
+              tally,
+              song,
+              'popularity',
+              new NoConfidentResultError('no listen data'),
+            );
+            continue;
+          }
+          const value = normalizePopularity(count);
+          db.run('UPDATE library_songs SET popularity = ?, popularity_source = ? WHERE id = ?', [
+            value,
+            'listenbrainz',
+            song.id,
+          ]);
+          clearAnalysisFailure(db, song.id, 'popularity');
+          applied++;
+          labels.push(`${song.artist} — ${song.title} → ${value.toFixed(2)}`);
+        } catch (err) {
+          noteItemFailure(db, tally, song, 'popularity', err);
+        }
+      }
+    }
+    return { applied, labels, failed: tally.failed, errorSample: tally.sample };
+  },
+};
 
 /** All registered enrichment tasks, in run order. */
 export const ENRICHMENT_TASKS: readonly EnrichmentTask[] = [
@@ -1617,7 +1691,7 @@ export const ENRICHMENT_TASKS: readonly EnrichmentTask[] = [
   licenceTask,
   genreDiscogsTask,
   genreAudioTask,
-  // popularityTask, // issue #220 — enable once source/storage/scoring are decided (see above)
+  popularityTask,
 ];
 
 export function getTask(id: ProcessingTaskId): EnrichmentTask | undefined {

@@ -208,6 +208,17 @@ Launch tasks:
   has **no `satisfiedColumnSql`** and is never a landing gate. One-shot seed:
   `scripts/resolve-artist-identity.ts` (dry-run default, `--apply`).
 
+- **popularity** (issue #220) — `WHERE popularity IS NULL`, always available (ListenBrainz
+  needs no credentials). The first *extrinsic* signal: it reads each pending song's
+  `mbRecordingId` tag, **batches** all the MBIDs into one `ctx.lookupPopularity`
+  (`ListenBrainzClient` → `POST /1/popularity/recording`), and writes a log-normalized 0–1
+  `library_songs.popularity` + `popularity_source='listenbrainz'`. Three misses are distinct:
+  no-MBID-tag and LB-confirmed-no-data are confident misses ledgered-not-tallied
+  (`NoConfidentResultError`); a transient 429/outage (the MBID absent from the response map)
+  is **not** ledgered so it retries. **Not tag-mirrored** (extrinsic + drifts), so the scanner
+  omits it from its upsert entirely and it survives rescans without a COALESCE. Default-on,
+  **never a landing gate**. Full detail in [popularity.md](popularity.md).
+
 ### Durability vs. the periodic full scan
 
 The scanner runs frequent full scans. A plain `col = excluded.col` upsert would

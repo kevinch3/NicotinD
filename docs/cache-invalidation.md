@@ -216,7 +216,7 @@ prior entry compared against `library_songs.id`. `saveScanCache` also clears `or
 writing an entry is itself proof the file is live, so correctness no longer depends on the pruner's
 unmark pass running before its sweep.
 
-### `acquisitions` is **not** pruned — and measuring it changed the work
+### `acquisitions` **is** pruned (issue #319) — but only after the repoint recovers live provenance
 
 The provenance side-table (method / source / time per download) is surfaced *per track*, so an
 orphaned row has no UI surface. Pruning looks obviously right, and that is the trap. Of the 4,586
@@ -241,8 +241,11 @@ different file, which is worse than the missing provenance it replaces:
 `library-transcode.ts` already does exactly this when lossless→opus changes the path; the gap was
 that nothing covered a *replacement* that wasn't a transcode.
 
-**Left open (a product call, not a technical one):** whether download provenance should outlive the
-file at all. Nothing reads an orphaned row today, but "you downloaded this from X in March, then
-deleted it" is a history someone may want. The repoint above is the prerequisite either way — it is
-what makes a future `acquisitions` sweep safe. For scale, 3,696 of 14,580 live songs already carry no
-provenance row at all, so the surface already tolerates absence.
+**The product call (issue #319): prune.** Nothing reads an orphaned row — provenance is surfaced only
+per-track and the file is gone — and 3,696 of 14,580 live songs already carry no provenance row at
+all, so the surface tolerates absence. `acquisitions` therefore joins `ORPHAN_TABLES`
+(`{ table: 'acquisitions', songIdColumn: 'relative_path', references: 'path' }`) with an additive
+`orphaned_at` column, swept by the same mark → grace → sweep pass. The repoint above is what makes
+this safe: it runs *first* in the daily pass, so the 17 orphans that are the only surviving
+provenance for a live song are recovered onto that song before anything is marked, and only
+genuinely-deleted rows ever reach the 30-day sweep.

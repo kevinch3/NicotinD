@@ -6,6 +6,7 @@ import {
   ENRICHMENT_TASKS,
   getTask,
   isWholeTokenSubsequence,
+  makeLicenceLookup,
   makeLidarrArtistIdentityResolver,
   pickMbidHit,
   resolveMbidViaLidarr,
@@ -82,6 +83,7 @@ function ctx(overrides: Partial<EnrichmentContext> = {}): EnrichmentContext {
     lookupGenreForRelease: null,
     resolveArtistIdentity: null,
     lookupLicence: async () => null,
+    lookupPopularity: async () => new Map(),
     fileExists: () => true,
     ...overrides,
   };
@@ -1444,7 +1446,7 @@ describe('artist-identity task', () => {
 describe('licence task', () => {
   const licence = getTask('licence')!;
 
-  it('is always available (tag reads need nothing; MB is a bonus)', () => {
+  it('is always available (tag reads need nothing)', () => {
     expect(licence.available(ctx())).toBe(true);
   });
 
@@ -1494,6 +1496,117 @@ describe('licence task', () => {
       .query<{ licence: string | null }, [string]>('SELECT licence FROM library_songs WHERE id = ?')
       .get('a');
     expect(row?.licence).toBeNull();
+  });
+});
+
+describe('makeLicenceLookup (issue #329 — tag-only, no MusicBrainz)', () => {
+  it('takes no dependencies and cannot reach the network', () => {
+    // The resolver used to accept a dataDir to build a MusicBrainzClient. #329
+    // removed the MB step (0 hits across 14.5k prod songs), so it now takes zero
+    // args — there is no code path left that could construct a network client.
+    expect(makeLicenceLookup).toHaveLength(0);
+  });
+
+  it('returns null for a file with no licence tag instead of falling back to the network', async () => {
+    const lookup = makeLicenceLookup();
+    // An unreadable/absent path makes readAudioTags reject; pre-#329 this would
+    // have degraded to the MB artist+title search. It must now simply be null.
+    const res = await lookup({ abs: '/does/not/exist/never-a-real-file.opus' });
+    expect(res).toBeNull();
+  });
+});
+
+describe('popularity task (issue #220)', () => {
+  const pop = getTask('popularity')!;
+
+  it('is always available (ListenBrainz needs no credentials)', () => {
+    expect(pop.available(ctx())).toBe(true);
+  });
+
+  it('counts only songs with a NULL popularity', () => {
+    seedSong('a');
+    seedSong('b');
+    db.run("UPDATE library_songs SET popularity = 0.5 WHERE id = 'b'");
+    expect(pop.countPending(db)).toBe(1);
+  });
+
+  it('fills a normalized popularity + source from the ListenBrainz listen count', async () => {
+    seedSong('a', { artist: 'Radiohead', title: 'Creep' });
+    const c = ctx({
+      fileExists: () => true,
+      readTags: async () => ({ mbRecordingId: 'mbid-1' }) as never,
+      // 1,000 listens → log10(1001)/log10(1e6) ≈ 0.5 on the documented log scale.
+      lookupPopularity: async (mbids) => new Map(mbids.map((m) => [m, 1000])),
+    });
+    const res = await pop.run(db, c, 25);
+    expect(res.applied).toBe(1);
+    const row = db
+      .query<{ popularity: number | null; popularity_source: string | null }, [string]>(
+        'SELECT popularity, popularity_source FROM library_songs WHERE id = ?',
+      )
+      .get('a');
+    expect(row?.popularity).toBeCloseTo(0.5, 2);
+    expect(row?.popularity_source).toBe('listenbrainz');
+    expect(pop.countPending(db)).toBe(0);
+  });
+
+  it('batches one lookup for many songs (does not call per song)', async () => {
+    seedSong('a');
+    seedSong('b');
+    let calls = 0;
+    const c = ctx({
+      fileExists: () => true,
+      readTags: async () => ({ mbRecordingId: 'shared-mbid' }) as never,
+      lookupPopularity: async (mbids) => {
+        calls++;
+        return new Map(mbids.map((m) => [m, 500_000]));
+      },
+    });
+    await pop.run(db, c, 25);
+    // Both songs share a recording MBID and go out in a single call.
+    expect(calls).toBe(1);
+  });
+
+  it('ledgers a "no recording MBID" miss without tallying it, dropping it from pending', async () => {
+    seedSong('a');
+    const c = ctx({ fileExists: () => true, readTags: async () => ({}) as never });
+    for (let i = 0; i < MAX_ANALYSIS_ATTEMPTS; i++) {
+      const res = await pop.run(db, c, 25);
+      expect(res.applied).toBe(0);
+      expect(res.failed).toBe(0); // a structural "can't resolve" is not a run failure
+    }
+    expect(pop.countPending(db)).toBe(0);
+  });
+
+  it('ledgers a confirmed "no listen data" (null count) miss the same way', async () => {
+    seedSong('a');
+    const c = ctx({
+      fileExists: () => true,
+      readTags: async () => ({ mbRecordingId: 'mbid-x' }) as never,
+      lookupPopularity: async (mbids) => new Map(mbids.map((m) => [m, null])),
+    });
+    for (let i = 0; i < MAX_ANALYSIS_ATTEMPTS; i++) {
+      const res = await pop.run(db, c, 25);
+      expect(res.failed).toBe(0);
+    }
+    expect(pop.countPending(db)).toBe(0);
+  });
+
+  it('never ledgers a transient lookup failure, so it retries indefinitely', async () => {
+    seedSong('a');
+    // An MBID absent from the returned map = transient (429 / outage), distinct
+    // from a null value (confirmed no data). A misconfig must not permanently
+    // exclude the song, so it stays pending across many passes.
+    const c = ctx({
+      fileExists: () => true,
+      readTags: async () => ({ mbRecordingId: 'mbid-x' }) as never,
+      lookupPopularity: async () => new Map(),
+    });
+    for (let i = 0; i < MAX_ANALYSIS_ATTEMPTS + 2; i++) {
+      const res = await pop.run(db, c, 25);
+      expect(res.applied).toBe(0);
+    }
+    expect(pop.countPending(db)).toBe(1);
   });
 });
 
@@ -1745,7 +1858,7 @@ describe('MBID resolution helpers (issue #211)', () => {
 });
 
 describe('registry', () => {
-  it('exposes bpm, genre, key, energy, audio-features, artist-image, artist-info, artist-identity, licence, genre-audio and genre-discogs tasks', () => {
+  it('exposes every enrichment task id', () => {
     expect(ENRICHMENT_TASKS.map((t) => t.id).sort()).toEqual([
       'artist-identity',
       'artist-image',
@@ -1758,6 +1871,7 @@ describe('registry', () => {
       'genre-discogs',
       'key',
       'licence',
+      'popularity',
     ]);
   });
 });

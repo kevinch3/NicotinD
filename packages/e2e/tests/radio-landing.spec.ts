@@ -3,8 +3,8 @@ import { FIXTURE } from '../helpers';
 
 /**
  * The post-login landing (route '') is the radio/mood starter: a resume shortcut
- * for the last track plus one-tap vibe presets. The /search page is reachable
- * from the desktop top-nav Search link and the mobile bottom-nav Search tab.
+ * for the last track plus one-tap vibe presets. The /acquire page (nav "Acquire",
+ * formerly /search) is reachable from the desktop top-nav and mobile bottom-nav.
  * Acquisition stays default-off in e2e.
  */
 test.describe('radio landing', () => {

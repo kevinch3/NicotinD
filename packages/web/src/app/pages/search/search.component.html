@@ -9,7 +9,7 @@
         [ngModelOptions]="{ standalone: true }"
         (focus)="searchFocused.set(true)"
         (blur)="onSearchBlur()"
-        placeholder="Search music or paste a link…"
+        [placeholder]="'acquire.placeholder' | t"
         data-testid="search-input"
         class="w-full px-5 py-4 text-lg rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-600 transition"
       />
@@ -19,7 +19,7 @@
         data-testid="search-submit"
         class="absolute right-3 top-1/2 -translate-y-1/2 px-4 py-2 rounded-lg bg-zinc-700 text-zinc-200 text-sm font-medium hover:bg-zinc-600 transition disabled:opacity-50"
       >
-        {{ loading() ? 'Searching...' : 'Search' }}
+        {{ (loading() ? 'acquire.searching' : 'acquire.search') | t }}
       </button>
 
       @if (searchFocused() && search.history().length > 0 && !search.query()) {
@@ -27,12 +27,12 @@
           class="absolute top-full left-0 right-0 mt-1 bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden z-10"
         >
           <div class="flex items-center justify-between px-4 py-2 border-b border-zinc-800">
-            <span class="text-xs text-zinc-500 font-medium">Recent searches</span>
+            <span class="text-xs text-zinc-500 font-medium">{{ 'acquire.recentSearches' | t }}</span>
             <button
               (click)="search.clearHistory()"
               class="text-xs text-zinc-600 hover:text-zinc-400 transition"
             >
-              Clear all
+              {{ 'acquire.clearAll' | t }}
             </button>
           </div>
           @for (h of search.history(); track h) {
@@ -61,9 +61,9 @@
       ></span>
       <span class="text-xs text-zinc-500" data-testid="source-status">
         @if (availableSources().length > 0) {
-          Sources: {{ availableSources().join(' · ') }}
+          {{ 'acquire.sources' | t: { list: availableSources().join(' · ') } }}
         } @else {
-          No acquisition sources enabled
+          {{ 'acquire.noSources' | t }}
         }
       </span>
     </div>
@@ -266,7 +266,7 @@
       <span
         class="inline-block w-5 h-5 border-2 border-zinc-600 border-t-zinc-300 rounded-full animate-spin"
       ></span>
-      <p class="text-zinc-500 text-sm mt-3">Searching...</p>
+      <p class="text-zinc-500 text-sm mt-3">{{ 'acquire.searching' | t }}</p>
     </div>
   }
 
@@ -276,7 +276,9 @@
     <section class="space-y-6 mb-8">
       @if (catalog()!.albums.length > 0) {
         <div>
-          <h2 class="text-xs font-semibold uppercase tracking-wide text-zinc-500 mb-3">Albums</h2>
+          <h2 class="text-xs font-semibold uppercase tracking-wide text-zinc-500 mb-3">
+            {{ 'acquire.albums' | t }}
+          </h2>
           <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
             @for (album of catalog()!.albums; track album.foreignAlbumId) {
               <button
@@ -369,7 +371,9 @@
       }
       @if (catalog()!.artists.length > 0) {
         <div>
-          <h2 class="text-xs font-semibold uppercase tracking-wide text-zinc-500 mb-3">Artists</h2>
+          <h2 class="text-xs font-semibold uppercase tracking-wide text-zinc-500 mb-3">
+            {{ 'acquire.artists' | t }}
+          </h2>
           <div class="flex flex-wrap gap-2">
             @for (artist of catalog()!.artists; track artist.mbid) {
               <button
@@ -385,7 +389,7 @@
     </section>
   }
 
-  <!-- Search is acquisition-only (issue #227): finding music you ALREADY own
+  <!-- Acquire is acquisition-only (issue #227): finding music you ALREADY own
        lives in Library/Radio, not here. So when the user can't acquire — either
        a listener, or acquisition disabled deployment-wide (#235) — the page has
        no purpose; point them at their Library instead of showing a blank screen.
@@ -393,11 +397,12 @@
   @if (!auth.canAcquire()) {
     <section class="mt-10 text-center" data-testid="search-acquisition-off">
       <p class="text-sm" style="color: var(--theme-text-primary)">
-        Search is for finding and adding new music.
+        {{ 'acquire.offTitle' | t }}
       </p>
       <p class="mt-1 text-sm" style="color: var(--theme-text-muted)">
-        Browse and play what you already have in your
-        <a routerLink="/library" class="underline hover:no-underline">Library</a>.
+        {{ 'acquire.offBrowse' | t }}
+        <a routerLink="/library" class="underline hover:no-underline">{{ 'nav.library' | t }}</a
+        >.
       </p>
     </section>
   }
@@ -407,7 +412,9 @@
        with a single Get action. No "primary network" / "Also on…" hierarchy. -->
   @if (auth.canAcquire() && !loading() && search.query().trim() && hasBlendedResults()) {
     <section class="mt-4" data-testid="results">
-      <h2 class="text-xs font-semibold uppercase tracking-wide text-zinc-500 mb-2">Results</h2>
+      <h2 class="text-xs font-semibold uppercase tracking-wide text-zinc-500 mb-2">
+        {{ 'acquire.results' | t }}
+      </h2>
       @if (plugins.hasSpotify() && !plugins.hasSpotdl() && search.spotify().length > 0) {
         <p class="text-xs text-amber-500 mb-2" data-testid="spotify-needs-spotdl">
           Spotify matches open in Spotify — enable the spotDL plugin to download them.
@@ -447,7 +454,7 @@
               }
             </div>
             @if (blendedState(c) === 'done') {
-              <span class="shrink-0 text-xs text-emerald-400">Added to library ✓</span>
+              <span class="shrink-0 text-xs text-emerald-400">{{ 'acquire.added' | t }}</span>
             } @else {
               <button
                 (click)="getBlended(c)"
@@ -458,7 +465,7 @@
                 @if (blendedState(c) === 'working') {
                   {{ blendedPercent(c) > 0 ? blendedPercent(c) + '%' : '…' }}
                 } @else {
-                  Get
+                  {{ 'acquire.get' | t }}
                 }
               </button>
             }
@@ -864,8 +871,8 @@
   <!-- Empty state -->
   @if (search.networkState() === 'idle' && !loading() && !linkIntent()) {
     <div class="text-center py-20">
-      <p class="text-zinc-600 text-lg">Search for music to get started</p>
-      <p class="text-zinc-700 text-sm mt-1">Results from your enabled sources will appear here</p>
+      <p class="text-zinc-600 text-lg">{{ 'acquire.emptyTitle' | t }}</p>
+      <p class="text-zinc-700 text-sm mt-1">{{ 'acquire.emptySubtitle' | t }}</p>
     </div>
   }
 

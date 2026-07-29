@@ -439,6 +439,11 @@ export function applySchema(db: Database): void {
   `);
   db.run(`CREATE INDEX IF NOT EXISTS idx_acquisitions_method ON acquisitions (method)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_acquisitions_started ON acquisitions (started_at DESC)`);
+  // Orphan-prune stamp (issue #319): an acquisition row keyed on a path whose
+  // song is gone is unreachable through the per-track provenance UI. The daily
+  // orphan pass marks→grace→sweeps them, after `repointOrphanedAcquisitions`
+  // has already recovered the ones that are the only provenance for a live song.
+  addColumnIfMissing(db, 'acquisitions', 'orphaned_at', 'INTEGER');
 
   // Watchlist: albums the user asked to auto-acquire. A background poller
   // (WatchlistService) periodically hunts each `watching` row and, when a
@@ -529,6 +534,30 @@ export function applySchema(db: Database): void {
     )
   `);
   db.run(`CREATE INDEX IF NOT EXISTS idx_paired_devices_user ON paired_devices (user_id)`);
+
+  // MCP agent tokens (issue #232): a scoped, revocable bearer an external
+  // LLM/agent uses to curate the library via /api/mcp. Only the sha256 HASH of
+  // the token is stored (a leak of this table never leaks a live token — a
+  // stronger posture than pairing_tokens' raw storage, justified because these
+  // are long-lived). The effective role is capped at `refiner` regardless of
+  // the owner's role, so an admin who mints one does NOT get an admin agent.
+  // Deleting/`revoked_at`-stamping the row is the revocation mechanism, enforced
+  // on every request (the token is looked up by hash each call).
+  db.run(`
+    CREATE TABLE IF NOT EXISTS agent_tokens (
+      id           TEXT    PRIMARY KEY,
+      user_id      TEXT    NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      name         TEXT    NOT NULL,
+      scope        TEXT    NOT NULL DEFAULT 'refiner:curate',
+      token_hash   TEXT    NOT NULL,
+      created_at   INTEGER NOT NULL,
+      last_used_at INTEGER,
+      expires_at   INTEGER,
+      revoked_at   INTEGER
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_agent_tokens_user ON agent_tokens (user_id)`);
+  db.run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_tokens_hash ON agent_tokens (token_hash)`);
 
   // Canonical library tables — populated by the native LibraryScanner. The UI
   // reads exclusively from these; the scanner mints stable ids and groups
@@ -687,11 +716,20 @@ export function applySchema(db: Database): void {
     // enrichment task (WHERE licence IS NULL) keeps trying to resolve it.
     'licence TEXT',
     'licence_source TEXT',
+    // Extrinsic popularity (issue #220): a 0–1 scalar derived from a global
+    // listen count, + its provenance. Unlike genre/bpm/licence this is NOT read
+    // from file tags — it is a network-only signal — so the scanner never writes
+    // it and it survives rescans by simply being absent from the upsert. Filled
+    // by the `popularity` enrichment task (`popularity_source` ∈ {listenbrainz});
+    // a NULL means unknown, so the task (WHERE popularity IS NULL) keeps trying.
+    'popularity REAL',
+    'popularity_source TEXT',
   ]) {
     const [name, ...decl] = col.split(' ');
     addColumnIfMissing(db, 'library_songs', name, decl.join(' '));
   }
   db.run(`CREATE INDEX IF NOT EXISTS idx_library_songs_licence ON library_songs(licence)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_library_songs_popularity ON library_songs(popularity)`);
   // "Landed" timestamp (epoch ms) — NULL means the song is *quarantined*: it has
   // been scanned into the DB (so the windowed enrichment tasks can operate on it)
   // but is hidden from every library listing until its required processing steps

@@ -123,6 +123,20 @@ two charts is easy to miss. The line names them and points at the append option.
 this artist's tracks" rather than silently looking unchanged — clearing the field really would
 strip every genre, and the honest projection is the one that says so.
 
-**Still left open on #222**: the "settle the multi-genre UX" sub-goal — whether the everyday UI
-should surface a weighted multi-genre identity, and how that interacts with the genre filter,
-landing chips and Genres tab. That is a product decision, not a visualization gap.
+## Album genre aggregate — fixed regardless of the UX decision (issue #222)
+
+Separately from the everyday-UX question, the **album-level genre label** had a latent data bug that
+was worth fixing on its own: `library_albums.genre` was computed as `a.genres[0]` in the scanner —
+the first genre of whichever track happened to be processed first, an artifact of scan order rather
+than a property of the album. It is now `mostCommonGenre(a.primaryGenres)` (`library-scanner.ts`):
+the **most-common primary (position-0) genre** across the album's tracks, ties broken toward the
+first-seen genre so it stays deterministic. This is intrinsic to the album (not a UX choice), applies
+to every library, and is unit-tested (`mostCommonGenre`), so it landed ahead of the product
+decisions below.
+
+**Still left open on #222** (product decisions, not visualization gaps): whether the everyday UI
+should surface a weighted multi-genre identity — a listener-facing genre-distribution *strip* on
+artist/album pages reusing the `genre-distribution` endpoint (the proposal's Stage 1), an album
+genre-distribution endpoint mirroring the artist one, and whether position (primary vs extra) should
+enter the genre filter as an opt-in "primary genre only" toggle. Each needs a call on
+listener-vs-admin framing and how it interacts with the genre filter, landing chips and Genres tab.

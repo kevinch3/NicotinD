@@ -189,6 +189,19 @@ Add detail there, not here.
   code (`unanimousLicence`, else NULL) computed in the scanner reduce, so Albums/Compilations filter
   to "entirely Public Domain" (artists stay any-track) + an album-page badge. →
   [docs/music-licence.md](docs/music-licence.md)
+- **Popularity / hotness per song (issue #220)**: the first *extrinsic* signal — a normalized 0–1
+  `library_songs.popularity` (+ `popularity_source`) from **ListenBrainz** (`ListenBrainzClient`,
+  `POST /1/popularity/recording`, MBID-native + credential-free — chosen over Spotify's 0–100 which
+  needs creds + an id hop). `normalizePopularity` log-scales a global listen count
+  (`POPULARITY_REFERENCE`=1e6 ≈ 1.0; a documented, tunable constant). The recording MBID comes from
+  the file's `mbRecordingId` tag (tags-first, no fuzzy name search) — a song without one is a
+  confident miss. The default-on, never-a-gate `popularity` enrichment task (`makePopularityLookup`)
+  **batches** all pending MBIDs into one call and distinguishes three misses: no-MBID + LB-confirmed-
+  no-data are ledgered-not-tallied, a transient 429/outage is **not** ledgered (retries, like the
+  sidecar 404/503 rule). **Not tag-mirrored** (extrinsic + drifts), so the scanner omits it from its
+  upsert and it survives rescans untouched. `backfill-popularity.ts` is the bulk tool. Consumers
+  (radio scoring axis, album/artist aggregate, local-play-count axis, an MBID-mapper coverage
+  fallback) are deliberately **left as follow-ups**. → [docs/popularity.md](docs/popularity.md)
 - **Multi-genre support (primary + extras)**: `splitGenres` parses full tag frames (`;`/`,`/`|`
   split; `&` never; `/` only when every side is a known genre) into `library_song_genres` (position
   0 = primary, mirrored into `library_songs.genre`); the human-gated `library_genre_aliases` side
@@ -227,8 +240,13 @@ Add detail there, not here.
   The **before/after view** now ships too: the modal charts the projected spread live beside the
   current one (pure `lib/genre-projection.ts` — no request), because the append-vs-replace choice
   (#260) was invisible until Save; dropped genres get a named line rather than just a vanished axis.
-  **Left open**: the "settle the multi-genre UX" sub-goal (a product decision).
-  → [docs/genre-radar.md](docs/genre-radar.md)
+  **Album genre aggregate fixed** (intrinsic bug, not the UX question): `library_albums.genre` was
+  `a.genres[0]` (first-processed track's first genre — a scan-order artifact); it is now
+  `mostCommonGenre(a.primaryGenres)` in the scanner — the modal primary genre across the album's
+  tracks, deterministic ties, unit-tested. **Left open** (product decisions): a listener-facing
+  weighted genre-distribution strip on artist/album pages (Stage 1, reuses the endpoint), an album
+  distribution endpoint, and an opt-in primary-only genre filter — the "settle the multi-genre UX"
+  sub-goal. → [docs/genre-radar.md](docs/genre-radar.md)
 - **VA / compilation handling**: `resolveTags` separates `albumArtist` (grouping) from `trackArtist`
   (performer); `classifyFolder` detects compilations via COMPILATION flag, VA albumArtist, or ≥3
   artists sharing one album; dedicated Compilations tab, VA hidden from artists, "Appears On" on
@@ -449,7 +467,11 @@ Add detail there, not here.
   serialises inference, and peak GPU memory is identical too. The real pressure is that TF **never
   releases** grown memory, so the sidecar ratchets from ~85 MiB to **7,631 MiB of an 8,192 MiB card
   after the first inference and holds it while idle** — `gpuBusyPercent` gates on *utilisation*, so
-  it can't protect a co-tenant from that *allocation*. →
+  it can't protect a co-tenant from that *allocation*. **The Admin GPU pill now surfaces VRAM
+  used/total** (`MetricPillComponent` `gpuMemoryLabel`, from `nvidia-smi memory.used/total` already
+  collected in `system-metrics.ts`) so that 93 %-held allocation is *visible* even at ~0 %
+  utilisation — the one code-only piece of #224; the actual cap (a TF `memory_limit` in the GPU
+  image) stays a build/hardware change. →
   [docs/audio-ml-enrichment.md](docs/audio-ml-enrichment.md) "Measured GPU behaviour". A `paused` flag (+ `ProcessingPhase 'paused'`) is the temporary
   runtime halt distinct from `enabled: false`: it skips window/background enrichment but **still
   clears quarantine** (a pause must never leave new music invisible) and `runNow()` overrides it.
@@ -491,12 +513,15 @@ Add detail there, not here.
 - **Unified search**: `GET /api/search?q=` blends local library + parallel slskd network results
   into the one source-agnostic results list. →
   [docs/source-agnostic-acquisition.md](docs/source-agnostic-acquisition.md)
-- **Search is acquisition-only (issue #227)**: the `/search` **page** no longer renders
-  local-library results (the "In your library" album section + local "Songs" finder were removed) —
-  Search = "find/add new music", "find what I own" = Library tabs/filters + Radio. The API still
+- **Acquire page (acquisition-only, issue #227)**: the page (nav **"Acquire"**, route **`/acquire`**,
+  renamed from `/search`) no longer renders local-library results (the "In your library" album
+  section + local "Songs" finder were removed) — Acquire = "find/add new music", "find what I own" =
+  Library tabs/filters + Radio. The route rename ships a `{ path: 'search', redirectTo: 'acquire' }`
+  redirect (query-param-preserving) so every existing `/search?q=…` link/bookmark still resolves; the
+  component keeps its `SearchComponent` name because the backend is still `/api/search`. The API still
   returns `local` (unchanged `LibrarySearchProvider`); a non-acquirer (listener, or #235 off) sees a
   "browse your Library instead" empty state (`data-testid="search-acquisition-off"`). **Left open**
-  (product): page/nav rename + `/search` route rename. →
+  (product): whether a lightweight library-find box belongs on the Library page. →
   [docs/source-agnostic-acquisition.md](docs/source-agnostic-acquisition.md) "Unified search",
   [docs/web-ui.md](docs/web-ui.md)
 - **Deployment-wide acquisition kill-switch (issue #235)**: one authoritative
@@ -547,6 +572,21 @@ Add detail there, not here.
   `requireAdmin`→`requireCurator` on library.ts edit/merge/delete routes); **admin** adds server
   admin. Guards `requireAcquirer`/`requireCurator`/`requireAdmin`; search suppresses only its
   network fan-out for listeners (library results always return). → [docs/roles.md](docs/roles.md)
+- **MCP agent access (issue #232, v1 backend)**: an external LLM/agent can curate a user's library
+  via `/api/mcp`, authorized by a scoped, revocable `agent_tokens` bearer **capped at `refiner`**
+  (`AGENT_EFFECTIVE_ROLE` — an admin who mints one does not get an admin agent). Opaque token
+  (`nca_…`), only its **sha256 hash stored** (a table leak leaks nothing live), revoked by stamping
+  the row (`verifyAgentToken` checks every call). `services/agent-tokens.ts` = `mintAgentToken`
+  (secret returned once) / `verifyAgentToken` / `listAgentTokens` / `revokeAgentToken` (owner-scoped);
+  managed by a curator via `/api/agent-tokens` (`agentTokensRoutes`, JWT+`requireCurator`, audit-
+  logged). The MCP endpoint (`mcpRoutes`, hand-rolled JSON-RPC `initialize`/`tools/list`/`tools/call`,
+  no SDK dep) authenticates with the **agent token, not the JWT**. `checkToolAccess` (pure, tested) is
+  the guard: a `curate` tool needs the `:curate` scope, a `destructive` tool needs `args.confirm ===
+  true`; `dispatchTool` applies it and every write is `recordAudit`-ed. **v1 tools = read +
+  safe-curation** (`search_library`/`get_artist`/`get_album_tracks`/`set_song_licence`); destructive
+  (delete/merge) + acquisition tools are held one slice — the mechanism (confirm+audit+cap) is in
+  place, but deletion is inline `rmSync` in routes and must be **extracted into a shared service**
+  before an LLM fronts it. Settings-UI to mint tokens is a follow-up. → [docs/mcp-agent.md](docs/mcp-agent.md)
 - **Presence tracking (admin-only, ephemeral)**: in-memory `PresenceService` tracks `isConnected` /
   `amountOfDevices` / `amountOfSessions` per user via 60s HTTP heartbeats + stale cleanup; merged
   into `GET /api/admin/users`. → [docs/presence-tracking.md](docs/presence-tracking.md)
@@ -614,10 +654,14 @@ Add detail there, not here.
   stored) reachable from login + Settings; opt-in remote access publishes the loopback-bound backend
   at a public HTTPS URL via `tailscale funnel` behind a guided admin state machine. →
   [docs/device-pairing.md](docs/device-pairing.md)
-- **Observability (Sentry, opt-in)**: web `initSentry` (empty DSN = off, prod-only, versioned + low
+- **Observability (Sentry, opt-in)**: web `loadSentry` (empty DSN = off, prod-only, versioned + low
   sampling) + API `initServerSentry` (`NICOTIND_SENTRY_DSN` empty = off) reporting only unknown 500s
   from the Hono `errorHandler` (4xx/connectivity skipped), plus `captureProcessingFailure` for
-  aggregated, fingerprint-grouped library-enrichment failures. →
+  aggregated, fingerprint-grouped library-enrichment failures. **The web SDK loads lazily (issue
+  #285)** — it was 42% of the initial chunk (272 kB, Session Replay 124 kB) and eager to catch
+  startup failures; now reached only via `import('@sentry/angular')` (own lazy chunk) while
+  startup-error capture is preserved by a synchronous `error-buffer.ts` + `BufferingErrorHandler`
+  (replaces `Sentry.createErrorHandler`/`TraceService`) that replays into the SDK on connect. →
   [docs/observability.md](docs/observability.md)
 - **OAuth authentication (proposed — not yet implemented)**: Google + Microsoft login as `auth` kind
   plugins with `oauth` capability; auto-creates users by email (no validation); auto-enables when
@@ -779,8 +823,8 @@ Add detail there, not here.
   the app-shell offline banner (inline in `layout.component.html`, `data-testid="offline-banner"`)
   all react to connectivity flips **both ways** with no reload, and `check()` skips the boot HTTP
   probe when already offline (kills the multi-second blank-screen boot behind the ANR). Native
-  Sentry drops Session Replay + tracing (release-only ANR suspect; `initSentry` also
-  try/catch-wrapped); mid-use hardening = player skips a doomed offline stream (toast, not infinite
+  Sentry drops Session Replay + tracing (release-only ANR suspect; `loadSentry` also
+  try/catch-wrapped at its call site); mid-use hardening = player skips a doomed offline stream (toast, not infinite
   spinner), `preserveCollection` swallows offline fetch rejects, GET requests get a 30s interceptor
   timeout. → [docs/mobile-app.md](docs/mobile-app.md), [docs/web-ui.md](docs/web-ui.md),
   [docs/observability.md](docs/observability.md)
@@ -952,12 +996,14 @@ Add detail there, not here.
   `orphanRows` → an Admin panel row (hidden at zero). **`scan_cache` joins them (issue #313)** — the
   first **path**-keyed entry (`OrphanTable.references`), and the one table where an orphan is
   *provably* unreachable since the lookup is by path; `saveScanCache` also clears `orphaned_at` on
-  upsert so correctness doesn't depend on unmark-before-sweep. **`acquisitions` deliberately is
-  not**: measuring it found 17 of its 4,586 orphans are the **only** surviving provenance for a
-  still-live song (the file was replaced by a different-format copy, `opus → mp3` dominating), so
-  `repointOrphanedAcquisitions` *recovers* them at the head of the daily pass — stem-unique **and**
-  target-has-no-row, since a wrong re-point is worse than missing provenance — and whether provenance
-  should outlive the file stays an open product call. →
+  upsert so correctness doesn't depend on unmark-before-sweep. **`acquisitions` joins them too
+  (issue #319)** — the product call ("should provenance outlive the deleted file?") landed on
+  **prune**, since an orphaned provenance row has no per-track surface and 3,696 of 14,580 live songs
+  already carry none. It is safe because `repointOrphanedAcquisitions` runs *first* in the daily pass
+  and *recovers* the 17 of 4,586 orphans that are the **only** surviving provenance for a still-live
+  song (file replaced by a different-format copy, `opus → mp3` dominating) — stem-unique **and**
+  target-has-no-row, since a wrong re-point is worse than missing provenance — so only
+  genuinely-deleted rows reach the 30-day sweep. →
   [docs/cache-invalidation.md](docs/cache-invalidation.md)
 - **Playlist membership survives a song-id change**: ids are `sha1(path)`, so any move re-mints one
   and the scanner's prune deleted the row out from under every playlist referencing it — silently,
@@ -1088,8 +1134,10 @@ the key itself so a partial translation shows English rather than raw keys. Chos
 + Capacitor + Electron. **The pipe is `pure: false` by measurement**: a pure pipe memoizes on its
 args, so a language switch never re-invokes `transform` and the UI keeps the old language — the
 spec asserts the switch reaches the DOM. Language is **per-device** (localStorage), because login /
-setup / share render before any user exists. Converted so far: login page + the Settings picker;
-extraction is a phased pass. → [docs/i18n.md](docs/i18n.md)
+setup / share render before any user exists. Converted so far: login page + Settings picker + app
+shell (navs/offline) + library tabs/sort + home vibes + the **Acquire page** primary copy
+(`acquire.*`); **es.json is at full parity** with the base. Extraction is a phased pass (the deep
+Advanced/folder-browser strings on Acquire are a later slice). → [docs/i18n.md](docs/i18n.md)
 **Bundle budget**: `angular.json` carried the untouched Angular scaffold defaults (500 kB/1 MB), so
 the build warned on every run and the next real regression was invisible. Measured before deciding
 (issue #256): initial is 735 kB **raw** but **188 kB transfer**, and **42 % is Sentry** — eager on

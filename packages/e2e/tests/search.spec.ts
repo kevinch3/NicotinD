@@ -1,20 +1,32 @@
 import { test, expect } from '@playwright/test';
 
 /**
- * Source-agnostic search UX. Soulseek is no longer framed as "the network": the
- * status line is source-neutral, raw peer browsing is demoted behind an
+ * Source-agnostic acquire UX. The page is now "Acquire" (route /acquire, renamed
+ * from /search per issue #227): Soulseek is no longer framed as "the network",
+ * the status line is source-neutral, raw peer browsing is demoted behind an
  * "Advanced" disclosure, and there is no longer a "From archive.org"/"From
  * Spotify" hierarchy — every source flows into one blended Results list. With
  * Lidarr/slskd unreachable in e2e the catalog is empty so these are reachable.
  */
-test.describe('search', () => {
+test.describe('acquire', () => {
+  test('the old /search path redirects to /acquire, preserving the query param', async ({
+    page,
+  }) => {
+    await page.goto('/search?q=hello');
+    await expect(page).toHaveURL(/\/acquire(\?|$)/);
+    // The redirect is queryParams-preserving so a shared /search?q=… link still
+    // lands on the query it named.
+    await expect(page).toHaveURL(/q=hello/);
+    await expect(page.getByTestId('search-input')).toBeVisible();
+  });
+
   test('the Soulseek peer lane is hidden when Soulseek is not an available source', async ({
     page,
   }) => {
     // The e2e server has no Soulseek creds (the network provider is disabled), so a
     // user without the slskd extension must never see the raw peer-browsing lane —
     // nor a nonsensical "No Soulseek results" empty state for a source they don't have.
-    await page.goto('/search');
+    await page.goto('/acquire');
     await page.getByTestId('search-input').fill('nonexistent test query xyz');
     await page.getByTestId('search-submit').click();
 
@@ -28,7 +40,7 @@ test.describe('search', () => {
   });
 
   test('source status is neutral, not "Soulseek network available"', async ({ page }) => {
-    await page.goto('/search');
+    await page.goto('/acquire');
     // The status line reframes from a Soulseek-centric label to a neutral
     // "Sources: …" / "No acquisition sources enabled" line.
     await expect(page.getByText('Soulseek network available')).toHaveCount(0);

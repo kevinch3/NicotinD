@@ -127,11 +127,13 @@ The fix has four parts:
   the new banner) reacts to connectivity flips in **both** directions with no reload. `check()` **skips
   the HTTP probe entirely when the device already reports offline** — the fast path that removes the
   blank-screen boot wait (and the flurry of failing offline requests) behind the ANR.
-- **Native Sentry is trimmed** (`observability/sentry.ts` `nativeShell` arg, passed from `main.ts`,
-  which also wraps `initSentry` in try/catch): Session Replay (rrweb DOM recording) + browser tracing
-  (wrapping every fetch/XHR) ran on the WebView main thread **before** bootstrap and churned on the
-  failing offline requests — the prime ANR suspect, active only in the release build. Error reporting is
-  kept; replay/tracing are dropped on Capacitor/Electron.
+- **Native Sentry is trimmed** (`observability/sentry.ts` `nativeShell` arg on `loadSentry`, passed
+  from `main.ts`, whose call site is try/catch-wrapped): Session Replay (rrweb DOM recording) +
+  browser tracing (wrapping every fetch/XHR) run on the WebView main thread and churned on the
+  failing offline requests — the prime ANR suspect, active only in the release build. Error reporting
+  is kept; replay/tracing are dropped on Capacitor/Electron. (Since #285 the SDK loads lazily on every
+  surface, so it no longer runs *before* bootstrap anywhere; the native trimming stays because the
+  instrumentation is WebView-heavy once loaded.)
 - **Mid-use hardening**: the player skips a doomed network stream for a non-preserved track while offline
   (was a silent infinite spinner) and toasts instead (`player.component.ts` `stopForOffline`);
   `preserveCollection` swallows per-track offline fetch rejections (was an unhandled rejection that

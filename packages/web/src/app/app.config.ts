@@ -7,11 +7,11 @@ import {
   InjectionToken,
   ErrorHandler,
 } from '@angular/core';
-import * as Sentry from '@sentry/angular';
-import { provideRouter, Router } from '@angular/router';
+import { provideRouter } from '@angular/router';
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { provideServiceWorker } from '@angular/service-worker';
 import { routes } from './app.routes';
+import { BufferingErrorHandler } from './observability/buffering-error-handler';
 import { authInterceptor } from './interceptors/auth.interceptor';
 import { isNativeShell, serviceWorkerEnabled } from './lib/platform';
 import { SetupService } from './services/setup.service';
@@ -30,16 +30,13 @@ export const APP_VERSION = new InjectionToken<string>('APP_VERSION');
 export const appConfig: ApplicationConfig = {
   providers: [
     { provide: APP_VERSION, useValue: pkg.version },
-    {
-      provide: ErrorHandler,
-      useValue: Sentry.createErrorHandler({
-        showDialog: false,
-      }),
-    },
-    {
-      provide: Sentry.TraceService,
-      deps: [Router],
-    },
+    // A Sentry-free ErrorHandler (issue #285): it buffers into error-buffer.ts,
+    // which the lazily-loaded SDK drains on connect. Replaces
+    // Sentry.createErrorHandler() + Sentry.TraceService, whose static imports
+    // pinned the 272 kB SDK into the initial chunk. Dropping TraceService loses
+    // only Angular-router navigation spans (tracing still runs browser-side once
+    // the SDK loads); error capture is fully preserved.
+    { provide: ErrorHandler, useClass: BufferingErrorHandler },
     provideBrowserGlobalErrorListeners(),
     provideRouter(routes),
     provideHttpClient(withInterceptors([authInterceptor])),
@@ -85,7 +82,6 @@ export const appConfig: ApplicationConfig = {
             error: () => {},
           });
       }
-      const traceService = inject(Sentry.TraceService);
       // AutoPreserveCoordinator wires the player queue → IndexedDB. Cheap while
       // autoPreserveMode is "off" (default — returns immediately on every effect
       // tick), so it ships in dev too: the gate originally mirrored the SW's

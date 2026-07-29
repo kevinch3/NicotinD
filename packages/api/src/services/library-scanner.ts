@@ -230,6 +230,30 @@ export function unanimousLicence(licences: (string | null)[]): string | null {
   return licences.every((l) => l === first) ? first : null;
 }
 
+/**
+ * The album-level genre: the most frequent *primary* (position-0) genre across
+ * the album's tracks (issue #222). Ties break toward the first-seen genre (the
+ * update is strictly-greater), so the result is deterministic. Nulls are
+ * ignored; an all-null album is null. This replaces the old first-processed-track
+ * `genres[0]`, which made the album's genre an artifact of scan order rather than
+ * a property of the album.
+ */
+export function mostCommonGenre(genres: (string | null | undefined)[]): string | null {
+  const counts = new Map<string, number>();
+  let best: string | null = null;
+  let bestCount = 0;
+  for (const g of genres) {
+    if (!g) continue;
+    const n = (counts.get(g) ?? 0) + 1;
+    counts.set(g, n);
+    if (n > bestCount) {
+      bestCount = n;
+      best = g;
+    }
+  }
+  return best;
+}
+
 function sha1(input: string): string {
   return createHash('sha1').update(input).digest('hex');
 }
@@ -461,6 +485,9 @@ export function buildLibrary(
       duration: number;
       years: number[];
       genres: string[];
+      /** Each track's *primary* genre (position 0), reduced to the album's
+       *  most-common one — a stable label, unlike first-seen (issue #222). */
+      primaryGenres: (string | null)[];
       /** Per-track licence codes (null for un-licenced) — reduced to a unanimous album code. */
       licences: (string | null)[];
       createdMs: number;
@@ -549,6 +576,7 @@ export function buildLibrary(
       acc.duration += t.duration;
       if (year != null) acc.years.push(year);
       acc.genres.push(...genres);
+      acc.primaryGenres.push(genres[0] ?? null);
       acc.licences.push(t.licence ?? null);
       if (t.mtimeMs > acc.createdMs) acc.createdMs = t.mtimeMs;
     } else {
@@ -561,6 +589,7 @@ export function buildLibrary(
         duration: t.duration,
         years: year != null ? [year] : [],
         genres: [...genres],
+        primaryGenres: [genres[0] ?? null],
         licences: [t.licence ?? null],
         createdMs: t.mtimeMs,
         coverArt: albId,
@@ -600,7 +629,10 @@ export function buildLibrary(
       songCount: a.songCount,
       duration: a.duration,
       year: a.years.length ? Math.min(...a.years) : null,
-      genre: a.genres[0] ?? null,
+      // Most-common primary genre across the album's tracks (issue #222): a
+      // stable label, unlike the previous `genres[0]` which was whichever genre
+      // the first-processed track happened to carry first.
+      genre: mostCommonGenre(a.primaryGenres),
       licence: unanimousLicence(a.licences),
       created: new Date(a.createdMs).toISOString(),
     });

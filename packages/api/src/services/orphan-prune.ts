@@ -55,8 +55,13 @@ function referencedColumn(t: OrphanTable): string {
 }
 
 /**
- * Only regenerable per-song artifacts. Adding a table here is a statement that
+ * Regenerable per-song artifacts, plus `acquisitions` by explicit product
+ * decision (#319). For the first three, adding a table here is a statement that
  * losing its rows costs compute, not human or network-sourced data.
+ * `acquisitions` is the exception: it is *history*, not regenerable — but it is
+ * unreachable once its file is gone (provenance is surfaced only per-track), the
+ * operator chose to prune it, and the 30-day grace + prior repoint make the
+ * deletion safe. Curator tables (genres/artists/overrides/lyrics) stay out.
  */
 export const ORPHAN_TABLES: OrphanTable[] = [
   // ~46% of the whole prod database is embedding blobs; this is the one that
@@ -71,6 +76,15 @@ export const ORPHAN_TABLES: OrphanTable[] = [
   // 17,549 (17 %, 1.16 MB of tag JSON). The only existing DELETE is a full wipe
   // on a schema-version bump, so orphans otherwise accumulate until that fires.
   { table: 'scan_cache', songIdColumn: 'path', references: 'path' },
+  // Download provenance (method/source/time) keyed on the song's path. When the
+  // file is gone the row is unreachable — provenance is surfaced *per track* and
+  // there is no track. Prod: 4,586 orphans of 15,470 (30 %). Pruning is a product
+  // call the operator made in #319; it is safe because the daily pass runs
+  // `repointOrphanedAcquisitions` first, which recovers the ~17 orphans that are
+  // the only surviving provenance for a still-live song (its file merely changed
+  // extension) — so only genuinely-deleted rows ever reach the sweep. Path-keyed
+  // like `scan_cache`, so an orphan here is likewise provably unreachable.
+  { table: 'acquisitions', songIdColumn: 'relative_path', references: 'path' },
 ];
 
 /** Default grace period: an orphan must persist this long before deletion. */

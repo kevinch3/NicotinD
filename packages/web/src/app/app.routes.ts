@@ -41,10 +41,18 @@ export const routes: Routes = [
           ),
       },
       {
-        path: 'search',
+        // Renamed from 'search' to 'acquire' (issue #227): the page is
+        // acquisition-only ("get new music"), while "find what I own" lives in
+        // Library/Radio. The component keeps its SearchComponent name — the
+        // backend is still /api/search — but the user-facing route + nav read
+        // "Acquire".
+        path: 'acquire',
         loadComponent: () =>
           import('./pages/search/search.component').then((m) => m.SearchComponent),
       },
+      // Preserve every existing /search link, bookmark, and e2e goto — the
+      // redirect carries query params (e.g. ?q=…) through by default.
+      { path: 'search', redirectTo: 'acquire', pathMatch: 'full' },
       {
         path: 'downloads',
         canActivate: [acquireGuard],
