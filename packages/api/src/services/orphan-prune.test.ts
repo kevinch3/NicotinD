@@ -305,3 +305,54 @@ describe('scan_cache orphan pruning (path-keyed)', () => {
     expect(row).toEqual({ table: 'scan_cache', rows: 2, orphans: 1 });
   });
 });
+
+/**
+ * Download provenance is the second path-keyed table (references
+ * `library_songs.path`) and, unlike the others, it is *history* rather than a
+ * regenerable artifact — pruned by explicit product decision (issue #319). The
+ * daily pass repoints first (acquisition-repoint.ts) so only genuinely-deleted
+ * rows reach the sweep; these cover the mark→grace→sweep + count on the real
+ * schema.
+ */
+describe('acquisitions orphan pruning (path-keyed, #319)', () => {
+  const addAcq = (p: string) =>
+    db.run(
+      `INSERT INTO acquisitions (relative_path, method, stage, started_at) VALUES (?, 'direct', 'done', 1)`,
+      [p],
+    );
+  const acqPaths = () =>
+    (
+      db.query('SELECT relative_path p FROM acquisitions ORDER BY relative_path').all() as Array<{
+        p: string;
+      }>
+    ).map((r) => r.p);
+
+  it('never marks provenance for a live file', () => {
+    seedSong('kept');
+    addAcq('Artist/Album/kept.opus');
+
+    const r = pruneOrphanRows(db, { now: 1_000, graceMs: 100 });
+    expect(r.marked).toBe(0);
+    expect(acqPaths()).toEqual(['Artist/Album/kept.opus']);
+  });
+
+  it('marks then sweeps provenance whose file is gone, only after the grace period', () => {
+    seedSong('kept');
+    addAcq('Artist/Album/kept.opus');
+    addAcq('Artist/Album/deleted.opus'); // no song at this path
+
+    expect(pruneOrphanRows(db, { now: 1_000, graceMs: 100 }).marked).toBe(1);
+    expect(pruneOrphanRows(db, { now: 1_050, graceMs: 100 }).deleted).toBe(0);
+    expect(pruneOrphanRows(db, { now: 2_000, graceMs: 100 }).deleted).toBe(1);
+    expect(acqPaths()).toEqual(['Artist/Album/kept.opus']);
+  });
+
+  it('reports acquisitions in the admin orphan counts', () => {
+    seedSong('kept');
+    addAcq('Artist/Album/kept.opus');
+    addAcq('Artist/Album/dead.opus');
+
+    const row = countOrphanRows(db).find((c) => c.table === 'acquisitions');
+    expect(row).toEqual({ table: 'acquisitions', rows: 2, orphans: 1 });
+  });
+});

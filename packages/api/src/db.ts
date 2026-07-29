@@ -439,6 +439,11 @@ export function applySchema(db: Database): void {
   `);
   db.run(`CREATE INDEX IF NOT EXISTS idx_acquisitions_method ON acquisitions (method)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_acquisitions_started ON acquisitions (started_at DESC)`);
+  // Orphan-prune stamp (issue #319): an acquisition row keyed on a path whose
+  // song is gone is unreachable through the per-track provenance UI. The daily
+  // orphan pass marks→grace→sweeps them, after `repointOrphanedAcquisitions`
+  // has already recovered the ones that are the only provenance for a live song.
+  addColumnIfMissing(db, 'acquisitions', 'orphaned_at', 'INTEGER');
 
   // Watchlist: albums the user asked to auto-acquire. A background poller
   // (WatchlistService) periodically hunts each `watching` row and, when a
