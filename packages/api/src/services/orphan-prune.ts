@@ -1,5 +1,6 @@
 import type { Database } from 'bun:sqlite';
 import { createLogger } from '@nicotind/core';
+import { repointOrphanedAcquisitions } from './acquisition-repoint.js';
 
 const log = createLogger('orphan-prune');
 
@@ -37,8 +38,20 @@ const log = createLogger('orphan-prune');
  */
 export interface OrphanTable {
   table: string;
-  /** Column holding the `library_songs.id` this row belongs to. */
+  /** Column holding the key that ties this row to its owning song. */
   songIdColumn: string;
+  /**
+   * Which `library_songs` column `songIdColumn` references. Most side tables
+   * key on the deterministic song `id`; the scan cache keys on `path` because
+   * it exists to answer "have I already parsed this file?" before any id has
+   * been minted. Defaults to `id`.
+   */
+  references?: 'id' | 'path';
+}
+
+/** The `library_songs` column an orphan check compares against. */
+function referencedColumn(t: OrphanTable): string {
+  return t.references ?? 'id';
 }
 
 /**
@@ -51,6 +64,13 @@ export const ORPHAN_TABLES: OrphanTable[] = [
   { table: 'library_embeddings', songIdColumn: 'song_id' },
   // A pure ledger of analysis attempts — meaningless without its song.
   { table: 'library_song_analysis_failures', songIdColumn: 'song_id' },
+  // Raw tag JSON keyed on path+size+mtime, purely to skip re-parsing an
+  // unchanged file. An entry whose path is gone can never be hit again — the
+  // lookup is by path — so this is the one table where an orphan is provably
+  // unreachable rather than merely unused (issue #313). Prod: 2,969 orphans of
+  // 17,549 (17 %, 1.16 MB of tag JSON). The only existing DELETE is a full wipe
+  // on a schema-version bump, so orphans otherwise accumulate until that fires.
+  { table: 'scan_cache', songIdColumn: 'path', references: 'path' },
 ];
 
 /** Default grace period: an orphan must persist this long before deletion. */
@@ -76,7 +96,9 @@ export interface OrphanCount {
 /** Per-table orphan counts, for admin reporting. Missing tables are skipped. */
 export function countOrphanRows(db: Database): OrphanCount[] {
   const out: OrphanCount[] = [];
-  for (const { table, songIdColumn } of ORPHAN_TABLES) {
+  for (const entry of ORPHAN_TABLES) {
+    const { table, songIdColumn } = entry;
+    const ref = referencedColumn(entry);
     try {
       const rows = Number(
         (db.query<{ c: number }, []>(`SELECT COUNT(*) c FROM ${table}`).get() ?? { c: 0 }).c,
@@ -86,7 +108,7 @@ export function countOrphanRows(db: Database): OrphanCount[] {
           db
             .query<{ c: number }, []>(
               `SELECT COUNT(*) c FROM ${table}
-               WHERE ${songIdColumn} NOT IN (SELECT id FROM library_songs)`,
+               WHERE ${songIdColumn} NOT IN (SELECT ${ref} FROM library_songs)`,
             )
             .get() ?? { c: 0 }
         ).c,
@@ -142,7 +164,9 @@ export function pruneOrphanRows(
   // reason to delete every cached embedding we have.
   if (songCount === 0) return result;
 
-  for (const { table, songIdColumn } of ORPHAN_TABLES) {
+  for (const entry of ORPHAN_TABLES) {
+    const { table, songIdColumn } = entry;
+    const ref = referencedColumn(entry);
     try {
       const rows = Number(
         (db.query<{ c: number }, []>(`SELECT COUNT(*) c FROM ${table}`).get() ?? { c: 0 }).c,
@@ -154,7 +178,7 @@ export function pruneOrphanRows(
           db
             .query<{ c: number }, []>(
               `SELECT COUNT(*) c FROM ${table}
-               WHERE ${songIdColumn} NOT IN (SELECT id FROM library_songs)`,
+               WHERE ${songIdColumn} NOT IN (SELECT ${ref} FROM library_songs)`,
             )
             .get() ?? { c: 0 }
         ).c,
@@ -172,7 +196,7 @@ export function pruneOrphanRows(
           db.run(
             `UPDATE ${table} SET orphaned_at = ?
              WHERE orphaned_at IS NULL
-               AND ${songIdColumn} NOT IN (SELECT id FROM library_songs)`,
+               AND ${songIdColumn} NOT IN (SELECT ${ref} FROM library_songs)`,
             [now],
           ).changes ?? 0,
         );
@@ -181,7 +205,7 @@ export function pruneOrphanRows(
           db.run(
             `UPDATE ${table} SET orphaned_at = NULL
              WHERE orphaned_at IS NOT NULL
-               AND ${songIdColumn} IN (SELECT id FROM library_songs)`,
+               AND ${songIdColumn} IN (SELECT ${ref} FROM library_songs)`,
           ).changes ?? 0,
         );
         result.deleted += Number(
@@ -234,6 +258,10 @@ export function maybeRunDailyOrphanPrune(
   const day = new Date(now).toISOString().slice(0, 10);
   if (readMarker(db, DAY_MARKER) === day) return false;
   try {
+    // Recover provenance whose file merely changed extension before pruning
+    // anything (issue #313). Cheap, idempotent, and a prerequisite for ever
+    // sweeping `acquisitions` — see acquisition-repoint.ts.
+    repointOrphanedAcquisitions(db);
     pruneOrphanRows(db, { graceMs: opts.graceMs, now });
     writeMarker(db, DAY_MARKER, day, now);
     return true;

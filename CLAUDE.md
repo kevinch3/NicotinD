@@ -921,7 +921,15 @@ Add detail there, not here.
   **mark→unmark→sweep** on an `orphaned_at` column with a 30-day grace, so a delete-then-re-download
   still restores the cached embedding. Daily off the backup's processor-tick hook; aborts on an empty
   library and skips any table over a 50% orphan ratio. Counts surface via `GET /api/admin/review`
-  `orphanRows` → an Admin panel row (hidden at zero). →
+  `orphanRows` → an Admin panel row (hidden at zero). **`scan_cache` joins them (issue #313)** — the
+  first **path**-keyed entry (`OrphanTable.references`), and the one table where an orphan is
+  *provably* unreachable since the lookup is by path; `saveScanCache` also clears `orphaned_at` on
+  upsert so correctness doesn't depend on unmark-before-sweep. **`acquisitions` deliberately is
+  not**: measuring it found 17 of its 4,586 orphans are the **only** surviving provenance for a
+  still-live song (the file was replaced by a different-format copy, `opus → mp3` dominating), so
+  `repointOrphanedAcquisitions` *recovers* them at the head of the daily pass — stem-unique **and**
+  target-has-no-row, since a wrong re-point is worse than missing provenance — and whether provenance
+  should outlive the file stays an open product call. →
   [docs/cache-invalidation.md](docs/cache-invalidation.md)
 - **Playlist membership survives a song-id change**: ids are `sha1(path)`, so any move re-mints one
   and the scanner's prune deleted the row out from under every playlist referencing it — silently,
