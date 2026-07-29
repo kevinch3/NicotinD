@@ -31,6 +31,8 @@ import { presenceRoutes } from './routes/presence.js';
 import { usersRoutes } from './routes/users.js';
 import { shareRoutes } from './routes/share.js';
 import { devicesRoutes } from './routes/devices.js';
+import { agentTokensRoutes } from './routes/agent-tokens.js';
+import { mcpRoutes } from './routes/mcp.js';
 import { remoteAccessRoutes } from './routes/remote-access.js';
 import { reviewRoutes } from './routes/review.js';
 import { RemoteAccess } from './services/tailscale.js';
@@ -551,6 +553,10 @@ export function createApp({
   app.use('/api/spotify/*', auth);
   app.use('/api/sources/*', auth);
   app.use('/api/feedback/*', auth);
+  // Agent-token management (issue #232) is done by a logged-in curator, so it
+  // runs behind the normal JWT auth. `/api/mcp` is deliberately NOT here — it
+  // authenticates with the agent token itself, not a JWT.
+  app.use('/api/agent-tokens/*', auth);
   // Deployment kill-switch (#235): the whole acquisition surface hard-404s when
   // the install disabled acquisition. Mounted after auth so 401 still precedes
   // 404. `/api/search` is deliberately NOT here — it must keep returning library
@@ -585,6 +591,9 @@ export function createApp({
     }),
   );
   app.route('/api/feedback', feedbackRoutes());
+  // MCP agent (issue #232): agent-token-authenticated (not JWT), refiner-capped.
+  app.route('/api/agent-tokens', agentTokensRoutes());
+  app.route('/api/mcp', mcpRoutes());
   app.route('/api/presence', presenceRoutes());
   app.route('/api/downloads', downloadRoutes(registry, slskdRef));
   app.route('/api/uploads', uploadRoutes(slskdRef));

@@ -535,6 +535,30 @@ export function applySchema(db: Database): void {
   `);
   db.run(`CREATE INDEX IF NOT EXISTS idx_paired_devices_user ON paired_devices (user_id)`);
 
+  // MCP agent tokens (issue #232): a scoped, revocable bearer an external
+  // LLM/agent uses to curate the library via /api/mcp. Only the sha256 HASH of
+  // the token is stored (a leak of this table never leaks a live token — a
+  // stronger posture than pairing_tokens' raw storage, justified because these
+  // are long-lived). The effective role is capped at `refiner` regardless of
+  // the owner's role, so an admin who mints one does NOT get an admin agent.
+  // Deleting/`revoked_at`-stamping the row is the revocation mechanism, enforced
+  // on every request (the token is looked up by hash each call).
+  db.run(`
+    CREATE TABLE IF NOT EXISTS agent_tokens (
+      id           TEXT    PRIMARY KEY,
+      user_id      TEXT    NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      name         TEXT    NOT NULL,
+      scope        TEXT    NOT NULL DEFAULT 'refiner:curate',
+      token_hash   TEXT    NOT NULL,
+      created_at   INTEGER NOT NULL,
+      last_used_at INTEGER,
+      expires_at   INTEGER,
+      revoked_at   INTEGER
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_agent_tokens_user ON agent_tokens (user_id)`);
+  db.run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_tokens_hash ON agent_tokens (token_hash)`);
+
   // Canonical library tables — populated by the native LibraryScanner. The UI
   // reads exclusively from these; the scanner mints stable ids and groups
   // editions at scan time, so hide/classify/group all happen here.
