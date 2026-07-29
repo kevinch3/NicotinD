@@ -350,7 +350,13 @@ Add detail there, not here.
   `services/artist-image-fill.ts` `fillArtistImages`; copying its resolve→persist sequence would
   have risked dropping the `clearCoverNegativeCache` eviction, which stores the portrait while the
   UI keeps showing the placeholder. → [docs/library-scanner.md](docs/library-scanner.md)
-  short-circuit staying at the call-site SQL not the chain). **An identity fix carries curation
+  short-circuit staying at the call-site SQL not the chain). **Coverage is visible (issue #250 gap
+  3)**: `artistImageCoverage` → the `artistImages` slice on `GET /api/admin/review` → an Admin row
+  ("N of M artists have a portrait" + bar), hidden at full coverage; `missing` **reuses**
+  `NEEDS_PORTRAIT_SQL` so the number an admin reads is by construction the number a fill acts on,
+  and `withPortrait` is computed directly rather than by subtraction because a curator upload lives
+  on disk with **no `library_artwork` row**. Prod was 980 of 2,472 (60 % placeholder) with no
+  in-app way to see it. **An identity fix carries curation
   forward (issue #305)**: a rename/merge re-mints the artist id, silently orphaning the portrait,
   the uploaded file and the bio (prod: 88 dead artwork rows of 1011, 2 dead uploads of 140) —
   `carryArtistCuration` moves them at the fix site (the only place that knows the old→new mapping),

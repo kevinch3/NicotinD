@@ -47,6 +47,7 @@ function makeReview(over: Partial<ServiceReview> = {}): ServiceReview {
     incompleteJobsCount: 0,
     untrackedCount: 0,
     orphanRows: [],
+    artistImages: { visible: 0, withPortrait: 0, missing: 0, manualOverride: 0 },
     auditTail: [],
     incompleteJobs: [],
     untracked: [],
@@ -77,6 +78,11 @@ function makeSvc(over: Partial<ServiceReview> = {}) {
     orphanRows: (() => r.orphanRows) as ServiceReviewService['orphanRows'],
     orphanRowCount: (() =>
       r.orphanRows.reduce((sum, t) => sum + t.orphans, 0)) as ServiceReviewService['orphanRowCount'],
+    artistImages: (() => r.artistImages) as ServiceReviewService['artistImages'],
+    artistImageCoverageRatio: (() =>
+      r.artistImages.visible > 0
+        ? r.artistImages.withPortrait / r.artistImages.visible
+        : 1) as ServiceReviewService['artistImageCoverageRatio'],
     incompleteJobs: (() => r.incompleteJobs) as ServiceReviewService['incompleteJobs'],
     untracked: (() => r.untracked) as ServiceReviewService['untracked'],
   };
@@ -223,6 +229,76 @@ describe('AdminComponent (orphan side-table rows, #259)', () => {
     const list = el.querySelector('[data-testid="orphan-rows-list"]')!;
     expect(list.querySelectorAll('li')).toHaveLength(2); // the zero-orphan table is skipped
     expect(list.textContent).toContain('library_embeddings');
+    f.destroy();
+  });
+});
+
+/** Issue #250 gap 3: portrait coverage is invisible today — a library can sit
+ *  half-placeholder with no in-app way to see it. Hidden entirely once every
+ *  visible artist has one (the healthy steady state). */
+describe('AdminComponent (artist portrait coverage, #250)', () => {
+  async function mount(artistImages: {
+    visible: number;
+    withPortrait: number;
+    missing: number;
+    manualOverride: number;
+  }) {
+    TestBed.resetTestingModule();
+    const mocks = makeAdminMocks({ artistImages });
+    await TestBed.configureTestingModule({
+      imports: [AdminComponent],
+      providers: [
+        { provide: DownloadsApiService, useValue: {} },
+        { provide: SystemApiService, useValue: { getUsers: vi.fn(() => of([])), getStreamingSettings: mocks.getStreaming, saveStreamingSettings: vi.fn((p: unknown) => of(p as object)), getProcessing: mocks.getProcessing, saveProcessing: vi.fn((p: unknown) => of(p as object)) } },
+        { provide: LibraryApiService, useValue: { resyncLibrary: vi.fn(() => of({ ok: true })), getFragments: vi.fn(() => of({ duplicateAlbums: [], hiddenByClassification: [], misSplitAlbums: [], totals: { duplicateAlbums: 0, hiddenByClassification: 0, misSplitAlbums: 0 }, ok: true } as LibraryFragmentReport)) } },
+        { provide: ServiceReviewService, useValue: mocks.reviewService },
+        { provide: AuthService, useValue: { token: () => null } },
+      ],
+    }).compileComponents();
+    const f = TestBed.createComponent(AdminComponent);
+    f.componentInstance.loading.set(false);
+    f.detectChanges();
+    await f.whenStable();
+    f.detectChanges();
+    return f;
+  }
+
+  it('reports coverage as "N of M" when portraits are missing', async () => {
+    const f = await mount({ visible: 1011, withPortrait: 923, missing: 88, manualOverride: 140 });
+    const el = f.nativeElement as HTMLElement;
+    const panel = el.querySelector('[data-testid="artist-images-panel"]')!;
+    expect(panel.textContent).toContain('923');
+    expect(panel.textContent).toContain('1011');
+    expect(panel.textContent).toContain('88');
+    // Curator uploads are called out, because a fill will never touch them.
+    expect(el.querySelector('[data-testid="artist-images-overrides"]')?.textContent).toContain(
+      '140',
+    );
+    f.destroy();
+  });
+
+  it('renders the bar at the coverage ratio', async () => {
+    const f = await mount({ visible: 200, withPortrait: 150, missing: 50, manualOverride: 0 });
+    const bar = (f.nativeElement as HTMLElement).querySelector(
+      '[data-testid="artist-images-bar"]',
+    ) as HTMLElement;
+    expect(bar.style.width).toBe('75%');
+    f.destroy();
+  });
+
+  it('stays hidden when every visible artist has a portrait', async () => {
+    const f = await mount({ visible: 400, withPortrait: 400, missing: 0, manualOverride: 12 });
+    expect(
+      (f.nativeElement as HTMLElement).querySelector('[data-testid="artist-images-panel"]'),
+    ).toBeFalsy();
+    f.destroy();
+  });
+
+  it('omits the curator-upload line when there are none', async () => {
+    const f = await mount({ visible: 10, withPortrait: 4, missing: 6, manualOverride: 0 });
+    expect(
+      (f.nativeElement as HTMLElement).querySelector('[data-testid="artist-images-overrides"]'),
+    ).toBeFalsy();
     f.destroy();
   });
 });

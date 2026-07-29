@@ -21,6 +21,7 @@ import { getDatabase } from '../db.js';
 import { listAudit } from '../services/audit-log.js';
 import { listBackups, type BackupInfo } from '../services/backup.js';
 import { getStoredUpdateCheck, listVersionHistory, compareVersions } from '../services/update-check.js';
+import { artistImageCoverage, type ArtistImageCoverage } from '../services/artist-image-fill.js';
 import { countOrphanRows, type OrphanCount } from '../services/orphan-prune.js';
 
 export type UpdateCheckSnapshot = {
@@ -116,6 +117,8 @@ export interface ServiceReview {
    * keeping up — same spirit as `untracked`/`incompleteJobs`.
    */
   orphanRows: OrphanCount[];
+  /** Artist-portrait coverage for the Admin overview (issue #250). */
+  artistImages: ArtistImageCoverage;
   auditTail: AuditEntry[];
   /** Snapshot of incomplete album hunts (active + exhausted) for the Admin panel. */
   incompleteJobs: IncompleteAlbumJob[];
@@ -143,6 +146,7 @@ export interface ReviewSubFns {
   incompleteJobCount: () => number;
   untrackedCount: () => number;
   orphanRows: () => OrphanCount[];
+  artistImages: () => ArtistImageCoverage;
   auditTail: (limit: number) => AuditEntry[];
   incompleteJobs: () => IncompleteAlbumJob[];
   untracked: () => UntrackedDownload[];
@@ -473,6 +477,7 @@ export function reviewRoutes(slskdRef: SlskdRef, deps: ReviewRoutesDeps = {}) {
       incompleteCount,
       untracked,
       orphanRows,
+      artistImages,
       audit,
       incompleteList,
       untrackedList,
@@ -537,6 +542,12 @@ export function reviewRoutes(slskdRef: SlskdRef, deps: ReviewRoutesDeps = {}) {
         () => sub.orphanRows?.() ?? countOrphanRows(getDatabase()),
         [] as OrphanCount[],
       ),
+      artistImages: safe(
+        errors,
+        'artistImages',
+        () => sub.artistImages?.() ?? artistImageCoverage(getDatabase()),
+        { visible: 0, withPortrait: 0, missing: 0, manualOverride: 0 } as ArtistImageCoverage,
+      ),
       audit: safe(
         errors,
         'auditTail',
@@ -585,6 +596,7 @@ export function reviewRoutes(slskdRef: SlskdRef, deps: ReviewRoutesDeps = {}) {
       incompleteJobsCount: incompleteCount,
       untrackedCount: untracked,
       orphanRows,
+      artistImages,
       auditTail: audit,
       incompleteJobs: incompleteList,
       untracked: untrackedList,
