@@ -183,11 +183,12 @@ function escapeHtml(text: string): string {
 
 // ─── Component ──────────────────────────────────────────────────────
 
-// TODO(#227): the safe structural subset is implemented (local-library results
-// removed; Search is acquisition-only with a Library-redirect empty state for
-// non-acquirers). Left open as product decisions on the issue: rename the page +
-// nav label ("Get music"/"Acquire") and the `/search` route path, and decide
-// whether a lightweight library-find box belongs on the Library page instead.
+// Issue #227: this is the acquisition-only page ("get new music") — local
+// library results were removed, and non-acquirers get a Library-redirect empty
+// state. The user-facing route + nav now read "Acquire" (path `/acquire`, with a
+// `/search` redirect); the component keeps its SearchComponent name because the
+// backend is still `/api/search`. Still open (product): whether a lightweight
+// library-find box belongs on the Library page instead.
 @Component({
   selector: 'app-search',
   imports: [
@@ -539,7 +540,7 @@ export class SearchComponent implements OnInit, OnDestroy {
   navigateAndSearch(query: string): void {
     this.search.setQuery(query);
     this.search.setAutoSearch(true);
-    this.router.navigate(['/search']);
+    this.router.navigate(['/acquire']);
   }
 
   // ─── Catalog (metadata) results ─────────────────────────────────

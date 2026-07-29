@@ -385,7 +385,7 @@
     </section>
   }
 
-  <!-- Search is acquisition-only (issue #227): finding music you ALREADY own
+  <!-- Acquire is acquisition-only (issue #227): finding music you ALREADY own
        lives in Library/Radio, not here. So when the user can't acquire — either
        a listener, or acquisition disabled deployment-wide (#235) — the page has
        no purpose; point them at their Library instead of showing a blank screen.
@@ -393,7 +393,7 @@
   @if (!auth.canAcquire()) {
     <section class="mt-10 text-center" data-testid="search-acquisition-off">
       <p class="text-sm" style="color: var(--theme-text-primary)">
-        Search is for finding and adding new music.
+        This page is for finding and adding new music.
       </p>
       <p class="mt-1 text-sm" style="color: var(--theme-text-muted)">
         Browse and play what you already have in your

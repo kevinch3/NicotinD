@@ -491,12 +491,15 @@ Add detail there, not here.
 - **Unified search**: `GET /api/search?q=` blends local library + parallel slskd network results
   into the one source-agnostic results list. →
   [docs/source-agnostic-acquisition.md](docs/source-agnostic-acquisition.md)
-- **Search is acquisition-only (issue #227)**: the `/search` **page** no longer renders
-  local-library results (the "In your library" album section + local "Songs" finder were removed) —
-  Search = "find/add new music", "find what I own" = Library tabs/filters + Radio. The API still
+- **Acquire page (acquisition-only, issue #227)**: the page (nav **"Acquire"**, route **`/acquire`**,
+  renamed from `/search`) no longer renders local-library results (the "In your library" album
+  section + local "Songs" finder were removed) — Acquire = "find/add new music", "find what I own" =
+  Library tabs/filters + Radio. The route rename ships a `{ path: 'search', redirectTo: 'acquire' }`
+  redirect (query-param-preserving) so every existing `/search?q=…` link/bookmark still resolves; the
+  component keeps its `SearchComponent` name because the backend is still `/api/search`. The API still
   returns `local` (unchanged `LibrarySearchProvider`); a non-acquirer (listener, or #235 off) sees a
   "browse your Library instead" empty state (`data-testid="search-acquisition-off"`). **Left open**
-  (product): page/nav rename + `/search` route rename. →
+  (product): whether a lightweight library-find box belongs on the Library page. →
   [docs/source-agnostic-acquisition.md](docs/source-agnostic-acquisition.md) "Unified search",
   [docs/web-ui.md](docs/web-ui.md)
 - **Deployment-wide acquisition kill-switch (issue #235)**: one authoritative

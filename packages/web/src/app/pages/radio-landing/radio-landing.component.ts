@@ -56,7 +56,7 @@ const VIBE_PRESETS: readonly VibePreset[] = [
  *  2. New mood — one-tap vibe presets + top-genre chips, each of which starts
  *     filter-seeded radio immediately.
  * Mobile-first (thumb-reachable chips, no manual bottom padding — inherited from
- * <main>). Search moved to /search; a search bar here links to it.
+ * <main>). Music acquisition lives on its own page (nav "Acquire", /acquire).
  */
 @Component({
   selector: 'app-radio-landing',

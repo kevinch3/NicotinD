@@ -1,5 +1,31 @@
 [
   {
+    "version": "0.1.279",
+    "date": "2026-07-29",
+    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.278...v0.1.279",
+    "sections": [
+      {
+        "title": "Features",
+        "items": [
+          "**admin:** expose the acquisition kill-switch as a UI control ([14165cd](https://github.com/kevinch3/NicotinD/commit/14165cd01849e1d326b4ad56058cb5731b2fe0e3)), references [#235](https://github.com/kevinch3/NicotinD/issues/235) [#235](https://github.com/kevinch3/NicotinD/issues/235)",
+          "**admin:** make the acquisition kill-switch runtime-togglable (issue [#235](https://github.com/kevinch3/NicotinD/issues/235)) ([d8cd59f](https://github.com/kevinch3/NicotinD/commit/d8cd59f3ba73eba785a0721dbaf55245689ead79))",
+          "**admin:** show artist-portrait coverage (issue [#250](https://github.com/kevinch3/NicotinD/issues/250) gap 3) ([2feda63](https://github.com/kevinch3/NicotinD/commit/2feda630f3e7751dfa7920320c63c305838a2701)), references [#274](https://github.com/kevinch3/NicotinD/issues/274) [#314](https://github.com/kevinch3/NicotinD/issues/314)",
+          "**deploy:** build the YouTube PO-token provider under our own GHCR ([b6009aa](https://github.com/kevinch3/NicotinD/commit/b6009aa942c00c25eb3352fa82aaceecb9017fab)), closes [#238](https://github.com/kevinch3/NicotinD/issues/238) [#238](https://github.com/kevinch3/NicotinD/issues/238), references [#289](https://github.com/kevinch3/NicotinD/issues/289)",
+          "**library:** add-photo affordance on the Artists grid (issue [#250](https://github.com/kevinch3/NicotinD/issues/250) gap 4) ([6c643cc](https://github.com/kevinch3/NicotinD/commit/6c643cc6b52f33352c715cc68d34319fde03660f)), references [#273](https://github.com/kevinch3/NicotinD/issues/273)"
+        ]
+      },
+      {
+        "title": "Bug Fixes",
+        "items": [
+          "**library:** make the fragment reporter agree with the curator on track counts ([073950f](https://github.com/kevinch3/NicotinD/commit/073950fcc14c7785102d848f63573fc68bb6d6c7)), references [#301](https://github.com/kevinch3/NicotinD/issues/301) [#315](https://github.com/kevinch3/NicotinD/issues/315) [#315](https://github.com/kevinch3/NicotinD/issues/315) [#314](https://github.com/kevinch3/NicotinD/issues/314) [#314](https://github.com/kevinch3/NicotinD/issues/314)",
+          "**storage:** prune orphaned scan_cache rows, recover stranded provenance ([81113f3](https://github.com/kevinch3/NicotinD/commit/81113f3a8e03e060535322b77ffb5713681263ea)), closes [#313](https://github.com/kevinch3/NicotinD/issues/313), references [#259](https://github.com/kevinch3/NicotinD/issues/259) [#319](https://github.com/kevinch3/NicotinD/issues/319)",
+          "**streaming:** stop re-running a doomed transcode on every play ([64fc4a3](https://github.com/kevinch3/NicotinD/commit/64fc4a30186cf0c3bad77749a74fba21f1bc8ad1)), closes [#317](https://github.com/kevinch3/NicotinD/issues/317)",
+          "**test:** stub the artistImages slice in the review route harness ([2095b9f](https://github.com/kevinch3/NicotinD/commit/2095b9f82afa654e97f71acc514ebf01a8719ab3)), references [#250](https://github.com/kevinch3/NicotinD/issues/250)"
+        ]
+      }
+    ]
+  },
+  {
     "version": "0.1.278",
     "date": "2026-07-28",
     "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.277...v0.1.278",
@@ -706,19 +732,6 @@
         "title": "Bug Fixes",
         "items": [
           "**docker:** probe /api/health in the image HEALTHCHECK ([e89c16a](https://github.com/kevinch3/NicotinD/commit/e89c16a86a6a7bbe1ed62e5ef60edd51c7141866))"
-        ]
-      }
-    ]
-  },
-  {
-    "version": "0.1.229",
-    "date": "2026-07-19",
-    "compareUrl": "https://github.com/kevinch3/NicotinD/compare/v0.1.228...v0.1.229",
-    "sections": [
-      {
-        "title": "Features",
-        "items": [
-          "**pairing:** camera-scannable pairing links, working in-app QR scan, multi-server support ([8305b6a](https://github.com/kevinch3/NicotinD/commit/8305b6ad238898411d93f2d8c7afd0d1f622bca0))"
         ]
       }
     ]

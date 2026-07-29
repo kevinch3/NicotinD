@@ -14,14 +14,14 @@ interface BottomNavItem {
 }
 
 // Curated mobile tab order (Admin intentionally stays desktop-only to keep the
-// bar to thumb-reachable targets). Search is online-only because /search needs
+// bar to thumb-reachable targets). Acquire is online-only because /acquire needs
 // the backend (network browse + URL acquire).
 const TABS: BottomNavItem[] = [
   // `label` is an i18n key (issue #236), rendered through the `t` pipe.
   { to: '/', label: 'nav.home', onlineOnly: true },
   { to: '/library', label: 'nav.library', onlineOnly: false },
   { to: '/downloads', label: 'nav.downloads', onlineOnly: false },
-  { to: '/search', label: 'nav.search', onlineOnly: true },
+  { to: '/acquire', label: 'nav.acquire', onlineOnly: true },
   { to: '/settings', label: 'nav.settings', onlineOnly: false },
 ];
 

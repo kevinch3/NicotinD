@@ -22,7 +22,7 @@ function setup(opts: { offline?: boolean; active?: number; canAcquire?: boolean 
         { path: '', component: _Stub },
         { path: 'library', component: _Stub },
         { path: 'downloads', component: _Stub },
-        { path: 'search', component: _Stub },
+        { path: 'acquire', component: _Stub },
         { path: 'settings', component: _Stub },
       ]),
       { provide: AuthService, useValue: { canAcquire } },
@@ -54,7 +54,7 @@ describe('BottomNavComponent', () => {
       'nav.home',
       'nav.library',
       'nav.downloads',
-      'nav.search',
+      'nav.acquire',
       'nav.settings',
     ]);
     // `label` is an i18n key now (issue #236), so assert the keys resolve —
@@ -64,12 +64,12 @@ describe('BottomNavComponent', () => {
     }
   });
 
-  it('includes Search as an online-only tab in the TABS list', () => {
+  it('includes Acquire as an online-only tab in the TABS list', () => {
     const { fixture } = setup();
-    const searchTab = fixture.componentInstance.tabs().find((t) => t.to === '/search');
-    expect(searchTab).toBeDefined();
-    expect(searchTab?.label).toBe('nav.search');
-    expect(searchTab?.onlineOnly).toBe(true);
+    const acquireTab = fixture.componentInstance.tabs().find((t) => t.to === '/acquire');
+    expect(acquireTab).toBeDefined();
+    expect(acquireTab?.label).toBe('nav.acquire');
+    expect(acquireTab?.onlineOnly).toBe(true);
   });
 
   it('hides the Downloads tab for a listener (cannot acquire)', () => {
@@ -77,13 +77,13 @@ describe('BottomNavComponent', () => {
     const labels = Array.from(
       fixture.nativeElement.querySelectorAll('a, span') as NodeListOf<HTMLElement>,
     ).map((el) => el.textContent?.trim());
-    expect(labels).toEqual(['nav.home', 'nav.library', 'nav.search', 'nav.settings']);
+    expect(labels).toEqual(['nav.home', 'nav.library', 'nav.acquire', 'nav.settings']);
     expect(fixture.componentInstance.tabs().some((t) => t.to === '/downloads')).toBe(false);
   });
 
   it('renders online-only tabs as disabled spans when offline', () => {
     const { fixture } = setup({ offline: true });
-    // Home (radio landing) + Search are online-only → 2 spans; Library (offline
+    // Home (radio landing) + Acquire are online-only → 2 spans; Library (offline
     // Songs), Downloads, and Settings stay links.
     const anchors = fixture.nativeElement.querySelectorAll('a');
     const spans = fixture.nativeElement.querySelectorAll('nav span');
@@ -113,10 +113,10 @@ describe('BottomNavComponent', () => {
   it('isDisabled is true only for online-only tabs while offline', () => {
     const { fixture, isOffline } = setup();
     const c = fixture.componentInstance;
-    expect(c.isDisabled({ to: '/', label: 'nav.search', onlineOnly: true })).toBe(false);
+    expect(c.isDisabled({ to: '/', label: 'nav.acquire', onlineOnly: true })).toBe(false);
 
     isOffline.set(true);
-    expect(c.isDisabled({ to: '/', label: 'nav.search', onlineOnly: true })).toBe(true);
+    expect(c.isDisabled({ to: '/', label: 'nav.acquire', onlineOnly: true })).toBe(true);
     expect(c.isDisabled({ to: '/downloads', label: 'Downloads', onlineOnly: false })).toBe(false);
   });
 
