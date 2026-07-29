@@ -319,6 +319,33 @@
             </div>
           }
 
+          <!-- Deployment-wide acquisition kill-switch (issue #235). Hidden
+               entirely when the server doesn't expose the toggle. -->
+          @if (acquisition(); as acq) {
+            <div class="flex flex-col gap-2 mb-8" data-testid="acquisition-panel">
+              <label class="flex items-center justify-between gap-4">
+                <span class="text-sm text-theme-primary">Acquisition
+                  @if (!acq.configurable) {
+                    <span class="block text-xs text-status-warn" data-testid="acquisition-env-locked">
+                      Disabled for this deployment by NICOTIND_ACQUISITION — this cannot be changed
+                      from here.
+                    </span>
+                  } @else {
+                    <span class="block text-xs text-theme-muted">
+                      Downloading, search's network lane and the unattended pollers. Turning this off
+                      leaves streaming and the library untouched.
+                    </span>
+                  }
+                </span>
+                <input type="checkbox" [checked]="acq.enabled"
+                  data-testid="acquisition-toggle"
+                  [disabled]="acquisitionSaving() || !acq.configurable"
+                  (change)="setAcquisition($any($event.target).checked)"
+                  class="w-4 h-4 rounded accent-emerald-500" />
+              </label>
+            </div>
+          }
+
           <!-- Maintenance: portable config export/import (issue #221). -->
           <div class="flex flex-col gap-2 mb-8" data-testid="config-panel">
             <div class="flex items-center gap-3 flex-wrap">

@@ -6,6 +6,7 @@ import type { Lidarr } from '@nicotind/lidarr-client';
 import type { AuthEnv } from '../middleware/auth.js';
 import { getDatabase } from '../db.js';
 import { listAudit, recordAudit } from '../services/audit-log.js';
+import type { AcquisitionToggle } from '../services/acquisition-toggle.js';
 import { listBackups, runBackup } from '../services/backup.js';
 import {
   exportConfig,
@@ -45,6 +46,8 @@ export interface AdminRoutesDeps {
   processing?: LibraryProcessingService | null;
   /** Running server version (package.json), for the update-check route. */
   version?: string;
+  /** Runtime acquisition kill-switch (issue #235); absent → the routes 503. */
+  acquisition?: AcquisitionToggle | null;
 }
 
 export function adminRoutes(deps: AdminRoutesDeps) {
@@ -350,6 +353,31 @@ export function adminRoutes(deps: AdminRoutesDeps) {
   // --- Automated playlists (see services/auto-playlists.service.ts) ---------
 
   // Current cadence + last-refresh timestamp for the Admin control.
+  // ─── Acquisition kill-switch (issue #235) ────────────────────────────────
+  // `enabled` is the effective value; `configurable` is false when the
+  // ENVIRONMENT disabled acquisition, in which case the toggle is a hard floor
+  // an admin cannot lift and the UI should render it read-only rather than
+  // offering a control that silently does nothing.
+  app.get('/acquisition', (c) => {
+    const t = deps.acquisition;
+    if (!t) return c.json({ error: 'Acquisition toggle not wired' }, 503);
+    return c.json({ enabled: t.enabled(), configurable: t.configurable() });
+  });
+
+  app.put('/acquisition', async (c) => {
+    const t = deps.acquisition;
+    if (!t) return c.json({ error: 'Acquisition toggle not wired' }, 503);
+    const body = await c.req.json<{ enabled?: unknown }>().catch(() => ({}) as { enabled?: unknown });
+    if (typeof body.enabled !== 'boolean') {
+      return c.json({ error: 'enabled must be a boolean' }, 400);
+    }
+    const effective = t.set(body.enabled);
+    recordAudit(getDatabase(), c.get('user'), 'acquisition.toggle', {
+      detail: `requested=${body.enabled} effective=${effective}`,
+    });
+    return c.json({ enabled: effective, configurable: t.configurable() });
+  });
+
   app.get('/playlists/auto', (c) => c.json(getAutoPlaylistStatus(getDatabase())));
 
   // Change the refresh cadence (off / daily / weekly). Persisted; read by the
