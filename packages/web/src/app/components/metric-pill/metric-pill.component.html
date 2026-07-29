@@ -54,7 +54,7 @@
     <span
       class="relative inline-flex items-center gap-1.5 overflow-hidden rounded-full border border-theme px-3 py-1 text-xs font-medium text-theme-secondary"
       data-testid="metric-pill-gpu"
-      [attr.title]="'GPU usage'"
+      [attr.title]="'GPU utilisation · VRAM'"
     >
       @if (!gpuNeutral()) {
         <span
@@ -79,6 +79,11 @@
         <span>GPU {{ gpuLabel() }}</span>
         @if (gpuSublabel(); as sl) {
           <span class="text-[10px] text-theme-muted truncate max-w-[12rem]">{{ sl }}</span>
+        }
+        @if (gpuMemoryLabel(); as ml) {
+          <span class="text-[10px] text-theme-muted" data-testid="metric-pill-gpu-memory"
+            >{{ ml }} VRAM</span
+          >
         }
       </span>
     </span>

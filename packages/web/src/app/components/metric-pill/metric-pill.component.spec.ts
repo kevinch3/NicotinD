@@ -93,6 +93,42 @@ describe('MetricPillComponent', () => {
     expect(c.gpuRatio()).toBe(1);
   });
 
+  it('surfaces VRAM used/total independently of utilisation (issue #224)', () => {
+    // The whole point: a card can read ~0% util while ~all VRAM is held by a
+    // co-tenant, and only the memory line reveals it.
+    const c = make();
+    setInputValue(c.gpu, {
+      vendor: 'nvidia',
+      percent: 3,
+      name: 'Quadro P4000',
+      memoryUsedBytes: 7.45 * 1024 ** 3,
+      memoryTotalBytes: 8 * 1024 ** 3,
+    });
+    expect(c.gpuLabel()).toBe('3%');
+    expect(c.gpuMemoryLabel()).toBe('7.5 GB / 8.0 GB');
+    // The fill still tracks utilisation (that's what the % label says).
+    expect(c.gpuRatio()).toBeCloseTo(0.03, 5);
+    expect(c.gpuNeutral()).toBe(false);
+  });
+
+  it('falls back to the VRAM ratio for the fill when utilisation is not reported', () => {
+    const c = make();
+    setInputValue(c.gpu, {
+      vendor: 'nvidia',
+      memoryUsedBytes: 4 * 1024 ** 3,
+      memoryTotalBytes: 8 * 1024 ** 3,
+    });
+    expect(c.gpuLabel()).toBe('—'); // no utilisation number
+    expect(c.gpuRatio()).toBe(0.5); // …but the bar reflects VRAM
+    expect(c.gpuNeutral()).toBe(false); // not neutral — memory is meaningful
+  });
+
+  it('has no VRAM line when the vendor reports none', () => {
+    const c = make();
+    setInputValue(c.gpu, sampleGpu);
+    expect(c.gpuMemoryLabel()).toBe('');
+  });
+
   it('shares the green→red colour palette with disk-pill (hsl 140 → 0)', () => {
     const lo = make();
     setInputValue(lo.cpu, { percent: 0, cores: 1, model: '' });

@@ -307,6 +307,17 @@ processing window is running. That is the GPU-citizenship problem, not concurren
   but not from our **allocation**, which is what would make an Immich ML or Ollama model load fail.
   A co-tenant can be starved while `nvidia-smi` reports 0 % utilisation.
 
+### Making the allocation visible (shipped)
+
+Because the pressure is allocation, not utilisation, the Admin GPU pill now renders **VRAM
+used/total** alongside the utilisation % (`MetricPillComponent.gpuMemoryLabel`, fed by the
+`memoryUsedBytes`/`memoryTotalBytes` that `system-metrics.ts` already parses from
+`nvidia-smi --query-gpu=…,memory.used,memory.total`). So an operator sees `GPU 3% · P4000 · 7.5 GB /
+8.0 GB VRAM` and can tell the card is 93 %-held even while utilisation reads near-zero. When a vendor
+reports VRAM but no utilisation, the pill's fill bar falls back to the memory ratio rather than going
+neutral-grey. This is the one part of the reduction goal that is a pure code change; it makes the
+problem legible but does not itself cap the allocation.
+
 ### What would actually reduce it (not yet implemented)
 
 A hard cap rather than allow-growth — TF's `memory_limit` logical-device configuration. Essentia

@@ -462,7 +462,11 @@ Add detail there, not here.
   serialises inference, and peak GPU memory is identical too. The real pressure is that TF **never
   releases** grown memory, so the sidecar ratchets from ~85 MiB to **7,631 MiB of an 8,192 MiB card
   after the first inference and holds it while idle** — `gpuBusyPercent` gates on *utilisation*, so
-  it can't protect a co-tenant from that *allocation*. →
+  it can't protect a co-tenant from that *allocation*. **The Admin GPU pill now surfaces VRAM
+  used/total** (`MetricPillComponent` `gpuMemoryLabel`, from `nvidia-smi memory.used/total` already
+  collected in `system-metrics.ts`) so that 93 %-held allocation is *visible* even at ~0 %
+  utilisation — the one code-only piece of #224; the actual cap (a TF `memory_limit` in the GPU
+  image) stays a build/hardware change. →
   [docs/audio-ml-enrichment.md](docs/audio-ml-enrichment.md) "Measured GPU behaviour". A `paused` flag (+ `ProcessingPhase 'paused'`) is the temporary
   runtime halt distinct from `enabled: false`: it skips window/background enrichment but **still
   clears quarantine** (a pause must never leave new music invisible) and `runNow()` overrides it.
