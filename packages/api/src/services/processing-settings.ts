@@ -33,8 +33,9 @@ export const DEFAULT_PROCESSING_SETTINGS: ProcessingSettings = {
     // Resolves compound artist strings (bands/duos vs collabs) via Lidarr/MB so the
     // scanner can split them; auto-skips when Lidarr is absent. Per-artist, never a gate.
     'artist-identity': true,
-    // Fills the rights/licence code from file tags → MusicBrainz. Optional source,
-    // never a gate (see below) — a fresh download lands without waiting on it.
+    // Fills the rights/licence code from file tags (the MusicBrainz fallback was
+    // removed in #329 — 0 hits across 14.5k prod songs). Optional source, never a
+    // gate (see below) — a fresh download lands without waiting on it.
     licence: true,
     // Audio-inferred genre fallback (issue #187 task A2) — runs only when the
     // `genre` task above has nothing; confidence-gated, never a gate itself

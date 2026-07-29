@@ -63,12 +63,18 @@ first, and honest about misses:
    / Creative-Commons downloads are licence-tagged with no network calls. Writes
    go to a `LICENSE` frame **only** (never the native copyright frame, so an
    existing "©" notice is preserved).
-2. **MusicBrainz `license` url-relations.** `musicbrainz-client.ts`
-   `getLicence({ mbRecordingId?, mbReleaseId?, artist?, title? })` fetches with
-   `inc=url-rels` (recording first, then release) and maps a `license` relation's
-   URL through `normalizeLicence`. Reuses the existing base-url / 1-req-sec /
-   file-cache plumbing — no new HTTP client. Coverage is sparse (mostly CC
-   releases); a miss returns `null`, never a false positive.
+2. **MusicBrainz `license` url-relations — on-demand paths only (see #329).**
+   `musicbrainz-client.ts` `getLicence({ mbRecordingId?, mbReleaseId?, artist?,
+   title? })` fetches with `inc=url-rels` (recording first, then release) and maps
+   a `license` relation's URL through `normalizeLicence`. Reuses the existing
+   base-url / 1-req-sec / file-cache plumbing — no new HTTP client. Coverage is
+   sparse (mostly CC releases); a miss returns `null`, never a false positive.
+   **This step now runs only for the user-initiated paths** — the track-info
+   **Detect** button (`/licence-suggestion`) and the `backfill-licence.ts`
+   operator script. The **background enrichment task no longer calls MB**: a
+   read-only prod sweep found it had succeeded 0 times across 14.5k songs while
+   spending the shared 1-req/sec MB budget on every new download's 3 attempts, so
+   #329 dropped the automatic MB pass (the tag step below produced all the data).
 3. **Manual set.** A curator picks a value in the track-info sheet.
 
 ## The `licence` enrichment task (background fill)
@@ -78,13 +84,17 @@ to `ENRICHMENT_TASKS`, mirroring `genreTask`:
 
 - `countPending` / `run` select `WHERE licence IS NULL` (excluding ledgered
   files via `notPermanentlyFailedClause`).
-- Resolves via the injected `ctx.lookupLicence` primitive (tag-first, then MB;
-  built from `dataDir` for the MB cache).
+- Resolves via the injected `ctx.lookupLicence` primitive — **tag-only as of
+  #329** (`makeLicenceLookup()` reads the file's `LICENSE`/`COPYRIGHT` frame and
+  returns `null` otherwise; the MB fallback was removed, so the resolver takes no
+  `dataDir` and cannot reach the network). The on-demand Detect route and
+  `backfill-licence.ts` keep their MB step.
 - On a hit: `UPDATE … SET licence, licence_source` + mirror to the file's
   `LICENSE` tag + `clearAnalysisFailure`.
 - On a confident miss: ledgered via `NoConfidentResultError` — it drops out of
   the pending set (no eternal re-query) but is **not** tallied as a run failure
-  (nothing is broken; MB simply has no data), exactly like unresolvable genre.
+  (nothing is broken; the file simply carries no licence tag), like unresolvable
+  genre.
 
 ### Not a landing gate
 

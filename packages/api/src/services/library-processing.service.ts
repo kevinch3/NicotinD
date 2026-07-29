@@ -185,7 +185,6 @@ export class LibraryProcessingService extends EventEmitter {
           lookupArtistInfo: this.lookupArtistInfo,
           lookupGenreForRelease: this.lookupGenreForRelease,
           audioFeaturesClient: this.audioFeaturesClient,
-          dataDir: this.dataDir,
         }));
     this.logToFile = deps.logToFile ?? true;
     this.reportFailure = deps.reportFailure ?? captureProcessingFailure;

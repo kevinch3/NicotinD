@@ -1,6 +1,5 @@
 import type { Database } from 'bun:sqlite';
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
 import type { Lidarr, LidarrArtist } from '@nicotind/lidarr-client';
 import type { ProcessingTaskId } from '@nicotind/core';
 import {
@@ -44,7 +43,6 @@ import { normalizeArtistForGrouping, albumGroupKey } from '../album-grouping.js'
 import { splitOnDelimiters } from '../artist-split.js';
 import { upsertArtistIdentity } from '../artist-identity-store.js';
 import { artistIdFor } from '../library-scanner.js';
-import { MusicBrainzClient, MB_USER_AGENT } from '../musicbrainz-client.js';
 import { getMbid, upsertMbid } from '../mbid-store.js';
 import { upsertArtistMeta } from '../artist-meta-store.js';
 import type { ArtistInfoResult, GenreQuery, GenreResult } from '@nicotind/core';
@@ -54,7 +52,11 @@ import {
   notPermanentlyFailedClause,
 } from './analysis-failures.js';
 
-/** A licence resolved for one song, with its provenance. */
+/** A licence resolved for one song, with its provenance.
+ *
+ * `'musicbrainz'` is retained in the union for backward compatibility — it was a
+ * historical `licence_source` value before the MB lookup was removed (issue
+ * #329) — but the resolver no longer produces it; only `'tag'` is minted here. */
 export interface LicenceLookupResult {
   code: string;
   source: 'tag' | 'musicbrainz';
@@ -118,16 +120,17 @@ export interface EnrichmentContext {
   /** Returns the suggested genre for an artist, or null when unavailable. */
   lookupGenre: (artist: string) => Promise<string | null>;
   /**
-   * Resolve a rights/licence code for one song — the file's own LICENSE/COPYRIGHT
-   * tag first (zero network), then a MusicBrainz `license` url-relation. Returns
-   * null when nothing is confidently found (the common case; MB coverage is
-   * sparse). Never throws — a lookup blip degrades to null.
+   * Resolve a rights/licence code for one song from the file's own
+   * LICENSE/COPYRIGHT tag (zero network). Returns null when the file carries no
+   * licence tag (the common case). Never throws — a read blip degrades to null.
+   *
+   * The MusicBrainz `license` url-relation lookup that used to follow the tag
+   * read was removed in issue #329: a read-only prod sweep found it had
+   * succeeded 0 times across 14.5k songs while spending the shared 1-req/sec MB
+   * budget on every new download's 3 attempts. Every real licence value comes
+   * from tags or the manual curator set.
    */
-  lookupLicence: (song: {
-    abs: string;
-    artist: string;
-    title: string;
-  }) => Promise<LicenceLookupResult | null>;
+  lookupLicence: (song: { abs: string }) => Promise<LicenceLookupResult | null>;
   /** Returns a Spotify portrait url for an artist name, or null. Null when Spotify
    *  isn't configured — the artist-image task then relies on Lidarr alone. */
   lookupArtistImageSpotify: ((name: string) => Promise<string | null>) | null;
@@ -403,8 +406,6 @@ export function createEnrichmentContext(deps: {
   lookupGenreForRelease?: ((query: GenreQuery) => Promise<GenreResult | null>) | null;
   /** Sidecar client, or null when NICOTIND_ANALYSIS_URL isn't configured. */
   audioFeaturesClient?: AudioFeaturesClient | null;
-  /** Data dir — locates the MusicBrainz cache file for licence lookups. */
-  dataDir?: string;
 }): EnrichmentContext {
   const featuresClient = deps.audioFeaturesClient ?? null;
   return {
@@ -431,36 +432,29 @@ export function createEnrichmentContext(deps: {
     lookupArtistInfo: deps.lookupArtistInfo ?? null,
     lookupGenreForRelease: deps.lookupGenreForRelease ?? null,
     resolveArtistIdentity: deps.lidarr ? makeLidarrArtistIdentityResolver(deps.lidarr) : null,
-    lookupLicence: makeLicenceLookup(deps.dataDir ?? null),
+    lookupLicence: makeLicenceLookup(),
     fileExists: (abs) => existsSync(abs),
   };
 }
 
 /**
- * Build a licence resolver: the file's own LICENSE/COPYRIGHT tag first (zero
- * network), then a MusicBrainz `license` url-relation (best-effort, only when a
- * dataDir is available to cache MB responses). The MB client is created once per
- * context so its 1-req/sec rate limit + on-disk cache are shared across a run.
+ * Build a licence resolver: the file's own LICENSE/COPYRIGHT tag (zero network).
+ *
+ * The MusicBrainz `license` url-relation lookup that used to follow the tag read
+ * was removed in issue #329 — a read-only prod sweep found it had succeeded 0
+ * times across 14.5k songs (every real value came from tags applied at scan
+ * time or the manual curator set) while spending the shared 1-req/sec MB budget
+ * on up to 3 attempts per new download. Dropping it keeps the tag path (which
+ * produced the data) and reclaims that budget for the lookups that do work
+ * (`library_mbids` resolution, artist-info).
  */
-function makeLicenceLookup(
-  dataDir: string | null,
-): (song: { abs: string; artist: string; title: string }) => Promise<LicenceLookupResult | null> {
-  const mb = dataDir
-    ? new MusicBrainzClient(join(dataDir, 'musicbrainz-cache.json'), MB_USER_AGENT)
-    : null;
+export function makeLicenceLookup(): (song: {
+  abs: string;
+}) => Promise<LicenceLookupResult | null> {
   return async (song) => {
     const tags = await readAudioTags(song.abs).catch(() => null);
     if (tags?.licence) return { code: tags.licence, source: 'tag' };
-    if (!mb) return null;
-    const code = await mb
-      .getLicence({
-        mbRecordingId: tags?.mbRecordingId,
-        mbReleaseId: tags?.mbReleaseId,
-        artist: song.artist,
-        title: song.title,
-      })
-      .catch(() => null);
-    return code ? { code, source: 'musicbrainz' } : null;
+    return null;
   };
 }
 
@@ -1166,7 +1160,7 @@ const licenceTask: EnrichmentTask = {
       const abs = resolveSongAbsPath(ctx.musicDir, song.path);
       if (!ctx.fileExists(abs)) continue;
       try {
-        const res = await ctx.lookupLicence({ abs, artist: song.artist, title: song.title });
+        const res = await ctx.lookupLicence({ abs });
         if (!res) {
           noteItemFailure(
             db,
@@ -1183,7 +1177,7 @@ const licenceTask: EnrichmentTask = {
           song.id,
         ]);
         // Mirror to the file tag so a rescan reads it back. A 'tag' source already
-        // carries it, but the write is idempotent; an 'musicbrainz' source needs it.
+        // carries it, but the write is idempotent (and future non-tag sources need it).
         await ctx.writeTags(abs, { licence: res.code }).catch(() => false);
         clearAnalysisFailure(db, song.id, 'licence');
         applied++;

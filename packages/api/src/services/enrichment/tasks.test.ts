@@ -6,6 +6,7 @@ import {
   ENRICHMENT_TASKS,
   getTask,
   isWholeTokenSubsequence,
+  makeLicenceLookup,
   makeLidarrArtistIdentityResolver,
   pickMbidHit,
   resolveMbidViaLidarr,
@@ -1444,7 +1445,7 @@ describe('artist-identity task', () => {
 describe('licence task', () => {
   const licence = getTask('licence')!;
 
-  it('is always available (tag reads need nothing; MB is a bonus)', () => {
+  it('is always available (tag reads need nothing)', () => {
     expect(licence.available(ctx())).toBe(true);
   });
 
@@ -1494,6 +1495,23 @@ describe('licence task', () => {
       .query<{ licence: string | null }, [string]>('SELECT licence FROM library_songs WHERE id = ?')
       .get('a');
     expect(row?.licence).toBeNull();
+  });
+});
+
+describe('makeLicenceLookup (issue #329 — tag-only, no MusicBrainz)', () => {
+  it('takes no dependencies and cannot reach the network', () => {
+    // The resolver used to accept a dataDir to build a MusicBrainzClient. #329
+    // removed the MB step (0 hits across 14.5k prod songs), so it now takes zero
+    // args — there is no code path left that could construct a network client.
+    expect(makeLicenceLookup).toHaveLength(0);
+  });
+
+  it('returns null for a file with no licence tag instead of falling back to the network', async () => {
+    const lookup = makeLicenceLookup();
+    // An unreadable/absent path makes readAudioTags reject; pre-#329 this would
+    // have degraded to the MB artist+title search. It must now simply be null.
+    const res = await lookup({ abs: '/does/not/exist/never-a-real-file.opus' });
+    expect(res).toBeNull();
   });
 });
 
