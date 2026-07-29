@@ -240,8 +240,13 @@ Add detail there, not here.
   The **before/after view** now ships too: the modal charts the projected spread live beside the
   current one (pure `lib/genre-projection.ts` — no request), because the append-vs-replace choice
   (#260) was invisible until Save; dropped genres get a named line rather than just a vanished axis.
-  **Left open**: the "settle the multi-genre UX" sub-goal (a product decision).
-  → [docs/genre-radar.md](docs/genre-radar.md)
+  **Album genre aggregate fixed** (intrinsic bug, not the UX question): `library_albums.genre` was
+  `a.genres[0]` (first-processed track's first genre — a scan-order artifact); it is now
+  `mostCommonGenre(a.primaryGenres)` in the scanner — the modal primary genre across the album's
+  tracks, deterministic ties, unit-tested. **Left open** (product decisions): a listener-facing
+  weighted genre-distribution strip on artist/album pages (Stage 1, reuses the endpoint), an album
+  distribution endpoint, and an opt-in primary-only genre filter — the "settle the multi-genre UX"
+  sub-goal. → [docs/genre-radar.md](docs/genre-radar.md)
 - **VA / compilation handling**: `resolveTags` separates `albumArtist` (grouping) from `trackArtist`
   (performer); `classifyFolder` detects compilations via COMPILATION flag, VA albumArtist, or ≥3
   artists sharing one album; dedicated Compilations tab, VA hidden from artists, "Appears On" on

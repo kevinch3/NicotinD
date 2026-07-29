@@ -8,6 +8,7 @@ import {
   artistIdFor,
   isLooseSinglesBucket,
   unanimousLicence,
+  mostCommonGenre,
   LibraryScanner,
   type ScannedTrack,
 } from './library-scanner.js';
@@ -108,6 +109,18 @@ describe('buildLibrary (pure aggregation)', () => {
     expect(unanimousLicence(['cc0', 'cc0'])).toBe('cc0');
     expect(unanimousLicence(['cc0', 'cc-by'])).toBeNull();
     expect(unanimousLicence(['public-domain', null])).toBeNull();
+  });
+
+  it('mostCommonGenre: the album label is the modal primary genre, not scan order (#222)', () => {
+    expect(mostCommonGenre([])).toBeNull();
+    expect(mostCommonGenre([null, undefined])).toBeNull();
+    // The bug this fixes: 3 Rock tracks + 1 leading Jazz must read as Rock, not
+    // Jazz just because the Jazz track was processed first.
+    expect(mostCommonGenre(['Jazz', 'Rock', 'Rock', 'Rock'])).toBe('Rock');
+    // A genuine tie breaks toward the first-seen genre (deterministic).
+    expect(mostCommonGenre(['Pop', 'Rock', 'Pop', 'Rock'])).toBe('Pop');
+    // Nulls are ignored, not counted.
+    expect(mostCommonGenre([null, 'Folk', null, 'Folk', 'Rock'])).toBe('Folk');
   });
 
   it('keys album/artist cover ids on the group id so canonical artwork resolves', () => {
