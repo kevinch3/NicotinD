@@ -981,6 +981,15 @@ Add detail there, not here.
   `noArtCache` has a complete `clearCoverNegativeCache` writer set) and the "adding a cache"
   checklist (content-address > short TTL > explicit invalidation). →
   [docs/cache-invalidation.md](docs/cache-invalidation.md), [docs/web-ui.md](docs/web-ui.md)
+- **We build the YouTube PO-token provider (issue #238)**: the `bgutil-provider` companion was a
+  third-party image whose tag had to be hand-synced with the pip plugin baked into ours; it is now
+  `ghcr.io/kevinch3/nicotind-pot-provider`, built by a `docker-pot-provider` job mirroring
+  `docker-analysis`, from **pinned upstream source** (`packages/pot-provider/Dockerfile`, GPL-3.0 ⊂
+  AGPL-3.0-only) rather than vendored. `check:bgutil-pin` now compares two files **we** control
+  instead of one third-party tag. Verified end-to-end — a "starts but mints invalid tokens" provider
+  is the exact silent failure the issue exists to prevent — by minting a real PO token against
+  YouTube's live attestation endpoint. →
+  [docs/deployment.md](docs/deployment.md) "We build the PO-token provider ourselves"
 - **Published Docker image (deployment)**: multi-arch GHCR image (`release`/`vX`/`vX.Y.Z` tags, no
   `latest`) published per release tag via native-runner digest builds + one manifest merge; compose
   pulls it (build-from-source is an override), the deploy host pulls too, `/api/health` reports the
